@@ -101,7 +101,7 @@
   },
   "units": {
     "unitJackal": {
-      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
@@ -111,7 +111,7 @@
       "excludeLockOnLevel1Shots": []
     },
     "unitLynx": {
-      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
@@ -121,7 +121,7 @@
       "excludeLockOnLevel1Shots": []
     },
     "unitDaddy": {
-      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
@@ -131,7 +131,7 @@
       "excludeLockOnLevel1Shots": []
     },
     "unitBadger": {
-      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
@@ -141,7 +141,7 @@
       "excludeLockOnLevel1Shots": []
     },
     "unitMongoose": {
-      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
@@ -151,7 +151,7 @@
       "excludeLockOnLevel1Shots": []
     },
     "unitTick": {
-      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
@@ -161,7 +161,7 @@
       "excludeLockOnLevel1Shots": []
     },
     "unitMammoth": {
-      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
@@ -171,7 +171,7 @@
       "excludeLockOnLevel1Shots": []
     },
     "unitFormik": {
-      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
@@ -181,7 +181,7 @@
       "excludeLockOnLevel1Shots": []
     },
     "unitWidow": {
-      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
@@ -191,7 +191,7 @@
       "excludeLockOnLevel1Shots": []
     },
     "unitHippo": {
-      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
@@ -201,7 +201,7 @@
       "excludeLockOnLevel1Shots": []
     },
     "unitTarantula": {
-      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
@@ -211,7 +211,7 @@
       "excludeLockOnLevel1Shots": []
     },
     "unitLoris": {
-      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
@@ -221,7 +221,7 @@
       "excludeLockOnLevel1Shots": []
     },
     "unitMosquito": {
-      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
@@ -231,7 +231,7 @@
       "excludeLockOnLevel1Shots": []
     },
     "unitDragonfly": {
-      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
@@ -251,7 +251,7 @@
       "excludeLockOnLevel1Shots": []
     },
     "unitEagle": {
-      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
@@ -273,13 +273,8 @@
   },
   "turrets": {
     "turretGunLight": {
-      "excludeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities"
-      ],
-      "excludeLockOnLevel0Entities": [
-        "locomotions",
-        "shots"
-      ],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
+      "excludeLockOnLevel0Entities": ["locomotions", "shots"],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
       "excludeLockOnLevel1Units": [],
@@ -288,13 +283,8 @@
       "excludeLockOnLevel1Shots": []
     },
     "turretGunBurst": {
-      "excludeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities"
-      ],
-      "excludeLockOnLevel0Entities": [
-        "locomotions",
-        "shots"
-      ],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
+      "excludeLockOnLevel0Entities": ["locomotions", "shots"],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
       "excludeLockOnLevel1Units": [],
@@ -303,13 +293,8 @@
       "excludeLockOnLevel1Shots": []
     },
     "turretCannon": {
-      "excludeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities"
-      ],
-      "excludeLockOnLevel0Entities": [
-        "locomotions",
-        "shots"
-      ],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
+      "excludeLockOnLevel0Entities": ["locomotions", "shots"],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
       "excludeLockOnLevel1Units": [],
@@ -318,13 +303,8 @@
       "excludeLockOnLevel1Shots": []
     },
     "turretMortarSlow": {
-      "excludeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities"
-      ],
-      "excludeLockOnLevel0Entities": [
-        "locomotions",
-        "shots"
-      ],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
+      "excludeLockOnLevel0Entities": ["locomotions", "shots"],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
       "excludeLockOnLevel1Units": [],
@@ -333,13 +313,8 @@
       "excludeLockOnLevel1Shots": []
     },
     "turretMortarDrop": {
-      "excludeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities"
-      ],
-      "excludeLockOnLevel0Entities": [
-        "locomotions",
-        "shots"
-      ],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
+      "excludeLockOnLevel0Entities": ["locomotions", "shots"],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
       "excludeLockOnLevel1Units": [],
@@ -348,13 +323,8 @@
       "excludeLockOnLevel1Shots": []
     },
     "turretMortarFast": {
-      "excludeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities"
-      ],
-      "excludeLockOnLevel0Entities": [
-        "locomotions",
-        "shots"
-      ],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
+      "excludeLockOnLevel0Entities": ["locomotions", "shots"],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
       "excludeLockOnLevel1Units": [],
@@ -363,13 +333,8 @@
       "excludeLockOnLevel1Shots": []
     },
     "turretGatling": {
-      "excludeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities"
-      ],
-      "excludeLockOnLevel0Entities": [
-        "locomotions",
-        "shots"
-      ],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
+      "excludeLockOnLevel0Entities": ["locomotions", "shots"],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
       "excludeLockOnLevel1Units": [],
@@ -378,13 +343,8 @@
       "excludeLockOnLevel1Shots": []
     },
     "turretDisruptor": {
-      "excludeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities"
-      ],
-      "excludeLockOnLevel0Entities": [
-        "locomotions",
-        "shots"
-      ],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
+      "excludeLockOnLevel0Entities": ["locomotions", "shots"],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
       "excludeLockOnLevel1Units": [],
@@ -393,9 +353,7 @@
       "excludeLockOnLevel1Shots": []
     },
     "turretForceFieldPanel": {
-      "excludeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities"
-      ],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
       "excludeLockOnLevel0Entities": [
         "buildings",
         "towers",
@@ -411,13 +369,8 @@
       "excludeLockOnLevel1Shots": []
     },
     "turretBeam": {
-      "excludeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities"
-      ],
-      "excludeLockOnLevel0Entities": [
-        "locomotions",
-        "shots"
-      ],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
+      "excludeLockOnLevel0Entities": ["locomotions", "shots"],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
       "excludeLockOnLevel1Units": [],
@@ -426,13 +379,8 @@
       "excludeLockOnLevel1Shots": []
     },
     "turretBeamMini": {
-      "excludeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities"
-      ],
-      "excludeLockOnLevel0Entities": [
-        "locomotions",
-        "shots"
-      ],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
+      "excludeLockOnLevel0Entities": ["locomotions", "shots"],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
       "excludeLockOnLevel1Units": [],
@@ -441,13 +389,8 @@
       "excludeLockOnLevel1Shots": []
     },
     "turretBeamMega": {
-      "excludeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities"
-      ],
-      "excludeLockOnLevel0Entities": [
-        "locomotions",
-        "shots"
-      ],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
+      "excludeLockOnLevel0Entities": ["locomotions", "shots"],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
       "excludeLockOnLevel1Units": [],
@@ -456,13 +399,8 @@
       "excludeLockOnLevel1Shots": []
     },
     "turretForceFieldSphere": {
-      "excludeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities"
-      ],
-      "excludeLockOnLevel0Entities": [
-        "locomotions",
-        "shots"
-      ],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
+      "excludeLockOnLevel0Entities": ["locomotions", "shots"],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
       "excludeLockOnLevel1Units": [],
@@ -481,13 +419,8 @@
       "excludeLockOnLevel1Shots": []
     },
     "turretBeamLong": {
-      "excludeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities"
-      ],
-      "excludeLockOnLevel0Entities": [
-        "locomotions",
-        "shots"
-      ],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
+      "excludeLockOnLevel0Entities": ["locomotions", "shots"],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
       "excludeLockOnLevel1Units": [],
@@ -496,13 +429,8 @@
       "excludeLockOnLevel1Shots": []
     },
     "turretCannonLong": {
-      "excludeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities"
-      ],
-      "excludeLockOnLevel0Entities": [
-        "locomotions",
-        "shots"
-      ],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
+      "excludeLockOnLevel0Entities": ["locomotions", "shots"],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
       "excludeLockOnLevel1Units": [],
@@ -511,13 +439,8 @@
       "excludeLockOnLevel1Shots": []
     },
     "turretRocketSlow": {
-      "excludeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities"
-      ],
-      "excludeLockOnLevel0Entities": [
-        "locomotions",
-        "shots"
-      ],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
+      "excludeLockOnLevel0Entities": ["locomotions", "shots"],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
       "excludeLockOnLevel1Units": [],
@@ -526,13 +449,8 @@
       "excludeLockOnLevel1Shots": []
     },
     "turretRocketFast": {
-      "excludeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities"
-      ],
-      "excludeLockOnLevel0Entities": [
-        "locomotions",
-        "shots"
-      ],
+      "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
+      "excludeLockOnLevel0Entities": ["locomotions", "shots"],
       "excludeLockOnLevel1Buildings": [],
       "excludeLockOnLevel1Towers": [],
       "excludeLockOnLevel1Units": [],
