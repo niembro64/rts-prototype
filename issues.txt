@@ -12,6 +12,10 @@ an item if you know for a fact it has been addressed. Remember that our code may
 have changed since the issue was written; check the code and if the issue is no
 longer relevant, delete it.
 
+Do not document "PROGRESS" in this file, just document or update issues that need to be resolved.
+
+If you see any "progress" information in this file, just remove it.
+
 Please always commit and push before and after any code changes we make.
 
 --------------------------------------------------------------------------------
