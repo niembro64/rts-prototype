@@ -1006,6 +1006,7 @@ export class WorldState {
     locomotion: UnitLocomotion = getUnitLocomotion(unitBlueprintId),
     mass: number = 25,
     hp: number = 100,
+    allocateSubEntityIds: boolean = true,
   ): Entity {
     const id = this.generateEntityId();
 
@@ -1041,12 +1042,14 @@ export class WorldState {
       ownership: { playerId },
       unit: {
         unitBlueprintId,
-        locomotion: cloneUnitLocomotion(locomotion, {
-          id: this.generateEntityId(),
-          parentId: id,
-          rootHostId: id,
-          mountIndex: 0,
-        }),
+        locomotion: allocateSubEntityIds
+          ? cloneUnitLocomotion(locomotion, {
+              id: this.generateEntityId(),
+              parentId: id,
+              rootHostId: id,
+              mountIndex: 0,
+            })
+          : cloneUnitLocomotion(locomotion),
         radius: { ...radius },
         bodyCenterHeight,
         fullVisionRadius,
@@ -1102,9 +1105,11 @@ export class WorldState {
     x: number,
     y: number,
     playerId: PlayerId,
-    unitBlueprintId: string
+    unitBlueprintId: string,
+    options: { allocateSubEntityIds?: boolean } = {},
   ): Entity {
     const bp = getUnitBlueprint(unitBlueprintId);
+    const allocateSubEntityIds = options.allocateSubEntityIds !== false;
 
     const entity = this.createUnitBase(
       x, y, playerId, unitBlueprintId,
@@ -1114,6 +1119,7 @@ export class WorldState {
       getUnitLocomotion(unitBlueprintId),
       bp.mass,
       bp.hp * UNIT_HP_MULTIPLIER,
+      allocateSubEntityIds,
     );
     // Chassis suspension is renderer-owned visual state. The
     // authoritative host keeps it absent so turret mounts, targeting,
@@ -1129,7 +1135,7 @@ export class WorldState {
       bp.radius.visual,
       entity.id,
       entity.id,
-      () => this.generateEntityId(),
+      allocateSubEntityIds ? () => this.generateEntityId() : null,
     ));
 
     // Cache shield panels for fast beam collision checks. Same helper

@@ -111,11 +111,11 @@ A41. [MEDIUM] Hosts spawn whole, not built bottom-up piece by piece.
     assemblies now stop consuming construction resources while their piece records remain live for
     rendering, targeting, snapshots, and active body/turret behavior. The aggregate Buildable.paid
     counters remain as the compact wire/UI mirror, not the sim's piece-level funding model. The
-    remaining gap is that the host and subentity IDs are still allocated together at build-site
-    creation, inactive pieces still have backing runtime objects even though they are no longer live
-    metadata entries, locomotion-only interrupted assemblies are represented as preserved partial
-    shells rather than standalone locomotion agents, and interrupted pieces still do not all become
-    fully detached autonomous agents. —
+    remaining gap is that inactive pieces still have backing runtime objects even though construction
+    shell subentity IDs now materialize only when the dependency-ordered piece becomes active,
+    locomotion-only interrupted assemblies are represented as preserved partial shells rather than
+    standalone locomotion agents, and interrupted pieces still do not all become fully detached
+    autonomous agents. —
     FIX: finish late materialization/partial assembly semantics: each piece should enter the active
     entity registry only when its dependency is satisfied, render/target exactly the current partial
     assembly, and leave exactly the already-built live pieces if construction is interrupted.

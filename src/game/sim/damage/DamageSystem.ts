@@ -155,11 +155,11 @@ const BEAM_GROUND_HIT_BISECT_STEPS = 6;
 const BEAM_GROUND_EPSILON = 0.25;
 
 function isTurretDamageable(turret: Turret): boolean {
-  return turret.hp > 0 && !turret.config.visualOnly;
+  return turret.id !== NO_ENTITY_ID && turret.hp > 0 && !turret.config.visualOnly;
 }
 
 function isLocomotionDamageable(locomotion: UnitLocomotion): boolean {
-  return locomotion.hp > 0;
+  return locomotion.id !== NO_ENTITY_ID && locomotion.hp > 0;
 }
 
 

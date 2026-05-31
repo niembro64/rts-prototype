@@ -148,12 +148,14 @@ export class FactoryProductionSystem {
     if (this.isBuildSpotBlocked(world, spawn.x, spawn.y, bp.radius.collision)) {
       return null;
     }
-    const unit = world.createUnitFromBlueprint(spawn.x, spawn.y, factory.ownership.playerId, unitBlueprintId);
+    const unit = world.createUnitFromBlueprint(spawn.x, spawn.y, factory.ownership.playerId, unitBlueprintId, {
+      allocateSubEntityIds: false,
+    });
     unit.buildable = createBuildable({
       energy: bp.cost.energy * COST_MULTIPLIER,
       metal: bp.cost.metal * COST_MULTIPLIER,
     });
-    initializeConstructionPieceHealth(unit);
+    initializeConstructionPieceHealth(unit, world);
     world.addEntity(unit);
     return unit;
   }

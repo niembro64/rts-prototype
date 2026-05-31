@@ -742,20 +742,22 @@ function syncEntityMetaPools(world: WorldState, e: Entity, sim: SimWasm): void {
     // Mirror the snapshot contract on the Rust diff side: head-only turrets
     // pass 0 for aim motion. Beam/laser paths are serialized separately.
     const snapshotAimMotion = turretAimMotionIsSnapshotVisible(w);
-    sim.entityMeta.register(
-      w.id,
-      ENTITY_META_KIND_TURRET,
-      ENTITY_META_BLUEPRINT_KIND_TURRET,
-      turretBlueprintIdToCode(w.config.turretBlueprintId),
-      ownership !== null ? ownership.playerId : -1,
-      teamId,
-      w.parentId,
-      w.rootHostId,
-      w.mountIndex,
-      ENTITY_META_STORAGE_COMBAT_TURRETS,
-      slot * MAX_WEAPONS_PER_ENTITY + t,
-      !w.config.visualOnly && w.hp > 0 ? 1 : 0,
-    );
+    if (w.id !== NO_ENTITY_ID) {
+      sim.entityMeta.register(
+        w.id,
+        ENTITY_META_KIND_TURRET,
+        ENTITY_META_BLUEPRINT_KIND_TURRET,
+        turretBlueprintIdToCode(w.config.turretBlueprintId),
+        ownership !== null ? ownership.playerId : -1,
+        teamId,
+        w.parentId,
+        w.rootHostId,
+        w.mountIndex,
+        ENTITY_META_STORAGE_COMBAT_TURRETS,
+        slot * MAX_WEAPONS_PER_ENTITY + t,
+        !w.config.visualOnly && w.hp > 0 ? 1 : 0,
+      );
+    }
     sim.turretPool.setTurret(
       slot, t,
       w.id,

@@ -101,9 +101,7 @@ export class ConstructionSystem {
     // reaches required.
     entity.buildable = createBuildable(config.cost);
 
-    applyBuildingBlueprintRuntime(entity, buildingBlueprintId, {
-      allocateEntityId: () => world.generateEntityId(),
-    });
+    applyBuildingBlueprintRuntime(entity, buildingBlueprintId);
     if (buildingBlueprintId === 'buildingExtractor') {
       // Inactive at construction start. The completion handler runs
       // computeExtractorMetalCoverage fills `coveredDepositIds` and sets
@@ -116,7 +114,7 @@ export class ConstructionSystem {
     if (entity.building) {
       entity.building.maxHp = config.hp;
     }
-    initializeConstructionPieceHealth(entity);
+    initializeConstructionPieceHealth(entity, world);
 
     // Add factory component if it's a factory
     if (buildingBlueprintId === 'towerFabricator') {

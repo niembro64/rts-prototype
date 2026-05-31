@@ -34,7 +34,8 @@ export type InterruptedConstructionResult = {
 };
 
 type ConstructionPieceSpec = {
-  id: number;
+  getId: () => number;
+  assignId: ((id: number) => void) | null;
   kind: ConstructionPieceKind;
   mountIndex: number | null;
   required: ResourceCost;
@@ -59,6 +60,7 @@ function growConstructionHp(world: WorldState, entity: Entity, nextBuildFraction
 }
 
 function isSubEntityStillAlive(world: WorldState, id: number): boolean {
+  if (id === NO_ENTITY_ID) return true;
   const meta = world.getEntityMeta(id);
   return meta === undefined || meta.alive;
 }
@@ -109,6 +111,22 @@ function hasPaidProgress(piece: ConstructionPieceBuildRecord): boolean {
   return piece.paid.energy > 0 || piece.paid.metal > 0;
 }
 
+function assignConstructionPieceIdentity(
+  world: WorldState,
+  piece: ConstructionPieceBuildRecord,
+  spec: ConstructionPieceSpec,
+): boolean {
+  if (!spec.isSubEntity || !piece.isActive) return false;
+  let id = spec.getId();
+  if (id === NO_ENTITY_ID && spec.assignId !== null) {
+    id = world.generateEntityId();
+    spec.assignId(id);
+  }
+  if (id === NO_ENTITY_ID || piece.id === id) return false;
+  piece.id = id;
+  return true;
+}
+
 function getUnitConstructionPieceSpecs(entity: Entity): ConstructionPieceSpec[] {
   const unit = entity.unit;
   if (unit === null) return [];
@@ -119,7 +137,13 @@ function getUnitConstructionPieceSpecs(entity: Entity): ConstructionPieceSpec[] 
 
   const specs: ConstructionPieceSpec[] = [
     {
-      id: unit.locomotion.id,
+      getId: () => unit.locomotion.id,
+      assignId: (id) => {
+        unit.locomotion.id = id;
+        unit.locomotion.parentId = entity.id;
+        unit.locomotion.rootHostId = entity.id;
+        unit.locomotion.mountIndex = 0;
+      },
       kind: 'locomotion',
       mountIndex: 0,
       required: cloneResourceCost(locomotionBlueprint.base.cost),
@@ -131,7 +155,8 @@ function getUnitConstructionPieceSpecs(entity: Entity): ConstructionPieceSpec[] 
       isSubEntity: true,
     },
     {
-      id: entity.id,
+      getId: () => entity.id,
+      assignId: null,
       kind: 'body',
       mountIndex: null,
       required: cloneResourceCost(unitBlueprint.base.cost),
@@ -149,7 +174,13 @@ function getUnitConstructionPieceSpecs(entity: Entity): ConstructionPieceSpec[] 
     for (let i = 0; i < combat.turrets.length; i++) {
       const turret = combat.turrets[i];
       specs.push({
-        id: turret.id,
+        getId: () => turret.id,
+        assignId: (id) => {
+          turret.id = id;
+          turret.parentId = entity.id;
+          turret.rootHostId = entity.id;
+          turret.mountIndex = i;
+        },
         kind: 'turret',
         mountIndex: i,
         required: cloneResourceCost(getTurretBlueprint(turret.config.turretBlueprintId).base.cost),
@@ -172,7 +203,8 @@ function getStaticConstructionPieceSpecs(entity: Entity): ConstructionPieceSpec[
   const buildingBlueprint = getBuildingBlueprint(entity.buildingBlueprintId);
   const specs: ConstructionPieceSpec[] = [
     {
-      id: entity.id,
+      getId: () => entity.id,
+      assignId: null,
       kind: 'body',
       mountIndex: null,
       required: cloneResourceCost(buildingBlueprint.base.cost),
@@ -190,7 +222,13 @@ function getStaticConstructionPieceSpecs(entity: Entity): ConstructionPieceSpec[
     for (let i = 0; i < combat.turrets.length; i++) {
       const turret = combat.turrets[i];
       specs.push({
-        id: turret.id,
+        getId: () => turret.id,
+        assignId: (id) => {
+          turret.id = id;
+          turret.parentId = entity.id;
+          turret.rootHostId = entity.id;
+          turret.mountIndex = i;
+        },
         kind: 'turret',
         mountIndex: i,
         required: cloneResourceCost(getTurretBlueprint(turret.config.turretBlueprintId).base.cost),
@@ -242,7 +280,7 @@ function pieceRecordsMatchSpecs(
     const piece = pieces[i];
     const spec = specs[i];
     if (
-      piece.id !== spec.id ||
+      piece.id !== spec.getId() ||
       piece.kind !== spec.kind ||
       piece.mountIndex !== spec.mountIndex
     ) {
@@ -261,7 +299,7 @@ function ensureConstructionPieceRecords(entity: Entity): void {
   );
   if (pieceRecordsMatchSpecs(buildable.pieces, specs)) return;
   buildable.pieces = specs.map((spec) => ({
-    id: spec.id,
+    id: spec.getId(),
     kind: spec.kind,
     mountIndex: spec.mountIndex,
     required: cloneResourceCost(spec.required),
@@ -310,6 +348,9 @@ function growConstructionPieces(world: WorldState, entity: Entity): void {
   for (let i = 0; i < specs.length; i++) {
     const spec = specs[i];
     const piece = buildable.pieces[i];
+    if (assignConstructionPieceIdentity(world, piece, spec)) {
+      changedFields |= spec.snapshotFields;
+    }
     const prevProgress = Math.max(0, Math.min(1, piece.healthBuildFraction));
     const nextProgress = piece.isActive ? getPieceBuildFraction(piece) : 0;
     const hp = advancePieceHp(
@@ -317,7 +358,7 @@ function growConstructionPieces(world: WorldState, entity: Entity): void {
       spec.maxHp,
       prevProgress,
       nextProgress,
-      spec.isSubEntity ? isSubEntityStillAlive(world, spec.id) : true,
+      spec.isSubEntity ? isSubEntityStillAlive(world, spec.getId()) : true,
       spec.startsAtFrameOne,
     );
     if (hp !== spec.getHp()) {
@@ -325,8 +366,9 @@ function growConstructionPieces(world: WorldState, entity: Entity): void {
       changedFields |= spec.snapshotFields;
     }
     piece.healthBuildFraction = nextProgress;
-    if (spec.isSubEntity) {
-      world.setSubEntityMetadataTargetable(spec.id, hp > 0);
+    const pieceId = spec.getId();
+    if (spec.isSubEntity && pieceId !== NO_ENTITY_ID) {
+      world.setSubEntityMetadataTargetable(pieceId, hp > 0);
     }
   }
 
@@ -351,8 +393,9 @@ function zeroInterruptedPiece(
   if (spec.getHp() !== 0) {
     spec.setHp(0);
   }
-  if (spec.isSubEntity) {
-    world.markSubEntityMetadataDead(spec.id);
+  const pieceId = spec.getId();
+  if (spec.isSubEntity && pieceId !== NO_ENTITY_ID) {
+    world.markSubEntityMetadataDead(pieceId);
   }
 }
 
@@ -384,8 +427,9 @@ export function interruptConstructionPreservingBuiltPieces(
     const piece = buildable.pieces[i];
     if (piece !== undefined && shouldPreserveInterruptedPiece(piece, spec)) {
       preserved = true;
-      if (spec.isSubEntity) {
-        world.setSubEntityMetadataTargetable(spec.id, true);
+      const pieceId = spec.getId();
+      if (spec.isSubEntity && pieceId !== NO_ENTITY_ID) {
+        world.setSubEntityMetadataTargetable(pieceId, true);
       }
       continue;
     }
@@ -409,7 +453,7 @@ export function interruptConstructionPreservingBuiltPieces(
   };
 }
 
-export function initializeConstructionPieceHealth(entity: Entity): void {
+export function initializeConstructionPieceHealth(entity: Entity, world: WorldState | null = null): void {
   const buildable = entity.buildable;
   if (buildable === null || buildable.isGhost || buildable.isComplete) return;
   ensureConstructionPieceRecords(entity);
@@ -419,13 +463,27 @@ export function initializeConstructionPieceHealth(entity: Entity): void {
     getConstructionPieceSpecs(entity),
     buildable.required,
   );
+  let changedFields = 0;
   for (let i = 0; i < specs.length; i++) {
     const spec = specs[i];
     const piece = buildable.pieces[i];
+    if (world !== null && assignConstructionPieceIdentity(world, piece, spec)) {
+      changedFields |= spec.snapshotFields;
+    }
     const progress = piece.isActive ? getPieceBuildFraction(piece) : 0;
     const hp = setPieceHpForConstructionProgress(spec.maxHp, progress, spec.startsAtFrameOne);
     spec.setHp(hp);
     piece.healthBuildFraction = progress;
+    const pieceId = spec.getId();
+    if (world !== null && spec.isSubEntity && pieceId !== NO_ENTITY_ID) {
+      world.setSubEntityMetadataTargetable(pieceId, hp > 0);
+    }
+  }
+  if (world !== null) {
+    world.refreshEntityMetadata(entity);
+    if (changedFields !== 0) {
+      world.markSnapshotDirty(entity.id, changedFields);
+    }
   }
 }
 
