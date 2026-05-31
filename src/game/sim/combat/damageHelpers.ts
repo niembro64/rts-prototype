@@ -27,7 +27,7 @@ function eventAudioKey(
 
 const _subEntityDeathPos = { x: 0, y: 0, z: 0 };
 
-function resolveKilledTurret(world: WorldState, id: EntityId): { host: Entity; turret: Turret } | undefined {
+export function resolveKilledTurret(world: WorldState, id: EntityId): { host: Entity; turret: Turret } | undefined {
   const meta = world.getEntityMeta(id);
   if (meta === undefined || meta.kind !== 'turret' || meta.parentId === null || meta.mountIndex === null) {
     return undefined;
@@ -41,7 +41,7 @@ function resolveKilledTurret(world: WorldState, id: EntityId): { host: Entity; t
     : undefined;
 }
 
-function resolveKilledLocomotion(world: WorldState, id: EntityId): { host: Entity; locomotion: UnitLocomotion } | undefined {
+export function resolveKilledLocomotion(world: WorldState, id: EntityId): { host: Entity; locomotion: UnitLocomotion } | undefined {
   const meta = world.getEntityMeta(id);
   if (meta === undefined || meta.kind !== 'locomotion' || meta.parentId === null) {
     return undefined;
@@ -82,6 +82,45 @@ function buildSubEntityDeathContext(
   };
 }
 
+export function resolveKilledTurretWorldPosition(
+  world: WorldState,
+  id: EntityId,
+  out: { x: number; y: number; z: number },
+): { x: number; y: number; z: number } | undefined {
+  const resolved = resolveKilledTurret(world, id);
+  if (resolved === undefined) return undefined;
+  const { host, turret } = resolved;
+  const cs = getTransformCosSin(host.transform);
+  return resolveWeaponWorldMount(
+    host,
+    turret,
+    turret.mountIndex,
+    cs.cos,
+    cs.sin,
+    {
+      currentTick: world.getTick(),
+      unitGroundZ: getUnitGroundZ(host),
+      surfaceN: host.unit !== null ? host.unit.surfaceNormal : undefined,
+    },
+    out,
+  );
+}
+
+export function resolveKilledLocomotionWorldPosition(
+  world: WorldState,
+  id: EntityId,
+  out: { x: number; y: number; z: number },
+): { x: number; y: number; z: number } | undefined {
+  const resolved = resolveKilledLocomotion(world, id);
+  if (resolved === undefined) return undefined;
+  const { host, locomotion } = resolved;
+  const baseZ = getUnitGroundZ(host);
+  out.x = host.transform.x;
+  out.y = host.transform.y;
+  out.z = baseZ + locomotion.radius.hitbox;
+  return out;
+}
+
 function buildTurretDeathEvent(
   world: WorldState,
   id: EntityId,
@@ -93,20 +132,8 @@ function buildTurretDeathEvent(
   const resolved = resolveKilledTurret(world, id);
   if (resolved === undefined) return undefined;
   const { host, turret } = resolved;
-  const cs = getTransformCosSin(host.transform);
-  const pos = resolveWeaponWorldMount(
-    host,
-    turret,
-    turret.mountIndex,
-    cs.cos,
-    cs.sin,
-    {
-      currentTick: world.getTick(),
-      unitGroundZ: getUnitGroundZ(host),
-      surfaceN: host.unit !== null ? host.unit.surfaceNormal : undefined,
-    },
-    _subEntityDeathPos,
-  );
+  const pos = resolveKilledTurretWorldPosition(world, id, _subEntityDeathPos);
+  if (pos === undefined) return undefined;
   return {
     type: 'death',
     turretBlueprintId: eventAudioKey(sourceKey, sourceType),
@@ -137,12 +164,8 @@ function buildLocomotionDeathEvent(
   const resolved = resolveKilledLocomotion(world, id);
   if (resolved === undefined) return undefined;
   const { host, locomotion } = resolved;
-  const baseZ = getUnitGroundZ(host);
-  const pos = {
-    x: host.transform.x,
-    y: host.transform.y,
-    z: baseZ + locomotion.radius.hitbox,
-  };
+  const pos = resolveKilledLocomotionWorldPosition(world, id, _subEntityDeathPos);
+  if (pos === undefined) return undefined;
   return {
     type: 'death',
     turretBlueprintId: eventAudioKey(sourceKey, sourceType),
@@ -414,6 +437,8 @@ export function collectKillsAndDeathContexts(
   audioEvents: SimEvent[],
   deathContexts: Map<EntityId, DeathContext>,
   attackerSourceEntityId: EntityId | undefined = undefined,
+  killedTurretIds: Set<EntityId> | undefined = undefined,
+  killedLocomotionIds: Set<EntityId> | undefined = undefined,
 ): void {
   for (const id of result.killedUnitIds) {
     if (!unitsToRemove.has(id)) {
@@ -433,6 +458,7 @@ export function collectKillsAndDeathContexts(
     }
   }
   for (const id of result.killedTurretIds) {
+    killedTurretIds?.add(id);
     const event = buildTurretDeathEvent(
       world,
       id,
@@ -444,6 +470,7 @@ export function collectKillsAndDeathContexts(
     if (event !== undefined) audioEvents.push(event);
   }
   for (const id of result.killedLocomotionIds) {
+    killedLocomotionIds?.add(id);
     const event = buildLocomotionDeathEvent(
       world,
       id,

@@ -8,6 +8,10 @@ import {
   buildUnitDeathEvent,
   buildBuildingDeathEvent,
   collectKillsAndDeathContexts,
+  resolveKilledLocomotion,
+  resolveKilledLocomotionWorldPosition,
+  resolveKilledTurret,
+  resolveKilledTurretWorldPosition,
 } from './combat/damageHelpers';
 import { magnitude } from '../math';
 import { executeCommand, type CommandContext } from './commandExecution';
@@ -66,7 +70,12 @@ import {
   pathTerrainFilterForLocomotion,
   type PathTerrainFilter,
 } from './Pathfinder';
-import { getBuildingBlueprint, getUnitBlueprint } from './blueprints';
+import {
+  getBuildingBlueprint,
+  getTurretBlueprint,
+  getUnitBlueprint,
+  UNIT_LOCOMOTION_BLUEPRINTS,
+} from './blueprints';
 import { updateBuildingActiveStates } from './buildingActiveState';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { getGuardFollowRadius, isFriendlyGuardTarget } from './guard';
@@ -92,6 +101,16 @@ const EMPTY_DEATH_EXPLOSION_EXCLUDES = new Set<EntityId>();
 const _combatStopFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_ENGAGED,
   targetId: -1,
+};
+
+type DeathExplosionBlast = {
+  radius: number;
+  force: number;
+  damage: number;
+  sourceKey: string;
+  sourceType: 'turret' | 'unit' | 'building' | 'system';
+  sourceEntityId: EntityId;
+  center: { x: number; y: number; z: number };
 };
 
 function safeVelocityUpdates(value: unknown): ProjectileVelocityUpdateEvent[] {
@@ -213,8 +232,11 @@ export class Simulation {
   private _deathExplosionDetonatedIds = new Set<EntityId>();
   private _cleanupDeadUnitIdSet = new Set<EntityId>();
   private _cleanupDeadBuildingIdSet = new Set<EntityId>();
+  private _cleanupDeadTurretIdSet = new Set<EntityId>();
+  private _cleanupDeadLocomotionIdSet = new Set<EntityId>();
   private _cleanupSyntheticDeathEventIds = new Set<EntityId>();
   private _cleanupDeathContexts = new Map<EntityId, DeathContext>();
+  private _pieceDeathExplosionCenter = { x: 0, y: 0, z: 0 };
   private _arrivalSlotsBuf = new Uint32Array(0);
   private _arrivalDxBuf = new Float64Array(0);
   private _arrivalDyBuf = new Float64Array(0);
@@ -642,6 +664,8 @@ export class Simulation {
       this.detonateEntityDeathExplosions(
         collisionResult.deadUnitIds,
         collisionResult.deadBuildingIds,
+        collisionResult.deadTurretIds,
+        collisionResult.deadLocomotionIds,
         collisionResult.events,
         collisionResult.deathContexts,
       );
@@ -724,10 +748,14 @@ export class Simulation {
     if (deadUnitIds.length > 0 || deadBuildingIds.length > 0) {
       const deadUnitSet = this._cleanupDeadUnitIdSet;
       const deadBuildingSet = this._cleanupDeadBuildingIdSet;
+      const deadTurretSet = this._cleanupDeadTurretIdSet;
+      const deadLocomotionSet = this._cleanupDeadLocomotionIdSet;
       const syntheticDeathEventIds = this._cleanupSyntheticDeathEventIds;
       const deathContexts = this._cleanupDeathContexts;
       deadUnitSet.clear();
       deadBuildingSet.clear();
+      deadTurretSet.clear();
+      deadLocomotionSet.clear();
       syntheticDeathEventIds.clear();
       deathContexts.clear();
       for (const id of deadUnitIds) {
@@ -741,6 +769,8 @@ export class Simulation {
       this.detonateEntityDeathExplosions(
         deadUnitSet,
         deadBuildingSet,
+        deadTurretSet,
+        deadLocomotionSet,
         this.pendingSimEvents,
         deathContexts,
       );
@@ -822,6 +852,8 @@ export class Simulation {
   private detonateEntityDeathExplosions(
     deadUnitIds: Set<EntityId>,
     deadBuildingIds: Set<EntityId>,
+    deadTurretIds: Set<EntityId>,
+    deadLocomotionIds: Set<EntityId>,
     audioEvents: SimEvent[],
     deathContexts: Map<EntityId, DeathContext>,
   ): void {
@@ -830,15 +862,15 @@ export class Simulation {
     queue.length = 0;
     for (const id of deadUnitIds) queue.push(id);
     for (const id of deadBuildingIds) queue.push(id);
+    for (const id of deadTurretIds) queue.push(id);
+    for (const id of deadLocomotionIds) queue.push(id);
 
     for (let index = 0; index < queue.length; index++) {
       const id = queue[index];
       if (detonated.has(id)) continue;
       detonated.add(id);
 
-      const entity = this.world.getEntity(id);
-      if (entity === undefined) continue;
-      const blast = this.getEntityDeathExplosion(entity);
+      const blast = this.getEntityDeathExplosion(id);
       if (
         blast === null ||
         blast.radius <= 0 ||
@@ -849,17 +881,13 @@ export class Simulation {
 
       const result = this.damageSystem.applyDamage({
         type: 'area',
-        sourceEntityId: entity.id,
+        sourceEntityId: blast.sourceEntityId,
         // Death blasts are neutral for broadphase filtering: they hit
         // friend and foe. Kill credit still resolves through sourceEntityId.
         ownerId: 0,
         damage: blast.damage,
         excludeEntities: EMPTY_DEATH_EXPLOSION_EXCLUDES,
-        center: {
-          x: entity.transform.x,
-          y: entity.transform.y,
-          z: entity.transform.z,
-        },
+        center: blast.center,
         radius: blast.radius,
         knockbackForce: blast.force,
       });
@@ -873,7 +901,9 @@ export class Simulation {
         deadBuildingIds,
         audioEvents,
         deathContexts,
-        entity.id,
+        blast.sourceEntityId,
+        deadTurretIds,
+        deadLocomotionIds,
       );
       for (const killedUnitId of result.killedUnitIds) {
         if (!detonated.has(killedUnitId)) queue.push(killedUnitId);
@@ -881,12 +911,22 @@ export class Simulation {
       for (const killedBuildingId of result.killedBuildingIds) {
         if (!detonated.has(killedBuildingId)) queue.push(killedBuildingId);
       }
+      for (const killedTurretId of result.killedTurretIds) {
+        if (!detonated.has(killedTurretId)) queue.push(killedTurretId);
+      }
+      for (const killedLocomotionId of result.killedLocomotionIds) {
+        if (!detonated.has(killedLocomotionId)) queue.push(killedLocomotionId);
+      }
     }
   }
 
   private getEntityDeathExplosion(
-    entity: Entity,
-  ): { radius: number; force: number; damage: number; sourceKey: string; sourceType: 'unit' | 'building' } | null {
+    id: EntityId,
+  ): DeathExplosionBlast | null {
+    const entity = this.world.getEntity(id);
+    if (entity === undefined) {
+      return this.getSubEntityDeathExplosion(id);
+    }
     if (entity.unit !== null) {
       const unitBlueprintId = entity.unit.unitBlueprintId;
       const blast = getUnitBlueprint(unitBlueprintId).base.deathExplosion;
@@ -896,6 +936,12 @@ export class Simulation {
         damage: blast.damage,
         sourceKey: unitBlueprintId,
         sourceType: 'unit',
+        sourceEntityId: entity.id,
+        center: {
+          x: entity.transform.x,
+          y: entity.transform.y,
+          z: entity.transform.z,
+        },
       };
     }
     if (entity.building !== null && entity.buildingBlueprintId !== null) {
@@ -907,8 +953,63 @@ export class Simulation {
         damage: blast.damage,
         sourceKey: buildingBlueprintId,
         sourceType: 'building',
+        sourceEntityId: entity.id,
+        center: {
+          x: entity.transform.x,
+          y: entity.transform.y,
+          z: entity.transform.z,
+        },
       };
     }
+    return null;
+  }
+
+  private getSubEntityDeathExplosion(id: EntityId): DeathExplosionBlast | null {
+    const turret = resolveKilledTurret(this.world, id);
+    if (turret !== undefined) {
+      const pos = resolveKilledTurretWorldPosition(
+        this.world,
+        id,
+        this._pieceDeathExplosionCenter,
+      );
+      if (pos === undefined) return null;
+      const turretBlueprintId = turret.turret.config.turretBlueprintId;
+      const blast = getTurretBlueprint(turretBlueprintId).base.deathExplosion;
+      return {
+        radius: blast.radius,
+        force: blast.force,
+        damage: blast.damage,
+        sourceKey: turretBlueprintId,
+        sourceType: 'turret',
+        sourceEntityId: turret.host.id,
+        center: { x: pos.x, y: pos.y, z: pos.z },
+      };
+    }
+
+    const locomotion = resolveKilledLocomotion(this.world, id);
+    if (locomotion !== undefined) {
+      const pos = resolveKilledLocomotionWorldPosition(
+        this.world,
+        id,
+        this._pieceDeathExplosionCenter,
+      );
+      if (pos === undefined) return null;
+      const locomotionBlueprint = UNIT_LOCOMOTION_BLUEPRINTS[locomotion.locomotion.blueprintId];
+      if (locomotionBlueprint === undefined) {
+        throw new Error(`Unknown locomotion blueprint: ${locomotion.locomotion.blueprintId}`);
+      }
+      const blast = locomotionBlueprint.base.deathExplosion;
+      return {
+        radius: blast.radius,
+        force: blast.force,
+        damage: blast.damage,
+        sourceKey: locomotion.locomotion.blueprintId,
+        sourceType: 'system',
+        sourceEntityId: locomotion.host.id,
+        center: { x: pos.x, y: pos.y, z: pos.z },
+      };
+    }
+
     return null;
   }
 

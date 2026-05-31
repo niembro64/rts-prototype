@@ -57,6 +57,8 @@ function isValidProjectileSweep(
 // Reusable containers for checkProjectileCollisions (avoid per-frame allocations)
 const _collisionUnitsToRemove = new Set<EntityId>();
 const _collisionBuildingsToRemove = new Set<EntityId>();
+const _collisionTurretsToDetonate = new Set<EntityId>();
+const _collisionLocomotionsToDetonate = new Set<EntityId>();
 const _collisionDeathContexts = new Map<EntityId, DeathContext>();
 const _collisionProjectilesToRemove: EntityId[] = [];
 const _collisionProjectileRemoveIds = new Set<EntityId>();
@@ -483,6 +485,8 @@ function processKilledProjectileShots(
   forceAccumulator: ForceAccumulator | undefined,
   unitsToRemove: Set<EntityId>,
   buildingsToRemove: Set<EntityId>,
+  turretsToDetonate: Set<EntityId>,
+  locomotionsToDetonate: Set<EntityId>,
   audioEvents: SimEvent[],
   deathContexts: Map<EntityId, DeathContext>,
   newProjectiles: Entity[],
@@ -503,6 +507,8 @@ function processKilledProjectileShots(
       forceAccumulator,
       unitsToRemove,
       buildingsToRemove,
+      turretsToDetonate,
+      locomotionsToDetonate,
       audioEvents,
       deathContexts,
       newProjectiles,
@@ -521,6 +527,8 @@ function detonateKilledProjectileShot(
   forceAccumulator: ForceAccumulator | undefined,
   unitsToRemove: Set<EntityId>,
   buildingsToRemove: Set<EntityId>,
+  turretsToDetonate: Set<EntityId>,
+  locomotionsToDetonate: Set<EntityId>,
   audioEvents: SimEvent[],
   deathContexts: Map<EntityId, DeathContext>,
   newProjectiles: Entity[],
@@ -572,7 +580,7 @@ function detonateKilledProjectileShot(
     collectKillsAndDeathContexts(
       splashResult, world, damageSourceKey, damageSourceType,
       unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
-      proj.sourceEntityId,
+      proj.sourceEntityId, turretsToDetonate, locomotionsToDetonate,
     );
     firstSplashHit = splashResult.hitEntityIds.length > 0
       ? world.getEntity(splashResult.hitEntityIds[0]) ?? undefined
@@ -585,6 +593,8 @@ function detonateKilledProjectileShot(
         forceAccumulator,
         unitsToRemove,
         buildingsToRemove,
+        turretsToDetonate,
+        locomotionsToDetonate,
         audioEvents,
         deathContexts,
         newProjectiles,
@@ -639,6 +649,8 @@ export function checkProjectileCollisions(
   _collisionDespawnEvents.length = 0;
   _collisionUnitsToRemove.clear();
   _collisionBuildingsToRemove.clear();
+  _collisionTurretsToDetonate.clear();
+  _collisionLocomotionsToDetonate.clear();
   _collisionSimEvents.length = 0;
   _collisionDeathContexts.clear();
   _collisionNewProjectiles.length = 0;
@@ -648,6 +660,8 @@ export function checkProjectileCollisions(
   const despawnEvents = _collisionDespawnEvents;
   const unitsToRemove = _collisionUnitsToRemove;
   const buildingsToRemove = _collisionBuildingsToRemove;
+  const turretsToDetonate = _collisionTurretsToDetonate;
+  const locomotionsToDetonate = _collisionLocomotionsToDetonate;
   const audioEvents = _collisionSimEvents;
   const deathContexts = _collisionDeathContexts;
   const newProjectiles = _collisionNewProjectiles;
@@ -912,7 +926,7 @@ export function checkProjectileCollisions(
             collectKillsAndDeathContexts(
               splashResult, world, damageSourceKey, damageSourceType,
               unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
-              proj.sourceEntityId,
+              proj.sourceEntityId, turretsToDetonate, locomotionsToDetonate,
             );
             splashHitCount = splashResult.hitEntityIds.length;
             firstSplashHit = splashHitCount > 0 ? world.getEntity(splashResult.hitEntityIds[0]) ?? undefined : undefined;
@@ -923,6 +937,8 @@ export function checkProjectileCollisions(
               forceAccumulator,
               unitsToRemove,
               buildingsToRemove,
+              turretsToDetonate,
+              locomotionsToDetonate,
               audioEvents,
               deathContexts,
               newProjectiles,
@@ -1109,7 +1125,7 @@ export function checkProjectileCollisions(
         collectKillsWithDeathAudio(
           result, world, damageSourceKey, damageSourceType,
           unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
-          proj.sourceEntityId,
+          proj.sourceEntityId, turretsToDetonate, locomotionsToDetonate,
         );
         processKilledProjectileShots(
           result,
@@ -1118,6 +1134,8 @@ export function checkProjectileCollisions(
           forceAccumulator,
           unitsToRemove,
           buildingsToRemove,
+          turretsToDetonate,
+          locomotionsToDetonate,
           audioEvents,
           deathContexts,
           newProjectiles,
@@ -1232,7 +1250,7 @@ export function checkProjectileCollisions(
           collectKillsWithDeathAudio(
             result, world, damageSourceKey, damageSourceType,
             unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
-            proj.sourceEntityId,
+            proj.sourceEntityId, turretsToDetonate, locomotionsToDetonate,
           );
           processKilledProjectileShots(
             result,
@@ -1241,6 +1259,8 @@ export function checkProjectileCollisions(
             forceAccumulator,
             unitsToRemove,
             buildingsToRemove,
+            turretsToDetonate,
+            locomotionsToDetonate,
             audioEvents,
             deathContexts,
             newProjectiles,
@@ -1278,7 +1298,7 @@ export function checkProjectileCollisions(
               collectKillsAndDeathContexts(
                 splash, world, damageSourceKey, damageSourceType,
                 unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
-                proj.sourceEntityId,
+                proj.sourceEntityId, turretsToDetonate, locomotionsToDetonate,
               );
               processKilledProjectileShots(
                 splash,
@@ -1287,6 +1307,8 @@ export function checkProjectileCollisions(
                 forceAccumulator,
                 unitsToRemove,
                 buildingsToRemove,
+                turretsToDetonate,
+                locomotionsToDetonate,
                 audioEvents,
                 deathContexts,
                 newProjectiles,
@@ -1392,6 +1414,8 @@ export function checkProjectileCollisions(
   return {
     deadUnitIds: unitsToRemove,
     deadBuildingIds: buildingsToRemove,
+    deadTurretIds: turretsToDetonate,
+    deadLocomotionIds: locomotionsToDetonate,
     events: audioEvents,
     despawnEvents,
     velocityUpdates,

@@ -72,18 +72,17 @@ A39. [HIGH] Sub-entities are not independently destructible; the host does not d
     body+turrets survive; only body death kills the whole assembly. —
     PROBLEM: damage routing to mounted turret and locomotion HP is now implemented in
     DamageSystem, a killed locomotion clears movement/action thrust while the host body and turrets
-    remain alive, and killed mounted turrets/locomotions now emit their own death events at their
-    physical position. The remaining gap is physical death/detachment semantics: killed mounted
-    pieces do not yet apply their own base-ledger deathExplosion damage/force, and no live detached
-    turret/locomotion agent exists after host death or explicit detachment. —
-    FIX: on turret or locomotion death, detonate that piece's base deathExplosion as physical
-    damage/force at its own position, remove it from the host control hierarchy, and keep the host
-    alive with only that capability removed. Cascade to full host death only when body health hits
-    zero. A piece that DETACHES while still alive (e.g. a turret that survives the host's death
-    blast, or one a bomb-unit launches) stays a live, fully-autonomous agent — it keeps acquiring
-    and firing on its own until its OWN health hits zero; detachment removes it from the host
-    control hierarchy ("Every piece is an agent; the player commands only hosts") but does not end
-    its life or agency. (Depends on A38 per-piece health; mirror of A41.)
+    remain alive, killed mounted turrets/locomotions now emit their own death events at their
+    physical position, and killed mounted pieces now detonate their own base-ledger deathExplosion
+    damage/force from that physical position. The remaining gap is live detachment semantics:
+    destroyed pieces are disabled in the host record, and no live detached turret/locomotion agent
+    exists after host death or explicit detachment. —
+    FIX: implement live piece detachment as real autonomous agents. A piece that DETACHES while
+    still alive (e.g. a turret that survives the host's death blast, or one a bomb-unit launches)
+    stays a live, fully-autonomous agent — it keeps acquiring and firing on its own until its OWN
+    health hits zero; detachment removes it from the host control hierarchy ("Every piece is an
+    agent; the player commands only hosts") but does not end its life or agency. Cascade to full
+    host death only when body health hits zero. (Depends on A38 per-piece health; mirror of A41.)
 
 A41. [MEDIUM] Hosts spawn whole, not built bottom-up piece by piece.
     src/game/sim (factory/fabricator construction + host spawn) + build-site creation. —
