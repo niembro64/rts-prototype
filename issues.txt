@@ -79,48 +79,15 @@ A39. [HIGH] Sub-entities are not independently destructible; the host does not d
     new live entity id and continuing to acquire/fire through the normal combat pipeline. Surviving
     locomotion pieces now promote into unselectable detached locomotion agents with their old
     EntityId, locomotion health, dynamic physics body, and launch velocity when the host body dies.
-    The remaining gap is broader live detachment semantics for arbitrary still-alive piece tear-off
-    events outside host-death paths. —
-    FIX: finish live piece detachment as real autonomous agents for every piece kind. A piece that
-    DETACHES while still alive (e.g. a locomotion torn loose, or one a bomb-unit launches) stays a
-    live, fully-autonomous agent until its OWN health hits zero; detachment removes it from the host
+    Live detachment now exists for force-driven tear-off: area blasts that hit a still-living
+    mounted turret or locomotion with enough force detach it into the existing autonomous-agent path
+    while the host body survives. Snapshot liveness now also tells clients when a mounted turret or
+    locomotion has gone inactive so the surviving host no longer renders the detached/dead piece. —
+    FIX: finish any future non-blast, authored tear-off sources through the same live-detach path
+    instead of adding one-off despawns. A piece that DETACHES while still alive stays a live,
+    fully-autonomous agent until its OWN health hits zero; detachment removes it from the host
     control hierarchy ("Every piece is an agent; the player commands only hosts") but does not end
-    its life or agency. Cascade to full host death only when body health hits zero. (Depends on A38
-    per-piece health; mirror of A41.)
-
-A41. [MEDIUM] Hosts spawn whole, not built bottom-up piece by piece.
-    src/game/sim (factory/fabricator construction + host spawn) + build-site creation. —
-    RULE: new "Hosts build from the ground up, one piece at a time" — a unit builds its
-    locomotion, then its body, then its turrets; a tower builds its body then its turret(s); a
-    building builds its single body. Each piece is the real entity from frame one (carrying its
-    final EntityId) in an under-construction state with health ramping from zero, in dependency
-    order. —
-    PROBLEM: construction now has ordered per-piece build records derived from each piece's
-    base-ledger cost and scaled to the actual build cost. Resource funding drains only the current
-    dependency piece (unit: locomotion -> body -> turrets; tower: body -> turrets; building: body),
-    each piece has its own paid accumulator and HP fraction, hydrated clients rebuild the same
-    records from aggregate paid counters, and mounted sub-entities enter the live metadata registry
-    only once their staged piece is materialized with positive HP. Unit bodies no longer start with frame-one HP: a factory
-    unit shell can now exist as a live locomotion-only assembly until the body piece starts, line
-    and swept damage can still hit that locomotion, and the death cleanup does not delete the shell
-    merely because the unstarted body has 0 HP. Rendering now reads piece state too: inactive
-    locomotion/turrets/shield panels are hidden, body/tower/building body growth uses the body
-    piece fraction instead of aggregate build fraction, and turret range overlays disappear until
-    the turret piece exists. Factory production cancellation now interrupts paid shells instead of
-    deleting them: materialized paid pieces remain in-world, unstarted pieces are zeroed/de-targeted,
-    factories will not spawn a replacement on top of the partial assembly, and interrupted partial
-    assemblies now stop consuming construction resources while their piece records remain live for
-    rendering, targeting, snapshots, and active body/turret behavior. Factory production cancellation
-    now preserves the paid partial assembly in place: materialized locomotion-only shells remain as
-    interrupted shells instead of launching standalone locomotion agents, and materialized turrets
-    remain mounted on the partial host instead of launching detached tower agents. The aggregate Buildable.paid
-    counters remain as the compact wire/UI mirror, not the sim's piece-level funding model. The
-    remaining gap is that inactive pieces still have backing runtime objects even though construction
-    shell subentity IDs now materialize only when the dependency-ordered piece becomes active. —
-    FIX: finish late materialization/partial assembly semantics: each piece should enter the active
-    entity registry only when its dependency is satisfied, render/target exactly the current partial
-    assembly, and leave exactly the already-built live pieces if construction is interrupted.
-    (Reverse of A39 per-piece death; depends on A38 per-piece cost/health.)
+    its life or agency. Cascade to full host death only when body health hits zero.
 
 --------------------------------------------------------------------------------
 Items A45-A49 added 2026-05-30 alongside a design-direction expansion of

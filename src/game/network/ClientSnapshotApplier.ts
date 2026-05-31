@@ -59,6 +59,14 @@ export function snapClientNonVisualState(
       ) || cacheDirty;
     }
     applyNetworkUnitStaticFields(entity.unit, su);
+    if (su.locomotionActive === false) {
+      entity.unit.locomotion.hp = 0;
+      entity.unit.locomotion.id = NO_ENTITY_ID;
+      entity.unit.locomotion.parentId = NO_ENTITY_ID;
+      entity.unit.locomotion.rootHostId = NO_ENTITY_ID;
+    } else if (isFull && entity.unit.locomotion.hp <= 0) {
+      entity.unit.locomotion.hp = entity.unit.locomotion.maxHp;
+    }
     if (isFull || cf! & ENTITY_CHANGED_COMBAT_MODE) {
       applyNetworkUnitCombatMode(entity, su);
     }

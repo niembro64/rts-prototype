@@ -37,6 +37,7 @@ function createEmptyUnitSub(): UnitSub {
     surfaceNormal: null,
     orientation: null,
     angularVelocity3: null,
+    locomotionActive: null,
     fireEnabled: null,
     isCommander: null,
     buildTargetId: null,
@@ -132,6 +133,7 @@ function rentDecodedUnitSub(): UnitSub {
     u.surfaceNormal = null;
     u.orientation = null;
     u.angularVelocity3 = null;
+    u.locomotionActive = null;
     u.fireEnabled = null;
     u.isCommander = null;
     u.buildTargetId = null;
@@ -202,6 +204,7 @@ const UNIT_FLAG_TURRETS = 1 << 16;
 const UNIT_FLAG_BUILD = 1 << 17;
 const UNIT_FLAG_BUILD_COMPLETE = 1 << 18;
 const UNIT_FLAG_BUILD_INTERRUPTED = 1 << 19;
+const UNIT_FLAG_LOCOMOTION_INACTIVE = 1 << 20;
 
 const BUILDING_FLAG_BLUEPRINT_CODE = 1 << 0;
 const BUILDING_FLAG_DIM = 1 << 1;
@@ -246,6 +249,7 @@ const ACTION_FLAG_BUILDING_ID = 1 << 6;
 
 const TURRET_FLAG_TARGET_ID = 1 << 0;
 const TURRET_FLAG_SHIELD_RANGE = 1 << 1;
+const TURRET_FLAG_INACTIVE = 1 << 2;
 
 const WAYPOINT_FLAG_POS_Z = 1 << 0;
 
@@ -633,6 +637,7 @@ function isMovementOnlyUnitDelta(entity: NetworkServerSnapshotEntity): boolean {
   if (unit.bodyCenterHeight !== null) return false;
   if (unit.mass !== null) return false;
   if (unit.surfaceNormal !== null) return false;
+  if (unit.locomotionActive !== null) return false;
   if (unit.fireEnabled !== null) return false;
   if (unit.isCommander !== null) return false;
   if (unit.buildTargetIdPresent) return false;
@@ -667,6 +672,7 @@ function isSplitUnitTurretDelta(entity: NetworkServerSnapshotEntity): boolean {
   if (unit.bodyCenterHeight !== null) return false;
   if (unit.mass !== null) return false;
   if (unit.surfaceNormal !== null) return false;
+  if (unit.locomotionActive !== null) return false;
   if (unit.fireEnabled !== null) return false;
   if (unit.isCommander !== null) return false;
   if (unit.buildTargetIdPresent) return false;
@@ -877,6 +883,7 @@ function writeUnitTurretDeltaPayload(
     let flags = 0;
     if (turret.targetId !== null) flags |= TURRET_FLAG_TARGET_ID;
     if (turret.currentShieldRange !== null) flags |= TURRET_FLAG_SHIELD_RANGE;
+    if (turret.active === false) flags |= TURRET_FLAG_INACTIVE;
     rows.writeVarUint(flags);
     rows.writeVarUint(turret.turret.turretBlueprintCode);
     rows.writeVarUint(turret.state);
@@ -1162,9 +1169,11 @@ function unpackUnitTurretDeltaRows(
         turret: { turretBlueprintCode, angular },
         state,
         targetId: null,
+        active: null,
         currentShieldRange: null,
       };
       if ((flags & TURRET_FLAG_TARGET_ID) !== 0) turret.targetId = rows[i++] as number;
+      if ((flags & TURRET_FLAG_INACTIVE) !== 0) turret.active = false;
       if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) {
         turret.currentShieldRange = rows[i++] as number;
       }
@@ -1244,9 +1253,11 @@ function readUnitTurretDeltaByteEntity(
       turret: { turretBlueprintCode, angular },
       state,
       targetId: null,
+      active: null,
       currentShieldRange: null,
     };
     if ((flags & TURRET_FLAG_TARGET_ID) !== 0) turret.targetId = reader.readVarUint();
+    if ((flags & TURRET_FLAG_INACTIVE) !== 0) turret.active = false;
     if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) {
       turret.currentShieldRange = reader.readFloat64();
     }
@@ -1278,6 +1289,7 @@ function packUnit(unit: UnitSub): unknown[] {
   if (unit.surfaceNormal !== null) flags |= UNIT_FLAG_SURFACE_NORMAL;
   if (unit.orientation !== null) flags |= UNIT_FLAG_ORIENTATION;
   if (unit.angularVelocity3 !== null) flags |= UNIT_FLAG_ANGULAR_VELOCITY;
+  if (unit.locomotionActive === false) flags |= UNIT_FLAG_LOCOMOTION_INACTIVE;
   if (unit.fireEnabled === false) flags |= UNIT_FLAG_FIRE_DISABLED;
   if (unit.isCommander === true) flags |= UNIT_FLAG_IS_COMMANDER;
   if (unit.buildTargetIdPresent) {
@@ -1387,6 +1399,9 @@ function unpackUnit(row: unknown[]): UnitSub {
     const y = row[i++] as number;
     const z = row[i++] as number;
     unit.angularVelocity3 = { x, y, z };
+  }
+  if ((flags & UNIT_FLAG_LOCOMOTION_INACTIVE) !== 0) {
+    unit.locomotionActive = false;
   }
   if ((flags & UNIT_FLAG_FIRE_DISABLED) !== 0) {
     unit.fireEnabled = false;
@@ -1603,6 +1618,7 @@ function packTurret(t: NetworkServerSnapshotTurret): unknown[] {
   let flags = 0;
   if (t.targetId !== null) flags |= TURRET_FLAG_TARGET_ID;
   if (t.currentShieldRange !== null) flags |= TURRET_FLAG_SHIELD_RANGE;
+  if (t.active === false) flags |= TURRET_FLAG_INACTIVE;
 
   const angular = t.turret.angular;
   const row: unknown[] = [
@@ -1634,9 +1650,11 @@ function unpackTurret(row: unknown[]): NetworkServerSnapshotTurret {
     turret: { turretBlueprintCode, angular },
     state,
     targetId: null,
+    active: null,
     currentShieldRange: null,
   };
   if ((flags & TURRET_FLAG_TARGET_ID) !== 0) turret.targetId = row[i++] as number;
+  if ((flags & TURRET_FLAG_INACTIVE) !== 0) turret.active = false;
   if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) {
     turret.currentShieldRange = row[i++] as number;
   }

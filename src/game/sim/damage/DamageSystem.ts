@@ -162,6 +162,15 @@ function isLocomotionDamageable(locomotion: UnitLocomotion): boolean {
   return locomotion.id !== NO_ENTITY_ID && locomotion.hp > 0;
 }
 
+function shouldDetachLivePieceFromBlast(host: Entity, pieceHp: number, pieceMaxHp: number, force: number): boolean {
+  const bodyHp = host.unit !== null
+    ? host.unit.hp
+    : (host.building !== null ? host.building.hp : 0);
+  if (bodyHp <= 0) return false;
+  if (pieceHp <= 0 || pieceMaxHp <= 0 || force <= 0) return false;
+  return force >= pieceMaxHp * KNOCKBACK.LIVE_PIECE_DETACH_FORCE_PER_HP;
+}
+
 
 export class DamageSystem {
   constructor(private world: WorldState) {}
@@ -1310,6 +1319,9 @@ export class DamageSystem {
             attackerVel: { x: forceX, y: forceY },
             attackMagnitude: damage,
           }, turret.id);
+          if (shouldDetachLivePieceFromBlast(unit, turret.hp, turret.maxHp, force)) {
+            this.world.detachMountedTurretAsAgent(unit, i);
+          }
           result.hitEntityIds.push(unit.id);
         }
       }
@@ -1323,6 +1335,9 @@ export class DamageSystem {
             attackerVel: { x: forceX, y: forceY },
             attackMagnitude: damage,
           }, locomotion.id);
+          if (shouldDetachLivePieceFromBlast(unit, locomotion.hp, locomotion.maxHp, force)) {
+            this.world.detachMountedLocomotionAsAgent(unit);
+          }
           result.hitEntityIds.push(unit.id);
         }
       }
@@ -1424,6 +1439,46 @@ export class DamageSystem {
         attackMagnitude: damage,
       });
       result.hitEntityIds.push(building.id);
+
+      const combat = building.combat;
+      if (combat !== null && building.building.hp > 0) {
+        const buildingCS = getTransformCosSin(building.transform);
+        const buildingGroundZ = getUnitGroundZ(building);
+        for (let i = 0; i < combat.turrets.length; i++) {
+          const turret = combat.turrets[i];
+          if (!isTurretDamageable(turret)) continue;
+          const mount = resolveWeaponWorldMount(
+            building, turret, i,
+            buildingCS.cos, buildingCS.sin,
+            {
+              currentTick: this.world.getTick(),
+              unitGroundZ: buildingGroundZ,
+              surfaceN: undefined,
+            },
+            _subEntityPoint,
+          );
+          const tx = mount.x - source.center.x;
+          const ty = mount.y - source.center.y;
+          const tz = mount.z - source.center.z;
+          const turretMaxDist = source.radius + turret.config.radius.hitbox;
+          if (tx * tx + ty * ty + tz * tz > turretMaxDist * turretMaxDist) continue;
+          const turretDist = Math.sqrt(tx * tx + ty * ty + tz * tz);
+          const invTurretDist = turretDist > 0 ? 1 / turretDist : 0;
+          const turretDirX = tx * invTurretDist;
+          const turretDirY = ty * invTurretDist;
+          const turretForceX = turretDirX * bForce;
+          const turretForceY = turretDirY * bForce;
+          this.applyDamageToEntity(building, damage, result, source.sourceEntityId, {
+            penetrationDir: { x: turretDirX, y: turretDirY },
+            attackerVel: { x: turretForceX, y: turretForceY },
+            attackMagnitude: damage,
+          }, turret.id);
+          if (shouldDetachLivePieceFromBlast(building, turret.hp, turret.maxHp, bForce)) {
+            this.world.detachMountedTurretAsAgent(building, i);
+          }
+          result.hitEntityIds.push(building.id);
+        }
+      }
     }
 
     return result;
@@ -1438,14 +1493,14 @@ export class DamageSystem {
     deathContext: DeathContext | undefined = undefined,
     targetEntityId: EntityId = entity.id,
   ): void {
-    if (entity.unit !== null) {
-      if (targetEntityId !== entity.id) {
-        const turret = this.world.resolveMountedTurret(targetEntityId);
-        if (turret !== undefined && turret.host.id === entity.id) {
-          this.applyDamageToTurret(entity, turret.turret, damage, result, sourceEntityId, deathContext);
-          return;
-        }
+    if (targetEntityId !== entity.id) {
+      const turret = this.world.resolveMountedTurret(targetEntityId);
+      if (turret !== undefined && turret.host.id === entity.id) {
+        this.applyDamageToTurret(entity, turret.turret, damage, result, sourceEntityId, deathContext);
+        return;
       }
+    }
+    if (entity.unit !== null) {
       const locomotion = this.world.resolveMountedLocomotion(targetEntityId);
       if (locomotion !== undefined && locomotion.host.id === entity.id) {
         this.applyDamageToLocomotion(entity, locomotion.locomotion, damage, result, sourceEntityId, deathContext);

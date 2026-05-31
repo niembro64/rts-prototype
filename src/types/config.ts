@@ -44,6 +44,7 @@ export type EmaMsConfig = {
 
 export type KnockbackConfig = {
   SPLASH: number;
+  LIVE_PIECE_DETACH_FORCE_PER_HP: number;
 };
 
 export type ShieldVisualConfig = {

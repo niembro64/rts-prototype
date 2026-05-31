@@ -408,6 +408,14 @@ function packTurretsIntoScratch(
   }
 }
 
+function hasInactiveTurret(turrets: readonly NetworkServerSnapshotTurret[] | null): boolean {
+  if (turrets === null) return false;
+  for (let i = 0; i < turrets.length; i++) {
+    if (turrets[i].active === false) return true;
+  }
+  return false;
+}
+
 function unitNeedsRawFallback(unit: SnapshotUnit): boolean {
   return (
     (unit.unitBlueprintCode !== null && !isUint(unit.unitBlueprintCode, 0xFFFF_FFFF)) ||
@@ -418,6 +426,8 @@ function unitNeedsRawFallback(unit: SnapshotUnit): boolean {
     )) ||
     (unit.bodyCenterHeight !== null && !Number.isFinite(unit.bodyCenterHeight)) ||
     (unit.mass !== null && !Number.isFinite(unit.mass)) ||
+    unit.locomotionActive === false ||
+    hasInactiveTurret(unit.turrets) ||
     unit.fireEnabled === true ||
     unit.isCommander === false ||
     unit.build?.interrupted === true
@@ -504,6 +514,7 @@ function buildingNeedsRawFallback(building: SnapshotBuilding): boolean {
   return (
     (building.buildingBlueprintCode !== null && typeof building.buildingBlueprintCode !== 'number') ||
     building.build?.interrupted === true ||
+    hasInactiveTurret(building.turrets) ||
     (factory !== null &&
       factory.selectedUnitBlueprintCode !== null &&
       !isUint(factory.selectedUnitBlueprintCode, 0xFFFF_FFFF))

@@ -187,6 +187,7 @@ function writeTurretsToPool(
       ? null
       : wireTargetId;
     dst.state = hasTargetingFsm ? _snapshotTurretFsm.stateCode : turretStateToCode(src.state);
+    dst.active = src.id === NO_ENTITY_ID || src.hp <= 0 ? false : null;
     const shield = src.shield;
     dst.currentShieldRange = shield !== undefined ? shield.range : null;
   }
@@ -532,13 +533,25 @@ function appendBuildingEntityWireRow(
   entityWireSource.rowIndices.push(rowIndex);
 }
 
+function hasInactiveTurretWire(turrets: readonly NetworkServerSnapshotTurret[] | null): boolean {
+  if (turrets === null) return false;
+  for (let i = 0; i < turrets.length; i++) {
+    if (turrets[i].active === false) return true;
+  }
+  return false;
+}
+
 function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void {
   if (
     entity.type === 'unit' &&
     entity.unit !== null &&
     entity.building === null
   ) {
-    if (entity.unit.build?.interrupted === true) {
+    if (
+      entity.unit.build?.interrupted === true ||
+      entity.unit.locomotionActive === false ||
+      hasInactiveTurretWire(entity.unit.turrets)
+    ) {
       appendRawEntityWireRow();
       return;
     }
@@ -556,7 +569,10 @@ function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void 
     // BUILDING discriminator is reconstructed on the receive side
     // via isTowerBuildingBlueprintId so the renderer + UI dispatch on the
     // peer entity-type tag.
-    if (entity.building.build?.interrupted === true) {
+    if (
+      entity.building.build?.interrupted === true ||
+      hasInactiveTurretWire(entity.building.turrets)
+    ) {
       appendRawEntityWireRow();
       return;
     }
@@ -629,6 +645,7 @@ export function serializeEntitySnapshot(
       ne.unit = u;
       u.hp = null;
       u.velocity = null;
+      u.locomotionActive = null;
 
       if (isFull) {
         writeNetworkUnitStaticFields(
@@ -691,6 +708,9 @@ export function serializeEntitySnapshot(
         hp.curr = entity.unit.hp;
         hp.max = entity.unit.maxHp;
         u.hp = hp;
+        if (entity.unit.locomotion.id === NO_ENTITY_ID || entity.unit.locomotion.hp <= 0) {
+          u.locomotionActive = false;
+        }
       }
 
       u.build = null;

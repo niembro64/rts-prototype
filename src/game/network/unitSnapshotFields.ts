@@ -47,6 +47,7 @@ export function createNetworkUnitSnapshot(): NetworkUnitSnapshot {
     surfaceNormal: null,
     orientation: null,
     angularVelocity3: null,
+    locomotionActive: null,
     fireEnabled: null,
     isCommander: null,
     buildTargetId: null,
@@ -384,6 +385,7 @@ export function copyNetworkUnitSnapshotInto(
     dst.orientation = null;
   }
   dst.angularVelocity3 = copyVec3OptionalInto(src.angularVelocity3, dst.angularVelocity3);
+  dst.locomotionActive = src.locomotionActive;
   dst.fireEnabled = src.fireEnabled;
   dst.isCommander = src.isCommander;
   dst.buildTargetId = src.buildTargetId;

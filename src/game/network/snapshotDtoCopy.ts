@@ -308,6 +308,7 @@ export function createTurretDto(): NetworkServerSnapshotTurret {
     },
     targetId: null,
     state: 0,
+    active: null,
     currentShieldRange: null,
   };
 }
@@ -323,6 +324,7 @@ export function copyTurretInto(
   dst.turret.angular.pitchVel = src.turret.angular.pitchVel;
   dst.targetId = src.targetId;
   dst.state = src.state;
+  dst.active = src.active;
   dst.currentShieldRange = src.currentShieldRange;
   return dst;
 }

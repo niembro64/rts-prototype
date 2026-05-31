@@ -58,6 +58,14 @@ function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret
   const wire = nw.turret;
   const wireTurretBlueprintId = codeToTurretBlueprintId(wire.turretBlueprintCode);
   if (wireTurretBlueprintId !== turret.config.turretBlueprintId) return;
+  if (nw.active === false) {
+    turret.hp = 0;
+    turret.target = null;
+    turret.state = 'idle';
+    turret.shield = undefined;
+    return;
+  }
+  if (turret.hp <= 0) turret.hp = turret.maxHp;
   turret.target = nw.targetId ?? null;
   turret.state = codeToTurretState(nw.state);
   turret.rotation = deqRot(wire.angular.rot);
@@ -82,6 +90,14 @@ export function applyNetworkTurretNonVisualState(
   if (!Array.isArray(netTurrets) || netTurrets.length === 0 || !entity.combat) return;
   const turrets = entity.combat.turrets;
   for (let i = 0; i < netTurrets.length && i < turrets.length; i++) {
+    if (netTurrets[i].active === false) {
+      turrets[i].hp = 0;
+      turrets[i].target = null;
+      turrets[i].state = 'idle';
+      turrets[i].shield = undefined;
+      continue;
+    }
+    if (turrets[i].hp <= 0) turrets[i].hp = turrets[i].maxHp;
     turrets[i].target = netTurrets[i].targetId ?? null;
     turrets[i].state = codeToTurretState(netTurrets[i].state);
   }
@@ -312,6 +328,12 @@ function createUnitFromNetwork(
       stuckTicks: 0,
     },
   };
+  if (u !== null && u.locomotionActive === false) {
+    entity.unit!.locomotion.hp = 0;
+    entity.unit!.locomotion.id = NO_ENTITY_ID;
+    entity.unit!.locomotion.parentId = NO_ENTITY_ID;
+    entity.unit!.locomotion.rootHostId = NO_ENTITY_ID;
+  }
   if (unitBlueprint) applyEntitySensorBlueprint(entity, unitBlueprint);
 
   const turrets = createTurretsFromNetwork(unitBlueprintId, entity.unit!.radius.visual, unitTurrets);

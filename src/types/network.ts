@@ -717,6 +717,9 @@ export type NetworkServerSnapshotTurret = {
   /** Bit-packed turret state code (see TURRET_STATE_* constants and
    *  turretStateToCode / codeToTurretState helpers). */
   state: TurretStateCode;
+  /** Present only when this mounted turret is inactive/dead/detached.
+   *  Absence means "use the blueprint/default live turret state". */
+  active: boolean | null;
   /** Server-authored shield activation progress (0..1). This is
    *  not locomotion garnish: the authoritative host uses the same
    *  transition state to decide when a shield barrier exists for
@@ -802,6 +805,9 @@ export type NetworkServerSnapshotEntity = {
      *  not shipped (see design philosophy: client extrapolates from
      *  velocity, never re-derives server-side forces). */
     angularVelocity3: Vec3 | null;
+    /** Present only when the mounted locomotion is inactive/dead/detached.
+     *  Absence means "use the blueprint/default live locomotion state". */
+    locomotionActive: boolean | null;
     fireEnabled: boolean | null;
     isCommander: boolean | null;
     buildTargetId: number | null;
