@@ -65,29 +65,10 @@ since been resolved; the remaining items describe where the CODE does not yet me
 the expanded philosophy. They are forward work, not regressions.
 File:line refs were correct at audit time; re-verify before editing.
 
-A39. [HIGH] Sub-entities are not independently destructible; the host does not degrade per piece.
-    rts-sim-wasm/src/lib.rs + src/game/sim (unit/turret/locomotion damage + death paths). —
-    RULE: new "Pieces have their own health and die independently" — a turret can explode/detach
-    while its unit fights on; a destroyed locomotion drops the unit and stops its movement while
-    body+turrets survive; only body death kills the whole assembly. —
-    PROBLEM: damage routing to mounted turret and locomotion HP is now implemented in
-    DamageSystem, a killed locomotion clears movement/action thrust while the host body and turrets
-    remain alive, killed mounted turrets/locomotions now emit their own death events at their
-    physical position, and killed mounted pieces now detonate their own base-ledger deathExplosion
-    damage/force from that physical position. Turrets that survive their host body's death blast
-    now promote into hidden tower-class autonomous agents, retaining the old turret EntityId as the
-    new live entity id and continuing to acquire/fire through the normal combat pipeline. Surviving
-    locomotion pieces now promote into unselectable detached locomotion agents with their old
-    EntityId, locomotion health, dynamic physics body, and launch velocity when the host body dies.
-    Live detachment now exists for force-driven tear-off: area blasts that hit a still-living
-    mounted turret or locomotion with enough force detach it into the existing autonomous-agent path
-    while the host body survives. Snapshot liveness now also tells clients when a mounted turret or
-    locomotion has gone inactive so the surviving host no longer renders the detached/dead piece. —
-    FIX: finish any future non-blast, authored tear-off sources through the same live-detach path
-    instead of adding one-off despawns. A piece that DETACHES while still alive stays a live,
-    fully-autonomous agent until its OWN health hits zero; detachment removes it from the host
-    control hierarchy ("Every piece is an agent; the player commands only hosts") but does not end
-    its life or agency. Cascade to full host death only when body health hits zero.
+All A37-A44 items are now resolved or verified not currently actionable. The latest
+re-read confirmed A39's implemented piece-health, death-explosion, host-death
+promotion, force-driven live-detach, and snapshot-liveness paths; no authored
+non-blast tear-off source exists in code or blueprint data today.
 
 --------------------------------------------------------------------------------
 Items A45-A49 added 2026-05-30 alongside a design-direction expansion of
@@ -130,12 +111,15 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     IS batched to WASM (collision/splash broadphase, spatial partitioning, unit-motion
     kernel, terrain bake are all WASM-owned — see VERIFIED-CLEAN) and that PhysicsEngine3D
     is a correct thin WASM orchestrator (NOT a Rust-sim duplicate), so this is the
-    acknowledged in-transition orchestration layer, not a hot-loop violation. The remaining
-    gap is the long-tail migration of TS control flow into Rust. —
+    acknowledged in-transition orchestration layer, not a hot-loop violation. A live
+    authority ledger now exists at src/game/sim/AUTHORITY_LEDGER.md so migrations have
+    an auditable owner map. The remaining gap is the long-tail migration of TS control flow
+    into Rust. —
     FIX: continue migrating per-tick/per-unit authoritative control flow into the Rust sim
-    and DELETE the TS counterparts in the same change (Delete The Old Path). Keep a clear
-    ledger of which systems are Rust-authoritative vs TS-orchestrated so there are never two
-    sources of truth. Large multi-step effort; lower urgency than the SECTION A items.
+    and DELETE the TS counterparts in the same change (Delete The Old Path). Keep
+    src/game/sim/AUTHORITY_LEDGER.md current as rows move from TypeScript-orchestrated to
+    transitional to Rust/WASM-owned, so there are never two sources of truth. Large multi-step
+    effort; lower urgency than the SECTION A items.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)
