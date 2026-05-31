@@ -352,6 +352,12 @@ export class WorldState {
     const rootHostId = entity.projectile !== null
       ? entity.projectile.shotSource.sourceRootEntityId
       : entity.id;
+    const bodyTargetable =
+      entity.unit !== null
+        ? entity.unit.hp > 0 && isConstructionPieceMaterialized(entity, 'body')
+        : (entity.building !== null
+          ? entity.building.hp > 0 && isConstructionPieceMaterialized(entity, 'body')
+          : (entity.projectile !== null ? entity.projectile.hp > 0 : false));
     this.upsertEntityMeta({
       id: entity.id,
       kind: entityKind,
@@ -366,11 +372,7 @@ export class WorldState {
       storageSlot: entity.id,
       generation: 0,
       alive: true,
-      targetable:
-        entity.type === 'unit' ||
-        entity.type === 'tower' ||
-        entity.type === 'building' ||
-        entity.type === 'shot',
+      targetable: bodyTargetable,
     });
 
     const combat = entity.combat;

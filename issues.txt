@@ -105,12 +105,14 @@ A41. [MEDIUM] Hosts spawn whole, not built bottom-up piece by piece.
     merely because the unstarted body has 0 HP. Rendering now reads piece state too: inactive
     locomotion/turrets/shield panels are hidden, body/tower/building body growth uses the body
     piece fraction instead of aggregate build fraction, and turret range overlays disappear until
-    the turret piece exists. The aggregate Buildable.paid counters remain as the compact wire/UI
-    mirror, not the sim's piece-level funding model. The remaining gap is that the host and
-    subentity IDs are still allocated together at build-site creation, inactive pieces still have
-    backing runtime objects even though they are no longer live metadata entries, and construction
-    interruption/cancel still removes the shell rather than leaving exactly the
-    already-built live pieces as detached agents. —
+    the turret piece exists. Factory production cancellation now interrupts paid shells instead of
+    deleting them: materialized paid pieces remain in-world, unstarted pieces are zeroed/de-targeted,
+    and factories will not spawn a replacement on top of the partial assembly. The aggregate
+    Buildable.paid counters remain as the compact wire/UI mirror, not the sim's piece-level funding
+    model. The remaining gap is that the host and subentity IDs are still allocated together at
+    build-site creation, inactive pieces still have backing runtime objects even though they are no
+    longer live metadata entries, and interrupted pieces remain inside the partial shell rather than
+    becoming fully detached autonomous agents. —
     FIX: finish late materialization/partial assembly semantics: each piece should enter the active
     entity registry only when its dependency is satisfied, render/target exactly the current partial
     assembly, and leave exactly the already-built live pieces if construction is interrupted.

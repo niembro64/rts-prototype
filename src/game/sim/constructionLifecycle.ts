@@ -28,6 +28,11 @@ export type ConstructionLifecycleResult = {
   completedBuildings: Entity[];
 };
 
+export type InterruptedConstructionResult = {
+  preserved: boolean;
+  refund: ResourceCost;
+};
+
 type ConstructionPieceSpec = {
   id: number;
   kind: ConstructionPieceKind;
@@ -98,6 +103,10 @@ function costHasAnyResource(cost: ResourceCost): boolean {
 
 function isPieceRecordComplete(piece: ConstructionPieceBuildRecord): boolean {
   return piece.paid.energy >= piece.required.energy && piece.paid.metal >= piece.required.metal;
+}
+
+function hasPaidProgress(piece: ConstructionPieceBuildRecord): boolean {
+  return piece.paid.energy > 0 || piece.paid.metal > 0;
 }
 
 function getUnitConstructionPieceSpecs(entity: Entity): ConstructionPieceSpec[] {
@@ -326,6 +335,77 @@ function growConstructionPieces(world: WorldState, entity: Entity): void {
   if (changedFields !== 0) {
     world.markSnapshotDirty(entity.id, changedFields);
   }
+}
+
+function shouldPreserveInterruptedPiece(
+  piece: ConstructionPieceBuildRecord,
+  spec: ConstructionPieceSpec,
+): boolean {
+  return piece.isActive && spec.getHp() > 0 && (piece.isComplete || hasPaidProgress(piece));
+}
+
+function zeroInterruptedPiece(
+  world: WorldState,
+  spec: ConstructionPieceSpec,
+): void {
+  if (spec.getHp() !== 0) {
+    spec.setHp(0);
+  }
+  if (spec.isSubEntity) {
+    world.markSubEntityMetadataDead(spec.id);
+  }
+}
+
+export function interruptConstructionPreservingBuiltPieces(
+  world: WorldState,
+  entity: Entity,
+): InterruptedConstructionResult {
+  const buildable = entity.buildable;
+  if (buildable === null || buildable.isGhost || buildable.isComplete) {
+    return {
+      preserved: false,
+      refund: { energy: 0, metal: 0 },
+    };
+  }
+
+  ensureConstructionPieceRecords(entity);
+  reconcileConstructionPieceRecords(entity);
+  growConstructionPieces(world, entity);
+
+  const specs = scalePieceCostsToBuildableRequired(
+    getConstructionPieceSpecs(entity),
+    buildable.required,
+  );
+  let preserved = false;
+  let changedFields = 0;
+
+  for (let i = 0; i < specs.length; i++) {
+    const spec = specs[i];
+    const piece = buildable.pieces[i];
+    if (piece !== undefined && shouldPreserveInterruptedPiece(piece, spec)) {
+      preserved = true;
+      if (spec.isSubEntity) {
+        world.setSubEntityMetadataTargetable(spec.id, true);
+      }
+      continue;
+    }
+    zeroInterruptedPiece(world, spec);
+    changedFields |= spec.snapshotFields;
+  }
+
+  if (!preserved) {
+    return {
+      preserved: false,
+      refund: cloneResourceCost(buildable.paid),
+    };
+  }
+
+  world.refreshEntityMetadata(entity);
+  world.markSnapshotDirty(entity.id, changedFields | ENTITY_CHANGED_BUILDING);
+  return {
+    preserved: true,
+    refund: { energy: 0, metal: 0 },
+  };
 }
 
 export function initializeConstructionPieceHealth(entity: Entity): void {

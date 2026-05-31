@@ -22,7 +22,10 @@ import {
   getBuildFraction,
   isEntityActive,
 } from './buildableHelpers';
-import { initializeConstructionPieceHealth } from './constructionLifecycle';
+import {
+  initializeConstructionPieceHealth,
+  interruptConstructionPreservingBuiltPieces,
+} from './constructionLifecycle';
 
 export type { FactoryProductionResult } from '@/types/ui';
 import type { FactoryProductionResult } from '@/types/ui';
@@ -138,6 +141,9 @@ export class FactoryProductionSystem {
       mapHeight: world.mapHeight,
       clampRadius: null,
     });
+    if (this.isBuildSpotBlocked(world, spawn.x, spawn.y, bp.radius.collision)) {
+      return null;
+    }
     const unit = world.createUnitFromBlueprint(spawn.x, spawn.y, factory.ownership.playerId, unitBlueprintId);
     unit.buildable = createBuildable({
       energy: bp.cost.energy * COST_MULTIPLIER,
@@ -146,6 +152,26 @@ export class FactoryProductionSystem {
     initializeConstructionPieceHealth(unit);
     world.addEntity(unit);
     return unit;
+  }
+
+  private isBuildSpotBlocked(world: WorldState, x: number, y: number, radius: number): boolean {
+    for (const unit of world.getUnits()) {
+      if (unit.unit === null) continue;
+      const minDist = radius + unit.unit.radius.collision;
+      const dx = unit.transform.x - x;
+      const dy = unit.transform.y - y;
+      if ((dx * dx) + (dy * dy) < minDist * minDist) return true;
+    }
+
+    for (const building of world.getBuildings()) {
+      if (building.building === null || building.building.hp <= 0) continue;
+      const minDist = radius + building.building.targetRadius;
+      const dx = building.transform.x - x;
+      const dy = building.transform.y - y;
+      if ((dx * dx) + (dy * dy) < minDist * minDist) return true;
+    }
+
+    return false;
   }
 
   // Called when a unit shell completes. Stamps the static factory rally
@@ -213,24 +239,28 @@ export class FactoryProductionSystem {
     return true;
   }
 
-  // Tear down the in-progress shell and refund 100% of paid resources
-  // back to the player's stockpiles. Used by selection changes and
-  // factory destruction so shell cleanup has a single owner.
+  // Interrupt the in-progress shell. If construction has not produced
+  // a paid live piece yet, remove it and refund the paid counters. Once
+  // any piece is live, the shell stays in the world with exactly those
+  // materialized pieces instead of being deleted by the factory.
   cancelActiveShell(world: WorldState, factory: Entity): void {
     const factoryComp = factory.factory!;
     const shellId = factoryComp.currentShellId;
     if (shellId === null) return;
     const shell = world.getEntity(shellId);
     if (shell !== undefined && shell.buildable !== null && shell.ownership !== null) {
-      economyManager.addStockpile(
-        world,
-        shell.ownership.playerId,
-        shell.buildable.paid,
-        factory.id,
-        shell.id,
-        'refund',
-      );
-      world.removeEntity(shellId);
+      const interrupted = interruptConstructionPreservingBuiltPieces(world, shell);
+      if (!interrupted.preserved) {
+        economyManager.addStockpile(
+          world,
+          shell.ownership.playerId,
+          interrupted.refund,
+          factory.id,
+          shell.id,
+          'refund',
+        );
+        world.removeEntity(shellId);
+      }
     }
     factoryComp.currentShellId = null;
     factoryComp.currentBuildProgress = 0;
