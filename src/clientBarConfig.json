@@ -142,8 +142,37 @@
       { "value": "detailed", "label": "DETAILED" }
     ]
   },
+  "entityHud": {
+    "demoDefault": {
+      "unit": { "name": false, "healthBar": true, "resourceBars": true },
+      "tower": { "name": false, "healthBar": true, "resourceBars": true },
+      "building": { "name": false, "healthBar": true, "resourceBars": true },
+      "turret": { "name": false, "healthBar": false, "resourceBars": false },
+      "locomotion": { "name": false, "healthBar": false, "resourceBars": false },
+      "shot": { "name": false, "healthBar": false, "resourceBars": false }
+    },
+    "realDefault": {
+      "unit": { "name": false, "healthBar": true, "resourceBars": true },
+      "tower": { "name": false, "healthBar": true, "resourceBars": true },
+      "building": { "name": false, "healthBar": true, "resourceBars": true },
+      "turret": { "name": false, "healthBar": false, "resourceBars": false },
+      "locomotion": { "name": false, "healthBar": false, "resourceBars": false },
+      "shot": { "name": false, "healthBar": false, "resourceBars": false }
+    }
+  },
+  "selectionHudMode": {
+    "demoDefault": "whenNotFull",
+    "realDefault": "whenNotFull",
+    "options": [
+      { "value": "always", "label": "ALL" },
+      { "value": "never", "label": "OFF" },
+      { "value": "whenNotFull", "label": "DMG" }
+    ]
+  },
 
   "soundCategories": ["fire", "hit", "dead", "beam", "field", "music"],
+  "entityHudTypes": ["unit", "tower", "building", "turret", "locomotion", "shot"],
+  "entityHudElements": ["name", "healthBar", "resourceBars"],
   "rangeTypes": [
     "trackAcquire", "trackRelease",
     "engageAcquire", "engageRelease",
@@ -183,6 +212,8 @@
     "edgeScroll": "edge-scroll",
     "dragPan": "drag-pan",
     "lobbyVisible": "lobby-visible",
-    "waypointDetail": "waypoint-detail"
+    "waypointDetail": "waypoint-detail",
+    "entityHud": "entity-hud-toggles",
+    "selectionHudMode": "selection-hud-mode"
   }
 }

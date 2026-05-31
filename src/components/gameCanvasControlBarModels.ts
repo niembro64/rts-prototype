@@ -7,10 +7,14 @@ import type {
   CameraSmoothMode,
   DriftChannelMode,
   DriftMode,
+  EntityHudElement,
+  EntityHudToggles,
+  EntityHudType,
   PositionDriftChannelMode,
   PredictionMode,
   ProjRangeType,
   RangeType,
+  SelectionHudMode,
   SoundCategory,
   UnitRadiusType,
   WaypointDetail,
@@ -91,6 +95,10 @@ export type GameCanvasClientControlBarModel = {
   readonly displayedClientTime: string;
   readonly displayedClientIp: string;
   readonly waypointDetail: WaypointDetail;
+  readonly entityHud: Readonly<EntityHudToggles>;
+  readonly selectionHudMode: SelectionHudMode;
+  readonly entityHudTypes: readonly EntityHudType[];
+  readonly entityHudElements: readonly EntityHudElement[];
   readonly logicMsAvg: number;
   readonly logicMsHi: number;
   readonly renderMsAvg: number;
@@ -159,6 +167,8 @@ export type GameCanvasClientControlBarModel = {
   resetClientDefaults(): void;
   togglePlayerClientEnabled(): void;
   changeWaypointDetail(mode: WaypointDetail): void;
+  toggleEntityHud(type: EntityHudType, element: EntityHudElement): void;
+  changeSelectionHudMode(mode: SelectionHudMode): void;
   toggleAudioSmoothing(): void;
   toggleBurnMarks(): void;
   toggleLocomotionMarks(): void;

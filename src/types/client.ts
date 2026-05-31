@@ -49,6 +49,25 @@ export type CameraFovDegrees = 10 | 30 | 45 | 60 | 120;
  *  the pathfinder inserted along the route, so the player can see
  *  how units route around obstacles. */
 export type WaypointDetail = 'simple' | 'detailed';
+/** Entity-HUD entity classes. Each maps to a renderer category that
+ *  can independently show / hide its name tag, health bar, and
+ *  resource bars. */
+export type EntityHudType =
+  | 'unit'
+  | 'tower'
+  | 'building'
+  | 'turret'
+  | 'locomotion'
+  | 'shot';
+/** The three per-entity HUD elements that can be toggled. */
+export type EntityHudElement = 'name' | 'healthBar' | 'resourceBars';
+/** Global tri-state controlling HUD elements on the CURRENT SELECTION,
+ *  overriding the per-type entity-HUD toggles for selected entities.
+ *    always      — always show selection HUD elements.
+ *    never       — never show them.
+ *    whenNotFull — show only when the entity is damaged (not at full
+ *                  health / resources). */
+export type SelectionHudMode = 'always' | 'never' | 'whenNotFull';
 export type SoundCategory =
   | 'fire'
   | 'hit'
@@ -69,6 +88,14 @@ export type ProjRangeType = 'collision' | 'explosion';
 export type UnitRadiusType = 'visual' | 'hitbox' | 'collision';
 
 export type SoundDefaults = Record<SoundCategory, boolean>;
+
+/** Per-entity-type HUD element toggles. One flag per HUD element for
+ *  each entity class. Persisted as a single localStorage JSON blob,
+ *  mirroring `soundToggles`. */
+export type EntityHudToggles = Record<
+  EntityHudType,
+  Record<EntityHudElement, boolean>
+>;
 
 export type ClientBarConfig = {
   readonly render: LabeledOptionsConfig<RenderMode>;
@@ -130,4 +157,10 @@ export type ClientBarConfig = {
   readonly unitRadiusToggles: BooleanSetting;
   readonly lobbyVisible: DefaultSetting<PlatformBooleanDefaults>;
   readonly waypointDetail: LabeledOptionsConfig<WaypointDetail>;
+  /** Per-entity-type HUD element toggles (name / health bar / resource
+   *  bars). Persisted as a single JSON blob, like `sounds`. */
+  readonly entityHud: DefaultSetting<EntityHudToggles>;
+  /** Global tri-state for HUD elements on the current selection.
+   *  ALL / OFF / DMG (whenNotFull). */
+  readonly selectionHudMode: LabeledOptionsConfig<SelectionHudMode>;
 };

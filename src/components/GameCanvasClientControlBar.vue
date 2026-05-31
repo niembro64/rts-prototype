@@ -9,7 +9,29 @@ import BarControlGroup from './BarControlGroup.vue';
 import BarDivider from './BarDivider.vue';
 import BarLabel from './BarLabel.vue';
 import type { GameCanvasClientControlBarModel } from './gameCanvasControlBarModels';
+import type { EntityHudElement, EntityHudType } from '../types/client';
 import { fmt4, fmtBytes4, msBarStyle, statBarStyle } from './uiUtils';
+
+const ENTITY_HUD_TYPE_LABELS: Record<EntityHudType, string> = {
+  unit: 'UNIT',
+  tower: 'TOWER',
+  building: 'BLDG',
+  turret: 'TURR',
+  locomotion: 'LOCO',
+  shot: 'SHOT',
+};
+
+const ENTITY_HUD_ELEMENT_LABELS: Record<EntityHudElement, string> = {
+  name: 'NAME',
+  healthBar: 'HP',
+  resourceBars: 'RES',
+};
+
+const ENTITY_HUD_ELEMENT_DESCRIPTIONS: Record<EntityHudElement, string> = {
+  name: 'name',
+  healthBar: 'health bar',
+  resourceBars: 'resource bars',
+};
 
 const DIFFSNAP_REASONABLE_BYTES = 64 * 1024;
 const FULLSNAP_REASONABLE_BYTES = 1024 * 1024;
@@ -102,6 +124,38 @@ defineProps<{
             @click="model.changeWaypointDetail(opt.value)"
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel>ENTITY HUD:</BarLabel>
+        <BarLabel title="Current-selection HUD elements override the per-type toggles below for selected entities. ALL always shows them; OFF never does; DMG shows them only when damaged (not at full health / resources).">SEL:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in CLIENT_CONFIG.selectionHudMode.options"
+            :key="opt.value"
+            :active="model.selectionHudMode === opt.value"
+            :title="`Selection HUD: ${opt.label}.`"
+            @click="model.changeSelectionHudMode(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+        <div class="entity-hud-grid">
+          <div
+            v-for="element in model.entityHudElements"
+            :key="element"
+            class="entity-hud-row"
+          >
+            <BarLabel>{{ ENTITY_HUD_ELEMENT_LABELS[element] }}:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
+                v-for="type in model.entityHudTypes"
+                :key="type"
+                :active="model.entityHud[type][element]"
+                :title="`Show ${ENTITY_HUD_ELEMENT_DESCRIPTIONS[element]} for ${ENTITY_HUD_TYPE_LABELS[type]}`"
+                @click="model.toggleEntityHud(type, element)"
+              >{{ ENTITY_HUD_TYPE_LABELS[type] }}</BarButton>
+            </BarButtonGroup>
+          </div>
+        </div>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
@@ -819,3 +873,20 @@ defineProps<{
     </div>
   </div>
 </template>
+
+<style scoped>
+/* Compact 3-row entity-HUD matrix: one row per HUD element (NAME / HP /
+ * RES), each row a connected 6-button pill across the entity types. The
+ * rows stack vertically inside the surrounding flex control-group. */
+.entity-hud-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.entity-hud-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+</style>

@@ -303,6 +303,8 @@ const {
   edgeScrollEnabled,
   dragPanEnabled,
   waypointDetail,
+  entityHud,
+  selectionHudMode,
   soundToggles,
   rangeToggles,
   projRangeToggles,
@@ -314,6 +316,8 @@ const {
   allProjRangesActive,
   allUnitRadiiActive,
   allPanActive,
+  entityHudTypes,
+  entityHudElements,
   SFX_CATEGORIES,
   allSoundsActive,
   SOUND_LABELS,
@@ -348,6 +352,8 @@ const {
   changePredictionMode,
   changeClientUnitGroundNormalEmaMode,
   changeWaypointDetail,
+  toggleEntityHud,
+  changeSelectionHudMode,
   toggleEdgeScroll,
   toggleDragPan,
   toggleAllPan,
@@ -870,6 +876,10 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   displayedClientTime: displayedClientTime.value,
   displayedClientIp: displayedClientIp.value,
   waypointDetail: waypointDetail.value,
+  entityHud,
+  selectionHudMode: selectionHudMode.value,
+  entityHudTypes,
+  entityHudElements,
   logicMsAvg: logicMsAvg.value,
   logicMsHi: logicMsHi.value,
   renderMsAvg: renderMsAvg.value,
@@ -938,6 +948,8 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   resetClientDefaults,
   togglePlayerClientEnabled,
   changeWaypointDetail,
+  toggleEntityHud,
+  changeSelectionHudMode,
   toggleAudioSmoothing,
   toggleBurnMarks,
   toggleLocomotionMarks,
@@ -982,6 +994,7 @@ watchEffect(() => {
   m.displayedClientTime = displayedClientTime.value;
   m.displayedClientIp = displayedClientIp.value;
   m.waypointDetail = waypointDetail.value;
+  m.selectionHudMode = selectionHudMode.value;
   m.logicMsAvg = logicMsAvg.value;
   m.logicMsHi = logicMsHi.value;
   m.renderMsAvg = renderMsAvg.value;

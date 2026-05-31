@@ -4,6 +4,8 @@ import {
   PROJ_RANGE_TYPES,
   UNIT_RADIUS_TYPES,
   SOUND_CATEGORIES,
+  ENTITY_HUD_TYPES,
+  ENTITY_HUD_ELEMENTS,
   getAudioScope,
   getAudioSmoothing,
   getBeamSnapToTurret,
@@ -34,6 +36,8 @@ import {
   getTriangleDebug,
   getUnitRadiusToggle,
   getWaypointDetail,
+  getEntityHudToggle,
+  getSelectionHudMode,
   setAudioScope,
   setAudioSmoothing,
   setBeamSnapToTurret,
@@ -64,6 +68,8 @@ import {
   setTriangleDebug,
   setUnitRadiusToggle,
   setWaypointDetail,
+  setEntityHudToggle,
+  setSelectionHudMode,
   type CameraSmoothMode,
   type ClientMode,
 } from '../clientBarConfig';
@@ -75,10 +81,14 @@ import type {
   CameraFovDegrees,
   DriftChannelMode,
   DriftMode,
+  EntityHudElement,
+  EntityHudToggles,
+  EntityHudType,
   PositionDriftChannelMode,
   PredictionMode,
   ProjRangeType,
   RangeType,
+  SelectionHudMode,
   SoundCategory,
   UnitRadiusType,
   WaypointDetail,
@@ -143,6 +153,18 @@ export function useGameCanvasClientSettings({
     hitbox: getUnitRadiusToggle('hitbox'),
     collision: getUnitRadiusToggle('collision'),
   });
+  function seedEntityHud(): EntityHudToggles {
+    const out = {} as EntityHudToggles;
+    for (const type of ENTITY_HUD_TYPES) {
+      out[type] = {} as Record<EntityHudElement, boolean>;
+      for (const element of ENTITY_HUD_ELEMENTS) {
+        out[type][element] = getEntityHudToggle(type, element);
+      }
+    }
+    return out;
+  }
+  const entityHud = reactive<EntityHudToggles>(seedEntityHud());
+  const selectionHudMode = ref<SelectionHudMode>(getSelectionHudMode());
   const legsRadiusToggle = ref(getLegsRadiusToggle());
   const cameraSmoothMode = ref<CameraSmoothMode>(getCameraSmoothMode());
   const cameraFovDegrees = ref<CameraFovDegrees>(getCameraFovDegrees());
@@ -181,6 +203,12 @@ export function useGameCanvasClientSettings({
     edgeScrollEnabled.value = getEdgeScrollEnabled();
     dragPanEnabled.value = getDragPanEnabled();
     waypointDetail.value = getWaypointDetail();
+    for (const type of ENTITY_HUD_TYPES) {
+      for (const element of ENTITY_HUD_ELEMENTS) {
+        entityHud[type][element] = getEntityHudToggle(type, element);
+      }
+    }
+    selectionHudMode.value = getSelectionHudMode();
     for (const cat of SOUND_CATEGORIES) soundToggles[cat] = getSoundToggle(cat);
     for (const rt of RANGE_TYPES) rangeToggles[rt] = getRangeToggle(rt);
     for (const prt of PROJ_RANGE_TYPES) projRangeToggles[prt] = getProjRangeToggle(prt);
@@ -379,6 +407,17 @@ export function useGameCanvasClientSettings({
     waypointDetail.value = mode;
   }
 
+  function toggleEntityHud(type: EntityHudType, element: EntityHudElement): void {
+    const newValue = !entityHud[type][element];
+    setEntityHudToggle(type, element, newValue);
+    entityHud[type][element] = newValue;
+  }
+
+  function changeSelectionHudMode(mode: SelectionHudMode): void {
+    setSelectionHudMode(mode);
+    selectionHudMode.value = mode;
+  }
+
   function toggleEdgeScroll(): void {
     const newValue = !edgeScrollEnabled.value;
     setEdgeScrollEnabled(newValue);
@@ -488,6 +527,13 @@ export function useGameCanvasClientSettings({
     }
     waypointDetail.value = cd.waypointDetail.default;
     setWaypointDetail(cd.waypointDetail.default);
+    for (const type of ENTITY_HUD_TYPES) {
+      for (const element of ENTITY_HUD_ELEMENTS) {
+        const def = cd.entityHud.default[type][element];
+        if (entityHud[type][element] !== def) toggleEntityHud(type, element);
+      }
+    }
+    changeSelectionHudMode(cd.selectionHudMode.default);
     if (legsRadiusToggle.value !== cd.legsRadius.default) toggleLegsRadius();
     setCameraMode(cd.cameraSmooth.default);
     changeCameraFovDegrees(cd.cameraFov.default);
@@ -534,6 +580,10 @@ export function useGameCanvasClientSettings({
     edgeScrollEnabled,
     dragPanEnabled,
     waypointDetail,
+    entityHud,
+    selectionHudMode,
+    entityHudTypes: ENTITY_HUD_TYPES,
+    entityHudElements: ENTITY_HUD_ELEMENTS,
     soundToggles,
     rangeToggles,
     projRangeToggles,
@@ -579,6 +629,8 @@ export function useGameCanvasClientSettings({
     changePredictionMode,
     changeClientUnitGroundNormalEmaMode,
     changeWaypointDetail,
+    toggleEntityHud,
+    changeSelectionHudMode,
     toggleEdgeScroll,
     toggleDragPan,
     toggleAllPan,

@@ -9,8 +9,12 @@ import type {
   CameraSmoothMode,
   DriftChannelMode,
   DriftMode,
+  EntityHudElement,
+  EntityHudToggles,
+  EntityHudType,
   PositionDriftChannelMode,
   PredictionMode,
+  SelectionHudMode,
   SoundCategory,
   RangeType,
   ProjRangeType,
@@ -28,6 +32,12 @@ import rawPlayerClientGraphicsConfig from './playerClientGraphicsConfig.json';
 import clientBarConfig from './clientBarConfig.json';
 
 export type { CameraSmoothMode } from './types/client';
+export type {
+  EntityHudElement,
+  EntityHudToggles,
+  EntityHudType,
+  SelectionHudMode,
+} from './types/client';
 export type ClientMode = 'demo' | 'real';
 
 // ── Authored data lives in clientBarConfig.json ──
@@ -69,6 +79,8 @@ type ClientDefaults = {
   readonly unitRadiusToggles: boolean;
   readonly lobbyVisible: { readonly mobile: boolean; readonly desktop: boolean };
   readonly waypointDetail: WaypointDetail;
+  readonly entityHud: EntityHudToggles;
+  readonly selectionHudMode: SelectionHudMode;
 };
 
 // Every per-mode default lives in JSON as paired `demoDefault` and
@@ -81,6 +93,16 @@ function pickDefault<T>(
 ): T {
   return mode === 'real' ? section.realDefault : section.demoDefault;
 }
+
+// Declared here (before `resolveClientDefaults` runs at module init via
+// DEMO_CLIENT_DEFAULTS) because `cloneEntityHud` iterates this array
+// while building the defaults; the other constant arrays below are only
+// touched later in applyClientDefaults / loadFromStorage.
+export const ENTITY_HUD_TYPES: EntityHudType[] =
+  clientBarConfig.entityHudTypes as EntityHudType[];
+
+export const ENTITY_HUD_ELEMENTS: EntityHudElement[] =
+  clientBarConfig.entityHudElements as EntityHudElement[];
 
 function resolveClientDefaults(mode: ClientMode): ClientDefaults {
   return {
@@ -115,7 +137,23 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     unitRadiusToggles: pickDefault(clientBarConfig.unitRadiusToggles, mode),
     lobbyVisible: { ...pickDefault(clientBarConfig.lobbyVisible, mode) },
     waypointDetail: pickDefault(clientBarConfig.waypointDetail, mode) as WaypointDetail,
+    entityHud: cloneEntityHud(
+      pickDefault(clientBarConfig.entityHud, mode) as EntityHudToggles,
+    ),
+    selectionHudMode:
+      pickDefault(clientBarConfig.selectionHudMode, mode) as SelectionHudMode,
   };
+}
+
+// The entityHud default is a nested record; spread-cloning the outer
+// record would still share the per-element inner objects between modes
+// and the live runtime copy, so clone one level deeper.
+function cloneEntityHud(source: EntityHudToggles): EntityHudToggles {
+  const out = {} as EntityHudToggles;
+  for (const type of ENTITY_HUD_TYPES) {
+    out[type] = { ...source[type] };
+  }
+  return out;
 }
 
 const DEMO_CLIENT_DEFAULTS = resolveClientDefaults('demo');
@@ -198,6 +236,11 @@ export const CLIENT_CONFIG = {
     default: DEMO_CLIENT_DEFAULTS.waypointDetail,
     options: clientBarConfig.waypointDetail.options as OptionList<WaypointDetail>,
   },
+  entityHud: { default: cloneEntityHud(DEMO_CLIENT_DEFAULTS.entityHud) },
+  selectionHudMode: {
+    default: DEMO_CLIENT_DEFAULTS.selectionHudMode,
+    options: clientBarConfig.selectionHudMode.options as OptionList<SelectionHudMode>,
+  },
 } satisfies ClientBarConfig;
 
 // ── Constant arrays ──
@@ -248,6 +291,11 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     unitRadiusToggles: { default: defaults.unitRadiusToggles },
     lobbyVisible: { default: { ...defaults.lobbyVisible } },
     waypointDetail: { ...CLIENT_CONFIG.waypointDetail, default: defaults.waypointDetail },
+    entityHud: { default: cloneEntityHud(defaults.entityHud) },
+    selectionHudMode: {
+      ...CLIENT_CONFIG.selectionHudMode,
+      default: defaults.selectionHudMode,
+    },
   };
 }
 
@@ -289,7 +337,9 @@ type ClientStorageKeyName =
   | 'edgeScroll'
   | 'dragPan'
   | 'lobbyVisible'
-  | 'waypointDetail';
+  | 'waypointDetail'
+  | 'entityHud'
+  | 'selectionHudMode';
 
 type ClientStorageKeys = Record<ClientStorageKeyName, string>;
 
@@ -324,6 +374,8 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'dragPan',
   'lobbyVisible',
   'waypointDetail',
+  'entityHud',
+  'selectionHudMode',
 ];
 
 const storageKeySuffixes =
@@ -409,6 +461,12 @@ let currentLobbyVisible: boolean = _isMobile
   ? _cd.lobbyVisible.default.mobile
   : _cd.lobbyVisible.default.desktop;
 let currentWaypointDetail: WaypointDetail = _cd.waypointDetail.default;
+const currentEntityHud: EntityHudToggles = cloneEntityHud(_cd.entityHud.default);
+let currentSelectionHudMode: SelectionHudMode = _cd.selectionHudMode.default;
+
+function isSelectionHudMode(value: unknown): value is SelectionHudMode {
+  return value === 'always' || value === 'never' || value === 'whenNotFull';
+}
 
 function isCameraFovDegrees(value: number): value is CameraFovDegrees {
   return _cd.cameraFov.options.some((opt) => opt.value === value);
@@ -481,6 +539,12 @@ function applyClientDefaults(mode: ClientMode): void {
     ? cd.lobbyVisible.default.mobile
     : cd.lobbyVisible.default.desktop;
   currentWaypointDetail = cd.waypointDetail.default;
+  for (const type of ENTITY_HUD_TYPES) {
+    for (const element of ENTITY_HUD_ELEMENTS) {
+      currentEntityHud[type][element] = cd.entityHud.default[type][element];
+    }
+  }
+  currentSelectionHudMode = cd.selectionHudMode.default;
 }
 
 // ── Load from localStorage on module init / mode switch ──
@@ -673,6 +737,25 @@ function loadFromStorage(mode: ClientMode): void {
   const storedWaypointDetail = readPersisted(keys.waypointDetail);
   if (storedWaypointDetail === 'simple' || storedWaypointDetail === 'detailed') {
     currentWaypointDetail = storedWaypointDetail;
+  }
+  const storedEntityHud = readPersisted(keys.entityHud);
+  if (storedEntityHud) {
+    try {
+      const parsed = JSON.parse(storedEntityHud);
+      for (const type of ENTITY_HUD_TYPES) {
+        const row = parsed?.[type];
+        if (!row) continue;
+        for (const element of ENTITY_HUD_ELEMENTS) {
+          if (typeof row[element] === 'boolean') {
+            currentEntityHud[type][element] = row[element];
+          }
+        }
+      }
+    } catch { /* malformed JSON — keep defaults */ }
+  }
+  const storedSelectionHudMode = readPersisted(keys.selectionHudMode);
+  if (isSelectionHudMode(storedSelectionHudMode)) {
+    currentSelectionHudMode = storedSelectionHudMode;
   }
 }
 
@@ -983,6 +1066,31 @@ export function getWaypointDetail(): WaypointDetail {
 export function setWaypointDetail(mode: WaypointDetail): void {
   currentWaypointDetail = mode;
   persist(activeStorageKeys().waypointDetail, mode);
+}
+
+export function getEntityHudToggle(
+  type: EntityHudType,
+  element: EntityHudElement,
+): boolean {
+  return currentEntityHud[type][element];
+}
+
+export function setEntityHudToggle(
+  type: EntityHudType,
+  element: EntityHudElement,
+  on: boolean,
+): void {
+  currentEntityHud[type][element] = on;
+  persistJson(activeStorageKeys().entityHud, currentEntityHud);
+}
+
+export function getSelectionHudMode(): SelectionHudMode {
+  return currentSelectionHudMode;
+}
+
+export function setSelectionHudMode(mode: SelectionHudMode): void {
+  currentSelectionHudMode = mode;
+  persist(activeStorageKeys().selectionHudMode, mode);
 }
 
 // Initial page load starts on the demo shell; GameCanvas switches this
