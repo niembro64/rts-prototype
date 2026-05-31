@@ -938,9 +938,9 @@
       }
     }
   },
-  "unitMosquito": {
-    "unitBlueprintId": "unitMosquito",
-    "name": "Mosquito",
+  "unitBee": {
+    "unitBlueprintId": "unitBee",
+    "name": "Bee",
     "shortName": "MSQ",
     "hp": 70,
     "radius": {
@@ -981,7 +981,7 @@
     "cloak": null,
     "detector": null,
     "deathSound": {
-      "$audio": "event.death.unitMosquito"
+      "$audio": "event.death.unitBee"
     },
     "fightStopEngagedRatio": 0.5,
     "locomotionBlueprintId": "locomotionHovercraft",

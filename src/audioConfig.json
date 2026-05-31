@@ -199,7 +199,7 @@
         "volume": 1,
         "playSpeed": 0.3
       },
-      "unitMosquito": {
+      "unitBee": {
         "synth": "explosion",
         "volume": 1,
         "playSpeed": 0.35

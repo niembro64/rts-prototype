@@ -38,7 +38,7 @@
       "unitHippo",
       "unitTarantula",
       "unitLoris",
-      "unitMosquito",
+      "unitBee",
       "unitDragonfly",
       "unitConstructionDrone",
       "unitEagle",
@@ -285,7 +285,7 @@
       "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
-    "unitMosquito": {
+    "unitBee": {
       "includeLockOnLevel0FriendsAndEnemies": [
         "enemy_entities"
       ],
