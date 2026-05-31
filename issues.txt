@@ -97,34 +97,6 @@ A41. [MEDIUM] Hosts spawn whole, not built bottom-up piece by piece.
     interrupting leaves exactly the pieces already built. (Reverse of A39 per-piece death; depends
     on A38 per-piece cost/health.)
 
-A42. [MEDIUM] Entities do not detonate a death explosion (radius + force + damage) when they die;
-    death is removal plus a visual effect, not a physical blast.
-    src/game/sim/Simulation.ts (onUnitDeath / deathContexts ~224-230/655-730 — death contexts are
-    for VISUAL/directional explosion effects, not gameplay area force), src/game/sim/damage/
-    DamageSystem.ts (applyAreaDamage ~952, AreaDamageSource — area damage EXISTS but is driven by
-    projectile splash, not entity death), src/game/sim/combat/damageHelpers.ts (explosionRadius is
-    a shot/projectile splash field), the generated blueprint schema (explosionRadius lives on
-    shots, not as a universal entity field), rts-sim-wasm/src/lib.rs (area damage / impulse). —
-    RULE: new "Every death is an explosion" + the death-explosion field in "Every entity shares one
-    base ledger" — every entity carries a {radius, force, damage} death blast and detonates it when
-    health hits zero; the blast applies outward force (heavier bodies resist more) and damage to
-    every entity in radius, friend or foe. Default unit/building blasts are tuned to USUALLY destroy
-    their own locomotion and turrets (the physical mechanism behind "killing the body kills the
-    assembly"); blueprints may author a deliberately huge blast (e.g. a suicide unit that launches
-    its turrets). —
-    PROBLEM: a unit's/building's death currently removes the entity and emits a visual explosion
-    effect; it does not apply gameplay area force + area damage to surrounding entities, and there
-    is no universal per-entity {radius, force, damage} death-explosion field. Splash area-damage
-    exists only for projectiles. So deaths neither chain-react nor destroy the dead host's own
-    pieces via physics. —
-    FIX: add a {radius, force, damage} death explosion to the universal entity base (A38); on any
-    entity death detonate it through the existing area-damage kernel (DamageSystem.applyAreaDamage)
-    plus the impulse/force path so it pushes and damages everything in radius; tune default unit/
-    building blasts to usually destroy their own locomotion+turrets (A39 per-piece health makes that
-    a real outcome rather than a no-op); let blueprints override radius/force/damage for bomb-style
-    units. Unify shot splash and entity death onto one blast path. (Depends on A38 base ledger +
-    A39 per-piece destructibility; pairs with the shot detonation path.)
-
 A44. [MEDIUM] Rays (beams/lasers) and shields ("force fields") are modelled as "shot" variants, but
     the new design makes a shot a destructible BODY — rays/shields are sustained emissions with no
     mass or health and cannot be shots. Also rename "force field" -> "shield", group beam+laser

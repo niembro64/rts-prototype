@@ -3,7 +3,12 @@ import { CommandQueue } from './commands';
 import type { Entity, EntityId, PlayerId, Unit, UnitAction } from './types';
 import { NO_ENTITY_ID } from './types';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
-import { buildUnitDeathEvent, buildBuildingDeathEvent } from './combat/damageHelpers';
+import {
+  applyKnockbackForces,
+  buildUnitDeathEvent,
+  buildBuildingDeathEvent,
+  collectKillsAndDeathContexts,
+} from './combat/damageHelpers';
 import { magnitude } from '../math';
 import { executeCommand, type CommandContext } from './commandExecution';
 import { distributeEnergy, createEnergyBuffers, resetEnergyBuffers, type EnergyBuffers } from './energyDistribution';
@@ -61,7 +66,7 @@ import {
   pathTerrainFilterForLocomotion,
   type PathTerrainFilter,
 } from './Pathfinder';
-import { getUnitBlueprint } from './blueprints';
+import { getBuildingBlueprint, getUnitBlueprint } from './blueprints';
 import { updateBuildingActiveStates } from './buildingActiveState';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { getGuardFollowRadius, isFriendlyGuardTarget } from './guard';
@@ -83,6 +88,7 @@ import {
 
 // Shared empty array constant (avoids per-call allocation for empty returns)
 const EMPTY_VEL_UPDATES: ProjectileVelocityUpdateEvent[] = [];
+const EMPTY_DEATH_EXPLOSION_EXCLUDES = new Set<EntityId>();
 const _combatStopFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_ENGAGED,
   targetId: -1,
@@ -203,6 +209,12 @@ export class Simulation {
   private _deathCheckIdsBuf: EntityId[] = [];
   private _movingUnitsBuf: Entity[] = [];
   private _arrivalEntitiesBuf: Entity[] = [];
+  private _deathExplosionQueueBuf: EntityId[] = [];
+  private _deathExplosionDetonatedIds = new Set<EntityId>();
+  private _cleanupDeadUnitIdSet = new Set<EntityId>();
+  private _cleanupDeadBuildingIdSet = new Set<EntityId>();
+  private _cleanupSyntheticDeathEventIds = new Set<EntityId>();
+  private _cleanupDeathContexts = new Map<EntityId, DeathContext>();
   private _arrivalSlotsBuf = new Uint32Array(0);
   private _arrivalDxBuf = new Float64Array(0);
   private _arrivalDyBuf = new Float64Array(0);
@@ -505,6 +517,8 @@ export class Simulation {
 
   // Update combat systems
   private updateCombat(dtMs: number): void {
+    this._deathExplosionDetonatedIds.clear();
+
     // AIM-08.2 — stamp the FF pool BEFORE the FSM so the force-field
     // clearance kernels read the latest sphere list. The list is
     // produced by the previous tick's updateForceFieldState, so shield
@@ -625,6 +639,13 @@ export class Simulation {
         this.pendingProjectileVelocityUpdates.set(event.id, event);
       }
 
+      this.detonateEntityDeathExplosions(
+        collisionResult.deadUnitIds,
+        collisionResult.deadBuildingIds,
+        collisionResult.events,
+        collisionResult.deathContexts,
+      );
+
       // Emit hit/death audio events
       for (const event of collisionResult.events) {
         const onSimEvent = this.onSimEvent;
@@ -700,6 +721,35 @@ export class Simulation {
     }
     deathCheckIds.length = 0;
 
+    if (deadUnitIds.length > 0 || deadBuildingIds.length > 0) {
+      const deadUnitSet = this._cleanupDeadUnitIdSet;
+      const deadBuildingSet = this._cleanupDeadBuildingIdSet;
+      const syntheticDeathEventIds = this._cleanupSyntheticDeathEventIds;
+      const deathContexts = this._cleanupDeathContexts;
+      deadUnitSet.clear();
+      deadBuildingSet.clear();
+      syntheticDeathEventIds.clear();
+      deathContexts.clear();
+      for (const id of deadUnitIds) {
+        deadUnitSet.add(id);
+        syntheticDeathEventIds.add(id);
+      }
+      for (const id of deadBuildingIds) {
+        deadBuildingSet.add(id);
+        syntheticDeathEventIds.add(id);
+      }
+      this.detonateEntityDeathExplosions(
+        deadUnitSet,
+        deadBuildingSet,
+        this.pendingSimEvents,
+        deathContexts,
+      );
+      deadUnitIds.length = 0;
+      deadBuildingIds.length = 0;
+      for (const id of deadUnitSet) deadUnitIds.push(id);
+      for (const id of deadBuildingSet) deadBuildingIds.push(id);
+    }
+
     // Remove dead entities from spatial grid, notify callbacks, and remove from world
     if (deadUnitIds.length > 0) {
       for (const id of deadUnitIds) {
@@ -722,7 +772,9 @@ export class Simulation {
           // damage-pass path (e.g. bleed-out, anything
           // that sets hp<=0 without going through collectKills*).
           // Without this, the unit just vanishes silently.
-          this.emitSyntheticDeathEvent(entity);
+          if (this._cleanupSyntheticDeathEventIds.has(id)) {
+            this.emitSyntheticDeathEvent(entity);
+          }
         }
         spatialGrid.removeUnit(id);
       }
@@ -736,7 +788,9 @@ export class Simulation {
     if (deadBuildingIds.length > 0) {
       for (const id of deadBuildingIds) {
         const building = this.world.getEntity(id);
-        if (building) this.emitSyntheticDeathEvent(building);
+        if (building && this._cleanupSyntheticDeathEventIds.has(id)) {
+          this.emitSyntheticDeathEvent(building);
+        }
         spatialGrid.removeBuilding(id);
       }
       const onBuildingDeath = this.onBuildingDeath;
@@ -763,6 +817,99 @@ export class Simulation {
         buildBuildingDeathEvent(entity, entity.id, entity.buildingBlueprintId ?? '', 'building'),
       );
     }
+  }
+
+  private detonateEntityDeathExplosions(
+    deadUnitIds: Set<EntityId>,
+    deadBuildingIds: Set<EntityId>,
+    audioEvents: SimEvent[],
+    deathContexts: Map<EntityId, DeathContext>,
+  ): void {
+    const queue = this._deathExplosionQueueBuf;
+    const detonated = this._deathExplosionDetonatedIds;
+    queue.length = 0;
+    for (const id of deadUnitIds) queue.push(id);
+    for (const id of deadBuildingIds) queue.push(id);
+
+    for (let index = 0; index < queue.length; index++) {
+      const id = queue[index];
+      if (detonated.has(id)) continue;
+      detonated.add(id);
+
+      const entity = this.world.getEntity(id);
+      if (entity === undefined) continue;
+      const blast = this.getEntityDeathExplosion(entity);
+      if (
+        blast === null ||
+        blast.radius <= 0 ||
+        (blast.damage <= 0 && blast.force <= 0)
+      ) {
+        continue;
+      }
+
+      const result = this.damageSystem.applyDamage({
+        type: 'area',
+        sourceEntityId: entity.id,
+        // Death blasts are neutral for broadphase filtering: they hit
+        // friend and foe. Kill credit still resolves through sourceEntityId.
+        ownerId: 0,
+        damage: blast.damage,
+        excludeEntities: EMPTY_DEATH_EXPLOSION_EXCLUDES,
+        center: {
+          x: entity.transform.x,
+          y: entity.transform.y,
+          z: entity.transform.z,
+        },
+        radius: blast.radius,
+        knockbackForce: blast.force,
+      });
+      applyKnockbackForces(result.knockbacks, this.forceAccumulator);
+      collectKillsAndDeathContexts(
+        result,
+        this.world,
+        blast.sourceKey,
+        blast.sourceType,
+        deadUnitIds,
+        deadBuildingIds,
+        audioEvents,
+        deathContexts,
+        entity.id,
+      );
+      for (const killedUnitId of result.killedUnitIds) {
+        if (!detonated.has(killedUnitId)) queue.push(killedUnitId);
+      }
+      for (const killedBuildingId of result.killedBuildingIds) {
+        if (!detonated.has(killedBuildingId)) queue.push(killedBuildingId);
+      }
+    }
+  }
+
+  private getEntityDeathExplosion(
+    entity: Entity,
+  ): { radius: number; force: number; damage: number; sourceKey: string; sourceType: 'unit' | 'building' } | null {
+    if (entity.unit !== null) {
+      const unitBlueprintId = entity.unit.unitBlueprintId;
+      const blast = getUnitBlueprint(unitBlueprintId).base.deathExplosion;
+      return {
+        radius: blast.radius,
+        force: blast.force,
+        damage: blast.damage,
+        sourceKey: unitBlueprintId,
+        sourceType: 'unit',
+      };
+    }
+    if (entity.building !== null && entity.buildingBlueprintId !== null) {
+      const buildingBlueprintId = entity.buildingBlueprintId;
+      const blast = getBuildingBlueprint(buildingBlueprintId).base.deathExplosion;
+      return {
+        radius: blast.radius,
+        force: blast.force,
+        damage: blast.damage,
+        sourceKey: buildingBlueprintId,
+        sourceType: 'building',
+      };
+    }
+    return null;
   }
 
   // Update unit movement with action queue processing.
