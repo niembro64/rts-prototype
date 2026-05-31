@@ -739,6 +739,19 @@ export type EconomyState = {
   };
 };
 
+export type ConstructionPieceKind = 'locomotion' | 'body' | 'turret';
+
+export type ConstructionPieceBuildRecord = {
+  id: EntityId;
+  kind: ConstructionPieceKind;
+  mountIndex: number | null;
+  paid: ResourceCost;
+  required: ResourceCost;
+  healthBuildFraction: number;
+  isActive: boolean;
+  isComplete: boolean;
+};
+
 // Buildable component. While a unit/building is under construction it
 // lives in the world as an inert "shell" — `paid` accumulates
 // from the owner's stockpiles toward `required`. This
@@ -746,13 +759,16 @@ export type EconomyState = {
 // activation succeeds, constructionLifecycle removes it. During
 // construction, HP grows by the positive delta in average fill ratio;
 // it is never reset upward to the current fill target, so damage taken
-// while building remains damage.
+// while building remains damage. `pieces` is the dependency-ordered
+// resource ledger for the real assembly pieces; the aggregate `paid`
+// counters remain the compact wire/UI mirror.
 export type Buildable = {
   paid: ResourceCost;
   required: ResourceCost;
   isComplete: boolean;
   isGhost: boolean;
   healthBuildFraction: number;
+  pieces: ConstructionPieceBuildRecord[];
 };
 
 /** Builder component. Gives a unit the ability to construct

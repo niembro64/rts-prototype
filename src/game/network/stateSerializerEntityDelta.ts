@@ -692,7 +692,7 @@ function syncEntityMetaPools(world: WorldState, e: Entity, sim: SimWasm): void {
       locomotion.mountIndex,
       ENTITY_META_STORAGE_UNIT_LOCOMOTION,
       slot,
-      1,
+      locomotion.hp > 0 ? 1 : 0,
     );
   }
 
@@ -754,7 +754,7 @@ function syncEntityMetaPools(world: WorldState, e: Entity, sim: SimWasm): void {
       w.mountIndex,
       ENTITY_META_STORAGE_COMBAT_TURRETS,
       slot * MAX_WEAPONS_PER_ENTITY + t,
-      w.config.visualOnly ? 0 : 1,
+      !w.config.visualOnly && w.hp > 0 ? 1 : 0,
     );
     sim.turretPool.setTurret(
       slot, t,

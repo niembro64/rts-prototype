@@ -55,6 +55,8 @@ export type {
   ProjectileAbsenceSlots,
   Projectile,
   EconomyState,
+  ConstructionPieceKind,
+  ConstructionPieceBuildRecord,
   ResourceCost,
   Buildable,
   Builder,

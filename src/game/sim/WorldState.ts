@@ -391,7 +391,7 @@ export class WorldState {
           storageSlot: i,
           generation: 0,
           alive: true,
-          targetable: !turret.config.visualOnly,
+          targetable: !turret.config.visualOnly && turret.hp > 0,
         });
       }
     }
@@ -412,7 +412,7 @@ export class WorldState {
         storageSlot: 0,
         generation: 0,
         alive: true,
-        targetable: true,
+        targetable: locomotion.hp > 0,
       });
     }
   }
@@ -429,6 +429,20 @@ export class WorldState {
 
   markSubEntityMetadataDead(id: EntityId): void {
     this.markMetaDead(id);
+  }
+
+  setSubEntityMetadataTargetable(id: EntityId, targetable: boolean): void {
+    const previous = this.entityMetaById.get(id);
+    if (previous === undefined || !previous.alive || previous.storagePool === 'entities') return;
+    const mountedTurret = previous.kind === 'turret' ? this.resolveMountedTurret(id) : undefined;
+    const canEverTarget = previous.kind === 'locomotion' ||
+      (mountedTurret !== undefined && !mountedTurret.turret.config.visualOnly);
+    const nextTargetable = targetable && canEverTarget;
+    if (previous.targetable === nextTargetable) return;
+    this.entityMetaById.set(id, {
+      ...previous,
+      targetable: nextTargetable,
+    });
   }
 
   private markEntityMetadataDead(entity: Entity): void {

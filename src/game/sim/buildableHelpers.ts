@@ -35,6 +35,7 @@ export function createBuildable(required: ResourceCost, state: BuildableState | 
     healthBuildFraction: state === null || state.healthBuildFraction === null
       ? 0
       : state.healthBuildFraction,
+    pieces: [],
   };
 }
 
@@ -54,9 +55,35 @@ export function getBuildFraction(b: Buildable): number {
   return sum / RESOURCE_KINDS.length;
 }
 
+export function getPieceFillRatio(
+  piece: Buildable['pieces'][number],
+  kind: ResourceKind,
+): number {
+  const req = piece.required[kind];
+  if (req <= 0) return 1;
+  return Math.min(1, Math.max(0, piece.paid[kind] / req));
+}
+
+export function getPieceBuildFraction(piece: Buildable['pieces'][number]): number {
+  let sum = 0;
+  for (const k of RESOURCE_KINDS) sum += getPieceFillRatio(piece, k);
+  return sum / RESOURCE_KINDS.length;
+}
+
+export function getActiveBuildPiece(b: Buildable): Buildable['pieces'][number] | null {
+  for (let i = 0; i < b.pieces.length; i++) {
+    const piece = b.pieces[i];
+    if (!piece.isComplete) return piece;
+  }
+  return null;
+}
+
 /** True iff every required resource has been fully paid. Independent
  *  of the cached `isComplete` flag — callers can use either. */
 export function isBuildFullyPaid(b: Buildable): boolean {
+  if (b.pieces.length > 0) {
+    return b.pieces.every((piece) => piece.isComplete);
+  }
   for (const k of RESOURCE_KINDS) {
     if (b.paid[k] < b.required[k]) return false;
   }
@@ -65,6 +92,10 @@ export function isBuildFullyPaid(b: Buildable): boolean {
 
 /** Remaining cost on a single resource (clamped at 0). */
 export function getRemainingResource(b: Buildable, kind: ResourceKind): number {
+  const activePiece = getActiveBuildPiece(b);
+  if (activePiece !== null) {
+    return Math.max(0, activePiece.required[kind] - activePiece.paid[kind]);
+  }
   return Math.max(0, b.required[kind] - b.paid[kind]);
 }
 

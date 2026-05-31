@@ -94,18 +94,21 @@ A41. [MEDIUM] Hosts spawn whole, not built bottom-up piece by piece.
     building builds its single body. Each piece is the real entity from frame one (carrying its
     final EntityId) in an under-construction state with health ramping from zero, in dependency
     order. —
-    PROBLEM: construction now derives ordered per-piece health from the piece base-ledger costs
-    (unit: locomotion -> body -> turrets; tower: body -> turrets; building: body) on both the
-    authoritative and hydrated client state, so future pieces begin at 0 HP and become live only
-    when their cost stage starts. The remaining gap is that the host and all subentity IDs are
-    still materialized together at build-site creation, there is still one buildable paid
-    accumulator, and rendering/interrupt semantics do not yet expose a truly partial assembly
-    where only the pieces already reached in the dependency chain exist as active agents. —
-    FIX: promote the staged HP model into real ordered sub-build records: each piece pays its own
-    resource accumulator, enters the active entity registry when its dependency is satisfied,
-    renders/targets as the current partial assembly, and leaves exactly the already-built live
-    pieces if construction is interrupted. (Reverse of A39 per-piece death; depends on A38
-    per-piece cost/health.)
+    PROBLEM: construction now has ordered per-piece build records derived from each piece's
+    base-ledger cost and scaled to the actual build cost. Resource funding drains only the current
+    dependency piece (unit: locomotion -> body -> turrets; tower: body -> turrets; building: body),
+    each piece has its own paid accumulator and HP fraction, hydrated clients rebuild the same
+    records from aggregate paid counters, and mounted sub-entities are targetable in the metadata
+    only once their staged HP is live. The aggregate Buildable.paid counters remain as the compact
+    wire/UI mirror, not the sim's piece-level funding model. The remaining gap is that the host and
+    all subentity IDs are still materialized together at build-site creation, body shells still keep
+    a frame-one host presence for legacy damage/selection paths, and rendering/interrupt semantics
+    do not yet expose a truly partial assembly where only the pieces already reached in the
+    dependency chain exist as active agents. —
+    FIX: finish late materialization/partial assembly semantics: each piece should enter the active
+    entity registry only when its dependency is satisfied, render/target exactly the current partial
+    assembly, and leave exactly the already-built live pieces if construction is interrupted.
+    (Reverse of A39 per-piece death; depends on A38 per-piece cost/health.)
 
 --------------------------------------------------------------------------------
 Items A45-A49 added 2026-05-30 alongside a design-direction expansion of
