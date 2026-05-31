@@ -2141,7 +2141,7 @@
         There must be no resource movement that bypasses this contract. The sim does not have a
         parallel "production" path that nudges the player&rsquo;s stockpile directly while
         construction payments go through one helper and converter ticks go through another; the
-        renderer does not have a special-case "factory shower," "solar trickle," or
+        renderer does not have a special-case "factory sparkle," "solar trickle," or
         "converter glow" that lives outside the pylon rig. One channel in the sim, one rig in the
         renderer, every resource movement.
       </p>
@@ -2155,15 +2155,12 @@
           keep the player&rsquo;s read of "what is flowing where" decomposable.
         </li>
         <li>
-          A pylon&rsquo;s vertical <em>resource bar shower</em> height is the absolute magnitude
-          of the current rate of change in that resource lane, on the same scale whether the
-          pylon is producing or consuming. The bar communicates "how much per second is moving
-          through this point right now."
-        </li>
-        <li>
-          A pylon&rsquo;s direction is communicated by its <em>pylon resource balls</em>: discrete
-          coloured spheres that visibly flow either INTO the pylon head or OUT of it, at a rate
-          tied to the same number that drives the shower height.
+          A pylon&rsquo;s flow is communicated entirely by its <em>pylon resource balls</em>:
+          discrete coloured spheres that visibly flow either INTO the pylon head or OUT of it. Their
+          <strong>density</strong> &mdash; how many are in flight per second &mdash; encodes the
+          magnitude of the resource rate, and their <strong>direction</strong> encodes which way the
+          resource is moving. There is no separate bar or readout beside them; the moving balls are
+          the whole indicator.
         </li>
         <li>
           A pylon&rsquo;s direction encodes the local physical flow of the resource at the
@@ -2213,13 +2210,11 @@
         accounted for before and after the tip.
       </p>
       <p>
-        Because the moving stream now carries both direction (which way along the tube) and magnitude
-        (how densely the balls flow), <strong>the flowing balls are the resource indicator</strong>;
-        the standalone resource-usage indicators they replace should be retired. The pylon&rsquo;s
-        vertical <em>shower</em> bar survives only as a cheap at-a-glance magnitude cue and as the
-        level-of-detail stand-in when a pylon is too distant, off-screen, or over the particle budget
-        to draw individual balls (see <strong>Scale Target</strong>) &mdash; not as a second,
-        independent readout.
+        Because the moving stream carries both direction (which way along the tube) and magnitude
+        (how densely the balls flow), <strong>the flowing balls are the entire resource
+        indicator</strong>: the standalone resource-usage indicators this replaces are retired, and
+        no separate magnitude bar stands beside them. A pylon either shows its balls in motion or,
+        when nothing is flowing, shows nothing at all.
       </p>
 
       <h3>Who carries which pylons</h3>
@@ -2247,8 +2242,8 @@
           aircraft) &mdash; one energy pylon and one metal pylon, both outbound: balls rise up each
           tube from the pool, leave the tip, and fly onto the build target &mdash; ideally onto the
           sub-piece currently under construction (locomotion, then body, then turrets) as it is built
-          bottom-up, rather than a single undifferentiated volume. Shower heights match the
-          per-resource throughput the builder or factory is actually paying this tick.
+          bottom-up, rather than a single undifferentiated volume. Ball density on each tube matches
+          the per-resource throughput the builder or factory is actually paying this tick.
         </li>
         <li>
           <strong>Resource converter</strong> &mdash; one energy pylon and one metal pylon running
@@ -2302,11 +2297,11 @@
       <p>
         On the renderer side, every pylon is the same rig type configured by resource +
         direction + rate + optional target, driven by the same channel the sim publishes.
-        The pylon mesh, the shower geometry, and the resource-ball emission pipeline are shape-
+        The pylon mesh and the resource-ball emission pipeline are shape-
         and host-agnostic: a building&rsquo;s pylon and a unit-mounted construction-turret pylon
         render through one code path. Production-rate indicators, build-emitter rigs, and
         converter visuals all collapse into this one rig. When a new feature is tempted to add
-        another "shower-like" indicator, the answer is to render it as a pylon, not to invent
+        another resource-flow indicator, the answer is to render it as a pylon, not to invent
         a parallel visual.
       </p>
       <p>
@@ -2562,7 +2557,7 @@
         <li>Keep sight, radar, and detection as sensor capability sources aggregated per player/team. Full sight identifies and also supplies radar-level location, radar-only coverage locates, detectors uncloak, and weapon fire consumes those tiers through explicit turret targeting requirements. Weapon range must not automatically create full vision.</li>
         <li>Keep lock-on acquisition in turret blueprints and targeting kernels, and author lock-on eligibility as a subtractive exclusion object carried by turrets, units, and towers alike. Rockets inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; eligibility is <strong>universal by default</strong> &mdash; any living entity with an ID, of any kind, including locomotion subentities and travelling shots &mdash; and narrowed only by subtraction: level-0 friend/enemy and entity-family exclusions (<code>units</code>, <code>towers</code>, <code>buildings</code>, <code>turrets</code>, <code>locomotions</code>, <code>shots</code>), then level-1 named blueprint exclusions. Excluding everything but one family is how a turret specializes &mdash; point-defense keeps only <code>shots</code>, a crippler keeps only <code>locomotions</code>, a disarmer keeps only <code>turrets</code>.</li>
         <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. The <code>turretShieldPanel</code>&rsquo;s flat panels and the <code>turretShieldSphere</code>&rsquo;s sphere are the exact same material &mdash; they differ only in geometry.</li>
-        <li>Route every resource movement &mdash; production, consumption, construction payment, conversion, repair drain, future ammo costs &mdash; through one shared pylon abstraction in both simulation and renderer. One typed channel publishes <code>(resource, amount, direction, source, optional target)</code>; one rig renders magnitude as shower height and direction as resource balls flowing through a conduit. A pylon is a tube between a <em>root</em> (the pool tap) and a <em>tip</em> (the world); balls down the tube mean gaining, up the tube mean spending, and the tip conserves &mdash; every ball up the tube exits the tip, every ball into the tip goes down the tube, and balls are spawned or sunk only at the root and the world point, never at the tip. Producers source balls at the physical world point (deposit, sun, upwind) and run them down the tube; construction turrets run balls up the tube and out the tip onto the build target; the converter joins its two tips with a taxed arc that recolors energy into metal in flight, the unconverted fraction visibly dispersing. The flowing balls are the indicator; standalone usage readouts are retired and the shower bar survives only as a magnitude cue and LOD fallback. No parallel resource paths in the sim, no special-case &ldquo;production trickle&rdquo; or &ldquo;converter visual&rdquo; in the renderer.</li>
+        <li>Route every resource movement &mdash; production, consumption, construction payment, conversion, repair drain, future ammo costs &mdash; through one shared pylon abstraction in both simulation and renderer. One typed channel publishes <code>(resource, amount, direction, source, optional target)</code>; one rig renders the flow as resource balls travelling through a conduit, their density showing magnitude and their travel direction showing inbound or outbound. A pylon is a tube between a <em>root</em> (the pool tap) and a <em>tip</em> (the world); balls down the tube mean gaining, up the tube mean spending, and the tip conserves &mdash; every ball up the tube exits the tip, every ball into the tip goes down the tube, and balls are spawned or sunk only at the root and the world point, never at the tip. Producers source balls at the physical world point (deposit, sun, upwind) and run them down the tube; construction turrets run balls up the tube and out the tip onto the build target; the converter joins its two tips with a taxed arc that recolors energy into metal in flight, the unconverted fraction visibly dispersing. The flowing balls are the sole indicator; standalone usage readouts and any separate magnitude bar are retired. No parallel resource paths in the sim, no special-case &ldquo;production trickle&rdquo; or &ldquo;converter visual&rdquo; in the renderer.</li>
         <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>
         <li>When a replacement lands &mdash; a WASM kernel for a JS loop, owned shaders for a framework helper, a raw renderer path for a Three.js abstraction, a removed library &mdash; delete the predecessor in the same change. Migration is not done until the old path is gone from the tree.</li>
         <li>Prefer explicit <code>null</code> (or numeric sentinels) over optional properties and optional chaining in our own code; treat every file you touch as an opportunity to migrate fields off <code>?:</code> and <code>?.</code>.</li>

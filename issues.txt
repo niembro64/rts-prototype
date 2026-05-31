@@ -202,8 +202,8 @@ visual work, not regressions, and rode the existing single ResourceMovement chan
 (resource balls stay renderer-only / off-wire / anonymous — philosophy ~1747).
 A45-A49 have since been resolved by adding root/head conduit paths, physical
 producer source points for solar, wind, and extractor pylons, converter taxed
-cross-tip arcs with in-flight recolor, pylon-particle LOD/budget gating, and
-repair/reclaim flows through builder-mounted resource pylons.
+cross-tip arcs with in-flight recolor, and repair/reclaim flows through
+builder-mounted resource pylons.
 File:line refs were correct at audit time; re-verify before editing.
 
 ================================================================================
