@@ -56,6 +56,10 @@ export class ConstructionVisualController3D {
   private _factorySprayTargetWorld = new THREE.Vector3();
   private _factorySprayWaypointWorld = new THREE.Vector3();
   private _factorySprayRootWorld = new THREE.Vector3();
+  private _converterSourceRootWorld = new THREE.Vector3();
+  private _converterSourceTipWorld = new THREE.Vector3();
+  private _converterSinkTipWorld = new THREE.Vector3();
+  private _converterSinkRootWorld = new THREE.Vector3();
   private _factoryBuildSpot: FactoryBuildSpot = {
     x: 0,
     y: 0,
@@ -370,6 +374,109 @@ export class ConstructionVisualController3D {
     spray.colorRGB = RESOURCE_SPRAY_COLOR_BY_RESOURCE[pylon.resource];
   }
 
+  emitConverterResourceTransfer(
+    energyPylon: ResourcePylonRig,
+    metalPylon: ResourcePylonRig,
+    host: Entity,
+    group: THREE.Group,
+    energySignedRate: number,
+    metalSignedRate: number,
+    visible: boolean,
+    emitBalls: boolean,
+  ): void {
+    if (!visible || !emitBalls || !host.ownership) return;
+
+    let sourcePylon: ResourcePylonRig;
+    let sinkPylon: ResourcePylonRig;
+    if (energySignedRate > 0 && metalSignedRate < 0) {
+      sourcePylon = energyPylon;
+      sinkPylon = metalPylon;
+    } else if (metalSignedRate > 0 && energySignedRate < 0) {
+      sourcePylon = metalPylon;
+      sinkPylon = energyPylon;
+    } else {
+      return;
+    }
+
+    const sourceRate = Math.max(0, sourcePylon.displaySmoothedRate);
+    const sinkRate = Math.max(0, sinkPylon.displaySmoothedRate);
+    const crossingRate = Math.min(sourceRate, sinkRate);
+    const taxRate = Math.max(0, sourceRate - crossingRate);
+
+    group.updateWorldMatrix(true, false);
+    this.writePylonWorldEndpoints(
+      sourcePylon,
+      group,
+      this._converterSourceRootWorld,
+      this._converterSourceTipWorld,
+    );
+    this.writePylonWorldEndpoints(
+      sinkPylon,
+      group,
+      this._converterSinkRootWorld,
+      this._converterSinkTipWorld,
+    );
+
+    if (crossingRate >= 0.05) {
+      const spray = this.acquireFactorySprayTarget();
+      spray.source.id = host.id;
+      spray.source.playerId = host.ownership.playerId;
+      spray.source.pos.x = this._converterSourceRootWorld.x;
+      spray.source.pos.y = this._converterSourceRootWorld.z;
+      spray.source.z = this._converterSourceRootWorld.y;
+      spray.target.id = host.id;
+      spray.target.pos.x = this._converterSinkRootWorld.x;
+      spray.target.pos.y = this._converterSinkRootWorld.z;
+      spray.target.z = this._converterSinkRootWorld.y;
+      spray.target.dim = undefined;
+      spray.target.radius = 0;
+      spray.waypoint = {
+        pos: { x: this._converterSourceTipWorld.x, y: this._converterSourceTipWorld.z },
+        z: this._converterSourceTipWorld.y,
+      };
+      spray.waypoint2 = {
+        pos: { x: this._converterSinkTipWorld.x, y: this._converterSinkTipWorld.z },
+        z: this._converterSinkTipWorld.y,
+      };
+      spray.type = 'build';
+      spray.intensity = Math.min(1, crossingRate);
+      spray.channel = 20 + sourcePylon.channel * 2 + sinkPylon.channel;
+      spray.flow = 'direct';
+      spray.flowRadius = 1;
+      spray.speed = Math.max(sourcePylon.sprayTravelSpeed, sinkPylon.sprayTravelSpeed);
+      spray.particleRadius = Math.max(sourcePylon.sprayParticleRadius, sinkPylon.sprayParticleRadius);
+      spray.colorRGB = RESOURCE_SPRAY_COLOR_BY_RESOURCE[sourcePylon.resource];
+      spray.endColorRGB = RESOURCE_SPRAY_COLOR_BY_RESOURCE[sinkPylon.resource];
+    }
+
+    if (taxRate >= 0.05) {
+      const spray = this.acquireFactorySprayTarget();
+      spray.source.id = host.id;
+      spray.source.playerId = host.ownership.playerId;
+      spray.source.pos.x = this._converterSourceRootWorld.x;
+      spray.source.pos.y = this._converterSourceRootWorld.z;
+      spray.source.z = this._converterSourceRootWorld.y;
+      spray.target.id = host.id;
+      spray.target.pos.x = this._converterSourceTipWorld.x;
+      spray.target.pos.y = this._converterSourceTipWorld.z;
+      spray.target.z = this._converterSourceTipWorld.y;
+      spray.target.dim = undefined;
+      spray.target.radius = sourcePylon.flowRadius;
+      spray.waypoint = {
+        pos: { x: this._converterSourceTipWorld.x, y: this._converterSourceTipWorld.z },
+        z: this._converterSourceTipWorld.y,
+      };
+      spray.type = 'build';
+      spray.intensity = Math.min(1, taxRate);
+      spray.channel = 30 + sourcePylon.channel;
+      spray.flow = 'randomOutbound';
+      spray.flowRadius = sourcePylon.flowRadius;
+      spray.speed = sourcePylon.sprayTravelSpeed;
+      spray.particleRadius = sourcePylon.sprayParticleRadius;
+      spray.colorRGB = RESOURCE_SPRAY_COLOR_BY_RESOURCE[sourcePylon.resource];
+    }
+  }
+
   private acquireFactorySprayTarget(): SprayTarget {
     let target = this.factorySprayTargetPool.pop();
     if (!target) {
@@ -384,7 +491,9 @@ export class ConstructionVisualController3D {
       };
     }
     target.colorRGB = undefined;
+    target.endColorRGB = undefined;
     target.waypoint = undefined;
+    target.waypoint2 = undefined;
     target.speed = undefined;
     target.particleRadius = undefined;
     target.channel = 0;
@@ -392,6 +501,16 @@ export class ConstructionVisualController3D {
     target.flowRadius = 0;
     this.factorySprayTargets.push(target);
     return target;
+  }
+
+  private writePylonWorldEndpoints(
+    pylon: ResourcePylonRig,
+    group: THREE.Group,
+    rootOut: THREE.Vector3,
+    tipOut: THREE.Vector3,
+  ): void {
+    rootOut.copy(pylon.rootLocal).applyMatrix4(group.matrixWorld);
+    tipOut.copy(pylon.topLocal).applyMatrix4(group.matrixWorld);
   }
 
   private updateConstructionTowerSpin(

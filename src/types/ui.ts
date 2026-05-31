@@ -233,6 +233,10 @@ export type SprayTarget = {
    *  this as their conserved tip: particles travel root/world -> tip
    *  -> world/root instead of spawning or dying at the pylon head. */
   waypoint?: { pos: Vec2; z?: number };
+  /** Optional second waypoint for conserved three-leg pylon streams.
+   *  Converter arcs use this as the receiving pylon tip: particles can
+   *  travel source-root -> source-tip -> target-tip -> target-root. */
+  waypoint2?: { pos: Vec2; z?: number };
   type: 'build' | 'heal';
   intensity: number;
   /** Separates multiple streams between the same entity pair, e.g.
@@ -256,6 +260,9 @@ export type SprayTarget = {
    *  build sprays so each pylon's stream reads as its resource
    *  (energy / metal) regardless of team. */
   colorRGB?: { r: number; g: number; b: number };
+  /** Optional end color. When present, particles lerp from colorRGB
+   *  (or the resolved source color) to this value in flight. */
+  endColorRGB?: { r: number; g: number; b: number };
 };
 
 // Commander abilities result

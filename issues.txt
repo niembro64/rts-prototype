@@ -200,42 +200,10 @@ are spawned/sunk only at the root and the world point, never at the tip. These
 items describe where the renderer does not yet meet that model; they are forward
 visual work, not regressions, and ride the existing single ResourceMovement channel
 (resource balls stay renderer-only / off-wire / anonymous — philosophy ~1747).
-A45-A46 have since been resolved by adding root/head conduit paths and physical
-producer source points for solar, wind, and extractor pylons.
+A45-A48 have since been resolved by adding root/head conduit paths, physical
+producer source points for solar, wind, and extractor pylons, converter taxed
+cross-tip arcs with in-flight recolor, and pylon-particle LOD/budget gating.
 File:line refs were correct at audit time; re-verify before editing.
-
-A47. [MEDIUM] The converter is two independent pylons with no cross-tip taxed arc, no mid-air recolor,
-    and no visible tax. Its inbound/outbound senses have been corrected to tip-relative, but the
-    converter still lacks the required tip-to-tip arc.
-    src/game/render3d/BuildingAnimationController3D.ts (converter block updates energyPylon/metalPylon
-    independently via updateAmbientResourcePylon ~359-390; applyResourcePylonDirection ~371-372),
-    src/game/render3d/SprayRenderer3D.ts (one fixed per-particle color pR/pG/pB ~450-452/534-536 — no
-    mid-flight recolor), getBuildingConfig('buildingResourceConverter').conversionRate. —
-    RULE: new "The converter is two tubes and a taxed arc" — energy pylon outbound (up its tube, out its
-    tip), metal pylon inbound (in at its tip, down its tube); only the after-tax conversion fraction arcs
-    from the energy tip to the metal tip, recoloring energy->metal in flight, and the remainder disperses
-    (the tax made visible); the arc obeys tip conservation. —
-    PROBLEM: the two converter pylons emit independent balls with no arc between the tips, no
-    energy->metal recolor, and the unconverted fraction is not shown. The resource-movement signs now
-    drive the energy tip outbound and the metal tip inbound for energy->metal conversion, but there is
-    still no conserved cross-tip transfer path or visible tax. —
-    FIX: emit energy balls up+out the energy tip; route the efficiency fraction as a recoloring arc to the
-    metal tip (per-particle start/end color lerp), then down the metal tube; disperse the remainder so the
-    tax is visible; size the crossing fraction to the real conversion ratio. Confirm energy=outbound /
-    metal=inbound per the tip model. (Depends on A45 tube traversal + a new per-particle recolor capability.)
-
-A48. [MEDIUM] No level-of-detail / particle-budget policy for pylon ball flows at the 5,000-unit target.
-    src/game/render3d/SprayRenderer3D.ts (global MAX_PARTICLES cap ~65; per-spray cap; one shared instanced
-    pool), the emit sites in ConstructionVisualController3D.ts / BuildingAnimationController3D.ts. —
-    RULE: "Scale Target" + "A pylon is a conduit" — balls are the primary indicator but must degrade to the
-    cheap shower bar when a pylon is distant, off-screen, or over budget; thousands of producers/consumers
-    must not each emit a full stream. —
-    PROBLEM: every active producer/consumer emits balls unconditionally up to the global cap; there is no
-    camera-distance / on-screen / budget gating, and the shower bar is not yet positioned as the explicit
-    fallback. At scale this is unbounded particle pressure with silent global-cap truncation. —
-    FIX: gate ball emission by camera distance + on-screen + a shared global budget; past the threshold fall
-    back to the shower bar (magnitude only); log/observe truncation rather than silently dropping streams.
-    Keep the one shared instanced pool.
 
 A49. [LOW] Not every ResourceMovement reason surfaces as a pylon ball flow (reclaim / repair / ammo-on-fire /
     upkeep). (verify before acting)

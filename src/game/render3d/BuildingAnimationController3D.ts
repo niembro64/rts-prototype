@@ -406,7 +406,7 @@ export class BuildingAnimationController3D {
           resourcePylonRateFraction(energyRate, invBase),
           rateAlpha,
           detailsReady,
-          detailsReady,
+          false,
         );
         this.constructionVisuals.updateAmbientResourcePylon(
           rig.metalPylon,
@@ -414,6 +414,16 @@ export class BuildingAnimationController3D {
           mesh.group,
           resourcePylonRateFraction(metalRate, invBase),
           rateAlpha,
+          detailsReady,
+          false,
+        );
+        this.constructionVisuals.emitConverterResourceTransfer(
+          rig.energyPylon,
+          rig.metalPylon,
+          entity,
+          mesh.group,
+          energyRate,
+          metalRate,
           detailsReady,
           detailsReady,
         );

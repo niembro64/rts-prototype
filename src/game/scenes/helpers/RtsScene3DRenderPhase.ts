@@ -93,6 +93,11 @@ export class RtsScene3DRenderPhase {
   private readonly smokeTrailProjectilesScratch: Entity[] = [];
   private readonly frustum = new THREE.Frustum();
   private readonly frustumMatrix = new THREE.Matrix4();
+  private readonly sprayContext = {
+    camera: undefined as THREE.Camera | undefined,
+    frustum: undefined as THREE.Frustum | undefined,
+    maxBallDistance: 0,
+  };
   /** Camera-distance fade shared by HP/resource bars + name labels so
    *  both fade + cull together as the camera zooms out (BAR style). */
   private readonly hudFade = new HudFade();
@@ -268,17 +273,26 @@ export class RtsScene3DRenderPhase {
       this.groundPrintAccumMs = 0;
     }
 
+    const cam = this.threeApp.camera;
+    this.frustumMatrix.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    this.frustum.setFromProjectionMatrix(this.frustumMatrix);
+    const effectFrustum = this.renderScope.getMode() === 'all' ? undefined : this.frustum;
+    const farRefDistance = this.threeApp.orbit.getFarReferenceDistance();
     this.sprayAccumMs += effectDtMs;
     if (updateEffectsThisFrame) {
       const commanderSprays = this.clientViewState.getSprayTargets();
       const factorySprays = entityRenderer.getFactorySprayTargets();
+      const sprayContext = this.sprayContext;
+      sprayContext.camera = cam;
+      sprayContext.frustum = effectFrustum;
+      sprayContext.maxBallDistance = farRefDistance * 0.7;
       if (factorySprays.length > 0) {
         this.combinedSprayTargets.length = 0;
         for (const spray of commanderSprays) this.combinedSprayTargets.push(spray);
         for (const spray of factorySprays) this.combinedSprayTargets.push(spray);
-        sprayRenderer.update(this.combinedSprayTargets, this.sprayAccumMs);
+        sprayRenderer.update(this.combinedSprayTargets, this.sprayAccumMs, sprayContext);
       } else {
-        sprayRenderer.update(commanderSprays, this.sprayAccumMs);
+        sprayRenderer.update(commanderSprays, this.sprayAccumMs, sprayContext);
       }
       this.sprayAccumMs = 0;
     }
@@ -305,15 +319,11 @@ export class RtsScene3DRenderPhase {
       lineDragRenderer.update(inputManager.getLineDragState());
     }
 
-    const cam = this.threeApp.camera;
-    this.frustumMatrix.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
-    this.frustum.setFromProjectionMatrix(this.frustumMatrix);
     const hudFrustum = this.renderScope.getMode() === 'all' ? undefined : this.frustum;
     // Refresh the HUD fade from the live camera; the fade window scales
     // with the orbit's map-scaled far reference distance so it tracks map
     // size. (Zoom-out is unbounded; HUD elements are simply fully faded by
     // the time the camera reaches the far reference.)
-    const farRefDistance = this.threeApp.orbit.getFarReferenceDistance();
     this.hudFade.update(
       cam,
       farRefDistance * ENTITY_HUD_FADE_START_DISTANCE_FRAC,

@@ -63,6 +63,12 @@ const MAX_PARTICLES_PER_SPRAY = 42;
  *  map. With MAX_PARTICLES_PER_SPRAY=42 this fits ~36 concurrent
  *  sprays, well above any realistic commander / fabricator count. */
 const MAX_PARTICLES = 1536;
+const MAX_BUILD_SPRAY_EMITTERS_PER_FRAME = Math.max(
+  1,
+  Math.floor(MAX_PARTICLES / MAX_PARTICLES_PER_SPRAY),
+);
+const SPRAY_LOD_MIN_DISTANCE = 700;
+const SPRAY_LOD_LOG_INTERVAL_MS = 5000;
 
 /** Heal-spray color — matches the 2D convention where heal sprays
  *  don't take the caster's team color. Constant white. */
@@ -93,6 +99,14 @@ void main() {
 }
 `;
 
+export type SprayRenderer3DUpdateContext = {
+  camera?: THREE.Camera;
+  frustum?: THREE.Frustum;
+  maxBallDistance?: number;
+};
+
+type SprayLodDecision = 'emit' | 'culled' | 'budget';
+
 export class SprayRenderer3D {
   private root: THREE.Group;
   // Shared sphere geometry for all particles — cheap tessellation since
@@ -120,6 +134,10 @@ export class SprayRenderer3D {
   private pMidY = new Float32Array(MAX_PARTICLES);
   private pMidZ = new Float32Array(MAX_PARTICLES);
   private pMidSplit = new Float32Array(MAX_PARTICLES);
+  private pMid2X = new Float32Array(MAX_PARTICLES);
+  private pMid2Y = new Float32Array(MAX_PARTICLES);
+  private pMid2Z = new Float32Array(MAX_PARTICLES);
+  private pMid2Split = new Float32Array(MAX_PARTICLES);
   private pAge = new Float32Array(MAX_PARTICLES);
   private pLife = new Float32Array(MAX_PARTICLES);
   private pSize = new Float32Array(MAX_PARTICLES);
@@ -138,6 +156,9 @@ export class SprayRenderer3D {
   private pR = new Float32Array(MAX_PARTICLES);
   private pG = new Float32Array(MAX_PARTICLES);
   private pB = new Float32Array(MAX_PARTICLES);
+  private pEndR = new Float32Array(MAX_PARTICLES);
+  private pEndG = new Float32Array(MAX_PARTICLES);
+  private pEndB = new Float32Array(MAX_PARTICLES);
   private spraySpawnBudget = new Map<string, number>();
   private activeSprayKeys = new Set<string>();
   private rngState = 0x9e3779b9;
@@ -147,6 +168,8 @@ export class SprayRenderer3D {
   // Scratch matrix reused across the per-particle write loop —
   // particles are spheres so the rotation component is identity.
   private _scratchMat = new THREE.Matrix4();
+  private _lodSphere = new THREE.Sphere(new THREE.Vector3(), 1);
+  private nextLodLogMs = 0;
   // Scratch Color for per-team color resolution (cached lookup
   // across frames via `_teamColorCache` — getPlayerPrimaryColor
   // returns a hex int, we unpack to RGB once per pid). Keeps the
@@ -187,7 +210,11 @@ export class SprayRenderer3D {
 
   /** Per-frame update. `dtMs` advances the wobble phase so frame rate
    *  doesn't affect the animation speed. */
-  update(sprayTargets: readonly SprayTarget[], dtMs: number): void {
+  update(
+    sprayTargets: readonly SprayTarget[],
+    dtMs: number,
+    context: SprayRenderer3DUpdateContext = {},
+  ): void {
     if (
       sprayTargets.length === 0
       && this.particleCount === 0
@@ -201,9 +228,25 @@ export class SprayRenderer3D {
 
     this.advanceParticles(dtSec);
     this.activeSprayKeys.clear();
+    let activeBuildSprayEmitters = 0;
+    let lodCulledSprays = 0;
+    let lodBudgetSprays = 0;
+    let poolDroppedSpawns = 0;
 
     for (const spray of sprayTargets) {
       if (spray.intensity <= 0) continue;
+      if (spray.type === 'build') {
+        const lod = this.buildSprayLodDecision(spray, context, activeBuildSprayEmitters);
+        if (lod === 'culled') {
+          lodCulledSprays++;
+          continue;
+        }
+        if (lod === 'budget') {
+          lodBudgetSprays++;
+          continue;
+        }
+        activeBuildSprayEmitters++;
+      }
       const scaledIntensity = Math.min(1, spray.intensity);
       // Build sprays are intentionally denser than heal sprays because
       // they represent a construction emitter painting a footprint, not
@@ -252,7 +295,10 @@ export class SprayRenderer3D {
       this.spraySpawnBudget.set(key, budget);
 
       for (let i = 0; i < spawnCount; i++) {
-        this.emitParticle(spray, scaledIntensity, r, g, b);
+        if (!this.emitParticle(spray, scaledIntensity, r, g, b) && this.particleCount >= MAX_PARTICLES) {
+          poolDroppedSpawns += spawnCount - i;
+          break;
+        }
       }
     }
 
@@ -276,6 +322,103 @@ export class SprayRenderer3D {
       this.colorAttr.addUpdateRange(0, visibleCount * 3);
       this.colorAttr.needsUpdate = true;
     }
+    this.reportParticleLod(lodCulledSprays, lodBudgetSprays, poolDroppedSpawns);
+  }
+
+  private buildSprayLodDecision(
+    spray: SprayTarget,
+    context: SprayRenderer3DUpdateContext,
+    activeBuildSprayEmitters: number,
+  ): SprayLodDecision {
+    if (activeBuildSprayEmitters >= MAX_BUILD_SPRAY_EMITTERS_PER_FRAME) {
+      return 'budget';
+    }
+    if (!context.camera && !context.frustum) return 'emit';
+
+    const bounds = this.writeSprayBounds(spray);
+    if (context.frustum && !context.frustum.intersectsSphere(bounds)) {
+      return 'culled';
+    }
+    if (context.camera) {
+      const maxDistance = context.maxBallDistance !== undefined
+        ? Math.max(SPRAY_LOD_MIN_DISTANCE, context.maxBallDistance)
+        : Infinity;
+      if (Number.isFinite(maxDistance)) {
+        const distance = context.camera.position.distanceTo(bounds.center) - bounds.radius;
+        if (distance > maxDistance) return 'culled';
+      }
+    }
+    return 'emit';
+  }
+
+  private writeSprayBounds(spray: SprayTarget): THREE.Sphere {
+    let minX = spray.source.pos.x;
+    let maxX = minX;
+    let minY = spray.source.z ?? TRAIL_Y;
+    let maxY = minY;
+    let minZ = spray.source.pos.y;
+    let maxZ = minZ;
+
+    let x = spray.target.pos.x;
+    let y = spray.target.z ?? TRAIL_Y;
+    let z = spray.target.pos.y;
+    if (x < minX) minX = x;
+    else if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    else if (y > maxY) maxY = y;
+    if (z < minZ) minZ = z;
+    else if (z > maxZ) maxZ = z;
+
+    const waypoint = spray.waypoint;
+    if (waypoint) {
+      x = waypoint.pos.x;
+      y = waypoint.z ?? TRAIL_Y;
+      z = waypoint.pos.y;
+      if (x < minX) minX = x;
+      else if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      else if (y > maxY) maxY = y;
+      if (z < minZ) minZ = z;
+      else if (z > maxZ) maxZ = z;
+    }
+    const waypoint2 = spray.waypoint2;
+    if (waypoint2) {
+      x = waypoint2.pos.x;
+      y = waypoint2.z ?? TRAIL_Y;
+      z = waypoint2.pos.y;
+      if (x < minX) minX = x;
+      else if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      else if (y > maxY) maxY = y;
+      if (z < minZ) minZ = z;
+      else if (z > maxZ) maxZ = z;
+    }
+
+    const center = this._lodSphere.center;
+    center.set(
+      (minX + maxX) * 0.5,
+      (minY + maxY) * 0.5,
+      (minZ + maxZ) * 0.5,
+    );
+    const dx = maxX - minX;
+    const dy = maxY - minY;
+    const dz = maxZ - minZ;
+    this._lodSphere.radius = Math.max(
+      8,
+      Math.hypot(dx, dy, dz) * 0.5 + Math.max(spray.flowRadius, spray.target.radius ?? 0),
+    );
+    return this._lodSphere;
+  }
+
+  private reportParticleLod(culled: number, budget: number, poolDrops: number): void {
+    const total = culled + budget + poolDrops;
+    if (total <= 0) return;
+    const now = performance.now();
+    if (now < this.nextLodLogMs) return;
+    this.nextLodLogMs = now + SPRAY_LOD_LOG_INTERVAL_MS;
+    console.debug(
+      `[SprayRenderer3D] pylon particle LOD skipped culled=${culled} budget=${budget} poolDrops=${poolDrops}; shower bars remain as fallback`,
+    );
   }
 
   private sprayKey(spray: SprayTarget): string {
@@ -323,10 +466,26 @@ export class SprayRenderer3D {
     const tx = spray.target.pos.x;
     const ty = spray.target.z ?? TRAIL_Y;
     const tz = spray.target.pos.y;
-    if (spray.waypoint) {
-      const mx = spray.waypoint.pos.x;
-      const my = spray.waypoint.z ?? TRAIL_Y;
-      const mz = spray.waypoint.pos.y;
+    const wp1 = spray.waypoint;
+    const wp2 = spray.waypoint2;
+    if (wp1 && wp2) {
+      const m1x = wp1.pos.x;
+      const m1y = wp1.z ?? TRAIL_Y;
+      const m1z = wp1.pos.y;
+      const m2x = wp2.pos.x;
+      const m2y = wp2.z ?? TRAIL_Y;
+      const m2z = wp2.pos.y;
+      return Math.max(
+        1,
+        Math.hypot(m1x - sx, m1y - sy, m1z - sz) +
+          Math.hypot(m2x - m1x, m2y - m1y, m2z - m1z) +
+          Math.hypot(tx - m2x, ty - m2y, tz - m2z),
+      );
+    }
+    if (wp1) {
+      const mx = wp1.pos.x;
+      const my = wp1.z ?? TRAIL_Y;
+      const mz = wp1.pos.y;
       return Math.max(
         1,
         Math.hypot(mx - sx, my - sy, mz - sz) +
@@ -354,8 +513,8 @@ export class SprayRenderer3D {
     r: number,
     g: number,
     b: number,
-  ): void {
-    if (this.particleCount >= MAX_PARTICLES) return;
+  ): boolean {
+    if (this.particleCount >= MAX_PARTICLES) return false;
 
     let sx = spray.source.pos.x;
     let sy = spray.source.z ?? TRAIL_Y;
@@ -367,6 +526,10 @@ export class SprayRenderer3D {
     let midY = spray.waypoint?.z ?? 0;
     let midZ = spray.waypoint?.pos.y ?? 0;
     let hasMid = spray.waypoint !== undefined;
+    let mid2X = spray.waypoint2?.pos.x ?? 0;
+    let mid2Y = spray.waypoint2?.z ?? 0;
+    let mid2Z = spray.waypoint2?.pos.y ?? 0;
+    let hasMid2 = spray.waypoint2 !== undefined;
     if (spray.flow !== 'direct') {
       const radius = Math.max(1, spray.flowRadius);
       const azimuth = this.random() * Math.PI * 2;
@@ -389,6 +552,7 @@ export class SprayRenderer3D {
         midY = ty;
         midZ = tz;
         hasMid = true;
+        hasMid2 = false;
         tx = px;
         ty = py;
         tz = pz;
@@ -449,13 +613,23 @@ export class SprayRenderer3D {
         : sphereRadius * 0.25;
     let len = Math.hypot(endX - sx, endY - sy, endZ - sz);
     let split = 0;
-    if (hasMid) {
+    let split2 = 0;
+    if (hasMid && hasMid2) {
+      const lenA = Math.hypot(midX - sx, midY - sy, midZ - sz);
+      const lenB = Math.hypot(mid2X - midX, mid2Y - midY, mid2Z - midZ);
+      const lenC = Math.hypot(endX - mid2X, endY - mid2Y, endZ - mid2Z);
+      len = lenA + lenB + lenC;
+      if (len > 1e-3) {
+        split = lenA / len;
+        split2 = (lenA + lenB) / len;
+      }
+    } else if (hasMid) {
       const lenA = Math.hypot(midX - sx, midY - sy, midZ - sz);
       const lenB = Math.hypot(endX - midX, endY - midY, endZ - midZ);
       len = lenA + lenB;
       split = len > 1e-3 ? lenA / len : 0;
     }
-    if (len < 1e-3) return;
+    if (len < 1e-3) return false;
 
     const idx = this.particleCount++;
     const life = this.flightTimeForDistance(len, spray) * (0.86 + this.random() * 0.28);
@@ -469,6 +643,12 @@ export class SprayRenderer3D {
     this.pMidY[idx] = midY;
     this.pMidZ[idx] = midZ;
     this.pMidSplit[idx] = hasMid ? Math.max(0.001, Math.min(0.999, split)) : 0;
+    this.pMid2X[idx] = mid2X;
+    this.pMid2Y[idx] = mid2Y;
+    this.pMid2Z[idx] = mid2Z;
+    this.pMid2Split[idx] = hasMid && hasMid2
+      ? Math.max(this.pMidSplit[idx] + 0.001, Math.min(0.999, split2))
+      : 0;
     this.pAge[idx] = 0;
     this.pLife[idx] = life;
     if (spray.type === 'build') {
@@ -499,6 +679,10 @@ export class SprayRenderer3D {
     this.pR[idx] = r;
     this.pG[idx] = g;
     this.pB[idx] = b;
+    this.pEndR[idx] = spray.endColorRGB?.r ?? r;
+    this.pEndG[idx] = spray.endColorRGB?.g ?? g;
+    this.pEndB[idx] = spray.endColorRGB?.b ?? b;
+    return true;
   }
 
   private advanceParticles(dtSec: number): void {
@@ -525,6 +709,10 @@ export class SprayRenderer3D {
       this.pMidY[index] = this.pMidY[last];
       this.pMidZ[index] = this.pMidZ[last];
       this.pMidSplit[index] = this.pMidSplit[last];
+      this.pMid2X[index] = this.pMid2X[last];
+      this.pMid2Y[index] = this.pMid2Y[last];
+      this.pMid2Z[index] = this.pMid2Z[last];
+      this.pMid2Split[index] = this.pMid2Split[last];
       this.pAge[index] = this.pAge[last];
       this.pLife[index] = this.pLife[last];
       this.pSize[index] = this.pSize[last];
@@ -536,6 +724,9 @@ export class SprayRenderer3D {
       this.pR[index] = this.pR[last];
       this.pG[index] = this.pG[last];
       this.pB[index] = this.pB[last];
+      this.pEndR[index] = this.pEndR[last];
+      this.pEndG[index] = this.pEndG[last];
+      this.pEndB[index] = this.pEndB[last];
     }
     this.particleCount = last;
   }
@@ -557,7 +748,28 @@ export class SprayRenderer3D {
       let segEndZ = this.pEndZ[i];
       let segmentPhase = phase;
       const split = this.pMidSplit[i];
-      if (split > 0) {
+      const split2 = this.pMid2Split[i];
+      if (split > 0 && split2 > split) {
+        if (phase < split) {
+          segEndX = this.pMidX[i];
+          segEndY = this.pMidY[i];
+          segEndZ = this.pMidZ[i];
+          segmentPhase = phase / split;
+        } else if (phase < split2) {
+          segStartX = this.pMidX[i];
+          segStartY = this.pMidY[i];
+          segStartZ = this.pMidZ[i];
+          segEndX = this.pMid2X[i];
+          segEndY = this.pMid2Y[i];
+          segEndZ = this.pMid2Z[i];
+          segmentPhase = (phase - split) / (split2 - split);
+        } else {
+          segStartX = this.pMid2X[i];
+          segStartY = this.pMid2Y[i];
+          segStartZ = this.pMid2Z[i];
+          segmentPhase = (phase - split2) / (1 - split2);
+        }
+      } else if (split > 0) {
         if (phase < split) {
           segEndX = this.pMidX[i];
           segEndY = this.pMidY[i];
@@ -606,9 +818,16 @@ export class SprayRenderer3D {
       this._scratchMat.makeScale(size, size, size);
       this._scratchMat.setPosition(px, py, pz);
       this.mesh.setMatrixAt(visibleCount, this._scratchMat);
-      this.colorArr[visibleCount * 3] = this.pR[i];
-      this.colorArr[visibleCount * 3 + 1] = this.pG[i];
-      this.colorArr[visibleCount * 3 + 2] = this.pB[i];
+      const colorPhase = split > 0 && split2 > split
+        ? phase <= split
+          ? 0
+          : phase >= split2
+            ? 1
+            : (phase - split) / (split2 - split)
+        : phase;
+      this.colorArr[visibleCount * 3] = this.pR[i] + (this.pEndR[i] - this.pR[i]) * colorPhase;
+      this.colorArr[visibleCount * 3 + 1] = this.pG[i] + (this.pEndG[i] - this.pG[i]) * colorPhase;
+      this.colorArr[visibleCount * 3 + 2] = this.pB[i] + (this.pEndB[i] - this.pB[i]) * colorPhase;
       this.alphaArr[visibleCount] = alpha;
       visibleCount++;
     }
