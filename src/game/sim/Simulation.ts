@@ -173,6 +173,7 @@ const ARRIVAL_CONTROL_RADIUS = 20;
 const ARRIVAL_RESPONSE_TIME_SEC = 0.22;
 const ARRIVAL_MIN_ACCEL = 0.001;
 const ARRIVAL_BATCH_FLAG_LAST_ACTION = 1 << 1;
+const ARRIVAL_COMPLETION_BATCH_FLAG_FLYING = 1 << 2;
 const FLYING_LOITER_INVALID_BODY_SLOT = 0xffffffff;
 const FLYING_LOITER_RADIUS_MULT = 8;
 const FLYING_LOITER_MIN_RADIUS = 80;
@@ -259,6 +260,17 @@ export class Simulation {
   private _arrivalOutYBuf = new Float64Array(0);
   private _arrivalActiveBuf = new Uint8Array(0);
   private _arrivalCount = 0;
+  private _arrivalCompletionEntitiesBuf: Entity[] = [];
+  private _arrivalCompletionActionsBuf: UnitAction[] = [];
+  private _arrivalCompletionSlotsBuf = new Uint32Array(0);
+  private _arrivalCompletionDxBuf = new Float64Array(0);
+  private _arrivalCompletionDyBuf = new Float64Array(0);
+  private _arrivalCompletionFallbackVxBuf = new Float64Array(0);
+  private _arrivalCompletionFallbackVyBuf = new Float64Array(0);
+  private _arrivalCompletionFlagsBuf = new Uint8Array(0);
+  private _arrivalCompletionDistanceBuf = new Float64Array(0);
+  private _arrivalCompletionArrivedBuf = new Uint8Array(0);
+  private _arrivalCompletionCount = 0;
   private _loiterEntitiesBuf: Entity[] = [];
   private _loiterSlotsBuf = new Uint32Array(0);
   private _loiterDxBuf = new Float64Array(0);
@@ -1323,21 +1335,13 @@ export class Simulation {
       // Calculate direction to waypoint
       const dx = currentAction.x - transform.x;
       const dy = currentAction.y - transform.y;
-      const distance = magnitude(dx, dy);
 
-      // Close enough to waypoint - advance to next action once arrival
-      // velocity is also acceptable. Final command points brake before
-      // they complete instead of dropping thrust while still moving fast.
-      if (this.hasArrivedAtAction(entity, currentAction, distance)) {
-        this.advanceAction(entity);
-        unit.stuckTicks = 0;
-        if (unit.actions.length === 0) this.queueFlyingLoiterThrust(entity);
-        continue;
-      }
-
-      this.queueArrivalThrust(entity, currentAction, dx, dy, distance);
+      // Completion classification is batched below so Rust reads the
+      // current body velocity and applies the final-waypoint brake gate.
+      this.queueArrivalCompletion(entity, currentAction, dx, dy);
     }
 
+    this.flushArrivalCompletion();
     this.flushFlyingLoiterThrust(movingUnits);
     this.flushArrivalThrust(movingUnits, dtSec);
 
@@ -1660,6 +1664,107 @@ export class Simulation {
     this._arrivalActiveBuf = new Uint8Array(next);
   }
 
+  private ensureArrivalCompletionCapacity(required: number): void {
+    if (this._arrivalCompletionSlotsBuf.length >= required) return;
+    const next = Math.max(required, this._arrivalCompletionSlotsBuf.length * 2, 128);
+    const slots = new Uint32Array(next);
+    slots.set(this._arrivalCompletionSlotsBuf);
+    this._arrivalCompletionSlotsBuf = slots;
+    const dx = new Float64Array(next);
+    dx.set(this._arrivalCompletionDxBuf);
+    this._arrivalCompletionDxBuf = dx;
+    const dy = new Float64Array(next);
+    dy.set(this._arrivalCompletionDyBuf);
+    this._arrivalCompletionDyBuf = dy;
+    const fallbackVx = new Float64Array(next);
+    fallbackVx.set(this._arrivalCompletionFallbackVxBuf);
+    this._arrivalCompletionFallbackVxBuf = fallbackVx;
+    const fallbackVy = new Float64Array(next);
+    fallbackVy.set(this._arrivalCompletionFallbackVyBuf);
+    this._arrivalCompletionFallbackVyBuf = fallbackVy;
+    const flags = new Uint8Array(next);
+    flags.set(this._arrivalCompletionFlagsBuf);
+    this._arrivalCompletionFlagsBuf = flags;
+    this._arrivalCompletionDistanceBuf = new Float64Array(next);
+    this._arrivalCompletionArrivedBuf = new Uint8Array(next);
+  }
+
+  /** Pack one generic waypoint action for Rust-side completion
+   *  classification. TypeScript still mutates action queues after the
+   *  batch returns; Rust owns the distance/radius/stop-speed decision. */
+  private queueArrivalCompletion(
+    entity: Entity,
+    action: UnitAction,
+    dx: number,
+    dy: number,
+  ): void {
+    const unit = entity.unit;
+    if (!unit) return;
+
+    const index = this._arrivalCompletionCount++;
+    this.ensureArrivalCompletionCapacity(this._arrivalCompletionCount);
+    this._arrivalCompletionEntitiesBuf[index] = entity;
+    this._arrivalCompletionActionsBuf[index] = action;
+    this._arrivalCompletionSlotsBuf[index] =
+      entity.body !== null ? entity.body.physicsBody.slot : FLYING_LOITER_INVALID_BODY_SLOT;
+    this._arrivalCompletionDxBuf[index] = dx;
+    this._arrivalCompletionDyBuf[index] = dy;
+    this._arrivalCompletionFallbackVxBuf[index] = unit.velocityX;
+    this._arrivalCompletionFallbackVyBuf[index] = unit.velocityY;
+    let flags = unit.actions.length <= 1 && action.type !== 'patrol'
+      ? ARRIVAL_BATCH_FLAG_LAST_ACTION
+      : 0;
+    if (unit.locomotion.type === 'flying') flags |= ARRIVAL_COMPLETION_BATCH_FLAG_FLYING;
+    this._arrivalCompletionFlagsBuf[index] = flags;
+  }
+
+  private flushArrivalCompletion(): void {
+    const count = this._arrivalCompletionCount;
+    if (count === 0) return;
+
+    const sim = getSimWasm();
+    if (sim === undefined) {
+      throw new Error('Simulation.flushArrivalCompletion: sim-wasm is not initialized');
+    }
+    sim.arrivalCompletionStepBatch(
+      this._arrivalCompletionSlotsBuf.subarray(0, count),
+      this._arrivalCompletionDxBuf.subarray(0, count),
+      this._arrivalCompletionDyBuf.subarray(0, count),
+      this._arrivalCompletionFallbackVxBuf.subarray(0, count),
+      this._arrivalCompletionFallbackVyBuf.subarray(0, count),
+      this._arrivalCompletionFlagsBuf.subarray(0, count),
+      this._arrivalCompletionDistanceBuf.subarray(0, count),
+      this._arrivalCompletionArrivedBuf.subarray(0, count),
+      ARRIVAL_RADIUS,
+      ARRIVAL_FINAL_RADIUS,
+      ARRIVAL_FINAL_STOP_SPEED,
+    );
+
+    for (let i = 0; i < count; i++) {
+      const entity = this._arrivalCompletionEntitiesBuf[i];
+      const action = this._arrivalCompletionActionsBuf[i];
+      const unit = entity.unit;
+      if (unit) {
+        if (this._arrivalCompletionArrivedBuf[i] !== 0) {
+          this.advanceAction(entity);
+          unit.stuckTicks = 0;
+          if (unit.actions.length === 0) this.queueFlyingLoiterThrust(entity);
+        } else {
+          this.queueArrivalThrust(
+            entity,
+            action,
+            this._arrivalCompletionDxBuf[i],
+            this._arrivalCompletionDyBuf[i],
+            this._arrivalCompletionDistanceBuf[i],
+          );
+        }
+      }
+      this._arrivalCompletionEntitiesBuf[i] = undefined as unknown as Entity;
+      this._arrivalCompletionActionsBuf[i] = undefined as unknown as UnitAction;
+    }
+    this._arrivalCompletionCount = 0;
+  }
+
   /** Pack one action-system arrival request for the WASM batch. The
    *  TypeScript side still owns action queue semantics; Rust owns the
    *  velocity-aware PD controller over the packed candidates. */
@@ -1673,7 +1778,7 @@ export class Simulation {
     const unit = entity.unit;
     const body = entity.body;
     const bodySlot = body !== null ? body.physicsBody.slot : -1;
-    if (!unit || bodySlot < 0 || distance <= 0.0001) {
+    if (!unit || bodySlot < 0 || !Number.isFinite(distance) || distance <= 0.0001) {
       if (unit) {
         unit.thrustDirX = 0;
         unit.thrustDirY = 0;
@@ -1742,24 +1847,6 @@ export class Simulation {
       this._arrivalEntitiesBuf[i] = undefined as unknown as Entity;
     }
     this._arrivalCount = 0;
-  }
-
-  private hasArrivedAtAction(entity: Entity, action: UnitAction, distance: number): boolean {
-    // Speed brake only applies to the very last action in the queue, and
-    // never to patrols (which cycle). Path-expansion midpoints and any
-    // intermediate action in a chained command pass arrival the instant
-    // they're within ARRIVAL_RADIUS.
-    const unit = entity.unit;
-    const isLastAction = !!unit && unit.actions.length <= 1 && action.type !== 'patrol';
-    const arrivalRadius = isLastAction ? ARRIVAL_FINAL_RADIUS : ARRIVAL_RADIUS;
-    if (distance >= arrivalRadius) return false;
-    if (unit !== null && unit.locomotion.type === 'flying') return true;
-    if (!isLastAction) return true;
-    const bodyComponent = entity.body;
-    const body = bodyComponent !== null ? bodyComponent.physicsBody : null;
-    const vx = body !== null ? body.vx : unit !== null ? unit.velocityX : 0;
-    const vy = body !== null ? body.vy : unit !== null ? unit.velocityY : 0;
-    return magnitude(vx, vy) <= ARRIVAL_FINAL_STOP_SPEED;
   }
 
   /** True when any non-visual turret is engaged with a target, so the
@@ -2159,6 +2246,9 @@ export class Simulation {
     this._deathCheckIdsBuf.length = 0;
     this._arrivalCount = 0;
     this._arrivalEntitiesBuf.length = 0;
+    this._arrivalCompletionCount = 0;
+    this._arrivalCompletionEntitiesBuf.length = 0;
+    this._arrivalCompletionActionsBuf.length = 0;
     this._loiterCount = 0;
     this._loiterEntitiesBuf.length = 0;
     this._stuckEntitiesBuf.length = 0;

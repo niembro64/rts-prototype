@@ -35,6 +35,7 @@ import __wbg_init, {
   construction_apply_consumer_spends,
   economy_apply_income_credits,
   economy_apply_converter_transfers,
+  arrival_completion_step_batch,
   flying_loiter_step_batch,
   stuck_replan_step_batch,
   step_unit_motion,
@@ -610,6 +611,19 @@ export interface SimWasm {
     outOutput: Float64Array,
     outConsumedResource: Uint32Array,
     outOutputResource: Uint32Array,
+  ) => number;
+  readonly arrivalCompletionStepBatch: (
+    slots: Uint32Array,
+    dx: Float64Array,
+    dy: Float64Array,
+    fallbackVelocityX: Float64Array,
+    fallbackVelocityY: Float64Array,
+    flags: Uint8Array,
+    outDistance: Float64Array,
+    outArrived: Uint8Array,
+    arrivalRadius: number,
+    finalRadius: number,
+    finalStopSpeed: number,
   ) => number;
   readonly flyingLoiterStepBatch: (
     slots: Uint32Array,
@@ -3209,6 +3223,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         constructionApplyConsumerSpends: construction_apply_consumer_spends,
         economyApplyIncomeCredits: economy_apply_income_credits,
         economyApplyConverterTransfers: economy_apply_converter_transfers,
+        arrivalCompletionStepBatch: arrival_completion_step_batch,
         flyingLoiterStepBatch: flying_loiter_step_batch,
         stuckReplanStepBatch: stuck_replan_step_batch,
         stepUnitMotion: step_unit_motion,

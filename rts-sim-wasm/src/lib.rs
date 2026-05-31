@@ -1889,6 +1889,7 @@ pool_ptr_export!(pool_flags_ptr, flags, u8);
 pool_ptr_export!(pool_entity_id_ptr, entity_id, i32);
 
 const ARRIVAL_FLAG_LAST_ACTION: u8 = 1 << 1;
+const ARRIVAL_COMPLETION_FLAG_FLYING: u8 = 1 << 2;
 
 #[inline]
 fn arrival_horizontal_drive_accel(
@@ -2039,6 +2040,100 @@ pub fn arrival_control_step_batch(
         active_count += active as u32;
     }
     active_count
+}
+
+#[inline]
+fn compute_arrival_completion(
+    dx: f64,
+    dy: f64,
+    body_vx: f64,
+    body_vy: f64,
+    flags: u8,
+    arrival_radius: f64,
+    final_radius: f64,
+    final_stop_speed: f64,
+) -> (f64, u8) {
+    let distance = (dx * dx + dy * dy).sqrt();
+    if !distance.is_finite() {
+        return (distance, 0);
+    }
+
+    let is_last_action = flags & ARRIVAL_FLAG_LAST_ACTION != 0;
+    let radius = if is_last_action {
+        final_radius
+    } else {
+        arrival_radius
+    };
+    if distance >= radius {
+        return (distance, 0);
+    }
+
+    if flags & ARRIVAL_COMPLETION_FLAG_FLYING != 0 || !is_last_action {
+        return (distance, 1);
+    }
+
+    let speed_sq = body_vx * body_vx + body_vy * body_vy;
+    let stop_speed_sq = final_stop_speed * final_stop_speed;
+    if speed_sq <= stop_speed_sq {
+        (distance, 1)
+    } else {
+        (distance, 0)
+    }
+}
+
+#[wasm_bindgen]
+pub fn arrival_completion_step_batch(
+    slots: &[u32],
+    dx: &[f64],
+    dy: &[f64],
+    fallback_velocity_x: &[f64],
+    fallback_velocity_y: &[f64],
+    flags: &[u8],
+    out_distance: &mut [f64],
+    out_arrived: &mut [u8],
+    arrival_radius: f64,
+    final_radius: f64,
+    final_stop_speed: f64,
+) -> u32 {
+    let count = slots.len();
+    debug_assert!(dx.len() >= count);
+    debug_assert!(dy.len() >= count);
+    debug_assert!(fallback_velocity_x.len() >= count);
+    debug_assert!(fallback_velocity_y.len() >= count);
+    debug_assert!(flags.len() >= count);
+    debug_assert!(out_distance.len() >= count);
+    debug_assert!(out_arrived.len() >= count);
+
+    let p = pool();
+    let mut arrived_count = 0_u32;
+    for i in 0..count {
+        let slot = slots[i] as usize;
+        let has_pool_velocity = slot < p.vel_x.len() && p.flags[slot] & BODY_FLAG_OCCUPIED != 0;
+        let velocity_x = if has_pool_velocity {
+            p.vel_x[slot]
+        } else {
+            fallback_velocity_x[i]
+        };
+        let velocity_y = if has_pool_velocity {
+            p.vel_y[slot]
+        } else {
+            fallback_velocity_y[i]
+        };
+        let (distance, arrived) = compute_arrival_completion(
+            dx[i],
+            dy[i],
+            velocity_x,
+            velocity_y,
+            flags[i],
+            arrival_radius,
+            final_radius,
+            final_stop_speed,
+        );
+        out_distance[i] = distance;
+        out_arrived[i] = arrived;
+        arrived_count += arrived as u32;
+    }
+    arrived_count
 }
 
 const FLYING_LOITER_INVALID_SLOT: u32 = u32::MAX;
@@ -27552,6 +27647,40 @@ mod sim_kernel_tests {
             "flying arrival should brake against overshoot velocity"
         );
         assert!(y.abs() < 1e-12);
+    }
+
+    #[test]
+    fn arrival_completion_distinguishes_intermediate_and_final_stops() {
+        let (_distance, arrived) =
+            compute_arrival_completion(10.0, 0.0, 100.0, 0.0, 0, 30.0, 15.0, 10.0);
+        assert_eq!(arrived, 1, "intermediate waypoint ignores stop speed");
+
+        let (_distance, arrived) = compute_arrival_completion(
+            10.0,
+            0.0,
+            100.0,
+            0.0,
+            ARRIVAL_FLAG_LAST_ACTION,
+            30.0,
+            15.0,
+            10.0,
+        );
+        assert_eq!(arrived, 0, "ground final waypoint waits for braking");
+
+        let (_distance, arrived) = compute_arrival_completion(
+            10.0,
+            0.0,
+            100.0,
+            0.0,
+            ARRIVAL_FLAG_LAST_ACTION | ARRIVAL_COMPLETION_FLAG_FLYING,
+            30.0,
+            15.0,
+            10.0,
+        );
+        assert_eq!(
+            arrived, 1,
+            "flying final waypoint keeps legacy immediate completion"
+        );
     }
 
     #[test]
