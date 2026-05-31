@@ -1582,6 +1582,9 @@ export class DamageSystem {
     result.killedTurretIds.add(turret.id);
     this.recordKiller(result, turret.id, sourceEntityId);
     if (deathContext) result.deathContexts.set(turret.id, deathContext);
+    // The host just lost a turret's weight — recompute its effective mass
+    // (no-op for static building/tower hosts; see PhysicsEngine3D).
+    this.world.onHostMassChanged?.(host);
   }
 
   private applyDamageToLocomotion(
@@ -1616,6 +1619,8 @@ export class DamageSystem {
     result.killedLocomotionIds.add(locomotion.id);
     this.recordKiller(result, locomotion.id, sourceEntityId);
     if (deathContext) result.deathContexts.set(locomotion.id, deathContext);
+    // The host just lost its locomotion's weight — recompute effective mass.
+    this.world.onHostMassChanged?.(host);
   }
 
   /** Stash the killer's playerId for the death event channel (FOW-17).

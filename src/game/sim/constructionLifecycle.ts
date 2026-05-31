@@ -398,6 +398,9 @@ function reconcileAndGrowConstructionPieces(
 
     if (changedFields !== 0) {
       world.markSnapshotDirty(entity.id, changedFields);
+      // Pieces grew this tick (a locomotion/turret came alive), so the
+      // host's effective mass changed — recompute it for the physics body.
+      world.onHostMassChanged?.(entity);
     }
   }
 }

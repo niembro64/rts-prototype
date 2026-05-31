@@ -71,7 +71,7 @@ import {
 } from './ServerSnapshotPublisher';
 import type { BootstrappedServerWorld } from './ServerBootstrap';
 import { UnitForceSystem } from './UnitForceSystem';
-import { createPhysicsBodyForUnit } from './unitPhysicsBody';
+import { computeHostEffectiveMass, createPhysicsBodyForUnit } from './unitPhysicsBody';
 import { isDetachedLocomotionAgent } from '../sim/buildableHelpers';
 import {
   isShieldReflectionMode,
@@ -260,6 +260,15 @@ export class GameServer {
     this.world.onDetachedLocomotionAgentSpawn = (spawn: DetachedLocomotionAgentSpawn) => {
       this.createPhysicsBodyForDetachedLocomotion(spawn);
     };
+    // A mobile host gained/lost a piece (turret/locomotion died, detached,
+    // or finished building) — recompute its dynamic body mass so F = M·A
+    // reflects only the weight still attached. Static building/tower bodies
+    // are skipped (setBodyEffectiveMass no-ops on static bodies).
+    this.world.onHostMassChanged = (host: Entity) => {
+      const bodyRef = host.body;
+      if (bodyRef === null || host.unit === null) return;
+      this.physics.setBodyEffectiveMass(bodyRef.physicsBody, computeHostEffectiveMass(host));
+    };
 
     // Handle unit deaths: remove entities. WorldState.onEntityRemoving
     // releases physics bodies for every removal path.
@@ -431,6 +440,7 @@ export class GameServer {
   private detachSimulationCallbacks(): void {
     this.world.onEntityRemoving = null;
     this.world.onDetachedTurretAgentSpawn = null;
+    this.world.onHostMassChanged = null;
     this.world.onDetachedLocomotionAgentSpawn = null;
     this.simulation.onUnitDeath = null;
     this.simulation.onUnitSpawn = null;

@@ -228,6 +228,12 @@ export class WorldState {
   public onEntityRemoving: ((entity: Entity) => void) | null = null;
   public onDetachedTurretAgentSpawn: ((spawn: DetachedTurretAgentSpawn) => void) | null = null;
   public onDetachedLocomotionAgentSpawn: ((spawn: DetachedLocomotionAgentSpawn) => void) | null = null;
+  /** Fired when a mobile host's set of live pieces changes (a turret or
+   *  locomotion died/detached, or construction grew one), so the physics
+   *  owner can recompute the body's effective mass. WorldState has no
+   *  physics handle, so the recompute is delegated to the host that wires
+   *  this (see GameServer). */
+  public onHostMassChanged: ((host: Entity) => void) | null = null;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   // Shared cache manager avoids creating new arrays on every getUnits()/getBuildings()/getProjectiles() call
@@ -526,6 +532,7 @@ export class WorldState {
     this.addEntity(spawn.agent);
     this.onDetachedTurretAgentSpawn?.(spawn);
     this.refreshEntityMetadata(host);
+    this.onHostMassChanged?.(host);
     this.markSnapshotDirty(host.id, ENTITY_CHANGED_TURRETS);
     return spawn.agent;
   }
@@ -560,6 +567,7 @@ export class WorldState {
     this.addEntity(spawn.agent);
     this.onDetachedLocomotionAgentSpawn?.(spawn);
     this.refreshEntityMetadata(host);
+    this.onHostMassChanged?.(host);
     this.markSnapshotDirty(host.id, ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_HP);
     return spawn.agent;
   }

@@ -145,9 +145,11 @@ export class Body3D {
   readonly slot: number;
   readonly shape: 'sphere' | 'cuboid';
   /** Pre-multiplier mass × UNIT_MASS_MULTIPLIER for dynamic bodies;
-   *  0 for static bodies. Kept JS-side because it's set once at
-   *  construction and only read for diagnostics/serialization. */
-  readonly mass: number;
+   *  0 for static bodies. Kept JS-side for diagnostics/serialization and
+   *  kept in lockstep with the pool `invMass`. Mutable because a host's
+   *  effective mass changes at runtime when it gains/loses pieces
+   *  (turrets, locomotion) — see PhysicsEngine3D.setBodyEffectiveMass. */
+  mass: number;
   readonly isStatic: boolean;
   /** Debug / log tag — entity type or id for tracing. */
   label: string;
@@ -460,6 +462,21 @@ export class PhysicsEngine3D {
     });
     this.addBody(body);
     return body;
+  }
+
+  /** Update a dynamic body's mass after it gains or loses weight at
+   *  runtime — a unit losing a turret or its locomotion drops its
+   *  effective mass, so the chassis accelerates, recoils, and gets
+   *  knocked around more (F = M·A with a smaller M). `preMultiplierMass`
+   *  is the same pre-UNIT_MASS_MULTIPLIER mass createUnitBody takes; the
+   *  pool `invMass` and the JS-side `mass` are kept in lockstep. Static
+   *  bodies (buildings/towers) have no dynamic mass and are left
+   *  untouched. */
+  setBodyEffectiveMass(body: Body3D, preMultiplierMass: number): void {
+    if (body.isStatic) return;
+    const physicsMass = preMultiplierMass * UNIT_MASS_MULTIPLIER;
+    body.mass = physicsMass;
+    pv().invMass[body.slot] = physicsMass > 0 ? 1 / physicsMass : 0;
   }
 
   /** Static cuboid body (buildings). `width` and `height` are the
