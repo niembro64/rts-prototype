@@ -1,4 +1,104 @@
 {
+  "ALL EXCLUSION OPTIONS": {
+    "excludeLockOnLevel0FriendsAndEnemies": [
+      "friendly_entities",
+      "enemy_entities"
+    ],
+    "excludeLockOnLevel0Entities": [
+      "buildings",
+      "towers",
+      "units",
+      "turrets",
+      "locomotions",
+      "shots"
+    ],
+    "excludeLockOnLevel1Buildings": [
+      "buildingSolar",
+      "buildingWind",
+      "buildingExtractor",
+      "buildingRadar",
+      "buildingResourceConverter"
+    ],
+    "excludeLockOnLevel1Towers": [
+      "towerFabricator",
+      "towerBeamMega",
+      "towerCannon"
+    ],
+    "excludeLockOnLevel1Units": [
+      "unitJackal",
+      "unitLynx",
+      "unitDaddy",
+      "unitBadger",
+      "unitMongoose",
+      "unitTick",
+      "unitMammoth",
+      "unitFormik",
+      "unitWidow",
+      "unitHippo",
+      "unitTarantula",
+      "unitLoris",
+      "unitMosquito",
+      "unitDragonfly",
+      "unitConstructionDrone",
+      "unitEagle",
+      "unitCommander"
+    ],
+    "excludeLockOnLevel1Turrets": [
+      "turretGunLight",
+      "turretGunBurst",
+      "turretCannon",
+      "turretMortarSlow",
+      "turretMortarDrop",
+      "turretMortarFast",
+      "turretGatling",
+      "turretDisruptor",
+      "turretForceFieldPanel",
+      "turretBeam",
+      "turretBeamMini",
+      "turretBeamMega",
+      "turretForceFieldSphere",
+      "turretConstruction",
+      "turretBeamLong",
+      "turretCannonLong",
+      "turretRocketSlow",
+      "turretRocketFast"
+    ],
+    "excludeLockOnLevel1Locomotions": [
+      "locomotionJackal",
+      "locomotionLynx",
+      "locomotionDaddy",
+      "locomotionBadger",
+      "locomotionMongoose",
+      "locomotionTick",
+      "locomotionMammoth",
+      "locomotionFormik",
+      "locomotionWidow",
+      "locomotionHippo",
+      "locomotionTarantula",
+      "locomotionLoris",
+      "locomotionCommander",
+      "locomotionHovercraft",
+      "locomotionDragonflyHovercraft",
+      "locomotionConstructionDrone",
+      "locomotionEagleFlying"
+    ],
+    "excludeLockOnLevel1Shots": [
+      "shotPlasmaLight",
+      "shotPlasmaMedium",
+      "shotRocketLight",
+      "shotRocketFast",
+      "shotPlasmaHeavy",
+      "shotMortarMedium",
+      "shotMortarHeavy",
+      "shotPlasmaDisruptor",
+      "shotBeamMini",
+      "shotBeamMedium",
+      "shotBeamHeavy",
+      "shotBeamMega",
+      "shotForceFieldSphere",
+      "shotForceFieldPanel"
+    ]
+  },
   "units": {
     "unitJackal": {
       "excludeLockOnLevel0FriendsAndEnemies": [],
