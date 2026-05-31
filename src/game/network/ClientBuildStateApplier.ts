@@ -7,6 +7,7 @@ import { initializeConstructionPieceHealth } from '../sim/constructionLifecycle'
 
 export type NetworkBuildState = {
   complete: boolean;
+  interrupted?: boolean;
   paid: Buildable['paid'];
 };
 
@@ -53,6 +54,7 @@ export function applyNetworkBuildState(
     buildable = createBuildable(required, {
       paid: build.paid,
       isGhost: null,
+      isInterrupted: build.interrupted === true,
       healthBuildFraction: null,
     });
     buildable.healthBuildFraction = getBuildFraction(buildable);
@@ -67,6 +69,7 @@ export function applyNetworkBuildState(
   buildable.paid.metal = build.paid.metal;
   buildable.isComplete = false;
   buildable.isGhost = false;
+  buildable.isInterrupted = build.interrupted === true;
   buildable.healthBuildFraction = getBuildFraction(buildable);
   initializeConstructionPieceHealth(entity);
   return true;

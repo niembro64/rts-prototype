@@ -85,6 +85,7 @@ import {
   getEntityFullVisionRadius,
   getEntityRadarRadius,
 } from '../sensorCoverage';
+import { isEntityActive } from '../buildableHelpers';
 import {
   getShotMaxLifespan,
   isProjectileShot,
@@ -539,7 +540,7 @@ function stampCombatTargetingEntityInto(
   if (combat) entityFlags |= CT_ENTITY_FLAG_HAS_COMBAT;
   if (hp > 0) entityFlags |= CT_ENTITY_FLAG_ALIVE;
   if (combat && combat.fireEnabled !== false) entityFlags |= CT_ENTITY_FLAG_FIRE_ENABLED;
-  if (!entity.buildable || entity.buildable.isComplete) {
+  if (isEntityActive(entity)) {
     entityFlags |= CT_ENTITY_FLAG_BUILDABLE_COMPLETE;
   }
   if (isEntityCloaked(entity)) entityFlags |= CT_ENTITY_FLAG_CLOAKED;
@@ -745,7 +746,7 @@ function stampUnitLocomotionTargetInto(
   const rotSin = Math.sin(entity.transform.rotation);
   const surfaceN = unit.surfaceNormal;
   const suspension = unit.suspension;
-  const buildComplete = !entity.buildable || entity.buildable.isComplete;
+  const buildComplete = isEntityActive(entity);
   const locomotion = unit.locomotion;
   let entityFlags = locomotion.hp > 0 ? CT_ENTITY_FLAG_ALIVE : 0;
   if (buildComplete) entityFlags |= CT_ENTITY_FLAG_BUILDABLE_COMPLETE;

@@ -23,6 +23,7 @@ import type { Body3D, PhysicsEngine3D } from './PhysicsEngine3D';
 import { setUnitMovementAcceleration } from '../sim/unitMovementAcceleration';
 import { quatYaw } from '../math/Quaternion';
 import { getSimWasm, QUAT_HOVER_BATCH_STRIDE } from '../sim-wasm/init';
+import { isBuildBlockingActivation } from '../sim/buildableHelpers';
 
 const WATER_PROBE_DX = [
   1, 0.7071067811865476, 0, -0.7071067811865475,
@@ -110,7 +111,7 @@ export class UnitForceSystem {
       entity.transform.y = body.y;
       entity.transform.z = body.z;
 
-      if (entity.buildable && !entity.buildable.isComplete) {
+      if (isBuildBlockingActivation(entity.buildable) || entity.unit.hp <= 0) {
         // Acceleration is no longer shipped on the wire — only update
         // the sim-side value; no markSnapshotDirty needed.
         setUnitMovementAcceleration(entity.unit, 0, 0, 0);

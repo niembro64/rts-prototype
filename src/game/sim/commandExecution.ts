@@ -51,6 +51,7 @@ import { pushUnitAction, setUnitActions, shiftUnitAction, spliceUnitActions, uns
 import { dropTurretLockMidTick } from './combat/combatActivitySlab';
 import { isAliveGuardTarget } from './guard';
 import { isReclaimableTarget } from './reclaim';
+import { isBuildInProgress } from './buildableHelpers';
 import {
   ATTACK_AREA_MAX_RADIUS,
   REPAIR_AREA_MAX_RADIUS,
@@ -782,9 +783,7 @@ function isRepairableByCommander(commander: Entity, target: Entity | undefined):
   if (commander.ownership === null || target === undefined || target.ownership === null) return false;
   if (target.ownership.playerId !== commander.ownership.playerId) return false;
 
-  const isIncompleteBuilding = !!target.buildable &&
-    !target.buildable.isComplete &&
-    !target.buildable.isGhost;
+  const isIncompleteBuilding = isBuildInProgress(target.buildable);
   const isDamagedUnit = !!target.unit &&
     target.unit.hp < target.unit.maxHp &&
     target.unit.hp > 0;

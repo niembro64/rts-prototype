@@ -808,12 +808,12 @@ export type NetworkServerSnapshotEntity = {
     buildTargetIdPresent: boolean;
     actions: NetworkServerSnapshotAction[] | null;
     turrets: NetworkServerSnapshotTurret[] | null;
-    /** Unit shell construction state. Present whenever the unit was
-     *  spawned by a factory and is still being funded by it. Same
-     *  shape as `building.build`. Omitted (or `complete: true`) once
-     *  the unit becomes active. */
+    /** Unit shell construction state. Present while the unit is being
+     *  funded, and retained with interrupted=true for cancelled partial
+     *  assemblies whose piece records still drive rendering/targeting. */
     build: {
       complete: boolean;
+      interrupted?: boolean;
       paid: { energy: number; metal: number };
     } | null;
   } | null;
@@ -828,12 +828,12 @@ export type NetworkServerSnapshotEntity = {
     dim: Vec2 | null;
     hp: { curr: number; max: number } | null;
     /** `paid` carries the per-resource accumulator so the
-     *  client can render independent build bars; `required` is
-     *  omitted because the client re-derives it from the entity's
-     *  blueprint. The aggregate fill ratio (formerly `progress`)
-     *  is computed client-side via `getBuildFraction(buildable)`. */
+     *  client can render independent build bars or an interrupted
+     *  partial assembly; `required` is omitted because the client
+     *  re-derives it from the entity's blueprint. */
     build: {
       complete: boolean;
+      interrupted?: boolean;
       paid: { energy: number; metal: number };
     } | null;
     /** Extractor output in metal/sec after footprint coverage is applied. */

@@ -12,7 +12,7 @@
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
 import { getBuildingHudBarsY, getUnitHudBarsY } from './HudAnchor';
-import { getResourceFillRatio } from '../sim/buildableHelpers';
+import { getResourceFillRatio, isBuildInProgress } from '../sim/buildableHelpers';
 import type { Buildable } from '../sim/types';
 import { ENTITY_HUD_BAR_STACK_GAP } from '@/config';
 import { CanvasSpritePool, type CanvasSpriteSlot } from './CanvasSpritePool';
@@ -218,7 +218,7 @@ export class HealthBar3D {
     const unit = u.unit;
     const hp = unit.hp;
     const maxHp = unit.maxHp;
-    const buildable = u.buildable && !u.buildable.isComplete && !u.buildable.isGhost
+    const buildable = isBuildInProgress(u.buildable)
       ? u.buildable
       : null;
     const showHp = maxHp > 0 && (
@@ -251,7 +251,7 @@ export class HealthBar3D {
     if (this._seenEntityFrame.get(b.id) === this._frameToken) return;
     const hp = b.building.hp;
     const maxHp = b.building.maxHp;
-    const buildable = b.buildable && !b.buildable.isComplete && !b.buildable.isGhost
+    const buildable = isBuildInProgress(b.buildable)
       ? b.buildable
       : null;
     const showHp = maxHp > 0 && (

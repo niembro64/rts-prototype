@@ -56,6 +56,7 @@ import {
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
 import { getCommandCursorStyle, type CommandCursorKind } from '../input/CommandCursors';
 import { isWaterAt } from '../sim/Terrain';
+import { isBuildInProgress } from '../sim/buildableHelpers';
 import { generateMetalDeposits, type MetalDeposit } from '../../metalDepositConfig';
 import { getBuildingVisualCenterZ } from '../sim/buildingAnchors';
 import { isCommander } from '../sim/combat/combatUtils';
@@ -755,9 +756,7 @@ export class Input3DManager {
     if (!commander?.ownership || !entity?.ownership) return false;
     if (entity.ownership.playerId !== commander.ownership.playerId) return false;
     if (entity.building) {
-      return !!entity.buildable &&
-        !entity.buildable.isComplete &&
-        !entity.buildable.isGhost;
+      return isBuildInProgress(entity.buildable);
     }
     if (entity.unit) {
       return entity.unit.hp > 0 && entity.unit.hp < entity.unit.maxHp;

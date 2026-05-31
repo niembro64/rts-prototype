@@ -359,6 +359,7 @@ function createUnitFromNetwork(
       {
         paid: unitBuild.paid,
         isGhost: null,
+        isInterrupted: unitBuild.interrupted === true,
         healthBuildFraction: null,
       },
     );
@@ -442,6 +443,7 @@ function createBuildingFromNetwork(
     entity.buildable = createBuildable(config.cost, {
       paid: b.build.paid,
       isGhost: null,
+      isInterrupted: b.build.interrupted === true,
       healthBuildFraction: null,
     });
     entity.buildable.healthBuildFraction = getBuildFraction(entity.buildable);

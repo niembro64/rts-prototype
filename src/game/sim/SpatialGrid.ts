@@ -4,7 +4,7 @@ import {
   CANONICAL_LAND_CELL_SIZE,
   assertCanonicalLandCellSize,
 } from '../landGrid';
-import { isEntityActive } from './buildableHelpers';
+import { hasMaterializedLiveUnitPiece, isEntityActive } from './buildableHelpers';
 import { TERRAIN_MAX_RENDER_Y, TILE_FLOOR_Y } from './terrain/terrainConfig';
 import {
   getSimWasm,
@@ -177,7 +177,7 @@ export class SpatialGrid {
   // ===================== Mutations =====================
 
   updateUnit(entity: Entity): void {
-    if (!entity.unit || entity.unit.hp <= 0) {
+    if (!entity.unit || !hasMaterializedLiveUnitPiece(entity)) {
       this.removeUnit(entity.id);
       return;
     }

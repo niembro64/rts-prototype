@@ -35,6 +35,7 @@ import {
   updateProjectileSourceClearance,
   updateWeaponWorldKinematics,
 } from './combatUtils';
+import { isBuildBlockingActivation } from '../buildableHelpers';
 import {
   dropTurretLockMidTick,
   readFiringTurretMaskForUnit,
@@ -397,9 +398,8 @@ export function fireTurrets(
       ? unit.unit.hp
       : (unit.building !== null ? unit.building.hp : 0);
     if (hostHp <= 0) continue;
-    // Inert shells don't fire — every active behavior is gated on
-    // buildable.isComplete.
-    if (unit.buildable && !unit.buildable.isComplete) continue;
+    // Inert shells don't fire; interrupted partial assemblies do.
+    if (isBuildBlockingActivation(unit.buildable)) continue;
 
     const combat = unit.combat;
     const playerId = unit.ownership.playerId;

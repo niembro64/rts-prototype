@@ -79,6 +79,7 @@ function copyBuildStateInto(
   dst: ReusableBuildState,
 ): ReusableBuildState {
   dst.complete = src.complete;
+  dst.interrupted = src.interrupted === true;
   dst.paid.energy = src.paid.energy;
   dst.paid.metal = src.paid.metal;
   return dst;
@@ -91,6 +92,7 @@ function createReusableBuilding(): ReusableEntityBuilding {
     hp: { curr: 0, max: 0 },
     build: {
       complete: false,
+      interrupted: false,
       paid: { energy: 0, metal: 0 },
     },
     metalExtractionRate: null,
@@ -132,6 +134,7 @@ function copyBuildingInto(
   dst.build = src.build
     ? copyBuildStateInto(src.build, dst.build ?? {
         complete: false,
+        interrupted: false,
         paid: { energy: 0, metal: 0 },
       })
     : null;

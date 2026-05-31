@@ -320,6 +320,7 @@ function copyVec3OptionalInto(
 function createNetworkUnitBuildState(): NonNullable<NetworkUnitSnapshot['build']> {
   return {
     complete: false,
+    interrupted: false,
     paid: { energy: 0, metal: 0 },
   };
 }
@@ -329,6 +330,7 @@ function copyNetworkUnitBuildState(
   dst: NonNullable<NetworkUnitSnapshot['build']>,
 ): NonNullable<NetworkUnitSnapshot['build']> {
   dst.complete = src.complete;
+  dst.interrupted = src.interrupted === true;
   dst.paid.energy = src.paid.energy;
   dst.paid.metal = src.paid.metal;
   return dst;

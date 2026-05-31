@@ -2,6 +2,7 @@
 
 import type { Entity, PlayerId } from '../../sim/types';
 import { magnitude } from '../../math';
+import { isBuildInProgress } from '../../sim/buildableHelpers';
 
 export type { RepairEntitySource } from '@/types/input';
 import type { RepairEntitySource } from '@/types/input';
@@ -15,7 +16,7 @@ export function findIncompleteBuildingAt(
 ): Entity | null {
   for (const building of entitySource.getBuildings()) {
     if (building.ownership?.playerId !== playerId) continue;
-    if (!building.buildable || building.buildable.isComplete || building.buildable.isGhost) continue;
+    if (!isBuildInProgress(building.buildable)) continue;
     if (!building.building) continue;
 
     const { x, y } = building.transform;

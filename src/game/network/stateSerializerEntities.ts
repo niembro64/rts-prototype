@@ -206,6 +206,7 @@ function createPooledEntry(): PooledEntry {
   const buildingHp = { curr: 0, max: 0 };
   const buildingBuild = {
     complete: false,
+    interrupted: false,
     paid: { energy: 0, metal: 0 },
   };
   return {
@@ -537,6 +538,10 @@ function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void 
     entity.unit !== null &&
     entity.building === null
   ) {
+    if (entity.unit.build?.interrupted === true) {
+      appendRawEntityWireRow();
+      return;
+    }
     appendUnitEntityWireRow(entity, entity.unit);
     return;
   }
@@ -551,6 +556,10 @@ function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void 
     // BUILDING discriminator is reconstructed on the receive side
     // via isTowerBuildingBlueprintId so the renderer + UI dispatch on the
     // peer entity-type tag.
+    if (entity.building.build?.interrupted === true) {
+      appendRawEntityWireRow();
+      return;
+    }
     appendBuildingEntityWireRow(entity, entity.building);
     return;
   }
@@ -688,6 +697,7 @@ export function serializeEntitySnapshot(
       if ((isFull || (changedFields! & ENTITY_CHANGED_BUILDING)) && entity.buildable) {
         u.build = {
           complete: entity.buildable.isComplete,
+          interrupted: entity.buildable.isInterrupted,
           paid: {
             energy: entity.buildable.paid.energy,
             metal: entity.buildable.paid.metal,
@@ -769,10 +779,12 @@ export function serializeEntitySnapshot(
         if (entity.buildable) {
           const buildable = entity.buildable;
           build.complete = buildable.isComplete;
+          build.interrupted = buildable.isInterrupted;
           build.paid.energy = buildable.paid.energy;
           build.paid.metal = buildable.paid.metal;
         } else {
           build.complete = true;
+          build.interrupted = false;
           build.paid.energy = 0;
           build.paid.metal = 0;
         }

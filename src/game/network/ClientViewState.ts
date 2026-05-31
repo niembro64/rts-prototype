@@ -9,6 +9,7 @@
 
 import type { Entity, PlayerId, EntityId } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
+import { isBuildInProgress } from '../sim/buildableHelpers';
 import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotEntity,
@@ -396,7 +397,7 @@ export class ClientViewState {
     const unit = entity.unit;
     if (!unit) return false;
     return unit.hp < unit.maxHp ||
-      !!(entity.buildable && !entity.buildable.isComplete && !entity.buildable.isGhost);
+      isBuildInProgress(entity.buildable);
   }
 
   private networkUnitHealthBarCacheMembership(
@@ -411,15 +412,18 @@ export class ClientViewState {
     const curr = hp !== null ? hp.curr : entityUnit !== null ? entityUnit.hp : 0;
     const max = hp !== null ? hp.max : entityUnit !== null ? entityUnit.maxHp : 0;
     const complete = build !== null ? build.complete : buildable !== null ? buildable.isComplete : true;
+    const interrupted = build !== null
+      ? build.interrupted === true
+      : buildable !== null ? buildable.isInterrupted : false;
     return curr < max ||
-      !!(buildable && !buildable.isGhost && !complete);
+      !!(buildable && !buildable.isGhost && !complete && !interrupted);
   }
 
   private buildingHealthBarCacheMembership(entity: Entity): boolean {
     const building = entity.building;
     if (!building) return false;
     return building.hp < building.maxHp ||
-      !!(entity.buildable && !entity.buildable.isComplete && !entity.buildable.isGhost);
+      isBuildInProgress(entity.buildable);
   }
 
   private networkBuildingHealthBarCacheMembership(
@@ -434,8 +438,11 @@ export class ClientViewState {
     const curr = hp !== null ? hp.curr : building !== null ? building.hp : 0;
     const max = hp !== null ? hp.max : building !== null ? building.maxHp : 0;
     const complete = build !== null ? build.complete : buildable !== null ? buildable.isComplete : true;
+    const interrupted = build !== null
+      ? build.interrupted === true
+      : buildable !== null ? buildable.isInterrupted : false;
     return curr < max ||
-      !!(buildable && !buildable.isGhost && !complete);
+      !!(buildable && !buildable.isGhost && !complete && !interrupted);
   }
 
   private rebuildCachesIfNeeded(includeProjectileChanges = false): void {

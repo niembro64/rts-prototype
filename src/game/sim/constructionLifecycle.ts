@@ -401,6 +401,7 @@ export function interruptConstructionPreservingBuiltPieces(
   }
 
   world.refreshEntityMetadata(entity);
+  buildable.isInterrupted = true;
   world.markSnapshotDirty(entity.id, changedFields | ENTITY_CHANGED_BUILDING);
   return {
     preserved: true,
@@ -509,7 +510,7 @@ export function updateConstructionLifecycle(world: WorldState): ConstructionLife
   for (const list of sources) {
     for (const entity of list) {
       const buildable = entity.buildable;
-      if (!buildable || buildable.isComplete || buildable.isGhost) continue;
+      if (!buildable || buildable.isComplete || buildable.isGhost || buildable.isInterrupted) continue;
       const buildFraction = getBuildFraction(buildable);
       growConstructionHp(world, entity, buildFraction);
       if (isConstructionAlive(entity) && isBuildFullyPaid(buildable)) {

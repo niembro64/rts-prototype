@@ -759,14 +759,21 @@ export type ConstructionPieceBuildRecord = {
 // activation succeeds, constructionLifecycle removes it. During
 // construction, HP grows by the positive delta in average fill ratio;
 // it is never reset upward to the current fill target, so damage taken
-// while building remains damage. `pieces` is the dependency-ordered
-// resource ledger for the real assembly pieces; the aggregate `paid`
-// counters remain the compact wire/UI mirror.
+// while building remains damage. If construction is interrupted after
+// pieces exist, the component remains with isInterrupted=true so those
+// piece records continue to define the live partial assembly. `pieces`
+// is the dependency-ordered resource ledger for the real assembly
+// pieces; the aggregate `paid` counters remain the compact wire/UI
+// mirror.
 export type Buildable = {
   paid: ResourceCost;
   required: ResourceCost;
   isComplete: boolean;
   isGhost: boolean;
+  /** True once construction was cancelled after at least one real
+   *  piece materialized. Funding stops, but the piece records remain
+   *  authoritative for rendering/targeting the partial assembly. */
+  isInterrupted: boolean;
   healthBuildFraction: number;
   pieces: ConstructionPieceBuildRecord[];
 };

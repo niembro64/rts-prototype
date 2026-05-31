@@ -1,5 +1,6 @@
 import type { WorldState } from './WorldState';
 import type { Entity, PlayerId } from './types';
+import { isBuildBlockingActivation } from './buildableHelpers';
 
 export type EntitySensorBlueprint = {
   cloak: { enabled: boolean } | null;
@@ -25,7 +26,7 @@ export function applyEntitySensorBlueprint(
 }
 
 export function isEntityOnlineForSensors(entity: Entity): boolean {
-  if (entity.buildable && !entity.buildable.isComplete) return false;
+  if (isBuildBlockingActivation(entity.buildable)) return false;
   if (entity.unit) return entity.unit.hp > 0;
   if (entity.building) return entity.building.hp > 0;
   return false;

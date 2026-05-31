@@ -7,6 +7,7 @@ import { getGraphicsConfig } from '@/clientBarConfig';
 import {
   getConstructionPieceRenderFraction,
   isConstructionPieceMaterialized,
+  isShell,
 } from '../sim/buildableHelpers';
 import type { ClientViewState } from '../network/ClientViewState';
 import { getTurretHeadRadius } from '../math';
@@ -393,7 +394,7 @@ export class BuildingEntityRenderer3D {
     mesh.group.rotation.y = -entity.transform.rotation;
     applyShellOverride(
       mesh.group,
-      !!(entity.buildable && !entity.buildable.isComplete && !entity.buildable.isGhost),
+      isShell(entity),
     );
 
     const height = mesh.buildingHeight ?? BUILDING_HEIGHT;
@@ -427,8 +428,7 @@ export class BuildingEntityRenderer3D {
   private updateTurretPoses(entity: Entity, mesh: EntityMesh): void {
     const combatTurrets = entity.combat?.turrets;
     if (!combatTurrets || mesh.turrets.length !== combatTurrets.length) return;
-    const underConstruction =
-      !!entity.buildable && !entity.buildable.isComplete && !entity.buildable.isGhost;
+    const underConstruction = isShell(entity);
     for (let turretIndex = 0; turretIndex < combatTurrets.length; turretIndex++) {
       const turret = combatTurrets[turretIndex];
       const turretMesh = mesh.turrets[turretIndex];

@@ -78,6 +78,11 @@ export class FactoryProductionSystem {
           factoryComp.isProducing = false;
           factoryComp.currentBuildProgress = 0;
           world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+        } else if (shell.buildable.isInterrupted) {
+          factoryComp.currentShellId = null;
+          factoryComp.isProducing = false;
+          factoryComp.currentBuildProgress = 0;
+          world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
         }
         // Otherwise the shell is still filling — energyDistribution
         // pours resources into it; nothing to do here.
@@ -130,9 +135,8 @@ export class FactoryProductionSystem {
 
   // Spawn an inert shell of `unitBlueprintId` at the factory's build spot.
   // The shell starts at 0/0/0 paid; energyDistribution fills it. The
-  // unit is fully constructed (renderer-ready), but its
-  // buildable.isComplete=false flag suppresses combat/movement until
-  // each resource bar tops up.
+  // unit is fully constructed (renderer-ready), but its active build
+  // state suppresses combat/movement until each resource bar tops up.
   private spawnUnitShell(world: WorldState, factory: Entity, unitBlueprintId: string): Entity | null {
     if (!factory.ownership) return null;
     const bp = getUnitBlueprint(unitBlueprintId);

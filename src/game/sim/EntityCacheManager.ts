@@ -3,6 +3,7 @@
 
 import type { Entity, EntityId, PlayerId } from './types';
 import { isRayType } from './types';
+import { isBuildInProgress } from './buildableHelpers';
 
 const EMPTY_ENTITIES: Entity[] = [];
 
@@ -154,7 +155,7 @@ export class EntityCacheManager {
             entity.unit
             && (
               (entity.unit.hp > 0 && entity.unit.hp < entity.unit.maxHp)
-              || (entity.buildable && !entity.buildable.isComplete && !entity.buildable.isGhost)
+              || isBuildInProgress(entity.buildable)
             )
           ) {
             this.cachedDamagedUnits.push(entity);
@@ -187,7 +188,7 @@ export class EntityCacheManager {
             entity.building
             && (
               (entity.building.hp > 0 && entity.building.hp < entity.building.maxHp)
-              || (entity.buildable && !entity.buildable.isComplete && !entity.buildable.isGhost)
+              || isBuildInProgress(entity.buildable)
             )
           ) {
             this.cachedHealthBarBuildings.push(entity);

@@ -18,6 +18,7 @@ import {
   getRemainingResource,
   getTotalRemainingCost,
   isEntityActive,
+  isBuildInProgress,
 } from './buildableHelpers';
 import { resourceMovementSystem, type ResourceKind } from './resourceMovement';
 
@@ -246,8 +247,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         shell.buildable !== null &&
         shell.ownership !== null &&
         shell.ownership.playerId === ownership.playerId &&
-        !shell.buildable.isComplete &&
-        !shell.buildable.isGhost
+        isBuildInProgress(shell.buildable)
       ) {
         const remainingCost = getTotalRemainingCost(shell.buildable);
         if (remainingCost > 0) {
@@ -268,9 +268,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
 
     // 2b) Building under construction, funded by builder units?
     if (
-      entity.buildable
-      && !entity.buildable.isComplete
-      && !entity.buildable.isGhost
+      isBuildInProgress(entity.buildable)
       && entity.ownership
       && buildTargets.has(entity.id)
     ) {
@@ -297,7 +295,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     if (!isBuildTargetInRange(commander, target)) continue;
     const commanderRateCap = commander.builder.constructionRate * dtSec;
 
-    if (target.buildable && !target.buildable.isComplete && !target.buildable.isGhost) {
+    if (isBuildInProgress(target.buildable)) {
       if (!buildingConsumerIds.has(target.id)) {
         const remainingCost = getTotalRemainingCost(target.buildable);
         if (remainingCost > 0) {

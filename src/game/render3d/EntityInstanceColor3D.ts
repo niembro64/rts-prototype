@@ -3,9 +3,10 @@ import { COLORS } from '@/colorsConfig';
 import { SHELL_PALE_HEX } from '@/shellConfig';
 import type { Entity, TurretState } from '../sim/types';
 import { getPlayerColors } from '../sim/types';
+import { isShell } from '../sim/buildableHelpers';
 
 export function isConstructionShell(entity: Entity): boolean {
-  return !!(entity.buildable && !entity.buildable.isComplete && !entity.buildable.isGhost);
+  return isShell(entity);
 }
 
 export function entityInstanceColorKey(entity: Entity): number {

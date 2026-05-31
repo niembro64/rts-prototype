@@ -419,7 +419,8 @@ function unitNeedsRawFallback(unit: SnapshotUnit): boolean {
     (unit.bodyCenterHeight !== null && !Number.isFinite(unit.bodyCenterHeight)) ||
     (unit.mass !== null && !Number.isFinite(unit.mass)) ||
     unit.fireEnabled === true ||
-    unit.isCommander === false
+    unit.isCommander === false ||
+    unit.build?.interrupted === true
   );
 }
 
@@ -502,6 +503,7 @@ function buildingNeedsRawFallback(building: SnapshotBuilding): boolean {
   const factory = building.factory;
   return (
     (building.buildingBlueprintCode !== null && typeof building.buildingBlueprintCode !== 'number') ||
+    building.build?.interrupted === true ||
     (factory !== null &&
       factory.selectedUnitBlueprintCode !== null &&
       !isUint(factory.selectedUnitBlueprintCode, 0xFFFF_FFFF))

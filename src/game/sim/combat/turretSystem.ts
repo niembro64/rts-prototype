@@ -28,6 +28,7 @@ import {
   readActiveTurretMaskForUnit,
   refreshSlabActivityMasksForUnit,
 } from './combatActivitySlab';
+import { isBuildBlockingActivation } from '../buildableHelpers';
 import { getTransformCosSin, integrateDampedRotation, normalizeAngle } from '../../math';
 import { createTurretAimScratch, solveTurretAim, solveTurretAimAtGroundPoint } from './aimSolver';
 import {
@@ -65,7 +66,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
     if (hostHp <= 0) continue;
     // Inert shells (in-progress buildable) skip combat entirely until
     // every resource bar tops up.
-    if (unit.buildable && !unit.buildable.isComplete) continue;
+    if (isBuildBlockingActivation(unit.buildable)) continue;
 
     const { cos, sin } = getTransformCosSin(unit.transform);
     const activeMask = readActiveTurretMaskForUnit(unit);

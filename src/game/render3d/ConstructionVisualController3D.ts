@@ -23,6 +23,7 @@ import { getTransformCosSin } from '../math';
 import { getUnitBlueprint } from '../sim/blueprints';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
+import { isBuildInProgress } from '../sim/buildableHelpers';
 import {
   getFactoryBuildSpot,
   getFactoryConstructionRadius,
@@ -195,7 +196,7 @@ export class ConstructionVisualController3D {
     if (!hasResourceFlows && targetId !== NO_ENTITY_ID && builder && dtSec > 0) {
       const target = this.clientViewState.getEntity(targetId);
       const buildable = target?.buildable;
-      if (target && buildable && !buildable.isComplete) {
+      if (target && isBuildInProgress(buildable)) {
         if (rig.lastPaidTargetId !== targetId) {
           rig.lastPaid.energy = buildable.paid.energy;
           rig.lastPaid.metal = buildable.paid.metal;

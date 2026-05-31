@@ -1,7 +1,7 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
-import { getBuildFraction } from '../sim/buildableHelpers';
+import { getBuildFraction, isEntityActive } from '../sim/buildableHelpers';
 import { assertUnitActionHashSynced } from '../sim/unitActions';
 import { SNAPSHOT_CONFIG } from '../../config';
 import { spatialGrid } from '../sim/SpatialGrid';
@@ -707,7 +707,7 @@ function syncEntityMetaPools(world: WorldState, e: Entity, sim: SimWasm): void {
       u.hp, u.maxHp,
       combat !== null && combat.fireEnabled === false ? 0 : 1,
       e.commander ? 1 : 0,
-      buildable && !buildable.isComplete ? 0 : 1,
+      isEntityActive(e) ? 1 : 0,
       buildable !== null ? buildable.paid.energy : 0,
       buildable !== null ? buildable.paid.metal : 0,
       builder !== null ? builder.currentBuildTarget : NO_ENTITY_ID,

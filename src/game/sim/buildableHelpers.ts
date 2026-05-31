@@ -17,6 +17,7 @@ export function getInitialBuildHp(maxHp: number): number {
 export type BuildableState = {
   paid: ResourceCost | null;
   isGhost: boolean | null;
+  isInterrupted?: boolean | null;
   healthBuildFraction: number | null;
 };
 
@@ -32,6 +33,7 @@ export function createBuildable(required: ResourceCost, state: BuildableState | 
     required: cloneResourceCost(required),
     isComplete: false,
     isGhost: state !== null && state.isGhost === true,
+    isInterrupted: state !== null && state.isInterrupted === true,
     healthBuildFraction: state === null || state.healthBuildFraction === null
       ? 0
       : state.healthBuildFraction,
@@ -154,14 +156,43 @@ export function isEntityActive(entity: Entity): boolean {
   const b = entity.buildable;
   if (!b) return true;
   if (b.isGhost) return false;
-  return b.isComplete;
+  return b.isComplete || b.isInterrupted;
 }
 
 /** Convenience: true iff the entity is a shell (in-world, non-ghost,
  *  non-complete). Drives shell rendering + bar visibility. */
 export function isShell(entity: Entity): boolean {
   const b = entity.buildable;
-  return !!b && !b.isGhost && !b.isComplete;
+  return !!b && !b.isGhost && !b.isComplete && !b.isInterrupted;
+}
+
+export function isBuildInProgress(buildable: Buildable | null | undefined): buildable is Buildable {
+  return !!buildable && !buildable.isGhost && !buildable.isComplete && !buildable.isInterrupted;
+}
+
+export function isBuildBlockingActivation(buildable: Buildable | null | undefined): boolean {
+  return !!buildable && !buildable.isComplete && !buildable.isInterrupted;
+}
+
+export function hasMaterializedLiveUnitPiece(entity: Entity): boolean {
+  const unit = entity.unit;
+  if (unit === null) return false;
+  if (unit.hp > 0 && isConstructionPieceMaterialized(entity, 'body')) return true;
+  if (unit.locomotion.hp > 0 && isConstructionPieceMaterialized(entity, 'locomotion', 0)) return true;
+  const combat = entity.combat;
+  if (combat !== null) {
+    for (let i = 0; i < combat.turrets.length; i++) {
+      const turret = combat.turrets[i];
+      if (
+        turret.hp > 0 &&
+        !turret.config.visualOnly &&
+        isConstructionPieceMaterialized(entity, 'turret', i)
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 export function cloneResourceCost(c: ResourceCost): ResourceCost {

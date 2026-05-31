@@ -33,6 +33,7 @@ import type { ArachnidLegConfig } from '@/types/render';
 import { getSegmentMidYAt } from '../math/BodyDimensions';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import type { Entity, PlayerId } from '../sim/types';
+import { isShell } from '../sim/buildableHelpers';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import { locomotionPieceColorHex } from './colorUtils';
@@ -327,7 +328,7 @@ export function buildLegs(
   if (legStyle === 'none') return undefined;
 
   const { left, all: allConfigs, sides } = resolveMirroredLegConfigs(cfg, r);
-  const shellPool = !!(entity.buildable && !entity.buildable.isComplete && !entity.buildable.isGhost);
+  const shellPool = isShell(entity);
   const legColor = locomotionPieceColorHex(LEG_SEGMENT_COLOR, ownerId);
 
   const group = new THREE.Group();

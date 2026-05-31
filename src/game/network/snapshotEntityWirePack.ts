@@ -201,6 +201,7 @@ const UNIT_FLAG_ACTIONS = 1 << 15;
 const UNIT_FLAG_TURRETS = 1 << 16;
 const UNIT_FLAG_BUILD = 1 << 17;
 const UNIT_FLAG_BUILD_COMPLETE = 1 << 18;
+const UNIT_FLAG_BUILD_INTERRUPTED = 1 << 19;
 
 const BUILDING_FLAG_BLUEPRINT_CODE = 1 << 0;
 const BUILDING_FLAG_DIM = 1 << 1;
@@ -213,6 +214,7 @@ const BUILDING_FLAG_SOLAR_OPEN = 1 << 7;
 const BUILDING_FLAG_TURRETS = 1 << 8;
 const BUILDING_FLAG_FACTORY = 1 << 9;
 const BUILDING_FLAG_FACTORY_PRODUCING = 1 << 10;
+const BUILDING_FLAG_BUILD_INTERRUPTED = 1 << 11;
 
 const ENTITY_FLAG_HAS_POS = 1 << 0;
 const ENTITY_FLAG_HAS_ROTATION = 1 << 1;
@@ -1287,6 +1289,7 @@ function packUnit(unit: UnitSub): unknown[] {
   if (unit.build !== null) {
     flags |= UNIT_FLAG_BUILD;
     if (unit.build.complete === true) flags |= UNIT_FLAG_BUILD_COMPLETE;
+    if (unit.build.interrupted === true) flags |= UNIT_FLAG_BUILD_INTERRUPTED;
   }
 
   const row: unknown[] = [flags];
@@ -1408,6 +1411,7 @@ function unpackUnit(row: unknown[]): UnitSub {
     const metal = row[i++] as number;
     unit.build = {
       complete: (flags & UNIT_FLAG_BUILD_COMPLETE) !== 0,
+      interrupted: (flags & UNIT_FLAG_BUILD_INTERRUPTED) !== 0,
       paid: { energy, metal },
     };
   }
@@ -1422,6 +1426,7 @@ function packBuilding(building: BuildingSub): unknown[] {
   if (building.build !== null) {
     flags |= BUILDING_FLAG_BUILD;
     if (building.build.complete === true) flags |= BUILDING_FLAG_BUILD_COMPLETE;
+    if (building.build.interrupted === true) flags |= BUILDING_FLAG_BUILD_INTERRUPTED;
   }
   if (building.metalExtractionRate !== null) flags |= BUILDING_FLAG_METAL_EXTRACTION_RATE;
   if (building.solar !== null) {
@@ -1482,6 +1487,7 @@ function unpackBuilding(row: unknown[]): BuildingSub {
     const metal = row[i++] as number;
     building.build = {
       complete: (flags & BUILDING_FLAG_BUILD_COMPLETE) !== 0,
+      interrupted: (flags & BUILDING_FLAG_BUILD_INTERRUPTED) !== 0,
       paid: { energy, metal },
     };
   }

@@ -7,6 +7,7 @@ import { getTransformCosSin } from '../math';
 import { economyManager } from './economy';
 import { getReclaimResourceValue, isReclaimableTarget, RECLAIM_REFUND_FRACTION } from './reclaim';
 import { ENTITY_CHANGED_HP } from '../../types/network';
+import { isBuildInProgress } from './buildableHelpers';
 
 export type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
@@ -146,7 +147,7 @@ export class CommanderAbilitiesSystem {
     }
 
     // Check if target is valid (incomplete building or damaged unit)
-    const isValidBuilding = target.buildable && !target.buildable.isComplete && !target.buildable.isGhost;
+    const isValidBuilding = isBuildInProgress(target.buildable);
     const isValidUnit = target.unit && target.unit.hp > 0 && target.unit.hp < target.unit.maxHp;
 
     if (!isValidBuilding && !isValidUnit) {

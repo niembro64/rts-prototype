@@ -15,6 +15,7 @@ import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { getRuntimeTurretMount } from '../sim/turretMounts';
 import { getUnitGroundZ } from '../sim/unitGeometry';
 import { getEntityPosition3d, getProjectileLaunchSpeed } from '../sim/combat/combatUtils';
+import { isBuildBlockingActivation } from '../sim/buildableHelpers';
 import {
   createClosedRibbonGeometry,
   writeClosedRibbonGeometry,
@@ -152,7 +153,7 @@ export class ProjectileRangeEnvelope3D {
     if (entity.selectable?.selected !== true) return false;
     const hp = entity.unit?.hp ?? entity.building?.hp ?? 0;
     if (hp <= 0) return false;
-    if (entity.buildable && !entity.buildable.isComplete) return false;
+    if (isBuildBlockingActivation(entity.buildable)) return false;
     return true;
   }
 

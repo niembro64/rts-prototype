@@ -53,7 +53,11 @@ import { economyManager } from './economy';
 import { ConstructionSystem } from './construction';
 import { factoryProductionSystem } from './factoryProduction';
 import { updateConstructionLifecycle } from './constructionLifecycle';
-import { isConstructionBodyMaterialized } from './buildableHelpers';
+import {
+  isBuildBlockingActivation,
+  isBuildInProgress,
+  isConstructionBodyMaterialized,
+} from './buildableHelpers';
 import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities';
 import { updateUnitGroundNormal } from './unitGroundNormal';
 import { ForceAccumulator } from './ForceAccumulator';
@@ -1055,12 +1059,24 @@ export class Simulation {
       // Inert shells stay put — zero thrust, no actions, no priority
       // target. The shell occupies its build-spot footprint until it
       // completes or is destroyed.
-      if (entity.buildable && !entity.buildable.isComplete) {
+      if (isBuildBlockingActivation(entity.buildable)) {
         unit.thrustDirX = 0;
         unit.thrustDirY = 0;
         // Acceleration is sim-only state now (not shipped on the
         // wire); reset it without flagging a delta.
         setUnitMovementAcceleration(unit, 0, 0, 0);
+        if (entity.combat) {
+          entity.combat.priorityTargetId = null;
+          entity.combat.priorityTargetPoint = null;
+        }
+        continue;
+      }
+
+      if (unit.hp <= 0) {
+        unit.thrustDirX = 0;
+        unit.thrustDirY = 0;
+        setUnitMovementAcceleration(unit, 0, 0, 0);
+        unit.stuckTicks = 0;
         if (entity.combat) {
           entity.combat.priorityTargetId = null;
           entity.combat.priorityTargetPoint = null;
@@ -1362,9 +1378,7 @@ export class Simulation {
   }
 
   private isIncompleteBuildableTarget(target: Entity): boolean {
-    return !!(target.buildable &&
-      !target.buildable.isComplete &&
-      !target.buildable.isGhost &&
+    return !!(isBuildInProgress(target.buildable) &&
       ((target.building && target.building.hp > 0) ||
         (target.unit && target.unit.hp > 0)));
   }

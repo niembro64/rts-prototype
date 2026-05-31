@@ -12,7 +12,7 @@ import {
 import { ENTITY_CHANGED_ACTIONS } from '../../types/network';
 import { removeCompletedBuildingEffects } from './buildingCompletion';
 import { isBuildTargetInRange } from './builderRange';
-import { createBuildable } from './buildableHelpers';
+import { createBuildable, isBuildInProgress } from './buildableHelpers';
 import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
 import { initializeConstructionPieceHealth } from './constructionLifecycle';
 
@@ -235,7 +235,7 @@ export class ConstructionSystem {
     }
 
     // Check if target is not complete
-    if (target.buildable.isComplete) {
+    if (!isBuildInProgress(target.buildable)) {
       return false;
     }
 
