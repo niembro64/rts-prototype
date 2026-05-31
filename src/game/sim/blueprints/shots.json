@@ -6,7 +6,7 @@
     "health": 2,
     "radius": {
       "visual": 2,
-      "hitbox": 2,
+      "hitbox": 1.6,
       "collision": 2
     },
     "detonateOnExpiry": true,
@@ -32,7 +32,7 @@
       },
       "radius": {
         "visual": 2,
-        "hitbox": 2,
+        "hitbox": 1.6,
         "collision": 2
       }
     }
@@ -44,7 +44,7 @@
     "health": 4,
     "radius": {
       "visual": 3,
-      "hitbox": 3,
+      "hitbox": 2.4,
       "collision": 3
     },
     "detonateOnExpiry": true,
@@ -70,7 +70,7 @@
       },
       "radius": {
         "visual": 3,
-        "hitbox": 3,
+        "hitbox": 2.4,
         "collision": 3
       }
     }
@@ -82,7 +82,7 @@
     "health": 6,
     "radius": {
       "visual": 2,
-      "hitbox": 2,
+      "hitbox": 1.6,
       "collision": 2
     },
     "detonateOnExpiry": true,
@@ -109,7 +109,7 @@
       },
       "radius": {
         "visual": 2,
-        "hitbox": 2,
+        "hitbox": 1.6,
         "collision": 2
       }
     }
@@ -121,7 +121,7 @@
     "health": 4,
     "radius": {
       "visual": 2,
-      "hitbox": 2,
+      "hitbox": 1.6,
       "collision": 2
     },
     "detonateOnExpiry": true,
@@ -148,7 +148,7 @@
       },
       "radius": {
         "visual": 2,
-        "hitbox": 2,
+        "hitbox": 1.6,
         "collision": 2
       }
     }
@@ -160,7 +160,7 @@
     "health": 10,
     "radius": {
       "visual": 4,
-      "hitbox": 4,
+      "hitbox": 3.2,
       "collision": 4
     },
     "detonateOnExpiry": true,
@@ -186,7 +186,7 @@
       },
       "radius": {
         "visual": 4,
-        "hitbox": 4,
+        "hitbox": 3.2,
         "collision": 4
       }
     }
@@ -198,7 +198,7 @@
     "health": 8,
     "radius": {
       "visual": 8,
-      "hitbox": 8,
+      "hitbox": 6.4,
       "collision": 8
     },
     "detonateOnExpiry": true,
@@ -230,7 +230,7 @@
       },
       "radius": {
         "visual": 8,
-        "hitbox": 8,
+        "hitbox": 6.4,
         "collision": 8
       }
     }
@@ -242,7 +242,7 @@
     "health": 12,
     "radius": {
       "visual": 10,
-      "hitbox": 10,
+      "hitbox": 8,
       "collision": 10
     },
     "detonateOnExpiry": true,
@@ -274,7 +274,7 @@
       },
       "radius": {
         "visual": 10,
-        "hitbox": 10,
+        "hitbox": 8,
         "collision": 10
       }
     }
@@ -286,7 +286,7 @@
     "health": 30,
     "radius": {
       "visual": 25,
-      "hitbox": 25,
+      "hitbox": 20,
       "collision": 25
     },
     "detonateOnExpiry": true,
@@ -312,7 +312,7 @@
       },
       "radius": {
         "visual": 25,
-        "hitbox": 25,
+        "hitbox": 20,
         "collision": 25
       }
     }

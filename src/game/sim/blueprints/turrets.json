@@ -39,7 +39,7 @@
     "groundAimFraction": null,
     "radius": {
       "visual": 3,
-      "hitbox": 3,
+      "hitbox": 2.25,
       "collision": 3
     },
     "headOnly": false,
@@ -63,7 +63,7 @@
       },
       "radius": {
         "visual": 3,
-        "hitbox": 3,
+        "hitbox": 2.25,
         "collision": 3
       }
     },
@@ -121,7 +121,7 @@
     "groundAimFraction": null,
     "radius": {
       "visual": 9,
-      "hitbox": 9,
+      "hitbox": 6.75,
       "collision": 9
     },
     "headOnly": false,
@@ -145,7 +145,7 @@
       },
       "radius": {
         "visual": 9,
-        "hitbox": 9,
+        "hitbox": 6.75,
         "collision": 9
       }
     },
@@ -195,7 +195,7 @@
     "groundAimFraction": null,
     "radius": {
       "visual": 10,
-      "hitbox": 10,
+      "hitbox": 7.5,
       "collision": 10
     },
     "headOnly": false,
@@ -219,7 +219,7 @@
       },
       "radius": {
         "visual": 10,
-        "hitbox": 10,
+        "hitbox": 7.5,
         "collision": 10
       }
     },
@@ -269,7 +269,7 @@
     "groundAimFraction": 1,
     "radius": {
       "visual": 12,
-      "hitbox": 12,
+      "hitbox": 9,
       "collision": 12
     },
     "headOnly": false,
@@ -293,7 +293,7 @@
       },
       "radius": {
         "visual": 12,
-        "hitbox": 12,
+        "hitbox": 9,
         "collision": 12
       }
     },
@@ -340,7 +340,7 @@
     "groundAimFraction": 1,
     "radius": {
       "visual": 9,
-      "hitbox": 9,
+      "hitbox": 6.75,
       "collision": 9
     },
     "headOnly": false,
@@ -364,7 +364,7 @@
       },
       "radius": {
         "visual": 9,
-        "hitbox": 9,
+        "hitbox": 6.75,
         "collision": 9
       }
     },
@@ -422,7 +422,7 @@
     "groundAimFraction": 1,
     "radius": {
       "visual": 32,
-      "hitbox": 32,
+      "hitbox": 24,
       "collision": 32
     },
     "headOnly": false,
@@ -446,7 +446,7 @@
       },
       "radius": {
         "visual": 32,
-        "hitbox": 32,
+        "hitbox": 24,
         "collision": 32
       }
     },
@@ -504,7 +504,7 @@
     "groundAimFraction": null,
     "radius": {
       "visual": 16,
-      "hitbox": 16,
+      "hitbox": 12,
       "collision": 16
     },
     "headOnly": false,
@@ -528,7 +528,7 @@
       },
       "radius": {
         "visual": 16,
-        "hitbox": 16,
+        "hitbox": 12,
         "collision": 16
       }
     },
@@ -573,7 +573,7 @@
     "groundAimFraction": null,
     "radius": {
       "visual": 8,
-      "hitbox": 8,
+      "hitbox": 6,
       "collision": 8
     },
     "headOnly": false,
@@ -597,7 +597,7 @@
       },
       "radius": {
         "visual": 8,
-        "hitbox": 8,
+        "hitbox": 6,
         "collision": 8
       }
     },
@@ -642,7 +642,7 @@
     "groundAimFraction": null,
     "radius": {
       "visual": 8,
-      "hitbox": 8,
+      "hitbox": 6,
       "collision": 8
     },
     "headOnly": false,
@@ -666,7 +666,7 @@
       },
       "radius": {
         "visual": 8,
-        "hitbox": 8,
+        "hitbox": 6,
         "collision": 8
       }
     },
@@ -711,7 +711,7 @@
     "groundAimFraction": null,
     "radius": {
       "visual": 6,
-      "hitbox": 6,
+      "hitbox": 4.5,
       "collision": 6
     },
     "headOnly": true,
@@ -735,7 +735,7 @@
       },
       "radius": {
         "visual": 6,
-        "hitbox": 6,
+        "hitbox": 4.5,
         "collision": 6
       }
     },
@@ -780,7 +780,7 @@
     "groundAimFraction": null,
     "radius": {
       "visual": 3,
-      "hitbox": 3,
+      "hitbox": 2.25,
       "collision": 3
     },
     "headOnly": true,
@@ -804,7 +804,7 @@
       },
       "radius": {
         "visual": 3,
-        "hitbox": 3,
+        "hitbox": 2.25,
         "collision": 3
       }
     },
@@ -849,7 +849,7 @@
     "groundAimFraction": null,
     "radius": {
       "visual": 15,
-      "hitbox": 15,
+      "hitbox": 11.25,
       "collision": 15
     },
     "headOnly": true,
@@ -873,7 +873,7 @@
       },
       "radius": {
         "visual": 15,
-        "hitbox": 15,
+        "hitbox": 11.25,
         "collision": 15
       }
     },
@@ -927,7 +927,7 @@
     "groundAimFraction": null,
     "radius": {
       "visual": 12,
-      "hitbox": 12,
+      "hitbox": 9,
       "collision": 12
     },
     "headOnly": false,
@@ -951,7 +951,7 @@
       },
       "radius": {
         "visual": 12,
-        "hitbox": 12,
+        "hitbox": 9,
         "collision": 12
       }
     },
@@ -994,7 +994,7 @@
     "groundAimFraction": null,
     "radius": {
       "visual": 8,
-      "hitbox": 8,
+      "hitbox": 6,
       "collision": 8
     },
     "headOnly": false,
@@ -1036,7 +1036,7 @@
       },
       "radius": {
         "visual": 8,
-        "hitbox": 8,
+        "hitbox": 6,
         "collision": 8
       }
     },
@@ -1081,7 +1081,7 @@
     "groundAimFraction": null,
     "radius": {
       "visual": 16,
-      "hitbox": 16,
+      "hitbox": 12,
       "collision": 16
     },
     "headOnly": true,
@@ -1105,7 +1105,7 @@
       },
       "radius": {
         "visual": 16,
-        "hitbox": 16,
+        "hitbox": 12,
         "collision": 16
       }
     },
@@ -1156,7 +1156,7 @@
     "groundAimFraction": null,
     "radius": {
       "visual": 16,
-      "hitbox": 16,
+      "hitbox": 12,
       "collision": 16
     },
     "headOnly": false,
@@ -1180,7 +1180,7 @@
       },
       "radius": {
         "visual": 16,
-        "hitbox": 16,
+        "hitbox": 12,
         "collision": 16
       }
     },
@@ -1239,7 +1239,7 @@
     "groundAimFraction": null,
     "radius": {
       "visual": 8,
-      "hitbox": 8,
+      "hitbox": 6,
       "collision": 8
     },
     "headOnly": true,
@@ -1263,7 +1263,7 @@
       },
       "radius": {
         "visual": 8,
-        "hitbox": 8,
+        "hitbox": 6,
         "collision": 8
       }
     },
@@ -1310,7 +1310,7 @@
     "groundAimFraction": null,
     "radius": {
       "visual": 4,
-      "hitbox": 4,
+      "hitbox": 3,
       "collision": 4
     },
     "headOnly": true,
@@ -1334,7 +1334,7 @@
       },
       "radius": {
         "visual": 4,
-        "hitbox": 4,
+        "hitbox": 3,
         "collision": 4
       }
     },
