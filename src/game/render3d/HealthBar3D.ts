@@ -10,10 +10,22 @@
 // no per-unit raycast on the CPU.
 
 import * as THREE from 'three';
-import type { Entity } from '../sim/types';
-import { getBuildingHudBarsY, getUnitHudBarsY } from './HudAnchor';
-import { getResourceFillRatio, isBuildInProgress } from '../sim/buildableHelpers';
-import type { Buildable } from '../sim/types';
+import type { Entity, Turret } from '../sim/types';
+import {
+  getBuildingHudBarsY,
+  getUnitHudBarsY,
+  getTurretHudBarsY,
+  getLocomotionHudBarsY,
+  getShotHudBarsY,
+} from './HudAnchor';
+import {
+  getResourceFillRatio,
+  getPieceFillRatio,
+  getConstructionPieceRecord,
+  isBuildInProgress,
+} from '../sim/buildableHelpers';
+import { getTurretHeadRadius } from '../math';
+import type { Buildable, ConstructionPieceBuildRecord } from '../sim/types';
 import { ENTITY_HUD_BAR_STACK_GAP } from '@/config';
 import { CanvasSpritePool, type CanvasSpriteSlot } from './CanvasSpritePool';
 import { FADE_CULL_ALPHA, type HudFade } from './HudFade';
@@ -62,6 +74,28 @@ type BarState = {
 };
 
 type Bar = CanvasSpriteSlot<BarState>;
+
+// Packed per-piece dedup keys. A host's body bar + N turret bars + the
+// locomotion bar all share one host entity id, so a single id-keyed
+// dedup map would let the body call suppress every sub-piece. Pack the
+// piece identity into the key: hostId * 256 + pieceTag. Tag 0 = body,
+// tag 1 = locomotion, tags 16.. = turret index (matching the
+// TurretMountCache3D packTurretMountKey scheme, offset to avoid
+// colliding with body/loco low tags).
+export const PIECE_TAG_BODY = 0;
+export const PIECE_TAG_LOCOMOTION = 1;
+export const PIECE_TAG_TURRET_BASE = 16;
+
+/** Tag for turret index `i`. Offset past the body/loco low tags so
+ *  turret tags never collide with them; mirrors the
+ *  TurretMountCache3D packTurretMountKey idea (id * 256 + slot). */
+export function turretPieceTag(turretIdx: number): number {
+  return PIECE_TAG_TURRET_BASE + (turretIdx & 0xff);
+}
+
+export function packPieceKey(hostId: number, pieceTag: number): number {
+  return hostId * 256 + (pieceTag & 0xff);
+}
 
 /** BAR-style HP color: red (0) → green (1), then normalize the brighter
  *  channel to full so mid-health reads as vivid yellow/orange instead of
@@ -209,25 +243,34 @@ export class HealthBar3D {
     return stack;
   }
 
-  /** Fused-iteration entry: process one unit. Caller's outer loop
-   *  walks `getUnits()` once and dispatches here (and to other
-   *  per-unit renderers like ShieldRenderer3D). */
-  perUnit(u: Entity, forceVisible = false): void {
+  /** Fused-iteration entry: process one unit's BODY bars. Caller's
+   *  outer loop walks the HUD entity list once and dispatches here (and
+   *  to other per-unit renderers like ShieldRenderer3D).
+   *
+   *  `showHealth` / `showResources` are the orchestrator's per-element
+   *  config decision (per-type toggle + selection mode + not-full rule
+   *  already applied). `forceVisible` (hover) forces the HEALTH bar on
+   *  regardless of the not-full rule, matching the legacy behavior. */
+  perUnit(
+    u: Entity,
+    forceVisible = false,
+    showHealth = true,
+    showResources = true,
+  ): void {
     if (!u.unit) return;
-    if (this._seenEntityFrame.get(u.id) === this._frameToken) return;
+    const key = packPieceKey(u.id, PIECE_TAG_BODY);
+    if (this._seenEntityFrame.get(key) === this._frameToken) return;
     const unit = u.unit;
     const hp = unit.hp;
     const maxHp = unit.maxHp;
     const buildable = isBuildInProgress(u.buildable)
       ? u.buildable
       : null;
-    const showHp = maxHp > 0 && (
-      buildable
-        ? true
-        : hp > 0 && (forceVisible || !STYLE.hideAtFull || hp < maxHp)
-    );
-    if (!showHp && !buildable) return;
-    this._seenEntityFrame.set(u.id, this._frameToken);
+    const showHp = maxHp > 0 && (showHealth || forceVisible)
+      && (buildable !== null || hp > 0);
+    const showRes = showResources && buildable !== null;
+    if (!showHp && !showRes) return;
+    this._seenEntityFrame.set(key, this._frameToken);
     const worldX = u.transform.x;
     const worldY = getUnitHudBarsY(u);
     const worldZ = u.transform.y;
@@ -240,27 +283,31 @@ export class HealthBar3D {
       this.placeBar(ratio, 'health', worldX, worldY, worldZ, worldWidth, stack, alpha);
       stack++;
     }
-    if (buildable) {
+    if (showRes && buildable) {
       this.placeResourceBars(buildable, worldX, worldY, worldZ, worldWidth, stack, alpha);
     }
   }
 
-  /** Fused-iteration entry: process one building. */
-  perBuilding(b: Entity, forceVisible = false): void {
+  /** Fused-iteration entry: process one building's BODY bars. */
+  perBuilding(
+    b: Entity,
+    forceVisible = false,
+    showHealth = true,
+    showResources = true,
+  ): void {
     if (!b.building) return;
-    if (this._seenEntityFrame.get(b.id) === this._frameToken) return;
+    const key = packPieceKey(b.id, PIECE_TAG_BODY);
+    if (this._seenEntityFrame.get(key) === this._frameToken) return;
     const hp = b.building.hp;
     const maxHp = b.building.maxHp;
     const buildable = isBuildInProgress(b.buildable)
       ? b.buildable
       : null;
-    const showHp = maxHp > 0 && (
-      buildable
-        ? true
-        : hp > 0 && (forceVisible || !STYLE.hideAtFull || hp < maxHp)
-    );
-    if (!showHp && !buildable) return;
-    this._seenEntityFrame.set(b.id, this._frameToken);
+    const showHp = maxHp > 0 && (showHealth || forceVisible)
+      && (buildable !== null || hp > 0);
+    const showRes = showResources && buildable !== null;
+    if (!showHp && !showRes) return;
+    this._seenEntityFrame.set(key, this._frameToken);
     const worldX = b.transform.x;
     const worldY = getBuildingHudBarsY(b);
     const worldZ = b.transform.y;
@@ -275,9 +322,138 @@ export class HealthBar3D {
       this.placeBar(ratio, 'health', worldX, worldY, worldZ, worldWidth, stack, alpha);
       stack++;
     }
-    if (buildable) {
+    if (showRes && buildable) {
       this.placeResourceBars(buildable, worldX, worldY, worldZ, worldWidth, stack, alpha);
     }
+  }
+
+  /** Place a piece's energy/metal bars from its construction record's
+   *  paid/required (absent → not building → skipped by the caller).
+   *  Mirrors `placeResourceBars` but reads the per-piece ledger. */
+  private placePieceResourceBars(
+    piece: ConstructionPieceBuildRecord,
+    worldX: number,
+    worldBaseY: number,
+    worldZ: number,
+    worldWidth: number,
+    stackStart: number,
+    alpha: number,
+  ): void {
+    let stack = stackStart;
+    this.placeBar(
+      getPieceFillRatio(piece, 'energy'),
+      'energyBar', worldX, worldBaseY, worldZ, worldWidth, stack, alpha,
+    );
+    stack++;
+    this.placeBar(
+      getPieceFillRatio(piece, 'metal'),
+      'metalBar', worldX, worldBaseY, worldZ, worldWidth, stack, alpha,
+    );
+  }
+
+  /** Fused-iteration entry: one turret's HP (+ resource) bars at its
+   *  live world mount anchor. `mountWorld` is the TurretMountCache3D
+   *  entry (transform.x = world X, .y = world Y/north, .z = world up).
+   *  Resource bars come from the host's matching construction piece
+   *  record (only present while building). */
+  perTurret(
+    host: Entity,
+    turretIdx: number,
+    mountWorld: { x: number; y: number; z: number },
+    forceVisible: boolean,
+    showHealth: boolean,
+    showResources: boolean,
+  ): void {
+    const turret: Turret | undefined = host.combat?.turrets[turretIdx];
+    if (!turret) return;
+    const key = packPieceKey(host.id, turretPieceTag(turretIdx));
+    if (this._seenEntityFrame.get(key) === this._frameToken) return;
+    const hp = turret.hp;
+    const maxHp = turret.maxHp;
+    const piece = showResources
+      ? getConstructionPieceRecord(host, 'turret', turret.mountIndex)
+      : null;
+    const showHp = maxHp > 0 && (showHealth || forceVisible) && hp > 0;
+    const showRes = piece !== null;
+    if (!showHp && !showRes) return;
+    // Cull before acquiring a pool slot — the pool grows monotonically.
+    const worldX = mountWorld.x;
+    const worldY = getTurretHudBarsY(mountWorld.z, turret.config);
+    const worldZ = mountWorld.y;
+    const alpha = this._fade ? this._fade.alphaAt(worldX, worldY, worldZ) : 1;
+    if (alpha <= FADE_CULL_ALPHA) return;
+    this._seenEntityFrame.set(key, this._frameToken);
+    const worldWidth = getTurretHeadRadius(turret.config) * 2;
+    let stack = 0;
+    if (showHp) {
+      const ratio = Math.max(0, Math.min(1, hp / maxHp));
+      this.placeBar(ratio, 'health', worldX, worldY, worldZ, worldWidth, stack, alpha);
+      stack++;
+    }
+    if (showRes && piece) {
+      this.placePieceResourceBars(piece, worldX, worldY, worldZ, worldWidth, stack, alpha);
+    }
+  }
+
+  /** Fused-iteration entry: one unit's locomotion HP (+ resource) bars,
+   *  anchored LOW at the body base (below the body stack). */
+  perLocomotion(
+    host: Entity,
+    forceVisible: boolean,
+    showHealth: boolean,
+    showResources: boolean,
+  ): void {
+    const loco = host.unit?.locomotion;
+    if (!loco) return;
+    const key = packPieceKey(host.id, PIECE_TAG_LOCOMOTION);
+    if (this._seenEntityFrame.get(key) === this._frameToken) return;
+    const hp = loco.hp;
+    const maxHp = loco.maxHp;
+    const piece = showResources
+      ? getConstructionPieceRecord(host, 'locomotion', 0)
+      : null;
+    const showHp = maxHp > 0 && (showHealth || forceVisible) && hp > 0;
+    const showRes = piece !== null;
+    if (!showHp && !showRes) return;
+    const worldX = host.transform.x;
+    const worldY = getLocomotionHudBarsY(host);
+    const worldZ = host.transform.y;
+    const alpha = this._fade ? this._fade.alphaAt(worldX, worldY, worldZ) : 1;
+    if (alpha <= FADE_CULL_ALPHA) return;
+    this._seenEntityFrame.set(key, this._frameToken);
+    const worldWidth = loco.radius.visual * 2;
+    let stack = 0;
+    if (showHp) {
+      const ratio = Math.max(0, Math.min(1, hp / maxHp));
+      this.placeBar(ratio, 'health', worldX, worldY, worldZ, worldWidth, stack, alpha);
+      stack++;
+    }
+    if (showRes && piece) {
+      this.placePieceResourceBars(piece, worldX, worldY, worldZ, worldWidth, stack, alpha);
+    }
+  }
+
+  /** Fused-iteration entry: one projectile-kind shot's tiny HP bar
+   *  (no resource bars). Anchored at the shot transform. */
+  perShot(shot: Entity, forceVisible: boolean, showHealth: boolean): void {
+    const proj = shot.projectile;
+    if (!proj) return;
+    const key = packPieceKey(shot.id, PIECE_TAG_BODY);
+    if (this._seenEntityFrame.get(key) === this._frameToken) return;
+    const hp = proj.hp;
+    const maxHp = proj.maxHp;
+    const showHp = maxHp > 0 && (showHealth || forceVisible) && hp > 0
+      && (forceVisible || hp < maxHp);
+    if (!showHp) return;
+    const worldX = shot.transform.x;
+    const worldY = getShotHudBarsY(shot);
+    const worldZ = shot.transform.y;
+    const alpha = this._fade ? this._fade.alphaAt(worldX, worldY, worldZ) : 1;
+    if (alpha <= FADE_CULL_ALPHA) return;
+    this._seenEntityFrame.set(key, this._frameToken);
+    const worldWidth = proj.config.shotProfile.runtime.radius.visual * 2;
+    const ratio = Math.max(0, Math.min(1, hp / maxHp));
+    this.placeBar(ratio, 'health', worldX, worldY, worldZ, worldWidth, 0, alpha);
   }
 
   /** Fused-iteration entry: hide trailing pool entries past the live

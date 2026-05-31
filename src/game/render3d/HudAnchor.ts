@@ -152,3 +152,43 @@ export function getUnitHudNameY(unit: Entity): number {
 export function getBuildingHudNameY(building: Entity): number {
   return getHudNameYFromBarsY(getBuildingHudBarsY(building));
 }
+
+// ── Per-piece (sub-entity) HUD anchors ──
+// Turret bars sit just above the turret head sphere at the live mount
+// world Z; locomotion bars sit LOW at the body base (below the body's
+// own bar stack so the two don't overlap); shot bars sit just above the
+// projectile transform.
+
+/** Vertical gap (world units) between a sub-piece's reference surface
+ *  and the bottom row of its bar stack. Mirrors the blueprint
+ *  `barsOffsetAboveTop` knob but applies to pieces that have no
+ *  authored HUD layout. */
+const PIECE_BAR_GAP = SHELL_BAR_WORLD_HEIGHT;
+
+export function getTurretHudBarsY(mountWorldZ: number, config: Turret['config']): number {
+  return mountWorldZ + getTurretHeadRadius(config) + PIECE_BAR_GAP;
+}
+
+export function getTurretHudNameY(mountWorldZ: number, config: Turret['config']): number {
+  return getHudNameYFromBarsY(getTurretHudBarsY(mountWorldZ, config));
+}
+
+/** Locomotion anchor: low at the unit's footprint base, lifted just
+ *  enough to clear the ground. Deliberately well below
+ *  `getUnitHudBarsY` (which sits above the body top) so the loco stack
+ *  never collides with the body stack. */
+export function getLocomotionHudBarsY(unit: Entity): number {
+  return getUnitGroundZ(unit) + PIECE_BAR_GAP;
+}
+
+export function getLocomotionHudNameY(unit: Entity): number {
+  return getHudNameYFromBarsY(getLocomotionHudBarsY(unit));
+}
+
+export function getShotHudBarsY(shot: Entity): number {
+  return shot.transform.z + PIECE_BAR_GAP;
+}
+
+export function getShotHudNameY(shot: Entity): number {
+  return getHudNameYFromBarsY(getShotHudBarsY(shot));
+}

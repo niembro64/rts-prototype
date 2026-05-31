@@ -923,6 +923,21 @@ export class ClientViewState {
     return this.cache.getHealthBarBuildings();
   }
 
+  /** Units / towers / buildings needing ANY HUD bar this frame
+   *  (body-damaged, building, or a damaged sub-piece). Selection is
+   *  applied by the orchestrator against the live entity ref, not here. */
+  getHudEntities(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getHudEntities();
+  }
+
+  /** Entities (unit/tower/building) with at least one non-visualOnly
+   *  turret. Feeds the turret HUD bar / name pass. */
+  getArmedEntities(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getArmedEntities();
+  }
+
   getSprayTargets(): SprayTarget[] {
     return this.sprayTargetStore.getTargets();
   }

@@ -7,6 +7,27 @@ import { isBuildInProgress } from './buildableHelpers';
 
 const EMPTY_ENTITIES: Entity[] = [];
 
+/** True iff any of the entity's mounted turrets is damaged (hp below
+ *  maxHp, hp > 0). Visual-only / shield-emitter turrets still count —
+ *  the orchestrator filters which turrets actually draw a bar; the
+ *  cache only decides whether the host is worth visiting at all. */
+function hasDamagedTurret(entity: Entity): boolean {
+  const combat = entity.combat;
+  if (combat === null) return false;
+  const turrets = combat.turrets;
+  for (let i = 0; i < turrets.length; i++) {
+    const t = turrets[i];
+    if (t.hp > 0 && t.hp < t.maxHp) return true;
+  }
+  return false;
+}
+
+/** True iff the unit's locomotion is damaged (hp below maxHp, hp > 0). */
+function hasDamagedLocomotion(entity: Entity): boolean {
+  const loco = entity.unit?.locomotion;
+  return loco !== null && loco !== undefined && loco.hp > 0 && loco.hp < loco.maxHp;
+}
+
 export class EntityCacheManager {
   private cachedUnits: Entity[] = [];
   private cachedBuildings: Entity[] = [];
@@ -16,6 +37,14 @@ export class EntityCacheManager {
   private cachedLineProjectiles: Entity[] = [];
   private cachedDamagedUnits: Entity[] = [];
   private cachedHealthBarBuildings: Entity[] = [];
+  /** Units / towers / buildings that need ANY HUD bar this frame: body
+   *  damaged, build-in-progress, OR any sub-piece (turret / locomotion)
+   *  damaged. Superset of cachedDamagedUnits ∪ cachedHealthBarBuildings
+   *  that also catches a full-HP host whose turret or locomotion is
+   *  damaged. Selection is NOT folded in here — the cache is dirty-
+   *  rebuilt and may not invalidate on selection — so the orchestrator
+   *  applies the selection rule against the live entity ref. */
+  private cachedHudEntities: Entity[] = [];
   /** Wind turbines specifically. Polled every sim tick by WindPowerTracker
    *  to apply per-player wind production deltas; far cheaper to walk this
    *  small list than to filter the full building array each tick. */
@@ -90,6 +119,7 @@ export class EntityCacheManager {
     this.cachedLineProjectiles.length = 0;
     this.cachedDamagedUnits.length = 0;
     this.cachedHealthBarBuildings.length = 0;
+    this.cachedHudEntities.length = 0;
     this.cachedWindBuildings.length = 0;
     this.cachedSolarBuildings.length = 0;
     this.cachedExtractorBuildings.length = 0;
@@ -160,6 +190,19 @@ export class EntityCacheManager {
           ) {
             this.cachedDamagedUnits.push(entity);
           }
+          // HUD list: body-damaged / building (covered by the
+          // cachedDamagedUnits predicate) OR any damaged sub-piece.
+          if (
+            entity.unit
+            && (
+              (entity.unit.hp > 0 && entity.unit.hp < entity.unit.maxHp)
+              || isBuildInProgress(entity.buildable)
+              || hasDamagedTurret(entity)
+              || hasDamagedLocomotion(entity)
+            )
+          ) {
+            this.cachedHudEntities.push(entity);
+          }
           if (entity.unit !== null && entity.unit.shieldPanels.length > 0) {
             this.cachedShieldPanelUnits.push(entity);
           }
@@ -192,6 +235,19 @@ export class EntityCacheManager {
             )
           ) {
             this.cachedHealthBarBuildings.push(entity);
+          }
+          // HUD list: body-damaged / building OR any damaged mounted
+          // turret (towers/buildings can be armed). Buildings have no
+          // locomotion, so only the turret sub-piece check applies.
+          if (
+            entity.building
+            && (
+              (entity.building.hp > 0 && entity.building.hp < entity.building.maxHp)
+              || isBuildInProgress(entity.buildable)
+              || hasDamagedTurret(entity)
+            )
+          ) {
+            this.cachedHudEntities.push(entity);
           }
           if (entity.buildingBlueprintId === 'buildingWind') {
             this.cachedWindBuildings.push(entity);
@@ -301,6 +357,10 @@ export class EntityCacheManager {
 
   getHealthBarBuildings(): Entity[] {
     return this.cachedHealthBarBuildings;
+  }
+
+  getHudEntities(): Entity[] {
+    return this.cachedHudEntities;
   }
 
   getWindBuildings(): Entity[] {

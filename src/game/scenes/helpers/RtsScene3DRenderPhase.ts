@@ -3,7 +3,10 @@ import {
   getBuildGridDebug,
   getRadarBoundary,
   getSightBoundary,
+  getEntityHudToggle,
+  getSelectionHudMode,
 } from '@/clientBarConfig';
+import type { EntityHudType, SelectionHudMode } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { SprayTarget } from '@/types/ui';
 import type { ClientViewState } from '../../network/ClientViewState';
@@ -36,7 +39,23 @@ import type { HealthBar3D } from '../../render3d/HealthBar3D';
 import type { NameLabel3D } from '../../render3d/NameLabel3D';
 import { HudFade } from '../../render3d/HudFade';
 import type { Waypoint3D } from '../../render3d/Waypoint3D';
-import { resolveEntityDisplayName } from '../../render3d/EntityName';
+import {
+  resolveEntityDisplayName,
+  resolveTurretName,
+  resolveLocomotionName,
+  resolveShotName,
+} from '../../render3d/EntityName';
+import {
+  PIECE_TAG_LOCOMOTION,
+  PIECE_TAG_BODY,
+  turretPieceTag,
+} from '../../render3d/HealthBar3D';
+import {
+  getTurretHudNameY,
+  getLocomotionHudNameY,
+  getShotHudNameY,
+} from '../../render3d/HudAnchor';
+import { isBuildInProgress } from '../../sim/buildableHelpers';
 import {
   ENTITY_HUD_FADE_START_DISTANCE_FRAC,
   ENTITY_HUD_FADE_END_DISTANCE_FRAC,
@@ -346,34 +365,7 @@ export class RtsScene3DRenderPhase {
     shieldRenderer.endFrame();
 
     const hoveredEntity = inputManager?.getHoveredEntity() ?? null;
-    if (healthBar3D) {
-      healthBar3D.beginFrame(this.hudFade, hudFrustum);
-      const damagedUnits = this.clientViewState.getDamagedUnits();
-      for (const u of damagedUnits) {
-        healthBar3D.perUnit(u);
-      }
-      const healthBarBuildings = this.clientViewState.getHealthBarBuildings();
-      for (const b of healthBarBuildings) {
-        healthBar3D.perBuilding(b);
-      }
-      if (hoveredEntity?.unit) {
-        healthBar3D.perUnit(hoveredEntity, true);
-      } else if (hoveredEntity?.building) {
-        healthBar3D.perBuilding(hoveredEntity, true);
-      }
-      healthBar3D.endFrame();
-    }
-
-    if (nameLabel3D) {
-      nameLabel3D.beginFrame(this.hudFade, hudFrustum);
-      const lookup = (pid: PlayerId): string | null =>
-        this.lookupPlayerName(pid) ?? getDefaultPlayerName(pid);
-      for (const e of this.clientViewState.getUnitsAndBuildings()) {
-        const name = resolveEntityDisplayName(e, lookup);
-        if (name !== null) nameLabel3D.perEntity(e, name);
-      }
-      nameLabel3D.endFrame();
-    }
+    this.drawEntityHud(healthBar3D, nameLabel3D, hudFrustum, hoveredEntity);
 
     if (updateHudThisFrame) {
       waypoint3D?.update(
@@ -386,5 +378,202 @@ export class RtsScene3DRenderPhase {
       cameraQuad,
       renderMs: performance.now() - renderStart,
     };
+  }
+
+  /** Per-element BAR visibility decision (health / resourceBars).
+   *  Names use {@link nameVisible} instead (no fullness). `notFull` is
+   *  the piece's `current < max` test for this element. */
+  private barVisible(
+    perType: boolean,
+    selected: boolean,
+    mode: SelectionHudMode,
+    notFull: boolean,
+  ): boolean {
+    if (!perType) return false;
+    if (selected) {
+      if (mode === 'always') return true;
+      if (mode === 'never') return false;
+      return notFull; // whenNotFull
+    }
+    return notFull;
+  }
+
+  /** Map an entity's discriminator to its HUD config type. Towers carry
+   *  a `building` component but report type 'tower' so they get their
+   *  own toggle row. */
+  private hudTypeOf(entity: Entity): EntityHudType {
+    if (entity.type === 'unit') return 'unit';
+    if (entity.type === 'tower') return 'tower';
+    return 'building';
+  }
+
+  /** Drive every HUD bar + name pass for the frame from the live HUD
+   *  config: body bars (unit/tower/building) from getHudEntities(),
+   *  turret bars/names from getArmedEntities(), locomotion bars/names
+   *  from getHudEntities() units, and (only if any shot toggle is on)
+   *  shot bars/names from the projectile list. Selection is read from
+   *  the live entity ref here, never from a cached filter. */
+  private drawEntityHud(
+    healthBar3D: HealthBar3D | null,
+    nameLabel3D: NameLabel3D | null,
+    hudFrustum: THREE.Frustum | undefined,
+    hoveredEntity: Entity | null,
+  ): void {
+    if (!healthBar3D && !nameLabel3D) return;
+    const mode = getSelectionHudMode();
+    const lookup = (pid: PlayerId): string | null =>
+      this.lookupPlayerName(pid) ?? getDefaultPlayerName(pid);
+
+    const shotHealthToggle = getEntityHudToggle('shot', 'healthBar');
+    const shotNameToggle = getEntityHudToggle('shot', 'name');
+
+    if (healthBar3D) healthBar3D.beginFrame(this.hudFade, hudFrustum);
+    if (nameLabel3D) nameLabel3D.beginFrame(this.hudFade, hudFrustum);
+
+    // ── Body bars + names (unit / tower / building) ──
+    for (const e of this.clientViewState.getHudEntities()) {
+      const type = this.hudTypeOf(e);
+      const selected = e.selectable?.selected === true;
+      const forceVisible = e === hoveredEntity;
+      const buildInProgress = isBuildInProgress(e.buildable);
+      const hp = e.unit ? e.unit.hp : e.building ? e.building.hp : 0;
+      const maxHp = e.unit ? e.unit.maxHp : e.building ? e.building.maxHp : 0;
+      const healthNotFull = maxHp > 0 && hp < maxHp;
+      const showHealth = this.barVisible(
+        getEntityHudToggle(type, 'healthBar'), selected, mode, healthNotFull,
+      );
+      // Resource bars are only meaningful while building (paid<required);
+      // once complete the buildable is gone and they read full → hidden.
+      const showResources = this.barVisible(
+        getEntityHudToggle(type, 'resourceBars'), selected, mode, buildInProgress,
+      );
+      if (healthBar3D && (showHealth || showResources || forceVisible)) {
+        if (e.unit) healthBar3D.perUnit(e, forceVisible, showHealth, showResources);
+        else if (e.building) healthBar3D.perBuilding(e, forceVisible, showHealth, showResources);
+      }
+    }
+
+    // Hovered entity forces its body HEALTH bar on even when full-HP /
+    // toggle-off, matching the legacy hover behavior. It may not be in
+    // getHudEntities() (full HP, not building); the renderer's packed
+    // dedup key makes a second call a no-op if it already drew above.
+    if (healthBar3D && hoveredEntity) {
+      if (hoveredEntity.unit) healthBar3D.perUnit(hoveredEntity, true);
+      else if (hoveredEntity.building) healthBar3D.perBuilding(hoveredEntity, true);
+    }
+
+    // Body NAMES iterate every unit/building (names show even at full
+    // HP, and commander names ignore the per-type toggle).
+    if (nameLabel3D) {
+      for (const e of this.clientViewState.getUnitsAndBuildings()) {
+        const type = this.hudTypeOf(e);
+        const name = resolveEntityDisplayName(e, lookup, getEntityHudToggle(type, 'name'), mode);
+        if (name !== null) nameLabel3D.perEntity(e, name);
+      }
+    }
+
+    // ── Turret bars + names ──
+    const turretHealthToggle = getEntityHudToggle('turret', 'healthBar');
+    const turretResourceToggle = getEntityHudToggle('turret', 'resourceBars');
+    const turretNameToggle = getEntityHudToggle('turret', 'name');
+    if (turretHealthToggle || turretResourceToggle || turretNameToggle) {
+      const entityRenderer = this.resources.entityRenderer;
+      for (const host of this.clientViewState.getArmedEntities()) {
+        const turrets = host.combat?.turrets;
+        if (!turrets) continue;
+        const selected = host.selectable?.selected === true;
+        for (let i = 0; i < turrets.length; i++) {
+          const turret = turrets[i];
+          // Skip visual-only / construction-emitter (shot === undefined)
+          // and shield-emitter turrets — they're not damageable weapon
+          // bodies.
+          if (turret.config.visualOnly) continue;
+          if (turret.config.shot === undefined) continue;
+          if (turret.config.shot.type === 'shield') continue;
+          const mount = entityRenderer.getTurretMountWorldState(host.id, i);
+          if (mount === null) continue;
+          if (healthBar3D && (turretHealthToggle || turretResourceToggle)) {
+            const healthNotFull = turret.maxHp > 0 && turret.hp < turret.maxHp;
+            const buildInProgress = isBuildInProgress(host.buildable);
+            const showHealth = this.barVisible(turretHealthToggle, selected, mode, healthNotFull);
+            const showResources = this.barVisible(turretResourceToggle, selected, mode, buildInProgress);
+            if (showHealth || showResources) {
+              healthBar3D.perTurret(host, i, mount, false, showHealth, showResources);
+            }
+          }
+          if (nameLabel3D && turretNameToggle) {
+            const name = resolveTurretName(host, turret, turretNameToggle, mode);
+            if (name !== null) {
+              nameLabel3D.perPieceName(
+                host,
+                turretPieceTag(i),
+                { x: mount.x, y: getTurretHudNameY(mount.z, turret.config), z: mount.y },
+                name,
+              );
+            }
+          }
+        }
+      }
+    }
+
+    // ── Locomotion bars + names ──
+    const locoHealthToggle = getEntityHudToggle('locomotion', 'healthBar');
+    const locoResourceToggle = getEntityHudToggle('locomotion', 'resourceBars');
+    const locoNameToggle = getEntityHudToggle('locomotion', 'name');
+    if (locoHealthToggle || locoResourceToggle || locoNameToggle) {
+      for (const host of this.clientViewState.getHudEntities()) {
+        const loco = host.unit?.locomotion;
+        if (!loco) continue;
+        const selected = host.selectable?.selected === true;
+        if (healthBar3D && (locoHealthToggle || locoResourceToggle)) {
+          const healthNotFull = loco.maxHp > 0 && loco.hp < loco.maxHp;
+          const buildInProgress = isBuildInProgress(host.buildable);
+          const showHealth = this.barVisible(locoHealthToggle, selected, mode, healthNotFull);
+          const showResources = this.barVisible(locoResourceToggle, selected, mode, buildInProgress);
+          if (showHealth || showResources) {
+            healthBar3D.perLocomotion(host, false, showHealth, showResources);
+          }
+        }
+        if (nameLabel3D && locoNameToggle) {
+          const name = resolveLocomotionName(host, locoNameToggle, mode);
+          if (name !== null) {
+            nameLabel3D.perPieceName(
+              host,
+              PIECE_TAG_LOCOMOTION,
+              { x: host.transform.x, y: getLocomotionHudNameY(host), z: host.transform.y },
+              name,
+            );
+          }
+        }
+      }
+    }
+
+    // ── Shot bars + names (off by default → zero cost) ──
+    if (shotHealthToggle || shotNameToggle) {
+      for (const shot of this.clientViewState.getProjectiles()) {
+        const proj = shot.projectile;
+        if (!proj || proj.projectileType !== 'projectile' || proj.maxHp <= 0) continue;
+        const selected = shot.selectable?.selected === true;
+        if (healthBar3D && shotHealthToggle) {
+          const healthNotFull = proj.hp < proj.maxHp;
+          const showHealth = this.barVisible(shotHealthToggle, selected, mode, healthNotFull);
+          if (showHealth) healthBar3D.perShot(shot, false, showHealth);
+        }
+        if (nameLabel3D && shotNameToggle) {
+          const name = resolveShotName(shot, shotNameToggle, mode);
+          if (name !== null) {
+            nameLabel3D.perPieceName(
+              shot,
+              PIECE_TAG_BODY,
+              { x: shot.transform.x, y: getShotHudNameY(shot), z: shot.transform.y },
+              name,
+            );
+          }
+        }
+      }
+    }
+
+    if (healthBar3D) healthBar3D.endFrame();
+    if (nameLabel3D) nameLabel3D.endFrame();
   }
 }

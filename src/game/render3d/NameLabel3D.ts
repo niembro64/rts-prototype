@@ -14,10 +14,11 @@
 // handed.
 
 import * as THREE from 'three';
-import type { Entity, EntityId } from '../sim/types';
+import type { Entity } from '../sim/types';
 import { getBuildingHudNameY, getUnitHudNameY } from './HudAnchor';
 import { CanvasSpritePool, type CanvasSpriteSlot } from './CanvasSpritePool';
 import { FADE_CULL_ALPHA, type HudFade } from './HudFade';
+import { PIECE_TAG_BODY, packPieceKey } from './HealthBar3D';
 import {
   NAME_LABEL_WORLD_HEIGHT,
   NAME_LABEL_FONT_PX,
@@ -106,9 +107,12 @@ export class NameLabel3D {
    *  unused tail, beginFrame doesn't tear down sprites. */
   private pool: CanvasSpritePool<LabelState, [string]>;
 
-  /** Per-frame cursor — same pattern as HealthBar3D. */
+  /** Per-frame cursor — same pattern as HealthBar3D. Dedup is keyed by
+   *  a PACKED piece key (hostId * 256 + pieceTag) so a host's body
+   *  label doesn't suppress its turret / locomotion labels (they share
+   *  one host id). */
   private _used = 0;
-  private _seenEntityFrame = new Map<EntityId, number>();
+  private _seenEntityFrame = new Map<number, number>();
   private _frameToken = 0;
   private _frustum: THREE.Frustum | null = null;
   /** Per-frame camera-distance fade, set by beginFrame. */
@@ -148,8 +152,8 @@ export class NameLabel3D {
    *  gets a label. */
   perEntity(entity: Entity, text: string | null): void {
     if (!text || text.length === 0) return;
-    if (this._seenEntityFrame.get(entity.id) === this._frameToken) return;
-    this._seenEntityFrame.set(entity.id, this._frameToken);
+    const key = packPieceKey(entity.id, PIECE_TAG_BODY);
+    if (this._seenEntityFrame.get(key) === this._frameToken) return;
 
     const isUnit = !!entity.unit;
     const isBuilding = !!entity.building;
@@ -163,6 +167,40 @@ export class NameLabel3D {
     const alpha = this._fade ? this._fade.alphaAt(worldX, worldY, worldZ) : 1;
     if (alpha <= FADE_CULL_ALPHA) return;
 
+    this._seenEntityFrame.set(key, this._frameToken);
+    this.place(text, worldX, worldY, worldZ, alpha);
+  }
+
+  /** Emit (or update) a label for a sub-piece (turret / locomotion /
+   *  shot) of `host`. `pieceTag` distinguishes the piece within the
+   *  host so the packed dedup key never collides with the host's body
+   *  label or other pieces (see HealthBar3D piece tags). `anchorWorld`
+   *  is the precomputed label world position. */
+  perPieceName(
+    host: Entity,
+    pieceTag: number,
+    anchorWorld: { x: number; y: number; z: number },
+    text: string | null,
+  ): void {
+    if (!text || text.length === 0) return;
+    const key = packPieceKey(host.id, pieceTag);
+    if (this._seenEntityFrame.get(key) === this._frameToken) return;
+    const { x: worldX, y: worldY, z: worldZ } = anchorWorld;
+    const alpha = this._fade ? this._fade.alphaAt(worldX, worldY, worldZ) : 1;
+    if (alpha <= FADE_CULL_ALPHA) return;
+    this._seenEntityFrame.set(key, this._frameToken);
+    this.place(text, worldX, worldY, worldZ, alpha);
+  }
+
+  /** Shared sprite placement: acquire a pool slot, repaint if the text
+   *  changed, scale to the canvas aspect, and position + fade it. */
+  private place(
+    text: string,
+    worldX: number,
+    worldY: number,
+    worldZ: number,
+    alpha: number,
+  ): void {
     const label = this.acquire(this._used++);
     this.repaintIfChanged(label, text);
 
