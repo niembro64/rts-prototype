@@ -12,6 +12,5 @@ export type ConstructionEmitterVisualSpec = {
     pylonHeight: number;
     pylonOffset: number;
     innerPylonRadius: number;
-    showerRadius: number;
   }>;
 };

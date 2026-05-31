@@ -83,8 +83,7 @@ export type BuildingDetailRole =
   | 'radarRig'
   | 'factoryUnitGhost'
   | 'factoryUnitCore'
-  | 'factorySpark'
-  | 'factoryShower';
+  | 'factorySpark';
 
 export type BuildingDetailMesh = {
   mesh: THREE.Mesh;
@@ -396,7 +395,6 @@ function buildResourceConverterMesh(
   const pylonBaseY = height * 0.18;
   const pylonHeight = Math.max(18, height * 0.5);
   const pylonRadius = Math.max(2.8, minDim * 0.045);
-  const showerRadius = pylonRadius * 1.65;
   const pylonOffset = Math.max(ringRadius * 0.68, minDim * 0.2);
 
   // Horizontal halo around the core (donut hole points +Y). After
@@ -461,7 +459,6 @@ function buildResourceConverterMesh(
   const energyPylon = buildResourcePylonRig({
     resource: 'energy',
     direction: 'inbound',
-    showerRadius,
     pylonHeight,
     pylonBaseY,
     x: -pylonOffset,
@@ -475,7 +472,6 @@ function buildResourceConverterMesh(
   const metalPylon = buildResourcePylonRig({
     resource: 'metal',
     direction: 'outbound',
-    showerRadius,
     pylonHeight,
     pylonBaseY,
     x: pylonOffset,
@@ -488,8 +484,6 @@ function buildResourceConverterMesh(
   });
   for (const mesh of energyPylon.staticMeshes) details.push(detail(mesh, 'low'));
   for (const mesh of metalPylon.staticMeshes) details.push(detail(mesh, 'low'));
-  details.push(detail(energyPylon.rig.shower, 'low'));
-  details.push(detail(metalPylon.rig.shower, 'low'));
 
   return {
     primary,

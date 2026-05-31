@@ -267,7 +267,6 @@ export function buildSolarCollector(
   const energyPylon = buildResourcePylonRig({
     resource: 'energy',
     direction: 'inbound',
-    showerRadius: ratePillarRadius * 1.7,
     pylonHeight: ratePillarHeight,
     pylonBaseY: ratePillarBaseY,
     x: 0,
@@ -281,7 +280,6 @@ export function buildSolarCollector(
   for (const mesh of energyPylon.staticMeshes) {
     details.push(detail(mesh, 'low'));
   }
-  details.push(detail(energyPylon.rig.shower, 'low'));
 
   return {
     primary,

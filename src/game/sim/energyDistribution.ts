@@ -166,7 +166,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   // Zero every factory's per-resource rate fractions up front. The
   // build-consumer loop below sets them on the factories that actually
   // funded a transfer this tick; any factory not touched stays at 0,
-  // so the 3D shower cylinders correctly read empty when a queue
+  // so the 3D resource-ball flow correctly reads empty when a queue
   // stalls or completes between frames.
   for (const factoryEntity of world.getFactoryBuildings()) {
     const fc = factoryEntity.factory;
@@ -393,7 +393,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
             if (factory !== undefined && factoryComp !== null && factoryComp.currentShellId === c.entity.id) {
               factoryComp.currentBuildProgress = getBuildFraction(buildable);
               // Per-resource transfer-rate fractions for the 3D
-              // "shower" cylinders. spendX <= maxResourcePerTick by
+              // resource-ball flow. spendX <= maxResourcePerTick by
               // construction so the divide is always 0..1.
               const cap = c.maxResourcePerTick;
               if (cap > 0) {

@@ -87,7 +87,6 @@ export function buildMetalExtractorMesh(
   const metalPylon = buildResourcePylonRig({
     resource: 'metal',
     direction: 'inbound',
-    showerRadius: ratePillarRadius * 1.7,
     pylonHeight: ratePillarHeight,
     pylonBaseY: ratePillarBaseY,
     x: 0,
@@ -101,7 +100,6 @@ export function buildMetalExtractorMesh(
   for (const mesh of metalPylon.staticMeshes) {
     details.push(detail(mesh, 'low'));
   }
-  details.push(detail(metalPylon.rig.shower, 'low'));
 
   const rotorY = Math.min(
     EXTRACTOR_BUILDING_VISUAL_HEIGHT - 3,

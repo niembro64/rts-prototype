@@ -172,7 +172,7 @@ export class ConstructionVisualController3D {
     this.updateConstructionTowerSpin(rig, targetRateE + targetRateT, dtSec);
     this.blendSmoothedRates(rig.smoothedRates, targetRateE, targetRateT, rateAlpha);
     this.blendDisplaySmoothedRates(rig.displaySmoothedRates, rig.smoothedRates, dtSec);
-    this.applyShowerFromSmoothedRates(rig);
+    this.syncPylonDisplayRates(rig);
 
     if (!builderUnit.ownership) return;
     rig.group.updateWorldMatrix(true, false);
@@ -222,7 +222,7 @@ export class ConstructionVisualController3D {
     }
   }
 
-  /** Drive a factory's construction emitter (the tower/showers/sprays
+  /** Drive a factory's construction emitter (the tower/sprays
    *  rig mounted on the factory's `turretConstruction`). The rate is
    *  read directly from the factory's per-resource transfer fractions.
    *  Spray target is the factory's external build spot. */
@@ -248,7 +248,7 @@ export class ConstructionVisualController3D {
     this.updateConstructionTowerSpin(rig, targetEnergy + targetMetal, dtSec);
     this.blendSmoothedRates(rig.smoothedRates, targetEnergy, targetMetal, rateAlpha);
     this.blendDisplaySmoothedRates(rig.displaySmoothedRates, rig.smoothedRates, dtSec);
-    this.applyShowerFromSmoothedRates(rig);
+    this.syncPylonDisplayRates(rig);
 
     if (!active || !e.ownership) return;
 
@@ -370,7 +370,6 @@ export class ConstructionVisualController3D {
     const target = visible ? Math.max(0, Math.min(1, targetRate)) : 0;
     pylon.smoothedRate += (target - pylon.smoothedRate) * alpha;
     pylon.displaySmoothedRate = pylon.smoothedRate;
-    this.applyResourcePylonShower(pylon);
     if (!emitBalls || !host.ownership || pylon.displaySmoothedRate < 0.05) return;
 
     group.updateWorldMatrix(true, false);
@@ -646,27 +645,14 @@ export class ConstructionVisualController3D {
     display.metal  += (smoothed.metal  - display.metal)  * alpha;
   }
 
-  private applyShowerFromSmoothedRates(rig: {
+  private syncPylonDisplayRates(rig: {
     pylons: ResourcePylonRig[];
     displaySmoothedRates: { energy: number; metal: number };
   }): void {
     for (let i = 0; i < rig.pylons.length; i++) {
       const pylon = rig.pylons[i];
       pylon.displaySmoothedRate = rig.displaySmoothedRates[pylon.resource];
-      this.applyResourcePylonShower(pylon);
     }
-  }
-
-  private applyResourcePylonShower(pylon: ResourcePylonRig): void {
-    const r = pylon.displaySmoothedRate;
-    if (r < 0.01) {
-      pylon.shower.visible = false;
-      return;
-    }
-    pylon.shower.visible = true;
-    const h = pylon.pylonHeight * r;
-    pylon.shower.scale.set(pylon.showerRadius * 2, h, pylon.showerRadius * 2);
-    pylon.shower.position.y = pylon.pylonBaseY + h / 2;
   }
 
   private emitPylonResourceSprays(

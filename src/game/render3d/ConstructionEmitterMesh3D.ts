@@ -1,5 +1,5 @@
-// Construction emitter rig: the pair of resource pylons + showers +
-// build-spray sources that visually communicate "energy/metal flowing
+// Construction emitter rig: the pair of resource pylons + build-spray
+// sources that visually communicate "energy/metal flowing
 // out to a construction site". Mounted on a `turretConstruction` and
 // shared verbatim across hosts — commanders, fabricators, and the future
 // construction aircraft all render through this same rig with only the
@@ -33,10 +33,6 @@ export type ResourcePylonDirection = 'inbound' | 'outbound';
 export type ResourcePylonRig = {
   resource: ConstructionTowerResource;
   direction: ResourcePylonDirection;
-  shower: THREE.Mesh;
-  showerRadius: number;
-  pylonHeight: number;
-  pylonBaseY: number;
   rootLocal: THREE.Vector3;
   rootBaseLocal: THREE.Vector3;
   topLocal: THREE.Vector3;
@@ -56,8 +52,8 @@ export type ConstructionEmitterRig = {
   towerOrbitParts: ConstructionTowerOrbitPart[];
   smoothedRates: { energy: number; metal: number };
   /** Second-stage display EMA layered on top of `smoothedRates`. Drives
-   *  the visible shower height + build-spray emission so motion eases
-   *  in/out of changes instead of tracking the first stage 1:1. */
+   *  the build-spray emission so motion eases in/out of changes instead
+   *  of tracking the first stage 1:1. */
   displaySmoothedRates: { energy: number; metal: number };
   lastPaidTargetId: number | null;
   lastPaid: { energy: number; metal: number };
@@ -79,14 +75,12 @@ type ConstructionTowerSize = 'large' | 'small';
 
 type ConstructionTowerVariant = {
   resource: ConstructionTowerResource;
-  showerMaterial: THREE.Material;
   capMaterial: THREE.Material;
 };
 
 export type ResourcePylonBuildOptions = {
   resource: ConstructionTowerResource;
   direction: ResourcePylonDirection;
-  showerRadius: number;
   pylonHeight: number;
   pylonBaseY: number;
   x: number;
@@ -134,24 +128,12 @@ const CONSTRUCTION_RESOURCE_COLORS = {
   metal: RESOURCE_COLOR_HEX.metal,
 } as const;
 
-function makeShowerMat(hex: number): THREE.MeshBasicMaterial {
-  return new THREE.MeshBasicMaterial({
-    color: hex,
-    transparent: true,
-    opacity: 0.55,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-  });
-}
-
-const energyShowerMat = makeShowerMat(CONSTRUCTION_RESOURCE_COLORS.energy);
-const metalShowerMat = makeShowerMat(CONSTRUCTION_RESOURCE_COLORS.metal);
 const energyCapMat = new THREE.MeshLambertMaterial({ color: CONSTRUCTION_RESOURCE_COLORS.energy });
 const metalCapMat = new THREE.MeshLambertMaterial({ color: CONSTRUCTION_RESOURCE_COLORS.metal });
 
 const CONSTRUCTION_TOWER_VARIANTS: readonly ConstructionTowerVariant[] = [
-  { resource: 'energy', showerMaterial: energyShowerMat, capMaterial: energyCapMat },
-  { resource: 'metal', showerMaterial: metalShowerMat, capMaterial: metalCapMat },
+  { resource: 'energy', capMaterial: energyCapMat },
+  { resource: 'metal', capMaterial: metalCapMat },
 ] as const;
 
 const CONSTRUCTION_TOWER_VARIANT_BY_RESOURCE: Record<ConstructionTowerResource, ConstructionTowerVariant> = {
@@ -205,16 +187,6 @@ export function buildResourcePylonRig(options: ResourcePylonBuildOptions): {
       options.z,
     ));
   }
-  const shower = makeCylinder(
-    variant.showerMaterial,
-    options.showerRadius,
-    1,
-    options.x,
-    options.pylonBaseY,
-    options.z,
-  );
-  shower.visible = false;
-  shower.renderOrder = 6;
   const capRadius = Math.max(1.6, options.pylonRadius * 1.45);
   const topLocal = new THREE.Vector3(
     options.x,
@@ -227,10 +199,6 @@ export function buildResourcePylonRig(options: ResourcePylonBuildOptions): {
     rig: {
       resource: options.resource,
       direction: options.direction,
-      shower,
-      showerRadius: options.showerRadius,
-      pylonHeight: options.pylonHeight,
-      pylonBaseY: options.pylonBaseY,
       rootLocal,
       rootBaseLocal: rootLocal.clone(),
       topLocal,
@@ -268,14 +236,12 @@ export function buildConstructionEmitterRigFromTurretConfig(
     dims.pylonHeight,
     dims.pylonOffset,
     dims.innerPylonRadius,
-    dims.showerRadius,
     pylonBaseY,
   );
   for (const mesh of pylonTrio.staticMeshes) root.add(mesh);
   for (const pylon of pylonTrio.pylons) {
     pylon.sprayTravelSpeed = spec.particleTravelSpeed;
     pylon.sprayParticleRadius = spec.particleRadius;
-    root.add(pylon.shower);
   }
 
   return {
@@ -298,8 +264,6 @@ export function disposeConstructionEmitterGeoms(): void {
   sphereGeom.dispose();
   frameMat.dispose();
   constructionBandMat.dispose();
-  energyShowerMat.dispose();
-  metalShowerMat.dispose();
   energyCapMat.dispose();
   metalCapMat.dispose();
 }
@@ -310,7 +274,6 @@ function buildConstructionPylonTrio(
   pylonHeight: number,
   pylonOffset: number,
   innerPylonRadius: number,
-  showerRadius: number,
   pylonBaseY: number,
 ): ConstructionPylonTrio {
   const staticMeshes: THREE.Mesh[] = [];
@@ -325,7 +288,6 @@ function buildConstructionPylonTrio(
       teamBaseMat,
       pylonHeight,
       innerPylonRadius,
-      showerRadius,
       pylonBaseY,
       Math.cos(a) * pylonOffset,
       Math.sin(a) * pylonOffset,
@@ -344,7 +306,6 @@ function buildConstructionTowerPiece(
   teamBaseMat: THREE.Material,
   pylonHeight: number,
   innerPylonRadius: number,
-  showerRadius: number,
   pylonBaseY: number,
   x: number,
   z: number,
@@ -391,16 +352,6 @@ function buildConstructionTowerPiece(
   const cap = makeSphere(variant.capMaterial, capRadius, x, capY, z);
   const staticMeshes = [teamBase, constructionBand, pylon, cap];
 
-  const shower = makeCylinder(
-    variant.showerMaterial,
-    showerRadius,
-    1,
-    x,
-    pylonBaseY,
-    z,
-  );
-  shower.visible = false;
-  shower.renderOrder = 6;
   const rootLocal = new THREE.Vector3(x, pylonBaseY, z);
   const topLocal = new THREE.Vector3(x, capY + capRadius * 0.35, z);
 
@@ -409,7 +360,6 @@ function buildConstructionTowerPiece(
     constructionBand,
     pylon,
     cap,
-    shower,
   ].map((mesh) => ({
     mesh,
     baseX: mesh.position.x,
@@ -423,10 +373,6 @@ function buildConstructionTowerPiece(
     rig: {
       resource: variant.resource,
       direction: 'outbound',
-      shower,
-      showerRadius,
-      pylonHeight,
-      pylonBaseY,
       rootLocal,
       rootBaseLocal: rootLocal.clone(),
       topLocal,

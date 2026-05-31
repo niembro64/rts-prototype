@@ -854,8 +854,8 @@ export type NetworkServerSnapshotEntity = {
       progress: number;
       producing: boolean;
       /** Per-resource transfer rate this tick (0..1 fraction of the
-       *  factory's max rate cap). Drives the resource "shower" cylinders
-       *  around the factory's pylons. */
+       *  factory's max rate cap). Drives the resource-ball flow at the
+       *  factory's pylons. */
       energyRate: number;
       metalRate: number;
       /** Static rally point. `posZ` carries the click-altitude of the

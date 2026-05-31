@@ -63,12 +63,6 @@ const MAX_PARTICLES_PER_SPRAY = 42;
  *  map. With MAX_PARTICLES_PER_SPRAY=42 this fits ~36 concurrent
  *  sprays, well above any realistic commander / fabricator count. */
 const MAX_PARTICLES = 1536;
-const MAX_BUILD_SPRAY_EMITTERS_PER_FRAME = Math.max(
-  1,
-  Math.floor(MAX_PARTICLES / MAX_PARTICLES_PER_SPRAY),
-);
-const SPRAY_LOD_MIN_DISTANCE = 700;
-const SPRAY_LOD_LOG_INTERVAL_MS = 5000;
 
 /** Heal-spray color — matches the 2D convention where heal sprays
  *  don't take the caster's team color. Constant white. */
@@ -98,14 +92,6 @@ void main() {
   gl_FragColor = vec4(vColor, vAlpha);
 }
 `;
-
-export type SprayRenderer3DUpdateContext = {
-  camera?: THREE.Camera;
-  frustum?: THREE.Frustum;
-  maxBallDistance?: number;
-};
-
-type SprayLodDecision = 'emit' | 'culled' | 'budget';
 
 export class SprayRenderer3D {
   private root: THREE.Group;
@@ -168,8 +154,6 @@ export class SprayRenderer3D {
   // Scratch matrix reused across the per-particle write loop —
   // particles are spheres so the rotation component is identity.
   private _scratchMat = new THREE.Matrix4();
-  private _lodSphere = new THREE.Sphere(new THREE.Vector3(), 1);
-  private nextLodLogMs = 0;
   // Scratch Color for per-team color resolution (cached lookup
   // across frames via `_teamColorCache` — getPlayerPrimaryColor
   // returns a hex int, we unpack to RGB once per pid). Keeps the
@@ -213,7 +197,6 @@ export class SprayRenderer3D {
   update(
     sprayTargets: readonly SprayTarget[],
     dtMs: number,
-    context: SprayRenderer3DUpdateContext = {},
   ): void {
     if (
       sprayTargets.length === 0
@@ -228,34 +211,18 @@ export class SprayRenderer3D {
 
     this.advanceParticles(dtSec);
     this.activeSprayKeys.clear();
-    let activeBuildSprayEmitters = 0;
-    let lodCulledSprays = 0;
-    let lodBudgetSprays = 0;
-    let poolDroppedSpawns = 0;
 
     for (const spray of sprayTargets) {
       if (spray.intensity <= 0) continue;
-      if (spray.type === 'build') {
-        const lod = this.buildSprayLodDecision(spray, context, activeBuildSprayEmitters);
-        if (lod === 'culled') {
-          lodCulledSprays++;
-          continue;
-        }
-        if (lod === 'budget') {
-          lodBudgetSprays++;
-          continue;
-        }
-        activeBuildSprayEmitters++;
-      }
       const scaledIntensity = Math.min(1, spray.intensity);
       // Build sprays are intentionally denser than heal sprays because
       // they represent a construction emitter painting a footprint, not
       // a single repair beam.
       const baseCount = spray.type === 'build' ? 36 : 16;
       // Build sprays scale linearly with intensity so the spawn rate is
-      // exactly proportional to the EMA resource transfer rate the
-      // shower visual shows. Heal sprays keep a small floor so a damaged
-      // unit always reads as actively repaired.
+      // exactly proportional to the EMA resource transfer rate. Heal
+      // sprays keep a small floor so a damaged unit always reads as
+      // actively repaired.
       const minCount = spray.type === 'build' ? 1 : 4;
       const count = Math.max(minCount, Math.floor(baseCount * scaledIntensity));
       const n = Math.min(count, MAX_PARTICLES_PER_SPRAY);
@@ -295,10 +262,7 @@ export class SprayRenderer3D {
       this.spraySpawnBudget.set(key, budget);
 
       for (let i = 0; i < spawnCount; i++) {
-        if (!this.emitParticle(spray, scaledIntensity, r, g, b) && this.particleCount >= MAX_PARTICLES) {
-          poolDroppedSpawns += spawnCount - i;
-          break;
-        }
+        this.emitParticle(spray, scaledIntensity, r, g, b);
       }
     }
 
@@ -322,103 +286,6 @@ export class SprayRenderer3D {
       this.colorAttr.addUpdateRange(0, visibleCount * 3);
       this.colorAttr.needsUpdate = true;
     }
-    this.reportParticleLod(lodCulledSprays, lodBudgetSprays, poolDroppedSpawns);
-  }
-
-  private buildSprayLodDecision(
-    spray: SprayTarget,
-    context: SprayRenderer3DUpdateContext,
-    activeBuildSprayEmitters: number,
-  ): SprayLodDecision {
-    if (activeBuildSprayEmitters >= MAX_BUILD_SPRAY_EMITTERS_PER_FRAME) {
-      return 'budget';
-    }
-    if (!context.camera && !context.frustum) return 'emit';
-
-    const bounds = this.writeSprayBounds(spray);
-    if (context.frustum && !context.frustum.intersectsSphere(bounds)) {
-      return 'culled';
-    }
-    if (context.camera) {
-      const maxDistance = context.maxBallDistance !== undefined
-        ? Math.max(SPRAY_LOD_MIN_DISTANCE, context.maxBallDistance)
-        : Infinity;
-      if (Number.isFinite(maxDistance)) {
-        const distance = context.camera.position.distanceTo(bounds.center) - bounds.radius;
-        if (distance > maxDistance) return 'culled';
-      }
-    }
-    return 'emit';
-  }
-
-  private writeSprayBounds(spray: SprayTarget): THREE.Sphere {
-    let minX = spray.source.pos.x;
-    let maxX = minX;
-    let minY = spray.source.z ?? TRAIL_Y;
-    let maxY = minY;
-    let minZ = spray.source.pos.y;
-    let maxZ = minZ;
-
-    let x = spray.target.pos.x;
-    let y = spray.target.z ?? TRAIL_Y;
-    let z = spray.target.pos.y;
-    if (x < minX) minX = x;
-    else if (x > maxX) maxX = x;
-    if (y < minY) minY = y;
-    else if (y > maxY) maxY = y;
-    if (z < minZ) minZ = z;
-    else if (z > maxZ) maxZ = z;
-
-    const waypoint = spray.waypoint;
-    if (waypoint) {
-      x = waypoint.pos.x;
-      y = waypoint.z ?? TRAIL_Y;
-      z = waypoint.pos.y;
-      if (x < minX) minX = x;
-      else if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      else if (y > maxY) maxY = y;
-      if (z < minZ) minZ = z;
-      else if (z > maxZ) maxZ = z;
-    }
-    const waypoint2 = spray.waypoint2;
-    if (waypoint2) {
-      x = waypoint2.pos.x;
-      y = waypoint2.z ?? TRAIL_Y;
-      z = waypoint2.pos.y;
-      if (x < minX) minX = x;
-      else if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      else if (y > maxY) maxY = y;
-      if (z < minZ) minZ = z;
-      else if (z > maxZ) maxZ = z;
-    }
-
-    const center = this._lodSphere.center;
-    center.set(
-      (minX + maxX) * 0.5,
-      (minY + maxY) * 0.5,
-      (minZ + maxZ) * 0.5,
-    );
-    const dx = maxX - minX;
-    const dy = maxY - minY;
-    const dz = maxZ - minZ;
-    this._lodSphere.radius = Math.max(
-      8,
-      Math.hypot(dx, dy, dz) * 0.5 + Math.max(spray.flowRadius, spray.target.radius ?? 0),
-    );
-    return this._lodSphere;
-  }
-
-  private reportParticleLod(culled: number, budget: number, poolDrops: number): void {
-    const total = culled + budget + poolDrops;
-    if (total <= 0) return;
-    const now = performance.now();
-    if (now < this.nextLodLogMs) return;
-    this.nextLodLogMs = now + SPRAY_LOD_LOG_INTERVAL_MS;
-    console.debug(
-      `[SprayRenderer3D] pylon particle LOD skipped culled=${culled} budget=${budget} poolDrops=${poolDrops}; shower bars remain as fallback`,
-    );
   }
 
   private sprayKey(spray: SprayTarget): string {
@@ -513,8 +380,8 @@ export class SprayRenderer3D {
     r: number,
     g: number,
     b: number,
-  ): boolean {
-    if (this.particleCount >= MAX_PARTICLES) return false;
+  ): void {
+    if (this.particleCount >= MAX_PARTICLES) return;
 
     let sx = spray.source.pos.x;
     let sy = spray.source.z ?? TRAIL_Y;
@@ -629,7 +496,7 @@ export class SprayRenderer3D {
       len = lenA + lenB;
       split = len > 1e-3 ? lenA / len : 0;
     }
-    if (len < 1e-3) return false;
+    if (len < 1e-3) return;
 
     const idx = this.particleCount++;
     const life = this.flightTimeForDistance(len, spray) * (0.86 + this.random() * 0.28);
@@ -682,7 +549,6 @@ export class SprayRenderer3D {
     this.pEndR[idx] = spray.endColorRGB?.r ?? r;
     this.pEndG[idx] = spray.endColorRGB?.g ?? g;
     this.pEndB[idx] = spray.endColorRGB?.b ?? b;
-    return true;
   }
 
   private advanceParticles(dtSec: number): void {

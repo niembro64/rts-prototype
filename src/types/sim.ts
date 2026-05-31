@@ -838,9 +838,9 @@ export type Factory = {
   isProducing: boolean;
   /** Per-resource transfer rate this tick, expressed as a fraction
    *  (0..1) of the factory's `maxResourcePerTick` cap for the active
-   *  shell. Drives the vertical "shower" cylinders around the
-   *  factory's pylons in the 3D renderer. Reset to 0 between shells
-   *  and whenever the factory isn't producing. */
+   *  shell. Drives the resource-ball flow at the factory's pylons
+   *  in the 3D renderer. Reset to 0 between shells and whenever the
+   *  factory isn't producing. */
   energyRateFraction: number;
   metalRateFraction: number;
 };

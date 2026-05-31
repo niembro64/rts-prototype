@@ -10,7 +10,7 @@ export const BUILDING_PALETTE = {
   cyanGlass: COLORS.buildings.palette.cyanGlass.colorHex,
   constructionAmber: COLORS.buildings.palette.constructionAmber.colorHex,
   constructionSpark: COLORS.buildings.palette.constructionSpark.colorHex,
-  /** Metal-resource color — matches the metal coin/shower tint in
+  /** Metal-resource color — matches the metal coin/ball tint in
    *  ConstructionEmitterMesh3D and the "metal" income bar. Used for the
    *  metal extractor's spinning blades. */
   metalResource: RESOURCE_COLOR_HEX.metal,

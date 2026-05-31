@@ -62,7 +62,6 @@ export function buildWindTurbineMesh(
   const energyPylon = buildResourcePylonRig({
     resource: 'energy',
     direction: 'inbound',
-    showerRadius: towerRadius * 1.8,
     pylonHeight: towerH,
     pylonBaseY: 0,
     x: 0,
@@ -76,7 +75,6 @@ export function buildWindTurbineMesh(
   for (const mesh of energyPylon.staticMeshes) {
     details.push(detail(mesh, 'low'));
   }
-  details.push(detail(energyPylon.rig.shower, 'low'));
 
   const root = new THREE.Mesh(boxGeom, invisibleMat);
   root.position.set(0, towerH, 0);

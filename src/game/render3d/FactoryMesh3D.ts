@@ -68,7 +68,7 @@ const constructionOrbGeom = new THREE.SphereGeometry(1, 12, 8);
 
 /** Factory chassis. Just the team-colored primary body and the
  *  build-spot ghost orb / sparks. The factory's construction emitter
- *  (towers + showers + sprays) is NOT created here — it rides on the
+ *  (towers + sprays) is NOT created here — it rides on the
  *  factory's `turretConstruction` like any other turret-mounted emitter,
  *  built by the standard TurretMesh3D path. */
 export function buildFactoryMesh(

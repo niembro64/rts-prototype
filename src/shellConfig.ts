@@ -102,7 +102,7 @@ export const HP_BAR_LOW_THRESHOLD = shellConfig.hpBar.lowThreshold;
  *  build emitters. The rate fractions written by the sim each tick
  *  are noisy by nature — once-a-tick step changes whenever a stockpile
  *  goes empty or a queue rolls over — so the renderer EMAs them
- *  before driving the showers + colored sprays. Half-life is in
+ *  before driving the colored resource-ball sprays. Half-life is in
  *  seconds; halfLifeBlend(dt, halfLife) closes 50% of the gap each
  *  half-life, exactly the same shape as the snapshot drift EMA in
  *  driftEma.ts.
@@ -121,8 +121,8 @@ export const BUILD_RATE_EMA_MODE =
 
 /** Second-stage display EMA, layered on top of BUILD_RATE_EMA_*. The
  *  first stage tames the per-tick sim noise; this stage makes the
- *  visible motion (shower bar height, build-spray emission count,
- *  fabricator tower spin amount) feel velvety instead of merely calm.
+ *  visible motion (build-spray emission count, fabricator tower spin
+ *  amount) feel velvety instead of merely calm.
  *  Chaining two single-pole EMAs gives a smoother, ease-in shape than
  *  any single half-life can produce.
  *
