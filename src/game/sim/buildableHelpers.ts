@@ -195,6 +195,18 @@ export function hasMaterializedLiveUnitPiece(entity: Entity): boolean {
   return false;
 }
 
+export function isDetachedLocomotionAgent(entity: Entity): boolean {
+  const unit = entity.unit;
+  const buildable = entity.buildable;
+  return unit !== null &&
+    buildable !== null &&
+    buildable.isInterrupted &&
+    unit.hp <= 0 &&
+    unit.locomotion.id === entity.id &&
+    unit.locomotion.parentId === entity.id &&
+    unit.locomotion.rootHostId === entity.id;
+}
+
 export function cloneResourceCost(c: ResourceCost): ResourceCost {
   return { energy: c.energy, metal: c.metal };
 }

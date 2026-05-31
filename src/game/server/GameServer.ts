@@ -1,7 +1,11 @@
 // GameServer - Headless simulation server.
 // Owns WorldState, Simulation, PhysicsEngine3D, and runs the game loop via setInterval.
 
-import type { DetachedTurretAgentSpawn, WorldState } from '../sim/WorldState';
+import type {
+  DetachedLocomotionAgentSpawn,
+  DetachedTurretAgentSpawn,
+  WorldState,
+} from '../sim/WorldState';
 import type { Simulation } from '../sim/Simulation';
 import type {
   AttackCommand,
@@ -68,6 +72,7 @@ import {
 import type { BootstrappedServerWorld } from './ServerBootstrap';
 import { UnitForceSystem } from './UnitForceSystem';
 import { createPhysicsBodyForUnit } from './unitPhysicsBody';
+import { isDetachedLocomotionAgent } from '../sim/buildableHelpers';
 import {
   isShieldReflectionMode,
   type ShieldReflectionMode,
@@ -252,6 +257,9 @@ export class GameServer {
     this.world.onDetachedTurretAgentSpawn = (spawn: DetachedTurretAgentSpawn) => {
       this.createPhysicsBodyForDetachedTurret(spawn);
     };
+    this.world.onDetachedLocomotionAgentSpawn = (spawn: DetachedLocomotionAgentSpawn) => {
+      this.createPhysicsBodyForDetachedLocomotion(spawn);
+    };
 
     // Handle unit deaths: remove entities. WorldState.onEntityRemoving
     // releases physics bodies for every removal path.
@@ -423,6 +431,7 @@ export class GameServer {
   private detachSimulationCallbacks(): void {
     this.world.onEntityRemoving = null;
     this.world.onDetachedTurretAgentSpawn = null;
+    this.world.onDetachedLocomotionAgentSpawn = null;
     this.simulation.onUnitDeath = null;
     this.simulation.onUnitSpawn = null;
     this.simulation.onBuildingDeath = null;
@@ -522,6 +531,31 @@ export class GameServer {
     );
     spatialGrid.addBuilding(entity);
     this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_POS);
+  }
+
+  private createPhysicsBodyForDetachedLocomotion(spawn: DetachedLocomotionAgentSpawn): void {
+    const entity = spawn.agent;
+    if (entity.body !== null || entity.unit === null) return;
+    const body = createPhysicsBodyForUnit(this.world, this.physics, entity, {
+      ignoreOverlappingBuildings: false,
+      overlapPadding: undefined,
+    });
+    if (body === undefined) return;
+
+    entity.transform.x = body.x;
+    entity.transform.y = body.y;
+    entity.transform.z = body.z;
+    this.physics.launchBody(
+      body,
+      spawn.launchVelocity.x,
+      spawn.launchVelocity.y,
+      spawn.launchVelocity.z,
+    );
+    entity.unit.velocityX = body.vx;
+    entity.unit.velocityY = body.vy;
+    entity.unit.velocityZ = body.vz;
+    spatialGrid.updateUnit(entity);
+    this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL);
   }
 
   // Emit a snapshot to all listeners (driven by internal snapshot interval)
@@ -805,6 +839,7 @@ export class GameServer {
   private isOwnedEntity(entityId: EntityId, playerId: PlayerId): boolean {
     const entity = this.world.getEntity(entityId);
     if (entity === undefined || entity.ownership === null) return false;
+    if (isDetachedLocomotionAgent(entity)) return false;
     return entity.ownership.playerId === playerId;
   }
 
@@ -815,7 +850,8 @@ export class GameServer {
       entity.type === 'unit' &&
       entity.unit !== null &&
       entity.ownership !== null &&
-      entity.ownership.playerId === playerId
+      entity.ownership.playerId === playerId &&
+      !isDetachedLocomotionAgent(entity)
     );
   }
 

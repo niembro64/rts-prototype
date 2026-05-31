@@ -57,6 +57,7 @@ import {
   isBuildBlockingActivation,
   isBuildInProgress,
   isConstructionBodyMaterialized,
+  isDetachedLocomotionAgent,
 } from './buildableHelpers';
 import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities';
 import { updateUnitGroundNormal } from './unitGroundNormal';
@@ -720,6 +721,8 @@ export class Simulation {
         const onBuildingDeath = this.onBuildingDeath;
         if (onBuildingDeath !== null) onBuildingDeath(buf);
       }
+
+      this.removeDeadDetachedLocomotionAgents(collisionResult.deadLocomotionIds);
     }
 
     // Safety cleanup - remove any dead entities that slipped through.
@@ -743,7 +746,12 @@ export class Simulation {
     for (let i = 0; i < deathCheckIds.length; i++) {
       const entity = this.world.getEntity(deathCheckIds[i]);
       if (!entity) continue;
-      if (entity.unit && entity.unit.hp <= 0 && isConstructionBodyMaterialized(entity)) {
+      if (
+        entity.unit &&
+        entity.unit.hp <= 0 &&
+        isConstructionBodyMaterialized(entity) &&
+        !isDetachedLocomotionAgent(entity)
+      ) {
         deadUnitIds.push(entity.id);
       } else if (entity.building && entity.building.hp <= 0) {
         deadBuildingIds.push(entity.id);
@@ -780,6 +788,7 @@ export class Simulation {
         this.pendingSimEvents,
         deathContexts,
       );
+      this.removeDeadDetachedLocomotionAgents(deadLocomotionSet);
       deadUnitIds.length = 0;
       deadBuildingIds.length = 0;
       for (const id of deadUnitSet) deadUnitIds.push(id);
@@ -834,6 +843,16 @@ export class Simulation {
       for (const id of deadBuildingIds) {
         this.world.removeEntity(id);
       }
+    }
+  }
+
+  private removeDeadDetachedLocomotionAgents(ids: Iterable<EntityId>): void {
+    for (const id of ids) {
+      const entity = this.world.getEntity(id);
+      if (entity === undefined || !isDetachedLocomotionAgent(entity)) continue;
+      if (entity.unit === null || entity.unit.locomotion.hp > 0) continue;
+      spatialGrid.removeUnit(id);
+      this.world.removeEntity(id);
     }
   }
 
@@ -934,6 +953,9 @@ export class Simulation {
       return this.getSubEntityDeathExplosion(id);
     }
     if (entity.unit !== null) {
+      if (isDetachedLocomotionAgent(entity)) {
+        return this.getSubEntityDeathExplosion(id);
+      }
       const unitBlueprintId = entity.unit.unitBlueprintId;
       const blast = getUnitBlueprint(unitBlueprintId).base.deathExplosion;
       return {
@@ -1072,6 +1094,7 @@ export class Simulation {
         continue;
       }
 
+      const detachedLocomotionAgent = isDetachedLocomotionAgent(entity);
       if (unit.hp <= 0) {
         unit.thrustDirX = 0;
         unit.thrustDirY = 0;
@@ -1081,7 +1104,7 @@ export class Simulation {
           entity.combat.priorityTargetId = null;
           entity.combat.priorityTargetPoint = null;
         }
-        continue;
+        if (!detachedLocomotionAgent || unit.locomotion.hp <= 0) continue;
       }
 
       if (unit.locomotion.hp <= 0) {
@@ -1373,8 +1396,13 @@ export class Simulation {
   }
 
   private isAliveAttackTarget(target: Entity): boolean {
-    return !!((target.unit && target.unit.hp > 0) ||
-      (target.building && target.building.hp > 0));
+    return !!(
+      (target.unit && (
+        target.unit.hp > 0 ||
+        (isDetachedLocomotionAgent(target) && target.unit.locomotion.hp > 0)
+      )) ||
+      (target.building && target.building.hp > 0)
+    );
   }
 
   private isIncompleteBuildableTarget(target: Entity): boolean {

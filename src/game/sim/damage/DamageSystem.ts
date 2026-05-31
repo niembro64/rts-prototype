@@ -41,7 +41,7 @@ import { getUnitGroundZ } from '../unitGeometry';
 import { setUnitMovementAcceleration } from '../unitMovementAcceleration';
 import { refreshUnitActionHash } from '../unitActions';
 import { DETACHED_TURRET_TOWER_BLUEPRINT_ID } from '../../../types/buildingTypes';
-import { isConstructionBodyMaterialized } from '../buildableHelpers';
+import { isConstructionBodyMaterialized, isDetachedLocomotionAgent } from '../buildableHelpers';
 
 
 // Reusable DamageResult to avoid per-call allocations
@@ -199,7 +199,13 @@ export class DamageSystem {
     // Check units
     for (const unit of nearbyUnits) {
       if (unit.id === sourceEntityId) continue;
-      if (!unit.unit || unit.unit.hp <= 0) continue;
+      if (
+        !unit.unit ||
+        (
+          unit.unit.hp <= 0 &&
+          (!isDetachedLocomotionAgent(unit) || unit.unit.locomotion.hp <= 0)
+        )
+      ) continue;
 
       const t = lineCircleIntersectionT(
         startX, startY, endX, endY,
@@ -552,7 +558,13 @@ export class DamageSystem {
     for (const unit of nearbyUnits) {
       const isExcludedEntity = unit.id === excludeEntityId;
       if (isExcludedEntity && excludePanelIndex < 0) continue;
-      if (!unit.unit || unit.unit.hp <= 0) continue;
+      if (
+        !unit.unit ||
+        (
+          unit.unit.hp <= 0 &&
+          (!isDetachedLocomotionAgent(unit) || unit.unit.locomotion.hp <= 0)
+        )
+      ) continue;
 
       // Horizontal-only early-out — the beam may arc vertically past
       // the unit, but we still require its XY projection to come near
@@ -1426,11 +1438,13 @@ export class DamageSystem {
     deathContext: DeathContext | undefined = undefined,
     targetEntityId: EntityId = entity.id,
   ): void {
-    if (targetEntityId !== entity.id && entity.unit !== null) {
-      const turret = this.world.resolveMountedTurret(targetEntityId);
-      if (turret !== undefined && turret.host.id === entity.id) {
-        this.applyDamageToTurret(entity, turret.turret, damage, result, sourceEntityId, deathContext);
-        return;
+    if (entity.unit !== null) {
+      if (targetEntityId !== entity.id) {
+        const turret = this.world.resolveMountedTurret(targetEntityId);
+        if (turret !== undefined && turret.host.id === entity.id) {
+          this.applyDamageToTurret(entity, turret.turret, damage, result, sourceEntityId, deathContext);
+          return;
+        }
       }
       const locomotion = this.world.resolveMountedLocomotion(targetEntityId);
       if (locomotion !== undefined && locomotion.host.id === entity.id) {
@@ -1525,6 +1539,7 @@ export class DamageSystem {
   ): void {
     if (locomotion.hp <= 0) return;
     locomotion.hp -= damage;
+    this.world.markSnapshotDirty(host.id, ENTITY_CHANGED_HP);
     if (locomotion.hp > 0 || result.killedLocomotionIds.has(locomotion.id)) return;
 
     locomotion.hp = 0;
@@ -1542,7 +1557,7 @@ export class DamageSystem {
       }
     }
     this.world.markSubEntityMetadataDead(locomotion.id);
-    this.world.markSnapshotDirty(host.id, ENTITY_CHANGED_ACTIONS);
+    this.world.markSnapshotDirty(host.id, ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_HP);
     result.killedLocomotionIds.add(locomotion.id);
     this.recordKiller(result, locomotion.id, sourceEntityId);
     if (deathContext) result.deathContexts.set(locomotion.id, deathContext);

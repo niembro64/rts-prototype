@@ -26,7 +26,7 @@ import {
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ResourceMovement } from './resourceMovement';
 import { EntityCacheManager } from './EntityCacheManager';
-import { getUnitBlueprint, getUnitLocomotion } from './blueprints';
+import { getUnitBlueprint, getUnitLocomotion, UNIT_LOCOMOTION_BLUEPRINTS } from './blueprints';
 import { cloneUnitLocomotion } from './locomotion';
 import { createDetachedRuntimeTurret, createUnitRuntimeTurrets } from './runtimeTurrets';
 import {
@@ -39,22 +39,25 @@ import {
   UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
   LAND_CELL_SIZE,
   DGUN_TERRAIN_FOLLOW_HEIGHT,
+  COST_MULTIPLIER,
 } from '../../config';
 import type { ShieldReflectionMode } from '../../types/shotTypes';
 import { getSurfaceHeight, getSurfaceNormal } from './Terrain';
 import { buildShieldPanelCache } from './shieldPanelCache';
 import { createProjectileConfigFromTurret } from './projectileConfigs';
 import { applyEntitySensorBlueprint } from './cloakDetection';
-import { ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../types/network';
+import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../types/network';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import { getUnitGroundZ } from './unitGeometry';
 import { getTurretWorldMount } from '../math';
 import { DETACHED_TURRET_TOWER_BLUEPRINT_ID } from '../../types/buildingTypes';
-import { isConstructionPieceMaterialized } from './buildableHelpers';
+import { isConstructionPieceMaterialized, isDetachedLocomotionAgent } from './buildableHelpers';
 
 const TERRAIN_NORMAL_CACHE_CELL_SIZE = 25;
 const DETACHED_TURRET_LAUNCH_HORIZONTAL_SPEED = 34;
 const DETACHED_TURRET_LAUNCH_VERTICAL_SPEED = 42;
+const DETACHED_LOCOMOTION_LAUNCH_HORIZONTAL_SPEED = 24;
+const DETACHED_LOCOMOTION_LAUNCH_VERTICAL_SPEED = 18;
 const EMPTY_PLAYER_SET: ReadonlySet<PlayerId> = new Set();
 const FLAT_SURFACE_NORMAL: SurfaceNormal = { nx: 0, ny: 0, nz: 1 };
 
@@ -82,6 +85,12 @@ export type RemovedSnapshotEntity = {
 };
 
 export type DetachedTurretAgentSpawn = {
+  agent: Entity;
+  position: { x: number; y: number; z: number };
+  launchVelocity: { x: number; y: number; z: number };
+};
+
+export type DetachedLocomotionAgentSpawn = {
   agent: Entity;
   position: { x: number; y: number; z: number };
   launchVelocity: { x: number; y: number; z: number };
@@ -218,6 +227,7 @@ export class WorldState {
    *  resources that must be released before the entity disappears. */
   public onEntityRemoving: ((entity: Entity) => void) | null = null;
   public onDetachedTurretAgentSpawn: ((spawn: DetachedTurretAgentSpawn) => void) | null = null;
+  public onDetachedLocomotionAgentSpawn: ((spawn: DetachedLocomotionAgentSpawn) => void) | null = null;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   // Shared cache manager avoids creating new arrays on every getUnits()/getBuildings()/getProjectiles() call
@@ -272,7 +282,11 @@ export class WorldState {
 
   // Check if player can build more units (existing units only, no queue accounting)
   canPlayerBuildUnit(playerId: PlayerId): boolean {
-    const currentUnitCount = this.getUnitsByPlayer(playerId).length;
+    const units = this.getUnitsByPlayer(playerId);
+    let currentUnitCount = 0;
+    for (let i = 0; i < units.length; i++) {
+      if (!isDetachedLocomotionAgent(units[i])) currentUnitCount++;
+    }
     return currentUnitCount < this.getUnitCapPerPlayer();
   }
 
@@ -284,7 +298,11 @@ export class WorldState {
 
   // Get remaining unit capacity for a player
   getRemainingUnitCapacity(playerId: PlayerId): number {
-    const currentUnitCount = this.getUnitsByPlayer(playerId).length;
+    const units = this.getUnitsByPlayer(playerId);
+    let currentUnitCount = 0;
+    for (let i = 0; i < units.length; i++) {
+      if (!isDetachedLocomotionAgent(units[i])) currentUnitCount++;
+    }
     return Math.max(0, this.getUnitCapPerPlayer() - currentUnitCount);
   }
 
@@ -525,6 +543,197 @@ export class WorldState {
     turret.shield = undefined;
   }
 
+  detachMountedLocomotionAsAgent(host: Entity): Entity | null {
+    const unit = host.unit;
+    if (unit === null) return null;
+    const sourceLocomotion = unit.locomotion;
+    if (
+      sourceLocomotion.id === NO_ENTITY_ID ||
+      sourceLocomotion.hp <= 0 ||
+      this.entities.has(sourceLocomotion.id)
+    ) {
+      return null;
+    }
+
+    const spawn = this.createDetachedLocomotionAgentSpawn(host, sourceLocomotion);
+    this.clearMountedLocomotionAfterDetach(unit.locomotion);
+    this.addEntity(spawn.agent);
+    this.onDetachedLocomotionAgentSpawn?.(spawn);
+    this.refreshEntityMetadata(host);
+    this.markSnapshotDirty(host.id, ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_HP);
+    return spawn.agent;
+  }
+
+  private clearMountedLocomotionAfterDetach(locomotion: UnitLocomotion): void {
+    locomotion.id = NO_ENTITY_ID;
+    locomotion.parentId = NO_ENTITY_ID;
+    locomotion.rootHostId = NO_ENTITY_ID;
+    locomotion.mountIndex = 0;
+    locomotion.hp = 0;
+  }
+
+  private createDetachedLocomotionAgentSpawn(
+    host: Entity,
+    sourceLocomotion: UnitLocomotion,
+  ): DetachedLocomotionAgentSpawn {
+    const position = this.resolveDetachedLocomotionPosition(host, sourceLocomotion);
+    return {
+      agent: this.createDetachedLocomotionAgent(host, sourceLocomotion, position),
+      position: { x: position.x, y: position.y, z: position.z },
+      launchVelocity: this.computeDetachedLocomotionLaunchVelocity(host, position),
+    };
+  }
+
+  private createDetachedLocomotionAgent(
+    host: Entity,
+    sourceLocomotion: UnitLocomotion,
+    position: { x: number; y: number; z: number },
+  ): Entity {
+    const hostUnit = host.unit;
+    if (hostUnit === null) {
+      throw new Error('Cannot detach locomotion from non-unit host');
+    }
+    const unitBlueprint = getUnitBlueprint(hostUnit.unitBlueprintId);
+    const locomotionBlueprint = UNIT_LOCOMOTION_BLUEPRINTS[sourceLocomotion.blueprintId];
+    if (locomotionBlueprint === undefined) {
+      throw new Error(`Unknown locomotion blueprint: ${sourceLocomotion.blueprintId}`);
+    }
+
+    const id = sourceLocomotion.id;
+    const locomotionCost = {
+      energy: locomotionBlueprint.base.cost.energy * COST_MULTIPLIER,
+      metal: locomotionBlueprint.base.cost.metal * COST_MULTIPLIER,
+    };
+    const bodyCost = {
+      energy: unitBlueprint.base.cost.energy * COST_MULTIPLIER,
+      metal: unitBlueprint.base.cost.metal * COST_MULTIPLIER,
+    };
+    const detachedLocomotion = cloneUnitLocomotion(sourceLocomotion, {
+      id,
+      parentId: id,
+      rootHostId: id,
+      mountIndex: 0,
+    });
+    detachedLocomotion.hp = sourceLocomotion.hp;
+    detachedLocomotion.maxHp = sourceLocomotion.maxHp;
+
+    const surfaceNormal = this.getCachedSurfaceNormal(position.x, position.y);
+    const isAirborne =
+      detachedLocomotion.type === 'hover' || detachedLocomotion.type === 'flying';
+    const entity: Entity = {
+      ...createEmptyEntityComponentSlots(),
+      id,
+      type: 'unit',
+      transform: createTransform(position.x, position.y, position.z, host.transform.rotation),
+      ownership: host.ownership !== null ? { playerId: host.ownership.playerId } : null,
+      selectable: null,
+      unit: {
+        unitBlueprintId: hostUnit.unitBlueprintId,
+        locomotion: detachedLocomotion,
+        radius: { ...detachedLocomotion.radius },
+        bodyCenterHeight: detachedLocomotion.radius.collision,
+        fullVisionRadius: 0,
+        mass: locomotionBlueprint.base.mass,
+        hp: 0,
+        maxHp: 0,
+        actions: [],
+        actionHash: 0,
+        patrolStartIndex: null,
+        flyingLoiterTargetX: null,
+        flyingLoiterTargetY: null,
+        flyingLoiterTargetZ: null,
+        flyingLoiterTurnSign: null,
+        velocityX: hostUnit.velocityX,
+        velocityY: hostUnit.velocityY,
+        velocityZ: hostUnit.velocityZ,
+        movementAccelX: 0,
+        movementAccelY: 0,
+        movementAccelZ: 0,
+        thrustDirX: 0,
+        thrustDirY: 0,
+        suspension: null,
+        shieldPanels: [],
+        shieldBoundRadius: 0,
+        surfaceNormal: { nx: surfaceNormal.nx, ny: surfaceNormal.ny, nz: surfaceNormal.nz },
+        orientation: isAirborne ? { x: 0, y: 0, z: 0, w: 1 } : null,
+        angularVelocity3: isAirborne ? { x: 0, y: 0, z: 0 } : null,
+        angularAcceleration3: isAirborne ? { x: 0, y: 0, z: 0 } : null,
+        hoverHeightUpwardForceSmoothed: null,
+        stuckTicks: 0,
+      },
+      buildable: {
+        paid: { ...locomotionCost },
+        required: {
+          energy: unitBlueprint.cost.energy * COST_MULTIPLIER,
+          metal: unitBlueprint.cost.metal * COST_MULTIPLIER,
+        },
+        isComplete: false,
+        isGhost: false,
+        isInterrupted: true,
+        healthBuildFraction: 0,
+        pieces: [
+          {
+            id,
+            kind: 'locomotion',
+            mountIndex: 0,
+            required: { ...locomotionCost },
+            paid: { ...locomotionCost },
+            healthBuildFraction: 1,
+            isActive: true,
+            isComplete: true,
+          },
+          {
+            id,
+            kind: 'body',
+            mountIndex: null,
+            required: bodyCost,
+            paid: { energy: 0, metal: 0 },
+            healthBuildFraction: 0,
+            isActive: false,
+            isComplete: false,
+          },
+        ],
+      },
+    };
+    return entity;
+  }
+
+  private resolveDetachedLocomotionPosition(
+    host: Entity,
+    locomotion: UnitLocomotion,
+  ): { x: number; y: number; z: number } {
+    const groundZ = this.getGroundZ(host.transform.x, host.transform.y);
+    return {
+      x: host.transform.x,
+      y: host.transform.y,
+      z: Math.max(host.transform.z, groundZ + locomotion.radius.collision),
+    };
+  }
+
+  private computeDetachedLocomotionLaunchVelocity(
+    host: Entity,
+    position: { x: number; y: number; z: number },
+  ): { x: number; y: number; z: number } {
+    const unit = host.unit;
+    const baseVx = unit !== null ? unit.velocityX : 0;
+    const baseVy = unit !== null ? unit.velocityY : 0;
+    const baseVz = unit !== null ? unit.velocityZ : 0;
+    let dx = position.x - host.transform.x;
+    let dy = position.y - host.transform.y;
+    let dist = Math.hypot(dx, dy);
+    if (dist <= 0.0001) {
+      const angle = host.transform.rotation + 1.5707963267948966;
+      dx = Math.cos(angle);
+      dy = Math.sin(angle);
+      dist = 1;
+    }
+    return {
+      x: baseVx + (dx / dist) * DETACHED_LOCOMOTION_LAUNCH_HORIZONTAL_SPEED,
+      y: baseVy + (dy / dist) * DETACHED_LOCOMOTION_LAUNCH_HORIZONTAL_SPEED,
+      z: Math.max(0, baseVz) + DETACHED_LOCOMOTION_LAUNCH_VERTICAL_SPEED,
+    };
+  }
+
   // Get current tick
   getTick(): number {
     return this.tick;
@@ -568,6 +777,9 @@ export class WorldState {
     const detachedTurretSpawns = entity !== undefined
       ? this.collectDetachedTurretAgents(entity)
       : [];
+    const detachedLocomotionSpawns = entity !== undefined
+      ? this.collectDetachedLocomotionAgents(entity)
+      : [];
     if (entity !== undefined && this.onEntityRemoving !== null) this.onEntityRemoving(entity);
     if (entity !== undefined && entity.type === 'unit') this.unitSetVersion++;
     if (entity !== undefined && (entity.type === 'building' || entity.type === 'tower')) this.buildingVersion++;
@@ -591,6 +803,11 @@ export class WorldState {
       this.addEntity(spawn.agent);
       this.onDetachedTurretAgentSpawn?.(spawn);
     }
+    for (let i = 0; i < detachedLocomotionSpawns.length; i++) {
+      const spawn = detachedLocomotionSpawns[i];
+      this.addEntity(spawn.agent);
+      this.onDetachedLocomotionAgentSpawn?.(spawn);
+    }
   }
 
   private collectDetachedTurretAgents(host: Entity): DetachedTurretAgentSpawn[] {
@@ -610,6 +827,17 @@ export class WorldState {
       detached.push(this.createDetachedTurretAgentSpawn(host, turret));
     }
     return detached;
+  }
+
+  private collectDetachedLocomotionAgents(host: Entity): DetachedLocomotionAgentSpawn[] {
+    const unit = host.unit;
+    if (unit === null) return [];
+    const hostBodyDead = unit.hp <= 0;
+    if (!hostBodyDead) return [];
+    const locomotion = unit.locomotion;
+    if (locomotion.id === NO_ENTITY_ID || locomotion.hp <= 0) return [];
+    if (this.entities.has(locomotion.id)) return [];
+    return [this.createDetachedLocomotionAgentSpawn(host, locomotion)];
   }
 
   private createDetachedTurretAgentSpawn(host: Entity, sourceTurret: Turret): DetachedTurretAgentSpawn {

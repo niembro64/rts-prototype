@@ -76,11 +76,12 @@ A39. [HIGH] Sub-entities are not independently destructible; the host does not d
     physical position, and killed mounted pieces now detonate their own base-ledger deathExplosion
     damage/force from that physical position. Turrets that survive their host body's death blast
     now promote into hidden tower-class autonomous agents, retaining the old turret EntityId as the
-    new live entity id and continuing to acquire/fire through the normal combat pipeline. The
-    remaining gap is broader live detachment semantics: materialized construction turrets now
-    detach into independent tower agents when factory construction is interrupted, and detached
-    turret agents now receive dynamic physics bodies plus launch velocity, but locomotion pieces
-    still do not continue as live detached agents. —
+    new live entity id and continuing to acquire/fire through the normal combat pipeline. Surviving
+    locomotion pieces now promote into unselectable detached locomotion agents with their old
+    EntityId, locomotion health, dynamic physics body, and launch velocity when the host body dies
+    or when factory construction is interrupted with only locomotion materialized. The remaining
+    gap is broader live detachment semantics for arbitrary still-alive piece tear-off events outside
+    these host-death / construction-interruption paths. —
     FIX: finish live piece detachment as real autonomous agents for every piece kind. A piece that
     DETACHES while still alive (e.g. a locomotion torn loose, or one a bomb-unit launches) stays a
     live, fully-autonomous agent until its OWN health hits zero; detachment removes it from the host
@@ -115,8 +116,8 @@ A41. [MEDIUM] Hosts spawn whole, not built bottom-up piece by piece.
     remaining gap is that inactive pieces still have backing runtime objects even though construction
     shell subentity IDs now materialize only when the dependency-ordered piece becomes active,
     materialized construction turrets now detach into launched independent tower agents when factory
-    construction is interrupted, and locomotion-only interrupted assemblies are still represented
-    as preserved partial shells rather than standalone locomotion agents. —
+    construction is interrupted, and locomotion-only interrupted assemblies now detach into launched
+    standalone locomotion agents instead of remaining as preserved partial shells. —
     FIX: finish late materialization/partial assembly semantics: each piece should enter the active
     entity registry only when its dependency is satisfied, render/target exactly the current partial
     assembly, and leave exactly the already-built live pieces if construction is interrupted.
