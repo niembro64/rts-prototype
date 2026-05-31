@@ -20,6 +20,8 @@ import __wbg_init, {
   type InitInput,
   version,
   wind_sample_state,
+  build_target_horizontal_distance,
+  commander_apply_reclaim_tick,
   factory_build_spot,
   factory_build_spot_blocked,
   factory_plan_production_actions,
@@ -428,6 +430,26 @@ export interface SimWasm {
    *  build is being served. */
   readonly version: string;
   readonly windSampleState: (nowMs: number, out: Float64Array) => number;
+  readonly buildTargetHorizontalDistance: (
+    builderX: number,
+    builderY: number,
+    targetX: number,
+    targetY: number,
+    targetKind: number,
+    targetWidth: number,
+    targetHeight: number,
+    targetRadius: number,
+  ) => number;
+  readonly commanderApplyReclaimTick: (
+    hpCurr: number,
+    hpMax: number,
+    constructionRate: number,
+    dtSec: number,
+    valueEnergy: number,
+    valueMetal: number,
+    refundFraction: number,
+    out: Float64Array,
+  ) => number;
   readonly factoryBuildSpot: (
     factoryX: number,
     factoryY: number,
@@ -3129,6 +3151,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
       const handle: SimWasm = {
         version: version(),
         windSampleState: wind_sample_state,
+        buildTargetHorizontalDistance: build_target_horizontal_distance,
+        commanderApplyReclaimTick: commander_apply_reclaim_tick,
         factoryBuildSpot: factory_build_spot,
         factoryBuildSpotBlocked: factory_build_spot_blocked,
         factoryPlanProductionActions: factory_plan_production_actions,

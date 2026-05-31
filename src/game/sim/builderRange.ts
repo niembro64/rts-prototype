@@ -1,29 +1,37 @@
-import { magnitude } from '../math';
+import { getSimWasm } from '../sim-wasm/init';
 import type { Entity } from './types';
+
+const BUILD_TARGET_KIND_POINT = 0;
+const BUILD_TARGET_KIND_BUILDING = 1;
+const BUILD_TARGET_KIND_UNIT = 2;
 
 export function getBuildRange(entity: Entity): number {
   return entity.builder !== null ? entity.builder.buildRange : 0;
 }
 
 export function getBuildTargetHorizontalDistance(builder: Entity, target: Entity): number {
-  if (target.building) {
-    const halfW = target.building.width / 2;
-    const halfH = target.building.height / 2;
-    const minX = target.transform.x - halfW;
-    const maxX = target.transform.x + halfW;
-    const minY = target.transform.y - halfH;
-    const maxY = target.transform.y + halfH;
-    const closestX = Math.max(minX, Math.min(builder.transform.x, maxX));
-    const closestY = Math.max(minY, Math.min(builder.transform.y, maxY));
-    return magnitude(closestX - builder.transform.x, closestY - builder.transform.y);
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('getBuildTargetHorizontalDistance: sim-wasm is not initialized');
   }
 
-  const dx = target.transform.x - builder.transform.x;
-  const dy = target.transform.y - builder.transform.y;
-  const radius = target.unit !== null
-    ? target.unit.radius.collision
-    : 0;
-  return Math.max(0, magnitude(dx, dy) - radius);
+  const building = target.building;
+  const unit = target.unit;
+  const targetKind = building !== null
+    ? BUILD_TARGET_KIND_BUILDING
+    : unit !== null
+      ? BUILD_TARGET_KIND_UNIT
+      : BUILD_TARGET_KIND_POINT;
+  return sim.buildTargetHorizontalDistance(
+    builder.transform.x,
+    builder.transform.y,
+    target.transform.x,
+    target.transform.y,
+    targetKind,
+    building !== null ? building.width : 0,
+    building !== null ? building.height : 0,
+    unit !== null ? unit.radius.collision : 0,
+  );
 }
 
 export function isBuildTargetInRange(builder: Entity, target: Entity): boolean {

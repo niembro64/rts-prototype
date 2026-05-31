@@ -189,6 +189,10 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     now packs factory/shell state rows and only applies returned actions,
     creates blocked-clear shells, runs shell activation side effects, and marks
     snapshot dirtiness.
+    2026-05-31 progress: build/repair/reclaim horizontal target-distance math
+    and commander reclaim HP/refund tick math moved into Rust/WASM helpers.
+    TypeScript now marshals entity shape/resource fields, applies returned
+    HP/stockpile side effects, and still owns command queue/orchestration.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)

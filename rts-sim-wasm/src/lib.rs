@@ -149,6 +149,106 @@ fn js_max(a: f64, b: f64) -> f64 {
     }
 }
 
+const BUILD_TARGET_KIND_BUILDING: u32 = 1;
+const BUILD_TARGET_KIND_UNIT: u32 = 2;
+
+/// Horizontal construction/reclaim/repair reach distance.
+///
+/// TypeScript supplies object-owned entity fields; Rust owns the
+/// target-shape distance math so every build-range gate uses one
+/// numeric kernel.
+#[wasm_bindgen]
+pub fn build_target_horizontal_distance(
+    builder_x: f64,
+    builder_y: f64,
+    target_x: f64,
+    target_y: f64,
+    target_kind: u32,
+    target_width: f64,
+    target_height: f64,
+    target_radius: f64,
+) -> f64 {
+    if target_kind == BUILD_TARGET_KIND_BUILDING {
+        let half_w = target_width / 2.0;
+        let half_h = target_height / 2.0;
+        let min_x = target_x - half_w;
+        let max_x = target_x + half_w;
+        let min_y = target_y - half_h;
+        let max_y = target_y + half_h;
+        let closest_x = js_max(min_x, js_min(builder_x, max_x));
+        let closest_y = js_max(min_y, js_min(builder_y, max_y));
+        let dx = closest_x - builder_x;
+        let dy = closest_y - builder_y;
+        return (dx * dx + dy * dy).sqrt();
+    }
+
+    let dx = target_x - builder_x;
+    let dy = target_y - builder_y;
+    let distance = (dx * dx + dy * dy).sqrt();
+    let radius = if target_kind == BUILD_TARGET_KIND_UNIT {
+        target_radius
+    } else {
+        0.0
+    };
+    js_max(0.0, distance - radius)
+}
+
+/// Commander reclaim tick kernel.
+///
+/// out[0..5] = next_hp, hp_removed, refund_energy, refund_metal,
+/// complete_flag. Returns 0 only when the output buffer is too short.
+#[wasm_bindgen]
+pub fn commander_apply_reclaim_tick(
+    hp_curr: f64,
+    hp_max: f64,
+    construction_rate: f64,
+    dt_sec: f64,
+    value_energy: f64,
+    value_metal: f64,
+    refund_fraction: f64,
+    out: &mut [f64],
+) -> u32 {
+    if out.len() < 5 {
+        return 0;
+    }
+
+    out[0] = hp_curr;
+    out[1] = 0.0;
+    out[2] = 0.0;
+    out[3] = 0.0;
+    out[4] = 0.0;
+
+    if !hp_curr.is_finite()
+        || !hp_max.is_finite()
+        || !construction_rate.is_finite()
+        || !dt_sec.is_finite()
+        || !value_energy.is_finite()
+        || !value_metal.is_finite()
+        || !refund_fraction.is_finite()
+        || hp_curr <= 0.0
+        || construction_rate <= 0.0
+        || dt_sec <= 0.0
+    {
+        return 1;
+    }
+
+    let hp_removed = js_min(hp_curr, construction_rate * dt_sec);
+    if hp_removed <= 0.0 {
+        return 1;
+    }
+
+    let max_hp = js_max(1.0, hp_max);
+    let refund_scale = refund_fraction * (hp_removed / max_hp);
+    let next_hp = js_max(0.0, hp_curr - hp_removed);
+
+    out[0] = next_hp;
+    out[1] = hp_removed;
+    out[2] = value_energy * refund_scale;
+    out[3] = value_metal * refund_scale;
+    out[4] = if next_hp <= 0.0 { 1.0 } else { 0.0 };
+    1
+}
+
 /// Factory construction-site placement kernel. TypeScript supplies the
 /// authored footprint/radius constants and current factory/rally state;
 /// Rust owns the direction normalization, footprint-edge projection,
@@ -26192,6 +26292,89 @@ mod sim_kernel_tests {
         let mut short = [0.0; 3];
         assert_eq!(wind_sample_state(0.0, &mut short), 0);
         assert_eq!(wind_sample_state(f64::NAN, &mut a), 0);
+    }
+
+    #[test]
+    fn build_target_horizontal_distance_handles_buildings_units_and_points() {
+        assert_eq!(
+            build_target_horizontal_distance(
+                5.0,
+                0.0,
+                0.0,
+                0.0,
+                BUILD_TARGET_KIND_BUILDING,
+                10.0,
+                10.0,
+                0.0,
+            ),
+            0.0,
+            "builder inside a building footprint is already in contact",
+        );
+        assert_eq!(
+            build_target_horizontal_distance(
+                20.0,
+                0.0,
+                0.0,
+                0.0,
+                BUILD_TARGET_KIND_BUILDING,
+                10.0,
+                10.0,
+                0.0,
+            ),
+            15.0,
+        );
+        assert_eq!(
+            build_target_horizontal_distance(
+                0.0,
+                0.0,
+                10.0,
+                0.0,
+                BUILD_TARGET_KIND_UNIT,
+                0.0,
+                0.0,
+                3.0,
+            ),
+            7.0,
+        );
+        assert_eq!(
+            build_target_horizontal_distance(0.0, 0.0, 3.0, 4.0, 0, 0.0, 0.0, 99.0,),
+            5.0,
+        );
+    }
+
+    #[test]
+    fn commander_apply_reclaim_tick_computes_hp_and_refund() {
+        let mut out = [0.0; 5];
+        assert_eq!(
+            commander_apply_reclaim_tick(80.0, 100.0, 20.0, 0.5, 300.0, 120.0, 0.5, &mut out),
+            1,
+        );
+        assert_eq!(out[0], 70.0);
+        assert_eq!(out[1], 10.0);
+        assert_eq!(out[2], 15.0);
+        assert_eq!(out[3], 6.0);
+        assert_eq!(out[4], 0.0);
+
+        assert_eq!(
+            commander_apply_reclaim_tick(8.0, 100.0, 20.0, 0.5, 300.0, 120.0, 0.5, &mut out),
+            1,
+        );
+        assert_eq!(out[0], 0.0);
+        assert_eq!(out[1], 8.0);
+        assert_eq!(out[4], 1.0);
+
+        assert_eq!(
+            commander_apply_reclaim_tick(8.0, 100.0, 20.0, 0.0, 300.0, 120.0, 0.5, &mut out),
+            1,
+        );
+        assert_eq!(out[0], 8.0);
+        assert_eq!(out[1], 0.0);
+
+        let mut short = [0.0; 4];
+        assert_eq!(
+            commander_apply_reclaim_tick(8.0, 100.0, 20.0, 0.5, 300.0, 120.0, 0.5, &mut short),
+            0,
+        );
     }
 
     #[test]

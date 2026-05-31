@@ -9,11 +9,13 @@ import { getReclaimResourceValue, isReclaimableTarget, RECLAIM_REFUND_FRACTION }
 import { ENTITY_CHANGED_HP } from '../../types/network';
 import { isBuildInProgress } from './buildableHelpers';
 import { ballSpawnRateForResourceRate } from '@/resourceConfig';
+import { getSimWasm } from '../sim-wasm/init';
 
 export type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 
 const _constructionEmitterMount = { x: 0, y: 0, z: 0 };
+const _reclaimTickOut = new Float64Array(5);
 
 function getRepairEnergyRatePerSecond(world: WorldState, sourceId: EntityId, targetId: EntityId): number {
   let rate = 0;
@@ -193,18 +195,32 @@ export class CommanderAbilitiesSystem {
     const hpState = target.unit ?? target.building;
     if (!hpState || hpState.hp <= 0) return false;
 
-    const hpBefore = hpState.hp;
-    const maxHp = Math.max(1, hpState.maxHp);
-    const hpRemoved = Math.min(hpBefore, commander.builder.constructionRate * dtMs / 1000);
+    const value = getReclaimResourceValue(target);
+    const dtSec = dtMs / 1000;
+    const sim = getSimWasm();
+    if (sim === undefined) {
+      throw new Error('CommanderAbilitiesSystem.reclaimTarget: sim-wasm is not initialized');
+    }
+    if (sim.commanderApplyReclaimTick(
+      hpState.hp,
+      hpState.maxHp,
+      commander.builder.constructionRate,
+      dtSec,
+      value.energy,
+      value.metal,
+      RECLAIM_REFUND_FRACTION,
+      _reclaimTickOut,
+    ) === 0) {
+      throw new Error('CommanderAbilitiesSystem.reclaimTarget: commander_apply_reclaim_tick rejected its output buffer');
+    }
+
+    const hpRemoved = _reclaimTickOut[1];
     if (hpRemoved <= 0) return false;
 
-    const value = getReclaimResourceValue(target);
-    const refundScale = RECLAIM_REFUND_FRACTION * (hpRemoved / maxHp);
     const refund = {
-      energy: value.energy * refundScale,
-      metal: value.metal * refundScale,
+      energy: _reclaimTickOut[2],
+      metal: _reclaimTickOut[3],
     };
-    const dtSec = dtMs / 1000;
     const refundRate = dtSec > 0
       ? {
         energy: refund.energy / dtSec,
@@ -221,9 +237,9 @@ export class CommanderAbilitiesSystem {
       refundRate,
     );
 
-    hpState.hp = Math.max(0, hpBefore - hpRemoved);
+    hpState.hp = _reclaimTickOut[0];
     world.markSnapshotDirty(target.id, ENTITY_CHANGED_HP);
-    return hpState.hp <= 0;
+    return _reclaimTickOut[4] !== 0;
   }
 }
 
