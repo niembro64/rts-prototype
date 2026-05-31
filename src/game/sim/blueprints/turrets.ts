@@ -13,11 +13,11 @@ import {
 import rawTurretBlueprints from './turrets.json';
 import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields } from './jsonValidation';
-import type { LockOnExclusionObject, TurretBlueprint } from './types';
-import { assertNoInlineLockOnExclusionFields } from './lockOnValidation';
+import type { LockOnInclusionObject, TurretBlueprint } from './types';
+import { assertNoInlineLockOnInclusionFields } from './lockOnValidation';
 import {
-  assertTurretLockOnExclusionConfigIds,
-  getTurretLockOnExclusions,
+  assertTurretLockOnInclusionConfigIds,
+  getTurretLockOnInclusions,
 } from './lockOnConfig';
 import {
   assertRadiusEquals,
@@ -46,22 +46,22 @@ const TURRET_EXPLICIT_FIELDS = [
 
 const WEAPON_KIND_SET: ReadonlySet<string> = new Set(WEAPON_KINDS);
 
-type JsonTurretBlueprint = Omit<TurretBlueprint, keyof LockOnExclusionObject>;
+type JsonTurretBlueprint = Omit<TurretBlueprint, keyof LockOnInclusionObject>;
 
 const RESOLVED_TURRET_BLUEPRINTS = resolveBlueprintRefs(
   rawTurretBlueprints,
 ) as unknown as Record<TurretBlueprintId, JsonTurretBlueprint>;
 
-assertTurretLockOnExclusionConfigIds(Object.keys(RESOLVED_TURRET_BLUEPRINTS));
+assertTurretLockOnInclusionConfigIds(Object.keys(RESOLVED_TURRET_BLUEPRINTS));
 
 export const TURRET_BLUEPRINTS = Object.fromEntries(
   Object.entries(RESOLVED_TURRET_BLUEPRINTS).map(([id, blueprint]) => {
-    assertNoInlineLockOnExclusionFields(`turret blueprint ${id}`, blueprint);
+    assertNoInlineLockOnInclusionFields(`turret blueprint ${id}`, blueprint);
     return [
       id,
       {
         ...blueprint,
-        ...getTurretLockOnExclusions(id),
+        ...getTurretLockOnInclusions(id),
       },
     ];
   }),

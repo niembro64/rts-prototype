@@ -18,13 +18,13 @@ import { TURRET_BLUEPRINTS } from './turrets';
 import rawUnitBlueprints from './units.json';
 import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields } from './jsonValidation';
-import type { LockOnExclusionObject } from './types';
+import type { LockOnInclusionObject } from './types';
 import {
-  assertNoInlineLockOnExclusionFields,
+  assertNoInlineLockOnInclusionFields,
 } from './lockOnValidation';
 import {
-  assertUnitLockOnExclusionConfigIds,
-  getUnitLockOnExclusions,
+  assertUnitLockOnInclusionConfigIds,
+  getUnitLockOnInclusions,
 } from './lockOnConfig';
 import {
   addResourceCosts,
@@ -34,7 +34,7 @@ import {
   assertValidEntityBaseLedger,
 } from './entityBaseLedger';
 
-type JsonUnitBlueprint = Omit<UnitBlueprint, 'locomotion' | keyof LockOnExclusionObject> & {
+type JsonUnitBlueprint = Omit<UnitBlueprint, 'locomotion' | keyof LockOnInclusionObject> & {
   locomotionBlueprintId: string;
 };
 
@@ -54,12 +54,12 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
   const resolved = resolveBlueprintRefs(
     rawUnitBlueprints,
   ) as unknown as Record<string, JsonUnitBlueprint>;
-  assertUnitLockOnExclusionConfigIds(Object.keys(resolved));
+  assertUnitLockOnInclusionConfigIds(Object.keys(resolved));
   const blueprints: Record<string, UnitBlueprint> = {};
 
   for (const [id, blueprint] of Object.entries(resolved)) {
     assertExplicitFields(`unit blueprint ${id}`, blueprint, UNIT_EXPLICIT_FIELDS);
-    assertNoInlineLockOnExclusionFields(`unit blueprint ${id}`, blueprint);
+    assertNoInlineLockOnInclusionFields(`unit blueprint ${id}`, blueprint);
     const locomotion = UNIT_LOCOMOTION_BLUEPRINTS[blueprint.locomotionBlueprintId];
     if (!locomotion) {
       throw new Error(
@@ -87,7 +87,7 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
     const { locomotionBlueprintId, ...unitBlueprint } = blueprint;
     blueprints[id] = {
       ...unitBlueprint,
-      ...getUnitLockOnExclusions(id),
+      ...getUnitLockOnInclusions(id),
       locomotionBlueprintId,
       locomotion,
     };

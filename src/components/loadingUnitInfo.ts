@@ -216,8 +216,8 @@ function describeTurret(turret: Turret, index: number): LoadingUnitInfoNode {
     children.push(stat('Ground aim', `${fmt(config.groundAimFraction * 100)}% range`));
   }
   if (config.shot) children.push(describeShot(config.shot, blueprint.shotBlueprintId));
-  const exclusions = describeLockOnExclusions(blueprint);
-  if (exclusions.length > 0) children.push(node('Lock-on exclusions', undefined, undefined, exclusions));
+  const inclusions = describeLockOnInclusions(blueprint);
+  if (inclusions.length > 0) children.push(node('Lock-on inclusions', undefined, undefined, inclusions));
 
   return node(
     `${index + 1}. ${config.turretBlueprintId}`,
@@ -300,31 +300,31 @@ function describeLocomotionConfig(locomotion: LocomotionBlueprint): LoadingUnitI
   return [];
 }
 
-function describeLockOnExclusions(blueprint: ReturnType<typeof getTurretBlueprint>): LoadingUnitInfoNode[] {
+function describeLockOnInclusions(blueprint: ReturnType<typeof getTurretBlueprint>): LoadingUnitInfoNode[] {
   const items: LoadingUnitInfoNode[] = [];
-  if (blueprint.excludeLockOnLevel0FriendsAndEnemies.length > 0) {
-    items.push(stat('Relationships', blueprint.excludeLockOnLevel0FriendsAndEnemies.join(', ')));
+  if (blueprint.includeLockOnLevel0FriendsAndEnemies.length > 0) {
+    items.push(stat('Relationships', blueprint.includeLockOnLevel0FriendsAndEnemies.join(', ')));
   }
-  if (blueprint.excludeLockOnLevel0Entities.length > 0) {
-    items.push(stat('Families', blueprint.excludeLockOnLevel0Entities.join(', ')));
+  if (blueprint.includeLockOnLevel0Entities.length > 0) {
+    items.push(stat('Families', blueprint.includeLockOnLevel0Entities.join(', ')));
   }
-  if (blueprint.excludeLockOnLevel1Buildings.length > 0) {
-    items.push(stat('Buildings', blueprint.excludeLockOnLevel1Buildings.join(', ')));
+  if (blueprint.includeLockOnLevel1Buildings.length > 0) {
+    items.push(stat('Buildings', blueprint.includeLockOnLevel1Buildings.join(', ')));
   }
-  if (blueprint.excludeLockOnLevel1Towers.length > 0) {
-    items.push(stat('Towers', blueprint.excludeLockOnLevel1Towers.join(', ')));
+  if (blueprint.includeLockOnLevel1Towers.length > 0) {
+    items.push(stat('Towers', blueprint.includeLockOnLevel1Towers.join(', ')));
   }
-  if (blueprint.excludeLockOnLevel1Units.length > 0) {
-    items.push(stat('Units', blueprint.excludeLockOnLevel1Units.join(', ')));
+  if (blueprint.includeLockOnLevel1Units.length > 0) {
+    items.push(stat('Units', blueprint.includeLockOnLevel1Units.join(', ')));
   }
-  if (blueprint.excludeLockOnLevel1Turrets.length > 0) {
-    items.push(stat('Turrets', blueprint.excludeLockOnLevel1Turrets.join(', ')));
+  if (blueprint.includeLockOnLevel1Turrets.length > 0) {
+    items.push(stat('Turrets', blueprint.includeLockOnLevel1Turrets.join(', ')));
   }
-  if (blueprint.excludeLockOnLevel1Locomotions.length > 0) {
-    items.push(stat('Locomotions', blueprint.excludeLockOnLevel1Locomotions.join(', ')));
+  if (blueprint.includeLockOnLevel1Locomotions.length > 0) {
+    items.push(stat('Locomotions', blueprint.includeLockOnLevel1Locomotions.join(', ')));
   }
-  if (blueprint.excludeLockOnLevel1Shots.length > 0) {
-    items.push(stat('Shots', blueprint.excludeLockOnLevel1Shots.join(', ')));
+  if (blueprint.includeLockOnLevel1Shots.length > 0) {
+    items.push(stat('Shots', blueprint.includeLockOnLevel1Shots.join(', ')));
   }
   return items;
 }

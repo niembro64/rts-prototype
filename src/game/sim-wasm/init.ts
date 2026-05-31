@@ -1281,15 +1281,15 @@ export const CT_TURRET_STATE_ENGAGED = wireEnums.turretState.engaged;
 
 /** LOCK-ON-03 — Per-turret lock-on exclusion masks compiled from each
  *  turret blueprint's authored exclusion arrays. Mirrors
- *  `CT_LOCK_ON_REL_EXCLUDE_*` and `CT_LOCK_ON_FAM_EXCLUDE_*` in Rust. */
-export const CT_LOCK_ON_REL_EXCLUDE_FRIENDLY = 1 << 0;
-export const CT_LOCK_ON_REL_EXCLUDE_ENEMY = 1 << 1;
-export const CT_LOCK_ON_FAM_EXCLUDE_BUILDINGS = 1 << 0;
-export const CT_LOCK_ON_FAM_EXCLUDE_UNITS = 1 << 1;
-export const CT_LOCK_ON_FAM_EXCLUDE_TURRETS = 1 << 2;
-export const CT_LOCK_ON_FAM_EXCLUDE_TOWERS = 1 << 3;
-export const CT_LOCK_ON_FAM_EXCLUDE_LOCOMOTIONS = 1 << 4;
-export const CT_LOCK_ON_FAM_EXCLUDE_SHOTS = 1 << 5;
+ *  `CT_LOCK_ON_REL_INCLUDE_*` and `CT_LOCK_ON_FAM_INCLUDE_*` in Rust. */
+export const CT_LOCK_ON_REL_INCLUDE_FRIENDLY = 1 << 0;
+export const CT_LOCK_ON_REL_INCLUDE_ENEMY = 1 << 1;
+export const CT_LOCK_ON_FAM_INCLUDE_BUILDINGS = 1 << 0;
+export const CT_LOCK_ON_FAM_INCLUDE_UNITS = 1 << 1;
+export const CT_LOCK_ON_FAM_INCLUDE_TURRETS = 1 << 2;
+export const CT_LOCK_ON_FAM_INCLUDE_TOWERS = 1 << 3;
+export const CT_LOCK_ON_FAM_INCLUDE_LOCOMOTIONS = 1 << 4;
+export const CT_LOCK_ON_FAM_INCLUDE_SHOTS = 1 << 5;
 
 /** LOCK-ON-03 — Per-entity family encoding. Mirrors
  *  `CT_ENTITY_FAMILY_*` in Rust. NONE is the cleared/unstamped sentinel
@@ -1362,14 +1362,14 @@ export interface CombatTargetingApi {
     flags: number,
     family: number,
     blueprintCode: number,
-    lockOnRelationshipExcludeMask: number,
-    lockOnEntityFamilyExcludeMask: number,
-    lockOnBuildingExcludeMask: number,
-    lockOnTowerExcludeMask: number,
-    lockOnUnitExcludeMask: number,
-    lockOnTurretExcludeMask: number,
-    lockOnLocomotionExcludeMask: number,
-    lockOnShotExcludeMask: number,
+    lockOnRelationshipIncludeMask: number,
+    lockOnEntityFamilyIncludeMask: number,
+    lockOnBuildingIncludeMask: number,
+    lockOnTowerIncludeMask: number,
+    lockOnUnitIncludeMask: number,
+    lockOnTurretIncludeMask: number,
+    lockOnLocomotionIncludeMask: number,
+    lockOnShotIncludeMask: number,
     detectorRadius: number,
     fullVisionRadius: number,
     radarRadius: number,

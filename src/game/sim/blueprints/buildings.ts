@@ -14,19 +14,19 @@ import type {
   DetectorBlueprint,
   EntityBaseLedger,
   EntityHudBlueprint,
-  LockOnExclusionObject,
+  LockOnInclusionObject,
 } from '../../../types/blueprints';
 import rawBuildingBlueprints from './buildings.json';
 import rawTowerBlueprints from './towers.json';
 import { assertExplicitFields } from './jsonValidation';
 import {
-  LOCK_ON_EXCLUSION_FIELDS,
-  assertNoInlineLockOnExclusionFields,
-  validateLockOnExclusionObject,
+  LOCK_ON_INCLUSION_FIELDS,
+  assertNoInlineLockOnInclusionFields,
+  validateLockOnInclusionObject,
 } from './lockOnValidation';
 import {
-  assertTowerLockOnExclusionConfigIds,
-  getTowerLockOnExclusions,
+  assertTowerLockOnInclusionConfigIds,
+  getTowerLockOnInclusions,
 } from './lockOnConfig';
 import { BUILDING_BLUEPRINT_IDS } from '../../../types/blueprintIds';
 import { TURRET_BLUEPRINTS } from './turrets';
@@ -37,7 +37,7 @@ import {
   assertValidEntityBaseLedger,
 } from './entityBaseLedger';
 
-export type BuildingBlueprint = Partial<LockOnExclusionObject> & {
+export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   buildingBlueprintId: BuildingBlueprintId;
   name: string;
   gridWidth: number;
@@ -71,23 +71,23 @@ export type BuildingBlueprint = Partial<LockOnExclusionObject> & {
   detector: DetectorBlueprint | null;
 };
 
-type JsonTowerBlueprint = Omit<BuildingBlueprint, keyof LockOnExclusionObject>;
+type JsonTowerBlueprint = Omit<BuildingBlueprint, keyof LockOnInclusionObject>;
 
 export const PURE_BUILDING_BLUEPRINTS =
   rawBuildingBlueprints as Partial<Record<BuildingBlueprintId, BuildingBlueprint>>;
 const RAW_TOWER_BLUEPRINTS =
   rawTowerBlueprints as Partial<Record<BuildingBlueprintId, JsonTowerBlueprint>>;
 
-assertTowerLockOnExclusionConfigIds(Object.keys(RAW_TOWER_BLUEPRINTS));
+assertTowerLockOnInclusionConfigIds(Object.keys(RAW_TOWER_BLUEPRINTS));
 
 export const TOWER_BLUEPRINTS = Object.fromEntries(
   Object.entries(RAW_TOWER_BLUEPRINTS).map(([id, blueprint]) => {
-    assertNoInlineLockOnExclusionFields(`tower blueprint ${id}`, blueprint);
+    assertNoInlineLockOnInclusionFields(`tower blueprint ${id}`, blueprint);
     return [
       id,
       {
         ...blueprint,
-        ...getTowerLockOnExclusions(id),
+        ...getTowerLockOnInclusions(id),
       },
     ];
   }),
@@ -209,16 +209,16 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   assertExplicitFields(`building blueprint ${id}`, blueprint, BUILDING_EXPLICIT_FIELDS);
   const towerBlueprint = isTowerBuildingBlueprintId(id as BuildingBlueprintId);
   if (towerBlueprint) {
-    assertExplicitFields(`tower blueprint ${id}`, blueprint, LOCK_ON_EXCLUSION_FIELDS);
-    validateLockOnExclusionObject(
+    assertExplicitFields(`tower blueprint ${id}`, blueprint, LOCK_ON_INCLUSION_FIELDS);
+    validateLockOnInclusionObject(
       `tower blueprint ${id}`,
-      blueprint as BuildingBlueprint & LockOnExclusionObject,
+      blueprint as BuildingBlueprint & LockOnInclusionObject,
     );
   } else {
-    for (const field of LOCK_ON_EXCLUSION_FIELDS) {
+    for (const field of LOCK_ON_INCLUSION_FIELDS) {
       if (Object.prototype.hasOwnProperty.call(blueprint, field)) {
         throw new Error(
-          `Invalid building blueprint ${id}: pure buildings do not carry lock-on exclusion field "${field}"`,
+          `Invalid building blueprint ${id}: pure buildings do not carry lock-on inclusion field "${field}"`,
         );
       }
     }

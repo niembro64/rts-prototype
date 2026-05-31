@@ -10911,19 +10911,21 @@ pub const CT_TURRET_CFG_HOST_DIRECTED: u16 = 1 << 8;
 // FSM state encodings (CT_TURRET_STATE_*) are generated from
 // src/wireEnums.json — see the include! near the top of this file.
 
-// LOCK-ON-03 — Per-turret lock-on exclusion masks. Authored on each
-// turret blueprint; JS compiles the exclusion sets into bitmasks and
-// stamps them onto the slab. Empty mask (= 0) means no exclusion;
-// kernels read these alongside per-entity family/blueprint metadata to
-// reject candidates without crossing back into JS.
-pub const CT_LOCK_ON_REL_EXCLUDE_FRIENDLY: u8 = 1 << 0;
-pub const CT_LOCK_ON_REL_EXCLUDE_ENEMY: u8 = 1 << 1;
-pub const CT_LOCK_ON_FAM_EXCLUDE_BUILDINGS: u8 = 1 << 0;
-pub const CT_LOCK_ON_FAM_EXCLUDE_UNITS: u8 = 1 << 1;
-pub const CT_LOCK_ON_FAM_EXCLUDE_TURRETS: u8 = 1 << 2;
-pub const CT_LOCK_ON_FAM_EXCLUDE_TOWERS: u8 = 1 << 3;
-pub const CT_LOCK_ON_FAM_EXCLUDE_LOCOMOTIONS: u8 = 1 << 4;
-pub const CT_LOCK_ON_FAM_EXCLUDE_SHOTS: u8 = 1 << 5;
+// LOCK-ON-03 — Per-turret lock-on inclusion masks. Authored on each
+// turret blueprint; JS compiles the inclusion sets into bitmasks and
+// stamps them onto the slab. Lock-on is off by default: an empty mask
+// (= 0) includes nothing, so the locker can lock onto nothing. A bit
+// set marks that relationship/family as eligible. Kernels read these
+// alongside per-entity family/blueprint metadata to admit only included
+// candidates without crossing back into JS.
+pub const CT_LOCK_ON_REL_INCLUDE_FRIENDLY: u8 = 1 << 0;
+pub const CT_LOCK_ON_REL_INCLUDE_ENEMY: u8 = 1 << 1;
+pub const CT_LOCK_ON_FAM_INCLUDE_BUILDINGS: u8 = 1 << 0;
+pub const CT_LOCK_ON_FAM_INCLUDE_UNITS: u8 = 1 << 1;
+pub const CT_LOCK_ON_FAM_INCLUDE_TURRETS: u8 = 1 << 2;
+pub const CT_LOCK_ON_FAM_INCLUDE_TOWERS: u8 = 1 << 3;
+pub const CT_LOCK_ON_FAM_INCLUDE_LOCOMOTIONS: u8 = 1 << 4;
+pub const CT_LOCK_ON_FAM_INCLUDE_SHOTS: u8 = 1 << 5;
 
 // LOCK-ON-03 — Per-entity family encoding stamped on entity slab rows.
 // Zero is the cleared/unstamped sentinel so a stale row from
@@ -11121,14 +11123,17 @@ struct CombatTargetingPool {
     turret_blueprint_code: Vec<u8>,
     turret_los_blocked_ticks: Vec<u16>,
     turret_config_flags: Vec<u16>,
-    // LOCK-ON-03 — Per-turret lock-on exclusion masks compiled from
-    // each turret blueprint's authored exclusion arrays.
-    //   relationship_mask:   CT_LOCK_ON_REL_EXCLUDE_*  (friendly / enemy)
-    //   entity_family_mask:  CT_LOCK_ON_FAM_EXCLUDE_*  (buildings / towers / units / turrets / locomotions / shots)
+    // LOCK-ON-03 — Per-turret lock-on inclusion masks compiled from
+    // each turret blueprint's authored inclusion arrays. Lock-on is off
+    // by default: an empty level-0 mask includes nothing.
+    //   relationship_mask:   CT_LOCK_ON_REL_INCLUDE_*  (friendly / enemy)
+    //   entity_family_mask:  CT_LOCK_ON_FAM_INCLUDE_*  (buildings / towers / units / turrets / locomotions / shots)
     //   building / tower / unit / turret named masks: bit (1 << wire_code)
-    //     set means "exclude the blueprint with this wire code". With u32
-    //     bitmasks the per-family blueprint table is capped at 32 ids;
-    //     the JS loader rejects new ids past that limit at startup.
+    //     set means "include only the named blueprints with these wire
+    //     codes within an already-included family"; an empty named mask
+    //     applies no name restriction. With u32 bitmasks the per-family
+    //     blueprint table is capped at 32 ids; the JS loader rejects new
+    //     ids past that limit at startup.
     turret_lockon_relationship_mask: Vec<u8>,
     turret_lockon_entity_family_mask: Vec<u8>,
     turret_lockon_building_mask: Vec<u32>,
@@ -13057,17 +13062,23 @@ fn combat_targeting_player_observes_entity_id(
 }
 
 #[inline]
-fn combat_targeting_level1_mask_excludes(mask: u32, code: u8) -> bool {
+fn combat_targeting_level1_mask_allows(mask: u32, code: u8) -> bool {
+    // Level-1 is a whitelist within an already-included family. An empty
+    // mask applies no name restriction (every blueprint in the family is
+    // allowed); a non-empty mask admits only the named wire codes.
+    if mask == 0 {
+        return true;
+    }
     code != CT_BLUEPRINT_CODE_NONE && code < 32 && (mask & (1u32 << code)) != 0
 }
 
 #[inline]
-fn combat_targeting_allowed_relationships_from_exclusions(exclude: u8) -> u8 {
+fn combat_targeting_allowed_relationships_from_inclusions(include: u8) -> u8 {
     let mut relationships = 0u8;
-    if (exclude & CT_LOCK_ON_REL_EXCLUDE_FRIENDLY) == 0 {
+    if (include & CT_LOCK_ON_REL_INCLUDE_FRIENDLY) != 0 {
         relationships |= CT_TARGETING_CANDIDATE_REL_FRIENDLY;
     }
-    if (exclude & CT_LOCK_ON_REL_EXCLUDE_ENEMY) == 0 {
+    if (include & CT_LOCK_ON_REL_INCLUDE_ENEMY) != 0 {
         relationships |= CT_TARGETING_CANDIDATE_REL_ENEMY;
     }
     relationships
@@ -13075,7 +13086,7 @@ fn combat_targeting_allowed_relationships_from_exclusions(exclude: u8) -> u8 {
 
 #[inline]
 fn combat_targeting_turret_allowed_relationships(pool: &CombatTargetingPool, idx: usize) -> u8 {
-    combat_targeting_allowed_relationships_from_exclusions(
+    combat_targeting_allowed_relationships_from_inclusions(
         pool.turret_lockon_relationship_mask[idx],
     )
 }
@@ -13123,10 +13134,10 @@ fn combat_targeting_lockon_masks_allow_target_turret(
     turret_mask: u32,
     target_turret_code: u8,
 ) -> bool {
-    if (entity_family_mask & CT_LOCK_ON_FAM_EXCLUDE_TURRETS) != 0 {
+    if (entity_family_mask & CT_LOCK_ON_FAM_INCLUDE_TURRETS) == 0 {
         return false;
     }
-    !combat_targeting_level1_mask_excludes(turret_mask, target_turret_code)
+    combat_targeting_level1_mask_allows(turret_mask, target_turret_code)
 }
 
 #[inline]
@@ -13142,41 +13153,43 @@ fn combat_targeting_lockon_masks_allow_body_entity(
 ) -> bool {
     match pool.entity_family[target_entity_slot] {
         CT_ENTITY_FAMILY_BUILDING => {
-            (entity_family_mask & CT_LOCK_ON_FAM_EXCLUDE_BUILDINGS) == 0
-                && !combat_targeting_level1_mask_excludes(
+            (entity_family_mask & CT_LOCK_ON_FAM_INCLUDE_BUILDINGS) != 0
+                && combat_targeting_level1_mask_allows(
                     building_mask,
                     pool.entity_blueprint_code[target_entity_slot],
                 )
         }
         CT_ENTITY_FAMILY_TOWER => {
-            (entity_family_mask & CT_LOCK_ON_FAM_EXCLUDE_TOWERS) == 0
-                && !combat_targeting_level1_mask_excludes(
+            (entity_family_mask & CT_LOCK_ON_FAM_INCLUDE_TOWERS) != 0
+                && combat_targeting_level1_mask_allows(
                     tower_mask,
                     pool.entity_blueprint_code[target_entity_slot],
                 )
         }
         CT_ENTITY_FAMILY_UNIT => {
-            (entity_family_mask & CT_LOCK_ON_FAM_EXCLUDE_UNITS) == 0
-                && !combat_targeting_level1_mask_excludes(
+            (entity_family_mask & CT_LOCK_ON_FAM_INCLUDE_UNITS) != 0
+                && combat_targeting_level1_mask_allows(
                     unit_mask,
                     pool.entity_blueprint_code[target_entity_slot],
                 )
         }
         CT_ENTITY_FAMILY_LOCOMOTION => {
-            (entity_family_mask & CT_LOCK_ON_FAM_EXCLUDE_LOCOMOTIONS) == 0
-                && !combat_targeting_level1_mask_excludes(
+            (entity_family_mask & CT_LOCK_ON_FAM_INCLUDE_LOCOMOTIONS) != 0
+                && combat_targeting_level1_mask_allows(
                     locomotion_mask,
                     pool.entity_blueprint_code[target_entity_slot],
                 )
         }
         CT_ENTITY_FAMILY_SHOT => {
-            (entity_family_mask & CT_LOCK_ON_FAM_EXCLUDE_SHOTS) == 0
-                && !combat_targeting_level1_mask_excludes(
+            (entity_family_mask & CT_LOCK_ON_FAM_INCLUDE_SHOTS) != 0
+                && combat_targeting_level1_mask_allows(
                     shot_mask,
                     pool.entity_blueprint_code[target_entity_slot],
                 )
         }
-        _ => true,
+        // Off by default: an unstamped / unknown family (CT_ENTITY_FAMILY_NONE)
+        // is included by nothing, so it is never lockable.
+        _ => false,
     }
 }
 
@@ -13219,7 +13232,7 @@ fn combat_targeting_entity_allowed_relationships(
     if source_entity_slot >= pool.entity_lockon_relationship_mask.len() {
         return 0;
     }
-    combat_targeting_allowed_relationships_from_exclusions(
+    combat_targeting_allowed_relationships_from_inclusions(
         pool.entity_lockon_relationship_mask[source_entity_slot],
     )
 }
@@ -25361,7 +25374,7 @@ mod sim_kernel_tests {
 }
 
 #[cfg(test)]
-mod lock_on_exclusion_tests {
+mod lock_on_inclusion_tests {
     use super::*;
     use std::sync::{Mutex, MutexGuard};
 
@@ -25383,6 +25396,20 @@ mod lock_on_exclusion_tests {
     const LOCOMOTION_CODE_B: u8 = 10;
     const SHOT_CODE_A: u8 = 11;
     const SHOT_CODE_B: u8 = 12;
+
+    // Lock-on is off by default. These "fully permissive" masks include
+    // every relationship and family, so a locker carrying them can lock
+    // onto anything — the baseline tests narrow from here by overriding
+    // the include masks.
+    const REL_ALL: u8 = CT_LOCK_ON_REL_INCLUDE_FRIENDLY | CT_LOCK_ON_REL_INCLUDE_ENEMY;
+    const FAM_ALL: u8 = CT_LOCK_ON_FAM_INCLUDE_BUILDINGS
+        | CT_LOCK_ON_FAM_INCLUDE_TOWERS
+        | CT_LOCK_ON_FAM_INCLUDE_UNITS
+        | CT_LOCK_ON_FAM_INCLUDE_TURRETS
+        | CT_LOCK_ON_FAM_INCLUDE_LOCOMOTIONS
+        | CT_LOCK_ON_FAM_INCLUDE_SHOTS;
+    // Every family except units, used to test family inclusion gating.
+    const FAM_ALL_BUT_UNITS: u8 = FAM_ALL & !CT_LOCK_ON_FAM_INCLUDE_UNITS;
 
     #[derive(Clone, Copy)]
     struct TurretSpec {
@@ -25410,8 +25437,8 @@ mod lock_on_exclusion_tests {
                 dps: 10.0,
                 lock_on_turret: 0,
                 blueprint_code: TURRET_CODE_A,
-                relationship_mask: 0,
-                family_mask: 0,
+                relationship_mask: REL_ALL,
+                family_mask: FAM_ALL,
                 building_mask: 0,
                 unit_mask: 0,
                 turret_mask: 0,
@@ -25621,6 +25648,9 @@ mod lock_on_exclusion_tests {
         turret_count: u8,
         priority_target_id: i32,
     ) {
+        // Off by default: give the host fully-permissive inclusion masks
+        // so priority-target tests exercise turret/host policy rather than
+        // being silently blocked by an empty host include set.
         stamp_entity_with_host_lockon(
             slot,
             entity_id,
@@ -25630,8 +25660,8 @@ mod lock_on_exclusion_tests {
             blueprint_code,
             turret_count,
             priority_target_id,
-            0,
-            0,
+            REL_ALL,
+            FAM_ALL,
             0,
             0,
             0,
@@ -25883,7 +25913,9 @@ mod lock_on_exclusion_tests {
     }
 
     #[test]
-    fn auto_no_exclusions_can_lock_friendly_enemy_bodies_and_turrets() {
+    fn auto_full_inclusions_can_lock_friendly_enemy_bodies_and_turrets() {
+        // A fully-permissive locker (REL_ALL + FAM_ALL, the TurretSpec
+        // default) can lock onto any friendly or enemy body or turret.
         let _guard = lock_tests();
         let cases = [
             (
@@ -25982,6 +26014,36 @@ mod lock_on_exclusion_tests {
     }
 
     #[test]
+    fn auto_empty_inclusions_lock_nothing() {
+        // Off by default: a turret that includes no relationship and no
+        // family must lock onto nothing, even with an eligible enemy in
+        // range.
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                relationship_mask: 0,
+                family_mask: 0,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target(
+            1,
+            201,
+            PLAYER_2,
+            20.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        let (target_id, state, _) = run_schedule_tick(1);
+        assert_eq!(target_id, -1, "empty inclusion masks must lock nothing");
+        assert_eq!(state, CT_TURRET_STATE_IDLE);
+    }
+
+    #[test]
     fn observation_masks_include_targets_above_legacy_terrain_cap() {
         let _guard = lock_tests();
         reset_pools();
@@ -26002,7 +26064,7 @@ mod lock_on_exclusion_tests {
             SOURCE_SLOT,
             0,
             TurretSpec {
-                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 ..TurretSpec::default()
             },
         );
@@ -26038,7 +26100,7 @@ mod lock_on_exclusion_tests {
     }
 
     #[test]
-    fn relationship_exclusions_drive_auto_candidate_collection() {
+    fn relationship_inclusions_drive_auto_candidate_collection() {
         let _guard = lock_tests();
 
         reset_pools();
@@ -26047,7 +26109,7 @@ mod lock_on_exclusion_tests {
             SOURCE_SLOT,
             0,
             TurretSpec {
-                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 ..TurretSpec::default()
             },
         );
@@ -26079,7 +26141,7 @@ mod lock_on_exclusion_tests {
             SOURCE_SLOT,
             0,
             TurretSpec {
-                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_ENEMY,
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_FRIENDLY,
                 ..TurretSpec::default()
             },
         );
@@ -26117,8 +26179,8 @@ mod lock_on_exclusion_tests {
             TurretSpec {
                 flags: CT_TURRET_CFG_PASSIVE,
                 lock_on_turret: 1,
-                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
-                family_mask: CT_LOCK_ON_FAM_EXCLUDE_BUILDINGS | CT_LOCK_ON_FAM_EXCLUDE_UNITS,
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
+                family_mask: CT_LOCK_ON_FAM_INCLUDE_TURRETS,
                 ..TurretSpec::default()
             },
         );
@@ -26147,7 +26209,10 @@ mod lock_on_exclusion_tests {
     }
 
     #[test]
-    fn level1_body_exclusions_reject_only_matching_blueprints() {
+    fn level1_body_inclusions_allow_only_matching_blueprints() {
+        // Level-1 named masks are a whitelist within an included family:
+        // only the named blueprint codes are lockable, every other code in
+        // the family is rejected.
         let _guard = lock_tests();
 
         reset_pools();
@@ -26157,7 +26222,7 @@ mod lock_on_exclusion_tests {
             0,
             TurretSpec {
                 unit_mask: 1u32 << BODY_UNIT_CODE_A,
-                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 ..TurretSpec::default()
             },
         );
@@ -26179,8 +26244,8 @@ mod lock_on_exclusion_tests {
         );
         let (target_id, _, _) = run_schedule_tick(1);
         assert_eq!(
-            target_id, 202,
-            "unit named exclusion should reject only code A"
+            target_id, 201,
+            "unit named inclusion should allow only code A"
         );
 
         reset_pools();
@@ -26190,7 +26255,7 @@ mod lock_on_exclusion_tests {
             0,
             TurretSpec {
                 building_mask: 1u32 << BODY_BUILDING_CODE_A,
-                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 ..TurretSpec::default()
             },
         );
@@ -26212,8 +26277,8 @@ mod lock_on_exclusion_tests {
         );
         let (target_id, _, _) = run_schedule_tick(1);
         assert_eq!(
-            target_id, 204,
-            "building named exclusion should reject only code A"
+            target_id, 203,
+            "building named inclusion should allow only code A"
         );
 
         reset_pools();
@@ -26223,7 +26288,7 @@ mod lock_on_exclusion_tests {
             0,
             TurretSpec {
                 locomotion_mask: 1u32 << LOCOMOTION_CODE_A,
-                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 ..TurretSpec::default()
             },
         );
@@ -26245,8 +26310,8 @@ mod lock_on_exclusion_tests {
         );
         let (target_id, _, _) = run_schedule_tick(1);
         assert_eq!(
-            target_id, 206,
-            "locomotion named exclusion should reject only code A"
+            target_id, 205,
+            "locomotion named inclusion should allow only code A"
         );
 
         reset_pools();
@@ -26256,7 +26321,7 @@ mod lock_on_exclusion_tests {
             0,
             TurretSpec {
                 shot_mask: 1u32 << SHOT_CODE_A,
-                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 ..TurretSpec::default()
             },
         );
@@ -26264,13 +26329,16 @@ mod lock_on_exclusion_tests {
         stamp_body_target(2, 208, PLAYER_2, 20.0, CT_ENTITY_FAMILY_SHOT, SHOT_CODE_B);
         let (target_id, _, _) = run_schedule_tick(1);
         assert_eq!(
-            target_id, 208,
-            "shot named exclusion should reject only code A"
+            target_id, 207,
+            "shot named inclusion should allow only code A"
         );
     }
 
     #[test]
-    fn level1_turret_exclusions_filter_individual_mounted_turrets() {
+    fn level1_turret_inclusions_filter_individual_mounted_turrets() {
+        // The turret named mask whitelists turret code B, so a host is
+        // lockable only if it mounts a B turret; a host that mounts only
+        // the un-whitelisted A turret is rejected.
         let _guard = lock_tests();
         reset_pools();
         stamp_source(-1);
@@ -26279,8 +26347,8 @@ mod lock_on_exclusion_tests {
             0,
             TurretSpec {
                 lock_on_turret: 1,
-                turret_mask: 1u32 << TURRET_CODE_A,
-                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+                turret_mask: 1u32 << TURRET_CODE_B,
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 ..TurretSpec::default()
             },
         );
@@ -26300,7 +26368,7 @@ mod lock_on_exclusion_tests {
     }
 
     #[test]
-    fn priority_and_existing_locks_respect_relationship_exclusions() {
+    fn priority_and_existing_locks_respect_relationship_inclusions() {
         let _guard = lock_tests();
 
         reset_pools();
@@ -26309,7 +26377,7 @@ mod lock_on_exclusion_tests {
             SOURCE_SLOT,
             0,
             TurretSpec {
-                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 ..TurretSpec::default()
             },
         );
@@ -26334,7 +26402,7 @@ mod lock_on_exclusion_tests {
             SOURCE_SLOT,
             0,
             TurretSpec {
-                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 ..TurretSpec::default()
             },
         );
@@ -26359,7 +26427,7 @@ mod lock_on_exclusion_tests {
             TurretSpec {
                 state: CT_TURRET_STATE_ENGAGED,
                 target_id: 203,
-                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 ..TurretSpec::default()
             },
         );
@@ -26385,7 +26453,7 @@ mod lock_on_exclusion_tests {
             TurretSpec {
                 state: CT_TURRET_STATE_ENGAGED,
                 target_id: 204,
-                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 ..TurretSpec::default()
             },
         );
@@ -26403,9 +26471,11 @@ mod lock_on_exclusion_tests {
     }
 
     #[test]
-    fn priority_target_respects_host_level_exclusions() {
+    fn priority_target_respects_host_level_inclusions() {
         let _guard = lock_tests();
 
+        // Host includes friendly only (every family), so an enemy priority
+        // target is outside the host's relationship inclusions.
         reset_pools();
         stamp_entity_with_host_lockon(
             SOURCE_SLOT,
@@ -26416,8 +26486,8 @@ mod lock_on_exclusion_tests {
             SOURCE_UNIT_CODE,
             1,
             201,
-            CT_LOCK_ON_REL_EXCLUDE_ENEMY,
-            0,
+            CT_LOCK_ON_REL_INCLUDE_FRIENDLY,
+            FAM_ALL,
             0,
             0,
             0,
@@ -26437,9 +26507,11 @@ mod lock_on_exclusion_tests {
         let (_, _, mode) = run_schedule_tick(1);
         assert_eq!(
             mode, CT_TARGETING_TICK_MODE_AUTO,
-            "host relationship exclusions must prevent priority-target mode"
+            "host relationship inclusions must prevent priority-target mode"
         );
 
+        // Host includes both relationships but every family except units,
+        // so a unit priority target is outside the host's family inclusions.
         reset_pools();
         stamp_entity_with_host_lockon(
             SOURCE_SLOT,
@@ -26450,8 +26522,8 @@ mod lock_on_exclusion_tests {
             SOURCE_UNIT_CODE,
             1,
             202,
-            0,
-            CT_LOCK_ON_FAM_EXCLUDE_UNITS,
+            REL_ALL,
+            FAM_ALL_BUT_UNITS,
             0,
             0,
             0,
@@ -26471,7 +26543,7 @@ mod lock_on_exclusion_tests {
         let (_, _, mode) = run_schedule_tick(1);
         assert_eq!(
             mode, CT_TARGETING_TICK_MODE_AUTO,
-            "host family exclusions must prevent priority-target mode"
+            "host family inclusions must prevent priority-target mode"
         );
     }
 

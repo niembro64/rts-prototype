@@ -310,19 +310,19 @@ export type TurretAimStyle = {
   lockOnType: TurretAimLockOnType;
 };
 
-export type TurretLockOnRelationshipExclusion = 'friendly_entities' | 'enemy_entities';
+export type TurretLockOnRelationshipInclusion = 'friendly_entities' | 'enemy_entities';
 
-export type TurretLockOnEntityFamilyExclusion = 'buildings' | 'towers' | 'units' | 'turrets' | 'locomotions' | 'shots';
+export type TurretLockOnEntityFamilyInclusion = 'buildings' | 'towers' | 'units' | 'turrets' | 'locomotions' | 'shots';
 
-export type LockOnExclusionObject = {
-  excludeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipExclusion[];
-  excludeLockOnLevel0Entities: TurretLockOnEntityFamilyExclusion[];
-  excludeLockOnLevel1Buildings: string[];
-  excludeLockOnLevel1Towers: string[];
-  excludeLockOnLevel1Units: string[];
-  excludeLockOnLevel1Turrets: string[];
-  excludeLockOnLevel1Locomotions: string[];
-  excludeLockOnLevel1Shots: string[];
+export type LockOnInclusionObject = {
+  includeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipInclusion[];
+  includeLockOnLevel0Entities: TurretLockOnEntityFamilyInclusion[];
+  includeLockOnLevel1Buildings: string[];
+  includeLockOnLevel1Towers: string[];
+  includeLockOnLevel1Units: string[];
+  includeLockOnLevel1Turrets: string[];
+  includeLockOnLevel1Locomotions: string[];
+  includeLockOnLevel1Shots: string[];
 };
 
 export type WeaponKind = 'attack' | 'construction' | 'repair';
@@ -369,14 +369,14 @@ export type TurretBlueprint = {
   idlePitch: number;
   groundAimFraction: number | null;
   constructionEmitter: ConstructionEmitterVisualSpec | null;
-  excludeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipExclusion[];
-  excludeLockOnLevel0Entities: TurretLockOnEntityFamilyExclusion[];
-  excludeLockOnLevel1Buildings: string[];
-  excludeLockOnLevel1Towers: string[];
-  excludeLockOnLevel1Units: string[];
-  excludeLockOnLevel1Turrets: string[];
-  excludeLockOnLevel1Locomotions: string[];
-  excludeLockOnLevel1Shots: string[];
+  includeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipInclusion[];
+  includeLockOnLevel0Entities: TurretLockOnEntityFamilyInclusion[];
+  includeLockOnLevel1Buildings: string[];
+  includeLockOnLevel1Towers: string[];
+  includeLockOnLevel1Units: string[];
+  includeLockOnLevel1Turrets: string[];
+  includeLockOnLevel1Locomotions: string[];
+  includeLockOnLevel1Shots: string[];
 };
 
 export type MountOffset = {
@@ -685,12 +685,12 @@ export type UnitBlueprint = {
   detector: DetectorBlueprint | null;
   deathSound: SoundEntry | null;
   fightStopEngagedRatio: number | null;
-  excludeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipExclusion[];
-  excludeLockOnLevel0Entities: TurretLockOnEntityFamilyExclusion[];
-  excludeLockOnLevel1Buildings: string[];
-  excludeLockOnLevel1Towers: string[];
-  excludeLockOnLevel1Units: string[];
-  excludeLockOnLevel1Turrets: string[];
-  excludeLockOnLevel1Locomotions: string[];
-  excludeLockOnLevel1Shots: string[];
+  includeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipInclusion[];
+  includeLockOnLevel0Entities: TurretLockOnEntityFamilyInclusion[];
+  includeLockOnLevel1Buildings: string[];
+  includeLockOnLevel1Towers: string[];
+  includeLockOnLevel1Units: string[];
+  includeLockOnLevel1Turrets: string[];
+  includeLockOnLevel1Locomotions: string[];
+  includeLockOnLevel1Shots: string[];
 };

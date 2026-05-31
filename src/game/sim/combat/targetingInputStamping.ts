@@ -714,14 +714,14 @@ function stampCombatTargetingEntityInto(
       angleType === 'ballisticArcLowOnlyUnder' ? 1 : 0,
       t.config.aimStyle.lockOnType === 'lockOnToTurret' ? 1 : 0,
       turretBlueprintIdToCode(t.config.turretBlueprintId),
-      t.config.lockOnRelationshipExcludeMask,
-      t.config.lockOnEntityFamilyExcludeMask,
-      t.config.lockOnBuildingExcludeMask,
-      t.config.lockOnTowerExcludeMask,
-      t.config.lockOnUnitExcludeMask,
-      t.config.lockOnTurretExcludeMask,
-      t.config.lockOnLocomotionExcludeMask,
-      t.config.lockOnShotExcludeMask,
+      t.config.lockOnRelationshipIncludeMask,
+      t.config.lockOnEntityFamilyIncludeMask,
+      t.config.lockOnBuildingIncludeMask,
+      t.config.lockOnTowerIncludeMask,
+      t.config.lockOnUnitIncludeMask,
+      t.config.lockOnTurretIncludeMask,
+      t.config.lockOnLocomotionIncludeMask,
+      t.config.lockOnShotIncludeMask,
     );
   }
   return true;

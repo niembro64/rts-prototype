@@ -448,13 +448,13 @@ pub struct TurretAimStyle {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum TurretLockOnRelationshipExclusion {
+pub enum TurretLockOnRelationshipInclusion {
     FriendlyEntities,
     EnemyEntities,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum TurretLockOnEntityFamilyExclusion {
+pub enum TurretLockOnEntityFamilyInclusion {
     Buildings,
     Towers,
     Units,
@@ -464,15 +464,15 @@ pub enum TurretLockOnEntityFamilyExclusion {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LockOnExclusionObject {
-    pub excludeLockOnLevel0FriendsAndEnemies: Vec<TurretLockOnRelationshipExclusion>,
-    pub excludeLockOnLevel0Entities: Vec<TurretLockOnEntityFamilyExclusion>,
-    pub excludeLockOnLevel1Buildings: Vec<String>,
-    pub excludeLockOnLevel1Towers: Vec<String>,
-    pub excludeLockOnLevel1Units: Vec<String>,
-    pub excludeLockOnLevel1Turrets: Vec<String>,
-    pub excludeLockOnLevel1Locomotions: Vec<String>,
-    pub excludeLockOnLevel1Shots: Vec<String>,
+pub struct LockOnInclusionObject {
+    pub includeLockOnLevel0FriendsAndEnemies: Vec<TurretLockOnRelationshipInclusion>,
+    pub includeLockOnLevel0Entities: Vec<TurretLockOnEntityFamilyInclusion>,
+    pub includeLockOnLevel1Buildings: Vec<String>,
+    pub includeLockOnLevel1Towers: Vec<String>,
+    pub includeLockOnLevel1Units: Vec<String>,
+    pub includeLockOnLevel1Turrets: Vec<String>,
+    pub includeLockOnLevel1Locomotions: Vec<String>,
+    pub includeLockOnLevel1Shots: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -528,14 +528,14 @@ pub struct TurretBlueprint {
     pub idlePitch: f64,
     pub groundAimFraction: Option<f64>,
     pub constructionEmitter: Option<BlueprintJsonValue>,
-    pub excludeLockOnLevel0FriendsAndEnemies: Vec<TurretLockOnRelationshipExclusion>,
-    pub excludeLockOnLevel0Entities: Vec<TurretLockOnEntityFamilyExclusion>,
-    pub excludeLockOnLevel1Buildings: Vec<String>,
-    pub excludeLockOnLevel1Towers: Vec<String>,
-    pub excludeLockOnLevel1Units: Vec<String>,
-    pub excludeLockOnLevel1Turrets: Vec<String>,
-    pub excludeLockOnLevel1Locomotions: Vec<String>,
-    pub excludeLockOnLevel1Shots: Vec<String>,
+    pub includeLockOnLevel0FriendsAndEnemies: Vec<TurretLockOnRelationshipInclusion>,
+    pub includeLockOnLevel0Entities: Vec<TurretLockOnEntityFamilyInclusion>,
+    pub includeLockOnLevel1Buildings: Vec<String>,
+    pub includeLockOnLevel1Towers: Vec<String>,
+    pub includeLockOnLevel1Units: Vec<String>,
+    pub includeLockOnLevel1Turrets: Vec<String>,
+    pub includeLockOnLevel1Locomotions: Vec<String>,
+    pub includeLockOnLevel1Shots: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -902,12 +902,12 @@ pub struct UnitBlueprint {
     pub detector: Option<DetectorBlueprint>,
     pub deathSound: Option<BlueprintJsonValue>,
     pub fightStopEngagedRatio: Option<f64>,
-    pub excludeLockOnLevel0FriendsAndEnemies: Vec<TurretLockOnRelationshipExclusion>,
-    pub excludeLockOnLevel0Entities: Vec<TurretLockOnEntityFamilyExclusion>,
-    pub excludeLockOnLevel1Buildings: Vec<String>,
-    pub excludeLockOnLevel1Towers: Vec<String>,
-    pub excludeLockOnLevel1Units: Vec<String>,
-    pub excludeLockOnLevel1Turrets: Vec<String>,
-    pub excludeLockOnLevel1Locomotions: Vec<String>,
-    pub excludeLockOnLevel1Shots: Vec<String>,
+    pub includeLockOnLevel0FriendsAndEnemies: Vec<TurretLockOnRelationshipInclusion>,
+    pub includeLockOnLevel0Entities: Vec<TurretLockOnEntityFamilyInclusion>,
+    pub includeLockOnLevel1Buildings: Vec<String>,
+    pub includeLockOnLevel1Towers: Vec<String>,
+    pub includeLockOnLevel1Units: Vec<String>,
+    pub includeLockOnLevel1Turrets: Vec<String>,
+    pub includeLockOnLevel1Locomotions: Vec<String>,
+    pub includeLockOnLevel1Shots: Vec<String>,
 }

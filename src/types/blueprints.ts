@@ -3,8 +3,8 @@
 // and small runtime constants used by loaders/UI code.
 
 import type {
-  TurretLockOnEntityFamilyExclusion,
-  TurretLockOnRelationshipExclusion,
+  TurretLockOnEntityFamilyInclusion,
+  TurretLockOnRelationshipInclusion,
   WeaponKind,
 } from './blueprintSchema.generated';
 
@@ -39,7 +39,7 @@ export type {
   HoverConfig,
   LaserShotBlueprint,
   LineShotBlueprint,
-  LockOnExclusionObject,
+  LockOnInclusionObject,
   LocomotionBlueprint,
   LocomotionPhysics,
   MountOffset,
@@ -57,8 +57,8 @@ export type {
   TurretAimLockOnType,
   TurretAimStyle,
   TurretBlueprint,
-  TurretLockOnEntityFamilyExclusion,
-  TurretLockOnRelationshipExclusion,
+  TurretLockOnEntityFamilyInclusion,
+  TurretLockOnRelationshipInclusion,
   TurretMount,
   TurretRadiusConfig,
   UnitBlueprint,
@@ -78,12 +78,12 @@ export {
   isLineShotBlueprint,
 } from './shotTypes';
 
-/** Lock-on policy relationship exclusions, kept as runtime arrays for validators. */
-export const TURRET_LOCK_ON_RELATIONSHIP_EXCLUSIONS: readonly TurretLockOnRelationshipExclusion[] =
+/** Lock-on policy relationship inclusions, kept as runtime arrays for validators. */
+export const TURRET_LOCK_ON_RELATIONSHIP_INCLUSIONS: readonly TurretLockOnRelationshipInclusion[] =
   ['friendly_entities', 'enemy_entities'];
 
-/** Lock-on policy entity-family exclusions, kept as runtime arrays for validators. */
-export const TURRET_LOCK_ON_ENTITY_FAMILY_EXCLUSIONS: readonly TurretLockOnEntityFamilyExclusion[] =
+/** Lock-on policy entity-family inclusions, kept as runtime arrays for validators. */
+export const TURRET_LOCK_ON_ENTITY_FAMILY_INCLUSIONS: readonly TurretLockOnEntityFamilyInclusion[] =
   ['buildings', 'towers', 'units', 'turrets', 'locomotions', 'shots'];
 
 /** Turret role categories used by host-directed mount validation. */

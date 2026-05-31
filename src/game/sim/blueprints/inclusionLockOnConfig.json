@@ -1,0 +1,750 @@
+{
+  "ALL INCLUSION OPTIONS": {
+    "includeLockOnLevel0FriendsAndEnemies": [
+      "friendly_entities",
+      "enemy_entities"
+    ],
+    "includeLockOnLevel0Entities": [
+      "buildings",
+      "towers",
+      "units",
+      "turrets",
+      "locomotions",
+      "shots"
+    ],
+    "includeLockOnLevel1Buildings": [
+      "buildingSolar",
+      "buildingWind",
+      "buildingExtractor",
+      "buildingRadar",
+      "buildingResourceConverter"
+    ],
+    "includeLockOnLevel1Towers": [
+      "towerFabricator",
+      "towerBeamMega",
+      "towerCannon"
+    ],
+    "includeLockOnLevel1Units": [
+      "unitJackal",
+      "unitLynx",
+      "unitDaddy",
+      "unitBadger",
+      "unitMongoose",
+      "unitTick",
+      "unitMammoth",
+      "unitFormik",
+      "unitWidow",
+      "unitHippo",
+      "unitTarantula",
+      "unitLoris",
+      "unitMosquito",
+      "unitDragonfly",
+      "unitConstructionDrone",
+      "unitEagle",
+      "unitCommander"
+    ],
+    "includeLockOnLevel1Turrets": [
+      "turretGunLight",
+      "turretGunBurst",
+      "turretCannon",
+      "turretMortarSlow",
+      "turretMortarDrop",
+      "turretMortarFast",
+      "turretGatling",
+      "turretDisruptor",
+      "turretForceFieldPanel",
+      "turretBeam",
+      "turretBeamMini",
+      "turretBeamMega",
+      "turretForceFieldSphere",
+      "turretConstruction",
+      "turretBeamLong",
+      "turretCannonLong",
+      "turretRocketSlow",
+      "turretRocketFast"
+    ],
+    "includeLockOnLevel1Locomotions": [
+      "locomotionJackal",
+      "locomotionLynx",
+      "locomotionDaddy",
+      "locomotionBadger",
+      "locomotionMongoose",
+      "locomotionTick",
+      "locomotionMammoth",
+      "locomotionFormik",
+      "locomotionWidow",
+      "locomotionHippo",
+      "locomotionTarantula",
+      "locomotionLoris",
+      "locomotionCommander",
+      "locomotionHovercraft",
+      "locomotionDragonflyHovercraft",
+      "locomotionConstructionDrone",
+      "locomotionEagleFlying"
+    ],
+    "includeLockOnLevel1Shots": [
+      "shotPlasmaLight",
+      "shotPlasmaMedium",
+      "shotRocketLight",
+      "shotRocketFast",
+      "shotPlasmaHeavy",
+      "shotMortarMedium",
+      "shotMortarHeavy",
+      "shotPlasmaDisruptor",
+      "shotBeamMini",
+      "shotBeamMedium",
+      "shotBeamHeavy",
+      "shotBeamMega",
+      "shotForceFieldSphere",
+      "shotForceFieldPanel"
+    ]
+  },
+  "units": {
+    "unitJackal": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "unitLynx": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "unitDaddy": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "unitBadger": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "unitMongoose": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "unitTick": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "unitMammoth": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "unitFormik": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "unitWidow": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "unitHippo": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "unitTarantula": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "unitLoris": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "unitMosquito": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "unitDragonfly": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "unitConstructionDrone": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities",
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "unitEagle": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "units"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "unitCommander": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities",
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    }
+  },
+  "turrets": {
+    "turretGunLight": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "turretGunBurst": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "turretCannon": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "turretMortarSlow": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "turretMortarDrop": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "turretMortarFast": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "turretGatling": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "turretDisruptor": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "turretForceFieldPanel": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "turretBeam": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "turretBeamMini": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "turretBeamMega": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "turretForceFieldSphere": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "turretConstruction": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "turretBeamLong": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "turretCannonLong": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "turretRocketSlow": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "turretRocketFast": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "units"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    }
+  },
+  "towers": {
+    "towerFabricator": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities",
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "towerBeamMega": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities",
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    },
+    "towerCannon": {
+      "includeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities",
+        "enemy_entities"
+      ],
+      "includeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units",
+        "turrets"
+      ],
+      "includeLockOnLevel1Buildings": [],
+      "includeLockOnLevel1Towers": [],
+      "includeLockOnLevel1Units": [],
+      "includeLockOnLevel1Turrets": [],
+      "includeLockOnLevel1Locomotions": [],
+      "includeLockOnLevel1Shots": []
+    }
+  }
+}

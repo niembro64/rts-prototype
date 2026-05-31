@@ -34,7 +34,7 @@ import { BUILDING_BLUEPRINTS } from './buildings';
 import type {
   ShotBlueprint,
   ForceFieldBarrierRatioConfig,
-  LockOnExclusionObject,
+  LockOnInclusionObject,
   TurretBlueprint,
 } from './types';
 import {
@@ -60,19 +60,19 @@ import {
   UNIT_BLUEPRINT_CODE_UNKNOWN,
 } from '../../../types/network';
 
-// LOCK-ON-03 — Compile per-turret lock-on exclusion bitmasks. Reads
-// the authored exclusion strings on the blueprint, resolves level-1
+// LOCK-ON-03 — Compile per-turret lock-on inclusion bitmasks. Reads
+// the authored inclusion strings on the blueprint, resolves level-1
 // blueprint names through the network wire-code helpers, and packs
 // everything into the numeric fields the targeting slab consumes.
 import {
-  CT_LOCK_ON_REL_EXCLUDE_ENEMY,
-  CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
-  CT_LOCK_ON_FAM_EXCLUDE_BUILDINGS,
-  CT_LOCK_ON_FAM_EXCLUDE_TOWERS,
-  CT_LOCK_ON_FAM_EXCLUDE_UNITS,
-  CT_LOCK_ON_FAM_EXCLUDE_TURRETS,
-  CT_LOCK_ON_FAM_EXCLUDE_LOCOMOTIONS,
-  CT_LOCK_ON_FAM_EXCLUDE_SHOTS,
+  CT_LOCK_ON_REL_INCLUDE_ENEMY,
+  CT_LOCK_ON_REL_INCLUDE_FRIENDLY,
+  CT_LOCK_ON_FAM_INCLUDE_BUILDINGS,
+  CT_LOCK_ON_FAM_INCLUDE_TOWERS,
+  CT_LOCK_ON_FAM_INCLUDE_UNITS,
+  CT_LOCK_ON_FAM_INCLUDE_TURRETS,
+  CT_LOCK_ON_FAM_INCLUDE_LOCOMOTIONS,
+  CT_LOCK_ON_FAM_INCLUDE_SHOTS,
   CT_LOCK_ON_LEVEL1_MASK_CAPACITY,
 } from '../../sim-wasm/init';
 import { isTowerBuildingBlueprintId, type BuildingBlueprintId } from '../../../types/buildingTypes';
@@ -115,35 +115,35 @@ function lockOnLevel1Mask(
   return mask >>> 0;
 }
 
-function compileLockOnMasks(label: string, policy: LockOnExclusionObject): LockOnMasks {
+function compileLockOnMasks(label: string, policy: LockOnInclusionObject): LockOnMasks {
   let relationship = 0;
-  for (const r of policy.excludeLockOnLevel0FriendsAndEnemies) {
-    if (r === 'friendly_entities') relationship |= CT_LOCK_ON_REL_EXCLUDE_FRIENDLY;
-    else if (r === 'enemy_entities') relationship |= CT_LOCK_ON_REL_EXCLUDE_ENEMY;
+  for (const r of policy.includeLockOnLevel0FriendsAndEnemies) {
+    if (r === 'friendly_entities') relationship |= CT_LOCK_ON_REL_INCLUDE_FRIENDLY;
+    else if (r === 'enemy_entities') relationship |= CT_LOCK_ON_REL_INCLUDE_ENEMY;
     else {
       throw new Error(
-        `Invalid ${label}: excludeLockOnLevel0FriendsAndEnemies entry "${r}" is not a known relationship`,
+        `Invalid ${label}: includeLockOnLevel0FriendsAndEnemies entry "${r}" is not a known relationship`,
       );
     }
   }
   let entityFamily = 0;
-  for (const f of policy.excludeLockOnLevel0Entities) {
-    if (f === 'buildings') entityFamily |= CT_LOCK_ON_FAM_EXCLUDE_BUILDINGS;
-    else if (f === 'towers') entityFamily |= CT_LOCK_ON_FAM_EXCLUDE_TOWERS;
-    else if (f === 'units') entityFamily |= CT_LOCK_ON_FAM_EXCLUDE_UNITS;
-    else if (f === 'turrets') entityFamily |= CT_LOCK_ON_FAM_EXCLUDE_TURRETS;
-    else if (f === 'locomotions') entityFamily |= CT_LOCK_ON_FAM_EXCLUDE_LOCOMOTIONS;
-    else if (f === 'shots') entityFamily |= CT_LOCK_ON_FAM_EXCLUDE_SHOTS;
+  for (const f of policy.includeLockOnLevel0Entities) {
+    if (f === 'buildings') entityFamily |= CT_LOCK_ON_FAM_INCLUDE_BUILDINGS;
+    else if (f === 'towers') entityFamily |= CT_LOCK_ON_FAM_INCLUDE_TOWERS;
+    else if (f === 'units') entityFamily |= CT_LOCK_ON_FAM_INCLUDE_UNITS;
+    else if (f === 'turrets') entityFamily |= CT_LOCK_ON_FAM_INCLUDE_TURRETS;
+    else if (f === 'locomotions') entityFamily |= CT_LOCK_ON_FAM_INCLUDE_LOCOMOTIONS;
+    else if (f === 'shots') entityFamily |= CT_LOCK_ON_FAM_INCLUDE_SHOTS;
     else {
       throw new Error(
-        `Invalid ${label}: excludeLockOnLevel0Entities entry "${f}" is not a known family`,
+        `Invalid ${label}: includeLockOnLevel0Entities entry "${f}" is not a known family`,
       );
     }
   }
   const building = lockOnLevel1Mask(
     label,
-    'excludeLockOnLevel1Buildings',
-    policy.excludeLockOnLevel1Buildings,
+    'includeLockOnLevel1Buildings',
+    policy.includeLockOnLevel1Buildings,
     buildingBlueprintIdToCode,
     BUILDING_BLUEPRINT_CODE_UNKNOWN,
     'building',
@@ -154,40 +154,40 @@ function compileLockOnMasks(label: string, policy: LockOnExclusionObject): LockO
   // entity_family and consults the appropriate mask.
   const tower = lockOnLevel1Mask(
     label,
-    'excludeLockOnLevel1Towers',
-    policy.excludeLockOnLevel1Towers,
+    'includeLockOnLevel1Towers',
+    policy.includeLockOnLevel1Towers,
     buildingBlueprintIdToCode,
     BUILDING_BLUEPRINT_CODE_UNKNOWN,
     'tower',
   );
   const unit = lockOnLevel1Mask(
     label,
-    'excludeLockOnLevel1Units',
-    policy.excludeLockOnLevel1Units,
+    'includeLockOnLevel1Units',
+    policy.includeLockOnLevel1Units,
     unitBlueprintIdToCode,
     UNIT_BLUEPRINT_CODE_UNKNOWN,
     'unit',
   );
   const turret = lockOnLevel1Mask(
     label,
-    'excludeLockOnLevel1Turrets',
-    policy.excludeLockOnLevel1Turrets,
+    'includeLockOnLevel1Turrets',
+    policy.includeLockOnLevel1Turrets,
     turretBlueprintIdToCode,
     TURRET_BLUEPRINT_CODE_UNKNOWN,
     'turret',
   );
   const locomotion = lockOnLevel1Mask(
     label,
-    'excludeLockOnLevel1Locomotions',
-    policy.excludeLockOnLevel1Locomotions,
+    'includeLockOnLevel1Locomotions',
+    policy.includeLockOnLevel1Locomotions,
     locomotionBlueprintIdToCode,
     LOCOMOTION_BLUEPRINT_CODE_UNKNOWN,
     'locomotion',
   );
   const shot = lockOnLevel1Mask(
     label,
-    'excludeLockOnLevel1Shots',
-    policy.excludeLockOnLevel1Shots,
+    'includeLockOnLevel1Shots',
+    policy.includeLockOnLevel1Shots,
     shotBlueprintIdToCode,
     SHOT_BLUEPRINT_CODE_UNKNOWN,
     'shot',
@@ -199,6 +199,10 @@ function compileTurretLockOnMasks(turretBlueprint: TurretBlueprint): LockOnMasks
   return compileLockOnMasks(`turret blueprint ${turretBlueprint.turretBlueprintId}`, turretBlueprint);
 }
 
+// Lock-on is off by default: all-zero masks include no relationship and
+// no family, so a locker with these masks can lock onto nothing. This is
+// the correct fallback for hosts that carry no lock-on inclusion object
+// (e.g. buildings).
 export const EMPTY_LOCK_ON_MASKS: LockOnMasks = Object.freeze({
   relationship: 0,
   entityFamily: 0,
@@ -226,7 +230,7 @@ export const TOWER_HOST_LOCK_ON_MASKS: Partial<Record<BuildingBlueprintId, LockO
         id as BuildingBlueprintId,
         compileLockOnMasks(
           `tower blueprint ${id}`,
-          blueprint as typeof blueprint & LockOnExclusionObject,
+          blueprint as typeof blueprint & LockOnInclusionObject,
         ),
       ]),
   );
@@ -659,14 +663,14 @@ export function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretC
         }
       : undefined,
     visualVariant: undefined,
-    lockOnRelationshipExcludeMask: lockOn.relationship,
-    lockOnEntityFamilyExcludeMask: lockOn.entityFamily,
-    lockOnBuildingExcludeMask: lockOn.building,
-    lockOnTowerExcludeMask: lockOn.tower,
-    lockOnUnitExcludeMask: lockOn.unit,
-    lockOnTurretExcludeMask: lockOn.turret,
-    lockOnLocomotionExcludeMask: lockOn.locomotion,
-    lockOnShotExcludeMask: lockOn.shot,
+    lockOnRelationshipIncludeMask: lockOn.relationship,
+    lockOnEntityFamilyIncludeMask: lockOn.entityFamily,
+    lockOnBuildingIncludeMask: lockOn.building,
+    lockOnTowerIncludeMask: lockOn.tower,
+    lockOnUnitIncludeMask: lockOn.unit,
+    lockOnTurretIncludeMask: lockOn.turret,
+    lockOnLocomotionIncludeMask: lockOn.locomotion,
+    lockOnShotIncludeMask: lockOn.shot,
   };
 
   // Derive barrelThickness from shot size, scaled by global multiplier.
@@ -798,8 +802,8 @@ for (const bp of Object.values(BUILDING_BLUEPRINTS)) {
   validateHostDirectedMounts('building blueprint', bp.buildingBlueprintId, bp.turrets);
 }
 
-// Cross-blueprint lock-on exclusion validation. Each level-1 named
-// exclusion list must reference real blueprint ids; unknown names are
+// Cross-blueprint lock-on inclusion validation. Each level-1 named
+// inclusion list must reference real blueprint ids; unknown names are
 // authoring mistakes, not silent drops.
 function assertLevel1IdsInSet(
   label: string,
@@ -833,43 +837,43 @@ const KNOWN_SHOT_IDS: ReadonlySet<string> = new Set(Object.keys(SHOT_BLUEPRINTS)
 for (const [id, bp] of Object.entries(TURRET_BLUEPRINTS)) {
   assertLevel1IdsInSet(
     `turret blueprint ${id}`,
-    'excludeLockOnLevel1Buildings',
-    bp.excludeLockOnLevel1Buildings,
+    'includeLockOnLevel1Buildings',
+    bp.includeLockOnLevel1Buildings,
     KNOWN_BUILDING_IDS,
     'building',
   );
   assertLevel1IdsInSet(
     `turret blueprint ${id}`,
-    'excludeLockOnLevel1Towers',
-    bp.excludeLockOnLevel1Towers,
+    'includeLockOnLevel1Towers',
+    bp.includeLockOnLevel1Towers,
     KNOWN_TOWER_IDS,
     'tower',
   );
   assertLevel1IdsInSet(
     `turret blueprint ${id}`,
-    'excludeLockOnLevel1Units',
-    bp.excludeLockOnLevel1Units,
+    'includeLockOnLevel1Units',
+    bp.includeLockOnLevel1Units,
     KNOWN_UNIT_IDS,
     'unit',
   );
   assertLevel1IdsInSet(
     `turret blueprint ${id}`,
-    'excludeLockOnLevel1Turrets',
-    bp.excludeLockOnLevel1Turrets,
+    'includeLockOnLevel1Turrets',
+    bp.includeLockOnLevel1Turrets,
     KNOWN_TURRET_BLUEPRINT_IDS,
     'turret',
   );
   assertLevel1IdsInSet(
     `turret blueprint ${id}`,
-    'excludeLockOnLevel1Locomotions',
-    bp.excludeLockOnLevel1Locomotions,
+    'includeLockOnLevel1Locomotions',
+    bp.includeLockOnLevel1Locomotions,
     KNOWN_LOCOMOTION_IDS,
     'locomotion',
   );
   assertLevel1IdsInSet(
     `turret blueprint ${id}`,
-    'excludeLockOnLevel1Shots',
-    bp.excludeLockOnLevel1Shots,
+    'includeLockOnLevel1Shots',
+    bp.includeLockOnLevel1Shots,
     KNOWN_SHOT_IDS,
     'shot',
   );
@@ -877,89 +881,89 @@ for (const [id, bp] of Object.entries(TURRET_BLUEPRINTS)) {
 for (const [id, bp] of Object.entries(UNIT_BLUEPRINTS)) {
   assertLevel1IdsInSet(
     `unit blueprint ${id}`,
-    'excludeLockOnLevel1Buildings',
-    bp.excludeLockOnLevel1Buildings,
+    'includeLockOnLevel1Buildings',
+    bp.includeLockOnLevel1Buildings,
     KNOWN_BUILDING_IDS,
     'building',
   );
   assertLevel1IdsInSet(
     `unit blueprint ${id}`,
-    'excludeLockOnLevel1Towers',
-    bp.excludeLockOnLevel1Towers,
+    'includeLockOnLevel1Towers',
+    bp.includeLockOnLevel1Towers,
     KNOWN_TOWER_IDS,
     'tower',
   );
   assertLevel1IdsInSet(
     `unit blueprint ${id}`,
-    'excludeLockOnLevel1Units',
-    bp.excludeLockOnLevel1Units,
+    'includeLockOnLevel1Units',
+    bp.includeLockOnLevel1Units,
     KNOWN_UNIT_IDS,
     'unit',
   );
   assertLevel1IdsInSet(
     `unit blueprint ${id}`,
-    'excludeLockOnLevel1Turrets',
-    bp.excludeLockOnLevel1Turrets,
+    'includeLockOnLevel1Turrets',
+    bp.includeLockOnLevel1Turrets,
     KNOWN_TURRET_BLUEPRINT_IDS,
     'turret',
   );
   assertLevel1IdsInSet(
     `unit blueprint ${id}`,
-    'excludeLockOnLevel1Locomotions',
-    bp.excludeLockOnLevel1Locomotions,
+    'includeLockOnLevel1Locomotions',
+    bp.includeLockOnLevel1Locomotions,
     KNOWN_LOCOMOTION_IDS,
     'locomotion',
   );
   assertLevel1IdsInSet(
     `unit blueprint ${id}`,
-    'excludeLockOnLevel1Shots',
-    bp.excludeLockOnLevel1Shots,
+    'includeLockOnLevel1Shots',
+    bp.includeLockOnLevel1Shots,
     KNOWN_SHOT_IDS,
     'shot',
   );
 }
 for (const [id, bp] of Object.entries(BUILDING_BLUEPRINTS)) {
   if (!isTowerBuildingBlueprintId(id as BuildingBlueprintId)) continue;
-  const tower = bp as typeof bp & LockOnExclusionObject;
+  const tower = bp as typeof bp & LockOnInclusionObject;
   assertLevel1IdsInSet(
     `tower blueprint ${id}`,
-    'excludeLockOnLevel1Buildings',
-    tower.excludeLockOnLevel1Buildings,
+    'includeLockOnLevel1Buildings',
+    tower.includeLockOnLevel1Buildings,
     KNOWN_BUILDING_IDS,
     'building',
   );
   assertLevel1IdsInSet(
     `tower blueprint ${id}`,
-    'excludeLockOnLevel1Towers',
-    tower.excludeLockOnLevel1Towers,
+    'includeLockOnLevel1Towers',
+    tower.includeLockOnLevel1Towers,
     KNOWN_TOWER_IDS,
     'tower',
   );
   assertLevel1IdsInSet(
     `tower blueprint ${id}`,
-    'excludeLockOnLevel1Units',
-    tower.excludeLockOnLevel1Units,
+    'includeLockOnLevel1Units',
+    tower.includeLockOnLevel1Units,
     KNOWN_UNIT_IDS,
     'unit',
   );
   assertLevel1IdsInSet(
     `tower blueprint ${id}`,
-    'excludeLockOnLevel1Turrets',
-    tower.excludeLockOnLevel1Turrets,
+    'includeLockOnLevel1Turrets',
+    tower.includeLockOnLevel1Turrets,
     KNOWN_TURRET_BLUEPRINT_IDS,
     'turret',
   );
   assertLevel1IdsInSet(
     `tower blueprint ${id}`,
-    'excludeLockOnLevel1Locomotions',
-    tower.excludeLockOnLevel1Locomotions,
+    'includeLockOnLevel1Locomotions',
+    tower.includeLockOnLevel1Locomotions,
     KNOWN_LOCOMOTION_IDS,
     'locomotion',
   );
   assertLevel1IdsInSet(
     `tower blueprint ${id}`,
-    'excludeLockOnLevel1Shots',
-    tower.excludeLockOnLevel1Shots,
+    'includeLockOnLevel1Shots',
+    tower.includeLockOnLevel1Shots,
     KNOWN_SHOT_IDS,
     'shot',
   );

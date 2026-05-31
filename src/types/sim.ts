@@ -399,22 +399,25 @@ export type TurretConfig = {
   hostDirected: boolean;
   constructionEmitter: ConstructionEmitterVisualSpec | undefined;
   visualVariant: ConstructionEmitterSize | undefined;
-  /** LOCK-ON-03 — Compiled per-turret lock-on exclusion bitmasks. JS
+  /** LOCK-ON-03 — Compiled per-turret lock-on inclusion bitmasks. JS
    *  walks each turret blueprint once at config build and packs the
-   *  authored exclusion arrays into these bitmasks so the per-tick
+   *  authored inclusion arrays into these bitmasks so the per-tick
    *  stamping pass can copy raw integers onto the combat-targeting
    *  slab without re-walking blueprint strings. Mirror
-   *  `CT_LOCK_ON_REL_EXCLUDE_*` / `CT_LOCK_ON_FAM_EXCLUDE_*` for the
-   *  level-0 fields; level-1 fields set bit `1 << wire_code` for each
-   *  excluded blueprint id (current capacity = 32 ids per family). */
-  lockOnRelationshipExcludeMask: number;
-  lockOnEntityFamilyExcludeMask: number;
-  lockOnBuildingExcludeMask: number;
-  lockOnTowerExcludeMask: number;
-  lockOnUnitExcludeMask: number;
-  lockOnTurretExcludeMask: number;
-  lockOnLocomotionExcludeMask: number;
-  lockOnShotExcludeMask: number;
+   *  `CT_LOCK_ON_REL_INCLUDE_*` / `CT_LOCK_ON_FAM_INCLUDE_*` for the
+   *  level-0 fields; lock-on is off by default, so an empty level-0
+   *  mask locks onto nothing. Level-1 fields set bit `1 << wire_code`
+   *  for each included blueprint id (current capacity = 32 ids per
+   *  family); an empty level-1 mask applies no name restriction within
+   *  an included family. */
+  lockOnRelationshipIncludeMask: number;
+  lockOnEntityFamilyIncludeMask: number;
+  lockOnBuildingIncludeMask: number;
+  lockOnTowerIncludeMask: number;
+  lockOnUnitIncludeMask: number;
+  lockOnTurretIncludeMask: number;
+  lockOnLocomotionIncludeMask: number;
+  lockOnShotIncludeMask: number;
 };
 
 // Runtime projectile configuration. This is intentionally smaller than

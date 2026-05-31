@@ -1,39 +1,39 @@
 import {
-  TURRET_LOCK_ON_ENTITY_FAMILY_EXCLUSIONS,
-  TURRET_LOCK_ON_RELATIONSHIP_EXCLUSIONS,
-  type LockOnExclusionObject,
+  TURRET_LOCK_ON_ENTITY_FAMILY_INCLUSIONS,
+  TURRET_LOCK_ON_RELATIONSHIP_INCLUSIONS,
+  type LockOnInclusionObject,
 } from '../../../types/blueprints';
 import { assertExplicitFields, isObject } from './jsonValidation';
 
 const LOCK_ON_RELATIONSHIP_SET: ReadonlySet<string> = new Set(
-  TURRET_LOCK_ON_RELATIONSHIP_EXCLUSIONS,
+  TURRET_LOCK_ON_RELATIONSHIP_INCLUSIONS,
 );
 const LOCK_ON_ENTITY_FAMILY_SET: ReadonlySet<string> = new Set(
-  TURRET_LOCK_ON_ENTITY_FAMILY_EXCLUSIONS,
+  TURRET_LOCK_ON_ENTITY_FAMILY_INCLUSIONS,
 );
 
-export const LOCK_ON_EXCLUSION_FIELDS = [
-  'excludeLockOnLevel0FriendsAndEnemies',
-  'excludeLockOnLevel0Entities',
-  'excludeLockOnLevel1Buildings',
-  'excludeLockOnLevel1Towers',
-  'excludeLockOnLevel1Units',
-  'excludeLockOnLevel1Turrets',
-  'excludeLockOnLevel1Locomotions',
-  'excludeLockOnLevel1Shots',
+export const LOCK_ON_INCLUSION_FIELDS = [
+  'includeLockOnLevel0FriendsAndEnemies',
+  'includeLockOnLevel0Entities',
+  'includeLockOnLevel1Buildings',
+  'includeLockOnLevel1Towers',
+  'includeLockOnLevel1Units',
+  'includeLockOnLevel1Turrets',
+  'includeLockOnLevel1Locomotions',
+  'includeLockOnLevel1Shots',
 ] as const;
 
-export function assertNoInlineLockOnExclusionFields(
+export function assertNoInlineLockOnInclusionFields(
   label: string,
   value: unknown,
 ): void {
   if (!isObject(value)) {
     throw new Error(`Invalid ${label}: expected object`);
   }
-  for (const field of LOCK_ON_EXCLUSION_FIELDS) {
+  for (const field of LOCK_ON_INCLUSION_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(value, field)) {
       throw new Error(
-        `Invalid ${label}: lock-on exclusion field "${field}" belongs in exclusionLockOnConfig.json`,
+        `Invalid ${label}: lock-on inclusion field "${field}" belongs in inclusionLockOnConfig.json`,
       );
     }
   }
@@ -71,71 +71,71 @@ function assertEnumArray(
   }
 }
 
-export function validateLockOnExclusionObject(
+export function validateLockOnInclusionObject(
   label: string,
-  value: LockOnExclusionObject,
+  value: LockOnInclusionObject,
 ): void {
   assertStringArray(
     label,
-    'excludeLockOnLevel0FriendsAndEnemies',
-    value.excludeLockOnLevel0FriendsAndEnemies,
+    'includeLockOnLevel0FriendsAndEnemies',
+    value.includeLockOnLevel0FriendsAndEnemies,
   );
   assertEnumArray(
     label,
-    'excludeLockOnLevel0FriendsAndEnemies',
-    value.excludeLockOnLevel0FriendsAndEnemies,
+    'includeLockOnLevel0FriendsAndEnemies',
+    value.includeLockOnLevel0FriendsAndEnemies,
     LOCK_ON_RELATIONSHIP_SET,
   );
   assertStringArray(
     label,
-    'excludeLockOnLevel0Entities',
-    value.excludeLockOnLevel0Entities,
+    'includeLockOnLevel0Entities',
+    value.includeLockOnLevel0Entities,
   );
   assertEnumArray(
     label,
-    'excludeLockOnLevel0Entities',
-    value.excludeLockOnLevel0Entities,
+    'includeLockOnLevel0Entities',
+    value.includeLockOnLevel0Entities,
     LOCK_ON_ENTITY_FAMILY_SET,
   );
-  assertStringArray(label, 'excludeLockOnLevel1Buildings', value.excludeLockOnLevel1Buildings);
-  assertStringArray(label, 'excludeLockOnLevel1Towers', value.excludeLockOnLevel1Towers);
-  assertStringArray(label, 'excludeLockOnLevel1Units', value.excludeLockOnLevel1Units);
-  assertStringArray(label, 'excludeLockOnLevel1Turrets', value.excludeLockOnLevel1Turrets);
+  assertStringArray(label, 'includeLockOnLevel1Buildings', value.includeLockOnLevel1Buildings);
+  assertStringArray(label, 'includeLockOnLevel1Towers', value.includeLockOnLevel1Towers);
+  assertStringArray(label, 'includeLockOnLevel1Units', value.includeLockOnLevel1Units);
+  assertStringArray(label, 'includeLockOnLevel1Turrets', value.includeLockOnLevel1Turrets);
   assertStringArray(
     label,
-    'excludeLockOnLevel1Locomotions',
-    value.excludeLockOnLevel1Locomotions,
+    'includeLockOnLevel1Locomotions',
+    value.includeLockOnLevel1Locomotions,
   );
-  assertStringArray(label, 'excludeLockOnLevel1Shots', value.excludeLockOnLevel1Shots);
+  assertStringArray(label, 'includeLockOnLevel1Shots', value.includeLockOnLevel1Shots);
 }
 
-export function validateLockOnExclusionConfigSection(
+export function validateLockOnInclusionConfigSection(
   sectionLabel: string,
   value: unknown,
-): asserts value is Record<string, LockOnExclusionObject> {
+): asserts value is Record<string, LockOnInclusionObject> {
   if (!isObject(value)) {
-    throw new Error(`Invalid lock-on exclusion config: "${sectionLabel}" must be an object`);
+    throw new Error(`Invalid lock-on inclusion config: "${sectionLabel}" must be an object`);
   }
-  for (const [id, exclusions] of Object.entries(value)) {
-    const label = `lock-on exclusion config ${sectionLabel}.${id}`;
-    assertExplicitFields(label, exclusions, LOCK_ON_EXCLUSION_FIELDS);
-    validateLockOnExclusionObject(label, exclusions as LockOnExclusionObject);
+  for (const [id, inclusions] of Object.entries(value)) {
+    const label = `lock-on inclusion config ${sectionLabel}.${id}`;
+    assertExplicitFields(label, inclusions, LOCK_ON_INCLUSION_FIELDS);
+    validateLockOnInclusionObject(label, inclusions as LockOnInclusionObject);
   }
 }
 
-export function cloneLockOnExclusionObject(
-  value: LockOnExclusionObject,
-): LockOnExclusionObject {
+export function cloneLockOnInclusionObject(
+  value: LockOnInclusionObject,
+): LockOnInclusionObject {
   return {
-    excludeLockOnLevel0FriendsAndEnemies: [
-      ...value.excludeLockOnLevel0FriendsAndEnemies,
+    includeLockOnLevel0FriendsAndEnemies: [
+      ...value.includeLockOnLevel0FriendsAndEnemies,
     ],
-    excludeLockOnLevel0Entities: [...value.excludeLockOnLevel0Entities],
-    excludeLockOnLevel1Buildings: [...value.excludeLockOnLevel1Buildings],
-    excludeLockOnLevel1Towers: [...value.excludeLockOnLevel1Towers],
-    excludeLockOnLevel1Units: [...value.excludeLockOnLevel1Units],
-    excludeLockOnLevel1Turrets: [...value.excludeLockOnLevel1Turrets],
-    excludeLockOnLevel1Locomotions: [...value.excludeLockOnLevel1Locomotions],
-    excludeLockOnLevel1Shots: [...value.excludeLockOnLevel1Shots],
+    includeLockOnLevel0Entities: [...value.includeLockOnLevel0Entities],
+    includeLockOnLevel1Buildings: [...value.includeLockOnLevel1Buildings],
+    includeLockOnLevel1Towers: [...value.includeLockOnLevel1Towers],
+    includeLockOnLevel1Units: [...value.includeLockOnLevel1Units],
+    includeLockOnLevel1Turrets: [...value.includeLockOnLevel1Turrets],
+    includeLockOnLevel1Locomotions: [...value.includeLockOnLevel1Locomotions],
+    includeLockOnLevel1Shots: [...value.includeLockOnLevel1Shots],
   };
 }

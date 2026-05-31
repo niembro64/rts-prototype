@@ -1293,9 +1293,9 @@
       </p>
       <ul class="rule-list">
         <li><code>locomotion</code> owns how a body produces and applies movement forces.</li>
-        <li><code>unit</code> owns a <em>mobile</em> entity's body, mass, health, command capabilities, build cost, mounted turrets and the per-mount host-directed/fully-autonomous tag that decides which of them follow the host's lock-on, a host-level lock-on target governed by the unit's own lock-on exclusion object, and composition slots.</li>
-        <li><code>tower</code> owns an <em>immobile</em> entity's body, mass, health, mounted turrets and the per-mount host-directed/fully-autonomous tag that decides which of them follow the host's lock-on, and a host-level lock-on target governed by the tower's own lock-on exclusion object. A tower has the same turret-and-lock-on contract as a unit, but no locomotion. Anything static that takes action against an entity ID through turrets is a tower &mdash; including fabricators (whose construction turret targets a build site) and defensive shooting towers.</li>
-        <li><code>turret</code> is a standardized emitter: it owns lock-on eligibility through its own lock-on exclusion object, aiming, tracking, cooldown, firing pattern (burst and spread), mount behavior, and a single by-id reference to the one emission it produces &mdash; exactly one <code>shot</code>, <code>ray</code>, or <code>shield</code>. It carries no host-specific data and no inline emission payload &mdash; the emission is named by id, never copied into the turret &mdash; so the same turret blueprint drops onto any host&rsquo;s mount unchanged. It does <em>not</em> own whether it is host-directed or fully-autonomous; that role is set per mount by the host, so one turret blueprint can be a primary on one host and a secondary on another.</li>
+        <li><code>unit</code> owns a <em>mobile</em> entity's body, mass, health, command capabilities, build cost, mounted turrets and the per-mount host-directed/fully-autonomous tag that decides which of them follow the host's lock-on, a host-level lock-on target governed by the unit's own lock-on inclusion object, and composition slots.</li>
+        <li><code>tower</code> owns an <em>immobile</em> entity's body, mass, health, mounted turrets and the per-mount host-directed/fully-autonomous tag that decides which of them follow the host's lock-on, and a host-level lock-on target governed by the tower's own lock-on inclusion object. A tower has the same turret-and-lock-on contract as a unit, but no locomotion. Anything static that takes action against an entity ID through turrets is a tower &mdash; including fabricators (whose construction turret targets a build site) and defensive shooting towers.</li>
+        <li><code>turret</code> is a standardized emitter: it owns lock-on eligibility through its own lock-on inclusion object, aiming, tracking, cooldown, firing pattern (burst and spread), mount behavior, and a single by-id reference to the one emission it produces &mdash; exactly one <code>shot</code>, <code>ray</code>, or <code>shield</code>. It carries no host-specific data and no inline emission payload &mdash; the emission is named by id, never copied into the turret &mdash; so the same turret blueprint drops onto any host&rsquo;s mount unchanged. It does <em>not</em> own whether it is host-directed or fully-autonomous; that role is set per mount by the host, so one turret blueprint can be a primary on one host and a secondary on another.</li>
         <li><code>shot</code> is a <em>travelling munition</em> a turret fires: a plasma bolt or rocket that leaves the barrel and persists as a physical body with its own <code>EntityId</code>, mass, health, and a death explosion. It owns its travel behavior, inherited homing target, recoil, damage, impulse, reflection, lifetime, submunition payload, and collision behavior, and &mdash; per <strong>Shots are destructible bodies too</strong> &mdash; detonates the instant its tiny health reaches zero. <code>plasma</code> and <code>rocket</code> are its variants. Shots are authored in their own blueprint family (<code>shots.json</code>).</li>
         <li><code>ray</code> is a <em>sustained line emission</em> &mdash; a continuous beam or a timed laser &mdash; traced from the turret to its target, recomputed every tick from the turret&rsquo;s aim and bound to the turret&rsquo;s lifetime. A ray is <em>not</em> a body: it has no mass, no health, and no <code>EntityId</code> of its own, and is attributed through its emitting turret (see <strong>Universal Runtime Entity IDs</strong>). It owns its line behavior, damage-per-second, recoil, reflection, and duration. <code>beam</code> (continuous) and <code>laser</code> (timed) are its variants. Rays are authored in their own blueprint family (<code>rays.json</code>).</li>
         <li><code>shield</code> (formerly &ldquo;force field&rdquo;) is a <em>sustained barrier emission</em>: a projected surface &mdash; a flat panel array or a sphere &mdash; that reflects, absorbs, or passes incoming shots according to its material and reflection mode. Like a beam, a shield is <em>not</em> a body: no mass, no health, no own <code>EntityId</code>; it is recomputed each tick and attributed through its emitting turret. It owns its barrier material and reflection behavior, while the shape it is projected as is the mount&rsquo;s geometry &mdash; per <strong>Materials Are Independent Of Shape</strong>. Shields are authored in their own blueprint family (<code>shields.json</code>), with shield materials in <code>shieldMaterials.json</code>.</li>
@@ -1416,7 +1416,7 @@
         <strong>Lock-on eligibility</strong> below). A turret that locks onto an enemy unit&rsquo;s
         turrets is trying to disarm it; one that locks onto its locomotion is trying to immobilize it;
         one that locks onto the body is trying to kill it outright. The same shared targeting kernel
-        expresses all three &mdash; only the exclusion object differs.
+        expresses all three &mdash; only the inclusion object differs.
       </p>
 
       <h3>Every piece is an agent; the player commands only hosts</h3>
@@ -1505,7 +1505,7 @@
         untouched (see <strong>Materials Are Independent Of Shape</strong>).</li>
         <li><strong>Incoming fire</strong> &mdash; because the health is small but real, a weapon can
         whittle it down before contact. A point-defense turret that locks onto enemy shots (its
-        exclusion object keeps only <code>shots</code>) chips that tiny health to zero and pops the
+        inclusion object includes only <code>enemy_entities</code> and <code>shots</code>) chips that tiny health to zero and pops the
         round in mid-air, short of its target.</li>
       </ul>
       <p>
@@ -1558,20 +1558,21 @@
         Units and towers can carry a host-level target chosen by the player, AI, or command
         system. That target expresses intent: attack this enemy, guard this ally, repair this
         unit, assist this tower, or otherwise keep the host&rsquo;s current order anchored to an
-        entity. The host may lock onto <em>any</em> entity that has an ID &mdash; a unit, a
-        tower, a building, or a turret &mdash; except the ones its own lock-on exclusion object
-        removes. That host-level exclusion object is the same subtractive schema a turret carries;
-        it simply lives on the unit or tower blueprint and governs the host lock-on rather than a
-        single weapon. The host target is not the same thing as a turret&rsquo;s current lock-on
-        target. It is an input each mounted turret may consult; it must not blindly overwrite
+        entity. The host may lock onto any entity that has an ID &mdash; a unit, a
+        tower, a building, or a turret &mdash; but only the kinds and relationships its own lock-on
+        inclusion object admits. That host-level inclusion object is the same additive schema a
+        turret carries; it simply lives on the unit or tower blueprint and governs the host lock-on
+        rather than a single weapon. The host target is not the same thing as a turret&rsquo;s current
+        lock-on target. It is an input each mounted turret may consult; it must not blindly overwrite
         every turret target on the host. Buildings carry no host target, and no host-level
-        exclusion object, because buildings do not mount turrets &mdash; that is the boundary
+        inclusion object, because buildings do not mount turrets &mdash; that is the boundary
         that separates the two static types.
       </p>
       <p>
-        Two exclusion objects therefore apply in sequence. The host&rsquo;s own exclusion object
+        Two inclusion objects therefore apply in sequence. The host&rsquo;s own inclusion object
         decides what may <em>become</em> the host target; each mounted turret then decides whether
-        that host target is meaningful for it. The turret first checks its own lock-on exclusion
+        that host target is meaningful for it. A target survives only if <em>both</em> objects admit
+        it. The turret first checks its own lock-on inclusion
         policy, then the normal validity gates such as aliveness, visibility, range, line of
         sight, and shot compatibility. If the host target passes, the turret may inherit it as a
         priority lock. If the host target fails, that turret rejects the inheritance and runs its
@@ -1580,7 +1581,7 @@
       <p>
         This separation is what lets mixed-role hosts work. A unit guarding a friendly entity can
         keep that friendly entity as its host target; a repair or construction turret may inherit
-        it, while a fighting turret that excludes <code>friendly_entities</code> ignores it and
+        it, while a fighting turret that includes only <code>enemy_entities</code> ignores it and
         searches for enemies normally. A <code>turretShieldPanel</code> can
         reject the same host target unless it is an allowed enemy turret.
         Commands belong to the host; lock-on belongs to the turret.
@@ -1592,7 +1593,7 @@
         turret). When the host is &ldquo;locked on&rdquo; to another entity &mdash; whether
         through a player command, an AI order, or any other host-level target intent &mdash; a
         host-directed turret&rsquo;s lock-on id is overwritten by the host&rsquo;s lock-on id
-        (provided that target clears the turret&rsquo;s own exclusion object and validity gates),
+        (provided that target is admitted by the turret&rsquo;s own inclusion object and validity gates),
         so it acts in concert with its unit or tower. Fully-autonomous turrets never have their
         lock-on overwritten by the host; they completely ignore the host&rsquo;s lock-on and run
         their own independent targeting flow as if the host carried no target at all. The rule
@@ -1608,7 +1609,7 @@
         on one host and fully-autonomous on another: a cannon may be the host-controlled primary
         on a battle tank yet ride as a fully-autonomous secondary on a larger hull that drives a
         different weapon as its primary. The turret blueprint supplies the weapon &mdash; mount
-        pose, aim dynamics, cooldown, lock-on exclusion object, and the shot it emits; the host
+        pose, aim dynamics, cooldown, lock-on inclusion object, and the shot it emits; the host
         blueprint supplies the role each mount plays in the host&rsquo;s command flow. Keeping the
         host-directed/fully-autonomous tag on the mount rather than the turret is what lets one
         turret definition serve both roles without duplicating the blueprint.
@@ -1640,7 +1641,7 @@
       <p>
         A host-directed turret is not <em>only</em> host-directed. When the host has no current
         lock-on, the host-directed turret falls back to its own autonomous targeting flow exactly
-        like a fully-autonomous turret would: it applies its exclusion policy, scans for candidates,
+        like a fully-autonomous turret would: it applies its inclusion policy, scans for candidates,
         scores them, and engages. The host lock-on is a priority input layered on top of normal
         targeting, not a replacement for it. The only difference between the two tags is whether the
         host&rsquo;s declared target is even considered.
@@ -1652,7 +1653,7 @@
         yanked off it whenever the host acquires a new lock. A tank with a host-directed main gun
         and a fully-autonomous anti-air turret will point its main gun at the commanded enemy
         ground unit while the anti-air turret keeps shooting passing aircraft, regardless of what
-        the host is locked onto. Host-directed turrets still apply their own exclusion policy and
+        the host is locked onto. Host-directed turrets still apply their own inclusion policy and
         validity gates on top of the host target; fully-autonomous turrets skip the inheritance
         step entirely.
       </p>
@@ -1664,57 +1665,58 @@
         unit&rsquo;s commanded role can stop a fight-move or patrol leg.
       </p>
       <p>
-        Lock-on eligibility is authored as a subtractive <em>exclusion object</em>, and three
+        Lock-on eligibility is authored as an additive <em>inclusion object</em>, and three
         kinds of locker each carry one: a <strong>turret</strong> (governing that weapon&rsquo;s
         lock-on), a <strong>unit</strong>, and a <strong>tower</strong> (each governing its
-        host-level lock-on). The default is identical for all three, and it is deliberately as broad
-        as the entity model allows: <strong>a locker with no lock-on exclusions can lock onto any
-        living entity in the game that has an ID, of any kind</strong> &mdash; any friendly or enemy
-        unit, tower, building, turret-mount, locomotion subentity, or travelling shot. Lock-on is
-        universal by default and <em>subtractive</em> from there: a turret never opts <em>in</em> to
-        each family it may hit, it only opts <em>out</em> of the kinds, relationships, and names it
-        should ignore. Buildings lock onto nothing, so they carry no exclusion object. The
-        same eligibility rule applies whether the lock-on is a unit&rsquo;s or tower&rsquo;s
-        host-level target set by player command, a turret&rsquo;s inheritance of that host
-        target, or a turret&rsquo;s autonomous acquisition: one subtractive schema, one shared
-        targeting kernel across units, towers, and free-acquiring turrets.
+        host-level lock-on). The default is identical for all three, and it is deliberately as narrow
+        as it can be: <strong>a locker with no lock-on inclusions can lock onto nothing</strong>.
+        Lock-on is <em>off by default</em> and <em>additive</em> from there: a turret never silently
+        inherits a family it might hit; it locks only onto the kinds, relationships, and names it
+        explicitly opts <em>in</em> to. A fully-permissive locker that has added every relationship
+        and every family can lock onto any living entity in the game that has an ID, of any kind
+        &mdash; any friendly or enemy unit, tower, building, turret-mount, locomotion subentity, or
+        travelling shot &mdash; but that breadth is authored, never assumed. Buildings lock onto
+        nothing, so they carry no inclusion object. The same eligibility rule applies whether the
+        lock-on is a unit&rsquo;s or tower&rsquo;s host-level target set by player command, a
+        turret&rsquo;s inheritance of that host target, or a turret&rsquo;s autonomous acquisition:
+        one additive schema, one shared targeting kernel across units, towers, and free-acquiring
+        turrets.
       </p>
       <ul class="rule-list">
-        <li><code>excludeLockOnLevel0FriendsAndEnemies</code> removes whole ownership relationships before scoring. Valid high-level entries are <code>friendly_entities</code> and <code>enemy_entities</code>.</li>
-        <li><code>excludeLockOnLevel0Entities</code> removes whole target categories before scoring. Valid high-level entries are <code>units</code>, <code>towers</code>, <code>buildings</code>, <code>turrets</code>, <code>locomotions</code>, and <code>shots</code> &mdash; every entity kind, so any kind can be excluded and, by omission, any kind is included by default.</li>
-        <li><code>excludeLockOnLevel1Units</code> removes individual unit blueprint names from the remaining unit candidates.</li>
-        <li><code>excludeLockOnLevel1Towers</code> removes individual tower blueprint names from the remaining tower candidates.</li>
-        <li><code>excludeLockOnLevel1Buildings</code> removes individual building blueprint names from the remaining building candidates.</li>
-        <li><code>excludeLockOnLevel1Turrets</code> removes individual turret blueprint names from the remaining turret candidates.</li>
-        <li><code>excludeLockOnLevel1Locomotions</code> removes individual locomotion blueprint names from the remaining locomotion candidates.</li>
-        <li><code>excludeLockOnLevel1Shots</code> removes individual shot blueprint names from the remaining shot candidates &mdash; e.g. a point-defense turret that should pop only heavy rockets, not every plasma bolt.</li>
+        <li><code>includeLockOnLevel0FriendsAndEnemies</code> admits whole ownership relationships before scoring. Valid high-level entries are <code>friendly_entities</code> and <code>enemy_entities</code>; a relationship that is not listed is never lockable.</li>
+        <li><code>includeLockOnLevel0Entities</code> admits whole target categories before scoring. Valid high-level entries are <code>units</code>, <code>towers</code>, <code>buildings</code>, <code>turrets</code>, <code>locomotions</code>, and <code>shots</code> &mdash; every entity kind, so any kind can be added and, by omission, any kind is excluded by default.</li>
+        <li><code>includeLockOnLevel1Units</code> narrows an already-included unit family to only the named unit blueprints; an empty list applies no name restriction.</li>
+        <li><code>includeLockOnLevel1Towers</code> narrows an already-included tower family to only the named tower blueprints.</li>
+        <li><code>includeLockOnLevel1Buildings</code> narrows an already-included building family to only the named building blueprints.</li>
+        <li><code>includeLockOnLevel1Turrets</code> narrows an already-included turret family to only the named turret blueprints.</li>
+        <li><code>includeLockOnLevel1Locomotions</code> narrows an already-included locomotion family to only the named locomotion blueprints.</li>
+        <li><code>includeLockOnLevel1Shots</code> narrows an already-included shot family to only the named shot blueprints &mdash; e.g. a point-defense turret that should pop only heavy rockets, not every plasma bolt.</li>
       </ul>
       <p>
         The hierarchy should be evaluated in order: ownership, aliveness, and visibility decide
-        whether something can be considered; relationship exclusions remove friendly or enemy
-        candidates; entity-family exclusions remove whole kinds &mdash; units, towers, buildings,
-        turrets, locomotions, or shots; level-1 exclusions remove specific authored names inside a
-        surviving family; range, line-of-sight, and scoring then pick the best lock from the
-        survivors. A construction turret that should lock only onto friendly entities excludes
-        <code>enemy_entities</code>. A fighting turret that should only attack hostile targets
-        excludes <code>friendly_entities</code>. A <code>turretShieldPanel</code>
-        that should lock only onto enemy turrets excludes
-        <code>friendly_entities</code>, <code>units</code>, <code>towers</code>,
-        and <code>buildings</code> at level 0. A normal weapon turret that should ignore turret
-        mounts excludes <code>turrets</code> at level 0. Because lock-on is universal by default,
-        targeting a <em>specific piece</em> is just a narrow exclusion object: a <strong>point-defense</strong>
-        turret that should shoot down incoming munitions and nothing else excludes every family
-        <em>except</em> <code>shots</code>; a <strong>crippler</strong> that should destroy only enemy
-        movement excludes everything except <code>locomotions</code>; a <strong>disarmer</strong> that
-        should strip weapons excludes everything except <code>turrets</code>. Most ordinary weapons
-        will, in turn, choose to exclude <code>shots</code> and <code>locomotions</code> so they spend
-        their fire on whole bodies &mdash; but that is each turret opting out, not the kernel
-        withholding those kinds by default. Specialist weapons can then use the level-1 lists to skip
-        named units, towers, buildings, turret, locomotion, or shot blueprints without changing the
-        shared target acquisition code. A unit or tower runs its own host-level
-        exclusion object through this identical hierarchy before its host lock-on is set; each
-        mounted turret then runs its own object again when it decides whether to inherit that
-        host target.
+        whether something can be considered; the relationship inclusions admit friendly or enemy
+        candidates; the entity-family inclusions admit whole kinds &mdash; units, towers, buildings,
+        turrets, locomotions, or shots; level-1 inclusions, when present, narrow a surviving family
+        to specific authored names; range, line-of-sight, and scoring then pick the best lock from
+        the survivors. A construction turret that should lock only onto friendly entities includes
+        <code>friendly_entities</code>. A fighting turret that should only attack hostile targets
+        includes <code>enemy_entities</code>. A <code>turretShieldPanel</code>
+        that should lock only onto enemy turrets includes <code>enemy_entities</code> and
+        <code>turrets</code> and nothing else. A normal weapon turret that should ignore turret
+        mounts simply leaves <code>turrets</code> off its family list. Because lock-on is off by
+        default, targeting a <em>specific piece</em> is just a narrow inclusion object: a
+        <strong>point-defense</strong> turret that should shoot down incoming munitions and nothing
+        else includes only <code>shots</code>; a <strong>crippler</strong> that should destroy only
+        enemy movement includes only <code>locomotions</code>; a <strong>disarmer</strong> that
+        should strip weapons includes only <code>turrets</code>. Most ordinary weapons, in turn,
+        include the whole-body families &mdash; <code>units</code>, <code>towers</code>,
+        <code>buildings</code>, and <code>turrets</code> &mdash; and leave <code>shots</code> and
+        <code>locomotions</code> off so they spend their fire on whole bodies. Specialist weapons can
+        then use the level-1 lists to restrict a family to named unit, tower, building, turret,
+        locomotion, or shot blueprints without changing the shared target acquisition code. A unit or
+        tower runs its own host-level inclusion object through this identical hierarchy before its
+        host lock-on is set; each mounted turret then runs its own object again when it decides
+        whether to inherit that host target.
       </p>
       <p>
         We do not want mixed or overlapping roles. A turret should not secretly define
@@ -1895,7 +1897,7 @@
         reacquires according to its normal rule. Turrets, units, and towers can therefore lock
         onto any targetable <code>EntityId</code> in the world of any kind &mdash; a whole unit or
         tower, a single mounted turret or locomotion, a build site, or a travelling shot &mdash;
-        that their own exclusion object does not remove, while the targeting kernel still gets fast
+        that their own inclusion object admits, while the targeting kernel still gets fast
         access to kind, blueprint, owner, team, hierarchy, position, radius, and storage row.
       </p>
       <p>
@@ -1920,7 +1922,7 @@
       <p>
         Towers exist as a separate entity type, not as a flag on buildings, because the
         simulation actually treats them differently. A tower carries <code>combat</code> state
-        (turrets, lock-on, exclusion masks, acquisition probes), and the targeting kernel must
+        (turrets, lock-on, inclusion masks, acquisition probes), and the targeting kernel must
         be able to enumerate tower candidates without conflating them with pure infrastructure.
         Buildings (solar, wind, extractor, radar, converter) are deliberately on the other side
         of that line: no turrets, no lock-on, no participation in the combat acquisition loop.
@@ -1940,7 +1942,7 @@
         build site (an entity in progress) and emits energy + metal at it. The build site is
         addressed by its entity ID. Therefore the fabricator is a tower, not a building. The
         fact that the construction turret is visual-only for damage purposes does not change
-        the contract &mdash; it still has a target, exclusion policy, and host-directed
+        the contract &mdash; it still has a target, inclusion policy, and host-directed
         relationship to its host&rsquo;s player intent.</li>
         <li><strong>Shooting towers</strong> (beam tower, cannon tower, and any future
         long-range static gun) &mdash; mount combat turrets that lock onto enemy entities.
@@ -1953,27 +1955,27 @@
 
       <h3>Lock-on selection: anything with an ID is a candidate</h3>
       <p>
-        A tower&rsquo;s host-level lock-on can name <em>any entity in the world that has an
-        ID</em> &mdash; another tower, a unit, a turret-mount, even (in principle) a building
-        &mdash; except the ones the tower&rsquo;s own lock-on exclusion object removes. Whether
-        the surviving lock-on is then honored by a mounted turret is decided by that
-        turret&rsquo;s exclusion policy, exactly the same hierarchy that applies to a
+        A tower&rsquo;s host-level lock-on can name an entity in the world that has an
+        ID &mdash; another tower, a unit, a turret-mount, even (in principle) a building
+        &mdash; but only the kinds and relationships the tower&rsquo;s own lock-on inclusion object
+        admits. Whether the surviving lock-on is then honored by a mounted turret is decided by that
+        turret&rsquo;s inclusion policy, exactly the same hierarchy that applies to a
         unit&rsquo;s host-directed turrets:
       </p>
       <ul class="rule-list">
-        <li>Ownership exclusions (<code>friendly_entities</code> /
-        <code>enemy_entities</code>) drop the candidate first.</li>
-        <li>Entity-family exclusions (<code>units</code>, <code>towers</code>,
-        <code>buildings</code>, <code>turrets</code>) drop whole categories next.</li>
-        <li>Level-1 named exclusions drop specific blueprints inside a surviving family.</li>
+        <li>Ownership inclusions (<code>friendly_entities</code> /
+        <code>enemy_entities</code>) admit only the listed relationship first.</li>
+        <li>Entity-family inclusions (<code>units</code>, <code>towers</code>,
+        <code>buildings</code>, <code>turrets</code>) admit only the listed kinds next.</li>
+        <li>Level-1 named inclusions, when present, narrow a surviving family to specific blueprints.</li>
         <li>Range, line-of-sight, and shot compatibility gate the remaining survivors.</li>
       </ul>
       <p>
-        A shooting tower that excludes <code>friendly_entities</code> + <code>buildings</code>
-        will refuse to inherit a friendly building as a host target even if the player
-        clicked one, and will fall through to autonomous acquisition. A fabricator&rsquo;s
-        construction turret that excludes <code>enemy_entities</code> + <code>turrets</code>
-        will refuse to repair a hostile or a bare turret-mount. The targeting kernel is the
+        A shooting tower that includes <code>enemy_entities</code> and leaves <code>buildings</code>
+        out of its family list will refuse to inherit a friendly building as a host target even if
+        the player clicked one, and will fall through to autonomous acquisition. A fabricator&rsquo;s
+        construction turret that includes <code>friendly_entities</code> and leaves <code>turrets</code>
+        out will refuse to repair a hostile or a bare turret-mount. The targeting kernel is the
         same kernel units use; the only thing the tower adds is the static-host shape.
       </p>
 
@@ -2042,7 +2044,7 @@
 
       <h3>Tower selection panel</h3>
       <ul class="rule-list">
-        <li>Set Lock-On Target: click any entity with an ID the tower&rsquo;s lock-on exclusion
+        <li>Set Lock-On Target: click any entity with an ID the tower&rsquo;s lock-on inclusion
         object allows. The selection turns into the tower&rsquo;s host-level lock-on; the
         host-directed turret of each kind inherits it, non-primary turrets ignore it.</li>
         <li>Clear Lock-On: revert to autonomous acquisition.</li>
@@ -2551,11 +2553,11 @@
         <li>Let pieces live and die on their own health. A turret can explode and detach while its unit fights on; a locomotion can be destroyed so the unit drops and can no longer move while its body and turrets survive; only killing the body kills the whole assembly, via its death explosion. Construction runs the same dependency order in reverse &mdash; build a unit&rsquo;s locomotion, then its body, then its turrets; build a tower&rsquo;s body, then its turret &mdash; each piece an under-construction real entity with health ramping from zero.</li>
         <li>Make shots destructible bodies: every shot carries a tiny health pool and detonates the instant it reaches zero, running its normal explosion/splash/submunition path. Contact with the ground, another shot, or any solid body forces that health to zero on the spot; a shield is the only thing a shot touches that reflects it instead of killing it. Small-but-real shot health is what lets a point-defense turret shoot incoming munitions out of the air.</li>
         <li>Give every addressable live instance &mdash; unit, tower, building, turret, locomotion, travelling munition, and build site &mdash; a universal runtime <code>EntityId</code> plus the host ids it belongs to: top-level hosts point <code>root_host_id</code> at themselves, subentities store <code>parent_id</code> and <code>root_host_id</code>. Assign ids by addressability, not category: a ray or shield sustained by a live turret attributes through its emitter instead of minting its own id, and a build site is the product carrying its final id from frame one rather than a shell that hands off later. Resolve that opaque ID through explicit metadata for kind, blueprint, owner player, team, parent, root host, mount index, storage row, generation, liveness, and targetability. Do not encode mutable meaning into the numeric ID itself. Shots carry immutable source provenance (<code>source_turret_id</code>, <code>source_host_id</code>, player/team, blueprint IDs, spawn tick, and parent shot) so projectiles, submunitions, damage attribution, replays, and debug traces all agree on where they came from.</li>
-        <li>Keep host command targets separate from turret lock-on targets. A unit or tower may carry player intent such as attack, guard, repair, or assist, and may lock onto any entity that has an ID &mdash; of any kind, including a single mounted turret, a locomotion, or a travelling shot &mdash; except the ones its own host-level lock-on exclusion object removes; each mounted turret may then inherit that target only if its own exclusion object and targeting gates accept it. Turrets, units, and towers all carry the same subtractive lock-on exclusion object; buildings carry none, and no host target, because they mount no turrets.</li>
-        <li>Tag every turret mount as <code>host-directed</code> (host-controlled primary) or <code>fully-autonomous</code> (secondary) on the unit or tower blueprint &mdash; not on the turret blueprint, so the same turret can be host-directed on one host and fully-autonomous on another. For each kind of turret a host mounts, exactly one of that kind must be host-directed &mdash; the blueprint loader throws at startup on zero (orders cannot land) or two-or-more (ambiguous primary). When the host is locked on to another entity, the host-directed turret&rsquo;s lock-on is overwritten by the host&rsquo;s (subject to that turret&rsquo;s exclusion object); fully-autonomous turrets are never overwritten and run their own independent targeting flow. Host-directed turrets fall back to autonomous targeting when the host has no lock. Fight-move and patrol halt logic counts only host-directed turrets. The rule applies identically to units and towers.</li>
+        <li>Keep host command targets separate from turret lock-on targets. A unit or tower may carry player intent such as attack, guard, repair, or assist, and may lock onto an entity that has an ID &mdash; of any kind, including a single mounted turret, a locomotion, or a travelling shot &mdash; but only the kinds and relationships its own host-level lock-on inclusion object admits; each mounted turret may then inherit that target only if its own inclusion object and targeting gates accept it. Turrets, units, and towers all carry the same additive lock-on inclusion object; buildings carry none, and no host target, because they mount no turrets.</li>
+        <li>Tag every turret mount as <code>host-directed</code> (host-controlled primary) or <code>fully-autonomous</code> (secondary) on the unit or tower blueprint &mdash; not on the turret blueprint, so the same turret can be host-directed on one host and fully-autonomous on another. For each kind of turret a host mounts, exactly one of that kind must be host-directed &mdash; the blueprint loader throws at startup on zero (orders cannot land) or two-or-more (ambiguous primary). When the host is locked on to another entity, the host-directed turret&rsquo;s lock-on is overwritten by the host&rsquo;s (subject to that turret&rsquo;s inclusion object); fully-autonomous turrets are never overwritten and run their own independent targeting flow. Host-directed turrets fall back to autonomous targeting when the host has no lock. Fight-move and patrol halt logic counts only host-directed turrets. The rule applies identically to units and towers.</li>
         <li>Make the selection action panel uniform per entity type. Units expose movement, fire control, build, commander specials, and self-destruct. Towers expose set-lock-on (any entity with an ID), fire control, fabricator production (when applicable), and self-destruct. Buildings expose ON/OFF and self-destruct. Mixed selections degrade to the intersection. Adding a new button to only some blueprints inside an existing type is not allowed.</li>
         <li>Keep sight, radar, and detection as sensor capability sources aggregated per player/team. Full sight identifies and also supplies radar-level location, radar-only coverage locates, detectors uncloak, and weapon fire consumes those tiers through explicit turret targeting requirements. Weapon range must not automatically create full vision.</li>
-        <li>Keep lock-on acquisition in turret blueprints and targeting kernels, and author lock-on eligibility as a subtractive exclusion object carried by turrets, units, and towers alike. Rockets inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; eligibility is <strong>universal by default</strong> &mdash; any living entity with an ID, of any kind, including locomotion subentities and travelling shots &mdash; and narrowed only by subtraction: level-0 friend/enemy and entity-family exclusions (<code>units</code>, <code>towers</code>, <code>buildings</code>, <code>turrets</code>, <code>locomotions</code>, <code>shots</code>), then level-1 named blueprint exclusions. Excluding everything but one family is how a turret specializes &mdash; point-defense keeps only <code>shots</code>, a crippler keeps only <code>locomotions</code>, a disarmer keeps only <code>turrets</code>.</li>
+        <li>Keep lock-on acquisition in turret blueprints and targeting kernels, and author lock-on eligibility as an additive inclusion object carried by turrets, units, and towers alike. Rockets inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; eligibility is <strong>off by default</strong> &mdash; a locker with no inclusions locks onto nothing &mdash; and broadened only by addition: level-0 friend/enemy and entity-family inclusions (<code>units</code>, <code>towers</code>, <code>buildings</code>, <code>turrets</code>, <code>locomotions</code>, <code>shots</code>), then optional level-1 named blueprint inclusions that narrow an included family. Including only one family is how a turret specializes &mdash; point-defense includes only <code>shots</code>, a crippler includes only <code>locomotions</code>, a disarmer includes only <code>turrets</code>.</li>
         <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. The <code>turretShieldPanel</code>&rsquo;s flat panels and the <code>turretShieldSphere</code>&rsquo;s sphere are the exact same material &mdash; they differ only in geometry.</li>
         <li>Route every resource movement &mdash; production, consumption, construction payment, conversion, repair drain, future ammo costs &mdash; through one shared pylon abstraction in both simulation and renderer. One typed channel publishes <code>(resource, amount, direction, source, optional target)</code>; one rig renders the flow as resource balls travelling through a conduit, their density showing magnitude and their travel direction showing inbound or outbound. A pylon is a tube between a <em>root</em> (the pool tap) and a <em>tip</em> (the world); balls down the tube mean gaining, up the tube mean spending, and the tip conserves &mdash; every ball up the tube exits the tip, every ball into the tip goes down the tube, and balls are spawned or sunk only at the root and the world point, never at the tip. Producers source balls at the physical world point (deposit, sun, upwind) and run them down the tube; construction turrets run balls up the tube and out the tip onto the build target; the converter joins its two tips with a taxed arc that recolors energy into metal in flight, the unconverted fraction visibly dispersing. The flowing balls are the sole indicator; standalone usage readouts and any separate magnitude bar are retired. No parallel resource paths in the sim, no special-case &ldquo;production trickle&rdquo; or &ldquo;converter visual&rdquo; in the renderer.</li>
         <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>
