@@ -261,6 +261,109 @@ pub fn factory_build_spot_blocked(
     0
 }
 
+const FACTORY_PRODUCTION_SELECTED_NONE_CODE: u8 = 0;
+const FACTORY_PRODUCTION_SELECTED_VALID_CODE: u8 = 1;
+const FACTORY_PRODUCTION_SELECTED_INVALID_CODE: u8 = 2;
+const FACTORY_PRODUCTION_ACTION_NONE_CODE: u8 = 0;
+const FACTORY_PRODUCTION_ACTION_RESET_SHELL_CODE: u8 = 1;
+const FACTORY_PRODUCTION_ACTION_COMPLETE_SHELL_CODE: u8 = 2;
+const FACTORY_PRODUCTION_ACTION_CLEAR_INVALID_SELECTION_CODE: u8 = 3;
+const FACTORY_PRODUCTION_ACTION_STOP_PRODUCING_CODE: u8 = 4;
+const FACTORY_PRODUCTION_ACTION_SPAWN_SHELL_CODE: u8 = 5;
+
+#[wasm_bindgen]
+pub fn factory_plan_production_actions(
+    has_shell: &[u8],
+    shell_exists: &[u8],
+    shell_has_buildable: &[u8],
+    shell_buildable_complete: &[u8],
+    shell_interrupted: &[u8],
+    shell_paid_energy: &[f64],
+    shell_paid_metal: &[f64],
+    shell_required_energy: &[f64],
+    shell_required_metal: &[f64],
+    selected_state: &[u8],
+    can_build_unit: &[u8],
+    is_producing: &[u8],
+    count: u32,
+    out_action: &mut [u8],
+    out_progress: &mut [f64],
+) -> u32 {
+    let n = count as usize;
+    if n > has_shell.len()
+        || n > shell_exists.len()
+        || n > shell_has_buildable.len()
+        || n > shell_buildable_complete.len()
+        || n > shell_interrupted.len()
+        || n > shell_paid_energy.len()
+        || n > shell_paid_metal.len()
+        || n > shell_required_energy.len()
+        || n > shell_required_metal.len()
+        || n > selected_state.len()
+        || n > can_build_unit.len()
+        || n > is_producing.len()
+        || n > out_action.len()
+        || n > out_progress.len()
+    {
+        return 0;
+    }
+
+    for i in 0..n {
+        out_action[i] = FACTORY_PRODUCTION_ACTION_NONE_CODE;
+        out_progress[i] = 0.0;
+
+        if has_shell[i] != 0 {
+            if shell_exists[i] == 0 {
+                out_action[i] = FACTORY_PRODUCTION_ACTION_RESET_SHELL_CODE;
+                continue;
+            }
+
+            if shell_has_buildable[i] == 0 || shell_buildable_complete[i] != 0 {
+                out_progress[i] = 1.0;
+                out_action[i] = FACTORY_PRODUCTION_ACTION_COMPLETE_SHELL_CODE;
+                continue;
+            }
+
+            out_progress[i] = construction_build_fraction(
+                shell_paid_energy[i],
+                shell_paid_metal[i],
+                shell_required_energy[i],
+                shell_required_metal[i],
+            );
+
+            if shell_interrupted[i] != 0 {
+                out_action[i] = FACTORY_PRODUCTION_ACTION_RESET_SHELL_CODE;
+            }
+            continue;
+        }
+
+        match selected_state[i] {
+            FACTORY_PRODUCTION_SELECTED_NONE_CODE => {
+                if is_producing[i] != 0 {
+                    out_action[i] = FACTORY_PRODUCTION_ACTION_STOP_PRODUCING_CODE;
+                }
+            }
+            FACTORY_PRODUCTION_SELECTED_INVALID_CODE => {
+                out_action[i] = FACTORY_PRODUCTION_ACTION_CLEAR_INVALID_SELECTION_CODE;
+            }
+            FACTORY_PRODUCTION_SELECTED_VALID_CODE => {
+                if can_build_unit[i] == 0 {
+                    if is_producing[i] != 0 {
+                        out_action[i] = FACTORY_PRODUCTION_ACTION_STOP_PRODUCING_CODE;
+                    }
+                } else {
+                    out_action[i] = FACTORY_PRODUCTION_ACTION_SPAWN_SHELL_CODE;
+                }
+            }
+            _ => {
+                out_action[i] = FACTORY_PRODUCTION_ACTION_CLEAR_INVALID_SELECTION_CODE;
+            }
+        }
+    }
+
+    1
+}
+
 #[wasm_bindgen]
 pub fn economy_accumulate_player_rates(
     player_ids: &[u32],
@@ -26215,6 +26318,96 @@ mod sim_kernel_tests {
                 4,
             ),
             2,
+        );
+    }
+
+    #[test]
+    fn factory_plan_production_actions_handles_shell_and_selection_states() {
+        let has_shell = [1, 1, 1, 0, 0, 0, 0, 0];
+        let shell_exists = [0, 1, 1, 0, 0, 0, 0, 0];
+        let shell_has_buildable = [0, 0, 1, 0, 0, 0, 0, 0];
+        let shell_buildable_complete = [0, 0, 0, 0, 0, 0, 0, 0];
+        let shell_interrupted = [0, 0, 0, 0, 0, 0, 0, 0];
+        let shell_paid_energy = [0.0, 0.0, 25.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let shell_paid_metal = [0.0, 0.0, 80.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let shell_required_energy = [0.0, 0.0, 100.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let shell_required_metal = [0.0, 0.0, 100.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let selected_state = [
+            FACTORY_PRODUCTION_SELECTED_NONE_CODE,
+            FACTORY_PRODUCTION_SELECTED_NONE_CODE,
+            FACTORY_PRODUCTION_SELECTED_NONE_CODE,
+            FACTORY_PRODUCTION_SELECTED_NONE_CODE,
+            FACTORY_PRODUCTION_SELECTED_INVALID_CODE,
+            FACTORY_PRODUCTION_SELECTED_VALID_CODE,
+            FACTORY_PRODUCTION_SELECTED_VALID_CODE,
+            99,
+        ];
+        let can_build_unit = [0, 0, 0, 0, 0, 0, 1, 1];
+        let is_producing = [0, 0, 0, 1, 0, 1, 0, 0];
+        let mut action = [99u8; 8];
+        let mut progress = [99.0; 8];
+
+        assert_eq!(
+            factory_plan_production_actions(
+                &has_shell,
+                &shell_exists,
+                &shell_has_buildable,
+                &shell_buildable_complete,
+                &shell_interrupted,
+                &shell_paid_energy,
+                &shell_paid_metal,
+                &shell_required_energy,
+                &shell_required_metal,
+                &selected_state,
+                &can_build_unit,
+                &is_producing,
+                8,
+                &mut action,
+                &mut progress,
+            ),
+            1,
+        );
+
+        assert_eq!(
+            action,
+            [
+                FACTORY_PRODUCTION_ACTION_RESET_SHELL_CODE,
+                FACTORY_PRODUCTION_ACTION_COMPLETE_SHELL_CODE,
+                FACTORY_PRODUCTION_ACTION_NONE_CODE,
+                FACTORY_PRODUCTION_ACTION_STOP_PRODUCING_CODE,
+                FACTORY_PRODUCTION_ACTION_CLEAR_INVALID_SELECTION_CODE,
+                FACTORY_PRODUCTION_ACTION_STOP_PRODUCING_CODE,
+                FACTORY_PRODUCTION_ACTION_SPAWN_SHELL_CODE,
+                FACTORY_PRODUCTION_ACTION_CLEAR_INVALID_SELECTION_CODE,
+            ],
+        );
+        assert!((progress[2] - 0.525).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn factory_plan_production_actions_rejects_short_buffers() {
+        let mut action = [0u8; 1];
+        let mut progress = [0.0; 1];
+
+        assert_eq!(
+            factory_plan_production_actions(
+                &[0, 0],
+                &[0, 0],
+                &[0, 0],
+                &[0, 0],
+                &[0, 0],
+                &[0.0, 0.0],
+                &[0.0, 0.0],
+                &[0.0, 0.0],
+                &[0.0, 0.0],
+                &[0, 0],
+                &[0, 0],
+                &[0, 0],
+                2,
+                &mut action,
+                &mut progress,
+            ),
+            0,
         );
     }
 

@@ -19,7 +19,6 @@ import { getFactoryBuildSpot } from './factoryConstructionSite';
 import { economyManager } from './economy';
 import {
   createBuildable,
-  getBuildFraction,
   isEntityActive,
 } from './buildableHelpers';
 import {
@@ -35,6 +34,34 @@ let buildSpotObstacleX = new Float64Array(64);
 let buildSpotObstacleY = new Float64Array(64);
 let buildSpotObstacleRadius = new Float64Array(64);
 
+const FACTORY_SELECTED_NONE = 0;
+const FACTORY_SELECTED_VALID = 1;
+const FACTORY_SELECTED_INVALID = 2;
+const FACTORY_ACTION_NONE = 0;
+const FACTORY_ACTION_RESET_SHELL = 1;
+const FACTORY_ACTION_COMPLETE_SHELL = 2;
+const FACTORY_ACTION_CLEAR_INVALID_SELECTION = 3;
+const FACTORY_ACTION_STOP_PRODUCING = 4;
+const FACTORY_ACTION_SPAWN_SHELL = 5;
+
+let factoryRows: Entity[] = [];
+let factoryRowShells: Array<Entity | null> = [];
+let factoryRowSelectedUnitBlueprintIds: Array<string | null> = [];
+let factoryHasShell = new Uint8Array(16);
+let factoryShellExists = new Uint8Array(16);
+let factoryShellHasBuildable = new Uint8Array(16);
+let factoryShellBuildableComplete = new Uint8Array(16);
+let factoryShellInterrupted = new Uint8Array(16);
+let factoryShellPaidEnergy = new Float64Array(16);
+let factoryShellPaidMetal = new Float64Array(16);
+let factoryShellRequiredEnergy = new Float64Array(16);
+let factoryShellRequiredMetal = new Float64Array(16);
+let factorySelectedState = new Uint8Array(16);
+let factoryCanBuildUnit = new Uint8Array(16);
+let factoryIsProducing = new Uint8Array(16);
+let factoryAction = new Uint8Array(16);
+let factoryProgress = new Float64Array(16);
+
 function ensureBuildSpotObstacleCapacity(required: number): void {
   if (required <= buildSpotObstacleX.length) return;
   let next = buildSpotObstacleX.length;
@@ -42,6 +69,27 @@ function ensureBuildSpotObstacleCapacity(required: number): void {
   buildSpotObstacleX = new Float64Array(next);
   buildSpotObstacleY = new Float64Array(next);
   buildSpotObstacleRadius = new Float64Array(next);
+}
+
+function ensureFactoryProductionCapacity(required: number): void {
+  if (required <= factoryHasShell.length) return;
+  let next = factoryHasShell.length;
+  while (next < required) next *= 2;
+
+  factoryHasShell = new Uint8Array(next);
+  factoryShellExists = new Uint8Array(next);
+  factoryShellHasBuildable = new Uint8Array(next);
+  factoryShellBuildableComplete = new Uint8Array(next);
+  factoryShellInterrupted = new Uint8Array(next);
+  factoryShellPaidEnergy = new Float64Array(next);
+  factoryShellPaidMetal = new Float64Array(next);
+  factoryShellRequiredEnergy = new Float64Array(next);
+  factoryShellRequiredMetal = new Float64Array(next);
+  factorySelectedState = new Uint8Array(next);
+  factoryCanBuildUnit = new Uint8Array(next);
+  factoryIsProducing = new Uint8Array(next);
+  factoryAction = new Uint8Array(next);
+  factoryProgress = new Float64Array(next);
 }
 
 function pathTerrainFilterForUnit(unit: Entity): PathTerrainFilter | null {
@@ -61,87 +109,144 @@ export class FactoryProductionSystem {
   update(world: WorldState, _dtMs: number, buildingGrid: BuildingGrid): FactoryProductionResult {
     const spawnedUnits: Entity[] = [];
     const completedUnits: Entity[] = [];
+    const factories = world.getFactoryBuildings();
+    ensureFactoryProductionCapacity(factories.length);
+    factoryRows.length = 0;
+    factoryRowShells.length = 0;
+    factoryRowSelectedUnitBlueprintIds.length = 0;
 
-    for (const factory of world.getFactoryBuildings()) {
+    for (const factory of factories) {
       // Factory itself must be complete and owned.
       if (!factory.factory || !isEntityActive(factory)) continue;
       if (!factory.ownership) continue;
 
       const factoryComp = factory.factory;
       const playerId = factory.ownership.playerId;
+      const row = factoryRows.length;
+      factoryRows.push(factory);
 
-      // (1) If we already have a shell in progress, check if it's done.
+      factoryHasShell[row] = factoryComp.currentShellId !== null ? 1 : 0;
+      factoryShellExists[row] = 0;
+      factoryShellHasBuildable[row] = 0;
+      factoryShellBuildableComplete[row] = 0;
+      factoryShellInterrupted[row] = 0;
+      factoryShellPaidEnergy[row] = 0;
+      factoryShellPaidMetal[row] = 0;
+      factoryShellRequiredEnergy[row] = 0;
+      factoryShellRequiredMetal[row] = 0;
+      factorySelectedState[row] = FACTORY_SELECTED_NONE;
+      factoryCanBuildUnit[row] = 0;
+      factoryIsProducing[row] = factoryComp.isProducing ? 1 : 0;
+
+      let shell: Entity | null = null;
       if (factoryComp.currentShellId !== null) {
-        const shell = world.getEntity(factoryComp.currentShellId);
-        if (!shell) {
-          // Shell vanished (destroyed mid-build). Reset and try next tick.
-          factoryComp.currentShellId = null;
-          factoryComp.isProducing = false;
-          factoryComp.currentBuildProgress = 0;
-          world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
-          continue;
+        shell = world.getEntity(factoryComp.currentShellId) ?? null;
+        if (shell !== null) {
+          factoryShellExists[row] = 1;
+          const buildable = shell.buildable;
+          if (buildable !== null) {
+            factoryShellHasBuildable[row] = 1;
+            factoryShellBuildableComplete[row] = buildable.isComplete ? 1 : 0;
+            factoryShellInterrupted[row] = buildable.isInterrupted ? 1 : 0;
+            factoryShellPaidEnergy[row] = buildable.paid.energy;
+            factoryShellPaidMetal[row] = buildable.paid.metal;
+            factoryShellRequiredEnergy[row] = buildable.required.energy;
+            factoryShellRequiredMetal[row] = buildable.required.metal;
+          }
         }
-        factoryComp.currentBuildProgress = shell.buildable ? getBuildFraction(shell.buildable) : 1;
-        if (!shell.buildable || shell.buildable.isComplete) {
+      } else {
+        const selectedUnitBlueprintId = factoryComp.selectedUnitBlueprintId;
+        if (selectedUnitBlueprintId === null) {
+          factorySelectedState[row] = FACTORY_SELECTED_NONE;
+        } else {
+          try {
+            getUnitBlueprint(selectedUnitBlueprintId);
+            factorySelectedState[row] = FACTORY_SELECTED_VALID;
+            // Honour the unit cap at SHELL SPAWN time — once a shell is in
+            // the world it counts toward the cap.
+            factoryCanBuildUnit[row] = world.canPlayerBuildUnit(playerId) ? 1 : 0;
+          } catch {
+            factorySelectedState[row] = FACTORY_SELECTED_INVALID;
+          }
+        }
+      }
+      factoryRowShells[row] = shell;
+      factoryRowSelectedUnitBlueprintIds[row] = factoryComp.selectedUnitBlueprintId;
+    }
+
+    const count = factoryRows.length;
+    if (count <= 0) return { spawnedUnits, completedUnits };
+
+    const sim = getSimWasm();
+    if (sim === undefined) {
+      throw new Error('FactoryProductionSystem.update: sim-wasm is not initialized');
+    }
+    if (sim.factoryPlanProductionActions(
+      factoryHasShell,
+      factoryShellExists,
+      factoryShellHasBuildable,
+      factoryShellBuildableComplete,
+      factoryShellInterrupted,
+      factoryShellPaidEnergy,
+      factoryShellPaidMetal,
+      factoryShellRequiredEnergy,
+      factoryShellRequiredMetal,
+      factorySelectedState,
+      factoryCanBuildUnit,
+      factoryIsProducing,
+      count,
+      factoryAction,
+      factoryProgress,
+    ) === 0) {
+      throw new Error('FactoryProductionSystem.update: factory_plan_production_actions rejected its buffers');
+    }
+
+    for (let row = 0; row < count; row++) {
+      const factory = factoryRows[row];
+      const factoryComp = factory.factory!;
+      const action = factoryAction[row];
+      if (factoryHasShell[row] !== 0 && action === FACTORY_ACTION_NONE) {
+        factoryComp.currentBuildProgress = factoryProgress[row];
+      }
+
+      if (action === FACTORY_ACTION_RESET_SHELL) {
+        factoryComp.currentShellId = null;
+        factoryComp.isProducing = false;
+        factoryComp.currentBuildProgress = 0;
+        world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+      } else if (action === FACTORY_ACTION_COMPLETE_SHELL) {
+        const shell = factoryRowShells[row];
+        if (shell !== null) {
           // Activation: stamp the static rally, aim turrets, mark dirty.
           // The selected blueprint is intentionally NOT cleared: repeat-
           // build mode keeps producing it until the player toggles it off.
           this.activateShell(world, factory, shell, buildingGrid);
           completedUnits.push(shell);
-          factoryComp.currentShellId = null;
-          factoryComp.isProducing = false;
-          factoryComp.currentBuildProgress = 0;
-          world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
-        } else if (shell.buildable.isInterrupted) {
-          factoryComp.currentShellId = null;
-          factoryComp.isProducing = false;
-          factoryComp.currentBuildProgress = 0;
-          world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
         }
-        // Otherwise the shell is still filling — energyDistribution
-        // pours resources into it; nothing to do here.
-        continue;
-      }
-
-      // (2) No shell in progress — try to spawn the selected unit.
-      const currentUnitBlueprintId = factoryComp.selectedUnitBlueprintId;
-      if (currentUnitBlueprintId === null) {
-        if (factoryComp.isProducing) {
-          factoryComp.isProducing = false;
-          factoryComp.currentBuildProgress = 0;
-          world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
-        }
-        continue;
-      }
-      let bp;
-      try {
-        bp = getUnitBlueprint(currentUnitBlueprintId);
-      } catch {
-        bp = undefined;
-      }
-      if (!bp) {
-        // Invalid selection, drop it.
+        factoryComp.currentShellId = null;
+        factoryComp.isProducing = false;
+        factoryComp.currentBuildProgress = 0;
+        world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+      } else if (action === FACTORY_ACTION_CLEAR_INVALID_SELECTION) {
         factoryComp.selectedUnitBlueprintId = null;
         world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
-        continue;
+      } else if (action === FACTORY_ACTION_STOP_PRODUCING) {
+        factoryComp.isProducing = false;
+        factoryComp.currentBuildProgress = 0;
+        world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+      } else if (action === FACTORY_ACTION_SPAWN_SHELL) {
+        const selectedUnitBlueprintId = factoryRowSelectedUnitBlueprintIds[row];
+        if (selectedUnitBlueprintId === null) continue;
+        const shell = this.spawnUnitShell(world, factory, selectedUnitBlueprintId);
+        if (!shell) continue;
+        factoryComp.currentShellId = shell.id;
+        factoryComp.isProducing = true;
+        factoryComp.currentBuildProgress = 0;
+        spawnedUnits.push(shell);
+        world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+      } else if (action !== FACTORY_ACTION_NONE) {
+        throw new Error(`FactoryProductionSystem.update: unknown factory action ${action}`);
       }
-      // Honour the unit cap at SHELL SPAWN time — once a shell is in
-      // the world it counts toward the cap.
-      if (!world.canPlayerBuildUnit(playerId)) {
-        if (factoryComp.isProducing) {
-          factoryComp.isProducing = false;
-          factoryComp.currentBuildProgress = 0;
-          world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
-        }
-        continue;
-      }
-      const shell = this.spawnUnitShell(world, factory, currentUnitBlueprintId);
-      if (!shell) continue;
-      factoryComp.currentShellId = shell.id;
-      factoryComp.isProducing = true;
-      factoryComp.currentBuildProgress = 0;
-      spawnedUnits.push(shell);
-      world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
     }
 
     return { spawnedUnits, completedUnits };

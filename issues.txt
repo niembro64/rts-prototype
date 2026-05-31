@@ -183,6 +183,12 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     construction_reconcile_and_grow_pieces batch helper. TypeScript now packs
     buildable piece specs, assigns newly materialized sub-entity ids, scatters
     HP/progress results, and still owns shell completion/effects orchestration.
+    2026-05-31 progress: factory per-factory production decision planning
+    moved from FactoryProductionSystem.update's inline TypeScript branch tree
+    into the Rust/WASM factory_plan_production_actions batch helper. TypeScript
+    now packs factory/shell state rows and only applies returned actions,
+    creates blocked-clear shells, runs shell activation side effects, and marks
+    snapshot dirtiness.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)
