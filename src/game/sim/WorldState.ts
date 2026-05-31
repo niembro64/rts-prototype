@@ -281,6 +281,30 @@ export class WorldState {
     return this.entityMetaById.get(id);
   }
 
+  resolveMountedTurret(id: EntityId): { host: Entity; turret: NonNullable<Entity['combat']>['turrets'][number] } | undefined {
+    const meta = this.entityMetaById.get(id);
+    if (meta === undefined || !meta.alive || meta.kind !== 'turret' || meta.parentId === null) {
+      return undefined;
+    }
+    const host = this.entities.get(meta.parentId);
+    const turret = host?.combat?.turrets[meta.mountIndex ?? -1];
+    if (host === undefined || turret === undefined || turret.id !== id || turret.hp <= 0) return undefined;
+    return { host, turret };
+  }
+
+  resolveMountedLocomotion(id: EntityId): { host: Entity; locomotion: NonNullable<Entity['unit']>['locomotion'] } | undefined {
+    const meta = this.entityMetaById.get(id);
+    if (meta === undefined || !meta.alive || meta.kind !== 'locomotion' || meta.parentId === null) {
+      return undefined;
+    }
+    const host = this.entities.get(meta.parentId);
+    const locomotion = host?.unit?.locomotion;
+    if (host === undefined || locomotion === undefined || locomotion.id !== id || locomotion.hp <= 0) {
+      return undefined;
+    }
+    return { host, locomotion };
+  }
+
   private upsertEntityMeta(meta: EntityMeta): void {
     const previous = this.entityMetaById.get(meta.id);
     const generation = previous !== undefined && previous.alive
@@ -395,6 +419,10 @@ export class WorldState {
       alive: false,
       targetable: false,
     });
+  }
+
+  markSubEntityMetadataDead(id: EntityId): void {
+    this.markMetaDead(id);
   }
 
   private markEntityMetadataDead(entity: Entity): void {

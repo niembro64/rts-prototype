@@ -3,7 +3,7 @@
 // PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full entity scans
 
 import type { WorldState } from '../WorldState';
-import type { BeamReflectorKind, Entity, EntityId, LineShotType, PlayerId } from '../types';
+import type { BeamReflectorKind, Entity, EntityId, LineShotType, PlayerId, Turret, UnitLocomotion } from '../types';
 import { isProjectileShot, NO_ENTITY_ID } from '../types';
 import type {
   AnyDamageSource,
@@ -30,7 +30,7 @@ import {
   distanceToLineShotRangeSphere,
   type LineShotRangeSphere,
 } from '../combat/lineShotRange';
-import { ENTITY_CHANGED_HP } from '../../../types/network';
+import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../../types/network';
 import {
   BUILDING_CLOSED_DAMAGE_MULTIPLIER,
   buildingBlueprintHasActiveState,
@@ -38,6 +38,7 @@ import {
   notifyBuildingActiveStateDamaged,
 } from '../buildingActiveState';
 import { getUnitGroundZ } from '../unitGeometry';
+import { setUnitMovementAcceleration } from '../unitMovementAcceleration';
 
 
 // Reusable DamageResult to avoid per-call allocations
@@ -46,6 +47,8 @@ const _reusableResult: DamageResult = {
   killedUnitIds: new Set(),
   killedBuildingIds: new Set(),
   killedProjectileIds: new Set(),
+  killedTurretIds: new Set(),
+  killedLocomotionIds: new Set(),
   knockbacks: [],
   deathContexts: new Map(),
   killerPlayerIds: new Map(),
@@ -80,6 +83,8 @@ function resetResult(): DamageResult {
   _reusableResult.killedUnitIds.clear();
   _reusableResult.killedBuildingIds.clear();
   _reusableResult.killedProjectileIds.clear();
+  _reusableResult.killedTurretIds.clear();
+  _reusableResult.killedLocomotionIds.clear();
   _reusableResult.truncationT = undefined;
   // Recycle prior tick's knockback entries before clearing the array.
   for (const k of _reusableResult.knockbacks) _knockbackPool.push(k);
@@ -100,6 +105,8 @@ export function resetDamageBuffers(): void {
   _reusableResult.killedUnitIds.clear();
   _reusableResult.killedBuildingIds.clear();
   _reusableResult.killedProjectileIds.clear();
+  _reusableResult.killedTurretIds.clear();
+  _reusableResult.killedLocomotionIds.clear();
   for (const k of _reusableResult.knockbacks) _knockbackPool.push(k);
   _reusableResult.knockbacks.length = 0;
   _reusableResult.deathContexts.clear();
@@ -138,10 +145,19 @@ const _segHit = {
   reflectorPlayerId: undefined as PlayerId | undefined,
 };
 const _forceFieldPanelPivot = { x: 0, y: 0, z: 0 };
+const _subEntityPoint = { x: 0, y: 0, z: 0 };
 
 const BEAM_GROUND_HIT_STEPS = 12;
 const BEAM_GROUND_HIT_BISECT_STEPS = 6;
 const BEAM_GROUND_EPSILON = 0.25;
+
+function isTurretDamageable(turret: Turret): boolean {
+  return turret.hp > 0 && !turret.config.visualOnly;
+}
+
+function isLocomotionDamageable(locomotion: UnitLocomotion): boolean {
+  return locomotion.hp > 0;
+}
 
 
 export class DamageSystem {
@@ -760,6 +776,7 @@ export class DamageSystem {
     // array + sort entirely.
     let bestT = Infinity;
     let bestEntityId: EntityId = 0;
+    let bestHostEntityId: EntityId = 0;
     let bestIsUnit = false;
 
     // PERFORMANCE: Single line-cell sweep — see findLineObstruction.
@@ -792,7 +809,56 @@ export class DamageSystem {
       if (t !== null && t < bestT) {
         bestT = t;
         bestEntityId = unit.id;
+        bestHostEntityId = unit.id;
         bestIsUnit = true;
+      }
+
+      const combat = unit.combat;
+      if (combat !== null) {
+        const unitCS = getTransformCosSin(unit.transform);
+        const unitGroundZ = getUnitGroundZ(unit);
+        for (let i = 0; i < combat.turrets.length; i++) {
+          const turret = combat.turrets[i];
+          if (!isTurretDamageable(turret)) continue;
+          const mount = resolveWeaponWorldMount(
+            unit, turret, i,
+            unitCS.cos, unitCS.sin,
+            {
+              currentTick: this.world.getTick(),
+              unitGroundZ,
+              surfaceN: unit.unit.surfaceNormal,
+            },
+            _subEntityPoint,
+          );
+          const turretT = lineSphereIntersectionT(
+            source.start.x, source.start.y, source.start.z,
+            source.end.x, source.end.y, source.end.z,
+            mount.x, mount.y, mount.z,
+            turret.config.radius.hitbox + source.width / 2,
+          );
+          if (turretT !== null && turretT < bestT) {
+            bestT = turretT;
+            bestEntityId = turret.id;
+            bestHostEntityId = unit.id;
+            bestIsUnit = true;
+          }
+        }
+      }
+
+      const locomotion = unit.unit.locomotion;
+      if (isLocomotionDamageable(locomotion)) {
+        const locomotionT = lineSphereIntersectionT(
+          source.start.x, source.start.y, source.start.z,
+          source.end.x, source.end.y, source.end.z,
+          unit.transform.x, unit.transform.y, unit.transform.z,
+          locomotion.radius.hitbox + source.width / 2,
+        );
+        if (locomotionT !== null && locomotionT < bestT) {
+          bestT = locomotionT;
+          bestEntityId = locomotion.id;
+          bestHostEntityId = unit.id;
+          bestIsUnit = true;
+        }
       }
     }
 
@@ -820,6 +886,7 @@ export class DamageSystem {
       if (t !== null && t < bestT) {
         bestT = t;
         bestEntityId = building.id;
+        bestHostEntityId = building.id;
         bestIsUnit = false;
       }
     }
@@ -846,13 +913,14 @@ export class DamageSystem {
       if (t !== null && t < bestT) {
         bestT = t;
         bestEntityId = projectile.id;
+        bestHostEntityId = projectile.id;
         bestIsUnit = false;
       }
     }
 
     if (bestT === Infinity) return result;
 
-    const entity = this.world.getEntity(bestEntityId);
+    const entity = this.world.getEntity(bestHostEntityId || bestEntityId);
     if (!entity) return result;
 
     // Momentum-based knockback (mass × velocity × MULTIPLIER) — depends
@@ -874,12 +942,12 @@ export class DamageSystem {
       penetrationDir: { x: penNormX, y: penNormY },
       attackerVel: { x: knockbackDirX * BEAM_EXPLOSION_MAGNITUDE, y: knockbackDirY * BEAM_EXPLOSION_MAGNITUDE },
       attackMagnitude: source.damage,
-    });
-    result.hitEntityIds.push(bestEntityId);
+    }, bestEntityId);
+    result.hitEntityIds.push(entity.id);
     result.truncationT = bestT;
 
     if (bestIsUnit && lineMomentum > 0) {
-      pushKnockback(result, bestEntityId, knockbackDirX * lineMomentum, knockbackDirY * lineMomentum);
+      pushKnockback(result, entity.id, knockbackDirX * lineMomentum, knockbackDirY * lineMomentum);
     }
 
     return result;
@@ -935,6 +1003,62 @@ export class DamageSystem {
 
       if (t !== null) {
         hits.push({ entityId: unit.id, t, isUnit: true, isBuilding: false, isProjectile: false });
+      }
+
+      const combat = unit.combat;
+      if (combat !== null) {
+        const unitCS = getTransformCosSin(unit.transform);
+        const unitGroundZ = getUnitGroundZ(unit);
+        for (let i = 0; i < combat.turrets.length; i++) {
+          const turret = combat.turrets[i];
+          if (!isTurretDamageable(turret)) continue;
+          const mount = resolveWeaponWorldMount(
+            unit, turret, i,
+            unitCS.cos, unitCS.sin,
+            {
+              currentTick: this.world.getTick(),
+              unitGroundZ,
+              surfaceN: unit.unit.surfaceNormal,
+            },
+            _subEntityPoint,
+          );
+          const turretT = lineSphereIntersectionT(
+            source.prev.x, source.prev.y, source.prev.z,
+            source.current.x, source.current.y, source.current.z,
+            mount.x, mount.y, mount.z,
+            source.radius + turret.config.radius.hitbox,
+          );
+          if (turretT !== null) {
+            hits.push({
+              entityId: turret.id,
+              hostEntityId: unit.id,
+              t: turretT,
+              isUnit: true,
+              isBuilding: false,
+              isProjectile: false,
+            });
+          }
+        }
+      }
+
+      const locomotion = unit.unit.locomotion;
+      if (isLocomotionDamageable(locomotion)) {
+        const locomotionT = lineSphereIntersectionT(
+          source.prev.x, source.prev.y, source.prev.z,
+          source.current.x, source.current.y, source.current.z,
+          unit.transform.x, unit.transform.y, unit.transform.z,
+          source.radius + locomotion.radius.hitbox,
+        );
+        if (locomotionT !== null) {
+          hits.push({
+            entityId: locomotion.id,
+            hostEntityId: unit.id,
+            t: locomotionT,
+            isUnit: true,
+            isBuilding: false,
+            isProjectile: false,
+          });
+        }
       }
     }
 
@@ -995,7 +1119,7 @@ export class DamageSystem {
     for (const hit of hits) {
       if (hitCount >= source.maxHits) break;
 
-      const entity = this.world.getEntity(hit.entityId);
+      const entity = this.world.getEntity(hit.hostEntityId ?? hit.entityId);
       if (!entity) continue;
 
       // Calculate momentum-based knockback (p = mv)
@@ -1031,13 +1155,13 @@ export class DamageSystem {
         penetrationDir: { x: penNormX, y: penNormY },
         attackerVel: { x: attackerVelX, y: attackerVelY },
         attackMagnitude: source.damage,
-      });
-      result.hitEntityIds.push(hit.entityId);
+      }, hit.entityId);
+      result.hitEntityIds.push(entity.id);
       hitCount++;
 
       // Add knockback for units (buildings don't get pushed)
       if (hit.isUnit && projMass > 0) {
-        pushKnockback(result, hit.entityId, forceX, forceY);
+        pushKnockback(result, entity.id, forceX, forceY);
       }
     }
 
@@ -1075,7 +1199,7 @@ export class DamageSystem {
     for (const unit of nearbyUnits) {
       if (source.excludeEntities.has(unit.id)) continue;
       if (source.excludeCommanders && unit.commander) continue;
-      if (!unit.unit || unit.unit.hp <= 0) continue;
+      if (!unit.unit) continue;
 
       const dx = unit.transform.x - source.center.x;
       const dy = unit.transform.y - source.center.y;
@@ -1085,7 +1209,7 @@ export class DamageSystem {
       // Cheap squared-distance rejection before sqrt
       const distSq = dx * dx + dy * dy + dz * dz;
       const maxDist = source.radius + targetRadius;
-      if (distSq > maxDist * maxDist) continue;
+      const bodyOverlaps = unit.unit.hp > 0 && distSq <= maxDist * maxDist;
 
       const dist = Math.sqrt(distSq);
 
@@ -1118,18 +1242,64 @@ export class DamageSystem {
       const forceY = dirY * force;
       const forceZ = dirZ * force;
 
-      // For area damage, penetration direction is from explosion center
-      // through unit (same as knockback direction — outward from center).
-      this.applyDamageToEntity(unit, damage, result, source.sourceEntityId, {
-        penetrationDir: { x: dirX, y: dirY },
-        attackerVel: { x: forceX, y: forceY },
-        attackMagnitude: damage,
-      });
-      result.hitEntityIds.push(unit.id);
+      if (bodyOverlaps) {
+        // For area damage, penetration direction is from explosion center
+        // through unit (same as knockback direction — outward from center).
+        this.applyDamageToEntity(unit, damage, result, source.sourceEntityId, {
+          penetrationDir: { x: dirX, y: dirY },
+          attackerVel: { x: forceX, y: forceY },
+          attackMagnitude: damage,
+        });
+        result.hitEntityIds.push(unit.id);
 
-      // Add knockback (direction is from center outward)
-      if (force > 0 && dist > 0) {
-        pushKnockback(result, unit.id, forceX, forceY, forceZ);
+        // Add knockback (direction is from center outward)
+        if (force > 0 && dist > 0) {
+          pushKnockback(result, unit.id, forceX, forceY, forceZ);
+        }
+      }
+
+      const combat = unit.combat;
+      if (combat !== null) {
+        const unitCS = getTransformCosSin(unit.transform);
+        const unitGroundZ = getUnitGroundZ(unit);
+        for (let i = 0; i < combat.turrets.length; i++) {
+          const turret = combat.turrets[i];
+          if (!isTurretDamageable(turret)) continue;
+          const mount = resolveWeaponWorldMount(
+            unit, turret, i,
+            unitCS.cos, unitCS.sin,
+            {
+              currentTick: this.world.getTick(),
+              unitGroundZ,
+              surfaceN: unit.unit.surfaceNormal,
+            },
+            _subEntityPoint,
+          );
+          const tx = mount.x - source.center.x;
+          const ty = mount.y - source.center.y;
+          const tz = mount.z - source.center.z;
+          const turretMaxDist = source.radius + turret.config.radius.hitbox;
+          if (tx * tx + ty * ty + tz * tz > turretMaxDist * turretMaxDist) continue;
+          this.applyDamageToEntity(unit, damage, result, source.sourceEntityId, {
+            penetrationDir: { x: dirX, y: dirY },
+            attackerVel: { x: forceX, y: forceY },
+            attackMagnitude: damage,
+          }, turret.id);
+          result.hitEntityIds.push(unit.id);
+        }
+      }
+
+      const locomotion = unit.unit.locomotion;
+      if (isLocomotionDamageable(locomotion)) {
+        const locomotionMaxDist = source.radius + locomotion.radius.hitbox;
+        if (distSq <= locomotionMaxDist * locomotionMaxDist) {
+          this.applyDamageToEntity(unit, damage, result, source.sourceEntityId, {
+            penetrationDir: { x: dirX, y: dirY },
+            attackerVel: { x: forceX, y: forceY },
+            attackMagnitude: damage,
+          }, locomotion.id);
+          result.hitEntityIds.push(unit.id);
+        }
       }
     }
 
@@ -1241,7 +1411,21 @@ export class DamageSystem {
     result: DamageResult,
     sourceEntityId: EntityId,
     deathContext: DeathContext | undefined = undefined,
+    targetEntityId: EntityId = entity.id,
   ): void {
+    if (targetEntityId !== entity.id && entity.unit !== null) {
+      const turret = this.world.resolveMountedTurret(targetEntityId);
+      if (turret !== undefined && turret.host.id === entity.id) {
+        this.applyDamageToTurret(entity, turret.turret, damage, result, sourceEntityId, deathContext);
+        return;
+      }
+      const locomotion = this.world.resolveMountedLocomotion(targetEntityId);
+      if (locomotion !== undefined && locomotion.host.id === entity.id) {
+        this.applyDamageToLocomotion(entity, locomotion.locomotion, damage, result, sourceEntityId, deathContext);
+        return;
+      }
+    }
+
     if (entity.unit && entity.unit.hp > 0) {
       entity.unit.hp -= damage;
       this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
@@ -1277,6 +1461,66 @@ export class DamageSystem {
         result.killedProjectileIds.add(entity.id);
       }
     }
+  }
+
+  private applyDamageToTurret(
+    host: Entity,
+    turret: Turret,
+    damage: number,
+    result: DamageResult,
+    sourceEntityId: EntityId,
+    deathContext: DeathContext | undefined,
+  ): void {
+    if (turret.hp <= 0) return;
+    turret.hp -= damage;
+    this.world.markSnapshotDirty(host.id, ENTITY_CHANGED_TURRETS);
+    if (turret.hp > 0 || result.killedTurretIds.has(turret.id)) return;
+
+    turret.hp = 0;
+    turret.target = null;
+    turret.state = 'idle';
+    turret.angularVelocity = 0;
+    turret.angularAcceleration = 0;
+    turret.pitchVelocity = 0;
+    turret.pitchAcceleration = 0;
+    turret.burst = undefined;
+    turret.forceField = undefined;
+    this.world.markSubEntityMetadataDead(turret.id);
+    result.killedTurretIds.add(turret.id);
+    this.recordKiller(result, turret.id, sourceEntityId);
+    if (deathContext) result.deathContexts.set(turret.id, deathContext);
+  }
+
+  private applyDamageToLocomotion(
+    host: Entity,
+    locomotion: UnitLocomotion,
+    damage: number,
+    result: DamageResult,
+    sourceEntityId: EntityId,
+    deathContext: DeathContext | undefined,
+  ): void {
+    if (locomotion.hp <= 0) return;
+    locomotion.hp -= damage;
+    if (locomotion.hp > 0 || result.killedLocomotionIds.has(locomotion.id)) return;
+
+    locomotion.hp = 0;
+    const unit = host.unit;
+    if (unit !== null) {
+      unit.actions.length = 0;
+      unit.thrustDirX = 0;
+      unit.thrustDirY = 0;
+      setUnitMovementAcceleration(unit, 0, 0, 0);
+      unit.stuckTicks = 0;
+      if (host.combat !== null) {
+        host.combat.priorityTargetId = null;
+        host.combat.priorityTargetPoint = null;
+      }
+    }
+    this.world.markSubEntityMetadataDead(locomotion.id);
+    this.world.markSnapshotDirty(host.id, ENTITY_CHANGED_ACTIONS);
+    result.killedLocomotionIds.add(locomotion.id);
+    this.recordKiller(result, locomotion.id, sourceEntityId);
+    if (deathContext) result.deathContexts.set(locomotion.id, deathContext);
   }
 
   /** Stash the killer's playerId for the death event channel (FOW-17).

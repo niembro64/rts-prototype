@@ -945,6 +945,18 @@ export class Simulation {
         continue;
       }
 
+      if (unit.locomotion.hp <= 0) {
+        unit.thrustDirX = 0;
+        unit.thrustDirY = 0;
+        setUnitMovementAcceleration(unit, 0, 0, 0);
+        unit.stuckTicks = 0;
+        if (entity.combat) {
+          entity.combat.priorityTargetId = null;
+          entity.combat.priorityTargetPoint = null;
+        }
+        continue;
+      }
+
       // Default: no thrust (contact braking/drag will slow or hold the unit)
       unit.thrustDirX = 0;
       unit.thrustDirY = 0;

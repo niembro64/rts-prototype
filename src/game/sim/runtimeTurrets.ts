@@ -15,7 +15,7 @@ import type { BuildingTurretMount } from '../../types/blueprints';
 import type { EntityId } from '../../types/entityTypes';
 import { NO_ENTITY_ID } from '../../types/entityTypes';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
-import { getUnitBlueprint, getBuildingBlueprint } from './blueprints';
+import { getUnitBlueprint, getBuildingBlueprint, getTurretBlueprint } from './blueprints';
 import { createRuntimeTurretMount } from './turretMounts';
 
 function makeRuntimeTurret(
@@ -31,6 +31,7 @@ function makeRuntimeTurret(
   visualVariant: BuildingTurretMount['visualVariant'] | undefined = undefined,
 ): Turret {
   const turretConfig = getTurretConfig(turretBlueprintId);
+  const turretBlueprint = getTurretBlueprint(turretBlueprintId);
   if (visualVariant !== undefined) {
     turretConfig.visualVariant = visualVariant;
   }
@@ -52,6 +53,8 @@ function makeRuntimeTurret(
     parentId: identity.parentId,
     rootHostId: identity.rootHostId,
     mountIndex: identity.mountIndex,
+    hp: turretBlueprint.base.health,
+    maxHp: turretBlueprint.base.health,
     config,
     target: null,
     ranges,

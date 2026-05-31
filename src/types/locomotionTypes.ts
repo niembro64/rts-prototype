@@ -25,6 +25,9 @@ export type UnitLocomotion = {
   rootHostId: EntityId;
   mountIndex: number;
   blueprintId: LocomotionBlueprintId;
+  hp: number;
+  maxHp: number;
+  radius: { visual: number; hitbox: number; collision: number };
   type: 'wheels' | 'treads' | 'legs' | 'hover' | 'flying';
   /** Authored propulsion scalar supplied by the locomotion blueprint. */
   driveForce: number;

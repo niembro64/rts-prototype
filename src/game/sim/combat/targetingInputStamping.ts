@@ -464,7 +464,7 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   if (turret.config.verticalLauncher === true) f |= CT_TURRET_CFG_VERTICAL_LAUNCHER;
   if (turret.config.isManualFire === true) f |= CT_TURRET_CFG_IS_MANUAL_FIRE;
   if (turret.config.passive === true) f |= CT_TURRET_CFG_PASSIVE;
-  if (turret.config.visualOnly === true) f |= CT_TURRET_CFG_VISUAL_ONLY;
+  if (turret.config.visualOnly === true || turret.hp <= 0) f |= CT_TURRET_CFG_VISUAL_ONLY;
   if (turret.config.shot && turret.config.shot.type === 'forceField') {
     f |= CT_TURRET_CFG_SHOT_IS_FORCE;
   }
@@ -746,13 +746,14 @@ function stampUnitLocomotionTargetInto(
   const surfaceN = unit.surfaceNormal;
   const suspension = unit.suspension;
   const buildComplete = !entity.buildable || entity.buildable.isComplete;
-  let entityFlags = unit.hp > 0 ? CT_ENTITY_FLAG_ALIVE : 0;
+  const locomotion = unit.locomotion;
+  let entityFlags = locomotion.hp > 0 ? CT_ENTITY_FLAG_ALIVE : 0;
   if (buildComplete) entityFlags |= CT_ENTITY_FLAG_BUILDABLE_COMPLETE;
   if (isEntityCloaked(entity)) entityFlags |= CT_ENTITY_FLAG_CLOAKED;
 
   targeting.setEntity(
     slot,
-    unit.locomotion.id,
+    locomotion.id,
     playerId,
     viewMask,
     pos.x,
@@ -770,14 +771,14 @@ function stampUnitLocomotionTargetInto(
     suspension ? suspension.offsetX : 0,
     suspension ? suspension.offsetY : 0,
     suspension ? suspension.offsetZ : 0,
-    unit.radius.collision,
+    locomotion.radius.hitbox,
     0,
     0,
     0,
-    unit.hp,
+    locomotion.hp,
     entityFlags,
     CT_ENTITY_FAMILY_LOCOMOTION,
-    locomotionBlueprintIdToCode(unit.locomotion.blueprintId),
+    locomotionBlueprintIdToCode(locomotion.blueprintId),
     0,
     0,
     0,

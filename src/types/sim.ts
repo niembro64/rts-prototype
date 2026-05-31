@@ -471,6 +471,8 @@ export type Turret = {
   parentId: EntityId;
   rootHostId: EntityId;
   mountIndex: number;
+  hp: number;
+  maxHp: number;
   config: TurretConfig;
   target: EntityId | null;
   ranges: TurretRanges;
