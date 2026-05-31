@@ -116,16 +116,21 @@ export class SprayRenderer3D {
   private pEndX = new Float32Array(MAX_PARTICLES);
   private pEndY = new Float32Array(MAX_PARTICLES);
   private pEndZ = new Float32Array(MAX_PARTICLES);
+  private pMidX = new Float32Array(MAX_PARTICLES);
+  private pMidY = new Float32Array(MAX_PARTICLES);
+  private pMidZ = new Float32Array(MAX_PARTICLES);
+  private pMidSplit = new Float32Array(MAX_PARTICLES);
   private pAge = new Float32Array(MAX_PARTICLES);
   private pLife = new Float32Array(MAX_PARTICLES);
   private pSize = new Float32Array(MAX_PARTICLES);
   // 1 for build particles (uniform size, no per-particle jitter or
   // mid-flight growth), 0 for heal (existing per-particle variation).
   private pUniformSize = new Uint8Array(MAX_PARTICLES);
-  // Per-particle alpha-fade direction for resource-pylon flow visuals.
+  // Per-particle alpha-fade mode.
   //   0  → constant alpha (heal sprays)
-  //   1  → opaque at start (source = pylon head), transparent at end
-  //  -1  → transparent at start, opaque at end (target = pylon head)
+  //   1  → opaque at start, transparent at end
+  //  -1  → transparent at start, opaque at end
+  //   2  → fade only at the source/sink endpoints; never at a pylon tip
   private pFadeDir = new Int8Array(MAX_PARTICLES);
   private pWobble = new Float32Array(MAX_PARTICLES);
   private pArc = new Float32Array(MAX_PARTICLES);
@@ -233,16 +238,7 @@ export class SprayRenderer3D {
         }
       }
 
-      const sx = spray.source.pos.x;
-      const sy = spray.source.z ?? TRAIL_Y;
-      const sz = spray.source.pos.y;
-      const tx = spray.target.pos.x;
-      const ty = spray.target.z ?? TRAIL_Y;
-      const tz = spray.target.pos.y;
-      const directDist = Math.hypot(tx - sx, ty - sy, tz - sz);
-      const dist = spray.flow === 'direct'
-        ? directDist
-        : Math.max(1, spray.flowRadius);
+      const dist = this.estimatePathDistance(spray);
       const flightSec = this.flightTimeForDistance(dist, spray);
       const key = this.sprayKey(spray);
       this.activeSprayKeys.add(key);
@@ -320,6 +316,38 @@ export class SprayRenderer3D {
       : DEFAULT_BUILD_PARTICLE_RADIUS;
   }
 
+  private estimatePathDistance(spray: SprayTarget): number {
+    const sx = spray.source.pos.x;
+    const sy = spray.source.z ?? TRAIL_Y;
+    const sz = spray.source.pos.y;
+    const tx = spray.target.pos.x;
+    const ty = spray.target.z ?? TRAIL_Y;
+    const tz = spray.target.pos.y;
+    if (spray.waypoint) {
+      const mx = spray.waypoint.pos.x;
+      const my = spray.waypoint.z ?? TRAIL_Y;
+      const mz = spray.waypoint.pos.y;
+      return Math.max(
+        1,
+        Math.hypot(mx - sx, my - sy, mz - sz) +
+          Math.hypot(tx - mx, ty - my, tz - mz),
+      );
+    }
+    if (spray.flow === 'randomInbound') {
+      return Math.max(
+        1,
+        spray.flowRadius + Math.hypot(tx - sx, ty - sy, tz - sz),
+      );
+    }
+    if (spray.flow === 'randomOutbound') {
+      return Math.max(
+        1,
+        Math.hypot(tx - sx, ty - sy, tz - sz) + spray.flowRadius,
+      );
+    }
+    return Math.max(1, Math.hypot(tx - sx, ty - sy, tz - sz));
+  }
+
   private emitParticle(
     spray: SprayTarget,
     scaledIntensity: number,
@@ -335,6 +363,10 @@ export class SprayRenderer3D {
     let tx = spray.target.pos.x;
     let ty = spray.target.z ?? TRAIL_Y;
     let tz = spray.target.pos.y;
+    let midX = spray.waypoint?.pos.x ?? 0;
+    let midY = spray.waypoint?.z ?? 0;
+    let midZ = spray.waypoint?.pos.y ?? 0;
+    let hasMid = spray.waypoint !== undefined;
     if (spray.flow !== 'direct') {
       const radius = Math.max(1, spray.flowRadius);
       const azimuth = this.random() * Math.PI * 2;
@@ -345,13 +377,18 @@ export class SprayRenderer3D {
       const py = sy + cosTheta * shell;
       const pz = sz + Math.sin(azimuth) * sinTheta * shell;
       if (spray.flow === 'randomInbound') {
-        tx = sx;
-        ty = sy;
-        tz = sz;
+        midX = sx;
+        midY = sy;
+        midZ = sz;
+        hasMid = true;
         sx = px;
         sy = py;
         sz = pz;
       } else {
+        midX = tx;
+        midY = ty;
+        midZ = tz;
+        hasMid = true;
         tx = px;
         ty = py;
         tz = pz;
@@ -364,6 +401,10 @@ export class SprayRenderer3D {
     let endY = ty;
     let endZ = tz;
     if (spray.type === 'build' && spray.flow !== 'direct') {
+      endX = tx;
+      endY = ty;
+      endZ = tz;
+    } else if (spray.type === 'build' && spray.waypoint && spray.flowRadius > 0) {
       endX = tx;
       endY = ty;
       endZ = tz;
@@ -406,10 +447,14 @@ export class SprayRenderer3D {
       : spray.type === 'build'
         ? (dim ? Math.max(dim.x, dim.y, sphereRadius * 2) * 0.5 : sphereRadius)
         : sphereRadius * 0.25;
-    const dx = endX - sx;
-    const dy = endY - sy;
-    const dz = endZ - sz;
-    const len = Math.hypot(dx, dy, dz);
+    let len = Math.hypot(endX - sx, endY - sy, endZ - sz);
+    let split = 0;
+    if (hasMid) {
+      const lenA = Math.hypot(midX - sx, midY - sy, midZ - sz);
+      const lenB = Math.hypot(endX - midX, endY - midY, endZ - midZ);
+      len = lenA + lenB;
+      split = len > 1e-3 ? lenA / len : 0;
+    }
     if (len < 1e-3) return;
 
     const idx = this.particleCount++;
@@ -420,6 +465,10 @@ export class SprayRenderer3D {
     this.pEndX[idx] = endX;
     this.pEndY[idx] = endY;
     this.pEndZ[idx] = endZ;
+    this.pMidX[idx] = midX;
+    this.pMidY[idx] = midY;
+    this.pMidZ[idx] = midZ;
+    this.pMidSplit[idx] = hasMid ? Math.max(0.001, Math.min(0.999, split)) : 0;
     this.pAge[idx] = 0;
     this.pLife[idx] = life;
     if (spray.type === 'build') {
@@ -428,7 +477,7 @@ export class SprayRenderer3D {
       // mid-flight growth (see writeParticlesToMesh).
       this.pSize[idx] = this.buildParticleRadius(spray.particleRadius);
       this.pUniformSize[idx] = 1;
-      this.pFadeDir[idx] = spray.flow === 'randomInbound' ? -1 : 1;
+      this.pFadeDir[idx] = 2;
     } else {
       this.pSize[idx] = HEAL_PARTICLE_BASE_RADIUS
         * (0.72 + this.random() * 0.52)
@@ -472,6 +521,10 @@ export class SprayRenderer3D {
       this.pEndX[index] = this.pEndX[last];
       this.pEndY[index] = this.pEndY[last];
       this.pEndZ[index] = this.pEndZ[last];
+      this.pMidX[index] = this.pMidX[last];
+      this.pMidY[index] = this.pMidY[last];
+      this.pMidZ[index] = this.pMidZ[last];
+      this.pMidSplit[index] = this.pMidSplit[last];
       this.pAge[index] = this.pAge[last];
       this.pLife[index] = this.pLife[last];
       this.pSize[index] = this.pSize[last];
@@ -496,9 +549,30 @@ export class SprayRenderer3D {
       const sx = this.pStartX[i];
       const sy = this.pStartY[i];
       const sz = this.pStartZ[i];
-      const dx = this.pEndX[i] - sx;
-      const dy = this.pEndY[i] - sy;
-      const dz = this.pEndZ[i] - sz;
+      let segStartX = sx;
+      let segStartY = sy;
+      let segStartZ = sz;
+      let segEndX = this.pEndX[i];
+      let segEndY = this.pEndY[i];
+      let segEndZ = this.pEndZ[i];
+      let segmentPhase = phase;
+      const split = this.pMidSplit[i];
+      if (split > 0) {
+        if (phase < split) {
+          segEndX = this.pMidX[i];
+          segEndY = this.pMidY[i];
+          segEndZ = this.pMidZ[i];
+          segmentPhase = phase / split;
+        } else {
+          segStartX = this.pMidX[i];
+          segStartY = this.pMidY[i];
+          segStartZ = this.pMidZ[i];
+          segmentPhase = (phase - split) / (1 - split);
+        }
+      }
+      const dx = segEndX - segStartX;
+      const dy = segEndY - segStartY;
+      const dz = segEndZ - segStartZ;
       const flatLen = Math.hypot(dx, dz);
       const perpX = flatLen > 1e-3 ? -dz / flatLen : 1;
       const perpZ = flatLen > 1e-3 ? dx / flatLen : 0;
@@ -506,17 +580,18 @@ export class SprayRenderer3D {
       const wobble = Math.sin(timeSec * 8.5 + this.pSeed[i] + phase * Math.PI * 4)
         * this.pWobble[i]
         * envelope;
-      const px = sx + dx * phase + perpX * wobble;
-      const py = sy + dy * phase + this.pArc[i] * envelope;
-      const pz = sz + dz * phase + perpZ * wobble;
+      const px = segStartX + dx * segmentPhase + perpX * wobble;
+      const py = segStartY + dy * segmentPhase + this.pArc[i] * envelope;
+      const pz = segStartZ + dz * segmentPhase + perpZ * wobble;
 
-      // Resource-pylon flow particles fade so the stream reads as
-      // condensing/dissipating at the pylon head: fully opaque at the
-      // head, fully transparent at the far end. Heal sprays keep a
-      // constant alpha across the particle's lifetime.
+      // Pylon particles fade only at their creation/destruction
+      // endpoints. The pylon tip is just a waypoint, so a particle
+      // remains visible while it passes through the head.
       const fadeDir = this.pFadeDir[i];
       const fadeScale = fadeDir === 0
         ? 1
+        : fadeDir === 2
+          ? Math.min(1, phase / 0.14, (1 - phase) / 0.14)
         : fadeDir > 0
           ? 1 - phase
           : phase;

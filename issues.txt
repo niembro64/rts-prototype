@@ -200,49 +200,13 @@ are spawned/sunk only at the root and the world point, never at the tip. These
 items describe where the renderer does not yet meet that model; they are forward
 visual work, not regressions, and ride the existing single ResourceMovement channel
 (resource balls stay renderer-only / off-wire / anonymous — philosophy ~1747).
+A45-A46 have since been resolved by adding root/head conduit paths and physical
+producer source points for solar, wind, and extractor pylons.
 File:line refs were correct at audit time; re-verify before editing.
 
-A45. [MEDIUM] Resource balls teleport at the pylon tip instead of traversing the tube; the
-    tip is a spawn/sink, violating tip conservation. The standalone resource-usage indicators
-    the flowing balls are meant to replace are also not yet retired.
-    src/game/render3d/SprayRenderer3D.ts (emitParticle builds a single source->target segment
-    ~323-453; per-particle head-end fade pFadeDir ~125-129/513-523), src/game/render3d/
-    ConstructionVisualController3D.ts (updateAmbientResourcePylon emits randomInbound/randomOutbound
-    around pylon.topLocal ~297-337; emitPylonResourceSprays ~457; applyResourcePylonShower ~445-455),
-    src/types/ui.ts (SprayTarget/SprayFlowMode ~227-255), src/game/render3d/ConstructionEmitterMesh3D.ts
-    (ResourcePylonRig carries topLocal=head but no root/tube axis ~33-48). —
-    RULE: new "A pylon is a conduit: root, tube, head" — down the tube = gaining, up the tube =
-    spending; the tip is a pass-through, never a spawn or a sink; a producer ball's life is
-    world-source -> tip -> down the tube -> gone at the root, a consumer ball's life is born at the
-    root -> up the tube -> out the tip -> onto the target. —
-    PROBLEM: producer balls (flow:'randomInbound') fly from random offsets straight INTO the head and
-    die there; consumer/build balls (flow:'randomOutbound'/'build') are BORN at the head and fly to the
-    target. Neither traverses the vertical tube, so the tip is both a spawn and a sink and "down/up the
-    tube" is never depicted. The shower bar still doubles as a usage indicator. —
-    FIX: give the pylon ball a two-leg path with the tip as a conserved waypoint. Add a root endpoint +
-    tube axis to ResourcePylonRig; extend SprayTarget/particle so a ball entering the tip continues down
-    the tube to fade at the root, and a ball leaving the root rises up the tube before exiting the tip to
-    its target. Retire the standalone usage indicators (balls become the indicator); keep the shower bar
-    only as a magnitude cue + LOD fallback (A48). Keep balls renderer-only/off-wire.
-
-A46. [MEDIUM] Producer pylon balls do not originate at the physical world source (deposit/sun/wind).
-    src/game/render3d/ConstructionVisualController3D.ts (updateAmbientResourcePylon uses pylon.topLocal
-    as the source with random spherical offsets ~313-336), src/game/render3d/BuildingAnimationController3D.ts
-    (solar ~217, wind ~248, extractor ~347 ambient calls), src/game/render3d/MetalExtractorMesh3D.ts /
-    SolarCollectorMesh3D.ts / WindTurbineMesh3D.ts (producer pylon mounts), the metal-deposit cell data
-    + the sim wind vector already surfaced for turbine rate. —
-    RULE: "Who carries which pylons" — solar pulls inbound from the sun/sky direction, the extractor from
-    the deposit cells beneath it, the wind turbine from the upwind direction; rate scales with
-    coverage/wind speed/open-state. —
-    PROBLEM: all three producers pull inbound balls from random sky-side offsets around the head; the
-    extractor ignores its deposit, the turbine ignores wind direction, and solar uses random rather than a
-    consistent sun direction. The balls are not anchored to anything physical in the world. —
-    FIX: feed each producer a world-space source point: extractor samples covered deposit cells
-    (richness-weighted), wind streams from the upwind vector that already drives turbine rate, solar from a
-    consistent sun/sky direction. Source -> tip -> down the tube (A45).
-
 A47. [MEDIUM] The converter is two independent pylons with no cross-tip taxed arc, no mid-air recolor,
-    and no visible tax; its inbound/outbound senses are pool-relative (old model) rather than tip-relative.
+    and no visible tax. Its inbound/outbound senses have been corrected to tip-relative, but the
+    converter still lacks the required tip-to-tip arc.
     src/game/render3d/BuildingAnimationController3D.ts (converter block updates energyPylon/metalPylon
     independently via updateAmbientResourcePylon ~359-390; applyResourcePylonDirection ~371-372),
     src/game/render3d/SprayRenderer3D.ts (one fixed per-particle color pR/pG/pB ~450-452/534-536 — no
@@ -251,9 +215,10 @@ A47. [MEDIUM] The converter is two independent pylons with no cross-tip taxed ar
     tip), metal pylon inbound (in at its tip, down its tube); only the after-tax conversion fraction arcs
     from the energy tip to the metal tip, recoloring energy->metal in flight, and the remainder disperses
     (the tax made visible); the arc obeys tip conservation. —
-    PROBLEM: the two converter pylons emit independent random balls with no arc between the tips, no
-    energy->metal recolor, and the unconverted fraction is not shown; per this tip-relative model the
-    energy tip should be outbound and the metal tip inbound, but the rig predates that reconciliation. —
+    PROBLEM: the two converter pylons emit independent balls with no arc between the tips, no
+    energy->metal recolor, and the unconverted fraction is not shown. The resource-movement signs now
+    drive the energy tip outbound and the metal tip inbound for energy->metal conversion, but there is
+    still no conserved cross-tip transfer path or visible tax. —
     FIX: emit energy balls up+out the energy tip; route the efficiency fraction as a recoloring arc to the
     metal tip (per-particle start/end color lerp), then down the metal tube; disperse the remainder so the
     tax is visible; size the crossing fraction to the real conversion ratio. Confirm energy=outbound /

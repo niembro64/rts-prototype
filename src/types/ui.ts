@@ -229,6 +229,10 @@ export type SprayFlowMode = 'direct' | 'randomInbound' | 'randomOutbound';
 export type SprayTarget = {
   source: { id: EntityId; pos: Vec2; z?: number; playerId: PlayerId };
   target: { id: EntityId; pos: Vec2; z?: number; dim?: Vec2; radius?: number };
+  /** Optional waypoint for two-leg visual streams. Resource pylons use
+   *  this as their conserved tip: particles travel root/world -> tip
+   *  -> world/root instead of spawning or dying at the pylon head. */
+  waypoint?: { pos: Vec2; z?: number };
   type: 'build' | 'heal';
   intensity: number;
   /** Separates multiple streams between the same entity pair, e.g.

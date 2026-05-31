@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId, Turret } from '../sim/types';
 import type { SprayTarget } from '@/types/ui';
+import type { MetalDeposit } from '../../metalDepositConfig';
 import { COLORS } from '@/colorsConfig';
 import { getPlayerColors } from '../sim/types';
 import { applyShellOverride } from './ShellMaterial';
@@ -122,6 +123,7 @@ export class Render3DEntities {
   private clientViewState: ClientViewState;
   private camera: THREE.PerspectiveCamera;
   private getViewportHeight: () => number;
+  private metalDeposits: readonly MetalDeposit[];
   /** Visibility scope (RENDER: WIN/PAD/ALL). Unit pose, locomotion,
    *  and turret updates intentionally ignore this so camera distance
    *  cannot change their update cadence. Effect/projectile renderers
@@ -239,6 +241,7 @@ export class Render3DEntities {
     camera: THREE.PerspectiveCamera,
     getViewportHeight: () => number,
     getLocalPlayerId: () => PlayerId | undefined,
+    metalDeposits: readonly MetalDeposit[],
   ) {
     this.world = world;
     this.clientViewState = clientViewState;
@@ -247,6 +250,7 @@ export class Render3DEntities {
     this.camera = camera;
     this.getViewportHeight = getViewportHeight;
     this.getLocalPlayerId = getLocalPlayerId;
+    this.metalDeposits = metalDeposits;
     this.selectionOverlays = new SelectionOverlayRenderer3D({
       world: this.world,
       clientViewState: this.clientViewState,
@@ -266,6 +270,7 @@ export class Render3DEntities {
       getTurretAccentMat: (playerId) => this.getTurretAccentMat(playerId),
       disposeWorldParentedOverlays: (mesh) => this.disposeWorldParentedOverlays(mesh),
       getLocalPlayerId: () => this.getLocalPlayerId(),
+      metalDeposits: this.metalDeposits,
     });
     this.projectileRenderer = new ProjectileRenderer3D({
       world: this.world,

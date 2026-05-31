@@ -439,7 +439,7 @@ export class EconomyManager {
           resource: consumedResource,
           amount: consumedShare,
           amountPerSecond: dtSec > 0 ? consumedShare / dtSec : 0,
-          direction: 'inbound',
+          direction: 'outbound',
           reason: 'conversion',
         });
         remainingConsumed -= consumedShare;
@@ -452,7 +452,7 @@ export class EconomyManager {
           resource: outputResource,
           amount: outputShare,
           amountPerSecond: dtSec > 0 ? outputShare / dtSec : 0,
-          direction: 'outbound',
+          direction: 'inbound',
           reason: 'conversion',
         });
         remainingOutput -= outputShare;

@@ -54,6 +54,8 @@ export class ConstructionVisualController3D {
   private factorySprayTargetPool: SprayTarget[] = [];
   private _factorySpraySourceWorld = new THREE.Vector3();
   private _factorySprayTargetWorld = new THREE.Vector3();
+  private _factorySprayWaypointWorld = new THREE.Vector3();
+  private _factorySprayRootWorld = new THREE.Vector3();
   private _factoryBuildSpot: FactoryBuildSpot = {
     x: 0,
     y: 0,
@@ -302,6 +304,7 @@ export class ConstructionVisualController3D {
     alpha: number,
     visible: boolean,
     emitBalls: boolean,
+    worldEndpoint: THREE.Vector3 | null = null,
   ): void {
     if (!pylon) return;
     const target = visible ? Math.max(0, Math.min(1, targetRate)) : 0;
@@ -314,22 +317,53 @@ export class ConstructionVisualController3D {
     this._factorySpraySourceWorld
       .copy(pylon.topLocal)
       .applyMatrix4(group.matrixWorld);
+    this._factorySprayRootWorld
+      .copy(pylon.rootLocal)
+      .applyMatrix4(group.matrixWorld);
     const spray = this.acquireFactorySprayTarget();
     spray.source.id = host.id;
-    spray.source.pos.x = this._factorySpraySourceWorld.x;
-    spray.source.pos.y = this._factorySpraySourceWorld.z;
-    spray.source.z = this._factorySpraySourceWorld.y;
     spray.source.playerId = host.ownership.playerId;
     spray.target.id = host.id;
-    spray.target.pos.x = this._factorySpraySourceWorld.x;
-    spray.target.pos.y = this._factorySpraySourceWorld.z;
-    spray.target.z = this._factorySpraySourceWorld.y;
     spray.target.dim = undefined;
     spray.target.radius = pylon.flowRadius;
+    spray.waypoint = {
+      pos: { x: this._factorySpraySourceWorld.x, y: this._factorySpraySourceWorld.z },
+      z: this._factorySpraySourceWorld.y,
+    };
+    if (pylon.direction === 'inbound') {
+      if (worldEndpoint) {
+        spray.source.pos.x = worldEndpoint.x;
+        spray.source.pos.y = worldEndpoint.z;
+        spray.source.z = worldEndpoint.y;
+        spray.flow = 'direct';
+      } else {
+        spray.source.pos.x = this._factorySpraySourceWorld.x;
+        spray.source.pos.y = this._factorySpraySourceWorld.z;
+        spray.source.z = this._factorySpraySourceWorld.y;
+        spray.flow = 'randomInbound';
+      }
+      spray.target.pos.x = this._factorySprayRootWorld.x;
+      spray.target.pos.y = this._factorySprayRootWorld.z;
+      spray.target.z = this._factorySprayRootWorld.y;
+    } else {
+      spray.source.pos.x = this._factorySprayRootWorld.x;
+      spray.source.pos.y = this._factorySprayRootWorld.z;
+      spray.source.z = this._factorySprayRootWorld.y;
+      if (worldEndpoint) {
+        spray.target.pos.x = worldEndpoint.x;
+        spray.target.pos.y = worldEndpoint.z;
+        spray.target.z = worldEndpoint.y;
+        spray.flow = 'direct';
+      } else {
+        spray.target.pos.x = this._factorySpraySourceWorld.x;
+        spray.target.pos.y = this._factorySpraySourceWorld.z;
+        spray.target.z = this._factorySpraySourceWorld.y;
+        spray.flow = 'randomOutbound';
+      }
+    }
     spray.type = 'build';
     spray.intensity = Math.min(1, pylon.displaySmoothedRate);
     spray.channel = pylon.channel;
-    spray.flow = pylon.direction === 'inbound' ? 'randomInbound' : 'randomOutbound';
     spray.flowRadius = pylon.flowRadius;
     spray.speed = pylon.sprayTravelSpeed;
     spray.particleRadius = pylon.sprayParticleRadius;
@@ -350,6 +384,7 @@ export class ConstructionVisualController3D {
       };
     }
     target.colorRGB = undefined;
+    target.waypoint = undefined;
     target.speed = undefined;
     target.particleRadius = undefined;
     target.channel = 0;
@@ -405,6 +440,11 @@ export class ConstructionVisualController3D {
       current.x = base.x * c - base.z * s;
       current.y = base.y;
       current.z = base.x * s + base.z * c;
+      const rootBase = pylon.rootBaseLocal;
+      const root = pylon.rootLocal;
+      root.x = rootBase.x * c - rootBase.z * s;
+      root.y = rootBase.y;
+      root.z = rootBase.x * s + rootBase.z * c;
     }
   }
 
@@ -473,11 +513,15 @@ export class ConstructionVisualController3D {
       this._factorySpraySourceWorld
         .copy(pylon.topLocal)
         .applyMatrix4(group.matrixWorld);
+      this._factorySprayRootWorld
+        .copy(pylon.rootLocal)
+        .applyMatrix4(group.matrixWorld);
+      this._factorySprayWaypointWorld.copy(this._factorySpraySourceWorld);
       const spray = this.acquireFactorySprayTarget();
       spray.source.id = sourceId;
-      spray.source.pos.x = this._factorySpraySourceWorld.x;
-      spray.source.pos.y = this._factorySpraySourceWorld.z;
-      spray.source.z = this._factorySpraySourceWorld.y;
+      spray.source.pos.x = this._factorySprayRootWorld.x;
+      spray.source.pos.y = this._factorySprayRootWorld.z;
+      spray.source.z = this._factorySprayRootWorld.y;
       spray.source.playerId = sourcePlayerId;
       spray.target.id = targetId;
       spray.target.pos.x = targetWorld.x;
@@ -485,6 +529,10 @@ export class ConstructionVisualController3D {
       spray.target.z = targetWorld.y;
       spray.target.dim = undefined;
       spray.target.radius = targetRadius;
+      spray.waypoint = {
+        pos: { x: this._factorySprayWaypointWorld.x, y: this._factorySprayWaypointWorld.z },
+        z: this._factorySprayWaypointWorld.y,
+      };
       spray.type = 'build';
       spray.intensity = Math.min(1, rate);
       spray.channel = pylon.channel;

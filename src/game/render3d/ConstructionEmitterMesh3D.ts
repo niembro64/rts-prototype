@@ -37,6 +37,8 @@ export type ResourcePylonRig = {
   showerRadius: number;
   pylonHeight: number;
   pylonBaseY: number;
+  rootLocal: THREE.Vector3;
+  rootBaseLocal: THREE.Vector3;
   topLocal: THREE.Vector3;
   topBaseLocal: THREE.Vector3;
   sprayTravelSpeed: number;
@@ -219,6 +221,7 @@ export function buildResourcePylonRig(options: ResourcePylonBuildOptions): {
     options.pylonBaseY + options.pylonHeight + Math.max(1.0, options.pylonRadius * 0.5) + capRadius * 0.35,
     options.z,
   );
+  const rootLocal = new THREE.Vector3(options.x, options.pylonBaseY, options.z);
   return {
     staticMeshes,
     rig: {
@@ -228,6 +231,8 @@ export function buildResourcePylonRig(options: ResourcePylonBuildOptions): {
       showerRadius: options.showerRadius,
       pylonHeight: options.pylonHeight,
       pylonBaseY: options.pylonBaseY,
+      rootLocal,
+      rootBaseLocal: rootLocal.clone(),
       topLocal,
       topBaseLocal: topLocal.clone(),
       sprayTravelSpeed: options.sprayTravelSpeed,
@@ -396,6 +401,7 @@ function buildConstructionTowerPiece(
   );
   shower.visible = false;
   shower.renderOrder = 6;
+  const rootLocal = new THREE.Vector3(x, pylonBaseY, z);
   const topLocal = new THREE.Vector3(x, capY + capRadius * 0.35, z);
 
   const towerOrbitParts: ConstructionTowerOrbitPart[] = [
@@ -421,6 +427,8 @@ function buildConstructionTowerPiece(
       showerRadius,
       pylonHeight,
       pylonBaseY,
+      rootLocal,
+      rootBaseLocal: rootLocal.clone(),
       topLocal,
       topBaseLocal: topLocal.clone(),
       sprayTravelSpeed: 0,

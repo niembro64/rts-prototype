@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
+import type { MetalDeposit } from '../../metalDepositConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import { getBuildFraction } from '../sim/buildableHelpers';
@@ -136,6 +137,7 @@ export type BuildingEntityRenderer3DOptions = {
    *  is "us" to decide whether each building is in current vision or
    *  should render with the desaturated ghost material. */
   getLocalPlayerId: () => PlayerId | undefined;
+  metalDeposits: readonly MetalDeposit[];
 };
 
 type VisionSource = {
@@ -192,6 +194,7 @@ export class BuildingEntityRenderer3D {
     this.animations = new BuildingAnimationController3D(
       this.clientViewState,
       this.constructionVisuals,
+      options.metalDeposits,
     );
   }
 
