@@ -136,6 +136,10 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     Rust/WASM economy_accumulate_player_rates batch helper instead of a
     TypeScript Map, and converter resource-movement source attribution now
     honors the same ON/OFF gate used by converter throughput.
+    2026-05-31 progress: converter tax/source/headroom transfer math moved
+    from EconomyManager.processConverters into the Rust/WASM
+    economy_compute_converter_transfer helper. TypeScript now applies the
+    returned movement amounts only for per-entity pylon attribution.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)

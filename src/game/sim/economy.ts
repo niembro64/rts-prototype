@@ -30,6 +30,15 @@ export const ECONOMY_CONSTANTS = {
   dgunCost: getUnitBlueprint('unitCommander').dgun!.energyCost,
 };
 
+const CONVERTER_RESOURCE_ENERGY = 1;
+const CONVERTER_RESOURCE_METAL = 2;
+
+function converterResourceKindFromCode(code: number): ResourceKind | null {
+  if (code === CONVERTER_RESOURCE_ENERGY) return 'energy';
+  if (code === CONVERTER_RESOURCE_METAL) return 'metal';
+  return null;
+}
+
 // Create initial economy state for a player
 export function createEconomyState(): EconomyState {
   return {
@@ -50,6 +59,7 @@ export class EconomyManager {
   private converterPlayerIds = new Uint32Array(16);
   private converterRates = new Float64Array(16);
   private converterRatesByPlayer = new Float64Array(8);
+  private converterTransferOut = new Float64Array(4);
 
   // Initialize economy for a player
   initPlayer(playerId: PlayerId): void {
@@ -381,56 +391,37 @@ export class EconomyManager {
       const economy = this.economies.get(pid);
       if (!economy) continue;
 
-      const energyCurr = economy.stockpile.curr;
-      const metalCurr = economy.metal.stockpile.curr;
-      if (energyCurr === metalCurr) continue;
-
-      const sourceTarget = totalRate * dtSec;
-      const yieldFactor = Math.max(0, 1 - tax);
-
-      if (metalCurr > energyCurr) {
-        const sourceAvailable = Math.min(sourceTarget, metalCurr);
-        if (sourceAvailable <= 0) continue;
-        const headroom = economy.stockpile.max - energyCurr;
-        if (headroom <= 0) continue;
-        const wantOutput = sourceAvailable * yieldFactor;
-        const acceptedOutput = Math.min(wantOutput, headroom);
-        const consumed = yieldFactor > 0
-          ? sourceAvailable * (acceptedOutput / wantOutput)
-          : 0;
-        this.applyConverterMovements(
-          world,
-          pid,
-          totalRate,
-          ratePerSec,
-          consumed,
-          acceptedOutput,
-          'metal',
-          'energy',
-          dtSec,
-        );
-      } else {
-        const sourceAvailable = Math.min(sourceTarget, energyCurr);
-        if (sourceAvailable <= 0) continue;
-        const headroom = economy.metal.stockpile.max - metalCurr;
-        if (headroom <= 0) continue;
-        const wantOutput = sourceAvailable * yieldFactor;
-        const acceptedOutput = Math.min(wantOutput, headroom);
-        const consumed = yieldFactor > 0
-          ? sourceAvailable * (acceptedOutput / wantOutput)
-          : 0;
-        this.applyConverterMovements(
-          world,
-          pid,
-          totalRate,
-          ratePerSec,
-          consumed,
-          acceptedOutput,
-          'energy',
-          'metal',
-          dtSec,
-        );
+      if (sim.economyComputeConverterTransfer(
+        economy.stockpile.curr,
+        economy.stockpile.max,
+        economy.metal.stockpile.curr,
+        economy.metal.stockpile.max,
+        totalRate,
+        dtSec,
+        tax,
+        this.converterTransferOut,
+      ) === 0) {
+        throw new Error('EconomyManager.processConverters: economy_compute_converter_transfer rejected its output buffer');
       }
+      const consumed = this.converterTransferOut[0];
+      const acceptedOutput = this.converterTransferOut[1];
+      if (consumed <= 0 || acceptedOutput <= 0) continue;
+      const consumedResource = converterResourceKindFromCode(this.converterTransferOut[2]);
+      const outputResource = converterResourceKindFromCode(this.converterTransferOut[3]);
+      if (consumedResource === null || outputResource === null) {
+        throw new Error('EconomyManager.processConverters: economy_compute_converter_transfer returned an unknown resource code');
+      }
+      this.applyConverterMovements(
+        world,
+        pid,
+        totalRate,
+        ratePerSec,
+        consumed,
+        acceptedOutput,
+        consumedResource,
+        outputResource,
+        dtSec,
+      );
     }
   }
 

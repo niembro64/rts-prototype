@@ -21,6 +21,7 @@ import __wbg_init, {
   version,
   wind_sample_state,
   economy_accumulate_player_rates,
+  economy_compute_converter_transfer,
   economy_credit_stockpile,
   economy_debit_stockpile,
   step_unit_motion,
@@ -424,6 +425,16 @@ export interface SimWasm {
     rates: Float64Array,
     count: number,
     outRatesByPlayer: Float64Array,
+  ) => number;
+  readonly economyComputeConverterTransfer: (
+    energyCurr: number,
+    energyMax: number,
+    metalCurr: number,
+    metalMax: number,
+    totalRatePerSec: number,
+    dtSec: number,
+    tax: number,
+    out: Float64Array,
   ) => number;
   readonly economyCreditStockpile: (
     curr: number,
@@ -2990,6 +3001,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         version: version(),
         windSampleState: wind_sample_state,
         economyAccumulatePlayerRates: economy_accumulate_player_rates,
+        economyComputeConverterTransfer: economy_compute_converter_transfer,
         economyCreditStockpile: economy_credit_stockpile,
         economyDebitStockpile: economy_debit_stockpile,
         stepUnitMotion: step_unit_motion,

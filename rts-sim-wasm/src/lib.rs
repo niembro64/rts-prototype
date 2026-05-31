@@ -174,6 +174,95 @@ fn economy_normalized_amount(amount: f64) -> f64 {
     }
 }
 
+const ECONOMY_RESOURCE_NONE: f64 = 0.0;
+const ECONOMY_RESOURCE_ENERGY: f64 = 1.0;
+const ECONOMY_RESOURCE_METAL: f64 = 2.0;
+
+#[wasm_bindgen]
+pub fn economy_compute_converter_transfer(
+    energy_curr: f64,
+    energy_max: f64,
+    metal_curr: f64,
+    metal_max: f64,
+    total_rate_per_sec: f64,
+    dt_sec: f64,
+    tax: f64,
+    out: &mut [f64],
+) -> u32 {
+    if out.len() < 4 {
+        return 0;
+    }
+
+    out[0] = 0.0; // consumed amount
+    out[1] = 0.0; // accepted output amount
+    out[2] = ECONOMY_RESOURCE_NONE; // consumed resource code
+    out[3] = ECONOMY_RESOURCE_NONE; // output resource code
+
+    if !energy_curr.is_finite()
+        || !energy_max.is_finite()
+        || !metal_curr.is_finite()
+        || !metal_max.is_finite()
+    {
+        return 1;
+    }
+
+    let source_target =
+        economy_normalized_amount(total_rate_per_sec) * economy_normalized_amount(dt_sec);
+    if source_target <= 0.0 || energy_curr == metal_curr {
+        return 1;
+    }
+
+    let yield_factor = if tax.is_finite() {
+        (1.0 - tax).max(0.0)
+    } else {
+        0.0
+    };
+    if yield_factor <= 0.0 {
+        return 1;
+    }
+
+    let (source_curr, output_curr, output_max, consumed_resource, output_resource) =
+        if metal_curr > energy_curr {
+            (
+                metal_curr,
+                energy_curr,
+                energy_max,
+                ECONOMY_RESOURCE_METAL,
+                ECONOMY_RESOURCE_ENERGY,
+            )
+        } else {
+            (
+                energy_curr,
+                metal_curr,
+                metal_max,
+                ECONOMY_RESOURCE_ENERGY,
+                ECONOMY_RESOURCE_METAL,
+            )
+        };
+
+    let source_available = source_target.min(source_curr.max(0.0));
+    if source_available <= 0.0 {
+        return 1;
+    }
+
+    let headroom = (output_max - output_curr).max(0.0);
+    if headroom <= 0.0 {
+        return 1;
+    }
+
+    let wanted_output = source_available * yield_factor;
+    let accepted_output = wanted_output.min(headroom);
+    if accepted_output <= 0.0 {
+        return 1;
+    }
+
+    out[0] = source_available * (accepted_output / wanted_output);
+    out[1] = accepted_output;
+    out[2] = consumed_resource;
+    out[3] = output_resource;
+    1
+}
+
 #[wasm_bindgen]
 pub fn economy_credit_stockpile(curr: f64, max: f64, amount: f64, out: &mut [f64]) -> u32 {
     if out.len() < 2 {
@@ -25258,6 +25347,46 @@ mod sim_kernel_tests {
         let mut short = [0.0; 1];
         assert_eq!(economy_credit_stockpile(1.0, 2.0, 1.0, &mut short), 0);
         assert_eq!(economy_debit_stockpile(1.0, 1.0, &mut short), 0);
+    }
+
+    #[test]
+    fn economy_converter_transfer_picks_richer_pool_and_caps_by_output_headroom() {
+        let mut out = [0.0; 4];
+
+        assert_eq!(
+            economy_compute_converter_transfer(10.0, 100.0, 80.0, 100.0, 25.0, 1.0, 0.2, &mut out),
+            1
+        );
+        assert!((out[0] - 25.0).abs() < 1e-12);
+        assert!((out[1] - 20.0).abs() < 1e-12);
+        assert_eq!(out[2], ECONOMY_RESOURCE_METAL);
+        assert_eq!(out[3], ECONOMY_RESOURCE_ENERGY);
+
+        assert_eq!(
+            economy_compute_converter_transfer(80.0, 100.0, 10.0, 25.0, 50.0, 1.0, 0.5, &mut out),
+            1
+        );
+        assert!((out[0] - 30.0).abs() < 1e-12);
+        assert!((out[1] - 15.0).abs() < 1e-12);
+        assert_eq!(out[2], ECONOMY_RESOURCE_ENERGY);
+        assert_eq!(out[3], ECONOMY_RESOURCE_METAL);
+
+        assert_eq!(
+            economy_compute_converter_transfer(50.0, 100.0, 50.0, 100.0, 25.0, 1.0, 0.2, &mut out),
+            1
+        );
+        assert_eq!(
+            out,
+            [0.0, 0.0, ECONOMY_RESOURCE_NONE, ECONOMY_RESOURCE_NONE]
+        );
+
+        let mut short = [0.0; 3];
+        assert_eq!(
+            economy_compute_converter_transfer(
+                10.0, 100.0, 80.0, 100.0, 25.0, 1.0, 0.2, &mut short
+            ),
+            0
+        );
     }
 
     #[test]
