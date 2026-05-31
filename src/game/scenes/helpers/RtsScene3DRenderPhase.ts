@@ -114,7 +114,7 @@ export class RtsScene3DRenderPhase {
   private readonly smokeTrailProjectilesScratch: Entity[] = [];
   private readonly frustum = new THREE.Frustum();
   private readonly frustumMatrix = new THREE.Matrix4();
-  /** Camera-distance fade shared by HP/resource bars + name labels so
+  /** Camera-distance fade shared by HP/build bars + name labels so
    *  both fade + cull together as the camera zooms out (BAR style). */
   private readonly hudFade = new HudFade();
 
@@ -380,7 +380,7 @@ export class RtsScene3DRenderPhase {
     };
   }
 
-  /** Per-element BAR visibility decision (health / resourceBars).
+  /** Per-element BAR visibility decision (health / buildBars).
    *  Names use {@link nameVisible} instead (no fullness). `notFull` is
    *  the piece's `current < max` test for this element. */
   private barVisible(
@@ -442,14 +442,14 @@ export class RtsScene3DRenderPhase {
       const showHealth = this.barVisible(
         getEntityHudToggle(type, 'healthBar'), selected, mode, healthNotFull,
       );
-      // Resource bars are only meaningful while building (paid<required);
-      // once complete the buildable is gone and they read full → hidden.
-      const showResources = this.barVisible(
-        getEntityHudToggle(type, 'resourceBars'), selected, mode, buildInProgress,
+      // Build bars are construction paid/required progress only; once
+      // complete the buildable is gone and the bars are hidden.
+      const showBuild = this.barVisible(
+        getEntityHudToggle(type, 'buildBars'), selected, mode, buildInProgress,
       );
-      if (healthBar3D && (showHealth || showResources || forceVisible)) {
-        if (e.unit) healthBar3D.perUnit(e, forceVisible, showHealth, showResources);
-        else if (e.building) healthBar3D.perBuilding(e, forceVisible, showHealth, showResources);
+      if (healthBar3D && (showHealth || showBuild || forceVisible)) {
+        if (e.unit) healthBar3D.perUnit(e, forceVisible, showHealth, showBuild);
+        else if (e.building) healthBar3D.perBuilding(e, forceVisible, showHealth, showBuild);
       }
     }
 
@@ -474,9 +474,9 @@ export class RtsScene3DRenderPhase {
 
     // ── Turret bars + names ──
     const turretHealthToggle = getEntityHudToggle('turret', 'healthBar');
-    const turretResourceToggle = getEntityHudToggle('turret', 'resourceBars');
+    const turretBuildToggle = getEntityHudToggle('turret', 'buildBars');
     const turretNameToggle = getEntityHudToggle('turret', 'name');
-    if (turretHealthToggle || turretResourceToggle || turretNameToggle) {
+    if (turretHealthToggle || turretBuildToggle || turretNameToggle) {
       const entityRenderer = this.resources.entityRenderer;
       for (const host of this.clientViewState.getArmedEntities()) {
         const turrets = host.combat?.turrets;
@@ -492,13 +492,13 @@ export class RtsScene3DRenderPhase {
           if (turret.config.shot.type === 'shield') continue;
           const mount = entityRenderer.getTurretMountWorldState(host.id, i);
           if (mount === null) continue;
-          if (healthBar3D && (turretHealthToggle || turretResourceToggle)) {
+          if (healthBar3D && (turretHealthToggle || turretBuildToggle)) {
             const healthNotFull = turret.maxHp > 0 && turret.hp < turret.maxHp;
             const buildInProgress = isBuildInProgress(host.buildable);
             const showHealth = this.barVisible(turretHealthToggle, selected, mode, healthNotFull);
-            const showResources = this.barVisible(turretResourceToggle, selected, mode, buildInProgress);
-            if (showHealth || showResources) {
-              healthBar3D.perTurret(host, i, mount, false, showHealth, showResources);
+            const showBuild = this.barVisible(turretBuildToggle, selected, mode, buildInProgress);
+            if (showHealth || showBuild) {
+              healthBar3D.perTurret(host, i, mount, false, showHealth, showBuild);
             }
           }
           if (nameLabel3D && turretNameToggle) {
@@ -518,20 +518,20 @@ export class RtsScene3DRenderPhase {
 
     // ── Locomotion bars + names ──
     const locoHealthToggle = getEntityHudToggle('locomotion', 'healthBar');
-    const locoResourceToggle = getEntityHudToggle('locomotion', 'resourceBars');
+    const locoBuildToggle = getEntityHudToggle('locomotion', 'buildBars');
     const locoNameToggle = getEntityHudToggle('locomotion', 'name');
-    if (locoHealthToggle || locoResourceToggle || locoNameToggle) {
+    if (locoHealthToggle || locoBuildToggle || locoNameToggle) {
       for (const host of this.clientViewState.getHudEntities()) {
         const loco = host.unit?.locomotion;
         if (!loco) continue;
         const selected = host.selectable?.selected === true;
-        if (healthBar3D && (locoHealthToggle || locoResourceToggle)) {
+        if (healthBar3D && (locoHealthToggle || locoBuildToggle)) {
           const healthNotFull = loco.maxHp > 0 && loco.hp < loco.maxHp;
           const buildInProgress = isBuildInProgress(host.buildable);
           const showHealth = this.barVisible(locoHealthToggle, selected, mode, healthNotFull);
-          const showResources = this.barVisible(locoResourceToggle, selected, mode, buildInProgress);
-          if (showHealth || showResources) {
-            healthBar3D.perLocomotion(host, false, showHealth, showResources);
+          const showBuild = this.barVisible(locoBuildToggle, selected, mode, buildInProgress);
+          if (showHealth || showBuild) {
+            healthBar3D.perLocomotion(host, false, showHealth, showBuild);
           }
         }
         if (nameLabel3D && locoNameToggle) {

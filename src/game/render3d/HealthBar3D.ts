@@ -219,12 +219,12 @@ export class HealthBar3D {
     }
   }
 
-  /** Stack the per-resource bars on top of the HP bar when a
+  /** Stack the per-resource construction bars on top of the HP bar when a
    *  buildable is in progress. Construction uses a fixed three-row
-   *  layout until completion so full resource rows do not disappear
+   *  layout until completion so full construction rows do not disappear
    *  and visually reflow the remaining bars. Order from the bottom:
    *  HP, energy, metal. Returns the next stack index. */
-  private placeResourceBars(
+  private placeBuildBars(
     buildable: Buildable,
     worldX: number,
     worldBaseY: number,
@@ -247,7 +247,7 @@ export class HealthBar3D {
    *  outer loop walks the HUD entity list once and dispatches here (and
    *  to other per-unit renderers like ShieldRenderer3D).
    *
-   *  `showHealth` / `showResources` are the orchestrator's per-element
+   *  `showHealth` / `showBuild` are the orchestrator's per-element
    *  config decision (per-type toggle + selection mode + not-full rule
    *  already applied). `forceVisible` (hover) forces the HEALTH bar on
    *  regardless of the not-full rule, matching the legacy behavior. */
@@ -255,7 +255,7 @@ export class HealthBar3D {
     u: Entity,
     forceVisible = false,
     showHealth = true,
-    showResources = true,
+    showBuild = true,
   ): void {
     if (!u.unit) return;
     const key = packPieceKey(u.id, PIECE_TAG_BODY);
@@ -268,8 +268,8 @@ export class HealthBar3D {
       : null;
     const showHp = maxHp > 0 && (showHealth || forceVisible)
       && (buildable !== null || hp > 0);
-    const showRes = showResources && buildable !== null;
-    if (!showHp && !showRes) return;
+    const showBuildBars = showBuild && buildable !== null;
+    if (!showHp && !showBuildBars) return;
     this._seenEntityFrame.set(key, this._frameToken);
     const worldX = u.transform.x;
     const worldY = getUnitHudBarsY(u);
@@ -283,8 +283,8 @@ export class HealthBar3D {
       this.placeBar(ratio, 'health', worldX, worldY, worldZ, worldWidth, stack, alpha);
       stack++;
     }
-    if (showRes && buildable) {
-      this.placeResourceBars(buildable, worldX, worldY, worldZ, worldWidth, stack, alpha);
+    if (showBuildBars && buildable) {
+      this.placeBuildBars(buildable, worldX, worldY, worldZ, worldWidth, stack, alpha);
     }
   }
 
@@ -293,7 +293,7 @@ export class HealthBar3D {
     b: Entity,
     forceVisible = false,
     showHealth = true,
-    showResources = true,
+    showBuild = true,
   ): void {
     if (!b.building) return;
     const key = packPieceKey(b.id, PIECE_TAG_BODY);
@@ -305,8 +305,8 @@ export class HealthBar3D {
       : null;
     const showHp = maxHp > 0 && (showHealth || forceVisible)
       && (buildable !== null || hp > 0);
-    const showRes = showResources && buildable !== null;
-    if (!showHp && !showRes) return;
+    const showBuildBars = showBuild && buildable !== null;
+    if (!showHp && !showBuildBars) return;
     this._seenEntityFrame.set(key, this._frameToken);
     const worldX = b.transform.x;
     const worldY = getBuildingHudBarsY(b);
@@ -317,20 +317,20 @@ export class HealthBar3D {
     let stack = 0;
     if (showHp) {
       // HP is its own thing — a red→green gradient by ratio, never the
-      // resource 'build' color. The resource bars are the build progress.
+      // resource 'build' color. The build bars are construction progress.
       const ratio = Math.max(0, Math.min(1, hp / maxHp));
       this.placeBar(ratio, 'health', worldX, worldY, worldZ, worldWidth, stack, alpha);
       stack++;
     }
-    if (showRes && buildable) {
-      this.placeResourceBars(buildable, worldX, worldY, worldZ, worldWidth, stack, alpha);
+    if (showBuildBars && buildable) {
+      this.placeBuildBars(buildable, worldX, worldY, worldZ, worldWidth, stack, alpha);
     }
   }
 
-  /** Place a piece's energy/metal bars from its construction record's
+  /** Place a piece's construction energy/metal bars from its construction record's
    *  paid/required (absent → not building → skipped by the caller).
-   *  Mirrors `placeResourceBars` but reads the per-piece ledger. */
-  private placePieceResourceBars(
+   *  Mirrors `placeBuildBars` but reads the per-piece ledger. */
+  private placePieceBuildBars(
     piece: ConstructionPieceBuildRecord,
     worldX: number,
     worldBaseY: number,
@@ -351,10 +351,10 @@ export class HealthBar3D {
     );
   }
 
-  /** Fused-iteration entry: one turret's HP (+ resource) bars at its
+  /** Fused-iteration entry: one turret's HP (+ build) bars at its
    *  live world mount anchor. `mountWorld` is the TurretMountCache3D
    *  entry (transform.x = world X, .y = world Y/north, .z = world up).
-   *  Resource bars come from the host's matching construction piece
+   *  Build bars come from the host's matching construction piece
    *  record (only present while building). */
   perTurret(
     host: Entity,
@@ -362,7 +362,7 @@ export class HealthBar3D {
     mountWorld: { x: number; y: number; z: number },
     forceVisible: boolean,
     showHealth: boolean,
-    showResources: boolean,
+    showBuild: boolean,
   ): void {
     const turret: Turret | undefined = host.combat?.turrets[turretIdx];
     if (!turret) return;
@@ -370,12 +370,12 @@ export class HealthBar3D {
     if (this._seenEntityFrame.get(key) === this._frameToken) return;
     const hp = turret.hp;
     const maxHp = turret.maxHp;
-    const piece = showResources
+    const piece = showBuild
       ? getConstructionPieceRecord(host, 'turret', turret.mountIndex)
       : null;
     const showHp = maxHp > 0 && (showHealth || forceVisible) && hp > 0;
-    const showRes = piece !== null;
-    if (!showHp && !showRes) return;
+    const showBuildBars = piece !== null;
+    if (!showHp && !showBuildBars) return;
     // Cull before acquiring a pool slot — the pool grows monotonically.
     const worldX = mountWorld.x;
     const worldY = getTurretHudBarsY(mountWorld.z, turret.config);
@@ -390,18 +390,18 @@ export class HealthBar3D {
       this.placeBar(ratio, 'health', worldX, worldY, worldZ, worldWidth, stack, alpha);
       stack++;
     }
-    if (showRes && piece) {
-      this.placePieceResourceBars(piece, worldX, worldY, worldZ, worldWidth, stack, alpha);
+    if (showBuildBars && piece) {
+      this.placePieceBuildBars(piece, worldX, worldY, worldZ, worldWidth, stack, alpha);
     }
   }
 
-  /** Fused-iteration entry: one unit's locomotion HP (+ resource) bars,
+  /** Fused-iteration entry: one unit's locomotion HP (+ build) bars,
    *  anchored LOW at the body base (below the body stack). */
   perLocomotion(
     host: Entity,
     forceVisible: boolean,
     showHealth: boolean,
-    showResources: boolean,
+    showBuild: boolean,
   ): void {
     const loco = host.unit?.locomotion;
     if (!loco) return;
@@ -409,12 +409,12 @@ export class HealthBar3D {
     if (this._seenEntityFrame.get(key) === this._frameToken) return;
     const hp = loco.hp;
     const maxHp = loco.maxHp;
-    const piece = showResources
+    const piece = showBuild
       ? getConstructionPieceRecord(host, 'locomotion', 0)
       : null;
     const showHp = maxHp > 0 && (showHealth || forceVisible) && hp > 0;
-    const showRes = piece !== null;
-    if (!showHp && !showRes) return;
+    const showBuildBars = piece !== null;
+    if (!showHp && !showBuildBars) return;
     const worldX = host.transform.x;
     const worldY = getLocomotionHudBarsY(host);
     const worldZ = host.transform.y;
@@ -428,13 +428,13 @@ export class HealthBar3D {
       this.placeBar(ratio, 'health', worldX, worldY, worldZ, worldWidth, stack, alpha);
       stack++;
     }
-    if (showRes && piece) {
-      this.placePieceResourceBars(piece, worldX, worldY, worldZ, worldWidth, stack, alpha);
+    if (showBuildBars && piece) {
+      this.placePieceBuildBars(piece, worldX, worldY, worldZ, worldWidth, stack, alpha);
     }
   }
 
   /** Fused-iteration entry: one projectile-kind shot's tiny HP bar
-   *  (no resource bars). Anchored at the shot transform. */
+   *  (no build bars). Anchored at the shot transform. */
   perShot(shot: Entity, forceVisible: boolean, showHealth: boolean): void {
     const proj = shot.projectile;
     if (!proj) return;

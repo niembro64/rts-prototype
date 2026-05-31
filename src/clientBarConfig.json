@@ -144,20 +144,20 @@
   },
   "entityHud": {
     "demoDefault": {
-      "unit": { "name": false, "healthBar": true, "resourceBars": true },
-      "tower": { "name": false, "healthBar": true, "resourceBars": true },
-      "building": { "name": false, "healthBar": true, "resourceBars": true },
-      "turret": { "name": false, "healthBar": false, "resourceBars": false },
-      "locomotion": { "name": false, "healthBar": false, "resourceBars": false },
-      "shot": { "name": false, "healthBar": false, "resourceBars": false }
+      "unit": { "name": false, "healthBar": true, "buildBars": true },
+      "tower": { "name": false, "healthBar": true, "buildBars": true },
+      "building": { "name": false, "healthBar": true, "buildBars": true },
+      "turret": { "name": false, "healthBar": false, "buildBars": false },
+      "locomotion": { "name": false, "healthBar": false, "buildBars": false },
+      "shot": { "name": false, "healthBar": false, "buildBars": false }
     },
     "realDefault": {
-      "unit": { "name": false, "healthBar": true, "resourceBars": true },
-      "tower": { "name": false, "healthBar": true, "resourceBars": true },
-      "building": { "name": false, "healthBar": true, "resourceBars": true },
-      "turret": { "name": false, "healthBar": false, "resourceBars": false },
-      "locomotion": { "name": false, "healthBar": false, "resourceBars": false },
-      "shot": { "name": false, "healthBar": false, "resourceBars": false }
+      "unit": { "name": false, "healthBar": true, "buildBars": true },
+      "tower": { "name": false, "healthBar": true, "buildBars": true },
+      "building": { "name": false, "healthBar": true, "buildBars": true },
+      "turret": { "name": false, "healthBar": false, "buildBars": false },
+      "locomotion": { "name": false, "healthBar": false, "buildBars": false },
+      "shot": { "name": false, "healthBar": false, "buildBars": false }
     }
   },
   "selectionHudMode": {
@@ -172,7 +172,7 @@
 
   "soundCategories": ["fire", "hit", "dead", "beam", "field", "music"],
   "entityHudTypes": ["unit", "tower", "building", "turret", "locomotion", "shot"],
-  "entityHudElements": ["name", "healthBar", "resourceBars"],
+  "entityHudElements": ["name", "healthBar", "buildBars"],
   "rangeTypes": [
     "trackAcquire", "trackRelease",
     "engageAcquire", "engageRelease",

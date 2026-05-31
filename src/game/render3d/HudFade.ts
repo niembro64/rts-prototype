@@ -1,5 +1,5 @@
 // HudFade — per-frame camera-distance fade for billboarded HUD sprites
-// (health/resource bars, name labels), matching Beyond All Reason's
+// (health/build bars, name labels), matching Beyond All Reason's
 // behavior: bars/names are full-opacity up close, ramp to zero between
 // `fadeStart` and `fadeEnd`, and are culled past `fadeEnd`. That's the
 // clutter control that makes world-scaled (foreshortening) HUD elements

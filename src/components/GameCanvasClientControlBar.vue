@@ -24,13 +24,13 @@ const ENTITY_HUD_TYPE_LABELS: Record<EntityHudType, string> = {
 const ENTITY_HUD_ELEMENT_LABELS: Record<EntityHudElement, string> = {
   name: 'NAME',
   healthBar: 'HP',
-  resourceBars: 'RES',
+  buildBars: 'BUILD',
 };
 
 const ENTITY_HUD_ELEMENT_DESCRIPTIONS: Record<EntityHudElement, string> = {
   name: 'name',
   healthBar: 'health bar',
-  resourceBars: 'resource bars',
+  buildBars: 'construction progress bars',
 };
 
 const DIFFSNAP_REASONABLE_BYTES = 64 * 1024;
@@ -128,7 +128,7 @@ defineProps<{
       <BarControlGroup>
         <BarDivider />
         <BarLabel>ENTITY HUD:</BarLabel>
-        <BarLabel title="Current-selection HUD elements override the per-type toggles below for selected entities. ALL always shows them; OFF never does; DMG shows them only when damaged (not at full health / resources).">SEL:</BarLabel>
+        <BarLabel title="Current-selection HUD elements override the per-type toggles below for selected entities. ALL always shows them; OFF never does; DMG shows bars only when damaged or under construction.">SEL:</BarLabel>
         <BarButtonGroup>
           <BarButton
             v-for="opt in CLIENT_CONFIG.selectionHudMode.options"
@@ -876,7 +876,7 @@ defineProps<{
 
 <style scoped>
 /* Compact 3-row entity-HUD matrix: one row per HUD element (NAME / HP /
- * RES), each row a connected 6-button pill across the entity types. The
+ * BUILD), each row a connected 6-button pill across the entity types. The
  * rows stack vertically inside the surrounding flex control-group. */
 .entity-hud-grid {
   display: flex;

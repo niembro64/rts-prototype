@@ -51,7 +51,7 @@ export type CameraFovDegrees = 10 | 30 | 45 | 60 | 120;
 export type WaypointDetail = 'simple' | 'detailed';
 /** Entity-HUD entity classes. Each maps to a renderer category that
  *  can independently show / hide its name tag, health bar, and
- *  resource bars. */
+ *  construction-progress bars. */
 export type EntityHudType =
   | 'unit'
   | 'tower'
@@ -60,13 +60,13 @@ export type EntityHudType =
   | 'locomotion'
   | 'shot';
 /** The three per-entity HUD elements that can be toggled. */
-export type EntityHudElement = 'name' | 'healthBar' | 'resourceBars';
+export type EntityHudElement = 'name' | 'healthBar' | 'buildBars';
 /** Global tri-state controlling HUD elements on the CURRENT SELECTION,
  *  overriding the per-type entity-HUD toggles for selected entities.
  *    always      — always show selection HUD elements.
  *    never       — never show them.
- *    whenNotFull — show only when the entity is damaged (not at full
- *                  health / resources). */
+ *    whenNotFull — show bars only when the entity is damaged or under
+ *                  construction. */
 export type SelectionHudMode = 'always' | 'never' | 'whenNotFull';
 export type SoundCategory =
   | 'fire'
@@ -157,8 +157,9 @@ export type ClientBarConfig = {
   readonly unitRadiusToggles: BooleanSetting;
   readonly lobbyVisible: DefaultSetting<PlatformBooleanDefaults>;
   readonly waypointDetail: LabeledOptionsConfig<WaypointDetail>;
-  /** Per-entity-type HUD element toggles (name / health bar / resource
-   *  bars). Persisted as a single JSON blob, like `sounds`. */
+  /** Per-entity-type HUD element toggles (name / health bar /
+   *  construction-progress bars). Persisted as a single JSON blob,
+   *  like `sounds`. */
   readonly entityHud: DefaultSetting<EntityHudToggles>;
   /** Global tri-state for HUD elements on the current selection.
    *  ALL / OFF / DMG (whenNotFull). */

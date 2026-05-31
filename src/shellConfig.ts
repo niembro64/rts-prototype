@@ -64,7 +64,7 @@ export const BUILD_BUBBLE_RADIUS_COLLISION_MULT =
   shellConfig.buildBubble.radiusCollisionMult;
 
 /** Bar palette + layout. Both the HP bar (with its build-mode overlay)
- *  and the construction-resource bars (energy / metal)
+ *  and the construction-progress bars (energy / metal)
  *  read these knobs so all bar tunables live in one place. */
 export const SHELL_BAR_COLORS = RESOURCE_COLOR_CSS;
 
@@ -83,8 +83,8 @@ export const SHELL_BAR_CANVAS_WIDTH = shellConfig.shellBar.canvasWidth;
 export const SHELL_BAR_CANVAS_HEIGHT = shellConfig.shellBar.canvasHeight;
 
 /** Whether to hide the bar set entirely once every value (HP + each
- *  resource accumulator) is 100%. Mirrors the original health-bar
- *  rule of disappearing on full HP. Always true for resource bars in
+ *  construction accumulator) is 100%. Mirrors the original health-bar
+ *  rule of disappearing on full HP. Always true for construction bars in
  *  this codebase; configurable here so a debug overlay can flip it. */
 export const SHELL_BAR_HIDE_AT_FULL = shellConfig.shellBar.hideAtFull;
 

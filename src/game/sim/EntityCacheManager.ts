@@ -180,7 +180,7 @@ export class EntityCacheManager {
           // Damaged-or-shell list: feeds HealthBar3D.perUnit. A unit
           // shell (incomplete buildable) belongs here too even though
           // its hp is 0 at spawn — the bar renderer needs to draw the
-          // resource bars regardless of HP.
+          // build bars regardless of HP.
           if (
             entity.unit
             && (

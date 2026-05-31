@@ -826,7 +826,10 @@ export type NetworkServerSnapshotEntity = {
     turrets: NetworkServerSnapshotTurret[] | null;
     /** Unit shell construction state. Present while the unit is being
      *  funded, and retained with interrupted=true for cancelled partial
-     *  assemblies whose piece records still drive rendering/targeting. */
+     *  assemblies whose piece records still drive rendering/targeting.
+     *  `paid` is dynamic wire state; `required` is deliberately
+     *  blueprint-derived on both host and client. A client/host content
+     *  version mismatch is outside this wire contract. */
     build: {
       complete: boolean;
       interrupted?: boolean;
@@ -845,8 +848,9 @@ export type NetworkServerSnapshotEntity = {
     hp: { curr: number; max: number } | null;
     /** `paid` carries the per-resource accumulator so the
      *  client can render independent build bars or an interrupted
-     *  partial assembly; `required` is omitted because the client
-     *  re-derives it from the entity's blueprint. */
+     *  partial assembly. `required` is deliberately omitted: host and
+     *  client must derive it from the same blueprint data, so a content
+     *  version mismatch is unsupported rather than corrected here. */
     build: {
       complete: boolean;
       interrupted?: boolean;
@@ -865,7 +869,7 @@ export type NetworkServerSnapshotEntity = {
       selectedUnitBlueprintCode: number | null;
       /** Average fill of the factory's currentShellId, or 0 if
        *  the factory hasn't spawned a shell yet. The client re-derives
-       *  per-resource bars from the shell entity itself; this field is
+       *  construction-progress bars from the shell entity itself; this field is
        *  kept as a convenience for the production progress UI. */
       progress: number;
       producing: boolean;

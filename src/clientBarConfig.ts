@@ -742,12 +742,22 @@ function loadFromStorage(mode: ClientMode): void {
   if (storedEntityHud) {
     try {
       const parsed = JSON.parse(storedEntityHud);
+      const parsedRecord = parsed !== null && typeof parsed === 'object'
+        ? parsed as Record<string, unknown>
+        : null;
       for (const type of ENTITY_HUD_TYPES) {
-        const row = parsed?.[type];
-        if (!row) continue;
+        const row = parsedRecord !== null ? parsedRecord[type] : null;
+        if (row === null || typeof row !== 'object') continue;
+        const rowRecord = row as Record<string, unknown>;
         for (const element of ENTITY_HUD_ELEMENTS) {
-          if (typeof row[element] === 'boolean') {
-            currentEntityHud[type][element] = row[element];
+          let value = rowRecord[element];
+          if (element === 'buildBars' && typeof value !== 'boolean') {
+            // Saved HUD blobs from before the RES->BUILD rename used
+            // `resourceBars` for this construction-progress toggle.
+            value = rowRecord.resourceBars;
+          }
+          if (typeof value === 'boolean') {
+            currentEntityHud[type][element] = value;
           }
         }
       }

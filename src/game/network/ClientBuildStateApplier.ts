@@ -11,6 +11,9 @@ export type NetworkBuildState = {
   paid: Buildable['paid'];
 };
 
+// Build denominators are a content-version contract: snapshots ship
+// dynamic paid counters, while host and client derive required cost
+// from the same blueprint data (and COST_MULTIPLIER for units).
 export function getUnitBuildRequired(
   unitBlueprintId: string | undefined,
 ): Buildable['required'] | undefined {

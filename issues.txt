@@ -18,62 +18,14 @@ Please always commit and push before and after any code changes we make.
 
 
 ================================================================================
-ENTITY STATE REPORTING (HP / RESOURCES / NAMES)
+ENTITY STATE REPORTING (HP / NAMES)
 ================================================================================
-Found by tracing the current-health / current-metal / current-energy /
-entity-name pipeline end to end (Rust serialize -> wire ->
+Found by tracing the current-health / entity-name pipeline end to end (Rust serialize -> wire ->
 ClientSnapshotApplier/ClientBuildStateApplier -> ClientViewState -> EntityName +
 HealthBar3D + NameLabel3D, driven by RtsScene3DRenderPhase.drawEntityHud and the
-clientBarConfig entityHud toggles). Symptoms: "names super random and randomly
-changing", and "can't ever see resource bars" with NAME/HP/RES on for all types
-and ENTITY HUD SEL: ALL. File:line refs were correct when written; re-verify
-before editing.
-
-E1. [HIGH] "RES" element renders only construction progress and disappears the
-    instant a build completes — so in a normal (already-built) battle it is never
-    visible.
-    LOCATION:
-      - src/game/network/ClientBuildStateApplier.ts:45-48 — on build.complete the
-        client sets entity.buildable = null (the whole component is dropped, not
-        just flagged).
-      - src/game/render3d/HealthBar3D.ts:266-272, 286-288, 303-309, 325-327,
-        373-377, 412-417 — every resource-bar path gates on
-        isBuildInProgress(buildable) / piece !== null.
-      - src/game/scenes/helpers/RtsScene3DRenderPhase.ts:445-449, 496-499,
-        528-532 — showResources is computed from buildInProgress =
-        isBuildInProgress(e.buildable).
-      - src/game/sim/buildableHelpers.ts:169-171 — isBuildInProgress requires
-        !isComplete (and !isGhost/!isInterrupted).
-    RULE: a HUD toggle should mean what its label says; "RES" reads as "current
-    resources", not "construction progress".
-    PROBLEM: the ENERGY/METAL bars are paid/required construction-fill bars shown
-    ONLY while a buildable is mid-construction. On completion the buildable is
-    deleted, so resource bars vanish forever. With ENTITY HUD SEL: ALL and RES on
-    for every type, a player whose units are already built sees no resource bars
-    at all. The label also implies a per-entity "current resources" concept that
-    does not exist (see E2).
-    FIX: decide what RES means. Either (a) rename to BUILD / construction-progress
-    and document that it is only meaningful while building, or (b) if a real
-    per-entity resource readout is wanted, add that state to the wire and give it
-    a distinct bar mode. Do not ship a toggle that reads as "current resources"
-    but can only ever show transient build fill.
-
-E2. [HIGH] There is no per-entity current-metal / current-energy state; economy
-    is player-wide only — so "current metal/energy per entity" cannot be reported.
-    LOCATION:
-      - src/types/sim.ts:731-740 — EconomyState (per-PLAYER stockpile {curr,max},
-        income, expenditure). This is the only place metal/energy "current"
-        values live.
-      - src/types/sim.ts:958 — metalExtractionRate is the ONLY per-entity
-        resource-ish field, and it is a RATE, not a stored amount; it is never
-        surfaced as a bar.
-    RULE: UI/labels must not imply state the data model does not carry.
-    PROBLEM: entities carry no stored metal/energy, so any expectation of
-    "current metal, current energy" per entity has nothing to read. This is the
-    root cause behind E1's mislabeled RES toggle.
-    FIX: either implement per-entity resource state and wire it (extractor yield,
-    converter throughput, storage fill — whatever is intended), or strike the
-    "per-entity current resources" expectation from UI, labels, and docs.
+clientBarConfig entityHud toggles). Symptom: "names super random and randomly
+changing" with NAME on for all types and ENTITY HUD SEL: ALL. File:line refs
+were correct when written; re-verify before editing.
 
 E3. [MEDIUM] "Current health" is passed three different ways across piece kinds;
     sub-piece max can desync and dead pieces can momentarily read full.
@@ -166,18 +118,3 @@ E5. [MEDIUM / INVESTIGATE] "Randomly changing" names: confirmed non-flicker
     for id reuse / stale id, then fix that path. If it does not, this reduces to
     E4 + expected visibility behavior — fix via E4 and by making commander labels
     visually distinct from blueprint names.
-
-E6. [LOW] Construction `required` cost is re-derived on the client, not shipped,
-    so the energy/metal fill ratio can misreport under config/version skew.
-    LOCATION: src/game/network/ClientBuildStateApplier.ts:14-38, 51-69 —
-    getUnitBuildRequired/getBuildingBuildRequired rebuild `required` from blueprint
-    cost x COST_MULTIPLIER; only `paid` (curr) + `complete` ride the wire (unit
-    build state copy in src/game/network/unitSnapshotFields.ts:330-339).
-    RULE: a ratio bar should use the server's own numerator AND denominator.
-    PROBLEM: the construction bars compute paid/required where `paid` is
-    authoritative but `required` is reconstructed client-side; if client and
-    server disagree on blueprint cost or COST_MULTIPLIER the bar misreports
-    progress even though the underlying build is correct.
-    FIX: ship `required` with the build state, or treat the client re-derivation
-    as authoritative-by-contract and document the coupling.
-

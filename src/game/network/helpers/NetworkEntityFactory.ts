@@ -380,7 +380,8 @@ function createUnitFromNetwork(
   }
 
   // Shell construction state — `required` is re-derived from the
-  // blueprint COST_MULTIPLIER product, identical to the server.
+  // blueprint COST_MULTIPLIER product. Host and client content versions
+  // must match; snapshots only carry the dynamic paid counters.
   if (unitBuild !== null && !unitBuild.complete && unitBlueprint !== undefined) {
     entity.buildable = createBuildable(
       {
@@ -468,9 +469,9 @@ function createBuildingFromNetwork(
   applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingBlueprintId));
 
   if (b.build && !b.build.complete) {
-    // required is re-derived from the local building config — it's a
-    // pure function of buildingBlueprintId and never changes after spawn, so
-    // no need to ship it on the wire.
+    // required is re-derived from the local building config. It is a pure
+    // function of buildingBlueprintId under the client/host content-version
+    // contract, so snapshots only ship paid counters.
     entity.buildable = createBuildable(config.cost, {
       paid: b.build.paid,
       isGhost: null,
