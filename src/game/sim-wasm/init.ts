@@ -72,6 +72,8 @@ import __wbg_init, {
   projectile_pool_spawn_tick_ptr,
   projectile_pool_parent_shot_entity_id_ptr,
   pool_step_packed_projectiles_batch,
+  projectile_integrate_step_batch,
+  terrain_follow_vertical_thrust_accel,
   solve_kinematic_intercept,
   compute_homing_thrust,
   integrate_damped_rotation,
@@ -901,6 +903,34 @@ export interface SimWasm {
    *  projectileSystem._updatePackedProjectilesJS but runs entirely
    *  in WASM with no per-projectile boundary call. */
   readonly poolStepPackedProjectilesBatch: (count: number, dtSec: number) => void;
+  /** C1 — non-packed projectile/body constant-acceleration integrator.
+   *  TypeScript packs guided/D-gun projectile state and acceleration,
+   *  this kernel advances position and velocity in one batch. */
+  readonly projectileIntegrateStepBatch: (
+    count: number,
+    posX: Float64Array,
+    posY: Float64Array,
+    posZ: Float64Array,
+    velX: Float64Array,
+    velY: Float64Array,
+    velZ: Float64Array,
+    accelX: Float64Array,
+    accelY: Float64Array,
+    accelZ: Float64Array,
+    dtSec: number,
+  ) => number;
+  /** C1 — terrain-follow vertical thrust acceleration for D-gun waves
+   *  and matching client prediction. Gravity remains caller-owned. */
+  readonly terrainFollowVerticalThrustAccel: (
+    positionZ: number,
+    velocityZ: number,
+    targetZ: number,
+    mass: number,
+    gravity: number,
+    springAccelPerWorldUnit: number,
+    dampingRatio: number,
+    maxThrustForce: number,
+  ) => number;
   /** Phase 5b — kinematic intercept solver. Per-call (not batched —
    *  call sites are scattered across server/client/render code).
    *
@@ -3267,6 +3297,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         projectilePool,
         projectileReflectorIntersectionsBatch: projectile_reflector_intersections_batch,
         poolStepPackedProjectilesBatch: pool_step_packed_projectiles_batch,
+        projectileIntegrateStepBatch: projectile_integrate_step_batch,
+        terrainFollowVerticalThrustAccel: terrain_follow_vertical_thrust_accel,
         solveKinematicIntercept: solve_kinematic_intercept,
         computeHomingThrust: compute_homing_thrust,
         integrateDampedRotation: integrate_damped_rotation,

@@ -24,6 +24,7 @@ import {
   type KinematicInterceptSolution,
   type KinematicState3,
 } from '../math';
+import { getSimWasm } from '../sim-wasm/init';
 import type { PredictionStep } from './ClientPredictionCadence';
 
 export type ClientProjectilePredictionResult = {
@@ -36,6 +37,15 @@ const _clientHomingTargetVelocity = { x: 0, y: 0, z: 0 };
 const _clientHomingTargetAcceleration = { x: 0, y: 0, z: 0 };
 const _clientProjectilePositionScratch = { x: 0, y: 0, z: 0 };
 const _clientProjectileVelocityScratch = { x: 0, y: 0, z: 0 };
+const _clientProjectilePosX = new Float64Array(1);
+const _clientProjectilePosY = new Float64Array(1);
+const _clientProjectilePosZ = new Float64Array(1);
+const _clientProjectileVelX = new Float64Array(1);
+const _clientProjectileVelY = new Float64Array(1);
+const _clientProjectileVelZ = new Float64Array(1);
+const _clientProjectileAccelX = new Float64Array(1);
+const _clientProjectileAccelY = new Float64Array(1);
+const _clientProjectileAccelZ = new Float64Array(1);
 const _clientHomingOriginState: KinematicState3 = {
   position: { x: 0, y: 0, z: 0 },
   velocity: { x: 0, y: 0, z: 0 },
@@ -254,12 +264,41 @@ export function applyClientProjectilePrediction(options: {
       maxThrustForce: DGUN_TERRAIN_FOLLOW_MAX_THRUST_FORCE,
     });
   }
-  entity.transform.x = position.x + proj.velocityX * dt + aNetX * halfDtSq;
-  entity.transform.y = position.y + proj.velocityY * dt + aNetY * halfDtSq;
-  entity.transform.z = position.z + proj.velocityZ * dt + aNetZ * halfDtSq;
-  proj.velocityX += aNetX * dt;
-  proj.velocityY += aNetY * dt;
-  proj.velocityZ += aNetZ * dt;
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('Client projectile prediction requires initialized sim-wasm');
+  }
+  _clientProjectilePosX[0] = position.x;
+  _clientProjectilePosY[0] = position.y;
+  _clientProjectilePosZ[0] = position.z;
+  _clientProjectileVelX[0] = proj.velocityX;
+  _clientProjectileVelY[0] = proj.velocityY;
+  _clientProjectileVelZ[0] = proj.velocityZ;
+  _clientProjectileAccelX[0] = aNetX;
+  _clientProjectileAccelY[0] = aNetY;
+  _clientProjectileAccelZ[0] = aNetZ;
+  const integrated = sim.projectileIntegrateStepBatch(
+    1,
+    _clientProjectilePosX,
+    _clientProjectilePosY,
+    _clientProjectilePosZ,
+    _clientProjectileVelX,
+    _clientProjectileVelY,
+    _clientProjectileVelZ,
+    _clientProjectileAccelX,
+    _clientProjectileAccelY,
+    _clientProjectileAccelZ,
+    dt,
+  );
+  if (integrated !== 1) {
+    throw new Error('Client projectile prediction integration failed');
+  }
+  entity.transform.x = _clientProjectilePosX[0];
+  entity.transform.y = _clientProjectilePosY[0];
+  entity.transform.z = _clientProjectilePosZ[0];
+  proj.velocityX = _clientProjectileVelX[0];
+  proj.velocityY = _clientProjectileVelY[0];
+  proj.velocityZ = _clientProjectileVelZ[0];
 
   if (isHoming) {
     entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);

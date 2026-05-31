@@ -3839,6 +3839,88 @@ pub fn compute_homing_thrust(
     out_buf[2] = a_z;
 }
 
+/// Upward engine acceleration for a terrain-following projectile/body.
+///
+/// Mirrors the former TypeScript TerrainFollowThrust helper. Gravity is
+/// still integrated by the caller; this returns the bounded thrust that
+/// tries to cancel gravity and close the vertical terrain error.
+#[wasm_bindgen]
+pub fn terrain_follow_vertical_thrust_accel(
+    position_z: f64,
+    velocity_z: f64,
+    target_z: f64,
+    mass: f64,
+    gravity: f64,
+    spring_accel_per_world_unit: f64,
+    damping_ratio: f64,
+    max_thrust_force: f64,
+) -> f64 {
+    let safe_mass = if mass > 1e-6 { mass } else { 1e-6 };
+    let max_thrust_accel = js_max(0.0, max_thrust_force) / safe_mass;
+    if max_thrust_accel <= 0.0 {
+        return 0.0;
+    }
+
+    let spring_accel = js_max(0.0, spring_accel_per_world_unit);
+    let damping_ratio = js_max(0.0, damping_ratio);
+    let damping_accel_per_speed = if spring_accel > 0.0 {
+        2.0 * spring_accel.sqrt() * damping_ratio
+    } else {
+        0.0
+    };
+    let height_error = target_z - position_z;
+    let desired_thrust_accel =
+        gravity + spring_accel * height_error - damping_accel_per_speed * velocity_z;
+    js_max(0.0, js_min(max_thrust_accel, desired_thrust_accel))
+}
+
+/// Batched constant-acceleration projectile/body integrator.
+///
+/// Position uses the exact `p + v*t + 0.5*a*t^2` equation and velocity uses
+/// `v + a*t`. TypeScript still owns projectile lifecycle and target policy,
+/// but all non-packed guided/D-gun projectile integration now crosses this
+/// kernel in one batch per tick.
+#[wasm_bindgen]
+pub fn projectile_integrate_step_batch(
+    count: u32,
+    pos_x: &mut [f64],
+    pos_y: &mut [f64],
+    pos_z: &mut [f64],
+    vel_x: &mut [f64],
+    vel_y: &mut [f64],
+    vel_z: &mut [f64],
+    accel_x: &[f64],
+    accel_y: &[f64],
+    accel_z: &[f64],
+    dt_sec: f64,
+) -> u32 {
+    let n = count as usize;
+    if pos_x.len() < n
+        || pos_y.len() < n
+        || pos_z.len() < n
+        || vel_x.len() < n
+        || vel_y.len() < n
+        || vel_z.len() < n
+        || accel_x.len() < n
+        || accel_y.len() < n
+        || accel_z.len() < n
+        || !dt_sec.is_finite()
+    {
+        return 0;
+    }
+
+    let half_dt_sq = 0.5 * dt_sec * dt_sec;
+    for i in 0..n {
+        pos_x[i] += vel_x[i] * dt_sec + accel_x[i] * half_dt_sq;
+        pos_y[i] += vel_y[i] * dt_sec + accel_y[i] * half_dt_sq;
+        pos_z[i] += vel_z[i] * dt_sec + accel_z[i] * half_dt_sq;
+        vel_x[i] += accel_x[i] * dt_sec;
+        vel_y[i] += accel_y[i] * dt_sec;
+        vel_z[i] += accel_z[i] * dt_sec;
+    }
+    count
+}
+
 /// Per-tick ballistic integrator. For slots 0..count, advances with the
 /// same constant-acceleration equation the ballistic aim solver uses:
 ///   pos_x[i] += vel_x[i] * dt_sec

@@ -1,4 +1,4 @@
-import { clamp } from './MathHelpers';
+import { getSimWasm } from '../sim-wasm/init';
 
 export type TerrainFollowVerticalThrustInput = {
   positionZ: number;
@@ -19,19 +19,18 @@ export type TerrainFollowVerticalThrustInput = {
 export function computeTerrainFollowVerticalThrustAccel(
   input: TerrainFollowVerticalThrustInput,
 ): number {
-  const mass = input.mass > 1e-6 ? input.mass : 1e-6;
-  const maxThrustAccel = Math.max(0, input.maxThrustForce) / mass;
-  if (maxThrustAccel <= 0) return 0;
-
-  const springAccel = Math.max(0, input.springAccelPerWorldUnit);
-  const dampingRatio = Math.max(0, input.dampingRatio);
-  const dampingAccelPerSpeed = springAccel > 0
-    ? 2 * Math.sqrt(springAccel) * dampingRatio
-    : 0;
-  const heightError = input.targetZ - input.positionZ;
-  const desiredThrustAccel =
-    input.gravity +
-    springAccel * heightError -
-    dampingAccelPerSpeed * input.velocityZ;
-  return clamp(desiredThrustAccel, 0, maxThrustAccel);
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('Terrain-follow thrust requires initialized sim-wasm');
+  }
+  return sim.terrainFollowVerticalThrustAccel(
+    input.positionZ,
+    input.velocityZ,
+    input.targetZ,
+    input.mass,
+    input.gravity,
+    input.springAccelPerWorldUnit,
+    input.dampingRatio,
+    input.maxThrustForce,
+  );
 }

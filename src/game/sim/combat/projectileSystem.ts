@@ -349,6 +349,7 @@ export function resetProjectileBuffers(): void {
   _packedProjectileCount = 0;
   _packedProjectileSlots.clear();
   _packedProjectileEntities.length = 0;
+  _travelingProjectileBatchEntities.length = 0;
 }
 
 // Check if a specific weapon has an active beam (by weapon index)
@@ -766,6 +767,59 @@ export function fireTurrets(
 
 // Reusable array for homing velocity updates (avoid per-frame allocation)
 const _homingVelocityUpdates: import('./types').ProjectileVelocityUpdateEvent[] = [];
+const _travelingProjectileBatchEntities: Entity[] = [];
+let _travelingProjectileBatchCapacity = 0;
+let _travelingProjectilePosX = new Float64Array(0);
+let _travelingProjectilePosY = new Float64Array(0);
+let _travelingProjectilePosZ = new Float64Array(0);
+let _travelingProjectileVelX = new Float64Array(0);
+let _travelingProjectileVelY = new Float64Array(0);
+let _travelingProjectileVelZ = new Float64Array(0);
+let _travelingProjectileAccelX = new Float64Array(0);
+let _travelingProjectileAccelY = new Float64Array(0);
+let _travelingProjectileAccelZ = new Float64Array(0);
+let _travelingProjectileHomingReporting = new Uint8Array(0);
+
+function ensureTravelingProjectileBatchCapacity(required: number): void {
+  if (required <= _travelingProjectileBatchCapacity) return;
+  let next = Math.max(16, _travelingProjectileBatchCapacity);
+  while (next < required) next *= 2;
+  _travelingProjectileBatchCapacity = next;
+
+  const posX = new Float64Array(next);
+  posX.set(_travelingProjectilePosX);
+  _travelingProjectilePosX = posX;
+  const posY = new Float64Array(next);
+  posY.set(_travelingProjectilePosY);
+  _travelingProjectilePosY = posY;
+  const posZ = new Float64Array(next);
+  posZ.set(_travelingProjectilePosZ);
+  _travelingProjectilePosZ = posZ;
+
+  const velX = new Float64Array(next);
+  velX.set(_travelingProjectileVelX);
+  _travelingProjectileVelX = velX;
+  const velY = new Float64Array(next);
+  velY.set(_travelingProjectileVelY);
+  _travelingProjectileVelY = velY;
+  const velZ = new Float64Array(next);
+  velZ.set(_travelingProjectileVelZ);
+  _travelingProjectileVelZ = velZ;
+
+  const accelX = new Float64Array(next);
+  accelX.set(_travelingProjectileAccelX);
+  _travelingProjectileAccelX = accelX;
+  const accelY = new Float64Array(next);
+  accelY.set(_travelingProjectileAccelY);
+  _travelingProjectileAccelY = accelY;
+  const accelZ = new Float64Array(next);
+  accelZ.set(_travelingProjectileAccelZ);
+  _travelingProjectileAccelZ = accelZ;
+
+  const homingReporting = new Uint8Array(next);
+  homingReporting.set(_travelingProjectileHomingReporting);
+  _travelingProjectileHomingReporting = homingReporting;
+}
 
 // 3D projectile integration: exact constant-acceleration advance on
 // (x, y, z). This must stay paired with the ballistic aim solver,
@@ -861,6 +915,8 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
 }
 
 function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: number): void {
+  let batchCount = 0;
+
   for (const entity of world.getTravelingProjectiles()) {
     if (!entity.projectile) continue;
     if (isPackedProjectile(entity.id)) continue;
@@ -983,10 +1039,9 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
       }
     }
 
-    // Single combined-acceleration integration step. Position uses the
-    // full v·dt + ½·a·dt² formula so the gravity and thrust accelerations
-    // contribute through the same `pos + v*t + 0.5*a*t²` shape the
-    // ballistic aim solver targets.
+    // Single combined-acceleration integration step. Rust owns the
+    // `pos + v*t + 0.5*a*t²`, `vel + a*t` kernel; TypeScript only packs
+    // per-projectile acceleration policy and scatters the returned state.
     const halfDtSq = 0.5 * dtSec * dtSec;
     if (isDGunWave) {
       const groundOffset = dgunProjectile !== null
@@ -1007,58 +1062,110 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
         maxThrustForce: DGUN_TERRAIN_FOLLOW_MAX_THRUST_FORCE,
       });
     }
-    entity.transform.x = position.x + proj.velocityX * dtSec + aNetX * halfDtSq;
-    entity.transform.y = position.y + proj.velocityY * dtSec + aNetY * halfDtSq;
-    entity.transform.z = position.z + proj.velocityZ * dtSec + aNetZ * halfDtSq;
-    proj.velocityX += aNetX * dtSec;
-    proj.velocityY += aNetY * dtSec;
-    proj.velocityZ += aNetZ * dtSec;
+
+    const index = batchCount++;
+    ensureTravelingProjectileBatchCapacity(batchCount);
+    _travelingProjectileBatchEntities[index] = entity;
+    _travelingProjectilePosX[index] = position.x;
+    _travelingProjectilePosY[index] = position.y;
+    _travelingProjectilePosZ[index] = position.z;
+    _travelingProjectileVelX[index] = proj.velocityX;
+    _travelingProjectileVelY[index] = proj.velocityY;
+    _travelingProjectileVelZ[index] = proj.velocityZ;
+    _travelingProjectileAccelX[index] = aNetX;
+    _travelingProjectileAccelY[index] = aNetY;
+    _travelingProjectileAccelZ[index] = aNetZ;
+    _travelingProjectileHomingReporting[index] = homingTargetForReporting !== null ? 1 : 0;
+  }
+
+  if (batchCount === 0) return;
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('Projectile integration requires initialized sim-wasm');
+  }
+  const integrated = sim.projectileIntegrateStepBatch(
+    batchCount,
+    _travelingProjectilePosX.subarray(0, batchCount),
+    _travelingProjectilePosY.subarray(0, batchCount),
+    _travelingProjectilePosZ.subarray(0, batchCount),
+    _travelingProjectileVelX.subarray(0, batchCount),
+    _travelingProjectileVelY.subarray(0, batchCount),
+    _travelingProjectileVelZ.subarray(0, batchCount),
+    _travelingProjectileAccelX.subarray(0, batchCount),
+    _travelingProjectileAccelY.subarray(0, batchCount),
+    _travelingProjectileAccelZ.subarray(0, batchCount),
+    dtSec,
+  );
+  if (integrated !== batchCount) {
+    throw new Error(`Projectile integration batch failed: ${integrated}/${batchCount}`);
+  }
+
+  for (let i = 0; i < batchCount; i++) {
+    const entity = _travelingProjectileBatchEntities[i];
+    const proj = entity.projectile;
+    if (proj === null) {
+      _travelingProjectileBatchEntities[i] = undefined as unknown as Entity;
+      continue;
+    }
+
+    const x = _travelingProjectilePosX[i];
+    const y = _travelingProjectilePosY[i];
+    const z = _travelingProjectilePosZ[i];
+    const vx = _travelingProjectileVelX[i];
+    const vy = _travelingProjectileVelY[i];
+    const vz = _travelingProjectileVelZ[i];
+
+    entity.transform.x = x;
+    entity.transform.y = y;
+    entity.transform.z = z;
+    proj.velocityX = vx;
+    proj.velocityY = vy;
+    proj.velocityZ = vz;
 
     const wasSourceCleared = !!proj.hasLeftSource;
-    const updatedPosition = getEntityPosition3d(entity, _projectilePositionScratch);
     if (updateProjectileSourceClearance(
       world.getEntity(proj.sourceEntityId),
       proj,
-      updatedPosition.x, updatedPosition.y, updatedPosition.z,
+      x, y, z,
       proj.config.shotProfile.runtime.radius.collision,
     ) && !wasSourceCleared) {
-      proj.collisionStartX = updatedPosition.x;
-      proj.collisionStartY = updatedPosition.y;
-      proj.collisionStartZ = updatedPosition.z;
+      proj.collisionStartX = x;
+      proj.collisionStartY = y;
+      proj.collisionStartZ = z;
     }
 
     // Visual rotation + sparse velocity-update events: only homing
     // projectiles need either. Non-homing shots get their rotation
     // baked into the spawn event; visible yaw drift over a ballistic
     // arc is small enough that we don't pay the per-tick atan2 there.
-    if (homingTargetForReporting) {
-      entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
+    if (_travelingProjectileHomingReporting[i] !== 0) {
+      entity.transform.rotation = Math.atan2(vy, vx);
 
-      const lastVx = proj.lastSentVelX ?? proj.velocityX;
-      const lastVy = proj.lastSentVelY ?? proj.velocityY;
-      const lastVz = proj.lastSentVelZ ?? proj.velocityZ;
+      const lastVx = proj.lastSentVelX ?? vx;
+      const lastVy = proj.lastSentVelY ?? vy;
+      const lastVz = proj.lastSentVelZ ?? vz;
       if (snapshotVectorVelocityDeltaExceeded(
-        proj.velocityX, proj.velocityY, proj.velocityZ,
+        vx, vy, vz,
         lastVx, lastVy, lastVz,
         SNAPSHOT_CONFIG.movementVelocityMagnitudeThreshold,
         snapshotRotationThresholdRadians(SNAPSHOT_CONFIG.movementVelocityDirectionThreshold),
       )) {
-        proj.lastSentVelX = proj.velocityX;
-        proj.lastSentVelY = proj.velocityY;
-        proj.lastSentVelZ = proj.velocityZ;
+        proj.lastSentVelX = vx;
+        proj.lastSentVelY = vy;
+        proj.lastSentVelZ = vz;
         _homingVelocityUpdates.push({
           id: entity.id,
-          pos: { x: updatedPosition.x, y: updatedPosition.y, z: updatedPosition.z },
-          velocity: { x: proj.velocityX, y: proj.velocityY, z: proj.velocityZ },
+          pos: { x, y, z },
+          velocity: { x: vx, y: vy, z: vz },
         });
       }
     }
+    _travelingProjectileBatchEntities[i] = undefined as unknown as Entity;
   }
 }
 
-// (The 2D WASM-batched projectile integrator lived here and has been
-//  removed. Only the JS path above remains — it's the 3D authority
-//  for position integration, gravity, and homing steering.)
+// Packed ballistic shots and non-packed guided/D-gun shots now both
+// cross Rust/WASM for authoritative position/velocity integration.
 
 // Update projectile positions - returns IDs of projectiles to remove (e.g., orphaned beams)
 // Also returns despawn events for removed projectiles and velocity updates for homing projectiles
@@ -1073,9 +1180,9 @@ export function updateProjectiles(
   _homingVelocityUpdates.length = 0;
   const projectilesToRemove = _orphanedIds;
   const despawnEvents = _despawnEvents;
-  // Position integration + homing for traveling projectiles. The
-  // WASM-batched path was 2D-only and is disabled on this branch —
-  // M12 deletes it entirely. The JS path below is the 3D authority.
+  // Position integration for traveling projectiles is Rust-owned:
+  // packed ballistic shots step in the projectile pool, while guided
+  // and D-gun shots pack acceleration rows for a second batch.
   _updatePackedProjectilesJS(world, dtMs, dtSec);
   _updateTravelingProjectilesJS(world, dtMs, dtSec);
 

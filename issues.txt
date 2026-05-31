@@ -219,6 +219,12 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     turret_rotation_step_batch helper. TypeScript still resolves target
     poses, ballistic lock drops, and combat activity-mask refreshes under
     this item.
+    2026-05-31 progress: non-packed guided/D-gun projectile
+    constant-acceleration integration moved from projectileSystem.ts and
+    ClientProjectilePrediction.ts into the Rust/WASM
+    projectile_integrate_step_batch helper. D-gun terrain-follow vertical
+    thrust also moved into Rust/WASM, and the old TypeScript homing-thrust
+    fallback was deleted so guided thrust has one implementation.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)
@@ -241,5 +247,4 @@ D1. [WATCH] @dimforge/rapier3d-compat (a 3D physics engine — banned category) 
 ================================================================================
 OTHER
 ================================================================================
-
 
