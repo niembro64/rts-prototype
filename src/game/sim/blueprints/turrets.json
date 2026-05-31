@@ -343,7 +343,7 @@
     "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
-      "angleType": "ballisticArcLowOnlyUnder",
+      "angleType": "ballisticArcLow",
       "lockOnType": "lockOnToBody"
     },
     "kind": "attack",
