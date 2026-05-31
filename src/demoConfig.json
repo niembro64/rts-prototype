@@ -1,5 +1,5 @@
 {
-  "playerCount": 5,
+  "playerCount": 3,
   "arcSectorFraction": 0.7,
   "spawnMarginPx": 100,
   "baseRings": {
@@ -31,7 +31,7 @@
       "radiusFraction": 0.8
     }
   },
-  "initialUnitWaypointType": "fight",
+  "initialUnitWaypointType": "patrol",
   "factoryWaypointType": "patrol",
   "factoryWaypointDistances": [
     0.4,

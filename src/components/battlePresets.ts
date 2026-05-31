@@ -100,7 +100,7 @@ function buildPresets(): readonly BattlePreset[] {
       shieldsObstructSight: false,
       fogOfWarEnabled: true,
       converterTax: 0.1,
-      centerMagnitude: 400,
+      centerMagnitude: 0,
       dividersMagnitude: 400,
       terrainMapShape: 'circle',
       terrainDTerrain: 1,
