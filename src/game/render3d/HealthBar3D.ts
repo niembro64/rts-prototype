@@ -16,7 +16,6 @@ import {
   getUnitHudBarsY,
   getTurretHudBarsY,
   getLocomotionHudBarsY,
-  getShotHudBarsY,
 } from './HudAnchor';
 import {
   getResourceFillRatio,
@@ -431,29 +430,6 @@ export class HealthBar3D {
     if (showBuildBars && piece) {
       this.placePieceBuildBars(piece, worldX, worldY, worldZ, worldWidth, stack, alpha);
     }
-  }
-
-  /** Fused-iteration entry: one projectile-kind shot's tiny HP bar
-   *  (no build bars). Anchored at the shot transform. */
-  perShot(shot: Entity, forceVisible: boolean, showHealth: boolean): void {
-    const proj = shot.projectile;
-    if (!proj) return;
-    const key = packPieceKey(shot.id, PIECE_TAG_BODY);
-    if (this._seenEntityFrame.get(key) === this._frameToken) return;
-    const hp = proj.hp;
-    const maxHp = proj.maxHp;
-    const showHp = maxHp > 0 && (showHealth || forceVisible) && hp > 0
-      && (forceVisible || hp < maxHp);
-    if (!showHp) return;
-    const worldX = shot.transform.x;
-    const worldY = getShotHudBarsY(shot);
-    const worldZ = shot.transform.y;
-    const alpha = this._fade ? this._fade.alphaAt(worldX, worldY, worldZ) : 1;
-    if (alpha <= FADE_CULL_ALPHA) return;
-    this._seenEntityFrame.set(key, this._frameToken);
-    const worldWidth = proj.config.shotProfile.runtime.radius.visual * 2;
-    const ratio = Math.max(0, Math.min(1, hp / maxHp));
-    this.placeBar(ratio, 'health', worldX, worldY, worldZ, worldWidth, 0, alpha);
   }
 
   /** Fused-iteration entry: hide trailing pool entries past the live

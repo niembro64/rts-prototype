@@ -424,7 +424,6 @@ export class RtsScene3DRenderPhase {
     const lookup = (pid: PlayerId): string | null =>
       this.lookupPlayerName(pid) ?? getDefaultPlayerName(pid);
 
-    const shotHealthToggle = getEntityHudToggle('shot', 'healthBar');
     const shotNameToggle = getEntityHudToggle('shot', 'name');
 
     if (healthBar3D) healthBar3D.beginFrame(this.hudFade, hudFrustum);
@@ -548,27 +547,20 @@ export class RtsScene3DRenderPhase {
       }
     }
 
-    // ── Shot bars + names (off by default → zero cost) ──
-    if (shotHealthToggle || shotNameToggle) {
+    // ── Shot names. Shot HP bars stay disabled until projectile HP
+    // rides a rolling authoritative snapshot instead of spawn state.
+    if (nameLabel3D && shotNameToggle) {
       for (const shot of this.clientViewState.getProjectiles()) {
         const proj = shot.projectile;
         if (!proj || proj.projectileType !== 'projectile' || proj.maxHp <= 0) continue;
-        const selected = shot.selectable?.selected === true;
-        if (healthBar3D && shotHealthToggle) {
-          const healthNotFull = proj.hp < proj.maxHp;
-          const showHealth = this.barVisible(shotHealthToggle, selected, mode, healthNotFull);
-          if (showHealth) healthBar3D.perShot(shot, false, showHealth);
-        }
-        if (nameLabel3D && shotNameToggle) {
-          const name = resolveShotName(shot, shotNameToggle, mode);
-          if (name !== null) {
-            nameLabel3D.perPieceName(
-              shot,
-              PIECE_TAG_BODY,
-              { x: shot.transform.x, y: getShotHudNameY(shot), z: shot.transform.y },
-              name,
-            );
-          }
+        const name = resolveShotName(shot, shotNameToggle, mode);
+        if (name !== null) {
+          nameLabel3D.perPieceName(
+            shot,
+            PIECE_TAG_BODY,
+            { x: shot.transform.x, y: getShotHudNameY(shot), z: shot.transform.y },
+            name,
+          );
         }
       }
     }

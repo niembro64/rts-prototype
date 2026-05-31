@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CLIENT_CONFIG } from '../clientBarConfig';
+import { CLIENT_CONFIG, isEntityHudElementSupported } from '../clientBarConfig';
 import { GOOD_TPS } from '../config';
 import { RESOURCE_BALL_DENSITY_OPTIONS } from '../resourceConfig';
 import { snapshotRateHz } from '../serverBarConfig';
@@ -149,9 +149,12 @@ defineProps<{
               <BarButton
                 v-for="type in model.entityHudTypes"
                 :key="type"
-                :active="model.entityHud[type][element]"
-                :title="`Show ${ENTITY_HUD_ELEMENT_DESCRIPTIONS[element]} for ${ENTITY_HUD_TYPE_LABELS[type]}`"
-                @click="model.toggleEntityHud(type, element)"
+                :active="isEntityHudElementSupported(type, element) && model.entityHud[type][element]"
+                :disabled="!isEntityHudElementSupported(type, element)"
+                :title="isEntityHudElementSupported(type, element)
+                  ? `Show ${ENTITY_HUD_ELEMENT_DESCRIPTIONS[element]} for ${ENTITY_HUD_TYPE_LABELS[type]}`
+                  : `${ENTITY_HUD_ELEMENT_LABELS[element]} is not available for ${ENTITY_HUD_TYPE_LABELS[type]}`"
+                @click="isEntityHudElementSupported(type, element) && model.toggleEntityHud(type, element)"
               >{{ ENTITY_HUD_TYPE_LABELS[type] }}</BarButton>
             </BarButtonGroup>
           </div>

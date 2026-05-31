@@ -104,6 +104,14 @@ export const ENTITY_HUD_TYPES: EntityHudType[] =
 export const ENTITY_HUD_ELEMENTS: EntityHudElement[] =
   clientBarConfig.entityHudElements as EntityHudElement[];
 
+export function isEntityHudElementSupported(
+  type: EntityHudType,
+  element: EntityHudElement,
+): boolean {
+  if (type === 'shot') return element === 'name';
+  return true;
+}
+
 function resolveClientDefaults(mode: ClientMode): ClientDefaults {
   return {
     render: pickDefault(clientBarConfig.render, mode) as RenderMode,
@@ -152,6 +160,9 @@ function cloneEntityHud(source: EntityHudToggles): EntityHudToggles {
   const out = {} as EntityHudToggles;
   for (const type of ENTITY_HUD_TYPES) {
     out[type] = { ...source[type] };
+    for (const element of ENTITY_HUD_ELEMENTS) {
+      if (!isEntityHudElementSupported(type, element)) out[type][element] = false;
+    }
   }
   return out;
 }
@@ -750,6 +761,10 @@ function loadFromStorage(mode: ClientMode): void {
         if (row === null || typeof row !== 'object') continue;
         const rowRecord = row as Record<string, unknown>;
         for (const element of ENTITY_HUD_ELEMENTS) {
+          if (!isEntityHudElementSupported(type, element)) {
+            currentEntityHud[type][element] = false;
+            continue;
+          }
           let value = rowRecord[element];
           if (element === 'buildBars' && typeof value !== 'boolean') {
             // Saved HUD blobs from before the RES->BUILD rename used
@@ -1082,6 +1097,7 @@ export function getEntityHudToggle(
   type: EntityHudType,
   element: EntityHudElement,
 ): boolean {
+  if (!isEntityHudElementSupported(type, element)) return false;
   return currentEntityHud[type][element];
 }
 
@@ -1090,6 +1106,7 @@ export function setEntityHudToggle(
   element: EntityHudElement,
   on: boolean,
 ): void {
+  if (!isEntityHudElementSupported(type, element)) return;
   currentEntityHud[type][element] = on;
   persistJson(activeStorageKeys().entityHud, currentEntityHud);
 }

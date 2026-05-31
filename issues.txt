@@ -18,45 +18,14 @@ Please always commit and push before and after any code changes we make.
 
 
 ================================================================================
-ENTITY STATE REPORTING (HP / NAMES)
+ENTITY STATE REPORTING (NAMES)
 ================================================================================
-Found by tracing the current-health / entity-name pipeline end to end (Rust serialize -> wire ->
+Found by tracing the entity-name pipeline end to end (Rust serialize -> wire ->
 ClientSnapshotApplier/ClientBuildStateApplier -> ClientViewState -> EntityName +
 HealthBar3D + NameLabel3D, driven by RtsScene3DRenderPhase.drawEntityHud and the
 clientBarConfig entityHud toggles). Symptom: "names super random and randomly
 changing" with NAME on for all types and ENTITY HUD SEL: ALL. File:line refs
 were correct when written; re-verify before editing.
-
-E3. [MEDIUM] "Current health" is passed three different ways across piece kinds;
-    sub-piece max can desync and dead pieces can momentarily read full.
-    LOCATION:
-      - Unit body: hp.curr + hp.max both shipped, gated by ENTITY_CHANGED_HP —
-        src/game/network/ClientSnapshotApplier.ts:49-52.
-      - Building body: hp.curr + hp.max both shipped —
-        src/game/network/ClientSnapshotApplier.ts:130-133.
-      - Locomotion: only locomotionHpCurr shipped (no max); max is blueprint-
-        derived and never corrected; on a full snap with hp<=0 it is force-set to
-        maxHp (reads FULL) — src/game/network/ClientSnapshotApplier.ts:62-72.
-      - Turret: only hpCurr shipped (src/game/network/snapshotEntityWirePack.ts:
-        900-903, 1189-1190); max blueprint-derived; fallback sets hp=maxHp when
-        hpCurr missing and hp<=0 — src/game/network/helpers/NetworkEntityFactory.ts:
-        62, 71-72, 104-106.
-      - Projectile/shot: proj.hp/maxHp drive perShot HP bars
-        (src/game/render3d/HealthBar3D.ts:438-456) but are NOT serialized anywhere
-        in the network layer — the bar reads spawn-time blueprint hp and never
-        reflects server damage.
-    RULE: current health should be reported the same authoritative way for every
-    damageable piece.
-    PROBLEM: body pieces get authoritative curr+max each change; turret and
-    locomotion get curr-only with a client-derived max that can drift from the
-    server and is never corrected; projectiles get neither. The maxHp>0 sentinel
-    in HealthBar3D means any piece whose max ends up 0 silently shows no bar, and
-    the "hp<=0 -> hp=maxHp" fallbacks can show a dead/at-spawn sub-piece at full
-    health for a frame.
-    FIX: ship hp.max alongside hp.curr for turret + locomotion (mirror the body
-    path), OR document that sub-piece max is blueprint-immutable and delete the
-    desync/fallback paths. If shot HP bars are wanted, serialize projectile hp;
-    otherwise remove the perShot HP toggle so it can't display stale values.
 
 E4. [MEDIUM] Entity NAMEs are resolved through six inconsistent paths — human
     names, raw blueprint ids, and player names mixed together — which reads as

@@ -67,8 +67,6 @@ export function snapClientNonVisualState(
     } else if (su.locomotionHpCurr !== null && su.locomotionHpCurr !== undefined) {
       // Real per-locomotion HP shipped on the wire (rides ENTITY_CHANGED_HP).
       entity.unit.locomotion.hp = su.locomotionHpCurr;
-    } else if (isFull && entity.unit.locomotion.hp <= 0) {
-      entity.unit.locomotion.hp = entity.unit.locomotion.maxHp;
     }
     if (isFull || cf! & ENTITY_CHANGED_COMBAT_MODE) {
       applyNetworkUnitCombatMode(entity, su);

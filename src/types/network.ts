@@ -727,10 +727,9 @@ export type NetworkServerSnapshotTurret = {
    *  projectile reflection / obstruction, so clients receive it as a
    *  correction target instead of deriving an independent local timer. */
   currentShieldRange: number | null;
-  /** This mounted turret's current HP. Always present for a live
-   *  turret (no presence flag). Null only when not shipped (e.g. a
-   *  decoded delta that didn't carry turrets) or dead — the client
-   *  falls back to the blueprint maxHp in that case. */
+  /** This mounted turret's current HP. Turret max HP is blueprint
+   *  immutable and stays client-derived; the wire corrects only the
+   *  current value. Null means this payload did not carry turret HP. */
   hpCurr: number | null;
 };
 
@@ -815,8 +814,9 @@ export type NetworkServerSnapshotEntity = {
      *  Absence means "use the blueprint/default live locomotion state". */
     locomotionActive: boolean | null;
     /** The unit locomotion's current HP. Rides ENTITY_CHANGED_HP the
-     *  same way body `hp.curr` does. Null when not shipped (non-HP
-     *  delta) — the client falls back to the blueprint maxHp. */
+     *  same way body `hp.curr` does. Locomotion max HP is blueprint
+     *  immutable and stays client-derived; the wire corrects only the
+     *  current value. */
     locomotionHpCurr: number | null;
     fireEnabled: boolean | null;
     isCommander: boolean | null;
