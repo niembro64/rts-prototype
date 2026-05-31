@@ -132,6 +132,10 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     economy_credit_stockpile and economy_debit_stockpile. Resource-movement
     event recording remains TypeScript-side because it feeds renderer pylon
     visuals; converter/factory/construction orchestration remains under C1.
+    2026-05-31 progress: converter per-player rate aggregation now reuses the
+    Rust/WASM economy_accumulate_player_rates batch helper instead of a
+    TypeScript Map, and converter resource-movement source attribution now
+    honors the same ON/OFF gate used by converter throughput.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)

@@ -16,6 +16,7 @@ import {
   type ResourceMovementDirection,
   type ResourceMovementReason,
 } from './resourceMovement';
+import { getSimWasm } from '../sim-wasm/init';
 import type { WorldState } from './WorldState';
 
 // Economy constants (using values from config.ts + blueprints)
@@ -46,6 +47,9 @@ export function createEconomyState(): EconomyState {
 // Economy manager - handles all player economies
 export class EconomyManager {
   private economies: Map<PlayerId, EconomyState> = new Map();
+  private converterPlayerIds = new Uint32Array(16);
+  private converterRates = new Float64Array(16);
+  private converterRatesByPlayer = new Float64Array(8);
 
   // Initialize economy for a player
   initPlayer(playerId: PlayerId): void {
@@ -336,21 +340,44 @@ export class EconomyManager {
     const ratePerSec = getBuildingConfig('buildingResourceConverter').conversionRate ?? 0;
     if (ratePerSec <= 0) return;
 
-    const totalRatePerPlayer = new Map<PlayerId, number>();
+    let converterCount = 0;
+    let maxPlayerId = 0;
     for (const entity of world.getConverterBuildings()) {
-      if (!entity.ownership || !entity.building) continue;
-      if (entity.building.hp <= 0) continue;
+      const ownership = entity.ownership;
+      const building = entity.building;
+      if (ownership === null || building === null) continue;
+      if (building.hp <= 0) continue;
       if (!isEntityActive(entity)) continue;
       // ON/OFF gate. A closed (OFF) converter pays no energy and
       // produces no metal, mirroring solar/wind/extractor behavior
       // (see design_philosophy.html "Producer Buildings Are ON/OFF").
-      const activeState = entity.building.activeState;
+      const activeState = building.activeState;
       if (activeState !== null && activeState.open === false) continue;
-      const pid = entity.ownership.playerId;
-      totalRatePerPlayer.set(pid, (totalRatePerPlayer.get(pid) ?? 0) + ratePerSec);
+      const pid = ownership.playerId;
+      this.ensureConverterCapacity(converterCount + 1);
+      this.converterPlayerIds[converterCount] = pid;
+      this.converterRates[converterCount] = ratePerSec;
+      converterCount++;
+      if (pid > maxPlayerId) maxPlayerId = pid;
     }
 
-    for (const [pid, totalRate] of totalRatePerPlayer) {
+    if (converterCount <= 0) return;
+    this.ensureConverterPlayerRateCapacity(maxPlayerId);
+    const sim = getSimWasm();
+    if (sim === undefined) {
+      throw new Error('EconomyManager.processConverters: sim-wasm is not initialized');
+    }
+    const maxExclusive = sim.economyAccumulatePlayerRates(
+      this.converterPlayerIds,
+      this.converterRates,
+      converterCount,
+      this.converterRatesByPlayer,
+    );
+
+    for (let playerId = 1; playerId < maxExclusive; playerId++) {
+      const totalRate = this.converterRatesByPlayer[playerId];
+      if (totalRate <= 0) continue;
+      const pid = playerId as PlayerId;
       const economy = this.economies.get(pid);
       if (!economy) continue;
 
@@ -467,7 +494,32 @@ export class EconomyManager {
     const ownership = entity.ownership;
     const building = entity.building;
     if (ownership === null || building === null) return false;
-    return ownership.playerId === playerId && building.hp > 0 && isEntityActive(entity);
+    const activeState = building.activeState;
+    return ownership.playerId === playerId
+      && building.hp > 0
+      && isEntityActive(entity)
+      && (activeState === null || activeState.open);
+  }
+
+  private ensureConverterCapacity(count: number): void {
+    if (count <= this.converterPlayerIds.length) return;
+    let nextCapacity = this.converterPlayerIds.length;
+    while (nextCapacity < count) nextCapacity *= 2;
+
+    const nextPlayerIds = new Uint32Array(nextCapacity);
+    nextPlayerIds.set(this.converterPlayerIds);
+    this.converterPlayerIds = nextPlayerIds;
+
+    const nextRates = new Float64Array(nextCapacity);
+    nextRates.set(this.converterRates);
+    this.converterRates = nextRates;
+  }
+
+  private ensureConverterPlayerRateCapacity(playerId: number): void {
+    if (playerId < this.converterRatesByPlayer.length) return;
+    let nextCapacity = this.converterRatesByPlayer.length;
+    while (nextCapacity <= playerId) nextCapacity *= 2;
+    this.converterRatesByPlayer = new Float64Array(nextCapacity);
   }
 
   private creditResource(
