@@ -794,9 +794,9 @@ export function setSmokeTrails(enabled: boolean): void {
   persist(activeStorageKeys().smokeTrails, String(enabled));
 }
 
-/** Smoke-puff edge style read by SmokeTrail3D. On (default): soft
- *  fog-style radial fade so puffs read as soft blobs. Off: legacy
- *  hard-edged translucent spheres. No effect when smoke trails are off. */
+/** Smoke-puff edge style read by SmokeTrail3D. Off (default): legacy
+ *  hard-edged translucent spheres. On: soft fog-style radial fade so
+ *  puffs read as soft blobs. No effect when smoke trails are off. */
 export function getSmokeSoftEdges(): boolean {
   return currentSmokeSoftEdges;
 }

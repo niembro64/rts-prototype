@@ -86,10 +86,10 @@ export type ClientBarConfig = {
    *  missiles) rendered by SmokeTrail3D. Default on — toggle off to
    *  cut the visual clutter and the per-puff overdraw on heavy salvos. */
   readonly smokeTrails: BooleanSetting;
-  /** Smoke-puff edge style. On (default): soft fog-style radial fade so
-   *  puffs read as soft blobs. Off: legacy hard-edged translucent
-   *  spheres. Purely a SmokeTrail3D shader swap; no effect when
-   *  `smokeTrails` is off. */
+  /** Smoke-puff edge style. Off (default): legacy hard-edged translucent
+   *  spheres. On: soft fog-style radial fade so puffs read as soft blobs.
+   *  Purely a SmokeTrail3D shader swap; no effect when `smokeTrails` is
+   *  off. */
   readonly smokeSoftEdges: BooleanSetting;
   readonly beamSnapToTurret: BooleanSetting;
   readonly triangleDebug: BooleanSetting;

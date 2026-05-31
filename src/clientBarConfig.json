@@ -21,7 +21,7 @@
   "burnMarks": { "demoDefault": false, "realDefault": false },
   "locomotionMarks": { "demoDefault": true, "realDefault": true },
   "smokeTrails": { "demoDefault": true, "realDefault": true },
-  "smokeSoftEdges": { "demoDefault": true, "realDefault": true },
+  "smokeSoftEdges": { "demoDefault": false, "realDefault": false },
   "beamSnapToTurret": { "demoDefault": true, "realDefault": true },
   "triangleDebug": { "demoDefault": false, "realDefault": false },
   "buildGridDebug": { "demoDefault": false, "realDefault": false },
