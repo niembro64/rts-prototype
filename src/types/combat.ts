@@ -12,14 +12,13 @@ export type SimEventAudioKey = TurretAudioId | ShotAudioId | UnitAudioId | '';
 export type SimEventSourceType = 'turret' | 'unit' | 'building' | 'system';
 
 export type ImpactContext = {
-  collisionRadius: number;
-  /** Splash radius for the rendered explosion / death effect. With
-   *  the boolean AoE model there's a single radius per shot;
-   *  collisionRadius is the body-vs-body radius for direct hits and
-   *  this is the splash sphere's radius if the shot has one. */
-  explosionRadius: number;
+  radiusCollision: number;
+  /** Radius for the rendered detonation/death effect. The projectile
+   *  body's standing collision radius stays in `radiusCollision`; this
+   *  field is the separate blast radius from the shot's death explosion. */
+  deathExplosionRadius: number;
   projectile: { pos: Vec2; vel: Vec2 };
-  entity: { vel: Vec2; collisionRadius: number };
+  entity: { vel: Vec2; radiusCollision: number };
   penetrationDir: Vec2;
 };
 

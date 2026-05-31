@@ -222,15 +222,15 @@ export function packAudioEventsForWire(
     if (event.impactContext !== null) {
       const impactRow = rentRow(_packImpactRowPool);
       impactRow.push(
-        quantizeProjectilePosition(event.impactContext.collisionRadius),
-        quantizeProjectilePosition(event.impactContext.explosionRadius),
+        quantizeProjectilePosition(event.impactContext.radiusCollision),
+        quantizeProjectilePosition(event.impactContext.deathExplosionRadius),
         quantizeProjectilePosition(event.impactContext.projectile.pos.x),
         quantizeProjectilePosition(event.impactContext.projectile.pos.y),
         quantizeVelocity(event.impactContext.projectile.vel.x),
         quantizeVelocity(event.impactContext.projectile.vel.y),
         quantizeVelocity(event.impactContext.entity.vel.x),
         quantizeVelocity(event.impactContext.entity.vel.y),
-        quantizeProjectilePosition(event.impactContext.entity.collisionRadius),
+        quantizeProjectilePosition(event.impactContext.entity.radiusCollision),
         quantizeNormal(event.impactContext.penetrationDir.x),
         quantizeNormal(event.impactContext.penetrationDir.y),
       );
@@ -473,8 +473,8 @@ function unpackImpactContextRow(
 ): NonNullable<NetworkServerSnapshotSimEvent['impactContext']> {
   const source = row ?? [];
   return {
-    collisionRadius: dequantizeProjectilePosition(source[0] ?? 0),
-    explosionRadius: dequantizeProjectilePosition(source[1] ?? 0),
+    radiusCollision: dequantizeProjectilePosition(source[0] ?? 0),
+    deathExplosionRadius: dequantizeProjectilePosition(source[1] ?? 0),
     projectile: {
       pos: {
         x: dequantizeProjectilePosition(source[2] ?? 0),
@@ -490,7 +490,7 @@ function unpackImpactContextRow(
         x: dequantizeVelocity(source[6] ?? 0),
         y: dequantizeVelocity(source[7] ?? 0),
       },
-      collisionRadius: dequantizeProjectilePosition(source[8] ?? 0),
+      radiusCollision: dequantizeProjectilePosition(source[8] ?? 0),
     },
     penetrationDir: {
       x: dequantizeNormal(source[9] ?? 0),

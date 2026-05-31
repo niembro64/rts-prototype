@@ -206,8 +206,9 @@ export class ProjectileRenderer3D {
         continue;
       }
 
-      const visualProfile = e.projectile?.config.shotProfile.visual;
-      const radius = visualProfile?.projectileBodyRadius ?? 4;
+      const shotProfile = e.projectile?.config.shotProfile;
+      const visualProfile = shotProfile?.visual;
+      const radius = shotProfile?.runtime.radius.visual ?? 4;
       const visualRadius = radius;
       const r = Math.max(visualRadius, PROJECTILE_MIN_RADIUS);
 
@@ -608,13 +609,13 @@ export class ProjectileRenderer3D {
     this.setProjRadiusMesh(
       radii, 'collision', wantCol,
       projX, projY, projZ,
-      profile.visual.debugCollisionRadius,
+      profile.runtime.radius.collision,
       this.projMatCollision,
     );
     this.setProjRadiusMesh(
       radii, 'explosion', wantExp && !proj.hasExploded,
       projX, projY, projZ,
-      profile.visual.debugExplosionRadius,
+      profile.runtime.deathExplosionRadius,
       this.projMatExplosion,
     );
   }

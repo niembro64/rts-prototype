@@ -37,7 +37,6 @@ export const ROCKET_FIN_SIZE_MULT = shotProfileConfig.rocketFinSizeMult;
 const _profileCache = new WeakMap<ActiveProjectileShot, ShotProfile>();
 
 function buildProjectileRuntimeProfile(shot: ProjectileShot): ShotRuntimeProfile {
-  const collisionRadius = shot.collision.radius;
   const explosion = shot.explosion;
   const explosionRadius = explosion === undefined ? 0 : explosion.radius;
   return {
@@ -47,10 +46,8 @@ function buildProjectileRuntimeProfile(shot: ProjectileShot): ShotRuntimeProfile
     isProjectile: true,
     isLine: false,
     isRocketLike: isRocketLikeShot(shot),
-    collisionRadius,
-    impactRadius: explosionRadius || collisionRadius,
-    explosionRadius,
-    damageRadius: collisionRadius,
+    radius: shot.radius,
+    deathExplosionRadius: explosionRadius,
     maxLifespan: getShotMaxLifespan(shot),
     detonateOnExpiry: shot.detonateOnExpiry === true,
     hasExplosion: explosionRadius > 0,
@@ -59,19 +56,14 @@ function buildProjectileRuntimeProfile(shot: ProjectileShot): ShotRuntimeProfile
 }
 
 function buildProjectileVisualProfile(shot: ProjectileShot): ShotVisualProfile {
-  const collisionRadius = shot.collision.radius;
-  const explosion = shot.explosion;
   return {
-    projectileBodyRadius: collisionRadius,
     projectileTailShape: shot.type === 'rocket' ? 'cylinder' : 'cone',
     projectileTailLengthMult:
       shot.type === 'rocket' ? ROCKET_TAIL_LENGTH_MULT : PLASMA_TAIL_LENGTH_MULT,
     projectileTailRadiusMult: PROJECTILE_TAIL_RADIUS_MULT,
     projectileFinSizeMult: shot.type === 'rocket' ? ROCKET_FIN_SIZE_MULT : 0,
-    debugCollisionRadius: collisionRadius,
-    debugExplosionRadius: explosion === undefined ? 0 : explosion.radius,
     smokeTrail: getProjectileSmokeTrailSpec(shot.shotBlueprintId, shot.smokeTrail),
-    burnMarkWidth: collisionRadius * 1.5,
+    burnMarkWidth: shot.radius.collision * 1.5,
     lineRadius: 0,
     lineDamageSphereRadius: 0,
     lineEmissionOffset: 0,
@@ -89,10 +81,12 @@ function buildLineRuntimeProfile(shot: ActiveProjectileShot): ShotRuntimeProfile
     isProjectile: false,
     isLine: true,
     isRocketLike: false,
-    collisionRadius: shot.radius,
-    impactRadius: shot.radius,
-    explosionRadius: 0,
-    damageRadius: shot.damageSphere.radius,
+    radius: {
+      visual: shot.radius,
+      hitbox: shot.damageSphere.radius,
+      collision: shot.radius,
+    },
+    deathExplosionRadius: 0,
     maxLifespan: getShotMaxLifespan(shot),
     detonateOnExpiry: false,
     hasExplosion: false,
@@ -105,13 +99,10 @@ function buildLineVisualProfile(shot: ActiveProjectileShot): ShotVisualProfile {
     throw new Error(`Cannot build line shot visual profile for shot.type=${shot.type}`);
   }
   return {
-    projectileBodyRadius: 0,
     projectileTailShape: 'none',
     projectileTailLengthMult: ROCKET_TAIL_LENGTH_MULT,
     projectileTailRadiusMult: PROJECTILE_TAIL_RADIUS_MULT,
     projectileFinSizeMult: 0,
-    debugCollisionRadius: shot.radius,
-    debugExplosionRadius: 0,
     burnMarkWidth: shot.width * 2,
     lineRadius: shot.radius,
     lineDamageSphereRadius: shot.damageSphere.radius,

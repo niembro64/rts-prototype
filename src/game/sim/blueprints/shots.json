@@ -4,8 +4,10 @@
     "shotBlueprintId": "shotPlasmaLight",
     "mass": 4,
     "health": 2,
-    "collision": {
-      "radius": 2
+    "radius": {
+      "visual": 2,
+      "hitbox": 2,
+      "collision": 2
     },
     "explosion": {
       "radius": 15,
@@ -45,8 +47,10 @@
     "shotBlueprintId": "shotPlasmaMedium",
     "mass": 10,
     "health": 4,
-    "collision": {
-      "radius": 3
+    "radius": {
+      "visual": 3,
+      "hitbox": 3,
+      "collision": 3
     },
     "explosion": {
       "radius": 24,
@@ -86,8 +90,10 @@
     "shotBlueprintId": "shotRocketLight",
     "mass": 4,
     "health": 6,
-    "collision": {
-      "radius": 2
+    "radius": {
+      "visual": 2,
+      "hitbox": 2,
+      "collision": 2
     },
     "explosion": {
       "radius": 50,
@@ -128,8 +134,10 @@
     "shotBlueprintId": "shotRocketFast",
     "mass": 3,
     "health": 4,
-    "collision": {
-      "radius": 2
+    "radius": {
+      "visual": 2,
+      "hitbox": 2,
+      "collision": 2
     },
     "explosion": {
       "radius": 50,
@@ -170,8 +178,10 @@
     "shotBlueprintId": "shotPlasmaHeavy",
     "mass": 30,
     "health": 10,
-    "collision": {
-      "radius": 4
+    "radius": {
+      "visual": 4,
+      "hitbox": 4,
+      "collision": 4
     },
     "explosion": {
       "radius": 75,
@@ -211,8 +221,10 @@
     "shotBlueprintId": "shotMortarMedium",
     "mass": 30,
     "health": 8,
-    "collision": {
-      "radius": 8
+    "radius": {
+      "visual": 8,
+      "hitbox": 8,
+      "collision": 8
     },
     "explosion": {
       "radius": 75,
@@ -258,8 +270,10 @@
     "shotBlueprintId": "shotMortarHeavy",
     "mass": 30,
     "health": 12,
-    "collision": {
-      "radius": 10
+    "radius": {
+      "visual": 10,
+      "hitbox": 10,
+      "collision": 10
     },
     "explosion": {
       "radius": 150,
@@ -305,8 +319,10 @@
     "shotBlueprintId": "shotPlasmaDisruptor",
     "mass": 20,
     "health": 30,
-    "collision": {
-      "radius": 25
+    "radius": {
+      "visual": 25,
+      "hitbox": 25,
+      "collision": 25
     },
     "explosion": {
       "radius": 120,

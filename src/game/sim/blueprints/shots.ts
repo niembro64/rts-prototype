@@ -69,11 +69,7 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
     assertNumberEquals(`shot blueprint ${id}`, 'health', blueprint.health, blueprint.base.health);
     assertRadiusEquals(
       `shot blueprint ${id}`,
-      {
-        visual: blueprint.collision.radius,
-        hitbox: blueprint.collision.radius,
-        collision: blueprint.collision.radius,
-      },
+      blueprint.radius,
       blueprint.base.radius,
     );
     if (blueprint.explosion !== null) {

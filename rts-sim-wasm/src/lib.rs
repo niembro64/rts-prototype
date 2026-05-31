@@ -21386,12 +21386,12 @@ pub fn snapshot_encode_turret_pose_scratch_ensure(count: u32) {
 /// Impact-context scratch — 11 f64 per impactContext (one per audio
 /// event with has_impactContext flag set). All fields are required
 /// in the source DTO (no optionals).
-///   [0]    collisionRadius
-///   [1]    explosionRadius
+///   [0]    radiusCollision
+///   [1]    deathExplosionRadius
 ///   [2..4] projectile.pos.x, projectile.pos.y
 ///   [4..6] projectile.vel.x, projectile.vel.y
 ///   [6..8] entity.vel.x, entity.vel.y
-///   [8]    entity.collisionRadius
+///   [8]    entity.radiusCollision
 ///   [9..11] penetrationDir.x, penetrationDir.y
 const SNAPSHOT_ENCODE_IMPACT_CONTEXT_STRIDE: usize = 11;
 
@@ -24315,8 +24315,8 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
         }
         if has_impact_context {
             let ib = impact_offset * SNAPSHOT_ENCODE_IMPACT_CONTEXT_STRIDE;
-            let collision_radius = impact_scratch.buf[ib];
-            let explosion_radius = impact_scratch.buf[ib + 1];
+            let radius_collision = impact_scratch.buf[ib];
+            let death_explosion_radius = impact_scratch.buf[ib + 1];
             let proj_pos_x = impact_scratch.buf[ib + 2];
             let proj_pos_y = impact_scratch.buf[ib + 3];
             let proj_vel_x = impact_scratch.buf[ib + 4];
@@ -24329,13 +24329,13 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
 
             w.write_str("impactContext");
             // Per the ImpactContext type def, all 5 fields are
-            // required: collisionRadius, explosionRadius, projectile,
+            // required: radiusCollision, deathExplosionRadius, projectile,
             // entity, penetrationDir.
             w.write_map_header(5);
-            w.write_str("collisionRadius");
-            w.write_number(collision_radius);
-            w.write_str("explosionRadius");
-            w.write_number(explosion_radius);
+            w.write_str("radiusCollision");
+            w.write_number(radius_collision);
+            w.write_str("deathExplosionRadius");
+            w.write_number(death_explosion_radius);
             w.write_str("projectile");
             w.write_map_header(2);
             w.write_str("pos");
@@ -24358,7 +24358,7 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
             w.write_number(entity_vel_x);
             w.write_str("y");
             w.write_number(entity_vel_y);
-            w.write_str("collisionRadius");
+            w.write_str("radiusCollision");
             w.write_number(entity_radius);
             w.write_str("penetrationDir");
             w.write_map_header(2);

@@ -519,7 +519,7 @@ function stampCombatTargetingEntityInto(
     : (entity.building
       ? entity.building.targetRadius
       : (entity.projectile && isProjectileShot(entity.projectile.config.shot)
-        ? entity.projectile.config.shot.collision.radius
+        ? entity.projectile.config.shot.radius.hitbox
         : 0));
   // AABB half-extents for AABB-shaped targets (buildings). Sphere
   // targets (units/projectiles) stamp zeros so the Rust aim-point

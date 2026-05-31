@@ -97,7 +97,7 @@ export type ProjectileShotBlueprint = {
   base: EntityBaseLedger;
   mass: number;
   health: number;
-  collision: ShotCollision;
+  radius: EntityRadiusConfig;
   explosion: ShotExplosion | null;
   detonateOnExpiry: boolean;
   maxLifespan?: number | null;
@@ -168,7 +168,7 @@ export type ProjectileShot = {
   mass: number;
   health: number;
   launchForce: number;
-  collision: ShotCollision;
+  radius: EntityRadiusConfig;
   explosion?: ShotExplosion;
   detonateOnExpiry?: boolean;
   maxLifespan?: number;
@@ -248,10 +248,8 @@ export type ShotRuntimeProfile = {
   isProjectile: boolean;
   isLine: boolean;
   isRocketLike: boolean;
-  collisionRadius: number;
-  impactRadius: number;
-  explosionRadius: number;
-  damageRadius: number;
+  radius: EntityRadiusConfig;
+  deathExplosionRadius: number;
   maxLifespan: number;
   detonateOnExpiry: boolean;
   hasExplosion: boolean;
@@ -259,13 +257,10 @@ export type ShotRuntimeProfile = {
 };
 
 export type ShotVisualProfile = {
-  projectileBodyRadius: number;
   projectileTailShape: ProjectileTailShape;
   projectileTailLengthMult: number;
   projectileTailRadiusMult: number;
   projectileFinSizeMult: number;
-  debugCollisionRadius: number;
-  debugExplosionRadius: number;
   smokeTrail?: SmokeTrailSpec;
   burnMarkWidth: number;
   lineRadius: number;

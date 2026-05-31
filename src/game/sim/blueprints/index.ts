@@ -537,7 +537,7 @@ function buildShotConfig(
     mass: shotBlueprint.mass,
     health: shotBlueprint.health,
     launchForce,
-    collision: shotBlueprint.collision,
+    radius: shotBlueprint.radius,
     explosion: shotBlueprint.explosion ?? undefined,
     detonateOnExpiry: shotBlueprint.detonateOnExpiry || undefined,
     maxLifespan: Number.isFinite(shotBlueprint.maxLifespan)
@@ -687,8 +687,8 @@ export function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretC
       rawThickness = 2;
     } else {
       rawThickness =
-        shotBlueprint.collision.radius > 0
-          ? shotBlueprint.collision.radius * 2
+        shotBlueprint.radius.visual > 0
+          ? shotBlueprint.radius.visual * 2
           : 2;
     }
     config.barrel = {

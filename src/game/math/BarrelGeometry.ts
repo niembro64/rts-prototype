@@ -194,7 +194,7 @@ export function getTurretBarrelDiameter(
   const shot = config.shot;
   const lineShotWidth = shot && isLineShot(shot) ? shot.width : undefined;
   const projectileShotWidth = shot && isProjectileShot(shot)
-    ? shot.collision.radius * 2 * (isRocketLikeShot(shot) ? 1.5 : 1)
+    ? shot.radius.visual * 2 * (isRocketLikeShot(shot) ? 1.5 : 1)
     : undefined;
   const isSingleBarrel =
     barrel.type === 'singleCylinderBarrel' || barrel.type === 'singleConeBarrel';

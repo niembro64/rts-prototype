@@ -908,13 +908,13 @@ export class RtsScene3D {
     if (event.type === 'hit') {
       const ctx = event.impactContext;
       // Size the explosion by the biggest radius the shot genuinely
-      // has — primary/secondary explosion zones for projectiles,
-      // just the line's half-width (≈beam_width/2) for beams/lasers.
+      // has: the projectile body collision radius or its separate
+      // death-explosion radius; lines keep their narrow local spark.
       // No artificial floor here: line-weapon hits should read as
       // localized sparks the size of the beam, not as a 8-unit
       // pop that looks like a bullet impact.
       const r = ctx
-        ? Math.max(ctx.collisionRadius, ctx.explosionRadius)
+        ? Math.max(ctx.radiusCollision, ctx.deathExplosionRadius)
         : 2;
       // Combined impulse vector (sim X/Y → world X/Z): penetration direction
       // dominates because that's the intended "away from attacker" push, with
@@ -946,7 +946,7 @@ export class RtsScene3D {
       );
     } else if (event.type === 'waterSplash') {
       const ctx = event.impactContext;
-      const mass = ctx ? Math.max(ctx.collisionRadius, 1) : 2;
+      const mass = ctx ? Math.max(ctx.radiusCollision, 1) : 2;
       const vx = ctx ? ctx.projectile.vel.x : 0;
       const vy = ctx ? ctx.projectile.vel.y : 0;
       this.waterSplashRenderer.spawn(event.pos.x, event.pos.y, vx, vy, mass);

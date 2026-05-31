@@ -28,14 +28,13 @@ export function buildImpactContext(
   config: ProjectileConfig,
   projectileX: number, projectileY: number,
   projectileVelX: number, projectileVelY: number,
-  collisionRadius: number,
+  radiusCollision: number,
   entity: Entity | undefined = undefined,
 ): ImpactContext {
-  // Single explosion radius now (no primary/secondary). The shot
-  // profile owns the fallback policy for projectiles vs line shots.
-  const explosionRadius = config.shotProfile.runtime.impactRadius || collisionRadius;
+  const deathExplosionRadius =
+    config.shotProfile.runtime.deathExplosionRadius || radiusCollision;
 
-  let entityVelX = 0, entityVelY = 0, entityCollisionRadius = 0;
+  let entityVelX = 0, entityVelY = 0, entityRadiusCollision = 0;
   let penDirX = 0, penDirY = 0;
 
   if (entity !== undefined) {
@@ -44,9 +43,9 @@ export function buildImpactContext(
     if (unit !== null) {
       entityVelX = unit.velocityX;
       entityVelY = unit.velocityY;
-      entityCollisionRadius = unit.radius.hitbox;
+      entityRadiusCollision = unit.radius.collision;
     } else if (building !== null) {
-      entityCollisionRadius = building.width / 2;
+      entityRadiusCollision = building.width / 2;
     }
 
     // Normalized direction from projectile center to entity center
@@ -67,10 +66,10 @@ export function buildImpactContext(
   }
 
   return {
-    collisionRadius,
-    explosionRadius,
+    radiusCollision,
+    deathExplosionRadius,
     projectile: { pos: { x: projectileX, y: projectileY }, vel: { x: projectileVelX, y: projectileVelY } },
-    entity: { vel: { x: entityVelX, y: entityVelY }, collisionRadius: entityCollisionRadius },
+    entity: { vel: { x: entityVelX, y: entityVelY }, radiusCollision: entityRadiusCollision },
     penetrationDir: { x: penDirX, y: penDirY },
   };
 }

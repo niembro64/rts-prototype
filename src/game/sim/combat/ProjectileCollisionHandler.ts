@@ -158,7 +158,7 @@ function computeProjectileReflectorHits(
     _reflectorEndX[i] = curX;
     _reflectorEndY[i] = curY;
     _reflectorEndZ[i] = curZ;
-    _reflectorProjectileRadius[i] = proj.config.shotProfile.runtime.collisionRadius;
+    _reflectorProjectileRadius[i] = proj.config.shotProfile.runtime.radius.collision;
     _reflectorExcludeEntityId[i] = proj.sourceEntityId;
     enabledCount++;
   }
@@ -605,7 +605,7 @@ function detonateKilledProjectileShot(
     impactContext: buildImpactContext(
       config, projEntity.transform.x, projEntity.transform.y,
       proj.velocityX ?? 0, proj.velocityY ?? 0,
-      runtimeProfile.collisionRadius, firstSplashHit,
+      runtimeProfile.radius.collision, firstSplashHit,
     ),
   });
 
@@ -743,7 +743,7 @@ export function checkProjectileCollisions(
           const nx = reflectorNormalX! / nLen;
           const ny = reflectorNormalY! / nLen;
           const nz = reflectorNormalZ! / nLen;
-          const surfaceOffset = Math.max(0.5, runtimeProfile.collisionRadius * 0.25);
+          const surfaceOffset = Math.max(0.5, runtimeProfile.radius.collision * 0.25);
           const reflectedNormalDot = reflected.x * nx + reflected.y * ny + reflected.z * nz;
           const offsetSign = reflectedNormalDot >= 0 ? 1 : -1;
           proj.velocityX = reflected.x;
@@ -765,7 +765,7 @@ export function checkProjectileCollisions(
             world.getEntity(proj.sourceEntityId),
             proj,
             projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
-            runtimeProfile.collisionRadius,
+            runtimeProfile.radius.collision,
           );
           proj.lastSentVelX = reflected.x;
           proj.lastSentVelY = reflected.y;
@@ -833,7 +833,7 @@ export function checkProjectileCollisions(
       );
     if (hitWater) {
       if (proj.hasLeftSource) {
-        const projRadius = runtimeProfile.collisionRadius;
+        const projRadius = runtimeProfile.radius.collision;
         audioEvents.push({
           type: 'waterSplash',
           turretBlueprintId: shotBlueprintId,
@@ -949,7 +949,7 @@ export function checkProjectileCollisions(
             impactContext: buildImpactContext(
               config, projEntity.transform.x, projEntity.transform.y,
               proj.velocityX ?? 0, proj.velocityY ?? 0,
-              runtimeProfile.collisionRadius, firstSplashHit,
+              runtimeProfile.radius.collision, firstSplashHit,
             ),
           });
 
@@ -1000,7 +1000,7 @@ export function checkProjectileCollisions(
       // Add projectile expire event for traveling projectiles (not beams)
       // This creates an explosion effect at projectile termination point
       if (proj.projectileType === 'projectile' && proj.hasLeftSource && !proj.hasExploded) {
-        const projRadius = runtimeProfile.collisionRadius;
+        const projRadius = runtimeProfile.radius.collision;
         audioEvents.push({
           type: 'projectileExpire',
           turretBlueprintId: shotBlueprintId,
@@ -1036,12 +1036,12 @@ export function checkProjectileCollisions(
       const impactZ = lastPoint !== undefined ? lastPoint.z : projEntity.transform.z;
       const dtSec = collisionDtMs / 1000;
 
-      const damageSphereRadius = runtimeProfile.damageRadius;
+      const damageSphereRadius = runtimeProfile.radius.hitbox;
       if (!updateProjectileSourceClearance(
         world.getEntity(proj.sourceEntityId),
         proj,
         impactX, impactY, impactZ,
-        runtimeProfile.collisionRadius,
+        runtimeProfile.radius.collision,
       )) {
         continue;
       }
@@ -1140,7 +1140,7 @@ export function checkProjectileCollisions(
       } else {
         // Traveling projectiles use swept 3D volume collision (prevents tunneling)
         const projShot = config.shot as ProjectileShot;
-        const projRadius = runtimeProfile.collisionRadius;
+        const projRadius = runtimeProfile.radius.collision;
         const prevX = proj.collisionStartX ?? proj.prevX ?? projEntity.transform.x;
         const prevY = proj.collisionStartY ?? proj.prevY ?? projEntity.transform.y;
         const prevZ = proj.collisionStartZ ?? proj.prevZ ?? projEntity.transform.z;

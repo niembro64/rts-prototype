@@ -1391,15 +1391,15 @@ function packPackedImpactContextsIntoScratch(
     const context = events[i].impactContext;
     if (context === null) continue;
     const base = impactIndex * api.impactContextScratchStride;
-    view[base + 0] = quantizeProjectilePosition(context.collisionRadius);
-    view[base + 1] = quantizeProjectilePosition(context.explosionRadius);
+    view[base + 0] = quantizeProjectilePosition(context.radiusCollision);
+    view[base + 1] = quantizeProjectilePosition(context.deathExplosionRadius);
     view[base + 2] = quantizeProjectilePosition(context.projectile.pos.x);
     view[base + 3] = quantizeProjectilePosition(context.projectile.pos.y);
     view[base + 4] = quantizeVelocity(context.projectile.vel.x);
     view[base + 5] = quantizeVelocity(context.projectile.vel.y);
     view[base + 6] = quantizeVelocity(context.entity.vel.x);
     view[base + 7] = quantizeVelocity(context.entity.vel.y);
-    view[base + 8] = quantizeProjectilePosition(context.entity.collisionRadius);
+    view[base + 8] = quantizeProjectilePosition(context.entity.radiusCollision);
     view[base + 9] = quantizeNormal(context.penetrationDir.x);
     view[base + 10] = quantizeNormal(context.penetrationDir.y);
     impactIndex++;

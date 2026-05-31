@@ -1599,10 +1599,10 @@ type DeathContextFixture = {
   turretPoses?: Array<{ rotation: number; pitch: number }>;
 };
 type ImpactContextFixture = {
-  collisionRadius: number;
-  explosionRadius: number;
+  radiusCollision: number;
+  deathExplosionRadius: number;
   projectile: { pos: { x: number; y: number }; vel: { x: number; y: number } };
-  entity: { vel: { x: number; y: number }; collisionRadius: number };
+  entity: { vel: { x: number; y: number }; radiusCollision: number };
   penetrationDir: { x: number; y: number };
 };
 type AudioEventFixture = {
@@ -1700,15 +1700,15 @@ function packImpactContextsIntoScratch(
   for (let i = 0; i < impacts.length; i++) {
     const ic = impacts[i].impactContext!;
     const base = i * IMPACT_CONTEXT_STRIDE;
-    view[base + 0] = ic.collisionRadius;
-    view[base + 1] = ic.explosionRadius;
+    view[base + 0] = ic.radiusCollision;
+    view[base + 1] = ic.deathExplosionRadius;
     view[base + 2] = ic.projectile.pos.x;
     view[base + 3] = ic.projectile.pos.y;
     view[base + 4] = ic.projectile.vel.x;
     view[base + 5] = ic.projectile.vel.y;
     view[base + 6] = ic.entity.vel.x;
     view[base + 7] = ic.entity.vel.y;
-    view[base + 8] = ic.entity.collisionRadius;
+    view[base + 8] = ic.entity.radiusCollision;
     view[base + 9] = ic.penetrationDir.x;
     view[base + 10] = ic.penetrationDir.y;
   }
@@ -2590,10 +2590,10 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         pos: { x: 600, y: 600, z: 5 },
         entityId: 400,
         impactContext: {
-          collisionRadius: 8,
-          explosionRadius: 24,
+          radiusCollision: 8,
+          deathExplosionRadius: 24,
           projectile: { pos: { x: 600, y: 600 }, vel: { x: 50, y: 0 } },
-          entity: { vel: { x: 0, y: 0 }, collisionRadius: 12 },
+          entity: { vel: { x: 0, y: 0 }, radiusCollision: 12 },
           penetrationDir: { x: 1, y: 0 },
         },
       }],
@@ -2622,10 +2622,10 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         {
           type: 'hit', turretBlueprintId: 'shot.rocket', pos: { x: 200, y: 200, z: 10 },
           impactContext: {
-            collisionRadius: 6,
-            explosionRadius: 40,
+            radiusCollision: 6,
+            deathExplosionRadius: 40,
             projectile: { pos: { x: 200, y: 200 }, vel: { x: 100, y: 0 } },
-            entity: { vel: { x: -5, y: 5 }, collisionRadius: 20 },
+            entity: { vel: { x: -5, y: 5 }, radiusCollision: 20 },
             penetrationDir: { x: 0.707, y: -0.707 },
           },
         },

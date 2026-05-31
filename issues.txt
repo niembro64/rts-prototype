@@ -125,29 +125,6 @@ A42. [MEDIUM] Entities do not detonate a death explosion (radius + force + damag
     units. Unify shot splash and entity death onto one blast path. (Depends on A38 base ledger +
     A39 per-piece destructibility; pairs with the shot detonation path.)
 
-A43. [MEDIUM] Shot radii still use an ad-hoc runtime/visual vocabulary instead of the shared
-    role-named entity radii.
-    src/game/sim/blueprints/blueprintSchema.json (shot runtime/visual radii collisionRadius/
-    impactRadius/explosionRadius/damageRadius/projectileBodyRadius ~465-518),
-    src/game/sim/shotProfiles.ts, ProjectileRenderer3D.ts, ProjectileCollisionHandler.ts,
-    projectile/audio wire context fields. —
-    RULE: new "Entity geometry is three radii" + "Every entity shares one base ledger" (A38) —
-    geometry is base-ledger: every entity carries exactly three role-named radii — radiusVisual
-    (drawn size), radiusHitbox (damage-receiving hurtbox), radiusCollision (body-vs-body no-overlap
-    contact) — and the same three names mean the same things on units/towers/buildings/turrets/
-    locomotion/shots. The death explosion's own radius stays separate (A42); "push" is reserved for
-    a future sustained push-field capability. —
-    PROBLEM: units and turrets now use the generated shared radius:{visual, hitbox, collision}
-    schema, the TS/WASM bridge names now use visual/hitbox/collision, death-context pushRadius was
-    renamed to collisionRadius, and guard/attack/repair/reclaim targeting no longer read the visual
-    radius. The remaining drift is shots: shot profiles still expose collisionRadius, damageRadius,
-    explosionRadius, and projectileBodyRadius instead of the nested role vocabulary, and splash /
-    impact radii still need to be separated from standing-body geometry per A42. —
-    FIX: fold shot standing geometry into radius:{visual, hitbox, collision}; map projectileBodyRadius
-    to radius.visual and projectile collision to radius.collision; keep splash/explosion radii on
-    the shot detonation/death-explosion path rather than in the entity-radius trio; update renderer,
-    collision, and wire context names accordingly. (Part of A38 base ledger; touches A42 radii.)
-
 A44. [MEDIUM] Rays (beams/lasers) and shields ("force fields") are modelled as "shot" variants, but
     the new design makes a shot a destructible BODY — rays/shields are sustained emissions with no
     mass or health and cannot be shots. Also rename "force field" -> "shield", group beam+laser

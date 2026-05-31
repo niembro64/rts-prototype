@@ -704,7 +704,7 @@ export class DamageSystem {
         startX, startY, startZ,
         endX, endY, endZ,
         projectile.transform.x, projectile.transform.y, projectile.transform.z,
-        proj.config.shotProfile.runtime.collisionRadius + lineWidth / 2,
+        proj.config.shotProfile.runtime.radius.collision + lineWidth / 2,
       );
       if (t !== null && t < bestT) {
         bestT = t; found = true;
@@ -840,7 +840,7 @@ export class DamageSystem {
         source.start.x, source.start.y, source.start.z,
         source.end.x, source.end.y, source.end.z,
         projectile.transform.x, projectile.transform.y, projectile.transform.z,
-        proj.config.shotProfile.runtime.collisionRadius + source.width / 2,
+        proj.config.shotProfile.runtime.radius.collision + source.width / 2,
       );
 
       if (t !== null && t < bestT) {
@@ -975,7 +975,7 @@ export class DamageSystem {
         continue;
       }
 
-      const combinedRadius = source.radius + proj.config.shotProfile.runtime.collisionRadius;
+      const combinedRadius = source.radius + proj.config.shotProfile.runtime.radius.collision;
       const t = lineSphereIntersectionT(
         source.prev.x, source.prev.y, source.prev.z,
         source.current.x, source.current.y, source.current.z,
@@ -1151,7 +1151,7 @@ export class DamageSystem {
       const dx = projectile.transform.x - source.center.x;
       const dy = projectile.transform.y - source.center.y;
       const dz = projectile.transform.z - source.center.z;
-      const targetRadius = proj.config.shotProfile.runtime.collisionRadius;
+      const targetRadius = proj.config.shotProfile.runtime.radius.collision;
       const maxDist = source.radius + targetRadius;
       if (dx * dx + dy * dy + dz * dz > maxDist * maxDist) continue;
 

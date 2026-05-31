@@ -255,7 +255,9 @@ function describeShot(shot: ShotConfig, shotBlueprintId: string | null): Loading
     children.push(
       stat('Mass', fmt(shot.mass)),
       stat('Launch force', fmt(shot.launchForce)),
-      stat('Collision radius', fmt(shot.collision.radius)),
+      stat('Visual radius', fmt(shot.radius.visual)),
+      stat('Hitbox radius', fmt(shot.radius.hitbox)),
+      stat('Collision radius', fmt(shot.radius.collision)),
       stat('TTL', shot.maxLifespan === undefined ? 'impact/ground only' : ms(shot.maxLifespan)),
       stat('Detonate on expiry', yesNo(shot.detonateOnExpiry === true)),
     );

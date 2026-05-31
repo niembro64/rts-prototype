@@ -850,7 +850,7 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
       world.getEntity(proj.sourceEntityId),
       proj,
       x, y, z,
-      proj.config.shotProfile.runtime.collisionRadius,
+      proj.config.shotProfile.runtime.radius.collision,
     ) && !wasSourceCleared) {
       proj.collisionStartX = x;
       proj.collisionStartY = y;
@@ -1019,7 +1019,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
       world.getEntity(proj.sourceEntityId),
       proj,
       updatedPosition.x, updatedPosition.y, updatedPosition.z,
-      proj.config.shotProfile.runtime.collisionRadius,
+      proj.config.shotProfile.runtime.radius.collision,
     ) && !wasSourceCleared) {
       proj.collisionStartX = updatedPosition.x;
       proj.collisionStartY = updatedPosition.y;
@@ -1223,7 +1223,7 @@ export function updateProjectiles(
         const fullEndZ = endpoint.z;
 
         // Find beam path (with possible reflections off mirror units).
-        const collisionRadius = proj.config.shotProfile.runtime.collisionRadius;
+        const collisionRadius = proj.config.shotProfile.runtime.radius.collision;
         const beamPath = damageSystem.findBeamPath(
           startPoint.x, startPoint.y, startPoint.z,
           fullEndX, fullEndY, fullEndZ,
