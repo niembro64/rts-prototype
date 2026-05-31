@@ -37,9 +37,11 @@ import type { SightBoundaryRenderer3D } from '../../render3d/SightBoundaryRender
 import type { ContactShadowRenderer3D } from '../../render3d/ContactShadowRenderer3D';
 import type { HealthBar3D } from '../../render3d/HealthBar3D';
 import type { NameLabel3D } from '../../render3d/NameLabel3D';
+import { PIECE_TAG_COMMANDER_OWNER_NAME } from '../../render3d/NameLabel3D';
 import { HudFade } from '../../render3d/HudFade';
 import type { Waypoint3D } from '../../render3d/Waypoint3D';
 import {
+  resolveCommanderOwnerName,
   resolveEntityDisplayName,
   resolveTurretName,
   resolveLocomotionName,
@@ -54,12 +56,14 @@ import {
   getTurretHudNameY,
   getLocomotionHudNameY,
   getShotHudNameY,
+  getUnitHudNameY,
 } from '../../render3d/HudAnchor';
 import { isBuildInProgress } from '../../sim/buildableHelpers';
 import {
   ENTITY_HUD_FADE_START_DISTANCE_FRAC,
   ENTITY_HUD_FADE_END_DISTANCE_FRAC,
 } from '@/config';
+import { NAME_LABEL_OWNER_Y_OFFSET } from '@/nameLabelConfig';
 import type { RenderFrameState3D } from '../../render3d/RenderFrameState3D';
 import type { FootprintQuad } from '../../ViewportFootprint';
 import type { ViewportFootprint } from '../../ViewportFootprint';
@@ -462,12 +466,28 @@ export class RtsScene3DRenderPhase {
     }
 
     // Body NAMES iterate every unit/building (names show even at full
-    // HP, and commander names ignore the per-type toggle).
+    // HP). Commander owners get a separate styled label so the body
+    // label stays a blueprint name.
     if (nameLabel3D) {
       for (const e of this.clientViewState.getUnitsAndBuildings()) {
         const type = this.hudTypeOf(e);
-        const name = resolveEntityDisplayName(e, lookup, getEntityHudToggle(type, 'name'), mode);
+        const nameToggle = getEntityHudToggle(type, 'name');
+        const name = resolveEntityDisplayName(e, nameToggle, mode);
         if (name !== null) nameLabel3D.perEntity(e, name);
+        const ownerName = resolveCommanderOwnerName(e, lookup, nameToggle, mode);
+        if (ownerName !== null) {
+          nameLabel3D.perPieceName(
+            e,
+            PIECE_TAG_COMMANDER_OWNER_NAME,
+            {
+              x: e.transform.x,
+              y: getUnitHudNameY(e) + NAME_LABEL_OWNER_Y_OFFSET,
+              z: e.transform.y,
+            },
+            ownerName,
+            'owner',
+          );
+        }
       }
     }
 

@@ -18,6 +18,7 @@ import {
 } from './entityBaseLedger';
 
 const PROJECTILE_EXPLICIT_FIELDS = [
+  'name',
   'base',
   'health',
   'hitSound',
@@ -43,6 +44,9 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
     throw new Error(
       `Shot blueprint key/id mismatch: ${id} contains ${blueprint.shotBlueprintId}`,
     );
+  }
+  if (typeof blueprint.name !== 'string' || blueprint.name.trim().length === 0) {
+    throw new Error(`Invalid shot blueprint ${id}: missing display name`);
   }
   if (blueprint.type !== 'plasma' && blueprint.type !== 'rocket') {
     throw new Error(

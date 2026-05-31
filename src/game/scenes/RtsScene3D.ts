@@ -116,10 +116,9 @@ export type RtsScene3DConfig = {
    *  path; everywhere else this stays false. */
   lobbyPreview?: boolean;
   /** Resolves a player ID to its display name. Powered by the host
-   *  app's lobby roster; the scene uses it to label commanders via
-   *  NameLabel3D. Null result → fall back to the deterministic
-   *  funny-name default. Optional for back-compat with callers that
-   *  don't yet pass it (lobby preview, demo standalones). */
+   *  app's lobby roster; the scene uses it for the separate commander
+   *  owner label via NameLabel3D. Optional for back-compat with callers
+   *  that don't yet pass it (lobby preview, demo standalones). */
   lookupPlayerName?: (playerId: PlayerId) => string | null;
   onRendererWarmupChange?: (warming: boolean) => void;
   onStartupReady?: () => void;
@@ -183,9 +182,8 @@ export class RtsScene3D {
   private cameraFramingSystem!: RtsScene3DCameraFramingSystem;
   private renderPhase: RtsScene3DRenderPhase | null = null;
   /** Resolves a player ID to its display name. Hooked up via
-   *  RtsScene3DConfig.lookupPlayerName; null result falls back to
-   *  `getDefaultPlayerName(playerId)` so commander labels still
-   *  render with a stable funny default in single-player / demo /
+   *  RtsScene3DConfig.lookupPlayerName; the render phase applies the
+   *  fallback policy for owner labels in single-player / demo /
    *  lobby-preview contexts that don't have a roster wired up. */
   private lookupPlayerName: (id: PlayerId) => string | null = () => null;
   private waypoint3D: Waypoint3D | null = null;

@@ -38,10 +38,9 @@ export type GameConfig = {
   lobbyPreview?: boolean;
   /** Resolves a player ID to its display name. Hooked up by the host
    *  app from the lobby roster (LobbyPlayer.name); render-side passes
-   *  the result to NameLabel3D so commander labels track edits the
-   *  user makes in the lobby without having to plumb the entire
-   *  roster through the scene. Returns null when the player isn't in
-   *  the roster (renderer falls back to a deterministic funny default). */
+   *  the result to NameLabel3D so commander owner labels track edits
+   *  without having to plumb the entire roster through the scene.
+   *  Returns null when the player isn't in the roster. */
   lookupPlayerName?: (playerId: PlayerId) => string | null;
   /** Emits true while the 3D renderer is warming shader programs for a
    *  newly-created scene, and false once the scene is ready to reveal. */

@@ -25,6 +25,7 @@ import {
 } from './entityBaseLedger';
 
 const TURRET_EXPLICIT_FIELDS = [
+  'name',
   'base',
   'emissionKind',
   'emissionBlueprintId',
@@ -98,6 +99,9 @@ for (const [id, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
   }
 
   const label = `turret blueprint ${id}`;
+  if (typeof blueprint.name !== 'string' || blueprint.name.trim().length === 0) {
+    throw new Error(`Invalid ${label}: missing display name`);
+  }
   if (!WEAPON_KIND_SET.has(blueprint.kind)) {
     throw new Error(
       `Invalid ${label}: kind "${blueprint.kind}" is not one of [${[...WEAPON_KIND_SET].join(', ')}]`,

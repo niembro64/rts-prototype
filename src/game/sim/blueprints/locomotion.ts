@@ -30,6 +30,9 @@ function buildLocomotionBlueprints(): Record<string, LocomotionBlueprint> {
         `Locomotion blueprint key/id mismatch: ${id} contains ${blueprint.locomotionBlueprintId}`,
       );
     }
+    if (typeof blueprint.name !== 'string' || blueprint.name.trim().length === 0) {
+      throw new Error(`Invalid locomotion blueprint ${id}: missing display name`);
+    }
     assertValidEntityBaseLedger(`locomotion blueprint ${id}`, blueprint.base);
     if (
       typeof blueprint.pathfindingBlueprintId !== 'string' ||
@@ -65,3 +68,12 @@ function buildLocomotionBlueprints(): Record<string, LocomotionBlueprint> {
 }
 
 export const UNIT_LOCOMOTION_BLUEPRINTS = buildLocomotionBlueprints();
+
+export function getLocomotionBlueprint(id: string): LocomotionBlueprint {
+  if (!isLocomotionBlueprintId(id)) throw new Error(`Unknown locomotion blueprint: ${id}`);
+  const locomotionBlueprint = UNIT_LOCOMOTION_BLUEPRINTS[id];
+  if (locomotionBlueprint === undefined) {
+    throw new Error(`Unknown locomotion blueprint: ${id}`);
+  }
+  return locomotionBlueprint;
+}

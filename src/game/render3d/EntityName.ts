@@ -4,9 +4,9 @@
 // new sources of names (per-entity custom rename, AI personality flair,
 // capture-tag branding, etc.) can land without touching the renderer.
 //
-// Commander labels always use the owning player's name. Otherwise the
-// label is the entity's canonical blueprint name, gated by a
-// per-type `name` toggle + the global selection HUD mode:
+// Body labels always use the entity's canonical blueprint display
+// name, gated by a per-type `name` toggle + the global selection HUD
+// mode:
 //   - name toggle OFF              → no label
 //   - selected + mode 'never'      → no label
 //   - selected + mode 'always'/    → label
@@ -14,18 +14,26 @@
 //                                     whenNotFull never hides a name)
 //   - not selected                 → label (per-type toggle drives it)
 //
-// The resolver intentionally takes a `lookupPlayerName` callback rather
-// than the lobby roster directly, so the simulation layer doesn't need
-// to know how the UI stores player metadata. Render3DEntities passes a
-// thin closure that reads from ClientViewState's player table; tests
-// can pass `() => null` for a no-op.
+// Commander owner names are a separate owner-label line, not a body
+// label override. The resolver intentionally takes a `lookupPlayerName`
+// callback rather than the lobby roster directly, so the simulation
+// layer doesn't need to know how the UI stores player metadata.
 
 import type { Entity, PlayerId, Turret } from '../sim/types';
 import type { SelectionHudMode } from '@/clientBarConfig';
 import { getBuildingBlueprint } from '../sim/blueprints/buildings';
 import { getUnitBlueprint } from '../sim/blueprints';
+import { getLocomotionBlueprint } from '../sim/blueprints/locomotion';
+import { getShotBlueprint } from '../sim/blueprints/shots';
+import { getTurretBlueprint } from '../sim/blueprints/turrets';
 
 export type PlayerNameLookup = (playerId: PlayerId) => string | null;
+
+const UNKNOWN_UNIT_NAME = 'Unknown Unit';
+const UNKNOWN_BUILDING_NAME = 'Unknown Building';
+const UNKNOWN_TURRET_NAME = 'Unknown Turret';
+const UNKNOWN_LOCOMOTION_NAME = 'Unknown Locomotion';
+const UNKNOWN_SHOT_NAME = 'Unknown Shot';
 
 /** Names have no current/max, so the only thing the selection mode can
  *  do is suppress a SELECTED entity's name in 'never'. Unselected
@@ -45,7 +53,7 @@ function unitBlueprintName(entity: Entity): string | null {
   try {
     return getUnitBlueprint(entity.unit.unitBlueprintId).name;
   } catch {
-    return entity.unit.unitBlueprintId;
+    return UNKNOWN_UNIT_NAME;
   }
 }
 
@@ -54,35 +62,42 @@ function buildingBlueprintName(entity: Entity): string | null {
   try {
     return getBuildingBlueprint(entity.buildingBlueprintId).name;
   } catch {
-    return entity.buildingBlueprintId;
+    return UNKNOWN_BUILDING_NAME;
   }
 }
 
 /** Body-entity label. `nameToggle` is the per-type `name` toggle for
- *  this entity's HUD type (unit / tower / building). Commander player
- *  names take priority and ignore the toggle/mode (a commander is
- *  always identified by its owner). */
+ *  this entity's HUD type (unit / tower / building). Commander owner
+ *  names are resolved separately by resolveCommanderOwnerName so the
+ *  body label never changes kind from blueprint name to player name. */
 export function resolveEntityDisplayName(
   entity: Entity,
-  lookupPlayerName: PlayerNameLookup,
   nameToggle: boolean,
   mode: SelectionHudMode,
 ): string | null {
-  if (entity.commander && entity.ownership) {
-    const playerName = lookupPlayerName(entity.ownership.playerId);
-    if (playerName !== null && playerName !== undefined && playerName.length > 0) {
-      return playerName;
-    }
-  }
-
   const selected = entity.selectable?.selected === true;
   if (!nameAllowed(nameToggle, selected, mode)) return null;
 
   return unitBlueprintName(entity) ?? buildingBlueprintName(entity);
 }
 
-/** Turret sub-piece label. Turret blueprints carry no display name, so
- *  the label is the turret blueprint id. */
+/** Commander owner label. It uses the same per-type name toggle/mode
+ *  as the commander body label, but renders as a separate owner style. */
+export function resolveCommanderOwnerName(
+  entity: Entity,
+  lookupPlayerName: PlayerNameLookup,
+  nameToggle: boolean,
+  mode: SelectionHudMode,
+): string | null {
+  if (!entity.commander || !entity.ownership) return null;
+  const selected = entity.selectable?.selected === true;
+  if (!nameAllowed(nameToggle, selected, mode)) return null;
+  const playerName = lookupPlayerName(entity.ownership.playerId);
+  if (playerName === null || playerName.trim().length === 0) return null;
+  return `Player: ${playerName}`;
+}
+
+/** Turret sub-piece label from the turret blueprint display name. */
 export function resolveTurretName(
   host: Entity,
   turret: Turret,
@@ -91,10 +106,14 @@ export function resolveTurretName(
 ): string | null {
   const selected = host.selectable?.selected === true;
   if (!nameAllowed(nameToggle, selected, mode)) return null;
-  return turret.config.turretBlueprintId;
+  try {
+    return getTurretBlueprint(turret.config.turretBlueprintId).name;
+  } catch {
+    return UNKNOWN_TURRET_NAME;
+  }
 }
 
-/** Locomotion sub-piece label = the locomotion blueprint id. */
+/** Locomotion sub-piece label from the locomotion blueprint display name. */
 export function resolveLocomotionName(
   host: Entity,
   nameToggle: boolean,
@@ -104,11 +123,16 @@ export function resolveLocomotionName(
   if (!loco) return null;
   const selected = host.selectable?.selected === true;
   if (!nameAllowed(nameToggle, selected, mode)) return null;
-  return loco.blueprintId;
+  try {
+    return getLocomotionBlueprint(loco.blueprintId).name;
+  } catch {
+    return UNKNOWN_LOCOMOTION_NAME;
+  }
 }
 
-/** Shot sub-piece label = the shot blueprint id. Shots are never
- *  selectable, so the selection mode only ever sees `selected=false`. */
+/** Shot sub-piece label from the shot blueprint display name. Shots
+ *  are never selectable, so the selection mode only ever sees
+ *  `selected=false`. */
 export function resolveShotName(
   shot: Entity,
   nameToggle: boolean,
@@ -118,5 +142,9 @@ export function resolveShotName(
   if (!proj) return null;
   const selected = shot.selectable?.selected === true;
   if (!nameAllowed(nameToggle, selected, mode)) return null;
-  return proj.shotBlueprintId;
+  try {
+    return getShotBlueprint(proj.shotBlueprintId).name;
+  } catch {
+    return UNKNOWN_SHOT_NAME;
+  }
 }

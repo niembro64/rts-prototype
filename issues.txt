@@ -20,70 +20,17 @@ Please always commit and push before and after any code changes we make.
 ================================================================================
 ENTITY STATE REPORTING (NAMES)
 ================================================================================
-Found by tracing the entity-name pipeline end to end (Rust serialize -> wire ->
-ClientSnapshotApplier/ClientBuildStateApplier -> ClientViewState -> EntityName +
-HealthBar3D + NameLabel3D, driven by RtsScene3DRenderPhase.drawEntityHud and the
-clientBarConfig entityHud toggles). Symptom: "names super random and randomly
-changing" with NAME on for all types and ENTITY HUD SEL: ALL. File:line refs
-were correct when written; re-verify before editing.
-
-E4. [MEDIUM] Entity NAMEs are resolved through six inconsistent paths — human
-    names, raw blueprint ids, and player names mixed together — which reads as
-    "super random" with NAME on for all types.
-    LOCATION: src/game/render3d/EntityName.ts —
-      - unit body  -> getUnitBlueprint(id).name (human, e.g. "Peewee"), catch
-        falls back to the RAW id (43-50)
-      - building   -> getBuildingBlueprint(id).name, catch -> raw id (52-59)
-      - turret     -> turret.config.turretBlueprintId  (RAW camelCase id) (86-95)
-      - locomotion -> loco.blueprintId                 (RAW id) (98-108)
-      - shot       -> proj.shotBlueprintId             (RAW id) (112-122)
-      - commander  -> owning player's name (funny demo name or real username),
-        silently overriding the blueprint label (71-82)
-    RULE: one "NAME" toggle should label every piece with the same KIND of name.
-    PROBLEM: with NAME on for all types + SEL ALL, the field shows a chaotic mix
-    of human names (bodies), raw camelCase blueprint ids (turrets/locomotion/
-    shots), and silly player names (commanders). The body path is itself
-    two-faced: a human name normally, the raw id whenever the blueprint lookup
-    throws.
-    FIX: give turret/locomotion/shot blueprints authored display `name` fields and
-    resolve them the same way as units/buildings; make the commander/player-name
-    label an explicit, visually distinct treatment rather than a silent override;
-    standardize the body fallback so it never flips between a human name and a raw
-    id.
-
-E5. [MEDIUM / INVESTIGATE] "Randomly changing" names: confirmed non-flicker
-    causes documented; a true per-frame text flip could not be reproduced from
-    static reading and needs in-app confirmation.
-    LOCATION:
-      - Commander labels: in REAL battle lookupPlayerName returns null until the
-        roster loads, then the real name — one funny->real transition per player
-        (src/components/gameCanvasRealBattleHandoff.ts:119; EntityName.ts:71-82;
-        render-phase fallback src/game/scenes/helpers/RtsScene3DRenderPhase.ts:
-        424-425). In DEMO, lookupPlayerName is unwired (default () => null,
-        src/game/scenes/RtsScene3D.ts:190) so commanders show a DETERMINISTIC
-        funny name (getDefaultPlayerName = pickFunnyName(playerId),
-        src/playerNamesConfig.ts:29-33, 92-94) — stable per id, but reads as
-        random/silly.
-      - Visibility churn (not text change): the not-full / selection-mode /
-        camera-fade / frustum rules pop labels in and out frame to frame
-        (RtsScene3DRenderPhase.ts:386-399, 416-474), which presents as "changing".
-      - Blueprint codes ship only on FULL/creation snapshots and are nulled on
-        deltas; the apply is conditional so an EXISTING entity keeps its id
-        (stable) — src/game/network/unitSnapshotFields.ts:121-125, 206-224. New
-        entity ids arriving on a delta are skipped until a keyframe
-        (src/game/network/ClientViewState.ts:578-593). Blueprint-id->name decode
-        is a deterministic index table (src/types/network.ts:97-115, 139-154), so
-        a stable entity's name is stable.
+E5. [MEDIUM / INVESTIGATE] If a single persistent entity's NAME label still
+    changes text over time, capture an in-app repro and log the entity id plus
+    the relevant blueprint id/code for that label path on every displayed frame.
     RULE: a label for a given entity must not change unless its identity changed.
-    PROBLEM: the "super random" half is E4. The "randomly changing" half is, from
-    code, (a) the one-time commander funny->real transition and (b) label pop-in/
-    pop-out — NOT a per-frame flip of a single entity's text. A genuine flicker of
-    one persistent entity's body label would most plausibly require entity-id
-    reuse landing on a delta (blueprint code absent) before a keyframe, or a
-    packed piece-key dedup collision in the pooled label renderer.
-    FIX: confirm in-app whether a SINGLE persistent entity's body label actually
-    changes TEXT over time (vs labels appearing/disappearing). If it does,
-    temporarily log entity.id + unitBlueprintId/code beside the label and watch
-    for id reuse / stale id, then fix that path. If it does not, this reduces to
-    E4 + expected visibility behavior — fix via E4 and by making commander labels
-    visually distinct from blueprint names.
+    PROBLEM: label visibility may legitimately pop in/out from selection mode,
+    camera fade, frustum culling, or not-full rules, but the text content for a
+    stable entity should not flip. A true text flicker would most plausibly come
+    from entity-id reuse landing on a delta before a keyframe refreshes blueprint
+    fields, or from a pooled-label piece-key collision.
+    FIX: reproduce a single entity whose text changes while its identity should
+    be stable. Log entity.id, entity type, piece tag, unit/building/turret/
+    locomotion/shot blueprint id, and any decoded wire code beside the rendered
+    label. If id reuse or stale blueprint fields appear, fix the client snapshot
+    apply path; if two labels share one packed piece key, fix the label keying.

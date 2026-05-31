@@ -92,6 +92,7 @@ export type SmokeTrailSpec = {
 export type ProjectileShotBlueprint = {
   type: ProjectileShotKind;
   shotBlueprintId: ShotBlueprintId;
+  name: string;
   base: EntityBaseLedger;
   mass: number;
   health: number;
@@ -265,6 +266,7 @@ export type TurretAudioConfig = {
 
 export type TurretBlueprint = {
   turretBlueprintId: TurretBlueprintId;
+  name: string;
   base: EntityBaseLedger;
   kind: WeaponKind;
   range: number;
@@ -430,6 +432,7 @@ export type FlyingConfig = {
 export type LocomotionBlueprintWheels = {
   type: 'wheels';
   locomotionBlueprintId: LocomotionBlueprintId;
+  name: string;
   base: EntityBaseLedger;
   physics: LocomotionPhysics;
   pathfindingBlueprintId: string;
@@ -440,6 +443,7 @@ export type LocomotionBlueprintWheels = {
 export type LocomotionBlueprintTreads = {
   type: 'treads';
   locomotionBlueprintId: LocomotionBlueprintId;
+  name: string;
   base: EntityBaseLedger;
   physics: LocomotionPhysics;
   pathfindingBlueprintId: string;
@@ -450,6 +454,7 @@ export type LocomotionBlueprintTreads = {
 export type LocomotionBlueprintLegs = {
   type: 'legs';
   locomotionBlueprintId: LocomotionBlueprintId;
+  name: string;
   base: EntityBaseLedger;
   physics: LocomotionPhysics;
   pathfindingBlueprintId: string;
@@ -460,6 +465,7 @@ export type LocomotionBlueprintLegs = {
 export type LocomotionBlueprintHover = {
   type: 'hover';
   locomotionBlueprintId: LocomotionBlueprintId;
+  name: string;
   base: EntityBaseLedger;
   physics: LocomotionPhysics;
   pathfindingBlueprintId: string;
@@ -470,6 +476,7 @@ export type LocomotionBlueprintHover = {
 export type LocomotionBlueprintFlying = {
   type: 'flying';
   locomotionBlueprintId: LocomotionBlueprintId;
+  name: string;
   base: EntityBaseLedger;
   physics: LocomotionPhysics;
   pathfindingBlueprintId: string;

@@ -436,6 +436,7 @@
       "required": [
         "type",
         "shotBlueprintId",
+        "name",
         "base",
         "mass",
         "health",
@@ -454,6 +455,9 @@
         },
         "shotBlueprintId": {
           "$ref": "#/$defs/ShotBlueprintId"
+        },
+        "name": {
+          "type": "string"
         },
         "base": {
           "$ref": "#/$defs/EntityBaseLedger"
@@ -1108,6 +1112,7 @@
       "type": "object",
       "required": [
         "turretBlueprintId",
+        "name",
         "base",
         "kind",
         "emissionKind",
@@ -1147,6 +1152,9 @@
       "properties": {
         "turretBlueprintId": {
           "$ref": "#/$defs/TurretBlueprintId"
+        },
+        "name": {
+          "type": "string"
         },
         "base": {
           "$ref": "#/$defs/EntityBaseLedger"
@@ -1776,6 +1784,7 @@
       "required": [
         "type",
         "locomotionBlueprintId",
+        "name",
         "base",
         "physics",
         "pathfindingBlueprintId",
@@ -1788,6 +1797,9 @@
         },
         "locomotionBlueprintId": {
           "$ref": "#/$defs/LocomotionBlueprintId"
+        },
+        "name": {
+          "type": "string"
         },
         "base": {
           "$ref": "#/$defs/EntityBaseLedger"
@@ -1812,6 +1824,7 @@
       "required": [
         "type",
         "locomotionBlueprintId",
+        "name",
         "base",
         "physics",
         "pathfindingBlueprintId",
@@ -1824,6 +1837,9 @@
         },
         "locomotionBlueprintId": {
           "$ref": "#/$defs/LocomotionBlueprintId"
+        },
+        "name": {
+          "type": "string"
         },
         "base": {
           "$ref": "#/$defs/EntityBaseLedger"
@@ -1848,6 +1864,7 @@
       "required": [
         "type",
         "locomotionBlueprintId",
+        "name",
         "base",
         "physics",
         "pathfindingBlueprintId",
@@ -1860,6 +1877,9 @@
         },
         "locomotionBlueprintId": {
           "$ref": "#/$defs/LocomotionBlueprintId"
+        },
+        "name": {
+          "type": "string"
         },
         "base": {
           "$ref": "#/$defs/EntityBaseLedger"
@@ -1884,6 +1904,7 @@
       "required": [
         "type",
         "locomotionBlueprintId",
+        "name",
         "base",
         "physics",
         "pathfindingBlueprintId",
@@ -1896,6 +1917,9 @@
         },
         "locomotionBlueprintId": {
           "$ref": "#/$defs/LocomotionBlueprintId"
+        },
+        "name": {
+          "type": "string"
         },
         "base": {
           "$ref": "#/$defs/EntityBaseLedger"
@@ -1920,6 +1944,7 @@
       "required": [
         "type",
         "locomotionBlueprintId",
+        "name",
         "base",
         "physics",
         "pathfindingBlueprintId",
@@ -1932,6 +1957,9 @@
         },
         "locomotionBlueprintId": {
           "$ref": "#/$defs/LocomotionBlueprintId"
+        },
+        "name": {
+          "type": "string"
         },
         "base": {
           "$ref": "#/$defs/EntityBaseLedger"

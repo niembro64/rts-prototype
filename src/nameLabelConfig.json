@@ -1,5 +1,7 @@
 {
   "worldHeight": 8,
+  "ownerWorldHeight": 6,
+  "ownerYOffset": 7,
   "fontPx": 22,
   "fontFamily": "system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif",
   "strokeWidthPx": 4,

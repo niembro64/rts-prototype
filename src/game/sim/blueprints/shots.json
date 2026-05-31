@@ -2,6 +2,7 @@
   "shotPlasmaLight": {
     "type": "plasma",
     "shotBlueprintId": "shotPlasmaLight",
+    "name": "Light Plasma",
     "mass": 4,
     "health": 2,
     "radius": {
@@ -40,6 +41,7 @@
   "shotPlasmaMedium": {
     "type": "plasma",
     "shotBlueprintId": "shotPlasmaMedium",
+    "name": "Medium Plasma",
     "mass": 10,
     "health": 4,
     "radius": {
@@ -78,6 +80,7 @@
   "shotRocketLight": {
     "type": "rocket",
     "shotBlueprintId": "shotRocketLight",
+    "name": "Light Rocket",
     "mass": 4,
     "health": 6,
     "radius": {
@@ -117,6 +120,7 @@
   "shotRocketFast": {
     "type": "rocket",
     "shotBlueprintId": "shotRocketFast",
+    "name": "Fast Rocket",
     "mass": 3,
     "health": 4,
     "radius": {
@@ -156,6 +160,7 @@
   "shotPlasmaHeavy": {
     "type": "plasma",
     "shotBlueprintId": "shotPlasmaHeavy",
+    "name": "Heavy Plasma",
     "mass": 30,
     "health": 10,
     "radius": {
@@ -194,6 +199,7 @@
   "shotMortarMedium": {
     "type": "plasma",
     "shotBlueprintId": "shotMortarMedium",
+    "name": "Medium Mortar Shell",
     "mass": 30,
     "health": 8,
     "radius": {
@@ -238,6 +244,7 @@
   "shotMortarHeavy": {
     "type": "plasma",
     "shotBlueprintId": "shotMortarHeavy",
+    "name": "Heavy Mortar Shell",
     "mass": 30,
     "health": 12,
     "radius": {
@@ -282,6 +289,7 @@
   "shotPlasmaDisruptor": {
     "type": "plasma",
     "shotBlueprintId": "shotPlasmaDisruptor",
+    "name": "Disruptor Plasma",
     "mass": 20,
     "health": 30,
     "radius": {

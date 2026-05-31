@@ -593,7 +593,9 @@
   "ui": {
     "nameLabel": {
       "fillColor": "#ffffff",
-      "strokeColor": "#000000"
+      "strokeColor": "#000000",
+      "ownerFillColor": "#ffd66b",
+      "ownerStrokeColor": "#111111"
     },
     "minimap": {
       "radarBlip": {

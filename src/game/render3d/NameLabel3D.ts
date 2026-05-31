@@ -29,16 +29,22 @@ import {
   NAME_LABEL_CANVAS_PAD_X,
   NAME_LABEL_CANVAS_PAD_Y,
   NAME_LABEL_CANVAS_MIN_WIDTH,
+  NAME_LABEL_OWNER_FILL_COLOR,
+  NAME_LABEL_OWNER_STROKE_COLOR,
+  NAME_LABEL_OWNER_WORLD_HEIGHT,
 } from '@/nameLabelConfig';
 
 // Local short-name alias for the imported config — keeps call sites
 // terse while every tunable lives in @/nameLabelConfig.
 const STYLE = {
   worldHeight: NAME_LABEL_WORLD_HEIGHT,
+  ownerWorldHeight: NAME_LABEL_OWNER_WORLD_HEIGHT,
   fontPx: NAME_LABEL_FONT_PX,
   fontFamily: NAME_LABEL_FONT_FAMILY,
   fillColor: NAME_LABEL_FILL_COLOR,
   strokeColor: NAME_LABEL_STROKE_COLOR,
+  ownerFillColor: NAME_LABEL_OWNER_FILL_COLOR,
+  ownerStrokeColor: NAME_LABEL_OWNER_STROKE_COLOR,
   strokeWidthPx: NAME_LABEL_STROKE_WIDTH_PX,
   canvasPadX: NAME_LABEL_CANVAS_PAD_X,
   canvasPadY: NAME_LABEL_CANVAS_PAD_Y,
@@ -47,10 +53,26 @@ const STYLE = {
 
 const FONT_STRING = `bold ${STYLE.fontPx}px ${STYLE.fontFamily}`;
 const CANVAS_HEIGHT_PX = STYLE.fontPx + 2 * STYLE.canvasPadY;
+export const PIECE_TAG_COMMANDER_OWNER_NAME = 2;
+
+export type NameLabelTone = 'blueprint' | 'owner';
+
+function fillColorForTone(tone: NameLabelTone): string {
+  return tone === 'owner' ? STYLE.ownerFillColor : STYLE.fillColor;
+}
+
+function strokeColorForTone(tone: NameLabelTone): string {
+  return tone === 'owner' ? STYLE.ownerStrokeColor : STYLE.strokeColor;
+}
+
+function worldHeightForTone(tone: NameLabelTone): number {
+  return tone === 'owner' ? STYLE.ownerWorldHeight : STYLE.worldHeight;
+}
 
 type LabelState = {
   /** Last-baked text. The canvas re-paints only when this changes. */
   lastText: string;
+  lastTone: NameLabelTone | null;
   /** Last-baked canvas dimensions in pixels. The sprite's world width
    *  is `(canvasW / canvasH) × worldHeight`, so character proportions
    *  stay uniform regardless of text length. */
@@ -63,14 +85,16 @@ type Label = CanvasSpriteSlot<LabelState>;
 function makeLabelState(slot: Pick<Label, 'canvas'>): LabelState {
   return {
     lastText: '',
+    lastTone: null,
     lastCanvasW: slot.canvas.width,
     lastCanvasH: slot.canvas.height,
   };
 }
 
-function repaintLabel(label: Label, text: string): boolean {
-  if (label.state.lastText === text) return false;
+function repaintLabel(label: Label, text: string, tone: NameLabelTone): boolean {
+  if (label.state.lastText === text && label.state.lastTone === tone) return false;
   label.state.lastText = text;
+  label.state.lastTone = tone;
   const ctx = label.ctx;
   const canvas = label.canvas;
 
@@ -88,8 +112,8 @@ function repaintLabel(label: Label, text: string): boolean {
   ctx.textBaseline = 'middle';
   ctx.lineJoin = 'round';
   ctx.lineWidth = STYLE.strokeWidthPx;
-  ctx.strokeStyle = STYLE.strokeColor;
-  ctx.fillStyle = STYLE.fillColor;
+  ctx.strokeStyle = strokeColorForTone(tone);
+  ctx.fillStyle = fillColorForTone(tone);
   ctx.strokeText(text, newW / 2, newH / 2);
   ctx.fillText(text, newW / 2, newH / 2);
   label.state.lastCanvasW = newW;
@@ -105,7 +129,7 @@ export class NameLabel3D {
   /** Pool grows on demand. Each label keeps its sprite parented to
    *  `parent` for the life of the renderer — endFrame just hides the
    *  unused tail, beginFrame doesn't tear down sprites. */
-  private pool: CanvasSpritePool<LabelState, [string]>;
+  private pool: CanvasSpritePool<LabelState, [string, NameLabelTone]>;
 
   /** Per-frame cursor — same pattern as HealthBar3D. Dedup is keyed by
    *  a PACKED piece key (hostId * 256 + pieceTag) so a host's body
@@ -119,7 +143,7 @@ export class NameLabel3D {
   private _fade: HudFade | null = null;
 
   constructor(parent: THREE.Group) {
-    this.pool = new CanvasSpritePool<LabelState, [string]>({
+    this.pool = new CanvasSpritePool<LabelState, [string, NameLabelTone]>({
       parent,
       // Initial canvas size is provisional; the first repaint resizes
       // to fit actual text. Non-zero starter dimensions keep Three's
@@ -168,7 +192,7 @@ export class NameLabel3D {
     if (alpha <= FADE_CULL_ALPHA) return;
 
     this._seenEntityFrame.set(key, this._frameToken);
-    this.place(text, worldX, worldY, worldZ, alpha);
+    this.place(text, worldX, worldY, worldZ, alpha, 'blueprint');
   }
 
   /** Emit (or update) a label for a sub-piece (turret / locomotion /
@@ -181,6 +205,7 @@ export class NameLabel3D {
     pieceTag: number,
     anchorWorld: { x: number; y: number; z: number },
     text: string | null,
+    tone: NameLabelTone = 'blueprint',
   ): void {
     if (!text || text.length === 0) return;
     const key = packPieceKey(host.id, pieceTag);
@@ -189,7 +214,7 @@ export class NameLabel3D {
     const alpha = this._fade ? this._fade.alphaAt(worldX, worldY, worldZ) : 1;
     if (alpha <= FADE_CULL_ALPHA) return;
     this._seenEntityFrame.set(key, this._frameToken);
-    this.place(text, worldX, worldY, worldZ, alpha);
+    this.place(text, worldX, worldY, worldZ, alpha, tone);
   }
 
   /** Shared sprite placement: acquire a pool slot, repaint if the text
@@ -200,14 +225,15 @@ export class NameLabel3D {
     worldY: number,
     worldZ: number,
     alpha: number,
+    tone: NameLabelTone,
   ): void {
     const label = this.acquire(this._used++);
-    this.repaintIfChanged(label, text);
+    this.repaintIfChanged(label, text, tone);
 
     // Sprite's world aspect = canvas aspect, so text proportions stay
     // uniform: short names render small, long names render long, and
     // each character claims the same world height across all labels.
-    const worldHeight = STYLE.worldHeight;
+    const worldHeight = worldHeightForTone(tone);
     const worldWidth = (label.state.lastCanvasW / label.state.lastCanvasH) * worldHeight;
     label.sprite.scale.set(worldWidth, worldHeight, 1);
     label.sprite.position.set(worldX, worldY, worldZ);
@@ -239,7 +265,7 @@ export class NameLabel3D {
     return this.pool.acquire(i);
   }
 
-  private repaintIfChanged(label: Label, text: string): void {
-    this.pool.repaintIfChanged(label, text);
+  private repaintIfChanged(label: Label, text: string, tone: NameLabelTone): void {
+    this.pool.repaintIfChanged(label, text, tone);
   }
 }

@@ -1,6 +1,7 @@
 {
   "turretGunLight": {
     "turretBlueprintId": "turretGunLight",
+    "name": "Light Gun",
     "range": 200,
     "cooldown": 450,
     "launchForce": 2000,
@@ -72,6 +73,7 @@
   },
   "turretGunBurst": {
     "turretBlueprintId": "turretGunBurst",
+    "name": "Burst Gun",
     "range": 230,
     "cooldown": 3000,
     "launchForce": 5000,
@@ -154,6 +156,7 @@
   },
   "turretCannon": {
     "turretBlueprintId": "turretCannon",
+    "name": "Cannon",
     "range": 1000,
     "cooldown": 2300,
     "launchForce": 10000,
@@ -228,6 +231,7 @@
   },
   "turretMortarSlow": {
     "turretBlueprintId": "turretMortarSlow",
+    "name": "Heavy Mortar",
     "range": 1000,
     "cooldown": 6000,
     "launchForce": 20000,
@@ -302,6 +306,7 @@
   },
   "turretMortarDrop": {
     "turretBlueprintId": "turretMortarDrop",
+    "name": "Drop Mortar",
     "range": 650,
     "cooldown": 3500,
     "launchForce": 3500,
@@ -373,6 +378,7 @@
   },
   "turretMortarFast": {
     "turretBlueprintId": "turretMortarFast",
+    "name": "Rapid Mortar",
     "range": 2000,
     "cooldown": 900,
     "launchForce": 26000,
@@ -455,6 +461,7 @@
   },
   "turretGatling": {
     "turretBlueprintId": "turretGatling",
+    "name": "Gatling Gun",
     "range": 300,
     "cooldown": 130,
     "launchForce": 8000,
@@ -537,6 +544,7 @@
   },
   "turretDisruptor": {
     "turretBlueprintId": "turretDisruptor",
+    "name": "Disruptor",
     "range": 150,
     "cooldown": 0,
     "launchForce": 8400,
@@ -606,6 +614,7 @@
   },
   "turretShieldPanel": {
     "turretBlueprintId": "turretShieldPanel",
+    "name": "Shield Panel",
     "range": 300,
     "cooldown": 0,
     "launchForce": 0,
@@ -675,6 +684,7 @@
   },
   "turretBeam": {
     "turretBlueprintId": "turretBeam",
+    "name": "Beam Emitter",
     "range": 250,
     "cooldown": 0,
     "launchForce": 0,
@@ -744,6 +754,7 @@
   },
   "turretBeamMini": {
     "turretBlueprintId": "turretBeamMini",
+    "name": "Mini Beam",
     "range": 180,
     "cooldown": 0,
     "launchForce": 0,
@@ -813,6 +824,7 @@
   },
   "turretBeamMega": {
     "turretBlueprintId": "turretBeamMega",
+    "name": "Mega Beam",
     "range": 350,
     "cooldown": 0,
     "launchForce": 0,
@@ -882,6 +894,7 @@
   },
   "turretShieldSphere": {
     "turretBlueprintId": "turretShieldSphere",
+    "name": "Shield Sphere",
     "range": 540,
     "cooldown": 0,
     "launchForce": 0,
@@ -960,6 +973,7 @@
   },
   "turretConstruction": {
     "turretBlueprintId": "turretConstruction",
+    "name": "Construction Emitter",
     "range": 0,
     "cooldown": 0,
     "launchForce": 0,
@@ -1045,6 +1059,7 @@
   },
   "turretBeamLong": {
     "turretBlueprintId": "turretBeamLong",
+    "name": "Long Beam",
     "range": 350,
     "cooldown": 0,
     "launchForce": 0,
@@ -1114,6 +1129,7 @@
   },
   "turretCannonLong": {
     "turretBlueprintId": "turretCannonLong",
+    "name": "Long Cannon",
     "range": 1500,
     "cooldown": 1500,
     "launchForce": 30000,
@@ -1189,6 +1205,7 @@
   },
   "turretRocketSlow": {
     "turretBlueprintId": "turretRocketSlow",
+    "name": "Rocket Launcher",
     "range": 800,
     "cooldown": 2000,
     "launchForce": 500,
@@ -1264,6 +1281,7 @@
   },
   "turretRocketFast": {
     "turretBlueprintId": "turretRocketFast",
+    "name": "Fast Rocket Launcher",
     "range": 430,
     "cooldown": 50,
     "launchForce": 5000,

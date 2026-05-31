@@ -12,6 +12,8 @@ import { COLORS } from './colorsConfig';
  *  canvas aspect. That's how characters keep consistent proportions
  *  whether the name is 3 chars or 20. */
 export const NAME_LABEL_WORLD_HEIGHT = nameLabelConfig.worldHeight;
+export const NAME_LABEL_OWNER_WORLD_HEIGHT = nameLabelConfig.ownerWorldHeight;
+export const NAME_LABEL_OWNER_Y_OFFSET = nameLabelConfig.ownerYOffset;
 
 /** Font: pixel-aligned, no anti-aliasing fuzz. Drawn at 2× canvas
  *  size for retina-clean edges; the sprite scale handles world fit. */
@@ -20,6 +22,8 @@ export const NAME_LABEL_FONT_FAMILY = nameLabelConfig.fontFamily;
 
 export const NAME_LABEL_FILL_COLOR = COLORS.ui.nameLabel.fillColor;
 export const NAME_LABEL_STROKE_COLOR = COLORS.ui.nameLabel.strokeColor;
+export const NAME_LABEL_OWNER_FILL_COLOR = COLORS.ui.nameLabel.ownerFillColor;
+export const NAME_LABEL_OWNER_STROKE_COLOR = COLORS.ui.nameLabel.ownerStrokeColor;
 export const NAME_LABEL_STROKE_WIDTH_PX = nameLabelConfig.strokeWidthPx;
 
 /** Per-paint canvas padding around the rendered text, in canvas

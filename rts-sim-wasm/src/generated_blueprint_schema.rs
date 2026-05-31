@@ -153,6 +153,7 @@ pub struct SmokeTrailSpec {
 pub struct ProjectileShotBlueprint {
     pub r#type: ProjectileShotKind,
     pub shotBlueprintId: String,
+    pub name: String,
     pub base: EntityBaseLedger,
     pub mass: f64,
     pub health: f64,
@@ -400,6 +401,7 @@ pub struct TurretAudioConfig {
 #[derive(Clone, Debug, PartialEq)]
 pub struct TurretBlueprint {
     pub turretBlueprintId: String,
+    pub name: String,
     pub base: EntityBaseLedger,
     pub kind: WeaponKind,
     pub range: f64,
@@ -582,6 +584,7 @@ pub struct FlyingConfig {
 pub struct LocomotionBlueprintWheels {
     pub r#type: String,
     pub locomotionBlueprintId: String,
+    pub name: String,
     pub base: EntityBaseLedger,
     pub physics: LocomotionPhysics,
     pub pathfindingBlueprintId: String,
@@ -593,6 +596,7 @@ pub struct LocomotionBlueprintWheels {
 pub struct LocomotionBlueprintTreads {
     pub r#type: String,
     pub locomotionBlueprintId: String,
+    pub name: String,
     pub base: EntityBaseLedger,
     pub physics: LocomotionPhysics,
     pub pathfindingBlueprintId: String,
@@ -604,6 +608,7 @@ pub struct LocomotionBlueprintTreads {
 pub struct LocomotionBlueprintLegs {
     pub r#type: String,
     pub locomotionBlueprintId: String,
+    pub name: String,
     pub base: EntityBaseLedger,
     pub physics: LocomotionPhysics,
     pub pathfindingBlueprintId: String,
@@ -615,6 +620,7 @@ pub struct LocomotionBlueprintLegs {
 pub struct LocomotionBlueprintHover {
     pub r#type: String,
     pub locomotionBlueprintId: String,
+    pub name: String,
     pub base: EntityBaseLedger,
     pub physics: LocomotionPhysics,
     pub pathfindingBlueprintId: String,
@@ -626,6 +632,7 @@ pub struct LocomotionBlueprintHover {
 pub struct LocomotionBlueprintFlying {
     pub r#type: String,
     pub locomotionBlueprintId: String,
+    pub name: String,
     pub base: EntityBaseLedger,
     pub physics: LocomotionPhysics,
     pub pathfindingBlueprintId: String,
