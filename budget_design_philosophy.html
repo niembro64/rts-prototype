@@ -2255,6 +2255,34 @@
         replaced. The tube balls must live by the same contract.
       </p>
 
+      <h3>Density is the absolute transfer rate, scaled by one global knob</h3>
+      <p>
+        How many balls a pylon spawns per second is set by the <strong>absolute</strong> resource
+        transfer rate &mdash; resources per second actually moving &mdash; <em>not</em> by the
+        fraction of the host&rsquo;s per-tick cap it happens to be using. A large factory paying
+        hundreds of metal a second and a tiny builder paying a handful both spawn balls in direct
+        proportion to what they move, so the factory&rsquo;s tube visibly runs thick while the
+        builder&rsquo;s only trickles &mdash; even if both are nominally &ldquo;at 100% of their own
+        cap.&rdquo; This is the resource-ball reading of <strong>two pieces that move the same
+        resource at the same rate must look identical</strong>: balls measure throughput, and
+        throughput is absolute, not relative to the mover&rsquo;s size. Reading the rate off a cap
+        fraction is exactly the drift this retires.
+      </p>
+      <p>
+        The mapping from transfer rate to ball cadence is a single global scalar, authored once in
+        <code>resourceConfig.json</code> as <code>ballsPerResourcePerSecond</code>:
+        <code>balls&nbsp;per&nbsp;second = resourceTransferRatePerSecond &times;
+        ballsPerResourcePerSecond</code>. Raising it makes every stream on the map denser for the
+        same economy; lowering it thins them all out. It is the one toggle for resource-ball
+        density, and it changes only how finely a flow is sampled into discrete spheres, never what
+        a ball means. Because it feeds a spawn cadence and never an in-flight count, turning it down
+        mid-flow lets the balls already travelling finish and just slows the births behind them (see
+        <strong>Rate gates a ball&rsquo;s birth, not its flight</strong>). All resource-ball tuning
+        &mdash; this scalar plus the cosmetic spray/tube constants &mdash; lives in
+        <code>resourceConfig.json</code> rather than as literals scattered through the renderers
+        (<strong>Config Is Data, Not Code</strong>).
+      </p>
+
       <h3>Who carries which pylons</h3>
       <p>
         Every host that affects a resource pool must mount the pylons that match what it does.

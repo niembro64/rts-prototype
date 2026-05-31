@@ -89,6 +89,48 @@ cross-tip arcs with in-flight recolor, and repair/reclaim flows through
 builder-mounted resource pylons.
 File:line refs were correct at audit time; re-verify before editing.
 
+--------------------------------------------------------------------------------
+Item A51 added 2026-05-31 alongside a design-direction expansion of
+budget_design_philosophy.html "Resource Movement Flows Through Pylons" (new
+subsection "Density is the absolute transfer rate, scaled by one global knob"):
+resource-ball density must track the ABSOLUTE resource transfer rate
+(resources/second), not the fraction of the host's per-tick cap, mapped through a
+single global scalar. Largely IMPLEMENTED this turn; A51 tracks the residual
+follow-ups. Resource balls stay renderer-only / off-wire / anonymous (philosophy
+~1747).
+
+2026-05-31 done: added src/resourceConfig.json + src/resourceConfig.ts (validated
+loader) holding `ballsPerResourcePerSecond` (the global toggle:
+balls/sec = resourceRatePerSecond * ballsPerResourcePerSecond) plus the resource-ball
+visual constants migrated out of the renderers (Config Is Data). Ball generation now
+reads the absolute rate from the single resource-movement channel
+(ClientViewState.getResourcePylonFlows / getResourcePylonSignedRate, amountPerSecond)
+for every pylon path — builder flows (flow.amountPerSecond), factory construction
+(getResourcePylonSignedRate(factory.id, ...)), the no-flow build fallback (paid-delta
+/ dt), solar/wind/extractor producers, and the converter crossing/tax split — and
+sets SprayTarget.ballSpawnRate / PylonTubeFlow.ballSpawnRate. SprayRenderer3D
+(~227-265) and PylonTubeFlowRenderer.spawnRateGatedBeads (~283-318) spawn from that
+absolute rate via their budget accumulators; the old cap-normalized intensity count
+remains only as the fallback when no absolute rate is set. The 1:1 tip handoff is
+preserved (outbound tube births at the absolute rate, inbound free legs do).
+
+A51. [LOW] src/resourceConfig.json + the resource-ball renderers
+    (src/game/render3d/SprayRenderer3D.ts, PylonTubeFlowRenderer.ts,
+    ConstructionVisualController3D.ts) —
+    RULE: "Density is the absolute transfer rate, scaled by one global knob" +
+    "Config Is Data, Not Code". —
+    PROBLEM / FIX (residual): (1) `ballsPerResourcePerSecond` defaults to 0.5, chosen
+    to land near the old full-rate ball counts (producers/builders move ~25-50/sec);
+    it is a guess and wants in-app A/B tuning. (2) Heal sprays (commander repair) still
+    spawn from intensity, not an absolute repair rate — they carry no ballSpawnRate and
+    use the legacy count fallback; bring repair onto the absolute path if repair should
+    read by throughput too. (3) Some resource-adjacent tuning still lives outside
+    resourceConfig.json — spray colors in colorsConfig.effects.spray, the build-rate EMA
+    half-lives in shellConfig (shared with non-resource ground-normal smoothing), and the
+    constructionEmitter particle speed/radius in turrets.json (correctly per-blueprint).
+    Decide which, if any, should consolidate into resourceConfig.json vs stay where they
+    are. Low urgency; the core absolute-rate behavior and the global toggle are in place.
+
 ================================================================================
 SECTION B — MEMORY LEAKS
 ================================================================================

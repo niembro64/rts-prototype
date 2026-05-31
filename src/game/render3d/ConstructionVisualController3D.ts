@@ -14,6 +14,7 @@ import {
   SHELL_BAR_COLORS,
 } from '@/shellConfig';
 import { CONSTRUCTION_TOWER_SPIN_CONFIG } from '@/constructionVisualConfig';
+import { ballSpawnRateForResourceRate } from '@/resourceConfig';
 import { getRotationVelEmaMode } from '@/clientBarConfig';
 import {
   RESOURCE_FLOW_INBOUND,
@@ -66,6 +67,10 @@ function resourceNameFromCode(resource: ResourceKindCode): ConstructionTowerReso
   if (resource === RESOURCE_KIND_ENERGY) return 'energy';
   if (resource === RESOURCE_KIND_METAL) return 'metal';
   return null;
+}
+
+function resourceCodeFromName(resource: ConstructionTowerResource): ResourceKindCode {
+  return resource === 'energy' ? RESOURCE_KIND_ENERGY : RESOURCE_KIND_METAL;
 }
 
 function pylonDirectionFromCode(direction: ResourceFlowDirectionCode): ResourcePylonDirection {
@@ -154,6 +159,7 @@ export class ConstructionVisualController3D {
     up: boolean,
     birthMode: PylonTubeBirthMode,
     intensity: number,
+    ballSpawnRate: number | undefined,
     freeLeg: PylonTubeFreeLeg | undefined,
   ): void {
     let flow = this.tubeFlowPool.pop();
@@ -176,6 +182,7 @@ export class ConstructionVisualController3D {
     flow.up = up;
     flow.birthMode = birthMode;
     flow.intensity = Math.min(1, intensity);
+    flow.ballSpawnRate = ballSpawnRate;
     flow.speed = pylon.sprayTravelSpeed;
     flow.beadRadius = pylon.tubeBeadRadius;
     const color = RESOURCE_SPRAY_COLOR_BY_RESOURCE[pylon.resource];
@@ -245,6 +252,10 @@ export class ConstructionVisualController3D {
     const hasResourceFlows = aggregateEnergy > 0 || aggregateMetal > 0;
     let targetRateE = Math.min(1, aggregateEnergy);
     let targetRateT = Math.min(1, aggregateMetal);
+    // Absolute spend (resources/second) for the no-flow fallback path,
+    // recovered from the build target's paid-resource deltas. Ball density
+    // tracks this, not the builder's per-tick construction cap.
+    const fallbackAbsRates = { energy: 0, metal: 0 };
 
     if (!hasResourceFlows && targetId !== NO_ENTITY_ID && builder && dtSec > 0) {
       const target = this.clientViewState.getEntity(targetId);
@@ -259,6 +270,8 @@ export class ConstructionVisualController3D {
         const dT = Math.max(0, buildable.paid.metal - rig.lastPaid.metal);
         rig.lastPaid.energy = buildable.paid.energy;
         rig.lastPaid.metal = buildable.paid.metal;
+        fallbackAbsRates.energy = dE / dtSec;
+        fallbackAbsRates.metal = dT / dtSec;
 
         const cap = builder.constructionRate * dtSec;
         if (cap > 0) {
@@ -318,6 +331,7 @@ export class ConstructionVisualController3D {
         target.id,
         this._factorySprayTargetWorld,
         sphereRadius,
+        fallbackAbsRates,
         'outbound',
       );
     }
@@ -368,6 +382,14 @@ export class ConstructionVisualController3D {
     }, this._factoryBuildSpot);
     rig.group.updateWorldMatrix(true, false);
     this._factorySprayTargetWorld.set(buildSpot.x, e.transform.z, buildSpot.y);
+    // Absolute construction spend (resources/second) for THIS factory, read
+    // from the single resource-movement channel (factory build payments are
+    // recorded with the factory as their source entity). Ball density tracks
+    // this, not the factory's per-tick cap.
+    const factoryAbsRates = {
+      energy: Math.abs(this.clientViewState.getResourcePylonSignedRate(e.id, RESOURCE_KIND_ENERGY)),
+      metal: Math.abs(this.clientViewState.getResourcePylonSignedRate(e.id, RESOURCE_KIND_METAL)),
+    };
     this.emitPylonResourceSprays(
       rig,
       rig.group,
@@ -376,6 +398,7 @@ export class ConstructionVisualController3D {
       e.id,
       this._factorySprayTargetWorld,
       buildSpotRadius,
+      factoryAbsRates,
     );
   }
 
@@ -528,6 +551,12 @@ export class ConstructionVisualController3D {
     spray.speed = pylon.sprayTravelSpeed;
     spray.particleRadius = pylon.sprayParticleRadius;
     spray.colorRGB = RESOURCE_SPRAY_COLOR_BY_RESOURCE[pylon.resource];
+    // Ball density tracks this producer's absolute output (resources/second)
+    // from the single resource-movement channel, not a normalized fraction.
+    const ambientAbsRate = Math.abs(
+      this.clientViewState.getResourcePylonSignedRate(host.id, resourceCodeFromName(pylon.resource)),
+    );
+    spray.ballSpawnRate = ballSpawnRateForResourceRate(ambientAbsRate);
   }
 
   emitConverterResourceTransfer(
@@ -558,6 +587,12 @@ export class ConstructionVisualController3D {
     const sinkRate = Math.max(0, sinkPylon.displaySmoothedRate);
     const crossingRate = Math.min(sourceRate, sinkRate);
     const taxRate = Math.max(0, sourceRate - crossingRate);
+    // Absolute consumed rate (resources/second) at the source tip, split by
+    // the same crossing/tax ratio the normalized rates imply, so converter
+    // ball density tracks real throughput rather than the converter's cap.
+    const sourceAbs = Math.abs(sourcePylon === energyPylon ? energySignedRate : metalSignedRate);
+    const crossingAbs = sourceRate > 0 ? sourceAbs * (crossingRate / sourceRate) : 0;
+    const taxAbs = sourceRate > 0 ? sourceAbs * (taxRate / sourceRate) : 0;
 
     group.updateWorldMatrix(true, false);
     this.writePylonWorldEndpoints(
@@ -603,6 +638,7 @@ export class ConstructionVisualController3D {
       spray.particleRadius = Math.max(sourcePylon.sprayParticleRadius, sinkPylon.sprayParticleRadius);
       spray.colorRGB = RESOURCE_SPRAY_COLOR_BY_RESOURCE[sourcePylon.resource];
       spray.endColorRGB = RESOURCE_SPRAY_COLOR_BY_RESOURCE[sinkPylon.resource];
+      spray.ballSpawnRate = ballSpawnRateForResourceRate(crossingAbs);
     }
 
     if (taxRate >= 0.05) {
@@ -630,6 +666,7 @@ export class ConstructionVisualController3D {
       spray.speed = sourcePylon.sprayTravelSpeed;
       spray.particleRadius = sourcePylon.sprayParticleRadius;
       spray.colorRGB = RESOURCE_SPRAY_COLOR_BY_RESOURCE[sourcePylon.resource];
+      spray.ballSpawnRate = ballSpawnRateForResourceRate(taxAbs);
     }
   }
 
@@ -650,6 +687,7 @@ export class ConstructionVisualController3D {
     target.endColorRGB = undefined;
     target.endpointFade = undefined;
     target.pylonTubeHandoffKey = undefined;
+    target.ballSpawnRate = undefined;
     target.waypoint = undefined;
     target.waypoint2 = undefined;
     target.speed = undefined;
@@ -769,6 +807,7 @@ export class ConstructionVisualController3D {
     targetId: EntityId,
     targetWorld: THREE.Vector3,
     targetRadius: number,
+    absRateByResource: { energy: number; metal: number },
     direction: ResourcePylonDirection = 'outbound',
   ): void {
     for (let i = 0; i < rig.pylons.length; i++) {
@@ -784,6 +823,7 @@ export class ConstructionVisualController3D {
         targetRadius,
         direction,
         rate,
+        absRateByResource[pylon.resource],
         pylon.channel,
       );
     }
@@ -839,6 +879,7 @@ export class ConstructionVisualController3D {
         endpointRadius,
         direction,
         rate,
+        Math.max(0, flow.amountPerSecond),
         pylon.channel + (direction === 'inbound' ? 10 : 0),
       );
     }
@@ -879,9 +920,14 @@ export class ConstructionVisualController3D {
     endpointRadius: number,
     direction: ResourcePylonDirection,
     rate: number,
+    absRate: number,
     channel: number,
   ): void {
-    if (rate < 0.05) return;
+    // `rate` (cap-normalized, EMA-smoothed) still drives the idle gate and
+    // birth opacity; `absRate` (resources/second) drives how many balls are
+    // born, so density tracks absolute throughput rather than the cap.
+    if (rate < 0.05 && !(absRate > 0)) return;
+    const ballSpawnRate = ballSpawnRateForResourceRate(absRate);
     pylon.direction = direction;
     // Live world endpoints — the construction tower orbits, so the tip
     // and root move every frame.
@@ -929,6 +975,9 @@ export class ConstructionVisualController3D {
       direction === 'outbound',
       direction === 'outbound' ? 'rate' : 'handoff',
       rate,
+      // Outbound tubes are rate-gated at the root from the absolute rate;
+      // inbound tube births arrive one-for-one from free-leg handoffs.
+      direction === 'outbound' ? ballSpawnRate : undefined,
       outboundFreeLeg,
     );
 
@@ -992,5 +1041,8 @@ export class ConstructionVisualController3D {
     spray.colorRGB = color;
     spray.endpointFade = 'start';
     spray.pylonTubeHandoffKey = flowKey;
+    // Inbound free leg (world -> tip) is the rate-gate; each particle that
+    // reaches the tip births one down-tube bead, so the tube stays 1:1.
+    spray.ballSpawnRate = ballSpawnRate;
   }
 }

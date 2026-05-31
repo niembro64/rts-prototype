@@ -15,21 +15,23 @@
 import * as THREE from 'three';
 import type { PylonTubeFlow, PylonTubeFreeLeg, SprayTarget } from '@/types/ui';
 import { disposeMesh } from './threeUtils';
+import { RESOURCE_CONFIG } from '@/resourceConfig';
 
+// Resource-ball visual tuning lives in resourceConfig.json (Config Is Data).
 /** Global cap on simultaneous tube beads across every pylon. */
-const MAX_BEADS = 2048;
+const MAX_BEADS = RESOURCE_CONFIG.tube.maxBeads;
 /** Per-tube bead cap, so a single long pylon can't eat the whole pool. */
-const MAX_BEADS_PER_TUBE = 28;
-/** Bead spacing along the bore, in bead radii. Spacing sets the densest
- *  the column can look at full intensity; intensity then thins it out. */
-const BEAD_SPACING_MULT = 3.0;
+const MAX_BEADS_PER_TUBE = RESOURCE_CONFIG.tube.maxBeadsPerTube;
+/** Bead spacing along the bore, in bead radii. Used by the legacy
+ *  intensity-driven birth fallback to size the densest column. */
+const BEAD_SPACING_MULT = RESOURCE_CONFIG.tube.beadSpacingMult;
 /** Fraction of the tube length over which a bead fades in at the entry
  *  end and out at the exit end, so beads materialize/vanish cleanly
  *  rather than popping at the root/tip. */
-const END_FADE_FRAC = 0.12;
-const BASE_ALPHA = 0.95;
-const MAX_BEAD_SPAWNS_PER_FLOW_FRAME = 24;
-const FLOW_RUNTIME_PRUNE_AFTER_FRAMES = 1800;
+const END_FADE_FRAC = RESOURCE_CONFIG.tube.endFadeFrac;
+const BASE_ALPHA = RESOURCE_CONFIG.tube.baseAlpha;
+const MAX_BEAD_SPAWNS_PER_FLOW_FRAME = RESOURCE_CONFIG.tube.maxSpawnsPerFlowFrame;
+const FLOW_RUNTIME_PRUNE_AFTER_FRAMES = RESOURCE_CONFIG.tube.runtimePruneAfterFrames;
 
 type PylonTubeFlowRuntime = {
   key: string;
@@ -38,6 +40,7 @@ type PylonTubeFlowRuntime = {
   up: boolean;
   birthMode: PylonTubeFlow['birthMode'];
   intensity: number;
+  ballSpawnRate?: number;
   speed: number;
   beadRadius: number;
   colorRGB: { r: number; g: number; b: number };
@@ -215,6 +218,7 @@ export class PylonTubeFlowRenderer {
     runtime.up = flow.up;
     runtime.birthMode = flow.birthMode;
     runtime.intensity = Math.max(0, Math.min(1, flow.intensity));
+    runtime.ballSpawnRate = flow.ballSpawnRate;
     runtime.speed = flow.speed;
     runtime.beadRadius = flow.beadRadius;
     runtime.colorRGB.r = flow.colorRGB.r;
@@ -283,18 +287,28 @@ export class PylonTubeFlowRenderer {
   private spawnRateGatedBeads(dtSec: number): void {
     if (dtSec <= 0) return;
     for (const runtime of this.flowRuntimes.values()) {
+      const hasBallRate = runtime.ballSpawnRate !== undefined && runtime.ballSpawnRate > 0;
       if (
         runtime.lastSeenFrame !== this.frameIndex
         || runtime.birthMode !== 'rate'
-        || runtime.intensity <= 0.02
+        || (!hasBallRate && runtime.intensity <= 0.02)
       ) {
         continue;
       }
       const len = this.flowLength(runtime);
       if (len < 1e-3 || runtime.speed <= 0) continue;
-      const spacing = Math.max(1e-3, runtime.beadRadius * BEAD_SPACING_MULT);
-      const capacity = Math.min(MAX_BEADS_PER_TUBE, Math.max(1, Math.floor(len / spacing)));
-      const birthsPerSec = (capacity * runtime.intensity * runtime.speed) / len;
+      // Absolute-rate births: beads/second comes straight from the resource
+      // transfer rate. The budget accumulator integrates it, so a rate change
+      // only retunes the cadence — it never pops an in-flight bead. Falls back
+      // to the legacy intensity*capacity column when no absolute rate is set.
+      let birthsPerSec: number;
+      if (hasBallRate) {
+        birthsPerSec = runtime.ballSpawnRate as number;
+      } else {
+        const spacing = Math.max(1e-3, runtime.beadRadius * BEAD_SPACING_MULT);
+        const capacity = Math.min(MAX_BEADS_PER_TUBE, Math.max(1, Math.floor(len / spacing)));
+        birthsPerSec = (capacity * runtime.intensity * runtime.speed) / len;
+      }
       runtime.spawnBudget += birthsPerSec * dtSec;
       const spawnCount = Math.min(
         MAX_BEAD_SPAWNS_PER_FLOW_FRAME,
@@ -303,7 +317,9 @@ export class PylonTubeFlowRenderer {
       runtime.spawnBudget -= spawnCount;
       const dir = runtime.up ? 1 : -1;
       const startFrac = runtime.up ? 0 : 1;
-      const alphaScale = Math.min(1, runtime.intensity * 1.4);
+      // Density encodes magnitude, so abs-rate beads render at full opacity;
+      // the legacy fallback keeps its intensity-scaled alpha.
+      const alphaScale = hasBallRate ? 1 : Math.min(1, runtime.intensity * 1.4);
       for (let i = 0; i < spawnCount; i++) {
         this.spawnBead(runtime, dir, startFrac, alphaScale);
       }

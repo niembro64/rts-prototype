@@ -271,6 +271,12 @@ export type SprayTarget = {
   /** When set, a particle that finishes this free leg has reached a
    *  pylon tip and must spawn one tube bead under this flow key. */
   pylonTubeHandoffKey?: string;
+  /** Absolute ball spawn rate in balls/second, derived from the resource
+   *  transfer rate (resources/second * resourceConfig.ballsPerResourcePerSecond).
+   *  When present, the renderer spawns build/pylon particles at this rate
+   *  instead of the legacy cap-normalized intensity count, so density tracks
+   *  absolute throughput. Omitted for heal sprays and one-shot handoffs. */
+  ballSpawnRate?: number;
 };
 
 export type PylonTubeBirthMode = 'rate' | 'handoff';
@@ -306,6 +312,12 @@ export type PylonTubeFlow = {
   /** 0..1 — drives only birth cadence and birth opacity. Existing
    *  beads keep their own lifecycle once spawned. */
   intensity: number;
+  /** Absolute bead spawn rate in beads/second for a `rate` birthMode tube,
+   *  derived from the resource transfer rate (resources/second *
+   *  resourceConfig.ballsPerResourcePerSecond). When present, beads are born
+   *  at this rate instead of the legacy cap-normalized intensity cadence.
+   *  Ignored for `handoff` tubes (their births come from the free leg). */
+  ballSpawnRate?: number;
   /** Bead travel speed in world units per second along the axis. */
   speed: number;
   beadRadius: number;

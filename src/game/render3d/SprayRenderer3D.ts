@@ -41,28 +41,28 @@ import { getPlayerPrimaryColor } from '../sim/types';
 import { hexToRgb01 } from './colorUtils';
 import { disposeMesh } from './threeUtils';
 import { TURRET_CONFIGS } from '../sim/turretConfigs';
+import { RESOURCE_CONFIG } from '@/resourceConfig';
 
+// Resource-ball visual tuning lives in resourceConfig.json (Config Is Data).
 // Default spray trail altitude for legacy 2D spray targets. Factory
 // tower sprays can pass explicit source/target z heights.
-const TRAIL_Y = 4;
-const MIN_FLIGHT_SEC = 0.16;
+const TRAIL_Y = RESOURCE_CONFIG.spray.trailY;
+const MIN_FLIGHT_SEC = RESOURCE_CONFIG.spray.minFlightSec;
 const DEFAULT_BUILD_PARTICLE_SPEED =
   TURRET_CONFIGS.turretConstruction.constructionEmitter?.particleTravelSpeed ?? 100;
 const DEFAULT_BUILD_PARTICLE_RADIUS =
   TURRET_CONFIGS.turretConstruction.constructionEmitter?.particleRadius ?? 1.5;
-const HEAL_PARTICLE_SPEED = 560;
-const HEAL_MAX_FLIGHT_SEC = 0.62;
-const HEAL_PARTICLE_BASE_RADIUS = 2.35;
-const MAX_PARTICLE_SPAWNS_PER_SPRAY_FRAME = 24;
+const HEAL_PARTICLE_SPEED = RESOURCE_CONFIG.spray.healParticleSpeed;
+const HEAL_MAX_FLIGHT_SEC = RESOURCE_CONFIG.spray.healMaxFlightSec;
+const HEAL_PARTICLE_BASE_RADIUS = RESOURCE_CONFIG.spray.healParticleBaseRadius;
+const MAX_PARTICLE_SPAWNS_PER_SPRAY_FRAME = RESOURCE_CONFIG.spray.maxSpawnsPerSprayFrame;
 
 /** Max particles per spray — keeps the pool bounded even when every
  *  commander on the map is actively building. */
-const MAX_PARTICLES_PER_SPRAY = 42;
+const MAX_PARTICLES_PER_SPRAY = RESOURCE_CONFIG.spray.maxParticlesPerSpray;
 
-/** Global cap on simultaneous particles across every spray on the
- *  map. With MAX_PARTICLES_PER_SPRAY=42 this fits ~36 concurrent
- *  sprays, well above any realistic commander / fabricator count. */
-const MAX_PARTICLES = 1536;
+/** Global cap on simultaneous particles across every spray on the map. */
+const MAX_PARTICLES = RESOURCE_CONFIG.spray.maxParticles;
 
 /** Heal-spray color — matches the 2D convention where heal sprays
  *  don't take the caster's team color. Constant white. */
@@ -225,16 +225,19 @@ export class SprayRenderer3D {
     }
 
     for (const spray of sprayTargets) {
-      if (spray.intensity <= 0) continue;
+      const hasBallRate = spray.ballSpawnRate !== undefined && spray.ballSpawnRate > 0;
+      // Abs-rate sprays render whenever their ball rate is positive, even
+      // if the cap-normalized intensity rounds to ~0 (a big host at a low
+      // fraction still moves real resources).
+      if (spray.intensity <= 0 && !hasBallRate) continue;
       const scaledIntensity = Math.min(1, spray.intensity);
       // Build sprays are intentionally denser than heal sprays because
       // they represent a construction emitter painting a footprint, not
       // a single repair beam.
       const baseCount = spray.type === 'build' ? 36 : 16;
-      // Build sprays scale linearly with intensity so the spawn rate is
-      // exactly proportional to the EMA resource transfer rate. Heal
-      // sprays keep a small floor so a damaged unit always reads as
-      // actively repaired.
+      // Legacy fallback: sprays without an absolute ball rate (heal sprays,
+      // 2D legacy targets) scale their spawn count with intensity. Pylon /
+      // build sprays carry ballSpawnRate and spawn from absolute throughput.
       const minCount = spray.type === 'build' ? 1 : 4;
       const count = Math.max(minCount, Math.floor(baseCount * scaledIntensity));
       const n = Math.min(count, MAX_PARTICLES_PER_SPRAY);
@@ -251,7 +254,15 @@ export class SprayRenderer3D {
       const key = this.sprayKey(spray);
       this.activeSprayKeys.add(key);
       let budget = this.spraySpawnBudget.get(key) ?? 0;
-      budget += (n / Math.max(flightSec, MIN_FLIGHT_SEC)) * dtSec;
+      // Absolute-rate spawn: balls/second comes straight from the resource
+      // transfer rate. The budget accumulator integrates it over time, so a
+      // step change in rate retunes the cadence without popping in-flight
+      // particles. Falls back to the intensity-derived count for sprays that
+      // carry no absolute rate (heal / legacy).
+      const spawnRatePerSec = hasBallRate
+        ? (spray.ballSpawnRate as number)
+        : n / Math.max(flightSec, MIN_FLIGHT_SEC);
+      budget += spawnRatePerSec * dtSec;
       const spawnCount = Math.min(
         MAX_PARTICLE_SPAWNS_PER_SPRAY_FRAME,
         Math.floor(budget),

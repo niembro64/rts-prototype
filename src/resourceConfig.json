@@ -1,0 +1,22 @@
+{
+  "ballsPerResourcePerSecond": 0.5,
+  "spray": {
+    "trailY": 4,
+    "minFlightSec": 0.16,
+    "maxSpawnsPerSprayFrame": 24,
+    "maxParticlesPerSpray": 42,
+    "maxParticles": 1536,
+    "healParticleSpeed": 560,
+    "healMaxFlightSec": 0.62,
+    "healParticleBaseRadius": 2.35
+  },
+  "tube": {
+    "maxBeads": 2048,
+    "maxBeadsPerTube": 28,
+    "beadSpacingMult": 3.0,
+    "endFadeFrac": 0.12,
+    "baseAlpha": 0.95,
+    "maxSpawnsPerFlowFrame": 24,
+    "runtimePruneAfterFrames": 1800
+  }
+}
