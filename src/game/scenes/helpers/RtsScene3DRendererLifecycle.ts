@@ -32,6 +32,7 @@ export type RtsScene3DRendererResources = {
   lineDragRenderer?: Destroyable | null;
   buildGhostRenderer?: Destroyable | null;
   sprayRenderer?: Destroyable | null;
+  pylonTubeFlowRenderer?: Destroyable | null;
   smokeTrailRenderer?: Destroyable | null;
   fogOfWarFogRenderer?: Destroyable | null;
   sightBoundaryRenderer?: Destroyable | null;
@@ -64,6 +65,7 @@ export function teardownRtsScene3DRenderers(
   resources.lineDragRenderer?.destroy();
   resources.buildGhostRenderer?.destroy();
   resources.sprayRenderer?.destroy();
+  resources.pylonTubeFlowRenderer?.destroy();
   resources.smokeTrailRenderer?.destroy();
   resources.fogOfWarFogRenderer?.destroy();
   resources.sightBoundaryRenderer?.destroy();

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { SprayTarget } from '@/types/ui';
+import type { PylonTubeFlow, SprayTarget } from '@/types/ui';
 import {
   BUILD_BUBBLE_RADIUS_COLLISION_MULT,
   BUILD_RATE_DISPLAY_EMA_HALF_LIFE_SEC,
@@ -76,9 +76,12 @@ export class ConstructionVisualController3D {
   private clientViewState: ClientViewState;
   private factorySprayTargets: SprayTarget[] = [];
   private factorySprayTargetPool: SprayTarget[] = [];
+  // Tube-leg bead columns for the orbiting construction-emitter pylons,
+  // locked to each pylon's live root->tip axis (see PylonTubeFlowRenderer).
+  private tubeFlows: PylonTubeFlow[] = [];
+  private tubeFlowPool: PylonTubeFlow[] = [];
   private _factorySpraySourceWorld = new THREE.Vector3();
   private _factorySprayTargetWorld = new THREE.Vector3();
-  private _factorySprayWaypointWorld = new THREE.Vector3();
   private _factorySprayRootWorld = new THREE.Vector3();
   private _converterSourceRootWorld = new THREE.Vector3();
   private _converterSourceTipWorld = new THREE.Vector3();
@@ -103,15 +106,59 @@ export class ConstructionVisualController3D {
       this.factorySprayTargetPool.push(this.factorySprayTargets[i]);
     }
     this.factorySprayTargets.length = 0;
+    for (let i = 0; i < this.tubeFlows.length; i++) {
+      this.tubeFlowPool.push(this.tubeFlows[i]);
+    }
+    this.tubeFlows.length = 0;
   }
 
   getFactorySprayTargets(): readonly SprayTarget[] {
     return this.factorySprayTargets;
   }
 
+  getTubeFlows(): readonly PylonTubeFlow[] {
+    return this.tubeFlows;
+  }
+
   destroy(): void {
     this.factorySprayTargets.length = 0;
     this.factorySprayTargetPool.length = 0;
+    this.tubeFlows.length = 0;
+    this.tubeFlowPool.length = 0;
+  }
+
+  /** Publish one bead column for a pylon's tube leg, locked to its live
+   *  world root/tip so it rides the orbiting construction tower. `up`
+   *  means beads climb root->tip (consuming); otherwise they fall
+   *  tip->root (producing). */
+  private pushTubeFlow(
+    pylon: ResourcePylonRig,
+    root: THREE.Vector3,
+    tip: THREE.Vector3,
+    up: boolean,
+    intensity: number,
+  ): void {
+    let flow = this.tubeFlowPool.pop();
+    if (!flow) {
+      flow = {
+        root: { x: 0, y: 0, z: 0 },
+        tip: { x: 0, y: 0, z: 0 },
+        up: true,
+        intensity: 0,
+        speed: 0,
+        beadRadius: 0,
+        colorRGB: { r: 0, g: 0, b: 0 },
+      };
+    }
+    flow.root.x = root.x; flow.root.y = root.y; flow.root.z = root.z;
+    flow.tip.x = tip.x; flow.tip.y = tip.y; flow.tip.z = tip.z;
+    flow.up = up;
+    flow.intensity = Math.min(1, intensity);
+    flow.speed = pylon.sprayTravelSpeed;
+    flow.beadRadius = pylon.tubeBeadRadius;
+    const color = RESOURCE_SPRAY_COLOR_BY_RESOURCE[pylon.resource];
+    flow.colorRGB.r = color.r; flow.colorRGB.g = color.g; flow.colorRGB.b = color.b;
+    this.tubeFlows.push(flow);
   }
 
   /** Drive a builder-unit's construction emitter (commander, future
@@ -780,25 +827,31 @@ export class ConstructionVisualController3D {
   ): void {
     if (rate < 0.05) return;
     pylon.direction = direction;
-    this._factorySpraySourceWorld
+    // Live world endpoints — the construction tower orbits, so the tip
+    // and root move every frame.
+    const tip = this._factorySpraySourceWorld
       .copy(pylon.topLocal)
       .applyMatrix4(group.matrixWorld);
-    this._factorySprayRootWorld
+    const root = this._factorySprayRootWorld
       .copy(pylon.rootLocal)
       .applyMatrix4(group.matrixWorld);
-    this._factorySprayWaypointWorld.copy(this._factorySpraySourceWorld);
 
+    // Tube leg: a bead column locked to the live root<->tip axis so it
+    // rides the orbiting straw and can never escape it. Up the tube when
+    // consuming (outbound), down when producing (inbound).
+    this.pushTubeFlow(pylon, root, tip, direction === 'outbound', rate);
+
+    // The world spray now carries only the FREE leg, anchored at the TIP
+    // (no waypoint) — the bead column owns everything inside the tube, so
+    // no free particle is ever in the bore.
     const spray = this.acquireFactorySprayTarget();
     spray.source.id = sourceId;
     spray.source.playerId = sourcePlayerId;
     spray.target.id = targetId;
     spray.target.dim = undefined;
-    spray.waypoint = {
-      pos: { x: this._factorySprayWaypointWorld.x, y: this._factorySprayWaypointWorld.z },
-      z: this._factorySprayWaypointWorld.y,
-    };
 
     if (direction === 'inbound') {
+      // world source -> tip
       if (worldEndpoint) {
         spray.source.pos.x = worldEndpoint.x;
         spray.source.pos.y = worldEndpoint.z;
@@ -806,20 +859,21 @@ export class ConstructionVisualController3D {
         spray.flow = 'direct';
         spray.flowRadius = 0;
       } else {
-        spray.source.pos.x = this._factorySpraySourceWorld.x;
-        spray.source.pos.y = this._factorySpraySourceWorld.z;
-        spray.source.z = this._factorySpraySourceWorld.y;
+        spray.source.pos.x = tip.x;
+        spray.source.pos.y = tip.z;
+        spray.source.z = tip.y;
         spray.flow = 'randomInbound';
         spray.flowRadius = pylon.flowRadius;
       }
-      spray.target.pos.x = this._factorySprayRootWorld.x;
-      spray.target.pos.y = this._factorySprayRootWorld.z;
-      spray.target.z = this._factorySprayRootWorld.y;
+      spray.target.pos.x = tip.x;
+      spray.target.pos.y = tip.z;
+      spray.target.z = tip.y;
       spray.target.radius = 0;
     } else {
-      spray.source.pos.x = this._factorySprayRootWorld.x;
-      spray.source.pos.y = this._factorySprayRootWorld.z;
-      spray.source.z = this._factorySprayRootWorld.y;
+      // tip -> build target
+      spray.source.pos.x = tip.x;
+      spray.source.pos.y = tip.z;
+      spray.source.z = tip.y;
       if (worldEndpoint) {
         spray.target.pos.x = worldEndpoint.x;
         spray.target.pos.y = worldEndpoint.z;
@@ -828,9 +882,9 @@ export class ConstructionVisualController3D {
         spray.flow = 'direct';
         spray.flowRadius = 0;
       } else {
-        spray.target.pos.x = this._factorySpraySourceWorld.x;
-        spray.target.pos.y = this._factorySpraySourceWorld.z;
-        spray.target.z = this._factorySpraySourceWorld.y;
+        spray.target.pos.x = tip.x;
+        spray.target.pos.y = tip.z;
+        spray.target.z = tip.y;
         spray.target.radius = pylon.flowRadius;
         spray.flow = 'randomOutbound';
         spray.flowRadius = pylon.flowRadius;

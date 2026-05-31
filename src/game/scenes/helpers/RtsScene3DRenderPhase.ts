@@ -27,6 +27,7 @@ import type { BurnMark3D } from '../../render3d/BurnMark3D';
 import type { GroundPrint3D } from '../../render3d/GroundPrint3D';
 import type { LineDrag3D } from '../../render3d/LineDrag3D';
 import type { SprayRenderer3D } from '../../render3d/SprayRenderer3D';
+import type { PylonTubeFlowRenderer } from '../../render3d/PylonTubeFlowRenderer';
 import type { SmokeTrail3D } from '../../render3d/SmokeTrail3D';
 import type { FogOfWarFog3D } from '../../render3d/FogOfWarFog3D';
 import type { SightBoundaryRenderer3D } from '../../render3d/SightBoundaryRenderer3D';
@@ -64,6 +65,7 @@ export type RtsScene3DRenderPhaseResources = {
   groundPrintRenderer: GroundPrint3D;
   lineDragRenderer: LineDrag3D;
   sprayRenderer: SprayRenderer3D;
+  pylonTubeFlowRenderer: PylonTubeFlowRenderer;
   smokeTrailRenderer: SmokeTrail3D;
   fogOfWarFogRenderer: FogOfWarFog3D;
   sightBoundaryRenderer: SightBoundaryRenderer3D;
@@ -163,6 +165,7 @@ export class RtsScene3DRenderPhase {
       groundPrintRenderer,
       lineDragRenderer,
       sprayRenderer,
+      pylonTubeFlowRenderer,
       smokeTrailRenderer,
       fogOfWarFogRenderer,
       sightBoundaryRenderer,
@@ -284,6 +287,7 @@ export class RtsScene3DRenderPhase {
       } else {
         sprayRenderer.update(commanderSprays, this.sprayAccumMs);
       }
+      pylonTubeFlowRenderer.update(entityRenderer.getPylonTubeFlows(), this.sprayAccumMs);
       this.sprayAccumMs = 0;
     }
 

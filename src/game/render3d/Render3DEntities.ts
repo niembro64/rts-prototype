@@ -11,7 +11,7 @@
 
 import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId, Turret } from '../sim/types';
-import type { SprayTarget } from '@/types/ui';
+import type { PylonTubeFlow, SprayTarget } from '@/types/ui';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { COLORS } from '@/colorsConfig';
 import { getPlayerColors } from '../sim/types';
@@ -771,6 +771,10 @@ export class Render3DEntities {
 
   getFactorySprayTargets(): readonly SprayTarget[] {
     return this.constructionVisuals.getFactorySprayTargets();
+  }
+
+  getPylonTubeFlows(): readonly PylonTubeFlow[] {
+    return this.constructionVisuals.getTubeFlows();
   }
 
   getHoverSmokeEmitters(): readonly SmokePuffEmitter[] {

@@ -39,6 +39,9 @@ export type ResourcePylonRig = {
   topBaseLocal: THREE.Vector3;
   sprayTravelSpeed: number;
   sprayParticleRadius: number;
+  /** Radius of the beads that flow through the bore of the straw. Sized
+   *  to sit inside the inner (bore) wall. Drives PylonTubeFlowRenderer. */
+  tubeBeadRadius: number;
   flowRadius: number;
   channel: number;
   smoothedRate: number;
@@ -96,6 +99,27 @@ const cylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 18);
 const hexCylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 6);
 const sphereGeom = new THREE.SphereGeometry(1, 18, 12);
 const frameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
+
+// "Straw" walls: the pylon is a transparent double-wall tube — an outer
+// wall and an inner bore wall — so the resource beads are visible riding
+// up/down the bore inside it. depthWrite:false + DoubleSide keeps the
+// glassy look and lets the beads (drawn after) always show through.
+const STRAW_BORE_FRAC = 0.6;   // inner wall radius as a fraction of the pylon radius
+const STRAW_BEAD_FRAC = 0.4;   // bead radius as a fraction of the pylon radius (sits inside the bore)
+const strawOuterMat = new THREE.MeshLambertMaterial({
+  color: BUILDING_PALETTE.structureDark,
+  transparent: true,
+  opacity: 0.16,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+});
+const strawInnerMat = new THREE.MeshLambertMaterial({
+  color: BUILDING_PALETTE.structureDark,
+  transparent: true,
+  opacity: 0.3,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+});
 
 function shaderRgb(rgb: readonly [number, number, number]): string {
   return `vec3(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
@@ -171,14 +195,13 @@ export function buildResourcePylonRig(options: ResourcePylonBuildOptions): {
   const variant = CONSTRUCTION_TOWER_VARIANT_BY_RESOURCE[options.resource];
   const staticMeshes: THREE.Mesh[] = [];
   if (options.pylonRadius > 0) {
-    staticMeshes.push(makeCylinder(
-      frameMat,
+    for (const wall of makeStrawWalls(
       options.pylonRadius,
       options.pylonHeight,
       options.x,
       options.pylonBaseY + options.pylonHeight / 2,
       options.z,
-    ));
+    )) staticMeshes.push(wall);
     staticMeshes.push(makeSphere(
       variant.capMaterial,
       Math.max(1.6, options.pylonRadius * 1.45),
@@ -205,6 +228,7 @@ export function buildResourcePylonRig(options: ResourcePylonBuildOptions): {
       topBaseLocal: topLocal.clone(),
       sprayTravelSpeed: options.sprayTravelSpeed,
       sprayParticleRadius: options.sprayParticleRadius,
+      tubeBeadRadius: Math.max(0.5, options.pylonRadius * STRAW_BEAD_FRAC),
       flowRadius: options.flowRadius,
       channel: options.channel,
       smoothedRate: 0,
@@ -263,6 +287,8 @@ export function disposeConstructionEmitterGeoms(): void {
   hexCylinderGeom.dispose();
   sphereGeom.dispose();
   frameMat.dispose();
+  strawOuterMat.dispose();
+  strawInnerMat.dispose();
   constructionBandMat.dispose();
   energyCapMat.dispose();
   metalCapMat.dispose();
@@ -341,8 +367,7 @@ function buildConstructionTowerPiece(
     z,
     hexCylinderGeom,
   );
-  const pylon = makeCylinder(
-    frameMat,
+  const [strawOuter, strawInner] = makeStrawWalls(
     innerPylonRadius,
     pylonHeight,
     x,
@@ -350,15 +375,18 @@ function buildConstructionTowerPiece(
     z,
   );
   const cap = makeSphere(variant.capMaterial, capRadius, x, capY, z);
-  const staticMeshes = [teamBase, constructionBand, pylon, cap];
+  const staticMeshes = [teamBase, constructionBand, strawOuter, strawInner, cap];
 
   const rootLocal = new THREE.Vector3(x, pylonBaseY, z);
   const topLocal = new THREE.Vector3(x, capY + capRadius * 0.35, z);
 
+  // Both straw walls orbit with the tower so the bore (and the bead
+  // column locked to it) travels with the pylon.
   const towerOrbitParts: ConstructionTowerOrbitPart[] = [
     teamBase,
     constructionBand,
-    pylon,
+    strawOuter,
+    strawInner,
     cap,
   ].map((mesh) => ({
     mesh,
@@ -379,6 +407,7 @@ function buildConstructionTowerPiece(
       topBaseLocal: topLocal.clone(),
       sprayTravelSpeed: 0,
       sprayParticleRadius: 0,
+      tubeBeadRadius: Math.max(0.5, innerPylonRadius * STRAW_BEAD_FRAC),
       flowRadius: Math.max(24, pylonHeight * 1.15),
       channel: variant.resource === 'energy' ? 0 : 1,
       smoothedRate: 0,
@@ -413,4 +442,20 @@ function makeSphere(
   mesh.scale.setScalar(radius);
   mesh.position.set(x, y, z);
   return mesh;
+}
+
+/** The transparent double-wall "straw": an outer wall at `radius` and an
+ *  inner bore wall, both see-through so the resource beads read clearly
+ *  inside the bore. Returns [outer, inner]. */
+function makeStrawWalls(
+  radius: number,
+  height: number,
+  x: number,
+  y: number,
+  z: number,
+): THREE.Mesh[] {
+  return [
+    makeCylinder(strawOuterMat, radius, height, x, y, z),
+    makeCylinder(strawInnerMat, radius * STRAW_BORE_FRAC, height, x, y, z),
+  ];
 }

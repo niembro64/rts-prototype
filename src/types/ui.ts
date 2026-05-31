@@ -265,6 +265,25 @@ export type SprayTarget = {
   endColorRGB?: { r: number; g: number; b: number };
 };
 
+// Pylon tube-flow descriptor — a column of beads locked to a resource
+// pylon's LIVE root->tip axis. Recomputed from these world endpoints
+// every frame, so the column rides the (orbiting) construction-emitter
+// pylon and the beads can never escape the transparent straw. World
+// coordinates: x/z are ground plane, y is altitude.
+export type PylonTubeFlow = {
+  root: { x: number; y: number; z: number };
+  tip: { x: number; y: number; z: number };
+  /** true = beads travel root -> tip (consuming / up the tube); false =
+   *  tip -> root (producing / down the tube). */
+  up: boolean;
+  /** 0..1 — drives how many beads fill the column and their alpha. */
+  intensity: number;
+  /** Bead travel speed in world units per second along the axis. */
+  speed: number;
+  beadRadius: number;
+  colorRGB: { r: number; g: number; b: number };
+};
+
 // Commander abilities result
 export type CommanderAbilitiesResult = {
   sprayTargets: SprayTarget[];

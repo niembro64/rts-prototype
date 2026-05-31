@@ -35,6 +35,7 @@ import { CursorGround } from '../render3d/CursorGround';
 import { LegInstancedRenderer } from '../render3d/LegInstancedRenderer';
 import { ViewportFootprint } from '../ViewportFootprint';
 import { SprayRenderer3D } from '../render3d/SprayRenderer3D';
+import { PylonTubeFlowRenderer } from '../render3d/PylonTubeFlowRenderer';
 import { SmokeTrail3D } from '../render3d/SmokeTrail3D';
 import { FogOfWarFog3D } from '../render3d/FogOfWarFog3D';
 import { SightBoundaryRenderer3D } from '../render3d/SightBoundaryRenderer3D';
@@ -161,6 +162,7 @@ export class RtsScene3D {
   private lineDragRenderer!: LineDrag3D;
   private buildGhostRenderer!: BuildGhost3D;
   private sprayRenderer!: SprayRenderer3D;
+  private pylonTubeFlowRenderer!: PylonTubeFlowRenderer;
   private smokeTrailRenderer!: SmokeTrail3D;
   private fogOfWarFogRenderer!: FogOfWarFog3D;
   private sightBoundaryRenderer!: SightBoundaryRenderer3D;
@@ -513,6 +515,7 @@ export class RtsScene3D {
       this.metalDeposits,
     );
     this.sprayRenderer = new SprayRenderer3D(this.threeApp.world);
+    this.pylonTubeFlowRenderer = new PylonTubeFlowRenderer(this.threeApp.world);
     this.smokeTrailRenderer = new SmokeTrail3D(this.threeApp.world);
     this.fogOfWarFogRenderer = new FogOfWarFog3D(
       this.threeApp.world,
@@ -631,6 +634,7 @@ export class RtsScene3D {
         groundPrintRenderer: this.groundPrintRenderer,
         lineDragRenderer: this.lineDragRenderer,
         sprayRenderer: this.sprayRenderer,
+        pylonTubeFlowRenderer: this.pylonTubeFlowRenderer,
         smokeTrailRenderer: this.smokeTrailRenderer,
         fogOfWarFogRenderer: this.fogOfWarFogRenderer,
         sightBoundaryRenderer: this.sightBoundaryRenderer,
@@ -1448,6 +1452,7 @@ export class RtsScene3D {
       lineDragRenderer: this.lineDragRenderer,
       buildGhostRenderer: this.buildGhostRenderer,
       sprayRenderer: this.sprayRenderer,
+      pylonTubeFlowRenderer: this.pylonTubeFlowRenderer,
       smokeTrailRenderer: this.smokeTrailRenderer,
       fogOfWarFogRenderer: this.fogOfWarFogRenderer,
       sightBoundaryRenderer: this.sightBoundaryRenderer,
