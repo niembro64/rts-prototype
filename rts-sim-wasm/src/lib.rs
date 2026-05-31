@@ -15606,6 +15606,96 @@ pub fn combat_targeting_refresh_activity_masks_batch(entity_slots: &[u32]) {
     }
 }
 
+#[inline]
+fn combat_targeting_turret_halts_host(
+    pool: &CombatTargetingPool,
+    idx: usize,
+    priority_point_present: bool,
+) -> bool {
+    pool.turret_state[idx] == CT_TURRET_STATE_ENGAGED
+        && (pool.turret_target_id[idx] >= 0 || priority_point_present)
+}
+
+/// C1 movement/combat bridge — classify whether the current movement
+/// action should halt because the host's combat slab is engaged.
+///
+/// Mode `anyEngaged` mirrors attack / attack-ground / guard: any
+/// non-visual turret in ENGAGED state with a target, or with an active
+/// priority point, pins the unit. Mode `fightRatio` mirrors fight /
+/// patrol: only host-directed, non-visual turrets contribute, and the
+/// engaged count must cross the supplied per-unit ratio.
+#[wasm_bindgen]
+pub fn combat_targeting_halt_decision_batch(
+    entity_slots: &[u32],
+    modes: &[u8],
+    ratios: &[f64],
+    priority_point_present: &[u8],
+    out_should_halt: &mut [u8],
+) -> u32 {
+    let count = entity_slots
+        .len()
+        .min(modes.len())
+        .min(ratios.len())
+        .min(priority_point_present.len())
+        .min(out_should_halt.len());
+    let pool = combat_targeting_pool();
+    for i in 0..count {
+        let slot = entity_slots[i] as usize;
+        out_should_halt[i] = 0;
+        if slot >= pool.turret_count_per_entity.len() {
+            continue;
+        }
+        let turret_count = (pool.turret_count_per_entity[slot] as usize)
+            .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
+        if turret_count == 0 {
+            continue;
+        }
+        let has_priority_point = priority_point_present[i] != 0;
+        if modes[i] == CT_COMBAT_HALT_MODE_ANY_ENGAGED {
+            for turret_idx in 0..turret_count {
+                let idx = combat_targeting_turret_global_idx(entity_slots[i], turret_idx as u32);
+                let flags = pool.turret_config_flags[idx];
+                if (flags & CT_TURRET_CFG_VISUAL_ONLY) != 0 {
+                    continue;
+                }
+                if combat_targeting_turret_halts_host(pool, idx, has_priority_point) {
+                    out_should_halt[i] = 1;
+                    break;
+                }
+            }
+            continue;
+        }
+
+        if modes[i] != CT_COMBAT_HALT_MODE_FIGHT_RATIO {
+            continue;
+        }
+        let ratio = ratios[i];
+        if !ratio.is_finite() {
+            continue;
+        }
+        let mut total = 0_u32;
+        let mut engaged = 0_u32;
+        for turret_idx in 0..turret_count {
+            let idx = combat_targeting_turret_global_idx(entity_slots[i], turret_idx as u32);
+            let flags = pool.turret_config_flags[idx];
+            if (flags & CT_TURRET_CFG_VISUAL_ONLY) != 0 {
+                continue;
+            }
+            if (flags & CT_TURRET_CFG_HOST_DIRECTED) == 0 {
+                continue;
+            }
+            total += 1;
+            if combat_targeting_turret_halts_host(pool, idx, has_priority_point) {
+                engaged += 1;
+            }
+        }
+        if total > 0 && (engaged as f64) >= (total as f64) * ratio {
+            out_should_halt[i] = 1;
+        }
+    }
+    count as u32
+}
+
 /// AIM-08.5 — slab-side mid-tick turret state clear, used by JS when
 /// the rotation pass discovers a ballistic-fail or other reason to
 /// drop a turret's lock outright. Mirrors `weapon.state = 'idle'`
@@ -28693,6 +28783,109 @@ mod lock_on_inclusion_tests {
         assert_eq!(targeting.turret_parent_id[targeting_idx], 55);
         assert_eq!(targeting.turret_root_host_id[targeting_idx], 55);
         assert_eq!(targeting.turret_mount_index[targeting_idx], 0);
+    }
+
+    #[test]
+    fn combat_halt_any_engaged_uses_priority_point_and_skips_visual_turrets() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                state: CT_TURRET_STATE_ENGAGED,
+                target_id: -1,
+                ..TurretSpec::default()
+            },
+        );
+
+        let slots = [SOURCE_SLOT];
+        let modes = [CT_COMBAT_HALT_MODE_ANY_ENGAGED];
+        let ratios = [0.0];
+        let mut out = [0u8];
+        combat_targeting_halt_decision_batch(&slots, &modes, &ratios, &[0], &mut out);
+        assert_eq!(
+            out[0], 0,
+            "engaged priority-point turret needs an active point"
+        );
+        combat_targeting_halt_decision_batch(&slots, &modes, &ratios, &[1], &mut out);
+        assert_eq!(out[0], 1);
+
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                state: CT_TURRET_STATE_ENGAGED,
+                target_id: 201,
+                flags: CT_TURRET_CFG_HOST_DIRECTED | CT_TURRET_CFG_VISUAL_ONLY,
+                ..TurretSpec::default()
+            },
+        );
+        combat_targeting_halt_decision_batch(&slots, &modes, &ratios, &[0], &mut out);
+        assert_eq!(out[0], 0, "visual-only turrets must not halt movement");
+    }
+
+    #[test]
+    fn combat_halt_fight_ratio_counts_only_host_directed_turrets() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_entity(
+            SOURCE_SLOT,
+            SOURCE_ID,
+            PLAYER_1,
+            0.0,
+            CT_ENTITY_FAMILY_UNIT,
+            SOURCE_UNIT_CODE,
+            3,
+            -1,
+        );
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                state: CT_TURRET_STATE_ENGAGED,
+                target_id: 201,
+                flags: CT_TURRET_CFG_HOST_DIRECTED,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_turret(
+            SOURCE_SLOT,
+            1,
+            TurretSpec {
+                state: CT_TURRET_STATE_IDLE,
+                target_id: -1,
+                flags: CT_TURRET_CFG_HOST_DIRECTED,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_turret(
+            SOURCE_SLOT,
+            2,
+            TurretSpec {
+                state: CT_TURRET_STATE_ENGAGED,
+                target_id: 202,
+                flags: 0,
+                ..TurretSpec::default()
+            },
+        );
+
+        let slots = [SOURCE_SLOT];
+        let modes = [CT_COMBAT_HALT_MODE_FIGHT_RATIO];
+        let mut out = [0u8];
+        combat_targeting_halt_decision_batch(&slots, &modes, &[0.5], &[0], &mut out);
+        assert_eq!(
+            out[0], 1,
+            "one of two host-directed turrets satisfies a 0.5 ratio"
+        );
+        combat_targeting_halt_decision_batch(&slots, &modes, &[0.75], &[0], &mut out);
+        assert_eq!(
+            out[0], 0,
+            "autonomous turrets must not inflate fight halt engagement"
+        );
     }
 
     #[test]

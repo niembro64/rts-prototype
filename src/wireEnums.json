@@ -5,6 +5,10 @@
     "tracking": 1,
     "engaged": 2
   },
+  "combatHaltMode": {
+    "anyEngaged": 0,
+    "fightRatio": 1
+  },
   "entityChanged": {
     "pos": 1,
     "rot": 2,

@@ -212,6 +212,7 @@ import __wbg_init, {
   combat_targeting_entity_flags,
   combat_targeting_turret_count,
   combat_targeting_can_player_observe_entity,
+  combat_targeting_halt_decision_batch,
   combat_targeting_entity_id_ptr,
   combat_targeting_entity_owner_player_id_ptr,
   combat_targeting_entity_pos_x_ptr,
@@ -1585,6 +1586,11 @@ export const CT_TURRET_STATE_IDLE = wireEnums.turretState.idle;
 export const CT_TURRET_STATE_TRACKING = wireEnums.turretState.tracking;
 export const CT_TURRET_STATE_ENGAGED = wireEnums.turretState.engaged;
 
+/** C1 movement/combat halt modes. Single-sourced from wireEnums.json
+ *  because the mode byte crosses the JS/WASM boundary. */
+export const CT_COMBAT_HALT_MODE_ANY_ENGAGED = wireEnums.combatHaltMode.anyEngaged;
+export const CT_COMBAT_HALT_MODE_FIGHT_RATIO = wireEnums.combatHaltMode.fightRatio;
+
 /** LOCK-ON-03 — Per-turret lock-on exclusion masks compiled from each
  *  turret blueprint's authored exclusion arrays. Mirrors
  *  `CT_LOCK_ON_REL_INCLUDE_*` and `CT_LOCK_ON_FAM_INCLUDE_*` in Rust. */
@@ -1801,6 +1807,16 @@ export interface CombatTargetingApi {
   canPlayerObserveEntity: (
     targetId: number,
     viewerPlayerId: number,
+  ) => number;
+  /** C1 — Rust-owned per-turret combat halt classifier for movement.
+   *  Mode anyEngaged covers attack / attack-ground / guard; mode
+   *  fightRatio covers fight / patrol with the per-unit halt ratio. */
+  haltDecisionBatch: (
+    entitySlots: Uint32Array,
+    modes: Uint8Array,
+    ratios: Float64Array,
+    priorityPointPresent: Uint8Array,
+    outShouldHalt: Uint8Array,
   ) => number;
   readonly entityIdPtr: () => number;
   readonly entityOwnerPlayerIdPtr: () => number;
@@ -3429,6 +3445,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           entityFlags: combat_targeting_entity_flags,
           turretCount: combat_targeting_turret_count,
           canPlayerObserveEntity: combat_targeting_can_player_observe_entity,
+          haltDecisionBatch: combat_targeting_halt_decision_batch,
           entityIdPtr: combat_targeting_entity_id_ptr,
           entityOwnerPlayerIdPtr: combat_targeting_entity_owner_player_id_ptr,
           entityPosXPtr: combat_targeting_entity_pos_x_ptr,

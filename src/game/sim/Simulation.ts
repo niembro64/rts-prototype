@@ -34,10 +34,8 @@ import {
   unregisterPackedProjectile,
 } from './combat';
 import {
-  readCombatTargetingTurretFsmInto,
   stampCombatTargetingPool,
   stampShieldSurfacePool,
-  type CombatTargetingTurretFsmOut,
 } from './combat/targetingInputStamping';
 import {
   updateProjectiles,
@@ -91,7 +89,11 @@ import { isBuildTargetInRange } from './builderRange';
 import { isReclaimableTarget } from './reclaim';
 import { setUnitMovementAcceleration } from './unitMovementAcceleration';
 import { getActionIntentStart, getUnitActionTargetId } from './unitActionIntents';
-import { CT_TURRET_STATE_ENGAGED, getSimWasm } from '../sim-wasm/init';
+import {
+  CT_COMBAT_HALT_MODE_ANY_ENGAGED,
+  CT_COMBAT_HALT_MODE_FIGHT_RATIO,
+  getSimWasm,
+} from '../sim-wasm/init';
 import {
   rotateFirstUnitActionToEnd,
   setUnitActions,
@@ -105,11 +107,6 @@ import {
 // Shared empty array constant (avoids per-call allocation for empty returns)
 const EMPTY_VEL_UPDATES: ProjectileVelocityUpdateEvent[] = [];
 const EMPTY_DEATH_EXPLOSION_EXCLUDES = new Set<EntityId>();
-const _combatStopFsm: CombatTargetingTurretFsmOut = {
-  stateCode: CT_TURRET_STATE_ENGAGED,
-  targetId: -1,
-};
-
 type DeathExplosionBlast = {
   radius: number;
   force: number;
@@ -294,6 +291,16 @@ export class Simulation {
   private _stuckSettlingFlagsBuf = new Uint8Array(0);
   private _stuckOutTicksBuf = new Int32Array(0);
   private _stuckOutReplanBuf = new Uint8Array(0);
+  private _combatHaltTouchedSlotsBuf: number[] = [];
+  private _combatHaltSlotsBuf = new Uint32Array(0);
+  private _combatHaltModesBuf = new Uint8Array(0);
+  private _combatHaltRatiosBuf = new Float64Array(0);
+  private _combatHaltPriorityPointBuf = new Uint8Array(0);
+  private _combatHaltOutBuf = new Uint8Array(0);
+  private _combatHaltModeBySlot = new Uint8Array(0);
+  private _combatHaltPriorityPointBySlot = new Uint8Array(0);
+  private _combatHaltStopBySlot = new Uint8Array(0);
+  private _combatHaltRatioBySlot = new Float64Array(0);
 
   // Reusable buffers for shared energy distribution (avoid per-tick allocations)
   private energyBuffers: EnergyBuffers = createEnergyBuffers();
@@ -1106,6 +1113,7 @@ export class Simulation {
     const movingUnits = this._movingUnitsBuf;
     movingUnits.length = 0;
     this._arrivalCount = 0;
+    this.prepareCombatHaltDecisions();
 
     for (const entity of this.world.getUnits()) {
       spatialGrid.updateUnit(entity);
@@ -1847,6 +1855,179 @@ export class Simulation {
     this._arrivalCount = 0;
   }
 
+  private ensureCombatHaltRowCapacity(required: number): void {
+    if (this._combatHaltSlotsBuf.length >= required) return;
+    const next = Math.max(required, this._combatHaltSlotsBuf.length * 2, 128);
+    const slots = new Uint32Array(next);
+    slots.set(this._combatHaltSlotsBuf);
+    this._combatHaltSlotsBuf = slots;
+    const modes = new Uint8Array(next);
+    modes.set(this._combatHaltModesBuf);
+    this._combatHaltModesBuf = modes;
+    const ratios = new Float64Array(next);
+    ratios.set(this._combatHaltRatiosBuf);
+    this._combatHaltRatiosBuf = ratios;
+    const priorityPoint = new Uint8Array(next);
+    priorityPoint.set(this._combatHaltPriorityPointBuf);
+    this._combatHaltPriorityPointBuf = priorityPoint;
+    this._combatHaltOutBuf = new Uint8Array(next);
+  }
+
+  private ensureCombatHaltSlotCapacity(required: number): void {
+    if (this._combatHaltModeBySlot.length >= required) return;
+    const next = Math.max(required, this._combatHaltModeBySlot.length * 2, 128);
+    const modes = new Uint8Array(next);
+    modes.set(this._combatHaltModeBySlot);
+    this._combatHaltModeBySlot = modes;
+    const priorityPoint = new Uint8Array(next);
+    priorityPoint.set(this._combatHaltPriorityPointBySlot);
+    this._combatHaltPriorityPointBySlot = priorityPoint;
+    const stop = new Uint8Array(next);
+    stop.set(this._combatHaltStopBySlot);
+    this._combatHaltStopBySlot = stop;
+    const ratios = new Float64Array(next);
+    ratios.set(this._combatHaltRatioBySlot);
+    this._combatHaltRatioBySlot = ratios;
+  }
+
+  private clearCombatHaltDecisionCache(): void {
+    const touched = this._combatHaltTouchedSlotsBuf;
+    for (let i = 0; i < touched.length; i++) {
+      const slot = touched[i];
+      this._combatHaltModeBySlot[slot] = 0;
+      this._combatHaltPriorityPointBySlot[slot] = 0;
+      this._combatHaltStopBySlot[slot] = 0;
+      this._combatHaltRatioBySlot[slot] = 0;
+    }
+    touched.length = 0;
+  }
+
+  private queueCombatHaltDecision(
+    index: number,
+    slot: number,
+    mode: number,
+    ratio: number,
+    priorityPointPresent: boolean,
+  ): void {
+    this._combatHaltSlotsBuf[index] = slot;
+    this._combatHaltModesBuf[index] = mode;
+    this._combatHaltRatiosBuf[index] = ratio;
+    this._combatHaltPriorityPointBuf[index] = priorityPointPresent ? 1 : 0;
+  }
+
+  private cacheCombatHaltDecision(
+    slot: number,
+    mode: number,
+    ratio: number,
+    priorityPointPresent: number,
+    shouldStop: number,
+  ): void {
+    this.ensureCombatHaltSlotCapacity(slot + 1);
+    this._combatHaltModeBySlot[slot] = mode + 1;
+    this._combatHaltPriorityPointBySlot[slot] = priorityPointPresent;
+    this._combatHaltRatioBySlot[slot] = ratio;
+    this._combatHaltStopBySlot[slot] = shouldStop;
+    this._combatHaltTouchedSlotsBuf.push(slot);
+  }
+
+  private prepareCombatHaltDecisions(): void {
+    this.clearCombatHaltDecisionCache();
+    const sim = getSimWasm();
+    if (sim === undefined) return;
+    const units = this.world.getUnits();
+    this.ensureCombatHaltRowCapacity(units.length);
+
+    let count = 0;
+    for (let i = 0; i < units.length; i++) {
+      const entity = units[i];
+      const unit = entity.unit;
+      if (!unit || !entity.combat || unit.actions.length === 0) continue;
+      const action = unit.actions[0];
+      let mode = -1;
+      let ratio = 0;
+      let priorityPointPresent = false;
+      if (
+        (action.type === 'attack' && action.targetId !== undefined) ||
+        action.type === 'guard'
+      ) {
+        mode = CT_COMBAT_HALT_MODE_ANY_ENGAGED;
+      } else if (action.type === 'attackGround') {
+        mode = CT_COMBAT_HALT_MODE_ANY_ENGAGED;
+        priorityPointPresent = true;
+      } else if (action.type === 'fight' || action.type === 'patrol') {
+        const fightRatio = getUnitBlueprint(unit.unitBlueprintId).fightStopEngagedRatio;
+        if (fightRatio === null) continue;
+        mode = CT_COMBAT_HALT_MODE_FIGHT_RATIO;
+        ratio = fightRatio;
+      } else {
+        continue;
+      }
+      const slot = spatialGrid.getSlot(entity.id);
+      if (slot < 0) continue;
+      this.queueCombatHaltDecision(count, slot, mode, ratio, priorityPointPresent);
+      count++;
+    }
+    if (count === 0) return;
+
+    sim.combatTargeting.haltDecisionBatch(
+      this._combatHaltSlotsBuf.subarray(0, count),
+      this._combatHaltModesBuf.subarray(0, count),
+      this._combatHaltRatiosBuf.subarray(0, count),
+      this._combatHaltPriorityPointBuf.subarray(0, count),
+      this._combatHaltOutBuf.subarray(0, count),
+    );
+
+    for (let i = 0; i < count; i++) {
+      this.cacheCombatHaltDecision(
+        this._combatHaltSlotsBuf[i],
+        this._combatHaltModesBuf[i],
+        this._combatHaltRatiosBuf[i],
+        this._combatHaltPriorityPointBuf[i],
+        this._combatHaltOutBuf[i],
+      );
+    }
+  }
+
+  private readCombatHaltDecision(
+    entity: Entity,
+    mode: number,
+    ratio: number,
+    priorityPointPresent: boolean,
+  ): boolean {
+    const slot = spatialGrid.getSlot(entity.id);
+    if (slot < 0) return false;
+    this.ensureCombatHaltSlotCapacity(slot + 1);
+    const modeKey = mode + 1;
+    const priorityPointFlag = priorityPointPresent ? 1 : 0;
+    if (
+      this._combatHaltModeBySlot[slot] === modeKey &&
+      this._combatHaltPriorityPointBySlot[slot] === priorityPointFlag &&
+      (mode !== CT_COMBAT_HALT_MODE_FIGHT_RATIO || this._combatHaltRatioBySlot[slot] === ratio)
+    ) {
+      return this._combatHaltStopBySlot[slot] !== 0;
+    }
+
+    const sim = getSimWasm();
+    if (sim === undefined) return false;
+    this.ensureCombatHaltRowCapacity(1);
+    this.queueCombatHaltDecision(0, slot, mode, ratio, priorityPointPresent);
+    sim.combatTargeting.haltDecisionBatch(
+      this._combatHaltSlotsBuf.subarray(0, 1),
+      this._combatHaltModesBuf.subarray(0, 1),
+      this._combatHaltRatiosBuf.subarray(0, 1),
+      this._combatHaltPriorityPointBuf.subarray(0, 1),
+      this._combatHaltOutBuf.subarray(0, 1),
+    );
+    this.cacheCombatHaltDecision(
+      slot,
+      mode,
+      ratio,
+      priorityPointFlag,
+      this._combatHaltOutBuf[0],
+    );
+    return this._combatHaltOutBuf[0] !== 0;
+  }
+
   /** True when any non-visual turret is engaged with a target, so the
    *  unit should hold position rather than keep chasing. This uses the
    *  turret FSM directly instead of firingTurretMask so passive combat
@@ -1854,20 +2035,12 @@ export class Simulation {
   private shouldStopForEngagedCombat(entity: Entity): boolean {
     const combat = entity.combat;
     if (!combat || combat.turrets.length === 0) return false;
-    for (let i = 0; i < combat.turrets.length; i++) {
-      const turret = combat.turrets[i];
-      if (turret.config.visualOnly) continue;
-      const hasTargetingFsm = readCombatTargetingTurretFsmInto(entity, i, _combatStopFsm);
-      const stateCode = hasTargetingFsm
-        ? _combatStopFsm.stateCode
-        : (turret.state === 'engaged' ? CT_TURRET_STATE_ENGAGED : 0);
-      const targetId = hasTargetingFsm ? _combatStopFsm.targetId : (turret.target ?? -1);
-      if (
-        stateCode === CT_TURRET_STATE_ENGAGED &&
-        (targetId !== -1 || combat.priorityTargetPoint !== null)
-      ) return true;
-    }
-    return false;
+    return this.readCombatHaltDecision(
+      entity,
+      CT_COMBAT_HALT_MODE_ANY_ENGAGED,
+      0,
+      combat.priorityTargetPoint !== null,
+    );
   }
 
   /** Fight/patrol variant of the engagement halt check. Halts only when
@@ -1884,25 +2057,12 @@ export class Simulation {
     if (ratio === null) return false;
     const combat = entity.combat;
     if (!combat || combat.turrets.length === 0) return false;
-    let total = 0;
-    let engaged = 0;
-    for (let i = 0; i < combat.turrets.length; i++) {
-      const turret = combat.turrets[i];
-      if (turret.config.visualOnly) continue;
-      if (!turret.config.hostDirected) continue;
-      total++;
-      const hasTargetingFsm = readCombatTargetingTurretFsmInto(entity, i, _combatStopFsm);
-      const stateCode = hasTargetingFsm
-        ? _combatStopFsm.stateCode
-        : (turret.state === 'engaged' ? CT_TURRET_STATE_ENGAGED : 0);
-      const targetId = hasTargetingFsm ? _combatStopFsm.targetId : (turret.target ?? -1);
-      if (
-        stateCode === CT_TURRET_STATE_ENGAGED &&
-        (targetId !== -1 || combat.priorityTargetPoint !== null)
-      ) engaged++;
-    }
-    if (total === 0) return false;
-    return engaged >= total * ratio;
+    return this.readCombatHaltDecision(
+      entity,
+      CT_COMBAT_HALT_MODE_FIGHT_RATIO,
+      ratio,
+      combat.priorityTargetPoint !== null,
+    );
   }
 
   private ensureStuckCapacity(required: number): void {
@@ -2250,6 +2410,7 @@ export class Simulation {
     this._loiterCount = 0;
     this._loiterEntitiesBuf.length = 0;
     this._stuckEntitiesBuf.length = 0;
+    this.clearCombatHaltDecisionCache();
     this.world.clearPendingDeathCheckIds();
     resetEnergyBuffers(this.energyBuffers);
     resetShieldBuffers();

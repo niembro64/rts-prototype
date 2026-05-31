@@ -50,6 +50,18 @@ fn generate_wire_enums(manifest_dir: &Path) {
             "u8",
             "pub ",
         ),
+        (
+            "/combatHaltMode/anyEngaged",
+            "CT_COMBAT_HALT_MODE_ANY_ENGAGED",
+            "u8",
+            "pub ",
+        ),
+        (
+            "/combatHaltMode/fightRatio",
+            "CT_COMBAT_HALT_MODE_FIGHT_RATIO",
+            "u8",
+            "pub ",
+        ),
         ("/entityChanged/pos", "ENTITY_CHANGED_POS", "u32", ""),
         ("/entityChanged/rot", "ENTITY_CHANGED_ROT", "u32", ""),
         ("/entityChanged/vel", "ENTITY_CHANGED_VEL", "u32", ""),
