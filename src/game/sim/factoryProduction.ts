@@ -20,9 +20,9 @@ import { economyManager } from './economy';
 import {
   createBuildable,
   getBuildFraction,
-  getInitialBuildHp,
   isEntityActive,
 } from './buildableHelpers';
+import { initializeConstructionPieceHealth } from './constructionLifecycle';
 
 export type { FactoryProductionResult } from '@/types/ui';
 import type { FactoryProductionResult } from '@/types/ui';
@@ -143,13 +143,7 @@ export class FactoryProductionSystem {
       energy: bp.cost.energy * COST_MULTIPLIER,
       metal: bp.cost.metal * COST_MULTIPLIER,
     });
-    // Start the shell barely alive — it grows toward maxHp as the avg
-    // fill ratio climbs. Using 1 HP instead of 0 lets enemies damage
-    // / kill the shell and prevents the safety cleanup from treating a
-    // brand-new shell as already dead before its first resource tick.
-    if (unit.unit) {
-      unit.unit.hp = getInitialBuildHp(unit.unit.maxHp);
-    }
+    initializeConstructionPieceHealth(unit);
     world.addEntity(unit);
     return unit;
   }

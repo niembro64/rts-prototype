@@ -3,6 +3,7 @@ import { COST_MULTIPLIER } from '../../config';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { createBuildable, getBuildFraction } from '../sim/buildableHelpers';
+import { initializeConstructionPieceHealth } from '../sim/constructionLifecycle';
 
 export type NetworkBuildState = {
   complete: boolean;
@@ -56,6 +57,7 @@ export function applyNetworkBuildState(
     });
     buildable.healthBuildFraction = getBuildFraction(buildable);
     entity.buildable = buildable;
+    initializeConstructionPieceHealth(entity);
     return true;
   }
 
@@ -66,5 +68,6 @@ export function applyNetworkBuildState(
   buildable.isComplete = false;
   buildable.isGhost = false;
   buildable.healthBuildFraction = getBuildFraction(buildable);
+  initializeConstructionPieceHealth(entity);
   return true;
 }

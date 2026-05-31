@@ -12,8 +12,9 @@ import {
 import { ENTITY_CHANGED_ACTIONS } from '../../types/network';
 import { removeCompletedBuildingEffects } from './buildingCompletion';
 import { isBuildTargetInRange } from './builderRange';
-import { createBuildable, getInitialBuildHp } from './buildableHelpers';
+import { createBuildable } from './buildableHelpers';
 import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
+import { initializeConstructionPieceHealth } from './constructionLifecycle';
 
 // Construction system - authoritative building placement and footprint grid.
 // Runtime resource/HP/completion semantics live in constructionLifecycle.ts.
@@ -112,13 +113,10 @@ export class ConstructionSystem {
       entity.metalExtractionRate = 0;
     }
 
-    // Set max HP from config. Construction shells start barely alive
-    // and gain HP only as resources are paid in; they do not start at
-    // full durability.
     if (entity.building) {
-      entity.building.hp = getInitialBuildHp(config.hp);
       entity.building.maxHp = config.hp;
     }
+    initializeConstructionPieceHealth(entity);
 
     // Add factory component if it's a factory
     if (buildingBlueprintId === 'towerFabricator') {

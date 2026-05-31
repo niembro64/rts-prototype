@@ -7,8 +7,15 @@ import type { Entity } from './types';
 import { NO_ENTITY_ID } from './types';
 import type { WorldState } from './WorldState';
 import { applyCompletedBuildingEffects } from './buildingCompletion';
-import { getBuildFraction, isBuildFullyPaid } from './buildableHelpers';
-import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_HP } from '../../types/network';
+import { getBuildFraction, getInitialBuildHp, isBuildFullyPaid } from './buildableHelpers';
+import {
+  getBuildingBlueprint,
+  getTurretBlueprint,
+  getUnitBlueprint,
+  UNIT_LOCOMOTION_BLUEPRINTS,
+} from './blueprints';
+import type { ResourceCost } from '../../types/economyTypes';
+import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../types/network';
 
 export type ConstructionLifecycleResult = {
   completedUnits: Entity[];
@@ -26,19 +33,308 @@ function growConstructionHp(world: WorldState, entity: Entity, nextBuildFraction
   }
   if (deltaFrac <= 0) return;
 
-  if (entity.unit && entity.unit.hp > 0) {
-    const nextHp = Math.min(entity.unit.maxHp, entity.unit.hp + deltaFrac * entity.unit.maxHp);
-    if (nextHp !== entity.unit.hp) {
-      entity.unit.hp = nextHp;
-      world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
+  if (entity.unit) {
+    growUnitConstructionPieces(world, entity, prevFrac, frac);
+  } else if (entity.building) {
+    growStaticConstructionPieces(world, entity, prevFrac, frac);
+  }
+}
+
+function resourceCostWeight(cost: ResourceCost): number {
+  return Math.max(0, cost.energy) + Math.max(0, cost.metal);
+}
+
+function pieceProgress(globalFraction: number, prefixWeight: number, pieceWeight: number, totalWeight: number): number {
+  if (totalWeight <= 0) return 1;
+  if (pieceWeight <= 0) {
+    return globalFraction * totalWeight >= prefixWeight ? 1 : 0;
+  }
+  return Math.max(0, Math.min(1, (globalFraction * totalWeight - prefixWeight) / pieceWeight));
+}
+
+function isSubEntityStillAlive(world: WorldState, id: number): boolean {
+  const meta = world.getEntityMeta(id);
+  return meta === undefined || meta.alive;
+}
+
+function advancePieceHp(
+  currentHp: number,
+  maxHp: number,
+  prevProgress: number,
+  nextProgress: number,
+  alive: boolean,
+  startsAtFrameOne: boolean,
+): number {
+  if (!alive) return currentHp;
+  const initialHp = getInitialBuildHp(maxHp);
+  const progressDelta = Math.max(0, nextProgress - prevProgress);
+  if (currentHp <= 0) {
+    if (startsAtFrameOne || nextProgress > 0) {
+      return Math.min(maxHp, Math.max(initialHp, nextProgress * maxHp));
     }
-  } else if (entity.building && entity.building.hp > 0) {
-    const nextHp = Math.min(entity.building.maxHp, entity.building.hp + deltaFrac * entity.building.maxHp);
-    if (nextHp !== entity.building.hp) {
-      entity.building.hp = nextHp;
-      world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
+    return 0;
+  }
+  if (progressDelta <= 0) return currentHp;
+  return Math.min(maxHp, currentHp + progressDelta * maxHp);
+}
+
+function setPieceHpForConstructionProgress(
+  maxHp: number,
+  progress: number,
+  startsAtFrameOne: boolean,
+): number {
+  if (progress <= 0 && !startsAtFrameOne) return 0;
+  return Math.min(maxHp, Math.max(getInitialBuildHp(maxHp), progress * maxHp));
+}
+
+function growUnitConstructionPieces(
+  world: WorldState,
+  entity: Entity,
+  prevFrac: number,
+  frac: number,
+): void {
+  const unit = entity.unit;
+  if (unit === null || unit.hp <= 0) return;
+
+  const unitBlueprint = getUnitBlueprint(unit.unitBlueprintId);
+  const locomotionBlueprint = UNIT_LOCOMOTION_BLUEPRINTS[unit.locomotion.blueprintId];
+  if (locomotionBlueprint === undefined) return;
+
+  const locomotionWeight = resourceCostWeight(locomotionBlueprint.base.cost);
+  const bodyWeight = resourceCostWeight(unitBlueprint.base.cost);
+  let totalWeight = locomotionWeight + bodyWeight;
+  const combat = entity.combat;
+  if (combat !== null) {
+    for (let i = 0; i < combat.turrets.length; i++) {
+      totalWeight += resourceCostWeight(getTurretBlueprint(combat.turrets[i].config.turretBlueprintId).base.cost);
     }
   }
+
+  let prefix = 0;
+  const prevLocomotion = pieceProgress(prevFrac, prefix, locomotionWeight, totalWeight);
+  const nextLocomotion = pieceProgress(frac, prefix, locomotionWeight, totalWeight);
+  const locomotionHp = advancePieceHp(
+    unit.locomotion.hp,
+    unit.locomotion.maxHp,
+    prevLocomotion,
+    nextLocomotion,
+    isSubEntityStillAlive(world, unit.locomotion.id),
+    true,
+  );
+  if (locomotionHp !== unit.locomotion.hp) {
+    unit.locomotion.hp = locomotionHp;
+    world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+  }
+
+  prefix += locomotionWeight;
+  const prevBody = pieceProgress(prevFrac, prefix, bodyWeight, totalWeight);
+  const nextBody = pieceProgress(frac, prefix, bodyWeight, totalWeight);
+  const bodyHp = advancePieceHp(unit.hp, unit.maxHp, prevBody, nextBody, true, true);
+  if (bodyHp !== unit.hp) {
+    unit.hp = bodyHp;
+    world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
+  }
+
+  prefix += bodyWeight;
+  if (combat !== null) {
+    let turretsChanged = false;
+    for (let i = 0; i < combat.turrets.length; i++) {
+      const turret = combat.turrets[i];
+      const turretWeight = resourceCostWeight(getTurretBlueprint(turret.config.turretBlueprintId).base.cost);
+      const prevTurret = pieceProgress(prevFrac, prefix, turretWeight, totalWeight);
+      const nextTurret = pieceProgress(frac, prefix, turretWeight, totalWeight);
+      const turretHp = advancePieceHp(
+        turret.hp,
+        turret.maxHp,
+        prevTurret,
+        nextTurret,
+        isSubEntityStillAlive(world, turret.id),
+        false,
+      );
+      if (turretHp !== turret.hp) {
+        turret.hp = turretHp;
+        turretsChanged = true;
+      }
+      prefix += turretWeight;
+    }
+    if (turretsChanged) world.markSnapshotDirty(entity.id, ENTITY_CHANGED_TURRETS);
+  }
+}
+
+function growStaticConstructionPieces(
+  world: WorldState,
+  entity: Entity,
+  prevFrac: number,
+  frac: number,
+): void {
+  const building = entity.building;
+  if (building === null || building.hp <= 0 || entity.buildingBlueprintId === null) return;
+
+  const buildingBlueprint = getBuildingBlueprint(entity.buildingBlueprintId);
+  const bodyWeight = resourceCostWeight(buildingBlueprint.base.cost);
+  let totalWeight = bodyWeight;
+  const combat = entity.combat;
+  if (combat !== null) {
+    for (let i = 0; i < combat.turrets.length; i++) {
+      totalWeight += resourceCostWeight(getTurretBlueprint(combat.turrets[i].config.turretBlueprintId).base.cost);
+    }
+  }
+
+  let prefix = 0;
+  const prevBody = pieceProgress(prevFrac, prefix, bodyWeight, totalWeight);
+  const nextBody = pieceProgress(frac, prefix, bodyWeight, totalWeight);
+  const bodyHp = advancePieceHp(building.hp, building.maxHp, prevBody, nextBody, true, true);
+  if (bodyHp !== building.hp) {
+    building.hp = bodyHp;
+    world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
+  }
+
+  prefix += bodyWeight;
+  if (combat !== null) {
+    let turretsChanged = false;
+    for (let i = 0; i < combat.turrets.length; i++) {
+      const turret = combat.turrets[i];
+      const turretWeight = resourceCostWeight(getTurretBlueprint(turret.config.turretBlueprintId).base.cost);
+      const prevTurret = pieceProgress(prevFrac, prefix, turretWeight, totalWeight);
+      const nextTurret = pieceProgress(frac, prefix, turretWeight, totalWeight);
+      const turretHp = advancePieceHp(
+        turret.hp,
+        turret.maxHp,
+        prevTurret,
+        nextTurret,
+        isSubEntityStillAlive(world, turret.id),
+        false,
+      );
+      if (turretHp !== turret.hp) {
+        turret.hp = turretHp;
+        turretsChanged = true;
+      }
+      prefix += turretWeight;
+    }
+    if (turretsChanged) world.markSnapshotDirty(entity.id, ENTITY_CHANGED_TURRETS);
+  }
+}
+
+function setUnitConstructionPiecesToProgress(entity: Entity, progress: number): void {
+  const unit = entity.unit;
+  if (unit === null) return;
+
+  const unitBlueprint = getUnitBlueprint(unit.unitBlueprintId);
+  const locomotionBlueprint = UNIT_LOCOMOTION_BLUEPRINTS[unit.locomotion.blueprintId];
+  if (locomotionBlueprint === undefined) return;
+
+  const locomotionWeight = resourceCostWeight(locomotionBlueprint.base.cost);
+  const bodyWeight = resourceCostWeight(unitBlueprint.base.cost);
+  let totalWeight = locomotionWeight + bodyWeight;
+  const combat = entity.combat;
+  if (combat !== null) {
+    for (let i = 0; i < combat.turrets.length; i++) {
+      totalWeight += resourceCostWeight(getTurretBlueprint(combat.turrets[i].config.turretBlueprintId).base.cost);
+    }
+  }
+
+  let prefix = 0;
+  unit.locomotion.hp = setPieceHpForConstructionProgress(
+    unit.locomotion.maxHp,
+    pieceProgress(progress, prefix, locomotionWeight, totalWeight),
+    true,
+  );
+
+  prefix += locomotionWeight;
+  unit.hp = setPieceHpForConstructionProgress(
+    unit.maxHp,
+    pieceProgress(progress, prefix, bodyWeight, totalWeight),
+    true,
+  );
+
+  prefix += bodyWeight;
+  if (combat !== null) {
+    for (let i = 0; i < combat.turrets.length; i++) {
+      const turret = combat.turrets[i];
+      const turretWeight = resourceCostWeight(getTurretBlueprint(turret.config.turretBlueprintId).base.cost);
+      turret.hp = setPieceHpForConstructionProgress(
+        turret.maxHp,
+        pieceProgress(progress, prefix, turretWeight, totalWeight),
+        false,
+      );
+      prefix += turretWeight;
+    }
+  }
+}
+
+function setStaticConstructionPiecesToProgress(entity: Entity, progress: number): void {
+  const building = entity.building;
+  if (building === null || entity.buildingBlueprintId === null) return;
+
+  const buildingBlueprint = getBuildingBlueprint(entity.buildingBlueprintId);
+  const bodyWeight = resourceCostWeight(buildingBlueprint.base.cost);
+  let totalWeight = bodyWeight;
+  const combat = entity.combat;
+  if (combat !== null) {
+    for (let i = 0; i < combat.turrets.length; i++) {
+      totalWeight += resourceCostWeight(getTurretBlueprint(combat.turrets[i].config.turretBlueprintId).base.cost);
+    }
+  }
+
+  let prefix = 0;
+  building.hp = setPieceHpForConstructionProgress(
+    building.maxHp,
+    pieceProgress(progress, prefix, bodyWeight, totalWeight),
+    true,
+  );
+
+  prefix += bodyWeight;
+  if (combat !== null) {
+    for (let i = 0; i < combat.turrets.length; i++) {
+      const turret = combat.turrets[i];
+      const turretWeight = resourceCostWeight(getTurretBlueprint(turret.config.turretBlueprintId).base.cost);
+      turret.hp = setPieceHpForConstructionProgress(
+        turret.maxHp,
+        pieceProgress(progress, prefix, turretWeight, totalWeight),
+        false,
+      );
+      prefix += turretWeight;
+    }
+  }
+}
+
+export function initializeConstructionPieceHealth(entity: Entity): void {
+  const buildable = entity.buildable;
+  if (buildable === null || buildable.isGhost || buildable.isComplete) return;
+  const progress = getBuildFraction(buildable);
+  buildable.healthBuildFraction = progress;
+  if (entity.unit !== null) {
+    setUnitConstructionPiecesToProgress(entity, progress);
+  } else if (entity.building !== null) {
+    setStaticConstructionPiecesToProgress(entity, progress);
+  }
+}
+
+function finishConstructionPieceHealth(entity: Entity): void {
+  if (entity.unit !== null) {
+    const unit = entity.unit;
+    if (unit.hp > 0) unit.hp = unit.maxHp;
+    if (isSubEntityHpLive(unit.locomotion.hp)) unit.locomotion.hp = unit.locomotion.maxHp;
+    const combat = entity.combat;
+    if (combat !== null) {
+      for (let i = 0; i < combat.turrets.length; i++) {
+        if (isSubEntityHpLive(combat.turrets[i].hp)) combat.turrets[i].hp = combat.turrets[i].maxHp;
+      }
+    }
+  } else if (entity.building !== null) {
+    const building = entity.building;
+    if (building.hp > 0) building.hp = building.maxHp;
+    const combat = entity.combat;
+    if (combat !== null) {
+      for (let i = 0; i < combat.turrets.length; i++) {
+        if (isSubEntityHpLive(combat.turrets[i].hp)) combat.turrets[i].hp = combat.turrets[i].maxHp;
+      }
+    }
+  }
+}
+
+function isSubEntityHpLive(hp: number): boolean {
+  return hp > 0;
 }
 
 function isConstructionAlive(entity: Entity): boolean {
@@ -65,6 +361,7 @@ function completeConstruction(
   buildable.paid = { ...buildable.required };
   buildable.isComplete = true;
   buildable.healthBuildFraction = 1;
+  finishConstructionPieceHealth(entity);
 
   if (entity.building) {
     applyCompletedBuildingEffects(world, entity);

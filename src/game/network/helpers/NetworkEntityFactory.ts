@@ -26,6 +26,7 @@ import {
   createUnitRuntimeTurrets,
 } from '../../sim/runtimeTurrets';
 import { createBuildable, getBuildFraction } from '../../sim/buildableHelpers';
+import { initializeConstructionPieceHealth } from '../../sim/constructionLifecycle';
 import { isFiniteNumber } from '../../math';
 import { createUnitSuspension } from '../../sim/unitSuspension';
 import { computeUnitActionHash } from '../../sim/unitActions';
@@ -341,6 +342,7 @@ function createUnitFromNetwork(
       },
     );
     entity.buildable.healthBuildFraction = getBuildFraction(entity.buildable);
+    initializeConstructionPieceHealth(entity);
   }
 
   return entity;
@@ -432,6 +434,7 @@ function createBuildingFromNetwork(
   // body slab. Beam updates also reference the source's turret rig
   // for client-side prediction / aim smoothing.
   refreshBuildingTurretsFromNetwork(entity, buildingBlueprintId, b.turrets);
+  if (entity.buildable !== null) initializeConstructionPieceHealth(entity);
 
   const f = b.factory;
   if (f) {
