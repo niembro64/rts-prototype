@@ -45,7 +45,7 @@ import { getSurfaceHeight, getSurfaceNormal } from './Terrain';
 import { buildShieldPanelCache } from './shieldPanelCache';
 import { createProjectileConfigFromTurret } from './projectileConfigs';
 import { applyEntitySensorBlueprint } from './cloakDetection';
-import { ENTITY_CHANGED_HP } from '../../types/network';
+import { ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../types/network';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import { getUnitGroundZ } from './unitGeometry';
 import { getTurretWorldMount } from '../math';
@@ -478,6 +478,41 @@ export class WorldState {
     }
     const locomotion = entity.unit?.locomotion;
     if (locomotion !== undefined) this.markMetaDead(locomotion.id);
+  }
+
+  detachMountedTurretAsAgent(host: Entity, mountIndex: number): Entity | null {
+    if (host.buildingBlueprintId === DETACHED_TURRET_TOWER_BLUEPRINT_ID) return null;
+    const combat = host.combat;
+    const sourceTurret = combat?.turrets[mountIndex];
+    if (
+      sourceTurret === undefined ||
+      sourceTurret.id === NO_ENTITY_ID ||
+      sourceTurret.hp <= 0 ||
+      sourceTurret.config.visualOnly ||
+      this.entities.has(sourceTurret.id)
+    ) {
+      return null;
+    }
+
+    const detachedAgent = this.createDetachedTurretAgent(host, sourceTurret);
+    this.clearMountedTurretAfterDetach(sourceTurret);
+    this.addEntity(detachedAgent);
+    this.refreshEntityMetadata(host);
+    this.markSnapshotDirty(host.id, ENTITY_CHANGED_TURRETS);
+    return detachedAgent;
+  }
+
+  private clearMountedTurretAfterDetach(turret: Turret): void {
+    turret.id = NO_ENTITY_ID;
+    turret.hp = 0;
+    turret.target = null;
+    turret.state = 'idle';
+    turret.angularVelocity = 0;
+    turret.angularAcceleration = 0;
+    turret.pitchVelocity = 0;
+    turret.pitchAcceleration = 0;
+    turret.burst = undefined;
+    turret.shield = undefined;
   }
 
   // Get current tick

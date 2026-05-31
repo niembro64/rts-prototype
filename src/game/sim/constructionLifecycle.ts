@@ -421,6 +421,7 @@ export function interruptConstructionPreservingBuiltPieces(
   );
   let preserved = false;
   let changedFields = 0;
+  const turretMountsToDetach: number[] = [];
 
   for (let i = 0; i < specs.length; i++) {
     const spec = specs[i];
@@ -430,6 +431,9 @@ export function interruptConstructionPreservingBuiltPieces(
       const pieceId = spec.getId();
       if (spec.isSubEntity && pieceId !== NO_ENTITY_ID) {
         world.setSubEntityMetadataTargetable(pieceId, true);
+      }
+      if (spec.kind === 'turret' && spec.mountIndex !== null) {
+        turretMountsToDetach.push(spec.mountIndex);
       }
       continue;
     }
@@ -446,6 +450,10 @@ export function interruptConstructionPreservingBuiltPieces(
 
   world.refreshEntityMetadata(entity);
   buildable.isInterrupted = true;
+  for (let i = 0; i < turretMountsToDetach.length; i++) {
+    const detached = world.detachMountedTurretAsAgent(entity, turretMountsToDetach[i]);
+    if (detached !== null) changedFields |= ENTITY_CHANGED_TURRETS;
+  }
   world.markSnapshotDirty(entity.id, changedFields | ENTITY_CHANGED_BUILDING);
   return {
     preserved: true,
