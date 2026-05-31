@@ -17,10 +17,21 @@ type ClosestEntityOptions = {
    *  recognize any live unit/building under the cursor. */
   playerId?: PlayerId;
   /** Small floor for very small units. The actual selectable footprint
-   *  is the unit's collision radius so click-selection matches spacing and
-   *  collision expectations, not cosmetic body art. */
+   *  is the unit's collision radius (scaled by SEL_SCALE_MOBILE) so
+   *  click-selection matches spacing and collision expectations, not
+   *  cosmetic body art. */
   minUnitRadius?: number;
 };
+
+// BAR/Spring style: the click/hover hit volume is the collision volume
+// enlarged slightly so units are forgiving to grab without bleeding into
+// neighbors. Spring's unitdefs_post.lua uses these same factors when it
+// derives a default selectionVolume from the collision volume:
+//   mobile units 1.22x, static (buildings/towers) 1.15x.
+// Drag-box select is unaffected — that's center-point only, matching
+// Spring's GetUnitsInScreenRectangle.
+const SEL_SCALE_MOBILE = 1.22;
+const SEL_SCALE_STATIC = 1.15;
 
 function canUseUnit(entity: ReturnType<SelectionEntitySource['getUnits']>[number], playerId?: PlayerId): boolean {
   if (!entity.unit) return false;
@@ -49,7 +60,7 @@ export function findClosestSelectableEntityToPoint(
     if (!canUseUnit(entity, playerId)) continue;
     const dx = entity.transform.x - worldX;
     const dy = entity.transform.y - worldY;
-    const radius = Math.max(minUnitRadius, entity.unit!.radius.collision);
+    const radius = Math.max(minUnitRadius, entity.unit!.radius.collision * SEL_SCALE_MOBILE);
     const distSq = dx * dx + dy * dy;
     if (distSq <= radius * radius && (!closest || distSq < closest.distSq)) {
       closest = { id: entity.id, distSq };
@@ -60,8 +71,8 @@ export function findClosestSelectableEntityToPoint(
     if (!canUseBuilding(entity, playerId)) continue;
     const dx = Math.abs(worldX - entity.transform.x);
     const dy = Math.abs(worldY - entity.transform.y);
-    const halfW = entity.building!.width / 2;
-    const halfH = entity.building!.height / 2;
+    const halfW = (entity.building!.width / 2) * SEL_SCALE_STATIC;
+    const halfH = (entity.building!.height / 2) * SEL_SCALE_STATIC;
     if (dx > halfW || dy > halfH) continue;
     const distSq = dx * dx + dy * dy;
     if (!closest || distSq < closest.distSq) {
