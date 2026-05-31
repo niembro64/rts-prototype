@@ -1235,6 +1235,7 @@ function packSprayTargetsIntoScratch(
     view[base + 12] = spray.intensity;
     view[base + 13] = spray.speed ?? 0;
     view[base + 14] = spray.particleRadius ?? 0;
+    view[base + 15] = spray.ballSpawnRate ?? 0;
     let flags = 0;
     if (spray.type === 'heal') flags |= 0x01;
     if (spray.source.z !== null) flags |= 0x02;
@@ -1243,7 +1244,8 @@ function packSprayTargetsIntoScratch(
     if (spray.target.radius !== null) flags |= 0x10;
     if (spray.speed !== null) flags |= 0x20;
     if (spray.particleRadius !== null) flags |= 0x40;
-    view[base + 15] = flags;
+    if (spray.ballSpawnRate !== null) flags |= 0x80;
+    view[base + 16] = flags;
   }
 }
 

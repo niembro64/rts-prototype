@@ -39,6 +39,17 @@ function frac01(label: string, value: number): number {
   return value;
 }
 
+function rgb01Tuple(label: string, value: readonly number[]): readonly [number, number, number] {
+  if (!Array.isArray(value) || value.length !== 3) {
+    throw new Error(`resourceConfig.${label} must be a 3-component RGB tuple in [0, 1]`);
+  }
+  return [
+    frac01(`${label}[0]`, value[0]),
+    frac01(`${label}[1]`, value[1]),
+    frac01(`${label}[2]`, value[2]),
+  ] as const;
+}
+
 function posInt(label: string, value: number): number {
   if (!Number.isInteger(value) || value <= 0) {
     throw new Error(`resourceConfig.${label} must be an integer > 0; received ${value}`);
@@ -57,6 +68,8 @@ export const RESOURCE_CONFIG = {
     maxSpawnsPerSprayFrame: posInt('spray.maxSpawnsPerSprayFrame', rawConfig.spray.maxSpawnsPerSprayFrame),
     maxParticlesPerSpray: posInt('spray.maxParticlesPerSpray', rawConfig.spray.maxParticlesPerSpray),
     maxParticles: posInt('spray.maxParticles', rawConfig.spray.maxParticles),
+    healRgb01: rgb01Tuple('spray.healRgb01', rawConfig.spray.healRgb01),
+    particleAlpha: frac01('spray.particleAlpha', rawConfig.spray.particleAlpha),
     healParticleSpeed: posNum('spray.healParticleSpeed', rawConfig.spray.healParticleSpeed),
     healMaxFlightSec: posNum('spray.healMaxFlightSec', rawConfig.spray.healMaxFlightSec),
     healParticleBaseRadius: posNum('spray.healParticleBaseRadius', rawConfig.spray.healParticleBaseRadius),

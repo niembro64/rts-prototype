@@ -113,23 +113,25 @@ sets SprayTarget.ballSpawnRate / PylonTubeFlow.ballSpawnRate. SprayRenderer3D
 absolute rate via their budget accumulators; the old cap-normalized intensity count
 remains only as the fallback when no absolute rate is set. The 1:1 tip handoff is
 preserved (outbound tube births at the absolute rate, inbound free legs do).
+2026-05-31 progress: repair/heal sprays now derive SprayTarget.ballSpawnRate
+from the shared repair resource-movement channel's absolute amountPerSecond,
+carry it over the spray wire shape, and render from the absolute-rate budget
+path instead of the legacy intensity fallback. Spray particle color/alpha moved
+from colorsConfig.effects.spray into resourceConfig.json with the rest of the
+resource-ball visual tuning. The remaining resource-adjacent values were
+intentionally left in their current owners: shellConfig's build-rate EMA
+half-lives are shared smoothing policy, and turret constructionEmitter
+speed/radius are per-blueprint emitter data.
 
 A51. [LOW] src/resourceConfig.json + the resource-ball renderers
     (src/game/render3d/SprayRenderer3D.ts, PylonTubeFlowRenderer.ts,
     ConstructionVisualController3D.ts) —
     RULE: "Density is the absolute transfer rate, scaled by one global knob" +
     "Config Is Data, Not Code". —
-    PROBLEM / FIX (residual): (1) `ballsPerResourcePerSecond` defaults to 0.5, chosen
+    PROBLEM / FIX (residual): `ballsPerResourcePerSecond` defaults to 0.5, chosen
     to land near the old full-rate ball counts (producers/builders move ~25-50/sec);
-    it is a guess and wants in-app A/B tuning. (2) Heal sprays (commander repair) still
-    spawn from intensity, not an absolute repair rate — they carry no ballSpawnRate and
-    use the legacy count fallback; bring repair onto the absolute path if repair should
-    read by throughput too. (3) Some resource-adjacent tuning still lives outside
-    resourceConfig.json — spray colors in colorsConfig.effects.spray, the build-rate EMA
-    half-lives in shellConfig (shared with non-resource ground-normal smoothing), and the
-    constructionEmitter particle speed/radius in turrets.json (correctly per-blueprint).
-    Decide which, if any, should consolidate into resourceConfig.json vs stay where they
-    are. Low urgency; the core absolute-rate behavior and the global toggle are in place.
+    it is a guess and wants in-app A/B tuning. Low urgency; the core absolute-rate
+    behavior, repair throughput path, config consolidation, and global toggle are in place.
 
 ================================================================================
 SECTION B — MEMORY LEAKS

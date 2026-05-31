@@ -669,6 +669,7 @@ export type NetworkServerSnapshotSprayTarget = {
   intensity: number;
   speed: number | null;
   particleRadius: number | null;
+  ballSpawnRate: number | null;
 };
 
 export type NetworkServerSnapshotAction = {

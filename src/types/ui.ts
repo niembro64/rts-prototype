@@ -273,9 +273,9 @@ export type SprayTarget = {
   pylonTubeHandoffKey?: string;
   /** Absolute ball spawn rate in balls/second, derived from the resource
    *  transfer rate (resources/second * resourceConfig.ballsPerResourcePerSecond).
-   *  When present, the renderer spawns build/pylon particles at this rate
+   *  When present, the renderer spawns build/pylon/repair particles at this rate
    *  instead of the legacy cap-normalized intensity count, so density tracks
-   *  absolute throughput. Omitted for heal sprays and one-shot handoffs. */
+   *  absolute throughput. Omitted only for legacy sprays and one-shot handoffs. */
   ballSpawnRate?: number;
 };
 

@@ -34,6 +34,7 @@ export class ClientSprayTargetStore {
         target.flowRadius = 0;
         target.speed = source.speed ?? undefined;
         target.particleRadius = source.particleRadius ?? undefined;
+        target.ballSpawnRate = source.ballSpawnRate ?? undefined;
         this.targets.push(target);
       }
     }
@@ -67,6 +68,7 @@ export class ClientSprayTargetStore {
     target.flowRadius = 0;
     target.speed = undefined;
     target.particleRadius = undefined;
+    target.ballSpawnRate = undefined;
     return target;
   }
 

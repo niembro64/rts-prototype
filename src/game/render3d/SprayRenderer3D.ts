@@ -36,7 +36,6 @@
 
 import * as THREE from 'three';
 import type { SprayTarget } from '../sim/commanderAbilities';
-import { COLORS } from '@/colorsConfig';
 import { getPlayerPrimaryColor } from '../sim/types';
 import { hexToRgb01 } from './colorUtils';
 import { disposeMesh } from './threeUtils';
@@ -66,12 +65,12 @@ const MAX_PARTICLES = RESOURCE_CONFIG.spray.maxParticles;
 
 /** Heal-spray color — matches the 2D convention where heal sprays
  *  don't take the caster's team color. Constant white. */
-const [HEAL_R, HEAL_G, HEAL_B] = COLORS.effects.spray.healRgb01;
+const [HEAL_R, HEAL_G, HEAL_B] = RESOURCE_CONFIG.spray.healRgb01;
 
 /** Build-spray color alpha (matches the previous per-team
  *  MeshBasicMaterial.opacity = 0.85). Heal trails were 0.8 — we use
  *  one global alpha here since the visual difference is tiny. */
-const PARTICLE_ALPHA = COLORS.effects.spray.particleAlpha;
+const PARTICLE_ALPHA = RESOURCE_CONFIG.spray.particleAlpha;
 
 const PARTICLE_VERTEX_SHADER = `
 attribute float aAlpha;
@@ -225,19 +224,26 @@ export class SprayRenderer3D {
     }
 
     for (const spray of sprayTargets) {
-      const hasBallRate = spray.ballSpawnRate !== undefined && spray.ballSpawnRate > 0;
+      const hasAbsoluteBallRate = spray.ballSpawnRate !== undefined;
+      const ballSpawnRate = hasAbsoluteBallRate && Number.isFinite(spray.ballSpawnRate)
+        ? Math.max(0, spray.ballSpawnRate as number)
+        : 0;
       // Abs-rate sprays render whenever their ball rate is positive, even
       // if the cap-normalized intensity rounds to ~0 (a big host at a low
       // fraction still moves real resources).
-      if (spray.intensity <= 0 && !hasBallRate) continue;
+      if (hasAbsoluteBallRate) {
+        if (ballSpawnRate <= 0) continue;
+      } else if (spray.intensity <= 0) {
+        continue;
+      }
       const scaledIntensity = Math.min(1, spray.intensity);
       // Build sprays are intentionally denser than heal sprays because
       // they represent a construction emitter painting a footprint, not
       // a single repair beam.
       const baseCount = spray.type === 'build' ? 36 : 16;
-      // Legacy fallback: sprays without an absolute ball rate (heal sprays,
-      // 2D legacy targets) scale their spawn count with intensity. Pylon /
-      // build sprays carry ballSpawnRate and spawn from absolute throughput.
+      // Legacy fallback: sprays without an absolute ball rate (old 2D
+      // targets) scale their spawn count with intensity. Pylon/build/repair
+      // sprays carry ballSpawnRate and spawn from absolute throughput.
       const minCount = spray.type === 'build' ? 1 : 4;
       const count = Math.max(minCount, Math.floor(baseCount * scaledIntensity));
       const n = Math.min(count, MAX_PARTICLES_PER_SPRAY);
@@ -258,9 +264,9 @@ export class SprayRenderer3D {
       // transfer rate. The budget accumulator integrates it over time, so a
       // step change in rate retunes the cadence without popping in-flight
       // particles. Falls back to the intensity-derived count for sprays that
-      // carry no absolute rate (heal / legacy).
-      const spawnRatePerSec = hasBallRate
-        ? (spray.ballSpawnRate as number)
+      // carry no absolute rate (legacy).
+      const spawnRatePerSec = hasAbsoluteBallRate
+        ? ballSpawnRate
         : n / Math.max(flightSec, MIN_FLIGHT_SEC);
       budget += spawnRatePerSec * dtSec;
       const spawnCount = Math.min(

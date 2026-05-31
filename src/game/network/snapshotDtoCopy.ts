@@ -337,6 +337,7 @@ export function createSprayDto(): NetworkServerSnapshotSprayTarget {
     intensity: 0,
     speed: null,
     particleRadius: null,
+    ballSpawnRate: null,
   };
 }
 
@@ -365,6 +366,7 @@ export function copySprayInto(
   dst.intensity = src.intensity;
   dst.speed = src.speed;
   dst.particleRadius = src.particleRadius;
+  dst.ballSpawnRate = src.ballSpawnRate;
   return dst;
 }
 

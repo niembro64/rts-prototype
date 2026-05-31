@@ -287,11 +287,14 @@ export class PylonTubeFlowRenderer {
   private spawnRateGatedBeads(dtSec: number): void {
     if (dtSec <= 0) return;
     for (const runtime of this.flowRuntimes.values()) {
-      const hasBallRate = runtime.ballSpawnRate !== undefined && runtime.ballSpawnRate > 0;
+      const hasAbsoluteBallRate = runtime.ballSpawnRate !== undefined;
+      const ballSpawnRate = hasAbsoluteBallRate && Number.isFinite(runtime.ballSpawnRate)
+        ? Math.max(0, runtime.ballSpawnRate as number)
+        : 0;
       if (
         runtime.lastSeenFrame !== this.frameIndex
         || runtime.birthMode !== 'rate'
-        || (!hasBallRate && runtime.intensity <= 0.02)
+        || (hasAbsoluteBallRate ? ballSpawnRate <= 0 : runtime.intensity <= 0.02)
       ) {
         continue;
       }
@@ -302,8 +305,8 @@ export class PylonTubeFlowRenderer {
       // only retunes the cadence — it never pops an in-flight bead. Falls back
       // to the legacy intensity*capacity column when no absolute rate is set.
       let birthsPerSec: number;
-      if (hasBallRate) {
-        birthsPerSec = runtime.ballSpawnRate as number;
+      if (hasAbsoluteBallRate) {
+        birthsPerSec = ballSpawnRate;
       } else {
         const spacing = Math.max(1e-3, runtime.beadRadius * BEAD_SPACING_MULT);
         const capacity = Math.min(MAX_BEADS_PER_TUBE, Math.max(1, Math.floor(len / spacing)));
@@ -319,7 +322,7 @@ export class PylonTubeFlowRenderer {
       const startFrac = runtime.up ? 0 : 1;
       // Density encodes magnitude, so abs-rate beads render at full opacity;
       // the legacy fallback keeps its intensity-scaled alpha.
-      const alphaScale = hasBallRate ? 1 : Math.min(1, runtime.intensity * 1.4);
+      const alphaScale = hasAbsoluteBallRate ? 1 : Math.min(1, runtime.intensity * 1.4);
       for (let i = 0; i < spawnCount; i++) {
         this.spawnBead(runtime, dir, startFrac, alphaScale);
       }

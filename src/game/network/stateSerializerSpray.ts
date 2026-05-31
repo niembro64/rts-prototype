@@ -66,6 +66,7 @@ export function serializeSprayTargets(
     out.intensity = source.intensity;
     out.speed = source.speed ?? null;
     out.particleRadius = source.particleRadius ?? null;
+    out.ballSpawnRate = source.ballSpawnRate ?? null;
     sprayBuf.push(out);
   }
   return sprayBuf.length > 0 ? sprayBuf : undefined;

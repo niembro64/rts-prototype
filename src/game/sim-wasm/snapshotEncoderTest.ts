@@ -1816,9 +1816,10 @@ type SprayTargetFixture = {
   intensity: number;
   speed?: number;
   particleRadius?: number;
+  ballSpawnRate?: number;
 };
 
-const SPRAY_SCRATCH_STRIDE = 16;
+const SPRAY_SCRATCH_STRIDE = 17;
 
 function packSprayTargetsIntoScratch(
   memory: WebAssembly.Memory,
@@ -1846,6 +1847,7 @@ function packSprayTargetsIntoScratch(
     view[base + 12] = s.intensity;
     view[base + 13] = s.speed ?? 0;
     view[base + 14] = s.particleRadius ?? 0;
+    view[base + 15] = s.ballSpawnRate ?? 0;
     let flags = 0;
     if (s.type === 'heal') flags |= 0x01;
     if (s.source.z !== undefined) flags |= 0x02;
@@ -1854,7 +1856,8 @@ function packSprayTargetsIntoScratch(
     if (s.target.radius !== undefined) flags |= 0x10;
     if (s.speed !== undefined) flags |= 0x20;
     if (s.particleRadius !== undefined) flags |= 0x40;
-    view[base + 15] = flags;
+    if (s.ballSpawnRate !== undefined) flags |= 0x80;
+    view[base + 16] = flags;
   }
 }
 
@@ -2715,6 +2718,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         intensity: 0.85,
         speed: 12,
         particleRadius: 3,
+        ballSpawnRate: 7.5,
       }],
       isDelta: true,
     },

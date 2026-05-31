@@ -8,11 +8,30 @@ import { economyManager } from './economy';
 import { getReclaimResourceValue, isReclaimableTarget, RECLAIM_REFUND_FRACTION } from './reclaim';
 import { ENTITY_CHANGED_HP } from '../../types/network';
 import { isBuildInProgress } from './buildableHelpers';
+import { ballSpawnRateForResourceRate } from '@/resourceConfig';
 
 export type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 
 const _constructionEmitterMount = { x: 0, y: 0, z: 0 };
+
+function getRepairEnergyRatePerSecond(world: WorldState, sourceId: EntityId, targetId: EntityId): number {
+  let rate = 0;
+  const movements = world.resourceMovements;
+  for (let i = 0; i < movements.length; i++) {
+    const movement = movements[i];
+    if (
+      movement.sourceEntityId === sourceId &&
+      movement.targetEntityId === targetId &&
+      movement.resource === 'energy' &&
+      movement.direction === 'outbound' &&
+      movement.reason === 'repair'
+    ) {
+      rate += movement.amountPerSecond;
+    }
+  }
+  return rate;
+}
 
 // Commander abilities system - handles build queue (ONE target at a time)
 export class CommanderAbilitiesSystem {
@@ -91,6 +110,7 @@ export class CommanderAbilitiesSystem {
         }
 
         const intensity = currentTarget.unit.hp < currentTarget.unit.maxHp ? 1 : 0;
+        const repairEnergyRatePerSecond = getRepairEnergyRatePerSecond(world, commander.id, currentTarget.id);
         sprayTargets.push({
           source: { id: commander.id, pos: { x: commanderSprayX, y: commanderSprayY }, z: commanderSprayZ, playerId },
           target: {
@@ -104,6 +124,7 @@ export class CommanderAbilitiesSystem {
           channel: 0,
           flow: 'direct',
           flowRadius: 0,
+          ballSpawnRate: ballSpawnRateForResourceRate(repairEnergyRatePerSecond),
         });
       }
     }

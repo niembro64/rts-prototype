@@ -2565,10 +2565,10 @@ export interface SnapshotEncodeApi {
   /** Pre-grow the shared numeric scratch to hold `numberCount` f64s. */
   numberScratchEnsure: (numberCount: number) => void;
   /** Emit `sprayTargets: [...]`. Sits between economy and projectiles
-   *  in iteration order. Reads `count` entries (16 f64 each) from the
+   *  in iteration order. Reads `count` entries (17 f64 each) from the
    *  spray scratch. */
   emitSprayTargets: (count: number) => number;
-  /** Raw pointer to the spray-target scratch (Float64Array, 16 f64
+  /** Raw pointer to the spray-target scratch (Float64Array, 17 f64
    *  per spray — see lib.rs SNAPSHOT_ENCODE_SPRAY_STRIDE for layout). */
   sprayScratchPtr: () => number;
   /** Pre-grow the spray scratch to hold `count` sprays. */
@@ -3332,7 +3332,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           emitSprayTargets: snapshot_encode_envelope_emit_spray_targets,
           sprayScratchPtr: snapshot_encode_spray_scratch_ptr,
           sprayScratchEnsure: snapshot_encode_spray_scratch_ensure,
-          sprayScratchStride: 16,
+          sprayScratchStride: 17,
           economyScratchPtr: snapshot_encode_economy_scratch_ptr,
           economyScratchEnsure: snapshot_encode_economy_scratch_ensure,
           economyScratchStride: 11,

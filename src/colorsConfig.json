@@ -464,10 +464,6 @@
         "colorHex": "#ffffff"
       }
     },
-    "spray": {
-      "healRgb01": "#ffffff",
-      "particleAlpha": 0.85
-    },
     "smokeTrail": {
       "default": {
         "colorHex": "#cccccc",

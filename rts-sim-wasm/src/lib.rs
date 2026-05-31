@@ -22171,7 +22171,7 @@ pub fn snapshot_encode_economy_scratch_ensure(count: u32) {
     }
 }
 
-/// Spray-target scratch — 16 f64 per spray (NetworkServerSnapshotSprayTarget).
+/// Spray-target scratch — 17 f64 per spray (NetworkServerSnapshotSprayTarget).
 ///   [0]    source.id
 ///   [1..3] source.pos.x, source.pos.y
 ///   [3]    source.z (gated by flags bit 1)
@@ -22184,10 +22184,11 @@ pub fn snapshot_encode_economy_scratch_ensure(count: u32) {
 ///   [12]   intensity
 ///   [13]   speed (gated by flags bit 5)
 ///   [14]   particleRadius (gated by flags bit 6)
-///   [15]   flags: bit 0 type_is_heal (else 'build'), bit 1 has_source_z,
+///   [15]   ballSpawnRate (gated by flags bit 7)
+///   [16]   flags: bit 0 type_is_heal (else 'build'), bit 1 has_source_z,
 ///          bit 2 has_target_z, bit 3 has_target_dim, bit 4 has_target_radius,
-///          bit 5 has_speed, bit 6 has_particleRadius.
-const SNAPSHOT_ENCODE_SPRAY_STRIDE: usize = 16;
+///          bit 5 has_speed, bit 6 has_particleRadius, bit 7 hasBallSpawnRate.
+const SNAPSHOT_ENCODE_SPRAY_STRIDE: usize = 17;
 
 struct SnapshotEncodeSprayScratch {
     buf: Vec<f64>,
@@ -25190,7 +25191,7 @@ pub fn snapshot_encode_envelope_emit_packed_audio_events(
 
 /// Append `sprayTargets: [...]`. Sits between economy and projectiles
 /// in iteration order (sprayTargets is in the _snapshotBuf static
-/// init). Reads `count` entries (16 f64 each) from the spray scratch.
+/// init). Reads `count` entries (17 f64 each) from the spray scratch.
 #[wasm_bindgen]
 pub fn snapshot_encode_envelope_emit_spray_targets(count: u32) -> u32 {
     let w = messagepack_writer();
@@ -25200,7 +25201,7 @@ pub fn snapshot_encode_envelope_emit_spray_targets(count: u32) -> u32 {
     w.write_array_header(n);
     for i in 0..n {
         let base = i * SNAPSHOT_ENCODE_SPRAY_STRIDE;
-        let flags = scratch.buf[base + 15] as u32;
+        let flags = scratch.buf[base + 16] as u32;
         let type_is_heal = (flags & 0x01) != 0;
         let has_source_z = (flags & 0x02) != 0;
         let has_target_z = (flags & 0x04) != 0;
@@ -25208,14 +25209,18 @@ pub fn snapshot_encode_envelope_emit_spray_targets(count: u32) -> u32 {
         let has_target_radius = (flags & 0x10) != 0;
         let has_speed = (flags & 0x20) != 0;
         let has_particle_radius = (flags & 0x40) != 0;
+        let has_ball_spawn_rate = (flags & 0x80) != 0;
 
         // Outer field count: source, target, type, intensity always +
-        // optional speed + particleRadius.
+        // optional speed + particleRadius + ballSpawnRate.
         let mut field_count: usize = 4;
         if has_speed {
             field_count += 1;
         }
         if has_particle_radius {
+            field_count += 1;
+        }
+        if has_ball_spawn_rate {
             field_count += 1;
         }
         w.write_map_header(field_count);
@@ -25292,6 +25297,10 @@ pub fn snapshot_encode_envelope_emit_spray_targets(count: u32) -> u32 {
         if has_particle_radius {
             w.write_str("particleRadius");
             w.write_number(scratch.buf[base + 14]);
+        }
+        if has_ball_spawn_rate {
+            w.write_str("ballSpawnRate");
+            w.write_number(scratch.buf[base + 15]);
         }
     }
     w.buf.len() as u32

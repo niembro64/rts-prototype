@@ -6,6 +6,8 @@
     "maxSpawnsPerSprayFrame": 24,
     "maxParticlesPerSpray": 42,
     "maxParticles": 1536,
+    "healRgb01": [1, 1, 1],
+    "particleAlpha": 0.85,
     "healParticleSpeed": 560,
     "healMaxFlightSec": 0.62,
     "healParticleBaseRadius": 2.35
