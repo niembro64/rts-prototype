@@ -18,6 +18,77 @@ Please always commit and push before and after any code changes we make.
 
 
 ================================================================================
+LOCOMOTION / UNIT BLUEPRINT UNIFICATION
+================================================================================
+Design decision (spec: budget_design_philosophy.html -> "Locomotion is part of
+the unit, not a separate piece"): locomotion is NO LONGER a separate atomic
+piece. A unit's movement profile and rig are authored INLINE on the unit
+blueprint. There is no separate locomotion blueprint family and no separate
+locomotion entity: locomotion mints no EntityId and carries no cost, no health,
+no mass, and no lock-on eligibility of its own. It shares the unit body's
+id/cost/health and explodes alongside the unit. Turrets cannot lock onto it.
+
+The doc already reflects this; the CODE does not. The code still models
+locomotion as a fully separate, addressable, costed, healthed, lockable entity
+(its base ledger in locomotion.json today authors cost {energy:5, metal:5},
+health, mass, and a deathExplosion). Unify it. This is a large cross-language
+refactor: locomotion is referenced ~58x in rts-sim-wasm/src/lib.rs and across
+~80 TS files. File:line refs below were correct when written; re-verify before
+editing.
+
+L1. [LARGE] Fold the locomotion blueprint into the unit blueprint; delete the
+    separate locomotion blueprint family.
+    LOCATION:
+      - src/game/sim/blueprints/locomotion.json (the whole family) and
+        locomotion.ts (loader/validator); LocomotionBlueprint in types.ts.
+      - src/game/sim/blueprints/units.json — every unit names its movement by
+        "locomotionBlueprintId" (lines 52, 120, 195, 263, 331, ...). Inline the
+        movement profile + rig config onto the unit itself instead.
+      - Schema: src/game/sim/blueprints/blueprintSchema.json,
+        src/types/blueprintSchema.generated.ts (LocomotionBlueprint* types), and
+        rts-sim-wasm/src/generated_blueprint_schema.rs.
+    GOAL: a unit blueprint owns its locomotion (type, physics, rig config,
+    pathfinding) as its own fields. No locomotion.json, no getLocomotionBlueprint,
+    no locomotionBlueprintId indirection. Movement is one of the unit's fields.
+
+L2. [LARGE] Remove locomotion as a separate entity in the Rust sim; make it part
+    of the unit body.
+    LOCATION: rts-sim-wasm/src/lib.rs — ENTITY_META_KIND_LOCOMOTION (11685),
+    ENTITY_META_BLUEPRINT_KIND_LOCOMOTION (11692), and the ~58 locomotion refs.
+    GOAL: locomotion no longer mints its own EntityId, is not spawned or torn off
+    as a child entity, and carries no separate health/cost/mass/deathExplosion.
+    The unit body owns movement; killing the unit destroys its locomotion with it
+    (it "explodes alongside the unit"). Absorb the per-locomotion base ledger
+    (cost/mass/health/deathExplosion/radius from locomotion.json) into the unit
+    body so a unit's cost and health are not split with a drivetrain sub-entity.
+
+L3. [MEDIUM] Drop "locomotions" as a lock-on target family so turrets cannot lock
+    onto locomotion.
+    LOCATION:
+      - src/game/sim/blueprints/inclusionLockOnConfig.json — remove the
+        "locomotions" family entry (line ~12) and the entire
+        "includeLockOnLevel1Locomotions" list (from line ~67).
+      - src/game/sim/blueprints/lockOnValidation.ts
+        (includeLockOnLevel1Locomotions at ~22, 106-107, 138) and lockOnConfig.ts.
+      - Generated schema: TurretLockOnEntityFamilyInclusion still lists
+        'locomotions' (src/types/blueprintSchema.generated.ts:238) plus the
+        includeLockOnLevel1Locomotions fields (247, 301); regenerate after the
+        schema edit. Mirror in the Rust lock-on path.
+    GOAL: no "locomotions" entity-family inclusion and no per-name locomotion
+    narrowing anywhere. A "crippler" that immobilizes by killing the drivetrain is
+    no longer expressible — by design, the only way to stop a unit is to kill it.
+
+L4. [SMALL] Remove the locomotion entity-name path (it is no longer a named,
+    addressable entity).
+    LOCATION: src/game/render3d/EntityName.ts — resolveLocomotionName (116-127),
+    UNKNOWN_LOCOMOTION_NAME (35), and the getLocomotionBlueprint import (26).
+    GOAL: locomotion has no NAME label because it is not a separate entity. Delete
+    the path rather than giving locomotion a display name. (The "locomotion
+    blueprint id" debug field listed in E5 below also drops out with it.)
+================================================================================
+
+
+================================================================================
 ENTITY STATE REPORTING (NAMES)
 ================================================================================
 E5. [MEDIUM / INVESTIGATE] If a single persistent entity's NAME label still
@@ -30,7 +101,6 @@ E5. [MEDIUM / INVESTIGATE] If a single persistent entity's NAME label still
     from entity-id reuse landing on a delta before a keyframe refreshes blueprint
     fields, or from a pooled-label piece-key collision.
     FIX: reproduce a single entity whose text changes while its identity should
-    be stable. Log entity.id, entity type, piece tag, unit/building/turret/
-    locomotion/shot blueprint id, and any decoded wire code beside the rendered
-    label. If id reuse or stale blueprint fields appear, fix the client snapshot
+    be stable. Log entity.id, entity type, piece tag, unit/building/turret/shot
+    blueprint id, and any decoded wire code beside the rendered label. If id reuse or stale blueprint fields appear, fix the client snapshot
     apply path; if two labels share one packed piece key, fix the label keying.
