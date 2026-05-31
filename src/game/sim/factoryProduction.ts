@@ -26,9 +26,23 @@ import {
   initializeConstructionPieceHealth,
   interruptConstructionPreservingBuiltPieces,
 } from './constructionLifecycle';
+import { getSimWasm } from '../sim-wasm/init';
 
 export type { FactoryProductionResult } from '@/types/ui';
 import type { FactoryProductionResult } from '@/types/ui';
+
+let buildSpotObstacleX = new Float64Array(64);
+let buildSpotObstacleY = new Float64Array(64);
+let buildSpotObstacleRadius = new Float64Array(64);
+
+function ensureBuildSpotObstacleCapacity(required: number): void {
+  if (required <= buildSpotObstacleX.length) return;
+  let next = buildSpotObstacleX.length;
+  while (next < required) next *= 2;
+  buildSpotObstacleX = new Float64Array(next);
+  buildSpotObstacleY = new Float64Array(next);
+  buildSpotObstacleRadius = new Float64Array(next);
+}
 
 function pathTerrainFilterForUnit(unit: Entity): PathTerrainFilter | null {
   return unit.unit === null
@@ -161,23 +175,44 @@ export class FactoryProductionSystem {
   }
 
   private isBuildSpotBlocked(world: WorldState, x: number, y: number, radius: number): boolean {
-    for (const unit of world.getUnits()) {
+    const units = world.getUnits();
+    const buildings = world.getBuildings();
+    ensureBuildSpotObstacleCapacity(units.length + buildings.length);
+
+    let count = 0;
+    for (const unit of units) {
       if (unit.unit === null) continue;
-      const minDist = radius + unit.unit.radius.collision;
-      const dx = unit.transform.x - x;
-      const dy = unit.transform.y - y;
-      if ((dx * dx) + (dy * dy) < minDist * minDist) return true;
+      buildSpotObstacleX[count] = unit.transform.x;
+      buildSpotObstacleY[count] = unit.transform.y;
+      buildSpotObstacleRadius[count] = unit.unit.radius.collision;
+      count += 1;
     }
 
-    for (const building of world.getBuildings()) {
+    for (const building of buildings) {
       if (building.building === null || building.building.hp <= 0) continue;
-      const minDist = radius + building.building.targetRadius;
-      const dx = building.transform.x - x;
-      const dy = building.transform.y - y;
-      if ((dx * dx) + (dy * dy) < minDist * minDist) return true;
+      buildSpotObstacleX[count] = building.transform.x;
+      buildSpotObstacleY[count] = building.transform.y;
+      buildSpotObstacleRadius[count] = building.building.targetRadius;
+      count += 1;
     }
 
-    return false;
+    const sim = getSimWasm();
+    if (sim === undefined) {
+      throw new Error('FactoryProductionSystem.isBuildSpotBlocked: sim-wasm is not initialized');
+    }
+    const result = sim.factoryBuildSpotBlocked(
+      x,
+      y,
+      radius,
+      buildSpotObstacleX,
+      buildSpotObstacleY,
+      buildSpotObstacleRadius,
+      count,
+    );
+    if (result > 1) {
+      throw new Error('FactoryProductionSystem.isBuildSpotBlocked: factory_build_spot_blocked rejected its buffers');
+    }
+    return result === 1;
   }
 
   // Called when a unit shell completes. Stamps the static factory rally

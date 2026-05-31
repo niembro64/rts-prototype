@@ -166,6 +166,11 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     factory_build_spot kernel. TypeScript now supplies authored footprint/radius
     config plus entity/rally inputs and maps the returned spot; factory shell
     lifecycle and completion orchestration remain under C1.
+    2026-05-31 progress: factory shell spawn-overlap distance checks moved
+    from FactoryProductionSystem.isBuildSpotBlocked into the Rust/WASM
+    factory_build_spot_blocked kernel. TypeScript now only packs live unit and
+    building obstacle radii, calls the kernel, and applies the clear/blocked
+    result before spawning the shell.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)

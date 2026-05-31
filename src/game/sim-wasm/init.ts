@@ -21,6 +21,7 @@ import __wbg_init, {
   version,
   wind_sample_state,
   factory_build_spot,
+  factory_build_spot_blocked,
   economy_accumulate_player_rates,
   economy_compute_converter_transfer,
   economy_credit_stockpile,
@@ -441,6 +442,15 @@ export interface SimWasm {
     mapHeight: number,
     clampRadius: number,
     out: Float64Array,
+  ) => number;
+  readonly factoryBuildSpotBlocked: (
+    x: number,
+    y: number,
+    radius: number,
+    obstacleX: Float64Array,
+    obstacleY: Float64Array,
+    obstacleRadius: Float64Array,
+    count: number,
   ) => number;
   readonly economyAccumulatePlayerRates: (
     playerIds: Uint32Array,
@@ -3064,6 +3074,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         version: version(),
         windSampleState: wind_sample_state,
         factoryBuildSpot: factory_build_spot,
+        factoryBuildSpotBlocked: factory_build_spot_blocked,
         economyAccumulatePlayerRates: economy_accumulate_player_rates,
         economyComputeConverterTransfer: economy_compute_converter_transfer,
         economyCreditStockpile: economy_credit_stockpile,

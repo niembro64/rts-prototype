@@ -228,6 +228,39 @@ pub fn factory_build_spot(
     1
 }
 
+/// Factory shell spawn overlap kernel.
+///
+/// Returns:
+/// - 0 when the build spot is clear,
+/// - 1 when any packed obstacle overlaps the requested shell radius,
+/// - 2 when the buffers are shorter than `count`.
+#[wasm_bindgen]
+pub fn factory_build_spot_blocked(
+    x: f64,
+    y: f64,
+    radius: f64,
+    obstacle_x: &[f64],
+    obstacle_y: &[f64],
+    obstacle_radius: &[f64],
+    count: u32,
+) -> u32 {
+    let n = count as usize;
+    if n > obstacle_x.len() || n > obstacle_y.len() || n > obstacle_radius.len() {
+        return 2;
+    }
+
+    for i in 0..n {
+        let min_dist = radius + obstacle_radius[i];
+        let dx = obstacle_x[i] - x;
+        let dy = obstacle_y[i] - y;
+        if (dx * dx) + (dy * dy) < min_dist * min_dist {
+            return 1;
+        }
+    }
+
+    0
+}
+
 #[wasm_bindgen]
 pub fn economy_accumulate_player_rates(
     player_ids: &[u32],
@@ -25887,6 +25920,51 @@ mod sim_kernel_tests {
                 &mut short,
             ),
             0
+        );
+    }
+
+    #[test]
+    fn factory_build_spot_blocked_uses_packed_obstacle_radii() {
+        let obstacle_x = [30.0, 45.0, 60.0];
+        let obstacle_y = [10.0, 10.0, 10.0];
+        let obstacle_radius = [4.0, 6.0, 8.0];
+
+        assert_eq!(
+            factory_build_spot_blocked(
+                20.0,
+                10.0,
+                6.0,
+                &obstacle_x,
+                &obstacle_y,
+                &obstacle_radius,
+                3,
+            ),
+            0,
+            "touching at exactly radius sum is clear, matching the old TS '<' check",
+        );
+        assert_eq!(
+            factory_build_spot_blocked(
+                20.1,
+                10.0,
+                6.0,
+                &obstacle_x,
+                &obstacle_y,
+                &obstacle_radius,
+                3,
+            ),
+            1,
+        );
+        assert_eq!(
+            factory_build_spot_blocked(
+                20.1,
+                10.0,
+                6.0,
+                &obstacle_x,
+                &obstacle_y,
+                &obstacle_radius,
+                4,
+            ),
+            2,
         );
     }
 
