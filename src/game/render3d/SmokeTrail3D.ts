@@ -9,11 +9,15 @@
 // it stays put in world space as the rocket flies away, grows slightly,
 // and fades to transparent over its configured fade timing.
 //
-// One material is shared across every puff. Per-puff scale, alpha, and
-// color ride on the InstancedMesh instance matrix + custom
-// InstancedBufferAttributes (aAlpha, aColor). The fragment shader is
-// `gl_FragColor = vec4(vColor, vAlpha);` — each puff uses the same
-// visual treatment.
+// Per-puff scale, alpha, and color ride on the InstancedMesh instance
+// matrix + custom InstancedBufferAttributes (aAlpha, aColor). Two shared
+// materials carry the same instanced geometry: the legacy SPHERE shader
+// (`gl_FragColor = vec4(vColor, vAlpha);` — a hard-edged translucent
+// ball) and the SOFT shader (a fog-of-war-style radial cosine fade that
+// drops alpha to zero before the projected silhouette, so the puff reads
+// as a soft blob rather than a sphere). The PLAYER CLIENT bar's SOFT
+// toggle (clientBarConfig `smokeSoftEdges`) swaps which material the mesh
+// uses at runtime — see update().
 //
 // One shared instanced pool renders every smoke use. Puff geometry
 // resolution comes from smokeConfig.puffGeometry.
@@ -25,7 +29,7 @@
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
 import { COLORS } from '@/colorsConfig';
-import { getSmokeTrails } from '@/clientBarConfig';
+import { getSmokeTrails, getSmokeSoftEdges } from '@/clientBarConfig';
 import {
   getSmokePuffGeometryConfig,
   getSmokePoolMaxParticles,
@@ -127,6 +131,53 @@ void main() {
 }
 `;
 
+// SOFT (non-sphere) variant. Same approach as FogOfWarFog3D: carry the
+// view-space puff center + radius so the fragment can measure each
+// pixel's normalized distance from the projected center and ease alpha
+// to zero with a raised cosine BEFORE the geometric silhouette. The hard
+// sphere outline is never drawn, so the puff reads as a soft round blob.
+// Outer fraction matches the fog field (fogConfig transparentOuterFraction
+// = 0.4) so smoke and fog softness feel consistent. Color is output the
+// same way as the sphere shader (no colorspace include) so toggling SOFT
+// changes only the puff's shape, never its color.
+const SMOKE_SOFT_OUTER_FRACTION = 0.4;
+
+const SMOKE_SOFT_VERTEX_SHADER = `
+attribute float aAlpha;
+attribute vec3 aColor;
+varying float vAlpha;
+varying vec3 vColor;
+varying vec3 vViewPosition;
+varying vec3 vViewCenter;
+varying float vViewRadius;
+void main() {
+  vAlpha = aAlpha;
+  vColor = aColor;
+  vec4 viewCenter = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+  vec4 viewPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+  vViewPosition = viewPosition.xyz;
+  vViewCenter = viewCenter.xyz;
+  vViewRadius = length((modelViewMatrix * instanceMatrix * vec4(1.0, 0.0, 0.0, 0.0)).xyz);
+  gl_Position = projectionMatrix * viewPosition;
+}
+`;
+
+const SMOKE_SOFT_FRAGMENT_SHADER = `
+uniform float uTransparentOuterFraction;
+varying float vAlpha;
+varying vec3 vColor;
+varying vec3 vViewPosition;
+varying vec3 vViewCenter;
+varying float vViewRadius;
+void main() {
+  float edge = clamp(length(vViewPosition.xy - vViewCenter.xy) / max(vViewRadius, 0.0001), 0.0, 1.0);
+  float visibleRadius = max(0.0001, 1.0 - clamp(uTransparentOuterFraction, 0.0, 0.95));
+  float center = clamp((visibleRadius - edge) / visibleRadius, 0.0, 1.0);
+  float soft = 0.5 - 0.5 * cos(center * 3.141592653589793);
+  gl_FragColor = vec4(vColor, vAlpha * soft);
+}
+`;
+
 function clamp01(value: number): number {
   if (value <= 0) return 0;
   if (value >= 1) return 1;
@@ -152,7 +203,11 @@ type PuffPool = {
 
 export class SmokeTrail3D {
   private root: THREE.Group;
-  private mat: THREE.ShaderMaterial;
+  // Both materials are built up front and share the one instanced
+  // geometry; the SOFT bar toggle picks which the mesh draws with.
+  private matSphere: THREE.ShaderMaterial;
+  private matSoft: THREE.ShaderMaterial;
+  private softEdges: boolean;
   private pool: PuffPool;
   // Scratch buffers reused across frames to avoid per-frame allocs.
   private _eligible: Entity[] = [];
@@ -168,18 +223,32 @@ export class SmokeTrail3D {
     this.root = new THREE.Group();
     worldGroup.add(this.root);
 
-    this.mat = new THREE.ShaderMaterial({
+    this.matSphere = new THREE.ShaderMaterial({
       vertexShader: SMOKE_VERTEX_SHADER,
       fragmentShader: SMOKE_FRAGMENT_SHADER,
       transparent: true,
       depthWrite: false,
     });
+    this.matSoft = new THREE.ShaderMaterial({
+      vertexShader: SMOKE_SOFT_VERTEX_SHADER,
+      fragmentShader: SMOKE_SOFT_FRAGMENT_SHADER,
+      uniforms: {
+        uTransparentOuterFraction: { value: SMOKE_SOFT_OUTER_FRACTION },
+      },
+      transparent: true,
+      depthWrite: false,
+    });
+    this.softEdges = getSmokeSoftEdges();
 
     this.pool = this.createPool(
       Math.max(3, PUFF_GEOMETRY.widthSegments | 0),
       Math.max(2, PUFF_GEOMETRY.heightSegments | 0),
       MAX_PARTICLES,
     );
+  }
+
+  private activeMaterial(): THREE.ShaderMaterial {
+    return this.softEdges ? this.matSoft : this.matSphere;
   }
 
   private createPool(
@@ -201,7 +270,7 @@ export class SmokeTrail3D {
     geom.setAttribute('aAlpha', alphaAttr);
     geom.setAttribute('aColor', colorAttr);
 
-    const mesh = new THREE.InstancedMesh(geom, this.mat, maxParticles);
+    const mesh = new THREE.InstancedMesh(geom, this.activeMaterial(), maxParticles);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.count = 0;
     // Frustum culling on InstancedMesh uses a bounding sphere derived
@@ -257,6 +326,16 @@ export class SmokeTrail3D {
         this.flushPool(this.pool);
       }
       return;
+    }
+
+    // PLAYER CLIENT bar SOFT toggle: swap the mesh between the legacy
+    // hard-sphere material and the soft radial-fade material when the
+    // setting changes. Live puffs keep their slots — only the shader
+    // that draws them changes, so the switch is instant and seamless.
+    const wantSoftEdges = getSmokeSoftEdges();
+    if (wantSoftEdges !== this.softEdges) {
+      this.softEdges = wantSoftEdges;
+      this.pool.mesh.material = this.activeMaterial();
     }
 
     if (
@@ -616,7 +695,11 @@ export class SmokeTrail3D {
   }
 
   destroy(): void {
-    disposeMesh(this.pool.mesh);
+    // disposeMesh only frees the mesh's currently-bound material, so
+    // dispose both shader materials explicitly.
+    disposeMesh(this.pool.mesh, { material: false });
+    this.matSphere.dispose();
+    this.matSoft.dispose();
     this.pool.active.length = 0;
     this.pool.activeByUse.clear();
     this.root.parent?.remove(this.root);

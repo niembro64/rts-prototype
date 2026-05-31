@@ -24,6 +24,7 @@ import {
   getLocomotionMarks,
   getRadarBoundary,
   getSmokeTrails,
+  getSmokeSoftEdges,
   getSightBoundary,
   getProjRangeToggle,
   getRangeToggle,
@@ -52,6 +53,7 @@ import {
   setLocomotionMarks,
   setRadarBoundary,
   setSmokeTrails,
+  setSmokeSoftEdges,
   setSightBoundary,
   setProjRangeToggle,
   setRangeToggle,
@@ -96,6 +98,7 @@ export function useGameCanvasClientSettings({
   const burnMarks = ref<boolean>(getBurnMarks());
   const locomotionMarks = ref<boolean>(getLocomotionMarks());
   const smokeTrails = ref<boolean>(getSmokeTrails());
+  const smokeSoftEdges = ref<boolean>(getSmokeSoftEdges());
   const beamSnapToTurret = ref<boolean>(getBeamSnapToTurret());
   const triangleDebug = ref<boolean>(getTriangleDebug());
   const buildGridDebug = ref<boolean>(getBuildGridDebug());
@@ -158,6 +161,7 @@ export function useGameCanvasClientSettings({
     burnMarks.value = getBurnMarks();
     locomotionMarks.value = getLocomotionMarks();
     smokeTrails.value = getSmokeTrails();
+    smokeSoftEdges.value = getSmokeSoftEdges();
     beamSnapToTurret.value = getBeamSnapToTurret();
     triangleDebug.value = getTriangleDebug();
     buildGridDebug.value = getBuildGridDebug();
@@ -294,6 +298,12 @@ export function useGameCanvasClientSettings({
     smokeTrails.value = newValue;
   }
 
+  function toggleSmokeSoftEdges(): void {
+    const newValue = !smokeSoftEdges.value;
+    setSmokeSoftEdges(newValue);
+    smokeSoftEdges.value = newValue;
+  }
+
   function toggleBeamSnapToTurret(): void {
     const newValue = !beamSnapToTurret.value;
     setBeamSnapToTurret(newValue);
@@ -421,6 +431,8 @@ export function useGameCanvasClientSettings({
     locomotionMarks.value = cd.locomotionMarks.default;
     setSmokeTrails(cd.smokeTrails.default);
     smokeTrails.value = cd.smokeTrails.default;
+    setSmokeSoftEdges(cd.smokeSoftEdges.default);
+    smokeSoftEdges.value = cd.smokeSoftEdges.default;
     setBeamSnapToTurret(cd.beamSnapToTurret.default);
     beamSnapToTurret.value = cd.beamSnapToTurret.default;
     setTriangleDebug(cd.triangleDebug.default);
@@ -495,6 +507,7 @@ export function useGameCanvasClientSettings({
     burnMarks,
     locomotionMarks,
     smokeTrails,
+    smokeSoftEdges,
     beamSnapToTurret,
     triangleDebug,
     buildGridDebug,
@@ -540,6 +553,7 @@ export function useGameCanvasClientSettings({
     toggleBurnMarks,
     toggleLocomotionMarks,
     toggleSmokeTrails,
+    toggleSmokeSoftEdges,
     toggleBeamSnapToTurret,
     toggleTriangleDebug,
     toggleBuildGridDebug,

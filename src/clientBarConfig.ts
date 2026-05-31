@@ -41,6 +41,7 @@ type ClientDefaults = {
   readonly burnMarks: boolean;
   readonly locomotionMarks: boolean;
   readonly smokeTrails: boolean;
+  readonly smokeSoftEdges: boolean;
   readonly beamSnapToTurret: boolean;
   readonly triangleDebug: boolean;
   readonly buildGridDebug: boolean;
@@ -84,6 +85,7 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     burnMarks: pickDefault(clientBarConfig.burnMarks, mode),
     locomotionMarks: pickDefault(clientBarConfig.locomotionMarks, mode),
     smokeTrails: pickDefault(clientBarConfig.smokeTrails, mode),
+    smokeSoftEdges: pickDefault(clientBarConfig.smokeSoftEdges, mode),
     beamSnapToTurret: pickDefault(clientBarConfig.beamSnapToTurret, mode),
     triangleDebug: pickDefault(clientBarConfig.triangleDebug, mode),
     buildGridDebug: pickDefault(clientBarConfig.buildGridDebug, mode),
@@ -130,6 +132,7 @@ export const CLIENT_CONFIG = {
   burnMarks: { default: DEMO_CLIENT_DEFAULTS.burnMarks },
   locomotionMarks: { default: DEMO_CLIENT_DEFAULTS.locomotionMarks },
   smokeTrails: { default: DEMO_CLIENT_DEFAULTS.smokeTrails },
+  smokeSoftEdges: { default: DEMO_CLIENT_DEFAULTS.smokeSoftEdges },
   beamSnapToTurret: { default: DEMO_CLIENT_DEFAULTS.beamSnapToTurret },
   triangleDebug: { default: DEMO_CLIENT_DEFAULTS.triangleDebug },
   buildGridDebug: { default: DEMO_CLIENT_DEFAULTS.buildGridDebug },
@@ -214,6 +217,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     burnMarks: { default: defaults.burnMarks },
     locomotionMarks: { default: defaults.locomotionMarks },
     smokeTrails: { default: defaults.smokeTrails },
+    smokeSoftEdges: { default: defaults.smokeSoftEdges },
     beamSnapToTurret: { default: defaults.beamSnapToTurret },
     triangleDebug: { default: defaults.triangleDebug },
     buildGridDebug: { default: defaults.buildGridDebug },
@@ -257,6 +261,7 @@ type ClientStorageKeyName =
   | 'burnMarks'
   | 'locomotionMarks'
   | 'smokeTrails'
+  | 'smokeSoftEdges'
   | 'beamSnapToTurret'
   | 'triangleDebug'
   | 'buildGridDebug'
@@ -289,6 +294,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'burnMarks',
   'locomotionMarks',
   'smokeTrails',
+  'smokeSoftEdges',
   'beamSnapToTurret',
   'triangleDebug',
   'buildGridDebug',
@@ -372,6 +378,7 @@ let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
 let currentBurnMarks: boolean = _cd.burnMarks.default;
 let currentLocomotionMarks: boolean = _cd.locomotionMarks.default;
 let currentSmokeTrails: boolean = _cd.smokeTrails.default;
+let currentSmokeSoftEdges: boolean = _cd.smokeSoftEdges.default;
 let currentBeamSnapToTurret: boolean = _cd.beamSnapToTurret.default;
 let currentTriangleDebug: boolean = _cd.triangleDebug.default;
 let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
@@ -441,6 +448,7 @@ function applyClientDefaults(mode: ClientMode): void {
   currentBurnMarks = cd.burnMarks.default;
   currentLocomotionMarks = cd.locomotionMarks.default;
   currentSmokeTrails = cd.smokeTrails.default;
+  currentSmokeSoftEdges = cd.smokeSoftEdges.default;
   currentBeamSnapToTurret = cd.beamSnapToTurret.default;
   currentTriangleDebug = cd.triangleDebug.default;
   currentBuildGridDebug = cd.buildGridDebug.default;
@@ -503,6 +511,10 @@ function loadFromStorage(mode: ClientMode): void {
   const storedSmokeTrails = readPersisted(keys.smokeTrails);
   if (storedSmokeTrails !== null) {
     currentSmokeTrails = storedSmokeTrails === 'true';
+  }
+  const storedSmokeSoftEdges = readPersisted(keys.smokeSoftEdges);
+  if (storedSmokeSoftEdges !== null) {
+    currentSmokeSoftEdges = storedSmokeSoftEdges === 'true';
   }
   const storedBeamSnapToTurret = readPersisted(keys.beamSnapToTurret);
   if (storedBeamSnapToTurret !== null) {
@@ -780,6 +792,18 @@ export function getSmokeTrails(): boolean {
 export function setSmokeTrails(enabled: boolean): void {
   currentSmokeTrails = enabled;
   persist(activeStorageKeys().smokeTrails, String(enabled));
+}
+
+/** Smoke-puff edge style read by SmokeTrail3D. On (default): soft
+ *  fog-style radial fade so puffs read as soft blobs. Off: legacy
+ *  hard-edged translucent spheres. No effect when smoke trails are off. */
+export function getSmokeSoftEdges(): boolean {
+  return currentSmokeSoftEdges;
+}
+
+export function setSmokeSoftEdges(enabled: boolean): void {
+  currentSmokeSoftEdges = enabled;
+  persist(activeStorageKeys().smokeSoftEdges, String(enabled));
 }
 
 export function getBeamSnapToTurret(): boolean {

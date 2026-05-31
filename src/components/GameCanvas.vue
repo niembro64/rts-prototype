@@ -287,6 +287,7 @@ const {
   burnMarks,
   locomotionMarks,
   smokeTrails,
+  smokeSoftEdges,
   beamSnapToTurret,
   triangleDebug,
   buildGridDebug,
@@ -332,6 +333,7 @@ const {
   toggleBurnMarks,
   toggleLocomotionMarks,
   toggleSmokeTrails,
+  toggleSmokeSoftEdges,
   toggleBeamSnapToTurret,
   toggleTriangleDebug,
   toggleBuildGridDebug,
@@ -898,6 +900,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   burnMarks: burnMarks.value,
   locomotionMarks: locomotionMarks.value,
   smokeTrails: smokeTrails.value,
+  smokeSoftEdges: smokeSoftEdges.value,
   beamSnapToTurret: beamSnapToTurret.value,
   movementPosEma: movementPosEma.value,
   movementVelEma: movementVelEma.value,
@@ -936,6 +939,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleBurnMarks,
   toggleLocomotionMarks,
   toggleSmokeTrails,
+  toggleSmokeSoftEdges,
   toggleBeamSnapToTurret,
   changeMovementPosEma,
   changeMovementVelEma,
@@ -1006,6 +1010,7 @@ watchEffect(() => {
   m.burnMarks = burnMarks.value;
   m.locomotionMarks = locomotionMarks.value;
   m.smokeTrails = smokeTrails.value;
+  m.smokeSoftEdges = smokeSoftEdges.value;
   m.beamSnapToTurret = beamSnapToTurret.value;
   m.movementPosEma = movementPosEma.value;
   m.movementVelEma = movementVelEma.value;

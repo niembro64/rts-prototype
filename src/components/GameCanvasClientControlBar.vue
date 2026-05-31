@@ -457,6 +457,11 @@ defineProps<{
           title="Draw smoke-puff trails behind thrust-powered projectiles"
           @click="model.toggleSmokeTrails"
         >SMOKE</BarButton>
+        <BarButton
+          :active="model.smokeSoftEdges"
+          title="Smoke-puff edge style — on: soft fog-style blobs; off: legacy hard-edged spheres"
+          @click="model.toggleSmokeSoftEdges"
+        >SOFT</BarButton>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
