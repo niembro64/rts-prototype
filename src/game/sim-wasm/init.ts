@@ -24,7 +24,7 @@ import __wbg_init, {
   economy_compute_converter_transfer,
   economy_credit_stockpile,
   economy_debit_stockpile,
-  economy_apply_producer_credits,
+  economy_apply_income_credits,
   economy_apply_converter_transfers,
   step_unit_motion,
   client_predict_unit_motion_batch,
@@ -449,7 +449,7 @@ export interface SimWasm {
     amount: number,
     out: Float64Array,
   ) => number;
-  readonly economyApplyProducerCredits: (
+  readonly economyApplyIncomeCredits: (
     playerIds: Uint32Array,
     resourceCodes: Uint32Array,
     ratesPerSec: Float64Array,
@@ -3038,7 +3038,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         economyComputeConverterTransfer: economy_compute_converter_transfer,
         economyCreditStockpile: economy_credit_stockpile,
         economyDebitStockpile: economy_debit_stockpile,
-        economyApplyProducerCredits: economy_apply_producer_credits,
+        economyApplyIncomeCredits: economy_apply_income_credits,
         economyApplyConverterTransfers: economy_apply_converter_transfers,
         stepUnitMotion: step_unit_motion,
         clientPredictUnitMotionBatch: client_predict_unit_motion_batch,

@@ -86,7 +86,7 @@ function getExtractorMetalRate(entity: Entity): number {
  *  Wind is aggregated per-tick by WindPowerTracker, radar is sensor
  *  coverage, and the converter swap runs in processConverters — all gate
  *  directly on `open` at their iteration site and need no rate-stat push.
- *  Actual per-tick resource crediting is separate (applyProducerIncome in
+ *  Actual per-tick resource crediting is separate (applyIncomeCredits in
  *  economy.ts) and also gates on `open`. */
 function applyProducerRateDelta(entity: Entity, open: boolean): void {
   const ownership = entity.ownership;

@@ -142,7 +142,7 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     returned movement amounts only for per-entity pylon attribution.
     2026-05-31 progress: solar/wind/extractor producer stockpile crediting
     moved from per-entity TypeScript ResourceMovementSystem.credit calls into
-    the Rust/WASM economy_apply_producer_credits batch helper. TypeScript now
+    the Rust/WASM economy_apply_income_credits batch helper. TypeScript now
     packs active producer rows, copies back the resulting player stockpiles,
     and records accepted pylon movements only for renderer attribution.
     2026-05-31 progress: converter stockpile debit/credit application and
@@ -150,6 +150,11 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     economy_apply_converter_transfers batch helper. TypeScript now only packs
     active converter rows, copies back player stockpiles, and records the
     renderer-facing pylon movement events returned by WASM.
+    2026-05-31 progress: base energy/metal income stockpile crediting now uses
+    the Rust/WASM economy_apply_income_credits batch path too. TypeScript queues
+    base-income and producer rows together, copies back stockpile truth, and only
+    records renderer-facing resource movement events after WASM applies the
+    accepted amounts.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)

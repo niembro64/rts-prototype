@@ -1,4 +1,11 @@
-import type { EconomyState, Entity, EntityId, PlayerId, ResourceCost } from './types';
+import {
+  NO_ENTITY_ID,
+  type EconomyState,
+  type Entity,
+  type EntityId,
+  type PlayerId,
+  type ResourceCost,
+} from './types';
 import {
   STARTING_STOCKPILE,
   MAX_STOCKPILE,
@@ -13,7 +20,6 @@ import { isEntityActive } from './buildableHelpers';
 import {
   resourceMovementSystem,
   type ResourceKind,
-  type ResourceMovementDirection,
   type ResourceMovementReason,
 } from './resourceMovement';
 import { getSimWasm } from '../sim-wasm/init';
@@ -32,10 +38,18 @@ export const ECONOMY_CONSTANTS = {
 
 const ECONOMY_RESOURCE_ENERGY_CODE = 1;
 const ECONOMY_RESOURCE_METAL_CODE = 2;
+const ECONOMY_INCOME_REASON_BASE_CODE = 1;
+const ECONOMY_INCOME_REASON_PRODUCTION_CODE = 2;
 
 function economyResourceKindFromCode(code: number): ResourceKind | null {
   if (code === ECONOMY_RESOURCE_ENERGY_CODE) return 'energy';
   if (code === ECONOMY_RESOURCE_METAL_CODE) return 'metal';
+  return null;
+}
+
+function economyIncomeReasonFromCode(code: number): ResourceMovementReason | null {
+  if (code === ECONOMY_INCOME_REASON_BASE_CODE) return 'baseIncome';
+  if (code === ECONOMY_INCOME_REASON_PRODUCTION_CODE) return 'production';
   return null;
 }
 
@@ -56,15 +70,16 @@ export function createEconomyState(): EconomyState {
 // Economy manager - handles all player economies
 export class EconomyManager {
   private economies: Map<PlayerId, EconomyState> = new Map();
-  private producerPlayerIds = new Uint32Array(32);
-  private producerResourceCodes = new Uint32Array(32);
-  private producerRates = new Float64Array(32);
-  private producerEntityIds = new Float64Array(32);
-  private producerEnergyCurrByPlayer = new Float64Array(8);
-  private producerEnergyMaxByPlayer = new Float64Array(8);
-  private producerMetalCurrByPlayer = new Float64Array(8);
-  private producerMetalMaxByPlayer = new Float64Array(8);
-  private producerAccepted = new Float64Array(32);
+  private incomePlayerIds = new Uint32Array(32);
+  private incomeResourceCodes = new Uint32Array(32);
+  private incomeRates = new Float64Array(32);
+  private incomeSourceEntityIds = new Float64Array(32);
+  private incomeReasonCodes = new Uint32Array(32);
+  private incomeEnergyCurrByPlayer = new Float64Array(8);
+  private incomeEnergyMaxByPlayer = new Float64Array(8);
+  private incomeMetalCurrByPlayer = new Float64Array(8);
+  private incomeMetalMaxByPlayer = new Float64Array(8);
+  private incomeAccepted = new Float64Array(32);
   private converterPlayerIds = new Uint32Array(16);
   private converterEntityIds = new Float64Array(16);
   private converterRates = new Float64Array(16);
@@ -238,44 +253,48 @@ export class EconomyManager {
   // Update economy each tick (energy + metal income).
   update(world: WorldState, dtMs: number, windSpeed: number): void {
     const dtSec = dtMs / 1000;
+    let incomeCount = 0;
+    let maxPlayerId = 0;
 
     for (const [playerId, economy] of this.economies) {
       economy.expenditure = 0;
       economy.metal.expenditure = 0;
-      this.creditResource(
-        world,
-        economy,
+      if (dtSec <= 0) continue;
+      if (this.queueIncomeCredit(
         playerId,
-        'energy',
-        economy.income.base * dtSec,
+        ECONOMY_RESOURCE_ENERGY_CODE,
         economy.income.base,
-        null,
-        null,
-        'inbound',
-        'baseIncome',
-      );
-      this.creditResource(
-        world,
-        economy,
+        NO_ENTITY_ID,
+        ECONOMY_INCOME_REASON_BASE_CODE,
+        incomeCount,
+      )) {
+        incomeCount++;
+        if (playerId > maxPlayerId) maxPlayerId = playerId;
+      }
+      if (this.queueIncomeCredit(
         playerId,
-        'metal',
-        economy.metal.income.base * dtSec,
+        ECONOMY_RESOURCE_METAL_CODE,
         economy.metal.income.base,
-        null,
-        null,
-        'inbound',
-        'baseIncome',
-      );
+        NO_ENTITY_ID,
+        ECONOMY_INCOME_REASON_BASE_CODE,
+        incomeCount,
+      )) {
+        incomeCount++;
+        if (playerId > maxPlayerId) maxPlayerId = playerId;
+      }
     }
 
     if (dtSec <= 0) return;
-    this.applyProducerIncome(world, dtSec, windSpeed);
+    this.applyIncomeCredits(world, dtSec, windSpeed, incomeCount, maxPlayerId);
   }
 
-  private applyProducerIncome(world: WorldState, dtSec: number, windSpeed: number): void {
-    let producerCount = 0;
-    let maxPlayerId = 0;
-
+  private applyIncomeCredits(
+    world: WorldState,
+    dtSec: number,
+    windSpeed: number,
+    incomeCount: number,
+    maxPlayerId: number,
+  ): void {
     const solarRate = getBuildingConfig('buildingSolar').energyProduction ?? 0;
     if (solarRate > 0) {
       for (const entity of world.getSolarBuildings()) {
@@ -283,10 +302,10 @@ export class EconomyManager {
           entity,
           ECONOMY_RESOURCE_ENERGY_CODE,
           solarRate,
-          producerCount,
+          incomeCount,
         );
         if (playerId === 0) continue;
-        producerCount++;
+        incomeCount++;
         if (playerId > maxPlayerId) maxPlayerId = playerId;
       }
     }
@@ -299,10 +318,10 @@ export class EconomyManager {
           entity,
           ECONOMY_RESOURCE_ENERGY_CODE,
           windRate,
-          producerCount,
+          incomeCount,
         );
         if (playerId === 0) continue;
-        producerCount++;
+        incomeCount++;
         if (playerId > maxPlayerId) maxPlayerId = playerId;
       }
     }
@@ -314,76 +333,81 @@ export class EconomyManager {
         entity,
         ECONOMY_RESOURCE_METAL_CODE,
         metalRate,
-        producerCount,
+        incomeCount,
       );
       if (playerId === 0) continue;
-      producerCount++;
+      incomeCount++;
       if (playerId > maxPlayerId) maxPlayerId = playerId;
     }
 
-    if (producerCount <= 0) return;
-    this.ensureProducerPlayerCapacity(maxPlayerId);
+    if (incomeCount <= 0) return;
+    this.ensureIncomePlayerCapacity(maxPlayerId);
     for (let playerId = 1; playerId <= maxPlayerId; playerId++) {
       const economy = this.economies.get(playerId as PlayerId);
       if (economy === undefined) {
-        this.producerEnergyCurrByPlayer[playerId] = 0;
-        this.producerEnergyMaxByPlayer[playerId] = 0;
-        this.producerMetalCurrByPlayer[playerId] = 0;
-        this.producerMetalMaxByPlayer[playerId] = 0;
+        this.incomeEnergyCurrByPlayer[playerId] = 0;
+        this.incomeEnergyMaxByPlayer[playerId] = 0;
+        this.incomeMetalCurrByPlayer[playerId] = 0;
+        this.incomeMetalMaxByPlayer[playerId] = 0;
         continue;
       }
-      this.producerEnergyCurrByPlayer[playerId] = economy.stockpile.curr;
-      this.producerEnergyMaxByPlayer[playerId] = economy.stockpile.max;
-      this.producerMetalCurrByPlayer[playerId] = economy.metal.stockpile.curr;
-      this.producerMetalMaxByPlayer[playerId] = economy.metal.stockpile.max;
+      this.incomeEnergyCurrByPlayer[playerId] = economy.stockpile.curr;
+      this.incomeEnergyMaxByPlayer[playerId] = economy.stockpile.max;
+      this.incomeMetalCurrByPlayer[playerId] = economy.metal.stockpile.curr;
+      this.incomeMetalMaxByPlayer[playerId] = economy.metal.stockpile.max;
     }
 
     const sim = getSimWasm();
     if (sim === undefined) {
-      throw new Error('EconomyManager.applyProducerIncome: sim-wasm is not initialized');
+      throw new Error('EconomyManager.applyIncomeCredits: sim-wasm is not initialized');
     }
-    const maxExclusive = sim.economyApplyProducerCredits(
-      this.producerPlayerIds,
-      this.producerResourceCodes,
-      this.producerRates,
-      producerCount,
+    const maxExclusive = sim.economyApplyIncomeCredits(
+      this.incomePlayerIds,
+      this.incomeResourceCodes,
+      this.incomeRates,
+      incomeCount,
       dtSec,
-      this.producerEnergyCurrByPlayer,
-      this.producerEnergyMaxByPlayer,
-      this.producerMetalCurrByPlayer,
-      this.producerMetalMaxByPlayer,
-      this.producerAccepted,
+      this.incomeEnergyCurrByPlayer,
+      this.incomeEnergyMaxByPlayer,
+      this.incomeMetalCurrByPlayer,
+      this.incomeMetalMaxByPlayer,
+      this.incomeAccepted,
     );
     if (maxExclusive === 0) {
-      throw new Error('EconomyManager.applyProducerIncome: economy_apply_producer_credits rejected its buffers');
+      throw new Error('EconomyManager.applyIncomeCredits: economy_apply_income_credits rejected its buffers');
     }
 
     for (let playerId = 1; playerId < maxExclusive; playerId++) {
       const economy = this.economies.get(playerId as PlayerId);
       if (economy === undefined) continue;
-      economy.stockpile.curr = this.producerEnergyCurrByPlayer[playerId];
-      economy.metal.stockpile.curr = this.producerMetalCurrByPlayer[playerId];
+      economy.stockpile.curr = this.incomeEnergyCurrByPlayer[playerId];
+      economy.metal.stockpile.curr = this.incomeMetalCurrByPlayer[playerId];
     }
 
-    for (let i = 0; i < producerCount; i++) {
-      const accepted = this.producerAccepted[i];
+    for (let i = 0; i < incomeCount; i++) {
+      const accepted = this.incomeAccepted[i];
       if (accepted <= 0) continue;
-      const resource = economyResourceKindFromCode(this.producerResourceCodes[i]);
+      const resource = economyResourceKindFromCode(this.incomeResourceCodes[i]);
       if (resource === null) {
-        throw new Error('EconomyManager.applyProducerIncome: unknown producer resource code');
+        throw new Error('EconomyManager.applyIncomeCredits: unknown income resource code');
       }
-      const requested = this.producerRates[i] * dtSec;
+      const reason = economyIncomeReasonFromCode(this.incomeReasonCodes[i]);
+      if (reason === null) {
+        throw new Error('EconomyManager.applyIncomeCredits: unknown income reason code');
+      }
+      const sourceEntityId = this.incomeSourceEntityIds[i];
+      const requested = this.incomeRates[i] * dtSec;
       resourceMovementSystem.recordAppliedCredit(
         world,
         {
-          playerId: this.producerPlayerIds[i] as PlayerId,
-          sourceEntityId: this.producerEntityIds[i] as EntityId,
+          playerId: this.incomePlayerIds[i] as PlayerId,
+          sourceEntityId: sourceEntityId === NO_ENTITY_ID ? null : sourceEntityId as EntityId,
           targetEntityId: null,
           resource,
           amount: requested,
-          amountPerSecond: this.producerRates[i],
+          amountPerSecond: this.incomeRates[i],
           direction: 'inbound',
-          reason: 'production',
+          reason,
         },
         accepted,
       );
@@ -407,12 +431,33 @@ export class EconomyManager {
     if (ownership === null) return 0;
     if (!this.economies.has(ownership.playerId)) return 0;
 
-    this.ensureProducerCapacity(index + 1);
-    this.producerPlayerIds[index] = ownership.playerId;
-    this.producerResourceCodes[index] = resourceCode;
-    this.producerRates[index] = ratePerSecond;
-    this.producerEntityIds[index] = entity.id;
-    return ownership.playerId;
+    return this.queueIncomeCredit(
+      ownership.playerId,
+      resourceCode,
+      ratePerSecond,
+      entity.id,
+      ECONOMY_INCOME_REASON_PRODUCTION_CODE,
+      index,
+    ) ? ownership.playerId : 0;
+  }
+
+  private queueIncomeCredit(
+    playerId: PlayerId,
+    resourceCode: number,
+    ratePerSecond: number,
+    sourceEntityId: EntityId,
+    reasonCode: number,
+    index: number,
+  ): boolean {
+    if (playerId <= 0) return false;
+    if (!Number.isFinite(ratePerSecond) || ratePerSecond <= 0) return false;
+    this.ensureIncomeCapacity(index + 1);
+    this.incomePlayerIds[index] = playerId;
+    this.incomeResourceCodes[index] = resourceCode;
+    this.incomeRates[index] = ratePerSecond;
+    this.incomeSourceEntityIds[index] = sourceEntityId;
+    this.incomeReasonCodes[index] = reasonCode;
+    return true;
   }
 
   private isOpenProducerBuilding(entity: Entity): boolean {
@@ -591,40 +636,44 @@ export class EconomyManager {
     this.converterOutputResourceOut = nextOutputResourceOut;
   }
 
-  private ensureProducerCapacity(count: number): void {
-    if (count <= this.producerPlayerIds.length) return;
-    let nextCapacity = this.producerPlayerIds.length;
+  private ensureIncomeCapacity(count: number): void {
+    if (count <= this.incomePlayerIds.length) return;
+    let nextCapacity = this.incomePlayerIds.length;
     while (nextCapacity < count) nextCapacity *= 2;
 
     const nextPlayerIds = new Uint32Array(nextCapacity);
-    nextPlayerIds.set(this.producerPlayerIds);
-    this.producerPlayerIds = nextPlayerIds;
+    nextPlayerIds.set(this.incomePlayerIds);
+    this.incomePlayerIds = nextPlayerIds;
 
     const nextResourceCodes = new Uint32Array(nextCapacity);
-    nextResourceCodes.set(this.producerResourceCodes);
-    this.producerResourceCodes = nextResourceCodes;
+    nextResourceCodes.set(this.incomeResourceCodes);
+    this.incomeResourceCodes = nextResourceCodes;
 
     const nextRates = new Float64Array(nextCapacity);
-    nextRates.set(this.producerRates);
-    this.producerRates = nextRates;
+    nextRates.set(this.incomeRates);
+    this.incomeRates = nextRates;
 
     const nextEntityIds = new Float64Array(nextCapacity);
-    nextEntityIds.set(this.producerEntityIds);
-    this.producerEntityIds = nextEntityIds;
+    nextEntityIds.set(this.incomeSourceEntityIds);
+    this.incomeSourceEntityIds = nextEntityIds;
+
+    const nextReasonCodes = new Uint32Array(nextCapacity);
+    nextReasonCodes.set(this.incomeReasonCodes);
+    this.incomeReasonCodes = nextReasonCodes;
 
     const nextAccepted = new Float64Array(nextCapacity);
-    nextAccepted.set(this.producerAccepted);
-    this.producerAccepted = nextAccepted;
+    nextAccepted.set(this.incomeAccepted);
+    this.incomeAccepted = nextAccepted;
   }
 
-  private ensureProducerPlayerCapacity(playerId: number): void {
-    if (playerId < this.producerEnergyCurrByPlayer.length) return;
-    let nextCapacity = this.producerEnergyCurrByPlayer.length;
+  private ensureIncomePlayerCapacity(playerId: number): void {
+    if (playerId < this.incomeEnergyCurrByPlayer.length) return;
+    let nextCapacity = this.incomeEnergyCurrByPlayer.length;
     while (nextCapacity <= playerId) nextCapacity *= 2;
-    this.producerEnergyCurrByPlayer = new Float64Array(nextCapacity);
-    this.producerEnergyMaxByPlayer = new Float64Array(nextCapacity);
-    this.producerMetalCurrByPlayer = new Float64Array(nextCapacity);
-    this.producerMetalMaxByPlayer = new Float64Array(nextCapacity);
+    this.incomeEnergyCurrByPlayer = new Float64Array(nextCapacity);
+    this.incomeEnergyMaxByPlayer = new Float64Array(nextCapacity);
+    this.incomeMetalCurrByPlayer = new Float64Array(nextCapacity);
+    this.incomeMetalMaxByPlayer = new Float64Array(nextCapacity);
   }
 
   private ensureConverterPlayerCapacity(playerId: number): void {
@@ -640,30 +689,6 @@ export class EconomyManager {
     this.converterOutputByPlayer = new Float64Array(nextCapacity);
     this.converterConsumedResourceByPlayer = new Uint32Array(nextCapacity);
     this.converterOutputResourceByPlayer = new Uint32Array(nextCapacity);
-  }
-
-  private creditResource(
-    world: WorldState,
-    economy: EconomyState,
-    playerId: PlayerId,
-    resource: ResourceKind,
-    amount: number,
-    amountPerSecond: number,
-    sourceEntityId: EntityId | null,
-    targetEntityId: EntityId | null,
-    direction: ResourceMovementDirection,
-    reason: ResourceMovementReason,
-  ): number {
-    return resourceMovementSystem.credit(economy, world, {
-      playerId,
-      sourceEntityId,
-      targetEntityId,
-      resource,
-      amount,
-      amountPerSecond,
-      direction,
-      reason,
-    });
   }
 
   // Reset all state (call between game sessions)

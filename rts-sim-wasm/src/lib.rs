@@ -357,7 +357,7 @@ fn economy_credit_stockpile_value(curr: f64, max: f64, amount: f64) -> (f64, f64
 }
 
 #[wasm_bindgen]
-pub fn economy_apply_producer_credits(
+pub fn economy_apply_income_credits(
     player_ids: &[u32],
     resource_codes: &[u32],
     rates_per_sec: &[f64],
@@ -25673,7 +25673,7 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    fn economy_apply_producer_credits_batches_by_resource_and_caps_in_order() {
+    fn economy_apply_income_credits_batches_by_resource_and_caps_in_order() {
         let players = [1, 1, 2, 1, 0];
         let resources = [
             ECONOMY_RESOURCE_ENERGY_CODE,
@@ -25690,7 +25690,7 @@ mod sim_kernel_tests {
         let mut accepted = [99.0; 5];
 
         assert_eq!(
-            economy_apply_producer_credits(
+            economy_apply_income_credits(
                 &players,
                 &resources,
                 &rates,
@@ -25710,7 +25710,7 @@ mod sim_kernel_tests {
 
         let mut short = [0.0; 4];
         assert_eq!(
-            economy_apply_producer_credits(
+            economy_apply_income_credits(
                 &players,
                 &resources,
                 &rates,
