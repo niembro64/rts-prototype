@@ -145,6 +145,8 @@ export class SprayRenderer3D {
   private pEndR = new Float32Array(MAX_PARTICLES);
   private pEndG = new Float32Array(MAX_PARTICLES);
   private pEndB = new Float32Array(MAX_PARTICLES);
+  private pTubeHandoffKey = new Array<string | null>(MAX_PARTICLES).fill(null);
+  private pTubeHandoffIntensity = new Float32Array(MAX_PARTICLES);
   private spraySpawnBudget = new Map<string, number>();
   private activeSprayKeys = new Set<string>();
   private rngState = 0x9e3779b9;
@@ -197,9 +199,12 @@ export class SprayRenderer3D {
   update(
     sprayTargets: readonly SprayTarget[],
     dtMs: number,
+    oneShotSprays: readonly SprayTarget[] = [],
+    onPylonTubeHandoff?: (flowKey: string, intensity: number) => void,
   ): void {
     if (
       sprayTargets.length === 0
+      && oneShotSprays.length === 0
       && this.particleCount === 0
       && this.spraySpawnBudget.size === 0
     ) {
@@ -209,8 +214,15 @@ export class SprayRenderer3D {
     this._time += dtMs;
     const dtSec = Math.max(0, Math.min(dtMs, 100)) / 1000;
 
-    this.advanceParticles(dtSec);
+    this.advanceParticles(dtSec, onPylonTubeHandoff);
     this.activeSprayKeys.clear();
+
+    for (const spray of oneShotSprays) {
+      if (spray.intensity <= 0) continue;
+      const scaledIntensity = Math.min(1, spray.intensity);
+      const color = this.resolveSprayColor(spray);
+      this.emitParticle(spray, scaledIntensity, color.r, color.g, color.b);
+    }
 
     for (const spray of sprayTargets) {
       if (spray.intensity <= 0) continue;
@@ -232,21 +244,7 @@ export class SprayRenderer3D {
       // each colored stream reads as its resource regardless of
       // team). Otherwise heal sprays are white and build sprays use
       // the caster's team primary.
-      let r: number, g: number, b: number;
-      if (spray.colorRGB) {
-        r = spray.colorRGB.r; g = spray.colorRGB.g; b = spray.colorRGB.b;
-      } else if (spray.type === 'heal' || spray.source.playerId === undefined) {
-        r = HEAL_R; g = HEAL_G; b = HEAL_B;
-      } else {
-        const cached = this._teamColorCache.get(spray.source.playerId);
-        if (cached) {
-          r = cached.r; g = cached.g; b = cached.b;
-        } else {
-          const hex = getPlayerPrimaryColor(spray.source.playerId);
-          ({ r, g, b } = hexToRgb01(hex));
-          this._teamColorCache.set(spray.source.playerId, { r, g, b });
-        }
-      }
+      const color = this.resolveSprayColor(spray);
 
       const dist = this.estimatePathDistance(spray);
       const flightSec = this.flightTimeForDistance(dist, spray);
@@ -262,7 +260,7 @@ export class SprayRenderer3D {
       this.spraySpawnBudget.set(key, budget);
 
       for (let i = 0; i < spawnCount; i++) {
-        this.emitParticle(spray, scaledIntensity, r, g, b);
+        this.emitParticle(spray, scaledIntensity, color.r, color.g, color.b);
       }
     }
 
@@ -290,6 +288,32 @@ export class SprayRenderer3D {
 
   private sprayKey(spray: SprayTarget): string {
     return `${spray.type}:${spray.source.id}:${spray.target.id}:${spray.channel}:${spray.flow}`;
+  }
+
+  private resolveSprayColor(spray: SprayTarget): { r: number; g: number; b: number } {
+    if (spray.colorRGB) {
+      return spray.colorRGB;
+    }
+    if (spray.type === 'heal' || spray.source.playerId === undefined) {
+      return { r: HEAL_R, g: HEAL_G, b: HEAL_B };
+    }
+    const cached = this._teamColorCache.get(spray.source.playerId);
+    if (cached) return cached;
+    const color = hexToRgb01(getPlayerPrimaryColor(spray.source.playerId));
+    this._teamColorCache.set(spray.source.playerId, color);
+    return color;
+  }
+
+  private endpointFadeDir(spray: SprayTarget): number {
+    if (spray.type !== 'build') return 0;
+    switch (spray.endpointFade) {
+      case 'none': return 0;
+      case 'start': return -1;
+      case 'end': return 1;
+      case 'both':
+      case undefined:
+        return 2;
+    }
   }
 
   private random(): number {
@@ -524,7 +548,7 @@ export class SprayRenderer3D {
       // mid-flight growth (see writeParticlesToMesh).
       this.pSize[idx] = this.buildParticleRadius(spray.particleRadius);
       this.pUniformSize[idx] = 1;
-      this.pFadeDir[idx] = 2;
+      this.pFadeDir[idx] = this.endpointFadeDir(spray);
     } else {
       this.pSize[idx] = HEAL_PARTICLE_BASE_RADIUS
         * (0.72 + this.random() * 0.52)
@@ -549,13 +573,22 @@ export class SprayRenderer3D {
     this.pEndR[idx] = spray.endColorRGB?.r ?? r;
     this.pEndG[idx] = spray.endColorRGB?.g ?? g;
     this.pEndB[idx] = spray.endColorRGB?.b ?? b;
+    this.pTubeHandoffKey[idx] = spray.pylonTubeHandoffKey ?? null;
+    this.pTubeHandoffIntensity[idx] = scaledIntensity;
   }
 
-  private advanceParticles(dtSec: number): void {
+  private advanceParticles(
+    dtSec: number,
+    onPylonTubeHandoff: ((flowKey: string, intensity: number) => void) | undefined,
+  ): void {
     if (dtSec <= 0) return;
     for (let i = 0; i < this.particleCount; i++) {
       this.pAge[i] += dtSec;
       if (this.pAge[i] >= this.pLife[i]) {
+        const handoffKey = this.pTubeHandoffKey[i];
+        if (handoffKey !== null) {
+          onPylonTubeHandoff?.(handoffKey, this.pTubeHandoffIntensity[i]);
+        }
         this.removeParticle(i);
         i--;
       }
@@ -593,7 +626,10 @@ export class SprayRenderer3D {
       this.pEndR[index] = this.pEndR[last];
       this.pEndG[index] = this.pEndG[last];
       this.pEndB[index] = this.pEndB[last];
+      this.pTubeHandoffKey[index] = this.pTubeHandoffKey[last];
+      this.pTubeHandoffIntensity[index] = this.pTubeHandoffIntensity[last];
     }
+    this.pTubeHandoffKey[last] = null;
     this.particleCount = last;
   }
 

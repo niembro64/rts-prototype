@@ -89,52 +89,6 @@ cross-tip arcs with in-flight recolor, and repair/reclaim flows through
 builder-mounted resource pylons.
 File:line refs were correct at audit time; re-verify before editing.
 
---------------------------------------------------------------------------------
-Item A50 added 2026-05-31 from a design-direction note on
-budget_design_philosophy.html "Resource Movement Flows Through Pylons" (new
-subsection "Rate gates a ball's birth, not its flight"): the transfer rate may
-govern only how many resource balls are BORN; once a ball exists it must live its
-whole one-way lifecycle, and the in-tube leg and the free (outside-the-tip) leg must
-be tied one-to-one across the tip. This is forward visual work, not a regression.
-Resource balls stay renderer-only / off-wire / anonymous (philosophy ~1747).
-File:line refs were correct at audit time; re-verify before editing.
-
-A50. [MEDIUM] src/game/render3d/PylonTubeFlowRenderer.ts (the in-tube "bead column"
-    leg) vs src/game/render3d/SprayRenderer3D.ts (the free leg, outside the tip) and
-    their controller src/game/render3d/ConstructionVisualController3D.ts —
-    RULE: "Resource Movement Flows Through Pylons" / "A pylon is a conduit: root, tube,
-    head" / "Rate gates a ball's birth, not its flight" — the tip conserves, every ball
-    is accounted for before AND after the tip, and the rate sets only the spawn cadence,
-    never killing or creating a ball mid-flight. —
-    PROBLEM: the free-leg spray balls already obey this. Each particle stores its own
-    start/mid/end + pAge/pLife at emit (SprayRenderer3D.emitParticle ~503-520) and
-    advanceParticles ages it to completion (~554-563); intensity only feeds the per-spray
-    spawn budget (update ~255-266), so a finished or stalled build never strands a ball —
-    it finishes its arc and is simply not replaced. The IN-TUBE beads do NOT obey it:
-    PylonTubeFlowRenderer rebuilds the whole column procedurally every frame as
-    count = round(capacity * intensity) (~114), positioned at a pure phase =
-    timeSec * speed / len slide (~117-140) with NO per-bead state, and it skips the entire
-    flow when intensity <= 0.02 (~103). So lowering the transfer rate drops `count` and the
-    surplus beads — ones already halfway up the shaft — wink out mid-tube (a rate collapse
-    wipes a half-full tube instantly), and raising it pops beads into being mid-bore.
-    Resource reads as accounted-for-then-evaporated (or appeared-from-nowhere), the exact
-    opposite of tip conservation. There is also no one-to-one tip hand-off: the controller
-    publishes the tube leg (pushTubeFlow ~135-163, called ~843) and the free leg
-    (emitPylonResourceSpray ~817-901, anchored at the tip with no waypoint) as two
-    INDEPENDENT rate-driven streams that merely meet at the head, so a ball that reaches
-    the tip on one leg does not produce the ball that continues on the other. —
-    FIX: give the tube beads persistent per-bead lifecycles like the spray particles —
-    store a per-bead fraction(0..1) along the bore + direction, recompute world position
-    from the LIVE root->tip axis each frame (so beads still ride the orbiting straw and can
-    never escape it), advance fraction by speed/len*dt, and remove a bead only when it
-    reaches the far end. Let intensity feed ONLY a spawn budget (mirror the SprayRenderer3D
-    budget), never the live count. Then tie the two legs one-to-one across the tip: a tube
-    bead that reaches the tip spawns exactly one free-leg ball continuing onto the target
-    (outbound: born at root -> up tube -> out tip -> onto target), and an inbound free-leg
-    ball that reaches the tip spawns exactly one tube bead continuing down to the root
-    (inbound: world-source -> into tip -> down tube -> gone at root). Net: the rate changes
-    only how many balls are born; every ball already in flight finishes its full journey.
-
 ================================================================================
 SECTION B — MEMORY LEAKS
 ================================================================================

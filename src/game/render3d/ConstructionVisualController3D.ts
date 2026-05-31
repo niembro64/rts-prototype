@@ -1,5 +1,10 @@
 import * as THREE from 'three';
-import type { PylonTubeFlow, SprayTarget } from '@/types/ui';
+import type {
+  PylonTubeBirthMode,
+  PylonTubeFlow,
+  PylonTubeFreeLeg,
+  SprayTarget,
+} from '@/types/ui';
 import {
   BUILD_BUBBLE_RADIUS_COLLISION_MULT,
   BUILD_RATE_DISPLAY_EMA_HALF_LIFE_SEC,
@@ -73,6 +78,15 @@ function normalizeBuilderPylonRate(amountPerSecond: number, fullRate: number): n
   return Math.max(0, Math.min(1, amountPerSecond / fullRate));
 }
 
+function pylonTubeFlowKey(
+  sourceId: EntityId,
+  targetId: EntityId,
+  channel: number,
+  direction: ResourcePylonDirection,
+): string {
+  return `${sourceId}:${targetId}:${channel}:${direction}`;
+}
+
 export class ConstructionVisualController3D {
   private clientViewState: ClientViewState;
   private factorySprayTargets: SprayTarget[] = [];
@@ -133,32 +147,71 @@ export class ConstructionVisualController3D {
    *  means beads climb root->tip (consuming); otherwise they fall
    *  tip->root (producing). */
   private pushTubeFlow(
+    key: string,
     pylon: ResourcePylonRig,
     root: THREE.Vector3,
     tip: THREE.Vector3,
     up: boolean,
+    birthMode: PylonTubeBirthMode,
     intensity: number,
+    freeLeg: PylonTubeFreeLeg | undefined,
   ): void {
     let flow = this.tubeFlowPool.pop();
     if (!flow) {
       flow = {
+        key: '',
         root: { x: 0, y: 0, z: 0 },
         tip: { x: 0, y: 0, z: 0 },
         up: true,
+        birthMode: 'rate',
         intensity: 0,
         speed: 0,
         beadRadius: 0,
         colorRGB: { r: 0, g: 0, b: 0 },
       };
     }
+    flow.key = key;
     flow.root.x = root.x; flow.root.y = root.y; flow.root.z = root.z;
     flow.tip.x = tip.x; flow.tip.y = tip.y; flow.tip.z = tip.z;
     flow.up = up;
+    flow.birthMode = birthMode;
     flow.intensity = Math.min(1, intensity);
     flow.speed = pylon.sprayTravelSpeed;
     flow.beadRadius = pylon.tubeBeadRadius;
     const color = RESOURCE_SPRAY_COLOR_BY_RESOURCE[pylon.resource];
     flow.colorRGB.r = color.r; flow.colorRGB.g = color.g; flow.colorRGB.b = color.b;
+    if (freeLeg) {
+      const out = flow.freeLeg ?? {
+        sourceId: freeLeg.sourceId,
+        sourcePlayerId: freeLeg.sourcePlayerId,
+        target: { id: freeLeg.target.id, pos: { x: 0, y: 0 }, z: 0, radius: 0 },
+        flow: freeLeg.flow,
+        flowRadius: 0,
+        channel: 0,
+        speed: 0,
+        particleRadius: 0,
+        colorRGB: { r: 0, g: 0, b: 0 },
+      };
+      out.sourceId = freeLeg.sourceId;
+      out.sourcePlayerId = freeLeg.sourcePlayerId;
+      out.target.id = freeLeg.target.id;
+      out.target.pos.x = freeLeg.target.pos.x;
+      out.target.pos.y = freeLeg.target.pos.y;
+      out.target.z = freeLeg.target.z;
+      out.target.radius = freeLeg.target.radius;
+      out.flow = freeLeg.flow;
+      out.flowRadius = freeLeg.flowRadius;
+      out.channel = freeLeg.channel;
+      out.speed = freeLeg.speed;
+      out.particleRadius = freeLeg.particleRadius;
+      out.colorRGB.r = freeLeg.colorRGB.r;
+      out.colorRGB.g = freeLeg.colorRGB.g;
+      out.colorRGB.b = freeLeg.colorRGB.b;
+      out.endColorRGB = freeLeg.endColorRGB;
+      flow.freeLeg = out;
+    } else {
+      flow.freeLeg = undefined;
+    }
     this.tubeFlows.push(flow);
   }
 
@@ -595,6 +648,8 @@ export class ConstructionVisualController3D {
     }
     target.colorRGB = undefined;
     target.endColorRGB = undefined;
+    target.endpointFade = undefined;
+    target.pylonTubeHandoffKey = undefined;
     target.waypoint = undefined;
     target.waypoint2 = undefined;
     target.speed = undefined;
@@ -837,10 +892,47 @@ export class ConstructionVisualController3D {
       .copy(pylon.rootLocal)
       .applyMatrix4(group.matrixWorld);
 
-    // Tube leg: a bead column locked to the live root<->tip axis so it
-    // rides the orbiting straw and can never escape it. Up the tube when
-    // consuming (outbound), down when producing (inbound).
-    this.pushTubeFlow(pylon, root, tip, direction === 'outbound', rate);
+    const flowKey = pylonTubeFlowKey(sourceId, targetId, channel, direction);
+    const color = RESOURCE_SPRAY_COLOR_BY_RESOURCE[pylon.resource];
+
+    let outboundFreeLeg: PylonTubeFreeLeg | undefined;
+    if (direction === 'outbound') {
+      outboundFreeLeg = {
+        sourceId,
+        sourcePlayerId,
+        target: {
+          id: targetId,
+          pos: {
+            x: worldEndpoint ? worldEndpoint.x : tip.x,
+            y: worldEndpoint ? worldEndpoint.z : tip.z,
+          },
+          z: worldEndpoint ? worldEndpoint.y : tip.y,
+          radius: worldEndpoint ? endpointRadius : pylon.flowRadius,
+        },
+        flow: worldEndpoint ? 'direct' : 'randomOutbound',
+        flowRadius: worldEndpoint ? 0 : pylon.flowRadius,
+        channel,
+        speed: pylon.sprayTravelSpeed,
+        particleRadius: pylon.sprayParticleRadius,
+        colorRGB: color,
+      };
+    }
+
+    // Tube leg: beads are persistent. Outbound births are rate-gated at
+    // the root and hand off to one free-leg particle at the tip; inbound
+    // beads are born only when a free-leg particle reaches the tip.
+    this.pushTubeFlow(
+      flowKey,
+      pylon,
+      root,
+      tip,
+      direction === 'outbound',
+      direction === 'outbound' ? 'rate' : 'handoff',
+      rate,
+      outboundFreeLeg,
+    );
+
+    if (direction === 'outbound') return;
 
     // The world spray now carries only the FREE leg, anchored at the TIP
     // (no waypoint) — the bead column owns everything inside the tube, so
@@ -897,6 +989,8 @@ export class ConstructionVisualController3D {
     spray.channel = channel;
     spray.speed = pylon.sprayTravelSpeed;
     spray.particleRadius = pylon.sprayParticleRadius;
-    spray.colorRGB = RESOURCE_SPRAY_COLOR_BY_RESOURCE[pylon.resource];
+    spray.colorRGB = color;
+    spray.endpointFade = 'start';
+    spray.pylonTubeHandoffKey = flowKey;
   }
 }

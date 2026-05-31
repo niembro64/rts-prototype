@@ -277,17 +277,30 @@ export class RtsScene3DRenderPhase {
     const farRefDistance = this.threeApp.orbit.getFarReferenceDistance();
     this.sprayAccumMs += effectDtMs;
     if (updateEffectsThisFrame) {
+      const pylonFreeLegSprays = pylonTubeFlowRenderer.update(
+        entityRenderer.getPylonTubeFlows(),
+        this.sprayAccumMs,
+      );
       const commanderSprays = this.clientViewState.getSprayTargets();
       const factorySprays = entityRenderer.getFactorySprayTargets();
       if (factorySprays.length > 0) {
         this.combinedSprayTargets.length = 0;
         for (const spray of commanderSprays) this.combinedSprayTargets.push(spray);
         for (const spray of factorySprays) this.combinedSprayTargets.push(spray);
-        sprayRenderer.update(this.combinedSprayTargets, this.sprayAccumMs);
+        sprayRenderer.update(
+          this.combinedSprayTargets,
+          this.sprayAccumMs,
+          pylonFreeLegSprays,
+          (flowKey, intensity) => pylonTubeFlowRenderer.enqueueTipHandoff(flowKey, intensity),
+        );
       } else {
-        sprayRenderer.update(commanderSprays, this.sprayAccumMs);
+        sprayRenderer.update(
+          commanderSprays,
+          this.sprayAccumMs,
+          pylonFreeLegSprays,
+          (flowKey, intensity) => pylonTubeFlowRenderer.enqueueTipHandoff(flowKey, intensity),
+        );
       }
-      pylonTubeFlowRenderer.update(entityRenderer.getPylonTubeFlows(), this.sprayAccumMs);
       this.sprayAccumMs = 0;
     }
 

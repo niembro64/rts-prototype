@@ -225,6 +225,7 @@ export type ForceContribution = {
 
 // Spray target
 export type SprayFlowMode = 'direct' | 'randomInbound' | 'randomOutbound';
+export type SprayEndpointFade = 'both' | 'start' | 'end' | 'none';
 
 export type SprayTarget = {
   source: { id: EntityId; pos: Vec2; z?: number; playerId: PlayerId };
@@ -263,6 +264,28 @@ export type SprayTarget = {
   /** Optional end color. When present, particles lerp from colorRGB
    *  (or the resolved source color) to this value in flight. */
   endColorRGB?: { r: number; g: number; b: number };
+  /** Which true lifecycle endpoints fade. Pylon handoffs use this so
+   *  tips stay opaque while roots/world endpoints keep soft birth/sink
+   *  fades. Omitted build sprays fade at both ends. */
+  endpointFade?: SprayEndpointFade;
+  /** When set, a particle that finishes this free leg has reached a
+   *  pylon tip and must spawn one tube bead under this flow key. */
+  pylonTubeHandoffKey?: string;
+};
+
+export type PylonTubeBirthMode = 'rate' | 'handoff';
+
+export type PylonTubeFreeLeg = {
+  sourceId: EntityId;
+  sourcePlayerId: PlayerId;
+  target: { id: EntityId; pos: Vec2; z?: number; radius?: number };
+  flow: SprayFlowMode;
+  flowRadius: number;
+  channel: number;
+  speed: number;
+  particleRadius: number;
+  colorRGB: { r: number; g: number; b: number };
+  endColorRGB?: { r: number; g: number; b: number };
 };
 
 // Pylon tube-flow descriptor — a column of beads locked to a resource
@@ -271,17 +294,25 @@ export type SprayTarget = {
 // pylon and the beads can never escape the transparent straw. World
 // coordinates: x/z are ground plane, y is altitude.
 export type PylonTubeFlow = {
+  key: string;
   root: { x: number; y: number; z: number };
   tip: { x: number; y: number; z: number };
   /** true = beads travel root -> tip (consuming / up the tube); false =
    *  tip -> root (producing / down the tube). */
   up: boolean;
-  /** 0..1 — drives how many beads fill the column and their alpha. */
+  /** rate = births are created from intensity at the root; handoff =
+   *  births are accepted only from completed free-leg particles. */
+  birthMode: PylonTubeBirthMode;
+  /** 0..1 — drives only birth cadence and birth opacity. Existing
+   *  beads keep their own lifecycle once spawned. */
   intensity: number;
   /** Bead travel speed in world units per second along the axis. */
   speed: number;
   beadRadius: number;
   colorRGB: { r: number; g: number; b: number };
+  /** For consuming/outbound tubes, emitted exactly once when a bead
+   *  reaches the pylon tip. */
+  freeLeg?: PylonTubeFreeLeg;
 };
 
 // Commander abilities result

@@ -1,21 +1,19 @@
-// PylonTubeFlowRenderer — the resource balls that ride INSIDE a pylon's
-// tube (the "straw"). Each frame the controller publishes one
-// `PylonTubeFlow` per active construction-emitter pylon with the pylon's
-// LIVE world-space root and tip. We place a column of evenly-spaced beads
-// along that live segment and slide them up (consuming) or down
-// (producing). Because the positions are recomputed every frame from the
-// live endpoints, the column rides the pylon even as the construction
-// tower orbits/spins — the beads are locked to the bore and can never
-// escape the straw. This is the tube leg of the conduit; the free leg
-// (tip -> build target, world source -> tip, converter tip -> tip arc)
-// stays on the world-space SprayRenderer3D.
+// PylonTubeFlowRenderer — resource balls riding INSIDE a pylon tube.
+// The controller publishes live root/tip endpoints each frame, but the
+// beads themselves are persistent particles: intensity only controls
+// how often new beads are born. A live bead keeps moving until it
+// reaches the root or tip, so a rate change cannot pop a half-travelled
+// ball out of the bore. Outbound beads that reach the tip return a
+// one-shot SprayTarget for the free leg; inbound free-leg particles call
+// enqueueTipHandoff() when they reach the tip, which births exactly one
+// down-tube bead.
 //
 // Implementation mirrors SprayRenderer3D: ONE shared InstancedMesh of
 // unit spheres drawn in a single call, with per-instance team/resource
 // color + alpha on aColor / aAlpha attributes read by a tiny shader.
 
 import * as THREE from 'three';
-import type { PylonTubeFlow } from '@/types/ui';
+import type { PylonTubeFlow, PylonTubeFreeLeg, SprayTarget } from '@/types/ui';
 import { disposeMesh } from './threeUtils';
 
 /** Global cap on simultaneous tube beads across every pylon. */
@@ -30,6 +28,28 @@ const BEAD_SPACING_MULT = 3.0;
  *  rather than popping at the root/tip. */
 const END_FADE_FRAC = 0.12;
 const BASE_ALPHA = 0.95;
+const MAX_BEAD_SPAWNS_PER_FLOW_FRAME = 24;
+const FLOW_RUNTIME_PRUNE_AFTER_FRAMES = 1800;
+
+type PylonTubeFlowRuntime = {
+  key: string;
+  root: { x: number; y: number; z: number };
+  tip: { x: number; y: number; z: number };
+  up: boolean;
+  birthMode: PylonTubeFlow['birthMode'];
+  intensity: number;
+  speed: number;
+  beadRadius: number;
+  colorRGB: { r: number; g: number; b: number };
+  freeLeg?: PylonTubeFreeLeg;
+  spawnBudget: number;
+  lastSeenFrame: number;
+};
+
+type PendingTubeBirths = {
+  count: number;
+  intensitySum: number;
+};
 
 const VERTEX_SHADER = `
 attribute float aAlpha;
@@ -61,8 +81,16 @@ export class PylonTubeFlowRenderer {
   private alphaAttr: THREE.InstancedBufferAttribute;
   private colorAttr: THREE.InstancedBufferAttribute;
   private _scratchMat = new THREE.Matrix4();
-  // Phase accumulator so the slide speed is frame-rate independent.
-  private _time = 0;
+  private frameIndex = 0;
+  private beadCount = 0;
+  private beadFlowKeys = new Array<string>(MAX_BEADS);
+  private beadFrac = new Float32Array(MAX_BEADS);
+  private beadDir = new Int8Array(MAX_BEADS);
+  private beadAlphaScale = new Float32Array(MAX_BEADS);
+  private flowRuntimes = new Map<string, PylonTubeFlowRuntime>();
+  private pendingTubeBirths = new Map<string, PendingTubeBirths>();
+  private handoffSprays: SprayTarget[] = [];
+  private handoffSprayPool: SprayTarget[] = [];
 
   constructor(parentWorld: THREE.Group) {
     this.root = new THREE.Group();
@@ -92,52 +120,60 @@ export class PylonTubeFlowRenderer {
     this.root.add(this.mesh);
   }
 
-  /** Per-frame update. `dtMs` advances the slide phase. */
-  update(flows: readonly PylonTubeFlow[], dtMs: number): void {
-    this._time += dtMs;
-    const timeSec = this._time / 1000;
+  /** Called by SprayRenderer3D when an inbound free-leg particle reaches
+   *  the pylon tip. The next update turns it into one down-tube bead. */
+  enqueueTipHandoff(flowKey: string, intensity: number): void {
+    const clamped = Number.isFinite(intensity) ? Math.max(0, Math.min(1, intensity)) : 1;
+    const pending = this.pendingTubeBirths.get(flowKey);
+    if (pending) {
+      pending.count++;
+      pending.intensitySum += clamped;
+    } else {
+      this.pendingTubeBirths.set(flowKey, { count: 1, intensitySum: clamped });
+    }
+  }
 
-    let n = 0;
+  /** Per-frame update. Returns one-shot free-leg particles emitted by
+   *  outbound beads that reached their pylon tip this frame. */
+  update(flows: readonly PylonTubeFlow[], dtMs: number): readonly SprayTarget[] {
+    this.frameIndex++;
+    for (let i = 0; i < this.handoffSprays.length; i++) {
+      this.handoffSprayPool.push(this.handoffSprays[i]);
+    }
+    this.handoffSprays.length = 0;
+
+    const dtSec = Math.max(0, Math.min(dtMs, 100)) / 1000;
     for (let f = 0; f < flows.length; f++) {
-      const flow = flows[f];
-      if (flow.intensity <= 0.02) continue;
-
-      const dx = flow.tip.x - flow.root.x;
-      const dy = flow.tip.y - flow.root.y;
-      const dz = flow.tip.z - flow.root.z;
+      this.updateFlowRuntime(flows[f]);
+    }
+    this.spawnPendingTubeBirths();
+    this.spawnRateGatedBeads(dtSec);
+    this.advanceBeads(dtSec);
+    let n = 0;
+    for (let i = 0; i < this.beadCount; i++) {
+      const runtime = this.flowRuntimes.get(this.beadFlowKeys[i]);
+      if (!runtime) continue;
+      const dx = runtime.tip.x - runtime.root.x;
+      const dy = runtime.tip.y - runtime.root.y;
+      const dz = runtime.tip.z - runtime.root.z;
       const len = Math.hypot(dx, dy, dz);
       if (len < 1e-3) continue;
-
-      const spacing = Math.max(1e-3, flow.beadRadius * BEAD_SPACING_MULT);
-      const capacity = Math.min(MAX_BEADS_PER_TUBE, Math.floor(len / spacing));
-      if (capacity <= 0) continue;
-      const count = Math.max(1, Math.round(capacity * Math.min(1, flow.intensity)));
-      const fracStep = 1 / count;
-
-      // Slide the whole column. Fraction per second = speed / length.
-      const dir = flow.up ? 1 : -1;
-      let phase = ((timeSec * flow.speed) / len * dir) % 1;
-      if (phase < 0) phase += 1;
-
-      const alpha = BASE_ALPHA * Math.min(1, flow.intensity * 1.4);
-      for (let k = 0; k < count; k++) {
-        if (n >= MAX_BEADS) break;
-        let fr = k * fracStep + phase;
-        fr -= Math.floor(fr);
-        const px = flow.root.x + dx * fr;
-        const py = flow.root.y + dy * fr;
-        const pz = flow.root.z + dz * fr;
-        // Fade in/out at the two ends of the bore.
-        const edge = Math.min(1, fr / END_FADE_FRAC, (1 - fr) / END_FADE_FRAC);
-        this._scratchMat.makeScale(flow.beadRadius, flow.beadRadius, flow.beadRadius);
-        this._scratchMat.setPosition(px, py, pz);
-        this.mesh.setMatrixAt(n, this._scratchMat);
-        this.colorArr[n * 3] = flow.colorRGB.r;
-        this.colorArr[n * 3 + 1] = flow.colorRGB.g;
-        this.colorArr[n * 3 + 2] = flow.colorRGB.b;
-        this.alphaArr[n] = alpha * Math.max(0, edge);
-        n++;
-      }
+      if (n >= MAX_BEADS) break;
+      const fr = Math.max(0, Math.min(1, this.beadFrac[i]));
+      const px = runtime.root.x + dx * fr;
+      const py = runtime.root.y + dy * fr;
+      const pz = runtime.root.z + dz * fr;
+      // The tip is a handoff point, not a birth/sink. Only the root
+      // end fades because roots are allowed to create or consume balls.
+      const rootFade = Math.min(1, fr / END_FADE_FRAC);
+      this._scratchMat.makeScale(runtime.beadRadius, runtime.beadRadius, runtime.beadRadius);
+      this._scratchMat.setPosition(px, py, pz);
+      this.mesh.setMatrixAt(n, this._scratchMat);
+      this.colorArr[n * 3] = runtime.colorRGB.r;
+      this.colorArr[n * 3 + 1] = runtime.colorRGB.g;
+      this.colorArr[n * 3 + 2] = runtime.colorRGB.b;
+      this.alphaArr[n] = BASE_ALPHA * this.beadAlphaScale[i] * Math.max(0, rootFade);
+      n++;
     }
 
     this.mesh.count = n;
@@ -152,10 +188,273 @@ export class PylonTubeFlowRenderer {
       this.colorAttr.addUpdateRange(0, n * 3);
       this.colorAttr.needsUpdate = true;
     }
+    this.pruneStaleRuntimes();
+    return this.handoffSprays;
+  }
+
+  private updateFlowRuntime(flow: PylonTubeFlow): void {
+    let runtime = this.flowRuntimes.get(flow.key);
+    if (!runtime) {
+      runtime = {
+        key: flow.key,
+        root: { x: 0, y: 0, z: 0 },
+        tip: { x: 0, y: 0, z: 0 },
+        up: flow.up,
+        birthMode: flow.birthMode,
+        intensity: 0,
+        speed: 0,
+        beadRadius: 0,
+        colorRGB: { r: 0, g: 0, b: 0 },
+        spawnBudget: 0,
+        lastSeenFrame: this.frameIndex,
+      };
+      this.flowRuntimes.set(flow.key, runtime);
+    }
+    runtime.root.x = flow.root.x; runtime.root.y = flow.root.y; runtime.root.z = flow.root.z;
+    runtime.tip.x = flow.tip.x; runtime.tip.y = flow.tip.y; runtime.tip.z = flow.tip.z;
+    runtime.up = flow.up;
+    runtime.birthMode = flow.birthMode;
+    runtime.intensity = Math.max(0, Math.min(1, flow.intensity));
+    runtime.speed = flow.speed;
+    runtime.beadRadius = flow.beadRadius;
+    runtime.colorRGB.r = flow.colorRGB.r;
+    runtime.colorRGB.g = flow.colorRGB.g;
+    runtime.colorRGB.b = flow.colorRGB.b;
+    runtime.freeLeg = this.copyFreeLeg(flow.freeLeg, runtime.freeLeg);
+    runtime.lastSeenFrame = this.frameIndex;
+  }
+
+  private copyFreeLeg(
+    source: PylonTubeFreeLeg | undefined,
+    target: PylonTubeFreeLeg | undefined,
+  ): PylonTubeFreeLeg | undefined {
+    if (!source) return undefined;
+    const out = target ?? {
+      sourceId: source.sourceId,
+      sourcePlayerId: source.sourcePlayerId,
+      target: { id: source.target.id, pos: { x: 0, y: 0 }, z: 0, radius: 0 },
+      flow: source.flow,
+      flowRadius: 0,
+      channel: 0,
+      speed: 0,
+      particleRadius: 0,
+      colorRGB: { r: 0, g: 0, b: 0 },
+    };
+    out.sourceId = source.sourceId;
+    out.sourcePlayerId = source.sourcePlayerId;
+    out.target.id = source.target.id;
+    out.target.pos.x = source.target.pos.x;
+    out.target.pos.y = source.target.pos.y;
+    out.target.z = source.target.z;
+    out.target.radius = source.target.radius;
+    out.flow = source.flow;
+    out.flowRadius = source.flowRadius;
+    out.channel = source.channel;
+    out.speed = source.speed;
+    out.particleRadius = source.particleRadius;
+    out.colorRGB.r = source.colorRGB.r;
+    out.colorRGB.g = source.colorRGB.g;
+    out.colorRGB.b = source.colorRGB.b;
+    if (source.endColorRGB) {
+      out.endColorRGB ??= { r: 0, g: 0, b: 0 };
+      out.endColorRGB.r = source.endColorRGB.r;
+      out.endColorRGB.g = source.endColorRGB.g;
+      out.endColorRGB.b = source.endColorRGB.b;
+    } else {
+      out.endColorRGB = undefined;
+    }
+    return out;
+  }
+
+  private spawnPendingTubeBirths(): void {
+    for (const [key, pending] of this.pendingTubeBirths) {
+      const runtime = this.flowRuntimes.get(key);
+      if (!runtime) continue;
+      const alphaScale = pending.count > 0
+        ? Math.max(0, Math.min(1, pending.intensitySum / pending.count))
+        : 1;
+      for (let i = 0; i < pending.count; i++) {
+        this.spawnBead(runtime, -1, 1, alphaScale);
+      }
+    }
+    this.pendingTubeBirths.clear();
+  }
+
+  private spawnRateGatedBeads(dtSec: number): void {
+    if (dtSec <= 0) return;
+    for (const runtime of this.flowRuntimes.values()) {
+      if (
+        runtime.lastSeenFrame !== this.frameIndex
+        || runtime.birthMode !== 'rate'
+        || runtime.intensity <= 0.02
+      ) {
+        continue;
+      }
+      const len = this.flowLength(runtime);
+      if (len < 1e-3 || runtime.speed <= 0) continue;
+      const spacing = Math.max(1e-3, runtime.beadRadius * BEAD_SPACING_MULT);
+      const capacity = Math.min(MAX_BEADS_PER_TUBE, Math.max(1, Math.floor(len / spacing)));
+      const birthsPerSec = (capacity * runtime.intensity * runtime.speed) / len;
+      runtime.spawnBudget += birthsPerSec * dtSec;
+      const spawnCount = Math.min(
+        MAX_BEAD_SPAWNS_PER_FLOW_FRAME,
+        Math.floor(runtime.spawnBudget),
+      );
+      runtime.spawnBudget -= spawnCount;
+      const dir = runtime.up ? 1 : -1;
+      const startFrac = runtime.up ? 0 : 1;
+      const alphaScale = Math.min(1, runtime.intensity * 1.4);
+      for (let i = 0; i < spawnCount; i++) {
+        this.spawnBead(runtime, dir, startFrac, alphaScale);
+      }
+    }
+  }
+
+  private spawnBead(
+    runtime: PylonTubeFlowRuntime,
+    dir: number,
+    frac: number,
+    alphaScale: number,
+  ): void {
+    if (this.beadCount >= MAX_BEADS) return;
+    const idx = this.beadCount++;
+    this.beadFlowKeys[idx] = runtime.key;
+    this.beadFrac[idx] = frac;
+    this.beadDir[idx] = dir < 0 ? -1 : 1;
+    this.beadAlphaScale[idx] = Math.max(0.08, Math.min(1, alphaScale));
+  }
+
+  private advanceBeads(dtSec: number): void {
+    if (dtSec <= 0) return;
+    for (let i = 0; i < this.beadCount; i++) {
+      const runtime = this.flowRuntimes.get(this.beadFlowKeys[i]);
+      if (!runtime) {
+        this.removeBead(i);
+        i--;
+        continue;
+      }
+      const len = this.flowLength(runtime);
+      if (len < 1e-3 || runtime.speed <= 0) continue;
+      const dir = this.beadDir[i];
+      this.beadFrac[i] += dir * (runtime.speed / len) * dtSec;
+      if (dir > 0 && this.beadFrac[i] >= 1) {
+        this.emitFreeLeg(runtime, this.beadAlphaScale[i]);
+        this.removeBead(i);
+        i--;
+      } else if (dir < 0 && this.beadFrac[i] <= 0) {
+        this.removeBead(i);
+        i--;
+      }
+    }
+  }
+
+  private emitFreeLeg(runtime: PylonTubeFlowRuntime, alphaScale: number): void {
+    const freeLeg = runtime.freeLeg;
+    if (!freeLeg) return;
+    const spray = this.acquireHandoffSpray();
+    spray.source.id = freeLeg.sourceId;
+    spray.source.playerId = freeLeg.sourcePlayerId;
+    spray.source.pos.x = runtime.tip.x;
+    spray.source.pos.y = runtime.tip.z;
+    spray.source.z = runtime.tip.y;
+    spray.target.id = freeLeg.target.id;
+    if (freeLeg.flow === 'randomOutbound') {
+      spray.target.pos.x = runtime.tip.x;
+      spray.target.pos.y = runtime.tip.z;
+      spray.target.z = runtime.tip.y;
+      spray.target.radius = freeLeg.flowRadius;
+    } else {
+      spray.target.pos.x = freeLeg.target.pos.x;
+      spray.target.pos.y = freeLeg.target.pos.y;
+      spray.target.z = freeLeg.target.z;
+      spray.target.radius = freeLeg.target.radius;
+    }
+    spray.target.dim = undefined;
+    spray.type = 'build';
+    spray.intensity = Math.max(0, Math.min(1, alphaScale));
+    spray.channel = freeLeg.channel;
+    spray.flow = freeLeg.flow;
+    spray.flowRadius = freeLeg.flowRadius;
+    spray.speed = freeLeg.speed;
+    spray.particleRadius = freeLeg.particleRadius;
+    spray.colorRGB = freeLeg.colorRGB;
+    spray.endColorRGB = freeLeg.endColorRGB;
+    spray.endpointFade = 'end';
+    spray.pylonTubeHandoffKey = undefined;
+  }
+
+  private acquireHandoffSpray(): SprayTarget {
+    let target = this.handoffSprayPool.pop();
+    if (!target) {
+      target = {
+        source: { id: 0, pos: { x: 0, y: 0 }, z: 0, playerId: 1 },
+        target: { id: 0, pos: { x: 0, y: 0 }, z: 0, radius: 0 },
+        type: 'build',
+        intensity: 0,
+        channel: 0,
+        flow: 'direct',
+        flowRadius: 0,
+      };
+    }
+    target.colorRGB = undefined;
+    target.endColorRGB = undefined;
+    target.endpointFade = undefined;
+    target.pylonTubeHandoffKey = undefined;
+    target.waypoint = undefined;
+    target.waypoint2 = undefined;
+    target.speed = undefined;
+    target.particleRadius = undefined;
+    this.handoffSprays.push(target);
+    return target;
+  }
+
+  private removeBead(index: number): void {
+    const last = this.beadCount - 1;
+    if (index !== last) {
+      this.beadFlowKeys[index] = this.beadFlowKeys[last];
+      this.beadFrac[index] = this.beadFrac[last];
+      this.beadDir[index] = this.beadDir[last];
+      this.beadAlphaScale[index] = this.beadAlphaScale[last];
+    }
+    this.beadCount = last;
+  }
+
+  private flowLength(runtime: PylonTubeFlowRuntime): number {
+    return Math.hypot(
+      runtime.tip.x - runtime.root.x,
+      runtime.tip.y - runtime.root.y,
+      runtime.tip.z - runtime.root.z,
+    );
+  }
+
+  private hasBeadForKey(key: string): boolean {
+    for (let i = 0; i < this.beadCount; i++) {
+      if (this.beadFlowKeys[i] === key) return true;
+    }
+    return false;
+  }
+
+  private pruneStaleRuntimes(): void {
+    if (this.frameIndex % 120 !== 0) return;
+    const pruneBefore = this.frameIndex - FLOW_RUNTIME_PRUNE_AFTER_FRAMES;
+    for (const [key, runtime] of this.flowRuntimes) {
+      if (
+        runtime.lastSeenFrame < pruneBefore
+        && !this.pendingTubeBirths.has(key)
+        && !this.hasBeadForKey(key)
+      ) {
+        this.flowRuntimes.delete(key);
+      }
+    }
   }
 
   destroy(): void {
     disposeMesh(this.mesh);
+    this.flowRuntimes.clear();
+    this.pendingTubeBirths.clear();
+    this.handoffSprays.length = 0;
+    this.handoffSprayPool.length = 0;
+    this.beadCount = 0;
     this.root.parent?.remove(this.root);
   }
 }
