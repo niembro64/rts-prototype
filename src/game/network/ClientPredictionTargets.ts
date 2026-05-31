@@ -28,7 +28,7 @@ export type ServerTarget = {
     angularVelocity: number;
     pitch: number;
     pitchVelocity: number;
-    forceFieldRange: number | undefined;
+    shieldRange: number | undefined;
   }[];
 };
 

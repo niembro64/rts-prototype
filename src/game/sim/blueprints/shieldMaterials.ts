@@ -1,22 +1,22 @@
 /**
  * Force-field material blueprints.
  *
- * Materials own the physical + visual contract for force-field surfaces.
+ * Materials own the physical + visual contract for shield surfaces.
  * Turret shots reference these by id; panel and sphere geometry only decide
  * where the material is projected.
  */
 
 import {
-  isForceFieldMaterialId,
-  type ForceFieldMaterialId,
+  isShieldMaterialId,
+  type ShieldMaterialId,
 } from '../../../types/blueprintIds';
 import {
-  FORCE_FIELD_SURFACE_RESPONSES,
-  isForceFieldReflectionMode,
-  type ForceFieldMaterialBlueprint,
-  type ForceFieldSurfaceResponse,
+  SHIELD_SURFACE_RESPONSES,
+  isShieldReflectionMode,
+  type ShieldMaterialBlueprint,
+  type ShieldSurfaceResponse,
 } from './types';
-import rawForceFieldMaterials from './forceFieldMaterials.json';
+import rawShieldMaterials from './shieldMaterials.json';
 import { assertExplicitFields } from './jsonValidation';
 
 const MATERIAL_EXPLICIT_FIELDS = [
@@ -27,48 +27,48 @@ const MATERIAL_EXPLICIT_FIELDS = [
   'visual',
 ] as const;
 
-const FORCE_FIELD_SURFACE_RESPONSE_SET =
-  new Set<ForceFieldSurfaceResponse>(FORCE_FIELD_SURFACE_RESPONSES);
+const SHIELD_SURFACE_RESPONSE_SET =
+  new Set<ShieldSurfaceResponse>(SHIELD_SURFACE_RESPONSES);
 
-export const FORCE_FIELD_MATERIALS = rawForceFieldMaterials as unknown as Record<
-  ForceFieldMaterialId,
-  ForceFieldMaterialBlueprint
+export const SHIELD_MATERIALS = rawShieldMaterials as unknown as Record<
+  ShieldMaterialId,
+  ShieldMaterialBlueprint
 >;
 
-export const REFLECTIVE_FORCE_FIELD_MATERIAL =
-  FORCE_FIELD_MATERIALS.reflectiveForceField;
+export const REFLECTIVE_SHIELD_MATERIAL =
+  SHIELD_MATERIALS.reflectiveShield;
 
-export function getForceFieldMaterial(id: string): ForceFieldMaterialBlueprint {
-  if (!isForceFieldMaterialId(id)) {
-    throw new Error(`Unknown force-field material: ${id}`);
+export function getShieldMaterial(id: string): ShieldMaterialBlueprint {
+  if (!isShieldMaterialId(id)) {
+    throw new Error(`Unknown shield material: ${id}`);
   }
-  return FORCE_FIELD_MATERIALS[id];
+  return SHIELD_MATERIALS[id];
 }
 
 function assertSurfaceResponse(
   materialId: string,
-  shotType: keyof ForceFieldMaterialBlueprint['projectileResponse'],
+  shotType: keyof ShieldMaterialBlueprint['projectileResponse'],
   response: unknown,
 ): void {
-  if (!FORCE_FIELD_SURFACE_RESPONSE_SET.has(response as ForceFieldSurfaceResponse)) {
+  if (!SHIELD_SURFACE_RESPONSE_SET.has(response as ShieldSurfaceResponse)) {
     throw new Error(
       `Force-field material ${materialId} has invalid ${shotType} response: ${String(response)}`,
     );
   }
 }
 
-for (const [id, material] of Object.entries(FORCE_FIELD_MATERIALS)) {
+for (const [id, material] of Object.entries(SHIELD_MATERIALS)) {
   if (material.materialId !== id) {
     throw new Error(
       `Force-field material key/id mismatch: ${id} contains ${material.materialId}`,
     );
   }
   assertExplicitFields(
-    `force-field material ${id}`,
+    `shield material ${id}`,
     material,
     MATERIAL_EXPLICIT_FIELDS,
   );
-  if (!isForceFieldReflectionMode(material.reflection.mode)) {
+  if (!isShieldReflectionMode(material.reflection.mode)) {
     throw new Error(
       `Force-field material ${id} has invalid reflection.mode: ${String(material.reflection.mode)}`,
     );
@@ -90,7 +90,7 @@ for (const [id, material] of Object.entries(FORCE_FIELD_MATERIALS)) {
   assertSurfaceResponse(id, 'rocket', material.projectileResponse.rocket);
   assertSurfaceResponse(id, 'beam', material.projectileResponse.beam);
   assertSurfaceResponse(id, 'laser', material.projectileResponse.laser);
-  if (material.hitReaction.impactEvent !== 'forceFieldImpact') {
+  if (material.hitReaction.impactEvent !== 'shieldImpact') {
     throw new Error(
       `Force-field material ${id} has invalid hitReaction.impactEvent: ${String(material.hitReaction.impactEvent)}`,
     );

@@ -212,9 +212,9 @@ defineProps<{
         <BarDivider />
         <BarLabel>FORCE FIELDS:</BarLabel>
         <BarButton
-          :active="model.currentForceFieldsObstructSight"
-          title="Force fields obstruct turret sight through their boundary (applies to every turret, both directions)"
-          @click="model.setForceFieldsObstructSight(!model.currentForceFieldsObstructSight)"
+          :active="model.currentShieldsObstructSight"
+          title="Shields obstruct turret sight through their boundary (applies to every turret, both directions)"
+          @click="model.setShieldsObstructSight(!model.currentShieldsObstructSight)"
         >OBSTRUCT SIGHT</BarButton>
       </BarControlGroup>
       <BarControlGroup>

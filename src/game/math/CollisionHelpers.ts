@@ -1,4 +1,4 @@
-// Collision geometry helpers - shared by DamageSystem, forceFieldWeapon, ClientViewState
+// Collision geometry helpers - shared by DamageSystem, shieldWeapon, ClientViewState
 
 import { normalizeAngle } from './MathHelpers';
 
@@ -137,7 +137,7 @@ export function rayBoxIntersectionT(
  *  the first hit, or null.
  *
  *  The rectangle is "upright" — its plane contains world +Y (up), its
- *  normal is horizontal. Used by the beam tracer for force-field panels,
+ *  normal is horizontal. Used by the beam tracer for shield panels,
  *  which are vertical slabs attached to unit turrets: normal comes from
  *  the panel's yaw, the edge direction is perpendicular to the normal
  *  in the horizontal plane, and the vertical extent runs from `baseZ`
@@ -300,7 +300,7 @@ export function isPointInSlice(
   // Check inner distance (target must be outside inner radius)
   if (minRadius > 0 && dist + targetRadius < minRadius) return false;
 
-  // Full-circle force fields skip the angle check entirely (avoids 2x atan2)
+  // Full-circle shields skip the angle check entirely (avoids 2x atan2)
   if (isFullCircle) return true;
 
   // Check angle (accounting for target angular size)

@@ -13,14 +13,14 @@ import type { ThreeApp } from '../../render3d/ThreeApp';
 import type { Render3DEntities } from '../../render3d/Render3DEntities';
 import type { Input3DManager } from '../../render3d/Input3DManager';
 import type { BeamRenderer3D } from '../../render3d/BeamRenderer3D';
-import type { ForceFieldRenderer3D } from '../../render3d/ForceFieldRenderer3D';
+import type { ShieldRenderer3D } from '../../render3d/ShieldRenderer3D';
 import type { TerrainTileRenderer3D } from '../../render3d/TerrainTileRenderer3D';
 import type { BuildGhost3D } from '../../render3d/BuildGhost3D';
 import type { MetalDepositRenderer3D } from '../../render3d/MetalDepositRenderer3D';
 import type { EnvironmentPropRenderer3D } from '../../render3d/EnvironmentPropRenderer3D';
 import type { WaterRenderer3D } from '../../render3d/WaterRenderer3D';
 import type { Explosion3D } from '../../render3d/Explosion3D';
-import type { ForceFieldImpactRenderer3D } from '../../render3d/ForceFieldImpactRenderer3D';
+import type { ShieldImpactRenderer3D } from '../../render3d/ShieldImpactRenderer3D';
 import type { WaterSplash3D } from '../../render3d/WaterSplash3D';
 import type { Debris3D } from '../../render3d/Debris3D';
 import type { BurnMark3D } from '../../render3d/BurnMark3D';
@@ -50,7 +50,7 @@ import type { RtsScene3DSelectionSystem } from './RtsScene3DSelectionSystem';
 export type RtsScene3DRenderPhaseResources = {
   entityRenderer: Render3DEntities;
   beamRenderer: BeamRenderer3D;
-  forceFieldRenderer: ForceFieldRenderer3D;
+  shieldRenderer: ShieldRenderer3D;
   terrainTileRenderer: TerrainTileRenderer3D;
   buildGhostRenderer: BuildGhost3D;
   metalDepositRenderer: MetalDepositRenderer3D | null;
@@ -58,7 +58,7 @@ export type RtsScene3DRenderPhaseResources = {
   contactShadowRenderer: ContactShadowRenderer3D | null;
   waterRenderer: WaterRenderer3D;
   explosionRenderer: Explosion3D;
-  forceFieldImpactRenderer: ForceFieldImpactRenderer3D;
+  shieldImpactRenderer: ShieldImpactRenderer3D;
   waterSplashRenderer: WaterSplash3D;
   debrisRenderer: Debris3D;
   burnMarkRenderer: BurnMark3D;
@@ -150,7 +150,7 @@ export class RtsScene3DRenderPhase {
     const {
       entityRenderer,
       beamRenderer,
-      forceFieldRenderer,
+      shieldRenderer,
       terrainTileRenderer,
       buildGhostRenderer,
       metalDepositRenderer,
@@ -158,7 +158,7 @@ export class RtsScene3DRenderPhase {
       contactShadowRenderer,
       waterRenderer,
       explosionRenderer,
-      forceFieldImpactRenderer,
+      shieldImpactRenderer,
       waterSplashRenderer,
       debrisRenderer,
       burnMarkRenderer,
@@ -206,7 +206,7 @@ export class RtsScene3DRenderPhase {
     );
     entityRenderer.update(
       renderFrameState,
-      { turretForceFieldPanelsEnabled: serverMeta?.turretForceFieldPanelsEnabled ?? true },
+      { turretShieldPanelsEnabled: serverMeta?.turretShieldPanelsEnabled ?? true },
     );
     contactShadowRenderer?.update(
       this.clientViewState.getUnits(),
@@ -250,7 +250,7 @@ export class RtsScene3DRenderPhase {
       this.fireExplosionAccumMs = 0;
       this.debrisAccumMs = 0;
     }
-    forceFieldImpactRenderer.update(effectDtMs, lineProjectiles);
+    shieldImpactRenderer.update(effectDtMs, lineProjectiles);
     waterSplashRenderer.update(effectDtMs);
     this.burnMarkAccumMs += effectDtMs;
     if (updateEffectsThisFrame) {
@@ -324,13 +324,13 @@ export class RtsScene3DRenderPhase {
       farRefDistance * ENTITY_HUD_FADE_END_DISTANCE_FRAC,
     );
 
-    forceFieldRenderer.beginFrame(graphicsConfig);
-    if (this.clientViewState.getServerMeta()?.turretForceFieldSpheresEnabled ?? true) {
-      for (const u of this.clientViewState.getForceFieldUnits()) {
-        forceFieldRenderer.perUnit(u);
+    shieldRenderer.beginFrame(graphicsConfig);
+    if (this.clientViewState.getServerMeta()?.turretShieldSpheresEnabled ?? true) {
+      for (const u of this.clientViewState.getShieldUnits()) {
+        shieldRenderer.perUnit(u);
       }
     }
-    forceFieldRenderer.endFrame();
+    shieldRenderer.endFrame();
 
     const hoveredEntity = inputManager?.getHoveredEntity() ?? null;
     if (healthBar3D) {

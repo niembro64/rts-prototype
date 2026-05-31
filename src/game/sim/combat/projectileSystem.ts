@@ -1,8 +1,8 @@
 // Projectile system - firing, movement, and beam updates
 
 import type { WorldState } from '../WorldState';
-import type { BeamPoint, Entity, EntityId, ProjectileShot, BeamShot, LaserShot, ShotSource, Turret } from '../types';
-import { isLineShot, isLineShotType, isProjectileShot, NO_ENTITY_ID } from '../types';
+import type { BeamPoint, Entity, EntityId, ProjectileShot, BeamRay, LaserRay, ShotSource, Turret } from '../types';
+import { getEmissionBlueprintId, isRayConfig, isRayType, isProjectileShot, NO_ENTITY_ID } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
@@ -46,7 +46,7 @@ import {
 } from './combatActivitySlab';
 import { resolveTargetAimPoint } from './aimSolver';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
-import { resolveLineShotRangeSphereEndpoint, type LineShotRangeSphere } from './lineShotRange';
+import { resolveRayConfigRangeSphereEndpoint, type RayConfigRangeSphere } from './lineShotRange';
 import { getUnitGroundZ } from '../unitGeometry';
 import { createProjectileConfigFromTurret } from '../projectileConfigs';
 import { CT_TURRET_STATE_ENGAGED, getSimWasm } from '../../sim-wasm/init';
@@ -142,7 +142,7 @@ function refreshPackedProjectileViews(): void {
 const _fireWeaponMount = { x: 0, y: 0, z: 0 };
 const _beamWeaponMount = { x: 0, y: 0, z: 0 };
 const _lineShotRangeEnd = { x: 0, y: 0, z: 0 };
-const _lineShotRangeSphere: LineShotRangeSphere = { centerX: 0, centerY: 0, centerZ: 0, radius: 0 };
+const _lineShotRangeSphere: RayConfigRangeSphere = { centerX: 0, centerY: 0, centerZ: 0, radius: 0 };
 const _fireFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_ENGAGED,
   targetId: -1,
@@ -417,9 +417,9 @@ export function fireTurrets(
       if (config.visualOnly) continue;
       const shot = config.shot;
       if (!shot) continue;
-      if (shot.type === 'forceField') continue; // Force fields don't create projectiles
+      if (shot.type === 'shield') continue; // Shields don't create projectiles
       if (config.passive) continue; // Passive turrets track/engage but never fire
-      const isBeamWeapon = isLineShot(shot);
+      const isBeamWeapon = isRayConfig(shot);
       const hasTargetingFsm = readCombatTargetingTurretFsmInto(unit, weaponIndex, _fireFsm);
       const targetingTargetId = hasTargetingFsm ? _fireFsm.targetId : (weapon.target ?? -1);
       if (isProjectileShot(shot) && !weapon.ballisticAimInRange) {
@@ -439,9 +439,9 @@ export function fireTurrets(
       }
 
       // Apply beam recoil only while the beam is actually active
-      if (isBeamWeapon && forceAccumulator && (shot as BeamShot | LaserShot).recoil && hasActiveWeaponBeam(world, unit.id, weaponIndex)) {
+      if (isBeamWeapon && forceAccumulator && (shot as BeamRay | LaserRay).recoil && hasActiveWeaponBeam(world, unit.id, weaponIndex)) {
         const dtSec = dtMs / 1000;
-        const knockBackPerTick = (shot as BeamShot | LaserShot).recoil * PROJECTILE_MASS_MULTIPLIER * dtSec;
+        const knockBackPerTick = (shot as BeamRay | LaserRay).recoil * PROJECTILE_MASS_MULTIPLIER * dtSec;
         const turretAngle = weapon.rotation;
         const dirX = Math.cos(turretAngle);
         const dirY = Math.sin(turretAngle);
@@ -611,7 +611,7 @@ export function fireTurrets(
           rangeSphere.centerY = weaponY;
           rangeSphere.centerZ = mountZ;
           rangeSphere.radius = weapon.ranges.fire.max.release;
-          const endpoint = resolveLineShotRangeSphereEndpoint(
+          const endpoint = resolveRayConfigRangeSphereEndpoint(
             beamStartX, beamStartY, beamStartZ,
             dirX, dirY, dirZ,
             rangeSphere,
@@ -623,7 +623,8 @@ export function fireTurrets(
 
           const projectileConfig = createProjectileConfigFromTurret(config, weaponIndex);
           const beamProjectileType = shot.type === 'laser' ? 'laser' as const : 'beam' as const;
-          const shotSource = createTurretShotSource(world, unit, weapon, shot.shotBlueprintId, playerId);
+          const emissionBlueprintId = getEmissionBlueprintId(shot);
+          const shotSource = createTurretShotSource(world, unit, weapon, emissionBlueprintId, playerId);
           const beam = world.createBeam(
             beamStartX,
             beamStartY,
@@ -634,7 +635,7 @@ export function fireTurrets(
             unit.id,
             projectileConfig,
             beamProjectileType,
-            { shotBlueprintId: shot.shotBlueprintId, shotSource },
+            { shotBlueprintId: emissionBlueprintId, shotSource },
           );
           if (beam.projectile) {
             beam.projectile.sourceBarrelIndex = barrelIndex;
@@ -653,7 +654,7 @@ export function fireTurrets(
             velocity: { x: 0, y: 0, z: 0 },
             projectileType: beamProjectileType,
             turretBlueprintId: config.turretBlueprintId,
-            shotBlueprintId: shot.shotBlueprintId,
+            shotBlueprintId: emissionBlueprintId,
             sourceTurretBlueprintId: config.turretBlueprintId,
             sourceTurretEntityId: shotSource.sourceTurretEntityId ?? undefined,
             sourceHostEntityId: shotSource.sourceHostEntityId,
@@ -1084,7 +1085,7 @@ export function updateProjectiles(
     const proj = entity.projectile;
 
     // Update beam/laser positions to follow turret direction
-    if (isLineShotType(proj.projectileType)) {
+    if (isRayType(proj.projectileType)) {
       proj.timeAlive += dtMs;
       const source = world.getEntity(proj.sourceEntityId);
 
@@ -1212,7 +1213,7 @@ export function updateProjectiles(
         rangeSphere.centerY = beamMount.y;
         rangeSphere.centerZ = beamMount.z;
         rangeSphere.radius = weapon.ranges.fire.max.release;
-        const endpoint = resolveLineShotRangeSphereEndpoint(
+        const endpoint = resolveRayConfigRangeSphereEndpoint(
           beamStartX, beamStartY, beamStartZ,
           dirX, dirY, dirZ,
           rangeSphere,

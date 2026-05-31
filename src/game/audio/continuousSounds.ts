@@ -1,4 +1,4 @@
-// Continuous sound management (beams, force fields)
+// Continuous sound management (beams, shields)
 // Handles start/stop lifecycle, viewport-based muting, and zoom-based volume
 
 import { AUDIO } from '../../audioConfig';
@@ -244,8 +244,8 @@ export function getBeamConfig(): ContinuousSoundConfig {
   };
 }
 
-// Get the ContinuousSoundConfig for force field from AUDIO config
-export function getForceFieldConfig(): ContinuousSoundConfig {
+// Get the ContinuousSoundConfig for shield from AUDIO config
+export function getShieldConfig(): ContinuousSoundConfig {
   const fc = AUDIO.continuous.force;
   return {
     wave: fc.wave,

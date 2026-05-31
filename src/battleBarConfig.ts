@@ -1,5 +1,5 @@
 import type { BattleBarConfig } from './types/battle';
-import type { ForceFieldReflectionMode } from './types/shotTypes';
+import type { ShieldReflectionMode } from './types/shotTypes';
 import type { TerrainMapShape } from './types/terrain';
 import { persist, persistJson, readPersisted, migrateKey } from './persistence';
 import { MAP_DIMENSION_CONFIG, type MapLandCellDimensions } from './mapSizeConfig';
@@ -57,12 +57,12 @@ export const BATTLE_CONFIG = {
     default: _demoPreset.cap,
     options: battleBarConfig.cap.options as readonly number[],
   },
-  turretForceFieldPanelsEnabled: { default: _demoPreset.turretForceFieldPanelsEnabled },
-  turretForceFieldSpheresEnabled: { default: _demoPreset.turretForceFieldSpheresEnabled },
-  forceFieldsObstructSight: { default: _demoPreset.forceFieldsObstructSight },
+  turretShieldPanelsEnabled: { default: _demoPreset.turretShieldPanelsEnabled },
+  turretShieldSpheresEnabled: { default: _demoPreset.turretShieldSpheresEnabled },
+  shieldsObstructSight: { default: _demoPreset.shieldsObstructSight },
   fogOfWarEnabled: { default: _demoPreset.fogOfWarEnabled },
-  forceFieldReflectionMode: {
-    default: _demoPreset.forceFieldReflectionMode,
+  shieldReflectionMode: {
+    default: _demoPreset.shieldReflectionMode,
   },
   // CENTER / DIVIDERS amplitudes — applied at game-construction time
   // via setTerrainCenterMagnitude / setTerrainDividersMagnitude
@@ -134,16 +134,16 @@ const STORAGE_DEMO_CAP = sk.demoCap;
 const STORAGE_REAL_CAP = sk.realCap;
 const STORAGE_DEMO_GRID = sk.demoGrid;
 const STORAGE_REAL_GRID = sk.realGrid;
-const STORAGE_DEMO_TURRET_FORCE_FIELD_PANELS_ENABLED = sk.demoTurretForceFieldPanelsEnabled;
-const STORAGE_REAL_TURRET_FORCE_FIELD_PANELS_ENABLED = sk.realTurretForceFieldPanelsEnabled;
-const STORAGE_DEMO_TURRET_FORCE_FIELD_SPHERES_ENABLED = sk.demoTurretForceFieldSpheresEnabled;
-const STORAGE_REAL_TURRET_FORCE_FIELD_SPHERES_ENABLED = sk.realTurretForceFieldSpheresEnabled;
-const STORAGE_DEMO_FORCE_FIELDS_OBSTRUCT_SIGHT = sk.demoForceFieldsObstructSight;
-const STORAGE_REAL_FORCE_FIELDS_OBSTRUCT_SIGHT = sk.realForceFieldsObstructSight;
+const STORAGE_DEMO_TURRET_SHIELD_PANELS_ENABLED = sk.demoTurretShieldPanelsEnabled;
+const STORAGE_REAL_TURRET_SHIELD_PANELS_ENABLED = sk.realTurretShieldPanelsEnabled;
+const STORAGE_DEMO_TURRET_SHIELD_SPHERES_ENABLED = sk.demoTurretShieldSpheresEnabled;
+const STORAGE_REAL_TURRET_SHIELD_SPHERES_ENABLED = sk.realTurretShieldSpheresEnabled;
+const STORAGE_DEMO_SHIELDS_OBSTRUCT_SIGHT = sk.demoShieldsObstructSight;
+const STORAGE_REAL_SHIELDS_OBSTRUCT_SIGHT = sk.realShieldsObstructSight;
 const STORAGE_DEMO_FOG_OF_WAR_ENABLED = sk.demoFogOfWarEnabled;
 const STORAGE_REAL_FOG_OF_WAR_ENABLED = sk.realFogOfWarEnabled;
-const STORAGE_DEMO_FORCE_FIELD_REFLECTION_MODE = sk.demoForceFieldReflectionMode;
-const STORAGE_REAL_FORCE_FIELD_REFLECTION_MODE = sk.realForceFieldReflectionMode;
+const STORAGE_DEMO_SHIELD_REFLECTION_MODE = sk.demoShieldReflectionMode;
+const STORAGE_REAL_SHIELD_REFLECTION_MODE = sk.realShieldReflectionMode;
 const STORAGE_DEMO_CENTER_MAGNITUDE = sk.demoCenterMagnitude;
 const STORAGE_REAL_CENTER_MAGNITUDE = sk.realCenterMagnitude;
 const STORAGE_DEMO_DIVIDERS_MAGNITUDE = sk.demoDividersMagnitude;
@@ -349,46 +349,46 @@ function loadModeBool(
   return defaultValue;
 }
 
-export function loadStoredTurretForceFieldPanelsEnabled(_mode: BattleMode): boolean {
-  return BATTLE_CONFIG.turretForceFieldPanelsEnabled.default;
+export function loadStoredTurretShieldPanelsEnabled(_mode: BattleMode): boolean {
+  return BATTLE_CONFIG.turretShieldPanelsEnabled.default;
 }
 
-export function saveTurretForceFieldPanelsEnabled(_enabled: boolean, mode: BattleMode): void {
+export function saveTurretShieldPanelsEnabled(_enabled: boolean, mode: BattleMode): void {
   persist(
     mode === 'real'
-      ? STORAGE_REAL_TURRET_FORCE_FIELD_PANELS_ENABLED
-      : STORAGE_DEMO_TURRET_FORCE_FIELD_PANELS_ENABLED,
-    String(BATTLE_CONFIG.turretForceFieldPanelsEnabled.default),
+      ? STORAGE_REAL_TURRET_SHIELD_PANELS_ENABLED
+      : STORAGE_DEMO_TURRET_SHIELD_PANELS_ENABLED,
+    String(BATTLE_CONFIG.turretShieldPanelsEnabled.default),
   );
 }
 
-export function loadStoredTurretForceFieldSpheresEnabled(_mode: BattleMode): boolean {
-  return BATTLE_CONFIG.turretForceFieldSpheresEnabled.default;
+export function loadStoredTurretShieldSpheresEnabled(_mode: BattleMode): boolean {
+  return BATTLE_CONFIG.turretShieldSpheresEnabled.default;
 }
 
-export function saveTurretForceFieldSpheresEnabled(_enabled: boolean, mode: BattleMode): void {
+export function saveTurretShieldSpheresEnabled(_enabled: boolean, mode: BattleMode): void {
   persist(
     mode === 'real'
-      ? STORAGE_REAL_TURRET_FORCE_FIELD_SPHERES_ENABLED
-      : STORAGE_DEMO_TURRET_FORCE_FIELD_SPHERES_ENABLED,
-    String(BATTLE_CONFIG.turretForceFieldSpheresEnabled.default),
+      ? STORAGE_REAL_TURRET_SHIELD_SPHERES_ENABLED
+      : STORAGE_DEMO_TURRET_SHIELD_SPHERES_ENABLED,
+    String(BATTLE_CONFIG.turretShieldSpheresEnabled.default),
   );
 }
 
-export function loadStoredForceFieldsObstructSight(mode: BattleMode): boolean {
+export function loadStoredShieldsObstructSight(mode: BattleMode): boolean {
   return loadModeBool(
     mode,
-    STORAGE_REAL_FORCE_FIELDS_OBSTRUCT_SIGHT,
-    STORAGE_DEMO_FORCE_FIELDS_OBSTRUCT_SIGHT,
-    BATTLE_CONFIG.forceFieldsObstructSight.default,
+    STORAGE_REAL_SHIELDS_OBSTRUCT_SIGHT,
+    STORAGE_DEMO_SHIELDS_OBSTRUCT_SIGHT,
+    BATTLE_CONFIG.shieldsObstructSight.default,
   );
 }
 
-export function saveForceFieldsObstructSight(enabled: boolean, mode: BattleMode): void {
+export function saveShieldsObstructSight(enabled: boolean, mode: BattleMode): void {
   persist(
     mode === 'real'
-      ? STORAGE_REAL_FORCE_FIELDS_OBSTRUCT_SIGHT
-      : STORAGE_DEMO_FORCE_FIELDS_OBSTRUCT_SIGHT,
+      ? STORAGE_REAL_SHIELDS_OBSTRUCT_SIGHT
+      : STORAGE_DEMO_SHIELDS_OBSTRUCT_SIGHT,
     String(enabled),
   );
 }
@@ -411,19 +411,19 @@ export function saveFogOfWarEnabled(enabled: boolean, mode: BattleMode): void {
   );
 }
 
-export function loadStoredForceFieldReflectionMode(_mode: BattleMode): ForceFieldReflectionMode {
-  return BATTLE_CONFIG.forceFieldReflectionMode.default;
+export function loadStoredShieldReflectionMode(_mode: BattleMode): ShieldReflectionMode {
+  return BATTLE_CONFIG.shieldReflectionMode.default;
 }
 
-export function saveForceFieldReflectionMode(
-  _reflectionMode: ForceFieldReflectionMode,
+export function saveShieldReflectionMode(
+  _reflectionMode: ShieldReflectionMode,
   mode: BattleMode,
 ): void {
   persist(
     mode === 'real'
-      ? STORAGE_REAL_FORCE_FIELD_REFLECTION_MODE
-      : STORAGE_DEMO_FORCE_FIELD_REFLECTION_MODE,
-    BATTLE_CONFIG.forceFieldReflectionMode.default,
+      ? STORAGE_REAL_SHIELD_REFLECTION_MODE
+      : STORAGE_DEMO_SHIELD_REFLECTION_MODE,
+    BATTLE_CONFIG.shieldReflectionMode.default,
   );
 }
 

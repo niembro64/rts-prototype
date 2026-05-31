@@ -6,7 +6,7 @@ import {
   normalizeConverterTax,
   saveConverterTax,
   saveDemoUnits,
-  saveForceFieldsObstructSight,
+  saveShieldsObstructSight,
   saveFogOfWarEnabled,
   saveStoredCap,
   type BattleMode,
@@ -28,13 +28,13 @@ export type GameCanvasBattleSettings = {
    *  .includes on every parent re-render. */
   currentAllowedUnitsSet: ComputedRef<ReadonlySet<string>>;
   allDemoUnitsActive: ComputedRef<boolean>;
-  currentForceFieldsObstructSight: ComputedRef<boolean>;
+  currentShieldsObstructSight: ComputedRef<boolean>;
   currentFogOfWarEnabled: ComputedRef<boolean>;
   currentConverterTax: ComputedRef<number>;
   toggleDemoUnitBlueprintId(unitBlueprintId: string): void;
   toggleAllDemoUnits(): void;
   changeMaxTotalUnits(value: number): void;
-  setForceFieldsObstructSight(enabled: boolean): void;
+  setShieldsObstructSight(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;
   setConverterTax(tax: number): void;
   resetDemoDefaults(): void;
@@ -90,10 +90,10 @@ export function useGameCanvasBattleSettings({
     }
     return true;
   });
-  const currentForceFieldsObstructSight = computed(
+  const currentShieldsObstructSight = computed(
     () =>
-      serverMetaFromSnapshot.value?.forceFieldsObstructSight ??
-      BATTLE_CONFIG.forceFieldsObstructSight.default,
+      serverMetaFromSnapshot.value?.shieldsObstructSight ??
+      BATTLE_CONFIG.shieldsObstructSight.default,
   );
   const currentFogOfWarEnabled = computed(
     () =>
@@ -144,9 +144,9 @@ export function useGameCanvasBattleSettings({
     saveStoredCap(currentBattleMode.value, value);
   }
 
-  function setForceFieldsObstructSight(enabled: boolean): void {
-    getActiveConnection()?.sendCommand({ type: 'setForceFieldsObstructSight', tick: 0, enabled });
-    saveForceFieldsObstructSight(enabled, currentBattleMode.value);
+  function setShieldsObstructSight(enabled: boolean): void {
+    getActiveConnection()?.sendCommand({ type: 'setShieldsObstructSight', tick: 0, enabled });
+    saveShieldsObstructSight(enabled, currentBattleMode.value);
   }
 
   function setFogOfWarEnabled(enabled: boolean): void {
@@ -178,7 +178,7 @@ export function useGameCanvasBattleSettings({
     }
     saveDemoUnits([...preset.units]);
     changeMaxTotalUnits(preset.cap);
-    setForceFieldsObstructSight(preset.forceFieldsObstructSight);
+    setShieldsObstructSight(preset.shieldsObstructSight);
     setFogOfWarEnabled(preset.fogOfWarEnabled);
     setConverterTax(preset.converterTax);
     applyCenterMagnitude(preset.centerMagnitude, false);
@@ -207,13 +207,13 @@ export function useGameCanvasBattleSettings({
     currentAllowedUnits,
     currentAllowedUnitsSet,
     allDemoUnitsActive,
-    currentForceFieldsObstructSight,
+    currentShieldsObstructSight,
     currentFogOfWarEnabled,
     currentConverterTax,
     toggleDemoUnitBlueprintId,
     toggleAllDemoUnits,
     changeMaxTotalUnits,
-    setForceFieldsObstructSight,
+    setShieldsObstructSight,
     setFogOfWarEnabled,
     setConverterTax,
     resetDemoDefaults,

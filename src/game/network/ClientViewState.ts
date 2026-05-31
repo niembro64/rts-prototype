@@ -128,7 +128,7 @@ export class ClientViewState {
   private serverMeta: NetworkServerSnapshotMeta | null = null;
   private visionPlayerMask = 0;
   private readonly visionPlayerIds: PlayerId[] = [];
-  private turretForceFieldSpheresEnabledForPrediction = true;
+  private turretShieldSpheresEnabledForPrediction = true;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   private cache = new EntityCacheManager();
@@ -170,18 +170,18 @@ export class ClientViewState {
       dirtyUnitRenderIds: this.dirtyUnitRenderIds,
       getMapWidth: () => this.mapWidth,
       getMapHeight: () => this.mapHeight,
-      getServerForceFieldsEnabled: () => {
+      getServerShieldsEnabled: () => {
         const serverMeta = this.serverMeta;
         return (
           serverMeta !== null &&
-          serverMeta.turretForceFieldSpheresEnabled !== undefined &&
-          serverMeta.turretForceFieldSpheresEnabled !== null
+          serverMeta.turretShieldSpheresEnabled !== undefined &&
+          serverMeta.turretShieldSpheresEnabled !== null
         )
-          ? serverMeta.turretForceFieldSpheresEnabled
+          ? serverMeta.turretShieldSpheresEnabled
           : true;
       },
-      setTurretForceFieldSpheresEnabledForPrediction: (enabled) => {
-        this.turretForceFieldSpheresEnabledForPrediction = enabled;
+      setTurretShieldSpheresEnabledForPrediction: (enabled) => {
+        this.turretShieldSpheresEnabledForPrediction = enabled;
       },
       applyProjectileSpawn: (spawn) => this.projectileStore.applySpawn(spawn),
       deleteEntityLocalState: (id) => this.deleteEntityLocalState(id),
@@ -248,7 +248,7 @@ export class ClientViewState {
           angularVelocity: 0,
           pitch: 0,
           pitchVelocity: 0,
-          forceFieldRange: undefined,
+          shieldRange: undefined,
         });
       }
       target.turrets.length = turrets.length;
@@ -258,7 +258,7 @@ export class ClientViewState {
         target.turrets[i].angularVelocity = deqRot(wireAng.vel);
         target.turrets[i].pitch = deqRot(wireAng.pitch);
         target.turrets[i].pitchVelocity = deqRot(wireAng.pitchVel);
-        target.turrets[i].forceFieldRange = turrets[i].currentForceFieldRange ?? undefined;
+        target.turrets[i].shieldRange = turrets[i].currentShieldRange ?? undefined;
       }
       return true;
     }
@@ -312,7 +312,7 @@ export class ClientViewState {
       clientUnitPredictionIsSettled(
         entity,
         this.serverTargets.get(server.id),
-        this.turretForceFieldSpheresEnabledForPrediction,
+        this.turretShieldSpheresEnabledForPrediction,
       )
     ) {
       return;
@@ -706,7 +706,7 @@ export class ClientViewState {
     // Store audio events for processing (reuse constant for empty case)
     this.pendingAudioEvents = state.audioEvents ?? EMPTY_AUDIO;
 
-    // Stash the exact force-field / force-field-panel contact point on the
+    // Stash the exact shield / shield-panel contact point on the
     // reflected projectile so the curved-cone tail renderer can insert
     // it as a forced trail stamp on the next frame. The velocityUpdate
     // above already snapped the head to one-tick-past-bounce; this puts
@@ -717,7 +717,7 @@ export class ClientViewState {
     if (audioEventsForReflection !== undefined && audioEventsForReflection.length > 0) {
       for (let i = 0; i < audioEventsForReflection.length; i++) {
         const evt = audioEventsForReflection[i];
-        if (evt.type !== 'forceFieldImpact' || evt.entityId === null) continue;
+        if (evt.type !== 'shieldImpact' || evt.entityId === null) continue;
         const entity = this.entities.get(evt.entityId);
         const proj = entity !== undefined ? entity.projectile : null;
         if (proj === null) continue;
@@ -901,9 +901,9 @@ export class ClientViewState {
     return this.projectileStore.getLineProjectileRenderVersion();
   }
 
-  getForceFieldUnits(): Entity[] {
+  getShieldUnits(): Entity[] {
     this.rebuildCachesIfNeeded();
-    return this.cache.getForceFieldUnits();
+    return this.cache.getShieldUnits();
   }
 
   getDamagedUnits(): Entity[] {

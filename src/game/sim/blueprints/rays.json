@@ -1,0 +1,66 @@
+{
+  "rayBeamMini": {
+    "type": "beam",
+    "hitSound": {
+      "$audio": "event.hit.rayBeamMini"
+    },
+    "dps": 15,
+    "force": 100,
+    "recoil": 100,
+    "radius": 1.5,
+    "width": 3,
+    "damageSphere": {
+      "radius": 6
+    },
+    "gravityForceMultiplier": 0,
+    "rayBlueprintId": "rayBeamMini"
+  },
+  "rayBeamMedium": {
+    "type": "beam",
+    "hitSound": {
+      "$audio": "event.hit.rayBeamMedium"
+    },
+    "dps": 30,
+    "force": 200,
+    "recoil": 200,
+    "radius": 3,
+    "width": 6,
+    "damageSphere": {
+      "radius": 12
+    },
+    "gravityForceMultiplier": 0,
+    "rayBlueprintId": "rayBeamMedium"
+  },
+  "rayBeamHeavy": {
+    "type": "beam",
+    "hitSound": {
+      "$audio": "event.hit.rayBeamHeavy"
+    },
+    "dps": 300,
+    "force": 2000,
+    "recoil": 2000,
+    "radius": 8,
+    "width": 16,
+    "damageSphere": {
+      "radius": 32
+    },
+    "gravityForceMultiplier": 0,
+    "rayBlueprintId": "rayBeamHeavy"
+  },
+  "rayBeamMega": {
+    "type": "beam",
+    "hitSound": {
+      "$audio": "event.hit.rayBeamHeavy"
+    },
+    "dps": 1000,
+    "force": 3000,
+    "recoil": 3000,
+    "radius": 8,
+    "width": 16,
+    "damageSphere": {
+      "radius": 32
+    },
+    "gravityForceMultiplier": 0,
+    "rayBlueprintId": "rayBeamMega"
+  }
+}

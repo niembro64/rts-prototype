@@ -120,10 +120,10 @@ function isGameplayResponseCommand(command: Command): boolean {
     case 'setSendGridInfo':
     case 'setBackgroundUnitBlueprintEnabled':
     case 'setMaxTotalUnits':
-    case 'setTurretForceFieldPanelsEnabled':
-    case 'setTurretForceFieldSpheresEnabled':
-    case 'setForceFieldsObstructSight':
-    case 'setForceFieldReflectionMode':
+    case 'setTurretShieldPanelsEnabled':
+    case 'setTurretShieldSpheresEnabled':
+    case 'setShieldsObstructSight':
+    case 'setShieldReflectionMode':
     case 'setFogOfWarEnabled':
       return false;
     default:

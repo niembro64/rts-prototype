@@ -39,7 +39,7 @@ function createPooledSimEvent(): NetworkServerSnapshotSimEvent {
     entityId: null,
     deathContext: null,
     impactContext: null,
-    forceFieldImpact: null,
+    shieldImpact: null,
     killerPlayerId: null,
     victimPlayerId: null,
     audioOnly: null,
@@ -50,7 +50,7 @@ function createPooledSimEvent(): NetworkServerSnapshotSimEvent {
 }
 
 /** Event types whose audio carries beyond their visual through the
- *  FOW-09 earshot pad. ping / attackAlert / forceFieldImpact have no
+ *  FOW-09 earshot pad. ping / attackAlert / shieldImpact have no
  *  one-shot audio in playSimEventAudio, so out-of-vision earshot
  *  forwarding for them would be silent — drop them at the gate. */
 function eventHasEarshotAudio(type: NetworkServerSnapshotSimEvent['type']): boolean {
@@ -61,8 +61,8 @@ function eventHasEarshotAudio(type: NetworkServerSnapshotSimEvent['type']): bool
     case 'death':
     case 'laserStart':
     case 'laserStop':
-    case 'forceFieldStart':
-    case 'forceFieldStop':
+    case 'shieldStart':
+    case 'shieldStop':
       return true;
     default:
       return false;
@@ -124,7 +124,7 @@ export function serializeAudioEvents(
           // outside vision but inside the earshot pad ride along
           // with audioOnly=true; the client plays the sound but
           // skips every visual branch. Inaudible types (ping,
-          // attackAlert, forceFieldImpact) fall through and stay
+          // attackAlert, shieldImpact) fall through and stay
           // dropped — no point forwarding a silent event past its
           // visual gate.
           if (
@@ -150,7 +150,7 @@ export function serializeAudioEvents(
     out.entityId = source.entityId ?? null;
     out.deathContext = source.deathContext ?? null;
     out.impactContext = source.impactContext ?? null;
-    out.forceFieldImpact = source.forceFieldImpact ?? null;
+    out.shieldImpact = source.shieldImpact ?? null;
     out.killerPlayerId = source.killerPlayerId ?? null;
     out.victimPlayerId = source.victimPlayerId ?? null;
     out.audioOnly = audioOnly ? true : null;

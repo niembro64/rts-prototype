@@ -1,7 +1,7 @@
 // Simulation entity types extracted from game/sim/types.ts
 
 import type { BarrelShape } from './config';
-import type { ShotBlueprintId, TurretBlueprintId } from './blueprintIds';
+import type { TurretBlueprintId } from './blueprintIds';
 import type { Vec3 } from './vec2';
 import type { TurretAimStyle, TurretRadiusConfig } from './blueprints';
 import type {
@@ -21,8 +21,8 @@ import type { ResourceCost } from './economyTypes';
 import type {
   ActiveProjectileShot,
   BeamPoint,
+  EmissionConfig,
   ProjectileType,
-  ShotConfig,
   ShotProfile,
 } from './shotTypes';
 
@@ -54,12 +54,13 @@ export type {
   ActiveProjectileShot,
   BeamReflectorKind,
   BeamPoint,
-  BeamShot,
-  ForceFieldBarrierConfig,
-  ForceShot,
-  LaserShot,
-  LineShot,
-  LineShotType,
+  BeamRay,
+  ShieldBarrierConfig,
+  ShieldConfig,
+  EmissionConfig,
+  LaserRay,
+  RayConfig,
+  RayType,
   ProjectileShot,
   ProjectileType,
   ShotConfig,
@@ -68,10 +69,12 @@ export type {
   ShotVisualProfile,
 } from './shotTypes';
 export {
-  LINE_SHOT_TYPES,
+  RAY_TYPES,
+  getEmissionBlueprintId,
   getShotMaxLifespan,
-  isLineShot,
-  isLineShotType,
+  isRayConfig,
+  isRayType,
+  isShieldConfig,
   isProjectileShot,
   isRocketLikeShot,
 } from './shotTypes';
@@ -136,7 +139,7 @@ export type EntityRadii = {
   collision: number;
 };
 
-// Cached force-field panel geometry (pre-computed from blueprint at entity creation).
+// Cached shield panel geometry (pre-computed from blueprint at entity creation).
 // halfWidth — half the panel's edge length (square panel, so the same
 //             value is used for both the horizontal-edge half and the
 //             vertical-edge half via `(topY - baseY) / 2`).
@@ -144,13 +147,13 @@ export type EntityRadii = {
 //            arm's forward direction, resolved from mount-authored geometry.
 // offsetY  — lateral pivot offset (zero for current single-arm panels;
 //            non-zero would mount the arm off-center on the chassis).
-// angle    — panel-yaw offset relative to turretForceFieldPanel yaw (zero today;
-//            reserved for future multi-panel force-field-panel configurations).
+// angle    — panel-yaw offset relative to turretShieldPanel yaw (zero today;
+//            reserved for future multi-panel shield-panel configurations).
 // baseY / topY — world-Z (above the unit's ground footprint) defining the
-//                panel's vertical span. Both are derived in forceFieldPanelCache
+//                panel's vertical span. Both are derived in shieldPanelCache
 //                from `mount.z * unitBodyRadius ± halfSide`, so their
 //                midpoint is the rigid-arm pivot's Z.
-export type CachedForceFieldPanel = {
+export type CachedShieldPanel = {
   halfWidth: number;
   offsetX: number;
   offsetY: number;
@@ -218,8 +221,8 @@ export type Unit = {
   /** Runtime spring state for the visible chassis relative to the
    *  locomotion anchor. Null means rigid legacy attachment. */
   suspension: UnitSuspensionState | null;
-  forceFieldPanels: CachedForceFieldPanel[];
-  forceFieldBoundRadius: number;
+  shieldPanels: CachedShieldPanel[];
+  shieldBoundRadius: number;
   /** Per-unit smoothed surface normal at the unit's footprint. The
    *  terrain mesh is piecewise-flat at the triangle level, so the raw
    *  normal SNAPS each time the unit crosses a triangle edge. The sim
@@ -362,12 +365,12 @@ export type TurretConfig = {
   isManualFire: boolean;
   passive: boolean;
   /** Actual terrain/entity line-of-sight gate for this turret. Cross
-   *  force-field sight obstruction is a separate battle setting. */
+   *  shield sight obstruction is a separate battle setting. */
   requiresNonObstructedLineOfSight: boolean;
   /** Undefined for visual-only construction emitters. Those turrets
    *  mount renderer-owned construction hardware but do not represent a
    *  simulated weapon or projectile. */
-  shot: ShotConfig | undefined;
+  shot: EmissionConfig | undefined;
   turretIndex: number | undefined;
   /** Explicit aiming solver mode. See TurretBlueprint.aimStyle. */
   aimStyle: TurretAimStyle;
@@ -452,7 +455,7 @@ export type ShotSource = {
   /** Canonical team id at launch time. In FFA this equals sourcePlayerId. */
   sourceTeamId: number;
   sourceTurretBlueprintId: TurretBlueprintId | undefined;
-  sourceShotBlueprintId: ShotBlueprintId;
+  sourceShotBlueprintId: string;
   spawnTick: number;
   parentShotEntityId: EntityId | null;
 };
@@ -544,7 +547,7 @@ export type Turret = {
    *  shots. Default true. */
   ballisticAimInRange: boolean;
   burst: { remaining: number; cooldown: number } | undefined;
-  forceField: { transition: number; range: number } | undefined;
+  shield: { transition: number; range: number } | undefined;
   /** Round-robin pointer across the physical barrels on this turret.
    *  Each fired pellet picks barrelIndex = (barrelFireIndex + pellet)
    *  % barrelCount, then the pointer advances by the pellet count.
@@ -564,9 +567,9 @@ export type Projectile = {
   /** Legacy host shortcut. The full immutable provenance lives in shotSource. */
   sourceEntityId: EntityId;
   config: ProjectileConfig;
-  /** Actual shot blueprint id. For normal shots this equals config.shot.shotBlueprintId;
-   *  for submunitions it is the child shot blueprint id. */
-  shotBlueprintId: ShotBlueprintId;
+  /** Actual emission blueprint id. For travelling shots this is the
+   *  shot blueprint id; for active beams/lasers it is the ray blueprint id. */
+  shotBlueprintId: string;
   /** Immutable launch provenance, inherited by submunitions with parentShotEntityId updated. */
   shotSource: ShotSource;
   /** Real turret blueprint id that ultimately authored this projectile.
@@ -645,9 +648,9 @@ export type Projectile = {
   lastSentVelX: number | undefined;
   lastSentVelY: number | undefined;
   lastSentVelZ: number | undefined;
-  /** Client-only one-shot: exact force-field / force-field-panel contact
+  /** Client-only one-shot: exact shield / shield-panel contact
    *  point from the most recent reflection, sourced from the
-   *  unquantized forceFieldImpact audio event. Consumed by the
+   *  unquantized shieldImpact audio event. Consumed by the
    *  curved-cone tail renderer on the next frame as a forced trail
    *  stamp so the tail kinks exactly at the bounce surface instead of
    *  one tick past it. Cleared after consumption. */

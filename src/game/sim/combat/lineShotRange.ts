@@ -1,4 +1,4 @@
-export type LineShotRangeSphere = {
+export type RayConfigRangeSphere = {
   centerX: number;
   centerY: number;
   centerZ: number;
@@ -12,14 +12,14 @@ const LINE_SHOT_RANGE_EPS = 1e-9;
  *  direction. Weapon range is a true 3D envelope — a pitched beam
  *  cannot reach farther than its sphere radius regardless of how much
  *  altitude separates shooter and target. */
-export function distanceToLineShotRangeSphere(
+export function distanceToRayConfigRangeSphere(
   startX: number,
   startY: number,
   startZ: number,
   dirX: number,
   dirY: number,
   dirZ: number,
-  sphere: LineShotRangeSphere,
+  sphere: RayConfigRangeSphere,
 ): number | null {
   const a = dirX * dirX + dirY * dirY + dirZ * dirZ;
   if (a <= LINE_SHOT_RANGE_EPS) return null;
@@ -40,17 +40,17 @@ export function distanceToLineShotRangeSphere(
   return best >= 0 ? best : null;
 }
 
-export function resolveLineShotRangeSphereEndpoint(
+export function resolveRayConfigRangeSphereEndpoint(
   startX: number,
   startY: number,
   startZ: number,
   dirX: number,
   dirY: number,
   dirZ: number,
-  sphere: LineShotRangeSphere,
+  sphere: RayConfigRangeSphere,
   out: { x: number; y: number; z: number },
 ): { x: number; y: number; z: number } {
-  const distance = distanceToLineShotRangeSphere(
+  const distance = distanceToRayConfigRangeSphere(
     startX, startY, startZ, dirX, dirY, dirZ, sphere,
   );
   if (distance === null) {

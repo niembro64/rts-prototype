@@ -564,10 +564,10 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   // commander still uses the turret's own motion, but never let
   // vertical mount velocity turn it into a ballistic shell.
   const dgunShot = turretDisruptor.config.shot;
-  if (!dgunShot || dgunShot.type === 'forceField') {
-    throw new Error('D-gun turret must use a projectile, beam, or laser shot');
+  if (!dgunShot || !isProjectileShot(dgunShot)) {
+    throw new Error('D-gun turret must use a projectile shot');
   }
-  const speed = isProjectileShot(dgunShot) ? getProjectileLaunchSpeed(dgunShot) : 350;
+  const speed = getProjectileLaunchSpeed(dgunShot);
   let velocityX = Math.cos(fireAngle) * speed;
   let velocityY = Math.sin(fireAngle) * speed;
   let velocityZ = 0;

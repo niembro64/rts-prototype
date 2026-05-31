@@ -17,10 +17,10 @@ export type {
   EmaHighConfig,
   EmaMsConfig,
   KnockbackConfig,
-  ForceFieldVisualConfig,
-  ForceFieldImpactVisualConfig,
-  ForceFieldTurretShape,
-  ForceFieldTurretConfig,
+  ShieldVisualConfig,
+  ShieldImpactVisualConfig,
+  ShieldTurretShape,
+  ShieldTurretConfig,
   SpinConfig,
   BarrelShape,
   MapSize,
@@ -37,9 +37,9 @@ import type {
   EmaTierConfig,
   EmaMsConfig,
   KnockbackConfig,
-  ForceFieldVisualConfig,
-  ForceFieldImpactVisualConfig,
-  ForceFieldTurretConfig,
+  ShieldVisualConfig,
+  ShieldImpactVisualConfig,
+  ShieldTurretConfig,
   MapSize,
 } from './types/config';
 import type { CameraAnchor } from './types/camera';
@@ -53,7 +53,7 @@ import snapshotConfigJson from './snapshotConfig.json';
 import emaConfigJson from './emaConfig.json';
 import combatConfigJson from './combatConfig.json';
 import worldRenderConfigJson from './worldRenderConfig.json';
-import forceFieldVisualConfigJson from './forceFieldVisualConfig.json';
+import shieldVisualConfigJson from './shieldVisualConfig.json';
 import explosionConfigJson from './explosionConfig.json';
 import entityHudConfigJson from './entityHudConfig.json';
 import telemetryConfigJson from './telemetryConfig.json';
@@ -207,13 +207,13 @@ export const KEYFRAME_RATIO_OPTIONS = SERVER_CONFIG.keyframe.options;
 export const DEFAULT_SNAPSHOT_RATE = SERVER_CONFIG.snapshot.default;
 export const SNAPSHOT_RATE_OPTIONS = SERVER_CONFIG.snapshot.options;
 export const MAX_TOTAL_UNITS = BATTLE_CONFIG.cap.default;
-export const DEFAULT_TURRET_FORCE_FIELD_PANELS_ENABLED = BATTLE_CONFIG.turretForceFieldPanelsEnabled.default;
-export const DEFAULT_TURRET_FORCE_FIELD_SPHERES_ENABLED =
-  BATTLE_CONFIG.turretForceFieldSpheresEnabled.default;
-export const DEFAULT_FORCE_FIELDS_OBSTRUCT_SIGHT =
-  BATTLE_CONFIG.forceFieldsObstructSight.default;
-export const DEFAULT_FORCE_FIELD_REFLECTION_MODE =
-  BATTLE_CONFIG.forceFieldReflectionMode.default;
+export const DEFAULT_TURRET_SHIELD_PANELS_ENABLED = BATTLE_CONFIG.turretShieldPanelsEnabled.default;
+export const DEFAULT_TURRET_SHIELD_SPHERES_ENABLED =
+  BATTLE_CONFIG.turretShieldSpheresEnabled.default;
+export const DEFAULT_SHIELDS_OBSTRUCT_SIGHT =
+  BATTLE_CONFIG.shieldsObstructSight.default;
+export const DEFAULT_SHIELD_REFLECTION_MODE =
+  BATTLE_CONFIG.shieldReflectionMode.default;
 export const BAR_COLORS = BAR_THEMES;
 
 // =============================================================================
@@ -265,7 +265,7 @@ export const MAX_TICK_DT_MS = sharedSimConstants.maxTickDtMs;
  *  Segment 1 is launch origin -> first hit/range, segment 2 is after the
  *  first reflector, and so on. If the final allowed segment ends on a
  *  reflector, the beam terminates there and does not get endpoint
- *  damage. This prevents force-field-panel / force-field-sphere loops
+ *  damage. This prevents shield-panel / shield-sphere loops
  *  from producing unbounded traces or arbitrary damage spheres. */
 export const BEAM_MAX_SEGMENTS = combatConfigJson.beamMaxSegments;
 
@@ -701,32 +701,32 @@ export const BURN_COOL_TAU = worldRenderConfigJson.burnMark.coolTauMs; // color 
 
 /** Force-field shield visual configuration. The bubble renders at
  *  every tier; the MAX-tier orbital rings are tuned via RING_*
- *  constants inside ForceFieldRenderer3D rather than here. */
-export const FORCE_FIELD_VISUAL: ForceFieldVisualConfig =
+ *  constants inside ShieldRenderer3D rather than here. */
+export const SHIELD_VISUAL: ShieldVisualConfig =
   {
-    ...forceFieldVisualConfigJson.shield,
-    fallbackColor: COLORS.effects.forceField.shield.fallbackColorHex,
-  } as ForceFieldVisualConfig;
+    ...shieldVisualConfigJson.shield,
+    fallbackColor: COLORS.effects.shield.shield.fallbackColorHex,
+  } as ShieldVisualConfig;
 
 /** Force-field projectile interception visual.
  *  The burst is a flat tangent-plane pulse at the sphere intersection:
  *  its plane normal is the shield surface normal, so the expanding ring
  *  lies 90 degrees from the impact normal. Ring opacity matches the
- *  force-field / force-field panel transparency. */
-export const FORCE_FIELD_IMPACT_VISUAL: ForceFieldImpactVisualConfig =
+ *  shield / shield panel transparency. */
+export const SHIELD_IMPACT_VISUAL: ShieldImpactVisualConfig =
   {
-    ...forceFieldVisualConfigJson.impact,
-    fallbackColor: COLORS.effects.forceField.impact.fallbackColorHex,
-    ringOpacity: COLORS.effects.forceField.impact.ringOpacity,
-    coreOpacity: COLORS.effects.forceField.impact.coreOpacity,
-  } as ForceFieldImpactVisualConfig;
+    ...shieldVisualConfigJson.impact,
+    fallbackColor: COLORS.effects.shield.impact.fallbackColorHex,
+    ringOpacity: COLORS.effects.shield.impact.ringOpacity,
+    coreOpacity: COLORS.effects.shield.impact.coreOpacity,
+  } as ShieldImpactVisualConfig;
 
 /**
- * Force field turret (grate) configuration per unit blueprint.
+ * Shield turret (grate) configuration per unit blueprint.
  * All length/width values are multipliers of the unit's collision radius.
  */
-export const FORCE_FIELD_TURRET: Record<string, ForceFieldTurretConfig> =
-  forceFieldVisualConfigJson.turret as Record<string, ForceFieldTurretConfig>;
+export const SHIELD_TURRET: Record<string, ShieldTurretConfig> =
+  shieldVisualConfigJson.turret as Record<string, ShieldTurretConfig>;
 
 // =============================================================================
 // CHASSIS MOUNT POINTS

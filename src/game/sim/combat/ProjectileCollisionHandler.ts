@@ -1,8 +1,8 @@
 // Projectile collision detection and damage application
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId, ProjectileShot, BeamShot, LaserShot, ShotSource } from '../types';
-import { isLineShotType, isProjectileShot } from '../types';
+import type { Entity, EntityId, ProjectileShot, BeamRay, LaserRay, ShotSource } from '../types';
+import { getEmissionBlueprintId, isRayType, isProjectileShot } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type {
@@ -20,23 +20,23 @@ import { createProjectileConfigFromShot } from '../projectileConfigs';
 import { getSurfaceNormal, isWaterAt } from '../Terrain';
 import { spatialGrid } from '../SpatialGrid';
 import { LAND_CELL_SIZE } from '../../../config';
-import { getActiveForceFields } from './forceFieldTurret';
-import { REFLECTIVE_FORCE_FIELD_MATERIAL } from '../blueprints/forceFieldMaterials';
+import { getActiveShields } from './shieldTurret';
+import { REFLECTIVE_SHIELD_MATERIAL } from '../blueprints/shieldMaterials';
 import { getSimWasm } from '../../sim-wasm/init';
 import { updateProjectileSourceClearance } from './combatUtils';
 import { writeTurretCooldownToSlab } from './combatActivitySlab';
 
-const FORCE_FIELD_PANEL_PROJECTILE_QUERY_PAD = 96;
+const SHIELD_PANEL_PROJECTILE_QUERY_PAD = 96;
 const MAX_PROJECTILE_SWEEP_DISTANCE = LAND_CELL_SIZE * 64;
 const MAX_PROJECTILE_SWEEP_DISTANCE_SQ =
   MAX_PROJECTILE_SWEEP_DISTANCE * MAX_PROJECTILE_SWEEP_DISTANCE;
 const MAX_REFLECTOR_IMPACT_EVENTS_PER_PASS = 96;
 const REFLECTOR_HIT_KIND_NONE = 0;
 // Materials Are Independent Of Shape: a projectile reflecting off either the
-// force-field sphere or a flat force-field panel reports one kind. The shape
+// shield sphere or a flat shield panel reports one kind. The shape
 // only decided where the hit was and what the normal looks like; the reflection
 // response and impact are identical.
-const REFLECTOR_HIT_KIND_FORCE_FIELD = 1;
+const REFLECTOR_HIT_KIND_SHIELD = 1;
 
 function isValidProjectileSweep(
   prevX: number, prevY: number, prevZ: number,
@@ -131,9 +131,9 @@ function computeProjectileReflectorHits(
   ensureReflectorBatchCapacity(count);
   _reflectorHitKind.fill(REFLECTOR_HIT_KIND_NONE, 0, count);
 
-  const mirrorsActive = world.turretForceFieldPanelsEnabled && world.getForceFieldPanelUnits().length > 0;
-  const forceFieldsActive = world.turretForceFieldSpheresEnabled && getActiveForceFields().length > 0;
-  if (!mirrorsActive && !forceFieldsActive) return;
+  const mirrorsActive = world.turretShieldPanelsEnabled && world.getShieldPanelUnits().length > 0;
+  const shieldsActive = world.turretShieldSpheresEnabled && getActiveShields().length > 0;
+  if (!mirrorsActive && !shieldsActive) return;
 
   let enabledCount = 0;
   for (let i = 0; i < count; i++) {
@@ -180,8 +180,8 @@ function computeProjectileReflectorHits(
     _reflectorProjectileRadius.subarray(0, count),
     _reflectorExcludeEntityId.subarray(0, count),
     mirrorsActive ? 1 : 0,
-    forceFieldsActive ? 1 : 0,
-    FORCE_FIELD_PANEL_PROJECTILE_QUERY_PAD,
+    shieldsActive ? 1 : 0,
+    SHIELD_PANEL_PROJECTILE_QUERY_PAD,
     _reflectorHitKind.subarray(0, count),
     _reflectorHitEntityId.subarray(0, count),
     _reflectorHitT.subarray(0, count),
@@ -194,10 +194,10 @@ function computeProjectileReflectorHits(
   );
 }
 
-function forceFieldMaterialReflectsProjectile(isRocketShot: boolean): boolean {
+function shieldMaterialReflectsProjectile(isRocketShot: boolean): boolean {
   const response = isRocketShot
-    ? REFLECTIVE_FORCE_FIELD_MATERIAL.projectileResponse.rocket
-    : REFLECTIVE_FORCE_FIELD_MATERIAL.projectileResponse.plasma;
+    ? REFLECTIVE_SHIELD_MATERIAL.projectileResponse.rocket
+    : REFLECTIVE_SHIELD_MATERIAL.projectileResponse.plasma;
   return response === 'reflect';
 }
 
@@ -232,18 +232,18 @@ function pushReflectorImpactEvent(
   normalZ: number,
   playerId: number | undefined,
 ): void {
-  // Materials Are Independent Of Shape: the force-field material's impact
+  // Materials Are Independent Of Shape: the shield material's impact
   // reaction (sound, particles) is identical whether a projectile reflected
   // off the sphere shape or a flat-panel shape — one source key for both.
   audioEvents.push({
-    type: 'forceFieldImpact',
-    turretBlueprintId: 'turretForceFieldSphere',
+    type: 'shieldImpact',
+    turretBlueprintId: 'turretShieldSphere',
     sourceType: 'turret',
-    sourceKey: 'turretForceFieldSphere',
+    sourceKey: 'turretShieldSphere',
     pos: { x, y, z },
     playerId,
     entityId: projectileEntityId,
-    forceFieldImpact: {
+    shieldImpact: {
       normal: { x: normalX, y: normalY, z: normalZ },
       playerId: playerId ?? 0,
     },
@@ -664,8 +664,8 @@ export function checkProjectileCollisions(
 
     const proj = projEntity.projectile;
     const config = proj.config;
-    // Projectile entities always use projectile/beam/laser shot types (never force)
-    const shotBlueprintId = (config.shot as ProjectileShot | BeamShot | LaserShot).shotBlueprintId;
+    // Projectile entities always use projectile/ray emission types (never shields).
+    const shotBlueprintId = getEmissionBlueprintId(config.shot as ProjectileShot | BeamRay | LaserRay);
     const damageSourceKey = proj.sourceTurretBlueprintId ?? shotBlueprintId;
     const damageSourceType: SimEventSourceType = proj.sourceTurretBlueprintId ? 'turret' : 'system';
     const dgunProjectile = projEntity.dgunProjectile;
@@ -686,12 +686,12 @@ export function checkProjectileCollisions(
       }
     }
 
-    // Reflector contacts — force-field panels and force-field spheres are the
+    // Reflector contacts — shield panels and shield spheres are the
     // same reflector material. Normal traveling projectiles skip off the
     // surface with the same vector reflection math beams use; per-shot-type
-    // behavior comes from the force-field material. Beams/lasers are handled
+    // behavior comes from the shield material. Beams/lasers are handled
     // by their own line path.
-    let hitForceField = false;
+    let hitShield = false;
     let reflectedProjectile = false;
     let reflectorNormalX: number | undefined;
     let reflectorNormalY: number | undefined;
@@ -720,10 +720,10 @@ export function checkProjectileCollisions(
         } else {
           reflectorPlayerId = undefined;
         }
-        hitForceField = reflectorKind === REFLECTOR_HIT_KIND_FORCE_FIELD;
+        hitShield = reflectorKind === REFLECTOR_HIT_KIND_SHIELD;
       }
       if (bestT < Infinity) {
-        const shouldReflectProjectile = forceFieldMaterialReflectsProjectile(isRocketShot);
+        const shouldReflectProjectile = shieldMaterialReflectsProjectile(isRocketShot);
         const reflected = shouldReflectProjectile &&
           reflectorNormalX !== undefined &&
           reflectorNormalY !== undefined &&
@@ -731,7 +731,7 @@ export function checkProjectileCollisions(
           ? reflectVelocityPreserveSpeed(
               proj.velocityX, proj.velocityY, proj.velocityZ,
               reflectorNormalX, reflectorNormalY, reflectorNormalZ,
-              REFLECTIVE_FORCE_FIELD_MATERIAL.reflection.reflectivity,
+              REFLECTIVE_SHIELD_MATERIAL.reflection.reflectivity,
             )
           : null;
         if (reflected) {
@@ -811,7 +811,7 @@ export function checkProjectileCollisions(
     const groundZAtProj = world.getGroundZ(projEntity.transform.x, projEntity.transform.y);
     const hitGround =
       !reflectedProjectile &&
-      !hitForceField &&
+      !hitShield &&
       proj.projectileType === 'projectile' &&
       proj.hasLeftSource &&
       projEntity.transform.z <= groundZAtProj;
@@ -852,7 +852,7 @@ export function checkProjectileCollisions(
     }
 
     // Check if the projectile hit a terminal timeout, ground, or barrier.
-    const terminalReflectorHit = hitForceField && !reflectedProjectile;
+    const terminalReflectorHit = hitShield && !reflectedProjectile;
     const healthZero = proj.projectileType === 'projectile' && proj.hp <= 0;
     const expired = proj.timeAlive >= proj.maxLifespan;
     if (expired || hitGround || terminalReflectorHit || healthZero) {
@@ -1020,7 +1020,7 @@ export function checkProjectileCollisions(
     }
 
     // Handle different projectile types with unified damage system
-    if (isLineShotType(proj.projectileType)) {
+    if (isRayType(proj.projectileType)) {
       if (proj.obstructionTick === undefined) {
         // A newly-created beam that has not received its first
         // authoritative trace should not deal endpoint damage at its
@@ -1028,7 +1028,7 @@ export function checkProjectileCollisions(
         continue;
       }
       // Beam/laser damage: single area zone at truncated endpoint
-      const beamShot = config.shot as BeamShot | LaserShot;
+      const beamShot = config.shot as BeamRay | LaserRay;
       const points = proj.points;
       const lastPoint = points && points.length >= 2 ? points[points.length - 1] : undefined;
       const impactX = lastPoint !== undefined ? lastPoint.x : projEntity.transform.x;
@@ -1367,7 +1367,7 @@ export function checkProjectileCollisions(
   // Remove expired projectiles (and clean up beam index for any beams)
   for (const id of projectilesToRemove) {
     const entity = world.getEntity(id);
-    if (entity !== undefined && entity.projectile !== null && isLineShotType(entity.projectile.projectileType)) {
+    if (entity !== undefined && entity.projectile !== null && isRayType(entity.projectile.projectileType)) {
       const proj = entity.projectile;
       const weaponIdx = proj.config.turretIndex ?? 0;
       beamIndex.removeBeam(proj.sourceEntityId, weaponIdx);

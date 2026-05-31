@@ -97,45 +97,6 @@ A41. [MEDIUM] Hosts spawn whole, not built bottom-up piece by piece.
     interrupting leaves exactly the pieces already built. (Reverse of A39 per-piece death; depends
     on A38 per-piece cost/health.)
 
-A44. [MEDIUM] Rays (beams/lasers) and shields ("force fields") are modelled as "shot" variants, but
-    the new design makes a shot a destructible BODY — rays/shields are sustained emissions with no
-    mass or health and cannot be shots. Also rename "force field" -> "shield", group beam+laser
-    under a new "ray" kind, and split each emission kind into its own blueprint file.
-    src/types/shotTypes.ts (one ShotConfig umbrella: plasma/rocket projectiles, beam/laser line
-    shots via LINE_SHOT_TYPES, and the forceField barrier variant; ForceField* types ~2-23),
-    src/game/sim/blueprints/shots.json (all three families share one file),
-    src/game/sim/blueprints/forceFieldMaterials.json, src/forceFieldVisualConfig.json, and the
-    ~30 files referencing forceField (colorsConfig.json, battleBarConfig, audioConfig,
-    RtsScene3D.ts, init.ts, stateSerializer*, ClientViewState.ts, blueprintSchema.generated.ts,
-    rts-sim-wasm/src/lib.rs, etc. — grep "forceField"). —
-    RULE: new "Atomic Gameplay Pieces" split — a turret emits exactly one of THREE separate kinds,
-    each in its own blueprint file: shot (a travelling munition that IS a body: mass, health, death
-    explosion, own EntityId; shots.json), ray (a sustained line emission whose variants are the
-    continuous "beam" and timed "laser" — no body/mass/health/id, attributed through its emitter;
-    rays.json), and shield (a sustained barrier emission, formerly "force field" — no
-    body/mass/health/id; shields.json + shieldMaterials.json). Only the shot is a body and obeys the
-    base ledger (A38); rays and shields are emitter-bound emissions. ("Every entity shares one
-    base ledger" now explicitly excludes ray/shield.) —
-    PROBLEM: shotTypes.ts lumps projectile/beam/laser/forceField under one ShotConfig umbrella, so
-    the "every shot has health and detonates at zero" rule would nonsensically demand health and
-    mass on a ray of light or a wall of energy. The barrier variant is named forceField across ~30
-    files, beam/laser have no shared "ray" grouping, and all three emission families live in one
-    shots.json. —
-    FIX: (1) split the umbrella into three top-level emission kinds; move the line emissions into a
-    "ray" kind (beam and laser are its variants) in rays.json and the barrier into shields.json,
-    leaving only plasma/rocket in shots.json. (2) rename forceField -> shield everywhere: type names
-    (ForceFieldShotBlueprint -> ShieldBlueprint, ForceFieldBarrierConfig -> ShieldBarrierConfig,
-    ForceFieldReflectionMode -> ShieldReflectionMode, ForceFieldMaterialBlueprint ->
-    ShieldMaterialBlueprint, ...), the shot-type discriminator 'forceField' -> 'shield', blueprint
-    ids (turretForceFieldPanel -> turretShieldPanel, turretForceFieldSphere -> turretShieldSphere,
-    forceFieldPanelShot/forceFieldBarrierShot -> shield*, reflectiveForceField -> reflectiveShield),
-    files (forceFieldMaterials.json -> shieldMaterials.json, forceFieldVisualConfig.json ->
-    shieldVisualConfig.json), and the config/audio/color keys. (3) introduce the "ray" kind grouping
-    beam+laser (LINE_SHOT_TYPES) with rays.json; keep beam/laser as the two ray variants. (4) keep
-    projectile-shot health on shots but NOT rays/shields. Land the type changes in the shared schema
-    (A38 generation path) so TS and Rust cannot drift. (Pairs with A38 base ledger.)
-
-
 --------------------------------------------------------------------------------
 Items A45-A49 added 2026-05-30 alongside a design-direction expansion of
 budget_design_philosophy.html "Resource Movement Flows Through Pylons" (new

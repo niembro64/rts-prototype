@@ -1,6 +1,6 @@
 import type { NetworkServerSnapshotMeta } from '../network/NetworkTypes';
 import type { KeyframeRatio, SnapshotRate, TickRate } from '../../types/server';
-import type { ForceFieldReflectionMode } from '../../types/shotTypes';
+import type { ShieldReflectionMode } from '../../types/shotTypes';
 import type { UnitGroundNormalEmaMode } from '../../shellConfig';
 
 export type ServerSnapshotMetaInput = {
@@ -14,10 +14,10 @@ export type ServerSnapshotMetaInput = {
   allowedUnits: Iterable<string> | undefined;
   maxUnits: number | undefined;
   unitCount: number | undefined;
-  turretForceFieldPanelsEnabled: boolean | undefined;
-  turretForceFieldSpheresEnabled: boolean | undefined;
-  forceFieldsObstructSight: boolean | undefined;
-  forceFieldReflectionMode: ForceFieldReflectionMode | undefined;
+  turretShieldPanelsEnabled: boolean | undefined;
+  turretShieldSpheresEnabled: boolean | undefined;
+  shieldsObstructSight: boolean | undefined;
+  shieldReflectionMode: ShieldReflectionMode | undefined;
   fogOfWarEnabled: boolean | undefined;
   converterTax: number | undefined;
   tickMsAvg: number;
@@ -66,10 +66,10 @@ export class ServerSnapshotMetaBuilder {
         max: input.maxUnits,
         count: input.unitCount,
       },
-      turretForceFieldPanelsEnabled: input.turretForceFieldPanelsEnabled,
-      turretForceFieldSpheresEnabled: input.turretForceFieldSpheresEnabled,
-      forceFieldsObstructSight: input.forceFieldsObstructSight,
-      forceFieldReflectionMode: input.forceFieldReflectionMode,
+      turretShieldPanelsEnabled: input.turretShieldPanelsEnabled,
+      turretShieldSpheresEnabled: input.turretShieldSpheresEnabled,
+      shieldsObstructSight: input.shieldsObstructSight,
+      shieldReflectionMode: input.shieldReflectionMode,
       fogOfWarEnabled: input.fogOfWarEnabled,
       converterTax: input.converterTax,
       cpu: { avg: cpuAvg, hi: cpuHi },

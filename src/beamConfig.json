@@ -14,10 +14,10 @@
     "minRadius": 0.1,
     "color": "#ffffff",
     "emissionOffset": {
-      "shotBeamMini": 8,
-      "shotBeamMedium": 18,
-      "shotBeamHeavy": 50,
-      "shotBeamMega": 60
+      "rayBeamMini": 8,
+      "rayBeamMedium": 18,
+      "rayBeamHeavy": 50,
+      "rayBeamMega": 60
     }
   },
   "startPointTorus": [

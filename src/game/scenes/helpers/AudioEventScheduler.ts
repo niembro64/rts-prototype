@@ -1,6 +1,6 @@
 // Audio event scheduler with smoothing.
 // Spreads one-shot audio events across the snapshot interval to avoid
-// bursts of simultaneous sounds. Continuous sound events (laser/forceField
+// bursts of simultaneous sounds. Continuous sound events (laser/shield
 // start/stop) are always played immediately.
 
 import type { NetworkServerSnapshotSimEvent } from '../../network/NetworkTypes';
@@ -28,7 +28,7 @@ export class AudioEventScheduler {
 
   /**
    * Schedule audio events from a new snapshot.
-   * Continuous events (laser/forceField start/stop) bypass smoothing.
+   * Continuous events (laser/shield start/stop) bypass smoothing.
    * Returns nothing — calls `play` for immediate events, queues the rest.
    */
   schedule(
@@ -40,7 +40,7 @@ export class AudioEventScheduler {
     for (const event of events) {
       const isContinuous =
         event.type === 'laserStart' || event.type === 'laserStop' ||
-        event.type === 'forceFieldStart' || event.type === 'forceFieldStop';
+        event.type === 'shieldStart' || event.type === 'shieldStop';
 
       if (!smoothingEnabled || isContinuous) {
         play(event);

@@ -1,9 +1,9 @@
 // Unified Damage System
-// Handles all damage types consistently: line (beams), swept (projectiles), area (splash/force field)
+// Handles all damage types consistently: line (beams), swept (projectiles), area (splash/shield)
 // PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full entity scans
 
 import type { WorldState } from '../WorldState';
-import type { BeamReflectorKind, Entity, EntityId, LineShotType, PlayerId, Turret, UnitLocomotion } from '../types';
+import type { BeamReflectorKind, Entity, EntityId, RayType, PlayerId, Turret, UnitLocomotion } from '../types';
 import { isProjectileShot, NO_ENTITY_ID } from '../types';
 import type {
   AnyDamageSource,
@@ -22,13 +22,13 @@ import {
 } from '../../../config';
 import { spatialGrid } from '../SpatialGrid';
 import { magnitude, lineCircleIntersectionT, lineSphereIntersectionT, lineRectIntersectionT, rayBoxIntersectionT, isPointInSlice, getTransformCosSin } from '../../math';
-import { findClosestPanelHit } from '../combat/ForceFieldPanelHit';
-import { findForceFieldSegmentIntersection } from '../combat/forceFieldTurret';
-import { REFLECTIVE_FORCE_FIELD_MATERIAL } from '../blueprints/forceFieldMaterials';
+import { findClosestPanelHit } from '../combat/ShieldPanelHit';
+import { findShieldSegmentIntersection } from '../combat/shieldTurret';
+import { REFLECTIVE_SHIELD_MATERIAL } from '../blueprints/shieldMaterials';
 import { getTargetRadius, resolveWeaponWorldMount } from '../combat/combatUtils';
 import {
-  distanceToLineShotRangeSphere,
-  type LineShotRangeSphere,
+  distanceToRayConfigRangeSphere,
+  type RayConfigRangeSphere,
 } from '../combat/lineShotRange';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../../types/network';
 import {
@@ -129,7 +129,7 @@ type BeamReflectorPoint = {
 
 // Reusable result for findBeamSegmentHit. `z` is the world altitude
 // of the hit point; `normalX/Y/Z` is the reflector's outward-facing
-// 3D normal. Mirrors use their panel normal, force fields use the
+// 3D normal. Mirrors use their panel normal, shields use the
 // sphere surface normal.
 const _segHit = {
   t: 0,
@@ -145,7 +145,7 @@ const _segHit = {
   reflectorKind: undefined as BeamReflectorKind | undefined,
   reflectorPlayerId: undefined as PlayerId | undefined,
 };
-const _forceFieldPanelPivot = { x: 0, y: 0, z: 0 };
+const _shieldPanelPivot = { x: 0, y: 0, z: 0 };
 const _subEntityPoint = { x: 0, y: 0, z: 0 };
 
 const BEAM_GROUND_HIT_STEPS = 12;
@@ -238,18 +238,18 @@ export class DamageSystem {
     return closestEntityId !== NO_ENTITY_ID ? { t: closestT, entityId: closestEntityId } : null;
   }
 
-  // Find beam path with reflections off mirror units and force-field
+  // Find beam path with reflections off mirror units and shield
   // spheres — full 3D.
   //
   // Damage is clipped at the first of: a unit hit, a building hit, a
   // ground hit, the firing turret's 3D range sphere, or the configured
-  // max segment count. Mirrors and force fields bounce; reflected
+  // max segment count. Mirrors and shields bounce; reflected
   // segments are clipped against the same original sphere so the total
   // 3D path length cannot exceed the weapon's physical reach. A
   // range-sphere endpoint is an open ray for visuals, not a physical
   // impact point.
   //
-  // Force-field panels are tilted rectangles; force fields are spherical
+  // Force-field panels are tilted rectangles; shields are spherical
   // reflectors whose response comes from their shared material. Buildings
   // are 3D AABBs (x/y footprint × z depth), so a high-arc beam can pass
   // over a short building and hit the reflector behind it.
@@ -258,9 +258,9 @@ export class DamageSystem {
     endX: number, endY: number, endZ: number,
     sourceEntityId: EntityId,
     lineWidth: number,
-    lineShotType: LineShotType = 'beam',
+    lineShotType: RayType = 'beam',
     maxSegments: number = 4,
-    rangeSphere: LineShotRangeSphere | undefined = undefined,
+    rangeSphere: RayConfigRangeSphere | undefined = undefined,
   ): {
     endX: number; endY: number; endZ: number;
     obstructionT: number | undefined;
@@ -285,7 +285,7 @@ export class DamageSystem {
         const segLen = Math.hypot(segDx, segDy, segDz);
         if (segLen <= 1e-9) break;
         const invSegLen = 1 / segLen;
-        const sphereDistance = distanceToLineShotRangeSphere(
+        const sphereDistance = distanceToRayConfigRangeSphere(
           curSX, curSY, curSZ,
           segDx * invSegLen, segDy * invSegLen, segDz * invSegLen,
           rangeSphere,
@@ -344,7 +344,7 @@ export class DamageSystem {
         };
       }
 
-      const reflectorKind = hit.reflectorKind ?? 'forceField';
+      const reflectorKind = hit.reflectorKind ?? 'shield';
       const reflection: BeamReflectorPoint = {
         x: hit.x,
         y: hit.y,
@@ -357,7 +357,7 @@ export class DamageSystem {
         normalZ: hit.normalZ,
       };
 
-      if (REFLECTIVE_FORCE_FIELD_MATERIAL.projectileResponse[lineShotType] !== 'reflect') {
+      if (REFLECTIVE_SHIELD_MATERIAL.projectileResponse[lineShotType] !== 'reflect') {
         return {
           endX: hit.x,
           endY: hit.y,
@@ -404,7 +404,7 @@ export class DamageSystem {
       const beamDirZ = segDz / segLen;
 
       // Reflect around the reflector's full 3D normal. Mirrors provide
-      // a panel normal; force fields provide the sphere surface normal.
+      // a panel normal; shields provide the sphere surface normal.
       const normalLen = Math.hypot(hit.normalX, hit.normalY, hit.normalZ);
       if (normalLen <= 1e-9) {
         return {
@@ -447,7 +447,7 @@ export class DamageSystem {
       curSY = hit.y;
       curSZ = hit.z;
       if (rangeSphere) {
-        const sphereDistance = distanceToLineShotRangeSphere(
+        const sphereDistance = distanceToRayConfigRangeSphere(
           curSX, curSY, curSZ,
           reflDirX, reflDirY, reflDirZ,
           rangeSphere,
@@ -464,7 +464,7 @@ export class DamageSystem {
       } else {
         const travelled = Math.max(0, Math.min(segLen, segLen * hit.t));
         remainingRange = Math.max(0, remainingRange - travelled)
-          * REFLECTIVE_FORCE_FIELD_MATERIAL.reflection.reflectivity;
+          * REFLECTIVE_SHIELD_MATERIAL.reflection.reflectivity;
         if (remainingRange <= 1e-6) {
           curEX = hit.x;
           curEY = hit.y;
@@ -491,7 +491,7 @@ export class DamageSystem {
     };
   }
 
-  // Find closest beam hit — checks force-field panel rectangles AND regular
+  // Find closest beam hit — checks shield panel rectangles AND regular
   // entity colliders, all in 3D.
   //   excludeEntityId: on bounce 0 = source (don't hit self), on bounce N = last mirror hit
   //   excludePanelIndex: -1 = exclude entire entity, >= 0 = exclude only that panel
@@ -557,22 +557,22 @@ export class DamageSystem {
       // the unit's bounding radius.
       const ux = unit.transform.x - startX, uy = unit.transform.y - startY;
       const crossSq = (ux * dy - uy * dx);
-      const panels = unit.unit.forceFieldPanels;
-      const mirrorsActive = this.world.turretForceFieldPanelsEnabled && panels.length > 0;
+      const panels = unit.unit.shieldPanels;
+      const mirrorsActive = this.world.turretShieldPanelsEnabled && panels.length > 0;
       const boundR = mirrorsActive
-        ? Math.max(unit.unit.forceFieldBoundRadius, unit.unit.radius.hitbox) + lineWidth
+        ? Math.max(unit.unit.shieldBoundRadius, unit.unit.radius.hitbox) + lineWidth
         : unit.unit.radius.hitbox + lineWidth / 2;
       if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
 
       if (mirrorsActive) {
         // Mirror unit: 3D ray-vs-tilted-rectangle for each panel
-        // (yaw + pitch from the turretForceFieldPanel rotation/pitch).
+        // (yaw + pitch from the turretShieldPanel rotation/pitch).
         const unitCombat = unit.combat;
         const unitTurrets = unitCombat !== null ? unitCombat.turrets : null;
-        const forceFieldPanelRot = unitTurrets && unitTurrets.length > 0
+        const shieldPanelRot = unitTurrets && unitTurrets.length > 0
           ? unitTurrets[0].rotation
           : unit.transform.rotation;
-        const forceFieldPanelPitch = unitTurrets && unitTurrets.length > 0
+        const shieldPanelPitch = unitTurrets && unitTurrets.length > 0
           ? unitTurrets[0].pitch
           : 0;
         const unitGroundZ = getUnitGroundZ(unit);
@@ -586,12 +586,12 @@ export class DamageSystem {
                 unitGroundZ,
                 surfaceN: unit.unit.surfaceNormal,
               },
-              _forceFieldPanelPivot,
+              _shieldPanelPivot,
             )
           : undefined;
         const panelExclude = isExcludedEntity ? excludePanelIndex : -1;
         const hit = findClosestPanelHit(
-          panels, forceFieldPanelRot, forceFieldPanelPitch,
+          panels, shieldPanelRot, shieldPanelPitch,
           unit.transform.x, unit.transform.y, unitGroundZ,
           startX, startY, startZ, endX, endY, endZ,
           panelExclude,
@@ -609,7 +609,7 @@ export class DamageSystem {
           _segHit.normalY = hit.normalY;
           _segHit.normalZ = hit.normalZ;
           _segHit.panelIndex = hit.panelIndex;
-          _segHit.reflectorKind = 'forceField';
+          _segHit.reflectorKind = 'shield';
           _segHit.reflectorPlayerId = unit.ownership !== null
             ? unit.ownership.playerId
             : undefined;
@@ -640,26 +640,26 @@ export class DamageSystem {
       }
     }
 
-    if (this.world.turretForceFieldSpheresEnabled) {
-      const forceFieldHit = findForceFieldSegmentIntersection(
+    if (this.world.turretShieldSpheresEnabled) {
+      const shieldHit = findShieldSegmentIntersection(
         this.world,
         startX, startY, startZ,
         endX, endY, endZ,
       );
-      if (forceFieldHit !== null && forceFieldHit.t < bestT) {
-        bestT = forceFieldHit.t; found = true;
-        _segHit.t = forceFieldHit.t;
-        _segHit.x = forceFieldHit.x;
-        _segHit.y = forceFieldHit.y;
-        _segHit.z = forceFieldHit.z;
-        _segHit.entityId = forceFieldHit.entityId as EntityId;
+      if (shieldHit !== null && shieldHit.t < bestT) {
+        bestT = shieldHit.t; found = true;
+        _segHit.t = shieldHit.t;
+        _segHit.x = shieldHit.x;
+        _segHit.y = shieldHit.y;
+        _segHit.z = shieldHit.z;
+        _segHit.entityId = shieldHit.entityId as EntityId;
         _segHit.isMirror = true;
-        _segHit.normalX = forceFieldHit.nx;
-        _segHit.normalY = forceFieldHit.ny;
-        _segHit.normalZ = forceFieldHit.nz;
+        _segHit.normalX = shieldHit.nx;
+        _segHit.normalY = shieldHit.ny;
+        _segHit.normalZ = shieldHit.nz;
         _segHit.panelIndex = -1;
-        _segHit.reflectorKind = 'forceField';
-        _segHit.reflectorPlayerId = forceFieldHit.playerId;
+        _segHit.reflectorKind = 'shield';
+        _segHit.reflectorPlayerId = shieldHit.playerId;
       }
     }
 
@@ -1485,7 +1485,7 @@ export class DamageSystem {
     turret.pitchVelocity = 0;
     turret.pitchAcceleration = 0;
     turret.burst = undefined;
-    turret.forceField = undefined;
+    turret.shield = undefined;
     this.world.markSubEntityMetadataDead(turret.id);
     result.killedTurretIds.add(turret.id);
     this.recordKiller(result, turret.id, sourceEntityId);

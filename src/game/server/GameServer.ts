@@ -68,8 +68,8 @@ import type { BootstrappedServerWorld } from './ServerBootstrap';
 import { UnitForceSystem } from './UnitForceSystem';
 import { createPhysicsBodyForUnit } from './unitPhysicsBody';
 import {
-  isForceFieldReflectionMode,
-  type ForceFieldReflectionMode,
+  isShieldReflectionMode,
+  type ShieldReflectionMode,
 } from '../../types/shotTypes';
 import {
   canApplyServerControlCommand,
@@ -544,21 +544,21 @@ export class GameServer {
         if (!this.canApplyServerControlCommand(authority)) return;
         this.world.maxTotalUnits = sanitizedCommand.maxTotalUnits;
         return;
-      case 'setTurretForceFieldPanelsEnabled':
+      case 'setTurretShieldPanelsEnabled':
         if (!this.canApplyServerControlCommand(authority)) return;
-        this.setTurretForceFieldPanelsEnabled(sanitizedCommand.enabled);
+        this.setTurretShieldPanelsEnabled(sanitizedCommand.enabled);
         return;
-      case 'setTurretForceFieldSpheresEnabled':
+      case 'setTurretShieldSpheresEnabled':
         if (!this.canApplyServerControlCommand(authority)) return;
-        this.setTurretForceFieldSpheresEnabled(sanitizedCommand.enabled);
+        this.setTurretShieldSpheresEnabled(sanitizedCommand.enabled);
         return;
-      case 'setForceFieldsObstructSight':
+      case 'setShieldsObstructSight':
         if (!this.canApplyServerControlCommand(authority)) return;
-        this.setForceFieldsObstructSight(sanitizedCommand.enabled);
+        this.setShieldsObstructSight(sanitizedCommand.enabled);
         return;
-      case 'setForceFieldReflectionMode':
+      case 'setShieldReflectionMode':
         if (!this.canApplyServerControlCommand(authority)) return;
-        this.setForceFieldReflectionMode(sanitizedCommand.mode);
+        this.setShieldReflectionMode(sanitizedCommand.mode);
         return;
       case 'setFogOfWarEnabled':
         if (!this.canApplyServerControlCommand(authority)) return;
@@ -784,11 +784,11 @@ export class GameServer {
       entity.ownership.playerId === playerId;
   }
 
-  private setTurretForceFieldPanelsEnabled(enabled: boolean): void {
-    if (this.world.turretForceFieldPanelsEnabled === enabled) return;
-    this.world.turretForceFieldPanelsEnabled = enabled;
+  private setTurretShieldPanelsEnabled(enabled: boolean): void {
+    if (this.world.turretShieldPanelsEnabled === enabled) return;
+    this.world.turretShieldPanelsEnabled = enabled;
     if (enabled) return;
-    for (const unit of this.world.getForceFieldPanelUnits()) {
+    for (const unit of this.world.getShieldPanelUnits()) {
       const combat = unit.combat;
       if (!combat) continue;
       const turrets = combat.turrets;
@@ -803,17 +803,17 @@ export class GameServer {
     }
   }
 
-  private setTurretForceFieldSpheresEnabled(enabled: boolean): void {
-    if (this.world.turretForceFieldSpheresEnabled === enabled) return;
-    this.world.turretForceFieldSpheresEnabled = enabled;
+  private setTurretShieldSpheresEnabled(enabled: boolean): void {
+    if (this.world.turretShieldSpheresEnabled === enabled) return;
+    this.world.turretShieldSpheresEnabled = enabled;
     if (enabled) return;
-    for (const unit of this.world.getForceFieldUnits()) {
+    for (const unit of this.world.getShieldUnits()) {
       const combat = unit.combat;
       if (!combat) continue;
       const turrets = combat.turrets;
       for (const turret of turrets) {
         const shot = turret.config.shot;
-        if (shot === undefined || shot.type !== 'forceField') continue;
+        if (shot === undefined || shot.type !== 'shield') continue;
         turret.target = null;
         turret.state = 'idle';
         resetDisabledTurretJsOnlyFields(turret);
@@ -822,15 +822,15 @@ export class GameServer {
     }
   }
 
-  private setForceFieldReflectionMode(mode: ForceFieldReflectionMode): void {
-    if (!isForceFieldReflectionMode(mode)) return;
-    if (this.world.forceFieldReflectionMode === mode) return;
-    this.world.forceFieldReflectionMode = mode;
+  private setShieldReflectionMode(mode: ShieldReflectionMode): void {
+    if (!isShieldReflectionMode(mode)) return;
+    if (this.world.shieldReflectionMode === mode) return;
+    this.world.shieldReflectionMode = mode;
   }
 
-  private setForceFieldsObstructSight(enabled: boolean): void {
-    if (this.world.forceFieldsObstructSight === enabled) return;
-    this.world.forceFieldsObstructSight = enabled;
+  private setShieldsObstructSight(enabled: boolean): void {
+    if (this.world.shieldsObstructSight === enabled) return;
+    this.world.shieldsObstructSight = enabled;
     // No cleanup needed: per-tick target re-validation will drop any
     // existing lock whose line crosses an active shield on the next
     // pass, and turning the rule off just stops the check from running.

@@ -42,21 +42,29 @@ export const SHOT_BLUEPRINT_IDS = [
   'shotPlasmaHeavy',
   'shotMortarMedium',
   'shotPlasmaDisruptor',
-  'shotBeamMedium',
-  'shotBeamHeavy',
-  'shotBeamMega',
-  'shotBeamMini',
   'shotRocketFast',
   'shotMortarHeavy',
-  'shotForceFieldSphere',
-  'shotForceFieldPanel',
 ] as const;
 export type ShotBlueprintId = typeof SHOT_BLUEPRINT_IDS[number];
 
-export const FORCE_FIELD_MATERIAL_IDS = [
-  'reflectiveForceField',
+export const RAY_BLUEPRINT_IDS = [
+  'rayBeamMedium',
+  'rayBeamHeavy',
+  'rayBeamMega',
+  'rayBeamMini',
 ] as const;
-export type ForceFieldMaterialId = typeof FORCE_FIELD_MATERIAL_IDS[number];
+export type RayBlueprintId = typeof RAY_BLUEPRINT_IDS[number];
+
+export const SHIELD_BLUEPRINT_IDS = [
+  'shieldSphere',
+  'shieldPanel',
+] as const;
+export type ShieldBlueprintId = typeof SHIELD_BLUEPRINT_IDS[number];
+
+export const SHIELD_MATERIAL_IDS = [
+  'reflectiveShield',
+] as const;
+export type ShieldMaterialId = typeof SHIELD_MATERIAL_IDS[number];
 
 export const TURRET_BLUEPRINT_IDS = [
   'turretGunLight',
@@ -67,10 +75,10 @@ export const TURRET_BLUEPRINT_IDS = [
   'turretMortarFast',
   'turretGatling',
   'turretDisruptor',
-  'turretForceFieldPanel',
+  'turretShieldPanel',
   'turretBeam',
   'turretBeamMega',
-  'turretForceFieldSphere',
+  'turretShieldSphere',
   'turretConstruction',
   'turretBeamLong',
   'turretBeamMini',
@@ -84,7 +92,9 @@ const UNIT_BLUEPRINT_ID_SET = new Set<string>(UNIT_BLUEPRINT_IDS);
 const LOCOMOTION_BLUEPRINT_ID_SET = new Set<string>(LOCOMOTION_BLUEPRINT_IDS);
 const BUILDING_BLUEPRINT_ID_SET = new Set<string>(BUILDING_BLUEPRINT_IDS);
 const SHOT_BLUEPRINT_ID_SET = new Set<string>(SHOT_BLUEPRINT_IDS);
-const FORCE_FIELD_MATERIAL_ID_SET = new Set<string>(FORCE_FIELD_MATERIAL_IDS);
+const RAY_BLUEPRINT_ID_SET = new Set<string>(RAY_BLUEPRINT_IDS);
+const SHIELD_BLUEPRINT_ID_SET = new Set<string>(SHIELD_BLUEPRINT_IDS);
+const SHIELD_MATERIAL_ID_SET = new Set<string>(SHIELD_MATERIAL_IDS);
 const TURRET_BLUEPRINT_ID_SET = new Set<string>(TURRET_BLUEPRINT_IDS);
 
 export function isUnitBlueprintId(value: string): value is UnitBlueprintId {
@@ -103,8 +113,16 @@ export function isShotBlueprintId(value: string): value is ShotBlueprintId {
   return SHOT_BLUEPRINT_ID_SET.has(value);
 }
 
-export function isForceFieldMaterialId(value: string): value is ForceFieldMaterialId {
-  return FORCE_FIELD_MATERIAL_ID_SET.has(value);
+export function isRayBlueprintId(value: string): value is RayBlueprintId {
+  return RAY_BLUEPRINT_ID_SET.has(value);
+}
+
+export function isShieldBlueprintId(value: string): value is ShieldBlueprintId {
+  return SHIELD_BLUEPRINT_ID_SET.has(value);
+}
+
+export function isShieldMaterialId(value: string): value is ShieldMaterialId {
+  return SHIELD_MATERIAL_ID_SET.has(value);
 }
 
 export function isTurretBlueprintId(value: string): value is TurretBlueprintId {

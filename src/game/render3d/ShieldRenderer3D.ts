@@ -1,11 +1,11 @@
-// ForceFieldRenderer3D — 3D visualization for force-field turrets.
+// ShieldRenderer3D — 3D visualization for shield turrets.
 //
-// A force-field turret uses the `complexSingleEmitter` barrel type and carries
-// a `ForceShot` (shot.type === 'forceField') configured with a barrier sphere.
-// It animates per-tick via `turret.forceField.range` (0 → 1 progress).
+// A shield turret uses the `complexSingleEmitter` barrel type and carries
+// a `ShieldConfig` (shot.type === 'shield') configured with a barrier sphere.
+// It animates per-tick via `turret.shield.range` (0 → 1 progress).
 //
-// One force-field look: a translucent bubble that fades in with
-// `turret.forceField.range`.
+// One shield look: a translucent bubble that fades in with
+// `turret.shield.range`.
 
 import * as THREE from 'three';
 import type { Entity, EntityId, Turret } from '../sim/types';
@@ -17,22 +17,22 @@ import type { ViewportFootprint } from '../ViewportFootprint';
 import type { GraphicsConfig } from '@/types/graphics';
 import { writeHexToRgb01Array } from './colorUtils';
 import {
-  createForceFieldSurfaceMaterial,
-  resolveForceFieldSurfaceColor,
-} from './ForceFieldReflectorVisual3D';
+  createShieldSurfaceMaterial,
+  resolveShieldSurfaceColor,
+} from './ShieldReflectorVisual3D';
 
 // Opacity multiplier on top of barrier.alpha so the bubble reads more
 // solid in 3D than the 2D translucent fill.
 const FIELD_OPACITY_BOOST = 2.0;
 
-function isForceFieldTurret(t: Turret): boolean {
+function isShieldTurret(t: Turret): boolean {
   return (t.config.barrel as { type?: string } | undefined)?.type === 'complexSingleEmitter';
 }
 
 type FieldMesh = {
   // Per-field cache. The bubble visual is written into the shared
   // `sphereInstancedMesh` slot in the per-frame loop — every active
-  // field consumes one instance slot, so the entire force-field layer
+  // field consumes one instance slot, so the entire shield layer
   // renders in one draw call regardless of field count. The mount*
   // fields cache the chassis-local mount computation so we only
   // re-derive it when the unit blueprint or mount changes.
@@ -50,7 +50,7 @@ type FieldMesh = {
 type FieldKey = number | string;
 const FIELD_KEY_TURRET_STRIDE = 1024;
 
-function forceFieldKey(unitEntityId: number, turretIndex: number): FieldKey {
+function shieldKey(unitEntityId: number, turretIndex: number): FieldKey {
   if (
     turretIndex >= 0 &&
     turretIndex < FIELD_KEY_TURRET_STRIDE &&
@@ -61,12 +61,12 @@ function forceFieldKey(unitEntityId: number, turretIndex: number): FieldKey {
   return `${unitEntityId}-${turretIndex}`;
 }
 
-/** Cap on shared sphere instances. Every active force field consumes
+/** Cap on shared sphere instances. Every active shield consumes
  *  one slot for the translucent bubble. 512 is well above any
  *  realistic concurrent count. */
 const SPHERE_INSTANCED_CAP = 512;
 
-export class ForceFieldRenderer3D {
+export class ShieldRenderer3D {
   private root: THREE.Group;
   // Unit sphere reused for the bubble write into the shared
   // sphereInstancedMesh below.
@@ -74,10 +74,10 @@ export class ForceFieldRenderer3D {
   private fields = new Map<FieldKey, FieldMesh>();
 
   /** Shared InstancedMesh covering every bubble sphere across every
-   *  active force field on the map. Slots are allocated TRANSIENT per
+   *  active shield on the map. Slots are allocated TRANSIENT per
    *  frame: walk active fields, write [0, count). count is set to the
    *  live prefix at end-of-frame so off-screen / inactive fields cost
-   *  zero GPU time. The whole force-field layer is one draw call. */
+   *  zero GPU time. The whole shield layer is one draw call. */
   private sphereInstancedMesh: THREE.InstancedMesh;
   private sphereInstancedMat: THREE.ShaderMaterial;
   private sphereAlphaArr = new Float32Array(SPHERE_INSTANCED_CAP);
@@ -101,7 +101,7 @@ export class ForceFieldRenderer3D {
   /** Reused across frames to track which fields are still active this
    *  frame; everything not in here gets pruned in endFrame. */
   private _seenFieldKeys = new Set<FieldKey>();
-  /** RENDER: WIN/PAD/ALL visibility scope — off-screen force fields
+  /** RENDER: WIN/PAD/ALL visibility scope — off-screen shields
    *  skip their per-frame animation work. */
   private scope: ViewportFootprint;
   /** Look up the unit's yaw subgroup. Used to compose the field's
@@ -132,8 +132,8 @@ export class ForceFieldRenderer3D {
     this.sphereGeom.setAttribute('aColor', this.sphereColorAttr);
 
     // Materials Are Independent Of Shape: same material as the flat-panel
-    // force-field surface, just carried by sphere geometry here.
-    this.sphereInstancedMat = createForceFieldSurfaceMaterial();
+    // shield surface, just carried by sphere geometry here.
+    this.sphereInstancedMat = createShieldSurfaceMaterial();
 
     this.sphereInstancedMesh = new THREE.InstancedMesh(
       this.sphereGeom,
@@ -226,7 +226,7 @@ export class ForceFieldRenderer3D {
 
   /** End a fused-iteration frame: flush the InstancedMesh count + dirty
    *  ranges, then tear down per-field state for fields that didn't get
-   *  visited (unit despawned, force-field disabled, off-scope). */
+   *  visited (unit despawned, shield disabled, off-scope). */
   endFrame(): void {
     this.sphereInstancedMesh.count = this._sphereCursor;
     if (this._sphereCursor > 0) {
@@ -274,13 +274,13 @@ export class ForceFieldRenderer3D {
     const turrets = unit.combat.turrets;
     for (let ti = 0; ti < turrets.length; ti++) {
       const turret = turrets[ti];
-      if (!isForceFieldTurret(turret)) continue;
-      const progress = turret.forceField?.range ?? 0;
+      if (!isShieldTurret(turret)) continue;
+      const progress = turret.shield?.range ?? 0;
 
       const shot = turret.config.shot;
-      if (!shot || shot.type !== 'forceField' || !shot.barrier) continue;
+      if (!shot || shot.type !== 'shield' || !shot.barrier) continue;
 
-      const key = forceFieldKey(unit.id, ti);
+      const key = shieldKey(unit.id, ti);
       seen.add(key);
       const field = this.acquire(key);
       this.updateMountCache(field, unit, turret);
@@ -295,7 +295,7 @@ export class ForceFieldRenderer3D {
       const outer = barrier.outerRange;
       if (outer <= 0) continue;
       const fadeIn = Math.min(progress * 3, 1);
-      const fieldColor = resolveForceFieldSurfaceColor(unit);
+      const fieldColor = resolveShieldSurfaceColor(unit);
 
       // Chassis-local mount position. turret.mount is already in world
       // units, baked from the unit blueprint's 3D mount at unit-creation
@@ -315,7 +315,7 @@ export class ForceFieldRenderer3D {
       const groupOuter = realYawGroup?.parent;
       if (liftGroupNode && realYawGroup && groupOuter) {
         this._sphereYawQuat.setFromAxisAngle(
-          ForceFieldRenderer3D._SPHERE_UP,
+          ShieldRenderer3D._SPHERE_UP,
           realYawGroup.rotation.y,
         );
         this._sphereParentQuat
@@ -352,7 +352,7 @@ export class ForceFieldRenderer3D {
         this._sphereScratchPos.y = fieldCenterY;
         this._sphereScratchMat.compose(
           this._sphereScratchPos,
-          ForceFieldRenderer3D._IDENTITY_QUAT,
+          ShieldRenderer3D._IDENTITY_QUAT,
           this._sphereScratchScale,
         );
         this.sphereInstancedMesh.setMatrixAt(this._sphereCursor, this._sphereScratchMat);

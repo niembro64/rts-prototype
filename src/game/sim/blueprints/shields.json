@@ -1,0 +1,24 @@
+{
+  "shieldSphere": {
+    "type": "shield",
+    "materialId": "reflectiveShield",
+    "angle": 6.283185307179586,
+    "transitionTime": 500,
+    "barrier": {
+      "outerRatio": 0.8,
+      "originOffsetRadiusRatio": 0.3,
+      "rimWidth": null
+    },
+    "hitSound": null,
+    "shieldBlueprintId": "shieldSphere"
+  },
+  "shieldPanel": {
+    "type": "shield",
+    "materialId": "reflectiveShield",
+    "angle": 0,
+    "transitionTime": 500,
+    "barrier": null,
+    "hitSound": null,
+    "shieldBlueprintId": "shieldPanel"
+  }
+}

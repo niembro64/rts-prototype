@@ -10631,7 +10631,7 @@ pub fn entity_meta_registry_capacity() -> u32 {
 //
 //  Fields cover the snapshot turret DTO: rotation, angularVelocity,
 //  angularAcceleration, pitch, pitchVelocity, pitchAcceleration,
-//  forceFieldRange, plus a target_id reference (-1 = none).
+//  shieldRange, plus a target_id reference (-1 = none).
 //
 //  Variable-length action sub-pool is a follow-up (D.1c) — action
 //  ActionType is a JS string enum that needs a stable u8 mapping
@@ -10654,7 +10654,7 @@ struct TurretPool {
     pitch: Vec<f32>,
     pitch_velocity: Vec<f32>,
     pitch_acceleration: Vec<f32>,
-    force_field_range: Vec<f32>,
+    shield_range: Vec<f32>,
     target_id: Vec<i32>,
 }
 
@@ -10672,7 +10672,7 @@ impl TurretPool {
             pitch: Vec::new(),
             pitch_velocity: Vec::new(),
             pitch_acceleration: Vec::new(),
-            force_field_range: Vec::new(),
+            shield_range: Vec::new(),
             target_id: Vec::new(),
         }
     }
@@ -10694,7 +10694,7 @@ impl TurretPool {
             self.pitch.resize(turret_needed, 0.0);
             self.pitch_velocity.resize(turret_needed, 0.0);
             self.pitch_acceleration.resize(turret_needed, 0.0);
-            self.force_field_range.resize(turret_needed, 0.0);
+            self.shield_range.resize(turret_needed, 0.0);
             self.target_id.resize(turret_needed, -1);
         }
     }
@@ -10796,7 +10796,7 @@ pub fn turret_pool_set_turret(
     pitch: f32,
     pitch_velocity: f32,
     pitch_acceleration: f32,
-    force_field_range: f32,
+    shield_range: f32,
     target_id: i32,
 ) {
     let pool = turret_pool();
@@ -10814,7 +10814,7 @@ pub fn turret_pool_set_turret(
     pool.pitch[global_idx] = pitch;
     pool.pitch_velocity[global_idx] = pitch_velocity;
     pool.pitch_acceleration[global_idx] = pitch_acceleration;
-    pool.force_field_range[global_idx] = force_field_range;
+    pool.shield_range[global_idx] = shield_range;
     pool.target_id[global_idx] = target_id;
 }
 
@@ -10856,7 +10856,7 @@ turret_pool_ptr_export!(
 turret_pool_ptr_export!(turret_pool_pitch_ptr, pitch, f32);
 turret_pool_ptr_export!(turret_pool_pitch_velocity_ptr, pitch_velocity, f32);
 turret_pool_ptr_export!(turret_pool_pitch_acceleration_ptr, pitch_acceleration, f32);
-turret_pool_ptr_export!(turret_pool_force_field_range_ptr, force_field_range, f32);
+turret_pool_ptr_export!(turret_pool_shield_range_ptr, shield_range, f32);
 turret_pool_ptr_export!(turret_pool_target_id_ptr, target_id, i32);
 
 #[wasm_bindgen]
@@ -10880,7 +10880,7 @@ pub fn turret_pool_entity_capacity() -> u32 {
 //     world mount kinematics, rotation/pitch, FSM state, target,
 //     pre-squared range envelopes (fire max + min + tracking),
 //     losBlockedTicks, packed config flags.
-//   - Field slab (compact list of `count` active force fields): id,
+//   - Field slab (compact list of `count` active shields): id,
 //     owner entity id, center, radius. Rebuilt from scratch each tick.
 // ─────────────────────────────────────────────────────────────────
 
@@ -11109,7 +11109,7 @@ struct CombatTargetingPool {
     // Per-turret sustained DPS. Static per shot blueprint
     // (cooldown + shot damage / dps). Zero for visualOnly /
     // force-shot / missing-shot turrets. Used by the Rust passive-
-    // force-field-panel target check to walk a target's turrets and score them.
+    // shield-panel target check to walk a target's turrets and score them.
     turret_dps: Vec<f32>,
     // Static per-turret ballistic gate config, stamped once alongside
     // the turret blueprint data. AIM-08.5 kernels read these from the
@@ -11575,7 +11575,7 @@ struct CombatTargetingSpatialCandidateScratch {
     pos_y: Vec<f64>,
     pos_z: Vec<f64>,
     radius: Vec<f64>,
-    force_field_panel_score: Vec<f64>,
+    shield_panel_score: Vec<f64>,
 }
 
 impl CombatTargetingSpatialCandidateScratch {
@@ -11588,7 +11588,7 @@ impl CombatTargetingSpatialCandidateScratch {
         self.pos_y.clear();
         self.pos_z.clear();
         self.radius.clear();
-        self.force_field_panel_score.clear();
+        self.shield_panel_score.clear();
     }
 }
 
@@ -11607,7 +11607,7 @@ static COMBAT_TARGETING_SPATIAL_CANDIDATE_SCRATCH: CombatTargetingSpatialCandida
             pos_y: Vec::new(),
             pos_z: Vec::new(),
             radius: Vec::new(),
-            force_field_panel_score: Vec::new(),
+            shield_panel_score: Vec::new(),
         },
     ));
 
@@ -11966,8 +11966,8 @@ pub fn combat_targeting_update_mount_kinematics(
     entity_slot: u32,
     current_tick: i32,
     dt_ms: f64,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
 ) {
     let pool = combat_targeting_pool();
     let s = entity_slot as usize;
@@ -11998,8 +11998,8 @@ pub fn combat_targeting_update_mount_kinematics(
         if combat_targeting_weapon_system_disabled(
             pool,
             idx,
-            turret_force_field_panels_enabled,
-            turret_force_field_spheres_enabled,
+            turret_shield_panels_enabled,
+            turret_shield_spheres_enabled,
         ) {
             continue;
         }
@@ -12057,16 +12057,16 @@ pub fn combat_targeting_update_mount_kinematics_batch(
     entity_slots: &[u32],
     current_tick: i32,
     dt_ms: f64,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
 ) {
     for &entity_slot in entity_slots {
         combat_targeting_update_mount_kinematics(
             entity_slot,
             current_tick,
             dt_ms,
-            turret_force_field_panels_enabled,
-            turret_force_field_spheres_enabled,
+            turret_shield_panels_enabled,
+            turret_shield_spheres_enabled,
         );
     }
 }
@@ -12577,11 +12577,11 @@ fn combat_targeting_solve_ballistic_aim_inner(
 // AIM-08.3 — Target candidate scoring + ranking kernel.
 //
 // TypeScript still owns candidate stamping and the expensive fire
-// gates that have not migrated yet (LOS/force-field/ballistic), but
-// the cheap per-candidate score, target preference ranks, force-field-panel
+// gates that have not migrated yet (LOS/shield/ballistic), but
+// the cheap per-candidate score, target preference ranks, shield-panel
 // ordering, top-K bubble sort, and fallback budget now run in Rust.
 // The JS side calls this once per turret candidate slice and receives
-// the chosen local candidate index plus its rank/dist/force-field-panel tuple.
+// the chosen local candidate index plus its rank/dist/shield-panel tuple.
 // ─────────────────────────────────────────────────────────────────
 
 const CT_TARGET_RANK_NONE: u8 = 0;
@@ -13316,8 +13316,8 @@ fn combat_targeting_entity_has_turret_that_may_lock_entity_slot(
     pool: &CombatTargetingPool,
     source_entity_slot: u32,
     target_entity_slot: usize,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
 ) -> bool {
     let source_idx = source_entity_slot as usize;
     if source_idx >= pool.turret_count_per_entity.len() {
@@ -13333,8 +13333,8 @@ fn combat_targeting_entity_has_turret_that_may_lock_entity_slot(
         if combat_targeting_weapon_system_disabled(
             pool,
             idx,
-            turret_force_field_panels_enabled,
-            turret_force_field_spheres_enabled,
+            turret_shield_panels_enabled,
+            turret_shield_spheres_enabled,
         ) {
             continue;
         }
@@ -13346,14 +13346,14 @@ fn combat_targeting_entity_has_turret_that_may_lock_entity_slot(
 }
 
 /// AIM-08.5 — Rust port of `pickMirrorTargetTurret` /
-/// `scoreForceFieldPanelTargetTurret` from `forceFieldTargetPriority.ts`. Walks the
+/// `scoreShieldPanelTargetTurret` from `shieldTargetPriority.ts`. Walks the
 /// target entity's turrets in the slab and returns the maximum
 /// sustained DPS of any non-passive, non-visual, non-manual turret
 /// currently locked onto `our_entity_id` in a non-idle state. Returns
 /// 0 when no qualifying turret exists — matches the JS scorer's "any
-/// qualifying force-field-panel target scores at its DPS; otherwise 0" rule.
+/// qualifying shield-panel target scores at its DPS; otherwise 0" rule.
 #[inline]
-fn combat_targeting_force_field_panel_target_score_for_slot(
+fn combat_targeting_shield_panel_target_score_for_slot(
     pool: &CombatTargetingPool,
     target_entity_slot: usize,
     our_entity_id: i32,
@@ -13386,16 +13386,16 @@ fn combat_targeting_force_field_panel_target_score_for_slot(
     best as f64
 }
 
-/// AIM-08.5 — boolean wrapper over `force_field_panel_target_score_for_slot`.
-/// Matches `isForceFieldPanelTarget` in `forceFieldTargetPriority.ts`: true iff the
+/// AIM-08.5 — boolean wrapper over `shield_panel_target_score_for_slot`.
+/// Matches `isShieldPanelTarget` in `shieldTargetPriority.ts`: true iff the
 /// target carries a damaging turret currently locked onto us.
 #[inline]
-fn combat_targeting_is_force_field_panel_target_for_slot(
+fn combat_targeting_is_shield_panel_target_for_slot(
     pool: &CombatTargetingPool,
     target_entity_slot: usize,
     our_entity_id: i32,
 ) -> bool {
-    combat_targeting_force_field_panel_target_score_for_slot(
+    combat_targeting_shield_panel_target_score_for_slot(
         pool,
         target_entity_slot,
         our_entity_id,
@@ -13410,7 +13410,7 @@ fn combat_targeting_turret_is_pickable_aim_target(pool: &CombatTargetingPool, id
     (flags & exclude_flags) == 0 && pool.turret_dps[idx] > 0.0
 }
 
-/// Rust port of `pickTargetAimTurret` from `forceFieldTargetPriority.ts`.
+/// Rust port of `pickTargetAimTurret` from `shieldTargetPriority.ts`.
 /// Prefer an enemy turret directly threatening the source entity, then
 /// fall back to the target's highest-DPS damaging turret.
 #[inline]
@@ -13673,23 +13673,23 @@ fn combat_targeting_current_fire_target_rank_sq(
 fn combat_targeting_weapon_system_disabled(
     pool: &CombatTargetingPool,
     idx: usize,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
 ) -> bool {
     let flags = pool.turret_config_flags[idx];
     (flags & CT_TURRET_CFG_VISUAL_ONLY) != 0
-        || ((flags & CT_TURRET_CFG_PASSIVE) != 0 && turret_force_field_panels_enabled == 0)
+        || ((flags & CT_TURRET_CFG_PASSIVE) != 0 && turret_shield_panels_enabled == 0)
         || ((flags & CT_TURRET_CFG_SHOT_IS_FORCE) != 0
             && (flags & CT_TURRET_CFG_PASSIVE) == 0
-            && turret_force_field_spheres_enabled == 0)
+            && turret_shield_spheres_enabled == 0)
 }
 
 #[inline]
 fn combat_targeting_entity_has_enabled_weapon(
     pool: &CombatTargetingPool,
     entity_slot: u32,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
 ) -> bool {
     let entity_idx = entity_slot as usize;
     if entity_idx >= pool.turret_count_per_entity.len() {
@@ -13702,8 +13702,8 @@ fn combat_targeting_entity_has_enabled_weapon(
         if !combat_targeting_weapon_system_disabled(
             pool,
             idx,
-            turret_force_field_panels_enabled,
-            turret_force_field_spheres_enabled,
+            turret_shield_panels_enabled,
+            turret_shield_spheres_enabled,
         ) {
             return true;
         }
@@ -13829,18 +13829,18 @@ pub fn combat_targeting_clear_turret_fsm(entity_slot: u32, turret_idx: u32) {
 
 /// AIM-08.5 — Rust port of `resetDisabledWeapon`'s slab side. For every
 /// turret on `entity_slot` that the live world flags currently mark as
-/// disabled (visualOnly, passive without force-field panels enabled, force without force
+/// disabled (visualOnly, passive without shield panels enabled, force without force
 /// fields), zero the slab state the writeback layer will copy back into
 /// the JS Turret (target/state/cooldowns/aim error/LOS bookkeeping).
 /// JS-only Turret fields outside the slab (angular/pitch velocity and
-/// acceleration, burst.remaining, forceField.transition/range) are
+/// acceleration, burst.remaining, shield.transition/range) are
 /// cleared by the writeback pass — see `targetingSystem.ts`.
 #[inline]
 fn combat_targeting_reset_disabled_weapons_for_entity(
     pool: &mut CombatTargetingPool,
     entity_slot: u32,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
 ) {
     let entity_idx = entity_slot as usize;
     if entity_idx >= pool.turret_count_per_entity.len() {
@@ -13853,8 +13853,8 @@ fn combat_targeting_reset_disabled_weapons_for_entity(
         if !combat_targeting_weapon_system_disabled(
             pool,
             idx,
-            turret_force_field_panels_enabled,
-            turret_force_field_spheres_enabled,
+            turret_shield_panels_enabled,
+            turret_shield_spheres_enabled,
         ) {
             continue;
         }
@@ -13904,8 +13904,8 @@ fn combat_targeting_decrement_entity_cooldowns(
 #[wasm_bindgen]
 pub fn combat_targeting_prepare_auto_scan(
     entity_slot: u32,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
     cached_fire_ranks: &mut [u8],
     cached_fire_dist_sqs: &mut [f64],
     out_f64: &mut [f64],
@@ -13941,8 +13941,8 @@ pub fn combat_targeting_prepare_auto_scan(
         if combat_targeting_weapon_system_disabled(
             pool,
             idx,
-            turret_force_field_panels_enabled,
-            turret_force_field_spheres_enabled,
+            turret_shield_panels_enabled,
+            turret_shield_spheres_enabled,
         ) {
             continue;
         }
@@ -13997,13 +13997,13 @@ fn combat_targeting_clear_choice_prep_outputs(
     apply_mask: &mut [u8],
     seed_ranks: &mut [u8],
     seed_dist_sqs: &mut [f64],
-    seed_force_field_panel_scores: &mut [f64],
+    seed_shield_panel_scores: &mut [f64],
 ) {
     for i in 0..count {
         apply_mask[i] = 0;
         seed_ranks[i] = CT_TARGET_RANK_NONE;
         seed_dist_sqs[i] = f64::INFINITY;
-        seed_force_field_panel_scores[i] = 0.0;
+        seed_shield_panel_scores[i] = 0.0;
     }
 }
 
@@ -14019,21 +14019,21 @@ fn combat_targeting_choice_prep_result(current: u8, flags: u16) -> u8 {
 /// AIM-08.5 — Rust-owned fire-choice gate preparation for one entity.
 /// Replaces the TS per-weapon loop that decided which existing locks
 /// should scan the shared candidate list and seeded each turret's
-/// current fire-band rank/distance. Passive force-field-panel seed scores remain
+/// current fire-band rank/distance. Passive shield-panel seed scores remain
 /// object-owned on the JS side because their priority function still
 /// reads target turret activity.
 #[wasm_bindgen]
 pub fn combat_targeting_prepare_fire_choice_fsm_inputs(
     entity_slot: u32,
     source_entity_id: i32,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
     cached_fire_ranks: &[u8],
     cached_fire_dist_sqs: &[f64],
     apply_mask: &mut [u8],
     seed_ranks: &mut [u8],
     seed_dist_sqs: &mut [f64],
-    seed_force_field_panel_scores: &mut [f64],
+    seed_shield_panel_scores: &mut [f64],
 ) -> u8 {
     let pool = combat_targeting_pool();
     let entity_idx = entity_slot as usize;
@@ -14048,13 +14048,13 @@ pub fn combat_targeting_prepare_fire_choice_fsm_inputs(
         .min(apply_mask.len())
         .min(seed_ranks.len())
         .min(seed_dist_sqs.len())
-        .min(seed_force_field_panel_scores.len());
+        .min(seed_shield_panel_scores.len());
     combat_targeting_clear_choice_prep_outputs(
         count,
         apply_mask,
         seed_ranks,
         seed_dist_sqs,
-        seed_force_field_panel_scores,
+        seed_shield_panel_scores,
     );
 
     let mut result = 0u8;
@@ -14063,8 +14063,8 @@ pub fn combat_targeting_prepare_fire_choice_fsm_inputs(
         if combat_targeting_weapon_system_disabled(
             pool,
             idx,
-            turret_force_field_panels_enabled,
-            turret_force_field_spheres_enabled,
+            turret_shield_panels_enabled,
+            turret_shield_spheres_enabled,
         ) {
             continue;
         }
@@ -14089,13 +14089,13 @@ pub fn combat_targeting_prepare_fire_choice_fsm_inputs(
         seed_ranks[turret_idx] = cached_rank;
         seed_dist_sqs[turret_idx] = cached_fire_dist_sqs[turret_idx];
         // Passive turrets seed their fire-choice rank against the
-        // force-field-panel DPS of their current target so candidate scoring can
+        // shield-panel DPS of their current target so candidate scoring can
         // prefer higher-DPS lock-on opportunities. Non-passive turrets
         // leave the score at the 0 cleared above.
         if (flags & CT_TURRET_CFG_PASSIVE) != 0 {
             if let Some(&target_slot) = pool.entity_slot_by_id.get(&target_id) {
-                seed_force_field_panel_scores[turret_idx] =
-                    combat_targeting_force_field_panel_target_score_for_slot(
+                seed_shield_panel_scores[turret_idx] =
+                    combat_targeting_shield_panel_target_score_for_slot(
                         pool,
                         target_slot as usize,
                         source_entity_id,
@@ -14114,12 +14114,12 @@ pub fn combat_targeting_prepare_fire_choice_fsm_inputs(
 #[wasm_bindgen]
 pub fn combat_targeting_prepare_acquisition_choice_fsm_inputs(
     entity_slot: u32,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
     apply_mask: &mut [u8],
     seed_ranks: &mut [u8],
     seed_dist_sqs: &mut [f64],
-    seed_force_field_panel_scores: &mut [f64],
+    seed_shield_panel_scores: &mut [f64],
 ) -> u8 {
     let pool = combat_targeting_pool();
     let entity_idx = entity_slot as usize;
@@ -14132,13 +14132,13 @@ pub fn combat_targeting_prepare_acquisition_choice_fsm_inputs(
         .min(apply_mask.len())
         .min(seed_ranks.len())
         .min(seed_dist_sqs.len())
-        .min(seed_force_field_panel_scores.len());
+        .min(seed_shield_panel_scores.len());
     combat_targeting_clear_choice_prep_outputs(
         count,
         apply_mask,
         seed_ranks,
         seed_dist_sqs,
-        seed_force_field_panel_scores,
+        seed_shield_panel_scores,
     );
 
     let mut result = 0u8;
@@ -14147,8 +14147,8 @@ pub fn combat_targeting_prepare_acquisition_choice_fsm_inputs(
         if combat_targeting_weapon_system_disabled(
             pool,
             idx,
-            turret_force_field_panels_enabled,
-            turret_force_field_spheres_enabled,
+            turret_shield_panels_enabled,
+            turret_shield_spheres_enabled,
         ) {
             continue;
         }
@@ -14207,12 +14207,12 @@ fn combat_targeting_apply_priority_point_fsm_idx(
     dist_sq: f64,
     los_clear: u8,
     ballistic_clear: u8,
-    force_field_clear: u8,
+    shield_clear: u8,
 ) {
     let old_state = pool.turret_state[idx];
     let next_state = if los_clear == 0 || ballistic_clear == 0 {
         CT_TURRET_STATE_IDLE
-    } else if force_field_clear == 0 {
+    } else if shield_clear == 0 {
         CT_TURRET_STATE_IDLE
     } else if dist_sq <= combat_targeting_fire_max_with_radius_sq(pool, idx, false, 0.0) {
         CT_TURRET_STATE_ENGAGED
@@ -14241,7 +14241,7 @@ pub fn combat_targeting_apply_priority_point_fsm_batch(
     apply_mask: &[u8],
     los_clear: &[u8],
     ballistic_clear: &[u8],
-    force_field_clear: &[u8],
+    shield_clear: &[u8],
 ) {
     let pool = combat_targeting_pool();
     let entity_idx = entity_slot as usize;
@@ -14253,7 +14253,7 @@ pub fn combat_targeting_apply_priority_point_fsm_batch(
         .min(apply_mask.len())
         .min(los_clear.len())
         .min(ballistic_clear.len())
-        .min(force_field_clear.len());
+        .min(shield_clear.len());
     for turret_idx in 0..count {
         if apply_mask[turret_idx] == 0 {
             continue;
@@ -14268,7 +14268,7 @@ pub fn combat_targeting_apply_priority_point_fsm_batch(
             dx * dx + dy * dy + dz * dz,
             los_clear[turret_idx],
             ballistic_clear[turret_idx],
-            force_field_clear[turret_idx],
+            shield_clear[turret_idx],
         );
     }
 }
@@ -14303,8 +14303,8 @@ fn combat_targeting_slab_gate_config(
 ///     kinematics. Direct-fire and vertical-launcher weapons auto-pass,
 ///     mirroring the TS `weaponUsesNormalAim`/`weaponNeedsBallisticSolution`
 ///     short-circuit.
-///   - `force_field_clear`: segment-checks the FF pool from mount to
-///     raw aim point and ANDs with the JS-precomputed force-field-panel
+///   - `shield_clear`: segment-checks the FF pool from mount to
+///     raw aim point and ANDs with the JS-precomputed shield-panel
 ///     mask. Skipped (returns `1`) when the feature is off or for
 ///     force-shot weapons that maintain the material themselves.
 ///
@@ -14331,7 +14331,7 @@ fn compute_turret_gates_for_aim_point(
     source_entity_id: i32,
     terrain_step_len: f64,
     entity_line_width: f64,
-    force_field_obstruction_active: u8,
+    shield_obstruction_active: u8,
     projectile_speed: f64,
     arc_preference: u8,
     max_time_sec: f64,
@@ -14416,13 +14416,13 @@ fn compute_turret_gates_for_aim_point(
         }
     }
 
-    let mut force_field_clear: u8 = 1;
+    let mut shield_clear: u8 = 1;
     if ballistic_clear != 0
-        && force_field_obstruction_active != 0
+        && shield_obstruction_active != 0
         && (flags & CT_TURRET_CFG_SHOT_IS_FORCE) == 0
     {
-        // Passive force-field-panel weapons skip the panel walk by contract: a
-        // force-field-panel turret cannot block its own sightline class.
+        // Passive shield-panel weapons skip the panel walk by contract: a
+        // shield-panel turret cannot block its own sightline class.
         // Matches the JS-side `weapon.config.passive !== true` gate in
         // fillCandidateMirrorPanelMask / fillExistingLockGateInputs. Spheres
         // and panels are one material, so a single clearance call with a shared
@@ -14432,7 +14432,7 @@ fn compute_turret_gates_for_aim_point(
         } else {
             1
         };
-        if force_field_clearance_segment(
+        if shield_clearance_segment(
             mount_x,
             mount_y,
             mount_z,
@@ -14445,16 +14445,16 @@ fn compute_turret_gates_for_aim_point(
             include_panels,
         ) == 0
         {
-            force_field_clear = 0;
+            shield_clear = 0;
         }
     }
 
-    (los_clear, ballistic_clear, force_field_clear)
+    (los_clear, ballistic_clear, shield_clear)
 }
 
 /// AIM-08.5 — unified priority-point gate compute + FSM apply for one
 /// entity. Replaces the per-weapon TypeScript loop that called the LOS,
-/// ballistic, and force-field kernels separately and then applied the
+/// ballistic, and shield kernels separately and then applied the
 /// FSM through `combat_targeting_apply_priority_point_fsm_batch`. The
 /// kernel iterates the slab turrets once and computes every gate
 /// internally, so a 5-turret entity makes one boundary call instead of
@@ -14463,7 +14463,7 @@ fn compute_turret_gates_for_aim_point(
 /// The kernel handles disabled/manual-fire/passive turrets the same way
 /// the TS path does:
 ///   - manual fire → no FSM update
-///   - weapon system disabled (visualOnly / passive&&!force-field-panels /
+///   - weapon system disabled (visualOnly / passive&&!shield-panels /
 ///     forceShot&&!fields) → no FSM update (the TS resetDisabledWeapon
 ///     pass has already cleared their state)
 ///   - passive → clear the lock (matches `targeting.clearTurretLock(...)`)
@@ -14474,9 +14474,9 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
     point_y: f64,
     point_z: f64,
     source_entity_id: i32,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
-    force_field_obstruction_active: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+    shield_obstruction_active: u8,
     terrain_step_len: f64,
     entity_line_width: f64,
     gravity: f64,
@@ -14510,12 +14510,12 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
         if combat_targeting_weapon_system_disabled(
             pool,
             idx,
-            turret_force_field_panels_enabled,
-            turret_force_field_spheres_enabled,
+            turret_shield_panels_enabled,
+            turret_shield_spheres_enabled,
         ) {
             continue;
         }
-        // Passive force-field-panel weapons never lock onto an attack-ground
+        // Passive shield-panel weapons never lock onto an attack-ground
         // order. Clear any existing lock — same behaviour as the old
         // targeting.clearTurretLock(unitSlot, wi) call.
         if (flags & CT_TURRET_CFG_PASSIVE) != 0 {
@@ -14529,7 +14529,7 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
         let (projectile_speed, arc_preference, max_time_sec, ground_aim_fraction, under_only) =
             combat_targeting_slab_gate_config(pool, idx);
 
-        let (los_clear, ballistic_clear, force_field_clear) = compute_turret_gates_for_aim_point(
+        let (los_clear, ballistic_clear, shield_clear) = compute_turret_gates_for_aim_point(
             pool,
             entity_slot,
             turret_idx as u32,
@@ -14548,7 +14548,7 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
             source_entity_id,
             terrain_step_len,
             entity_line_width,
-            force_field_obstruction_active,
+            shield_obstruction_active,
             projectile_speed,
             arc_preference,
             max_time_sec,
@@ -14566,7 +14566,7 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
             dx * dx + dy * dy + dz * dz,
             los_clear,
             ballistic_clear,
-            force_field_clear,
+            shield_clear,
         );
     }
 }
@@ -14579,17 +14579,17 @@ fn combat_targeting_apply_priority_target_fsm_idx(
     target_radius: f64,
     dist_sq: f64,
     target_valid: u8,
-    force_field_panel_valid: u8,
+    shield_panel_valid: u8,
     los_clear: u8,
     ballistic_clear: u8,
-    force_field_clear: u8,
+    shield_clear: u8,
 ) {
     if target_id < 0
         || target_valid == 0
-        || force_field_panel_valid == 0
+        || shield_panel_valid == 0
         || los_clear == 0
         || ballistic_clear == 0
-        || force_field_clear == 0
+        || shield_clear == 0
     {
         combat_targeting_set_target_state(pool, idx, -1, CT_TURRET_STATE_IDLE);
         return;
@@ -14620,10 +14620,10 @@ pub fn combat_targeting_apply_priority_target_fsm_batch(
     entity_slot: u32,
     target_id: i32,
     apply_mask: &[u8],
-    force_field_panel_valid: &[u8],
+    shield_panel_valid: &[u8],
     los_clear: &[u8],
     ballistic_clear: &[u8],
-    force_field_clear: &[u8],
+    shield_clear: &[u8],
 ) {
     let pool = combat_targeting_pool();
     let entity_idx = entity_slot as usize;
@@ -14646,10 +14646,10 @@ pub fn combat_targeting_apply_priority_target_fsm_batch(
     let count = (pool.turret_count_per_entity[entity_idx] as usize)
         .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
         .min(apply_mask.len())
-        .min(force_field_panel_valid.len())
+        .min(shield_panel_valid.len())
         .min(los_clear.len())
         .min(ballistic_clear.len())
-        .min(force_field_clear.len());
+        .min(shield_clear.len());
     for turret_idx in 0..count {
         if apply_mask[turret_idx] == 0 {
             continue;
@@ -14676,10 +14676,10 @@ pub fn combat_targeting_apply_priority_target_fsm_batch(
             target_radius,
             dist_sq,
             turret_target_valid,
-            force_field_panel_valid[turret_idx],
+            shield_panel_valid[turret_idx],
             los_clear[turret_idx],
             ballistic_clear[turret_idx],
-            force_field_clear[turret_idx],
+            shield_clear[turret_idx],
         );
     }
 }
@@ -14691,12 +14691,12 @@ fn combat_targeting_validate_existing_lock_fsm_idx(
     target_radius: f64,
     dist_sq: f64,
     target_valid: u8,
-    force_field_panel_valid: u8,
+    shield_panel_valid: u8,
     ballistic_clear: u8,
     los_blocked: u8,
     los_drop_grace_ticks: u16,
 ) {
-    if target_valid == 0 || force_field_panel_valid == 0 || ballistic_clear == 0 {
+    if target_valid == 0 || shield_panel_valid == 0 || ballistic_clear == 0 {
         combat_targeting_set_target_state(pool, idx, -1, CT_TURRET_STATE_IDLE);
         return;
     }
@@ -14739,7 +14739,7 @@ pub fn combat_targeting_validate_existing_lock_fsm_batch(
     entity_slot: u32,
     apply_mask: &[u8],
     target_observable: &[u8],
-    force_field_panel_valid: &[u8],
+    shield_panel_valid: &[u8],
     ballistic_clear: &[u8],
     los_blocked: &[u8],
     los_drop_grace_ticks: u16,
@@ -14753,7 +14753,7 @@ pub fn combat_targeting_validate_existing_lock_fsm_batch(
         .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
         .min(apply_mask.len())
         .min(target_observable.len())
-        .min(force_field_panel_valid.len())
+        .min(shield_panel_valid.len())
         .min(ballistic_clear.len())
         .min(los_blocked.len());
     for turret_idx in 0..count {
@@ -14784,7 +14784,7 @@ pub fn combat_targeting_validate_existing_lock_fsm_batch(
             target_radius,
             dist_sq,
             target_valid,
-            force_field_panel_valid[turret_idx],
+            shield_panel_valid[turret_idx],
             ballistic_clear[turret_idx],
             los_blocked[turret_idx],
             los_drop_grace_ticks,
@@ -14796,9 +14796,9 @@ fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner(
     entity_slot: u32,
     target_id: i32,
     source_entity_id: i32,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
-    force_field_obstruction_active: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+    shield_obstruction_active: u8,
     terrain_step_len: f64,
     entity_line_width: f64,
     gravity: f64,
@@ -14838,10 +14838,10 @@ fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner(
     // Mirror-valid is identical for every passive turret on this unit
     // (it depends only on target + source, not on the turret), so
     // compute it once up front using the Rust mirror-target helper.
-    // Non-passive turrets get force_field_panel_valid = 1 unconditionally.
-    let passive_force_field_panel_valid: u8 = match target_slot {
+    // Non-passive turrets get shield_panel_valid = 1 unconditionally.
+    let passive_shield_panel_valid: u8 = match target_slot {
         Some(slot) => {
-            if combat_targeting_is_force_field_panel_target_for_slot(pool, slot, source_entity_id) {
+            if combat_targeting_is_shield_panel_target_for_slot(pool, slot, source_entity_id) {
                 1
             } else {
                 0
@@ -14872,8 +14872,8 @@ fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner(
         if combat_targeting_weapon_system_disabled(
             pool,
             idx,
-            turret_force_field_panels_enabled,
-            turret_force_field_spheres_enabled,
+            turret_shield_panels_enabled,
+            turret_shield_spheres_enabled,
         ) {
             continue;
         }
@@ -14890,10 +14890,10 @@ fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner(
             0u8
         };
 
-        let force_field_panel_valid = if (flags & CT_TURRET_CFG_PASSIVE) == 0 {
+        let shield_panel_valid = if (flags & CT_TURRET_CFG_PASSIVE) == 0 {
             1u8
         } else {
-            passive_force_field_panel_valid
+            passive_shield_panel_valid
         };
 
         let mount_x = pool.turret_mount_x[idx];
@@ -14905,8 +14905,8 @@ fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner(
         // Short-circuit when the target or mirror gate has already
         // failed — saves the LOS/ballistic/FF compute since the FSM
         // is going to idle anyway.
-        let (los_clear, ballistic_clear, force_field_clear) =
-            if target_valid == 0 || force_field_panel_valid == 0 {
+        let (los_clear, ballistic_clear, shield_clear) =
+            if target_valid == 0 || shield_panel_valid == 0 {
                 (0u8, 0u8, 0u8)
             } else {
                 let (target_aim_x, target_aim_y, target_aim_z) = if resolve_aim_from_slab {
@@ -14945,7 +14945,7 @@ fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner(
                     source_entity_id,
                     terrain_step_len,
                     entity_line_width,
-                    force_field_obstruction_active,
+                    shield_obstruction_active,
                     projectile_speed,
                     arc_preference,
                     max_time_sec,
@@ -14965,10 +14965,10 @@ fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner(
             target_radius,
             dist_sq,
             target_valid,
-            force_field_panel_valid,
+            shield_panel_valid,
             los_clear,
             ballistic_clear,
-            force_field_clear,
+            shield_clear,
         );
     }
 }
@@ -14983,9 +14983,9 @@ pub fn combat_targeting_compute_and_apply_priority_target_fsm_batch(
     entity_slot: u32,
     target_id: i32,
     source_entity_id: i32,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
-    force_field_obstruction_active: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+    shield_obstruction_active: u8,
     terrain_step_len: f64,
     entity_line_width: f64,
     gravity: f64,
@@ -14997,9 +14997,9 @@ pub fn combat_targeting_compute_and_apply_priority_target_fsm_batch(
         entity_slot,
         target_id,
         source_entity_id,
-        turret_force_field_panels_enabled,
-        turret_force_field_spheres_enabled,
-        force_field_obstruction_active,
+        turret_shield_panels_enabled,
+        turret_shield_spheres_enabled,
+        shield_obstruction_active,
         terrain_step_len,
         entity_line_width,
         gravity,
@@ -15013,9 +15013,9 @@ pub fn combat_targeting_compute_and_apply_priority_target_fsm_batch(
 fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
     entity_slot: u32,
     source_entity_id: i32,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
-    force_field_obstruction_active: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+    shield_obstruction_active: u8,
     terrain_step_len: f64,
     entity_line_width: f64,
     gravity: f64,
@@ -15048,8 +15048,8 @@ fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
         if combat_targeting_weapon_system_disabled(
             pool,
             idx,
-            turret_force_field_panels_enabled,
-            turret_force_field_spheres_enabled,
+            turret_shield_panels_enabled,
+            turret_shield_spheres_enabled,
         ) {
             continue;
         }
@@ -15094,14 +15094,14 @@ fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
         // For passive turrets, "valid" requires the target to still
         // carry a damaging turret locked onto us. Non-passive turrets
         // skip the mirror check.
-        let force_field_panel_valid = if target_valid == 0 {
+        let shield_panel_valid = if target_valid == 0 {
             0u8
         } else if (flags & CT_TURRET_CFG_PASSIVE) == 0 {
             1u8
         } else {
             target_slot
                 .map(|slot| {
-                    if combat_targeting_is_force_field_panel_target_for_slot(
+                    if combat_targeting_is_shield_panel_target_for_slot(
                         pool,
                         slot,
                         source_entity_id,
@@ -15122,7 +15122,7 @@ fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
 
         // Short-circuit when target invalid or mirror invalid — the
         // FSM will set state idle without consulting gates anyway.
-        let (ballistic_clear, sight_blocked) = if target_valid == 0 || force_field_panel_valid == 0
+        let (ballistic_clear, sight_blocked) = if target_valid == 0 || shield_panel_valid == 0
         {
             (0u8, 0u8)
         } else {
@@ -15162,7 +15162,7 @@ fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
                 source_entity_id,
                 terrain_step_len,
                 entity_line_width,
-                force_field_obstruction_active,
+                shield_obstruction_active,
                 projectile_speed,
                 arc_preference,
                 max_time_sec,
@@ -15190,7 +15190,7 @@ fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
             target_radius,
             dist_sq,
             target_valid,
-            force_field_panel_valid,
+            shield_panel_valid,
             ballistic_clear,
             sight_blocked,
             los_drop_grace_ticks,
@@ -15208,9 +15208,9 @@ fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
 pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
     entity_slot: u32,
     source_entity_id: i32,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
-    force_field_obstruction_active: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+    shield_obstruction_active: u8,
     terrain_step_len: f64,
     entity_line_width: f64,
     gravity: f64,
@@ -15222,9 +15222,9 @@ pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
     combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
         entity_slot,
         source_entity_id,
-        turret_force_field_panels_enabled,
-        turret_force_field_spheres_enabled,
-        force_field_obstruction_active,
+        turret_shield_panels_enabled,
+        turret_shield_spheres_enabled,
+        shield_obstruction_active,
         terrain_step_len,
         entity_line_width,
         gravity,
@@ -15249,9 +15249,9 @@ pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
 pub fn combat_targeting_existing_lock_and_auto_scan_tick(
     entity_slot: u32,
     source_entity_id: i32,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
-    force_field_obstruction_active: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+    shield_obstruction_active: u8,
     terrain_step_len: f64,
     entity_line_width: f64,
     gravity: f64,
@@ -15266,9 +15266,9 @@ pub fn combat_targeting_existing_lock_and_auto_scan_tick(
     combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
         entity_slot,
         source_entity_id,
-        turret_force_field_panels_enabled,
-        turret_force_field_spheres_enabled,
-        force_field_obstruction_active,
+        turret_shield_panels_enabled,
+        turret_shield_spheres_enabled,
+        shield_obstruction_active,
         terrain_step_len,
         entity_line_width,
         gravity,
@@ -15279,8 +15279,8 @@ pub fn combat_targeting_existing_lock_and_auto_scan_tick(
     );
     combat_targeting_prepare_auto_scan(
         entity_slot,
-        turret_force_field_panels_enabled,
-        turret_force_field_spheres_enabled,
+        turret_shield_panels_enabled,
+        turret_shield_spheres_enabled,
         cached_fire_ranks,
         cached_fire_dist_sqs,
         out_f64,
@@ -15369,9 +15369,9 @@ pub fn combat_targeting_apply_acquisition_choice_fsm_batch(
 pub fn combat_targeting_auto_mode_candidate_tick(
     entity_slot: u32,
     source_entity_id: i32,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
-    force_field_obstruction_active: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+    shield_obstruction_active: u8,
     terrain_step_len: f64,
     entity_line_width: f64,
     gravity: f64,
@@ -15383,14 +15383,14 @@ pub fn combat_targeting_auto_mode_candidate_tick(
     candidate_pos_y: &[f64],
     candidate_pos_z: &[f64],
     candidate_radius: &[f64],
-    candidate_force_field_panel_score: &mut [f64],
+    candidate_shield_panel_score: &mut [f64],
 ) {
     combat_targeting_auto_mode_candidate_tick_inner(
         entity_slot,
         source_entity_id,
-        turret_force_field_panels_enabled,
-        turret_force_field_spheres_enabled,
-        force_field_obstruction_active,
+        turret_shield_panels_enabled,
+        turret_shield_spheres_enabled,
+        shield_obstruction_active,
         terrain_step_len,
         entity_line_width,
         gravity,
@@ -15405,7 +15405,7 @@ pub fn combat_targeting_auto_mode_candidate_tick(
         candidate_pos_y,
         candidate_pos_z,
         candidate_radius,
-        candidate_force_field_panel_score,
+        candidate_shield_panel_score,
     );
 }
 
@@ -15413,9 +15413,9 @@ pub fn combat_targeting_auto_mode_candidate_tick(
 fn combat_targeting_auto_mode_candidate_tick_inner(
     entity_slot: u32,
     source_entity_id: i32,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
-    force_field_obstruction_active: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+    shield_obstruction_active: u8,
     terrain_step_len: f64,
     entity_line_width: f64,
     gravity: f64,
@@ -15430,7 +15430,7 @@ fn combat_targeting_auto_mode_candidate_tick_inner(
     candidate_pos_y: &[f64],
     candidate_pos_z: &[f64],
     candidate_radius: &[f64],
-    candidate_force_field_panel_score: &mut [f64],
+    candidate_shield_panel_score: &mut [f64],
 ) {
     const MAX: usize = COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize;
     let turret_count = {
@@ -15451,7 +15451,7 @@ fn combat_targeting_auto_mode_candidate_tick_inner(
     let mut apply_mask = [0u8; MAX];
     let mut seed_ranks = [CT_TARGET_RANK_NONE; MAX];
     let mut seed_dist_sqs = [f64::INFINITY; MAX];
-    let mut seed_force_field_panel_scores = [0.0f64; MAX];
+    let mut seed_shield_panel_scores = [0.0f64; MAX];
     let mut out_target_ids = [-1i32; MAX];
     let mut out_ranks = [CT_TARGET_RANK_NONE; MAX];
 
@@ -15459,14 +15459,14 @@ fn combat_targeting_auto_mode_candidate_tick_inner(
     let fire_prep = combat_targeting_prepare_fire_choice_fsm_inputs(
         entity_slot,
         source_entity_id,
-        turret_force_field_panels_enabled,
-        turret_force_field_spheres_enabled,
+        turret_shield_panels_enabled,
+        turret_shield_spheres_enabled,
         cached_fire_ranks,
         cached_fire_dist_sqs,
         &mut apply_mask[..turret_count],
         &mut seed_ranks[..turret_count],
         &mut seed_dist_sqs[..turret_count],
-        &mut seed_force_field_panel_scores[..turret_count],
+        &mut seed_shield_panel_scores[..turret_count],
     );
 
     let fire_has_apply = (fire_prep & CT_TARGETING_PREP_HAS_APPLY) != 0;
@@ -15479,7 +15479,7 @@ fn combat_targeting_auto_mode_candidate_tick_inner(
                 &apply_mask[..turret_count],
                 &seed_ranks[..turret_count],
                 &seed_dist_sqs[..turret_count],
-                &seed_force_field_panel_scores[..turret_count],
+                &seed_shield_panel_scores[..turret_count],
                 candidate_count,
                 candidate_ids,
                 precomputed_candidate_slots,
@@ -15489,11 +15489,11 @@ fn combat_targeting_auto_mode_candidate_tick_inner(
                 candidate_pos_y,
                 candidate_pos_z,
                 candidate_radius,
-                candidate_force_field_panel_score,
+                candidate_shield_panel_score,
                 source_entity_id,
-                turret_force_field_panels_enabled,
-                turret_force_field_spheres_enabled,
-                force_field_obstruction_active,
+                turret_shield_panels_enabled,
+                turret_shield_spheres_enabled,
+                shield_obstruction_active,
                 terrain_step_len,
                 entity_line_width,
                 gravity,
@@ -15522,12 +15522,12 @@ fn combat_targeting_auto_mode_candidate_tick_inner(
     // === Acquisition pass ===
     let acq_prep = combat_targeting_prepare_acquisition_choice_fsm_inputs(
         entity_slot,
-        turret_force_field_panels_enabled,
-        turret_force_field_spheres_enabled,
+        turret_shield_panels_enabled,
+        turret_shield_spheres_enabled,
         &mut apply_mask[..turret_count],
         &mut seed_ranks[..turret_count],
         &mut seed_dist_sqs[..turret_count],
-        &mut seed_force_field_panel_scores[..turret_count],
+        &mut seed_shield_panel_scores[..turret_count],
     );
 
     if (acq_prep & CT_TARGETING_PREP_HAS_APPLY) != 0 {
@@ -15539,7 +15539,7 @@ fn combat_targeting_auto_mode_candidate_tick_inner(
                 &apply_mask[..turret_count],
                 &seed_ranks[..turret_count],
                 &seed_dist_sqs[..turret_count],
-                &seed_force_field_panel_scores[..turret_count],
+                &seed_shield_panel_scores[..turret_count],
                 candidate_count,
                 candidate_ids,
                 precomputed_candidate_slots,
@@ -15549,11 +15549,11 @@ fn combat_targeting_auto_mode_candidate_tick_inner(
                 candidate_pos_y,
                 candidate_pos_z,
                 candidate_radius,
-                candidate_force_field_panel_score,
+                candidate_shield_panel_score,
                 source_entity_id,
-                turret_force_field_panels_enabled,
-                turret_force_field_spheres_enabled,
-                force_field_obstruction_active,
+                turret_shield_panels_enabled,
+                turret_shield_spheres_enabled,
+                shield_obstruction_active,
                 terrain_step_len,
                 entity_line_width,
                 gravity,
@@ -15573,8 +15573,8 @@ fn combat_targeting_auto_mode_candidate_tick_inner(
 fn combat_targeting_auto_query_masks(
     pool: &CombatTargetingPool,
     entity_slot: u32,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
 ) -> (u8, u32) {
     let entity_idx = entity_slot as usize;
     if entity_idx >= pool.turret_count_per_entity.len() {
@@ -15589,8 +15589,8 @@ fn combat_targeting_auto_query_masks(
         if combat_targeting_weapon_system_disabled(
             pool,
             idx,
-            turret_force_field_panels_enabled,
-            turret_force_field_spheres_enabled,
+            turret_shield_panels_enabled,
+            turret_shield_spheres_enabled,
         ) {
             continue;
         }
@@ -15722,7 +15722,7 @@ fn combat_targeting_collect_spatial_candidate_cell(
         scratch.pos_y.push(pool.entity_pos_y[slot]);
         scratch.pos_z.push(pool.entity_pos_z[slot]);
         scratch.radius.push(pool.entity_radius_hitbox[slot]);
-        scratch.force_field_panel_score.push(0.0);
+        scratch.shield_panel_score.push(0.0);
     }
 }
 
@@ -15731,8 +15731,8 @@ fn combat_targeting_fill_spatial_candidate_scratch(
     max_acquire_range: f64,
     max_weapon_offset: f64,
     max_targetable_radius: f64,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
     scratch: &mut CombatTargetingSpatialCandidateScratch,
 ) -> u32 {
     scratch.clear();
@@ -15765,8 +15765,8 @@ fn combat_targeting_fill_spatial_candidate_scratch(
     let (relationship_mask, enabled_turret_mask) = combat_targeting_auto_query_masks(
         pool,
         entity_slot,
-        turret_force_field_panels_enabled,
-        turret_force_field_spheres_enabled,
+        turret_shield_panels_enabled,
+        turret_shield_spheres_enabled,
     );
     if relationship_mask == 0 || enabled_turret_mask == 0 {
         return 0;
@@ -15856,9 +15856,9 @@ fn combat_targeting_fill_spatial_candidate_scratch(
 pub fn combat_targeting_auto_mode_spatial_candidate_tick(
     entity_slot: u32,
     source_entity_id: i32,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
-    force_field_obstruction_active: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+    shield_obstruction_active: u8,
     terrain_step_len: f64,
     entity_line_width: f64,
     gravity: f64,
@@ -15880,17 +15880,17 @@ pub fn combat_targeting_auto_mode_spatial_candidate_tick(
         max_acquire_range,
         max_weapon_offset,
         max_targetable_radius,
-        turret_force_field_panels_enabled,
-        turret_force_field_spheres_enabled,
+        turret_shield_panels_enabled,
+        turret_shield_spheres_enabled,
         scratch,
     );
 
     combat_targeting_auto_mode_candidate_tick_inner(
         entity_slot,
         source_entity_id,
-        turret_force_field_panels_enabled,
-        turret_force_field_spheres_enabled,
-        force_field_obstruction_active,
+        turret_shield_panels_enabled,
+        turret_shield_spheres_enabled,
+        shield_obstruction_active,
         terrain_step_len,
         entity_line_width,
         gravity,
@@ -15905,7 +15905,7 @@ pub fn combat_targeting_auto_mode_spatial_candidate_tick(
         &scratch.pos_y,
         &scratch.pos_z,
         &scratch.radius,
-        &mut scratch.force_field_panel_score,
+        &mut scratch.shield_panel_score,
     );
 }
 
@@ -15923,9 +15923,9 @@ pub fn combat_targeting_auto_mode_spatial_candidate_tick(
 pub fn combat_targeting_auto_mode_spatial_candidate_tick_batch(
     entity_slots: &[u32],
     source_entity_ids: &[i32],
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
-    force_field_obstruction_active: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+    shield_obstruction_active: u8,
     terrain_step_len: f64,
     entity_line_width: f64,
     gravity: f64,
@@ -15955,9 +15955,9 @@ pub fn combat_targeting_auto_mode_spatial_candidate_tick_batch(
         let needs_spatial_query = combat_targeting_existing_lock_and_auto_scan_tick(
             entity_slots[entity_i],
             source_entity_ids[entity_i],
-            turret_force_field_panels_enabled,
-            turret_force_field_spheres_enabled,
-            force_field_obstruction_active,
+            turret_shield_panels_enabled,
+            turret_shield_spheres_enabled,
+            shield_obstruction_active,
             terrain_step_len,
             entity_line_width,
             gravity,
@@ -15973,9 +15973,9 @@ pub fn combat_targeting_auto_mode_spatial_candidate_tick_batch(
         combat_targeting_auto_mode_spatial_candidate_tick(
             entity_slots[entity_i],
             source_entity_ids[entity_i],
-            turret_force_field_panels_enabled,
-            turret_force_field_spheres_enabled,
-            force_field_obstruction_active,
+            turret_shield_panels_enabled,
+            turret_shield_spheres_enabled,
+            shield_obstruction_active,
             terrain_step_len,
             entity_line_width,
             gravity,
@@ -15992,9 +15992,9 @@ pub fn combat_targeting_auto_mode_spatial_candidate_tick_batch(
 fn combat_targeting_auto_mode_tick_from_slab(
     entity_slot: u32,
     source_entity_id: i32,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
-    force_field_obstruction_active: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+    shield_obstruction_active: u8,
     terrain_step_len: f64,
     entity_line_width: f64,
     gravity: f64,
@@ -16007,9 +16007,9 @@ fn combat_targeting_auto_mode_tick_from_slab(
     combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
         entity_slot,
         source_entity_id,
-        turret_force_field_panels_enabled,
-        turret_force_field_spheres_enabled,
-        force_field_obstruction_active,
+        turret_shield_panels_enabled,
+        turret_shield_spheres_enabled,
+        shield_obstruction_active,
         terrain_step_len,
         entity_line_width,
         gravity,
@@ -16021,8 +16021,8 @@ fn combat_targeting_auto_mode_tick_from_slab(
     );
     let needs_spatial_query = combat_targeting_prepare_auto_scan(
         entity_slot,
-        turret_force_field_panels_enabled,
-        turret_force_field_spheres_enabled,
+        turret_shield_panels_enabled,
+        turret_shield_spheres_enabled,
         cached_fire_ranks,
         cached_fire_dist_sqs,
         &mut out_f64,
@@ -16031,9 +16031,9 @@ fn combat_targeting_auto_mode_tick_from_slab(
     combat_targeting_auto_mode_spatial_candidate_tick(
         entity_slot,
         source_entity_id,
-        turret_force_field_panels_enabled,
-        turret_force_field_spheres_enabled,
-        force_field_obstruction_active,
+        turret_shield_panels_enabled,
+        turret_shield_spheres_enabled,
+        shield_obstruction_active,
         terrain_step_len,
         entity_line_width,
         gravity,
@@ -16069,9 +16069,9 @@ pub fn combat_targeting_tick_batch(
     priority_point_x: &[f64],
     priority_point_y: &[f64],
     priority_point_z: &[f64],
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
-    force_field_obstruction_active: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+    shield_obstruction_active: u8,
     terrain_step_len: f64,
     entity_line_width: f64,
     gravity: f64,
@@ -16107,9 +16107,9 @@ pub fn combat_targeting_tick_batch(
                     priority_point_y[entity_i],
                     priority_point_z[entity_i],
                     source_entity_id,
-                    turret_force_field_panels_enabled,
-                    turret_force_field_spheres_enabled,
-                    force_field_obstruction_active,
+                    turret_shield_panels_enabled,
+                    turret_shield_spheres_enabled,
+                    shield_obstruction_active,
                     terrain_step_len,
                     entity_line_width,
                     gravity,
@@ -16122,9 +16122,9 @@ pub fn combat_targeting_tick_batch(
                         entity_slot,
                         target_id,
                         source_entity_id,
-                        turret_force_field_panels_enabled,
-                        turret_force_field_spheres_enabled,
-                        force_field_obstruction_active,
+                        turret_shield_panels_enabled,
+                        turret_shield_spheres_enabled,
+                        shield_obstruction_active,
                         terrain_step_len,
                         entity_line_width,
                         gravity,
@@ -16142,9 +16142,9 @@ pub fn combat_targeting_tick_batch(
                 combat_targeting_auto_mode_tick_from_slab(
                     entity_slot,
                     source_entity_id,
-                    turret_force_field_panels_enabled,
-                    turret_force_field_spheres_enabled,
-                    force_field_obstruction_active,
+                    turret_shield_panels_enabled,
+                    turret_shield_spheres_enabled,
+                    shield_obstruction_active,
                     terrain_step_len,
                     entity_line_width,
                     gravity,
@@ -16175,9 +16175,9 @@ pub fn combat_targeting_schedule_and_tick_batch(
     source_entity_ids: &[i32],
     current_tick: i32,
     dt_ms: f64,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
-    force_field_obstruction_active: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+    shield_obstruction_active: u8,
     terrain_step_len: f64,
     entity_line_width: f64,
     gravity: f64,
@@ -16254,8 +16254,8 @@ pub fn combat_targeting_schedule_and_tick_batch(
                         let has_weapon = combat_targeting_entity_has_enabled_weapon(
                             pool,
                             entity_slot,
-                            turret_force_field_panels_enabled,
-                            turret_force_field_spheres_enabled,
+                            turret_shield_panels_enabled,
+                            turret_shield_spheres_enabled,
                         );
                         (
                             entity_slot,
@@ -16284,8 +16284,8 @@ pub fn combat_targeting_schedule_and_tick_batch(
             combat_targeting_reset_disabled_weapons_for_entity(
                 pool,
                 entity_slot,
-                turret_force_field_panels_enabled,
-                turret_force_field_spheres_enabled,
+                turret_shield_panels_enabled,
+                turret_shield_spheres_enabled,
             );
         }
 
@@ -16294,8 +16294,8 @@ pub fn combat_targeting_schedule_and_tick_batch(
                 entity_slot,
                 current_tick,
                 dt_ms,
-                turret_force_field_panels_enabled,
-                turret_force_field_spheres_enabled,
+                turret_shield_panels_enabled,
+                turret_shield_spheres_enabled,
             );
             combat_targeting_clear_entity_locks(entity_slot);
             out_modes[entity_i] = CT_TARGETING_TICK_MODE_CLEAR_LOCKS;
@@ -16318,17 +16318,17 @@ pub fn combat_targeting_schedule_and_tick_batch(
             entity_slot,
             current_tick,
             dt_ms,
-            turret_force_field_panels_enabled,
-            turret_force_field_spheres_enabled,
+            turret_shield_panels_enabled,
+            turret_shield_spheres_enabled,
         );
 
         if !has_enabled_weapon {
             combat_targeting_auto_mode_tick_from_slab(
                 entity_slot,
                 source_entity_id,
-                turret_force_field_panels_enabled,
-                turret_force_field_spheres_enabled,
-                force_field_obstruction_active,
+                turret_shield_panels_enabled,
+                turret_shield_spheres_enabled,
+                shield_obstruction_active,
                 terrain_step_len,
                 entity_line_width,
                 gravity,
@@ -16350,9 +16350,9 @@ pub fn combat_targeting_schedule_and_tick_batch(
                 priority_point_y,
                 priority_point_z,
                 source_entity_id,
-                turret_force_field_panels_enabled,
-                turret_force_field_spheres_enabled,
-                force_field_obstruction_active,
+                turret_shield_panels_enabled,
+                turret_shield_spheres_enabled,
+                shield_obstruction_active,
                 terrain_step_len,
                 entity_line_width,
                 gravity,
@@ -16377,8 +16377,8 @@ pub fn combat_targeting_schedule_and_tick_batch(
                             pool,
                             entity_slot,
                             target_slot,
-                            turret_force_field_panels_enabled,
-                            turret_force_field_spheres_enabled,
+                            turret_shield_panels_enabled,
+                            turret_shield_spheres_enabled,
                         )
                 }
                 None => false,
@@ -16390,9 +16390,9 @@ pub fn combat_targeting_schedule_and_tick_batch(
                 entity_slot,
                 priority_target_id,
                 source_entity_id,
-                turret_force_field_panels_enabled,
-                turret_force_field_spheres_enabled,
-                force_field_obstruction_active,
+                turret_shield_panels_enabled,
+                turret_shield_spheres_enabled,
+                shield_obstruction_active,
                 terrain_step_len,
                 entity_line_width,
                 gravity,
@@ -16410,9 +16410,9 @@ pub fn combat_targeting_schedule_and_tick_batch(
         combat_targeting_auto_mode_tick_from_slab(
             entity_slot,
             source_entity_id,
-            turret_force_field_panels_enabled,
-            turret_force_field_spheres_enabled,
-            force_field_obstruction_active,
+            turret_shield_panels_enabled,
+            turret_shield_spheres_enabled,
+            shield_obstruction_active,
             terrain_step_len,
             entity_line_width,
             gravity,
@@ -16602,15 +16602,15 @@ fn targeting_is_better_candidate(rank: u8, dist_sq: f64, best_rank: u8, best_dis
 
 #[inline]
 fn targeting_is_better_mirror_candidate(
-    force_field_panel_score: f64,
+    shield_panel_score: f64,
     rank: u8,
     dist_sq: f64,
-    best_force_field_panel_score: f64,
+    best_shield_panel_score: f64,
     best_rank: u8,
     best_dist_sq: f64,
 ) -> bool {
-    if force_field_panel_score != best_force_field_panel_score {
-        return force_field_panel_score > best_force_field_panel_score;
+    if shield_panel_score != best_shield_panel_score {
+        return shield_panel_score > best_shield_panel_score;
     }
     targeting_is_better_candidate(rank, dist_sq, best_rank, best_dist_sq)
 }
@@ -16620,17 +16620,17 @@ fn targeting_candidate_beats_seed(
     is_passive: u8,
     rank: u8,
     dist_sq: f64,
-    force_field_panel_score: f64,
+    shield_panel_score: f64,
     seed_rank: u8,
     seed_dist_sq: f64,
-    seed_force_field_panel_score: f64,
+    seed_shield_panel_score: f64,
 ) -> bool {
     if is_passive != 0 {
         targeting_is_better_mirror_candidate(
-            force_field_panel_score,
+            shield_panel_score,
             rank,
             dist_sq,
-            seed_force_field_panel_score,
+            seed_shield_panel_score,
             seed_rank,
             seed_dist_sq,
         )
@@ -16657,22 +16657,22 @@ fn targeting_score_candidate(
     minimum_rank: u8,
     seed_rank: u8,
     seed_dist_sq: f64,
-    seed_force_field_panel_score: f64,
+    seed_shield_panel_score: f64,
     is_passive: u8,
     candidate_observable: &[u8],
     candidate_pos_x: &[f64],
     candidate_pos_y: &[f64],
     candidate_pos_z: &[f64],
     candidate_radius: &[f64],
-    candidate_force_field_panel_score: &[f64],
+    candidate_shield_panel_score: &[f64],
 ) -> Option<(u8, f64, f64)> {
     if candidate_observable[candidate_idx] == 0 {
         return None;
     }
-    let mut force_field_panel_score = 0.0;
+    let mut shield_panel_score = 0.0;
     if is_passive != 0 {
-        force_field_panel_score = candidate_force_field_panel_score[candidate_idx];
-        if force_field_panel_score <= 0.0 {
+        shield_panel_score = candidate_shield_panel_score[candidate_idx];
+        if shield_panel_score <= 0.0 {
             return None;
         }
     }
@@ -16701,14 +16701,14 @@ fn targeting_score_candidate(
         is_passive,
         rank,
         dist_sq,
-        force_field_panel_score,
+        shield_panel_score,
         seed_rank,
         seed_dist_sq,
-        seed_force_field_panel_score,
+        seed_shield_panel_score,
     ) {
         return None;
     }
-    Some((rank, dist_sq, force_field_panel_score))
+    Some((rank, dist_sq, shield_panel_score))
 }
 
 #[inline]
@@ -16716,17 +16716,17 @@ fn targeting_pool_entry_is_better(
     is_passive: u8,
     rank: u8,
     dist_sq: f64,
-    force_field_panel_score: f64,
+    shield_panel_score: f64,
     best_rank: u8,
     best_dist_sq: f64,
-    best_force_field_panel_score: f64,
+    best_shield_panel_score: f64,
 ) -> bool {
     if is_passive != 0 {
         targeting_is_better_mirror_candidate(
-            force_field_panel_score,
+            shield_panel_score,
             rank,
             dist_sq,
-            best_force_field_panel_score,
+            best_shield_panel_score,
             best_rank,
             best_dist_sq,
         )
@@ -16794,7 +16794,7 @@ fn combat_targeting_candidate_slot_gate_passes(
     source_entity_id: i32,
     terrain_step_len: f64,
     entity_line_width: f64,
-    force_field_obstruction_active: u8,
+    shield_obstruction_active: u8,
     gravity: f64,
     projectile_speed: f64,
     arc_preference: u8,
@@ -16835,7 +16835,7 @@ fn combat_targeting_candidate_slot_gate_passes(
         .copied()
         .unwrap_or(0.0);
 
-    let (los_clear, ballistic_clear, force_field_clear) = compute_turret_gates_for_aim_point(
+    let (los_clear, ballistic_clear, shield_clear) = compute_turret_gates_for_aim_point(
         pool,
         entity_slot,
         turret_idx,
@@ -16854,7 +16854,7 @@ fn combat_targeting_candidate_slot_gate_passes(
         source_entity_id,
         terrain_step_len,
         entity_line_width,
-        force_field_obstruction_active,
+        shield_obstruction_active,
         projectile_speed,
         arc_preference,
         max_time_sec,
@@ -16863,14 +16863,14 @@ fn combat_targeting_candidate_slot_gate_passes(
         gravity,
     );
 
-    los_clear != 0 && ballistic_clear != 0 && force_field_clear != 0
+    los_clear != 0 && ballistic_clear != 0 && shield_clear != 0
 }
 
 /// AIM-08.5 — batch target candidate scoring/selection + internal
 /// fire-gate evaluation for one entity's turrets. Replaces the
 /// legacy `combat_targeting_choose_best_candidates_batch` which
 /// relied on a JS `gate_fn` callback for the per-(turret, candidate)
-/// LOS / ballistic / force-field check. The kernel now resolves
+/// LOS / ballistic / shield check. The kernel now resolves
 /// candidate aim points from the slab AABB and dispatches to
 /// `compute_turret_gates_for_aim_point` inline — same physics as the
 /// priority kernels, no per-pair boundary crossing.
@@ -16892,7 +16892,7 @@ pub fn combat_targeting_compute_and_choose_best_candidates_batch(
     apply_mask: &[u8],
     seed_ranks: &[u8],
     seed_dist_sqs: &[f64],
-    seed_force_field_panel_scores: &[f64],
+    seed_shield_panel_scores: &[f64],
     candidate_count: u32,
     candidate_ids: &[i32],
     candidate_pos_x: &[f64],
@@ -16904,11 +16904,11 @@ pub fn combat_targeting_compute_and_choose_best_candidates_batch(
     // longer needs to populate this — it passes the scratch buffer
     // and reads nothing back. Tuned per-source not per-turret, so
     // one walk per candidate covers every turret on this entity.
-    candidate_force_field_panel_score: &mut [f64],
+    candidate_shield_panel_score: &mut [f64],
     source_entity_id: i32,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
-    force_field_obstruction_active: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+    shield_obstruction_active: u8,
     terrain_step_len: f64,
     entity_line_width: f64,
     gravity: f64,
@@ -16922,7 +16922,7 @@ pub fn combat_targeting_compute_and_choose_best_candidates_batch(
         apply_mask,
         seed_ranks,
         seed_dist_sqs,
-        seed_force_field_panel_scores,
+        seed_shield_panel_scores,
         candidate_count,
         candidate_ids,
         None,
@@ -16932,11 +16932,11 @@ pub fn combat_targeting_compute_and_choose_best_candidates_batch(
         candidate_pos_y,
         candidate_pos_z,
         candidate_radius,
-        candidate_force_field_panel_score,
+        candidate_shield_panel_score,
         source_entity_id,
-        turret_force_field_panels_enabled,
-        turret_force_field_spheres_enabled,
-        force_field_obstruction_active,
+        turret_shield_panels_enabled,
+        turret_shield_spheres_enabled,
+        shield_obstruction_active,
         terrain_step_len,
         entity_line_width,
         gravity,
@@ -16953,7 +16953,7 @@ fn combat_targeting_compute_and_choose_best_candidates_batch_inner(
     apply_mask: &[u8],
     seed_ranks: &[u8],
     seed_dist_sqs: &[f64],
-    seed_force_field_panel_scores: &[f64],
+    seed_shield_panel_scores: &[f64],
     candidate_count: u32,
     candidate_ids: &[i32],
     precomputed_candidate_slots: Option<&[u32]>,
@@ -16963,11 +16963,11 @@ fn combat_targeting_compute_and_choose_best_candidates_batch_inner(
     candidate_pos_y: &[f64],
     candidate_pos_z: &[f64],
     candidate_radius: &[f64],
-    candidate_force_field_panel_score: &mut [f64],
+    candidate_shield_panel_score: &mut [f64],
     source_entity_id: i32,
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
-    force_field_obstruction_active: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+    shield_obstruction_active: u8,
     terrain_step_len: f64,
     entity_line_width: f64,
     gravity: f64,
@@ -16985,7 +16985,7 @@ fn combat_targeting_compute_and_choose_best_candidates_batch_inner(
         .min(apply_mask.len())
         .min(seed_ranks.len())
         .min(seed_dist_sqs.len())
-        .min(seed_force_field_panel_scores.len())
+        .min(seed_shield_panel_scores.len())
         .min(out_target_ids.len())
         .min(out_ranks.len());
     let clamped_candidate_count = (candidate_count as usize)
@@ -16994,7 +16994,7 @@ fn combat_targeting_compute_and_choose_best_candidates_batch_inner(
         .min(candidate_pos_y.len())
         .min(candidate_pos_z.len())
         .min(candidate_radius.len())
-        .min(candidate_force_field_panel_score.len());
+        .min(candidate_shield_panel_score.len());
     if turret_count == 0 || clamped_candidate_count == 0 {
         return;
     }
@@ -17005,8 +17005,8 @@ fn combat_targeting_compute_and_choose_best_candidates_batch_inner(
     // check inside the gate helper keeps disabled/manual-fire
     // turrets from running the LOS+ballistic+FF kernels for free.
     let _ = (
-        turret_force_field_panels_enabled,
-        turret_force_field_spheres_enabled,
+        turret_shield_panels_enabled,
+        turret_shield_spheres_enabled,
     );
 
     let candidate_slots: &[u32] = if let Some(slots) = precomputed_candidate_slots {
@@ -17089,15 +17089,15 @@ fn combat_targeting_compute_and_choose_best_candidates_batch_inner(
     if any_passive {
         for ci in 0..clamped_candidate_count {
             if candidate_observable[ci] == 0 {
-                candidate_force_field_panel_score[ci] = 0.0;
+                candidate_shield_panel_score[ci] = 0.0;
                 continue;
             }
             let target_slot = candidate_slots[ci];
-            candidate_force_field_panel_score[ci] =
+            candidate_shield_panel_score[ci] =
                 if target_slot == COMBAT_TARGETING_INVALID_CANDIDATE_SLOT {
                     0.0
                 } else {
-                    combat_targeting_force_field_panel_target_score_for_slot(
+                    combat_targeting_shield_panel_target_score_for_slot(
                         pool,
                         target_slot as usize,
                         source_entity_id,
@@ -17154,7 +17154,7 @@ fn combat_targeting_compute_and_choose_best_candidates_batch_inner(
             minimum_rank,
             seed_ranks[turret_idx],
             seed_dist_sqs[turret_idx],
-            seed_force_field_panel_scores[turret_idx],
+            seed_shield_panel_scores[turret_idx],
             is_passive,
             clamped_candidate_count as u32,
             candidate_ids,
@@ -17165,11 +17165,11 @@ fn combat_targeting_compute_and_choose_best_candidates_batch_inner(
             candidate_pos_y,
             candidate_pos_z,
             candidate_radius,
-            candidate_force_field_panel_score,
+            candidate_shield_panel_score,
             source_entity_id,
             terrain_step_len,
             entity_line_width,
-            force_field_obstruction_active,
+            shield_obstruction_active,
             gravity,
             projectile_speed,
             arc_preference,
@@ -17213,7 +17213,7 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
     minimum_rank: u8,
     seed_rank: u8,
     seed_dist_sq: f64,
-    seed_force_field_panel_score: f64,
+    seed_shield_panel_score: f64,
     is_passive: u8,
     candidate_count: u32,
     candidate_ids: &[i32],
@@ -17224,11 +17224,11 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
     candidate_pos_y: &[f64],
     candidate_pos_z: &[f64],
     candidate_radius: &[f64],
-    candidate_force_field_panel_score: &[f64],
+    candidate_shield_panel_score: &[f64],
     source_entity_id: i32,
     terrain_step_len: f64,
     entity_line_width: f64,
-    force_field_obstruction_active: u8,
+    shield_obstruction_active: u8,
     gravity: f64,
     projectile_speed: f64,
     arc_preference: u8,
@@ -17243,7 +17243,7 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
         .min(candidate_pos_y.len())
         .min(candidate_pos_z.len())
         .min(candidate_radius.len())
-        .min(candidate_force_field_panel_score.len())
+        .min(candidate_shield_panel_score.len())
         .min(candidate_ids.len())
         .min(candidate_slots.len());
     if count == 0 {
@@ -17266,7 +17266,7 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
     let mut top_candidate_idx = [-1i32; TARGETING_TOPK_LOS];
     let mut top_rank = [CT_TARGET_RANK_NONE; TARGETING_TOPK_LOS];
     let mut top_dist_sq = [0.0f64; TARGETING_TOPK_LOS];
-    let mut top_force_field_panel_score = [0.0f64; TARGETING_TOPK_LOS];
+    let mut top_shield_panel_score = [0.0f64; TARGETING_TOPK_LOS];
     let mut top_count = 0usize;
 
     for ci in 0..count {
@@ -17287,7 +17287,7 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
         if !lock_allowed {
             continue;
         }
-        let Some((rank, dist_sq, force_field_panel_score)) = targeting_score_candidate(
+        let Some((rank, dist_sq, shield_panel_score)) = targeting_score_candidate(
             ci,
             weapon_x,
             weapon_y,
@@ -17304,14 +17304,14 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             minimum_rank,
             seed_rank,
             seed_dist_sq,
-            seed_force_field_panel_score,
+            seed_shield_panel_score,
             is_passive,
             candidate_observable,
             candidate_pos_x,
             candidate_pos_y,
             candidate_pos_z,
             candidate_radius,
-            candidate_force_field_panel_score,
+            candidate_shield_panel_score,
         ) else {
             continue;
         };
@@ -17326,10 +17326,10 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
                 is_passive,
                 rank,
                 dist_sq,
-                force_field_panel_score,
+                shield_panel_score,
                 top_rank[last],
                 top_dist_sq[last],
-                top_force_field_panel_score[last],
+                top_shield_panel_score[last],
             ) {
                 continue;
             }
@@ -17339,7 +17339,7 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
         top_candidate_idx[insert_idx] = ci as i32;
         top_rank[insert_idx] = rank;
         top_dist_sq[insert_idx] = dist_sq;
-        top_force_field_panel_score[insert_idx] = force_field_panel_score;
+        top_shield_panel_score[insert_idx] = shield_panel_score;
 
         let mut i = insert_idx;
         while i > 0 {
@@ -17348,10 +17348,10 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
                 is_passive,
                 top_rank[i],
                 top_dist_sq[i],
-                top_force_field_panel_score[i],
+                top_shield_panel_score[i],
                 top_rank[j],
                 top_dist_sq[j],
-                top_force_field_panel_score[j],
+                top_shield_panel_score[j],
             );
             if !better {
                 break;
@@ -17359,7 +17359,7 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             top_candidate_idx.swap(i, j);
             top_rank.swap(i, j);
             top_dist_sq.swap(i, j);
-            top_force_field_panel_score.swap(i, j);
+            top_shield_panel_score.swap(i, j);
             i = j;
         }
     }
@@ -17383,7 +17383,7 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             source_entity_id,
             terrain_step_len,
             entity_line_width,
-            force_field_obstruction_active,
+            shield_obstruction_active,
             gravity,
             projectile_speed,
             arc_preference,
@@ -17435,7 +17435,7 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             continue;
         }
 
-        let Some((rank, _dist_sq, _force_field_panel_score)) = targeting_score_candidate(
+        let Some((rank, _dist_sq, _shield_panel_score)) = targeting_score_candidate(
             ci,
             weapon_x,
             weapon_y,
@@ -17452,14 +17452,14 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             minimum_rank,
             seed_rank,
             seed_dist_sq,
-            seed_force_field_panel_score,
+            seed_shield_panel_score,
             is_passive,
             candidate_observable,
             candidate_pos_x,
             candidate_pos_y,
             candidate_pos_z,
             candidate_radius,
-            candidate_force_field_panel_score,
+            candidate_shield_panel_score,
         ) else {
             continue;
         };
@@ -17474,7 +17474,7 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             source_entity_id,
             terrain_step_len,
             entity_line_width,
-            force_field_obstruction_active,
+            shield_obstruction_active,
             gravity,
             projectile_speed,
             arc_preference,
@@ -17493,20 +17493,20 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
 }
 
 // ─────────────────────────────────────────────────────────────────
-// AIM-08.1 — Force field input slab
+// AIM-08.1 — Shield input slab
 //
-// Compact list of `count` active force fields, rebuilt from scratch
-// each tick from the JS-side getActiveForceFields(). Owner entity id
+// Compact list of `count` active shields, rebuilt from scratch
+// each tick from the JS-side getActiveShields(). Owner entity id
 // is the entity that emits the field (sentinel -1 if not tied to one).
 // ─────────────────────────────────────────────────────────────────
 
-// Materials Are Independent Of Shape: a single force-field surface pool holds
-// every active piece of force-field material in the world, regardless of the
-// geometry that carries it. Spheres (turretForceFieldSphere) live in the flat
-// per-field arrays; flat panels (turretForceFieldPanel) live in the per-unit +
+// Materials Are Independent Of Shape: a single shield surface pool holds
+// every active piece of shield material in the world, regardless of the
+// geometry that carries it. Spheres (turretShieldSphere) live in the flat
+// per-field arrays; flat panels (turretShieldPanel) live in the per-unit +
 // per-panel arrays. One material, two shapes — the clearance and projectile
 // kernels read both groups and apply the same reflection / occlusion policy.
-struct ForceFieldSurfacePool {
+struct ShieldSurfacePool {
     // ── Sphere shape (flat per-field) ──
     count: u32,
     id: Vec<i32>,
@@ -17546,7 +17546,7 @@ struct ForceFieldSurfacePool {
     panel_reflection_mode: u8,
 }
 
-impl ForceFieldSurfacePool {
+impl ShieldSurfacePool {
     fn empty() -> Self {
         Self {
             count: 0,
@@ -17578,7 +17578,7 @@ impl ForceFieldSurfacePool {
             panel_base_y: Vec::new(),
             panel_top_y: Vec::new(),
             panel_half_width: Vec::new(),
-            panel_reflection_mode: FORCE_FIELD_REFLECTION_MODE_BOTH,
+            panel_reflection_mode: SHIELD_REFLECTION_MODE_BOTH,
         }
     }
 
@@ -17592,7 +17592,7 @@ impl ForceFieldSurfacePool {
             self.center_z.resize(needed, 0.0);
             self.radius.resize(needed, 0.0);
             self.field_reflection_mode
-                .resize(needed, FORCE_FIELD_REFLECTION_MODE_BOTH);
+                .resize(needed, SHIELD_REFLECTION_MODE_BOTH);
         }
     }
 
@@ -17628,44 +17628,44 @@ impl ForceFieldSurfacePool {
     }
 }
 
-struct ForceFieldSurfacePoolHolder(UnsafeCell<Option<ForceFieldSurfacePool>>);
-unsafe impl Sync for ForceFieldSurfacePoolHolder {}
-static FORCE_FIELD_POOL: ForceFieldSurfacePoolHolder =
-    ForceFieldSurfacePoolHolder(UnsafeCell::new(None));
+struct ShieldSurfacePoolHolder(UnsafeCell<Option<ShieldSurfacePool>>);
+unsafe impl Sync for ShieldSurfacePoolHolder {}
+static SHIELD_POOL: ShieldSurfacePoolHolder =
+    ShieldSurfacePoolHolder(UnsafeCell::new(None));
 
 #[inline]
-fn force_field_pool() -> &'static mut ForceFieldSurfacePool {
+fn shield_pool() -> &'static mut ShieldSurfacePool {
     unsafe {
-        let cell = &mut *FORCE_FIELD_POOL.0.get();
+        let cell = &mut *SHIELD_POOL.0.get();
         if cell.is_none() {
-            *cell = Some(ForceFieldSurfacePool::empty());
+            *cell = Some(ShieldSurfacePool::empty());
         }
         cell.as_mut().unwrap()
     }
 }
 
 #[wasm_bindgen]
-pub fn force_field_pool_clear() {
-    let pool = force_field_pool();
+pub fn shield_pool_clear() {
+    let pool = shield_pool();
     pool.count = 0;
     pool.unit_count = 0;
     pool.total_panels = 0;
 }
 
 #[wasm_bindgen]
-pub fn force_field_pool_count() -> u32 {
-    force_field_pool().count
+pub fn shield_pool_count() -> u32 {
+    shield_pool().count
 }
 
 #[wasm_bindgen]
-pub fn force_field_pool_set_count(count: u32) {
-    let pool = force_field_pool();
+pub fn shield_pool_set_count(count: u32) {
+    let pool = shield_pool();
     pool.ensure_capacity(count);
     pool.count = count;
 }
 
 #[wasm_bindgen]
-pub fn force_field_pool_set_field(
+pub fn shield_pool_set_field(
     idx: u32,
     id: i32,
     owner_entity_id: i32,
@@ -17675,7 +17675,7 @@ pub fn force_field_pool_set_field(
     radius: f64,
     reflection_mode: u8,
 ) {
-    let pool = force_field_pool();
+    let pool = shield_pool();
     pool.ensure_capacity(idx + 1);
     let i = idx as usize;
     pool.id[i] = id;
@@ -17687,51 +17687,51 @@ pub fn force_field_pool_set_field(
     pool.field_reflection_mode[i] = reflection_mode;
 }
 
-macro_rules! force_field_pool_ptr_export {
+macro_rules! shield_pool_ptr_export {
     ($name:ident, $field:ident, $ty:ty) => {
         #[wasm_bindgen]
         pub fn $name() -> *const $ty {
-            force_field_pool().$field.as_ptr()
+            shield_pool().$field.as_ptr()
         }
     };
 }
 
-force_field_pool_ptr_export!(force_field_pool_id_ptr, id, i32);
-force_field_pool_ptr_export!(force_field_pool_owner_entity_id_ptr, owner_entity_id, i32);
-force_field_pool_ptr_export!(force_field_pool_center_x_ptr, center_x, f64);
-force_field_pool_ptr_export!(force_field_pool_center_y_ptr, center_y, f64);
-force_field_pool_ptr_export!(force_field_pool_center_z_ptr, center_z, f64);
-force_field_pool_ptr_export!(force_field_pool_radius_ptr, radius, f64);
+shield_pool_ptr_export!(shield_pool_id_ptr, id, i32);
+shield_pool_ptr_export!(shield_pool_owner_entity_id_ptr, owner_entity_id, i32);
+shield_pool_ptr_export!(shield_pool_center_x_ptr, center_x, f64);
+shield_pool_ptr_export!(shield_pool_center_y_ptr, center_y, f64);
+shield_pool_ptr_export!(shield_pool_center_z_ptr, center_z, f64);
+shield_pool_ptr_export!(shield_pool_radius_ptr, radius, f64);
 
 // ─────────────────────────────────────────────────────────────────
-// AIM-08.2 — Force field clearance kernels.
+// AIM-08.2 — Shield clearance kernels.
 //
-// Both kernels read the FORCE_FIELD_POOL slab rebuilt per tick by the
-// JS-side stampForceFieldPool pass. They replace the JS-side
-// hasForceFieldClearance / hasArcForceFieldClearance in
+// Both kernels read the SHIELD_POOL slab rebuilt per tick by the
+// JS-side stampShieldPool pass. They replace the JS-side
+// hasShieldClearance / hasArcShieldClearance in
 // lineOfSight.ts; the JS wrappers are now thin dispatchers.
 //
 // `exclude_owner_entity_id` is a legacy per-call exemption hook. The
 // current OBSTRUCT SIGHT path passes sentinel -1 so every active boundary is
 // considered, including a shooter's own field.
 //
-// Graze epsilon: crossings within FORCE_FIELD_GRAZE_EPS of the segment
+// Graze epsilon: crossings within SHIELD_GRAZE_EPS of the segment
 // endpoints don't count, matching the JS path's behaviour so a turret
 // or target sitting on a shield edge doesn't flicker between locked
 // and unlocked.
 // ─────────────────────────────────────────────────────────────────
 
-const FORCE_FIELD_GRAZE_EPS: f64 = 1e-6;
+const SHIELD_GRAZE_EPS: f64 = 1e-6;
 const ARC_FF_CLEARANCE_SAMPLES: u32 = 16;
-const FORCE_FIELD_REFLECTION_MODE_OUTSIDE_IN: u8 = 0;
-const FORCE_FIELD_REFLECTION_MODE_INSIDE_OUT: u8 = 1;
-const FORCE_FIELD_REFLECTION_MODE_BOTH: u8 = 2;
+const SHIELD_REFLECTION_MODE_OUTSIDE_IN: u8 = 0;
+const SHIELD_REFLECTION_MODE_INSIDE_OUT: u8 = 1;
+const SHIELD_REFLECTION_MODE_BOTH: u8 = 2;
 const REFLECTOR_HIT_KIND_NONE: u8 = 0;
-// Materials Are Independent Of Shape: the force-field-panel's flat panels and
-// the force-field-sphere's sphere are the EXACT SAME material. A projectile
+// Materials Are Independent Of Shape: the shield-panel's flat panels and
+// the shield-sphere's sphere are the EXACT SAME material. A projectile
 // reflecting off either reports one kind; the shape only decided where the
 // hit was and what the normal looks like.
-const REFLECTOR_HIT_KIND_FORCE_FIELD: u8 = 1;
+const REFLECTOR_HIT_KIND_SHIELD: u8 = 1;
 
 struct ProjectileReflectorHit {
     kind: u8,
@@ -17746,7 +17746,7 @@ struct ProjectileReflectorHit {
 }
 
 #[inline]
-fn force_field_segment_crosses_sphere(
+fn shield_segment_crosses_sphere(
     sx: f64,
     sy: f64,
     sz: f64,
@@ -17793,21 +17793,21 @@ fn force_field_segment_crosses_sphere(
 }
 
 #[inline]
-fn force_field_reflection_mode_allows_crossing(mode: u8, radial_velocity: f64) -> bool {
+fn shield_reflection_mode_allows_crossing(mode: u8, radial_velocity: f64) -> bool {
     let eps = 1e-6;
     if radial_velocity < -eps {
-        return mode == FORCE_FIELD_REFLECTION_MODE_OUTSIDE_IN
-            || mode == FORCE_FIELD_REFLECTION_MODE_BOTH;
+        return mode == SHIELD_REFLECTION_MODE_OUTSIDE_IN
+            || mode == SHIELD_REFLECTION_MODE_BOTH;
     }
     if radial_velocity > eps {
-        return mode == FORCE_FIELD_REFLECTION_MODE_INSIDE_OUT
-            || mode == FORCE_FIELD_REFLECTION_MODE_BOTH;
+        return mode == SHIELD_REFLECTION_MODE_INSIDE_OUT
+            || mode == SHIELD_REFLECTION_MODE_BOTH;
     }
     false
 }
 
 #[inline]
-fn force_field_projectile_intersection_t(
+fn shield_projectile_intersection_t(
     start_x: f64,
     start_y: f64,
     start_z: f64,
@@ -17858,22 +17858,22 @@ fn force_field_projectile_intersection_t(
     let first_t = t0.min(t1);
     let second_t = t0.max(t1);
 
-    if first_t > FORCE_FIELD_GRAZE_EPS && first_t <= 1.0 {
+    if first_t > SHIELD_GRAZE_EPS && first_t <= 1.0 {
         let hit_x = start_x + dx * first_t - center_x;
         let hit_y = start_y + dy * first_t - center_y;
         let hit_z = start_z + dz * first_t - center_z;
         let radial_velocity = dx * hit_x + dy * hit_y + dz * hit_z;
-        if force_field_reflection_mode_allows_crossing(reflection_mode, radial_velocity) {
+        if shield_reflection_mode_allows_crossing(reflection_mode, radial_velocity) {
             return Some(first_t);
         }
     }
 
-    if second_t > FORCE_FIELD_GRAZE_EPS && second_t <= 1.0 && second_t != first_t {
+    if second_t > SHIELD_GRAZE_EPS && second_t <= 1.0 && second_t != first_t {
         let hit_x = start_x + dx * second_t - center_x;
         let hit_y = start_y + dy * second_t - center_y;
         let hit_z = start_z + dz * second_t - center_z;
         let radial_velocity = dx * hit_x + dy * hit_y + dz * hit_z;
-        if force_field_reflection_mode_allows_crossing(reflection_mode, radial_velocity) {
+        if shield_reflection_mode_allows_crossing(reflection_mode, radial_velocity) {
             return Some(second_t);
         }
     }
@@ -17882,7 +17882,7 @@ fn force_field_projectile_intersection_t(
 }
 
 #[inline]
-fn force_field_projectile_intersection(
+fn shield_projectile_intersection(
     start_x: f64,
     start_y: f64,
     start_z: f64,
@@ -17891,7 +17891,7 @@ fn force_field_projectile_intersection(
     end_z: f64,
     max_t: f64,
 ) -> Option<ProjectileReflectorHit> {
-    let pool = force_field_pool();
+    let pool = shield_pool();
     let count = pool.count as usize;
     if count == 0 {
         return None;
@@ -17903,7 +17903,7 @@ fn force_field_projectile_intersection(
     let mut best_t = max_t;
     let mut best: Option<ProjectileReflectorHit> = None;
     for i in 0..count {
-        let t = force_field_projectile_intersection_t(
+        let t = shield_projectile_intersection_t(
             start_x,
             start_y,
             start_z,
@@ -17936,7 +17936,7 @@ fn force_field_projectile_intersection(
         };
         best_t = t;
         best = Some(ProjectileReflectorHit {
-            kind: REFLECTOR_HIT_KIND_FORCE_FIELD,
+            kind: REFLECTOR_HIT_KIND_SHIELD,
             entity_id: pool.owner_entity_id[i],
             t,
             x: hit_x,
@@ -17950,19 +17950,19 @@ fn force_field_projectile_intersection(
     best
 }
 
-/// Direct-segment force-field clearance. Returns 1 if the segment
-/// (sx, sy, sz) → (tx, ty, tz) crosses at most `max_crossings` force-field
+/// Direct-segment shield clearance. Returns 1 if the segment
+/// (sx, sy, sz) → (tx, ty, tz) crosses at most `max_crossings` shield
 /// surface boundaries, 0 otherwise. Endpoint grazes (within
-/// FORCE_FIELD_GRAZE_EPS) don't count.
+/// SHIELD_GRAZE_EPS) don't count.
 ///
 /// Materials Are Independent Of Shape: this one kernel checks both
-/// force-field shapes against a single crossing budget. Spheres and flat
+/// shield shapes against a single crossing budget. Spheres and flat
 /// panels are the same material, so a crossing of either counts the same.
 /// `include_spheres` / `include_panels` let a caller restrict the query to
 /// one shape — used by the targeting gate, where a passive panel turret must
 /// not block its own sightline class (it skips the panel walk).
 #[wasm_bindgen]
-pub fn force_field_clearance_segment(
+pub fn shield_clearance_segment(
     sx: f64,
     sy: f64,
     sz: f64,
@@ -17974,19 +17974,19 @@ pub fn force_field_clearance_segment(
     include_spheres: u8,
     include_panels: u8,
 ) -> u32 {
-    let pool = force_field_pool();
+    let pool = shield_pool();
     let mut crossings: u32 = 0;
 
     // ── Sphere surfaces ──
     if include_spheres != 0 {
         let count = pool.count as usize;
-        let lo = FORCE_FIELD_GRAZE_EPS;
-        let hi = 1.0 - FORCE_FIELD_GRAZE_EPS;
+        let lo = SHIELD_GRAZE_EPS;
+        let hi = 1.0 - SHIELD_GRAZE_EPS;
         for i in 0..count {
             if pool.owner_entity_id[i] == exclude_owner_entity_id {
                 continue;
             }
-            if force_field_segment_crosses_sphere(
+            if shield_segment_crosses_sphere(
                 sx,
                 sy,
                 sz,
@@ -18100,13 +18100,13 @@ pub fn force_field_clearance_segment(
     1
 }
 
-/// Ballistic-arc force-field clearance. Approximates the parabola
+/// Ballistic-arc shield clearance. Approximates the parabola
 /// `pos = launch + v·t − 0.5·GRAVITY·ẑ·t²` with
 /// ARC_FF_CLEARANCE_SAMPLES chords and reports the same boundary-
 /// crossing budget as the segment kernel. Staying inside one field for
 /// the whole arc is clear; only crossing a boundary is blocked.
 #[wasm_bindgen]
-pub fn force_field_clearance_arc(
+pub fn shield_clearance_arc(
     launch_x: f64,
     launch_y: f64,
     launch_z: f64,
@@ -18117,7 +18117,7 @@ pub fn force_field_clearance_arc(
     exclude_owner_entity_id: i32,
     max_crossings: u32,
 ) -> u32 {
-    let pool = force_field_pool();
+    let pool = shield_pool();
     let count = pool.count as usize;
     if count == 0 {
         return 1;
@@ -18146,16 +18146,16 @@ pub fn force_field_clearance_arc(
             let y = launch_y + launch_vy * t;
             let z = launch_z + launch_vz * t - 0.5 * GRAVITY * t * t;
             let lo = if i == 1 {
-                FORCE_FIELD_GRAZE_EPS
+                SHIELD_GRAZE_EPS
             } else {
-                -FORCE_FIELD_GRAZE_EPS
+                -SHIELD_GRAZE_EPS
             };
             let hi = if i == ARC_FF_CLEARANCE_SAMPLES {
-                1.0 - FORCE_FIELD_GRAZE_EPS
+                1.0 - SHIELD_GRAZE_EPS
             } else {
-                1.0 + FORCE_FIELD_GRAZE_EPS
+                1.0 + SHIELD_GRAZE_EPS
             };
-            if force_field_segment_crosses_sphere(
+            if shield_segment_crosses_sphere(
                 prev_x, prev_y, prev_z, x, y, z, cx, cy, cz, r, lo, hi,
             ) {
                 crossed = true;
@@ -18178,8 +18178,8 @@ pub fn force_field_clearance_arc(
 // ─────────────────────────────────────────────────────────────────
 // AIM-08.5 — Rect-panel surface setters
 //
-// The flat-panel force-field shape is stamped into the same
-// ForceFieldSurfacePool the sphere shape uses, through the per-unit +
+// The flat-panel shield shape is stamped into the same
+// ShieldSurfacePool the sphere shape uses, through the per-unit +
 // per-panel arrays:
 //
 //   Per-mirror-unit data: world pose, broadphase radius, slope-aware
@@ -18200,21 +18200,21 @@ pub fn force_field_clearance_arc(
 const FORCE_MATERIAL_GRAZE_EPS: f64 = 1e-6;
 
 #[wasm_bindgen]
-pub fn force_field_panel_pool_set_unit_count(count: u32) {
-    let pool = force_field_pool();
+pub fn shield_panel_pool_set_unit_count(count: u32) {
+    let pool = shield_pool();
     pool.ensure_unit_capacity(count);
     pool.unit_count = count;
 }
 
 #[wasm_bindgen]
-pub fn force_field_panel_pool_set_panel_count(count: u32) {
-    let pool = force_field_pool();
+pub fn shield_panel_pool_set_panel_count(count: u32) {
+    let pool = shield_pool();
     pool.ensure_panel_capacity(count);
     pool.total_panels = count;
 }
 
 #[wasm_bindgen]
-pub fn force_field_panel_pool_set_unit(
+pub fn shield_panel_pool_set_unit(
     idx: u32,
     unit_id: i32,
     unit_x: f64,
@@ -18230,7 +18230,7 @@ pub fn force_field_panel_pool_set_unit(
     panel_start: u32,
     panel_count: u8,
 ) {
-    let pool = force_field_pool();
+    let pool = shield_pool();
     pool.ensure_unit_capacity(idx + 1);
     let i = idx as usize;
     pool.unit_id[i] = unit_id;
@@ -18249,7 +18249,7 @@ pub fn force_field_panel_pool_set_unit(
 }
 
 #[wasm_bindgen]
-pub fn force_field_panel_pool_set_panel(
+pub fn shield_panel_pool_set_panel(
     idx: u32,
     arm_length: f32,
     offset_y: f32,
@@ -18258,7 +18258,7 @@ pub fn force_field_panel_pool_set_panel(
     top_y: f32,
     half_width: f32,
 ) {
-    let pool = force_field_pool();
+    let pool = shield_pool();
     pool.ensure_panel_capacity(idx + 1);
     let i = idx as usize;
     pool.panel_arm_length[i] = arm_length;
@@ -18270,8 +18270,8 @@ pub fn force_field_panel_pool_set_panel(
 }
 
 #[wasm_bindgen]
-pub fn force_field_panel_pool_set_material_mode(reflection_mode: u8) {
-    force_field_pool().panel_reflection_mode = reflection_mode;
+pub fn shield_panel_pool_set_material_mode(reflection_mode: u8) {
+    shield_pool().panel_reflection_mode = reflection_mode;
 }
 
 /// Squared distance from a point to a 3D segment, used by the
@@ -18366,12 +18366,12 @@ fn ray_tilted_rect_intersection_t(
 }
 
 // The rect-panel sightline walk now lives inside the unified
-// `force_field_clearance_segment` (gated by `include_panels`); the
+// `shield_clearance_segment` (gated by `include_panels`); the
 // `point_segment_dist_sq3` + `ray_tilted_rect_intersection_t` helpers above
 // are shared by that kernel and the projectile-intersection kernel below.
 
 #[inline]
-fn force_field_panel_projectile_intersection(
+fn shield_panel_projectile_intersection(
     sx: f64,
     sy: f64,
     sz: f64,
@@ -18383,7 +18383,7 @@ fn force_field_panel_projectile_intersection(
     query_pad: f64,
     max_t: f64,
 ) -> Option<ProjectileReflectorHit> {
-    let pool = force_field_pool();
+    let pool = shield_pool();
     let unit_count = pool.unit_count as usize;
     if unit_count == 0 {
         return None;
@@ -18461,7 +18461,7 @@ fn force_field_panel_projectile_intersection(
                 continue;
             };
             let normal_velocity = dx * nx + dy * ny + dz * nz;
-            if !force_field_reflection_mode_allows_crossing(
+            if !shield_reflection_mode_allows_crossing(
                 pool.panel_reflection_mode,
                 normal_velocity,
             ) {
@@ -18472,7 +18472,7 @@ fn force_field_panel_projectile_intersection(
             }
             best_t = t;
             best = Some(ProjectileReflectorHit {
-                kind: REFLECTOR_HIT_KIND_FORCE_FIELD,
+                kind: REFLECTOR_HIT_KIND_SHIELD,
                 entity_id: pool.unit_id[u],
                 t,
                 x: sx + t * dx,
@@ -18492,8 +18492,8 @@ fn force_field_panel_projectile_intersection(
 ///
 /// TypeScript compacts projectile sweeps into parallel arrays, calls this
 /// once, then consumes the nearest reflector hit for each projectile. The
-/// kernel reads the current mirror-panel and force-field slabs, so the JS
-/// collision path no longer walks every mirror unit or force-field sphere per
+/// kernel reads the current mirror-panel and shield slabs, so the JS
+/// collision path no longer walks every mirror unit or shield sphere per
 /// projectile.
 #[wasm_bindgen]
 pub fn projectile_reflector_intersections_batch(
@@ -18507,9 +18507,9 @@ pub fn projectile_reflector_intersections_batch(
     end_z: &[f64],
     projectile_radius: &[f64],
     exclude_entity_id: &[i32],
-    turret_force_field_panels_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
-    force_field_panel_query_pad: f64,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+    shield_panel_query_pad: f64,
     out_kind: &mut [u8],
     out_entity_id: &mut [i32],
     out_t: &mut [f64],
@@ -18572,8 +18572,8 @@ pub fn projectile_reflector_intersections_batch(
         }
 
         let mut best: Option<ProjectileReflectorHit> = None;
-        if turret_force_field_panels_enabled != 0 {
-            best = force_field_panel_projectile_intersection(
+        if turret_shield_panels_enabled != 0 {
+            best = shield_panel_projectile_intersection(
                 sx,
                 sy,
                 sz,
@@ -18582,13 +18582,13 @@ pub fn projectile_reflector_intersections_batch(
                 tz,
                 exclude_entity_id[i],
                 projectile_radius[i],
-                force_field_panel_query_pad,
+                shield_panel_query_pad,
                 f64::INFINITY,
             );
         }
         let max_t = best.as_ref().map(|hit| hit.t).unwrap_or(f64::INFINITY);
-        if turret_force_field_spheres_enabled != 0 {
-            if let Some(force_hit) = force_field_projectile_intersection(
+        if turret_shield_spheres_enabled != 0 {
+            if let Some(force_hit) = shield_projectile_intersection(
                 sx,
                 sy,
                 sz,
@@ -18666,7 +18666,7 @@ struct SnapshotBaseline {
     // a same-presence A→B switch with both IDs non-null is invisible to
     // the bitmask but must still dirty the turret.
     turret_target_ids: Vec<i32>,
-    force_field_ranges: Vec<f32>,
+    shield_ranges: Vec<f32>,
     normal_x: Vec<f64>,
     normal_y: Vec<f64>,
     normal_z: Vec<f64>,
@@ -18700,7 +18700,7 @@ impl SnapshotBaseline {
             turret_pitches: Vec::new(),
             turret_pitch_vels: Vec::new(),
             turret_target_ids: Vec::new(),
-            force_field_ranges: Vec::new(),
+            shield_ranges: Vec::new(),
             normal_x: Vec::new(),
             normal_y: Vec::new(),
             normal_z: Vec::new(),
@@ -18738,7 +18738,7 @@ impl SnapshotBaseline {
         self.turret_pitches.resize(turret_needed, 0.0);
         self.turret_pitch_vels.resize(turret_needed, 0.0);
         self.turret_target_ids.resize(turret_needed, -1);
-        self.force_field_ranges.resize(turret_needed, 0.0);
+        self.shield_ranges.resize(turret_needed, 0.0);
         self.normal_x.resize(needed, 0.0);
         self.normal_y.resize(needed, 0.0);
         self.normal_z.resize(needed, 1.0);
@@ -18953,7 +18953,7 @@ pub fn snapshot_baseline_capture_unit_slot(
                 b.turret_pitches[dst] = turret.pitch[src];
                 b.turret_pitch_vels[dst] = turret.pitch_velocity[src];
                 b.turret_target_ids[dst] = turret.target_id[src];
-                b.force_field_ranges[dst] = turret.force_field_range[src];
+                b.shield_ranges[dst] = turret.shield_range[src];
             }
         } else {
             b.weapon_count[s] = 0;
@@ -19056,7 +19056,7 @@ pub fn snapshot_baseline_capture_building_slot(
                 b.turret_pitches[dst] = turret.pitch[src];
                 b.turret_pitch_vels[dst] = turret.pitch_velocity[src];
                 b.turret_target_ids[dst] = turret.target_id[src];
-                b.force_field_ranges[dst] = turret.force_field_range[src];
+                b.shield_ranges[dst] = turret.shield_range[src];
             }
         } else {
             b.weapon_count[s] = 0;
@@ -19099,7 +19099,7 @@ pub fn snapshot_baseline_slot_last_tick(handle: u32, slot: u32) -> u32 {
 
 const SNAPSHOT_BASELINE_CAPTURE_FULL: u32 = u32::MAX;
 const SNAPSHOT_NORMAL_THRESHOLD: f64 = 0.001;
-const SNAPSHOT_FORCE_FIELD_RANGE_THRESHOLD: f32 = 0.001;
+const SNAPSHOT_SHIELD_RANGE_THRESHOLD: f32 = 0.001;
 const SNAPSHOT_FULL_ROTATION_RADIANS: f64 = std::f64::consts::PI * 2.0;
 const SNAPSHOT_RATIO_DELTA_EPSILON: f64 = 1e-9;
 
@@ -19366,8 +19366,8 @@ pub fn snapshot_baseline_diff_slot(
                         rot_pos_threshold,
                     )
                     || turret.target_id[idx] != b.turret_target_ids[idx]
-                    || (turret.force_field_range[idx] - b.force_field_ranges[idx]).abs()
-                        > SNAPSHOT_FORCE_FIELD_RANGE_THRESHOLD
+                    || (turret.shield_range[idx] - b.shield_ranges[idx]).abs()
+                        > SNAPSHOT_SHIELD_RANGE_THRESHOLD
                 {
                     turrets_changed = true;
                     break;
@@ -19463,8 +19463,8 @@ pub const SNAPSHOT_ENTITY_TYPE_BUILDING: u8 = 2;
 ///   [5]     state code (TurretStateCode as f64)
 ///   [6]     has_target_id (0 or 1)
 ///   [7]     target_id (raw entity id as f64; ignored when has_target_id==0)
-///   [8]     has_force_field_range (0 or 1)
-///   [9]     force_field_range (raw value; ignored when has_ff_range==0)
+///   [8]     has_shield_range (0 or 1)
+///   [9]     shield_range (raw value; ignored when has_ff_range==0)
 ///
 /// Capacity grown on demand by snapshot_encode_turret_scratch_ensure.
 const SNAPSHOT_ENCODE_TURRET_STRIDE: usize = 10;
@@ -20191,7 +20191,7 @@ pub fn snapshot_encode_entity_unit(
             let ff_range_raw = scratch.buf[base + 9];
 
             // turret DTO: { turret: { turretBlueprintCode, angular: {4 fields} }, [targetId,]
-            // state, [currentForceFieldRange] }
+            // state, [currentShieldRange] }
             let mut turret_field_count: usize = 2; // turret + state
             if has_target {
                 turret_field_count += 1;
@@ -20225,7 +20225,7 @@ pub fn snapshot_encode_entity_unit(
             w.write_number(state_code);
 
             if has_ff_range {
-                w.write_str("currentForceFieldRange");
+                w.write_str("currentShieldRange");
                 w.write_number(ff_range_raw);
             }
         }
@@ -20430,7 +20430,7 @@ pub fn snapshot_encode_entity_building(
             w.write_str("state");
             w.write_number(state_code);
             if has_ff_range {
-                w.write_str("currentForceFieldRange");
+                w.write_str("currentShieldRange");
                 w.write_number(ff_range_raw);
             }
         }
@@ -20768,7 +20768,7 @@ pub fn snapshot_encode_beam_update_scratch_ensure(count: u32) {
 ///   [0..3]  x, y, z
 ///   [3..6]  vx, vy, vz
 ///   [6]     flags: bit 0 has_reflectorEntityId, bit 1 has_reflectorKind
-///           (force-field material; bit 2 unused), bit 3 has_reflectorPlayerId,
+///           (shield material; bit 2 unused), bit 3 has_reflectorPlayerId,
 ///           bit 4 has_normalX, bit 5 has_normalY, bit 6 has_normalZ.
 ///   [7]     reflectorEntityId
 ///   [8]     reflectorPlayerId
@@ -21449,16 +21449,16 @@ pub fn snapshot_encode_impact_context_scratch_ensure(count: u32) {
 /// Audio-event scratch — 16 f64 per event (NetworkServerSnapshotSimEvent
 /// minus deathContext / impactContext, which arrive in follow-ups).
 ///   [0]    type_code (0='fire', 1='hit', 2='death', 3='laserStart',
-///           4='laserStop', 5='forceFieldStart', 6='forceFieldStop',
-///           7='forceFieldImpact', 8='ping', 9='attackAlert',
+///           4='laserStop', 5='shieldStart', 6='shieldStop',
+///           7='shieldImpact', 8='ping', 9='attackAlert',
 ///           10='projectileExpire')
 ///   [1..4] pos.x, pos.y, pos.z (always present)
 ///   [4]    playerId (gated by flags bit 2)
 ///   [5]    entityId (gated by flags bit 3)
 ///   [6]    killerPlayerId (gated by flags bit 5)
 ///   [7]    victimPlayerId (gated by flags bit 6)
-///   [8..11] forceFieldImpact.normal.x/y/z (gated by flags bit 4)
-///   [11]   forceFieldImpact.playerId
+///   [8..11] shieldImpact.normal.x/y/z (gated by flags bit 4)
+///   [11]   shieldImpact.playerId
 ///   [12]   sourceType_code (gated by flags bit 0; 0='turret', 1='unit',
 ///           2='building', 3='system')
 ///   [13]   turretBlueprintId string-scratch slot (always present — empty
@@ -21466,7 +21466,7 @@ pub fn snapshot_encode_impact_context_scratch_ensure(count: u32) {
 ///   [14]   sourceKey string-scratch slot (gated by flags bit 1)
 ///   [15]   flags: bit 0 has_sourceType, bit 1 has_sourceKey,
 ///           bit 2 has_playerId, bit 3 has_entityId,
-///           bit 4 has_forceFieldImpact, bit 5 has_killerPlayerId,
+///           bit 4 has_shieldImpact, bit 5 has_killerPlayerId,
 ///           bit 6 has_victimPlayerId, bit 7 has_audioOnly,
 ///           bit 8 audioOnly_value, bit 9 has_deathContext (TBD),
 ///           bit 10 has_impactContext (TBD).
@@ -21516,9 +21516,9 @@ fn audio_event_type_str(code: u8) -> &'static str {
         2 => "death",
         3 => "laserStart",
         4 => "laserStop",
-        5 => "forceFieldStart",
-        6 => "forceFieldStop",
-        7 => "forceFieldImpact",
+        5 => "shieldStart",
+        6 => "shieldStop",
+        7 => "shieldImpact",
         8 => "ping",
         9 => "attackAlert",
         10 => "projectileExpire",
@@ -22001,7 +22001,7 @@ const V6_ACTION_FLAG_GRID: u32 = 1 << 5;
 const V6_ACTION_FLAG_BUILDING_ID: u32 = 1 << 6;
 
 const V6_TURRET_FLAG_TARGET_ID: u32 = 1 << 0;
-const V6_TURRET_FLAG_FORCE_FIELD_RANGE: u32 = 1 << 1;
+const V6_TURRET_FLAG_SHIELD_RANGE: u32 = 1 << 1;
 
 const V6_WAYPOINT_FLAG_POS_Z: u32 = 1 << 0;
 
@@ -22439,7 +22439,7 @@ fn v6_write_turret_payload(
             flags |= V6_TURRET_FLAG_TARGET_ID;
         }
         if has_ffr {
-            flags |= V6_TURRET_FLAG_FORCE_FIELD_RANGE;
+            flags |= V6_TURRET_FLAG_SHIELD_RANGE;
         }
         writer.write_var_uint(flags as u64);
         writer.write_var_uint(turret_buf[tb + 4] as u64); // id
@@ -22541,7 +22541,7 @@ fn v6_write_detail_turret(w: &mut MessagePackWriter, turret_buf: &[f64], t_row: 
         flags |= V6_TURRET_FLAG_TARGET_ID;
     }
     if has_ffr {
-        flags |= V6_TURRET_FLAG_FORCE_FIELD_RANGE;
+        flags |= V6_TURRET_FLAG_SHIELD_RANGE;
     }
     let mut len = 7usize;
     if has_target {
@@ -23360,14 +23360,14 @@ pub fn snapshot_encode_envelope_emit_server_meta(
     units_max: f64,
     has_units_count: u8,
     units_count: f64,
-    has_turret_force_field_panels_enabled: u8,
-    turret_force_field_panels_enabled: u8,
-    has_turret_force_field_spheres_enabled: u8,
-    turret_force_field_spheres_enabled: u8,
-    has_force_fields_obstruct_sight: u8,
-    force_fields_obstruct_sight: u8,
-    has_force_field_reflection_mode: u8,
-    force_field_reflection_mode_slot: u32,
+    has_turret_shield_panels_enabled: u8,
+    turret_shield_panels_enabled: u8,
+    has_turret_shield_spheres_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+    has_shields_obstruct_sight: u8,
+    shields_obstruct_sight: u8,
+    has_shield_reflection_mode: u8,
+    shield_reflection_mode_slot: u32,
     has_fog_of_war_enabled: u8,
     fog_of_war_enabled: u8,
     cpu_avg: f64,
@@ -23381,16 +23381,16 @@ pub fn snapshot_encode_envelope_emit_server_meta(
     let w = messagepack_writer();
 
     let mut field_count: usize = 8; // ticks, snaps, server, grid, units, cpu, wind, unitGroundNormalEma
-    if has_turret_force_field_panels_enabled != 0 {
+    if has_turret_shield_panels_enabled != 0 {
         field_count += 1;
     }
-    if has_turret_force_field_spheres_enabled != 0 {
+    if has_turret_shield_spheres_enabled != 0 {
         field_count += 1;
     }
-    if has_force_fields_obstruct_sight != 0 {
+    if has_shields_obstruct_sight != 0 {
         field_count += 1;
     }
-    if has_force_field_reflection_mode != 0 {
+    if has_shield_reflection_mode != 0 {
         field_count += 1;
     }
     if has_fog_of_war_enabled != 0 {
@@ -23463,21 +23463,21 @@ pub fn snapshot_encode_envelope_emit_server_meta(
         w.write_number(units_count);
     }
 
-    if has_turret_force_field_panels_enabled != 0 {
+    if has_turret_shield_panels_enabled != 0 {
         w.write_str("mirrorsEnabled");
-        w.write_bool(turret_force_field_panels_enabled != 0);
+        w.write_bool(turret_shield_panels_enabled != 0);
     }
-    if has_turret_force_field_spheres_enabled != 0 {
-        w.write_str("forceFieldsEnabled");
-        w.write_bool(turret_force_field_spheres_enabled != 0);
+    if has_turret_shield_spheres_enabled != 0 {
+        w.write_str("shieldsEnabled");
+        w.write_bool(turret_shield_spheres_enabled != 0);
     }
-    if has_force_fields_obstruct_sight != 0 {
-        w.write_str("forceFieldsObstructSight");
-        w.write_bool(force_fields_obstruct_sight != 0);
+    if has_shields_obstruct_sight != 0 {
+        w.write_str("shieldsObstructSight");
+        w.write_bool(shields_obstruct_sight != 0);
     }
-    if has_force_field_reflection_mode != 0 {
-        w.write_str("forceFieldReflectionMode");
-        write_string_from_scratch(w, force_field_reflection_mode_slot);
+    if has_shield_reflection_mode != 0 {
+        w.write_str("shieldReflectionMode");
+        write_string_from_scratch(w, shield_reflection_mode_slot);
     }
     if has_fog_of_war_enabled != 0 {
         w.write_str("fogOfWarEnabled");
@@ -23864,7 +23864,7 @@ pub fn snapshot_encode_envelope_emit_projectiles(
                 }
                 if has_reflector_kind {
                     w.write_str("reflectorKind");
-                    w.write_str("forceField");
+                    w.write_str("shield");
                 }
                 if has_reflector_player {
                     w.write_str("reflectorPlayerId");
@@ -24096,7 +24096,7 @@ pub fn snapshot_encode_envelope_emit_economy(player_count: u32) -> u32 {
 /// projectiles in iteration order. Per-event pool-iteration order
 /// matches NetworkServerSnapshotSimEvent / createPooledSimEvent:
 /// type, turretBlueprintId, sourceType, sourceKey, pos, playerId, entityId,
-/// deathContext, impactContext, forceFieldImpact, killerPlayerId,
+/// deathContext, impactContext, shieldImpact, killerPlayerId,
 /// victimPlayerId, audioOnly.
 ///
 /// D.3j-27 adds deathContext + impactContext support. Caller pre-packs
@@ -24382,7 +24382,7 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
             impact_offset += 1;
         }
         if has_ff_impact {
-            w.write_str("forceFieldImpact");
+            w.write_str("shieldImpact");
             // Pool order: normal, playerId (from copySimEventInto's
             // defensive literal).
             w.write_map_header(2);
@@ -25459,7 +25459,7 @@ mod lock_on_inclusion_tests {
         spatial_init(200.0, 64);
         entity_meta_init(64);
         combat_targeting_init(64);
-        force_field_pool_clear();
+        shield_pool_clear();
         terrain_clear();
     }
 
@@ -25782,7 +25782,7 @@ mod lock_on_inclusion_tests {
         );
     }
 
-    fn run_schedule_tick(turret_force_field_panels_enabled: u8) -> (i32, u8, u8) {
+    fn run_schedule_tick(turret_shield_panels_enabled: u8) -> (i32, u8, u8) {
         combat_targeting_rebuild_observation_masks();
         let source_ids = [SOURCE_ID];
         let mut cached_fire_ranks = [0u8; MAX];
@@ -25794,7 +25794,7 @@ mod lock_on_inclusion_tests {
             &source_ids,
             10,
             16.0,
-            turret_force_field_panels_enabled,
+            turret_shield_panels_enabled,
             1,
             0,
             10.0,

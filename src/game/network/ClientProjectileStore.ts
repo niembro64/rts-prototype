@@ -1,5 +1,5 @@
 import type { Entity, EntityId } from '../sim/types';
-import { createEmptyEntityComponentSlots, createTransform, isProjectileShot, NO_ENTITY_ID, PROJECTILE_ABSENCE_SLOTS } from '../sim/types';
+import { createEmptyEntityComponentSlots, createTransform, getEmissionBlueprintId, isProjectileShot, NO_ENTITY_ID, PROJECTILE_ABSENCE_SLOTS } from '../sim/types';
 import type {
   NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotProjectileSpawn,
@@ -262,7 +262,7 @@ export class ClientProjectileStore {
         ownerId: spawn.playerId,
         sourceEntityId: spawn.sourceEntityId,
         config,
-        shotBlueprintId: shotBlueprintId ?? config.shot.shotBlueprintId,
+        shotBlueprintId: shotBlueprintId ?? getEmissionBlueprintId(config.shot),
         shotSource: {
           sourceTurretEntityId: spawn.sourceTurretEntityId,
           sourceHostEntityId: spawn.sourceHostEntityId,
@@ -270,7 +270,7 @@ export class ClientProjectileStore {
           sourcePlayerId: spawn.playerId,
           sourceTeamId: spawn.sourceTeamId,
           sourceTurretBlueprintId: sourceTurretBlueprintId ?? config.sourceTurretBlueprintId,
-          sourceShotBlueprintId: shotBlueprintId ?? config.shot.shotBlueprintId,
+          sourceShotBlueprintId: shotBlueprintId ?? getEmissionBlueprintId(config.shot),
           spawnTick: spawn.spawnTick,
           parentShotEntityId: spawn.parentShotEntityId,
         },

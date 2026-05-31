@@ -32,7 +32,7 @@ import {
 export type TurretMesh = {
   root: THREE.Group;
   /** Absent for:
-   *   - force fields (the glowing sphere is the whole visual)
+   *   - shields (the glowing sphere is the whole visual)
    *   - units routing the head through the shared `turretHeadInstanced`
    *     InstancedMesh (deps.skipHead=true) — caller sets `headSlot`
    *     and the per-frame writer fills the slot with the head's
@@ -40,7 +40,7 @@ export type TurretMesh = {
   head?: THREE.Mesh;
   /** Slot index in Render3DEntities.turretHeadInstanced when the head
    *  is rendered via the shared InstancedMesh. Undefined for hidden
-   *  heads (force-field / compact effects) and for the per-
+   *  heads (shield / compact effects) and for the per-
    *  Mesh fallback (when the cap is exhausted). The caller assigns
    *  this after buildTurretMesh3D returns. */
   headSlot?: number;
@@ -131,7 +131,7 @@ export function buildTurretMesh3D(
 ): TurretMesh {
   const root = new THREE.Group();
   const barrel = turret.config.barrel;
-  const isForceField = barrel?.type === 'complexSingleEmitter';
+  const isShield = barrel?.type === 'complexSingleEmitter';
   const headRadius = getTurretHeadRadius(turret.config);
   const headOnly = turret.config.headOnly === true;
 
@@ -153,13 +153,13 @@ export function buildTurretMesh3D(
 
   // Skip the head sphere entirely for:
   //  - turretStyle='none': no body, no barrels — chassis only.
-  //  - force-field turrets at any detail: the ForceFieldRenderer3D's glowing
+  //  - shield turrets at any detail: the ShieldRenderer3D's glowing
   //    sphere is the whole visual.
   //  - deps.skipHead=true: the caller is rendering the head through the
   //    shared `turretHeadInstanced` InstancedMesh path — see
   //    Render3DEntities.allocTurretHeadSlot.
   const turretOff = gfx.turretStyle === 'none';
-  const hideHead = turretOff || isForceField;
+  const hideHead = turretOff || isShield;
   const skipHeadMesh = hideHead || deps.skipHead === true;
 
   // Resolved head radius drives BOTH the sphere mesh size AND its
@@ -176,12 +176,12 @@ export function buildTurretMesh3D(
   // Cache headRadius on the returned mesh whenever the head is
   // visible (per-Mesh OR via the instanced path) so the per-frame
   // writer can read the resolved value without re-calling
-  // getTurretHeadRadius. Hidden heads (force-field / turret-off)
+  // getTurretHeadRadius. Hidden heads (shield / turret-off)
   // don't need it — leave headRadius undefined.
   const cachedHeadRadius = hideHead ? undefined : headRadius;
 
   const barrels: THREE.Mesh[] = [];
-  if (!barrel || isForceField || turretOff || headOnly) {
+  if (!barrel || isShield || turretOff || headOnly) {
     parent.add(root);
     return { root, head, headRadius: cachedHeadRadius, barrels, headOnly };
   }
@@ -260,7 +260,7 @@ export function buildTurretMesh3D(
   // size regardless of which unit mounts it.
   const barrelScale = headRadius;
   const length = getTurretBarrelCenterToTipLength(turret.config);
-  // barrelLength=0 (e.g. force-field panel host) → no visible barrel.
+  // barrelLength=0 (e.g. shield panel host) → no visible barrel.
   if (length < 1e-4) {
     parent.add(root);
     return { root, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup };

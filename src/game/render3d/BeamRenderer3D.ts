@@ -12,7 +12,7 @@
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
-import { getPlayerColors, isLineShotType } from '../sim/types';
+import { getPlayerColors, isRayType } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { GraphicsConfig } from '@/types/graphics';
 import { getBeamSnapToTurret } from '@/clientBarConfig';
@@ -498,7 +498,7 @@ export class BeamRenderer3D {
 
     for (const e of projectiles) {
       const pt = e.projectile?.projectileType;
-      if (!pt || !isLineShotType(pt)) continue;
+      if (!pt || !isRayType(pt)) continue;
 
       const proj = e.projectile!;
       const points = proj.points;

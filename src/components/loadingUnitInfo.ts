@@ -12,12 +12,12 @@ import type {
   UnitBlueprint,
 } from '@/types/blueprints';
 import type {
+  EmissionConfig,
   ProjectileShot,
-  ShotConfig,
   Turret,
   TurretConfig,
 } from '@/game/sim/types';
-import { isProjectileShot } from '@/game/sim/types';
+import { getEmissionBlueprintId, isProjectileShot, isRayConfig, isShieldConfig } from '@/game/sim/types';
 import type { BuildableUnitBlueprintId } from '@/game/sim/blueprints';
 
 export type LoadingUnitInfoNode = {
@@ -215,21 +215,21 @@ function describeTurret(turret: Turret, index: number): LoadingUnitInfoNode {
   if (config.groundAimFraction !== undefined) {
     children.push(stat('Ground aim', `${fmt(config.groundAimFraction * 100)}% range`));
   }
-  if (config.shot) children.push(describeShot(config.shot, blueprint.shotBlueprintId));
+  if (config.shot) children.push(describeEmission(config.shot, blueprint.emissionBlueprintId));
   const inclusions = describeLockOnInclusions(blueprint);
   if (inclusions.length > 0) children.push(node('Lock-on inclusions', undefined, undefined, inclusions));
 
   return node(
     `${index + 1}. ${config.turretBlueprintId}`,
-    config.visualOnly ? 'visual' : blueprint.shotBlueprintId ?? 'utility',
+    config.visualOnly ? 'visual' : blueprint.emissionBlueprintId ?? 'utility',
     undefined,
     children,
   );
 }
 
-function describeShot(shot: ShotConfig, shotBlueprintId: string | null): LoadingUnitInfoNode {
-  if (shot.type === 'forceField') {
-    return node('Shot', 'force field', undefined, [
+function describeEmission(shot: EmissionConfig, blueprintId: string | null): LoadingUnitInfoNode {
+  if (isShieldConfig(shot)) {
+    return node('Emission', 'shield', undefined, [
       stat('Arc', rad(shot.angle)),
       stat('Transition', ms(shot.transitionTime)),
       ...(shot.barrier ? [
@@ -239,9 +239,9 @@ function describeShot(shot: ShotConfig, shotBlueprintId: string | null): Loading
     ]);
   }
 
-  const label = shotBlueprintId ?? shot.shotBlueprintId;
+  const label = blueprintId ?? getEmissionBlueprintId(shot);
   const children: LoadingUnitInfoNode[] = [stat('Type', shot.type)];
-  if (shot.type === 'beam' || shot.type === 'laser') {
+  if (isRayConfig(shot)) {
     children.push(
       stat('DPS', fmt(shot.dps, 1)),
       stat('Width', fmt(shot.width)),
@@ -286,7 +286,7 @@ function describeShot(shot: ShotConfig, shotBlueprintId: string | null): Loading
       children.push(stat('Smoke trail', shot.smokeTrail.useId ?? 'custom'));
     }
   }
-  return node('Shot', label, undefined, children);
+  return node('Emission', label, undefined, children);
 }
 
 function describeLocomotionConfig(locomotion: LocomotionBlueprint): LoadingUnitInfoNode[] {
@@ -372,9 +372,6 @@ function projectileDamageWithSubmunitions(shot: ProjectileShot, depth = 0): numb
 }
 
 function projectileBlueprintDamage(shot: ShotBlueprint, depth: number): number {
-  if (shot.type === 'beam') return shot.dps;
-  if (shot.type === 'laser') return shot.dps * (shot.duration / 1000);
-  if (shot.type === 'forceField') return 0;
   let damage = shot.explosion?.damage ?? 0;
   if (shot.submunitions && depth < 2) {
     try {

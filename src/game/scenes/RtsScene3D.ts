@@ -25,7 +25,7 @@ import { ThreeApp } from '../render3d/ThreeApp';
 import { Render3DEntities } from '../render3d/Render3DEntities';
 import { Input3DManager } from '../render3d/Input3DManager';
 import { BeamRenderer3D } from '../render3d/BeamRenderer3D';
-import { ForceFieldRenderer3D } from '../render3d/ForceFieldRenderer3D';
+import { ShieldRenderer3D } from '../render3d/ShieldRenderer3D';
 import { TerrainTileRenderer3D } from '../render3d/TerrainTileRenderer3D';
 import { MetalDepositRenderer3D } from '../render3d/MetalDepositRenderer3D';
 import { EnvironmentPropRenderer3D } from '../render3d/EnvironmentPropRenderer3D';
@@ -40,11 +40,11 @@ import { SmokeTrail3D } from '../render3d/SmokeTrail3D';
 import { FogOfWarFog3D } from '../render3d/FogOfWarFog3D';
 import { SightBoundaryRenderer3D } from '../render3d/SightBoundaryRenderer3D';
 import { Explosion3D } from '../render3d/Explosion3D';
-import { ForceFieldImpactRenderer3D } from '../render3d/ForceFieldImpactRenderer3D';
+import { ShieldImpactRenderer3D } from '../render3d/ShieldImpactRenderer3D';
 import { WaterSplash3D } from '../render3d/WaterSplash3D';
 
 // Sim z-up surface normal for a flat water plane. Reused for every
-// water-splash event so the force-field impact ring spawns at the
+// water-splash event so the shield impact ring spawns at the
 // right orientation without allocating a literal per event.
 const WATER_SURFACE_NORMAL_SIM = { x: 0, y: 0, z: 1 } as const;
 import { Debris3D } from '../render3d/Debris3D';
@@ -140,14 +140,14 @@ export class RtsScene3D {
    *  renderer's; passed in by reference. */
   private legInstancedRenderer!: LegInstancedRenderer;
   private beamRenderer!: BeamRenderer3D;
-  private forceFieldRenderer!: ForceFieldRenderer3D;
+  private shieldRenderer!: ShieldRenderer3D;
   private terrainTileRenderer!: TerrainTileRenderer3D;
   private metalDeposits: MetalDeposit[] = [];
   private metalDepositRenderer: MetalDepositRenderer3D | null = null;
   private environmentPropRenderer: EnvironmentPropRenderer3D | null = null;
   private waterRenderer!: WaterRenderer3D;
   private explosionRenderer!: Explosion3D;
-  private forceFieldImpactRenderer!: ForceFieldImpactRenderer3D;
+  private shieldImpactRenderer!: ShieldImpactRenderer3D;
   private waterSplashRenderer!: WaterSplash3D;
   private debrisRenderer!: Debris3D;
   /** Per-frame world-XY visibility footprint driven by the PLAYER
@@ -407,13 +407,13 @@ export class RtsScene3D {
       this.metalDeposits,
     );
     this.beamRenderer = new BeamRenderer3D(this.threeApp.world, this.renderScope);
-    // ForceFieldRenderer3D parents each unit's force-field meshes onto
+    // ShieldRenderer3D parents each unit's shield meshes onto
     // that unit's yaw subgroup (like a regular turret root) so the
     // bubble inherits position + tilt + yaw from the scenegraph
     // chain. The lookup is via Render3DEntities since that's where
     // the per-unit mesh hierarchy lives; entityRenderer was just
     // constructed above so the callback resolves immediately.
-    this.forceFieldRenderer = new ForceFieldRenderer3D(
+    this.shieldRenderer = new ShieldRenderer3D(
       this.threeApp.world,
       this.renderScope,
       (eid) => this.entityRenderer.getUnitYawGroup(eid),
@@ -496,7 +496,7 @@ export class RtsScene3D {
     // & friends above and the orbit's clearance sampler is live.
     this.cameraFramingSystem.seedInitialCamera();
     this.explosionRenderer = new Explosion3D(this.threeApp.world);
-    this.forceFieldImpactRenderer = new ForceFieldImpactRenderer3D(this.threeApp.world);
+    this.shieldImpactRenderer = new ShieldImpactRenderer3D(this.threeApp.world);
     this.waterSplashRenderer = new WaterSplash3D(this.threeApp.world);
     this.debrisRenderer = new Debris3D(
       this.threeApp.world,
@@ -619,7 +619,7 @@ export class RtsScene3D {
       {
         entityRenderer: this.entityRenderer,
         beamRenderer: this.beamRenderer,
-        forceFieldRenderer: this.forceFieldRenderer,
+        shieldRenderer: this.shieldRenderer,
         terrainTileRenderer: this.terrainTileRenderer,
         buildGhostRenderer: this.buildGhostRenderer,
         metalDepositRenderer: this.metalDepositRenderer,
@@ -627,7 +627,7 @@ export class RtsScene3D {
         contactShadowRenderer: this.contactShadowRenderer,
         waterRenderer: this.waterRenderer,
         explosionRenderer: this.explosionRenderer,
-        forceFieldImpactRenderer: this.forceFieldImpactRenderer,
+        shieldImpactRenderer: this.shieldImpactRenderer,
         waterSplashRenderer: this.waterSplashRenderer,
         debrisRenderer: this.debrisRenderer,
         burnMarkRenderer: this.burnMarkRenderer,
@@ -876,11 +876,11 @@ export class RtsScene3D {
    *   - 'hit'              → fire explosion at event.pos
    *   - 'projectileExpire' → smaller fire explosion (projectile reached max
    *                          range or hit the ground)
-   *   - 'forceFieldImpact' → tangent-plane force-field shield flash
+   *   - 'shieldImpact' → tangent-plane shield shield flash
    *   - 'death'            → fire explosion + material debris cluster
    *
-   * laserStart/Stop and forceFieldStart/Stop need no visual reaction here —
-   * beams are drawn continuously while live projectiles exist, and force-field
+   * laserStart/Stop and shieldStart/Stop need no visual reaction here —
+   * beams are drawn continuously while live projectiles exist, and shield
    * visuals come from FLAG toggles on their turret state.
    */
   private handleSimEvent3D(event: NetworkServerSnapshotSimEvent): void {
@@ -954,15 +954,15 @@ export class RtsScene3D {
       const vx = ctx ? ctx.projectile.vel.x : 0;
       const vy = ctx ? ctx.projectile.vel.y : 0;
       this.waterSplashRenderer.spawn(event.pos.x, event.pos.y, vx, vy, mass);
-      // Surface ripple — reuse the force-field impact ring as
+      // Surface ripple — reuse the shield impact ring as
       // the spreading surface-reflection flash. Same material
       // contract (Materials Are Independent Of Shape): a circular
       // reflective surface flashing under impact reads identically
-      // whether the surface is a force-field panel, a force-field
+      // whether the surface is a shield panel, a shield
       // sphere, or a body of water. The water plane is flat so the
       // surface normal is straight up; sim is z-up so +Z is the right
       // normal value.
-      this.forceFieldImpactRenderer.spawn(
+      this.shieldImpactRenderer.spawn(
         event.pos.x,
         event.pos.y,
         event.pos.z,
@@ -984,10 +984,10 @@ export class RtsScene3D {
         undefined,
         effectGfx.fireExplosionStyle,
       );
-    } else if (event.type === 'forceFieldImpact') {
-      const ctx = event.forceFieldImpact;
+    } else if (event.type === 'shieldImpact') {
+      const ctx = event.shieldImpact;
       if (ctx) {
-        this.forceFieldImpactRenderer.spawn(
+        this.shieldImpactRenderer.spawn(
           event.pos.x,
           event.pos.y,
           event.pos.z,
@@ -996,7 +996,7 @@ export class RtsScene3D {
         );
       }
     } else if (event.type === 'death') {
-      // Some kill paths (splash, bleed-out, force-field zone damage) emit
+      // Some kill paths (splash, bleed-out, shield zone damage) emit
       // a death event with no deathContext. Rather than skipping the
       // material explosion entirely, try to reconstruct a minimal context
       // from the entity if it's still in view state; otherwise synthesize
@@ -1109,7 +1109,7 @@ export class RtsScene3D {
   /** Play the audio side of a SimEvent (FOW-09 prereq). Called once
    *  per event by handleSimEvent3D ahead of the visual branches so
    *  off-screen action stays audible even when the visual gating
-   *  trims the explosion sprite. Continuous laser / force-field
+   *  trims the explosion sprite. Continuous laser / shield
    *  sounds are looped state, not one-shots, so they start/stop on
    *  the matching SimEvent pair. */
   private playSimEventAudio(event: NetworkServerSnapshotSimEvent): void {
@@ -1146,13 +1146,13 @@ export class RtsScene3D {
       case 'laserStop':
         if (event.entityId !== null) audioManager.stopLaserSound(event.entityId);
         return;
-      case 'forceFieldStart':
-        if (event.entityId !== null) audioManager.startForceFieldSound(event.entityId);
+      case 'shieldStart':
+        if (event.entityId !== null) audioManager.startShieldSound(event.entityId);
         return;
-      case 'forceFieldStop':
-        if (event.entityId !== null) audioManager.stopForceFieldSound(event.entityId);
+      case 'shieldStop':
+        if (event.entityId !== null) audioManager.stopShieldSound(event.entityId);
         return;
-      // ping / attackAlert / forceFieldImpact have no one-shot sound
+      // ping / attackAlert / shieldImpact have no one-shot sound
       // wired yet; the visual is the whole UX. Drop through.
     }
   }
@@ -1440,11 +1440,11 @@ export class RtsScene3D {
       environmentPropRenderer: this.environmentPropRenderer,
       contactShadowRenderer: this.contactShadowRenderer,
       beamRenderer: this.beamRenderer,
-      forceFieldRenderer: this.forceFieldRenderer,
+      shieldRenderer: this.shieldRenderer,
       terrainTileRenderer: this.terrainTileRenderer,
       waterRenderer: this.waterRenderer,
       explosionRenderer: this.explosionRenderer,
-      forceFieldImpactRenderer: this.forceFieldImpactRenderer,
+      shieldImpactRenderer: this.shieldImpactRenderer,
       waterSplashRenderer: this.waterSplashRenderer,
       debrisRenderer: this.debrisRenderer,
       burnMarkRenderer: this.burnMarkRenderer,

@@ -95,7 +95,7 @@ export type PrevEntityState = {
   // the bitmask but must still dirty the turret so the client tracks
   // the new lock.
   turretTargetIds: number[];
-  forceFieldRanges: number[];
+  shieldRanges: number[];
   normalX: number;
   normalY: number;
   normalZ: number;
@@ -136,7 +136,7 @@ export const dirtyEntityFieldsBuf: number[] = [];
 
 // Turret dirty marks are candidate triggers; the threshold diff decides
 // whether aim motion is actually worth sending on this delta.
-export const SNAPSHOT_DIRTY_FORCE_FIELDS =
+export const SNAPSHOT_DIRTY_SHIELDS =
   ENTITY_CHANGED_HP |
   ENTITY_CHANGED_ACTIONS |
   ENTITY_CHANGED_BUILDING |
@@ -159,14 +159,14 @@ function createPrevEntityState(): PrevEntityState {
   const turretPitches: number[] = [];
   const turretPitchVels: number[] = [];
   const turretTargetIds: number[] = [];
-  const forceFieldRanges: number[] = [];
+  const shieldRanges: number[] = [];
   for (let i = 0; i < MAX_WEAPONS_PER_ENTITY; i++) {
     turretRots.push(0);
     turretAngVels.push(0);
     turretPitches.push(0);
     turretPitchVels.push(0);
     turretTargetIds.push(-1);
-    forceFieldRanges.push(0);
+    shieldRanges.push(0);
   }
   return {
     x: 0, y: 0, z: 0, rotation: 0,
@@ -176,7 +176,7 @@ function createPrevEntityState(): PrevEntityState {
     weaponCount: 0,
     turretRots, turretAngVels, turretPitches,
     turretPitchVels, turretTargetIds,
-    forceFieldRanges,
+    shieldRanges,
     normalX: 0, normalY: 0, normalZ: 1,
     buildProgress: 0, solarOpen: 0, factoryProgress: 0, isProducing: 0, factorySelectedUnitCode: -1,
   };
@@ -302,7 +302,7 @@ export function getEntityDeltaChangedFields(
       let turretsAlreadyChanged = false;
       // Head-only turrets have rotation/pitch/velocity pre-zeroed by
       // captureEntityState, so the threshold checks here naturally compare
-      // 0 vs 0 and never fire. Non-head-only force-field-panel hosts still
+      // 0 vs 0 and never fire. Non-head-only shield-panel hosts still
       // ship aim because their authored panel emitter rotates visibly.
       for (let i = 0; i < next.weaponCount; i++) {
         if (!turretsAlreadyChanged) {
@@ -330,7 +330,7 @@ export function getEntityDeltaChangedFields(
               turretAngularVelocityChanged ||
               turretPitchChanged ||
               next.turretTargetIds[i] !== prev.turretTargetIds[i] ||
-              Math.abs(next.forceFieldRanges[i] - prev.forceFieldRanges[i]) > 0.001) {
+              Math.abs(next.shieldRanges[i] - prev.shieldRanges[i]) > 0.001) {
             mask |= ENTITY_CHANGED_TURRETS;
             turretsAlreadyChanged = true;
           }
@@ -393,7 +393,7 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
       prev.turretPitches.push(0);
       prev.turretPitchVels.push(0);
       prev.turretTargetIds.push(-1);
-      prev.forceFieldRanges.push(0);
+      prev.shieldRanges.push(0);
     }
     for (let i = 0; i < combatTurrets.length; i++) {
       const w = combatTurrets[i];
@@ -413,7 +413,7 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
       prev.turretPitches[i] = snapshotAimMotion ? w.pitch : 0;
       prev.turretPitchVels[i] = snapshotAimMotion ? w.pitchVelocity : 0;
       prev.turretTargetIds[i] = targetId;
-      prev.forceFieldRanges[i] = w.forceField !== undefined ? w.forceField.range : 0;
+      prev.shieldRanges[i] = w.shield !== undefined ? w.shield.range : 0;
     }
   }
 
@@ -513,7 +513,7 @@ export function copyPrevState(from: PrevEntityState, to: PrevEntityState): void 
     to.turretPitches.push(0);
     to.turretPitchVels.push(0);
     to.turretTargetIds.push(-1);
-    to.forceFieldRanges.push(0);
+    to.shieldRanges.push(0);
   }
   for (let i = 0; i < from.weaponCount; i++) {
     to.turretRots[i] = from.turretRots[i];
@@ -521,7 +521,7 @@ export function copyPrevState(from: PrevEntityState, to: PrevEntityState): void 
     to.turretPitches[i] = from.turretPitches[i];
     to.turretPitchVels[i] = from.turretPitchVels[i];
     to.turretTargetIds[i] = from.turretTargetIds[i];
-    to.forceFieldRanges[i] = from.forceFieldRanges[i];
+    to.shieldRanges[i] = from.shieldRanges[i];
   }
   // Shrink to the actual weapon count so entities that briefly carried
   // extra turrets (or that load a higher-weapon profile during one snap
@@ -532,7 +532,7 @@ export function copyPrevState(from: PrevEntityState, to: PrevEntityState): void 
     to.turretPitches.length = from.weaponCount;
     to.turretPitchVels.length = from.weaponCount;
     to.turretTargetIds.length = from.weaponCount;
-    to.forceFieldRanges.length = from.weaponCount;
+    to.shieldRanges.length = from.weaponCount;
   }
   to.buildProgress = from.buildProgress;
   to.solarOpen = from.solarOpen;
@@ -584,7 +584,7 @@ export function copySentPrevState(
       to.turretPitches.push(0);
       to.turretPitchVels.push(0);
       to.turretTargetIds.push(-1);
-      to.forceFieldRanges.push(0);
+      to.shieldRanges.push(0);
     }
     for (let i = 0; i < from.weaponCount; i++) {
       to.turretRots[i] = from.turretRots[i];
@@ -592,7 +592,7 @@ export function copySentPrevState(
       to.turretPitches[i] = from.turretPitches[i];
       to.turretPitchVels[i] = from.turretPitchVels[i];
       to.turretTargetIds[i] = from.turretTargetIds[i];
-      to.forceFieldRanges[i] = from.forceFieldRanges[i];
+      to.shieldRanges[i] = from.shieldRanges[i];
     }
     if (to.turretRots.length > from.weaponCount) {
       to.turretRots.length = from.weaponCount;
@@ -600,7 +600,7 @@ export function copySentPrevState(
       to.turretPitches.length = from.weaponCount;
       to.turretPitchVels.length = from.weaponCount;
       to.turretTargetIds.length = from.weaponCount;
-      to.forceFieldRanges.length = from.weaponCount;
+      to.shieldRanges.length = from.weaponCount;
     }
   }
   if (changedFields & ENTITY_CHANGED_BUILDING) {
@@ -768,7 +768,7 @@ function syncEntityMetaPools(world: WorldState, e: Entity, sim: SimWasm): void {
       snapshotAimMotion ? w.pitch : 0,
       snapshotAimMotion ? w.pitchVelocity : 0,
       snapshotAimMotion ? w.pitchAcceleration : 0,
-      w.forceField !== undefined ? w.forceField.range : 0,
+      w.shield !== undefined ? w.shield.range : 0,
       targetId,
     );
   }

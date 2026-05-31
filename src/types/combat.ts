@@ -1,14 +1,14 @@
 // Combat system types extracted from game/sim/combat/types.ts
 
 import type { EntityId, PlayerId, Entity } from './sim';
-import type { ShotBlueprintId, TurretBlueprintId, UnitBlueprintId } from './blueprintIds';
+import type { TurretBlueprintId, UnitBlueprintId } from './blueprintIds';
 import type { DeathContext } from './damage';
 import type { Vec2, Vec3 } from './vec2';
 
 export type TurretAudioId = TurretBlueprintId;
-export type ShotAudioId = ShotBlueprintId;
+export type ShotAudioId = string;
 export type UnitAudioId = UnitBlueprintId;
-export type SimEventAudioKey = TurretAudioId | ShotAudioId | UnitAudioId | '';
+export type SimEventAudioKey = TurretAudioId | ShotAudioId | UnitAudioId | string;
 export type SimEventSourceType = 'turret' | 'unit' | 'building' | 'system';
 
 export type ImpactContext = {
@@ -52,10 +52,10 @@ export type SimDeathContext = {
   turretPoses?: Array<{ rotation: number; pitch: number }>;
 };
 
-export type ForceFieldImpactContext = {
-  /** Surface normal of the force-field sphere at the hit point in sim coords. */
+export type ShieldImpactContext = {
+  /** Surface normal of the shield sphere at the hit point in sim coords. */
   normal: Vec3;
-  /** Owner of the force field, kept for provenance even when visuals are neutral. */
+  /** Owner of the shield, kept for provenance even when visuals are neutral. */
   playerId: PlayerId;
 };
 
@@ -66,15 +66,15 @@ export type SimEvent = {
     | 'death'
     | 'laserStart'
     | 'laserStop'
-    | 'forceFieldStart'
-    | 'forceFieldStop'
-    | 'forceFieldImpact'
+    | 'shieldStart'
+    | 'shieldStop'
+    | 'shieldImpact'
     | 'ping'
     | 'attackAlert'
     | 'projectileExpire'
     | 'waterSplash';
   /** Legacy wire field for the one-shot audio routing key. Fire,
-   *  laser, and force-field events use turret blueprint ids; hit/projectile
+   *  laser, and shield events use turret blueprint ids; hit/projectile
    *  expire events use shot blueprint ids; death events may use a unit blueprint id. Keep
    *  this as the only allowed blueprint-id union until the wire format
    *  can rename it to `audioKey`. */
@@ -95,7 +95,7 @@ export type SimEvent = {
   entityId?: EntityId;
   deathContext?: SimDeathContext;
   impactContext?: ImpactContext;
-  forceFieldImpact?: ForceFieldImpactContext;
+  shieldImpact?: ShieldImpactContext;
   /** For 'death' events: the playerId that owned the killer (the
    *  entity dealing the killing blow). Drives the kill-credit routing
    *  in the audio serializer (FOW-17) — the death event

@@ -15,7 +15,7 @@ import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import { getBodyGeom } from './BodyShape3D';
 import type { CommanderVisualKit3D } from './CommanderVisualKit3D';
 import type { EntityMesh } from './EntityMesh3D';
-import { buildForceFieldPanelMesh3D } from './ForceFieldPanelMesh3D';
+import { buildShieldPanelMesh3D } from './ShieldPanelMesh3D';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 
@@ -249,9 +249,9 @@ export class UnitMeshBuilder3D {
     const isCommanderUnit = isCommander(entity);
     for (let turretIdx = 0; turretIdx < turrets.length; turretIdx++) {
       const turret = turrets[turretIdx];
-      const isForceField = (turret.config.barrel as { type?: string } | undefined)?.type === 'complexSingleEmitter';
+      const isShield = (turret.config.barrel as { type?: string } | undefined)?.type === 'complexSingleEmitter';
       const isConstructionEmitter = turret.config.constructionEmitter !== undefined;
-      const hideHead = turretOff || isForceField || isConstructionEmitter;
+      const hideHead = turretOff || isShield || isConstructionEmitter;
       let headSlot: number | undefined;
       if (useDetailedUnitInstancing && !hideHead && !isCommanderUnit) {
         const allocated = this.unitDetailInstances.allocTurretHeadSlot();
@@ -300,24 +300,24 @@ export class UnitMeshBuilder3D {
     ownerId: PlayerId | undefined,
     useDetailedUnitInstancing: boolean,
   ): void {
-    const forceFieldPanels = entity.unit?.forceFieldPanels;
-    if (!forceFieldPanels || forceFieldPanels.length === 0 || !entity.unit) return;
+    const shieldPanels = entity.unit?.shieldPanels;
+    if (!shieldPanels || shieldPanels.length === 0 || !entity.unit) return;
 
-    const panelHalfSide = forceFieldPanels[0].halfWidth;
-    const panelArmLength = forceFieldPanels[0].offsetX;
-    const forceFieldPanelTurret = turrets.find((turret) => turret.config.passive);
-    const pivotLocalX = forceFieldPanelTurret?.mount.x ?? 0;
-    const pivotLocalY = (forceFieldPanelTurret?.mount.z ?? getUnitBodyCenterHeight(entity.unit))
+    const panelHalfSide = shieldPanels[0].halfWidth;
+    const panelArmLength = shieldPanels[0].offsetX;
+    const shieldPanelTurret = turrets.find((turret) => turret.config.passive);
+    const pivotLocalX = shieldPanelTurret?.mount.x ?? 0;
+    const pivotLocalY = (shieldPanelTurret?.mount.z ?? getUnitBodyCenterHeight(entity.unit))
       - liftGroup.position.y;
-    const pivotLocalZ = forceFieldPanelTurret?.mount.y ?? 0;
-    const panelCount = forceFieldPanels.length;
+    const pivotLocalZ = shieldPanelTurret?.mount.y ?? 0;
+    const panelCount = shieldPanels.length;
     const allocedPanelSlots = useDetailedUnitInstancing && panelCount > 0
-      ? this.unitDetailInstances.allocForceFieldPanelSlots(panelCount)
+      ? this.unitDetailInstances.allocShieldPanelSlots(panelCount)
       : null;
     const allMirrorAlloc = allocedPanelSlots !== null;
-    mesh.mirrors = buildForceFieldPanelMesh3D(
+    mesh.mirrors = buildShieldPanelMesh3D(
       liftGroup,
-      forceFieldPanels,
+      shieldPanels,
       pivotLocalX,
       pivotLocalY,
       pivotLocalZ,

@@ -1,6 +1,5 @@
 import type { TurretBlueprint } from '@/types/blueprints';
-import { isLineShotBlueprint } from '@/types/blueprints';
-import { getShotBlueprint } from '../sim/blueprints';
+import { getRayBlueprint } from '../sim/blueprints';
 import {
   TURRET_BARREL_MIN_DIAMETER,
   getConeBarrelBaseOrbitRadius,
@@ -45,7 +44,7 @@ export function getDebrisBarrelProfile(
   if (length < 1) return null;
 
   if (barrel.type === 'singleCylinderBarrel' || barrel.type === 'singleConeBarrel') {
-    const diameter = getLineShotWidth(turret) ??
+    const diameter = getRayConfigWidth(turret) ??
       barrel.barrelThickness ??
       TURRET_BARREL_MIN_DIAMETER;
     return {
@@ -86,11 +85,10 @@ export function getDebrisBarrelProfile(
   return null;
 }
 
-function getLineShotWidth(turret: TurretBlueprint): number | undefined {
-  if (!turret.shotBlueprintId) return undefined;
+function getRayConfigWidth(turret: TurretBlueprint): number | undefined {
+  if (turret.emissionKind !== 'ray' || !turret.emissionBlueprintId) return undefined;
   try {
-    const shot = getShotBlueprint(turret.shotBlueprintId);
-    return isLineShotBlueprint(shot) ? shot.width : undefined;
+    return getRayBlueprint(turret.emissionBlueprintId).width;
   } catch {
     return undefined;
   }

@@ -2,8 +2,8 @@
 // Extracted from projectileSystem.ts to reduce duplication
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId, BeamShot, LaserShot, PlayerId } from '../types';
-import { getPlayerPrimaryColor } from '../types';
+import type { Entity, EntityId, BeamRay, LaserRay, PlayerId } from '../types';
+import { getEmissionBlueprintId, getPlayerPrimaryColor } from '../types';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimEvent, ImpactContext, SimEventSourceType } from './types';
 import { BEAM_EXPLOSION_MAGNITUDE } from '../../../config';
@@ -395,7 +395,7 @@ export function emitBeamHitAudio(
       const entity = world.getEntity(hitId);
       if (entity) {
         audioEvents.push({
-          type: 'hit', turretBlueprintId: (config.shot as BeamShot | LaserShot).shotBlueprintId,
+          type: 'hit', turretBlueprintId: getEmissionBlueprintId(config.shot as BeamRay | LaserRay),
           pos: { x: entity.transform.x, y: entity.transform.y, z: entity.transform.z },
           playerId: proj.ownerId,
           entityId: proj.sourceEntityId,

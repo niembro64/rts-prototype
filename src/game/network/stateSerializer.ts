@@ -31,7 +31,7 @@ import {
   serializeScanPulses,
 } from './stateSerializerVisibility';
 import {
-  SNAPSHOT_DIRTY_FORCE_FIELDS,
+  SNAPSHOT_DIRTY_SHIELDS,
   copyPrevState,
   copySentPrevState,
   type DeltaTrackingState,
@@ -399,7 +399,7 @@ export function serializeGameState(
       const isNew = !tracking.prevEntityIds.has(entity.id);
       tracking.prevEntityIds.add(entity.id);
       const next = getNextEntityState(entity);
-      const dirtyForcedFields = dirtyFields & SNAPSHOT_DIRTY_FORCE_FIELDS;
+      const dirtyForcedFields = dirtyFields & SNAPSHOT_DIRTY_SHIELDS;
       const rustDeltaMask = !isNew && baselineHandle !== undefined
         ? getRustEntityDeltaChangedFields(entity, next, baselineHandle, world)
         : undefined;

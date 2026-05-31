@@ -6,7 +6,7 @@ import type { Turret } from '../sim/types';
  * Beam/laser paths travel separately as projectile beam updates; they do not
  * need turret aim motion on the entity row.
  *
- * Non-head-only turrets (including turretForceFieldPanel, whose authored
+ * Non-head-only turrets (including turretShieldPanel, whose authored
  * barrel rotates to bisect its targets) always ship their aim normally.
  */
 export function turretAimMotionIsSnapshotVisible(turret: Turret): boolean {

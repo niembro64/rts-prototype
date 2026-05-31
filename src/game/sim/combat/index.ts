@@ -22,18 +22,18 @@ export {
   resetLaserSoundState,
 } from './laserSoundSystem';
 
-// Force field sounds
+// Shield sounds
 export {
-  updateForceFieldSounds,
-  emitForceFieldStopsForEntity,
-  resetForceFieldSoundState,
-} from './forceFieldSoundSystem';
+  updateShieldSounds,
+  emitShieldStopsForEntity,
+  resetShieldSoundState,
+} from './shieldSoundSystem';
 
-// Force field weapons
+// Shield weapons
 export {
-  updateForceFieldState,
-  resetForceFieldBuffers,
-} from './forceFieldTurret';
+  updateShieldState,
+  resetShieldBuffers,
+} from './shieldTurret';
 
 // Projectiles
 export {

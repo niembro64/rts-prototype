@@ -46,8 +46,8 @@ export function insect(tk: AudioToolkit, speed: number, vol: number): void {
   playNoiseBurst(tk, 0.02 / speed, 'highpass', 3000, 1, 0.08 * vol, 0.1 * vol, 0.02 / speed);
 }
 
-// Force field fire - deep resonant pulse (multi-layer)
-export function forceFieldFire(tk: AudioToolkit, speed: number, vol: number): void {
+// Shield fire - deep resonant pulse (multi-layer)
+export function shieldFire(tk: AudioToolkit, speed: number, vol: number): void {
   // Deep bass pulse
   playTone(tk, 'sine', 80 * speed, 40 * speed, 0.25 / speed, 0.35 * vol, 0.5 * vol);
   // Mid-range resonant tone
@@ -65,5 +65,5 @@ export const FIRE_SYNTHS: Record<string, (tk: AudioToolkit, speed: number, vol: 
   'grenade': grenade,
   'burst-rifle': burstRifle,
   'insect': insect,
-  'force-field': forceFieldFire,
+  'shield': shieldFire,
 };

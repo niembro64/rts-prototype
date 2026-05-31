@@ -4,7 +4,9 @@
 
 export * from './types';
 export * from './shots';
-export * from './forceFieldMaterials';
+export * from './rays';
+export * from './shields';
+export * from './shieldMaterials';
 export * from './turrets';
 export * from './locomotion';
 export * from './unitRoster';
@@ -13,27 +15,30 @@ export * from './buildings';
 export * from './fallbacks';
 
 import type {
-  BeamShot,
-  ForceFieldBarrierConfig,
-  ForceShot,
-  LaserShot,
+  BeamRay,
+  ShieldBarrierConfig,
+  ShieldConfig,
+  EmissionConfig,
+  LaserRay,
   ActiveProjectileShot,
-  ProjectileShot,
   ShotConfig,
   TurretConfig,
 } from '../types';
 import { isProjectileShot } from '../types';
-import { isLineShotBlueprint } from '@/types/blueprints';
 import type { ShotBlueprintId, TurretBlueprintId } from '../../../types/blueprintIds';
 import { SHOT_BLUEPRINTS } from './shots';
-import { getForceFieldMaterial } from './forceFieldMaterials';
+import { RAY_BLUEPRINTS } from './rays';
+import { SHIELD_BLUEPRINTS } from './shields';
+import { getShieldMaterial } from './shieldMaterials';
 import { TURRET_BLUEPRINTS } from './turrets';
 import { UNIT_LOCOMOTION_BLUEPRINTS } from './locomotion';
 import { UNIT_BLUEPRINTS, resolveUnitTurretMounts } from './units';
 import { BUILDING_BLUEPRINTS } from './buildings';
 import type {
   ShotBlueprint,
-  ForceFieldBarrierRatioConfig,
+  RayBlueprint,
+  ShieldBarrierRatioConfig,
+  ShieldBlueprint,
   LockOnInclusionObject,
   TurretBlueprint,
 } from './types';
@@ -427,13 +432,13 @@ function validateTurretRangeMultipliers(
 function validateTurretAimStyle(
   turretBlueprintId: string,
   turretBlueprint: TurretBlueprint,
-  shot: ShotConfig | null,
+  emission: EmissionConfig | null,
 ): void {
   switch (turretBlueprint.aimStyle.angleType) {
     case 'ballisticArcLow':
     case 'ballisticArcLowOnlyUnder':
     case 'ballisticArcHigh':
-      if (!shot || !isProjectileShot(shot)) {
+      if (!emission || !isProjectileShot(emission)) {
         throw new Error(
           `Turret ${turretBlueprintId} uses aimStyle.angleType "${turretBlueprint.aimStyle.angleType}" without a plasma/rocket shot`,
         );
@@ -451,12 +456,12 @@ function validateTurretAimStyle(
   }
 }
 
-/** Compute a ForceFieldBarrierConfig from ratio-based blueprint data and weapon range. */
+/** Compute a ShieldBarrierConfig from ratio-based blueprint data and weapon range. */
 function computeBarrierConfig(
-  barrier: ForceFieldBarrierRatioConfig | null,
+  barrier: ShieldBarrierRatioConfig | null,
   range: number,
-  material: ForceShot['material'],
-): ForceFieldBarrierConfig | null {
+  material: ShieldConfig['material'],
+): ShieldBarrierConfig | null {
   if (!barrier) return null;
   const outerRange =
     barrier.rimWidth != null
@@ -482,59 +487,8 @@ function computeBarrierConfig(
 function buildShotConfig(
   shotBlueprint: ShotBlueprint,
   launchForce: number,
-  range: number,
 ): ShotConfig {
-  if (shotBlueprint.type === 'forceField') {
-    const material = getForceFieldMaterial(shotBlueprint.materialId);
-    const shot: ForceShot = {
-      type: 'forceField',
-      shotBlueprintId: shotBlueprint.shotBlueprintId,
-      material,
-      angle: shotBlueprint.angle,
-      transitionTime: shotBlueprint.transitionTime,
-      barrier:
-        computeBarrierConfig(
-          shotBlueprint.barrier,
-          range,
-          material,
-        ) ?? undefined,
-    };
-    return shot;
-  }
-
-  if (shotBlueprint.type === 'beam') {
-    const shot: BeamShot = {
-      type: 'beam',
-      shotBlueprintId: shotBlueprint.shotBlueprintId,
-      dps: shotBlueprint.dps,
-      force: shotBlueprint.force,
-      recoil: shotBlueprint.recoil,
-      radius: shotBlueprint.radius,
-      width: shotBlueprint.width,
-      damageSphere: { radius: shotBlueprint.damageSphere.radius },
-      gravityForceMultiplier: shotBlueprint.gravityForceMultiplier,
-    };
-    return shot;
-  }
-
-  if (shotBlueprint.type === 'laser') {
-    const shot: LaserShot = {
-      type: 'laser',
-      shotBlueprintId: shotBlueprint.shotBlueprintId,
-      dps: shotBlueprint.dps,
-      force: shotBlueprint.force,
-      recoil: shotBlueprint.recoil,
-      radius: shotBlueprint.radius,
-      width: shotBlueprint.width,
-      damageSphere: { radius: shotBlueprint.damageSphere.radius },
-      duration: shotBlueprint.duration,
-      gravityForceMultiplier: shotBlueprint.gravityForceMultiplier,
-    };
-    return shot;
-  }
-
-  // Traveling plasma / rocket shot
-  const shot: ProjectileShot = {
+  return {
     type: shotBlueprint.type,
     shotBlueprintId: shotBlueprint.shotBlueprintId,
     base: shotBlueprint.base,
@@ -553,7 +507,83 @@ function buildShotConfig(
     submunitions: shotBlueprint.submunitions ?? undefined,
     smokeTrail: shotBlueprint.smokeTrail ?? undefined,
   };
-  return shot;
+}
+
+function buildRayConfig(rayBlueprint: RayBlueprint): BeamRay | LaserRay {
+  if (rayBlueprint.type === 'beam') {
+    return {
+      type: 'beam',
+      rayBlueprintId: rayBlueprint.rayBlueprintId,
+      dps: rayBlueprint.dps,
+      force: rayBlueprint.force,
+      recoil: rayBlueprint.recoil,
+      radius: rayBlueprint.radius,
+      width: rayBlueprint.width,
+      damageSphere: { radius: rayBlueprint.damageSphere.radius },
+      gravityForceMultiplier: rayBlueprint.gravityForceMultiplier,
+    };
+  }
+  return {
+    type: 'laser',
+    rayBlueprintId: rayBlueprint.rayBlueprintId,
+    dps: rayBlueprint.dps,
+    force: rayBlueprint.force,
+    recoil: rayBlueprint.recoil,
+    radius: rayBlueprint.radius,
+    width: rayBlueprint.width,
+    damageSphere: { radius: rayBlueprint.damageSphere.radius },
+    duration: rayBlueprint.duration,
+    gravityForceMultiplier: rayBlueprint.gravityForceMultiplier,
+  };
+}
+
+function buildShieldConfig(
+  shieldBlueprint: ShieldBlueprint,
+  range: number,
+): ShieldConfig {
+  const material = getShieldMaterial(shieldBlueprint.materialId);
+  return {
+    type: 'shield',
+    shieldBlueprintId: shieldBlueprint.shieldBlueprintId,
+    material,
+    angle: shieldBlueprint.angle,
+    transitionTime: shieldBlueprint.transitionTime,
+    barrier:
+      computeBarrierConfig(
+        shieldBlueprint.barrier,
+        range,
+        material,
+      ) ?? undefined,
+  };
+}
+
+function buildEmissionConfig(
+  turretBlueprintId: TurretBlueprintId,
+  turretBlueprint: TurretBlueprint,
+): EmissionConfig | null {
+  if (turretBlueprint.emissionKind === null || turretBlueprint.emissionBlueprintId === null) {
+    if (turretBlueprint.emissionKind !== null || turretBlueprint.emissionBlueprintId !== null) {
+      throw new Error(
+        `Turret ${turretBlueprintId} must set both emissionKind and emissionBlueprintId, or neither`,
+      );
+    }
+    return null;
+  }
+
+  const id = turretBlueprint.emissionBlueprintId;
+  if (turretBlueprint.emissionKind === 'shot') {
+    const shotBlueprint = SHOT_BLUEPRINTS[id as ShotBlueprintId];
+    if (!shotBlueprint) throw new Error(`Unknown shot in turret ${turretBlueprintId}: ${id}`);
+    return buildShotConfig(shotBlueprint, turretBlueprint.launchForce);
+  }
+  if (turretBlueprint.emissionKind === 'ray') {
+    const rayBlueprint = RAY_BLUEPRINTS[id as keyof typeof RAY_BLUEPRINTS];
+    if (!rayBlueprint) throw new Error(`Unknown ray in turret ${turretBlueprintId}: ${id}`);
+    return buildRayConfig(rayBlueprint);
+  }
+  const shieldBlueprint = SHIELD_BLUEPRINTS[id as keyof typeof SHIELD_BLUEPRINTS];
+  if (!shieldBlueprint) throw new Error(`Unknown shield in turret ${turretBlueprintId}: ${id}`);
+  return buildShieldConfig(shieldBlueprint, turretBlueprint.range);
 }
 
 export function buildProjectileShotConfig(
@@ -562,18 +592,7 @@ export function buildProjectileShotConfig(
 ): ActiveProjectileShot {
   const shotBlueprint = SHOT_BLUEPRINTS[shotBlueprintId];
   if (!shotBlueprint) throw new Error(`Unknown shot blueprint: ${shotBlueprintId}`);
-  if (shotBlueprint.type === 'forceField') {
-    throw new Error(
-      `Shot blueprint ${shotBlueprintId} cannot build a projectile config`,
-    );
-  }
-  const shot = buildShotConfig(shotBlueprint, launchForce, 0);
-  if (shot.type === 'forceField') {
-    throw new Error(
-      `Shot blueprint ${shotBlueprintId} cannot build a projectile config`,
-    );
-  }
-  return shot;
+  return buildShotConfig(shotBlueprint, launchForce);
 }
 
 /**
@@ -596,25 +615,14 @@ export function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretC
     );
   }
 
-  // Determine shot config. Visual-only construction emitters have no
-  // shot: their particles are renderer-owned cosmetics, not simulated
+  // Determine emission config. Visual-only construction emitters have no
+  // emission: their particles are renderer-owned cosmetics, not simulated
   // projectiles.
-  let shot: ShotConfig | null = null;
+  const shot = buildEmissionConfig(turretBlueprintId, turretBlueprint);
 
-  if (turretBlueprint.shotBlueprintId !== null) {
-    const shotBlueprint = SHOT_BLUEPRINTS[turretBlueprint.shotBlueprintId];
-    if (!shotBlueprint)
-      throw new Error(
-        `Unknown shot in turret ${turretBlueprintId}: ${turretBlueprint.shotBlueprintId}`,
-      );
-    shot = buildShotConfig(
-      shotBlueprint,
-      turretBlueprint.launchForce,
-      turretBlueprint.range,
-    );
-  } else if (turretBlueprint.constructionEmitter === null) {
+  if (shot === null && turretBlueprint.constructionEmitter === null) {
     throw new Error(
-      `Turret ${turretBlueprintId} has neither shotBlueprintId nor constructionEmitter`,
+      `Turret ${turretBlueprintId} has neither emissionBlueprintId nor constructionEmitter`,
     );
   }
   validateTurretAimStyle(turretBlueprintId, turretBlueprint, shot);
@@ -674,24 +682,25 @@ export function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretC
   };
 
   // Derive barrelThickness from shot size, scaled by global multiplier.
-  // Skip the barrel-less force-field emitters (sphere + panel): they
+  // Skip the barrel-less shield emitters (sphere + panel): they
   // carry no gun barrel to thicken.
   if (
-    turretBlueprint.shotBlueprintId !== null &&
+    turretBlueprint.emissionKind !== null &&
+    turretBlueprint.emissionBlueprintId !== null &&
     config.barrel &&
     config.barrel.type !== 'complexSingleEmitter' &&
-    config.barrel.type !== 'forceFieldPanelEmitter'
+    config.barrel.type !== 'shieldPanelEmitter'
   ) {
-    const shotBlueprint: ShotBlueprint =
-      SHOT_BLUEPRINTS[turretBlueprint.shotBlueprintId];
     let rawThickness: number;
-    if (isLineShotBlueprint(shotBlueprint)) {
-      rawThickness = shotBlueprint.width;
-    } else if (shotBlueprint.type === 'forceField') {
+    if (turretBlueprint.emissionKind === 'ray') {
+      const rayBlueprint = RAY_BLUEPRINTS[turretBlueprint.emissionBlueprintId as keyof typeof RAY_BLUEPRINTS];
+      rawThickness = rayBlueprint?.width ?? 2;
+    } else if (turretBlueprint.emissionKind === 'shield') {
       rawThickness = 2;
     } else {
+      const shotBlueprint = SHOT_BLUEPRINTS[turretBlueprint.emissionBlueprintId as ShotBlueprintId];
       rawThickness =
-        shotBlueprint.radius.visual > 0
+        shotBlueprint && shotBlueprint.radius.visual > 0
           ? shotBlueprint.radius.visual * 2
           : 2;
     }

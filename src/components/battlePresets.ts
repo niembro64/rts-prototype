@@ -2,16 +2,16 @@ import { BUILDABLE_UNIT_BLUEPRINT_IDS } from '../game/sim/blueprints/unitRoster'
 import type { BattleMode } from '../battleBarConfig';
 import { persist, readPersisted } from '../persistence';
 import type { TerrainMapShape } from '../types/terrain';
-import type { ForceFieldReflectionMode } from '../types/shotTypes';
+import type { ShieldReflectionMode } from '../types/shotTypes';
 
 export type BattlePreset = {
   readonly name: string;
   readonly units: readonly string[];
   readonly cap: number;
-  readonly turretForceFieldPanelsEnabled: boolean;
-  readonly turretForceFieldSpheresEnabled: boolean;
-  readonly forceFieldsObstructSight: boolean;
-  readonly forceFieldReflectionMode: ForceFieldReflectionMode;
+  readonly turretShieldPanelsEnabled: boolean;
+  readonly turretShieldSpheresEnabled: boolean;
+  readonly shieldsObstructSight: boolean;
+  readonly shieldReflectionMode: ShieldReflectionMode;
   readonly fogOfWarEnabled: boolean;
   readonly converterTax: number;
   readonly centerMagnitude: number;
@@ -66,9 +66,9 @@ function demoUnits(): readonly string[] {
 // battle bar fallback flows through a preset — the JSON has zero
 // inline defaults.
 const SUBSYSTEM_DEFAULTS = {
-  turretForceFieldPanelsEnabled: true,
-  turretForceFieldSpheresEnabled: true,
-  forceFieldReflectionMode: 'both' as ForceFieldReflectionMode,
+  turretShieldPanelsEnabled: true,
+  turretShieldSpheresEnabled: true,
+  shieldReflectionMode: 'both' as ShieldReflectionMode,
 };
 
 function buildPresets(): readonly BattlePreset[] {
@@ -78,7 +78,7 @@ function buildPresets(): readonly BattlePreset[] {
       units: demoUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
-      forceFieldsObstructSight: false,
+      shieldsObstructSight: false,
       fogOfWarEnabled: false,
       converterTax: 0.0,
       centerMagnitude: 0,
@@ -97,7 +97,7 @@ function buildPresets(): readonly BattlePreset[] {
       units: allUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
-      forceFieldsObstructSight: false,
+      shieldsObstructSight: false,
       fogOfWarEnabled: true,
       converterTax: 0.1,
       centerMagnitude: 400,
@@ -116,7 +116,7 @@ function buildPresets(): readonly BattlePreset[] {
       units: allUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
-      forceFieldsObstructSight: false,
+      shieldsObstructSight: false,
       fogOfWarEnabled: true,
       converterTax: 0.1,
       centerMagnitude: 1600,
@@ -135,7 +135,7 @@ function buildPresets(): readonly BattlePreset[] {
       units: allUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
-      forceFieldsObstructSight: false,
+      shieldsObstructSight: false,
       fogOfWarEnabled: true,
       converterTax: 0.1,
       centerMagnitude: -800,
@@ -154,7 +154,7 @@ function buildPresets(): readonly BattlePreset[] {
       units: allUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
-      forceFieldsObstructSight: false,
+      shieldsObstructSight: false,
       fogOfWarEnabled: true,
       converterTax: 0.5,
       centerMagnitude: 6400,
@@ -223,7 +223,7 @@ export function presetMatchesCurrent(
   return (
     sameUnits(p.units, c.units) &&
     p.cap === c.cap &&
-    p.forceFieldsObstructSight === c.forceFieldsObstructSight &&
+    p.shieldsObstructSight === c.shieldsObstructSight &&
     Math.abs(p.converterTax - c.converterTax) < 1e-6 &&
     p.centerMagnitude === c.centerMagnitude &&
     p.dividersMagnitude === c.dividersMagnitude &&

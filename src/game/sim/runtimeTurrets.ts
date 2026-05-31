@@ -45,7 +45,7 @@ function makeRuntimeTurret(
   const mountOffset2d = Math.hypot(mount.x, mount.y);
   const sustainedDps = computeTurretSustainedDps(config);
   // Initial pitch comes from the blueprint's `idlePitch` knob (e.g.
-  // turretForceFieldPanels rest pointing straight up at π/2). Once the aim
+  // turretShieldPanels rest pointing straight up at π/2). Once the aim
   // solver runs, this is overwritten per-tick and the damper takes
   // over — `idlePitch` only governs the spawn pose.
   return {
@@ -79,7 +79,7 @@ function makeRuntimeTurret(
     aimErrorPitch: 0,
     ballisticAimInRange: true,
     burst: undefined,
-    forceField: undefined,
+    shield: undefined,
     barrelFireIndex: 0,
   };
 }

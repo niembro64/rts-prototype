@@ -38,7 +38,7 @@ const props = defineProps<{
   unitBlueprintIds: readonly string[];
   allowedUnits: readonly string[];
   unitCap: number;
-  forceFieldsObstructSight: boolean;
+  shieldsObstructSight: boolean;
   converterTax: number;
   previewLoading: boolean;
   previewLoadingProgress: number;
@@ -64,7 +64,7 @@ const emit = defineEmits<{
   (e: 'toggleUnit', unitBlueprintId: string): void;
   (e: 'toggleAllUnits'): void;
   (e: 'setUnitCap', cap: number): void;
-  (e: 'setForceFieldsObstructSight', enabled: boolean): void;
+  (e: 'setShieldsObstructSight', enabled: boolean): void;
   (e: 'setConverterTax', tax: number): void;
   (e: 'setPlayerName', name: string): void;
   (e: 'resetDefaults'): void;
@@ -161,9 +161,9 @@ function pickUnitCap(cap: number): void {
   emit('setUnitCap', cap);
 }
 
-function pickForceFieldsObstructSight(enabled: boolean): void {
+function pickShieldsObstructSight(enabled: boolean): void {
   if (!props.isHost) return;
-  emit('setForceFieldsObstructSight', enabled);
+  emit('setShieldsObstructSight', enabled);
 }
 
 function pickConverterTax(value: number): void {
@@ -702,9 +702,9 @@ const terrainSectionVars = computed(() =>
                 <BarDivider />
                 <BarLabel>FORCE FIELDS:</BarLabel>
                 <BarButton
-                  :active="forceFieldsObstructSight"
-                  :title="isHost ? 'Force fields obstruct turret sight through their boundary (applies to every turret, both directions)' : 'Only the host can change battle settings'"
-                  @click="pickForceFieldsObstructSight(!forceFieldsObstructSight)"
+                  :active="shieldsObstructSight"
+                  :title="isHost ? 'Shields obstruct turret sight through their boundary (applies to every turret, both directions)' : 'Only the host can change battle settings'"
+                  @click="pickShieldsObstructSight(!shieldsObstructSight)"
                 >OBSTRUCT SIGHT</BarButton>
               </BarControlGroup>
               <BarControlGroup>

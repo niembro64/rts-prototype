@@ -27,7 +27,7 @@ import {
   COMBAT_LOS_TERRAIN_STEP_LEN,
   SIGHT_DROP_GRACE_TICKS,
 } from './lineOfSight';
-import { getActiveForceFields } from './forceFieldTurret';
+import { getActiveShields } from './shieldTurret';
 import {
   getCombatTargetingSourceCount,
   getCombatTargetingSourceEntities,
@@ -86,8 +86,8 @@ function flushTargetingBatch(
   tick: number,
   dtMs: number,
   maxTurrets: number,
-  turretForceFieldPanelsEnabledFlag: number,
-  turretForceFieldSpheresEnabledFlag: number,
+  turretShieldPanelsEnabledFlag: number,
+  turretShieldSpheresEnabledFlag: number,
   forceMaterialSightObstructionActiveFlag: number,
 ): void {
   if (count === 0) return;
@@ -98,8 +98,8 @@ function flushTargetingBatch(
     sourceIds,
     tick,
     dtMs,
-    turretForceFieldPanelsEnabledFlag,
-    turretForceFieldSpheresEnabledFlag,
+    turretShieldPanelsEnabledFlag,
+    turretShieldSpheresEnabledFlag,
     forceMaterialSightObstructionActiveFlag,
     COMBAT_LOS_TERRAIN_STEP_LEN,
     COMBAT_LOS_ENTITY_QUERY_WIDTH,
@@ -163,16 +163,16 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
   const sourceEntities = getCombatTargetingSourceEntities();
   const targeting = getTargetingKernel();
   const maxTurrets = targeting.maxTurretsPerEntity();
-  const turretForceFieldPanelsEnabledFlag = world.turretForceFieldPanelsEnabled ? 1 : 0;
-  const turretForceFieldSpheresEnabledFlag = world.turretForceFieldSpheresEnabled ? 1 : 0;
-  // Force-material gate fast-path. Sphere boundaries and force-field-panel
+  const turretShieldPanelsEnabledFlag = world.turretShieldPanelsEnabled ? 1 : 0;
+  const turretShieldSpheresEnabledFlag = world.turretShieldSpheresEnabled ? 1 : 0;
+  // Force-material gate fast-path. Sphere boundaries and shield-panel
   // blockers are stamped into Rust slabs before the FSM. This flag
   // lets common ticks skip blocker walks when OBSTRUCT SIGHT is off or
   // no force material is active.
-  const forceMaterialSightObstructionActive = world.forceFieldsObstructSight
+  const forceMaterialSightObstructionActive = world.shieldsObstructSight
     && (
-      getActiveForceFields().length > 0 ||
-      (world.turretForceFieldPanelsEnabled && world.getForceFieldPanelUnits().length > 0)
+      getActiveShields().length > 0 ||
+      (world.turretShieldPanelsEnabled && world.getShieldPanelUnits().length > 0)
     );
   const forceMaterialSightObstructionActiveFlag =
     forceMaterialSightObstructionActive ? 1 : 0;
@@ -186,8 +186,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     tick,
     dtMs,
     maxTurrets,
-    turretForceFieldPanelsEnabledFlag,
-    turretForceFieldSpheresEnabledFlag,
+    turretShieldPanelsEnabledFlag,
+    turretShieldSpheresEnabledFlag,
     forceMaterialSightObstructionActiveFlag,
   );
   return _activeCombatUnits;

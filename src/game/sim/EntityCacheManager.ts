@@ -2,7 +2,7 @@
 // Used by both WorldState (server) and ClientViewState (client)
 
 import type { Entity, EntityId, PlayerId } from './types';
-import { isLineShotType } from './types';
+import { isRayType } from './types';
 
 const EMPTY_ENTITIES: Entity[] = [];
 
@@ -37,7 +37,7 @@ export class EntityCacheManager {
    *  production run every sim tick and should not scan every building
    *  just to find this subset. */
   private cachedFactoryBuildings: Entity[] = [];
-  private cachedForceFieldUnits: Entity[] = [];
+  private cachedShieldUnits: Entity[] = [];
   private cachedCommanderUnits: Entity[] = [];
   private cachedBuilderUnits: Entity[] = [];
   /** Every entity (unit OR building) with a CombatComponent that owns
@@ -46,14 +46,14 @@ export class EntityCacheManager {
    *  first-class participants alongside armed units. */
   private cachedArmedEntities: Entity[] = [];
   /** Entities with at least one beam-type turret. Populated alongside
-   *  cachedForceFieldUnits so updateLaserSounds can iterate just the
+   *  cachedShieldUnits so updateLaserSounds can iterate just the
    *  ~few percent of entities that actually fire beams instead of
    *  scanning every entity's turrets every tick. */
   private cachedBeamUnits: Entity[] = [];
-  /** Units with force-field panels (e.g. Loris). Used by the per-projectile
+  /** Units with shield panels (e.g. Loris). Used by the per-projectile
    *  panel-impact check so it doesn't scan every unit looking for a
    *  rare attribute. */
-  private cachedForceFieldPanelUnits: Entity[] = [];
+  private cachedShieldPanelUnits: Entity[] = [];
   private cachedAll: Entity[] = [];
   /** Units + buildings in one list, no projectiles. UI hot loops
    *  (minimap, name labels) want both kinds with one iteration; without
@@ -95,12 +95,12 @@ export class EntityCacheManager {
     this.cachedConverterBuildings.length = 0;
     this.cachedActiveStateBuildings.length = 0;
     this.cachedFactoryBuildings.length = 0;
-    this.cachedForceFieldUnits.length = 0;
+    this.cachedShieldUnits.length = 0;
     this.cachedCommanderUnits.length = 0;
     this.cachedBuilderUnits.length = 0;
     this.cachedArmedEntities.length = 0;
     this.cachedBeamUnits.length = 0;
-    this.cachedForceFieldPanelUnits.length = 0;
+    this.cachedShieldPanelUnits.length = 0;
     this.cachedAll.length = 0;
     this.cachedUnitsAndBuildings.length = 0;
     for (const list of this.cachedUnitsByPlayer.values()) list.length = 0;
@@ -122,7 +122,7 @@ export class EntityCacheManager {
       // armed list, regardless of whether it's a unit or a building.
       if (entity.combat) {
         const turrets = entity.combat.turrets;
-        let hasForceField = false;
+        let hasShield = false;
         let hasBeam = false;
         let hasCombatTurret = false;
         for (let i = 0; i < turrets.length; i++) {
@@ -131,12 +131,12 @@ export class EntityCacheManager {
           const shot = turrets[i].config.shot;
           if (shot === undefined) continue;
           const t = shot.type;
-          if (t === 'forceField' && shot.barrier !== undefined) hasForceField = true;
+          if (t === 'shield' && shot.barrier !== undefined) hasShield = true;
           else if (t === 'beam') hasBeam = true;
-          if (hasForceField && hasBeam) break;
+          if (hasShield && hasBeam) break;
         }
         if (hasCombatTurret) this.cachedArmedEntities.push(entity);
-        if (hasForceField) this.cachedForceFieldUnits.push(entity);
+        if (hasShield) this.cachedShieldUnits.push(entity);
         if (hasBeam) this.cachedBeamUnits.push(entity);
       }
       switch (entity.type) {
@@ -159,8 +159,8 @@ export class EntityCacheManager {
           ) {
             this.cachedDamagedUnits.push(entity);
           }
-          if (entity.unit !== null && entity.unit.forceFieldPanels.length > 0) {
-            this.cachedForceFieldPanelUnits.push(entity);
+          if (entity.unit !== null && entity.unit.shieldPanels.length > 0) {
+            this.cachedShieldPanelUnits.push(entity);
           }
           if (entity.commander) this.cachedCommanderUnits.push(entity);
           if (entity.builder) this.cachedBuilderUnits.push(entity);
@@ -216,7 +216,7 @@ export class EntityCacheManager {
             if (entity.projectile.config.shotProfile.visual.smokeTrail) {
               this.cachedSmokeTrailProjectiles.push(entity);
             }
-          } else if (entity.projectile && isLineShotType(entity.projectile.projectileType)) {
+          } else if (entity.projectile && isRayType(entity.projectile.projectileType)) {
             this.cachedLineProjectiles.push(entity);
           }
           break;
@@ -326,8 +326,8 @@ export class EntityCacheManager {
     return this.cachedFactoryBuildings;
   }
 
-  getForceFieldUnits(): Entity[] {
-    return this.cachedForceFieldUnits;
+  getShieldUnits(): Entity[] {
+    return this.cachedShieldUnits;
   }
 
   getCommanderUnits(): Entity[] {
@@ -346,8 +346,8 @@ export class EntityCacheManager {
     return this.cachedBeamUnits;
   }
 
-  getForceFieldPanelUnits(): Entity[] {
-    return this.cachedForceFieldPanelUnits;
+  getShieldPanelUnits(): Entity[] {
+    return this.cachedShieldPanelUnits;
   }
 
   getAll(): Entity[] {

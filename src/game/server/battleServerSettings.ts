@@ -1,12 +1,12 @@
 import type { BattleMode } from '../../battleBarConfig';
 import {
   loadStoredConverterTax,
-  loadStoredForceFieldReflectionMode,
-  loadStoredForceFieldsObstructSight,
-  loadStoredTurretForceFieldSpheresEnabled,
+  loadStoredShieldReflectionMode,
+  loadStoredShieldsObstructSight,
+  loadStoredTurretShieldSpheresEnabled,
   loadStoredFogOfWarEnabled,
   loadStoredGrid,
-  loadStoredTurretForceFieldPanelsEnabled,
+  loadStoredTurretShieldPanelsEnabled,
 } from '../../battleBarConfig';
 import {
   loadStoredKeyframeRatio,
@@ -59,24 +59,24 @@ export function applyStoredBattleServerSettings(
   }
 
   server.receiveCommand({
-    type: 'setTurretForceFieldPanelsEnabled',
+    type: 'setTurretShieldPanelsEnabled',
     tick: 0,
-    enabled: loadStoredTurretForceFieldPanelsEnabled(mode),
+    enabled: loadStoredTurretShieldPanelsEnabled(mode),
   }, authority);
   server.receiveCommand({
-    type: 'setTurretForceFieldSpheresEnabled',
+    type: 'setTurretShieldSpheresEnabled',
     tick: 0,
-    enabled: loadStoredTurretForceFieldSpheresEnabled(mode),
+    enabled: loadStoredTurretShieldSpheresEnabled(mode),
   }, authority);
   server.receiveCommand({
-    type: 'setForceFieldsObstructSight',
+    type: 'setShieldsObstructSight',
     tick: 0,
-    enabled: loadStoredForceFieldsObstructSight(mode),
+    enabled: loadStoredShieldsObstructSight(mode),
   }, authority);
   server.receiveCommand({
-    type: 'setForceFieldReflectionMode',
+    type: 'setShieldReflectionMode',
     tick: 0,
-    mode: loadStoredForceFieldReflectionMode(mode),
+    mode: loadStoredShieldReflectionMode(mode),
   }, authority);
   server.receiveCommand({
     type: 'setFogOfWarEnabled',

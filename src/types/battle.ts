@@ -1,7 +1,7 @@
 import type { BooleanSetting, LabeledOptionsConfig, OptionsConfig } from './bars';
 import type { TerrainMapShape } from './terrain';
 import type { MapDimensionAxisOption } from '../mapSizeConfig';
-import type { ForceFieldReflectionMode } from './shotTypes';
+import type { ShieldReflectionMode } from './shotTypes';
 
 export type UnitToggleConfig = {
   readonly default: boolean;
@@ -10,11 +10,11 @@ export type UnitToggleConfig = {
 export type BattleBarConfig = {
   readonly units: Record<string, UnitToggleConfig>;
   readonly cap: OptionsConfig<number>;
-  readonly turretForceFieldPanelsEnabled: BooleanSetting;
-  readonly turretForceFieldSpheresEnabled: BooleanSetting;
-  readonly forceFieldsObstructSight: BooleanSetting;
-  readonly forceFieldReflectionMode: {
-    readonly default: ForceFieldReflectionMode;
+  readonly turretShieldPanelsEnabled: BooleanSetting;
+  readonly turretShieldSpheresEnabled: BooleanSetting;
+  readonly shieldsObstructSight: BooleanSetting;
+  readonly shieldReflectionMode: {
+    readonly default: ShieldReflectionMode;
   };
   readonly fogOfWarEnabled: BooleanSetting;
   /** Signed altitude amplitude of the central ripple zone (CENTER

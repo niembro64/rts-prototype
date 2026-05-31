@@ -243,7 +243,7 @@ const ACTION_FLAG_GRID = 1 << 5;
 const ACTION_FLAG_BUILDING_ID = 1 << 6;
 
 const TURRET_FLAG_TARGET_ID = 1 << 0;
-const TURRET_FLAG_FORCE_FIELD_RANGE = 1 << 1;
+const TURRET_FLAG_SHIELD_RANGE = 1 << 1;
 
 const WAYPOINT_FLAG_POS_Z = 1 << 0;
 
@@ -874,7 +874,7 @@ function writeUnitTurretDeltaPayload(
     const angular = turret.turret.angular;
     let flags = 0;
     if (turret.targetId !== null) flags |= TURRET_FLAG_TARGET_ID;
-    if (turret.currentForceFieldRange !== null) flags |= TURRET_FLAG_FORCE_FIELD_RANGE;
+    if (turret.currentShieldRange !== null) flags |= TURRET_FLAG_SHIELD_RANGE;
     rows.writeVarUint(flags);
     rows.writeVarUint(turret.turret.turretBlueprintCode);
     rows.writeVarUint(turret.state);
@@ -883,8 +883,8 @@ function writeUnitTurretDeltaPayload(
     rows.writeVarInt(angular.pitch);
     rows.writeVarInt(angular.pitchVel);
     if ((flags & TURRET_FLAG_TARGET_ID) !== 0) rows.writeVarUint(turret.targetId!);
-    if ((flags & TURRET_FLAG_FORCE_FIELD_RANGE) !== 0) {
-      rows.writeFloat64(turret.currentForceFieldRange!);
+    if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) {
+      rows.writeFloat64(turret.currentShieldRange!);
     }
   }
 }
@@ -946,7 +946,7 @@ function unitTurretRowWidth(rows: PackedUnitTurretRows, offset: number): number 
     const flags = rows[offset + width] ?? 0;
     width += 7;
     if ((flags & TURRET_FLAG_TARGET_ID) !== 0) width += 1;
-    if ((flags & TURRET_FLAG_FORCE_FIELD_RANGE) !== 0) width += 1;
+    if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) width += 1;
   }
   return width;
 }
@@ -1160,11 +1160,11 @@ function unpackUnitTurretDeltaRows(
         turret: { turretBlueprintCode, angular },
         state,
         targetId: null,
-        currentForceFieldRange: null,
+        currentShieldRange: null,
       };
       if ((flags & TURRET_FLAG_TARGET_ID) !== 0) turret.targetId = rows[i++] as number;
-      if ((flags & TURRET_FLAG_FORCE_FIELD_RANGE) !== 0) {
-        turret.currentForceFieldRange = rows[i++] as number;
+      if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) {
+        turret.currentShieldRange = rows[i++] as number;
       }
       turrets[turretIndex] = turret;
     }
@@ -1242,11 +1242,11 @@ function readUnitTurretDeltaByteEntity(
       turret: { turretBlueprintCode, angular },
       state,
       targetId: null,
-      currentForceFieldRange: null,
+      currentShieldRange: null,
     };
     if ((flags & TURRET_FLAG_TARGET_ID) !== 0) turret.targetId = reader.readVarUint();
-    if ((flags & TURRET_FLAG_FORCE_FIELD_RANGE) !== 0) {
-      turret.currentForceFieldRange = reader.readFloat64();
+    if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) {
+      turret.currentShieldRange = reader.readFloat64();
     }
     turrets[turretIndex] = turret;
   }
@@ -1596,7 +1596,7 @@ function unpackTurrets(rows: unknown[]): NetworkServerSnapshotTurret[] {
 function packTurret(t: NetworkServerSnapshotTurret): unknown[] {
   let flags = 0;
   if (t.targetId !== null) flags |= TURRET_FLAG_TARGET_ID;
-  if (t.currentForceFieldRange !== null) flags |= TURRET_FLAG_FORCE_FIELD_RANGE;
+  if (t.currentShieldRange !== null) flags |= TURRET_FLAG_SHIELD_RANGE;
 
   const angular = t.turret.angular;
   const row: unknown[] = [
@@ -1609,7 +1609,7 @@ function packTurret(t: NetworkServerSnapshotTurret): unknown[] {
     angular.pitchVel,
   ];
   if ((flags & TURRET_FLAG_TARGET_ID) !== 0) row.push(t.targetId!);
-  if ((flags & TURRET_FLAG_FORCE_FIELD_RANGE) !== 0) row.push(t.currentForceFieldRange!);
+  if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) row.push(t.currentShieldRange!);
   return row;
 }
 
@@ -1628,11 +1628,11 @@ function unpackTurret(row: unknown[]): NetworkServerSnapshotTurret {
     turret: { turretBlueprintCode, angular },
     state,
     targetId: null,
-    currentForceFieldRange: null,
+    currentShieldRange: null,
   };
   if ((flags & TURRET_FLAG_TARGET_ID) !== 0) turret.targetId = row[i++] as number;
-  if ((flags & TURRET_FLAG_FORCE_FIELD_RANGE) !== 0) {
-    turret.currentForceFieldRange = row[i++] as number;
+  if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) {
+    turret.currentShieldRange = row[i++] as number;
   }
   return turret;
 }

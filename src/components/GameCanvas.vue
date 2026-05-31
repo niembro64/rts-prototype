@@ -592,13 +592,13 @@ const {
   currentAllowedUnits,
   currentAllowedUnitsSet,
   allDemoUnitsActive,
-  currentForceFieldsObstructSight,
+  currentShieldsObstructSight,
   currentFogOfWarEnabled,
   currentConverterTax,
   toggleDemoUnitBlueprintId,
   toggleAllDemoUnits,
   changeMaxTotalUnits,
-  setForceFieldsObstructSight,
+  setShieldsObstructSight,
   setFogOfWarEnabled,
   setConverterTax,
   resetDemoDefaults,
@@ -745,7 +745,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   metalDepositStep: metalDepositStep.value,
   terrainDetail: terrainDetail.value,
   displayUnitCount: displayUnitCount.value,
-  currentForceFieldsObstructSight: currentForceFieldsObstructSight.value,
+  currentShieldsObstructSight: currentShieldsObstructSight.value,
   currentFogOfWarEnabled: currentFogOfWarEnabled.value,
   currentConverterTax: currentConverterTax.value,
   presets: BATTLE_PRESETS,
@@ -762,7 +762,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   applyTerrainDTerrain,
   applyMetalDepositStep,
   applyTerrainDetail,
-  setForceFieldsObstructSight,
+  setShieldsObstructSight,
   setFogOfWarEnabled,
   setConverterTax,
 });
@@ -788,16 +788,16 @@ watchEffect(() => {
   m.metalDepositStep = metalDepositStep.value;
   m.terrainDetail = terrainDetail.value;
   m.displayUnitCount = displayUnitCount.value;
-  m.currentForceFieldsObstructSight = currentForceFieldsObstructSight.value;
+  m.currentShieldsObstructSight = currentShieldsObstructSight.value;
   m.currentFogOfWarEnabled = currentFogOfWarEnabled.value;
   m.currentConverterTax = currentConverterTax.value;
   m.activePresetName = findMatchingPresetName({
     units: currentAllowedUnits.value,
     cap: displayUnitCap.value,
-    turretForceFieldPanelsEnabled: BATTLE_CONFIG.turretForceFieldPanelsEnabled.default,
-    turretForceFieldSpheresEnabled: BATTLE_CONFIG.turretForceFieldSpheresEnabled.default,
-    forceFieldsObstructSight: currentForceFieldsObstructSight.value,
-    forceFieldReflectionMode: BATTLE_CONFIG.forceFieldReflectionMode.default,
+    turretShieldPanelsEnabled: BATTLE_CONFIG.turretShieldPanelsEnabled.default,
+    turretShieldSpheresEnabled: BATTLE_CONFIG.turretShieldSpheresEnabled.default,
+    shieldsObstructSight: currentShieldsObstructSight.value,
+    shieldReflectionMode: BATTLE_CONFIG.shieldReflectionMode.default,
     fogOfWarEnabled: currentFogOfWarEnabled.value,
     converterTax: currentConverterTax.value,
     centerMagnitude: centerMagnitude.value,
@@ -1230,7 +1230,7 @@ watchEffect(() => {
       :unit-blueprint-ids="demoUnitBlueprintIds"
       :allowed-units="currentAllowedUnits"
       :unit-cap="displayUnitCap"
-      :force-fields-obstruct-sight="currentForceFieldsObstructSight"
+      :shields-obstruct-sight="currentShieldsObstructSight"
       :converter-tax="currentConverterTax"
       :preview-loading="loadingInLobbyPreview"
       :preview-loading-progress="displayedLoadingProgress"
@@ -1254,7 +1254,7 @@ watchEffect(() => {
       @toggle-unit="(ut) => toggleDemoUnitBlueprintId(ut)"
       @toggle-all-units="toggleAllDemoUnits"
       @set-unit-cap="(c) => changeMaxTotalUnits(c)"
-      @set-force-fields-obstruct-sight="(e) => setForceFieldsObstructSight(e)"
+      @set-shields-obstruct-sight="(e) => setShieldsObstructSight(e)"
       @set-converter-tax="(v) => setConverterTax(v)"
       @set-player-name="onPlayerNameChange"
       @reset-defaults="resetDemoDefaults"

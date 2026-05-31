@@ -25,7 +25,7 @@ import { COLORS } from '@/colorsConfig';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import { MAP_BG_COLOR, GRAVITY } from '../../config';
 import { FALLBACK_UNIT_BODY_SHAPE } from '../sim/blueprints';
-import { getForceFieldPanelCenter } from '../sim/forceFieldPanelCache';
+import { getShieldPanelCenter } from '../sim/shieldPanelCache';
 import { SHINY_GRAY_METAL_MATERIAL } from './BuildingVisualPalette';
 import { hexToRgb01, locomotionPieceColorFromPrimary } from './colorUtils';
 import { blendHexTowardWhite } from './EntityInstanceColor3D';
@@ -57,7 +57,7 @@ const STYLE_STRIDE: Record<DebrisStyle, number> = {
 const GLOBAL_MAX_PIECES = 800;
 const MAX_PIECES_EMITTED_PER_FRAME = 180;
 
-// Scratch container for getForceFieldPanelCenter — debris emission is the
+// Scratch container for getShieldPanelCenter — debris emission is the
 // only per-piece consumer in this file, called inside a death pulse.
 const _panelCenter = { x: 0, y: 0, z: 0 };
 
@@ -118,7 +118,7 @@ const { r: BG_R, g: BG_G, b: BG_B } = hexToRgb01(MAP_BG_COLOR);
 const TREAD_COLOR = COLORS.units.debris.tread.colorHex;
 const WHEEL_COLOR = COLORS.units.debris.wheel.colorHex;
 const LEG_COLOR = COLORS.units.debris.leg.colorHex;
-const FORCE_FIELD_PANEL_DEBRIS_COLOR = SHINY_GRAY_METAL_MATERIAL.color;
+const SHIELD_PANEL_DEBRIS_COLOR = SHINY_GRAY_METAL_MATERIAL.color;
 
 function resolveDebrisTemplateColor(role: DebrisColorRole, primary: number): number {
   switch (role) {
@@ -127,7 +127,7 @@ function resolveDebrisTemplateColor(role: DebrisColorRole, primary: number): num
     case 'wheel': return locomotionPieceColorFromPrimary(WHEEL_COLOR, primary);
     case 'leg': return locomotionPieceColorFromPrimary(LEG_COLOR, primary);
     case 'barrel': return blendHexTowardWhite(primary, 0.5);
-    case 'forceFieldPanel': return FORCE_FIELD_PANEL_DEBRIS_COLOR;
+    case 'shieldPanel': return SHIELD_PANEL_DEBRIS_COLOR;
   }
 }
 
@@ -563,7 +563,7 @@ export class Debris3D {
       out.push(cached.staticTemplates[i]);
     }
 
-    // --- Turret heads + barrels + force-field panels ---
+    // --- Turret heads + barrels + shield panels ---
     // Each barrel / panel is in chassis-local coords assuming the
     // turret was aimed straight ahead. Apply the live (chassisYaw,
     // pitch) per turret so cylinders land at the world pose their
@@ -723,7 +723,7 @@ export class Debris3D {
 
     // Force-field panels — emit one slab per panel + two broad extruded
     // arms + the cylindrical grabbers they attach to.
-    const mp = mount.forceFieldPanels;
+    const mp = mount.shieldPanels;
     if (mp) {
       const armLength = mp.armLength;
       const panelCenterY = mp.panelCenterY;
@@ -732,7 +732,7 @@ export class Debris3D {
       // Canonical arm-extension formula (mirror pitch is 0 here — debris
       // has no live mirror pose to read). Sim coords come back as
       // (sim x, sim y, sim z); three.js takes (sim x, sim z, sim y).
-      getForceFieldPanelCenter(0, 0, panelCenterY, armLength, chassisYaw, 0, _panelCenter);
+      getShieldPanelCenter(0, 0, panelCenterY, armLength, chassisYaw, 0, _panelCenter);
       for (let pi = 0; pi < mp.panelCount; pi++) {
         // Panel — at arm's end, perpendicular to the arm.
         out.push({
@@ -744,10 +744,10 @@ export class Debris3D {
           sx: mp.side,
           sy: mp.side,
           sz: 1,
-          color: 'forceFieldPanel',
+          color: 'shieldPanel',
         });
         // Broad side arms + vertical grabbers — same dimensions as
-        // ForceFieldPanelMesh3D. Arms run from the turret pivot to each side
+        // ShieldPanelMesh3D. Arms run from the turret pivot to each side
         // grabber's midpoint; grabbers remain cylindrical.
         for (const sign of [-1, 1] as const) {
           const localZ = mp.frameZ * sign;

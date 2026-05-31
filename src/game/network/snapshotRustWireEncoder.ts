@@ -403,8 +403,8 @@ function packTurretsIntoScratch(
     view[base + 5] = src.state;
     view[base + 6] = src.targetId !== null ? 1 : 0;
     view[base + 7] = src.targetId ?? 0;
-    view[base + 8] = src.currentForceFieldRange !== null ? 1 : 0;
-    view[base + 9] = src.currentForceFieldRange ?? 0;
+    view[base + 8] = src.currentShieldRange !== null ? 1 : 0;
+    view[base + 9] = src.currentShieldRange ?? 0;
   }
 }
 
@@ -1090,12 +1090,12 @@ function canEncodeServerMeta(meta: SnapshotServerMeta): boolean {
     (meta.units.allowed !== undefined && !isStringArray(meta.units.allowed)) ||
     !isOptionalFiniteNumber(meta.units.max) ||
     !isOptionalFiniteNumber(meta.units.count) ||
-    !isOptionalBoolean(meta.turretForceFieldPanelsEnabled) ||
-    !isOptionalBoolean(meta.turretForceFieldSpheresEnabled) ||
-    !isOptionalBoolean(meta.forceFieldsObstructSight) ||
+    !isOptionalBoolean(meta.turretShieldPanelsEnabled) ||
+    !isOptionalBoolean(meta.turretShieldSpheresEnabled) ||
+    !isOptionalBoolean(meta.shieldsObstructSight) ||
     (
-      meta.forceFieldReflectionMode !== undefined &&
-      typeof meta.forceFieldReflectionMode !== 'string'
+      meta.shieldReflectionMode !== undefined &&
+      typeof meta.shieldReflectionMode !== 'string'
     ) ||
     !isOptionalBoolean(meta.fogOfWarEnabled) ||
     !meta.cpu ||
@@ -1143,9 +1143,9 @@ function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
     snapsKeyframesSlot = pushString(snapsKeyframes);
   }
 
-  let forceFieldReflectionModeSlot = 0;
-  if (meta.forceFieldReflectionMode !== undefined) {
-    forceFieldReflectionModeSlot = pushString(meta.forceFieldReflectionMode);
+  let shieldReflectionModeSlot = 0;
+  if (meta.shieldReflectionMode !== undefined) {
+    shieldReflectionModeSlot = pushString(meta.shieldReflectionMode);
   }
 
   const unitGroundNormalEmaSlot = pushString(meta.unitGroundNormalEma!);
@@ -1171,14 +1171,14 @@ function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
     meta.units.max ?? 0,
     meta.units.count !== undefined ? 1 : 0,
     meta.units.count ?? 0,
-    meta.turretForceFieldPanelsEnabled !== undefined ? 1 : 0,
-    meta.turretForceFieldPanelsEnabled === true ? 1 : 0,
-    meta.turretForceFieldSpheresEnabled !== undefined ? 1 : 0,
-    meta.turretForceFieldSpheresEnabled === true ? 1 : 0,
-    meta.forceFieldsObstructSight !== undefined ? 1 : 0,
-    meta.forceFieldsObstructSight === true ? 1 : 0,
-    meta.forceFieldReflectionMode !== undefined ? 1 : 0,
-    forceFieldReflectionModeSlot,
+    meta.turretShieldPanelsEnabled !== undefined ? 1 : 0,
+    meta.turretShieldPanelsEnabled === true ? 1 : 0,
+    meta.turretShieldSpheresEnabled !== undefined ? 1 : 0,
+    meta.turretShieldSpheresEnabled === true ? 1 : 0,
+    meta.shieldsObstructSight !== undefined ? 1 : 0,
+    meta.shieldsObstructSight === true ? 1 : 0,
+    meta.shieldReflectionMode !== undefined ? 1 : 0,
+    shieldReflectionModeSlot,
     meta.fogOfWarEnabled !== undefined ? 1 : 0,
     meta.fogOfWarEnabled === true ? 1 : 0,
     meta.cpu!.avg,
@@ -1240,9 +1240,9 @@ const AUDIO_EVENT_TYPE_CODES: Record<NetworkServerSnapshotSimEvent['type'], numb
   death: 2,
   laserStart: 3,
   laserStop: 4,
-  forceFieldStart: 5,
-  forceFieldStop: 6,
-  forceFieldImpact: 7,
+  shieldStart: 5,
+  shieldStop: 6,
+  shieldImpact: 7,
   ping: 8,
   attackAlert: 9,
   projectileExpire: 10,
@@ -1260,7 +1260,7 @@ const EVENT_HAS_SOURCE_TYPE = 0x001;
 const EVENT_HAS_SOURCE_KEY = 0x002;
 const EVENT_HAS_PLAYER_ID = 0x004;
 const EVENT_HAS_ENTITY_ID = 0x008;
-const EVENT_HAS_FORCE_FIELD_IMPACT = 0x010;
+const EVENT_HAS_SHIELD_IMPACT = 0x010;
 const EVENT_HAS_KILLER_PLAYER_ID = 0x020;
 const EVENT_HAS_VICTIM_PLAYER_ID = 0x040;
 const EVENT_HAS_AUDIO_ONLY = 0x080;
@@ -1423,7 +1423,7 @@ function packPackedAudioEventsIntoScratch(
 
   for (let i = 0; i < events.length; i++) {
     const event = events[i];
-    const forceFieldImpact = event.forceFieldImpact;
+    const shieldImpact = event.shieldImpact;
     const base = i * api.audioEventScratchStride;
 
     let flags = 0;
@@ -1431,7 +1431,7 @@ function packPackedAudioEventsIntoScratch(
     if (event.sourceKey !== null) flags |= EVENT_HAS_SOURCE_KEY;
     if (event.playerId !== null) flags |= EVENT_HAS_PLAYER_ID;
     if (event.entityId !== null) flags |= EVENT_HAS_ENTITY_ID;
-    if (forceFieldImpact !== null) flags |= EVENT_HAS_FORCE_FIELD_IMPACT;
+    if (shieldImpact !== null) flags |= EVENT_HAS_SHIELD_IMPACT;
     if (event.killerPlayerId !== null) flags |= EVENT_HAS_KILLER_PLAYER_ID;
     if (event.victimPlayerId !== null) flags |= EVENT_HAS_VICTIM_PLAYER_ID;
     if (event.audioOnly !== null) {
@@ -1449,16 +1449,16 @@ function packPackedAudioEventsIntoScratch(
     view[base + 5] = event.entityId ?? 0;
     view[base + 6] = event.killerPlayerId ?? 0;
     view[base + 7] = event.victimPlayerId ?? 0;
-    view[base + 8] = forceFieldImpact !== null
-      ? quantizeNormal(forceFieldImpact.normal.x)
+    view[base + 8] = shieldImpact !== null
+      ? quantizeNormal(shieldImpact.normal.x)
       : 0;
-    view[base + 9] = forceFieldImpact !== null
-      ? quantizeNormal(forceFieldImpact.normal.y)
+    view[base + 9] = shieldImpact !== null
+      ? quantizeNormal(shieldImpact.normal.y)
       : 0;
-    view[base + 10] = forceFieldImpact !== null
-      ? quantizeNormal(forceFieldImpact.normal.z)
+    view[base + 10] = shieldImpact !== null
+      ? quantizeNormal(shieldImpact.normal.z)
       : 0;
-    view[base + 11] = forceFieldImpact !== null ? forceFieldImpact.playerId : 0;
+    view[base + 11] = shieldImpact !== null ? shieldImpact.playerId : 0;
     view[base + 12] = event.sourceType !== null
       ? AUDIO_EVENT_SOURCE_TYPE_CODES[event.sourceType] ?? 0
       : 0;

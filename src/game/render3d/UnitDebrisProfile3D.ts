@@ -31,9 +31,9 @@ import {
   getUnitBlueprint,
 } from '../sim/blueprints';
 import {
-  FORCE_FIELD_PANEL_SIZE_MULT,
-  getForceFieldFrameGeometry,
-} from '../sim/forceFieldPanelCache';
+  SHIELD_PANEL_SIZE_MULT,
+  getShieldFrameGeometry,
+} from '../sim/shieldPanelCache';
 
 // Must match Locomotion3D. Tread height and chassis lift share one value.
 const TREAD_Y = TREAD_CHASSIS_LIFT_Y / 2;
@@ -48,7 +48,7 @@ export type DebrisColorRole =
   | 'wheel'
   | 'leg'
   | 'barrel'
-  | 'forceFieldPanel';
+  | 'shieldPanel';
 
 export type DebrisStaticFragment =
   | {
@@ -66,7 +66,7 @@ export type DebrisStaticFragment =
       color: DebrisColorRole;
     };
 
-export interface DebrisForceFieldPanelProfile {
+export interface DebrisShieldPanelProfile {
   panelCount: number;
   armLength: number;
   side: number;
@@ -86,7 +86,7 @@ export interface DebrisTurretMount {
   shotHeight: number;
   /** Visual radius of the turret head sphere. */
   headRadius: number;
-  /** Mirror-host turrets skip their head/barrels (the force-field panels
+  /** Mirror-host turrets skip their head/barrels (the shield panels
    *  are the visible body); the consumer respects this flag. */
   isMirrorHost: boolean;
   /** True when the live turret renders as a head sphere with no
@@ -95,9 +95,9 @@ export interface DebrisTurretMount {
   /** Pre-resolved barrel geometry (shot-width / barrel-thickness /
    *  cone orbits) — null when the turret has no visible barrel. */
   barrelProfile: DebrisBarrelProfile | null;
-  /** Pre-resolved force-field panel dimensions (panel count, arm length,
+  /** Pre-resolved shield panel dimensions (panel count, arm length,
    *  support cylinder radii) — null when the turret has no panels. */
-  forceFieldPanels: DebrisForceFieldPanelProfile | null;
+  shieldPanels: DebrisShieldPanelProfile | null;
 }
 
 /** Slot in the per-bp.turrets-index array. `null` slots correspond to
@@ -108,7 +108,7 @@ export type DebrisTurretSlot = DebrisTurretMount | null;
 
 export interface DebrisUnitProfile {
   /** Vertical lift of the chassis above the ground plane — used by
-   *  consumers to position chassis-relative fragments (force-field panels
+   *  consumers to position chassis-relative fragments (shield panels
    *  baseline, body edges) and to apply the same lift Locomotion3D
    *  did to the live mesh. */
   chassisLiftY: number;
@@ -117,7 +117,7 @@ export interface DebrisUnitProfile {
    *  from the death context. */
   staticFragments: DebrisStaticFragment[];
   /** Pose-DEPENDENT turret mounts — Debris3D applies the live
-   *  per-turret yaw + pitch to position barrels and force-field panels. */
+   *  per-turret yaw + pitch to position barrels and shield panels. */
   turretMounts: DebrisTurretSlot[];
 }
 
@@ -220,7 +220,7 @@ export function getDebrisUnitProfile(
 
   // --- Turret mounts ---
   // Per-turret: head sphere (skipped on mirror hosts), barrel cylinders,
-  // force-field panel slabs + arms + grabbers. Only the static dimensions
+  // shield panel slabs + arms + grabbers. Only the static dimensions
   // belong here; per-turret yaw + pitch are applied by Debris3D at
   // emission using ctx.turretPoses[ti].
   const turretMounts: DebrisTurretSlot[] = [];
@@ -249,8 +249,8 @@ export function getDebrisUnitProfile(
     // vertical offsets.
     const headRadius = turretBodyRadiusFromRadius(tb.radius);
     const shotHeight = localMount.z * r;
-    const mountForceFieldPanels = mount.forceFieldPanels ?? [];
-    const isMirrorHost = mountForceFieldPanels.length > 0;
+    const mountShieldPanels = mount.shieldPanels ?? [];
+    const isMirrorHost = mountShieldPanels.length > 0;
 
     // Mirror-host turrets skip their head + barrels — the visible body
     // is the panels themselves. Render3DEntities does the same skip.
@@ -258,21 +258,21 @@ export function getDebrisUnitProfile(
       ? null
       : getDebrisBarrelProfile(tb, headRadius);
 
-    let forceFieldPanels: DebrisForceFieldPanelProfile | null = null;
-    if (mountForceFieldPanels.length > 0) {
-      // Match the live forceFieldPanelCache sizing so debris panels tumble
+    let shieldPanels: DebrisShieldPanelProfile | null = null;
+    if (mountShieldPanels.length > 0) {
+      // Match the live shieldPanelCache sizing so debris panels tumble
       // at the same scale they had while alive — bumping
-      // FORCE_FIELD_PANEL_SIZE_MULT in forceFieldPanelCache feeds through here
+      // SHIELD_PANEL_SIZE_MULT in shieldPanelCache feeds through here
       // automatically.
-      const armLength = mountForceFieldPanels[0].offsetX * r;
-      const panelHalfSide = r * FORCE_FIELD_PANEL_SIZE_MULT;
-      const frame = getForceFieldFrameGeometry(panelHalfSide);
+      const armLength = mountShieldPanels[0].offsetX * r;
+      const panelHalfSide = r * SHIELD_PANEL_SIZE_MULT;
+      const frame = getShieldFrameGeometry(panelHalfSide);
       // Same liftGroup convention as Render3DEntities: subtract
       // chassisLift so the live world-y lands at the blueprint-authored
-      // turretForceFieldPanel mount after debris adds chassisLiftY.
+      // turretShieldPanel mount after debris adds chassisLiftY.
       const panelCenterY = localMount.z * r - chassisLiftY;
-      forceFieldPanels = {
-        panelCount: mountForceFieldPanels.length,
+      shieldPanels = {
+        panelCount: mountShieldPanels.length,
         armLength,
         side: frame.side,
         supportDiameter: frame.supportDiameter,
@@ -291,7 +291,7 @@ export function getDebrisUnitProfile(
       isMirrorHost,
       headOnly: tb.headOnly === true,
       barrelProfile,
-      forceFieldPanels,
+      shieldPanels,
     });
   }
 

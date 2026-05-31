@@ -42,7 +42,7 @@ const rawSynths = [
   { name: 'burst-rifle', category: 'fire' },
   { name: 'cannon', category: 'fire' },
   { name: 'laser-zap', category: 'fire' },
-  { name: 'force-field', category: 'fire' },
+  { name: 'shield', category: 'fire' },
   { name: 'minigun', category: 'fire' },
   { name: 'shotgun', category: 'fire' },
   { name: 'grenade', category: 'fire' },
@@ -73,17 +73,17 @@ function startBeam() {
   audioManager.startLaserSound(id, undefined, AUDIO.beamGain, 1);
 }
 
-function startForceField() {
+function startShield() {
   ensureAudio();
   const id = nextContinuousId++;
   activeContinuousId = id;
-  audioManager.startForceFieldSound(id, 1, AUDIO.fieldGain, 1);
+  audioManager.startShieldSound(id, 1, AUDIO.fieldGain, 1);
 }
 
 function stopContinuous() {
   if (activeContinuousId !== null) {
     audioManager.stopLaserSound(activeContinuousId);
-    audioManager.stopForceFieldSound(activeContinuousId);
+    audioManager.stopShieldSound(activeContinuousId);
     activeContinuousId = null;
   }
 }
@@ -173,11 +173,11 @@ function label(s: UniqueSound): string {
               <span class="st-meta">x{{ AUDIO.beamGain }}</span>
             </button>
             <button
-              @mousedown="startForceField()"
+              @mousedown="startShield()"
               @mouseup="stopContinuous()"
               @mouseleave="stopContinuous()"
             >
-              <span class="st-label">Force Field</span>
+              <span class="st-label">Shield</span>
               <span class="st-meta">x{{ AUDIO.fieldGain }}</span>
             </button>
           </div>

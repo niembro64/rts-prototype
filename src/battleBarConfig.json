@@ -36,16 +36,16 @@
     "realCap": "real-battle-cap",
     "demoGrid": "demo-battle-grid",
     "realGrid": "real-battle-grid",
-    "demoTurretForceFieldPanelsEnabled": "demo-battle-turret-force-field-panels-enabled",
-    "realTurretForceFieldPanelsEnabled": "real-battle-turret-force-field-panels-enabled",
-    "demoTurretForceFieldSpheresEnabled": "demo-battle-turret-force-field-spheres-enabled",
-    "realTurretForceFieldSpheresEnabled": "real-battle-turret-force-field-spheres-enabled",
-    "demoForceFieldsObstructSight": "demo-battle-force-fields-obstruct-sight",
-    "realForceFieldsObstructSight": "real-battle-force-fields-obstruct-sight",
+    "demoTurretShieldPanelsEnabled": "demo-battle-turret-shield-panels-enabled",
+    "realTurretShieldPanelsEnabled": "real-battle-turret-shield-panels-enabled",
+    "demoTurretShieldSpheresEnabled": "demo-battle-turret-shield-spheres-enabled",
+    "realTurretShieldSpheresEnabled": "real-battle-turret-shield-spheres-enabled",
+    "demoShieldsObstructSight": "demo-battle-shields-obstruct-sight",
+    "realShieldsObstructSight": "real-battle-shields-obstruct-sight",
     "demoFogOfWarEnabled": "demo-battle-fog-of-war-enabled",
     "realFogOfWarEnabled": "real-battle-fog-of-war-enabled",
-    "demoForceFieldReflectionMode": "demo-battle-force-field-reflection-mode",
-    "realForceFieldReflectionMode": "real-battle-force-field-reflection-mode",
+    "demoShieldReflectionMode": "demo-battle-shield-reflection-mode",
+    "realShieldReflectionMode": "real-battle-shield-reflection-mode",
     "demoCenterMagnitude": "demo-battle-center-magnitude",
     "realCenterMagnitude": "real-battle-center-magnitude",
     "demoDividersMagnitude": "demo-battle-dividers-magnitude",
@@ -76,19 +76,19 @@
     ["rts-real-cap", "real-battle-cap"],
     ["rts-demo-grid", "demo-battle-grid"],
     ["rts-real-grid", "real-battle-grid"],
-    ["rts-mirrors-enabled", "demo-battle-turret-force-field-panels-enabled"],
-    ["rts-force-fields-enabled", "demo-battle-turret-force-field-spheres-enabled"],
+    ["rts-mirrors-enabled", "demo-battle-turret-shield-panels-enabled"],
+    ["rts-shields-enabled", "demo-battle-turret-shield-spheres-enabled"],
     [
-      "rts-force-fields-block-targeting",
-      "demo-battle-force-fields-obstruct-sight"
+      "rts-shields-block-targeting",
+      "demo-battle-shields-obstruct-sight"
     ],
     [
-      "demo-battle-force-fields-block-targeting",
-      "demo-battle-force-fields-obstruct-sight"
+      "demo-battle-shields-block-targeting",
+      "demo-battle-shields-obstruct-sight"
     ],
     [
-      "real-battle-force-fields-block-targeting",
-      "real-battle-force-fields-obstruct-sight"
+      "real-battle-shields-block-targeting",
+      "real-battle-shields-obstruct-sight"
     ],
     ["rts-fog-of-war-enabled", "demo-battle-fog-of-war-enabled"],
     ["rts-terrain-map-shape", "demo-battle-terrain-map-shape"],

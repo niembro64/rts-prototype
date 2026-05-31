@@ -1,6 +1,6 @@
 import type { Entity, EntityId } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
-import { isLineShotType, type ProjectileShot } from '@/types/sim';
+import { isRayType, type ProjectileShot } from '@/types/sim';
 import {
   GRAVITY,
   DGUN_TERRAIN_FOLLOW_HEIGHT,
@@ -187,7 +187,7 @@ export function applyClientProjectilePrediction(options: {
   } = options;
   const proj = entity.projectile;
   if (!proj) return { becameLineProjectile: false, shouldDelete: true };
-  if (isLineShotType(proj.projectileType)) {
+  if (isRayType(proj.projectileType)) {
     return { becameLineProjectile: true, shouldDelete: false };
   }
 

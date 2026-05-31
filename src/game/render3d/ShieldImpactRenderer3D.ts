@@ -1,14 +1,14 @@
-// ForceFieldImpactRenderer3D - tangent-plane reflector hit flashes.
+// ShieldImpactRenderer3D - tangent-plane reflector hit flashes.
 //
 // Force-field projectile impacts are authored by the server at the exact
 // sphere intersection point. Continuous beam/laser reflection contacts
 // come from live beam polyline vertices. In both cases the supplied
 // normal is in sim coordinates; this renderer draws rings in the plane
 // perpendicular to that normal, so the pulse lies tangent to the
-// force-field shell or force-field panel.
+// shield shell or shield panel.
 
 import * as THREE from 'three';
-import { FORCE_FIELD_IMPACT_VISUAL } from '../../config';
+import { SHIELD_IMPACT_VISUAL } from '../../config';
 import { getPlayerPrimaryColor, type Entity, type PlayerId } from '../sim/types';
 import { writeHexToRgb01Array } from './colorUtils';
 import { disposeMesh } from './threeUtils';
@@ -121,7 +121,7 @@ class ImpactPool {
   }
 }
 
-export class ForceFieldImpactRenderer3D {
+export class ShieldImpactRenderer3D {
   private root: THREE.Group;
   private ringPool: ImpactPool;
   private corePool: ImpactPool;
@@ -138,7 +138,7 @@ export class ForceFieldImpactRenderer3D {
   private static readonly CONTINUOUS_RING_COUNT = 2;
 
   constructor(parentWorld: THREE.Group) {
-    const cfg = FORCE_FIELD_IMPACT_VISUAL;
+    const cfg = SHIELD_IMPACT_VISUAL;
     const ringSegments = Math.max(12, Math.floor(cfg.ringSegments));
     const tubeSegments = Math.max(3, Math.floor(cfg.ringTubeSegments));
     const tubeRadius = Math.min(0.45, Math.max(0.01, cfg.ringTubeRadiusFrac));
@@ -148,26 +148,26 @@ export class ForceFieldImpactRenderer3D {
     // TorusGeometry lies in the xy-plane with its axis on z, matching
     // RingGeometry's orientation so the existing normal-aligned quaternion
     // and surface offset still work unchanged. NormalBlending makes the
-    // tori read like rings of force-field/mirror material.
+    // tori read like rings of shield/mirror material.
     this.ringPool = new ImpactPool(
       this.root,
       new THREE.TorusGeometry(1, tubeRadius, tubeSegments, ringSegments),
       cfg.maxImpacts * Math.max(1, cfg.ringCount)
-        + ForceFieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP
-          * ForceFieldImpactRenderer3D.CONTINUOUS_RING_COUNT,
+        + ShieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP
+          * ShieldImpactRenderer3D.CONTINUOUS_RING_COUNT,
       18,
       THREE.NormalBlending,
     );
     this.corePool = new ImpactPool(
       this.root,
       new THREE.CircleGeometry(1, ringSegments),
-      cfg.maxImpacts + ForceFieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP,
+      cfg.maxImpacts + ShieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP,
       17,
     );
   }
 
   private resolveColor(playerId: PlayerId | undefined): number {
-    const cfg = FORCE_FIELD_IMPACT_VISUAL;
+    const cfg = SHIELD_IMPACT_VISUAL;
     return cfg.colorMode === 'player' && playerId !== undefined
       ? getPlayerPrimaryColor(playerId)
       : cfg.fallbackColor;
@@ -180,7 +180,7 @@ export class ForceFieldImpactRenderer3D {
     normal: { x: number; y: number; z: number },
     playerId: PlayerId | undefined,
   ): void {
-    const cfg = FORCE_FIELD_IMPACT_VISUAL;
+    const cfg = SHIELD_IMPACT_VISUAL;
     if (this.impacts.length >= cfg.maxImpacts) {
       this.impacts[0] = this.impacts[this.impacts.length - 1];
       this.impacts.pop();
@@ -209,7 +209,7 @@ export class ForceFieldImpactRenderer3D {
   }
 
   update(dtMs: number, lineProjectiles: readonly Entity[] = []): void {
-    const cfg = FORCE_FIELD_IMPACT_VISUAL;
+    const cfg = SHIELD_IMPACT_VISUAL;
     this.continuousTimeMs += dtMs;
     let ringCursor = 0;
     let coreCursor = 0;
@@ -226,7 +226,7 @@ export class ForceFieldImpactRenderer3D {
       }
 
       this.scratchNormal.set(impact.nx, impact.ny, impact.nz).normalize();
-      this.scratchQuat.setFromUnitVectors(ForceFieldImpactRenderer3D.Z_AXIS, this.scratchNormal);
+      this.scratchQuat.setFromUnitVectors(ShieldImpactRenderer3D.Z_AXIS, this.scratchNormal);
       this.scratchPos.set(impact.x, impact.y, impact.z);
 
       const coreDuration = Math.max(1, cfg.durationMs * cfg.coreDurationFrac);
@@ -275,18 +275,18 @@ export class ForceFieldImpactRenderer3D {
     ringCursor: number,
     coreCursor: number,
   ): { ringCursor: number; coreCursor: number } {
-    const cfg = FORCE_FIELD_IMPACT_VISUAL;
+    const cfg = SHIELD_IMPACT_VISUAL;
     if (lineProjectiles.length === 0) return { ringCursor, coreCursor };
 
     let written = 0;
     const time = this.continuousTimeMs;
     for (const entity of lineProjectiles) {
-      if (written >= ForceFieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP) break;
+      if (written >= ShieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP) break;
       const points = entity.projectile?.points;
       if (!points || points.length < 2) continue;
 
       for (let i = 1; i < points.length; i++) {
-        if (written >= ForceFieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP) break;
+        if (written >= ShieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP) break;
         const point = points[i];
         if (point.reflectorEntityId === undefined) continue;
         const nx = point.normalX;
@@ -311,7 +311,7 @@ export class ForceFieldImpactRenderer3D {
           point.y + sny * cfg.surfaceOffset,
         );
         this.scratchNormal.set(snx, snz, sny).normalize();
-        this.scratchQuat.setFromUnitVectors(ForceFieldImpactRenderer3D.Z_AXIS, this.scratchNormal);
+        this.scratchQuat.setFromUnitVectors(ShieldImpactRenderer3D.Z_AXIS, this.scratchNormal);
 
         const color = this.resolveColor(point.reflectorPlayerId);
         const sizeMul = 1;
@@ -332,9 +332,9 @@ export class ForceFieldImpactRenderer3D {
           );
         }
 
-        for (let ring = 0; ring < ForceFieldImpactRenderer3D.CONTINUOUS_RING_COUNT; ring++) {
+        for (let ring = 0; ring < ShieldImpactRenderer3D.CONTINUOUS_RING_COUNT; ring++) {
           if (ringCursor >= this.ringPool.capacity) break;
-          const t = (pulse + ring / ForceFieldImpactRenderer3D.CONTINUOUS_RING_COUNT) % 1;
+          const t = (pulse + ring / ShieldImpactRenderer3D.CONTINUOUS_RING_COUNT) % 1;
           const ease = 1 - Math.pow(1 - t, 2);
           const radius = (cfg.startRadius + (cfg.endRadius * 0.72 - cfg.startRadius) * ease) * sizeMul;
           const fade = (1 - t) * (1 - t);

@@ -6,8 +6,9 @@ import type {
   ShotVisualProfile,
 } from './types';
 import {
+  getEmissionBlueprintId,
   getShotMaxLifespan,
-  isLineShot,
+  isRayConfig,
   isProjectileShot,
   isRocketLikeShot,
 } from './types';
@@ -40,7 +41,7 @@ function buildProjectileRuntimeProfile(shot: ProjectileShot): ShotRuntimeProfile
   const explosion = shot.explosion;
   const explosionRadius = explosion === undefined ? 0 : explosion.radius;
   return {
-    shotBlueprintId: shot.shotBlueprintId,
+    shotBlueprintId: getEmissionBlueprintId(shot),
     type: shot.type,
     projectileType: 'projectile',
     isProjectile: true,
@@ -71,11 +72,11 @@ function buildProjectileVisualProfile(shot: ProjectileShot): ShotVisualProfile {
 }
 
 function buildLineRuntimeProfile(shot: ActiveProjectileShot): ShotRuntimeProfile {
-  if (!isLineShot(shot)) {
+  if (!isRayConfig(shot)) {
     throw new Error(`Cannot build line shot profile for shot.type=${shot.type}`);
   }
   return {
-    shotBlueprintId: shot.shotBlueprintId,
+    shotBlueprintId: getEmissionBlueprintId(shot),
     type: shot.type,
     projectileType: shot.type,
     isProjectile: false,
@@ -95,7 +96,7 @@ function buildLineRuntimeProfile(shot: ActiveProjectileShot): ShotRuntimeProfile
 }
 
 function buildLineVisualProfile(shot: ActiveProjectileShot): ShotVisualProfile {
-  if (!isLineShot(shot)) {
+  if (!isRayConfig(shot)) {
     throw new Error(`Cannot build line shot visual profile for shot.type=${shot.type}`);
   }
   return {
@@ -107,7 +108,7 @@ function buildLineVisualProfile(shot: ActiveProjectileShot): ShotVisualProfile {
     lineRadius: shot.radius,
     lineDamageSphereRadius: shot.damageSphere.radius,
     lineEmissionOffset:
-      shot.type === 'beam' ? (BEAM_EMISSION_OFFSET_BY_SHOT[shot.shotBlueprintId] ?? 0) : 0,
+      shot.type === 'beam' ? (BEAM_EMISSION_OFFSET_BY_SHOT[shot.rayBlueprintId] ?? 0) : 0,
   };
 }
 

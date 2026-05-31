@@ -12,7 +12,7 @@ import {
   getProjectileLaunchSpeed,
   resolveWeaponWorldMount,
 } from './combatUtils';
-import { pickTargetAimTurret } from './forceFieldTargetPriority';
+import { pickTargetAimTurret } from './shieldTargetPriority';
 import {
   readCombatTargetingTurretMountInto,
   readCombatTargetingTurretMountKinematicsInto,
@@ -50,7 +50,7 @@ export type ProjectileTurretAim = DirectTurretAim & {
   originAcceleration: Vec3;
   hasBallisticSolution: boolean;
   /** Flight time from mount to predicted intercept, seconds. Zero when
-   *  `hasBallisticSolution` is false. Consumers (force-field clearance,
+   *  `hasBallisticSolution` is false. Consumers (shield clearance,
    *  trajectory sampling) read this to walk the actual parabolic path
    *  the shell will fly instead of approximating with a straight chord. */
   flightTime: number;
@@ -536,7 +536,7 @@ function weaponUsesNormalAim(weapon: Turret): boolean {
   if (config.verticalLauncher) return false;
   if (config.isManualFire) return false;
   const shot = config.shot;
-  if (shot !== undefined && shot.type === 'forceField') return false;
+  if (shot !== undefined && shot.type === 'shield') return false;
   return true;
 }
 

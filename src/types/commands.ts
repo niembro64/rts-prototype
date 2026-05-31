@@ -2,7 +2,7 @@
 
 import type { EntityId, WaypointType, BuildingBlueprintId, PlayerId } from './sim';
 import type { KeyframeRatio, SnapshotRate, TickRate } from './server';
-import type { ForceFieldReflectionMode } from './shotTypes';
+import type { ShieldReflectionMode } from './shotTypes';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 
 export type CommandType =
@@ -37,10 +37,10 @@ export type CommandType =
   | 'setSendGridInfo'
   | 'setBackgroundUnitBlueprintEnabled'
   | 'setMaxTotalUnits'
-  | 'setTurretForceFieldPanelsEnabled'
-  | 'setTurretForceFieldSpheresEnabled'
-  | 'setForceFieldsObstructSight'
-  | 'setForceFieldReflectionMode'
+  | 'setTurretShieldPanelsEnabled'
+  | 'setTurretShieldSpheresEnabled'
+  | 'setShieldsObstructSight'
+  | 'setShieldReflectionMode'
   | 'setFogOfWarEnabled'
   | 'setConverterTax';
 
@@ -286,24 +286,24 @@ export type SetMaxTotalUnitsCommand = BaseCommand & {
   maxTotalUnits: number;
 };
 
-export type SetTurretForceFieldPanelsEnabledCommand = BaseCommand & {
-  type: 'setTurretForceFieldPanelsEnabled';
+export type SetTurretShieldPanelsEnabledCommand = BaseCommand & {
+  type: 'setTurretShieldPanelsEnabled';
   enabled: boolean;
 };
 
-export type SetTurretForceFieldSpheresEnabledCommand = BaseCommand & {
-  type: 'setTurretForceFieldSpheresEnabled';
+export type SetTurretShieldSpheresEnabledCommand = BaseCommand & {
+  type: 'setTurretShieldSpheresEnabled';
   enabled: boolean;
 };
 
-export type SetForceFieldsObstructSightCommand = BaseCommand & {
-  type: 'setForceFieldsObstructSight';
+export type SetShieldsObstructSightCommand = BaseCommand & {
+  type: 'setShieldsObstructSight';
   enabled: boolean;
 };
 
-export type SetForceFieldReflectionModeCommand = BaseCommand & {
-  type: 'setForceFieldReflectionMode';
-  mode: ForceFieldReflectionMode;
+export type SetShieldReflectionModeCommand = BaseCommand & {
+  type: 'setShieldReflectionMode';
+  mode: ShieldReflectionMode;
 };
 
 export type SetFogOfWarEnabledCommand = BaseCommand & {
@@ -348,9 +348,9 @@ export type Command =
   | SetSendGridInfoCommand
   | SetBackgroundUnitBlueprintEnabledCommand
   | SetMaxTotalUnitsCommand
-  | SetTurretForceFieldPanelsEnabledCommand
-  | SetTurretForceFieldSpheresEnabledCommand
-  | SetForceFieldsObstructSightCommand
-  | SetForceFieldReflectionModeCommand
+  | SetTurretShieldPanelsEnabledCommand
+  | SetTurretShieldSpheresEnabledCommand
+  | SetShieldsObstructSightCommand
+  | SetShieldReflectionModeCommand
   | SetFogOfWarEnabledCommand
   | SetConverterTaxCommand;

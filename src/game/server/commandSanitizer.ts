@@ -34,7 +34,7 @@ import { BUILDING_CONFIGS } from '../sim/buildConfigs';
 import { isBuildableUnitBlueprintId } from '../sim/blueprints/unitRoster';
 import { SERVER_CONFIG, normalizeSnapshotRate } from '../../serverBarConfig';
 import { BATTLE_CONFIG } from '../../battleBarConfig';
-import { isForceFieldReflectionMode } from '../../types/shotTypes';
+import { isShieldReflectionMode } from '../../types/shotTypes';
 
 const WAYPOINT_TYPES: readonly WaypointType[] = ['move', 'fight', 'patrol'];
 
@@ -116,17 +116,17 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
         : null;
     case 'setMaxTotalUnits':
       return sanitizeMaxTotalUnitsCommand(command, tick);
-    case 'setTurretForceFieldPanelsEnabled':
-    case 'setTurretForceFieldSpheresEnabled':
+    case 'setTurretShieldPanelsEnabled':
+    case 'setTurretShieldSpheresEnabled':
       return typeof command.enabled === 'boolean'
         ? { ...command, tick, enabled: true }
         : null;
-    case 'setForceFieldsObstructSight':
+    case 'setShieldsObstructSight':
     case 'setFogOfWarEnabled':
       return typeof command.enabled === 'boolean' ? { ...command, tick } : null;
-    case 'setForceFieldReflectionMode':
-      return isForceFieldReflectionMode(command.mode)
-        ? { ...command, tick, mode: BATTLE_CONFIG.forceFieldReflectionMode.default }
+    case 'setShieldReflectionMode':
+      return isShieldReflectionMode(command.mode)
+        ? { ...command, tick, mode: BATTLE_CONFIG.shieldReflectionMode.default }
         : null;
     case 'setConverterTax': {
       const tax = command.tax;

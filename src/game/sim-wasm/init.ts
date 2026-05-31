@@ -172,7 +172,7 @@ import __wbg_init, {
   turret_pool_pitch_ptr,
   turret_pool_pitch_velocity_ptr,
   turret_pool_pitch_acceleration_ptr,
-  turret_pool_force_field_range_ptr,
+  turret_pool_shield_range_ptr,
   turret_pool_target_id_ptr,
   combat_targeting_init,
   combat_targeting_clear,
@@ -266,23 +266,23 @@ import __wbg_init, {
   combat_targeting_tick_batch,
   combat_targeting_schedule_and_tick_batch,
   combat_targeting_existing_lock_and_auto_scan_tick,
-  force_field_pool_clear,
-  force_field_pool_count,
-  force_field_pool_set_count,
-  force_field_pool_set_field,
-  force_field_pool_id_ptr,
-  force_field_pool_owner_entity_id_ptr,
-  force_field_pool_center_x_ptr,
-  force_field_pool_center_y_ptr,
-  force_field_pool_center_z_ptr,
-  force_field_pool_radius_ptr,
-  force_field_clearance_segment,
-  force_field_clearance_arc,
-  force_field_panel_pool_set_unit_count,
-  force_field_panel_pool_set_panel_count,
-  force_field_panel_pool_set_unit,
-  force_field_panel_pool_set_panel,
-  force_field_panel_pool_set_material_mode,
+  shield_pool_clear,
+  shield_pool_count,
+  shield_pool_set_count,
+  shield_pool_set_field,
+  shield_pool_id_ptr,
+  shield_pool_owner_entity_id_ptr,
+  shield_pool_center_x_ptr,
+  shield_pool_center_y_ptr,
+  shield_pool_center_z_ptr,
+  shield_pool_radius_ptr,
+  shield_clearance_segment,
+  shield_clearance_arc,
+  shield_panel_pool_set_unit_count,
+  shield_panel_pool_set_panel_count,
+  shield_panel_pool_set_unit,
+  shield_panel_pool_set_panel,
+  shield_panel_pool_set_material_mode,
   projectile_reflector_intersections_batch,
   snapshot_baseline_create,
   snapshot_baseline_destroy,
@@ -603,7 +603,7 @@ export interface SimWasm {
    *  views directly; per-tick ballistic integrate runs in
    *  `poolStepPackedProjectilesBatch`. */
   readonly projectilePool: ProjectilePoolViews;
-  /** WASM-PROJ-01/02 — nearest force-field-panel / force-field reflector
+  /** WASM-PROJ-01/02 — nearest shield-panel / shield reflector
    *  hit for a batch of projectile sweeps. Reads the current reflector
    *  slabs; TypeScript only compacts inputs and consumes outputs. */
   readonly projectileReflectorIntersectionsBatch: (
@@ -617,8 +617,8 @@ export interface SimWasm {
     endZ: Float64Array,
     projectileRadius: Float64Array,
     excludeEntityId: Int32Array,
-    turretForceFieldPanelsEnabled: number,
-    turretForceFieldSpheresEnabled: number,
+    turretShieldPanelsEnabled: number,
+    turretShieldSpheresEnabled: number,
     mirrorQueryPad: number,
     outKind: Uint8Array,
     outEntityId: Int32Array,
@@ -905,11 +905,11 @@ export interface SimWasm {
    *  rendering/firing/snapshot consumers. */
   readonly combatTargeting: CombatTargetingApi;
   /** Materials Are Independent Of Shape — one pool holds every active
-   *  force-field surface, sphere and flat-panel alike, rebuilt each tick.
-   *  Spheres come from getActiveForceFields(); flat panels are stamped
+   *  shield surface, sphere and flat-panel alike, rebuilt each tick.
+   *  Spheres come from getActiveShields(); flat panels are stamped
    *  through the per-unit + per-panel arrays. The clearance / projectile
    *  kernels read both shapes and apply the same material policy. */
-  readonly forceFieldSurfacePool: ForceFieldSurfacePoolApi;
+  readonly shieldSurfacePool: ShieldSurfacePoolApi;
   /** Phase 10 D.3b — Per-recipient snapshot baseline registry.
    *  Foundation for the D.3c quantize + D.3d delta-encode kernels;
    *  no consumer reads from it yet. */
@@ -1230,7 +1230,7 @@ export interface TurretPoolApi {
     pitch: number,
     pitchVelocity: number,
     pitchAcceleration: number,
-    forceFieldRange: number,
+    shieldRange: number,
     targetId: number,
   ) => void;
   unsetEntity: (entitySlot: number) => void;
@@ -1247,7 +1247,7 @@ export interface TurretPoolApi {
   readonly pitchPtr: () => number;
   readonly pitchVelocityPtr: () => number;
   readonly pitchAccelerationPtr: () => number;
-  readonly forceFieldRangePtr: () => number;
+  readonly shieldRangePtr: () => number;
   readonly targetIdPtr: () => number;
 }
 
@@ -1475,8 +1475,8 @@ export interface CombatTargetingApi {
     entitySlot: number,
     currentTick: number,
     dtMs: number,
-    turretForceFieldPanelsEnabled: number,
-    turretForceFieldSpheresEnabled: number,
+    turretShieldPanelsEnabled: number,
+    turretShieldSpheresEnabled: number,
   ) => void;
   /** AIM-08.5 — batch Pass 0 mount kinematics over a world-order run
    *  of armed entities. Same slab mutation as updateMountKinematics,
@@ -1485,8 +1485,8 @@ export interface CombatTargetingApi {
     entitySlots: Uint32Array,
     currentTick: number,
     dtMs: number,
-    turretForceFieldPanelsEnabled: number,
-    turretForceFieldSpheresEnabled: number,
+    turretShieldPanelsEnabled: number,
+    turretShieldSpheresEnabled: number,
   ) => void;
   /** AIM-08.5 — slab-backed cloak-observability check. Returns 1 if
    *  `viewerPlayerId` can observe the entity addressed by `targetId`
@@ -1582,35 +1582,35 @@ export interface CombatTargetingApi {
    *  needs a batched enemy query. */
   readonly prepareAutoScan: (
     entitySlot: number,
-    turretForceFieldPanelsEnabled: number,
-    turretForceFieldSpheresEnabled: number,
+    turretShieldPanelsEnabled: number,
+    turretShieldSpheresEnabled: number,
     cachedFireRanks: Uint8Array,
     cachedFireDistSqs: Float64Array,
     outF64: Float64Array,
   ) => number;
   /** AIM-08.5 — Rust-owned candidate-pass gate prep. Return flags:
    *  bit 0 = at least one turret should scan candidates, bit 1 = at
-   *  least one passive turret needs force-field-panel candidate scores. */
+   *  least one passive turret needs shield-panel candidate scores. */
   readonly prepareFireChoiceFsmInputs: (
     entitySlot: number,
     sourceEntityId: number,
-    turretForceFieldPanelsEnabled: number,
-    turretForceFieldSpheresEnabled: number,
+    turretShieldPanelsEnabled: number,
+    turretShieldSpheresEnabled: number,
     cachedFireRanks: Uint8Array,
     cachedFireDistSqs: Float64Array,
     applyMask: Uint8Array,
     seedRanks: Uint8Array,
     seedDistSqs: Float64Array,
-    seedForceFieldPanelScores: Float64Array,
+    seedShieldPanelScores: Float64Array,
   ) => number;
   readonly prepareAcquisitionChoiceFsmInputs: (
     entitySlot: number,
-    turretForceFieldPanelsEnabled: number,
-    turretForceFieldSpheresEnabled: number,
+    turretShieldPanelsEnabled: number,
+    turretShieldSpheresEnabled: number,
     applyMask: Uint8Array,
     seedRanks: Uint8Array,
     seedDistSqs: Float64Array,
-    seedForceFieldPanelScores: Float64Array,
+    seedShieldPanelScores: Float64Array,
   ) => number;
   /** AIM-08.3 — Rust target preference rank helper. `rankMode`: 0 =
    *  fire-only, 1 = acquisition; `edge`: 0 = acquire, 1 = release. */
@@ -1631,7 +1631,7 @@ export interface CombatTargetingApi {
   /** AIM-08.5 — Batch target candidate score/ranking kernel with
    *  internal fire-gate evaluation. Replaces the legacy callback-
    *  based version. Candidate aim points are resolved from the slab
-   *  AABB; LOS / ballistic / FF / force-field-panel gates all run in Rust
+   *  AABB; LOS / ballistic / FF / shield-panel gates all run in Rust
    *  via the shared `compute_turret_gates_for_aim_point` helper. */
   readonly computeAndChooseBestCandidatesBatch: (
     entitySlot: number,
@@ -1640,18 +1640,18 @@ export interface CombatTargetingApi {
     applyMask: Uint8Array,
     seedRanks: Uint8Array,
     seedDistSqs: Float64Array,
-    seedForceFieldPanelScores: Float64Array,
+    seedShieldPanelScores: Float64Array,
     candidateCount: number,
     candidateIds: Int32Array,
     candidatePosX: Float64Array,
     candidatePosY: Float64Array,
     candidatePosZ: Float64Array,
     candidateRadius: Float64Array,
-    candidateForceFieldPanelScore: Float64Array,
+    candidateShieldPanelScore: Float64Array,
     sourceEntityId: number,
-    turretForceFieldPanelsEnabled: number,
-    turretForceFieldSpheresEnabled: number,
-    forceFieldObstructionActive: number,
+    turretShieldPanelsEnabled: number,
+    turretShieldSpheresEnabled: number,
+    shieldObstructionActive: number,
     terrainStepLen: number,
     entityLineWidth: number,
     gravity: number,
@@ -1671,11 +1671,11 @@ export interface CombatTargetingApi {
     applyMask: Uint8Array,
     losClear: Uint8Array,
     ballisticClear: Uint8Array,
-    forceFieldClear: Uint8Array,
+    shieldClear: Uint8Array,
   ) => void;
   /** AIM-08.5 — unified priority-point gate compute + FSM apply for one
    *  entity. Rust iterates the slab turrets, computes LOS / ballistic /
-   *  force-field / force-field-panel gates (calling the existing kernels in-
+   *  shield / shield-panel gates (calling the existing kernels in-
    *  process), and applies the priority-point FSM transition in the
    *  same pass. Saves ~3 cross-boundary calls per weapon vs the legacy
    *  per-turret path.
@@ -1687,9 +1687,9 @@ export interface CombatTargetingApi {
     pointY: number,
     pointZ: number,
     sourceEntityId: number,
-    turretForceFieldPanelsEnabled: number,
-    turretForceFieldSpheresEnabled: number,
-    forceFieldObstructionActive: number,
+    turretShieldPanelsEnabled: number,
+    turretShieldSpheresEnabled: number,
+    shieldObstructionActive: number,
     terrainStepLen: number,
     entityLineWidth: number,
     gravity: number,
@@ -1697,16 +1697,16 @@ export interface CombatTargetingApi {
   /** AIM-08.5 — unified attack-entity priority gate compute + FSM
    *  apply. TS resolves per-turret aim points (so lockOnToBody AABB
    *  clamps and lockOnToTurret stay in one place); Rust does LOS /
-   *  ballistic / FF / force-field-panel / FSM. Passive-mirror `mirror_valid`
+   *  ballistic / FF / shield-panel / FSM. Passive-mirror `mirror_valid`
    *  is computed in Rust by walking the target's turrets via the slab —
    *  no JS pre-pass needed. */
   readonly computeAndApplyPriorityTargetFsmBatch: (
     entitySlot: number,
     targetId: number,
     sourceEntityId: number,
-    turretForceFieldPanelsEnabled: number,
-    turretForceFieldSpheresEnabled: number,
-    forceFieldObstructionActive: number,
+    turretShieldPanelsEnabled: number,
+    turretShieldSpheresEnabled: number,
+    shieldObstructionActive: number,
     terrainStepLen: number,
     entityLineWidth: number,
     gravity: number,
@@ -1717,14 +1717,14 @@ export interface CombatTargetingApi {
   /** AIM-08.5 — unified existing-lock gate compute + FSM apply. Each
    *  turret's current target is read from the slab; TS supplies only
    *  the per-turret aim point. Rust computes cloak observability +
-   *  passive force-field-panel_valid + force-field-panel clearance + LOS / FF /
+   *  passive shield-panel_valid + shield-panel clearance + LOS / FF /
    *  ballistic from slab data and derives sight_blocked internally. */
   readonly computeAndApplyValidateExistingLockFsmBatch: (
     entitySlot: number,
     sourceEntityId: number,
-    turretForceFieldPanelsEnabled: number,
-    turretForceFieldSpheresEnabled: number,
-    forceFieldObstructionActive: number,
+    turretShieldPanelsEnabled: number,
+    turretShieldSpheresEnabled: number,
+    shieldObstructionActive: number,
     terrainStepLen: number,
     entityLineWidth: number,
     gravity: number,
@@ -1740,7 +1740,7 @@ export interface CombatTargetingApi {
     mirrorValid: Uint8Array,
     losClear: Uint8Array,
     ballisticClear: Uint8Array,
-    forceFieldClear: Uint8Array,
+    shieldClear: Uint8Array,
   ) => void;
   readonly validateExistingLockFsmBatch: (
     entitySlot: number,
@@ -1772,9 +1772,9 @@ export interface CombatTargetingApi {
   readonly existingLockAndAutoScanTick: (
     entitySlot: number,
     sourceEntityId: number,
-    turretForceFieldPanelsEnabled: number,
-    turretForceFieldSpheresEnabled: number,
-    forceFieldObstructionActive: number,
+    turretShieldPanelsEnabled: number,
+    turretShieldSpheresEnabled: number,
+    shieldObstructionActive: number,
     terrainStepLen: number,
     entityLineWidth: number,
     gravity: number,
@@ -1794,9 +1794,9 @@ export interface CombatTargetingApi {
   readonly autoModeCandidateTick: (
     entitySlot: number,
     sourceEntityId: number,
-    turretForceFieldPanelsEnabled: number,
-    turretForceFieldSpheresEnabled: number,
-    forceFieldObstructionActive: number,
+    turretShieldPanelsEnabled: number,
+    turretShieldSpheresEnabled: number,
+    shieldObstructionActive: number,
     terrainStepLen: number,
     entityLineWidth: number,
     gravity: number,
@@ -1808,7 +1808,7 @@ export interface CombatTargetingApi {
     candidatePosY: Float64Array,
     candidatePosZ: Float64Array,
     candidateRadius: Float64Array,
-    candidateForceFieldPanelScore: Float64Array,
+    candidateShieldPanelScore: Float64Array,
   ) => void;
   /** AIM-08.5 — auto-mode candidate tick with Rust-owned spatial
    *  broadphase. JS passes the auto-scan radius result and the kernel
@@ -1817,9 +1817,9 @@ export interface CombatTargetingApi {
   readonly autoModeSpatialCandidateTick: (
     entitySlot: number,
     sourceEntityId: number,
-    turretForceFieldPanelsEnabled: number,
-    turretForceFieldSpheresEnabled: number,
-    forceFieldObstructionActive: number,
+    turretShieldPanelsEnabled: number,
+    turretShieldSpheresEnabled: number,
+    shieldObstructionActive: number,
     terrainStepLen: number,
     entityLineWidth: number,
     gravity: number,
@@ -1836,9 +1836,9 @@ export interface CombatTargetingApi {
   readonly autoModeSpatialCandidateTickBatch: (
     entitySlots: Uint32Array,
     sourceEntityIds: Int32Array,
-    turretForceFieldPanelsEnabled: number,
-    turretForceFieldSpheresEnabled: number,
-    forceFieldObstructionActive: number,
+    turretShieldPanelsEnabled: number,
+    turretShieldSpheresEnabled: number,
+    shieldObstructionActive: number,
     terrainStepLen: number,
     entityLineWidth: number,
     gravity: number,
@@ -1862,9 +1862,9 @@ export interface CombatTargetingApi {
     priorityPointX: Float64Array,
     priorityPointY: Float64Array,
     priorityPointZ: Float64Array,
-    turretForceFieldPanelsEnabled: number,
-    turretForceFieldSpheresEnabled: number,
-    forceFieldObstructionActive: number,
+    turretShieldPanelsEnabled: number,
+    turretShieldSpheresEnabled: number,
+    shieldObstructionActive: number,
     terrainStepLen: number,
     entityLineWidth: number,
     gravity: number,
@@ -1884,9 +1884,9 @@ export interface CombatTargetingApi {
     sourceEntityIds: Int32Array,
     currentTick: number,
     dtMs: number,
-    turretForceFieldPanelsEnabled: number,
-    turretForceFieldSpheresEnabled: number,
-    forceFieldObstructionActive: number,
+    turretShieldPanelsEnabled: number,
+    turretShieldSpheresEnabled: number,
+    shieldObstructionActive: number,
     terrainStepLen: number,
     entityLineWidth: number,
     gravity: number,
@@ -1900,16 +1900,16 @@ export interface CombatTargetingApi {
   ) => void;
 }
 
-/** AIM-08.1 — Force field input slab. Compact list of `count` active
+/** AIM-08.1 — Shield input slab. Compact list of `count` active
  *  fields, rebuilt from scratch each tick from the JS-side
- *  getActiveForceFields(). Owner entity id sentinels: -1 means the
+ *  getActiveShields(). Owner entity id sentinels: -1 means the
  *  field is not tied to a stamped entity. */
 /** Materials Are Independent Of Shape — one pool, one material, two shapes.
  *  Sphere surfaces live in the flat per-field arrays (`setField` /
  *  `setFieldCount`); flat-panel surfaces live in the per-unit + per-panel
  *  arrays (`setUnit` / `setPanel`). The clearance + projectile kernels read
  *  both groups and apply the same reflection / occlusion policy. */
-export interface ForceFieldSurfacePoolApi {
+export interface ShieldSurfacePoolApi {
   /** Reset all surfaces (sphere fields + panel units + panels). */
   clear: () => void;
   /** Number of sphere surfaces currently stamped. */
@@ -1947,8 +1947,8 @@ export interface ForceFieldSurfacePoolApi {
     unitZ: number,
     unitGroundZ: number,
     unitBroadRadius: number,
-    forceFieldPanelYaw: number,
-    forceFieldPanelPitch: number,
+    shieldPanelYaw: number,
+    shieldPanelPitch: number,
     pivotX: number,
     pivotY: number,
     pivotZ: number,
@@ -1965,13 +1965,13 @@ export interface ForceFieldSurfacePoolApi {
     halfWidth: number,
   ) => void;
   setPanelMaterialMode: (reflectionMode: number) => void;
-  /** AIM-08.2 — direct-segment force-field clearance. Returns 1 if the
-   *  segment (sx,sy,sz)→(tx,ty,tz) crosses at most `maxCrossings` force-field
+  /** AIM-08.2 — direct-segment shield clearance. Returns 1 if the
+   *  segment (sx,sy,sz)→(tx,ty,tz) crosses at most `maxCrossings` shield
    *  surface boundaries, 0 otherwise. `includeSpheres` / `includePanels`
    *  restrict the query to one shape (e.g. a passive panel turret skips
    *  panels so it can't block its own sightline class). Pass -1 as
    *  `excludeOwnerEntityId` to consider every surface. Endpoint grazes
-   *  within FORCE_FIELD_GRAZE_EPS don't count. */
+   *  within SHIELD_GRAZE_EPS don't count. */
   readonly clearanceSegment: (
     sx: number, sy: number, sz: number,
     tx: number, ty: number, tz: number,
@@ -1980,7 +1980,7 @@ export interface ForceFieldSurfacePoolApi {
     includeSpheres: number,
     includePanels: number,
   ) => number;
-  /** AIM-08.2 — ballistic-arc force-field clearance against sphere surfaces.
+  /** AIM-08.2 — ballistic-arc shield clearance against sphere surfaces.
    *  Approximates the parabola `pos = launch + v·t − 0.5·g·ẑ·t²` from
    *  0..flightTime, with the same boundary-crossing rule as the segment
    *  kernel. Returns 1 if total crossings ≤ `maxCrossings`, 0 otherwise. */
@@ -2305,13 +2305,13 @@ export interface SnapshotEncodeApi {
     hasUnitsCount: number,
     unitsCount: number,
     hasMirrorsEnabled: number,
-    turretForceFieldPanelsEnabled: number,
-    hasForceFieldsEnabled: number,
-    turretForceFieldSpheresEnabled: number,
-    hasForceFieldsObstructSight: number,
-    forceFieldsObstructSight: number,
-    hasForceFieldReflectionMode: number,
-    forceFieldReflectionModeSlot: number,
+    turretShieldPanelsEnabled: number,
+    hasShieldsEnabled: number,
+    turretShieldSpheresEnabled: number,
+    hasShieldsObstructSight: number,
+    shieldsObstructSight: number,
+    hasShieldReflectionMode: number,
+    shieldReflectionModeSlot: number,
     hasFogOfWarEnabled: number,
     fogOfWarEnabled: number,
     cpuAvg: number,
@@ -3081,7 +3081,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           pitchPtr: turret_pool_pitch_ptr,
           pitchVelocityPtr: turret_pool_pitch_velocity_ptr,
           pitchAccelerationPtr: turret_pool_pitch_acceleration_ptr,
-          forceFieldRangePtr: turret_pool_force_field_range_ptr,
+          shieldRangePtr: turret_pool_shield_range_ptr,
           targetIdPtr: turret_pool_target_id_ptr,
         },
         combatTargeting: {
@@ -3178,24 +3178,24 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           tickBatch: combat_targeting_tick_batch,
           scheduleAndTickBatch: combat_targeting_schedule_and_tick_batch,
         },
-        forceFieldSurfacePool: {
-          clear: force_field_pool_clear,
-          count: force_field_pool_count,
-          setField: force_field_pool_set_field,
-          setFieldCount: force_field_pool_set_count,
-          idPtr: force_field_pool_id_ptr,
-          ownerEntityIdPtr: force_field_pool_owner_entity_id_ptr,
-          centerXPtr: force_field_pool_center_x_ptr,
-          centerYPtr: force_field_pool_center_y_ptr,
-          centerZPtr: force_field_pool_center_z_ptr,
-          radiusPtr: force_field_pool_radius_ptr,
-          setUnitCount: force_field_panel_pool_set_unit_count,
-          setPanelCount: force_field_panel_pool_set_panel_count,
-          setUnit: force_field_panel_pool_set_unit,
-          setPanel: force_field_panel_pool_set_panel,
-          setPanelMaterialMode: force_field_panel_pool_set_material_mode,
-          clearanceSegment: force_field_clearance_segment,
-          clearanceArc: force_field_clearance_arc,
+        shieldSurfacePool: {
+          clear: shield_pool_clear,
+          count: shield_pool_count,
+          setField: shield_pool_set_field,
+          setFieldCount: shield_pool_set_count,
+          idPtr: shield_pool_id_ptr,
+          ownerEntityIdPtr: shield_pool_owner_entity_id_ptr,
+          centerXPtr: shield_pool_center_x_ptr,
+          centerYPtr: shield_pool_center_y_ptr,
+          centerZPtr: shield_pool_center_z_ptr,
+          radiusPtr: shield_pool_radius_ptr,
+          setUnitCount: shield_panel_pool_set_unit_count,
+          setPanelCount: shield_panel_pool_set_panel_count,
+          setUnit: shield_panel_pool_set_unit,
+          setPanel: shield_panel_pool_set_panel,
+          setPanelMaterialMode: shield_panel_pool_set_material_mode,
+          clearanceSegment: shield_clearance_segment,
+          clearanceArc: shield_clearance_arc,
         },
         snapshotBaseline: {
           create: snapshot_baseline_create,

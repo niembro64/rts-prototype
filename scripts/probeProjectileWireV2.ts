@@ -104,7 +104,7 @@ function makeReflectorPoint(): NetworkServerSnapshotBeamPoint {
     vy: 0,
     vz: 0,
     mirrorEntityId: rand(1, 5000),
-    reflectorKind: Math.random() < 0.5 ? 'mirror' : 'forceField',
+    reflectorKind: Math.random() < 0.5 ? 'mirror' : 'shield',
     reflectorPlayerId: rand(1, 5),
     normalX: rand(-1000, 1000),
     normalY: rand(-1000, 1000),

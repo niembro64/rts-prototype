@@ -1,10 +1,10 @@
 // Terrain/entity line-of-sight gating for direct-fire turrets.
 //
-// High-arc shells lob over hills, force-field emitters are area effects,
-// and force-field panels rotate toward unseen threats — none of those care
+// High-arc shells lob over hills, shield emitters are area effects,
+// and shield panels rotate toward unseen threats — none of those care
 // about world occlusion. Everything else (cannons, beams, lasers,
 // gatlings) needs a clear sightline from its turret head to the target
-// aim point before it can lock on or keep firing. Cross-force-field
+// aim point before it can lock on or keep firing. Cross-shield
 // sight obstruction is a separate targeting gate.
 
 import { LAND_CELL_SIZE } from '../../../config';
@@ -30,10 +30,10 @@ const NO_EXCLUDED_ENTITY = -1;
 /** Sightline-graze epsilon. Hits within FORCE_MATERIAL_GRAZE_EPS of
  *  either endpoint don't count — keeps targeting and projectile
  *  collision in agreement when a turret or target sits on a panel
- *  edge. Force-field-panel and force-field clearance both use this. */
+ *  edge. Force-field-panel and shield clearance both use this. */
 export const FORCE_MATERIAL_GRAZE_EPS = 1e-6;
 /** Force-field-panel broadphase pad. Stamping adds this to the mirror's
- *  bound radius so the Rust force-field-panel kernel only narrowphase-walks
+ *  bound radius so the Rust shield-panel kernel only narrowphase-walks
  *  units whose silhouettes can touch the segment. */
 export const MIRROR_SIGHT_QUERY_PAD = 1;
 
@@ -49,8 +49,8 @@ export function weaponRequiresNonObstructedLineOfSight(weapon: Turret): boolean 
   return weapon.config.requiresNonObstructedLineOfSight;
 }
 
-export type ForceFieldClearanceOptions = {
-  /** Number of force fields a turret may "see through." 0 = any
+export type ShieldClearanceOptions = {
+  /** Number of shields a turret may "see through." 0 = any
    *  intervening field blocks lock-on (default). Future targeting
    *  brain upgrades raise this per-player to pierce N shields. */
   maxCrossings: number | undefined;
@@ -61,42 +61,42 @@ export type ForceFieldClearanceOptions = {
  *  are non-negative. */
 const NO_EXCLUDED_OWNER = -1;
 
-/** True if no active force-field sphere stands between the segment's
- *  endpoints. Force fields are physical, team-agnostic barriers — the
+/** True if no active shield sphere stands between the segment's
+ *  endpoints. Shields are physical, team-agnostic barriers — the
  *  same rule applies to every turret in either direction. A field is
  *  "in the way" when the line from source to target crosses its
  *  boundary at any point strictly inside the segment.
  *
- *  Use this for straight visibility checks against force-field spheres.
- *  The targeting gate kernels in Rust layer force-field-panel clearance
- *  on top via the force-field-panel slab for OBSTRUCT SIGHT targeting.
+ *  Use this for straight visibility checks against shield spheres.
+ *  The targeting gate kernels in Rust layer shield-panel clearance
+ *  on top via the shield-panel slab for OBSTRUCT SIGHT targeting.
  *
- *  Implementation: dispatches to the Rust `force_field_clearance_segment`
+ *  Implementation: dispatches to the Rust `shield_clearance_segment`
  *  kernel, which reads the FF pool slab stamped each tick by
- *  stampForceFieldPool. Endpoint grazes (within FORCE_FIELD_GRAZE_EPS)
+ *  stampShieldPool. Endpoint grazes (within SHIELD_GRAZE_EPS)
  *  don't count, matching the projectile-collision behaviour so lock-on
  *  agrees with what the simulator will actually let through. */
-/** Which force-field shapes a clearance query considers. Materials Are
+/** Which shield shapes a clearance query considers. Materials Are
  *  Independent Of Shape: spheres and flat panels are one material, so a
  *  single query answers both — the flags only exist so a caller can
  *  restrict to one shape (e.g. a battle-bar toggle disabling a turret type,
  *  or a passive panel turret that must not block its own sightline class). */
-export type ForceFieldShapeMask = {
+export type ShieldShapeMask = {
   includeSpheres: boolean;
   includePanels: boolean;
 };
 
-export function hasForceFieldClearance(
+export function hasShieldClearance(
   sx: number, sy: number, sz: number,
   tx: number, ty: number, tz: number,
-  shapes: ForceFieldShapeMask,
-  options: ForceFieldClearanceOptions = { maxCrossings: undefined },
+  shapes: ShieldShapeMask,
+  options: ShieldClearanceOptions = { maxCrossings: undefined },
 ): boolean {
   const sim = getSimWasm();
   if (sim === undefined) return true;
   const maxCrossings = options.maxCrossings ?? 0;
   return (
-    sim.forceFieldSurfacePool.clearanceSegment(
+    sim.shieldSurfacePool.clearanceSegment(
       sx, sy, sz,
       tx, ty, tz,
       NO_EXCLUDED_OWNER,
@@ -110,7 +110,7 @@ export function hasForceFieldClearance(
 /** Fog/entity-visibility sightline policy. This intentionally does not
  *  use hasCombatLineOfSight because ordinary unit/building bodies do
  *  not hide fog-of-war information. Shape-independent force material
- *  does: when OBSTRUCT SIGHT is active, force-field spheres and mirror
+ *  does: when OBSTRUCT SIGHT is active, shield spheres and mirror
  *  panels block the same visibility ray after terrain has cleared. */
 export function hasFogOfWarLineOfSight(
   world: WorldState,
@@ -118,13 +118,13 @@ export function hasFogOfWarLineOfSight(
   tx: number, ty: number, tz: number,
 ): boolean {
   if (!hasTerrainLineOfSight(world, sx, sy, sz, tx, ty, tz)) return false;
-  if (!world.forceFieldsObstructSight) return true;
+  if (!world.shieldsObstructSight) return true;
   // One material, two shapes: a single clearance query answers both the
   // sphere and the flat-panel surface, each gated by its battle-bar toggle.
   if (
-    !hasForceFieldClearance(sx, sy, sz, tx, ty, tz, {
-      includeSpheres: world.turretForceFieldSpheresEnabled,
-      includePanels: world.turretForceFieldPanelsEnabled,
+    !hasShieldClearance(sx, sy, sz, tx, ty, tz, {
+      includeSpheres: world.turretShieldSpheresEnabled,
+      includePanels: world.turretShieldPanelsEnabled,
     })
   ) {
     return false;
@@ -134,27 +134,27 @@ export function hasFogOfWarLineOfSight(
 
 /** True if the parabolic ballistic arc described by
  *  (launch position, launch velocity, flight time, universal gravity)
- *  does not cross any force-field sphere boundary between launch and
- *  impact. The arc-aware counterpart of `hasForceFieldClearance`
+ *  does not cross any shield sphere boundary between launch and
+ *  impact. The arc-aware counterpart of `hasShieldClearance`
  *  approximates the same `pos = p₀ + v·t − 0.5·g·ẑ·t²` envelope the
  *  projectile integrator advances each tick.
  *
- *  Implementation: dispatches to the Rust `force_field_clearance_arc`
+ *  Implementation: dispatches to the Rust `shield_clearance_arc`
  *  kernel, which chord-samples the parabola so the same "endpoints
  *  don't count" rule applies as for the straight test. Keep this
  *  helper for callers that need projectile-path clearance — the
  *  targeting gate uses the segment + slab walks in Rust directly. */
-export function hasArcForceFieldClearance(
+export function hasArcShieldClearance(
   launchX: number, launchY: number, launchZ: number,
   launchVx: number, launchVy: number, launchVz: number,
   flightTime: number,
-  options: ForceFieldClearanceOptions = { maxCrossings: undefined },
+  options: ShieldClearanceOptions = { maxCrossings: undefined },
 ): boolean {
   const sim = getSimWasm();
   if (sim === undefined) return true;
   const maxCrossings = options.maxCrossings ?? 0;
   return (
-    sim.forceFieldSurfacePool.clearanceArc(
+    sim.shieldSurfacePool.clearanceArc(
       launchX, launchY, launchZ,
       launchVx, launchVy, launchVz,
       flightTime,

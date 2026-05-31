@@ -13,8 +13,8 @@
 // TurretMesh3D, so barrelIndex remains meaningful visual cadence metadata.
 
 import type { BarrelShape } from '@/types/blueprints';
-import type { ActiveProjectileShot, ShotConfig, TurretConfig } from '../sim/types';
-import { isLineShot, isProjectileShot, isRocketLikeShot } from '../sim/types';
+import type { ActiveProjectileShot, EmissionConfig, TurretConfig } from '../sim/types';
+import { isRayConfig, isProjectileShot, isRocketLikeShot } from '../sim/types';
 import { magnitude3 } from './MathHelpers';
 
 export const TURRET_BARREL_MIN_DIAMETER = 2;
@@ -41,7 +41,7 @@ const BARREL_ORBIT_CLAMP_FRAC = {
 type TurretRadiusSource = { id?: string; radius?: { visual?: number } };
 type TurretBarrelSource = TurretRadiusSource & { barrel?: BarrelShape };
 type BarrelShotSource = TurretBarrelSource & {
-  shot?: ShotConfig | ActiveProjectileShot;
+  shot?: EmissionConfig | ActiveProjectileShot;
   spread?: TurretConfig['spread'];
 };
 
@@ -87,7 +87,7 @@ export function getTurretBarrelCenterToTipLength(
   if (
     !barrel ||
     barrel.type === 'complexSingleEmitter' ||
-    barrel.type === 'forceFieldPanelEmitter' ||
+    barrel.type === 'shieldPanelEmitter' ||
     barrel.barrelLength <= 0
   ) {
     return 0;
@@ -107,7 +107,7 @@ export type BarrelEndpoint = {
 };
 
 /** How many physical barrels a turret config has. Single-barrel and
- *  force-field emitters report 1; gatlings and cone shotguns report
+ *  shield emitters report 1; gatlings and cone shotguns report
  *  their `barrelCount`. Used by the firing round-robin to pick
  *  barrelIndex = fireCount mod N. */
 export function countBarrels(config: Pick<TurretConfig, 'barrel'>): number {
@@ -116,7 +116,7 @@ export function countBarrels(config: Pick<TurretConfig, 'barrel'>): number {
   if (b.type === 'singleCylinderBarrel') return 1;
   if (b.type === 'singleConeBarrel') return 1;
   if (b.type === 'complexSingleEmitter') return 1;
-  if (b.type === 'forceFieldPanelEmitter') return 1;
+  if (b.type === 'shieldPanelEmitter') return 1;
   return b.barrelCount;
 }
 
@@ -186,13 +186,13 @@ export function getTurretBarrelDiameter(
   if (
     !barrel ||
     barrel.type === 'complexSingleEmitter' ||
-    barrel.type === 'forceFieldPanelEmitter'
+    barrel.type === 'shieldPanelEmitter'
   ) {
     return 0;
   }
 
   const shot = config.shot;
-  const lineShotWidth = shot && isLineShot(shot) ? shot.width : undefined;
+  const lineShotWidth = shot && isRayConfig(shot) ? shot.width : undefined;
   const projectileShotWidth = shot && isProjectileShot(shot)
     ? shot.radius.visual * 2 * (isRocketLikeShot(shot) ? 1.5 : 1)
     : undefined;
@@ -251,7 +251,7 @@ export function getBarrelTip(
   if (
     !b ||
     b.type === 'complexSingleEmitter' ||
-    b.type === 'forceFieldPanelEmitter'
+    b.type === 'shieldPanelEmitter'
   ) {
     // Force-field emitters (sphere or panel) and bodies with no barrel at
     // all emit from the turret pivot itself.

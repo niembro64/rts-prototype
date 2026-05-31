@@ -9,12 +9,12 @@
 
 import * as THREE from 'three';
 
-import { getForceFieldFrameGeometry } from '../sim/forceFieldPanelCache';
+import { getShieldFrameGeometry } from '../sim/shieldPanelCache';
 
 const CYLINDER_UP = new THREE.Vector3(0, 1, 0);
 const _supportDir = new THREE.Vector3();
 
-export type ForceFieldPanelMesh = {
+export type ShieldPanelMesh = {
   /** The ball-joint. Position is the attachment point in liftGroup's
    *  frame; quaternion is the full yaw+pitch orientation written
    *  per-frame by the EntityRenderer. Children (arms + panels) sit
@@ -27,7 +27,7 @@ export type ForceFieldPanelMesh = {
    *  way (the per-mirror cap is small, so a few static rails cost
    *  nothing). */
   arms: THREE.Mesh[];
-  /** Slot indices into Render3DEntities.forceFieldPanelInstanced when the
+  /** Slot indices into Render3DEntities.shieldPanelInstanced when the
    *  panels are routed through the shared InstancedMesh (one slot per
    *  panel, parallel to `panels`). Empty / undefined when the per-Mesh
    *  fallback is in use (cap exhausted). The caller (Render3DEntities)
@@ -39,22 +39,22 @@ export type ForceFieldPanelMesh = {
   frames: THREE.Mesh[];
 };
 
-export type ForceFieldPanelMount = {
+export type ShieldPanelMount = {
   /** Authored chassis-local offset of the panel center along the
    *  turret's local +X (forward), resolved from the host mount geometry. */
   offsetX: number;
   /** Lateral chassis-local offset; always 0 for the regularized
-   *  centerline force-field panel. */
+   *  centerline shield panel. */
   offsetY: number;
   /** Extra panel yaw on top of the turret rotation; always 0 — the
    *  panel face is perpendicular to the arm. */
   angle: number;
 };
 
-export function buildForceFieldPanelMesh3D(
+export function buildShieldPanelMesh3D(
   parent: THREE.Group,
-  panels: readonly ForceFieldPanelMount[],
-  /** Chassis-local turretForceFieldPanel pivot in the parent liftGroup frame. */
+  panels: readonly ShieldPanelMount[],
+  /** Chassis-local turretShieldPanel pivot in the parent liftGroup frame. */
   pivotLocalX: number,
   pivotLocalY: number,
   pivotLocalZ: number,
@@ -78,7 +78,7 @@ export function buildForceFieldPanelMesh3D(
    *  always attach per-Mesh; the cap-bound shared instance is for
    *  panels only. */
   skipPerMesh: boolean = false,
-): ForceFieldPanelMesh {
+): ShieldPanelMesh {
   // The mirror is a ball-joint at the authored turret attachment
   // point. Arms and panels live at Y = 0 in root's local frame; the
   // only rotation in the entire mirror assembly is root's own
@@ -90,7 +90,7 @@ export function buildForceFieldPanelMesh3D(
   const panelMeshes: THREE.Mesh[] = [];
   const armMeshes: THREE.Mesh[] = [];
   const frameMeshes: THREE.Mesh[] = [];
-  const frame = getForceFieldFrameGeometry(panelHalfSide);
+  const frame = getShieldFrameGeometry(panelHalfSide);
   const side = frame.side;
   const supportDiameter = frame.supportDiameter;
   const frameSegmentLength = frame.frameSegmentLength;

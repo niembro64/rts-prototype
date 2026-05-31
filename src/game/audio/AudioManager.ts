@@ -2,7 +2,7 @@
 // Delegates synth work to helper modules; owns AudioContext, master gain, and continuous sound state.
 
 import { AUDIO } from '../../audioConfig';
-import { getTurretBlueprint, getShotBlueprint, getUnitBlueprint } from '../sim/blueprints';
+import { getTurretBlueprint, getShotBlueprint, getRayBlueprint, getUnitBlueprint } from '../sim/blueprints';
 import type { AudioToolkit } from './audioHelpers';
 import { FIRE_SYNTHS } from './fireSynths';
 import { HIT_SYNTHS } from './hitSynths';
@@ -17,7 +17,7 @@ import {
   updateContinuousZoom,
   disposeContinuousSound,
   getBeamConfig,
-  getForceFieldConfig,
+  getShieldConfig,
 } from './continuousSounds';
 
 // Unified synth dispatch table
@@ -41,7 +41,7 @@ export class AudioManager {
 
   // Continuous sound tracking
   private activeLaserSounds: Map<number, ContinuousSound> = new Map();
-  private activeForceFieldSounds: Map<number, ContinuousSound> = new Map();
+  private activeShieldSounds: Map<number, ContinuousSound> = new Map();
   private pendingTimeouts = new Set<ReturnType<typeof setTimeout>>();
   private gainCleanupTimeouts = new Set<ReturnType<typeof setTimeout>>();
 
@@ -137,7 +137,10 @@ export class AudioManager {
     if (!this.categoryEnabled.hit) return;
     if (!AUDIO.hitGain) return;
     let entry;
-    try { entry = getShotBlueprint(shotBlueprintId).hitSound; } catch { return; }
+    try { entry = getShotBlueprint(shotBlueprintId).hitSound; }
+    catch {
+      try { entry = getRayBlueprint(shotBlueprintId).hitSound; } catch { return; }
+    }
     if (!entry || !entry.volume) return;
 
     const fn = SYNTH_DISPATCH[entry.synth];
@@ -192,55 +195,55 @@ export class AudioManager {
     for (const entityId of this.activeLaserSounds.keys()) this.stopLaserSound(entityId);
   }
 
-  startForceFieldSound(entityId: number, speed: number = 1, volumeMultiplier: number = 1, zoomVolume: number = 1): void {
+  startShieldSound(entityId: number, speed: number = 1, volumeMultiplier: number = 1, zoomVolume: number = 1): void {
     if (!this.categoryEnabled.field) return;
-    if (this.activeForceFieldSounds.has(entityId)) return;
+    if (this.activeShieldSounds.has(entityId)) return;
     const tk = this.getToolkit();
     if (!tk) return;
     (tk as unknown as { sfxVolume: number }).sfxVolume = this.sfxVolume;
-    const sound = startContinuousSound(tk, getForceFieldConfig(), entityId, speed, volumeMultiplier, zoomVolume);
-    if (sound) this.activeForceFieldSounds.set(entityId, sound);
+    const sound = startContinuousSound(tk, getShieldConfig(), entityId, speed, volumeMultiplier, zoomVolume);
+    if (sound) this.activeShieldSounds.set(entityId, sound);
   }
 
-  stopForceFieldSound(entityId: number): void {
-    const sound = this.activeForceFieldSounds.get(entityId);
+  stopShieldSound(entityId: number): void {
+    const sound = this.activeShieldSounds.get(entityId);
     if (!sound || !this.ctx) return;
     stopContinuousSound(this.ctx, sound, 0.15, this.pendingTimeouts);
-    this.activeForceFieldSounds.delete(entityId);
+    this.activeShieldSounds.delete(entityId);
   }
 
-  stopAllForceFieldSounds(): void {
-    for (const entityId of this.activeForceFieldSounds.keys()) this.stopForceFieldSound(entityId);
+  stopAllShieldSounds(): void {
+    for (const entityId of this.activeShieldSounds.keys()) this.stopShieldSound(entityId);
   }
 
   stopAllContinuousSounds(): void {
     this.stopAllLaserSounds();
-    this.stopAllForceFieldSounds();
+    this.stopAllShieldSounds();
   }
 
   stopAllContinuousSoundsNow(): void {
     for (const sound of this.activeLaserSounds.values()) {
       disposeContinuousSound(sound);
     }
-    for (const sound of this.activeForceFieldSounds.values()) {
+    for (const sound of this.activeShieldSounds.values()) {
       disposeContinuousSound(sound);
     }
     this.activeLaserSounds.clear();
-    this.activeForceFieldSounds.clear();
+    this.activeShieldSounds.clear();
   }
 
   // Get active continuous sounds as [soundId, sourceEntityId] pairs
   getActiveContinuousSounds(): [number, number][] {
     const pairs: [number, number][] = [];
     for (const [soundId, sound] of this.activeLaserSounds) pairs.push([soundId, sound.sourceEntityId]);
-    for (const [soundId, sound] of this.activeForceFieldSounds) pairs.push([soundId, sound.sourceEntityId]);
+    for (const [soundId, sound] of this.activeShieldSounds) pairs.push([soundId, sound.sourceEntityId]);
     return pairs;
   }
 
   // Mute or unmute a continuous sound by ID
   setContinuousSoundAudible(entityId: number, audible: boolean): void {
     if (!this.ctx) return;
-    const sound = this.activeLaserSounds.get(entityId) ?? this.activeForceFieldSounds.get(entityId);
+    const sound = this.activeLaserSounds.get(entityId) ?? this.activeShieldSounds.get(entityId);
     if (!sound) return;
     setContinuousAudible(this.ctx, sound, audible);
   }
@@ -248,7 +251,7 @@ export class AudioManager {
   // Update zoom-based volume for a continuous sound
   updateContinuousSoundZoom(soundId: number, zoomVolume: number): void {
     if (!this.ctx) return;
-    const sound = this.activeLaserSounds.get(soundId) ?? this.activeForceFieldSounds.get(soundId);
+    const sound = this.activeLaserSounds.get(soundId) ?? this.activeShieldSounds.get(soundId);
     if (!sound) return;
     updateContinuousZoom(this.ctx, sound, zoomVolume);
   }
@@ -306,7 +309,7 @@ export class AudioManager {
     this.categoryEnabled[category] = enabled;
     if (enabled) return;
     if (category === 'beam') this.stopAllLaserSounds();
-    else if (category === 'field') this.stopAllForceFieldSounds();
+    else if (category === 'field') this.stopAllShieldSounds();
   }
 
   destroy(): void {

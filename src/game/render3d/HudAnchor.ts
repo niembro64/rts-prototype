@@ -27,7 +27,7 @@ function getBarrelRadius(turret: Turret): number {
   if (
     !barrel ||
     barrel.type === 'complexSingleEmitter' ||
-    barrel.type === 'forceFieldPanelEmitter'
+    barrel.type === 'shieldPanelEmitter'
   ) {
     return 0;
   }
@@ -39,7 +39,7 @@ function getBarrelTopAboveGround(turret: Turret, mountY: number): number {
   if (
     !barrel ||
     barrel.type === 'complexSingleEmitter' ||
-    barrel.type === 'forceFieldPanelEmitter'
+    barrel.type === 'shieldPanelEmitter'
   ) {
     return mountY;
   }
@@ -79,19 +79,19 @@ export function getUnitHudTopY(unit: Entity): number {
     // Keep the radius fallback for partial/network-only unit records.
   }
 
-  for (const panel of unit.unit.forceFieldPanels ?? []) {
+  for (const panel of unit.unit.shieldPanels ?? []) {
     topAboveGround = Math.max(topAboveGround, panel.topY);
   }
 
-  const hasMirrors = (unit.unit.forceFieldPanels?.length ?? 0) > 0;
+  const hasMirrors = (unit.unit.shieldPanels?.length ?? 0) > 0;
   const turrets = unit.combat?.turrets ?? [];
   for (let i = 0; i < turrets.length; i++) {
     const turret = turrets[i];
-    const isForceField = turret.config.barrel?.type === 'complexSingleEmitter';
+    const isShield = turret.config.barrel?.type === 'complexSingleEmitter';
     const isMirrorHost = hasMirrors && i === 0;
     const mountY = turret.mount.z;
     const headRadius = getTurretHeadRadius(turret.config);
-    if (!isForceField && !isMirrorHost) {
+    if (!isShield && !isMirrorHost) {
       topAboveGround = Math.max(topAboveGround, mountY + headRadius);
     }
     topAboveGround = Math.max(topAboveGround, getBarrelTopAboveGround(turret, mountY));

@@ -221,7 +221,7 @@ export function createSimEventDto(): NetworkServerSnapshotSimEvent {
     entityId: null,
     deathContext: null,
     impactContext: null,
-    forceFieldImpact: null,
+    shieldImpact: null,
     killerPlayerId: null,
     victimPlayerId: null,
     audioOnly: null,
@@ -243,15 +243,15 @@ export function copySimEventInto(
   dst.entityId = src.entityId;
   // deathContext / impactContext are emitted as fresh literals per tick
   // by the simulation and never reused, so a ref copy is safe and cheap.
-  // forceFieldImpact's `normal` Vec3 is also a fresh literal but we
+  // shieldImpact's `normal` Vec3 is also a fresh literal but we
   // spread it defensively because the tiny extra alloc is dwarfed by
   // the surrounding event-emit work.
   dst.deathContext = src.deathContext;
   dst.impactContext = src.impactContext;
-  dst.forceFieldImpact = src.forceFieldImpact
+  dst.shieldImpact = src.shieldImpact
     ? {
-        normal: { ...src.forceFieldImpact.normal },
-        playerId: src.forceFieldImpact.playerId,
+        normal: { ...src.shieldImpact.normal },
+        playerId: src.shieldImpact.playerId,
       }
     : null;
   dst.killerPlayerId = src.killerPlayerId;
@@ -308,7 +308,7 @@ export function createTurretDto(): NetworkServerSnapshotTurret {
     },
     targetId: null,
     state: 0,
-    currentForceFieldRange: null,
+    currentShieldRange: null,
   };
 }
 
@@ -323,7 +323,7 @@ export function copyTurretInto(
   dst.turret.angular.pitchVel = src.turret.angular.pitchVel;
   dst.targetId = src.targetId;
   dst.state = src.state;
-  dst.currentForceFieldRange = src.currentForceFieldRange;
+  dst.currentShieldRange = src.currentShieldRange;
   return dst;
 }
 

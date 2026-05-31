@@ -2,10 +2,10 @@
 //
 // Split into two passes:
 //
-//   stampForceFieldPool — runs BEFORE updateTargetingAndFiringState.
-//     The AIM-08.2 force-field clearance kernels read the FF slab
+//   stampShieldPool — runs BEFORE updateTargetingAndFiringState.
+//     The AIM-08.2 shield clearance kernels read the FF slab
 //     during the FSM, so the slab must be current-tick data on entry.
-//     Respects world.forceFieldsObstructSight; when the feature is
+//     Respects world.shieldsObstructSight; when the feature is
 //     disabled the slab is rebuilt at count=0 so the kernels return
 //     "clear" without inspecting individual fields.
 //
@@ -21,8 +21,8 @@
 
 import type { WorldState } from '../WorldState';
 import { spatialGrid } from '../SpatialGrid';
-import { encodeForceFieldReflectionMode, getActiveForceFields } from './forceFieldTurret';
-import { REFLECTIVE_FORCE_FIELD_MATERIAL } from '../blueprints/forceFieldMaterials';
+import { encodeShieldReflectionMode, getActiveShields } from './shieldTurret';
+import { REFLECTIVE_SHIELD_MATERIAL } from '../blueprints/shieldMaterials';
 import {
   MIRROR_SIGHT_QUERY_PAD,
   weaponRequiresNonObstructedLineOfSight,
@@ -465,7 +465,7 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   if (turret.config.isManualFire === true) f |= CT_TURRET_CFG_IS_MANUAL_FIRE;
   if (turret.config.passive === true) f |= CT_TURRET_CFG_PASSIVE;
   if (turret.config.visualOnly === true || turret.hp <= 0) f |= CT_TURRET_CFG_VISUAL_ONLY;
-  if (turret.config.shot && turret.config.shot.type === 'forceField') {
+  if (turret.config.shot && turret.config.shot.type === 'shield') {
     f |= CT_TURRET_CFG_SHOT_IS_FORCE;
   }
   if (ranges.tracking) f |= CT_TURRET_CFG_HAS_TRACKING_RANGE;
@@ -476,9 +476,9 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
 const BALLISTIC_ARC_LOW = 0;
 const BALLISTIC_ARC_HIGH = 1;
 
-type ForceFieldPoolStampOptions = {
+type ShieldPoolStampOptions = {
   /** Projectile collision needs the physical shield slab even when
-   *  force-fields are not configured to obstruct targeting sightlines. */
+   *  shields are not configured to obstruct targeting sightlines. */
   includeWhenSightDisabled: boolean | undefined;
 };
 
@@ -858,35 +858,35 @@ export function stampCombatTargetingPool(world: WorldState): void {
 
 const _mirrorStampPivot = { x: 0, y: 0, z: 0 };
 
-/** Rebuild the single force-field surface pool. Runs BEFORE
+/** Rebuild the single shield surface pool. Runs BEFORE
  *  updateTargetingAndFiringState so the AIM-08.2 clearance kernels and the
  *  projectile-reflection batch read current-tick surface data.
  *
  *  Materials Are Independent Of Shape: one pool holds both shapes.
- *   - Sphere surfaces come from getActiveForceFields(). When
- *     world.forceFieldsObstructSight is false the sphere group is rebuilt at
+ *   - Sphere surfaces come from getActiveShields(). When
+ *     world.shieldsObstructSight is false the sphere group is rebuilt at
  *     count=0 (kernels short-circuit on empty and return "clear"). Projectile
  *     collision can opt into stamping the physical shields even when sight
  *     obstruction is disabled via `includeWhenSightDisabled`.
- *   - Flat-panel surfaces come from world.getForceFieldPanelUnits(), gated by
- *     world.turretForceFieldPanelsEnabled. Inactive / dead mirror units are
+ *   - Flat-panel surfaces come from world.getShieldPanelUnits(), gated by
+ *     world.turretShieldPanelsEnabled. Inactive / dead mirror units are
  *     skipped; panel rows pack contiguously by unit. The slope-aware turret
  *     pivot is resolved fresh via resolveWeaponWorldMount — the same input the
  *     beam tracer / live aim solver uses — so the gate and the authoritative
  *     bounce path agree on where each panel sits. */
-export function stampForceFieldSurfacePool(
+export function stampShieldSurfacePool(
   world: WorldState,
-  options: ForceFieldPoolStampOptions = { includeWhenSightDisabled: undefined },
+  options: ShieldPoolStampOptions = { includeWhenSightDisabled: undefined },
 ): void {
   const sim = getSimWasm();
   if (sim === undefined) return;
-  const pool = sim.forceFieldSurfacePool;
+  const pool = sim.shieldSurfacePool;
 
   // ── Sphere surfaces ──
-  if (!options.includeWhenSightDisabled && !world.forceFieldsObstructSight) {
+  if (!options.includeWhenSightDisabled && !world.shieldsObstructSight) {
     pool.setFieldCount(0);
   } else {
-    const active = getActiveForceFields();
+    const active = getActiveShields();
     pool.setFieldCount(active.length);
     for (let i = 0; i < active.length; i++) {
       const f = active[i];
@@ -896,47 +896,47 @@ export function stampForceFieldSurfacePool(
         f.entityId,
         f.centerX, f.centerY, f.centerZ,
         f.radius,
-        encodeForceFieldReflectionMode(f.reflectionMode),
+        encodeShieldReflectionMode(f.reflectionMode),
       );
     }
   }
 
   // ── Flat-panel surfaces ──
-  if (!world.turretForceFieldPanelsEnabled) {
+  if (!world.turretShieldPanelsEnabled) {
     pool.setUnitCount(0);
     pool.setPanelCount(0);
     return;
   }
-  const forceFieldPanelUnits = world.getForceFieldPanelUnits();
-  if (forceFieldPanelUnits.length === 0) {
+  const shieldPanelUnits = world.getShieldPanelUnits();
+  if (shieldPanelUnits.length === 0) {
     pool.setUnitCount(0);
     pool.setPanelCount(0);
     return;
   }
 
   const currentTick = world.getTick();
-  let panelReflectionMode = encodeForceFieldReflectionMode(
-    REFLECTIVE_FORCE_FIELD_MATERIAL.reflection.mode,
+  let panelReflectionMode = encodeShieldReflectionMode(
+    REFLECTIVE_SHIELD_MATERIAL.reflection.mode,
   );
   let unitIdx = 0;
   let panelIdx = 0;
-  for (const unit of forceFieldPanelUnits) {
+  for (const unit of shieldPanelUnits) {
     if (!unit.unit || unit.unit.hp <= 0) continue;
-    const panels = unit.unit.forceFieldPanels;
+    const panels = unit.unit.shieldPanels;
     if (!panels || panels.length === 0) continue;
     const unitCombat = unit.combat;
     const unitTurrets = unitCombat !== null ? unitCombat.turrets : null;
     if (unitTurrets === null || unitTurrets.length === 0) continue;
 
-    const broadRadius = Math.max(unit.unit.forceFieldBoundRadius, unit.unit.radius.hitbox)
+    const broadRadius = Math.max(unit.unit.shieldBoundRadius, unit.unit.radius.hitbox)
       + MIRROR_SIGHT_QUERY_PAD;
-    const forceFieldPanelTurret = unitTurrets[0];
-    const panelShot = forceFieldPanelTurret.config.shot;
-    if (panelShot !== undefined && panelShot.type === 'forceField') {
-      panelReflectionMode = encodeForceFieldReflectionMode(panelShot.material.reflection.mode);
+    const shieldPanelTurret = unitTurrets[0];
+    const panelShot = shieldPanelTurret.config.shot;
+    if (panelShot !== undefined && panelShot.type === 'shield') {
+      panelReflectionMode = encodeShieldReflectionMode(panelShot.material.reflection.mode);
     }
-    const forceFieldPanelRot = forceFieldPanelTurret.rotation;
-    const forceFieldPanelPitch = forceFieldPanelTurret.pitch;
+    const shieldPanelRot = shieldPanelTurret.rotation;
+    const shieldPanelPitch = shieldPanelTurret.pitch;
     const unitGroundZ = getUnitGroundZ(unit);
     const unitCS = {
       cos: Math.cos(unit.transform.rotation),
@@ -945,7 +945,7 @@ export function stampForceFieldSurfacePool(
     unit.transform.rotCos = unitCS.cos;
     unit.transform.rotSin = unitCS.sin;
     resolveWeaponWorldMount(
-      unit, forceFieldPanelTurret, 0,
+      unit, shieldPanelTurret, 0,
       unitCS.cos, unitCS.sin,
       {
         currentTick,
@@ -976,7 +976,7 @@ export function stampForceFieldSurfacePool(
       unit.transform.x, unit.transform.y, unit.transform.z,
       unitGroundZ,
       broadRadius,
-      forceFieldPanelRot, forceFieldPanelPitch,
+      shieldPanelRot, shieldPanelPitch,
       _mirrorStampPivot.x, _mirrorStampPivot.y, _mirrorStampPivot.z,
       panelStart,
       panels.length,
@@ -993,6 +993,6 @@ export function stampForceFieldSurfacePool(
  *  back-to-back. Used by callers that don't need to interleave the
  *  FSM between them. */
 export function stampTargetingInputSlabs(world: WorldState): void {
-  stampForceFieldSurfacePool(world);
+  stampShieldSurfacePool(world);
   stampCombatTargetingPool(world);
 }

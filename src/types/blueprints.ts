@@ -11,7 +11,7 @@ import type {
 // Re-export for consumers
 export type {
   BarrelShape,
-  ForceFieldTurretConfig,
+  ShieldTurretConfig,
   SpinConfig,
 } from './config';
 export type { SoundEntry } from './audio';
@@ -22,23 +22,23 @@ export type {
 } from './constructionTypes';
 
 export type {
-  BeamShotBlueprint,
+  BeamRayBlueprint,
   CloakBlueprint,
   DetectorBlueprint,
   EntityBaseLedger,
   EntityDeathExplosion,
   EntityHudBlueprint,
   EntityRadiusConfig,
-  ForceFieldBarrierRatioConfig,
-  ForceFieldMaterialBlueprint,
-  ForceFieldMaterialVisualConfig,
-  ForceFieldPanel,
-  ForceFieldShotBlueprint,
-  ForceFieldSurfaceResponse,
+  ShieldBarrierRatioConfig,
+  ShieldBlueprint,
+  ShieldMaterialBlueprint,
+  ShieldMaterialVisualConfig,
+  ShieldPanel,
+  ShieldSurfaceResponse,
   FlyingConfig,
   HoverConfig,
-  LaserShotBlueprint,
-  LineShotBlueprint,
+  LaserRayBlueprint,
+  RayBlueprint,
   LockOnInclusionObject,
   LocomotionBlueprint,
   LocomotionPhysics,
@@ -73,9 +73,9 @@ export type {
 } from './blueprintSchema.generated';
 
 export {
-  FORCE_FIELD_SURFACE_RESPONSES,
-  isForceFieldReflectionMode,
-  isLineShotBlueprint,
+  SHIELD_SURFACE_RESPONSES,
+  isShieldReflectionMode,
+  isRayBlueprint,
 } from './shotTypes';
 
 /** Lock-on policy relationship inclusions, kept as runtime arrays for validators. */

@@ -23,7 +23,7 @@
     "surfaceOffset": 1.2
   },
   "turret": {
-    "forceField": {
+    "shield": {
       "shape": "circle",
       "count": 5,
       "length": 0.0,

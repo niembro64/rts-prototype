@@ -289,10 +289,10 @@ export class ReusableNetworkSnapshotCloner {
     server: { time: '', ip: '' },
     grid: false,
     units: { allowed: undefined, max: undefined, count: undefined },
-    turretForceFieldPanelsEnabled: undefined,
-    turretForceFieldSpheresEnabled: undefined,
-    forceFieldsObstructSight: undefined,
-    forceFieldReflectionMode: undefined,
+    turretShieldPanelsEnabled: undefined,
+    turretShieldSpheresEnabled: undefined,
+    shieldsObstructSight: undefined,
+    shieldReflectionMode: undefined,
     fogOfWarEnabled: undefined,
     converterTax: undefined,
     cpu: undefined,
@@ -433,10 +433,10 @@ export class ReusableNetworkSnapshotCloner {
       }
       dunits.max = sm.units.max;
       dunits.count = sm.units.count;
-      dsm.turretForceFieldPanelsEnabled = sm.turretForceFieldPanelsEnabled;
-      dsm.turretForceFieldSpheresEnabled = sm.turretForceFieldSpheresEnabled;
-      dsm.forceFieldsObstructSight = sm.forceFieldsObstructSight;
-      dsm.forceFieldReflectionMode = sm.forceFieldReflectionMode;
+      dsm.turretShieldPanelsEnabled = sm.turretShieldPanelsEnabled;
+      dsm.turretShieldSpheresEnabled = sm.turretShieldSpheresEnabled;
+      dsm.shieldsObstructSight = sm.shieldsObstructSight;
+      dsm.shieldReflectionMode = sm.shieldReflectionMode;
       dsm.fogOfWarEnabled = sm.fogOfWarEnabled;
       if (sm.cpu) {
         this.serverMetaCpu.avg = sm.cpu.avg;

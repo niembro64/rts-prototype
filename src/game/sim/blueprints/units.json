@@ -165,7 +165,7 @@
         "hostDirected": true
       },
       {
-        "turretBlueprintId": "turretForceFieldSphere",
+        "turretBlueprintId": "turretShieldSphere",
         "mount": {
           "x": 0,
           "y": 0,
@@ -656,7 +656,7 @@
         "hostDirected": true
       },
       {
-        "turretBlueprintId": "turretForceFieldSphere",
+        "turretBlueprintId": "turretShieldSphere",
         "mount": {
           "x": 0.3,
           "y": 0,
@@ -884,13 +884,13 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretForceFieldPanel",
+        "turretBlueprintId": "turretShieldPanel",
         "mount": {
           "x": 0,
           "y": 0,
           "z": 2.4
         },
-        "forceFieldPanels": [
+        "shieldPanels": [
           {
             "offsetX": 1.8,
             "offsetY": 0,

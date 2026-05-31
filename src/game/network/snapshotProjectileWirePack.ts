@@ -701,7 +701,7 @@ function readBeamPointV2(reader: PackedBinaryReader): NetworkServerSnapshotBeamP
     point.reflectorEntityId = reader.readVarUint();
   }
   if ((flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND) !== 0) {
-    point.reflectorKind = 'forceField';
+    point.reflectorKind = 'shield';
   }
   if ((flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID) !== 0) {
     point.reflectorPlayerId = reader.readVarUint() as PlayerId;
@@ -910,7 +910,7 @@ function unpackBeamPointsV1(
       point.reflectorEntityId = source[base + 7] ?? 0;
     }
     if ((flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND) !== 0) {
-      point.reflectorKind = 'forceField';
+      point.reflectorKind = 'shield';
     }
     if ((flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID) !== 0) {
       point.reflectorPlayerId = source[base + 8] as NetworkServerSnapshotBeamPoint['reflectorPlayerId'];

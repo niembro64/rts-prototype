@@ -2,12 +2,12 @@ import type { Turret } from '../types';
 
 /** AIM-08.7 — Reset the JS-only Turret fields that the combat-targeting
  *  slab does not own (angular/pitch velocity + acceleration,
- *  burst.remaining, forceField.transition/range). The slab-side reset
+ *  burst.remaining, shield.transition/range). The slab-side reset
  *  for a disabled turret is handled by the Rust scheduler's
  *  reset_disabled_weapons pass; this is its JS counterpart.
  *
  *  Called from the transition moments where a turret newly becomes
- *  disabled (mirror-disable, force-field-disable). Newly constructed
+ *  disabled (mirror-disable, shield-disable). Newly constructed
  *  turrets start with zero values, so there is no startup transition
  *  to handle. */
 export function resetDisabledTurretJsOnlyFields(turret: Turret): void {
@@ -18,8 +18,8 @@ export function resetDisabledTurretJsOnlyFields(turret: Turret): void {
   if (turret.burst) {
     turret.burst.remaining = 0;
   }
-  if (turret.forceField) {
-    turret.forceField.transition = 0;
-    turret.forceField.range = 0;
+  if (turret.shield) {
+    turret.shield.transition = 0;
+    turret.shield.range = 0;
   }
 }

@@ -8,7 +8,7 @@
 // Re-export types that consumers need (previously re-exported from config/audio/sim modules)
 export type {
   BarrelShape,
-  ForceFieldTurretConfig,
+  ShieldTurretConfig,
   SpinConfig,
   SoundEntry,
   TurretRangeOverrides,
@@ -16,25 +16,25 @@ export type {
 
 // Re-export all blueprint types
 export type {
-  ForceFieldBarrierRatioConfig,
-  ForceFieldMaterialBlueprint,
-  ForceFieldMaterialVisualConfig,
+  ShieldBarrierRatioConfig,
+  ShieldMaterialBlueprint,
+  ShieldMaterialVisualConfig,
   ShotCollision,
   ShotExplosion,
   ProjectileShotKind,
   ProjectileShotBlueprint,
-  BeamShotBlueprint,
-  LaserShotBlueprint,
-  ForceFieldShotBlueprint,
-  ForceFieldSurfaceResponse,
+  BeamRayBlueprint,
+  LaserRayBlueprint,
+  ShieldBlueprint,
+  ShieldSurfaceResponse,
   EntityBaseLedger,
   EntityDeathExplosion,
   EntityRadiusConfig,
-  LineShotBlueprint,
+  RayBlueprint,
   ShotBlueprint,
   SmokeTrailSpec,
   SubmunitionSpec,
-  ForceFieldPanel,
+  ShieldPanel,
   ConstructionEmitterSize,
   ConstructionEmitterVisualSpec,
   TurretAimAngleType,
@@ -66,6 +66,6 @@ export type {
 } from '@/types/blueprints';
 
 export {
-  FORCE_FIELD_SURFACE_RESPONSES,
-  isForceFieldReflectionMode,
+  SHIELD_SURFACE_RESPONSES,
+  isShieldReflectionMode,
 } from '@/types/blueprints';

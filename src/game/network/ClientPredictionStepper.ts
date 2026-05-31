@@ -36,8 +36,8 @@ type ClientPredictionStepperOptions = {
   dirtyUnitRenderIds: Set<EntityId>;
   getMapWidth: () => number;
   getMapHeight: () => number;
-  getServerForceFieldsEnabled: () => boolean;
-  setTurretForceFieldSpheresEnabledForPrediction: (enabled: boolean) => void;
+  getServerShieldsEnabled: () => boolean;
+  setTurretShieldSpheresEnabledForPrediction: (enabled: boolean) => void;
   applyProjectileSpawn: (spawn: NetworkServerSnapshotProjectileSpawn) => boolean;
   deleteEntityLocalState: (id: EntityId) => void;
   markLineProjectilesChanged: () => void;
@@ -204,8 +204,8 @@ export class ClientPredictionStepper {
       dirtyUnitRenderIds,
       getMapWidth,
       getMapHeight,
-      getServerForceFieldsEnabled,
-      setTurretForceFieldSpheresEnabledForPrediction,
+      getServerShieldsEnabled,
+      setTurretShieldSpheresEnabledForPrediction,
       applyProjectileSpawn,
       deleteEntityLocalState,
       markLineProjectilesChanged,
@@ -227,8 +227,8 @@ export class ClientPredictionStepper {
     const beamMovVelBlend = getChannelBlend(getMovementVelEmaMode(), deltaMs / 1000);
     projectileSpawns.drain(now, applyProjectileSpawn);
 
-    const turretForceFieldSpheresEnabled = getServerForceFieldsEnabled();
-    setTurretForceFieldSpheresEnabledForPrediction(turretForceFieldSpheresEnabled);
+    const turretShieldSpheresEnabled = getServerShieldsEnabled();
+    setTurretShieldSpheresEnabledForPrediction(turretShieldSpheresEnabled);
 
     let beamPathsChanged = false;
     for (const id of activeBeamPathIds) {
@@ -285,7 +285,7 @@ export class ClientPredictionStepper {
           entity,
           target,
           predictionStep,
-          turretForceFieldSpheresEnabled,
+          turretShieldSpheresEnabled,
         });
       }
 
@@ -309,7 +309,7 @@ export class ClientPredictionStepper {
         continue;
       }
       const target = serverTargets.get(id);
-      if (clientUnitPredictionIsSettled(entity, target, turretForceFieldSpheresEnabled)) {
+      if (clientUnitPredictionIsSettled(entity, target, turretShieldSpheresEnabled)) {
         activeEntityPredictionIds.delete(id);
         predictionCadence.clear(id);
       }

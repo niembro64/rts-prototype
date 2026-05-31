@@ -30,15 +30,16 @@ export type {
   BuildingActiveState,
   Unit,
   Building,
-  ForceFieldBarrierConfig,
+  ShieldBarrierConfig,
   CombatComponent,
   ProjectileShot,
-  BeamShot,
-  LaserShot,
-  LineShot,
-  LineShotType,
+  BeamRay,
+  LaserRay,
+  RayConfig,
+  RayType,
   ActiveProjectileShot,
-  ForceShot,
+  ShieldConfig,
+  EmissionConfig,
   ShotConfig,
   ShotRuntimeProfile,
   ShotVisualProfile,
@@ -70,7 +71,7 @@ export type {
   Entity,
 } from '@/types/sim';
 
-export { isLineShot, isLineShotType, isProjectileShot, isRocketLikeShot, getShotMaxLifespan, NO_ENTITY_ID, PROJECTILE_ABSENCE_SLOTS } from '@/types/sim';
+export { isRayConfig, isRayType, isShieldConfig, isProjectileShot, isRocketLikeShot, getEmissionBlueprintId, getShotMaxLifespan, NO_ENTITY_ID, PROJECTILE_ABSENCE_SLOTS } from '@/types/sim';
 export { createCombatComponent, createEmptyEntityComponentSlots, createTransform } from '@/types/sim';
 
 import type { PlayerId } from '@/types/sim';

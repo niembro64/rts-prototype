@@ -19,7 +19,7 @@ const EVENT_HAS_SOURCE_TYPE = 0x001;
 const EVENT_HAS_SOURCE_KEY = 0x002;
 const EVENT_HAS_PLAYER_ID = 0x004;
 const EVENT_HAS_ENTITY_ID = 0x008;
-const EVENT_HAS_FORCE_FIELD_IMPACT = 0x010;
+const EVENT_HAS_SHIELD_IMPACT = 0x010;
 const EVENT_HAS_KILLER_PLAYER_ID = 0x020;
 const EVENT_HAS_VICTIM_PLAYER_ID = 0x040;
 const EVENT_HAS_AUDIO_ONLY = 0x080;
@@ -40,9 +40,9 @@ const AUDIO_EVENT_TYPES = [
   'death',
   'laserStart',
   'laserStop',
-  'forceFieldStart',
-  'forceFieldStop',
-  'forceFieldImpact',
+  'shieldStart',
+  'shieldStop',
+  'shieldImpact',
   'ping',
   'attackAlert',
   'projectileExpire',
@@ -55,9 +55,9 @@ const AUDIO_EVENT_TYPE_CODES: Record<NetworkServerSnapshotSimEvent['type'], numb
   death: 2,
   laserStart: 3,
   laserStop: 4,
-  forceFieldStart: 5,
-  forceFieldStop: 6,
-  forceFieldImpact: 7,
+  shieldStart: 5,
+  shieldStop: 6,
+  shieldImpact: 7,
   ping: 8,
   attackAlert: 9,
   projectileExpire: 10,
@@ -177,7 +177,7 @@ export function packAudioEventsForWire(
     if (event.sourceKey !== null) flags |= EVENT_HAS_SOURCE_KEY;
     if (event.playerId !== null) flags |= EVENT_HAS_PLAYER_ID;
     if (event.entityId !== null) flags |= EVENT_HAS_ENTITY_ID;
-    if (event.forceFieldImpact !== null) flags |= EVENT_HAS_FORCE_FIELD_IMPACT;
+    if (event.shieldImpact !== null) flags |= EVENT_HAS_SHIELD_IMPACT;
     if (event.killerPlayerId !== null) flags |= EVENT_HAS_KILLER_PLAYER_ID;
     if (event.victimPlayerId !== null) flags |= EVENT_HAS_VICTIM_PLAYER_ID;
     if (event.audioOnly !== null) {
@@ -205,12 +205,12 @@ export function packAudioEventsForWire(
     }
     if (event.playerId !== null) row.push(event.playerId);
     if (event.entityId !== null) row.push(event.entityId);
-    if (event.forceFieldImpact !== null) {
+    if (event.shieldImpact !== null) {
       row.push(
-        quantizeNormal(event.forceFieldImpact.normal.x),
-        quantizeNormal(event.forceFieldImpact.normal.y),
-        quantizeNormal(event.forceFieldImpact.normal.z),
-        event.forceFieldImpact.playerId,
+        quantizeNormal(event.shieldImpact.normal.x),
+        quantizeNormal(event.shieldImpact.normal.y),
+        quantizeNormal(event.shieldImpact.normal.z),
+        event.shieldImpact.playerId,
       );
     }
     if (event.killerPlayerId !== null) row.push(event.killerPlayerId);
@@ -282,7 +282,7 @@ export function unpackAudioEventsFromWire(
       entityId: null,
       deathContext: null,
       impactContext: null,
-      forceFieldImpact: null,
+      shieldImpact: null,
       killerPlayerId: null,
       victimPlayerId: null,
       audioOnly: null,
@@ -296,8 +296,8 @@ export function unpackAudioEventsFromWire(
     }
     if ((flags & EVENT_HAS_PLAYER_ID) !== 0) event.playerId = row[cursor++];
     if ((flags & EVENT_HAS_ENTITY_ID) !== 0) event.entityId = row[cursor++];
-    if ((flags & EVENT_HAS_FORCE_FIELD_IMPACT) !== 0) {
-      event.forceFieldImpact = {
+    if ((flags & EVENT_HAS_SHIELD_IMPACT) !== 0) {
+      event.shieldImpact = {
         normal: {
           x: dequantizeNormal(row[cursor++] ?? 0),
           y: dequantizeNormal(row[cursor++] ?? 0),

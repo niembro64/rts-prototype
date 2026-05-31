@@ -116,7 +116,7 @@ export class ThreeApp {
 
     // `logarithmicDepthBuffer` was enabled here briefly but had to come
     // off: every custom THREE.ShaderMaterial in this codebase (beams,
-    // explosions, force fields, smoke trails, spray, ...) writes
+    // explosions, shields, smoke trails, spray, ...) writes
     // linear-space gl_FragDepth, while the log-depth framebuffer
     // expects log-space depth, so all of those effects depth-tested
     // against the wrong reference and disappeared. Re-enabling log-z
@@ -151,7 +151,7 @@ export class ThreeApp {
     parent.appendChild(this.renderer.domElement);
 
     // Prebuilt environment map for any PBR (MeshStandardMaterial) meshes in
-    // the scene — force-field panels use a chrome variant and metal
+    // the scene — shield panels use a chrome variant and metal
     // extractor blades use shiny-gray metal; `scene.environment` is
     // the cube they reflect. RoomEnvironment ships
     // with three.js and gives a varied lights-and-walls IBL cube; PMREM
@@ -261,7 +261,7 @@ export class ThreeApp {
    *  blocking getProgramInfoLog read on the frame the material first
    *  shows up. Profiles caught the lazy version of this stalling the
    *  first frame a new material variant appeared (e.g. the first
-   *  explosion / beam / force field of a battle) — call this after the
+   *  explosion / beam / shield of a battle) — call this after the
    *  scene has been populated with one of every material we expect to
    *  use, and any subsequent on-demand additions sharing a program will
    *  hit the cache instead of blocking. */

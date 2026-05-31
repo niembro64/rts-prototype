@@ -60,8 +60,8 @@
         "volume": 0.35,
         "playSpeed": 0.2222222222222222
       },
-      "turretForceFieldSphere": {
-        "synth": "force-field",
+      "turretShieldSphere": {
+        "synth": "shield",
         "volume": 0.5,
         "playSpeed": 1
       },
@@ -112,17 +112,17 @@
         "volume": 1,
         "playSpeed": 0.05
       },
-      "shotBeamMini": {
+      "rayBeamMini": {
         "synth": "sizzle",
         "volume": 0.7,
         "playSpeed": 1
       },
-      "shotBeamMedium": {
+      "rayBeamMedium": {
         "synth": "sizzle",
         "volume": 1,
         "playSpeed": 0.7777777777777778
       },
-      "shotBeamHeavy": {
+      "rayBeamHeavy": {
         "synth": "sizzle",
         "volume": 1.4,
         "playSpeed": 0.2222222222222222

@@ -17,12 +17,12 @@ import {
   createCombatComponent,
   createEmptyEntityComponentSlots,
   createTransform,
+  getEmissionBlueprintId,
   isProjectileShot,
   NO_ENTITY_ID,
   PROJECTILE_ABSENCE_SLOTS,
 } from './types';
 import type { MetalDeposit } from '../../metalDepositConfig';
-import type { ShotBlueprintId } from '../../types/blueprintIds';
 import type { ResourceMovement } from './resourceMovement';
 import { EntityCacheManager } from './EntityCacheManager';
 import { getUnitBlueprint, getUnitLocomotion } from './blueprints';
@@ -30,18 +30,18 @@ import { cloneUnitLocomotion } from './locomotion';
 import { createUnitRuntimeTurrets } from './runtimeTurrets';
 import {
   MAX_TOTAL_UNITS,
-  DEFAULT_TURRET_FORCE_FIELD_PANELS_ENABLED,
-  DEFAULT_TURRET_FORCE_FIELD_SPHERES_ENABLED,
-  DEFAULT_FORCE_FIELDS_OBSTRUCT_SIGHT,
-  DEFAULT_FORCE_FIELD_REFLECTION_MODE,
+  DEFAULT_TURRET_SHIELD_PANELS_ENABLED,
+  DEFAULT_TURRET_SHIELD_SPHERES_ENABLED,
+  DEFAULT_SHIELDS_OBSTRUCT_SIGHT,
+  DEFAULT_SHIELD_REFLECTION_MODE,
   UNIT_HP_MULTIPLIER,
   UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
   LAND_CELL_SIZE,
   DGUN_TERRAIN_FOLLOW_HEIGHT,
 } from '../../config';
-import type { ForceFieldReflectionMode } from '../../types/shotTypes';
+import type { ShieldReflectionMode } from '../../types/shotTypes';
 import { getSurfaceHeight, getSurfaceNormal } from './Terrain';
-import { buildForceFieldPanelCache } from './forceFieldPanelCache';
+import { buildShieldPanelCache } from './shieldPanelCache';
 import { createProjectileConfigFromTurret } from './projectileConfigs';
 import { applyEntitySensorBlueprint } from './cloakDetection';
 import { ENTITY_CHANGED_HP } from '../../types/network';
@@ -73,8 +73,8 @@ export type RemovedSnapshotEntity = {
 };
 
 export type CreateProjectileProvenance = {
-  /** Runtime shot blueprint for this projectile body. Submunitions use child shot blueprint ids here. */
-  shotBlueprintId?: ShotBlueprintId | null;
+  /** Runtime emission blueprint for this projectile body. Submunitions use child shot blueprint ids here. */
+  shotBlueprintId?: string | null;
   /** Immutable source record. Submunitions pass a copy of their parent's source record. */
   shotSource?: ShotSource | null;
 };
@@ -177,17 +177,17 @@ export class WorldState {
   // Configurable unit cap (can be changed at runtime via command)
   public maxTotalUnits: number = MAX_TOTAL_UNITS;
 
-  // Whether turretForceFieldPanels/panels participate in targeting and reflections
-  public turretForceFieldPanelsEnabled: boolean = DEFAULT_TURRET_FORCE_FIELD_PANELS_ENABLED;
-  // Whether force-field turrets participate in targeting, simulation, and rendering
-  public turretForceFieldSpheresEnabled: boolean = DEFAULT_TURRET_FORCE_FIELD_SPHERES_ENABLED;
+  // Whether turretShieldPanels/panels participate in targeting and reflections
+  public turretShieldPanelsEnabled: boolean = DEFAULT_TURRET_SHIELD_PANELS_ENABLED;
+  // Whether shield turrets participate in targeting, simulation, and rendering
+  public turretShieldSpheresEnabled: boolean = DEFAULT_TURRET_SHIELD_SPHERES_ENABLED;
   // Whether force material between a turret and its target obstructs
-  // sight. Symmetric: active force-field sphere boundaries and force
-  // force-field panels apply to every turret in either direction, regardless
+  // sight. Symmetric: active shield sphere boundaries and force
+  // shield panels apply to every turret in either direction, regardless
   // of team.
-  public forceFieldsObstructSight: boolean = DEFAULT_FORCE_FIELDS_OBSTRUCT_SIGHT;
-  // Which force-field boundary crossings reflect shots/beams.
-  public forceFieldReflectionMode: ForceFieldReflectionMode = DEFAULT_FORCE_FIELD_REFLECTION_MODE;
+  public shieldsObstructSight: boolean = DEFAULT_SHIELDS_OBSTRUCT_SIGHT;
+  // Which shield boundary crossings reflect shots/beams.
+  public shieldReflectionMode: ShieldReflectionMode = DEFAULT_SHIELD_REFLECTION_MODE;
   // Whether player-specific snapshots and the client fog overlay use vision.
   public fogOfWarEnabled: boolean = true;
   /** Tax (fraction in [0, 1)) applied to a resource converter's per-tick
@@ -602,10 +602,10 @@ export class WorldState {
     return this.cache.getLineProjectiles();
   }
 
-  // Get units with force field weapons (cached - DO NOT MODIFY returned array)
-  getForceFieldUnits(): Entity[] {
+  // Get units with shield weapons (cached - DO NOT MODIFY returned array)
+  getShieldUnits(): Entity[] {
     this.rebuildCachesIfNeeded();
-    return this.cache.getForceFieldUnits();
+    return this.cache.getShieldUnits();
   }
 
   getCommanderUnits(): Entity[] {
@@ -633,10 +633,10 @@ export class WorldState {
     return this.cache.getBeamUnits();
   }
 
-  // Get units with force-field panels (cached - DO NOT MODIFY returned array)
-  getForceFieldPanelUnits(): Entity[] {
+  // Get units with shield panels (cached - DO NOT MODIFY returned array)
+  getShieldPanelUnits(): Entity[] {
     this.rebuildCachesIfNeeded();
-    return this.cache.getForceFieldPanelUnits();
+    return this.cache.getShieldPanelUnits();
   }
 
   // Get wind turbine buildings (cached - DO NOT MODIFY returned array)
@@ -926,8 +926,8 @@ export class WorldState {
         thrustDirX: 0,
         thrustDirY: 0,
         suspension: null,
-        forceFieldPanels: [],
-        forceFieldBoundRadius: 0,
+        shieldPanels: [],
+        shieldBoundRadius: 0,
         surfaceNormal: { nx: spawnNormal.nx, ny: spawnNormal.ny, nz: spawnNormal.nz },
         // Airborne units carry a full quaternion + ω-vector + α-vector
         // orientation triad so they can express roll (banking into a
@@ -989,11 +989,11 @@ export class WorldState {
       () => this.generateEntityId(),
     ));
 
-    // Cache force-field panels for fast beam collision checks. Same helper
+    // Cache shield panels for fast beam collision checks. Same helper
     // runs on the client (NetworkEntityFactory) so authoritative and
     // hydrated entities share one canonical rectangle.
-    entity.unit!.forceFieldBoundRadius = buildForceFieldPanelCache(
-      bp, entity.unit!.forceFieldPanels,
+    entity.unit!.shieldBoundRadius = buildShieldPanelCache(
+      bp, entity.unit!.shieldPanels,
     );
 
     // Attach builder component if blueprint specifies it
@@ -1118,7 +1118,7 @@ export class WorldState {
     const maxHits = 1;
     const shotBlueprintId = provenance !== null && provenance.shotBlueprintId !== undefined && provenance.shotBlueprintId !== null
       ? provenance.shotBlueprintId
-      : config.shot.shotBlueprintId;
+      : getEmissionBlueprintId(config.shot);
     const shotSource: ShotSource = provenance !== null && provenance.shotSource !== undefined && provenance.shotSource !== null
       ? { ...provenance.shotSource }
       : {

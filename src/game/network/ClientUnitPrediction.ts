@@ -607,9 +607,9 @@ export function applyClientCombatExpensivePrediction(options: {
   entity: Entity;
   target: UnitPredictionTarget | undefined;
   predictionStep: PredictionStep;
-  turretForceFieldSpheresEnabled: boolean;
+  turretShieldSpheresEnabled: boolean;
 }): void {
-  const { entity, target, predictionStep, turretForceFieldSpheresEnabled } = options;
+  const { entity, target, predictionStep, turretShieldSpheresEnabled } = options;
   if (!entity.combat) return;
   const dt = predictionStep.entityDeltaMs / 1000;
   const targetDt = predictionStep.targetDeltaMs / 1000;
@@ -666,18 +666,18 @@ export function applyClientCombatExpensivePrediction(options: {
     }
 
     const shot = weapon.config.shot;
-    if (shot === undefined || shot.type !== 'forceField') continue;
-    if (!turretForceFieldSpheresEnabled) {
-      const forceField = weapon.forceField;
-      if (forceField !== undefined) {
-        forceField.range = 0;
-        forceField.transition = 0;
+    if (shot === undefined || shot.type !== 'shield') continue;
+    if (!turretShieldSpheresEnabled) {
+      const shield = weapon.shield;
+      if (shield !== undefined) {
+        shield.range = 0;
+        shield.transition = 0;
       }
       continue;
     }
     const fieldShot = shot;
-    const forceField = weapon.forceField;
-    const cur = forceField !== undefined ? forceField.range : 0;
+    const shield = weapon.shield;
+    const cur = shield !== undefined ? shield.range : 0;
     const targetProgress = isTurretEngaged(entity, i, weapon.state) ? 1 : 0;
     const progressDelta = dt / (fieldShot.transitionTime / 1000);
     let next = cur;
@@ -687,17 +687,17 @@ export function applyClientCombatExpensivePrediction(options: {
       next = Math.max(cur - progressDelta, 0);
     }
 
-    // The force-field range is a slow visual transition, not a
+    // The shield range is a slow visual transition, not a
     // snapshot-drift channel. It rides along with rotation-position
     // correction.
-    const serverRange = tw !== undefined ? tw.forceFieldRange : undefined;
+    const serverRange = tw !== undefined ? tw.shieldRange : undefined;
     if (serverRange !== undefined && rotPosBlend >= 0) {
       next = lerp(next, serverRange, rotPosBlend);
     }
-    if (forceField === undefined) {
-      weapon.forceField = { range: next, transition: 0 };
+    if (shield === undefined) {
+      weapon.shield = { range: next, transition: 0 };
     } else {
-      forceField.range = next;
+      shield.range = next;
     }
   }
 }
@@ -705,7 +705,7 @@ export function applyClientCombatExpensivePrediction(options: {
 export function clientUnitPredictionIsSettled(
   entity: Entity,
   target: UnitPredictionTarget | undefined,
-  turretForceFieldSpheresEnabled: boolean,
+  turretShieldSpheresEnabled: boolean,
 ): boolean {
   const unit = entity.unit;
   if (unit) {
@@ -743,23 +743,23 @@ export function clientUnitPredictionIsSettled(
       if (Math.abs(tw.angularVelocity) > PREDICTION_TURRET_EPSILON) return false;
       if (angleDeltaAbs(weapon.rotation, tw.rotation) > PREDICTION_TURRET_EPSILON) return false;
       if (angleDeltaAbs(weapon.pitch, tw.pitch) > PREDICTION_TURRET_EPSILON) return false;
-      if (turretForceFieldSpheresEnabled) {
-        const forceField = weapon.forceField;
-        const localRange = forceField !== undefined ? forceField.range : 0;
-        const targetRange = tw.forceFieldRange ?? 0;
+      if (turretShieldSpheresEnabled) {
+        const shield = weapon.shield;
+        const localRange = shield !== undefined ? shield.range : 0;
+        const targetRange = tw.shieldRange ?? 0;
         if (Math.abs(localRange - targetRange) > PREDICTION_TURRET_EPSILON) return false;
       }
     }
 
     const shot = weapon.config.shot;
     if (
-      turretForceFieldSpheresEnabled &&
+      turretShieldSpheresEnabled &&
       shot !== undefined &&
-      shot.type === 'forceField' &&
+      shot.type === 'shield' &&
       shot.barrier !== undefined
     ) {
-      const forceField = weapon.forceField;
-      const range = forceField !== undefined ? forceField.range : 0;
+      const shield = weapon.shield;
+      const range = shield !== undefined ? shield.range : 0;
       if (range > PREDICTION_TURRET_EPSILON) return false;
       if (isTurretEngaged(entity, i, weapon.state)) return false;
     }

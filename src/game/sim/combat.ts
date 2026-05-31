@@ -28,15 +28,15 @@ export {
 } from './combat/laserSoundSystem';
 
 export {
-  updateForceFieldSounds,
-  emitForceFieldStopsForEntity,
-  resetForceFieldSoundState,
-} from './combat/forceFieldSoundSystem';
+  updateShieldSounds,
+  emitShieldStopsForEntity,
+  resetShieldSoundState,
+} from './combat/shieldSoundSystem';
 
 export {
-  updateForceFieldState,
-  resetForceFieldBuffers,
-} from './combat/forceFieldTurret';
+  updateShieldState,
+  resetShieldBuffers,
+} from './combat/shieldTurret';
 
 export {
   fireTurrets,

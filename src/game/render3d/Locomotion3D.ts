@@ -64,7 +64,7 @@ export type { LegStateSnapshot };
 export { TREAD_HEIGHT };
 
 /** Vertical offset (world units) by which the unit's BODY (chassis,
- *  turrets, mirrors, force-field) sits above the ground plane.
+ *  turrets, mirrors, shield) sits above the ground plane.
  *
  *  Runtime rule: the unit blueprint's `bodyCenterHeight` is the hard
  *  source of truth. Chassis lift is derived from it so visual body

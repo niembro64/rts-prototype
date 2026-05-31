@@ -1,8 +1,8 @@
-// Force field weapon system - spherical projectile shield boundary
+// Shield weapon system - spherical projectile shield boundary
 
 import type { WorldState } from '../WorldState';
-import type { ForceShot } from '../types';
-import type { ForceFieldReflectionMode } from '../../../types/shotTypes';
+import type { ShieldConfig } from '../types';
+import type { ShieldReflectionMode } from '../../../types/shotTypes';
 import { getTransformCosSin } from '../../math';
 import { CT_TURRET_STATE_ENGAGED } from '../../sim-wasm/init';
 import { updateWeaponWorldKinematics } from './combatUtils';
@@ -12,85 +12,85 @@ import {
 } from './targetingInputStamping';
 import { getUnitGroundZ } from '../unitGeometry';
 
-const _forceFieldMount = { x: 0, y: 0, z: 0 };
-const _forceFieldHit = { t: 0, x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, playerId: 0, entityId: 0 };
-const _forceFieldFsm: CombatTargetingTurretFsmOut = {
+const _shieldMount = { x: 0, y: 0, z: 0 };
+const _shieldHit = { t: 0, x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, playerId: 0, entityId: 0 };
+const _shieldFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_ENGAGED,
   targetId: -1,
 };
 
-// Compact list of force field weapons with progress > 0, built by
-// updateForceFieldState() and consumed by projectile collision and the
+// Compact list of shield weapons with progress > 0, built by
+// updateShieldState() and consumed by projectile collision and the
 // targeting LOS clearance check.
-export type ActiveForceFieldRef = {
+export type ActiveShieldRef = {
   centerX: number;
   centerY: number;
   centerZ: number;
   radius: number;
-  reflectionMode: ForceFieldReflectionMode;
+  reflectionMode: ShieldReflectionMode;
   playerId: number;
   entityId: number;
 };
-const _activeForceFields: ActiveForceFieldRef[] = [];
+const _activeShields: ActiveShieldRef[] = [];
 
 // Reset module-level buffers (call between game sessions)
-export function resetForceFieldBuffers(): void {
-  _activeForceFields.length = 0;
+export function resetShieldBuffers(): void {
+  _activeShields.length = 0;
 }
 
-/** Read-only view of the active force-field list maintained by
- *  updateForceFieldState. The targeting system reads this once per tick
+/** Read-only view of the active shield list maintained by
+ *  updateShieldState. The targeting system reads this once per tick
  *  to gate lock-on against shield boundaries. Cached from the previous
- *  tick (force-field update runs after targeting in Simulation.ts), so
+ *  tick (shield update runs after targeting in Simulation.ts), so
  *  there is at most a one-tick lag when a field first forms or decays —
  *  imperceptible at 60 TPS. */
-export function getActiveForceFields(): readonly ActiveForceFieldRef[] {
-  return _activeForceFields;
+export function getActiveShields(): readonly ActiveShieldRef[] {
+  return _activeShields;
 }
 
-// Update force field state (transition progress 0→1). The transition is
+// Update shield state (transition progress 0→1). The transition is
 // host-owned because progress > 0 gates whether the barrier exists for
 // projectile reflection / obstruction. The snapshot wire ships the same
-// value as currentForceFieldRange so clients correct to server progress
+// value as currentShieldRange so clients correct to server progress
 // rather than running an independent visual-only timer.
-export function updateForceFieldState(world: WorldState, dtMs: number): void {
-  _activeForceFields.length = 0;
+export function updateShieldState(world: WorldState, dtMs: number): void {
+  _activeShields.length = 0;
 
-  for (const unit of world.getForceFieldUnits()) {
+  for (const unit of world.getShieldUnits()) {
     const turrets = unit.combat!.turrets;
     for (let weaponIndex = 0; weaponIndex < turrets.length; weaponIndex++) {
       const weapon = turrets[weaponIndex];
       const config = weapon.config;
       const shot = config.shot;
-      if (shot === undefined || shot.type !== 'forceField') continue;
-      const fieldShot = shot as ForceShot;
+      if (shot === undefined || shot.type !== 'shield') continue;
+      const fieldShot = shot as ShieldConfig;
 
       const transitionTime = fieldShot.transitionTime;
 
       // Initialize
-      if (weapon.forceField === undefined) {
-        weapon.forceField = { transition: 0, range: 0 };
+      if (weapon.shield === undefined) {
+        weapon.shield = { transition: 0, range: 0 };
       }
 
       // Move progress toward target based on engaged state
-      const engaged = readCombatTargetingTurretFsmInto(unit, weaponIndex, _forceFieldFsm)
-        ? _forceFieldFsm.stateCode === CT_TURRET_STATE_ENGAGED
+      const engaged = readCombatTargetingTurretFsmInto(unit, weaponIndex, _shieldFsm)
+        ? _shieldFsm.stateCode === CT_TURRET_STATE_ENGAGED
         : weapon.state === 'engaged';
       const targetProgress = engaged ? 1 : 0;
       const progressDelta = dtMs / transitionTime;
 
-      if (weapon.forceField.transition < targetProgress) {
-        weapon.forceField.transition = Math.min(weapon.forceField.transition + progressDelta, 1);
-      } else if (weapon.forceField.transition > targetProgress) {
-        weapon.forceField.transition = Math.max(weapon.forceField.transition - progressDelta, 0);
+      if (weapon.shield.transition < targetProgress) {
+        weapon.shield.transition = Math.min(weapon.shield.transition + progressDelta, 1);
+      } else if (weapon.shield.transition > targetProgress) {
+        weapon.shield.transition = Math.max(weapon.shield.transition - progressDelta, 0);
       }
 
       // Serialize authoritative barrier activation progress as
-      // forceField.range (0→1).
-      weapon.forceField.range = weapon.forceField.transition;
+      // shield.range (0→1).
+      weapon.shield.range = weapon.shield.transition;
 
       if (
-        weapon.forceField.transition > 0 &&
+        weapon.shield.transition > 0 &&
         unit.unit &&
         unit.unit.hp > 0 &&
         fieldShot.barrier !== undefined
@@ -108,11 +108,11 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
             unitGroundZ: getUnitGroundZ(unit),
             surfaceN: unit.unit.surfaceNormal,
           },
-          _forceFieldMount,
+          _shieldMount,
         );
         const originOffsetZ = barrier.originOffsetZ;
         const playerId = unit.ownership !== null ? unit.ownership.playerId : 0;
-        _activeForceFields.push({
+        _activeShields.push({
           centerX: mount.x,
           centerY: mount.y,
           centerZ: mount.z - originOffsetZ,
@@ -126,7 +126,7 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
   }
 }
 
-export type ForceFieldProjectileIntersection = {
+export type ShieldProjectileIntersection = {
   t: number;
   x: number;
   y: number;
@@ -138,8 +138,8 @@ export type ForceFieldProjectileIntersection = {
   entityId: number;
 };
 
-function forceFieldModeAllowsCrossing(
-  mode: ForceFieldReflectionMode,
+function shieldModeAllowsCrossing(
+  mode: ShieldReflectionMode,
   radialVelocity: number,
 ): boolean {
   const eps = 1e-6;
@@ -148,7 +148,7 @@ function forceFieldModeAllowsCrossing(
   return false;
 }
 
-export function encodeForceFieldReflectionMode(mode: ForceFieldReflectionMode): number {
+export function encodeShieldReflectionMode(mode: ShieldReflectionMode): number {
   switch (mode) {
     case 'outside-in':
       return 0;
@@ -160,7 +160,7 @@ export function encodeForceFieldReflectionMode(mode: ForceFieldReflectionMode): 
   return 2;
 }
 
-function intersectForceFieldSphere(
+function intersectShieldSphere(
   startX: number,
   startY: number,
   startZ: number,
@@ -171,7 +171,7 @@ function intersectForceFieldSphere(
   centerY: number,
   centerZ: number,
   radius: number,
-  reflectionMode: ForceFieldReflectionMode,
+  reflectionMode: ShieldReflectionMode,
 ): number | null {
   const sx = startX - centerX;
   const sy = startY - centerY;
@@ -214,7 +214,7 @@ function intersectForceFieldSphere(
     const hitY = startY + dy * firstT - centerY;
     const hitZ = startZ + dz * firstT - centerZ;
     const radialVelocity = dx * hitX + dy * hitY + dz * hitZ;
-    if (forceFieldModeAllowsCrossing(reflectionMode, radialVelocity)) return firstT;
+    if (shieldModeAllowsCrossing(reflectionMode, radialVelocity)) return firstT;
   }
 
   if (secondT > 1e-6 && secondT <= 1 && secondT !== firstT) {
@@ -223,12 +223,12 @@ function intersectForceFieldSphere(
     const hitY = startY + dy * t - centerY;
     const hitZ = startZ + dz * t - centerZ;
     const radialVelocity = dx * hitX + dy * hitY + dz * hitZ;
-    if (forceFieldModeAllowsCrossing(reflectionMode, radialVelocity)) return t;
+    if (shieldModeAllowsCrossing(reflectionMode, radialVelocity)) return t;
   }
   return null;
 }
 
-export function findForceFieldSegmentIntersection(
+export function findShieldSegmentIntersection(
   _world: WorldState,
   startX: number,
   startY: number,
@@ -236,11 +236,11 @@ export function findForceFieldSegmentIntersection(
   endX: number,
   endY: number,
   endZ: number,
-): ForceFieldProjectileIntersection | null {
-  // Intentionally no projectile-owner/player filter here: a force-field
+): ShieldProjectileIntersection | null {
+  // Intentionally no projectile-owner/player filter here: a shield
   // barrier is material-owned. The surface material decides whether it
   // reflects incoming, outgoing, or both boundary crossings.
-  const activeFields = _activeForceFields;
+  const activeFields = _activeShields;
   if (activeFields.length === 0) return null;
   let bestT = Infinity;
   let bestX = 0;
@@ -254,7 +254,7 @@ export function findForceFieldSegmentIntersection(
 
   for (let activeOrdinal = 0; activeOrdinal < activeFields.length; activeOrdinal++) {
     const active = activeFields[activeOrdinal];
-    const t = intersectForceFieldSphere(
+    const t = intersectShieldSphere(
       startX, startY, startZ,
       endX, endY, endZ,
       active.centerX, active.centerY, active.centerZ,
@@ -282,14 +282,14 @@ export function findForceFieldSegmentIntersection(
   }
 
   if (bestT === Infinity) return null;
-  _forceFieldHit.t = bestT;
-  _forceFieldHit.x = bestX;
-  _forceFieldHit.y = bestY;
-  _forceFieldHit.z = bestZ;
-  _forceFieldHit.nx = bestNx;
-  _forceFieldHit.ny = bestNy;
-  _forceFieldHit.nz = bestNz;
-  _forceFieldHit.playerId = bestPlayerId;
-  _forceFieldHit.entityId = bestEntityId;
-  return _forceFieldHit;
+  _shieldHit.t = bestT;
+  _shieldHit.x = bestX;
+  _shieldHit.y = bestY;
+  _shieldHit.z = bestZ;
+  _shieldHit.nx = bestNx;
+  _shieldHit.ny = bestNy;
+  _shieldHit.nz = bestNz;
+  _shieldHit.playerId = bestPlayerId;
+  _shieldHit.entityId = bestEntityId;
+  return _shieldHit;
 }

@@ -175,10 +175,10 @@ export function codeToProjectileType(c: number): 'projectile' | 'beam' | 'laser'
   return _CODE_TO_PROJECTILE_TYPE[c] ?? null;
 }
 
-/** Code-form sibling of `isLineShotType` from types/sim.ts — true for
+/** Code-form sibling of `isRayType` from types/sim.ts — true for
  *  the projectile-type codes that correspond to line shots (beam +
  *  laser). Adding a new line-shot type means extending both
- *  LINE_SHOT_TYPES (string side) and this code list. */
+ *  RAY_TYPES (string side) and this code list. */
 export function isLineProjectileTypeCode(code: ProjectileTypeCode): boolean {
   return code === PROJECTILE_TYPE_BEAM || code === PROJECTILE_TYPE_LASER;
 }
@@ -223,8 +223,8 @@ export function codeToTurretBlueprintId(c: number): TurretBlueprintId | null {
   return _TURRET_BLUEPRINT_IDS[c] ?? null;
 }
 import type { Command } from './commands';
-import type { SimEventAudioKey, ImpactContext, SimDeathContext, SimEventSourceType, ForceFieldImpactContext } from './combat';
-import type { ForceFieldReflectionMode } from './shotTypes';
+import type { SimEventAudioKey, ImpactContext, SimDeathContext, SimEventSourceType, ShieldImpactContext } from './combat';
+import type { ShieldReflectionMode } from './shotTypes';
 import type { Vec2, Vec3 } from './vec2';
 import type { SnapshotCompressionFormat } from './config';
 import type {
@@ -357,9 +357,9 @@ export type NetworkServerSnapshotSimEvent = {
     | 'death'
     | 'laserStart'
     | 'laserStop'
-    | 'forceFieldStart'
-    | 'forceFieldStop'
-    | 'forceFieldImpact'
+    | 'shieldStart'
+    | 'shieldStop'
+    | 'shieldImpact'
     | 'ping'
     | 'attackAlert'
     | 'projectileExpire'
@@ -373,7 +373,7 @@ export type NetworkServerSnapshotSimEvent = {
   entityId: number | null;
   deathContext: SimDeathContext | null;
   impactContext: ImpactContext | null;
-  forceFieldImpact: ForceFieldImpactContext | null;
+  shieldImpact: ShieldImpactContext | null;
   /** For 'death' events: playerId of the entity that landed the
    *  killing blow. Carries through serializeAudioEvents' kill-credit
    *  branch (FOW-17) — the audio serializer forwards the
@@ -502,7 +502,7 @@ export type NetworkServerSnapshotVelocityUpdate = {
  *  own instantaneous 3D velocity in the world frame so the client can
  *  extrapolate every vertex independently between snapshots; the
  *  reflector vertices set `reflectorEntityId` to the redirecting reflector
- *  entity (force-field panels and spheres both use this slot).
+ *  entity (shield panels and spheres both use this slot).
  *  Position uses PROJECTILE_POSITION_WIRE_SCALE, velocity uses
  *  VELOCITY_WIRE_SCALE, and normals use NORMAL_WIRE_SCALE fixed-point
  *  integers. Start leaves reflector metadata undefined; the end can
@@ -515,7 +515,7 @@ export type NetworkServerSnapshotBeamPoint = {
   vx: number;
   vy: number;
   vz: number;
-  /** Any beam reflector entity — force-field panels and spheres both
+  /** Any beam reflector entity — shield panels and spheres both
    *  use this slot. */
   reflectorEntityId: number | null;
   reflectorKind: BeamReflectorKind | null;
@@ -558,10 +558,10 @@ export type NetworkServerSnapshotMeta = {
     max: number | undefined;
     count: number | undefined;
   };
-  turretForceFieldPanelsEnabled: boolean | undefined;
-  turretForceFieldSpheresEnabled: boolean | undefined;
-  forceFieldsObstructSight: boolean | undefined;
-  forceFieldReflectionMode: ForceFieldReflectionMode | undefined;
+  turretShieldPanelsEnabled: boolean | undefined;
+  turretShieldSpheresEnabled: boolean | undefined;
+  shieldsObstructSight: boolean | undefined;
+  shieldReflectionMode: ShieldReflectionMode | undefined;
   fogOfWarEnabled: boolean | undefined;
   /** Tax (fraction in [0, 1)) applied to each resource converter's
    *  per-tick output. Authoritative on the host; mirrored to clients
@@ -717,12 +717,12 @@ export type NetworkServerSnapshotTurret = {
   /** Bit-packed turret state code (see TURRET_STATE_* constants and
    *  turretStateToCode / codeToTurretState helpers). */
   state: TurretStateCode;
-  /** Server-authored force-field activation progress (0..1). This is
+  /** Server-authored shield activation progress (0..1). This is
    *  not locomotion garnish: the authoritative host uses the same
-   *  transition state to decide when a force-field barrier exists for
+   *  transition state to decide when a shield barrier exists for
    *  projectile reflection / obstruction, so clients receive it as a
    *  correction target instead of deriving an independent local timer. */
-  currentForceFieldRange: number | null;
+  currentShieldRange: number | null;
 };
 
 // Bitmask for per-field delta updates within an entity.

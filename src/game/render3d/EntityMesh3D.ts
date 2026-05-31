@@ -3,7 +3,7 @@ import type { UnitBodyShape } from '@/types/blueprints';
 import type { PlayerId } from '../sim/types';
 import type { Locomotion3DMesh } from './Locomotion3D';
 import type { TurretMesh } from './TurretMesh3D';
-import type { ForceFieldPanelMesh } from './ForceFieldPanelMesh3D';
+import type { ShieldPanelMesh } from './ShieldPanelMesh3D';
 import type {
   BuildingDetailMesh,
   ExtractorRig,
@@ -33,7 +33,7 @@ export type EntityMesh = {
    *  TILT (world-frame), `yawGroup` carries the unit's facing yaw
    *  (around the chassis-local up axis = the slope's up). Locomotion
    *  (treads / wheels) lives directly inside `yawGroup` at ground
-   *  level. The BODY (chassis, turrets, mirrors, force-field) lives
+   *  level. The BODY (chassis, turrets, mirrors, shield) lives
    *  inside `liftGroup` which is itself inside yawGroup but offset
    *  upward — so the locomotion stays on the ground while the body
    *  is held aloft, like a vehicle riding on its wheels.
@@ -41,7 +41,7 @@ export type EntityMesh = {
   yawGroup?: THREE.Group;
   /** Lift subgroup. Sits inside `yawGroup` with a positive Y offset
    *  (`Locomotion3D.getChassisLift(blueprint, unitRadius)`) — chassis,
-   *  turret roots, force-field panels, and force-field meshes all parent
+   *  turret roots, shield panels, and shield meshes all parent
    *  here so they ride above the ground at the locomotion's natural
    *  height. Undefined for buildings; for units the offset is fixed
    *  at build time (locomotion config doesn't change) so no per-frame
@@ -67,7 +67,7 @@ export type EntityMesh = {
   chassisMeshes: THREE.Mesh[];
   /** Slot indices into the renderer's `smoothChassis` InstancedMesh,
    *  one per body part. Present on smooth-body units (arachnid, beam,
-   *  snipe, commander, forceField, loris); undefined for polygon /
+   *  snipe, commander, shield, loris); undefined for polygon /
    *  rect bodies, which use polyChassisSlot. */
   smoothChassisSlots?: number[];
   /** Single slot index into the body-shape keyed polygonal-chassis
@@ -80,7 +80,7 @@ export type EntityMesh = {
   bodyShapeKey: string;
   bodyShape?: UnitBodyShape;
   turrets: TurretMesh[];
-  mirrors?: ForceFieldPanelMesh;
+  mirrors?: ShieldPanelMesh;
   locomotion?: Locomotion3DMesh;
   /** Selection ring mesh — material/geometry are owned by
    *  SelectionOverlayRenderer3D, so we don't store a per-unit material

@@ -20,19 +20,19 @@ import {
   emitLaserStopsForEntity,
   emitLaserStopsForTarget,
   resetLaserSoundState,
-  updateForceFieldSounds,
-  emitForceFieldStopsForEntity,
-  resetForceFieldSoundState,
+  updateShieldSounds,
+  emitShieldStopsForEntity,
+  resetShieldSoundState,
   fireTurrets,
-  updateForceFieldState,
-  resetForceFieldBuffers,
+  updateShieldState,
+  resetShieldBuffers,
   registerPackedProjectile,
   unregisterPackedProjectile,
 } from './combat';
 import {
   readCombatTargetingTurretFsmInto,
   stampCombatTargetingPool,
-  stampForceFieldSurfacePool,
+  stampShieldSurfacePool,
   type CombatTargetingTurretFsmOut,
 } from './combat/targetingInputStamping';
 import {
@@ -519,14 +519,14 @@ export class Simulation {
   private updateCombat(dtMs: number): void {
     this._deathExplosionDetonatedIds.clear();
 
-    // AIM-08.2 — stamp the FF pool BEFORE the FSM so the force-field
+    // AIM-08.2 — stamp the FF pool BEFORE the FSM so the shield
     // clearance kernels read the latest sphere list. The list is
-    // produced by the previous tick's updateForceFieldState, so shield
+    // produced by the previous tick's updateShieldState, so shield
     // sphere targeting has the same one-tick-stale envelope as
     // projectile collision.
     // One material, two shapes: a single pool holds both the sphere and the
-    // flat-panel force-field surfaces, both stamped here before the FSM/gate.
-    stampForceFieldSurfacePool(this.world);
+    // flat-panel shield surfaces, both stamped here before the FSM/gate.
+    stampShieldSurfacePool(this.world);
     // AIM-08.5 — rebuild targeting slabs before the FSM. The targeting
     // pass mutates the slab through Rust transition kernels and writes
     // those results back to JS turrets for the remaining consumers.
@@ -546,13 +546,13 @@ export class Simulation {
       }
     }
 
-    // Update force field sounds based on transition progress (every frame)
-    const forceFieldUnits = this.world.turretForceFieldSpheresEnabled
-      ? this.world.getForceFieldUnits()
+    // Update shield sounds based on transition progress (every frame)
+    const shieldUnits = this.world.turretShieldSpheresEnabled
+      ? this.world.getShieldUnits()
       : undefined;
-    if (forceFieldUnits && forceFieldUnits.length > 0) {
-      const forceFieldSimEvents = updateForceFieldSounds(forceFieldUnits);
-      for (const event of forceFieldSimEvents) {
+    if (shieldUnits && shieldUnits.length > 0) {
+      const shieldSimEvents = updateShieldSounds(shieldUnits);
+      for (const event of shieldSimEvents) {
         const onSimEvent = this.onSimEvent;
         if (onSimEvent !== null) onSimEvent(event);
         this.pendingSimEvents.push(event);
@@ -581,11 +581,11 @@ export class Simulation {
       this.pendingSimEvents.push(event);
     }
 
-    // Update force field state (range transitions)
-    if (forceFieldUnits && forceFieldUnits.length > 0) {
-      updateForceFieldState(this.world, dtMs);
+    // Update shield state (range transitions)
+    if (shieldUnits && shieldUnits.length > 0) {
+      updateShieldState(this.world, dtMs);
     } else {
-      resetForceFieldBuffers();
+      resetShieldBuffers();
     }
 
     for (const unit of activeCombatUnits) {
@@ -611,9 +611,9 @@ export class Simulation {
       }
 
       // Projectile reflection queries use the same reflector slabs as
-      // targeting, but need the post-rotation, post-force-field-update
+      // targeting, but need the post-rotation, post-shield-update
       // pose for this collision tick.
-      stampForceFieldSurfacePool(this.world, { includeWhenSightDisabled: true });
+      stampShieldSurfacePool(this.world, { includeWhenSightDisabled: true });
 
       // Check projectile collisions and get dead units
       const collisionResult = checkProjectileCollisions(this.world, dtMs, this.damageSystem, this.forceAccumulator);
@@ -668,8 +668,8 @@ export class Simulation {
             for (const evt of emitLaserStopsForTarget(this.world, id)) {
               this.pendingSimEvents.push(evt);
             }
-            // Emit forceFieldStop for the dying entity's force field weapons
-            for (const evt of emitForceFieldStopsForEntity(entity)) {
+            // Emit shieldStop for the dying entity's shield weapons
+            for (const evt of emitShieldStopsForEntity(entity)) {
               this.pendingSimEvents.push(evt);
             }
           }
@@ -763,8 +763,8 @@ export class Simulation {
           for (const evt of emitLaserStopsForTarget(this.world, id)) {
             this.pendingSimEvents.push(evt);
           }
-          // Emit forceFieldStop for the dying entity's force field weapons
-          for (const evt of emitForceFieldStopsForEntity(entity)) {
+          // Emit shieldStop for the dying entity's shield weapons
+          for (const evt of emitShieldStopsForEntity(entity)) {
             this.pendingSimEvents.push(evt);
           }
           // Synthesize a death SimEvent so the renderer still fires a
@@ -1532,7 +1532,7 @@ export class Simulation {
   /** True when any non-visual turret is engaged with a target, so the
    *  unit should hold position rather than keep chasing. This uses the
    *  turret FSM directly instead of firingTurretMask so passive combat
-   *  systems like force-field panels can stop during fight/patrol orders. */
+   *  systems like shield panels can stop during fight/patrol orders. */
   private shouldStopForEngagedCombat(entity: Entity): boolean {
     const combat = entity.combat;
     if (!combat || combat.turrets.length === 0) return false;
@@ -1862,9 +1862,9 @@ export class Simulation {
     this._deathCheckIdsBuf.length = 0;
     this.world.clearPendingDeathCheckIds();
     resetEnergyBuffers(this.energyBuffers);
-    resetForceFieldBuffers();
+    resetShieldBuffers();
     resetLaserSoundState();
-    resetForceFieldSoundState();
+    resetShieldSoundState();
     this.spatialGridBuildingVersion = -1;
   }
 }

@@ -143,7 +143,7 @@ type TurretFixture = {
   };
   targetId?: number;
   state: number;
-  currentForceFieldRange?: number;
+  currentShieldRange?: number;
 };
 
 type ActionFixture = {
@@ -333,8 +333,8 @@ function packTurretsIntoScratch(memory: WebAssembly.Memory, turrets: TurretFixtu
     view[base + 5] = t.state;
     view[base + 6] = t.targetId !== undefined ? 1 : 0;
     view[base + 7] = t.targetId ?? 0;
-    view[base + 8] = t.currentForceFieldRange !== undefined ? 1 : 0;
-    view[base + 9] = t.currentForceFieldRange ?? 0;
+    view[base + 8] = t.currentShieldRange !== undefined ? 1 : 0;
+    view[base + 9] = t.currentShieldRange ?? 0;
   }
 }
 
@@ -544,7 +544,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         buildTargetId: 99999,
       },
     },
-    // Single idle turret (no target, no force field, all-zero angular state)
+    // Single idle turret (no target, no shield, all-zero angular state)
     {
       id: 700, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
       unit: {
@@ -593,7 +593,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
             },
             targetId: 1234,
             state: 1,  // tracking
-            currentForceFieldRange: 250.5,
+            currentShieldRange: 250.5,
           },
         ],
       },
@@ -617,7 +617,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
           {
             turret: { turretBlueprintCode: 3, angular: { rot: -0.5, vel: 0, pitch: 0, pitchVel: 0 } },
             state: 1,
-            currentForceFieldRange: 100,
+            currentShieldRange: 100,
           },
         ],
       },
@@ -1339,7 +1339,7 @@ type BeamPointFixture = {
   x: number; y: number; z: number;
   vx: number; vy: number; vz: number;
   reflectorEntityId?: number;
-  reflectorKind?: 'forceField';
+  reflectorKind?: 'shield';
   reflectorPlayerId?: number;
   normalX?: number;
   normalY?: number;
@@ -1570,13 +1570,13 @@ function packBeamUpdatesIntoScratch(
 
 type AudioEventType =
   | 'fire' | 'hit' | 'death' | 'laserStart' | 'laserStop'
-  | 'forceFieldStart' | 'forceFieldStop' | 'forceFieldImpact'
+  | 'shieldStart' | 'shieldStop' | 'shieldImpact'
   | 'ping' | 'attackAlert' | 'projectileExpire' | 'waterSplash';
 type AudioEventSourceType = 'turret' | 'unit' | 'building' | 'system';
 
 const AUDIO_EVENT_TYPE_CODES: Record<AudioEventType, number> = {
   fire: 0, hit: 1, death: 2, laserStart: 3, laserStop: 4,
-  forceFieldStart: 5, forceFieldStop: 6, forceFieldImpact: 7,
+  shieldStart: 5, shieldStop: 6, shieldImpact: 7,
   ping: 8, attackAlert: 9, projectileExpire: 10, waterSplash: 11,
 };
 
@@ -1613,7 +1613,7 @@ type AudioEventFixture = {
   pos: { x: number; y: number; z: number };
   playerId?: number;
   entityId?: number;
-  forceFieldImpact?: {
+  shieldImpact?: {
     normal: { x: number; y: number; z: number };
     playerId: number;
   };
@@ -1736,10 +1736,10 @@ function packAudioEventsIntoScratch(
     view[base + 5] = e.entityId ?? 0;
     view[base + 6] = e.killerPlayerId ?? 0;
     view[base + 7] = e.victimPlayerId ?? 0;
-    view[base + 8] = e.forceFieldImpact?.normal.x ?? 0;
-    view[base + 9] = e.forceFieldImpact?.normal.y ?? 0;
-    view[base + 10] = e.forceFieldImpact?.normal.z ?? 0;
-    view[base + 11] = e.forceFieldImpact?.playerId ?? 0;
+    view[base + 8] = e.shieldImpact?.normal.x ?? 0;
+    view[base + 9] = e.shieldImpact?.normal.y ?? 0;
+    view[base + 10] = e.shieldImpact?.normal.z ?? 0;
+    view[base + 11] = e.shieldImpact?.playerId ?? 0;
     view[base + 12] = e.sourceType ? AUDIO_EVENT_SOURCE_TYPE_CODES[e.sourceType] : 0;
     view[base + 13] = stringSlots.get(e.turretBlueprintId) ?? 0;
     view[base + 14] = e.sourceKey !== undefined ? (stringSlots.get(e.sourceKey) ?? 0) : 0;
@@ -1748,7 +1748,7 @@ function packAudioEventsIntoScratch(
     if (e.sourceKey !== undefined) flags |= 0x002;
     if (e.playerId !== undefined) flags |= 0x004;
     if (e.entityId !== undefined) flags |= 0x008;
-    if (e.forceFieldImpact !== undefined) flags |= 0x010;
+    if (e.shieldImpact !== undefined) flags |= 0x010;
     if (e.killerPlayerId !== undefined) flags |= 0x020;
     if (e.victimPlayerId !== undefined) flags |= 0x040;
     if (e.audioOnly !== undefined) {
@@ -2473,14 +2473,14 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       }],
       isDelta: true,
     },
-    // audioEvents — forceFieldImpact with the nested normal vec.
+    // audioEvents — shieldImpact with the nested normal vec.
     {
       tick: 1402, entities: [], economy: {},
       audioEvents: [{
-        type: 'forceFieldImpact',
+        type: 'shieldImpact',
         turretBlueprintId: '',  // empty-string turretBlueprintId is valid (fixstr 0xA0)
         pos: { x: 300, y: 400, z: 50 },
-        forceFieldImpact: {
+        shieldImpact: {
           normal: { x: 0.707, y: 0.707, z: 0 },
           playerId: 2,
         },
@@ -2815,7 +2815,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
             {
               x: 500, y: 500, z: 10, vx: 1, vy: 2, vz: 0,
               reflectorEntityId: 4242,
-              reflectorKind: 'forceField',
+              reflectorKind: 'shield',
               reflectorPlayerId: 2,
               normalX: -707, normalY: 707, normalZ: 0,
             },
@@ -2827,7 +2827,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       },
       isDelta: true,
     },
-    // beamUpdates: force-field reflector kind on a beam point.
+    // beamUpdates: shield reflector kind on a beam point.
     {
       tick: 902, entities: [], economy: {},
       projectiles: {
@@ -2838,7 +2838,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
             {
               x: 200, y: 100, z: 0, vx: 0, vy: 0, vz: 0,
               reflectorEntityId: 7777,
-              reflectorKind: 'forceField',
+              reflectorKind: 'shield',
               reflectorPlayerId: 3,
             },
             { x: 350, y: 50, z: 0, vx: 0, vy: 0, vz: 0 },
@@ -3448,7 +3448,7 @@ function runPackedProjectileCases(memory: WebAssembly.Memory): { passed: number;
               {
                 x: 100, y: 50, z: 10, vx: 0, vy: 1, vz: 0,
                 reflectorEntityId: 77,
-                reflectorKind: 'forceField',
+                reflectorKind: 'shield',
                 reflectorPlayerId: 3,
                 normalX: -707,
                 normalY: 707,
@@ -3498,7 +3498,7 @@ function runPackedProjectileCases(memory: WebAssembly.Memory): { passed: number;
             {
               x: 4, y: 5, z: 6, vx: 0, vy: 0, vz: 0,
               reflectorEntityId: 12,
-              reflectorKind: 'forceField',
+              reflectorKind: 'shield',
             },
           ],
         }],

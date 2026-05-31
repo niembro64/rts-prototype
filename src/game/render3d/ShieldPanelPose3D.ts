@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import type { Entity, Turret } from '../sim/types';
-import type { ForceFieldPanelMesh } from './ForceFieldPanelMesh3D';
+import type { ShieldPanelMesh } from './ShieldPanelMesh3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 
-export class ForceFieldPanelPose3D {
+export class ShieldPanelPose3D {
   private readonly aimDir = new THREE.Vector3();
   private readonly parentMat = new THREE.Matrix4();
   private readonly stepMat = new THREE.Matrix4();
@@ -12,29 +12,29 @@ export class ForceFieldPanelPose3D {
 
   update(
     entity: Entity,
-    mirrors: ForceFieldPanelMesh,
-    forceFieldPanelTurret: Turret | undefined,
+    mirrors: ShieldPanelMesh,
+    shieldPanelTurret: Turret | undefined,
     pivotLocal: THREE.Vector3,
     unitChainMat: THREE.Matrix4,
     chassisTiltInverse: THREE.Quaternion | undefined,
-    turretForceFieldPanelsEnabled: boolean,
+    turretShieldPanelsEnabled: boolean,
     unitDetailInstances: UnitDetailInstanceRenderer3D,
   ): void {
     mirrors.root.position.copy(pivotLocal);
-    mirrors.root.visible = turretForceFieldPanelsEnabled;
-    if (!turretForceFieldPanelsEnabled) return;
+    mirrors.root.visible = turretShieldPanelsEnabled;
+    if (!turretShieldPanelsEnabled) return;
 
-    const forceFieldPanelRot = forceFieldPanelTurret?.rotation ?? entity.transform.rotation;
-    const forceFieldPanelPitch = forceFieldPanelTurret?.pitch ?? 0;
-    const cosForceFieldPanelRot = Math.cos(forceFieldPanelRot);
-    const sinForceFieldPanelRot = Math.sin(forceFieldPanelRot);
-    const cosForceFieldPanelPitch = Math.cos(forceFieldPanelPitch);
-    const sinForceFieldPanelPitch = Math.sin(forceFieldPanelPitch);
+    const shieldPanelRot = shieldPanelTurret?.rotation ?? entity.transform.rotation;
+    const shieldPanelPitch = shieldPanelTurret?.pitch ?? 0;
+    const cosShieldPanelRot = Math.cos(shieldPanelRot);
+    const sinShieldPanelRot = Math.sin(shieldPanelRot);
+    const cosShieldPanelPitch = Math.cos(shieldPanelPitch);
+    const sinShieldPanelPitch = Math.sin(shieldPanelPitch);
 
     this.aimDir.set(
-      cosForceFieldPanelRot * cosForceFieldPanelPitch,
-      sinForceFieldPanelPitch,
-      sinForceFieldPanelRot * cosForceFieldPanelPitch,
+      cosShieldPanelRot * cosShieldPanelPitch,
+      sinShieldPanelPitch,
+      sinShieldPanelRot * cosShieldPanelPitch,
     );
     if (chassisTiltInverse) this.aimDir.applyQuaternion(chassisTiltInverse);
 
@@ -71,7 +71,7 @@ export class ForceFieldPanelPose3D {
         panel.scale,
       );
       this.finalMat.multiplyMatrices(this.parentMat, this.stepMat);
-      unitDetailInstances.writeForceFieldPanelMatrix(slot, this.finalMat, entity);
+      unitDetailInstances.writeShieldPanelMatrix(slot, this.finalMat, entity);
     }
   }
 }

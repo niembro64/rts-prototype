@@ -12,10 +12,10 @@ import {
   setEntityInstanceColor,
 } from './EntityInstanceColor3D';
 import {
-  createForceFieldSurfaceMaterial,
-  FORCE_FIELD_SURFACE_OPACITY,
-  resolveForceFieldSurfaceColor,
-} from './ForceFieldReflectorVisual3D';
+  createShieldSurfaceMaterial,
+  SHIELD_SURFACE_OPACITY,
+  resolveShieldSurfaceColor,
+} from './ShieldReflectorVisual3D';
 import { writeHexToRgb01Array } from './colorUtils';
 import { disposeMesh } from './threeUtils';
 
@@ -24,7 +24,7 @@ const POLY_CHASSIS_CAP = 4096;
 const TURRET_HEAD_CAP = 16384;
 const BARREL_CAP = 32768;
 const CONE_BARREL_CAP = 4096;
-const FORCE_FIELD_PANEL_CAP = 1024;
+const SHIELD_PANEL_CAP = 1024;
 const ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
 
 type PolyChassisPool = {
@@ -77,22 +77,22 @@ export class UnitDetailInstanceRenderer3D {
   private coneBarrelNextSlot = 0;
 
   // Materials Are Independent Of Shape: the flat panels render through the
-  // same force-field surface material as the sphere bubble, so they feed the
+  // same shield surface material as the sphere bubble, so they feed the
   // same per-instance aColor + aAlpha attributes rather than a uniform-opacity
   // material + built-in instanceColor.
-  private readonly forceFieldPanelInstanced: THREE.InstancedMesh;
-  private readonly forceFieldPanelColorKey = new Map<number, number>();
-  private forceFieldPanelColorDirty = false;
-  private readonly forceFieldPanelFreeSlots: number[] = [];
-  private forceFieldPanelNextSlot = 0;
-  private readonly forceFieldPanelAlphaArr = new Float32Array(FORCE_FIELD_PANEL_CAP);
-  private readonly forceFieldPanelColorArr = new Float32Array(FORCE_FIELD_PANEL_CAP * 3);
-  private readonly forceFieldPanelAlphaAttr = new THREE.InstancedBufferAttribute(
-    this.forceFieldPanelAlphaArr,
+  private readonly shieldPanelInstanced: THREE.InstancedMesh;
+  private readonly shieldPanelColorKey = new Map<number, number>();
+  private shieldPanelColorDirty = false;
+  private readonly shieldPanelFreeSlots: number[] = [];
+  private shieldPanelNextSlot = 0;
+  private readonly shieldPanelAlphaArr = new Float32Array(SHIELD_PANEL_CAP);
+  private readonly shieldPanelColorArr = new Float32Array(SHIELD_PANEL_CAP * 3);
+  private readonly shieldPanelAlphaAttr = new THREE.InstancedBufferAttribute(
+    this.shieldPanelAlphaArr,
     1,
   );
-  private readonly forceFieldPanelColorAttr = new THREE.InstancedBufferAttribute(
-    this.forceFieldPanelColorArr,
+  private readonly shieldPanelColorAttr = new THREE.InstancedBufferAttribute(
+    this.shieldPanelColorArr,
     3,
   );
 
@@ -134,36 +134,36 @@ export class UnitDetailInstanceRenderer3D {
     // one material. Built directly rather than through createPool because that
     // helper wires the built-in instanceColor the shared shader doesn't read.
     const mirrorGeom = options.mirrorGeom.clone();
-    this.forceFieldPanelAlphaAttr.setUsage(THREE.DynamicDrawUsage);
-    this.forceFieldPanelColorAttr.setUsage(THREE.DynamicDrawUsage);
-    mirrorGeom.setAttribute('aAlpha', this.forceFieldPanelAlphaAttr);
-    mirrorGeom.setAttribute('aColor', this.forceFieldPanelColorAttr);
-    this.forceFieldPanelInstanced = new THREE.InstancedMesh(
+    this.shieldPanelAlphaAttr.setUsage(THREE.DynamicDrawUsage);
+    this.shieldPanelColorAttr.setUsage(THREE.DynamicDrawUsage);
+    mirrorGeom.setAttribute('aAlpha', this.shieldPanelAlphaAttr);
+    mirrorGeom.setAttribute('aColor', this.shieldPanelColorAttr);
+    this.shieldPanelInstanced = new THREE.InstancedMesh(
       mirrorGeom,
-      createForceFieldSurfaceMaterial(),
-      FORCE_FIELD_PANEL_CAP,
+      createShieldSurfaceMaterial(),
+      SHIELD_PANEL_CAP,
     );
-    this.forceFieldPanelInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.forceFieldPanelInstanced.frustumCulled = false;
-    for (let i = 0; i < FORCE_FIELD_PANEL_CAP; i++) {
-      this.forceFieldPanelInstanced.setMatrixAt(i, ZERO_MATRIX);
+    this.shieldPanelInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.shieldPanelInstanced.frustumCulled = false;
+    for (let i = 0; i < SHIELD_PANEL_CAP; i++) {
+      this.shieldPanelInstanced.setMatrixAt(i, ZERO_MATRIX);
     }
-    this.forceFieldPanelInstanced.count = 0;
-    this.forceFieldPanelInstanced.instanceMatrix.needsUpdate = true;
-    this.forceFieldPanelInstanced.renderOrder = 7;
-    this.world.add(this.forceFieldPanelInstanced);
+    this.shieldPanelInstanced.count = 0;
+    this.shieldPanelInstanced.instanceMatrix.needsUpdate = true;
+    this.shieldPanelInstanced.renderOrder = 7;
+    this.world.add(this.shieldPanelInstanced);
   }
 
-  /** Write the force-field surface color + alpha for one panel slot. Both
+  /** Write the shield surface color + alpha for one panel slot. Both
    *  panel write paths funnel through here; the colorKey cache skips the
    *  attribute write when nothing changed. Alpha is the constant surface
    *  opacity (the panel's fade is carried by its pose, not per-instance). */
-  private writeForceFieldPanelInstanceColor(slot: number, colorKey: number): void {
-    if (this.forceFieldPanelColorKey.get(slot) === colorKey) return;
-    writeHexToRgb01Array(colorKey, this.forceFieldPanelColorArr, slot * 3);
-    this.forceFieldPanelAlphaArr[slot] = FORCE_FIELD_SURFACE_OPACITY;
-    this.forceFieldPanelColorKey.set(slot, colorKey);
-    this.forceFieldPanelColorDirty = true;
+  private writeShieldPanelInstanceColor(slot: number, colorKey: number): void {
+    if (this.shieldPanelColorKey.get(slot) === colorKey) return;
+    writeHexToRgb01Array(colorKey, this.shieldPanelColorArr, slot * 3);
+    this.shieldPanelAlphaArr[slot] = SHIELD_SURFACE_OPACITY;
+    this.shieldPanelColorKey.set(slot, colorKey);
+    this.shieldPanelColorDirty = true;
   }
 
   allocSmoothChassisSlots(count: number): number[] | null {
@@ -228,12 +228,12 @@ export class UnitDetailInstanceRenderer3D {
     return slots;
   }
 
-  allocForceFieldPanelSlots(count: number): number[] | null {
+  allocShieldPanelSlots(count: number): number[] | null {
     const slots: number[] = [];
     for (let i = 0; i < count; i++) {
-      const slot = this.allocForceFieldPanelSlot();
+      const slot = this.allocShieldPanelSlot();
       if (slot === null) {
-        for (const allocated of slots) this.freeForceFieldPanelSlot(allocated);
+        for (const allocated of slots) this.freeShieldPanelSlot(allocated);
         return null;
       }
       slots.push(slot);
@@ -257,7 +257,7 @@ export class UnitDetailInstanceRenderer3D {
       }
     }
     if (mesh.mirrors?.panelSlots) {
-      for (const slot of mesh.mirrors.panelSlots) this.freeForceFieldPanelSlot(slot);
+      for (const slot of mesh.mirrors.panelSlots) this.freeShieldPanelSlot(slot);
     }
   }
 
@@ -267,7 +267,7 @@ export class UnitDetailInstanceRenderer3D {
     this.releaseAllTurretHeadSlots();
     this.releaseAllBarrelSlots();
     this.releaseAllConeBarrelSlots();
-    this.releaseAllForceFieldPanelSlots();
+    this.releaseAllShieldPanelSlots();
   }
 
   syncShellColors(entity: Entity, mesh: EntityMesh, turrets: readonly Turret[] = []): void {
@@ -330,9 +330,9 @@ export class UnitDetailInstanceRenderer3D {
     }
 
     if (mesh.mirrors?.panelSlots) {
-      const mirrorColorKey = resolveForceFieldSurfaceColor(entity);
+      const mirrorColorKey = resolveShieldSurfaceColor(entity);
       for (const slot of mesh.mirrors.panelSlots) {
-        this.writeForceFieldPanelInstanceColor(slot, mirrorColorKey);
+        this.writeShieldPanelInstanceColor(slot, mirrorColorKey);
       }
     }
   }
@@ -410,12 +410,12 @@ export class UnitDetailInstanceRenderer3D {
     else this.barrelInstanced.setMatrixAt(slot, matrix);
   }
 
-  writeForceFieldPanelMatrix(slot: number, matrix: THREE.Matrix4, entity: Entity): void {
-    this.forceFieldPanelInstanced.setMatrixAt(slot, matrix);
-    this.writeForceFieldPanelInstanceColor(slot, resolveForceFieldSurfaceColor(entity));
+  writeShieldPanelMatrix(slot: number, matrix: THREE.Matrix4, entity: Entity): void {
+    this.shieldPanelInstanced.setMatrixAt(slot, matrix);
+    this.writeShieldPanelInstanceColor(slot, resolveShieldSurfaceColor(entity));
   }
 
-  flush(turretForceFieldPanelsEnabled: boolean): void {
+  flush(turretShieldPanelsEnabled: boolean): void {
     this.smoothChassisNextSlot = this.trimFreeTail(
       this.smoothChassisFreeSlots,
       this.smoothChassisNextSlot,
@@ -432,9 +432,9 @@ export class UnitDetailInstanceRenderer3D {
       this.coneBarrelFreeSlots,
       this.coneBarrelNextSlot,
     );
-    this.forceFieldPanelNextSlot = this.trimFreeTail(
-      this.forceFieldPanelFreeSlots,
-      this.forceFieldPanelNextSlot,
+    this.shieldPanelNextSlot = this.trimFreeTail(
+      this.shieldPanelFreeSlots,
+      this.shieldPanelNextSlot,
     );
 
     this.smoothChassis.count = this.smoothChassisNextSlot;
@@ -473,15 +473,15 @@ export class UnitDetailInstanceRenderer3D {
       this.coneBarrelInstanced.instanceMatrix.needsUpdate = true;
     }
 
-    this.forceFieldPanelInstanced.count = turretForceFieldPanelsEnabled ? this.forceFieldPanelNextSlot : 0;
-    if (this.forceFieldPanelNextSlot > 0) {
-      this.forceFieldPanelInstanced.instanceMatrix.needsUpdate = true;
-      if (this.forceFieldPanelColorDirty) {
-        this.forceFieldPanelColorAttr.needsUpdate = true;
-        this.forceFieldPanelAlphaAttr.needsUpdate = true;
+    this.shieldPanelInstanced.count = turretShieldPanelsEnabled ? this.shieldPanelNextSlot : 0;
+    if (this.shieldPanelNextSlot > 0) {
+      this.shieldPanelInstanced.instanceMatrix.needsUpdate = true;
+      if (this.shieldPanelColorDirty) {
+        this.shieldPanelColorAttr.needsUpdate = true;
+        this.shieldPanelAlphaAttr.needsUpdate = true;
       }
     }
-    this.forceFieldPanelColorDirty = false;
+    this.shieldPanelColorDirty = false;
   }
 
   destroy(): void {
@@ -497,7 +497,7 @@ export class UnitDetailInstanceRenderer3D {
       this.turretHeadInstanced,
       this.barrelInstanced,
       this.coneBarrelInstanced,
-      this.forceFieldPanelInstanced,
+      this.shieldPanelInstanced,
     ]) {
       disposeMesh(mesh);
     }
@@ -604,17 +604,17 @@ export class UnitDetailInstanceRenderer3D {
     this.coneBarrelInstanced.instanceMatrix.needsUpdate = true;
   }
 
-  private allocForceFieldPanelSlot(): number | null {
-    if (this.forceFieldPanelFreeSlots.length > 0) return this.forceFieldPanelFreeSlots.pop()!;
-    if (this.forceFieldPanelNextSlot >= FORCE_FIELD_PANEL_CAP) return null;
-    return this.forceFieldPanelNextSlot++;
+  private allocShieldPanelSlot(): number | null {
+    if (this.shieldPanelFreeSlots.length > 0) return this.shieldPanelFreeSlots.pop()!;
+    if (this.shieldPanelNextSlot >= SHIELD_PANEL_CAP) return null;
+    return this.shieldPanelNextSlot++;
   }
 
-  private freeForceFieldPanelSlot(slot: number): void {
-    this.forceFieldPanelInstanced.setMatrixAt(slot, ZERO_MATRIX);
-    this.forceFieldPanelFreeSlots.push(slot);
-    this.forceFieldPanelColorKey.delete(slot);
-    this.forceFieldPanelInstanced.instanceMatrix.needsUpdate = true;
+  private freeShieldPanelSlot(slot: number): void {
+    this.shieldPanelInstanced.setMatrixAt(slot, ZERO_MATRIX);
+    this.shieldPanelFreeSlots.push(slot);
+    this.shieldPanelColorKey.delete(slot);
+    this.shieldPanelInstanced.instanceMatrix.needsUpdate = true;
   }
 
   private releaseAllSmoothChassisSlots(): void {
@@ -681,16 +681,16 @@ export class UnitDetailInstanceRenderer3D {
     this.coneBarrelInstanced.instanceMatrix.needsUpdate = true;
   }
 
-  private releaseAllForceFieldPanelSlots(): void {
-    for (let slot = 0; slot < this.forceFieldPanelNextSlot; slot++) {
-      this.forceFieldPanelInstanced.setMatrixAt(slot, ZERO_MATRIX);
+  private releaseAllShieldPanelSlots(): void {
+    for (let slot = 0; slot < this.shieldPanelNextSlot; slot++) {
+      this.shieldPanelInstanced.setMatrixAt(slot, ZERO_MATRIX);
     }
-    this.forceFieldPanelColorKey.clear();
-    this.forceFieldPanelFreeSlots.length = 0;
-    this.forceFieldPanelNextSlot = 0;
-    this.forceFieldPanelColorDirty = false;
-    this.forceFieldPanelInstanced.count = 0;
-    this.forceFieldPanelInstanced.instanceMatrix.needsUpdate = true;
+    this.shieldPanelColorKey.clear();
+    this.shieldPanelFreeSlots.length = 0;
+    this.shieldPanelNextSlot = 0;
+    this.shieldPanelColorDirty = false;
+    this.shieldPanelInstanced.count = 0;
+    this.shieldPanelInstanced.instanceMatrix.needsUpdate = true;
   }
 
   private trimFreeTail(freeSlots: number[], nextSlot: number): number {

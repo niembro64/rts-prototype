@@ -20,7 +20,7 @@ import { getBuildingBlueprint, getUnitBlueprint, getUnitLocomotion } from '../..
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from '../../sim/buildGrid';
 import { COST_MULTIPLIER } from '../../../config';
-import { buildForceFieldPanelCache } from '../../sim/forceFieldPanelCache';
+import { buildShieldPanelCache } from '../../sim/shieldPanelCache';
 import {
   createBuildingRuntimeTurrets,
   createUnitRuntimeTurrets,
@@ -66,9 +66,9 @@ function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret
   // but the client never receives them and predicts rotation from
   // angular velocity only). Leave the client-side values at the
   // runtimeTurrets default of 0.
-  const forceField = turret.forceField;
-  turret.forceField = nw.currentForceFieldRange !== undefined && nw.currentForceFieldRange !== null
-    ? { range: nw.currentForceFieldRange, transition: forceField !== undefined ? forceField.transition : 0 }
+  const shield = turret.shield;
+  turret.shield = nw.currentShieldRange !== undefined && nw.currentShieldRange !== null
+    ? { range: nw.currentShieldRange, transition: shield !== undefined ? shield.transition : 0 }
     : undefined;
 }
 
@@ -122,8 +122,8 @@ export function refreshUnitTurretsFromNetwork(
       const next = turrets[i];
       next.pitchVelocity = prev.pitchVelocity;
       next.barrelFireIndex = prev.barrelFireIndex;
-      if (next.forceField && prev.forceField) {
-        next.forceField.transition = prev.forceField.transition;
+      if (next.shield && prev.shield) {
+        next.shield.transition = prev.shield.transition;
       }
     }
   }
@@ -264,8 +264,8 @@ function createUnitFromNetwork(
       movementAccelZ: 0,
       thrustDirX: 0,
       thrustDirY: 0,
-      forceFieldPanels: [],
-      forceFieldBoundRadius: 0,
+      shieldPanels: [],
+      shieldBoundRadius: 0,
       // Smoothed surface normal: hydrated from the wire when present
       // (full keyframes always carry it, deltas ship it on
       // ENTITY_CHANGED_NORMAL). Defaults to flat-up so non-keyframe
@@ -298,13 +298,13 @@ function createUnitFromNetwork(
     combat.fireEnabled = u === null || u.fireEnabled !== false;
     entity.combat = combat;
   }
-  // Cache force-field panels for fast beam collision checks. Same helper
+  // Cache shield panels for fast beam collision checks. Same helper
   // runs on the host (WorldState.createUnitFromBlueprint) so the
   // hydrated client and the authoritative sim share one rectangle.
   try {
     const bp = unitBlueprint ?? getUnitBlueprint(entity.unit!.unitBlueprintId);
-    entity.unit!.forceFieldBoundRadius = buildForceFieldPanelCache(
-      bp, entity.unit!.forceFieldPanels,
+    entity.unit!.shieldBoundRadius = buildShieldPanelCache(
+      bp, entity.unit!.shieldPanels,
     );
   } catch { /* */ }
 

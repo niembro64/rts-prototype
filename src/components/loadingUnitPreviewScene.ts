@@ -3,11 +3,11 @@ import type { BuildableUnitBlueprintId } from '@/game/sim/blueprints';
 import { getUnitBlueprint } from '@/game/sim/blueprints';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { UnitBlueprint } from '@/types/blueprints';
-import type { CachedForceFieldPanel } from '@/types/sim';
+import type { CachedShieldPanel } from '@/types/sim';
 import { getChassisLiftY, getSegmentMidYAt } from '@/game/math/BodyDimensions';
 import { resolveMirroredLegConfigs } from '@/game/math/LegLayout';
 import { createUnitRuntimeTurrets } from '@/game/sim/runtimeTurrets';
-import { buildForceFieldPanelCache } from '@/game/sim/forceFieldPanelCache';
+import { buildShieldPanelCache } from '@/game/sim/shieldPanelCache';
 import { applyTurretAimPose3D } from '@/game/render3d/TurretAimPose3D';
 import { getBodyGeom } from '@/game/render3d/BodyShape3D';
 import { buildTurretMesh3D } from '@/game/render3d/TurretMesh3D';
@@ -15,7 +15,7 @@ import { buildTreads } from '@/game/render3d/TreadRig3D';
 import { buildWheels } from '@/game/render3d/WheelRig3D';
 import { buildHoverFans } from '@/game/render3d/HoverRig3D';
 import { buildFlyingRig } from '@/game/render3d/FlyingRig3D';
-import { buildForceFieldPanelMesh3D } from '@/game/render3d/ForceFieldPanelMesh3D';
+import { buildShieldPanelMesh3D } from '@/game/render3d/ShieldPanelMesh3D';
 import { kneeFromIK } from '@/game/render3d/LocomotionRigShared3D';
 import { getTurretHeadRadius } from '@/game/math';
 import { createShellMaterial } from '@/game/render3d/ShellMaterial';
@@ -278,21 +278,21 @@ function buildPreviewMirrors(
   chassisLift: number,
   shellMaterial: THREE.Material,
 ): void {
-  const forceFieldPanels: CachedForceFieldPanel[] = [];
-  buildForceFieldPanelCache(blueprint, forceFieldPanels);
-  if (forceFieldPanels.length === 0) return;
+  const shieldPanels: CachedShieldPanel[] = [];
+  buildShieldPanelCache(blueprint, shieldPanels);
+  if (shieldPanels.length === 0) return;
 
   const turrets = createUnitRuntimeTurrets(blueprint.unitBlueprintId, blueprint.radius.visual);
-  const forceFieldPanelTurret = turrets.find((turret) => turret.config.passive);
-  const panelHalfSide = forceFieldPanels[0].halfWidth;
-  const panelArmLength = forceFieldPanels[0].offsetX;
+  const shieldPanelTurret = turrets.find((turret) => turret.config.passive);
+  const panelHalfSide = shieldPanels[0].halfWidth;
+  const panelArmLength = shieldPanels[0].offsetX;
 
-  buildForceFieldPanelMesh3D(
+  buildShieldPanelMesh3D(
     liftGroup,
-    forceFieldPanels,
-    forceFieldPanelTurret?.mount.x ?? 0,
-    (forceFieldPanelTurret?.mount.z ?? blueprint.bodyCenterHeight) - chassisLift,
-    forceFieldPanelTurret?.mount.y ?? 0,
+    shieldPanels,
+    shieldPanelTurret?.mount.x ?? 0,
+    (shieldPanelTurret?.mount.z ?? blueprint.bodyCenterHeight) - chassisLift,
+    shieldPanelTurret?.mount.y ?? 0,
     panelHalfSide,
     panelArmLength,
     mirrorGeom,

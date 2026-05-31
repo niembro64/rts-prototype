@@ -211,7 +211,7 @@ export class HealthBar3D {
 
   /** Fused-iteration entry: process one unit. Caller's outer loop
    *  walks `getUnits()` once and dispatches here (and to other
-   *  per-unit renderers like ForceFieldRenderer3D). */
+   *  per-unit renderers like ShieldRenderer3D). */
   perUnit(u: Entity, forceVisible = false): void {
     if (!u.unit) return;
     if (this._seenEntityFrame.get(u.id) === this._frameToken) return;

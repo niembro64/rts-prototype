@@ -41,7 +41,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly metalDepositStep: number;
   readonly terrainDetail: number;
   readonly displayUnitCount: number;
-  readonly currentForceFieldsObstructSight: boolean;
+  readonly currentShieldsObstructSight: boolean;
   readonly currentFogOfWarEnabled: boolean;
   readonly currentConverterTax: number;
   readonly presets: readonly BattlePreset[];
@@ -58,7 +58,7 @@ export type GameCanvasBattleControlBarModel = {
   applyTerrainDTerrain(value: number): void;
   applyMetalDepositStep(value: number): void;
   applyTerrainDetail(value: number): void;
-  setForceFieldsObstructSight(enabled: boolean): void;
+  setShieldsObstructSight(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;
   setConverterTax(tax: number): void;
 };

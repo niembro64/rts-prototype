@@ -409,7 +409,7 @@
     }
   },
   "effects": {
-    "forceField": {
+    "shield": {
       "barrier": {
         "colorHex": "#ffffff",
         "alpha": 0.05,

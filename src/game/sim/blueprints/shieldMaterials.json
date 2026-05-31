@@ -1,6 +1,6 @@
 {
-  "reflectiveForceField": {
-    "materialId": "reflectiveForceField",
+  "reflectiveShield": {
+    "materialId": "reflectiveShield",
     "reflection": {
       "mode": "both",
       "reflectivity": 1
@@ -15,7 +15,7 @@
       "laser": "reflect"
     },
     "hitReaction": {
-      "impactEvent": "forceFieldImpact",
+      "impactEvent": "shieldImpact",
       "sound": null
     },
     "visual": {

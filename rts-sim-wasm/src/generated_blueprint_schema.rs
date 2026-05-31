@@ -24,7 +24,7 @@ pub type LocomotionBlueprintId = String;
 
 pub type ShotBlueprintId = String;
 
-pub type ForceFieldMaterialId = String;
+pub type ShieldMaterialId = String;
 
 pub type SoundEntry = BlueprintJsonValue;
 
@@ -51,72 +51,66 @@ pub enum ProjectileShotKind {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum LineShotType {
-    Beam,
-    Laser,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum ForceFieldSurfaceResponse {
+pub enum ShieldSurfaceResponse {
     Reflect,
     Absorb,
     PassThrough,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum ForceFieldReflectionMode {
+pub enum ShieldReflectionMode {
     OutsideIn,
     InsideOut,
     Both,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ForceFieldBarrierRatioConfig {
+pub struct ShieldBarrierRatioConfig {
     pub outerRatio: Option<f64>,
     pub rimWidth: Option<f64>,
     pub originOffsetRadiusRatio: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ForceFieldMaterialVisualConfig {
+pub struct ShieldMaterialVisualConfig {
     pub color: f64,
     pub alpha: f64,
     pub particleAlpha: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ForceFieldMaterialReflectionConfig {
-    pub mode: ForceFieldReflectionMode,
+pub struct ShieldMaterialReflectionConfig {
+    pub mode: ShieldReflectionMode,
     pub reflectivity: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ForceFieldMaterialOcclusionConfig {
+pub struct ShieldMaterialOcclusionConfig {
     pub blocksLineOfSight: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ForceFieldMaterialProjectileResponseConfig {
-    pub plasma: ForceFieldSurfaceResponse,
-    pub rocket: ForceFieldSurfaceResponse,
-    pub beam: ForceFieldSurfaceResponse,
-    pub laser: ForceFieldSurfaceResponse,
+pub struct ShieldMaterialProjectileResponseConfig {
+    pub plasma: ShieldSurfaceResponse,
+    pub rocket: ShieldSurfaceResponse,
+    pub beam: ShieldSurfaceResponse,
+    pub laser: ShieldSurfaceResponse,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ForceFieldMaterialHitReactionConfig {
+pub struct ShieldMaterialHitReactionConfig {
     pub impactEvent: String,
     pub sound: Option<BlueprintJsonValue>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ForceFieldMaterialBlueprint {
+pub struct ShieldMaterialBlueprint {
     pub materialId: String,
-    pub reflection: ForceFieldMaterialReflectionConfig,
-    pub occlusion: ForceFieldMaterialOcclusionConfig,
-    pub projectileResponse: ForceFieldMaterialProjectileResponseConfig,
-    pub hitReaction: ForceFieldMaterialHitReactionConfig,
-    pub visual: ForceFieldMaterialVisualConfig,
+    pub reflection: ShieldMaterialReflectionConfig,
+    pub occlusion: ShieldMaterialOcclusionConfig,
+    pub projectileResponse: ShieldMaterialProjectileResponseConfig,
+    pub hitReaction: ShieldMaterialHitReactionConfig,
+    pub visual: ShieldMaterialVisualConfig,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -175,57 +169,8 @@ pub struct ProjectileShotBlueprint {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct BeamShotBlueprint {
-    pub r#type: String,
-    pub shotBlueprintId: String,
-    pub dps: f64,
-    pub force: f64,
-    pub recoil: f64,
-    pub radius: f64,
-    pub width: f64,
-    pub damageSphere: ShotCollision,
-    pub gravityForceMultiplier: f64,
-    pub hitSound: Option<BlueprintJsonValue>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct LaserShotBlueprint {
-    pub r#type: String,
-    pub shotBlueprintId: String,
-    pub dps: f64,
-    pub force: f64,
-    pub recoil: f64,
-    pub radius: f64,
-    pub width: f64,
-    pub damageSphere: ShotCollision,
-    pub duration: f64,
-    pub gravityForceMultiplier: f64,
-    pub hitSound: Option<BlueprintJsonValue>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct ForceFieldShotBlueprint {
-    pub r#type: String,
-    pub shotBlueprintId: String,
-    pub materialId: String,
-    pub angle: f64,
-    pub transitionTime: f64,
-    pub barrier: Option<ForceFieldBarrierRatioConfig>,
-    pub hitSound: Option<BlueprintJsonValue>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub enum ShotBlueprint {
     ProjectileShotBlueprint(ProjectileShotBlueprint),
-    BeamShotBlueprint(BeamShotBlueprint),
-    LaserShotBlueprint(LaserShotBlueprint),
-    ForceFieldShotBlueprint(ForceFieldShotBlueprint),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum LineShotBlueprint {
-    BeamShotBlueprint(BeamShotBlueprint),
-    LaserShotBlueprint(LaserShotBlueprint),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -236,7 +181,7 @@ pub enum ProjectileTailShape {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ForceFieldBarrierConfig {
+pub struct ShieldBarrierConfig {
     pub innerRange: f64,
     pub outerRange: f64,
     pub originOffsetZ: f64,
@@ -266,61 +211,15 @@ pub struct ProjectileShot {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct BeamShot {
-    pub r#type: String,
-    pub shotBlueprintId: String,
-    pub dps: f64,
-    pub force: f64,
-    pub recoil: f64,
-    pub radius: f64,
-    pub width: f64,
-    pub damageSphere: ShotCollision,
-    pub gravityForceMultiplier: f64,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct LaserShot {
-    pub r#type: String,
-    pub shotBlueprintId: String,
-    pub dps: f64,
-    pub force: f64,
-    pub recoil: f64,
-    pub radius: f64,
-    pub width: f64,
-    pub damageSphere: ShotCollision,
-    pub duration: f64,
-    pub gravityForceMultiplier: f64,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum LineShot {
-    BeamShot(BeamShot),
-    LaserShot(LaserShot),
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub enum ActiveProjectileShot {
     ProjectileShot(ProjectileShot),
-    BeamShot(BeamShot),
-    LaserShot(LaserShot),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct ForceShot {
-    pub r#type: String,
-    pub shotBlueprintId: String,
-    pub material: ForceFieldMaterialBlueprint,
-    pub angle: f64,
-    pub transitionTime: f64,
-    pub barrier: Option<ForceFieldBarrierConfig>,
+    BeamRay(BeamRay),
+    LaserRay(LaserRay),
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ShotConfig {
     ProjectileShot(ProjectileShot),
-    BeamShot(BeamShot),
-    LaserShot(LaserShot),
-    ForceShot(ForceShot),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -332,7 +231,7 @@ pub enum ProjectileType {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BeamReflectorKind {
-    ForceField,
+    Shield,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -395,7 +294,7 @@ pub struct ShotProfile {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ForceFieldPanel {
+pub struct ShieldPanel {
     pub offsetX: f64,
     pub offsetY: f64,
     pub angle: f64,
@@ -504,7 +403,6 @@ pub struct TurretBlueprint {
     pub turretBlueprintId: String,
     pub base: EntityBaseLedger,
     pub kind: WeaponKind,
-    pub shotBlueprintId: Option<String>,
     pub range: f64,
     pub cooldown: f64,
     pub color: f64,
@@ -519,7 +417,7 @@ pub struct TurretBlueprint {
     pub requiresNonObstructedLineOfSight: bool,
     pub spread: Option<TurretSpreadConfig>,
     pub burst: Option<TurretBurstConfig>,
-    pub forceFieldPanels: Vec<ForceFieldPanel>,
+    pub shieldPanels: Vec<ShieldPanel>,
     pub audio: Option<TurretAudioConfig>,
     pub radius: TurretRadiusConfig,
     pub headOnly: bool,
@@ -536,6 +434,8 @@ pub struct TurretBlueprint {
     pub includeLockOnLevel1Turrets: Vec<String>,
     pub includeLockOnLevel1Locomotions: Vec<String>,
     pub includeLockOnLevel1Shots: Vec<String>,
+    pub emissionKind: Option<EmissionKind>,
+    pub emissionBlueprintId: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -555,7 +455,7 @@ pub struct UnitTurretMountZResolver {
 pub struct TurretMount {
     pub turretBlueprintId: String,
     pub mount: MountOffset,
-    pub forceFieldPanels: Option<Vec<ForceFieldPanel>>,
+    pub shieldPanels: Option<Vec<ShieldPanel>>,
     pub hostDirected: bool,
     pub zResolver: Option<UnitTurretMountZResolver>,
     pub visualVariant: Option<String>,
@@ -565,7 +465,7 @@ pub struct TurretMount {
 pub struct BuildingTurretMount {
     pub turretBlueprintId: String,
     pub mount: MountOffset,
-    pub forceFieldPanels: Option<Vec<ForceFieldPanel>>,
+    pub shieldPanels: Option<Vec<ShieldPanel>>,
     pub hostDirected: bool,
     pub visualVariant: Option<String>,
 }
@@ -910,4 +810,118 @@ pub struct UnitBlueprint {
     pub includeLockOnLevel1Turrets: Vec<String>,
     pub includeLockOnLevel1Locomotions: Vec<String>,
     pub includeLockOnLevel1Shots: Vec<String>,
+}
+
+pub type RayBlueprintId = String;
+
+pub type ShieldBlueprintId = String;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum RayType {
+    Beam,
+    Laser,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum EmissionKind {
+    Shot,
+    Ray,
+    Shield,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BeamRayBlueprint {
+    pub r#type: String,
+    pub dps: f64,
+    pub force: f64,
+    pub recoil: f64,
+    pub radius: f64,
+    pub width: f64,
+    pub damageSphere: ShotCollision,
+    pub gravityForceMultiplier: f64,
+    pub hitSound: Option<BlueprintJsonValue>,
+    pub rayBlueprintId: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LaserRayBlueprint {
+    pub r#type: String,
+    pub dps: f64,
+    pub force: f64,
+    pub recoil: f64,
+    pub radius: f64,
+    pub width: f64,
+    pub damageSphere: ShotCollision,
+    pub duration: f64,
+    pub gravityForceMultiplier: f64,
+    pub hitSound: Option<BlueprintJsonValue>,
+    pub rayBlueprintId: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShieldBlueprint {
+    pub r#type: String,
+    pub materialId: String,
+    pub angle: f64,
+    pub transitionTime: f64,
+    pub barrier: Option<ShieldBarrierRatioConfig>,
+    pub hitSound: Option<BlueprintJsonValue>,
+    pub shieldBlueprintId: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum RayBlueprint {
+    BeamRayBlueprint(BeamRayBlueprint),
+    LaserRayBlueprint(LaserRayBlueprint),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BeamRay {
+    pub r#type: String,
+    pub dps: f64,
+    pub force: f64,
+    pub recoil: f64,
+    pub radius: f64,
+    pub width: f64,
+    pub damageSphere: ShotCollision,
+    pub gravityForceMultiplier: f64,
+    pub rayBlueprintId: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LaserRay {
+    pub r#type: String,
+    pub dps: f64,
+    pub force: f64,
+    pub recoil: f64,
+    pub radius: f64,
+    pub width: f64,
+    pub damageSphere: ShotCollision,
+    pub duration: f64,
+    pub gravityForceMultiplier: f64,
+    pub rayBlueprintId: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum RayConfig {
+    BeamRay(BeamRay),
+    LaserRay(LaserRay),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShieldConfig {
+    pub r#type: String,
+    pub material: ShieldMaterialBlueprint,
+    pub angle: f64,
+    pub transitionTime: f64,
+    pub barrier: Option<ShieldBarrierConfig>,
+    pub shieldBlueprintId: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum EmissionConfig {
+    ProjectileShot(ProjectileShot),
+    BeamRay(BeamRay),
+    LaserRay(LaserRay),
+    ShieldConfig(ShieldConfig),
 }

@@ -194,6 +194,27 @@ fn generate_blueprint_tables(manifest_dir: &Path) {
             entry_id_field: Some("shotBlueprintId"),
         },
         BlueprintObjectTable {
+            relative_path: "../src/game/sim/blueprints/rays.json",
+            json_const: "BLUEPRINT_RAYS_JSON",
+            ids_const: "BLUEPRINT_RAY_BLUEPRINT_IDS",
+            count_const: "BLUEPRINT_RAYS_COUNT",
+            entry_id_field: Some("rayBlueprintId"),
+        },
+        BlueprintObjectTable {
+            relative_path: "../src/game/sim/blueprints/shields.json",
+            json_const: "BLUEPRINT_SHIELDS_JSON",
+            ids_const: "BLUEPRINT_SHIELD_BLUEPRINT_IDS",
+            count_const: "BLUEPRINT_SHIELDS_COUNT",
+            entry_id_field: Some("shieldBlueprintId"),
+        },
+        BlueprintObjectTable {
+            relative_path: "../src/game/sim/blueprints/shieldMaterials.json",
+            json_const: "BLUEPRINT_SHIELD_MATERIALS_JSON",
+            ids_const: "BLUEPRINT_SHIELD_MATERIAL_IDS",
+            count_const: "BLUEPRINT_SHIELD_MATERIALS_COUNT",
+            entry_id_field: Some("materialId"),
+        },
+        BlueprintObjectTable {
             relative_path: "../src/game/sim/blueprints/locomotion.json",
             json_const: "BLUEPRINT_LOCOMOTION_JSON",
             ids_const: "BLUEPRINT_LOCOMOTION_IDS",
