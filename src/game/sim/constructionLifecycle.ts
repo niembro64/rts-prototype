@@ -127,7 +127,7 @@ function getUnitConstructionPieceSpecs(entity: Entity): ConstructionPieceSpec[] 
       mountIndex: null,
       required: cloneResourceCost(unitBlueprint.base.cost),
       maxHp: unit.maxHp,
-      startsAtFrameOne: true,
+      startsAtFrameOne: false,
       getHp: () => unit.hp,
       setHp: (hp) => { unit.hp = hp; },
       snapshotFields: ENTITY_CHANGED_HP,

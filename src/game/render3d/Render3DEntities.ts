@@ -36,6 +36,10 @@ import {
 } from './BuildingShape3D';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
+import {
+  getConstructionPieceRenderFraction,
+  isConstructionPieceMaterialized,
+} from '../sim/buildableHelpers';
 import { ProjectileRenderer3D } from './ProjectileRenderer3D';
 import { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
 import { ConstructionVisualController3D } from './ConstructionVisualController3D';
@@ -109,14 +113,6 @@ const _invTiltQuat = new THREE.Quaternion();
 // mount.z + radius.visual scaled by SHIELD_PANEL_SIZE_MULT; both the
 // renderer and the sim's beam-reflection tracer read those cached
 // fields so the visible mesh and the collision rectangle stay in sync.
-
-function findPassiveTurret(turrets: readonly Turret[]): Turret | undefined {
-  for (let i = 0; i < turrets.length; i++) {
-    const turret = turrets[i];
-    if (turret.config.passive) return turret;
-  }
-  return undefined;
-}
 
 export class Render3DEntities {
   private world: THREE.Group;
@@ -524,7 +520,9 @@ export class Render3DEntities {
           }
         }
       }
-      m.chassis.visible = fullUnitDetail;
+      const bodyRenderFraction = getConstructionPieceRenderFraction(e, 'body');
+      const bodyVisible = fullUnitDetail && bodyRenderFraction > 0;
+      m.chassis.visible = bodyVisible;
 
       // Position group at the unit's footprint. sim.x → Three.x, sim.y
       // → Three.z (the existing horizontal convention). Vertical =
@@ -634,7 +632,8 @@ export class Render3DEntities {
       // the right size automatically.
       const bodyEntry = getBodyGeom(m.bodyShape!);
       m.chassis.position.set(0, 0, 0);
-      m.chassis.scale.setScalar(radius);
+      const bodyRadius = radius * bodyRenderFraction;
+      m.chassis.scale.setScalar(bodyRadius);
 
       // ── Per-unit chain cache ───────────────────────────────────────
       // The scenegraph chain `group · yawGroup · liftGroup` is used by
@@ -669,8 +668,8 @@ export class Render3DEntities {
         e,
         m,
         bodyEntry,
-        radius,
-        fullUnitDetail,
+        bodyRadius,
+        bodyVisible,
         this._smoothLiftedPos,
         this._smoothParentQuat,
         this.unitDetailInstances,
@@ -697,27 +696,42 @@ export class Render3DEntities {
       );
 
       if (m.mirrors) {
-        const shieldPanelTurret = findPassiveTurret(turrets);
+        const shieldPanelTurretIndex = turrets.findIndex((turret) => turret.config.passive);
+        const shieldPanelTurret = shieldPanelTurretIndex >= 0 ? turrets[shieldPanelTurretIndex] : undefined;
+        const shieldPanelMaterialized = shieldPanelTurret !== undefined &&
+          shieldPanelTurret.hp > 0 &&
+          isConstructionPieceMaterialized(e, 'turret', shieldPanelTurretIndex);
         this._mirrorPivotLocal.set(
           shieldPanelTurret?.mount.x ?? 0,
           (shieldPanelTurret?.mount.z ?? getUnitBodyCenterHeight(e.unit)) - (m.chassisLift ?? 0),
           shieldPanelTurret?.mount.y ?? 0,
         );
-        this.shieldPanelPose.update(
-          e,
-          m.mirrors,
-          shieldPanelTurret,
-          this._mirrorPivotLocal,
-          this._unitChainMat,
-          chassisTilted ? _invTiltQuat : undefined,
-          this.turretShieldPanelsEnabled,
-          this.unitDetailInstances,
-        );
+        if (shieldPanelMaterialized) {
+          this.shieldPanelPose.update(
+            e,
+            m.mirrors,
+            shieldPanelTurret,
+            this._mirrorPivotLocal,
+            this._unitChainMat,
+            chassisTilted ? _invTiltQuat : undefined,
+            this.turretShieldPanelsEnabled,
+            this.unitDetailInstances,
+          );
+        } else {
+          m.mirrors.root.visible = false;
+          if (m.mirrors.panelSlots) {
+            this.unitDetailInstances.clearShieldPanelSlots(m.mirrors.panelSlots);
+          }
+        }
       }
 
       // Locomotion: spin tread wheels per velocity; legs write per-
       // instance buffers in the shared cylinder pool.
       if (m.locomotion) {
+        m.locomotion.group.visible = isConstructionPieceMaterialized(e, 'locomotion', 0) &&
+          e.unit!.locomotion.hp > 0;
+      }
+      if (m.locomotion && m.locomotion.group.visible) {
         updateLocomotion(
           m.locomotion, e, this._currentDtMs,
           mapWidth,

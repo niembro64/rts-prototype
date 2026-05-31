@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { getTurretHeadRadius } from '../math';
+import { isConstructionPieceMaterialized } from '../sim/buildableHelpers';
 import { getTurretMountHeight } from '../sim/combat/combatUtils';
 import type { Entity, Turret } from '../sim/types';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
@@ -38,6 +39,12 @@ export class UnitTurretPose3D {
       const turretMesh = mesh.turrets[turretIdx];
       const turret = turrets[turretIdx];
       const headRadius = turretMesh.headRadius ?? getTurretHeadRadius(turret.config);
+      const visible = turret.hp > 0 && isConstructionPieceMaterialized(entity, 'turret', turretIdx);
+      turretMesh.root.visible = visible;
+      if (!visible) {
+        unitDetailInstances.clearTurretSlots(turretMesh);
+        continue;
+      }
 
       const turretHeadCenterY = getTurretMountHeight(entity, turretIdx);
       const turretMountY = turretHeadCenterY - (mesh.chassisLift ?? 0) - headRadius;

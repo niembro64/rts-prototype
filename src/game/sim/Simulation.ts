@@ -53,6 +53,7 @@ import { economyManager } from './economy';
 import { ConstructionSystem } from './construction';
 import { factoryProductionSystem } from './factoryProduction';
 import { updateConstructionLifecycle } from './constructionLifecycle';
+import { isConstructionBodyMaterialized } from './buildableHelpers';
 import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities';
 import { updateUnitGroundNormal } from './unitGroundNormal';
 import { ForceAccumulator } from './ForceAccumulator';
@@ -738,7 +739,7 @@ export class Simulation {
     for (let i = 0; i < deathCheckIds.length; i++) {
       const entity = this.world.getEntity(deathCheckIds[i]);
       if (!entity) continue;
-      if (entity.unit && entity.unit.hp <= 0) {
+      if (entity.unit && entity.unit.hp <= 0 && isConstructionBodyMaterialized(entity)) {
         deadUnitIds.push(entity.id);
       } else if (entity.building && entity.building.hp <= 0) {
         deadBuildingIds.push(entity.id);

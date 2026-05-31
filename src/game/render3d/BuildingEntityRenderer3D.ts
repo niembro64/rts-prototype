@@ -4,7 +4,10 @@ import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { getGraphicsConfig } from '@/clientBarConfig';
-import { getBuildFraction } from '../sim/buildableHelpers';
+import {
+  getConstructionPieceRenderFraction,
+  isConstructionPieceMaterialized,
+} from '../sim/buildableHelpers';
 import type { ClientViewState } from '../network/ClientViewState';
 import { getTurretHeadRadius } from '../math';
 import { applyShellOverride } from './ShellMaterial';
@@ -314,11 +317,7 @@ export class BuildingEntityRenderer3D {
       this.animations.register(entity, mesh);
     }
 
-    const buildable = entity.buildable;
-    const progress =
-      buildable && !buildable.isComplete
-        ? Math.max(0.05, Math.min(1, getBuildFraction(buildable)))
-        : 1;
+    const progress = getConstructionPieceRenderFraction(entity, 'body');
     const selected = entity.selectable?.selected === true;
     const buildingBaseY = entity.building ? entity.transform.z - entity.building.depth / 2 : 0;
     const detailsReady = progress >= 1;
@@ -433,6 +432,9 @@ export class BuildingEntityRenderer3D {
     for (let turretIndex = 0; turretIndex < combatTurrets.length; turretIndex++) {
       const turret = combatTurrets[turretIndex];
       const turretMesh = mesh.turrets[turretIndex];
+      const visible = turret.hp > 0 && isConstructionPieceMaterialized(entity, 'turret', turretIndex);
+      turretMesh.root.visible = visible;
+      if (!visible) continue;
       const headRadius = turretMesh.headRadius ?? getTurretHeadRadius(turret.config);
       turretMesh.root.position.set(
         turret.mount.x,

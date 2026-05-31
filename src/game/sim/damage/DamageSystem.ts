@@ -41,6 +41,7 @@ import { getUnitGroundZ } from '../unitGeometry';
 import { setUnitMovementAcceleration } from '../unitMovementAcceleration';
 import { refreshUnitActionHash } from '../unitActions';
 import { DETACHED_TURRET_TOWER_BLUEPRINT_ID } from '../../../types/buildingTypes';
+import { isConstructionBodyMaterialized } from '../buildableHelpers';
 
 
 // Reusable DamageResult to avoid per-call allocations
@@ -799,20 +800,25 @@ export class DamageSystem {
     for (const unit of nearbyUnits) {
       if (source.excludeEntities.has(unit.id)) continue;
       if (source.excludeCommanders && unit.commander) continue;
-      if (!unit.unit || unit.unit.hp <= 0) continue;
+      const unitComponent = unit.unit;
+      if (unitComponent === null) continue;
+      const bodyDamageable = unitComponent.hp > 0;
+      if (!bodyDamageable && isConstructionBodyMaterialized(unit)) continue;
 
-      const t = lineSphereIntersectionT(
-        source.start.x, source.start.y, source.start.z,
-        source.end.x, source.end.y, source.end.z,
-        unit.transform.x, unit.transform.y, unit.transform.z,
-        unit.unit.radius.hitbox + source.width / 2
-      );
+      if (bodyDamageable) {
+        const t = lineSphereIntersectionT(
+          source.start.x, source.start.y, source.start.z,
+          source.end.x, source.end.y, source.end.z,
+          unit.transform.x, unit.transform.y, unit.transform.z,
+          unitComponent.radius.hitbox + source.width / 2
+        );
 
-      if (t !== null && t < bestT) {
-        bestT = t;
-        bestEntityId = unit.id;
-        bestHostEntityId = unit.id;
-        bestIsUnit = true;
+        if (t !== null && t < bestT) {
+          bestT = t;
+          bestEntityId = unit.id;
+          bestHostEntityId = unit.id;
+          bestIsUnit = true;
+        }
       }
 
       const combat = unit.combat;
@@ -828,7 +834,7 @@ export class DamageSystem {
             {
               currentTick: this.world.getTick(),
               unitGroundZ,
-              surfaceN: unit.unit.surfaceNormal,
+              surfaceN: unitComponent.surfaceNormal,
             },
             _subEntityPoint,
           );
@@ -847,7 +853,7 @@ export class DamageSystem {
         }
       }
 
-      const locomotion = unit.unit.locomotion;
+      const locomotion = unitComponent.locomotion;
       if (isLocomotionDamageable(locomotion)) {
         const locomotionT = lineSphereIntersectionT(
           source.start.x, source.start.y, source.start.z,
@@ -993,18 +999,23 @@ export class DamageSystem {
     for (const unit of nearbyUnits) {
       if (source.excludeEntities.has(unit.id)) continue;
       if (source.excludeCommanders && unit.commander) continue;
-      if (!unit.unit || unit.unit.hp <= 0) continue;
+      const unitComponent = unit.unit;
+      if (unitComponent === null) continue;
+      const bodyDamageable = unitComponent.hp > 0;
+      if (!bodyDamageable && isConstructionBodyMaterialized(unit)) continue;
 
-      const combinedRadius = source.radius + unit.unit.radius.hitbox;
-      const t = lineSphereIntersectionT(
-        source.prev.x, source.prev.y, source.prev.z,
-        source.current.x, source.current.y, source.current.z,
-        unit.transform.x, unit.transform.y, unit.transform.z,
-        combinedRadius
-      );
+      if (bodyDamageable) {
+        const combinedRadius = source.radius + unitComponent.radius.hitbox;
+        const t = lineSphereIntersectionT(
+          source.prev.x, source.prev.y, source.prev.z,
+          source.current.x, source.current.y, source.current.z,
+          unit.transform.x, unit.transform.y, unit.transform.z,
+          combinedRadius
+        );
 
-      if (t !== null) {
-        hits.push({ entityId: unit.id, t, isUnit: true, isBuilding: false, isProjectile: false });
+        if (t !== null) {
+          hits.push({ entityId: unit.id, t, isUnit: true, isBuilding: false, isProjectile: false });
+        }
       }
 
       const combat = unit.combat;
@@ -1020,7 +1031,7 @@ export class DamageSystem {
             {
               currentTick: this.world.getTick(),
               unitGroundZ,
-              surfaceN: unit.unit.surfaceNormal,
+              surfaceN: unitComponent.surfaceNormal,
             },
             _subEntityPoint,
           );
@@ -1043,7 +1054,7 @@ export class DamageSystem {
         }
       }
 
-      const locomotion = unit.unit.locomotion;
+      const locomotion = unitComponent.locomotion;
       if (isLocomotionDamageable(locomotion)) {
         const locomotionT = lineSphereIntersectionT(
           source.prev.x, source.prev.y, source.prev.z,

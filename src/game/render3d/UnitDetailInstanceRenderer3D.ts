@@ -3,6 +3,7 @@ import { COLORS } from '@/colorsConfig';
 import { SHELL_PALE_HEX } from '@/shellConfig';
 import type { Entity, EntityId, Turret } from '../sim/types';
 import type { EntityMesh } from './EntityMesh3D';
+import type { TurretMesh } from './TurretMesh3D';
 import {
   entityInstanceColorHex,
   entityInstanceColorKey,
@@ -410,9 +411,25 @@ export class UnitDetailInstanceRenderer3D {
     else this.barrelInstanced.setMatrixAt(slot, matrix);
   }
 
+  clearTurretSlots(turret: Pick<TurretMesh, 'headSlot' | 'barrelSlots' | 'barrelUsesCone'>): void {
+    if (turret.headSlot !== undefined) {
+      this.turretHeadInstanced.setMatrixAt(turret.headSlot, ZERO_MATRIX);
+    }
+    if (turret.barrelSlots) {
+      const targetMesh = turret.barrelUsesCone
+        ? this.coneBarrelInstanced
+        : this.barrelInstanced;
+      for (const slot of turret.barrelSlots) targetMesh.setMatrixAt(slot, ZERO_MATRIX);
+    }
+  }
+
   writeShieldPanelMatrix(slot: number, matrix: THREE.Matrix4, entity: Entity): void {
     this.shieldPanelInstanced.setMatrixAt(slot, matrix);
     this.writeShieldPanelInstanceColor(slot, resolveShieldSurfaceColor(entity));
+  }
+
+  clearShieldPanelSlots(slots: readonly number[]): void {
+    for (const slot of slots) this.shieldPanelInstanced.setMatrixAt(slot, ZERO_MATRIX);
   }
 
   flush(turretShieldPanelsEnabled: boolean): void {

@@ -1,4 +1,4 @@
-import type { Buildable, Entity, ResourceCost } from './types';
+import type { Buildable, ConstructionPieceBuildRecord, ConstructionPieceKind, Entity, ResourceCost } from './types';
 
 export type ResourceKind = keyof ResourceCost;
 
@@ -68,6 +68,48 @@ export function getPieceBuildFraction(piece: Buildable['pieces'][number]): numbe
   let sum = 0;
   for (const k of RESOURCE_KINDS) sum += getPieceFillRatio(piece, k);
   return sum / RESOURCE_KINDS.length;
+}
+
+export function getConstructionPieceRecord(
+  entity: Entity,
+  kind: ConstructionPieceKind,
+  mountIndex: number | null = null,
+): ConstructionPieceBuildRecord | null {
+  const buildable = entity.buildable;
+  if (buildable === null || buildable.isGhost || buildable.isComplete) return null;
+  for (let i = 0; i < buildable.pieces.length; i++) {
+    const piece = buildable.pieces[i];
+    if (piece.kind === kind && piece.mountIndex === mountIndex) return piece;
+  }
+  return null;
+}
+
+export function isConstructionPieceMaterialized(
+  entity: Entity,
+  kind: ConstructionPieceKind,
+  mountIndex: number | null = null,
+): boolean {
+  const buildable = entity.buildable;
+  if (buildable === null || buildable.isGhost || buildable.isComplete) return true;
+  const piece = getConstructionPieceRecord(entity, kind, mountIndex);
+  return piece === null || piece.isActive;
+}
+
+export function getConstructionPieceRenderFraction(
+  entity: Entity,
+  kind: ConstructionPieceKind,
+  mountIndex: number | null = null,
+): number {
+  const buildable = entity.buildable;
+  if (buildable === null || buildable.isGhost || buildable.isComplete) return 1;
+  const piece = getConstructionPieceRecord(entity, kind, mountIndex);
+  if (piece === null) return 1;
+  if (!piece.isActive) return 0;
+  return Math.max(0.05, Math.min(1, getPieceBuildFraction(piece)));
+}
+
+export function isConstructionBodyMaterialized(entity: Entity): boolean {
+  return isConstructionPieceMaterialized(entity, 'body');
 }
 
 export function getActiveBuildPiece(b: Buildable): Buildable['pieces'][number] | null {

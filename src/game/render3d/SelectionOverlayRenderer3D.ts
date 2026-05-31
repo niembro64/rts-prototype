@@ -3,6 +3,7 @@ import { getRangeToggle, getUnitRadiusToggle } from '@/clientBarConfig';
 import { COLORS } from '@/colorsConfig';
 import { LAND_CELL_SIZE } from '../../config';
 import type { Entity } from '../sim/types';
+import { isConstructionPieceMaterialized } from '../sim/buildableHelpers';
 import type { ClientViewState } from '../network/ClientViewState';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
@@ -211,6 +212,10 @@ export class SelectionOverlayRenderer3D {
         if (weapon.config.visualOnly) continue;
         const tm = m.turrets[i];
         if (!tm) continue;
+        if (weapon.hp <= 0 || !isConstructionPieceMaterialized(entity, 'turret', i)) {
+          this.hideSingleTurretRangeRings(tm);
+          continue;
+        }
         const mountSurfaceNormal = entity.unit
           ? entity.unit.surfaceNormal ?? getSurfaceNormal(
               ux, uy,
@@ -371,15 +376,19 @@ export class SelectionOverlayRenderer3D {
 
   private hideTurretRangeRings(m: OverlayEntityMesh): void {
     for (const tm of m.turrets) {
-      const rings = tm.rangeRings;
-      if (!rings) continue;
-      if (rings.trackAcquire)     rings.trackAcquire.visible = false;
-      if (rings.trackRelease)     rings.trackRelease.visible = false;
-      if (rings.engageAcquire)    rings.engageAcquire.visible = false;
-      if (rings.engageRelease)    rings.engageRelease.visible = false;
-      if (rings.engageMinAcquire) rings.engageMinAcquire.visible = false;
-      if (rings.engageMinRelease) rings.engageMinRelease.visible = false;
+      this.hideSingleTurretRangeRings(tm);
     }
+  }
+
+  private hideSingleTurretRangeRings(tm: TurretMesh): void {
+    const rings = tm.rangeRings;
+    if (!rings) return;
+    if (rings.trackAcquire)     rings.trackAcquire.visible = false;
+    if (rings.trackRelease)     rings.trackRelease.visible = false;
+    if (rings.engageAcquire)    rings.engageAcquire.visible = false;
+    if (rings.engageRelease)    rings.engageRelease.visible = false;
+    if (rings.engageMinAcquire) rings.engageMinAcquire.visible = false;
+    if (rings.engageMinRelease) rings.engageMinRelease.visible = false;
   }
 
   private setRangeCircle(
