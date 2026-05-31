@@ -50,6 +50,7 @@ import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import { getUnitGroundZ } from './unitGeometry';
 import { getTurretWorldMount } from '../math';
 import { DETACHED_TURRET_TOWER_BLUEPRINT_ID } from '../../types/buildingTypes';
+import { isConstructionPieceMaterialized } from './buildableHelpers';
 
 const TERRAIN_NORMAL_CACHE_CELL_SIZE = 25;
 const EMPTY_PLAYER_SET: ReadonlySet<PlayerId> = new Set();
@@ -377,6 +378,14 @@ export class WorldState {
       for (let i = 0; i < combat.turrets.length; i++) {
         const turret = combat.turrets[i];
         if (turret.id === NO_ENTITY_ID) continue;
+        if (!isConstructionPieceMaterialized(entity, 'turret', i)) {
+          this.markMetaDead(turret.id);
+          continue;
+        }
+        if (turret.hp <= 0) {
+          this.markMetaDead(turret.id);
+          continue;
+        }
         this.upsertEntityMeta({
           id: turret.id,
           kind: 'turret',
@@ -398,6 +407,14 @@ export class WorldState {
 
     const locomotion = entity.unit?.locomotion;
     if (locomotion !== undefined && locomotion.id !== NO_ENTITY_ID) {
+      if (!isConstructionPieceMaterialized(entity, 'locomotion', 0)) {
+        this.markMetaDead(locomotion.id);
+        return;
+      }
+      if (locomotion.hp <= 0) {
+        this.markMetaDead(locomotion.id);
+        return;
+      }
       this.upsertEntityMeta({
         id: locomotion.id,
         kind: 'locomotion',
@@ -429,6 +446,10 @@ export class WorldState {
 
   markSubEntityMetadataDead(id: EntityId): void {
     this.markMetaDead(id);
+  }
+
+  refreshEntityMetadata(entity: Entity): void {
+    this.registerEntityMetadata(entity);
   }
 
   setSubEntityMetadataTargetable(id: EntityId, targetable: boolean): void {

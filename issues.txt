@@ -98,8 +98,8 @@ A41. [MEDIUM] Hosts spawn whole, not built bottom-up piece by piece.
     base-ledger cost and scaled to the actual build cost. Resource funding drains only the current
     dependency piece (unit: locomotion -> body -> turrets; tower: body -> turrets; building: body),
     each piece has its own paid accumulator and HP fraction, hydrated clients rebuild the same
-    records from aggregate paid counters, and mounted sub-entities are targetable in the metadata
-    only once their staged HP is live. Unit bodies no longer start with frame-one HP: a factory
+    records from aggregate paid counters, and mounted sub-entities enter the live metadata registry
+    only once their staged piece is materialized with positive HP. Unit bodies no longer start with frame-one HP: a factory
     unit shell can now exist as a live locomotion-only assembly until the body piece starts, line
     and swept damage can still hit that locomotion, and the death cleanup does not delete the shell
     merely because the unstarted body has 0 HP. Rendering now reads piece state too: inactive
@@ -108,8 +108,8 @@ A41. [MEDIUM] Hosts spawn whole, not built bottom-up piece by piece.
     the turret piece exists. The aggregate Buildable.paid counters remain as the compact wire/UI
     mirror, not the sim's piece-level funding model. The remaining gap is that the host and
     subentity IDs are still allocated together at build-site creation, inactive pieces still have
-    backing runtime objects rather than entering the active entity registry exactly when reached,
-    and construction interruption/cancel still removes the shell rather than leaving exactly the
+    backing runtime objects even though they are no longer live metadata entries, and construction
+    interruption/cancel still removes the shell rather than leaving exactly the
     already-built live pieces as detached agents. —
     FIX: finish late materialization/partial assembly semantics: each piece should enter the active
     entity registry only when its dependency is satisfied, render/target exactly the current partial

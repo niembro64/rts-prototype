@@ -321,6 +321,8 @@ function growConstructionPieces(world: WorldState, entity: Entity): void {
     }
   }
 
+  world.refreshEntityMetadata(entity);
+
   if (changedFields !== 0) {
     world.markSnapshotDirty(entity.id, changedFields);
   }
