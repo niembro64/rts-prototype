@@ -10,7 +10,14 @@ import {
 } from '@/shellConfig';
 import { CONSTRUCTION_TOWER_SPIN_CONFIG } from '@/constructionVisualConfig';
 import { getRotationVelEmaMode } from '@/clientBarConfig';
-import type { ClientViewState } from '../network/ClientViewState';
+import {
+  RESOURCE_FLOW_INBOUND,
+  RESOURCE_KIND_ENERGY,
+  RESOURCE_KIND_METAL,
+  type ResourceFlowDirectionCode,
+  type ResourceKindCode,
+} from '@/types/network';
+import type { ClientResourcePylonFlow, ClientViewState } from '../network/ClientViewState';
 import { halfLifeBlend } from '../network/driftEma';
 import { getTransformCosSin } from '../math';
 import { getUnitBlueprint } from '../sim/blueprints';
@@ -26,6 +33,7 @@ import type {
   ConstructionEmitterRig,
   ConstructionTowerOrbitPart,
   ConstructionTowerResource,
+  ResourcePylonDirection,
   ResourcePylonRig,
 } from './ConstructionEmitterMesh3D';
 import { hexStringToRgb } from './colorUtils';
@@ -47,6 +55,22 @@ const RESOURCE_SPRAY_COLOR_BY_RESOURCE: Record<ConstructionTowerResource, { r: n
   energy: RESOURCE_SPRAY_COLORS[0],
   metal: RESOURCE_SPRAY_COLORS[1],
 };
+
+function resourceNameFromCode(resource: ResourceKindCode): ConstructionTowerResource | null {
+  if (resource === RESOURCE_KIND_ENERGY) return 'energy';
+  if (resource === RESOURCE_KIND_METAL) return 'metal';
+  return null;
+}
+
+function pylonDirectionFromCode(direction: ResourceFlowDirectionCode): ResourcePylonDirection {
+  return direction === RESOURCE_FLOW_INBOUND ? 'inbound' : 'outbound';
+}
+
+function normalizeBuilderPylonRate(amountPerSecond: number, fullRate: number): number {
+  if (!Number.isFinite(amountPerSecond) || amountPerSecond <= 0) return 0;
+  if (!Number.isFinite(fullRate) || fullRate <= 0) return 1;
+  return Math.max(0, Math.min(1, amountPerSecond / fullRate));
+}
 
 export class ConstructionVisualController3D {
   private clientViewState: ClientViewState;
@@ -103,10 +127,25 @@ export class ConstructionVisualController3D {
     const halfLife = BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE];
     const rateAlpha = halfLifeBlend(dtSec, halfLife);
 
-    const targetId = builderUnit.builder?.currentBuildTarget ?? NO_ENTITY_ID;
-    let targetRateE = 0;
-    let targetRateT = 0;
-    if (targetId !== NO_ENTITY_ID && builderUnit.builder && dtSec > 0) {
+    const builder = builderUnit.builder;
+    const targetId = builder?.currentBuildTarget ?? NO_ENTITY_ID;
+    const flows = this.clientViewState.getResourcePylonFlows(builderUnit.id);
+    const fullRate = builder?.constructionRate ?? 0;
+    let aggregateEnergy = 0;
+    let aggregateMetal = 0;
+    for (let i = 0; i < flows.length; i++) {
+      const flow = flows[i];
+      const resource = resourceNameFromCode(flow.resource);
+      if (resource === null) continue;
+      const normalized = normalizeBuilderPylonRate(flow.amountPerSecond, fullRate);
+      if (resource === 'energy') aggregateEnergy += normalized;
+      else aggregateMetal += normalized;
+    }
+    const hasResourceFlows = aggregateEnergy > 0 || aggregateMetal > 0;
+    let targetRateE = Math.min(1, aggregateEnergy);
+    let targetRateT = Math.min(1, aggregateMetal);
+
+    if (!hasResourceFlows && targetId !== NO_ENTITY_ID && builder && dtSec > 0) {
       const target = this.clientViewState.getEntity(targetId);
       const buildable = target?.buildable;
       if (target && buildable && !buildable.isComplete) {
@@ -120,7 +159,7 @@ export class ConstructionVisualController3D {
         rig.lastPaid.energy = buildable.paid.energy;
         rig.lastPaid.metal = buildable.paid.metal;
 
-        const cap = builderUnit.builder.constructionRate * dtSec;
+        const cap = builder.constructionRate * dtSec;
         if (cap > 0) {
           targetRateE = Math.max(0, Math.min(1, dE / cap));
           targetRateT = Math.max(0, Math.min(1, dT / cap));
@@ -135,10 +174,26 @@ export class ConstructionVisualController3D {
     this.blendDisplaySmoothedRates(rig.displaySmoothedRates, rig.smoothedRates, dtSec);
     this.applyShowerFromSmoothedRates(rig);
 
-    if (targetId !== null && builderUnit.ownership) {
+    if (!builderUnit.ownership) return;
+    rig.group.updateWorldMatrix(true, false);
+
+    if (hasResourceFlows) {
+      this.emitBuilderResourceFlowSprays(
+        rig,
+        rig.group,
+        builderUnit.id,
+        builderUnit.ownership.playerId,
+        flows,
+        aggregateEnergy,
+        aggregateMetal,
+        fullRate,
+      );
+      return;
+    }
+
+    if (targetId !== NO_ENTITY_ID) {
       const target = this.clientViewState.getEntity(targetId);
       if (!target) return;
-      rig.group.updateWorldMatrix(true, false);
       let halfHeight = 8;
       let sphereRadius = 12;
       const b = target.building;
@@ -162,6 +217,7 @@ export class ConstructionVisualController3D {
         target.id,
         this._factorySprayTargetWorld,
         sphereRadius,
+        'outbound',
       );
     }
   }
@@ -624,42 +680,182 @@ export class ConstructionVisualController3D {
     targetId: EntityId,
     targetWorld: THREE.Vector3,
     targetRadius: number,
+    direction: ResourcePylonDirection = 'outbound',
   ): void {
     for (let i = 0; i < rig.pylons.length; i++) {
       const pylon = rig.pylons[i];
       const rate = rig.displaySmoothedRates[pylon.resource];
+      this.emitPylonResourceSpray(
+        pylon,
+        group,
+        sourceId,
+        sourcePlayerId,
+        targetId,
+        targetWorld,
+        targetRadius,
+        direction,
+        rate,
+        pylon.channel,
+      );
+    }
+  }
+
+  private emitBuilderResourceFlowSprays(
+    rig: {
+      pylons: ResourcePylonRig[];
+      displaySmoothedRates: { energy: number; metal: number };
+    },
+    group: THREE.Group,
+    sourceId: EntityId,
+    sourcePlayerId: PlayerId,
+    flows: readonly ClientResourcePylonFlow[],
+    aggregateEnergy: number,
+    aggregateMetal: number,
+    fullRate: number,
+  ): void {
+    for (let i = 0; i < flows.length; i++) {
+      const flow = flows[i];
+      const resource = resourceNameFromCode(flow.resource);
+      if (resource === null) continue;
+      const aggregate = resource === 'energy' ? aggregateEnergy : aggregateMetal;
+      if (aggregate <= 0) continue;
+      const pylon = this.findResourcePylon(rig, resource);
+      if (!pylon) continue;
+      const normalized = normalizeBuilderPylonRate(flow.amountPerSecond, fullRate);
+      if (normalized <= 0) continue;
+      const rate = rig.displaySmoothedRates[resource] * Math.min(1, normalized / aggregate);
       if (rate < 0.05) continue;
-      this._factorySpraySourceWorld
-        .copy(pylon.topLocal)
-        .applyMatrix4(group.matrixWorld);
-      this._factorySprayRootWorld
-        .copy(pylon.rootLocal)
-        .applyMatrix4(group.matrixWorld);
-      this._factorySprayWaypointWorld.copy(this._factorySpraySourceWorld);
-      const spray = this.acquireFactorySprayTarget();
-      spray.source.id = sourceId;
+
+      const direction = pylonDirectionFromCode(flow.direction);
+      pylon.direction = direction;
+      let targetId = sourceId;
+      let endpoint: THREE.Vector3 | null = null;
+      let endpointRadius = pylon.flowRadius;
+      if (flow.targetEntityId !== null) {
+        const target = this.clientViewState.getEntity(flow.targetEntityId);
+        if (target) {
+          targetId = target.id;
+          endpoint = this._factorySprayTargetWorld;
+          endpointRadius = this.writeEntityResourceEndpoint(target, endpoint);
+        }
+      }
+
+      this.emitPylonResourceSpray(
+        pylon,
+        group,
+        sourceId,
+        sourcePlayerId,
+        targetId,
+        endpoint,
+        endpointRadius,
+        direction,
+        rate,
+        pylon.channel + (direction === 'inbound' ? 10 : 0),
+      );
+    }
+  }
+
+  private findResourcePylon(
+    rig: { pylons: ResourcePylonRig[] },
+    resource: ConstructionTowerResource,
+  ): ResourcePylonRig | undefined {
+    for (let i = 0; i < rig.pylons.length; i++) {
+      const pylon = rig.pylons[i];
+      if (pylon.resource === resource) return pylon;
+    }
+    return undefined;
+  }
+
+  private writeEntityResourceEndpoint(entity: Entity, out: THREE.Vector3): number {
+    let halfHeight = 8;
+    let radius = 12;
+    if (entity.building) {
+      halfHeight = entity.building.depth * 0.5;
+      radius = Math.hypot(entity.building.width, entity.building.height, entity.building.depth) * 0.5;
+    } else if (entity.unit) {
+      halfHeight = entity.unit.radius.visual;
+      radius = entity.unit.radius.visual;
+    }
+    out.set(entity.transform.x, entity.transform.z + halfHeight, entity.transform.y);
+    return Math.max(1, radius);
+  }
+
+  private emitPylonResourceSpray(
+    pylon: ResourcePylonRig,
+    group: THREE.Group,
+    sourceId: EntityId,
+    sourcePlayerId: PlayerId,
+    targetId: EntityId,
+    worldEndpoint: THREE.Vector3 | null,
+    endpointRadius: number,
+    direction: ResourcePylonDirection,
+    rate: number,
+    channel: number,
+  ): void {
+    if (rate < 0.05) return;
+    pylon.direction = direction;
+    this._factorySpraySourceWorld
+      .copy(pylon.topLocal)
+      .applyMatrix4(group.matrixWorld);
+    this._factorySprayRootWorld
+      .copy(pylon.rootLocal)
+      .applyMatrix4(group.matrixWorld);
+    this._factorySprayWaypointWorld.copy(this._factorySpraySourceWorld);
+
+    const spray = this.acquireFactorySprayTarget();
+    spray.source.id = sourceId;
+    spray.source.playerId = sourcePlayerId;
+    spray.target.id = targetId;
+    spray.target.dim = undefined;
+    spray.waypoint = {
+      pos: { x: this._factorySprayWaypointWorld.x, y: this._factorySprayWaypointWorld.z },
+      z: this._factorySprayWaypointWorld.y,
+    };
+
+    if (direction === 'inbound') {
+      if (worldEndpoint) {
+        spray.source.pos.x = worldEndpoint.x;
+        spray.source.pos.y = worldEndpoint.z;
+        spray.source.z = worldEndpoint.y;
+        spray.flow = 'direct';
+        spray.flowRadius = 0;
+      } else {
+        spray.source.pos.x = this._factorySpraySourceWorld.x;
+        spray.source.pos.y = this._factorySpraySourceWorld.z;
+        spray.source.z = this._factorySpraySourceWorld.y;
+        spray.flow = 'randomInbound';
+        spray.flowRadius = pylon.flowRadius;
+      }
+      spray.target.pos.x = this._factorySprayRootWorld.x;
+      spray.target.pos.y = this._factorySprayRootWorld.z;
+      spray.target.z = this._factorySprayRootWorld.y;
+      spray.target.radius = 0;
+    } else {
       spray.source.pos.x = this._factorySprayRootWorld.x;
       spray.source.pos.y = this._factorySprayRootWorld.z;
       spray.source.z = this._factorySprayRootWorld.y;
-      spray.source.playerId = sourcePlayerId;
-      spray.target.id = targetId;
-      spray.target.pos.x = targetWorld.x;
-      spray.target.pos.y = targetWorld.z;
-      spray.target.z = targetWorld.y;
-      spray.target.dim = undefined;
-      spray.target.radius = targetRadius;
-      spray.waypoint = {
-        pos: { x: this._factorySprayWaypointWorld.x, y: this._factorySprayWaypointWorld.z },
-        z: this._factorySprayWaypointWorld.y,
-      };
-      spray.type = 'build';
-      spray.intensity = Math.min(1, rate);
-      spray.channel = pylon.channel;
-      spray.flow = 'direct';
-      spray.flowRadius = 0;
-      spray.speed = pylon.sprayTravelSpeed;
-      spray.particleRadius = pylon.sprayParticleRadius;
-      spray.colorRGB = RESOURCE_SPRAY_COLOR_BY_RESOURCE[pylon.resource];
+      if (worldEndpoint) {
+        spray.target.pos.x = worldEndpoint.x;
+        spray.target.pos.y = worldEndpoint.z;
+        spray.target.z = worldEndpoint.y;
+        spray.target.radius = endpointRadius;
+        spray.flow = 'direct';
+        spray.flowRadius = 0;
+      } else {
+        spray.target.pos.x = this._factorySpraySourceWorld.x;
+        spray.target.pos.y = this._factorySpraySourceWorld.z;
+        spray.target.z = this._factorySpraySourceWorld.y;
+        spray.target.radius = pylon.flowRadius;
+        spray.flow = 'randomOutbound';
+        spray.flowRadius = pylon.flowRadius;
+      }
     }
+
+    spray.type = 'build';
+    spray.intensity = Math.min(1, rate);
+    spray.channel = channel;
+    spray.speed = pylon.sprayTravelSpeed;
+    spray.particleRadius = pylon.sprayParticleRadius;
+    spray.colorRGB = RESOURCE_SPRAY_COLOR_BY_RESOURCE[pylon.resource];
   }
 }

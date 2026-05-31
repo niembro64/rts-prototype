@@ -31,6 +31,7 @@ import {
   RESOURCE_FLOW_OUTBOUND,
   RESOURCE_KIND_ENERGY,
   RESOURCE_KIND_METAL,
+  type ResourceFlowDirectionCode,
   type ResourceKindCode,
 } from '../../types/network';
 
@@ -69,6 +70,15 @@ type ClientResourcePylonSignedRates = {
   metal: number;
 };
 
+export type ClientResourcePylonFlow = {
+  targetEntityId: EntityId | null;
+  resource: ResourceKindCode;
+  amountPerSecond: number;
+  direction: ResourceFlowDirectionCode;
+};
+
+const EMPTY_RESOURCE_PYLON_FLOWS: readonly ClientResourcePylonFlow[] = [];
+
 export type ClientSnapshotApplyStats = {
   correction: ClientPredictionCorrectionStats;
 };
@@ -83,6 +93,7 @@ export class ClientViewState {
 
   private sprayTargetStore = new ClientSprayTargetStore();
   private resourcePylonSignedRates = new Map<EntityId, ClientResourcePylonSignedRates>();
+  private resourcePylonFlowsBySource = new Map<EntityId, ClientResourcePylonFlow[]>();
 
   // Audio events from last state update
   private pendingAudioEvents: NetworkServerSnapshot['audioEvents'] = [];
@@ -330,6 +341,7 @@ export class ClientViewState {
     movements: readonly NetworkServerSnapshotResourceMovement[] | undefined,
   ): void {
     this.resourcePylonSignedRates.clear();
+    this.resourcePylonFlowsBySource.clear();
     if (movements === undefined) return;
     for (let i = 0; i < movements.length; i++) {
       const movement = movements[i];
@@ -347,6 +359,17 @@ export class ClientViewState {
       } else if (movement.resource === RESOURCE_KIND_METAL) {
         rates.metal += amount;
       }
+      let flows = this.resourcePylonFlowsBySource.get(movement.sourceEntityId);
+      if (flows === undefined) {
+        flows = [];
+        this.resourcePylonFlowsBySource.set(movement.sourceEntityId, flows);
+      }
+      flows.push({
+        targetEntityId: movement.targetEntityId,
+        resource: movement.resource,
+        amountPerSecond: movement.amountPerSecond,
+        direction: movement.direction,
+      });
     }
   }
 
@@ -781,6 +804,10 @@ export class ClientViewState {
     return resource === RESOURCE_KIND_ENERGY ? rates.energy : rates.metal;
   }
 
+  getResourcePylonFlows(entityId: EntityId): readonly ClientResourcePylonFlow[] {
+    return this.resourcePylonFlowsBySource.get(entityId) ?? EMPTY_RESOURCE_PYLON_FLOWS;
+  }
+
   getAllEntities(): Entity[] {
     this.rebuildCachesIfNeeded(true);
     return this.cache.getAll();
@@ -981,6 +1008,7 @@ export class ClientViewState {
     this.projectileStore.clear();
     this.sprayTargetStore.reset();
     this.resourcePylonSignedRates.clear();
+    this.resourcePylonFlowsBySource.clear();
     this.pendingAudioEvents = EMPTY_AUDIO;
     this.scanPulses.length = 0;
     this.visionPlayerMask = 0;

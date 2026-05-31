@@ -178,16 +178,25 @@ export class CommanderAbilitiesSystem {
 
     const value = getReclaimResourceValue(target);
     const refundScale = RECLAIM_REFUND_FRACTION * (hpRemoved / maxHp);
+    const refund = {
+      energy: value.energy * refundScale,
+      metal: value.metal * refundScale,
+    };
+    const dtSec = dtMs / 1000;
+    const refundRate = dtSec > 0
+      ? {
+        energy: refund.energy / dtSec,
+        metal: refund.metal / dtSec,
+      }
+      : null;
     economyManager.addStockpile(
       world,
       playerId,
-      {
-        energy: value.energy * refundScale,
-        metal: value.metal * refundScale,
-      },
+      refund,
       commander.id,
       target.id,
       'reclaim',
+      refundRate,
     );
 
     hpState.hp = Math.max(0, hpBefore - hpRemoved);

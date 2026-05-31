@@ -197,28 +197,14 @@ is a TUBE between a ROOT (the player's pool tap) and a TIP/HEAD (the world); bal
 DOWN the tube = gaining, UP the tube = spending; the tip CONSERVES — every ball up
 the tube exits the tip, every ball into the tip travels down the tube, and balls
 are spawned/sunk only at the root and the world point, never at the tip. These
-items describe where the renderer does not yet meet that model; they are forward
-visual work, not regressions, and ride the existing single ResourceMovement channel
+items described where the renderer did not yet meet that model; they were forward
+visual work, not regressions, and rode the existing single ResourceMovement channel
 (resource balls stay renderer-only / off-wire / anonymous — philosophy ~1747).
-A45-A48 have since been resolved by adding root/head conduit paths, physical
+A45-A49 have since been resolved by adding root/head conduit paths, physical
 producer source points for solar, wind, and extractor pylons, converter taxed
-cross-tip arcs with in-flight recolor, and pylon-particle LOD/budget gating.
+cross-tip arcs with in-flight recolor, pylon-particle LOD/budget gating, and
+repair/reclaim flows through builder-mounted resource pylons.
 File:line refs were correct at audit time; re-verify before editing.
-
-A49. [LOW] Not every ResourceMovement reason surfaces as a pylon ball flow (reclaim / repair / ammo-on-fire /
-    upkeep). (verify before acting)
-    src/game/sim/resourceMovement.ts (ResourceMovementReason: baseIncome/production/construction/repair/
-    conversion/refund/reclaim/ability), src/game/render3d/SprayRenderer3D.ts + the spray-target producers. —
-    RULE: "Who carries which pylons" — reclaim that returns metal, repair that drains energy, future
-    ammo-cost weapons, and upkeep all surface through pylons; there is no "small enough to skip" exception. —
-    PROBLEM: repair currently renders as a heal spray and construction/production as pylon balls, but it is
-    not verified that reclaim (metal from a wreck), ammo-on-fire, and steady upkeep drains each render
-    through a pylon with the correct source/target and direction; a reason that mutates the stockpile but
-    emits no ball would be an indicator gap. —
-    FIX: verify each reason emits through the pylon rig: reclaim = inbound metal balls from the reclaimed
-    wreck entity down the builder's metal tube; repair = outbound energy onto the repaired unit (consumer
-    leg, same as build); ammo/upkeep = a spend with no world target (balls up + out the tip, then disperse).
-    Fill any gap so no stockpile-mutating movement is invisible.
 
 ================================================================================
 SECTION B — MEMORY LEAKS
