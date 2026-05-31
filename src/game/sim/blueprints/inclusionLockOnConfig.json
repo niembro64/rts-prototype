@@ -101,15 +101,8 @@
   },
   "units": {
     "unitJackal": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -118,15 +111,8 @@
       "includeLockOnLevel1Shots": []
     },
     "unitLynx": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -135,15 +121,8 @@
       "includeLockOnLevel1Shots": []
     },
     "unitDaddy": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -152,15 +131,8 @@
       "includeLockOnLevel1Shots": []
     },
     "unitBadger": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -169,15 +141,8 @@
       "includeLockOnLevel1Shots": []
     },
     "unitMongoose": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -186,15 +151,8 @@
       "includeLockOnLevel1Shots": []
     },
     "unitTick": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -203,15 +161,8 @@
       "includeLockOnLevel1Shots": []
     },
     "unitMammoth": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -220,15 +171,8 @@
       "includeLockOnLevel1Shots": []
     },
     "unitFormik": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -237,15 +181,8 @@
       "includeLockOnLevel1Shots": []
     },
     "unitWidow": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -254,15 +191,8 @@
       "includeLockOnLevel1Shots": []
     },
     "unitHippo": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -271,15 +201,8 @@
       "includeLockOnLevel1Shots": []
     },
     "unitTarantula": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -288,15 +211,8 @@
       "includeLockOnLevel1Shots": []
     },
     "unitLoris": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["turrets"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -305,15 +221,8 @@
       "includeLockOnLevel1Shots": []
     },
     "unitMosquito": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -322,15 +231,8 @@
       "includeLockOnLevel1Shots": []
     },
     "unitDragonfly": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -357,12 +259,8 @@
       "includeLockOnLevel1Shots": []
     },
     "unitEagle": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "units"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -391,15 +289,8 @@
   },
   "turrets": {
     "turretGunLight": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -408,15 +299,8 @@
       "includeLockOnLevel1Shots": []
     },
     "turretGunBurst": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -425,15 +309,8 @@
       "includeLockOnLevel1Shots": []
     },
     "turretCannon": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -442,15 +319,8 @@
       "includeLockOnLevel1Shots": []
     },
     "turretMortarSlow": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -459,15 +329,8 @@
       "includeLockOnLevel1Shots": []
     },
     "turretMortarDrop": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -476,15 +339,8 @@
       "includeLockOnLevel1Shots": []
     },
     "turretMortarFast": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -493,15 +349,8 @@
       "includeLockOnLevel1Shots": []
     },
     "turretGatling": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -510,15 +359,8 @@
       "includeLockOnLevel1Shots": []
     },
     "turretDisruptor": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -527,12 +369,8 @@
       "includeLockOnLevel1Shots": []
     },
     "turretForceFieldPanel": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["turrets"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -541,15 +379,8 @@
       "includeLockOnLevel1Shots": []
     },
     "turretBeam": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -558,15 +389,8 @@
       "includeLockOnLevel1Shots": []
     },
     "turretBeamMini": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -575,15 +399,8 @@
       "includeLockOnLevel1Shots": []
     },
     "turretBeamMega": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -592,15 +409,8 @@
       "includeLockOnLevel1Shots": []
     },
     "turretForceFieldSphere": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -609,9 +419,7 @@
       "includeLockOnLevel1Shots": []
     },
     "turretConstruction": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
       "includeLockOnLevel0Entities": [
         "buildings",
         "towers",
@@ -626,15 +434,8 @@
       "includeLockOnLevel1Shots": []
     },
     "turretBeamLong": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -643,15 +444,8 @@
       "includeLockOnLevel1Shots": []
     },
     "turretCannonLong": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -660,15 +454,8 @@
       "includeLockOnLevel1Shots": []
     },
     "turretRocketSlow": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["buildings", "towers", "units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
@@ -677,12 +464,8 @@
       "includeLockOnLevel1Shots": []
     },
     "turretRocketFast": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "units"
-      ],
+      "includeLockOnLevel0FriendsAndEnemies": ["enemy_entities"],
+      "includeLockOnLevel0Entities": ["units"],
       "includeLockOnLevel1Buildings": [],
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
