@@ -36,6 +36,7 @@ import __wbg_init, {
   economy_apply_income_credits,
   economy_apply_converter_transfers,
   flying_loiter_step_batch,
+  stuck_replan_step_batch,
   step_unit_motion,
   client_predict_unit_motion_batch,
   pool_init,
@@ -627,6 +628,18 @@ export interface SimWasm {
     minRadius: number,
     radiusMult: number,
     radialGain: number,
+  ) => number;
+  readonly stuckReplanStepBatch: (
+    slots: Uint32Array,
+    currentStuckTicks: Int32Array,
+    settlingDx: Float64Array,
+    settlingDy: Float64Array,
+    settlingFlags: Uint8Array,
+    outStuckTicks: Int32Array,
+    outShouldReplan: Uint8Array,
+    stuckVelocityThreshold: number,
+    stuckTickThreshold: number,
+    arrivalRadius: number,
   ) => number;
   /** Shared single-body unit integrator (Phase 2). Kept for
    *  diagnostics and one-off callers; the server hot path uses
@@ -3197,6 +3210,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         economyApplyIncomeCredits: economy_apply_income_credits,
         economyApplyConverterTransfers: economy_apply_converter_transfers,
         flyingLoiterStepBatch: flying_loiter_step_batch,
+        stuckReplanStepBatch: stuck_replan_step_batch,
         stepUnitMotion: step_unit_motion,
         clientPredictUnitMotionBatch: client_predict_unit_motion_batch,
         pool,

@@ -203,6 +203,11 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     Rust/WASM flying_loiter_step_batch helper. TypeScript now stores/clamps
     loiter centers, packs candidate rows, and scatters thrust/turn-sign
     results for UnitForceSystem.
+    2026-05-31 progress: stuck-detection body-speed checks, final-waypoint
+    settling checks, stuck-counter reset/increment, and replan eligibility
+    moved from Simulation.evaluateStuckAndReplan TypeScript math into the
+    Rust/WASM stuck_replan_step_batch helper. TypeScript now packs moving
+    unit rows and only owns replan budgeting plus Pathfinder side effects.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)

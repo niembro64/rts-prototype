@@ -164,6 +164,7 @@ const MAX_REPLANS_PER_TICK = 5;
  *  planner once every 30 ticks indefinitely — burning CPU on
  *  a problem that won't improve from one tick to the next. */
 const REPLAN_FAILURE_COOLDOWN = -60;
+const STUCK_REPLAN_BATCH_FLAG_SETTLING_CHECK = 1 << 0;
 
 const ARRIVAL_RADIUS = 30;
 const ARRIVAL_FINAL_RADIUS = 15;
@@ -273,6 +274,14 @@ export class Simulation {
   private _loiterOutTurnSignBuf = new Float64Array(0);
   private _loiterActiveBuf = new Uint8Array(0);
   private _loiterCount = 0;
+  private _stuckEntitiesBuf: Entity[] = [];
+  private _stuckSlotsBuf = new Uint32Array(0);
+  private _stuckTicksBuf = new Int32Array(0);
+  private _stuckSettlingDxBuf = new Float64Array(0);
+  private _stuckSettlingDyBuf = new Float64Array(0);
+  private _stuckSettlingFlagsBuf = new Uint8Array(0);
+  private _stuckOutTicksBuf = new Int32Array(0);
+  private _stuckOutReplanBuf = new Uint8Array(0);
 
   // Reusable buffers for shared energy distribution (avoid per-tick allocations)
   private energyBuffers: EnergyBuffers = createEnergyBuffers();
@@ -1811,28 +1820,102 @@ export class Simulation {
     return engaged >= total * ratio;
   }
 
+  private ensureStuckCapacity(required: number): void {
+    if (this._stuckSlotsBuf.length >= required) return;
+    const next = Math.max(required, this._stuckSlotsBuf.length * 2, 128);
+    const slots = new Uint32Array(next);
+    slots.set(this._stuckSlotsBuf);
+    this._stuckSlotsBuf = slots;
+    const ticks = new Int32Array(next);
+    ticks.set(this._stuckTicksBuf);
+    this._stuckTicksBuf = ticks;
+    const settlingDx = new Float64Array(next);
+    settlingDx.set(this._stuckSettlingDxBuf);
+    this._stuckSettlingDxBuf = settlingDx;
+    const settlingDy = new Float64Array(next);
+    settlingDy.set(this._stuckSettlingDyBuf);
+    this._stuckSettlingDyBuf = settlingDy;
+    const settlingFlags = new Uint8Array(next);
+    settlingFlags.set(this._stuckSettlingFlagsBuf);
+    this._stuckSettlingFlagsBuf = settlingFlags;
+    this._stuckOutTicksBuf = new Int32Array(next);
+    this._stuckOutReplanBuf = new Uint8Array(next);
+  }
+
   /** Per-tick stuck check. For each unit that wanted to move this
    *  tick but is barely moving, increment its stuck counter; once
    *  past the threshold and within the per-tick replan budget, run
    *  a fresh A* from the unit's current position to the trip's
    *  final destination and replace its action queue. */
   private evaluateStuckAndReplan(movingUnits: readonly Entity[]): void {
-    for (const entity of movingUnits) {
+    const maxRows = movingUnits.length;
+    if (maxRows === 0) return;
+
+    this.ensureStuckCapacity(maxRows);
+    let count = 0;
+    for (let i = 0; i < maxRows; i++) {
+      const entity = movingUnits[i];
       if (!entity.unit || !entity.body) continue;
       const unit = entity.unit;
-      const body = entity.body.physicsBody;
-      const speed = magnitude(body.vx, body.vy);
-      if (speed >= STUCK_VEL_THRESHOLD) {
-        unit.stuckTicks = 0;
+      const action = unit.actions[0];
+      let settlingDx = 0;
+      let settlingDy = 0;
+      let settlingFlags = 0;
+      if (
+        action !== undefined &&
+        !action.isPathExpansion &&
+        action.type !== 'patrol' &&
+        (action.type === 'move' || action.type === 'fight')
+      ) {
+        settlingDx = action.x - entity.transform.x;
+        settlingDy = action.y - entity.transform.y;
+        settlingFlags = STUCK_REPLAN_BATCH_FLAG_SETTLING_CHECK;
+      }
+
+      this._stuckEntitiesBuf[count] = entity;
+      this._stuckSlotsBuf[count] = entity.body.physicsBody.slot;
+      this._stuckTicksBuf[count] = unit.stuckTicks ?? 0;
+      this._stuckSettlingDxBuf[count] = settlingDx;
+      this._stuckSettlingDyBuf[count] = settlingDy;
+      this._stuckSettlingFlagsBuf[count] = settlingFlags;
+      count++;
+    }
+    if (count === 0) return;
+
+    const sim = getSimWasm();
+    if (sim === undefined) {
+      throw new Error('Simulation.evaluateStuckAndReplan: sim-wasm is not initialized');
+    }
+    sim.stuckReplanStepBatch(
+      this._stuckSlotsBuf.subarray(0, count),
+      this._stuckTicksBuf.subarray(0, count),
+      this._stuckSettlingDxBuf.subarray(0, count),
+      this._stuckSettlingDyBuf.subarray(0, count),
+      this._stuckSettlingFlagsBuf.subarray(0, count),
+      this._stuckOutTicksBuf.subarray(0, count),
+      this._stuckOutReplanBuf.subarray(0, count),
+      STUCK_VEL_THRESHOLD,
+      STUCK_TICK_THRESHOLD,
+      ARRIVAL_RADIUS,
+    );
+
+    for (let i = 0; i < count; i++) {
+      const entity = this._stuckEntitiesBuf[i];
+      const unit = entity.unit;
+      if (!unit) {
+        this._stuckEntitiesBuf[i] = undefined as unknown as Entity;
         continue;
       }
-      if (this.isSettlingAtFinalWaypoint(entity)) {
-        unit.stuckTicks = 0;
+
+      unit.stuckTicks = this._stuckOutTicksBuf[i];
+      if (this._stuckOutReplanBuf[i] === 0) {
+        this._stuckEntitiesBuf[i] = undefined as unknown as Entity;
         continue;
       }
-      unit.stuckTicks = (unit.stuckTicks ?? 0) + 1;
-      if (unit.stuckTicks <= STUCK_TICK_THRESHOLD) continue;
-      if (this.replansThisTick >= MAX_REPLANS_PER_TICK) continue;
+      if (this.replansThisTick >= MAX_REPLANS_PER_TICK) {
+        this._stuckEntitiesBuf[i] = undefined as unknown as Entity;
+        continue;
+      }
       if (this.tryReplan(entity)) {
         unit.stuckTicks = 0;
         this.replansThisTick++;
@@ -1848,6 +1931,7 @@ export class Simulation {
         // it) so the unit keeps trying its existing route.
         unit.stuckTicks = REPLAN_FAILURE_COOLDOWN;
       }
+      this._stuckEntitiesBuf[i] = undefined as unknown as Entity;
     }
   }
 
@@ -1921,17 +2005,6 @@ export class Simulation {
     setUnitActions(entity.unit, newPath);
     this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
     return true;
-  }
-
-  private isSettlingAtFinalWaypoint(entity: Entity): boolean {
-    const unit = entity.unit;
-    if (unit === null) return false;
-    const action = unit.actions[0];
-    if (action === undefined || action.isPathExpansion || action.type === 'patrol') return false;
-    if (action.type !== 'move' && action.type !== 'fight') return false;
-    const dx = action.x - entity.transform.x;
-    const dy = action.y - entity.transform.y;
-    return magnitude(dx, dy) < ARRIVAL_RADIUS;
   }
 
   private tryRefreshAttackApproach(
@@ -2088,6 +2161,7 @@ export class Simulation {
     this._arrivalEntitiesBuf.length = 0;
     this._loiterCount = 0;
     this._loiterEntitiesBuf.length = 0;
+    this._stuckEntitiesBuf.length = 0;
     this.world.clearPendingDeathCheckIds();
     resetEnergyBuffers(this.energyBuffers);
     resetShieldBuffers();

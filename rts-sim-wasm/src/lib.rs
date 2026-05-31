@@ -2177,6 +2177,93 @@ pub fn flying_loiter_step_batch(
     active_count
 }
 
+const STUCK_REPLAN_FLAG_SETTLING_CHECK: u8 = 1 << 0;
+
+#[inline]
+fn compute_stuck_replan_step(
+    body_vx: f64,
+    body_vy: f64,
+    current_stuck_ticks: i32,
+    settling_dx: f64,
+    settling_dy: f64,
+    settling_flags: u8,
+    stuck_velocity_threshold: f64,
+    stuck_tick_threshold: i32,
+    arrival_radius: f64,
+) -> (i32, u8) {
+    let speed_sq = body_vx * body_vx + body_vy * body_vy;
+    let stuck_velocity_threshold_sq = stuck_velocity_threshold * stuck_velocity_threshold;
+    if speed_sq >= stuck_velocity_threshold_sq {
+        return (0, 0);
+    }
+
+    if settling_flags & STUCK_REPLAN_FLAG_SETTLING_CHECK != 0 {
+        let distance_sq = settling_dx * settling_dx + settling_dy * settling_dy;
+        let arrival_radius_sq = arrival_radius * arrival_radius;
+        if distance_sq < arrival_radius_sq {
+            return (0, 0);
+        }
+    }
+
+    let next_stuck_ticks = current_stuck_ticks.saturating_add(1);
+    let should_replan = if next_stuck_ticks > stuck_tick_threshold {
+        1
+    } else {
+        0
+    };
+    (next_stuck_ticks, should_replan)
+}
+
+#[wasm_bindgen]
+pub fn stuck_replan_step_batch(
+    slots: &[u32],
+    current_stuck_ticks: &[i32],
+    settling_dx: &[f64],
+    settling_dy: &[f64],
+    settling_flags: &[u8],
+    out_stuck_ticks: &mut [i32],
+    out_should_replan: &mut [u8],
+    stuck_velocity_threshold: f64,
+    stuck_tick_threshold: i32,
+    arrival_radius: f64,
+) -> u32 {
+    let count = slots.len();
+    debug_assert!(current_stuck_ticks.len() >= count);
+    debug_assert!(settling_dx.len() >= count);
+    debug_assert!(settling_dy.len() >= count);
+    debug_assert!(settling_flags.len() >= count);
+    debug_assert!(out_stuck_ticks.len() >= count);
+    debug_assert!(out_should_replan.len() >= count);
+
+    let p = pool();
+    let mut replan_count = 0_u32;
+    for i in 0..count {
+        let slot = slots[i] as usize;
+        let (body_vx, body_vy) = if slot < p.vel_x.len()
+            && p.flags[slot] & BODY_FLAG_OCCUPIED != 0
+        {
+            (p.vel_x[slot], p.vel_y[slot])
+        } else {
+            (0.0, 0.0)
+        };
+        let (stuck_ticks, should_replan) = compute_stuck_replan_step(
+            body_vx,
+            body_vy,
+            current_stuck_ticks[i],
+            settling_dx[i],
+            settling_dy[i],
+            settling_flags[i],
+            stuck_velocity_threshold,
+            stuck_tick_threshold,
+            arrival_radius,
+        );
+        out_stuck_ticks[i] = stuck_ticks;
+        out_should_replan[i] = should_replan;
+        replan_count += should_replan as u32;
+    }
+    replan_count
+}
+
 #[inline]
 fn compute_unit_ground_normal_step(
     stored_x: f64,
@@ -27486,6 +27573,39 @@ mod sim_kernel_tests {
         assert_eq!(active, 1);
         assert_eq!(turn_sign, 1.0);
         assert!(y > 0.0, "existing positive orbit should win over velocity");
+    }
+
+    #[test]
+    fn stuck_replan_step_resets_when_body_is_moving() {
+        let (ticks, should_replan) =
+            compute_stuck_replan_step(5.0, 0.0, 31, 100.0, 0.0, 0, 5.0, 30, 30.0);
+        assert_eq!(ticks, 0);
+        assert_eq!(should_replan, 0);
+    }
+
+    #[test]
+    fn stuck_replan_step_resets_when_settling_at_final_waypoint() {
+        let (ticks, should_replan) = compute_stuck_replan_step(
+            0.0,
+            0.0,
+            31,
+            10.0,
+            0.0,
+            STUCK_REPLAN_FLAG_SETTLING_CHECK,
+            5.0,
+            30,
+            30.0,
+        );
+        assert_eq!(ticks, 0);
+        assert_eq!(should_replan, 0);
+    }
+
+    #[test]
+    fn stuck_replan_step_increments_and_flags_after_threshold() {
+        let (ticks, should_replan) =
+            compute_stuck_replan_step(0.0, 0.0, 30, 100.0, 0.0, 0, 5.0, 30, 30.0);
+        assert_eq!(ticks, 31);
+        assert_eq!(should_replan, 1);
     }
 
     #[test]
