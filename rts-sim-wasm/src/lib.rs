@@ -572,6 +572,138 @@ fn construction_build_fraction(
         * 0.5
 }
 
+#[inline]
+fn construction_initial_hp(max_hp: f64) -> f64 {
+    if !max_hp.is_finite() || max_hp <= 0.0 {
+        0.0
+    } else {
+        max_hp.min(1.0)
+    }
+}
+
+#[inline]
+fn construction_advance_piece_hp(
+    current_hp: f64,
+    max_hp: f64,
+    prev_progress: f64,
+    next_progress: f64,
+    alive: bool,
+    starts_at_frame_one: bool,
+) -> f64 {
+    let current = if current_hp.is_finite() { current_hp } else { 0.0 };
+    if !alive {
+        return current;
+    }
+
+    let max_hp = if max_hp.is_finite() {
+        max_hp.max(0.0)
+    } else {
+        0.0
+    };
+    let prev = if prev_progress.is_finite() {
+        prev_progress.max(0.0).min(1.0)
+    } else {
+        0.0
+    };
+    let next = if next_progress.is_finite() {
+        next_progress.max(0.0).min(1.0)
+    } else {
+        0.0
+    };
+    let progress_delta = (next - prev).max(0.0);
+
+    if current <= 0.0 {
+        if starts_at_frame_one || next > 0.0 {
+            return max_hp.min(construction_initial_hp(max_hp).max(next * max_hp));
+        }
+        return 0.0;
+    }
+    if progress_delta <= 0.0 {
+        return current;
+    }
+    max_hp.min(current + progress_delta * max_hp)
+}
+
+#[wasm_bindgen]
+pub fn construction_reconcile_and_grow_pieces(
+    total_paid_energy: f64,
+    total_paid_metal: f64,
+    required_energy: &[f64],
+    required_metal: &[f64],
+    max_hp: &[f64],
+    current_hp: &[f64],
+    previous_progress: &[f64],
+    starts_at_frame_one: &[u8],
+    alive: &[u8],
+    count: u32,
+    out_paid_energy: &mut [f64],
+    out_paid_metal: &mut [f64],
+    out_complete: &mut [u8],
+    out_active: &mut [u8],
+    out_hp: &mut [f64],
+    out_progress: &mut [f64],
+) -> u32 {
+    let n = count as usize;
+    if n > required_energy.len()
+        || n > required_metal.len()
+        || n > max_hp.len()
+        || n > current_hp.len()
+        || n > previous_progress.len()
+        || n > starts_at_frame_one.len()
+        || n > alive.len()
+        || n > out_paid_energy.len()
+        || n > out_paid_metal.len()
+        || n > out_complete.len()
+        || n > out_active.len()
+        || n > out_hp.len()
+        || n > out_progress.len()
+    {
+        return 0;
+    }
+
+    let mut remaining_energy = economy_normalized_amount(total_paid_energy);
+    let mut remaining_metal = economy_normalized_amount(total_paid_metal);
+    let mut dependency_satisfied = true;
+
+    for i in 0..n {
+        let req_energy = economy_normalized_amount(required_energy[i]);
+        let req_metal = economy_normalized_amount(required_metal[i]);
+        let paid_energy = req_energy.min(remaining_energy);
+        let paid_metal = req_metal.min(remaining_metal);
+        remaining_energy = (remaining_energy - paid_energy).max(0.0);
+        remaining_metal = (remaining_metal - paid_metal).max(0.0);
+
+        let complete = paid_energy >= req_energy && paid_metal >= req_metal;
+        let has_started = paid_energy > 0.0 || paid_metal > 0.0;
+        let starts = starts_at_frame_one[i] != 0;
+        let active = dependency_satisfied && (starts || has_started || complete);
+        let progress = if active {
+            construction_build_fraction(paid_energy, paid_metal, req_energy, req_metal)
+        } else {
+            0.0
+        };
+        let hp = construction_advance_piece_hp(
+            current_hp[i],
+            max_hp[i],
+            previous_progress[i],
+            progress,
+            alive[i] != 0,
+            starts,
+        );
+
+        out_paid_energy[i] = paid_energy;
+        out_paid_metal[i] = paid_metal;
+        out_complete[i] = if complete { 1 } else { 0 };
+        out_active[i] = if active { 1 } else { 0 };
+        out_hp[i] = hp;
+        out_progress[i] = progress;
+
+        dependency_satisfied = dependency_satisfied && complete;
+    }
+
+    1
+}
+
 #[wasm_bindgen]
 pub fn construction_apply_consumer_spends(
     consumer_types: &[u8],
@@ -26259,6 +26391,79 @@ mod sim_kernel_tests {
                 &mut energy_rate_fraction,
                 &mut metal_rate_fraction,
                 &mut changed_mask,
+            ),
+            0
+        );
+    }
+
+    #[test]
+    fn construction_reconcile_and_grow_pieces_allocates_paid_and_grows_hp() {
+        let required_energy = [4.0, 4.0, 4.0];
+        let required_metal = [0.0, 2.0, 0.0];
+        let max_hp = [10.0, 20.0, 30.0];
+        let current_hp = [0.0, 2.0, 5.0];
+        let previous_progress = [0.0, 0.1, 0.2];
+        let starts = [1, 0, 0];
+        let alive = [1, 1, 1];
+        let mut paid_energy = [99.0; 3];
+        let mut paid_metal = [99.0; 3];
+        let mut complete = [99; 3];
+        let mut active = [99; 3];
+        let mut hp = [99.0; 3];
+        let mut progress = [99.0; 3];
+
+        assert_eq!(
+            construction_reconcile_and_grow_pieces(
+                10.0,
+                1.0,
+                &required_energy,
+                &required_metal,
+                &max_hp,
+                &current_hp,
+                &previous_progress,
+                &starts,
+                &alive,
+                3,
+                &mut paid_energy,
+                &mut paid_metal,
+                &mut complete,
+                &mut active,
+                &mut hp,
+                &mut progress,
+            ),
+            1
+        );
+
+        assert_eq!(paid_energy, [4.0, 4.0, 2.0]);
+        assert_eq!(paid_metal, [0.0, 1.0, 0.0]);
+        assert_eq!(complete, [1, 0, 0]);
+        assert_eq!(active, [1, 1, 0]);
+        assert_eq!(hp[0], 10.0);
+        assert!((hp[1] - 15.0).abs() < 1e-12);
+        assert_eq!(hp[2], 5.0);
+        assert_eq!(progress[0], 1.0);
+        assert_eq!(progress[1], 0.75);
+        assert_eq!(progress[2], 0.0);
+
+        let mut short = [0.0; 2];
+        assert_eq!(
+            construction_reconcile_and_grow_pieces(
+                10.0,
+                1.0,
+                &required_energy,
+                &required_metal,
+                &max_hp,
+                &current_hp,
+                &previous_progress,
+                &starts,
+                &alive,
+                3,
+                &mut short,
+                &mut paid_metal,
+                &mut complete,
+                &mut active,
+                &mut hp,
+                &mut progress,
             ),
             0
         );

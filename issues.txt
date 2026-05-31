@@ -177,6 +177,12 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     factory_build_spot_blocked kernel. TypeScript now only packs live unit and
     building obstacle radii, calls the kernel, and applies the clear/blocked
     result before spawning the shell.
+    2026-05-31 progress: construction piece payment reconciliation,
+    dependency-gated piece activation, and HP growth moved from
+    constructionLifecycle.ts TypeScript loops into the Rust/WASM
+    construction_reconcile_and_grow_pieces batch helper. TypeScript now packs
+    buildable piece specs, assigns newly materialized sub-entity ids, scatters
+    HP/progress results, and still owns shell completion/effects orchestration.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)

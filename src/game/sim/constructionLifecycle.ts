@@ -10,8 +10,6 @@ import { applyCompletedBuildingEffects } from './buildingCompletion';
 import {
   cloneResourceCost,
   getBuildFraction,
-  getInitialBuildHp,
-  getPieceBuildFraction,
   isBuildFullyPaid,
 } from './buildableHelpers';
 import {
@@ -22,6 +20,7 @@ import {
 } from './blueprints';
 import type { ResourceCost } from '../../types/economyTypes';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../types/network';
+import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 
 export type ConstructionLifecycleResult = {
   completedUnits: Entity[];
@@ -47,6 +46,48 @@ type ConstructionPieceSpec = {
   isSubEntity: boolean;
 };
 
+let pieceRequiredEnergy = new Float64Array(16);
+let pieceRequiredMetal = new Float64Array(16);
+let pieceMaxHp = new Float64Array(16);
+let pieceCurrentHp = new Float64Array(16);
+let piecePreviousProgress = new Float64Array(16);
+let pieceStartsAtFrameOne = new Uint8Array(16);
+let pieceAlive = new Uint8Array(16);
+let piecePaidEnergy = new Float64Array(16);
+let piecePaidMetal = new Float64Array(16);
+let pieceComplete = new Uint8Array(16);
+let pieceActive = new Uint8Array(16);
+let pieceHp = new Float64Array(16);
+let pieceProgress = new Float64Array(16);
+
+function ensurePieceKernelCapacity(required: number): void {
+  if (required <= pieceRequiredEnergy.length) return;
+  let nextCapacity = pieceRequiredEnergy.length;
+  while (nextCapacity < required) nextCapacity *= 2;
+
+  pieceRequiredEnergy = new Float64Array(nextCapacity);
+  pieceRequiredMetal = new Float64Array(nextCapacity);
+  pieceMaxHp = new Float64Array(nextCapacity);
+  pieceCurrentHp = new Float64Array(nextCapacity);
+  piecePreviousProgress = new Float64Array(nextCapacity);
+  pieceStartsAtFrameOne = new Uint8Array(nextCapacity);
+  pieceAlive = new Uint8Array(nextCapacity);
+  piecePaidEnergy = new Float64Array(nextCapacity);
+  piecePaidMetal = new Float64Array(nextCapacity);
+  pieceComplete = new Uint8Array(nextCapacity);
+  pieceActive = new Uint8Array(nextCapacity);
+  pieceHp = new Float64Array(nextCapacity);
+  pieceProgress = new Float64Array(nextCapacity);
+}
+
+function requireConstructionSim(): SimWasm {
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('constructionLifecycle: sim-wasm is not initialized');
+  }
+  return sim;
+}
+
 function growConstructionHp(world: WorldState, entity: Entity, nextBuildFraction: number): void {
   const buildable = entity.buildable;
   if (!buildable) return;
@@ -55,8 +96,7 @@ function growConstructionHp(world: WorldState, entity: Entity, nextBuildFraction
     buildable.healthBuildFraction = frac;
   }
   ensureConstructionPieceRecords(entity);
-  reconcileConstructionPieceRecords(entity);
-  growConstructionPieces(world, entity);
+  reconcileAndGrowConstructionPieces(world, entity, 'current');
 }
 
 function isSubEntityStillAlive(world: WorldState, id: number): boolean {
@@ -65,46 +105,12 @@ function isSubEntityStillAlive(world: WorldState, id: number): boolean {
   return meta === undefined || meta.alive;
 }
 
-function advancePieceHp(
-  currentHp: number,
-  maxHp: number,
-  prevProgress: number,
-  nextProgress: number,
-  alive: boolean,
-  startsAtFrameOne: boolean,
-): number {
-  if (!alive) return currentHp;
-  const initialHp = getInitialBuildHp(maxHp);
-  const progressDelta = Math.max(0, nextProgress - prevProgress);
-  if (currentHp <= 0) {
-    if (startsAtFrameOne || nextProgress > 0) {
-      return Math.min(maxHp, Math.max(initialHp, nextProgress * maxHp));
-    }
-    return 0;
-  }
-  if (progressDelta <= 0) return currentHp;
-  return Math.min(maxHp, currentHp + progressDelta * maxHp);
-}
-
-function setPieceHpForConstructionProgress(
-  maxHp: number,
-  progress: number,
-  startsAtFrameOne: boolean,
-): number {
-  if (progress <= 0 && !startsAtFrameOne) return 0;
-  return Math.min(maxHp, Math.max(getInitialBuildHp(maxHp), progress * maxHp));
-}
-
 function resourceCostTotal(cost: ResourceCost): number {
   return Math.max(0, cost.energy) + Math.max(0, cost.metal);
 }
 
 function costHasAnyResource(cost: ResourceCost): boolean {
   return resourceCostTotal(cost) > 0;
-}
-
-function isPieceRecordComplete(piece: ConstructionPieceBuildRecord): boolean {
-  return piece.paid.energy >= piece.required.energy && piece.paid.metal >= piece.required.metal;
 }
 
 function hasPaidProgress(piece: ConstructionPieceBuildRecord): boolean {
@@ -310,72 +316,89 @@ function ensureConstructionPieceRecords(entity: Entity): void {
   }));
 }
 
-function reconcileConstructionPieceRecords(entity: Entity): void {
-  const buildable = entity.buildable;
-  if (buildable === null || buildable.pieces.length === 0) return;
-  const specs = getConstructionPieceSpecs(entity);
-
-  let remainingEnergy = Math.max(0, buildable.paid.energy);
-  let remainingMetal = Math.max(0, buildable.paid.metal);
-  let dependencySatisfied = true;
-
-  for (let i = 0; i < buildable.pieces.length; i++) {
-    const piece = buildable.pieces[i];
-    const paidEnergy = Math.min(piece.required.energy, remainingEnergy);
-    const paidMetal = Math.min(piece.required.metal, remainingMetal);
-    piece.paid.energy = paidEnergy;
-    piece.paid.metal = paidMetal;
-    remainingEnergy -= paidEnergy;
-    remainingMetal -= paidMetal;
-
-    piece.isComplete = isPieceRecordComplete(piece);
-    const hasStarted = paidEnergy > 0 || paidMetal > 0;
-    const spec = specs[i];
-    piece.isActive = dependencySatisfied && (spec.startsAtFrameOne || hasStarted || piece.isComplete);
-    dependencySatisfied = dependencySatisfied && piece.isComplete;
-  }
-}
-
-function growConstructionPieces(world: WorldState, entity: Entity): void {
+function reconcileAndGrowConstructionPieces(
+  world: WorldState | null,
+  entity: Entity,
+  hpInput: 'current' | 'zero',
+): void {
   const buildable = entity.buildable;
   if (buildable === null || buildable.pieces.length === 0) return;
   const specs = scalePieceCostsToBuildableRequired(
     getConstructionPieceSpecs(entity),
     buildable.required,
   );
+  const count = Math.min(specs.length, buildable.pieces.length);
+  if (count <= 0) return;
+
+  ensurePieceKernelCapacity(count);
   let changedFields = 0;
 
-  for (let i = 0; i < specs.length; i++) {
+  for (let i = 0; i < count; i++) {
     const spec = specs[i];
     const piece = buildable.pieces[i];
-    if (assignConstructionPieceIdentity(world, piece, spec)) {
+    pieceRequiredEnergy[i] = spec.required.energy;
+    pieceRequiredMetal[i] = spec.required.metal;
+    pieceMaxHp[i] = spec.maxHp;
+    pieceCurrentHp[i] = hpInput === 'zero' ? 0 : spec.getHp();
+    piecePreviousProgress[i] = hpInput === 'zero'
+      ? 0
+      : Math.max(0, Math.min(1, piece.healthBuildFraction));
+    pieceStartsAtFrameOne[i] = spec.startsAtFrameOne ? 1 : 0;
+    pieceAlive[i] = spec.isSubEntity && world !== null
+      ? (isSubEntityStillAlive(world, spec.getId()) ? 1 : 0)
+      : 1;
+  }
+
+  const sim = requireConstructionSim();
+  if (sim.constructionReconcileAndGrowPieces(
+    buildable.paid.energy,
+    buildable.paid.metal,
+    pieceRequiredEnergy,
+    pieceRequiredMetal,
+    pieceMaxHp,
+    pieceCurrentHp,
+    piecePreviousProgress,
+    pieceStartsAtFrameOne,
+    pieceAlive,
+    count,
+    piecePaidEnergy,
+    piecePaidMetal,
+    pieceComplete,
+    pieceActive,
+    pieceHp,
+    pieceProgress,
+  ) === 0) {
+    throw new Error('constructionLifecycle: construction_reconcile_and_grow_pieces rejected its buffers');
+  }
+
+  for (let i = 0; i < count; i++) {
+    const spec = specs[i];
+    const piece = buildable.pieces[i];
+    piece.paid.energy = piecePaidEnergy[i];
+    piece.paid.metal = piecePaidMetal[i];
+    piece.isComplete = pieceComplete[i] !== 0;
+    piece.isActive = pieceActive[i] !== 0;
+    if (world !== null && assignConstructionPieceIdentity(world, piece, spec)) {
       changedFields |= spec.snapshotFields;
     }
-    const prevProgress = Math.max(0, Math.min(1, piece.healthBuildFraction));
-    const nextProgress = piece.isActive ? getPieceBuildFraction(piece) : 0;
-    const hp = advancePieceHp(
-      spec.getHp(),
-      spec.maxHp,
-      prevProgress,
-      nextProgress,
-      spec.isSubEntity ? isSubEntityStillAlive(world, spec.getId()) : true,
-      spec.startsAtFrameOne,
-    );
+    const hp = pieceHp[i];
     if (hp !== spec.getHp()) {
       spec.setHp(hp);
       changedFields |= spec.snapshotFields;
     }
-    piece.healthBuildFraction = nextProgress;
+    piece.healthBuildFraction = pieceProgress[i];
     const pieceId = spec.getId();
-    if (spec.isSubEntity && pieceId !== NO_ENTITY_ID) {
+    if (world !== null && spec.isSubEntity && pieceId !== NO_ENTITY_ID) {
       world.setSubEntityMetadataTargetable(pieceId, hp > 0);
     }
   }
 
-  world.refreshEntityMetadata(entity);
+  if (world !== null) {
+    world.refreshEntityMetadata(entity);
 
-  if (changedFields !== 0) {
-    world.markSnapshotDirty(entity.id, changedFields);
+    if (changedFields !== 0) {
+      world.markSnapshotDirty(entity.id, changedFields);
+    }
   }
 }
 
@@ -412,8 +435,7 @@ export function interruptConstructionPreservingBuiltPieces(
   }
 
   ensureConstructionPieceRecords(entity);
-  reconcileConstructionPieceRecords(entity);
-  growConstructionPieces(world, entity);
+  reconcileAndGrowConstructionPieces(world, entity, 'current');
 
   const specs = scalePieceCostsToBuildableRequired(
     getConstructionPieceSpecs(entity),
@@ -457,34 +479,8 @@ export function initializeConstructionPieceHealth(entity: Entity, world: WorldSt
   const buildable = entity.buildable;
   if (buildable === null || buildable.isGhost || buildable.isComplete) return;
   ensureConstructionPieceRecords(entity);
-  reconcileConstructionPieceRecords(entity);
   buildable.healthBuildFraction = getBuildFraction(buildable);
-  const specs = scalePieceCostsToBuildableRequired(
-    getConstructionPieceSpecs(entity),
-    buildable.required,
-  );
-  let changedFields = 0;
-  for (let i = 0; i < specs.length; i++) {
-    const spec = specs[i];
-    const piece = buildable.pieces[i];
-    if (world !== null && assignConstructionPieceIdentity(world, piece, spec)) {
-      changedFields |= spec.snapshotFields;
-    }
-    const progress = piece.isActive ? getPieceBuildFraction(piece) : 0;
-    const hp = setPieceHpForConstructionProgress(spec.maxHp, progress, spec.startsAtFrameOne);
-    spec.setHp(hp);
-    piece.healthBuildFraction = progress;
-    const pieceId = spec.getId();
-    if (world !== null && spec.isSubEntity && pieceId !== NO_ENTITY_ID) {
-      world.setSubEntityMetadataTargetable(pieceId, hp > 0);
-    }
-  }
-  if (world !== null) {
-    world.refreshEntityMetadata(entity);
-    if (changedFields !== 0) {
-      world.markSnapshotDirty(entity.id, changedFields);
-    }
-  }
+  reconcileAndGrowConstructionPieces(world, entity, 'zero');
 }
 
 function finishConstructionPieceHealth(entity: Entity): void {
