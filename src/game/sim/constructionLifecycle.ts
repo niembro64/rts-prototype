@@ -420,24 +420,16 @@ export function interruptConstructionPreservingBuiltPieces(
     buildable.required,
   );
   let preserved = false;
-  let preservedBody = false;
-  let preservedLocomotion = false;
   let changedFields = 0;
-  const turretMountsToDetach: number[] = [];
 
   for (let i = 0; i < specs.length; i++) {
     const spec = specs[i];
     const piece = buildable.pieces[i];
     if (piece !== undefined && shouldPreserveInterruptedPiece(piece, spec)) {
       preserved = true;
-      if (spec.kind === 'body') preservedBody = true;
-      if (spec.kind === 'locomotion') preservedLocomotion = true;
       const pieceId = spec.getId();
       if (spec.isSubEntity && pieceId !== NO_ENTITY_ID) {
         world.setSubEntityMetadataTargetable(pieceId, true);
-      }
-      if (spec.kind === 'turret' && spec.mountIndex !== null) {
-        turretMountsToDetach.push(spec.mountIndex);
       }
       continue;
     }
@@ -454,19 +446,6 @@ export function interruptConstructionPreservingBuiltPieces(
 
   world.refreshEntityMetadata(entity);
   buildable.isInterrupted = true;
-  const detachLocomotionOnly = entity.unit !== null && preservedLocomotion && !preservedBody;
-  if (detachLocomotionOnly) {
-    world.detachMountedLocomotionAsAgent(entity);
-    world.removeEntity(entity.id);
-    return {
-      preserved: true,
-      refund: { energy: 0, metal: 0 },
-    };
-  }
-  for (let i = 0; i < turretMountsToDetach.length; i++) {
-    const detached = world.detachMountedTurretAsAgent(entity, turretMountsToDetach[i]);
-    if (detached !== null) changedFields |= ENTITY_CHANGED_TURRETS;
-  }
   world.markSnapshotDirty(entity.id, changedFields | ENTITY_CHANGED_BUILDING);
   return {
     preserved: true,

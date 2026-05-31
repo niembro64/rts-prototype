@@ -78,10 +78,9 @@ A39. [HIGH] Sub-entities are not independently destructible; the host does not d
     now promote into hidden tower-class autonomous agents, retaining the old turret EntityId as the
     new live entity id and continuing to acquire/fire through the normal combat pipeline. Surviving
     locomotion pieces now promote into unselectable detached locomotion agents with their old
-    EntityId, locomotion health, dynamic physics body, and launch velocity when the host body dies
-    or when factory construction is interrupted with only locomotion materialized. The remaining
-    gap is broader live detachment semantics for arbitrary still-alive piece tear-off events outside
-    these host-death / construction-interruption paths. —
+    EntityId, locomotion health, dynamic physics body, and launch velocity when the host body dies.
+    The remaining gap is broader live detachment semantics for arbitrary still-alive piece tear-off
+    events outside host-death paths. —
     FIX: finish live piece detachment as real autonomous agents for every piece kind. A piece that
     DETACHES while still alive (e.g. a locomotion torn loose, or one a bomb-unit launches) stays a
     live, fully-autonomous agent until its OWN health hits zero; detachment removes it from the host
@@ -111,13 +110,13 @@ A41. [MEDIUM] Hosts spawn whole, not built bottom-up piece by piece.
     deleting them: materialized paid pieces remain in-world, unstarted pieces are zeroed/de-targeted,
     factories will not spawn a replacement on top of the partial assembly, and interrupted partial
     assemblies now stop consuming construction resources while their piece records remain live for
-    rendering, targeting, snapshots, and active body/turret behavior. The aggregate Buildable.paid
+    rendering, targeting, snapshots, and active body/turret behavior. Factory production cancellation
+    now preserves the paid partial assembly in place: materialized locomotion-only shells remain as
+    interrupted shells instead of launching standalone locomotion agents, and materialized turrets
+    remain mounted on the partial host instead of launching detached tower agents. The aggregate Buildable.paid
     counters remain as the compact wire/UI mirror, not the sim's piece-level funding model. The
     remaining gap is that inactive pieces still have backing runtime objects even though construction
-    shell subentity IDs now materialize only when the dependency-ordered piece becomes active,
-    materialized construction turrets now detach into launched independent tower agents when factory
-    construction is interrupted, and locomotion-only interrupted assemblies now detach into launched
-    standalone locomotion agents instead of remaining as preserved partial shells. —
+    shell subentity IDs now materialize only when the dependency-ordered piece becomes active. —
     FIX: finish late materialization/partial assembly semantics: each piece should enter the active
     entity registry only when its dependency is satisfied, render/target exactly the current partial
     assembly, and leave exactly the already-built live pieces if construction is interrupted.
