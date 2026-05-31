@@ -478,6 +478,20 @@ function computeBarrierConfig(
   };
 }
 
+/** Derive a shot's runtime explosion from its base-ledger death explosion.
+ *
+ *  base.deathExplosion is the single source of truth for a shot's death
+ *  blast (see "Every death is an explosion" / "Shots are destructible
+ *  bodies too"). The runtime ShotExplosion is a field-reordered cache of it
+ *  ({radius,force,damage} -> {radius,damage,force}); a zero-radius blast
+ *  produces no explosion (hasExplosion stays false downstream). */
+function deriveShotExplosion(
+  blast: ShotBlueprint['base']['deathExplosion'],
+): ShotConfig['explosion'] {
+  if (!(blast.radius > 0)) return undefined;
+  return { radius: blast.radius, damage: blast.damage, force: blast.force };
+}
+
 /** Build a ShotConfig from a ShotBlueprint + turret blueprint data.
  *
  *  `homingTurnRate` lives on the SHOT BLUEPRINT (it's a property of
@@ -496,7 +510,7 @@ function buildShotConfig(
     health: shotBlueprint.health,
     launchForce,
     radius: shotBlueprint.radius,
-    explosion: shotBlueprint.explosion ?? undefined,
+    explosion: deriveShotExplosion(shotBlueprint.base.deathExplosion),
     detonateOnExpiry: shotBlueprint.detonateOnExpiry || undefined,
     maxLifespan: Number.isFinite(shotBlueprint.maxLifespan)
       ? shotBlueprint.maxLifespan!

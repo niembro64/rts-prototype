@@ -20,7 +20,6 @@ import {
 const PROJECTILE_EXPLICIT_FIELDS = [
   'base',
   'health',
-  'explosion',
   'hitSound',
   'submunitions',
   'homingTurnRate',
@@ -63,12 +62,10 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
     blueprint.radius,
     blueprint.base.radius,
   );
-  if (blueprint.explosion !== null) {
-    const blast = blueprint.base.deathExplosion;
-    assertNumberEquals(`shot blueprint ${id}`, 'deathExplosion.radius', blueprint.explosion.radius, blast.radius);
-    assertNumberEquals(`shot blueprint ${id}`, 'deathExplosion.force', blueprint.explosion.force, blast.force);
-    assertNumberEquals(`shot blueprint ${id}`, 'deathExplosion.damage', blueprint.explosion.damage, blast.damage);
-  }
+  // The runtime shot explosion is derived from base.deathExplosion in
+  // buildShotConfig — base.deathExplosion is the single source of truth for
+  // a shot's death blast, so there is no separate authored `explosion` field
+  // to cross-check here.
   // Homing is "rate + thrust" — both fields must be set together or
   // neither. A turn rate without a thrust budget would be steering
   // without an engine; a thrust budget without a turn rate would be

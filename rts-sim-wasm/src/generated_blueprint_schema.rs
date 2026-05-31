@@ -157,7 +157,6 @@ pub struct ProjectileShotBlueprint {
     pub mass: f64,
     pub health: f64,
     pub radius: EntityRadiusConfig,
-    pub explosion: Option<ShotExplosion>,
     pub detonateOnExpiry: bool,
     pub maxLifespan: Option<f64>,
     pub hitSound: Option<BlueprintJsonValue>,

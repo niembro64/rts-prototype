@@ -96,7 +96,6 @@ export type ProjectileShotBlueprint = {
   mass: number;
   health: number;
   radius: EntityRadiusConfig;
-  explosion: ShotExplosion | null;
   detonateOnExpiry: boolean;
   maxLifespan?: number | null;
   hitSound: SoundEntry | null;

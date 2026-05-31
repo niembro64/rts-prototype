@@ -9,11 +9,6 @@
       "hitbox": 2,
       "collision": 2
     },
-    "explosion": {
-      "radius": 15,
-      "damage": 6,
-      "force": 500
-    },
     "detonateOnExpiry": true,
     "hitSound": {
       "$audio": "event.hit.shotPlasmaLight"
@@ -52,11 +47,6 @@
       "hitbox": 3,
       "collision": 3
     },
-    "explosion": {
-      "radius": 24,
-      "damage": 12,
-      "force": 1000
-    },
     "detonateOnExpiry": true,
     "hitSound": {
       "$audio": "event.hit.shotPlasmaMedium"
@@ -94,11 +84,6 @@
       "visual": 2,
       "hitbox": 2,
       "collision": 2
-    },
-    "explosion": {
-      "radius": 50,
-      "damage": 100,
-      "force": 3000
     },
     "detonateOnExpiry": true,
     "maxLifespan": 10000,
@@ -139,11 +124,6 @@
       "hitbox": 2,
       "collision": 2
     },
-    "explosion": {
-      "radius": 50,
-      "damage": 40,
-      "force": 3000
-    },
     "detonateOnExpiry": true,
     "maxLifespan": 1000,
     "hitSound": {
@@ -183,11 +163,6 @@
       "hitbox": 4,
       "collision": 4
     },
-    "explosion": {
-      "radius": 75,
-      "damage": 150,
-      "force": 7000
-    },
     "detonateOnExpiry": true,
     "hitSound": {
       "$audio": "event.hit.shotPlasmaHeavy"
@@ -225,11 +200,6 @@
       "visual": 8,
       "hitbox": 8,
       "collision": 8
-    },
-    "explosion": {
-      "radius": 75,
-      "damage": 20,
-      "force": 10000
     },
     "detonateOnExpiry": true,
     "hitSound": {
@@ -275,11 +245,6 @@
       "hitbox": 10,
       "collision": 10
     },
-    "explosion": {
-      "radius": 150,
-      "damage": 20,
-      "force": 20000
-    },
     "detonateOnExpiry": true,
     "hitSound": {
       "$audio": "event.hit.shotMortarMedium"
@@ -323,11 +288,6 @@
       "visual": 25,
       "hitbox": 25,
       "collision": 25
-    },
-    "explosion": {
-      "radius": 120,
-      "damage": 999999,
-      "force": 2499750
     },
     "detonateOnExpiry": true,
     "hitSound": {

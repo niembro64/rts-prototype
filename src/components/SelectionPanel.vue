@@ -9,7 +9,6 @@ import {
 
 export type { FactorySelectionItem, SelectionInfo, SelectionActions } from '@/types/ui';
 import type {
-  ControlGroupInfo,
   SelectionEntityType,
   SelectionInfo,
   SelectionActions,
@@ -20,18 +19,6 @@ const props = defineProps<{
   actions: SelectionActions;
 }>();
 
-const controlGroupSlots = computed<ControlGroupInfo[]>(() => {
-  const groups = props.selection.controlGroups ?? [];
-  return Array.from({ length: 9 }, (_, index) => (
-    groups.find((group) => group.index === index) ?? { index, count: 0, active: false }
-  ));
-});
-const hasStoredControlGroups = computed(() =>
-  controlGroupSlots.value.some((group) => group.count > 0),
-);
-const canStoreControlGroup = computed(() =>
-  props.selection.unitCount > 0 || props.selection.hasFactory,
-);
 // Per design_philosophy.html "Selection Menus Are Uniform Per Entity Type"
 // every entity type carries its own uniform action set. Pure-
 // infrastructure buildings expose ON/OFF + Self-Destruct; the panel
@@ -40,8 +27,7 @@ const showPanel = computed(() =>
   props.selection.unitCount > 0
   || props.selection.towerCount > 0
   || props.selection.buildingCount > 0
-  || props.selection.hasFactory
-  || hasStoredControlGroups.value,
+  || props.selection.hasFactory,
 );
 const selectedEntityTypeCount = computed(() =>
   (props.selection.unitCount > 0 ? 1 : 0)
@@ -128,12 +114,44 @@ const selectionPanelStyle = {
 const selectedBuildUnitBlueprintId = computed(() =>
   props.selection.factorySelectedUnit?.unitBlueprintId ?? null,
 );
+const showCancelHint = computed(() =>
+  props.selection.isBuildMode
+  || props.selection.isDGunMode
+  || props.selection.isRepairAreaMode
+  || props.selection.isAttackAreaMode
+  || props.selection.isAttackGroundMode
+  || props.selection.isGuardMode
+  || props.selection.isReclaimMode
+  || props.selection.isPingMode
+  || props.selection.isTowerTargetMode,
+);
 
 const waypointModes: { mode: WaypointType; label: string; key: string; color: string }[] = [
   { mode: 'move', label: 'Move', key: 'M', color: WAYPOINT_COLOR_CSS.move },
   { mode: 'fight', label: 'Fight', key: 'F', color: WAYPOINT_COLOR_CSS.fight },
   { mode: 'patrol', label: 'Patrol', key: 'H', color: WAYPOINT_COLOR_CSS.patrol },
 ];
+
+const COMPACT_BUILDING_LABELS: Record<string, string> = {
+  Solar: 'Sol',
+  Wind: 'Wnd',
+  Extractor: 'Ext',
+  Radar: 'Rad',
+  Converter: 'Conv',
+};
+
+function compactBuildingLabel(label: string): string {
+  return COMPACT_BUILDING_LABELS[label] ?? label.slice(0, 5);
+}
+
+function actionTitle(label: string, key: string, detail?: string): string {
+  return `${label} - Hotkey ${key}${detail === undefined ? '' : ` - ${detail}`}`;
+}
+
+function costTitle(label: string, cost: number, key?: string): string {
+  const hotkey = key === undefined ? '' : ` - Hotkey ${key}`;
+  return `${label}${hotkey} - Cost ${cost}`;
+}
 
 const buildingOptions = buildingRosterDisplay;
 const unitOptions = unitRosterDisplay;
@@ -152,15 +170,34 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
          fabricator-class towers as Fabricator, other towers as Tower,
          pure-infrastructure buildings as Building, otherwise N units. -->
     <div class="panel-header">
-      <span v-if="selection.hasCommander" class="unit-type commander">Commander</span>
-      <span v-else-if="selection.hasFactory" class="unit-type factory">Fabricator</span>
-      <span v-else-if="selection.towerCount > 0 && selection.unitCount === 0" class="unit-type">
-        {{ selection.towerCount }} Tower{{ selection.towerCount > 1 ? 's' : '' }}
-      </span>
-      <span v-else-if="selection.buildingCount > 0 && selection.unitCount === 0 && selection.towerCount === 0" class="unit-type">
-        {{ selection.buildingCount }} Building{{ selection.buildingCount > 1 ? 's' : '' }}
-      </span>
-      <span v-else class="unit-type">{{ selection.unitCount }} Unit{{ selection.unitCount > 1 ? 's' : '' }}</span>
+      <div class="selection-title">
+        <span v-if="selection.hasCommander" class="unit-type commander">Commander</span>
+        <span v-else-if="selection.hasFactory" class="unit-type factory">Fabricator</span>
+        <span v-else-if="selection.towerCount > 0 && selection.unitCount === 0" class="unit-type">
+          {{ selection.towerCount }} Tower{{ selection.towerCount > 1 ? 's' : '' }}
+        </span>
+        <span v-else-if="selection.buildingCount > 0 && selection.unitCount === 0 && selection.towerCount === 0" class="unit-type">
+          {{ selection.buildingCount }} Building{{ selection.buildingCount > 1 ? 's' : '' }}
+        </span>
+        <span v-else class="unit-type">{{ selection.unitCount }} Unit{{ selection.unitCount > 1 ? 's' : '' }}</span>
+      </div>
+      <div class="panel-help">
+        <button
+          type="button"
+          class="help-btn"
+          aria-describedby="selection-hotkey-help"
+          title="Control group hotkeys"
+        >
+          ?
+        </button>
+        <div id="selection-hotkey-help" class="hotkey-popover" role="tooltip">
+          <div class="hotkey-title">Control Groups</div>
+          <div><kbd>Ctrl/Cmd</kbd> + <kbd>1-9</kbd> stores the selection.</div>
+          <div><kbd>1-9</kbd> recalls a stored group.</div>
+          <div><kbd>Shift</kbd> + <kbd>1-9</kbd> adds a group to the selection.</div>
+          <div class="hotkey-footnote">Button hotkeys appear on hover.</div>
+        </div>
+      </div>
     </div>
 
     <div v-if="selectOnlyOptions.length > 0" class="button-group">
@@ -169,12 +206,13 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         <button
           v-for="option in selectOnlyOptions"
           :key="option.entityType"
+          type="button"
           class="action-btn"
           :style="{ '--btn-color': BUTTON_COLORS.groupAccent }"
+          :title="`Select only ${option.label.toLowerCase()}`"
           @click="actions.selectOnlyEntityType(option.entityType)"
         >
-          <span class="btn-label">{{ option.label }}</span>
-          <span class="btn-key">{{ option.count }}</span>
+          <span class="btn-label">{{ option.label }} {{ option.count }}</span>
         </button>
       </div>
     </div>
@@ -186,87 +224,98 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         <button
           v-for="wm in waypointModes"
           :key="wm.mode"
+          type="button"
           class="action-btn"
           :class="{ active: selection.waypointMode === wm.mode }"
           :style="{ '--btn-color': wm.color }"
+          :title="actionTitle(wm.label, wm.key)"
           @click="actions.setWaypointMode(wm.mode)"
         >
           <span class="btn-label">{{ wm.label }}</span>
           <span class="btn-key">{{ wm.key }}</span>
         </button>
         <button
+          type="button"
           class="action-btn"
           :class="{ active: selection.isAttackAreaMode }"
           :style="{ '--btn-color': BUTTON_COLORS.attackArea }"
-          title="Toggle area attack targeting for selected units"
+          :title="actionTitle('Area attack', 'A', 'Toggle targeting for selected units')"
           @click="actions.toggleAttackArea()"
         >
           <span class="btn-label">Attack</span>
           <span class="btn-key">A</span>
         </button>
         <button
+          type="button"
           class="action-btn"
           :class="{ active: selection.isAttackGroundMode }"
           :style="{ '--btn-color': BUTTON_COLORS.attackGround }"
-          title="Toggle attack-ground targeting for selected units"
+          :title="actionTitle('Attack ground', 'T', 'Toggle ground targeting')"
           @click="actions.toggleAttackGround()"
         >
           <span class="btn-label">Ground</span>
           <span class="btn-key">T</span>
         </button>
         <button
+          type="button"
           class="action-btn"
           :class="{ active: selection.isPingMode }"
           :style="{ '--btn-color': BUTTON_COLORS.ping }"
-          title="Toggle map ping targeting"
+          :title="actionTitle('Ping', 'P')"
           @click="actions.togglePing()"
         >
           <span class="btn-label">Ping</span>
           <span class="btn-key">P</span>
         </button>
         <button
+          type="button"
           class="action-btn"
           :class="{ active: selection.isGuardMode }"
           :style="{ '--btn-color': BUTTON_COLORS.guard }"
-          title="Toggle guard targeting for selected units"
+          :title="actionTitle('Guard', 'G')"
           @click="actions.toggleGuard()"
         >
           <span class="btn-label">Guard</span>
           <span class="btn-key">G</span>
         </button>
         <button
+          type="button"
           class="action-btn"
           :style="{ '--btn-color': BUTTON_COLORS.stop }"
+          :title="actionTitle('Stop', 'S')"
           @click="actions.stopSelectedUnits()"
         >
           <span class="btn-label">Stop</span>
           <span class="btn-key">S</span>
         </button>
         <button
+          type="button"
           class="action-btn"
           :class="{ active: selection.isWaiting }"
           :style="{ '--btn-color': BUTTON_COLORS.wait }"
-          title="Toggle wait for selected units"
+          :title="actionTitle('Wait', 'W')"
           @click="actions.toggleSelectedWait()"
         >
           <span class="btn-label">Wait</span>
           <span class="btn-key">W</span>
         </button>
         <button
+          type="button"
           class="action-btn"
           :disabled="!selection.hasQueuedOrders"
           :style="{ '--btn-color': BUTTON_COLORS.undoQueue }"
-          title="Remove the last queued order"
+          :title="actionTitle('Undo queued order', 'U')"
           @click="actions.removeLastQueuedOrder()"
         >
           <span class="btn-label">Undo Q</span>
           <span class="btn-key">U</span>
         </button>
         <button
+          type="button"
           class="action-btn"
           :disabled="!selection.hasQueuedOrders"
           :style="{ '--btn-color': BUTTON_COLORS.clearQueue }"
-          title="Clear queued orders after the active order"
+          :title="actionTitle('Clear queued orders', 'X')"
           @click="actions.clearQueuedOrders()"
         >
           <span class="btn-label">Clear Q</span>
@@ -284,54 +333,16 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
       <div class="group-label">{{ isStaticOnlySelection ? 'Tower' : 'Combat' }}</div>
       <div class="buttons">
         <button
+          type="button"
           class="action-btn"
           :class="{ active: selection.fireEnabled }"
           :style="{ '--btn-color': BUTTON_COLORS.fireControl }"
-          title="Toggle whether the selection is allowed to fire automatically"
+          :title="actionTitle(selection.fireEnabled ? 'Hold fire' : 'Fire at will', 'E')"
           @click="actions.toggleSelectedFire()"
         >
           <span class="btn-label">{{ selection.fireEnabled ? 'Fire' : 'Hold' }}</span>
           <span class="btn-key">E</span>
         </button>
-      </div>
-    </div>
-
-    <!-- Control group buttons -->
-    <div v-if="canStoreControlGroup || hasStoredControlGroups" class="button-group">
-      <div class="group-label">Groups</div>
-      <div class="control-group-grid">
-        <div
-          v-for="slot in controlGroupSlots"
-          :key="slot.index"
-          class="control-group-slot"
-        >
-          <button
-            class="group-store-btn"
-            :disabled="!canStoreControlGroup"
-            :title="`Store group ${slot.index + 1}`"
-            @click="actions.storeControlGroup(slot.index)"
-          >
-            Set
-          </button>
-          <button
-            class="group-recall-btn"
-            :class="{ active: slot.active }"
-            :disabled="slot.count === 0"
-            :title="`Recall group ${slot.index + 1}`"
-            @click="actions.recallControlGroup(slot.index, false)"
-          >
-            <span class="group-number">{{ slot.index + 1 }}</span>
-            <span class="group-count">{{ slot.count > 0 ? slot.count : '-' }}</span>
-          </button>
-          <button
-            class="group-add-btn"
-            :disabled="slot.count === 0"
-            :title="`Add group ${slot.index + 1} to selection`"
-            @click="actions.recallControlGroup(slot.index, true)"
-          >
-            +
-          </button>
-        </div>
       </div>
     </div>
 
@@ -342,11 +353,13 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         <button
           v-for="bo in buildingOptions"
           :key="bo.buildingBlueprintId"
+          type="button"
           class="action-btn build-btn"
           :class="{ active: selection.isBuildMode && selection.selectedBuildingBlueprintId === bo.buildingBlueprintId }"
+          :title="costTitle(`Build ${bo.label}`, bo.cost, bo.key)"
           @click="selection.isBuildMode && selection.selectedBuildingBlueprintId === bo.buildingBlueprintId ? actions.cancelBuild() : actions.startBuild(bo.buildingBlueprintId)"
         >
-          <span class="btn-label">{{ bo.label }}</span>
+          <span class="btn-label">{{ compactBuildingLabel(bo.label) }}</span>
           <span class="btn-cost"><span class="cost-resource">{{ bo.cost }}</span></span>
           <span class="btn-key">{{ bo.key }}</span>
         </button>
@@ -359,8 +372,10 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
       <div class="buttons">
         <button
           v-if="selection.hasDGun"
+          type="button"
           class="action-btn dgun-btn"
           :class="{ active: selection.isDGunMode }"
+          :title="actionTitle('D-Gun', 'D', 'Cost 200E')"
           @click="actions.toggleDGun()"
         >
           <span class="btn-label">D-Gun</span>
@@ -369,10 +384,11 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         </button>
         <button
           v-if="selection.hasCommander"
+          type="button"
           class="action-btn"
           :class="{ active: selection.isRepairAreaMode }"
           :style="{ '--btn-color': BUTTON_COLORS.repair }"
-          title="Toggle area repair targeting for the selected commander"
+          :title="actionTitle('Repair area', 'R')"
           @click="actions.toggleRepairArea()"
         >
           <span class="btn-label">Repair</span>
@@ -380,10 +396,11 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         </button>
         <button
           v-if="selection.hasCommander"
+          type="button"
           class="action-btn"
           :class="{ active: selection.isReclaimMode }"
           :style="{ '--btn-color': BUTTON_COLORS.reclaim }"
-          title="Toggle reclaim targeting for the selected commander"
+          :title="actionTitle('Reclaim', 'C')"
           @click="actions.toggleReclaim()"
         >
           <span class="btn-label">Reclaim</span>
@@ -399,11 +416,13 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         <button
           v-for="uo in vehicleOptions"
           :key="uo.unitBlueprintId"
+          type="button"
           class="action-btn produce-btn vehicle-btn"
           :class="{ active: selectedBuildUnitBlueprintId === uo.unitBlueprintId }"
+          :title="costTitle(`Queue ${uo.label}`, uo.cost)"
           @click="actions.queueUnit(selection.factoryId!, uo.unitBlueprintId)"
         >
-          <span class="btn-label">{{ uo.label }}</span>
+          <span class="btn-label">{{ uo.shortName }}</span>
           <span class="btn-cost"><span class="cost-resource">{{ uo.cost }}</span></span>
         </button>
       </div>
@@ -416,11 +435,13 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         <button
           v-for="uo in botOptions"
           :key="uo.unitBlueprintId"
+          type="button"
           class="action-btn produce-btn bot-btn"
           :class="{ active: selectedBuildUnitBlueprintId === uo.unitBlueprintId }"
+          :title="costTitle(`Queue ${uo.label}`, uo.cost)"
           @click="actions.queueUnit(selection.factoryId!, uo.unitBlueprintId)"
         >
-          <span class="btn-label">{{ uo.label }}</span>
+          <span class="btn-label">{{ uo.shortName }}</span>
           <span class="btn-cost"><span class="cost-resource">{{ uo.cost }}</span></span>
         </button>
       </div>
@@ -435,20 +456,22 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
       <div class="group-label">Target</div>
       <div class="buttons">
         <button
+          type="button"
           class="action-btn"
           :class="{ active: selection.isTowerTargetMode }"
           :style="{ '--btn-color': BUTTON_COLORS.attackArea }"
-          title="Click an entity to set this tower's lock-on target"
+          :title="actionTitle('Set target', 'L', 'Click an entity to lock on')"
           @click="actions.setTowerTargetMode()"
         >
           <span class="btn-label">Set</span>
           <span class="btn-key">L</span>
         </button>
         <button
+          type="button"
           class="action-btn"
           :disabled="!selection.hasTowerTargetActive"
           :style="{ '--btn-color': BUTTON_COLORS.stop }"
-          title="Clear the tower's lock-on target"
+          :title="actionTitle('Clear target', 'J')"
           @click="actions.clearTowerTarget()"
         >
           <span class="btn-label">Clear</span>
@@ -465,10 +488,11 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
       <div class="group-label">Power</div>
       <div class="buttons">
         <button
+          type="button"
           class="action-btn"
           :class="{ active: selection.buildingsActive }"
           :style="{ '--btn-color': BUTTON_COLORS.buildingActive }"
-          title="Toggle producer building ON/OFF"
+          :title="actionTitle(selection.buildingsActive ? 'Turn off' : 'Turn on', 'O')"
           @click="actions.toggleBuildingActive()"
         >
           <span class="btn-label">{{ selection.buildingsActive ? 'On' : 'Off' }}</span>
@@ -484,9 +508,10 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
       <div class="group-label">Demolish</div>
       <div class="buttons">
         <button
+          type="button"
           class="action-btn"
           :style="{ '--btn-color': BUTTON_COLORS.selfDestruct }"
-          title="Destroy the selection"
+          :title="actionTitle('Destroy selection', 'K')"
           @click="actions.selfDestructSelected()"
         >
           <span class="btn-label">Destroy</span>
@@ -495,12 +520,9 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
       </div>
     </div>
 
-    <!-- Message area (always present to prevent modal resize) -->
-    <div class="message-area">
-      <span v-if="selection.isBuildMode || selection.isDGunMode || selection.isRepairAreaMode || selection.isAttackAreaMode || selection.isAttackGroundMode || selection.isGuardMode || selection.isReclaimMode || selection.isPingMode || selection.isTowerTargetMode">
-        Press ESC or Right-click to cancel
-      </span>
-      <span v-else>&nbsp;</span>
+    <!-- Cancel affordance appears only while a click-pick mode is active. -->
+    <div v-if="showCancelHint" class="message-area">
+      Press ESC or Right-click to cancel
     </div>
   </div>
 </template>
@@ -511,13 +533,13 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
  * corners stay so the panel still reads as a discrete card. */
 .options-panel {
   position: absolute;
-  bottom: 20px;
-  left: 20px;
+  bottom: 16px;
+  left: 16px;
   background: var(--selection-panel-bg);
   border: 1px solid var(--selection-panel-border);
-  border-radius: 8px;
-  padding: 12px;
-  min-width: 200px;
+  border-radius: 6px;
+  padding: 6px;
+  max-width: min(520px, calc(100vw - 32px));
   font-family: monospace;
   color: var(--selection-panel-text);
   pointer-events: auto;
@@ -525,11 +547,22 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 }
 
 .panel-header {
-  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
   font-weight: bold;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
+  margin-bottom: 5px;
+  padding-bottom: 4px;
   border-bottom: 1px solid var(--selection-panel-header-border);
+}
+
+.selection-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .unit-type.commander {
@@ -540,14 +573,97 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
   color: var(--selection-panel-factory);
 }
 
+.panel-help {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.help-btn {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: var(--selection-panel-button-bg);
+  border: 1px solid var(--selection-panel-button-border);
+  border-radius: 50%;
+  color: var(--selection-panel-key);
+  font-family: monospace;
+  font-size: 11px;
+  line-height: 1;
+  cursor: help;
+}
+
+.help-btn:hover,
+.help-btn:focus-visible {
+  background: var(--selection-panel-button-hover-bg);
+  border-color: var(--selection-panel-button-group-accent);
+  color: var(--selection-panel-text);
+}
+
+.hotkey-popover {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  width: 245px;
+  padding: 8px;
+  background: var(--selection-panel-bg);
+  border: 1px solid var(--selection-panel-button-group-accent);
+  border-radius: 5px;
+  color: var(--selection-panel-text);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+  font-size: 10px;
+  font-weight: normal;
+  line-height: 1.45;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  z-index: 3;
+}
+
+.panel-help:hover .hotkey-popover,
+.panel-help:focus-within .hotkey-popover {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.hotkey-title {
+  margin-bottom: 3px;
+  color: var(--selection-panel-label);
+  font-size: 9px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.hotkey-footnote {
+  margin-top: 4px;
+  color: var(--selection-panel-key);
+}
+
+kbd {
+  padding: 0 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 3px;
+  color: var(--selection-panel-text);
+  font-family: monospace;
+  font-size: 9px;
+}
+
 .button-group {
-  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 4px;
 }
 
 .group-label {
-  font-size: 11px;
+  flex: 0 0 48px;
+  font-size: 8px;
   color: var(--selection-panel-label);
-  margin-bottom: 4px;
+  margin-bottom: 0;
+  text-align: right;
   text-transform: uppercase;
 }
 
@@ -560,100 +676,26 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 .buttons {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-}
-
-.control-group-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
-  gap: 6px;
-}
-
-.control-group-slot {
-  display: grid;
-  grid-template-columns: 34px minmax(36px, 1fr) 28px;
   gap: 3px;
-  align-items: stretch;
-}
-
-.group-store-btn,
-.group-recall-btn,
-.group-add-btn {
-  height: 36px;
-  background: var(--selection-panel-button-bg);
-  border: 1px solid var(--selection-panel-button-border);
-  border-radius: 4px;
-  color: var(--selection-panel-text);
-  font-family: monospace;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.group-store-btn {
-  font-size: 10px;
-  padding: 0;
-}
-
-.group-recall-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  --btn-color: var(--selection-panel-button-group-accent);
-}
-
-.group-add-btn {
-  font-size: 16px;
-  line-height: 1;
-  padding: 0;
-}
-
-.group-store-btn:hover:not(:disabled),
-.group-recall-btn:hover:not(:disabled),
-.group-add-btn:hover:not(:disabled) {
-  background: var(--selection-panel-button-hover-bg);
-  border-color: var(--selection-panel-button-group-accent);
-}
-
-.group-recall-btn.active {
-  background: var(--selection-panel-group-active-bg);
-  border-color: var(--selection-panel-button-group-accent);
-  box-shadow: 0 0 8px var(--selection-panel-group-active-shadow);
-}
-
-.group-store-btn:disabled,
-.group-recall-btn:disabled,
-.group-add-btn:disabled {
-  opacity: var(--selection-panel-button-disabled-opacity);
-  cursor: default;
-}
-
-.group-number {
-  font-size: 13px;
-  font-weight: bold;
-}
-
-.group-count {
-  margin-top: 1px;
-  font-size: 9px;
-  color: var(--selection-panel-label);
 }
 
 .action-btn {
+  position: relative;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  padding: 8px 12px;
+  justify-content: center;
+  height: 22px;
+  min-width: 30px;
+  padding: 0 5px;
   background: var(--selection-panel-button-bg);
   border: 1px solid var(--selection-panel-button-border);
-  border-radius: 4px;
+  border-radius: 3px;
   color: var(--selection-panel-text);
   font-family: monospace;
-  font-size: 12px;
+  font-size: 9px;
+  line-height: 1;
   cursor: pointer;
   transition: all 0.15s ease;
-  min-width: 60px;
   --btn-color: var(--selection-panel-button-default);
 }
 
@@ -675,16 +717,20 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 .action-btn.active {
   background: var(--selection-panel-button-active-bg);
   border-color: var(--btn-color);
-  box-shadow: 0 0 8px var(--btn-color);
+  box-shadow: 0 0 5px var(--btn-color);
 }
 
 .btn-label {
+  display: block;
+  max-width: 8ch;
+  overflow: hidden;
   font-weight: bold;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 .btn-cost {
-  font-size: 10px;
-  margin-top: 2px;
+  display: none;
 }
 
 .cost-energy {
@@ -697,9 +743,29 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 }
 
 .btn-key {
-  font-size: 9px;
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 5px);
+  padding: 2px 5px;
+  background: var(--selection-panel-bg);
+  border: 1px solid var(--btn-color);
+  border-radius: 3px;
   color: var(--selection-panel-key);
-  margin-top: 2px;
+  font-size: 10px;
+  font-weight: bold;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(2px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.action-btn:hover .btn-key,
+.action-btn:focus-visible .btn-key {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 .build-btn {
@@ -719,11 +785,10 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 }
 
 .message-area {
-  font-size: 10px;
+  font-size: 9px;
   color: var(--selection-panel-key);
-  margin-top: 8px;
+  margin-top: 4px;
   text-align: center;
-  min-height: 14px;
 }
 
 </style>

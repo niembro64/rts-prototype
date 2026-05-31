@@ -440,7 +440,6 @@
         "mass",
         "health",
         "radius",
-        "explosion",
         "detonateOnExpiry",
         "hitSound",
         "submunitions",
@@ -467,16 +466,6 @@
         },
         "radius": {
           "$ref": "#/$defs/EntityRadiusConfig"
-        },
-        "explosion": {
-          "oneOf": [
-            {
-              "$ref": "#/$defs/ShotExplosion"
-            },
-            {
-              "type": "null"
-            }
-          ]
         },
         "detonateOnExpiry": {
           "type": "boolean"

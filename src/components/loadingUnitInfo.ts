@@ -372,7 +372,9 @@ function projectileDamageWithSubmunitions(shot: ProjectileShot, depth = 0): numb
 }
 
 function projectileBlueprintDamage(shot: ShotBlueprint, depth: number): number {
-  let damage = shot.explosion?.damage ?? 0;
+  // base.deathExplosion is the single source of truth for a shot's blast
+  // (the runtime `explosion` cache is derived from it in buildShotConfig).
+  let damage = shot.base.deathExplosion.radius > 0 ? shot.base.deathExplosion.damage : 0;
   if (shot.submunitions && depth < 2) {
     try {
       damage += shot.submunitions.count * projectileBlueprintDamage(
