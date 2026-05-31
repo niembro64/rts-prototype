@@ -2041,6 +2041,142 @@ pub fn arrival_control_step_batch(
     active_count
 }
 
+const FLYING_LOITER_INVALID_SLOT: u32 = u32::MAX;
+
+#[inline]
+fn compute_flying_loiter_thrust(
+    dx: f64,
+    dy: f64,
+    distance: f64,
+    rotation: f64,
+    velocity_x: f64,
+    velocity_y: f64,
+    radius_collision: f64,
+    existing_turn_sign: f64,
+    min_radius: f64,
+    radius_mult: f64,
+    radial_gain: f64,
+) -> (f64, f64, f64, u8) {
+    let forward_x = rotation.cos();
+    let forward_y = rotation.sin();
+    if distance <= 0.0001 || !distance.is_finite() {
+        return (forward_x, forward_y, existing_turn_sign, 1);
+    }
+
+    let inv_distance = 1.0 / distance;
+    let radial_x = dx * inv_distance;
+    let radial_y = dy * inv_distance;
+    let tangent_x = -radial_y;
+    let tangent_y = radial_x;
+    let turn_sign = if existing_turn_sign == 1.0 || existing_turn_sign == -1.0 {
+        existing_turn_sign
+    } else {
+        let vx = if velocity_x.is_finite() {
+            velocity_x
+        } else {
+            forward_x
+        };
+        let vy = if velocity_y.is_finite() {
+            velocity_y
+        } else {
+            forward_y
+        };
+        if vx * tangent_x + vy * tangent_y >= 0.0 {
+            1.0
+        } else {
+            -1.0
+        }
+    };
+
+    let radius = min_radius.max(radius_collision * radius_mult).max(0.0001);
+    let radial_correction = (((distance - radius) / radius) * radial_gain)
+        .max(-1.25)
+        .min(1.25);
+    let mut steer_x = tangent_x * turn_sign + radial_x * radial_correction;
+    let mut steer_y = tangent_y * turn_sign + radial_y * radial_correction;
+    let steer_mag = (steer_x * steer_x + steer_y * steer_y).sqrt();
+    if steer_mag <= 0.0001 || !steer_mag.is_finite() {
+        steer_x = forward_x;
+        steer_y = forward_y;
+    } else {
+        steer_x /= steer_mag;
+        steer_y /= steer_mag;
+    }
+
+    (steer_x, steer_y, turn_sign, 1)
+}
+
+#[wasm_bindgen]
+pub fn flying_loiter_step_batch(
+    slots: &[u32],
+    dx: &[f64],
+    dy: &[f64],
+    distance: &[f64],
+    rotation: &[f64],
+    radius_collision: &[f64],
+    existing_turn_sign: &[f64],
+    fallback_velocity_x: &[f64],
+    fallback_velocity_y: &[f64],
+    out_thrust_x: &mut [f64],
+    out_thrust_y: &mut [f64],
+    out_turn_sign: &mut [f64],
+    out_active: &mut [u8],
+    min_radius: f64,
+    radius_mult: f64,
+    radial_gain: f64,
+) -> u32 {
+    let count = slots.len();
+    debug_assert!(dx.len() >= count);
+    debug_assert!(dy.len() >= count);
+    debug_assert!(distance.len() >= count);
+    debug_assert!(rotation.len() >= count);
+    debug_assert!(radius_collision.len() >= count);
+    debug_assert!(existing_turn_sign.len() >= count);
+    debug_assert!(fallback_velocity_x.len() >= count);
+    debug_assert!(fallback_velocity_y.len() >= count);
+    debug_assert!(out_thrust_x.len() >= count);
+    debug_assert!(out_thrust_y.len() >= count);
+    debug_assert!(out_turn_sign.len() >= count);
+    debug_assert!(out_active.len() >= count);
+
+    let p = pool();
+    let mut active_count = 0_u32;
+    for i in 0..count {
+        let slot = slots[i];
+        let slot_index = slot as usize;
+        let has_pool_velocity = slot != FLYING_LOITER_INVALID_SLOT && slot_index < p.vel_x.len();
+        let velocity_x = if has_pool_velocity {
+            p.vel_x[slot_index]
+        } else {
+            fallback_velocity_x[i]
+        };
+        let velocity_y = if has_pool_velocity {
+            p.vel_y[slot_index]
+        } else {
+            fallback_velocity_y[i]
+        };
+        let (thrust_x, thrust_y, turn_sign, active) = compute_flying_loiter_thrust(
+            dx[i],
+            dy[i],
+            distance[i],
+            rotation[i],
+            velocity_x,
+            velocity_y,
+            radius_collision[i],
+            existing_turn_sign[i],
+            min_radius,
+            radius_mult,
+            radial_gain,
+        );
+        out_thrust_x[i] = thrust_x;
+        out_thrust_y[i] = thrust_y;
+        out_turn_sign[i] = turn_sign;
+        out_active[i] = active;
+        active_count += active as u32;
+    }
+    active_count
+}
+
 #[inline]
 fn compute_unit_ground_normal_step(
     stored_x: f64,
@@ -27329,6 +27465,27 @@ mod sim_kernel_tests {
             "flying arrival should brake against overshoot velocity"
         );
         assert!(y.abs() < 1e-12);
+    }
+
+    #[test]
+    fn flying_loiter_chooses_turn_sign_from_velocity() {
+        let (x, y, turn_sign, active) = compute_flying_loiter_thrust(
+            0.0, 100.0, 100.0, 0.0, 1.0, 0.0, 10.0, 0.0, 80.0, 8.0, 0.65,
+        );
+        assert_eq!(active, 1);
+        assert_eq!(turn_sign, -1.0);
+        assert!(x > 0.0, "negative orbit should steer right of the center");
+        assert!(y > 0.0, "loiter should still correct outward radius error");
+    }
+
+    #[test]
+    fn flying_loiter_preserves_existing_turn_sign() {
+        let (_x, y, turn_sign, active) = compute_flying_loiter_thrust(
+            100.0, 0.0, 100.0, 0.0, 100.0, 0.0, 10.0, 1.0, 80.0, 8.0, 0.65,
+        );
+        assert_eq!(active, 1);
+        assert_eq!(turn_sign, 1.0);
+        assert!(y > 0.0, "existing positive orbit should win over velocity");
     }
 
     #[test]

@@ -35,6 +35,7 @@ import __wbg_init, {
   construction_apply_consumer_spends,
   economy_apply_income_credits,
   economy_apply_converter_transfers,
+  flying_loiter_step_batch,
   step_unit_motion,
   client_predict_unit_motion_batch,
   pool_init,
@@ -608,6 +609,24 @@ export interface SimWasm {
     outOutput: Float64Array,
     outConsumedResource: Uint32Array,
     outOutputResource: Uint32Array,
+  ) => number;
+  readonly flyingLoiterStepBatch: (
+    slots: Uint32Array,
+    dx: Float64Array,
+    dy: Float64Array,
+    distance: Float64Array,
+    rotation: Float64Array,
+    radiusCollision: Float64Array,
+    existingTurnSign: Float64Array,
+    fallbackVelocityX: Float64Array,
+    fallbackVelocityY: Float64Array,
+    outThrustX: Float64Array,
+    outThrustY: Float64Array,
+    outTurnSign: Float64Array,
+    outActive: Uint8Array,
+    minRadius: number,
+    radiusMult: number,
+    radialGain: number,
   ) => number;
   /** Shared single-body unit integrator (Phase 2). Kept for
    *  diagnostics and one-off callers; the server hot path uses
@@ -3177,6 +3196,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         constructionApplyConsumerSpends: construction_apply_consumer_spends,
         economyApplyIncomeCredits: economy_apply_income_credits,
         economyApplyConverterTransfers: economy_apply_converter_transfers,
+        flyingLoiterStepBatch: flying_loiter_step_batch,
         stepUnitMotion: step_unit_motion,
         clientPredictUnitMotionBatch: client_predict_unit_motion_batch,
         pool,

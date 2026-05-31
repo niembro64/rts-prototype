@@ -172,6 +172,7 @@ const ARRIVAL_CONTROL_RADIUS = 20;
 const ARRIVAL_RESPONSE_TIME_SEC = 0.22;
 const ARRIVAL_MIN_ACCEL = 0.001;
 const ARRIVAL_BATCH_FLAG_LAST_ACTION = 1 << 1;
+const FLYING_LOITER_INVALID_BODY_SLOT = 0xffffffff;
 const FLYING_LOITER_RADIUS_MULT = 8;
 const FLYING_LOITER_MIN_RADIUS = 80;
 const FLYING_LOITER_RADIAL_GAIN = 0.65;
@@ -257,6 +258,21 @@ export class Simulation {
   private _arrivalOutYBuf = new Float64Array(0);
   private _arrivalActiveBuf = new Uint8Array(0);
   private _arrivalCount = 0;
+  private _loiterEntitiesBuf: Entity[] = [];
+  private _loiterSlotsBuf = new Uint32Array(0);
+  private _loiterDxBuf = new Float64Array(0);
+  private _loiterDyBuf = new Float64Array(0);
+  private _loiterDistanceBuf = new Float64Array(0);
+  private _loiterRotationBuf = new Float64Array(0);
+  private _loiterRadiusBuf = new Float64Array(0);
+  private _loiterTurnSignBuf = new Float64Array(0);
+  private _loiterFallbackVxBuf = new Float64Array(0);
+  private _loiterFallbackVyBuf = new Float64Array(0);
+  private _loiterOutXBuf = new Float64Array(0);
+  private _loiterOutYBuf = new Float64Array(0);
+  private _loiterOutTurnSignBuf = new Float64Array(0);
+  private _loiterActiveBuf = new Uint8Array(0);
+  private _loiterCount = 0;
 
   // Reusable buffers for shared energy distribution (avoid per-tick allocations)
   private energyBuffers: EnergyBuffers = createEnergyBuffers();
@@ -1141,9 +1157,7 @@ export class Simulation {
       // No actions - flying units keep circling their last destination.
       if (unit.actions.length === 0) {
         unit.stuckTicks = 0;
-        if (this.applyFlyingLoiterThrust(entity)) {
-          movingUnits.push(entity);
-        }
+        this.queueFlyingLoiterThrust(entity);
         continue;
       }
 
@@ -1155,9 +1169,7 @@ export class Simulation {
 
       if (currentAction.type === 'wait') {
         unit.stuckTicks = 0;
-        if (this.applyFlyingLoiterThrust(entity)) {
-          movingUnits.push(entity);
-        }
+        this.queueFlyingLoiterThrust(entity);
         continue;
       }
 
@@ -1310,15 +1322,14 @@ export class Simulation {
       if (this.hasArrivedAtAction(entity, currentAction, distance)) {
         this.advanceAction(entity);
         unit.stuckTicks = 0;
-        if (unit.actions.length === 0 && this.applyFlyingLoiterThrust(entity)) {
-          movingUnits.push(entity);
-        }
+        if (unit.actions.length === 0) this.queueFlyingLoiterThrust(entity);
         continue;
       }
 
       this.queueArrivalThrust(entity, currentAction, dx, dy, distance);
     }
 
+    this.flushFlyingLoiterThrust(movingUnits);
     this.flushArrivalThrust(movingUnits, dtSec);
 
     // Stuck-detection / replan pass — runs after every unit has had
@@ -1470,9 +1481,9 @@ export class Simulation {
     unit.flyingLoiterTargetZ = action.z ?? this.world.getGroundZ(x, y);
   }
 
-  private applyFlyingLoiterThrust(entity: Entity): boolean {
+  private queueFlyingLoiterThrust(entity: Entity): void {
     const unit = entity.unit;
-    if (!unit || unit.locomotion.type !== 'flying') return false;
+    if (!unit || unit.locomotion.type !== 'flying') return;
 
     const { transform } = entity;
     const storedCenterX = unit.flyingLoiterTargetX;
@@ -1502,51 +1513,99 @@ export class Simulation {
     const dx = centerX - transform.x;
     const dy = centerY - transform.y;
     const distance = magnitude(dx, dy);
-    if (distance <= 0.0001) {
-      unit.thrustDirX = Math.cos(transform.rotation);
-      unit.thrustDirY = Math.sin(transform.rotation);
-      return true;
-    }
+    const index = this._loiterCount++;
+    this.ensureLoiterCapacity(this._loiterCount);
+    this._loiterEntitiesBuf[index] = entity;
+    this._loiterSlotsBuf[index] = entity.body?.physicsBody.slot ?? FLYING_LOITER_INVALID_BODY_SLOT;
+    this._loiterDxBuf[index] = dx;
+    this._loiterDyBuf[index] = dy;
+    this._loiterDistanceBuf[index] = distance;
+    this._loiterRotationBuf[index] = transform.rotation;
+    this._loiterRadiusBuf[index] = unit.radius.collision;
+    this._loiterTurnSignBuf[index] =
+      unit.flyingLoiterTurnSign === 1 || unit.flyingLoiterTurnSign === -1
+        ? unit.flyingLoiterTurnSign
+        : 0;
+    this._loiterFallbackVxBuf[index] = unit.velocityX;
+    this._loiterFallbackVyBuf[index] = unit.velocityY;
+  }
 
-    let turnSign = unit.flyingLoiterTurnSign;
-    if (turnSign !== 1 && turnSign !== -1) {
-      const bodyComponent = entity.body;
-      const body = bodyComponent !== null ? bodyComponent.physicsBody : null;
-      const radialX = dx / distance;
-      const radialY = dy / distance;
-      const tangentX = -radialY;
-      const tangentY = radialX;
-      const forwardX = Math.cos(transform.rotation);
-      const forwardY = Math.sin(transform.rotation);
-      const velocityX = body !== null ? body.vx : unit.velocityX ?? forwardX;
-      const velocityY = body !== null ? body.vy : unit.velocityY ?? forwardY;
-      turnSign = velocityX * tangentX + velocityY * tangentY >= 0 ? 1 : -1;
-      unit.flyingLoiterTurnSign = turnSign;
-    }
+  private ensureLoiterCapacity(required: number): void {
+    if (this._loiterSlotsBuf.length >= required) return;
+    const next = Math.max(required, this._loiterSlotsBuf.length * 2, 128);
+    const slots = new Uint32Array(next);
+    slots.set(this._loiterSlotsBuf);
+    this._loiterSlotsBuf = slots;
+    const dx = new Float64Array(next);
+    dx.set(this._loiterDxBuf);
+    this._loiterDxBuf = dx;
+    const dy = new Float64Array(next);
+    dy.set(this._loiterDyBuf);
+    this._loiterDyBuf = dy;
+    const distance = new Float64Array(next);
+    distance.set(this._loiterDistanceBuf);
+    this._loiterDistanceBuf = distance;
+    const rotation = new Float64Array(next);
+    rotation.set(this._loiterRotationBuf);
+    this._loiterRotationBuf = rotation;
+    const radius = new Float64Array(next);
+    radius.set(this._loiterRadiusBuf);
+    this._loiterRadiusBuf = radius;
+    const turnSign = new Float64Array(next);
+    turnSign.set(this._loiterTurnSignBuf);
+    this._loiterTurnSignBuf = turnSign;
+    const fallbackVx = new Float64Array(next);
+    fallbackVx.set(this._loiterFallbackVxBuf);
+    this._loiterFallbackVxBuf = fallbackVx;
+    const fallbackVy = new Float64Array(next);
+    fallbackVy.set(this._loiterFallbackVyBuf);
+    this._loiterFallbackVyBuf = fallbackVy;
+    this._loiterOutXBuf = new Float64Array(next);
+    this._loiterOutYBuf = new Float64Array(next);
+    this._loiterOutTurnSignBuf = new Float64Array(next);
+    this._loiterActiveBuf = new Uint8Array(next);
+  }
 
-    const radius = Math.max(FLYING_LOITER_MIN_RADIUS, unit.radius.collision * FLYING_LOITER_RADIUS_MULT);
-    const radialX = dx / distance;
-    const radialY = dy / distance;
-    const tangentX = -radialY * turnSign;
-    const tangentY = radialX * turnSign;
-    const radialCorrection = Math.max(
-      -1.25,
-      Math.min(1.25, ((distance - radius) / radius) * FLYING_LOITER_RADIAL_GAIN),
+  private flushFlyingLoiterThrust(movingUnits: Entity[]): void {
+    const count = this._loiterCount;
+    if (count === 0) return;
+
+    const sim = getSimWasm();
+    if (sim === undefined) {
+      throw new Error('Simulation.flushFlyingLoiterThrust: sim-wasm is not initialized');
+    }
+    sim.flyingLoiterStepBatch(
+      this._loiterSlotsBuf.subarray(0, count),
+      this._loiterDxBuf.subarray(0, count),
+      this._loiterDyBuf.subarray(0, count),
+      this._loiterDistanceBuf.subarray(0, count),
+      this._loiterRotationBuf.subarray(0, count),
+      this._loiterRadiusBuf.subarray(0, count),
+      this._loiterTurnSignBuf.subarray(0, count),
+      this._loiterFallbackVxBuf.subarray(0, count),
+      this._loiterFallbackVyBuf.subarray(0, count),
+      this._loiterOutXBuf.subarray(0, count),
+      this._loiterOutYBuf.subarray(0, count),
+      this._loiterOutTurnSignBuf.subarray(0, count),
+      this._loiterActiveBuf.subarray(0, count),
+      FLYING_LOITER_MIN_RADIUS,
+      FLYING_LOITER_RADIUS_MULT,
+      FLYING_LOITER_RADIAL_GAIN,
     );
-    let steerX = tangentX + radialX * radialCorrection;
-    let steerY = tangentY + radialY * radialCorrection;
-    const steerMag = magnitude(steerX, steerY);
-    if (steerMag <= 0.0001) {
-      steerX = Math.cos(transform.rotation);
-      steerY = Math.sin(transform.rotation);
-    } else {
-      steerX /= steerMag;
-      steerY /= steerMag;
-    }
 
-    unit.thrustDirX = steerX;
-    unit.thrustDirY = steerY;
-    return true;
+    for (let i = 0; i < count; i++) {
+      const entity = this._loiterEntitiesBuf[i];
+      const unit = entity.unit;
+      if (unit) {
+        unit.thrustDirX = this._loiterOutXBuf[i];
+        unit.thrustDirY = this._loiterOutYBuf[i];
+        const turnSign = this._loiterOutTurnSignBuf[i];
+        unit.flyingLoiterTurnSign = turnSign === 1 || turnSign === -1 ? turnSign : null;
+        if (this._loiterActiveBuf[i] !== 0) movingUnits.push(entity);
+      }
+      this._loiterEntitiesBuf[i] = undefined as unknown as Entity;
+    }
+    this._loiterCount = 0;
   }
 
   private clampMapX(x: number): number {
@@ -2025,6 +2084,10 @@ export class Simulation {
     this._deadUnitIdsBuf.length = 0;
     this._deadBuildingIdsBuf.length = 0;
     this._deathCheckIdsBuf.length = 0;
+    this._arrivalCount = 0;
+    this._arrivalEntitiesBuf.length = 0;
+    this._loiterCount = 0;
+    this._loiterEntitiesBuf.length = 0;
     this.world.clearPendingDeathCheckIds();
     resetEnergyBuffers(this.energyBuffers);
     resetShieldBuffers();

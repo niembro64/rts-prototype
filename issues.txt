@@ -198,6 +198,11 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     Rust/WASM building_active_state_step_batch helper. TypeScript now packs
     active-state rows, scatters timer/open results, applies producer-rate
     deltas, and marks renderer/network dirty state.
+    2026-05-31 progress: idle/waiting flying-unit loiter steering moved from
+    Simulation.applyFlyingLoiterThrust TypeScript vector math into the
+    Rust/WASM flying_loiter_step_batch helper. TypeScript now stores/clamps
+    loiter centers, packs candidate rows, and scatters thrust/turn-sign
+    results for UnitForceSystem.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)
