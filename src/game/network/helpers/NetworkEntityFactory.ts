@@ -65,7 +65,11 @@ function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret
     turret.shield = undefined;
     return;
   }
-  if (turret.hp <= 0) turret.hp = turret.maxHp;
+  // Prefer the real per-turret HP shipped on the wire. Fall back to the
+  // blueprint maxHp only when hpCurr wasn't shipped (e.g. a decoded
+  // delta with no turret payload). The dead branch above takes priority.
+  if (nw.hpCurr !== null && nw.hpCurr !== undefined) turret.hp = nw.hpCurr;
+  else if (turret.hp <= 0) turret.hp = turret.maxHp;
   turret.target = nw.targetId ?? null;
   turret.state = codeToTurretState(nw.state);
   turret.rotation = deqRot(wire.angular.rot);
@@ -97,7 +101,9 @@ export function applyNetworkTurretNonVisualState(
       turrets[i].shield = undefined;
       continue;
     }
-    if (turrets[i].hp <= 0) turrets[i].hp = turrets[i].maxHp;
+    const nwHpCurr = netTurrets[i].hpCurr;
+    if (nwHpCurr !== null && nwHpCurr !== undefined) turrets[i].hp = nwHpCurr;
+    else if (turrets[i].hp <= 0) turrets[i].hp = turrets[i].maxHp;
     turrets[i].target = netTurrets[i].targetId ?? null;
     turrets[i].state = codeToTurretState(netTurrets[i].state);
   }
@@ -333,6 +339,9 @@ function createUnitFromNetwork(
     entity.unit!.locomotion.id = NO_ENTITY_ID;
     entity.unit!.locomotion.parentId = NO_ENTITY_ID;
     entity.unit!.locomotion.rootHostId = NO_ENTITY_ID;
+  } else if (u !== null && u.locomotionHpCurr !== null && u.locomotionHpCurr !== undefined) {
+    // Real per-locomotion HP shipped on the wire (rides ENTITY_CHANGED_HP).
+    entity.unit!.locomotion.hp = u.locomotionHpCurr;
   }
   if (unitBlueprint) applyEntitySensorBlueprint(entity, unitBlueprint);
 

@@ -21124,7 +21124,7 @@ pub const SNAPSHOT_ENTITY_TYPE_BUILDING: u8 = 2;
 
 /// Encoder turret scratch — JS pre-fills with already-quantized
 /// turret values, then the encoder reads from it when emitting the
-/// turrets array. Layout per turret (10 f64 = 80 bytes):
+/// turrets array. Layout per turret (11 f64 = 88 bytes):
 ///   [0..4]  qRot(rotation, vel, pitch, pitchVel)
 ///   [4]     turretBlueprintCode (TurretBlueprintCode as f64)
 ///   [5]     state code (TurretStateCode as f64)
@@ -21132,9 +21132,10 @@ pub const SNAPSHOT_ENTITY_TYPE_BUILDING: u8 = 2;
 ///   [7]     target_id (raw entity id as f64; ignored when has_target_id==0)
 ///   [8]     has_shield_range (0 or 1)
 ///   [9]     shield_range (raw value; ignored when has_ff_range==0)
+///   [10]    hpCurr (raw current HP as f64; always present)
 ///
 /// Capacity grown on demand by snapshot_encode_turret_scratch_ensure.
-const SNAPSHOT_ENCODE_TURRET_STRIDE: usize = 10;
+const SNAPSHOT_ENCODE_TURRET_STRIDE: usize = 11;
 
 struct SnapshotEncodeTurretScratch {
     buf: Vec<f64>,
@@ -21566,6 +21567,7 @@ pub fn snapshot_encode_entity_unit(
     build_complete: u8,
     build_paid_energy: f64,
     build_paid_metal: f64,
+    locomotion_hp_curr: f64,
 ) -> u32 {
     let w = messagepack_writer();
     let start = w.buf.len();
@@ -21591,7 +21593,8 @@ pub fn snapshot_encode_entity_unit(
     let has_velocity = is_full || (changed_fields & ENTITY_CHANGED_VEL) != 0;
     let mut unit_field_count: usize = 0;
     if has_hp {
-        unit_field_count += 1;
+        // hp + locomotionHpCurr (locomotionHpCurr rides the HP block).
+        unit_field_count += 2;
     }
     if has_velocity {
         unit_field_count += 1;
@@ -21646,6 +21649,11 @@ pub fn snapshot_encode_entity_unit(
         w.write_number(hp_curr);
         w.write_str("max");
         w.write_number(hp_max);
+        // locomotionHpCurr rides the HP block (same gate as body hp).
+        // Emitted immediately after `hp` so the byte order matches the
+        // JS DTO insertion order used by the parity test.
+        w.write_str("locomotionHpCurr");
+        w.write_number(locomotion_hp_curr);
     }
 
     if has_velocity {
@@ -21856,10 +21864,11 @@ pub fn snapshot_encode_entity_unit(
             let target_id_raw = scratch.buf[base + 7];
             let has_ff_range = scratch.buf[base + 8] != 0.0;
             let ff_range_raw = scratch.buf[base + 9];
+            let hp_curr_raw = scratch.buf[base + 10];
 
             // turret DTO: { turret: { turretBlueprintCode, angular: {4 fields} }, [targetId,]
-            // state, [currentShieldRange] }
-            let mut turret_field_count: usize = 2; // turret + state
+            // state, [currentShieldRange], hpCurr }
+            let mut turret_field_count: usize = 3; // turret + state + hpCurr
             if has_target {
                 turret_field_count += 1;
             }
@@ -21895,6 +21904,10 @@ pub fn snapshot_encode_entity_unit(
                 w.write_str("currentShieldRange");
                 w.write_number(ff_range_raw);
             }
+
+            // hpCurr is unconditional — last key in the turret map.
+            w.write_str("hpCurr");
+            w.write_number(hp_curr_raw);
         }
     }
 
@@ -22065,8 +22078,9 @@ pub fn snapshot_encode_entity_building(
             let target_id_raw = scratch.buf[base + 7];
             let has_ff_range = scratch.buf[base + 8] != 0.0;
             let ff_range_raw = scratch.buf[base + 9];
+            let hp_curr_raw = scratch.buf[base + 10];
 
-            let mut turret_field_count: usize = 2; // turret + state
+            let mut turret_field_count: usize = 3; // turret + state + hpCurr
             if has_target {
                 turret_field_count += 1;
             }
@@ -22100,6 +22114,9 @@ pub fn snapshot_encode_entity_building(
                 w.write_str("currentShieldRange");
                 w.write_number(ff_range_raw);
             }
+            // hpCurr is unconditional — last key in the turret map.
+            w.write_str("hpCurr");
+            w.write_number(hp_curr_raw);
         }
     }
 
@@ -23674,7 +23691,9 @@ const V6_TURRET_FLAG_SHIELD_RANGE: u32 = 1 << 1;
 const V6_WAYPOINT_FLAG_POS_Z: u32 = 1 << 0;
 
 const V6_BASIC_STRIDE: usize = 9;
-const V6_UNIT_STRIDE: usize = 51;
+// Slot 51 carries the unit locomotion's current HP (locomotionHpCurr),
+// added in lockstep with ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE on the JS side.
+const V6_UNIT_STRIDE: usize = 52;
 const V6_BUILDING_STRIDE: usize = 34;
 
 const V6_KIND_RAW: u32 = 0;
@@ -24122,6 +24141,10 @@ fn v6_write_turret_payload(
         if has_ffr {
             writer.write_f64_le(turret_buf[tb + 9]);
         }
+        // hpCurr is unconditional (every live turret has HP) — written
+        // last, after the conditional target/shield fields. Mirror in the
+        // JS byte decoder readUnitTurretDeltaByteEntity.
+        writer.write_f64_le(turret_buf[tb + 10]);
     }
 }
 
@@ -24211,7 +24234,9 @@ fn v6_write_detail_turret(w: &mut MessagePackWriter, turret_buf: &[f64], t_row: 
     if has_ffr {
         flags |= V6_TURRET_FLAG_SHIELD_RANGE;
     }
-    let mut len = 7usize;
+    // 7 fixed (flags, id, state, rot, vel, pitch, pitchVel) + 1
+    // unconditional trailing hpCurr.
+    let mut len = 8usize;
     if has_target {
         len += 1;
     }
@@ -24232,6 +24257,9 @@ fn v6_write_detail_turret(w: &mut MessagePackWriter, turret_buf: &[f64], t_row: 
     if has_ffr {
         w.write_number(turret_buf[base + 9]);
     }
+    // hpCurr is unconditional — last array element, mirroring the JS
+    // array decoder unpackTurret.
+    w.write_number(turret_buf[base + 10]);
 }
 
 fn v6_write_detail_waypoint(
@@ -24374,7 +24402,8 @@ fn v6_write_detail_unit(
 
     let mut len = 1usize;
     if hp_present {
-        len += 2;
+        // hp.curr, hp.max, locomotionHpCurr (rides the HP block).
+        len += 3;
     }
     if vel_present {
         len += 3;
@@ -24418,6 +24447,9 @@ fn v6_write_detail_unit(
     if hp_present {
         w.write_number(unit_buf[base + 8]);
         w.write_number(unit_buf[base + 9]);
+        // locomotionHpCurr rides the HP block, after curr/max — mirror in
+        // the JS array decoder unpackUnit.
+        w.write_number(unit_buf[base + 51]);
     }
     if vel_present {
         w.write_number(unit_buf[base + 10]);

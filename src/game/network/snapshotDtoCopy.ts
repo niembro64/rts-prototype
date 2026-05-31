@@ -310,6 +310,7 @@ export function createTurretDto(): NetworkServerSnapshotTurret {
     state: 0,
     active: null,
     currentShieldRange: null,
+    hpCurr: null,
   };
 }
 
@@ -326,6 +327,7 @@ export function copyTurretInto(
   dst.state = src.state;
   dst.active = src.active;
   dst.currentShieldRange = src.currentShieldRange;
+  dst.hpCurr = src.hpCurr;
   return dst;
 }
 

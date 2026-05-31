@@ -405,6 +405,7 @@ function packTurretsIntoScratch(
     view[base + 7] = src.targetId ?? 0;
     view[base + 8] = src.currentShieldRange !== null ? 1 : 0;
     view[base + 9] = src.currentShieldRange ?? 0;
+    view[base + 10] = src.hpCurr ?? 0;
   }
 }
 
@@ -505,6 +506,7 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
     build !== null && build.complete === true ? 1 : 0,
     build !== null ? build.paid.energy : 0,
     build !== null ? build.paid.metal : 0,
+    unit.locomotionHpCurr ?? 0,
   );
   return true;
 }
@@ -719,6 +721,7 @@ function encodeEntityWireRow(
       values[base + 46],
       values[base + 47],
       values[base + 48],
+      values[base + 51], // locomotionHpCurr
     );
     return true;
   }
@@ -867,6 +870,7 @@ function copyEntityTurretRowsIntoScratch(
     view[dstRow + 7] = src[srcRow + 7];
     view[dstRow + 8] = src[srcRow + 8];
     view[dstRow + 9] = src[srcRow + 9];
+    view[dstRow + 10] = src[srcRow + 10];
   }
   return true;
 }

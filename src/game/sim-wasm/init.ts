@@ -2420,6 +2420,7 @@ export interface SnapshotEncodeApi {
     buildComplete: number,
     buildPaidEnergy: number,
     buildPaidMetal: number,
+    locomotionHpCurr: number,
   ) => number;
   /** Raw pointer to the D.2 MessagePack writer scratch. Refreshed
    *  by every encoder call. */
@@ -2433,11 +2434,11 @@ export interface SnapshotEncodeApi {
    *  by the DP-02 parity flag as a temporary fallback for DTO shapes
    *  that are not fully ported to Rust yet. */
   appendRawValue: (bytes: Uint8Array) => number;
-  /** Raw pointer to the turret scratch buffer. JS fills 10 f64 per
+  /** Raw pointer to the turret scratch buffer. JS fills 11 f64 per
    *  turret (see lib.rs SNAPSHOT_ENCODE_TURRET_STRIDE layout)
    *  before calling encodeEntityUnit with hasTurrets=1. */
   turretScratchPtr: () => number;
-  /** Pre-grow the turret scratch to fit `count` turrets (10 f64 each). */
+  /** Pre-grow the turret scratch to fit `count` turrets (11 f64 each). */
   turretScratchEnsure: (count: number) => void;
   /** Stride per turret in the scratch buffer (f64 count). */
   readonly turretScratchStride: number;
@@ -3572,7 +3573,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           v6BasicScratchStride: 9,
           v6UnitScratchPtr: snapshot_encode_v6_unit_scratch_ptr,
           v6UnitScratchEnsure: snapshot_encode_v6_unit_scratch_ensure,
-          v6UnitScratchStride: 51,
+          v6UnitScratchStride: 52,
           v6BuildingScratchPtr: snapshot_encode_v6_building_scratch_ptr,
           v6BuildingScratchEnsure: snapshot_encode_v6_building_scratch_ensure,
           v6BuildingScratchStride: 34,
@@ -3581,7 +3582,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           writerClear: messagepack_writer_clear,
           turretScratchPtr: snapshot_encode_turret_scratch_ptr,
           turretScratchEnsure: snapshot_encode_turret_scratch_ensure,
-          turretScratchStride: 10,
+          turretScratchStride: 11,
           actionScratchPtr: snapshot_encode_action_scratch_ptr,
           actionScratchEnsure: snapshot_encode_action_scratch_ensure,
           actionScratchStride: 16,

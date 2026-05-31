@@ -38,6 +38,7 @@ function createEmptyUnitSub(): UnitSub {
     orientation: null,
     angularVelocity3: null,
     locomotionActive: null,
+    locomotionHpCurr: null,
     fireEnabled: null,
     isCommander: null,
     buildTargetId: null,
@@ -134,6 +135,7 @@ function rentDecodedUnitSub(): UnitSub {
     u.orientation = null;
     u.angularVelocity3 = null;
     u.locomotionActive = null;
+    u.locomotionHpCurr = null;
     u.fireEnabled = null;
     u.isCommander = null;
     u.buildTargetId = null;
@@ -895,6 +897,10 @@ function writeUnitTurretDeltaPayload(
     if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) {
       rows.writeFloat64(turret.currentShieldRange!);
     }
+    // hpCurr is unconditional (every live turret has HP) — written last,
+    // after the conditional target/shield fields. Mirror in the matching
+    // byte decoder readUnitTurretDeltaByteEntity.
+    rows.writeFloat64(turret.hpCurr ?? 0);
   }
 }
 
@@ -953,7 +959,9 @@ function unitTurretRowWidth(rows: PackedUnitTurretRows, offset: number): number 
   const turretCount = rows[offset + 2] ?? 0;
   for (let i = 0; i < turretCount; i++) {
     const flags = rows[offset + width] ?? 0;
-    width += 7;
+    // 7 fixed (flags, blueprintCode, state, rot, vel, pitch, pitchVel)
+    // + 1 unconditional trailing hpCurr.
+    width += 8;
     if ((flags & TURRET_FLAG_TARGET_ID) !== 0) width += 1;
     if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) width += 1;
   }
@@ -1171,12 +1179,15 @@ function unpackUnitTurretDeltaRows(
         targetId: null,
         active: null,
         currentShieldRange: null,
+        hpCurr: null,
       };
       if ((flags & TURRET_FLAG_TARGET_ID) !== 0) turret.targetId = rows[i++] as number;
       if ((flags & TURRET_FLAG_INACTIVE) !== 0) turret.active = false;
       if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) {
         turret.currentShieldRange = rows[i++] as number;
       }
+      // hpCurr is unconditional — last element in the row.
+      turret.hpCurr = rows[i++] as number;
       turrets[turretIndex] = turret;
     }
     out[outIndex++] = {
@@ -1255,12 +1266,16 @@ function readUnitTurretDeltaByteEntity(
       targetId: null,
       active: null,
       currentShieldRange: null,
+      hpCurr: null,
     };
     if ((flags & TURRET_FLAG_TARGET_ID) !== 0) turret.targetId = reader.readVarUint();
     if ((flags & TURRET_FLAG_INACTIVE) !== 0) turret.active = false;
     if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) {
       turret.currentShieldRange = reader.readFloat64();
     }
+    // hpCurr is unconditional — read last, mirroring the byte encoders
+    // writeUnitTurretDeltaPayload (JS) and v6_write_turret_payload (Rust).
+    turret.hpCurr = reader.readFloat64();
     turrets[turretIndex] = turret;
   }
   return {
@@ -1307,7 +1322,10 @@ function packUnit(unit: UnitSub): unknown[] {
   const row: unknown[] = [flags];
   if ((flags & UNIT_FLAG_HP) !== 0) {
     const hp = unit.hp!;
-    row.push(hp.curr, hp.max);
+    // locomotionHpCurr rides the HP block (set by the server inside the
+    // ENTITY_CHANGED_HP gate, same as body hp.curr). Appended after
+    // curr/max so the matching decoder reads it in lockstep.
+    row.push(hp.curr, hp.max, unit.locomotionHpCurr ?? 0);
   }
   if ((flags & UNIT_FLAG_VELOCITY) !== 0) {
     const v = unit.velocity!;
@@ -1358,6 +1376,8 @@ function unpackUnit(row: unknown[]): UnitSub {
     const curr = row[i++] as number;
     const max = row[i++] as number;
     unit.hp = { curr, max };
+    // locomotionHpCurr rides the HP block — read after curr/max.
+    unit.locomotionHpCurr = row[i++] as number;
   }
   if ((flags & UNIT_FLAG_VELOCITY) !== 0) {
     const x = row[i++] as number;
@@ -1632,6 +1652,8 @@ function packTurret(t: NetworkServerSnapshotTurret): unknown[] {
   ];
   if ((flags & TURRET_FLAG_TARGET_ID) !== 0) row.push(t.targetId!);
   if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) row.push(t.currentShieldRange!);
+  // hpCurr is unconditional — appended last, after the conditional fields.
+  row.push(t.hpCurr ?? 0);
   return row;
 }
 
@@ -1652,12 +1674,15 @@ function unpackTurret(row: unknown[]): NetworkServerSnapshotTurret {
     targetId: null,
     active: null,
     currentShieldRange: null,
+    hpCurr: null,
   };
   if ((flags & TURRET_FLAG_TARGET_ID) !== 0) turret.targetId = row[i++] as number;
   if ((flags & TURRET_FLAG_INACTIVE) !== 0) turret.active = false;
   if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) {
     turret.currentShieldRange = row[i++] as number;
   }
+  // hpCurr is unconditional — last element, after the conditional fields.
+  turret.hpCurr = row[i++] as number;
   return turret;
 }
 

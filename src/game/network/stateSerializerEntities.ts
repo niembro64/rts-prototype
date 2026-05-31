@@ -84,15 +84,18 @@ export const ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE = 9;
 // no longer shipped — client integrates from velocity only). Stride
 // shrank from 64 → 59 when 5 retired actuator-state slots were dropped.
 // shrank from 59 → 51 when 8 retired visual-suspension slots were
-// dropped from the JS→WASM entity row.
-export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 51;
+// dropped from the JS→WASM entity row. Grew 51 → 52 when locomotion
+// hpCurr (slot 51) was added to the wire, riding ENTITY_CHANGED_HP the
+// same way body hp.curr (slot 8) does.
+export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 52;
 export const ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE = 34;
 export const ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE = 16;
 // Turret row layout: rot, vel, pitch, pitchVel, id, state, hasTarget,
-// targetId, hasShieldRange, shieldRange. Stride shrank from
+// targetId, hasShieldRange, shieldRange, hpCurr. Stride shrank from
 // 12 → 10 when the 2 angular acceleration slots (acc, pitchAcc) were
-// removed alongside movementAccel.
-export const ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE = 10;
+// removed alongside movementAccel, then grew 10 → 11 when the turret's
+// current HP (slot 10, unconditional) was added to the wire.
+export const ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE = 11;
 export const ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE = 5;
 
 export type EntitySnapshotWireSource = {
@@ -188,6 +191,7 @@ function writeTurretsToPool(
       : wireTargetId;
     dst.state = hasTargetingFsm ? _snapshotTurretFsm.stateCode : turretStateToCode(src.state);
     dst.active = src.id === NO_ENTITY_ID || src.hp <= 0 ? false : null;
+    dst.hpCurr = src.hp;
     const shield = src.shield;
     dst.currentShieldRange = shield !== undefined ? shield.range : null;
   }
@@ -349,6 +353,7 @@ function appendTurretWireRows(turrets: readonly NetworkServerSnapshotTurret[] | 
     values[base + 7] = src.targetId ?? 0;
     values[base + 8] = src.currentShieldRange !== null ? 1 : 0;
     values[base + 9] = src.currentShieldRange ?? 0;
+    values[base + 10] = src.hpCurr ?? 0;
   }
   return offset;
 }
@@ -471,6 +476,7 @@ function appendUnitEntityWireRow(
   values[base + 48] = build !== null ? build.paid.metal : 0;
   values[base + 49] = turretOffset;
   values[base + 50] = actionOffset;
+  values[base + 51] = unit.locomotionHpCurr ?? 0;
   entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_UNIT);
   entityWireSource.rowIndices.push(rowIndex);
 }
@@ -646,6 +652,7 @@ export function serializeEntitySnapshot(
       u.hp = null;
       u.velocity = null;
       u.locomotionActive = null;
+      u.locomotionHpCurr = null;
 
       if (isFull) {
         writeNetworkUnitStaticFields(
@@ -708,6 +715,7 @@ export function serializeEntitySnapshot(
         hp.curr = entity.unit.hp;
         hp.max = entity.unit.maxHp;
         u.hp = hp;
+        u.locomotionHpCurr = entity.unit.locomotion.hp;
         if (entity.unit.locomotion.id === NO_ENTITY_ID || entity.unit.locomotion.hp <= 0) {
           u.locomotionActive = false;
         }

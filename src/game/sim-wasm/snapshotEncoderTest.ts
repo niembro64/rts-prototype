@@ -93,7 +93,7 @@ import {
   packTerrainForWire,
 } from '../network/snapshotStaticWirePack';
 
-const TURRET_SCRATCH_STRIDE = 10;
+const TURRET_SCRATCH_STRIDE = 11;
 const ACTION_SCRATCH_STRIDE = 16;
 
 const _utf8 = new TextEncoder();
@@ -144,7 +144,25 @@ type TurretFixture = {
   targetId?: number;
   state: number;
   currentShieldRange?: number;
+  /** Turret current HP. Always emitted by the encoder (unconditional);
+   *  defaults to 0 in the wire fixture when omitted from the literal. */
+  hpCurr?: number;
 };
+
+// Rust emits turret `hpCurr` unconditionally as the LAST key in the
+// turret map (after the optional currentShieldRange). Normalize a
+// fixture turret so the reference msgpack carries hpCurr in that same
+// position; absent literals default to 0.
+function normalizeTurretFixture(t: TurretFixture): TurretFixture {
+  const { hpCurr: _drop, ...rest } = t;
+  return { ...rest, hpCurr: t.hpCurr ?? 0 };
+}
+
+function normalizeTurretFixtures(
+  turrets: TurretFixture[] | undefined,
+): TurretFixture[] | undefined {
+  return turrets === undefined ? undefined : turrets.map(normalizeTurretFixture);
+}
 
 type ActionFixture = {
   type: number;
@@ -252,6 +270,9 @@ function runEntityBasicCases(memory: WebAssembly.Memory): { passed: number; fail
 type UnitFixture = BasicEntityFixture & {
   unit: {
     hp: { curr: number; max: number };
+    /** Locomotion current HP. Rides the HP block (emitted right after
+     *  `hp`). Defaults to 0 in the wire fixture when omitted. */
+    locomotionHpCurr?: number;
     velocity: { x: number; y: number; z: number };
     unitBlueprintCode?: number;
     radius?: { visual: number; hitbox: number; collision: number };
@@ -273,13 +294,27 @@ type UnitFixture = BasicEntityFixture & {
 };
 
 function sparseUnitFixture(f: UnitFixture): UnitFixture {
-  if (f.changedFields === undefined) return f;
+  // The Rust encoder emits `locomotionHpCurr` immediately after `hp`
+  // (it rides the HP block). Rebuild the wire fixture with that key
+  // ordering so the reference msgpack bytes match. ignoreUndefined drops
+  // the key when hp (and thus locomotionHpCurr) is sparse on a delta.
+  const hpPresent = f.changedFields === undefined || fixtureHasField(f, ENTITY_CHANGED_HP);
+  const velPresent = f.changedFields === undefined || fixtureHasField(f, ENTITY_CHANGED_VEL);
+  const { hp: _hp, locomotionHpCurr: _loco, velocity: _vel, ...restUnit } = f.unit;
+  const basic = f.changedFields === undefined ? f : sparseBasicFixture(f);
+  // Spread restUnit first, then re-assign `turrets`: object spread keeps
+  // the original key POSITION while taking the normalized value, so
+  // turret ordering relative to the other unit keys is unchanged.
   return {
-    ...sparseBasicFixture(f),
+    ...basic,
     unit: {
-      ...f.unit,
-      hp: fixtureHasField(f, ENTITY_CHANGED_HP) ? f.unit.hp : undefined,
-      velocity: fixtureHasField(f, ENTITY_CHANGED_VEL) ? f.unit.velocity : undefined,
+      hp: hpPresent ? f.unit.hp : undefined,
+      locomotionHpCurr: hpPresent ? (f.unit.locomotionHpCurr ?? 0) : undefined,
+      velocity: velPresent ? f.unit.velocity : undefined,
+      ...restUnit,
+      ...(f.unit.turrets !== undefined
+        ? { turrets: normalizeTurretFixtures(f.unit.turrets) }
+        : {}),
     },
   } as UnitFixture;
 }
@@ -335,6 +370,7 @@ function packTurretsIntoScratch(memory: WebAssembly.Memory, turrets: TurretFixtu
     view[base + 7] = t.targetId ?? 0;
     view[base + 8] = t.currentShieldRange !== undefined ? 1 : 0;
     view[base + 9] = t.currentShieldRange ?? 0;
+    view[base + 10] = t.hpCurr ?? 0;
   }
 }
 
@@ -898,6 +934,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       buildComplete,
       buildPaidEnergy,
       buildPaidMetal,
+      f.unit.locomotionHpCurr ?? 0,
     );
     const ptr = messagepack_writer_ptr();
     const len = messagepack_writer_len();
@@ -959,13 +996,23 @@ type BuildingFixture = {
 };
 
 function sparseBuildingFixture(f: BuildingFixture): BuildingFixture {
-  if (f.changedFields === undefined) return f;
+  const turretsOverride = f.building.turrets !== undefined
+    ? { turrets: normalizeTurretFixtures(f.building.turrets) }
+    : {};
+  if (f.changedFields === undefined) {
+    // Full record: pass through, but still normalize turret hpCurr so the
+    // reference msgpack carries the unconditional field the Rust encoder
+    // always emits. Spread keeps `turrets` in its original position.
+    if (f.building.turrets === undefined) return f;
+    return { ...f, building: { ...f.building, ...turretsOverride } } as BuildingFixture;
+  }
   return {
     ...sparseBasicFixture(f),
     building: {
       ...f.building,
       hp: fixtureHasField(f, ENTITY_CHANGED_HP) ? f.building.hp : undefined,
       build: fixtureHasField(f, ENTITY_CHANGED_BUILDING) ? f.building.build : undefined,
+      ...turretsOverride,
     },
   } as BuildingFixture;
 }
@@ -3108,6 +3155,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           build?.complete === true ? 1 : 0,
           build?.paid.energy ?? 0,
           build?.paid.metal ?? 0,
+          u.unit.locomotionHpCurr ?? 0,
         );
       } else {
         const b = e as BuildingFixture;
