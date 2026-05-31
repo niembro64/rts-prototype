@@ -131,6 +131,40 @@ pub fn wind_sample_state(now_ms: f64, out: &mut [f64]) -> u32 {
     1
 }
 
+#[wasm_bindgen]
+pub fn economy_accumulate_player_rates(
+    player_ids: &[u32],
+    rates: &[f64],
+    count: u32,
+    out_rates_by_player: &mut [f64],
+) -> u32 {
+    for rate in out_rates_by_player.iter_mut() {
+        *rate = 0.0;
+    }
+
+    let n = count as usize;
+    if n > player_ids.len() || n > rates.len() {
+        return 0;
+    }
+
+    let mut max_exclusive = 0usize;
+    for i in 0..n {
+        let player_id = player_ids[i] as usize;
+        let rate = rates[i];
+        if player_id == 0
+            || player_id >= out_rates_by_player.len()
+            || !rate.is_finite()
+            || rate <= 0.0
+        {
+            continue;
+        }
+        out_rates_by_player[player_id] += rate;
+        max_exclusive = max_exclusive.max(player_id + 1);
+    }
+
+    max_exclusive as u32
+}
+
 #[inline]
 fn is_in_contact(penetration: f64) -> bool {
     penetration >= -UNIT_GROUND_CONTACT_EPSILON
@@ -25146,6 +25180,25 @@ mod sim_kernel_tests {
         let mut short = [0.0; 3];
         assert_eq!(wind_sample_state(0.0, &mut short), 0);
         assert_eq!(wind_sample_state(f64::NAN, &mut a), 0);
+    }
+
+    #[test]
+    fn economy_accumulate_player_rates_groups_by_player_and_clears_output() {
+        let players = [2, 1, 2, 0, 7];
+        let rates = [3.5, 2.0, 4.5, 12.0, 9.0];
+        let mut out = [99.0; 5];
+
+        assert_eq!(
+            economy_accumulate_player_rates(&players, &rates, 5, &mut out),
+            3
+        );
+        assert_eq!(out, [0.0, 2.0, 8.0, 0.0, 0.0]);
+
+        assert_eq!(
+            economy_accumulate_player_rates(&players, &rates, 0, &mut out),
+            0
+        );
+        assert_eq!(out, [0.0; 5]);
     }
 
     #[test]

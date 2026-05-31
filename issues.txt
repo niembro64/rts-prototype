@@ -122,8 +122,11 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     effort; lower urgency than the SECTION A items.
     2026-05-31 progress: the deterministic wind oscillator moved from TypeScript to
     rts-sim-wasm, with Rust constants generated from src/windConfig.json and the old TS
-    waveform implementation deleted. Wind producer aggregation and stockpile/resource
-    movement accounting remain TypeScript-orchestrated under this item.
+    waveform implementation deleted.
+    2026-05-31 progress: wind producer-rate aggregation for WindPowerTracker moved
+    from a TypeScript Map loop to the Rust/WASM economy_accumulate_player_rates
+    batch helper. Producer stockpile crediting and resource movement accounting
+    remain TypeScript-orchestrated under this item.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)

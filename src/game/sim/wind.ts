@@ -35,38 +35,84 @@ export function sampleWindStateInto(target: WindState, nowMs = Date.now()): Wind
 
 export class WindPowerTracker {
   private appliedProductionByPlayer = new Map<PlayerId, number>();
-  private nextProductionByPlayer = new Map<PlayerId, number>();
+  private producerPlayerIds = new Uint32Array(32);
+  private producerRates = new Float64Array(32);
+  private ratesByPlayer = new Float64Array(8);
 
   update(world: WorldState, wind: WindState): void {
     const baseProduction = getBuildingConfig('buildingWind').energyProduction ?? 0;
-    const nextProductionByPlayer = this.nextProductionByPlayer;
-    nextProductionByPlayer.clear();
+    const ratePerTurbine = Math.max(0, baseProduction * wind.speed);
+    let count = 0;
+    let maxPlayerId = 0;
 
-    for (const entity of world.getWindBuildings()) {
-      if (!entity.ownership || !entity.building || entity.building.hp <= 0) continue;
-      if (!isEntityActive(entity)) continue;
-      // OFF (closed) wind turbines stop producing — they're in their
-      // stowed pose with blades folded against the pole.
-      const activeState = entity.building.activeState;
-      if (activeState !== null && activeState.open === false) continue;
-      const pid = entity.ownership.playerId;
-      nextProductionByPlayer.set(
-        pid,
-        (nextProductionByPlayer.get(pid) ?? 0) + baseProduction * wind.speed,
-      );
+    if (ratePerTurbine > 0) {
+      const windBuildings = world.getWindBuildings();
+      for (let i = 0; i < windBuildings.length; i++) {
+        const entity = windBuildings[i];
+        if (!entity.ownership || !entity.building || entity.building.hp <= 0) continue;
+        if (!isEntityActive(entity)) continue;
+        // OFF (closed) wind turbines stop producing — they're in their
+        // stowed pose with blades folded against the pole.
+        const activeState = entity.building.activeState;
+        if (activeState !== null && activeState.open === false) continue;
+        const pid = entity.ownership.playerId;
+        this.ensureProducerCapacity(count + 1);
+        this.producerPlayerIds[count] = pid;
+        this.producerRates[count] = ratePerTurbine;
+        count++;
+        if (pid > maxPlayerId) maxPlayerId = pid;
+      }
     }
 
-    for (const [pid, next] of nextProductionByPlayer) {
+    this.ensurePlayerRateCapacity(maxPlayerId);
+    const sim = getSimWasm();
+    if (sim === undefined) {
+      throw new Error('WindPowerTracker.update: sim-wasm is not initialized');
+    }
+
+    const maxExclusive = sim.economyAccumulatePlayerRates(
+      this.producerPlayerIds,
+      this.producerRates,
+      count,
+      this.ratesByPlayer,
+    );
+
+    for (let playerId = 1; playerId < maxExclusive; playerId++) {
+      const next = this.ratesByPlayer[playerId];
+      if (next <= 0) continue;
+      const pid = playerId as PlayerId;
       const prev = this.appliedProductionByPlayer.get(pid) ?? 0;
       this.applyDelta(pid, next - prev);
       this.appliedProductionByPlayer.set(pid, next);
     }
 
     for (const [pid, prev] of this.appliedProductionByPlayer) {
-      if (nextProductionByPlayer.has(pid)) continue;
+      const next = pid < maxExclusive ? this.ratesByPlayer[pid] : 0;
+      if (next > 0) continue;
       this.applyDelta(pid, -prev);
       this.appliedProductionByPlayer.delete(pid);
     }
+  }
+
+  private ensureProducerCapacity(count: number): void {
+    if (count <= this.producerPlayerIds.length) return;
+    let nextCapacity = this.producerPlayerIds.length;
+    while (nextCapacity < count) nextCapacity *= 2;
+
+    const nextPlayerIds = new Uint32Array(nextCapacity);
+    nextPlayerIds.set(this.producerPlayerIds);
+    this.producerPlayerIds = nextPlayerIds;
+
+    const nextRates = new Float64Array(nextCapacity);
+    nextRates.set(this.producerRates);
+    this.producerRates = nextRates;
+  }
+
+  private ensurePlayerRateCapacity(playerId: number): void {
+    if (playerId < this.ratesByPlayer.length) return;
+    let nextCapacity = this.ratesByPlayer.length;
+    while (nextCapacity <= playerId) nextCapacity *= 2;
+    this.ratesByPlayer = new Float64Array(nextCapacity);
   }
 
   private applyDelta(playerId: PlayerId, delta: number): void {
