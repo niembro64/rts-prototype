@@ -193,6 +193,11 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     and commander reclaim HP/refund tick math moved into Rust/WASM helpers.
     TypeScript now marshals entity shape/resource fields, applies returned
     HP/stockpile side effects, and still owns command queue/orchestration.
+    2026-05-31 progress: shared building active-state ON/OFF timer lifecycle
+    moved from updateBuildingActiveStates TypeScript branches into the
+    Rust/WASM building_active_state_step_batch helper. TypeScript now packs
+    active-state rows, scatters timer/open results, applies producer-rate
+    deltas, and marks renderer/network dirty state.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)

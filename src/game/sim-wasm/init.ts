@@ -25,6 +25,7 @@ import __wbg_init, {
   factory_build_spot,
   factory_build_spot_blocked,
   factory_plan_production_actions,
+  building_active_state_step_batch,
   economy_accumulate_player_rates,
   economy_compute_converter_transfer,
   economy_credit_stockpile,
@@ -493,6 +494,16 @@ export interface SimWasm {
     count: number,
     outAction: Uint8Array,
     outProgress: Float64Array,
+  ) => number;
+  readonly buildingActiveStateStepBatch: (
+    open: Uint8Array,
+    active: Uint8Array,
+    damageDelayMs: Float64Array,
+    reopenDelayMs: Float64Array,
+    count: number,
+    dtMs: number,
+    reopenDelayResetMs: number,
+    outOpenChanged: Uint8Array,
   ) => number;
   readonly economyAccumulatePlayerRates: (
     playerIds: Uint32Array,
@@ -3156,6 +3167,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         factoryBuildSpot: factory_build_spot,
         factoryBuildSpotBlocked: factory_build_spot_blocked,
         factoryPlanProductionActions: factory_plan_production_actions,
+        buildingActiveStateStepBatch: building_active_state_step_batch,
         economyAccumulatePlayerRates: economy_accumulate_player_rates,
         economyComputeConverterTransfer: economy_compute_converter_transfer,
         economyCreditStockpile: economy_credit_stockpile,

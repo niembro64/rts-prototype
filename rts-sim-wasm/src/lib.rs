@@ -498,6 +498,68 @@ pub fn economy_accumulate_player_rates(
     max_exclusive as u32
 }
 
+#[wasm_bindgen]
+pub fn building_active_state_step_batch(
+    open: &mut [u8],
+    active: &[u8],
+    damage_delay_ms: &mut [f64],
+    reopen_delay_ms: &mut [f64],
+    count: u32,
+    dt_ms: f64,
+    reopen_delay_reset_ms: f64,
+    out_open_changed: &mut [u8],
+) -> u32 {
+    let n = count as usize;
+    if n > open.len()
+        || n > active.len()
+        || n > damage_delay_ms.len()
+        || n > reopen_delay_ms.len()
+        || n > out_open_changed.len()
+    {
+        return 0;
+    }
+
+    let dt = economy_normalized_amount(dt_ms);
+    let reopen_reset = economy_normalized_amount(reopen_delay_reset_ms);
+
+    for i in 0..n {
+        out_open_changed[i] = 0;
+
+        if active[i] == 0 {
+            if open[i] != 0 {
+                open[i] = 0;
+                out_open_changed[i] = 1;
+            }
+            continue;
+        }
+
+        if open[i] != 0 {
+            let current_damage_delay = economy_normalized_amount(damage_delay_ms[i]);
+            if current_damage_delay > 0.0 {
+                let next_damage_delay = (current_damage_delay - dt).max(0.0);
+                damage_delay_ms[i] = next_damage_delay;
+                if next_damage_delay <= 0.0 {
+                    open[i] = 0;
+                    reopen_delay_ms[i] = reopen_reset;
+                    out_open_changed[i] = 1;
+                }
+            } else {
+                damage_delay_ms[i] = 0.0;
+            }
+        } else {
+            let next_reopen_delay = (economy_normalized_amount(reopen_delay_ms[i]) - dt).max(0.0);
+            reopen_delay_ms[i] = next_reopen_delay;
+            if next_reopen_delay <= 0.0 {
+                open[i] = 1;
+                damage_delay_ms[i] = 0.0;
+                out_open_changed[i] = 1;
+            }
+        }
+    }
+
+    1
+}
+
 #[inline]
 fn economy_normalized_amount(amount: f64) -> f64 {
     if amount.is_finite() {
@@ -26373,6 +26435,49 @@ mod sim_kernel_tests {
         let mut short = [0.0; 4];
         assert_eq!(
             commander_apply_reclaim_tick(8.0, 100.0, 20.0, 0.5, 300.0, 120.0, 0.5, &mut short),
+            0,
+        );
+    }
+
+    #[test]
+    fn building_active_state_step_batch_updates_open_close_lifecycle() {
+        let mut open = [1, 1, 0, 1, 0];
+        let active = [1, 1, 1, 0, 1];
+        let mut damage_delay = [200.0, 0.0, 0.0, 250.0, 0.0];
+        let mut reopen_delay = [0.0, 0.0, 200.0, 400.0, 700.0];
+        let mut changed = [0; 5];
+
+        assert_eq!(
+            building_active_state_step_batch(
+                &mut open,
+                &active,
+                &mut damage_delay,
+                &mut reopen_delay,
+                5,
+                250.0,
+                5000.0,
+                &mut changed,
+            ),
+            1,
+        );
+
+        assert_eq!(open, [0, 1, 1, 0, 0]);
+        assert_eq!(damage_delay, [0.0, 0.0, 0.0, 250.0, 0.0]);
+        assert_eq!(reopen_delay, [5000.0, 0.0, 0.0, 400.0, 450.0]);
+        assert_eq!(changed, [1, 0, 1, 1, 0]);
+
+        let mut short_changed = [0; 4];
+        assert_eq!(
+            building_active_state_step_batch(
+                &mut open,
+                &active,
+                &mut damage_delay,
+                &mut reopen_delay,
+                5,
+                250.0,
+                5000.0,
+                &mut short_changed,
+            ),
             0,
         );
     }

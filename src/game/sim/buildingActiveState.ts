@@ -27,6 +27,7 @@ import { ENTITY_CHANGED_BUILDING } from '../../types/network';
 import { getBuildingConfig } from './buildConfigs';
 import { isEntityActive } from './buildableHelpers';
 import { economyManager } from './economy';
+import { getSimWasm } from '../sim-wasm/init';
 import type { WorldState } from './WorldState';
 import type { BuildingActiveState, BuildingBlueprintId, Entity } from './types';
 
@@ -202,49 +203,81 @@ export function isBuildingActiveStateFortified(entity: Entity): boolean {
     && building.activeState.open === false;
 }
 
+const activeStateRows: Entity[] = [];
+let activeStateOpen = new Uint8Array(32);
+let activeStateActive = new Uint8Array(32);
+let activeStateDamageDelayMs = new Float64Array(32);
+let activeStateReopenDelayMs = new Float64Array(32);
+let activeStateOpenChanged = new Uint8Array(32);
+
+function ensureActiveStateStepCapacity(count: number): void {
+  if (count <= activeStateOpen.length) return;
+  let nextCapacity = activeStateOpen.length;
+  while (nextCapacity < count) nextCapacity *= 2;
+  activeStateOpen = new Uint8Array(nextCapacity);
+  activeStateActive = new Uint8Array(nextCapacity);
+  activeStateDamageDelayMs = new Float64Array(nextCapacity);
+  activeStateReopenDelayMs = new Float64Array(nextCapacity);
+  activeStateOpenChanged = new Uint8Array(nextCapacity);
+}
+
 /** Per-tick driver. Counts down the grace timer (ON → OFF) and the
  *  reopen timer (OFF → ON). Production follows the ON flag. */
 export function updateBuildingActiveStates(world: WorldState, dtMs: number): void {
-  for (const entity of world.getActiveStateBuildings()) {
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('updateBuildingActiveStates: sim-wasm is not initialized');
+  }
+
+  const entities = world.getActiveStateBuildings();
+  ensureActiveStateStepCapacity(entities.length);
+  activeStateRows.length = 0;
+
+  let count = 0;
+  for (const entity of entities) {
     if (!entity.building) continue;
     const state = ensureBuildingActiveState(entity);
     if (!state) continue;
-    if (!isEntityActive(entity) || entity.building.hp <= 0) {
-      // Dead / not-yet-complete: force closed so the "rate applied iff
-      // open" invariant holds and the income-rate stat is released once.
-      // (An inactive producer is normally already closed, so this only
-      // fires when a live, open building drops to hp<=0.)
-      if (state.open) {
-        state.open = false;
-        applyProducerRateDelta(entity, false);
-        world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
-      }
-      continue;
-    }
 
-    let changed = false;
-    if (state.open) {
-      if (state.damageDelayMs > 0) {
-        state.damageDelayMs = Math.max(0, state.damageDelayMs - dtMs);
-        if (state.damageDelayMs <= 0) {
-          state.open = false;
-          state.reopenDelayMs = BUILDING_REOPEN_DELAY_MS;
-          changed = true;
-        }
-      }
-    } else {
-      state.reopenDelayMs = Math.max(0, state.reopenDelayMs - dtMs);
-      if (state.reopenDelayMs <= 0) {
-        state.open = true;
-        state.damageDelayMs = 0;
-        changed = true;
-      }
-    }
+    activeStateRows[count] = entity;
+    activeStateOpen[count] = state.open ? 1 : 0;
+    activeStateActive[count] = isEntityActive(entity) && entity.building.hp > 0 ? 1 : 0;
+    activeStateDamageDelayMs[count] = state.damageDelayMs;
+    activeStateReopenDelayMs[count] = state.reopenDelayMs;
+    count++;
+  }
 
-    // `changed` is set iff `open` flipped this tick, so the rate delta
-    // fires exactly once per transition.
-    if (changed) {
-      applyProducerRateDelta(entity, state.open);
+  if (count <= 0) return;
+
+  if (sim.buildingActiveStateStepBatch(
+    activeStateOpen,
+    activeStateActive,
+    activeStateDamageDelayMs,
+    activeStateReopenDelayMs,
+    count,
+    dtMs,
+    BUILDING_REOPEN_DELAY_MS,
+    activeStateOpenChanged,
+  ) === 0) {
+    throw new Error(
+      'updateBuildingActiveStates: building_active_state_step_batch rejected its buffers',
+    );
+  }
+
+  for (let i = 0; i < count; i++) {
+    const entity = activeStateRows[i];
+    const building = entity.building;
+    if (building === null || building.activeState === null) continue;
+    const state = building.activeState;
+    const nextOpen = activeStateOpen[i] !== 0;
+    state.open = nextOpen;
+    state.damageDelayMs = activeStateDamageDelayMs[i];
+    state.reopenDelayMs = activeStateReopenDelayMs[i];
+
+    // `activeStateOpenChanged` is set iff `open` flipped this tick, so
+    // the rate delta fires exactly once per transition.
+    if (activeStateOpenChanged[i] !== 0) {
+      applyProducerRateDelta(entity, nextOpen);
       world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
     }
   }
