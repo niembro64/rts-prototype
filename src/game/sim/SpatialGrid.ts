@@ -219,7 +219,6 @@ export class SpatialGrid {
 
   addBuilding(entity: Entity): void {
     if (!entity.building) return;
-    if (this.buildingSlots.has(entity.id)) return;
     const slot = this.slotFor(entity);
     this.kindBySlot[slot] = SPATIAL_KIND_BUILDING;
     this.buildingSlots.add(entity.id);

@@ -53,6 +53,8 @@ import { DETACHED_TURRET_TOWER_BLUEPRINT_ID } from '../../types/buildingTypes';
 import { isConstructionPieceMaterialized } from './buildableHelpers';
 
 const TERRAIN_NORMAL_CACHE_CELL_SIZE = 25;
+const DETACHED_TURRET_LAUNCH_HORIZONTAL_SPEED = 34;
+const DETACHED_TURRET_LAUNCH_VERTICAL_SPEED = 42;
 const EMPTY_PLAYER_SET: ReadonlySet<PlayerId> = new Set();
 const FLAT_SURFACE_NORMAL: SurfaceNormal = { nx: 0, ny: 0, nz: 1 };
 
@@ -77,6 +79,12 @@ export type RemovedSnapshotEntity = {
   // 'tower' rides the building ghost path on death — same static
   // last-seen-position semantics under FOW-02b.
   type: 'unit' | 'building' | 'tower';
+};
+
+export type DetachedTurretAgentSpawn = {
+  agent: Entity;
+  position: { x: number; y: number; z: number };
+  launchVelocity: { x: number; y: number; z: number };
 };
 
 export type CreateProjectileProvenance = {
@@ -209,6 +217,7 @@ export class WorldState {
    *  removal, but host-only systems such as physics own external
    *  resources that must be released before the entity disappears. */
   public onEntityRemoving: ((entity: Entity) => void) | null = null;
+  public onDetachedTurretAgentSpawn: ((spawn: DetachedTurretAgentSpawn) => void) | null = null;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   // Shared cache manager avoids creating new arrays on every getUnits()/getBuildings()/getProjectiles() call
@@ -494,12 +503,13 @@ export class WorldState {
       return null;
     }
 
-    const detachedAgent = this.createDetachedTurretAgent(host, sourceTurret);
+    const spawn = this.createDetachedTurretAgentSpawn(host, sourceTurret);
     this.clearMountedTurretAfterDetach(sourceTurret);
-    this.addEntity(detachedAgent);
+    this.addEntity(spawn.agent);
+    this.onDetachedTurretAgentSpawn?.(spawn);
     this.refreshEntityMetadata(host);
     this.markSnapshotDirty(host.id, ENTITY_CHANGED_TURRETS);
-    return detachedAgent;
+    return spawn.agent;
   }
 
   private clearMountedTurretAfterDetach(turret: Turret): void {
@@ -555,7 +565,7 @@ export class WorldState {
   // Remove entity from world
   removeEntity(id: EntityId): void {
     const entity = this.entities.get(id);
-    const detachedTurretAgents = entity !== undefined
+    const detachedTurretSpawns = entity !== undefined
       ? this.collectDetachedTurretAgents(entity)
       : [];
     if (entity !== undefined && this.onEntityRemoving !== null) this.onEntityRemoving(entity);
@@ -576,12 +586,14 @@ export class WorldState {
     if (entity !== undefined) this.markEntityMetadataDead(entity);
     this.entities.delete(id);
     this.cache.invalidate();
-    for (let i = 0; i < detachedTurretAgents.length; i++) {
-      this.addEntity(detachedTurretAgents[i]);
+    for (let i = 0; i < detachedTurretSpawns.length; i++) {
+      const spawn = detachedTurretSpawns[i];
+      this.addEntity(spawn.agent);
+      this.onDetachedTurretAgentSpawn?.(spawn);
     }
   }
 
-  private collectDetachedTurretAgents(host: Entity): Entity[] {
+  private collectDetachedTurretAgents(host: Entity): DetachedTurretAgentSpawn[] {
     if (host.buildingBlueprintId === DETACHED_TURRET_TOWER_BLUEPRINT_ID) return [];
     const combat = host.combat;
     if (combat === null || combat.turrets.length === 0) return [];
@@ -590,14 +602,23 @@ export class WorldState {
       (host.building !== null && host.building.hp <= 0);
     if (!hostBodyDead) return [];
 
-    const detached: Entity[] = [];
+    const detached: DetachedTurretAgentSpawn[] = [];
     for (let i = 0; i < combat.turrets.length; i++) {
       const turret = combat.turrets[i];
       if (turret.id === NO_ENTITY_ID || turret.hp <= 0 || turret.config.visualOnly) continue;
       if (this.entities.has(turret.id)) continue;
-      detached.push(this.createDetachedTurretAgent(host, turret));
+      detached.push(this.createDetachedTurretAgentSpawn(host, turret));
     }
     return detached;
+  }
+
+  private createDetachedTurretAgentSpawn(host: Entity, sourceTurret: Turret): DetachedTurretAgentSpawn {
+    const position = this.resolveDetachedTurretPosition(host, sourceTurret);
+    return {
+      agent: this.createDetachedTurretAgent(host, sourceTurret),
+      position: { x: position.x, y: position.y, z: position.z },
+      launchVelocity: this.computeDetachedTurretLaunchVelocity(host, sourceTurret, position),
+    };
   }
 
   private createDetachedTurretAgent(host: Entity, sourceTurret: Turret): Entity {
@@ -673,6 +694,40 @@ export class WorldState {
       turret.mount.z,
       host.unit !== null ? host.unit.surfaceNormal : FLAT_SURFACE_NORMAL,
     );
+  }
+
+  private computeDetachedTurretLaunchVelocity(
+    host: Entity,
+    turret: Turret,
+    position: { x: number; y: number; z: number },
+  ): { x: number; y: number; z: number } {
+    let dx = position.x - host.transform.x;
+    let dy = position.y - host.transform.y;
+    let dist = Math.hypot(dx, dy);
+    if (dist <= 0.0001) {
+      const fallbackAngle = host.transform.rotation + (turret.mountIndex + 1) * 2.399963229728653;
+      dx = Math.cos(fallbackAngle);
+      dy = Math.sin(fallbackAngle);
+      dist = 1;
+    }
+
+    const baseVelocity = turret.worldPosTick >= 0 ? turret.worldVelocity : null;
+    const hostUnit = host.unit;
+    const baseVx = baseVelocity !== null && Number.isFinite(baseVelocity.x)
+      ? baseVelocity.x
+      : (hostUnit !== null ? hostUnit.velocityX : 0);
+    const baseVy = baseVelocity !== null && Number.isFinite(baseVelocity.y)
+      ? baseVelocity.y
+      : (hostUnit !== null ? hostUnit.velocityY : 0);
+    const baseVz = baseVelocity !== null && Number.isFinite(baseVelocity.z)
+      ? baseVelocity.z
+      : (hostUnit !== null ? hostUnit.velocityZ : 0);
+
+    return {
+      x: baseVx + (dx / dist) * DETACHED_TURRET_LAUNCH_HORIZONTAL_SPEED,
+      y: baseVy + (dy / dist) * DETACHED_TURRET_LAUNCH_HORIZONTAL_SPEED,
+      z: Math.max(0, baseVz) + DETACHED_TURRET_LAUNCH_VERTICAL_SPEED,
+    };
   }
 
   markSnapshotDirty(id: EntityId, fields: number): void {

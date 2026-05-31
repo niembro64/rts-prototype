@@ -78,9 +78,9 @@ A39. [HIGH] Sub-entities are not independently destructible; the host does not d
     now promote into hidden tower-class autonomous agents, retaining the old turret EntityId as the
     new live entity id and continuing to acquire/fire through the normal combat pipeline. The
     remaining gap is broader live detachment semantics: materialized construction turrets now
-    detach into independent tower agents when factory construction is interrupted, but locomotion
-    pieces still do not continue as live detached agents and detached turrets are still
-    grounded/static rather than physically launched bodies. —
+    detach into independent tower agents when factory construction is interrupted, and detached
+    turret agents now receive dynamic physics bodies plus launch velocity, but locomotion pieces
+    still do not continue as live detached agents. —
     FIX: finish live piece detachment as real autonomous agents for every piece kind. A piece that
     DETACHES while still alive (e.g. a locomotion torn loose, or one a bomb-unit launches) stays a
     live, fully-autonomous agent until its OWN health hits zero; detachment removes it from the host
@@ -114,7 +114,7 @@ A41. [MEDIUM] Hosts spawn whole, not built bottom-up piece by piece.
     counters remain as the compact wire/UI mirror, not the sim's piece-level funding model. The
     remaining gap is that inactive pieces still have backing runtime objects even though construction
     shell subentity IDs now materialize only when the dependency-ordered piece becomes active,
-    materialized construction turrets now detach into independent tower agents when factory
+    materialized construction turrets now detach into launched independent tower agents when factory
     construction is interrupted, and locomotion-only interrupted assemblies are still represented
     as preserved partial shells rather than standalone locomotion agents. —
     FIX: finish late materialization/partial assembly semantics: each piece should enter the active

@@ -1,7 +1,7 @@
 // GameServer - Headless simulation server.
 // Owns WorldState, Simulation, PhysicsEngine3D, and runs the game loop via setInterval.
 
-import type { WorldState } from '../sim/WorldState';
+import type { DetachedTurretAgentSpawn, WorldState } from '../sim/WorldState';
 import type { Simulation } from '../sim/Simulation';
 import type {
   AttackCommand,
@@ -55,6 +55,7 @@ import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDisabledTurretJsOnlyFields } from '../sim/combat/combatActivity';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { factoryProductionSystem } from '../sim/factoryProduction';
+import { getTurretBlueprint } from '../sim/blueprints';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import { initSimWasm } from '../sim-wasm/init';
 import { ServerBootstrap } from './ServerBootstrap';
@@ -248,6 +249,9 @@ export class GameServer {
       this.physics.removeBody(body);
       entity.body = null;
     };
+    this.world.onDetachedTurretAgentSpawn = (spawn: DetachedTurretAgentSpawn) => {
+      this.createPhysicsBodyForDetachedTurret(spawn);
+    };
 
     // Handle unit deaths: remove entities. WorldState.onEntityRemoving
     // releases physics bodies for every removal path.
@@ -418,6 +422,7 @@ export class GameServer {
 
   private detachSimulationCallbacks(): void {
     this.world.onEntityRemoving = null;
+    this.world.onDetachedTurretAgentSpawn = null;
     this.simulation.onUnitDeath = null;
     this.simulation.onUnitSpawn = null;
     this.simulation.onBuildingDeath = null;
@@ -467,18 +472,56 @@ export class GameServer {
     this.physics.collectLastStepEntityIds(ids);
     for (let i = 0; i < ids.length; i++) {
       const entity = this.world.getEntity(ids[i]);
-      if (entity === undefined || entity.unit === null) continue;
+      if (entity === undefined) continue;
       const bodySlot = entity.body;
       if (bodySlot === null) continue;
       const body = bodySlot.physicsBody;
       entity.transform.x = body.x;
       entity.transform.y = body.y;
       entity.transform.z = body.z;
-      entity.unit.velocityX = body.vx;
-      entity.unit.velocityY = body.vy;
-      entity.unit.velocityZ = body.vz;
-      this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL);
+      if (entity.unit !== null) {
+        entity.unit.velocityX = body.vx;
+        entity.unit.velocityY = body.vy;
+        entity.unit.velocityZ = body.vz;
+        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL);
+      } else if (entity.building !== null) {
+        spatialGrid.addBuilding(entity);
+        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_POS);
+      }
     }
+  }
+
+  private createPhysicsBodyForDetachedTurret(spawn: DetachedTurretAgentSpawn): void {
+    const entity = spawn.agent;
+    if (entity.body !== null || entity.building === null || entity.combat === null) return;
+    const turret = entity.combat.turrets[0];
+    if (turret === undefined) return;
+
+    const radius = Math.max(1, turret.config.radius.collision);
+    const mass = Math.max(1, getTurretBlueprint(turret.config.turretBlueprintId).base.mass);
+    const body = this.physics.createUnitBody(
+      spawn.position.x,
+      spawn.position.y,
+      radius,
+      radius,
+      mass,
+      `detached_turret_${entity.id}`,
+      entity.id,
+      spawn.position.z,
+      this.world.getCachedSurfaceNormal(spawn.position.x, spawn.position.y),
+    );
+    entity.body = { physicsBody: body };
+    entity.transform.x = body.x;
+    entity.transform.y = body.y;
+    entity.transform.z = body.z;
+    this.physics.launchBody(
+      body,
+      spawn.launchVelocity.x,
+      spawn.launchVelocity.y,
+      spawn.launchVelocity.z,
+    );
+    spatialGrid.addBuilding(entity);
+    this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_POS);
   }
 
   // Emit a snapshot to all listeners (driven by internal snapshot interval)
