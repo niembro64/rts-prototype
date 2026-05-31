@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { CLIENT_CONFIG } from '../clientBarConfig';
 import { GOOD_TPS } from '../config';
+import { RESOURCE_BALL_DENSITY_OPTIONS } from '../resourceConfig';
 import { snapshotRateHz } from '../serverBarConfig';
 import BarButton from './BarButton.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
@@ -471,6 +472,19 @@ defineProps<{
           title="Snap beam origins to live rendered turret centers"
           @click="model.toggleBeamSnapToTurret"
         >TURRET</BarButton>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel title="Resource-ball density. Balls per second equals absolute resources per second multiplied by this scalar.">RES BALLS:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in RESOURCE_BALL_DENSITY_OPTIONS"
+            :key="opt.value"
+            :active="model.resourceBallDensity === opt.value"
+            :title="`Resource-ball density scalar ${opt.value}: balls/sec = resources/sec x ${opt.value}`"
+            @click="model.changeResourceBallDensity(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />

@@ -125,6 +125,7 @@ export type GameCanvasClientControlBarModel = {
   readonly smokeTrails: boolean;
   readonly smokeSoftEdges: boolean;
   readonly beamSnapToTurret: boolean;
+  readonly resourceBallDensity: number;
   readonly movementPosEma: PositionDriftChannelMode;
   readonly movementVelEma: DriftChannelMode;
   readonly rotationPosEma: PositionDriftChannelMode;
@@ -164,6 +165,7 @@ export type GameCanvasClientControlBarModel = {
   toggleSmokeTrails(): void;
   toggleSmokeSoftEdges(): void;
   toggleBeamSnapToTurret(): void;
+  changeResourceBallDensity(value: number): void;
   changeMovementPosEma(mode: PositionDriftChannelMode): void;
   changeMovementVelEma(mode: DriftChannelMode): void;
   changeRotationPosEma(mode: PositionDriftChannelMode): void;

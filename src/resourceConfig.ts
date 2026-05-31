@@ -18,6 +18,11 @@
 
 import rawConfig from './resourceConfig.json';
 
+export type ResourceBallDensityOption = {
+  readonly value: number;
+  readonly label: string;
+};
+
 function posNum(label: string, value: number): number {
   if (!Number.isFinite(value) || value <= 0) {
     throw new Error(`resourceConfig.${label} must be a finite number > 0; received ${value}`);
@@ -57,10 +62,46 @@ function posInt(label: string, value: number): number {
   return value;
 }
 
+function resourceBallDensityOptions(
+  label: string,
+  value: readonly { readonly value: number; readonly label: string }[],
+  defaultValue: number,
+): readonly ResourceBallDensityOption[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`resourceConfig.${label} must be a non-empty option array`);
+  }
+  let defaultFound = false;
+  const options: ResourceBallDensityOption[] = [];
+  for (let i = 0; i < value.length; i++) {
+    const rawOption = value[i];
+    const optionValue = posNum(`${label}[${i}].value`, rawOption.value);
+    const optionLabel = rawOption.label;
+    if (typeof optionLabel !== 'string' || optionLabel.length === 0) {
+      throw new Error(`resourceConfig.${label}[${i}].label must be a non-empty string`);
+    }
+    if (optionValue === defaultValue) defaultFound = true;
+    options.push({ value: optionValue, label: optionLabel });
+  }
+  if (!defaultFound) {
+    throw new Error(`resourceConfig.${label} must include ballsPerResourcePerSecond default ${defaultValue}`);
+  }
+  return options;
+}
+
+const defaultBallsPerResourcePerSecond = posNum(
+  'ballsPerResourcePerSecond',
+  rawConfig.ballsPerResourcePerSecond,
+);
+
 export const RESOURCE_CONFIG = {
   /** balls/second spawned per (resource/second) of transfer. The single
    *  global toggle for resource-ball density across every pylon. */
-  ballsPerResourcePerSecond: posNum('ballsPerResourcePerSecond', rawConfig.ballsPerResourcePerSecond),
+  ballsPerResourcePerSecond: defaultBallsPerResourcePerSecond,
+  ballsPerResourcePerSecondOptions: resourceBallDensityOptions(
+    'ballsPerResourcePerSecondOptions',
+    rawConfig.ballsPerResourcePerSecondOptions,
+    defaultBallsPerResourcePerSecond,
+  ),
   spray: {
     /** Default trail altitude for legacy 2D spray targets. */
     trailY: nonNegNum('spray.trailY', rawConfig.spray.trailY),
@@ -85,12 +126,28 @@ export const RESOURCE_CONFIG = {
   },
 } as const;
 
-/** balls/second spawned per (resource/second) of transfer. */
-export const BALLS_PER_RESOURCE_PER_SECOND = RESOURCE_CONFIG.ballsPerResourcePerSecond;
+export const RESOURCE_BALL_DENSITY_OPTIONS = RESOURCE_CONFIG.ballsPerResourcePerSecondOptions;
+
+/** Default balls/second spawned per (resource/second) of transfer. */
+export const DEFAULT_BALLS_PER_RESOURCE_PER_SECOND = RESOURCE_CONFIG.ballsPerResourcePerSecond;
+
+let activeBallsPerResourcePerSecond = DEFAULT_BALLS_PER_RESOURCE_PER_SECOND;
+
+export function getBallsPerResourcePerSecond(): number {
+  return activeBallsPerResourcePerSecond;
+}
+
+export function setBallsPerResourcePerSecond(value: number): void {
+  activeBallsPerResourcePerSecond = posNum('activeBallsPerResourcePerSecond', value);
+}
+
+export function isResourceBallDensityOption(value: number): boolean {
+  return RESOURCE_BALL_DENSITY_OPTIONS.some((opt) => opt.value === value);
+}
 
 /** Convert an absolute resource transfer rate (resources/second) into a
  *  ball spawn rate (balls/second). Negative/zero rates produce 0. */
 export function ballSpawnRateForResourceRate(resourceRatePerSecond: number): number {
   if (!Number.isFinite(resourceRatePerSecond) || resourceRatePerSecond <= 0) return 0;
-  return resourceRatePerSecond * RESOURCE_CONFIG.ballsPerResourcePerSecond;
+  return resourceRatePerSecond * activeBallsPerResourcePerSecond;
 }

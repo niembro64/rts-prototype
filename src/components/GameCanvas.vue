@@ -289,6 +289,7 @@ const {
   smokeTrails,
   smokeSoftEdges,
   beamSnapToTurret,
+  resourceBallDensity,
   triangleDebug,
   buildGridDebug,
   sightBoundary,
@@ -335,6 +336,7 @@ const {
   toggleSmokeTrails,
   toggleSmokeSoftEdges,
   toggleBeamSnapToTurret,
+  changeResourceBallDensity,
   toggleTriangleDebug,
   toggleBuildGridDebug,
   toggleSightBoundary,
@@ -902,6 +904,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   smokeTrails: smokeTrails.value,
   smokeSoftEdges: smokeSoftEdges.value,
   beamSnapToTurret: beamSnapToTurret.value,
+  resourceBallDensity: resourceBallDensity.value,
   movementPosEma: movementPosEma.value,
   movementVelEma: movementVelEma.value,
   rotationPosEma: rotationPosEma.value,
@@ -941,6 +944,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleSmokeTrails,
   toggleSmokeSoftEdges,
   toggleBeamSnapToTurret,
+  changeResourceBallDensity,
   changeMovementPosEma,
   changeMovementVelEma,
   changeRotationPosEma,
@@ -1012,6 +1016,7 @@ watchEffect(() => {
   m.smokeTrails = smokeTrails.value;
   m.smokeSoftEdges = smokeSoftEdges.value;
   m.beamSnapToTurret = beamSnapToTurret.value;
+  m.resourceBallDensity = resourceBallDensity.value;
   m.movementPosEma = movementPosEma.value;
   m.movementVelEma = movementVelEma.value;
   m.rotationPosEma = rotationPosEma.value;

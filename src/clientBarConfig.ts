@@ -19,6 +19,11 @@ import type {
 } from './types/client';
 import { CAMERA_FOV_DEGREES } from './config';
 import { persist, persistJson, readPersisted } from './persistence';
+import {
+  DEFAULT_BALLS_PER_RESOURCE_PER_SECOND,
+  isResourceBallDensityOption,
+  setBallsPerResourcePerSecond,
+} from './resourceConfig';
 import rawPlayerClientGraphicsConfig from './playerClientGraphicsConfig.json';
 import clientBarConfig from './clientBarConfig.json';
 
@@ -263,6 +268,7 @@ type ClientStorageKeyName =
   | 'smokeTrails'
   | 'smokeSoftEdges'
   | 'beamSnapToTurret'
+  | 'resourceBallDensity'
   | 'triangleDebug'
   | 'buildGridDebug'
   | 'sightBoundary'
@@ -296,6 +302,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'smokeTrails',
   'smokeSoftEdges',
   'beamSnapToTurret',
+  'resourceBallDensity',
   'triangleDebug',
   'buildGridDebug',
   'sightBoundary',
@@ -380,6 +387,7 @@ let currentLocomotionMarks: boolean = _cd.locomotionMarks.default;
 let currentSmokeTrails: boolean = _cd.smokeTrails.default;
 let currentSmokeSoftEdges: boolean = _cd.smokeSoftEdges.default;
 let currentBeamSnapToTurret: boolean = _cd.beamSnapToTurret.default;
+let currentResourceBallDensity: number = DEFAULT_BALLS_PER_RESOURCE_PER_SECOND;
 let currentTriangleDebug: boolean = _cd.triangleDebug.default;
 let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
 let currentSightBoundary: boolean = _cd.sightBoundary.default;
@@ -434,6 +442,11 @@ function readPositionDriftChannelMode(
   return isPositionDriftChannelMode(stored) ? stored : fallback;
 }
 
+function applyResourceBallDensity(value: number): void {
+  currentResourceBallDensity = value;
+  setBallsPerResourcePerSecond(value);
+}
+
 function applyClientDefaults(mode: ClientMode): void {
   const cd = getClientConfig(mode);
   currentRenderMode = cd.render.default;
@@ -450,6 +463,7 @@ function applyClientDefaults(mode: ClientMode): void {
   currentSmokeTrails = cd.smokeTrails.default;
   currentSmokeSoftEdges = cd.smokeSoftEdges.default;
   currentBeamSnapToTurret = cd.beamSnapToTurret.default;
+  applyResourceBallDensity(DEFAULT_BALLS_PER_RESOURCE_PER_SECOND);
   currentTriangleDebug = cd.triangleDebug.default;
   currentBuildGridDebug = cd.buildGridDebug.default;
   currentSightBoundary = cd.sightBoundary.default;
@@ -519,6 +533,13 @@ function loadFromStorage(mode: ClientMode): void {
   const storedBeamSnapToTurret = readPersisted(keys.beamSnapToTurret);
   if (storedBeamSnapToTurret !== null) {
     currentBeamSnapToTurret = storedBeamSnapToTurret === 'true';
+  }
+  const storedResourceBallDensity = readPersisted(keys.resourceBallDensity);
+  if (storedResourceBallDensity !== null) {
+    const parsed = Number(storedResourceBallDensity);
+    if (Number.isFinite(parsed) && isResourceBallDensityOption(parsed)) {
+      applyResourceBallDensity(parsed);
+    }
   }
   const storedTriangleDebug = readPersisted(keys.triangleDebug);
   if (storedTriangleDebug !== null) {
@@ -813,6 +834,16 @@ export function getBeamSnapToTurret(): boolean {
 export function setBeamSnapToTurret(enabled: boolean): void {
   currentBeamSnapToTurret = enabled;
   persist(activeStorageKeys().beamSnapToTurret, String(enabled));
+}
+
+export function getResourceBallDensity(): number {
+  return currentResourceBallDensity;
+}
+
+export function setResourceBallDensity(value: number): void {
+  if (!isResourceBallDensityOption(value)) return;
+  applyResourceBallDensity(value);
+  persist(activeStorageKeys().resourceBallDensity, String(value));
 }
 
 export function getTriangleDebug(): boolean {

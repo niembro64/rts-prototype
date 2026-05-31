@@ -131,6 +131,103 @@ pub fn wind_sample_state(now_ms: f64, out: &mut [f64]) -> u32 {
     1
 }
 
+#[inline]
+fn js_min(a: f64, b: f64) -> f64 {
+    if a.is_nan() || b.is_nan() {
+        f64::NAN
+    } else {
+        a.min(b)
+    }
+}
+
+#[inline]
+fn js_max(a: f64, b: f64) -> f64 {
+    if a.is_nan() || b.is_nan() {
+        f64::NAN
+    } else {
+        a.max(b)
+    }
+}
+
+/// Factory construction-site placement kernel. TypeScript supplies the
+/// authored footprint/radius constants and current factory/rally state;
+/// Rust owns the direction normalization, footprint-edge projection,
+/// construction-radius clamp, and optional map clamp.
+///
+/// out[0..7] = x, y, local_x, local_y, dir_x, dir_y, offset.
+#[wasm_bindgen]
+pub fn factory_build_spot(
+    factory_x: f64,
+    factory_y: f64,
+    rally_x: f64,
+    rally_y: f64,
+    fallback_dir_x: f64,
+    fallback_dir_y: f64,
+    unit_radius: f64,
+    footprint_width: f64,
+    footprint_height: f64,
+    construction_radius: f64,
+    build_clearance: f64,
+    build_radius_fraction: f64,
+    map_width: f64,
+    map_height: f64,
+    clamp_radius: f64,
+    out: &mut [f64],
+) -> u32 {
+    if out.len() < 7 {
+        return 0;
+    }
+
+    let mut dx = rally_x - factory_x;
+    let mut dy = rally_y - factory_y;
+    let mut len = (dx * dx + dy * dy).sqrt();
+    if len < 1.0e-3 {
+        dx = fallback_dir_x;
+        dy = fallback_dir_y;
+        len = 1.0e-3_f64.max((dx * dx + dy * dy).sqrt());
+    }
+
+    let dir_x = dx / len;
+    let dir_y = dy / len;
+    let edge_x = if dir_x.abs() > 1.0e-3 {
+        footprint_width * 0.5 / dir_x.abs()
+    } else {
+        f64::INFINITY
+    };
+    let edge_y = if dir_y.abs() > 1.0e-3 {
+        footprint_height * 0.5 / dir_y.abs()
+    } else {
+        f64::INFINITY
+    };
+    let edge_along_dir = js_min(edge_x, edge_y);
+    let outside_footprint = edge_along_dir + js_max(0.0, unit_radius) + build_clearance;
+    let preferred_offset = construction_radius * build_radius_fraction;
+    let offset = js_min(
+        construction_radius,
+        js_max(outside_footprint, preferred_offset),
+    );
+    let local_x = dir_x * offset;
+    let local_y = dir_y * offset;
+    let mut x = factory_x + local_x;
+    let mut y = factory_y + local_y;
+
+    if map_width.is_finite() {
+        x = js_max(clamp_radius, js_min(map_width - clamp_radius, x));
+    }
+    if map_height.is_finite() {
+        y = js_max(clamp_radius, js_min(map_height - clamp_radius, y));
+    }
+
+    out[0] = x;
+    out[1] = y;
+    out[2] = x - factory_x;
+    out[3] = y - factory_y;
+    out[4] = dir_x;
+    out[5] = dir_y;
+    out[6] = offset;
+    1
+}
+
 #[wasm_bindgen]
 pub fn economy_accumulate_player_rates(
     player_ids: &[u32],
@@ -25709,6 +25806,88 @@ mod sim_kernel_tests {
         let mut short = [0.0; 3];
         assert_eq!(wind_sample_state(0.0, &mut short), 0);
         assert_eq!(wind_sample_state(f64::NAN, &mut a), 0);
+    }
+
+    #[test]
+    fn factory_build_spot_projects_outside_footprint_and_clamps_map() {
+        let mut out = [0.0; 7];
+        assert_eq!(
+            factory_build_spot(
+                100.0,
+                50.0,
+                200.0,
+                50.0,
+                0.0,
+                1.0,
+                8.0,
+                96.0,
+                64.0,
+                192.0,
+                16.0,
+                0.72,
+                125.0,
+                f64::NAN,
+                8.0,
+                &mut out,
+            ),
+            1
+        );
+        assert_eq!(out[0], 117.0);
+        assert_eq!(out[1], 50.0);
+        assert_eq!(out[2], 17.0);
+        assert_eq!(out[3], 0.0);
+        assert_eq!(out[4], 1.0);
+        assert_eq!(out[5], 0.0);
+        assert!((out[6] - 138.24).abs() < 1.0e-9);
+
+        let mut fallback = [0.0; 7];
+        assert_eq!(
+            factory_build_spot(
+                10.0,
+                10.0,
+                10.0,
+                10.0,
+                0.0,
+                -2.0,
+                0.0,
+                20.0,
+                20.0,
+                30.0,
+                1.0,
+                0.5,
+                f64::NAN,
+                f64::NAN,
+                0.0,
+                &mut fallback,
+            ),
+            1
+        );
+        assert_eq!(fallback[4], 0.0);
+        assert_eq!(fallback[5], -1.0);
+        assert_eq!(fallback[6], 15.0);
+
+        let mut short = [0.0; 6];
+        assert_eq!(
+            factory_build_spot(
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                1.0,
+                1.0,
+                1.0,
+                0.0,
+                1.0,
+                f64::NAN,
+                f64::NAN,
+                0.0,
+                &mut short,
+            ),
+            0
+        );
     }
 
     #[test]

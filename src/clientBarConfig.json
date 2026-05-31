@@ -162,6 +162,7 @@
     "smokeTrails": "smoke-trails",
     "smokeSoftEdges": "smoke-soft-edges",
     "beamSnapToTurret": "beam-snap-to-turret",
+    "resourceBallDensity": "resource-ball-density",
     "triangleDebug": "triangle-debug",
     "buildGridDebug": "build-grid-debug",
     "sightBoundary": "sight-boundary",

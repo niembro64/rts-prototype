@@ -29,6 +29,7 @@ import {
   getProjRangeToggle,
   getRangeToggle,
   getRenderMode,
+  getResourceBallDensity,
   getSoundToggle,
   getTriangleDebug,
   getUnitRadiusToggle,
@@ -58,6 +59,7 @@ import {
   setProjRangeToggle,
   setRangeToggle,
   setRenderMode,
+  setResourceBallDensity,
   setSoundToggle,
   setTriangleDebug,
   setUnitRadiusToggle,
@@ -67,6 +69,7 @@ import {
 } from '../clientBarConfig';
 import { audioManager } from '../game/audio/AudioManager';
 import { musicPlayer } from '../game/audio/MusicPlayer';
+import { DEFAULT_BALLS_PER_RESOURCE_PER_SECOND } from '../resourceConfig';
 import type {
   AudioScope,
   CameraFovDegrees,
@@ -100,6 +103,7 @@ export function useGameCanvasClientSettings({
   const smokeTrails = ref<boolean>(getSmokeTrails());
   const smokeSoftEdges = ref<boolean>(getSmokeSoftEdges());
   const beamSnapToTurret = ref<boolean>(getBeamSnapToTurret());
+  const resourceBallDensity = ref<number>(getResourceBallDensity());
   const triangleDebug = ref<boolean>(getTriangleDebug());
   const buildGridDebug = ref<boolean>(getBuildGridDebug());
   const sightBoundary = ref<boolean>(getSightBoundary());
@@ -163,6 +167,7 @@ export function useGameCanvasClientSettings({
     smokeTrails.value = getSmokeTrails();
     smokeSoftEdges.value = getSmokeSoftEdges();
     beamSnapToTurret.value = getBeamSnapToTurret();
+    resourceBallDensity.value = getResourceBallDensity();
     triangleDebug.value = getTriangleDebug();
     buildGridDebug.value = getBuildGridDebug();
     sightBoundary.value = getSightBoundary();
@@ -310,6 +315,11 @@ export function useGameCanvasClientSettings({
     beamSnapToTurret.value = newValue;
   }
 
+  function changeResourceBallDensity(value: number): void {
+    setResourceBallDensity(value);
+    resourceBallDensity.value = getResourceBallDensity();
+  }
+
   function toggleTriangleDebug(): void {
     const newValue = !triangleDebug.value;
     setTriangleDebug(newValue);
@@ -435,6 +445,7 @@ export function useGameCanvasClientSettings({
     smokeSoftEdges.value = cd.smokeSoftEdges.default;
     setBeamSnapToTurret(cd.beamSnapToTurret.default);
     beamSnapToTurret.value = cd.beamSnapToTurret.default;
+    changeResourceBallDensity(DEFAULT_BALLS_PER_RESOURCE_PER_SECOND);
     setTriangleDebug(cd.triangleDebug.default);
     triangleDebug.value = cd.triangleDebug.default;
     setBuildGridDebug(cd.buildGridDebug.default);
@@ -509,6 +520,7 @@ export function useGameCanvasClientSettings({
     smokeTrails,
     smokeSoftEdges,
     beamSnapToTurret,
+    resourceBallDensity,
     triangleDebug,
     buildGridDebug,
     sightBoundary,
@@ -555,6 +567,7 @@ export function useGameCanvasClientSettings({
     toggleSmokeTrails,
     toggleSmokeSoftEdges,
     toggleBeamSnapToTurret,
+    changeResourceBallDensity,
     toggleTriangleDebug,
     toggleBuildGridDebug,
     toggleSightBoundary,
