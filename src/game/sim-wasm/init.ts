@@ -25,6 +25,7 @@ import __wbg_init, {
   economy_credit_stockpile,
   economy_debit_stockpile,
   economy_apply_producer_credits,
+  economy_apply_converter_transfers,
   step_unit_motion,
   client_predict_unit_motion_batch,
   pool_init,
@@ -459,6 +460,26 @@ export interface SimWasm {
     metalCurrByPlayer: Float64Array,
     metalMaxByPlayer: Float64Array,
     outAccepted: Float64Array,
+  ) => number;
+  readonly economyApplyConverterTransfers: (
+    playerIds: Uint32Array,
+    ratesPerSec: Float64Array,
+    count: number,
+    dtSec: number,
+    tax: number,
+    energyCurrByPlayer: Float64Array,
+    energyMaxByPlayer: Float64Array,
+    metalCurrByPlayer: Float64Array,
+    metalMaxByPlayer: Float64Array,
+    ratesByPlayer: Float64Array,
+    consumedByPlayer: Float64Array,
+    outputByPlayer: Float64Array,
+    consumedResourceByPlayer: Uint32Array,
+    outputResourceByPlayer: Uint32Array,
+    outConsumed: Float64Array,
+    outOutput: Float64Array,
+    outConsumedResource: Uint32Array,
+    outOutputResource: Uint32Array,
   ) => number;
   /** Shared single-body unit integrator (Phase 2). Kept for
    *  diagnostics and one-off callers; the server hot path uses
@@ -3018,6 +3039,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         economyCreditStockpile: economy_credit_stockpile,
         economyDebitStockpile: economy_debit_stockpile,
         economyApplyProducerCredits: economy_apply_producer_credits,
+        economyApplyConverterTransfers: economy_apply_converter_transfers,
         stepUnitMotion: step_unit_motion,
         clientPredictUnitMotionBatch: client_predict_unit_motion_batch,
         pool,

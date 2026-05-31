@@ -174,11 +174,115 @@ fn economy_normalized_amount(amount: f64) -> f64 {
     }
 }
 
-const ECONOMY_RESOURCE_NONE: f64 = 0.0;
-const ECONOMY_RESOURCE_ENERGY: f64 = 1.0;
-const ECONOMY_RESOURCE_METAL: f64 = 2.0;
+const ECONOMY_RESOURCE_NONE_CODE: u32 = 0;
 const ECONOMY_RESOURCE_ENERGY_CODE: u32 = 1;
 const ECONOMY_RESOURCE_METAL_CODE: u32 = 2;
+
+#[inline]
+fn economy_compute_converter_transfer_value(
+    energy_curr: f64,
+    energy_max: f64,
+    metal_curr: f64,
+    metal_max: f64,
+    total_rate_per_sec: f64,
+    dt_sec: f64,
+    tax: f64,
+) -> (f64, f64, u32, u32) {
+    if !energy_curr.is_finite()
+        || !energy_max.is_finite()
+        || !metal_curr.is_finite()
+        || !metal_max.is_finite()
+    {
+        return (
+            0.0,
+            0.0,
+            ECONOMY_RESOURCE_NONE_CODE,
+            ECONOMY_RESOURCE_NONE_CODE,
+        );
+    }
+
+    let source_target =
+        economy_normalized_amount(total_rate_per_sec) * economy_normalized_amount(dt_sec);
+    if source_target <= 0.0 || energy_curr == metal_curr {
+        return (
+            0.0,
+            0.0,
+            ECONOMY_RESOURCE_NONE_CODE,
+            ECONOMY_RESOURCE_NONE_CODE,
+        );
+    }
+
+    let yield_factor = if tax.is_finite() {
+        (1.0 - tax).max(0.0)
+    } else {
+        0.0
+    };
+    if yield_factor <= 0.0 {
+        return (
+            0.0,
+            0.0,
+            ECONOMY_RESOURCE_NONE_CODE,
+            ECONOMY_RESOURCE_NONE_CODE,
+        );
+    }
+
+    let (source_curr, output_curr, output_max, consumed_resource, output_resource) =
+        if metal_curr > energy_curr {
+            (
+                metal_curr,
+                energy_curr,
+                energy_max,
+                ECONOMY_RESOURCE_METAL_CODE,
+                ECONOMY_RESOURCE_ENERGY_CODE,
+            )
+        } else {
+            (
+                energy_curr,
+                metal_curr,
+                metal_max,
+                ECONOMY_RESOURCE_ENERGY_CODE,
+                ECONOMY_RESOURCE_METAL_CODE,
+            )
+        };
+
+    let source_available = source_target.min(source_curr.max(0.0));
+    if source_available <= 0.0 {
+        return (
+            0.0,
+            0.0,
+            ECONOMY_RESOURCE_NONE_CODE,
+            ECONOMY_RESOURCE_NONE_CODE,
+        );
+    }
+
+    let headroom = (output_max - output_curr).max(0.0);
+    if headroom <= 0.0 {
+        return (
+            0.0,
+            0.0,
+            ECONOMY_RESOURCE_NONE_CODE,
+            ECONOMY_RESOURCE_NONE_CODE,
+        );
+    }
+
+    let wanted_output = source_available * yield_factor;
+    let accepted_output = wanted_output.min(headroom);
+    if accepted_output <= 0.0 {
+        return (
+            0.0,
+            0.0,
+            ECONOMY_RESOURCE_NONE_CODE,
+            ECONOMY_RESOURCE_NONE_CODE,
+        );
+    }
+
+    (
+        source_available * (accepted_output / wanted_output),
+        accepted_output,
+        consumed_resource,
+        output_resource,
+    )
+}
 
 #[wasm_bindgen]
 pub fn economy_compute_converter_transfer(
@@ -197,71 +301,23 @@ pub fn economy_compute_converter_transfer(
 
     out[0] = 0.0; // consumed amount
     out[1] = 0.0; // accepted output amount
-    out[2] = ECONOMY_RESOURCE_NONE; // consumed resource code
-    out[3] = ECONOMY_RESOURCE_NONE; // output resource code
+    out[2] = ECONOMY_RESOURCE_NONE_CODE as f64; // consumed resource code
+    out[3] = ECONOMY_RESOURCE_NONE_CODE as f64; // output resource code
 
-    if !energy_curr.is_finite()
-        || !energy_max.is_finite()
-        || !metal_curr.is_finite()
-        || !metal_max.is_finite()
-    {
-        return 1;
-    }
-
-    let source_target =
-        economy_normalized_amount(total_rate_per_sec) * economy_normalized_amount(dt_sec);
-    if source_target <= 0.0 || energy_curr == metal_curr {
-        return 1;
-    }
-
-    let yield_factor = if tax.is_finite() {
-        (1.0 - tax).max(0.0)
-    } else {
-        0.0
-    };
-    if yield_factor <= 0.0 {
-        return 1;
-    }
-
-    let (source_curr, output_curr, output_max, consumed_resource, output_resource) =
-        if metal_curr > energy_curr {
-            (
-                metal_curr,
-                energy_curr,
-                energy_max,
-                ECONOMY_RESOURCE_METAL,
-                ECONOMY_RESOURCE_ENERGY,
-            )
-        } else {
-            (
-                energy_curr,
-                metal_curr,
-                metal_max,
-                ECONOMY_RESOURCE_ENERGY,
-                ECONOMY_RESOURCE_METAL,
-            )
-        };
-
-    let source_available = source_target.min(source_curr.max(0.0));
-    if source_available <= 0.0 {
-        return 1;
-    }
-
-    let headroom = (output_max - output_curr).max(0.0);
-    if headroom <= 0.0 {
-        return 1;
-    }
-
-    let wanted_output = source_available * yield_factor;
-    let accepted_output = wanted_output.min(headroom);
-    if accepted_output <= 0.0 {
-        return 1;
-    }
-
-    out[0] = source_available * (accepted_output / wanted_output);
+    let (consumed, accepted_output, consumed_resource, output_resource) =
+        economy_compute_converter_transfer_value(
+            energy_curr,
+            energy_max,
+            metal_curr,
+            metal_max,
+            total_rate_per_sec,
+            dt_sec,
+            tax,
+        );
+    out[0] = consumed;
     out[1] = accepted_output;
-    out[2] = consumed_resource;
-    out[3] = output_resource;
+    out[2] = consumed_resource as f64;
+    out[3] = output_resource as f64;
     1
 }
 
@@ -371,6 +427,189 @@ pub fn economy_apply_producer_credits(
             }
             _ => {}
         }
+    }
+
+    max_exclusive as u32
+}
+
+#[wasm_bindgen]
+pub fn economy_apply_converter_transfers(
+    player_ids: &[u32],
+    rates_per_sec: &[f64],
+    count: u32,
+    dt_sec: f64,
+    tax: f64,
+    energy_curr_by_player: &mut [f64],
+    energy_max_by_player: &[f64],
+    metal_curr_by_player: &mut [f64],
+    metal_max_by_player: &[f64],
+    rates_by_player: &mut [f64],
+    consumed_by_player: &mut [f64],
+    output_by_player: &mut [f64],
+    consumed_resource_by_player: &mut [u32],
+    output_resource_by_player: &mut [u32],
+    out_consumed: &mut [f64],
+    out_output: &mut [f64],
+    out_consumed_resource: &mut [u32],
+    out_output_resource: &mut [u32],
+) -> u32 {
+    let n = count as usize;
+    if n > player_ids.len()
+        || n > rates_per_sec.len()
+        || n > out_consumed.len()
+        || n > out_output.len()
+        || n > out_consumed_resource.len()
+        || n > out_output_resource.len()
+    {
+        return 0;
+    }
+
+    for i in 0..n {
+        out_consumed[i] = 0.0;
+        out_output[i] = 0.0;
+        out_consumed_resource[i] = ECONOMY_RESOURCE_NONE_CODE;
+        out_output_resource[i] = ECONOMY_RESOURCE_NONE_CODE;
+    }
+
+    for rate in rates_by_player.iter_mut() {
+        *rate = 0.0;
+    }
+    for amount in consumed_by_player.iter_mut() {
+        *amount = 0.0;
+    }
+    for amount in output_by_player.iter_mut() {
+        *amount = 0.0;
+    }
+    for resource in consumed_resource_by_player.iter_mut() {
+        *resource = ECONOMY_RESOURCE_NONE_CODE;
+    }
+    for resource in output_resource_by_player.iter_mut() {
+        *resource = ECONOMY_RESOURCE_NONE_CODE;
+    }
+
+    let dt = economy_normalized_amount(dt_sec);
+    if dt <= 0.0 {
+        return 0;
+    }
+
+    let mut max_exclusive = 0usize;
+    for i in 0..n {
+        let player_id = player_ids[i] as usize;
+        if player_id == 0
+            || player_id >= rates_by_player.len()
+            || player_id >= energy_curr_by_player.len()
+            || player_id >= energy_max_by_player.len()
+            || player_id >= metal_curr_by_player.len()
+            || player_id >= metal_max_by_player.len()
+            || player_id >= consumed_by_player.len()
+            || player_id >= output_by_player.len()
+            || player_id >= consumed_resource_by_player.len()
+            || player_id >= output_resource_by_player.len()
+        {
+            continue;
+        }
+        let rate = economy_normalized_amount(rates_per_sec[i]);
+        if rate <= 0.0 {
+            continue;
+        }
+        rates_by_player[player_id] += rate;
+        max_exclusive = max_exclusive.max(player_id + 1);
+    }
+
+    for player_id in 1..max_exclusive {
+        let total_rate = rates_by_player[player_id];
+        if total_rate <= 0.0 {
+            continue;
+        }
+        let (consumed, accepted_output, consumed_resource, output_resource) =
+            economy_compute_converter_transfer_value(
+                energy_curr_by_player[player_id],
+                energy_max_by_player[player_id],
+                metal_curr_by_player[player_id],
+                metal_max_by_player[player_id],
+                total_rate,
+                dt,
+                tax,
+            );
+        if consumed <= 0.0 || accepted_output <= 0.0 {
+            continue;
+        }
+
+        match consumed_resource {
+            ECONOMY_RESOURCE_ENERGY_CODE => {
+                energy_curr_by_player[player_id] =
+                    (energy_curr_by_player[player_id].max(0.0) - consumed).max(0.0);
+            }
+            ECONOMY_RESOURCE_METAL_CODE => {
+                metal_curr_by_player[player_id] =
+                    (metal_curr_by_player[player_id].max(0.0) - consumed).max(0.0);
+            }
+            _ => {}
+        }
+        match output_resource {
+            ECONOMY_RESOURCE_ENERGY_CODE => {
+                energy_curr_by_player[player_id] = (energy_curr_by_player[player_id]
+                    + accepted_output)
+                    .min(energy_max_by_player[player_id]);
+            }
+            ECONOMY_RESOURCE_METAL_CODE => {
+                metal_curr_by_player[player_id] = (metal_curr_by_player[player_id]
+                    + accepted_output)
+                    .min(metal_max_by_player[player_id]);
+            }
+            _ => {}
+        }
+
+        consumed_by_player[player_id] = consumed;
+        output_by_player[player_id] = accepted_output;
+        consumed_resource_by_player[player_id] = consumed_resource;
+        output_resource_by_player[player_id] = output_resource;
+    }
+
+    for i in 0..n {
+        let player_id = player_ids[i] as usize;
+        if player_id == 0 || player_id >= max_exclusive {
+            continue;
+        }
+        let row_rate = economy_normalized_amount(rates_per_sec[i]);
+        let remaining_rate = rates_by_player[player_id];
+        if row_rate <= 0.0 || remaining_rate <= 0.0 {
+            continue;
+        }
+        let remaining_consumed = consumed_by_player[player_id];
+        let remaining_output = output_by_player[player_id];
+        if remaining_consumed <= 0.0 || remaining_output <= 0.0 {
+            continue;
+        }
+
+        let final_share = remaining_rate <= row_rate;
+        let rate_share = if final_share {
+            1.0
+        } else {
+            (row_rate / remaining_rate).min(1.0)
+        };
+        let consumed_share = if final_share {
+            remaining_consumed
+        } else {
+            (remaining_consumed * rate_share).min(remaining_consumed)
+        };
+        let output_share = if final_share {
+            remaining_output
+        } else {
+            (remaining_output * rate_share).min(remaining_output)
+        };
+
+        if consumed_share <= 0.0 || output_share <= 0.0 {
+            continue;
+        }
+
+        out_consumed[i] = consumed_share;
+        out_output[i] = output_share;
+        out_consumed_resource[i] = consumed_resource_by_player[player_id];
+        out_output_resource[i] = output_resource_by_player[player_id];
+        rates_by_player[player_id] = (remaining_rate - row_rate).max(0.0);
+        consumed_by_player[player_id] = (remaining_consumed - consumed_share).max(0.0);
+        output_by_player[player_id] = (remaining_output - output_share).max(0.0);
     }
 
     max_exclusive as u32
@@ -25497,8 +25736,8 @@ mod sim_kernel_tests {
         );
         assert!((out[0] - 25.0).abs() < 1e-12);
         assert!((out[1] - 20.0).abs() < 1e-12);
-        assert_eq!(out[2], ECONOMY_RESOURCE_METAL);
-        assert_eq!(out[3], ECONOMY_RESOURCE_ENERGY);
+        assert_eq!(out[2], ECONOMY_RESOURCE_METAL_CODE as f64);
+        assert_eq!(out[3], ECONOMY_RESOURCE_ENERGY_CODE as f64);
 
         assert_eq!(
             economy_compute_converter_transfer(80.0, 100.0, 10.0, 25.0, 50.0, 1.0, 0.5, &mut out),
@@ -25506,8 +25745,8 @@ mod sim_kernel_tests {
         );
         assert!((out[0] - 30.0).abs() < 1e-12);
         assert!((out[1] - 15.0).abs() < 1e-12);
-        assert_eq!(out[2], ECONOMY_RESOURCE_ENERGY);
-        assert_eq!(out[3], ECONOMY_RESOURCE_METAL);
+        assert_eq!(out[2], ECONOMY_RESOURCE_ENERGY_CODE as f64);
+        assert_eq!(out[3], ECONOMY_RESOURCE_METAL_CODE as f64);
 
         assert_eq!(
             economy_compute_converter_transfer(50.0, 100.0, 50.0, 100.0, 25.0, 1.0, 0.2, &mut out),
@@ -25515,13 +25754,111 @@ mod sim_kernel_tests {
         );
         assert_eq!(
             out,
-            [0.0, 0.0, ECONOMY_RESOURCE_NONE, ECONOMY_RESOURCE_NONE]
+            [
+                0.0,
+                0.0,
+                ECONOMY_RESOURCE_NONE_CODE as f64,
+                ECONOMY_RESOURCE_NONE_CODE as f64,
+            ]
         );
 
         let mut short = [0.0; 3];
         assert_eq!(
             economy_compute_converter_transfer(
                 10.0, 100.0, 80.0, 100.0, 25.0, 1.0, 0.2, &mut short
+            ),
+            0
+        );
+    }
+
+    #[test]
+    fn economy_apply_converter_transfers_mutates_stockpiles_and_splits_rows() {
+        let players = [1, 1, 2, 1, 0];
+        let rates = [10.0, 30.0, 50.0, 10.0, 99.0];
+        let mut energy_curr = [0.0, 90.0, 10.0];
+        let energy_max = [0.0, 100.0, 100.0];
+        let mut metal_curr = [0.0, 10.0, 80.0];
+        let metal_max = [0.0, 100.0, 100.0];
+        let mut rates_by_player = [77.0; 3];
+        let mut consumed_by_player = [77.0; 3];
+        let mut output_by_player = [77.0; 3];
+        let mut consumed_resource_by_player = [7; 3];
+        let mut output_resource_by_player = [7; 3];
+        let mut out_consumed = [99.0; 5];
+        let mut out_output = [99.0; 5];
+        let mut out_consumed_resource = [9; 5];
+        let mut out_output_resource = [9; 5];
+
+        assert_eq!(
+            economy_apply_converter_transfers(
+                &players,
+                &rates,
+                5,
+                1.0,
+                0.2,
+                &mut energy_curr,
+                &energy_max,
+                &mut metal_curr,
+                &metal_max,
+                &mut rates_by_player,
+                &mut consumed_by_player,
+                &mut output_by_player,
+                &mut consumed_resource_by_player,
+                &mut output_resource_by_player,
+                &mut out_consumed,
+                &mut out_output,
+                &mut out_consumed_resource,
+                &mut out_output_resource,
+            ),
+            3
+        );
+
+        assert_eq!(energy_curr, [0.0, 40.0, 50.0]);
+        assert_eq!(metal_curr, [0.0, 50.0, 30.0]);
+        assert_eq!(out_consumed, [10.0, 30.0, 50.0, 10.0, 0.0]);
+        assert_eq!(out_output, [8.0, 24.0, 40.0, 8.0, 0.0]);
+        assert_eq!(
+            out_consumed_resource,
+            [
+                ECONOMY_RESOURCE_ENERGY_CODE,
+                ECONOMY_RESOURCE_ENERGY_CODE,
+                ECONOMY_RESOURCE_METAL_CODE,
+                ECONOMY_RESOURCE_ENERGY_CODE,
+                ECONOMY_RESOURCE_NONE_CODE,
+            ]
+        );
+        assert_eq!(
+            out_output_resource,
+            [
+                ECONOMY_RESOURCE_METAL_CODE,
+                ECONOMY_RESOURCE_METAL_CODE,
+                ECONOMY_RESOURCE_ENERGY_CODE,
+                ECONOMY_RESOURCE_METAL_CODE,
+                ECONOMY_RESOURCE_NONE_CODE,
+            ]
+        );
+
+        let mut short = [0.0; 4];
+        assert_eq!(
+            economy_apply_converter_transfers(
+                &players,
+                &rates,
+                5,
+                1.0,
+                0.2,
+                &mut energy_curr,
+                &energy_max,
+                &mut metal_curr,
+                &metal_max,
+                &mut rates_by_player,
+                &mut consumed_by_player,
+                &mut output_by_player,
+                &mut consumed_resource_by_player,
+                &mut output_resource_by_player,
+                &mut short,
+                &mut out_output,
+                &mut out_consumed_resource,
+                &mut out_output_resource,
             ),
             0
         );

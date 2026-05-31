@@ -94,6 +94,15 @@ export class ResourceMovementSystem {
     this.record(sink, request, actualAmount, actualAmount);
   }
 
+  recordAppliedDebit(
+    sink: ResourceMovementSink,
+    request: ResourceMovementRequest,
+    actualAmount: number,
+  ): void {
+    if (actualAmount <= 0) return;
+    this.record(sink, request, actualAmount, -actualAmount);
+  }
+
   private record(
     sink: ResourceMovementSink,
     request: ResourceMovementRequest,

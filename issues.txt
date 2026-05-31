@@ -145,6 +145,11 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     the Rust/WASM economy_apply_producer_credits batch helper. TypeScript now
     packs active producer rows, copies back the resulting player stockpiles,
     and records accepted pylon movements only for renderer attribution.
+    2026-05-31 progress: converter stockpile debit/credit application and
+    per-converter consumed/output share distribution moved into the Rust/WASM
+    economy_apply_converter_transfers batch helper. TypeScript now only packs
+    active converter rows, copies back player stockpiles, and records the
+    renderer-facing pylon movement events returned by WASM.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)

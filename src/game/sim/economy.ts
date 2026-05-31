@@ -66,9 +66,21 @@ export class EconomyManager {
   private producerMetalMaxByPlayer = new Float64Array(8);
   private producerAccepted = new Float64Array(32);
   private converterPlayerIds = new Uint32Array(16);
+  private converterEntityIds = new Float64Array(16);
   private converterRates = new Float64Array(16);
+  private converterEnergyCurrByPlayer = new Float64Array(8);
+  private converterEnergyMaxByPlayer = new Float64Array(8);
+  private converterMetalCurrByPlayer = new Float64Array(8);
+  private converterMetalMaxByPlayer = new Float64Array(8);
   private converterRatesByPlayer = new Float64Array(8);
-  private converterTransferOut = new Float64Array(4);
+  private converterConsumedByPlayer = new Float64Array(8);
+  private converterOutputByPlayer = new Float64Array(8);
+  private converterConsumedResourceByPlayer = new Uint32Array(8);
+  private converterOutputResourceByPlayer = new Uint32Array(8);
+  private converterConsumedOut = new Float64Array(16);
+  private converterOutputOut = new Float64Array(16);
+  private converterConsumedResourceOut = new Uint32Array(16);
+  private converterOutputResourceOut = new Uint32Array(16);
 
   // Initialize economy for a player
   initPlayer(playerId: PlayerId): void {
@@ -447,130 +459,102 @@ export class EconomyManager {
       const pid = ownership.playerId;
       this.ensureConverterCapacity(converterCount + 1);
       this.converterPlayerIds[converterCount] = pid;
+      this.converterEntityIds[converterCount] = entity.id;
       this.converterRates[converterCount] = ratePerSec;
       converterCount++;
       if (pid > maxPlayerId) maxPlayerId = pid;
     }
 
     if (converterCount <= 0) return;
-    this.ensureConverterPlayerRateCapacity(maxPlayerId);
+    this.ensureConverterPlayerCapacity(maxPlayerId);
+    for (let playerId = 1; playerId <= maxPlayerId; playerId++) {
+      const economy = this.economies.get(playerId as PlayerId);
+      if (economy === undefined) {
+        this.converterEnergyCurrByPlayer[playerId] = 0;
+        this.converterEnergyMaxByPlayer[playerId] = 0;
+        this.converterMetalCurrByPlayer[playerId] = 0;
+        this.converterMetalMaxByPlayer[playerId] = 0;
+        continue;
+      }
+      this.converterEnergyCurrByPlayer[playerId] = economy.stockpile.curr;
+      this.converterEnergyMaxByPlayer[playerId] = economy.stockpile.max;
+      this.converterMetalCurrByPlayer[playerId] = economy.metal.stockpile.curr;
+      this.converterMetalMaxByPlayer[playerId] = economy.metal.stockpile.max;
+    }
+
     const sim = getSimWasm();
     if (sim === undefined) {
       throw new Error('EconomyManager.processConverters: sim-wasm is not initialized');
     }
-    const maxExclusive = sim.economyAccumulatePlayerRates(
+    const maxExclusive = sim.economyApplyConverterTransfers(
       this.converterPlayerIds,
       this.converterRates,
       converterCount,
+      dtSec,
+      tax,
+      this.converterEnergyCurrByPlayer,
+      this.converterEnergyMaxByPlayer,
+      this.converterMetalCurrByPlayer,
+      this.converterMetalMaxByPlayer,
       this.converterRatesByPlayer,
+      this.converterConsumedByPlayer,
+      this.converterOutputByPlayer,
+      this.converterConsumedResourceByPlayer,
+      this.converterOutputResourceByPlayer,
+      this.converterConsumedOut,
+      this.converterOutputOut,
+      this.converterConsumedResourceOut,
+      this.converterOutputResourceOut,
     );
+    if (maxExclusive === 0) {
+      throw new Error('EconomyManager.processConverters: economy_apply_converter_transfers rejected its buffers');
+    }
 
     for (let playerId = 1; playerId < maxExclusive; playerId++) {
-      const totalRate = this.converterRatesByPlayer[playerId];
-      if (totalRate <= 0) continue;
-      const pid = playerId as PlayerId;
-      const economy = this.economies.get(pid);
-      if (!economy) continue;
-
-      if (sim.economyComputeConverterTransfer(
-        economy.stockpile.curr,
-        economy.stockpile.max,
-        economy.metal.stockpile.curr,
-        economy.metal.stockpile.max,
-        totalRate,
-        dtSec,
-        tax,
-        this.converterTransferOut,
-      ) === 0) {
-        throw new Error('EconomyManager.processConverters: economy_compute_converter_transfer rejected its output buffer');
-      }
-      const consumed = this.converterTransferOut[0];
-      const acceptedOutput = this.converterTransferOut[1];
-      if (consumed <= 0 || acceptedOutput <= 0) continue;
-      const consumedResource = economyResourceKindFromCode(this.converterTransferOut[2]);
-      const outputResource = economyResourceKindFromCode(this.converterTransferOut[3]);
-      if (consumedResource === null || outputResource === null) {
-        throw new Error('EconomyManager.processConverters: economy_compute_converter_transfer returned an unknown resource code');
-      }
-      this.applyConverterMovements(
-        world,
-        pid,
-        totalRate,
-        ratePerSec,
-        consumed,
-        acceptedOutput,
-        consumedResource,
-        outputResource,
-        dtSec,
-      );
+      const economy = this.economies.get(playerId as PlayerId);
+      if (economy === undefined) continue;
+      economy.stockpile.curr = this.converterEnergyCurrByPlayer[playerId];
+      economy.metal.stockpile.curr = this.converterMetalCurrByPlayer[playerId];
     }
-  }
 
-  private applyConverterMovements(
-    world: WorldState,
-    playerId: PlayerId,
-    totalRate: number,
-    ratePerSec: number,
-    consumed: number,
-    acceptedOutput: number,
-    consumedResource: ResourceKind,
-    outputResource: ResourceKind,
-    dtSec: number,
-  ): void {
-    const economy = this.economies.get(playerId);
-    if (!economy) return;
-    let remainingRate = totalRate;
-    let remainingConsumed = consumed;
-    let remainingOutput = acceptedOutput;
-    for (const entity of world.getConverterBuildings()) {
-      if (!this.isActiveConverterForPlayer(entity, playerId)) continue;
-      const finalShare = remainingRate <= ratePerSec;
-      const consumedShare = finalShare
-        ? remainingConsumed
-        : Math.min(remainingConsumed, consumed * (ratePerSec / totalRate));
-      const outputShare = finalShare
-        ? remainingOutput
-        : Math.min(remainingOutput, acceptedOutput * (ratePerSec / totalRate));
+    for (let i = 0; i < converterCount; i++) {
+      const playerId = this.converterPlayerIds[i] as PlayerId;
+      if (!this.economies.has(playerId)) continue;
+      const consumedShare = this.converterConsumedOut[i];
+      const outputShare = this.converterOutputOut[i];
       if (consumedShare > 0) {
-        resourceMovementSystem.debit(economy, world, {
+        const consumedResource = economyResourceKindFromCode(this.converterConsumedResourceOut[i]);
+        if (consumedResource === null) {
+          throw new Error('EconomyManager.processConverters: economy_apply_converter_transfers returned an unknown consumed resource code');
+        }
+        resourceMovementSystem.recordAppliedDebit(world, {
           playerId,
-          sourceEntityId: entity.id,
+          sourceEntityId: this.converterEntityIds[i] as EntityId,
           targetEntityId: null,
           resource: consumedResource,
           amount: consumedShare,
           amountPerSecond: dtSec > 0 ? consumedShare / dtSec : 0,
           direction: 'outbound',
           reason: 'conversion',
-        });
-        remainingConsumed -= consumedShare;
+        }, consumedShare);
       }
       if (outputShare > 0) {
-        resourceMovementSystem.credit(economy, world, {
+        const outputResource = economyResourceKindFromCode(this.converterOutputResourceOut[i]);
+        if (outputResource === null) {
+          throw new Error('EconomyManager.processConverters: economy_apply_converter_transfers returned an unknown output resource code');
+        }
+        resourceMovementSystem.recordAppliedCredit(world, {
           playerId,
-          sourceEntityId: entity.id,
+          sourceEntityId: this.converterEntityIds[i] as EntityId,
           targetEntityId: null,
           resource: outputResource,
           amount: outputShare,
           amountPerSecond: dtSec > 0 ? outputShare / dtSec : 0,
           direction: 'inbound',
           reason: 'conversion',
-        });
-        remainingOutput -= outputShare;
+        }, outputShare);
       }
-      remainingRate -= ratePerSec;
-      if (remainingRate <= 0) break;
     }
-  }
-
-  private isActiveConverterForPlayer(entity: Entity, playerId: PlayerId): boolean {
-    const ownership = entity.ownership;
-    const building = entity.building;
-    if (ownership === null || building === null) return false;
-    const activeState = building.activeState;
-    return ownership.playerId === playerId
-      && building.hp > 0
-      && isEntityActive(entity)
-      && (activeState === null || activeState.open);
   }
 
   private ensureConverterCapacity(count: number): void {
@@ -582,9 +566,29 @@ export class EconomyManager {
     nextPlayerIds.set(this.converterPlayerIds);
     this.converterPlayerIds = nextPlayerIds;
 
+    const nextEntityIds = new Float64Array(nextCapacity);
+    nextEntityIds.set(this.converterEntityIds);
+    this.converterEntityIds = nextEntityIds;
+
     const nextRates = new Float64Array(nextCapacity);
     nextRates.set(this.converterRates);
     this.converterRates = nextRates;
+
+    const nextConsumedOut = new Float64Array(nextCapacity);
+    nextConsumedOut.set(this.converterConsumedOut);
+    this.converterConsumedOut = nextConsumedOut;
+
+    const nextOutputOut = new Float64Array(nextCapacity);
+    nextOutputOut.set(this.converterOutputOut);
+    this.converterOutputOut = nextOutputOut;
+
+    const nextConsumedResourceOut = new Uint32Array(nextCapacity);
+    nextConsumedResourceOut.set(this.converterConsumedResourceOut);
+    this.converterConsumedResourceOut = nextConsumedResourceOut;
+
+    const nextOutputResourceOut = new Uint32Array(nextCapacity);
+    nextOutputResourceOut.set(this.converterOutputResourceOut);
+    this.converterOutputResourceOut = nextOutputResourceOut;
   }
 
   private ensureProducerCapacity(count: number): void {
@@ -623,11 +627,19 @@ export class EconomyManager {
     this.producerMetalMaxByPlayer = new Float64Array(nextCapacity);
   }
 
-  private ensureConverterPlayerRateCapacity(playerId: number): void {
+  private ensureConverterPlayerCapacity(playerId: number): void {
     if (playerId < this.converterRatesByPlayer.length) return;
     let nextCapacity = this.converterRatesByPlayer.length;
     while (nextCapacity <= playerId) nextCapacity *= 2;
     this.converterRatesByPlayer = new Float64Array(nextCapacity);
+    this.converterEnergyCurrByPlayer = new Float64Array(nextCapacity);
+    this.converterEnergyMaxByPlayer = new Float64Array(nextCapacity);
+    this.converterMetalCurrByPlayer = new Float64Array(nextCapacity);
+    this.converterMetalMaxByPlayer = new Float64Array(nextCapacity);
+    this.converterConsumedByPlayer = new Float64Array(nextCapacity);
+    this.converterOutputByPlayer = new Float64Array(nextCapacity);
+    this.converterConsumedResourceByPlayer = new Uint32Array(nextCapacity);
+    this.converterOutputResourceByPlayer = new Uint32Array(nextCapacity);
   }
 
   private creditResource(
