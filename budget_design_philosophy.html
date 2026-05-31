@@ -2219,6 +2219,42 @@
         when nothing is flowing, shows nothing at all.
       </p>
 
+      <h3>Rate gates a ball&rsquo;s birth, not its flight</h3>
+      <p>
+        The resource rate has exactly one job: it sets <strong>how often new balls are born</strong>
+        &mdash; the spawn cadence, and therefore the density of the stream. It must never reach into
+        the tube and retune, relocate, or destroy a ball that is already moving. A ball is committed
+        the instant it is created. From then on it travels its whole documented life at a constant
+        pace &mdash; <em>born at the root &rarr; up the tube &rarr; out the tip &rarr; onto the
+        target</em>, or <em>world-source &rarr; into the tip &rarr; down the tube &rarr; gone at the
+        root</em> &mdash; even if the rate drops to zero or spikes the instant after it spawned. A
+        rate change retunes the cadence for the <em>next</em> balls; every ball already in flight is
+        immune and finishes its journey.
+      </p>
+      <p>
+        This is what makes tip conservation literal and <strong>one-to-one</strong>. The tube leg
+        and the free leg outside the tip are not two independent rate-driven animations that happen
+        to line up at the head; they are one conserved stream rendered in two pieces, handed off ball
+        for ball. A ball climbing the tube that reaches the tip <em>disappears there and spawns
+        exactly one ball that continues</em> &mdash; the outbound free-leg ball that flies from the
+        tip onto the build target. Symmetrically, an inbound free-leg ball that arrives at the tip
+        from the world disappears and spawns exactly one ball that <em>continues down the tube</em>
+        toward the root. The hand-off is the whole point: nothing is created or consumed at the tip,
+        a ball merely changes which leg &mdash; and which renderer &mdash; is drawing it, and the
+        count on each side of the tip stays balanced over time.
+      </p>
+      <p>
+        The failure this rule forbids is a tube whose live ball <em>count</em> is recomputed from the
+        current rate every frame. Lower the rate and the surplus balls &mdash; ones that were already
+        halfway up the shaft &mdash; simply wink out mid-tube; raise it and balls pop into existence
+        in the middle of the bore. Both read as resource that was accounted for and then evaporated,
+        or that appeared from nowhere &mdash; the exact opposite of <em>every ball is accounted for
+        before and after the tip</em>. The free-leg balls outside the tube already obey this rule:
+        each carries its own start point, end point, and lifetime, so a stalled or finished build
+        never strands a ball in mid-air &mdash; it finishes its arc and only then stops being
+        replaced. The tube balls must live by the same contract.
+      </p>
+
       <h3>Who carries which pylons</h3>
       <p>
         Every host that affects a resource pool must mount the pylons that match what it does.
