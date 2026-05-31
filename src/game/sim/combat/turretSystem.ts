@@ -21,7 +21,7 @@
 // (slower, no-overshoot response).
 
 import type { WorldState } from '../WorldState';
-import type { Entity } from '../types';
+import type { CombatComponent, Entity, Turret } from '../types';
 import { resolveWeaponWorldMount, turretMaskIncludes } from './combatUtils';
 import {
   dropTurretLockMidTick,
@@ -29,13 +29,14 @@ import {
   refreshSlabActivityMasksForUnit,
 } from './combatActivitySlab';
 import { isBuildBlockingActivation } from '../buildableHelpers';
-import { getTransformCosSin, integrateDampedRotation, normalizeAngle } from '../../math';
+import { getTransformCosSin } from '../../math';
 import { createTurretAimScratch, solveTurretAim, solveTurretAimAtGroundPoint } from './aimSolver';
 import {
   readCombatTargetingTurretFsmInto,
   type CombatTargetingTurretFsmOut,
 } from './targetingInputStamping';
 import { getUnitGroundZ } from '../unitGeometry';
+import { getSimWasm } from '../../sim-wasm/init';
 
 /** Pitch is clamped to straight-down → straight-up. Matches the
  *  renderer's pitch range and keeps the ballistic solver from driving
@@ -48,9 +49,114 @@ const _turretRotationFsm: CombatTargetingTurretFsmOut = {
   stateCode: 0,
   targetId: -1,
 };
+const _turretRotationWeapons: Turret[] = [];
+const _turretRotationRefreshUnits: Entity[] = [];
+let _turretCurrentYaw = new Float64Array(0);
+let _turretYawVelocity = new Float64Array(0);
+let _turretTargetYaw = new Float64Array(0);
+let _turretCurrentPitch = new Float64Array(0);
+let _turretPitchVelocity = new Float64Array(0);
+let _turretTargetPitch = new Float64Array(0);
+let _turretTurnAccel = new Float64Array(0);
+let _turretDrag = new Float64Array(0);
+let _turretOutYaw = new Float64Array(0);
+let _turretOutYawVelocity = new Float64Array(0);
+let _turretOutYawAcceleration = new Float64Array(0);
+let _turretOutPitch = new Float64Array(0);
+let _turretOutPitchVelocity = new Float64Array(0);
+let _turretOutPitchAcceleration = new Float64Array(0);
+let _turretOutAimErrorYaw = new Float64Array(0);
+let _turretOutAimErrorPitch = new Float64Array(0);
+
+function ensureTurretRotationCapacity(required: number): void {
+  if (_turretCurrentYaw.length >= required) return;
+  const next = Math.max(64, required, _turretCurrentYaw.length * 2);
+  _turretCurrentYaw = new Float64Array(next);
+  _turretYawVelocity = new Float64Array(next);
+  _turretTargetYaw = new Float64Array(next);
+  _turretCurrentPitch = new Float64Array(next);
+  _turretPitchVelocity = new Float64Array(next);
+  _turretTargetPitch = new Float64Array(next);
+  _turretTurnAccel = new Float64Array(next);
+  _turretDrag = new Float64Array(next);
+  _turretOutYaw = new Float64Array(next);
+  _turretOutYawVelocity = new Float64Array(next);
+  _turretOutYawAcceleration = new Float64Array(next);
+  _turretOutPitch = new Float64Array(next);
+  _turretOutPitchVelocity = new Float64Array(next);
+  _turretOutPitchAcceleration = new Float64Array(next);
+  _turretOutAimErrorYaw = new Float64Array(next);
+  _turretOutAimErrorPitch = new Float64Array(next);
+}
+
+function queueTurretRotationStep(weapon: Turret, aimTargetYaw: number, aimTargetPitch: number): void {
+  const index = _turretRotationWeapons.length;
+  ensureTurretRotationCapacity(index + 1);
+  _turretRotationWeapons.push(weapon);
+  _turretCurrentYaw[index] = weapon.rotation;
+  _turretYawVelocity[index] = weapon.angularVelocity;
+  _turretTargetYaw[index] = aimTargetYaw;
+  _turretCurrentPitch[index] = weapon.pitch;
+  _turretPitchVelocity[index] = weapon.pitchVelocity;
+  _turretTargetPitch[index] = aimTargetPitch;
+  _turretTurnAccel[index] = weapon.turnAccel;
+  _turretDrag[index] = weapon.drag;
+}
+
+function flushTurretRotationBatch(dtSec: number): void {
+  const count = _turretRotationWeapons.length;
+  if (count === 0) return;
+
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('updateTurretRotation: sim-wasm is not initialized');
+  }
+
+  const updated = sim.turretRotationStepBatch(
+    _turretCurrentYaw,
+    _turretYawVelocity,
+    _turretTargetYaw,
+    _turretCurrentPitch,
+    _turretPitchVelocity,
+    _turretTargetPitch,
+    _turretTurnAccel,
+    _turretDrag,
+    _turretOutYaw,
+    _turretOutYawVelocity,
+    _turretOutYawAcceleration,
+    _turretOutPitch,
+    _turretOutPitchVelocity,
+    _turretOutPitchAcceleration,
+    _turretOutAimErrorYaw,
+    _turretOutAimErrorPitch,
+    count,
+    dtSec,
+    PITCH_MIN,
+    PITCH_MAX,
+  );
+  if (updated !== count) {
+    throw new Error(`updateTurretRotation: turret_rotation_step_batch updated ${updated} of ${count} rows`);
+  }
+
+  for (let i = 0; i < count; i++) {
+    const weapon = _turretRotationWeapons[i];
+    weapon.rotation = _turretOutYaw[i];
+    weapon.angularVelocity = _turretOutYawVelocity[i];
+    weapon.angularAcceleration = _turretOutYawAcceleration[i];
+    weapon.pitch = _turretOutPitch[i];
+    weapon.pitchVelocity = _turretOutPitchVelocity[i];
+    weapon.pitchAcceleration = _turretOutPitchAcceleration[i];
+    weapon.aimTargetYaw = _turretTargetYaw[i];
+    weapon.aimTargetPitch = _turretTargetPitch[i];
+    weapon.aimErrorYaw = _turretOutAimErrorYaw[i];
+    weapon.aimErrorPitch = _turretOutAimErrorPitch[i];
+  }
+}
 
 export function updateTurretRotation(world: WorldState, dtMs: number, units: readonly Entity[] = world.getArmedEntities()): void {
   const dtSec = dtMs / 1000;
+  _turretRotationWeapons.length = 0;
+  _turretRotationRefreshUnits.length = 0;
 
   for (const unit of units) {
     if (!unit.combat || !unit.ownership) continue;
@@ -67,6 +173,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
     // Inert shells (in-progress buildable) skip combat entirely until
     // every resource bar tops up.
     if (isBuildBlockingActivation(unit.buildable)) continue;
+    _turretRotationRefreshUnits.push(unit);
 
     const { cos, sin } = getTransformCosSin(unit.transform);
     const activeMask = readActiveTurretMaskForUnit(unit);
@@ -214,45 +321,21 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
       }
 
       // --- 2) Damped-spring integrate both axes toward targets. ---
-      // k = stiffness; c = 2·√k for critical damping. `weapon.drag`
-      // is an optional EXTRA damping coefficient (0 = exactly
-      // critical). Tuning `turretTurnAccel` higher gives a snappier
-      // response; tuning `turretDrag` higher keeps it smooth-but-
-      // slower.
-      const k = Math.max(weapon.turnAccel, 1);
-      const cCritical = 2 * Math.sqrt(k);
-      const c = cCritical * (1 + weapon.drag);
-
-      // Yaw — wraps to (−π, π] so we always turn the short way around
-      // and don't blow up near ±π.
+      // Rust/WASM owns the damped-spring yaw/pitch integration for all
+      // queued turrets in one batch. TypeScript only supplies target poses
+      // after resolving target policy and ballistic aim.
       const aimTargetYaw = targetAngle!;
       const aimTargetPitch = targetPitch;
-      {
-        const r = integrateDampedRotation(
-          weapon.rotation, weapon.angularVelocity, aimTargetYaw, k, c, dtSec,
-          { wrap: true },
-        );
-        weapon.rotation = r.angle;
-        weapon.angularVelocity = r.angularVel;
-        weapon.angularAcceleration = r.angularAcc;
-      }
-      // Pitch — clamp to [PITCH_MIN, PITCH_MAX] so the barrel doesn't
-      // rotate past vertical; clamp also zeroes pitchVelocity so the
-      // damper doesn't keep pushing into the wall.
-      {
-        const r = integrateDampedRotation(
-          weapon.pitch, weapon.pitchVelocity, aimTargetPitch, k, c, dtSec,
-          { minAngle: PITCH_MIN, maxAngle: PITCH_MAX },
-        );
-        weapon.pitch = r.angle;
-        weapon.pitchVelocity = r.angularVel;
-        weapon.pitchAcceleration = r.angularAcc;
-      }
-      weapon.aimTargetYaw = aimTargetYaw;
-      weapon.aimTargetPitch = aimTargetPitch;
-      weapon.aimErrorYaw = normalizeAngle(aimTargetYaw - weapon.rotation);
-      weapon.aimErrorPitch = aimTargetPitch - weapon.pitch;
+      queueTurretRotationStep(weapon, aimTargetYaw, aimTargetPitch);
     }
-    refreshSlabActivityMasksForUnit(unit, combat);
   }
+
+  flushTurretRotationBatch(dtSec);
+  for (let i = 0; i < _turretRotationRefreshUnits.length; i++) {
+    const unit = _turretRotationRefreshUnits[i];
+    const combat: CombatComponent | null = unit.combat;
+    if (combat !== null) refreshSlabActivityMasksForUnit(unit, combat);
+  }
+  _turretRotationWeapons.length = 0;
+  _turretRotationRefreshUnits.length = 0;
 }

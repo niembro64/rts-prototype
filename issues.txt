@@ -214,6 +214,11 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     batches candidate action rows, then only applies queue advancement,
     flying-loiter handoff, or arrival-thrust side effects from the returned
     decisions.
+    2026-05-31 progress: turret yaw/pitch damped-spring integration moved
+    from per-turret TypeScript WASM calls into the Rust/WASM
+    turret_rotation_step_batch helper. TypeScript still resolves target
+    poses, ballistic lock drops, and combat activity-mask refreshes under
+    this item.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)

@@ -3923,6 +3923,34 @@ pub fn integrate_damped_rotation(
     max_angle: f64,
 ) {
     debug_assert!(out_buf.len() >= 3);
+    let (angle, angular_vel, angular_acc) = compute_damped_rotation(
+        angle,
+        angular_vel,
+        target_angle,
+        k,
+        c,
+        dt_sec,
+        flags,
+        min_angle,
+        max_angle,
+    );
+    out_buf[0] = angle;
+    out_buf[1] = angular_vel;
+    out_buf[2] = angular_acc;
+}
+
+#[inline]
+fn compute_damped_rotation(
+    angle: f64,
+    angular_vel: f64,
+    target_angle: f64,
+    k: f64,
+    c: f64,
+    dt_sec: f64,
+    flags: u32,
+    min_angle: f64,
+    max_angle: f64,
+) -> (f64, f64, f64) {
     let wrap = flags & DAMPED_ROTATION_FLAG_WRAP != 0;
     let has_min = flags & DAMPED_ROTATION_FLAG_HAS_MIN != 0;
     let has_max = flags & DAMPED_ROTATION_FLAG_HAS_MAX != 0;
@@ -4018,9 +4046,100 @@ pub fn integrate_damped_rotation(
         new_vel = 0.0;
         out_acc = 0.0;
     }
-    out_buf[0] = new_angle;
-    out_buf[1] = new_vel;
-    out_buf[2] = out_acc;
+    (new_angle, new_vel, out_acc)
+}
+
+#[inline]
+fn js_math_max_2(a: f64, b: f64) -> f64 {
+    if a.is_nan() || b.is_nan() {
+        f64::NAN
+    } else if a > b {
+        a
+    } else {
+        b
+    }
+}
+
+#[wasm_bindgen]
+pub fn turret_rotation_step_batch(
+    current_yaw: &[f64],
+    yaw_velocity: &[f64],
+    target_yaw: &[f64],
+    current_pitch: &[f64],
+    pitch_velocity: &[f64],
+    target_pitch: &[f64],
+    turn_accel: &[f64],
+    drag: &[f64],
+    out_yaw: &mut [f64],
+    out_yaw_velocity: &mut [f64],
+    out_yaw_acceleration: &mut [f64],
+    out_pitch: &mut [f64],
+    out_pitch_velocity: &mut [f64],
+    out_pitch_acceleration: &mut [f64],
+    out_aim_error_yaw: &mut [f64],
+    out_aim_error_pitch: &mut [f64],
+    count: u32,
+    dt_sec: f64,
+    pitch_min: f64,
+    pitch_max: f64,
+) -> u32 {
+    let count = count as usize;
+    debug_assert!(current_yaw.len() >= count);
+    debug_assert!(yaw_velocity.len() >= count);
+    debug_assert!(target_yaw.len() >= count);
+    debug_assert!(current_pitch.len() >= count);
+    debug_assert!(pitch_velocity.len() >= count);
+    debug_assert!(target_pitch.len() >= count);
+    debug_assert!(turn_accel.len() >= count);
+    debug_assert!(drag.len() >= count);
+    debug_assert!(out_yaw.len() >= count);
+    debug_assert!(out_yaw_velocity.len() >= count);
+    debug_assert!(out_yaw_acceleration.len() >= count);
+    debug_assert!(out_pitch.len() >= count);
+    debug_assert!(out_pitch_velocity.len() >= count);
+    debug_assert!(out_pitch_acceleration.len() >= count);
+    debug_assert!(out_aim_error_yaw.len() >= count);
+    debug_assert!(out_aim_error_pitch.len() >= count);
+
+    for i in 0..count {
+        let k = js_math_max_2(turn_accel[i], 1.0);
+        let c_critical = 2.0 * k.sqrt();
+        let c = c_critical * (1.0 + drag[i]);
+
+        let (yaw, yaw_vel, yaw_acc) = compute_damped_rotation(
+            current_yaw[i],
+            yaw_velocity[i],
+            target_yaw[i],
+            k,
+            c,
+            dt_sec,
+            DAMPED_ROTATION_FLAG_WRAP,
+            0.0,
+            0.0,
+        );
+        let (pitch, pitch_vel, pitch_acc) = compute_damped_rotation(
+            current_pitch[i],
+            pitch_velocity[i],
+            target_pitch[i],
+            k,
+            c,
+            dt_sec,
+            DAMPED_ROTATION_FLAG_HAS_MIN | DAMPED_ROTATION_FLAG_HAS_MAX,
+            pitch_min,
+            pitch_max,
+        );
+
+        out_yaw[i] = yaw;
+        out_yaw_velocity[i] = yaw_vel;
+        out_yaw_acceleration[i] = yaw_acc;
+        out_pitch[i] = pitch;
+        out_pitch_velocity[i] = pitch_vel;
+        out_pitch_acceleration[i] = pitch_acc;
+        out_aim_error_yaw[i] = normalize_angle_ts(target_yaw[i] - yaw);
+        out_aim_error_pitch[i] = target_pitch[i] - pitch;
+    }
+
+    count as u32
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -26672,6 +26791,61 @@ mod sim_kernel_tests {
         let mut short = [0.0; 3];
         assert_eq!(wind_sample_state(0.0, &mut short), 0);
         assert_eq!(wind_sample_state(f64::NAN, &mut a), 0);
+    }
+
+    #[test]
+    fn turret_rotation_batch_wraps_yaw_and_clamps_pitch() {
+        let current_yaw = [3.10];
+        let yaw_velocity = [0.0];
+        let target_yaw = [-3.10];
+        let current_pitch = [2.0];
+        let pitch_velocity = [8.0];
+        let target_pitch = [2.0];
+        let turn_accel = [64.0];
+        let drag = [0.0];
+        let mut out_yaw = [0.0];
+        let mut out_yaw_velocity = [0.0];
+        let mut out_yaw_acceleration = [0.0];
+        let mut out_pitch = [0.0];
+        let mut out_pitch_velocity = [0.0];
+        let mut out_pitch_acceleration = [0.0];
+        let mut out_aim_error_yaw = [0.0];
+        let mut out_aim_error_pitch = [0.0];
+        let pitch_min = -core::f64::consts::PI / 2.0;
+        let pitch_max = core::f64::consts::PI / 2.0;
+
+        assert_eq!(
+            turret_rotation_step_batch(
+                &current_yaw,
+                &yaw_velocity,
+                &target_yaw,
+                &current_pitch,
+                &pitch_velocity,
+                &target_pitch,
+                &turn_accel,
+                &drag,
+                &mut out_yaw,
+                &mut out_yaw_velocity,
+                &mut out_yaw_acceleration,
+                &mut out_pitch,
+                &mut out_pitch_velocity,
+                &mut out_pitch_acceleration,
+                &mut out_aim_error_yaw,
+                &mut out_aim_error_pitch,
+                1,
+                1.0 / 30.0,
+                pitch_min,
+                pitch_max,
+            ),
+            1,
+        );
+
+        assert!(out_yaw[0].is_finite());
+        assert!(out_aim_error_yaw[0].abs() < 0.09);
+        assert_eq!(out_pitch[0], pitch_max);
+        assert_eq!(out_pitch_velocity[0], 0.0);
+        assert_eq!(out_pitch_acceleration[0], 0.0);
+        assert!((out_aim_error_pitch[0] - (target_pitch[0] - pitch_max)).abs() < 1e-12);
     }
 
     #[test]
