@@ -24,6 +24,7 @@ import __wbg_init, {
   economy_compute_converter_transfer,
   economy_credit_stockpile,
   economy_debit_stockpile,
+  economy_apply_equal_consumer_debits,
   economy_apply_income_credits,
   economy_apply_converter_transfers,
   step_unit_motion,
@@ -448,6 +449,15 @@ export interface SimWasm {
     curr: number,
     amount: number,
     out: Float64Array,
+  ) => number;
+  readonly economyApplyEqualConsumerDebits: (
+    remaining: Float64Array,
+    caps: Float64Array,
+    count: number,
+    participantCount: number,
+    stockpileCurr: number,
+    outSpent: Float64Array,
+    outTotals: Float64Array,
   ) => number;
   readonly economyApplyIncomeCredits: (
     playerIds: Uint32Array,
@@ -3038,6 +3048,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         economyComputeConverterTransfer: economy_compute_converter_transfer,
         economyCreditStockpile: economy_credit_stockpile,
         economyDebitStockpile: economy_debit_stockpile,
+        economyApplyEqualConsumerDebits: economy_apply_equal_consumer_debits,
         economyApplyIncomeCredits: economy_apply_income_credits,
         economyApplyConverterTransfers: economy_apply_converter_transfers,
         stepUnitMotion: step_unit_motion,

@@ -155,6 +155,11 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     base-income and producer rows together, copies back stockpile truth, and only
     records renderer-facing resource movement events after WASM applies the
     accepted amounts.
+    2026-05-31 progress: construction and repair equal-share resource debit
+    allocation moved from energyDistribution.ts TypeScript math into the
+    Rust/WASM economy_apply_equal_consumer_debits helper. TypeScript still
+    gathers build/repair consumers, writes buildable HP/payment state, and
+    records renderer-facing pylon movement attribution.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)

@@ -174,6 +174,15 @@ fn economy_normalized_amount(amount: f64) -> f64 {
     }
 }
 
+#[inline]
+fn economy_normalized_cap(cap: f64) -> f64 {
+    if cap.is_nan() || cap <= 0.0 {
+        0.0
+    } else {
+        cap
+    }
+}
+
 const ECONOMY_RESOURCE_NONE_CODE: u32 = 0;
 const ECONOMY_RESOURCE_ENERGY_CODE: u32 = 1;
 const ECONOMY_RESOURCE_METAL_CODE: u32 = 2;
@@ -344,6 +353,67 @@ pub fn economy_debit_stockpile(curr: f64, amount: f64, out: &mut [f64]) -> u32 {
     let spent = requested.min(current);
     out[0] = spent;
     out[1] = current - spent;
+    1
+}
+
+#[wasm_bindgen]
+pub fn economy_apply_equal_consumer_debits(
+    remaining: &[f64],
+    caps: &[f64],
+    count: u32,
+    participant_count: u32,
+    stockpile_curr: f64,
+    out_spent: &mut [f64],
+    out_totals: &mut [f64],
+) -> u32 {
+    let n = count as usize;
+    if n > remaining.len() || n > caps.len() || n > out_spent.len() || out_totals.len() < 2 {
+        return 0;
+    }
+
+    for spent in out_spent.iter_mut().take(n) {
+        *spent = 0.0;
+    }
+    out_totals[0] = 0.0;
+    out_totals[1] = if stockpile_curr.is_finite() {
+        stockpile_curr.max(0.0)
+    } else {
+        0.0
+    };
+
+    if n == 0 || participant_count == 0 {
+        return 1;
+    }
+
+    let mut current = out_totals[1];
+    if current <= 0.0 {
+        return 1;
+    }
+
+    let equal_share = current / participant_count as f64;
+    if !equal_share.is_finite() || equal_share <= 0.0 {
+        return 1;
+    }
+
+    let mut total_spent = 0.0;
+    for i in 0..n {
+        if current <= 0.0 {
+            break;
+        }
+        let requested = economy_normalized_amount(remaining[i])
+            .min(economy_normalized_cap(caps[i]))
+            .min(equal_share);
+        if requested <= 0.0 {
+            continue;
+        }
+        let spent = requested.min(current);
+        out_spent[i] = spent;
+        total_spent += spent;
+        current -= spent;
+    }
+
+    out_totals[0] = total_spent;
+    out_totals[1] = current.max(0.0);
     1
 }
 
@@ -25670,6 +25740,58 @@ mod sim_kernel_tests {
         let mut short = [0.0; 1];
         assert_eq!(economy_credit_stockpile(1.0, 2.0, 1.0, &mut short), 0);
         assert_eq!(economy_debit_stockpile(1.0, 1.0, &mut short), 0);
+    }
+
+    #[test]
+    fn economy_apply_equal_consumer_debits_splits_by_lane_share() {
+        let remaining = [50.0, 3.0, 20.0, 0.0];
+        let caps = [8.0, f64::INFINITY, 12.0, 5.0];
+        let mut spent = [99.0; 4];
+        let mut totals = [99.0; 2];
+
+        assert_eq!(
+            economy_apply_equal_consumer_debits(
+                &remaining,
+                &caps,
+                4,
+                3,
+                30.0,
+                &mut spent,
+                &mut totals,
+            ),
+            1
+        );
+        assert_eq!(spent, [8.0, 3.0, 10.0, 0.0]);
+        assert_eq!(totals, [21.0, 9.0]);
+
+        assert_eq!(
+            economy_apply_equal_consumer_debits(
+                &remaining,
+                &caps,
+                4,
+                0,
+                30.0,
+                &mut spent,
+                &mut totals,
+            ),
+            1
+        );
+        assert_eq!(spent, [0.0; 4]);
+        assert_eq!(totals, [0.0, 30.0]);
+
+        let mut short = [0.0; 3];
+        assert_eq!(
+            economy_apply_equal_consumer_debits(
+                &remaining,
+                &caps,
+                4,
+                3,
+                30.0,
+                &mut short,
+                &mut totals,
+            ),
+            0
+        );
     }
 
     #[test]

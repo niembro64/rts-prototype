@@ -7,7 +7,7 @@
 // independent-bar intent.
 
 import type { WorldState } from './WorldState';
-import type { EconomyState, Entity, EntityId, PlayerId } from './types';
+import type { Entity, EntityId, PlayerId } from './types';
 import { NO_ENTITY_ID } from './types';
 import { economyManager } from './economy';
 import { getBuildingConfig } from './buildConfigs';
@@ -21,6 +21,7 @@ import {
   isBuildInProgress,
 } from './buildableHelpers';
 import { resourceMovementSystem, type ResourceKind } from './resourceMovement';
+import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 
 export type { EnergyBuffers, EnergyConsumer } from '@/types/ui';
 import type { EnergyBuffers, EnergyConsumer } from '@/types/ui';
@@ -49,6 +50,25 @@ export function resetEnergyBuffers(buffers: EnergyBuffers): void {
   buffers.buildingConsumerIds.clear();
 }
 
+let consumerEnergyRemaining = new Float64Array(32);
+let consumerMetalRemaining = new Float64Array(32);
+let consumerCaps = new Float64Array(32);
+let consumerEnergySpent = new Float64Array(32);
+let consumerMetalSpent = new Float64Array(32);
+const consumerDebitTotals = new Float64Array(2);
+
+function ensureConsumerDebitCapacity(count: number): void {
+  if (count <= consumerEnergyRemaining.length) return;
+  let nextCapacity = consumerEnergyRemaining.length;
+  while (nextCapacity < count) nextCapacity *= 2;
+
+  consumerEnergyRemaining = new Float64Array(nextCapacity);
+  consumerMetalRemaining = new Float64Array(nextCapacity);
+  consumerCaps = new Float64Array(nextCapacity);
+  consumerEnergySpent = new Float64Array(nextCapacity);
+  consumerMetalSpent = new Float64Array(nextCapacity);
+}
+
 function addConstructionSource(
   buffers: EnergyBuffers,
   targetId: EntityId,
@@ -67,71 +87,72 @@ function addConstructionSource(
   buffers.constructionSourceTailByTarget.set(targetId, index);
 }
 
-function spendResourceForConsumer(
+function recordResourceSpendForConsumer(
   world: WorldState,
   buffers: EnergyBuffers,
-  economy: EconomyState,
   consumer: EnergyConsumer,
   resource: ResourceKind,
-  requestedAmount: number,
+  spentAmount: number,
   dtSec: number,
-): number {
-  if (requestedAmount <= 0) return 0;
-  const amountPerSecond = dtSec > 0 ? requestedAmount / dtSec : 0;
+): void {
+  if (spentAmount <= 0) return;
+  const amountPerSecond = dtSec > 0 ? spentAmount / dtSec : 0;
   const reason = consumer.type === 'heal' ? 'repair' : 'construction';
   if (consumer.sourceEntityId !== null) {
-    return resourceMovementSystem.debit(economy, world, {
+    resourceMovementSystem.recordAppliedDebit(world, {
       playerId: consumer.playerId,
       sourceEntityId: consumer.sourceEntityId,
       targetEntityId: consumer.entity.id,
       resource,
-      amount: requestedAmount,
+      amount: spentAmount,
       amountPerSecond,
       direction: 'outbound',
       reason,
-    });
+    }, spentAmount);
+    return;
   }
 
   const targetId = consumer.sourceBreakdownTargetId;
   if (targetId === null) {
-    return resourceMovementSystem.debit(economy, world, {
+    resourceMovementSystem.recordAppliedDebit(world, {
       playerId: consumer.playerId,
       sourceEntityId: null,
       targetEntityId: consumer.entity.id,
       resource,
-      amount: requestedAmount,
+      amount: spentAmount,
       amountPerSecond,
       direction: 'outbound',
       reason,
-    });
+    }, spentAmount);
+    return;
   }
 
   const head = buffers.constructionSourceHeadByTarget.get(targetId);
   const totalCap = consumer.maxResourcePerTick;
   if (head === undefined || totalCap <= 0) {
-    return resourceMovementSystem.debit(economy, world, {
+    resourceMovementSystem.recordAppliedDebit(world, {
       playerId: consumer.playerId,
       sourceEntityId: null,
       targetEntityId: consumer.entity.id,
       resource,
-      amount: requestedAmount,
+      amount: spentAmount,
       amountPerSecond,
       direction: 'outbound',
       reason,
-    });
+    }, spentAmount);
+    return;
   }
 
-  let spent = 0;
-  let remaining = requestedAmount;
+  let remaining = spentAmount;
   let index = head;
   while (index !== -1 && remaining > 0) {
     const source = buffers.constructionSources[index];
     const nextIndex = source.nextIndex;
     const share = nextIndex === -1
       ? remaining
-      : Math.min(remaining, requestedAmount * (source.maxResourcePerTick / totalCap));
+      : Math.min(remaining, spentAmount * (source.maxResourcePerTick / totalCap));
     if (share > 0) {
-      spent += resourceMovementSystem.debit(economy, world, {
+      resourceMovementSystem.recordAppliedDebit(world, {
         playerId: consumer.playerId,
         sourceEntityId: source.sourceEntityId,
         targetEntityId: consumer.entity.id,
@@ -140,12 +161,37 @@ function spendResourceForConsumer(
         amountPerSecond: dtSec > 0 ? share / dtSec : 0,
         direction: 'outbound',
         reason,
-      });
+      }, share);
       remaining -= share;
     }
     index = nextIndex;
   }
-  return spent;
+}
+
+function applyConsumerDebitLane(
+  sim: SimWasm,
+  remaining: Float64Array,
+  caps: Float64Array,
+  count: number,
+  participantCount: number,
+  stockpileCurr: number,
+  outSpent: Float64Array,
+): { totalSpent: number; nextStockpile: number } {
+  if (sim.economyApplyEqualConsumerDebits(
+    remaining,
+    caps,
+    count,
+    participantCount,
+    stockpileCurr,
+    outSpent,
+    consumerDebitTotals,
+  ) === 0) {
+    throw new Error('distributeEnergy: economy_apply_equal_consumer_debits rejected its buffers');
+  }
+  return {
+    totalSpent: consumerDebitTotals[0],
+    nextStockpile: consumerDebitTotals[1],
+  };
 }
 
 // Distribute resources to active consumers (one player at a time).
@@ -335,6 +381,11 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   // lanes, so no resource bar can burst to full just because it is not
   // energy. When stockpile of one resource runs dry, that bar pauses
   // while the others keep filling — exactly the independent-bar UX.
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('distributeEnergy: sim-wasm is not initialized');
+  }
+
   for (const [playerId, indices] of byPlayer) {
     const economy = economyManager.getEconomy(playerId);
     if (!economy || indices.length === 0) continue;
@@ -348,39 +399,52 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       else healCount++;
     }
     const totalEnergyConsumers = buildCount + healCount;
-    const equalEnergyShare = totalEnergyConsumers > 0
-      ? economy.stockpile.curr / totalEnergyConsumers
-      : 0;
-    const equalMetalShare = buildCount > 0 ? economy.metal.stockpile.curr / buildCount : 0;
 
-    let totalEnergySpent = 0;
-    let totalMetalSpent = 0;
+    ensureConsumerDebitCapacity(indices.length);
+    for (let i = 0; i < indices.length; i++) {
+      const c = consumers[indices[i]];
+      consumerCaps[i] = c.maxResourcePerTick;
+      if (c.type === 'build') {
+        const buildable = c.entity.buildable;
+        consumerEnergyRemaining[i] = buildable === null ? 0 : getRemainingResource(buildable, 'energy');
+        consumerMetalRemaining[i] = buildable === null ? 0 : getRemainingResource(buildable, 'metal');
+      } else {
+        consumerEnergyRemaining[i] = c.remainingCost;
+        consumerMetalRemaining[i] = 0;
+      }
+    }
 
-    for (const idx of indices) {
-      const c = consumers[idx];
+    const energyDebit = applyConsumerDebitLane(
+      sim,
+      consumerEnergyRemaining,
+      consumerCaps,
+      indices.length,
+      totalEnergyConsumers,
+      economy.stockpile.curr,
+      consumerEnergySpent,
+    );
+    economy.stockpile.curr = energyDebit.nextStockpile;
+
+    const metalDebit = applyConsumerDebitLane(
+      sim,
+      consumerMetalRemaining,
+      consumerCaps,
+      indices.length,
+      buildCount,
+      economy.metal.stockpile.curr,
+      consumerMetalSpent,
+    );
+    economy.metal.stockpile.curr = metalDebit.nextStockpile;
+
+    for (let i = 0; i < indices.length; i++) {
+      const c = consumers[indices[i]];
       if (c.type === 'build') {
         const buildable = c.entity.buildable;
         if (!buildable) continue;
-        const remE = getRemainingResource(buildable, 'energy');
-        const remT = getRemainingResource(buildable, 'metal');
-        const spendE = spendResourceForConsumer(
-          world,
-          buffers,
-          economy,
-          c,
-          'energy',
-          Math.min(equalEnergyShare, remE, c.maxResourcePerTick),
-          dtSec,
-        );
-        const spendT = spendResourceForConsumer(
-          world,
-          buffers,
-          economy,
-          c,
-          'metal',
-          Math.min(equalMetalShare, remT, c.maxResourcePerTick),
-          dtSec,
-        );
+        const spendE = consumerEnergySpent[i];
+        const spendT = consumerMetalSpent[i];
+        recordResourceSpendForConsumer(world, buffers, c, 'energy', spendE, dtSec);
+        recordResourceSpendForConsumer(world, buffers, c, 'metal', spendT, dtSec);
         if (spendE > 0) buildable.paid.energy += spendE;
         if (spendT > 0) buildable.paid.metal += spendT;
         if (spendE > 0 || spendT > 0) {
@@ -405,20 +469,10 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
             }
           }
         }
-        totalEnergySpent += spendE;
-        totalMetalSpent += spendT;
       } else {
         // Healing — energy only.
-        const energyToSpend = spendResourceForConsumer(
-          world,
-          buffers,
-          economy,
-          c,
-          'energy',
-          Math.min(equalEnergyShare, c.remainingCost, c.maxResourcePerTick),
-          dtSec,
-        );
-        totalEnergySpent += energyToSpend;
+        const energyToSpend = consumerEnergySpent[i];
+        recordResourceSpendForConsumer(world, buffers, c, 'energy', energyToSpend, dtSec);
         const hpHealed = energyToSpend / 0.5;
         const unit = c.entity.unit!;
         const nextHp = Math.min(unit.hp + hpHealed, unit.maxHp);
@@ -430,8 +484,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     }
 
     if (dtSec > 0) {
-      economyManager.recordExpenditure(playerId, totalEnergySpent / dtSec);
-      economyManager.recordMetalExpenditure(playerId, totalMetalSpent / dtSec);
+      economyManager.recordExpenditure(playerId, energyDebit.totalSpent / dtSec);
+      economyManager.recordMetalExpenditure(playerId, metalDebit.totalSpent / dtSec);
     }
   }
 }
