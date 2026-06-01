@@ -18,7 +18,13 @@ import { buildFlyingRig } from '@/game/render3d/FlyingRig3D';
 import { buildShieldPanelMesh3D } from '@/game/render3d/ShieldPanelMesh3D';
 import { kneeFromIK } from '@/game/render3d/LocomotionRigShared3D';
 import { getTurretHeadRadius } from '@/game/math';
-import { createShellMaterial } from '@/game/render3d/ShellMaterial';
+import { COLORS } from '@/colorsConfig';
+import { SUN_RENDER_CONFIG } from '@/config';
+import { getPlayerColors, type PlayerId } from '@/game/sim/types';
+import { turretAccentColorHexForPlayer } from '@/game/render3d/EntityInstanceColor3D';
+import { createShieldFallbackPanelMaterial } from '@/game/render3d/ShieldReflectorVisual3D';
+import { writeSunDirectionThree } from '@/game/render3d/SunLighting';
+import { locomotionPieceColorHex } from '@/game/render3d/colorUtils';
 
 type PreviewCanvas = HTMLCanvasElement | OffscreenCanvas;
 
@@ -68,6 +74,58 @@ const DEFAULT_HEIGHT = 480;
 const CAMERA_FOV_DEGREES = 34;
 const SPIN_RAD_PER_MS = (Math.PI * 2) / 7600;
 const SHELL_ENTITY_ID = 1;
+// Render the loading unit as the primary host player (slot 1 → red),
+// matching GameCanvas's `localPlayerId` default so it looks exactly as
+// it will in-game for the host.
+const HOST_PLAYER_ID: PlayerId = 1;
+const LEG_SEGMENT_COLOR = COLORS.units.locomotion.leg.segment.colorHex;
+
+// In-game units mix lit team-colored body/turret materials
+// (MeshLambertMaterial, see Render3DEntities) with unlit, team-tinted
+// locomotion pieces (MeshBasicMaterial, see TreadRig3D / colorUtils).
+// The preview reproduces that exact split for one player so the unit
+// reads as it would on the battlefield rather than as a pale shell.
+type PreviewUnitMaterials = {
+  /** Body, turret head, mirror frame/arm — player primary, lit. */
+  primary: THREE.MeshLambertMaterial;
+  /** Turret accent + physical barrels — half player color, half white, lit. */
+  turretAccent: THREE.MeshLambertMaterial;
+  /** Shield-reflector panel surface. */
+  mirrorShiny: THREE.Material;
+  /** Legged-locomotion segments — base leg color tinted toward the team
+   *  color, unlit (matches the leg instanced renderer). */
+  leg: THREE.MeshBasicMaterial;
+};
+
+function createPreviewUnitMaterials(playerId: PlayerId): PreviewUnitMaterials {
+  return {
+    primary: new THREE.MeshLambertMaterial({ color: getPlayerColors(playerId).primary }),
+    turretAccent: new THREE.MeshLambertMaterial({ color: turretAccentColorHexForPlayer(playerId) }),
+    mirrorShiny: createShieldFallbackPanelMaterial(),
+    leg: new THREE.MeshBasicMaterial({ color: locomotionPieceColorHex(LEG_SEGMENT_COLOR, playerId) }),
+  };
+}
+
+function disposePreviewUnitMaterials(materials: PreviewUnitMaterials): void {
+  materials.primary.dispose();
+  materials.turretAccent.dispose();
+  materials.mirrorShiny.dispose();
+  materials.leg.dispose();
+}
+
+/** Replicate the in-game sun (ambient + directional) so the lit body and
+ *  turret materials shade the same way they do on the battlefield. The
+ *  lights live in world space, not under the spin root, so the unit
+ *  rotates beneath a fixed sun — exactly as in-game. */
+function installPreviewLighting(scene: THREE.Scene): void {
+  scene.add(new THREE.AmbientLight(SUN_RENDER_CONFIG.color, SUN_RENDER_CONFIG.ambientIntensity));
+  const sun = new THREE.DirectionalLight(SUN_RENDER_CONFIG.color, SUN_RENDER_CONFIG.directionalIntensity);
+  // Directional light shines from `position` toward its target (origin,
+  // where the model is centered); distance is irrelevant for parallel
+  // rays, so any positive scale along the sun direction works.
+  writeSunDirectionThree(sun.position).multiplyScalar(100);
+  scene.add(sun);
+}
 
 const turretHeadGeom = new THREE.SphereGeometry(1, 16, 12);
 const barrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
@@ -86,7 +144,7 @@ export class LoadingUnitPreviewScene {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(CAMERA_FOV_DEGREES, 1, 0.1, 10000);
-  private readonly shellMaterial = createShellMaterial();
+  private readonly materials = createPreviewUnitMaterials(HOST_PLAYER_ID);
   private readonly spinRoot = new THREE.Group();
   private readonly fullBleed: boolean;
   private boundsRadius = 1;
@@ -108,8 +166,9 @@ export class LoadingUnitPreviewScene {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.setClearColor(0x000000, 0);
     this.scene.add(this.spinRoot);
+    installPreviewLighting(this.scene);
 
-    const model = buildPreviewUnitModel(options.unitBlueprintId, this.shellMaterial);
+    const model = buildPreviewUnitModel(options.unitBlueprintId, this.materials);
     this.centerModel(model);
     this.spinRoot.add(model);
     this.resize({ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT, dpr: 1 });
@@ -141,7 +200,7 @@ export class LoadingUnitPreviewScene {
     this.spinRoot.clear();
     this.scene.clear();
     this.renderer.renderLists.dispose();
-    this.shellMaterial.dispose();
+    disposePreviewUnitMaterials(this.materials);
     this.renderer.forceContextLoss();
     this.renderer.dispose();
   }
@@ -178,7 +237,10 @@ export class LoadingUnitPreviewScene {
   }
 }
 
-function buildPreviewUnitModel(unitBlueprintId: BuildableUnitBlueprintId, shellMaterial: THREE.Material): THREE.Group {
+function buildPreviewUnitModel(
+  unitBlueprintId: BuildableUnitBlueprintId,
+  materials: PreviewUnitMaterials,
+): THREE.Group {
   const blueprint = getUnitBlueprint(unitBlueprintId);
   const radius = blueprint.radius.visual;
   const chassisLift = getChassisLiftY(blueprint, radius);
@@ -186,28 +248,27 @@ function buildPreviewUnitModel(unitBlueprintId: BuildableUnitBlueprintId, shellM
   const yawGroup = new THREE.Group();
   root.add(yawGroup);
 
-  buildPreviewLocomotion(yawGroup, blueprint, shellMaterial);
+  buildPreviewLocomotion(yawGroup, blueprint, materials);
 
   const liftGroup = new THREE.Group();
   liftGroup.position.y = chassisLift;
   yawGroup.add(liftGroup);
 
-  buildPreviewBody(liftGroup, blueprint, shellMaterial);
-  buildPreviewTurrets(liftGroup, blueprint, unitBlueprintId, chassisLift, shellMaterial);
-  buildPreviewMirrors(liftGroup, blueprint, chassisLift, shellMaterial);
-  applyShellMaterial(root, shellMaterial);
+  buildPreviewBody(liftGroup, blueprint, materials.primary);
+  buildPreviewTurrets(liftGroup, blueprint, unitBlueprintId, chassisLift, materials);
+  buildPreviewMirrors(liftGroup, blueprint, chassisLift, materials);
   return root;
 }
 
 function buildPreviewBody(
   liftGroup: THREE.Group,
   blueprint: UnitBlueprint,
-  shellMaterial: THREE.Material,
+  bodyMaterial: THREE.Material,
 ): void {
   const chassis = new THREE.Group();
   const bodyEntry = getBodyGeom(blueprint.bodyShape);
   for (const part of bodyEntry.parts) {
-    const mesh = new THREE.Mesh(part.geometry, shellMaterial);
+    const mesh = new THREE.Mesh(part.geometry, bodyMaterial);
     mesh.position.set(part.x, part.y, part.z);
     mesh.scale.set(part.scaleX, part.scaleY, part.scaleZ);
     if (part.rotZ) mesh.rotation.z = part.rotZ;
@@ -222,7 +283,7 @@ function buildPreviewTurrets(
   blueprint: UnitBlueprint,
   unitBlueprintId: BuildableUnitBlueprintId,
   chassisLift: number,
-  shellMaterial: THREE.Material,
+  materials: PreviewUnitMaterials,
 ): void {
   const turrets = createUnitRuntimeTurrets(unitBlueprintId, blueprint.radius.visual);
   for (const turret of turrets) {
@@ -230,8 +291,8 @@ function buildPreviewTurrets(
       headGeom: turretHeadGeom,
       barrelGeom,
       coneBarrelGeom,
-      primaryMat: shellMaterial,
-      turretAccentMat: shellMaterial,
+      primaryMat: materials.primary,
+      turretAccentMat: materials.turretAccent,
       skipHead: false,
       skipBarrels: false,
     });
@@ -248,26 +309,26 @@ function buildPreviewTurrets(
 function buildPreviewLocomotion(
   yawGroup: THREE.Group,
   blueprint: UnitBlueprint,
-  shellMaterial: THREE.Material,
+  materials: PreviewUnitMaterials,
 ): void {
   const locomotion = blueprint.locomotion;
   if (!locomotion) return;
   const radius = blueprint.radius.visual;
   switch (locomotion.type) {
     case 'treads':
-      buildTreads(yawGroup, radius, locomotion.config, true, undefined);
+      buildTreads(yawGroup, radius, locomotion.config, true, HOST_PLAYER_ID);
       break;
     case 'wheels':
-      buildWheels(yawGroup, radius, locomotion.config, undefined);
+      buildWheels(yawGroup, radius, locomotion.config, HOST_PLAYER_ID);
       break;
     case 'hover':
-      buildHoverFans(yawGroup, radius, locomotion.config, 'locomotionHovercraft', SHELL_ENTITY_ID, undefined);
+      buildHoverFans(yawGroup, radius, locomotion.config, 'locomotionHovercraft', SHELL_ENTITY_ID, HOST_PLAYER_ID);
       break;
     case 'flying':
-      buildFlyingRig(yawGroup, radius, locomotion.config, 'locomotionEagleFlying', SHELL_ENTITY_ID, undefined);
+      buildFlyingRig(yawGroup, radius, locomotion.config, 'locomotionEagleFlying', SHELL_ENTITY_ID, HOST_PLAYER_ID);
       break;
     case 'legs':
-      buildPreviewLegs(yawGroup, blueprint, shellMaterial);
+      buildPreviewLegs(yawGroup, blueprint, materials.leg);
       break;
   }
 }
@@ -276,7 +337,7 @@ function buildPreviewMirrors(
   liftGroup: THREE.Group,
   blueprint: UnitBlueprint,
   chassisLift: number,
-  shellMaterial: THREE.Material,
+  materials: PreviewUnitMaterials,
 ): void {
   const shieldPanels: CachedShieldPanel[] = [];
   buildShieldPanelCache(blueprint, shieldPanels);
@@ -298,15 +359,15 @@ function buildPreviewMirrors(
     mirrorGeom,
     mirrorArmGeom,
     mirrorSupportGeom,
-    shellMaterial,
-    shellMaterial,
+    materials.mirrorShiny,
+    materials.primary,
   );
 }
 
 function buildPreviewLegs(
   yawGroup: THREE.Group,
   blueprint: UnitBlueprint,
-  shellMaterial: THREE.Material,
+  legMaterial: THREE.Material,
 ): void {
   const locomotion = blueprint.locomotion;
   if (!locomotion || locomotion.type !== 'legs') return;
@@ -342,11 +403,11 @@ function buildPreviewLegs(
       0, 1, 0,
     );
     const kneeVec = new THREE.Vector3(knee.x, knee.y, knee.z);
-    addCylinderBetween(group, hip, kneeVec, upperRadius, shellMaterial);
-    addCylinderBetween(group, kneeVec, foot, lowerRadius, shellMaterial);
-    addSphere(group, hip, hipJointRadius, shellMaterial);
-    addSphere(group, kneeVec, kneeJointRadius, shellMaterial);
-    addFootPad(group, foot, footPadRadius, footPadHalfHeight, shellMaterial);
+    addCylinderBetween(group, hip, kneeVec, upperRadius, legMaterial);
+    addCylinderBetween(group, kneeVec, foot, lowerRadius, legMaterial);
+    addSphere(group, hip, hipJointRadius, legMaterial);
+    addSphere(group, kneeVec, kneeJointRadius, legMaterial);
+    addFootPad(group, foot, footPadRadius, footPadHalfHeight, legMaterial);
   }
 }
 
@@ -393,11 +454,4 @@ function addFootPad(
   mesh.position.copy(center);
   mesh.scale.set(radius, halfHeight, radius);
   parent.add(mesh);
-}
-
-function applyShellMaterial(root: THREE.Object3D, shellMaterial: THREE.Material): void {
-  root.traverse((object) => {
-    if ((object as THREE.Mesh).isMesh !== true) return;
-    (object as THREE.Mesh).material = shellMaterial;
-  });
 }
