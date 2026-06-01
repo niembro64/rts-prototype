@@ -979,7 +979,7 @@
     "range": 430,
     "cooldown": 50,
     "launchForce": 5000,
-    "turretTurnAccel": 200,
+    "turretTurnAccel": 1200,
     "turretDrag": 0.15,
     "barrel": {
       "type": "singleCylinderBarrel",
