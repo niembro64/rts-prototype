@@ -278,8 +278,8 @@ export const BEAM_MAX_SEGMENTS = combatConfigJson.beamMaxSegments;
 // =============================================================================
 
 /** REAL BATTLE default order type assigned to units produced by
- *  player-built factories/fabricators. Demo-battle factories use
- *  DEMO_CONFIG.factoryWaypointType instead. */
+ *  player-built factories/fabricators. Demo-battle seeded fabricators
+ *  force a fight first leg, then append their own patrol loop. */
 export const REAL_BATTLE_FACTORY_WAYPOINT_TYPE =
   realBattleConfigJson.factoryWaypointType as DemoBattleWaypointType;
 export const REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE =

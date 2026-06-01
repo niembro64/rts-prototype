@@ -129,6 +129,7 @@ export class ConstructionSystem {
         selectedUnitBlueprintId: null,
         currentShellId: null,
         currentBuildProgress: 0,
+        defaultWaypoints: null,
         rallyX: wp.x,
         rallyY: wp.y,
         rallyZ: null,

@@ -63,6 +63,7 @@ export type {
   BuildingConfig,
   UnitBuildConfig,
   Factory,
+  FactoryDefaultWaypoint,
   Commander,
   DGunProjectile,
   EntityMeta,

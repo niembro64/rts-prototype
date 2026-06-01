@@ -1,5 +1,5 @@
 import type { WorldState } from './WorldState';
-import type { Entity, PlayerId, BuildingBlueprintId } from './types';
+import type { Entity, PlayerId, BuildingBlueprintId, FactoryDefaultWaypoint } from './types';
 import type { ConstructionSystem } from './construction';
 import { economyManager } from './economy';
 import { aimTurretsToward } from './turretInit';
@@ -39,30 +39,23 @@ export { FIRST_PLAYER_ANGLE, getPlayerBaseAngle } from './playerLayout';
 type InitialBaseMode = 'demo' | 'real';
 
 type InitialFactoryWaypointConfig = {
-  // Ordered list of waypoint legs the freshly-built unit will execute.
-  // Multiple 'patrol' entries cycle indefinitely; a single non-patrol
-  // entry gives the legacy "march to one point and stop" behaviour.
-  legs: readonly { type: WaypointType; distance: number }[];
+  fightType: WaypointType;
+  fightDistance: number;
+  addDemoCenterPatrolLoop: boolean;
 };
 
 function getInitialFactoryWaypointConfig(mode: InitialBaseMode): InitialFactoryWaypointConfig {
   if (mode === 'real') {
     return {
-      legs: [{
-        type: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
-        distance: REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
-      }],
+      fightType: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
+      fightDistance: REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
+      addDemoCenterPatrolLoop: false,
     };
   }
-  // Demo battle: two patrol points along the factory → opposite-side
-  // axis so freshly built reinforcements never stall at a single
-  // rally — they shuttle forward across center, back toward base,
-  // and out again.
   return {
-    legs: DEMO_CONFIG.factoryWaypointDistances.map((distance) => ({
-      type: DEMO_CONFIG.factoryWaypointType,
-      distance,
-    })),
+    fightType: 'fight',
+    fightDistance: DEMO_CONFIG.factoryFightWaypointDistance,
+    addDemoCenterPatrolLoop: true,
   };
 }
 
@@ -81,6 +74,36 @@ export function computeFactoryWaypoint(
     x: factoryX + (cx - factoryX) * distance,
     y: factoryY + (cy - factoryY) * distance,
   };
+}
+
+function computeFactoryDefaultWaypoints(
+  factoryX: number,
+  factoryY: number,
+  mapWidth: number,
+  mapHeight: number,
+  config: InitialFactoryWaypointConfig,
+): readonly FactoryDefaultWaypoint[] {
+  const fight = computeFactoryWaypoint(
+    factoryX,
+    factoryY,
+    mapWidth,
+    mapHeight,
+    config.fightDistance,
+  );
+  if (!config.addDemoCenterPatrolLoop) {
+    return [{ x: fight.x, y: fight.y, z: null, type: config.fightType }];
+  }
+
+  const oval = makeMapOvalMetrics(mapWidth, mapHeight);
+  const angle = mapOvalAngleAt(mapWidth, mapHeight, factoryX, factoryY);
+  const patrolRadius = DEMO_CONFIG.centerSpawnRadius * oval.minDim;
+  const near = mapOvalPointAt(oval, angle, patrolRadius);
+  const far = mapOvalPointAt(oval, angle + Math.PI, patrolRadius);
+  return [
+    { x: fight.x, y: fight.y, z: null, type: config.fightType },
+    { x: far.x, y: far.y, z: null, type: 'patrol' },
+    { x: near.x, y: near.y, z: null, type: 'patrol' },
+  ];
 }
 
 // Spawn a commander for a player
@@ -230,21 +253,23 @@ function placeCompleteBuilding(
   }
 
   if (buildingBlueprintId === 'towerFabricator') {
-    const rally = computeFactoryWaypoint(
+    const defaultWaypoints = computeFactoryDefaultWaypoints(
       center.x,
       center.y,
       world.mapWidth,
       world.mapHeight,
-      factoryWaypoint.legs[0]?.distance ?? REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
+      factoryWaypoint,
     );
+    const rally = defaultWaypoints[0];
     entity.factory = {
       selectedUnitBlueprintId: null,
       currentShellId: null,
       currentBuildProgress: 0,
+      defaultWaypoints,
       rallyX: rally.x,
       rallyY: rally.y,
       rallyZ: null,
-      rallyType: factoryWaypoint.legs[0]?.type ?? REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
+      rallyType: rally.type,
       isProducing: false,
       energyRateFraction: 0,
       metalRateFraction: 0,

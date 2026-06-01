@@ -490,6 +490,7 @@ function executeSetRallyPointCommand(ctx: CommandContext, command: SetRallyPoint
   factory.factory.rallyY = command.rallyY;
   factory.factory.rallyZ = command.rallyZ ?? null;
   factory.factory.rallyType = command.waypointType;
+  factory.factory.defaultWaypoints = null;
   ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
 }
 

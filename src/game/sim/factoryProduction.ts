@@ -333,14 +333,17 @@ export class FactoryProductionSystem {
     const spawnX = unit.transform.x;
     const spawnY = unit.transform.y;
     if (unit.unit) {
+      const route = factoryComp.defaultWaypoints !== null
+        ? factoryComp.defaultWaypoints
+        : [{
+            x: factoryComp.rallyX,
+            y: factoryComp.rallyY,
+            z: factoryComp.rallyZ,
+            type: factoryComp.rallyType,
+          }];
       const { actions, patrolStartIndex } = expandMultiLegPathActions(
         spawnX, spawnY,
-        [{
-          x: factoryComp.rallyX,
-          y: factoryComp.rallyY,
-          z: factoryComp.rallyZ ?? undefined,
-          type: factoryComp.rallyType,
-        }],
+        route,
         world.mapWidth, world.mapHeight, buildingGrid,
         pathTerrainFilterForUnit(unit),
       );

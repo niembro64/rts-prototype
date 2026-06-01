@@ -861,6 +861,12 @@ export type Factory = {
   selectedUnitBlueprintId: string | null;
   currentShellId: EntityId | null;
   currentBuildProgress: number;
+  /** Server-owned default route for units this factory produces.
+   *  Null means use the mutable single rally point below. This is not
+   *  serialized; clients only need the visible rally, while the
+   *  authoritative production system consumes the route at shell
+   *  activation time. */
+  defaultWaypoints: readonly FactoryDefaultWaypoint[] | null;
   rallyX: number;
   rallyY: number;
   rallyZ: number | null;
@@ -873,6 +879,13 @@ export type Factory = {
    *  factory isn't producing. */
   energyRateFraction: number;
   metalRateFraction: number;
+};
+
+export type FactoryDefaultWaypoint = {
+  x: number;
+  y: number;
+  z: number | null;
+  type: WaypointType;
 };
 
 // Commander component

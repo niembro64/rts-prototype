@@ -493,6 +493,7 @@ function createBuildingFromNetwork(
       // without looking up the shell.
       currentShellId: null,
       currentBuildProgress: f.progress ?? 0,
+      defaultWaypoints: null,
       rallyX: f.rally.pos.x,
       rallyY: f.rally.pos.y,
       rallyZ: f.rally.posZ,

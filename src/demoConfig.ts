@@ -62,23 +62,13 @@ export const DEMO_CONFIG = {
   initialUnitWaypointType: demoConfig.initialUnitWaypointType as DemoBattleWaypointType,
 
   /**
-   * DEMO BATTLE factory/fabricator-produced unit order type. 'patrol'
-   * combined with two factoryWaypointDistances entries makes
-   * reinforcements shuttle back and forth instead of stalling at a
-   * single rally point. Only affects the demo's prebuilt AI
-   * factories; real-battle factories use
-   * REAL_BATTLE_FACTORY_WAYPOINT_TYPE in config.ts.
+   * DEMO BATTLE fabricator-produced unit first leg, as a fraction of
+   * factory→map-center. 0.5 = halfway to center, 1.0 = center. The
+   * leg is always a fight-move; after it, demo fabricators append a
+   * patrol loop across the same `centerSpawnRadius` oval used by demo
+   * battle units.
    */
-  factoryWaypointType: demoConfig.factoryWaypointType as DemoBattleWaypointType,
-
-  /**
-   * Ordered list of distances (each as a fraction of
-   * factory→map-center) for the demo factory's waypoint legs.
-   * 0.5 = halfway to center, 1.0 = center, 1.5 = past center. With
-   * factoryWaypointType = 'patrol' the unit cycles through every
-   * entry forever, producing back-and-forth motion across the front.
-   */
-  factoryWaypointDistances: demoConfig.factoryWaypointDistances as readonly number[],
+  factoryFightWaypointDistance: demoConfig.factoryFightWaypointDistance,
 
   /**
    * Whether AI uses inverse-cost weighting when picking units to queue.

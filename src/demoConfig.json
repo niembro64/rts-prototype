@@ -32,11 +32,7 @@
     }
   },
   "initialUnitWaypointType": "patrol",
-  "factoryWaypointType": "patrol",
-  "factoryWaypointDistances": [
-    0.4,
-    1.22
-  ],
+  "factoryFightWaypointDistance": 0.4,
   "aiInverseCostWeighting": true,
   "centerSpawnRadius": 0.2,
   "centerSpawnSectorFraction": 0.6,
