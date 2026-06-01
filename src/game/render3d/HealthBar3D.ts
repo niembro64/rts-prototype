@@ -15,7 +15,6 @@ import {
   getBuildingHudBarsY,
   getUnitHudBarsY,
   getTurretHudBarsY,
-  getLocomotionHudBarsY,
 } from './HudAnchor';
 import {
   getResourceFillRatio,
@@ -75,17 +74,15 @@ type BarState = {
 type Bar = CanvasSpriteSlot<BarState>;
 
 // Packed per-piece dedup keys. A host's body bar + N turret bars + the
-// locomotion bar all share one host entity id, so a single id-keyed
+// turret bars all share one host entity id, so a single id-keyed
 // dedup map would let the body call suppress every sub-piece. Pack the
 // piece identity into the key: hostId * 256 + pieceTag. Tag 0 = body,
-// tag 1 = locomotion, tags 16.. = turret index (matching the
-// TurretMountCache3D packTurretMountKey scheme, offset to avoid
-// colliding with body/loco low tags).
+// tags 16.. = turret index (matching the TurretMountCache3D
+// packTurretMountKey scheme, offset to avoid colliding with the body tag).
 export const PIECE_TAG_BODY = 0;
-export const PIECE_TAG_LOCOMOTION = 1;
 export const PIECE_TAG_TURRET_BASE = 16;
 
-/** Tag for turret index `i`. Offset past the body/loco low tags so
+/** Tag for turret index `i`. Offset past the body tag so
  *  turret tags never collide with them; mirrors the
  *  TurretMountCache3D packTurretMountKey idea (id * 256 + slot). */
 export function turretPieceTag(turretIdx: number): number {
@@ -383,44 +380,6 @@ export class HealthBar3D {
     if (alpha <= FADE_CULL_ALPHA) return;
     this._seenEntityFrame.set(key, this._frameToken);
     const worldWidth = getTurretHeadRadius(turret.config) * 2;
-    let stack = 0;
-    if (showHp) {
-      const ratio = Math.max(0, Math.min(1, hp / maxHp));
-      this.placeBar(ratio, 'health', worldX, worldY, worldZ, worldWidth, stack, alpha);
-      stack++;
-    }
-    if (showBuildBars && piece) {
-      this.placePieceBuildBars(piece, worldX, worldY, worldZ, worldWidth, stack, alpha);
-    }
-  }
-
-  /** Fused-iteration entry: one unit's locomotion HP (+ build) bars,
-   *  anchored LOW at the body base (below the body stack). */
-  perLocomotion(
-    host: Entity,
-    forceVisible: boolean,
-    showHealth: boolean,
-    showBuild: boolean,
-  ): void {
-    const loco = host.unit?.locomotion;
-    if (!loco) return;
-    const key = packPieceKey(host.id, PIECE_TAG_LOCOMOTION);
-    if (this._seenEntityFrame.get(key) === this._frameToken) return;
-    const hp = loco.hp;
-    const maxHp = loco.maxHp;
-    const piece = showBuild
-      ? getConstructionPieceRecord(host, 'locomotion', 0)
-      : null;
-    const showHp = maxHp > 0 && (showHealth || forceVisible) && hp > 0;
-    const showBuildBars = piece !== null;
-    if (!showHp && !showBuildBars) return;
-    const worldX = host.transform.x;
-    const worldY = getLocomotionHudBarsY(host);
-    const worldZ = host.transform.y;
-    const alpha = this._fade ? this._fade.alphaAt(worldX, worldY, worldZ) : 1;
-    if (alpha <= FADE_CULL_ALPHA) return;
-    this._seenEntityFrame.set(key, this._frameToken);
-    const worldWidth = loco.radius.visual * 2;
     let stack = 0;
     if (showHp) {
       const ratio = Math.max(0, Math.min(1, hp / maxHp));

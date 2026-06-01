@@ -3,7 +3,7 @@
     "unitBlueprintId": "unitJackal",
     "name": "Jackal",
     "shortName": "JKL",
-    "hp": 55,
+    "hp": 74.25,
     "radius": {
       "visual": 8,
       "hitbox": 6,
@@ -11,7 +11,7 @@
     },
     "bodyCenterHeight": 5.680000000000001,
     "fullVisionRadius": 1200,
-    "mass": 30,
+    "mass": 37.5,
     "cost": {
       "energy": 50,
       "metal": 50
@@ -49,18 +49,33 @@
       "$audio": "event.death.unitJackal"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionJackal",
+    "locomotion": {
+      "type": "wheels",
+      "pathfindingBlueprintId": "wheelsLand",
+      "physics": {
+        "driveForce": 300,
+        "traction": 0.45
+      },
+      "config": {
+        "wheelDistX": 0.6,
+        "wheelDistY": 0.7,
+        "treadLength": 0.5,
+        "treadWidth": 0.15,
+        "wheelRadius": 0.28,
+        "rotationSpeed": 1
+      }
+    },
     "base": {
       "cost": {
-        "energy": 39,
-        "metal": 39
+        "energy": 44,
+        "metal": 44
       },
-      "mass": 30,
-      "health": 55,
+      "mass": 37.5,
+      "health": 74.25,
       "deathExplosion": {
         "radius": 11.04,
-        "force": 2700,
-        "damage": 44
+        "force": 3150,
+        "damage": 52.663
       },
       "radius": {
         "visual": 8,
@@ -73,7 +88,7 @@
     "unitBlueprintId": "unitLynx",
     "name": "Lynx",
     "shortName": "LNX",
-    "hp": 60,
+    "hp": 81,
     "radius": {
       "visual": 10,
       "hitbox": 7,
@@ -81,7 +96,7 @@
     },
     "bodyCenterHeight": 11.5,
     "fullVisionRadius": 1200,
-    "mass": 40,
+    "mass": 50,
     "cost": {
       "energy": 90,
       "metal": 90
@@ -117,18 +132,32 @@
       "$audio": "event.death.unitLynx"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionLynx",
+    "locomotion": {
+      "type": "treads",
+      "pathfindingBlueprintId": "treadsLand",
+      "physics": {
+        "driveForce": 170,
+        "traction": 0.75
+      },
+      "config": {
+        "treadOffset": 0.8,
+        "treadLength": 1.6,
+        "treadWidth": 0.45,
+        "wheelRadius": 0.12,
+        "rotationSpeed": 1
+      }
+    },
     "base": {
       "cost": {
-        "energy": 63,
-        "metal": 63
+        "energy": 72,
+        "metal": 72
       },
-      "mass": 40,
-      "health": 60,
+      "mass": 50,
+      "health": 81,
       "deathExplosion": {
         "radius": 14.95,
-        "force": 3600,
-        "damage": 48
+        "force": 4200,
+        "damage": 57.45
       },
       "radius": {
         "visual": 10,
@@ -141,7 +170,7 @@
     "unitBlueprintId": "unitDaddy",
     "name": "Daddy",
     "shortName": "DDY",
-    "hp": 200,
+    "hp": 270,
     "radius": {
       "visual": 13,
       "hitbox": 9,
@@ -149,7 +178,7 @@
     },
     "bodyCenterHeight": 58.5,
     "fullVisionRadius": 1200,
-    "mass": 30,
+    "mass": 37.5,
     "cost": {
       "energy": 350,
       "metal": 350
@@ -192,18 +221,54 @@
       "$audio": "event.death.unitDaddy"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionDaddy",
+    "locomotion": {
+      "type": "legs",
+      "pathfindingBlueprintId": "legsLand",
+      "physics": {
+        "driveForce": 200,
+        "traction": 1
+      },
+      "config": {
+        "upperThickness": 2.5,
+        "lowerThickness": 2,
+        "hipRadius": 1.5,
+        "kneeRadius": 0.8,
+        "lerpDuration": 200,
+        "leftSide": [
+          {
+            "attachOffsetXFrac": 0.3,
+            "attachOffsetYFrac": -0.2,
+            "upperLegLengthFrac": 4.5,
+            "lowerLegLengthFrac": 5.3999999999999995,
+            "snapTriggerAngle": 1.4451326206513049,
+            "snapTargetAngle": -0.9738937226128359,
+            "snapDistanceMultiplier": 0.74,
+            "extensionThreshold": 0.96
+          },
+          {
+            "attachOffsetXFrac": -0.3,
+            "attachOffsetYFrac": -0.3,
+            "upperLegLengthFrac": 4.5,
+            "lowerLegLengthFrac": 5.3999999999999995,
+            "snapTriggerAngle": 3.1101767270538954,
+            "snapTargetAngle": -1.82212373908208,
+            "snapDistanceMultiplier": 0.5,
+            "extensionThreshold": 0.99
+          }
+        ]
+      }
+    },
     "base": {
       "cost": {
-        "energy": 279,
-        "metal": 279
+        "energy": 314,
+        "metal": 314
       },
-      "mass": 30,
-      "health": 200,
+      "mass": 37.5,
+      "health": 270,
       "deathExplosion": {
         "radius": 17.25,
-        "force": 2700,
-        "damage": 160
+        "force": 3150,
+        "damage": 191.5
       },
       "radius": {
         "visual": 13,
@@ -216,7 +281,7 @@
     "unitBlueprintId": "unitBadger",
     "name": "Badger",
     "shortName": "BDG",
-    "hp": 300,
+    "hp": 405,
     "radius": {
       "visual": 16,
       "hitbox": 13,
@@ -224,7 +289,7 @@
     },
     "bodyCenterHeight": 12.4,
     "fullVisionRadius": 1200,
-    "mass": 300,
+    "mass": 375,
     "cost": {
       "energy": 300,
       "metal": 300
@@ -260,18 +325,32 @@
       "$audio": "event.death.unitBadger"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionBadger",
+    "locomotion": {
+      "type": "treads",
+      "pathfindingBlueprintId": "treadsLand",
+      "physics": {
+        "driveForce": 200,
+        "traction": 0.75
+      },
+      "config": {
+        "treadOffset": 0.85,
+        "treadLength": 1.7,
+        "treadWidth": 0.55,
+        "wheelRadius": 0.12,
+        "rotationSpeed": 1
+      }
+    },
     "base": {
       "cost": {
-        "energy": 254,
-        "metal": 254
+        "energy": 284,
+        "metal": 284
       },
-      "mass": 300,
-      "health": 300,
+      "mass": 375,
+      "health": 405,
       "deathExplosion": {
         "radius": 25.76,
-        "force": 27000,
-        "damage": 240
+        "force": 31500,
+        "damage": 287.25
       },
       "radius": {
         "visual": 16,
@@ -284,7 +363,7 @@
     "unitBlueprintId": "unitMongoose",
     "name": "Mongoose",
     "shortName": "MGS",
-    "hp": 200,
+    "hp": 270,
     "radius": {
       "visual": 20,
       "hitbox": 12,
@@ -292,7 +371,7 @@
     },
     "bodyCenterHeight": 11.8,
     "fullVisionRadius": 1200,
-    "mass": 200,
+    "mass": 250,
     "cost": {
       "energy": 220,
       "metal": 220
@@ -328,18 +407,33 @@
       "$audio": "event.death.unitMongoose"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionMongoose",
+    "locomotion": {
+      "type": "wheels",
+      "pathfindingBlueprintId": "wheelsLand",
+      "physics": {
+        "driveForce": 220,
+        "traction": 0.45
+      },
+      "config": {
+        "wheelDistX": 0.65,
+        "wheelDistY": 0.7,
+        "treadLength": 0.5,
+        "treadWidth": 0.3,
+        "wheelRadius": 0.22,
+        "rotationSpeed": 1
+      }
+    },
     "base": {
       "cost": {
-        "energy": 174,
-        "metal": 174
+        "energy": 196,
+        "metal": 196
       },
-      "mass": 200,
-      "health": 200,
+      "mass": 250,
+      "health": 270,
       "deathExplosion": {
         "radius": 27.6,
-        "force": 18000,
-        "damage": 160
+        "force": 21000,
+        "damage": 191.5
       },
       "radius": {
         "visual": 20,
@@ -352,15 +446,15 @@
     "unitBlueprintId": "unitTick",
     "name": "Tick",
     "shortName": "TCK",
-    "hp": 55,
+    "hp": 74.25,
     "radius": {
       "visual": 10,
       "hitbox": 8,
-      "collision": 12.100000000000001
+      "collision": 12.1
     },
     "bodyCenterHeight": 8,
     "fullVisionRadius": 1200,
-    "mass": 20,
+    "mass": 25,
     "cost": {
       "energy": 35,
       "metal": 35
@@ -398,18 +492,54 @@
       "$audio": "event.death.unitTick"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionTick",
+    "locomotion": {
+      "type": "legs",
+      "pathfindingBlueprintId": "legsLand",
+      "physics": {
+        "driveForce": 120,
+        "traction": 1
+      },
+      "config": {
+        "upperThickness": 2,
+        "lowerThickness": 1.5,
+        "hipRadius": 1,
+        "kneeRadius": 1.5,
+        "lerpDuration": 100,
+        "leftSide": [
+          {
+            "attachOffsetXFrac": 0.25,
+            "attachOffsetYFrac": -0.15,
+            "upperLegLengthFrac": 0.5,
+            "lowerLegLengthFrac": 0.55,
+            "snapTriggerAngle": 1.4451326206513049,
+            "snapTargetAngle": -0.9738937226128359,
+            "snapDistanceMultiplier": 0.74,
+            "extensionThreshold": 0.96
+          },
+          {
+            "attachOffsetXFrac": -0.25,
+            "attachOffsetYFrac": -0.15,
+            "upperLegLengthFrac": 0.5,
+            "lowerLegLengthFrac": 0.55,
+            "snapTriggerAngle": 3.1101767270538954,
+            "snapTargetAngle": -1.82212373908208,
+            "snapDistanceMultiplier": 0.5,
+            "extensionThreshold": 0.99
+          }
+        ]
+      }
+    },
     "base": {
       "cost": {
-        "energy": 25.5,
-        "metal": 25.5
+        "energy": 29,
+        "metal": 29
       },
-      "mass": 20,
-      "health": 55,
+      "mass": 25,
+      "health": 74.25,
       "deathExplosion": {
         "radius": 13.915,
-        "force": 1800,
-        "damage": 44
+        "force": 2100,
+        "damage": 52.663
       },
       "radius": {
         "visual": 10,
@@ -422,7 +552,7 @@
     "unitBlueprintId": "unitMammoth",
     "name": "Mammoth",
     "shortName": "MMT",
-    "hp": 900,
+    "hp": 1215,
     "radius": {
       "visual": 24,
       "hitbox": 24,
@@ -430,7 +560,7 @@
     },
     "bodyCenterHeight": 13.6,
     "fullVisionRadius": 1200,
-    "mass": 1000,
+    "mass": 1250,
     "cost": {
       "energy": 1200,
       "metal": 1200
@@ -466,18 +596,32 @@
       "$audio": "event.death.unitMammoth"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionMammoth",
+    "locomotion": {
+      "type": "treads",
+      "pathfindingBlueprintId": "treadsLand",
+      "physics": {
+        "driveForce": 60,
+        "traction": 0.75
+      },
+      "config": {
+        "treadOffset": 0.9,
+        "treadLength": 2,
+        "treadWidth": 0.6,
+        "wheelRadius": 0.175,
+        "rotationSpeed": 1
+      }
+    },
     "base": {
       "cost": {
-        "energy": 1060,
-        "metal": 1060
+        "energy": 1180,
+        "metal": 1180
       },
-      "mass": 1000,
-      "health": 900,
+      "mass": 1250,
+      "health": 1215,
       "deathExplosion": {
         "radius": 41.4,
-        "force": 90000,
-        "damage": 720
+        "force": 105000,
+        "damage": 861.75
       },
       "radius": {
         "visual": 24,
@@ -490,7 +634,7 @@
     "unitBlueprintId": "unitFormik",
     "name": "Formik",
     "shortName": "FMK",
-    "hp": 3200,
+    "hp": 4320,
     "radius": {
       "visual": 40,
       "hitbox": 50,
@@ -498,7 +642,7 @@
     },
     "bodyCenterHeight": 54,
     "fullVisionRadius": 1200,
-    "mass": 2500,
+    "mass": 3125,
     "cost": {
       "energy": 4000,
       "metal": 4000
@@ -552,18 +696,64 @@
       "$audio": "event.death.unitFormik"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionFormik",
+    "locomotion": {
+      "type": "legs",
+      "pathfindingBlueprintId": "legsLand",
+      "physics": {
+        "driveForce": 60,
+        "traction": 1
+      },
+      "config": {
+        "upperThickness": 9,
+        "lowerThickness": 8,
+        "hipRadius": 5.5,
+        "kneeRadius": 7.5,
+        "lerpDuration": 320,
+        "leftSide": [
+          {
+            "attachOffsetXFrac": 0.42,
+            "attachOffsetYFrac": -0.28,
+            "upperLegLengthFrac": 0.91,
+            "lowerLegLengthFrac": 1.0555999999999999,
+            "snapTriggerAngle": 1.319468914507713,
+            "snapTargetAngle": -0.8796459430051422,
+            "snapDistanceMultiplier": 0.7,
+            "extensionThreshold": 0.96
+          },
+          {
+            "attachOffsetXFrac": 0.02,
+            "attachOffsetYFrac": -0.36,
+            "upperLegLengthFrac": 0.91,
+            "lowerLegLengthFrac": 1.0555999999999999,
+            "snapTriggerAngle": 2.261946710584651,
+            "snapTargetAngle": -1.413716694115407,
+            "snapDistanceMultiplier": 0.62,
+            "extensionThreshold": 0.98
+          },
+          {
+            "attachOffsetXFrac": -0.48,
+            "attachOffsetYFrac": -0.3,
+            "upperLegLengthFrac": 0.91,
+            "lowerLegLengthFrac": 1.0555999999999999,
+            "snapTriggerAngle": 3.204424506661589,
+            "snapTargetAngle": -1.9477874452256718,
+            "snapDistanceMultiplier": 0.54,
+            "extensionThreshold": 0.99
+          }
+        ]
+      }
+    },
     "base": {
       "cost": {
-        "energy": 3536,
-        "metal": 3536
+        "energy": 3936,
+        "metal": 3936
       },
-      "mass": 2500,
-      "health": 3200,
+      "mass": 3125,
+      "health": 4320,
       "deathExplosion": {
         "radius": 74.75,
-        "force": 225000,
-        "damage": 2560
+        "force": 262500,
+        "damage": 3064
       },
       "radius": {
         "visual": 40,
@@ -576,7 +766,7 @@
     "unitBlueprintId": "unitWidow",
     "name": "Widow",
     "shortName": "WDW",
-    "hp": 2400,
+    "hp": 3240,
     "radius": {
       "visual": 30,
       "hitbox": 40,
@@ -584,7 +774,7 @@
     },
     "bodyCenterHeight": 49.5,
     "fullVisionRadius": 1200,
-    "mass": 1000,
+    "mass": 1250,
     "cost": {
       "energy": 3000,
       "metal": 3000
@@ -699,18 +889,54 @@
       "$audio": "event.death.unitWidow"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionWidow",
+    "locomotion": {
+      "type": "legs",
+      "pathfindingBlueprintId": "legsLand",
+      "physics": {
+        "driveForce": 70,
+        "traction": 1
+      },
+      "config": {
+        "upperThickness": 7,
+        "lowerThickness": 6,
+        "hipRadius": 4,
+        "kneeRadius": 6,
+        "lerpDuration": 300,
+        "leftSide": [
+          {
+            "attachOffsetXFrac": 0.4,
+            "attachOffsetYFrac": -0.4,
+            "upperLegLengthFrac": 1.045,
+            "lowerLegLengthFrac": 1.2539999999999998,
+            "snapTriggerAngle": 1.4451326206513049,
+            "snapTargetAngle": -0.9738937226128359,
+            "snapDistanceMultiplier": 0.74,
+            "extensionThreshold": 0.96
+          },
+          {
+            "attachOffsetXFrac": -0.4,
+            "attachOffsetYFrac": -0.4,
+            "upperLegLengthFrac": 1.045,
+            "lowerLegLengthFrac": 1.2539999999999998,
+            "snapTriggerAngle": 3.1101767270538954,
+            "snapTargetAngle": -1.82212373908208,
+            "snapDistanceMultiplier": 0.5,
+            "extensionThreshold": 0.99
+          }
+        ]
+      }
+    },
     "base": {
       "cost": {
-        "energy": 2622,
-        "metal": 2622
+        "energy": 2922,
+        "metal": 2922
       },
-      "mass": 1000,
-      "health": 2400,
+      "mass": 1250,
+      "health": 3240,
       "deathExplosion": {
         "radius": 59.8,
-        "force": 90000,
-        "damage": 1920
+        "force": 105000,
+        "damage": 2298
       },
       "radius": {
         "visual": 30,
@@ -723,7 +949,7 @@
     "unitBlueprintId": "unitHippo",
     "name": "Hippo",
     "shortName": "HPO",
-    "hp": 1500,
+    "hp": 2025,
     "radius": {
       "visual": 30,
       "hitbox": 27,
@@ -731,7 +957,7 @@
     },
     "bodyCenterHeight": 19,
     "fullVisionRadius": 1200,
-    "mass": 1500,
+    "mass": 1875,
     "cost": {
       "energy": 2500,
       "metal": 2500
@@ -766,18 +992,32 @@
       "$audio": "event.death.unitHippo"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionHippo",
+    "locomotion": {
+      "type": "treads",
+      "pathfindingBlueprintId": "treadsLand",
+      "physics": {
+        "driveForce": 55,
+        "traction": 0.75
+      },
+      "config": {
+        "treadOffset": 1.1,
+        "treadLength": 2.6,
+        "treadWidth": 0.55,
+        "wheelRadius": 0.2,
+        "rotationSpeed": 1
+      }
+    },
     "base": {
       "cost": {
-        "energy": 2218,
-        "metal": 2218
+        "energy": 2468,
+        "metal": 2468
       },
-      "mass": 1500,
-      "health": 1500,
+      "mass": 1875,
+      "health": 2025,
       "deathExplosion": {
         "radius": 62.1,
-        "force": 135000,
-        "damage": 1200
+        "force": 157500,
+        "damage": 1436.25
       },
       "radius": {
         "visual": 30,
@@ -790,7 +1030,7 @@
     "unitBlueprintId": "unitTarantula",
     "name": "Tarantula",
     "shortName": "TRN",
-    "hp": 100,
+    "hp": 135,
     "radius": {
       "visual": 11,
       "hitbox": 13,
@@ -798,7 +1038,7 @@
     },
     "bodyCenterHeight": 14.025,
     "fullVisionRadius": 1200,
-    "mass": 30,
+    "mass": 37.5,
     "cost": {
       "energy": 300,
       "metal": 300
@@ -845,18 +1085,54 @@
       "$audio": "event.death.unitTarantula"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionTarantula",
+    "locomotion": {
+      "type": "legs",
+      "pathfindingBlueprintId": "legsLand",
+      "physics": {
+        "driveForce": 200,
+        "traction": 1
+      },
+      "config": {
+        "upperThickness": 6.5,
+        "lowerThickness": 6,
+        "hipRadius": 3.5,
+        "kneeRadius": 6,
+        "lerpDuration": 200,
+        "leftSide": [
+          {
+            "attachOffsetXFrac": 0.3,
+            "attachOffsetYFrac": -0.2,
+            "upperLegLengthFrac": 1.045,
+            "lowerLegLengthFrac": 1.2539999999999998,
+            "snapTriggerAngle": 1.4451326206513049,
+            "snapTargetAngle": -0.9738937226128359,
+            "snapDistanceMultiplier": 0.74,
+            "extensionThreshold": 0.96
+          },
+          {
+            "attachOffsetXFrac": -0.3,
+            "attachOffsetYFrac": -0.2,
+            "upperLegLengthFrac": 1.045,
+            "lowerLegLengthFrac": 1.2539999999999998,
+            "snapTriggerAngle": 3.1101767270538954,
+            "snapTargetAngle": -1.82212373908208,
+            "snapDistanceMultiplier": 0.5,
+            "extensionThreshold": 0.99
+          }
+        ]
+      }
+    },
     "base": {
       "cost": {
-        "energy": 258,
-        "metal": 258
+        "energy": 288,
+        "metal": 288
       },
-      "mass": 30,
-      "health": 100,
+      "mass": 37.5,
+      "health": 135,
       "deathExplosion": {
         "radius": 22.77,
-        "force": 2700,
-        "damage": 80
+        "force": 3150,
+        "damage": 95.75
       },
       "radius": {
         "visual": 11,
@@ -869,7 +1145,7 @@
     "unitBlueprintId": "unitLoris",
     "name": "Loris",
     "shortName": "LRS",
-    "hp": 200,
+    "hp": 270,
     "radius": {
       "visual": 10,
       "hitbox": 8,
@@ -877,7 +1153,7 @@
     },
     "bodyCenterHeight": 24,
     "fullVisionRadius": 1200,
-    "mass": 90,
+    "mass": 112.5,
     "cost": {
       "energy": 400,
       "metal": 400
@@ -918,18 +1194,32 @@
       "$audio": "event.death.unitLoris"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionLoris",
+    "locomotion": {
+      "type": "treads",
+      "pathfindingBlueprintId": "treadsLand",
+      "physics": {
+        "driveForce": 160,
+        "traction": 0.75
+      },
+      "config": {
+        "treadOffset": 0.85,
+        "treadLength": 1.7,
+        "treadWidth": 0.5,
+        "wheelRadius": 0.12,
+        "rotationSpeed": 1
+      }
+    },
     "base": {
       "cost": {
-        "energy": 344,
-        "metal": 344
+        "energy": 384,
+        "metal": 384
       },
-      "mass": 90,
-      "health": 200,
+      "mass": 112.5,
+      "health": 270,
       "deathExplosion": {
         "radius": 27.6,
-        "force": 8100,
-        "damage": 160
+        "force": 9450,
+        "damage": 191.5
       },
       "radius": {
         "visual": 10,
@@ -942,15 +1232,15 @@
     "unitBlueprintId": "unitBee",
     "name": "Bee",
     "shortName": "MSQ",
-    "hp": 70,
+    "hp": 94.5,
     "radius": {
       "visual": 9,
       "hitbox": 8,
-      "collision": 10.799999999999999
+      "collision": 10.8
     },
     "bodyCenterHeight": 1.3499999999999999,
     "fullVisionRadius": 1200,
-    "mass": 25,
+    "mass": 31.25,
     "cost": {
       "energy": 120,
       "metal": 120
@@ -984,18 +1274,38 @@
       "$audio": "event.death.unitBee"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionHovercraft",
+    "locomotion": {
+      "type": "hover",
+      "pathfindingBlueprintId": "airborneAnywhere",
+      "physics": {
+        "driveForce": 30,
+        "traction": 1
+      },
+      "config": {
+        "gravityCounterUpwardForceRatio": 0.8,
+        "hoverHeightUpwardForce": 30,
+        "hoverHeightUpwardForceRandomizationAmount": 0.99,
+        "hoverHeightUpwardForceEMA": 0.99,
+        "fanDistX": 0.58,
+        "fanDistY": 0.62,
+        "fanLayout": "triFront",
+        "fanRadius": 0.32,
+        "fanRingTubeRadius": 0.035,
+        "fanOutwardAngleDeg": 14,
+        "fanSpinRadPerSec": -10
+      }
+    },
     "base": {
       "cost": {
-        "energy": 102,
-        "metal": 102
+        "energy": 114,
+        "metal": 114
       },
-      "mass": 25,
-      "health": 70,
+      "mass": 31.25,
+      "health": 94.5,
       "deathExplosion": {
         "radius": 12.42,
-        "force": 2250,
-        "damage": 56
+        "force": 2625,
+        "damage": 67.025
       },
       "radius": {
         "visual": 9,
@@ -1008,7 +1318,7 @@
     "unitBlueprintId": "unitDragonfly",
     "name": "Dragonfly",
     "shortName": "DRF",
-    "hp": 240,
+    "hp": 324,
     "radius": {
       "visual": 16,
       "hitbox": 40,
@@ -1016,7 +1326,7 @@
     },
     "bodyCenterHeight": 3.2,
     "fullVisionRadius": 1200,
-    "mass": 90,
+    "mass": 112.5,
     "cost": {
       "energy": 360,
       "metal": 360
@@ -1074,18 +1384,38 @@
       "$audio": "event.death.unitDragonfly"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionDragonflyHovercraft",
+    "locomotion": {
+      "type": "hover",
+      "pathfindingBlueprintId": "airborneAnywhere",
+      "physics": {
+        "driveForce": 12,
+        "traction": 1
+      },
+      "config": {
+        "gravityCounterUpwardForceRatio": 0.8,
+        "hoverHeightUpwardForce": 120,
+        "hoverHeightUpwardForceRandomizationAmount": 0.99,
+        "hoverHeightUpwardForceEMA": 0.99,
+        "fanDistX": 0,
+        "fanDistY": 2,
+        "fanRadius": 1.4,
+        "fanRingTubeRadius": 0.1,
+        "fanOutwardAngleDeg": 18,
+        "fanSpinRadPerSec": -10,
+        "tailFanOffsetX": -4.7
+      }
+    },
     "base": {
       "cost": {
-        "energy": 294,
-        "metal": 294
+        "energy": 330,
+        "metal": 330
       },
-      "mass": 90,
-      "health": 240,
+      "mass": 112.5,
+      "health": 324,
       "deathExplosion": {
         "radius": 57.5,
-        "force": 8100,
-        "damage": 192
+        "force": 9450,
+        "damage": 229.8
       },
       "radius": {
         "visual": 16,
@@ -1098,7 +1428,7 @@
     "unitBlueprintId": "unitConstructionDrone",
     "name": "Construction Drone",
     "shortName": "CDR",
-    "hp": 120,
+    "hp": 162,
     "radius": {
       "visual": 11,
       "hitbox": 10,
@@ -1106,7 +1436,7 @@
     },
     "bodyCenterHeight": 3.3,
     "fullVisionRadius": 1200,
-    "mass": 45,
+    "mass": 56.25,
     "cost": {
       "energy": 180,
       "metal": 160
@@ -1159,18 +1489,38 @@
       "$audio": "event.death.unitConstructionDrone"
     },
     "fightStopEngagedRatio": null,
-    "locomotionBlueprintId": "locomotionConstructionDrone",
+    "locomotion": {
+      "type": "hover",
+      "pathfindingBlueprintId": "airborneAnywhere",
+      "physics": {
+        "driveForce": 35,
+        "traction": 1
+      },
+      "config": {
+        "gravityCounterUpwardForceRatio": 0.8,
+        "hoverHeightUpwardForce": 36,
+        "hoverHeightUpwardForceRandomizationAmount": 0.25,
+        "hoverHeightUpwardForceEMA": 0.96,
+        "fanDistX": 0.58,
+        "fanDistY": 0.58,
+        "fanLayout": "quad",
+        "fanRadius": 0.26,
+        "fanRingTubeRadius": 0.035,
+        "fanOutwardAngleDeg": 12,
+        "fanSpinRadPerSec": -9
+      }
+    },
     "base": {
       "cost": {
-        "energy": 147,
-        "metal": 127
+        "energy": 164,
+        "metal": 144
       },
-      "mass": 45,
-      "health": 120,
+      "mass": 56.25,
+      "health": 162,
       "deathExplosion": {
         "radius": 16.1,
-        "force": 4050,
-        "damage": 96
+        "force": 4725,
+        "damage": 114.9
       },
       "radius": {
         "visual": 11,
@@ -1183,7 +1533,7 @@
     "unitBlueprintId": "unitEagle",
     "name": "Eagle",
     "shortName": "EGL",
-    "hp": 220,
+    "hp": 297,
     "radius": {
       "visual": 18,
       "hitbox": 15,
@@ -1191,7 +1541,7 @@
     },
     "bodyCenterHeight": 5.4,
     "fullVisionRadius": 1200,
-    "mass": 95,
+    "mass": 118.75,
     "cost": {
       "energy": 520,
       "metal": 520
@@ -1232,18 +1582,46 @@
       "$audio": "event.death.unitEagle"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionEagleFlying",
+    "locomotion": {
+      "type": "flying",
+      "pathfindingBlueprintId": "airborneAnywhere",
+      "physics": {
+        "driveForce": 50,
+        "traction": 1
+      },
+      "config": {
+        "gravityCounterUpwardForceRatio": 0.8,
+        "hoverHeightUpwardForce": 100,
+        "hoverHeightUpwardForceRandomizationAmount": 0.99,
+        "hoverHeightUpwardForceEMA": 0.99,
+        "wingEnabled": false,
+        "tailWingSpan": 2.9,
+        "tailWingChord": 1.18,
+        "tailWingOffsetX": -0.92,
+        "tailWingHeight": 0.2,
+        "tailWingThickness": 0.055,
+        "tailWingDihedralDeg": 9,
+        "tailWingSweepFrac": 0.92,
+        "tailWingMirrorX": true,
+        "jetOffsetX": -1.5,
+        "jetOffsetY": 0,
+        "jetOffsetZ": 0.32,
+        "jetRadius": 0.22,
+        "jetLength": 0.6,
+        "jetCount": 2
+      }
+    },
     "base": {
       "cost": {
-        "energy": 460,
-        "metal": 460
+        "energy": 512,
+        "metal": 512
       },
-      "mass": 95,
-      "health": 220,
+      "mass": 118.75,
+      "health": 297,
       "deathExplosion": {
         "radius": 24.84,
-        "force": 8550,
-        "damage": 176
+        "force": 9975,
+        "damage": 210.65
       },
       "radius": {
         "visual": 18,
@@ -1256,7 +1634,7 @@
     "unitBlueprintId": "unitCommander",
     "name": "Commander",
     "shortName": "CMD",
-    "hp": 500,
+    "hp": 675,
     "radius": {
       "visual": 20,
       "hitbox": 20,
@@ -1264,7 +1642,7 @@
     },
     "bodyCenterHeight": 22.4,
     "fullVisionRadius": 1600,
-    "mass": 300,
+    "mass": 375,
     "cost": {
       "energy": 400,
       "metal": 400
@@ -1345,18 +1723,54 @@
       "$audio": "event.death.unitCommander"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionCommander",
+    "locomotion": {
+      "type": "legs",
+      "pathfindingBlueprintId": "legsLand",
+      "physics": {
+        "driveForce": 50,
+        "traction": 1
+      },
+      "config": {
+        "upperThickness": 8,
+        "lowerThickness": 7,
+        "hipRadius": 5,
+        "kneeRadius": 7,
+        "lerpDuration": 200,
+        "leftSide": [
+          {
+            "attachOffsetXFrac": 0.4,
+            "attachOffsetYFrac": -0.5,
+            "upperLegLengthFrac": 1.1,
+            "lowerLegLengthFrac": 1.32,
+            "snapTriggerAngle": 1.4451326206513049,
+            "snapTargetAngle": -0.9738937226128359,
+            "snapDistanceMultiplier": 0.74,
+            "extensionThreshold": 0.96
+          },
+          {
+            "attachOffsetXFrac": -0.4,
+            "attachOffsetYFrac": -0.5,
+            "upperLegLengthFrac": 1.1,
+            "lowerLegLengthFrac": 1.32,
+            "snapTriggerAngle": 3.1101767270538954,
+            "snapTargetAngle": -1.82212373908208,
+            "snapDistanceMultiplier": 0.5,
+            "extensionThreshold": 0.99
+          }
+        ]
+      }
+    },
     "base": {
       "cost": {
-        "energy": 316,
-        "metal": 316
+        "energy": 356,
+        "metal": 356
       },
-      "mass": 300,
-      "health": 500,
+      "mass": 375,
+      "health": 675,
       "deathExplosion": {
         "radius": 23,
-        "force": 27000,
-        "damage": 400
+        "force": 31500,
+        "damage": 478.75
       },
       "radius": {
         "visual": 20,

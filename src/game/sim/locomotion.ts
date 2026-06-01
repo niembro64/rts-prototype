@@ -4,8 +4,6 @@ import type {
   PathfindingBlueprint,
 } from '@/types/blueprints';
 import type { UnitLocomotion } from './types';
-import { NO_ENTITY_ID, type EntityId } from '@/types/entityTypes';
-import type { LocomotionBlueprintId } from '@/types/blueprintIds';
 
 export const LOCOMOTION_TRACTION = {
   wheels: 0.45,
@@ -88,7 +86,6 @@ function createRuntimePathfindingConfig(
 
 export function createUnitLocomotion(
   locomotion: LocomotionBlueprint,
-  blueprintId: LocomotionBlueprintId,
 ): UnitLocomotion {
   const { type, physics } = locomotion;
   assertPositiveFinite(`${type}.driveForce`, physics.driveForce);
@@ -132,14 +129,6 @@ export function createUnitLocomotion(
     }
   }
   return {
-    id: NO_ENTITY_ID,
-    parentId: NO_ENTITY_ID,
-    rootHostId: NO_ENTITY_ID,
-    mountIndex: 0,
-    blueprintId,
-    hp: locomotion.base.health,
-    maxHp: locomotion.base.health,
-    radius: { ...locomotion.base.radius },
     type,
     driveForce: physics.driveForce,
     traction: physics.traction,
@@ -153,22 +142,8 @@ export function createUnitLocomotion(
 
 export function cloneUnitLocomotion(
   locomotion: UnitLocomotion,
-  identity?: {
-    id: EntityId;
-    parentId: EntityId;
-    rootHostId: EntityId;
-    mountIndex?: number;
-  },
 ): UnitLocomotion {
   return {
-    id: identity?.id ?? locomotion.id,
-    parentId: identity?.parentId ?? locomotion.parentId,
-    rootHostId: identity?.rootHostId ?? locomotion.rootHostId,
-    mountIndex: identity?.mountIndex ?? locomotion.mountIndex,
-    blueprintId: locomotion.blueprintId,
-    hp: locomotion.hp,
-    maxHp: locomotion.maxHp,
-    radius: { ...locomotion.radius },
     type: locomotion.type,
     driveForce: locomotion.driveForce,
     traction: locomotion.traction,

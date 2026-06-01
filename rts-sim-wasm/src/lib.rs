@@ -94,11 +94,6 @@ pub fn blueprint_shot_count() -> u32 {
 }
 
 #[wasm_bindgen]
-pub fn blueprint_locomotion_count() -> u32 {
-    blueprint_tables::BLUEPRINT_LOCOMOTION_COUNT as u32
-}
-
-#[wasm_bindgen]
 pub fn blueprint_buildable_unit_count() -> u32 {
     blueprint_tables::BLUEPRINT_BUILDABLE_UNIT_COUNT as u32
 }
@@ -11682,20 +11677,17 @@ pub const ENTITY_META_KIND_TOWER: u8 = 2;
 pub const ENTITY_META_KIND_BUILDING: u8 = 3;
 pub const ENTITY_META_KIND_SHOT: u8 = 4;
 pub const ENTITY_META_KIND_TURRET: u8 = 5;
-pub const ENTITY_META_KIND_LOCOMOTION: u8 = 6;
 
 pub const ENTITY_META_BLUEPRINT_KIND_NONE: u8 = 0;
 pub const ENTITY_META_BLUEPRINT_KIND_UNIT: u8 = 1;
 pub const ENTITY_META_BLUEPRINT_KIND_TOWER: u8 = 2;
 pub const ENTITY_META_BLUEPRINT_KIND_BUILDING: u8 = 3;
 pub const ENTITY_META_BLUEPRINT_KIND_TURRET: u8 = 4;
-pub const ENTITY_META_BLUEPRINT_KIND_LOCOMOTION: u8 = 5;
-pub const ENTITY_META_BLUEPRINT_KIND_SHOT: u8 = 6;
+pub const ENTITY_META_BLUEPRINT_KIND_SHOT: u8 = 5;
 
 pub const ENTITY_META_STORAGE_NONE: u8 = 0;
 pub const ENTITY_META_STORAGE_ENTITIES: u8 = 1;
 pub const ENTITY_META_STORAGE_COMBAT_TURRETS: u8 = 2;
-pub const ENTITY_META_STORAGE_UNIT_LOCOMOTION: u8 = 3;
 
 const ENTITY_META_NO_ID: i32 = -1;
 const ENTITY_META_NO_INDEX: i32 = -1;
@@ -12731,8 +12723,7 @@ pub const CT_ENTITY_FAMILY_NONE: u8 = 0;
 pub const CT_ENTITY_FAMILY_BUILDING: u8 = 1;
 pub const CT_ENTITY_FAMILY_UNIT: u8 = 2;
 pub const CT_ENTITY_FAMILY_TOWER: u8 = 3;
-pub const CT_ENTITY_FAMILY_LOCOMOTION: u8 = 4;
-pub const CT_ENTITY_FAMILY_SHOT: u8 = 5;
+pub const CT_ENTITY_FAMILY_SHOT: u8 = 4;
 
 // LOCK-ON-03 — Sentinel for `entity_blueprint_code` when the entity has
 // no stamped blueprint id (unstamped row, or family == NONE). Kernels
@@ -14959,7 +14950,6 @@ fn combat_targeting_lockon_masks_allow_body_entity(
                     pool.entity_blueprint_code[target_entity_slot],
                 )
         }
-        CT_ENTITY_FAMILY_LOCOMOTION => false,
         CT_ENTITY_FAMILY_SHOT => {
             (entity_family_mask & CT_LOCK_ON_FAM_INCLUDE_SHOTS) != 0
                 && combat_targeting_level1_mask_allows(
@@ -17547,7 +17537,7 @@ fn combat_targeting_collect_spatial_candidate_cell(
             continue;
         }
         let in_range = match pool.entity_family[slot] {
-            CT_ENTITY_FAMILY_UNIT | CT_ENTITY_FAMILY_LOCOMOTION | CT_ENTITY_FAMILY_SHOT => {
+            CT_ENTITY_FAMILY_UNIT | CT_ENTITY_FAMILY_SHOT => {
                 let shot = pool.entity_radius_hitbox[slot];
                 shot > 0.0 && {
                     let r = batch_radius + shot;
@@ -21768,7 +21758,6 @@ pub fn snapshot_encode_entity_unit(
     build_complete: u8,
     build_paid_energy: f64,
     build_paid_metal: f64,
-    locomotion_hp_curr: f64,
 ) -> u32 {
     let w = messagepack_writer();
     let start = w.buf.len();
@@ -21794,8 +21783,7 @@ pub fn snapshot_encode_entity_unit(
     let has_velocity = is_full || (changed_fields & ENTITY_CHANGED_VEL) != 0;
     let mut unit_field_count: usize = 0;
     if has_hp {
-        // hp + locomotionHpCurr (locomotionHpCurr rides the HP block).
-        unit_field_count += 2;
+        unit_field_count += 1;
     }
     if has_velocity {
         unit_field_count += 1;
@@ -21850,11 +21838,6 @@ pub fn snapshot_encode_entity_unit(
         w.write_number(hp_curr);
         w.write_str("max");
         w.write_number(hp_max);
-        // locomotionHpCurr rides the HP block (same gate as body hp).
-        // Emitted immediately after `hp` so the byte order matches the
-        // JS DTO insertion order used by the parity test.
-        w.write_str("locomotionHpCurr");
-        w.write_number(locomotion_hp_curr);
     }
 
     if has_velocity {
@@ -23892,9 +23875,7 @@ const V6_TURRET_FLAG_SHIELD_RANGE: u32 = 1 << 1;
 const V6_WAYPOINT_FLAG_POS_Z: u32 = 1 << 0;
 
 const V6_BASIC_STRIDE: usize = 9;
-// Slot 51 carries the unit locomotion's current HP (locomotionHpCurr),
-// added in lockstep with ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE on the JS side.
-const V6_UNIT_STRIDE: usize = 52;
+const V6_UNIT_STRIDE: usize = 51;
 const V6_BUILDING_STRIDE: usize = 34;
 
 const V6_KIND_RAW: u32 = 0;
@@ -24603,8 +24584,7 @@ fn v6_write_detail_unit(
 
     let mut len = 1usize;
     if hp_present {
-        // hp.curr, hp.max, locomotionHpCurr (rides the HP block).
-        len += 3;
+        len += 2;
     }
     if vel_present {
         len += 3;
@@ -24648,9 +24628,6 @@ fn v6_write_detail_unit(
     if hp_present {
         w.write_number(unit_buf[base + 8]);
         w.write_number(unit_buf[base + 9]);
-        // locomotionHpCurr rides the HP block, after curr/max — mirror in
-        // the JS array decoder unpackUnit.
-        w.write_number(unit_buf[base + 51]);
     }
     if vel_present {
         w.write_number(unit_buf[base + 10]);
@@ -27965,7 +27942,6 @@ mod sim_kernel_tests {
         assert!(blueprint_tables::BLUEPRINT_TOWERS_COUNT > 0);
         assert!(blueprint_tables::BLUEPRINT_TURRETS_COUNT > 0);
         assert!(blueprint_tables::BLUEPRINT_SHOTS_COUNT > 0);
-        assert!(blueprint_tables::BLUEPRINT_LOCOMOTION_COUNT > 0);
         assert!(blueprint_tables::BLUEPRINT_PATHFINDING_COUNT > 0);
         assert!(blueprint_tables::BLUEPRINT_BUILDABLE_UNIT_COUNT > 0);
         assert!(blueprint_tables::BLUEPRINT_UNIT_IDS.contains(&"unitJackal"));
@@ -28941,26 +28917,6 @@ mod lock_on_inclusion_tests {
             assert_eq!(target_id, 201, "{label}");
             assert_ne!(state, CT_TURRET_STATE_IDLE, "{label}");
         }
-    }
-
-    #[test]
-    fn auto_full_inclusions_do_not_lock_locomotion_rows() {
-        let _guard = lock_tests();
-        reset_pools();
-        stamp_source(-1);
-        stamp_turret(SOURCE_SLOT, 0, TurretSpec::default());
-        stamp_body_target(
-            1,
-            201,
-            PLAYER_2,
-            20.0,
-            CT_ENTITY_FAMILY_LOCOMOTION,
-            BODY_UNIT_CODE_A,
-        );
-
-        let (target_id, state, _) = run_schedule_tick(1);
-        assert_eq!(target_id, -1, "locomotion rows are not lockable");
-        assert_eq!(state, CT_TURRET_STATE_IDLE);
     }
 
     #[test]

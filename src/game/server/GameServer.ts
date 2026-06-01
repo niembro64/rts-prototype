@@ -2,7 +2,6 @@
 // Owns WorldState, Simulation, PhysicsEngine3D, and runs the game loop via setInterval.
 
 import type {
-  DetachedLocomotionAgentSpawn,
   DetachedTurretAgentSpawn,
   WorldState,
 } from '../sim/WorldState';
@@ -72,7 +71,6 @@ import {
 import type { BootstrappedServerWorld } from './ServerBootstrap';
 import { UnitForceSystem } from './UnitForceSystem';
 import { computeHostEffectiveMass, createPhysicsBodyForUnit } from './unitPhysicsBody';
-import { isDetachedLocomotionAgent } from '../sim/buildableHelpers';
 import {
   isShieldReflectionMode,
   type ShieldReflectionMode,
@@ -257,10 +255,7 @@ export class GameServer {
     this.world.onDetachedTurretAgentSpawn = (spawn: DetachedTurretAgentSpawn) => {
       this.createPhysicsBodyForDetachedTurret(spawn);
     };
-    this.world.onDetachedLocomotionAgentSpawn = (spawn: DetachedLocomotionAgentSpawn) => {
-      this.createPhysicsBodyForDetachedLocomotion(spawn);
-    };
-    // A mobile host gained/lost a piece (turret/locomotion died, detached,
+    // A mobile host gained/lost a piece (turret died, detached,
     // or finished building) — recompute its dynamic body mass so F = M·A
     // reflects only the weight still attached. Static building/tower bodies
     // are skipped (setBodyEffectiveMass no-ops on static bodies).
@@ -441,7 +436,6 @@ export class GameServer {
     this.world.onEntityRemoving = null;
     this.world.onDetachedTurretAgentSpawn = null;
     this.world.onHostMassChanged = null;
-    this.world.onDetachedLocomotionAgentSpawn = null;
     this.simulation.onUnitDeath = null;
     this.simulation.onUnitSpawn = null;
     this.simulation.onBuildingDeath = null;
@@ -541,31 +535,6 @@ export class GameServer {
     );
     spatialGrid.addBuilding(entity);
     this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_POS);
-  }
-
-  private createPhysicsBodyForDetachedLocomotion(spawn: DetachedLocomotionAgentSpawn): void {
-    const entity = spawn.agent;
-    if (entity.body !== null || entity.unit === null) return;
-    const body = createPhysicsBodyForUnit(this.world, this.physics, entity, {
-      ignoreOverlappingBuildings: false,
-      overlapPadding: undefined,
-    });
-    if (body === undefined) return;
-
-    entity.transform.x = body.x;
-    entity.transform.y = body.y;
-    entity.transform.z = body.z;
-    this.physics.launchBody(
-      body,
-      spawn.launchVelocity.x,
-      spawn.launchVelocity.y,
-      spawn.launchVelocity.z,
-    );
-    entity.unit.velocityX = body.vx;
-    entity.unit.velocityY = body.vy;
-    entity.unit.velocityZ = body.vz;
-    spatialGrid.updateUnit(entity);
-    this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL);
   }
 
   // Emit a snapshot to all listeners (driven by internal snapshot interval)
@@ -849,7 +818,6 @@ export class GameServer {
   private isOwnedEntity(entityId: EntityId, playerId: PlayerId): boolean {
     const entity = this.world.getEntity(entityId);
     if (entity === undefined || entity.ownership === null) return false;
-    if (isDetachedLocomotionAgent(entity)) return false;
     return entity.ownership.playerId === playerId;
   }
 
@@ -860,8 +828,7 @@ export class GameServer {
       entity.type === 'unit' &&
       entity.unit !== null &&
       entity.ownership !== null &&
-      entity.ownership.playerId === playerId &&
-      !isDetachedLocomotionAgent(entity)
+      entity.ownership.playerId === playerId
     );
   }
 

@@ -116,7 +116,6 @@ function buildMovementSection(blueprint: UnitBlueprint): LoadingUnitInfoSection 
   const locomotion = blueprint.locomotion;
   const items: LoadingUnitInfoNode[] = [
     stat('Type', labelCase(runtime.type)),
-    stat('Profile', blueprint.locomotionBlueprintId),
     stat('Drive force', fmt(runtime.driveForce)),
     stat('Traction', fmt(runtime.traction, 2)),
     node('Pathfinding', locomotion.pathfindingBlueprintId, undefined, [

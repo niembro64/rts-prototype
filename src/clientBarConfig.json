@@ -148,7 +148,6 @@
       "tower": { "name": false, "healthBar": true, "buildBars": true },
       "building": { "name": false, "healthBar": true, "buildBars": true },
       "turret": { "name": false, "healthBar": false, "buildBars": false },
-      "locomotion": { "name": false, "healthBar": false, "buildBars": false },
       "shot": { "name": false, "healthBar": false, "buildBars": false }
     },
     "realDefault": {
@@ -156,7 +155,6 @@
       "tower": { "name": false, "healthBar": true, "buildBars": true },
       "building": { "name": false, "healthBar": true, "buildBars": true },
       "turret": { "name": false, "healthBar": false, "buildBars": false },
-      "locomotion": { "name": false, "healthBar": false, "buildBars": false },
       "shot": { "name": false, "healthBar": false, "buildBars": false }
     }
   },
@@ -171,7 +169,7 @@
   },
 
   "soundCategories": ["fire", "hit", "dead", "beam", "field", "music"],
-  "entityHudTypes": ["unit", "tower", "building", "turret", "locomotion", "shot"],
+  "entityHudTypes": ["unit", "tower", "building", "turret", "shot"],
   "entityHudElements": ["name", "healthBar", "buildBars"],
   "rangeTypes": [
     "trackAcquire", "trackRelease",

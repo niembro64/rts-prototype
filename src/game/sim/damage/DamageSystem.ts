@@ -3,7 +3,7 @@
 // PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full entity scans
 
 import type { WorldState } from '../WorldState';
-import type { BeamReflectorKind, Entity, EntityId, RayType, PlayerId, Turret, UnitLocomotion } from '../types';
+import type { BeamReflectorKind, Entity, EntityId, RayType, PlayerId, Turret } from '../types';
 import { isProjectileShot, NO_ENTITY_ID } from '../types';
 import type {
   AnyDamageSource,
@@ -30,7 +30,7 @@ import {
   distanceToRayConfigRangeSphere,
   type RayConfigRangeSphere,
 } from '../combat/lineShotRange';
-import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../../types/network';
+import { ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../../types/network';
 import {
   BUILDING_CLOSED_DAMAGE_MULTIPLIER,
   buildingBlueprintHasActiveState,
@@ -38,10 +38,8 @@ import {
   notifyBuildingActiveStateDamaged,
 } from '../buildingActiveState';
 import { getUnitGroundZ } from '../unitGeometry';
-import { setUnitMovementAcceleration } from '../unitMovementAcceleration';
-import { refreshUnitActionHash } from '../unitActions';
 import { DETACHED_TURRET_TOWER_BLUEPRINT_ID } from '../../../types/buildingTypes';
-import { isConstructionBodyMaterialized, isDetachedLocomotionAgent } from '../buildableHelpers';
+import { isConstructionBodyMaterialized } from '../buildableHelpers';
 
 
 // Reusable DamageResult to avoid per-call allocations
@@ -51,7 +49,6 @@ const _reusableResult: DamageResult = {
   killedBuildingIds: new Set(),
   killedProjectileIds: new Set(),
   killedTurretIds: new Set(),
-  killedLocomotionIds: new Set(),
   knockbacks: [],
   deathContexts: new Map(),
   killerPlayerIds: new Map(),
@@ -87,7 +84,6 @@ function resetResult(): DamageResult {
   _reusableResult.killedBuildingIds.clear();
   _reusableResult.killedProjectileIds.clear();
   _reusableResult.killedTurretIds.clear();
-  _reusableResult.killedLocomotionIds.clear();
   _reusableResult.truncationT = undefined;
   // Recycle prior tick's knockback entries before clearing the array.
   for (const k of _reusableResult.knockbacks) _knockbackPool.push(k);
@@ -109,7 +105,6 @@ export function resetDamageBuffers(): void {
   _reusableResult.killedBuildingIds.clear();
   _reusableResult.killedProjectileIds.clear();
   _reusableResult.killedTurretIds.clear();
-  _reusableResult.killedLocomotionIds.clear();
   for (const k of _reusableResult.knockbacks) _knockbackPool.push(k);
   _reusableResult.knockbacks.length = 0;
   _reusableResult.deathContexts.clear();
@@ -156,10 +151,6 @@ const BEAM_GROUND_EPSILON = 0.25;
 
 function isTurretDamageable(turret: Turret): boolean {
   return turret.id !== NO_ENTITY_ID && turret.hp > 0 && !turret.config.visualOnly;
-}
-
-function isLocomotionDamageable(locomotion: UnitLocomotion): boolean {
-  return locomotion.id !== NO_ENTITY_ID && locomotion.hp > 0;
 }
 
 function shouldDetachLivePieceFromBlast(host: Entity, pieceHp: number, pieceMaxHp: number, force: number): boolean {
@@ -210,10 +201,7 @@ export class DamageSystem {
       if (unit.id === sourceEntityId) continue;
       if (
         !unit.unit ||
-        (
-          unit.unit.hp <= 0 &&
-          (!isDetachedLocomotionAgent(unit) || unit.unit.locomotion.hp <= 0)
-        )
+        unit.unit.hp <= 0
       ) continue;
 
       const t = lineCircleIntersectionT(
@@ -569,10 +557,7 @@ export class DamageSystem {
       if (isExcludedEntity && excludePanelIndex < 0) continue;
       if (
         !unit.unit ||
-        (
-          unit.unit.hp <= 0 &&
-          (!isDetachedLocomotionAgent(unit) || unit.unit.locomotion.hp <= 0)
-        )
+        unit.unit.hp <= 0
       ) continue;
 
       // Horizontal-only early-out — the beam may arc vertically past
@@ -874,21 +859,6 @@ export class DamageSystem {
         }
       }
 
-      const locomotion = unitComponent.locomotion;
-      if (isLocomotionDamageable(locomotion)) {
-        const locomotionT = lineSphereIntersectionT(
-          source.start.x, source.start.y, source.start.z,
-          source.end.x, source.end.y, source.end.z,
-          unit.transform.x, unit.transform.y, unit.transform.z,
-          locomotion.radius.hitbox + source.width / 2,
-        );
-        if (locomotionT !== null && locomotionT < bestT) {
-          bestT = locomotionT;
-          bestEntityId = locomotion.id;
-          bestHostEntityId = unit.id;
-          bestIsUnit = true;
-        }
-      }
     }
 
     // Check buildings — full 3D AABB, matching the beam tracer and
@@ -1075,25 +1045,6 @@ export class DamageSystem {
         }
       }
 
-      const locomotion = unitComponent.locomotion;
-      if (isLocomotionDamageable(locomotion)) {
-        const locomotionT = lineSphereIntersectionT(
-          source.prev.x, source.prev.y, source.prev.z,
-          source.current.x, source.current.y, source.current.z,
-          unit.transform.x, unit.transform.y, unit.transform.z,
-          source.radius + locomotion.radius.hitbox,
-        );
-        if (locomotionT !== null) {
-          hits.push({
-            entityId: locomotion.id,
-            hostEntityId: unit.id,
-            t: locomotionT,
-            isUnit: true,
-            isBuilding: false,
-            isProjectile: false,
-          });
-        }
-      }
     }
 
     // Check buildings using swept 3D collision against the AABB
@@ -1326,21 +1277,6 @@ export class DamageSystem {
         }
       }
 
-      const locomotion = unit.unit.locomotion;
-      if (isLocomotionDamageable(locomotion)) {
-        const locomotionMaxDist = source.radius + locomotion.radius.hitbox;
-        if (distSq <= locomotionMaxDist * locomotionMaxDist) {
-          this.applyDamageToEntity(unit, damage, result, source.sourceEntityId, {
-            penetrationDir: { x: dirX, y: dirY },
-            attackerVel: { x: forceX, y: forceY },
-            attackMagnitude: damage,
-          }, locomotion.id);
-          if (shouldDetachLivePieceFromBlast(unit, locomotion.hp, locomotion.maxHp, force)) {
-            this.world.detachMountedLocomotionAsAgent(unit);
-          }
-          result.hitEntityIds.push(unit.id);
-        }
-      }
     }
 
     // Travelling shots are small damageable bodies. Sustained beams
@@ -1500,13 +1436,6 @@ export class DamageSystem {
         return;
       }
     }
-    if (entity.unit !== null) {
-      const locomotion = this.world.resolveMountedLocomotion(targetEntityId);
-      if (locomotion !== undefined && locomotion.host.id === entity.id) {
-        this.applyDamageToLocomotion(entity, locomotion.locomotion, damage, result, sourceEntityId, deathContext);
-        return;
-      }
-    }
 
     if (entity.unit && entity.unit.hp > 0) {
       entity.unit.hp -= damage;
@@ -1584,42 +1513,6 @@ export class DamageSystem {
     if (deathContext) result.deathContexts.set(turret.id, deathContext);
     // The host just lost a turret's weight — recompute its effective mass
     // (no-op for static building/tower hosts; see PhysicsEngine3D).
-    this.world.onHostMassChanged?.(host);
-  }
-
-  private applyDamageToLocomotion(
-    host: Entity,
-    locomotion: UnitLocomotion,
-    damage: number,
-    result: DamageResult,
-    sourceEntityId: EntityId,
-    deathContext: DeathContext | undefined,
-  ): void {
-    if (locomotion.hp <= 0) return;
-    locomotion.hp -= damage;
-    this.world.markSnapshotDirty(host.id, ENTITY_CHANGED_HP);
-    if (locomotion.hp > 0 || result.killedLocomotionIds.has(locomotion.id)) return;
-
-    locomotion.hp = 0;
-    const unit = host.unit;
-    if (unit !== null) {
-      unit.actions.length = 0;
-      refreshUnitActionHash(unit);
-      unit.thrustDirX = 0;
-      unit.thrustDirY = 0;
-      setUnitMovementAcceleration(unit, 0, 0, 0);
-      unit.stuckTicks = 0;
-      if (host.combat !== null) {
-        host.combat.priorityTargetId = null;
-        host.combat.priorityTargetPoint = null;
-      }
-    }
-    this.world.markSubEntityMetadataDead(locomotion.id);
-    this.world.markSnapshotDirty(host.id, ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_HP);
-    result.killedLocomotionIds.add(locomotion.id);
-    this.recordKiller(result, locomotion.id, sourceEntityId);
-    if (deathContext) result.deathContexts.set(locomotion.id, deathContext);
-    // The host just lost its locomotion's weight — recompute effective mass.
     this.world.onHostMassChanged?.(host);
   }
 

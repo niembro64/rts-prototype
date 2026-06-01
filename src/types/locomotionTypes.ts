@@ -1,8 +1,5 @@
 // Runtime locomotion profile used by movement physics and rendering.
 
-import type { EntityId } from './entityTypes';
-import type { LocomotionBlueprintId } from './blueprintIds';
-
 export type UnitPathfindingTerrainMode = 'land' | 'anywhere';
 
 export type UnitPathfindingConfig = {
@@ -19,17 +16,8 @@ export type UnitPathfindingConfig = {
 };
 
 export type UnitLocomotion = {
-  /** Runtime identity for the locomotion subentity mounted under a unit. */
-  id: EntityId;
-  parentId: EntityId;
-  rootHostId: EntityId;
-  mountIndex: number;
-  blueprintId: LocomotionBlueprintId;
-  hp: number;
-  maxHp: number;
-  radius: { visual: number; hitbox: number; collision: number };
   type: 'wheels' | 'treads' | 'legs' | 'hover' | 'flying';
-  /** Authored propulsion scalar supplied by the locomotion blueprint. */
+  /** Authored propulsion scalar supplied by the unit's inline locomotion profile. */
   driveForce: number;
   /** Ground traction coefficient. This is coupling to terrain, not drag.
    *  For hover units this acts as a horizontal-thrust scalar (no actual

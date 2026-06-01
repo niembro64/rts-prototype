@@ -87,7 +87,7 @@ export const ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE = 9;
 // dropped from the JS→WASM entity row. Grew 51 → 52 when locomotion
 // hpCurr (slot 51) was added to the wire, riding ENTITY_CHANGED_HP the
 // same way body hp.curr (slot 8) does.
-export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 52;
+export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 51;
 export const ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE = 34;
 export const ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE = 16;
 // Turret row layout: rot, vel, pitch, pitchVel, id, state, hasTarget,
@@ -476,7 +476,6 @@ function appendUnitEntityWireRow(
   values[base + 48] = build !== null ? build.paid.metal : 0;
   values[base + 49] = turretOffset;
   values[base + 50] = actionOffset;
-  values[base + 51] = unit.locomotionHpCurr ?? 0;
   entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_UNIT);
   entityWireSource.rowIndices.push(rowIndex);
 }
@@ -555,7 +554,6 @@ function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void 
   ) {
     if (
       entity.unit.build?.interrupted === true ||
-      entity.unit.locomotionActive === false ||
       hasInactiveTurretWire(entity.unit.turrets)
     ) {
       appendRawEntityWireRow();
@@ -651,8 +649,6 @@ export function serializeEntitySnapshot(
       ne.unit = u;
       u.hp = null;
       u.velocity = null;
-      u.locomotionActive = null;
-      u.locomotionHpCurr = null;
 
       if (isFull) {
         writeNetworkUnitStaticFields(
@@ -715,10 +711,6 @@ export function serializeEntitySnapshot(
         hp.curr = entity.unit.hp;
         hp.max = entity.unit.maxHp;
         u.hp = hp;
-        u.locomotionHpCurr = entity.unit.locomotion.hp;
-        if (entity.unit.locomotion.id === NO_ENTITY_ID || entity.unit.locomotion.hp <= 0) {
-          u.locomotionActive = false;
-        }
       }
 
       u.build = null;

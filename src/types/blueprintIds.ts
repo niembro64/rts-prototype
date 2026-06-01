@@ -9,27 +9,6 @@ export const UNIT_BLUEPRINT_IDS = [
 ] as const;
 export type UnitBlueprintId = typeof UNIT_BLUEPRINT_IDS[number];
 
-export const LOCOMOTION_BLUEPRINT_IDS = [
-  'locomotionJackal',
-  'locomotionLynx',
-  'locomotionDaddy',
-  'locomotionBadger',
-  'locomotionMongoose',
-  'locomotionTick',
-  'locomotionMammoth',
-  'locomotionFormik',
-  'locomotionWidow',
-  'locomotionHippo',
-  'locomotionTarantula',
-  'locomotionLoris',
-  'locomotionCommander',
-  'locomotionHovercraft',
-  'locomotionDragonflyHovercraft',
-  'locomotionConstructionDrone',
-  'locomotionEagleFlying',
-] as const;
-export type LocomotionBlueprintId = typeof LOCOMOTION_BLUEPRINT_IDS[number];
-
 export const BUILDING_BLUEPRINT_IDS = [
   'buildingSolar', 'buildingWind', 'towerFabricator', 'buildingExtractor', 'towerBeamMega', 'towerCannon', 'buildingRadar', 'buildingResourceConverter', 'towerDetachedTurret',
 ] as const;
@@ -89,7 +68,6 @@ export const TURRET_BLUEPRINT_IDS = [
 export type TurretBlueprintId = typeof TURRET_BLUEPRINT_IDS[number];
 
 const UNIT_BLUEPRINT_ID_SET = new Set<string>(UNIT_BLUEPRINT_IDS);
-const LOCOMOTION_BLUEPRINT_ID_SET = new Set<string>(LOCOMOTION_BLUEPRINT_IDS);
 const BUILDING_BLUEPRINT_ID_SET = new Set<string>(BUILDING_BLUEPRINT_IDS);
 const SHOT_BLUEPRINT_ID_SET = new Set<string>(SHOT_BLUEPRINT_IDS);
 const RAY_BLUEPRINT_ID_SET = new Set<string>(RAY_BLUEPRINT_IDS);
@@ -99,10 +77,6 @@ const TURRET_BLUEPRINT_ID_SET = new Set<string>(TURRET_BLUEPRINT_IDS);
 
 export function isUnitBlueprintId(value: string): value is UnitBlueprintId {
   return UNIT_BLUEPRINT_ID_SET.has(value);
-}
-
-export function isLocomotionBlueprintId(value: string): value is LocomotionBlueprintId {
-  return LOCOMOTION_BLUEPRINT_ID_SET.has(value);
 }
 
 export function isBuildingBlueprintId(value: string): value is BuildingBlueprintId {

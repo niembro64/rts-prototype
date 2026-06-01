@@ -37,8 +37,6 @@ function createEmptyUnitSub(): UnitSub {
     surfaceNormal: null,
     orientation: null,
     angularVelocity3: null,
-    locomotionActive: null,
-    locomotionHpCurr: null,
     fireEnabled: null,
     isCommander: null,
     buildTargetId: null,
@@ -134,8 +132,6 @@ function rentDecodedUnitSub(): UnitSub {
     u.surfaceNormal = null;
     u.orientation = null;
     u.angularVelocity3 = null;
-    u.locomotionActive = null;
-    u.locomotionHpCurr = null;
     u.fireEnabled = null;
     u.isCommander = null;
     u.buildTargetId = null;
@@ -206,7 +202,6 @@ const UNIT_FLAG_TURRETS = 1 << 16;
 const UNIT_FLAG_BUILD = 1 << 17;
 const UNIT_FLAG_BUILD_COMPLETE = 1 << 18;
 const UNIT_FLAG_BUILD_INTERRUPTED = 1 << 19;
-const UNIT_FLAG_LOCOMOTION_INACTIVE = 1 << 20;
 
 const BUILDING_FLAG_BLUEPRINT_CODE = 1 << 0;
 const BUILDING_FLAG_DIM = 1 << 1;
@@ -639,7 +634,6 @@ function isMovementOnlyUnitDelta(entity: NetworkServerSnapshotEntity): boolean {
   if (unit.bodyCenterHeight !== null) return false;
   if (unit.mass !== null) return false;
   if (unit.surfaceNormal !== null) return false;
-  if (unit.locomotionActive !== null) return false;
   if (unit.fireEnabled !== null) return false;
   if (unit.isCommander !== null) return false;
   if (unit.buildTargetIdPresent) return false;
@@ -674,7 +668,6 @@ function isSplitUnitTurretDelta(entity: NetworkServerSnapshotEntity): boolean {
   if (unit.bodyCenterHeight !== null) return false;
   if (unit.mass !== null) return false;
   if (unit.surfaceNormal !== null) return false;
-  if (unit.locomotionActive !== null) return false;
   if (unit.fireEnabled !== null) return false;
   if (unit.isCommander !== null) return false;
   if (unit.buildTargetIdPresent) return false;
@@ -1304,7 +1297,6 @@ function packUnit(unit: UnitSub): unknown[] {
   if (unit.surfaceNormal !== null) flags |= UNIT_FLAG_SURFACE_NORMAL;
   if (unit.orientation !== null) flags |= UNIT_FLAG_ORIENTATION;
   if (unit.angularVelocity3 !== null) flags |= UNIT_FLAG_ANGULAR_VELOCITY;
-  if (unit.locomotionActive === false) flags |= UNIT_FLAG_LOCOMOTION_INACTIVE;
   if (unit.fireEnabled === false) flags |= UNIT_FLAG_FIRE_DISABLED;
   if (unit.isCommander === true) flags |= UNIT_FLAG_IS_COMMANDER;
   if (unit.buildTargetIdPresent) {
@@ -1322,10 +1314,7 @@ function packUnit(unit: UnitSub): unknown[] {
   const row: unknown[] = [flags];
   if ((flags & UNIT_FLAG_HP) !== 0) {
     const hp = unit.hp!;
-    // locomotionHpCurr rides the HP block (set by the server inside the
-    // ENTITY_CHANGED_HP gate, same as body hp.curr). Appended after
-    // curr/max so the matching decoder reads it in lockstep.
-    row.push(hp.curr, hp.max, unit.locomotionHpCurr ?? 0);
+    row.push(hp.curr, hp.max);
   }
   if ((flags & UNIT_FLAG_VELOCITY) !== 0) {
     const v = unit.velocity!;
@@ -1376,8 +1365,6 @@ function unpackUnit(row: unknown[]): UnitSub {
     const curr = row[i++] as number;
     const max = row[i++] as number;
     unit.hp = { curr, max };
-    // locomotionHpCurr rides the HP block — read after curr/max.
-    unit.locomotionHpCurr = row[i++] as number;
   }
   if ((flags & UNIT_FLAG_VELOCITY) !== 0) {
     const x = row[i++] as number;
@@ -1419,9 +1406,6 @@ function unpackUnit(row: unknown[]): UnitSub {
     const y = row[i++] as number;
     const z = row[i++] as number;
     unit.angularVelocity3 = { x, y, z };
-  }
-  if ((flags & UNIT_FLAG_LOCOMOTION_INACTIVE) !== 0) {
-    unit.locomotionActive = false;
   }
   if ((flags & UNIT_FLAG_FIRE_DISABLED) !== 0) {
     unit.fireEnabled = false;

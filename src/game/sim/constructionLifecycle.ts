@@ -16,7 +16,6 @@ import {
   getBuildingBlueprint,
   getTurretBlueprint,
   getUnitBlueprint,
-  UNIT_LOCOMOTION_BLUEPRINTS,
 } from './blueprints';
 import type { ResourceCost } from '../../types/economyTypes';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../types/network';
@@ -138,28 +137,8 @@ function getUnitConstructionPieceSpecs(entity: Entity): ConstructionPieceSpec[] 
   if (unit === null) return [];
 
   const unitBlueprint = getUnitBlueprint(unit.unitBlueprintId);
-  const locomotionBlueprint = UNIT_LOCOMOTION_BLUEPRINTS[unit.locomotion.blueprintId];
-  if (locomotionBlueprint === undefined) return [];
 
   const specs: ConstructionPieceSpec[] = [
-    {
-      getId: () => unit.locomotion.id,
-      assignId: (id) => {
-        unit.locomotion.id = id;
-        unit.locomotion.parentId = entity.id;
-        unit.locomotion.rootHostId = entity.id;
-        unit.locomotion.mountIndex = 0;
-      },
-      kind: 'locomotion',
-      mountIndex: 0,
-      required: cloneResourceCost(locomotionBlueprint.base.cost),
-      maxHp: unit.locomotion.maxHp,
-      startsAtFrameOne: true,
-      getHp: () => unit.locomotion.hp,
-      setHp: (hp) => { unit.locomotion.hp = hp; },
-      snapshotFields: ENTITY_CHANGED_ACTIONS,
-      isSubEntity: true,
-    },
     {
       getId: () => entity.id,
       assignId: null,
@@ -167,7 +146,7 @@ function getUnitConstructionPieceSpecs(entity: Entity): ConstructionPieceSpec[] 
       mountIndex: null,
       required: cloneResourceCost(unitBlueprint.base.cost),
       maxHp: unit.maxHp,
-      startsAtFrameOne: false,
+      startsAtFrameOne: true,
       getHp: () => unit.hp,
       setHp: (hp) => { unit.hp = hp; },
       snapshotFields: ENTITY_CHANGED_HP,
@@ -490,7 +469,6 @@ function finishConstructionPieceHealth(entity: Entity): void {
   if (entity.unit !== null) {
     const unit = entity.unit;
     if (unit.hp > 0) unit.hp = unit.maxHp;
-    if (isSubEntityHpLive(unit.locomotion.hp)) unit.locomotion.hp = unit.locomotion.maxHp;
     const combat = entity.combat;
     if (combat !== null) {
       for (let i = 0; i < combat.turrets.length; i++) {

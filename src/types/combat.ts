@@ -189,7 +189,6 @@ export type CollisionResult = {
   deadUnitIds: Set<EntityId>;
   deadBuildingIds: Set<EntityId>;
   deadTurretIds: Set<EntityId>;
-  deadLocomotionIds: Set<EntityId>;
   events: SimEvent[];
   despawnEvents: ProjectileDespawnEvent[];
   velocityUpdates: ProjectileVelocityUpdateEvent[];

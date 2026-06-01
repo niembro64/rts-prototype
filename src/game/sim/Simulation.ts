@@ -8,8 +8,6 @@ import {
   buildUnitDeathEvent,
   buildBuildingDeathEvent,
   collectKillsAndDeathContexts,
-  resolveKilledLocomotion,
-  resolveKilledLocomotionWorldPosition,
   resolveKilledTurret,
   resolveKilledTurretWorldPosition,
 } from './combat/damageHelpers';
@@ -55,7 +53,6 @@ import {
   isBuildBlockingActivation,
   isBuildInProgress,
   isConstructionBodyMaterialized,
-  isDetachedLocomotionAgent,
 } from './buildableHelpers';
 import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities';
 import { updateUnitGroundNormal } from './unitGroundNormal';
@@ -79,7 +76,6 @@ import {
   getBuildingBlueprint,
   getTurretBlueprint,
   getUnitBlueprint,
-  UNIT_LOCOMOTION_BLUEPRINTS,
 } from './blueprints';
 import { updateBuildingActiveStates } from './buildingActiveState';
 import { getEntityTargetPoint } from './buildingAnchors';
@@ -240,7 +236,6 @@ export class Simulation {
   private _cleanupDeadUnitIdSet = new Set<EntityId>();
   private _cleanupDeadBuildingIdSet = new Set<EntityId>();
   private _cleanupDeadTurretIdSet = new Set<EntityId>();
-  private _cleanupDeadLocomotionIdSet = new Set<EntityId>();
   private _cleanupSyntheticDeathEventIds = new Set<EntityId>();
   private _cleanupDeathContexts = new Map<EntityId, DeathContext>();
   private _pieceDeathExplosionCenter = { x: 0, y: 0, z: 0 };
@@ -714,7 +709,6 @@ export class Simulation {
         collisionResult.deadUnitIds,
         collisionResult.deadBuildingIds,
         collisionResult.deadTurretIds,
-        collisionResult.deadLocomotionIds,
         collisionResult.events,
         collisionResult.deathContexts,
       );
@@ -764,7 +758,6 @@ export class Simulation {
         if (onBuildingDeath !== null) onBuildingDeath(buf);
       }
 
-      this.removeDeadDetachedLocomotionAgents(collisionResult.deadLocomotionIds);
     }
 
     // Safety cleanup - remove any dead entities that slipped through.
@@ -791,8 +784,7 @@ export class Simulation {
       if (
         entity.unit &&
         entity.unit.hp <= 0 &&
-        isConstructionBodyMaterialized(entity) &&
-        !isDetachedLocomotionAgent(entity)
+        isConstructionBodyMaterialized(entity)
       ) {
         deadUnitIds.push(entity.id);
       } else if (entity.building && entity.building.hp <= 0) {
@@ -805,13 +797,11 @@ export class Simulation {
       const deadUnitSet = this._cleanupDeadUnitIdSet;
       const deadBuildingSet = this._cleanupDeadBuildingIdSet;
       const deadTurretSet = this._cleanupDeadTurretIdSet;
-      const deadLocomotionSet = this._cleanupDeadLocomotionIdSet;
       const syntheticDeathEventIds = this._cleanupSyntheticDeathEventIds;
       const deathContexts = this._cleanupDeathContexts;
       deadUnitSet.clear();
       deadBuildingSet.clear();
       deadTurretSet.clear();
-      deadLocomotionSet.clear();
       syntheticDeathEventIds.clear();
       deathContexts.clear();
       for (const id of deadUnitIds) {
@@ -826,11 +816,9 @@ export class Simulation {
         deadUnitSet,
         deadBuildingSet,
         deadTurretSet,
-        deadLocomotionSet,
         this.pendingSimEvents,
         deathContexts,
       );
-      this.removeDeadDetachedLocomotionAgents(deadLocomotionSet);
       deadUnitIds.length = 0;
       deadBuildingIds.length = 0;
       for (const id of deadUnitSet) deadUnitIds.push(id);
@@ -888,16 +876,6 @@ export class Simulation {
     }
   }
 
-  private removeDeadDetachedLocomotionAgents(ids: Iterable<EntityId>): void {
-    for (const id of ids) {
-      const entity = this.world.getEntity(id);
-      if (entity === undefined || !isDetachedLocomotionAgent(entity)) continue;
-      if (entity.unit === null || entity.unit.locomotion.hp > 0) continue;
-      spatialGrid.removeUnit(id);
-      this.world.removeEntity(id);
-    }
-  }
-
   // Build a death SimEvent for entities dying outside the normal
   // collision-handler path (anything that mutates hp
   // directly). Delegates to the shared buildUnitDeathEvent /
@@ -920,7 +898,6 @@ export class Simulation {
     deadUnitIds: Set<EntityId>,
     deadBuildingIds: Set<EntityId>,
     deadTurretIds: Set<EntityId>,
-    deadLocomotionIds: Set<EntityId>,
     audioEvents: SimEvent[],
     deathContexts: Map<EntityId, DeathContext>,
   ): void {
@@ -930,7 +907,6 @@ export class Simulation {
     for (const id of deadUnitIds) queue.push(id);
     for (const id of deadBuildingIds) queue.push(id);
     for (const id of deadTurretIds) queue.push(id);
-    for (const id of deadLocomotionIds) queue.push(id);
 
     for (let index = 0; index < queue.length; index++) {
       const id = queue[index];
@@ -970,7 +946,6 @@ export class Simulation {
         deathContexts,
         blast.sourceEntityId,
         deadTurretIds,
-        deadLocomotionIds,
       );
       for (const killedUnitId of result.killedUnitIds) {
         if (!detonated.has(killedUnitId)) queue.push(killedUnitId);
@@ -980,9 +955,6 @@ export class Simulation {
       }
       for (const killedTurretId of result.killedTurretIds) {
         if (!detonated.has(killedTurretId)) queue.push(killedTurretId);
-      }
-      for (const killedLocomotionId of result.killedLocomotionIds) {
-        if (!detonated.has(killedLocomotionId)) queue.push(killedLocomotionId);
       }
     }
   }
@@ -995,9 +967,6 @@ export class Simulation {
       return this.getSubEntityDeathExplosion(id);
     }
     if (entity.unit !== null) {
-      if (isDetachedLocomotionAgent(entity)) {
-        return this.getSubEntityDeathExplosion(id);
-      }
       const unitBlueprintId = entity.unit.unitBlueprintId;
       const blast = getUnitBlueprint(unitBlueprintId).base.deathExplosion;
       return {
@@ -1076,30 +1045,6 @@ export class Simulation {
       };
     }
 
-    const locomotion = resolveKilledLocomotion(this.world, id);
-    if (locomotion !== undefined) {
-      const pos = resolveKilledLocomotionWorldPosition(
-        this.world,
-        id,
-        this._pieceDeathExplosionCenter,
-      );
-      if (pos === undefined) return null;
-      const locomotionBlueprint = UNIT_LOCOMOTION_BLUEPRINTS[locomotion.locomotion.blueprintId];
-      if (locomotionBlueprint === undefined) {
-        throw new Error(`Unknown locomotion blueprint: ${locomotion.locomotion.blueprintId}`);
-      }
-      const blast = locomotionBlueprint.base.deathExplosion;
-      return {
-        radius: blast.radius,
-        force: blast.force,
-        damage: blast.damage,
-        sourceKey: locomotion.locomotion.blueprintId,
-        sourceType: 'system',
-        sourceEntityId: locomotion.host.id,
-        center: { x: pos.x, y: pos.y, z: pos.z },
-      };
-    }
-
     return null;
   }
 
@@ -1137,20 +1082,7 @@ export class Simulation {
         continue;
       }
 
-      const detachedLocomotionAgent = isDetachedLocomotionAgent(entity);
       if (unit.hp <= 0) {
-        unit.thrustDirX = 0;
-        unit.thrustDirY = 0;
-        setUnitMovementAcceleration(unit, 0, 0, 0);
-        unit.stuckTicks = 0;
-        if (entity.combat) {
-          entity.combat.priorityTargetId = null;
-          entity.combat.priorityTargetPoint = null;
-        }
-        if (!detachedLocomotionAgent || unit.locomotion.hp <= 0) continue;
-      }
-
-      if (unit.locomotion.hp <= 0) {
         unit.thrustDirX = 0;
         unit.thrustDirY = 0;
         setUnitMovementAcceleration(unit, 0, 0, 0);
@@ -1427,10 +1359,7 @@ export class Simulation {
 
   private isAliveAttackTarget(target: Entity): boolean {
     return !!(
-      (target.unit && (
-        target.unit.hp > 0 ||
-        (isDetachedLocomotionAgent(target) && target.unit.locomotion.hp > 0)
-      )) ||
+      (target.unit && target.unit.hp > 0) ||
       (target.building && target.building.hp > 0)
     );
   }

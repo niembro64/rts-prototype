@@ -1,24 +1,23 @@
 /**
  * Unit blueprints.
  *
- * Authored unit facts live in units.json. The only transformation left
- * here is resolving data references such as locomotionBlueprintId and $audio
- * into the runtime objects current TypeScript callers expect.
+ * Authored unit facts live in units.json. Unit locomotion is authored
+ * inline on the unit; this loader only resolves shared data references
+ * such as pathfinding and $audio into the runtime objects callers expect.
  */
 
 import type { TurretBlueprintId } from '../../../types/blueprintIds';
 import type { UnitBlueprint } from './types';
 import type { UnitLocomotion } from '../types';
 import { createUnitLocomotion } from '../locomotion';
-import type { LocomotionBlueprintId } from '../../../types/blueprintIds';
 export { BUILDABLE_UNIT_BLUEPRINT_IDS, type BuildableUnitBlueprintId } from './unitRoster';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
-import { UNIT_LOCOMOTION_BLUEPRINTS } from './locomotion';
+import { PATHFINDING_BLUEPRINTS } from './pathfinding';
 import { TURRET_BLUEPRINTS } from './turrets';
 import rawUnitBlueprints from './units.json';
 import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields } from './jsonValidation';
-import type { LockOnInclusionObject } from './types';
+import type { LockOnInclusionObject, LocomotionBlueprint } from './types';
 import {
   assertNoInlineLockOnInclusionFields,
 } from './lockOnValidation';
@@ -35,7 +34,7 @@ import {
 } from './entityBaseLedger';
 
 type JsonUnitBlueprint = Omit<UnitBlueprint, 'locomotion' | keyof LockOnInclusionObject> & {
-  locomotionBlueprintId: string;
+  locomotion: Omit<LocomotionBlueprint, 'pathfinding'>;
 };
 
 const UNIT_EXPLICIT_FIELDS = [
@@ -48,7 +47,45 @@ const UNIT_EXPLICIT_FIELDS = [
   'detector',
   'deathSound',
   'fightStopEngagedRatio',
+  'locomotion',
 ] as const;
+
+function resolveInlineLocomotion(
+  unitBlueprintId: string,
+  locomotion: JsonUnitBlueprint['locomotion'],
+): LocomotionBlueprint {
+  if (!locomotion || !locomotion.type) {
+    throw new Error(`Invalid unit blueprint ${unitBlueprintId}: missing locomotion`);
+  }
+  if (!locomotion.pathfindingBlueprintId) {
+    throw new Error(
+      `Invalid unit blueprint ${unitBlueprintId}: locomotion missing pathfindingBlueprintId`,
+    );
+  }
+  const pathfinding = PATHFINDING_BLUEPRINTS[locomotion.pathfindingBlueprintId];
+  if (!pathfinding) {
+    throw new Error(
+      `Invalid unit blueprint ${unitBlueprintId}: unknown locomotion.pathfindingBlueprintId "${locomotion.pathfindingBlueprintId}"`,
+    );
+  }
+  if (!locomotion.physics || locomotion.physics.driveForce <= 0) {
+    throw new Error(
+      `Invalid unit blueprint ${unitBlueprintId}: locomotion physics.driveForce must be positive`,
+    );
+  }
+  if (
+    'maxSlopeDeg' in locomotion.physics &&
+    (locomotion.physics as { maxSlopeDeg?: unknown }).maxSlopeDeg !== undefined
+  ) {
+    throw new Error(
+      `Invalid unit blueprint ${unitBlueprintId}: locomotion physics.maxSlopeDeg moved to pathfindingConfig.json`,
+    );
+  }
+  return {
+    ...locomotion,
+    pathfinding,
+  } as LocomotionBlueprint;
+}
 
 function buildUnitBlueprints(): Record<string, UnitBlueprint> {
   const resolved = resolveBlueprintRefs(
@@ -60,12 +97,7 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
   for (const [id, blueprint] of Object.entries(resolved)) {
     assertExplicitFields(`unit blueprint ${id}`, blueprint, UNIT_EXPLICIT_FIELDS);
     assertNoInlineLockOnInclusionFields(`unit blueprint ${id}`, blueprint);
-    const locomotion = UNIT_LOCOMOTION_BLUEPRINTS[blueprint.locomotionBlueprintId];
-    if (!locomotion) {
-      throw new Error(
-        `Invalid unit blueprint ${id}: unknown locomotionBlueprintId "${blueprint.locomotionBlueprintId}"`,
-      );
-    }
+    const locomotion = resolveInlineLocomotion(id, blueprint.locomotion);
     assertValidEntityBaseLedger(`unit blueprint ${id}`, blueprint.base);
     assertRadiusEquals(`unit blueprint ${id}`, blueprint.radius, blueprint.base.radius);
     assertNumberEquals(`unit blueprint ${id}`, 'mass', blueprint.mass, blueprint.base.mass);
@@ -82,13 +114,11 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
     assertResourceCostEquals(
       `unit blueprint ${id}`,
       blueprint.cost,
-      addResourceCosts(blueprint.base.cost, locomotion.base.cost, ...mountedTurretCosts),
+      addResourceCosts(blueprint.base.cost, ...mountedTurretCosts),
     );
-    const { locomotionBlueprintId, ...unitBlueprint } = blueprint;
     blueprints[id] = {
-      ...unitBlueprint,
+      ...blueprint,
       ...getUnitLockOnInclusions(id),
-      locomotionBlueprintId,
       locomotion,
     };
   }
@@ -259,10 +289,7 @@ export function getUnitBlueprint(id: string): UnitBlueprint {
 
 export function getUnitLocomotion(id: string): UnitLocomotion {
   const unitBlueprint = getUnitBlueprint(id);
-  return createUnitLocomotion(
-    unitBlueprint.locomotion,
-    unitBlueprint.locomotionBlueprintId as LocomotionBlueprintId,
-  );
+  return createUnitLocomotion(unitBlueprint.locomotion);
 }
 
 export function getAllUnitBlueprints(): UnitBlueprint[] {

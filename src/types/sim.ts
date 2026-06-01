@@ -738,7 +738,7 @@ export type EconomyState = {
   };
 };
 
-export type ConstructionPieceKind = 'locomotion' | 'body' | 'turret';
+export type ConstructionPieceKind = 'body' | 'turret';
 
 export type ConstructionPieceBuildRecord = {
   id: EntityId;
@@ -892,19 +892,17 @@ export type DGunProjectile = {
 // See design_philosophy.html "Towers Are Static Hosts That Lock On And Fire".
 export type EntityType = 'unit' | 'tower' | 'building' | 'shot';
 
-export type EntityMetaKind = EntityType | 'turret' | 'locomotion';
+export type EntityMetaKind = EntityType | 'turret';
 export type EntityMetaBlueprintKind =
   | 'unit'
   | 'tower'
   | 'building'
   | 'turret'
-  | 'locomotion'
   | 'shot'
   | 'none';
 export type EntityMetaStoragePool =
   | 'entities'
-  | 'combat.turrets'
-  | 'unit.locomotion';
+  | 'combat.turrets';
 
 export type EntityMeta = {
   id: EntityId;

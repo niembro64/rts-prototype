@@ -17,7 +17,6 @@ const ENTITY_HUD_TYPE_LABELS: Record<EntityHudType, string> = {
   tower: 'TOWER',
   building: 'BLDG',
   turret: 'TURR',
-  locomotion: 'LOCO',
   shot: 'SHOT',
 };
 

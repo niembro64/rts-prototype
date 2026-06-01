@@ -37,7 +37,6 @@ import { getUnitGroundZ } from '../unitGeometry';
 import {
   CT_BLUEPRINT_CODE_NONE,
   CT_ENTITY_FAMILY_BUILDING,
-  CT_ENTITY_FAMILY_LOCOMOTION,
   CT_ENTITY_FAMILY_NONE,
   CT_ENTITY_FAMILY_SHOT,
   CT_ENTITY_FAMILY_TOWER,
@@ -65,7 +64,6 @@ import {
 } from '../../sim-wasm/init';
 import {
   buildingBlueprintIdToCode,
-  locomotionBlueprintIdToCode,
   shotBlueprintIdToCode,
   turretBlueprintIdToCode,
   unitBlueprintIdToCode,
@@ -174,7 +172,6 @@ let _combatTargetingSensorSourceCount = 0;
 const _stampViewMaskByPlayer = new Uint32Array(32);
 let _stampViewMaskComputedBits = 0;
 let _stampSlotUsed = new Uint8Array(0);
-let _stampSlotCursor = 0;
 
 function playerMaskBit(playerId: number): number {
   if (playerId < 1 || playerId > 31) return 0;
@@ -213,7 +210,6 @@ function resetCombatTargetingSources(): void {
 
 function resetCombatTargetingSlotUse(): void {
   _stampSlotUsed.fill(0);
-  _stampSlotCursor = 0;
 }
 
 function ensureCombatTargetingSlotUseCapacity(slot: number): void {
@@ -229,14 +225,6 @@ function reserveCombatTargetingSlot(slot: number): void {
   if (slot < 0) return;
   ensureCombatTargetingSlotUseCapacity(slot);
   _stampSlotUsed[slot] = 1;
-}
-
-function allocCombatTargetingOnlySlot(): number {
-  while (_stampSlotCursor < _stampSlotUsed.length && _stampSlotUsed[_stampSlotCursor] !== 0) {
-    _stampSlotCursor++;
-  }
-  reserveCombatTargetingSlot(_stampSlotCursor);
-  return _stampSlotCursor++;
 }
 
 function ensureCombatTargetingSourceCapacity(count: number): void {
@@ -730,79 +718,6 @@ function stampCombatTargetingEntityInto(
   return true;
 }
 
-function stampUnitLocomotionTargetInto(
-  targeting: CombatTargetingApi,
-  world: WorldState,
-  entity: Entity,
-): void {
-  const unit = entity.unit;
-  if (unit === null || unit.locomotion.id < 0) return;
-  const slot = allocCombatTargetingOnlySlot();
-  const ownership = entity.ownership;
-  const playerId = ownership ? ownership.playerId : 0;
-  const viewMask = getEntityViewMask(world, playerId);
-  const pos = getEntityPosition3d(entity, _stampPos);
-  const vel = getEntityVelocity3d(entity, _stampVel);
-  const groundZ = getUnitGroundZ(entity);
-  const rotCos = Math.cos(entity.transform.rotation);
-  const rotSin = Math.sin(entity.transform.rotation);
-  const surfaceN = unit.surfaceNormal;
-  const suspension = unit.suspension;
-  const buildComplete = isEntityActive(entity);
-  const locomotion = unit.locomotion;
-  let entityFlags = locomotion.hp > 0 ? CT_ENTITY_FLAG_ALIVE : 0;
-  if (buildComplete) entityFlags |= CT_ENTITY_FLAG_BUILDABLE_COMPLETE;
-  if (isEntityCloaked(entity)) entityFlags |= CT_ENTITY_FLAG_CLOAKED;
-
-  targeting.setEntity(
-    slot,
-    locomotion.id,
-    playerId,
-    viewMask,
-    pos.x,
-    pos.y,
-    groundZ,
-    vel.x,
-    vel.y,
-    vel.z,
-    groundZ,
-    rotCos,
-    rotSin,
-    surfaceN.nx,
-    surfaceN.ny,
-    surfaceN.nz,
-    suspension ? suspension.offsetX : 0,
-    suspension ? suspension.offsetY : 0,
-    suspension ? suspension.offsetZ : 0,
-    locomotion.radius.hitbox,
-    0,
-    0,
-    0,
-    locomotion.hp,
-    entityFlags,
-    CT_ENTITY_FAMILY_LOCOMOTION,
-    locomotionBlueprintIdToCode(locomotion.blueprintId),
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    -1,
-    0,
-    0,
-    0,
-    0,
-    -1,
-    0,
-  );
-}
-
 function reserveCombatTargetingSpatialSlots(entities: readonly Entity[]): void {
   for (let i = 0; i < entities.length; i++) {
     reserveCombatTargetingSlot(spatialGrid.getSlot(entities[i].id));
@@ -811,7 +726,7 @@ function reserveCombatTargetingSpatialSlots(entities: readonly Entity[]): void {
 
 /** Rebuild every targetable entity row before the FSM runs. Turret rows
  *  are written for combat entities, but target lookup also needs
- *  unarmed buildings, traveling shots, and locomotion sub-entities. The
+ *  unarmed buildings and traveling shots. The
  *  same walk compacts the source-id queue consumed by the scheduled
  *  Rust targeting batch, so the scheduler bridge does not need its own
  *  armed-entity traversal. */
@@ -838,7 +753,6 @@ export function stampCombatTargetingPool(world: WorldState): void {
   for (const entity of units) {
     if (stampCombatTargetingEntityInto(sim, targeting, world, entity)) {
       queueCombatTargetingSource(entity);
-      stampUnitLocomotionTargetInto(targeting, world, entity);
     }
   }
   for (const entity of buildings) {

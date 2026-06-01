@@ -532,26 +532,6 @@ export class RtsScene3DRenderPhase {
       }
     }
 
-    // ── Locomotion bars ──
-    const locoHealthToggle = getEntityHudToggle('locomotion', 'healthBar');
-    const locoBuildToggle = getEntityHudToggle('locomotion', 'buildBars');
-    if (locoHealthToggle || locoBuildToggle) {
-      for (const host of this.clientViewState.getHudEntities()) {
-        const loco = host.unit?.locomotion;
-        if (!loco) continue;
-        const selected = host.selectable?.selected === true;
-        if (healthBar3D && (locoHealthToggle || locoBuildToggle)) {
-          const healthNotFull = loco.maxHp > 0 && loco.hp < loco.maxHp;
-          const buildInProgress = isBuildInProgress(host.buildable);
-          const showHealth = this.barVisible(locoHealthToggle, selected, mode, healthNotFull);
-          const showBuild = this.barVisible(locoBuildToggle, selected, mode, buildInProgress);
-          if (showHealth || showBuild) {
-            healthBar3D.perLocomotion(host, false, showHealth, showBuild);
-          }
-        }
-      }
-    }
-
     // ── Shot names. Shot HP bars stay disabled until projectile HP
     // rides a rolling authoritative snapshot instead of spawn state.
     if (nameLabel3D && shotNameToggle) {

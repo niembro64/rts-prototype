@@ -24,16 +24,6 @@
         "rustType": "String"
       }
     },
-    "LocomotionBlueprintId": {
-      "type": "string",
-      "x-codegen": {
-        "tsImport": {
-          "module": "./blueprintIds",
-          "name": "LocomotionBlueprintId"
-        },
-        "rustType": "String"
-      }
-    },
     "ShotBlueprintId": {
       "type": "string",
       "x-codegen": {
@@ -1768,9 +1758,6 @@
       "type": "object",
       "required": [
         "type",
-        "locomotionBlueprintId",
-        "name",
-        "base",
         "physics",
         "pathfindingBlueprintId",
         "pathfinding",
@@ -1779,15 +1766,6 @@
       "properties": {
         "type": {
           "const": "wheels"
-        },
-        "locomotionBlueprintId": {
-          "$ref": "#/$defs/LocomotionBlueprintId"
-        },
-        "name": {
-          "type": "string"
-        },
-        "base": {
-          "$ref": "#/$defs/EntityBaseLedger"
         },
         "physics": {
           "$ref": "#/$defs/LocomotionPhysics"
@@ -1808,9 +1786,6 @@
       "type": "object",
       "required": [
         "type",
-        "locomotionBlueprintId",
-        "name",
-        "base",
         "physics",
         "pathfindingBlueprintId",
         "pathfinding",
@@ -1819,15 +1794,6 @@
       "properties": {
         "type": {
           "const": "treads"
-        },
-        "locomotionBlueprintId": {
-          "$ref": "#/$defs/LocomotionBlueprintId"
-        },
-        "name": {
-          "type": "string"
-        },
-        "base": {
-          "$ref": "#/$defs/EntityBaseLedger"
         },
         "physics": {
           "$ref": "#/$defs/LocomotionPhysics"
@@ -1848,9 +1814,6 @@
       "type": "object",
       "required": [
         "type",
-        "locomotionBlueprintId",
-        "name",
-        "base",
         "physics",
         "pathfindingBlueprintId",
         "pathfinding",
@@ -1859,15 +1822,6 @@
       "properties": {
         "type": {
           "const": "legs"
-        },
-        "locomotionBlueprintId": {
-          "$ref": "#/$defs/LocomotionBlueprintId"
-        },
-        "name": {
-          "type": "string"
-        },
-        "base": {
-          "$ref": "#/$defs/EntityBaseLedger"
         },
         "physics": {
           "$ref": "#/$defs/LocomotionPhysics"
@@ -1888,9 +1842,6 @@
       "type": "object",
       "required": [
         "type",
-        "locomotionBlueprintId",
-        "name",
-        "base",
         "physics",
         "pathfindingBlueprintId",
         "pathfinding",
@@ -1899,15 +1850,6 @@
       "properties": {
         "type": {
           "const": "hover"
-        },
-        "locomotionBlueprintId": {
-          "$ref": "#/$defs/LocomotionBlueprintId"
-        },
-        "name": {
-          "type": "string"
-        },
-        "base": {
-          "$ref": "#/$defs/EntityBaseLedger"
         },
         "physics": {
           "$ref": "#/$defs/LocomotionPhysics"
@@ -1928,9 +1870,6 @@
       "type": "object",
       "required": [
         "type",
-        "locomotionBlueprintId",
-        "name",
-        "base",
         "physics",
         "pathfindingBlueprintId",
         "pathfinding",
@@ -1939,15 +1878,6 @@
       "properties": {
         "type": {
           "const": "flying"
-        },
-        "locomotionBlueprintId": {
-          "$ref": "#/$defs/LocomotionBlueprintId"
-        },
-        "name": {
-          "type": "string"
-        },
-        "base": {
-          "$ref": "#/$defs/EntityBaseLedger"
         },
         "physics": {
           "$ref": "#/$defs/LocomotionPhysics"
@@ -2370,7 +2300,6 @@
         "bodyShape",
         "hud",
         "legAttachHeightFrac",
-        "locomotionBlueprintId",
         "locomotion",
         "suspension",
         "builder",
@@ -2439,9 +2368,6 @@
               "type": "null"
             }
           ]
-        },
-        "locomotionBlueprintId": {
-          "type": "string"
         },
         "locomotion": {
           "$ref": "#/$defs/LocomotionBlueprint"

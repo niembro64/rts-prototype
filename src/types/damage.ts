@@ -89,7 +89,6 @@ export type DamageResult = {
   killedBuildingIds: Set<EntityId>;
   killedProjectileIds: Set<EntityId>;
   killedTurretIds: Set<EntityId>;
-  killedLocomotionIds: Set<EntityId>;
   truncationT?: number;
   knockbacks: KnockbackInfo[];
   recoil?: RecoilInfo;

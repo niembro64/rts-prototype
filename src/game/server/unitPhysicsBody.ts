@@ -2,16 +2,14 @@ import type { Entity } from '../sim/types';
 import type { WorldState } from '../sim/WorldState';
 import type { Body3D, PhysicsEngine3D } from './PhysicsEngine3D';
 import { getTurretBlueprint } from '../sim/blueprints/turrets';
-import { UNIT_LOCOMOTION_BLUEPRINTS } from '../sim/blueprints/locomotion';
-import { isDetachedLocomotionAgent } from '../sim/buildableHelpers';
 
 export type UnitPhysicsBodyOptions = {
   ignoreOverlappingBuildings: boolean | undefined;
   overlapPadding: number | undefined;
 };
 
-/** Effective physical mass of a mobile unit host = its body's base mass
- *  plus the base mass of every LIVE mounted piece (locomotion + turrets).
+/** Effective physical mass of a mobile unit host = its unit body mass
+ *  plus the base mass of every LIVE mounted turret.
  *  A piece that has died (hp <= 0) or detached no longer weighs on the
  *  host, so a tank that loses a turret accelerates and gets knocked around
  *  more. Mass is summed at runtime here, mirroring how cost is summed at
@@ -21,15 +19,7 @@ export type UnitPhysicsBodyOptions = {
 export function computeHostEffectiveMass(entity: Entity): number {
   const unit = entity.unit;
   if (unit === null) return 0;
-  // A detached-locomotion agent's `unit.mass` already IS the locomotion's
-  // base mass (its body is dead and it has no body of its own), so summing
-  // the locomotion piece again would double-count it.
-  if (isDetachedLocomotionAgent(entity)) return unit.mass;
-  let mass = unit.mass; // body base mass (validated == base.mass at load)
-  const locomotion = unit.locomotion;
-  if (locomotion.hp > 0) {
-    mass += UNIT_LOCOMOTION_BLUEPRINTS[locomotion.blueprintId].base.mass;
-  }
+  let mass = unit.mass; // unit body mass includes its inline locomotion.
   const combat = entity.combat;
   if (combat !== null) {
     const turrets = combat.turrets;

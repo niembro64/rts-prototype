@@ -728,8 +728,7 @@ export class Render3DEntities {
       // Locomotion: spin tread wheels per velocity; legs write per-
       // instance buffers in the shared cylinder pool.
       if (m.locomotion) {
-        m.locomotion.group.visible = isConstructionPieceMaterialized(e, 'locomotion', 0) &&
-          e.unit!.locomotion.hp > 0;
+        m.locomotion.group.visible = isConstructionPieceMaterialized(e, 'body');
       }
       if (m.locomotion && m.locomotion.group.visible) {
         updateLocomotion(

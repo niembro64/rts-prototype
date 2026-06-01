@@ -8,18 +8,15 @@ import { spatialGrid } from '../sim/SpatialGrid';
 import {
   CT_TURRET_STATE_ENGAGED,
   ENTITY_META_BLUEPRINT_KIND_BUILDING,
-  ENTITY_META_BLUEPRINT_KIND_LOCOMOTION,
   ENTITY_META_BLUEPRINT_KIND_TOWER,
   ENTITY_META_BLUEPRINT_KIND_TURRET,
   ENTITY_META_BLUEPRINT_KIND_UNIT,
   ENTITY_META_KIND_BUILDING,
-  ENTITY_META_KIND_LOCOMOTION,
   ENTITY_META_KIND_TOWER,
   ENTITY_META_KIND_TURRET,
   ENTITY_META_KIND_UNIT,
   ENTITY_META_STORAGE_COMBAT_TURRETS,
   ENTITY_META_STORAGE_ENTITIES,
-  ENTITY_META_STORAGE_UNIT_LOCOMOTION,
   getSimWasm,
   type SimWasm,
   SNAPSHOT_DIFF_KIND_UNIT,
@@ -53,7 +50,6 @@ import {
   ENTITY_CHANGED_TURRETS,
   ENTITY_CHANGED_VEL,
   buildingBlueprintIdToCode,
-  locomotionBlueprintIdToCode,
   turretBlueprintIdToCode,
   unitBlueprintIdToCode,
 } from '../../types/network';
@@ -677,24 +673,6 @@ function syncEntityMetaPools(world: WorldState, e: Entity, sim: SimWasm): void {
     slot,
     e.type === 'unit' || e.type === 'tower' || e.type === 'building' || e.type === 'shot' ? 1 : 0,
   );
-
-  const locomotion = e.unit?.locomotion;
-  if (locomotion !== undefined && locomotion.id !== NO_ENTITY_ID) {
-    sim.entityMeta.register(
-      locomotion.id,
-      ENTITY_META_KIND_LOCOMOTION,
-      ENTITY_META_BLUEPRINT_KIND_LOCOMOTION,
-      locomotionBlueprintIdToCode(locomotion.blueprintId),
-      ownership !== null ? ownership.playerId : -1,
-      teamId,
-      locomotion.parentId,
-      locomotion.rootHostId,
-      locomotion.mountIndex,
-      ENTITY_META_STORAGE_UNIT_LOCOMOTION,
-      slot,
-      locomotion.hp > 0 ? 1 : 0,
-    );
-  }
 
   if (e.unit) {
     const u = e.unit;

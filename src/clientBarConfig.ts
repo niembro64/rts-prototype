@@ -108,7 +108,6 @@ export function isEntityHudElementSupported(
   type: EntityHudType,
   element: EntityHudElement,
 ): boolean {
-  if (type === 'locomotion') return element !== 'name';
   if (type === 'shot') return element === 'name';
   return true;
 }

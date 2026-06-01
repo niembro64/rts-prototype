@@ -20,8 +20,6 @@ pub type UnitBlueprintId = String;
 
 pub type TurretBlueprintId = String;
 
-pub type LocomotionBlueprintId = String;
-
 pub type ShotBlueprintId = String;
 
 pub type ShieldMaterialId = String;
@@ -580,9 +578,6 @@ pub struct FlyingConfig {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionBlueprintWheels {
     pub r#type: String,
-    pub locomotionBlueprintId: String,
-    pub name: String,
-    pub base: EntityBaseLedger,
     pub physics: LocomotionPhysics,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
@@ -592,9 +587,6 @@ pub struct LocomotionBlueprintWheels {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionBlueprintTreads {
     pub r#type: String,
-    pub locomotionBlueprintId: String,
-    pub name: String,
-    pub base: EntityBaseLedger,
     pub physics: LocomotionPhysics,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
@@ -604,9 +596,6 @@ pub struct LocomotionBlueprintTreads {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionBlueprintLegs {
     pub r#type: String,
-    pub locomotionBlueprintId: String,
-    pub name: String,
-    pub base: EntityBaseLedger,
     pub physics: LocomotionPhysics,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
@@ -616,9 +605,6 @@ pub struct LocomotionBlueprintLegs {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionBlueprintHover {
     pub r#type: String,
-    pub locomotionBlueprintId: String,
-    pub name: String,
-    pub base: EntityBaseLedger,
     pub physics: LocomotionPhysics,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
@@ -628,9 +614,6 @@ pub struct LocomotionBlueprintHover {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionBlueprintFlying {
     pub r#type: String,
-    pub locomotionBlueprintId: String,
-    pub name: String,
-    pub base: EntityBaseLedger,
     pub physics: LocomotionPhysics,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
@@ -796,7 +779,6 @@ pub struct UnitBlueprint {
     pub bodyShape: UnitBodyShape,
     pub hud: EntityHudBlueprint,
     pub legAttachHeightFrac: Option<f64>,
-    pub locomotionBlueprintId: String,
     pub locomotion: LocomotionBlueprint,
     pub suspension: Option<BlueprintJsonValue>,
     pub builder: Option<UnitBuilderConfig>,

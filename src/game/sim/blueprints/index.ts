@@ -8,7 +8,6 @@ export * from './rays';
 export * from './shields';
 export * from './shieldMaterials';
 export * from './turrets';
-export * from './locomotion';
 export * from './unitRoster';
 export * from './units';
 export * from './buildings';
@@ -31,7 +30,6 @@ import { RAY_BLUEPRINTS } from './rays';
 import { SHIELD_BLUEPRINTS } from './shields';
 import { getShieldMaterial } from './shieldMaterials';
 import { TURRET_BLUEPRINTS } from './turrets';
-import { UNIT_LOCOMOTION_BLUEPRINTS } from './locomotion';
 import { UNIT_BLUEPRINTS, resolveUnitTurretMounts } from './units';
 import { BUILDING_BLUEPRINTS } from './buildings';
 import type {
@@ -45,21 +43,17 @@ import type {
 import {
   buildingBlueprintIdToCode,
   codeToBuildingBlueprintId,
-  codeToLocomotionBlueprintId,
   codeToShotBlueprintId,
   codeToTurretBlueprintId,
   codeToUnitBlueprintId,
   getNetworkBuildingBlueprintIds,
-  getNetworkLocomotionBlueprintIds,
   getNetworkShotBlueprintIds,
   getNetworkTurretBlueprintIds,
   getNetworkUnitBlueprintIds,
-  locomotionBlueprintIdToCode,
   shotBlueprintIdToCode,
   turretBlueprintIdToCode,
   unitBlueprintIdToCode,
   BUILDING_BLUEPRINT_CODE_UNKNOWN,
-  LOCOMOTION_BLUEPRINT_CODE_UNKNOWN,
   SHOT_BLUEPRINT_CODE_UNKNOWN,
   TURRET_BLUEPRINT_CODE_UNKNOWN,
   UNIT_BLUEPRINT_CODE_UNKNOWN,
@@ -284,15 +278,6 @@ validateStableWireIds(
   unitBlueprintIdToCode,
   codeToUnitBlueprintId,
   UNIT_BLUEPRINT_CODE_UNKNOWN,
-);
-
-validateStableWireIds(
-  'locomotion',
-  Object.keys(UNIT_LOCOMOTION_BLUEPRINTS),
-  getNetworkLocomotionBlueprintIds(),
-  locomotionBlueprintIdToCode,
-  codeToLocomotionBlueprintId,
-  LOCOMOTION_BLUEPRINT_CODE_UNKNOWN,
 );
 
 validateStableWireIds(

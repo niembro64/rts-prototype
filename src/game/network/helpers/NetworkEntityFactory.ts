@@ -332,15 +332,6 @@ function createUnitFromNetwork(
       stuckTicks: 0,
     },
   };
-  if (u !== null && u.locomotionActive === false) {
-    entity.unit!.locomotion.hp = 0;
-    entity.unit!.locomotion.id = NO_ENTITY_ID;
-    entity.unit!.locomotion.parentId = NO_ENTITY_ID;
-    entity.unit!.locomotion.rootHostId = NO_ENTITY_ID;
-  } else if (u !== null && u.locomotionHpCurr !== null && u.locomotionHpCurr !== undefined) {
-    // Real per-locomotion HP shipped on the wire (rides ENTITY_CHANGED_HP).
-    entity.unit!.locomotion.hp = u.locomotionHpCurr;
-  }
   if (unitBlueprint) applyEntitySensorBlueprint(entity, unitBlueprint);
 
   const turrets = createTurretsFromNetwork(unitBlueprintId, entity.unit!.radius.visual, unitTurrets);

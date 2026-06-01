@@ -178,7 +178,6 @@ export function hasMaterializedLiveUnitPiece(entity: Entity): boolean {
   const unit = entity.unit;
   if (unit === null) return false;
   if (unit.hp > 0 && isConstructionPieceMaterialized(entity, 'body')) return true;
-  if (unit.locomotion.hp > 0 && isConstructionPieceMaterialized(entity, 'locomotion', 0)) return true;
   const combat = entity.combat;
   if (combat !== null) {
     for (let i = 0; i < combat.turrets.length; i++) {
@@ -193,18 +192,6 @@ export function hasMaterializedLiveUnitPiece(entity: Entity): boolean {
     }
   }
   return false;
-}
-
-export function isDetachedLocomotionAgent(entity: Entity): boolean {
-  const unit = entity.unit;
-  const buildable = entity.buildable;
-  return unit !== null &&
-    buildable !== null &&
-    buildable.isInterrupted &&
-    unit.hp <= 0 &&
-    unit.locomotion.id === entity.id &&
-    unit.locomotion.parentId === entity.id &&
-    unit.locomotion.rootHostId === entity.id;
 }
 
 export function cloneResourceCost(c: ResourceCost): ResourceCost {

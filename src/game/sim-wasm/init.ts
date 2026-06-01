@@ -1500,18 +1500,15 @@ export const ENTITY_META_KIND_TOWER = 2;
 export const ENTITY_META_KIND_BUILDING = 3;
 export const ENTITY_META_KIND_SHOT = 4;
 export const ENTITY_META_KIND_TURRET = 5;
-export const ENTITY_META_KIND_LOCOMOTION = 6;
 export const ENTITY_META_BLUEPRINT_KIND_NONE = 0;
 export const ENTITY_META_BLUEPRINT_KIND_UNIT = 1;
 export const ENTITY_META_BLUEPRINT_KIND_TOWER = 2;
 export const ENTITY_META_BLUEPRINT_KIND_BUILDING = 3;
 export const ENTITY_META_BLUEPRINT_KIND_TURRET = 4;
-export const ENTITY_META_BLUEPRINT_KIND_LOCOMOTION = 5;
-export const ENTITY_META_BLUEPRINT_KIND_SHOT = 6;
+export const ENTITY_META_BLUEPRINT_KIND_SHOT = 5;
 export const ENTITY_META_STORAGE_NONE = 0;
 export const ENTITY_META_STORAGE_ENTITIES = 1;
 export const ENTITY_META_STORAGE_COMBAT_TURRETS = 2;
-export const ENTITY_META_STORAGE_UNIT_LOCOMOTION = 3;
 
 /** Phase 10 D.1b — Turret sub-pool. Up to 8 turrets per entity at
  *  fixed offset `entity_slot * MAX + turret_idx` in a flat SoA.
@@ -1609,8 +1606,7 @@ export const CT_ENTITY_FAMILY_NONE = 0;
 export const CT_ENTITY_FAMILY_BUILDING = 1;
 export const CT_ENTITY_FAMILY_UNIT = 2;
 export const CT_ENTITY_FAMILY_TOWER = 3;
-export const CT_ENTITY_FAMILY_LOCOMOTION = 4;
-export const CT_ENTITY_FAMILY_SHOT = 5;
+export const CT_ENTITY_FAMILY_SHOT = 4;
 
 /** LOCK-ON-03 — Sentinel for `entity_blueprint_code` when the family is
  *  NONE. Mirrors `CT_BLUEPRINT_CODE_NONE` in Rust. */
@@ -2475,7 +2471,6 @@ export interface SnapshotEncodeApi {
     buildComplete: number,
     buildPaidEnergy: number,
     buildPaidMetal: number,
-    locomotionHpCurr: number,
   ) => number;
   /** Raw pointer to the D.2 MessagePack writer scratch. Refreshed
    *  by every encoder call. */

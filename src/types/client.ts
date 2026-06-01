@@ -57,7 +57,6 @@ export type EntityHudType =
   | 'tower'
   | 'building'
   | 'turret'
-  | 'locomotion'
   | 'shot';
 /** The three per-entity HUD elements that can be toggled. */
 export type EntityHudElement = 'name' | 'healthBar' | 'buildBars';

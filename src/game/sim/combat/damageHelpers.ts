@@ -2,7 +2,7 @@
 // Extracted from projectileSystem.ts to reduce duplication
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId, BeamRay, LaserRay, PlayerId, Turret, UnitLocomotion } from '../types';
+import type { Entity, EntityId, BeamRay, LaserRay, PlayerId, Turret } from '../types';
 import { getEmissionBlueprintId, getPlayerPrimaryColor } from '../types';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimDeathContext, SimEvent, ImpactContext, SimEventSourceType } from './types';
@@ -38,18 +38,6 @@ export function resolveKilledTurret(world: WorldState, id: EntityId): { host: En
     : undefined;
   return host !== undefined && turret !== undefined && turret.id === id
     ? { host, turret }
-    : undefined;
-}
-
-export function resolveKilledLocomotion(world: WorldState, id: EntityId): { host: Entity; locomotion: UnitLocomotion } | undefined {
-  const meta = world.getEntityMeta(id);
-  if (meta === undefined || meta.kind !== 'locomotion' || meta.parentId === null) {
-    return undefined;
-  }
-  const host = world.getEntity(meta.parentId);
-  const locomotion = host !== undefined && host.unit !== null ? host.unit.locomotion : undefined;
-  return host !== undefined && locomotion !== undefined && locomotion.id === id
-    ? { host, locomotion }
     : undefined;
 }
 
@@ -106,21 +94,6 @@ export function resolveKilledTurretWorldPosition(
   );
 }
 
-export function resolveKilledLocomotionWorldPosition(
-  world: WorldState,
-  id: EntityId,
-  out: { x: number; y: number; z: number },
-): { x: number; y: number; z: number } | undefined {
-  const resolved = resolveKilledLocomotion(world, id);
-  if (resolved === undefined) return undefined;
-  const { host, locomotion } = resolved;
-  const baseZ = getUnitGroundZ(host);
-  out.x = host.transform.x;
-  out.y = host.transform.y;
-  out.z = baseZ + locomotion.radius.hitbox;
-  return out;
-}
-
 function buildTurretDeathEvent(
   world: WorldState,
   id: EntityId,
@@ -147,38 +120,6 @@ function buildTurretDeathEvent(
       turret.config.radius.hitbox,
       turret.config.radius.visual,
       turret.config.radius.collision,
-      pos.z,
-    ),
-    killerPlayerId,
-  };
-}
-
-function buildLocomotionDeathEvent(
-  world: WorldState,
-  id: EntityId,
-  sourceKey: string,
-  sourceType: SimEventSourceType,
-  ctx: DeathContext | undefined,
-  killerPlayerId: PlayerId | undefined,
-): SimEvent | undefined {
-  const resolved = resolveKilledLocomotion(world, id);
-  if (resolved === undefined) return undefined;
-  const { host, locomotion } = resolved;
-  const pos = resolveKilledLocomotionWorldPosition(world, id, _subEntityDeathPos);
-  if (pos === undefined) return undefined;
-  return {
-    type: 'death',
-    turretBlueprintId: eventAudioKey(sourceKey, sourceType),
-    sourceType,
-    sourceKey,
-    pos,
-    entityId: id,
-    deathContext: buildSubEntityDeathContext(
-      host,
-      ctx,
-      locomotion.radius.hitbox,
-      locomotion.radius.visual,
-      locomotion.radius.collision,
       pos.z,
     ),
     killerPlayerId,
@@ -438,7 +379,6 @@ export function collectKillsAndDeathContexts(
   deathContexts: Map<EntityId, DeathContext>,
   attackerSourceEntityId: EntityId | undefined = undefined,
   killedTurretIds: Set<EntityId> | undefined = undefined,
-  killedLocomotionIds: Set<EntityId> | undefined = undefined,
 ): void {
   for (const id of result.killedUnitIds) {
     if (!unitsToRemove.has(id)) {
@@ -460,18 +400,6 @@ export function collectKillsAndDeathContexts(
   for (const id of result.killedTurretIds) {
     killedTurretIds?.add(id);
     const event = buildTurretDeathEvent(
-      world,
-      id,
-      sourceKey,
-      sourceType,
-      result.deathContexts.get(id),
-      result.killerPlayerIds.get(id),
-    );
-    if (event !== undefined) audioEvents.push(event);
-  }
-  for (const id of result.killedLocomotionIds) {
-    killedLocomotionIds?.add(id);
-    const event = buildLocomotionDeathEvent(
       world,
       id,
       sourceKey,

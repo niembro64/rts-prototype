@@ -427,7 +427,6 @@ function unitNeedsRawFallback(unit: SnapshotUnit): boolean {
     )) ||
     (unit.bodyCenterHeight !== null && !Number.isFinite(unit.bodyCenterHeight)) ||
     (unit.mass !== null && !Number.isFinite(unit.mass)) ||
-    unit.locomotionActive === false ||
     hasInactiveTurret(unit.turrets) ||
     unit.fireEnabled === true ||
     unit.isCommander === false ||
@@ -506,7 +505,6 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
     build !== null && build.complete === true ? 1 : 0,
     build !== null ? build.paid.energy : 0,
     build !== null ? build.paid.metal : 0,
-    unit.locomotionHpCurr ?? 0,
   );
   return true;
 }
@@ -721,7 +719,6 @@ function encodeEntityWireRow(
       values[base + 46],
       values[base + 47],
       values[base + 48],
-      values[base + 51], // locomotionHpCurr
     );
     return true;
   }

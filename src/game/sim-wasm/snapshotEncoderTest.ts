@@ -270,9 +270,6 @@ function runEntityBasicCases(memory: WebAssembly.Memory): { passed: number; fail
 type UnitFixture = BasicEntityFixture & {
   unit: {
     hp: { curr: number; max: number };
-    /** Locomotion current HP. Rides the HP block (emitted right after
-     *  `hp`). Defaults to 0 in the wire fixture when omitted. */
-    locomotionHpCurr?: number;
     velocity: { x: number; y: number; z: number };
     unitBlueprintCode?: number;
     radius?: { visual: number; hitbox: number; collision: number };
@@ -294,13 +291,9 @@ type UnitFixture = BasicEntityFixture & {
 };
 
 function sparseUnitFixture(f: UnitFixture): UnitFixture {
-  // The Rust encoder emits `locomotionHpCurr` immediately after `hp`
-  // (it rides the HP block). Rebuild the wire fixture with that key
-  // ordering so the reference msgpack bytes match. ignoreUndefined drops
-  // the key when hp (and thus locomotionHpCurr) is sparse on a delta.
   const hpPresent = f.changedFields === undefined || fixtureHasField(f, ENTITY_CHANGED_HP);
   const velPresent = f.changedFields === undefined || fixtureHasField(f, ENTITY_CHANGED_VEL);
-  const { hp: _hp, locomotionHpCurr: _loco, velocity: _vel, ...restUnit } = f.unit;
+  const { hp: _hp, velocity: _vel, ...restUnit } = f.unit;
   const basic = f.changedFields === undefined ? f : sparseBasicFixture(f);
   // Spread restUnit first, then re-assign `turrets`: object spread keeps
   // the original key POSITION while taking the normalized value, so
@@ -309,7 +302,6 @@ function sparseUnitFixture(f: UnitFixture): UnitFixture {
     ...basic,
     unit: {
       hp: hpPresent ? f.unit.hp : undefined,
-      locomotionHpCurr: hpPresent ? (f.unit.locomotionHpCurr ?? 0) : undefined,
       velocity: velPresent ? f.unit.velocity : undefined,
       ...restUnit,
       ...(f.unit.turrets !== undefined
@@ -934,7 +926,6 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       buildComplete,
       buildPaidEnergy,
       buildPaidMetal,
-      f.unit.locomotionHpCurr ?? 0,
     );
     const ptr = messagepack_writer_ptr();
     const len = messagepack_writer_len();
@@ -3155,7 +3146,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           build?.complete === true ? 1 : 0,
           build?.paid.energy ?? 0,
           build?.paid.metal ?? 0,
-          u.unit.locomotionHpCurr ?? 0,
         );
       } else {
         const b = e as BuildingFixture;

@@ -22,12 +22,6 @@ function hasDamagedTurret(entity: Entity): boolean {
   return false;
 }
 
-/** True iff the unit's locomotion is damaged (hp below maxHp, hp > 0). */
-function hasDamagedLocomotion(entity: Entity): boolean {
-  const loco = entity.unit?.locomotion;
-  return loco !== null && loco !== undefined && loco.hp > 0 && loco.hp < loco.maxHp;
-}
-
 export class EntityCacheManager {
   private cachedUnits: Entity[] = [];
   private cachedBuildings: Entity[] = [];
@@ -38,10 +32,10 @@ export class EntityCacheManager {
   private cachedDamagedUnits: Entity[] = [];
   private cachedHealthBarBuildings: Entity[] = [];
   /** Units / towers / buildings that need ANY HUD bar this frame: body
-   *  damaged, build-in-progress, OR any sub-piece (turret / locomotion)
+   *  damaged, build-in-progress, OR any turret sub-piece
    *  damaged. Superset of cachedDamagedUnits ∪ cachedHealthBarBuildings
-   *  that also catches a full-HP host whose turret or locomotion is
-   *  damaged. Selection is NOT folded in here — the cache is dirty-
+   *  that also catches a full-HP host whose turret is damaged.
+   *  Selection is NOT folded in here — the cache is dirty-
    *  rebuilt and may not invalidate on selection — so the orchestrator
    *  applies the selection rule against the live entity ref. */
   private cachedHudEntities: Entity[] = [];
@@ -198,7 +192,6 @@ export class EntityCacheManager {
               (entity.unit.hp > 0 && entity.unit.hp < entity.unit.maxHp)
               || isBuildInProgress(entity.buildable)
               || hasDamagedTurret(entity)
-              || hasDamagedLocomotion(entity)
             )
           ) {
             this.cachedHudEntities.push(entity);
@@ -237,8 +230,7 @@ export class EntityCacheManager {
             this.cachedHealthBarBuildings.push(entity);
           }
           // HUD list: body-damaged / building OR any damaged mounted
-          // turret (towers/buildings can be armed). Buildings have no
-          // locomotion, so only the turret sub-piece check applies.
+          // turret (towers/buildings can be armed).
           if (
             entity.building
             && (
