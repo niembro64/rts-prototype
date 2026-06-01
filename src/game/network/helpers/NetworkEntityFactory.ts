@@ -493,7 +493,17 @@ function createBuildingFromNetwork(
       // without looking up the shell.
       currentShellId: null,
       currentBuildProgress: f.progress ?? 0,
-      defaultWaypoints: null,
+      // Visualization-only mirror of the server's multi-leg route so the
+      // rally line can draw the fight leg + patrol loop produced units
+      // follow. Null falls back to drawing the single rally point.
+      defaultWaypoints: f.route !== null && f.route !== undefined
+        ? f.route.map((w) => ({
+            x: w.pos.x,
+            y: w.pos.y,
+            z: w.posZ,
+            type: w.type as 'move' | 'fight' | 'patrol',
+          }))
+        : null,
       rallyX: f.rally.pos.x,
       rallyY: f.rally.pos.y,
       rallyZ: f.rally.posZ,

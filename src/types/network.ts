@@ -851,6 +851,13 @@ export type NetworkServerSnapshotEntity = {
       /** Static rally point. `posZ` carries the click-altitude of the
        *  player-issued rally; null falls back to terrain sample. */
       rally: { pos: Vec2; posZ: number | null; type: string };
+      /** Full default-route the factory stamps onto produced units
+       *  (e.g. demo fabricators: a `fight` leg then a `patrol` loop).
+       *  `rally` is `route[0]`. Null when the factory has no multi-leg
+       *  route (player-set single rally) — clients then draw `rally`
+       *  alone. Used purely for the rally-line VISUALIZATION so players
+       *  can see the patrol legs produced units will follow. */
+      route: { pos: Vec2; posZ: number | null; type: string }[] | null;
     } | null;
   } | null;
 };

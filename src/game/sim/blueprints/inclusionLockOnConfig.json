@@ -751,25 +751,14 @@
     "turretBeamMini": {
       "targets": {
         "enemy": {
-          "buildings": "all",
-          "towers": "all",
-          "units": {
+          "shots": {
             "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitBee",
-              "unitConstructionDrone",
-              "unitCommander"
+              "shotPlasmaLight",
+              "shotPlasmaMedium",
+              "shotRocketLight",
+              "shotPlasmaHeavy",
+              "shotMortarMedium",
+              "shotMortarHeavy"
             ]
           }
         }

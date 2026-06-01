@@ -526,8 +526,8 @@
     "range": 250,
     "cooldown": 0,
     "launchForce": 0,
-    "turretTurnAccel": 200,
-    "turretDrag": 0.15,
+    "turretTurnAccel": 1600,
+    "turretDrag": 0,
     "barrel": {
       "type": "singleConeBarrel",
       "barrelLength": 1.2,
@@ -578,8 +578,8 @@
     "range": 180,
     "cooldown": 0,
     "launchForce": 0,
-    "turretTurnAccel": 200,
-    "turretDrag": 0.15,
+    "turretTurnAccel": 1600,
+    "turretDrag": 0,
     "barrel": {
       "type": "singleConeBarrel",
       "barrelLength": 1.5,
@@ -630,8 +630,8 @@
     "range": 350,
     "cooldown": 0,
     "launchForce": 0,
-    "turretTurnAccel": 200,
-    "turretDrag": 0.15,
+    "turretTurnAccel": 1600,
+    "turretDrag": 0,
     "barrel": {
       "type": "singleConeBarrel",
       "barrelLength": 1.1,
@@ -811,8 +811,8 @@
     "range": 350,
     "cooldown": 0,
     "launchForce": 0,
-    "turretTurnAccel": 200,
-    "turretDrag": 0.15,
+    "turretTurnAccel": 1600,
+    "turretDrag": 0,
     "barrel": {
       "type": "singleConeBarrel",
       "barrelLength": 0.8,

@@ -169,6 +169,17 @@ export function snapClientNonVisualState(
     entity.factory.rallyY = sf.rally.pos.y;
     entity.factory.rallyZ = sf.rally.posZ;
     entity.factory.rallyType = sf.rally.type as 'move' | 'fight' | 'patrol';
+    // Multi-leg default route (visualization only). Whenever the factory
+    // sub rides the snapshot it carries the full route consistently, so
+    // mirroring it straight onto the client component is safe.
+    entity.factory.defaultWaypoints = sf.route !== null && sf.route !== undefined
+      ? sf.route.map((w) => ({
+          x: w.pos.x,
+          y: w.pos.y,
+          z: w.posZ,
+          type: w.type as 'move' | 'fight' | 'patrol',
+        }))
+      : null;
   }
 
   return cacheDirty;

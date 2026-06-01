@@ -392,25 +392,70 @@ export class Waypoint3D {
       }
     }
 
-    // Per-factory static rally point.
+    // Per-factory static rally. When the factory carries a multi-leg
+    // default route (demo fabricators: a `fight` leg then a `patrol`
+    // loop), draw every leg + the patrol loop-back so players can see
+    // where produced units actually go — not just the first leg. Falls
+    // back to the single rally point for player-set rallies.
     for (const b of selectedBuildings) {
       const factory = b.factory;
       if (!factory) continue;
+      const startX = b.transform.x;
+      const startY = b.transform.y;
+      const startZ: number | undefined = b.transform.z;
+      const route = factory.defaultWaypoints;
+
+      if (route !== null && route.length > 0) {
+        let prevX = startX;
+        let prevY = startY;
+        let prevZ: number | undefined = startZ;
+        let firstPatrolIdx = -1;
+        let lastPatrolIdx = -1;
+        for (let i = 0; i < route.length; i++) {
+          const wp = route[i];
+          const color = WAYPOINT_COLORS[wp.type as keyof typeof WAYPOINT_COLORS]
+            ?? COLORS.units.turret.barrel.colorHex;
+          const wz = wp.z ?? undefined;
+          this.pushTerrainLine(prevX, prevY, wp.x, wp.y, color, STYLE.lineAlpha, prevZ, wz);
+          this.pushDot(state, wp.x, wp.y, color, wz);
+          if (wp.type === 'patrol') {
+            if (firstPatrolIdx < 0) firstPatrolIdx = i;
+            lastPatrolIdx = i;
+          }
+          prevX = wp.x;
+          prevY = wp.y;
+          prevZ = wz;
+        }
+        // Flag marks the rally (route[0]) — the first leg units head to.
+        const flag = route[0];
+        const flagColor = WAYPOINT_COLORS[flag.type as keyof typeof WAYPOINT_COLORS]
+          ?? COLORS.units.turret.barrel.colorHex;
+        this.acquireFlag(flagCount++, flagColor, flag.x, flag.y, flag.z ?? undefined);
+        // Patrol loop-back: dim line from the last patrol leg to the first.
+        if (firstPatrolIdx >= 0 && lastPatrolIdx > firstPatrolIdx) {
+          const lastWp = route[lastPatrolIdx];
+          const firstWp = route[firstPatrolIdx];
+          this.pushTerrainLine(
+            lastWp.x, lastWp.y, firstWp.x, firstWp.y,
+            WAYPOINT_COLORS['patrol'], STYLE.patrolReturnAlpha,
+            lastWp.z ?? undefined, firstWp.z ?? undefined,
+          );
+        }
+        continue;
+      }
+
       const color = WAYPOINT_COLORS[factory.rallyType as keyof typeof WAYPOINT_COLORS]
         ?? COLORS.units.turret.barrel.colorHex;
-      let prevX = b.transform.x;
-      let prevY = b.transform.y;
-      let prevZ: number | undefined = b.transform.z;
       const z = factory.rallyZ ?? undefined;
-      this.pushTerrainLine(prevX, prevY, factory.rallyX, factory.rallyY, color, STYLE.lineAlpha, prevZ, z);
+      this.pushTerrainLine(startX, startY, factory.rallyX, factory.rallyY, color, STYLE.lineAlpha, startZ, z);
       this.pushDot(state, factory.rallyX, factory.rallyY, color, z);
       this.acquireFlag(flagCount++, color, factory.rallyX, factory.rallyY, z);
       // Single-point patrol loops back to the factory.
       if (factory.rallyType === 'patrol') {
         this.pushTerrainLine(
-          factory.rallyX, factory.rallyY, prevX, prevY,
+          factory.rallyX, factory.rallyY, startX, startY,
           WAYPOINT_COLORS['patrol'], STYLE.patrolReturnAlpha,
-          z, prevZ,
+          z, startZ,
         );
       }
     }

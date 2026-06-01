@@ -668,9 +668,14 @@ export class RtsScene3D {
     if (this.rendererWarmupStarted) return;
     this.rendererWarmupStarted = true;
     this.setRendererWarmupActive(true);
+    this.threeApp.setDrawSuspended(true);
     const token = ++this.rendererWarmupToken;
-    void this.threeApp.precompileShadersAsync().finally(() => {
-      if (this.destroyed || token !== this.rendererWarmupToken) return;
+    void this.threeApp.precompileShadersAsync().catch((error) => {
+      console.warn('3D renderer shader warmup failed', error);
+    }).finally(() => {
+      if (token !== this.rendererWarmupToken) return;
+      this.threeApp.setDrawSuspended(false);
+      if (this.destroyed) return;
       this.markClientReadyForStartupIfPossible();
       this.setRendererWarmupActive(false);
     });
@@ -1427,6 +1432,7 @@ export class RtsScene3D {
     if (this.destroyed) return;
     this.destroyed = true;
     this.rendererWarmupToken++;
+    this.threeApp.setDrawSuspended(false);
     this.setRendererWarmupActive(false);
     teardownRtsScene3DRenderers({
       inputManager: this.inputManager,

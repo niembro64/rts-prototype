@@ -1686,7 +1686,11 @@ function unpackFactory(row: unknown[], producing: boolean): FactorySub {
   const energyRate = row[2] as number;
   const metalRate = row[3] as number;
   const rally = unpackWaypoint(row[4] as unknown[]);
-  return { selectedUnitBlueprintCode, progress, producing, energyRate, metalRate, rally };
+  // The compact V6 wire does not yet carry the multi-leg default route
+  // (it is only needed for the rally-line visualization, and the local
+  // demo path delivers it via the DTO clone, not this byte wire). Remote
+  // clients fall back to drawing the single rally point.
+  return { selectedUnitBlueprintCode, progress, producing, energyRate, metalRate, rally, route: null };
 }
 
 function packWaypoint(waypoint: WaypointSub): unknown[] {

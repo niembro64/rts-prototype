@@ -9,6 +9,7 @@ import { OrbitCamera } from './OrbitCamera';
 import { GpuTimerQuery } from '../scenes/helpers/GpuTimerQuery';
 import { installSunLighting } from './SunLighting';
 import { configureSpriteTexture } from './threeUtils';
+import { GAME_DIAGNOSTICS } from '../diagnostics';
 import {
   CAMERA_PAN_MULTIPLIER,
   CAMERA_MIN_TERRAIN_CLEARANCE,
@@ -100,6 +101,7 @@ export class ThreeApp {
   private _environmentTexture: THREE.Texture | null = null;
   private _skyTexture: THREE.Texture | null = null;
   private _renderEnabled = true;
+  private _drawSuspended = false;
   private _destroyed = false;
 
   constructor(
@@ -130,6 +132,10 @@ export class ThreeApp {
       precision: 'highp',
       powerPreference: 'high-performance',
     });
+    // Three.js checks program/shader info logs on first use by default.
+    // Driver log reads are synchronous and can dwarf the actual render frame;
+    // keep them opt-in for shader debugging.
+    this.renderer.debug.checkShaderErrors = GAME_DIAGNOSTICS.shaderErrorChecks;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
@@ -251,6 +257,10 @@ export class ThreeApp {
     return this._renderEnabled;
   }
 
+  setDrawSuspended(suspended: boolean): void {
+    this._drawSuspended = suspended;
+  }
+
   setCameraFovDegrees(fovDegrees: number): void {
     const next = Math.min(179, Math.max(1, fovDegrees));
     if (Math.abs(this.camera.fov - next) < 0.001) return;
@@ -258,21 +268,14 @@ export class ThreeApp {
     this.camera.updateProjectionMatrix();
   }
 
-  /** Force every material currently in the scene to compile its shader
-   *  program synchronously NOW, instead of paying for the compile + the
-   *  blocking getProgramInfoLog read on the frame the material first
-   *  shows up. Profiles caught the lazy version of this stalling the
-   *  first frame a new material variant appeared (e.g. the first
-   *  explosion / beam / shield of a battle) — call this after the
-   *  scene has been populated with one of every material we expect to
-   *  use, and any subsequent on-demand additions sharing a program will
-   *  hit the cache instead of blocking. */
+  /** Force every material currently in the scene to create its shader program
+   *  during warmup instead of on the first visible frame. */
   precompileShaders(): void {
     this.renderer.compile(this.scene, this.camera);
   }
 
   async precompileShadersAsync(): Promise<void> {
-    this.precompileShaders();
+    await this.renderer.compileAsync(this.scene, this.camera);
   }
 
   start(): void {
@@ -288,7 +291,7 @@ export class ThreeApp {
       }
       this._lastTime = now;
       if (this._updateCallback) this._updateCallback(now, delta);
-      if (this._renderEnabled) {
+      if (this._renderEnabled && !this._drawSuspended) {
         // Wrap the render call so the GPU timer captures true draw-time
         // (only the render; update-callback work is CPU-side).
         this.gpuTimer.begin();

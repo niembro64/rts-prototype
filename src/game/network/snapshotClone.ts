@@ -109,6 +109,15 @@ function copyFactoryInto(src: ReusableFactory, dst: ReusableFactory): ReusableFa
   dst.energyRate = src.energyRate;
   dst.metalRate = src.metalRate;
   copyWaypointInto(src.rally, dst.rally);
+  if (src.route !== null) {
+    const route = dst.route ?? (dst.route = []);
+    route.length = src.route.length;
+    for (let i = 0; i < src.route.length; i++) {
+      route[i] = copyWaypointInto(src.route[i], route[i] ?? createWaypointDto());
+    }
+  } else {
+    dst.route = null;
+  }
   return dst;
 }
 
@@ -166,6 +175,7 @@ function copyBuildingInto(
         energyRate: 0,
         metalRate: 0,
         rally: createWaypointDto(),
+        route: null,
       };
     }
     copyFactoryInto(src.factory, dst.factory);

@@ -129,6 +129,7 @@ type PooledEntry = {
   turrets: NetworkServerSnapshotTurret[];
   actions: NetworkServerSnapshotAction[];
   rally: WaypointDto;
+  route: WaypointDto[];
 };
 
 const entityWireSource: EntitySnapshotWireSource = {
@@ -202,6 +203,7 @@ function createPooledEntry(): PooledEntry {
   const actions: NetworkServerSnapshotAction[] = [];
   for (let i = 0; i < MAX_ACTIONS_PER_ENTITY; i++) actions.push(createActionDto());
   const rally = createWaypointDto();
+  const route: WaypointDto[] = [];
   const entityPos = { x: 0, y: 0, z: 0 };
   const unitSub = createNetworkUnitSnapshot();
   const unitHp = unitSub.hp ?? (unitSub.hp = { curr: 0, max: 0 });
@@ -243,10 +245,12 @@ function createPooledEntry(): PooledEntry {
       selectedUnitBlueprintCode: null, progress: 0, producing: false,
       energyRate: 0, metalRate: 0,
       rally,
+      route: null,
     },
     turrets,
     actions,
     rally,
+    route,
   };
 }
 
@@ -856,6 +860,27 @@ export function serializeEntitySnapshot(
           poolEntry.rally.posZ = entity.factory.rallyZ;
           poolEntry.rally.type = entity.factory.rallyType;
           f.rally = poolEntry.rally;
+
+          // Multi-leg default route (demo fabricators: fight leg + patrol
+          // loop). Only the VISUALIZATION needs it, so it rides the
+          // snapshot solely when the factory has more than the single
+          // rally point. `null` keeps the client drawing `rally` alone.
+          const defaultWaypoints = entity.factory.defaultWaypoints;
+          if (defaultWaypoints !== null && defaultWaypoints.length > 1) {
+            const route = poolEntry.route;
+            route.length = defaultWaypoints.length;
+            for (let w = 0; w < defaultWaypoints.length; w++) {
+              const src = defaultWaypoints[w];
+              const dst = route[w] ?? (route[w] = createWaypointDto());
+              dst.pos.x = src.x;
+              dst.pos.y = src.y;
+              dst.posZ = src.z;
+              dst.type = src.type;
+            }
+            f.route = route;
+          } else {
+            f.route = null;
+          }
         }
       }
     }

@@ -42,6 +42,7 @@ async function main() {
     const turretInitMod = await server.ssrLoadModule('/src/game/sim/turretInit.ts');
     const spawnMod = await server.ssrLoadModule('/src/game/sim/spawn.ts');
     const pathfinderMod = await server.ssrLoadModule('/src/game/sim/Pathfinder.ts');
+    const serializerMod = await server.ssrLoadModule('/src/game/network/stateSerializerEntities.ts');
 
     const wasmBytes = await readFile(
       path.join(repoRoot, 'src/game/sim-wasm/pkg/rts_sim_wasm_bg.wasm'),
@@ -205,6 +206,18 @@ async function main() {
       const typeCounts = {};
       for (const a of actions) typeCounts[a.type] = (typeCounts[a.type] ?? 0) + 1;
       console.log(`expanded queue: ${actions.length} actions  byType=${JSON.stringify(typeCounts)}  patrolStartIndex=${patrolStartIndex}`);
+
+      // Verify the new serialization carries the full route to clients.
+      const dto = serializerMod.serializeEntitySnapshot(fab, undefined, world);
+      const sf = dto?.building?.factory;
+      const route = sf?.route ?? null;
+      console.log(`\nserialized factory DTO: rally.type=${sf?.rally?.type}  route=${route === null ? 'null' : route.length + ' legs'}`);
+      if (route) {
+        for (const w of route) console.log(`   ${w.type} -> (${w.pos.x.toFixed(0)}, ${w.pos.y.toFixed(0)})`);
+        // Mirror the client-side reconstruction (NetworkEntityFactory).
+        const clientDefaultWaypoints = route.map((w) => ({ x: w.pos.x, y: w.pos.y, z: w.posZ, type: w.type }));
+        console.log(`client defaultWaypoints reconstructed: ${clientDefaultWaypoints.length} legs (renderer will draw fight leg + patrol loop)`);
+      }
     }
 
     console.log('\nDone.');

@@ -21,6 +21,9 @@ export const GAME_DIAGNOSTICS = {
   pathValidation: envFlag('VITE_BA_VALIDATE_PATHS'),
   commandPlans: envFlag('VITE_BA_DEBUG_COMMANDS'),
   networkSnapshots: envFlag('VITE_BA_DEBUG_NET_SNAPSHOTS'),
+  shaderErrorChecks:
+    envFlag('VITE_BA_CHECK_SHADER_ERRORS') ||
+    queryFlag('shaderErrors', 'checkShaderErrors'),
   snapshotCadenceRegression:
     envFlag('VITE_BA_DP01_REGRESSION') ||
     queryFlag('dp01', 'snapshotCadenceRegression'),

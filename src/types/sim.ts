@@ -865,10 +865,12 @@ export type Factory = {
   currentShellId: EntityId | null;
   currentBuildProgress: number;
   /** Server-owned default route for units this factory produces.
-   *  Null means use the mutable single rally point below. This is not
-   *  serialized; clients only need the visible rally, while the
+   *  Null means use the mutable single rally point below. The
    *  authoritative production system consumes the route at shell
-   *  activation time. */
+   *  activation time. On the server it is the planned route; on the
+   *  client it is a visualization-only mirror (snapshot `factory.route`)
+   *  so the rally line can draw the fight leg + patrol loop, not just
+   *  the single rally point. */
   defaultWaypoints: readonly FactoryDefaultWaypoint[] | null;
   rallyX: number;
   rallyY: number;
