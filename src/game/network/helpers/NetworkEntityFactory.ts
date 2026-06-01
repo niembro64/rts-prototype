@@ -79,6 +79,34 @@ function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret
     : undefined;
 }
 
+function preserveClientTurretVisualState(next: Turret, prev: Turret): void {
+  if (next.config.turretBlueprintId !== prev.config.turretBlueprintId) return;
+
+  // Full snapshots rebuild turret arrays, but visual aim correction still
+  // belongs to ServerTarget + prediction so keyframes do not hard-snap poses.
+  next.rotation = prev.rotation;
+  next.pitch = prev.pitch;
+  next.angularVelocity = prev.angularVelocity;
+  next.angularAcceleration = prev.angularAcceleration;
+  next.pitchVelocity = prev.pitchVelocity;
+  next.pitchAcceleration = prev.pitchAcceleration;
+  next.barrelFireIndex = prev.barrelFireIndex;
+  next.worldPos.x = prev.worldPos.x;
+  next.worldPos.y = prev.worldPos.y;
+  next.worldPos.z = prev.worldPos.z;
+  next.worldVelocity.x = prev.worldVelocity.x;
+  next.worldVelocity.y = prev.worldVelocity.y;
+  next.worldVelocity.z = prev.worldVelocity.z;
+  next.worldPosTick = prev.worldPosTick;
+
+  if (prev.shield !== undefined) {
+    next.shield = {
+      range: prev.shield.range,
+      transition: prev.shield.transition,
+    };
+  }
+}
+
 export function applyNetworkTurretNonVisualState(
   entity: Entity,
   netTurrets: NetworkServerSnapshotTurret[] | undefined | null,
@@ -131,13 +159,7 @@ export function refreshUnitTurretsFromNetwork(
 
   if (previous) {
     for (let i = 0; i < turrets.length && i < previous.length; i++) {
-      const prev = previous[i];
-      const next = turrets[i];
-      next.pitchVelocity = prev.pitchVelocity;
-      next.barrelFireIndex = prev.barrelFireIndex;
-      if (next.shield && prev.shield) {
-        next.shield.transition = prev.shield.transition;
-      }
+      preserveClientTurretVisualState(turrets[i], previous[i]);
     }
   }
   entity.combat = entity.combat
@@ -166,6 +188,13 @@ export function refreshBuildingTurretsFromNetwork(
   if (Array.isArray(netTurrets)) {
     for (let i = 0; i < netTurrets.length && i < turrets.length; i++) {
       applyNetworkTurretState(turrets[i], netTurrets[i]);
+    }
+  }
+
+  const previous = entity.combat !== null ? entity.combat.turrets : undefined;
+  if (previous) {
+    for (let i = 0; i < turrets.length && i < previous.length; i++) {
+      preserveClientTurretVisualState(turrets[i], previous[i]);
     }
   }
 

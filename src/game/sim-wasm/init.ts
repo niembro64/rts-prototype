@@ -3631,7 +3631,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           v6BasicScratchStride: 9,
           v6UnitScratchPtr: snapshot_encode_v6_unit_scratch_ptr,
           v6UnitScratchEnsure: snapshot_encode_v6_unit_scratch_ensure,
-          v6UnitScratchStride: 52,
+          v6UnitScratchStride: 51,
           v6BuildingScratchPtr: snapshot_encode_v6_building_scratch_ptr,
           v6BuildingScratchEnsure: snapshot_encode_v6_building_scratch_ensure,
           v6BuildingScratchStride: 34,

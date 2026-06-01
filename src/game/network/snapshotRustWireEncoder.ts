@@ -264,6 +264,17 @@ function v6SourceHasRawEntity(source: EntitySnapshotWireSource): boolean {
   return false;
 }
 
+function v6ScratchStridesMatch(api: SnapshotEncodeApi): boolean {
+  return (
+    api.v6BasicScratchStride === ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE &&
+    api.v6UnitScratchStride === ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE &&
+    api.v6BuildingScratchStride === ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE &&
+    api.turretScratchStride === ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE &&
+    api.actionScratchStride === ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE &&
+    api.waypointScratchStride === ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE
+  );
+}
+
 function fillEntitiesV6Scratch(
   sim: SimWasm,
   source: EntitySnapshotWireSource,
@@ -271,6 +282,7 @@ function fillEntitiesV6Scratch(
   if (v6SourceHasRawEntity(source)) return null;
 
   const api = sim.snapshotEncode;
+  if (!v6ScratchStridesMatch(api)) return null;
   const entityCount = source.kinds.length;
 
   v6FillU32FromArray(sim, api.v6KindsScratchEnsure, api.v6KindsScratchPtr, source.kinds, entityCount);
@@ -281,23 +293,47 @@ function fillEntitiesV6Scratch(
     source.rowIndices,
     entityCount,
   );
-  v6FillF64Scratch(sim, api.v6BasicScratchEnsure, api.v6BasicScratchPtr, source.basicRows, api.v6BasicScratchStride);
-  v6FillF64Scratch(sim, api.v6UnitScratchEnsure, api.v6UnitScratchPtr, source.unitRows, api.v6UnitScratchStride);
+  v6FillF64Scratch(
+    sim,
+    api.v6BasicScratchEnsure,
+    api.v6BasicScratchPtr,
+    source.basicRows,
+    ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE,
+  );
+  v6FillF64Scratch(
+    sim,
+    api.v6UnitScratchEnsure,
+    api.v6UnitScratchPtr,
+    source.unitRows,
+    ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
+  );
   v6FillF64Scratch(
     sim,
     api.v6BuildingScratchEnsure,
     api.v6BuildingScratchPtr,
     source.buildingRows,
-    api.v6BuildingScratchStride,
+    ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE,
   );
-  v6FillF64Scratch(sim, api.turretScratchEnsure, api.turretScratchPtr, source.turretRows, api.turretScratchStride);
-  v6FillF64Scratch(sim, api.actionScratchEnsure, api.actionScratchPtr, source.actionRows, api.actionScratchStride);
+  v6FillF64Scratch(
+    sim,
+    api.turretScratchEnsure,
+    api.turretScratchPtr,
+    source.turretRows,
+    ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
+  );
+  v6FillF64Scratch(
+    sim,
+    api.actionScratchEnsure,
+    api.actionScratchPtr,
+    source.actionRows,
+    ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE,
+  );
   v6FillF64Scratch(
     sim,
     api.waypointScratchEnsure,
     api.waypointScratchPtr,
     source.waypointRows,
-    api.waypointScratchStride,
+    ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE,
   );
   v6FillU32Rows(
     sim,

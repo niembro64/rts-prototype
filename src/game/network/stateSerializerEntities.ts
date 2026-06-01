@@ -84,8 +84,7 @@ export const ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE = 9;
 // no longer shipped — client integrates from velocity only). Stride
 // shrank from 64 → 59 when 5 retired actuator-state slots were dropped.
 // shrank from 59 → 51 when 8 retired visual-suspension slots were
-// dropped from the JS→WASM entity row. Grew 51 → 52 when locomotion
-// Slot 51 remains reserved for a legacy compatibility value.
+// dropped from the JS→WASM entity row.
 export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 51;
 export const ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE = 34;
 export const ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE = 16;

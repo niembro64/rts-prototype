@@ -38,7 +38,6 @@ import type {
 import type { EntityMesh } from './EntityMesh3D';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import type { ExtractorBladeAnim } from './MetalExtractorMesh3D';
-import { writeSunDirectionThree } from './SunLighting';
 import { visualAnimBlend, visualAnimHalfLife } from './visualAnimationEma';
 
 // Open/close pose transitions are discrete local state changes, not
@@ -230,8 +229,10 @@ export class BuildingAnimationController3D {
         const signedRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_ENERGY);
         const pylon = mesh.solarRig?.pylon;
         applyResourcePylonDirection(pylon, signedRate);
+        // Solar pylon aims its ray straight down to the ground beneath the
+        // tip (a wide π/4 cone), matching the metal extractor's treatment.
         const sourceWorld = pylon
-          ? this.writeDirectionalPylonSourceWorld(pylon, mesh.group, writeSunDirectionThree(this._pylonSourceDirection))
+          ? this.writeGroundBelowPylonSourceWorld(pylon, mesh.group, entity)
           : null;
         this.constructionVisuals.updateAmbientResourcePylon(
           pylon,
@@ -703,6 +704,22 @@ export class BuildingAnimationController3D {
     return this._pylonSourceWorld;
   }
 
+  /** Lock-on spot directly beneath the pylon tip at ground level — a ray
+   *  pointing straight down. Used by the solar collector (and any pylon
+   *  that taps the ground under itself). */
+  private writeGroundBelowPylonSourceWorld(
+    pylon: ResourcePylonRig,
+    group: THREE.Group,
+    entity: Entity,
+  ): THREE.Vector3 {
+    group.updateWorldMatrix(true, false);
+    this._pylonSourceWorld
+      .copy(pylon.topLocal)
+      .applyMatrix4(group.matrixWorld);
+    this._pylonSourceWorld.y = entity.transform.z + 1;
+    return this._pylonSourceWorld;
+  }
+
   private writeWindPylonSourceWorld(
     pylon: ResourcePylonRig,
     group: THREE.Group,
@@ -711,7 +728,9 @@ export class BuildingAnimationController3D {
     if (!wind) return null;
     const len = Math.hypot(wind.x, wind.y);
     if (len < 1e-6) return null;
-    this._pylonSourceDirection.set(-wind.x / len, 0, -wind.y / len);
+    // Aim the ray FORWARD (downwind, the way the turbine faces) rather
+    // than back upwind, so the energy cone streams off the front face.
+    this._pylonSourceDirection.set(wind.x / len, 0, wind.y / len);
     return this.writeDirectionalPylonSourceWorld(pylon, group, this._pylonSourceDirection);
   }
 

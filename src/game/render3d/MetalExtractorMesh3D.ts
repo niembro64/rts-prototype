@@ -3,6 +3,7 @@ import { EXTRACTOR_BUILDING_VISUAL_HEIGHT } from '../sim/blueprints';
 import type { BuildingShape } from './BuildingShape3D';
 import type { ResourcePylonRig } from './ConstructionEmitterMesh3D';
 import { buildResourcePylonRig } from './ConstructionEmitterMesh3D';
+import { PYLON_BUILDING_EXTRACTOR_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
 import {
   createHexFrustumGeometry,
   cylinderGeom,
@@ -95,6 +96,7 @@ export function buildMetalExtractorMesh(
     sprayTravelSpeed: 110,
     sprayParticleRadius: Math.max(1.4, ratePillarRadius * 0.42),
     flowRadius: Math.max(30, ratePillarHeight * 1.1),
+    coneAngle: PYLON_BUILDING_EXTRACTOR_CONE_HALF_ANGLE_RAD,
     channel: 1,
   });
   for (const mesh of metalPylon.staticMeshes) {

@@ -248,6 +248,17 @@ export type SprayTarget = {
    *  world offsets inward or outward from that point. */
   flow: SprayFlowMode;
   flowRadius: number;
+  /** Standardized "ray to a lock-on spot + cone" dispersion. When both
+   *  fields are set, a randomInbound/randomOutbound flow constrains its
+   *  per-particle world offset to a CONE: apex at the pylon tip, central
+   *  axis `coneAxis` (a unit vector in render/world coords — x/z ground
+   *  plane, y up — pointing from the tip toward the pylon's lock-on
+   *  spot), half-angle `coneAngle` radians, reaching out to `flowRadius`
+   *  along the axis. Every pylon (construction, extractor, solar, wind,
+   *  converter) shares this one model. Omitting either field falls back
+   *  to the legacy full-sphere shell of radius `flowRadius`. */
+  coneAxis?: { x: number; y: number; z: number };
+  coneAngle?: number;
   /** Optional particle travel speed in world units per second. Build
    *  sprays use this to move linearly from source to target; omitted
    *  heal sprays use the renderer's heal default. */
@@ -287,6 +298,11 @@ export type PylonTubeFreeLeg = {
   target: { id: EntityId; pos: Vec2; z?: number; radius?: number };
   flow: SprayFlowMode;
   flowRadius: number;
+  /** Cone half-angle (radians) for the free leg. When set, the emitted
+   *  free-leg spray aims a cone from the LIVE pylon tip at `target`
+   *  (the lock-on spot) — the renderer recomputes the axis each emit so
+   *  the cone tracks the orbiting tip. Omitted → legacy sphere shell. */
+  coneAngle?: number;
   channel: number;
   speed: number;
   particleRadius: number;

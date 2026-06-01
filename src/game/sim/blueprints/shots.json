@@ -99,7 +99,7 @@
     "submunitions": null,
     "homingTurnRate": 0.7,
     "homingThrust": 5000,
-    "gravityForceMultiplier": 1,
+    "gravityForceMultiplier": 0,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -133,14 +133,14 @@
     },
     "armingDelayMs": 40,
     "detonateOnExpiry": true,
-    "maxLifespan": 5000,
+    "maxLifespan": 1000,
     "hitSound": {
       "$audio": "event.hit.shotRocketFast"
     },
     "submunitions": null,
     "homingTurnRate": 80,
     "homingThrust": 600000,
-    "gravityForceMultiplier": 1,
+    "gravityForceMultiplier": 0,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -222,7 +222,7 @@
       "count": 3,
       "randomSpreadSpeedHorizontal": 160,
       "randomSpreadSpeedVertical": 50,
-      "reflectedVelocityDamper": 0.5
+      "reflectedVelocityDamper": 0.3
     },
     "homingTurnRate": null,
     "homingThrust": null,
@@ -268,7 +268,7 @@
       "count": 3,
       "randomSpreadSpeedHorizontal": 160,
       "randomSpreadSpeedVertical": 50,
-      "reflectedVelocityDamper": 0.5
+      "reflectedVelocityDamper": 0.3
     },
     "homingTurnRate": null,
     "homingThrust": null,

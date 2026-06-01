@@ -1,5 +1,14 @@
 {
   "ballsPerResourcePerSecond": 0.5,
+  "cone": {
+    "constructionHalfAngleRad": 0.4,
+    "economyHalfAngleRad": {
+      "buildingExtractor": 1.0,
+      "buildingSolar": 1.0,
+      "buildingWind": 0.8,
+      "buildingResourceConverter": 0.8
+    }
+  },
   "ballsPerResourcePerSecondOptions": [
     { "value": 0.25, "label": "0.25" },
     { "value": 0.5, "label": "0.5" },

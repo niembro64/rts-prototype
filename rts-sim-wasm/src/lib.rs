@@ -20653,39 +20653,94 @@ impl SnapshotBaseline {
 
     fn ensure_capacity(&mut self, slot: u32) {
         let needed = (slot as usize) + 1;
-        if self.used.len() >= needed {
-            return;
+        if self.used.len() < needed {
+            self.used.resize(needed, 0);
         }
-        self.used.resize(needed, 0);
-        self.last_tick.resize(needed, 0);
-        self.x.resize(needed, 0.0);
-        self.y.resize(needed, 0.0);
-        self.z.resize(needed, 0.0);
-        self.rotation.resize(needed, 0.0);
-        self.velocity_x.resize(needed, 0.0);
-        self.velocity_y.resize(needed, 0.0);
-        self.velocity_z.resize(needed, 0.0);
-        self.hp.resize(needed, 0.0);
-        self.action_count.resize(needed, 0);
-        self.action_hash.resize(needed, 0);
-        self.is_engaged_bits.resize(needed, 0);
-        self.target_bits.resize(needed, 0);
-        self.weapon_count.resize(needed, 0);
+        if self.last_tick.len() < needed {
+            self.last_tick.resize(needed, 0);
+        }
+        if self.x.len() < needed {
+            self.x.resize(needed, 0.0);
+        }
+        if self.y.len() < needed {
+            self.y.resize(needed, 0.0);
+        }
+        if self.z.len() < needed {
+            self.z.resize(needed, 0.0);
+        }
+        if self.rotation.len() < needed {
+            self.rotation.resize(needed, 0.0);
+        }
+        if self.velocity_x.len() < needed {
+            self.velocity_x.resize(needed, 0.0);
+        }
+        if self.velocity_y.len() < needed {
+            self.velocity_y.resize(needed, 0.0);
+        }
+        if self.velocity_z.len() < needed {
+            self.velocity_z.resize(needed, 0.0);
+        }
+        if self.hp.len() < needed {
+            self.hp.resize(needed, 0.0);
+        }
+        if self.action_count.len() < needed {
+            self.action_count.resize(needed, 0);
+        }
+        if self.action_hash.len() < needed {
+            self.action_hash.resize(needed, 0);
+        }
+        if self.is_engaged_bits.len() < needed {
+            self.is_engaged_bits.resize(needed, 0);
+        }
+        if self.target_bits.len() < needed {
+            self.target_bits.resize(needed, 0);
+        }
+        if self.weapon_count.len() < needed {
+            self.weapon_count.resize(needed, 0);
+        }
         let turret_needed = needed * (SNAPSHOT_BASELINE_MAX_TURRETS_PER_ENTITY as usize);
-        self.turret_rots.resize(turret_needed, 0.0);
-        self.turret_ang_vels.resize(turret_needed, 0.0);
-        self.turret_pitches.resize(turret_needed, 0.0);
-        self.turret_pitch_vels.resize(turret_needed, 0.0);
-        self.turret_target_ids.resize(turret_needed, -1);
-        self.shield_ranges.resize(turret_needed, 0.0);
-        self.normal_x.resize(needed, 0.0);
-        self.normal_y.resize(needed, 0.0);
-        self.normal_z.resize(needed, 1.0);
-        self.build_progress.resize(needed, 0.0);
-        self.solar_open.resize(needed, 1);
-        self.factory_progress.resize(needed, 0.0);
-        self.is_producing.resize(needed, 0);
-        self.build_queue_len.resize(needed, 0);
+        if self.turret_rots.len() < turret_needed {
+            self.turret_rots.resize(turret_needed, 0.0);
+        }
+        if self.turret_ang_vels.len() < turret_needed {
+            self.turret_ang_vels.resize(turret_needed, 0.0);
+        }
+        if self.turret_pitches.len() < turret_needed {
+            self.turret_pitches.resize(turret_needed, 0.0);
+        }
+        if self.turret_pitch_vels.len() < turret_needed {
+            self.turret_pitch_vels.resize(turret_needed, 0.0);
+        }
+        if self.turret_target_ids.len() < turret_needed {
+            self.turret_target_ids.resize(turret_needed, -1);
+        }
+        if self.shield_ranges.len() < turret_needed {
+            self.shield_ranges.resize(turret_needed, 0.0);
+        }
+        if self.normal_x.len() < needed {
+            self.normal_x.resize(needed, 0.0);
+        }
+        if self.normal_y.len() < needed {
+            self.normal_y.resize(needed, 0.0);
+        }
+        if self.normal_z.len() < needed {
+            self.normal_z.resize(needed, 1.0);
+        }
+        if self.build_progress.len() < needed {
+            self.build_progress.resize(needed, 0.0);
+        }
+        if self.solar_open.len() < needed {
+            self.solar_open.resize(needed, 1);
+        }
+        if self.factory_progress.len() < needed {
+            self.factory_progress.resize(needed, 0.0);
+        }
+        if self.is_producing.len() < needed {
+            self.is_producing.resize(needed, 0);
+        }
+        if self.build_queue_len.len() < needed {
+            self.build_queue_len.resize(needed, 0);
+        }
     }
 
     fn unset_slot(&mut self, slot: u32) {
@@ -28280,6 +28335,28 @@ mod sim_kernel_tests {
         );
 
         assert_eq!(motions, vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn snapshot_baseline_capacity_repairs_lagging_columns() {
+        let mut baseline = SnapshotBaseline::new();
+        baseline.ensure_capacity(20);
+
+        baseline.build_progress.truncate(20);
+        baseline.solar_open.truncate(20);
+        baseline
+            .turret_rots
+            .truncate(20 * (SNAPSHOT_BASELINE_MAX_TURRETS_PER_ENTITY as usize));
+
+        baseline.ensure_capacity(20);
+
+        assert_eq!(baseline.used.len(), 21);
+        assert_eq!(baseline.build_progress.len(), 21);
+        assert_eq!(baseline.solar_open.len(), 21);
+        assert_eq!(
+            baseline.turret_rots.len(),
+            21 * (SNAPSHOT_BASELINE_MAX_TURRETS_PER_ENTITY as usize),
+        );
     }
 }
 

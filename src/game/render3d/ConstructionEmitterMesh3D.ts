@@ -18,6 +18,7 @@ import * as THREE from 'three';
 import type { ConstructionEmitterSize } from '@/types/blueprints';
 import type { TurretConfig } from '../sim/types';
 import { RESOURCE_COLOR_HEX } from '@/colorsConfig';
+import { PYLON_CONSTRUCTION_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
 import { CONSTRUCTION_HAZARD_COLORS } from '@/constructionVisualConfig';
 import { BUILDING_PALETTE } from './BuildingVisualPalette';
 
@@ -43,6 +44,10 @@ export type ResourcePylonRig = {
    *  to sit inside the inner (bore) wall. Drives PylonTubeFlowRenderer. */
   tubeBeadRadius: number;
   flowRadius: number;
+  /** Half-angle (radians) of the cone the pylon's resource balls disperse
+   *  through, around the ray from the tip to its lock-on spot. See
+   *  PYLON_*_CONE_HALF_ANGLE_RAD in resourceConfig. */
+  coneAngle: number;
   channel: number;
   smoothedRate: number;
   displaySmoothedRate: number;
@@ -92,6 +97,10 @@ export type ResourcePylonBuildOptions = {
   sprayTravelSpeed: number;
   sprayParticleRadius: number;
   flowRadius: number;
+  /** Cone half-angle (radians) for this pylon's resource-ball dispersion.
+   *  Construction emitters pass PYLON_CONSTRUCTION_CONE_HALF_ANGLE_RAD;
+   *  economy buildings pass their building-specific pylon cone constants. */
+  coneAngle: number;
   channel: number;
 };
 
@@ -230,6 +239,7 @@ export function buildResourcePylonRig(options: ResourcePylonBuildOptions): {
       sprayParticleRadius: options.sprayParticleRadius,
       tubeBeadRadius: Math.max(0.5, options.pylonRadius * STRAW_BEAD_FRAC),
       flowRadius: options.flowRadius,
+      coneAngle: options.coneAngle,
       channel: options.channel,
       smoothedRate: 0,
       displaySmoothedRate: 0,
@@ -409,6 +419,7 @@ function buildConstructionTowerPiece(
       sprayParticleRadius: 0,
       tubeBeadRadius: Math.max(0.5, innerPylonRadius * STRAW_BEAD_FRAC),
       flowRadius: Math.max(24, pylonHeight * 1.15),
+      coneAngle: PYLON_CONSTRUCTION_CONE_HALF_ANGLE_RAD,
       channel: variant.resource === 'energy' ? 0 : 1,
       smoothedRate: 0,
       displaySmoothedRate: 0,

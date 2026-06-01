@@ -3,6 +3,7 @@ import { WIND_BUILDING_VISUAL_HEIGHT } from '../sim/blueprints';
 import type { BuildingShape } from './BuildingShape3D';
 import type { ResourcePylonRig } from './ConstructionEmitterMesh3D';
 import { buildResourcePylonRig } from './ConstructionEmitterMesh3D';
+import { PYLON_BUILDING_WIND_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
 import {
   boxGeom,
   cylinderGeom,
@@ -17,7 +18,6 @@ import {
   windBladeMat,
   windGlassMat,
   windNacelleMat,
-  windTowerMat,
   windTrimMat,
 } from './BuildingMeshPrimitives3D';
 
@@ -55,10 +55,9 @@ export function buildWindTurbineMesh(
     makeCylinder(factoryFrameMat, Math.max(7, minDim * 0.28), 5, 0, baseH + 2.5, 0, hexCylinderGeom),
     'low',
   ));
-  details.push(detail(
-    makeCylinder(windTowerMat, towerRadius, towerH, 0, towerH / 2, 0),
-    'low',
-  ));
+  // No opaque tower: the resource pylon IS the shaft. The transparent
+  // straw (radius = old tower radius) rises from the base to the nacelle
+  // so the energy beads riding down the bore are fully visible.
   const energyPylon = buildResourcePylonRig({
     resource: 'energy',
     direction: 'inbound',
@@ -66,10 +65,11 @@ export function buildWindTurbineMesh(
     pylonBaseY: 0,
     x: 0,
     z: 0,
-    pylonRadius: Math.max(1.8, towerRadius * 0.45),
+    pylonRadius: towerRadius,
     sprayTravelSpeed: 130,
     sprayParticleRadius: Math.max(1.2, towerRadius * 0.34),
     flowRadius: Math.max(42, towerH * 0.9),
+    coneAngle: PYLON_BUILDING_WIND_CONE_HALF_ANGLE_RAD,
     channel: 0,
   });
   for (const mesh of energyPylon.staticMeshes) {

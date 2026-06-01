@@ -14,6 +14,7 @@ import {
   getEntityAcceleration3d,
   getEntityPosition3d,
   getEntityVelocity3d,
+  isLiveHomingTarget,
 } from '../sim/combat/combatUtils';
 import { resolveTargetAimPoint } from '../sim/combat/aimSolver';
 import {
@@ -95,11 +96,11 @@ function resolveClientHomingThrust(options: {
   }
 
   const homingTarget = getEntity(proj.homingTargetId);
-  const targetValid = !!(homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0)));
+  const targetValid = homingTarget !== undefined && isLiveHomingTarget(homingTarget);
   if (!targetValid) {
     proj.homingTargetId = NO_ENTITY_ID;
   }
-  if (!(targetValid && homingTarget)) return null;
+  if (homingTarget === undefined || !targetValid) return null;
 
   // Lead intercept consumes raw target velocity/acceleration through
   // the shared entity accessors. Client-side unit acceleration is

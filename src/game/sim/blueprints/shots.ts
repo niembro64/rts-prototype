@@ -92,9 +92,9 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
       `Shot blueprint ${id} has invalid armingDelayMs: expected finite milliseconds >= 0.`,
     );
   }
-  if (!Number.isFinite(blueprint.gravityForceMultiplier) || blueprint.gravityForceMultiplier <= 0) {
+  if (!Number.isFinite(blueprint.gravityForceMultiplier) || blueprint.gravityForceMultiplier < 0) {
     throw new Error(
-      `Shot blueprint ${id} has invalid gravityForceMultiplier: projectile shots must keep gravity enabled with a positive finite multiplier.`,
+      `Shot blueprint ${id} has invalid gravityForceMultiplier: projectile shots must define a finite non-negative multiplier.`,
     );
   }
   if (blueprint.type === 'rocket') {

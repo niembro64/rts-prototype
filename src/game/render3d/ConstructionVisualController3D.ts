@@ -208,6 +208,7 @@ export class ConstructionVisualController3D {
       out.target.radius = freeLeg.target.radius;
       out.flow = freeLeg.flow;
       out.flowRadius = freeLeg.flowRadius;
+      out.coneAngle = freeLeg.coneAngle;
       out.channel = freeLeg.channel;
       out.speed = freeLeg.speed;
       out.particleRadius = freeLeg.particleRadius;
@@ -513,18 +514,16 @@ export class ConstructionVisualController3D {
       pos: { x: this._factorySpraySourceWorld.x, y: this._factorySpraySourceWorld.z },
       z: this._factorySpraySourceWorld.y,
     };
+    // Conserved 3-leg stream through the tip (the waypoint, set above).
+    // The tip is the cone apex; the world end disperses through the
+    // pylon's ray + cone toward its lock-on spot (`worldEndpoint`).
+    // Inbound: world cone -> tip -> root (gaining). Outbound: root ->
+    // tip -> world cone (spending).
     if (pylon.direction === 'inbound') {
-      if (worldEndpoint) {
-        spray.source.pos.x = worldEndpoint.x;
-        spray.source.pos.y = worldEndpoint.z;
-        spray.source.z = worldEndpoint.y;
-        spray.flow = 'direct';
-      } else {
-        spray.source.pos.x = this._factorySpraySourceWorld.x;
-        spray.source.pos.y = this._factorySpraySourceWorld.z;
-        spray.source.z = this._factorySpraySourceWorld.y;
-        spray.flow = 'randomInbound';
-      }
+      spray.source.pos.x = this._factorySpraySourceWorld.x;
+      spray.source.pos.y = this._factorySpraySourceWorld.z;
+      spray.source.z = this._factorySpraySourceWorld.y;
+      spray.flow = 'randomInbound';
       spray.target.pos.x = this._factorySprayRootWorld.x;
       spray.target.pos.y = this._factorySprayRootWorld.z;
       spray.target.z = this._factorySprayRootWorld.y;
@@ -532,17 +531,10 @@ export class ConstructionVisualController3D {
       spray.source.pos.x = this._factorySprayRootWorld.x;
       spray.source.pos.y = this._factorySprayRootWorld.z;
       spray.source.z = this._factorySprayRootWorld.y;
-      if (worldEndpoint) {
-        spray.target.pos.x = worldEndpoint.x;
-        spray.target.pos.y = worldEndpoint.z;
-        spray.target.z = worldEndpoint.y;
-        spray.flow = 'direct';
-      } else {
-        spray.target.pos.x = this._factorySpraySourceWorld.x;
-        spray.target.pos.y = this._factorySpraySourceWorld.z;
-        spray.target.z = this._factorySpraySourceWorld.y;
-        spray.flow = 'randomOutbound';
-      }
+      spray.flow = 'randomOutbound';
+      spray.target.pos.x = this._factorySpraySourceWorld.x;
+      spray.target.pos.y = this._factorySpraySourceWorld.z;
+      spray.target.z = this._factorySpraySourceWorld.y;
     }
     spray.type = 'build';
     spray.intensity = Math.min(1, pylon.displaySmoothedRate);
@@ -551,6 +543,11 @@ export class ConstructionVisualController3D {
     spray.speed = pylon.sprayTravelSpeed;
     spray.particleRadius = pylon.sprayParticleRadius;
     spray.colorRGB = RESOURCE_SPRAY_COLOR_BY_RESOURCE[pylon.resource];
+    // Aim the cone from the tip at the building's lock-on spot (sun/sky,
+    // ground deposit, wind, etc.). No lock-on -> legacy sphere shell.
+    if (worldEndpoint) {
+      this.setSprayCone(spray, this._factorySpraySourceWorld, worldEndpoint, pylon.coneAngle);
+    }
     // Ball density tracks this producer's absolute output (resources/second)
     // from the single resource-movement channel, not a normalized fraction.
     const ambientAbsRate = Math.abs(
@@ -667,6 +664,16 @@ export class ConstructionVisualController3D {
       spray.particleRadius = sourcePylon.sprayParticleRadius;
       spray.colorRGB = RESOURCE_SPRAY_COLOR_BY_RESOURCE[sourcePylon.resource];
       spray.ballSpawnRate = ballSpawnRateForResourceRate(taxAbs);
+      // The two converter pylons point at each other: the dispersing tax
+      // sprays from the source tip in a π/4 cone aimed at the sink tip,
+      // so the leaked fraction fans toward the receiving pylon and only
+      // the crossing arc actually lands on it.
+      this.setSprayCone(
+        spray,
+        this._converterSourceTipWorld,
+        this._converterSinkTipWorld,
+        sourcePylon.coneAngle,
+      );
     }
   }
 
@@ -695,6 +702,8 @@ export class ConstructionVisualController3D {
     target.channel = 0;
     target.flow = 'direct';
     target.flowRadius = 0;
+    // coneAxis stays a reusable object; coneAngle (undefined) is the gate.
+    target.coneAngle = undefined;
     this.factorySprayTargets.push(target);
     return target;
   }
@@ -707,6 +716,34 @@ export class ConstructionVisualController3D {
   ): void {
     rootOut.copy(pylon.rootLocal).applyMatrix4(group.matrixWorld);
     tipOut.copy(pylon.topLocal).applyMatrix4(group.matrixWorld);
+  }
+
+  /** Aim a spray's dispersion cone: a ray from the pylon tip at the
+   *  lock-on spot, dispersed within `coneAngle`. Both points are in
+   *  render coords (x, y=up, z). Sets coneAxis/coneAngle and overrides
+   *  flowRadius with the true tip->lock-on distance (the cone length).
+   *  No lock-on (degenerate distance) clears the cone -> sphere fallback. */
+  private setSprayCone(
+    spray: SprayTarget,
+    tip: THREE.Vector3,
+    lockOn: THREE.Vector3,
+    coneAngle: number,
+  ): void {
+    const dx = lockOn.x - tip.x;
+    const dy = lockOn.y - tip.y;
+    const dz = lockOn.z - tip.z;
+    const len = Math.hypot(dx, dy, dz);
+    if (len < 1e-3) {
+      spray.coneAngle = undefined;
+      return;
+    }
+    const axis = spray.coneAxis ?? { x: 0, y: 0, z: 0 };
+    axis.x = dx / len;
+    axis.y = dy / len;
+    axis.z = dz / len;
+    spray.coneAxis = axis;
+    spray.coneAngle = coneAngle;
+    spray.flowRadius = len;
   }
 
   private updateConstructionTowerSpin(
@@ -948,6 +985,9 @@ export class ConstructionVisualController3D {
         sourcePlayerId,
         target: {
           id: targetId,
+          // The lock-on spot: the build target when there is one, else
+          // the tip itself. emitFreeLeg derives the cone axis from the
+          // LIVE tip to this point each time a bead hands off.
           pos: {
             x: worldEndpoint ? worldEndpoint.x : tip.x,
             y: worldEndpoint ? worldEndpoint.z : tip.z,
@@ -955,8 +995,12 @@ export class ConstructionVisualController3D {
           z: worldEndpoint ? worldEndpoint.y : tip.y,
           radius: worldEndpoint ? endpointRadius : pylon.flowRadius,
         },
-        flow: worldEndpoint ? 'direct' : 'randomOutbound',
-        flowRadius: worldEndpoint ? 0 : pylon.flowRadius,
+        // Always a cone from the tip: a tight π/8 cone aimed at the build
+        // site when locked on, a bare sphere at the tip otherwise. This
+        // is the same ray + cone model every pylon shares.
+        flow: 'randomOutbound',
+        flowRadius: pylon.flowRadius,
+        coneAngle: worldEndpoint ? pylon.coneAngle : undefined,
         channel,
         speed: pylon.sprayTravelSpeed,
         particleRadius: pylon.sprayParticleRadius,
@@ -992,45 +1036,21 @@ export class ConstructionVisualController3D {
     spray.target.id = targetId;
     spray.target.dim = undefined;
 
-    if (direction === 'inbound') {
-      // world source -> tip
-      if (worldEndpoint) {
-        spray.source.pos.x = worldEndpoint.x;
-        spray.source.pos.y = worldEndpoint.z;
-        spray.source.z = worldEndpoint.y;
-        spray.flow = 'direct';
-        spray.flowRadius = 0;
-      } else {
-        spray.source.pos.x = tip.x;
-        spray.source.pos.y = tip.z;
-        spray.source.z = tip.y;
-        spray.flow = 'randomInbound';
-        spray.flowRadius = pylon.flowRadius;
-      }
-      spray.target.pos.x = tip.x;
-      spray.target.pos.y = tip.z;
-      spray.target.z = tip.y;
-      spray.target.radius = 0;
-    } else {
-      // tip -> build target
-      spray.source.pos.x = tip.x;
-      spray.source.pos.y = tip.z;
-      spray.source.z = tip.y;
-      if (worldEndpoint) {
-        spray.target.pos.x = worldEndpoint.x;
-        spray.target.pos.y = worldEndpoint.z;
-        spray.target.z = worldEndpoint.y;
-        spray.target.radius = endpointRadius;
-        spray.flow = 'direct';
-        spray.flowRadius = 0;
-      } else {
-        spray.target.pos.x = tip.x;
-        spray.target.pos.y = tip.z;
-        spray.target.z = tip.y;
-        spray.target.radius = pylon.flowRadius;
-        spray.flow = 'randomOutbound';
-        spray.flowRadius = pylon.flowRadius;
-      }
+    // Inbound only (outbound returned above). The free leg flies from the
+    // world cone INTO the tip, which is both the cone apex and the
+    // down-tube handoff point. Source anchors at the tip; the cone reaches
+    // toward the lock-on spot (`worldEndpoint`, e.g. a reclaim target).
+    spray.source.pos.x = tip.x;
+    spray.source.pos.y = tip.z;
+    spray.source.z = tip.y;
+    spray.flow = 'randomInbound';
+    spray.flowRadius = pylon.flowRadius;
+    spray.target.pos.x = tip.x;
+    spray.target.pos.y = tip.z;
+    spray.target.z = tip.y;
+    spray.target.radius = 0;
+    if (worldEndpoint) {
+      this.setSprayCone(spray, tip, worldEndpoint, pylon.coneAngle);
     }
 
     spray.type = 'build';

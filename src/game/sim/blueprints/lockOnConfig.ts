@@ -2,11 +2,12 @@ import type { LockOnInclusionObject } from './types';
 import rawLockOnInclusionConfig from './inclusionLockOnConfig.json';
 import {
   cloneLockOnInclusionObject,
-  validateLockOnInclusionConfigSection,
+  normalizeLockOnTargetConfigSection,
 } from './lockOnValidation';
 import { assertExplicitFields, isObject } from './jsonValidation';
 
-type LockOnInclusionConfigSection = Record<string, LockOnInclusionObject>;
+type AuthoredLockOnInclusionConfigSection = Record<string, unknown>;
+type NormalizedLockOnInclusionConfigSection = Record<string, LockOnInclusionObject>;
 type LockOnInclusionSectionName = 'units' | 'turrets' | 'towers';
 export type SecondaryLockOnProfile = {
   mode: 'incomingThreatReflector';
@@ -19,9 +20,9 @@ export type SecondaryLockOnProfile = {
   intent: string;
 };
 type LockOnInclusionConfig = {
-  units: LockOnInclusionConfigSection;
-  turrets: LockOnInclusionConfigSection;
-  towers: LockOnInclusionConfigSection;
+  units: AuthoredLockOnInclusionConfigSection;
+  turrets: AuthoredLockOnInclusionConfigSection;
+  towers: AuthoredLockOnInclusionConfigSection;
   secondaryLockOnProfiles?: Record<string, SecondaryLockOnProfile>;
 };
 
@@ -92,9 +93,14 @@ function validateSecondaryLockOnProfiles(
   }
 }
 
-validateLockOnInclusionConfigSection('units', LOCK_ON_INCLUSION_CONFIG.units);
-validateLockOnInclusionConfigSection('turrets', LOCK_ON_INCLUSION_CONFIG.turrets);
-validateLockOnInclusionConfigSection('towers', LOCK_ON_INCLUSION_CONFIG.towers);
+const NORMALIZED_LOCK_ON_INCLUSION_CONFIG: Record<
+  LockOnInclusionSectionName,
+  NormalizedLockOnInclusionConfigSection
+> = {
+  units: normalizeLockOnTargetConfigSection('units', LOCK_ON_INCLUSION_CONFIG.units),
+  turrets: normalizeLockOnTargetConfigSection('turrets', LOCK_ON_INCLUSION_CONFIG.turrets),
+  towers: normalizeLockOnTargetConfigSection('towers', LOCK_ON_INCLUSION_CONFIG.towers),
+};
 if (LOCK_ON_INCLUSION_CONFIG.secondaryLockOnProfiles !== undefined) {
   validateSecondaryLockOnProfiles(LOCK_ON_INCLUSION_CONFIG.secondaryLockOnProfiles);
 }
@@ -104,7 +110,7 @@ function assertLockOnInclusionConfigIds(
   blueprintLabel: string,
   expectedIds: readonly string[],
 ): void {
-  const section = LOCK_ON_INCLUSION_CONFIG[sectionName];
+  const section = NORMALIZED_LOCK_ON_INCLUSION_CONFIG[sectionName];
   const expected = new Set(expectedIds);
   for (const id of expectedIds) {
     if (!Object.prototype.hasOwnProperty.call(section, id)) {
@@ -137,7 +143,7 @@ function getLockOnInclusions(
   blueprintLabel: string,
   id: string,
 ): LockOnInclusionObject {
-  const inclusions = LOCK_ON_INCLUSION_CONFIG[sectionName][id];
+  const inclusions = NORMALIZED_LOCK_ON_INCLUSION_CONFIG[sectionName][id];
   if (inclusions === undefined) {
     throw new Error(
       `Missing lock-on inclusion config for ${blueprintLabel} "${id}" in inclusionLockOnConfig.json:${sectionName}`,

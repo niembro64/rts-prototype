@@ -31,6 +31,7 @@ import {
   getEntityPosition3d,
   getEntityVelocity3d,
   getProjectileLaunchSpeed,
+  isLiveHomingTarget,
   turretMaskIncludes,
   updateProjectileArming,
   updateWeaponWorldKinematics,
@@ -952,7 +953,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
 
     if (!isDGunWave && proj.homingTargetId !== NO_ENTITY_ID) {
       let homingTarget = world.getEntity(proj.homingTargetId);
-      const targetValid = homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0));
+      const targetValid = homingTarget !== undefined && isLiveHomingTarget(homingTarget);
       if (!targetValid) {
         // Projectiles inherit a lock from the firing turret. They do
         // not acquire replacement targets after launch; missing or
@@ -960,7 +961,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
         proj.homingTargetId = NO_ENTITY_ID;
         homingTarget = undefined;
       }
-      if (homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0))) {
+      if (homingTarget !== undefined) {
         homingTargetForReporting = homingTarget;
         const aimPoint = resolveTargetAimPoint(
           homingTarget,

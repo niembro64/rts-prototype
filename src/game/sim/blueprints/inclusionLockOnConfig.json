@@ -1,87 +1,80 @@
 {
-  "ALL INCLUSION OPTIONS": {
-    "includeLockOnLevel0FriendsAndEnemies": [
-      "friendly_entities",
-      "enemy_entities"
-    ],
-    "includeLockOnLevel0Entities": [
-      "buildings",
-      "towers",
-      "units",
-      "turrets",
-      "shots"
-    ],
-    "includeLockOnLevel1Buildings": [
-      "buildingSolar",
-      "buildingWind",
-      "buildingExtractor",
-      "buildingRadar",
-      "buildingResourceConverter"
-    ],
-    "includeLockOnLevel1Towers": [
-      "towerFabricator",
-      "towerBeamMega",
-      "towerCannon"
-    ],
-    "includeLockOnLevel1Units": [
-      "unitJackal",
-      "unitLynx",
-      "unitDaddy",
-      "unitBadger",
-      "unitMongoose",
-      "unitTick",
-      "unitMammoth",
-      "unitFormik",
-      "unitWidow",
-      "unitHippo",
-      "unitTarantula",
-      "unitLoris",
-      "unitBee",
-      "unitDragonfly",
-      "unitConstructionDrone",
-      "unitEagle",
-      "unitCommander"
-    ],
-    "includeLockOnLevel1Turrets": [
-      "turretGunLight",
-      "turretGunBurst",
-      "turretCannon",
-      "turretMortarSlow",
-      "turretMortarDrop",
-      "turretMortarFast",
-      "turretGatling",
-      "turretDisruptor",
-      "turretShieldPanel",
-      "turretBeam",
-      "turretBeamMini",
-      "turretBeamMega",
-      "turretShieldSphere",
-      "turretConstruction",
-      "turretBeamLong",
-      "turretCannonLong",
-      "turretRocketSlow",
-      "turretRocketFast"
-    ],
-    "includeLockOnLevel1Shots": [
-      "shotPlasmaLight",
-      "shotPlasmaMedium",
-      "shotRocketLight",
-      "shotRocketFast",
-      "shotPlasmaHeavy",
-      "shotMortarMedium",
-      "shotMortarHeavy",
-      "shotPlasmaDisruptor"
-    ]
+  "ALL TARGET OPTIONS": {
+    "relationships": ["friendly", "enemy"],
+    "families": ["buildings", "towers", "units", "turrets", "shots"],
+    "familyPolicies": {
+      "all": "all",
+      "onlySome": {
+        "only": ["blueprintId"]
+      },
+      "disabled": "omit the family"
+    },
+    "blueprintIds": {
+      "buildings": [
+        "buildingSolar",
+        "buildingWind",
+        "buildingExtractor",
+        "buildingRadar",
+        "buildingResourceConverter"
+      ],
+      "towers": ["towerFabricator", "towerBeamMega", "towerCannon"],
+      "units": [
+        "unitJackal",
+        "unitLynx",
+        "unitDaddy",
+        "unitBadger",
+        "unitMongoose",
+        "unitTick",
+        "unitMammoth",
+        "unitFormik",
+        "unitWidow",
+        "unitHippo",
+        "unitTarantula",
+        "unitLoris",
+        "unitBee",
+        "unitDragonfly",
+        "unitConstructionDrone",
+        "unitEagle",
+        "unitCommander"
+      ],
+      "turrets": [
+        "turretGunLight",
+        "turretGunBurst",
+        "turretCannon",
+        "turretMortarSlow",
+        "turretMortarDrop",
+        "turretMortarFast",
+        "turretGatling",
+        "turretDisruptor",
+        "turretShieldPanel",
+        "turretBeam",
+        "turretBeamMini",
+        "turretBeamMega",
+        "turretShieldSphere",
+        "turretConstruction",
+        "turretBeamLong",
+        "turretCannonLong",
+        "turretRocketSlow",
+        "turretRocketFast"
+      ],
+      "shots": [
+        "shotPlasmaLight",
+        "shotPlasmaMedium",
+        "shotRocketLight",
+        "shotRocketFast",
+        "shotPlasmaHeavy",
+        "shotMortarMedium",
+        "shotMortarHeavy",
+        "shotPlasmaDisruptor"
+      ]
+    }
   },
   "secondaryLockOnProfiles": {
     "turretShieldPanel": {
       "mode": "incomingThreatReflector",
       "candidateRelationship": "enemy_entities",
       "candidateFamily": "turrets",
-      "threatMustTarget": [
-        "self_host",
-        "self_turret"
-      ],
+      "threatMustTarget": ["self_host", "self_turret"],
       "threatState": "locked_or_engaged",
       "rankBy": "threat_turret_sustained_dps",
       "aim": "bisect_threat_turret_origin_and_threat_host_origin",
@@ -90,581 +83,876 @@
   },
   "units": {
     "unitJackal": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitCommander"
+            ]
+          }
+        }
+      }
     },
     "unitLynx": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitCommander",
+              "unitBee"
+            ]
+          }
+        }
+      }
     },
     "unitDaddy": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitCommander"
+            ]
+          }
+        }
+      }
     },
     "unitBadger": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitCommander",
+              "unitBee"
+            ]
+          }
+        }
+      }
     },
     "unitMongoose": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitCommander"
+            ]
+          }
+        }
+      }
     },
     "unitTick": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitCommander",
+              "unitBee"
+            ]
+          }
+        }
+      }
     },
     "unitMammoth": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitBee",
+              "unitDragonfly",
+              "unitConstructionDrone",
+              "unitCommander"
+            ]
+          }
+        }
+      }
     },
     "unitFormik": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitCommander"
+            ]
+          }
+        }
+      }
     },
     "unitWidow": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitBee",
+              "unitConstructionDrone",
+              "unitCommander"
+            ]
+          }
+        }
+      }
     },
     "unitHippo": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitCommander",
+              "unitBee"
+            ]
+          }
+        }
+      }
     },
     "unitTarantula": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitBee",
+              "unitConstructionDrone",
+              "unitCommander"
+            ]
+          }
+        }
+      }
     },
     "unitLoris": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "turrets"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "turrets": {
+            "only": [
+              "turretGunLight",
+              "turretGunBurst",
+              "turretCannon",
+              "turretGatling",
+              "turretBeam",
+              "turretBeamMini",
+              "turretBeamMega",
+              "turretBeamLong",
+              "turretCannonLong"
+            ]
+          }
+        }
+      }
     },
     "unitBee": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitCommander",
+              "unitBee"
+            ]
+          }
+        }
+      }
     },
     "unitDragonfly": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitCommander",
+              "unitBee"
+            ]
+          }
+        }
+      }
     },
     "unitConstructionDrone": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities",
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "friendly": {
+          "buildings": "all",
+          "towers": "all",
+          "units": "all"
+        },
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": "all"
+        }
+      }
     },
     "unitEagle": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "units": {
+            "only": [
+              "unitBee",
+              "unitDragonfly",
+              "unitConstructionDrone",
+              "unitEagle"
+            ]
+          }
+        }
+      }
     },
     "unitCommander": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities",
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "friendly": {
+          "buildings": "all",
+          "towers": "all",
+          "units": "all"
+        },
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": "all"
+        }
+      }
     }
   },
   "turrets": {
     "turretGunLight": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitBee",
+              "unitConstructionDrone",
+              "unitCommander"
+            ]
+          }
+        }
+      }
     },
     "turretGunBurst": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitBee",
+              "unitConstructionDrone",
+              "unitCommander"
+            ]
+          }
+        }
+      }
     },
     "turretCannon": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitBee",
+              "unitConstructionDrone",
+              "unitCommander"
+            ]
+          }
+        }
+      }
     },
     "turretMortarSlow": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitBee",
+              "unitConstructionDrone",
+              "unitCommander"
+            ]
+          }
+        }
+      }
     },
     "turretMortarDrop": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitBee",
+              "unitConstructionDrone",
+              "unitCommander"
+            ]
+          }
+        }
+      }
     },
     "turretMortarFast": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitBee",
+              "unitConstructionDrone",
+              "unitCommander"
+            ]
+          }
+        }
+      }
     },
     "turretGatling": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitBee",
+              "unitConstructionDrone",
+              "unitCommander"
+            ]
+          }
+        }
+      }
     },
     "turretDisruptor": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitBee",
+              "unitConstructionDrone",
+              "unitCommander"
+            ]
+          }
+        }
+      }
     },
     "turretShieldPanel": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "turrets"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "turrets": {
+            "only": [
+              "turretGunLight",
+              "turretGunBurst",
+              "turretCannon",
+              "turretGatling",
+              "turretBeam",
+              "turretBeamMini",
+              "turretBeamMega",
+              "turretShieldSphere",
+              "turretConstruction",
+              "turretBeamLong",
+              "turretCannonLong",
+              "turretRocketSlow"
+            ]
+          }
+        }
+      }
     },
     "turretBeam": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitBee",
+              "unitConstructionDrone",
+              "unitCommander"
+            ]
+          }
+        }
+      }
     },
     "turretBeamMini": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitBee",
+              "unitConstructionDrone",
+              "unitCommander"
+            ]
+          }
+        }
+      }
     },
     "turretBeamMega": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitBee",
+              "unitConstructionDrone",
+              "unitCommander"
+            ]
+          }
+        }
+      }
     },
     "turretShieldSphere": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "towers": "all",
+          "units": "all"
+        }
+      }
     },
     "turretConstruction": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "friendly": {
+          "buildings": "all",
+          "towers": "all",
+          "units": "all"
+        }
+      }
     },
     "turretBeamLong": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitBee",
+              "unitConstructionDrone",
+              "unitCommander"
+            ]
+          }
+        }
+      }
     },
     "turretCannonLong": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitBee",
+              "unitConstructionDrone",
+              "unitCommander",
+              "unitDragonfly"
+            ]
+          }
+        }
+      }
     },
     "turretRocketSlow": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitBee",
+              "unitConstructionDrone",
+              "unitCommander",
+              "unitDragonfly"
+            ]
+          }
+        }
+      }
     },
     "turretRocketFast": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "units"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "units": {
+            "only": [
+              "unitBee",
+              "unitConstructionDrone",
+              "unitDragonfly",
+              "unitEagle"
+            ]
+          },
+          "shots": {
+            "only": ["shotMortarMedium", "shotMortarHeavy"]
+          }
+        }
+      }
     }
   },
   "towers": {
     "towerFabricator": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities",
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "friendly": {
+          "buildings": "all",
+          "towers": "all",
+          "units": "all"
+        },
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": "all"
+        }
+      }
     },
     "towerBeamMega": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities",
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": "all"
+        }
+      }
     },
     "towerCannon": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities",
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": "all",
+          "turrets": "all"
+        }
+      }
     }
   }
 }

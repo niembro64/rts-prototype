@@ -64,6 +64,7 @@ import {
   buildResourcePylonRig,
   type ResourcePylonRig,
 } from './ConstructionEmitterMesh3D';
+import { PYLON_BUILDING_RESOURCE_CONVERTER_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
 
 export type { WindTurbineRig } from './WindTurbineMesh3D';
 export type { ExtractorRig } from './MetalExtractorMesh3D';
@@ -483,6 +484,7 @@ function buildResourceConverterMesh(
     sprayTravelSpeed: 120,
     sprayParticleRadius: Math.max(1.35, pylonRadius * 0.42),
     flowRadius: Math.max(34, pylonHeight * 1.25),
+    coneAngle: PYLON_BUILDING_RESOURCE_CONVERTER_CONE_HALF_ANGLE_RAD,
     channel: 0,
   });
   const metalPylon = buildResourcePylonRig({
@@ -496,6 +498,7 @@ function buildResourceConverterMesh(
     sprayTravelSpeed: 120,
     sprayParticleRadius: Math.max(1.35, pylonRadius * 0.42),
     flowRadius: Math.max(34, pylonHeight * 1.25),
+    coneAngle: PYLON_BUILDING_RESOURCE_CONVERTER_CONE_HALF_ANGLE_RAD,
     channel: 1,
   });
   for (const mesh of energyPylon.staticMeshes) details.push(detail(mesh, 'low'));

@@ -280,7 +280,7 @@ function reflectVelocityPreserveSpeed(
   return { x: rx, y: ry, z: rz };
 }
 
-type ProjectileCenterlineHit = {
+type ProjectileHitboxSweepHit = {
   entity: Entity;
   t: number;
   normalX: number;
@@ -288,16 +288,16 @@ type ProjectileCenterlineHit = {
   normalZ: number;
 };
 
-const _projectileCenterlineHit = {
+const _projectileHitboxSweepHit = {
   entity: undefined as Entity | undefined,
   t: Infinity,
   normalX: 0,
   normalY: 0,
   normalZ: 1,
 };
-const _projectileCenterlineTurretMount = { x: 0, y: 0, z: 0 };
+const _projectileHitboxSweepTurretMount = { x: 0, y: 0, z: 0 };
 
-function setProjectileCenterlineHitNormal(
+function setProjectileHitboxSweepNormal(
   hitX: number,
   hitY: number,
   hitZ: number,
@@ -319,20 +319,21 @@ function setProjectileCenterlineHitNormal(
     normalLenSq = normalX * normalX + normalY * normalY + normalZ * normalZ;
   }
   if (normalLenSq <= 1e-9) {
-    _projectileCenterlineHit.normalX = 0;
-    _projectileCenterlineHit.normalY = 0;
-    _projectileCenterlineHit.normalZ = 1;
+    _projectileHitboxSweepHit.normalX = 0;
+    _projectileHitboxSweepHit.normalY = 0;
+    _projectileHitboxSweepHit.normalZ = 1;
     return;
   }
   const invLen = 1 / Math.sqrt(normalLenSq);
-  _projectileCenterlineHit.normalX = normalX * invLen;
-  _projectileCenterlineHit.normalY = normalY * invLen;
-  _projectileCenterlineHit.normalZ = normalZ * invLen;
+  _projectileHitboxSweepHit.normalX = normalX * invLen;
+  _projectileHitboxSweepHit.normalY = normalY * invLen;
+  _projectileHitboxSweepHit.normalZ = normalZ * invLen;
 }
 
-function findProjectileCenterlineHit(
+function findProjectileHitboxSweepHit(
   world: WorldState,
   projEntity: Entity,
+  projectileHitboxRadius: number,
   prevX: number,
   prevY: number,
   prevZ: number,
@@ -340,16 +341,17 @@ function findProjectileCenterlineHit(
   currentY: number,
   currentZ: number,
   excludeEntities: Set<EntityId>,
-): ProjectileCenterlineHit | null {
-  _projectileCenterlineHit.entity = undefined;
-  _projectileCenterlineHit.t = Infinity;
-  _projectileCenterlineHit.normalX = 0;
-  _projectileCenterlineHit.normalY = 0;
-  _projectileCenterlineHit.normalZ = 1;
+): ProjectileHitboxSweepHit | null {
+  _projectileHitboxSweepHit.entity = undefined;
+  _projectileHitboxSweepHit.t = Infinity;
+  _projectileHitboxSweepHit.normalX = 0;
+  _projectileHitboxSweepHit.normalY = 0;
+  _projectileHitboxSweepHit.normalZ = 1;
 
   const segmentDx = currentX - prevX;
   const segmentDy = currentY - prevY;
   const segmentDz = currentZ - prevZ;
+  const sourceRadius = Math.max(0, projectileHitboxRadius);
 
   for (const unit of world.getUnits()) {
     if (excludeEntities.has(unit.id)) continue;
@@ -360,12 +362,12 @@ function findProjectileCenterlineHit(
       prevX, prevY, prevZ,
       currentX, currentY, currentZ,
       unit.transform.x, unit.transform.y, unit.transform.z,
-      unitComponent.radius.hitbox,
+      sourceRadius + unitComponent.radius.hitbox,
     );
-    if (bodyT !== null && bodyT < _projectileCenterlineHit.t) {
-      _projectileCenterlineHit.entity = unit;
-      _projectileCenterlineHit.t = bodyT;
-      setProjectileCenterlineHitNormal(
+    if (bodyT !== null && bodyT < _projectileHitboxSweepHit.t) {
+      _projectileHitboxSweepHit.entity = unit;
+      _projectileHitboxSweepHit.t = bodyT;
+      setProjectileHitboxSweepNormal(
         prevX + bodyT * segmentDx,
         prevY + bodyT * segmentDy,
         prevZ + bodyT * segmentDz,
@@ -399,18 +401,18 @@ function findProjectileCenterlineHit(
           unitGroundZ,
           surfaceN: unitComponent.surfaceNormal,
         },
-        _projectileCenterlineTurretMount,
+        _projectileHitboxSweepTurretMount,
       );
       const turretT = lineSphereIntersectionT(
         prevX, prevY, prevZ,
         currentX, currentY, currentZ,
         mount.x, mount.y, mount.z,
-        turret.config.radius.hitbox,
+        sourceRadius + turret.config.radius.hitbox,
       );
-      if (turretT !== null && turretT < _projectileCenterlineHit.t) {
-        _projectileCenterlineHit.entity = unit;
-        _projectileCenterlineHit.t = turretT;
-        setProjectileCenterlineHitNormal(
+      if (turretT !== null && turretT < _projectileHitboxSweepHit.t) {
+        _projectileHitboxSweepHit.entity = unit;
+        _projectileHitboxSweepHit.t = turretT;
+        setProjectileHitboxSweepNormal(
           prevX + turretT * segmentDx,
           prevY + turretT * segmentDy,
           prevZ + turretT * segmentDz,
@@ -430,9 +432,9 @@ function findProjectileCenterlineHit(
     const buildingComponent = building.building;
     if (buildingComponent === null || buildingComponent.hp <= 0) continue;
 
-    const halfW = buildingComponent.width / 2;
-    const halfH = buildingComponent.height / 2;
-    const halfD = buildingComponent.depth / 2;
+    const halfW = buildingComponent.width / 2 + sourceRadius;
+    const halfH = buildingComponent.height / 2 + sourceRadius;
+    const halfD = buildingComponent.depth / 2 + sourceRadius;
     const buildingT = rayBoxIntersectionT(
       prevX, prevY, prevZ,
       currentX, currentY, currentZ,
@@ -443,10 +445,10 @@ function findProjectileCenterlineHit(
       building.transform.y + halfH,
       building.transform.z + halfD,
     );
-    if (buildingT !== null && buildingT < _projectileCenterlineHit.t) {
-      _projectileCenterlineHit.entity = building;
-      _projectileCenterlineHit.t = buildingT;
-      setProjectileCenterlineHitNormal(
+    if (buildingT !== null && buildingT < _projectileHitboxSweepHit.t) {
+      _projectileHitboxSweepHit.entity = building;
+      _projectileHitboxSweepHit.t = buildingT;
+      setProjectileHitboxSweepNormal(
         prevX + buildingT * segmentDx,
         prevY + buildingT * segmentDy,
         prevZ + buildingT * segmentDz,
@@ -478,17 +480,17 @@ function findProjectileCenterlineHit(
       continue;
     }
 
-    const targetRadius = targetProjectile.config.shotProfile.runtime.radius.collision;
+    const targetRadius = targetProjectile.config.shotProfile.runtime.radius.hitbox;
     const projectileT = lineSphereIntersectionT(
       prevX, prevY, prevZ,
       currentX, currentY, currentZ,
       projectile.transform.x, projectile.transform.y, projectile.transform.z,
-      targetRadius,
+      sourceRadius + targetRadius,
     );
-    if (projectileT !== null && projectileT < _projectileCenterlineHit.t) {
-      _projectileCenterlineHit.entity = projectile;
-      _projectileCenterlineHit.t = projectileT;
-      setProjectileCenterlineHitNormal(
+    if (projectileT !== null && projectileT < _projectileHitboxSweepHit.t) {
+      _projectileHitboxSweepHit.entity = projectile;
+      _projectileHitboxSweepHit.t = projectileT;
+      setProjectileHitboxSweepNormal(
         prevX + projectileT * segmentDx,
         prevY + projectileT * segmentDy,
         prevZ + projectileT * segmentDz,
@@ -502,9 +504,9 @@ function findProjectileCenterlineHit(
     }
   }
 
-  return _projectileCenterlineHit.entity === undefined
+  return _projectileHitboxSweepHit.entity === undefined
     ? null
-    : _projectileCenterlineHit as ProjectileCenterlineHit;
+    : _projectileHitboxSweepHit as ProjectileHitboxSweepHit;
 }
 
 // Reset collision-specific reusable buffers between game sessions
@@ -1036,7 +1038,7 @@ export function checkProjectileCollisions(
 
     // Handle different projectile types.
     // Ground impact is checked after this block so a swept projectile
-    // centerline can stop on an entity it crossed before reaching terrain.
+    // hitbox can stop on an entity it overlapped before reaching terrain.
     const canApplyDamageThisTick =
       !terminalReflectorHit && !expiredBeforeDamage && !healthZeroBeforeDamage;
     if (canApplyDamageThisTick && isRayType(proj.projectileType)) {
@@ -1158,10 +1160,9 @@ export function checkProjectileCollisions(
         proj.collisionStartY = projEntity.transform.y;
         proj.collisionStartZ = projEntity.transform.z;
       } else {
-        // Traveling projectiles sweep their center point through entity
-        // hitboxes (prevents tunneling without inflating the projectile).
         const projShot = config.shot as ProjectileShot;
-        const projRadius = runtimeProfile.radius.collision;
+        const projHitboxRadius = runtimeProfile.radius.hitbox;
+        const projCollisionRadius = runtimeProfile.radius.collision;
         const prevX = proj.collisionStartX ?? proj.prevX ?? projEntity.transform.x;
         const prevY = proj.collisionStartY ?? proj.prevY ?? projEntity.transform.y;
         const prevZ = proj.collisionStartZ ?? proj.prevZ ?? projEntity.transform.z;
@@ -1181,9 +1182,13 @@ export function checkProjectileCollisions(
           hitEntities.add(projEntity.id);
 
           if (!isDGunProjectile) {
-            const directHit = findProjectileCenterlineHit(
+            // Normal rockets/plasma sweep their authored hitbox through
+            // entity hitboxes. This tests overlap volume rather than
+            // only the projectile origin/centerline.
+            const directHit = findProjectileHitboxSweepHit(
               world,
               projEntity,
+              projHitboxRadius,
               prevX, prevY, prevZ,
               currentX, currentY, currentZ,
               hitEntities,
@@ -1236,7 +1241,7 @@ export function checkProjectileCollisions(
               excludeCommanders: true,
               prev: { x: prevX, y: prevY, z: prevZ },
               current: { x: currentX, y: currentY, z: currentZ },
-              radius: projRadius,
+              radius: projCollisionRadius,
               maxHits: Math.max(0, proj.maxHits - previousTargetHitCount),
               velocity: { x: proj.velocityX, y: proj.velocityY, z: proj.velocityZ },
               projectileMass: projShot.mass,

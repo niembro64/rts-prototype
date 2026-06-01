@@ -5,6 +5,7 @@ import {
   buildResourcePylonRig,
   type ResourcePylonRig,
 } from './ConstructionEmitterMesh3D';
+import { PYLON_BUILDING_SOLAR_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
 import type { BuildingDetailMesh, BuildingDetailRole, BuildingShape } from './BuildingShape3D';
 
 export type SolarPetalAnimation = {
@@ -275,6 +276,7 @@ export function buildSolarCollector(
     sprayTravelSpeed: 120,
     sprayParticleRadius: Math.max(1.4, ratePillarRadius * 0.42),
     flowRadius: Math.max(36, ratePillarHeight * 1.35),
+    coneAngle: PYLON_BUILDING_SOLAR_CONE_HALF_ANGLE_RAD,
     channel: 0,
   });
   for (const mesh of energyPylon.staticMeshes) {

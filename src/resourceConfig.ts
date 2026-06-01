@@ -23,6 +23,13 @@ export type ResourceBallDensityOption = {
   readonly label: string;
 };
 
+export type EconomyConeHalfAnglesByBuilding = {
+  readonly buildingExtractor: number;
+  readonly buildingSolar: number;
+  readonly buildingWind: number;
+  readonly buildingResourceConverter: number;
+};
+
 function posNum(label: string, value: number): number {
   if (!Number.isFinite(value) || value <= 0) {
     throw new Error(`resourceConfig.${label} must be a finite number > 0; received ${value}`);
@@ -88,6 +95,21 @@ function resourceBallDensityOptions(
   return options;
 }
 
+function economyConeHalfAnglesByBuilding(
+  label: string,
+  value: EconomyConeHalfAnglesByBuilding,
+): EconomyConeHalfAnglesByBuilding {
+  return {
+    buildingExtractor: posNum(`${label}.buildingExtractor`, value.buildingExtractor),
+    buildingSolar: posNum(`${label}.buildingSolar`, value.buildingSolar),
+    buildingWind: posNum(`${label}.buildingWind`, value.buildingWind),
+    buildingResourceConverter: posNum(
+      `${label}.buildingResourceConverter`,
+      value.buildingResourceConverter,
+    ),
+  };
+}
+
 const defaultBallsPerResourcePerSecond = posNum(
   'ballsPerResourcePerSecond',
   rawConfig.ballsPerResourcePerSecond,
@@ -102,6 +124,20 @@ export const RESOURCE_CONFIG = {
     rawConfig.ballsPerResourcePerSecondOptions,
     defaultBallsPerResourcePerSecond,
   ),
+  /** Resource-ball spray-cone half-angles (radians). Every pylon aims a
+   *  ray from its tip at a lock-on spot and disperses its resource balls
+   *  inside a cone of this half-angle around that ray (see
+   *  budget_design_philosophy.html "Resource Movement Flows Through
+   *  Pylons"). Construction emitters spray a tight cone at the build
+   *  site; each economy building can tune its own cone at its environment
+   *  source. */
+  cone: {
+    constructionHalfAngleRad: posNum('cone.constructionHalfAngleRad', rawConfig.cone.constructionHalfAngleRad),
+    economyHalfAngleRad: economyConeHalfAnglesByBuilding(
+      'cone.economyHalfAngleRad',
+      rawConfig.cone.economyHalfAngleRad,
+    ),
+  },
   spray: {
     /** Default trail altitude for legacy 2D spray targets. */
     trailY: nonNegNum('spray.trailY', rawConfig.spray.trailY),
@@ -127,6 +163,34 @@ export const RESOURCE_CONFIG = {
 } as const;
 
 export const RESOURCE_BALL_DENSITY_OPTIONS = RESOURCE_CONFIG.ballsPerResourcePerSecondOptions;
+
+/** Spray-cone half-angle (radians) for construction emitters — the tight
+ *  cone a builder/factory tip aims at its build site. */
+export const PYLON_CONSTRUCTION_CONE_HALF_ANGLE_RAD = RESOURCE_CONFIG.cone.constructionHalfAngleRad;
+
+/** Spray-cone half-angle (radians), keyed by economy building blueprint id. */
+export const PYLON_ECONOMY_CONE_HALF_ANGLE_RAD_BY_BUILDING =
+  RESOURCE_CONFIG.cone.economyHalfAngleRad;
+
+/** Spray-cone half-angle (radians) for an extractor pylon aimed at its
+ *  metal deposit source. */
+export const PYLON_BUILDING_EXTRACTOR_CONE_HALF_ANGLE_RAD =
+  PYLON_ECONOMY_CONE_HALF_ANGLE_RAD_BY_BUILDING.buildingExtractor;
+
+/** Spray-cone half-angle (radians) for a solar pylon aimed at its sky
+ *  source. */
+export const PYLON_BUILDING_SOLAR_CONE_HALF_ANGLE_RAD =
+  PYLON_ECONOMY_CONE_HALF_ANGLE_RAD_BY_BUILDING.buildingSolar;
+
+/** Spray-cone half-angle (radians) for a wind pylon aimed at its wind
+ *  source. */
+export const PYLON_BUILDING_WIND_CONE_HALF_ANGLE_RAD =
+  PYLON_ECONOMY_CONE_HALF_ANGLE_RAD_BY_BUILDING.buildingWind;
+
+/** Spray-cone half-angle (radians) for a resource converter pylon aimed
+ *  at the opposing converter pylon. */
+export const PYLON_BUILDING_RESOURCE_CONVERTER_CONE_HALF_ANGLE_RAD =
+  PYLON_ECONOMY_CONE_HALF_ANGLE_RAD_BY_BUILDING.buildingResourceConverter;
 
 /** Default balls/second spawned per (resource/second) of transfer. */
 export const DEFAULT_BALLS_PER_RESOURCE_PER_SECOND = RESOURCE_CONFIG.ballsPerResourcePerSecond;

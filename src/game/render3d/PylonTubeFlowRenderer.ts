@@ -253,6 +253,7 @@ export class PylonTubeFlowRenderer {
     out.target.radius = source.target.radius;
     out.flow = source.flow;
     out.flowRadius = source.flowRadius;
+    out.coneAngle = source.coneAngle;
     out.channel = source.channel;
     out.speed = source.speed;
     out.particleRadius = source.particleRadius;
@@ -378,6 +379,9 @@ export class PylonTubeFlowRenderer {
     spray.source.z = runtime.tip.y;
     spray.target.id = freeLeg.target.id;
     if (freeLeg.flow === 'randomOutbound') {
+      // Random/cone outbound: the spread is anchored at the TIP (the cone
+      // apex), so the spray's target point is the tip; the real lock-on
+      // spot drives only the cone axis below.
       spray.target.pos.x = runtime.tip.x;
       spray.target.pos.y = runtime.tip.z;
       spray.target.z = runtime.tip.y;
@@ -394,6 +398,26 @@ export class PylonTubeFlowRenderer {
     spray.channel = freeLeg.channel;
     spray.flow = freeLeg.flow;
     spray.flowRadius = freeLeg.flowRadius;
+    // Cone free leg: aim a ray from the LIVE tip at the stored lock-on
+    // spot (the build target world pos) and disperse within `coneAngle`.
+    // Recomputed every emit so the cone tracks the orbiting tower tip.
+    if (freeLeg.coneAngle !== undefined) {
+      const ax = freeLeg.target.pos.x - runtime.tip.x;          // world X
+      const ay = (freeLeg.target.z ?? 0) - runtime.tip.y;       // up
+      const az = freeLeg.target.pos.y - runtime.tip.z;          // world Z
+      const len = Math.hypot(ax, ay, az);
+      if (len > 1e-3) {
+        const axis = spray.coneAxis ?? { x: 0, y: 0, z: 0 };
+        axis.x = ax / len; axis.y = ay / len; axis.z = az / len;
+        spray.coneAxis = axis;
+        spray.coneAngle = freeLeg.coneAngle;
+        spray.flowRadius = len;
+      } else {
+        spray.coneAngle = undefined;
+      }
+    } else {
+      spray.coneAngle = undefined;
+    }
     spray.speed = freeLeg.speed;
     spray.particleRadius = freeLeg.particleRadius;
     spray.colorRGB = freeLeg.colorRGB;
@@ -423,6 +447,9 @@ export class PylonTubeFlowRenderer {
     target.waypoint2 = undefined;
     target.speed = undefined;
     target.particleRadius = undefined;
+    // coneAxis stays as a reusable object across pool reuse; coneAngle is
+    // the gate — undefined means "no cone, legacy sphere".
+    target.coneAngle = undefined;
     this.handoffSprays.push(target);
     return target;
   }

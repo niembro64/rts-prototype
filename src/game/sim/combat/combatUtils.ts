@@ -1,6 +1,7 @@
 // Combat utility functions
 
 import type { Entity, ProjectileShot, Turret } from '../types';
+import { isProjectileShot } from '../types';
 import { distance, normalizeAngle, magnitude, getTransformCosSin } from '../../math';
 import { getTurretWorldMount } from '../../math';
 import type { Vec3 } from '@/types/vec2';
@@ -53,6 +54,17 @@ export function getTargetRadius(target: Entity): number {
 export function getProjectileLaunchSpeed(shot: Pick<ProjectileShot, 'launchForce' | 'mass'>): number {
   if (shot.mass <= 1e-6) return 0;
   return shot.launchForce / shot.mass;
+}
+
+export function isLiveHomingTarget(entity: Entity): boolean {
+  if (entity.unit !== null) return entity.unit.hp > 0;
+  if (entity.building !== null) return entity.building.hp > 0;
+  const projectile = entity.projectile;
+  return (
+    projectile !== null &&
+    projectile.hp > 0 &&
+    isProjectileShot(projectile.config.shot)
+  );
 }
 
 /** Step a non-negative cooldown timer toward zero by `dtMs`. Skips

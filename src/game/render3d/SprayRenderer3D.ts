@@ -440,30 +440,93 @@ export class SprayRenderer3D {
     let hasMid2 = spray.waypoint2 !== undefined;
     if (spray.flow !== 'direct') {
       const radius = Math.max(1, spray.flowRadius);
-      const azimuth = this.random() * Math.PI * 2;
-      const cosTheta = 1 - 2 * this.random();
-      const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
-      const shell = radius * (0.45 + this.random() * 0.55);
-      const px = sx + Math.cos(azimuth) * sinTheta * shell;
-      const py = sy + cosTheta * shell;
-      const pz = sz + Math.sin(azimuth) * sinTheta * shell;
-      if (spray.flow === 'randomInbound') {
-        midX = sx;
-        midY = sy;
-        midZ = sz;
-        hasMid = true;
-        sx = px;
-        sy = py;
-        sz = pz;
+      const coneAxis = spray.coneAxis;
+      const coneAngle = spray.coneAngle;
+      const useCone = coneAxis !== undefined
+        && coneAngle !== undefined
+        && coneAngle > 0
+        && coneAngle < Math.PI;
+      let ox: number;
+      let oy: number;
+      let oz: number;
+      if (useCone) {
+        // Standardized ray + cone: the pylon tip is the cone apex. For
+        // the 3-leg economy stream (root -> tip -> world) the tip is the
+        // waypoint; for a bare free leg (tip -> world) it's the source.
+        // Either way the cone opens from the tip toward the lock-on spot
+        // along `coneAxis`, dispersed within half-angle `coneAngle`.
+        const apexX = hasMid ? midX : sx;
+        const apexY = hasMid ? midY : sy;
+        const apexZ = hasMid ? midZ : sz;
+        // Sample a direction inside the cone — uniform in solid angle so
+        // the spread reads evenly rather than bunching on the axis.
+        const cosA = Math.cos(coneAngle!);
+        const cosTheta = 1 - this.random() * (1 - cosA);
+        const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
+        const phi = this.random() * Math.PI * 2;
+        const ax = coneAxis!.x;
+        const ay = coneAxis!.y;
+        const az = coneAxis!.z;
+        // Orthonormal basis (t1, t2) perpendicular to the axis. Pick a
+        // helper that isn't parallel to the axis, then Gram-Schmidt.
+        let hx = 0;
+        let hy = 1;
+        let hz = 0;
+        if (Math.abs(ay) > 0.9) { hx = 1; hy = 0; hz = 0; }
+        let t1x = hy * az - hz * ay;
+        let t1y = hz * ax - hx * az;
+        let t1z = hx * ay - hy * ax;
+        const t1len = Math.hypot(t1x, t1y, t1z) || 1;
+        t1x /= t1len; t1y /= t1len; t1z /= t1len;
+        const t2x = ay * t1z - az * t1y;
+        const t2y = az * t1x - ax * t1z;
+        const t2z = ax * t1y - ay * t1x;
+        const sc = sinTheta * Math.cos(phi);
+        const ss = sinTheta * Math.sin(phi);
+        const dirX = t1x * sc + t2x * ss + ax * cosTheta;
+        const dirY = t1y * sc + t2y * ss + ay * cosTheta;
+        const dirZ = t1z * sc + t2z * ss + az * cosTheta;
+        const shell = radius * (0.55 + this.random() * 0.45);
+        ox = apexX + dirX * shell;
+        oy = apexY + dirY * shell;
+        oz = apexZ + dirZ * shell;
+        if (spray.flow === 'randomInbound') {
+          midX = apexX; midY = apexY; midZ = apexZ;
+          hasMid = true;
+          sx = ox; sy = oy; sz = oz;
+        } else {
+          midX = apexX; midY = apexY; midZ = apexZ;
+          hasMid = true;
+          hasMid2 = false;
+          tx = ox; ty = oy; tz = oz;
+        }
       } else {
-        midX = tx;
-        midY = ty;
-        midZ = tz;
-        hasMid = true;
-        hasMid2 = false;
-        tx = px;
-        ty = py;
-        tz = pz;
+        // Legacy: random point on the full sphere shell around the source.
+        const azimuth = this.random() * Math.PI * 2;
+        const cosTheta = 1 - 2 * this.random();
+        const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
+        const shell = radius * (0.45 + this.random() * 0.55);
+        ox = sx + Math.cos(azimuth) * sinTheta * shell;
+        oy = sy + cosTheta * shell;
+        oz = sz + Math.sin(azimuth) * sinTheta * shell;
+        if (spray.flow === 'randomInbound') {
+          midX = sx;
+          midY = sy;
+          midZ = sz;
+          hasMid = true;
+          sx = ox;
+          sy = oy;
+          sz = oz;
+        } else {
+          midX = tx;
+          midY = ty;
+          midZ = tz;
+          hasMid = true;
+          hasMid2 = false;
+          tx = ox;
+          ty = oy;
+          tz = oz;
+        }
       }
     }
     const dim = spray.target.dim;
