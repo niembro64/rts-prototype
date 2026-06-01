@@ -419,7 +419,6 @@ export type TurretConfig = {
   lockOnTowerIncludeMask: number;
   lockOnUnitIncludeMask: number;
   lockOnTurretIncludeMask: number;
-  lockOnLocomotionIncludeMask: number;
   lockOnShotIncludeMask: number;
 };
 

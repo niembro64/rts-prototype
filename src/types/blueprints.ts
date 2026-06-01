@@ -84,7 +84,7 @@ export const TURRET_LOCK_ON_RELATIONSHIP_INCLUSIONS: readonly TurretLockOnRelati
 
 /** Lock-on policy entity-family inclusions, kept as runtime arrays for validators. */
 export const TURRET_LOCK_ON_ENTITY_FAMILY_INCLUSIONS: readonly TurretLockOnEntityFamilyInclusion[] =
-  ['buildings', 'towers', 'units', 'turrets', 'locomotions', 'shots'];
+  ['buildings', 'towers', 'units', 'turrets', 'shots'];
 
 /** Turret role categories used by host-directed mount validation. */
 export const WEAPON_KINDS: readonly WeaponKind[] = ['attack', 'construction', 'repair'];

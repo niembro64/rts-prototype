@@ -645,7 +645,7 @@ function stampCombatTargetingEntityInto(
     hostLockOn.relationship, hostLockOn.entityFamily,
     hostLockOn.building, hostLockOn.tower,
     hostLockOn.unit, hostLockOn.turret,
-    hostLockOn.locomotion, hostLockOn.shot,
+    hostLockOn.shot,
     detectorRadius, fullVisionRadius, radarRadius, detectionPadding,
     priorityTargetId === null ? -1 : priorityTargetId,
     priorityPointPresent,
@@ -724,7 +724,6 @@ function stampCombatTargetingEntityInto(
       t.config.lockOnTowerIncludeMask,
       t.config.lockOnUnitIncludeMask,
       t.config.lockOnTurretIncludeMask,
-      t.config.lockOnLocomotionIncludeMask,
       t.config.lockOnShotIncludeMask,
     );
   }
@@ -783,7 +782,6 @@ function stampUnitLocomotionTargetInto(
     entityFlags,
     CT_ENTITY_FAMILY_LOCOMOTION,
     locomotionBlueprintIdToCode(locomotion.blueprintId),
-    0,
     0,
     0,
     0,

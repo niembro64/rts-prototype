@@ -12722,7 +12722,6 @@ pub const CT_LOCK_ON_FAM_INCLUDE_BUILDINGS: u8 = 1 << 0;
 pub const CT_LOCK_ON_FAM_INCLUDE_UNITS: u8 = 1 << 1;
 pub const CT_LOCK_ON_FAM_INCLUDE_TURRETS: u8 = 1 << 2;
 pub const CT_LOCK_ON_FAM_INCLUDE_TOWERS: u8 = 1 << 3;
-pub const CT_LOCK_ON_FAM_INCLUDE_LOCOMOTIONS: u8 = 1 << 4;
 pub const CT_LOCK_ON_FAM_INCLUDE_SHOTS: u8 = 1 << 5;
 
 // LOCK-ON-03 — Per-entity family encoding stamped on entity slab rows.
@@ -12799,7 +12798,6 @@ struct CombatTargetingPool {
     entity_lockon_tower_mask: Vec<u32>,
     entity_lockon_unit_mask: Vec<u32>,
     entity_lockon_turret_mask: Vec<u32>,
-    entity_lockon_locomotion_mask: Vec<u32>,
     entity_lockon_shot_mask: Vec<u32>,
     // Per-entity detector radius. 0 = entity is not a detector. The
     // observability helper walks this array to find detector entities
@@ -12925,7 +12923,7 @@ struct CombatTargetingPool {
     // each turret blueprint's authored inclusion arrays. Lock-on is off
     // by default: an empty level-0 mask includes nothing.
     //   relationship_mask:   CT_LOCK_ON_REL_INCLUDE_*  (friendly / enemy)
-    //   entity_family_mask:  CT_LOCK_ON_FAM_INCLUDE_*  (buildings / towers / units / turrets / locomotions / shots)
+    //   entity_family_mask:  CT_LOCK_ON_FAM_INCLUDE_*  (buildings / towers / units / turrets / shots)
     //   building / tower / unit / turret named masks: bit (1 << wire_code)
     //     set means "include only the named blueprints with these wire
     //     codes within an already-included family"; an empty named mask
@@ -12942,7 +12940,6 @@ struct CombatTargetingPool {
     turret_lockon_tower_mask: Vec<u32>,
     turret_lockon_unit_mask: Vec<u32>,
     turret_lockon_turret_mask: Vec<u32>,
-    turret_lockon_locomotion_mask: Vec<u32>,
     turret_lockon_shot_mask: Vec<u32>,
     // AIM-08.4 ballistic solver outputs. Written by the Rust solver
     // using turret mount data from the slab; JS reads these outputs
@@ -12996,7 +12993,6 @@ impl CombatTargetingPool {
             entity_lockon_tower_mask: Vec::new(),
             entity_lockon_unit_mask: Vec::new(),
             entity_lockon_turret_mask: Vec::new(),
-            entity_lockon_locomotion_mask: Vec::new(),
             entity_lockon_shot_mask: Vec::new(),
             entity_detector_radius: Vec::new(),
             entity_full_vision_radius: Vec::new(),
@@ -13066,7 +13062,6 @@ impl CombatTargetingPool {
             turret_lockon_tower_mask: Vec::new(),
             turret_lockon_unit_mask: Vec::new(),
             turret_lockon_turret_mask: Vec::new(),
-            turret_lockon_locomotion_mask: Vec::new(),
             turret_lockon_shot_mask: Vec::new(),
             turret_ballistic_has_solution: Vec::new(),
             turret_ballistic_flight_time: Vec::new(),
@@ -13121,7 +13116,6 @@ impl CombatTargetingPool {
             self.entity_lockon_tower_mask.resize(entity_needed, 0);
             self.entity_lockon_unit_mask.resize(entity_needed, 0);
             self.entity_lockon_turret_mask.resize(entity_needed, 0);
-            self.entity_lockon_locomotion_mask.resize(entity_needed, 0);
             self.entity_lockon_shot_mask.resize(entity_needed, 0);
             self.entity_detector_radius.resize(entity_needed, 0.0);
             self.entity_full_vision_radius.resize(entity_needed, 0.0);
@@ -13196,7 +13190,6 @@ impl CombatTargetingPool {
             self.turret_lockon_tower_mask.resize(turret_needed, 0);
             self.turret_lockon_unit_mask.resize(turret_needed, 0);
             self.turret_lockon_turret_mask.resize(turret_needed, 0);
-            self.turret_lockon_locomotion_mask.resize(turret_needed, 0);
             self.turret_lockon_shot_mask.resize(turret_needed, 0);
             self.turret_ballistic_has_solution.resize(turret_needed, 0);
             self.turret_ballistic_flight_time.resize(turret_needed, 0.0);
@@ -13477,7 +13470,6 @@ pub fn combat_targeting_set_entity(
     lockon_tower_mask: u32,
     lockon_unit_mask: u32,
     lockon_turret_mask: u32,
-    lockon_locomotion_mask: u32,
     lockon_shot_mask: u32,
     detector_radius: f32,
     full_vision_radius: f32,
@@ -13538,7 +13530,6 @@ pub fn combat_targeting_set_entity(
     pool.entity_lockon_tower_mask[s] = lockon_tower_mask;
     pool.entity_lockon_unit_mask[s] = lockon_unit_mask;
     pool.entity_lockon_turret_mask[s] = lockon_turret_mask;
-    pool.entity_lockon_locomotion_mask[s] = lockon_locomotion_mask;
     pool.entity_lockon_shot_mask[s] = lockon_shot_mask;
     pool.entity_detector_radius[s] = detector_radius;
     pool.entity_full_vision_radius[s] = full_vision_radius;
@@ -13624,7 +13615,6 @@ pub fn combat_targeting_set_turret(
     lockon_tower_mask: u32,
     lockon_unit_mask: u32,
     lockon_turret_mask: u32,
-    lockon_locomotion_mask: u32,
     lockon_shot_mask: u32,
 ) {
     let pool = combat_targeting_pool();
@@ -13681,7 +13671,6 @@ pub fn combat_targeting_set_turret(
     pool.turret_lockon_tower_mask[global_idx] = lockon_tower_mask;
     pool.turret_lockon_unit_mask[global_idx] = lockon_unit_mask;
     pool.turret_lockon_turret_mask[global_idx] = lockon_turret_mask;
-    pool.turret_lockon_locomotion_mask[global_idx] = lockon_locomotion_mask;
     pool.turret_lockon_shot_mask[global_idx] = lockon_shot_mask;
     combat_targeting_write_no_ballistic_solution(
         pool,
@@ -14945,7 +14934,6 @@ fn combat_targeting_lockon_masks_allow_body_entity(
     building_mask: u32,
     tower_mask: u32,
     unit_mask: u32,
-    locomotion_mask: u32,
     shot_mask: u32,
     target_entity_slot: usize,
 ) -> bool {
@@ -14971,13 +14959,7 @@ fn combat_targeting_lockon_masks_allow_body_entity(
                     pool.entity_blueprint_code[target_entity_slot],
                 )
         }
-        CT_ENTITY_FAMILY_LOCOMOTION => {
-            (entity_family_mask & CT_LOCK_ON_FAM_INCLUDE_LOCOMOTIONS) != 0
-                && combat_targeting_level1_mask_allows(
-                    locomotion_mask,
-                    pool.entity_blueprint_code[target_entity_slot],
-                )
-        }
+        CT_ENTITY_FAMILY_LOCOMOTION => false,
         CT_ENTITY_FAMILY_SHOT => {
             (entity_family_mask & CT_LOCK_ON_FAM_INCLUDE_SHOTS) != 0
                 && combat_targeting_level1_mask_allows(
@@ -15016,7 +14998,6 @@ fn combat_targeting_turret_lockon_allows_body_entity(
         pool.turret_lockon_building_mask[source_turret_idx],
         pool.turret_lockon_tower_mask[source_turret_idx],
         pool.turret_lockon_unit_mask[source_turret_idx],
-        pool.turret_lockon_locomotion_mask[source_turret_idx],
         pool.turret_lockon_shot_mask[source_turret_idx],
         target_entity_slot,
     )
@@ -15064,7 +15045,6 @@ fn combat_targeting_entity_may_lock_entity_slot(
         pool.entity_lockon_building_mask[source_entity_slot],
         pool.entity_lockon_tower_mask[source_entity_slot],
         pool.entity_lockon_unit_mask[source_entity_slot],
-        pool.entity_lockon_locomotion_mask[source_entity_slot],
         pool.entity_lockon_shot_mask[source_entity_slot],
         target_entity_slot,
     )
@@ -28265,8 +28245,6 @@ mod lock_on_inclusion_tests {
     const BODY_BUILDING_CODE_B: u8 = 6;
     const TURRET_CODE_A: u8 = 7;
     const TURRET_CODE_B: u8 = 8;
-    const LOCOMOTION_CODE_A: u8 = 9;
-    const LOCOMOTION_CODE_B: u8 = 10;
     const SHOT_CODE_A: u8 = 11;
     const SHOT_CODE_B: u8 = 12;
 
@@ -28279,7 +28257,6 @@ mod lock_on_inclusion_tests {
         | CT_LOCK_ON_FAM_INCLUDE_TOWERS
         | CT_LOCK_ON_FAM_INCLUDE_UNITS
         | CT_LOCK_ON_FAM_INCLUDE_TURRETS
-        | CT_LOCK_ON_FAM_INCLUDE_LOCOMOTIONS
         | CT_LOCK_ON_FAM_INCLUDE_SHOTS;
     // Every family except units, used to test family inclusion gating.
     const FAM_ALL_BUT_UNITS: u8 = FAM_ALL & !CT_LOCK_ON_FAM_INCLUDE_UNITS;
@@ -28297,7 +28274,6 @@ mod lock_on_inclusion_tests {
         building_mask: u32,
         unit_mask: u32,
         turret_mask: u32,
-        locomotion_mask: u32,
         shot_mask: u32,
     }
 
@@ -28315,7 +28291,6 @@ mod lock_on_inclusion_tests {
                 building_mask: 0,
                 unit_mask: 0,
                 turret_mask: 0,
-                locomotion_mask: 0,
                 shot_mask: 0,
             }
         }
@@ -28406,7 +28381,6 @@ mod lock_on_inclusion_tests {
         lockon_tower_mask: u32,
         lockon_unit_mask: u32,
         lockon_turret_mask: u32,
-        lockon_locomotion_mask: u32,
         lockon_shot_mask: u32,
     ) {
         let radius = 2.0;
@@ -28449,7 +28423,6 @@ mod lock_on_inclusion_tests {
             lockon_tower_mask,
             lockon_unit_mask,
             lockon_turret_mask,
-            lockon_locomotion_mask,
             lockon_shot_mask,
             0.0,
             200.0,
@@ -28487,7 +28460,6 @@ mod lock_on_inclusion_tests {
         lockon_tower_mask: u32,
         lockon_unit_mask: u32,
         lockon_turret_mask: u32,
-        lockon_locomotion_mask: u32,
         lockon_shot_mask: u32,
     ) {
         stamp_entity_with_host_lockon_at_z(
@@ -28506,7 +28478,6 @@ mod lock_on_inclusion_tests {
             lockon_tower_mask,
             lockon_unit_mask,
             lockon_turret_mask,
-            lockon_locomotion_mask,
             lockon_shot_mask,
         );
     }
@@ -28540,7 +28511,6 @@ mod lock_on_inclusion_tests {
             0,
             0,
             0,
-            0,
         );
     }
 
@@ -28565,7 +28535,6 @@ mod lock_on_inclusion_tests {
             blueprint_code,
             turret_count,
             priority_target_id,
-            0,
             0,
             0,
             0,
@@ -28650,7 +28619,6 @@ mod lock_on_inclusion_tests {
             0,
             spec.unit_mask,
             spec.turret_mask,
-            spec.locomotion_mask,
             spec.shot_mask,
         );
     }
@@ -28923,20 +28891,6 @@ mod lock_on_inclusion_tests {
                 false,
             ),
             (
-                "friendly locomotion",
-                PLAYER_1,
-                CT_ENTITY_FAMILY_LOCOMOTION,
-                LOCOMOTION_CODE_A,
-                false,
-            ),
-            (
-                "enemy locomotion",
-                PLAYER_2,
-                CT_ENTITY_FAMILY_LOCOMOTION,
-                LOCOMOTION_CODE_A,
-                false,
-            ),
-            (
                 "friendly shot",
                 PLAYER_1,
                 CT_ENTITY_FAMILY_SHOT,
@@ -28987,6 +28941,26 @@ mod lock_on_inclusion_tests {
             assert_eq!(target_id, 201, "{label}");
             assert_ne!(state, CT_TURRET_STATE_IDLE, "{label}");
         }
+    }
+
+    #[test]
+    fn auto_full_inclusions_do_not_lock_locomotion_rows() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(SOURCE_SLOT, 0, TurretSpec::default());
+        stamp_body_target(
+            1,
+            201,
+            PLAYER_2,
+            20.0,
+            CT_ENTITY_FAMILY_LOCOMOTION,
+            BODY_UNIT_CODE_A,
+        );
+
+        let (target_id, state, _) = run_schedule_tick(1);
+        assert_eq!(target_id, -1, "locomotion rows are not lockable");
+        assert_eq!(state, CT_TURRET_STATE_IDLE);
     }
 
     #[test]
@@ -29263,39 +29237,6 @@ mod lock_on_inclusion_tests {
             SOURCE_SLOT,
             0,
             TurretSpec {
-                locomotion_mask: 1u32 << LOCOMOTION_CODE_A,
-                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
-                ..TurretSpec::default()
-            },
-        );
-        stamp_body_target(
-            1,
-            205,
-            PLAYER_2,
-            10.0,
-            CT_ENTITY_FAMILY_LOCOMOTION,
-            LOCOMOTION_CODE_A,
-        );
-        stamp_body_target(
-            2,
-            206,
-            PLAYER_2,
-            20.0,
-            CT_ENTITY_FAMILY_LOCOMOTION,
-            LOCOMOTION_CODE_B,
-        );
-        let (target_id, _, _) = run_schedule_tick(1);
-        assert_eq!(
-            target_id, 205,
-            "locomotion named inclusion should allow only code A"
-        );
-
-        reset_pools();
-        stamp_source(-1);
-        stamp_turret(
-            SOURCE_SLOT,
-            0,
-            TurretSpec {
                 shot_mask: 1u32 << SHOT_CODE_A,
                 relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 ..TurretSpec::default()
@@ -29469,7 +29410,6 @@ mod lock_on_inclusion_tests {
             0,
             0,
             0,
-            0,
         );
         stamp_turret(SOURCE_SLOT, 0, TurretSpec::default());
         stamp_body_target(
@@ -29500,7 +29440,6 @@ mod lock_on_inclusion_tests {
             202,
             REL_ALL,
             FAM_ALL_BUT_UNITS,
-            0,
             0,
             0,
             0,

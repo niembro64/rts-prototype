@@ -1600,7 +1600,6 @@ export const CT_LOCK_ON_FAM_INCLUDE_BUILDINGS = 1 << 0;
 export const CT_LOCK_ON_FAM_INCLUDE_UNITS = 1 << 1;
 export const CT_LOCK_ON_FAM_INCLUDE_TURRETS = 1 << 2;
 export const CT_LOCK_ON_FAM_INCLUDE_TOWERS = 1 << 3;
-export const CT_LOCK_ON_FAM_INCLUDE_LOCOMOTIONS = 1 << 4;
 export const CT_LOCK_ON_FAM_INCLUDE_SHOTS = 1 << 5;
 
 /** LOCK-ON-03 — Per-entity family encoding. Mirrors
@@ -1680,7 +1679,6 @@ export interface CombatTargetingApi {
     lockOnTowerIncludeMask: number,
     lockOnUnitIncludeMask: number,
     lockOnTurretIncludeMask: number,
-    lockOnLocomotionIncludeMask: number,
     lockOnShotIncludeMask: number,
     detectorRadius: number,
     fullVisionRadius: number,
@@ -1760,7 +1758,6 @@ export interface CombatTargetingApi {
     lockonTowerMask: number,
     lockonUnitMask: number,
     lockonTurretMask: number,
-    lockonLocomotionMask: number,
     lockonShotMask: number,
   ) => void;
   /** AIM-08.5 — Refresh the slab's per-entity active/firing turret

@@ -23,7 +23,6 @@ import type { Entity, PlayerId, Turret } from '../sim/types';
 import type { SelectionHudMode } from '@/clientBarConfig';
 import { getBuildingBlueprint } from '../sim/blueprints/buildings';
 import { getUnitBlueprint } from '../sim/blueprints';
-import { getLocomotionBlueprint } from '../sim/blueprints/locomotion';
 import { getShotBlueprint } from '../sim/blueprints/shots';
 import { getTurretBlueprint } from '../sim/blueprints/turrets';
 
@@ -32,7 +31,6 @@ export type PlayerNameLookup = (playerId: PlayerId) => string | null;
 const UNKNOWN_UNIT_NAME = 'Unknown Unit';
 const UNKNOWN_BUILDING_NAME = 'Unknown Building';
 const UNKNOWN_TURRET_NAME = 'Unknown Turret';
-const UNKNOWN_LOCOMOTION_NAME = 'Unknown Locomotion';
 const UNKNOWN_SHOT_NAME = 'Unknown Shot';
 
 /** Names have no current/max, so the only thing the selection mode can
@@ -110,23 +108,6 @@ export function resolveTurretName(
     return getTurretBlueprint(turret.config.turretBlueprintId).name;
   } catch {
     return UNKNOWN_TURRET_NAME;
-  }
-}
-
-/** Locomotion sub-piece label from the locomotion blueprint display name. */
-export function resolveLocomotionName(
-  host: Entity,
-  nameToggle: boolean,
-  mode: SelectionHudMode,
-): string | null {
-  const loco = host.unit?.locomotion;
-  if (!loco) return null;
-  const selected = host.selectable?.selected === true;
-  if (!nameAllowed(nameToggle, selected, mode)) return null;
-  try {
-    return getLocomotionBlueprint(loco.blueprintId).name;
-  } catch {
-    return UNKNOWN_LOCOMOTION_NAME;
   }
 }
 

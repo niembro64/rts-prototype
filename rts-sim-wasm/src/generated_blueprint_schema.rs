@@ -358,7 +358,6 @@ pub enum TurretLockOnEntityFamilyInclusion {
     Towers,
     Units,
     Turrets,
-    Locomotions,
     Shots,
 }
 
@@ -370,7 +369,6 @@ pub struct LockOnInclusionObject {
     pub includeLockOnLevel1Towers: Vec<String>,
     pub includeLockOnLevel1Units: Vec<String>,
     pub includeLockOnLevel1Turrets: Vec<String>,
-    pub includeLockOnLevel1Locomotions: Vec<String>,
     pub includeLockOnLevel1Shots: Vec<String>,
 }
 
@@ -433,7 +431,6 @@ pub struct TurretBlueprint {
     pub includeLockOnLevel1Towers: Vec<String>,
     pub includeLockOnLevel1Units: Vec<String>,
     pub includeLockOnLevel1Turrets: Vec<String>,
-    pub includeLockOnLevel1Locomotions: Vec<String>,
     pub includeLockOnLevel1Shots: Vec<String>,
     pub emissionKind: Option<EmissionKind>,
     pub emissionBlueprintId: Option<String>,
@@ -814,7 +811,6 @@ pub struct UnitBlueprint {
     pub includeLockOnLevel1Towers: Vec<String>,
     pub includeLockOnLevel1Units: Vec<String>,
     pub includeLockOnLevel1Turrets: Vec<String>,
-    pub includeLockOnLevel1Locomotions: Vec<String>,
     pub includeLockOnLevel1Shots: Vec<String>,
 }
 

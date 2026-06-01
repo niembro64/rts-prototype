@@ -235,7 +235,7 @@ export type TurretAimStyle = {
 
 export type TurretLockOnRelationshipInclusion = 'friendly_entities' | 'enemy_entities';
 
-export type TurretLockOnEntityFamilyInclusion = 'buildings' | 'towers' | 'units' | 'turrets' | 'locomotions' | 'shots';
+export type TurretLockOnEntityFamilyInclusion = 'buildings' | 'towers' | 'units' | 'turrets' | 'shots';
 
 export type LockOnInclusionObject = {
   includeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipInclusion[];
@@ -244,7 +244,6 @@ export type LockOnInclusionObject = {
   includeLockOnLevel1Towers: string[];
   includeLockOnLevel1Units: string[];
   includeLockOnLevel1Turrets: string[];
-  includeLockOnLevel1Locomotions: string[];
   includeLockOnLevel1Shots: string[];
 };
 
@@ -298,7 +297,6 @@ export type TurretBlueprint = {
   includeLockOnLevel1Towers: string[];
   includeLockOnLevel1Units: string[];
   includeLockOnLevel1Turrets: string[];
-  includeLockOnLevel1Locomotions: string[];
   includeLockOnLevel1Shots: string[];
   emissionKind: EmissionKind | null;
   emissionBlueprintId: string | null;
@@ -621,7 +619,6 @@ export type UnitBlueprint = {
   includeLockOnLevel1Towers: string[];
   includeLockOnLevel1Units: string[];
   includeLockOnLevel1Turrets: string[];
-  includeLockOnLevel1Locomotions: string[];
   includeLockOnLevel1Shots: string[];
 };
 

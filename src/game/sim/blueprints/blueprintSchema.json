@@ -989,7 +989,6 @@
         "towers",
         "units",
         "turrets",
-        "locomotions",
         "shots"
       ]
     },
@@ -1002,7 +1001,6 @@
         "includeLockOnLevel1Towers",
         "includeLockOnLevel1Units",
         "includeLockOnLevel1Turrets",
-        "includeLockOnLevel1Locomotions",
         "includeLockOnLevel1Shots"
       ],
       "properties": {
@@ -1037,12 +1035,6 @@
           }
         },
         "includeLockOnLevel1Turrets": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "includeLockOnLevel1Locomotions": {
           "type": "array",
           "items": {
             "type": "string"
@@ -1146,7 +1138,6 @@
         "includeLockOnLevel1Towers",
         "includeLockOnLevel1Units",
         "includeLockOnLevel1Turrets",
-        "includeLockOnLevel1Locomotions",
         "includeLockOnLevel1Shots"
       ],
       "properties": {
@@ -1300,12 +1291,6 @@
           }
         },
         "includeLockOnLevel1Turrets": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "includeLockOnLevel1Locomotions": {
           "type": "array",
           "items": {
             "type": "string"
@@ -2400,7 +2385,6 @@
         "includeLockOnLevel1Towers",
         "includeLockOnLevel1Units",
         "includeLockOnLevel1Turrets",
-        "includeLockOnLevel1Locomotions",
         "includeLockOnLevel1Shots"
       ],
       "properties": {
@@ -2563,12 +2547,6 @@
           }
         },
         "includeLockOnLevel1Turrets": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "includeLockOnLevel1Locomotions": {
           "type": "array",
           "items": {
             "type": "string"

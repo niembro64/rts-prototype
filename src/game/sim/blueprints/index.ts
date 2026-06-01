@@ -76,7 +76,6 @@ import {
   CT_LOCK_ON_FAM_INCLUDE_TOWERS,
   CT_LOCK_ON_FAM_INCLUDE_UNITS,
   CT_LOCK_ON_FAM_INCLUDE_TURRETS,
-  CT_LOCK_ON_FAM_INCLUDE_LOCOMOTIONS,
   CT_LOCK_ON_FAM_INCLUDE_SHOTS,
   CT_LOCK_ON_LEVEL1_MASK_CAPACITY,
 } from '../../sim-wasm/init';
@@ -89,7 +88,6 @@ export type LockOnMasks = {
   tower: number;
   unit: number;
   turret: number;
-  locomotion: number;
   shot: number;
 };
 
@@ -137,7 +135,6 @@ function compileLockOnMasks(label: string, policy: LockOnInclusionObject): LockO
     else if (f === 'towers') entityFamily |= CT_LOCK_ON_FAM_INCLUDE_TOWERS;
     else if (f === 'units') entityFamily |= CT_LOCK_ON_FAM_INCLUDE_UNITS;
     else if (f === 'turrets') entityFamily |= CT_LOCK_ON_FAM_INCLUDE_TURRETS;
-    else if (f === 'locomotions') entityFamily |= CT_LOCK_ON_FAM_INCLUDE_LOCOMOTIONS;
     else if (f === 'shots') entityFamily |= CT_LOCK_ON_FAM_INCLUDE_SHOTS;
     else {
       throw new Error(
@@ -181,14 +178,6 @@ function compileLockOnMasks(label: string, policy: LockOnInclusionObject): LockO
     TURRET_BLUEPRINT_CODE_UNKNOWN,
     'turret',
   );
-  const locomotion = lockOnLevel1Mask(
-    label,
-    'includeLockOnLevel1Locomotions',
-    policy.includeLockOnLevel1Locomotions,
-    locomotionBlueprintIdToCode,
-    LOCOMOTION_BLUEPRINT_CODE_UNKNOWN,
-    'locomotion',
-  );
   const shot = lockOnLevel1Mask(
     label,
     'includeLockOnLevel1Shots',
@@ -197,7 +186,7 @@ function compileLockOnMasks(label: string, policy: LockOnInclusionObject): LockO
     SHOT_BLUEPRINT_CODE_UNKNOWN,
     'shot',
   );
-  return { relationship, entityFamily, building, tower, unit, turret, locomotion, shot };
+  return { relationship, entityFamily, building, tower, unit, turret, shot };
 }
 
 function compileTurretLockOnMasks(turretBlueprint: TurretBlueprint): LockOnMasks {
@@ -215,7 +204,6 @@ export const EMPTY_LOCK_ON_MASKS: LockOnMasks = Object.freeze({
   tower: 0,
   unit: 0,
   turret: 0,
-  locomotion: 0,
   shot: 0,
 });
 
@@ -691,7 +679,6 @@ export function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretC
     lockOnTowerIncludeMask: lockOn.tower,
     lockOnUnitIncludeMask: lockOn.unit,
     lockOnTurretIncludeMask: lockOn.turret,
-    lockOnLocomotionIncludeMask: lockOn.locomotion,
     lockOnShotIncludeMask: lockOn.shot,
   };
 
@@ -855,7 +842,6 @@ const KNOWN_TOWER_IDS: ReadonlySet<string> = new Set(
 );
 const KNOWN_UNIT_IDS: ReadonlySet<string> = new Set(Object.keys(UNIT_BLUEPRINTS));
 const KNOWN_TURRET_BLUEPRINT_IDS: ReadonlySet<string> = new Set(Object.keys(TURRET_BLUEPRINTS));
-const KNOWN_LOCOMOTION_IDS: ReadonlySet<string> = new Set(getNetworkLocomotionBlueprintIds());
 const KNOWN_SHOT_IDS: ReadonlySet<string> = new Set(Object.keys(SHOT_BLUEPRINTS));
 for (const [id, bp] of Object.entries(TURRET_BLUEPRINTS)) {
   assertLevel1IdsInSet(
@@ -885,13 +871,6 @@ for (const [id, bp] of Object.entries(TURRET_BLUEPRINTS)) {
     bp.includeLockOnLevel1Turrets,
     KNOWN_TURRET_BLUEPRINT_IDS,
     'turret',
-  );
-  assertLevel1IdsInSet(
-    `turret blueprint ${id}`,
-    'includeLockOnLevel1Locomotions',
-    bp.includeLockOnLevel1Locomotions,
-    KNOWN_LOCOMOTION_IDS,
-    'locomotion',
   );
   assertLevel1IdsInSet(
     `turret blueprint ${id}`,
@@ -932,13 +911,6 @@ for (const [id, bp] of Object.entries(UNIT_BLUEPRINTS)) {
   );
   assertLevel1IdsInSet(
     `unit blueprint ${id}`,
-    'includeLockOnLevel1Locomotions',
-    bp.includeLockOnLevel1Locomotions,
-    KNOWN_LOCOMOTION_IDS,
-    'locomotion',
-  );
-  assertLevel1IdsInSet(
-    `unit blueprint ${id}`,
     'includeLockOnLevel1Shots',
     bp.includeLockOnLevel1Shots,
     KNOWN_SHOT_IDS,
@@ -975,13 +947,6 @@ for (const [id, bp] of Object.entries(BUILDING_BLUEPRINTS)) {
     tower.includeLockOnLevel1Turrets,
     KNOWN_TURRET_BLUEPRINT_IDS,
     'turret',
-  );
-  assertLevel1IdsInSet(
-    `tower blueprint ${id}`,
-    'includeLockOnLevel1Locomotions',
-    tower.includeLockOnLevel1Locomotions,
-    KNOWN_LOCOMOTION_IDS,
-    'locomotion',
   );
   assertLevel1IdsInSet(
     `tower blueprint ${id}`,

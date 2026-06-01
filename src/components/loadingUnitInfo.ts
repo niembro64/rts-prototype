@@ -320,9 +320,6 @@ function describeLockOnInclusions(blueprint: ReturnType<typeof getTurretBlueprin
   if (blueprint.includeLockOnLevel1Turrets.length > 0) {
     items.push(stat('Turrets', blueprint.includeLockOnLevel1Turrets.join(', ')));
   }
-  if (blueprint.includeLockOnLevel1Locomotions.length > 0) {
-    items.push(stat('Locomotions', blueprint.includeLockOnLevel1Locomotions.join(', ')));
-  }
   if (blueprint.includeLockOnLevel1Shots.length > 0) {
     items.push(stat('Shots', blueprint.includeLockOnLevel1Shots.join(', ')));
   }

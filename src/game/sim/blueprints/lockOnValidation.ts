@@ -19,7 +19,6 @@ export const LOCK_ON_INCLUSION_FIELDS = [
   'includeLockOnLevel1Towers',
   'includeLockOnLevel1Units',
   'includeLockOnLevel1Turrets',
-  'includeLockOnLevel1Locomotions',
   'includeLockOnLevel1Shots',
 ] as const;
 
@@ -101,11 +100,6 @@ export function validateLockOnInclusionObject(
   assertStringArray(label, 'includeLockOnLevel1Towers', value.includeLockOnLevel1Towers);
   assertStringArray(label, 'includeLockOnLevel1Units', value.includeLockOnLevel1Units);
   assertStringArray(label, 'includeLockOnLevel1Turrets', value.includeLockOnLevel1Turrets);
-  assertStringArray(
-    label,
-    'includeLockOnLevel1Locomotions',
-    value.includeLockOnLevel1Locomotions,
-  );
   assertStringArray(label, 'includeLockOnLevel1Shots', value.includeLockOnLevel1Shots);
 }
 
@@ -135,7 +129,6 @@ export function cloneLockOnInclusionObject(
     includeLockOnLevel1Towers: [...value.includeLockOnLevel1Towers],
     includeLockOnLevel1Units: [...value.includeLockOnLevel1Units],
     includeLockOnLevel1Turrets: [...value.includeLockOnLevel1Turrets],
-    includeLockOnLevel1Locomotions: [...value.includeLockOnLevel1Locomotions],
     includeLockOnLevel1Shots: [...value.includeLockOnLevel1Shots],
   };
 }

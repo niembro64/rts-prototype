@@ -181,10 +181,6 @@ export function getLocomotionHudBarsY(unit: Entity): number {
   return getUnitGroundZ(unit) + PIECE_BAR_GAP;
 }
 
-export function getLocomotionHudNameY(unit: Entity): number {
-  return getHudNameYFromBarsY(getLocomotionHudBarsY(unit));
-}
-
 export function getShotHudBarsY(shot: Entity): number {
   return shot.transform.z + PIECE_BAR_GAP;
 }

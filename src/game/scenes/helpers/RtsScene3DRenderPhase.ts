@@ -44,17 +44,14 @@ import {
   resolveCommanderOwnerName,
   resolveEntityDisplayName,
   resolveTurretName,
-  resolveLocomotionName,
   resolveShotName,
 } from '../../render3d/EntityName';
 import {
-  PIECE_TAG_LOCOMOTION,
   PIECE_TAG_BODY,
   turretPieceTag,
 } from '../../render3d/HealthBar3D';
 import {
   getTurretHudNameY,
-  getLocomotionHudNameY,
   getShotHudNameY,
   getUnitHudNameY,
 } from '../../render3d/HudAnchor';
@@ -413,7 +410,7 @@ export class RtsScene3DRenderPhase {
 
   /** Drive every HUD bar + name pass for the frame from the live HUD
    *  config: body bars (unit/tower/building) from getHudEntities(),
-   *  turret bars/names from getArmedEntities(), locomotion bars/names
+   *  turret bars/names from getArmedEntities(), locomotion bars
    *  from getHudEntities() units, and (only if any shot toggle is on)
    *  shot bars/names from the projectile list. Selection is read from
    *  the live entity ref here, never from a cached filter. */
@@ -535,11 +532,10 @@ export class RtsScene3DRenderPhase {
       }
     }
 
-    // ── Locomotion bars + names ──
+    // ── Locomotion bars ──
     const locoHealthToggle = getEntityHudToggle('locomotion', 'healthBar');
     const locoBuildToggle = getEntityHudToggle('locomotion', 'buildBars');
-    const locoNameToggle = getEntityHudToggle('locomotion', 'name');
-    if (locoHealthToggle || locoBuildToggle || locoNameToggle) {
+    if (locoHealthToggle || locoBuildToggle) {
       for (const host of this.clientViewState.getHudEntities()) {
         const loco = host.unit?.locomotion;
         if (!loco) continue;
@@ -551,17 +547,6 @@ export class RtsScene3DRenderPhase {
           const showBuild = this.barVisible(locoBuildToggle, selected, mode, buildInProgress);
           if (showHealth || showBuild) {
             healthBar3D.perLocomotion(host, false, showHealth, showBuild);
-          }
-        }
-        if (nameLabel3D && locoNameToggle) {
-          const name = resolveLocomotionName(host, locoNameToggle, mode);
-          if (name !== null) {
-            nameLabel3D.perPieceName(
-              host,
-              PIECE_TAG_LOCOMOTION,
-              { x: host.transform.x, y: getLocomotionHudNameY(host), z: host.transform.y },
-              name,
-            );
           }
         }
       }

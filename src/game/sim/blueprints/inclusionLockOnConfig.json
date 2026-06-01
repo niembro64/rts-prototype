@@ -9,7 +9,6 @@
       "towers",
       "units",
       "turrets",
-      "locomotions",
       "shots"
     ],
     "includeLockOnLevel1Buildings": [
@@ -64,25 +63,6 @@
       "turretRocketSlow",
       "turretRocketFast"
     ],
-    "includeLockOnLevel1Locomotions": [
-      "locomotionJackal",
-      "locomotionLynx",
-      "locomotionDaddy",
-      "locomotionBadger",
-      "locomotionMongoose",
-      "locomotionTick",
-      "locomotionMammoth",
-      "locomotionFormik",
-      "locomotionWidow",
-      "locomotionHippo",
-      "locomotionTarantula",
-      "locomotionLoris",
-      "locomotionCommander",
-      "locomotionHovercraft",
-      "locomotionDragonflyHovercraft",
-      "locomotionConstructionDrone",
-      "locomotionEagleFlying"
-    ],
     "includeLockOnLevel1Shots": [
       "shotPlasmaLight",
       "shotPlasmaMedium",
@@ -108,7 +88,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "unitLynx": {
@@ -124,7 +103,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "unitDaddy": {
@@ -140,7 +118,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "unitBadger": {
@@ -156,7 +133,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "unitMongoose": {
@@ -172,7 +148,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "unitTick": {
@@ -188,7 +163,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "unitMammoth": {
@@ -204,7 +178,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "unitFormik": {
@@ -220,7 +193,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "unitWidow": {
@@ -236,7 +208,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "unitHippo": {
@@ -252,7 +223,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "unitTarantula": {
@@ -268,7 +238,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "unitLoris": {
@@ -282,7 +251,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "unitBee": {
@@ -298,7 +266,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "unitDragonfly": {
@@ -314,7 +281,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "unitConstructionDrone": {
@@ -332,7 +298,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "unitEagle": {
@@ -346,7 +311,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "unitCommander": {
@@ -364,7 +328,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     }
   },
@@ -382,7 +345,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "turretGunBurst": {
@@ -398,7 +360,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "turretCannon": {
@@ -414,7 +375,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "turretMortarSlow": {
@@ -430,7 +390,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "turretMortarDrop": {
@@ -446,7 +405,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "turretMortarFast": {
@@ -462,7 +420,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "turretGatling": {
@@ -478,7 +435,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "turretDisruptor": {
@@ -494,7 +450,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "turretShieldPanel": {
@@ -508,7 +463,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "turretBeam": {
@@ -524,7 +478,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "turretBeamMini": {
@@ -540,7 +493,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "turretBeamMega": {
@@ -556,7 +508,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "turretShieldSphere": {
@@ -572,7 +523,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "turretConstruction": {
@@ -589,7 +539,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "turretBeamLong": {
@@ -605,7 +554,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "turretCannonLong": {
@@ -621,7 +569,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "turretRocketSlow": {
@@ -637,7 +584,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "turretRocketFast": {
@@ -651,7 +597,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     }
   },
@@ -671,7 +616,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "towerBeamMega": {
@@ -689,7 +633,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "towerCannon": {
@@ -707,7 +650,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     },
     "towerDetachedTurret": {
@@ -725,7 +667,6 @@
       "includeLockOnLevel1Towers": [],
       "includeLockOnLevel1Units": [],
       "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Locomotions": [],
       "includeLockOnLevel1Shots": []
     }
   }
