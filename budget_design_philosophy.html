@@ -734,13 +734,23 @@
         values plus the universal gravity constant instead of entity IDs or optional lookup inputs.
       </p>
       <p>
-        Weapon range is a 3D envelope, not a ground-plane circle. Targeting acquire/release
-        hysteresis, beam length, and broadphase candidate filters all use true 3D
-        distance from the turret mount. An aircraft directly overhead at the weapon&rsquo;s max
-        radius is reachable; the same target at the same horizontal distance but at twice the
-        altitude is not. Range overlays on the ground show the sphere&rsquo;s ground projection
-        (<code>sqrt(R² − h²)</code> where <code>h</code> is mount height above terrain), so the
-        ring honestly represents where ground targets can be hit.
+        Turret range is a vertical cylinder, not a sphere. Every turret range radius &mdash;
+        fire acquire/release, minimum fire preference, tracking acquire/release, and any
+        other turret-authored &ldquo;in range&rdquo; shell &mdash; uses horizontal distance as
+        the radius. For a range <code>R</code>, the cylinder is centered on the turret mount
+        in <code>x/y</code>, reaches up to <code>mount.z + R</code>, and extends downward
+        without a lower cap. A target is inside the range shell when its body intersects that
+        horizontal radius and it is not above the shell&rsquo;s top cap. Height below the turret
+        does not consume range budget, so cliffs, aircraft, and drop shots can target downhill
+        or underneath cleanly. Height above the turret remains bounded by the same authored
+        number that defines horizontal reach.
+      </p>
+      <p>
+        Ballistic and line-of-fire feasibility remain separate gates after the cylinder range
+        check. The range cylinder answers whether a turret may consider, track, or engage a
+        target; the ballistic solver still answers whether the authored projectile can actually
+        reach the chosen aim point from the turret mount. Range overlays on the ground show the
+        cylinder&rsquo;s horizontal radius directly.
       </p>
 
       <h3>Mass must matter</h3>

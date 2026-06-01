@@ -125,3 +125,20 @@ enum (only unit/tower/building/shot/turret). This is consistent with the philoso
 and shields are emitter-bound sustained emissions, NOT bodies, and attribute through their
 turret rather than minting an id) — so likely correct as-is. Flag only if a future design
 needs to point at an individual ray/shield instance by id.
+
+7.6 [MAJOR] Turret range gates still use spherical 3D distance instead of the
+design cylinder.
+
+budget_design_philosophy.html now defines every turret-authored "in range" radius
+(fire acquire/release, minimum fire preference, tracking acquire/release, and related
+range shells) as a vertical cylinder: horizontal radius R around the turret mount,
+top cap at mount.z + R, and no lower cap. Current targeting/ranking/FSM code still
+uses 3D squared distance from turret mount to target center/body radius, e.g.
+rts-sim-wasm/src/lib.rs combat_targeting_dist_sq_to_entity_slot / targeting_score_candidate
+and the range-with-target-radius helpers. That makes altitude below the turret consume
+range budget and keeps the old sphere contract alive.
+FIX: replace turret range membership/ranking/FSM checks with cylinder-aware helpers:
+use horizontal distance for max/tracking/min shells with target radius expansion, reject
+targets above the top cap using the target vertical extent, and preserve ballistic/LOS/
+shield gates as separate follow-up checks. Update overlays/debug naming/tests so "range"
+means the cylinder contract everywhere.

@@ -212,7 +212,7 @@
       "hitbox": 6.4,
       "collision": 8
     },
-    "armingDelayMs": 40,
+    "armingDelayMs": 500,
     "detonateOnExpiry": true,
     "hitSound": {
       "$audio": "event.hit.shotMortarMedium"
@@ -258,7 +258,7 @@
       "hitbox": 8,
       "collision": 10
     },
-    "armingDelayMs": 40,
+    "armingDelayMs": 500,
     "detonateOnExpiry": true,
     "hitSound": {
       "$audio": "event.hit.shotMortarMedium"
