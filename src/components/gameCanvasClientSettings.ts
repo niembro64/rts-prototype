@@ -10,6 +10,7 @@ import {
   getAudioSmoothing,
   getBeamSnapToTurret,
   getBuildGridDebug,
+  getCameraFollowMode,
   getCameraFovDegrees,
   getCameraSmoothMode,
   getClientConfig,
@@ -42,6 +43,7 @@ import {
   setAudioSmoothing,
   setBeamSnapToTurret,
   setBuildGridDebug,
+  setCameraFollowMode,
   setCameraFovDegrees,
   setCameraSmoothMode,
   setClientMode,
@@ -71,6 +73,7 @@ import {
   setEntityHudToggle,
   setSelectionHudMode,
   type CameraSmoothMode,
+  type CameraFollowMode,
   type ClientMode,
 } from '../clientBarConfig';
 import { audioManager } from '../game/audio/AudioManager';
@@ -167,6 +170,7 @@ export function useGameCanvasClientSettings({
   const selectionHudMode = ref<SelectionHudMode>(getSelectionHudMode());
   const legsRadiusToggle = ref(getLegsRadiusToggle());
   const cameraSmoothMode = ref<CameraSmoothMode>(getCameraSmoothMode());
+  const cameraFollowMode = ref<CameraFollowMode>(getCameraFollowMode());
   const cameraFovDegrees = ref<CameraFovDegrees>(getCameraFovDegrees());
 
   function applyAudioRuntimeState(): void {
@@ -215,6 +219,7 @@ export function useGameCanvasClientSettings({
     for (const urt of UNIT_RADIUS_TYPES) unitRadiusToggles[urt] = getUnitRadiusToggle(urt);
     legsRadiusToggle.value = getLegsRadiusToggle();
     cameraSmoothMode.value = getCameraSmoothMode();
+    cameraFollowMode.value = getCameraFollowMode();
     cameraFovDegrees.value = getCameraFovDegrees();
     applyAudioRuntimeState();
     applyCameraFovDegrees(cameraFovDegrees.value);
@@ -265,6 +270,11 @@ export function useGameCanvasClientSettings({
   function setCameraMode(mode: CameraSmoothMode): void {
     setCameraSmoothMode(mode);
     cameraSmoothMode.value = mode;
+  }
+
+  function setCameraFollow(mode: CameraFollowMode): void {
+    setCameraFollowMode(mode);
+    cameraFollowMode.value = mode;
   }
 
   function changeCameraFovDegrees(fov: CameraFovDegrees): void {
@@ -536,6 +546,7 @@ export function useGameCanvasClientSettings({
     changeSelectionHudMode(cd.selectionHudMode.default);
     if (legsRadiusToggle.value !== cd.legsRadius.default) toggleLegsRadius();
     setCameraMode(cd.cameraSmooth.default);
+    setCameraFollow(cd.cameraFollow.default);
     changeCameraFovDegrees(cd.cameraFov.default);
   }
 
@@ -590,6 +601,7 @@ export function useGameCanvasClientSettings({
     unitRadiusToggles,
     legsRadiusToggle,
     cameraSmoothMode,
+    cameraFollowMode,
     cameraFovDegrees,
     allRangesActive,
     allProjRangesActive,
@@ -607,6 +619,7 @@ export function useGameCanvasClientSettings({
     toggleUnitRadius,
     toggleLegsRadius,
     setCameraMode,
+    setCameraFollow,
     changeCameraFovDegrees,
     toggleAllRanges,
     toggleAllProjRanges,

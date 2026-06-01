@@ -42,6 +42,15 @@ export type DriftChannelMode = 'ignore' | PositionDriftChannelMode;
  *          integrated velocity), so there is no ACC mode. */
 export type PredictionMode = 'pos' | 'vel';
 export type CameraSmoothMode = 'snap' | 'fast' | 'mid' | 'slow';
+/** Camera follow behavior for a single selected unit.
+ *    free          — camera is driven purely by mouse input (default).
+ *    follow        — camera glides to keep the selected unit centered,
+ *                    preserving the current distance, yaw, and pitch.
+ *    follow-behind — like follow, but also rotates the camera to sit
+ *                    behind the unit (looking down its forward axis),
+ *                    still preserving distance and pitch.
+ *  Only active while exactly one unit is selected. */
+export type CameraFollowMode = 'free' | 'follow' | 'follow-behind';
 export type CameraFovDegrees = 10 | 30 | 45 | 60 | 120;
 /** Waypoint visualization detail. SIMPLE shows only the user-issued
  *  click points and shortcut lines between them — the convention in
@@ -147,6 +156,7 @@ export type ClientBarConfig = {
   readonly unitGroundNormalEma: LabeledOptionsConfig<DriftMode>;
   readonly legsRadius: BooleanSetting;
   readonly cameraSmooth: LabeledOptionsConfig<CameraSmoothMode>;
+  readonly cameraFollow: LabeledOptionsConfig<CameraFollowMode>;
   readonly cameraFov: LabeledOptionsConfig<CameraFovDegrees>;
   readonly edgeScroll: BooleanSetting;
   readonly dragPan: BooleanSetting;

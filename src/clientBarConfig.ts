@@ -5,6 +5,7 @@ import type {
 import type { ClientBarConfig } from './types/client';
 import type {
   AudioScope,
+  CameraFollowMode,
   CameraFovDegrees,
   CameraSmoothMode,
   DriftChannelMode,
@@ -31,7 +32,7 @@ import {
 import rawPlayerClientGraphicsConfig from './playerClientGraphicsConfig.json';
 import clientBarConfig from './clientBarConfig.json';
 
-export type { CameraSmoothMode } from './types/client';
+export type { CameraSmoothMode, CameraFollowMode } from './types/client';
 export type {
   EntityHudElement,
   EntityHudToggles,
@@ -70,6 +71,7 @@ type ClientDefaults = {
   readonly unitGroundNormalEma: DriftMode;
   readonly legsRadius: boolean;
   readonly cameraSmooth: CameraSmoothMode;
+  readonly cameraFollow: CameraFollowMode;
   readonly cameraFov: CameraFovDegrees;
   readonly edgeScroll: boolean;
   readonly dragPan: boolean;
@@ -134,6 +136,7 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     unitGroundNormalEma: pickDefault(clientBarConfig.unitGroundNormalEma, mode) as DriftMode,
     legsRadius: pickDefault(clientBarConfig.legsRadius, mode),
     cameraSmooth: pickDefault(clientBarConfig.cameraSmooth, mode) as CameraSmoothMode,
+    cameraFollow: pickDefault(clientBarConfig.cameraFollow, mode) as CameraFollowMode,
     // FOV default lives in config.ts as CAMERA_FOV_DEGREES — keep one
     // canonical source for that one knob; the JSON only owns the options list.
     cameraFov: CAMERA_FOV_DEGREES,
@@ -232,6 +235,10 @@ export const CLIENT_CONFIG = {
     default: DEMO_CLIENT_DEFAULTS.cameraSmooth,
     options: clientBarConfig.cameraSmooth.options as OptionList<CameraSmoothMode>,
   },
+  cameraFollow: {
+    default: DEMO_CLIENT_DEFAULTS.cameraFollow,
+    options: clientBarConfig.cameraFollow.options as OptionList<CameraFollowMode>,
+  },
   cameraFov: {
     default: CAMERA_FOV_DEGREES,
     options: clientBarConfig.cameraFov.options as OptionList<CameraFovDegrees>,
@@ -293,6 +300,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     },
     legsRadius: { default: defaults.legsRadius },
     cameraSmooth: { ...CLIENT_CONFIG.cameraSmooth, default: defaults.cameraSmooth },
+    cameraFollow: { ...CLIENT_CONFIG.cameraFollow, default: defaults.cameraFollow },
     cameraFov: { ...CLIENT_CONFIG.cameraFov, default: defaults.cameraFov },
     edgeScroll: { default: defaults.edgeScroll },
     dragPan: { default: defaults.dragPan },
@@ -344,6 +352,7 @@ type ClientStorageKeyName =
   | 'unitRadiusToggles'
   | 'legsRadius'
   | 'cameraSmooth'
+  | 'cameraFollow'
   | 'cameraFov'
   | 'edgeScroll'
   | 'dragPan'
@@ -380,6 +389,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'unitRadiusToggles',
   'legsRadius',
   'cameraSmooth',
+  'cameraFollow',
   'cameraFov',
   'edgeScroll',
   'dragPan',
@@ -442,6 +452,7 @@ const currentUnitRadiusToggles: Record<UnitRadiusType, boolean> = {
 };
 let currentLegsRadius: boolean = _cd.legsRadius.default;
 let currentCameraSmoothMode: CameraSmoothMode = _cd.cameraSmooth.default;
+let currentCameraFollowMode: CameraFollowMode = _cd.cameraFollow.default;
 let currentCameraFovDegrees: CameraFovDegrees = _cd.cameraFov.default;
 let currentAudioScope: AudioScope = _cd.audio.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
@@ -481,6 +492,10 @@ function isSelectionHudMode(value: unknown): value is SelectionHudMode {
 
 function isCameraFovDegrees(value: number): value is CameraFovDegrees {
   return _cd.cameraFov.options.some((opt) => opt.value === value);
+}
+
+function isCameraFollowMode(value: unknown): value is CameraFollowMode {
+  return value === 'free' || value === 'follow' || value === 'follow-behind';
 }
 
 function isDriftChannelMode(value: unknown): value is DriftChannelMode {
@@ -524,6 +539,7 @@ function applyClientDefaults(mode: ClientMode): void {
   for (const urt of UNIT_RADIUS_TYPES) currentUnitRadiusToggles[urt] = cd.unitRadiusToggles.default;
   currentLegsRadius = cd.legsRadius.default;
   currentCameraSmoothMode = cd.cameraSmooth.default;
+  currentCameraFollowMode = cd.cameraFollow.default;
   currentCameraFovDegrees = cd.cameraFov.default;
   currentAudioScope = cd.audio.default;
   currentAudioSmoothing = cd.audioSmoothing.default;
@@ -648,6 +664,10 @@ function loadFromStorage(mode: ClientMode): void {
     currentCameraSmoothMode = cd.cameraSmooth.default;
   } else if (storedCameraSmooth === 'false') {
     currentCameraSmoothMode = 'snap';
+  }
+  const storedCameraFollow = readPersisted(keys.cameraFollow);
+  if (isCameraFollowMode(storedCameraFollow)) {
+    currentCameraFollowMode = storedCameraFollow;
   }
   const storedCameraFov = readPersisted(keys.cameraFov);
   if (storedCameraFov !== null) {
@@ -857,6 +877,15 @@ export function getCameraSmoothMode(): CameraSmoothMode {
 export function setCameraSmoothMode(mode: CameraSmoothMode): void {
   currentCameraSmoothMode = mode;
   persist(activeStorageKeys().cameraSmooth, mode);
+}
+
+export function getCameraFollowMode(): CameraFollowMode {
+  return currentCameraFollowMode;
+}
+
+export function setCameraFollowMode(mode: CameraFollowMode): void {
+  currentCameraFollowMode = mode;
+  persist(activeStorageKeys().cameraFollow, mode);
 }
 
 export function getCameraFovDegrees(): CameraFovDegrees {

@@ -343,6 +343,7 @@ export class RtsScene3D {
       () => this.localPlayerId,
       cameraBattleKind,
       (x, z) => getSurfaceHeight(x, z, this.mapWidth, this.mapHeight, LAND_CELL_SIZE),
+      () => this.selectionSystem.getSelectedUnits(),
     );
     this.cameras = this.cameraControl.cameras;
 

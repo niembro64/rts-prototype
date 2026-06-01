@@ -3,6 +3,7 @@ import type { TerrainMapShape } from '../types/terrain';
 import type { BattlePreset } from './battlePresets';
 import type {
   AudioScope,
+  CameraFollowMode,
   CameraFovDegrees,
   CameraSmoothMode,
   DriftChannelMode,
@@ -164,6 +165,7 @@ export type GameCanvasClientControlBarModel = {
   readonly legsRadiusToggle: boolean;
   readonly cameraFovDegrees: CameraFovDegrees;
   readonly cameraSmoothMode: CameraSmoothMode;
+  readonly cameraFollowMode: CameraFollowMode;
   resetClientDefaults(): void;
   togglePlayerClientEnabled(): void;
   changeWaypointDetail(mode: WaypointDetail): void;
@@ -202,4 +204,5 @@ export type GameCanvasClientControlBarModel = {
   toggleLegsRadius(): void;
   changeCameraFovDegrees(fov: CameraFovDegrees): void;
   setCameraMode(mode: CameraSmoothMode): void;
+  setCameraFollowMode(mode: CameraFollowMode): void;
 };

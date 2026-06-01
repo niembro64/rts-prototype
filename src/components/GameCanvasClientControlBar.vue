@@ -872,6 +872,27 @@ defineProps<{
         </BarButtonGroup>
         <BarDivider />
       </BarControlGroup>
+      <BarControlGroup>
+        <BarLabel title="Camera follow for a single selected unit. Only active when exactly one unit is selected; eases through the CAMERA smoothing above, so switching modes transitions smoothly.">FOLLOW:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            :active="model.cameraFollowMode === 'free'"
+            title="Camera is controlled only by the mouse - default behavior"
+            @click="model.setCameraFollowMode('free')"
+          >FREE</BarButton>
+          <BarButton
+            :active="model.cameraFollowMode === 'follow'"
+            title="Glide the camera to keep the selected unit centered, preserving the current distance, yaw, and pitch"
+            @click="model.setCameraFollowMode('follow')"
+          >UNIT</BarButton>
+          <BarButton
+            :active="model.cameraFollowMode === 'follow-behind'"
+            title="Keep the camera behind the selected unit, looking down its forward axis, preserving the current distance and pitch"
+            @click="model.setCameraFollowMode('follow-behind')"
+          >BEHIND</BarButton>
+        </BarButtonGroup>
+        <BarDivider />
+      </BarControlGroup>
     </div>
   </div>
 </template>

@@ -98,6 +98,15 @@
       { "value": "slow", "label": "SLOW" }
     ]
   },
+  "cameraFollow": {
+    "demoDefault": "free",
+    "realDefault": "free",
+    "options": [
+      { "value": "free", "label": "FREE" },
+      { "value": "follow", "label": "FOLLOW" },
+      { "value": "follow-behind", "label": "BEHIND" }
+    ]
+  },
   "cameraFov": {
     "options": [
       { "value": 10, "label": "10" },
@@ -206,6 +215,7 @@
     "unitRadiusToggles": "unit-radius-toggles",
     "legsRadius": "legs-radius",
     "cameraSmooth": "camera-smooth",
+    "cameraFollow": "camera-follow",
     "cameraFov": "camera-fov-degrees",
     "edgeScroll": "edge-scroll",
     "dragPan": "drag-pan",

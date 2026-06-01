@@ -116,6 +116,13 @@ export class OrbitCamera {
   private toTargetX = 0;
   private toTargetY = 0;
   private toTargetZ = 0;
+  // Smooth-destination YAW. Mirrors the to-target pattern: tick() EMAs
+  // the rendered `yaw` toward this along the shortest arc. Every direct
+  // yaw write (orbit drag, twist, setOrbitAngles, setState) keeps
+  // `toYaw === yaw`, so the yaw EMA is inert except when a follow driver
+  // (follow-behind) parks `toYaw` on a different angle. No `toPitch`:
+  // pitch is never machine-driven, so it stays a direct write.
+  private toYaw = 0;
 
   /** EMA time-constant in seconds. 0 disables smoothing (snap mode).
    *  After tau seconds the rendered state is ~63% of the way to the
@@ -246,6 +253,7 @@ export class OrbitCamera {
     this.toTargetX = this.target.x;
     this.toTargetY = this.target.y;
     this.toTargetZ = this.target.z;
+    this.toYaw = this.yaw;
     this.previousTouchAction = canvas.style.touchAction;
     canvas.style.touchAction = 'none';
 
@@ -422,6 +430,7 @@ export class OrbitCamera {
           this.toTargetX = this.target.x;
           this.toTargetY = this.target.y;
           this.toTargetZ = this.target.z;
+          this.toYaw = this.yaw;
           // apply() will write camera.position = target + d·dir = (cx,cy,cz)
           // and camera.lookAt(target) = lookAt the synthesized point,
           // giving the rigid-rotation orientation.
@@ -432,6 +441,7 @@ export class OrbitCamera {
           this.yaw -= scaledDx * this.rotateSpeed;
           this.pitch += scaledDy * this.rotateSpeed;
           this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, this.pitch));
+          this.toYaw = this.yaw;
           this.apply();
         }
       } else if (this.dragMode === 'pan') {
@@ -535,6 +545,9 @@ export class OrbitCamera {
     this.target.x = this.toTargetX;
     this.target.y = this.toTargetY;
     this.target.z = this.toTargetZ;
+    // toYaw === yaw for every input except a follow driver, so this is a
+    // no-op for pan/zoom and an instant behind-snap when following.
+    this.yaw = this.toYaw;
     this.apply();
   }
 
@@ -672,6 +685,7 @@ export class OrbitCamera {
     const pivot = this._anchorWorldPoint(clientX, clientY, this.rotateAnchor);
     if (!pivot) {
       this.yaw = newYaw;
+      this.toYaw = this.yaw;
       this.apply();
       return;
     }
@@ -718,6 +732,7 @@ export class OrbitCamera {
     this.toTargetZ = toRotCamZ - this.toDistance * newDirZ;
 
     this.yaw = newYaw;
+    this.toYaw = this.yaw;
     this.apply();
   }
 
@@ -947,6 +962,38 @@ export class OrbitCamera {
     this.apply();
   }
 
+  /** Per-frame follow driver. Points the smooth-destination target at
+   *  (x, y, z) so the rendered camera eases to keep that world point
+   *  centered; distance and pitch are deliberately left untouched, so
+   *  the camera keeps whatever standoff and tilt it currently has.
+   *
+   *  `behindYaw` is the eased yaw destination for "follow behind" — the
+   *  caller computes the angle that parks the camera behind the unit.
+   *  Pass `null` for plain follow, which pins `toYaw` to the current
+   *  yaw so the yaw EMA stays inert and the player keeps manual orbit
+   *  control.
+   *
+   *  All four channels ride the SAME EMA as pan/zoom (see tick()), so a
+   *  follow target eases in at the active camera-smooth half-life and
+   *  switching follow mode transitions as smoothly as any other camera
+   *  move. In snap mode (tau 0) it applies immediately. */
+  followStep(x: number, y: number, z: number, behindYaw: number | null): void {
+    this.toTargetX = x;
+    this.toTargetY = y;
+    this.toTargetZ = z;
+    this.toYaw = behindYaw ?? this.yaw;
+    this.applyDestinationIfSnap();
+  }
+
+  /** Pin the eased-yaw destination to the current yaw. Outside
+   *  follow-behind this keeps the yaw EMA inert; the follow controller
+   *  calls it whenever it is NOT driving yaw so a just-ended
+   *  follow-behind ease stops cleanly instead of chasing a stale
+   *  target. Cheap no-op when already equal. */
+  syncToYaw(): void {
+    this.toYaw = this.yaw;
+  }
+
   setDistance(distance: number): void {
     const d = Math.max(this.minDistance, distance);
     this.distance = d;
@@ -964,6 +1011,7 @@ export class OrbitCamera {
 
   setOrbitAngles(yaw: number, pitch: number): void {
     this.yaw = yaw;
+    this.toYaw = yaw;
     this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, pitch));
     this.apply();
   }
@@ -991,6 +1039,7 @@ export class OrbitCamera {
     this.distance = Math.max(this.minDistance, state.distance);
     this.toDistance = this.distance;
     this.yaw = state.yaw;
+    this.toYaw = state.yaw;
     this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, state.pitch));
     this.apply();
   }
@@ -1010,6 +1059,7 @@ export class OrbitCamera {
       this.target.x = this.toTargetX;
       this.target.y = this.toTargetY;
       this.target.z = this.toTargetZ;
+      this.yaw = this.toYaw;
       this.apply();
     }
   }
@@ -1023,18 +1073,33 @@ export class OrbitCamera {
     const dX = this.toTargetX - this.target.x;
     const dY = this.toTargetY - this.target.y;
     const dZ = this.toTargetZ - this.target.z;
+    // Yaw eases along the SHORTEST arc — normalize the raw delta into
+    // [-PI, PI] so a follow-behind target on the far side of the wrap
+    // doesn't spin the long way round. Normalization is two trig calls,
+    // so skip it on the common in-window case (and on the inert
+    // toYaw === yaw path where the raw delta is exactly 0).
+    let dYaw = this.toYaw - this.yaw;
+    if (dYaw > Math.PI || dYaw < -Math.PI) {
+      dYaw = Math.atan2(Math.sin(dYaw), Math.cos(dYaw));
+    }
     // Settled — snap to exact and stop spinning the integrator.
     if (
       Math.abs(dDist) < 1e-3 &&
       Math.abs(dX) < 1e-3 &&
       Math.abs(dY) < 1e-3 &&
-      Math.abs(dZ) < 1e-3
+      Math.abs(dZ) < 1e-3 &&
+      Math.abs(dYaw) < 1e-4
     ) {
-      if (dDist !== 0 || dX !== 0 || dY !== 0 || dZ !== 0) {
+      if (dDist !== 0 || dX !== 0 || dY !== 0 || dZ !== 0 || dYaw !== 0) {
         this.distance = this.toDistance;
         this.target.x = this.toTargetX;
         this.target.y = this.toTargetY;
         this.target.z = this.toTargetZ;
+        // Add the (tiny) normalized residual rather than assigning toYaw
+        // outright, so a yaw that converged across a 2PI wrap doesn't
+        // jump its raw value by a full turn (visually identical, but
+        // other readers of `yaw` see a clean number).
+        this.yaw += dYaw;
         this.apply();
       }
       return;
@@ -1044,6 +1109,7 @@ export class OrbitCamera {
     this.target.x += dX * alpha;
     this.target.y += dY * alpha;
     this.target.z += dZ * alpha;
+    this.yaw += dYaw * alpha;
     this.apply();
   }
 

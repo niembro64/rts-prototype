@@ -1,4 +1,4 @@
-import { getCameraSmoothMode } from '@/clientBarConfig';
+import { getCameraFollowMode, getCameraSmoothMode } from '@/clientBarConfig';
 import {
   CAMERA_BATTLE_DEFAULTS,
   type CameraBattleKind,
@@ -31,6 +31,7 @@ export class RtsScene3DCameraFramingSystem {
     private readonly getLocalPlayerId: () => PlayerId,
     private readonly cameraBattleKind: CameraBattleKind,
     private readonly getSurfaceY: (x: number, z: number) => number,
+    private readonly getSelectedUnits: () => readonly Entity[],
   ) {}
 
   seedInitialCamera(): void {
@@ -51,6 +52,10 @@ export class RtsScene3DCameraFramingSystem {
   tickCameraSmoothing(deltaSec: number): void {
     const defaults = CAMERA_BATTLE_DEFAULTS[this.cameraBattleKind];
     this.threeApp.orbit.setSmoothTau(this.cameraSmoothTauSec());
+    // Push the follow destination into the orbit to-state BEFORE the EMA
+    // step, so following rides the same camera-smooth half-life as
+    // pan/zoom and mode switches transition smoothly (see followStep).
+    this.applyCameraFollow();
     this.threeApp.orbit.tick(deltaSec);
     if (defaults.autoRotate && defaults.autoRotateRate !== 0) {
       this.threeApp.orbit.setOrbitAngles(
@@ -58,6 +63,42 @@ export class RtsScene3DCameraFramingSystem {
         this.threeApp.orbit.pitch,
       );
     }
+  }
+
+  /** Drive the orbit camera's smooth destination from the CLIENT-bar
+   *  camera-follow mode. Only acts while exactly one unit is selected;
+   *  otherwise (or in 'free') it just pins the eased-yaw destination to
+   *  the current yaw so a just-ended follow-behind ease stops cleanly
+   *  and manual control stays inert. */
+  private applyCameraFollow(): void {
+    const orbit = this.threeApp.orbit;
+    const mode = getCameraFollowMode();
+    if (mode === 'free') {
+      orbit.syncToYaw();
+      return;
+    }
+    const units = this.getSelectedUnits();
+    if (units.length !== 1) {
+      orbit.syncToYaw();
+      return;
+    }
+    const t = units[0].transform;
+    // Target the unit's body center. sim (x, y, z) → world (x, z, y):
+    // sim x/y are the horizontal plane, sim z is up. Distance and pitch
+    // are left untouched by followStep, so the camera keeps its standoff.
+    const behindYaw = mode === 'follow-behind'
+      ? this.behindYaw(t.rotation)
+      : null;
+    orbit.followStep(t.x, t.z, t.y, behindYaw);
+  }
+
+  /** Orbit yaw that parks the camera directly behind a unit, looking
+   *  down its forward axis. A unit's forward in world (X, Z) is
+   *  (cos rot, sin rot) — the sim banking kernel's v_forward basis —
+   *  and the orbit eye's ground offset from target is (sin yaw, -cos yaw).
+   *  Placing the eye on the opposite side of the unit solves to this. */
+  private behindYaw(rotation: number): number {
+    return Math.atan2(-Math.cos(rotation), Math.sin(rotation));
   }
 
   centerAfterFirstSnapshot(units: readonly Entity[]): void {
