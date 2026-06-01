@@ -431,6 +431,7 @@
         "mass",
         "health",
         "radius",
+        "armingDelayMs",
         "detonateOnExpiry",
         "hitSound",
         "submunitions",
@@ -460,6 +461,9 @@
         },
         "radius": {
           "$ref": "#/$defs/EntityRadiusConfig"
+        },
+        "armingDelayMs": {
+          "type": "number"
         },
         "detonateOnExpiry": {
           "type": "boolean"
@@ -586,6 +590,7 @@
         "health",
         "launchForce",
         "radius",
+        "armingDelayMs",
         "gravityForceMultiplier"
       ],
       "properties": {
@@ -609,6 +614,9 @@
         },
         "radius": {
           "$ref": "#/$defs/EntityRadiusConfig"
+        },
+        "armingDelayMs": {
+          "type": "number"
         },
         "explosion": {
           "$ref": "#/$defs/ShotExplosion"
@@ -741,6 +749,7 @@
         "isRocketLike",
         "radius",
         "deathExplosionRadius",
+        "armingDelayMs",
         "maxLifespan",
         "detonateOnExpiry",
         "hasExplosion",
@@ -769,6 +778,9 @@
           "$ref": "#/$defs/EntityRadiusConfig"
         },
         "deathExplosionRadius": {
+          "type": "number"
+        },
+        "armingDelayMs": {
           "type": "number"
         },
         "maxLifespan": {

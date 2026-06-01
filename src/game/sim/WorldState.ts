@@ -1159,6 +1159,7 @@ export class WorldState {
       maxLifespan,
       hitEntities: new Set<EntityId>(),
       maxHits,
+      isArmed: projectileType !== 'projectile' || config.shotProfile.runtime.armingDelayMs <= 0,
       hasLeftSource: false,
       homingTargetId: NO_ENTITY_ID,
       lastSentVelX: velocityX,

@@ -329,6 +329,45 @@ export function getEntityAcceleration3d(
   return out;
 }
 
+export function updateProjectileArming(
+  projectile: {
+    projectileType: string;
+    isArmed: boolean;
+    config: { shotProfile: { runtime: { armingDelayMs: number } } };
+    collisionStartX: number | undefined;
+    collisionStartY: number | undefined;
+    collisionStartZ: number | undefined;
+  },
+  previousTimeAliveMs: number,
+  currentTimeAliveMs: number,
+  previousX: number,
+  previousY: number,
+  previousZ: number,
+  currentX: number,
+  currentY: number,
+  currentZ: number,
+): boolean {
+  if (projectile.projectileType !== 'projectile') return true;
+  if (projectile.isArmed) return true;
+
+  const armingDelayMs = Math.max(0, projectile.config.shotProfile.runtime.armingDelayMs);
+  if (currentTimeAliveMs < armingDelayMs) return false;
+
+  let t = 1;
+  const dtMs = currentTimeAliveMs - previousTimeAliveMs;
+  if (dtMs > 1e-6 && armingDelayMs > previousTimeAliveMs) {
+    t = (armingDelayMs - previousTimeAliveMs) / dtMs;
+  } else if (armingDelayMs <= previousTimeAliveMs) {
+    t = 0;
+  }
+  const clampedT = Math.max(0, Math.min(1, t));
+  projectile.isArmed = true;
+  projectile.collisionStartX = previousX + clampedT * (currentX - previousX);
+  projectile.collisionStartY = previousY + clampedT * (currentY - previousY);
+  projectile.collisionStartZ = previousZ + clampedT * (currentZ - previousZ);
+  return true;
+}
+
 export function updateProjectileSourceClearance(
   source: Entity | undefined,
   projectile: { hasLeftSource: boolean; shotSource?: { sourceTurretEntityId: number | null } },

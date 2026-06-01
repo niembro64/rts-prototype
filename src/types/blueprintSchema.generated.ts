@@ -97,6 +97,7 @@ export type ProjectileShotBlueprint = {
   mass: number;
   health: number;
   radius: EntityRadiusConfig;
+  armingDelayMs: number;
   detonateOnExpiry: boolean;
   maxLifespan?: number | null;
   hitSound: SoundEntry | null;
@@ -128,6 +129,7 @@ export type ProjectileShot = {
   health: number;
   launchForce: number;
   radius: EntityRadiusConfig;
+  armingDelayMs: number;
   explosion?: ShotExplosion;
   detonateOnExpiry?: boolean;
   maxLifespan?: number;
@@ -173,6 +175,7 @@ export type ShotRuntimeProfile = {
   isRocketLike: boolean;
   radius: EntityRadiusConfig;
   deathExplosionRadius: number;
+  armingDelayMs: number;
   maxLifespan: number;
   detonateOnExpiry: boolean;
   hasExplosion: boolean;

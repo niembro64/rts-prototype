@@ -21,6 +21,7 @@ const PROJECTILE_EXPLICIT_FIELDS = [
   'name',
   'base',
   'health',
+  'armingDelayMs',
   'hitSound',
   'submunitions',
   'homingTurnRate',
@@ -84,6 +85,11 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
   if (!Number.isFinite(blueprint.health) || blueprint.health <= 0) {
     throw new Error(
       `Shot blueprint ${id} has invalid health: projectile shots must define positive finite health.`,
+    );
+  }
+  if (!Number.isFinite(blueprint.armingDelayMs) || blueprint.armingDelayMs < 0) {
+    throw new Error(
+      `Shot blueprint ${id} has invalid armingDelayMs: expected finite milliseconds >= 0.`,
     );
   }
   if (!Number.isFinite(blueprint.gravityForceMultiplier) || blueprint.gravityForceMultiplier <= 0) {

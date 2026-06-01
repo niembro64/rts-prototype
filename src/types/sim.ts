@@ -636,10 +636,13 @@ export type Projectile = {
   hitEntities: Set<EntityId>;
   maxHits: number;
   hasExploded: boolean | undefined;
+  /** Traveling plasma/rocket shots can only collide/explode after their
+   *  authored arming delay has elapsed. The projectile system flips
+   *  this and resets collisionStart* to the arming point. */
+  isArmed: boolean;
   /** False until the shot's active point has cleared the source unit's
-   *  shot sphere. Traveling projectiles use their center; line shots
-   *  use their endpoint damage point. While false, collision damage and
-   *  explosion effects are suppressed. */
+   *  shot sphere. Source-clearance gating is retained for line shots
+   *  whose endpoint damage starts inside the firing unit. */
   hasLeftSource: boolean;
   /** Sentinel `NO_ENTITY_ID` means this projectile is not homing. */
   homingTargetId: EntityId;

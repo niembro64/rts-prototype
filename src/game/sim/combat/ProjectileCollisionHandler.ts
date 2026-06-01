@@ -207,13 +207,8 @@ function shieldMaterialReflectsProjectile(isRocketShot: boolean): boolean {
 // Reusable empty set for additive area damage (avoids allocating new Set per frame)
 const _emptyExcludeSet = new Set<EntityId>();
 
-// Reusable set for excluding the source entity from splash while projectile is still inside source
-const _sourceExcludeSet = new Set<EntityId>();
-function getSplashExcludes(proj: { hasLeftSource: boolean; sourceEntityId: EntityId }): Set<EntityId> {
-  if (proj.hasLeftSource) return _emptyExcludeSet;
-  _sourceExcludeSet.clear();
-  _sourceExcludeSet.add(proj.sourceEntityId);
-  return _sourceExcludeSet;
+function getSplashExcludes(): Set<EntityId> {
+  return _emptyExcludeSet;
 }
 
 function ensureProjectileHitEntities(proj: { hitEntities: Set<EntityId> }): Set<EntityId> {
@@ -663,8 +658,6 @@ function spawnSubmunitions(
       },
     );
     if (proj.projectile) {
-      // Children start outside any source hitbox (parent already exploded).
-      proj.projectile.hasLeftSource = true;
       // Inherit the parent's altitude at detonation; vertical velocity
       // from the bounce + perturbation is set on the projectile here so
       // gravity integrates from the right initial vz next tick.
@@ -778,6 +771,10 @@ function detonateKilledProjectileShot(
     queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
     return;
   }
+  if (!proj.isArmed) {
+    queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
+    return;
+  }
 
   const config = proj.config;
   const projShot = shot;
@@ -796,7 +793,7 @@ function detonateKilledProjectileShot(
       sourceEntityId: proj.sourceEntityId,
       ownerId: projEntity.ownership.playerId,
       damage: projShot.explosion.damage,
-      excludeEntities: getSplashExcludes(proj),
+      excludeEntities: getSplashExcludes(),
       center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
       radius: projShot.explosion.radius,
       knockbackForce: projShot.explosion.force,
@@ -997,12 +994,6 @@ export function checkProjectileCollisions(
           proj.prevX = projEntity.transform.x;
           proj.prevY = projEntity.transform.y;
           proj.prevZ = projEntity.transform.z;
-          updateProjectileSourceClearance(
-            world.getEntity(proj.sourceEntityId),
-            proj,
-            projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
-            runtimeProfile.radius.collision,
-          );
           proj.lastSentVelX = reflected.x;
           proj.lastSentVelY = reflected.y;
           proj.lastSentVelZ = reflected.z;
@@ -1178,7 +1169,7 @@ export function checkProjectileCollisions(
         const currentY = projEntity.transform.y;
         const currentZ = projEntity.transform.z;
 
-        if (!proj.hasLeftSource) {
+        if (!proj.isArmed) {
           proj.collisionStartX = currentX;
           proj.collisionStartY = currentY;
           proj.collisionStartZ = currentZ;
@@ -1315,7 +1306,7 @@ export function checkProjectileCollisions(
       !reflectedProjectile &&
       !hitShield &&
       proj.projectileType === 'projectile' &&
-      proj.hasLeftSource &&
+      proj.isArmed &&
       projEntity.transform.z <= groundZAtProj;
     if (hitGround) {
       projEntity.transform.z = groundZAtProj;
@@ -1334,7 +1325,7 @@ export function checkProjectileCollisions(
         world.mapWidth, world.mapHeight,
       );
     if (hitWater) {
-      if (proj.hasLeftSource) {
+      if (proj.isArmed) {
         const projRadius = runtimeProfile.radius.collision;
         audioEvents.push({
           type: 'waterSplash',
@@ -1385,7 +1376,7 @@ export function checkProjectileCollisions(
       // Detonation is HP-owned: terminal collision / expiry paths that
       // should explode zeroed projectile HP before reaching this gate.
       const shouldDetonate = healthZero;
-      if (shouldDetonate && proj.hasLeftSource && !proj.hasExploded) {
+      if (shouldDetonate && proj.isArmed && !proj.hasExploded) {
         const projShot = config.shot as ProjectileShot;
         const hasSplash = runtimeProfile.hasExplosion;
         const hasSubs = runtimeProfile.hasSubmunitions;
@@ -1395,7 +1386,7 @@ export function checkProjectileCollisions(
           let splashHitCount = 0;
 
           if (hasSplash) {
-            const splashExcludes = getSplashExcludes(proj);
+            const splashExcludes = getSplashExcludes();
             // Single boolean AoE — every unit whose shot collider
             // intersects the explosion sphere takes the full damage
             // and full knockback force; nothing outside the sphere.
@@ -1506,7 +1497,7 @@ export function checkProjectileCollisions(
 
       // Add projectile expire event for traveling projectiles (not beams).
       // This creates an explosion effect at projectile termination point.
-      if (proj.projectileType === 'projectile' && proj.hasLeftSource && !proj.hasExploded) {
+      if (proj.projectileType === 'projectile' && proj.isArmed && !proj.hasExploded) {
         const projRadius = runtimeProfile.radius.collision;
         audioEvents.push({
           type: 'projectileExpire',

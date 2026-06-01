@@ -32,7 +32,7 @@ import {
   getEntityVelocity3d,
   getProjectileLaunchSpeed,
   turretMaskIncludes,
-  updateProjectileSourceClearance,
+  updateProjectileArming,
   updateWeaponWorldKinematics,
 } from './combatUtils';
 import { isBuildBlockingActivation } from '../buildableHelpers';
@@ -827,7 +827,7 @@ function ensureTravelingProjectileBatchCapacity(required: number): void {
 // Gravity constant lives in config.ts so it's shared with the physics
 // engine, client dead-reckoning, debris, and explosion sparks.
 
-function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: number): void {
+function _updatePackedProjectilesJS(dtMs: number, dtSec: number): void {
   // Phase 5a — three-pass structure so the inner ballistic integrate
   // can run in one batched WASM call:
   //   Pass 1: validate slot, sync external mutations into pool,
@@ -881,7 +881,7 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
   getSimWasm()!.poolStepPackedProjectilesBatch(_packedProjectileCount, dtSec);
 
   // Pass 3: scatter post-integrate state back to JS-side mirrors,
-  // then the per-projectile source-clearance check.
+  // then arm projectiles whose authored delay elapsed during this tick.
   for (let slot = 0; slot < _packedProjectileCount; slot++) {
     const entity = _packedProjectileEntities[slot];
     if (!entity || !entity.projectile) continue;
@@ -900,17 +900,15 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
     proj.velocityY = vy;
     proj.velocityZ = vz;
 
-    const wasSourceCleared = !!proj.hasLeftSource;
-    if (updateProjectileSourceClearance(
-      world.getEntity(proj.sourceEntityId),
+    updateProjectileArming(
       proj,
+      proj.timeAlive - dtMs,
+      proj.timeAlive,
+      proj.prevX ?? x,
+      proj.prevY ?? y,
+      proj.prevZ ?? z,
       x, y, z,
-      proj.config.shotProfile.runtime.radius.collision,
-    ) && !wasSourceCleared) {
-      proj.collisionStartX = x;
-      proj.collisionStartY = y;
-      proj.collisionStartZ = z;
-    }
+    );
   }
 }
 
@@ -1122,17 +1120,15 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     proj.velocityY = vy;
     proj.velocityZ = vz;
 
-    const wasSourceCleared = !!proj.hasLeftSource;
-    if (updateProjectileSourceClearance(
-      world.getEntity(proj.sourceEntityId),
+    updateProjectileArming(
       proj,
+      proj.timeAlive - dtMs,
+      proj.timeAlive,
+      proj.prevX ?? x,
+      proj.prevY ?? y,
+      proj.prevZ ?? z,
       x, y, z,
-      proj.config.shotProfile.runtime.radius.collision,
-    ) && !wasSourceCleared) {
-      proj.collisionStartX = x;
-      proj.collisionStartY = y;
-      proj.collisionStartZ = z;
-    }
+    );
 
     // Visual rotation + sparse velocity-update events: only homing
     // projectiles need either. Non-homing shots get their rotation
@@ -1183,7 +1179,7 @@ export function updateProjectiles(
   // Position integration for traveling projectiles is Rust-owned:
   // packed ballistic shots step in the projectile pool, while guided
   // and D-gun shots pack acceleration rows for a second batch.
-  _updatePackedProjectilesJS(world, dtMs, dtSec);
+  _updatePackedProjectilesJS(dtMs, dtSec);
   _updateTravelingProjectilesJS(world, dtMs, dtSec);
 
   for (const entity of world.getLineProjectiles()) {

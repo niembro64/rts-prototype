@@ -520,6 +520,7 @@ function buildShotConfig(
     health: shotBlueprint.health,
     launchForce,
     radius: shotBlueprint.radius,
+    armingDelayMs: shotBlueprint.armingDelayMs,
     explosion: deriveShotExplosion(shotBlueprint.base.deathExplosion),
     detonateOnExpiry: shotBlueprint.detonateOnExpiry || undefined,
     maxLifespan: Number.isFinite(shotBlueprint.maxLifespan)
