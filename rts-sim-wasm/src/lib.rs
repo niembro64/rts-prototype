@@ -12924,7 +12924,6 @@ struct CombatTargetingPool {
     turret_max_time_sec: Vec<f64>,
     turret_ground_aim_fraction: Vec<f64>,
     turret_under_only: Vec<u8>,
-    turret_lock_on_turret: Vec<u8>,
     turret_blueprint_code: Vec<u8>,
     turret_los_blocked_ticks: Vec<u16>,
     turret_config_flags: Vec<u16>,
@@ -13059,7 +13058,6 @@ impl CombatTargetingPool {
             turret_max_time_sec: Vec::new(),
             turret_ground_aim_fraction: Vec::new(),
             turret_under_only: Vec::new(),
-            turret_lock_on_turret: Vec::new(),
             turret_blueprint_code: Vec::new(),
             turret_los_blocked_ticks: Vec::new(),
             turret_config_flags: Vec::new(),
@@ -13182,7 +13180,6 @@ impl CombatTargetingPool {
             self.turret_max_time_sec.resize(turret_needed, 0.0);
             self.turret_ground_aim_fraction.resize(turret_needed, 0.0);
             self.turret_under_only.resize(turret_needed, 0);
-            self.turret_lock_on_turret.resize(turret_needed, 0);
             self.turret_blueprint_code
                 .resize(turret_needed, CT_BLUEPRINT_CODE_NONE);
             self.turret_los_blocked_ticks.resize(turret_needed, 0);
@@ -13608,7 +13605,6 @@ pub fn combat_targeting_set_turret(
     max_time_sec: f64,
     ground_aim_fraction: f64,
     under_only: u8,
-    lock_on_turret: u8,
     turret_blueprint_code: u8,
     lockon_relationship_mask: u8,
     lockon_entity_family_mask: u8,
@@ -13664,7 +13660,6 @@ pub fn combat_targeting_set_turret(
     pool.turret_max_time_sec[global_idx] = max_time_sec;
     pool.turret_ground_aim_fraction[global_idx] = ground_aim_fraction;
     pool.turret_under_only[global_idx] = under_only;
-    pool.turret_lock_on_turret[global_idx] = lock_on_turret;
     pool.turret_blueprint_code[global_idx] = turret_blueprint_code;
     pool.turret_lockon_relationship_mask[global_idx] = lockon_relationship_mask;
     pool.turret_lockon_entity_family_mask[global_idx] = lockon_entity_family_mask;
@@ -14966,6 +14961,60 @@ fn combat_targeting_turret_lockon_allows_body_entity(
 }
 
 #[inline]
+fn combat_targeting_turret_lockon_includes_turret_family(
+    pool: &CombatTargetingPool,
+    source_turret_idx: usize,
+) -> bool {
+    (pool.turret_lockon_entity_family_mask[source_turret_idx] & CT_LOCK_ON_FAM_INCLUDE_TURRETS)
+        != 0
+}
+
+#[inline]
+fn combat_targeting_entity_lockon_allows_target_turret(
+    pool: &CombatTargetingPool,
+    source_entity_slot: usize,
+    target_turret_idx: usize,
+) -> bool {
+    combat_targeting_lockon_masks_allow_target_turret(
+        pool.entity_lockon_entity_family_mask[source_entity_slot],
+        pool.entity_lockon_turret_mask[source_entity_slot],
+        pool.turret_blueprint_code[target_turret_idx],
+    )
+}
+
+#[inline]
+fn combat_targeting_entity_lockon_allows_any_target_turret(
+    pool: &CombatTargetingPool,
+    source_entity_slot: usize,
+    target_entity_slot: usize,
+) -> bool {
+    if source_entity_slot >= pool.entity_lockon_entity_family_mask.len()
+        || target_entity_slot >= pool.turret_count_per_entity.len()
+        || (pool.entity_lockon_entity_family_mask[source_entity_slot]
+            & CT_LOCK_ON_FAM_INCLUDE_TURRETS)
+            == 0
+    {
+        return false;
+    }
+
+    let count = (pool.turret_count_per_entity[target_entity_slot] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
+    for ti in 0..count {
+        let idx = combat_targeting_turret_global_idx(target_entity_slot as u32, ti as u32);
+        if combat_targeting_turret_is_pickable_aim_target(pool, idx)
+            && combat_targeting_entity_lockon_allows_target_turret(
+                pool,
+                source_entity_slot,
+                idx,
+            )
+        {
+            return true;
+        }
+    }
+    false
+}
+
+#[inline]
 fn combat_targeting_entity_allowed_relationships(
     pool: &CombatTargetingPool,
     source_entity_slot: usize,
@@ -15001,13 +15050,21 @@ fn combat_targeting_entity_may_lock_entity_slot(
     ) {
         return false;
     }
-    combat_targeting_lockon_masks_allow_body_entity(
+    if combat_targeting_lockon_masks_allow_body_entity(
         pool,
         pool.entity_lockon_entity_family_mask[source_entity_slot],
         pool.entity_lockon_building_mask[source_entity_slot],
         pool.entity_lockon_tower_mask[source_entity_slot],
         pool.entity_lockon_unit_mask[source_entity_slot],
         pool.entity_lockon_shot_mask[source_entity_slot],
+        target_entity_slot,
+    ) {
+        return true;
+    }
+
+    combat_targeting_entity_lockon_allows_any_target_turret(
+        pool,
+        source_entity_slot,
         target_entity_slot,
     )
 }
@@ -15038,7 +15095,12 @@ fn combat_targeting_turret_may_lock_entity_slot(
         return false;
     }
 
-    if pool.turret_lock_on_turret[source_turret_idx] != 0 {
+    if combat_targeting_turret_lockon_allows_body_entity(pool, source_turret_idx, target_entity_slot)
+    {
+        return true;
+    }
+
+    if combat_targeting_turret_lockon_includes_turret_family(pool, source_turret_idx) {
         let source_entity_id = pool.entity_id[source_entity_slot];
         return combat_targeting_pick_target_aim_turret_idx(
             pool,
@@ -15050,7 +15112,7 @@ fn combat_targeting_turret_may_lock_entity_slot(
         .is_some();
     }
 
-    combat_targeting_turret_lockon_allows_body_entity(pool, source_turret_idx, target_entity_slot)
+    false
 }
 
 fn combat_targeting_entity_has_turret_that_may_lock_entity_slot(
@@ -15308,7 +15370,7 @@ fn combat_targeting_resolve_aim_point_from_slab(
     mount_z: f64,
 ) -> (f64, f64, f64) {
     let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx);
-    if pool.turret_lock_on_turret[idx] != 0 {
+    if combat_targeting_turret_lockon_includes_turret_family(pool, idx) {
         if let Some(target_turret_idx) = combat_targeting_pick_target_aim_turret_idx(
             pool,
             target_entity_slot,
@@ -17801,9 +17863,9 @@ pub fn combat_targeting_auto_mode_spatial_candidate_tick(
 ///
 /// The flat per-turret arrays are indexed as
 /// `entity_index * COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY + turret`.
-/// TypeScript still resolves aim points during this migration because
-/// lockOnToTurret and transitional JS turret objects have not moved
-/// into the slab yet.
+/// TypeScript still resolves aim points during this migration where
+/// compatibility wrappers pass precomputed aim arrays; the scheduled path
+/// resolves body/AABB/turret-family aim points directly from the slab.
 #[wasm_bindgen]
 pub fn combat_targeting_auto_mode_spatial_candidate_tick_batch(
     entity_slots: &[u32],
@@ -18666,7 +18728,7 @@ pub fn combat_targeting_rank_target(
 
 /// AIM-08.5 — Rust-internal candidate fire-gate. Replaces the
 /// JS `passesWeaponFireGates` callback. Resolves the candidate aim
-/// point from the slab (body/AABB or lockOnToTurret), then dispatches
+/// point from the slab (body/AABB or turret-family mount), then dispatches
 /// to the shared `compute_turret_gates_for_aim_point` helper. Returns
 /// 1 if all three gates (LOS, ballistic, FF) pass.
 #[inline]
@@ -28348,7 +28410,6 @@ mod lock_on_inclusion_tests {
         target_id: i32,
         flags: u16,
         dps: f32,
-        lock_on_turret: u8,
         blueprint_code: u8,
         relationship_mask: u8,
         family_mask: u8,
@@ -28365,7 +28426,6 @@ mod lock_on_inclusion_tests {
                 target_id: -1,
                 flags: CT_TURRET_CFG_HOST_DIRECTED,
                 dps: 10.0,
-                lock_on_turret: 0,
                 blueprint_code: TURRET_CODE_A,
                 relationship_mask: REL_ALL,
                 family_mask: FAM_ALL,
@@ -28508,7 +28568,6 @@ mod lock_on_inclusion_tests {
             0.0,
             200.0,
             0.0,
-            radius as f32,
             priority_target_id,
             0,
             0.0,
@@ -28692,7 +28751,6 @@ mod lock_on_inclusion_tests {
             0.0,
             0.0,
             0,
-            spec.lock_on_turret,
             spec.blueprint_code,
             spec.relationship_mask,
             spec.family_mask,
@@ -29023,18 +29081,11 @@ mod lock_on_inclusion_tests {
             ),
         ];
 
-        for (label, owner, family, blueprint_code, lock_on_turret) in cases {
+        for (label, owner, family, blueprint_code, is_turret_target) in cases {
             reset_pools();
             stamp_source(-1);
-            stamp_turret(
-                SOURCE_SLOT,
-                0,
-                TurretSpec {
-                    lock_on_turret: lock_on_turret as u8,
-                    ..TurretSpec::default()
-                },
-            );
-            if lock_on_turret {
+            stamp_turret(SOURCE_SLOT, 0, TurretSpec::default());
+            if is_turret_target {
                 stamp_turret_target(1, 201, owner, 20.0, &[TURRET_CODE_A], false);
             } else {
                 stamp_body_target(1, 201, owner, 20.0, family, blueprint_code);
@@ -29211,7 +29262,6 @@ mod lock_on_inclusion_tests {
             0,
             TurretSpec {
                 flags: CT_TURRET_CFG_PASSIVE | CT_TURRET_CFG_SHOT_IS_FORCE,
-                lock_on_turret: 1,
                 relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 family_mask: CT_LOCK_ON_FAM_INCLUDE_TURRETS,
                 ..TurretSpec::default()
@@ -29251,7 +29301,6 @@ mod lock_on_inclusion_tests {
             0,
             TurretSpec {
                 flags: CT_TURRET_CFG_PASSIVE | CT_TURRET_CFG_SHOT_IS_FORCE,
-                lock_on_turret: 1,
                 relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 family_mask: CT_LOCK_ON_FAM_INCLUDE_TURRETS,
                 ..TurretSpec::default()
@@ -29285,7 +29334,6 @@ mod lock_on_inclusion_tests {
             0,
             TurretSpec {
                 flags: CT_TURRET_CFG_PASSIVE | CT_TURRET_CFG_SHOT_IS_FORCE,
-                lock_on_turret: 1,
                 relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 family_mask: CT_LOCK_ON_FAM_INCLUDE_TURRETS,
                 ..TurretSpec::default()
@@ -29413,9 +29461,9 @@ mod lock_on_inclusion_tests {
             SOURCE_SLOT,
             0,
             TurretSpec {
-                lock_on_turret: 1,
                 turret_mask: 1u32 << TURRET_CODE_B,
                 relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
+                family_mask: CT_LOCK_ON_FAM_INCLUDE_TURRETS,
                 ..TurretSpec::default()
             },
         );

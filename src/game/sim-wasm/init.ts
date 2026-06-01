@@ -1745,7 +1745,6 @@ export interface CombatTargetingApi {
     maxTimeSec: number,
     groundAimFraction: number,
     underOnly: number,
-    lockOnTurret: number,
     turretBlueprintCode: number,
     lockonRelationshipMask: number,
     lockonEntityFamilyMask: number,
@@ -2009,8 +2008,8 @@ export interface CombatTargetingApi {
     gravity: number,
   ) => void;
   /** AIM-08.5 — unified attack-entity priority gate compute + FSM
-   *  apply. TS resolves per-turret aim points (so lockOnToBody AABB
-   *  clamps and lockOnToTurret stay in one place); Rust does LOS /
+   *  apply. TS resolves compatibility-wrapper aim points; the scheduled
+   *  Rust path resolves body/AABB/turret-family aim points from the slab and does LOS /
    *  ballistic / FF / shield-panel / FSM. Passive-mirror `mirror_valid`
    *  is computed in Rust by walking the target's turrets via the slab —
    *  no JS pre-pass needed. */

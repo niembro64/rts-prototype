@@ -52,7 +52,6 @@ export type {
   SubmunitionSpec,
   TreadConfig,
   TurretAimAngleType,
-  TurretAimLockOnType,
   TurretAimStyle,
   TurretBlueprint,
   TurretLockOnEntityFamilyInclusion,

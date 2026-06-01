@@ -336,15 +336,8 @@ pub enum TurretAimAngleType {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum TurretAimLockOnType {
-    LockOnToTurret,
-    LockOnToBody,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub struct TurretAimStyle {
     pub angleType: TurretAimAngleType,
-    pub lockOnType: TurretAimLockOnType,
 }
 
 #[derive(Clone, Debug, PartialEq)]

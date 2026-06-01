@@ -420,11 +420,6 @@ function validateTurretAimStyle(
         `Turret ${turretBlueprintId} incomingThreatReflector profile requires aimStyle.angleType "rayBisectTurretAndBody"`,
       );
     }
-    if (turretBlueprint.aimStyle.lockOnType !== 'lockOnToTurret') {
-      throw new Error(
-        `Turret ${turretBlueprintId} incomingThreatReflector profile requires lockOnType "lockOnToTurret"`,
-      );
-    }
     if (!turretBlueprint.passive) {
       throw new Error(
         `Turret ${turretBlueprintId} incomingThreatReflector profile requires passive shield-panel targeting`,
@@ -455,9 +450,9 @@ function validateTurretAimStyle(
       }
       return;
     case 'rayBisectTurretAndBody':
-      if (turretBlueprint.aimStyle.lockOnType !== 'lockOnToTurret') {
+      if (!turretBlueprint.includeLockOnLevel0Entities.includes('turrets')) {
         throw new Error(
-          `Turret ${turretBlueprintId} uses aimStyle.angleType "rayBisectTurretAndBody" without lockOnType "lockOnToTurret"`,
+          `Turret ${turretBlueprintId} uses aimStyle.angleType "rayBisectTurretAndBody" without turret-family lock-on inclusions`,
         );
       }
       return;

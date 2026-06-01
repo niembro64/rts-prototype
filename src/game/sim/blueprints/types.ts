@@ -38,7 +38,6 @@ export type {
   ConstructionEmitterSize,
   ConstructionEmitterVisualSpec,
   TurretAimAngleType,
-  TurretAimLockOnType,
   TurretAimStyle,
   LockOnInclusionObject,
   TurretLockOnRelationshipInclusion,

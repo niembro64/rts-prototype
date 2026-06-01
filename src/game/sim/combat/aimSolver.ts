@@ -1,10 +1,13 @@
 import type { Vec3 } from '@/types/vec2';
-import type { TurretAimLockOnType } from '@/types/blueprints';
 import type { Entity, ProjectileShot, Turret, TurretConfig } from '../types';
 import { getShotMaxLifespan, isProjectileShot } from '../types';
 import { clamp, getTransformCosSin } from '../../math';
 import { GRAVITY } from '../../../config';
-import { getSimWasm, type SimWasm } from '../../sim-wasm/init';
+import {
+  CT_LOCK_ON_FAM_INCLUDE_TURRETS,
+  getSimWasm,
+  type SimWasm,
+} from '../../sim-wasm/init';
 import {
   getEntityAcceleration3d,
   getEntityPosition3d,
@@ -23,7 +26,7 @@ import { getUnitGroundZ } from '../unitGeometry';
 type GroundHeightLookup = (x: number, y: number) => number;
 
 type ResolveTargetAimPointOptions = {
-  lockOnType: TurretAimLockOnType | undefined;
+  aimAtTargetTurret: boolean | undefined;
   source: Entity | undefined;
   sourceTurretId: number | undefined;
   currentTick: number | undefined;
@@ -180,9 +183,9 @@ function resolveTargetTurretAimPoint(
 
 /**
  * Resolve the point a turret should aim at on a target. Most weapons
- * lock onto the gameplay collider; lockOnToTurret instead resolves the
- * target's most relevant damaging turret mount. Buildings are AABBs, so
- * body lock-on uses the closest point on that box from the launch origin,
+ * aim at the gameplay collider; turret-family inclusions instead resolve
+ * the target's most relevant damaging turret mount. Buildings are AABBs, so
+ * body aiming uses the closest point on that box from the launch origin,
  * not always the building center. This is what keeps weapons from visually
  * shooting over a building sitting at a different terrain height.
  */
@@ -194,11 +197,11 @@ export function resolveTargetAimPoint(
   out: Vec3,
   options: ResolveTargetAimPointOptions | undefined = undefined,
 ): Vec3 {
-  const lockOnType = options === undefined ? undefined : options.lockOnType;
+  const aimAtTargetTurret = options === undefined ? false : options.aimAtTargetTurret === true;
   const source = options === undefined ? undefined : options.source;
   const currentTick = options === undefined ? undefined : options.currentTick;
   if (
-    lockOnType === 'lockOnToTurret' &&
+    aimAtTargetTurret &&
     resolveTargetTurretAimPoint(target, source, options?.sourceTurretId, currentTick, out)
   ) {
     return out;
@@ -234,6 +237,10 @@ export function resolveTargetAimPoint(
   // Units and projectiles use their transform as the center of their
   // 3D gameplay collider. For spheres this is the stable aim point.
   return getEntityPosition3d(target, out);
+}
+
+function configTargetsTurretFamily(config: TurretConfig): boolean {
+  return (config.lockOnEntityFamilyIncludeMask & CT_LOCK_ON_FAM_INCLUDE_TURRETS) !== 0;
 }
 
 function writeTurretAimOrigin(
@@ -378,7 +385,7 @@ export function solveDirectTurretAim(
     mountX, mountY, mountZ,
     out.aim,
     {
-      lockOnType: config.aimStyle.lockOnType,
+      aimAtTargetTurret: configTargetsTurretFamily(config),
       source,
       sourceTurretId,
       currentTick,
@@ -430,7 +437,7 @@ function solveRayBisectTurretAndBodyAim(
     mountX, mountY, mountZ,
     _bisectEnemyBodyPoint,
     {
-      lockOnType: 'lockOnToBody',
+      aimAtTargetTurret: false,
       source,
       sourceTurretId: undefined,
       currentTick,
@@ -680,7 +687,7 @@ export function solveProjectileTurretAim(
     mountX, mountY, mountZ,
     out.aim,
     {
-      lockOnType: weapon.config.aimStyle.lockOnType,
+      aimAtTargetTurret: configTargetsTurretFamily(weapon.config),
       source,
       sourceTurretId: weapon.id,
       currentTick,

@@ -698,7 +698,6 @@ function stampCombatTargetingEntityInto(
       maxTimeSec,
       t.config.groundAimFraction ?? 0,
       angleType === 'ballisticArcLowOnlyUnder' ? 1 : 0,
-      t.config.aimStyle.lockOnType === 'lockOnToTurret' ? 1 : 0,
       turretBlueprintIdToCode(t.config.turretBlueprintId),
       t.config.lockOnRelationshipIncludeMask,
       t.config.lockOnEntityFamilyIncludeMask,

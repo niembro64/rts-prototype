@@ -46,8 +46,7 @@
     "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
-      "angleType": "ballisticArcLow",
-      "lockOnType": "lockOnToBody"
+      "angleType": "ballisticArcLow"
     },
     "kind": "attack",
     "emissionKind": "shot",
@@ -111,8 +110,7 @@
     "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
-      "angleType": "ballisticArcLow",
-      "lockOnType": "lockOnToBody"
+      "angleType": "ballisticArcLow"
     },
     "kind": "attack",
     "emissionKind": "shot",
@@ -168,8 +166,7 @@
     "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
-      "angleType": "ballisticArcLow",
-      "lockOnType": "lockOnToBody"
+      "angleType": "ballisticArcLow"
     },
     "kind": "attack",
     "emissionKind": "shot",
@@ -225,8 +222,7 @@
     "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
-      "angleType": "ballisticArcHigh",
-      "lockOnType": "lockOnToBody"
+      "angleType": "ballisticArcHigh"
     },
     "kind": "attack",
     "emissionKind": "shot",
@@ -279,8 +275,7 @@
     "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
-      "angleType": "ballisticArcLow",
-      "lockOnType": "lockOnToBody"
+      "angleType": "ballisticArcLow"
     },
     "kind": "attack",
     "emissionKind": "shot",
@@ -344,8 +339,7 @@
     "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
-      "angleType": "ballisticArcHigh",
-      "lockOnType": "lockOnToBody"
+      "angleType": "ballisticArcHigh"
     },
     "kind": "attack",
     "emissionKind": "shot",
@@ -409,8 +403,7 @@
     "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
-      "angleType": "ballisticArcLow",
-      "lockOnType": "lockOnToBody"
+      "angleType": "ballisticArcLow"
     },
     "kind": "attack",
     "emissionKind": "shot",
@@ -461,8 +454,7 @@
     "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
-      "angleType": "rayDirect",
-      "lockOnType": "lockOnToBody"
+      "angleType": "rayDirect"
     },
     "kind": "attack",
     "emissionKind": "shot",
@@ -513,8 +505,7 @@
     "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
-      "angleType": "rayBisectTurretAndBody",
-      "lockOnType": "lockOnToTurret"
+      "angleType": "rayBisectTurretAndBody"
     },
     "kind": "attack",
     "emissionKind": "shield",
@@ -565,8 +556,7 @@
     "headOnly": true,
     "constructionEmitter": null,
     "aimStyle": {
-      "angleType": "rayDirect",
-      "lockOnType": "lockOnToBody"
+      "angleType": "rayDirect"
     },
     "kind": "attack",
     "emissionKind": "ray",
@@ -617,8 +607,7 @@
     "headOnly": true,
     "constructionEmitter": null,
     "aimStyle": {
-      "angleType": "rayDirect",
-      "lockOnType": "lockOnToBody"
+      "angleType": "rayDirect"
     },
     "kind": "attack",
     "emissionKind": "ray",
@@ -669,8 +658,7 @@
     "headOnly": true,
     "constructionEmitter": null,
     "aimStyle": {
-      "angleType": "rayDirect",
-      "lockOnType": "lockOnToBody"
+      "angleType": "rayDirect"
     },
     "kind": "attack",
     "emissionKind": "ray",
@@ -730,8 +718,7 @@
     "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
-      "angleType": "rayDirect",
-      "lockOnType": "lockOnToBody"
+      "angleType": "rayDirect"
     },
     "kind": "attack",
     "emissionKind": "shield",
@@ -798,8 +785,7 @@
       }
     },
     "aimStyle": {
-      "angleType": "rayDirect",
-      "lockOnType": "lockOnToBody"
+      "angleType": "rayDirect"
     },
     "kind": "construction",
     "emissionKind": null,
@@ -850,8 +836,7 @@
     "headOnly": true,
     "constructionEmitter": null,
     "aimStyle": {
-      "angleType": "rayDirect",
-      "lockOnType": "lockOnToBody"
+      "angleType": "rayDirect"
     },
     "kind": "attack",
     "emissionKind": "ray",
@@ -908,8 +893,7 @@
     "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
-      "angleType": "ballisticArcLow",
-      "lockOnType": "lockOnToBody"
+      "angleType": "ballisticArcLow"
     },
     "kind": "attack",
     "emissionKind": "shot",
@@ -966,8 +950,7 @@
     "headOnly": true,
     "constructionEmitter": null,
     "aimStyle": {
-      "angleType": "rayDirect",
-      "lockOnType": "lockOnToBody"
+      "angleType": "rayDirect"
     },
     "kind": "attack",
     "emissionKind": "shot",
@@ -1020,8 +1003,7 @@
     "headOnly": true,
     "constructionEmitter": null,
     "aimStyle": {
-      "angleType": "rayDirect",
-      "lockOnType": "lockOnToBody"
+      "angleType": "rayDirect"
     },
     "kind": "attack",
     "emissionKind": "shot",

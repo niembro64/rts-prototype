@@ -957,24 +957,14 @@
         "ballisticArcHigh"
       ]
     },
-    "TurretAimLockOnType": {
-      "enum": [
-        "lockOnToTurret",
-        "lockOnToBody"
-      ]
-    },
     "TurretAimStyle": {
       "type": "object",
       "required": [
-        "angleType",
-        "lockOnType"
+        "angleType"
       ],
       "properties": {
         "angleType": {
           "$ref": "#/$defs/TurretAimAngleType"
-        },
-        "lockOnType": {
-          "$ref": "#/$defs/TurretAimLockOnType"
         }
       },
       "additionalProperties": false

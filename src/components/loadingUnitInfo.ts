@@ -310,7 +310,7 @@ function describeTurret(turret: Turret, index: number): LoadingUnitInfoNode {
     stat('Range', `fire ${rangePair(turret.ranges.fire.max)}${turret.ranges.tracking ? ` / track ${rangePair(turret.ranges.tracking)}` : ''}`),
     stat('Cooldown', config.cooldown > 0 ? ms(config.cooldown) : 'continuous'),
     stat('Firepower', firepower.sustainedDps > 0 ? `${fmt(firepower.sustainedDps, 1)} DPS` : 'utility'),
-    stat('Aim', `${config.aimStyle.angleType}, ${config.aimStyle.lockOnType}`),
+    stat('Aim', config.aimStyle.angleType),
     stat('Line of sight', config.requiresNonObstructedLineOfSight ? 'required' : 'not required'),
     stat('Targeting', config.hostDirected ? 'host-directed' : 'autonomous'),
   ];

@@ -229,11 +229,8 @@ export type TurretRadiusConfig = EntityRadiusConfig;
 
 export type TurretAimAngleType = 'rayDirect' | 'rayBisectTurretAndBody' | 'ballisticArcLow' | 'ballisticArcLowOnlyUnder' | 'ballisticArcHigh';
 
-export type TurretAimLockOnType = 'lockOnToTurret' | 'lockOnToBody';
-
 export type TurretAimStyle = {
   angleType: TurretAimAngleType;
-  lockOnType: TurretAimLockOnType;
 };
 
 export type TurretLockOnRelationshipInclusion = 'friendly_entities' | 'enemy_entities';
