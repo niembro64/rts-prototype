@@ -1632,9 +1632,10 @@ export const CT_TARGETING_TICK_MODE_SKIP = 255;
  *  these once per tick before the scheduled Rust targeting batch
  *  runs; AIM-08.2..5 added the SoA kernels that read from them, and
  *  the slab is now authoritative for targeting FSM state.
- *  Ranges land pre-squared so the kernel can compare against distSq
- *  without re-multiplying; `outermostAcquire` is the raw radius the
- *  broadphase spatial query wants. */
+ *  Ranges land pre-squared as authored radii. Targeting kernels apply
+ *  them as vertical cylinders: horizontal radius R, top cap mount.z + R,
+ *  no lower cap; `outermostAcquire` is the raw radius the broadphase
+ *  spatial query wants. */
 export interface CombatTargetingApi {
   init: (initialEntityCapacity: number) => void;
   clear: () => void;
@@ -1926,7 +1927,9 @@ export interface CombatTargetingApi {
     seedShieldPanelScores: Float64Array,
   ) => number;
   /** AIM-08.3 — Rust target preference rank helper. `rankMode`: 0 =
-   *  fire-only, 1 = acquisition; `edge`: 0 = acquire, 1 = release. */
+   *  fire-only, 1 = acquisition; `edge`: 0 = acquire, 1 = release.
+   *  `distSq` is horizontal distance squared; this compatibility helper
+   *  assumes the target is inside the cylinder top cap. */
   readonly rankTarget: (
     rankMode: number,
     edge: number,

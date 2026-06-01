@@ -850,7 +850,11 @@ fn construction_advance_piece_hp(
     alive: bool,
     starts_at_frame_one: bool,
 ) -> f64 {
-    let current = if current_hp.is_finite() { current_hp } else { 0.0 };
+    let current = if current_hp.is_finite() {
+        current_hp
+    } else {
+        0.0
+    };
     if !alive {
         return current;
     }
@@ -1121,8 +1125,7 @@ pub fn economy_apply_income_credits(
                 max_exclusive = max_exclusive.max(player_id + 1);
             }
             ECONOMY_RESOURCE_METAL_CODE => {
-                if player_id >= metal_curr_by_player.len()
-                    || player_id >= metal_max_by_player.len()
+                if player_id >= metal_curr_by_player.len() || player_id >= metal_max_by_player.len()
                 {
                     continue;
                 }
@@ -1886,11 +1889,7 @@ pool_ptr_export!(pool_half_z_ptr, half_z, f64);
 pool_ptr_export!(pool_inv_mass_ptr, inv_mass, f64);
 pool_ptr_export!(pool_restitution_ptr, restitution, f64);
 pool_ptr_export!(pool_ground_offset_ptr, ground_offset, f64);
-pool_ptr_export!(
-    pool_ground_friction_scale_ptr,
-    ground_friction_scale,
-    f64
-);
+pool_ptr_export!(pool_ground_friction_scale_ptr, ground_friction_scale, f64);
 pool_ptr_export!(pool_sleep_ticks_ptr, sleep_ticks, f64);
 pool_ptr_export!(pool_flags_ptr, flags, u8);
 pool_ptr_export!(pool_entity_id_ptr, entity_id, i32);
@@ -2341,8 +2340,7 @@ pub fn stuck_replan_step_batch(
     let mut replan_count = 0_u32;
     for i in 0..count {
         let slot = slots[i] as usize;
-        let (body_vx, body_vy) = if slot < p.vel_x.len()
-            && p.flags[slot] & BODY_FLAG_OCCUPIED != 0
+        let (body_vx, body_vy) = if slot < p.vel_x.len() && p.flags[slot] & BODY_FLAG_OCCUPIED != 0
         {
             (p.vel_x[slot], p.vel_y[slot])
         } else {
@@ -6420,15 +6418,55 @@ fn terrain_append_triangle_children(tri: TerrainHierTri, out: &mut Vec<TerrainHi
     }
     let (i, j) = (tri.i, tri.j);
     if !tri.down {
-        out.push(TerrainHierTri { i, j, side: half, down: false });
-        out.push(TerrainHierTri { i: i + half, j, side: half, down: false });
-        out.push(TerrainHierTri { i, j: j + half, side: half, down: false });
-        out.push(TerrainHierTri { i, j, side: half, down: true });
+        out.push(TerrainHierTri {
+            i,
+            j,
+            side: half,
+            down: false,
+        });
+        out.push(TerrainHierTri {
+            i: i + half,
+            j,
+            side: half,
+            down: false,
+        });
+        out.push(TerrainHierTri {
+            i,
+            j: j + half,
+            side: half,
+            down: false,
+        });
+        out.push(TerrainHierTri {
+            i,
+            j,
+            side: half,
+            down: true,
+        });
     } else {
-        out.push(TerrainHierTri { i: i + half, j, side: half, down: true });
-        out.push(TerrainHierTri { i, j: j + half, side: half, down: true });
-        out.push(TerrainHierTri { i: i + half, j: j + half, side: half, down: true });
-        out.push(TerrainHierTri { i: i + half, j: j + half, side: half, down: false });
+        out.push(TerrainHierTri {
+            i: i + half,
+            j,
+            side: half,
+            down: true,
+        });
+        out.push(TerrainHierTri {
+            i,
+            j: j + half,
+            side: half,
+            down: true,
+        });
+        out.push(TerrainHierTri {
+            i: i + half,
+            j: j + half,
+            side: half,
+            down: true,
+        });
+        out.push(TerrainHierTri {
+            i: i + half,
+            j: j + half,
+            side: half,
+            down: false,
+        });
     }
 }
 
@@ -6439,15 +6477,55 @@ fn terrain_push_children_for_stack(tri: TerrainHierTri, stack: &mut Vec<TerrainH
     }
     let (i, j) = (tri.i, tri.j);
     if !tri.down {
-        stack.push(TerrainHierTri { i, j, side: half, down: true });
-        stack.push(TerrainHierTri { i, j: j + half, side: half, down: false });
-        stack.push(TerrainHierTri { i: i + half, j, side: half, down: false });
-        stack.push(TerrainHierTri { i, j, side: half, down: false });
+        stack.push(TerrainHierTri {
+            i,
+            j,
+            side: half,
+            down: true,
+        });
+        stack.push(TerrainHierTri {
+            i,
+            j: j + half,
+            side: half,
+            down: false,
+        });
+        stack.push(TerrainHierTri {
+            i: i + half,
+            j,
+            side: half,
+            down: false,
+        });
+        stack.push(TerrainHierTri {
+            i,
+            j,
+            side: half,
+            down: false,
+        });
     } else {
-        stack.push(TerrainHierTri { i: i + half, j: j + half, side: half, down: false });
-        stack.push(TerrainHierTri { i: i + half, j: j + half, side: half, down: true });
-        stack.push(TerrainHierTri { i, j: j + half, side: half, down: true });
-        stack.push(TerrainHierTri { i: i + half, j, side: half, down: true });
+        stack.push(TerrainHierTri {
+            i: i + half,
+            j: j + half,
+            side: half,
+            down: false,
+        });
+        stack.push(TerrainHierTri {
+            i: i + half,
+            j: j + half,
+            side: half,
+            down: true,
+        });
+        stack.push(TerrainHierTri {
+            i,
+            j: j + half,
+            side: half,
+            down: true,
+        });
+        stack.push(TerrainHierTri {
+            i: i + half,
+            j,
+            side: half,
+            down: true,
+        });
     }
 }
 
@@ -7361,13 +7439,23 @@ fn terrain_build_adaptive_mesh_internal(
             terrain_build_triangle_leaves(
                 c,
                 &mut cache,
-                TerrainHierTri { i, j, side: root_side, down: false },
+                TerrainHierTri {
+                    i,
+                    j,
+                    side: root_side,
+                    down: false,
+                },
                 &mut leaves,
             );
             terrain_build_triangle_leaves(
                 c,
                 &mut cache,
-                TerrainHierTri { i, j, side: root_side, down: true },
+                TerrainHierTri {
+                    i,
+                    j,
+                    side: root_side,
+                    down: true,
+                },
                 &mut leaves,
             );
             i += root_side;
@@ -7425,7 +7513,10 @@ pub fn terrain_build_adaptive_mesh(
     let metrics = terrain_make_oval_metrics(map_width, map_height, extent_fraction);
     let fine_edge = cell_size / (max_subdiv.max(1) as f64);
     let fine_height = fine_edge * TERRAIN_SQRT3_OVER_2;
-    let raw_root = (map_width / fine_edge).max(map_height / fine_height).ceil().max(1.0);
+    let raw_root = (map_width / fine_edge)
+        .max(map_height / fine_height)
+        .ceil()
+        .max(1.0);
     let root_side = terrain_next_power_of_two(raw_root as i64) as i32;
     let root_level = 31 - (root_side.max(1) as u32).leading_zeros() as i32;
 
@@ -7458,9 +7549,8 @@ pub fn terrain_build_adaptive_mesh(
     let t = mesh.triangle_indices.len() / 3;
     let cell_offsets_len = mesh.cell_offsets.len();
     let refs = mesh.cell_indices.len();
-    let mut out: Vec<f64> = Vec::with_capacity(
-        5 + 2 * v + v + 3 * t + t + 3 * t + 3 * t + cell_offsets_len + refs,
-    );
+    let mut out: Vec<f64> =
+        Vec::with_capacity(5 + 2 * v + v + 3 * t + t + 3 * t + 3 * t + cell_offsets_len + refs);
     out.push(1.0);
     out.push(v as f64);
     out.push(t as f64);
@@ -8963,9 +9053,7 @@ fn spatial_collect_cells_in_circle2d(
         return;
     }
     let cell_count = cells_x * cells_y * cells_z;
-    if cell_count > SPATIAL_MAX_CIRCLE2D_QUERY_CELLS
-        && cell_count as usize > state.cells.len()
-    {
+    if cell_count > SPATIAL_MAX_CIRCLE2D_QUERY_CELLS && cell_count as usize > state.cells.len() {
         spatial_fill_occupied_cells_in_bounds(state, min_x, max_x, min_y, max_y, min_z, max_z);
         return;
     }
@@ -12893,7 +12981,9 @@ struct CombatTargetingPool {
     // targeting batch owns per-tick cooldown decrement.
     turret_cooldown: Vec<f64>,
     turret_burst_cooldown: Vec<f64>,
-    // Pre-squared range envelopes. Sentinels: fire_min_*_sq <= 0 means
+    // Pre-squared turret range radii. Runtime membership treats these
+    // as vertical cylinders: horizontal radius R, top cap mount.z + R,
+    // no lower cap. Sentinels: fire_min_*_sq <= 0 means
     // "no min preference"; tracking_*_sq <= 0 and the
     // HAS_TRACKING_RANGE flag together encode "no separate tracking
     // shell — fire.max is the outermost release boundary".
@@ -13553,8 +13643,8 @@ pub fn combat_targeting_unset_entity(entity_slot: u32) {
     combat_targeting_pool().unset_entity(entity_slot);
 }
 
-/// Bulk per-turret stamp. The range arguments are pre-squared so the
-/// kernel can compare against distSq without re-multiplying.
+/// Bulk per-turret stamp. The range arguments are pre-squared authored
+/// radii; targeting kernels sqrt them when applying the cylinder top cap.
 /// `outermost_acquire` is the raw (un-squared) outermost-shell acquire
 /// distance — the broadphase spatial query wants a radius, not a
 /// squared radius, so storing it lets the kernel avoid sqrt.
@@ -14965,8 +15055,7 @@ fn combat_targeting_turret_lockon_includes_turret_family(
     pool: &CombatTargetingPool,
     source_turret_idx: usize,
 ) -> bool {
-    (pool.turret_lockon_entity_family_mask[source_turret_idx] & CT_LOCK_ON_FAM_INCLUDE_TURRETS)
-        != 0
+    (pool.turret_lockon_entity_family_mask[source_turret_idx] & CT_LOCK_ON_FAM_INCLUDE_TURRETS) != 0
 }
 
 #[inline]
@@ -15002,11 +15091,7 @@ fn combat_targeting_entity_lockon_allows_any_target_turret(
     for ti in 0..count {
         let idx = combat_targeting_turret_global_idx(target_entity_slot as u32, ti as u32);
         if combat_targeting_turret_is_pickable_aim_target(pool, idx)
-            && combat_targeting_entity_lockon_allows_target_turret(
-                pool,
-                source_entity_slot,
-                idx,
-            )
+            && combat_targeting_entity_lockon_allows_target_turret(pool, source_entity_slot, idx)
         {
             return true;
         }
@@ -15095,8 +15180,11 @@ fn combat_targeting_turret_may_lock_entity_slot(
         return false;
     }
 
-    if combat_targeting_turret_lockon_allows_body_entity(pool, source_turret_idx, target_entity_slot)
-    {
+    if combat_targeting_turret_lockon_allows_body_entity(
+        pool,
+        source_turret_idx,
+        target_entity_slot,
+    ) {
         return true;
     }
 
@@ -15291,8 +15379,7 @@ fn combat_targeting_pick_target_aim_turret_idx(
             source_entity_slot,
             source_entity_id,
             pool.turret_target_id[idx],
-        )
-            && pool.turret_state[idx] != CT_TURRET_STATE_IDLE
+        ) && pool.turret_state[idx] != CT_TURRET_STATE_IDLE
             && best_direct.map_or(true, |(_, best)| dps > best)
         {
             best_direct = Some((ti, dps));
@@ -15394,55 +15481,185 @@ fn combat_targeting_resolve_aim_point_from_slab(
     )
 }
 
-#[inline]
-fn combat_targeting_range_with_radius_sq(range_sq: f64, target_radius: f64) -> f64 {
-    if target_radius <= 0.0 {
-        return range_sq;
-    }
-    let range = range_sq.max(0.0).sqrt();
-    let r = range + target_radius;
-    r * r
+#[derive(Clone, Copy)]
+struct CombatTargetingCylinderTarget {
+    horizontal_dist_sq: f64,
+    horizontal_radius: f64,
+    bottom_z: f64,
 }
 
 #[inline]
-fn combat_targeting_fire_max_with_radius_sq(
+fn combat_targeting_nonnegative_finite(value: f64) -> f64 {
+    if value.is_finite() && value > 0.0 {
+        value
+    } else {
+        0.0
+    }
+}
+
+#[inline]
+fn combat_targeting_range_radius_from_sq(range_sq: f64) -> f64 {
+    combat_targeting_nonnegative_finite(range_sq).sqrt()
+}
+
+#[inline]
+fn combat_targeting_invalid_cylinder_target() -> CombatTargetingCylinderTarget {
+    CombatTargetingCylinderTarget {
+        horizontal_dist_sq: f64::INFINITY,
+        horizontal_radius: 0.0,
+        bottom_z: f64::INFINITY,
+    }
+}
+
+#[inline]
+fn combat_targeting_target_vertical_extent(pool: &CombatTargetingPool, entity_slot: usize) -> f64 {
+    if entity_slot >= pool.entity_radius_hitbox.len() {
+        return 0.0;
+    }
+    let hitbox = combat_targeting_nonnegative_finite(pool.entity_radius_hitbox[entity_slot]);
+    let half_z = if entity_slot < pool.entity_aabb_half_z.len() {
+        combat_targeting_nonnegative_finite(pool.entity_aabb_half_z[entity_slot])
+    } else {
+        0.0
+    };
+    hitbox.max(half_z)
+}
+
+#[inline]
+fn combat_targeting_cylinder_target_to_entity_slot(
+    pool: &CombatTargetingPool,
+    turret_idx: usize,
+    entity_slot: usize,
+) -> CombatTargetingCylinderTarget {
+    if turret_idx >= pool.turret_mount_x.len()
+        || entity_slot >= pool.entity_pos_x.len()
+        || entity_slot >= pool.entity_pos_y.len()
+        || entity_slot >= pool.entity_pos_z.len()
+    {
+        return combat_targeting_invalid_cylinder_target();
+    }
+    let dx = pool.turret_mount_x[turret_idx] - pool.entity_pos_x[entity_slot];
+    let dy = pool.turret_mount_y[turret_idx] - pool.entity_pos_y[entity_slot];
+    let vertical_extent = combat_targeting_target_vertical_extent(pool, entity_slot);
+    CombatTargetingCylinderTarget {
+        horizontal_dist_sq: dx * dx + dy * dy,
+        horizontal_radius: combat_targeting_nonnegative_finite(
+            pool.entity_radius_hitbox[entity_slot],
+        ),
+        bottom_z: pool.entity_pos_z[entity_slot] - vertical_extent,
+    }
+}
+
+#[inline]
+fn combat_targeting_cylinder_target_to_point(
+    pool: &CombatTargetingPool,
+    turret_idx: usize,
+    point_x: f64,
+    point_y: f64,
+    point_z: f64,
+) -> CombatTargetingCylinderTarget {
+    if turret_idx >= pool.turret_mount_x.len() {
+        return combat_targeting_invalid_cylinder_target();
+    }
+    let dx = pool.turret_mount_x[turret_idx] - point_x;
+    let dy = pool.turret_mount_y[turret_idx] - point_y;
+    CombatTargetingCylinderTarget {
+        horizontal_dist_sq: dx * dx + dy * dy,
+        horizontal_radius: 0.0,
+        bottom_z: point_z,
+    }
+}
+
+#[inline]
+fn combat_targeting_range_cylinder_contains(
+    range: f64,
+    mount_z: f64,
+    target: CombatTargetingCylinderTarget,
+) -> bool {
+    if !range.is_finite()
+        || !mount_z.is_finite()
+        || !target.horizontal_dist_sq.is_finite()
+        || !target.bottom_z.is_finite()
+        || range < 0.0
+    {
+        return false;
+    }
+    let horizontal_radius = range + target.horizontal_radius.max(0.0);
+    target.horizontal_dist_sq <= horizontal_radius * horizontal_radius
+        && target.bottom_z <= mount_z + range
+}
+
+#[inline]
+fn combat_targeting_min_range_prefers_target(
+    min_range: f64,
+    mount_z: f64,
+    target: CombatTargetingCylinderTarget,
+) -> bool {
+    if !min_range.is_finite() || min_range <= 0.0 {
+        return true;
+    }
+    if !mount_z.is_finite()
+        || !target.horizontal_dist_sq.is_finite()
+        || !target.bottom_z.is_finite()
+    {
+        return false;
+    }
+    if target.bottom_z > mount_z + min_range {
+        return true;
+    }
+    let threshold = min_range - target.horizontal_radius.max(0.0);
+    if threshold <= 0.0 {
+        return true;
+    }
+    target.horizontal_dist_sq >= threshold * threshold
+}
+
+#[inline]
+fn combat_targeting_fire_max_cylinder_contains(
     pool: &CombatTargetingPool,
     idx: usize,
     release_edge: bool,
-    target_radius: f64,
-) -> f64 {
+    target: CombatTargetingCylinderTarget,
+) -> bool {
     let range_sq = if release_edge {
         pool.turret_fire_max_release_sq[idx]
     } else {
         pool.turret_fire_max_acquire_sq[idx]
     };
-    combat_targeting_range_with_radius_sq(range_sq, target_radius)
+    combat_targeting_range_cylinder_contains(
+        combat_targeting_range_radius_from_sq(range_sq),
+        pool.turret_mount_z[idx],
+        target,
+    )
 }
 
 #[inline]
-fn combat_targeting_outermost_release_with_radius_sq(
+fn combat_targeting_outermost_release_cylinder_contains(
     pool: &CombatTargetingPool,
     idx: usize,
-    target_radius: f64,
-) -> f64 {
+    target: CombatTargetingCylinderTarget,
+) -> bool {
     let has_tracking = (pool.turret_config_flags[idx] & CT_TURRET_CFG_HAS_TRACKING_RANGE) != 0;
     let range_sq = if has_tracking {
         pool.turret_tracking_release_sq[idx]
     } else {
         pool.turret_fire_max_release_sq[idx]
     };
-    combat_targeting_range_with_radius_sq(range_sq, target_radius)
+    combat_targeting_range_cylinder_contains(
+        combat_targeting_range_radius_from_sq(range_sq),
+        pool.turret_mount_z[idx],
+        target,
+    )
 }
 
 #[inline]
-fn combat_targeting_fire_rank_from_pool_sq(
+fn combat_targeting_fire_rank_from_pool_cylinder(
     pool: &CombatTargetingPool,
     idx: usize,
     release_edge: bool,
-    dist_sq: f64,
-    target_radius: f64,
+    target: CombatTargetingCylinderTarget,
 ) -> u8 {
-    if dist_sq > combat_targeting_fire_max_with_radius_sq(pool, idx, release_edge, target_radius) {
+    if !combat_targeting_fire_max_cylinder_contains(pool, idx, release_edge, target) {
         return CT_TARGET_RANK_NONE;
     }
 
@@ -15455,17 +15672,11 @@ fn combat_targeting_fire_rank_from_pool_sq(
         return CT_TARGET_RANK_FIRE_PREFERRED;
     }
 
-    let min_range = min_sq.sqrt();
-    let threshold = min_range - target_radius;
-    if threshold <= 0.0 {
-        return CT_TARGET_RANK_FIRE_PREFERRED;
-    }
-    let threshold_sq = if target_radius <= 0.0 {
-        min_sq
-    } else {
-        threshold * threshold
-    };
-    if dist_sq >= threshold_sq {
+    if combat_targeting_min_range_prefers_target(
+        combat_targeting_range_radius_from_sq(min_sq),
+        pool.turret_mount_z[idx],
+        target,
+    ) {
         CT_TARGET_RANK_FIRE_PREFERRED
     } else {
         CT_TARGET_RANK_FIRE_FALLBACK
@@ -15488,18 +15699,6 @@ fn combat_targeting_entity_slot_for_id(
 }
 
 #[inline]
-fn combat_targeting_dist_sq_to_entity_slot(
-    pool: &CombatTargetingPool,
-    turret_idx: usize,
-    entity_slot: usize,
-) -> f64 {
-    let dx = pool.turret_mount_x[turret_idx] - pool.entity_pos_x[entity_slot];
-    let dy = pool.turret_mount_y[turret_idx] - pool.entity_pos_y[entity_slot];
-    let dz = pool.turret_mount_z[turret_idx] - pool.entity_pos_z[entity_slot];
-    dx * dx + dy * dy + dz * dz
-}
-
-#[inline]
 fn combat_targeting_current_fire_target_rank_sq(
     pool: &CombatTargetingPool,
     turret_idx: usize,
@@ -15508,15 +15707,9 @@ fn combat_targeting_current_fire_target_rank_sq(
     let Some(target_slot) = combat_targeting_entity_slot_for_id(pool, target_id) else {
         return (CT_TARGET_RANK_NONE, f64::INFINITY);
     };
-    let dist_sq = combat_targeting_dist_sq_to_entity_slot(pool, turret_idx, target_slot);
-    let rank = combat_targeting_fire_rank_from_pool_sq(
-        pool,
-        turret_idx,
-        true,
-        dist_sq,
-        pool.entity_radius_hitbox[target_slot],
-    );
-    (rank, dist_sq)
+    let target = combat_targeting_cylinder_target_to_entity_slot(pool, turret_idx, target_slot);
+    let rank = combat_targeting_fire_rank_from_pool_cylinder(pool, turret_idx, true, target);
+    (rank, target.horizontal_dist_sq)
 }
 
 #[inline]
@@ -16145,7 +16338,7 @@ pub fn combat_targeting_clear_entity_locks(entity_slot: u32) {
 fn combat_targeting_apply_priority_point_fsm_idx(
     pool: &mut CombatTargetingPool,
     idx: usize,
-    dist_sq: f64,
+    target: CombatTargetingCylinderTarget,
     los_clear: u8,
     ballistic_clear: u8,
     shield_clear: u8,
@@ -16155,9 +16348,9 @@ fn combat_targeting_apply_priority_point_fsm_idx(
         CT_TURRET_STATE_IDLE
     } else if shield_clear == 0 {
         CT_TURRET_STATE_IDLE
-    } else if dist_sq <= combat_targeting_fire_max_with_radius_sq(pool, idx, false, 0.0) {
+    } else if combat_targeting_fire_max_cylinder_contains(pool, idx, false, target) {
         CT_TURRET_STATE_ENGAGED
-    } else if dist_sq <= combat_targeting_fire_max_with_radius_sq(pool, idx, true, 0.0) {
+    } else if combat_targeting_fire_max_cylinder_contains(pool, idx, true, target) {
         if old_state == CT_TURRET_STATE_ENGAGED {
             CT_TURRET_STATE_ENGAGED
         } else {
@@ -16200,13 +16393,12 @@ pub fn combat_targeting_apply_priority_point_fsm_batch(
             continue;
         }
         let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
-        let dx = pool.turret_mount_x[idx] - target_x;
-        let dy = pool.turret_mount_y[idx] - target_y;
-        let dz = pool.turret_mount_z[idx] - target_z;
+        let target =
+            combat_targeting_cylinder_target_to_point(pool, idx, target_x, target_y, target_z);
         combat_targeting_apply_priority_point_fsm_idx(
             pool,
             idx,
-            dx * dx + dy * dy + dz * dz,
+            target,
             los_clear[turret_idx],
             ballistic_clear[turret_idx],
             shield_clear[turret_idx],
@@ -16498,13 +16690,12 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
             gravity,
         );
 
-        let dx = mount_x - point_x;
-        let dy = mount_y - point_y;
-        let dz = mount_z - point_z;
+        let target =
+            combat_targeting_cylinder_target_to_point(pool, idx, point_x, point_y, point_z);
         combat_targeting_apply_priority_point_fsm_idx(
             pool,
             idx,
-            dx * dx + dy * dy + dz * dz,
+            target,
             los_clear,
             ballistic_clear,
             shield_clear,
@@ -16517,8 +16708,7 @@ fn combat_targeting_apply_priority_target_fsm_idx(
     pool: &mut CombatTargetingPool,
     idx: usize,
     target_id: i32,
-    target_radius: f64,
-    dist_sq: f64,
+    target: CombatTargetingCylinderTarget,
     target_valid: u8,
     shield_panel_valid: u8,
     los_clear: u8,
@@ -16537,11 +16727,9 @@ fn combat_targeting_apply_priority_target_fsm_idx(
     }
 
     let old_state = pool.turret_state[idx];
-    let next_state = if dist_sq
-        <= combat_targeting_fire_max_with_radius_sq(pool, idx, false, target_radius)
-    {
+    let next_state = if combat_targeting_fire_max_cylinder_contains(pool, idx, false, target) {
         CT_TURRET_STATE_ENGAGED
-    } else if dist_sq <= combat_targeting_fire_max_with_radius_sq(pool, idx, true, target_radius) {
+    } else if combat_targeting_fire_max_cylinder_contains(pool, idx, true, target) {
         if old_state == CT_TURRET_STATE_ENGAGED {
             CT_TURRET_STATE_ENGAGED
         } else {
@@ -16581,9 +16769,6 @@ pub fn combat_targeting_apply_priority_target_fsm_batch(
     } else {
         0
     };
-    let target_radius = target_slot
-        .map(|slot| pool.entity_radius_hitbox[slot])
-        .unwrap_or(0.0);
     let count = (pool.turret_count_per_entity[entity_idx] as usize)
         .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
         .min(apply_mask.len())
@@ -16607,15 +16792,14 @@ pub fn combat_targeting_apply_priority_target_fsm_batch(
         } else {
             0
         };
-        let dist_sq = target_slot
-            .map(|slot| combat_targeting_dist_sq_to_entity_slot(pool, idx, slot))
-            .unwrap_or(f64::INFINITY);
+        let target = target_slot
+            .map(|slot| combat_targeting_cylinder_target_to_entity_slot(pool, idx, slot))
+            .unwrap_or_else(combat_targeting_invalid_cylinder_target);
         combat_targeting_apply_priority_target_fsm_idx(
             pool,
             idx,
             target_id,
-            target_radius,
-            dist_sq,
+            target,
             turret_target_valid,
             shield_panel_valid[turret_idx],
             los_clear[turret_idx],
@@ -16629,8 +16813,7 @@ pub fn combat_targeting_apply_priority_target_fsm_batch(
 fn combat_targeting_validate_existing_lock_fsm_idx(
     pool: &mut CombatTargetingPool,
     idx: usize,
-    target_radius: f64,
-    dist_sq: f64,
+    target: CombatTargetingCylinderTarget,
     target_valid: u8,
     shield_panel_valid: u8,
     ballistic_clear: u8,
@@ -16649,23 +16832,18 @@ fn combat_targeting_validate_existing_lock_fsm_idx(
         0
     };
     let los_drop = pool.turret_los_blocked_ticks[idx] > los_drop_grace_ticks;
-    if dist_sq > combat_targeting_outermost_release_with_radius_sq(pool, idx, target_radius)
-        || los_drop
-    {
+    if !combat_targeting_outermost_release_cylinder_contains(pool, idx, target) || los_drop {
         combat_targeting_set_target_state(pool, idx, -1, CT_TURRET_STATE_IDLE);
         return;
     }
 
     let state = pool.turret_state[idx];
     if state == CT_TURRET_STATE_TRACKING {
-        if !blocked
-            && dist_sq <= combat_targeting_fire_max_with_radius_sq(pool, idx, false, target_radius)
-        {
+        if !blocked && combat_targeting_fire_max_cylinder_contains(pool, idx, false, target) {
             pool.turret_state[idx] = CT_TURRET_STATE_ENGAGED;
         }
     } else if state == CT_TURRET_STATE_ENGAGED
-        && (blocked
-            || dist_sq > combat_targeting_fire_max_with_radius_sq(pool, idx, true, target_radius))
+        && (blocked || !combat_targeting_fire_max_cylinder_contains(pool, idx, true, target))
     {
         pool.turret_state[idx] = CT_TURRET_STATE_TRACKING;
     }
@@ -16713,17 +16891,13 @@ pub fn combat_targeting_validate_existing_lock_fsm_batch(
         } else {
             0
         };
-        let target_radius = target_slot
-            .map(|slot| pool.entity_radius_hitbox[slot])
-            .unwrap_or(0.0);
-        let dist_sq = target_slot
-            .map(|slot| combat_targeting_dist_sq_to_entity_slot(pool, idx, slot))
-            .unwrap_or(f64::INFINITY);
+        let target = target_slot
+            .map(|slot| combat_targeting_cylinder_target_to_entity_slot(pool, idx, slot))
+            .unwrap_or_else(combat_targeting_invalid_cylinder_target);
         combat_targeting_validate_existing_lock_fsm_idx(
             pool,
             idx,
-            target_radius,
-            dist_sq,
+            target,
             target_valid,
             shield_panel_valid[turret_idx],
             ballistic_clear[turret_idx],
@@ -16756,25 +16930,23 @@ fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner(
     let source_view_mask = pool.entity_view_mask[entity_idx];
 
     let target_slot = combat_targeting_entity_slot_for_id(pool, target_id);
-    let (base_target_valid, target_radius, target_vx, target_vy, target_vz) =
-        if let Some(slot) = target_slot {
-            if combat_targeting_entity_alive(pool, slot)
-                && combat_targeting_view_mask_observes_entity(pool, slot, source_view_mask)
-                && combat_targeting_entity_may_lock_entity_slot(pool, entity_idx, slot)
-            {
-                (
-                    1u8,
-                    pool.entity_radius_hitbox[slot],
-                    pool.entity_vel_x[slot],
-                    pool.entity_vel_y[slot],
-                    pool.entity_vel_z[slot],
-                )
-            } else {
-                (0u8, 0.0, 0.0, 0.0, 0.0)
-            }
+    let (base_target_valid, target_vx, target_vy, target_vz) = if let Some(slot) = target_slot {
+        if combat_targeting_entity_alive(pool, slot)
+            && combat_targeting_view_mask_observes_entity(pool, slot, source_view_mask)
+            && combat_targeting_entity_may_lock_entity_slot(pool, entity_idx, slot)
+        {
+            (
+                1u8,
+                pool.entity_vel_x[slot],
+                pool.entity_vel_y[slot],
+                pool.entity_vel_z[slot],
+            )
         } else {
-            (0u8, 0.0, 0.0, 0.0, 0.0)
-        };
+            (0u8, 0.0, 0.0, 0.0)
+        }
+    } else {
+        (0u8, 0.0, 0.0, 0.0)
+    };
 
     // Mirror-valid is identical for every passive turret on this unit
     // (it depends only on target + source, not on the turret), so
@@ -16901,15 +17073,14 @@ fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner(
                 )
             };
 
-        let dist_sq = target_slot
-            .map(|slot| combat_targeting_dist_sq_to_entity_slot(pool, idx, slot))
-            .unwrap_or(f64::INFINITY);
+        let target = target_slot
+            .map(|slot| combat_targeting_cylinder_target_to_entity_slot(pool, idx, slot))
+            .unwrap_or_else(combat_targeting_invalid_cylinder_target);
         combat_targeting_apply_priority_target_fsm_idx(
             pool,
             idx,
             target_id,
-            target_radius,
-            dist_sq,
+            target,
             target_valid,
             shield_panel_valid,
             los_clear,
@@ -17017,24 +17188,23 @@ fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
                 }
                 None => false,
             };
-        let (target_valid, target_radius, target_vx, target_vy, target_vz) = if observable {
+        let (target_valid, target_vx, target_vy, target_vz) = if observable {
             if let Some(slot) = target_slot {
                 if combat_targeting_entity_alive(pool, slot) {
                     (
                         1u8,
-                        pool.entity_radius_hitbox[slot],
                         pool.entity_vel_x[slot],
                         pool.entity_vel_y[slot],
                         pool.entity_vel_z[slot],
                     )
                 } else {
-                    (0u8, 0.0, 0.0, 0.0, 0.0)
+                    (0u8, 0.0, 0.0, 0.0)
                 }
             } else {
-                (0u8, 0.0, 0.0, 0.0, 0.0)
+                (0u8, 0.0, 0.0, 0.0)
             }
         } else {
-            (0u8, 0.0, 0.0, 0.0, 0.0)
+            (0u8, 0.0, 0.0, 0.0)
         };
 
         // For passive turrets, "valid" requires the target to still
@@ -17069,8 +17239,7 @@ fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
 
         // Short-circuit when target invalid or mirror invalid — the
         // FSM will set state idle without consulting gates anyway.
-        let (ballistic_clear, sight_blocked) = if target_valid == 0 || shield_panel_valid == 0
-        {
+        let (ballistic_clear, sight_blocked) = if target_valid == 0 || shield_panel_valid == 0 {
             (0u8, 0u8)
         } else {
             let (target_aim_x, target_aim_y, target_aim_z) = if resolve_aim_from_slab {
@@ -17128,14 +17297,13 @@ fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
             (bc, blocked)
         };
 
-        let dist_sq = target_slot
-            .map(|slot| combat_targeting_dist_sq_to_entity_slot(pool, idx, slot))
-            .unwrap_or(f64::INFINITY);
+        let target = target_slot
+            .map(|slot| combat_targeting_cylinder_target_to_entity_slot(pool, idx, slot))
+            .unwrap_or_else(combat_targeting_invalid_cylinder_target);
         combat_targeting_validate_existing_lock_fsm_idx(
             pool,
             idx,
-            target_radius,
-            dist_sq,
+            target,
             target_valid,
             shield_panel_valid,
             ballistic_clear,
@@ -17580,7 +17748,7 @@ fn combat_targeting_collect_spatial_candidate_cell(
     source_slot: usize,
     source_x: f64,
     source_y: f64,
-    source_z: f64,
+    _source_z: f64,
     source_player: u8,
     source_owner_bit: u32,
     source_view_mask: u32,
@@ -17621,10 +17789,6 @@ fn combat_targeting_collect_spatial_candidate_cell(
         }
         let dx = pool.entity_pos_x[slot] - source_x;
         let dy = pool.entity_pos_y[slot] - source_y;
-        let target_z_radius = pool.entity_radius_hitbox[slot].max(pool.entity_aabb_half_z[slot]);
-        if (pool.entity_pos_z[slot] - source_z).abs() > batch_radius + target_z_radius {
-            continue;
-        }
         let in_range = match pool.entity_family[slot] {
             CT_ENTITY_FAMILY_UNIT | CT_ENTITY_FAMILY_SHOT => {
                 let shot = pool.entity_radius_hitbox[slot];
@@ -18384,73 +18548,66 @@ fn targeting_edge_value(acquire: f64, release: f64, edge: u8) -> f64 {
 }
 
 #[inline]
-fn targeting_max_range_with_radius_sq(
+fn targeting_range_cylinder_contains(
     acquire: f64,
     release: f64,
     edge: u8,
-    target_radius: f64,
-) -> f64 {
-    let range = targeting_edge_value(acquire, release, edge);
-    if target_radius <= 0.0 {
-        range * range
-    } else {
-        let r = range + target_radius;
-        r * r
-    }
+    weapon_z: f64,
+    target: CombatTargetingCylinderTarget,
+) -> bool {
+    combat_targeting_range_cylinder_contains(
+        targeting_edge_value(acquire, release, edge),
+        weapon_z,
+        target,
+    )
 }
 
 #[inline]
-fn targeting_min_range_prefers_target_sq(
+fn targeting_min_range_prefers_target(
     has_min: u8,
     min_acquire: f64,
     min_release: f64,
     edge: u8,
-    target_radius: f64,
-    dist_sq: f64,
+    weapon_z: f64,
+    target: CombatTargetingCylinderTarget,
 ) -> bool {
     if has_min == 0 {
         return true;
     }
-    let min_range = targeting_edge_value(min_acquire, min_release, edge);
-    if min_range <= 0.0 {
-        return true;
-    }
-
-    let threshold = min_range - target_radius;
-    if threshold <= 0.0 {
-        return true;
-    }
-    let threshold_sq = if target_radius <= 0.0 {
-        min_range * min_range
-    } else {
-        threshold * threshold
-    };
-    dist_sq >= threshold_sq
+    combat_targeting_min_range_prefers_target(
+        targeting_edge_value(min_acquire, min_release, edge),
+        weapon_z,
+        target,
+    )
 }
 
 #[inline]
-fn targeting_fire_rank_sq(
+fn targeting_fire_rank_cylinder(
     fire_max_acquire: f64,
     fire_max_release: f64,
     has_fire_min: u8,
     fire_min_acquire: f64,
     fire_min_release: f64,
     edge: u8,
-    dist_sq: f64,
-    target_radius: f64,
+    weapon_z: f64,
+    target: CombatTargetingCylinderTarget,
 ) -> u8 {
-    let max_sq =
-        targeting_max_range_with_radius_sq(fire_max_acquire, fire_max_release, edge, target_radius);
-    if !(dist_sq <= max_sq) {
+    if !targeting_range_cylinder_contains(
+        fire_max_acquire,
+        fire_max_release,
+        edge,
+        weapon_z,
+        target,
+    ) {
         return CT_TARGET_RANK_NONE;
     }
-    if targeting_min_range_prefers_target_sq(
+    if targeting_min_range_prefers_target(
         has_fire_min,
         fire_min_acquire,
         fire_min_release,
         edge,
-        target_radius,
-        dist_sq,
+        weapon_z,
+        target,
     ) {
         CT_TARGET_RANK_FIRE_PREFERRED
     } else {
@@ -18459,7 +18616,7 @@ fn targeting_fire_rank_sq(
 }
 
 #[inline]
-fn targeting_acquisition_rank_sq(
+fn targeting_acquisition_rank_cylinder(
     fire_max_acquire: f64,
     fire_max_release: f64,
     has_fire_min: u8,
@@ -18469,30 +18626,30 @@ fn targeting_acquisition_rank_sq(
     tracking_acquire: f64,
     tracking_release: f64,
     edge: u8,
-    dist_sq: f64,
-    target_radius: f64,
+    weapon_z: f64,
+    target: CombatTargetingCylinderTarget,
 ) -> u8 {
-    let fire_rank = targeting_fire_rank_sq(
+    let fire_rank = targeting_fire_rank_cylinder(
         fire_max_acquire,
         fire_max_release,
         has_fire_min,
         fire_min_acquire,
         fire_min_release,
         edge,
-        dist_sq,
-        target_radius,
+        weapon_z,
+        target,
     );
     if fire_rank != CT_TARGET_RANK_NONE {
         return fire_rank;
     }
     if has_tracking != 0 {
-        let tracking_sq = targeting_max_range_with_radius_sq(
+        if targeting_range_cylinder_contains(
             tracking_acquire,
             tracking_release,
             edge,
-            target_radius,
-        );
-        if dist_sq <= tracking_sq {
+            weapon_z,
+            target,
+        ) {
             return CT_TARGET_RANK_TRACKING_ONLY;
         }
     }
@@ -18500,7 +18657,7 @@ fn targeting_acquisition_rank_sq(
 }
 
 #[inline]
-fn targeting_rank_sq(
+fn targeting_rank_cylinder(
     rank_mode: u8,
     fire_max_acquire: f64,
     fire_max_release: f64,
@@ -18511,11 +18668,11 @@ fn targeting_rank_sq(
     tracking_acquire: f64,
     tracking_release: f64,
     edge: u8,
-    dist_sq: f64,
-    target_radius: f64,
+    weapon_z: f64,
+    target: CombatTargetingCylinderTarget,
 ) -> u8 {
     if rank_mode == CT_TARGET_RANK_MODE_ACQUISITION {
-        targeting_acquisition_rank_sq(
+        targeting_acquisition_rank_cylinder(
             fire_max_acquire,
             fire_max_release,
             has_fire_min,
@@ -18525,19 +18682,19 @@ fn targeting_rank_sq(
             tracking_acquire,
             tracking_release,
             edge,
-            dist_sq,
-            target_radius,
+            weapon_z,
+            target,
         )
     } else {
-        targeting_fire_rank_sq(
+        targeting_fire_rank_cylinder(
             fire_max_acquire,
             fire_max_release,
             has_fire_min,
             fire_min_acquire,
             fire_min_release,
             edge,
-            dist_sq,
-            target_radius,
+            weapon_z,
+            target,
         )
     }
 }
@@ -18611,6 +18768,7 @@ fn targeting_score_candidate(
     candidate_pos_y: &[f64],
     candidate_pos_z: &[f64],
     candidate_radius: &[f64],
+    candidate_vertical_extent: f64,
     candidate_shield_panel_score: &[f64],
 ) -> Option<(u8, f64, f64)> {
     if candidate_observable[candidate_idx] == 0 {
@@ -18625,9 +18783,14 @@ fn targeting_score_candidate(
     }
     let dx = weapon_x - candidate_pos_x[candidate_idx];
     let dy = weapon_y - candidate_pos_y[candidate_idx];
-    let dz = weapon_z - candidate_pos_z[candidate_idx];
-    let dist_sq = dx * dx + dy * dy + dz * dz;
-    let rank = targeting_rank_sq(
+    let horizontal_dist_sq = dx * dx + dy * dy;
+    let target = CombatTargetingCylinderTarget {
+        horizontal_dist_sq,
+        horizontal_radius: combat_targeting_nonnegative_finite(candidate_radius[candidate_idx]),
+        bottom_z: candidate_pos_z[candidate_idx]
+            - combat_targeting_nonnegative_finite(candidate_vertical_extent),
+    };
+    let rank = targeting_rank_cylinder(
         rank_mode,
         fire_max_acquire,
         fire_max_release,
@@ -18638,8 +18801,8 @@ fn targeting_score_candidate(
         tracking_acquire,
         tracking_release,
         0,
-        dist_sq,
-        candidate_radius[candidate_idx],
+        weapon_z,
+        target,
     );
     if rank < minimum_rank {
         return None;
@@ -18647,7 +18810,7 @@ fn targeting_score_candidate(
     if !targeting_candidate_beats_seed(
         is_passive,
         rank,
-        dist_sq,
+        horizontal_dist_sq,
         shield_panel_score,
         seed_rank,
         seed_dist_sq,
@@ -18655,7 +18818,7 @@ fn targeting_score_candidate(
     ) {
         return None;
     }
-    Some((rank, dist_sq, shield_panel_score))
+    Some((rank, horizontal_dist_sq, shield_panel_score))
 }
 
 #[inline]
@@ -18710,7 +18873,12 @@ pub fn combat_targeting_rank_target(
     dist_sq: f64,
     target_radius: f64,
 ) -> u8 {
-    targeting_rank_sq(
+    let target = CombatTargetingCylinderTarget {
+        horizontal_dist_sq: dist_sq,
+        horizontal_radius: combat_targeting_nonnegative_finite(target_radius),
+        bottom_z: 0.0,
+    };
+    targeting_rank_cylinder(
         rank_mode,
         fire_max_acquire,
         fire_max_release,
@@ -18721,8 +18889,8 @@ pub fn combat_targeting_rank_target(
         tracking_acquire,
         tracking_release,
         edge,
-        dist_sq,
-        target_radius,
+        0.0,
+        target,
     )
 }
 
@@ -18951,10 +19119,7 @@ fn combat_targeting_compute_and_choose_best_candidates_batch_inner(
     // `prepareAcquisitionChoiceFsmInputs`, but a belt-and-braces
     // check inside the gate helper keeps disabled/manual-fire
     // turrets from running the LOS+ballistic+FF kernels for free.
-    let _ = (
-        turret_shield_panels_enabled,
-        turret_shield_spheres_enabled,
-    );
+    let _ = (turret_shield_panels_enabled, turret_shield_spheres_enabled);
 
     let candidate_slots: &[u32] = if let Some(slots) = precomputed_candidate_slots {
         if slots.len() >= clamped_candidate_count {
@@ -19235,6 +19400,8 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
         if !lock_allowed {
             continue;
         }
+        let candidate_vertical_extent =
+            combat_targeting_target_vertical_extent(pool, candidate_slot as usize);
         let Some((rank, dist_sq, shield_panel_score)) = targeting_score_candidate(
             ci,
             weapon_x,
@@ -19259,6 +19426,7 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             candidate_pos_y,
             candidate_pos_z,
             candidate_radius,
+            candidate_vertical_extent,
             candidate_shield_panel_score,
         ) else {
             continue;
@@ -19383,6 +19551,8 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             continue;
         }
 
+        let candidate_vertical_extent =
+            combat_targeting_target_vertical_extent(pool, candidate_slot as usize);
         let Some((rank, _dist_sq, _shield_panel_score)) = targeting_score_candidate(
             ci,
             weapon_x,
@@ -19407,6 +19577,7 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             candidate_pos_y,
             candidate_pos_z,
             candidate_radius,
+            candidate_vertical_extent,
             candidate_shield_panel_score,
         ) else {
             continue;
@@ -19578,8 +19749,7 @@ impl ShieldSurfacePool {
 
 struct ShieldSurfacePoolHolder(UnsafeCell<Option<ShieldSurfacePool>>);
 unsafe impl Sync for ShieldSurfacePoolHolder {}
-static SHIELD_POOL: ShieldSurfacePoolHolder =
-    ShieldSurfacePoolHolder(UnsafeCell::new(None));
+static SHIELD_POOL: ShieldSurfacePoolHolder = ShieldSurfacePoolHolder(UnsafeCell::new(None));
 
 #[inline]
 fn shield_pool() -> &'static mut ShieldSurfacePool {
@@ -19744,12 +19914,10 @@ fn shield_segment_crosses_sphere(
 fn shield_reflection_mode_allows_crossing(mode: u8, radial_velocity: f64) -> bool {
     let eps = 1e-6;
     if radial_velocity < -eps {
-        return mode == SHIELD_REFLECTION_MODE_OUTSIDE_IN
-            || mode == SHIELD_REFLECTION_MODE_BOTH;
+        return mode == SHIELD_REFLECTION_MODE_OUTSIDE_IN || mode == SHIELD_REFLECTION_MODE_BOTH;
     }
     if radial_velocity > eps {
-        return mode == SHIELD_REFLECTION_MODE_INSIDE_OUT
-            || mode == SHIELD_REFLECTION_MODE_BOTH;
+        return mode == SHIELD_REFLECTION_MODE_INSIDE_OUT || mode == SHIELD_REFLECTION_MODE_BOTH;
     }
     false
 }
@@ -20103,9 +20271,8 @@ pub fn shield_clearance_arc(
             } else {
                 1.0 + SHIELD_GRAZE_EPS
             };
-            if shield_segment_crosses_sphere(
-                prev_x, prev_y, prev_z, x, y, z, cx, cy, cz, r, lo, hi,
-            ) {
+            if shield_segment_crosses_sphere(prev_x, prev_y, prev_z, x, y, z, cx, cy, cz, r, lo, hi)
+            {
                 crossed = true;
                 break;
             }
@@ -20409,10 +20576,8 @@ fn shield_panel_projectile_intersection(
                 continue;
             };
             let normal_velocity = dx * nx + dy * ny + dz * nz;
-            if !shield_reflection_mode_allows_crossing(
-                pool.panel_reflection_mode,
-                normal_velocity,
-            ) {
+            if !shield_reflection_mode_allows_crossing(pool.panel_reflection_mode, normal_velocity)
+            {
                 continue;
             }
             if t >= best_t {
@@ -20536,15 +20701,7 @@ pub fn projectile_reflector_intersections_batch(
         }
         let max_t = best.as_ref().map(|hit| hit.t).unwrap_or(f64::INFINITY);
         if turret_shield_spheres_enabled != 0 {
-            if let Some(force_hit) = shield_projectile_intersection(
-                sx,
-                sy,
-                sz,
-                tx,
-                ty,
-                tz,
-                max_t,
-            ) {
+            if let Some(force_hit) = shield_projectile_intersection(sx, sy, sz, tx, ty, tz, max_t) {
                 best = Some(force_hit);
             }
         }
@@ -27978,19 +28135,19 @@ mod sim_kernel_tests {
         // 22-value generation slice: circular island, 2 teams, ripple + ridge
         // so the LOD walk actually varies triangle sizes.
         let terrain_config = [
-            40.0,   // center_magnitude
-            30.0,   // dividers_magnitude
-            0.0,    // terrain_d_terrain (plateau off)
-            1.0,    // map_shape_circle
-            2.0,    // team_count
+            40.0,    // center_magnitude
+            30.0,    // dividers_magnitude
+            0.0,     // terrain_d_terrain (plateau off)
+            1.0,     // map_shape_circle
+            2.0,     // team_count
             -1200.0, // tile_floor_y
-            0.49,   // circle_edge_fraction
-            0.1,    // circle_transition_width_fraction
-            0.04,   // generation_edge_transition_width_fraction
-            0.99,   // plateau_shelf_fraction_of_step
-            0.0,    // plateau_ramp_edge_sharpness
-            0.4,    // ripple_radius_fraction
-            1.7,    // ripple_phase
+            0.49,    // circle_edge_fraction
+            0.1,     // circle_transition_width_fraction
+            0.04,    // generation_edge_transition_width_fraction
+            0.99,    // plateau_shelf_fraction_of_step
+            0.0,     // plateau_ramp_edge_sharpness
+            0.4,     // ripple_radius_fraction
+            1.7,     // ripple_phase
             700.0, 0.9, // ripple component 0 wavelength/magnitude
             600.0, 0.0, // ripple component 1
             600.0, 0.0, // ripple component 2
@@ -28016,11 +28173,27 @@ mod sim_kernel_tests {
         let extent = 0.92;
 
         let a = terrain_build_adaptive_mesh(
-            map, map, cell_size, cells, cells, 4, extent, &terrain_config, &flat_zones,
+            map,
+            map,
+            cell_size,
+            cells,
+            cells,
+            4,
+            extent,
+            &terrain_config,
+            &flat_zones,
             &lod_config,
         );
         let b = terrain_build_adaptive_mesh(
-            map, map, cell_size, cells, cells, 4, extent, &terrain_config, &flat_zones,
+            map,
+            map,
+            cell_size,
+            cells,
+            cells,
+            4,
+            extent,
+            &terrain_config,
+            &flat_zones,
             &lod_config,
         );
 
@@ -29237,6 +29410,107 @@ mod lock_on_inclusion_tests {
     }
 
     #[test]
+    fn turret_range_cylinder_allows_targets_far_below() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_entity_at_z(
+            SOURCE_SLOT,
+            SOURCE_ID,
+            PLAYER_1,
+            0.0,
+            500.0,
+            CT_ENTITY_FAMILY_UNIT,
+            SOURCE_UNIT_CODE,
+            1,
+            -1,
+        );
+        stamp_turret(SOURCE_SLOT, 0, TurretSpec::default());
+        stamp_body_target_at_z(
+            1,
+            201,
+            PLAYER_2,
+            20.0,
+            -500.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+
+        let (target_id, state, _) = run_schedule_tick(1);
+        assert_eq!(
+            target_id, 201,
+            "height below the mount must not spend turret range budget"
+        );
+        assert_eq!(state, CT_TURRET_STATE_ENGAGED);
+    }
+
+    #[test]
+    fn turret_range_cylinder_ranks_by_horizontal_distance() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_entity_at_z(
+            SOURCE_SLOT,
+            SOURCE_ID,
+            PLAYER_1,
+            0.0,
+            500.0,
+            CT_ENTITY_FAMILY_UNIT,
+            SOURCE_UNIT_CODE,
+            1,
+            -1,
+        );
+        stamp_turret(SOURCE_SLOT, 0, TurretSpec::default());
+        stamp_body_target_at_z(
+            1,
+            201,
+            PLAYER_2,
+            20.0,
+            -500.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        stamp_body_target_at_z(
+            2,
+            202,
+            PLAYER_2,
+            30.0,
+            500.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_B,
+        );
+
+        let (target_id, state, _) = run_schedule_tick(1);
+        assert_eq!(
+            target_id, 201,
+            "candidate ordering should use horizontal distance, not 3D distance"
+        );
+        assert_eq!(state, CT_TURRET_STATE_ENGAGED);
+    }
+
+    #[test]
+    fn turret_range_cylinder_rejects_targets_above_top_cap() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(SOURCE_SLOT, 0, TurretSpec::default());
+        stamp_body_target_at_z(
+            1,
+            201,
+            PLAYER_2,
+            20.0,
+            123.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+
+        let (target_id, state, _) = run_schedule_tick(1);
+        assert_eq!(
+            target_id, -1,
+            "targets whose body is fully above mount.z + range must be out of range"
+        );
+        assert_eq!(state, CT_TURRET_STATE_IDLE);
+    }
+
+    #[test]
     fn mirror_policy_locks_enemy_turrets_without_locking_hosts_as_bodies() {
         let _guard = lock_tests();
         reset_pools();
@@ -29323,14 +29597,7 @@ mod lock_on_inclusion_tests {
                 ..TurretSpec::default()
             },
         );
-        stamp_turret_target_with_target_id(
-            1,
-            201,
-            PLAYER_2,
-            20.0,
-            &[TURRET_CODE_A],
-            999_999,
-        );
+        stamp_turret_target_with_target_id(1, 201, PLAYER_2, 20.0, &[TURRET_CODE_A], 999_999);
 
         let (target_id, state, _) = run_schedule_tick(1);
         assert_eq!(
