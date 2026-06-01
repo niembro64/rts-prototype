@@ -976,6 +976,8 @@
     "towerBeamMega": {
       "targets": {
         "enemy": {
+          "buildings": "all",
+          "towers": "all",
           "units": {
             "only": [
               "unitJackal",
@@ -993,16 +995,6 @@
               "unitBee",
               "unitConstructionDrone",
               "unitCommander"
-            ]
-          },
-          "shots": {
-            "only": [
-              "shotPlasmaLight",
-              "shotPlasmaMedium",
-              "shotRocketLight",
-              "shotPlasmaHeavy",
-              "shotMortarMedium",
-              "shotMortarHeavy"
             ]
           }
         }
