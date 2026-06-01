@@ -10,7 +10,7 @@
       "hitbox": 1.6,
       "collision": 2
     },
-    "armingDelayMs": 100,
+    "armingDelayMs": 40,
     "detonateOnExpiry": true,
     "hitSound": {
       "$audio": "event.hit.shotPlasmaLight"
@@ -50,7 +50,7 @@
       "hitbox": 2.4,
       "collision": 3
     },
-    "armingDelayMs": 150,
+    "armingDelayMs": 40,
     "detonateOnExpiry": true,
     "hitSound": {
       "$audio": "event.hit.shotPlasmaMedium"
@@ -90,7 +90,7 @@
       "hitbox": 1.6,
       "collision": 2
     },
-    "armingDelayMs": 400,
+    "armingDelayMs": 40,
     "detonateOnExpiry": true,
     "maxLifespan": 10000,
     "hitSound": {
@@ -172,7 +172,7 @@
       "hitbox": 3.2,
       "collision": 4
     },
-    "armingDelayMs": 250,
+    "armingDelayMs": 40,
     "detonateOnExpiry": true,
     "hitSound": {
       "$audio": "event.hit.shotPlasmaHeavy"
@@ -212,7 +212,7 @@
       "hitbox": 6.4,
       "collision": 8
     },
-    "armingDelayMs": 300,
+    "armingDelayMs": 40,
     "detonateOnExpiry": true,
     "hitSound": {
       "$audio": "event.hit.shotMortarMedium"
@@ -258,7 +258,7 @@
       "hitbox": 8,
       "collision": 10
     },
-    "armingDelayMs": 350,
+    "armingDelayMs": 40,
     "detonateOnExpiry": true,
     "hitSound": {
       "$audio": "event.hit.shotMortarMedium"
@@ -304,7 +304,7 @@
       "hitbox": 20,
       "collision": 25
     },
-    "armingDelayMs": 300,
+    "armingDelayMs": 40,
     "detonateOnExpiry": true,
     "hitSound": {
       "$audio": "event.hit.shotPlasmaDisruptor"
