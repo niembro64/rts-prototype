@@ -342,7 +342,9 @@
         for debug, overlays, source authoring, and local reasoning, but it is not the player&rsquo;s
         whole knowledge of the map. <strong>Area of total player sight</strong> is the union of all
         full-vision sources owned by the player and their allies. It grants full entity identity,
-        private detail allowed by ownership rules, normal terrain/force-material sight checks, visual
+        private <em>strategic</em> detail allowed by ownership rules (commanded intent only, never
+        motion or render state &mdash; see <strong>Visible units render and update identically</strong>
+        below), normal terrain/force-material sight checks, visual
         events, and the main snapshot entity row. <strong>Area of total player radar coverage</strong>
         is the radar-level aggregate: all total player sight areas plus radar-only sensor areas.
         Full sight is a stronger information tier, so it necessarily also supplies radar-level
@@ -381,6 +383,39 @@
         <li>Weapon range, tracking range, unit sight, radar range, and detector range are separate envelopes. Sharing a number between them should be an authored choice, not a default coupling.</li>
         <li>Team sight is a player-level aggregate. A turret firing using another unit&rsquo;s sight is using team intelligence, not gaining that other unit&rsquo;s local sight radius.</li>
       </ul>
+
+      <h3>Visible units render and update identically</h3>
+      <p>
+        Ownership decides what <em>strategic</em> information a player learns about a unit; it must
+        never decide how a unit the player can already fully see <em>moves on the wire or draws on
+        screen</em>. Once full sight places a foreign unit in the recipient&rsquo;s main snapshot, every
+        field that drives its motion and presentation travels and is corrected exactly as it would for
+        the recipient&rsquo;s own units: world position, body rotation, hover orientation quaternion,
+        linear velocity, angular velocity, surface normal, turret yaw and pitch, and HP. There is no
+        owner-conditional zeroing, omission, or coarsening of motion state. An enemy aircraft banks
+        into its turns, dead-reckons between snapshots, and smooths under the same prediction channels
+        as a friendly one, because the renderer and the client predictor receive the same inputs for
+        both. Banking is the canonical example: it is the centripetal product
+        <code>v_forward &middot; &omega;_z</code>, so withholding an enemy&rsquo;s linear velocity
+        silently zeroed its bank while ours rolled &mdash; a rendering difference produced purely by an
+        ownership gate on a motion field, which is exactly what this rule forbids.
+      </p>
+      <p>
+        What ownership still gates is <strong>private strategic detail</strong>, not presentation: a
+        unit&rsquo;s order queue and move/attack/guard intent, the specific entity IDs its turrets are
+        tracking, its current build or repair target, and factory rally points. A player watches an
+        enemy unit turn, fire, take damage, and bank in full physical fidelity; they do not see
+        <em>what it has been told to do</em>. That line &mdash; physical presentation is shared,
+        commanded intent is private &mdash; is the rule. A motion or render field hidden by ownership is
+        a bug; a strategic-intent field leaked across ownership is also a bug.
+      </p>
+      <p>
+        This changes nothing about fog of war. Sight and radar tiers still decide <em>whether</em> a
+        unit appears &mdash; as a full entity, a radar contact, or not at all &mdash; and a unit lost to
+        fog still vanishes from the snapshot entirely. This rule governs only how a unit is treated
+        <em>once it has earned full visibility</em>: at that point its physical state is
+        owner-agnostic.
+      </p>
 
       <h3>Visibility computation must stay aggregate and indexed</h3>
       <p>

@@ -663,14 +663,17 @@ export function serializeEntitySnapshot(
       }
 
       if (isFull || (changedFields! & ENTITY_CHANGED_VEL)) {
+        // Linear velocity is motion/render state, not private detail: any
+        // unit the recipient can fully see is updated and rendered
+        // identically regardless of owner (see "Visible units render and
+        // update identically" in budget_design_philosophy.html). Fog/vision
+        // tiers still decide whether the unit appears at all; once it does,
+        // its velocity rides the wire like position and orientation so enemy
+        // aircraft bank and dead-reckon under the same prediction channels
+        // as our own. Ownership gates only commanded intent (orders, turret
+        // target IDs, build target, rally) below, never physical motion.
         u.velocity = poolEntry.unitVelocity;
-        if (canSeePrivateDetails) {
-          writeNetworkUnitVelocity(u, entity.unit, qVel);
-        } else {
-          poolEntry.unitVelocity.x = 0;
-          poolEntry.unitVelocity.y = 0;
-          poolEntry.unitVelocity.z = 0;
-        }
+        writeNetworkUnitVelocity(u, entity.unit, qVel);
       }
 
       if (
