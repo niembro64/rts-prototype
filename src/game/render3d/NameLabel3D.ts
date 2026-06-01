@@ -39,6 +39,7 @@ import {
   NAME_LABEL_OWNER_STROKE_COLOR,
   NAME_LABEL_OWNER_WORLD_HEIGHT,
 } from '@/nameLabelConfig';
+import { GAME_DIAGNOSTICS } from '../diagnostics';
 
 // Local short-name alias for the imported config — keeps call sites
 // terse while every tunable lives in @/nameLabelConfig.
@@ -391,6 +392,7 @@ export class NameLabel3D {
     text: string,
     tone: NameLabelTone,
   ): void {
+    if (!GAME_DIAGNOSTICS.nameLabelIdentityTrace) return;
     if (tone !== 'blueprint') return;
     const current = labelIdentitySnapshot(entity, key, pieceTag, text, this._identityFrame);
     const previous = this._labelIdentities.get(key);
@@ -422,6 +424,7 @@ export class NameLabel3D {
   }
 
   private pruneLabelIdentities(): void {
+    if (!GAME_DIAGNOSTICS.nameLabelIdentityTrace) return;
     this._identityPruneCountdown--;
     if (this._identityPruneCountdown > 0) return;
     this._identityPruneCountdown = LABEL_IDENTITY_PRUNE_INTERVAL_FRAMES;

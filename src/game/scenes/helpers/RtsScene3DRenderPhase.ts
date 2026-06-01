@@ -115,6 +115,10 @@ export class RtsScene3DRenderPhase {
   private readonly smokeTrailProjectilesScratch: Entity[] = [];
   private readonly frustum = new THREE.Frustum();
   private readonly frustumMatrix = new THREE.Matrix4();
+  private readonly nameLabelAnchorScratch = { x: 0, y: 0, z: 0 };
+  private readonly enqueuePylonTubeHandoff = (flowKey: string, intensity: number): void => {
+    this.resources.pylonTubeFlowRenderer.enqueueTipHandoff(flowKey, intensity);
+  };
   /** Camera-distance fade shared by HP/build bars + name labels so
    *  both fade + cull together as the camera zooms out (BAR style). */
   private readonly hudFade = new HudFade();
@@ -311,14 +315,14 @@ export class RtsScene3DRenderPhase {
           this.combinedSprayTargets,
           this.sprayAccumMs,
           pylonFreeLegSprays,
-          (flowKey, intensity) => pylonTubeFlowRenderer.enqueueTipHandoff(flowKey, intensity),
+          this.enqueuePylonTubeHandoff,
         );
       } else {
         sprayRenderer.update(
           commanderSprays,
           this.sprayAccumMs,
           pylonFreeLegSprays,
-          (flowKey, intensity) => pylonTubeFlowRenderer.enqueueTipHandoff(flowKey, intensity),
+          this.enqueuePylonTubeHandoff,
         );
       }
       this.sprayAccumMs = 0;
@@ -426,6 +430,10 @@ export class RtsScene3DRenderPhase {
       this.lookupPlayerName(pid) ?? getDefaultPlayerName(pid);
 
     const shotNameToggle = getEntityHudToggle('shot', 'name');
+    const unitNameToggle = getEntityHudToggle('unit', 'name');
+    const towerNameToggle = getEntityHudToggle('tower', 'name');
+    const buildingNameToggle = getEntityHudToggle('building', 'name');
+    const bodyNamesEnabled = unitNameToggle || towerNameToggle || buildingNameToggle;
 
     if (healthBar3D) healthBar3D.beginFrame(this.hudFade, hudFrustum);
     if (nameLabel3D) nameLabel3D.beginFrame(this.hudFade, hudFrustum);
@@ -465,10 +473,14 @@ export class RtsScene3DRenderPhase {
     // Body NAMES iterate every unit/building (names show even at full
     // HP). Commander owners get a separate styled label so the body
     // label stays a blueprint name.
-    if (nameLabel3D) {
+    if (nameLabel3D && bodyNamesEnabled) {
       for (const e of this.clientViewState.getUnitsAndBuildings()) {
         const type = this.hudTypeOf(e);
-        const nameToggle = getEntityHudToggle(type, 'name');
+        const nameToggle = type === 'unit'
+          ? unitNameToggle
+          : type === 'tower'
+            ? towerNameToggle
+            : buildingNameToggle;
         const name = resolveEntityDisplayName(e, nameToggle, mode);
         if (name !== null) nameLabel3D.perEntity(e, name);
         const ownerName = resolveCommanderOwnerName(e, lookup, nameToggle, mode);
@@ -476,11 +488,11 @@ export class RtsScene3DRenderPhase {
           nameLabel3D.perPieceName(
             e,
             PIECE_TAG_COMMANDER_OWNER_NAME,
-            {
-              x: e.transform.x,
-              y: getUnitHudNameY(e) + NAME_LABEL_OWNER_Y_OFFSET,
-              z: e.transform.y,
-            },
+            this.setNameLabelAnchor(
+              e.transform.x,
+              getUnitHudNameY(e) + NAME_LABEL_OWNER_Y_OFFSET,
+              e.transform.y,
+            ),
             ownerName,
             'owner',
           );
@@ -510,7 +522,11 @@ export class RtsScene3DRenderPhase {
               nameLabel3D.perPieceName(
                 host,
                 turretPieceTag(i),
-                { x: mount.x, y: getTurretHudNameY(mount.z, turret.config), z: mount.y },
+                this.setNameLabelAnchor(
+                  mount.x,
+                  getTurretHudNameY(mount.z, turret.config),
+                  mount.y,
+                ),
                 name,
               );
             }
@@ -530,7 +546,11 @@ export class RtsScene3DRenderPhase {
           nameLabel3D.perPieceName(
             shot,
             PIECE_TAG_BODY,
-            { x: shot.transform.x, y: getShotHudNameY(shot), z: shot.transform.y },
+            this.setNameLabelAnchor(
+              shot.transform.x,
+              getShotHudNameY(shot),
+              shot.transform.y,
+            ),
             name,
           );
         }
@@ -539,5 +559,13 @@ export class RtsScene3DRenderPhase {
 
     if (healthBar3D) healthBar3D.endFrame();
     if (nameLabel3D) nameLabel3D.endFrame();
+  }
+
+  private setNameLabelAnchor(x: number, y: number, z: number): { x: number; y: number; z: number } {
+    const anchor = this.nameLabelAnchorScratch;
+    anchor.x = x;
+    anchor.y = y;
+    anchor.z = z;
+    return anchor;
   }
 }

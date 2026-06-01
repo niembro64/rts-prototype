@@ -292,8 +292,11 @@ export class WorldState {
       return undefined;
     }
     const host = this.entities.get(meta.parentId);
-    const turret = host?.combat?.turrets[meta.mountIndex ?? -1];
-    if (host === undefined || turret === undefined || turret.id !== id || !this.isHostBodyLive(host)) return undefined;
+    if (host === undefined) return undefined;
+    const combat = host.combat;
+    if (combat === null) return undefined;
+    const turret = combat.turrets[meta.mountIndex ?? -1];
+    if (turret === undefined || turret.id !== id || !this.isHostBodyLive(host)) return undefined;
     return { host, turret };
   }
 

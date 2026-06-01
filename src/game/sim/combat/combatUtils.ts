@@ -382,7 +382,7 @@ export function updateProjectileArming(
 
 export function updateProjectileSourceClearance(
   source: Entity | undefined,
-  projectile: { hasLeftSource: boolean; shotSource?: { sourceTurretEntityId: number | null } },
+  projectile: { hasLeftSource: boolean; shotSource: { sourceTurretEntityId: number | null | undefined } },
   pointX: number,
   pointY: number,
   pointZ: number,
@@ -419,7 +419,7 @@ export function updateProjectileSourceClearance(
   }
 
   let clearOfTurret = true;
-  const sourceTurretEntityId = projectile.shotSource?.sourceTurretEntityId ?? null;
+  const sourceTurretEntityId = projectile.shotSource.sourceTurretEntityId ?? null;
   const combat = source.combat;
   if (sourceTurretEntityId !== null && combat !== null) {
     for (let i = 0; i < combat.turrets.length; i++) {
@@ -432,7 +432,11 @@ export function updateProjectileSourceClearance(
         i,
         cs.cos,
         cs.sin,
-        { currentTick: undefined, unitGroundZ: undefined, surfaceN: source.unit?.surfaceNormal },
+        {
+          currentTick: undefined,
+          unitGroundZ: undefined,
+          surfaceN: source.unit === null ? undefined : source.unit.surfaceNormal,
+        },
         _sourceTurretMountScratch,
       );
       const dx = pointX - mount.x;

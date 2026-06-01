@@ -15,7 +15,7 @@ import type {
 } from './types';
 import { beamIndex } from '../BeamIndex';
 import type { DamageResult, DeathContext } from '../damage/types';
-import { buildImpactContext, applyKnockbackForces, collectKillsWithDeathAudio, collectKillsAndDeathContexts, emitBeamHitAudio } from './damageHelpers';
+import { buildImpactContext, applyKnockbackForces, collectKillsAndDeathContexts, emitBeamHitAudio } from './damageHelpers';
 import { createProjectileConfigFromShot } from '../projectileConfigs';
 import { getSurfaceNormal, isWaterAt } from '../Terrain';
 import { spatialGrid } from '../SpatialGrid';
@@ -68,6 +68,7 @@ const _collisionSimEvents: SimEvent[] = [];
 const _collisionNewProjectiles: Entity[] = [];
 const _collisionSpawnEvents: ProjectileSpawnEvent[] = [];
 const _collisionVelocityUpdates: ProjectileVelocityUpdateEvent[] = [];
+const _killedProjectileShotIdBuffers: EntityId[][] = [];
 
 let _reflectorBatchCapacity = 0;
 let _reflectorEnabled = new Uint8Array(0);
@@ -98,6 +99,17 @@ function queueProjectileRemoval(
   _collisionProjectileRemoveIds.add(id);
   projectilesToRemove.push(id);
   despawnEvents.push({ id });
+}
+
+function copyKilledProjectileIdsForDepth(
+  killedProjectileIds: ReadonlySet<EntityId>,
+  depth: number,
+): EntityId[] {
+  const buffer = _killedProjectileShotIdBuffers[depth] ??
+    (_killedProjectileShotIdBuffers[depth] = []);
+  buffer.length = 0;
+  for (const id of killedProjectileIds) buffer.push(id);
+  return buffer;
 }
 
 function ensureReflectorBatchCapacity(count: number): void {
@@ -718,7 +730,10 @@ function processKilledProjectileShots(
   depth: number = 0,
 ): void {
   if (result.killedProjectileIds.size === 0) return;
-  const killedProjectileIds = [...result.killedProjectileIds];
+  const killedProjectileIds = copyKilledProjectileIdsForDepth(
+    result.killedProjectileIds,
+    depth,
+  );
   for (let i = 0; i < killedProjectileIds.length; i++) {
     const projectileEntity = world.getEntity(killedProjectileIds[i]);
     if (projectileEntity === undefined) continue;
@@ -758,7 +773,7 @@ function detonateKilledProjectileShot(
   depth: number,
 ): void {
   const proj = projEntity.projectile;
-  const shot = proj?.config.shot;
+  const shot = proj === null ? undefined : proj.config.shot;
   if (
     proj === null ||
     projEntity.ownership === null ||
@@ -1127,7 +1142,7 @@ export function checkProjectileCollisions(
 
       if (result) {
         emitBeamHitAudio(result.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, damageSphereRadius, audioEvents);
-        collectKillsWithDeathAudio(
+        collectKillsAndDeathContexts(
           result, world, damageSourceKey, damageSourceType,
           unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
           proj.sourceEntityId, turretsToDetonate,
@@ -1256,19 +1271,21 @@ export function checkProjectileCollisions(
               ensureProjectileHitEntities(proj).add(hitId);
 
               const entity = world.getEntity(hitId);
+              if (entity === undefined) continue;
+              const hitProjectile = entity.projectile;
               if (
-                entity?.projectile &&
-                entity.projectile.projectileType === 'projectile' &&
-                isProjectileShot(entity.projectile.config.shot)
+                hitProjectile !== null &&
+                hitProjectile.projectileType === 'projectile' &&
+                isProjectileShot(hitProjectile.config.shot)
               ) {
-                entity.projectile.hp = 0;
+                hitProjectile.hp = 0;
                 result.killedProjectileIds.add(entity.id);
               }
             }
 
             // Handle deaths from direct hit before any HP-zero detonation
             // below (result is reusable singleton).
-            collectKillsWithDeathAudio(
+            collectKillsAndDeathContexts(
               result, world, damageSourceKey, damageSourceType,
               unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
               proj.sourceEntityId, turretsToDetonate,

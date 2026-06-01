@@ -28,25 +28,6 @@ part of the same assembly. (Related: the hp:1 sentinel at
 src/game/sim/runtimeTurrets.ts:55 is documented compat, not a separate bug.)
 
 ================================================================================
-MEMORY LEAKS
-================================================================================
-
-2.0 [CRITICAL] LegInstancedRenderer leaks every game restart.
-
-src/game/scenes/RtsScene3D.ts:396 constructs `new LegInstancedRenderer(...)`,
-which allocates 8 instanced leg/joint/pad pools (InstancedBufferGeometry +
-SphereGeometry + materials + 4 InstancedBufferAttribute typed arrays each),
-parented to the reused `app.world`. A correct destroy() exists at
-src/game/render3d/LegInstancedRenderer.ts:803 (disposes all 8 sub-pools) but has
-ZERO call sites. Render3DEntities.destroy() (Render3DEntities.ts:1052) disposes
-every other sub-renderer (building, projectile, construction, unitDetail, etc.)
-but never calls this.legRenderer.destroy(). Restart reuses the same ThreeApp /
-WebGLRenderer / app.world, so the old leg meshes stay attached and a fresh set is
-created on every restart -> leaks all leg GPU buffers per session.
-FIX: call this.legRenderer.destroy() inside Render3DEntities.destroy() (alongside
-the other sub-renderer .destroy() calls at lines 1067-1074).
-
-================================================================================
 PERFORMANCE — SIMULATION (authoritative tick path)
 ================================================================================
 
@@ -66,15 +47,6 @@ FIX: route the normal-projectile direct-hit test through spatialGrid line querie
 (mirror applySweptDamage's queryEntitiesAlongLine + queryProjectilesAlongLine
 broadphase). Ideally push the whole swept hit-test into a Rust batch kernel (none
 exists yet in lib.rs).
-
-3.1 [MAJOR] Spread allocation in projectile collision recursion.
-
-src/game/sim/combat/ProjectileCollisionHandler.ts:721 — processKilledProjectileShots
-does `[...result.killedProjectileIds]`, allocating a fresh array on every call. It
-recurses (cluster/submunition chains, depth <= 8) and runs from multiple detonation
-sites per tick. Violates "no allocations inside per-tick loops."
-FIX: iterate the Set directly, or drain into a reused module-level buffer (the file
-already uses that pattern for its _collision* buffers).
 
 3.2 [MINOR] Death-explosion blast object allocated per dead entity.
 
@@ -120,42 +92,7 @@ Reached per-leg-per-frame via 4.0.
 FIX: add an out-param overload getSurfaceNormal(x,z,w,h,cellSize,out) that writes
 into a caller scratch; route the foot/part samplers through it.
 
-4.2 [MAJOR] NameLabel3D identity-trace allocates per visible named unit per frame.
-
-src/game/render3d/NameLabel3D.ts:132-161 (labelIdentitySnapshot via
-recordDisplayedLabelIdentity, called at :395) builds a 7-element array + .join('|')
-string + a ~15-field object literal for every blueprint-tone label drawn, every
-frame. It is pure debug/trace instrumentation guarding a "should never happen"
-console.warn.
-FIX: gate the whole identity-trace path behind a dev/debug flag, or compute a cheap
-packed numeric identity hash instead of array-join + object snapshot.
-
-4.3 [MAJOR] Body-NAMES HUD loop runs for all entities every frame even when name
-toggles are off.
-
-src/game/render3d/helpers/RtsScene3DRenderPhase.ts:469-489 iterates
-getUnitsAndBuildings() and calls getEntityHudToggle + resolveEntityDisplayName +
-resolveCommanderOwnerName per entity every frame; the toggle is only read after the
-per-entity work starts. Unlike the waypoint pass, this loop is not gated by
-updateHudThisFrame.
-FIX: hoist the name-toggle check out of the loop (skip the whole iteration when no
-name toggle is on); consider gating with updateHudThisFrame.
-
-4.4 [MAJOR] Per-frame closure allocation for mirror/shield units.
-
-src/game/render3d/Render3DEntities.ts:932 — turrets.findIndex((t) => t.config.passive)
-allocates a closure every frame for every unit with m.mirrors (shield-panel/reflector
-units).
-FIX: plain counted for-loop, or cache the passive-turret index on the mesh at build
-time (turret layout doesn't change per frame).
-
 4.5 [MINOR] Misc per-frame literals/closures.
-- RtsScene3DRenderPhase.ts:314,321 — two arrow closures into sprayRenderer.update
-  per effects frame (hoist to bound members).
-- RtsScene3DRenderPhase.ts:479-483,513,533 — {x,y,z} anchor literals per named label
-  per frame (pass a reused scratch into nameLabel3D.perPieceName).
-- Render3DEntities.ts:594 (stepDyingPartMotion) — fresh delta literal per turret per
-  dying unit per frame (reuse scratch).
 - SelectionOverlayRenderer3D.ts:245 — projectGroundRadius closure per turret per unit
   (guarded by range-ring debug toggle, not default path; hoist to a method).
 - Debris3D.ts:1032 — pieces.splice(i,1) per expired piece (swap-with-last + pop).
@@ -192,24 +129,6 @@ tell it's falling behind. Violates "Measure TPS, CPU budget, ... backpressure
 continuously."
 FIX: drive the loop with a fixed-dt accumulator + bounded catch-up (max N steps/frame),
 and surface a tickMs/intervalMs saturation metric into serverMeta.
-
-5.2 [MINOR] First CPU sample is never used as an EMA seed.
-
-src/game/server/GameServer.ts:149 — tickMsInitialized defaults to true (vs tpsInitialized
-which is false), and the constructor (:209-210) resets tickMsAvg/Hi to 0 but leaves the
-flag true. So the first recordTickWork (:368) runs 0.99*0 + 0.01*workMs instead of seeding
-tickMsAvg = workMs; reported CPU load starts artificially near zero and takes ~100 ticks
-to converge.
-FIX: initialize tickMsInitialized = false.
-
-5.3 [MINOR] WASM shield/targeting/projectile pools not explicitly cleared on stop().
-
-GameServer.stop() (:383-419) clears the spatial grid (+ entity-meta + turret pools) but
-not sim.combatTargeting, sim.shieldSurfacePool, or sim.projectilePool. NOT an actual leak
-today — all three are count-based and fully re-stamped on the first tick of a new session
-— but it relies on "first tick re-stamps everything," which is fragile if any stamp ever
-becomes conditional.
-FIX: clear them in stop() for defense-in-depth and consistency.
 
 5.4 [MINOR] Sim-slot guard ("a second sim is a hard error") only fires at tick start.
 
@@ -305,21 +224,6 @@ FIX (C1 migration): move the swept-collision + termination loop into a Rust proj
 kernel; batch the homing intercept/thrust like the existing projectileIntegrateStepBatch.
 Combine with 3.0.
 
-7.1 [MEDIUM] Explicit-Absence offenders in hot/sim paths.
-
-The migration off `?.`/`?:` is well advanced (the canonical EntityComponentSlots is fully
-T|null), but these remain in hot paths:
-- src/game/sim/WorldState.ts:295 — host?.combat?.turrets[meta.mountIndex ?? -1] double
-  optional-chain, then redundantly re-checks host===undefined next line. Hard-guard
-  host/combat with explicit ===null returns (the ?? -1 sentinel is fine).
-- src/game/network/ClientUnitPrediction.ts:415-418 — unit?.velocityX ?? 0 etc. in
-  packEntityPredictionBatch, a per-frame prediction loop. Narrow the input type so
-  entity.unit is non-null, or skip non-units before packing.
-- src/game/sim/Simulation.ts:1418 — entity.body?.physicsBody.slot ?? FLYING_LOITER_INVALID_BODY_SLOT
-  in a per-tick loiter fill; prefer explicit body===null branch.
-Lower priority scattered single guards: combatUtils.ts:422/435,
-ProjectileCollisionHandler.ts:761/1260, turretSystem.ts:159, economy.ts:230/240.
-
 7.2 [LOW] Config-as-data residue (gameplay logic/data trapped in TypeScript).
 
 - src/game/sim/turretConfigs.ts:35 — hardcoded
@@ -332,9 +236,6 @@ ProjectileCollisionHandler.ts:761/1260, turretSystem.ts:159, economy.ts:230/240.
 
 7.3 [LOW] Delete-The-Old-Path residue.
 
-- src/game/sim/combat/damageHelpers.ts:476 — @deprecated alias
-  collectKillsWithDeathAudio = collectKillsAndDeathContexts, still called from
-  ProjectileCollisionHandler.ts:1130,1271. Inline the real name and delete the alias.
 - src/game/network/snapshotEntityWirePack.ts — legacy V1 unpackEntityRow and the array-form
   unpack* paths allocate fresh objects/createEmptyUnitSub() spreads (e.g. :1194) instead of
   using the V5/V6 decode pools. Current wire version is V6; remove these once no legacy

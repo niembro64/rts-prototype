@@ -126,6 +126,10 @@ type DyingUnitScatter = {
   turrets: DyingUnitPartMotion[];
 };
 
+function createDyingUnitPartDelta(): DyingUnitPartDelta {
+  return { dx: 0, dy: 0, dz: 0, drx: 0, dry: 0, drz: 0 };
+}
+
 // Shared Y-up axis for manual instanced transform composition.
 const _INST_UP = new THREE.Vector3(0, 1, 0);
 
@@ -177,6 +181,8 @@ export class Render3DEntities {
   // unit per frame in the build-in materialization write.
   private _turretFadeScratch: number[] = [];
   private readonly _turretScatterScratch: DyingUnitPartDelta[] = [];
+  private readonly _deathScatterBodyDelta = createDyingUnitPartDelta();
+  private readonly _deathScatterLocomotionDelta = createDyingUnitPartDelta();
   // Reusable "seen this frame" set for unit pruning. Keeping it as an
   // instance field and calling `.clear()` avoids a fresh Set allocation
   // every render frame.
@@ -558,7 +564,11 @@ export class Render3DEntities {
     const scatter = this.dyingUnitScatter.get(m);
     if (!scatter || dtMs <= 0) return;
     const dtSec = Math.min(dtMs, 80) / 1000;
-    const bodyDelta = this.stepDyingPartMotion(scatter.body, dtSec);
+    const bodyDelta = this.stepDyingPartMotion(
+      scatter.body,
+      dtSec,
+      this._deathScatterBodyDelta,
+    );
     this.applyObjectLocalDelta(m.chassis, bodyDelta);
     if (m.mirrors) this.applyObjectLocalDelta(m.mirrors.root, bodyDelta);
 
@@ -566,13 +576,18 @@ export class Render3DEntities {
     turretDeltas.length = m.turrets.length;
     for (let i = 0; i < m.turrets.length; i++) {
       const motion = scatter.turrets[i] ?? scatter.body;
-      const delta = this.stepDyingPartMotion(motion, dtSec);
+      const delta = turretDeltas[i] ?? (turretDeltas[i] = createDyingUnitPartDelta());
+      this.stepDyingPartMotion(motion, dtSec, delta);
       turretDeltas[i] = delta;
       this.applyObjectLocalDelta(m.turrets[i].root, delta);
     }
 
     if (scatter.locomotion && m.locomotion) {
-      const delta = this.stepDyingPartMotion(scatter.locomotion, dtSec);
+      const delta = this.stepDyingPartMotion(
+        scatter.locomotion,
+        dtSec,
+        this._deathScatterLocomotionDelta,
+      );
       this.applyObjectLocalDelta(m.locomotion.group, delta);
       translateLocomotion(
         m.locomotion,
@@ -589,15 +604,14 @@ export class Render3DEntities {
   private stepDyingPartMotion(
     motion: DyingUnitPartMotion,
     dtSec: number,
+    out: DyingUnitPartDelta,
   ): DyingUnitPartDelta {
-    const delta = {
-      dx: motion.vx * dtSec,
-      dy: motion.vy * dtSec,
-      dz: motion.vz * dtSec,
-      drx: motion.avx * dtSec,
-      dry: motion.avy * dtSec,
-      drz: motion.avz * dtSec,
-    };
+    out.dx = motion.vx * dtSec;
+    out.dy = motion.vy * dtSec;
+    out.dz = motion.vz * dtSec;
+    out.drx = motion.avx * dtSec;
+    out.dry = motion.avy * dtSec;
+    out.drz = motion.avz * dtSec;
     motion.vy -= GRAVITY * DEATH_SCATTER_GRAVITY_SCALE * dtSec;
     const linearDrag = Math.pow(DEATH_SCATTER_LINEAR_DRAG, dtSec * 60);
     motion.vx *= linearDrag;
@@ -607,7 +621,7 @@ export class Render3DEntities {
     motion.avx *= angularDrag;
     motion.avy *= angularDrag;
     motion.avz *= angularDrag;
-    return delta;
+    return out;
   }
 
   private applyObjectLocalDelta(obj: THREE.Object3D, delta: DyingUnitPartDelta): void {
@@ -929,7 +943,13 @@ export class Render3DEntities {
       this.applyUnitEntityFade(m, bodyOpacity, turretFades);
 
       if (m.mirrors) {
-        const shieldPanelTurretIndex = turrets.findIndex((turret) => turret.config.passive);
+        let shieldPanelTurretIndex = -1;
+        for (let i = 0; i < turrets.length; i++) {
+          if (turrets[i].config.passive) {
+            shieldPanelTurretIndex = i;
+            break;
+          }
+        }
         const shieldPanelTurret = shieldPanelTurretIndex >= 0 ? turrets[shieldPanelTurretIndex] : undefined;
         const shieldPanelMaterialized = shieldPanelTurret !== undefined &&
           isConstructionPieceMaterialized(e, 'body');
@@ -1072,6 +1092,7 @@ export class Render3DEntities {
     this._seenUnitIds.clear();
     this.constructionVisuals.destroy();
     this.unitDetailInstances.destroy();
+    this.legRenderer.destroy();
     disposeBodyGeoms();
     disposeBuildingGeoms();
     this.turretHeadGeom.dispose();

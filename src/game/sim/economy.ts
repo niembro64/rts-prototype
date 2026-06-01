@@ -221,13 +221,15 @@ export class EconomyManager {
     amountPerSecond: ResourceCost | null = null,
   ): ResourceCost {
     const economy = this.getOrCreateEconomy(playerId);
+    const energyPerSecond = amountPerSecond === null ? 0 : amountPerSecond.energy;
+    const metalPerSecond = amountPerSecond === null ? 0 : amountPerSecond.metal;
     const energy = resourceMovementSystem.credit(economy, world, {
       playerId,
       sourceEntityId,
       targetEntityId,
       resource: 'energy',
       amount: amount.energy,
-      amountPerSecond: amountPerSecond?.energy ?? 0,
+      amountPerSecond: energyPerSecond,
       direction: 'inbound',
       reason,
     });
@@ -237,7 +239,7 @@ export class EconomyManager {
       targetEntityId,
       resource: 'metal',
       amount: amount.metal,
-      amountPerSecond: amountPerSecond?.metal ?? 0,
+      amountPerSecond: metalPerSecond,
       direction: 'inbound',
       reason,
     });

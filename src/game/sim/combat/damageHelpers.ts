@@ -365,8 +365,7 @@ export function applyKnockbackForces(
  * skipped the renderer's material-explosion pipeline. Now every kill
  * gets a full event via buildUnitDeathEvent / buildBuildingDeathEvent,
  * with a synthesized neutral context when no directional data is
- * available. Kept as one function to avoid the old
- * collectKillsWithDeathAudio / collectKillsAndDeathContexts split.
+ * available. Kept as one function to avoid the old direct-hit/splash split.
  */
 export function collectKillsAndDeathContexts(
   result: DamageResult,
@@ -472,10 +471,6 @@ function emitAttackAlerts(
     });
   }
 }
-
-/** @deprecated Alias preserved for now-merged direct-hit callers.
- *  Behavior is identical to collectKillsAndDeathContexts. */
-export const collectKillsWithDeathAudio = collectKillsAndDeathContexts;
 
 // Apply directional knockback to all hit entities (flat force in given direction, already dt-scaled)
 export function applyDirectionalKnockback(

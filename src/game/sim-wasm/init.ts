@@ -2965,6 +2965,7 @@ export const DAMPED_ROTATION_FLAG_HAS_MAX = 1 << 2;
 export interface ProjectilePoolViews {
   readonly capacity: number;
   refreshViews: () => void;
+  clear: () => void;
   posX: Float64Array;
   posY: Float64Array;
   posZ: Float64Array;
@@ -3265,6 +3266,25 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           projectilePool.sourceShotBlueprintCode = projU32View(projPtrs.sourceShotBlueprintCode);
           projectilePool.spawnTick = projU32View(projPtrs.spawnTick);
           projectilePool.parentShotEntityId = projI32View(projPtrs.parentShotEntityId);
+        },
+        clear: () => {
+          projectilePool.refreshViews();
+          projectilePool.posX.fill(0);
+          projectilePool.posY.fill(0);
+          projectilePool.posZ.fill(0);
+          projectilePool.velX.fill(0);
+          projectilePool.velY.fill(0);
+          projectilePool.velZ.fill(0);
+          projectilePool.timeAlive.fill(0);
+          projectilePool.sourceTurretEntityId.fill(-1);
+          projectilePool.sourceHostEntityId.fill(-1);
+          projectilePool.sourceRootEntityId.fill(-1);
+          projectilePool.sourcePlayerId.fill(-1);
+          projectilePool.sourceTeamId.fill(-1);
+          projectilePool.sourceTurretBlueprintCode.fill(0xffff_ffff);
+          projectilePool.sourceShotBlueprintCode.fill(0xffff_ffff);
+          projectilePool.spawnTick.fill(0);
+          projectilePool.parentShotEntityId.fill(-1);
         },
         posX: projF64View(projPtrs.posX),
         posY: projF64View(projPtrs.posY),

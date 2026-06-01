@@ -412,10 +412,17 @@ function packEntityPredictionBatch(entities: Entity[], count: number): void {
     motionBatch[base] = entity.transform.x;
     motionBatch[base + 1] = entity.transform.y;
     motionBatch[base + 2] = entity.transform.z;
-    motionBatch[base + 3] = unit?.velocityX ?? 0;
-    motionBatch[base + 4] = unit?.velocityY ?? 0;
-    motionBatch[base + 5] = unit?.velocityZ ?? 0;
-    groundOffsetBatch[i] = unit?.bodyCenterHeight ?? 0;
+    if (unit === null) {
+      motionBatch[base + 3] = 0;
+      motionBatch[base + 4] = 0;
+      motionBatch[base + 5] = 0;
+      groundOffsetBatch[i] = 0;
+    } else {
+      motionBatch[base + 3] = unit.velocityX;
+      motionBatch[base + 4] = unit.velocityY;
+      motionBatch[base + 5] = unit.velocityZ;
+      groundOffsetBatch[i] = unit.bodyCenterHeight;
+    }
   }
 }
 

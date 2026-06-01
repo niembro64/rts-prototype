@@ -146,7 +146,7 @@ export class GameServer {
   // Seeded in the constructor body.
   private tickMsAvg: number = 0;
   private tickMsHi: number = 0;
-  private tickMsInitialized: boolean = true;
+  private tickMsInitialized: boolean = false;
 
   // Delta snapshot keyframe ratio tracking
   private keyframeRatio: number = typeof DEFAULT_KEYFRAME_RATIO === 'number' ? DEFAULT_KEYFRAME_RATIO : DEFAULT_KEYFRAME_RATIO === 'ALL' ? 1 : 0;
@@ -401,6 +401,12 @@ export class GameServer {
     // Reset module-level reusable buffers that hold stale entity references
     resetProjectileBuffers();
     resetDamageBuffers();
+    const sim = getSimWasm();
+    if (sim !== undefined) {
+      sim.combatTargeting.clear();
+      sim.shieldSurfacePool.clear();
+      sim.projectilePool.clear();
+    }
     this.debugGridPublisher.clear();
     resetDeltaTracking();
 

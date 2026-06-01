@@ -1415,7 +1415,10 @@ export class Simulation {
     const index = this._loiterCount++;
     this.ensureLoiterCapacity(this._loiterCount);
     this._loiterEntitiesBuf[index] = entity;
-    this._loiterSlotsBuf[index] = entity.body?.physicsBody.slot ?? FLYING_LOITER_INVALID_BODY_SLOT;
+    const body = entity.body;
+    this._loiterSlotsBuf[index] = body === null
+      ? FLYING_LOITER_INVALID_BODY_SLOT
+      : body.physicsBody.slot;
     this._loiterDxBuf[index] = dx;
     this._loiterDyBuf[index] = dy;
     this._loiterDistanceBuf[index] = distance;
