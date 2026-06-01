@@ -12706,7 +12706,6 @@ pub const CT_ENTITY_FLAG_ALIVE: u8 = 1 << 0;
 pub const CT_ENTITY_FLAG_HAS_COMBAT: u8 = 1 << 1;
 pub const CT_ENTITY_FLAG_FIRE_ENABLED: u8 = 1 << 2;
 pub const CT_ENTITY_FLAG_BUILDABLE_COMPLETE: u8 = 1 << 3;
-pub const CT_ENTITY_FLAG_CLOAKED: u8 = 1 << 4;
 
 // Turret-config-flag bits — packed into `turret_config_flags`.
 pub const CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS: u16 = 1 << 0;
@@ -12815,11 +12814,6 @@ struct CombatTargetingPool {
     entity_lockon_unit_mask: Vec<u32>,
     entity_lockon_turret_mask: Vec<u32>,
     entity_lockon_shot_mask: Vec<u32>,
-    // Per-entity detector radius. 0 = entity is not a detector. The
-    // observability helper walks this array to find detector entities
-    // owned by the viewer; storing the radius inline avoids a
-    // per-player detector pool.
-    entity_detector_radius: Vec<f32>,
     // Per-entity full-sight and radar-level source radii. Full sight
     // also counts as radar-level coverage because sight is the
     // stronger information tier. Stamped from shared sensor coverage
@@ -12828,18 +12822,17 @@ struct CombatTargetingPool {
     entity_radar_radius: Vec<f32>,
     // Per-target player masks rebuilt once after entity stamping.
     // A bit is set when that player's radar-level aggregate covers
-    // this target. Radar-level aggregate is sight OR radar. Detector
-    // coverage is tracked separately because it only unlocks cloaked
-    // targets; it does not grant position by itself.
+    // this target. Radar-level aggregate is sight OR radar.
     entity_sensor_coverage_mask: Vec<u32>,
-    entity_detector_coverage_mask: Vec<u32>,
     observation_cells: HashMap<u64, CombatTargetingObservationCell>,
     observation_cell_keys: Vec<u64>,
     observation_max_detection_padding: f64,
-    // Per-entity detection padding the cloak-observability walk adds
-    // when this entity is the *target*. Matches the JS
-    // `getEntityDetectionPadding` value (max body/shot/collision radius for
-    // units; max half-extent for buildings).
+    // Per-entity visibility padding the observability walk adds when
+    // this entity is the *target*, so a target counts as observed when
+    // its edge (not just its center) falls inside a vision/radar
+    // circle. Matches the JS `getEntityVisibilityPadding` value (max
+    // body/shot/collision radius for units; max half-extent for
+    // buildings).
     entity_detection_padding: Vec<f32>,
     // Per-entity targeting inputs that were JS scratch arrays before
     // AIM-08.5's slab-only scheduler. Stamped from CombatComponent
@@ -13010,11 +13003,9 @@ impl CombatTargetingPool {
             entity_lockon_unit_mask: Vec::new(),
             entity_lockon_turret_mask: Vec::new(),
             entity_lockon_shot_mask: Vec::new(),
-            entity_detector_radius: Vec::new(),
             entity_full_vision_radius: Vec::new(),
             entity_radar_radius: Vec::new(),
             entity_sensor_coverage_mask: Vec::new(),
-            entity_detector_coverage_mask: Vec::new(),
             observation_cells: HashMap::new(),
             observation_cell_keys: Vec::new(),
             observation_max_detection_padding: 0.0,
@@ -13133,11 +13124,9 @@ impl CombatTargetingPool {
             self.entity_lockon_unit_mask.resize(entity_needed, 0);
             self.entity_lockon_turret_mask.resize(entity_needed, 0);
             self.entity_lockon_shot_mask.resize(entity_needed, 0);
-            self.entity_detector_radius.resize(entity_needed, 0.0);
             self.entity_full_vision_radius.resize(entity_needed, 0.0);
             self.entity_radar_radius.resize(entity_needed, 0.0);
             self.entity_sensor_coverage_mask.resize(entity_needed, 0);
-            self.entity_detector_coverage_mask.resize(entity_needed, 0);
             self.entity_detection_padding.resize(entity_needed, 0.0);
             self.entity_priority_target_id.resize(entity_needed, -1);
             self.entity_priority_point_present.resize(entity_needed, 0);
@@ -13230,7 +13219,6 @@ impl CombatTargetingPool {
             }
             self.entity_flags[s] = 0;
             self.entity_sensor_coverage_mask[s] = 0;
-            self.entity_detector_coverage_mask[s] = 0;
             self.entity_active_turret_mask[s] = 0;
             self.entity_firing_turret_mask[s] = 0;
 
@@ -13272,7 +13260,6 @@ impl CombatTargetingPool {
         }
         self.entity_flags[s] = 0;
         self.entity_sensor_coverage_mask[s] = 0;
-        self.entity_detector_coverage_mask[s] = 0;
         self.turret_count_per_entity[s] = 0;
         let base = s * (COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
         for t in 0..(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize) {
@@ -13487,7 +13474,6 @@ pub fn combat_targeting_set_entity(
     lockon_unit_mask: u32,
     lockon_turret_mask: u32,
     lockon_shot_mask: u32,
-    detector_radius: f32,
     full_vision_radius: f32,
     radar_radius: f32,
     detection_padding: f32,
@@ -13547,7 +13533,6 @@ pub fn combat_targeting_set_entity(
     pool.entity_lockon_unit_mask[s] = lockon_unit_mask;
     pool.entity_lockon_turret_mask[s] = lockon_turret_mask;
     pool.entity_lockon_shot_mask[s] = lockon_shot_mask;
-    pool.entity_detector_radius[s] = detector_radius;
     pool.entity_full_vision_radius[s] = full_vision_radius;
     pool.entity_radar_radius[s] = radar_radius;
     pool.entity_detection_padding[s] = detection_padding;
@@ -13896,10 +13881,10 @@ pub fn combat_targeting_turret_count(entity_slot: u32) -> u8 {
 
 /// AIM-08.5 — JS-callable wrapper around the internal observability
 /// helper. Returns 1 when `viewer_player_id` can observe the entity
-/// addressed by `target_id` (alive + (uncloaked OR own-team OR
-/// reached by a viewer-owned detector)), 0 otherwise. Used by the
-/// priority-target path to fall through to auto-targeting when the
-/// command target is dead, lost, or stealthed beyond detection.
+/// addressed by `target_id` (alive + (own-team OR covered by the
+/// viewer's sight/radar)), 0 otherwise. Used by the priority-target
+/// path to fall through to auto-targeting when the command target is
+/// dead or has slipped out of vision.
 #[wasm_bindgen]
 pub fn combat_targeting_can_player_observe_entity(target_id: i32, viewer_player_id: u8) -> u8 {
     let pool = combat_targeting_pool();
@@ -14615,7 +14600,6 @@ fn combat_targeting_mark_observation_circle(
     source_y: f64,
     radius: f64,
     owner_bit: u32,
-    detector: bool,
 ) {
     if owner_bit == 0 || !source_x.is_finite() || !source_y.is_finite() || !radius.is_finite() {
         return;
@@ -14638,11 +14622,7 @@ fn combat_targeting_mark_observation_circle(
     let entity_detection_padding = &pool.entity_detection_padding;
     let observation_cells = &pool.observation_cells;
     let observation_cell_keys = &pool.observation_cell_keys;
-    let coverage_mask = if detector {
-        &mut pool.entity_detector_coverage_mask
-    } else {
-        &mut pool.entity_sensor_coverage_mask
-    };
+    let coverage_mask = &mut pool.entity_sensor_coverage_mask;
     let cells_x = (max_cx - min_cx + 1) as i64;
     let cells_y = (max_cy - min_cy + 1) as i64;
     if cells_x <= 0 || cells_y <= 0 {
@@ -14718,7 +14698,6 @@ fn combat_targeting_mark_observation_from_source_slot(
     } else {
         radar_radius
     };
-    let detector_radius = pool.entity_detector_radius[source_slot] as f64;
     if sensor_radius > 0.0 {
         combat_targeting_mark_observation_circle(
             pool,
@@ -14726,24 +14705,12 @@ fn combat_targeting_mark_observation_from_source_slot(
             source_y,
             sensor_radius,
             owner_bit,
-            false,
-        );
-    }
-
-    if detector_radius > 0.0 {
-        combat_targeting_mark_observation_circle(
-            pool,
-            source_x,
-            source_y,
-            detector_radius,
-            owner_bit,
-            true,
         );
     }
 }
 
-/// Rebuilds per-target radar-level and detector coverage masks from
-/// stamped sensor sources using the spatial grid. This is the hot-path
+/// Rebuilds per-target radar-level coverage masks from stamped sensor
+/// sources using the spatial grid. This is the hot-path
 /// targeting equivalent of the snapshot visibility aggregate: do the
 /// source-radius work once per tick, then every turret candidate can
 /// test observability with a bitmask instead of scanning all units.
@@ -14751,9 +14718,6 @@ fn combat_targeting_mark_observation_from_source_slot(
 pub fn combat_targeting_rebuild_observation_masks() {
     let pool = combat_targeting_pool();
     for mask in pool.entity_sensor_coverage_mask.iter_mut() {
-        *mask = 0;
-    }
-    for mask in pool.entity_detector_coverage_mask.iter_mut() {
         *mask = 0;
     }
 
@@ -14789,18 +14753,7 @@ pub fn combat_targeting_add_sensor_observation_circle(
 ) {
     let owner_bit = combat_targeting_player_bit(owner_player_id);
     let pool = combat_targeting_pool();
-    combat_targeting_mark_observation_circle(pool, x, y, radius, owner_bit, false);
-}
-
-fn combat_targeting_view_mask_detects_entity(
-    pool: &CombatTargetingPool,
-    target_slot: usize,
-    view_mask: u32,
-) -> bool {
-    if (view_mask & pool.entity_owner_bit[target_slot]) != 0 {
-        return true;
-    }
-    (pool.entity_detector_coverage_mask[target_slot] & view_mask) != 0
+    combat_targeting_mark_observation_circle(pool, x, y, radius, owner_bit);
 }
 
 fn combat_targeting_view_mask_covers_entity(
@@ -14815,8 +14768,7 @@ fn combat_targeting_view_mask_covers_entity(
 }
 
 /// Targeting observability for one recipient/team view. Radar-level
-/// coverage includes full sight. Cloaked enemies additionally require
-/// detector coverage before sight/radar can expose them.
+/// coverage includes full sight.
 fn combat_targeting_view_mask_observes_entity(
     pool: &CombatTargetingPool,
     target_slot: usize,
@@ -14831,11 +14783,6 @@ fn combat_targeting_view_mask_observes_entity(
     }
     if (view_mask & pool.entity_owner_bit[target_slot]) != 0 {
         return true;
-    }
-    if (target_flags & CT_ENTITY_FLAG_CLOAKED) != 0
-        && !combat_targeting_view_mask_detects_entity(pool, target_slot, view_mask)
-    {
-        return false;
     }
     combat_targeting_view_mask_covers_entity(pool, target_slot, view_mask)
 }
@@ -18817,7 +18764,7 @@ fn combat_targeting_candidate_slot_gate_passes(
 /// `compute_turret_gates_for_aim_point`; JS no longer needs to fill
 /// a per-(turret, candidate) clearance mask.
 ///
-/// Per-candidate observability (cloak/detector) is computed
+/// Per-candidate observability (sight/radar) is computed
 /// internally from slab data — the dedicated scratch global is
 /// filled before the per-turret loop and reused across turrets,
 /// since the observer player is the same for every turret on this

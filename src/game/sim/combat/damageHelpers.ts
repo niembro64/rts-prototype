@@ -11,7 +11,6 @@ import type { DeathContext, DamageResult, KnockbackInfo } from '../damage/types'
 import type { Projectile, ProjectileConfig } from '../types';
 import { getUnitBodyCenterHeight, getUnitGroundZ } from '../unitGeometry';
 import { isTurretBlueprintId, isUnitBlueprintId } from '../../../types/blueprintIds';
-import { canPlayerObserveCloakedEntity } from '../cloakDetection';
 import { getTransformCosSin } from '../../math';
 import { resolveWeaponWorldMount } from './combatUtils';
 
@@ -428,13 +427,7 @@ const _attackAlertSeenVictims = new Set<PlayerId>();
  *  recipient that wasn't hit. The visual is what tells the player
  *  "your unit is taking fire from over there" even when a dumb splash
  *  shell from inside fog lands silently on their unit; without the
- *  alert the HP drop is the only signal.
- *
- *  Cloak interaction: if the attacker is cloaked AND the victim's
- *  player has no detector covering its position, the alert is
- *  suppressed for that victim. Otherwise stealth would be defeated
- *  by anything the unit shoots at — the canonical RTS rule is that
- *  cloaked units stay hidden unless detected. */
+ *  alert the HP drop is the only signal. */
 function emitAttackAlerts(
   result: DamageResult,
   world: WorldState,
@@ -455,7 +448,6 @@ function emitAttackAlerts(
       : undefined;
     if (victimPlayerId === undefined || victimPlayerId === attackerPlayerId) continue;
     if (_attackAlertSeenVictims.has(victimPlayerId)) continue;
-    if (!canPlayerObserveCloakedEntity(world, attacker, victimPlayerId)) continue;
     _attackAlertSeenVictims.add(victimPlayerId);
     audioEvents.push({
       type: 'attackAlert',

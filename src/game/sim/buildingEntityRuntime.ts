@@ -1,12 +1,10 @@
 import type { BuildingBlueprintId, Entity, EntityId } from './types';
 import { createCombatComponent } from './types';
 import { isTowerBuildingBlueprintId } from '../../types/buildingTypes';
-import { getBuildingBlueprint } from './blueprints';
 import {
   buildingBlueprintHasActiveState,
   ensureBuildingActiveState,
 } from './buildingActiveState';
-import { applyEntitySensorBlueprint } from './cloakDetection';
 import { createBuildingRuntimeTurrets } from './runtimeTurrets';
 
 export type ApplyBuildingBlueprintRuntimeOptions = {
@@ -21,7 +19,6 @@ export function applyBuildingBlueprintRuntime(
   entity.buildingBlueprintId = buildingBlueprintId;
   entity.type = isTowerBuildingBlueprintId(buildingBlueprintId) ? 'tower' : 'building';
 
-  applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingBlueprintId));
   if (buildingBlueprintHasActiveState(buildingBlueprintId)) {
     ensureBuildingActiveState(entity);
   }

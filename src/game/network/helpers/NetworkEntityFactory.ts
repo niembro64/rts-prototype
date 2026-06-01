@@ -16,7 +16,7 @@ import {
   buildingBlueprintIdToCode,
   codeToTurretBlueprintId,
 } from '../../../types/network';
-import { getBuildingBlueprint, getUnitBlueprint, getUnitLocomotion } from '../../sim/blueprints';
+import { getUnitBlueprint, getUnitLocomotion } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from '../../sim/buildGrid';
 import { COST_MULTIPLIER } from '../../../config';
@@ -30,7 +30,6 @@ import { initializeConstructionPieceHealth } from '../../sim/constructionLifecyc
 import { isFiniteNumber } from '../../math';
 import { createUnitSuspension } from '../../sim/unitSuspension';
 import { computeUnitActionHash } from '../../sim/unitActions';
-import { applyEntitySensorBlueprint } from '../../sim/cloakDetection';
 import {
   dequantizeEntityPosition as deqEntityPos,
   dequantizeRotation as deqRot,
@@ -332,7 +331,6 @@ function createUnitFromNetwork(
       stuckTicks: 0,
     },
   };
-  if (unitBlueprint) applyEntitySensorBlueprint(entity, unitBlueprint);
 
   const turrets = createTurretsFromNetwork(unitBlueprintId, entity.unit!.radius.visual, unitTurrets);
   if (turrets) {
@@ -455,7 +453,6 @@ function createBuildingFromNetwork(
       ? b.metalExtractionRate ?? 0
       : null,
   };
-  applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingBlueprintId));
 
   if (b.build && !b.build.complete) {
     // required is re-derived from the local building config. It is a pure

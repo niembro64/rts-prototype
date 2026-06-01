@@ -1,5 +1,4 @@
 import type { Entity } from './types';
-import { getEntityDetectionPadding } from './cloakDetection';
 import { isBuildBlockingActivation } from './buildableHelpers';
 
 export const BUILDING_VISION_RADIUS = 1000;
@@ -41,6 +40,19 @@ export function getEntityRadarRadius(entity: Entity): number {
   return RADAR_VISION_RADIUS;
 }
 
+/** Entity-size padding used by coverage queries so a target counts as
+ *  observed when its edge — not just its center — falls inside a vision
+ *  or radar circle. */
 export function getEntityVisibilityPadding(entity: Entity): number {
-  return getEntityDetectionPadding(entity);
+  if (entity.unit) {
+    return Math.max(
+      entity.unit.radius.visual,
+      entity.unit.radius.hitbox,
+      entity.unit.radius.collision,
+    );
+  }
+  if (entity.building) {
+    return Math.max(entity.building.width, entity.building.height) * 0.5;
+  }
+  return 0;
 }

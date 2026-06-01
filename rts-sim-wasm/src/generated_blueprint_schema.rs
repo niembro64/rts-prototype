@@ -741,16 +741,6 @@ pub struct EntityHudBlueprint {
     pub barsOffsetAboveTop: f64,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct CloakBlueprint {
-    pub enabled: bool,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct DetectorBlueprint {
-    pub radius: f64,
-}
-
 pub type UnitRadiusConfig = EntityRadiusConfig;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -785,8 +775,6 @@ pub struct UnitBlueprint {
     pub suspension: Option<BlueprintJsonValue>,
     pub builder: Option<UnitBuilderConfig>,
     pub dgun: Option<UnitDgunConfig>,
-    pub cloak: Option<CloakBlueprint>,
-    pub detector: Option<DetectorBlueprint>,
     pub deathSound: Option<BlueprintJsonValue>,
     pub fightStopEngagedRatio: Option<f64>,
     pub includeLockOnLevel0FriendsAndEnemies: Vec<TurretLockOnRelationshipInclusion>,

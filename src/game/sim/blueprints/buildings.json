@@ -20,9 +20,7 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "cloak": null,
     "turrets": [],
-    "detector": null,
     "base": {
       "cost": {
         "energy": 100,
@@ -63,9 +61,7 @@
     "hud": {
       "barsOffsetAboveTop": -10
     },
-    "cloak": null,
     "turrets": [],
-    "detector": null,
     "base": {
       "cost": {
         "energy": 60,
@@ -106,9 +102,7 @@
     "hud": {
       "barsOffsetAboveTop": 38
     },
-    "cloak": null,
     "turrets": [],
-    "detector": null,
     "base": {
       "cost": {
         "energy": 80,
@@ -149,11 +143,7 @@
     "hud": {
       "barsOffsetAboveTop": 16
     },
-    "cloak": null,
     "turrets": [],
-    "detector": {
-      "radius": 1800
-    },
     "base": {
       "cost": {
         "energy": 400,
@@ -194,9 +184,7 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "cloak": null,
     "turrets": [],
-    "detector": null,
     "base": {
       "cost": {
         "energy": 120,

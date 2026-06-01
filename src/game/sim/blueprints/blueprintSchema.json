@@ -2233,30 +2233,6 @@
       },
       "additionalProperties": false
     },
-    "CloakBlueprint": {
-      "type": "object",
-      "required": [
-        "enabled"
-      ],
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        }
-      },
-      "additionalProperties": false
-    },
-    "DetectorBlueprint": {
-      "type": "object",
-      "required": [
-        "radius"
-      ],
-      "properties": {
-        "radius": {
-          "type": "number"
-        }
-      },
-      "additionalProperties": false
-    },
     "UnitRadiusConfig": {
       "$ref": "#/$defs/EntityRadiusConfig"
     },
@@ -2313,8 +2289,6 @@
         "suspension",
         "builder",
         "dgun",
-        "cloak",
-        "detector",
         "deathSound",
         "fightStopEngagedRatio",
         "includeLockOnLevel0FriendsAndEnemies",
@@ -2405,26 +2379,6 @@
           "oneOf": [
             {
               "$ref": "#/$defs/UnitDgunConfig"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "cloak": {
-          "oneOf": [
-            {
-              "$ref": "#/$defs/CloakBlueprint"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "detector": {
-          "oneOf": [
-            {
-              "$ref": "#/$defs/DetectorBlueprint"
             },
             {
               "type": "null"

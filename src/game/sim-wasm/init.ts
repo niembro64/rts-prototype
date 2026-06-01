@@ -1562,7 +1562,6 @@ export const CT_ENTITY_FLAG_ALIVE = 1 << 0;
 export const CT_ENTITY_FLAG_HAS_COMBAT = 1 << 1;
 export const CT_ENTITY_FLAG_FIRE_ENABLED = 1 << 2;
 export const CT_ENTITY_FLAG_BUILDABLE_COMPLETE = 1 << 3;
-export const CT_ENTITY_FLAG_CLOAKED = 1 << 4;
 
 /** AIM-08.1 — Turret-config-flag bits packed into the combat-targeting
  *  turret slab's `configFlags` field. Mirrors `CT_TURRET_CFG_*`. */
@@ -1677,7 +1676,6 @@ export interface CombatTargetingApi {
     lockOnUnitIncludeMask: number,
     lockOnTurretIncludeMask: number,
     lockOnShotIncludeMask: number,
-    detectorRadius: number,
     fullVisionRadius: number,
     radarRadius: number,
     detectionPadding: number,
@@ -1691,8 +1689,8 @@ export interface CombatTargetingApi {
   ) => void;
   unsetEntity: (entitySlot: number) => void;
   /** Rebuilds targeting observability masks from stamped sight/radar
-   *  and detector sources. Must run after all entities are stamped and
-   *  before any targeting scheduler tick. */
+   *  sources. Must run after all entities are stamped and before any
+   *  targeting scheduler tick. */
   rebuildObservationMasks: () => void;
   /** Same as rebuildObservationMasks, but walks only the stamped source
    *  slots supplied by JS. The caller must have cleared the targeting
@@ -1794,10 +1792,10 @@ export interface CombatTargetingApi {
     turretShieldPanelsEnabled: number,
     turretShieldSpheresEnabled: number,
   ) => void;
-  /** AIM-08.5 — slab-backed cloak-observability check. Returns 1 if
+  /** AIM-08.5 — slab-backed observability check. Returns 1 if
    *  `viewerPlayerId` can observe the entity addressed by `targetId`
-   *  (alive + (uncloaked OR own-team OR reached by a viewer-owned
-   *  detector)), 0 otherwise. */
+   *  (alive + (own-team OR covered by the viewer's sight/radar)),
+   *  0 otherwise. */
   canPlayerObserveEntity: (
     targetId: number,
     viewerPlayerId: number,
@@ -2032,7 +2030,7 @@ export interface CombatTargetingApi {
   ) => void;
   /** AIM-08.5 — unified existing-lock gate compute + FSM apply. Each
    *  turret's current target is read from the slab; TS supplies only
-   *  the per-turret aim point. Rust computes cloak observability +
+   *  the per-turret aim point. Rust computes observability +
    *  passive shield-panel_valid + shield-panel clearance + LOS / FF /
    *  ballistic from slab data and derives sight_blocked internally. */
   readonly computeAndApplyValidateExistingLockFsmBatch: (

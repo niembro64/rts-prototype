@@ -125,14 +125,6 @@ export type Ownership = {
   playerId: PlayerId;
 };
 
-export type Cloak = {
-  enabled: boolean;
-};
-
-export type Detector = {
-  radius: number;
-};
-
 export type EntityRadii = {
   visual: number;
   hitbox: number;
@@ -187,7 +179,7 @@ export type Unit = {
   /** World-space height of the unit's authored body center above terrain. */
   bodyCenterHeight: number;
   /** Authored full-sight sensor radius for this unit. Separate from
-   *  weapon, tracking, detector, radar, and builder action range. */
+   *  weapon, tracking, radar, and builder action range. */
   fullVisionRadius: number;
   mass: number;
   hp: number;
@@ -943,8 +935,6 @@ export type EntityComponentSlots = {
   body: Body | null;
   selectable: Selectable | null;
   ownership: Ownership | null;
-  cloak: Cloak | null;
-  detector: Detector | null;
   unit: Unit | null;
   building: Building | null;
   /** Combat capability — turrets + per-host bookkeeping. Present iff
@@ -982,8 +972,6 @@ export function createEmptyEntityComponentSlots(): EntityComponentSlots {
     body: null,
     selectable: null,
     ownership: null,
-    cloak: null,
-    detector: null,
     unit: null,
     building: null,
     combat: null,

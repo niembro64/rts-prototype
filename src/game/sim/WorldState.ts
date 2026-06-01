@@ -43,7 +43,6 @@ import type { ShieldReflectionMode } from '../../types/shotTypes';
 import { getSurfaceHeight, getSurfaceNormal } from './Terrain';
 import { buildShieldPanelCache } from './shieldPanelCache';
 import { createProjectileConfigFromTurret } from './projectileConfigs';
-import { applyEntitySensorBlueprint } from './cloakDetection';
 import { ENTITY_CHANGED_HP } from '../../types/network';
 import { isConstructionPieceMaterialized } from './buildableHelpers';
 
@@ -731,16 +730,6 @@ export class WorldState {
     return this.cache.getBuildingsByPlayer(playerId);
   }
 
-  /** Entities (unit + building) owned by `playerId` that carry a
-   *  detector component (FOW-OPT-19). Reusable array —
-   *  DO NOT STORE the reference. Offline / construction-shell entries
-   *  pass through; callers gate on getEntityDetectorRadius which
-   *  reads the live entity state. */
-  getDetectorsByPlayer(playerId: PlayerId): Entity[] {
-    this.rebuildCachesIfNeeded();
-    return this.cache.getDetectorsByPlayer(playerId);
-  }
-
   /** Get the per-player ally set, NOT including the player itself.
    *  An empty set means FFA (no allies). The visibility filter and
    *  snapshot serializer iterate these to union allied vision
@@ -983,7 +972,6 @@ export class WorldState {
     // authoritative host keeps it absent so turret mounts, targeting,
     // snapshots, and physics all read the rigid body anchor only.
     entity.unit!.suspension = null;
-    applyEntitySensorBlueprint(entity, bp);
 
     // Create combat component (turrets + per-host bookkeeping) from
     // blueprint. Every unit blueprint declares at least one turret, so

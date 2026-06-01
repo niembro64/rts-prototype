@@ -556,14 +556,6 @@ export type EntityHudBlueprint = {
   barsOffsetAboveTop: number;
 };
 
-export type CloakBlueprint = {
-  enabled: boolean;
-};
-
-export type DetectorBlueprint = {
-  radius: number;
-};
-
 export type UnitRadiusConfig = EntityRadiusConfig;
 
 export type UnitBuilderConfig = {
@@ -595,8 +587,6 @@ export type UnitBlueprint = {
   suspension: UnitSuspensionConfig | null;
   builder: UnitBuilderConfig | null;
   dgun: UnitDgunConfig | null;
-  cloak: CloakBlueprint | null;
-  detector: DetectorBlueprint | null;
   deathSound: SoundEntry | null;
   fightStopEngagedRatio: number | null;
   includeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipInclusion[];

@@ -41,10 +41,6 @@
     "suspension": null,
     "builder": null,
     "dgun": null,
-    "cloak": null,
-    "detector": {
-      "radius": 900
-    },
     "deathSound": {
       "$audio": "event.death.unitJackal"
     },
@@ -126,8 +122,6 @@
     "suspension": null,
     "builder": null,
     "dgun": null,
-    "cloak": null,
-    "detector": null,
     "deathSound": {
       "$audio": "event.death.unitLynx"
     },
@@ -215,8 +209,6 @@
     "suspension": null,
     "builder": null,
     "dgun": null,
-    "cloak": null,
-    "detector": null,
     "deathSound": {
       "$audio": "event.death.unitDaddy"
     },
@@ -319,8 +311,6 @@
     "suspension": null,
     "builder": null,
     "dgun": null,
-    "cloak": null,
-    "detector": null,
     "deathSound": {
       "$audio": "event.death.unitBadger"
     },
@@ -401,8 +391,6 @@
     "suspension": null,
     "builder": null,
     "dgun": null,
-    "cloak": null,
-    "detector": null,
     "deathSound": {
       "$audio": "event.death.unitMongoose"
     },
@@ -482,12 +470,6 @@
     "suspension": null,
     "builder": null,
     "dgun": null,
-    "cloak": {
-      "enabled": true
-    },
-    "detector": {
-      "radius": 200
-    },
     "deathSound": {
       "$audio": "event.death.unitTick"
     },
@@ -590,8 +572,6 @@
     "suspension": null,
     "builder": null,
     "dgun": null,
-    "cloak": null,
-    "detector": null,
     "deathSound": {
       "$audio": "event.death.unitMammoth"
     },
@@ -690,8 +670,6 @@
     "suspension": null,
     "builder": null,
     "dgun": null,
-    "cloak": null,
-    "detector": null,
     "deathSound": {
       "$audio": "event.death.unitFormik"
     },
@@ -883,8 +861,6 @@
     "suspension": null,
     "builder": null,
     "dgun": null,
-    "cloak": null,
-    "detector": null,
     "deathSound": {
       "$audio": "event.death.unitWidow"
     },
@@ -986,8 +962,6 @@
     "suspension": null,
     "builder": null,
     "dgun": null,
-    "cloak": null,
-    "detector": null,
     "deathSound": {
       "$audio": "event.death.unitHippo"
     },
@@ -1079,8 +1053,6 @@
     "suspension": null,
     "builder": null,
     "dgun": null,
-    "cloak": null,
-    "detector": null,
     "deathSound": {
       "$audio": "event.death.unitTarantula"
     },
@@ -1188,8 +1160,6 @@
     "suspension": null,
     "builder": null,
     "dgun": null,
-    "cloak": null,
-    "detector": null,
     "deathSound": {
       "$audio": "event.death.unitLoris"
     },
@@ -1268,8 +1238,6 @@
     "suspension": null,
     "builder": null,
     "dgun": null,
-    "cloak": null,
-    "detector": null,
     "deathSound": {
       "$audio": "event.death.unitBee"
     },
@@ -1378,8 +1346,6 @@
     "suspension": null,
     "builder": null,
     "dgun": null,
-    "cloak": null,
-    "detector": null,
     "deathSound": {
       "$audio": "event.death.unitDragonfly"
     },
@@ -1483,8 +1449,6 @@
       "constructionRate": 35
     },
     "dgun": null,
-    "cloak": null,
-    "detector": null,
     "deathSound": {
       "$audio": "event.death.unitConstructionDrone"
     },
@@ -1576,8 +1540,6 @@
     "suspension": null,
     "builder": null,
     "dgun": null,
-    "cloak": null,
-    "detector": null,
     "deathSound": {
       "$audio": "event.death.unitEagle"
     },
@@ -1714,10 +1676,6 @@
     "dgun": {
       "turretBlueprintId": "turretDisruptor",
       "energyCost": 200
-    },
-    "cloak": null,
-    "detector": {
-      "radius": 1100
     },
     "deathSound": {
       "$audio": "event.death.unitCommander"

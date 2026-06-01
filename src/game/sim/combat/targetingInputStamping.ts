@@ -46,7 +46,6 @@ import {
   CT_ENTITY_FLAG_HAS_COMBAT,
   CT_ENTITY_FLAG_FIRE_ENABLED,
   CT_ENTITY_FLAG_BUILDABLE_COMPLETE,
-  CT_ENTITY_FLAG_CLOAKED,
   CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS,
   CT_TURRET_CFG_NEEDS_BALLISTIC,
   CT_TURRET_CFG_VERTICAL_LAUNCHER,
@@ -76,13 +75,9 @@ import {
   type LockOnMasks,
 } from '../blueprints';
 import {
-  getEntityDetectionPadding,
-  getEntityDetectorRadius,
-  isEntityCloaked,
-} from '../cloakDetection';
-import {
   getEntityFullVisionRadius,
   getEntityRadarRadius,
+  getEntityVisibilityPadding,
 } from '../sensorCoverage';
 import { isEntityActive } from '../buildableHelpers';
 import {
@@ -535,7 +530,6 @@ function stampCombatTargetingEntityInto(
   if (isEntityActive(entity)) {
     entityFlags |= CT_ENTITY_FLAG_BUILDABLE_COMPLETE;
   }
-  if (isEntityCloaked(entity)) entityFlags |= CT_ENTITY_FLAG_CLOAKED;
 
   // LOCK-ON-03 — Stamp the entity's family + blueprint id so the Rust
   // exclusion gate can reject candidates by family/name without
@@ -560,19 +554,18 @@ function stampCombatTargetingEntityInto(
   }
   const hostLockOn = getHostLockOnMasks(entity);
 
-  // Detector + padding stamped per-entity so the Rust observability
-  // helper can walk the slab itself (replaces the per-player
-  // detector list TS used to maintain). Padding is what the cloak
-  // check adds when this entity is the *target*.
-  const detectorRadius = getEntityDetectorRadius(entity);
+  // Sight + radar radii and entity-size padding stamped per-entity so
+  // the Rust observability helper can walk the slab itself. Padding is
+  // the target's footprint, so a unit counts as observed when its edge
+  // (not just its center) falls inside a vision/radar circle.
   const fullVisionRadius = getEntityFullVisionRadius(entity);
   const radarRadius = getEntityRadarRadius(entity);
-  const detectionPadding = getEntityDetectionPadding(entity);
+  const visibilityPadding = getEntityVisibilityPadding(entity);
   if (
     playerMaskBit(playerId) !== 0 &&
     hp > 0 &&
     (entityFlags & CT_ENTITY_FLAG_BUILDABLE_COMPLETE) !== 0 &&
-    (fullVisionRadius > 0 || radarRadius > 0 || detectorRadius > 0)
+    (fullVisionRadius > 0 || radarRadius > 0)
   ) {
     queueCombatTargetingSensorSourceSlot(slot);
   }
@@ -635,7 +628,7 @@ function stampCombatTargetingEntityInto(
     hostLockOn.building, hostLockOn.tower,
     hostLockOn.unit, hostLockOn.turret,
     hostLockOn.shot,
-    detectorRadius, fullVisionRadius, radarRadius, detectionPadding,
+    fullVisionRadius, radarRadius, visibilityPadding,
     priorityTargetId === null ? -1 : priorityTargetId,
     priorityPointPresent,
     priorityPointX, priorityPointY, priorityPointZ,

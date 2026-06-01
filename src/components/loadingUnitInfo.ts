@@ -178,7 +178,6 @@ function buildBuildingFunctionItems(blueprint: BuildingBlueprint): LoadingUnitIn
   if (blueprint.metalProduction) items.push(stat('Metal output', `${fmt(blueprint.metalProduction)}/s`));
   if (blueprint.constructionRate) items.push(stat('Construction rate', `${fmt(blueprint.constructionRate)}/s`));
   if (blueprint.conversionRate) items.push(stat('Conversion rate', `${fmt(blueprint.conversionRate)}/s`));
-  if (blueprint.detector) items.push(stat('Detector radius', fmt(blueprint.detector.radius)));
   return items;
 }
 
@@ -192,7 +191,7 @@ function summarizeBuildingRole(
   if (blueprint.conversionRate) return 'resource converter';
   if (blueprint.metalProduction) return 'metal extractor';
   if (blueprint.energyProduction) return 'energy generator';
-  if (blueprint.detector) return 'radar / detector';
+  if (blueprint.buildingBlueprintId === 'buildingRadar') return 'radar';
   return isTower ? 'static host' : 'structure';
 }
 
@@ -202,7 +201,7 @@ function describeBuildingOutput(blueprint: BuildingBlueprint, firepower: Firepow
   if (blueprint.metalProduction) return `+${fmt(blueprint.metalProduction)} metal/s`;
   if (blueprint.constructionRate) return `${fmt(blueprint.constructionRate)} build/s`;
   if (blueprint.conversionRate) return `${fmt(blueprint.conversionRate)} conv/s`;
-  if (blueprint.detector) return `${fmt(blueprint.detector.radius)} radar`;
+  if (blueprint.buildingBlueprintId === 'buildingRadar') return 'radar';
   return 'passive';
 }
 
@@ -298,12 +297,6 @@ function buildSystemsSection(blueprint: UnitBlueprint): LoadingUnitInfoSection {
     items.push(node('D-gun', blueprint.dgun.turretBlueprintId, undefined, [
       stat('Energy cost', fmt(blueprint.dgun.energyCost)),
     ]));
-  }
-  if (blueprint.detector) {
-    items.push(stat('Detector radius', fmt(blueprint.detector.radius)));
-  }
-  if (blueprint.cloak) {
-    items.push(stat('Cloak', blueprint.cloak.enabled ? 'available' : 'disabled'));
   }
   if (items.length === 0) items.push(stat('Special systems', 'none'));
   return { id: 'systems', title: 'Systems', items };

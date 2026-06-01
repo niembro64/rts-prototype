@@ -11,7 +11,6 @@ import type { BuildingAnchorProfile, BuildingRenderProfile, BuildingBlueprintId,
 import { isTowerBuildingBlueprintId } from '../../../types/buildingTypes';
 import type {
   BuildingTurretMount,
-  DetectorBlueprint,
   EntityBaseLedger,
   EntityHudBlueprint,
   LockOnInclusionObject,
@@ -61,12 +60,10 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   visualHeight: number;
   anchorProfile: BuildingAnchorProfile;
   hud: EntityHudBlueprint;
-  cloak: null;
   /** Optional reusable turret hardpoints mounted on this building.
    *  Building mount coordinates are absolute world units relative to
    *  the building center/base, not body-radius fractions like units. */
   turrets: BuildingTurretMount[];
-  detector: DetectorBlueprint | null;
 };
 
 type JsonTowerBlueprint = Omit<BuildingBlueprint, keyof LockOnInclusionObject>;
@@ -118,8 +115,6 @@ const BUILDING_EXPLICIT_FIELDS = [
   'constructionRate',
   'conversionRate',
   'turrets',
-  'detector',
-  'cloak',
 ] as const;
 
 export const DEFAULT_BUILDING_VISUAL_HEIGHT = 120;

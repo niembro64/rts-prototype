@@ -23,8 +23,6 @@ export type {
 
 export type {
   BeamRayBlueprint,
-  CloakBlueprint,
-  DetectorBlueprint,
   EntityBaseLedger,
   EntityDeathExplosion,
   EntityHudBlueprint,

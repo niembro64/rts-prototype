@@ -41,8 +41,6 @@ const UNIT_EXPLICIT_FIELDS = [
   'suspension',
   'builder',
   'dgun',
-  'cloak',
-  'detector',
   'deathSound',
   'fightStopEngagedRatio',
   'locomotion',
@@ -136,15 +134,6 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   if (!bp.hud || !Number.isFinite(bp.hud.barsOffsetAboveTop)) {
     throw new Error(
       `Invalid HUD layout for ${bp.unitBlueprintId}: barsOffsetAboveTop must be finite`,
-    );
-  }
-
-  if (
-    bp.detector !== null &&
-    (!Number.isFinite(bp.detector.radius) || bp.detector.radius <= 0)
-  ) {
-    throw new Error(
-      `Invalid detector for ${bp.unitBlueprintId}: detector radius must be positive`,
     );
   }
 

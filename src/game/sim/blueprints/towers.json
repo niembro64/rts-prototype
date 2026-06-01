@@ -20,7 +20,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "cloak": null,
     "turrets": [
       {
         "turretBlueprintId": "turretConstruction",
@@ -33,7 +32,6 @@
         "hostDirected": true
       }
     ],
-    "detector": null,
     "base": {
       "cost": {
         "energy": 300,
@@ -74,7 +72,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "cloak": null,
     "turrets": [
       {
         "turretBlueprintId": "turretBeamLong",
@@ -86,7 +83,6 @@
         "hostDirected": true
       }
     ],
-    "detector": null,
     "base": {
       "cost": {
         "energy": 1500,
@@ -127,7 +123,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "cloak": null,
     "turrets": [
       {
         "turretBlueprintId": "turretCannonLong",
@@ -139,7 +134,6 @@
         "hostDirected": true
       }
     ],
-    "detector": null,
     "base": {
       "cost": {
         "energy": 1500,

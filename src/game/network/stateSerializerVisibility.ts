@@ -3,11 +3,6 @@ import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { NetworkServerSnapshotScanPulse } from '../../types/network';
 import { hasFogOfWarLineOfSight } from '../sim/combat/lineOfSight';
 import {
-  canEntityProvideDetection,
-  getEntityDetectorRadius,
-  isEntityCloaked,
-} from '../sim/cloakDetection';
-import {
   canEntityProvideFullVision,
   canEntityProvideRadarVision,
   getEntityFullVisionRadius,
@@ -79,19 +74,12 @@ export type VisibilityClass = 0 | 1 | 2;
  *
  *  The owner of an entity always sees their own stuff in full; the
  *  owner-aware short-circuit lives in isEntityVisible() and
- *  isEntityOnRadar().
- *
- *  Cloak detection is a third, independent source pool: detector
- *  coverage never grants vision by itself, but cloaked entities must
- *  be inside detector coverage before normal full/radar checks can
- *  reveal them. */
+ *  isEntityOnRadar(). */
 export class SnapshotVisibility {
   private readonly fullSources: VisionSource[] = [];
   private readonly fullSourceCells = new Map<number, number[]>();
   private readonly radarSources: VisionSource[] = [];
   private readonly radarSourceCells = new Map<number, number[]>();
-  private readonly detectorSources: VisionSource[] = [];
-  private readonly detectorSourceCells = new Map<number, number[]>();
   private readonly gridW: number;
   private readonly gridH: number;
   /** Recipient + their declared allies (FOW-06). Populated whenever a
@@ -239,17 +227,12 @@ export class SnapshotVisibility {
     const cached = this.entityVisibilityMemo.get(entity.id);
     if (cached !== undefined) return cached;
     const padding = getEntityVisibilityPadding(entity);
-    let result: boolean;
-    if (!this.canSeeCloakedEntity(entity, padding)) {
-      result = false;
-    } else {
-      result = this.isEntityVisibleWithLos(
-        entity.transform.x,
-        entity.transform.y,
-        entity.transform.z,
-        padding,
-      );
-    }
+    const result = this.isEntityVisibleWithLos(
+      entity.transform.x,
+      entity.transform.y,
+      entity.transform.z,
+      padding,
+    );
     this.entityVisibilityMemo.set(entity.id, result);
     return result;
   }
@@ -296,7 +279,6 @@ export class SnapshotVisibility {
     const ownership = entity.ownership;
     if (this.isOwnedByRecipientOrAlly(ownership !== null ? ownership.playerId : null)) return true;
     const padding = getEntityVisibilityPadding(entity);
-    if (!this.canSeeCloakedEntity(entity, padding)) return false;
     if (this.isPointVisibleIn(this.fullSources, this.fullSourceCells, entity.transform.x, entity.transform.y, padding)) {
       return true;
     }
@@ -385,17 +367,6 @@ export class SnapshotVisibility {
     return this.isOwnedByRecipientOrAlly(authorPlayerId);
   }
 
-  private canSeeCloakedEntity(entity: Entity, padding: number): boolean {
-    if (!isEntityCloaked(entity)) return true;
-    return this.isPointVisibleIn(
-      this.detectorSources,
-      this.detectorSourceCells,
-      entity.transform.x,
-      entity.transform.y,
-      padding,
-    );
-  }
-
   private addPlayerSources(world: WorldState, playerId: PlayerId): void {
     const sources: ReadonlyArray<readonly Entity[]> = [
       world.getUnitsByPlayer(playerId),
@@ -431,16 +402,6 @@ export class SnapshotVisibility {
             getEntityRadarRadius(entity),
           );
         }
-        if (canEntityProvideDetectorVision(entity)) {
-          this.addSource(
-            this.detectorSources,
-            this.detectorSourceCells,
-            entity.transform.x,
-            entity.transform.y,
-            eyeZ,
-            getEntityDetectorRadius(entity),
-          );
-        }
       }
     }
   }
@@ -455,7 +416,7 @@ export class SnapshotVisibility {
 
   /** Merge active scan pulses into the full-vision source pool for any
    *  pulse owned by the recipient or one of their allies (FOW-14 +
-   *  FOW-06). Pulses don't currently grant radar or detector vision —
+   *  FOW-06). Pulses don't currently grant radar vision —
    *  treat them as a brief floodlight only. Also populates the
    *  cached wire-DTO array for serializeScanPulses (FOW-OPT-16) so
    *  the wire serialization is a lookup, not a second filter walk. */
@@ -547,10 +508,6 @@ export class SnapshotVisibility {
   private cellKey(cx: number, cy: number): number {
     return cy * this.gridW + cx;
   }
-}
-
-export function canEntityProvideDetectorVision(entity: Entity): boolean {
-  return canEntityProvideDetection(entity);
 }
 
 /** Per-emit cache used to share one SnapshotVisibility across every

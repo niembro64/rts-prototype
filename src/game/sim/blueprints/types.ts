@@ -59,8 +59,6 @@ export type {
   UnitBodyShape,
   UnitBodyShapePart,
   EntityHudBlueprint,
-  CloakBlueprint,
-  DetectorBlueprint,
   LocomotionBlueprint,
   UnitBlueprint,
 } from '@/types/blueprints';

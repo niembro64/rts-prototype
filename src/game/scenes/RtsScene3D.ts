@@ -899,7 +899,7 @@ export class RtsScene3D {
     if (event.audioOnly) return;
     if (event.type === 'ping' || event.type === 'attackAlert') {
       // Visual rings removed; sim events still flow (manual ping
-      // command, scan pulse emission, cloaked-attacker alert) so
+      // command, scan pulse emission, attack alert) so
       // the plumbing can wire a new visual without re-deriving the
       // events. Audio handled above by playSimEventAudio.
       return;
