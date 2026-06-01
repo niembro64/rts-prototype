@@ -48,6 +48,7 @@ import type { EntityMesh } from './EntityMesh3D';
 import { BuildingEntityRenderer3D } from './BuildingEntityRenderer3D';
 import { isConstructionShell, turretAccentColorHexForPlayer } from './EntityInstanceColor3D';
 import { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
+import { DyingMeshFade, ENTITY_DEATH_FADE_MS } from './EntityFade3D';
 import { createShieldFallbackPanelMaterial } from './ShieldReflectorVisual3D';
 import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
 import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
@@ -93,15 +94,6 @@ const AIRBORNE_BANK_MAX = Math.PI * 0.25;
 const AIRBORNE_BANK_TAU_SEC = 0.18;
 const EMPTY_TURRETS: readonly Turret[] = [];
 
-// Death-out body fade: when a unit leaves the snapshot (it died), its
-// live mesh is not torn down immediately. Its instanced slots are kept
-// (matrices frozen at the last pose) and the per-instance materialization
-// fade is ramped 1 → 0 over this window, so the body shell visibly
-// dissolves in place while Debris3D flings its detached pieces and
-// Explosion3D fires the blast. Once fully faded the mesh is freed.
-// Construction mirrors destruction: the same fade runs 0 → 1 on build.
-const DEATH_BODY_FADE_OUT_MS = 900;
-
 // Shared Y-up axis for manual instanced transform composition.
 const _INST_UP = new THREE.Vector3(0, 1, 0);
 
@@ -141,10 +133,12 @@ export class Render3DEntities {
   private legRenderer!: LegInstancedRenderer;
 
   private unitMeshes = new Map<number, EntityMesh>();
-  // Meshes of units that died this frame, kept alive to play the
-  // death-out body fade before teardown (see DEATH_BODY_FADE_OUT_MS).
-  // `fade` ramps 1 → 0; matrices stay frozen at the last live pose.
-  private dyingUnitMeshes = new Map<EntityId, { mesh: EntityMesh; fade: number }>();
+  // Shared death-out flow: a dying unit's mesh is kept (instanced slots
+  // allocated, pose frozen) and its materialization fade ramped 1 → 0
+  // before teardown, so the body dissolves in place while Debris3D flings
+  // its pieces and Explosion3D fires the blast. Same controller buildings
+  // use — see EntityFade3D. Assigned in the constructor (needs `this`).
+  private dyingUnits!: DyingMeshFade<EntityMesh>;
   // Reusable per-entity turret fade buffer — avoids a fresh array per
   // unit per frame in the build-in materialization write.
   private _turretFadeScratch: number[] = [];
@@ -320,6 +314,16 @@ export class Render3DEntities {
       getMapWidth: () => this.clientViewState.getMapWidth(),
       getMapHeight: () => this.clientViewState.getMapHeight(),
     });
+
+    this.dyingUnits = new DyingMeshFade<EntityMesh>(
+      ENTITY_DEATH_FADE_MS,
+      (mesh, fade) => this.unitDetailInstances.writeEntityFade(mesh, fade, null),
+      (id, mesh) => {
+        this.world.remove(mesh.group);
+        this.disposeWorldParentedOverlays(mesh);
+        this.unitDetailInstances.freeMeshSlots(id, mesh);
+      },
+    );
   }
 
   private getMirrorShinyMat(): THREE.Material {
@@ -427,8 +431,8 @@ export class Render3DEntities {
       // If this entity id is mid death-fade and has reappeared (id reuse
       // or a re-add), finalize the dying mesh now so we don't draw the
       // fading shell on top of the freshly built unit.
-      if (this.dyingUnitMeshes.size > 0 && this.dyingUnitMeshes.has(e.id)) {
-        this.finalizeDyingUnitMesh(e.id);
+      if (this.dyingUnits.size > 0 && this.dyingUnits.has(e.id)) {
+        this.dyingUnits.finalize(e.id);
       }
       // Hoist transform reads for the per-tick group / yaw write;
       // reading the same prop slot off `e.transform` four+ times for
@@ -782,11 +786,10 @@ export class Render3DEntities {
       // world group, depth-occluded by terrain).
     }
 
-    // Units no longer present have died: hand the mesh to the death-out
-    // body fade instead of tearing it down immediately (see
-    // DEATH_BODY_FADE_OUT_MS). The instanced slots stay allocated with
-    // their last pose frozen; updateDyingUnitMeshes ramps the fade to
-    // zero and frees them when done.
+    // Units no longer present have died: hand the mesh to the shared
+    // death-out fade (dyingUnits) instead of tearing it down immediately.
+    // The instanced slots stay allocated with their last pose frozen while
+    // dyingUnits.update ramps the fade to zero, then frees them.
     for (const [id, m] of this.unitMeshes) {
       if (!seen.has(id)) {
         // Legs are rewritten per-frame from live units only, so a dying
@@ -796,7 +799,7 @@ export class Render3DEntities {
         destroyLocomotion(m.locomotion, this.legRenderer);
         this.disposeWorldParentedOverlays(m);
         if (m.ring) m.ring.visible = false;
-        this.dyingUnitMeshes.set(id, { mesh: m, fade: 1 });
+        this.dyingUnits.markDying(id, m);
         // True entity removal — drop any stashed leg-state snapshot
         // so a future re-spawn of a different unit reusing this
         // entityId starts fresh instead of inheriting last unit's
@@ -808,41 +811,13 @@ export class Render3DEntities {
     }
     // Advance any in-progress death-out fades before the flush so their
     // updated per-instance fade is uploaded this frame.
-    this.updateDyingUnitMeshes();
+    this.dyingUnits.update(this._currentDtMs);
     // Drop barrel-spin state and persisted turret-mount history for
     // units that no longer exist. Reuses the same `seen` set populated
     // by the unit loop above — no separate sweep needed.
     this.barrelSpinState.prune(seen);
     this.turretMountCache.prune(seen);
     this.unitDetailInstances.flush(this.turretShieldPanelsEnabled);
-  }
-
-  /** Ramp every dying unit's body fade 1 → 0 and free its mesh when the
-   *  fade completes. Matrices are left frozen at the last live pose, so
-   *  the shell dissolves in place while debris + blast play out. */
-  private updateDyingUnitMeshes(): void {
-    if (this.dyingUnitMeshes.size === 0) return;
-    const dt = this._currentDtMs;
-    for (const [id, d] of this.dyingUnitMeshes) {
-      d.fade -= dt / DEATH_BODY_FADE_OUT_MS;
-      if (d.fade <= 0) {
-        this.finalizeDyingUnitMesh(id);
-      } else {
-        this.unitDetailInstances.writeEntityFade(d.mesh, d.fade, null);
-      }
-    }
-  }
-
-  /** Tear down a fully-faded (or pre-empted) dying unit mesh: drop its
-   *  group, dispose world-parented overlays, and free its instanced
-   *  slots. */
-  private finalizeDyingUnitMesh(id: EntityId): void {
-    const d = this.dyingUnitMeshes.get(id);
-    if (d === undefined) return;
-    this.world.remove(d.mesh.group);
-    this.disposeWorldParentedOverlays(d.mesh);
-    this.unitDetailInstances.freeMeshSlots(id, d.mesh);
-    this.dyingUnitMeshes.delete(id);
   }
 
   /** Look up the lift subgroup for a unit's mesh. The lift group
@@ -894,11 +869,7 @@ export class Render3DEntities {
       this.disposeWorldParentedOverlays(m);
     }
     // Drop any meshes still playing their death-out fade.
-    for (const d of this.dyingUnitMeshes.values()) {
-      this.world.remove(d.mesh.group);
-      this.disposeWorldParentedOverlays(d.mesh);
-    }
-    this.dyingUnitMeshes.clear();
+    this.dyingUnits.destroyAll();
     // Renderer-wide teardown — drop every cached leg snapshot, no
     // future build will consume them.
     this.legStateCache.clear();

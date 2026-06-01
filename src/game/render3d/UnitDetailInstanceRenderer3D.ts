@@ -18,6 +18,7 @@ import {
   resolveShieldSurfaceColor,
 } from './ShieldReflectorVisual3D';
 import { writeHexToRgb01Array } from './colorUtils';
+import { patchInstancedFadeMaterial } from './EntityFade3D';
 import { disposeMesh } from './threeUtils';
 
 const SMOOTH_CHASSIS_CAP = 16384;
@@ -28,56 +29,11 @@ const CONE_BARREL_CAP = 4096;
 const SHIELD_PANEL_CAP = 1024;
 const ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
 
-// ── Per-instance materialization fade (build-in / death-out) ───────────
-// Every live unit pool carries a per-instance `aFade` scalar in [0,1]:
-// 0 = fully transparent (piece not yet built, or fully dissolved on
-// death), 1 = fully opaque (finished). The fade is realized as a
-// screen-door (dithered) discard rather than alpha blending so the
-// material stays in the OPAQUE queue — depth still writes, the body
-// self-occludes, and there are no transparency sort artifacts across the
-// many overlapping parts of a single unit. The stipple fills in as
-// `aFade` climbs, reading as a nanoframe materializing (and dissolving in
-// reverse on death). This is the unified channel both construction and
-// death animate; debris (Debris3D) keeps its own alpha-blend fade.
-function patchUnitFadeMaterial(material: THREE.Material): void {
-  const prevOnBeforeCompile = material.onBeforeCompile;
-  material.onBeforeCompile = (shader, renderer) => {
-    if (prevOnBeforeCompile) prevOnBeforeCompile.call(material, shader, renderer);
-    shader.vertexShader = shader.vertexShader
-      .replace(
-        '#include <common>',
-        ['attribute float aFade;', 'varying float vFade;', '#include <common>'].join('\n'),
-      )
-      .replace(
-        '#include <begin_vertex>',
-        ['#include <begin_vertex>', 'vFade = aFade;'].join('\n'),
-      );
-    shader.fragmentShader = shader.fragmentShader
-      .replace(
-        '#include <common>',
-        ['varying float vFade;', '#include <common>'].join('\n'),
-      )
-      // Discard before lighting. A stable screen-space hash threshold in
-      // [0,1) gives a static stipple (no shimmer as the unit moves, since
-      // it keys off gl_FragCoord, not world position). vFade >= 1 never
-      // discards (threshold < 1); vFade <= 0 discards everything.
-      .replace(
-        '#include <clipping_planes_fragment>',
-        [
-          '#include <clipping_planes_fragment>',
-          'if ( vFade < 1.0 ) {',
-          '  float fadeThresh = fract( sin( dot( gl_FragCoord.xy, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 );',
-          '  if ( vFade <= fadeThresh ) discard;',
-          '}',
-        ].join('\n'),
-      );
-  };
-  // Share one compiled program across every faded Lambert pool, and keep
-  // it distinct from unpatched Lambert materials elsewhere.
-  material.customProgramCacheKey = () => 'unitFadeDither';
-  material.needsUpdate = true;
-}
-
+// Per-instance materialization fade. Every live unit pool carries a
+// per-instance `aFade` scalar in [0,1] (0 = transparent, 1 = opaque),
+// fed into the shared dithered-discard patch from EntityFade3D so units
+// and buildings dissolve through the identical look. Written per-entity
+// via writeEntityFade and uploaded once per frame in flush().
 type FadeState = {
   arr: Float32Array;
   attr: THREE.InstancedBufferAttribute;
@@ -603,7 +559,7 @@ export class UnitDetailInstanceRenderer3D {
     const fadeAttr = new THREE.InstancedBufferAttribute(fadeArr, 1);
     fadeAttr.setUsage(THREE.DynamicDrawUsage);
     geometry.setAttribute('aFade', fadeAttr);
-    patchUnitFadeMaterial(material);
+    patchInstancedFadeMaterial(material);
 
     const mesh = new THREE.InstancedMesh(geometry, material, capacity);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);

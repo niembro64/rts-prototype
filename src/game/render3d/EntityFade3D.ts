@@ -1,0 +1,234 @@
+// EntityFade3D — the one shared materialization-fade flow for every
+// entity kind (units, towers, buildings, turrets).
+//
+// "Construction mirrors destruction": a single per-piece opacity channel
+// runs 0 → 1 as an entity is built and 1 → 0 as it dies. It is realized
+// as a screen-door (dithered) discard in the OPAQUE pass — depth still
+// writes, so a multi-part body self-occludes through the transition with
+// no see-through and no transparent-queue sort cost.
+//
+// The discard logic, the death-linger lifecycle, and the build-in opacity
+// math live here so units and buildings share one implementation rather
+// than duplicating it across renderers. Only the GPU feeder differs by
+// render backend:
+//   - instanced pools  → per-instance `aFade` attribute  (units)
+//   - per-Mesh objects → per-object `uFade` uniform clone (buildings)
+// both of which drive the identical `vFade` discard below.
+
+import * as THREE from 'three';
+import type { EntityId } from '../sim/types';
+
+/** Shared death-out fade duration (ms). Build-in is driven by the sim's
+ *  build fraction, so only the cosmetic death fade needs a clock. */
+export const ENTITY_DEATH_FADE_MS = 900;
+
+// ── The one fragment discard both backends emit ────────────────────────
+// A stable screen-space hash threshold in [0,1): static stipple (no
+// shimmer as the entity moves, since it keys off gl_FragCoord), vFade>=1
+// never discards, vFade<=0 discards everything.
+const FADE_FRAGMENT_COMMON = ['varying float vFade;', '#include <common>'].join('\n');
+const FADE_FRAGMENT_DISCARD = [
+  '#include <clipping_planes_fragment>',
+  'if ( vFade < 1.0 ) {',
+  '  float fadeThresh = fract( sin( dot( gl_FragCoord.xy, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 );',
+  '  if ( vFade <= fadeThresh ) discard;',
+  '}',
+].join('\n');
+
+function injectFadeFragment(shader: THREE.WebGLProgramParametersWithUniforms): void {
+  shader.fragmentShader = shader.fragmentShader
+    .replace('#include <common>', FADE_FRAGMENT_COMMON)
+    .replace('#include <clipping_planes_fragment>', FADE_FRAGMENT_DISCARD);
+}
+
+/** Patch a material so each INSTANCE's `aFade` attribute drives the fade.
+ *  Used by the shared unit instanced pools. */
+export function patchInstancedFadeMaterial(material: THREE.Material): void {
+  const prev = material.onBeforeCompile;
+  material.onBeforeCompile = (shader, renderer) => {
+    if (prev) prev.call(material, shader, renderer);
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        ['attribute float aFade;', 'varying float vFade;', '#include <common>'].join('\n'),
+      )
+      .replace(
+        '#include <begin_vertex>',
+        ['#include <begin_vertex>', 'vFade = aFade;'].join('\n'),
+      );
+    injectFadeFragment(shader);
+  };
+  // Share one program across every instanced-faded material, distinct
+  // from unpatched and per-object-faded materials.
+  material.customProgramCacheKey = () => 'entityFadeInstanced';
+  material.needsUpdate = true;
+}
+
+export type PerObjectFade = {
+  material: THREE.Material;
+  setFade(value: number): void;
+};
+
+// Per-object fade clones each carry their OWN `uFade` uniform, so each
+// must get its own compiled program — a shared program would share the
+// uniform and bleed one object's fade onto others. A unique cache key per
+// clone guarantees that. (The instanced path is exempt: its fade is a
+// per-instance attribute, not a uniform, so those pools safely share one
+// program.) Clones are reused per mesh and only built for building/dying
+// entities, so the program count stays small.
+let perObjectFadeKeySeq = 0;
+
+/** Clone a material and patch the clone so a per-object `uFade` uniform
+ *  drives the fade. Leaves the (often shared) base material untouched, so
+ *  fading one per-Mesh object never bleeds onto others. Used for the
+ *  per-Mesh building / tower render path. */
+export function makePerObjectFadeMaterial(base: THREE.Material): PerObjectFade {
+  const material = base.clone();
+  const uFade = { value: 1 };
+  const cacheKey = `entityFadePerObject:${perObjectFadeKeySeq++}`;
+  const prev = material.onBeforeCompile;
+  material.onBeforeCompile = (shader, renderer) => {
+    if (prev) prev.call(material, shader, renderer);
+    shader.uniforms.uFade = uFade;
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        ['uniform float uFade;', 'varying float vFade;', '#include <common>'].join('\n'),
+      )
+      .replace(
+        '#include <begin_vertex>',
+        ['#include <begin_vertex>', 'vFade = uFade;'].join('\n'),
+      );
+    injectFadeFragment(shader);
+  };
+  material.customProgramCacheKey = () => cacheKey;
+  material.needsUpdate = true;
+  return { material, setFade: (value: number): void => { uFade.value = value; } };
+}
+
+type FadeMeshCache = {
+  /** The real (shared) material this mesh renders with when fully built.
+   *  Captured the frame the mesh first enters a fade so the per-object
+   *  clone can be restored to it. */
+  _fadeReal?: THREE.Material;
+  /** Lazily-built per-object fade clone wrapping `_fadeReal`. Reused
+   *  across frames; rebuilt only when the real material instance changes
+   *  (team recolor, ghost, engaged head). */
+  _fadeHandle?: PerObjectFade;
+};
+
+function fadeMeshMaterial(mesh: THREE.Mesh, fade: number): void {
+  const ud = mesh.userData as FadeMeshCache;
+  if (fade >= 1) {
+    // Fully built: restore the real material and stop paying the patch.
+    if (ud._fadeReal !== undefined) {
+      mesh.material = ud._fadeReal;
+      ud._fadeReal = undefined;
+    }
+    return;
+  }
+  const handle = ud._fadeHandle;
+  // Clone already applied (untouched since last frame): just set the value.
+  if (handle !== undefined && mesh.material === handle.material) {
+    handle.setFade(fade);
+    return;
+  }
+  // Otherwise `mesh.material` is currently the real material. Reuse the
+  // existing clone iff it wraps that same real instance; rebuild only when
+  // the real material actually changed.
+  const current = mesh.material;
+  if (Array.isArray(current)) return; // multi-material meshes not faded
+  if (handle !== undefined && ud._fadeReal === current) {
+    mesh.material = handle.material;
+    handle.setFade(fade);
+    return;
+  }
+  ud._fadeReal = current;
+  handle?.material.dispose();
+  ud._fadeHandle = makePerObjectFadeMaterial(current);
+  mesh.material = ud._fadeHandle.material;
+  ud._fadeHandle.setFade(fade);
+}
+
+/** Apply a uniform materialization fade to every per-Mesh object under a
+ *  group (buildings/towers and their turrets). At fade>=1 every mesh is
+ *  restored to its real material, so finished entities pay nothing.
+ *  InstancedMesh objects are skipped — they fade through their own
+ *  per-instance `aFade` attribute. */
+export function applyEntityGroupFade(group: THREE.Object3D, fade: number): void {
+  group.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (mesh.isMesh !== true) return;
+    if ((obj as THREE.InstancedMesh).isInstancedMesh === true) return;
+    fadeMeshMaterial(mesh, fade);
+  });
+}
+
+/** Restore real materials and dispose every per-object fade clone under a
+ *  group — call on entity teardown so clones don't leak. */
+export function disposeEntityGroupFade(group: THREE.Object3D): void {
+  group.traverse((obj) => {
+    const ud = obj.userData as FadeMeshCache;
+    if (ud._fadeHandle !== undefined) {
+      if (ud._fadeReal !== undefined) (obj as THREE.Mesh).material = ud._fadeReal;
+      ud._fadeHandle.material.dispose();
+      ud._fadeHandle = undefined;
+      ud._fadeReal = undefined;
+    }
+  });
+}
+
+/** Generic death-out lifecycle: hold a dead entity's mesh, ramp its fade
+ *  1 → 0 over `durationMs`, then tear it down. Backend-agnostic — the
+ *  caller supplies how to apply the fade and how to finally free the mesh,
+ *  so units (instanced) and buildings (per-Mesh) share one implementation.
+ */
+export class DyingMeshFade<TMesh> {
+  private readonly dying = new Map<EntityId, { mesh: TMesh; fade: number }>();
+
+  constructor(
+    private readonly durationMs: number,
+    private readonly applyFade: (mesh: TMesh, fade: number) => void,
+    private readonly teardown: (id: EntityId, mesh: TMesh) => void,
+  ) {}
+
+  get size(): number {
+    return this.dying.size;
+  }
+
+  has(id: EntityId): boolean {
+    return this.dying.has(id);
+  }
+
+  /** Begin (or restart) a mesh's death fade at full opacity. */
+  markDying(id: EntityId, mesh: TMesh): void {
+    this.dying.set(id, { mesh, fade: 1 });
+  }
+
+  /** Tear down a dying mesh immediately (e.g. its id reappeared). */
+  finalize(id: EntityId): void {
+    const d = this.dying.get(id);
+    if (d === undefined) return;
+    this.teardown(id, d.mesh);
+    this.dying.delete(id);
+  }
+
+  /** Advance every fade by `dtMs`; free meshes whose fade has run out. */
+  update(dtMs: number): void {
+    if (this.dying.size === 0) return;
+    for (const [id, d] of this.dying) {
+      d.fade -= dtMs / this.durationMs;
+      if (d.fade <= 0) {
+        this.teardown(id, d.mesh);
+        this.dying.delete(id);
+      } else {
+        this.applyFade(d.mesh, d.fade);
+      }
+    }
+  }
+
+  destroyAll(): void {
+    for (const [id, d] of this.dying) this.teardown(id, d.mesh);
+    this.dying.clear();
+  }
+}

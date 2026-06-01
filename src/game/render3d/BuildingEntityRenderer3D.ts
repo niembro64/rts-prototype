@@ -5,13 +5,19 @@ import type { MetalDeposit } from '../../metalDepositConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import {
+  getConstructionPieceOpacity,
   getConstructionPieceRenderFraction,
   isConstructionPieceMaterialized,
   isShell,
 } from '../sim/buildableHelpers';
 import type { ClientViewState } from '../network/ClientViewState';
 import { getTurretHeadRadius } from '../math';
-import { applyShellOverride } from './ShellMaterial';
+import {
+  applyEntityGroupFade,
+  disposeEntityGroupFade,
+  DyingMeshFade,
+  ENTITY_DEATH_FADE_MS,
+} from './EntityFade3D';
 import {
   buildBuildingShape,
   type BuildingShapeType,
@@ -166,6 +172,10 @@ export class BuildingEntityRenderer3D {
   private readonly meshes = new Map<EntityId, EntityMesh>();
   private readonly seenIds = new Set<EntityId>();
   private lastEntitySetVersion = -1;
+  // Shared death-out flow (same controller units use, see EntityFade3D): a
+  // dead building/tower is kept and its whole group dissolved 1 → 0 before
+  // teardown, while the blast + debris play out. Assigned in the constructor.
+  private readonly dyingBuildings: DyingMeshFade<EntityMesh>;
   /** Shared desaturated material applied to ghost buildings. Single
    *  instance (not per-player) — once a building is out of vision, the
    *  player's last-seen intel doesn't include current ownership shifts,
@@ -200,6 +210,15 @@ export class BuildingEntityRenderer3D {
       this.constructionVisuals,
       options.metalDeposits,
     );
+    this.dyingBuildings = new DyingMeshFade<EntityMesh>(
+      ENTITY_DEATH_FADE_MS,
+      (mesh, fade) => applyEntityGroupFade(mesh.group, fade),
+      (_id, mesh) => {
+        this.world.remove(mesh.group);
+        disposeEntityGroupFade(mesh.group);
+        this.disposeWorldParentedOverlays(mesh);
+      },
+    );
   }
 
   update(frameState: RenderFrameState3D, spinDt: number, currentDtMs: number, timeMs: number): void {
@@ -221,14 +240,22 @@ export class BuildingEntityRenderer3D {
     }
 
     this.animations.update(this.meshes, spinDt, currentDtMs, timeMs);
+    // Advance any in-progress death-out fades every frame (independent of
+    // the entity-set prune cadence below).
+    this.dyingBuildings.update(currentDtMs);
 
     if (!pruneBuildings) return;
     for (const [id, mesh] of this.meshes) {
       if (this.seenIds.has(id)) continue;
-      this.world.remove(mesh.group);
+      // Died: hand the mesh to the shared death-out fade rather than
+      // tearing it down now — it dissolves in place while the blast +
+      // debris play out, then frees. Overlays / selection ring / animation
+      // stop immediately.
       this.disposeWorldParentedOverlays(mesh);
-      this.meshes.delete(id);
+      if (mesh.ring) mesh.ring.visible = false;
       this.animations.unregister(id);
+      this.meshes.delete(id);
+      this.dyingBuildings.markDying(id, mesh);
     }
     this.lastEntitySetVersion = entitySetVersion;
   }
@@ -236,9 +263,11 @@ export class BuildingEntityRenderer3D {
   destroy(): void {
     for (const mesh of this.meshes.values()) {
       this.world.remove(mesh.group);
+      disposeEntityGroupFade(mesh.group);
       this.disposeWorldParentedOverlays(mesh);
     }
     this.meshes.clear();
+    this.dyingBuildings.destroyAll();
     this.seenIds.clear();
     this.lastEntitySetVersion = -1;
     this.animations.destroy();
@@ -295,6 +324,11 @@ export class BuildingEntityRenderer3D {
   }
 
   private updateBuilding(entity: Entity, frameState: RenderFrameState3D): void {
+    // If this id is mid death-fade and reappeared (id reuse / re-add),
+    // finalize the dying mesh so we don't draw it under the rebuilt one.
+    if (this.dyingBuildings.size > 0 && this.dyingBuildings.has(entity.id)) {
+      this.dyingBuildings.finalize(entity.id);
+    }
     const ownerId = entity.ownership?.playerId;
     const width = entity.building?.width ?? 100;
     const depth = entity.building?.height ?? 100;
@@ -354,6 +388,24 @@ export class BuildingEntityRenderer3D {
 
     this.updateTurretPoses(entity, mesh);
     this.selectionOverlays.updateRangeRings(mesh, entity);
+
+    // Materialization fade — the same per-piece build-in opacity flow
+    // units use (see EntityFade3D). The body ramps 0→1 over its build
+    // fraction, then each turret over its own, so a tower's body
+    // materializes before its gun. Finished buildings sit at opacity 1,
+    // where applyEntityGroupFade restores the real materials and costs
+    // nothing.
+    const bodyOpacity = getConstructionPieceOpacity(entity, 'body');
+    applyEntityGroupFade(mesh.group, bodyOpacity);
+    const combatTurrets = entity.combat?.turrets;
+    if (combatTurrets) {
+      for (let ti = 0; ti < combatTurrets.length && ti < mesh.turrets.length; ti++) {
+        const turretOpacity = getConstructionPieceOpacity(entity, 'turret', ti);
+        if (turretOpacity !== bodyOpacity) {
+          applyEntityGroupFade(mesh.turrets[ti].root, turretOpacity);
+        }
+      }
+    }
   }
 
   private updateBuildingMesh(
@@ -392,10 +444,9 @@ export class BuildingEntityRenderer3D {
     // terrain height the server used when creating their collider.
     mesh.group.position.set(entity.transform.x, buildingBaseY, entity.transform.y);
     mesh.group.rotation.y = -entity.transform.rotation;
-    applyShellOverride(
-      mesh.group,
-      isShell(entity),
-    );
+    // Construction appearance is now the shared materialization fade
+    // (applied per frame in updateBuilding), not a pale shell-material
+    // swap — buildings dissolve in through the same dither as units.
 
     const height = mesh.buildingHeight ?? BUILDING_HEIGHT;
     const renderHeight = height * progress;
