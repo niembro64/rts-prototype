@@ -140,7 +140,7 @@
     "submunitions": null,
     "homingTurnRate": 80,
     "homingThrust": 600000,
-    "gravityForceMultiplier": 0,
+    "gravityForceMultiplier": 1,
     "smokeTrail": null,
     "base": {
       "cost": {
