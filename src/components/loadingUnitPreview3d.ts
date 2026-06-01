@@ -1,11 +1,18 @@
 import type { BuildableUnitBlueprintId } from '@/game/sim/blueprints';
 import {
   BUILDABLE_UNIT_BLUEPRINT_IDS,
+  getBuildingBlueprint,
   getUnitBlueprint,
 } from '@/game/sim/blueprints';
+import { BUILDING_BLUEPRINT_IDS, type BuildingBlueprintId } from '@/types/blueprintIds';
+import { isTowerBuildingBlueprintId } from '@/types/buildingTypes';
+import type { LoadingEntityBlueprintId, LoadingPreviewKind } from './loadingUnitPreviewScene';
+
+export type { LoadingEntityBlueprintId, LoadingPreviewKind };
 
 export type LoadingUnitPreviewSelection = {
-  id: BuildableUnitBlueprintId;
+  kind: LoadingPreviewKind;
+  id: LoadingEntityBlueprintId;
   name: string;
 };
 
@@ -37,7 +44,8 @@ type WorkerPreviewMessage =
   | ({
       type: 'init';
       canvas: OffscreenCanvas;
-      unitBlueprintId: BuildableUnitBlueprintId;
+      kind: LoadingPreviewKind;
+      blueprintId: LoadingEntityBlueprintId;
       fullBleed: boolean;
     } & PreviewSize)
   | ({ type: 'resize' } & PreviewSize)
@@ -49,16 +57,34 @@ type WorkerPreviewResponse =
 
 const DPR_CAP = 1.75;
 
-export function pickRandomLoadingUnit(): LoadingUnitPreviewSelection {
-  const unitBlueprintIds = BUILDABLE_UNIT_BLUEPRINT_IDS;
-  const selected = unitBlueprintIds[Math.floor(Math.random() * unitBlueprintIds.length)] ?? unitBlueprintIds[0];
-  const blueprint = getUnitBlueprint(selected);
-  return { id: selected, name: blueprint.name };
+/** Pick a random entity to show on the loading screen. Chooses a category
+ *  (unit / tower / building) uniformly first, then a blueprint within it,
+ *  so towers and buildings get fair screen time despite there being far
+ *  more unit blueprints than structures. */
+export function pickRandomLoadingEntity(): LoadingUnitPreviewSelection {
+  const towers = BUILDING_BLUEPRINT_IDS.filter((id) => isTowerBuildingBlueprintId(id));
+  const buildings = BUILDING_BLUEPRINT_IDS.filter((id) => !isTowerBuildingBlueprintId(id));
+  const pools = ([
+    { kind: 'unit', ids: BUILDABLE_UNIT_BLUEPRINT_IDS },
+    { kind: 'tower', ids: towers },
+    { kind: 'building', ids: buildings },
+  ] as { kind: LoadingPreviewKind; ids: readonly LoadingEntityBlueprintId[] }[])
+    .filter((pool) => pool.ids.length > 0);
+  const pool = pools[Math.floor(Math.random() * pools.length)] ?? pools[0];
+  const id = pool.ids[Math.floor(Math.random() * pool.ids.length)] ?? pool.ids[0];
+  return { kind: pool.kind, id, name: loadingEntityName(pool.kind, id) };
+}
+
+function loadingEntityName(kind: LoadingPreviewKind, id: LoadingEntityBlueprintId): string {
+  return kind === 'unit'
+    ? getUnitBlueprint(id as BuildableUnitBlueprintId).name
+    : getBuildingBlueprint(id as BuildingBlueprintId).name;
 }
 
 export function mountLoadingUnitPreview(
   host: HTMLElement,
-  unitBlueprintId: BuildableUnitBlueprintId,
+  kind: LoadingPreviewKind,
+  blueprintId: LoadingEntityBlueprintId,
   options: LoadingUnitPreviewOptions = {},
 ): LoadingUnitPreviewRuntime {
   const fullBleed = options.fullBleed === true;
@@ -80,11 +106,11 @@ export function mountLoadingUnitPreview(
   const hooks: DriverHooks = { onReady: fireReady };
 
   let latestSize = readPreviewSize(host);
-  let driver = createWorkerDriver(canvas, unitBlueprintId, fullBleed, latestSize, hooks);
+  let driver = createWorkerDriver(canvas, kind, blueprintId, fullBleed, latestSize, hooks);
   let fallbackDriverPromise: Promise<PreviewDriver | null> | null = null;
 
   if (!driver) {
-    fallbackDriverPromise = createMainThreadFallbackDriver(canvas, unitBlueprintId, fullBleed, latestSize, hooks);
+    fallbackDriverPromise = createMainThreadFallbackDriver(canvas, kind, blueprintId, fullBleed, latestSize, hooks);
     void fallbackDriverPromise.then((resolved) => {
       if (destroyed) {
         resolved?.destroy();
@@ -117,7 +143,8 @@ export function mountLoadingUnitPreview(
 
 function createWorkerDriver(
   canvas: HTMLCanvasElement,
-  unitBlueprintId: BuildableUnitBlueprintId,
+  kind: LoadingPreviewKind,
+  blueprintId: LoadingEntityBlueprintId,
   fullBleed: boolean,
   size: PreviewSize,
   hooks: DriverHooks,
@@ -156,7 +183,8 @@ function createWorkerDriver(
   const initMessage: WorkerPreviewMessage = {
     type: 'init',
     canvas: offscreen,
-    unitBlueprintId,
+    kind,
+    blueprintId,
     fullBleed,
     ...size,
   };
@@ -184,13 +212,14 @@ function createWorkerDriver(
 
 async function createMainThreadFallbackDriver(
   canvas: HTMLCanvasElement,
-  unitBlueprintId: BuildableUnitBlueprintId,
+  kind: LoadingPreviewKind,
+  blueprintId: LoadingEntityBlueprintId,
   fullBleed: boolean,
   size: PreviewSize,
   hooks: DriverHooks,
 ): Promise<PreviewDriver | null> {
   const { LoadingUnitPreviewScene } = await import('./loadingUnitPreviewScene');
-  const scene = new LoadingUnitPreviewScene({ canvas, unitBlueprintId, fullBleed });
+  const scene = new LoadingUnitPreviewScene({ canvas, kind, blueprintId, fullBleed });
   let destroyed = false;
   let rafId = 0;
   let readyFired = false;

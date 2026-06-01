@@ -1,12 +1,15 @@
 import * as THREE from 'three';
 import type { BuildableUnitBlueprintId } from '@/game/sim/blueprints';
-import { getUnitBlueprint } from '@/game/sim/blueprints';
+import { getBuildingBlueprint, getUnitBlueprint } from '@/game/sim/blueprints';
+import type { BuildingBlueprintId } from '@/types/blueprintIds';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { UnitBlueprint } from '@/types/blueprints';
 import type { CachedShieldPanel } from '@/types/sim';
 import { getChassisLiftY, getSegmentMidYAt } from '@/game/math/BodyDimensions';
 import { resolveMirroredLegConfigs } from '@/game/math/LegLayout';
-import { createUnitRuntimeTurrets } from '@/game/sim/runtimeTurrets';
+import { createBuildingRuntimeTurrets, createUnitRuntimeTurrets } from '@/game/sim/runtimeTurrets';
+import { BUILD_GRID_CELL_SIZE } from '@/game/sim/buildGrid';
+import { buildBuildingShape } from '@/game/render3d/BuildingShape3D';
 import { buildShieldPanelCache } from '@/game/sim/shieldPanelCache';
 import { applyTurretAimPose3D } from '@/game/render3d/TurretAimPose3D';
 import { getBodyGeom } from '@/game/render3d/BodyShape3D';
@@ -28,9 +31,16 @@ import { locomotionPieceColorHex } from '@/game/render3d/colorUtils';
 
 type PreviewCanvas = HTMLCanvasElement | OffscreenCanvas;
 
+/** What kind of entity the loading screen is previewing. Towers and
+ *  buildings render through the same building-shape path; the distinction
+ *  only matters for the stats panel (towers carry turrets). */
+export type LoadingPreviewKind = 'unit' | 'tower' | 'building';
+export type LoadingEntityBlueprintId = BuildableUnitBlueprintId | BuildingBlueprintId;
+
 export type LoadingUnitPreviewSceneOptions = {
   canvas: PreviewCanvas;
-  unitBlueprintId: BuildableUnitBlueprintId;
+  kind: LoadingPreviewKind;
+  blueprintId: LoadingEntityBlueprintId;
   fullBleed: boolean;
 };
 
@@ -168,7 +178,7 @@ export class LoadingUnitPreviewScene {
     this.scene.add(this.spinRoot);
     installPreviewLighting(this.scene);
 
-    const model = buildPreviewUnitModel(options.unitBlueprintId, this.materials);
+    const model = buildPreviewModel(options.kind, options.blueprintId, this.materials);
     this.centerModel(model);
     this.spinRoot.add(model);
     this.resize({ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT, dpr: 1 });
@@ -234,6 +244,70 @@ export class LoadingUnitPreviewScene {
     this.spinRoot.position.y = this.fullBleed ? this.fitHalfHeight * 0.28 : 0;
     this.camera.lookAt(scratchTarget.set(0, 0, 0));
     this.camera.updateProjectionMatrix();
+  }
+}
+
+function buildPreviewModel(
+  kind: LoadingPreviewKind,
+  blueprintId: LoadingEntityBlueprintId,
+  materials: PreviewUnitMaterials,
+): THREE.Group {
+  return kind === 'unit'
+    ? buildPreviewUnitModel(blueprintId as BuildableUnitBlueprintId, materials)
+    : buildPreviewBuildingModel(blueprintId as BuildingBlueprintId, materials);
+}
+
+/** Build a static preview of a building/tower, mirroring the in-game
+ *  building renderer (BuildingEntityRenderer3D): a team-colored primary
+ *  body scaled to the grid footprint + shape height, the type-specific
+ *  detail meshes, and any mounted turrets posed at their absolute mounts.
+ *  Animation rigs (spinning rotors, scanning radar, etc.) are left static
+ *  — the whole model already spins on the loading stage. */
+function buildPreviewBuildingModel(
+  buildingBlueprintId: BuildingBlueprintId,
+  materials: PreviewUnitMaterials,
+): THREE.Group {
+  const blueprint = getBuildingBlueprint(buildingBlueprintId);
+  const width = blueprint.gridWidth * BUILD_GRID_CELL_SIZE;
+  const depth = blueprint.gridHeight * BUILD_GRID_CELL_SIZE;
+  const root = new THREE.Group();
+
+  const shape = buildBuildingShape(blueprint.renderProfile, width, depth, materials.primary);
+  if (!shape.bodyless) {
+    // Match updateBuildingMesh: the primary body sits on the footprint
+    // base and scales to (width, shapeHeight, depth).
+    shape.primary.position.set(0, shape.height / 2, 0);
+    shape.primary.scale.set(width, shape.height, depth);
+    root.add(shape.primary);
+  }
+  for (const detail of shape.details) root.add(detail.mesh);
+
+  buildPreviewBuildingTurrets(root, buildingBlueprintId, materials);
+  return root;
+}
+
+function buildPreviewBuildingTurrets(
+  root: THREE.Group,
+  buildingBlueprintId: BuildingBlueprintId,
+  materials: PreviewUnitMaterials,
+): void {
+  const turrets = createBuildingRuntimeTurrets(buildingBlueprintId);
+  for (const turret of turrets) {
+    const turretMesh = buildTurretMesh3D(root, turret, PREVIEW_GFX, {
+      headGeom: turretHeadGeom,
+      barrelGeom,
+      coneBarrelGeom,
+      primaryMat: materials.primary,
+      turretAccentMat: materials.turretAccent,
+      skipHead: false,
+      skipBarrels: false,
+    });
+    // Building mounts are authored in absolute world units (see
+    // BuildingEntityRenderer3D.updateTurretPoses): head pivots at
+    // mount.z - headRadius, x/y map straight through.
+    const headRadius = getTurretHeadRadius(turret.config);
+    turretMesh.root.position.set(turret.mount.x, turret.mount.z - headRadius, turret.mount.y);
+    applyTurretAimPose3D(turretMesh, 0, turret.rotation, turret.pitch);
   }
 }
 

@@ -1,11 +1,14 @@
 import { COST_MULTIPLIER } from '@/config';
 import {
+  getBuildingBlueprint,
   getShotBlueprint,
   getTurretBlueprint,
   getUnitBlueprint,
   getUnitLocomotion,
 } from '@/game/sim/blueprints';
-import { createUnitRuntimeTurrets } from '@/game/sim/runtimeTurrets';
+import { createBuildingRuntimeTurrets, createUnitRuntimeTurrets } from '@/game/sim/runtimeTurrets';
+import { BUILD_GRID_CELL_SIZE } from '@/game/sim/buildGrid';
+import type { BuildingBlueprint } from '@/game/sim/blueprints';
 import type {
   LocomotionBlueprint,
   ShotBlueprint,
@@ -19,6 +22,8 @@ import type {
 } from '@/game/sim/types';
 import { getEmissionBlueprintId, isProjectileShot, isRayConfig, isShieldConfig } from '@/game/sim/types';
 import type { BuildableUnitBlueprintId } from '@/game/sim/blueprints';
+import type { BuildingBlueprintId } from '@/types/blueprintIds';
+import type { LoadingEntityBlueprintId, LoadingPreviewKind } from './loadingUnitPreviewScene';
 
 export type LoadingUnitInfoNode = {
   label: string;
@@ -44,7 +49,16 @@ type Firepower = {
   sustainedDps: number;
 };
 
-export function buildLoadingUnitInfo(unitBlueprintId: BuildableUnitBlueprintId): LoadingUnitInfo {
+export function buildLoadingEntityInfo(
+  kind: LoadingPreviewKind,
+  blueprintId: LoadingEntityBlueprintId,
+): LoadingUnitInfo {
+  return kind === 'unit'
+    ? buildUnitInfo(blueprintId as BuildableUnitBlueprintId)
+    : buildBuildingInfo(blueprintId as BuildingBlueprintId, kind === 'tower');
+}
+
+function buildUnitInfo(unitBlueprintId: BuildableUnitBlueprintId): LoadingUnitInfo {
   const blueprint = getUnitBlueprint(unitBlueprintId);
   const locomotion = getUnitLocomotion(unitBlueprintId);
   const turrets = createUnitRuntimeTurrets(unitBlueprintId, blueprint.radius.visual);
@@ -86,6 +100,110 @@ export function buildLoadingUnitInfo(unitBlueprintId: BuildableUnitBlueprintId):
       buildSystemsSection(blueprint),
     ],
   };
+}
+
+function buildBuildingInfo(buildingBlueprintId: BuildingBlueprintId, isTower: boolean): LoadingUnitInfo {
+  const blueprint = getBuildingBlueprint(buildingBlueprintId);
+  const turrets = isTower ? createBuildingRuntimeTurrets(buildingBlueprintId) : [];
+  const damagingTurrets = turrets.filter((turret) => turret.config.shot && !turret.config.visualOnly);
+  const firepower = turrets.reduce<Firepower>(
+    (acc, turret) => {
+      const next = computeTurretFirepower(turret.config);
+      acc.alphaDamage += next.alphaDamage;
+      acc.sustainedDps += next.sustainedDps;
+      return acc;
+    },
+    { alphaDamage: 0, sustainedDps: 0 },
+  );
+  const longestRange = turrets.reduce(
+    (best, turret) => Math.max(best, turret.ranges.fire.max.acquire),
+    0,
+  );
+  const buildCost = {
+    energy: blueprint.cost.energy * COST_MULTIPLIER,
+    metal: blueprint.cost.metal * COST_MULTIPLIER,
+  };
+  const widthUnits = blueprint.gridWidth * BUILD_GRID_CELL_SIZE;
+  const depthUnits = blueprint.gridHeight * BUILD_GRID_CELL_SIZE;
+
+  const identitySection: LoadingUnitInfoSection = {
+    id: 'identity',
+    title: isTower ? 'Tower' : 'Building',
+    items: [
+      stat('Blueprint', blueprint.buildingBlueprintId),
+      stat('Build cost', `${fmt(buildCost.energy)} energy / ${fmt(buildCost.metal)} metal`),
+      stat('Hit points', fmt(blueprint.hp)),
+      stat('Mass', fmt(blueprint.base.mass)),
+      stat('Footprint', `${blueprint.gridWidth}x${blueprint.gridHeight} cells / ${fmt(widthUnits)}x${fmt(depthUnits)}`),
+      stat('Visual height', fmt(blueprint.visualHeight)),
+    ],
+  };
+
+  const functionItems = buildBuildingFunctionItems(blueprint);
+  const functionSection: LoadingUnitInfoSection = {
+    id: 'function',
+    title: isTower ? 'Economy' : 'Function',
+    items: functionItems.length > 0 ? functionItems : [stat('Output', 'passive structure')],
+  };
+
+  const summary: LoadingUnitInfoNode[] = [
+    stat('Role', summarizeBuildingRole(blueprint, isTower, damagingTurrets.length)),
+    stat('Cost', `${fmt(buildCost.energy)}E / ${fmt(buildCost.metal)}M`),
+    stat('HP', fmt(blueprint.hp)),
+    stat('Output', describeBuildingOutput(blueprint, firepower)),
+    stat('Range', longestRange > 0 ? fmt(longestRange) : 'none'),
+    stat('Footprint', `${blueprint.gridWidth}x${blueprint.gridHeight}`),
+  ];
+
+  if (isTower) {
+    return {
+      summary,
+      leftSections: functionItems.length > 0 ? [identitySection, functionSection] : [identitySection],
+      rightSections: [
+        buildCombatSummarySection(turrets, firepower, longestRange),
+        buildTurretsSection(turrets),
+      ],
+    };
+  }
+  return {
+    summary,
+    leftSections: [identitySection],
+    rightSections: [functionSection],
+  };
+}
+
+function buildBuildingFunctionItems(blueprint: BuildingBlueprint): LoadingUnitInfoNode[] {
+  const items: LoadingUnitInfoNode[] = [];
+  if (blueprint.energyProduction) items.push(stat('Energy output', `${fmt(blueprint.energyProduction)}/s`));
+  if (blueprint.metalProduction) items.push(stat('Metal output', `${fmt(blueprint.metalProduction)}/s`));
+  if (blueprint.constructionRate) items.push(stat('Construction rate', `${fmt(blueprint.constructionRate)}/s`));
+  if (blueprint.conversionRate) items.push(stat('Conversion rate', `${fmt(blueprint.conversionRate)}/s`));
+  if (blueprint.detector) items.push(stat('Detector radius', fmt(blueprint.detector.radius)));
+  return items;
+}
+
+function summarizeBuildingRole(
+  blueprint: BuildingBlueprint,
+  isTower: boolean,
+  weaponCount: number,
+): string {
+  if (isTower && weaponCount > 0) return 'defense tower';
+  if (blueprint.constructionRate) return 'unit fabricator';
+  if (blueprint.conversionRate) return 'resource converter';
+  if (blueprint.metalProduction) return 'metal extractor';
+  if (blueprint.energyProduction) return 'energy generator';
+  if (blueprint.detector) return 'radar / detector';
+  return isTower ? 'static host' : 'structure';
+}
+
+function describeBuildingOutput(blueprint: BuildingBlueprint, firepower: Firepower): string {
+  if (firepower.sustainedDps > 0) return `${fmt(firepower.sustainedDps, 1)} DPS`;
+  if (blueprint.energyProduction) return `+${fmt(blueprint.energyProduction)} energy/s`;
+  if (blueprint.metalProduction) return `+${fmt(blueprint.metalProduction)} metal/s`;
+  if (blueprint.constructionRate) return `${fmt(blueprint.constructionRate)} build/s`;
+  if (blueprint.conversionRate) return `${fmt(blueprint.conversionRate)} conv/s`;
+  if (blueprint.detector) return `${fmt(blueprint.detector.radius)} radar`;
+  return 'passive';
 }
 
 function buildEconomySection(
