@@ -22,15 +22,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = console)]
-    fn log(s: &str);
-}
-macro_rules! dbglog {
-    ($($t:tt)*) => { log(&format!($($t)*)) };
-}
-
 // ─────────────────────────────────────────────────────────────────
 //  Module init + build stamp
 // ─────────────────────────────────────────────────────────────────
@@ -14780,12 +14771,7 @@ pub fn combat_targeting_rebuild_observation_masks() {
 #[wasm_bindgen]
 pub fn combat_targeting_rebuild_observation_masks_for_sources(source_slots: &[u32]) {
     let pool = combat_targeting_pool();
-    dbglog!("DBG REBUILD sourceSlots={:?}", source_slots);
     for &source_slot in source_slots {
-        let s = source_slot as usize;
-        let online = combat_targeting_entity_online_for_sensors(pool, s);
-        let fv = if s < pool.entity_full_vision_radius.len() { pool.entity_full_vision_radius[s] } else { -1.0 };
-        dbglog!("DBG REBUILD  src slot={} online={} fullVisionSlab={}", s, online as u8, fv);
         combat_targeting_mark_observation_from_source_slot(pool, source_slot as usize);
     }
 }
@@ -15927,20 +15913,6 @@ pub fn combat_targeting_prepare_auto_scan(
     if out_f64.len() >= 2 {
         out_f64[0] = max_acquire_range;
         out_f64[1] = max_weapon_offset;
-    }
-
-    {
-        let mut has_passive = false;
-        for ti in 0..turret_count {
-            let idx = combat_targeting_turret_global_idx(entity_slot, ti as u32);
-            if (pool.turret_config_flags[idx] & CT_TURRET_CFG_PASSIVE) != 0 { has_passive = true; }
-        }
-        if has_passive {
-            dbglog!(
-                "DBG AUTOSCAN slot={} turretCount={} needsQuery={} maxAcq={}",
-                entity_slot, turret_count, needs_any_query as u8, max_acquire_range
-            );
-        }
     }
 
     if needs_any_query {
@@ -17610,29 +17582,11 @@ fn combat_targeting_collect_spatial_candidate_cell(
     batch_radius: f64,
     scratch: &mut CombatTargetingSpatialCandidateScratch,
 ) {
-    let dbg_passive = {
-        let ei = entity_slot as usize;
-        let mut hp = false;
-        if ei < pool.turret_count_per_entity.len() {
-            let c = (pool.turret_count_per_entity[ei] as usize)
-                .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
-            for ti in 0..c {
-                let idx = combat_targeting_turret_global_idx(entity_slot, ti as u32);
-                if (pool.turret_config_flags[idx] & CT_TURRET_CFG_PASSIVE) != 0 { hp = true; }
-            }
-        }
-        hp
-    };
-    if dbg_passive {
-        dbglog!("DBG CELL slots={} ownerBits={:#x} srcOwnerBit={:#x} wantsEnemy={} wantsFriendly={}",
-            cell.slots.len(), cell.owner_bits, source_owner_bit, wants_enemy as u8, wants_friendly as u8);
-    }
     if source_owner_bit != 0 {
         let bucket_owner_bits = cell.owner_bits;
         if bucket_owner_bits != 0 {
             if wants_enemy && !wants_friendly {
                 if (bucket_owner_bits & !source_owner_bit) == 0 {
-                    if dbg_passive { dbglog!("DBG CELL -> skipped (no enemy owners)"); }
                     return;
                 }
             } else if wants_friendly && !wants_enemy {
@@ -17647,17 +17601,6 @@ fn combat_targeting_collect_spatial_candidate_cell(
         let slot = slot_u32 as usize;
         if slot == source_slot {
             continue;
-        }
-        if dbg_passive {
-            let rel = if pool.entity_owner_player_id[slot] == source_player { "FRIEND" } else { "ENEMY" };
-            let fam = pool.entity_family[slot];
-            let dx = pool.entity_pos_x[slot] - source_x;
-            let dy = pool.entity_pos_y[slot] - source_y;
-            let obs = combat_targeting_view_mask_observes_entity(pool, slot, source_view_mask);
-            let elig = combat_targeting_auto_candidate_eligible_turret_mask(pool, entity_slot, source_slot, slot, enabled_turret_mask);
-            dbglog!("DBG  slot={} id={} rel={} fam={} dist={} obs={} elig={:#x} | viewMask={:#x} tgtOwnerBit={:#x} tgtSensorCov={:#x} tgtFlags={:#x}",
-                slot, pool.entity_id[slot], rel, fam, (dx*dx+dy*dy).sqrt(), obs as u8, elig,
-                source_view_mask, pool.entity_owner_bit[slot], pool.entity_sensor_coverage_mask[slot], pool.entity_flags[slot]);
         }
         let relationship = if pool.entity_owner_player_id[slot] == source_player {
             CT_TARGETING_CANDIDATE_REL_FRIENDLY
@@ -17763,22 +17706,6 @@ fn combat_targeting_fill_spatial_candidate_scratch(
         turret_shield_panels_enabled,
         turret_shield_spheres_enabled,
     );
-    {
-        let ei = entity_slot as usize;
-        let mut has_passive = false;
-        let c = (pool.turret_count_per_entity[ei] as usize)
-            .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
-        for ti in 0..c {
-            let idx = combat_targeting_turret_global_idx(entity_slot, ti as u32);
-            if (pool.turret_config_flags[idx] & CT_TURRET_CFG_PASSIVE) != 0 { has_passive = true; }
-        }
-        if has_passive {
-            dbglog!(
-                "DBG FILL slot={} relMask={} enabledTurretMask={:#x} batchRadius={}",
-                entity_slot, relationship_mask, enabled_turret_mask, batch_radius
-            );
-        }
-    }
     if relationship_mask == 0 || enabled_turret_mask == 0 {
         return 0;
     }
@@ -17895,26 +17822,6 @@ pub fn combat_targeting_auto_mode_spatial_candidate_tick(
         turret_shield_spheres_enabled,
         scratch,
     );
-
-    {
-        let pool = combat_targeting_pool();
-        let ei = entity_slot as usize;
-        let mut has_passive = false;
-        if ei < pool.turret_count_per_entity.len() {
-            let c = (pool.turret_count_per_entity[ei] as usize)
-                .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
-            for ti in 0..c {
-                let idx = combat_targeting_turret_global_idx(entity_slot, ti as u32);
-                if (pool.turret_config_flags[idx] & CT_TURRET_CFG_PASSIVE) != 0 { has_passive = true; }
-            }
-        }
-        if has_passive {
-            dbglog!(
-                "DBG SPATIAL src={} needsQuery=1 maxAcq={} maxOff={} candCount={}",
-                source_entity_id, max_acquire_range, max_weapon_offset, candidate_count
-            );
-        }
-    }
 
     combat_targeting_auto_mode_candidate_tick_inner(
         entity_slot,
@@ -19026,20 +18933,6 @@ fn combat_targeting_compute_and_choose_best_candidates_batch_inner(
         .min(candidate_pos_z.len())
         .min(candidate_radius.len())
         .min(candidate_shield_panel_score.len());
-    {
-        let mut entry_passive = false;
-        for ti in 0..turret_count {
-            if apply_mask[ti] == 0 { continue; }
-            let idx = combat_targeting_turret_global_idx(entity_slot, ti as u32);
-            if (pool.turret_config_flags[idx] & CT_TURRET_CFG_PASSIVE) != 0 { entry_passive = true; break; }
-        }
-        if entry_passive {
-            dbglog!(
-                "DBG ENTRY passive src={} rank_mode={} turretCount={} candCount={} clamped={}",
-                source_entity_id, rank_mode, turret_count, candidate_count, clamped_candidate_count
-            );
-        }
-    }
     if turret_count == 0 || clamped_candidate_count == 0 {
         return;
     }
@@ -19149,23 +19042,6 @@ fn combat_targeting_compute_and_choose_best_candidates_batch_inner(
                         source_entity_id,
                     )
                 };
-        }
-        dbglog!(
-            "DBG passive src={} candCount={} clamped={}",
-            source_entity_id, candidate_count, clamped_candidate_count
-        );
-        for ci in 0..clamped_candidate_count {
-            dbglog!(
-                "DBG   cand[{}] id={} slot={} obs={} elig={:#x} score={}",
-                ci,
-                candidate_ids.get(ci).copied().unwrap_or(-99),
-                candidate_slots[ci],
-                candidate_observable[ci],
-                precomputed_candidate_eligible_turret_mask
-                    .map(|m| m.get(ci).copied().unwrap_or(0))
-                    .unwrap_or(0),
-                candidate_shield_panel_score[ci]
-            );
         }
     }
 
