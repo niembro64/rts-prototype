@@ -759,6 +759,8 @@
     "turretBeamMini": {
       "targets": {
         "enemy": {
+          "buildings": "all",
+          "towers": "all",
           "units": {
             "only": [
               "unitJackal",
@@ -794,6 +796,8 @@
     "turretBeamMega": {
       "targets": {
         "enemy": {
+          "buildings": "all",
+          "towers": "all",
           "units": {
             "only": [
               "unitJackal",
@@ -865,6 +869,16 @@
               "unitBee",
               "unitConstructionDrone",
               "unitCommander"
+            ]
+          },
+          "shots": {
+            "only": [
+              "shotPlasmaLight",
+              "shotPlasmaMedium",
+              "shotRocketLight",
+              "shotPlasmaHeavy",
+              "shotMortarMedium",
+              "shotMortarHeavy"
             ]
           }
         }
@@ -999,8 +1013,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": "all",
-          "turrets": "all"
+          "units": "all"
         }
       }
     }
