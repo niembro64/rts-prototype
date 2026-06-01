@@ -191,7 +191,7 @@ export class DyingMeshFade<TMesh> {
 
   constructor(
     private readonly durationMs: number,
-    private readonly applyFade: (mesh: TMesh, fade: number) => void,
+    private readonly applyFade: (mesh: TMesh, fade: number, dtMs: number) => void,
     private readonly teardown: (id: EntityId, mesh: TMesh) => void,
   ) {}
 
@@ -225,7 +225,7 @@ export class DyingMeshFade<TMesh> {
         this.teardown(id, d.mesh);
         this.dying.delete(id);
       } else {
-        this.applyFade(d.mesh, d.fade);
+        this.applyFade(d.mesh, d.fade, dtMs);
       }
     }
   }

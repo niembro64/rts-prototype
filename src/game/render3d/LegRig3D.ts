@@ -459,6 +459,33 @@ export function freeLegSlots(mesh: LegMesh, legRenderer: LegInstancedRenderer): 
   }
 }
 
+export function fadeLegSlots(mesh: LegMesh, legRenderer: LegInstancedRenderer, fade: number): void {
+  const clamped = Math.max(0, Math.min(1, fade));
+  for (const leg of mesh.legs) {
+    legRenderer.fadeUpper(leg.upperSlot, clamped, leg.shellPool);
+    legRenderer.fadeLower(leg.lowerSlot, clamped, leg.shellPool);
+    legRenderer.fadeJoint(leg.hipJointSlot, clamped, leg.shellPool);
+    legRenderer.fadeJoint(leg.kneeJointSlot, clamped, leg.shellPool);
+    legRenderer.fadeFootPad(leg.footPadSlot, clamped, leg.shellPool);
+  }
+}
+
+export function translateLegSlots(
+  mesh: LegMesh,
+  legRenderer: LegInstancedRenderer,
+  dx: number,
+  dy: number,
+  dz: number,
+): void {
+  for (const leg of mesh.legs) {
+    legRenderer.translateUpper(leg.upperSlot, dx, dy, dz, leg.shellPool);
+    legRenderer.translateLower(leg.lowerSlot, dx, dy, dz, leg.shellPool);
+    legRenderer.translateJoint(leg.hipJointSlot, dx, dy, dz, leg.shellPool);
+    legRenderer.translateJoint(leg.kneeJointSlot, dx, dy, dz, leg.shellPool);
+    legRenderer.translateFootPad(leg.footPadSlot, dx, dy, dz, leg.shellPool);
+  }
+}
+
 /** Per-frame: advance each leg's snap-lerp physics + IK, write
  *  cylinder + joint + foot-pad transforms into the shared instanced
  *  renderer pools. */

@@ -56,6 +56,15 @@ type UnitDetailInstanceRendererOptions = {
   mirrorGeom: THREE.BoxGeometry;
 };
 
+export type DyingUnitPartDelta = {
+  dx: number;
+  dy: number;
+  dz: number;
+  drx: number;
+  dry: number;
+  drz: number;
+};
+
 export class UnitDetailInstanceRenderer3D {
   private readonly world: THREE.Group;
   private readonly smoothChassisGeom = new THREE.SphereGeometry(1, 24, 16);
@@ -108,6 +117,12 @@ export class UnitDetailInstanceRenderer3D {
   );
 
   private readonly scratchColor = new THREE.Color();
+  private readonly scatterMat = new THREE.Matrix4();
+  private readonly scatterPos = new THREE.Vector3();
+  private readonly scatterQuat = new THREE.Quaternion();
+  private readonly scatterScale = new THREE.Vector3();
+  private readonly scatterRot = new THREE.Quaternion();
+  private readonly scatterEuler = new THREE.Euler();
 
   // Per-instance materialization fade, keyed by pool mesh. Populated for
   // every pool created through createPool (smooth/poly chassis, turret
@@ -180,6 +195,13 @@ export class UnitDetailInstanceRenderer3D {
     writeHexToRgb01Array(colorKey, this.shieldPanelColorArr, slot * 3);
     this.shieldPanelAlphaArr[slot] = SHIELD_SURFACE_OPACITY;
     this.shieldPanelColorKey.set(slot, colorKey);
+    this.shieldPanelColorDirty = true;
+  }
+
+  private writeShieldPanelFade(slot: number, fade: number): void {
+    const alpha = SHIELD_SURFACE_OPACITY * fade;
+    if (this.shieldPanelAlphaArr[slot] === alpha) return;
+    this.shieldPanelAlphaArr[slot] = alpha;
     this.shieldPanelColorDirty = true;
   }
 
@@ -610,6 +632,61 @@ export class UnitDetailInstanceRenderer3D {
         for (const slot of turret.barrelSlots) this.writeFade(targetMesh, slot, fade);
       }
     }
+    if (mesh.mirrors?.panelSlots) {
+      for (const slot of mesh.mirrors.panelSlots) {
+        this.writeShieldPanelFade(slot, bodyFade);
+      }
+    }
+  }
+
+  applyDyingUnitScatter(
+    mesh: EntityMesh,
+    bodyDelta: DyingUnitPartDelta,
+    turretDeltas: readonly DyingUnitPartDelta[],
+  ): void {
+    if (mesh.smoothChassisSlots) {
+      for (const slot of mesh.smoothChassisSlots) {
+        this.applyInstancedDelta(this.smoothChassis, slot, bodyDelta);
+      }
+    }
+    if (mesh.polyChassisSlot !== undefined && mesh.bodyShapeKey) {
+      const pool = this.polyChassis.get(mesh.bodyShapeKey);
+      if (pool) this.applyInstancedDelta(pool.mesh, mesh.polyChassisSlot, bodyDelta);
+    }
+    for (let i = 0; i < mesh.turrets.length; i++) {
+      const turret = mesh.turrets[i];
+      const delta = turretDeltas[i] ?? bodyDelta;
+      if (turret.headSlot !== undefined) {
+        this.applyInstancedDelta(this.turretHeadInstanced, turret.headSlot, delta);
+      }
+      if (turret.barrelSlots) {
+        const targetMesh = turret.barrelUsesCone ? this.coneBarrelInstanced : this.barrelInstanced;
+        for (const slot of turret.barrelSlots) this.applyInstancedDelta(targetMesh, slot, delta);
+      }
+    }
+    if (mesh.mirrors?.panelSlots) {
+      for (const slot of mesh.mirrors.panelSlots) {
+        this.applyInstancedDelta(this.shieldPanelInstanced, slot, bodyDelta);
+      }
+    }
+  }
+
+  private applyInstancedDelta(
+    instanced: THREE.InstancedMesh,
+    slot: number,
+    delta: DyingUnitPartDelta,
+  ): void {
+    instanced.getMatrixAt(slot, this.scatterMat);
+    this.scatterMat.decompose(this.scatterPos, this.scatterQuat, this.scatterScale);
+    this.scatterPos.x += delta.dx;
+    this.scatterPos.y += delta.dy;
+    this.scatterPos.z += delta.dz;
+    this.scatterEuler.set(delta.drx, delta.dry, delta.drz, 'XYZ');
+    this.scatterRot.setFromEuler(this.scatterEuler);
+    this.scatterQuat.premultiply(this.scatterRot);
+    this.scatterMat.compose(this.scatterPos, this.scatterQuat, this.scatterScale);
+    instanced.setMatrixAt(slot, this.scatterMat);
+    instanced.instanceMatrix.needsUpdate = true;
   }
 
   private getOrCreatePolyPool(

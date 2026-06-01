@@ -25,7 +25,9 @@ import {
   applyLegState as applyLegStateImpl,
   buildLegs,
   captureLegState as captureLegStateImpl,
+  fadeLegSlots,
   freeLegSlots,
+  translateLegSlots,
   updateLegs,
 } from './LegRig3D';
 import {
@@ -207,6 +209,26 @@ export function updateLocomotion(
       updateFlyingRig(mesh, entity, dtMs, hoverSmokeEmitters);
       return;
   }
+}
+
+export function fadeLocomotion(
+  mesh: Locomotion3DMesh,
+  fade: number,
+  legRenderer: LegInstancedRenderer,
+): void {
+  if (!mesh || mesh.type !== 'legs') return;
+  fadeLegSlots(mesh, legRenderer, fade);
+}
+
+export function translateLocomotion(
+  mesh: Locomotion3DMesh,
+  dx: number,
+  dy: number,
+  dz: number,
+  legRenderer: LegInstancedRenderer,
+): void {
+  if (!mesh || mesh.type !== 'legs') return;
+  translateLegSlots(mesh, legRenderer, dx, dy, dz);
 }
 
 export function destroyLocomotion(

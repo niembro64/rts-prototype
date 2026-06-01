@@ -193,6 +193,7 @@ class CylinderPool {
   private endBuf: THREE.InstancedBufferAttribute;
   private thickBuf: THREE.InstancedBufferAttribute;
   private colorBuf: THREE.InstancedBufferAttribute;
+  private baseThickArr: Float32Array;
   private mesh: THREE.Mesh;
   private nextSlot = 0;
   private freeList: number[] = [];
@@ -215,6 +216,7 @@ class CylinderPool {
     this.thickBuf = new THREE.InstancedBufferAttribute(
       new Float32Array(SLOT_CAP), 1,
     ).setUsage(THREE.DynamicDrawUsage);
+    this.baseThickArr = new Float32Array(SLOT_CAP);
     this.colorBuf = new THREE.InstancedBufferAttribute(
       new Float32Array(SLOT_CAP * 3), 3,
     ).setUsage(THREE.DynamicDrawUsage);
@@ -250,6 +252,7 @@ class CylinderPool {
     // Hide by collapsing thickness to 0 — the cylinder shrinks to
     // a degenerate line (zero radius) and contributes no pixels.
     this.thickBuf.array[slot] = 0;
+    this.baseThickArr[slot] = 0;
     this.relocators[slot] = null;
     this.freeList.push(slot);
   }
@@ -268,10 +271,12 @@ class CylinderPool {
     ea[d3 + 1] = ea[s3 + 1];
     ea[d3 + 2] = ea[s3 + 2];
     ta[dst] = ta[src];
+    this.baseThickArr[dst] = this.baseThickArr[src];
     ca[d3 + 0] = ca[s3 + 0];
     ca[d3 + 1] = ca[s3 + 1];
     ca[d3 + 2] = ca[s3 + 2];
     ta[src] = 0;
+    this.baseThickArr[src] = 0;
   };
 
   update(
@@ -289,6 +294,25 @@ class CylinderPool {
     (this.endBuf.array as Float32Array)[i3 + 1] = ey;
     (this.endBuf.array as Float32Array)[i3 + 2] = ez;
     (this.thickBuf.array as Float32Array)[slot] = thick;
+    this.baseThickArr[slot] = thick;
+  }
+
+  fade(slot: number, fade: number): void {
+    if (slot < 0) return;
+    (this.thickBuf.array as Float32Array)[slot] = this.baseThickArr[slot] * fade;
+  }
+
+  translate(slot: number, dx: number, dy: number, dz: number): void {
+    if (slot < 0) return;
+    const i3 = slot * 3;
+    const starts = this.startBuf.array as Float32Array;
+    const ends = this.endBuf.array as Float32Array;
+    starts[i3 + 0] += dx;
+    starts[i3 + 1] += dy;
+    starts[i3 + 2] += dz;
+    ends[i3 + 0] += dx;
+    ends[i3 + 1] += dy;
+    ends[i3 + 2] += dz;
   }
 
   flush(): void {
@@ -332,6 +356,7 @@ class CylinderPool {
  *  contribute no fragments. */
 class JointSpherePool {
   private readonly mesh: THREE.InstancedMesh;
+  private readonly baseMatrices = new Float32Array(SLOT_CAP * 16);
   private readonly shell: boolean;
   private nextSlot = 0;
   private freeList: number[] = [];
@@ -381,6 +406,7 @@ class JointSpherePool {
   free(slot: number): void {
     if (slot < 0) return;
     this.mesh.setMatrixAt(slot, JointSpherePool._ZERO_MATRIX);
+    this.writeBaseMatrix(slot, JointSpherePool._ZERO_MATRIX);
     this.relocators[slot] = null;
     this.freeList.push(slot);
   }
@@ -390,6 +416,7 @@ class JointSpherePool {
     const s16 = src * 16;
     const d16 = dst * 16;
     for (let i = 0; i < 16; i++) arr[d16 + i] = arr[s16 + i];
+    for (let i = 0; i < 16; i++) this.baseMatrices[d16 + i] = this.baseMatrices[s16 + i];
     const colorArr = this.mesh.instanceColor?.array as Float32Array | undefined;
     if (colorArr) {
       const s3 = src * 3;
@@ -401,6 +428,7 @@ class JointSpherePool {
     // Source matrix becomes the visually-zero matrix; trim by
     // instanceCount keeps it off-screen but be defensive.
     for (let i = 0; i < 16; i++) arr[s16 + i] = 0;
+    for (let i = 0; i < 16; i++) this.baseMatrices[s16 + i] = 0;
   };
 
   update(slot: number, x: number, y: number, z: number, radius: number): void {
@@ -413,6 +441,45 @@ class JointSpherePool {
       JointSpherePool._scratchScale,
     );
     this.mesh.setMatrixAt(slot, JointSpherePool._scratchMat);
+    this.writeBaseMatrix(slot, JointSpherePool._scratchMat);
+  }
+
+  fade(slot: number, fade: number): void {
+    if (slot < 0) return;
+    this.writeFadedBaseMatrix(slot, fade);
+  }
+
+  translate(slot: number, dx: number, dy: number, dz: number): void {
+    if (slot < 0) return;
+    const arr = this.mesh.instanceMatrix.array as Float32Array;
+    const i16 = slot * 16;
+    arr[i16 + 12] += dx;
+    arr[i16 + 13] += dy;
+    arr[i16 + 14] += dz;
+    this.baseMatrices[i16 + 12] += dx;
+    this.baseMatrices[i16 + 13] += dy;
+    this.baseMatrices[i16 + 14] += dz;
+  }
+
+  private writeBaseMatrix(slot: number, matrix: THREE.Matrix4): void {
+    const elements = matrix.elements;
+    const i16 = slot * 16;
+    for (let i = 0; i < 16; i++) this.baseMatrices[i16 + i] = elements[i];
+  }
+
+  private writeFadedBaseMatrix(slot: number, fade: number): void {
+    const arr = this.mesh.instanceMatrix.array as Float32Array;
+    const i16 = slot * 16;
+    for (let i = 0; i < 16; i++) arr[i16 + i] = this.baseMatrices[i16 + i];
+    arr[i16 + 0] *= fade;
+    arr[i16 + 1] *= fade;
+    arr[i16 + 2] *= fade;
+    arr[i16 + 4] *= fade;
+    arr[i16 + 5] *= fade;
+    arr[i16 + 6] *= fade;
+    arr[i16 + 8] *= fade;
+    arr[i16 + 9] *= fade;
+    arr[i16 + 10] *= fade;
   }
 
   flush(): void {
@@ -438,6 +505,7 @@ class JointSpherePool {
  *  orientation, while joints are uniform balls. */
 class FootPadPool {
   private readonly mesh: THREE.InstancedMesh;
+  private readonly baseMatrices = new Float32Array(SLOT_CAP * 16);
   private readonly shell: boolean;
   private nextSlot = 0;
   private freeList: number[] = [];
@@ -487,6 +555,7 @@ class FootPadPool {
   free(slot: number): void {
     if (slot < 0) return;
     this.mesh.setMatrixAt(slot, FootPadPool._ZERO_MATRIX);
+    this.writeBaseMatrix(slot, FootPadPool._ZERO_MATRIX);
     this.relocators[slot] = null;
     this.freeList.push(slot);
   }
@@ -496,6 +565,7 @@ class FootPadPool {
     const s16 = src * 16;
     const d16 = dst * 16;
     for (let i = 0; i < 16; i++) arr[d16 + i] = arr[s16 + i];
+    for (let i = 0; i < 16; i++) this.baseMatrices[d16 + i] = this.baseMatrices[s16 + i];
     const colorArr = this.mesh.instanceColor?.array as Float32Array | undefined;
     if (colorArr) {
       const s3 = src * 3;
@@ -505,6 +575,7 @@ class FootPadPool {
       colorArr[d3 + 2] = colorArr[s3 + 2];
     }
     for (let i = 0; i < 16; i++) arr[s16 + i] = 0;
+    for (let i = 0; i < 16; i++) this.baseMatrices[s16 + i] = 0;
   };
 
   update(
@@ -533,6 +604,45 @@ class FootPadPool {
       FootPadPool._scratchScale,
     );
     this.mesh.setMatrixAt(slot, FootPadPool._scratchMat);
+    this.writeBaseMatrix(slot, FootPadPool._scratchMat);
+  }
+
+  fade(slot: number, fade: number): void {
+    if (slot < 0) return;
+    this.writeFadedBaseMatrix(slot, fade);
+  }
+
+  translate(slot: number, dx: number, dy: number, dz: number): void {
+    if (slot < 0) return;
+    const arr = this.mesh.instanceMatrix.array as Float32Array;
+    const i16 = slot * 16;
+    arr[i16 + 12] += dx;
+    arr[i16 + 13] += dy;
+    arr[i16 + 14] += dz;
+    this.baseMatrices[i16 + 12] += dx;
+    this.baseMatrices[i16 + 13] += dy;
+    this.baseMatrices[i16 + 14] += dz;
+  }
+
+  private writeBaseMatrix(slot: number, matrix: THREE.Matrix4): void {
+    const elements = matrix.elements;
+    const i16 = slot * 16;
+    for (let i = 0; i < 16; i++) this.baseMatrices[i16 + i] = elements[i];
+  }
+
+  private writeFadedBaseMatrix(slot: number, fade: number): void {
+    const arr = this.mesh.instanceMatrix.array as Float32Array;
+    const i16 = slot * 16;
+    for (let i = 0; i < 16; i++) arr[i16 + i] = this.baseMatrices[i16 + i];
+    arr[i16 + 0] *= fade;
+    arr[i16 + 1] *= fade;
+    arr[i16 + 2] *= fade;
+    arr[i16 + 4] *= fade;
+    arr[i16 + 5] *= fade;
+    arr[i16 + 6] *= fade;
+    arr[i16 + 8] *= fade;
+    arr[i16 + 9] *= fade;
+    arr[i16 + 10] *= fade;
   }
 
   flush(): void {
@@ -601,6 +711,32 @@ export class LegInstancedRenderer {
   freeLower(slot: number, shell = false): void { (shell ? this.shellLower : this.lower).free(slot); }
   freeJoint(slot: number, shell = false): void { (shell ? this.shellJoints : this.joints).free(slot); }
   freeFootPad(slot: number, shell = false): void { (shell ? this.shellPads : this.pads).free(slot); }
+
+  fadeUpper(slot: number, fade: number, shell = false): void {
+    (shell ? this.shellUpper : this.upper).fade(slot, fade);
+  }
+  fadeLower(slot: number, fade: number, shell = false): void {
+    (shell ? this.shellLower : this.lower).fade(slot, fade);
+  }
+  fadeJoint(slot: number, fade: number, shell = false): void {
+    (shell ? this.shellJoints : this.joints).fade(slot, fade);
+  }
+  fadeFootPad(slot: number, fade: number, shell = false): void {
+    (shell ? this.shellPads : this.pads).fade(slot, fade);
+  }
+
+  translateUpper(slot: number, dx: number, dy: number, dz: number, shell = false): void {
+    (shell ? this.shellUpper : this.upper).translate(slot, dx, dy, dz);
+  }
+  translateLower(slot: number, dx: number, dy: number, dz: number, shell = false): void {
+    (shell ? this.shellLower : this.lower).translate(slot, dx, dy, dz);
+  }
+  translateJoint(slot: number, dx: number, dy: number, dz: number, shell = false): void {
+    (shell ? this.shellJoints : this.joints).translate(slot, dx, dy, dz);
+  }
+  translateFootPad(slot: number, dx: number, dy: number, dz: number, shell = false): void {
+    (shell ? this.shellPads : this.pads).translate(slot, dx, dy, dz);
+  }
 
   updateUpper(
     slot: number,

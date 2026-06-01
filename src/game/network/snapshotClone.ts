@@ -109,11 +109,15 @@ function copyFactoryInto(src: ReusableFactory, dst: ReusableFactory): ReusableFa
   dst.energyRate = src.energyRate;
   dst.metalRate = src.metalRate;
   copyWaypointInto(src.rally, dst.rally);
-  if (src.route !== null) {
+  // `route` only rides the local-clone delivery path; the compact V6
+  // byte wire decodes it as null. Guard against `undefined` too (some
+  // decode paths omit the field) so cloning never throws.
+  const srcRoute = src.route ?? null;
+  if (srcRoute !== null) {
     const route = dst.route ?? (dst.route = []);
-    route.length = src.route.length;
-    for (let i = 0; i < src.route.length; i++) {
-      route[i] = copyWaypointInto(src.route[i], route[i] ?? createWaypointDto());
+    route.length = srcRoute.length;
+    for (let i = 0; i < srcRoute.length; i++) {
+      route[i] = copyWaypointInto(srcRoute[i], route[i] ?? createWaypointDto());
     }
   } else {
     dst.route = null;
