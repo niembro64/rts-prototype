@@ -724,8 +724,6 @@
     "turretBeam": {
       "targets": {
         "enemy": {
-          "buildings": "all",
-          "towers": "all",
           "units": {
             "only": [
               "unitJackal",
@@ -744,6 +742,16 @@
               "unitConstructionDrone",
               "unitCommander"
             ]
+          },
+          "shots": {
+            "only": [
+              "shotPlasmaLight",
+              "shotPlasmaMedium",
+              "shotRocketLight",
+              "shotPlasmaHeavy",
+              "shotMortarMedium",
+              "shotMortarHeavy"
+            ]
           }
         }
       }
@@ -751,6 +759,25 @@
     "turretBeamMini": {
       "targets": {
         "enemy": {
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitBee",
+              "unitConstructionDrone",
+              "unitCommander"
+            ]
+          },
           "shots": {
             "only": [
               "shotPlasmaLight",
@@ -767,8 +794,6 @@
     "turretBeamMega": {
       "targets": {
         "enemy": {
-          "buildings": "all",
-          "towers": "all",
           "units": {
             "only": [
               "unitJackal",
@@ -786,6 +811,16 @@
               "unitBee",
               "unitConstructionDrone",
               "unitCommander"
+            ]
+          },
+          "shots": {
+            "only": [
+              "shotPlasmaLight",
+              "shotPlasmaMedium",
+              "shotRocketLight",
+              "shotPlasmaHeavy",
+              "shotMortarMedium",
+              "shotMortarHeavy"
             ]
           }
         }
@@ -927,9 +962,35 @@
     "towerBeamMega": {
       "targets": {
         "enemy": {
-          "buildings": "all",
-          "towers": "all",
-          "units": "all"
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitBee",
+              "unitConstructionDrone",
+              "unitCommander"
+            ]
+          },
+          "shots": {
+            "only": [
+              "shotPlasmaLight",
+              "shotPlasmaMedium",
+              "shotRocketLight",
+              "shotPlasmaHeavy",
+              "shotMortarMedium",
+              "shotMortarHeavy"
+            ]
+          }
         }
       }
     },

@@ -4,7 +4,9 @@
 // weapon's current pose on that target along an overshoot-free curve,
 // so tick-to-tick jitter in the solver (e.g. a ballistic solution
 // that wobbles slightly as the target moves) doesn't propagate into
-// visible barrel oscillation.
+// visible barrel oscillation. Continuous beam rays are the exception:
+// once they have a solved active target, they snap directly to the
+// target pose so the simulated beam trace is locked on immediately.
 //
 // Per-axis dynamics (rotation axis shown as θ):
 //
@@ -151,6 +153,24 @@ function flushTurretRotationBatch(dtSec: number): void {
     weapon.aimErrorYaw = _turretOutAimErrorYaw[i];
     weapon.aimErrorPitch = _turretOutAimErrorPitch[i];
   }
+}
+
+function isInstantLockBeamWeapon(weapon: Turret): boolean {
+  return weapon.config.shot?.type === 'beam';
+}
+
+function snapTurretAimToTarget(weapon: Turret, aimTargetYaw: number, aimTargetPitch: number): void {
+  const clampedPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, aimTargetPitch));
+  weapon.rotation = aimTargetYaw;
+  weapon.angularVelocity = 0;
+  weapon.angularAcceleration = 0;
+  weapon.pitch = clampedPitch;
+  weapon.pitchVelocity = 0;
+  weapon.pitchAcceleration = 0;
+  weapon.aimTargetYaw = aimTargetYaw;
+  weapon.aimTargetPitch = clampedPitch;
+  weapon.aimErrorYaw = 0;
+  weapon.aimErrorPitch = 0;
 }
 
 export function updateTurretRotation(world: WorldState, dtMs: number, units: readonly Entity[] = world.getArmedEntities()): void {
@@ -320,12 +340,21 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
         targetPitch = weapon.pitch;
       }
 
-      // --- 2) Damped-spring integrate both axes toward targets. ---
+      // --- 2) Move both axes toward targets. ---
+      // Continuous beams are authored as instant line damage, so their
+      // simulation aim snaps to the solved target pose instead of
+      // waiting for the visual spring to converge.
+      const aimTargetYaw = targetAngle!;
+      const aimTargetPitch = targetPitch;
+      if (hasActiveTarget && isInstantLockBeamWeapon(weapon)) {
+        snapTurretAimToTarget(weapon, aimTargetYaw, aimTargetPitch);
+        continue;
+      }
+
+      // Damped-spring integrate non-instant weapons.
       // Rust/WASM owns the damped-spring yaw/pitch integration for all
       // queued turrets in one batch. TypeScript only supplies target poses
       // after resolving target policy and ballistic aim.
-      const aimTargetYaw = targetAngle!;
-      const aimTargetPitch = targetPitch;
       queueTurretRotationStep(weapon, aimTargetYaw, aimTargetPitch);
     }
   }
