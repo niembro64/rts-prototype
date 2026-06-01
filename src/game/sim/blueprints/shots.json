@@ -133,7 +133,7 @@
     },
     "armingDelayMs": 40,
     "detonateOnExpiry": true,
-    "maxLifespan": 1000,
+    "maxLifespan": 500,
     "hitSound": {
       "$audio": "event.hit.shotRocketFast"
     },

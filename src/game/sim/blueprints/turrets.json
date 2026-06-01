@@ -230,7 +230,7 @@
     },
     "kind": "attack",
     "emissionKind": "shot",
-    "emissionBlueprintId": "shotMortarHeavy"
+    "emissionBlueprintId": "shotMortarMedium"
   },
   "turretMortarDrop": {
     "turretBlueprintId": "turretMortarDrop",
@@ -284,7 +284,7 @@
     },
     "kind": "attack",
     "emissionKind": "shot",
-    "emissionBlueprintId": "shotMortarHeavy"
+    "emissionBlueprintId": "shotMortarMedium"
   },
   "turretMortarFast": {
     "turretBlueprintId": "turretMortarFast",
@@ -349,7 +349,7 @@
     },
     "kind": "attack",
     "emissionKind": "shot",
-    "emissionBlueprintId": "shotMortarHeavy"
+    "emissionBlueprintId": "shotMortarMedium"
   },
   "turretGatling": {
     "turretBlueprintId": "turretGatling",
@@ -978,7 +978,7 @@
     "name": "Fast Rocket Launcher",
     "range": 430,
     "cooldown": 50,
-    "launchForce": 2000,
+    "launchForce": 4000,
     "turretTurnAccel": 1200,
     "turretDrag": 0.15,
     "barrel": {

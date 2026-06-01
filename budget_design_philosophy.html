@@ -2542,8 +2542,18 @@
         caller imports it. Copying logic between client, server, renderer, lobby, tests, and debug
         tools creates drift, and drift is a correctness bug.
       </p>
+      <p>
+        File size is part of that source-of-truth discipline. Large files are not a neutral
+        inconvenience; they are a signal that responsibilities have piled up and the code is harder
+        to audit, test, port to Rust/WASM, or delete cleanly. When we touch a large file, we should
+        split cohesive behavior into small helper files with named exported functions and import
+        those functions at the call site. Do not copy a block into a second place to avoid an import.
+        Do not leave a large file large when a clean helper extraction is available. The default
+        shape is always small files, imported helpers, and one implementation of every behavior.
+      </p>
       <ul class="rule-list">
         <li>Extract shared helpers before copying code into a second place.</li>
+        <li>Split large files into small helper files with imported functions; never duplicate code to avoid a helper import.</li>
         <li>Keep constants, enums, labels, thresholds, and wire codes in one canonical module.</li>
         <li>Put command construction, authorization, and sanitization behind shared functions instead of reimplementing branches in components.</li>
         <li>When duplication is temporary during a migration, delete the old path in the same change that proves the new one. See <strong>Delete The Old Path</strong>.</li>
@@ -2717,6 +2727,7 @@
         <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. The <code>turretShieldPanel</code>&rsquo;s flat panels and the <code>turretShieldSphere</code>&rsquo;s sphere are the exact same material &mdash; they differ only in geometry.</li>
         <li>Route every resource movement &mdash; production, consumption, construction payment, conversion, repair drain, future ammo costs &mdash; through one shared pylon abstraction in both simulation and renderer. One typed channel publishes <code>(resource, amount, direction, source, optional target)</code>; one rig renders the flow as resource balls travelling through a conduit, their density showing magnitude and their travel direction showing inbound or outbound. A pylon is a tube between a <em>root</em> (the pool tap) and a <em>tip</em> (the world); balls down the tube mean gaining, up the tube mean spending, and the tip conserves &mdash; every ball up the tube exits the tip, every ball into the tip goes down the tube, and balls are spawned or sunk only at the root and the world point, never at the tip. Producers source balls at the physical world point (deposit, sun, upwind) and run them down the tube; construction turrets run balls up the tube and out the tip onto the build target; the converter joins its two tips with a taxed arc that recolors energy into metal in flight, the unconverted fraction visibly dispersing. The flowing balls are the sole indicator; standalone usage readouts and any separate magnitude bar are retired. No parallel resource paths in the sim, no special-case &ldquo;production trickle&rdquo; or &ldquo;converter visual&rdquo; in the renderer.</li>
         <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>
+        <li>Keep files small. If a file is large, split cohesive behavior into helper functions exported from focused helper files and import them; never duplicate code and never let file size become the reason a behavior is hard to find, test, port, or delete.</li>
         <li>When a replacement lands &mdash; a WASM kernel for a JS loop, owned shaders for a framework helper, a raw renderer path for a Three.js abstraction, a removed library &mdash; delete the predecessor in the same change. Migration is not done until the old path is gone from the tree.</li>
         <li>Prefer explicit <code>null</code> (or numeric sentinels) over optional properties and optional chaining in our own code; treat every file you touch as an opportunity to migrate fields off <code>?:</code> and <code>?.</code>.</li>
         <li>Use Rust/WASM, TypeScript orchestration, and custom GPU shader code; keep frameworks out of simulation and rendering hot paths.</li>
