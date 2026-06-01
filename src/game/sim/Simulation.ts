@@ -676,6 +676,11 @@ export class Simulation {
         this.pendingProjectileVelocityUpdates.set(event.id, event);
       }
 
+      // Refresh projectile broadphase after integration. The frame-level
+      // spatial update ran before combat, so projectile-vs-projectile
+      // hitbox checks need the post-move positions here.
+      spatialGrid.updateProjectiles(this.world.getTravelingProjectiles());
+
       // Projectile reflection queries use the same reflector slabs as
       // targeting, but need the post-rotation, post-shield-update
       // pose for this collision tick.

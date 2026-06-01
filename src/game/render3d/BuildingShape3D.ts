@@ -99,6 +99,12 @@ export type BuildingShape = {
   /** When true, Render3DEntities must not replace `primary.material`
    *  with a team material after ownership changes. */
   primaryMaterialLocked?: boolean;
+  /** When true, this host renders no body shell — only its mounted
+   *  turrets. The `primary` mesh is still returned (callers index
+   *  `chassisMeshes[0]`) but the renderer keeps it hidden and unscaled.
+   *  Used by the detached-turret tower: a gun blown off its host is
+   *  just the gun, with no chassis around it. */
+  bodyless?: boolean;
   /** Decorative accent meshes already positioned relative to the primary
    *  body. */
   details: BuildingDetailMesh[];
@@ -218,6 +224,8 @@ export function buildBuildingShape(
       return buildResourceConverterMesh(width, depth, primaryMat);
     case 'unknown':
       return buildUnknown(primaryMat);
+    case 'bodyless':
+      return buildBodyless(primaryMat);
     default:
       throw new Error(`Unhandled building shape type: ${type as string}`);
   }
@@ -227,6 +235,16 @@ export function buildBuildingShape(
 function buildUnknown(primaryMat: THREE.Material): BuildingShape {
   const primary = new THREE.Mesh(boxGeom, primaryMat);
   return { primary, details: [], height: DEFAULT_HEIGHT };
+}
+
+/** No body shell — only the host's mounted turrets render. The primary
+ *  mesh is created (callers expect `chassisMeshes[0]`) but flagged
+ *  bodyless so the renderer never shows or scales it. Height 0 keeps any
+ *  base-from-footprint math at the ground plane. */
+function buildBodyless(primaryMat: THREE.Material): BuildingShape {
+  const primary = new THREE.Mesh(boxGeom, primaryMat);
+  primary.visible = false;
+  return { primary, details: [], height: 0, bodyless: true };
 }
 
 function buildRadarMesh(

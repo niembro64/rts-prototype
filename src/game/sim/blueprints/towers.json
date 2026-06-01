@@ -174,7 +174,7 @@
     "metalProduction": null,
     "constructionRate": null,
     "conversionRate": null,
-    "renderProfile": "unknown",
+    "renderProfile": "bodyless",
     "visualHeight": 22,
     "anchorProfile": "collisionDepth",
     "hud": {

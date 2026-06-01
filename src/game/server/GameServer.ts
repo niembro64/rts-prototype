@@ -99,6 +99,14 @@ export type GameServerCreateOptions = {
   onProgress: GameServerStartupProgress | undefined;
 };
 
+/** Ground-friction multiplier for a turret that has been blown off its
+ *  host. A hostless turret is loose debris-that-still-fights — it has no
+ *  drivetrain gripping the terrain, so it keeps almost all of its
+ *  tangential velocity on contact and slides / rolls downhill instead of
+ *  planting where it lands. 1 = normal unit traction; this is well below
+ *  that. Tune in-app. */
+const DETACHED_TURRET_GROUND_FRICTION_SCALE = 0.12;
+
 export class GameServer {
   private physics: PhysicsEngine3D;
   private world: WorldState;
@@ -522,6 +530,7 @@ export class GameServer {
       entity.id,
       spawn.position.z,
       this.world.getCachedSurfaceNormal(spawn.position.x, spawn.position.y),
+      DETACHED_TURRET_GROUND_FRICTION_SCALE,
     );
     entity.body = { physicsBody: body };
     entity.transform.x = body.x;

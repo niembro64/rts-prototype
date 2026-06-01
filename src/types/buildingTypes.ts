@@ -4,7 +4,7 @@ import rawTowerBlueprints from '../game/sim/blueprints/towers.json';
 import { type BuildingBlueprintId } from './blueprintIds';
 
 export type { BuildingBlueprintId };
-export type BuildingRenderProfile = BuildingBlueprintId | 'unknown';
+export type BuildingRenderProfile = BuildingBlueprintId | 'unknown' | 'bodyless';
 export type BuildingAnchorProfile = 'constantVisualTop' | 'factoryTower' | 'collisionDepth';
 
 export const DETACHED_TURRET_TOWER_BLUEPRINT_ID: BuildingBlueprintId = 'towerDetachedTurret';

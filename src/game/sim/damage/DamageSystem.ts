@@ -149,6 +149,7 @@ const _subEntityPoint = { x: 0, y: 0, z: 0 };
 const BEAM_GROUND_HIT_STEPS = 12;
 const BEAM_GROUND_HIT_BISECT_STEPS = 6;
 const BEAM_GROUND_EPSILON = 0.25;
+const SWEPT_HITBOX_QUERY_EXTRA = 32;
 
 function isTurretDamageable(turret: Turret): boolean {
   return turret.id !== NO_ENTITY_ID && turret.hp > 0 && !turret.config.visualOnly;
@@ -968,14 +969,20 @@ export class DamageSystem {
     const hits = _reusableHits;
 
     // PERFORMANCE: Single line-cell sweep — see findLineObstruction.
+    // The spatial line query takes a full width and buckets units by
+    // center cell, so include the largest known target hitbox radius
+    // here. The exact tests below still use each entity's authored
+    // hitbox.
+    const sweptQueryWidth =
+      (source.radius + this.world.getMaxTargetableRadius() + SWEPT_HITBOX_QUERY_EXTRA) * 2;
     const { units: nearbyUnits, buildings: nearbyBuildings } =
       spatialGrid.queryEntitiesAlongLine(
         source.prev.x, source.prev.y, source.prev.z,
-        source.current.x, source.current.y, source.current.z, source.radius + 100,
+        source.current.x, source.current.y, source.current.z, sweptQueryWidth,
       );
     const nearbyProjectiles = spatialGrid.queryProjectilesAlongLine(
       source.prev.x, source.prev.y, source.prev.z,
-      source.current.x, source.current.y, source.current.z, source.radius + 100,
+      source.current.x, source.current.y, source.current.z, sweptQueryWidth,
     );
 
     // Check units using swept 3D collision — segment prev→current vs a
@@ -1138,6 +1145,9 @@ export class DamageSystem {
         attackerVel: { x: attackerVelX, y: attackerVelY },
         attackMagnitude: source.damage,
       }, hit.entityId);
+      if (result.truncationT === undefined) {
+        result.truncationT = hit.t;
+      }
       result.hitEntityIds.push(entity.id);
       hitCount++;
 

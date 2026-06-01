@@ -191,6 +191,7 @@ export class Body3D {
     halfZ: number | undefined;
     groundOffset: number | undefined;
     restitution: number;
+    groundFrictionScale?: number;
     surfaceNormal: SurfaceNormal | null;
   }): Body3D {
     const views = pv();
@@ -214,6 +215,7 @@ export class Body3D {
     views.halfZ[slot] = args.halfZ ?? 0;
     views.invMass[slot] = args.mass > 0 ? 1 / args.mass : 0;
     views.restitution[slot] = args.restitution;
+    views.groundFrictionScale[slot] = args.groundFrictionScale ?? 1;
     views.groundOffset[slot] = args.groundOffset ?? 0;
     views.entityId[slot] = args.entityId ?? -1;
     if (args.surfaceNormal !== null) {
@@ -290,6 +292,11 @@ export class Body3D {
   get invMass(): number { return pv().invMass[this.slot]; }
   get restitution(): number { return pv().restitution[this.slot]; }
   get groundOffset(): number { return pv().groundOffset[this.slot]; }
+  /** Per-body ground-friction multiplier (1 = normal traction,
+   *  0 = frictionless). Settable so a body's traction can change at
+   *  runtime if a future feature needs it. */
+  get groundFrictionScale(): number { return pv().groundFrictionScale[this.slot]; }
+  set groundFrictionScale(v: number) { pv().groundFrictionScale[this.slot] = v; }
 
   get sleepTicks(): number { return pv().sleepTicks[this.slot]; }
   set sleepTicks(v: number) { pv().sleepTicks[this.slot] = v; }
@@ -437,6 +444,7 @@ export class PhysicsEngine3D {
     entityId: EntityId | undefined = undefined,
     initialZ: number | undefined = undefined,
     surfaceNormal: SurfaceNormal | null = null,
+    groundFrictionScale: number = 1,
   ): Body3D {
     refreshAndBindBody3DPool(getSimWasm()!.pool);
     const physicsMass = mass * UNIT_MASS_MULTIPLIER;
@@ -458,6 +466,7 @@ export class PhysicsEngine3D {
       halfZ: undefined,
       groundOffset: bodyCenterHeight,
       restitution: 0.2,
+      groundFrictionScale,
       surfaceNormal,
     });
     this.addBody(body);

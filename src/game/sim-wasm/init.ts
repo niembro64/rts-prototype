@@ -424,6 +424,7 @@ import __wbg_init, {
   pool_inv_mass_ptr,
   pool_restitution_ptr,
   pool_ground_offset_ptr,
+  pool_ground_friction_scale_ptr,
   pool_sleep_ticks_ptr,
   pool_flags_ptr,
   pool_entity_id_ptr,
@@ -3039,6 +3040,7 @@ export interface BodyPoolViews {
   invMass: Float64Array;
   restitution: Float64Array;
   groundOffset: Float64Array;
+  groundFrictionScale: Float64Array;
   sleepTicks: Float64Array;
   flags: Uint8Array;
   entityId: Int32Array;
@@ -3149,6 +3151,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         invMass: pool_inv_mass_ptr(),
         restitution: pool_restitution_ptr(),
         groundOffset: pool_ground_offset_ptr(),
+        groundFrictionScale: pool_ground_friction_scale_ptr(),
         sleepTicks: pool_sleep_ticks_ptr(),
         flags: pool_flags_ptr(),
         entityId: pool_entity_id_ptr(),
@@ -3181,6 +3184,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           pool.invMass = f64View(ptrs.invMass);
           pool.restitution = f64View(ptrs.restitution);
           pool.groundOffset = f64View(ptrs.groundOffset);
+          pool.groundFrictionScale = f64View(ptrs.groundFrictionScale);
           pool.sleepTicks = f64View(ptrs.sleepTicks);
           pool.flags = u8View(ptrs.flags);
           pool.entityId = i32View(ptrs.entityId);
@@ -3209,6 +3213,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         invMass: f64View(ptrs.invMass),
         restitution: f64View(ptrs.restitution),
         groundOffset: f64View(ptrs.groundOffset),
+        groundFrictionScale: f64View(ptrs.groundFrictionScale),
         sleepTicks: f64View(ptrs.sleepTicks),
         flags: u8View(ptrs.flags),
         entityId: i32View(ptrs.entityId),

@@ -126,6 +126,7 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
     converterRig: shape.converterRig,
     buildingHeight: shape.height,
     buildingPrimaryMaterialLocked: shape.primaryMaterialLocked === true,
+    buildingBodyless: shape.bodyless === true,
     solarOpenAmount: entity.building?.activeState?.open === false ? 0 : 1,
   };
 }
@@ -452,9 +453,16 @@ export class BuildingEntityRenderer3D {
     // opacity fade (same as units), never by rising out of the ground.
     const height = mesh.buildingHeight ?? BUILDING_HEIGHT;
     const primary = mesh.chassisMeshes[0];
-    primary.position.set(0, height / 2, 0);
-    primary.scale.set(width, height, depth);
-    primary.visible = true;
+    if (mesh.buildingBodyless) {
+      // Detached turret and other bodyless hosts have no chassis to
+      // show — only their mounted turrets render. Keep the primary
+      // hidden and unscaled so nothing draws around the gun.
+      primary.visible = false;
+    } else {
+      primary.position.set(0, height / 2, 0);
+      primary.scale.set(width, height, depth);
+      primary.visible = true;
+    }
 
     if (mesh.buildingDetails) {
       for (const detail of mesh.buildingDetails) {

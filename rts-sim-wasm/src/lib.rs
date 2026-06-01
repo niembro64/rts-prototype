@@ -1684,6 +1684,12 @@ struct BodyPool {
     inv_mass: Vec<f64>,
     restitution: Vec<f64>,
     ground_offset: Vec<f64>,
+    // Per-body ground-friction multiplier. 1.0 = the full global
+    // ground-contact tangential damping; 0.0 = frictionless (keeps all
+    // tangential velocity on contact). Lets a detached turret slide /
+    // roll downhill while ordinary units keep normal traction. Default
+    // 1.0 so every body that doesn't opt out behaves exactly as before.
+    ground_friction_scale: Vec<f64>,
 
     // Sleep state. `sleep_ticks` is f64 to match the JS side's
     // numeric counter and sit on a single ptr export.
@@ -1728,6 +1734,7 @@ impl BodyPool {
             inv_mass: vec![0.0; cap],
             restitution: vec![0.0; cap],
             ground_offset: vec![0.0; cap],
+            ground_friction_scale: vec![1.0; cap],
             sleep_ticks: vec![0.0; cap],
             flags: vec![0u8; cap],
             entity_id: vec![-1; cap],
@@ -1773,6 +1780,7 @@ impl BodyPool {
         self.inv_mass[i] = 0.0;
         self.restitution[i] = 0.0;
         self.ground_offset[i] = 0.0;
+        self.ground_friction_scale[i] = 1.0;
         self.sleep_ticks[i] = 0.0;
         self.flags[i] = BODY_FLAG_OCCUPIED;
         self.entity_id[i] = -1;
@@ -1879,6 +1887,11 @@ pool_ptr_export!(pool_half_z_ptr, half_z, f64);
 pool_ptr_export!(pool_inv_mass_ptr, inv_mass, f64);
 pool_ptr_export!(pool_restitution_ptr, restitution, f64);
 pool_ptr_export!(pool_ground_offset_ptr, ground_offset, f64);
+pool_ptr_export!(
+    pool_ground_friction_scale_ptr,
+    ground_friction_scale,
+    f64
+);
 pool_ptr_export!(pool_sleep_ticks_ptr, sleep_ticks, f64);
 pool_ptr_export!(pool_flags_ptr, flags, u8);
 pool_ptr_export!(pool_entity_id_ptr, entity_id, i32);
@@ -2490,6 +2503,19 @@ pub fn pool_step_integrate(
         let launch_ay = p.launch_y[slot];
         let launch_az = p.launch_z[slot];
 
+        // Per-body friction: scale how much of the global ground-contact
+        // tangential damping this body feels. `ground_damp` is the
+        // retained tangential fraction per step (1.0 = no loss); the
+        // amount lost is `1 - ground_damp`, so scaling that by the
+        // body's friction multiplier and re-deriving the retained
+        // fraction gives a frictionless body (scale 0) a damp of 1.0 and
+        // a normal body (scale 1) the unchanged global damp. Computed
+        // here rather than inside the shared inline helper so the client
+        // prediction / bootstrap callers (which only step default-
+        // friction units) stay byte-identical with no signature change.
+        let friction_scale = p.ground_friction_scale[slot];
+        let eff_ground_damp = 1.0 - (1.0 - ground_damp) * friction_scale;
+
         // Run the integrator on a 6-element scratch — the inline
         // helper is shared with the per-body / batched buffer paths
         // so all branches stay numerically identical.
@@ -2509,7 +2535,7 @@ pub fn pool_step_integrate(
             authored_ay,
             authored_az - GRAVITY,
             air_damp,
-            ground_damp,
+            eff_ground_damp,
             launch_ax,
             launch_ay,
             launch_az,

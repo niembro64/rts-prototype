@@ -806,17 +806,360 @@ export function checkProjectileCollisions(
       }
     }
 
+    const terminalReflectorHit = hitShield && !reflectedProjectile;
+    const expiredBeforeDamage = proj.timeAlive >= proj.maxLifespan;
+    const healthZeroBeforeDamage = proj.projectileType === 'projectile' && proj.hp <= 0;
+    let directHitThisTick = false;
+
+    // Handle different projectile types with unified damage system.
+    // Ground impact is checked after this block so a swept projectile
+    // hitbox can stop on an entity it crossed before reaching terrain.
+    const canApplyDamageThisTick =
+      !terminalReflectorHit && !expiredBeforeDamage && !healthZeroBeforeDamage;
+    if (canApplyDamageThisTick && isRayType(proj.projectileType)) {
+      if (proj.obstructionTick === undefined) {
+        // A newly-created beam that has not received its first
+        // authoritative trace should not deal endpoint damage at its
+        // provisional max-range visual endpoint.
+        continue;
+      }
+      // Beam/laser damage: single area zone at truncated endpoint
+      const beamShot = config.shot as BeamRay | LaserRay;
+      const points = proj.points;
+      const lastPoint = points && points.length >= 2 ? points[points.length - 1] : undefined;
+      const impactX = lastPoint !== undefined ? lastPoint.x : projEntity.transform.x;
+      const impactY = lastPoint !== undefined ? lastPoint.y : projEntity.transform.y;
+      const impactZ = lastPoint !== undefined ? lastPoint.z : projEntity.transform.z;
+      const dtSec = collisionDtMs / 1000;
+
+      const damageSphereRadius = runtimeProfile.radius.hitbox;
+      if (!updateProjectileSourceClearance(
+        world.getEntity(proj.sourceEntityId),
+        proj,
+        impactX, impactY, impactZ,
+        runtimeProfile.radius.collision,
+      )) {
+        continue;
+      }
+
+      // Per-tick damage and force (DPS/force scaled by dt for framerate independence)
+      const tickDamage = beamShot.dps * dtSec;
+      const tickForce = beamShot.force * dtSec;
+
+      // Beam direction for hit knockback
+      const beamAngle = projEntity.transform.rotation;
+      const beamDirX = Math.cos(beamAngle);
+      const beamDirY = Math.sin(beamAngle);
+
+      // Reflected beams: attribute damage/kills to the last reflector
+      // entity that redirected the beam (= last polyline vertex with a
+      // reflectorEntityId, a legacy field name). Points layout:
+      // [start, ...reflections, end]; when the max-segment cap is hit,
+      // the endpoint itself can be the terminal reflector.
+      let lastMirrorEntityId: EntityId | undefined;
+      if (points) {
+        for (let i = points.length - 1; i >= 1; i--) {
+          const mid = points[i].reflectorEntityId;
+          if (mid !== undefined) { lastMirrorEntityId = mid; break; }
+        }
+      }
+      const damageSourceId = lastMirrorEntityId ?? proj.sourceEntityId;
+      const endpointDamageable = proj.endpointDamageable !== false;
+      const result = endpointDamageable
+        ? damageSystem.applyDamage({
+            type: 'area',
+            sourceEntityId: damageSourceId,
+            ownerId: projEntity.ownership.playerId,
+            damage: tickDamage,
+            excludeEntities: _emptyExcludeSet,
+            center: { x: impactX, y: impactY, z: impactZ },
+            radius: damageSphereRadius,
+            knockbackForce: tickForce,
+          })
+        : null;
+
+      if (result) applyKnockbackForces(result.knockbacks, forceAccumulator);
+
+      // Apply beam force (knockback only, no damage) to each reflector entity.
+      // Walk segment-by-segment along the polyline; whenever a vertex
+      // carries a reflectorEntityId, the segment ENTERING that vertex is
+      // the incoming beam direction at that reflector.
+      if (points && points.length > 1 && forceAccumulator) {
+        for (let i = 1; i < points.length; i++) {
+          const refl = points[i];
+          if (refl.reflectorEntityId === undefined) continue;
+          const prev = points[i - 1];
+          const segDx = refl.x - prev.x;
+          const segDy = refl.y - prev.y;
+          const segLen = Math.sqrt(segDx * segDx + segDy * segDy);
+          if (segLen > 0) {
+            const dirX = segDx / segLen;
+            const dirY = segDy / segLen;
+            forceAccumulator.addForce(refl.reflectorEntityId, dirX * tickForce, dirY * tickForce, 'beam');
+          }
+        }
+      }
+
+      if (result) {
+        emitBeamHitAudio(result.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, damageSphereRadius, audioEvents);
+        collectKillsWithDeathAudio(
+          result, world, damageSourceKey, damageSourceType,
+          unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
+          proj.sourceEntityId, turretsToDetonate,
+        );
+        processKilledProjectileShots(
+          result,
+          world,
+          damageSystem,
+          forceAccumulator,
+          unitsToRemove,
+          buildingsToRemove,
+          turretsToDetonate,
+              audioEvents,
+          deathContexts,
+          newProjectiles,
+          spawnEvents,
+          projectilesToRemove,
+          despawnEvents,
+        );
+      }
+
+      // Note: beam recoil is applied in fireTurrets() based on weapon.state
+    } else if (canApplyDamageThisTick) {
+      if (reflectedProjectile) {
+        // Reflection already consumed this tick's swept segment. Start
+        // the next collision sweep from the post-reflection position
+        // so the projectile does not immediately direct-hit the
+        // reflector it just skipped off.
+        proj.collisionStartX = projEntity.transform.x;
+        proj.collisionStartY = projEntity.transform.y;
+        proj.collisionStartZ = projEntity.transform.z;
+      } else {
+        // Traveling projectiles use swept 3D volume collision (prevents tunneling)
+        const projShot = config.shot as ProjectileShot;
+        const projRadius = runtimeProfile.radius.collision;
+        const prevX = proj.collisionStartX ?? proj.prevX ?? projEntity.transform.x;
+        const prevY = proj.collisionStartY ?? proj.prevY ?? projEntity.transform.y;
+        const prevZ = proj.collisionStartZ ?? proj.prevZ ?? projEntity.transform.z;
+        const currentX = projEntity.transform.x;
+        const currentY = projEntity.transform.y;
+        const currentZ = projEntity.transform.z;
+
+        const hitEntities = proj.hitEntities;
+        const hadSelfExclusion = hitEntities.has(projEntity.id);
+        const hadSourceExclusion = hitEntities.has(proj.sourceEntityId);
+        hitEntities.add(projEntity.id);
+        hitEntities.add(proj.sourceEntityId);
+
+        // 3D swept: capsule from prev→current (the projectile's flight
+        // path this tick) vs each unit sphere. Normal projectiles keep
+        // direct damage at 0 and detonate on first hit. D-gun waves are
+        // terrain-following passthrough projectiles, so their swept
+        // capsule is the damage source and commanders are immune.
+        const result = damageSystem.applyDamage({
+          type: 'swept',
+          sourceEntityId: proj.sourceEntityId,
+          ownerId: projEntity.ownership.playerId,
+          damage: isDGunProjectile && projShot.explosion !== undefined ? projShot.explosion.damage : 0,
+          excludeEntities: hitEntities,
+          excludeCommanders: isDGunProjectile,
+          prev: { x: prevX, y: prevY, z: prevZ },
+          current: { x: currentX, y: currentY, z: currentZ },
+          radius: projRadius,
+          maxHits: proj.maxHits - getProjectileHitCount(proj),
+          velocity: { x: proj.velocityX, y: proj.velocityY, z: proj.velocityZ },
+          projectileMass: projShot.mass,
+        });
+        if (!hadSelfExclusion) {
+          hitEntities.delete(projEntity.id);
+        }
+        if (!hadSourceExclusion) {
+          hitEntities.delete(proj.sourceEntityId);
+        }
+          const hadHits = result.hitEntityIds.length > 0;
+          const shouldStopOnDirectHit = hadHits && !isDGunProjectile;
+          if (shouldStopOnDirectHit) {
+            directHitThisTick = true;
+            const hitT = result.truncationT;
+            if (hitT !== undefined && Number.isFinite(hitT)) {
+              const clampedT = Math.max(0, Math.min(1, hitT));
+              projEntity.transform.x = prevX + clampedT * (currentX - prevX);
+              projEntity.transform.y = prevY + clampedT * (currentY - prevY);
+              projEntity.transform.z = prevZ + clampedT * (currentZ - prevZ);
+            }
+            proj.hp = 0;
+          }
+
+          // Apply knockback from projectile hit
+          applyKnockbackForces(result.knockbacks, forceAccumulator);
+          // Note: Recoil for traveling projectiles is applied at fire time in fireTurrets()
+
+          // Track hits
+          for (const hitId of result.hitEntityIds) {
+            ensureProjectileHitEntities(proj).add(hitId);
+
+            // Add hit audio event with impact context for directional flame explosions
+            // Position at the projectile's location (not the unit's center)
+            const entity = world.getEntity(hitId);
+            if (
+              entity?.projectile &&
+              entity.projectile.projectileType === 'projectile' &&
+              isProjectileShot(entity.projectile.config.shot)
+            ) {
+              entity.projectile.hp = 0;
+              result.killedProjectileIds.add(entity.id);
+            }
+            if (entity && !isDGunProjectile) {
+              audioEvents.push({
+                type: 'hit',
+                turretBlueprintId: shotBlueprintId,
+                pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+                playerId: projEntity.ownership.playerId,
+                entityId: projEntity.id,
+                impactContext: buildImpactContext(
+                  config, projEntity.transform.x, projEntity.transform.y,
+                  proj.velocityX ?? 0, proj.velocityY ?? 0,
+                  projRadius, entity,
+                ),
+              });
+            }
+          }
+
+          // Handle deaths from direct hit BEFORE splash (result is reusable singleton)
+          const firstDirectHit = hadHits
+            ? world.getEntity(result.hitEntityIds[0])
+            : undefined;
+          collectKillsWithDeathAudio(
+            result, world, damageSourceKey, damageSourceType,
+            unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
+            proj.sourceEntityId, turretsToDetonate,
+          );
+          processKilledProjectileShots(
+            result,
+            world,
+            damageSystem,
+            forceAccumulator,
+            unitsToRemove,
+            buildingsToRemove,
+            turretsToDetonate,
+                  audioEvents,
+            deathContexts,
+            newProjectiles,
+            spawnEvents,
+            projectilesToRemove,
+            despawnEvents,
+          );
+
+          // Detonate on direct hit when the shot has either an explosion
+          // or submunitions to release. A carrier with both applies its
+          // own splash first, then releases children from the same point.
+          if (!isDGunProjectile && hadHits && !proj.hasExploded
+              && (runtimeProfile.hasExplosion || runtimeProfile.hasSubmunitions)) {
+            proj.hasExploded = true;
+
+            if (runtimeProfile.hasExplosion && projShot.explosion) {
+              const splashExcludes = getSplashExcludes(proj);
+              // Single boolean AoE — everyone whose shot collider
+              // intersects the explosion sphere eats the full damage and
+              // full force. The directly-hit target is included
+              // (additive on top of its direct-hit damage).
+              const splash = damageSystem.applyDamage({
+                type: 'area',
+                sourceEntityId: proj.sourceEntityId,
+                ownerId: projEntity.ownership.playerId,
+                damage: projShot.explosion.damage,
+                excludeEntities: splashExcludes,
+                excludeCommanders: isDGunProjectile,
+                center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+                radius: projShot.explosion.radius,
+                knockbackForce: projShot.explosion.force,
+              });
+
+              applyKnockbackForces(splash.knockbacks, forceAccumulator);
+              collectKillsAndDeathContexts(
+                splash, world, damageSourceKey, damageSourceType,
+                unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
+                proj.sourceEntityId, turretsToDetonate,
+              );
+              processKilledProjectileShots(
+                splash,
+                world,
+                damageSystem,
+                forceAccumulator,
+                unitsToRemove,
+                buildingsToRemove,
+                turretsToDetonate,
+                          audioEvents,
+                deathContexts,
+                newProjectiles,
+                spawnEvents,
+                projectilesToRemove,
+                despawnEvents,
+              );
+            }
+
+            // Cluster flak: spawn submunitions on detonation. Surface
+            // normal at the impact point points from the hit entity's
+            // center outward to the projectile, so the bounce direction
+            // sprays fragments AWAY from the unit (or building) rather
+            // than INTO it. Falls back to "no normal" when the hit
+            // entity isn't resolvable (rare — would only happen if it
+            // was removed mid-tick), in which case fragments just inherit
+            // forward velocity with random spread.
+            if (projShot.submunitions) {
+              let surfaceNormalX: number | undefined;
+              let surfaceNormalY: number | undefined;
+              let surfaceNormalZ: number | undefined;
+              const hitEntity = firstDirectHit;
+              if (hitEntity) {
+                // Outward normal at the hit point = unit-center → projectile.
+                surfaceNormalX = projEntity.transform.x - hitEntity.transform.x;
+                surfaceNormalY = projEntity.transform.y - hitEntity.transform.y;
+                surfaceNormalZ = projEntity.transform.z - hitEntity.transform.z;
+              }
+              spawnSubmunitions(
+                world, projShot,
+                projEntity.id, proj.shotSource,
+                projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
+                proj.velocityX ?? 0, proj.velocityY ?? 0, proj.velocityZ ?? 0,
+                surfaceNormalX, surfaceNormalY, surfaceNormalZ,
+                projEntity.ownership.playerId, proj.sourceEntityId,
+                newProjectiles, spawnEvents,
+              );
+            }
+          }
+
+          // Remove projectile if max hits reached
+          if (getProjectileHitCount(proj) >= proj.maxHits) {
+            // Always emit projectileExpire at the projectile's position so it produces a termination explosion
+            audioEvents.push({
+              type: 'projectileExpire',
+              turretBlueprintId: shotBlueprintId,
+              pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+              playerId: projEntity.ownership.playerId,
+              entityId: projEntity.id,
+              impactContext: buildImpactContext(
+                config, projEntity.transform.x, projEntity.transform.y,
+                proj.velocityX ?? 0, proj.velocityY ?? 0,
+                projRadius,
+              ),
+            });
+            queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
+            continue;
+          }
+          proj.collisionStartX = currentX;
+          proj.collisionStartY = currentY;
+          proj.collisionStartZ = currentZ;
+        }
+      }
+
     // Ground impact — a traveling projectile whose center drops below
-    // the ground plane is a terminal event: if the shot has
-    // detonateOnExpiry the splash goes off at the impact point,
-    // otherwise just a projectileExpire visual. Snap z to the local
-    // terrain so splash AOE is centered ON the ground, not below it
-    // — for tiles in the central ripple disc the snap can lift the
-    // detonation 30+ units above absolute z=0. Beams and lasers can't
-    // hit the ground (they're instantaneous lines, not falling shots)
-    // so they skip this check.
+    // the ground plane is a terminal event, but only after swept
+    // entity collision had a chance to stop at the first hitbox it
+    // crossed this tick.
     const groundZAtProj = world.getGroundZ(projEntity.transform.x, projEntity.transform.y);
     const hitGround =
+      !directHitThisTick &&
       !reflectedProjectile &&
       !hitShield &&
       proj.projectileType === 'projectile' &&
@@ -858,8 +1201,8 @@ export function checkProjectileCollisions(
       continue;
     }
 
-    // Check if the projectile hit a terminal timeout, ground, or barrier.
-    const terminalReflectorHit = hitShield && !reflectedProjectile;
+    // Check if the projectile hit a terminal timeout, ground, barrier,
+    // or direct-hit health stop.
     const healthZero = proj.projectileType === 'projectile' && proj.hp <= 0;
     const expired = proj.timeAlive >= proj.maxLifespan;
     if (expired || hitGround || terminalReflectorHit || healthZero) {
@@ -1005,8 +1348,8 @@ export function checkProjectileCollisions(
         }
       }
 
-      // Add projectile expire event for traveling projectiles (not beams)
-      // This creates an explosion effect at projectile termination point
+      // Add projectile expire event for traveling projectiles (not beams).
+      // This creates an explosion effect at projectile termination point.
       if (proj.projectileType === 'projectile' && proj.hasLeftSource && !proj.hasExploded) {
         const projRadius = runtimeProfile.radius.collision;
         audioEvents.push({
@@ -1025,342 +1368,6 @@ export function checkProjectileCollisions(
 
       queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
       continue;
-    }
-
-    // Handle different projectile types with unified damage system
-    if (isRayType(proj.projectileType)) {
-      if (proj.obstructionTick === undefined) {
-        // A newly-created beam that has not received its first
-        // authoritative trace should not deal endpoint damage at its
-        // provisional max-range visual endpoint.
-        continue;
-      }
-      // Beam/laser damage: single area zone at truncated endpoint
-      const beamShot = config.shot as BeamRay | LaserRay;
-      const points = proj.points;
-      const lastPoint = points && points.length >= 2 ? points[points.length - 1] : undefined;
-      const impactX = lastPoint !== undefined ? lastPoint.x : projEntity.transform.x;
-      const impactY = lastPoint !== undefined ? lastPoint.y : projEntity.transform.y;
-      const impactZ = lastPoint !== undefined ? lastPoint.z : projEntity.transform.z;
-      const dtSec = collisionDtMs / 1000;
-
-      const damageSphereRadius = runtimeProfile.radius.hitbox;
-      if (!updateProjectileSourceClearance(
-        world.getEntity(proj.sourceEntityId),
-        proj,
-        impactX, impactY, impactZ,
-        runtimeProfile.radius.collision,
-      )) {
-        continue;
-      }
-
-      // Per-tick damage and force (DPS/force scaled by dt for framerate independence)
-      const tickDamage = beamShot.dps * dtSec;
-      const tickForce = beamShot.force * dtSec;
-
-      // Beam direction for hit knockback
-      const beamAngle = projEntity.transform.rotation;
-      const beamDirX = Math.cos(beamAngle);
-      const beamDirY = Math.sin(beamAngle);
-
-      // Reflected beams: attribute damage/kills to the last reflector
-      // entity that redirected the beam (= last polyline vertex with a
-      // reflectorEntityId, a legacy field name). Points layout:
-      // [start, ...reflections, end]; when the max-segment cap is hit,
-      // the endpoint itself can be the terminal reflector.
-      let lastMirrorEntityId: EntityId | undefined;
-      if (points) {
-        for (let i = points.length - 1; i >= 1; i--) {
-          const mid = points[i].reflectorEntityId;
-          if (mid !== undefined) { lastMirrorEntityId = mid; break; }
-        }
-      }
-      const damageSourceId = lastMirrorEntityId ?? proj.sourceEntityId;
-      const endpointDamageable = proj.endpointDamageable !== false;
-      const result = endpointDamageable
-        ? damageSystem.applyDamage({
-            type: 'area',
-            sourceEntityId: damageSourceId,
-            ownerId: projEntity.ownership.playerId,
-            damage: tickDamage,
-            excludeEntities: _emptyExcludeSet,
-            center: { x: impactX, y: impactY, z: impactZ },
-            radius: damageSphereRadius,
-            knockbackForce: tickForce,
-          })
-        : null;
-
-      if (result) applyKnockbackForces(result.knockbacks, forceAccumulator);
-
-      // Apply beam force (knockback only, no damage) to each reflector entity.
-      // Walk segment-by-segment along the polyline; whenever a vertex
-      // carries a reflectorEntityId, the segment ENTERING that vertex is
-      // the incoming beam direction at that reflector.
-      if (points && points.length > 1 && forceAccumulator) {
-        for (let i = 1; i < points.length; i++) {
-          const refl = points[i];
-          if (refl.reflectorEntityId === undefined) continue;
-          const prev = points[i - 1];
-          const segDx = refl.x - prev.x;
-          const segDy = refl.y - prev.y;
-          const segLen = Math.sqrt(segDx * segDx + segDy * segDy);
-          if (segLen > 0) {
-            const dirX = segDx / segLen;
-            const dirY = segDy / segLen;
-            forceAccumulator.addForce(refl.reflectorEntityId, dirX * tickForce, dirY * tickForce, 'beam');
-          }
-        }
-      }
-
-      if (result) {
-        emitBeamHitAudio(result.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, damageSphereRadius, audioEvents);
-        collectKillsWithDeathAudio(
-          result, world, damageSourceKey, damageSourceType,
-          unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
-          proj.sourceEntityId, turretsToDetonate,
-        );
-        processKilledProjectileShots(
-          result,
-          world,
-          damageSystem,
-          forceAccumulator,
-          unitsToRemove,
-          buildingsToRemove,
-          turretsToDetonate,
-              audioEvents,
-          deathContexts,
-          newProjectiles,
-          spawnEvents,
-          projectilesToRemove,
-          despawnEvents,
-        );
-      }
-
-      // Note: beam recoil is applied in fireTurrets() based on weapon.state
-    } else {
-      if (reflectedProjectile) {
-        // Reflection already consumed this tick's swept segment. Start
-        // the next collision sweep from the post-reflection position
-        // so the projectile does not immediately direct-hit the
-        // reflector it just skipped off.
-        proj.collisionStartX = projEntity.transform.x;
-        proj.collisionStartY = projEntity.transform.y;
-        proj.collisionStartZ = projEntity.transform.z;
-      } else {
-        // Traveling projectiles use swept 3D volume collision (prevents tunneling)
-        const projShot = config.shot as ProjectileShot;
-        const projRadius = runtimeProfile.radius.collision;
-        const prevX = proj.collisionStartX ?? proj.prevX ?? projEntity.transform.x;
-        const prevY = proj.collisionStartY ?? proj.prevY ?? projEntity.transform.y;
-        const prevZ = proj.collisionStartZ ?? proj.prevZ ?? projEntity.transform.z;
-        const currentX = projEntity.transform.x;
-        const currentY = projEntity.transform.y;
-        const currentZ = projEntity.transform.z;
-
-        // Source arming guard: while the round is still inside its
-        // firing unit's shot-clearance volume, do not run swept entity
-        // collision at all. Large chassis + multi-barrel turrets can
-        // spawn some barrels inside the source collider; excluding only
-        // the source still let carrier shots detonate instantly on nearby
-        // units in a crowded formation.
-        if (!proj.hasLeftSource) {
-          proj.collisionStartX = currentX;
-          proj.collisionStartY = currentY;
-          proj.collisionStartZ = currentZ;
-        } else {
-          const hitEntities = proj.hitEntities;
-          const hadSelfExclusion = hitEntities.has(projEntity.id);
-          hitEntities.add(projEntity.id);
-
-          // 3D swept: capsule from prev→current (the projectile's flight
-          // path this tick) vs each unit sphere. Normal projectiles keep
-          // direct damage at 0 and detonate on first hit. D-gun waves are
-          // terrain-following passthrough projectiles, so their swept
-          // capsule is the damage source and commanders are immune.
-          const result = damageSystem.applyDamage({
-            type: 'swept',
-            sourceEntityId: proj.sourceEntityId,
-            ownerId: projEntity.ownership.playerId,
-            damage: isDGunProjectile && projShot.explosion !== undefined ? projShot.explosion.damage : 0,
-            excludeEntities: hitEntities,
-            excludeCommanders: isDGunProjectile,
-            prev: { x: prevX, y: prevY, z: prevZ },
-            current: { x: currentX, y: currentY, z: currentZ },
-            radius: projRadius,
-            maxHits: proj.maxHits - getProjectileHitCount(proj),
-            velocity: { x: proj.velocityX, y: proj.velocityY, z: proj.velocityZ },
-            projectileMass: projShot.mass,
-          });
-          if (!hadSelfExclusion) {
-            hitEntities.delete(projEntity.id);
-          }
-
-          // Apply knockback from projectile hit
-          applyKnockbackForces(result.knockbacks, forceAccumulator);
-          // Note: Recoil for traveling projectiles is applied at fire time in fireTurrets()
-
-          // Track hits
-          for (const hitId of result.hitEntityIds) {
-            ensureProjectileHitEntities(proj).add(hitId);
-
-            // Add hit audio event with impact context for directional flame explosions
-            // Position at the projectile's location (not the unit's center)
-            const entity = world.getEntity(hitId);
-            if (
-              entity?.projectile &&
-              entity.projectile.projectileType === 'projectile' &&
-              isProjectileShot(entity.projectile.config.shot)
-            ) {
-              entity.projectile.hp = 0;
-              result.killedProjectileIds.add(entity.id);
-            }
-            if (entity && !isDGunProjectile) {
-              audioEvents.push({
-                type: 'hit',
-                turretBlueprintId: shotBlueprintId,
-                pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
-                playerId: projEntity.ownership.playerId,
-                entityId: projEntity.id,
-                impactContext: buildImpactContext(
-                  config, projEntity.transform.x, projEntity.transform.y,
-                  proj.velocityX ?? 0, proj.velocityY ?? 0,
-                  projRadius, entity,
-                ),
-              });
-            }
-          }
-
-          // Handle deaths from direct hit BEFORE splash (result is reusable singleton)
-          const hadHits = result.hitEntityIds.length > 0;
-          const firstDirectHit = hadHits
-            ? world.getEntity(result.hitEntityIds[0])
-            : undefined;
-          if (hadHits) {
-            proj.hp = 0;
-          }
-          collectKillsWithDeathAudio(
-            result, world, damageSourceKey, damageSourceType,
-            unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
-            proj.sourceEntityId, turretsToDetonate,
-          );
-          processKilledProjectileShots(
-            result,
-            world,
-            damageSystem,
-            forceAccumulator,
-            unitsToRemove,
-            buildingsToRemove,
-            turretsToDetonate,
-                  audioEvents,
-            deathContexts,
-            newProjectiles,
-            spawnEvents,
-            projectilesToRemove,
-            despawnEvents,
-          );
-
-          // Detonate on direct hit when the shot has either an explosion
-          // or submunitions to release. A carrier with both applies its
-          // own splash first, then releases children from the same point.
-          if (!isDGunProjectile && hadHits && !proj.hasExploded
-              && (runtimeProfile.hasExplosion || runtimeProfile.hasSubmunitions)) {
-            proj.hasExploded = true;
-
-            if (runtimeProfile.hasExplosion && projShot.explosion) {
-              const splashExcludes = getSplashExcludes(proj);
-              // Single boolean AoE — everyone whose shot collider
-              // intersects the explosion sphere eats the full damage and
-              // full force. The directly-hit target is included
-              // (additive on top of its direct-hit damage).
-              const splash = damageSystem.applyDamage({
-                type: 'area',
-                sourceEntityId: proj.sourceEntityId,
-                ownerId: projEntity.ownership.playerId,
-                damage: projShot.explosion.damage,
-                excludeEntities: splashExcludes,
-                excludeCommanders: isDGunProjectile,
-                center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
-                radius: projShot.explosion.radius,
-                knockbackForce: projShot.explosion.force,
-              });
-
-              applyKnockbackForces(splash.knockbacks, forceAccumulator);
-              collectKillsAndDeathContexts(
-                splash, world, damageSourceKey, damageSourceType,
-                unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
-                proj.sourceEntityId, turretsToDetonate,
-              );
-              processKilledProjectileShots(
-                splash,
-                world,
-                damageSystem,
-                forceAccumulator,
-                unitsToRemove,
-                buildingsToRemove,
-                turretsToDetonate,
-                          audioEvents,
-                deathContexts,
-                newProjectiles,
-                spawnEvents,
-                projectilesToRemove,
-                despawnEvents,
-              );
-            }
-
-            // Cluster flak: spawn submunitions on detonation. Surface
-            // normal at the impact point points from the hit entity's
-            // center outward to the projectile, so the bounce direction
-            // sprays fragments AWAY from the unit (or building) rather
-            // than INTO it. Falls back to "no normal" when the hit
-            // entity isn't resolvable (rare — would only happen if it
-            // was removed mid-tick), in which case fragments just inherit
-            // forward velocity with random spread.
-            if (projShot.submunitions) {
-              let surfaceNormalX: number | undefined;
-              let surfaceNormalY: number | undefined;
-              let surfaceNormalZ: number | undefined;
-              const hitEntity = firstDirectHit;
-              if (hitEntity) {
-                // Outward normal at the hit point = unit-center → projectile.
-                surfaceNormalX = projEntity.transform.x - hitEntity.transform.x;
-                surfaceNormalY = projEntity.transform.y - hitEntity.transform.y;
-                surfaceNormalZ = projEntity.transform.z - hitEntity.transform.z;
-              }
-              spawnSubmunitions(
-                world, projShot,
-                projEntity.id, proj.shotSource,
-                projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
-                proj.velocityX ?? 0, proj.velocityY ?? 0, proj.velocityZ ?? 0,
-                surfaceNormalX, surfaceNormalY, surfaceNormalZ,
-                projEntity.ownership.playerId, proj.sourceEntityId,
-                newProjectiles, spawnEvents,
-              );
-            }
-          }
-
-          // Remove projectile if max hits reached
-          if (getProjectileHitCount(proj) >= proj.maxHits) {
-            // Always emit projectileExpire at the projectile's position so it produces a termination explosion
-            audioEvents.push({
-              type: 'projectileExpire',
-              turretBlueprintId: shotBlueprintId,
-              pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
-              playerId: projEntity.ownership.playerId,
-              entityId: projEntity.id,
-              impactContext: buildImpactContext(
-                config, projEntity.transform.x, projEntity.transform.y,
-                proj.velocityX ?? 0, proj.velocityY ?? 0,
-                projRadius,
-              ),
-            });
-            queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
-            continue;
-          }
-          proj.collisionStartX = currentX;
-          proj.collisionStartY = currentY;
-          proj.collisionStartZ = currentZ;
-        }
-      }
     }
 
     // Check if projectile is out of bounds

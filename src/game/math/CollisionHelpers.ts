@@ -57,10 +57,10 @@ export function lineSphereIntersectionT(
   const fz = z1 - cz;
 
   const a = dx * dx + dy * dy + dz * dz;
-  if (a === 0) return null;
-
   const b = 2 * (fx * dx + fy * dy + fz * dz);
   const c = fx * fx + fy * fy + fz * fz - r * r;
+  if (c <= 0) return 0;
+  if (a === 0) return null;
 
   let discriminant = b * b - 4 * a * c;
   if (discriminant < 0) return null;

@@ -123,6 +123,10 @@ export type EntityMesh = {
   /** True when the building primary mesh owns its material and should
    *  not be recolored to team primary on ownership updates. */
   buildingPrimaryMaterialLocked?: boolean;
+  /** True for hosts that render no body shell at all (a detached turret
+   *  is just its gun — no host chassis). The primary mesh is kept for
+   *  bookkeeping but stays hidden and unscaled. */
+  buildingBodyless?: boolean;
   solarOpenAmount?: number;
   buildingCachedOwnerId?: PlayerId;
   buildingCachedProgress?: number;
