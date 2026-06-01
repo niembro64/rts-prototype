@@ -56,6 +56,6 @@
     "fadeOutMs": 1000,
     "startRadius": 6,
     "endRadiusMultiplier": 2,
-    "maxAlpha": 0.2
+    "maxAlpha": 0.05
   }
 }
