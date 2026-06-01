@@ -1561,6 +1561,66 @@
         never &ldquo;shot down&rdquo; &mdash; they simply stop when their turret stops sustaining them.
       </p>
 
+      <h3>Materialization: build-in and death-out are one reversible opacity channel</h3>
+      <p>
+        Every host body and every mounted turret carries a per-piece <em>materialization
+        opacity</em> that runs <code>0 &rarr; 1</code> as it is built and <code>1 &rarr; 0</code>
+        as it dies: <code>0</code> is fully transparent, <code>1</code> is fully opaque. This is the
+        same &ldquo;construction mirrors destruction&rdquo; pipeline run in two directions
+        &mdash; one channel, not two effects. It applies to the four assembled host kinds
+        (<strong>buildings, towers, units, turrets</strong>); a <code>shot</code> is exempt
+        (see below).
+      </p>
+      <p>
+        <strong>Build-in.</strong> Each piece fades from transparent to opaque over <em>its own</em>
+        build fraction, in the dependency order the host assembles &mdash; the <strong>body
+        first, then each turret</strong>, per <strong>Hosts build from the ground up, one piece at a
+        time</strong>. A host counts as complete only once its base body <em>and</em> every mounted
+        turret have reached full opacity. A piece that has not started is fully transparent (it is
+        simply not there yet), so an interrupted build shows exactly the pieces that have begun, each
+        at its own opacity &mdash; the same graceful degradation per-piece death gives, run in
+        reverse.
+      </p>
+      <p>
+        <strong>Death-out.</strong> The same channel runs backward, but death is still an
+        explosion first &mdash; never a quiet fade-to-nothing (per <strong>Every death is an
+        explosion</strong>). The opacity ramp is the <em>aftermath layer</em>, not a replacement for
+        the blast: the dying body shell stays where it fell and de-rezzes from opaque to transparent
+        in place, while the death blast&rsquo;s force and the material explosion fling its pieces
+        outward. Killing the body does not gently dissolve it; it detonates, and the shell fades as
+        the debris flies.
+      </p>
+      <p>
+        <strong>The material explosion uses the host&rsquo;s actual pieces, not generic shapes.</strong>
+        Every atomic part as rendered &mdash; chassis edges, turret heads, barrels, treads, wheels,
+        legs, shield panels &mdash; is thrown as a matched piece. Released turrets are subject to the
+        <em>same</em> blast as everything else in the radius, by one physical rule with no special
+        case: the explosion applies outward force that heavier pieces resist more
+        (<code>F = m&middot;a</code>) and applies damage, and the piece&rsquo;s own health against
+        that damage &mdash; nothing else &mdash; decides its fate. A turret that survives keeps flying
+        as a <em>live, autonomous detached agent</em> and lands still fighting (per <strong>a
+        blown-off turret keeps firing</strong>); one that does not survive becomes inert debris that
+        tumbles and fades.
+      </p>
+      <p>
+        <strong>Simulation owns the truth; the renderer owns the look.</strong> The damage, the
+        radial force, the detachment of a live turret, and that turret&rsquo;s launch velocity are
+        deterministic and authoritative &mdash; force changes future positions and a detached turret
+        is a real world entity, so all clients must agree. The opacity ramp, the dithered dissolve,
+        the tumbling debris, and the fireball are client-only cosmetics driven off the death event;
+        non-deterministic randomness is fine there because nothing downstream of the sim reads them
+        (cross-ref <strong>Locomotion Visuals Are Frontend</strong>). The fade is rendered as a
+        screen-door (dithered) dissolve in the <em>opaque</em> pass, not alpha blending, so a
+        multi-part body still writes depth and self-occludes through the transition &mdash; no
+        see-through-to-the-back-faces artifact and no transparent-queue sort cost at scale.
+      </p>
+      <p>
+        <strong>Shots are exempt from build-in.</strong> A shot is spawned whole from its turret, not
+        assembled piece by piece, so it has no materialization ramp. Its &ldquo;death&rdquo; is its
+        detonation (per <strong>Shots are destructible bodies too</strong>) &mdash; a small fire
+        blast and, at most, a single shard of debris.
+      </p>
+
       <h3>Sensors are capabilities, not free turret range</h3>
       <p>
         Sight, radar, and cloak detection should be authored as sensor capability sources, not as

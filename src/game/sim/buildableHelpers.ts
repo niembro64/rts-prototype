@@ -110,6 +110,25 @@ export function getConstructionPieceRenderFraction(
   return Math.max(0.05, Math.min(1, getPieceBuildFraction(piece)));
 }
 
+/** Per-piece build-in opacity (0..1) for the materialization fade.
+ *  0 = piece not yet started (fully transparent / dithered out), 1 =
+ *  fully built / opaque. Mirrors getConstructionPieceRenderFraction but
+ *  with a true 0 floor: that function floors at 0.05 because it drives
+ *  body SCALE, whereas opacity wants real transparency at the start so a
+ *  piece materializes from invisible rather than popping in at 5%. */
+export function getConstructionPieceOpacity(
+  entity: Entity,
+  kind: ConstructionPieceKind,
+  mountIndex: number | null = null,
+): number {
+  const buildable = entity.buildable;
+  if (buildable === null || buildable.isGhost || buildable.isComplete) return 1;
+  const piece = getConstructionPieceRecord(entity, kind, mountIndex);
+  if (piece === null) return 1;
+  if (!piece.isActive) return 0;
+  return Math.max(0, Math.min(1, getPieceBuildFraction(piece)));
+}
+
 export function isConstructionBodyMaterialized(entity: Entity): boolean {
   return isConstructionPieceMaterialized(entity, 'body');
 }

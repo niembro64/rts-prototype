@@ -28,6 +28,62 @@ const CONE_BARREL_CAP = 4096;
 const SHIELD_PANEL_CAP = 1024;
 const ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
 
+// ── Per-instance materialization fade (build-in / death-out) ───────────
+// Every live unit pool carries a per-instance `aFade` scalar in [0,1]:
+// 0 = fully transparent (piece not yet built, or fully dissolved on
+// death), 1 = fully opaque (finished). The fade is realized as a
+// screen-door (dithered) discard rather than alpha blending so the
+// material stays in the OPAQUE queue — depth still writes, the body
+// self-occludes, and there are no transparency sort artifacts across the
+// many overlapping parts of a single unit. The stipple fills in as
+// `aFade` climbs, reading as a nanoframe materializing (and dissolving in
+// reverse on death). This is the unified channel both construction and
+// death animate; debris (Debris3D) keeps its own alpha-blend fade.
+function patchUnitFadeMaterial(material: THREE.Material): void {
+  const prevOnBeforeCompile = material.onBeforeCompile;
+  material.onBeforeCompile = (shader, renderer) => {
+    if (prevOnBeforeCompile) prevOnBeforeCompile.call(material, shader, renderer);
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        ['attribute float aFade;', 'varying float vFade;', '#include <common>'].join('\n'),
+      )
+      .replace(
+        '#include <begin_vertex>',
+        ['#include <begin_vertex>', 'vFade = aFade;'].join('\n'),
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        ['varying float vFade;', '#include <common>'].join('\n'),
+      )
+      // Discard before lighting. A stable screen-space hash threshold in
+      // [0,1) gives a static stipple (no shimmer as the unit moves, since
+      // it keys off gl_FragCoord, not world position). vFade >= 1 never
+      // discards (threshold < 1); vFade <= 0 discards everything.
+      .replace(
+        '#include <clipping_planes_fragment>',
+        [
+          '#include <clipping_planes_fragment>',
+          'if ( vFade < 1.0 ) {',
+          '  float fadeThresh = fract( sin( dot( gl_FragCoord.xy, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 );',
+          '  if ( vFade <= fadeThresh ) discard;',
+          '}',
+        ].join('\n'),
+      );
+  };
+  // Share one compiled program across every faded Lambert pool, and keep
+  // it distinct from unpatched Lambert materials elsewhere.
+  material.customProgramCacheKey = () => 'unitFadeDither';
+  material.needsUpdate = true;
+}
+
+type FadeState = {
+  arr: Float32Array;
+  attr: THREE.InstancedBufferAttribute;
+  dirty: boolean;
+};
+
 type PolyChassisPool = {
   mesh: THREE.InstancedMesh;
   slots: Map<EntityId, number>;
@@ -98,6 +154,12 @@ export class UnitDetailInstanceRenderer3D {
   );
 
   private readonly scratchColor = new THREE.Color();
+
+  // Per-instance materialization fade, keyed by pool mesh. Populated for
+  // every pool created through createPool (smooth/poly chassis, turret
+  // head, barrel, cone barrel). Written per-entity via writeEntityFade
+  // and uploaded once per frame in flush().
+  private readonly fadeState = new Map<THREE.InstancedMesh, FadeState>();
 
   constructor(options: UnitDetailInstanceRendererOptions) {
     this.world = options.world;
@@ -499,6 +561,14 @@ export class UnitDetailInstanceRenderer3D {
       }
     }
     this.shieldPanelColorDirty = false;
+
+    // Upload any per-instance materialization fade changes.
+    for (const st of this.fadeState.values()) {
+      if (st.dirty) {
+        st.attr.needsUpdate = true;
+        st.dirty = false;
+      }
+    }
   }
 
   destroy(): void {
@@ -518,6 +588,7 @@ export class UnitDetailInstanceRenderer3D {
     ]) {
       disposeMesh(mesh);
     }
+    this.fadeState.clear();
   }
 
   private createPool(
@@ -526,6 +597,14 @@ export class UnitDetailInstanceRenderer3D {
     capacity: number,
     initialColor: number,
   ): THREE.InstancedMesh {
+    // Per-instance materialization fade — default fully opaque so a slot
+    // that is never written (or a finished unit) renders solid.
+    const fadeArr = new Float32Array(capacity).fill(1);
+    const fadeAttr = new THREE.InstancedBufferAttribute(fadeArr, 1);
+    fadeAttr.setUsage(THREE.DynamicDrawUsage);
+    geometry.setAttribute('aFade', fadeAttr);
+    patchUnitFadeMaterial(material);
+
     const mesh = new THREE.InstancedMesh(geometry, material, capacity);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.setColorAt(0, this.scratchColor.set(initialColor));
@@ -536,8 +615,50 @@ export class UnitDetailInstanceRenderer3D {
     }
     mesh.count = 0;
     mesh.instanceMatrix.needsUpdate = true;
+    this.fadeState.set(mesh, { arr: fadeArr, attr: fadeAttr, dirty: false });
     this.world.add(mesh);
     return mesh;
+  }
+
+  /** Write one slot's materialization fade (0=transparent, 1=opaque).
+   *  No-ops when the value is unchanged so steady-state finished units
+   *  (fade locked at 1) pay only a comparison. */
+  private writeFade(mesh: THREE.InstancedMesh, slot: number, fade: number): void {
+    const st = this.fadeState.get(mesh);
+    if (st === undefined || st.arr[slot] === fade) return;
+    st.arr[slot] = fade;
+    st.dirty = true;
+  }
+
+  /** Write the materialization fade for every instanced slot an entity
+   *  owns — chassis (body) at `bodyFade`, each turret's head + barrels at
+   *  the matching `turretFades` entry (falling back to `bodyFade`). Pass
+   *  `turretFades = null` to fade the whole entity uniformly (death-out).
+   *  Routed through the same per-entity seam as syncShellColors so no
+   *  pose writer needs to know about fade. */
+  writeEntityFade(
+    mesh: EntityMesh,
+    bodyFade: number,
+    turretFades: readonly number[] | null,
+  ): void {
+    if (mesh.smoothChassisSlots) {
+      for (const slot of mesh.smoothChassisSlots) this.writeFade(this.smoothChassis, slot, bodyFade);
+    }
+    if (mesh.polyChassisSlot !== undefined && mesh.bodyShapeKey) {
+      const pool = this.polyChassis.get(mesh.bodyShapeKey);
+      if (pool) this.writeFade(pool.mesh, mesh.polyChassisSlot, bodyFade);
+    }
+    for (let i = 0; i < mesh.turrets.length; i++) {
+      const turret = mesh.turrets[i];
+      const fade = turretFades ? (turretFades[i] ?? bodyFade) : bodyFade;
+      if (turret.headSlot !== undefined) {
+        this.writeFade(this.turretHeadInstanced, turret.headSlot, fade);
+      }
+      if (turret.barrelSlots) {
+        const targetMesh = turret.barrelUsesCone ? this.coneBarrelInstanced : this.barrelInstanced;
+        for (const slot of turret.barrelSlots) this.writeFade(targetMesh, slot, fade);
+      }
+    }
   }
 
   private getOrCreatePolyPool(
