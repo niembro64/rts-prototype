@@ -101,7 +101,15 @@ export class ConstructionSystem {
     // reaches required.
     entity.buildable = createBuildable(config.cost);
 
-    applyBuildingBlueprintRuntime(entity, buildingBlueprintId);
+    // Allocate turret sub-entity ids up front so the finished building's
+    // weapons can lock on and fire. Turrets with id === NO_ENTITY_ID are
+    // treated as visual-only; combat is still suppressed while the shell
+    // is under construction via the isEntityActive() / BUILDABLE_COMPLETE
+    // gate, but on completion the turrets already hold real ids — matching
+    // pre-placed buildings (placeCompleteBuilding).
+    applyBuildingBlueprintRuntime(entity, buildingBlueprintId, {
+      allocateEntityId: () => world.generateEntityId(),
+    });
     if (buildingBlueprintId === 'buildingExtractor') {
       // Inactive at construction start. The completion handler runs
       // computeExtractorMetalCoverage fills `coveredDepositIds` and sets

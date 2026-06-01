@@ -267,9 +267,14 @@ export class FactoryProductionSystem {
     if (this.isBuildSpotBlocked(world, spawn.x, spawn.y, bp.radius.collision)) {
       return null;
     }
-    const unit = world.createUnitFromBlueprint(spawn.x, spawn.y, factory.ownership.playerId, unitBlueprintId, {
-      allocateSubEntityIds: false,
-    });
+    // Allocate the shell's sub-entity ids (locomotion + turrets) up
+    // front, exactly like spawned commanders and pre-placed buildings.
+    // Turrets with id === NO_ENTITY_ID are treated as visual-only and
+    // never fire; the construction shell still cannot attack until it
+    // completes because isEntityActive() gates the BUILDABLE_COMPLETE
+    // flag in combat targeting, but on completion the turrets already
+    // hold real ids and engage like initial units do.
+    const unit = world.createUnitFromBlueprint(spawn.x, spawn.y, factory.ownership.playerId, unitBlueprintId);
     unit.buildable = createBuildable({
       energy: bp.cost.energy * COST_MULTIPLIER,
       metal: bp.cost.metal * COST_MULTIPLIER,
