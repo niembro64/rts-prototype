@@ -89,11 +89,10 @@ export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 51;
 export const ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE = 34;
 export const ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE = 16;
 // Turret row layout: rot, vel, pitch, pitchVel, id, state, hasTarget,
-// targetId, hasShieldRange, shieldRange, hpCurr. Stride shrank from
+// targetId, hasShieldRange, shieldRange. Stride shrank from
 // 12 → 10 when the 2 angular acceleration slots (acc, pitchAcc) were
-// removed alongside movementAccel, then grew 10 → 11 for the legacy
-// turret hpCurr compatibility slot (slot 10, unconditional).
-export const ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE = 11;
+// removed alongside movementAccel.
+export const ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE = 10;
 export const ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE = 5;
 
 export type EntitySnapshotWireSource = {
@@ -190,7 +189,6 @@ function writeTurretsToPool(
       : wireTargetId;
     dst.state = hasTargetingFsm ? _snapshotTurretFsm.stateCode : turretStateToCode(src.state);
     dst.active = src.id === NO_ENTITY_ID ? false : null;
-    dst.hpCurr = src.hp;
     const shield = src.shield;
     dst.currentShieldRange = shield !== undefined ? shield.range : null;
   }
@@ -355,7 +353,6 @@ function appendTurretWireRows(turrets: readonly NetworkServerSnapshotTurret[] | 
     values[base + 7] = src.targetId ?? 0;
     values[base + 8] = src.currentShieldRange !== null ? 1 : 0;
     values[base + 9] = src.currentShieldRange ?? 0;
-    values[base + 10] = src.hpCurr ?? 0;
   }
   return offset;
 }

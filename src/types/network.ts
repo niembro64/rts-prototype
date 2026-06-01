@@ -705,10 +705,6 @@ export type NetworkServerSnapshotTurret = {
    *  projectile reflection / obstruction, so clients receive it as a
    *  correction target instead of deriving an independent local timer. */
   currentShieldRange: number | null;
-  /** Legacy turret-health wire slot. Mounted turrets no longer own
-   *  damageable HP; keep this nullable field for snapshot compatibility
-   *  until the wire format is migrated. */
-  hpCurr: number | null;
 };
 
 // Bitmask for per-field delta updates within an entity.

@@ -890,10 +890,6 @@ function writeUnitTurretDeltaPayload(
     if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) {
       rows.writeFloat64(turret.currentShieldRange!);
     }
-    // Legacy hpCurr slot is unconditional for wire compatibility — written
-    // last after the conditional target/shield fields. Mirror in the matching
-    // byte decoder readUnitTurretDeltaByteEntity.
-    rows.writeFloat64(turret.hpCurr ?? 0);
   }
 }
 
@@ -952,9 +948,7 @@ function unitTurretRowWidth(rows: PackedUnitTurretRows, offset: number): number 
   const turretCount = rows[offset + 2] ?? 0;
   for (let i = 0; i < turretCount; i++) {
     const flags = rows[offset + width] ?? 0;
-    // 7 fixed (flags, blueprintCode, state, rot, vel, pitch, pitchVel)
-    // + 1 unconditional trailing hpCurr.
-    width += 8;
+    width += 7; // flags, blueprintCode, state, rot, vel, pitch, pitchVel
     if ((flags & TURRET_FLAG_TARGET_ID) !== 0) width += 1;
     if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) width += 1;
   }
@@ -1172,15 +1166,12 @@ function unpackUnitTurretDeltaRows(
         targetId: null,
         active: null,
         currentShieldRange: null,
-        hpCurr: null,
       };
       if ((flags & TURRET_FLAG_TARGET_ID) !== 0) turret.targetId = rows[i++] as number;
       if ((flags & TURRET_FLAG_INACTIVE) !== 0) turret.active = false;
       if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) {
         turret.currentShieldRange = rows[i++] as number;
       }
-    // Legacy hpCurr slot is unconditional — last element in the row.
-      turret.hpCurr = rows[i++] as number;
       turrets[turretIndex] = turret;
     }
     out[outIndex++] = {
@@ -1259,16 +1250,12 @@ function readUnitTurretDeltaByteEntity(
       targetId: null,
       active: null,
       currentShieldRange: null,
-      hpCurr: null,
     };
     if ((flags & TURRET_FLAG_TARGET_ID) !== 0) turret.targetId = reader.readVarUint();
     if ((flags & TURRET_FLAG_INACTIVE) !== 0) turret.active = false;
     if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) {
       turret.currentShieldRange = reader.readFloat64();
     }
-    // Legacy hpCurr slot is unconditional — read last, mirroring the byte
-    // encoders writeUnitTurretDeltaPayload (JS) and v6_write_turret_payload (Rust).
-    turret.hpCurr = reader.readFloat64();
     turrets[turretIndex] = turret;
   }
   return {
@@ -1636,8 +1623,6 @@ function packTurret(t: NetworkServerSnapshotTurret): unknown[] {
   ];
   if ((flags & TURRET_FLAG_TARGET_ID) !== 0) row.push(t.targetId!);
   if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) row.push(t.currentShieldRange!);
-  // Legacy hpCurr slot is unconditional — appended last after the conditional fields.
-  row.push(t.hpCurr ?? 0);
   return row;
 }
 
@@ -1658,15 +1643,12 @@ function unpackTurret(row: unknown[]): NetworkServerSnapshotTurret {
     targetId: null,
     active: null,
     currentShieldRange: null,
-    hpCurr: null,
   };
   if ((flags & TURRET_FLAG_TARGET_ID) !== 0) turret.targetId = row[i++] as number;
   if ((flags & TURRET_FLAG_INACTIVE) !== 0) turret.active = false;
   if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) {
     turret.currentShieldRange = row[i++] as number;
   }
-    // Legacy hpCurr slot is unconditional — last element after the conditional fields.
-  turret.hpCurr = row[i++] as number;
   return turret;
 }
 

@@ -16,17 +16,6 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 Please always commit and push before and after any code changes we make.
 ================================================================================
 
-1.0 Turret host-integration wire cleanup is incomplete.
-
-Remove the legacy turret hpCurr snapshot slot and related Rust/TypeScript
-serializer compatibility code once the wire format can change cleanly. Add
-focused coverage that mounted turrets are addressable/lockable but do not carry
-independent cost, mass, health, death explosions, construction pieces, detached
-agent state, or hostless lifetime; damage through a turret hitbox should resolve
-to the host body, and host construction/death should keep the authored turret set
-part of the same assembly. (Related: the hp:1 sentinel at
-src/game/sim/runtimeTurrets.ts:55 is documented compat, not a separate bug.)
-
 ================================================================================
 PERFORMANCE — SIMULATION (authoritative tick path)
 ================================================================================

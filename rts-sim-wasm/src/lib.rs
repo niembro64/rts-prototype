@@ -21460,7 +21460,7 @@ pub const SNAPSHOT_ENTITY_TYPE_BUILDING: u8 = 2;
 
 /// Encoder turret scratch — JS pre-fills with already-quantized
 /// turret values, then the encoder reads from it when emitting the
-/// turrets array. Layout per turret (11 f64 = 88 bytes):
+/// turrets array. Layout per turret (10 f64 = 80 bytes):
 ///   [0..4]  qRot(rotation, vel, pitch, pitchVel)
 ///   [4]     turretBlueprintCode (TurretBlueprintCode as f64)
 ///   [5]     state code (TurretStateCode as f64)
@@ -21468,10 +21468,9 @@ pub const SNAPSHOT_ENTITY_TYPE_BUILDING: u8 = 2;
 ///   [7]     target_id (raw entity id as f64; ignored when has_target_id==0)
 ///   [8]     has_shield_range (0 or 1)
 ///   [9]     shield_range (raw value; ignored when has_ff_range==0)
-///   [10]    legacy hpCurr compatibility slot (always present)
 ///
 /// Capacity grown on demand by snapshot_encode_turret_scratch_ensure.
-const SNAPSHOT_ENCODE_TURRET_STRIDE: usize = 11;
+const SNAPSHOT_ENCODE_TURRET_STRIDE: usize = 10;
 
 struct SnapshotEncodeTurretScratch {
     buf: Vec<f64>,
@@ -22193,11 +22192,10 @@ pub fn snapshot_encode_entity_unit(
             let target_id_raw = scratch.buf[base + 7];
             let has_ff_range = scratch.buf[base + 8] != 0.0;
             let ff_range_raw = scratch.buf[base + 9];
-            let hp_curr_raw = scratch.buf[base + 10];
 
             // turret DTO: { turret: { turretBlueprintCode, angular: {4 fields} }, [targetId,]
-            // state, [currentShieldRange], legacy hpCurr }
-            let mut turret_field_count: usize = 3; // turret + state + legacy hpCurr
+            // state, [currentShieldRange] }
+            let mut turret_field_count: usize = 2; // turret + state
             if has_target {
                 turret_field_count += 1;
             }
@@ -22233,10 +22231,6 @@ pub fn snapshot_encode_entity_unit(
                 w.write_str("currentShieldRange");
                 w.write_number(ff_range_raw);
             }
-
-            // Legacy hpCurr compatibility slot is unconditional and last.
-            w.write_str("hpCurr");
-            w.write_number(hp_curr_raw);
         }
     }
 
@@ -22407,9 +22401,8 @@ pub fn snapshot_encode_entity_building(
             let target_id_raw = scratch.buf[base + 7];
             let has_ff_range = scratch.buf[base + 8] != 0.0;
             let ff_range_raw = scratch.buf[base + 9];
-            let hp_curr_raw = scratch.buf[base + 10];
 
-            let mut turret_field_count: usize = 3; // turret + state + legacy hpCurr
+            let mut turret_field_count: usize = 2; // turret + state
             if has_target {
                 turret_field_count += 1;
             }
@@ -22443,9 +22436,6 @@ pub fn snapshot_encode_entity_building(
                 w.write_str("currentShieldRange");
                 w.write_number(ff_range_raw);
             }
-            // Legacy hpCurr compatibility slot is unconditional and last.
-            w.write_str("hpCurr");
-            w.write_number(hp_curr_raw);
         }
     }
 
@@ -24468,10 +24458,6 @@ fn v6_write_turret_payload(
         if has_ffr {
             writer.write_f64_le(turret_buf[tb + 9]);
         }
-        // Legacy hpCurr compatibility slot is unconditional — written last
-        // after the conditional target/shield fields. Mirror in the JS byte
-        // decoder readUnitTurretDeltaByteEntity.
-        writer.write_f64_le(turret_buf[tb + 10]);
     }
 }
 
@@ -24561,9 +24547,7 @@ fn v6_write_detail_turret(w: &mut MessagePackWriter, turret_buf: &[f64], t_row: 
     if has_ffr {
         flags |= V6_TURRET_FLAG_SHIELD_RANGE;
     }
-    // 7 fixed (flags, id, state, rot, vel, pitch, pitchVel) + 1
-    // unconditional trailing legacy hpCurr.
-    let mut len = 8usize;
+    let mut len = 7usize; // flags, id, state, rot, vel, pitch, pitchVel
     if has_target {
         len += 1;
     }
@@ -24584,9 +24568,6 @@ fn v6_write_detail_turret(w: &mut MessagePackWriter, turret_buf: &[f64], t_row: 
     if has_ffr {
         w.write_number(turret_buf[base + 9]);
     }
-    // Legacy hpCurr slot is unconditional — last array element, mirroring the JS
-    // array decoder unpackTurret.
-    w.write_number(turret_buf[base + 10]);
 }
 
 fn v6_write_detail_waypoint(

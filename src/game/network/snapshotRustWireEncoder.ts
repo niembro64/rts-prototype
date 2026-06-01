@@ -441,7 +441,6 @@ function packTurretsIntoScratch(
     view[base + 7] = src.targetId ?? 0;
     view[base + 8] = src.currentShieldRange !== null ? 1 : 0;
     view[base + 9] = src.currentShieldRange ?? 0;
-    view[base + 10] = src.hpCurr ?? 0;
   }
 }
 
@@ -903,7 +902,6 @@ function copyEntityTurretRowsIntoScratch(
     view[dstRow + 7] = src[srcRow + 7];
     view[dstRow + 8] = src[srcRow + 8];
     view[dstRow + 9] = src[srcRow + 9];
-    view[dstRow + 10] = src[srcRow + 10];
   }
   return true;
 }

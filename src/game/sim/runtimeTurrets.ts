@@ -52,10 +52,6 @@ function makeRuntimeTurret(
     parentId: identity.parentId,
     rootHostId: identity.rootHostId,
     mountIndex: identity.mountIndex,
-    // Compatibility sentinel for legacy snapshot fields. Mounted turrets
-    // no longer own damageable health; host body health is authoritative.
-    hp: 1,
-    maxHp: 1,
     config,
     target: null,
     ranges,

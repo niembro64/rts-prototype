@@ -1,7 +1,7 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
-import { getBuildFraction, isEntityActive } from '../sim/buildableHelpers';
+import { getBuildFraction, isConstructionPieceMaterialized, isEntityActive } from '../sim/buildableHelpers';
 import { assertUnitActionHashSynced } from '../sim/unitActions';
 import { SNAPSHOT_CONFIG } from '../../config';
 import { spatialGrid } from '../sim/SpatialGrid';
@@ -712,6 +712,9 @@ function syncEntityMetaPools(world: WorldState, e: Entity, sim: SimWasm): void {
   const combat = e.combat;
   const turrets = combat !== null ? combat.turrets : null;
   const turretCount = turrets !== null ? turrets.length : 0;
+  const hostBodyTargetable =
+    ((e.unit !== null && e.unit.hp > 0) || (e.building !== null && e.building.hp > 0)) &&
+    isConstructionPieceMaterialized(e, 'body');
   sim.turretPool.setCount(slot, turretCount);
   for (let t = 0; t < turretCount; t++) {
     const w = turrets![t];
@@ -733,7 +736,7 @@ function syncEntityMetaPools(world: WorldState, e: Entity, sim: SimWasm): void {
         w.mountIndex,
         ENTITY_META_STORAGE_COMBAT_TURRETS,
         slot * MAX_WEAPONS_PER_ENTITY + t,
-        !w.config.visualOnly && w.hp > 0 ? 1 : 0,
+        !w.config.visualOnly && hostBodyTargetable ? 1 : 0,
       );
     }
     sim.turretPool.setTurret(
