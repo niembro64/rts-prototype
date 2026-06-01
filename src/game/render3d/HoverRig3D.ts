@@ -269,6 +269,26 @@ export function buildHoverFans(
         ownerId,
       ));
     }
+  } else if (cfg.fanLayout === 'twin') {
+    // Twin layout: two fans on the lateral axis (localX = 0), one to each
+    // side, like a two-rotor lift. Used by the Bee.
+    const lateral = unitRadius * cfg.fanDistY;
+    for (const sz of [-1, 1]) {
+      fans.push(buildFan(
+        group,
+        {
+          localX: 0,
+          localZ: sz * lateral,
+          fanRadius: mainFanRadius,
+          ringTubeRadius: mainRingTubeRadius,
+          outwardAngleRad,
+          smokeProfile,
+        },
+        entityId,
+        fans.length,
+        ownerId,
+      ));
+    }
   } else if (cfg.fanLayout === 'triFront') {
     const fanDist = unitRadius * Math.hypot(cfg.fanDistX, cfg.fanDistY);
     for (const angle of TRI_FRONT_FAN_ANGLES_RAD) {

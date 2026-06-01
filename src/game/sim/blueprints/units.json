@@ -1231,7 +1231,7 @@
   "unitBee": {
     "unitBlueprintId": "unitBee",
     "name": "Bee",
-    "shortName": "MSQ",
+    "shortName": "BEE",
     "hp": 94.5,
     "radius": {
       "visual": 9,
@@ -1288,7 +1288,7 @@
         "hoverHeightUpwardForceEMA": 0.99,
         "fanDistX": 0.58,
         "fanDistY": 0.62,
-        "fanLayout": "triFront",
+        "fanLayout": "twin",
         "fanRadius": 0.32,
         "fanRingTubeRadius": 0.035,
         "fanOutwardAngleDeg": 14,
@@ -1503,7 +1503,7 @@
         "hoverHeightUpwardForceEMA": 0.96,
         "fanDistX": 0.58,
         "fanDistY": 0.58,
-        "fanLayout": "quad",
+        "fanLayout": "triFront",
         "fanRadius": 0.26,
         "fanRingTubeRadius": 0.035,
         "fanOutwardAngleDeg": 12,
