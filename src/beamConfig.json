@@ -9,6 +9,10 @@
     "waveSpacing": 500,
     "waveSpeed": 50
   },
+  "openEndedLine": {
+    "extendToInfinity": true,
+    "infinityVisualLength": 12000
+  },
   "startPointSphere": {
     "radiusMultiplier": 0.5,
     "minRadius": 0.1,

@@ -74,6 +74,7 @@ import {
   CT_LOCK_ON_LEVEL1_MASK_CAPACITY,
 } from '../../sim-wasm/init';
 import { isTowerBuildingBlueprintId, type BuildingBlueprintId } from '../../../types/buildingTypes';
+import { getSecondaryLockOnProfile } from './lockOnConfig';
 
 export type LockOnMasks = {
   relationship: number;
@@ -407,6 +408,42 @@ function validateTurretAimStyle(
   turretBlueprint: TurretBlueprint,
   emission: EmissionConfig | null,
 ): void {
+  const secondaryLockOnProfile = getSecondaryLockOnProfile(turretBlueprintId);
+  if (secondaryLockOnProfile !== undefined) {
+    if (secondaryLockOnProfile.mode !== 'incomingThreatReflector') {
+      throw new Error(
+        `Turret ${turretBlueprintId} has unsupported secondary lock-on profile "${secondaryLockOnProfile.mode}"`,
+      );
+    }
+    if (turretBlueprint.aimStyle.angleType !== 'rayBisectTurretAndBody') {
+      throw new Error(
+        `Turret ${turretBlueprintId} incomingThreatReflector profile requires aimStyle.angleType "rayBisectTurretAndBody"`,
+      );
+    }
+    if (turretBlueprint.aimStyle.lockOnType !== 'lockOnToTurret') {
+      throw new Error(
+        `Turret ${turretBlueprintId} incomingThreatReflector profile requires lockOnType "lockOnToTurret"`,
+      );
+    }
+    if (!turretBlueprint.passive) {
+      throw new Error(
+        `Turret ${turretBlueprintId} incomingThreatReflector profile requires passive shield-panel targeting`,
+      );
+    }
+    if (
+      !turretBlueprint.includeLockOnLevel0FriendsAndEnemies.includes('enemy_entities') ||
+      !turretBlueprint.includeLockOnLevel0Entities.includes('turrets')
+    ) {
+      throw new Error(
+        `Turret ${turretBlueprintId} incomingThreatReflector profile requires enemy turret lock-on inclusions`,
+      );
+    }
+    if (emission === null || emission.type !== 'shield' || emission.barrier !== undefined) {
+      throw new Error(
+        `Turret ${turretBlueprintId} incomingThreatReflector profile requires a flat shield-panel emission`,
+      );
+    }
+  }
   switch (turretBlueprint.aimStyle.angleType) {
     case 'ballisticArcLow':
     case 'ballisticArcLowOnlyUnder':

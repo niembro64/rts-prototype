@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
-import { SHELL_PALE_HEX } from '@/shellConfig';
 import type { Entity, EntityId, Turret } from '../sim/types';
 import type { EntityMesh } from './EntityMesh3D';
 import type { TurretMesh } from './TurretMesh3D';
@@ -9,7 +8,6 @@ import {
   entityInstanceColorKey,
   entityHeadOnlyTurretHeadColorHex,
   entityTurretAccentColorHex,
-  isConstructionShell,
   setEntityInstanceColor,
 } from './EntityInstanceColor3D';
 import {
@@ -31,8 +29,8 @@ const ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
 
 // Per-instance materialization fade. Every live unit pool carries a
 // per-instance `aFade` scalar in [0,1] (0 = transparent, 1 = opaque),
-// fed into the shared dithered-discard patch from EntityFade3D so units
-// and buildings dissolve through the identical look. Written per-entity
+// fed into the shared alpha patch from EntityFade3D so units and
+// buildings fade through the identical look. Written per-entity
 // via writeEntityFade and uploaded once per frame in flush().
 type FadeState = {
   arr: Float32Array;
@@ -289,7 +287,7 @@ export class UnitDetailInstanceRenderer3D {
     this.releaseAllShieldPanelSlots();
   }
 
-  syncShellColors(entity: Entity, mesh: EntityMesh, turrets: readonly Turret[] = []): void {
+  syncEntityColors(entity: Entity, mesh: EntityMesh, turrets: readonly Turret[] = []): void {
     const colorKey = entityInstanceColorKey(entity);
 
     if (
@@ -329,9 +327,7 @@ export class UnitDetailInstanceRenderer3D {
         this.turretHeadInstanced.instanceColor!.needsUpdate = true;
       }
       if (turret.barrelSlots) {
-        const barrelColorKey = isConstructionShell(entity)
-          ? SHELL_PALE_HEX
-          : turretAccentHex;
+        const barrelColorKey = turretAccentHex;
         const targetMesh = turret.barrelUsesCone
           ? this.coneBarrelInstanced
           : this.barrelInstanced;
@@ -410,8 +406,7 @@ export class UnitDetailInstanceRenderer3D {
     matrix: THREE.Matrix4,
     entity: Entity,
     /** Hex override for headOnly turrets.
-     *  When undefined the normal entity color (player or construction
-     *  shell) is used. */
+     *  When undefined the normal entity color is used. */
     colorOverride?: number,
   ): void {
     this.turretHeadInstanced.setMatrixAt(slot, matrix);
@@ -590,7 +585,7 @@ export class UnitDetailInstanceRenderer3D {
    *  owns — chassis (body) at `bodyFade`, each turret's head + barrels at
    *  the matching `turretFades` entry (falling back to `bodyFade`). Pass
    *  `turretFades = null` to fade the whole entity uniformly (death-out).
-   *  Routed through the same per-entity seam as syncShellColors so no
+   *  Routed through the same per-entity seam as syncEntityColors so no
    *  pose writer needs to know about fade. */
   writeEntityFade(
     mesh: EntityMesh,

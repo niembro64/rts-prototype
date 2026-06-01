@@ -40,6 +40,7 @@ import {
 import { getUnitGroundZ } from '../unitGeometry';
 import { DETACHED_TURRET_TOWER_BLUEPRINT_ID } from '../../../types/buildingTypes';
 import { isConstructionBodyMaterialized } from '../buildableHelpers';
+import { getActiveShieldPanelTurret } from '../shieldPanelRuntime';
 
 
 // Reusable DamageResult to avoid per-call allocations
@@ -566,7 +567,10 @@ export class DamageSystem {
       const ux = unit.transform.x - startX, uy = unit.transform.y - startY;
       const crossSq = (ux * dy - uy * dx);
       const panels = unit.unit.shieldPanels;
-      const mirrorsActive = this.world.turretShieldPanelsEnabled && panels.length > 0;
+      const activeShieldPanel = this.world.turretShieldPanelsEnabled
+        ? getActiveShieldPanelTurret(unit)
+        : null;
+      const mirrorsActive = activeShieldPanel !== null && panels.length > 0;
       const boundR = mirrorsActive
         ? Math.max(unit.unit.shieldBoundRadius, unit.unit.radius.hitbox) + lineWidth
         : unit.unit.radius.hitbox + lineWidth / 2;
@@ -575,28 +579,21 @@ export class DamageSystem {
       if (mirrorsActive) {
         // Mirror unit: 3D ray-vs-tilted-rectangle for each panel
         // (yaw + pitch from the turretShieldPanel rotation/pitch).
-        const unitCombat = unit.combat;
-        const unitTurrets = unitCombat !== null ? unitCombat.turrets : null;
-        const shieldPanelRot = unitTurrets && unitTurrets.length > 0
-          ? unitTurrets[0].rotation
-          : unit.transform.rotation;
-        const shieldPanelPitch = unitTurrets && unitTurrets.length > 0
-          ? unitTurrets[0].pitch
-          : 0;
+        const { turret: shieldPanelTurret, turretIndex: shieldPanelTurretIndex } = activeShieldPanel;
+        const shieldPanelRot = shieldPanelTurret.rotation;
+        const shieldPanelPitch = shieldPanelTurret.pitch;
         const unitGroundZ = getUnitGroundZ(unit);
         const unitCS = getTransformCosSin(unit.transform);
-        const mirrorPivot = unitTurrets && unitTurrets.length > 0
-          ? resolveWeaponWorldMount(
-              unit, unitTurrets[0], 0,
-              unitCS.cos, unitCS.sin,
-              {
-                currentTick: this.world.getTick(),
-                unitGroundZ,
-                surfaceN: unit.unit.surfaceNormal,
-              },
-              _shieldPanelPivot,
-            )
-          : undefined;
+        const mirrorPivot = resolveWeaponWorldMount(
+          unit, shieldPanelTurret, shieldPanelTurretIndex,
+          unitCS.cos, unitCS.sin,
+          {
+            currentTick: this.world.getTick(),
+            unitGroundZ,
+            surfaceN: unit.unit.surfaceNormal,
+          },
+          _shieldPanelPivot,
+        );
         const panelExclude = isExcludedEntity ? excludePanelIndex : -1;
         const hit = findClosestPanelHit(
           panels, shieldPanelRot, shieldPanelPitch,

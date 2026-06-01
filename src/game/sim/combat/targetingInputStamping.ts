@@ -34,6 +34,7 @@ import {
   resolveWeaponWorldMount,
 } from './combatUtils';
 import { getUnitGroundZ } from '../unitGeometry';
+import { getActiveShieldPanelTurret } from '../shieldPanelRuntime';
 import {
   CT_BLUEPRINT_CODE_NONE,
   CT_ENTITY_FAMILY_BUILDING,
@@ -785,7 +786,7 @@ const _mirrorStampPivot = { x: 0, y: 0, z: 0 };
  *     collision can opt into stamping the physical shields even when sight
  *     obstruction is disabled via `includeWhenSightDisabled`.
  *   - Flat-panel surfaces come from world.getShieldPanelUnits(), gated by
- *     world.turretShieldPanelsEnabled. Inactive / dead mirror units are
+ *     world.turretShieldPanelsEnabled. Inactive / dead mirror turrets are
  *     skipped; panel rows pack contiguously by unit. The slope-aware turret
  *     pivot is resolved fresh via resolveWeaponWorldMount — the same input the
  *     beam tracer / live aim solver uses — so the gate and the authoritative
@@ -837,16 +838,14 @@ export function stampShieldSurfacePool(
   let unitIdx = 0;
   let panelIdx = 0;
   for (const unit of shieldPanelUnits) {
-    if (!unit.unit || unit.unit.hp <= 0) continue;
+    const activeShieldPanel = getActiveShieldPanelTurret(unit);
+    if (activeShieldPanel === null || unit.unit === null) continue;
     const panels = unit.unit.shieldPanels;
     if (!panels || panels.length === 0) continue;
-    const unitCombat = unit.combat;
-    const unitTurrets = unitCombat !== null ? unitCombat.turrets : null;
-    if (unitTurrets === null || unitTurrets.length === 0) continue;
 
     const broadRadius = Math.max(unit.unit.shieldBoundRadius, unit.unit.radius.hitbox)
       + MIRROR_SIGHT_QUERY_PAD;
-    const shieldPanelTurret = unitTurrets[0];
+    const { turret: shieldPanelTurret, turretIndex: shieldPanelTurretIndex } = activeShieldPanel;
     const panelShot = shieldPanelTurret.config.shot;
     if (panelShot !== undefined && panelShot.type === 'shield') {
       panelReflectionMode = encodeShieldReflectionMode(panelShot.material.reflection.mode);
@@ -861,7 +860,7 @@ export function stampShieldSurfacePool(
     unit.transform.rotCos = unitCS.cos;
     unit.transform.rotSin = unitCS.sin;
     resolveWeaponWorldMount(
-      unit, shieldPanelTurret, 0,
+      unit, shieldPanelTurret, shieldPanelTurretIndex,
       unitCS.cos, unitCS.sin,
       {
         currentTick,

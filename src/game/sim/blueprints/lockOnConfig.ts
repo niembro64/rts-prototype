@@ -4,23 +4,103 @@ import {
   cloneLockOnInclusionObject,
   validateLockOnInclusionConfigSection,
 } from './lockOnValidation';
+import { assertExplicitFields, isObject } from './jsonValidation';
 
 type LockOnInclusionConfigSection = Record<string, LockOnInclusionObject>;
+type LockOnInclusionSectionName = 'units' | 'turrets' | 'towers';
+export type SecondaryLockOnProfile = {
+  mode: 'incomingThreatReflector';
+  candidateRelationship: 'enemy_entities';
+  candidateFamily: 'turrets';
+  threatMustTarget: ['self_host', 'self_turret'];
+  threatState: 'locked_or_engaged';
+  rankBy: 'threat_turret_sustained_dps';
+  aim: 'bisect_threat_turret_origin_and_threat_host_origin';
+  intent: string;
+};
 type LockOnInclusionConfig = {
   units: LockOnInclusionConfigSection;
   turrets: LockOnInclusionConfigSection;
   towers: LockOnInclusionConfigSection;
+  secondaryLockOnProfiles?: Record<string, SecondaryLockOnProfile>;
 };
 
 const LOCK_ON_INCLUSION_CONFIG =
   rawLockOnInclusionConfig as unknown as LockOnInclusionConfig;
 
+const SECONDARY_LOCK_ON_PROFILE_FIELDS = [
+  'mode',
+  'candidateRelationship',
+  'candidateFamily',
+  'threatMustTarget',
+  'threatState',
+  'rankBy',
+  'aim',
+  'intent',
+] as const;
+
+function validateSecondaryLockOnProfile(
+  id: string,
+  value: unknown,
+): asserts value is SecondaryLockOnProfile {
+  const label = `secondary lock-on profile ${id}`;
+  assertExplicitFields(label, value, SECONDARY_LOCK_ON_PROFILE_FIELDS);
+  if (!isObject(value)) throw new Error(`Invalid ${label}: expected object`);
+  if (value.mode !== 'incomingThreatReflector') {
+    throw new Error(`Invalid ${label}: mode must be "incomingThreatReflector"`);
+  }
+  if (value.candidateRelationship !== 'enemy_entities') {
+    throw new Error(`Invalid ${label}: candidateRelationship must be "enemy_entities"`);
+  }
+  if (value.candidateFamily !== 'turrets') {
+    throw new Error(`Invalid ${label}: candidateFamily must be "turrets"`);
+  }
+  if (
+    !Array.isArray(value.threatMustTarget) ||
+    value.threatMustTarget.length !== 2 ||
+    value.threatMustTarget[0] !== 'self_host' ||
+    value.threatMustTarget[1] !== 'self_turret'
+  ) {
+    throw new Error(
+      `Invalid ${label}: threatMustTarget must be ["self_host", "self_turret"]`,
+    );
+  }
+  if (value.threatState !== 'locked_or_engaged') {
+    throw new Error(`Invalid ${label}: threatState must be "locked_or_engaged"`);
+  }
+  if (value.rankBy !== 'threat_turret_sustained_dps') {
+    throw new Error(`Invalid ${label}: rankBy must be "threat_turret_sustained_dps"`);
+  }
+  if (value.aim !== 'bisect_threat_turret_origin_and_threat_host_origin') {
+    throw new Error(
+      `Invalid ${label}: aim must be "bisect_threat_turret_origin_and_threat_host_origin"`,
+    );
+  }
+  if (typeof value.intent !== 'string' || value.intent.trim().length === 0) {
+    throw new Error(`Invalid ${label}: intent must be non-empty text`);
+  }
+}
+
+function validateSecondaryLockOnProfiles(
+  value: unknown,
+): asserts value is Record<string, SecondaryLockOnProfile> {
+  if (!isObject(value)) {
+    throw new Error('Invalid secondaryLockOnProfiles: expected object');
+  }
+  for (const [id, profile] of Object.entries(value)) {
+    validateSecondaryLockOnProfile(id, profile);
+  }
+}
+
 validateLockOnInclusionConfigSection('units', LOCK_ON_INCLUSION_CONFIG.units);
 validateLockOnInclusionConfigSection('turrets', LOCK_ON_INCLUSION_CONFIG.turrets);
 validateLockOnInclusionConfigSection('towers', LOCK_ON_INCLUSION_CONFIG.towers);
+if (LOCK_ON_INCLUSION_CONFIG.secondaryLockOnProfiles !== undefined) {
+  validateSecondaryLockOnProfiles(LOCK_ON_INCLUSION_CONFIG.secondaryLockOnProfiles);
+}
 
 function assertLockOnInclusionConfigIds(
-  sectionName: keyof LockOnInclusionConfig,
+  sectionName: LockOnInclusionSectionName,
   blueprintLabel: string,
   expectedIds: readonly string[],
 ): void {
@@ -40,10 +120,20 @@ function assertLockOnInclusionConfigIds(
       );
     }
   }
+  if (sectionName === 'turrets') {
+    const profiles = LOCK_ON_INCLUSION_CONFIG.secondaryLockOnProfiles ?? {};
+    for (const id of Object.keys(profiles)) {
+      if (!expected.has(id)) {
+        throw new Error(
+          `Stale secondary lock-on profile for ${blueprintLabel} "${id}" in inclusionLockOnConfig.json:secondaryLockOnProfiles`,
+        );
+      }
+    }
+  }
 }
 
 function getLockOnInclusions(
-  sectionName: keyof LockOnInclusionConfig,
+  sectionName: LockOnInclusionSectionName,
   blueprintLabel: string,
   id: string,
 ): LockOnInclusionObject {
@@ -78,4 +168,8 @@ export function getTurretLockOnInclusions(id: string): LockOnInclusionObject {
 
 export function getTowerLockOnInclusions(id: string): LockOnInclusionObject {
   return getLockOnInclusions('towers', 'tower blueprint', id);
+}
+
+export function getSecondaryLockOnProfile(id: string): SecondaryLockOnProfile | undefined {
+  return LOCK_ON_INCLUSION_CONFIG.secondaryLockOnProfiles?.[id];
 }

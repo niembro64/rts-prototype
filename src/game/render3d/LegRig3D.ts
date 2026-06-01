@@ -33,7 +33,6 @@ import type { ArachnidLegConfig } from '@/types/render';
 import { getSegmentMidYAt } from '../math/BodyDimensions';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import type { Entity, PlayerId } from '../sim/types';
-import { isShell } from '../sim/buildableHelpers';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import { locomotionPieceColorHex } from './colorUtils';
@@ -167,9 +166,8 @@ export type LegInstance = {
    *  inverted and the two sides are inverted from each other —
    *  diagonal-pair alternating gait from frame 1. */
   phaseShift01: 0 | 1;
-  /** True when this leg allocated from the transparent construction-shell
-   *  pools in LegInstancedRenderer. Completion triggers a unit mesh
-   *  rebuild, freeing these slots and reallocating normal-material slots. */
+  /** Which LegInstancedRenderer pool this leg allocated from. Construction
+   *  units now use the normal pool instead of the transparent shell pool. */
   shellPool: boolean;
 
   /** Current foot world position. Y is sampled from terrain — when
@@ -328,7 +326,7 @@ export function buildLegs(
   if (legStyle === 'none') return undefined;
 
   const { left, all: allConfigs, sides } = resolveMirroredLegConfigs(cfg, r);
-  const shellPool = isShell(entity);
+  const shellPool = false;
   const legColor = locomotionPieceColorHex(LEG_SEGMENT_COLOR, ownerId);
 
   const group = new THREE.Group();

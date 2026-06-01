@@ -1,15 +1,13 @@
 import * as THREE from 'three';
-import { SHELL_PALE_HEX } from '@/shellConfig';
 import { SHIELD_VISUAL } from '../../config';
 import { getPlayerPrimaryColor, type Entity } from '../sim/types';
 import { REFLECTIVE_SHIELD_MATERIAL } from '../sim/blueprints/shieldMaterials';
-import { isConstructionShell } from './EntityInstanceColor3D';
 
 // Materials Are Independent Of Shape: the shield surface is ONE material.
 // The turretShieldSphere carries it as a sphere; the turretShieldPanel
 // carries it as flat panels. Both render through the single shader + material
 // factory below — the only difference is the instanced geometry feeding it.
-// Per-instance `aColor` (team/shell color) and `aAlpha` (fade) ride on
+// Per-instance `aColor` (team/config color) and `aAlpha` ride on
 // InstancedBufferAttributes; the fragment is just `vec4(vColor, vAlpha)`.
 
 const SHIELD_OPACITY_BOOST = 2;
@@ -21,11 +19,10 @@ export const SHIELD_SURFACE_OPACITY = Math.min(
 );
 
 /** Color of the shield material at this surface — team color when the
- *  visual config is in player mode, the pale shell color while still a
- *  construction shell, else the authored fallback. Shape-independent: the
- *  sphere and the panels resolve their color through the same rule. */
+ *  visual config is in player mode, else the authored fallback.
+ *  Shape-independent: the sphere and the panels resolve their color
+ *  through the same rule. */
 export function resolveShieldSurfaceColor(entity: Entity): number {
-  if (isConstructionShell(entity)) return SHELL_PALE_HEX;
   return SHIELD_VISUAL.colorMode === 'player' && entity.ownership
     ? getPlayerPrimaryColor(entity.ownership.playerId)
     : REFLECTIVE_SHIELD_MATERIAL.visual.color;

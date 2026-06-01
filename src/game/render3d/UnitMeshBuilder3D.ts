@@ -50,7 +50,6 @@ export type UnitMeshBuildRequest = {
   unitGfx: GraphicsConfig;
   unitFrameKey: string;
   unitRenderKey: string;
-  unitIsShell: boolean;
   legState?: LegStateSnapshot;
 };
 
@@ -112,7 +111,6 @@ export class UnitMeshBuilder3D {
       unitGfx,
       unitFrameKey,
       unitRenderKey,
-      unitIsShell,
       legState,
     } = request;
 
@@ -134,7 +132,7 @@ export class UnitMeshBuilder3D {
     const chassis = new THREE.Group();
     chassis.userData.entityId = entity.id;
     const chassisMeshes: THREE.Mesh[] = [];
-    const useDetailedUnitInstancing = USE_DETAILED_UNIT_INSTANCING && !unitIsShell;
+    const useDetailedUnitInstancing = USE_DETAILED_UNIT_INSTANCING;
     let smoothChassisSlots: number[] | undefined;
     let polyChassisSlot: number | undefined;
 
@@ -200,7 +198,6 @@ export class UnitMeshBuilder3D {
       geometryKey: unitRenderKey,
       unitRenderFrameKey: unitFrameKey,
       unitRenderOwnerId: ownerId,
-      unitRenderIsShell: unitIsShell,
       smoothChassisSlots,
       polyChassisSlot,
       chassisLift: liftGroup.position.y,

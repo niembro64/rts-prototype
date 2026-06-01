@@ -25,6 +25,7 @@ type GroundHeightLookup = (x: number, y: number) => number;
 type ResolveTargetAimPointOptions = {
   lockOnType: TurretAimLockOnType | undefined;
   source: Entity | undefined;
+  sourceTurretId: number | undefined;
   currentTick: number | undefined;
 };
 
@@ -146,12 +147,13 @@ function getBallisticSlabViews(sim: SimWasm): BallisticSlabViews {
 function resolveTargetTurretAimPoint(
   target: Entity,
   source: Entity | undefined,
+  sourceTurretId: number | undefined,
   currentTick: number | undefined,
   out: Vec3,
 ): boolean {
   const sourceEntityId = source === undefined ? undefined : source.id;
   const surfaceN = target.unit === null ? undefined : target.unit.surfaceNormal;
-  const picked = pickTargetAimTurret(target, sourceEntityId);
+  const picked = pickTargetAimTurret(target, sourceEntityId, sourceTurretId);
   if (!picked) return false;
   if (
     currentTick !== undefined &&
@@ -197,7 +199,7 @@ export function resolveTargetAimPoint(
   const currentTick = options === undefined ? undefined : options.currentTick;
   if (
     lockOnType === 'lockOnToTurret' &&
-    resolveTargetTurretAimPoint(target, source, currentTick, out)
+    resolveTargetTurretAimPoint(target, source, options?.sourceTurretId, currentTick, out)
   ) {
     return out;
   }
@@ -369,6 +371,7 @@ export function solveDirectTurretAim(
   config: TurretConfig,
   out: DirectTurretAim,
   currentTick: number | undefined = undefined,
+  sourceTurretId: number | undefined = undefined,
 ): DirectTurretAim {
   resolveTargetAimPoint(
     target,
@@ -377,6 +380,7 @@ export function solveDirectTurretAim(
     {
       lockOnType: config.aimStyle.lockOnType,
       source,
+      sourceTurretId,
       currentTick,
     },
   );
@@ -399,10 +403,12 @@ function solveRayBisectTurretAndBodyAim(
   config: TurretConfig,
   out: DirectTurretAim,
   currentTick: number | undefined = undefined,
+  sourceTurretId: number | undefined = undefined,
 ): DirectTurretAim {
   const hasTurretPoint = resolveTargetTurretAimPoint(
     target,
     source,
+    sourceTurretId,
     currentTick,
     _bisectEnemyTurretPoint,
   );
@@ -415,6 +421,7 @@ function solveRayBisectTurretAndBodyAim(
       config,
       out,
       currentTick,
+      sourceTurretId,
     );
   }
 
@@ -425,6 +432,7 @@ function solveRayBisectTurretAndBodyAim(
     {
       lockOnType: 'lockOnToBody',
       source,
+      sourceTurretId: undefined,
       currentTick,
     },
   );
@@ -487,6 +495,7 @@ function solveRayTurretAim(
   config: TurretConfig,
   out: DirectTurretAim,
   currentTick: number | undefined = undefined,
+  sourceTurretId: number | undefined = undefined,
 ): DirectTurretAim {
   if (config.aimStyle.angleType === 'rayBisectTurretAndBody') {
     return solveRayBisectTurretAndBodyAim(
@@ -497,6 +506,7 @@ function solveRayTurretAim(
       config,
       out,
       currentTick,
+      sourceTurretId,
     );
   }
 
@@ -508,6 +518,7 @@ function solveRayTurretAim(
     config,
     out,
     currentTick,
+    sourceTurretId,
   );
 }
 
@@ -659,6 +670,7 @@ export function solveProjectileTurretAim(
     {
       lockOnType: weapon.config.aimStyle.lockOnType,
       source,
+      sourceTurretId: weapon.id,
       currentTick,
     },
   );
@@ -819,6 +831,7 @@ export function solveTurretAim(
       weapon.config,
       out,
       currentTick,
+      weapon.id,
     );
     writeDirectAimSolutionFields(out);
     return out;
@@ -848,6 +861,7 @@ export function solveTurretAim(
     weapon.config,
     out,
     currentTick,
+    weapon.id,
   );
   writeDirectAimSolutionFields(out);
   return out;

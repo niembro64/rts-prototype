@@ -1,21 +1,13 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
-import { SHELL_PALE_HEX } from '@/shellConfig';
 import type { Entity, TurretState } from '../sim/types';
 import { getPlayerColors } from '../sim/types';
-import { isShell } from '../sim/buildableHelpers';
-
-export function isConstructionShell(entity: Entity): boolean {
-  return isShell(entity);
-}
 
 export function entityInstanceColorKey(entity: Entity): number {
-  const ownerKey = entity.ownership?.playerId ?? -1;
-  return ownerKey * 2 + (isConstructionShell(entity) ? 1 : 0);
+  return entity.ownership?.playerId ?? -1;
 }
 
 export function entityInstanceColorHex(entity: Entity): number {
-  if (isConstructionShell(entity)) return SHELL_PALE_HEX;
   const pid = entity.ownership?.playerId;
   return pid !== undefined ? getPlayerColors(pid).primary : COLORS.units.neutral.colorHex;
 }
@@ -28,7 +20,6 @@ export function turretAccentColorHexForPlayer(playerId: number | undefined): num
 }
 
 export function entityTurretAccentColorHex(entity: Entity): number {
-  if (isConstructionShell(entity)) return SHELL_PALE_HEX;
   return turretAccentColorHexForPlayer(entity.ownership?.playerId);
 }
 

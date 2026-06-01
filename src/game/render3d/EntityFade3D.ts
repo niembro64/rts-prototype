@@ -3,17 +3,16 @@
 //
 // "Construction mirrors destruction": a single per-piece opacity channel
 // runs 0 → 1 as an entity is built and 1 → 0 as it dies. It is realized
-// as a screen-door (dithered) discard in the OPAQUE pass — depth still
-// writes, so a multi-part body self-occludes through the transition with
-// no see-through and no transparent-queue sort cost.
+// as alpha transparency so construction and death read as a smooth fade
+// rather than a stippled/dithered material.
 //
-// The discard logic, the death-linger lifecycle, and the build-in opacity
+// The alpha patch, the death-linger lifecycle, and the build-in opacity
 // math live here so units and buildings share one implementation rather
 // than duplicating it across renderers. Only the GPU feeder differs by
 // render backend:
 //   - instanced pools  → per-instance `aFade` attribute  (units)
 //   - per-Mesh objects → per-object `uFade` uniform clone (buildings)
-// both of which drive the identical `vFade` discard below.
+// both of which drive the identical `vFade` alpha below.
 
 import * as THREE from 'three';
 import type { EntityId } from '../sim/types';
@@ -22,28 +21,30 @@ import type { EntityId } from '../sim/types';
  *  build fraction, so only the cosmetic death fade needs a clock. */
 export const ENTITY_DEATH_FADE_MS = 900;
 
-// ── The one fragment discard both backends emit ────────────────────────
-// A stable screen-space hash threshold in [0,1): static stipple (no
-// shimmer as the entity moves, since it keys off gl_FragCoord), vFade>=1
-// never discards, vFade<=0 discards everything.
+// ── The one fragment alpha patch both backends emit ───────────────────
+// Standard Three.js materials route their final alpha through
+// `diffuseColor.a` before `opaque_fragment`. Multiplying it here preserves
+// any authored/base material opacity and applies the construction/death
+// fade as ordinary alpha blending.
 const FADE_FRAGMENT_COMMON = ['varying float vFade;', '#include <common>'].join('\n');
-const FADE_FRAGMENT_DISCARD = [
-  '#include <clipping_planes_fragment>',
-  'if ( vFade < 1.0 ) {',
-  '  float fadeThresh = fract( sin( dot( gl_FragCoord.xy, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 );',
-  '  if ( vFade <= fadeThresh ) discard;',
-  '}',
+const FADE_FRAGMENT_ALPHA = [
+  'diffuseColor.a *= clamp( vFade, 0.0, 1.0 );',
+  '#include <opaque_fragment>',
 ].join('\n');
 
 function injectFadeFragment(shader: THREE.WebGLProgramParametersWithUniforms): void {
   shader.fragmentShader = shader.fragmentShader
     .replace('#include <common>', FADE_FRAGMENT_COMMON)
-    .replace('#include <clipping_planes_fragment>', FADE_FRAGMENT_DISCARD);
+    .replace('#include <opaque_fragment>', FADE_FRAGMENT_ALPHA);
 }
 
 /** Patch a material so each INSTANCE's `aFade` attribute drives the fade.
  *  Used by the shared unit instanced pools. */
 export function patchInstancedFadeMaterial(material: THREE.Material): void {
+  material.transparent = true;
+  // Instanced pools mix fading and fully-built units in one draw. Keep depth
+  // writes so finished units still behave like solid battlefield objects.
+  material.depthWrite = true;
   const prev = material.onBeforeCompile;
   material.onBeforeCompile = (shader, renderer) => {
     if (prev) prev.call(material, shader, renderer);
@@ -60,7 +61,7 @@ export function patchInstancedFadeMaterial(material: THREE.Material): void {
   };
   // Share one program across every instanced-faded material, distinct
   // from unpatched and per-object-faded materials.
-  material.customProgramCacheKey = () => 'entityFadeInstanced';
+  material.customProgramCacheKey = () => 'entityFadeInstancedAlpha';
   material.needsUpdate = true;
 }
 
@@ -84,8 +85,10 @@ let perObjectFadeKeySeq = 0;
  *  per-Mesh building / tower render path. */
 export function makePerObjectFadeMaterial(base: THREE.Material): PerObjectFade {
   const material = base.clone();
+  material.transparent = true;
+  material.depthWrite = false;
   const uFade = { value: 1 };
-  const cacheKey = `entityFadePerObject:${perObjectFadeKeySeq++}`;
+  const cacheKey = `entityFadePerObjectAlpha:${perObjectFadeKeySeq++}`;
   const prev = material.onBeforeCompile;
   material.onBeforeCompile = (shader, renderer) => {
     if (prev) prev.call(material, shader, renderer);

@@ -15,7 +15,6 @@ import type { PylonTubeFlow, SprayTarget } from '@/types/ui';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { COLORS } from '@/colorsConfig';
 import { getPlayerColors } from '../sim/types';
-import { applyShellOverride } from './ShellMaterial';
 import { LAND_CELL_SIZE } from '../../config';
 import { getSurfaceNormal } from '../sim/Terrain';
 import type { ClientViewState } from '../network/ClientViewState';
@@ -46,9 +45,14 @@ import { ConstructionVisualController3D } from './ConstructionVisualController3D
 import { CommanderVisualKit3D } from './CommanderVisualKit3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { BuildingEntityRenderer3D } from './BuildingEntityRenderer3D';
-import { isConstructionShell, turretAccentColorHexForPlayer } from './EntityInstanceColor3D';
+import { turretAccentColorHexForPlayer } from './EntityInstanceColor3D';
 import { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
-import { DyingMeshFade, ENTITY_DEATH_FADE_MS } from './EntityFade3D';
+import {
+  applyEntityGroupFade,
+  disposeEntityGroupFade,
+  DyingMeshFade,
+  ENTITY_DEATH_FADE_MS,
+} from './EntityFade3D';
 import { createShieldFallbackPanelMaterial } from './ShieldReflectorVisual3D';
 import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
 import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
@@ -317,9 +321,10 @@ export class Render3DEntities {
 
     this.dyingUnits = new DyingMeshFade<EntityMesh>(
       ENTITY_DEATH_FADE_MS,
-      (mesh, fade) => this.unitDetailInstances.writeEntityFade(mesh, fade, null),
+      (mesh, fade) => this.applyUnitEntityFade(mesh, fade, null),
       (id, mesh) => {
         this.world.remove(mesh.group);
+        disposeEntityGroupFade(mesh.group);
         this.disposeWorldParentedOverlays(mesh);
         this.unitDetailInstances.freeMeshSlots(id, mesh);
       },
@@ -393,21 +398,51 @@ export class Render3DEntities {
   private destroyUnitMesh(id: EntityId, m: EntityMesh): void {
     destroyLocomotion(m.locomotion, this.legRenderer);
     this.world.remove(m.group);
+    disposeEntityGroupFade(m.group);
     this.disposeWorldParentedOverlays(m);
     this.unitDetailInstances.freeMeshSlots(id, m);
     this.unitMeshes.delete(id);
   }
 
-  /** Per-frame shell-state color sync for instanced render paths. This
-   *  intentionally uses ordinary instanceColor only: no per-instance alpha
-   *  attributes and no material shader patching. Per-Mesh fallbacks still use
-   *  applyShellOverride for the translucent shell material. */
-  private updateShellInstanceColors(
+  /** Per-frame color sync for instanced render paths. This uses ordinary
+   *  instanceColor only; construction opacity lives in the shared
+   *  EntityFade3D path below. */
+  private updateUnitInstanceColors(
     e: Entity,
     m: EntityMesh,
     turrets: readonly Turret[] = EMPTY_TURRETS,
   ): void {
-    this.unitDetailInstances.syncShellColors(e, m, turrets);
+    this.unitDetailInstances.syncEntityColors(e, m, turrets);
+  }
+
+  /** Apply the same alpha materialization function buildings use to all
+   *  per-Mesh unit parts, while feeding the instanced unit pools via
+   *  their per-instance fade attributes. The group traversals are gated
+   *  so completed units do not pay this cost every frame. */
+  private applyUnitEntityFade(
+    m: EntityMesh,
+    bodyFade: number,
+    turretFades: readonly number[] | null,
+  ): void {
+    this.unitDetailInstances.writeEntityFade(m, bodyFade, turretFades);
+
+    const bodyFadeActive = bodyFade < 1;
+    if (bodyFadeActive || m.unitGroupFadeActive === true) {
+      applyEntityGroupFade(m.group, bodyFade);
+      m.unitGroupFadeActive = bodyFadeActive;
+    }
+
+    if (turretFades === null) return;
+    const turretStates = m.unitTurretGroupFadeActive ?? [];
+    for (let i = 0; i < m.turrets.length; i++) {
+      const fade = turretFades[i] ?? bodyFade;
+      const hasSpecificFade = fade < 1 && fade !== bodyFade;
+      if (hasSpecificFade || turretStates[i] === true) {
+        applyEntityGroupFade(m.turrets[i].root, fade);
+        turretStates[i] = hasSpecificFade;
+      }
+    }
+    m.unitTurretGroupFadeActive = turretStates;
   }
 
   private updateUnits(): void {
@@ -430,7 +465,7 @@ export class Render3DEntities {
       seen.add(e.id);
       // If this entity id is mid death-fade and has reappeared (id reuse
       // or a re-add), finalize the dying mesh now so we don't draw the
-      // fading shell on top of the freshly built unit.
+      // fading old mesh on top of the freshly built unit.
       if (this.dyingUnits.size > 0 && this.dyingUnits.has(e.id)) {
         this.dyingUnits.finalize(e.id);
       }
@@ -456,16 +491,7 @@ export class Render3DEntities {
         // composition that follows it). Setting yawGroup here would
         // be overwritten anyway.
         applyUnitLiftGroupPose3D(existing, e);
-        // Shell-state visual — two paths must agree:
-        //   - applyShellOverride handles per-Mesh chassis fallbacks
-        //     and treads (objects that own their own material).
-        //   - updateShellInstanceColors handles every InstancedMesh slot
-        //     the entity occupies with plain instanceColor updates.
-        applyShellOverride(
-          existing.group,
-          isConstructionShell(e),
-        );
-        this.updateShellInstanceColors(e, existing, turrets);
+        this.updateUnitInstanceColors(e, existing, turrets);
       }
       this.barrelSpinState.advance(e, spinDt);
       // Use `scale` (visual) rather than `shot` (collider) for horizontal
@@ -477,14 +503,12 @@ export class Render3DEntities {
         ?? 15;
       const pid = e.ownership?.playerId;
       const fullUnitDetail = true;
-      const unitIsShell = isConstructionShell(e);
 
       let m = this.unitMeshes.get(e.id);
       if (
         m &&
         (
           m.unitRenderFrameKey !== unitGeometryKey ||
-          m.unitRenderIsShell !== unitIsShell ||
           m.unitRenderOwnerId !== pid
         )
       ) {
@@ -500,7 +524,7 @@ export class Render3DEntities {
       if (!m) {
         const legSnap = this.legStateCache.get(e.id);
         const ownerKey = pid ?? 'neutral';
-        const unitRenderKey = `${unitGeometryKey}|shell:${unitIsShell ? 1 : 0}|owner:${ownerKey}`;
+        const unitRenderKey = `${unitGeometryKey}|owner:${ownerKey}`;
         m = this.unitMeshBuilder.build({
           entity: e,
           radius,
@@ -509,45 +533,35 @@ export class Render3DEntities {
           unitGfx,
           unitFrameKey: unitGeometryKey,
           unitRenderKey,
-          unitIsShell,
           legState: legSnap,
         });
         if (legSnap !== undefined) this.legStateCache.delete(e.id);
-        applyShellOverride(m.group, unitIsShell);
-        this.updateShellInstanceColors(e, m, turrets);
+        this.updateUnitInstanceColors(e, m, turrets);
         this.unitMeshes.set(e.id, m);
       } else {
-        // Per-frame team-color refresh for the per-Mesh paths
-        // (chassis-meshes fallback, non-instanced turret heads, mirror
-        // arms). These writes would clobber the per-Mesh shell-material
-        // override that applyShellOverride installs earlier in this
-        // iteration — visible as e.g. mirror-turret arms staying team-
-        // colored on a shell unit. Skip the refresh while the entity
-        // is a shell; applyShellOverride re-runs every frame so the
-        // first frame after completion will install the original
-        // material (cached on userData) and the next refresh will
-        // touch up to the latest team color.
-        const isShellState = isConstructionShell(e);
-        if (!isShellState) {
-          const primaryMat = this.getPrimaryMat(pid);
-          const turretAccentMat = this.getTurretAccentMat(pid);
-          for (const mesh of m.chassisMeshes) mesh.material = primaryMat;
-          for (let i = 0; i < m.turrets.length; i++) {
-            const tm = m.turrets[i];
-            if (tm.head) {
-              tm.head.material = tm.headOnly && turrets[i]?.state === 'engaged'
-                ? turretAccentMat
-                : primaryMat;
-            }
-            for (const barrel of tm.barrels) barrel.material = turretAccentMat;
+        // Per-frame team-color refresh for per-Mesh fallbacks
+        // (chassis meshes, non-instanced turret heads/barrels, mirror
+        // arms). If a mesh is currently using a fade clone, the shared
+        // fade helper below reapplies that clone after these real
+        // material writes.
+        const primaryMat = this.getPrimaryMat(pid);
+        const turretAccentMat = this.getTurretAccentMat(pid);
+        for (const mesh of m.chassisMeshes) mesh.material = primaryMat;
+        for (let i = 0; i < m.turrets.length; i++) {
+          const tm = m.turrets[i];
+          if (tm.head) {
+            tm.head.material = tm.headOnly && turrets[i]?.state === 'engaged'
+              ? turretAccentMat
+              : primaryMat;
           }
-          if (m.mirrors) {
-            for (const arm of m.mirrors.arms) arm.material = primaryMat;
-          }
+          for (const barrel of tm.barrels) barrel.material = turretAccentMat;
+        }
+        if (m.mirrors) {
+          for (const arm of m.mirrors.arms) arm.material = primaryMat;
         }
       }
       // Build-in materialization: the body reveals via per-instance
-      // opacity (dithered fade), not by growing the chassis from a point.
+      // alpha, not by growing the chassis from a point.
       // 0 = not yet started (invisible), ramping to 1 as the body builds.
       const bodyOpacity = getConstructionPieceOpacity(e, 'body');
       const bodyVisible = fullUnitDetail && bodyOpacity > 0;
@@ -729,13 +743,14 @@ export class Render3DEntities {
       // build fraction. The sim builds pieces in dependency order (body,
       // then turrets), so the body finishes opacity before its turrets
       // begin, giving the authored "base up, one piece at a time" reveal.
-      // Finished units sit at 1, where writeEntityFade is a no-op.
+      // Finished units sit at 1, where the shared fade helper restores
+      // real materials and then becomes a no-op.
       const turretFades = this._turretFadeScratch;
       turretFades.length = m.turrets.length;
       for (let i = 0; i < m.turrets.length; i++) {
         turretFades[i] = getConstructionPieceOpacity(e, 'turret', i);
       }
-      this.unitDetailInstances.writeEntityFade(m, bodyOpacity, turretFades);
+      this.applyUnitEntityFade(m, bodyOpacity, turretFades);
 
       if (m.mirrors) {
         const shieldPanelTurretIndex = turrets.findIndex((turret) => turret.config.passive);

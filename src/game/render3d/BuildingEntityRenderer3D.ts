@@ -446,7 +446,7 @@ export class BuildingEntityRenderer3D {
     mesh.group.rotation.y = -entity.transform.rotation;
     // Construction appearance is now the shared materialization fade
     // (applied per frame in updateBuilding), not a pale shell-material
-    // swap — buildings dissolve in through the same dither as units.
+    // swap — buildings alpha-fade in the same way as units.
 
     // Full size from frame one — construction is revealed by the shared
     // opacity fade (same as units), never by rising out of the ground.

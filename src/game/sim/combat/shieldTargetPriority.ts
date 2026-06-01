@@ -23,10 +23,19 @@ export function turretDps(turret: Turret): number {
   return turret.sustainedDps;
 }
 
+function threatTargetsShieldPanel(
+  threatTargetId: number,
+  ourUnitId: number,
+  ourTurretId: number | undefined,
+): boolean {
+  return threatTargetId === ourUnitId ||
+    (ourTurretId !== undefined && threatTargetId === ourTurretId);
+}
+
 /** A turretShieldPanel only locks onto an enemy turret that is itself
- *  actively locked onto our own unit (target === ourUnitId, non-idle).
+ *  actively locked onto our own host or shield-panel turret (non-idle).
  *  Score equals sustained DPS so the most dangerous incoming turret
- *  wins when several enemy turrets target the same unit. Reads the
+ *  wins when several enemy turrets target the same protector. Reads the
  *  Rust combat-targeting slab tuple when stamped, falling back to JS
  *  Turret state on non-sim client paths. */
 function scoreShieldPanelTargetTurretFromTarget(
@@ -34,16 +43,21 @@ function scoreShieldPanelTargetTurretFromTarget(
   turretIndex: number,
   turret: Turret,
   ourUnitId: number,
+  ourTurretId: number | undefined,
 ): number {
   if (turret.config.passive) return 0;
   if (turret.config.visualOnly) return 0;
   if (turret.config.isManualFire) return 0;
   if (readCombatTargetingTurretFsmInto(target, turretIndex, _shieldPanelTargetFsm)) {
-    if (_shieldPanelTargetFsm.targetId !== ourUnitId) return 0;
+    if (!threatTargetsShieldPanel(_shieldPanelTargetFsm.targetId, ourUnitId, ourTurretId)) {
+      return 0;
+    }
     if (_shieldPanelTargetFsm.stateCode === CT_TURRET_STATE_IDLE) return 0;
     return turretDps(turret);
   }
-  if (turret.target !== ourUnitId) return 0;
+  if (turret.target === null || !threatTargetsShieldPanel(turret.target, ourUnitId, ourTurretId)) {
+    return 0;
+  }
   if (turret.state === 'idle') return 0;
   return turretDps(turret);
 }
@@ -51,13 +65,20 @@ function scoreShieldPanelTargetTurretFromTarget(
 export function pickShieldPanelTargetTurret(
   target: Entity,
   ourUnitId: number,
+  ourTurretId: number | undefined = undefined,
 ): ShieldPanelTargetTurretPick | null {
   if (target.combat === null) return null;
   const turrets = target.combat.turrets;
   let best: ShieldPanelTargetTurretPick | null = null;
   for (let ti = 0; ti < turrets.length; ti++) {
     const turret = turrets[ti];
-    const score = scoreShieldPanelTargetTurretFromTarget(target, ti, turret, ourUnitId);
+    const score = scoreShieldPanelTargetTurretFromTarget(
+      target,
+      ti,
+      turret,
+      ourUnitId,
+      ourTurretId,
+    );
     if (score <= 0) continue;
     if (best === null || score > best.score) {
       best = { turret, index: ti, score };
@@ -69,9 +90,10 @@ export function pickShieldPanelTargetTurret(
 export function pickTargetAimTurret(
   target: Entity,
   sourceEntityId: number | undefined = undefined,
+  sourceTurretId: number | undefined = undefined,
 ): ShieldPanelTargetTurretPick | null {
   if (sourceEntityId !== undefined) {
-    const directThreat = pickShieldPanelTargetTurret(target, sourceEntityId);
+    const directThreat = pickShieldPanelTargetTurret(target, sourceEntityId, sourceTurretId);
     if (directThreat) return directThreat;
   }
 
@@ -93,7 +115,11 @@ export function pickTargetAimTurret(
   return best;
 }
 
-export function getShieldPanelTargetScore(target: Entity, ourUnitId: number): number {
-  const pick = pickShieldPanelTargetTurret(target, ourUnitId);
+export function getShieldPanelTargetScore(
+  target: Entity,
+  ourUnitId: number,
+  ourTurretId: number | undefined = undefined,
+): number {
+  const pick = pickShieldPanelTargetTurret(target, ourUnitId, ourTurretId);
   return pick !== null ? pick.score : 0;
 }

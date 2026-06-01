@@ -1828,6 +1828,20 @@
         freely and the simulation can keep hot paths simple. These pieces are authored as data,
         not code &mdash; see <strong>Config Is Data, Not Code</strong>.
       </p>
+      <p>
+        Some specialist turrets need a second, explicit targeting contract layered on top of the
+        ordinary inclusion object. The canonical example is <code>turretShieldPanel</code>: its
+        inclusion object says it can consider enemy <code>turrets</code>, while its
+        <code>secondaryLockOnProfiles</code> entry says it is an
+        <code>incomingThreatReflector</code>. That profile is not optional flavor text. It means the
+        shield panel may acquire only an enemy turret that is currently locked onto the shield
+        panel&rsquo;s host or the shield-panel turret itself, ranks those threats by sustained DPS, and
+        aims by bisecting the angle formed by the enemy turret origin, the shield-panel turret
+        origin, and the enemy turret host origin. This is deliberately irregular: it makes reflected
+        fire return toward the attacker&rsquo;s host. Large targeting regularization passes must preserve
+        the profile, its validation, and its regression tests instead of simplifying the turret into
+        an ordinary enemy-turret scanner.
+      </p>
     </section>
 
     <section>
@@ -2721,6 +2735,7 @@
         <li>Make the selection action panel uniform per entity type. Units expose movement, fire control, build, commander specials, and self-destruct. Towers expose set-lock-on (any entity with an ID), fire control, fabricator production (when applicable), and self-destruct. Buildings expose ON/OFF and self-destruct. Mixed selections degrade to the intersection. Adding a new button to only some blueprints inside an existing type is not allowed.</li>
         <li>Keep sight, radar, and detection as sensor capability sources aggregated per player/team. Full sight identifies and also supplies radar-level location, radar-only coverage locates, detectors uncloak, and weapon fire consumes those tiers through explicit turret targeting requirements. Weapon range must not automatically create full vision.</li>
         <li>Keep lock-on acquisition in turret blueprints and targeting kernels, and author lock-on eligibility as an additive inclusion object carried by turrets, units, and towers alike. Rockets inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; eligibility is <strong>off by default</strong> &mdash; a locker with no inclusions locks onto nothing &mdash; and broadened only by addition: level-0 friend/enemy and entity-family inclusions (<code>units</code>, <code>towers</code>, <code>buildings</code>, <code>turrets</code>, <code>shots</code>), then optional level-1 named blueprint inclusions that narrow an included family. Including only one family is how a turret specializes &mdash; point-defense includes only <code>shots</code>, a disarmer includes only <code>turrets</code>. There is no <code>locomotions</code> family: a unit&rsquo;s movement is part of its body, not a targetable entity.</li>
+        <li>Keep specialist targeting behavior explicit. If a turret needs behavior beyond additive lock-on eligibility, give it a validated secondary lock-on profile and tests. <code>turretShieldPanel</code>&rsquo;s <code>incomingThreatReflector</code> profile is the standing example: enemy turret candidates must be actively locked onto the shield host or shield-panel turret, and the panel aims on the turret/body bisector so reflections return toward the attacker.</li>
         <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. The <code>turretShieldPanel</code>&rsquo;s flat panels and the <code>turretShieldSphere</code>&rsquo;s sphere are the exact same material &mdash; they differ only in geometry.</li>
         <li>Route every resource movement &mdash; production, consumption, construction payment, conversion, repair drain, future ammo costs &mdash; through one shared pylon abstraction in both simulation and renderer. One typed channel publishes <code>(resource, amount, direction, source, optional target)</code>; one rig renders the flow as resource balls travelling through a conduit, their density showing magnitude and their travel direction showing inbound or outbound. A pylon is a tube between a <em>root</em> (the pool tap) and a <em>tip</em> (the world); balls down the tube mean gaining, up the tube mean spending, and the tip conserves &mdash; every ball up the tube exits the tip, every ball into the tip goes down the tube, and balls are spawned or sunk only at the root and the world point, never at the tip. Producers source balls at the physical world point (deposit, sun, upwind) and run them down the tube; construction turrets run balls up the tube and out the tip onto the build target; the converter joins its two tips with a taxed arc that recolors energy into metal in flight, the unconverted fraction visibly dispersing. The flowing balls are the sole indicator; standalone usage readouts and any separate magnitude bar are retired. No parallel resource paths in the sim, no special-case &ldquo;production trickle&rdquo; or &ldquo;converter visual&rdquo; in the renderer.</li>
         <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>

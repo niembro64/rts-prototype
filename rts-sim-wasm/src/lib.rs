@@ -15071,6 +15071,7 @@ fn combat_targeting_turret_may_lock_entity_slot(
         return combat_targeting_pick_target_aim_turret_idx(
             pool,
             target_entity_slot,
+            source_entity_slot,
             source_entity_id,
             Some(source_turret_idx),
         )
@@ -15113,17 +15114,50 @@ fn combat_targeting_entity_has_turret_that_may_lock_entity_slot(
     false
 }
 
+#[inline]
+fn combat_targeting_threat_targets_shield_panel_source(
+    pool: &CombatTargetingPool,
+    source_entity_slot: usize,
+    source_entity_id: i32,
+    threat_target_id: i32,
+) -> bool {
+    if threat_target_id == source_entity_id {
+        return true;
+    }
+    if source_entity_slot >= pool.turret_count_per_entity.len() {
+        return false;
+    }
+    let count = (pool.turret_count_per_entity[source_entity_slot] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
+    for ti in 0..count {
+        let idx = combat_targeting_turret_global_idx(source_entity_slot as u32, ti as u32);
+        let flags = pool.turret_config_flags[idx];
+        if (flags & CT_TURRET_CFG_PASSIVE) == 0
+            || (flags & CT_TURRET_CFG_SHOT_IS_FORCE) == 0
+            || (flags & CT_TURRET_CFG_VISUAL_ONLY) != 0
+        {
+            continue;
+        }
+        if pool.turret_entity_id[idx] == threat_target_id {
+            return true;
+        }
+    }
+    false
+}
+
 /// AIM-08.5 — Rust port of `pickMirrorTargetTurret` /
 /// `scoreShieldPanelTargetTurret` from `shieldTargetPriority.ts`. Walks the
 /// target entity's turrets in the slab and returns the maximum
 /// sustained DPS of any non-passive, non-visual, non-manual turret
-/// currently locked onto `our_entity_id` in a non-idle state. Returns
-/// 0 when no qualifying turret exists — matches the JS scorer's "any
-/// qualifying shield-panel target scores at its DPS; otherwise 0" rule.
+/// currently locked onto our host or one of our shield-panel turrets in a
+/// non-idle state. Returns 0 when no qualifying turret exists — matches the
+/// JS scorer's "any qualifying shield-panel target scores at its DPS;
+/// otherwise 0" rule.
 #[inline]
 fn combat_targeting_shield_panel_target_score_for_slot(
     pool: &CombatTargetingPool,
     target_entity_slot: usize,
+    source_entity_slot: usize,
     our_entity_id: i32,
 ) -> f64 {
     if target_entity_slot >= pool.turret_count_per_entity.len() {
@@ -15140,7 +15174,12 @@ fn combat_targeting_shield_panel_target_score_for_slot(
         if (flags & exclude_flags) != 0 {
             continue;
         }
-        if pool.turret_target_id[idx] != our_entity_id {
+        if !combat_targeting_threat_targets_shield_panel_source(
+            pool,
+            source_entity_slot,
+            our_entity_id,
+            pool.turret_target_id[idx],
+        ) {
             continue;
         }
         if pool.turret_state[idx] == CT_TURRET_STATE_IDLE {
@@ -15161,11 +15200,13 @@ fn combat_targeting_shield_panel_target_score_for_slot(
 fn combat_targeting_is_shield_panel_target_for_slot(
     pool: &CombatTargetingPool,
     target_entity_slot: usize,
+    source_entity_slot: usize,
     our_entity_id: i32,
 ) -> bool {
     combat_targeting_shield_panel_target_score_for_slot(
         pool,
         target_entity_slot,
+        source_entity_slot,
         our_entity_id,
     ) > 0.0
 }
@@ -15185,6 +15226,7 @@ fn combat_targeting_turret_is_pickable_aim_target(pool: &CombatTargetingPool, id
 fn combat_targeting_pick_target_aim_turret_idx(
     pool: &CombatTargetingPool,
     target_entity_slot: usize,
+    source_entity_slot: usize,
     source_entity_id: i32,
     source_turret_idx: Option<usize>,
 ) -> Option<usize> {
@@ -15210,7 +15252,12 @@ fn combat_targeting_pick_target_aim_turret_idx(
         if best_any.map_or(true, |(_, best)| dps > best) {
             best_any = Some((ti, dps));
         }
-        if pool.turret_target_id[idx] == source_entity_id
+        if combat_targeting_threat_targets_shield_panel_source(
+            pool,
+            source_entity_slot,
+            source_entity_id,
+            pool.turret_target_id[idx],
+        )
             && pool.turret_state[idx] != CT_TURRET_STATE_IDLE
             && best_direct.map_or(true, |(_, best)| dps > best)
         {
@@ -15293,6 +15340,7 @@ fn combat_targeting_resolve_aim_point_from_slab(
         if let Some(target_turret_idx) = combat_targeting_pick_target_aim_turret_idx(
             pool,
             target_entity_slot,
+            entity_slot as usize,
             source_entity_id,
             Some(idx),
         ) {
@@ -15956,6 +16004,7 @@ pub fn combat_targeting_prepare_fire_choice_fsm_inputs(
                     combat_targeting_shield_panel_target_score_for_slot(
                         pool,
                         target_slot as usize,
+                        entity_slot as usize,
                         source_entity_id,
                     );
             }
@@ -16699,7 +16748,12 @@ fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner(
     // Non-passive turrets get shield_panel_valid = 1 unconditionally.
     let passive_shield_panel_valid: u8 = match target_slot {
         Some(slot) => {
-            if combat_targeting_is_shield_panel_target_for_slot(pool, slot, source_entity_id) {
+            if combat_targeting_is_shield_panel_target_for_slot(
+                pool,
+                slot,
+                entity_idx,
+                source_entity_id,
+            ) {
                 1
             } else {
                 0
@@ -16962,6 +17016,7 @@ fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
                     if combat_targeting_is_shield_panel_target_for_slot(
                         pool,
                         slot,
+                        entity_idx,
                         source_entity_id,
                     ) {
                         1u8
@@ -18958,6 +19013,7 @@ fn combat_targeting_compute_and_choose_best_candidates_batch_inner(
                     combat_targeting_shield_panel_target_score_for_slot(
                         pool,
                         target_slot as usize,
+                        entity_slot as usize,
                         source_entity_id,
                     )
                 };
@@ -28545,7 +28601,7 @@ mod lock_on_inclusion_tests {
                 (ENTITY_META_NO_ID, 0.0)
             }
         };
-        let turret_entity_id = 1_000_000 + parent_id.max(0) * 16 + turret_idx as i32;
+        let turret_entity_id = test_turret_entity_id(parent_id, turret_idx);
         combat_targeting_set_turret(
             entity_slot,
             turret_idx,
@@ -28597,6 +28653,10 @@ mod lock_on_inclusion_tests {
             spec.turret_mask,
             spec.shot_mask,
         );
+    }
+
+    fn test_turret_entity_id(parent_id: i32, turret_idx: u32) -> i32 {
+        1_000_000 + parent_id.max(0) * 16 + turret_idx as i32
     }
 
     fn run_schedule_tick(turret_shield_panels_enabled: u8) -> (i32, u8, u8) {
@@ -28665,6 +28725,24 @@ mod lock_on_inclusion_tests {
         turret_codes: &[u8],
         target_source: bool,
     ) {
+        stamp_turret_target_with_target_id(
+            slot,
+            entity_id,
+            owner,
+            x,
+            turret_codes,
+            if target_source { SOURCE_ID } else { -1 },
+        );
+    }
+
+    fn stamp_turret_target_with_target_id(
+        slot: u32,
+        entity_id: i32,
+        owner: u8,
+        x: f64,
+        turret_codes: &[u8],
+        target_id: i32,
+    ) {
         stamp_entity(
             slot,
             entity_id,
@@ -28680,12 +28758,12 @@ mod lock_on_inclusion_tests {
                 slot,
                 i as u32,
                 TurretSpec {
-                    state: if target_source {
+                    state: if target_id >= 0 {
                         CT_TURRET_STATE_ENGAGED
                     } else {
                         CT_TURRET_STATE_IDLE
                     },
-                    target_id: if target_source { SOURCE_ID } else { -1 },
+                    target_id,
                     blueprint_code: *code,
                     ..TurretSpec::default()
                 },
@@ -29083,7 +29161,7 @@ mod lock_on_inclusion_tests {
             SOURCE_SLOT,
             0,
             TurretSpec {
-                flags: CT_TURRET_CFG_PASSIVE,
+                flags: CT_TURRET_CFG_PASSIVE | CT_TURRET_CFG_SHOT_IS_FORCE,
                 lock_on_turret: 1,
                 relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 family_mask: CT_LOCK_ON_FAM_INCLUDE_TURRETS,
@@ -29112,6 +29190,73 @@ mod lock_on_inclusion_tests {
         let (target_id, state, _) = run_schedule_tick(1);
         assert_eq!(target_id, 204);
         assert_ne!(state, CT_TURRET_STATE_IDLE);
+    }
+
+    #[test]
+    fn shield_panel_policy_locks_enemy_turret_targeting_panel_turret() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                flags: CT_TURRET_CFG_PASSIVE | CT_TURRET_CFG_SHOT_IS_FORCE,
+                lock_on_turret: 1,
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
+                family_mask: CT_LOCK_ON_FAM_INCLUDE_TURRETS,
+                ..TurretSpec::default()
+            },
+        );
+        let source_panel_turret_id = test_turret_entity_id(SOURCE_ID, 0);
+        stamp_turret_target_with_target_id(
+            1,
+            201,
+            PLAYER_2,
+            20.0,
+            &[TURRET_CODE_A],
+            source_panel_turret_id,
+        );
+
+        let (target_id, state, _) = run_schedule_tick(1);
+        assert_eq!(
+            target_id, 201,
+            "shield panels must react to turrets targeting the panel turret itself",
+        );
+        assert_ne!(state, CT_TURRET_STATE_IDLE);
+    }
+
+    #[test]
+    fn shield_panel_policy_ignores_enemy_turret_targeting_elsewhere() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                flags: CT_TURRET_CFG_PASSIVE | CT_TURRET_CFG_SHOT_IS_FORCE,
+                lock_on_turret: 1,
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
+                family_mask: CT_LOCK_ON_FAM_INCLUDE_TURRETS,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_turret_target_with_target_id(
+            1,
+            201,
+            PLAYER_2,
+            20.0,
+            &[TURRET_CODE_A],
+            999_999,
+        );
+
+        let (target_id, state, _) = run_schedule_tick(1);
+        assert_eq!(
+            target_id, -1,
+            "shield panels must not lock onto turrets that are not targeting the host or panel",
+        );
+        assert_eq!(state, CT_TURRET_STATE_IDLE);
     }
 
     #[test]

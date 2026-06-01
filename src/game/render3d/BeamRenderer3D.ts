@@ -30,7 +30,7 @@ const BEAM_EMITTER_CAP = 4096;
 const BEAM_MIN_RADIUS = 0.35;
 const BEAM_RADIUS_SCALE = 0.55;
 const ENDPOINT_MIN_RADIUS = 2.5;
-const OPEN_ENDED_LINE_VISUAL_LENGTH = 12000;
+const DEFAULT_OPEN_ENDED_LINE_VISUAL_LENGTH = 12000;
 
 export type TurretMountResolver = {
   getTurretMountWorldState(
@@ -84,9 +84,15 @@ type StartPointTorusConfig = {
   alpha: number;
 };
 
+type OpenEndedLineConfig = {
+  extendToInfinity: boolean;
+  infinityVisualLength: number;
+};
+
 type BeamConfigFile = Partial<BeamVisualConfig> & {
   outer?: BeamVisualConfig;
   inner?: BeamVisualConfig;
+  openEndedLine?: Partial<OpenEndedLineConfig>;
   startPointSphere?: Partial<StartPointSphereConfig> & {
     emissionOffset?: Record<string, number>;
   };
@@ -111,6 +117,17 @@ const START_POINT_TORUS_CONFIGS: readonly StartPointTorusConfig[] = (
   offsetAlongBeam: c.offsetAlongBeam ?? 0,
   alpha: c.alpha ?? 1.0,
 }));
+
+const configuredInfinityVisualLength =
+  rawBeamConfig.openEndedLine?.infinityVisualLength ?? DEFAULT_OPEN_ENDED_LINE_VISUAL_LENGTH;
+
+const OPEN_ENDED_LINE_CONFIG: OpenEndedLineConfig = {
+  extendToInfinity: rawBeamConfig.openEndedLine?.extendToInfinity ?? true,
+  infinityVisualLength:
+    Number.isFinite(configuredInfinityVisualLength) && configuredInfinityVisualLength > 0
+      ? configuredInfinityVisualLength
+      : DEFAULT_OPEN_ENDED_LINE_VISUAL_LENGTH,
+};
 
 function resolveStartPointSphereColor(ownerId: number): string | number {
   const c = START_POINT_SPHERE_CONFIG.color;
@@ -648,7 +665,11 @@ export class BeamRenderer3D {
         let bx = b.x;
         let by = b.y;
         let bz = b.z;
-        if (openEndedLine && Math.min(i + stride, lastIdx) === lastIdx) {
+        if (
+          OPEN_ENDED_LINE_CONFIG.extendToInfinity &&
+          openEndedLine &&
+          Math.min(i + stride, lastIdx) === lastIdx
+        ) {
           const prev = points[Math.max(0, lastIdx - 1)];
           let tailDx = endPoint.x - prev.x;
           let tailDy = endPoint.y - prev.y;
@@ -661,7 +682,7 @@ export class BeamRenderer3D {
             tailLen = Math.sqrt(tailDx * tailDx + tailDy * tailDy + tailDz * tailDz);
           }
           if (tailLen > 1e-6) {
-            const tailScale = OPEN_ENDED_LINE_VISUAL_LENGTH / tailLen;
+            const tailScale = OPEN_ENDED_LINE_CONFIG.infinityVisualLength / tailLen;
             bx = endPoint.x + tailDx * tailScale;
             by = endPoint.y + tailDy * tailScale;
             bz = endPoint.z + tailDz * tailScale;
