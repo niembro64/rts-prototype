@@ -448,11 +448,12 @@ export class BuildingEntityRenderer3D {
     // (applied per frame in updateBuilding), not a pale shell-material
     // swap — buildings dissolve in through the same dither as units.
 
+    // Full size from frame one — construction is revealed by the shared
+    // opacity fade (same as units), never by rising out of the ground.
     const height = mesh.buildingHeight ?? BUILDING_HEIGHT;
-    const renderHeight = height * progress;
     const primary = mesh.chassisMeshes[0];
-    primary.position.set(0, renderHeight / 2, 0);
-    primary.scale.set(width, renderHeight, depth);
+    primary.position.set(0, height / 2, 0);
+    primary.scale.set(width, height, depth);
     primary.visible = true;
 
     if (mesh.buildingDetails) {
