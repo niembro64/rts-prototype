@@ -21457,6 +21457,7 @@ pub fn snapshot_baseline_diff_slot(
 /// strings used in the JS NetworkServerSnapshotEntity DTO.
 pub const SNAPSHOT_ENTITY_TYPE_UNIT: u8 = 1;
 pub const SNAPSHOT_ENTITY_TYPE_BUILDING: u8 = 2;
+pub const SNAPSHOT_ENTITY_TYPE_TOWER: u8 = 3;
 
 /// Encoder turret scratch — JS pre-fills with already-quantized
 /// turret values, then the encoder reads from it when emitting the
@@ -21759,6 +21760,7 @@ fn write_entity_envelope_keys(
     match type_tag {
         SNAPSHOT_ENTITY_TYPE_UNIT => w.write_str("unit"),
         SNAPSHOT_ENTITY_TYPE_BUILDING => w.write_str("building"),
+        SNAPSHOT_ENTITY_TYPE_TOWER => w.write_str("tower"),
         _ => w.write_str(""),
     }
 
@@ -22530,7 +22532,7 @@ pub fn snapshot_encode_entity_building(
 ///   [0]   id (entity id)
 ///   [1]   pos.x
 ///   [2]   pos.y
-///   [3]   type_tag (1 = unit, 2 = building, matches SNAPSHOT_ENTITY_TYPE_*)
+///   [3]   type_tag (1 = unit, 2 = building, 3 = tower, matches SNAPSHOT_ENTITY_TYPE_*)
 ///   [4]   playerId
 ///   [5]   has_radar_only + (radar_only << 1) packed: 0 = omit, 2 = emit
 ///         false (rare), 3 = emit true. Practically only 0 or 3 appear.
@@ -26003,6 +26005,7 @@ pub fn snapshot_encode_envelope_emit_minimap(count: u32) {
         match type_tag {
             SNAPSHOT_ENTITY_TYPE_UNIT => w.write_str("unit"),
             SNAPSHOT_ENTITY_TYPE_BUILDING => w.write_str("building"),
+            SNAPSHOT_ENTITY_TYPE_TOWER => w.write_str("tower"),
             _ => w.write_str(""),
         }
         w.write_str("playerId");

@@ -17,6 +17,7 @@ import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import {
   getSimWasm,
   SNAPSHOT_ENTITY_TYPE_BUILDING,
+  SNAPSHOT_ENTITY_TYPE_TOWER,
   SNAPSHOT_ENTITY_TYPE_UNIT,
   type SimWasm,
 } from '../sim-wasm/init';
@@ -93,6 +94,7 @@ const _entityWaypointStrings: string[] = [];
 const _entityWaypointStringGlobalSlots: number[] = [];
 const _economyPlayerIds: number[] = [];
 const _snapshotKeys: string[] = [];
+const _rawTopLevelKeys: string[] = [];
 const EMPTY_STRING_SLOTS = new Map<string, number>();
 const U32_MAX = 0xFFFF_FFFF;
 
@@ -106,6 +108,17 @@ function isUint(value: unknown, max: number): value is number {
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function minimapTypeToSnapshotTag(type: NetworkServerSnapshotMinimapEntity['type']): number {
+  switch (type) {
+    case 'unit':
+      return SNAPSHOT_ENTITY_TYPE_UNIT;
+    case 'tower':
+      return SNAPSHOT_ENTITY_TYPE_TOWER;
+    case 'building':
+      return SNAPSHOT_ENTITY_TYPE_BUILDING;
+  }
 }
 
 function isOptionalFiniteNumber(value: unknown): value is number | undefined {
@@ -1040,9 +1053,7 @@ function packMinimapIntoScratch(
     view[base + 0] = entry.id;
     view[base + 1] = entry.pos.x;
     view[base + 2] = entry.pos.y;
-    view[base + 3] = entry.type === 'unit'
-      ? SNAPSHOT_ENTITY_TYPE_UNIT
-      : SNAPSHOT_ENTITY_TYPE_BUILDING;
+    view[base + 3] = minimapTypeToSnapshotTag(entry.type);
     view[base + 4] = entry.playerId;
     let packed = 0;
     if (entry.radarOnly !== null) {
@@ -2172,7 +2183,8 @@ export function encodeNetworkSnapshotWithRustFallback(
     }
   }
 
-  const rawTopLevelKeys: string[] = [];
+  const rawTopLevelKeys = _rawTopLevelKeys;
+  rawTopLevelKeys.length = 0;
   for (let i = 2; i < keys.length; i++) {
     const key = keys[i];
     if (key === 'gameState' || key === 'isDelta') {

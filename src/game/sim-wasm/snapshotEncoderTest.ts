@@ -77,7 +77,11 @@ const WAYPOINT_SCRATCH_STRIDE = 5;
 // Acceleration is no longer shipped on the wire; the turret scratch
 // shrank from 12 → 10 f64 per turret (drop angular.acc and
 // angular.pitchAcc) — matches SNAPSHOT_ENCODE_TURRET_STRIDE in lib.rs.
-import { SNAPSHOT_ENTITY_TYPE_UNIT, SNAPSHOT_ENTITY_TYPE_BUILDING } from './init';
+import {
+  SNAPSHOT_ENTITY_TYPE_UNIT,
+  SNAPSHOT_ENTITY_TYPE_BUILDING,
+  SNAPSHOT_ENTITY_TYPE_TOWER,
+} from './init';
 import {
   ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_HP,
@@ -85,6 +89,7 @@ import {
   ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_VEL,
 } from '@/types/network';
+import type { EntityType } from '@/types/sim';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { packMinimapEntitiesForWire } from '../network/snapshotMinimapWirePack';
 import { packProjectilesForWire } from '../network/snapshotProjectileWirePack';
@@ -159,9 +164,22 @@ type ActionFixture = {
 
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
 
+function entityTypeToSnapshotTag(type: EntityType): number {
+  switch (type) {
+    case 'unit':
+      return SNAPSHOT_ENTITY_TYPE_UNIT;
+    case 'tower':
+      return SNAPSHOT_ENTITY_TYPE_TOWER;
+    case 'building':
+      return SNAPSHOT_ENTITY_TYPE_BUILDING;
+    case 'shot':
+      throw new Error('snapshotEncoderTest: shot entities are not encoded as entity rows');
+  }
+}
+
 type BasicEntityFixture = {
   id: number;
-  type: 'unit' | 'building';
+  type: EntityType;
   pos: { x: number; y: number; z: number };
   rotation: number;
   playerId: number;
@@ -217,7 +235,7 @@ function runEntityBasicCases(memory: WebAssembly.Memory): { passed: number; fail
   for (const f of fixtures) {
     const wireFixture = sparseBasicFixture(f);
     const jsBytes = msgpackEncode(wireFixture, SNAPSHOT_ENCODE_OPTIONS);
-    const typeTag = f.type === 'unit' ? SNAPSHOT_ENTITY_TYPE_UNIT : SNAPSHOT_ENTITY_TYPE_BUILDING;
+    const typeTag = entityTypeToSnapshotTag(f.type);
     const hasChanged = f.changedFields !== undefined ? 1 : 0;
     const changed = f.changedFields ?? 0;
     messagepack_writer_clear();
@@ -825,7 +843,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
   for (const f of fixtures) {
     const wireFixture = sparseUnitFixture(f);
     const jsBytes = msgpackEncode(wireFixture, SNAPSHOT_ENCODE_OPTIONS);
-    const typeTag = f.type === 'unit' ? SNAPSHOT_ENTITY_TYPE_UNIT : SNAPSHOT_ENTITY_TYPE_BUILDING;
+    const typeTag = entityTypeToSnapshotTag(f.type);
     const hasChanged = f.changedFields !== undefined ? 1 : 0;
     const changed = f.changedFields ?? 0;
     const sn = f.unit.surfaceNormal;
@@ -1257,7 +1275,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
 type MinimapEntityFixture = {
   id: number;
   pos: { x: number; y: number };
-  type: 'unit' | 'building';
+  type: Exclude<EntityType, 'shot'>;
   playerId: number;
   radarOnly?: boolean;
 };
@@ -1283,7 +1301,7 @@ function packMinimapIntoScratch(
     view[base + 0] = m.id;
     view[base + 1] = m.pos.x;
     view[base + 2] = m.pos.y;
-    view[base + 3] = m.type === 'unit' ? SNAPSHOT_ENTITY_TYPE_UNIT : SNAPSHOT_ENTITY_TYPE_BUILDING;
+    view[base + 3] = entityTypeToSnapshotTag(m.type);
     view[base + 4] = m.playerId;
     // Pack: bit 0 = has, bit 1 = value
     let packed = 0;
@@ -3289,6 +3307,7 @@ function runPackedMinimapCases(memory: WebAssembly.Memory): { passed: number; fa
         { id: 3, pos: { x: 100, y: 200 }, type: 'unit', playerId: 1 },
         { id: 7, pos: { x: 120, y: 210 }, type: 'unit', playerId: 1 },
         { id: 9, pos: { x: -30, y: 40 }, type: 'building', playerId: 2 },
+        { id: 10, pos: { x: -24, y: 36 }, type: 'tower', playerId: 2 },
         { id: 12, pos: { x: 400, y: -120 }, type: 'unit', playerId: 2, radarOnly: true },
         { id: 18, pos: { x: 401, y: -122 }, type: 'unit', playerId: 2, radarOnly: true },
       ],

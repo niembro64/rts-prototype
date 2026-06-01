@@ -31,6 +31,16 @@ export function acquireSimSlot(owner: object): void {
   activeSim = owner;
 }
 
+export function transferSimSlot(from: object, to: object): void {
+  if (activeSim !== from) {
+    throw new Error(
+      `sessionSingleton: cannot transfer backend simulation slot from ` +
+        `${describe(from)} because the active owner is ${describe(activeSim)}.`,
+    );
+  }
+  activeSim = to;
+}
+
 export function releaseSimSlot(owner: object): void {
   if (activeSim === owner) activeSim = null;
 }

@@ -359,6 +359,9 @@ export type TurretConfig = {
   /** Actual terrain/entity line-of-sight gate for this turret. Cross
    *  shield sight obstruction is a separate battle setting. */
   requiresNonObstructedLineOfSight: boolean;
+  /** True when authored range should bypass flat-ground ballistic
+   *  clamping, e.g. a drop weapon mounted high above its targets. */
+  ballisticRangeIsAuthored: boolean;
   /** Undefined for visual-only construction emitters. Those turrets
    *  mount renderer-owned construction hardware but do not represent a
    *  simulated weapon or projectile. */

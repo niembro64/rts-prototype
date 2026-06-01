@@ -305,7 +305,7 @@ export function buildMinimapData(
         entityCount,
         e.transform.x,
         e.transform.y,
-        e.unit ? 'unit' : 'building',
+        e.type === 'unit' ? 'unit' : e.type === 'tower' ? 'tower' : 'building',
         minimapColor(getPlayerPrimaryColor(e.ownership?.playerId)),
         e.selectable?.selected,
         undefined,

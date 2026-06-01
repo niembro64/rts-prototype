@@ -4,6 +4,7 @@ import type {
 } from './NetworkTypes';
 import {
   ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING,
+  ENTITY_SNAPSHOT_WIRE_TYPE_TOWER,
   ENTITY_SNAPSHOT_WIRE_TYPE_UNIT,
 } from './stateSerializerEntities';
 import {
@@ -45,6 +46,28 @@ const _packGroups: PackedMinimapGroup[] = [];
 const _packGroupPool: PackedMinimapGroup[] = [];
 const _packGroupsByKey: (PackedMinimapGroup | undefined)[] = [];
 const _packGroupKeys: number[] = [];
+
+function minimapTypeToWireType(type: NetworkServerSnapshotMinimapEntity['type']): number {
+  switch (type) {
+    case 'unit':
+      return ENTITY_SNAPSHOT_WIRE_TYPE_UNIT;
+    case 'tower':
+      return ENTITY_SNAPSHOT_WIRE_TYPE_TOWER;
+    case 'building':
+      return ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING;
+  }
+}
+
+function wireTypeToMinimapType(typeTag: number): NetworkServerSnapshotMinimapEntity['type'] {
+  switch (typeTag) {
+    case ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING:
+      return 'building';
+    case ENTITY_SNAPSHOT_WIRE_TYPE_TOWER:
+      return 'tower';
+    default:
+      return 'unit';
+  }
+}
 
 function rentMinimapGroup(
   typeTag: number,
@@ -114,9 +137,7 @@ export function unpackMinimapEntitiesFromWire(
         x: rows[base + 1] ?? 0,
         y: rows[base + 2] ?? 0,
       },
-      type: rows[base + 3] === ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING
-        ? 'building'
-        : 'unit',
+      type: wireTypeToMinimapType(rows[base + 3] ?? ENTITY_SNAPSHOT_WIRE_TYPE_UNIT),
       playerId: (rows[base + 4] ?? 1) as NetworkServerSnapshotMinimapEntity['playerId'],
       radarOnly: null,
     };
@@ -151,9 +172,7 @@ function packMinimapEntitiesV2(
 
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
-    const typeTag = entry.type === 'unit'
-      ? ENTITY_SNAPSHOT_WIRE_TYPE_UNIT
-      : ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING;
+    const typeTag = minimapTypeToWireType(entry.type);
     const flags = entry.radarOnly === true ? MINIMAP_ENTITY_FLAG_RADAR_ONLY : 0;
     const playerId = entry.playerId;
     const key = typeTag * 0x1000 + playerId * 0x10 + flags;
@@ -216,9 +235,7 @@ function unpackMinimapEntitiesV2(
           x: reader.readVarInt(),
           y: reader.readVarInt(),
         },
-        type: typeTag === ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING
-          ? 'building'
-          : 'unit',
+        type: wireTypeToMinimapType(typeTag),
         playerId,
         radarOnly: null,
       };

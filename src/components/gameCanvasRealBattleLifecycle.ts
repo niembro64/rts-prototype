@@ -7,6 +7,7 @@ type RealBattleNetworkBridge = {
   getConnectedPlayerIds(): PlayerId[];
   sendStateTo(playerId: PlayerId, state: NetworkServerSnapshot): boolean;
   onCommandReceived?: (command: Command, fromPlayerId: PlayerId) => void;
+  onSnapshotDropped?: (playerId: PlayerId) => void;
 };
 
 export type GameCanvasRealBattleLifecycle = {
@@ -86,6 +87,10 @@ export function useGameCanvasRealBattleLifecycle(): GameCanvasRealBattleLifecycl
 
     network.onCommandReceived = (command, fromPlayerId) => {
       getCurrentServer()?.receiveCommand(command, { mode: 'player', playerId: fromPlayerId });
+    };
+    network.onSnapshotDropped = (playerId) => {
+      if (!snapshotListenerKeys.has(playerId)) return;
+      if (getCurrentServer() === server) server.forceNextSnapshotKeyframe();
     };
   }
 

@@ -77,6 +77,7 @@ export const ENTITY_SNAPSHOT_WIRE_KIND_UNIT = 2;
 export const ENTITY_SNAPSHOT_WIRE_KIND_BUILDING = 3;
 export const ENTITY_SNAPSHOT_WIRE_TYPE_UNIT = 1;
 export const ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING = 2;
+export const ENTITY_SNAPSHOT_WIRE_TYPE_TOWER = 3;
 export const ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE = 9;
 // Unit row layout: see appendUnitEntityWireRow for the exact slot order.
 // Stride shrank from 72 → 64 when the 4 movementAccel slots and 4
@@ -119,6 +120,7 @@ type PooledEntry = {
   unitSub: UnitSub;
   unitHp: NonNullable<UnitSub['hp']>;
   unitVelocity: NonNullable<UnitSub['velocity']>;
+  unitBuild: NonNullable<UnitSub['build']>;
   buildingDim: { x: number; y: number };
   solarSub: { open: boolean };
   buildingSub: BuildingSub;
@@ -206,6 +208,11 @@ function createPooledEntry(): PooledEntry {
   const unitSub = createNetworkUnitSnapshot();
   const unitHp = unitSub.hp ?? (unitSub.hp = { curr: 0, max: 0 });
   const unitVelocity = unitSub.velocity ?? (unitSub.velocity = { x: 0, y: 0, z: 0 });
+  const unitBuild = {
+    complete: false,
+    interrupted: false,
+    paid: { energy: 0, metal: 0 },
+  };
   const buildingHp = { curr: 0, max: 0 };
   const buildingBuild = {
     complete: false,
@@ -227,6 +234,7 @@ function createPooledEntry(): PooledEntry {
     unitSub,
     unitHp,
     unitVelocity,
+    unitBuild,
     buildingDim: { x: 0, y: 0 },
     solarSub: { open: false },
     buildingSub: {
@@ -717,14 +725,12 @@ export function serializeEntitySnapshot(
 
       u.build = null;
       if ((isFull || (changedFields! & ENTITY_CHANGED_BUILDING)) && entity.buildable) {
-        u.build = {
-          complete: entity.buildable.isComplete,
-          interrupted: entity.buildable.isInterrupted,
-          paid: {
-            energy: entity.buildable.paid.energy,
-            metal: entity.buildable.paid.metal,
-          },
-        };
+        const build = poolEntry.unitBuild;
+        build.complete = entity.buildable.isComplete;
+        build.interrupted = entity.buildable.isInterrupted;
+        build.paid.energy = entity.buildable.paid.energy;
+        build.paid.metal = entity.buildable.paid.metal;
+        u.build = build;
       }
 
       clearNetworkUnitActions(u);

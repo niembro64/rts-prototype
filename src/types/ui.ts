@@ -1,6 +1,6 @@
 // UI component types extracted from Vue components and helpers
 
-import type { PlayerId, EntityId, WaypointType, Entity, BuildingBlueprintId } from './sim';
+import type { PlayerId, EntityId, WaypointType, Entity, BuildingBlueprintId, EntityType } from './sim';
 import type { Vec2 } from './vec2';
 
 // Selection panel types
@@ -125,7 +125,7 @@ export type EconomyInfo = {
 // Minimap types
 export type MinimapEntity = {
   pos: Vec2;
-  type: 'unit' | 'building';
+  type: Exclude<EntityType, 'shot'>;
   color: string;
   isSelected?: boolean;
   /** True when the recipient only knows about this entity through

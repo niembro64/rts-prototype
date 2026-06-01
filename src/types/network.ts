@@ -629,7 +629,7 @@ export type NetworkServerSnapshot = {
 export type NetworkServerSnapshotMinimapEntity = {
   id: number;
   pos: Vec2;
-  type: 'unit' | 'building';
+  type: Exclude<EntityType, 'shot'>;
   playerId: PlayerId;
   /** True when the recipient only learned about this entity through
    *  radar coverage (no full-vision source covers its position). The

@@ -1177,6 +1177,9 @@
         "requiresNonObstructedLineOfSight": {
           "type": "boolean"
         },
+        "ballisticRangeIsAuthored": {
+          "type": "boolean"
+        },
         "spread": {
           "oneOf": [
             {

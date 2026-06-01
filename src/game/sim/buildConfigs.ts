@@ -27,16 +27,13 @@ function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): Building
 }
 
 // Building configurations derived from BUILDING_BLUEPRINTS.
-export const BUILDING_CONFIGS: Record<BuildingBlueprintId, BuildingConfig> = {
-  buildingSolar: buildBuildingConfig('buildingSolar'),
-  buildingWind: buildBuildingConfig('buildingWind'),
-  towerFabricator: buildBuildingConfig('towerFabricator'),
-  buildingExtractor: buildBuildingConfig('buildingExtractor'),
-  buildingRadar: buildBuildingConfig('buildingRadar'),
-  towerBeamMega: buildBuildingConfig('towerBeamMega'),
-  towerCannon: buildBuildingConfig('towerCannon'),
-  buildingResourceConverter: buildBuildingConfig('buildingResourceConverter'),
-};
+export const BUILDING_CONFIGS: Record<BuildingBlueprintId, BuildingConfig> =
+  Object.fromEntries(
+    Object.keys(BUILDING_BLUEPRINTS).map((buildingBlueprintId) => [
+      buildingBlueprintId,
+      buildBuildingConfig(buildingBlueprintId as BuildingBlueprintId),
+    ]),
+  ) as Record<BuildingBlueprintId, BuildingConfig>;
 
 // Helper to get building config
 export function getBuildingConfig(buildingBlueprintId: BuildingBlueprintId): BuildingConfig {

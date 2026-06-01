@@ -18,7 +18,7 @@ import {
   encodeNetworkSnapshot,
   measureNetworkSnapshotWireBreakdown,
 } from './snapshotWireCodec';
-import { cloneNetworkSnapshot } from './snapshotClone';
+import { ReusableNetworkSnapshotCloner } from './snapshotClone';
 import { setSnapshotWireBytes } from './snapshotWireMetadata';
 
 const SNAPSHOT_BACKPRESSURE_DROP_BYTES = 2 * 1024 * 1024;
@@ -30,6 +30,9 @@ type SnapshotSendTelemetry = {
   isDelta: boolean;
 };
 type SnapshotCompressionDescriptor = NonNullable<NetworkStateMessage['compression']>;
+type NetworkSnapshotTransportOptions = {
+  onSnapshotDropped?: (playerId: PlayerId) => void;
+};
 
 function isSnapshotCompressionFormat(value: unknown): value is SnapshotCompressionFormat {
   return value === 'gzip' || value === 'deflate' || value === 'deflate-raw';
@@ -52,8 +55,11 @@ export class NetworkSnapshotTransport {
   private snapshotsDropped = 0;
   private snapshotDropCounts: Map<PlayerId, number> = new Map();
   private pendingReceivedState: NetworkServerSnapshot | null = null;
+  private pendingReceivedStateCloner = new ReusableNetworkSnapshotCloner();
   private pendingFullCompressionPlayerIds = new Set<PlayerId>();
   private compressionFailureLogged = false;
+
+  constructor(private readonly options: NetworkSnapshotTransportOptions = {}) {}
 
   buildStateMessage(
     playerId: PlayerId,
@@ -157,7 +163,7 @@ export class NetworkSnapshotTransport {
     if (!this.pendingReceivedState || (this.pendingReceivedState.isDelta && !state.isDelta)) {
       // Held until a later consume; the next decode reuses pooled DTOs, so
       // clone into owned objects to keep the buffered snapshot intact.
-      this.pendingReceivedState = cloneNetworkSnapshot(state);
+      this.pendingReceivedState = this.pendingReceivedStateCloner.clone(state);
     }
   }
 
@@ -310,9 +316,7 @@ export class NetworkSnapshotTransport {
     if (!conn.open || !dc || dc.readyState !== 'open') return true;
     if (dc.bufferedAmount < SNAPSHOT_BACKPRESSURE_DROP_BYTES) return false;
 
-    this.snapshotsDropped++;
-    const playerDrops = (this.snapshotDropCounts.get(playerId) ?? 0) + 1;
-    this.snapshotDropCounts.set(playerId, playerDrops);
+    const playerDrops = this.recordDroppedSnapshot(playerId);
     if (GAME_DIAGNOSTICS.networkSnapshots && (playerDrops === 1 || playerDrops % 100 === 0)) {
       debugLog(
         true,
@@ -324,9 +328,7 @@ export class NetworkSnapshotTransport {
 
   private shouldDropForPendingFullCompression(playerId: PlayerId): boolean {
     if (!this.pendingFullCompressionPlayerIds.has(playerId)) return false;
-    this.snapshotsDropped++;
-    const playerDrops = (this.snapshotDropCounts.get(playerId) ?? 0) + 1;
-    this.snapshotDropCounts.set(playerId, playerDrops);
+    const playerDrops = this.recordDroppedSnapshot(playerId);
     if (GAME_DIAGNOSTICS.networkSnapshots && (playerDrops === 1 || playerDrops % 100 === 0)) {
       debugLog(
         true,
@@ -334,5 +336,13 @@ export class NetworkSnapshotTransport {
       );
     }
     return true;
+  }
+
+  private recordDroppedSnapshot(playerId: PlayerId): number {
+    this.snapshotsDropped++;
+    const playerDrops = (this.snapshotDropCounts.get(playerId) ?? 0) + 1;
+    this.snapshotDropCounts.set(playerId, playerDrops);
+    this.options.onSnapshotDropped?.(playerId);
+    return playerDrops;
   }
 }

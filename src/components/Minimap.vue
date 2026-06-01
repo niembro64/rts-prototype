@@ -251,10 +251,9 @@ function drawEntityLayer(): void {
       ctx.arc(x, y, 1.5, 0, Math.PI * 2);
       setFill(entity.color);
       ctx.fill();
-    } else if (entity.type === 'building') {
-      // Towers collapse to 'building' upstream (UIUpdateManager), so the
-      // minimap glyph is the same building square. The distinction is
-      // gameplay (turrets + lock-on), not minimap glyph.
+    } else if (entity.type === 'building' || entity.type === 'tower') {
+      // Towers use the same static minimap glyph as buildings. The
+      // distinction is gameplay (turrets + lock-on), not minimap shape.
       const size = entity.isSelected ? 5 : 4;
       setFill(entity.color);
       ctx.fillRect(x - size / 2, y - size / 2, size, size);

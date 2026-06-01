@@ -72,6 +72,10 @@ export class ServerSnapshotPublisher {
   private readonly dirtyIdsBuf: EntityId[] = [];
   private readonly dirtyFieldsBuf: number[] = [];
   private readonly removedEntitiesBuf: RemovedSnapshotEntity[] = [];
+  private readonly visibilityCache = createSnapshotVisibilityCache();
+  private readonly teamAudioCache = new Map<string, SerializerAudioOverride>();
+  private readonly teamSprayCache = new Map<string, SerializerSprayOverride>();
+  private readonly teamMinimapCache = new Map<string, SerializerMinimapOverride>();
   private isFirstSnapshot = true;
   private snapshotCounter = 0;
   private minimapSnapshotCounter = 0;
@@ -92,6 +96,10 @@ export class ServerSnapshotPublisher {
     this.dirtyIdsBuf.length = 0;
     this.dirtyFieldsBuf.length = 0;
     this.removedEntitiesBuf.length = 0;
+    this.visibilityCache.clear();
+    this.teamAudioCache.clear();
+    this.teamSprayCache.clear();
+    this.teamMinimapCache.clear();
   }
 
   forceNextKeyframe(includeStatic = false): void {
@@ -180,7 +188,8 @@ export class ServerSnapshotPublisher {
     // (FOW-OPT-01). Two teammates merge the same set of
     // ally vision sources into the same spatial hash; without this
     // we'd rebuild the same structure once per listener.
-    const visibilityCache = createSnapshotVisibilityCache();
+    const visibilityCache = this.visibilityCache;
+    visibilityCache.clear();
 
     // FOW-OPT-20: per-team output cache for the three team-uniform
     // serializers. The first teammate's serializeForListener call
@@ -188,9 +197,12 @@ export class ServerSnapshotPublisher {
     // pool — see FOW-OPT-07 / snapshotPool.ts); subsequent teammates
     // hand back the same array reference. Admin / spectator listeners
     // (no team mask) fall through to fresh per-call serialization.
-    const teamAudioCache = new Map<string, SerializerAudioOverride>();
-    const teamSprayCache = new Map<string, SerializerSprayOverride>();
-    const teamMinimapCache = new Map<string, SerializerMinimapOverride>();
+    const teamAudioCache = this.teamAudioCache;
+    const teamSprayCache = this.teamSprayCache;
+    const teamMinimapCache = this.teamMinimapCache;
+    teamAudioCache.clear();
+    teamSprayCache.clear();
+    teamMinimapCache.clear();
 
     const serializeForListener = (listener: SnapshotListenerEntry): NetworkServerSnapshot => {
       const visibility = getOrBuildVisibility(input.world, listener.playerId, visibilityCache);

@@ -91,7 +91,9 @@ export class NetworkManager {
   private nextPlayerId: PlayerId = 2;
   private roster = new NetworkLobbyRoster();
   private gameStarted: boolean = false;
-  private snapshotTransport = new NetworkSnapshotTransport();
+  private snapshotTransport = new NetworkSnapshotTransport({
+    onSnapshotDropped: (playerId) => this.emitSnapshotDropped(playerId),
+  });
   private commandTransport = new NetworkCommandTransport({
     getGameId: () => this.getUniversalGameId(),
     getHostConnection: () => this.connections.get(1),
@@ -153,6 +155,7 @@ export class NetworkManager {
    *  updates its own LobbyPlayer record from `getPlayer(id)`. */
   public onPlayerInfoUpdate: ((player: LobbyPlayer) => void) | undefined = undefined;
   public onClientReady: ((playerId: PlayerId) => void) | undefined = undefined;
+  public onSnapshotDropped: ((playerId: PlayerId) => void) | undefined = undefined;
 
   private emitPlayerJoined(player: LobbyPlayer): void {
     const callback = this.onPlayerJoined;
@@ -208,6 +211,11 @@ export class NetworkManager {
 
   private emitClientReady(playerId: PlayerId): void {
     const callback = this.onClientReady;
+    if (callback !== undefined) callback(playerId);
+  }
+
+  private emitSnapshotDropped(playerId: PlayerId): void {
+    const callback = this.onSnapshotDropped;
     if (callback !== undefined) callback(playerId);
   }
 
@@ -1088,6 +1096,7 @@ export class NetworkManager {
     this.onLobbySettings = undefined;
     this.getLobbySettings = undefined;
     this.onPlayerInfoUpdate = undefined;
+    this.onSnapshotDropped = undefined;
   }
 
   private queueStateMessage(message: NetworkStateMessage): void {

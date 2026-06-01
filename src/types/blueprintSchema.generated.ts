@@ -279,6 +279,7 @@ export type TurretBlueprint = {
   isManualFire: boolean;
   passive: boolean;
   requiresNonObstructedLineOfSight: boolean;
+  ballisticRangeIsAuthored?: boolean;
   spread: TurretSpreadConfig | null;
   burst: TurretBurstConfig | null;
   shieldPanels: ShieldPanel[];

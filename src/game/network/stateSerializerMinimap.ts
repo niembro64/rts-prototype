@@ -5,6 +5,7 @@ import { createMinimapEntityDto } from './snapshotDtoCopy';
 import type { SnapshotVisibility } from './stateSerializerVisibility';
 import {
   ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING,
+  ENTITY_SNAPSHOT_WIRE_TYPE_TOWER,
   ENTITY_SNAPSHOT_WIRE_TYPE_UNIT,
 } from './stateSerializerEntities';
 import {
@@ -48,7 +49,11 @@ function writeMinimapEntity(
 ): NetworkServerSnapshotMinimapEntity {
   const ownership = entity.ownership;
   out.id = entity.id;
-  out.type = entity.unit ? 'unit' : 'building';
+  out.type = entity.type === 'unit'
+    ? 'unit'
+    : entity.type === 'tower'
+      ? 'tower'
+      : 'building';
   out.playerId = (ownership !== null ? ownership.playerId : 1) as PlayerId;
   out.pos.x = qPos(entity.transform.x);
   out.pos.y = qPos(entity.transform.y);
@@ -87,7 +92,9 @@ function appendMinimapWireRow(
   values[base + 2] = qPos(entity.transform.y);
   values[base + 3] = entity.unit
     ? ENTITY_SNAPSHOT_WIRE_TYPE_UNIT
-    : ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING;
+    : entity.type === 'tower'
+      ? ENTITY_SNAPSHOT_WIRE_TYPE_TOWER
+      : ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING;
   values[base + 4] = ownership !== null ? ownership.playerId : 1;
   let flags = 0;
   if (radarOnly) flags |= 0x01;
@@ -119,7 +126,9 @@ export function serializeMinimapSnapshotEntities(
     const source = minimapSources[s];
     for (let i = 0; i < source.length; i++) {
       const entity = source[i];
-      if (entity.type !== 'unit' && entity.type !== 'building') continue;
+      if (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower') {
+        continue;
+      }
       // Minimap uses the wider full-vision-OR-radar check (FOW-03):
       // radar buildings reveal enemy positions on the minimap without
       // sending them through the main snapshot. Audio events and

@@ -81,6 +81,7 @@ import { sanitizeCommand } from './commandSanitizer';
 import {
   acquireSimSlot,
   releaseSimSlot,
+  transferSimSlot,
 } from '../lifecycle/sessionSingleton';
 
 export type { GameServerConfig } from '@/types/game';
@@ -170,6 +171,8 @@ export class GameServer {
     config: GameServerConfig,
     options: GameServerCreateOptions = { onProgress: undefined },
   ): Promise<GameServer> {
+    const slotOwner = { constructor: { name: 'GameServer.create' } };
+    acquireSimSlot(slotOwner);
     const report = async (progress: number, phase: string | undefined) => {
       if (options.onProgress === undefined) return;
       const clamped = Number.isFinite(progress)
@@ -178,27 +181,39 @@ export class GameServer {
       await options.onProgress(clamped, phase);
     };
 
-    await report(0, 'Loading simulation core');
-    await initSimWasm();
-    await report(0.08, 'Simulation core ready');
+    try {
+      await report(0, 'Loading simulation core');
+      await initSimWasm();
+      await report(0.08, 'Simulation core ready');
 
-    const boot = options.onProgress
-      ? await ServerBootstrap.bootstrapAsync(config, undefined, (progress, phase) =>
-          report(0.08 + progress * 0.84, phase),
-        )
-      : ServerBootstrap.bootstrap(config);
-    await report(0.94, 'Finalizing server');
+      const boot = options.onProgress
+        ? await ServerBootstrap.bootstrapAsync(config, undefined, (progress, phase) =>
+            report(0.08 + progress * 0.84, phase),
+          )
+        : ServerBootstrap.bootstrap(config);
+      await report(0.94, 'Finalizing server');
 
-    const server = new GameServer(config, undefined, boot);
-    await report(1, 'Server ready');
-    return server;
+      const server = new GameServer(config, undefined, boot, slotOwner);
+      await report(1, 'Server ready');
+      return server;
+    } catch (err) {
+      releaseSimSlot(slotOwner);
+      throw err;
+    }
   }
 
   constructor(
     config: GameServerConfig,
     physics: PhysicsEngine3D | undefined = undefined,
     bootstrapped: BootstrappedServerWorld | undefined = undefined,
+    reservedSimSlotOwner: object | undefined = undefined,
   ) {
+    if (reservedSimSlotOwner !== undefined) {
+      transferSimSlot(reservedSimSlotOwner, this);
+    } else {
+      acquireSimSlot(this);
+    }
+
     this.tickRateHz = 60;
 
     // Start visible host TPS at 0.0 until the first real tick period
@@ -221,23 +236,28 @@ export class GameServer {
     // tile map before physics ground lookup, etc.) and lives inside
     // ServerBootstrap so this constructor can stay focused on
     // instance-level concerns.
-    const boot = bootstrapped ?? ServerBootstrap.bootstrap(config, physics);
-    this.physics = boot.physics;
-    this.world = boot.world;
-    this.simulation = boot.simulation;
-    this.commandQueue = boot.commandQueue;
-    this.playerIds = boot.playerIds;
-    this.backgroundMode = boot.backgroundMode;
-    this.backgroundAllowedUnitBlueprintIds = boot.backgroundAllowedUnitBlueprintIds;
-    this.terrainTileMap = boot.terrainTileMap;
-    this.terrainBuildabilityGrid = boot.terrainBuildabilityGrid;
+    try {
+      const boot = bootstrapped ?? ServerBootstrap.bootstrap(config, physics);
+      this.physics = boot.physics;
+      this.world = boot.world;
+      this.simulation = boot.simulation;
+      this.commandQueue = boot.commandQueue;
+      this.playerIds = boot.playerIds;
+      this.backgroundMode = boot.backgroundMode;
+      this.backgroundAllowedUnitBlueprintIds = boot.backgroundAllowedUnitBlueprintIds;
+      this.terrainTileMap = boot.terrainTileMap;
+      this.terrainBuildabilityGrid = boot.terrainBuildabilityGrid;
 
-    this.unitForceSystem = new UnitForceSystem(this.world, this.simulation, this.physics);
+      this.unitForceSystem = new UnitForceSystem(this.world, this.simulation, this.physics);
 
-    // Setup simulation callbacks (need `this` references for physics
-    // body cleanup and game-over fan-out, so they live here rather than
-    // inside ServerBootstrap).
-    this.setupSimulationCallbacks();
+      // Setup simulation callbacks (need `this` references for physics
+      // body cleanup and game-over fan-out, so they live here rather than
+      // inside ServerBootstrap).
+      this.setupSimulationCallbacks();
+    } catch (err) {
+      releaseSimSlot(this);
+      throw err;
+    }
   }
 
   private setupSimulationCallbacks(): void {

@@ -60,58 +60,21 @@ continuously."
 FIX: drive the loop with a fixed-dt accumulator + bounded catch-up (max N steps/frame),
 and surface a tickMs/intervalMs saturation metric into serverMeta.
 
-5.4 [MINOR] Sim-slot guard ("a second sim is a hard error") only fires at tick start.
-
-acquireSimSlot is called in GameServer.start() (:310), but create() (:169) and the
-PhysicsEngine3D ctor (:419) already allocate the WASM engine handle and spawn bodies into
-the SHARED module-level BodyPool before start() runs the singleton check. Today the old
-server is always stopped synchronously first, so it works, but a future create-before-stop
-caller would corrupt the shared pool instead of getting the intended immediate throw.
-FIX: acquire the sim slot in create()/the PhysicsEngine3D ctor so allocation into the
-shared pool is what throws; release on stop()/dispose().
-
 ================================================================================
 NETWORKING / SNAPSHOTS
 ================================================================================
 
-6.0 [CRITICAL] Backpressure-dropped delta still advanced the per-recipient baseline
--> permanent desync.
-
-The per-recipient delta baseline is committed inside serializeGameState
-(copySentPrevState + captureToRustBaseline, stateSerializer.ts:430/472) which runs in
-ServerSnapshotPublisher.emit (:256) BEFORE the bytes reach the transport. The transport
-then drops the snapshot for backpressure (NetworkSnapshotTransport.ts:64/200/220/244 via
-shouldDropForBackpressure checking dc.bufferedAmount, :308) or for pending FULLSNAP
-compression (:325) — but nothing rolls back the baseline or forces a keyframe. The channel
-is reliable, so the dropped delta is gone, yet the next delta is diffed against state the
-client never received. That recipient's view stays corrupt until an unrelated keyframe
-happens to repaint the affected fields (fields that stop changing never repaint). Violates
-"DIFFSNAP baseline must advance per-field from the last value actually SENT to that
-recipient."
-FIX: on any backpressure/pending-compression drop, mark that recipient for a forced
-keyframe (snapshotPublisher.forceNextKeyframe for that listener), or defer the baseline
-commit until the send is confirmed.
-
-6.1 [HIGH] cloneNetworkSnapshot() allocates a fresh cloner per call on the receive
-hot path.
+6.1 [MEDIUM] Snapshot impairment delay path still allocates fresh cloners.
 
 src/game/network/snapshotClone.ts:548 — the free function does
-`new ReusableNetworkSnapshotCloner().clone(state)`. That class is designed to be held and
-reused (its sub-DTO arrays/objects pool across clones), and good callers hold it
-(SnapshotBuffer.ts:36, LocalGameConnection.ts:28). But NetworkSnapshotTransport.storePendingState
-(:160) and RemoteGameConnection.ts:39 call the free function, so every buffered client
-snapshot (5-10Hz + impairment path) reallocates the cloner and all its internal arrays,
-defeating the pool. Violates "Pool snapshot DTOs."
-FIX: give NetworkSnapshotTransport and RemoteGameConnection a long-lived
-ReusableNetworkSnapshotCloner field and call .clone() on it.
-
-6.2 [MEDIUM] Per-unit build DTO allocated in the serialize loop (unit path only).
-
-src/game/network/stateSerializerEntities.ts:719-728 — when ENTITY_CHANGED_BUILDING is set
-for a unit under construction, it allocates u.build = { complete, interrupted, paid:{...} }
-(two objects) per unit per snapshot. The building path right below (:800-813) correctly
-reuses the pooled poolEntry.buildingBuild.
-FIX: add a pooled unitBuild to PooledEntry (mirroring buildingBuild) and write into it.
+`new ReusableNetworkSnapshotCloner().clone(state)`. Local and remote pending client
+buffers hold long-lived cloners, but LocalGameConnection.subscribeSnapshots and
+RemoteGameConnection.stateHandler still pass cloneNetworkSnapshot into
+SnapshotImpairmentQueue.schedule. When snapshot impairment/delay is enabled, every delayed
+snapshot allocates a fresh cloner and its internal DTO arrays/objects.
+FIX: make SnapshotImpairmentQueue own a lifetime-safe delayed snapshot clone pool, or
+change the queue contract so callers can return/reuse ReusableNetworkSnapshotCloner
+instances only after delivered snapshots can no longer be referenced.
 
 6.3 [MEDIUM] Client receive-coalescing silently drops a delta when one is already
 pending.
@@ -123,14 +86,6 @@ only fields changed since last sent), so dropping one loses those corrections wi
 resync trigger.
 FIX: apply/merge the pending delta before overwriting, or at minimum request a keyframe
 when a delta is dropped here.
-
-6.4 [MINOR] Per-emit allocations break the otherwise-strict pooling discipline.
-
-ServerSnapshotPublisher.ts:191-193 allocates three Maps (teamAudioCache/teamSprayCache/
-teamMinimapCache) + a visibility cache (:183) every emit (~10Hz); snapshotRustWireEncoder.ts:2177
-allocates `const rawTopLevelKeys: string[] = []` per encode. Once-per-snapshot, not
-per-entity, so small.
-FIX: hoist to instance fields and .clear()/.length=0 per emit.
 
 ================================================================================
 ARCHITECTURE / PHILOSOPHY MIGRATION (budget_design_philosophy.html)
@@ -154,30 +109,12 @@ FIX (C1 migration): move the swept-collision + termination loop into a Rust proj
 kernel; batch the homing intercept/thrust like the existing projectileIntegrateStepBatch.
 Combine with 3.0.
 
-7.2 [LOW] Config-as-data residue (gameplay logic/data trapped in TypeScript).
-
-- src/game/sim/turretConfigs.ts:35 — hardcoded
-  `if (config.turretBlueprintId === 'turretMortarDrop') return config.range;` — a gameplay
-  special-case as a magic string in code instead of a blueprint flag (e.g.
-  ballisticRangeIsAuthored). Move to JSON.
-- src/game/sim/buildConfigs.ts:32-40 — BUILDING_CONFIGS hand-enumerates the 8 building IDs
-  instead of iterating BUILDING_BLUEPRINTS keys (data duplicated in code; also an SSoT
-  concern). Iterate the JSON keys.
-
 7.3 [LOW] Delete-The-Old-Path residue.
 
 - src/game/network/snapshotEntityWirePack.ts — legacy V1 unpackEntityRow and the array-form
   unpack* paths allocate fresh objects/createEmptyUnitSub() spreads (e.g. :1194) instead of
   using the V5/V6 decode pools. Current wire version is V6; remove these once no legacy
   producers remain.
-
-7.4 [LOW] Stale 'unit' | 'building' type unions collapse towers into building.
-
-src/types/network.ts:632 and src/types/ui.ts:128 (minimap entity), and
-src/game/sim-wasm/snapshotEncoderTest.ts:182,1293 use type:'unit'|'building', diverging from
-canonical EntityType = 'unit'|'tower'|'building'|'shot' (sim.ts:911). Cosmetically harmless
-on the minimap today but the union is wrong.
-FIX: reconcile these unions to EntityType.
 
 7.5 [LOW / design decision] ray/shield exist as blueprint families but not runtime
 EntityType kinds.

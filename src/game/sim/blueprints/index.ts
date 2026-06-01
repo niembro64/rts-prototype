@@ -668,6 +668,7 @@ export function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretC
     shot: shot ?? undefined,
     turretIndex: undefined,
     requiresNonObstructedLineOfSight: turretBlueprint.requiresNonObstructedLineOfSight,
+    ballisticRangeIsAuthored: turretBlueprint.ballisticRangeIsAuthored === true,
     aimStyle: { ...turretBlueprint.aimStyle },
     verticalLauncher: turretBlueprint.verticalLauncher,
     idlePitch: turretBlueprint.idlePitch,

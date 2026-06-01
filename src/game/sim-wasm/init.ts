@@ -2909,6 +2909,7 @@ export interface SnapshotEncodeApi {
  *  SNAPSHOT_ENTITY_TYPE_* in lib.rs. */
 export const SNAPSHOT_ENTITY_TYPE_UNIT = 1;
 export const SNAPSHOT_ENTITY_TYPE_BUILDING = 2;
+export const SNAPSHOT_ENTITY_TYPE_TOWER = 3;
 
 /** Phase 9 — Pathfinder. Mirror of Pathfinder.ts findPath. Full
  *  pipeline (mask + CC + A* + LOS smoothing) runs inside a single

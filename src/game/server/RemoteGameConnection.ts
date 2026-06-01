@@ -5,12 +5,13 @@ import type { Command } from '../sim/commands';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { networkManager } from '../network/NetworkManager';
 import { createSnapshotImpairmentQueue } from '../network/SnapshotImpairment';
-import { cloneNetworkSnapshot } from '../network/snapshotClone';
+import { ReusableNetworkSnapshotCloner, cloneNetworkSnapshot } from '../network/snapshotClone';
 
 export class RemoteGameConnection implements GameConnection {
   private snapshotCallback: SnapshotCallback | null = null;
   private gameOverCallback: GameOverCallback | null = null;
   private pendingSnapshot: NetworkServerSnapshot | null = null;
+  private pendingSnapshotCloner = new ReusableNetworkSnapshotCloner();
   private snapshotImpairment = createSnapshotImpairmentQueue('remote');
   private disconnected = false;
   private readonly stateHandler: (state: NetworkServerSnapshot) => void;
@@ -36,7 +37,7 @@ export class RemoteGameConnection implements GameConnection {
     } else if (!this.pendingSnapshot || (this.pendingSnapshot.isDelta && !state.isDelta)) {
       // Buffered across the next decode, which reuses pooled DTOs — clone
       // into owned objects so the held snapshot can't be overwritten.
-      this.pendingSnapshot = cloneNetworkSnapshot(state);
+      this.pendingSnapshot = this.pendingSnapshotCloner.clone(state);
     }
     const gameState = state.gameState;
     const gameOverCallback = this.gameOverCallback;
