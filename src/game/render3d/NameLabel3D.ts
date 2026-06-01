@@ -18,7 +18,13 @@ import type { Entity } from '../sim/types';
 import { getBuildingHudNameY, getUnitHudNameY } from './HudAnchor';
 import { CanvasSpritePool, type CanvasSpriteSlot } from './CanvasSpritePool';
 import { FADE_CULL_ALPHA, type HudFade } from './HudFade';
-import { PIECE_TAG_BODY, packPieceKey } from './HealthBar3D';
+import { PIECE_TAG_BODY, PIECE_TAG_TURRET_BASE, packPieceKey } from './HealthBar3D';
+import {
+  buildingBlueprintIdToCode,
+  shotBlueprintIdToCode,
+  turretBlueprintIdToCode,
+  unitBlueprintIdToCode,
+} from '@/types/network';
 import {
   NAME_LABEL_WORLD_HEIGHT,
   NAME_LABEL_FONT_PX,
@@ -54,8 +60,40 @@ const STYLE = {
 const FONT_STRING = `bold ${STYLE.fontPx}px ${STYLE.fontFamily}`;
 const CANVAS_HEIGHT_PX = STYLE.fontPx + 2 * STYLE.canvasPadY;
 export const PIECE_TAG_COMMANDER_OWNER_NAME = 2;
+const LABEL_IDENTITY_TRACE_FRAMES = 120;
+const LABEL_IDENTITY_PRUNE_INTERVAL_FRAMES = 180;
+const LABEL_IDENTITY_PRUNE_AFTER_FRAMES = 600;
 
 export type NameLabelTone = 'blueprint' | 'owner';
+
+type LabelIdentitySnapshot = {
+  frame: number;
+  key: number;
+  entityId: number;
+  entityType: string;
+  pieceTag: number;
+  pieceKind: string;
+  text: string;
+  identityKey: string;
+  playerId: number | null;
+  unitBlueprintId: string | null;
+  unitBlueprintCode: number | null;
+  buildingBlueprintId: string | null;
+  buildingBlueprintCode: number | null;
+  turretIndex: number | null;
+  turretBlueprintId: string | null;
+  turretBlueprintCode: number | null;
+  shotBlueprintId: string | null;
+  shotBlueprintCode: number | null;
+};
+
+type LabelIdentityRecord = {
+  text: string;
+  identityKey: string;
+  lastSeenFrame: number;
+  traceFramesRemaining: number;
+  snapshot: LabelIdentitySnapshot;
+};
 
 function fillColorForTone(tone: NameLabelTone): string {
   return tone === 'owner' ? STYLE.ownerFillColor : STYLE.fillColor;
@@ -67,6 +105,72 @@ function strokeColorForTone(tone: NameLabelTone): string {
 
 function worldHeightForTone(tone: NameLabelTone): number {
   return tone === 'owner' ? STYLE.ownerWorldHeight : STYLE.worldHeight;
+}
+
+function labelIdentitySnapshot(
+  entity: Entity,
+  key: number,
+  pieceTag: number,
+  text: string,
+  frame: number,
+): LabelIdentitySnapshot {
+  const unitBlueprintId = entity.unit?.unitBlueprintId ?? null;
+  const buildingBlueprintId = entity.buildingBlueprintId ?? null;
+  let pieceKind = pieceTag === PIECE_TAG_BODY ? 'body' : `piece:${pieceTag}`;
+  let turretIndex: number | null = null;
+  let turretBlueprintId: string | null = null;
+  let shotBlueprintId: string | null = entity.projectile?.shotBlueprintId ?? null;
+
+  if (pieceTag >= PIECE_TAG_TURRET_BASE && pieceTag < PIECE_TAG_TURRET_BASE + 256) {
+    turretIndex = pieceTag - PIECE_TAG_TURRET_BASE;
+    turretBlueprintId = entity.combat?.turrets[turretIndex]?.config.turretBlueprintId ?? null;
+    pieceKind = 'turret';
+  } else if (entity.projectile !== null) {
+    pieceKind = 'shot';
+  }
+
+  const identityKey = [
+    entity.type,
+    pieceKind,
+    unitBlueprintId ?? '',
+    buildingBlueprintId ?? '',
+    turretIndex ?? '',
+    turretBlueprintId ?? '',
+    shotBlueprintId ?? '',
+  ].join('|');
+
+  return {
+    frame,
+    key,
+    entityId: entity.id,
+    entityType: entity.type,
+    pieceTag,
+    pieceKind,
+    text,
+    identityKey,
+    playerId: entity.ownership?.playerId ?? null,
+    unitBlueprintId,
+    unitBlueprintCode: unitBlueprintId !== null ? unitBlueprintIdToCode(unitBlueprintId) : null,
+    buildingBlueprintId,
+    buildingBlueprintCode: buildingBlueprintId !== null ? buildingBlueprintIdToCode(buildingBlueprintId) : null,
+    turretIndex,
+    turretBlueprintId,
+    turretBlueprintCode: turretBlueprintId !== null ? turretBlueprintIdToCode(turretBlueprintId) : null,
+    shotBlueprintId,
+    shotBlueprintCode: shotBlueprintId !== null ? shotBlueprintIdToCode(shotBlueprintId) : null,
+  };
+}
+
+function logLabelIdentityTrace(
+  reason: string,
+  previous: LabelIdentitySnapshot | null,
+  current: LabelIdentitySnapshot,
+): void {
+  console.warn('[NameLabel3D] displayed blueprint-name label changed for a stable packed key', {
+    reason,
+    previous,
+    current,
+  });
 }
 
 type LabelState = {
@@ -141,6 +245,9 @@ export class NameLabel3D {
   private _frustum: THREE.Frustum | null = null;
   /** Per-frame camera-distance fade, set by beginFrame. */
   private _fade: HudFade | null = null;
+  private _identityFrame = 0;
+  private _identityPruneCountdown = LABEL_IDENTITY_PRUNE_INTERVAL_FRAMES;
+  private readonly _labelIdentities = new Map<number, LabelIdentityRecord>();
 
   constructor(parent: THREE.Group) {
     this.pool = new CanvasSpritePool<LabelState, [string, NameLabelTone]>({
@@ -161,6 +268,7 @@ export class NameLabel3D {
   beginFrame(fade: HudFade, frustum?: THREE.Frustum): void {
     this._used = 0;
     this._frameToken = (this._frameToken + 1) & 0x3fffffff;
+    this._identityFrame++;
     // Clear the per-frame dedup map each frame so it stays bounded to
     // entities actually drawn this frame. Previously it only cleared on
     // the ~185-day token rollover, so it retained an entry for every
@@ -192,7 +300,9 @@ export class NameLabel3D {
     if (alpha <= FADE_CULL_ALPHA) return;
 
     this._seenEntityFrame.set(key, this._frameToken);
-    this.place(text, worldX, worldY, worldZ, alpha, 'blueprint');
+    if (this.place(text, worldX, worldY, worldZ, alpha, 'blueprint')) {
+      this.recordDisplayedLabelIdentity(entity, key, PIECE_TAG_BODY, text, 'blueprint');
+    }
   }
 
   /** Emit (or update) a label for a sub-piece (turret / locomotion /
@@ -214,7 +324,9 @@ export class NameLabel3D {
     const alpha = this._fade ? this._fade.alphaAt(worldX, worldY, worldZ) : 1;
     if (alpha <= FADE_CULL_ALPHA) return;
     this._seenEntityFrame.set(key, this._frameToken);
-    this.place(text, worldX, worldY, worldZ, alpha, tone);
+    if (this.place(text, worldX, worldY, worldZ, alpha, tone)) {
+      this.recordDisplayedLabelIdentity(host, key, pieceTag, text, tone);
+    }
   }
 
   /** Shared sprite placement: acquire a pool slot, repaint if the text
@@ -226,7 +338,7 @@ export class NameLabel3D {
     worldZ: number,
     alpha: number,
     tone: NameLabelTone,
-  ): void {
+  ): boolean {
     const label = this.acquire(this._used++);
     this.repaintIfChanged(label, text, tone);
 
@@ -245,6 +357,7 @@ export class NameLabel3D {
     } else {
       label.sprite.visible = true;
     }
+    return label.sprite.visible;
   }
 
   /** Hide trailing pool entries past the live prefix. */
@@ -252,11 +365,13 @@ export class NameLabel3D {
     this.pool.hideUnused(this._used);
     this._frustum = null;
     this._fade = null;
+    this.pruneLabelIdentities();
   }
 
   destroy(): void {
     this.pool.destroy();
     this._seenEntityFrame.clear();
+    this._labelIdentities.clear();
   }
 
   // ── internals ──
@@ -267,5 +382,52 @@ export class NameLabel3D {
 
   private repaintIfChanged(label: Label, text: string, tone: NameLabelTone): void {
     this.pool.repaintIfChanged(label, text, tone);
+  }
+
+  private recordDisplayedLabelIdentity(
+    entity: Entity,
+    key: number,
+    pieceTag: number,
+    text: string,
+    tone: NameLabelTone,
+  ): void {
+    if (tone !== 'blueprint') return;
+    const current = labelIdentitySnapshot(entity, key, pieceTag, text, this._identityFrame);
+    const previous = this._labelIdentities.get(key);
+    let traceFramesRemaining = previous?.traceFramesRemaining ?? 0;
+    let reason: string | null = null;
+    if (previous !== undefined) {
+      if (previous.identityKey !== current.identityKey) {
+        reason = 'identity-changed';
+      } else if (previous.text !== current.text) {
+        reason = 'text-changed';
+      }
+    }
+
+    if (reason !== null) {
+      traceFramesRemaining = Math.max(traceFramesRemaining, LABEL_IDENTITY_TRACE_FRAMES);
+    }
+    if (traceFramesRemaining > 0) {
+      logLabelIdentityTrace(reason ?? 'trace', previous?.snapshot ?? null, current);
+      traceFramesRemaining--;
+    }
+
+    this._labelIdentities.set(key, {
+      text,
+      identityKey: current.identityKey,
+      lastSeenFrame: this._identityFrame,
+      traceFramesRemaining,
+      snapshot: current,
+    });
+  }
+
+  private pruneLabelIdentities(): void {
+    this._identityPruneCountdown--;
+    if (this._identityPruneCountdown > 0) return;
+    this._identityPruneCountdown = LABEL_IDENTITY_PRUNE_INTERVAL_FRAMES;
+    const pruneBeforeFrame = this._identityFrame - LABEL_IDENTITY_PRUNE_AFTER_FRAMES;
+    for (const [key, record] of this._labelIdentities) {
+      if (record.lastSeenFrame < pruneBeforeFrame) this._labelIdentities.delete(key);
+    }
   }
 }

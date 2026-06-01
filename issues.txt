@@ -15,21 +15,3 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 
 Please always commit and push before and after any code changes we make.
 ================================================================================
-
-
-================================================================================
-ENTITY STATE REPORTING (NAMES)
-================================================================================
-E5. [MEDIUM / INVESTIGATE] If a single persistent entity's NAME label still
-    changes text over time, capture an in-app repro and log the entity id plus
-    the relevant blueprint id/code for that label path on every displayed frame.
-    RULE: a label for a given entity must not change unless its identity changed.
-    PROBLEM: label visibility may legitimately pop in/out from selection mode,
-    camera fade, frustum culling, or not-full rules, but the text content for a
-    stable entity should not flip. A true text flicker would most plausibly come
-    from entity-id reuse landing on a delta before a keyframe refreshes blueprint
-    fields, or from a pooled-label piece-key collision.
-    FIX: reproduce a single entity whose text changes while its identity should
-    be stable. Log entity.id, entity type, piece tag, unit/building/turret/shot
-    blueprint id, and any decoded wire code beside the rendered label. If id reuse or stale blueprint fields appear, fix the client snapshot
-    apply path; if two labels share one packed piece key, fix the label keying.
