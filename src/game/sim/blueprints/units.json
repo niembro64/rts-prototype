@@ -185,7 +185,7 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretBeam",
+        "turretBlueprintId": "turretBeamMini",
         "mount": {
           "x": 0,
           "y": 0,

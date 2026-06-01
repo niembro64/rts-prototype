@@ -744,14 +744,7 @@
             ]
           },
           "shots": {
-            "only": [
-              "shotPlasmaLight",
-              "shotPlasmaMedium",
-              "shotRocketLight",
-              "shotPlasmaHeavy",
-              "shotMortarMedium",
-              "shotMortarHeavy"
-            ]
+            "only": ["shotRocketLight", "shotMortarMedium", "shotMortarHeavy"]
           }
         }
       }
@@ -781,14 +774,7 @@
             ]
           },
           "shots": {
-            "only": [
-              "shotPlasmaLight",
-              "shotPlasmaMedium",
-              "shotRocketLight",
-              "shotPlasmaHeavy",
-              "shotMortarMedium",
-              "shotMortarHeavy"
-            ]
+            "only": ["shotRocketLight", "shotMortarMedium", "shotMortarHeavy"]
           }
         }
       }
@@ -818,14 +804,7 @@
             ]
           },
           "shots": {
-            "only": [
-              "shotPlasmaLight",
-              "shotPlasmaMedium",
-              "shotRocketLight",
-              "shotPlasmaHeavy",
-              "shotMortarMedium",
-              "shotMortarHeavy"
-            ]
+            "only": ["shotRocketLight", "shotMortarMedium", "shotMortarHeavy"]
           }
         }
       }
@@ -872,14 +851,7 @@
             ]
           },
           "shots": {
-            "only": [
-              "shotPlasmaLight",
-              "shotPlasmaMedium",
-              "shotRocketLight",
-              "shotPlasmaHeavy",
-              "shotMortarMedium",
-              "shotMortarHeavy"
-            ]
+            "only": ["shotRocketLight", "shotMortarMedium", "shotMortarHeavy"]
           }
         }
       }

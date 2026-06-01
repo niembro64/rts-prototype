@@ -547,7 +547,19 @@ function weaponUsesNormalAim(weapon: Turret): boolean {
   if (config.verticalLauncher) return false;
   if (config.isManualFire) return false;
   const shot = config.shot;
-  if (shot !== undefined && shot.type === 'shield') return false;
+  // Shield emissions are omnidirectional barriers and normally don't
+  // rotate to aim (e.g. turretShieldSphere). The turretShieldPanel is
+  // the exception: it must rotate to bisect the angle between an
+  // incoming enemy turret and its host so reflected fire returns to the
+  // attacker. Its rayBisectTurretAndBody aim style is the discriminator,
+  // so don't lump it in with non-aiming shields.
+  if (
+    shot !== undefined &&
+    shot.type === 'shield' &&
+    config.aimStyle.angleType !== 'rayBisectTurretAndBody'
+  ) {
+    return false;
+  }
   return true;
 }
 

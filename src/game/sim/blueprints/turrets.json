@@ -978,7 +978,7 @@
     "name": "Fast Rocket Launcher",
     "range": 430,
     "cooldown": 50,
-    "launchForce": 5000,
+    "launchForce": 2000,
     "turretTurnAccel": 1200,
     "turretDrag": 0.15,
     "barrel": {
