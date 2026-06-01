@@ -16,17 +16,7 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 Please always commit and push before and after any code changes we make.
 ================================================================================
 
-Projectile arming and source-collision regression coverage is missing.
-
-Add focused tests or a deterministic sim harness case for shot arming semantics:
-a freshly fired shot should not test entity hitbox contacts until its hitbox has
-cleared both the originating host and emitting turret collision bodies, but after
-arming it must collide with every solid entity hitbox, including the host/turret
-that fired it if reflection or movement brings the shot back into them. The test
-should also cover same-tick arming, reflected return-to-source detonation, and
-projectile-vs-projectile contact after movement broadphase refresh.
-
-Turret host-integration wire cleanup is incomplete.
+1.0 Turret host-integration wire cleanup is incomplete.
 
 Remove the legacy turret hpCurr snapshot slot and related Rust/TypeScript
 serializer compatibility code once the wire format can change cleanly. Add
@@ -34,4 +24,336 @@ focused coverage that mounted turrets are addressable/lockable but do not carry
 independent cost, mass, health, death explosions, construction pieces, detached
 agent state, or hostless lifetime; damage through a turret hitbox should resolve
 to the host body, and host construction/death should keep the authored turret set
-part of the same assembly.
+part of the same assembly. (Related: the hp:1 sentinel at
+src/game/sim/runtimeTurrets.ts:55 is documented compat, not a separate bug.)
+
+================================================================================
+MEMORY LEAKS
+================================================================================
+
+2.0 [CRITICAL] LegInstancedRenderer leaks every game restart.
+
+src/game/scenes/RtsScene3D.ts:396 constructs `new LegInstancedRenderer(...)`,
+which allocates 8 instanced leg/joint/pad pools (InstancedBufferGeometry +
+SphereGeometry + materials + 4 InstancedBufferAttribute typed arrays each),
+parented to the reused `app.world`. A correct destroy() exists at
+src/game/render3d/LegInstancedRenderer.ts:803 (disposes all 8 sub-pools) but has
+ZERO call sites. Render3DEntities.destroy() (Render3DEntities.ts:1052) disposes
+every other sub-renderer (building, projectile, construction, unitDetail, etc.)
+but never calls this.legRenderer.destroy(). Restart reuses the same ThreeApp /
+WebGLRenderer / app.world, so the old leg meshes stay attached and a fresh set is
+created on every restart -> leaks all leg GPU buffers per session.
+FIX: call this.legRenderer.destroy() inside Render3DEntities.destroy() (alongside
+the other sub-renderer .destroy() calls at lines 1067-1074).
+
+================================================================================
+PERFORMANCE — SIMULATION (authoritative tick path)
+================================================================================
+
+3.0 [CRITICAL] Per-projectile FULL-WORLD scan for swept entity collision.
+
+src/game/sim/combat/ProjectileCollisionHandler.ts:356 (findProjectileHitboxSweepHit,
+called at :1188) walks ALL world.getUnits() (:356), ALL world.getBuildings()
+(:430), and ALL world.getProjectiles() (:465) — plus an inner loop over each
+unit's turrets — for every non-D-gun armed traveling projectile, every tick. That
+is O(projectiles x (units + buildings + projectiles)) ~ O(n^2) in steady-state
+combat; the single biggest scale risk in the sim. The spatial grid already
+exposes the right kernels, and the sibling D-gun branch (line 1235) already uses
+damageSystem.applySweptDamage, which queries the grid (DamageSystem.ts:189/545/664/702).
+Violates "Spatial structure beats broad scans" / "full scans only for bootstrap
+and keyframes."
+FIX: route the normal-projectile direct-hit test through spatialGrid line queries
+(mirror applySweptDamage's queryEntitiesAlongLine + queryProjectilesAlongLine
+broadphase). Ideally push the whole swept hit-test into a Rust batch kernel (none
+exists yet in lib.rs).
+
+3.1 [MAJOR] Spread allocation in projectile collision recursion.
+
+src/game/sim/combat/ProjectileCollisionHandler.ts:721 — processKilledProjectileShots
+does `[...result.killedProjectileIds]`, allocating a fresh array on every call. It
+recurses (cluster/submunition chains, depth <= 8) and runs from multiple detonation
+sites per tick. Violates "no allocations inside per-tick loops."
+FIX: iterate the Set directly, or drain into a reused module-level buffer (the file
+already uses that pattern for its _collision* buffers).
+
+3.2 [MINOR] Death-explosion blast object allocated per dead entity.
+
+src/game/sim/Simulation.ts:958 — getEntityDeathExplosion returns a fresh
+{ radius, force, damage, sourceKey, ..., center:{x,y,z} } for every entity in the
+death-explosion queue (BFS over chain kills). Bounded by deaths/tick, but a big
+splash chain produces per-corpse garbage.
+FIX: scatter into a reused scratch struct.
+
+3.3 [MINOR] Commander ability tick allocates arrays + nested literals.
+
+src/game/sim/commanderAbilities.ts:42 allocates sprayTargets/completedBuildings
+arrays + {source:{...},target:{...}} literals (lines 116-130) per tick;
+getRepairEnergyRatePerSecond (:20) does an O(commanders x resourceMovements) linear
+scan. Low impact (bounded by commander count) but per-tick allocation.
+FIX: reusable buffers; index resource movements by (source,target) if needed.
+
+================================================================================
+PERFORMANCE — RENDERER (per-frame hot path)
+================================================================================
+
+Main per-frame chain: ThreeApp rAF -> RtsScene3DRenderPhase.run ->
+Render3DEntities.update -> updateUnitMeshes (per-unit) -> locomotion/turret/HUD.
+
+4.0 [CRITICAL] Locomotion terrain-sampler helpers allocate per part, per frame.
+
+src/game/render3d/helpers/LocomotionTerrainSampler.ts:133 (sampleLocomotionFootSurface)
+returns a fresh {groundY,visualFootY,nx,ny,nz} literal AND internally calls
+getSurfaceNormal which allocates again (4.1). Called 4x per leg per frame for every
+legged unit (LegRig3D.ts:724,951,987,1009). sampleLocomotionPartClamp (same file:49)
+returns a fresh {groundY,renderedY} called 3x per tread side (TreadRig3D.ts:317,
+inside a double loop) and per wheel (WheelRig3D.ts:213). This is the dominant
+renderer GC source for any army with legs/treads/wheels.
+FIX: convert all three helpers to caller-supplied scratch out-params (mutate and
+return), mirroring transformChassisToWorld(...,_worldOut) used right beside them;
+the leg/tread/wheel loops reuse one module scratch each.
+
+4.1 [CRITICAL] getSurfaceNormal allocates a fresh {nx,ny,nz} per call.
+
+src/game/render3d/terrain/terrainSurface.ts:21 — returns a fresh object literal
+every call (the "fresh per call" contract is even documented at lines 16-18).
+Reached per-leg-per-frame via 4.0.
+FIX: add an out-param overload getSurfaceNormal(x,z,w,h,cellSize,out) that writes
+into a caller scratch; route the foot/part samplers through it.
+
+4.2 [MAJOR] NameLabel3D identity-trace allocates per visible named unit per frame.
+
+src/game/render3d/NameLabel3D.ts:132-161 (labelIdentitySnapshot via
+recordDisplayedLabelIdentity, called at :395) builds a 7-element array + .join('|')
+string + a ~15-field object literal for every blueprint-tone label drawn, every
+frame. It is pure debug/trace instrumentation guarding a "should never happen"
+console.warn.
+FIX: gate the whole identity-trace path behind a dev/debug flag, or compute a cheap
+packed numeric identity hash instead of array-join + object snapshot.
+
+4.3 [MAJOR] Body-NAMES HUD loop runs for all entities every frame even when name
+toggles are off.
+
+src/game/render3d/helpers/RtsScene3DRenderPhase.ts:469-489 iterates
+getUnitsAndBuildings() and calls getEntityHudToggle + resolveEntityDisplayName +
+resolveCommanderOwnerName per entity every frame; the toggle is only read after the
+per-entity work starts. Unlike the waypoint pass, this loop is not gated by
+updateHudThisFrame.
+FIX: hoist the name-toggle check out of the loop (skip the whole iteration when no
+name toggle is on); consider gating with updateHudThisFrame.
+
+4.4 [MAJOR] Per-frame closure allocation for mirror/shield units.
+
+src/game/render3d/Render3DEntities.ts:932 — turrets.findIndex((t) => t.config.passive)
+allocates a closure every frame for every unit with m.mirrors (shield-panel/reflector
+units).
+FIX: plain counted for-loop, or cache the passive-turret index on the mesh at build
+time (turret layout doesn't change per frame).
+
+4.5 [MINOR] Misc per-frame literals/closures.
+- RtsScene3DRenderPhase.ts:314,321 — two arrow closures into sprayRenderer.update
+  per effects frame (hoist to bound members).
+- RtsScene3DRenderPhase.ts:479-483,513,533 — {x,y,z} anchor literals per named label
+  per frame (pass a reused scratch into nameLabel3D.perPieceName).
+- Render3DEntities.ts:594 (stepDyingPartMotion) — fresh delta literal per turret per
+  dying unit per frame (reuse scratch).
+- SelectionOverlayRenderer3D.ts:245 — projectGroundRadius closure per turret per unit
+  (guarded by range-ring debug toggle, not default path; hoist to a method).
+- Debris3D.ts:1032 — pieces.splice(i,1) per expired piece (swap-with-last + pop).
+
+================================================================================
+PERFORMANCE — SERVER / PHYSICS
+================================================================================
+
+5.0 [MAJOR] Per-body force application + idle/hover/boundary math still runs as
+per-tick TypeScript loops with per-unit allocation.
+
+src/game/server/UnitForceSystem.ts:89-581 (applyForces) is a per-entity body loop
+over dynamicBodies each tick that calls getLocomotionForceProfile(...) per unit per
+tick (allocates a profile object — :292,:401). src/game/server/PhysicsEngine3D.ts
+does three separate full dynamicBodies scans per tick (clearDynamicSurfaceContacts:757,
+the integrate gather, accumulator clear :740) plus collectAwakeEntityIds:607 full-scans
+every dynamic body; applyMapBoundaryForces:974 is another per-body spring loop. Body
+integration/contacts are already Rust-owned, but force application is not. Violates
+"TypeScript must never own per-unit update loops / physics integration" and "do not
+allocate in per-unit loops."
+FIX: migrate force-application math into a packed WASM kernel (the hover-orientation
+batch at PhysicsEngine3D :532 is the model). Meanwhile hoist getLocomotionForceProfile
+to write into a reused struct, and fold the three step() scans into one pass.
+
+5.1 [MAJOR] Tick loop drifts; no fixed-timestep accumulator/catch-up; no budget
+saturation metric.
+
+src/game/server/ServerTickLoop.ts:13 is a bare setInterval(cb, 1000/hz). GameServer.tick
+(:455) clamps per-tick dt to MAX_TICK_DT_MS (good vs spiral-of-death) but there is no
+accumulator and no catch-up: a 200ms hitch advances sim by one clamped step, so the
+authoritative clock silently slips behind real time and never recovers. TPS/CPU are
+measured, but tick-work-ms vs interval-ms saturation is not, so a saturated host can't
+tell it's falling behind. Violates "Measure TPS, CPU budget, ... backpressure
+continuously."
+FIX: drive the loop with a fixed-dt accumulator + bounded catch-up (max N steps/frame),
+and surface a tickMs/intervalMs saturation metric into serverMeta.
+
+5.2 [MINOR] First CPU sample is never used as an EMA seed.
+
+src/game/server/GameServer.ts:149 — tickMsInitialized defaults to true (vs tpsInitialized
+which is false), and the constructor (:209-210) resets tickMsAvg/Hi to 0 but leaves the
+flag true. So the first recordTickWork (:368) runs 0.99*0 + 0.01*workMs instead of seeding
+tickMsAvg = workMs; reported CPU load starts artificially near zero and takes ~100 ticks
+to converge.
+FIX: initialize tickMsInitialized = false.
+
+5.3 [MINOR] WASM shield/targeting/projectile pools not explicitly cleared on stop().
+
+GameServer.stop() (:383-419) clears the spatial grid (+ entity-meta + turret pools) but
+not sim.combatTargeting, sim.shieldSurfacePool, or sim.projectilePool. NOT an actual leak
+today — all three are count-based and fully re-stamped on the first tick of a new session
+— but it relies on "first tick re-stamps everything," which is fragile if any stamp ever
+becomes conditional.
+FIX: clear them in stop() for defense-in-depth and consistency.
+
+5.4 [MINOR] Sim-slot guard ("a second sim is a hard error") only fires at tick start.
+
+acquireSimSlot is called in GameServer.start() (:310), but create() (:169) and the
+PhysicsEngine3D ctor (:419) already allocate the WASM engine handle and spawn bodies into
+the SHARED module-level BodyPool before start() runs the singleton check. Today the old
+server is always stopped synchronously first, so it works, but a future create-before-stop
+caller would corrupt the shared pool instead of getting the intended immediate throw.
+FIX: acquire the sim slot in create()/the PhysicsEngine3D ctor so allocation into the
+shared pool is what throws; release on stop()/dispose().
+
+================================================================================
+NETWORKING / SNAPSHOTS
+================================================================================
+
+6.0 [CRITICAL] Backpressure-dropped delta still advanced the per-recipient baseline
+-> permanent desync.
+
+The per-recipient delta baseline is committed inside serializeGameState
+(copySentPrevState + captureToRustBaseline, stateSerializer.ts:430/472) which runs in
+ServerSnapshotPublisher.emit (:256) BEFORE the bytes reach the transport. The transport
+then drops the snapshot for backpressure (NetworkSnapshotTransport.ts:64/200/220/244 via
+shouldDropForBackpressure checking dc.bufferedAmount, :308) or for pending FULLSNAP
+compression (:325) — but nothing rolls back the baseline or forces a keyframe. The channel
+is reliable, so the dropped delta is gone, yet the next delta is diffed against state the
+client never received. That recipient's view stays corrupt until an unrelated keyframe
+happens to repaint the affected fields (fields that stop changing never repaint). Violates
+"DIFFSNAP baseline must advance per-field from the last value actually SENT to that
+recipient."
+FIX: on any backpressure/pending-compression drop, mark that recipient for a forced
+keyframe (snapshotPublisher.forceNextKeyframe for that listener), or defer the baseline
+commit until the send is confirmed.
+
+6.1 [HIGH] cloneNetworkSnapshot() allocates a fresh cloner per call on the receive
+hot path.
+
+src/game/network/snapshotClone.ts:548 — the free function does
+`new ReusableNetworkSnapshotCloner().clone(state)`. That class is designed to be held and
+reused (its sub-DTO arrays/objects pool across clones), and good callers hold it
+(SnapshotBuffer.ts:36, LocalGameConnection.ts:28). But NetworkSnapshotTransport.storePendingState
+(:160) and RemoteGameConnection.ts:39 call the free function, so every buffered client
+snapshot (5-10Hz + impairment path) reallocates the cloner and all its internal arrays,
+defeating the pool. Violates "Pool snapshot DTOs."
+FIX: give NetworkSnapshotTransport and RemoteGameConnection a long-lived
+ReusableNetworkSnapshotCloner field and call .clone() on it.
+
+6.2 [MEDIUM] Per-unit build DTO allocated in the serialize loop (unit path only).
+
+src/game/network/stateSerializerEntities.ts:719-728 — when ENTITY_CHANGED_BUILDING is set
+for a unit under construction, it allocates u.build = { complete, interrupted, paid:{...} }
+(two objects) per unit per snapshot. The building path right below (:800-813) correctly
+reuses the pooled poolEntry.buildingBuild.
+FIX: add a pooled unitBuild to PooledEntry (mirroring buildingBuild) and write into it.
+
+6.3 [MEDIUM] Client receive-coalescing silently drops a delta when one is already
+pending.
+
+src/game/network/NetworkSnapshotTransport.ts:156-162 — storePendingState only stores when
+there is no pending state (or when upgrading delta->full); a second delta arriving before
+the first is consumed is dropped, not coalesced. Deltas are non-idempotent (each carries
+only fields changed since last sent), so dropping one loses those corrections with no
+resync trigger.
+FIX: apply/merge the pending delta before overwriting, or at minimum request a keyframe
+when a delta is dropped here.
+
+6.4 [MINOR] Per-emit allocations break the otherwise-strict pooling discipline.
+
+ServerSnapshotPublisher.ts:191-193 allocates three Maps (teamAudioCache/teamSprayCache/
+teamMinimapCache) + a visibility cache (:183) every emit (~10Hz); snapshotRustWireEncoder.ts:2177
+allocates `const rawTopLevelKeys: string[] = []` per encode. Once-per-snapshot, not
+per-entity, so small.
+FIX: hoist to instance fields and .clear()/.length=0 per emit.
+
+================================================================================
+ARCHITECTURE / PHILOSOPHY MIGRATION (budget_design_philosophy.html)
+================================================================================
+
+7.0 [MAJOR, migration surface] Projectile + damage/death authority is still
+TypeScript-orchestrated.
+
+Per AUTHORITY_LEDGER.md (TypeScript-Orchestrated rows), the entire
+checkProjectileCollisions / _updateTravelingProjectilesJS path
+(combat/ProjectileCollisionHandler.ts, combat/projectileSystem.ts:916) and the
+damage/death loop (damage/DamageSystem.ts, Simulation.ts:580 updateCombat / :771
+cleanupDeadEntities / :897 detonateEntityDeathExplosions) run per-projectile /
+per-hit-entity in TypeScript. Position integration is batched into Rust, but collision
+detection, reflection, submunition spawn, termination, detonation, and HP write-back are
+not. Homing also makes one solveKinematicIntercept + one computeHomingThrust WASM call
+per homing projectile per tick rather than a batch (the TS fns are thin Rust wrappers —
+NOT duplicated math, so no Delete-The-Old-Path violation, just un-batched). Violates
+"TypeScript Coordinates, WASM Computes."
+FIX (C1 migration): move the swept-collision + termination loop into a Rust projectile
+kernel; batch the homing intercept/thrust like the existing projectileIntegrateStepBatch.
+Combine with 3.0.
+
+7.1 [MEDIUM] Explicit-Absence offenders in hot/sim paths.
+
+The migration off `?.`/`?:` is well advanced (the canonical EntityComponentSlots is fully
+T|null), but these remain in hot paths:
+- src/game/sim/WorldState.ts:295 — host?.combat?.turrets[meta.mountIndex ?? -1] double
+  optional-chain, then redundantly re-checks host===undefined next line. Hard-guard
+  host/combat with explicit ===null returns (the ?? -1 sentinel is fine).
+- src/game/network/ClientUnitPrediction.ts:415-418 — unit?.velocityX ?? 0 etc. in
+  packEntityPredictionBatch, a per-frame prediction loop. Narrow the input type so
+  entity.unit is non-null, or skip non-units before packing.
+- src/game/sim/Simulation.ts:1418 — entity.body?.physicsBody.slot ?? FLYING_LOITER_INVALID_BODY_SLOT
+  in a per-tick loiter fill; prefer explicit body===null branch.
+Lower priority scattered single guards: combatUtils.ts:422/435,
+ProjectileCollisionHandler.ts:761/1260, turretSystem.ts:159, economy.ts:230/240.
+
+7.2 [LOW] Config-as-data residue (gameplay logic/data trapped in TypeScript).
+
+- src/game/sim/turretConfigs.ts:35 — hardcoded
+  `if (config.turretBlueprintId === 'turretMortarDrop') return config.range;` — a gameplay
+  special-case as a magic string in code instead of a blueprint flag (e.g.
+  ballisticRangeIsAuthored). Move to JSON.
+- src/game/sim/buildConfigs.ts:32-40 — BUILDING_CONFIGS hand-enumerates the 8 building IDs
+  instead of iterating BUILDING_BLUEPRINTS keys (data duplicated in code; also an SSoT
+  concern). Iterate the JSON keys.
+
+7.3 [LOW] Delete-The-Old-Path residue.
+
+- src/game/sim/combat/damageHelpers.ts:476 — @deprecated alias
+  collectKillsWithDeathAudio = collectKillsAndDeathContexts, still called from
+  ProjectileCollisionHandler.ts:1130,1271. Inline the real name and delete the alias.
+- src/game/network/snapshotEntityWirePack.ts — legacy V1 unpackEntityRow and the array-form
+  unpack* paths allocate fresh objects/createEmptyUnitSub() spreads (e.g. :1194) instead of
+  using the V5/V6 decode pools. Current wire version is V6; remove these once no legacy
+  producers remain.
+
+7.4 [LOW] Stale 'unit' | 'building' type unions collapse towers into building.
+
+src/types/network.ts:632 and src/types/ui.ts:128 (minimap entity), and
+src/game/sim-wasm/snapshotEncoderTest.ts:182,1293 use type:'unit'|'building', diverging from
+canonical EntityType = 'unit'|'tower'|'building'|'shot' (sim.ts:911). Cosmetically harmless
+on the minimap today but the union is wrong.
+FIX: reconcile these unions to EntityType.
+
+7.5 [LOW / design decision] ray/shield exist as blueprint families but not runtime
+EntityType kinds.
+
+blueprints/rays.json (beam) and blueprints/shields.json are distinct families and shields
+get a turret-mounted runtime, but ray/shield are not entries in the Rust EntityType/KIND
+enum (only unit/tower/building/shot/turret). This is consistent with the philosophy (rays
+and shields are emitter-bound sustained emissions, NOT bodies, and attribute through their
+turret rather than minting an id) — so likely correct as-is. Flag only if a future design
+needs to point at an individual ray/shield instance by id.
