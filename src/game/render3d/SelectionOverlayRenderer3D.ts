@@ -242,35 +242,30 @@ export class SelectionOverlayRenderer3D {
         // they shrink honestly with mount height instead of pretending
         // the horizontal reach equals R.
         const mountHeight = Math.max(0, mount.z - terrainZ);
-        const projectGroundRadius = (r: number | null): number | null => {
-          if (r === null) return null;
-          const sq = r * r - mountHeight * mountHeight;
-          return sq > 0 ? Math.sqrt(sq) : 0;
-        };
 
         this.setRangeCircle(
           tm, 'trackAcquire', showTrackAcquire, mountX, mountY, mountGroundZ,
-          projectGroundRadius(weapon.ranges.tracking?.acquire ?? null), this.ringMatTrackAcquire,
+          this.projectGroundRadius(weapon.ranges.tracking?.acquire ?? null, mountHeight), this.ringMatTrackAcquire,
         );
         this.setRangeCircle(
           tm, 'trackRelease', showTrackRelease, mountX, mountY, mountGroundZ,
-          projectGroundRadius(weapon.ranges.tracking?.release ?? null), this.ringMatTrackRelease,
+          this.projectGroundRadius(weapon.ranges.tracking?.release ?? null, mountHeight), this.ringMatTrackRelease,
         );
         this.setRangeCircle(
           tm, 'engageAcquire', showEngageAcquire, mountX, mountY, mountGroundZ,
-          projectGroundRadius(weapon.ranges.fire.max.acquire), this.ringMatEngageAcquire,
+          this.projectGroundRadius(weapon.ranges.fire.max.acquire, mountHeight), this.ringMatEngageAcquire,
         );
         this.setRangeCircle(
           tm, 'engageRelease', showEngageRelease, mountX, mountY, mountGroundZ,
-          projectGroundRadius(weapon.ranges.fire.max.release), this.ringMatEngageRelease,
+          this.projectGroundRadius(weapon.ranges.fire.max.release, mountHeight), this.ringMatEngageRelease,
         );
         this.setRangeCircle(
           tm, 'engageMinAcquire', showEngageMinAcquire, mountX, mountY, mountGroundZ,
-          projectGroundRadius(weapon.ranges.fire.min?.acquire ?? null), this.ringMatEngageMinAcquire,
+          this.projectGroundRadius(weapon.ranges.fire.min?.acquire ?? null, mountHeight), this.ringMatEngageMinAcquire,
         );
         this.setRangeCircle(
           tm, 'engageMinRelease', showEngageMinRelease, mountX, mountY, mountGroundZ,
-          projectGroundRadius(weapon.ranges.fire.min?.release ?? null), this.ringMatEngageMinRelease,
+          this.projectGroundRadius(weapon.ranges.fire.min?.release ?? null, mountHeight), this.ringMatEngageMinRelease,
         );
       }
     } else if (m.rangeRingsVisible) {
@@ -366,6 +361,12 @@ export class SelectionOverlayRenderer3D {
     } else if (mesh) {
       mesh.visible = false;
     }
+  }
+
+  private projectGroundRadius(radius: number | null, mountHeight: number): number | null {
+    if (radius === null) return null;
+    const sq = radius * radius - mountHeight * mountHeight;
+    return sq > 0 ? Math.sqrt(sq) : 0;
   }
 
   private hideRangeRings(m: OverlayEntityMesh): void {

@@ -1029,7 +1029,11 @@ export class Debris3D {
       if (t >= 1) {
         this.poolFor(p.shape).free(p.slot);
         this.poolFlushPending = true;
-        this.pieces.splice(i, 1);
+        const lastIndex = this.pieces.length - 1;
+        if (i !== lastIndex) {
+          this.pieces[i] = this.pieces[lastIndex];
+        }
+        this.pieces.pop();
         continue;
       }
 

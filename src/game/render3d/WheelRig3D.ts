@@ -24,6 +24,7 @@ import {
 import {
   getLocomotionSurfaceNormal,
   sampleLocomotionPartClamp,
+  type LocomotionPartClamp,
 } from './LocomotionTerrainSampler';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 import { locomotionPieceColorHex } from './colorUtils';
@@ -40,6 +41,7 @@ const WHEEL_LIFT_TAU_SEC = 0.12;
 const WHEEL_OMEGA_TAU_SEC = 0.04;
 
 const WHEEL_COLOR = COLORS.units.locomotion.wheel.tire.colorHex;
+const _wheelClamp: LocomotionPartClamp = { groundY: 0, renderedY: 0 };
 
 const wheelGeom = new THREE.CylinderGeometry(1, 1, 1, 12);
 const wheelMats = new Map<number, THREE.MeshBasicMaterial>();
@@ -214,6 +216,7 @@ export function updateWheels(
       _wheelWorld.x, _wheelWorld.z,
       naturalWorldY, mount.wheelR,
       mapWidth, mapHeight,
+      _wheelClamp,
     );
 
     // ── Movement-position channel: lift ──────────────────────────

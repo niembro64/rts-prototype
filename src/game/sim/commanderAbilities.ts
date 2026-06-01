@@ -1,5 +1,5 @@
 import type { WorldState } from './WorldState';
-import type { Entity, EntityId, PlayerId } from './types';
+import { NO_ENTITY_ID, type Entity, type EntityId, type PlayerId } from './types';
 import { isBuildTargetInRange } from './builderRange';
 import { updateWeaponWorldKinematics } from './combat/combatUtils';
 import { getUnitGroundZ } from './unitGeometry';
@@ -16,31 +16,31 @@ import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 
 const _constructionEmitterMount = { x: 0, y: 0, z: 0 };
 const _reclaimTickOut = new Float64Array(5);
+const REPAIR_RATE_PAIR_KEY_STRIDE = 67_108_864;
 
-function getRepairEnergyRatePerSecond(world: WorldState, sourceId: EntityId, targetId: EntityId): number {
-  let rate = 0;
-  const movements = world.resourceMovements;
-  for (let i = 0; i < movements.length; i++) {
-    const movement = movements[i];
-    if (
-      movement.sourceEntityId === sourceId &&
-      movement.targetEntityId === targetId &&
-      movement.resource === 'energy' &&
-      movement.direction === 'outbound' &&
-      movement.reason === 'repair'
-    ) {
-      rate += movement.amountPerSecond;
-    }
-  }
-  return rate;
+type CompletedBuilding = CommanderAbilitiesResult['completedBuildings'][number];
+
+function repairRatePairKey(sourceId: EntityId, targetId: EntityId): number {
+  return sourceId * REPAIR_RATE_PAIR_KEY_STRIDE + targetId;
 }
 
 // Commander abilities system - handles build queue (ONE target at a time)
 export class CommanderAbilitiesSystem {
+  private readonly sprayTargets: SprayTarget[] = [];
+  private readonly sprayTargetPool: SprayTarget[] = [];
+  private readonly completedBuildings: CompletedBuilding[] = [];
+  private readonly completedBuildingPool: CompletedBuilding[] = [];
+  private readonly result: CommanderAbilitiesResult = {
+    sprayTargets: this.sprayTargets,
+    completedBuildings: this.completedBuildings,
+  };
+  private readonly repairEnergyRates = new Map<number, number>();
+
   // Update all commanders' building and healing
   update(world: WorldState, dtMs: number): CommanderAbilitiesResult {
-    const sprayTargets: SprayTarget[] = [];
-    const completedBuildings: { commanderId: EntityId; buildingId: EntityId }[] = [];
+    this.sprayTargets.length = 0;
+    this.completedBuildings.length = 0;
+    this.rebuildRepairEnergyRateIndex(world);
 
     // Find all commanders
     for (const commander of world.getCommanderUnits()) {
@@ -56,9 +56,12 @@ export class CommanderAbilitiesSystem {
       const commanderTurrets = commander.combat !== null ? commander.combat.turrets : null;
       let turretConstructionIndex = -1;
       if (commanderTurrets !== null) {
-        turretConstructionIndex = commanderTurrets.findIndex(
-          (turret) => turret.config.turretBlueprintId === 'turretConstruction',
-        );
+        for (let i = 0; i < commanderTurrets.length; i++) {
+          if (commanderTurrets[i].config.turretBlueprintId === 'turretConstruction') {
+            turretConstructionIndex = i;
+            break;
+          }
+        }
       }
       if (turretConstructionIndex >= 0 && commanderTurrets !== null) {
         const { cos, sin } = getTransformCosSin(commander.transform);
@@ -95,7 +98,7 @@ export class CommanderAbilitiesSystem {
 
       if (currentAction !== undefined && currentAction.type === 'reclaim') {
         if (this.reclaimTarget(world, playerId, commander, currentTarget, dtMs)) {
-          completedBuildings.push({ commanderId: commander.id, buildingId: currentTarget.id });
+          this.pushCompletedBuilding(commander.id, currentTarget.id);
         }
         continue;
       }
@@ -108,30 +111,109 @@ export class CommanderAbilitiesSystem {
         // Healing a damaged unit - energy/progress handled by shared system
         // Check if fully healed
         if (currentTarget.unit.hp >= currentTarget.unit.maxHp) {
-          completedBuildings.push({ commanderId: commander.id, buildingId: currentTarget.id });
+          this.pushCompletedBuilding(commander.id, currentTarget.id);
         }
 
         const intensity = currentTarget.unit.hp < currentTarget.unit.maxHp ? 1 : 0;
-        const repairEnergyRatePerSecond = getRepairEnergyRatePerSecond(world, commander.id, currentTarget.id);
-        sprayTargets.push({
-          source: { id: commander.id, pos: { x: commanderSprayX, y: commanderSprayY }, z: commanderSprayZ, playerId },
-          target: {
-            id: currentTarget.id,
-            pos: { x: currentTarget.transform.x, y: currentTarget.transform.y },
-            z: currentTarget.transform.z,
-            radius: currentTarget.unit.radius.hitbox,
-          },
-          type: 'heal',
-          intensity: Math.max(0.1, intensity),
-          channel: 0,
-          flow: 'direct',
-          flowRadius: 0,
-          ballSpawnRate: ballSpawnRateForResourceRate(repairEnergyRatePerSecond),
-        });
+        const repairEnergyRatePerSecond =
+          this.repairEnergyRates.get(repairRatePairKey(commander.id, currentTarget.id)) ?? 0;
+        const spray = this.acquireSprayTarget();
+        spray.source.id = commander.id;
+        spray.source.pos.x = commanderSprayX;
+        spray.source.pos.y = commanderSprayY;
+        spray.source.z = commanderSprayZ;
+        spray.source.playerId = playerId;
+        spray.target.id = currentTarget.id;
+        spray.target.pos.x = currentTarget.transform.x;
+        spray.target.pos.y = currentTarget.transform.y;
+        spray.target.z = currentTarget.transform.z;
+        spray.target.radius = currentTarget.unit.radius.hitbox;
+        spray.type = 'heal';
+        spray.intensity = Math.max(0.1, intensity);
+        spray.channel = 0;
+        spray.flow = 'direct';
+        spray.flowRadius = 0;
+        spray.ballSpawnRate = ballSpawnRateForResourceRate(repairEnergyRatePerSecond);
       }
     }
 
-    return { sprayTargets, completedBuildings };
+    return this.result;
+  }
+
+  private rebuildRepairEnergyRateIndex(world: WorldState): void {
+    this.repairEnergyRates.clear();
+    const movements = world.resourceMovements;
+    for (let i = 0; i < movements.length; i++) {
+      const movement = movements[i];
+      const sourceId = movement.sourceEntityId;
+      const targetId = movement.targetEntityId;
+      if (
+        sourceId === null ||
+        targetId === null ||
+        movement.resource !== 'energy' ||
+        movement.direction !== 'outbound' ||
+        movement.reason !== 'repair'
+      ) {
+        continue;
+      }
+      const key = repairRatePairKey(sourceId, targetId);
+      this.repairEnergyRates.set(key, (this.repairEnergyRates.get(key) ?? 0) + movement.amountPerSecond);
+    }
+  }
+
+  private acquireSprayTarget(): SprayTarget {
+    const index = this.sprayTargets.length;
+    let spray = this.sprayTargetPool[index];
+    if (spray === undefined) {
+      spray = {
+        source: { id: NO_ENTITY_ID, pos: { x: 0, y: 0 }, z: 0, playerId: 0 },
+        target: { id: NO_ENTITY_ID, pos: { x: 0, y: 0 }, z: 0, radius: 0 },
+        waypoint: undefined,
+        waypoint2: undefined,
+        type: 'heal',
+        intensity: 0,
+        channel: 0,
+        flow: 'direct',
+        flowRadius: 0,
+        coneAxis: undefined,
+        coneAngle: undefined,
+        speed: undefined,
+        particleRadius: undefined,
+        colorRGB: undefined,
+        endColorRGB: undefined,
+        endpointFade: undefined,
+        pylonTubeHandoffKey: undefined,
+        ballSpawnRate: undefined,
+      };
+      this.sprayTargetPool[index] = spray;
+    }
+    spray.target.dim = undefined;
+    spray.target.radius = undefined;
+    spray.waypoint = undefined;
+    spray.waypoint2 = undefined;
+    spray.coneAxis = undefined;
+    spray.coneAngle = undefined;
+    spray.speed = undefined;
+    spray.particleRadius = undefined;
+    spray.colorRGB = undefined;
+    spray.endColorRGB = undefined;
+    spray.endpointFade = undefined;
+    spray.pylonTubeHandoffKey = undefined;
+    spray.ballSpawnRate = undefined;
+    this.sprayTargets.push(spray);
+    return spray;
+  }
+
+  private pushCompletedBuilding(commanderId: EntityId, buildingId: EntityId): void {
+    const index = this.completedBuildings.length;
+    let completed = this.completedBuildingPool[index];
+    if (completed === undefined) {
+      completed = { commanderId: NO_ENTITY_ID, buildingId: NO_ENTITY_ID };
+      this.completedBuildingPool[index] = completed;
+    }
+    completed.commanderId = commanderId;
+    completed.buildingId = buildingId;
+    this.completedBuildings.push(completed);
   }
 
   // Get the current build/repair/reclaim target from commander's action queue

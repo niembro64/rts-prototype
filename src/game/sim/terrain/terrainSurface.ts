@@ -7,15 +7,16 @@ import {
   getTerrainMeshSample,
   terrainMeshHeightFromSample,
   terrainMeshNormalFromSample,
+  terrainMeshNormalFromSampleInto,
 } from './terrainTileMap';
 
 const WATER_CLEARANCE_SAMPLES = 8;
 
 // Module-scope scratch for the WASM normal sampler — Rust writes
 // (nx, ny, nz) at indices 0..3. Reused across calls to avoid per-
-// call typed-array allocation. The returned `{nx, ny, nz}` JS object
-// is fresh per call so this preserves the existing API contract
-// (callers may hold the result across another sample).
+// call typed-array allocation. Callers that pass `out` avoid the
+// normal-result object allocation too; callers that omit it keep the
+// existing fresh-object API contract.
 const _normalWasmScratch = new Float64Array(3);
 
 export function getSurfaceNormal(
@@ -24,24 +25,37 @@ export function getSurfaceNormal(
   mapWidth: number,
   mapHeight: number,
   cellSize: number = LAND_CELL_SIZE,
+  out?: { nx: number; ny: number; nz: number },
 ): { nx: number; ny: number; nz: number } {
   const sim = getSimWasm();
   if (sim !== undefined && sim.terrainIsInstalled() !== 0) {
     const ok = sim.terrainGetSurfaceNormal(x, z, _normalWasmScratch);
     if (ok !== 0) {
-      return {
-        nx: _normalWasmScratch[0],
-        ny: _normalWasmScratch[1],
-        nz: _normalWasmScratch[2],
-      };
+      if (out !== undefined) {
+        out.nx = _normalWasmScratch[0];
+        out.ny = _normalWasmScratch[1];
+        out.nz = _normalWasmScratch[2];
+        return out;
+      }
+      return { nx: _normalWasmScratch[0], ny: _normalWasmScratch[1], nz: _normalWasmScratch[2] };
     }
     // Fall through to TS path if Rust returned "no triangle" — e.g.
     // the rare degenerate-mesh case. Caller pays one branch.
   }
   const sample = getTerrainMeshSample(x, z, mapWidth, mapHeight, cellSize);
   const h0 = terrainMeshHeightFromSample(sample);
-  if (h0 < WATER_LEVEL) return { nx: 0, ny: 0, nz: 1 };
-  return terrainMeshNormalFromSample(sample);
+  if (h0 < WATER_LEVEL) {
+    if (out !== undefined) {
+      out.nx = 0;
+      out.ny = 0;
+      out.nz = 1;
+      return out;
+    }
+    return { nx: 0, ny: 0, nz: 1 };
+  }
+  return out !== undefined
+    ? terrainMeshNormalFromSampleInto(sample, out)
+    : terrainMeshNormalFromSample(sample);
 }
 
 export function projectHorizontalOntoSlope(

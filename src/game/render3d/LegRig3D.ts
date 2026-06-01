@@ -40,6 +40,7 @@ import {
   getLocomotionSurfaceHeight,
   getLocomotionSurfaceNormal,
   sampleLocomotionFootSurface,
+  type LocomotionFootSurfaceSample,
 } from './LocomotionTerrainSampler';
 import {
   type LocomotionBase,
@@ -729,6 +730,7 @@ export function updateLegs(
       footCylinderRadius,
       leg.footPadHalfHeight,
       FOOT_PAD_GROUND_CLEARANCE,
+      _footSurface,
     );
     const visualFootY = Math.max(footY, footSurface.visualFootY);
 
@@ -898,6 +900,13 @@ function hasReachablePlantedFoot(
 
 // Scratch output struct reused across the per-leg loop.
 const _worldOut = { x: 0, y: 0, z: 0 };
+const _footSurface: LocomotionFootSurfaceSample = {
+  groundY: 0,
+  visualFootY: 0,
+  nx: 0,
+  ny: 0,
+  nz: 1,
+};
 
 function updateAirborneLegPose(
   mesh: LegMesh,
@@ -956,6 +965,7 @@ function updateAirborneLegPose(
       footCylinderRadius,
       leg.footPadHalfHeight,
       FOOT_PAD_GROUND_CLEARANCE,
+      _footSurface,
     );
     const horizontalReach = Math.hypot(
       touchdownLocalX - hipLocalX,
@@ -992,6 +1002,7 @@ function updateAirborneLegPose(
       footCylinderRadius,
       leg.footPadHalfHeight,
       FOOT_PAD_GROUND_CLEARANCE,
+      _footSurface,
     );
     const targetFootY = Math.max(_worldOut.y, targetFootSurface.visualFootY);
 
@@ -1014,6 +1025,7 @@ function updateAirborneLegPose(
       footCylinderRadius,
       leg.footPadHalfHeight,
       FOOT_PAD_GROUND_CLEARANCE,
+      _footSurface,
     );
     if (leg.worldY < footSurface.groundY) leg.worldY = footSurface.groundY;
     const footY = Math.max(leg.worldY, footSurface.visualFootY);

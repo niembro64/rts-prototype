@@ -31,71 +31,12 @@ src/game/sim/runtimeTurrets.ts:55 is documented compat, not a separate bug.)
 PERFORMANCE — SIMULATION (authoritative tick path)
 ================================================================================
 
-3.0 [CRITICAL] Per-projectile FULL-WORLD scan for swept entity collision.
-
-src/game/sim/combat/ProjectileCollisionHandler.ts:356 (findProjectileHitboxSweepHit,
-called at :1188) walks ALL world.getUnits() (:356), ALL world.getBuildings()
-(:430), and ALL world.getProjectiles() (:465) — plus an inner loop over each
-unit's turrets — for every non-D-gun armed traveling projectile, every tick. That
-is O(projectiles x (units + buildings + projectiles)) ~ O(n^2) in steady-state
-combat; the single biggest scale risk in the sim. The spatial grid already
-exposes the right kernels, and the sibling D-gun branch (line 1235) already uses
-damageSystem.applySweptDamage, which queries the grid (DamageSystem.ts:189/545/664/702).
-Violates "Spatial structure beats broad scans" / "full scans only for bootstrap
-and keyframes."
-FIX: route the normal-projectile direct-hit test through spatialGrid line queries
-(mirror applySweptDamage's queryEntitiesAlongLine + queryProjectilesAlongLine
-broadphase). Ideally push the whole swept hit-test into a Rust batch kernel (none
-exists yet in lib.rs).
-
-3.2 [MINOR] Death-explosion blast object allocated per dead entity.
-
-src/game/sim/Simulation.ts:958 — getEntityDeathExplosion returns a fresh
-{ radius, force, damage, sourceKey, ..., center:{x,y,z} } for every entity in the
-death-explosion queue (BFS over chain kills). Bounded by deaths/tick, but a big
-splash chain produces per-corpse garbage.
-FIX: scatter into a reused scratch struct.
-
-3.3 [MINOR] Commander ability tick allocates arrays + nested literals.
-
-src/game/sim/commanderAbilities.ts:42 allocates sprayTargets/completedBuildings
-arrays + {source:{...},target:{...}} literals (lines 116-130) per tick;
-getRepairEnergyRatePerSecond (:20) does an O(commanders x resourceMovements) linear
-scan. Low impact (bounded by commander count) but per-tick allocation.
-FIX: reusable buffers; index resource movements by (source,target) if needed.
-
 ================================================================================
 PERFORMANCE — RENDERER (per-frame hot path)
 ================================================================================
 
 Main per-frame chain: ThreeApp rAF -> RtsScene3DRenderPhase.run ->
 Render3DEntities.update -> updateUnitMeshes (per-unit) -> locomotion/turret/HUD.
-
-4.0 [CRITICAL] Locomotion terrain-sampler helpers allocate per part, per frame.
-
-src/game/render3d/helpers/LocomotionTerrainSampler.ts:133 (sampleLocomotionFootSurface)
-returns a fresh {groundY,visualFootY,nx,ny,nz} literal AND internally calls
-getSurfaceNormal which allocates again (4.1). Called 4x per leg per frame for every
-legged unit (LegRig3D.ts:724,951,987,1009). sampleLocomotionPartClamp (same file:49)
-returns a fresh {groundY,renderedY} called 3x per tread side (TreadRig3D.ts:317,
-inside a double loop) and per wheel (WheelRig3D.ts:213). This is the dominant
-renderer GC source for any army with legs/treads/wheels.
-FIX: convert all three helpers to caller-supplied scratch out-params (mutate and
-return), mirroring transformChassisToWorld(...,_worldOut) used right beside them;
-the leg/tread/wheel loops reuse one module scratch each.
-
-4.1 [CRITICAL] getSurfaceNormal allocates a fresh {nx,ny,nz} per call.
-
-src/game/render3d/terrain/terrainSurface.ts:21 — returns a fresh object literal
-every call (the "fresh per call" contract is even documented at lines 16-18).
-Reached per-leg-per-frame via 4.0.
-FIX: add an out-param overload getSurfaceNormal(x,z,w,h,cellSize,out) that writes
-into a caller scratch; route the foot/part samplers through it.
-
-4.5 [MINOR] Misc per-frame literals/closures.
-- SelectionOverlayRenderer3D.ts:245 — projectGroundRadius closure per turret per unit
-  (guarded by range-ring debug toggle, not default path; hoist to a method).
-- Debris3D.ts:1032 — pieces.splice(i,1) per expired piece (swap-with-last + pop).
 
 ================================================================================
 PERFORMANCE — SERVER / PHYSICS

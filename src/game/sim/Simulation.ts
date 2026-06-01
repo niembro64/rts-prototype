@@ -42,7 +42,7 @@ import {
   type ProjectileDespawnEvent,
   type ProjectileVelocityUpdateEvent,
 } from './combat';
-import { DamageSystem } from './damage';
+import { DamageSystem, type AreaDamageSource } from './damage';
 import { economyManager } from './economy';
 import { ConstructionSystem } from './construction';
 import { factoryProductionSystem } from './factoryProduction';
@@ -229,6 +229,27 @@ export class Simulation {
   private _arrivalEntitiesBuf: Entity[] = [];
   private _deathExplosionQueueBuf: EntityId[] = [];
   private _deathExplosionDetonatedIds = new Set<EntityId>();
+  private _deathExplosionBlastScratch: DeathExplosionBlast = {
+    radius: 0,
+    force: 0,
+    damage: 0,
+    sourceKey: '',
+    sourceType: 'system',
+    sourceEntityId: NO_ENTITY_ID,
+    center: { x: 0, y: 0, z: 0 },
+  };
+  private _deathExplosionAreaDamageScratch: AreaDamageSource = {
+    type: 'area',
+    sourceEntityId: NO_ENTITY_ID,
+    // Death blasts are neutral for broadphase filtering: they hit
+    // friend and foe. Kill credit still resolves through sourceEntityId.
+    ownerId: 0,
+    damage: 0,
+    excludeEntities: EMPTY_DEATH_EXPLOSION_EXCLUDES,
+    center: this._deathExplosionBlastScratch.center,
+    radius: 0,
+    knockbackForce: 0,
+  };
   private _cleanupDeadUnitIdSet = new Set<EntityId>();
   private _cleanupDeadBuildingIdSet = new Set<EntityId>();
   private _cleanupDeadTurretIdSet = new Set<EntityId>();
@@ -912,27 +933,22 @@ export class Simulation {
       if (detonated.has(id)) continue;
       detonated.add(id);
 
-      const blast = this.getEntityDeathExplosion(id);
+      const blast = this._deathExplosionBlastScratch;
       if (
-        blast === null ||
+        !this.writeEntityDeathExplosion(id, blast) ||
         blast.radius <= 0 ||
         (blast.damage <= 0 && blast.force <= 0)
       ) {
         continue;
       }
 
-      const result = this.damageSystem.applyDamage({
-        type: 'area',
-        sourceEntityId: blast.sourceEntityId,
-        // Death blasts are neutral for broadphase filtering: they hit
-        // friend and foe. Kill credit still resolves through sourceEntityId.
-        ownerId: 0,
-        damage: blast.damage,
-        excludeEntities: EMPTY_DEATH_EXPLOSION_EXCLUDES,
-        center: blast.center,
-        radius: blast.radius,
-        knockbackForce: blast.force,
-      });
+      const areaDamage = this._deathExplosionAreaDamageScratch;
+      areaDamage.sourceEntityId = blast.sourceEntityId;
+      areaDamage.damage = blast.damage;
+      areaDamage.radius = blast.radius;
+      areaDamage.knockbackForce = blast.force;
+
+      const result = this.damageSystem.applyDamage(areaDamage);
       applyKnockbackForces(result.knockbacks, this.forceAccumulator);
       collectKillsAndDeathContexts(
         result,
@@ -955,48 +971,43 @@ export class Simulation {
     }
   }
 
-  private getEntityDeathExplosion(
+  private writeEntityDeathExplosion(
     id: EntityId,
-  ): DeathExplosionBlast | null {
+    out: DeathExplosionBlast,
+  ): boolean {
     const entity = this.world.getEntity(id);
     if (entity === undefined) {
-      return null;
+      return false;
     }
     if (entity.unit !== null) {
       const unitBlueprintId = entity.unit.unitBlueprintId;
       const blast = getUnitBlueprint(unitBlueprintId).base.deathExplosion;
-      return {
-        radius: blast.radius,
-        force: blast.force,
-        damage: blast.damage,
-        sourceKey: unitBlueprintId,
-        sourceType: 'unit',
-        sourceEntityId: entity.id,
-        center: {
-          x: entity.transform.x,
-          y: entity.transform.y,
-          z: entity.transform.z,
-        },
-      };
+      out.radius = blast.radius;
+      out.force = blast.force;
+      out.damage = blast.damage;
+      out.sourceKey = unitBlueprintId;
+      out.sourceType = 'unit';
+      out.sourceEntityId = entity.id;
+      out.center.x = entity.transform.x;
+      out.center.y = entity.transform.y;
+      out.center.z = entity.transform.z;
+      return true;
     }
     if (entity.building !== null && entity.buildingBlueprintId !== null) {
       const buildingBlueprintId = entity.buildingBlueprintId;
       const blast = getBuildingBlueprint(buildingBlueprintId).base.deathExplosion;
-      return {
-        radius: blast.radius,
-        force: blast.force,
-        damage: blast.damage,
-        sourceKey: buildingBlueprintId,
-        sourceType: 'building',
-        sourceEntityId: entity.id,
-        center: {
-          x: entity.transform.x,
-          y: entity.transform.y,
-          z: entity.transform.z,
-        },
-      };
+      out.radius = blast.radius;
+      out.force = blast.force;
+      out.damage = blast.damage;
+      out.sourceKey = buildingBlueprintId;
+      out.sourceType = 'building';
+      out.sourceEntityId = entity.id;
+      out.center.x = entity.transform.x;
+      out.center.y = entity.transform.y;
+      out.center.z = entity.transform.z;
+      return true;
     }
-    return null;
+    return false;
   }
 
   // Update unit movement with action queue processing.

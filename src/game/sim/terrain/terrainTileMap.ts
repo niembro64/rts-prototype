@@ -461,6 +461,13 @@ export function terrainMeshNormalFromSample(sample: TerrainMeshSample): {
   ny: number;
   nz: number;
 } {
+  return terrainMeshNormalFromSampleInto(sample, { nx: 0, ny: 0, nz: 1 });
+}
+
+export function terrainMeshNormalFromSampleInto(
+  sample: TerrainMeshSample,
+  out: { nx: number; ny: number; nz: number },
+): { nx: number; ny: number; nz: number } {
   if (sample.triangle) {
     const tri = sample.triangle;
     const ux = tri.bx - tri.ax;
@@ -478,7 +485,10 @@ export function terrainMeshNormalFromSample(sample: TerrainMeshSample): {
       nz = -nz;
     }
     const len = Math.sqrt(nx * nx + vertical * vertical + nz * nz) || 1;
-    return { nx: nx / len, ny: nz / len, nz: vertical / len };
+    out.nx = nx / len;
+    out.ny = nz / len;
+    out.nz = vertical / len;
+    return out;
   }
   const { u, v, subSize, h00, h10, h11, h01 } = sample;
   const dHdx = u >= v ? (h10 - h00) / subSize : (h11 - h01) / subSize;
@@ -487,7 +497,10 @@ export function terrainMeshNormalFromSample(sample: TerrainMeshSample): {
   const ny = -dHdz;
   const nz = 1;
   const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
-  return { nx: nx / len, ny: ny / len, nz: nz / len };
+  out.nx = nx / len;
+  out.ny = ny / len;
+  out.nz = nz / len;
+  return out;
 }
 
 export function getTerrainMeshHeight(

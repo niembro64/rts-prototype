@@ -43,13 +43,14 @@ export function sampleLocomotionPartClamp(
   clearance: number,
   mapWidth: number,
   mapHeight: number,
+  out?: LocomotionPartClamp,
 ): LocomotionPartClamp {
   const groundY = getLocomotionSurfaceHeight(worldX, worldZ, mapWidth, mapHeight);
   const floorY = groundY + clearance;
-  return {
-    groundY,
-    renderedY: naturalWorldY < floorY ? floorY : naturalWorldY,
-  };
+  const result = out ?? { groundY: 0, renderedY: 0 };
+  result.groundY = groundY;
+  result.renderedY = naturalWorldY < floorY ? floorY : naturalWorldY;
+  return result;
 }
 
 export type LocomotionGroundContactSample = {
@@ -124,17 +125,21 @@ export function sampleLocomotionFootSurface(
   cylinderRadius: number,
   footPadHalfHeight: number,
   clearance: number,
+  out?: LocomotionFootSurfaceSample,
 ): LocomotionFootSurfaceSample {
   const groundY = getLocomotionSurfaceHeight(x, z, mapWidth, mapHeight);
-  const normal = getSurfaceNormal(x, z, mapWidth, mapHeight, LAND_CELL_SIZE);
-  const normalY = Math.max(0.35, normal.nz);
+  const result = out ?? {
+    groundY: 0,
+    visualFootY: 0,
+    nx: 0,
+    ny: 0,
+    nz: 1,
+  };
+  getSurfaceNormal(x, z, mapWidth, mapHeight, LAND_CELL_SIZE, result);
+  const normalY = Math.max(0.35, result.nz);
   const padVerticalLift = (footPadHalfHeight + clearance) / normalY;
   const cylinderVerticalLift = cylinderRadius + clearance;
-  return {
-    groundY,
-    visualFootY: groundY + Math.max(cylinderVerticalLift, padVerticalLift),
-    nx: normal.nx,
-    ny: normal.ny,
-    nz: normal.nz,
-  };
+  result.groundY = groundY;
+  result.visualFootY = groundY + Math.max(cylinderVerticalLift, padVerticalLift);
+  return result;
 }

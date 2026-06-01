@@ -29,6 +29,7 @@ import { writeTurretCooldownToSlab } from './combatActivitySlab';
 import { getUnitGroundZ } from '../unitGeometry';
 
 const SHIELD_PANEL_PROJECTILE_QUERY_PAD = 96;
+const PROJECTILE_HITBOX_SWEEP_QUERY_EXTRA = 32;
 const MAX_PROJECTILE_SWEEP_DISTANCE = LAND_CELL_SIZE * 64;
 const MAX_PROJECTILE_SWEEP_DISTANCE_SQ =
   MAX_PROJECTILE_SWEEP_DISTANCE * MAX_PROJECTILE_SWEEP_DISTANCE;
@@ -364,8 +365,21 @@ function findProjectileHitboxSweepHit(
   const segmentDy = currentY - prevY;
   const segmentDz = currentZ - prevZ;
   const sourceRadius = Math.max(0, projectileHitboxRadius);
+  const sweptQueryWidth =
+    (sourceRadius + world.getMaxTargetableRadius() + PROJECTILE_HITBOX_SWEEP_QUERY_EXTRA) * 2;
+  const { units: nearbyUnits, buildings: nearbyBuildings } =
+    spatialGrid.queryEntitiesAlongLine(
+      prevX, prevY, prevZ,
+      currentX, currentY, currentZ,
+      sweptQueryWidth,
+    );
+  const nearbyProjectiles = spatialGrid.queryProjectilesAlongLine(
+    prevX, prevY, prevZ,
+    currentX, currentY, currentZ,
+    sweptQueryWidth,
+  );
 
-  for (const unit of world.getUnits()) {
+  for (const unit of nearbyUnits) {
     if (excludeEntities.has(unit.id)) continue;
     const unitComponent = unit.unit;
     if (unitComponent === null || unitComponent.hp <= 0) continue;
@@ -439,7 +453,7 @@ function findProjectileHitboxSweepHit(
     }
   }
 
-  for (const building of world.getBuildings()) {
+  for (const building of nearbyBuildings) {
     if (excludeEntities.has(building.id)) continue;
     const buildingComponent = building.building;
     if (buildingComponent === null || buildingComponent.hp <= 0) continue;
@@ -474,7 +488,7 @@ function findProjectileHitboxSweepHit(
     }
   }
 
-  for (const projectile of world.getProjectiles()) {
+  for (const projectile of nearbyProjectiles) {
     if (
       excludeEntities.has(projectile.id) ||
       projectile.id === projEntity.id ||
