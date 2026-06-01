@@ -30,7 +30,7 @@ import {
   distanceToRayConfigRangeSphere,
   type RayConfigRangeSphere,
 } from '../combat/lineShotRange';
-import { ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../../types/network';
+import { ENTITY_CHANGED_HP } from '../../../types/network';
 import {
   BUILDING_CLOSED_DAMAGE_MULTIPLIER,
   buildingBlueprintHasActiveState,
@@ -38,7 +38,6 @@ import {
   notifyBuildingActiveStateDamaged,
 } from '../buildingActiveState';
 import { getUnitGroundZ } from '../unitGeometry';
-import { DETACHED_TURRET_TOWER_BLUEPRINT_ID } from '../../../types/buildingTypes';
 import { isConstructionBodyMaterialized } from '../buildableHelpers';
 import { getActiveShieldPanelTurret } from '../shieldPanelRuntime';
 
@@ -152,16 +151,7 @@ const BEAM_GROUND_EPSILON = 0.25;
 const SWEPT_HITBOX_QUERY_EXTRA = 32;
 
 function isTurretDamageable(turret: Turret): boolean {
-  return turret.id !== NO_ENTITY_ID && turret.hp > 0 && !turret.config.visualOnly;
-}
-
-function shouldDetachLivePieceFromBlast(host: Entity, pieceHp: number, pieceMaxHp: number, force: number): boolean {
-  const bodyHp = host.unit !== null
-    ? host.unit.hp
-    : (host.building !== null ? host.building.hp : 0);
-  if (bodyHp <= 0) return false;
-  if (pieceHp <= 0 || pieceMaxHp <= 0 || force <= 0) return false;
-  return force >= pieceMaxHp * KNOCKBACK.LIVE_PIECE_DETACH_FORCE_PER_HP;
+  return turret.id !== NO_ENTITY_ID && !turret.config.visualOnly;
 }
 
 
@@ -950,8 +940,9 @@ export class DamageSystem {
     return result;
   }
 
-  // Swept volume damage (traveling projectiles)
-  // Uses line from prevPos to currentPos with projectile radius
+  // Swept damage from prevPos to currentPos. Normal shots pass radius 0 so
+  // their centerline is tested against target hitboxes; D-gun waves pass a
+  // positive radius for their authored damage width.
   // PERFORMANCE: Uses spatial grid line query for O(k) instead of O(n)
   // Note: Recoil for traveling projectiles is applied at fire time in fireTurrets(), not here
   private applySweptDamage(source: SweptDamageSource): DamageResult {
@@ -1051,8 +1042,9 @@ export class DamageSystem {
 
     }
 
-    // Check buildings using swept 3D collision against the AABB
-    // expanded by projectile radius.
+    // Check buildings using swept 3D collision against the AABB expanded
+    // by the source sweep radius. Normal shots pass 0, so this is a
+    // centerline-vs-building hitbox test.
     for (const building of nearbyBuildings) {
       if (source.excludeEntities.has(building.id)) continue;
       if (!building.building || building.building.hp <= 0) continue;
@@ -1251,7 +1243,7 @@ export class DamageSystem {
       }
 
       const combat = unit.combat;
-      if (combat !== null) {
+      if (combat !== null && !bodyOverlaps) {
         const unitCS = getTransformCosSin(unit.transform);
         const unitGroundZ = getUnitGroundZ(unit);
         for (let i = 0; i < combat.turrets.length; i++) {
@@ -1277,9 +1269,6 @@ export class DamageSystem {
             attackerVel: { x: forceX, y: forceY },
             attackMagnitude: damage,
           }, turret.id);
-          if (shouldDetachLivePieceFromBlast(unit, turret.hp, turret.maxHp, force)) {
-            this.world.detachMountedTurretAsAgent(unit, i);
-          }
           result.hitEntityIds.push(unit.id);
         }
       }
@@ -1383,45 +1372,6 @@ export class DamageSystem {
       });
       result.hitEntityIds.push(building.id);
 
-      const combat = building.combat;
-      if (combat !== null && building.building.hp > 0) {
-        const buildingCS = getTransformCosSin(building.transform);
-        const buildingGroundZ = getUnitGroundZ(building);
-        for (let i = 0; i < combat.turrets.length; i++) {
-          const turret = combat.turrets[i];
-          if (!isTurretDamageable(turret)) continue;
-          const mount = resolveWeaponWorldMount(
-            building, turret, i,
-            buildingCS.cos, buildingCS.sin,
-            {
-              currentTick: this.world.getTick(),
-              unitGroundZ: buildingGroundZ,
-              surfaceN: undefined,
-            },
-            _subEntityPoint,
-          );
-          const tx = mount.x - source.center.x;
-          const ty = mount.y - source.center.y;
-          const tz = mount.z - source.center.z;
-          const turretMaxDist = source.radius + turret.config.radius.hitbox;
-          if (tx * tx + ty * ty + tz * tz > turretMaxDist * turretMaxDist) continue;
-          const turretDist = Math.sqrt(tx * tx + ty * ty + tz * tz);
-          const invTurretDist = turretDist > 0 ? 1 / turretDist : 0;
-          const turretDirX = tx * invTurretDist;
-          const turretDirY = ty * invTurretDist;
-          const turretForceX = turretDirX * bForce;
-          const turretForceY = turretDirY * bForce;
-          this.applyDamageToEntity(building, damage, result, source.sourceEntityId, {
-            penetrationDir: { x: turretDirX, y: turretDirY },
-            attackerVel: { x: turretForceX, y: turretForceY },
-            attackMagnitude: damage,
-          }, turret.id);
-          if (shouldDetachLivePieceFromBlast(building, turret.hp, turret.maxHp, bForce)) {
-            this.world.detachMountedTurretAsAgent(building, i);
-          }
-          result.hitEntityIds.push(building.id);
-        }
-      }
     }
 
     return result;
@@ -1434,16 +1384,11 @@ export class DamageSystem {
     result: DamageResult,
     sourceEntityId: EntityId,
     deathContext: DeathContext | undefined = undefined,
-    targetEntityId: EntityId = entity.id,
+    _targetEntityId: EntityId = entity.id,
   ): void {
-    if (targetEntityId !== entity.id) {
-      const turret = this.world.resolveMountedTurret(targetEntityId);
-      if (turret !== undefined && turret.host.id === entity.id) {
-        this.applyDamageToTurret(entity, turret.turret, damage, result, sourceEntityId, deathContext);
-        return;
-      }
-    }
-
+    // Mounted turret IDs are addressable hit targets, but turrets no longer
+    // own health. Damage that enters through a turret hitbox resolves through
+    // the host body.
     if (entity.unit && entity.unit.hp > 0) {
       entity.unit.hp -= damage;
       this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
@@ -1479,48 +1424,6 @@ export class DamageSystem {
         result.killedProjectileIds.add(entity.id);
       }
     }
-  }
-
-  private applyDamageToTurret(
-    host: Entity,
-    turret: Turret,
-    damage: number,
-    result: DamageResult,
-    sourceEntityId: EntityId,
-    deathContext: DeathContext | undefined,
-  ): void {
-    if (turret.hp <= 0) return;
-    turret.hp -= damage;
-    this.world.markSnapshotDirty(host.id, ENTITY_CHANGED_TURRETS);
-    if (turret.hp > 0 || result.killedTurretIds.has(turret.id)) return;
-
-    turret.hp = 0;
-    turret.target = null;
-    turret.state = 'idle';
-    turret.angularVelocity = 0;
-    turret.angularAcceleration = 0;
-    turret.pitchVelocity = 0;
-    turret.pitchAcceleration = 0;
-    turret.burst = undefined;
-    turret.shield = undefined;
-    if (host.buildingBlueprintId === DETACHED_TURRET_TOWER_BLUEPRINT_ID && host.building !== null) {
-      host.building.hp = 0;
-      this.world.markSubEntityMetadataDead(turret.id);
-      this.world.markSnapshotDirty(host.id, ENTITY_CHANGED_HP | ENTITY_CHANGED_TURRETS);
-      if (!result.killedBuildingIds.has(host.id)) {
-        result.killedBuildingIds.add(host.id);
-        this.recordKiller(result, host.id, sourceEntityId);
-        if (deathContext) result.deathContexts.set(host.id, deathContext);
-      }
-      return;
-    }
-    this.world.markSubEntityMetadataDead(turret.id);
-    result.killedTurretIds.add(turret.id);
-    this.recordKiller(result, turret.id, sourceEntityId);
-    if (deathContext) result.deathContexts.set(turret.id, deathContext);
-    // The host just lost a turret's weight — recompute its effective mass
-    // (no-op for static building/tower hosts; see PhysicsEngine3D).
-    this.world.onHostMassChanged?.(host);
   }
 
   /** Stash the killer's playerId for the death event channel (FOW-17).

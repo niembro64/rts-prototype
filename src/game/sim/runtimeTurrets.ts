@@ -12,14 +12,11 @@
 
 import { isProjectileShot, type Turret, type TurretConfig, type BuildingBlueprintId } from './types';
 import type { BuildingTurretMount } from '../../types/blueprints';
-import type { TurretBlueprintId } from '../../types/blueprintIds';
 import type { EntityId } from '../../types/entityTypes';
 import { NO_ENTITY_ID } from '../../types/entityTypes';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
-import { getUnitBlueprint, getBuildingBlueprint, getTurretBlueprint } from './blueprints';
+import { getUnitBlueprint, getBuildingBlueprint } from './blueprints';
 import { createRuntimeTurretMount } from './turretMounts';
-
-export const DETACHED_TURRET_MOUNT_Z = 22;
 
 function makeRuntimeTurret(
   turretBlueprintId: string,
@@ -34,7 +31,6 @@ function makeRuntimeTurret(
   visualVariant: BuildingTurretMount['visualVariant'] | undefined = undefined,
 ): Turret {
   const turretConfig = getTurretConfig(turretBlueprintId);
-  const turretBlueprint = getTurretBlueprint(turretBlueprintId);
   if (visualVariant !== undefined) {
     turretConfig.visualVariant = visualVariant;
   }
@@ -56,8 +52,10 @@ function makeRuntimeTurret(
     parentId: identity.parentId,
     rootHostId: identity.rootHostId,
     mountIndex: identity.mountIndex,
-    hp: turretBlueprint.base.health,
-    maxHp: turretBlueprint.base.health,
+    // Compatibility sentinel for legacy snapshot fields. Mounted turrets
+    // no longer own damageable health; host body health is authoritative.
+    hp: 1,
+    maxHp: 1,
     config,
     target: null,
     ranges,
@@ -164,21 +162,4 @@ export function createBuildingRuntimeTurrets(
     ));
   }
   return turrets;
-}
-
-export function createDetachedRuntimeTurret(
-  turretBlueprintId: TurretBlueprintId,
-  parentId: EntityId = NO_ENTITY_ID,
-  rootHostId: EntityId = parentId,
-  allocateEntityId: (() => EntityId) | null = null,
-): Turret {
-  const identity = allocateEntityId !== null
-    ? { id: allocateEntityId(), parentId, rootHostId, mountIndex: 0 }
-    : anonymousTurretBlueprintIdentity(0);
-  return makeRuntimeTurret(
-    turretBlueprintId,
-    { x: 0, y: 0, z: DETACHED_TURRET_MOUNT_Z },
-    false,
-    identity,
-  );
 }

@@ -266,7 +266,6 @@ export type TurretAudioConfig = {
 export type TurretBlueprint = {
   turretBlueprintId: TurretBlueprintId;
   name: string;
-  base: EntityBaseLedger;
   kind: WeaponKind;
   range: number;
   cooldown: number;

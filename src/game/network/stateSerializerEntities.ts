@@ -85,16 +85,15 @@ export const ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE = 9;
 // shrank from 64 → 59 when 5 retired actuator-state slots were dropped.
 // shrank from 59 → 51 when 8 retired visual-suspension slots were
 // dropped from the JS→WASM entity row. Grew 51 → 52 when locomotion
-// hpCurr (slot 51) was added to the wire, riding ENTITY_CHANGED_HP the
-// same way body hp.curr (slot 8) does.
+// Slot 51 remains reserved for a legacy compatibility value.
 export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 51;
 export const ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE = 34;
 export const ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE = 16;
 // Turret row layout: rot, vel, pitch, pitchVel, id, state, hasTarget,
 // targetId, hasShieldRange, shieldRange, hpCurr. Stride shrank from
 // 12 → 10 when the 2 angular acceleration slots (acc, pitchAcc) were
-// removed alongside movementAccel, then grew 10 → 11 when the turret's
-// current HP (slot 10, unconditional) was added to the wire.
+// removed alongside movementAccel, then grew 10 → 11 for the legacy
+// turret hpCurr compatibility slot (slot 10, unconditional).
 export const ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE = 11;
 export const ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE = 5;
 
@@ -190,7 +189,7 @@ function writeTurretsToPool(
       ? null
       : wireTargetId;
     dst.state = hasTargetingFsm ? _snapshotTurretFsm.stateCode : turretStateToCode(src.state);
-    dst.active = src.id === NO_ENTITY_ID || src.hp <= 0 ? false : null;
+    dst.active = src.id === NO_ENTITY_ID ? false : null;
     dst.hpCurr = src.hp;
     const shield = src.shield;
     dst.currentShieldRange = shield !== undefined ? shield.range : null;

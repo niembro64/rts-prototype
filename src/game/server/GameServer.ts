@@ -1,10 +1,7 @@
 // GameServer - Headless simulation server.
 // Owns WorldState, Simulation, PhysicsEngine3D, and runs the game loop via setInterval.
 
-import type {
-  DetachedTurretAgentSpawn,
-  WorldState,
-} from '../sim/WorldState';
+import type { WorldState } from '../sim/WorldState';
 import type { Simulation } from '../sim/Simulation';
 import type {
   AttackCommand,
@@ -58,7 +55,6 @@ import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDisabledTurretJsOnlyFields } from '../sim/combat/combatActivity';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { factoryProductionSystem } from '../sim/factoryProduction';
-import { getTurretBlueprint } from '../sim/blueprints';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import { initSimWasm } from '../sim-wasm/init';
 import { ServerBootstrap } from './ServerBootstrap';
@@ -98,14 +94,6 @@ export type GameServerStartupProgress = (
 export type GameServerCreateOptions = {
   onProgress: GameServerStartupProgress | undefined;
 };
-
-/** Ground-friction multiplier for a turret that has been blown off its
- *  host. A hostless turret is loose debris-that-still-fights — it has no
- *  drivetrain gripping the terrain, so it keeps almost all of its
- *  tangential velocity on contact and slides / rolls downhill instead of
- *  planting where it lands. 1 = normal unit traction; this is well below
- *  that. Tune in-app. */
-const DETACHED_TURRET_GROUND_FRICTION_SCALE = 0.12;
 
 export class GameServer {
   private physics: PhysicsEngine3D;
@@ -260,13 +248,9 @@ export class GameServer {
       this.physics.removeBody(body);
       entity.body = null;
     };
-    this.world.onDetachedTurretAgentSpawn = (spawn: DetachedTurretAgentSpawn) => {
-      this.createPhysicsBodyForDetachedTurret(spawn);
-    };
-    // A mobile host gained/lost a piece (turret died, detached,
-    // or finished building) — recompute its dynamic body mass so F = M·A
-    // reflects only the weight still attached. Static building/tower bodies
-    // are skipped (setBodyEffectiveMass no-ops on static bodies).
+    // Recompute dynamic body mass when host-authored body mass changes.
+    // Mounted turrets are inseparable emitters, so turret lifetime no
+    // longer changes host mass.
     this.world.onHostMassChanged = (host: Entity) => {
       const bodyRef = host.body;
       if (bodyRef === null || host.unit === null) return;
@@ -442,7 +426,6 @@ export class GameServer {
 
   private detachSimulationCallbacks(): void {
     this.world.onEntityRemoving = null;
-    this.world.onDetachedTurretAgentSpawn = null;
     this.world.onHostMassChanged = null;
     this.simulation.onUnitDeath = null;
     this.simulation.onUnitSpawn = null;
@@ -510,40 +493,6 @@ export class GameServer {
         this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_POS);
       }
     }
-  }
-
-  private createPhysicsBodyForDetachedTurret(spawn: DetachedTurretAgentSpawn): void {
-    const entity = spawn.agent;
-    if (entity.body !== null || entity.building === null || entity.combat === null) return;
-    const turret = entity.combat.turrets[0];
-    if (turret === undefined) return;
-
-    const radius = Math.max(1, turret.config.radius.collision);
-    const mass = Math.max(1, getTurretBlueprint(turret.config.turretBlueprintId).base.mass);
-    const body = this.physics.createUnitBody(
-      spawn.position.x,
-      spawn.position.y,
-      radius,
-      radius,
-      mass,
-      `detached_turret_${entity.id}`,
-      entity.id,
-      spawn.position.z,
-      this.world.getCachedSurfaceNormal(spawn.position.x, spawn.position.y),
-      DETACHED_TURRET_GROUND_FRICTION_SCALE,
-    );
-    entity.body = { physicsBody: body };
-    entity.transform.x = body.x;
-    entity.transform.y = body.y;
-    entity.transform.z = body.z;
-    this.physics.launchBody(
-      body,
-      spawn.launchVelocity.x,
-      spawn.launchVelocity.y,
-      spawn.launchVelocity.z,
-    );
-    spatialGrid.addBuilding(entity);
-    this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_POS);
   }
 
   // Emit a snapshot to all listeners (driven by internal snapshot interval)

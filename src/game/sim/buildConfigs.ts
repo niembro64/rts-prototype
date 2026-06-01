@@ -1,7 +1,6 @@
 import type { BuildingConfig, BuildingBlueprintId, UnitBuildConfig } from './types';
 import { COST_MULTIPLIER } from '../../config';
 import { BUILDING_BLUEPRINTS, getUnitBlueprint, getUnitLocomotion, BUILDABLE_UNIT_BLUEPRINT_IDS } from './blueprints';
-import { DETACHED_TURRET_TOWER_BLUEPRINT_ID } from '../../types/buildingTypes';
 
 function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): BuildingConfig {
   const bp = BUILDING_BLUEPRINTS[buildingBlueprintId];
@@ -37,7 +36,6 @@ export const BUILDING_CONFIGS: Record<BuildingBlueprintId, BuildingConfig> = {
   towerBeamMega: buildBuildingConfig('towerBeamMega'),
   towerCannon: buildBuildingConfig('towerCannon'),
   buildingResourceConverter: buildBuildingConfig('buildingResourceConverter'),
-  towerDetachedTurret: buildBuildingConfig('towerDetachedTurret'),
 };
 
 // Helper to get building config
@@ -73,7 +71,5 @@ export function getBuildableUnits() {
 
 // Get list of all buildings
 export function getAllBuildings(): BuildingConfig[] {
-  return Object.values(BUILDING_CONFIGS).filter(
-    (config) => config.buildingBlueprintId !== DETACHED_TURRET_TOWER_BLUEPRINT_ID,
-  );
+  return Object.values(BUILDING_CONFIGS);
 }

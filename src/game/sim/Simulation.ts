@@ -8,8 +8,6 @@ import {
   buildUnitDeathEvent,
   buildBuildingDeathEvent,
   collectKillsAndDeathContexts,
-  resolveKilledTurret,
-  resolveKilledTurretWorldPosition,
 } from './combat/damageHelpers';
 import { magnitude } from '../math';
 import { executeCommand, type CommandContext } from './commandExecution';
@@ -63,7 +61,6 @@ import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_TURRETS,
 } from '@/types/network';
-import { DETACHED_TURRET_TOWER_BLUEPRINT_ID } from '@/types/buildingTypes';
 import { UNIT_MASS_MULTIPLIER } from '../../config';
 import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
@@ -74,7 +71,6 @@ import {
 } from './Pathfinder';
 import {
   getBuildingBlueprint,
-  getTurretBlueprint,
   getUnitBlueprint,
 } from './blueprints';
 import { updateBuildingActiveStates } from './buildingActiveState';
@@ -238,7 +234,6 @@ export class Simulation {
   private _cleanupDeadTurretIdSet = new Set<EntityId>();
   private _cleanupSyntheticDeathEventIds = new Set<EntityId>();
   private _cleanupDeathContexts = new Map<EntityId, DeathContext>();
-  private _pieceDeathExplosionCenter = { x: 0, y: 0, z: 0 };
   private _arrivalSlotsBuf = new Uint32Array(0);
   private _arrivalDxBuf = new Float64Array(0);
   private _arrivalDyBuf = new Float64Array(0);
@@ -911,7 +906,6 @@ export class Simulation {
     queue.length = 0;
     for (const id of deadUnitIds) queue.push(id);
     for (const id of deadBuildingIds) queue.push(id);
-    for (const id of deadTurretIds) queue.push(id);
 
     for (let index = 0; index < queue.length; index++) {
       const id = queue[index];
@@ -958,9 +952,6 @@ export class Simulation {
       for (const killedBuildingId of result.killedBuildingIds) {
         if (!detonated.has(killedBuildingId)) queue.push(killedBuildingId);
       }
-      for (const killedTurretId of result.killedTurretIds) {
-        if (!detonated.has(killedTurretId)) queue.push(killedTurretId);
-      }
     }
   }
 
@@ -969,7 +960,7 @@ export class Simulation {
   ): DeathExplosionBlast | null {
     const entity = this.world.getEntity(id);
     if (entity === undefined) {
-      return this.getSubEntityDeathExplosion(id);
+      return null;
     }
     if (entity.unit !== null) {
       const unitBlueprintId = entity.unit.unitBlueprintId;
@@ -989,26 +980,6 @@ export class Simulation {
       };
     }
     if (entity.building !== null && entity.buildingBlueprintId !== null) {
-      if (entity.buildingBlueprintId === DETACHED_TURRET_TOWER_BLUEPRINT_ID) {
-        const turret = entity.combat?.turrets[0];
-        if (turret !== undefined) {
-          const turretBlueprintId = turret.config.turretBlueprintId;
-          const blast = getTurretBlueprint(turretBlueprintId).base.deathExplosion;
-          return {
-            radius: blast.radius,
-            force: blast.force,
-            damage: blast.damage,
-            sourceKey: turretBlueprintId,
-            sourceType: 'turret',
-            sourceEntityId: entity.id,
-            center: {
-              x: turret.worldPosTick >= 0 ? turret.worldPos.x : entity.transform.x,
-              y: turret.worldPosTick >= 0 ? turret.worldPos.y : entity.transform.y,
-              z: turret.worldPosTick >= 0 ? turret.worldPos.z : entity.transform.z,
-            },
-          };
-        }
-      }
       const buildingBlueprintId = entity.buildingBlueprintId;
       const blast = getBuildingBlueprint(buildingBlueprintId).base.deathExplosion;
       return {
@@ -1025,31 +996,6 @@ export class Simulation {
         },
       };
     }
-    return null;
-  }
-
-  private getSubEntityDeathExplosion(id: EntityId): DeathExplosionBlast | null {
-    const turret = resolveKilledTurret(this.world, id);
-    if (turret !== undefined) {
-      const pos = resolveKilledTurretWorldPosition(
-        this.world,
-        id,
-        this._pieceDeathExplosionCenter,
-      );
-      if (pos === undefined) return null;
-      const turretBlueprintId = turret.turret.config.turretBlueprintId;
-      const blast = getTurretBlueprint(turretBlueprintId).base.deathExplosion;
-      return {
-        radius: blast.radius,
-        force: blast.force,
-        damage: blast.damage,
-        sourceKey: turretBlueprintId,
-        sourceType: 'turret',
-        sourceEntityId: turret.host.id,
-        center: { x: pos.x, y: pos.y, z: pos.z },
-      };
-    }
-
     return null;
   }
 

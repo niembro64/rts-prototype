@@ -739,16 +739,14 @@ export class Render3DEntities {
         this.constructionVisuals,
       );
 
-      // Materialization fade — body + each turret ramp 0→1 over their own
-      // build fraction. The sim builds pieces in dependency order (body,
-      // then turrets), so the body finishes opacity before its turrets
-      // begin, giving the authored "base up, one piece at a time" reveal.
+      // Materialization fade — mounted turrets share the host body's
+      // build fraction because they are not separate construction pieces.
       // Finished units sit at 1, where the shared fade helper restores
       // real materials and then becomes a no-op.
       const turretFades = this._turretFadeScratch;
       turretFades.length = m.turrets.length;
       for (let i = 0; i < m.turrets.length; i++) {
-        turretFades[i] = getConstructionPieceOpacity(e, 'turret', i);
+        turretFades[i] = bodyOpacity;
       }
       this.applyUnitEntityFade(m, bodyOpacity, turretFades);
 
@@ -756,8 +754,7 @@ export class Render3DEntities {
         const shieldPanelTurretIndex = turrets.findIndex((turret) => turret.config.passive);
         const shieldPanelTurret = shieldPanelTurretIndex >= 0 ? turrets[shieldPanelTurretIndex] : undefined;
         const shieldPanelMaterialized = shieldPanelTurret !== undefined &&
-          shieldPanelTurret.hp > 0 &&
-          isConstructionPieceMaterialized(e, 'turret', shieldPanelTurretIndex);
+          isConstructionPieceMaterialized(e, 'body');
         this._mirrorPivotLocal.set(
           shieldPanelTurret?.mount.x ?? 0,
           (shieldPanelTurret?.mount.z ?? getUnitBodyCenterHeight(e.unit)) - (m.chassisLift ?? 0),

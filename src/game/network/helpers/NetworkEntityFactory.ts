@@ -23,7 +23,6 @@ import { COST_MULTIPLIER } from '../../../config';
 import { buildShieldPanelCache } from '../../sim/shieldPanelCache';
 import {
   createBuildingRuntimeTurrets,
-  createDetachedRuntimeTurret,
   createUnitRuntimeTurrets,
 } from '../../sim/runtimeTurrets';
 import { createBuildable, getBuildFraction } from '../../sim/buildableHelpers';
@@ -45,7 +44,6 @@ import {
   readNetworkUnitSurfaceNormal,
   readNetworkUnitVelocity,
 } from '../unitSnapshotFields';
-import { DETACHED_TURRET_TOWER_BLUEPRINT_ID } from '../../../types/buildingTypes';
 
 function decodeNetworkBuildingBlueprintId(buildingBlueprintCode: unknown): BuildingBlueprintId | null {
   if (!isFiniteNumber(buildingBlueprintCode)) return null;
@@ -59,16 +57,11 @@ function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret
   const wireTurretBlueprintId = codeToTurretBlueprintId(wire.turretBlueprintCode);
   if (wireTurretBlueprintId !== turret.config.turretBlueprintId) return;
   if (nw.active === false) {
-    turret.hp = 0;
     turret.target = null;
     turret.state = 'idle';
     turret.shield = undefined;
     return;
   }
-  // Prefer the real per-turret HP shipped on the wire. Max HP is
-  // blueprint immutable; missing current HP must not resurrect a dead
-  // piece to max.
-  if (nw.hpCurr !== null && nw.hpCurr !== undefined) turret.hp = nw.hpCurr;
   turret.target = nw.targetId ?? null;
   turret.state = codeToTurretState(nw.state);
   turret.rotation = deqRot(wire.angular.rot);
@@ -94,14 +87,11 @@ export function applyNetworkTurretNonVisualState(
   const turrets = entity.combat.turrets;
   for (let i = 0; i < netTurrets.length && i < turrets.length; i++) {
     if (netTurrets[i].active === false) {
-      turrets[i].hp = 0;
       turrets[i].target = null;
       turrets[i].state = 'idle';
       turrets[i].shield = undefined;
       continue;
     }
-    const nwHpCurr = netTurrets[i].hpCurr;
-    if (nwHpCurr !== null && nwHpCurr !== undefined) turrets[i].hp = nwHpCurr;
     turrets[i].target = netTurrets[i].targetId ?? null;
     turrets[i].state = codeToTurretState(netTurrets[i].state);
   }
@@ -162,11 +152,7 @@ export function refreshBuildingTurretsFromNetwork(
 ): void {
   let turrets: Turret[];
   try {
-    if (buildingBlueprintId === DETACHED_TURRET_TOWER_BLUEPRINT_ID) {
-      turrets = createDetachedTurretsFromNetwork(netTurrets);
-    } else {
-      turrets = createBuildingRuntimeTurrets(buildingBlueprintId);
-    }
+    turrets = createBuildingRuntimeTurrets(buildingBlueprintId);
   } catch {
     entity.combat = null;
     return;
@@ -186,21 +172,6 @@ export function refreshBuildingTurretsFromNetwork(
   entity.combat = entity.combat
     ? { ...entity.combat, turrets }
     : createCombatComponent(turrets);
-}
-
-function createDetachedTurretsFromNetwork(
-  netTurrets: NetworkServerSnapshotTurret[] | undefined | null,
-): Turret[] {
-  if (!Array.isArray(netTurrets) || netTurrets.length === 0) return [];
-  const turrets: Turret[] = [];
-  for (let i = 0; i < netTurrets.length; i++) {
-    const turretBlueprintId = codeToTurretBlueprintId(netTurrets[i].turret.turretBlueprintCode);
-    if (turretBlueprintId === null) continue;
-    const turret = createDetachedRuntimeTurret(turretBlueprintId);
-    applyNetworkTurretState(turret, netTurrets[i]);
-    turrets.push(turret);
-  }
-  return turrets;
 }
 
 /**

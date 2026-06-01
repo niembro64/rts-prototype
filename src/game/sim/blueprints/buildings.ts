@@ -31,9 +31,7 @@ import {
 import { BUILDING_BLUEPRINT_IDS } from '../../../types/blueprintIds';
 import { TURRET_BLUEPRINTS } from './turrets';
 import {
-  addResourceCosts,
   assertNumberEquals,
-  assertResourceCostEquals,
   assertValidEntityBaseLedger,
 } from './entityBaseLedger';
 
@@ -235,20 +233,14 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
     blueprint.hp,
     blueprint.base.health,
   );
-  const mountedTurretCosts = blueprint.turrets.map((mount) => {
+  for (const mount of blueprint.turrets) {
     const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
     if (!turretBlueprint) {
       throw new Error(
         `Invalid ${towerBlueprint ? 'tower' : 'building'} blueprint ${id}: unknown turretBlueprintId "${mount.turretBlueprintId}"`,
       );
     }
-    return turretBlueprint.base.cost;
-  });
-  assertResourceCostEquals(
-    `${towerBlueprint ? 'tower' : 'building'} blueprint ${id}`,
-    blueprint.cost,
-    addResourceCosts(blueprint.base.cost, ...mountedTurretCosts),
-  );
+  }
   if (!Number.isFinite(blueprint.gridWidth) || blueprint.gridWidth <= 0) {
     throw new Error(`Invalid building blueprint ${id}: gridWidth must be positive`);
   }

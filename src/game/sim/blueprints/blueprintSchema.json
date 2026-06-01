@@ -1095,7 +1095,6 @@
       "required": [
         "turretBlueprintId",
         "name",
-        "base",
         "kind",
         "emissionKind",
         "emissionBlueprintId",
@@ -1136,9 +1135,6 @@
         },
         "name": {
           "type": "string"
-        },
-        "base": {
-          "$ref": "#/$defs/EntityBaseLedger"
         },
         "kind": {
           "$ref": "#/$defs/WeaponKind"

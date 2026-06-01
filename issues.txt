@@ -15,3 +15,23 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 
 Please always commit and push before and after any code changes we make.
 ================================================================================
+
+Projectile arming and source-collision regression coverage is missing.
+
+Add focused tests or a deterministic sim harness case for shot arming semantics:
+a freshly fired shot should not test entity hitbox contacts until its hitbox has
+cleared both the originating host and emitting turret collision bodies, but after
+arming it must collide with every solid entity hitbox, including the host/turret
+that fired it if reflection or movement brings the shot back into them. The test
+should also cover same-tick arming, reflected return-to-source detonation, and
+projectile-vs-projectile contact after movement broadphase refresh.
+
+Turret host-integration wire cleanup is incomplete.
+
+Remove the legacy turret hpCurr snapshot slot and related Rust/TypeScript
+serializer compatibility code once the wire format can change cleanly. Add
+focused coverage that mounted turrets are addressable/lockable but do not carry
+independent cost, mass, health, death explosions, construction pieces, detached
+agent state, or hostless lifetime; damage through a turret hitbox should resolve
+to the host body, and host construction/death should keep the authored turret set
+part of the same assembly.

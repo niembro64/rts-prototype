@@ -1686,9 +1686,8 @@ struct BodyPool {
     ground_offset: Vec<f64>,
     // Per-body ground-friction multiplier. 1.0 = the full global
     // ground-contact tangential damping; 0.0 = frictionless (keeps all
-    // tangential velocity on contact). Lets a detached turret slide /
-    // roll downhill while ordinary units keep normal traction. Default
-    // 1.0 so every body that doesn't opt out behaves exactly as before.
+    // tangential velocity on contact). Default 1.0 so every body that
+    // doesn't opt out behaves exactly as before.
     ground_friction_scale: Vec<f64>,
 
     // Sleep state. `sleep_ticks` is f64 to match the JS side's
@@ -21405,7 +21404,7 @@ pub const SNAPSHOT_ENTITY_TYPE_BUILDING: u8 = 2;
 ///   [7]     target_id (raw entity id as f64; ignored when has_target_id==0)
 ///   [8]     has_shield_range (0 or 1)
 ///   [9]     shield_range (raw value; ignored when has_ff_range==0)
-///   [10]    hpCurr (raw current HP as f64; always present)
+///   [10]    legacy hpCurr compatibility slot (always present)
 ///
 /// Capacity grown on demand by snapshot_encode_turret_scratch_ensure.
 const SNAPSHOT_ENCODE_TURRET_STRIDE: usize = 11;
@@ -22133,8 +22132,8 @@ pub fn snapshot_encode_entity_unit(
             let hp_curr_raw = scratch.buf[base + 10];
 
             // turret DTO: { turret: { turretBlueprintCode, angular: {4 fields} }, [targetId,]
-            // state, [currentShieldRange], hpCurr }
-            let mut turret_field_count: usize = 3; // turret + state + hpCurr
+            // state, [currentShieldRange], legacy hpCurr }
+            let mut turret_field_count: usize = 3; // turret + state + legacy hpCurr
             if has_target {
                 turret_field_count += 1;
             }
@@ -22171,7 +22170,7 @@ pub fn snapshot_encode_entity_unit(
                 w.write_number(ff_range_raw);
             }
 
-            // hpCurr is unconditional — last key in the turret map.
+            // Legacy hpCurr compatibility slot is unconditional and last.
             w.write_str("hpCurr");
             w.write_number(hp_curr_raw);
         }
@@ -22346,7 +22345,7 @@ pub fn snapshot_encode_entity_building(
             let ff_range_raw = scratch.buf[base + 9];
             let hp_curr_raw = scratch.buf[base + 10];
 
-            let mut turret_field_count: usize = 3; // turret + state + hpCurr
+            let mut turret_field_count: usize = 3; // turret + state + legacy hpCurr
             if has_target {
                 turret_field_count += 1;
             }
@@ -22380,7 +22379,7 @@ pub fn snapshot_encode_entity_building(
                 w.write_str("currentShieldRange");
                 w.write_number(ff_range_raw);
             }
-            // hpCurr is unconditional — last key in the turret map.
+            // Legacy hpCurr compatibility slot is unconditional and last.
             w.write_str("hpCurr");
             w.write_number(hp_curr_raw);
         }
@@ -24405,9 +24404,9 @@ fn v6_write_turret_payload(
         if has_ffr {
             writer.write_f64_le(turret_buf[tb + 9]);
         }
-        // hpCurr is unconditional (every live turret has HP) — written
-        // last, after the conditional target/shield fields. Mirror in the
-        // JS byte decoder readUnitTurretDeltaByteEntity.
+        // Legacy hpCurr compatibility slot is unconditional — written last
+        // after the conditional target/shield fields. Mirror in the JS byte
+        // decoder readUnitTurretDeltaByteEntity.
         writer.write_f64_le(turret_buf[tb + 10]);
     }
 }
@@ -24499,7 +24498,7 @@ fn v6_write_detail_turret(w: &mut MessagePackWriter, turret_buf: &[f64], t_row: 
         flags |= V6_TURRET_FLAG_SHIELD_RANGE;
     }
     // 7 fixed (flags, id, state, rot, vel, pitch, pitchVel) + 1
-    // unconditional trailing hpCurr.
+    // unconditional trailing legacy hpCurr.
     let mut len = 8usize;
     if has_target {
         len += 1;
@@ -24521,7 +24520,7 @@ fn v6_write_detail_turret(w: &mut MessagePackWriter, turret_buf: &[f64], t_row: 
     if has_ffr {
         w.write_number(turret_buf[base + 9]);
     }
-    // hpCurr is unconditional — last array element, mirroring the JS
+    // Legacy hpCurr slot is unconditional — last array element, mirroring the JS
     // array decoder unpackTurret.
     w.write_number(turret_buf[base + 10]);
 }

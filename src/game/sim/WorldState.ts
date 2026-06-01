@@ -7,7 +7,6 @@ import type {
   EntityType,
   PlayerId,
   ShotSource,
-  Turret,
   TurretConfig,
   Projectile,
   ProjectileConfig,
@@ -28,7 +27,7 @@ import type { ResourceMovement } from './resourceMovement';
 import { EntityCacheManager } from './EntityCacheManager';
 import { getUnitBlueprint, getUnitLocomotion } from './blueprints';
 import { cloneUnitLocomotion } from './locomotion';
-import { createDetachedRuntimeTurret, createUnitRuntimeTurrets } from './runtimeTurrets';
+import { createUnitRuntimeTurrets } from './runtimeTurrets';
 import {
   MAX_TOTAL_UNITS,
   DEFAULT_TURRET_SHIELD_PANELS_ENABLED,
@@ -45,18 +44,11 @@ import { getSurfaceHeight, getSurfaceNormal } from './Terrain';
 import { buildShieldPanelCache } from './shieldPanelCache';
 import { createProjectileConfigFromTurret } from './projectileConfigs';
 import { applyEntitySensorBlueprint } from './cloakDetection';
-import { ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../types/network';
-import { BUILD_GRID_CELL_SIZE } from './buildGrid';
-import { getUnitGroundZ } from './unitGeometry';
-import { getTurretWorldMount } from '../math';
-import { DETACHED_TURRET_TOWER_BLUEPRINT_ID } from '../../types/buildingTypes';
+import { ENTITY_CHANGED_HP } from '../../types/network';
 import { isConstructionPieceMaterialized } from './buildableHelpers';
 
 const TERRAIN_NORMAL_CACHE_CELL_SIZE = 25;
-const DETACHED_TURRET_LAUNCH_HORIZONTAL_SPEED = 34;
-const DETACHED_TURRET_LAUNCH_VERTICAL_SPEED = 42;
 const EMPTY_PLAYER_SET: ReadonlySet<PlayerId> = new Set();
-const FLAT_SURFACE_NORMAL: SurfaceNormal = { nx: 0, ny: 0, nz: 1 };
 
 /** Temporary vision pulse owned by a single player, contributing a
  *  full-vision source for the ticks between spawn and expiresAtTick.
@@ -79,12 +71,6 @@ export type RemovedSnapshotEntity = {
   // 'tower' rides the building ghost path on death — same static
   // last-seen-position semantics under FOW-02b.
   type: 'unit' | 'building' | 'tower';
-};
-
-export type DetachedTurretAgentSpawn = {
-  agent: Entity;
-  position: { x: number; y: number; z: number };
-  launchVelocity: { x: number; y: number; z: number };
 };
 
 export type CreateProjectileProvenance = {
@@ -217,12 +203,9 @@ export class WorldState {
    *  removal, but host-only systems such as physics own external
    *  resources that must be released before the entity disappears. */
   public onEntityRemoving: ((entity: Entity) => void) | null = null;
-  public onDetachedTurretAgentSpawn: ((spawn: DetachedTurretAgentSpawn) => void) | null = null;
-  /** Fired when a mobile host's set of live pieces changes (a turret
-   *  died/detached, or construction grew one), so the physics
-   *  owner can recompute the body's effective mass. WorldState has no
-   *  physics handle, so the recompute is delegated to the host that wires
-   *  this (see GameServer). */
+  /** Fired when a mobile host's authored body mass changes, so the physics
+   *  owner can recompute the body's effective mass. WorldState has no physics
+   *  handle, so the recompute is delegated to the host that wires this. */
   public onHostMassChanged: ((host: Entity) => void) | null = null;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
@@ -310,7 +293,7 @@ export class WorldState {
     }
     const host = this.entities.get(meta.parentId);
     const turret = host?.combat?.turrets[meta.mountIndex ?? -1];
-    if (host === undefined || turret === undefined || turret.id !== id || turret.hp <= 0) return undefined;
+    if (host === undefined || turret === undefined || turret.id !== id || !this.isHostBodyLive(host)) return undefined;
     return { host, turret };
   }
 
@@ -345,6 +328,12 @@ export class WorldState {
     if (entity.buildingBlueprintId !== null) return entity.buildingBlueprintId;
     if (entity.projectile !== null) return entity.projectile.shotBlueprintId;
     return null;
+  }
+
+  private isHostBodyLive(entity: Entity): boolean {
+    if (entity.unit !== null) return entity.unit.hp > 0 && isConstructionPieceMaterialized(entity, 'body');
+    if (entity.building !== null) return entity.building.hp > 0 && isConstructionPieceMaterialized(entity, 'body');
+    return false;
   }
 
   private registerEntityMetadata(entity: Entity): void {
@@ -382,11 +371,11 @@ export class WorldState {
       for (let i = 0; i < combat.turrets.length; i++) {
         const turret = combat.turrets[i];
         if (turret.id === NO_ENTITY_ID) continue;
-        if (!isConstructionPieceMaterialized(entity, 'turret', i)) {
+        if (!isConstructionPieceMaterialized(entity, 'body')) {
           this.markMetaDead(turret.id);
           continue;
         }
-        if (turret.hp <= 0) {
+        if (!bodyTargetable) {
           this.markMetaDead(turret.id);
           continue;
         }
@@ -404,7 +393,7 @@ export class WorldState {
           storageSlot: i,
           generation: 0,
           alive: true,
-          targetable: !turret.config.visualOnly && turret.hp > 0,
+          targetable: !turret.config.visualOnly && bodyTargetable,
         });
       }
     }
@@ -433,7 +422,10 @@ export class WorldState {
     const previous = this.entityMetaById.get(id);
     if (previous === undefined || !previous.alive || previous.storagePool === 'entities') return;
     const mountedTurret = previous.kind === 'turret' ? this.resolveMountedTurret(id) : undefined;
-    const canEverTarget = mountedTurret !== undefined && !mountedTurret.turret.config.visualOnly;
+    const canEverTarget =
+      mountedTurret !== undefined &&
+      this.isHostBodyLive(mountedTurret.host) &&
+      !mountedTurret.turret.config.visualOnly;
     const nextTargetable = targetable && canEverTarget;
     if (previous.targetable === nextTargetable) return;
     this.entityMetaById.set(id, {
@@ -450,43 +442,6 @@ export class WorldState {
         this.markMetaDead(combat.turrets[i].id);
       }
     }
-  }
-
-  detachMountedTurretAsAgent(host: Entity, mountIndex: number): Entity | null {
-    if (host.buildingBlueprintId === DETACHED_TURRET_TOWER_BLUEPRINT_ID) return null;
-    const combat = host.combat;
-    const sourceTurret = combat?.turrets[mountIndex];
-    if (
-      sourceTurret === undefined ||
-      sourceTurret.id === NO_ENTITY_ID ||
-      sourceTurret.hp <= 0 ||
-      sourceTurret.config.visualOnly ||
-      this.entities.has(sourceTurret.id)
-    ) {
-      return null;
-    }
-
-    const spawn = this.createDetachedTurretAgentSpawn(host, sourceTurret);
-    this.clearMountedTurretAfterDetach(sourceTurret);
-    this.addEntity(spawn.agent);
-    this.onDetachedTurretAgentSpawn?.(spawn);
-    this.refreshEntityMetadata(host);
-    this.onHostMassChanged?.(host);
-    this.markSnapshotDirty(host.id, ENTITY_CHANGED_TURRETS);
-    return spawn.agent;
-  }
-
-  private clearMountedTurretAfterDetach(turret: Turret): void {
-    turret.id = NO_ENTITY_ID;
-    turret.hp = 0;
-    turret.target = null;
-    turret.state = 'idle';
-    turret.angularVelocity = 0;
-    turret.angularAcceleration = 0;
-    turret.pitchVelocity = 0;
-    turret.pitchAcceleration = 0;
-    turret.burst = undefined;
-    turret.shield = undefined;
   }
 
   // Get current tick
@@ -529,9 +484,6 @@ export class WorldState {
   // Remove entity from world
   removeEntity(id: EntityId): void {
     const entity = this.entities.get(id);
-    const detachedTurretSpawns = entity !== undefined
-      ? this.collectDetachedTurretAgents(entity)
-      : [];
     if (entity !== undefined && this.onEntityRemoving !== null) this.onEntityRemoving(entity);
     if (entity !== undefined && entity.type === 'unit') this.unitSetVersion++;
     if (entity !== undefined && (entity.type === 'building' || entity.type === 'tower')) this.buildingVersion++;
@@ -550,148 +502,6 @@ export class WorldState {
     if (entity !== undefined) this.markEntityMetadataDead(entity);
     this.entities.delete(id);
     this.cache.invalidate();
-    for (let i = 0; i < detachedTurretSpawns.length; i++) {
-      const spawn = detachedTurretSpawns[i];
-      this.addEntity(spawn.agent);
-      this.onDetachedTurretAgentSpawn?.(spawn);
-    }
-  }
-
-  private collectDetachedTurretAgents(host: Entity): DetachedTurretAgentSpawn[] {
-    if (host.buildingBlueprintId === DETACHED_TURRET_TOWER_BLUEPRINT_ID) return [];
-    const combat = host.combat;
-    if (combat === null || combat.turrets.length === 0) return [];
-    const hostBodyDead =
-      (host.unit !== null && host.unit.hp <= 0) ||
-      (host.building !== null && host.building.hp <= 0);
-    if (!hostBodyDead) return [];
-
-    const detached: DetachedTurretAgentSpawn[] = [];
-    for (let i = 0; i < combat.turrets.length; i++) {
-      const turret = combat.turrets[i];
-      if (turret.id === NO_ENTITY_ID || turret.hp <= 0 || turret.config.visualOnly) continue;
-      if (this.entities.has(turret.id)) continue;
-      detached.push(this.createDetachedTurretAgentSpawn(host, turret));
-    }
-    return detached;
-  }
-
-  private createDetachedTurretAgentSpawn(host: Entity, sourceTurret: Turret): DetachedTurretAgentSpawn {
-    const position = this.resolveDetachedTurretPosition(host, sourceTurret);
-    return {
-      agent: this.createDetachedTurretAgent(host, sourceTurret),
-      position: { x: position.x, y: position.y, z: position.z },
-      launchVelocity: this.computeDetachedTurretLaunchVelocity(host, sourceTurret, position),
-    };
-  }
-
-  private createDetachedTurretAgent(host: Entity, sourceTurret: Turret): Entity {
-    const pos = this.resolveDetachedTurretPosition(host, sourceTurret);
-    const baseZ = this.getGroundZ(pos.x, pos.y);
-    const width = BUILD_GRID_CELL_SIZE;
-    const height = BUILD_GRID_CELL_SIZE;
-    const depth = BUILD_GRID_CELL_SIZE;
-    const detachedTurret = createDetachedRuntimeTurret(
-      sourceTurret.config.turretBlueprintId,
-      sourceTurret.id,
-      sourceTurret.id,
-      () => this.generateEntityId(),
-    );
-    detachedTurret.hp = sourceTurret.hp;
-    detachedTurret.maxHp = sourceTurret.maxHp;
-    detachedTurret.rotation = sourceTurret.rotation;
-    detachedTurret.pitch = sourceTurret.pitch;
-    detachedTurret.angularVelocity = sourceTurret.angularVelocity;
-    detachedTurret.pitchVelocity = sourceTurret.pitchVelocity;
-    detachedTurret.barrelFireIndex = sourceTurret.barrelFireIndex;
-    detachedTurret.ballisticAimInRange = sourceTurret.ballisticAimInRange;
-
-    const entity: Entity = {
-      ...createEmptyEntityComponentSlots(),
-      id: sourceTurret.id,
-      type: 'tower',
-      transform: createTransform(pos.x, pos.y, baseZ + depth / 2, host.transform.rotation),
-      ownership: host.ownership !== null ? { playerId: host.ownership.playerId } : null,
-      selectable: { selected: false },
-      building: {
-        width,
-        height,
-        depth,
-        hp: sourceTurret.hp,
-        maxHp: sourceTurret.maxHp,
-        targetRadius: Math.hypot(width, height) / 2,
-        activeState: null,
-      },
-      combat: createCombatComponent([detachedTurret]),
-      buildingBlueprintId: DETACHED_TURRET_TOWER_BLUEPRINT_ID,
-    };
-    return entity;
-  }
-
-  private resolveDetachedTurretPosition(
-    host: Entity,
-    turret: Turret,
-  ): { x: number; y: number; z: number } {
-    if (
-      turret.worldPosTick >= 0 &&
-      Number.isFinite(turret.worldPos.x) &&
-      Number.isFinite(turret.worldPos.y) &&
-      Number.isFinite(turret.worldPos.z)
-    ) {
-      return {
-        x: turret.worldPos.x,
-        y: turret.worldPos.y,
-        z: turret.worldPos.z,
-      };
-    }
-
-    const cos = Math.cos(host.transform.rotation);
-    const sin = Math.sin(host.transform.rotation);
-    return getTurretWorldMount(
-      host.transform.x,
-      host.transform.y,
-      getUnitGroundZ(host),
-      cos,
-      sin,
-      turret.mount.x,
-      turret.mount.y,
-      turret.mount.z,
-      host.unit !== null ? host.unit.surfaceNormal : FLAT_SURFACE_NORMAL,
-    );
-  }
-
-  private computeDetachedTurretLaunchVelocity(
-    host: Entity,
-    turret: Turret,
-    position: { x: number; y: number; z: number },
-  ): { x: number; y: number; z: number } {
-    let dx = position.x - host.transform.x;
-    let dy = position.y - host.transform.y;
-    let dist = Math.hypot(dx, dy);
-    if (dist <= 0.0001) {
-      const fallbackAngle = host.transform.rotation + (turret.mountIndex + 1) * 2.399963229728653;
-      dx = Math.cos(fallbackAngle);
-      dy = Math.sin(fallbackAngle);
-      dist = 1;
-    }
-
-    const baseVelocity = turret.worldPosTick >= 0 ? turret.worldVelocity : null;
-    const hostUnit = host.unit;
-    const baseVx = baseVelocity !== null && Number.isFinite(baseVelocity.x)
-      ? baseVelocity.x
-      : (hostUnit !== null ? hostUnit.velocityX : 0);
-    const baseVy = baseVelocity !== null && Number.isFinite(baseVelocity.y)
-      ? baseVelocity.y
-      : (hostUnit !== null ? hostUnit.velocityY : 0);
-    const baseVz = baseVelocity !== null && Number.isFinite(baseVelocity.z)
-      ? baseVelocity.z
-      : (hostUnit !== null ? hostUnit.velocityZ : 0);
-
-    return {
-      x: baseVx + (dx / dist) * DETACHED_TURRET_LAUNCH_HORIZONTAL_SPEED,
-      y: baseVy + (dy / dist) * DETACHED_TURRET_LAUNCH_HORIZONTAL_SPEED,
-      z: Math.max(0, baseVz) + DETACHED_TURRET_LAUNCH_VERTICAL_SPEED,
-    };
   }
 
   markSnapshotDirty(id: EntityId, fields: number): void {

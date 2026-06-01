@@ -398,7 +398,6 @@ pub struct TurretAudioConfig {
 pub struct TurretBlueprint {
     pub turretBlueprintId: String,
     pub name: String,
-    pub base: EntityBaseLedger,
     pub kind: WeaponKind,
     pub range: f64,
     pub cooldown: f64,

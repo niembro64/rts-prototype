@@ -455,7 +455,7 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   if (turret.config.verticalLauncher === true) f |= CT_TURRET_CFG_VERTICAL_LAUNCHER;
   if (turret.config.isManualFire === true) f |= CT_TURRET_CFG_IS_MANUAL_FIRE;
   if (turret.config.passive === true) f |= CT_TURRET_CFG_PASSIVE;
-  if (turret.id === NO_ENTITY_ID || turret.config.visualOnly === true || turret.hp <= 0) {
+  if (turret.id === NO_ENTITY_ID || turret.config.visualOnly === true) {
     f |= CT_TURRET_CFG_VISUAL_ONLY;
   }
   if (turret.config.shot && turret.config.shot.type === 'shield') {

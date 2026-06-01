@@ -10,20 +10,16 @@
 // no per-unit raycast on the CPU.
 
 import * as THREE from 'three';
-import type { Entity, Turret } from '../sim/types';
+import type { Entity } from '../sim/types';
 import {
   getBuildingHudBarsY,
   getUnitHudBarsY,
-  getTurretHudBarsY,
 } from './HudAnchor';
 import {
   getResourceFillRatio,
-  getPieceFillRatio,
-  getConstructionPieceRecord,
   isBuildInProgress,
 } from '../sim/buildableHelpers';
-import { getTurretHeadRadius } from '../math';
-import type { Buildable, ConstructionPieceBuildRecord } from '../sim/types';
+import type { Buildable } from '../sim/types';
 import { ENTITY_HUD_BAR_STACK_GAP } from '@/config';
 import { CanvasSpritePool, type CanvasSpriteSlot } from './CanvasSpritePool';
 import { FADE_CULL_ALPHA, type HudFade } from './HudFade';
@@ -320,74 +316,6 @@ export class HealthBar3D {
     }
     if (showBuildBars && buildable) {
       this.placeBuildBars(buildable, worldX, worldY, worldZ, worldWidth, stack, alpha);
-    }
-  }
-
-  /** Place a piece's construction energy/metal bars from its construction record's
-   *  paid/required (absent → not building → skipped by the caller).
-   *  Mirrors `placeBuildBars` but reads the per-piece ledger. */
-  private placePieceBuildBars(
-    piece: ConstructionPieceBuildRecord,
-    worldX: number,
-    worldBaseY: number,
-    worldZ: number,
-    worldWidth: number,
-    stackStart: number,
-    alpha: number,
-  ): void {
-    let stack = stackStart;
-    this.placeBar(
-      getPieceFillRatio(piece, 'energy'),
-      'energyBar', worldX, worldBaseY, worldZ, worldWidth, stack, alpha,
-    );
-    stack++;
-    this.placeBar(
-      getPieceFillRatio(piece, 'metal'),
-      'metalBar', worldX, worldBaseY, worldZ, worldWidth, stack, alpha,
-    );
-  }
-
-  /** Fused-iteration entry: one turret's HP (+ build) bars at its
-   *  live world mount anchor. `mountWorld` is the TurretMountCache3D
-   *  entry (transform.x = world X, .y = world Y/north, .z = world up).
-   *  Build bars come from the host's matching construction piece
-   *  record (only present while building). */
-  perTurret(
-    host: Entity,
-    turretIdx: number,
-    mountWorld: { x: number; y: number; z: number },
-    forceVisible: boolean,
-    showHealth: boolean,
-    showBuild: boolean,
-  ): void {
-    const turret: Turret | undefined = host.combat?.turrets[turretIdx];
-    if (!turret) return;
-    const key = packPieceKey(host.id, turretPieceTag(turretIdx));
-    if (this._seenEntityFrame.get(key) === this._frameToken) return;
-    const hp = turret.hp;
-    const maxHp = turret.maxHp;
-    const piece = showBuild
-      ? getConstructionPieceRecord(host, 'turret', turret.mountIndex)
-      : null;
-    const showHp = maxHp > 0 && (showHealth || forceVisible) && hp > 0;
-    const showBuildBars = piece !== null;
-    if (!showHp && !showBuildBars) return;
-    // Cull before acquiring a pool slot — the pool grows monotonically.
-    const worldX = mountWorld.x;
-    const worldY = getTurretHudBarsY(mountWorld.z, turret.config);
-    const worldZ = mountWorld.y;
-    const alpha = this._fade ? this._fade.alphaAt(worldX, worldY, worldZ) : 1;
-    if (alpha <= FADE_CULL_ALPHA) return;
-    this._seenEntityFrame.set(key, this._frameToken);
-    const worldWidth = getTurretHeadRadius(turret.config) * 2;
-    let stack = 0;
-    if (showHp) {
-      const ratio = Math.max(0, Math.min(1, hp / maxHp));
-      this.placeBar(ratio, 'health', worldX, worldY, worldZ, worldWidth, stack, alpha);
-      stack++;
-    }
-    if (showBuildBars && piece) {
-      this.placePieceBuildBars(piece, worldX, worldY, worldZ, worldWidth, stack, alpha);
     }
   }
 

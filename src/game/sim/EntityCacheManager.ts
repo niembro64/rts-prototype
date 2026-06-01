@@ -7,21 +7,6 @@ import { isBuildInProgress } from './buildableHelpers';
 
 const EMPTY_ENTITIES: Entity[] = [];
 
-/** True iff any of the entity's mounted turrets is damaged (hp below
- *  maxHp, hp > 0). Visual-only / shield-emitter turrets still count —
- *  the orchestrator filters which turrets actually draw a bar; the
- *  cache only decides whether the host is worth visiting at all. */
-function hasDamagedTurret(entity: Entity): boolean {
-  const combat = entity.combat;
-  if (combat === null) return false;
-  const turrets = combat.turrets;
-  for (let i = 0; i < turrets.length; i++) {
-    const t = turrets[i];
-    if (t.hp > 0 && t.hp < t.maxHp) return true;
-  }
-  return false;
-}
-
 export class EntityCacheManager {
   private cachedUnits: Entity[] = [];
   private cachedBuildings: Entity[] = [];
@@ -32,10 +17,8 @@ export class EntityCacheManager {
   private cachedDamagedUnits: Entity[] = [];
   private cachedHealthBarBuildings: Entity[] = [];
   /** Units / towers / buildings that need ANY HUD bar this frame: body
-   *  damaged, build-in-progress, OR any turret sub-piece
-   *  damaged. Superset of cachedDamagedUnits ∪ cachedHealthBarBuildings
-   *  that also catches a full-HP host whose turret is damaged.
-   *  Selection is NOT folded in here — the cache is dirty-
+   *  damaged or build-in-progress. Superset of cachedDamagedUnits ∪
+   *  cachedHealthBarBuildings. Selection is NOT folded in here — the cache is dirty-
    *  rebuilt and may not invalidate on selection — so the orchestrator
    *  applies the selection rule against the live entity ref. */
   private cachedHudEntities: Entity[] = [];
@@ -184,14 +167,13 @@ export class EntityCacheManager {
           ) {
             this.cachedDamagedUnits.push(entity);
           }
-          // HUD list: body-damaged / building (covered by the
-          // cachedDamagedUnits predicate) OR any damaged sub-piece.
+          // HUD list: body-damaged or build-in-progress. Mounted turrets
+          // no longer have independent health/build bars.
           if (
             entity.unit
             && (
               (entity.unit.hp > 0 && entity.unit.hp < entity.unit.maxHp)
               || isBuildInProgress(entity.buildable)
-              || hasDamagedTurret(entity)
             )
           ) {
             this.cachedHudEntities.push(entity);
@@ -229,14 +211,13 @@ export class EntityCacheManager {
           ) {
             this.cachedHealthBarBuildings.push(entity);
           }
-          // HUD list: body-damaged / building OR any damaged mounted
-          // turret (towers/buildings can be armed).
+          // HUD list: body-damaged or build-in-progress. Mounted turrets
+          // no longer have independent health/build bars.
           if (
             entity.building
             && (
               (entity.building.hp > 0 && entity.building.hp < entity.building.maxHp)
               || isBuildInProgress(entity.buildable)
-              || hasDamagedTurret(entity)
             )
           ) {
             this.cachedHudEntities.push(entity);

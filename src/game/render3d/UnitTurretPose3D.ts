@@ -39,7 +39,7 @@ export class UnitTurretPose3D {
       const turretMesh = mesh.turrets[turretIdx];
       const turret = turrets[turretIdx];
       const headRadius = turretMesh.headRadius ?? getTurretHeadRadius(turret.config);
-      const visible = turret.hp > 0 && isConstructionPieceMaterialized(entity, 'turret', turretIdx);
+      const visible = isConstructionPieceMaterialized(entity, 'body');
       turretMesh.root.visible = visible;
       if (!visible) {
         unitDetailInstances.clearTurretSlots(turretMesh);

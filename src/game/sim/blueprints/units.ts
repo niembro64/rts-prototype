@@ -26,10 +26,8 @@ import {
   getUnitLockOnInclusions,
 } from './lockOnConfig';
 import {
-  addResourceCosts,
   assertNumberEquals,
   assertRadiusEquals,
-  assertResourceCostEquals,
   assertValidEntityBaseLedger,
 } from './entityBaseLedger';
 
@@ -102,20 +100,14 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
     assertRadiusEquals(`unit blueprint ${id}`, blueprint.radius, blueprint.base.radius);
     assertNumberEquals(`unit blueprint ${id}`, 'mass', blueprint.mass, blueprint.base.mass);
     assertNumberEquals(`unit blueprint ${id}`, 'health', blueprint.hp, blueprint.base.health);
-    const mountedTurretCosts = blueprint.turrets.map((mount) => {
+    for (const mount of blueprint.turrets) {
       const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
       if (!turretBlueprint) {
         throw new Error(
           `Invalid unit blueprint ${id}: unknown turretBlueprintId "${mount.turretBlueprintId}"`,
         );
       }
-      return turretBlueprint.base.cost;
-    });
-    assertResourceCostEquals(
-      `unit blueprint ${id}`,
-      blueprint.cost,
-      addResourceCosts(blueprint.base.cost, ...mountedTurretCosts),
-    );
+    }
     blueprints[id] = {
       ...blueprint,
       ...getUnitLockOnInclusions(id),

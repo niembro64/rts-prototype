@@ -21,8 +21,7 @@
     "includeLockOnLevel1Towers": [
       "towerFabricator",
       "towerBeamMega",
-      "towerCannon",
-      "towerDetachedTurret"
+      "towerCannon"
     ],
     "includeLockOnLevel1Units": [
       "unitJackal",
@@ -651,23 +650,6 @@
       "includeLockOnLevel1Shots": []
     },
     "towerCannon": {
-      "includeLockOnLevel0FriendsAndEnemies": [
-        "friendly_entities",
-        "enemy_entities"
-      ],
-      "includeLockOnLevel0Entities": [
-        "buildings",
-        "towers",
-        "units",
-        "turrets"
-      ],
-      "includeLockOnLevel1Buildings": [],
-      "includeLockOnLevel1Towers": [],
-      "includeLockOnLevel1Units": [],
-      "includeLockOnLevel1Turrets": [],
-      "includeLockOnLevel1Shots": []
-    },
-    "towerDetachedTurret": {
       "includeLockOnLevel0FriendsAndEnemies": [
         "friendly_entities",
         "enemy_entities"

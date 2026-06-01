@@ -7,12 +7,6 @@ export type { BuildingBlueprintId };
 export type BuildingRenderProfile = BuildingBlueprintId | 'unknown' | 'bodyless';
 export type BuildingAnchorProfile = 'constantVisualTop' | 'factoryTower' | 'collisionDepth';
 
-export const DETACHED_TURRET_TOWER_BLUEPRINT_ID: BuildingBlueprintId = 'towerDetachedTurret';
-
-export function isDetachedTurretTowerBlueprintId(t: BuildingBlueprintId | null | undefined): boolean {
-  return t === DETACHED_TURRET_TOWER_BLUEPRINT_ID;
-}
-
 // Tower-class buildingTypes. A "tower" is the immobile peer of a unit —
 // it mounts turrets and carries a host-level lock-on target. Distinct
 // from pure-infrastructure buildings (solar/wind/extractor/radar/

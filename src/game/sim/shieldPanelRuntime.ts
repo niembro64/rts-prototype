@@ -31,8 +31,8 @@ export function getActiveShieldPanelTurret(entity: Entity): ShieldPanelTurretRef
   const ref = findShieldPanelTurret(entity);
   if (ref === null) return null;
 
-  const { turret, turretIndex } = ref;
-  if (turret.id === NO_ENTITY_ID || turret.hp <= 0) return null;
-  if (!isConstructionPieceMaterialized(entity, 'turret', turretIndex)) return null;
+  const { turret } = ref;
+  if (turret.id === NO_ENTITY_ID) return null;
+  if (!isConstructionPieceMaterialized(entity, 'body')) return null;
   return ref;
 }

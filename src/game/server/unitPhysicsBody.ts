@@ -1,36 +1,19 @@
 import type { Entity } from '../sim/types';
 import type { WorldState } from '../sim/WorldState';
 import type { Body3D, PhysicsEngine3D } from './PhysicsEngine3D';
-import { getTurretBlueprint } from '../sim/blueprints/turrets';
 
 export type UnitPhysicsBodyOptions = {
   ignoreOverlappingBuildings: boolean | undefined;
   overlapPadding: number | undefined;
 };
 
-/** Effective physical mass of a mobile unit host = its unit body mass
- *  plus the base mass of every LIVE mounted turret.
- *  A piece that has died (hp <= 0) or detached no longer weighs on the
- *  host, so a tank that loses a turret accelerates and gets knocked around
- *  more. Mass is summed at runtime here, mirroring how cost is summed at
- *  load time (see "Every entity shares one base ledger" / "mass must
- *  matter"). Returns the pre-UNIT_MASS_MULTIPLIER mass the physics body
- *  takes; callers feed it to createUnitBody / setBodyEffectiveMass. */
+/** Effective physical mass of a mobile unit host. Mounted turrets are
+ *  inseparable emitters now, so their weight belongs to the authored host
+ *  body instead of being summed as live/detached sub-pieces at runtime. */
 export function computeHostEffectiveMass(entity: Entity): number {
   const unit = entity.unit;
   if (unit === null) return 0;
-  let mass = unit.mass; // unit body mass includes its inline locomotion.
-  const combat = entity.combat;
-  if (combat !== null) {
-    const turrets = combat.turrets;
-    for (let i = 0; i < turrets.length; i++) {
-      const turret = turrets[i];
-      if (turret.hp > 0) {
-        mass += getTurretBlueprint(turret.config.turretBlueprintId).base.mass;
-      }
-    }
-  }
-  return mass;
+  return unit.mass;
 }
 
 export function createPhysicsBodyForUnit(

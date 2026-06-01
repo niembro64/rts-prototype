@@ -19,14 +19,9 @@ import {
   assertTurretLockOnInclusionConfigIds,
   getTurretLockOnInclusions,
 } from './lockOnConfig';
-import {
-  assertRadiusEquals,
-  assertValidEntityBaseLedger,
-} from './entityBaseLedger';
 
 const TURRET_EXPLICIT_FIELDS = [
   'name',
-  'base',
   'emissionKind',
   'emissionBlueprintId',
   'cooldown',
@@ -85,8 +80,6 @@ for (const [id, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
     );
   }
   assertExplicitFields(`turret blueprint ${id}`, blueprint, TURRET_EXPLICIT_FIELDS);
-  assertValidEntityBaseLedger(`turret blueprint ${id}`, blueprint.base);
-  assertRadiusEquals(`turret blueprint ${id}`, blueprint.radius, blueprint.base.radius);
   if (Object.prototype.hasOwnProperty.call(blueprint, 'shield')) {
     throw new Error(
       `Invalid turret blueprint ${id}: shield emission data belongs in shields.json and must be referenced by emissionBlueprintId`,

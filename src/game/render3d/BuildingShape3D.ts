@@ -99,11 +99,9 @@ export type BuildingShape = {
   /** When true, Render3DEntities must not replace `primary.material`
    *  with a team material after ownership changes. */
   primaryMaterialLocked?: boolean;
-  /** When true, this host renders no body shell — only its mounted
-   *  turrets. The `primary` mesh is still returned (callers index
-   *  `chassisMeshes[0]`) but the renderer keeps it hidden and unscaled.
-   *  Used by the detached-turret tower: a gun blown off its host is
-   *  just the gun, with no chassis around it. */
+  /** When true, this host renders no body shell. The `primary` mesh is
+   *  still returned (callers index `chassisMeshes[0]`) but the renderer
+   *  keeps it hidden and unscaled. */
   bodyless?: boolean;
   /** Decorative accent meshes already positioned relative to the primary
    *  body. */

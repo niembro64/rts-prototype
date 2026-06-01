@@ -890,8 +890,8 @@ function writeUnitTurretDeltaPayload(
     if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) {
       rows.writeFloat64(turret.currentShieldRange!);
     }
-    // hpCurr is unconditional (every live turret has HP) — written last,
-    // after the conditional target/shield fields. Mirror in the matching
+    // Legacy hpCurr slot is unconditional for wire compatibility — written
+    // last after the conditional target/shield fields. Mirror in the matching
     // byte decoder readUnitTurretDeltaByteEntity.
     rows.writeFloat64(turret.hpCurr ?? 0);
   }
@@ -1179,7 +1179,7 @@ function unpackUnitTurretDeltaRows(
       if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) {
         turret.currentShieldRange = rows[i++] as number;
       }
-      // hpCurr is unconditional — last element in the row.
+    // Legacy hpCurr slot is unconditional — last element in the row.
       turret.hpCurr = rows[i++] as number;
       turrets[turretIndex] = turret;
     }
@@ -1266,8 +1266,8 @@ function readUnitTurretDeltaByteEntity(
     if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) {
       turret.currentShieldRange = reader.readFloat64();
     }
-    // hpCurr is unconditional — read last, mirroring the byte encoders
-    // writeUnitTurretDeltaPayload (JS) and v6_write_turret_payload (Rust).
+    // Legacy hpCurr slot is unconditional — read last, mirroring the byte
+    // encoders writeUnitTurretDeltaPayload (JS) and v6_write_turret_payload (Rust).
     turret.hpCurr = reader.readFloat64();
     turrets[turretIndex] = turret;
   }
@@ -1636,7 +1636,7 @@ function packTurret(t: NetworkServerSnapshotTurret): unknown[] {
   ];
   if ((flags & TURRET_FLAG_TARGET_ID) !== 0) row.push(t.targetId!);
   if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) row.push(t.currentShieldRange!);
-  // hpCurr is unconditional — appended last, after the conditional fields.
+  // Legacy hpCurr slot is unconditional — appended last after the conditional fields.
   row.push(t.hpCurr ?? 0);
   return row;
 }
@@ -1665,7 +1665,7 @@ function unpackTurret(row: unknown[]): NetworkServerSnapshotTurret {
   if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) {
     turret.currentShieldRange = row[i++] as number;
   }
-  // hpCurr is unconditional — last element, after the conditional fields.
+    // Legacy hpCurr slot is unconditional — last element after the conditional fields.
   turret.hpCurr = row[i++] as number;
   return turret;
 }

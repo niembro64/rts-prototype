@@ -488,35 +488,22 @@ export class RtsScene3DRenderPhase {
       }
     }
 
-    // ── Turret bars + names ──
-    const turretHealthToggle = getEntityHudToggle('turret', 'healthBar');
-    const turretBuildToggle = getEntityHudToggle('turret', 'buildBars');
+    // ── Turret names ──
     const turretNameToggle = getEntityHudToggle('turret', 'name');
-    if (turretHealthToggle || turretBuildToggle || turretNameToggle) {
+    if (turretNameToggle) {
       const entityRenderer = this.resources.entityRenderer;
       for (const host of this.clientViewState.getArmedEntities()) {
         const turrets = host.combat?.turrets;
         if (!turrets) continue;
-        const selected = host.selectable?.selected === true;
         for (let i = 0; i < turrets.length; i++) {
           const turret = turrets[i];
           // Skip visual-only / construction-emitter (shot === undefined)
-          // and shield-emitter turrets — they're not damageable weapon
-          // bodies.
+          // and shield-emitter turrets.
           if (turret.config.visualOnly) continue;
           if (turret.config.shot === undefined) continue;
           if (turret.config.shot.type === 'shield') continue;
           const mount = entityRenderer.getTurretMountWorldState(host.id, i);
           if (mount === null) continue;
-          if (healthBar3D && (turretHealthToggle || turretBuildToggle)) {
-            const healthNotFull = turret.maxHp > 0 && turret.hp < turret.maxHp;
-            const buildInProgress = isBuildInProgress(host.buildable);
-            const showHealth = this.barVisible(turretHealthToggle, selected, mode, healthNotFull);
-            const showBuild = this.barVisible(turretBuildToggle, selected, mode, buildInProgress);
-            if (showHealth || showBuild) {
-              healthBar3D.perTurret(host, i, mount, false, showHealth, showBuild);
-            }
-          }
           if (nameLabel3D && turretNameToggle) {
             const name = resolveTurretName(host, turret, turretNameToggle, mode);
             if (name !== null) {

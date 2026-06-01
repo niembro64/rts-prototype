@@ -900,12 +900,17 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
     proj.velocityY = vy;
     proj.velocityZ = vz;
 
-    updateProjectileSourceClearance(
+    const wasSourceCleared = !!proj.hasLeftSource;
+    if (updateProjectileSourceClearance(
       world.getEntity(proj.sourceEntityId),
       proj,
       x, y, z,
       proj.config.shotProfile.runtime.radius.collision,
-    );
+    ) && !wasSourceCleared) {
+      proj.collisionStartX = x;
+      proj.collisionStartY = y;
+      proj.collisionStartZ = z;
+    }
   }
 }
 
@@ -1117,12 +1122,17 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     proj.velocityY = vy;
     proj.velocityZ = vz;
 
-    updateProjectileSourceClearance(
+    const wasSourceCleared = !!proj.hasLeftSource;
+    if (updateProjectileSourceClearance(
       world.getEntity(proj.sourceEntityId),
       proj,
       x, y, z,
       proj.config.shotProfile.runtime.radius.collision,
-    );
+    ) && !wasSourceCleared) {
+      proj.collisionStartX = x;
+      proj.collisionStartY = y;
+      proj.collisionStartZ = z;
+    }
 
     // Visual rotation + sparse velocity-update events: only homing
     // projectiles need either. Non-homing shots get their rotation

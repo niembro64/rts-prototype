@@ -1,7 +1,7 @@
 // Combat utility functions
 
 import type { Entity, ProjectileShot, Turret } from '../types';
-import { distance, normalizeAngle, magnitude } from '../../math';
+import { distance, normalizeAngle, magnitude, getTransformCosSin } from '../../math';
 import { getTurretWorldMount } from '../../math';
 import type { Vec3 } from '@/types/vec2';
 import { getUnitGroundZ } from '../unitGeometry';
@@ -70,6 +70,7 @@ const _rwmOut: Vec3 = { x: 0, y: 0, z: 0 };
 const _entityPositionScratch: Vec3 = { x: 0, y: 0, z: 0 };
 const _entityVelocityScratch: Vec3 = { x: 0, y: 0, z: 0 };
 const _mountKinematicsVelScratch: Vec3 = { x: 0, y: 0, z: 0 };
+const _sourceTurretMountScratch: Vec3 = { x: 0, y: 0, z: 0 };
 
 type SurfaceNormal = { nx: number; ny: number; nz: number };
 
@@ -330,25 +331,70 @@ export function getEntityAcceleration3d(
 
 export function updateProjectileSourceClearance(
   source: Entity | undefined,
-  projectile: { hasLeftSource: boolean },
+  projectile: { hasLeftSource: boolean; shotSource?: { sourceTurretEntityId: number | null } },
   pointX: number,
   pointY: number,
   pointZ: number,
   pointRadius: number,
 ): boolean {
   if (projectile.hasLeftSource) return true;
-  if (source === undefined || source.unit === null) {
+  if (source === undefined) {
     projectile.hasLeftSource = true;
     return true;
   }
 
-  const sourceUnit = source.unit;
+  const clearancePad = Math.max(0, pointRadius) + 2;
+  let clearOfHost = true;
+
   const sourcePosition = getEntityPosition3d(source, _entityPositionScratch);
-  const dx = pointX - sourcePosition.x;
-  const dy = pointY - sourcePosition.y;
-  const dz = pointZ - sourcePosition.z;
-  const clearance = sourceUnit.radius.hitbox + Math.max(0, pointRadius) + 2;
-  if (dx * dx + dy * dy + dz * dz > clearance * clearance) {
+  if (source.unit !== null) {
+    const dx = pointX - sourcePosition.x;
+    const dy = pointY - sourcePosition.y;
+    const dz = pointZ - sourcePosition.z;
+    const clearance = source.unit.radius.collision + clearancePad;
+    clearOfHost = dx * dx + dy * dy + dz * dz > clearance * clearance;
+  } else if (source.building !== null) {
+    const b = source.building;
+    const minX = source.transform.x - b.width / 2 - clearancePad;
+    const maxX = source.transform.x + b.width / 2 + clearancePad;
+    const minY = source.transform.y - b.height / 2 - clearancePad;
+    const maxY = source.transform.y + b.height / 2 + clearancePad;
+    const minZ = source.transform.z - b.depth / 2 - clearancePad;
+    const maxZ = source.transform.z + b.depth / 2 + clearancePad;
+    clearOfHost =
+      pointX < minX || pointX > maxX ||
+      pointY < minY || pointY > maxY ||
+      pointZ < minZ || pointZ > maxZ;
+  }
+
+  let clearOfTurret = true;
+  const sourceTurretEntityId = projectile.shotSource?.sourceTurretEntityId ?? null;
+  const combat = source.combat;
+  if (sourceTurretEntityId !== null && combat !== null) {
+    for (let i = 0; i < combat.turrets.length; i++) {
+      const turret = combat.turrets[i];
+      if (turret.id !== sourceTurretEntityId) continue;
+      const cs = getTransformCosSin(source.transform);
+      const mount = resolveWeaponWorldMount(
+        source,
+        turret,
+        i,
+        cs.cos,
+        cs.sin,
+        { currentTick: undefined, unitGroundZ: undefined, surfaceN: source.unit?.surfaceNormal },
+        _sourceTurretMountScratch,
+      );
+      const dx = pointX - mount.x;
+      const dy = pointY - mount.y;
+      const dz = pointZ - mount.z;
+      const turretRadius = turret.config.radius.collision;
+      const clearance = turretRadius + clearancePad;
+      clearOfTurret = dx * dx + dy * dy + dz * dz > clearance * clearance;
+      break;
+    }
+  }
+
+  if (clearOfHost && clearOfTurret) {
     projectile.hasLeftSource = true;
     return true;
   }

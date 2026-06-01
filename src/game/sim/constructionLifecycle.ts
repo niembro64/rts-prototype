@@ -14,11 +14,10 @@ import {
 } from './buildableHelpers';
 import {
   getBuildingBlueprint,
-  getTurretBlueprint,
   getUnitBlueprint,
 } from './blueprints';
 import type { ResourceCost } from '../../types/economyTypes';
-import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../types/network';
+import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_HP } from '../../types/network';
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 
 export type ConstructionLifecycleResult = {
@@ -154,30 +153,6 @@ function getUnitConstructionPieceSpecs(entity: Entity): ConstructionPieceSpec[] 
     },
   ];
 
-  const combat = entity.combat;
-  if (combat !== null) {
-    for (let i = 0; i < combat.turrets.length; i++) {
-      const turret = combat.turrets[i];
-      specs.push({
-        getId: () => turret.id,
-        assignId: (id) => {
-          turret.id = id;
-          turret.parentId = entity.id;
-          turret.rootHostId = entity.id;
-          turret.mountIndex = i;
-        },
-        kind: 'turret',
-        mountIndex: i,
-        required: cloneResourceCost(getTurretBlueprint(turret.config.turretBlueprintId).base.cost),
-        maxHp: turret.maxHp,
-        startsAtFrameOne: false,
-        getHp: () => turret.hp,
-        setHp: (hp) => { turret.hp = hp; },
-        snapshotFields: ENTITY_CHANGED_TURRETS,
-        isSubEntity: true,
-      });
-    }
-  }
   return specs;
 }
 
@@ -202,30 +177,6 @@ function getStaticConstructionPieceSpecs(entity: Entity): ConstructionPieceSpec[
     },
   ];
 
-  const combat = entity.combat;
-  if (combat !== null) {
-    for (let i = 0; i < combat.turrets.length; i++) {
-      const turret = combat.turrets[i];
-      specs.push({
-        getId: () => turret.id,
-        assignId: (id) => {
-          turret.id = id;
-          turret.parentId = entity.id;
-          turret.rootHostId = entity.id;
-          turret.mountIndex = i;
-        },
-        kind: 'turret',
-        mountIndex: i,
-        required: cloneResourceCost(getTurretBlueprint(turret.config.turretBlueprintId).base.cost),
-        maxHp: turret.maxHp,
-        startsAtFrameOne: false,
-        getHp: () => turret.hp,
-        setHp: (hp) => { turret.hp = hp; },
-        snapshotFields: ENTITY_CHANGED_TURRETS,
-        isSubEntity: true,
-      });
-    }
-  }
   return specs;
 }
 
@@ -469,26 +420,10 @@ function finishConstructionPieceHealth(entity: Entity): void {
   if (entity.unit !== null) {
     const unit = entity.unit;
     if (unit.hp > 0) unit.hp = unit.maxHp;
-    const combat = entity.combat;
-    if (combat !== null) {
-      for (let i = 0; i < combat.turrets.length; i++) {
-        if (isSubEntityHpLive(combat.turrets[i].hp)) combat.turrets[i].hp = combat.turrets[i].maxHp;
-      }
-    }
   } else if (entity.building !== null) {
     const building = entity.building;
     if (building.hp > 0) building.hp = building.maxHp;
-    const combat = entity.combat;
-    if (combat !== null) {
-      for (let i = 0; i < combat.turrets.length; i++) {
-        if (isSubEntityHpLive(combat.turrets[i].hp)) combat.turrets[i].hp = combat.turrets[i].maxHp;
-      }
-    }
   }
-}
-
-function isSubEntityHpLive(hp: number): boolean {
-  return hp > 0;
 }
 
 function isConstructionAlive(entity: Entity): boolean {

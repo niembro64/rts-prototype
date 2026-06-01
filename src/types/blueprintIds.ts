@@ -10,7 +10,7 @@ export const UNIT_BLUEPRINT_IDS = [
 export type UnitBlueprintId = typeof UNIT_BLUEPRINT_IDS[number];
 
 export const BUILDING_BLUEPRINT_IDS = [
-  'buildingSolar', 'buildingWind', 'towerFabricator', 'buildingExtractor', 'towerBeamMega', 'towerCannon', 'buildingRadar', 'buildingResourceConverter', 'towerDetachedTurret',
+  'buildingSolar', 'buildingWind', 'towerFabricator', 'buildingExtractor', 'towerBeamMega', 'towerCannon', 'buildingRadar', 'buildingResourceConverter',
 ] as const;
 export type BuildingBlueprintId = typeof BUILDING_BLUEPRINT_IDS[number];
 

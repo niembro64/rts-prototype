@@ -2,7 +2,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, ProjectileShot, BeamRay, LaserRay, ShotSource } from '../types';
-import { getEmissionBlueprintId, isRayType, isProjectileShot } from '../types';
+import { getEmissionBlueprintId, isRayType, isProjectileShot, NO_ENTITY_ID } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type {
@@ -23,8 +23,10 @@ import { LAND_CELL_SIZE } from '../../../config';
 import { getActiveShields } from './shieldTurret';
 import { REFLECTIVE_SHIELD_MATERIAL } from '../blueprints/shieldMaterials';
 import { getSimWasm } from '../../sim-wasm/init';
-import { updateProjectileSourceClearance } from './combatUtils';
+import { getTransformCosSin, lineSphereIntersectionT, rayBoxIntersectionT } from '../../math';
+import { resolveWeaponWorldMount, updateProjectileSourceClearance } from './combatUtils';
 import { writeTurretCooldownToSlab } from './combatActivitySlab';
+import { getUnitGroundZ } from '../unitGeometry';
 
 const SHIELD_PANEL_PROJECTILE_QUERY_PAD = 96;
 const MAX_PROJECTILE_SWEEP_DISTANCE = LAND_CELL_SIZE * 64;
@@ -281,6 +283,233 @@ function reflectVelocityPreserveSpeed(
   ry *= scale;
   rz *= scale;
   return { x: rx, y: ry, z: rz };
+}
+
+type ProjectileCenterlineHit = {
+  entity: Entity;
+  t: number;
+  normalX: number;
+  normalY: number;
+  normalZ: number;
+};
+
+const _projectileCenterlineHit = {
+  entity: undefined as Entity | undefined,
+  t: Infinity,
+  normalX: 0,
+  normalY: 0,
+  normalZ: 1,
+};
+const _projectileCenterlineTurretMount = { x: 0, y: 0, z: 0 };
+
+function setProjectileCenterlineHitNormal(
+  hitX: number,
+  hitY: number,
+  hitZ: number,
+  centerX: number,
+  centerY: number,
+  centerZ: number,
+  segmentDx: number,
+  segmentDy: number,
+  segmentDz: number,
+): void {
+  let normalX = hitX - centerX;
+  let normalY = hitY - centerY;
+  let normalZ = hitZ - centerZ;
+  let normalLenSq = normalX * normalX + normalY * normalY + normalZ * normalZ;
+  if (normalLenSq <= 1e-9) {
+    normalX = -segmentDx;
+    normalY = -segmentDy;
+    normalZ = -segmentDz;
+    normalLenSq = normalX * normalX + normalY * normalY + normalZ * normalZ;
+  }
+  if (normalLenSq <= 1e-9) {
+    _projectileCenterlineHit.normalX = 0;
+    _projectileCenterlineHit.normalY = 0;
+    _projectileCenterlineHit.normalZ = 1;
+    return;
+  }
+  const invLen = 1 / Math.sqrt(normalLenSq);
+  _projectileCenterlineHit.normalX = normalX * invLen;
+  _projectileCenterlineHit.normalY = normalY * invLen;
+  _projectileCenterlineHit.normalZ = normalZ * invLen;
+}
+
+function findProjectileCenterlineHit(
+  world: WorldState,
+  projEntity: Entity,
+  prevX: number,
+  prevY: number,
+  prevZ: number,
+  currentX: number,
+  currentY: number,
+  currentZ: number,
+  excludeEntities: Set<EntityId>,
+): ProjectileCenterlineHit | null {
+  _projectileCenterlineHit.entity = undefined;
+  _projectileCenterlineHit.t = Infinity;
+  _projectileCenterlineHit.normalX = 0;
+  _projectileCenterlineHit.normalY = 0;
+  _projectileCenterlineHit.normalZ = 1;
+
+  const segmentDx = currentX - prevX;
+  const segmentDy = currentY - prevY;
+  const segmentDz = currentZ - prevZ;
+
+  for (const unit of world.getUnits()) {
+    if (excludeEntities.has(unit.id)) continue;
+    const unitComponent = unit.unit;
+    if (unitComponent === null || unitComponent.hp <= 0) continue;
+
+    const bodyT = lineSphereIntersectionT(
+      prevX, prevY, prevZ,
+      currentX, currentY, currentZ,
+      unit.transform.x, unit.transform.y, unit.transform.z,
+      unitComponent.radius.hitbox,
+    );
+    if (bodyT !== null && bodyT < _projectileCenterlineHit.t) {
+      _projectileCenterlineHit.entity = unit;
+      _projectileCenterlineHit.t = bodyT;
+      setProjectileCenterlineHitNormal(
+        prevX + bodyT * segmentDx,
+        prevY + bodyT * segmentDy,
+        prevZ + bodyT * segmentDz,
+        unit.transform.x,
+        unit.transform.y,
+        unit.transform.z,
+        segmentDx,
+        segmentDy,
+        segmentDz,
+      );
+    }
+
+    const combat = unit.combat;
+    if (combat === null) continue;
+    const unitCS = getTransformCosSin(unit.transform);
+    const unitGroundZ = getUnitGroundZ(unit);
+    for (let i = 0; i < combat.turrets.length; i++) {
+      const turret = combat.turrets[i];
+      if (
+        turret.id === NO_ENTITY_ID ||
+        turret.config.visualOnly ||
+        excludeEntities.has(turret.id)
+      ) {
+        continue;
+      }
+      const mount = resolveWeaponWorldMount(
+        unit, turret, i,
+        unitCS.cos, unitCS.sin,
+        {
+          currentTick: world.getTick(),
+          unitGroundZ,
+          surfaceN: unitComponent.surfaceNormal,
+        },
+        _projectileCenterlineTurretMount,
+      );
+      const turretT = lineSphereIntersectionT(
+        prevX, prevY, prevZ,
+        currentX, currentY, currentZ,
+        mount.x, mount.y, mount.z,
+        turret.config.radius.hitbox,
+      );
+      if (turretT !== null && turretT < _projectileCenterlineHit.t) {
+        _projectileCenterlineHit.entity = unit;
+        _projectileCenterlineHit.t = turretT;
+        setProjectileCenterlineHitNormal(
+          prevX + turretT * segmentDx,
+          prevY + turretT * segmentDy,
+          prevZ + turretT * segmentDz,
+          mount.x,
+          mount.y,
+          mount.z,
+          segmentDx,
+          segmentDy,
+          segmentDz,
+        );
+      }
+    }
+  }
+
+  for (const building of world.getBuildings()) {
+    if (excludeEntities.has(building.id)) continue;
+    const buildingComponent = building.building;
+    if (buildingComponent === null || buildingComponent.hp <= 0) continue;
+
+    const halfW = buildingComponent.width / 2;
+    const halfH = buildingComponent.height / 2;
+    const halfD = buildingComponent.depth / 2;
+    const buildingT = rayBoxIntersectionT(
+      prevX, prevY, prevZ,
+      currentX, currentY, currentZ,
+      building.transform.x - halfW,
+      building.transform.y - halfH,
+      building.transform.z - halfD,
+      building.transform.x + halfW,
+      building.transform.y + halfH,
+      building.transform.z + halfD,
+    );
+    if (buildingT !== null && buildingT < _projectileCenterlineHit.t) {
+      _projectileCenterlineHit.entity = building;
+      _projectileCenterlineHit.t = buildingT;
+      setProjectileCenterlineHitNormal(
+        prevX + buildingT * segmentDx,
+        prevY + buildingT * segmentDy,
+        prevZ + buildingT * segmentDz,
+        building.transform.x,
+        building.transform.y,
+        building.transform.z,
+        segmentDx,
+        segmentDy,
+        segmentDz,
+      );
+    }
+  }
+
+  for (const projectile of world.getProjectiles()) {
+    if (
+      excludeEntities.has(projectile.id) ||
+      projectile.id === projEntity.id ||
+      _collisionProjectileRemoveIds.has(projectile.id)
+    ) {
+      continue;
+    }
+    const targetProjectile = projectile.projectile;
+    if (
+      targetProjectile === null ||
+      targetProjectile.projectileType !== 'projectile' ||
+      targetProjectile.hp <= 0 ||
+      !isProjectileShot(targetProjectile.config.shot)
+    ) {
+      continue;
+    }
+
+    const targetRadius = targetProjectile.config.shotProfile.runtime.radius.collision;
+    const projectileT = lineSphereIntersectionT(
+      prevX, prevY, prevZ,
+      currentX, currentY, currentZ,
+      projectile.transform.x, projectile.transform.y, projectile.transform.z,
+      targetRadius,
+    );
+    if (projectileT !== null && projectileT < _projectileCenterlineHit.t) {
+      _projectileCenterlineHit.entity = projectile;
+      _projectileCenterlineHit.t = projectileT;
+      setProjectileCenterlineHitNormal(
+        prevX + projectileT * segmentDx,
+        prevY + projectileT * segmentDy,
+        prevZ + projectileT * segmentDz,
+        projectile.transform.x,
+        projectile.transform.y,
+        projectile.transform.z,
+        segmentDx,
+        segmentDy,
+        segmentDz,
+      );
+    }
+  }
+
+  return _projectileCenterlineHit.entity === undefined
+    ? null
+    : _projectileCenterlineHit as ProjectileCenterlineHit;
 }
 
 // Reset collision-specific reusable buffers between game sessions
@@ -629,9 +858,9 @@ function detonateKilledProjectileShot(
   queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
 }
 
-// Check projectile collisions and apply damage
-// Friendly fire is enabled - projectiles hit ALL units and buildings
-// Uses DamageSystem for unified collision detection (swept volumes, line damage, etc.)
+// Check projectile collisions and apply damage.
+// Friendly fire is enabled: traveling shots can hit any live unit,
+// building, or projectile body after clearing their source.
 export function checkProjectileCollisions(
   world: WorldState,
   dtMs: number,
@@ -810,10 +1039,13 @@ export function checkProjectileCollisions(
     const expiredBeforeDamage = proj.timeAlive >= proj.maxLifespan;
     const healthZeroBeforeDamage = proj.projectileType === 'projectile' && proj.hp <= 0;
     let directHitThisTick = false;
+    let directHitSurfaceNormalX: number | undefined;
+    let directHitSurfaceNormalY: number | undefined;
+    let directHitSurfaceNormalZ: number | undefined;
 
-    // Handle different projectile types with unified damage system.
+    // Handle different projectile types.
     // Ground impact is checked after this block so a swept projectile
-    // hitbox can stop on an entity it crossed before reaching terrain.
+    // centerline can stop on an entity it crossed before reaching terrain.
     const canApplyDamageThisTick =
       !terminalReflectorHit && !expiredBeforeDamage && !healthZeroBeforeDamage;
     if (canApplyDamageThisTick && isRayType(proj.projectileType)) {
@@ -935,7 +1167,8 @@ export function checkProjectileCollisions(
         proj.collisionStartY = projEntity.transform.y;
         proj.collisionStartZ = projEntity.transform.z;
       } else {
-        // Traveling projectiles use swept 3D volume collision (prevents tunneling)
+        // Traveling projectiles sweep their center point through entity
+        // hitboxes (prevents tunneling without inflating the projectile).
         const projShot = config.shot as ProjectileShot;
         const projRadius = runtimeProfile.radius.collision;
         const prevX = proj.collisionStartX ?? proj.prevX ?? projEntity.transform.x;
@@ -945,213 +1178,132 @@ export function checkProjectileCollisions(
         const currentY = projEntity.transform.y;
         const currentZ = projEntity.transform.z;
 
-        const hitEntities = proj.hitEntities;
-        const hadSelfExclusion = hitEntities.has(projEntity.id);
-        const hadSourceExclusion = hitEntities.has(proj.sourceEntityId);
-        hitEntities.add(projEntity.id);
-        hitEntities.add(proj.sourceEntityId);
+        if (!proj.hasLeftSource) {
+          proj.collisionStartX = currentX;
+          proj.collisionStartY = currentY;
+          proj.collisionStartZ = currentZ;
+        } else {
+          const hitEntities = proj.hitEntities;
+          const hadSelfExclusion = hitEntities.has(projEntity.id);
+          const previousTargetHitCount =
+            getProjectileHitCount(proj) - (hadSelfExclusion ? 1 : 0);
+          hitEntities.add(projEntity.id);
 
-        // 3D swept: capsule from prev→current (the projectile's flight
-        // path this tick) vs each unit sphere. Normal projectiles keep
-        // direct damage at 0 and detonate on first hit. D-gun waves are
-        // terrain-following passthrough projectiles, so their swept
-        // capsule is the damage source and commanders are immune.
-        const result = damageSystem.applyDamage({
-          type: 'swept',
-          sourceEntityId: proj.sourceEntityId,
-          ownerId: projEntity.ownership.playerId,
-          damage: isDGunProjectile && projShot.explosion !== undefined ? projShot.explosion.damage : 0,
-          excludeEntities: hitEntities,
-          excludeCommanders: isDGunProjectile,
-          prev: { x: prevX, y: prevY, z: prevZ },
-          current: { x: currentX, y: currentY, z: currentZ },
-          radius: projRadius,
-          maxHits: proj.maxHits - getProjectileHitCount(proj),
-          velocity: { x: proj.velocityX, y: proj.velocityY, z: proj.velocityZ },
-          projectileMass: projShot.mass,
-        });
-        if (!hadSelfExclusion) {
-          hitEntities.delete(projEntity.id);
-        }
-        if (!hadSourceExclusion) {
-          hitEntities.delete(proj.sourceEntityId);
-        }
-          const hadHits = result.hitEntityIds.length > 0;
-          const shouldStopOnDirectHit = hadHits && !isDGunProjectile;
-          if (shouldStopOnDirectHit) {
-            directHitThisTick = true;
-            const hitT = result.truncationT;
-            if (hitT !== undefined && Number.isFinite(hitT)) {
-              const clampedT = Math.max(0, Math.min(1, hitT));
+          if (!isDGunProjectile) {
+            const directHit = findProjectileCenterlineHit(
+              world,
+              projEntity,
+              prevX, prevY, prevZ,
+              currentX, currentY, currentZ,
+              hitEntities,
+            );
+            if (directHit !== null) {
+              directHitThisTick = true;
+              const clampedT = Math.max(0, Math.min(1, directHit.t));
               projEntity.transform.x = prevX + clampedT * (currentX - prevX);
               projEntity.transform.y = prevY + clampedT * (currentY - prevY);
               projEntity.transform.z = prevZ + clampedT * (currentZ - prevZ);
-            }
-            proj.hp = 0;
-          }
+              proj.hp = 0;
+              directHitSurfaceNormalX = directHit.normalX;
+              directHitSurfaceNormalY = directHit.normalY;
+              directHitSurfaceNormalZ = directHit.normalZ;
+              ensureProjectileHitEntities(proj).add(directHit.entity.id);
 
-          // Apply knockback from projectile hit
-          applyKnockbackForces(result.knockbacks, forceAccumulator);
-          // Note: Recoil for traveling projectiles is applied at fire time in fireTurrets()
-
-          // Track hits
-          for (const hitId of result.hitEntityIds) {
-            ensureProjectileHitEntities(proj).add(hitId);
-
-            // Add hit audio event with impact context for directional flame explosions
-            // Position at the projectile's location (not the unit's center)
-            const entity = world.getEntity(hitId);
-            if (
-              entity?.projectile &&
-              entity.projectile.projectileType === 'projectile' &&
-              isProjectileShot(entity.projectile.config.shot)
-            ) {
-              entity.projectile.hp = 0;
-              result.killedProjectileIds.add(entity.id);
-            }
-            if (entity && !isDGunProjectile) {
-              audioEvents.push({
-                type: 'hit',
-                turretBlueprintId: shotBlueprintId,
-                pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
-                playerId: projEntity.ownership.playerId,
-                entityId: projEntity.id,
-                impactContext: buildImpactContext(
-                  config, projEntity.transform.x, projEntity.transform.y,
-                  proj.velocityX ?? 0, proj.velocityY ?? 0,
-                  projRadius, entity,
-                ),
-              });
-            }
-          }
-
-          // Handle deaths from direct hit BEFORE splash (result is reusable singleton)
-          const firstDirectHit = hadHits
-            ? world.getEntity(result.hitEntityIds[0])
-            : undefined;
-          collectKillsWithDeathAudio(
-            result, world, damageSourceKey, damageSourceType,
-            unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
-            proj.sourceEntityId, turretsToDetonate,
-          );
-          processKilledProjectileShots(
-            result,
-            world,
-            damageSystem,
-            forceAccumulator,
-            unitsToRemove,
-            buildingsToRemove,
-            turretsToDetonate,
+              const hitProjectile = directHit.entity.projectile;
+              if (
+                hitProjectile !== null &&
+                hitProjectile.projectileType === 'projectile' &&
+                hitProjectile.hp > 0 &&
+                isProjectileShot(hitProjectile.config.shot)
+              ) {
+                hitProjectile.hp = 0;
+                detonateKilledProjectileShot(
+                  directHit.entity,
+                  world,
+                  damageSystem,
+                  forceAccumulator,
+                  unitsToRemove,
+                  buildingsToRemove,
+                  turretsToDetonate,
                   audioEvents,
-            deathContexts,
-            newProjectiles,
-            spawnEvents,
-            projectilesToRemove,
-            despawnEvents,
-          );
-
-          // Detonate on direct hit when the shot has either an explosion
-          // or submunitions to release. A carrier with both applies its
-          // own splash first, then releases children from the same point.
-          if (!isDGunProjectile && hadHits && !proj.hasExploded
-              && (runtimeProfile.hasExplosion || runtimeProfile.hasSubmunitions)) {
-            proj.hasExploded = true;
-
-            if (runtimeProfile.hasExplosion && projShot.explosion) {
-              const splashExcludes = getSplashExcludes(proj);
-              // Single boolean AoE — everyone whose shot collider
-              // intersects the explosion sphere eats the full damage and
-              // full force. The directly-hit target is included
-              // (additive on top of its direct-hit damage).
-              const splash = damageSystem.applyDamage({
-                type: 'area',
-                sourceEntityId: proj.sourceEntityId,
-                ownerId: projEntity.ownership.playerId,
-                damage: projShot.explosion.damage,
-                excludeEntities: splashExcludes,
-                excludeCommanders: isDGunProjectile,
-                center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
-                radius: projShot.explosion.radius,
-                knockbackForce: projShot.explosion.force,
-              });
-
-              applyKnockbackForces(splash.knockbacks, forceAccumulator);
-              collectKillsAndDeathContexts(
-                splash, world, damageSourceKey, damageSourceType,
-                unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
-                proj.sourceEntityId, turretsToDetonate,
-              );
-              processKilledProjectileShots(
-                splash,
-                world,
-                damageSystem,
-                forceAccumulator,
-                unitsToRemove,
-                buildingsToRemove,
-                turretsToDetonate,
-                          audioEvents,
-                deathContexts,
-                newProjectiles,
-                spawnEvents,
-                projectilesToRemove,
-                despawnEvents,
-              );
-            }
-
-            // Cluster flak: spawn submunitions on detonation. Surface
-            // normal at the impact point points from the hit entity's
-            // center outward to the projectile, so the bounce direction
-            // sprays fragments AWAY from the unit (or building) rather
-            // than INTO it. Falls back to "no normal" when the hit
-            // entity isn't resolvable (rare — would only happen if it
-            // was removed mid-tick), in which case fragments just inherit
-            // forward velocity with random spread.
-            if (projShot.submunitions) {
-              let surfaceNormalX: number | undefined;
-              let surfaceNormalY: number | undefined;
-              let surfaceNormalZ: number | undefined;
-              const hitEntity = firstDirectHit;
-              if (hitEntity) {
-                // Outward normal at the hit point = unit-center → projectile.
-                surfaceNormalX = projEntity.transform.x - hitEntity.transform.x;
-                surfaceNormalY = projEntity.transform.y - hitEntity.transform.y;
-                surfaceNormalZ = projEntity.transform.z - hitEntity.transform.z;
+                  deathContexts,
+                  newProjectiles,
+                  spawnEvents,
+                  projectilesToRemove,
+                  despawnEvents,
+                  0,
+                );
               }
-              spawnSubmunitions(
-                world, projShot,
-                projEntity.id, proj.shotSource,
-                projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
-                proj.velocityX ?? 0, proj.velocityY ?? 0, proj.velocityZ ?? 0,
-                surfaceNormalX, surfaceNormalY, surfaceNormalZ,
-                projEntity.ownership.playerId, proj.sourceEntityId,
-                newProjectiles, spawnEvents,
-              );
             }
+          } else {
+            const result = damageSystem.applyDamage({
+              type: 'swept',
+              sourceEntityId: proj.sourceEntityId,
+              ownerId: projEntity.ownership.playerId,
+              damage: projShot.explosion !== undefined ? projShot.explosion.damage : 0,
+              excludeEntities: hitEntities,
+              excludeCommanders: true,
+              prev: { x: prevX, y: prevY, z: prevZ },
+              current: { x: currentX, y: currentY, z: currentZ },
+              radius: projRadius,
+              maxHits: Math.max(0, proj.maxHits - previousTargetHitCount),
+              velocity: { x: proj.velocityX, y: proj.velocityY, z: proj.velocityZ },
+              projectileMass: projShot.mass,
+            });
+
+            // Apply knockback from projectile hit
+            applyKnockbackForces(result.knockbacks, forceAccumulator);
+            // Note: Recoil for traveling projectiles is applied at fire time in fireTurrets()
+
+            // Track hits
+            for (const hitId of result.hitEntityIds) {
+              ensureProjectileHitEntities(proj).add(hitId);
+
+              const entity = world.getEntity(hitId);
+              if (
+                entity?.projectile &&
+                entity.projectile.projectileType === 'projectile' &&
+                isProjectileShot(entity.projectile.config.shot)
+              ) {
+                entity.projectile.hp = 0;
+                result.killedProjectileIds.add(entity.id);
+              }
+            }
+
+            // Handle deaths from direct hit before any HP-zero detonation
+            // below (result is reusable singleton).
+            collectKillsWithDeathAudio(
+              result, world, damageSourceKey, damageSourceType,
+              unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
+              proj.sourceEntityId, turretsToDetonate,
+            );
+            processKilledProjectileShots(
+              result,
+              world,
+              damageSystem,
+              forceAccumulator,
+              unitsToRemove,
+              buildingsToRemove,
+              turretsToDetonate,
+              audioEvents,
+              deathContexts,
+              newProjectiles,
+              spawnEvents,
+              projectilesToRemove,
+              despawnEvents,
+            );
           }
 
-          // Remove projectile if max hits reached
-          if (getProjectileHitCount(proj) >= proj.maxHits) {
-            // Always emit projectileExpire at the projectile's position so it produces a termination explosion
-            audioEvents.push({
-              type: 'projectileExpire',
-              turretBlueprintId: shotBlueprintId,
-              pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
-              playerId: projEntity.ownership.playerId,
-              entityId: projEntity.id,
-              impactContext: buildImpactContext(
-                config, projEntity.transform.x, projEntity.transform.y,
-                proj.velocityX ?? 0, proj.velocityY ?? 0,
-                projRadius,
-              ),
-            });
-            queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
-            continue;
+          if (!hadSelfExclusion) {
+            hitEntities.delete(projEntity.id);
           }
+
           proj.collisionStartX = currentX;
           proj.collisionStartY = currentY;
           proj.collisionStartZ = currentZ;
         }
       }
+    }
 
     // Ground impact — a traveling projectile whose center drops below
     // the ground plane is a terminal event, but only after swept
@@ -1203,8 +1355,14 @@ export function checkProjectileCollisions(
 
     // Check if the projectile hit a terminal timeout, ground, barrier,
     // or direct-hit health stop.
-    const healthZero = proj.projectileType === 'projectile' && proj.hp <= 0;
     const expired = proj.timeAlive >= proj.maxLifespan;
+    if (
+      proj.projectileType === 'projectile' &&
+      (terminalReflectorHit || (expired && runtimeProfile.detonateOnExpiry))
+    ) {
+      proj.hp = 0;
+    }
+    const healthZero = proj.projectileType === 'projectile' && proj.hp <= 0;
     if (expired || hitGround || terminalReflectorHit || healthZero) {
       // Beam audio is handled by updateLaserSounds based on targeting state
       if (
@@ -1224,15 +1382,9 @@ export function checkProjectileCollisions(
         );
       }
 
-      // Detonate on terminal events when detonateOnExpiry is set AND the
-      // shot has something to do there (an explosion, submunitions, or
-      // both). A pure carrier (no explosion, only submunitions) still
-      // fragments here.
-      const shouldDetonate =
-        healthZero ||
-        hitGround ||
-        terminalReflectorHit ||
-        (expired && runtimeProfile.detonateOnExpiry);
+      // Detonation is HP-owned: terminal collision / expiry paths that
+      // should explode zeroed projectile HP before reaching this gate.
+      const shouldDetonate = healthZero;
       if (shouldDetonate && proj.hasLeftSource && !proj.hasExploded) {
         const projShot = config.shot as ProjectileShot;
         const hasSplash = runtimeProfile.hasExplosion;
@@ -1326,6 +1478,10 @@ export function checkProjectileCollisions(
               surfaceNormalX = reflectorNormalX;
               surfaceNormalY = reflectorNormalY;
               surfaceNormalZ = reflectorNormalZ;
+            } else if (directHitThisTick) {
+              surfaceNormalX = directHitSurfaceNormalX;
+              surfaceNormalY = directHitSurfaceNormalY;
+              surfaceNormalZ = directHitSurfaceNormalZ;
             } else if (hitGround) {
               const n = getSurfaceNormal(
                 projEntity.transform.x, projEntity.transform.y,

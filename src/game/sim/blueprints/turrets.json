@@ -50,24 +50,6 @@
       "lockOnType": "lockOnToBody"
     },
     "kind": "attack",
-    "base": {
-      "cost": {
-        "energy": 6,
-        "metal": 6
-      },
-      "mass": 4.5,
-      "health": 24,
-      "deathExplosion": {
-        "radius": 3.75,
-        "force": 225,
-        "damage": 12
-      },
-      "radius": {
-        "visual": 3,
-        "hitbox": 2.25,
-        "collision": 3
-      }
-    },
     "emissionKind": "shot",
     "emissionBlueprintId": "shotPlasmaLight"
   },
@@ -133,24 +115,6 @@
       "lockOnType": "lockOnToBody"
     },
     "kind": "attack",
-    "base": {
-      "cost": {
-        "energy": 18,
-        "metal": 18
-      },
-      "mass": 13.5,
-      "health": 72,
-      "deathExplosion": {
-        "radius": 11.25,
-        "force": 675,
-        "damage": 36
-      },
-      "radius": {
-        "visual": 9,
-        "hitbox": 6.75,
-        "collision": 9
-      }
-    },
     "emissionKind": "shot",
     "emissionBlueprintId": "shotPlasmaMedium"
   },
@@ -208,24 +172,6 @@
       "lockOnType": "lockOnToBody"
     },
     "kind": "attack",
-    "base": {
-      "cost": {
-        "energy": 20,
-        "metal": 20
-      },
-      "mass": 15,
-      "health": 80,
-      "deathExplosion": {
-        "radius": 12.5,
-        "force": 750,
-        "damage": 40
-      },
-      "radius": {
-        "visual": 10,
-        "hitbox": 7.5,
-        "collision": 10
-      }
-    },
     "emissionKind": "shot",
     "emissionBlueprintId": "shotPlasmaHeavy"
   },
@@ -283,24 +229,6 @@
       "lockOnType": "lockOnToBody"
     },
     "kind": "attack",
-    "base": {
-      "cost": {
-        "energy": 24,
-        "metal": 24
-      },
-      "mass": 18,
-      "health": 96,
-      "deathExplosion": {
-        "radius": 15,
-        "force": 900,
-        "damage": 48
-      },
-      "radius": {
-        "visual": 12,
-        "hitbox": 9,
-        "collision": 12
-      }
-    },
     "emissionKind": "shot",
     "emissionBlueprintId": "shotMortarHeavy"
   },
@@ -355,24 +283,6 @@
       "lockOnType": "lockOnToBody"
     },
     "kind": "attack",
-    "base": {
-      "cost": {
-        "energy": 18,
-        "metal": 18
-      },
-      "mass": 13.5,
-      "health": 72,
-      "deathExplosion": {
-        "radius": 11.25,
-        "force": 675,
-        "damage": 36
-      },
-      "radius": {
-        "visual": 9,
-        "hitbox": 6.75,
-        "collision": 9
-      }
-    },
     "emissionKind": "shot",
     "emissionBlueprintId": "shotMortarHeavy"
   },
@@ -438,24 +348,6 @@
       "lockOnType": "lockOnToBody"
     },
     "kind": "attack",
-    "base": {
-      "cost": {
-        "energy": 64,
-        "metal": 64
-      },
-      "mass": 48,
-      "health": 256,
-      "deathExplosion": {
-        "radius": 40,
-        "force": 2400,
-        "damage": 128
-      },
-      "radius": {
-        "visual": 32,
-        "hitbox": 24,
-        "collision": 32
-      }
-    },
     "emissionKind": "shot",
     "emissionBlueprintId": "shotMortarHeavy"
   },
@@ -521,24 +413,6 @@
       "lockOnType": "lockOnToBody"
     },
     "kind": "attack",
-    "base": {
-      "cost": {
-        "energy": 32,
-        "metal": 32
-      },
-      "mass": 24,
-      "health": 128,
-      "deathExplosion": {
-        "radius": 20,
-        "force": 1200,
-        "damage": 64
-      },
-      "radius": {
-        "visual": 16,
-        "hitbox": 12,
-        "collision": 16
-      }
-    },
     "emissionKind": "shot",
     "emissionBlueprintId": "shotPlasmaMedium"
   },
@@ -591,24 +465,6 @@
       "lockOnType": "lockOnToBody"
     },
     "kind": "attack",
-    "base": {
-      "cost": {
-        "energy": 16,
-        "metal": 16
-      },
-      "mass": 12,
-      "health": 64,
-      "deathExplosion": {
-        "radius": 10,
-        "force": 600,
-        "damage": 32
-      },
-      "radius": {
-        "visual": 8,
-        "hitbox": 6,
-        "collision": 8
-      }
-    },
     "emissionKind": "shot",
     "emissionBlueprintId": "shotPlasmaDisruptor"
   },
@@ -661,24 +517,6 @@
       "lockOnType": "lockOnToTurret"
     },
     "kind": "attack",
-    "base": {
-      "cost": {
-        "energy": 16,
-        "metal": 16
-      },
-      "mass": 12,
-      "health": 64,
-      "deathExplosion": {
-        "radius": 10,
-        "force": 600,
-        "damage": 32
-      },
-      "radius": {
-        "visual": 8,
-        "hitbox": 6,
-        "collision": 8
-      }
-    },
     "emissionKind": "shield",
     "emissionBlueprintId": "shieldPanel"
   },
@@ -731,24 +569,6 @@
       "lockOnType": "lockOnToBody"
     },
     "kind": "attack",
-    "base": {
-      "cost": {
-        "energy": 12,
-        "metal": 12
-      },
-      "mass": 9,
-      "health": 48,
-      "deathExplosion": {
-        "radius": 7.5,
-        "force": 450,
-        "damage": 24
-      },
-      "radius": {
-        "visual": 6,
-        "hitbox": 4.5,
-        "collision": 6
-      }
-    },
     "emissionKind": "ray",
     "emissionBlueprintId": "rayBeamMedium"
   },
@@ -801,24 +621,6 @@
       "lockOnType": "lockOnToBody"
     },
     "kind": "attack",
-    "base": {
-      "cost": {
-        "energy": 6,
-        "metal": 6
-      },
-      "mass": 4.5,
-      "health": 24,
-      "deathExplosion": {
-        "radius": 3.75,
-        "force": 225,
-        "damage": 12
-      },
-      "radius": {
-        "visual": 3,
-        "hitbox": 2.25,
-        "collision": 3
-      }
-    },
     "emissionKind": "ray",
     "emissionBlueprintId": "rayBeamMini"
   },
@@ -871,24 +673,6 @@
       "lockOnType": "lockOnToBody"
     },
     "kind": "attack",
-    "base": {
-      "cost": {
-        "energy": 30,
-        "metal": 30
-      },
-      "mass": 22.5,
-      "health": 120,
-      "deathExplosion": {
-        "radius": 18.75,
-        "force": 1125,
-        "damage": 60
-      },
-      "radius": {
-        "visual": 15,
-        "hitbox": 11.25,
-        "collision": 15
-      }
-    },
     "emissionKind": "ray",
     "emissionBlueprintId": "rayBeamHeavy"
   },
@@ -950,24 +734,6 @@
       "lockOnType": "lockOnToBody"
     },
     "kind": "attack",
-    "base": {
-      "cost": {
-        "energy": 24,
-        "metal": 24
-      },
-      "mass": 18,
-      "health": 96,
-      "deathExplosion": {
-        "radius": 15,
-        "force": 900,
-        "damage": 48
-      },
-      "radius": {
-        "visual": 12,
-        "hitbox": 9,
-        "collision": 12
-      }
-    },
     "emissionKind": "shield",
     "emissionBlueprintId": "shieldSphere"
   },
@@ -1036,24 +802,6 @@
       "lockOnType": "lockOnToBody"
     },
     "kind": "construction",
-    "base": {
-      "cost": {
-        "energy": 16,
-        "metal": 16
-      },
-      "mass": 12,
-      "health": 64,
-      "deathExplosion": {
-        "radius": 10,
-        "force": 600,
-        "damage": 32
-      },
-      "radius": {
-        "visual": 8,
-        "hitbox": 6,
-        "collision": 8
-      }
-    },
     "emissionKind": null,
     "emissionBlueprintId": null
   },
@@ -1106,24 +854,6 @@
       "lockOnType": "lockOnToBody"
     },
     "kind": "attack",
-    "base": {
-      "cost": {
-        "energy": 32,
-        "metal": 32
-      },
-      "mass": 24,
-      "health": 128,
-      "deathExplosion": {
-        "radius": 20,
-        "force": 1200,
-        "damage": 64
-      },
-      "radius": {
-        "visual": 16,
-        "hitbox": 12,
-        "collision": 16
-      }
-    },
     "emissionKind": "ray",
     "emissionBlueprintId": "rayBeamMega"
   },
@@ -1182,24 +912,6 @@
       "lockOnType": "lockOnToBody"
     },
     "kind": "attack",
-    "base": {
-      "cost": {
-        "energy": 32,
-        "metal": 32
-      },
-      "mass": 24,
-      "health": 128,
-      "deathExplosion": {
-        "radius": 20,
-        "force": 1200,
-        "damage": 64
-      },
-      "radius": {
-        "visual": 16,
-        "hitbox": 12,
-        "collision": 16
-      }
-    },
     "emissionKind": "shot",
     "emissionBlueprintId": "shotPlasmaHeavy"
   },
@@ -1258,24 +970,6 @@
       "lockOnType": "lockOnToBody"
     },
     "kind": "attack",
-    "base": {
-      "cost": {
-        "energy": 16,
-        "metal": 16
-      },
-      "mass": 12,
-      "health": 64,
-      "deathExplosion": {
-        "radius": 10,
-        "force": 600,
-        "damage": 32
-      },
-      "radius": {
-        "visual": 8,
-        "hitbox": 6,
-        "collision": 8
-      }
-    },
     "emissionKind": "shot",
     "emissionBlueprintId": "shotRocketLight"
   },
@@ -1330,24 +1024,6 @@
       "lockOnType": "lockOnToBody"
     },
     "kind": "attack",
-    "base": {
-      "cost": {
-        "energy": 8,
-        "metal": 8
-      },
-      "mass": 6,
-      "health": 32,
-      "deathExplosion": {
-        "radius": 5,
-        "force": 300,
-        "damage": 16
-      },
-      "radius": {
-        "visual": 4,
-        "hitbox": 3,
-        "collision": 4
-      }
-    },
     "emissionKind": "shot",
     "emissionBlueprintId": "shotRocketFast"
   }

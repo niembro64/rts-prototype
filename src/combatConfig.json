@@ -1,7 +1,6 @@
 {
   "beamMaxSegments": 6,
   "knockback": {
-    "SPLASH": 250,
-    "LIVE_PIECE_DETACH_FORCE_PER_HP": 24
+    "SPLASH": 250
   }
 }

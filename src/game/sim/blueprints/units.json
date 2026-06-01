@@ -3,7 +3,7 @@
     "unitBlueprintId": "unitJackal",
     "name": "Jackal",
     "shortName": "JKL",
-    "hp": 74.25,
+    "hp": 98.25,
     "radius": {
       "visual": 8,
       "hitbox": 6,
@@ -11,7 +11,7 @@
     },
     "bodyCenterHeight": 5.680000000000001,
     "fullVisionRadius": 1200,
-    "mass": 37.5,
+    "mass": 42,
     "cost": {
       "energy": 50,
       "metal": 50
@@ -67,11 +67,11 @@
     },
     "base": {
       "cost": {
-        "energy": 44,
-        "metal": 44
+        "energy": 50,
+        "metal": 50
       },
-      "mass": 37.5,
-      "health": 74.25,
+      "mass": 42,
+      "health": 98.25,
       "deathExplosion": {
         "radius": 11.04,
         "force": 3150,
@@ -88,7 +88,7 @@
     "unitBlueprintId": "unitLynx",
     "name": "Lynx",
     "shortName": "LNX",
-    "hp": 81,
+    "hp": 153,
     "radius": {
       "visual": 10,
       "hitbox": 7,
@@ -96,7 +96,7 @@
     },
     "bodyCenterHeight": 11.5,
     "fullVisionRadius": 1200,
-    "mass": 50,
+    "mass": 63.5,
     "cost": {
       "energy": 90,
       "metal": 90
@@ -149,11 +149,11 @@
     },
     "base": {
       "cost": {
-        "energy": 72,
-        "metal": 72
+        "energy": 90,
+        "metal": 90
       },
-      "mass": 50,
-      "health": 81,
+      "mass": 63.5,
+      "health": 153,
       "deathExplosion": {
         "radius": 14.95,
         "force": 4200,
@@ -170,7 +170,7 @@
     "unitBlueprintId": "unitDaddy",
     "name": "Daddy",
     "shortName": "DDY",
-    "hp": 270,
+    "hp": 414,
     "radius": {
       "visual": 13,
       "hitbox": 9,
@@ -178,7 +178,7 @@
     },
     "bodyCenterHeight": 58.5,
     "fullVisionRadius": 1200,
-    "mass": 37.5,
+    "mass": 64.5,
     "cost": {
       "energy": 350,
       "metal": 350
@@ -260,11 +260,11 @@
     },
     "base": {
       "cost": {
-        "energy": 314,
-        "metal": 314
+        "energy": 350,
+        "metal": 350
       },
-      "mass": 37.5,
-      "health": 270,
+      "mass": 64.5,
+      "health": 414,
       "deathExplosion": {
         "radius": 17.25,
         "force": 3150,
@@ -281,7 +281,7 @@
     "unitBlueprintId": "unitBadger",
     "name": "Badger",
     "shortName": "BDG",
-    "hp": 405,
+    "hp": 469,
     "radius": {
       "visual": 16,
       "hitbox": 13,
@@ -289,7 +289,7 @@
     },
     "bodyCenterHeight": 12.4,
     "fullVisionRadius": 1200,
-    "mass": 375,
+    "mass": 387,
     "cost": {
       "energy": 300,
       "metal": 300
@@ -342,11 +342,11 @@
     },
     "base": {
       "cost": {
-        "energy": 284,
-        "metal": 284
+        "energy": 300,
+        "metal": 300
       },
-      "mass": 375,
-      "health": 405,
+      "mass": 387,
+      "health": 469,
       "deathExplosion": {
         "radius": 25.76,
         "force": 31500,
@@ -363,7 +363,7 @@
     "unitBlueprintId": "unitMongoose",
     "name": "Mongoose",
     "shortName": "MGS",
-    "hp": 270,
+    "hp": 366,
     "radius": {
       "visual": 20,
       "hitbox": 12,
@@ -371,7 +371,7 @@
     },
     "bodyCenterHeight": 11.8,
     "fullVisionRadius": 1200,
-    "mass": 250,
+    "mass": 268,
     "cost": {
       "energy": 220,
       "metal": 220
@@ -425,11 +425,11 @@
     },
     "base": {
       "cost": {
-        "energy": 196,
-        "metal": 196
+        "energy": 220,
+        "metal": 220
       },
-      "mass": 250,
-      "health": 270,
+      "mass": 268,
+      "health": 366,
       "deathExplosion": {
         "radius": 27.6,
         "force": 21000,
@@ -446,7 +446,7 @@
     "unitBlueprintId": "unitTick",
     "name": "Tick",
     "shortName": "TCK",
-    "hp": 74.25,
+    "hp": 98.25,
     "radius": {
       "visual": 10,
       "hitbox": 8,
@@ -454,7 +454,7 @@
     },
     "bodyCenterHeight": 8,
     "fullVisionRadius": 1200,
-    "mass": 25,
+    "mass": 29.5,
     "cost": {
       "energy": 35,
       "metal": 35
@@ -531,11 +531,11 @@
     },
     "base": {
       "cost": {
-        "energy": 29,
-        "metal": 29
+        "energy": 35,
+        "metal": 35
       },
-      "mass": 25,
-      "health": 74.25,
+      "mass": 29.5,
+      "health": 98.25,
       "deathExplosion": {
         "radius": 13.915,
         "force": 2100,
@@ -552,7 +552,7 @@
     "unitBlueprintId": "unitMammoth",
     "name": "Mammoth",
     "shortName": "MMT",
-    "hp": 1215,
+    "hp": 1295,
     "radius": {
       "visual": 24,
       "hitbox": 24,
@@ -560,7 +560,7 @@
     },
     "bodyCenterHeight": 13.6,
     "fullVisionRadius": 1200,
-    "mass": 1250,
+    "mass": 1265,
     "cost": {
       "energy": 1200,
       "metal": 1200
@@ -613,11 +613,11 @@
     },
     "base": {
       "cost": {
-        "energy": 1180,
-        "metal": 1180
+        "energy": 1200,
+        "metal": 1200
       },
-      "mass": 1250,
-      "health": 1215,
+      "mass": 1265,
+      "health": 1295,
       "deathExplosion": {
         "radius": 41.4,
         "force": 105000,
@@ -634,7 +634,7 @@
     "unitBlueprintId": "unitFormik",
     "name": "Formik",
     "shortName": "FMK",
-    "hp": 4320,
+    "hp": 4576,
     "radius": {
       "visual": 40,
       "hitbox": 50,
@@ -642,7 +642,7 @@
     },
     "bodyCenterHeight": 54,
     "fullVisionRadius": 1200,
-    "mass": 3125,
+    "mass": 3173,
     "cost": {
       "energy": 4000,
       "metal": 4000
@@ -745,11 +745,11 @@
     },
     "base": {
       "cost": {
-        "energy": 3936,
-        "metal": 3936
+        "energy": 4000,
+        "metal": 4000
       },
-      "mass": 3125,
-      "health": 4320,
+      "mass": 3173,
+      "health": 4576,
       "deathExplosion": {
         "radius": 74.75,
         "force": 262500,
@@ -766,7 +766,7 @@
     "unitBlueprintId": "unitWidow",
     "name": "Widow",
     "shortName": "WDW",
-    "hp": 3240,
+    "hp": 3552,
     "radius": {
       "visual": 30,
       "hitbox": 40,
@@ -774,7 +774,7 @@
     },
     "bodyCenterHeight": 49.5,
     "fullVisionRadius": 1200,
-    "mass": 1250,
+    "mass": 1308.5,
     "cost": {
       "energy": 3000,
       "metal": 3000
@@ -928,11 +928,11 @@
     },
     "base": {
       "cost": {
-        "energy": 2922,
-        "metal": 2922
+        "energy": 3000,
+        "metal": 3000
       },
-      "mass": 1250,
-      "health": 3240,
+      "mass": 1308.5,
+      "health": 3552,
       "deathExplosion": {
         "radius": 59.8,
         "force": 105000,
@@ -949,7 +949,7 @@
     "unitBlueprintId": "unitHippo",
     "name": "Hippo",
     "shortName": "HPO",
-    "hp": 2025,
+    "hp": 2153,
     "radius": {
       "visual": 30,
       "hitbox": 27,
@@ -957,7 +957,7 @@
     },
     "bodyCenterHeight": 19,
     "fullVisionRadius": 1200,
-    "mass": 1875,
+    "mass": 1899,
     "cost": {
       "energy": 2500,
       "metal": 2500
@@ -1009,11 +1009,11 @@
     },
     "base": {
       "cost": {
-        "energy": 2468,
-        "metal": 2468
+        "energy": 2500,
+        "metal": 2500
       },
-      "mass": 1875,
-      "health": 2025,
+      "mass": 1899,
+      "health": 2153,
       "deathExplosion": {
         "radius": 62.1,
         "force": 157500,
@@ -1030,7 +1030,7 @@
     "unitBlueprintId": "unitTarantula",
     "name": "Tarantula",
     "shortName": "TRN",
-    "hp": 135,
+    "hp": 183,
     "radius": {
       "visual": 11,
       "hitbox": 13,
@@ -1038,7 +1038,7 @@
     },
     "bodyCenterHeight": 14.025,
     "fullVisionRadius": 1200,
-    "mass": 37.5,
+    "mass": 46.5,
     "cost": {
       "energy": 300,
       "metal": 300
@@ -1124,11 +1124,11 @@
     },
     "base": {
       "cost": {
-        "energy": 288,
-        "metal": 288
+        "energy": 300,
+        "metal": 300
       },
-      "mass": 37.5,
-      "health": 135,
+      "mass": 46.5,
+      "health": 183,
       "deathExplosion": {
         "radius": 22.77,
         "force": 3150,
@@ -1145,7 +1145,7 @@
     "unitBlueprintId": "unitLoris",
     "name": "Loris",
     "shortName": "LRS",
-    "hp": 270,
+    "hp": 334,
     "radius": {
       "visual": 10,
       "hitbox": 8,
@@ -1153,7 +1153,7 @@
     },
     "bodyCenterHeight": 24,
     "fullVisionRadius": 1200,
-    "mass": 112.5,
+    "mass": 124.5,
     "cost": {
       "energy": 400,
       "metal": 400
@@ -1211,11 +1211,11 @@
     },
     "base": {
       "cost": {
-        "energy": 384,
-        "metal": 384
+        "energy": 400,
+        "metal": 400
       },
-      "mass": 112.5,
-      "health": 270,
+      "mass": 124.5,
+      "health": 334,
       "deathExplosion": {
         "radius": 27.6,
         "force": 9450,
@@ -1232,7 +1232,7 @@
     "unitBlueprintId": "unitBee",
     "name": "Bee",
     "shortName": "BEE",
-    "hp": 94.5,
+    "hp": 118.5,
     "radius": {
       "visual": 9,
       "hitbox": 8,
@@ -1240,7 +1240,7 @@
     },
     "bodyCenterHeight": 1.3499999999999999,
     "fullVisionRadius": 1200,
-    "mass": 31.25,
+    "mass": 35.75,
     "cost": {
       "energy": 120,
       "metal": 120
@@ -1297,11 +1297,11 @@
     },
     "base": {
       "cost": {
-        "energy": 114,
-        "metal": 114
+        "energy": 120,
+        "metal": 120
       },
-      "mass": 31.25,
-      "health": 94.5,
+      "mass": 35.75,
+      "health": 118.5,
       "deathExplosion": {
         "radius": 12.42,
         "force": 2625,
@@ -1318,7 +1318,7 @@
     "unitBlueprintId": "unitDragonfly",
     "name": "Dragonfly",
     "shortName": "DRF",
-    "hp": 324,
+    "hp": 444,
     "radius": {
       "visual": 16,
       "hitbox": 40,
@@ -1326,7 +1326,7 @@
     },
     "bodyCenterHeight": 3.2,
     "fullVisionRadius": 1200,
-    "mass": 112.5,
+    "mass": 135,
     "cost": {
       "energy": 360,
       "metal": 360
@@ -1407,11 +1407,11 @@
     },
     "base": {
       "cost": {
-        "energy": 330,
-        "metal": 330
+        "energy": 360,
+        "metal": 360
       },
-      "mass": 112.5,
-      "health": 324,
+      "mass": 135,
+      "health": 444,
       "deathExplosion": {
         "radius": 57.5,
         "force": 9450,
@@ -1428,7 +1428,7 @@
     "unitBlueprintId": "unitConstructionDrone",
     "name": "Construction Drone",
     "shortName": "CDR",
-    "hp": 162,
+    "hp": 226,
     "radius": {
       "visual": 11,
       "hitbox": 10,
@@ -1436,7 +1436,7 @@
     },
     "bodyCenterHeight": 3.3,
     "fullVisionRadius": 1200,
-    "mass": 56.25,
+    "mass": 68.25,
     "cost": {
       "energy": 180,
       "metal": 160
@@ -1512,11 +1512,11 @@
     },
     "base": {
       "cost": {
-        "energy": 164,
-        "metal": 144
+        "energy": 180,
+        "metal": 160
       },
-      "mass": 56.25,
-      "health": 162,
+      "mass": 68.25,
+      "health": 226,
       "deathExplosion": {
         "radius": 16.1,
         "force": 4725,
@@ -1533,7 +1533,7 @@
     "unitBlueprintId": "unitEagle",
     "name": "Eagle",
     "shortName": "EGL",
-    "hp": 297,
+    "hp": 329,
     "radius": {
       "visual": 18,
       "hitbox": 15,
@@ -1541,7 +1541,7 @@
     },
     "bodyCenterHeight": 5.4,
     "fullVisionRadius": 1200,
-    "mass": 118.75,
+    "mass": 124.75,
     "cost": {
       "energy": 520,
       "metal": 520
@@ -1613,11 +1613,11 @@
     },
     "base": {
       "cost": {
-        "energy": 512,
-        "metal": 512
+        "energy": 520,
+        "metal": 520
       },
-      "mass": 118.75,
-      "health": 297,
+      "mass": 124.75,
+      "health": 329,
       "deathExplosion": {
         "radius": 24.84,
         "force": 9975,
@@ -1634,7 +1634,7 @@
     "unitBlueprintId": "unitCommander",
     "name": "Commander",
     "shortName": "CMD",
-    "hp": 675,
+    "hp": 851,
     "radius": {
       "visual": 20,
       "hitbox": 20,
@@ -1642,7 +1642,7 @@
     },
     "bodyCenterHeight": 22.4,
     "fullVisionRadius": 1600,
-    "mass": 375,
+    "mass": 408,
     "cost": {
       "energy": 400,
       "metal": 400
@@ -1762,11 +1762,11 @@
     },
     "base": {
       "cost": {
-        "energy": 356,
-        "metal": 356
+        "energy": 400,
+        "metal": 400
       },
-      "mass": 375,
-      "health": 675,
+      "mass": 408,
+      "health": 851,
       "deathExplosion": {
         "radius": 23,
         "force": 31500,

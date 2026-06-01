@@ -196,21 +196,7 @@ export function isBuildBlockingActivation(buildable: Buildable | null | undefine
 export function hasMaterializedLiveUnitPiece(entity: Entity): boolean {
   const unit = entity.unit;
   if (unit === null) return false;
-  if (unit.hp > 0 && isConstructionPieceMaterialized(entity, 'body')) return true;
-  const combat = entity.combat;
-  if (combat !== null) {
-    for (let i = 0; i < combat.turrets.length; i++) {
-      const turret = combat.turrets[i];
-      if (
-        turret.hp > 0 &&
-        !turret.config.visualOnly &&
-        isConstructionPieceMaterialized(entity, 'turret', i)
-      ) {
-        return true;
-      }
-    }
-  }
-  return false;
+  return unit.hp > 0 && isConstructionPieceMaterialized(entity, 'body');
 }
 
 export function cloneResourceCost(c: ResourceCost): ResourceCost {

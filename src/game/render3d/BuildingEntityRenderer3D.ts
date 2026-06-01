@@ -390,23 +390,12 @@ export class BuildingEntityRenderer3D {
     this.updateTurretPoses(entity, mesh);
     this.selectionOverlays.updateRangeRings(mesh, entity);
 
-    // Materialization fade — the same per-piece build-in opacity flow
-    // units use (see EntityFade3D). The body ramps 0→1 over its build
-    // fraction, then each turret over its own, so a tower's body
-    // materializes before its gun. Finished buildings sit at opacity 1,
-    // where applyEntityGroupFade restores the real materials and costs
-    // nothing.
+    // Materialization fade — mounted turrets share the host body's build
+    // fraction because they are not separate construction pieces.
+    // Finished buildings sit at opacity 1, where applyEntityGroupFade
+    // restores the real materials and costs nothing.
     const bodyOpacity = getConstructionPieceOpacity(entity, 'body');
     applyEntityGroupFade(mesh.group, bodyOpacity);
-    const combatTurrets = entity.combat?.turrets;
-    if (combatTurrets) {
-      for (let ti = 0; ti < combatTurrets.length && ti < mesh.turrets.length; ti++) {
-        const turretOpacity = getConstructionPieceOpacity(entity, 'turret', ti);
-        if (turretOpacity !== bodyOpacity) {
-          applyEntityGroupFade(mesh.turrets[ti].root, turretOpacity);
-        }
-      }
-    }
   }
 
   private updateBuildingMesh(
@@ -454,9 +443,8 @@ export class BuildingEntityRenderer3D {
     const height = mesh.buildingHeight ?? BUILDING_HEIGHT;
     const primary = mesh.chassisMeshes[0];
     if (mesh.buildingBodyless) {
-      // Detached turret and other bodyless hosts have no chassis to
-      // show — only their mounted turrets render. Keep the primary
-      // hidden and unscaled so nothing draws around the gun.
+      // Bodyless render profiles have no chassis to show. Keep the
+      // primary hidden and unscaled.
       primary.visible = false;
     } else {
       primary.position.set(0, height / 2, 0);
@@ -492,7 +480,7 @@ export class BuildingEntityRenderer3D {
     for (let turretIndex = 0; turretIndex < combatTurrets.length; turretIndex++) {
       const turret = combatTurrets[turretIndex];
       const turretMesh = mesh.turrets[turretIndex];
-      const visible = turret.hp > 0 && isConstructionPieceMaterialized(entity, 'turret', turretIndex);
+      const visible = isConstructionPieceMaterialized(entity, 'body');
       turretMesh.root.visible = visible;
       if (!visible) continue;
       const headRadius = turretMesh.headRadius ?? getTurretHeadRadius(turret.config);

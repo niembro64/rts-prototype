@@ -212,7 +212,7 @@ export class SelectionOverlayRenderer3D {
         if (weapon.config.visualOnly) continue;
         const tm = m.turrets[i];
         if (!tm) continue;
-        if (weapon.hp <= 0 || !isConstructionPieceMaterialized(entity, 'turret', i)) {
+        if (!isConstructionPieceMaterialized(entity, 'body')) {
           this.hideSingleTurretRangeRings(tm);
           continue;
         }

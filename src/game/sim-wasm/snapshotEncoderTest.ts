@@ -144,8 +144,8 @@ type TurretFixture = {
   targetId?: number;
   state: number;
   currentShieldRange?: number;
-  /** Turret current HP. Always emitted by the encoder (unconditional);
-   *  defaults to 0 in the wire fixture when omitted from the literal. */
+  /** Legacy turret hpCurr compatibility slot. Always emitted by the encoder
+   *  (unconditional); defaults to 0 in the wire fixture when omitted. */
   hpCurr?: number;
 };
 
@@ -991,8 +991,8 @@ function sparseBuildingFixture(f: BuildingFixture): BuildingFixture {
     ? { turrets: normalizeTurretFixtures(f.building.turrets) }
     : {};
   if (f.changedFields === undefined) {
-    // Full record: pass through, but still normalize turret hpCurr so the
-    // reference msgpack carries the unconditional field the Rust encoder
+    // Full record: pass through, but still normalize legacy turret hpCurr so
+    // the reference msgpack carries the unconditional field the Rust encoder
     // always emits. Spread keeps `turrets` in its original position.
     if (f.building.turrets === undefined) return f;
     return { ...f, building: { ...f.building, ...turretsOverride } } as BuildingFixture;

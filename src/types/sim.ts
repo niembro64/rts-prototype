@@ -738,7 +738,7 @@ export type EconomyState = {
   };
 };
 
-export type ConstructionPieceKind = 'body' | 'turret';
+export type ConstructionPieceKind = 'body';
 
 export type ConstructionPieceBuildRecord = {
   id: EntityId;
