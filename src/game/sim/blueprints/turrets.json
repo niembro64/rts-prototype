@@ -243,7 +243,6 @@
     "isManualFire": false,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
-    "ballisticRangeIsAuthored": true,
     "rangeMultiplierOverrides": {
       "engageRangeMax": {
         "acquire": 0.95,

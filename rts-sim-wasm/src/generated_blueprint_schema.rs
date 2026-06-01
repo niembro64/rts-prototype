@@ -407,7 +407,6 @@ pub struct TurretBlueprint {
     pub isManualFire: bool,
     pub passive: bool,
     pub requiresNonObstructedLineOfSight: bool,
-    pub ballisticRangeIsAuthored: Option<bool>,
     pub spread: Option<TurretSpreadConfig>,
     pub burst: Option<TurretBurstConfig>,
     pub shieldPanels: Vec<ShieldPanel>,
