@@ -23,7 +23,7 @@ import { LAND_CELL_SIZE } from '../../../config';
 import { getActiveShields } from './shieldTurret';
 import { REFLECTIVE_SHIELD_MATERIAL } from '../blueprints/shieldMaterials';
 import { getSimWasm } from '../../sim-wasm/init';
-import { getTransformCosSin, lineSphereIntersectionT, rayBoxIntersectionT } from '../../math';
+import { getTransformCosSin, lineSphereIntersectionT } from '../../math';
 import { resolveWeaponWorldMount, updateProjectileSourceClearance } from './combatUtils';
 import { writeTurretCooldownToSlab } from './combatActivitySlab';
 import { getUnitGroundZ } from '../unitGeometry';
@@ -40,6 +40,11 @@ const REFLECTOR_HIT_KIND_NONE = 0;
 // only decided where the hit was and what the normal looks like; the reflection
 // response and impact are identical.
 const REFLECTOR_HIT_KIND_SHIELD = 1;
+const PROJECTILE_SWEEP_HIT_KIND_NONE = 0;
+const PROJECTILE_SWEEP_HIT_KIND_UNIT = 1;
+const PROJECTILE_SWEEP_HIT_KIND_BUILDING = 2;
+const PROJECTILE_SWEEP_HIT_KIND_PROJECTILE = 3;
+const PROJECTILE_SWEEP_NO_SLOT = 0xffff_ffff;
 
 function isValidProjectileSweep(
   prevX: number, prevY: number, prevZ: number,
@@ -91,6 +96,26 @@ let _reflectorHitNormalX = new Float64Array(0);
 let _reflectorHitNormalY = new Float64Array(0);
 let _reflectorHitNormalZ = new Float64Array(0);
 
+const _hitboxSweepEnabled = new Uint8Array(1);
+const _hitboxSweepStartX = new Float64Array(1);
+const _hitboxSweepStartY = new Float64Array(1);
+const _hitboxSweepStartZ = new Float64Array(1);
+const _hitboxSweepEndX = new Float64Array(1);
+const _hitboxSweepEndY = new Float64Array(1);
+const _hitboxSweepEndZ = new Float64Array(1);
+const _hitboxSweepProjectileRadius = new Float64Array(1);
+const _hitboxSweepExcludeOffsets = new Uint32Array(1);
+const _hitboxSweepExcludeCounts = new Uint32Array(1);
+let _hitboxSweepExcludeIds = new Int32Array(16);
+let _hitboxSweepRemovedProjectileIds = new Int32Array(16);
+const _hitboxSweepOutKind = new Uint8Array(1);
+const _hitboxSweepOutSlot = new Uint32Array(1);
+const _hitboxSweepOutEntityId = new Int32Array(1);
+const _hitboxSweepOutT = new Float64Array(1);
+const _hitboxSweepOutNormalX = new Float64Array(1);
+const _hitboxSweepOutNormalY = new Float64Array(1);
+const _hitboxSweepOutNormalZ = new Float64Array(1);
+
 function queueProjectileRemoval(
   id: EntityId,
   projectilesToRemove: EntityId[],
@@ -136,6 +161,20 @@ function ensureReflectorBatchCapacity(count: number): void {
   _reflectorHitNormalX = new Float64Array(next);
   _reflectorHitNormalY = new Float64Array(next);
   _reflectorHitNormalZ = new Float64Array(next);
+}
+
+function ensureHitboxSweepExcludeCapacity(count: number): void {
+  if (count <= _hitboxSweepExcludeIds.length) return;
+  let next = _hitboxSweepExcludeIds.length;
+  while (next < count) next *= 2;
+  _hitboxSweepExcludeIds = new Int32Array(next);
+}
+
+function ensureHitboxSweepRemovedProjectileCapacity(count: number): void {
+  if (count <= _hitboxSweepRemovedProjectileIds.length) return;
+  let next = _hitboxSweepRemovedProjectileIds.length;
+  while (next < count) next *= 2;
+  _hitboxSweepRemovedProjectileIds = new Int32Array(next);
 }
 
 function computeProjectileReflectorHits(
@@ -308,9 +347,17 @@ const _projectileHitboxSweepHit = {
   normalY: 0,
   normalZ: 1,
 };
+const _projectileHitboxSweepTurretHit = {
+  entity: undefined as Entity | undefined,
+  t: Infinity,
+  normalX: 0,
+  normalY: 0,
+  normalZ: 1,
+};
 const _projectileHitboxSweepTurretMount = { x: 0, y: 0, z: 0 };
 
 function setProjectileHitboxSweepNormal(
+  out: typeof _projectileHitboxSweepHit,
   hitX: number,
   hitY: number,
   hitZ: number,
@@ -332,20 +379,72 @@ function setProjectileHitboxSweepNormal(
     normalLenSq = normalX * normalX + normalY * normalY + normalZ * normalZ;
   }
   if (normalLenSq <= 1e-9) {
-    _projectileHitboxSweepHit.normalX = 0;
-    _projectileHitboxSweepHit.normalY = 0;
-    _projectileHitboxSweepHit.normalZ = 1;
+    out.normalX = 0;
+    out.normalY = 0;
+    out.normalZ = 1;
     return;
   }
   const invLen = 1 / Math.sqrt(normalLenSq);
-  _projectileHitboxSweepHit.normalX = normalX * invLen;
-  _projectileHitboxSweepHit.normalY = normalY * invLen;
-  _projectileHitboxSweepHit.normalZ = normalZ * invLen;
+  out.normalX = normalX * invLen;
+  out.normalY = normalY * invLen;
+  out.normalZ = normalZ * invLen;
 }
 
-function findProjectileHitboxSweepHit(
+function resetProjectileHitboxSweepHit(out: typeof _projectileHitboxSweepHit): void {
+  out.entity = undefined;
+  out.t = Infinity;
+  out.normalX = 0;
+  out.normalY = 0;
+  out.normalZ = 1;
+}
+
+function packProjectileSweepExcludes(excludeEntities: Set<EntityId>): number {
+  const required =
+    excludeEntities.size +
+    _collisionUnitsToRemove.size +
+    _collisionBuildingsToRemove.size +
+    _collisionProjectileRemoveIds.size;
+  ensureHitboxSweepExcludeCapacity(Math.max(1, required));
+  let count = 0;
+  for (const id of excludeEntities) _hitboxSweepExcludeIds[count++] = id;
+  for (const id of _collisionUnitsToRemove) _hitboxSweepExcludeIds[count++] = id;
+  for (const id of _collisionBuildingsToRemove) _hitboxSweepExcludeIds[count++] = id;
+  for (const id of _collisionProjectileRemoveIds) _hitboxSweepExcludeIds[count++] = id;
+  return count;
+}
+
+function packRemovedProjectileSweepExcludes(): number {
+  ensureHitboxSweepRemovedProjectileCapacity(Math.max(1, _collisionProjectileRemoveIds.size));
+  let count = 0;
+  for (const id of _collisionProjectileRemoveIds) {
+    _hitboxSweepRemovedProjectileIds[count++] = id;
+  }
+  return count;
+}
+
+function isValidSpatialSweepTarget(kind: number, entity: Entity | undefined): entity is Entity {
+  if (entity === undefined) return false;
+  switch (kind) {
+    case PROJECTILE_SWEEP_HIT_KIND_UNIT:
+      return entity.unit !== null && entity.unit.hp > 0;
+    case PROJECTILE_SWEEP_HIT_KIND_BUILDING:
+      return entity.building !== null && entity.building.hp > 0;
+    case PROJECTILE_SWEEP_HIT_KIND_PROJECTILE: {
+      const proj = entity.projectile;
+      return (
+        proj !== null &&
+        proj.projectileType === 'projectile' &&
+        proj.hp > 0 &&
+        isProjectileShot(proj.config.shot)
+      );
+    }
+    default:
+      return false;
+  }
+}
+
+function findProjectileSpatialSweepHitWasm(
   world: WorldState,
-  projEntity: Entity,
   projectileHitboxRadius: number,
   prevX: number,
   prevY: number,
@@ -355,11 +454,82 @@ function findProjectileHitboxSweepHit(
   currentZ: number,
   excludeEntities: Set<EntityId>,
 ): ProjectileHitboxSweepHit | null {
-  _projectileHitboxSweepHit.entity = undefined;
-  _projectileHitboxSweepHit.t = Infinity;
-  _projectileHitboxSweepHit.normalX = 0;
-  _projectileHitboxSweepHit.normalY = 0;
-  _projectileHitboxSweepHit.normalZ = 1;
+  resetProjectileHitboxSweepHit(_projectileHitboxSweepHit);
+
+  const excludeCount = packProjectileSweepExcludes(excludeEntities);
+  const removedProjectileCount = packRemovedProjectileSweepExcludes();
+  _hitboxSweepEnabled[0] = 1;
+  _hitboxSweepStartX[0] = prevX;
+  _hitboxSweepStartY[0] = prevY;
+  _hitboxSweepStartZ[0] = prevZ;
+  _hitboxSweepEndX[0] = currentX;
+  _hitboxSweepEndY[0] = currentY;
+  _hitboxSweepEndZ[0] = currentZ;
+  _hitboxSweepProjectileRadius[0] = projectileHitboxRadius;
+  _hitboxSweepExcludeOffsets[0] = 0;
+  _hitboxSweepExcludeCounts[0] = excludeCount;
+
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('Projectile hitbox sweep requires initialized sim-wasm');
+  }
+  const processed = sim.projectileHitboxSweepBatch(
+    1,
+    _hitboxSweepEnabled,
+    _hitboxSweepStartX,
+    _hitboxSweepStartY,
+    _hitboxSweepStartZ,
+    _hitboxSweepEndX,
+    _hitboxSweepEndY,
+    _hitboxSweepEndZ,
+    _hitboxSweepProjectileRadius,
+    _hitboxSweepExcludeOffsets,
+    _hitboxSweepExcludeCounts,
+    _hitboxSweepExcludeIds.subarray(0, excludeCount),
+    _hitboxSweepRemovedProjectileIds.subarray(0, removedProjectileCount),
+    world.getMaxTargetableRadius(),
+    PROJECTILE_HITBOX_SWEEP_QUERY_EXTRA,
+    _hitboxSweepOutKind,
+    _hitboxSweepOutSlot,
+    _hitboxSweepOutEntityId,
+    _hitboxSweepOutT,
+    _hitboxSweepOutNormalX,
+    _hitboxSweepOutNormalY,
+    _hitboxSweepOutNormalZ,
+  );
+  if (processed !== 1) {
+    throw new Error(`Projectile hitbox sweep batch failed: ${processed}/1`);
+  }
+
+  const kind = _hitboxSweepOutKind[0];
+  const slot = _hitboxSweepOutSlot[0];
+  if (kind === PROJECTILE_SWEEP_HIT_KIND_NONE || slot === PROJECTILE_SWEEP_NO_SLOT) {
+    return null;
+  }
+
+  const entity = spatialGrid.resolveSlot(slot);
+  if (!isValidSpatialSweepTarget(kind, entity)) return null;
+
+  _projectileHitboxSweepHit.entity = entity;
+  _projectileHitboxSweepHit.t = _hitboxSweepOutT[0];
+  _projectileHitboxSweepHit.normalX = _hitboxSweepOutNormalX[0];
+  _projectileHitboxSweepHit.normalY = _hitboxSweepOutNormalY[0];
+  _projectileHitboxSweepHit.normalZ = _hitboxSweepOutNormalZ[0];
+  return _projectileHitboxSweepHit as ProjectileHitboxSweepHit;
+}
+
+function findProjectileTurretSweepHit(
+  world: WorldState,
+  projectileHitboxRadius: number,
+  prevX: number,
+  prevY: number,
+  prevZ: number,
+  currentX: number,
+  currentY: number,
+  currentZ: number,
+  excludeEntities: Set<EntityId>,
+): ProjectileHitboxSweepHit | null {
+  resetProjectileHitboxSweepHit(_projectileHitboxSweepTurretHit);
 
   const segmentDx = currentX - prevX;
   const segmentDy = currentY - prevY;
@@ -367,13 +537,7 @@ function findProjectileHitboxSweepHit(
   const sourceRadius = Math.max(0, projectileHitboxRadius);
   const sweptQueryWidth =
     (sourceRadius + world.getMaxTargetableRadius() + PROJECTILE_HITBOX_SWEEP_QUERY_EXTRA) * 2;
-  const { units: nearbyUnits, buildings: nearbyBuildings } =
-    spatialGrid.queryEntitiesAlongLine(
-      prevX, prevY, prevZ,
-      currentX, currentY, currentZ,
-      sweptQueryWidth,
-    );
-  const nearbyProjectiles = spatialGrid.queryProjectilesAlongLine(
+  const nearbyUnits = spatialGrid.queryUnitsAlongLine(
     prevX, prevY, prevZ,
     currentX, currentY, currentZ,
     sweptQueryWidth,
@@ -383,28 +547,6 @@ function findProjectileHitboxSweepHit(
     if (excludeEntities.has(unit.id)) continue;
     const unitComponent = unit.unit;
     if (unitComponent === null || unitComponent.hp <= 0) continue;
-
-    const bodyT = lineSphereIntersectionT(
-      prevX, prevY, prevZ,
-      currentX, currentY, currentZ,
-      unit.transform.x, unit.transform.y, unit.transform.z,
-      sourceRadius + unitComponent.radius.hitbox,
-    );
-    if (bodyT !== null && bodyT < _projectileHitboxSweepHit.t) {
-      _projectileHitboxSweepHit.entity = unit;
-      _projectileHitboxSweepHit.t = bodyT;
-      setProjectileHitboxSweepNormal(
-        prevX + bodyT * segmentDx,
-        prevY + bodyT * segmentDy,
-        prevZ + bodyT * segmentDz,
-        unit.transform.x,
-        unit.transform.y,
-        unit.transform.z,
-        segmentDx,
-        segmentDy,
-        segmentDz,
-      );
-    }
 
     const combat = unit.combat;
     if (combat === null) continue;
@@ -435,10 +577,11 @@ function findProjectileHitboxSweepHit(
         mount.x, mount.y, mount.z,
         sourceRadius + turret.config.radius.hitbox,
       );
-      if (turretT !== null && turretT < _projectileHitboxSweepHit.t) {
-        _projectileHitboxSweepHit.entity = unit;
-        _projectileHitboxSweepHit.t = turretT;
+      if (turretT !== null && turretT < _projectileHitboxSweepTurretHit.t) {
+        _projectileHitboxSweepTurretHit.entity = unit;
+        _projectileHitboxSweepTurretHit.t = turretT;
         setProjectileHitboxSweepNormal(
+          _projectileHitboxSweepTurretHit,
           prevX + turretT * segmentDx,
           prevY + turretT * segmentDy,
           prevZ + turretT * segmentDz,
@@ -453,86 +596,39 @@ function findProjectileHitboxSweepHit(
     }
   }
 
-  for (const building of nearbyBuildings) {
-    if (excludeEntities.has(building.id)) continue;
-    const buildingComponent = building.building;
-    if (buildingComponent === null || buildingComponent.hp <= 0) continue;
-
-    const halfW = buildingComponent.width / 2 + sourceRadius;
-    const halfH = buildingComponent.height / 2 + sourceRadius;
-    const halfD = buildingComponent.depth / 2 + sourceRadius;
-    const buildingT = rayBoxIntersectionT(
-      prevX, prevY, prevZ,
-      currentX, currentY, currentZ,
-      building.transform.x - halfW,
-      building.transform.y - halfH,
-      building.transform.z - halfD,
-      building.transform.x + halfW,
-      building.transform.y + halfH,
-      building.transform.z + halfD,
-    );
-    if (buildingT !== null && buildingT < _projectileHitboxSweepHit.t) {
-      _projectileHitboxSweepHit.entity = building;
-      _projectileHitboxSweepHit.t = buildingT;
-      setProjectileHitboxSweepNormal(
-        prevX + buildingT * segmentDx,
-        prevY + buildingT * segmentDy,
-        prevZ + buildingT * segmentDz,
-        building.transform.x,
-        building.transform.y,
-        building.transform.z,
-        segmentDx,
-        segmentDy,
-        segmentDz,
-      );
-    }
-  }
-
-  for (const projectile of nearbyProjectiles) {
-    if (
-      excludeEntities.has(projectile.id) ||
-      projectile.id === projEntity.id ||
-      _collisionProjectileRemoveIds.has(projectile.id)
-    ) {
-      continue;
-    }
-    const targetProjectile = projectile.projectile;
-    if (
-      targetProjectile === null ||
-      targetProjectile.projectileType !== 'projectile' ||
-      targetProjectile.hp <= 0 ||
-      !isProjectileShot(targetProjectile.config.shot)
-    ) {
-      continue;
-    }
-
-    const targetRadius = targetProjectile.config.shotProfile.runtime.radius.hitbox;
-    const projectileT = lineSphereIntersectionT(
-      prevX, prevY, prevZ,
-      currentX, currentY, currentZ,
-      projectile.transform.x, projectile.transform.y, projectile.transform.z,
-      sourceRadius + targetRadius,
-    );
-    if (projectileT !== null && projectileT < _projectileHitboxSweepHit.t) {
-      _projectileHitboxSweepHit.entity = projectile;
-      _projectileHitboxSweepHit.t = projectileT;
-      setProjectileHitboxSweepNormal(
-        prevX + projectileT * segmentDx,
-        prevY + projectileT * segmentDy,
-        prevZ + projectileT * segmentDz,
-        projectile.transform.x,
-        projectile.transform.y,
-        projectile.transform.z,
-        segmentDx,
-        segmentDy,
-        segmentDz,
-      );
-    }
-  }
-
-  return _projectileHitboxSweepHit.entity === undefined
+  return _projectileHitboxSweepTurretHit.entity === undefined
     ? null
-    : _projectileHitboxSweepHit as ProjectileHitboxSweepHit;
+    : _projectileHitboxSweepTurretHit as ProjectileHitboxSweepHit;
+}
+
+function findProjectileHitboxSweepHit(
+  world: WorldState,
+  projectileHitboxRadius: number,
+  prevX: number,
+  prevY: number,
+  prevZ: number,
+  currentX: number,
+  currentY: number,
+  currentZ: number,
+  excludeEntities: Set<EntityId>,
+): ProjectileHitboxSweepHit | null {
+  const spatialHit = findProjectileSpatialSweepHitWasm(
+    world,
+    projectileHitboxRadius,
+    prevX, prevY, prevZ,
+    currentX, currentY, currentZ,
+    excludeEntities,
+  );
+  const turretHit = findProjectileTurretSweepHit(
+    world,
+    projectileHitboxRadius,
+    prevX, prevY, prevZ,
+    currentX, currentY, currentZ,
+    excludeEntities,
+  );
+  if (spatialHit === null) return turretHit;
+  if (turretHit === null) return spatialHit;
+  return turretHit.t < spatialHit.t ? turretHit : spatialHit;
 }
 
 // Reset collision-specific reusable buffers between game sessions
@@ -1216,7 +1312,6 @@ export function checkProjectileCollisions(
             // only the projectile origin/centerline.
             const directHit = findProjectileHitboxSweepHit(
               world,
-              projEntity,
               projHitboxRadius,
               prevX, prevY, prevZ,
               currentX, currentY, currentZ,

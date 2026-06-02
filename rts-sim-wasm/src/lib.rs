@@ -9688,6 +9688,8 @@ fn spatial_set_projectile_inner(
     z: f64,
     owner_player: u8,
     is_projectile_type: u8,
+    radius_collision: f64,
+    radius_hitbox: f64,
 ) {
     let s = slot as usize;
     spatial_ensure_slot_capacity(state, slot);
@@ -9699,6 +9701,8 @@ fn spatial_set_projectile_inner(
     state.slot_y[s] = y;
     state.slot_z[s] = z;
     state.slot_proj_is_projectile_type[s] = is_projectile_type;
+    state.slot_radius_collision[s] = radius_collision;
+    state.slot_radius_hitbox[s] = radius_hitbox;
     if prev_kind == SPATIAL_KIND_PROJECTILE {
         let old_key = state.slot_cube_key[s];
         if old_key != new_key {
@@ -9724,9 +9728,21 @@ pub fn spatial_set_projectile(
     z: f64,
     owner_player: u8,
     is_projectile_type: u8,
+    radius_collision: f64,
+    radius_hitbox: f64,
 ) {
     let state = spatial_grid();
-    spatial_set_projectile_inner(state, slot, x, y, z, owner_player, is_projectile_type);
+    spatial_set_projectile_inner(
+        state,
+        slot,
+        x,
+        y,
+        z,
+        owner_player,
+        is_projectile_type,
+        radius_collision,
+        radius_hitbox,
+    );
 }
 
 #[wasm_bindgen]
@@ -9738,6 +9754,8 @@ pub fn spatial_set_projectiles_batch(
     zs: &[f64],
     owner_players: &[u8],
     projectile_type_flags: &[u8],
+    radius_collision: &[f64],
+    radius_hitbox: &[f64],
 ) -> u32 {
     let n = count as usize;
     if slots.len() < n
@@ -9746,6 +9764,8 @@ pub fn spatial_set_projectiles_batch(
         || zs.len() < n
         || owner_players.len() < n
         || projectile_type_flags.len() < n
+        || radius_collision.len() < n
+        || radius_hitbox.len() < n
     {
         return 0;
     }
@@ -9760,6 +9780,8 @@ pub fn spatial_set_projectiles_batch(
             zs[i],
             owner_players[i],
             projectile_type_flags[i],
+            radius_collision[i],
+            radius_hitbox[i],
         );
     }
     count
@@ -10695,6 +10717,485 @@ pub fn spatial_query_entities_along_line(
     state.nearby_cells = nearby;
     state.dedup = dedup;
     (2 + n_units + n_buildings) as u32
+}
+
+const PROJECTILE_SWEEP_HIT_KIND_NONE: u8 = 0;
+const PROJECTILE_SWEEP_HIT_KIND_UNIT: u8 = 1;
+const PROJECTILE_SWEEP_HIT_KIND_BUILDING: u8 = 2;
+const PROJECTILE_SWEEP_HIT_KIND_PROJECTILE: u8 = 3;
+
+#[inline]
+fn entity_id_in_slice(ids: &[i32], id: i32) -> bool {
+    ids.iter().any(|&v| v == id)
+}
+
+#[inline]
+fn segment_sphere_intersection_t(
+    sx: f64,
+    sy: f64,
+    sz: f64,
+    tx: f64,
+    ty: f64,
+    tz: f64,
+    cx: f64,
+    cy: f64,
+    cz: f64,
+    radius: f64,
+) -> Option<f64> {
+    let dx = tx - sx;
+    let dy = ty - sy;
+    let dz = tz - sz;
+    let fx = sx - cx;
+    let fy = sy - cy;
+    let fz = sz - cz;
+    let a = dx * dx + dy * dy + dz * dz;
+    let b = 2.0 * (fx * dx + fy * dy + fz * dz);
+    let c = fx * fx + fy * fy + fz * fz - radius * radius;
+    if c <= 0.0 {
+        return Some(0.0);
+    }
+    if a == 0.0 {
+        return None;
+    }
+    let disc = b * b - 4.0 * a * c;
+    if disc < 0.0 {
+        return None;
+    }
+    let sqrt_disc = disc.sqrt();
+    let inv_denom = 1.0 / (2.0 * a);
+    let t1 = (-b - sqrt_disc) * inv_denom;
+    if (0.0..=1.0).contains(&t1) {
+        return Some(t1);
+    }
+    let t2 = (-b + sqrt_disc) * inv_denom;
+    if (0.0..=1.0).contains(&t2) {
+        return Some(t2);
+    }
+    None
+}
+
+#[inline]
+fn ray_box_intersection_t(
+    sx: f64,
+    sy: f64,
+    sz: f64,
+    ex: f64,
+    ey: f64,
+    ez: f64,
+    min_x: f64,
+    min_y: f64,
+    min_z: f64,
+    max_x: f64,
+    max_y: f64,
+    max_z: f64,
+) -> Option<f64> {
+    let dx = ex - sx;
+    let dy = ey - sy;
+    let dz = ez - sz;
+    let mut tmin = 0.0;
+    let mut tmax = 1.0;
+
+    if dx.abs() > 1e-9 {
+        let mut t1 = (min_x - sx) / dx;
+        let mut t2 = (max_x - sx) / dx;
+        if t1 > t2 {
+            std::mem::swap(&mut t1, &mut t2);
+        }
+        if t1 > tmin {
+            tmin = t1;
+        }
+        if t2 < tmax {
+            tmax = t2;
+        }
+    } else if sx < min_x || sx > max_x {
+        return None;
+    }
+    if tmin > tmax {
+        return None;
+    }
+
+    if dy.abs() > 1e-9 {
+        let mut t1 = (min_y - sy) / dy;
+        let mut t2 = (max_y - sy) / dy;
+        if t1 > t2 {
+            std::mem::swap(&mut t1, &mut t2);
+        }
+        if t1 > tmin {
+            tmin = t1;
+        }
+        if t2 < tmax {
+            tmax = t2;
+        }
+    } else if sy < min_y || sy > max_y {
+        return None;
+    }
+    if tmin > tmax {
+        return None;
+    }
+
+    if dz.abs() > 1e-9 {
+        let mut t1 = (min_z - sz) / dz;
+        let mut t2 = (max_z - sz) / dz;
+        if t1 > t2 {
+            std::mem::swap(&mut t1, &mut t2);
+        }
+        if t1 > tmin {
+            tmin = t1;
+        }
+        if t2 < tmax {
+            tmax = t2;
+        }
+    } else if sz < min_z || sz > max_z {
+        return None;
+    }
+    if tmin > tmax || tmax < 0.0 {
+        return None;
+    }
+
+    Some(tmin.max(0.0))
+}
+
+#[inline]
+fn projectile_sweep_hit_normal(
+    hit_x: f64,
+    hit_y: f64,
+    hit_z: f64,
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    segment_dx: f64,
+    segment_dy: f64,
+    segment_dz: f64,
+) -> (f64, f64, f64) {
+    let mut nx = hit_x - center_x;
+    let mut ny = hit_y - center_y;
+    let mut nz = hit_z - center_z;
+    let mut len_sq = nx * nx + ny * ny + nz * nz;
+    if len_sq <= 1e-9 {
+        nx = -segment_dx;
+        ny = -segment_dy;
+        nz = -segment_dz;
+        len_sq = nx * nx + ny * ny + nz * nz;
+    }
+    if len_sq <= 1e-9 {
+        return (0.0, 0.0, 1.0);
+    }
+    let inv = 1.0 / len_sq.sqrt();
+    (nx * inv, ny * inv, nz * inv)
+}
+
+/// C1 projectile migration — nearest swept hitbox contact for traveling
+/// projectile bodies. The kernel reads the WASM spatial slab directly
+/// and writes one nearest body/building/projectile hit per input sweep.
+/// Turret sub-hitboxes are still composed by TypeScript until turret
+/// hitbox radii are added to a WASM-owned turret collision slab.
+#[wasm_bindgen]
+pub fn projectile_hitbox_sweep_batch(
+    count: u32,
+    enabled: &[u8],
+    start_x: &[f64],
+    start_y: &[f64],
+    start_z: &[f64],
+    end_x: &[f64],
+    end_y: &[f64],
+    end_z: &[f64],
+    projectile_radius: &[f64],
+    exclude_offsets: &[u32],
+    exclude_counts: &[u32],
+    exclude_entity_ids: &[i32],
+    removed_projectile_entity_ids: &[i32],
+    max_targetable_radius: f64,
+    query_extra: f64,
+    out_kind: &mut [u8],
+    out_slot: &mut [u32],
+    out_entity_id: &mut [i32],
+    out_t: &mut [f64],
+    out_normal_x: &mut [f64],
+    out_normal_y: &mut [f64],
+    out_normal_z: &mut [f64],
+) -> u32 {
+    let n = count as usize;
+    if enabled.len() < n
+        || start_x.len() < n
+        || start_y.len() < n
+        || start_z.len() < n
+        || end_x.len() < n
+        || end_y.len() < n
+        || end_z.len() < n
+        || projectile_radius.len() < n
+        || exclude_offsets.len() < n
+        || exclude_counts.len() < n
+        || out_kind.len() < n
+        || out_slot.len() < n
+        || out_entity_id.len() < n
+        || out_t.len() < n
+        || out_normal_x.len() < n
+        || out_normal_y.len() < n
+        || out_normal_z.len() < n
+    {
+        return 0;
+    }
+
+    let state = spatial_grid();
+    let mut processed = 0u32;
+
+    for i in 0..n {
+        out_kind[i] = PROJECTILE_SWEEP_HIT_KIND_NONE;
+        out_slot[i] = u32::MAX;
+        out_entity_id[i] = -1;
+        out_t[i] = f64::INFINITY;
+        out_normal_x[i] = 0.0;
+        out_normal_y[i] = 0.0;
+        out_normal_z[i] = 1.0;
+
+        if enabled[i] == 0 {
+            continue;
+        }
+        let sx = start_x[i];
+        let sy = start_y[i];
+        let sz = start_z[i];
+        let tx = end_x[i];
+        let ty = end_y[i];
+        let tz = end_z[i];
+        if !(sx.is_finite()
+            && sy.is_finite()
+            && sz.is_finite()
+            && tx.is_finite()
+            && ty.is_finite()
+            && tz.is_finite()
+            && projectile_radius[i].is_finite())
+        {
+            continue;
+        }
+
+        let exclude_start = exclude_offsets[i] as usize;
+        let exclude_len = exclude_counts[i] as usize;
+        let exclude_end = exclude_start.saturating_add(exclude_len);
+        if exclude_end > exclude_entity_ids.len() {
+            continue;
+        }
+        let row_excludes = &exclude_entity_ids[exclude_start..exclude_end];
+
+        let source_radius = projectile_radius[i].max(0.0);
+        let query_width =
+            (source_radius + max_targetable_radius.max(0.0) + query_extra.max(0.0)) * 2.0;
+        if !spatial_collect_cells_along_line(state, sx, sy, sz, tx, ty, tz, query_width) {
+            continue;
+        }
+
+        let segment_dx = tx - sx;
+        let segment_dy = ty - sy;
+        let segment_dz = tz - sz;
+        state.dedup.clear();
+        let nearby = std::mem::take(&mut state.nearby_cells);
+        let mut dedup = std::mem::take(&mut state.dedup);
+        let mut best_t = f64::INFINITY;
+        let mut best_kind = PROJECTILE_SWEEP_HIT_KIND_NONE;
+        let mut best_slot = u32::MAX;
+        let mut best_entity_id = -1;
+        let mut best_normal_x = 0.0;
+        let mut best_normal_y = 0.0;
+        let mut best_normal_z = 1.0;
+
+        for key in &nearby {
+            if let Some(bucket) = state.cells.get(key) {
+                for &slot in &bucket.units {
+                    if !dedup.insert(slot) {
+                        continue;
+                    }
+                    let s = slot as usize;
+                    if s >= state.slot_kind.len()
+                        || state.slot_kind[s] != SPATIAL_KIND_UNIT
+                        || state.slot_hp_alive[s] == 0
+                    {
+                        continue;
+                    }
+                    let entity_id = state.slot_entity_id[s];
+                    if entity_id_in_slice(row_excludes, entity_id) {
+                        continue;
+                    }
+                    let radius = source_radius + state.slot_radius_hitbox[s];
+                    if let Some(t) = segment_sphere_intersection_t(
+                        sx,
+                        sy,
+                        sz,
+                        tx,
+                        ty,
+                        tz,
+                        state.slot_x[s],
+                        state.slot_y[s],
+                        state.slot_z[s],
+                        radius,
+                    ) {
+                        if t < best_t {
+                            let hit_x = sx + t * segment_dx;
+                            let hit_y = sy + t * segment_dy;
+                            let hit_z = sz + t * segment_dz;
+                            let (nx, ny, nz) = projectile_sweep_hit_normal(
+                                hit_x,
+                                hit_y,
+                                hit_z,
+                                state.slot_x[s],
+                                state.slot_y[s],
+                                state.slot_z[s],
+                                segment_dx,
+                                segment_dy,
+                                segment_dz,
+                            );
+                            best_t = t;
+                            best_kind = PROJECTILE_SWEEP_HIT_KIND_UNIT;
+                            best_slot = slot;
+                            best_entity_id = entity_id;
+                            best_normal_x = nx;
+                            best_normal_y = ny;
+                            best_normal_z = nz;
+                        }
+                    }
+                }
+            }
+        }
+
+        for key in &nearby {
+            if let Some(bucket) = state.cells.get(key) {
+                for &slot in &bucket.buildings {
+                    if !dedup.insert(slot) {
+                        continue;
+                    }
+                    let s = slot as usize;
+                    if s >= state.slot_kind.len()
+                        || state.slot_kind[s] != SPATIAL_KIND_BUILDING
+                        || state.slot_hp_alive[s] == 0
+                    {
+                        continue;
+                    }
+                    let entity_id = state.slot_entity_id[s];
+                    if entity_id_in_slice(row_excludes, entity_id) {
+                        continue;
+                    }
+                    let hx = state.slot_aabb_hx[s] + source_radius;
+                    let hy = state.slot_aabb_hy[s] + source_radius;
+                    let hz = state.slot_aabb_hz[s] + source_radius;
+                    if let Some(t) = ray_box_intersection_t(
+                        sx,
+                        sy,
+                        sz,
+                        tx,
+                        ty,
+                        tz,
+                        state.slot_x[s] - hx,
+                        state.slot_y[s] - hy,
+                        state.slot_z[s] - hz,
+                        state.slot_x[s] + hx,
+                        state.slot_y[s] + hy,
+                        state.slot_z[s] + hz,
+                    ) {
+                        if t < best_t {
+                            let hit_x = sx + t * segment_dx;
+                            let hit_y = sy + t * segment_dy;
+                            let hit_z = sz + t * segment_dz;
+                            let (nx, ny, nz) = projectile_sweep_hit_normal(
+                                hit_x,
+                                hit_y,
+                                hit_z,
+                                state.slot_x[s],
+                                state.slot_y[s],
+                                state.slot_z[s],
+                                segment_dx,
+                                segment_dy,
+                                segment_dz,
+                            );
+                            best_t = t;
+                            best_kind = PROJECTILE_SWEEP_HIT_KIND_BUILDING;
+                            best_slot = slot;
+                            best_entity_id = entity_id;
+                            best_normal_x = nx;
+                            best_normal_y = ny;
+                            best_normal_z = nz;
+                        }
+                    }
+                }
+            }
+        }
+
+        for key in &nearby {
+            if let Some(bucket) = state.cells.get(key) {
+                for &slot in &bucket.projectiles {
+                    if !dedup.insert(slot) {
+                        continue;
+                    }
+                    let s = slot as usize;
+                    if s >= state.slot_kind.len()
+                        || state.slot_kind[s] != SPATIAL_KIND_PROJECTILE
+                        || state.slot_proj_is_projectile_type[s] == 0
+                    {
+                        continue;
+                    }
+                    let entity_id = state.slot_entity_id[s];
+                    if entity_id_in_slice(row_excludes, entity_id)
+                        || entity_id_in_slice(removed_projectile_entity_ids, entity_id)
+                    {
+                        continue;
+                    }
+                    let radius = source_radius + state.slot_radius_hitbox[s];
+                    if radius <= 0.0 {
+                        continue;
+                    }
+                    if let Some(t) = segment_sphere_intersection_t(
+                        sx,
+                        sy,
+                        sz,
+                        tx,
+                        ty,
+                        tz,
+                        state.slot_x[s],
+                        state.slot_y[s],
+                        state.slot_z[s],
+                        radius,
+                    ) {
+                        if t < best_t {
+                            let hit_x = sx + t * segment_dx;
+                            let hit_y = sy + t * segment_dy;
+                            let hit_z = sz + t * segment_dz;
+                            let (nx, ny, nz) = projectile_sweep_hit_normal(
+                                hit_x,
+                                hit_y,
+                                hit_z,
+                                state.slot_x[s],
+                                state.slot_y[s],
+                                state.slot_z[s],
+                                segment_dx,
+                                segment_dy,
+                                segment_dz,
+                            );
+                            best_t = t;
+                            best_kind = PROJECTILE_SWEEP_HIT_KIND_PROJECTILE;
+                            best_slot = slot;
+                            best_entity_id = entity_id;
+                            best_normal_x = nx;
+                            best_normal_y = ny;
+                            best_normal_z = nz;
+                        }
+                    }
+                }
+            }
+        }
+
+        state.nearby_cells = nearby;
+        state.dedup = dedup;
+
+        if best_kind != PROJECTILE_SWEEP_HIT_KIND_NONE {
+            out_kind[i] = best_kind;
+            out_slot[i] = best_slot;
+            out_entity_id[i] = best_entity_id;
+            out_t[i] = best_t;
+            out_normal_x[i] = best_normal_x;
+            out_normal_y[i] = best_normal_y;
+            out_normal_z[i] = best_normal_z;
+        }
+        processed += 1;
+    }
+
+    processed
 }
 
 #[inline]

@@ -313,6 +313,7 @@ import __wbg_init, {
   shield_panel_pool_set_panel,
   shield_panel_pool_set_material_mode,
   projectile_reflector_intersections_batch,
+  projectile_hitbox_sweep_batch,
   snapshot_baseline_create,
   snapshot_baseline_destroy,
   snapshot_baseline_clear,
@@ -948,6 +949,35 @@ export interface SimWasm {
     outNormalY: Float64Array,
     outNormalZ: Float64Array,
   ) => void;
+  /** C1 — nearest swept hitbox contact for projectile bodies. Rust
+   *  reads unit/building/projectile colliders from the spatial slab
+   *  and writes one body/building/projectile hit per row. Turret
+   *  sub-hitboxes are still composed by TypeScript until their hitbox
+   *  data moves into a WASM-owned collision slab. */
+  readonly projectileHitboxSweepBatch: (
+    count: number,
+    enabled: Uint8Array,
+    startX: Float64Array,
+    startY: Float64Array,
+    startZ: Float64Array,
+    endX: Float64Array,
+    endY: Float64Array,
+    endZ: Float64Array,
+    projectileRadius: Float64Array,
+    excludeOffsets: Uint32Array,
+    excludeCounts: Uint32Array,
+    excludeEntityIds: Int32Array,
+    removedProjectileEntityIds: Int32Array,
+    maxTargetableRadius: number,
+    queryExtra: number,
+    outKind: Uint8Array,
+    outSlot: Uint32Array,
+    outEntityId: Int32Array,
+    outT: Float64Array,
+    outNormalX: Float64Array,
+    outNormalY: Float64Array,
+    outNormalZ: Float64Array,
+  ) => number;
   /** Per-tick ballistic integrator for slots 0..count of the
    *  projectile pool. Applies gravity with exact constant-acceleration
    *  position integration.
@@ -1330,6 +1360,8 @@ export interface SpatialApi {
     x: number, y: number, z: number,
     ownerPlayer: number,
     isProjectileType: number,
+    radiusCollision: number,
+    radiusHitbox: number,
   ) => void;
   /** Batch insert/update projectile slots. All arrays must contain at
    *  least `count` rows; returns `count` when applied. */
@@ -1341,6 +1373,8 @@ export interface SpatialApi {
     zs: Float64Array,
     ownerPlayers: Uint8Array,
     projectileTypeFlags: Uint8Array,
+    radiusCollision: Float64Array,
+    radiusHitbox: Float64Array,
   ) => number;
   /** Insert / re-insert a building at slot. The grid buckets the
    *  building into every cell its (hx, hy, hz) half-extents touch. */
@@ -3408,6 +3442,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         unitForceStepBatch: unit_force_step_batch,
         projectilePool,
         projectileReflectorIntersectionsBatch: projectile_reflector_intersections_batch,
+        projectileHitboxSweepBatch: projectile_hitbox_sweep_batch,
         poolStepPackedProjectilesBatch: pool_step_packed_projectiles_batch,
         projectileIntegrateStepBatch: projectile_integrate_step_batch,
         projectileHomingGuidanceBatch: projectile_homing_guidance_batch,

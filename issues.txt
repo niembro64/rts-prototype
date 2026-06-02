@@ -39,16 +39,19 @@ NETWORKING / SNAPSHOTS
 ARCHITECTURE / PHILOSOPHY MIGRATION (budget_design_philosophy.html)
 ================================================================================
 
-7.0 [MAJOR, migration surface] Projectile + damage/death authority is still
-TypeScript-orchestrated.
+7.0 [MAJOR, migration surface] Projectile termination/consequences and
+damage/death authority are still TypeScript-orchestrated.
 
-Per AUTHORITY_LEDGER.md (TypeScript-Orchestrated rows), the entire
-checkProjectileCollisions / _updateTravelingProjectilesJS path
-(combat/ProjectileCollisionHandler.ts, combat/projectileSystem.ts:916) and the
-damage/death loop (damage/DamageSystem.ts, Simulation.ts:580 updateCombat / :771
-cleanupDeadEntities / :897 detonateEntityDeathExplosions) run per-projectile /
-per-hit-entity in TypeScript. Position integration is batched into Rust, but collision
-detection, reflection, submunition spawn, termination, detonation, and HP write-back are
-not. Violates "TypeScript Coordinates, WASM Computes."
-FIX (C1 migration): move the swept-collision + termination loop into a Rust projectile
-kernel. Combine with 3.0.
+Per AUTHORITY_LEDGER.md, Rust/WASM now owns projectile position integration,
+shield reflector intersections, and swept body/building/projectile hit
+selection. The remaining TypeScript authority is still too large:
+checkProjectileCollisions owns turret sub-hitbox composition, reflection
+response, direct-hit consequences, timeout/ground/water termination,
+submunition spawn, detonation audio/events, despawn/velocity-update events, and
+D-gun swept damage orchestration; DamageSystem/Simulation still own HP
+write-back, kill collection, cleanupDeadEntities, and death-explosion
+detonation. This still violates "TypeScript Coordinates, WASM Computes."
+FIX (C1 migration): move projectile termination/reflection/detonation outputs
+and HP/death write-back into Rust/WASM kernels, add a WASM-owned turret hitbox
+collision slab, and leave TypeScript only to apply compact returned event/entity
+diffs.

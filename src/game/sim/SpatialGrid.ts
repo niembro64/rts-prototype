@@ -77,6 +77,8 @@ export class SpatialGrid {
   private _projectileBatchZ = new Float64Array(0);
   private _projectileBatchOwnerPlayers = new Uint8Array(0);
   private _projectileBatchTypeFlags = new Uint8Array(0);
+  private _projectileBatchRadiusCollision = new Float64Array(0);
+  private _projectileBatchRadiusHitbox = new Float64Array(0);
 
   // Cached typed-array view over the WASM per-query scratch buffer
   // (Rust `scratch_u32: Vec<u32>`). Rebuilt only when the view goes
@@ -143,6 +145,14 @@ export class SpatialGrid {
     flags.set(this._projectileBatchTypeFlags);
     this._projectileBatchTypeFlags = flags;
 
+    const radiusCollision = new Float64Array(cap);
+    radiusCollision.set(this._projectileBatchRadiusCollision);
+    this._projectileBatchRadiusCollision = radiusCollision;
+
+    const radiusHitbox = new Float64Array(cap);
+    radiusHitbox.set(this._projectileBatchRadiusHitbox);
+    this._projectileBatchRadiusHitbox = radiusHitbox;
+
     this._projectileBatchCapacity = cap;
   }
 
@@ -197,6 +207,13 @@ export class SpatialGrid {
     return slot === undefined ? -1 : slot;
   }
 
+  /** Resolve a Rust spatial slot back to the live JS entity wrapper.
+   *  Projectile collision kernels return slots so callers can avoid
+   *  copying candidate id arrays back through another spatial query. */
+  resolveSlot(slot: number): Entity | undefined {
+    return this.entityBySlot[slot];
+  }
+
   clear(): void {
     this.api().clear();
     // Phase 10 D.1 / D.1b — drop the meta-pool + turret-pool state
@@ -249,6 +266,8 @@ export class SpatialGrid {
       entity.transform.x, entity.transform.y, entity.transform.z,
       entity.projectile.ownerId ?? 0,
       entity.projectile.projectileType === 'projectile' ? 1 : 0,
+      entity.projectile.config.shotProfile.runtime.radius.collision,
+      entity.projectile.config.shotProfile.runtime.radius.hitbox,
     );
   }
 
@@ -270,6 +289,10 @@ export class SpatialGrid {
       this._projectileBatchZ[count] = entity.transform.z;
       this._projectileBatchOwnerPlayers[count] = projectile.ownerId ?? 0;
       this._projectileBatchTypeFlags[count] = projectile.projectileType === 'projectile' ? 1 : 0;
+      this._projectileBatchRadiusCollision[count] =
+        projectile.config.shotProfile.runtime.radius.collision;
+      this._projectileBatchRadiusHitbox[count] =
+        projectile.config.shotProfile.runtime.radius.hitbox;
       count++;
     }
 
@@ -282,6 +305,8 @@ export class SpatialGrid {
       this._projectileBatchZ.subarray(0, count),
       this._projectileBatchOwnerPlayers.subarray(0, count),
       this._projectileBatchTypeFlags.subarray(0, count),
+      this._projectileBatchRadiusCollision.subarray(0, count),
+      this._projectileBatchRadiusHitbox.subarray(0, count),
     );
     if (updated !== count) {
       throw new Error(`SpatialGrid.updateProjectiles: batch updated ${updated}/${count} projectiles`);
