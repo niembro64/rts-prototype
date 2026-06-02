@@ -169,8 +169,6 @@ const FLYING_LOITER_MIN_RADIUS = 80;
 const FLYING_LOITER_RADIAL_GAIN = 0.65;
 const DEATH_CLEANUP_KIND_UNIT = 1;
 const DEATH_CLEANUP_KIND_BUILDING = 2;
-const DEATH_CLEANUP_FLAG_DEAD_UNIT = 1 << 0;
-const DEATH_CLEANUP_FLAG_DEAD_BUILDING = 1 << 1;
 
 export class Simulation {
   private world: WorldState;
@@ -260,10 +258,13 @@ export class Simulation {
   private _cleanupSyntheticDeathEventIds = new Set<EntityId>();
   private _cleanupDeathContexts = new Map<EntityId, DeathContext>();
   private _cleanupDeathEnabledBuf = new Uint8Array(0);
+  private _cleanupDeathEntityIdBuf = new Int32Array(0);
   private _cleanupDeathKindBuf = new Uint8Array(0);
   private _cleanupDeathHpBuf = new Float64Array(0);
   private _cleanupDeathUnitMaterializedBuf = new Uint8Array(0);
-  private _cleanupDeathFlagsBuf = new Uint8Array(0);
+  private _cleanupDeathDiffEntityIdsBuf = new Int32Array(0);
+  private _cleanupDeathDiffKindBuf = new Uint8Array(0);
+  private _cleanupDeathDiffCountBuf = new Uint32Array(1);
   private _arrivalSlotsBuf = new Uint32Array(0);
   private _arrivalDxBuf = new Float64Array(0);
   private _arrivalDyBuf = new Float64Array(0);
@@ -810,21 +811,27 @@ export class Simulation {
     const count = deathCheckIds.length;
     this.ensureDeathCleanupCapacity(count);
     const enabled = this._cleanupDeathEnabledBuf;
+    const entityIds = this._cleanupDeathEntityIdBuf;
     const kind = this._cleanupDeathKindBuf;
     const hp = this._cleanupDeathHpBuf;
     const unitMaterialized = this._cleanupDeathUnitMaterializedBuf;
-    const flags = this._cleanupDeathFlagsBuf;
+    const diffEntityIds = this._cleanupDeathDiffEntityIdsBuf;
+    const diffKind = this._cleanupDeathDiffKindBuf;
+    const diffCount = this._cleanupDeathDiffCountBuf;
     enabled.fill(0, 0, count);
     kind.fill(0, 0, count);
     unitMaterialized.fill(0, 0, count);
-    flags.fill(0, 0, count);
+    diffCount[0] = 0;
 
-    // Pack only entities whose HP changed since the last drain. Rust
-    // owns the unit/building dead-alive classification; TypeScript keeps
-    // JS graph lookup and removal side effects until the ECS migration.
+    // Pack only entities whose HP changed since the last drain. Rust owns
+    // the unit/building dead-alive classification and compact removal diff
+    // generation; TypeScript keeps JS graph lookup and removal side effects
+    // until the ECS migration.
     let expectedCleanupRows = 0;
     for (let i = 0; i < count; i++) {
-      const entity = this.world.getEntity(deathCheckIds[i]);
+      const entityId = deathCheckIds[i];
+      entityIds[i] = entityId;
+      const entity = this.world.getEntity(entityId);
       hp[i] = 0;
       if (!entity) continue;
       if (entity.unit !== null) {
@@ -845,24 +852,31 @@ export class Simulation {
     if (sim === undefined) {
       throw new Error('Simulation.cleanupDeadEntities: sim-wasm is not initialized');
     }
-    const processed = sim.deathCleanupClassifyBatch(
+    const processed = sim.deathCleanupDiffBatch(
       count,
       enabled.subarray(0, count),
+      entityIds.subarray(0, count),
       kind.subarray(0, count),
       hp.subarray(0, count),
       unitMaterialized.subarray(0, count),
-      flags.subarray(0, count),
+      diffEntityIds.subarray(0, count),
+      diffKind.subarray(0, count),
+      diffCount,
     );
     if (processed !== expectedCleanupRows) {
       throw new Error(`Simulation.cleanupDeadEntities: death cleanup batch failed: ${processed}/${expectedCleanupRows}`);
     }
 
-    for (let i = 0; i < count; i++) {
-      const rowFlags = flags[i];
-      if ((rowFlags & DEATH_CLEANUP_FLAG_DEAD_UNIT) !== 0) {
-        deadUnitIds.push(deathCheckIds[i]);
-      } else if ((rowFlags & DEATH_CLEANUP_FLAG_DEAD_BUILDING) !== 0) {
-        deadBuildingIds.push(deathCheckIds[i]);
+    const deadDiffCount = diffCount[0];
+    if (deadDiffCount > count) {
+      throw new Error(`Simulation.cleanupDeadEntities: invalid death cleanup diff count: ${deadDiffCount}/${count}`);
+    }
+    for (let i = 0; i < deadDiffCount; i++) {
+      const entityId = diffEntityIds[i];
+      if (diffKind[i] === DEATH_CLEANUP_KIND_UNIT) {
+        deadUnitIds.push(entityId);
+      } else if (diffKind[i] === DEATH_CLEANUP_KIND_BUILDING) {
+        deadBuildingIds.push(entityId);
       }
     }
     deathCheckIds.length = 0;
@@ -955,10 +969,12 @@ export class Simulation {
     let next = Math.max(16, this._cleanupDeathEnabledBuf.length);
     while (next < required) next *= 2;
     this._cleanupDeathEnabledBuf = new Uint8Array(next);
+    this._cleanupDeathEntityIdBuf = new Int32Array(next);
     this._cleanupDeathKindBuf = new Uint8Array(next);
     this._cleanupDeathHpBuf = new Float64Array(next);
     this._cleanupDeathUnitMaterializedBuf = new Uint8Array(next);
-    this._cleanupDeathFlagsBuf = new Uint8Array(next);
+    this._cleanupDeathDiffEntityIdsBuf = new Int32Array(next);
+    this._cleanupDeathDiffKindBuf = new Uint8Array(next);
   }
 
   // Build a death SimEvent for entities dying outside the normal

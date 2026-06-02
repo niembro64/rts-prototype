@@ -36,7 +36,7 @@ import __wbg_init, {
   damage_area_overlap_batch,
   damage_apply_batch,
   damage_segment_hits_batch,
-  death_cleanup_classify_batch,
+  death_cleanup_diff_batch,
   economy_apply_income_credits,
   economy_apply_converter_transfers,
   arrival_completion_step_batch,
@@ -988,16 +988,20 @@ export interface SimWasm {
     outEffectiveDamage: Float64Array,
     outFlags: Uint8Array,
   ) => number;
-  /** C1 — pending death-cleanup classifier. TypeScript drains candidate
-   *  ids and applies event/removal diffs; Rust owns unit/building
-   *  HP/materialization dead-alive classification. */
-  readonly deathCleanupClassifyBatch: (
+  /** C1 — pending death-cleanup compact diff generator. TypeScript drains
+   *  candidate ids and applies returned event/removal diffs; Rust owns
+   *  unit/building HP/materialization dead-alive classification and
+   *  dead-id/kind diff generation. */
+  readonly deathCleanupDiffBatch: (
     count: number,
     enabled: Uint8Array,
+    entityIds: Int32Array,
     entityKind: Uint8Array,
     hp: Float64Array,
     unitMaterialized: Uint8Array,
-    outFlags: Uint8Array,
+    outDeadEntityIds: Int32Array,
+    outDeadKind: Uint8Array,
+    outDeadCount: Uint32Array,
   ) => number;
   /** Phase 5a — Packed projectile SoA pool. Same lifetime / view
    *  semantics as `pool` (BodyPool): fixed capacity, views captured
@@ -3618,7 +3622,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         damageAreaOverlapBatch: damage_area_overlap_batch,
         damageApplyBatch: damage_apply_batch,
         damageSegmentHitsBatch: damage_segment_hits_batch,
-        deathCleanupClassifyBatch: death_cleanup_classify_batch,
+        deathCleanupDiffBatch: death_cleanup_diff_batch,
         projectilePool,
         projectileReflectorIntersectionsBatch: projectile_reflector_intersections_batch,
         projectileReflectionResponseBatch: projectile_reflection_response_batch,

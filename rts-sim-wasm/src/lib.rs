@@ -796,37 +796,43 @@ pub fn damage_apply_batch(
 const DEATH_CLEANUP_KIND_UNIT: u8 = 1;
 const DEATH_CLEANUP_KIND_BUILDING: u8 = 2;
 
-const DEATH_CLEANUP_FLAG_DEAD_UNIT: u8 = 1 << 0;
-const DEATH_CLEANUP_FLAG_DEAD_BUILDING: u8 = 1 << 1;
-
-/// C1 death-cleanup migration — classify pending HP-change rows.
+/// C1 death-cleanup migration — generate compact cleanup-removal diffs from
+/// pending HP-change rows.
 ///
-/// TypeScript still drains the pending-id set and applies removal/event
-/// side effects to the JS entity graph. Rust owns the authoritative dead/alive
-/// decision for safety-cleanup candidates so unit/building HP semantics do not
-/// drift from the rest of the C1 damage write-back path.
+/// TypeScript still drains the pending-id set and applies removal/event side
+/// effects to the JS entity graph. Rust owns the authoritative dead/alive
+/// decision and the compact dead-id/kind diff generation for safety-cleanup
+/// candidates so unit/building HP semantics do not drift from the rest of the
+/// C1 damage write-back path.
 #[wasm_bindgen]
-pub fn death_cleanup_classify_batch(
+pub fn death_cleanup_diff_batch(
     count: u32,
     enabled: &[u8],
+    entity_ids: &[i32],
     entity_kind: &[u8],
     hp: &[f64],
     unit_materialized: &[u8],
-    out_flags: &mut [u8],
+    out_dead_entity_ids: &mut [i32],
+    out_dead_kind: &mut [u8],
+    out_dead_count: &mut [u32],
 ) -> u32 {
     let n = count as usize;
     if enabled.len() < n
+        || entity_ids.len() < n
         || entity_kind.len() < n
         || hp.len() < n
         || unit_materialized.len() < n
-        || out_flags.len() < n
+        || out_dead_entity_ids.len() < n
+        || out_dead_kind.len() < n
+        || out_dead_count.is_empty()
     {
         return 0;
     }
 
     let mut processed = 0_u32;
+    let mut dead_count = 0_usize;
+    out_dead_count[0] = 0;
     for i in 0..n {
-        out_flags[i] = 0;
         if enabled[i] == 0 {
             continue;
         }
@@ -834,13 +840,17 @@ pub fn death_cleanup_classify_batch(
         match entity_kind[i] {
             DEATH_CLEANUP_KIND_UNIT => {
                 if hp[i] <= 0.0 && unit_materialized[i] != 0 {
-                    out_flags[i] = DEATH_CLEANUP_FLAG_DEAD_UNIT;
+                    out_dead_entity_ids[dead_count] = entity_ids[i];
+                    out_dead_kind[dead_count] = DEATH_CLEANUP_KIND_UNIT;
+                    dead_count += 1;
                 }
                 processed += 1;
             }
             DEATH_CLEANUP_KIND_BUILDING => {
                 if hp[i] <= 0.0 {
-                    out_flags[i] = DEATH_CLEANUP_FLAG_DEAD_BUILDING;
+                    out_dead_entity_ids[dead_count] = entity_ids[i];
+                    out_dead_kind[dead_count] = DEATH_CLEANUP_KIND_BUILDING;
+                    dead_count += 1;
                 }
                 processed += 1;
             }
@@ -848,6 +858,7 @@ pub fn death_cleanup_classify_batch(
         }
     }
 
+    out_dead_count[0] = dead_count as u32;
     processed
 }
 
@@ -30488,8 +30499,9 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    fn death_cleanup_classify_batch_flags_dead_materialized_units_and_buildings() {
+    fn death_cleanup_diff_batch_emits_dead_materialized_units_and_buildings() {
         let enabled = [1_u8, 1, 1, 1];
+        let entity_ids = [10_i32, 11, 12, 13];
         let kind = [
             DEATH_CLEANUP_KIND_UNIT,
             DEATH_CLEANUP_KIND_UNIT,
@@ -30498,38 +30510,62 @@ mod sim_kernel_tests {
         ];
         let hp = [0.0, -4.0, 0.0, 12.0];
         let materialized = [1_u8, 0, 0, 0];
-        let mut out_flags = [99_u8; 4];
+        let mut out_dead_entity_ids = [0_i32; 4];
+        let mut out_dead_kind = [0_u8; 4];
+        let mut out_dead_count = [99_u32; 1];
 
         assert_eq!(
-            death_cleanup_classify_batch(4, &enabled, &kind, &hp, &materialized, &mut out_flags,),
+            death_cleanup_diff_batch(
+                4,
+                &enabled,
+                &entity_ids,
+                &kind,
+                &hp,
+                &materialized,
+                &mut out_dead_entity_ids,
+                &mut out_dead_kind,
+                &mut out_dead_count,
+            ),
             4,
         );
 
+        assert_eq!(out_dead_count[0], 2);
+        assert_eq!(&out_dead_entity_ids[..2], [10, 12]);
         assert_eq!(
-            out_flags,
-            [
-                DEATH_CLEANUP_FLAG_DEAD_UNIT,
-                0,
-                DEATH_CLEANUP_FLAG_DEAD_BUILDING,
-                0,
-            ],
+            &out_dead_kind[..2],
+            [DEATH_CLEANUP_KIND_UNIT, DEATH_CLEANUP_KIND_BUILDING],
         );
     }
 
     #[test]
-    fn death_cleanup_classify_batch_ignores_disabled_and_unknown_rows() {
+    fn death_cleanup_diff_batch_ignores_disabled_and_unknown_rows() {
         let enabled = [0_u8, 1, 1];
+        let entity_ids = [10_i32, 11, 12];
         let kind = [DEATH_CLEANUP_KIND_UNIT, 99, DEATH_CLEANUP_KIND_UNIT];
         let hp = [-10.0, -10.0, 10.0];
         let materialized = [1_u8, 1, 1];
-        let mut out_flags = [99_u8; 3];
+        let mut out_dead_entity_ids = [0_i32; 3];
+        let mut out_dead_kind = [0_u8; 3];
+        let mut out_dead_count = [99_u32; 1];
 
         assert_eq!(
-            death_cleanup_classify_batch(3, &enabled, &kind, &hp, &materialized, &mut out_flags,),
+            death_cleanup_diff_batch(
+                3,
+                &enabled,
+                &entity_ids,
+                &kind,
+                &hp,
+                &materialized,
+                &mut out_dead_entity_ids,
+                &mut out_dead_kind,
+                &mut out_dead_count,
+            ),
             1,
         );
 
-        assert_eq!(out_flags, [0, 0, 0]);
+        assert_eq!(out_dead_count[0], 0);
+        assert_eq!(out_dead_entity_ids, [0, 0, 0]);
+        assert_eq!(out_dead_kind, [0, 0, 0]);
     }
 
     #[test]
