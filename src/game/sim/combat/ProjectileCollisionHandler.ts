@@ -132,6 +132,36 @@ let _submunitionLaunchCapacity = 0;
 let _submunitionLaunchVelocityX = new Float64Array(0);
 let _submunitionLaunchVelocityY = new Float64Array(0);
 let _submunitionLaunchVelocityZ = new Float64Array(0);
+const PROJECTILE_TERMINAL_REASON_GROUND = 2;
+const PROJECTILE_TERMINAL_FLAG_REMOVE = 1 << 0;
+const PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO = 1 << 1;
+const PROJECTILE_TERMINAL_FLAG_CLAMP_Z = 1 << 2;
+const PROJECTILE_TERMINAL_FLAG_WATER_SPLASH = 1 << 3;
+const PROJECTILE_TERMINAL_FLAG_DETONATE = 1 << 4;
+const PROJECTILE_TERMINAL_FLAG_EXPIRE_EVENT = 1 << 5;
+const PROJECTILE_OUT_OF_BOUNDS_MARGIN = 100;
+const _terminalEnabled = new Uint8Array(1);
+const _terminalIsProjectileType = new Uint8Array(1);
+const _terminalIsArmed = new Uint8Array(1);
+const _terminalHasExploded = new Uint8Array(1);
+const _terminalDetonateOnExpiry = new Uint8Array(1);
+const _terminalHasDetonationPayload = new Uint8Array(1);
+const _terminalDirectHitThisTick = new Uint8Array(1);
+const _terminalReflectedProjectile = new Uint8Array(1);
+const _terminalHitShield = new Uint8Array(1);
+const _terminalTerminalReflectorHit = new Uint8Array(1);
+const _terminalWaterAtImpact = new Uint8Array(1);
+const _terminalPosX = new Float64Array(1);
+const _terminalPosY = new Float64Array(1);
+const _terminalPosZ = new Float64Array(1);
+const _terminalGroundZ = new Float64Array(1);
+const _terminalHp = new Float64Array(1);
+const _terminalTimeAliveMs = new Float64Array(1);
+const _terminalMaxLifespanMs = new Float64Array(1);
+const _terminalOutReason = new Uint8Array(1);
+const _terminalOutFlags = new Uint32Array(1);
+const _terminalOutZ = new Float64Array(1);
+const _terminalOutHp = new Float64Array(1);
 
 function queueProjectileRemoval(
   id: EntityId,
@@ -888,6 +918,87 @@ function detonateKilledProjectileShot(
   queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
 }
 
+function classifyProjectileTerminalConsequence(
+  world: WorldState,
+  projEntity: Entity,
+  terminalReflectorHit: boolean,
+  directHitThisTick: boolean,
+  reflectedProjectile: boolean,
+  hitShield: boolean,
+): number {
+  const proj = projEntity.projectile;
+  if (proj === null) return 0;
+
+  const config = proj.config;
+  const runtimeProfile = config.shotProfile.runtime;
+  const x = projEntity.transform.x;
+  const y = projEntity.transform.y;
+  const z = projEntity.transform.z;
+  const groundZ = world.getGroundZ(x, y);
+
+  _terminalEnabled[0] = 1;
+  _terminalIsProjectileType[0] = proj.projectileType === 'projectile' ? 1 : 0;
+  _terminalIsArmed[0] = proj.isArmed ? 1 : 0;
+  _terminalHasExploded[0] = proj.hasExploded ? 1 : 0;
+  _terminalDetonateOnExpiry[0] = runtimeProfile.detonateOnExpiry ? 1 : 0;
+  _terminalHasDetonationPayload[0] =
+    runtimeProfile.hasExplosion || runtimeProfile.hasSubmunitions ? 1 : 0;
+  _terminalDirectHitThisTick[0] = directHitThisTick ? 1 : 0;
+  _terminalReflectedProjectile[0] = reflectedProjectile ? 1 : 0;
+  _terminalHitShield[0] = hitShield ? 1 : 0;
+  _terminalTerminalReflectorHit[0] = terminalReflectorHit ? 1 : 0;
+  _terminalWaterAtImpact[0] = isWaterAt(x, y, world.mapWidth, world.mapHeight) ? 1 : 0;
+  _terminalPosX[0] = x;
+  _terminalPosY[0] = y;
+  _terminalPosZ[0] = z;
+  _terminalGroundZ[0] = groundZ;
+  _terminalHp[0] = proj.hp;
+  _terminalTimeAliveMs[0] = proj.timeAlive;
+  _terminalMaxLifespanMs[0] = proj.maxLifespan;
+
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('Projectile terminal consequence classification requires initialized sim-wasm');
+  }
+  sim.projectileTerminalConsequenceBatch(
+    1,
+    _terminalEnabled,
+    _terminalIsProjectileType,
+    _terminalIsArmed,
+    _terminalHasExploded,
+    _terminalDetonateOnExpiry,
+    _terminalHasDetonationPayload,
+    _terminalDirectHitThisTick,
+    _terminalReflectedProjectile,
+    _terminalHitShield,
+    _terminalTerminalReflectorHit,
+    _terminalWaterAtImpact,
+    _terminalPosX,
+    _terminalPosY,
+    _terminalPosZ,
+    _terminalGroundZ,
+    _terminalHp,
+    _terminalTimeAliveMs,
+    _terminalMaxLifespanMs,
+    world.mapWidth,
+    world.mapHeight,
+    PROJECTILE_OUT_OF_BOUNDS_MARGIN,
+    _terminalOutReason,
+    _terminalOutFlags,
+    _terminalOutZ,
+    _terminalOutHp,
+  );
+
+  const flags = _terminalOutFlags[0];
+  if ((flags & PROJECTILE_TERMINAL_FLAG_CLAMP_Z) !== 0) {
+    projEntity.transform.z = _terminalOutZ[0];
+  }
+  if ((flags & PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO) !== 0) {
+    proj.hp = _terminalOutHp[0];
+  }
+  return flags;
+}
+
 // Check projectile collisions and apply damage.
 // Friendly fire is enabled: traveling shots can hit any live unit,
 // building, or projectile body after clearing their source.
@@ -1317,65 +1428,39 @@ export function checkProjectileCollisions(
       }
     }
 
-    // Ground impact — a traveling projectile whose center drops below
-    // the ground plane is a terminal event, but only after swept
-    // entity collision had a chance to stop at the first hitbox it
-    // crossed this tick.
-    const groundZAtProj = world.getGroundZ(projEntity.transform.x, projEntity.transform.y);
-    const hitGround =
-      !directHitThisTick &&
-      !reflectedProjectile &&
-      !hitShield &&
-      proj.projectileType === 'projectile' &&
-      proj.isArmed &&
-      projEntity.transform.z <= groundZAtProj;
-    if (hitGround) {
-      projEntity.transform.z = groundZAtProj;
-      proj.hp = 0;
-    }
+    const terminalFlags = classifyProjectileTerminalConsequence(
+      world,
+      projEntity,
+      terminalReflectorHit,
+      directHitThisTick,
+      reflectedProjectile,
+      hitShield,
+    );
+    const terminalGroundImpact =
+      _terminalOutReason[0] === PROJECTILE_TERMINAL_REASON_GROUND;
 
-    // Water hit — silent terminal (no explosion, no submunitions, no
-    // damage). Emits a waterSplash visual sized by the projectile's
-    // collider radius (mass surrogate) and trajectory at impact, so
-    // clients can spawn reflective droplets oriented by the incoming
-    // velocity instead of a fire explosion.
-    const hitWater =
-      hitGround &&
-      isWaterAt(
-        projEntity.transform.x, projEntity.transform.y,
-        world.mapWidth, world.mapHeight,
-      );
-    if (hitWater) {
-      if (proj.isArmed) {
-        const projRadius = runtimeProfile.radius.collision;
-        audioEvents.push({
-          type: 'waterSplash',
-          turretBlueprintId: shotBlueprintId,
-          pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
-          playerId: projEntity.ownership.playerId,
-          entityId: projEntity.id,
-          impactContext: buildImpactContext(
-            config, projEntity.transform.x, projEntity.transform.y,
-            proj.velocityX ?? 0, proj.velocityY ?? 0,
-            projRadius,
-          ),
-        });
-      }
+    // Water hit — Rust classifies this as a silent terminal (no
+    // explosion, no submunitions, no damage). TypeScript only emits the
+    // returned visual event and applies the despawn diff.
+    if ((terminalFlags & PROJECTILE_TERMINAL_FLAG_WATER_SPLASH) !== 0) {
+      const projRadius = runtimeProfile.radius.collision;
+      audioEvents.push({
+        type: 'waterSplash',
+        turretBlueprintId: shotBlueprintId,
+        pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+        playerId: projEntity.ownership.playerId,
+        entityId: projEntity.id,
+        impactContext: buildImpactContext(
+          config, projEntity.transform.x, projEntity.transform.y,
+          proj.velocityX ?? 0, proj.velocityY ?? 0,
+          projRadius,
+        ),
+      });
       queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
       continue;
     }
 
-    // Check if the projectile hit a terminal timeout, ground, barrier,
-    // or direct-hit health stop.
-    const expired = proj.timeAlive >= proj.maxLifespan;
-    if (
-      proj.projectileType === 'projectile' &&
-      (terminalReflectorHit || (expired && runtimeProfile.detonateOnExpiry))
-    ) {
-      proj.hp = 0;
-    }
-    const healthZero = proj.projectileType === 'projectile' && proj.hp <= 0;
-    if (expired || hitGround || terminalReflectorHit || healthZero) {
+    if ((terminalFlags & PROJECTILE_TERMINAL_FLAG_REMOVE) !== 0) {
       // Beam audio is handled by updateLaserSounds based on targeting state
       if (
         terminalReflectorHit &&
@@ -1394,10 +1479,7 @@ export function checkProjectileCollisions(
         );
       }
 
-      // Detonation is HP-owned: terminal collision / expiry paths that
-      // should explode zeroed projectile HP before reaching this gate.
-      const shouldDetonate = healthZero;
-      if (shouldDetonate && proj.isArmed && !proj.hasExploded) {
+      if ((terminalFlags & PROJECTILE_TERMINAL_FLAG_DETONATE) !== 0) {
         const projShot = config.shot as ProjectileShot;
         const hasSplash = runtimeProfile.hasExplosion;
         const hasSubs = runtimeProfile.hasSubmunitions;
@@ -1494,7 +1576,7 @@ export function checkProjectileCollisions(
               surfaceNormalX = directHitSurfaceNormalX;
               surfaceNormalY = directHitSurfaceNormalY;
               surfaceNormalZ = directHitSurfaceNormalZ;
-            } else if (hitGround) {
+            } else if (terminalGroundImpact) {
               const n = getSurfaceNormal(
                 projEntity.transform.x, projEntity.transform.y,
                 world.mapWidth, world.mapHeight, LAND_CELL_SIZE,
@@ -1516,9 +1598,7 @@ export function checkProjectileCollisions(
         }
       }
 
-      // Add projectile expire event for traveling projectiles (not beams).
-      // This creates an explosion effect at projectile termination point.
-      if (proj.projectileType === 'projectile' && proj.isArmed && !proj.hasExploded) {
+      if ((terminalFlags & PROJECTILE_TERMINAL_FLAG_EXPIRE_EVENT) !== 0) {
         const projRadius = runtimeProfile.radius.collision;
         audioEvents.push({
           type: 'projectileExpire',
@@ -1536,17 +1616,6 @@ export function checkProjectileCollisions(
 
       queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
       continue;
-    }
-
-    // Check if projectile is out of bounds
-    const margin = 100;
-    if (
-      projEntity.transform.x < -margin ||
-      projEntity.transform.x > world.mapWidth + margin ||
-      projEntity.transform.y < -margin ||
-      projEntity.transform.y > world.mapHeight + margin
-    ) {
-      queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
     }
   }
 

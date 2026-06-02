@@ -43,17 +43,18 @@ ARCHITECTURE / PHILOSOPHY MIGRATION (budget_design_philosophy.html)
 damage/death authority are still TypeScript-orchestrated.
 
 Per AUTHORITY_LEDGER.md, Rust/WASM now owns projectile position integration,
-shield reflector intersections, reflected projectile response math, and swept
-body/building/projectile hit selection, including current-tick turret
-sub-hitboxes from the combat-targeting slab. The remaining TypeScript
-authority is still too large: checkProjectileCollisions owns direct-hit
-consequences, timeout/ground/water termination, submunition entity/event
-creation, detonation audio/events, despawn/velocity-update event application,
-and D-gun swept damage orchestration; DamageSystem/Simulation still own HP
-write-back, kill collection, cleanupDeadEntities, and death-explosion
-detonation. Submunition launch velocity scatter is now Rust/WASM-owned, but the
-remaining TS orchestration still violates "TypeScript Coordinates, WASM
-Computes."
-FIX (C1 migration): move projectile termination/detonation outputs and
-HP/death write-back into Rust/WASM kernels, and leave TypeScript only to apply
+shield reflector intersections, reflected projectile response math, swept
+body/building/projectile hit selection, current-tick turret sub-hitboxes from
+the combat-targeting slab, submunition launch velocity scatter, and terminal
+consequence classification for timeout, ground/water impact, terminal
+reflector contact, HP-zero stops, detonation/expire/splash eligibility, and
+out-of-bounds removal. The remaining TypeScript authority is still too large:
+checkProjectileCollisions applies the returned terminal flags, owns direct-hit
+and splash damage consequences, submunition entity/event creation, detonation
+audio/events, despawn/velocity-update event application, and D-gun swept damage
+orchestration; DamageSystem/Simulation still own HP write-back, kill
+collection, cleanupDeadEntities, and death-explosion detonation.
+FIX (C1 migration): move projectile detonation payload application,
+submunition entity diffs, direct-hit/splash damage outputs, HP/death write-back,
+and death cleanup into Rust/WASM kernels, and leave TypeScript only to apply
 compact returned event/entity diffs.

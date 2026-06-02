@@ -3645,12 +3645,24 @@ const UF_OUT_HOVER_ORIENTATION: u32 = 1 << 3;
 const UF_OUT_WOKE_BODY: u32 = 1 << 4;
 
 const UNIT_FORCE_WATER_PROBE_DX: [f64; 8] = [
-    1.0, 0.7071067811865476, 0.0, -0.7071067811865475,
-    -1.0, -0.7071067811865477, 0.0, 0.7071067811865474,
+    1.0,
+    0.7071067811865476,
+    0.0,
+    -0.7071067811865475,
+    -1.0,
+    -0.7071067811865477,
+    0.0,
+    0.7071067811865474,
 ];
 const UNIT_FORCE_WATER_PROBE_DY: [f64; 8] = [
-    0.0, 0.7071067811865475, 1.0, 0.7071067811865476,
-    0.0, -0.7071067811865475, -1.0, -0.7071067811865477,
+    0.0,
+    0.7071067811865475,
+    1.0,
+    0.7071067811865476,
+    0.0,
+    -0.7071067811865475,
+    -1.0,
+    -0.7071067811865477,
 ];
 
 #[inline]
@@ -3675,7 +3687,11 @@ fn unit_force_locomotion_magnitudes(
     let traction_mag = raw * traction;
     (
         if raw.is_finite() { raw } else { 0.0 },
-        if traction_mag.is_finite() { traction_mag } else { 0.0 },
+        if traction_mag.is_finite() {
+            traction_mag
+        } else {
+            0.0
+        },
     )
 }
 
@@ -3692,7 +3708,11 @@ fn unit_force_project_horizontal_onto_slope(
     let ty = hy - dot * ny;
     let tz = -dot * nz;
     let mag = (tx * tx + ty * ty + tz * tz).sqrt();
-    let inv = if mag > 0.0 && mag.is_finite() { 1.0 / mag } else { 1.0 };
+    let inv = if mag > 0.0 && mag.is_finite() {
+        1.0 / mag
+    } else {
+        1.0
+    };
     (tx * inv, ty * inv, tz * inv)
 }
 
@@ -3715,10 +3735,7 @@ fn unit_force_water_out_from_mask(mask: u32) -> Option<(f64, f64)> {
 }
 
 #[inline]
-fn unit_force_first_water_escape_out(
-    rows: &[f64],
-    base: usize,
-) -> Option<(f64, f64)> {
+fn unit_force_first_water_escape_out(rows: &[f64], base: usize) -> Option<(f64, f64)> {
     let masks = [
         rows[base + UF_ROW_WATER_ESCAPE_MASK_0] as u32,
         rows[base + UF_ROW_WATER_ESCAPE_MASK_1] as u32,
@@ -3831,11 +3848,7 @@ pub fn unit_force_step_batch(
         let is_airborne = flag & UF_FLAG_IS_AIRBORNE != 0;
         let has_external = flag & UF_FLAG_HAS_EXTERNAL_FORCE != 0;
 
-        if p.flags[slot] & BODY_FLAG_SLEEPING != 0
-            && !is_flying
-            && !has_thrust
-            && !has_external
-        {
+        if p.flags[slot] & BODY_FLAG_SLEEPING != 0 && !is_flying && !has_thrust && !has_external {
             continue;
         }
 
@@ -3929,11 +3942,9 @@ pub fn unit_force_step_batch(
                     let lift_k = body_mass * GRAVITY * hover_height_force;
                     let vz_damp_per_mass =
                         2.0 * ((GRAVITY * gravity_deficit_ratio) / stable_altitude).sqrt();
-                    thrust_force_z = (
-                        counter_gravity_force
-                            + lift_k / altitude
-                            - body_mass * vz_damp_per_mass * p.vel_z[slot]
-                    ) / 1_000_000.0;
+                    thrust_force_z = (counter_gravity_force + lift_k / altitude
+                        - body_mass * vz_damp_per_mass * p.vel_z[slot])
+                        / 1_000_000.0;
                 }
             }
 
@@ -4056,9 +4067,21 @@ pub fn unit_force_step_batch(
             }
         }
 
-        let external_fx = if has_external { rows[base + UF_ROW_EXTERNAL_FX] / 3600.0 } else { 0.0 };
-        let external_fy = if has_external { rows[base + UF_ROW_EXTERNAL_FY] / 3600.0 } else { 0.0 };
-        let external_fz = if has_external { rows[base + UF_ROW_EXTERNAL_FZ] / 3600.0 } else { 0.0 };
+        let external_fx = if has_external {
+            rows[base + UF_ROW_EXTERNAL_FX] / 3600.0
+        } else {
+            0.0
+        };
+        let external_fy = if has_external {
+            rows[base + UF_ROW_EXTERNAL_FY] / 3600.0
+        } else {
+            0.0
+        };
+        let external_fz = if has_external {
+            rows[base + UF_ROW_EXTERNAL_FZ] / 3600.0
+        } else {
+            0.0
+        };
         let total_force_x = thrust_force_x + external_fx;
         let total_force_y = thrust_force_y + external_fy;
         let total_force_z = thrust_force_z + external_fz;
@@ -4643,11 +4666,7 @@ const PHG_ROW_OUT_THRUST_Z: usize = 29;
 const PHG_ROW_OUT_INTERCEPT_FOUND: usize = 30;
 
 #[wasm_bindgen]
-pub fn projectile_homing_guidance_batch(
-    rows: &mut [f64],
-    count: usize,
-    dt_sec: f64,
-) -> u32 {
+pub fn projectile_homing_guidance_batch(rows: &mut [f64], count: usize, dt_sec: f64) -> u32 {
     if rows.len() < count * PROJECTILE_HOMING_GUIDANCE_STRIDE {
         return 0;
     }
@@ -11080,7 +11099,8 @@ pub fn projectile_hitbox_sweep_batch(
                             {
                                 continue;
                             }
-                            let radius = source_radius + targeting.turret_radius_hitbox[idx].max(0.0);
+                            let radius =
+                                source_radius + targeting.turret_radius_hitbox[idx].max(0.0);
                             if radius <= 0.0 {
                                 continue;
                             }
@@ -22303,7 +22323,11 @@ pub fn projectile_reflection_response_batch(
         let remaining_sec = (dt_sec * (1.0 - t)).max(0.0);
         let surface_offset = 0.5_f64.max(radius.max(0.0) * 0.25);
         let reflected_normal_dot = rx * nx + ry * ny + rz * nz;
-        let offset_sign = if reflected_normal_dot >= 0.0 { 1.0 } else { -1.0 };
+        let offset_sign = if reflected_normal_dot >= 0.0 {
+            1.0
+        } else {
+            -1.0
+        };
 
         out_reflected[i] = 1;
         out_velocity_x[i] = rx;
@@ -22427,6 +22451,184 @@ pub fn projectile_submunition_launch_velocity_batch(
     }
 
     count
+}
+
+const PROJECTILE_TERMINAL_REASON_NONE: u8 = 0;
+const PROJECTILE_TERMINAL_REASON_EXPIRED: u8 = 1;
+const PROJECTILE_TERMINAL_REASON_GROUND: u8 = 2;
+const PROJECTILE_TERMINAL_REASON_WATER: u8 = 3;
+const PROJECTILE_TERMINAL_REASON_REFLECTOR: u8 = 4;
+const PROJECTILE_TERMINAL_REASON_HEALTH_ZERO: u8 = 5;
+const PROJECTILE_TERMINAL_REASON_OUT_OF_BOUNDS: u8 = 6;
+
+const PROJECTILE_TERMINAL_FLAG_REMOVE: u32 = 1 << 0;
+const PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO: u32 = 1 << 1;
+const PROJECTILE_TERMINAL_FLAG_CLAMP_Z: u32 = 1 << 2;
+const PROJECTILE_TERMINAL_FLAG_WATER_SPLASH: u32 = 1 << 3;
+const PROJECTILE_TERMINAL_FLAG_DETONATE: u32 = 1 << 4;
+const PROJECTILE_TERMINAL_FLAG_EXPIRE_EVENT: u32 = 1 << 5;
+
+/// C1 projectile migration — classify terminal projectile consequences.
+///
+/// TypeScript still samples terrain/water inputs and applies returned entity,
+/// damage, and event diffs. This kernel owns the authoritative branching for
+/// timeout, ground/water impact, terminal reflector contacts, HP-zero stops,
+/// detonation eligibility, expire FX eligibility, and out-of-bounds removal.
+#[wasm_bindgen]
+pub fn projectile_terminal_consequence_batch(
+    count: u32,
+    enabled: &[u8],
+    is_projectile_type: &[u8],
+    is_armed: &[u8],
+    has_exploded: &[u8],
+    detonate_on_expiry: &[u8],
+    has_detonation_payload: &[u8],
+    direct_hit_this_tick: &[u8],
+    reflected_projectile: &[u8],
+    hit_shield: &[u8],
+    terminal_reflector_hit: &[u8],
+    water_at_impact: &[u8],
+    pos_x: &[f64],
+    pos_y: &[f64],
+    pos_z: &[f64],
+    ground_z: &[f64],
+    hp: &[f64],
+    time_alive_ms: &[f64],
+    max_lifespan_ms: &[f64],
+    map_width: f64,
+    map_height: f64,
+    margin: f64,
+    out_reason: &mut [u8],
+    out_flags: &mut [u32],
+    out_z: &mut [f64],
+    out_hp: &mut [f64],
+) -> u32 {
+    let n = count as usize;
+    if enabled.len() < n
+        || is_projectile_type.len() < n
+        || is_armed.len() < n
+        || has_exploded.len() < n
+        || detonate_on_expiry.len() < n
+        || has_detonation_payload.len() < n
+        || direct_hit_this_tick.len() < n
+        || reflected_projectile.len() < n
+        || hit_shield.len() < n
+        || terminal_reflector_hit.len() < n
+        || water_at_impact.len() < n
+        || pos_x.len() < n
+        || pos_y.len() < n
+        || pos_z.len() < n
+        || ground_z.len() < n
+        || hp.len() < n
+        || time_alive_ms.len() < n
+        || max_lifespan_ms.len() < n
+        || out_reason.len() < n
+        || out_flags.len() < n
+        || out_z.len() < n
+        || out_hp.len() < n
+    {
+        return 0;
+    }
+
+    let bounds_margin = if margin.is_finite() {
+        margin.max(0.0)
+    } else {
+        0.0
+    };
+    let mut processed = 0_u32;
+    for i in 0..n {
+        out_reason[i] = PROJECTILE_TERMINAL_REASON_NONE;
+        out_flags[i] = 0;
+        out_z[i] = pos_z[i];
+        out_hp[i] = hp[i];
+
+        if enabled[i] == 0 {
+            continue;
+        }
+
+        let projectile_body = is_projectile_type[i] != 0;
+        let armed = is_armed[i] != 0;
+        let already_exploded = has_exploded[i] != 0;
+        let expired = time_alive_ms[i] >= max_lifespan_ms[i];
+
+        if projectile_body {
+            let terminal_reflector = terminal_reflector_hit[i] != 0;
+            let hit_ground = direct_hit_this_tick[i] == 0
+                && reflected_projectile[i] == 0
+                && hit_shield[i] == 0
+                && armed
+                && pos_z[i] <= ground_z[i];
+
+            let mut next_hp = hp[i];
+            let mut flags = 0_u32;
+            let mut next_z = pos_z[i];
+            if hit_ground {
+                next_hp = 0.0;
+                next_z = ground_z[i];
+                flags |= PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO | PROJECTILE_TERMINAL_FLAG_CLAMP_Z;
+            }
+            if terminal_reflector || (expired && detonate_on_expiry[i] != 0) {
+                next_hp = 0.0;
+                flags |= PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO;
+            }
+            let health_zero = next_hp <= 0.0;
+
+            out_hp[i] = next_hp;
+            out_z[i] = next_z;
+
+            if hit_ground && water_at_impact[i] != 0 {
+                flags |= PROJECTILE_TERMINAL_FLAG_REMOVE | PROJECTILE_TERMINAL_FLAG_WATER_SPLASH;
+                out_reason[i] = PROJECTILE_TERMINAL_REASON_WATER;
+                out_flags[i] = flags;
+                processed += 1;
+                continue;
+            }
+
+            if expired || hit_ground || terminal_reflector || health_zero {
+                flags |= PROJECTILE_TERMINAL_FLAG_REMOVE;
+                out_reason[i] = if terminal_reflector {
+                    PROJECTILE_TERMINAL_REASON_REFLECTOR
+                } else if hit_ground {
+                    PROJECTILE_TERMINAL_REASON_GROUND
+                } else if expired {
+                    PROJECTILE_TERMINAL_REASON_EXPIRED
+                } else {
+                    PROJECTILE_TERMINAL_REASON_HEALTH_ZERO
+                };
+
+                let will_detonate =
+                    health_zero && armed && !already_exploded && has_detonation_payload[i] != 0;
+                if will_detonate {
+                    flags |= PROJECTILE_TERMINAL_FLAG_DETONATE;
+                } else if armed && !already_exploded {
+                    flags |= PROJECTILE_TERMINAL_FLAG_EXPIRE_EVENT;
+                }
+
+                out_flags[i] = flags;
+                processed += 1;
+                continue;
+            }
+        } else if expired {
+            out_reason[i] = PROJECTILE_TERMINAL_REASON_EXPIRED;
+            out_flags[i] = PROJECTILE_TERMINAL_FLAG_REMOVE;
+            processed += 1;
+            continue;
+        }
+
+        let x = pos_x[i];
+        let y = pos_y[i];
+        if x < -bounds_margin
+            || x > map_width + bounds_margin
+            || y < -bounds_margin
+            || y > map_height + bounds_margin
+        {
+            out_reason[i] = PROJECTILE_TERMINAL_REASON_OUT_OF_BOUNDS;
+            out_flags[i] = PROJECTILE_TERMINAL_FLAG_REMOVE;
+            processed += 1;
+        }
+    }
+
+    processed
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -29080,20 +29282,7 @@ mod sim_kernel_tests {
 
         assert_eq!(
             projectile_submunition_launch_velocity_batch(
-                2,
-                123,
-                10.0,
-                -2.0,
-                1.0,
-                0.0,
-                1.0,
-                0.0,
-                1,
-                0.5,
-                0.0,
-                0.0,
-                &mut out_x,
-                &mut out_y,
+                2, 123, 10.0, -2.0, 1.0, 0.0, 1.0, 0.0, 1, 0.5, 0.0, 0.0, &mut out_x, &mut out_y,
                 &mut out_z,
             ),
             2,
@@ -29115,40 +29304,14 @@ mod sim_kernel_tests {
 
         assert_eq!(
             projectile_submunition_launch_velocity_batch(
-                4,
-                0xC1C0FFEE,
-                3.0,
-                4.0,
-                5.0,
-                0.0,
-                0.0,
-                0.0,
-                0,
-                1.0,
-                160.0,
-                50.0,
-                &mut ax,
-                &mut ay,
+                4, 0xC1C0FFEE, 3.0, 4.0, 5.0, 0.0, 0.0, 0.0, 0, 1.0, 160.0, 50.0, &mut ax, &mut ay,
                 &mut az,
             ),
             4,
         );
         assert_eq!(
             projectile_submunition_launch_velocity_batch(
-                4,
-                0xC1C0FFEE,
-                3.0,
-                4.0,
-                5.0,
-                0.0,
-                0.0,
-                0.0,
-                0,
-                1.0,
-                160.0,
-                50.0,
-                &mut bx,
-                &mut by,
+                4, 0xC1C0FFEE, 3.0, 4.0, 5.0, 0.0, 0.0, 0.0, 0, 1.0, 160.0, 50.0, &mut bx, &mut by,
                 &mut bz,
             ),
             4,
@@ -29158,6 +29321,258 @@ mod sim_kernel_tests {
         assert_eq!(ay, by);
         assert_eq!(az, bz);
         assert_ne!(ax, [3.0; 4]);
+    }
+
+    #[test]
+    fn projectile_terminal_consequence_classifies_water_as_silent_remove() {
+        let enabled = [1_u8];
+        let is_projectile_type = [1_u8];
+        let is_armed = [1_u8];
+        let has_exploded = [0_u8];
+        let detonate_on_expiry = [0_u8];
+        let has_payload = [1_u8];
+        let direct_hit = [0_u8];
+        let reflected = [0_u8];
+        let hit_shield = [0_u8];
+        let terminal_reflector = [0_u8];
+        let water = [1_u8];
+        let x = [20.0];
+        let y = [30.0];
+        let z = [-2.0];
+        let ground_z = [0.0];
+        let hp = [10.0];
+        let time_alive = [100.0];
+        let max_life = [1000.0];
+        let mut reason = [99_u8];
+        let mut flags = [0_u32];
+        let mut out_z = [99.0];
+        let mut out_hp = [99.0];
+
+        assert_eq!(
+            projectile_terminal_consequence_batch(
+                1,
+                &enabled,
+                &is_projectile_type,
+                &is_armed,
+                &has_exploded,
+                &detonate_on_expiry,
+                &has_payload,
+                &direct_hit,
+                &reflected,
+                &hit_shield,
+                &terminal_reflector,
+                &water,
+                &x,
+                &y,
+                &z,
+                &ground_z,
+                &hp,
+                &time_alive,
+                &max_life,
+                100.0,
+                100.0,
+                10.0,
+                &mut reason,
+                &mut flags,
+                &mut out_z,
+                &mut out_hp,
+            ),
+            1,
+        );
+
+        assert_eq!(reason[0], PROJECTILE_TERMINAL_REASON_WATER);
+        assert_eq!(
+            flags[0],
+            PROJECTILE_TERMINAL_FLAG_REMOVE
+                | PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO
+                | PROJECTILE_TERMINAL_FLAG_CLAMP_Z
+                | PROJECTILE_TERMINAL_FLAG_WATER_SPLASH,
+        );
+        assert_eq!(out_z[0], 0.0);
+        assert_eq!(out_hp[0], 0.0);
+    }
+
+    #[test]
+    fn projectile_terminal_consequence_expires_with_detonation_payload() {
+        let enabled = [1_u8];
+        let is_projectile_type = [1_u8];
+        let is_armed = [1_u8];
+        let has_exploded = [0_u8];
+        let detonate_on_expiry = [1_u8];
+        let has_payload = [1_u8];
+        let zero = [0_u8];
+        let water = [0_u8];
+        let x = [20.0];
+        let y = [30.0];
+        let z = [40.0];
+        let ground_z = [0.0];
+        let hp = [10.0];
+        let time_alive = [1000.0];
+        let max_life = [1000.0];
+        let mut reason = [0_u8];
+        let mut flags = [0_u32];
+        let mut out_z = [0.0];
+        let mut out_hp = [0.0];
+
+        assert_eq!(
+            projectile_terminal_consequence_batch(
+                1,
+                &enabled,
+                &is_projectile_type,
+                &is_armed,
+                &has_exploded,
+                &detonate_on_expiry,
+                &has_payload,
+                &zero,
+                &zero,
+                &zero,
+                &zero,
+                &water,
+                &x,
+                &y,
+                &z,
+                &ground_z,
+                &hp,
+                &time_alive,
+                &max_life,
+                100.0,
+                100.0,
+                10.0,
+                &mut reason,
+                &mut flags,
+                &mut out_z,
+                &mut out_hp,
+            ),
+            1,
+        );
+
+        assert_eq!(reason[0], PROJECTILE_TERMINAL_REASON_EXPIRED);
+        assert_eq!(
+            flags[0],
+            PROJECTILE_TERMINAL_FLAG_REMOVE
+                | PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO
+                | PROJECTILE_TERMINAL_FLAG_DETONATE,
+        );
+        assert_eq!(out_z[0], 40.0);
+        assert_eq!(out_hp[0], 0.0);
+    }
+
+    #[test]
+    fn projectile_terminal_consequence_expires_without_payload_as_fx() {
+        let enabled = [1_u8];
+        let is_projectile_type = [1_u8];
+        let is_armed = [1_u8];
+        let has_exploded = [0_u8];
+        let detonate_on_expiry = [0_u8];
+        let has_payload = [0_u8];
+        let zero = [0_u8];
+        let water = [0_u8];
+        let x = [20.0];
+        let y = [30.0];
+        let z = [40.0];
+        let ground_z = [0.0];
+        let hp = [10.0];
+        let time_alive = [1000.0];
+        let max_life = [1000.0];
+        let mut reason = [0_u8];
+        let mut flags = [0_u32];
+        let mut out_z = [0.0];
+        let mut out_hp = [0.0];
+
+        assert_eq!(
+            projectile_terminal_consequence_batch(
+                1,
+                &enabled,
+                &is_projectile_type,
+                &is_armed,
+                &has_exploded,
+                &detonate_on_expiry,
+                &has_payload,
+                &zero,
+                &zero,
+                &zero,
+                &zero,
+                &water,
+                &x,
+                &y,
+                &z,
+                &ground_z,
+                &hp,
+                &time_alive,
+                &max_life,
+                100.0,
+                100.0,
+                10.0,
+                &mut reason,
+                &mut flags,
+                &mut out_z,
+                &mut out_hp,
+            ),
+            1,
+        );
+
+        assert_eq!(reason[0], PROJECTILE_TERMINAL_REASON_EXPIRED);
+        assert_eq!(
+            flags[0],
+            PROJECTILE_TERMINAL_FLAG_REMOVE | PROJECTILE_TERMINAL_FLAG_EXPIRE_EVENT,
+        );
+        assert_eq!(out_hp[0], 10.0);
+    }
+
+    #[test]
+    fn projectile_terminal_consequence_removes_out_of_bounds() {
+        let enabled = [1_u8];
+        let is_projectile_type = [1_u8];
+        let is_armed = [1_u8];
+        let zero = [0_u8];
+        let water = [0_u8];
+        let x = [115.0];
+        let y = [30.0];
+        let z = [40.0];
+        let ground_z = [0.0];
+        let hp = [10.0];
+        let time_alive = [100.0];
+        let max_life = [1000.0];
+        let mut reason = [0_u8];
+        let mut flags = [0_u32];
+        let mut out_z = [0.0];
+        let mut out_hp = [0.0];
+
+        assert_eq!(
+            projectile_terminal_consequence_batch(
+                1,
+                &enabled,
+                &is_projectile_type,
+                &is_armed,
+                &zero,
+                &zero,
+                &zero,
+                &zero,
+                &zero,
+                &zero,
+                &zero,
+                &water,
+                &x,
+                &y,
+                &z,
+                &ground_z,
+                &hp,
+                &time_alive,
+                &max_life,
+                100.0,
+                100.0,
+                10.0,
+                &mut reason,
+                &mut flags,
+                &mut out_z,
+                &mut out_hp,
+            ),
+            1,
+        );
+
+        assert_eq!(reason[0], PROJECTILE_TERMINAL_REASON_OUT_OF_BOUNDS);
+        assert_eq!(flags[0], PROJECTILE_TERMINAL_FLAG_REMOVE);
+        assert_eq!(out_hp[0], 10.0);
     }
 
     #[test]
