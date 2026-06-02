@@ -5,7 +5,6 @@ import {
   GROUND_RENDER_ORDER,
   LAND_TILE_GROUND_LIFT,
 } from '../../config';
-import type { GraphicsConfig } from '@/types/graphics';
 import type { Entity } from '../sim/types';
 import {
   getTerrainMeshHeight,
@@ -24,6 +23,107 @@ const UNIT_AIR_SHADOW_FADE_MIN_HEIGHT = 80;
 const UNIT_AIR_SHADOW_MIN_ALPHA = 0.18;
 const UNIT_AIR_SHADOW_CROSS_SCALE_BOOST = 0.45;
 const UNIT_AIR_SHADOW_SUN_SCALE_BOOST = 0.7;
+
+export class ContactShadowRenderPacket3D {
+  readonly x = new Float32Array(CONTACT_SHADOW_RENDER_CONFIG.maxInstances);
+  readonly y = new Float32Array(CONTACT_SHADOW_RENDER_CONFIG.maxInstances);
+  readonly crossRadius = new Float32Array(CONTACT_SHADOW_RENDER_CONFIG.maxInstances);
+  readonly sunRadius = new Float32Array(CONTACT_SHADOW_RENDER_CONFIG.maxInstances);
+  readonly casterHeight = new Float32Array(CONTACT_SHADOW_RENDER_CONFIG.maxInstances);
+  readonly offsetPerHeight = new Float32Array(CONTACT_SHADOW_RENDER_CONFIG.maxInstances);
+  readonly alpha = new Float32Array(CONTACT_SHADOW_RENDER_CONFIG.maxInstances);
+  count = 0;
+
+  reset(): void {
+    this.count = 0;
+  }
+
+  pushUnit(
+    entity: Entity,
+    mapWidth: number,
+    mapHeight: number,
+    scope: ViewportFootprint,
+  ): void {
+    const unit = entity.unit;
+    if (!unit || unit.hp <= 0) return;
+    const radius = unit.radius.hitbox * CONTACT_SHADOW_RENDER_CONFIG.unitShotRadiusMultiplier;
+    const restHeight = Math.max(1, unit.bodyCenterHeight ?? unit.radius.visual);
+    const groundZ = getLocomotionSurfaceHeight(
+      entity.transform.x,
+      entity.transform.y,
+      mapWidth,
+      mapHeight,
+    );
+    const casterHeight = Math.max(0, entity.transform.z - groundZ);
+    const airHeight = Math.max(0, casterHeight - restHeight);
+    const airFadeHeight = Math.max(
+      UNIT_AIR_SHADOW_FADE_MIN_HEIGHT,
+      restHeight * UNIT_AIR_SHADOW_FADE_BODY_HEIGHTS,
+    );
+    const airT = clamp01(airHeight / airFadeHeight);
+    const crossScale = 1 + airT * UNIT_AIR_SHADOW_CROSS_SCALE_BOOST;
+    const sunScale = 1 + airT * UNIT_AIR_SHADOW_SUN_SCALE_BOOST;
+    const scopeRadius =
+      radius * Math.max(crossScale, sunScale) +
+      CONTACT_SHADOW_RENDER_CONFIG.maxSunOffset;
+    if (!scope.inScope(entity.transform.x, entity.transform.y, scopeRadius)) return;
+    this.push(
+      entity.transform.x,
+      entity.transform.y,
+      radius * CONTACT_SHADOW_RENDER_CONFIG.crossSunSquash * crossScale,
+      radius * CONTACT_SHADOW_RENDER_CONFIG.sunStretch * sunScale,
+      casterHeight,
+      CONTACT_SHADOW_RENDER_CONFIG.unitSunOffsetPerHeight,
+      1 - airT * (1 - UNIT_AIR_SHADOW_MIN_ALPHA),
+    );
+  }
+
+  pushBuilding(entity: Entity, scope: ViewportFootprint): void {
+    const building = entity.building;
+    if (!building || building.hp <= 0) return;
+    const halfWidth = Math.max(
+      CONTACT_SHADOW_RENDER_CONFIG.minBuildingRadius,
+      building.width * 0.5 * CONTACT_SHADOW_RENDER_CONFIG.buildingRadiusMultiplier,
+    );
+    const halfDepth = Math.max(
+      CONTACT_SHADOW_RENDER_CONFIG.minBuildingRadius,
+      building.height * 0.5 * CONTACT_SHADOW_RENDER_CONFIG.buildingRadiusMultiplier,
+    );
+    if (!scope.inScope(entity.transform.x, entity.transform.y, Math.max(halfWidth, halfDepth))) {
+      return;
+    }
+    this.push(
+      entity.transform.x,
+      entity.transform.y,
+      halfWidth,
+      halfDepth * CONTACT_SHADOW_RENDER_CONFIG.sunStretch,
+      Math.max(20, Math.max(building.width, building.height) * 0.35),
+      CONTACT_SHADOW_RENDER_CONFIG.buildingSunOffsetPerHeight,
+      1,
+    );
+  }
+
+  private push(
+    x: number,
+    y: number,
+    crossRadius: number,
+    sunRadius: number,
+    casterHeight: number,
+    offsetPerHeight: number,
+    alpha: number,
+  ): void {
+    const cursor = this.count;
+    if (cursor >= CONTACT_SHADOW_RENDER_CONFIG.maxInstances) return;
+    this.x[cursor] = x;
+    this.y[cursor] = y;
+    this.crossRadius[cursor] = crossRadius;
+    this.sunRadius[cursor] = sunRadius;
+    this.casterHeight[cursor] = casterHeight;
+    this.offsetPerHeight[cursor] = offsetPerHeight;
+    this.alpha[cursor] = alpha;
+    this.count = cursor + 1;
+  }
+}
 
 function makeContactShadowMaterial(): THREE.MeshBasicMaterial {
   const material = new THREE.MeshBasicMaterial({
@@ -111,12 +211,19 @@ export class ContactShadowRenderer3D {
     parent.add(this.mesh);
   }
 
+  shouldUpdate(frameIndex: number): boolean {
+    if (!CONTACT_SHADOW_RENDER_CONFIG.enabled) return this.mesh.count > 0;
+    const stride = Math.max(1, CONTACT_SHADOW_RENDER_CONFIG.frameStride | 0);
+    return shouldRunOnStride(frameIndex, stride) || this.mesh.count === 0;
+  }
+
+  shouldBuildPacket(frameIndex: number): boolean {
+    return CONTACT_SHADOW_RENDER_CONFIG.enabled && this.shouldUpdate(frameIndex);
+  }
+
   update(
-    units: readonly Entity[],
-    buildings: readonly Entity[],
-    _graphics: GraphicsConfig,
+    packet: ContactShadowRenderPacket3D,
     frameIndex: number,
-    scope: ViewportFootprint,
   ): void {
     if (!CONTACT_SHADOW_RENDER_CONFIG.enabled) {
       this.mesh.count = 0;
@@ -137,73 +244,16 @@ export class ContactShadowRenderer3D {
     let cursor = 0;
     const cap = CONTACT_SHADOW_RENDER_CONFIG.maxInstances;
 
-    for (let i = 0; i < units.length && cursor < cap; i++) {
-      const entity = units[i];
-      const unit = entity.unit;
-      if (!unit || unit.hp <= 0) continue;
-      const radius = unit.radius.hitbox * CONTACT_SHADOW_RENDER_CONFIG.unitShotRadiusMultiplier;
-      const restHeight = Math.max(1, unit.bodyCenterHeight ?? unit.radius.visual);
-      const groundZ = getLocomotionSurfaceHeight(
-        entity.transform.x,
-        entity.transform.y,
-        this.mapWidth,
-        this.mapHeight,
-      );
-      const casterHeight = Math.max(0, entity.transform.z - groundZ);
-      const airHeight = Math.max(0, casterHeight - restHeight);
-      const airFadeHeight = Math.max(
-        UNIT_AIR_SHADOW_FADE_MIN_HEIGHT,
-        restHeight * UNIT_AIR_SHADOW_FADE_BODY_HEIGHTS,
-      );
-      const airT = clamp01(airHeight / airFadeHeight);
-      const crossScale = 1 + airT * UNIT_AIR_SHADOW_CROSS_SCALE_BOOST;
-      const sunScale = 1 + airT * UNIT_AIR_SHADOW_SUN_SCALE_BOOST;
-      const alpha = 1 - airT * (1 - UNIT_AIR_SHADOW_MIN_ALPHA);
-      const scopeRadius =
-        radius * Math.max(crossScale, sunScale) +
-        CONTACT_SHADOW_RENDER_CONFIG.maxSunOffset;
-      if (!scope.inScope(entity.transform.x, entity.transform.y, scopeRadius)) {
-        continue;
-      }
+    for (let i = 0; i < packet.count && cursor < cap; i++) {
       if (this.writeShadow(
         cursor,
-        entity.transform.x,
-        entity.transform.y,
-        radius * CONTACT_SHADOW_RENDER_CONFIG.crossSunSquash * crossScale,
-        radius * CONTACT_SHADOW_RENDER_CONFIG.sunStretch * sunScale,
-        casterHeight,
-        CONTACT_SHADOW_RENDER_CONFIG.unitSunOffsetPerHeight,
-        alpha,
-      )) {
-        cursor++;
-      }
-    }
-
-    for (let i = 0; i < buildings.length && cursor < cap; i++) {
-      const entity = buildings[i];
-      const building = entity.building;
-      if (!building || building.hp <= 0) continue;
-      const halfWidth = Math.max(
-        CONTACT_SHADOW_RENDER_CONFIG.minBuildingRadius,
-        building.width * 0.5 * CONTACT_SHADOW_RENDER_CONFIG.buildingRadiusMultiplier,
-      );
-      const halfDepth = Math.max(
-        CONTACT_SHADOW_RENDER_CONFIG.minBuildingRadius,
-        building.height * 0.5 * CONTACT_SHADOW_RENDER_CONFIG.buildingRadiusMultiplier,
-      );
-      const height = Math.max(20, Math.max(building.width, building.height) * 0.35);
-      if (!scope.inScope(entity.transform.x, entity.transform.y, Math.max(halfWidth, halfDepth))) {
-        continue;
-      }
-      if (this.writeShadow(
-        cursor,
-        entity.transform.x,
-        entity.transform.y,
-        halfWidth,
-        halfDepth * CONTACT_SHADOW_RENDER_CONFIG.sunStretch,
-        height,
-        CONTACT_SHADOW_RENDER_CONFIG.buildingSunOffsetPerHeight,
-        1,
+        packet.x[i],
+        packet.y[i],
+        packet.crossRadius[i],
+        packet.sunRadius[i],
+        packet.casterHeight[i],
+        packet.offsetPerHeight[i],
+        packet.alpha[i],
       )) {
         cursor++;
       }

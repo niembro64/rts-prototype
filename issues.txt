@@ -24,11 +24,12 @@ Main per-frame chain: ThreeApp rAF -> RtsScene3DRenderPhase.run ->
 Render3DEntities.update -> updateUnitMeshes (per-unit) -> locomotion/turret/HUD.
 
 2.0 [MAJOR, per-frame scene graph] `RtsScene3DRenderPhase` now builds a reusable
-scoped render packet for HUD, shield, contact-shadow, ground-print, and projectile
-name work, but those packets are still `Entity[]` lists and the downstream
-features still run TypeScript object loops over them.
-FIX: move those render packets toward packed typed buffers or WASM/GPU-owned
-render packets, and make downstream HUD/shield/contact/ground-print consumers
+scoped render packet for HUD, shield, ground-print, and projectile name work.
+Contact shadows have moved to `ContactShadowRenderPacket3D` typed rows, but the
+remaining packets are still `Entity[]` lists and the downstream features still
+run TypeScript object loops over them.
+FIX: move the remaining HUD/shield/ground-print/projectile-name packets toward
+packed typed buffers or WASM/GPU-owned render packets, and make those consumers
 read compact packet rows instead of `Entity` objects.
 
 ================================================================================

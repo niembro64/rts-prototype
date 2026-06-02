@@ -34,7 +34,10 @@ import type { PylonTubeFlowRenderer } from '../../render3d/PylonTubeFlowRenderer
 import type { SmokeTrail3D } from '../../render3d/SmokeTrail3D';
 import type { FogOfWarFog3D } from '../../render3d/FogOfWarFog3D';
 import type { SightBoundaryRenderer3D } from '../../render3d/SightBoundaryRenderer3D';
-import type { ContactShadowRenderer3D } from '../../render3d/ContactShadowRenderer3D';
+import {
+  ContactShadowRenderPacket3D,
+  type ContactShadowRenderer3D,
+} from '../../render3d/ContactShadowRenderer3D';
 import type { HealthBar3D } from '../../render3d/HealthBar3D';
 import type { NameLabel3D } from '../../render3d/NameLabel3D';
 import { PIECE_TAG_COMMANDER_OWNER_NAME } from '../../render3d/NameLabel3D';
@@ -108,6 +111,7 @@ type RenderPhaseEntityLists = {
   armedEntities: readonly Entity[];
   shieldUnits: readonly Entity[];
   projectiles: readonly Entity[];
+  contactShadows: ContactShadowRenderPacket3D;
 };
 
 type RenderPhaseEntityListOptions = {
@@ -116,6 +120,7 @@ type RenderPhaseEntityListOptions = {
   includeArmedEntities: boolean;
   includeShieldUnits: boolean;
   includeProjectiles: boolean;
+  includeContactShadows: boolean;
 };
 
 const EMPTY_ENTITY_LIST: readonly Entity[] = [];
@@ -140,6 +145,7 @@ export class RtsScene3DRenderPhase {
   private readonly scopedArmedEntitiesScratch: Entity[] = [];
   private readonly scopedShieldUnitsScratch: Entity[] = [];
   private readonly scopedProjectilesScratch: Entity[] = [];
+  private readonly contactShadowPacket = new ContactShadowRenderPacket3D();
   private readonly renderEntityLists: RenderPhaseEntityLists = {
     units: [],
     buildings: [],
@@ -148,6 +154,7 @@ export class RtsScene3DRenderPhase {
     armedEntities: [],
     shieldUnits: [],
     projectiles: [],
+    contactShadows: this.contactShadowPacket,
   };
   private readonly frustum = new THREE.Frustum();
   private readonly frustumMatrix = new THREE.Matrix4();
@@ -290,20 +297,20 @@ export class RtsScene3DRenderPhase {
       renderFrameState,
       serverMeta?.turretShieldPanelsEnabled ?? true,
     );
+    const updateContactShadowsThisFrame =
+      contactShadowRenderer?.shouldUpdate(this.renderFrameIndex) ?? false;
     const entityLists = this.prepareEntityLists({
       includeUnitsAndBuildings: bodyNamesEnabled,
       includeHudEntities: updateEntityHudThisFrame && healthBar3D !== null,
       includeArmedEntities: turretNamesEnabled,
       includeShieldUnits: turretShieldSpheresEnabled,
       includeProjectiles: shotNamesEnabled,
+      includeContactShadows:
+        contactShadowRenderer?.shouldBuildPacket(this.renderFrameIndex) ?? false,
     });
-    contactShadowRenderer?.update(
-      entityLists.units,
-      entityLists.buildings,
-      graphicsConfig,
-      this.renderFrameIndex,
-      this.renderScope,
-    );
+    if (contactShadowRenderer && updateContactShadowsThisFrame) {
+      contactShadowRenderer.update(entityLists.contactShadows, this.renderFrameIndex);
+    }
     // The whole-map build-grid visualization (terrain-shader red/green/blue
     // overlay + matching blue squares above each deposit coin) is gated
     // solely to the DEBUG: BUILD toggle. The build-mode hover footprint is
@@ -481,6 +488,8 @@ export class RtsScene3DRenderPhase {
 
   private prepareEntityLists(options: RenderPhaseEntityListOptions): RenderPhaseEntityLists {
     const lists = this.renderEntityLists;
+    const contactShadows = this.contactShadowPacket;
+    contactShadows.reset();
     if (this.renderScope.getMode() === 'all') {
       lists.units = this.clientViewState.getUnits();
       lists.buildings = this.clientViewState.getBuildings();
@@ -499,6 +508,9 @@ export class RtsScene3DRenderPhase {
       lists.projectiles = options.includeProjectiles
         ? this.clientViewState.getProjectiles()
         : EMPTY_ENTITY_LIST;
+      if (options.includeContactShadows) {
+        this.populateContactShadowPacket(lists.units, lists.buildings);
+      }
       return lists;
     }
 
@@ -560,7 +572,25 @@ export class RtsScene3DRenderPhase {
     lists.armedEntities = armedEntities;
     lists.shieldUnits = shieldUnits;
     lists.projectiles = projectiles;
+    if (options.includeContactShadows) {
+      this.populateContactShadowPacket(units, buildings);
+    }
     return lists;
+  }
+
+  private populateContactShadowPacket(
+    units: readonly Entity[],
+    buildings: readonly Entity[],
+  ): void {
+    const packet = this.contactShadowPacket;
+    const mapWidth = this.clientViewState.getMapWidth();
+    const mapHeight = this.clientViewState.getMapHeight();
+    for (const unit of units) {
+      packet.pushUnit(unit, mapWidth, mapHeight, this.renderScope);
+    }
+    for (const building of buildings) {
+      packet.pushBuilding(building, this.renderScope);
+    }
   }
 
   private entityInRenderScope(entity: Entity): boolean {
