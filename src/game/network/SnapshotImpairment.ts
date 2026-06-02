@@ -1,4 +1,5 @@
 import type { NetworkServerSnapshot } from './NetworkTypes';
+import { ReusableNetworkSnapshotCloner } from './snapshotClone';
 
 type SnapshotImpairmentConfig = {
   enabled: boolean;
@@ -23,8 +24,18 @@ type SnapshotImpairmentDebugApi = {
   reset: () => void;
 };
 
-type SnapshotDelivery = (state: NetworkServerSnapshot) => void;
-type SnapshotClone = (state: NetworkServerSnapshot) => NetworkServerSnapshot;
+type SnapshotRelease = () => void;
+type SnapshotDelivery = (
+  state: NetworkServerSnapshot,
+  releaseSnapshot?: SnapshotRelease,
+) => void;
+type DelayedSnapshotLease = {
+  cloner: ReusableNetworkSnapshotCloner;
+  state: NetworkServerSnapshot;
+  timer: ReturnType<typeof setTimeout> | null;
+  released: boolean;
+  release: SnapshotRelease;
+};
 
 const QUERY_ENABLE_KEYS = ['dp03impair', 'snapshotImpairment'];
 const QUERY_DELAY_KEYS = ['dp03delay', 'dp03delayMs', 'snapshotDelayMs'];
@@ -52,16 +63,14 @@ export class SnapshotImpairmentQueue {
   private sequence = 0;
   private sawFirstKeyframe = false;
   private timers = new Set<ReturnType<typeof setTimeout>>();
+  private delayedClonePool: ReusableNetworkSnapshotCloner[] = [];
+  private delayedLeases = new Set<DelayedSnapshotLease>();
 
   get enabled(): boolean {
     return CONFIG.enabled;
   }
 
-  schedule(
-    state: NetworkServerSnapshot,
-    deliver: SnapshotDelivery,
-    cloneForDelay: SnapshotClone | undefined = undefined,
-  ): void {
+  schedule(state: NetworkServerSnapshot, deliver: SnapshotDelivery): void {
     if (!CONFIG.enabled) {
       deliver(state);
       return;
@@ -87,13 +96,20 @@ export class SnapshotImpairmentQueue {
 
     GLOBAL_STATS.delayed++;
     GLOBAL_STATS.maxDelayMs = Math.max(GLOBAL_STATS.maxDelayMs, delayMs);
-    const queuedState = cloneForDelay !== undefined ? cloneForDelay(state) : state;
+    const lease = this.cloneForDelay(state);
     const timer = setTimeout(() => {
       this.timers.delete(timer);
+      lease.timer = null;
       GLOBAL_STATS.pendingTimers = Math.max(0, GLOBAL_STATS.pendingTimers - 1);
       GLOBAL_STATS.delivered++;
-      deliver(queuedState);
+      try {
+        deliver(lease.state, lease.release);
+      } catch (err) {
+        lease.release();
+        throw err;
+      }
     }, delayMs);
+    lease.timer = timer;
     this.timers.add(timer);
     GLOBAL_STATS.pendingTimers++;
   }
@@ -102,8 +118,32 @@ export class SnapshotImpairmentQueue {
     for (const timer of this.timers) clearTimeout(timer);
     GLOBAL_STATS.pendingTimers = Math.max(0, GLOBAL_STATS.pendingTimers - this.timers.size);
     this.timers.clear();
+    for (const lease of this.delayedLeases) {
+      if (lease.timer !== null) lease.release();
+    }
     this.sequence = 0;
     this.sawFirstKeyframe = false;
+  }
+
+  private cloneForDelay(state: NetworkServerSnapshot): DelayedSnapshotLease {
+    const cloner = this.delayedClonePool.pop() ?? new ReusableNetworkSnapshotCloner();
+    const lease: DelayedSnapshotLease = {
+      cloner,
+      state: cloner.clone(state),
+      timer: null,
+      released: false,
+      release: () => this.releaseDelayedSnapshot(lease),
+    };
+    this.delayedLeases.add(lease);
+    return lease;
+  }
+
+  private releaseDelayedSnapshot(lease: DelayedSnapshotLease): void {
+    if (lease.released) return;
+    lease.released = true;
+    this.delayedLeases.delete(lease);
+    lease.cloner.clear();
+    this.delayedClonePool.push(lease.cloner);
   }
 
   private shouldDrop(state: NetworkServerSnapshot): boolean {

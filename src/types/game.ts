@@ -70,7 +70,11 @@ export type SceneCameraState = {
   pitch?: number;
 };
 
-export type SnapshotCallback = (state: NetworkServerSnapshot) => void;
+export type SnapshotRelease = () => void;
+export type SnapshotCallback = (
+  state: NetworkServerSnapshot,
+  releaseSnapshot?: SnapshotRelease,
+) => void;
 export type SimEventCallback = (event: SimEvent) => void;
 export type GameOverCallback = (winnerId: PlayerId) => void;
 

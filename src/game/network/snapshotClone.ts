@@ -544,7 +544,3 @@ export class ReusableNetworkSnapshotCloner {
     return this.despawns;
   }
 }
-
-export function cloneNetworkSnapshot(state: NetworkServerSnapshot): NetworkServerSnapshot {
-  return new ReusableNetworkSnapshotCloner().clone(state);
-}

@@ -33,6 +33,8 @@ type SnapshotBufferCallback = (state: NetworkServerSnapshot) => void;
 
 export class SnapshotBuffer {
   private pendingSnapshot: NetworkServerSnapshot | null = null;
+  private pendingSnapshotRelease: (() => void) | null = null;
+  private consumedSnapshotRelease: (() => void) | null = null;
   private fullSnapshotCloner = new ReusableNetworkSnapshotCloner();
 
   // Double-buffered event arrays (swap instead of allocating new arrays each frame)
@@ -106,7 +108,7 @@ export class SnapshotBuffer {
 
   /** Wire the gameConnection snapshot callback to accumulate events. */
   attach(gameConnection: GameConnection, onBufferedSnapshot?: SnapshotBufferCallback): void {
-    gameConnection.onSnapshot((state: NetworkServerSnapshot) => {
+    gameConnection.onSnapshot((state: NetworkServerSnapshot, releaseSnapshot?: () => void) => {
       if (onBufferedSnapshot !== undefined) onBufferedSnapshot(state);
       const proj = state.projectiles;
       if (proj !== undefined && proj.spawns !== undefined) {
@@ -168,9 +170,18 @@ export class SnapshotBuffer {
       // The cloner reuses its destination object graph so full
       // keyframes do not allocate a fresh 10k-entity tree each time.
       if (!this.pendingSnapshot || !state.isDelta || this.pendingSnapshot.isDelta) {
-        this.pendingSnapshot = state.isDelta
+        this.releasePendingSnapshot();
+        const pending = state.isDelta
           ? state
           : this.fullSnapshotCloner.clone(state);
+        this.pendingSnapshot = pending;
+        if (!state.isDelta && pending.grid !== undefined) {
+          this.bufferedGrid = pending.grid;
+        }
+        this.pendingSnapshotRelease = state.isDelta ? releaseSnapshot ?? null : null;
+        if (!state.isDelta) releaseSnapshot?.();
+      } else {
+        releaseSnapshot?.();
       }
     });
   }
@@ -180,10 +191,14 @@ export class SnapshotBuffer {
    * Returns null if no snapshot is pending. Swaps double buffers (zero allocation).
    */
   consume(): NetworkServerSnapshot | null {
+    this.consumedSnapshotRelease?.();
+    this.consumedSnapshotRelease = null;
     if (!this.pendingSnapshot) return null;
 
     const state = this.pendingSnapshot;
+    const releaseSnapshot = this.pendingSnapshotRelease;
     this.pendingSnapshot = null;
+    this.pendingSnapshotRelease = null;
 
     // Swap spawns
     const spawns = this.bufferedSpawns;
@@ -278,12 +293,15 @@ export class SnapshotBuffer {
       this.bufferedGrid = undefined;
     }
 
+    this.consumedSnapshotRelease = releaseSnapshot;
     return state;
   }
 
   /** Release all buffered data. */
   clear(): void {
-    this.pendingSnapshot = null;
+    this.releasePendingSnapshot();
+    this.consumedSnapshotRelease?.();
+    this.consumedSnapshotRelease = null;
     this.fullSnapshotCloner.clear();
     this._spawnsA.length = 0;
     this._spawnsB.length = 0;
@@ -314,5 +332,11 @@ export class SnapshotBuffer {
     this._beamBufB.length = 0;
     this._beamPoolA.length = 0;
     this._beamPoolB.length = 0;
+  }
+
+  private releasePendingSnapshot(): void {
+    this.pendingSnapshot = null;
+    this.pendingSnapshotRelease?.();
+    this.pendingSnapshotRelease = null;
   }
 }

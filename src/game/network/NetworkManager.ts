@@ -93,6 +93,7 @@ export class NetworkManager {
   private gameStarted: boolean = false;
   private snapshotTransport = new NetworkSnapshotTransport({
     onSnapshotDropped: (playerId) => this.emitSnapshotDropped(playerId),
+    onPendingDeltaDropped: () => this.commandTransport.sendSnapshotResyncRequest(),
   });
   private commandTransport = new NetworkCommandTransport({
     getGameId: () => this.getUniversalGameId(),
@@ -101,6 +102,7 @@ export class NetworkManager {
     isMessageForCurrentGame: (message) => this.isMessageForCurrentGame(message.gameId),
     onClientReady: (playerId) => this.emitClientReady(playerId),
     onCommandReceived: (command, fromPlayerId) => this.emitCommandReceived(command, fromPlayerId),
+    onSnapshotResyncRequested: (playerId) => this.emitSnapshotDropped(playerId),
     send: (conn, message) => this.safeSend(conn, message),
   });
   private dataChannelMonitor = new NetworkDataChannelMonitor();
@@ -708,6 +710,7 @@ export class NetworkManager {
 
       case 'command':
       case 'clientReady':
+      case 'snapshotResync':
         this.commandTransport.handleMessage(message, fromPlayerId);
         break;
 

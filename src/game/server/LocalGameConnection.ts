@@ -5,7 +5,7 @@ import type { GameServer } from './GameServer';
 import type { Command } from '../sim/commands';
 import type { PlayerId } from '../sim/types';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
-import { ReusableNetworkSnapshotCloner, cloneNetworkSnapshot } from '../network/snapshotClone';
+import { ReusableNetworkSnapshotCloner } from '../network/snapshotClone';
 import {
   encodeNetworkSnapshot,
   measureNetworkSnapshotWireBreakdown,
@@ -25,6 +25,7 @@ export class LocalGameConnection implements GameConnection {
   private snapshotCallback: SnapshotCallback | null = null;
   private gameOverCallback: GameOverCallback | null = null;
   private pendingSnapshot: NetworkServerSnapshot | null = null;
+  private pendingSnapshotRelease: (() => void) | null = null;
   private pendingSnapshotCloner = new ReusableNetworkSnapshotCloner();
   private snapshotImpairment = createSnapshotImpairmentQueue('local');
   private snapshotListenerKey: string;
@@ -91,7 +92,7 @@ export class LocalGameConnection implements GameConnection {
     // Drop any held pending-snapshot from the previous binding — its
     // delta baseline is for the old recipient, so applying it on top
     // of the new view would produce nonsense.
-    this.pendingSnapshot = null;
+    this.releasePendingSnapshot();
     this.snapshotListenerKey = this.subscribeSnapshots(server, playerId);
     // Mark the fresh listener ready immediately; we know the client
     // scene is already past startup (only running scenes toggle).
@@ -103,19 +104,26 @@ export class LocalGameConnection implements GameConnection {
       this.recordLocalSnapshotWireCost(state);
       this.snapshotImpairment.schedule(
         state,
-        (deliveredState) => this.receiveSnapshot(deliveredState),
-        cloneNetworkSnapshot,
+        (deliveredState, releaseSnapshot) => this.receiveSnapshot(deliveredState, releaseSnapshot),
       );
     }, playerId);
   }
 
-  private receiveSnapshot(state: NetworkServerSnapshot): void {
+  private receiveSnapshot(
+    state: NetworkServerSnapshot,
+    releaseSnapshot: (() => void) | undefined = undefined,
+  ): void {
     if (this.snapshotCallback) {
-      this.snapshotCallback(state);
+      this.snapshotCallback(state, releaseSnapshot);
     } else if (!this.pendingSnapshot || (this.pendingSnapshot.isDelta && !state.isDelta)) {
+      this.releasePendingSnapshot();
       this.pendingSnapshot = state.isDelta
         ? state
         : this.pendingSnapshotCloner.clone(state);
+      this.pendingSnapshotRelease = state.isDelta ? releaseSnapshot ?? null : null;
+      if (!state.isDelta) releaseSnapshot?.();
+    } else {
+      releaseSnapshot?.();
     }
   }
 
@@ -173,8 +181,10 @@ export class LocalGameConnection implements GameConnection {
     this.snapshotCallback = callback;
     if (this.pendingSnapshot) {
       const pending = this.pendingSnapshot;
+      const releasePending = this.pendingSnapshotRelease;
       this.pendingSnapshot = null;
-      callback(pending);
+      this.pendingSnapshotRelease = null;
+      callback(pending, releasePending ?? undefined);
     }
   }
 
@@ -196,7 +206,13 @@ export class LocalGameConnection implements GameConnection {
     server.removeGameOverListener(this.gameOverListenerRef);
     this.snapshotCallback = null;
     this.gameOverCallback = null;
-    this.pendingSnapshot = null;
+    this.releasePendingSnapshot();
     this.pendingSnapshotCloner.clear();
+  }
+
+  private releasePendingSnapshot(): void {
+    this.pendingSnapshot = null;
+    this.pendingSnapshotRelease?.();
+    this.pendingSnapshotRelease = null;
   }
 }

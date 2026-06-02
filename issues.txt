@@ -64,29 +64,6 @@ and surface a tickMs/intervalMs saturation metric into serverMeta.
 NETWORKING / SNAPSHOTS
 ================================================================================
 
-6.1 [MEDIUM] Snapshot impairment delay path still allocates fresh cloners.
-
-src/game/network/snapshotClone.ts:548 — the free function does
-`new ReusableNetworkSnapshotCloner().clone(state)`. Local and remote pending client
-buffers hold long-lived cloners, but LocalGameConnection.subscribeSnapshots and
-RemoteGameConnection.stateHandler still pass cloneNetworkSnapshot into
-SnapshotImpairmentQueue.schedule. When snapshot impairment/delay is enabled, every delayed
-snapshot allocates a fresh cloner and its internal DTO arrays/objects.
-FIX: make SnapshotImpairmentQueue own a lifetime-safe delayed snapshot clone pool, or
-change the queue contract so callers can return/reuse ReusableNetworkSnapshotCloner
-instances only after delivered snapshots can no longer be referenced.
-
-6.3 [MEDIUM] Client receive-coalescing silently drops a delta when one is already
-pending.
-
-src/game/network/NetworkSnapshotTransport.ts:156-162 — storePendingState only stores when
-there is no pending state (or when upgrading delta->full); a second delta arriving before
-the first is consumed is dropped, not coalesced. Deltas are non-idempotent (each carries
-only fields changed since last sent), so dropping one loses those corrections with no
-resync trigger.
-FIX: apply/merge the pending delta before overwriting, or at minimum request a keyframe
-when a delta is dropped here.
-
 ================================================================================
 ARCHITECTURE / PHILOSOPHY MIGRATION (budget_design_philosophy.html)
 ================================================================================

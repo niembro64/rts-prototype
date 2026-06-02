@@ -5,12 +5,13 @@ import type { Command } from '../sim/commands';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { networkManager } from '../network/NetworkManager';
 import { createSnapshotImpairmentQueue } from '../network/SnapshotImpairment';
-import { ReusableNetworkSnapshotCloner, cloneNetworkSnapshot } from '../network/snapshotClone';
+import { ReusableNetworkSnapshotCloner } from '../network/snapshotClone';
 
 export class RemoteGameConnection implements GameConnection {
   private snapshotCallback: SnapshotCallback | null = null;
   private gameOverCallback: GameOverCallback | null = null;
   private pendingSnapshot: NetworkServerSnapshot | null = null;
+  private pendingSnapshotRelease: (() => void) | null = null;
   private pendingSnapshotCloner = new ReusableNetworkSnapshotCloner();
   private snapshotImpairment = createSnapshotImpairmentQueue('remote');
   private disconnected = false;
@@ -23,23 +24,33 @@ export class RemoteGameConnection implements GameConnection {
       // Decoded snapshots reuse pooled DTOs that the next decode overwrites.
       // A delayed (held-across-decodes) snapshot must be cloned into owned
       // objects, so clone-for-delay is required for pool safety.
-      this.snapshotImpairment.schedule(state, (deliveredState) => {
-        if (this.disconnected) return;
-        this.receiveSnapshot(deliveredState);
-      }, cloneNetworkSnapshot);
+      this.snapshotImpairment.schedule(state, (deliveredState, releaseSnapshot) => {
+        if (this.disconnected) {
+          releaseSnapshot?.();
+          return;
+        }
+        this.receiveSnapshot(deliveredState, releaseSnapshot);
+      });
     };
     networkManager.onStateReceived = this.stateHandler;
   }
 
-  private receiveSnapshot(state: NetworkServerSnapshot): void {
+  private receiveSnapshot(
+    state: NetworkServerSnapshot,
+    releaseSnapshot: (() => void) | undefined = undefined,
+  ): void {
+    const gameState = state.gameState;
     if (this.snapshotCallback) {
-      this.snapshotCallback(state);
+      this.snapshotCallback(state, releaseSnapshot);
     } else if (!this.pendingSnapshot || (this.pendingSnapshot.isDelta && !state.isDelta)) {
+      this.releasePendingSnapshot();
       // Buffered across the next decode, which reuses pooled DTOs — clone
       // into owned objects so the held snapshot can't be overwritten.
       this.pendingSnapshot = this.pendingSnapshotCloner.clone(state);
+      releaseSnapshot?.();
+    } else {
+      releaseSnapshot?.();
     }
-    const gameState = state.gameState;
     const gameOverCallback = this.gameOverCallback;
     if (
       gameState !== undefined &&
@@ -69,8 +80,11 @@ export class RemoteGameConnection implements GameConnection {
       (this.pendingSnapshot.isDelta && pendingFromNetworkManager && !pendingFromNetworkManager.isDelta)
       ? pendingFromNetworkManager
       : this.pendingSnapshot;
+    const releasePending = pending === this.pendingSnapshot ? this.pendingSnapshotRelease : null;
+    if (pending !== this.pendingSnapshot) this.pendingSnapshotRelease?.();
     this.pendingSnapshot = null;
-    if (pending) callback(pending);
+    this.pendingSnapshotRelease = null;
+    if (pending) callback(pending, releasePending ?? undefined);
   }
 
   onSimEvent(_callback: SimEventCallback): void {
@@ -88,9 +102,15 @@ export class RemoteGameConnection implements GameConnection {
     this.snapshotImpairment.clear();
     this.snapshotCallback = null;
     this.gameOverCallback = null;
-    this.pendingSnapshot = null;
+    this.releasePendingSnapshot();
     if (networkManager.onStateReceived === this.stateHandler) {
       networkManager.onStateReceived = undefined;
     }
+  }
+
+  private releasePendingSnapshot(): void {
+    this.pendingSnapshot = null;
+    this.pendingSnapshotRelease?.();
+    this.pendingSnapshotRelease = null;
   }
 }

@@ -32,6 +32,7 @@ type SnapshotSendTelemetry = {
 type SnapshotCompressionDescriptor = NonNullable<NetworkStateMessage['compression']>;
 type NetworkSnapshotTransportOptions = {
   onSnapshotDropped?: (playerId: PlayerId) => void;
+  onPendingDeltaDropped?: () => void;
 };
 
 function isSnapshotCompressionFormat(value: unknown): value is SnapshotCompressionFormat {
@@ -160,11 +161,20 @@ export class NetworkSnapshotTransport {
   }
 
   storePendingState(state: NetworkServerSnapshot): void {
-    if (!this.pendingReceivedState || (this.pendingReceivedState.isDelta && !state.isDelta)) {
+    if (!state.isDelta) {
+      // A newer full keyframe supersedes any buffered state.
+      this.pendingReceivedState = this.pendingReceivedStateCloner.clone(state);
+      return;
+    }
+
+    if (!this.pendingReceivedState) {
       // Held until a later consume; the next decode reuses pooled DTOs, so
       // clone into owned objects to keep the buffered snapshot intact.
       this.pendingReceivedState = this.pendingReceivedStateCloner.clone(state);
+      return;
     }
+
+    this.options.onPendingDeltaDropped?.();
   }
 
   consumePendingState(): NetworkServerSnapshot | null {
