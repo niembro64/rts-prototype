@@ -31,6 +31,7 @@ import {
   type RayConfigRangeSphere,
 } from '../combat/lineShotRange';
 import { ENTITY_CHANGED_HP } from '../../../types/network';
+import { getSimWasm } from '../../sim-wasm/init';
 import {
   BUILDING_CLOSED_DAMAGE_MULTIPLIER,
   buildingBlueprintHasActiveState,
@@ -149,6 +150,21 @@ const BEAM_GROUND_HIT_STEPS = 12;
 const BEAM_GROUND_HIT_BISECT_STEPS = 6;
 const BEAM_GROUND_EPSILON = 0.25;
 const SWEPT_HITBOX_QUERY_EXTRA = 32;
+
+const DAMAGE_TARGET_KIND_UNIT = 1;
+const DAMAGE_TARGET_KIND_BUILDING = 2;
+const DAMAGE_TARGET_KIND_PROJECTILE = 3;
+const DAMAGE_APPLY_FLAG_APPLIED = 1 << 0;
+const DAMAGE_APPLY_FLAG_KILLED = 1 << 1;
+
+const _damageApplyEnabled = new Uint8Array(1);
+const _damageApplyTargetKind = new Uint8Array(1);
+const _damageApplyHp = new Float64Array(1);
+const _damageApplyDamage = new Float64Array(1);
+const _damageApplyBuildingFortified = new Uint8Array(1);
+const _damageApplyOutHp = new Float64Array(1);
+const _damageApplyOutEffectiveDamage = new Float64Array(1);
+const _damageApplyOutFlags = new Uint8Array(1);
 
 function isTurretDamageable(turret: Turret): boolean {
   return turret.id !== NO_ENTITY_ID && !turret.config.visualOnly;
@@ -1389,10 +1405,62 @@ export class DamageSystem {
     // Mounted turret IDs are addressable hit targets, but turrets no longer
     // own health. Damage that enters through a turret hitbox resolves through
     // the host body.
-    if (entity.unit && entity.unit.hp > 0) {
-      entity.unit.hp -= damage;
+    const unit = entity.unit;
+    const building = entity.building;
+    const projectile = entity.projectile;
+    let targetKind = 0;
+    let currentHp = 0;
+    let buildingFortified = false;
+
+    if (unit && unit.hp > 0) {
+      targetKind = DAMAGE_TARGET_KIND_UNIT;
+      currentHp = unit.hp;
+    } else if (building && building.hp > 0) {
+      targetKind = DAMAGE_TARGET_KIND_BUILDING;
+      currentHp = building.hp;
+      buildingFortified = isBuildingActiveStateFortified(entity);
+    } else if (
+      projectile &&
+      projectile.projectileType === 'projectile' &&
+      projectile.hp > 0 &&
+      isProjectileShot(projectile.config.shot)
+    ) {
+      targetKind = DAMAGE_TARGET_KIND_PROJECTILE;
+      currentHp = projectile.hp;
+    } else {
+      return;
+    }
+
+    _damageApplyEnabled[0] = 1;
+    _damageApplyTargetKind[0] = targetKind;
+    _damageApplyHp[0] = currentHp;
+    _damageApplyDamage[0] = damage;
+    _damageApplyBuildingFortified[0] = buildingFortified ? 1 : 0;
+    const sim = getSimWasm();
+    if (sim === undefined) {
+      throw new Error('Damage HP write-back requires initialized sim-wasm');
+    }
+    const processed = sim.damageApplyBatch(
+      1,
+      _damageApplyEnabled,
+      _damageApplyTargetKind,
+      _damageApplyHp,
+      _damageApplyDamage,
+      _damageApplyBuildingFortified,
+      BUILDING_CLOSED_DAMAGE_MULTIPLIER,
+      _damageApplyOutHp,
+      _damageApplyOutEffectiveDamage,
+      _damageApplyOutFlags,
+    );
+    if (processed !== 1 || (_damageApplyOutFlags[0] & DAMAGE_APPLY_FLAG_APPLIED) === 0) {
+      return;
+    }
+
+    const killed = (_damageApplyOutFlags[0] & DAMAGE_APPLY_FLAG_KILLED) !== 0;
+    if (targetKind === DAMAGE_TARGET_KIND_UNIT && unit !== null) {
+      unit.hp = _damageApplyOutHp[0];
       this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
-      if (entity.unit.hp <= 0 && !result.killedUnitIds.has(entity.id)) {
+      if (killed && !result.killedUnitIds.has(entity.id)) {
         result.killedUnitIds.add(entity.id);
         this.recordKiller(result, entity.id, sourceEntityId);
         // Store death context for explosion effects
@@ -1400,27 +1468,19 @@ export class DamageSystem {
           result.deathContexts.set(entity.id, deathContext);
         }
       }
-    } else if (entity.building && entity.building.hp > 0) {
-      const effectiveDamage = isBuildingActiveStateFortified(entity)
-        ? damage * BUILDING_CLOSED_DAMAGE_MULTIPLIER
-        : damage;
+    } else if (targetKind === DAMAGE_TARGET_KIND_BUILDING && building !== null) {
       if (buildingBlueprintHasActiveState(entity.buildingBlueprintId)) {
         notifyBuildingActiveStateDamaged(this.world, entity);
       }
-      entity.building.hp -= effectiveDamage;
+      building.hp = _damageApplyOutHp[0];
       this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
-      if (entity.building.hp <= 0 && !result.killedBuildingIds.has(entity.id)) {
+      if (killed && !result.killedBuildingIds.has(entity.id)) {
         result.killedBuildingIds.add(entity.id);
         this.recordKiller(result, entity.id, sourceEntityId);
       }
-    } else if (
-      entity.projectile &&
-      entity.projectile.projectileType === 'projectile' &&
-      entity.projectile.hp > 0 &&
-      isProjectileShot(entity.projectile.config.shot)
-    ) {
-      entity.projectile.hp -= damage;
-      if (entity.projectile.hp <= 0 && !result.killedProjectileIds.has(entity.id)) {
+    } else if (targetKind === DAMAGE_TARGET_KIND_PROJECTILE && projectile !== null) {
+      projectile.hp = _damageApplyOutHp[0];
+      if (killed && !result.killedProjectileIds.has(entity.id)) {
         result.killedProjectileIds.add(entity.id);
       }
     }

@@ -244,6 +244,91 @@ pub fn commander_apply_reclaim_tick(
     1
 }
 
+const DAMAGE_TARGET_KIND_UNIT: u8 = 1;
+const DAMAGE_TARGET_KIND_BUILDING: u8 = 2;
+const DAMAGE_TARGET_KIND_PROJECTILE: u8 = 3;
+
+const DAMAGE_APPLY_FLAG_APPLIED: u8 = 1 << 0;
+const DAMAGE_APPLY_FLAG_KILLED: u8 = 1 << 1;
+
+/// C1 damage migration — authoritative HP write-back math.
+///
+/// TypeScript still gathers hit candidates and applies the returned entity
+/// diffs, but Rust owns the target-kind damage adjustment, next-HP value, and
+/// death classification. This keeps projectile splash, direct hits, and death
+/// explosions on one shared write-back contract while the larger ECS migration
+/// is still underway.
+#[wasm_bindgen]
+pub fn damage_apply_batch(
+    count: u32,
+    enabled: &[u8],
+    target_kind: &[u8],
+    hp: &[f64],
+    damage: &[f64],
+    building_fortified: &[u8],
+    building_damage_multiplier: f64,
+    out_hp: &mut [f64],
+    out_effective_damage: &mut [f64],
+    out_flags: &mut [u8],
+) -> u32 {
+    let n = count as usize;
+    if enabled.len() < n
+        || target_kind.len() < n
+        || hp.len() < n
+        || damage.len() < n
+        || building_fortified.len() < n
+        || out_hp.len() < n
+        || out_effective_damage.len() < n
+        || out_flags.len() < n
+    {
+        return 0;
+    }
+
+    let building_multiplier = if building_damage_multiplier.is_finite() {
+        building_damage_multiplier
+    } else {
+        1.0
+    };
+
+    let mut processed = 0_u32;
+    for i in 0..n {
+        out_hp[i] = hp[i];
+        out_effective_damage[i] = 0.0;
+        out_flags[i] = 0;
+
+        if enabled[i] == 0 || hp[i] <= 0.0 {
+            continue;
+        }
+
+        let kind = target_kind[i];
+        if kind != DAMAGE_TARGET_KIND_UNIT
+            && kind != DAMAGE_TARGET_KIND_BUILDING
+            && kind != DAMAGE_TARGET_KIND_PROJECTILE
+        {
+            continue;
+        }
+
+        let multiplier = if kind == DAMAGE_TARGET_KIND_BUILDING && building_fortified[i] != 0 {
+            building_multiplier
+        } else {
+            1.0
+        };
+        let effective_damage = damage[i] * multiplier;
+        let next_hp = hp[i] - effective_damage;
+
+        out_hp[i] = next_hp;
+        out_effective_damage[i] = effective_damage;
+        let mut flags = DAMAGE_APPLY_FLAG_APPLIED;
+        if next_hp <= 0.0 {
+            flags |= DAMAGE_APPLY_FLAG_KILLED;
+        }
+        out_flags[i] = flags;
+        processed += 1;
+    }
+
+    processed
+}
+
 /// Factory construction-site placement kernel. TypeScript supplies the
 /// authored footprint/radius constants and current factory/rally state;
 /// Rust owns the direction normalization, footprint-edge projection,
@@ -29321,6 +29406,85 @@ mod sim_kernel_tests {
         assert_eq!(ay, by);
         assert_eq!(az, bz);
         assert_ne!(ax, [3.0; 4]);
+    }
+
+    #[test]
+    fn damage_apply_batch_applies_unit_projectile_and_fortified_building_damage() {
+        let enabled = [1_u8, 1, 1, 1];
+        let kind = [
+            DAMAGE_TARGET_KIND_UNIT,
+            DAMAGE_TARGET_KIND_BUILDING,
+            DAMAGE_TARGET_KIND_PROJECTILE,
+            DAMAGE_TARGET_KIND_BUILDING,
+        ];
+        let hp = [100.0, 100.0, 12.0, 100.0];
+        let damage = [40.0, 40.0, 20.0, 40.0];
+        let fortified = [0_u8, 1, 0, 0];
+        let mut out_hp = [0.0; 4];
+        let mut out_effective_damage = [0.0; 4];
+        let mut out_flags = [0_u8; 4];
+
+        assert_eq!(
+            damage_apply_batch(
+                4,
+                &enabled,
+                &kind,
+                &hp,
+                &damage,
+                &fortified,
+                0.1,
+                &mut out_hp,
+                &mut out_effective_damage,
+                &mut out_flags,
+            ),
+            4,
+        );
+
+        assert_eq!(out_hp, [60.0, 96.0, -8.0, 60.0]);
+        assert_eq!(out_effective_damage, [40.0, 4.0, 20.0, 40.0]);
+        assert_eq!(out_flags[0], DAMAGE_APPLY_FLAG_APPLIED);
+        assert_eq!(out_flags[1], DAMAGE_APPLY_FLAG_APPLIED);
+        assert_eq!(
+            out_flags[2],
+            DAMAGE_APPLY_FLAG_APPLIED | DAMAGE_APPLY_FLAG_KILLED,
+        );
+        assert_eq!(out_flags[3], DAMAGE_APPLY_FLAG_APPLIED);
+    }
+
+    #[test]
+    fn damage_apply_batch_preserves_disabled_dead_and_negative_damage_rows() {
+        let enabled = [0_u8, 1, 1];
+        let kind = [
+            DAMAGE_TARGET_KIND_UNIT,
+            DAMAGE_TARGET_KIND_UNIT,
+            DAMAGE_TARGET_KIND_UNIT,
+        ];
+        let hp = [25.0, 0.0, 10.0];
+        let damage = [5.0, 5.0, -4.0];
+        let fortified = [0_u8; 3];
+        let mut out_hp = [99.0; 3];
+        let mut out_effective_damage = [99.0; 3];
+        let mut out_flags = [99_u8; 3];
+
+        assert_eq!(
+            damage_apply_batch(
+                3,
+                &enabled,
+                &kind,
+                &hp,
+                &damage,
+                &fortified,
+                0.1,
+                &mut out_hp,
+                &mut out_effective_damage,
+                &mut out_flags,
+            ),
+            1,
+        );
+
+        assert_eq!(out_hp, [25.0, 0.0, 14.0]);
+        assert_eq!(out_effective_damage, [0.0, 0.0, -4.0]);
+        assert_eq!(out_flags, [0, 0, DAMAGE_APPLY_FLAG_APPLIED]);
     }
 
     #[test]

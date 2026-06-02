@@ -33,6 +33,7 @@ import __wbg_init, {
   economy_apply_equal_consumer_debits,
   construction_reconcile_and_grow_pieces,
   construction_apply_consumer_spends,
+  damage_apply_batch,
   economy_apply_income_credits,
   economy_apply_converter_transfers,
   arrival_completion_step_batch,
@@ -917,6 +918,21 @@ export interface SimWasm {
     forceScale: number,
     hoverOrientationK: number,
     hoverOrientationC: number,
+  ) => number;
+  /** C1 — authoritative HP write-back math for damage. TypeScript
+   *  gathers candidates and applies returned entity diffs; Rust owns
+   *  target-kind adjustment, next HP, and kill classification. */
+  readonly damageApplyBatch: (
+    count: number,
+    enabled: Uint8Array,
+    targetKind: Uint8Array,
+    hp: Float64Array,
+    damage: Float64Array,
+    buildingFortified: Uint8Array,
+    buildingDamageMultiplier: number,
+    outHp: Float64Array,
+    outEffectiveDamage: Float64Array,
+    outFlags: Uint8Array,
   ) => number;
   /** Phase 5a — Packed projectile SoA pool. Same lifetime / view
    *  semantics as `pool` (BodyPool): fixed capacity, views captured
@@ -3526,6 +3542,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         unitGroundNormalStepPool: unit_ground_normal_step_pool,
         quatHoverOrientationStepBatch: quat_hover_orientation_step_batch,
         unitForceStepBatch: unit_force_step_batch,
+        damageApplyBatch: damage_apply_batch,
         projectilePool,
         projectileReflectorIntersectionsBatch: projectile_reflector_intersections_batch,
         projectileReflectionResponseBatch: projectile_reflection_response_batch,
