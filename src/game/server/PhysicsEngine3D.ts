@@ -657,6 +657,10 @@ export class PhysicsEngine3D {
     this.ignoreStatic.set(dynamicBody, staticBody);
   }
 
+  recordWasmForceWake(body: Body3D): void {
+    this.wakeBody(body);
+  }
+
   private wakeBody(body: Body3D): void {
     if (body.sleeping) {
       body.sleeping = false;

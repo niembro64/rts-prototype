@@ -56,6 +56,7 @@ import __wbg_init, {
   engine_statics_remove,
   pool_resolve_sphere_cuboid_full,
   quat_hover_orientation_step_batch,
+  unit_force_step_batch,
   projectile_pool_init,
   projectile_pool_capacity,
   projectile_pool_pos_x_ptr,
@@ -895,6 +896,23 @@ export interface SimWasm {
     c: number,
     dtSec: number,
   ) => void;
+  /** Server authoritative unit-force batch. TypeScript gathers active
+   *  unit rows, pre-sampled terrain/water data, and external force
+   *  inputs; Rust computes drive/lift/brake/water-wall force outputs,
+   *  writes BodyPool accelerations directly, and returns row flags for
+   *  Unit/Entity scatter plus body wake bookkeeping. */
+  readonly unitForceStepBatch: (
+    slots: Uint32Array,
+    flags: Uint32Array,
+    rows: Float64Array,
+    outFlags: Uint32Array,
+    count: number,
+    dtSec: number,
+    thrustMultiplier: number,
+    forceScale: number,
+    hoverOrientationK: number,
+    hoverOrientationC: number,
+  ) => number;
   /** Phase 5a — Packed projectile SoA pool. Same lifetime / view
    *  semantics as `pool` (BodyPool): fixed capacity, views captured
    *  once, refresh on memory.grow via `refreshViews`. JS-side slot
@@ -3019,6 +3037,10 @@ export interface ProjectilePoolViews {
  *  QUAT_HOVER_BATCH_STRIDE in rts-sim-wasm/src/lib.rs. */
 export const QUAT_HOVER_BATCH_STRIDE = 14;
 
+/** Layout stride for `unitForceStepBatch`. Mirrors
+ *  UNIT_FORCE_BATCH_STRIDE in rts-sim-wasm/src/lib.rs. */
+export const UNIT_FORCE_BATCH_STRIDE = 36;
+
 /** Bit flags packed into BodyPoolViews.flags[slot]. Mirrors the
  *  BODY_FLAG_* constants in rts-sim-wasm/src/lib.rs. */
 export const BODY_FLAG_SLEEPING = 1 << 0;
@@ -3373,6 +3395,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         arrivalControlStepBatch: arrival_control_step_batch,
         unitGroundNormalStepPool: unit_ground_normal_step_pool,
         quatHoverOrientationStepBatch: quat_hover_orientation_step_batch,
+        unitForceStepBatch: unit_force_step_batch,
         projectilePool,
         projectileReflectorIntersectionsBatch: projectile_reflector_intersections_batch,
         poolStepPackedProjectilesBatch: pool_step_packed_projectiles_batch,

@@ -31,22 +31,6 @@ Render3DEntities.update -> updateUnitMeshes (per-unit) -> locomotion/turret/HUD.
 PERFORMANCE — SERVER / PHYSICS
 ================================================================================
 
-5.0 [MAJOR] Per-body unit force application + idle/hover/water-wall math still
-runs as per-tick TypeScript loops.
-
-src/game/server/UnitForceSystem.ts:97-690 (applyForces) is still a per-entity
-body loop that owns thrust gating, water-wall escape, idle braking, hover lift,
-external force scaling, movement acceleration write-back, and hover orientation
-gather in TypeScript. collectPhysicsForceUnitIds still merges moving units,
-flying units, force-accumulator IDs, and awake IDs in TypeScript before the
-per-entity force loop. Body integration, contacts, PhysicsEngine3D step
-prep/final force clearing, and awake-ID collection are Rust pool-backed, but the
-remaining UnitForceSystem loop still violates "TypeScript must never own
-per-unit update loops / physics integration."
-FIX: migrate UnitForceSystem force-application math into a packed WASM kernel
-(the hover-orientation batch is the model), including active-body candidate
-merge where practical.
-
 ================================================================================
 NETWORKING / SNAPSHOTS
 ================================================================================
