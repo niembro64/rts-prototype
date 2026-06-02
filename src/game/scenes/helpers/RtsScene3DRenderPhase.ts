@@ -10,7 +10,7 @@ import type { EntityHudType, SelectionHudMode } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { SprayTarget } from '@/types/ui';
 import type { ClientViewState } from '../../network/ClientViewState';
-import type { Entity, PlayerId } from '../../sim/types';
+import type { Entity, EntityId, PlayerId } from '../../sim/types';
 import { getDefaultPlayerName } from '@/playerNamesConfig';
 import type { ThreeApp } from '../../render3d/ThreeApp';
 import type { Render3DEntities } from '../../render3d/Render3DEntities';
@@ -27,7 +27,10 @@ import type { ShieldImpactRenderer3D } from '../../render3d/ShieldImpactRenderer
 import type { WaterSplash3D } from '../../render3d/WaterSplash3D';
 import type { Debris3D } from '../../render3d/Debris3D';
 import type { BurnMark3D } from '../../render3d/BurnMark3D';
-import type { GroundPrint3D } from '../../render3d/GroundPrint3D';
+import {
+  GroundPrintRenderPacket3D,
+  type GroundPrint3D,
+} from '../../render3d/GroundPrint3D';
 import type { LineDrag3D } from '../../render3d/LineDrag3D';
 import type { SprayRenderer3D } from '../../render3d/SprayRenderer3D';
 import type { PylonTubeFlowRenderer } from '../../render3d/PylonTubeFlowRenderer';
@@ -112,6 +115,7 @@ type RenderPhaseEntityLists = {
   shieldUnits: readonly Entity[];
   projectiles: readonly Entity[];
   contactShadows: ContactShadowRenderPacket3D;
+  groundPrints: GroundPrintRenderPacket3D;
 };
 
 type RenderPhaseEntityListOptions = {
@@ -121,6 +125,7 @@ type RenderPhaseEntityListOptions = {
   includeShieldUnits: boolean;
   includeProjectiles: boolean;
   includeContactShadows: boolean;
+  includeGroundPrints: boolean;
 };
 
 const EMPTY_ENTITY_LIST: readonly Entity[] = [];
@@ -146,6 +151,7 @@ export class RtsScene3DRenderPhase {
   private readonly scopedShieldUnitsScratch: Entity[] = [];
   private readonly scopedProjectilesScratch: Entity[] = [];
   private readonly contactShadowPacket = new ContactShadowRenderPacket3D();
+  private readonly groundPrintPacket = new GroundPrintRenderPacket3D();
   private readonly renderEntityLists: RenderPhaseEntityLists = {
     units: [],
     buildings: [],
@@ -155,6 +161,7 @@ export class RtsScene3DRenderPhase {
     shieldUnits: [],
     projectiles: [],
     contactShadows: this.contactShadowPacket,
+    groundPrints: this.groundPrintPacket,
   };
   private readonly frustum = new THREE.Frustum();
   private readonly frustumMatrix = new THREE.Matrix4();
@@ -162,8 +169,8 @@ export class RtsScene3DRenderPhase {
   private readonly enqueuePylonTubeHandoff = (flowKey: string, intensity: number): void => {
     this.resources.pylonTubeFlowRenderer.enqueueTipHandoff(flowKey, intensity);
   };
-  private readonly getGroundPrintLocomotionMesh = (entity: Entity) =>
-    this.resources.entityRenderer.getLocomotionMesh(entity.id);
+  private readonly getGroundPrintLocomotionMesh = (entityId: EntityId) =>
+    this.resources.entityRenderer.getLocomotionMesh(entityId);
   private readonly lookupPlayerDisplayName = (playerId: PlayerId): string | null =>
     this.lookupPlayerName(playerId) ?? getDefaultPlayerName(playerId);
   /** Camera-distance fade shared by HP/build bars + name labels so
@@ -307,6 +314,7 @@ export class RtsScene3DRenderPhase {
       includeProjectiles: shotNamesEnabled,
       includeContactShadows:
         contactShadowRenderer?.shouldBuildPacket(this.renderFrameIndex) ?? false,
+      includeGroundPrints: updateEffectsThisFrame,
     });
     if (contactShadowRenderer && updateContactShadowsThisFrame) {
       contactShadowRenderer.update(entityLists.contactShadows, this.renderFrameIndex);
@@ -358,11 +366,9 @@ export class RtsScene3DRenderPhase {
     this.groundPrintAccumMs += effectDtMs;
     if (updateEffectsThisFrame) {
       groundPrintRenderer.update(
-        entityLists.units,
+        entityLists.groundPrints,
         this.getGroundPrintLocomotionMesh,
         this.groundPrintAccumMs,
-        this.clientViewState.getMapWidth(),
-        this.clientViewState.getMapHeight(),
       );
       this.groundPrintAccumMs = 0;
     }
@@ -489,7 +495,9 @@ export class RtsScene3DRenderPhase {
   private prepareEntityLists(options: RenderPhaseEntityListOptions): RenderPhaseEntityLists {
     const lists = this.renderEntityLists;
     const contactShadows = this.contactShadowPacket;
+    const groundPrints = this.groundPrintPacket;
     contactShadows.reset();
+    groundPrints.reset();
     if (this.renderScope.getMode() === 'all') {
       lists.units = this.clientViewState.getUnits();
       lists.buildings = this.clientViewState.getBuildings();
@@ -510,6 +518,9 @@ export class RtsScene3DRenderPhase {
         : EMPTY_ENTITY_LIST;
       if (options.includeContactShadows) {
         this.populateContactShadowPacket(lists.units, lists.buildings);
+      }
+      if (options.includeGroundPrints) {
+        this.populateGroundPrintPacket(lists.units);
       }
       return lists;
     }
@@ -575,6 +586,9 @@ export class RtsScene3DRenderPhase {
     if (options.includeContactShadows) {
       this.populateContactShadowPacket(units, buildings);
     }
+    if (options.includeGroundPrints) {
+      this.populateGroundPrintPacket(units);
+    }
     return lists;
   }
 
@@ -590,6 +604,15 @@ export class RtsScene3DRenderPhase {
     }
     for (const building of buildings) {
       packet.pushBuilding(building, this.renderScope);
+    }
+  }
+
+  private populateGroundPrintPacket(units: readonly Entity[]): void {
+    const packet = this.groundPrintPacket;
+    const mapWidth = this.clientViewState.getMapWidth();
+    const mapHeight = this.clientViewState.getMapHeight();
+    for (const unit of units) {
+      packet.pushUnit(unit, this.getGroundPrintLocomotionMesh, mapWidth, mapHeight);
     }
   }
 

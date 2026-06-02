@@ -99,6 +99,7 @@ const STAMP_MIN_DIST_SQ = 4;
 // only kicks in at pathological loads (100+ mobile units all
 // sprinting at MAX), at which point we evict oldest-on-emit.
 const HARD_CAP = 16000;
+const UNIT_PACKET_INITIAL_CAP = 4096;
 
 // Miter limit — clamp the bisector offset to 3× halfWidth so a
 // near-180° turn doesn't produce an infinite spike.
@@ -114,6 +115,57 @@ const DENSITY_EMA_TAU_MS = 300;
 // the buffer drains. Without this floor, density = 0 would still
 // emit at SPACING_AT_ZERO_DENSITY intervals.
 const EMIT_DENSITY_FLOOR = 0.02;
+
+export class GroundPrintRenderPacket3D {
+  ids = new Float64Array(UNIT_PACKET_INITIAL_CAP);
+  x = new Float32Array(UNIT_PACKET_INITIAL_CAP);
+  y = new Float32Array(UNIT_PACKET_INITIAL_CAP);
+  grounded = new Uint8Array(UNIT_PACKET_INITIAL_CAP);
+  count = 0;
+
+  reset(): void {
+    this.count = 0;
+  }
+
+  pushUnit(
+    entity: Entity,
+    getMesh: (entityId: EntityId) => Locomotion3DMesh,
+    mapWidth: number,
+    mapHeight: number,
+  ): void {
+    const unit = entity.unit;
+    if (!unit) return;
+    const cursor = this.count;
+    this.ensureCapacity(cursor + 1);
+    const loc = getMesh(entity.id);
+    const grounded = loc?.type === 'legs'
+      ? loc.visualGrounded
+      : isLocomotionGrounded(entity, mapWidth, mapHeight);
+    this.ids[cursor] = entity.id;
+    this.x[cursor] = entity.transform.x;
+    this.y[cursor] = entity.transform.y;
+    this.grounded[cursor] = grounded ? 1 : 0;
+    this.count = cursor + 1;
+  }
+
+  private ensureCapacity(required: number): void {
+    if (required <= this.ids.length) return;
+    let nextCapacity = this.ids.length;
+    while (nextCapacity < required) nextCapacity *= 2;
+    const ids = new Float64Array(nextCapacity);
+    ids.set(this.ids);
+    this.ids = ids;
+    const x = new Float32Array(nextCapacity);
+    x.set(this.x);
+    this.x = x;
+    const y = new Float32Array(nextCapacity);
+    y.set(this.y);
+    this.y = y;
+    const grounded = new Uint8Array(nextCapacity);
+    grounded.set(this.grounded);
+    this.grounded = grounded;
+  }
+}
 
 function makeGroundPrintMaterial(): THREE.MeshBasicMaterial {
   const mat = new THREE.MeshBasicMaterial({
@@ -285,11 +337,9 @@ export class GroundPrint3D {
 
   /** Per-frame entry point. */
   update(
-    units: readonly Entity[],
-    getMesh: (e: Entity) => Locomotion3DMesh,
+    packet: GroundPrintRenderPacket3D,
+    getMesh: (entityId: EntityId) => Locomotion3DMesh,
     dtMs: number,
-    mapWidth: number,
-    mapHeight: number,
   ): void {
     // Toggle: if marks are off, drain everything and idle.
     if (!getLocomotionMarks()) {
@@ -301,7 +351,7 @@ export class GroundPrint3D {
     }
 
     if (
-      units.length === 0 &&
+      packet.count === 0 &&
       this.marks.length === 0 &&
       this.trails.size === 0 &&
       this.stamps.size === 0
@@ -345,7 +395,7 @@ export class GroundPrint3D {
       this.colDirty = true;
     }
 
-    this.refreshGroundedUnits(units, getMesh, mapWidth, mapHeight);
+    this.refreshGroundedUnits(packet);
 
     // Below the floor, skip the emit pass — keep the smoothed
     // density alive so the next frame can pick up smoothly. Ground
@@ -367,23 +417,24 @@ export class GroundPrint3D {
     this._seenTrailKeys.clear();
     this._seenStampKeys.clear();
 
-    for (const e of units) {
-      if (!this._groundedUnitIds.has(e.id)) continue;
-      const loc = getMesh(e);
+    for (let row = 0; row < packet.count; row++) {
+      const unitId = packet.ids[row] as EntityId;
+      if (!this._groundedUnitIds.has(unitId)) continue;
+      const loc = getMesh(unitId);
       if (!loc) continue;
       // Off-scope units: skip sampling entirely. Their trail/stamp
       // state will be retired at end-of-frame; if they re-enter
       // scope later the trail starts fresh from a square cap, which
       // is the right thing to do (we have no idea where they were
       // while off-screen).
-      if (this.scope && !this.scope.inScope(e.transform.x, e.transform.y, 200)) continue;
+      if (this.scope && !this.scope.inScope(packet.x[row], packet.y[row], 200)) continue;
 
       switch (loc.type) {
         case 'wheels': {
           for (let i = 0; i < loc.wheelContacts.length; i++) {
             const c = loc.wheelContacts[i];
             if (!c.initialized) continue;
-            const key = `wheel:${e.id}:${i}`;
+            const key = `wheel:${unitId}:${i}`;
             this._seenTrailKeys.add(key);
             this.sampleTrail(key, c.worldX, c.worldZ, loc.printWidth, spacingSq);
           }
@@ -393,7 +444,7 @@ export class GroundPrint3D {
           for (let i = 0; i < loc.treadContacts.length; i++) {
             const c = loc.treadContacts[i];
             if (!c.initialized) continue;
-            const key = `tread:${e.id}:${i}`;
+            const key = `tread:${unitId}:${i}`;
             this._seenTrailKeys.add(key);
             this.sampleTrail(key, c.worldX, c.worldZ, loc.printWidth, spacingSq);
           }
@@ -403,7 +454,7 @@ export class GroundPrint3D {
           for (let i = 0; i < loc.legs.length; i++) {
             const leg = loc.legs[i];
             if (!leg.initialized) continue;
-            const key = `leg:${e.id}:${i}`;
+            const key = `leg:${unitId}:${i}`;
             this._seenStampKeys.add(key);
             this.sampleStamp(key, leg);
           }
@@ -424,22 +475,16 @@ export class GroundPrint3D {
   }
 
   private refreshGroundedUnits(
-    units: readonly Entity[],
-    getMesh: (e: Entity) => Locomotion3DMesh,
-    mapWidth: number,
-    mapHeight: number,
+    packet: GroundPrintRenderPacket3D,
   ): void {
     this._activeUnitIds.clear();
     this._groundedUnitIds.clear();
 
-    for (const e of units) {
-      this._activeUnitIds.add(e.id);
-      const loc = getMesh(e);
-      const grounded = loc?.type === 'legs'
-        ? loc.visualGrounded
-        : isLocomotionGrounded(e, mapWidth, mapHeight);
-      if (grounded) {
-        this._groundedUnitIds.add(e.id);
+    for (let row = 0; row < packet.count; row++) {
+      const unitId = packet.ids[row] as EntityId;
+      this._activeUnitIds.add(unitId);
+      if (packet.grounded[row] !== 0) {
+        this._groundedUnitIds.add(unitId);
       }
     }
 
