@@ -23338,6 +23338,15 @@ const PROJECTILE_TERMINAL_FLAG_WATER_SPLASH: u32 = 1 << 3;
 const PROJECTILE_TERMINAL_FLAG_DETONATE: u32 = 1 << 4;
 const PROJECTILE_TERMINAL_FLAG_EXPIRE_EVENT: u32 = 1 << 5;
 
+const PROJECTILE_TERMINAL_EFFECT_FLAG_QUEUE_DESPAWN: u32 = 1 << 0;
+const PROJECTILE_TERMINAL_EFFECT_FLAG_SET_EXPLODED: u32 = 1 << 1;
+const PROJECTILE_TERMINAL_EFFECT_FLAG_APPLY_SPLASH: u32 = 1 << 2;
+const PROJECTILE_TERMINAL_EFFECT_FLAG_SPAWN_SUBMUNITIONS: u32 = 1 << 3;
+const PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_HIT_EVENT: u32 = 1 << 4;
+const PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_EXPIRE_EVENT: u32 = 1 << 5;
+const PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_WATER_SPLASH_EVENT: u32 = 1 << 6;
+const PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_REFLECTOR_IMPACT_EVENT: u32 = 1 << 7;
+
 /// C1 projectile migration — classify terminal projectile consequences.
 ///
 /// TypeScript still samples terrain/water inputs and applies returned entity,
@@ -23496,6 +23505,85 @@ pub fn projectile_terminal_consequence_batch(
             out_flags[i] = PROJECTILE_TERMINAL_FLAG_REMOVE;
             processed += 1;
         }
+    }
+
+    processed
+}
+
+/// C1 projectile migration — plan terminal side effects from classified
+/// projectile terminal flags and authored payload booleans.
+///
+/// TypeScript still materializes events, child projectile entities, and JS graph
+/// removals, but it no longer re-derives the detonation/splash/submunition/FX
+/// consequence shape from a second set of branch conditions. This kernel emits a
+/// compact effect bitset for each terminal row.
+#[wasm_bindgen]
+pub fn projectile_terminal_effect_plan_batch(
+    count: u32,
+    enabled: &[u8],
+    terminal_flags: &[u32],
+    terminal_reflector_hit: &[u8],
+    has_explosion: &[u8],
+    has_submunitions: &[u8],
+    out_effect_flags: &mut [u32],
+) -> u32 {
+    let n = count as usize;
+    if enabled.len() < n
+        || terminal_flags.len() < n
+        || terminal_reflector_hit.len() < n
+        || has_explosion.len() < n
+        || has_submunitions.len() < n
+        || out_effect_flags.len() < n
+    {
+        return 0;
+    }
+
+    let mut processed = 0_u32;
+    for i in 0..n {
+        out_effect_flags[i] = 0;
+        if enabled[i] == 0 {
+            continue;
+        }
+
+        let terminal = terminal_flags[i];
+        if terminal & PROJECTILE_TERMINAL_FLAG_REMOVE == 0 {
+            processed += 1;
+            continue;
+        }
+
+        let mut effects = PROJECTILE_TERMINAL_EFFECT_FLAG_QUEUE_DESPAWN;
+        if terminal & PROJECTILE_TERMINAL_FLAG_WATER_SPLASH != 0 {
+            effects |= PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_WATER_SPLASH_EVENT;
+            out_effect_flags[i] = effects;
+            processed += 1;
+            continue;
+        }
+
+        if terminal_reflector_hit[i] != 0 {
+            effects |= PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_REFLECTOR_IMPACT_EVENT;
+        }
+
+        if terminal & PROJECTILE_TERMINAL_FLAG_DETONATE != 0 {
+            let splash = has_explosion[i] != 0;
+            let submunitions = has_submunitions[i] != 0;
+            if splash || submunitions {
+                effects |= PROJECTILE_TERMINAL_EFFECT_FLAG_SET_EXPLODED
+                    | PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_HIT_EVENT;
+                if splash {
+                    effects |= PROJECTILE_TERMINAL_EFFECT_FLAG_APPLY_SPLASH;
+                }
+                if submunitions {
+                    effects |= PROJECTILE_TERMINAL_EFFECT_FLAG_SPAWN_SUBMUNITIONS;
+                }
+            }
+        }
+
+        if terminal & PROJECTILE_TERMINAL_FLAG_EXPIRE_EVENT != 0 {
+            effects |= PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_EXPIRE_EVENT;
+        }
+
+        out_effect_flags[i] = effects;
+        processed += 1;
     }
 
     processed
@@ -30818,6 +30906,112 @@ mod sim_kernel_tests {
         assert_eq!(reason[0], PROJECTILE_TERMINAL_REASON_OUT_OF_BOUNDS);
         assert_eq!(flags[0], PROJECTILE_TERMINAL_FLAG_REMOVE);
         assert_eq!(out_hp[0], 10.0);
+    }
+
+    #[test]
+    fn projectile_terminal_effect_plan_emits_water_despawn_only() {
+        let enabled = [1_u8];
+        let terminal = [PROJECTILE_TERMINAL_FLAG_REMOVE | PROJECTILE_TERMINAL_FLAG_WATER_SPLASH];
+        let reflector = [1_u8];
+        let has_explosion = [1_u8];
+        let has_submunitions = [1_u8];
+        let mut effects = [0_u32];
+
+        assert_eq!(
+            projectile_terminal_effect_plan_batch(
+                1,
+                &enabled,
+                &terminal,
+                &reflector,
+                &has_explosion,
+                &has_submunitions,
+                &mut effects,
+            ),
+            1,
+        );
+
+        assert_eq!(
+            effects[0],
+            PROJECTILE_TERMINAL_EFFECT_FLAG_QUEUE_DESPAWN
+                | PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_WATER_SPLASH_EVENT,
+        );
+    }
+
+    #[test]
+    fn projectile_terminal_effect_plan_splits_payload_bits() {
+        let enabled = [1_u8, 1, 1];
+        let terminal = [
+            PROJECTILE_TERMINAL_FLAG_REMOVE | PROJECTILE_TERMINAL_FLAG_DETONATE,
+            PROJECTILE_TERMINAL_FLAG_REMOVE | PROJECTILE_TERMINAL_FLAG_DETONATE,
+            PROJECTILE_TERMINAL_FLAG_REMOVE | PROJECTILE_TERMINAL_FLAG_DETONATE,
+        ];
+        let reflector = [0_u8, 1, 0];
+        let has_explosion = [1_u8, 0, 0];
+        let has_submunitions = [0_u8, 1, 0];
+        let mut effects = [0_u32; 3];
+
+        assert_eq!(
+            projectile_terminal_effect_plan_batch(
+                3,
+                &enabled,
+                &terminal,
+                &reflector,
+                &has_explosion,
+                &has_submunitions,
+                &mut effects,
+            ),
+            3,
+        );
+
+        assert_eq!(
+            effects[0],
+            PROJECTILE_TERMINAL_EFFECT_FLAG_QUEUE_DESPAWN
+                | PROJECTILE_TERMINAL_EFFECT_FLAG_SET_EXPLODED
+                | PROJECTILE_TERMINAL_EFFECT_FLAG_APPLY_SPLASH
+                | PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_HIT_EVENT,
+        );
+        assert_eq!(
+            effects[1],
+            PROJECTILE_TERMINAL_EFFECT_FLAG_QUEUE_DESPAWN
+                | PROJECTILE_TERMINAL_EFFECT_FLAG_SET_EXPLODED
+                | PROJECTILE_TERMINAL_EFFECT_FLAG_SPAWN_SUBMUNITIONS
+                | PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_HIT_EVENT
+                | PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_REFLECTOR_IMPACT_EVENT,
+        );
+        assert_eq!(effects[2], PROJECTILE_TERMINAL_EFFECT_FLAG_QUEUE_DESPAWN);
+    }
+
+    #[test]
+    fn projectile_terminal_effect_plan_keeps_expire_and_nonterminal_distinct() {
+        let enabled = [1_u8, 1, 0];
+        let terminal = [
+            PROJECTILE_TERMINAL_FLAG_REMOVE | PROJECTILE_TERMINAL_FLAG_EXPIRE_EVENT,
+            0,
+            PROJECTILE_TERMINAL_FLAG_REMOVE | PROJECTILE_TERMINAL_FLAG_EXPIRE_EVENT,
+        ];
+        let zero = [0_u8; 3];
+        let mut effects = [99_u32; 3];
+
+        assert_eq!(
+            projectile_terminal_effect_plan_batch(
+                3,
+                &enabled,
+                &terminal,
+                &zero,
+                &zero,
+                &zero,
+                &mut effects,
+            ),
+            2,
+        );
+
+        assert_eq!(
+            effects[0],
+            PROJECTILE_TERMINAL_EFFECT_FLAG_QUEUE_DESPAWN
+                | PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_EXPIRE_EVENT,
+        );
+        assert_eq!(effects[1], 0);
+        assert_eq!(effects[2], 0);
     }
 
     #[test]

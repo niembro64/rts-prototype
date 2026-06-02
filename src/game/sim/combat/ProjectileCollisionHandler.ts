@@ -133,12 +133,16 @@ let _submunitionLaunchVelocityX = new Float64Array(0);
 let _submunitionLaunchVelocityY = new Float64Array(0);
 let _submunitionLaunchVelocityZ = new Float64Array(0);
 const PROJECTILE_TERMINAL_REASON_GROUND = 2;
-const PROJECTILE_TERMINAL_FLAG_REMOVE = 1 << 0;
 const PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO = 1 << 1;
 const PROJECTILE_TERMINAL_FLAG_CLAMP_Z = 1 << 2;
-const PROJECTILE_TERMINAL_FLAG_WATER_SPLASH = 1 << 3;
-const PROJECTILE_TERMINAL_FLAG_DETONATE = 1 << 4;
-const PROJECTILE_TERMINAL_FLAG_EXPIRE_EVENT = 1 << 5;
+const PROJECTILE_TERMINAL_EFFECT_FLAG_QUEUE_DESPAWN = 1 << 0;
+const PROJECTILE_TERMINAL_EFFECT_FLAG_SET_EXPLODED = 1 << 1;
+const PROJECTILE_TERMINAL_EFFECT_FLAG_APPLY_SPLASH = 1 << 2;
+const PROJECTILE_TERMINAL_EFFECT_FLAG_SPAWN_SUBMUNITIONS = 1 << 3;
+const PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_HIT_EVENT = 1 << 4;
+const PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_EXPIRE_EVENT = 1 << 5;
+const PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_WATER_SPLASH_EVENT = 1 << 6;
+const PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_REFLECTOR_IMPACT_EVENT = 1 << 7;
 const PROJECTILE_OUT_OF_BOUNDS_MARGIN = 100;
 const _terminalEnabled = new Uint8Array(1);
 const _terminalIsProjectileType = new Uint8Array(1);
@@ -162,6 +166,12 @@ const _terminalOutReason = new Uint8Array(1);
 const _terminalOutFlags = new Uint32Array(1);
 const _terminalOutZ = new Float64Array(1);
 const _terminalOutHp = new Float64Array(1);
+const _terminalEffectEnabled = new Uint8Array(1);
+const _terminalEffectTerminalFlags = new Uint32Array(1);
+const _terminalEffectReflectorHit = new Uint8Array(1);
+const _terminalEffectHasExplosion = new Uint8Array(1);
+const _terminalEffectHasSubmunitions = new Uint8Array(1);
+const _terminalEffectOutFlags = new Uint32Array(1);
 
 function queueProjectileRemoval(
   id: EntityId,
@@ -606,6 +616,7 @@ function findProjectileHitboxSweepHit(
 export function resetCollisionBuffers(): void {
   _collisionUnitsToRemove.clear();
   _collisionBuildingsToRemove.clear();
+  _collisionTurretsToDetonate.clear();
   _collisionDeathContexts.clear();
   _collisionProjectilesToRemove.length = 0;
   _collisionProjectileRemoveIds.clear();
@@ -840,30 +851,37 @@ function detonateKilledProjectileShot(
     false,
     false,
   );
-  if ((terminalFlags & PROJECTILE_TERMINAL_FLAG_REMOVE) === 0) {
-    queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
-    return;
-  }
 
   const config = proj.config;
   const projShot = shot;
   const runtimeProfile = config.shotProfile.runtime;
+  const terminalEffectFlags = planProjectileTerminalEffects(
+    terminalFlags,
+    false,
+    runtimeProfile.hasExplosion,
+    runtimeProfile.hasSubmunitions,
+  );
   const shotBlueprintId = projShot.shotBlueprintId;
   const damageSourceKey = proj.sourceTurretBlueprintId ?? shotBlueprintId;
   const damageSourceType: SimEventSourceType = proj.sourceTurretBlueprintId ? 'turret' : 'system';
   let firstSplashHit: Entity | undefined;
 
-  if ((terminalFlags & PROJECTILE_TERMINAL_FLAG_DETONATE) !== 0) {
+  if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_QUEUE_DESPAWN) === 0) {
+    queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
+    return;
+  }
+
+  if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_SET_EXPLODED) !== 0) {
     proj.hasExploded = true;
   } else {
-    if ((terminalFlags & PROJECTILE_TERMINAL_FLAG_EXPIRE_EVENT) !== 0) {
+    if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_EXPIRE_EVENT) !== 0) {
       pushProjectileExpireEvent(audioEvents, projEntity, config, shotBlueprintId);
     }
     queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
     return;
   }
 
-  if (runtimeProfile.hasExplosion && projShot.explosion) {
+  if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_APPLY_SPLASH) !== 0 && projShot.explosion) {
     const splashResult = damageSystem.applyDamage({
       type: 'area',
       sourceEntityId: proj.sourceEntityId,
@@ -892,7 +910,7 @@ function detonateKilledProjectileShot(
         unitsToRemove,
         buildingsToRemove,
         turretsToDetonate,
-          audioEvents,
+        audioEvents,
         deathContexts,
         newProjectiles,
         spawnEvents,
@@ -903,20 +921,22 @@ function detonateKilledProjectileShot(
     }
   }
 
-  audioEvents.push({
-    type: 'hit',
-    turretBlueprintId: shotBlueprintId,
-    pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
-    playerId: projEntity.ownership.playerId,
-    entityId: projEntity.id,
-    impactContext: buildImpactContext(
-      config, projEntity.transform.x, projEntity.transform.y,
-      proj.velocityX ?? 0, proj.velocityY ?? 0,
-      runtimeProfile.radius.collision, firstSplashHit,
-    ),
-  });
+  if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_HIT_EVENT) !== 0) {
+    audioEvents.push({
+      type: 'hit',
+      turretBlueprintId: shotBlueprintId,
+      pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+      playerId: projEntity.ownership.playerId,
+      entityId: projEntity.id,
+      impactContext: buildImpactContext(
+        config, projEntity.transform.x, projEntity.transform.y,
+        proj.velocityX ?? 0, proj.velocityY ?? 0,
+        runtimeProfile.radius.collision, firstSplashHit,
+      ),
+    });
+  }
 
-  if (runtimeProfile.hasSubmunitions) {
+  if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_SPAWN_SUBMUNITIONS) !== 0) {
     spawnSubmunitions(
       world, projShot,
       projEntity.id, proj.shotSource,
@@ -1034,6 +1054,38 @@ function classifyProjectileTerminalConsequence(
     proj.hp = _terminalOutHp[0];
   }
   return flags;
+}
+
+function planProjectileTerminalEffects(
+  terminalFlags: number,
+  terminalReflectorHit: boolean,
+  hasExplosion: boolean,
+  hasSubmunitions: boolean,
+): number {
+  _terminalEffectEnabled[0] = 1;
+  _terminalEffectTerminalFlags[0] = terminalFlags;
+  _terminalEffectReflectorHit[0] = terminalReflectorHit ? 1 : 0;
+  _terminalEffectHasExplosion[0] = hasExplosion ? 1 : 0;
+  _terminalEffectHasSubmunitions[0] = hasSubmunitions ? 1 : 0;
+  _terminalEffectOutFlags[0] = 0;
+
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('Projectile terminal effect planning requires initialized sim-wasm');
+  }
+  const processed = sim.projectileTerminalEffectPlanBatch(
+    1,
+    _terminalEffectEnabled,
+    _terminalEffectTerminalFlags,
+    _terminalEffectReflectorHit,
+    _terminalEffectHasExplosion,
+    _terminalEffectHasSubmunitions,
+    _terminalEffectOutFlags,
+  );
+  if (processed !== 1) {
+    throw new Error(`Projectile terminal effect planning failed: ${processed}/1`);
+  }
+  return _terminalEffectOutFlags[0];
 }
 
 // Check projectile collisions and apply damage.
@@ -1475,11 +1527,17 @@ export function checkProjectileCollisions(
     );
     const terminalGroundImpact =
       _terminalOutReason[0] === PROJECTILE_TERMINAL_REASON_GROUND;
+    const terminalEffectFlags = planProjectileTerminalEffects(
+      terminalFlags,
+      terminalReflectorHit,
+      runtimeProfile.hasExplosion,
+      runtimeProfile.hasSubmunitions,
+    );
 
     // Water hit — Rust classifies this as a silent terminal (no
-    // explosion, no submunitions, no damage). TypeScript only emits the
-    // returned visual event and applies the despawn diff.
-    if ((terminalFlags & PROJECTILE_TERMINAL_FLAG_WATER_SPLASH) !== 0) {
+    // explosion, no submunitions, no damage) and plans only the
+    // returned visual event plus despawn diff for TypeScript to apply.
+    if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_WATER_SPLASH_EVENT) !== 0) {
       const projRadius = runtimeProfile.radius.collision;
       audioEvents.push({
         type: 'waterSplash',
@@ -1497,10 +1555,10 @@ export function checkProjectileCollisions(
       continue;
     }
 
-    if ((terminalFlags & PROJECTILE_TERMINAL_FLAG_REMOVE) !== 0) {
+    if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_QUEUE_DESPAWN) !== 0) {
       // Beam audio is handled by updateLaserSounds based on targeting state
       if (
-        terminalReflectorHit &&
+        (terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_REFLECTOR_IMPACT_EVENT) !== 0 &&
         reflectorNormalX !== undefined &&
         reflectorNormalY !== undefined &&
         reflectorNormalZ !== undefined &&
@@ -1516,64 +1574,62 @@ export function checkProjectileCollisions(
         );
       }
 
-      if ((terminalFlags & PROJECTILE_TERMINAL_FLAG_DETONATE) !== 0) {
+      if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_SET_EXPLODED) !== 0) {
         const projShot = config.shot as ProjectileShot;
-        const hasSplash = runtimeProfile.hasExplosion;
-        const hasSubs = runtimeProfile.hasSubmunitions;
-        if (hasSplash || hasSubs) {
-          proj.hasExploded = true;
-          let firstSplashHit: Entity | undefined;
-          let splashHitCount = 0;
+        proj.hasExploded = true;
+        let firstSplashHit: Entity | undefined;
+        let splashHitCount = 0;
 
-          if (hasSplash) {
-            const splashExcludes = getSplashExcludes();
-            // Single boolean AoE — every unit whose shot collider
-            // intersects the explosion sphere takes the full damage
-            // and full knockback force; nothing outside the sphere.
-            const splashResult = damageSystem.applyDamage({
-              type: 'area',
-              sourceEntityId: proj.sourceEntityId,
-              ownerId: projEntity.ownership.playerId,
-              damage: projShot.explosion!.damage,
-              excludeEntities: splashExcludes,
-              excludeCommanders: isDGunProjectile,
-              center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
-              radius: projShot.explosion!.radius,
-              knockbackForce: projShot.explosion!.force,
-            });
-            applyKnockbackForces(splashResult.knockbacks, forceAccumulator);
-            collectKillsAndDeathContexts(
-              splashResult, world, damageSourceKey, damageSourceType,
-              unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
-              proj.sourceEntityId, turretsToDetonate,
-            );
-            splashHitCount = splashResult.hitEntityIds.length;
-            firstSplashHit = splashHitCount > 0 ? world.getEntity(splashResult.hitEntityIds[0]) ?? undefined : undefined;
-            processKilledProjectileShots(
-              splashResult,
-              world,
-              damageSystem,
-              forceAccumulator,
-              unitsToRemove,
-              buildingsToRemove,
-              turretsToDetonate,
-                      audioEvents,
-              deathContexts,
-              newProjectiles,
-              spawnEvents,
-              projectilesToRemove,
-              despawnEvents,
-            );
-          }
+        if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_APPLY_SPLASH) !== 0 && projShot.explosion) {
+          const splashExcludes = getSplashExcludes();
+          // Single boolean AoE — every unit whose shot collider
+          // intersects the explosion sphere takes the full damage
+          // and full knockback force; nothing outside the sphere.
+          const splashResult = damageSystem.applyDamage({
+            type: 'area',
+            sourceEntityId: proj.sourceEntityId,
+            ownerId: projEntity.ownership.playerId,
+            damage: projShot.explosion.damage,
+            excludeEntities: splashExcludes,
+            excludeCommanders: isDGunProjectile,
+            center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+            radius: projShot.explosion.radius,
+            knockbackForce: projShot.explosion.force,
+          });
+          applyKnockbackForces(splashResult.knockbacks, forceAccumulator);
+          collectKillsAndDeathContexts(
+            splashResult, world, damageSourceKey, damageSourceType,
+            unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
+            proj.sourceEntityId, turretsToDetonate,
+          );
+          splashHitCount = splashResult.hitEntityIds.length;
+          firstSplashHit = splashHitCount > 0 ? world.getEntity(splashResult.hitEntityIds[0]) ?? undefined : undefined;
+          processKilledProjectileShots(
+            splashResult,
+            world,
+            damageSystem,
+            forceAccumulator,
+            unitsToRemove,
+            buildingsToRemove,
+            turretsToDetonate,
+            audioEvents,
+            deathContexts,
+            newProjectiles,
+            spawnEvents,
+            projectilesToRemove,
+            despawnEvents,
+          );
+        }
 
-          // Detonation audio + explosion FX. Always emit when the
-          // shot actually detonates (`hasExploded` was just set to
-          // true above) — every projectile that explodes should LOOK
-          // like it explodes, regardless of whether anything was in
-          // splash range. The visual FX size comes from the shot's
-          // own explosion radius via impactContext. Pure carriers
-          // without an explosion still get a small fragmentation pop
-          // sized by collision.radius.
+        // Detonation audio + explosion FX. Always emit when the
+        // shot actually detonates (`hasExploded` was just set to
+        // true above) — every projectile that explodes should LOOK
+        // like it explodes, regardless of whether anything was in
+        // splash range. The visual FX size comes from the shot's
+        // own explosion radius via impactContext. Pure carriers
+        // without an explosion still get a small fragmentation pop
+        // sized by collision.radius.
+        if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_HIT_EVENT) !== 0) {
           audioEvents.push({
             type: 'hit',
             turretBlueprintId: shotBlueprintId,
@@ -1586,56 +1642,56 @@ export function checkProjectileCollisions(
               runtimeProfile.radius.collision, firstSplashHit,
             ),
           });
+        }
 
-          // Cluster flak: spawn submunitions on detonation. The
-          // bounce-direction is computed from the parent's velocity
-          // reflected across the impact surface — ground hit (z=0)
-          // gets a vertical normal so submunitions spray upward in
-          // the direction the carrier was flying, mid-air expiry
-          // passes no normal so fragments just inherit the parent's
-          // forward velocity with random spread.
-          if (hasSubs) {
-            // Ground impact gets the actual surface tangent normal at
-            // (x, y) — bilinear gradient of the heightmap, NOT a flat
-            // (0, 0, 1). On a sloped ripple cube the bounce direction
-            // tracks the slope, so cluster fragments spray AWAY from
-            // the hill instead of always straight up. Mid-air expiry
-            // (no ground hit) passes undefined so fragments inherit
-            // forward velocity.
-            let surfaceNormalX: number | undefined;
-            let surfaceNormalY: number | undefined;
-            let surfaceNormalZ: number | undefined;
-            if (terminalReflectorHit) {
-              surfaceNormalX = reflectorNormalX;
-              surfaceNormalY = reflectorNormalY;
-              surfaceNormalZ = reflectorNormalZ;
-            } else if (directHitThisTick) {
-              surfaceNormalX = directHitSurfaceNormalX;
-              surfaceNormalY = directHitSurfaceNormalY;
-              surfaceNormalZ = directHitSurfaceNormalZ;
-            } else if (terminalGroundImpact) {
-              const n = getSurfaceNormal(
-                projEntity.transform.x, projEntity.transform.y,
-                world.mapWidth, world.mapHeight, LAND_CELL_SIZE,
-              );
-              surfaceNormalX = n.nx;
-              surfaceNormalY = n.ny;
-              surfaceNormalZ = n.nz;
-            }
-            spawnSubmunitions(
-              world, projShot,
-              projEntity.id, proj.shotSource,
-              projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
-              proj.velocityX ?? 0, proj.velocityY ?? 0, proj.velocityZ ?? 0,
-              surfaceNormalX, surfaceNormalY, surfaceNormalZ,
-              projEntity.ownership.playerId, proj.sourceEntityId,
-              newProjectiles, spawnEvents,
+        // Cluster flak: spawn submunitions on detonation. The
+        // bounce-direction is computed from the parent's velocity
+        // reflected across the impact surface — ground hit (z=0)
+        // gets a vertical normal so submunitions spray upward in
+        // the direction the carrier was flying, mid-air expiry
+        // passes no normal so fragments just inherit the parent's
+        // forward velocity with random spread.
+        if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_SPAWN_SUBMUNITIONS) !== 0) {
+          // Ground impact gets the actual surface tangent normal at
+          // (x, y) — bilinear gradient of the heightmap, NOT a flat
+          // (0, 0, 1). On a sloped ripple cube the bounce direction
+          // tracks the slope, so cluster fragments spray AWAY from
+          // the hill instead of always straight up. Mid-air expiry
+          // (no ground hit) passes undefined so fragments inherit
+          // forward velocity.
+          let surfaceNormalX: number | undefined;
+          let surfaceNormalY: number | undefined;
+          let surfaceNormalZ: number | undefined;
+          if (terminalReflectorHit) {
+            surfaceNormalX = reflectorNormalX;
+            surfaceNormalY = reflectorNormalY;
+            surfaceNormalZ = reflectorNormalZ;
+          } else if (directHitThisTick) {
+            surfaceNormalX = directHitSurfaceNormalX;
+            surfaceNormalY = directHitSurfaceNormalY;
+            surfaceNormalZ = directHitSurfaceNormalZ;
+          } else if (terminalGroundImpact) {
+            const n = getSurfaceNormal(
+              projEntity.transform.x, projEntity.transform.y,
+              world.mapWidth, world.mapHeight, LAND_CELL_SIZE,
             );
+            surfaceNormalX = n.nx;
+            surfaceNormalY = n.ny;
+            surfaceNormalZ = n.nz;
           }
+          spawnSubmunitions(
+            world, projShot,
+            projEntity.id, proj.shotSource,
+            projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
+            proj.velocityX ?? 0, proj.velocityY ?? 0, proj.velocityZ ?? 0,
+            surfaceNormalX, surfaceNormalY, surfaceNormalZ,
+            projEntity.ownership.playerId, proj.sourceEntityId,
+            newProjectiles, spawnEvents,
+          );
         }
       }
 
-      if ((terminalFlags & PROJECTILE_TERMINAL_FLAG_EXPIRE_EVENT) !== 0) {
+      if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_EXPIRE_EVENT) !== 0) {
         pushProjectileExpireEvent(audioEvents, projEntity, config, shotBlueprintId);
       }
 

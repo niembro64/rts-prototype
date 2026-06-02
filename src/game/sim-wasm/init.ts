@@ -320,6 +320,7 @@ import __wbg_init, {
   projectile_reflection_response_batch,
   projectile_submunition_launch_velocity_batch,
   projectile_terminal_consequence_batch,
+  projectile_terminal_effect_plan_batch,
   projectile_hitbox_sweep_batch,
   snapshot_baseline_create,
   snapshot_baseline_destroy,
@@ -1118,6 +1119,18 @@ export interface SimWasm {
     outFlags: Uint32Array,
     outZ: Float64Array,
     outHp: Float64Array,
+  ) => number;
+  /** C1 — terminal projectile effect planner. Rust maps classified
+   *  terminal flags plus authored payload booleans to compact side-effect
+   *  flags; TypeScript applies those event/entity diffs to JS-owned stores. */
+  readonly projectileTerminalEffectPlanBatch: (
+    count: number,
+    enabled: Uint8Array,
+    terminalFlags: Uint32Array,
+    terminalReflectorHit: Uint8Array,
+    hasExplosion: Uint8Array,
+    hasSubmunitions: Uint8Array,
+    outEffectFlags: Uint32Array,
   ) => number;
   /** C1 — nearest swept hitbox contact for projectile bodies. Rust
    *  reads unit/building/projectile colliders from the spatial slab,
@@ -3628,6 +3641,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         projectileReflectionResponseBatch: projectile_reflection_response_batch,
         projectileSubmunitionLaunchVelocityBatch: projectile_submunition_launch_velocity_batch,
         projectileTerminalConsequenceBatch: projectile_terminal_consequence_batch,
+        projectileTerminalEffectPlanBatch: projectile_terminal_effect_plan_batch,
         projectileHitboxSweepBatch: projectile_hitbox_sweep_batch,
         poolStepPackedProjectilesBatch: pool_step_packed_projectiles_batch,
         projectileIntegrateStepBatch: projectile_integrate_step_batch,

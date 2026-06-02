@@ -49,17 +49,19 @@ the combat-targeting slab, submunition launch velocity scatter, line/swept
 body/projectile/building/turret segment hit classification, splash
 unit/projectile sphere and building AABB overlap/slice classification, batched
 direct-hit/splash damage HP/kill output math, pending death-cleanup
-HP/materialization classification plus compact removal diff generation, and terminal consequence classification for timeout,
-ground/water impact, terminal
+HP/materialization classification plus compact removal diff generation,
+terminal consequence classification for timeout, ground/water impact, terminal
 reflector contact, HP-zero stops, detonation/expire/splash eligibility, and
-out-of-bounds removal. The remaining TypeScript authority is still too large:
-checkProjectileCollisions applies the returned terminal flags for live and
-recursively killed projectiles, owns direct-hit and splash damage consequences,
-submunition entity/event creation, detonation audio/events, despawn/velocity-
-update event application, and D-gun swept damage orchestration;
-DamageSystem/Simulation still own line/swept/area candidate gathering and
-target packing, entity diff application, kill
-collection, death cleanup side-effect application/world removal, and death-explosion
+out-of-bounds removal, plus terminal effect planning for despawn, hit/expire/
+water/shield-impact events, splash payloads, submunition payloads, and
+has-exploded state. The remaining TypeScript authority is still too large:
+checkProjectileCollisions applies the returned terminal effect flags for live
+and recursively killed projectiles, owns direct-hit and splash damage
+consequences, submunition entity/event materialization, terminal audio/event
+construction, despawn/velocity-update event application, and D-gun swept damage
+orchestration; DamageSystem/Simulation still own line/swept/area candidate
+gathering and target packing, entity diff application, kill collection, death
+cleanup side-effect application/world removal, and death-explosion
 detonation/chaining.
 FIX (C1 migration): move projectile detonation payload application,
 submunition entity diffs, line/swept/area candidate packing, returned damage
