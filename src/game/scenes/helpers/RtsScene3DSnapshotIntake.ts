@@ -67,11 +67,11 @@ export class RtsScene3DSnapshotIntake {
     );
   }
 
-  consumeLatestSnapshot(options: {
-    clientRenderEnabled: boolean;
-    audio?: RtsScene3DSnapshotAudioOptions;
-    now?: number;
-  }): RtsScene3DSnapshotIntakeResult {
+  consumeLatestSnapshot(
+    clientRenderEnabled: boolean,
+    audio?: RtsScene3DSnapshotAudioOptions,
+    nowOverride?: number,
+  ): RtsScene3DSnapshotIntakeResult {
     const state = this.snapshotBuffer.consume();
     if (!state) {
       return {
@@ -94,7 +94,7 @@ export class RtsScene3DSnapshotIntake {
     const startupReleased = !this.startupReleased && state.tick > 0;
     if (startupReleased) this.startupReleased = true;
 
-    const now = options.now ?? performance.now();
+    const now = nowOverride ?? performance.now();
     this.recordSnapshotArrival(state.isDelta, now);
     SNAPSHOT_CADENCE_REGRESSION.recordSnapshotApply({
       tick: state.tick,
@@ -106,15 +106,15 @@ export class RtsScene3DSnapshotIntake {
     });
     CLIENT_PREDICTION_DIAGNOSTICS.recordSnapshotApply(applyStats.correction);
 
-    if (options.clientRenderEnabled && options.audio) {
-      options.audio.scheduler.recordSnapshot(now);
+    if (clientRenderEnabled && audio) {
+      audio.scheduler.recordSnapshot(now);
       const events = this.clientViewState.getPendingAudioEvents();
       if (events && events.length > 0) {
-        options.audio.scheduler.schedule(
+        audio.scheduler.schedule(
           events,
           now,
-          options.audio.smoothingEnabled,
-          options.audio.play,
+          audio.smoothingEnabled,
+          audio.play,
         );
       }
     }

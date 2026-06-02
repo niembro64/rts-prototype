@@ -44,6 +44,7 @@ export class EntityCacheManager {
    *  production run every sim tick and should not scan every building
    *  just to find this subset. */
   private cachedFactoryBuildings: Entity[] = [];
+  private cachedFactoriesByPlayer: Map<PlayerId, Entity[]> = new Map();
   private cachedShieldUnits: Entity[] = [];
   private cachedCommanderUnits: Entity[] = [];
   private cachedBuilderUnits: Entity[] = [];
@@ -102,6 +103,7 @@ export class EntityCacheManager {
     this.cachedUnitsAndBuildings.length = 0;
     for (const list of this.cachedUnitsByPlayer.values()) list.length = 0;
     for (const list of this.cachedBuildingsByPlayer.values()) list.length = 0;
+    for (const list of this.cachedFactoriesByPlayer.values()) list.length = 0;
 
     for (const entity of entities.values()) {
       this.cachedAll.push(entity);
@@ -218,7 +220,12 @@ export class EntityCacheManager {
           } else if (entity.buildingBlueprintId === 'buildingRadar') {
             this.cachedActiveStateBuildings.push(entity);
           }
-          if (entity.factory) this.cachedFactoryBuildings.push(entity);
+          if (entity.factory) {
+            this.cachedFactoryBuildings.push(entity);
+            if (ownership !== null) {
+              this.getOrCreateFactoriesByPlayer(ownership.playerId).push(entity);
+            }
+          }
           break;
         case 'shot':
           this.cachedProjectiles.push(entity);
@@ -252,6 +259,15 @@ export class EntityCacheManager {
     if (!list) {
       list = [];
       this.cachedBuildingsByPlayer.set(playerId, list);
+    }
+    return list;
+  }
+
+  private getOrCreateFactoriesByPlayer(playerId: PlayerId): Entity[] {
+    let list = this.cachedFactoriesByPlayer.get(playerId);
+    if (!list) {
+      list = [];
+      this.cachedFactoriesByPlayer.set(playerId, list);
     }
     return list;
   }
@@ -326,6 +342,10 @@ export class EntityCacheManager {
 
   getFactoryBuildings(): Entity[] {
     return this.cachedFactoryBuildings;
+  }
+
+  getFactoriesByPlayer(playerId: PlayerId): Entity[] {
+    return this.cachedFactoriesByPlayer.get(playerId) ?? EMPTY_ENTITIES;
   }
 
   getShieldUnits(): Entity[] {

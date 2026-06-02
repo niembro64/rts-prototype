@@ -8,6 +8,11 @@ const RENDER_SCOPE_NDC_SAMPLES = [
   [-1,  0], [0,  0], [1,  0],
   [-1, -1], [0, -1], [1, -1],
 ] as const;
+const RENDER_SCOPE_PLANES = [
+  TILE_FLOOR_Y,
+  0,
+  TERRAIN_MAX_RENDER_Y + RENDER_SCOPE_AERIAL_HEADROOM_Y,
+] as const;
 
 export type RtsScene3DCameraFootprintResult = {
   quad: FootprintQuad;
@@ -30,6 +35,11 @@ export class RtsScene3DCameraFootprintSystem {
     { x: 0, y: 0 },
     { x: 0, y: 0 },
   ];
+  private scopePoint = { x: 0, y: 0 };
+  private result: RtsScene3DCameraFootprintResult = {
+    quad: this.cameraQuad,
+    bounds: this.renderScopeBounds,
+  };
 
   constructor(
     private readonly mapWidth: number,
@@ -38,11 +48,8 @@ export class RtsScene3DCameraFootprintSystem {
 
   update(camera: THREE.Camera): RtsScene3DCameraFootprintResult {
     this.computeCameraQuad(camera);
-    const bounds = this.computeRenderScopeBounds(camera, this.cameraQuad);
-    return {
-      quad: this.cameraQuad,
-      bounds,
-    };
+    this.computeRenderScopeBounds(camera, this.cameraQuad);
+    return this.result;
   }
 
   getQuad(): FootprintQuad {
@@ -65,37 +72,31 @@ export class RtsScene3DCameraFootprintSystem {
     bounds.maxX = -Infinity;
     bounds.minY = Infinity;
     bounds.maxY = -Infinity;
-    const include = (point: { x: number; y: number }) => {
+
+    for (let i = 0; i < baseQuad.length; i++) {
+      const point = baseQuad[i];
       if (point.x < bounds.minX) bounds.minX = point.x;
       if (point.x > bounds.maxX) bounds.maxX = point.x;
       if (point.y < bounds.minY) bounds.minY = point.y;
       if (point.y > bounds.maxY) bounds.maxY = point.y;
-    };
+    }
 
-    for (const point of baseQuad) include(point);
-
-    for (const [ndcX, ndcY] of RENDER_SCOPE_NDC_SAMPLES) {
-      for (const planeY of [
-        TILE_FLOOR_Y,
-        0,
-        TERRAIN_MAX_RENDER_Y + RENDER_SCOPE_AERIAL_HEADROOM_Y,
-      ] as const) {
-        include(this.pointOnHorizontalPlane(camera, ndcX, ndcY, planeY));
+    const point = this.scopePoint;
+    for (let i = 0; i < RENDER_SCOPE_NDC_SAMPLES.length; i++) {
+      const sample = RENDER_SCOPE_NDC_SAMPLES[i];
+      const ndcX = sample[0];
+      const ndcY = sample[1];
+      this.setRayFromCamera(camera, ndcX, ndcY);
+      for (let p = 0; p < RENDER_SCOPE_PLANES.length; p++) {
+        this.writePointOnCurrentRay(RENDER_SCOPE_PLANES[p], point);
+        if (point.x < bounds.minX) bounds.minX = point.x;
+        if (point.x > bounds.maxX) bounds.maxX = point.x;
+        if (point.y < bounds.minY) bounds.minY = point.y;
+        if (point.y > bounds.maxY) bounds.maxY = point.y;
       }
     }
 
     return bounds;
-  }
-
-  private pointOnHorizontalPlane(
-    camera: THREE.Camera,
-    ndcX: number,
-    ndcY: number,
-    worldY: number,
-  ): { x: number; y: number } {
-    const point = { x: 0, y: 0 };
-    this.writePointOnHorizontalPlane(camera, ndcX, ndcY, worldY, point);
-    return point;
   }
 
   private writePointOnHorizontalPlane(
@@ -105,8 +106,23 @@ export class RtsScene3DCameraFootprintSystem {
     worldY: number,
     out: { x: number; y: number },
   ): void {
+    this.setRayFromCamera(camera, ndcX, ndcY);
+    this.writePointOnCurrentRay(worldY, out);
+  }
+
+  private setRayFromCamera(
+    camera: THREE.Camera,
+    ndcX: number,
+    ndcY: number,
+  ): void {
     this.ndc.set(ndcX, ndcY);
     this.raycaster.setFromCamera(this.ndc, camera);
+  }
+
+  private writePointOnCurrentRay(
+    worldY: number,
+    out: { x: number; y: number },
+  ): void {
     const ray = this.raycaster.ray;
     const denom = ray.direction.y;
     if (Math.abs(denom) > 1e-6) {

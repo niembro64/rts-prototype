@@ -28,6 +28,7 @@ import {
 } from './Locomotion3D';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import {
+  createRenderFrameState,
   snapshotRenderFrameState,
   type RenderFrameState3D,
 } from './RenderFrameState3D';
@@ -207,7 +208,7 @@ export class Render3DEntities {
   private legStateCache = new Map<EntityId, LegStateSnapshot>();
 
   // Per-frame graphics state.
-  private frameState: RenderFrameState3D = snapshotRenderFrameState();
+  private frameState: RenderFrameState3D = createRenderFrameState();
 
   // Shared geometries & per-team materials (avoid per-entity allocation).
   // Unit chassis geometries are body-shape keyed and handled by BodyShape3D.
@@ -402,12 +403,13 @@ export class Render3DEntities {
 
   update(
     frameStateOverride?: RenderFrameState3D,
-    featureFlags?: { turretShieldPanelsEnabled?: boolean },
+    turretShieldPanelsEnabled: boolean = true,
   ): void {
     // Refresh the single render-detail snapshot once per frame.
-    const newFrameState = frameStateOverride ?? snapshotRenderFrameState(this.camera, this.getViewportHeight());
+    const newFrameState = frameStateOverride
+      ?? snapshotRenderFrameState(this.camera, this.getViewportHeight(), this.frameState);
     this.frameState = newFrameState;
-    this.turretShieldPanelsEnabled = featureFlags?.turretShieldPanelsEnabled ?? true;
+    this.turretShieldPanelsEnabled = turretShieldPanelsEnabled;
 
     const frameSpin = this.barrelSpinState.beginFrame();
     this._currentDtMs = frameSpin.currentDtMs;
@@ -457,6 +459,33 @@ export class Render3DEntities {
     turrets: readonly Turret[] = EMPTY_TURRETS,
   ): void {
     this.unitDetailInstances.syncEntityColors(e, m, turrets);
+  }
+
+  /** Per-Mesh fallback materials are mostly static after build/rebuild.
+   *  The exception is head-only turrets: their visible head flips
+   *  between player primary and turret accent when the turret engages.
+   *  Keep that one dynamic path cached instead of rewriting every chassis,
+   *  barrel, and mirror material for every unit every frame. */
+  private updateUnitFallbackDynamicMaterials(
+    m: EntityMesh,
+    turrets: readonly Turret[],
+    ownerId: PlayerId | undefined,
+  ): void {
+    let headOnlyStates = m.unitHeadOnlyTurretEngaged;
+    for (let i = 0; i < m.turrets.length; i++) {
+      const turretMesh = m.turrets[i];
+      if (!turretMesh.head || turretMesh.headOnly !== true) continue;
+      const engaged = turrets[i]?.state === 'engaged';
+      if (headOnlyStates !== undefined && headOnlyStates[i] === engaged) continue;
+      if (headOnlyStates === undefined) {
+        headOnlyStates = [];
+        m.unitHeadOnlyTurretEngaged = headOnlyStates;
+      }
+      headOnlyStates[i] = engaged;
+      turretMesh.head.material = engaged
+        ? this.getTurretAccentMat(ownerId)
+        : this.getPrimaryMat(ownerId);
+    }
   }
 
   /** Apply the same alpha materialization function buildings use to all
@@ -730,28 +759,8 @@ export class Render3DEntities {
         if (legSnap !== undefined) this.legStateCache.delete(e.id);
         this.updateUnitInstanceColors(e, m, turrets);
         this.unitMeshes.set(e.id, m);
-      } else {
-        // Per-frame team-color refresh for per-Mesh fallbacks
-        // (chassis meshes, non-instanced turret heads/barrels, mirror
-        // arms). If a mesh is currently using a fade clone, the shared
-        // fade helper below reapplies that clone after these real
-        // material writes.
-        const primaryMat = this.getPrimaryMat(pid);
-        const turretAccentMat = this.getTurretAccentMat(pid);
-        for (const mesh of m.chassisMeshes) mesh.material = primaryMat;
-        for (let i = 0; i < m.turrets.length; i++) {
-          const tm = m.turrets[i];
-          if (tm.head) {
-            tm.head.material = tm.headOnly && turrets[i]?.state === 'engaged'
-              ? turretAccentMat
-              : primaryMat;
-          }
-          for (const barrel of tm.barrels) barrel.material = turretAccentMat;
-        }
-        if (m.mirrors) {
-          for (const arm of m.mirrors.arms) arm.material = primaryMat;
-        }
       }
+      this.updateUnitFallbackDynamicMaterials(m, turrets, pid);
       // Build-in materialization: the body reveals via per-instance
       // alpha, not by growing the chassis from a point.
       // 0 = not yet started (invisible), ramping to 1 as the body builds.

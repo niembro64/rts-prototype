@@ -213,6 +213,10 @@ export class WorldState {
 
   // Reusable query result arrays for filtered queries (DO NOT STORE references to these)
   private _queryBuf: Entity[] = [];
+  private _typedQueryBuf: Entity[] = [];
+  private _selectedEntitiesBuf: Entity[] = [];
+  private _selectedUnitsBuf: Entity[] = [];
+  private _selectedFactoriesBuf: Entity[] = [];
 
   constructor(seed: number = 12345, mapWidth: number = 2000, mapHeight: number = 2000) {
     this.rng = new SeededRNG(seed);
@@ -579,8 +583,16 @@ export class WorldState {
       case 'shot':
         return this.getProjectiles();
       default:
-        return this.getAllEntities().filter((e) => e.type === type);
+        return this.collectEntitiesByType(type, this._typedQueryBuf);
     }
+  }
+
+  private collectEntitiesByType(type: EntityType, out: Entity[]): Entity[] {
+    out.length = 0;
+    for (const e of this.getAllEntities()) {
+      if (e.type === type) out.push(e);
+    }
+    return out;
   }
 
   // Get all units (cached - DO NOT MODIFY returned array)
@@ -780,9 +792,8 @@ export class WorldState {
 
   // Get factories by player
   getFactoriesByPlayer(playerId: PlayerId): Entity[] {
-    return this.getBuildings().filter(
-      (e) => e.ownership !== null && e.ownership.playerId === playerId && e.factory !== null
-    );
+    this.rebuildCachesIfNeeded();
+    return this.cache.getFactoriesByPlayer(playerId);
   }
 
   // Check if a player's commander is alive
@@ -793,23 +804,50 @@ export class WorldState {
 
   // Get selected entities for active player
   getSelectedEntities(): Entity[] {
-    return this.getAllEntities().filter(
-      (e) => e.selectable !== null && e.selectable.selected && e.ownership !== null && e.ownership.playerId === this.activePlayerId
-    );
+    const out = this._selectedEntitiesBuf;
+    out.length = 0;
+    const playerId = this.activePlayerId;
+    for (const e of this.getAllEntities()) {
+      if (
+        e.selectable !== null &&
+        e.selectable.selected &&
+        e.ownership !== null &&
+        e.ownership.playerId === playerId
+      ) {
+        out.push(e);
+      }
+    }
+    return out;
   }
 
   // Get selected units for active player
   getSelectedUnits(): Entity[] {
-    return this.getUnits().filter(
-      (e) => e.selectable !== null && e.selectable.selected && e.ownership !== null && e.ownership.playerId === this.activePlayerId
-    );
+    const out = this._selectedUnitsBuf;
+    out.length = 0;
+    const playerId = this.activePlayerId;
+    for (const e of this.getUnits()) {
+      if (
+        e.selectable !== null &&
+        e.selectable.selected &&
+        e.ownership !== null &&
+        e.ownership.playerId === playerId
+      ) {
+        out.push(e);
+      }
+    }
+    return out;
   }
 
   // Get selected factories for active player
   getSelectedFactories(): Entity[] {
-    return this.getBuildings().filter(
-      (e) => e.selectable !== null && e.selectable.selected && e.factory !== null && e.ownership !== null && e.ownership.playerId === this.activePlayerId
-    );
+    const out = this._selectedFactoriesBuf;
+    out.length = 0;
+    const playerId = this.activePlayerId;
+    this.rebuildCachesIfNeeded();
+    for (const e of this.cache.getFactoriesByPlayer(playerId)) {
+      if (e.selectable !== null && e.selectable.selected) out.push(e);
+    }
+    return out;
   }
 
   // Entity count

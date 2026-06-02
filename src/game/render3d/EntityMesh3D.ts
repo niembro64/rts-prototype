@@ -155,6 +155,11 @@ export type EntityMesh = {
    *  full template-string key for every unchanged unit. */
   unitRenderFrameKey?: string;
   unitRenderOwnerId?: PlayerId;
+  /** Per-Mesh fallback head-only turrets switch material when engaged.
+   *  Instanced heads carry this through instanceColor; this cache keeps
+   *  the rare per-Mesh fallback path from rewriting materials every
+   *  frame when the state has not changed. */
+  unitHeadOnlyTurretEngaged?: boolean[];
   /** Whether a per-Mesh group fade clone is currently installed on
    *  this unit. Used to restore real materials exactly once when
    *  construction/death fade returns to full opacity. */

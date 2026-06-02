@@ -2,7 +2,11 @@ import type { GraphicsConfig } from '@/types/graphics';
 import type { PerspectiveCamera } from 'three';
 import type { ClientViewState } from '../../network/ClientViewState';
 import { CLIENT_PREDICTION_DIAGNOSTICS } from '../../network/ClientPredictionDiagnostics';
-import { snapshotRenderFrameState, type RenderFrameState3D } from '../../render3d/RenderFrameState3D';
+import {
+  createRenderFrameState,
+  snapshotRenderFrameState,
+  type RenderFrameState3D,
+} from '../../render3d/RenderFrameState3D';
 
 export type RtsScene3DPredictionPhaseResult = {
   renderFrameState: RenderFrameState3D;
@@ -11,6 +15,8 @@ export type RtsScene3DPredictionPhaseResult = {
 };
 
 export class RtsScene3DPredictionPhase {
+  private readonly renderFrameState = createRenderFrameState();
+
   constructor(private readonly clientViewState: ClientViewState) {}
 
   run(options: {
@@ -19,7 +25,11 @@ export class RtsScene3DPredictionPhase {
     viewportHeightPx: number;
     zoom: number;
   }): RtsScene3DPredictionPhaseResult {
-    const renderFrameState = snapshotRenderFrameState(options.camera, options.viewportHeightPx);
+    const renderFrameState = snapshotRenderFrameState(
+      options.camera,
+      options.viewportHeightPx,
+      this.renderFrameState,
+    );
     const graphicsConfig = renderFrameState.gfx;
 
     const predStart = performance.now();

@@ -15,6 +15,7 @@ const CORE_LIFETIME_MS = 180;
 const DURATION_BASE_RADIUS = 10;
 const CORE_EXPAND_START = 0.6;
 const CORE_EXPAND_END = 1.6;
+const MIN_IMPACT_RADIUS = 1.5;
 const MAX_PUFFS = 2048;
 const MAX_PUFF_SPAWNS_PER_FRAME = 256;
 
@@ -124,6 +125,11 @@ class InstancedSpherePool {
     this.colorAttr.needsUpdate = true;
   }
 
+  prepareWarmupInstance(): void {
+    this.write(0, 0, 0, 0, 0, 1, 1, 1, 0);
+    this.setCount(1);
+  }
+
   destroy(): void {
     disposeMesh(this.mesh);
   }
@@ -146,6 +152,16 @@ export class Explosion3D {
     this.puffSpawnsThisFrame = 0;
   }
 
+  prepareWarmup(): void {
+    if (this.puffs.length > 0) return;
+    this.puffPool.prepareWarmupInstance();
+  }
+
+  finishWarmup(): void {
+    if (this.puffs.length > 0) return;
+    this.puffPool.setCount(0);
+  }
+
   spawnImpact(
     simX: number,
     simY: number,
@@ -156,7 +172,9 @@ export class Explosion3D {
     _shellColor?: number,
     _styleOverride?: ExplosionStyle,
   ): void {
-    const r = Math.max(radius, 1.5);
+    const r = Number.isFinite(radius)
+      ? Math.max(radius, MIN_IMPACT_RADIUS)
+      : MIN_IMPACT_RADIUS;
     const durMult = durationMultiplier(r);
     this.addPuff(
       simX,

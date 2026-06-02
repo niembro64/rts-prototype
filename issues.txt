@@ -17,56 +17,19 @@ Please always commit and push before and after any code changes we make.
 ================================================================================
 
 ================================================================================
-PERFORMANCE — SIMULATION (authoritative tick path)
-================================================================================
-
-1.0 [MAJOR, allocation / hot path] Some authoritative helpers still build fresh
-arrays while serving tick-adjacent queries. `WorldState.getEntitiesByType`
-falls back to `getAllEntities().filter`, `getFactoriesByPlayer`,
-`getSelectedEntities`, `getSelectedUnits`, and `getSelectedFactories` use
-`filter`, and `Simulation.tryRefreshAttackApproach` /
-`tryRefreshGuardApproach` rebuild action queues with `slice(1)` +
-`newPath.concat(suffix)`. These are acceptable UI/debug conveniences, but they
-must not remain in paths that can run for many units per tick.
-FIX: move the remaining typed/selected/factory query subsets into
-`EntityCacheManager` or caller-owned reusable buffers, and replace action queue
-rewrite allocation with an in-place or pooled action-buffer path.
-
-================================================================================
 PERFORMANCE — RENDERER (per-frame hot path)
 ================================================================================
 
 Main per-frame chain: ThreeApp rAF -> RtsScene3DRenderPhase.run ->
 Render3DEntities.update -> updateUnitMeshes (per-unit) -> locomotion/turret/HUD.
 
-2.0 [MAJOR, per-frame scene graph] The 3D renderer still performs several
-full-list passes per frame after the main entity render: HUD body/name loops
-walk `getHudEntities`, `getUnitsAndBuildings`, `getArmedEntities`, and
-`getProjectiles`; shield visuals walk `getShieldUnits`; contact shadows and
-ground prints run separate unit/building passes. Frame striding hides some
-cost, but the architecture is still multiple TypeScript scene-graph/data walks
-over the same visible population.
-FIX: consolidate render packet generation so one visibility/classification pass
-produces compact HUD/shield/contact/ground-print work lists, then move those
-lists toward packed typed buffers or WASM/GPU-owned render packets.
-
-================================================================================
-PERFORMANCE — SERVER / PHYSICS
-================================================================================
-
-================================================================================
-NETWORKING / SNAPSHOTS
-================================================================================
-
-4.0 [MAJOR, memory/backpressure] Remote snapshot decode is serialized through
-`NetworkManager.stateDecodeQueue`, but incoming `state` messages keep appending
-promise closures even if decode/apply falls behind. `beginNetworkSetup`
-invalidates old generations, but an already-built backlog still retains
-messages and closures until the promise chain drains. This is a memory leak
-risk during stalls and a latency amplifier during heavy battles.
-FIX: replace the unbounded promise chain with a bounded latest-wins decode
-queue for snapshots, keep full/keyframe recovery semantics explicit, and drop
-or coarsen stale deltas before they allocate decode work.
+2.0 [MAJOR, per-frame scene graph] `RtsScene3DRenderPhase` now builds a reusable
+scoped render packet for HUD, shield, contact-shadow, ground-print, and projectile
+name work, but those packets are still `Entity[]` lists and the downstream
+features still run TypeScript object loops over them.
+FIX: move those render packets toward packed typed buffers or WASM/GPU-owned
+render packets, and make downstream HUD/shield/contact/ground-print consumers
+read compact packet rows instead of `Entity` objects.
 
 ================================================================================
 ARCHITECTURE / PHILOSOPHY MIGRATION (budget_design_philosophy.html)

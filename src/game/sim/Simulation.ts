@@ -88,6 +88,7 @@ import {
 } from '../sim-wasm/init';
 import {
   rotateFirstUnitActionToEnd,
+  replaceLeadingUnitActions,
   setUnitActions,
   shiftUnitAction,
   spliceUnitActions,
@@ -2257,8 +2258,7 @@ export class Simulation {
       return false;
     }
 
-    const suffix = entity.unit.actions.slice(1);
-    setUnitActions(entity.unit, newPath.concat(suffix));
+    replaceLeadingUnitActions(entity.unit, 1, newPath);
     this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
     return true;
   }
@@ -2304,8 +2304,7 @@ export class Simulation {
       return false;
     }
 
-    const suffix = entity.unit.actions.slice(1);
-    setUnitActions(entity.unit, newPath.concat(suffix));
+    replaceLeadingUnitActions(entity.unit, 1, newPath);
     this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
     return true;
   }

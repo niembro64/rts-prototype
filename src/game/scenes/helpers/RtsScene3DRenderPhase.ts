@@ -100,6 +100,26 @@ export type RtsScene3DRenderPhaseResult = {
   renderMs: number;
 };
 
+type RenderPhaseEntityLists = {
+  units: readonly Entity[];
+  buildings: readonly Entity[];
+  unitsAndBuildings: readonly Entity[];
+  hudEntities: readonly Entity[];
+  armedEntities: readonly Entity[];
+  shieldUnits: readonly Entity[];
+  projectiles: readonly Entity[];
+};
+
+type RenderPhaseEntityListOptions = {
+  includeUnitsAndBuildings: boolean;
+  includeHudEntities: boolean;
+  includeArmedEntities: boolean;
+  includeShieldUnits: boolean;
+  includeProjectiles: boolean;
+};
+
+const EMPTY_ENTITY_LIST: readonly Entity[] = [];
+
 export class RtsScene3DRenderPhase {
   private renderFrameIndex = 0;
   private lastEffectsTickMs = 0;
@@ -113,12 +133,32 @@ export class RtsScene3DRenderPhase {
   private readonly lineProjectilesScratch: Entity[] = [];
   private readonly burnMarkProjectilesScratch: Entity[] = [];
   private readonly smokeTrailProjectilesScratch: Entity[] = [];
+  private readonly scopedUnitsScratch: Entity[] = [];
+  private readonly scopedBuildingsScratch: Entity[] = [];
+  private readonly scopedUnitsAndBuildingsScratch: Entity[] = [];
+  private readonly scopedHudEntitiesScratch: Entity[] = [];
+  private readonly scopedArmedEntitiesScratch: Entity[] = [];
+  private readonly scopedShieldUnitsScratch: Entity[] = [];
+  private readonly scopedProjectilesScratch: Entity[] = [];
+  private readonly renderEntityLists: RenderPhaseEntityLists = {
+    units: [],
+    buildings: [],
+    unitsAndBuildings: [],
+    hudEntities: [],
+    armedEntities: [],
+    shieldUnits: [],
+    projectiles: [],
+  };
   private readonly frustum = new THREE.Frustum();
   private readonly frustumMatrix = new THREE.Matrix4();
   private readonly nameLabelAnchorScratch = { x: 0, y: 0, z: 0 };
   private readonly enqueuePylonTubeHandoff = (flowKey: string, intensity: number): void => {
     this.resources.pylonTubeFlowRenderer.enqueueTipHandoff(flowKey, intensity);
   };
+  private readonly getGroundPrintLocomotionMesh = (entity: Entity) =>
+    this.resources.entityRenderer.getLocomotionMesh(entity.id);
+  private readonly lookupPlayerDisplayName = (playerId: PlayerId): string | null =>
+    this.lookupPlayerName(playerId) ?? getDefaultPlayerName(playerId);
   /** Camera-distance fade shared by HP/build bars + name labels so
    *  both fade + cull together as the camera zooms out (BAR style). */
   private readonly hudFade = new HudFade();
@@ -204,6 +244,23 @@ export class RtsScene3DRenderPhase {
     const effectFrameStride = Math.max(1, graphicsConfig.effectFrameStride | 0);
     const updateHudThisFrame = hudFrameStride <= 1 || this.renderFrameIndex % hudFrameStride === 0;
     const updateEffectsThisFrame = effectFrameStride <= 1 || this.renderFrameIndex % effectFrameStride === 0;
+    const updateEntityHudThisFrame = updateHudThisFrame && (healthBar3D !== null || nameLabel3D !== null);
+    const unitNameHudEnabled = updateEntityHudThisFrame &&
+      nameLabel3D !== null &&
+      getEntityHudToggle('unit', 'name');
+    const towerNameHudEnabled = updateEntityHudThisFrame &&
+      nameLabel3D !== null &&
+      getEntityHudToggle('tower', 'name');
+    const buildingNameHudEnabled = updateEntityHudThisFrame &&
+      nameLabel3D !== null &&
+      getEntityHudToggle('building', 'name');
+    const bodyNamesEnabled = unitNameHudEnabled || towerNameHudEnabled || buildingNameHudEnabled;
+    const turretNamesEnabled = updateEntityHudThisFrame &&
+      nameLabel3D !== null &&
+      getEntityHudToggle('turret', 'name');
+    const shotNamesEnabled = updateEntityHudThisFrame &&
+      nameLabel3D !== null &&
+      getEntityHudToggle('shot', 'name');
 
     const cameraFootprint = this.cameraFootprintSystem.update(this.threeApp.camera);
     const cameraQuad = cameraFootprint.quad;
@@ -216,6 +273,7 @@ export class RtsScene3DRenderPhase {
 
     const serverMeta = this.clientViewState.getServerMeta();
     const fogOfWarEnabled = serverMeta?.fogOfWarEnabled === true;
+    const turretShieldSpheresEnabled = serverMeta?.turretShieldSpheresEnabled ?? true;
     sightBoundaryRenderer.update(
       this.clientViewState,
       this.getLocalPlayerId(),
@@ -230,11 +288,18 @@ export class RtsScene3DRenderPhase {
     );
     entityRenderer.update(
       renderFrameState,
-      { turretShieldPanelsEnabled: serverMeta?.turretShieldPanelsEnabled ?? true },
+      serverMeta?.turretShieldPanelsEnabled ?? true,
     );
+    const entityLists = this.prepareEntityLists({
+      includeUnitsAndBuildings: bodyNamesEnabled,
+      includeHudEntities: updateEntityHudThisFrame && healthBar3D !== null,
+      includeArmedEntities: turretNamesEnabled,
+      includeShieldUnits: turretShieldSpheresEnabled,
+      includeProjectiles: shotNamesEnabled,
+    });
     contactShadowRenderer?.update(
-      this.clientViewState.getUnits(),
-      this.clientViewState.getBuildings(),
+      entityLists.units,
+      entityLists.buildings,
       graphicsConfig,
       this.renderFrameIndex,
       this.renderScope,
@@ -286,8 +351,8 @@ export class RtsScene3DRenderPhase {
     this.groundPrintAccumMs += effectDtMs;
     if (updateEffectsThisFrame) {
       groundPrintRenderer.update(
-        this.clientViewState.getUnits(),
-        (e) => entityRenderer.getLocomotionMesh(e.id),
+        entityLists.units,
+        this.getGroundPrintLocomotionMesh,
         this.groundPrintAccumMs,
         this.clientViewState.getMapWidth(),
         this.clientViewState.getMapHeight(),
@@ -362,15 +427,17 @@ export class RtsScene3DRenderPhase {
     );
 
     shieldRenderer.beginFrame(graphicsConfig);
-    if (this.clientViewState.getServerMeta()?.turretShieldSpheresEnabled ?? true) {
-      for (const u of this.clientViewState.getShieldUnits()) {
+    if (turretShieldSpheresEnabled) {
+      for (const u of entityLists.shieldUnits) {
         shieldRenderer.perUnit(u);
       }
     }
     shieldRenderer.endFrame();
 
     const hoveredEntity = inputManager?.getHoveredEntity() ?? null;
-    this.drawEntityHud(healthBar3D, nameLabel3D, hudFrustum, hoveredEntity);
+    if (updateEntityHudThisFrame) {
+      this.drawEntityHud(healthBar3D, nameLabel3D, hudFrustum, hoveredEntity, entityLists);
+    }
 
     if (updateHudThisFrame) {
       waypoint3D?.update(
@@ -412,6 +479,113 @@ export class RtsScene3DRenderPhase {
     return 'building';
   }
 
+  private prepareEntityLists(options: RenderPhaseEntityListOptions): RenderPhaseEntityLists {
+    const lists = this.renderEntityLists;
+    if (this.renderScope.getMode() === 'all') {
+      lists.units = this.clientViewState.getUnits();
+      lists.buildings = this.clientViewState.getBuildings();
+      lists.unitsAndBuildings = options.includeUnitsAndBuildings
+        ? this.clientViewState.getUnitsAndBuildings()
+        : EMPTY_ENTITY_LIST;
+      lists.hudEntities = options.includeHudEntities
+        ? this.clientViewState.getHudEntities()
+        : EMPTY_ENTITY_LIST;
+      lists.armedEntities = options.includeArmedEntities
+        ? this.clientViewState.getArmedEntities()
+        : EMPTY_ENTITY_LIST;
+      lists.shieldUnits = options.includeShieldUnits
+        ? this.clientViewState.getShieldUnits()
+        : EMPTY_ENTITY_LIST;
+      lists.projectiles = options.includeProjectiles
+        ? this.clientViewState.getProjectiles()
+        : EMPTY_ENTITY_LIST;
+      return lists;
+    }
+
+    const units = this.scopedUnitsScratch;
+    const buildings = this.scopedBuildingsScratch;
+    const unitsAndBuildings = this.scopedUnitsAndBuildingsScratch;
+    const hudEntities = this.scopedHudEntitiesScratch;
+    const armedEntities = this.scopedArmedEntitiesScratch;
+    const shieldUnits = this.scopedShieldUnitsScratch;
+    const projectiles = this.scopedProjectilesScratch;
+    units.length = 0;
+    buildings.length = 0;
+    unitsAndBuildings.length = 0;
+    hudEntities.length = 0;
+    armedEntities.length = 0;
+    shieldUnits.length = 0;
+    projectiles.length = 0;
+
+    const scope = this.renderScope;
+    for (const entity of this.clientViewState.getUnitsAndBuildings()) {
+      if (!this.entityInRenderScope(entity)) continue;
+      if (options.includeUnitsAndBuildings) unitsAndBuildings.push(entity);
+      if (entity.unit) units.push(entity);
+      else if (entity.building) buildings.push(entity);
+      if (options.includeHudEntities && this.entityNeedsBodyHud(entity)) {
+        hudEntities.push(entity);
+      }
+      if ((options.includeArmedEntities || options.includeShieldUnits) && entity.combat) {
+        let hasCombatTurret = false;
+        let hasShield = false;
+        const turrets = entity.combat.turrets;
+        for (let i = 0; i < turrets.length; i++) {
+          const turret = turrets[i];
+          if (turret.config.visualOnly) continue;
+          hasCombatTurret = true;
+          const shot = turret.config.shot;
+          if (shot !== undefined && shot.type === 'shield' && shot.barrier !== undefined) {
+            hasShield = true;
+          }
+          if (hasCombatTurret && hasShield) break;
+        }
+        if (options.includeArmedEntities && hasCombatTurret) armedEntities.push(entity);
+        if (options.includeShieldUnits && hasShield && entity.unit) shieldUnits.push(entity);
+      }
+    }
+
+    if (options.includeProjectiles) {
+      for (const projectile of this.clientViewState.getProjectiles()) {
+        if (scope.inScope(projectile.transform.x, projectile.transform.y, 100)) {
+          projectiles.push(projectile);
+        }
+      }
+    }
+
+    lists.units = units;
+    lists.buildings = buildings;
+    lists.unitsAndBuildings = unitsAndBuildings;
+    lists.hudEntities = hudEntities;
+    lists.armedEntities = armedEntities;
+    lists.shieldUnits = shieldUnits;
+    lists.projectiles = projectiles;
+    return lists;
+  }
+
+  private entityInRenderScope(entity: Entity): boolean {
+    const unit = entity.unit;
+    if (unit) {
+      const radius = unit.radius.visual ?? unit.radius.hitbox ?? 100;
+      return this.renderScope.inScope(entity.transform.x, entity.transform.y, Math.max(350, radius));
+    }
+    const building = entity.building;
+    if (building) {
+      const radius = Math.max(building.width, building.height) * 0.75;
+      return this.renderScope.inScope(entity.transform.x, entity.transform.y, Math.max(200, radius));
+    }
+    return this.renderScope.inScope(entity.transform.x, entity.transform.y, 100);
+  }
+
+  private entityNeedsBodyHud(entity: Entity): boolean {
+    const buildInProgress = isBuildInProgress(entity.buildable);
+    if (buildInProgress) return true;
+    const unit = entity.unit;
+    if (unit) return unit.hp > 0 && unit.hp < unit.maxHp;
+    const building = entity.building;
+    return building !== null && building.hp > 0 && building.hp < building.maxHp;
+  }
+
   /** Drive every HUD bar + name pass for the frame from the live HUD
    *  config: body bars (unit/tower/building) from getHudEntities(),
    *  turret bars/names from getArmedEntities(), locomotion bars
@@ -423,11 +597,11 @@ export class RtsScene3DRenderPhase {
     nameLabel3D: NameLabel3D | null,
     hudFrustum: THREE.Frustum | undefined,
     hoveredEntity: Entity | null,
+    entityLists: RenderPhaseEntityLists,
   ): void {
     if (!healthBar3D && !nameLabel3D) return;
     const mode = getSelectionHudMode();
-    const lookup = (pid: PlayerId): string | null =>
-      this.lookupPlayerName(pid) ?? getDefaultPlayerName(pid);
+    const lookup = this.lookupPlayerDisplayName;
 
     const shotNameToggle = getEntityHudToggle('shot', 'name');
     const unitNameToggle = getEntityHudToggle('unit', 'name');
@@ -439,7 +613,7 @@ export class RtsScene3DRenderPhase {
     if (nameLabel3D) nameLabel3D.beginFrame(this.hudFade, hudFrustum);
 
     // ── Body bars + names (unit / tower / building) ──
-    for (const e of this.clientViewState.getHudEntities()) {
+    for (const e of entityLists.hudEntities) {
       const type = this.hudTypeOf(e);
       const selected = e.selectable?.selected === true;
       const forceVisible = e === hoveredEntity;
@@ -474,7 +648,7 @@ export class RtsScene3DRenderPhase {
     // HP). Commander owners get a separate styled label so the body
     // label stays a blueprint name.
     if (nameLabel3D && bodyNamesEnabled) {
-      for (const e of this.clientViewState.getUnitsAndBuildings()) {
+      for (const e of entityLists.unitsAndBuildings) {
         const type = this.hudTypeOf(e);
         const nameToggle = type === 'unit'
           ? unitNameToggle
@@ -504,7 +678,7 @@ export class RtsScene3DRenderPhase {
     const turretNameToggle = getEntityHudToggle('turret', 'name');
     if (turretNameToggle) {
       const entityRenderer = this.resources.entityRenderer;
-      for (const host of this.clientViewState.getArmedEntities()) {
+      for (const host of entityLists.armedEntities) {
         const turrets = host.combat?.turrets;
         if (!turrets) continue;
         for (let i = 0; i < turrets.length; i++) {
@@ -538,7 +712,7 @@ export class RtsScene3DRenderPhase {
     // ── Shot names. Shot HP bars stay disabled until projectile HP
     // rides a rolling authoritative snapshot instead of spawn state.
     if (nameLabel3D && shotNameToggle) {
-      for (const shot of this.clientViewState.getProjectiles()) {
+      for (const shot of entityLists.projectiles) {
         const proj = shot.projectile;
         if (!proj || proj.projectileType !== 'projectile' || proj.maxHp <= 0) continue;
         const name = resolveShotName(shot, shotNameToggle, mode);

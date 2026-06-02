@@ -70,25 +70,24 @@ export type PerObjectFade = {
   setFade(value: number): void;
 };
 
-// Per-object fade clones each carry their OWN `uFade` uniform, so each
-// must get its own compiled program — a shared program would share the
-// uniform and bleed one object's fade onto others. A unique cache key per
-// clone guarantees that. (The instanced path is exempt: its fade is a
-// per-instance attribute, not a uniform, so those pools safely share one
-// program.) Clones are reused per mesh and only built for building/dying
-// entities, so the program count stays small.
-let perObjectFadeKeySeq = 0;
+// Per-object fade clones each carry their own `uFade` uniform object, but
+// Three stores uniforms per material, not per WebGLProgram. The shader source
+// is identical for every clone of the same base variant, so use a stable cache
+// key and let those clones share one compiled program. Otherwise construction
+// and death fades can compile/link one shader per mesh during gameplay.
+const PER_OBJECT_FADE_CACHE_KEY = 'entityFadePerObjectAlpha';
 
 /** Clone a material and patch the clone so a per-object `uFade` uniform
  *  drives the fade. Leaves the (often shared) base material untouched, so
  *  fading one per-Mesh object never bleeds onto others. Used for the
  *  per-Mesh building / tower render path. */
 export function makePerObjectFadeMaterial(base: THREE.Material): PerObjectFade {
+  const baseCacheKey = base.customProgramCacheKey();
   const material = base.clone();
   material.transparent = true;
   material.depthWrite = false;
   const uFade = { value: 1 };
-  const cacheKey = `entityFadePerObjectAlpha:${perObjectFadeKeySeq++}`;
+  const cacheKey = `${PER_OBJECT_FADE_CACHE_KEY}:${baseCacheKey}`;
   const prev = material.onBeforeCompile;
   material.onBeforeCompile = (shader, renderer) => {
     if (prev) prev.call(material, shader, renderer);

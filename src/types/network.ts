@@ -291,6 +291,7 @@ export type NetworkServerSnapshotMessage =
       type: 'state';
       gameId: string | undefined;
       data: Uint8Array | ArrayBuffer;
+      isDelta?: boolean;
       compression?: {
         format: SnapshotCompressionFormat;
         rawBytes: number;

@@ -178,7 +178,7 @@ export class ProjectileRenderer3D {
     this.world.add(this.finInstanced);
   }
 
-  update(_frameState: RenderFrameState3D): void {
+  update(frameState: RenderFrameState3D): void {
     const projectiles = this.clientViewState.collectTravelingProjectiles(
       this.projectileRenderScratch,
     );
@@ -193,6 +193,9 @@ export class ProjectileRenderer3D {
     let finCount = 0;
     const wantCol = getProjRangeToggle('collision');
     const wantExp = getProjRangeToggle('explosion');
+    const projectileStyle = frameState.gfx.projectileStyle;
+    const drawProjectileTail = projectileStyle !== 'dot' && projectileStyle !== 'core';
+    const drawProjectileFins = projectileStyle === 'full';
 
     for (const e of projectiles) {
       if (pruneProjectiles) seen.add(e.id);
@@ -222,8 +225,12 @@ export class ProjectileRenderer3D {
       this.projMatrix.compose(this.projPos, IDENTITY_QUAT, this.projScale);
       this.sphereInstanced.setMatrixAt(sphereCount++, this.projMatrix);
 
-      const tailShape = visualProfile?.projectileTailShape ?? 'cone';
-      const finSizeMult = visualProfile?.projectileFinSizeMult ?? 0;
+      const tailShape = drawProjectileTail
+        ? visualProfile?.projectileTailShape ?? 'cone'
+        : 'none';
+      const finSizeMult = drawProjectileFins
+        ? visualProfile?.projectileFinSizeMult ?? 0
+        : 0;
       if (tailShape !== 'none' || finSizeMult > 0) {
         const tailLength = r * (visualProfile?.projectileTailLengthMult ?? 8);
         const tailRadius = r * (visualProfile?.projectileTailRadiusMult ?? 1);

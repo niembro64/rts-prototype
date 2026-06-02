@@ -28,6 +28,35 @@ export function setUnitActions(unit: Unit, actions: UnitAction[]): void {
   refreshUnitActionHash(unit);
 }
 
+export function replaceLeadingUnitActions(
+  unit: Unit,
+  deleteCount: number,
+  replacements: readonly UnitAction[],
+): void {
+  const actions = unit.actions;
+  const safeDeleteCount = Math.max(0, Math.min(deleteCount | 0, actions.length));
+  const replacementCount = replacements.length;
+  const tailCount = actions.length - safeDeleteCount;
+  const nextLength = replacementCount + tailCount;
+
+  if (replacementCount > safeDeleteCount) {
+    actions.length = nextLength;
+    for (let i = tailCount - 1; i >= 0; i--) {
+      actions[replacementCount + i] = actions[safeDeleteCount + i];
+    }
+  } else if (replacementCount < safeDeleteCount) {
+    for (let i = 0; i < tailCount; i++) {
+      actions[replacementCount + i] = actions[safeDeleteCount + i];
+    }
+    actions.length = nextLength;
+  }
+
+  for (let i = 0; i < replacementCount; i++) {
+    actions[i] = replacements[i];
+  }
+  refreshUnitActionHash(unit);
+}
+
 export function pushUnitAction(unit: Unit, action: UnitAction): void {
   unit.actions.push(action);
   refreshUnitActionHash(unit);

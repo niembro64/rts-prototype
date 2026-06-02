@@ -10,6 +10,11 @@ export type RtsScene3DAudioEventHandler = (
 
 export class RtsScene3DAudioSystem {
   private readonly scheduler = new AudioEventScheduler();
+  private readonly snapshotOptions: RtsScene3DSnapshotAudioOptions = {
+    scheduler: this.scheduler,
+    smoothingEnabled: false,
+    play: () => {},
+  };
 
   drainReady(
     enabled: boolean,
@@ -25,11 +30,9 @@ export class RtsScene3DAudioSystem {
     play: RtsScene3DAudioEventHandler,
   ): RtsScene3DSnapshotAudioOptions | undefined {
     if (!enabled) return undefined;
-    return {
-      scheduler: this.scheduler,
-      smoothingEnabled: getAudioSmoothing(),
-      play,
-    };
+    this.snapshotOptions.smoothingEnabled = getAudioSmoothing();
+    this.snapshotOptions.play = play;
+    return this.snapshotOptions;
   }
 
   clear(): void {

@@ -29,6 +29,8 @@ export class GpuTimerQuery {
   // don't check the newest one for result availability (GPU is still busy).
   private pending: WebGLQuery[] = [];
   private activeQuery: WebGLQuery | null = null;
+  private sampleFrame = 0;
+  private pollFrame = 0;
 
   // EMA-smoothed result in milliseconds. Zero until the first query resolves.
   private emaMs = 0;
@@ -37,6 +39,7 @@ export class GpuTimerQuery {
   // Hard cap so a stuck driver (never returns RESULT_AVAILABLE) can't grow
   // the queue unbounded.
   private readonly MAX_PENDING = 6;
+  private readonly SAMPLE_STRIDE = 4;
 
   constructor(gl: WebGL2RenderingContext | WebGLRenderingContext | null | undefined) {
     if (!gl || !(gl as WebGL2RenderingContext).createQuery) return;
@@ -55,6 +58,8 @@ export class GpuTimerQuery {
     if (!this.gl || !this.ext) return;
     // Don't overlap queries — if a previous begin() wasn't matched, drop it.
     if (this.activeQuery) return;
+    this.sampleFrame = (this.sampleFrame + 1) & 0x3fffffff;
+    if (this.sampleFrame % this.SAMPLE_STRIDE !== 0) return;
     const q = this.gl.createQuery();
     if (!q) return;
     this.gl.beginQuery(this.ext.TIME_ELAPSED_EXT, q);
@@ -79,6 +84,8 @@ export class GpuTimerQuery {
    *  frame, after end(). Safe to call without a preceding begin()/end(). */
   poll(): void {
     if (!this.gl || !this.ext) return;
+    this.pollFrame = (this.pollFrame + 1) & 0x3fffffff;
+    if (this.pollFrame % this.SAMPLE_STRIDE !== 0) return;
     // If the GPU has been disjoint (context reset, suspend), every pending
     // query is invalid — discard them all.
     const disjoint = this.gl.getParameter(this.ext.GPU_DISJOINT_EXT);

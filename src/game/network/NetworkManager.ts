@@ -120,7 +120,11 @@ export class NetworkManager {
   });
   private signalingReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private signalingReconnectDelayMs = SIGNALING_RECONNECT_INITIAL_DELAY_MS;
-  private stateDecodeQueue: Promise<void> = Promise.resolve();
+  private pendingStateMessage: NetworkStateMessage | null = null;
+  private pendingStateMessageSeq = 0;
+  private stateDecodeMessageSeq = 0;
+  private stateDecodeNeedsKeyframeAfterSeq = 0;
+  private stateDecodeDraining = false;
   private stateDecodeGeneration = 0;
   private sessionGeneration = 0;
   /** 10s connection-setup deadline created by hostGame/joinGame. Held
@@ -268,7 +272,11 @@ export class NetworkManager {
     this.gameStarted = false;
     this.snapshotTransport.reset();
     this.stateDecodeGeneration++;
-    this.stateDecodeQueue = Promise.resolve();
+    this.pendingStateMessage = null;
+    this.pendingStateMessageSeq = 0;
+    this.stateDecodeMessageSeq = 0;
+    this.stateDecodeNeedsKeyframeAfterSeq = 0;
+    this.stateDecodeDraining = false;
     return this.sessionGeneration;
   }
 
@@ -1104,23 +1112,94 @@ export class NetworkManager {
 
   private queueStateMessage(message: NetworkStateMessage): void {
     const generation = this.stateDecodeGeneration;
-    this.stateDecodeQueue = this.stateDecodeQueue
-      .then(async () => {
-        if (generation !== this.stateDecodeGeneration) return;
-        const hostConn = this.connections.get(1);
-        const hostDataChannel = hostConn !== undefined ? hostConn.dataChannel : undefined;
-        const state = await this.snapshotTransport.decodeReceivedState(
-          message,
-          hostDataChannel,
+    const messageSeq = ++this.stateDecodeMessageSeq;
+    if (this.stateDecodeNeedsKeyframeAfterSeq > 0 && message.isDelta === true) {
+      this.stateDecodeNeedsKeyframeAfterSeq = Math.max(
+        this.stateDecodeNeedsKeyframeAfterSeq,
+        messageSeq,
+      );
+      this.commandTransport.sendSnapshotResyncRequest();
+      return;
+    }
+
+    const pending = this.pendingStateMessage;
+    if (pending !== null) {
+      const droppedPendingSeq = this.pendingStateMessageSeq;
+      if (message.isDelta === true) {
+        this.pendingStateMessage = null;
+        this.pendingStateMessageSeq = 0;
+        this.stateDecodeNeedsKeyframeAfterSeq = Math.max(
+          this.stateDecodeNeedsKeyframeAfterSeq,
+          droppedPendingSeq,
+          messageSeq,
         );
-        if (generation !== this.stateDecodeGeneration) return;
-        if (!this.emitStateReceived(state)) {
-          this.snapshotTransport.storePendingState(state);
+        this.commandTransport.sendSnapshotResyncRequest();
+        return;
+      }
+      this.stateDecodeNeedsKeyframeAfterSeq = Math.max(
+        this.stateDecodeNeedsKeyframeAfterSeq,
+        droppedPendingSeq,
+      );
+    }
+    this.pendingStateMessage = message;
+    this.pendingStateMessageSeq = messageSeq;
+    if (!this.stateDecodeDraining) {
+      this.stateDecodeDraining = true;
+      void this.drainStateDecodeQueue(generation);
+    }
+  }
+
+  private async drainStateDecodeQueue(generation: number): Promise<void> {
+    try {
+      while (generation === this.stateDecodeGeneration) {
+        const message = this.pendingStateMessage;
+        if (message === null) return;
+        const messageSeq = this.pendingStateMessageSeq;
+        this.pendingStateMessage = null;
+        this.pendingStateMessageSeq = 0;
+
+        try {
+          const hostConn = this.connections.get(1);
+          const hostDataChannel = hostConn !== undefined ? hostConn.dataChannel : undefined;
+          const state = await this.snapshotTransport.decodeReceivedState(
+            message,
+            hostDataChannel,
+          );
+          if (generation !== this.stateDecodeGeneration) return;
+          if (this.stateDecodeNeedsKeyframeAfterSeq > 0 && state.isDelta) {
+            this.stateDecodeNeedsKeyframeAfterSeq = Math.max(
+              this.stateDecodeNeedsKeyframeAfterSeq,
+              messageSeq,
+            );
+            this.commandTransport.sendSnapshotResyncRequest();
+            continue;
+          }
+          if (!state.isDelta && messageSeq > this.stateDecodeNeedsKeyframeAfterSeq) {
+            this.stateDecodeNeedsKeyframeAfterSeq = 0;
+          }
+          if (!this.emitStateReceived(state)) {
+            this.snapshotTransport.storePendingState(state);
+          }
+        } catch (err: unknown) {
+          if (generation === this.stateDecodeGeneration) {
+            console.warn('[NET] Failed to decode snapshot:', err);
+            this.stateDecodeNeedsKeyframeAfterSeq = Math.max(
+              this.stateDecodeNeedsKeyframeAfterSeq,
+              messageSeq,
+            );
+            this.commandTransport.sendSnapshotResyncRequest();
+          }
         }
-      })
-      .catch((err: unknown) => {
-        console.warn('[NET] Failed to decode snapshot:', err);
-      });
+      }
+    } finally {
+      if (generation === this.stateDecodeGeneration) {
+        this.stateDecodeDraining = false;
+        if (this.pendingStateMessage !== null) {
+          this.stateDecodeDraining = true;
+          void this.drainStateDecodeQueue(generation);
+        }
+      }
+    }
   }
 }
 

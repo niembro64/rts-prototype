@@ -103,6 +103,7 @@ export class NetworkSnapshotTransport {
       type: 'state',
       gameId,
       data: buf,
+      isDelta: state.isDelta,
     };
   }
 
@@ -245,6 +246,7 @@ export class NetworkSnapshotTransport {
         type: 'state',
         gameId,
         data: compressed,
+        isDelta: telemetry.isDelta,
         compression: {
           format,
           rawBytes: raw.byteLength,
@@ -269,6 +271,7 @@ export class NetworkSnapshotTransport {
         type: 'state',
         gameId,
         data: raw,
+        isDelta: telemetry.isDelta,
       };
     } finally {
       this.pendingFullCompressionPlayerIds.delete(playerId);

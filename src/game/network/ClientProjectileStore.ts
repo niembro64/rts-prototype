@@ -44,6 +44,11 @@ export class ClientProjectileStore {
   readonly projectileSpawns = new ProjectileSpawnQueue();
 
   private lineProjectileRenderVersion = 0;
+  private renderListsDirty = true;
+  private cachedTravelingProjectiles: Entity[] = [];
+  private cachedSmokeTrailProjectiles: Entity[] = [];
+  private cachedLineProjectiles: Entity[] = [];
+  private cachedBurnMarkProjectiles: Entity[] = [];
 
   constructor(private readonly options: ClientProjectileStoreOptions) {}
 
@@ -55,12 +60,17 @@ export class ClientProjectileStore {
     this.lineProjectileRenderVersion = (this.lineProjectileRenderVersion + 1) & 0x3fffffff;
   }
 
+  private markRenderListsDirty(): void {
+    this.renderListsDirty = true;
+  }
+
   remove(id: EntityId, wasLineProjectile: boolean): void {
     this.beamPathTargets.delete(id);
     this.projectileSpawns.remove(id);
     this.options.clearPredictionAccum(id);
     this.activeProjectilePredictionIds.delete(id);
     this.activeBeamPathIds.delete(id);
+    this.markRenderListsDirty();
     if (wasLineProjectile) this.markLineProjectilesChanged();
   }
 
@@ -77,6 +87,7 @@ export class ClientProjectileStore {
       } else {
         this.activeProjectilePredictionIds.add(spawn.id);
       }
+      this.markRenderListsDirty();
       return true;
     } catch {
       return false;
@@ -159,71 +170,84 @@ export class ClientProjectileStore {
     }
     proj.obstructionT = target.obstructionT === null ? undefined : target.obstructionT;
     proj.endpointDamageable = update.endpointDamageable !== false;
-    this.activeBeamPathIds.add(update.id);
+    if (!this.activeBeamPathIds.has(update.id)) {
+      this.activeBeamPathIds.add(update.id);
+      this.markRenderListsDirty();
+    }
     this.options.clearPredictionAccum(update.id);
     this.markLineProjectilesChanged();
   }
 
   markVelocityUpdateActive(entity: Entity, id: EntityId): void {
-    if (isLineProjectileEntity(entity)) this.activeBeamPathIds.add(id);
-    else this.activeProjectilePredictionIds.add(id);
-  }
-
-  collectTraveling(out: Entity[]): Entity[] {
-    out.length = 0;
-    for (const id of this.activeProjectilePredictionIds) {
-      const entity = this.options.entities.get(id);
-      if (entity === undefined) continue;
-      const projectile = entity.projectile;
-      if (projectile !== null && projectile.projectileType === 'projectile') out.push(entity);
+    if (isLineProjectileEntity(entity)) {
+      if (!this.activeBeamPathIds.has(id)) {
+        this.activeBeamPathIds.add(id);
+        this.markRenderListsDirty();
+      }
+    } else if (!this.activeProjectilePredictionIds.has(id)) {
+      this.activeProjectilePredictionIds.add(id);
+      this.markRenderListsDirty();
     }
-    return out;
   }
 
-  collectSmokeTrail(out: Entity[]): Entity[] {
-    out.length = 0;
+  private rebuildRenderListsIfNeeded(): void {
+    if (!this.renderListsDirty) return;
+    this.renderListsDirty = false;
+    const traveling = this.cachedTravelingProjectiles;
+    const smokeTrail = this.cachedSmokeTrailProjectiles;
+    const line = this.cachedLineProjectiles;
+    const burnMark = this.cachedBurnMarkProjectiles;
+    traveling.length = 0;
+    smokeTrail.length = 0;
+    line.length = 0;
+    burnMark.length = 0;
+
     for (const id of this.activeProjectilePredictionIds) {
       const entity = this.options.entities.get(id);
       if (entity === undefined) continue;
       const projectile = entity.projectile;
       if (projectile === null || projectile.projectileType !== 'projectile') continue;
+      traveling.push(entity);
       const profile = projectile.config.shotProfile;
       if (
         profile.visual.smokeTrail !== undefined
       ) {
-        out.push(entity);
+        smokeTrail.push(entity);
+      }
+      const dgunProjectile = entity.dgunProjectile;
+      if (dgunProjectile !== null && dgunProjectile.isDGun) {
+        burnMark.push(entity);
       }
     }
-    return out;
-  }
 
-  collectLine(out: Entity[]): Entity[] {
-    out.length = 0;
     for (const id of this.activeBeamPathIds) {
       const entity = this.options.entities.get(id);
       if (entity === undefined || entity.projectile === null) continue;
-      if (isLineProjectileEntity(entity)) out.push(entity);
-    }
-    return out;
-  }
-
-  collectBurnMark(out: Entity[]): Entity[] {
-    this.collectLine(out);
-    for (const id of this.activeProjectilePredictionIds) {
-      const entity = this.options.entities.get(id);
-      if (entity === undefined) continue;
-      const projectile = entity.projectile;
-      const dgunProjectile = entity.dgunProjectile;
-      if (
-        projectile !== null &&
-        projectile.projectileType === 'projectile' &&
-        dgunProjectile !== null &&
-        dgunProjectile.isDGun
-      ) {
-        out.push(entity);
+      if (isLineProjectileEntity(entity)) {
+        line.push(entity);
+        burnMark.push(entity);
       }
     }
-    return out;
+  }
+
+  collectTraveling(_out: Entity[]): Entity[] {
+    this.rebuildRenderListsIfNeeded();
+    return this.cachedTravelingProjectiles;
+  }
+
+  collectSmokeTrail(_out: Entity[]): Entity[] {
+    this.rebuildRenderListsIfNeeded();
+    return this.cachedSmokeTrailProjectiles;
+  }
+
+  collectLine(_out: Entity[]): Entity[] {
+    this.rebuildRenderListsIfNeeded();
+    return this.cachedLineProjectiles;
+  }
+
+  collectBurnMark(_out: Entity[]): Entity[] {
+    this.rebuildRenderListsIfNeeded();
+    return this.cachedBurnMarkProjectiles;
   }
 
   clear(): void {
@@ -231,6 +255,11 @@ export class ClientProjectileStore {
     this.projectileSpawns.clear();
     this.activeProjectilePredictionIds.clear();
     this.activeBeamPathIds.clear();
+    this.cachedTravelingProjectiles.length = 0;
+    this.cachedSmokeTrailProjectiles.length = 0;
+    this.cachedLineProjectiles.length = 0;
+    this.cachedBurnMarkProjectiles.length = 0;
+    this.renderListsDirty = false;
     this.lineProjectileRenderVersion = 0;
   }
 

@@ -94,6 +94,81 @@ import {
   LAND_CELL_SIZE,
 } from '../../config';
 
+type SimDeathContext3D = NonNullable<NetworkServerSnapshotSimEvent['deathContext']>;
+
+let warnedNonFiniteVisualEvent = false;
+
+function finiteOr(value: number, fallback: number): number {
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function finiteAtLeast(value: number | undefined, min: number, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.max(value, min);
+}
+
+function maxFiniteNonNegativeOr(fallback: number, a: number, b: number): number {
+  let best = -Infinity;
+  if (Number.isFinite(a)) best = Math.max(best, Math.max(0, a));
+  if (Number.isFinite(b)) best = Math.max(best, Math.max(0, b));
+  return best === -Infinity ? fallback : best;
+}
+
+function hasFiniteEventPosition(event: NetworkServerSnapshotSimEvent): boolean {
+  return (
+    Number.isFinite(event.pos.x) &&
+    Number.isFinite(event.pos.y) &&
+    Number.isFinite(event.pos.z)
+  );
+}
+
+function warnNonFiniteVisualEvent(event: NetworkServerSnapshotSimEvent): void {
+  if (warnedNonFiniteVisualEvent) return;
+  warnedNonFiniteVisualEvent = true;
+  console.warn('RtsScene3D dropped visual SimEvent with non-finite position', {
+    type: event.type,
+    pos: event.pos,
+    entityId: event.entityId,
+    turretBlueprintId: event.turretBlueprintId,
+  });
+}
+
+function sanitizeDeathContext(ctx: SimDeathContext3D): SimDeathContext3D {
+  const radius = finiteAtLeast(ctx.radius, 0, 15);
+  return {
+    ...ctx,
+    unitVel: {
+      x: finiteOr(ctx.unitVel.x, 0),
+      y: finiteOr(ctx.unitVel.y, 0),
+    },
+    hitDir: {
+      x: finiteOr(ctx.hitDir.x, 0),
+      y: finiteOr(ctx.hitDir.y, 0),
+    },
+    projectileVel: {
+      x: finiteOr(ctx.projectileVel.x, 0),
+      y: finiteOr(ctx.projectileVel.y, 0),
+    },
+    attackMagnitude: finiteAtLeast(ctx.attackMagnitude, 0, 25),
+    radius,
+    visualRadius: ctx.visualRadius === undefined
+      ? undefined
+      : finiteAtLeast(ctx.visualRadius, 0, radius),
+    collisionRadius: ctx.collisionRadius === undefined
+      ? undefined
+      : finiteAtLeast(ctx.collisionRadius, 0, radius),
+    baseZ: ctx.baseZ === undefined ? undefined : finiteOr(ctx.baseZ, 0),
+    color: Number.isFinite(ctx.color)
+      ? ctx.color
+      : COLORS.units.locomotion.hover.smoke.colorHex,
+    rotation: ctx.rotation === undefined ? undefined : finiteOr(ctx.rotation, 0),
+    turretPoses: ctx.turretPoses?.map((pose) => ({
+      rotation: finiteOr(pose.rotation, 0),
+      pitch: finiteOr(pose.pitch, 0),
+    })),
+  };
+}
+
 export type RtsScene3DConfig = {
   playerIds: PlayerId[];
   localPlayerId: PlayerId;
@@ -256,6 +331,9 @@ export class RtsScene3D {
   private rendererWarmupActive = false;
   private rendererWarmupToken = 0;
   private destroyed = false;
+  private readonly handleSimEvent3DCallback = (event: NetworkServerSnapshotSimEvent): void => {
+    this.handleSimEvent3D(event);
+  };
 
   // Scene lifecycle accessor read by GameCanvas.vue.
   private _restartCb: (() => void) | null = null;
@@ -671,10 +749,12 @@ export class RtsScene3D {
     this.setRendererWarmupActive(true);
     this.threeApp.setDrawSuspended(true);
     const token = ++this.rendererWarmupToken;
+    this.explosionRenderer.prepareWarmup();
     void this.threeApp.precompileShadersAsync().catch((error) => {
       console.warn('3D renderer shader warmup failed', error);
     }).finally(() => {
       if (token !== this.rendererWarmupToken) return;
+      this.explosionRenderer.finishWarmup();
       this.threeApp.setDrawSuspended(false);
       if (this.destroyed) return;
       this.markClientReadyForStartupIfPossible();
@@ -701,16 +781,16 @@ export class RtsScene3D {
 
     this.audioSystem.drainReady(
       this.clientRenderEnabled,
-      (event) => this.handleSimEvent3D(event),
+      this.handleSimEvent3DCallback,
     );
 
-    const snapshotResult = this.snapshotIntake.consumeLatestSnapshot({
-      clientRenderEnabled: this.clientRenderEnabled,
-      audio: this.audioSystem.snapshotAudioOptions(
+    const snapshotResult = this.snapshotIntake.consumeLatestSnapshot(
+      this.clientRenderEnabled,
+      this.audioSystem.snapshotAudioOptions(
         this.clientRenderEnabled,
-        (event) => this.handleSimEvent3D(event),
+        this.handleSimEvent3DCallback,
       ),
-    });
+    );
     if (snapshotResult.appliedSnapshot) {
       if (snapshotResult.startupReleased) this.onStartupReady?.();
       if (snapshotResult.serverMeta && this.onServerMetaUpdate) {
@@ -898,6 +978,10 @@ export class RtsScene3D {
     // every visual branch so the explosion sprite / debris / ping
     // marker don't leak the still-fog-hidden source's position.
     if (event.audioOnly) return;
+    if (!hasFiniteEventPosition(event)) {
+      warnNonFiniteVisualEvent(event);
+      return;
+    }
     if (event.type === 'ping' || event.type === 'attackAlert') {
       // Visual rings removed; sim events still flow (manual ping
       // command, scan pulse emission, attack alert) so
@@ -922,7 +1006,7 @@ export class RtsScene3D {
       // localized sparks the size of the beam, not as a 8-unit
       // pop that looks like a bullet impact.
       const r = ctx
-        ? Math.max(ctx.radiusCollision, ctx.deathExplosionRadius)
+        ? maxFiniteNonNegativeOr(2, ctx.radiusCollision, ctx.deathExplosionRadius)
         : 2;
       // Combined impulse vector (sim X/Y → world X/Z): penetration direction
       // dominates because that's the intended "away from attacker" push, with
@@ -934,13 +1018,13 @@ export class RtsScene3D {
       let mx = 0, mz = 0;
       if (ctx) {
         mx =
-          ctx.penetrationDir.x * 120 +
-          ctx.projectile.vel.x * 0.3 +
-          ctx.entity.vel.x * 0.3;
+          finiteOr(ctx.penetrationDir.x, 0) * 120 +
+          finiteOr(ctx.projectile.vel.x, 0) * 0.3 +
+          finiteOr(ctx.entity.vel.x, 0) * 0.3;
         mz =
-          ctx.penetrationDir.y * 120 +
-          ctx.projectile.vel.y * 0.3 +
-          ctx.entity.vel.y * 0.3;
+          finiteOr(ctx.penetrationDir.y, 0) * 120 +
+          finiteOr(ctx.projectile.vel.y, 0) * 0.3 +
+          finiteOr(ctx.entity.vel.y, 0) * 0.3;
       }
       this.explosionRenderer.spawnImpact(
         event.pos.x,
@@ -954,9 +1038,9 @@ export class RtsScene3D {
       );
     } else if (event.type === 'waterSplash') {
       const ctx = event.impactContext;
-      const mass = ctx ? Math.max(ctx.radiusCollision, 1) : 2;
-      const vx = ctx ? ctx.projectile.vel.x : 0;
-      const vy = ctx ? ctx.projectile.vel.y : 0;
+      const mass = ctx ? finiteAtLeast(ctx.radiusCollision, 1, 1) : 2;
+      const vx = ctx ? finiteOr(ctx.projectile.vel.x, 0) : 0;
+      const vy = ctx ? finiteOr(ctx.projectile.vel.y, 0) : 0;
       this.waterSplashRenderer.spawn(event.pos.x, event.pos.y, vx, vy, mass);
       // Surface ripple — reuse the shield impact ring as
       // the spreading surface-reflection flash. Same material
@@ -1087,6 +1171,7 @@ export class RtsScene3D {
           color: COLORS.units.locomotion.hover.smoke.colorHex,
         };
       }
+      ctx = sanitizeDeathContext(ctx);
 
       // Scale the hit-direction push by the damaging attack's magnitude so
       // a glancing railgun hit kicks debris further than a DoT tick. Clamp
