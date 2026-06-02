@@ -830,11 +830,17 @@ function detonateKilledProjectileShot(
     queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
     return;
   }
-  if (proj.hasExploded) {
-    queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
-    return;
-  }
-  if (!proj.isArmed) {
+
+  proj.hp = 0;
+  const terminalFlags = classifyProjectileTerminalConsequence(
+    world,
+    projEntity,
+    false,
+    true,
+    false,
+    false,
+  );
+  if ((terminalFlags & PROJECTILE_TERMINAL_FLAG_REMOVE) === 0) {
     queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
     return;
   }
@@ -847,8 +853,15 @@ function detonateKilledProjectileShot(
   const damageSourceType: SimEventSourceType = proj.sourceTurretBlueprintId ? 'turret' : 'system';
   let firstSplashHit: Entity | undefined;
 
-  proj.hp = 0;
-  proj.hasExploded = true;
+  if ((terminalFlags & PROJECTILE_TERMINAL_FLAG_DETONATE) !== 0) {
+    proj.hasExploded = true;
+  } else {
+    if ((terminalFlags & PROJECTILE_TERMINAL_FLAG_EXPIRE_EVENT) !== 0) {
+      pushProjectileExpireEvent(audioEvents, projEntity, config, shotBlueprintId);
+    }
+    queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
+    return;
+  }
 
   if (runtimeProfile.hasExplosion && projShot.explosion) {
     const splashResult = damageSystem.applyDamage({
@@ -916,6 +929,30 @@ function detonateKilledProjectileShot(
   }
 
   queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
+}
+
+function pushProjectileExpireEvent(
+  audioEvents: SimEvent[],
+  projEntity: Entity,
+  config: ReturnType<typeof createProjectileConfigFromShot>,
+  shotBlueprintId: string,
+): void {
+  const proj = projEntity.projectile;
+  const ownership = projEntity.ownership;
+  if (proj === null || ownership === null) return;
+  const projRadius = config.shotProfile.runtime.radius.collision;
+  audioEvents.push({
+    type: 'projectileExpire',
+    turretBlueprintId: shotBlueprintId,
+    pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+    playerId: ownership.playerId,
+    entityId: projEntity.id,
+    impactContext: buildImpactContext(
+      config, projEntity.transform.x, projEntity.transform.y,
+      proj.velocityX ?? 0, proj.velocityY ?? 0,
+      projRadius,
+    ),
+  });
 }
 
 function classifyProjectileTerminalConsequence(
@@ -1599,19 +1636,7 @@ export function checkProjectileCollisions(
       }
 
       if ((terminalFlags & PROJECTILE_TERMINAL_FLAG_EXPIRE_EVENT) !== 0) {
-        const projRadius = runtimeProfile.radius.collision;
-        audioEvents.push({
-          type: 'projectileExpire',
-          turretBlueprintId: shotBlueprintId,
-          pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
-          playerId: projEntity.ownership.playerId,
-          entityId: projEntity.id,
-          impactContext: buildImpactContext(
-            config, projEntity.transform.x, projEntity.transform.y,
-            proj.velocityX ?? 0, proj.velocityY ?? 0,
-            projRadius,
-          ),
-        });
+        pushProjectileExpireEvent(audioEvents, projEntity, config, shotBlueprintId);
       }
 
       queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);

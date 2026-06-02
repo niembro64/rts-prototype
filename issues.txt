@@ -51,12 +51,13 @@ classification, and terminal consequence classification for timeout,
 ground/water impact, terminal
 reflector contact, HP-zero stops, detonation/expire/splash eligibility, and
 out-of-bounds removal. The remaining TypeScript authority is still too large:
-checkProjectileCollisions applies the returned terminal flags, owns direct-hit
-and splash damage consequences, submunition entity/event creation, detonation
-audio/events, despawn/velocity-update event application, and D-gun swept damage
-orchestration; DamageSystem/Simulation still own damage target enumeration,
-entity diff application, kill collection, death cleanup side effects/removal,
-and death-explosion detonation/chaining.
+checkProjectileCollisions applies the returned terminal flags for live and
+recursively killed projectiles, owns direct-hit and splash damage consequences,
+submunition entity/event creation, detonation audio/events, despawn/velocity-
+update event application, and D-gun swept damage orchestration;
+DamageSystem/Simulation still own damage target enumeration, entity diff
+application, kill collection, death cleanup side effects/removal, and
+death-explosion detonation/chaining.
 FIX (C1 migration): move projectile detonation payload application,
 submunition entity diffs, direct-hit/splash damage output batches, death-event
 diffs, death-explosion chaining, and death cleanup side-effect/removal diff
