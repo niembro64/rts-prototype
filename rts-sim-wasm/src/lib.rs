@@ -4449,15 +4449,13 @@ pub fn solve_kinematic_intercept(
 //
 //  Output buffer (3 f64s): thrustX, thrustY, thrustZ.
 //
-//  Used per-homing-projectile per-tick by both the server projectile
-//  system and the client prediction stepper. Per-call WASM dispatch —
-//  call sites already loop over projectiles individually; batching
-//  would require a substantial caller refactor.
+//  Kept as a single-row export for client prediction and scattered
+//  diagnostic callers. The authoritative server projectile path uses
+//  projectile_homing_guidance_batch below.
 // ─────────────────────────────────────────────────────────────────
 
-#[wasm_bindgen]
-pub fn compute_homing_thrust(
-    out_buf: &mut [f64],
+#[inline]
+fn compute_homing_thrust_inline(
     vel_x: f64,
     vel_y: f64,
     vel_z: f64,
@@ -4471,16 +4469,11 @@ pub fn compute_homing_thrust(
     max_thrust_accel: f64,
     gravity: f64,
     dt_sec: f64,
-) {
-    debug_assert!(out_buf.len() >= 3);
-    out_buf[0] = 0.0;
-    out_buf[1] = 0.0;
-    out_buf[2] = 0.0;
-
+) -> (f64, f64, f64) {
     // Spent / failed guidance: no thrust this tick. The caller still
     // integrates whatever projectile gravity applies to this shot.
     if max_thrust_accel <= 0.0 || dt_sec <= 0.0 {
-        return;
+        return (0.0, 0.0, 0.0);
     }
 
     let dx = target_x - current_x;
@@ -4574,9 +4567,165 @@ pub fn compute_homing_thrust(
         a_z *= scale;
     }
 
+    (a_x, a_y, a_z)
+}
+
+#[wasm_bindgen]
+pub fn compute_homing_thrust(
+    out_buf: &mut [f64],
+    vel_x: f64,
+    vel_y: f64,
+    vel_z: f64,
+    target_x: f64,
+    target_y: f64,
+    target_z: f64,
+    current_x: f64,
+    current_y: f64,
+    current_z: f64,
+    homing_turn_rate: f64,
+    max_thrust_accel: f64,
+    gravity: f64,
+    dt_sec: f64,
+) {
+    debug_assert!(out_buf.len() >= 3);
+    let (a_x, a_y, a_z) = compute_homing_thrust_inline(
+        vel_x,
+        vel_y,
+        vel_z,
+        target_x,
+        target_y,
+        target_z,
+        current_x,
+        current_y,
+        current_z,
+        homing_turn_rate,
+        max_thrust_accel,
+        gravity,
+        dt_sec,
+    );
     out_buf[0] = a_x;
     out_buf[1] = a_y;
     out_buf[2] = a_z;
+}
+
+pub const PROJECTILE_HOMING_GUIDANCE_STRIDE: usize = 31;
+
+const PHG_ROW_VEL_X: usize = 0;
+const PHG_ROW_VEL_Y: usize = 1;
+const PHG_ROW_VEL_Z: usize = 2;
+const PHG_ROW_STEER_X: usize = 3;
+const PHG_ROW_STEER_Y: usize = 4;
+const PHG_ROW_STEER_Z: usize = 5;
+const PHG_ROW_CURRENT_X: usize = 6;
+const PHG_ROW_CURRENT_Y: usize = 7;
+const PHG_ROW_CURRENT_Z: usize = 8;
+const PHG_ROW_TARGET_VEL_X: usize = 9;
+const PHG_ROW_TARGET_VEL_Y: usize = 10;
+const PHG_ROW_TARGET_VEL_Z: usize = 11;
+const PHG_ROW_TARGET_ACCEL_X: usize = 12;
+const PHG_ROW_TARGET_ACCEL_Y: usize = 13;
+const PHG_ROW_TARGET_ACCEL_Z: usize = 14;
+const PHG_ROW_ORIGIN_VEL_X: usize = 15;
+const PHG_ROW_ORIGIN_VEL_Y: usize = 16;
+const PHG_ROW_ORIGIN_VEL_Z: usize = 17;
+const PHG_ROW_ORIGIN_ACCEL_X: usize = 18;
+const PHG_ROW_ORIGIN_ACCEL_Y: usize = 19;
+const PHG_ROW_ORIGIN_ACCEL_Z: usize = 20;
+const PHG_ROW_PROJECTILE_SPEED: usize = 21;
+const PHG_ROW_PROJECTILE_GRAVITY: usize = 22;
+const PHG_ROW_MAX_TIME_SEC: usize = 23;
+const PHG_ROW_HOMING_TURN_RATE: usize = 24;
+const PHG_ROW_MAX_THRUST_ACCEL: usize = 25;
+const PHG_ROW_SOLVE_INTERCEPT: usize = 26;
+const PHG_ROW_OUT_THRUST_X: usize = 27;
+const PHG_ROW_OUT_THRUST_Y: usize = 28;
+const PHG_ROW_OUT_THRUST_Z: usize = 29;
+const PHG_ROW_OUT_INTERCEPT_FOUND: usize = 30;
+
+#[wasm_bindgen]
+pub fn projectile_homing_guidance_batch(
+    rows: &mut [f64],
+    count: usize,
+    dt_sec: f64,
+) -> u32 {
+    if rows.len() < count * PROJECTILE_HOMING_GUIDANCE_STRIDE {
+        return 0;
+    }
+
+    let mut processed = 0_u32;
+    for i in 0..count {
+        let base = i * PROJECTILE_HOMING_GUIDANCE_STRIDE;
+        rows[base + PHG_ROW_OUT_THRUST_X] = 0.0;
+        rows[base + PHG_ROW_OUT_THRUST_Y] = 0.0;
+        rows[base + PHG_ROW_OUT_THRUST_Z] = 0.0;
+        rows[base + PHG_ROW_OUT_INTERCEPT_FOUND] = 0.0;
+
+        let mut steer_x = rows[base + PHG_ROW_STEER_X];
+        let mut steer_y = rows[base + PHG_ROW_STEER_Y];
+        let mut steer_z = rows[base + PHG_ROW_STEER_Z];
+        let gravity = rows[base + PHG_ROW_PROJECTILE_GRAVITY];
+
+        if rows[base + PHG_ROW_SOLVE_INTERCEPT] != 0.0 {
+            let input = [
+                rows[base + PHG_ROW_CURRENT_X],
+                rows[base + PHG_ROW_CURRENT_Y],
+                rows[base + PHG_ROW_CURRENT_Z],
+                rows[base + PHG_ROW_ORIGIN_VEL_X],
+                rows[base + PHG_ROW_ORIGIN_VEL_Y],
+                rows[base + PHG_ROW_ORIGIN_VEL_Z],
+                rows[base + PHG_ROW_ORIGIN_ACCEL_X],
+                rows[base + PHG_ROW_ORIGIN_ACCEL_Y],
+                rows[base + PHG_ROW_ORIGIN_ACCEL_Z],
+                steer_x,
+                steer_y,
+                steer_z,
+                rows[base + PHG_ROW_TARGET_VEL_X],
+                rows[base + PHG_ROW_TARGET_VEL_Y],
+                rows[base + PHG_ROW_TARGET_VEL_Z],
+                rows[base + PHG_ROW_TARGET_ACCEL_X],
+                rows[base + PHG_ROW_TARGET_ACCEL_Y],
+                rows[base + PHG_ROW_TARGET_ACCEL_Z],
+                0.0,
+                0.0,
+                -gravity,
+                rows[base + PHG_ROW_PROJECTILE_SPEED],
+            ];
+            let mut intercept_out = [0.0_f64; 7];
+            if solve_kinematic_intercept_inline(
+                &input,
+                &mut intercept_out,
+                0,
+                rows[base + PHG_ROW_MAX_TIME_SEC],
+            ) {
+                steer_x = intercept_out[1];
+                steer_y = intercept_out[2];
+                steer_z = intercept_out[3];
+                rows[base + PHG_ROW_OUT_INTERCEPT_FOUND] = 1.0;
+            }
+        }
+
+        let (thrust_x, thrust_y, thrust_z) = compute_homing_thrust_inline(
+            rows[base + PHG_ROW_VEL_X],
+            rows[base + PHG_ROW_VEL_Y],
+            rows[base + PHG_ROW_VEL_Z],
+            steer_x,
+            steer_y,
+            steer_z,
+            rows[base + PHG_ROW_CURRENT_X],
+            rows[base + PHG_ROW_CURRENT_Y],
+            rows[base + PHG_ROW_CURRENT_Z],
+            rows[base + PHG_ROW_HOMING_TURN_RATE],
+            rows[base + PHG_ROW_MAX_THRUST_ACCEL],
+            gravity,
+            dt_sec,
+        );
+        rows[base + PHG_ROW_OUT_THRUST_X] = thrust_x;
+        rows[base + PHG_ROW_OUT_THRUST_Y] = thrust_y;
+        rows[base + PHG_ROW_OUT_THRUST_Z] = thrust_z;
+        processed += 1;
+    }
+
+    processed
 }
 
 /// Upward engine acceleration for a terrain-following projectile/body.

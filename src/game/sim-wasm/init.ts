@@ -77,6 +77,7 @@ import __wbg_init, {
   projectile_pool_parent_shot_entity_id_ptr,
   pool_step_packed_projectiles_batch,
   projectile_integrate_step_batch,
+  projectile_homing_guidance_batch,
   terrain_follow_vertical_thrust_accel,
   solve_kinematic_intercept,
   compute_homing_thrust,
@@ -968,6 +969,15 @@ export interface SimWasm {
     accelX: Float64Array,
     accelY: Float64Array,
     accelZ: Float64Array,
+    dtSec: number,
+  ) => number;
+  /** C1 — batched server homing guidance for non-packed projectiles.
+   *  Each row contains current projectile kinematics, target kinematics,
+   *  gravity/thrust config, and an optional intercept-solve flag. Rust
+   *  writes thrust acceleration outputs into the same row. */
+  readonly projectileHomingGuidanceBatch: (
+    rows: Float64Array,
+    count: number,
     dtSec: number,
   ) => number;
   /** C1 — terrain-follow vertical thrust acceleration for D-gun waves
@@ -3400,6 +3410,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         projectileReflectorIntersectionsBatch: projectile_reflector_intersections_batch,
         poolStepPackedProjectilesBatch: pool_step_packed_projectiles_batch,
         projectileIntegrateStepBatch: projectile_integrate_step_batch,
+        projectileHomingGuidanceBatch: projectile_homing_guidance_batch,
         terrainFollowVerticalThrustAccel: terrain_follow_vertical_thrust_accel,
         solveKinematicIntercept: solve_kinematic_intercept,
         computeHomingThrust: compute_homing_thrust,

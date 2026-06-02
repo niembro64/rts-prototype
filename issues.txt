@@ -49,10 +49,6 @@ damage/death loop (damage/DamageSystem.ts, Simulation.ts:580 updateCombat / :771
 cleanupDeadEntities / :897 detonateEntityDeathExplosions) run per-projectile /
 per-hit-entity in TypeScript. Position integration is batched into Rust, but collision
 detection, reflection, submunition spawn, termination, detonation, and HP write-back are
-not. Homing also makes one solveKinematicIntercept + one computeHomingThrust WASM call
-per homing projectile per tick rather than a batch (the TS fns are thin Rust wrappers —
-NOT duplicated math, so no Delete-The-Old-Path violation, just un-batched). Violates
-"TypeScript Coordinates, WASM Computes."
+not. Violates "TypeScript Coordinates, WASM Computes."
 FIX (C1 migration): move the swept-collision + termination loop into a Rust projectile
-kernel; batch the homing intercept/thrust like the existing projectileIntegrateStepBatch.
-Combine with 3.0.
+kernel. Combine with 3.0.
