@@ -35,6 +35,7 @@ import __wbg_init, {
   construction_apply_consumer_spends,
   damage_area_overlap_batch,
   damage_apply_batch,
+  damage_segment_hits_batch,
   death_cleanup_classify_batch,
   economy_apply_income_credits,
   economy_apply_converter_transfers,
@@ -948,6 +949,29 @@ export interface SimWasm {
     outDirY: Float64Array,
     outDirZ: Float64Array,
     outDistance: Float64Array,
+  ) => number;
+  /** C1 — line/swept damage segment hit classifier. TypeScript gathers
+   *  candidates and applies damage/event diffs; Rust owns the
+   *  segment-vs-sphere and segment-vs-AABB hit tests. */
+  readonly damageSegmentHitsBatch: (
+    count: number,
+    enabled: Uint8Array,
+    targetKind: Uint8Array,
+    startX: number,
+    startY: number,
+    startZ: number,
+    endX: number,
+    endY: number,
+    endZ: number,
+    targetX: Float64Array,
+    targetY: Float64Array,
+    targetZ: Float64Array,
+    targetRadius: Float64Array,
+    boxHalfX: Float64Array,
+    boxHalfY: Float64Array,
+    boxHalfZ: Float64Array,
+    outFlags: Uint8Array,
+    outT: Float64Array,
   ) => number;
   /** C1 — authoritative HP write-back math for damage. TypeScript
    *  gathers candidates and applies returned entity diffs; Rust owns
@@ -3585,6 +3609,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         unitForceStepBatch: unit_force_step_batch,
         damageAreaOverlapBatch: damage_area_overlap_batch,
         damageApplyBatch: damage_apply_batch,
+        damageSegmentHitsBatch: damage_segment_hits_batch,
         deathCleanupClassifyBatch: death_cleanup_classify_batch,
         projectilePool,
         projectileReflectorIntersectionsBatch: projectile_reflector_intersections_batch,

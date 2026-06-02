@@ -167,6 +167,7 @@ const DAMAGE_APPLY_FLAG_APPLIED = 1 << 0;
 const DAMAGE_APPLY_FLAG_KILLED = 1 << 1;
 const DAMAGE_AREA_FLAG_SLICE_PASS = 1 << 0;
 const DAMAGE_AREA_FLAG_OVERLAP = 1 << 1;
+const DAMAGE_SEGMENT_HIT_FLAG_HIT = 1 << 0;
 
 const _damageApplyEnabled = new Uint8Array(1);
 const _damageApplyTargetKind = new Uint8Array(1);
@@ -205,6 +206,23 @@ let _areaDamageOutDirX = new Float64Array(0);
 let _areaDamageOutDirY = new Float64Array(0);
 let _areaDamageOutDirZ = new Float64Array(0);
 let _areaDamageOutDistance = new Float64Array(0);
+let _segmentDamageCapacity = 0;
+let _segmentDamageEntityIds: EntityId[] = [];
+let _segmentDamageHostEntityIds: EntityId[] = [];
+let _segmentDamageIsUnit = new Uint8Array(0);
+let _segmentDamageIsBuilding = new Uint8Array(0);
+let _segmentDamageIsProjectile = new Uint8Array(0);
+let _segmentDamageEnabled = new Uint8Array(0);
+let _segmentDamageTargetKind = new Uint8Array(0);
+let _segmentDamageTargetX = new Float64Array(0);
+let _segmentDamageTargetY = new Float64Array(0);
+let _segmentDamageTargetZ = new Float64Array(0);
+let _segmentDamageTargetRadius = new Float64Array(0);
+let _segmentDamageBoxHalfX = new Float64Array(0);
+let _segmentDamageBoxHalfY = new Float64Array(0);
+let _segmentDamageBoxHalfZ = new Float64Array(0);
+let _segmentDamageOutFlags = new Uint8Array(0);
+let _segmentDamageOutT = new Float64Array(0);
 
 function isTurretDamageable(turret: Turret): boolean {
   return turret.id !== NO_ENTITY_ID && !turret.config.visualOnly;
@@ -292,6 +310,127 @@ function classifyAreaDamageRows(
   );
   if (processed !== count) {
     throw new Error(`Area damage overlap classification failed: ${processed}/${count}`);
+  }
+}
+
+function ensureSegmentDamageCapacity(count: number): void {
+  if (count <= _segmentDamageCapacity) return;
+  let next = Math.max(16, _segmentDamageCapacity);
+  while (next < count) next *= 2;
+  _segmentDamageCapacity = next;
+  _segmentDamageEntityIds.length = next;
+  _segmentDamageHostEntityIds.length = next;
+  _segmentDamageIsUnit = new Uint8Array(next);
+  _segmentDamageIsBuilding = new Uint8Array(next);
+  _segmentDamageIsProjectile = new Uint8Array(next);
+  _segmentDamageEnabled = new Uint8Array(next);
+  _segmentDamageTargetKind = new Uint8Array(next);
+  _segmentDamageTargetX = new Float64Array(next);
+  _segmentDamageTargetY = new Float64Array(next);
+  _segmentDamageTargetZ = new Float64Array(next);
+  _segmentDamageTargetRadius = new Float64Array(next);
+  _segmentDamageBoxHalfX = new Float64Array(next);
+  _segmentDamageBoxHalfY = new Float64Array(next);
+  _segmentDamageBoxHalfZ = new Float64Array(next);
+  _segmentDamageOutFlags = new Uint8Array(next);
+  _segmentDamageOutT = new Float64Array(next);
+}
+
+function appendSegmentDamageSphereRow(
+  row: number,
+  entityId: EntityId,
+  hostEntityId: EntityId,
+  isUnit: boolean,
+  isProjectile: boolean,
+  x: number,
+  y: number,
+  z: number,
+  radius: number,
+): number {
+  ensureSegmentDamageCapacity(row + 1);
+  _segmentDamageEntityIds[row] = entityId;
+  _segmentDamageHostEntityIds[row] = hostEntityId;
+  _segmentDamageIsUnit[row] = isUnit ? 1 : 0;
+  _segmentDamageIsBuilding[row] = 0;
+  _segmentDamageIsProjectile[row] = isProjectile ? 1 : 0;
+  _segmentDamageEnabled[row] = 1;
+  _segmentDamageTargetKind[row] = isProjectile
+    ? DAMAGE_TARGET_KIND_PROJECTILE
+    : DAMAGE_TARGET_KIND_UNIT;
+  _segmentDamageTargetX[row] = x;
+  _segmentDamageTargetY[row] = y;
+  _segmentDamageTargetZ[row] = z;
+  _segmentDamageTargetRadius[row] = radius;
+  _segmentDamageBoxHalfX[row] = 0;
+  _segmentDamageBoxHalfY[row] = 0;
+  _segmentDamageBoxHalfZ[row] = 0;
+  return row + 1;
+}
+
+function appendSegmentDamageBoxRow(
+  row: number,
+  entityId: EntityId,
+  x: number,
+  y: number,
+  z: number,
+  halfX: number,
+  halfY: number,
+  halfZ: number,
+): number {
+  ensureSegmentDamageCapacity(row + 1);
+  _segmentDamageEntityIds[row] = entityId;
+  _segmentDamageHostEntityIds[row] = entityId;
+  _segmentDamageIsUnit[row] = 0;
+  _segmentDamageIsBuilding[row] = 1;
+  _segmentDamageIsProjectile[row] = 0;
+  _segmentDamageEnabled[row] = 1;
+  _segmentDamageTargetKind[row] = DAMAGE_TARGET_KIND_BUILDING;
+  _segmentDamageTargetX[row] = x;
+  _segmentDamageTargetY[row] = y;
+  _segmentDamageTargetZ[row] = z;
+  _segmentDamageTargetRadius[row] = 0;
+  _segmentDamageBoxHalfX[row] = halfX;
+  _segmentDamageBoxHalfY[row] = halfY;
+  _segmentDamageBoxHalfZ[row] = halfZ;
+  return row + 1;
+}
+
+function classifySegmentDamageRows(
+  count: number,
+  startX: number,
+  startY: number,
+  startZ: number,
+  endX: number,
+  endY: number,
+  endZ: number,
+): void {
+  if (count === 0) return;
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('Segment damage hit classification requires initialized sim-wasm');
+  }
+  const processed = sim.damageSegmentHitsBatch(
+    count,
+    _segmentDamageEnabled.subarray(0, count),
+    _segmentDamageTargetKind.subarray(0, count),
+    startX,
+    startY,
+    startZ,
+    endX,
+    endY,
+    endZ,
+    _segmentDamageTargetX.subarray(0, count),
+    _segmentDamageTargetY.subarray(0, count),
+    _segmentDamageTargetZ.subarray(0, count),
+    _segmentDamageTargetRadius.subarray(0, count),
+    _segmentDamageBoxHalfX.subarray(0, count),
+    _segmentDamageBoxHalfY.subarray(0, count),
+    _segmentDamageBoxHalfZ.subarray(0, count),
+    _segmentDamageOutFlags.subarray(0, count),
+    _segmentDamageOutT.subarray(0, count),
+  );
+  if (processed !== count) {
+    throw new Error(`Segment damage hit classification failed: ${processed}/${count}`);
   }
 }
 
@@ -928,10 +1067,10 @@ export class DamageSystem {
       source.end.x, source.end.y, source.end.z, source.width + 100,
     );
 
-    // Check units — 3D segment-vs-sphere: the beam is a line in 3D
-    // space; a unit takes a hit when its sphere intersects that line
-    // (inflated by beam half-width). A beam pitched upward into the
-    // sky can't catch ground units; a beam aimed down does.
+    // Pack line-damage candidates. Rust owns the 3D segment-vs-sphere
+    // and segment-vs-AABB tests; TypeScript keeps spatial broadphase,
+    // filtering, turret mount resolution, and damage/event write-back.
+    let segmentRowCount = 0;
     for (const unit of nearbyUnits) {
       if (source.excludeEntities.has(unit.id)) continue;
       if (source.excludeCommanders && unit.commander) continue;
@@ -941,19 +1080,17 @@ export class DamageSystem {
       if (!bodyDamageable && isConstructionBodyMaterialized(unit)) continue;
 
       if (bodyDamageable) {
-        const t = lineSphereIntersectionT(
-          source.start.x, source.start.y, source.start.z,
-          source.end.x, source.end.y, source.end.z,
-          unit.transform.x, unit.transform.y, unit.transform.z,
-          unitComponent.radius.hitbox + source.width / 2
+        segmentRowCount = appendSegmentDamageSphereRow(
+          segmentRowCount,
+          unit.id,
+          unit.id,
+          true,
+          false,
+          unit.transform.x,
+          unit.transform.y,
+          unit.transform.z,
+          unitComponent.radius.hitbox + source.width / 2,
         );
-
-        if (t !== null && t < bestT) {
-          bestT = t;
-          bestEntityId = unit.id;
-          bestHostEntityId = unit.id;
-          bestIsUnit = true;
-        }
       }
 
       const combat = unit.combat;
@@ -973,50 +1110,36 @@ export class DamageSystem {
             },
             _subEntityPoint,
           );
-          const turretT = lineSphereIntersectionT(
-            source.start.x, source.start.y, source.start.z,
-            source.end.x, source.end.y, source.end.z,
-            mount.x, mount.y, mount.z,
+          segmentRowCount = appendSegmentDamageSphereRow(
+            segmentRowCount,
+            turret.id,
+            unit.id,
+            true,
+            false,
+            mount.x,
+            mount.y,
+            mount.z,
             turret.config.radius.hitbox + source.width / 2,
           );
-          if (turretT !== null && turretT < bestT) {
-            bestT = turretT;
-            bestEntityId = turret.id;
-            bestHostEntityId = unit.id;
-            bestIsUnit = true;
-          }
         }
       }
 
     }
 
-    // Check buildings — full 3D AABB, matching the beam tracer and
-    // client predictor. A beam that visually passes over a building
-    // no longer applies 2D footprint damage.
     for (const building of nearbyBuildings) {
       if (source.excludeEntities.has(building.id)) continue;
       if (!building.building || building.building.hp <= 0) continue;
 
-      const halfW = building.building.width / 2;
-      const halfH = building.building.height / 2;
-      const halfD = building.building.depth / 2;
-      const t = rayBoxIntersectionT(
-        source.start.x, source.start.y, source.start.z,
-        source.end.x, source.end.y, source.end.z,
-        building.transform.x - halfW,
-        building.transform.y - halfH,
-        building.transform.z - halfD,
-        building.transform.x + halfW,
-        building.transform.y + halfH,
-        building.transform.z + halfD,
+      segmentRowCount = appendSegmentDamageBoxRow(
+        segmentRowCount,
+        building.id,
+        building.transform.x,
+        building.transform.y,
+        building.transform.z,
+        building.building.width / 2,
+        building.building.height / 2,
+        building.building.depth / 2,
       );
-
-      if (t !== null && t < bestT) {
-        bestT = t;
-        bestEntityId = building.id;
-        bestHostEntityId = building.id;
-        bestIsUnit = false;
-      }
     }
 
     for (const projectile of nearbyProjectiles) {
@@ -1031,19 +1154,32 @@ export class DamageSystem {
         continue;
       }
 
-      const t = lineSphereIntersectionT(
-        source.start.x, source.start.y, source.start.z,
-        source.end.x, source.end.y, source.end.z,
-        projectile.transform.x, projectile.transform.y, projectile.transform.z,
+      segmentRowCount = appendSegmentDamageSphereRow(
+        segmentRowCount,
+        projectile.id,
+        projectile.id,
+        false,
+        true,
+        projectile.transform.x,
+        projectile.transform.y,
+        projectile.transform.z,
         proj.config.shotProfile.runtime.radius.collision + source.width / 2,
       );
+    }
 
-      if (t !== null && t < bestT) {
-        bestT = t;
-        bestEntityId = projectile.id;
-        bestHostEntityId = projectile.id;
-        bestIsUnit = false;
-      }
+    classifySegmentDamageRows(
+      segmentRowCount,
+      source.start.x, source.start.y, source.start.z,
+      source.end.x, source.end.y, source.end.z,
+    );
+    for (let row = 0; row < segmentRowCount; row++) {
+      if ((_segmentDamageOutFlags[row] & DAMAGE_SEGMENT_HIT_FLAG_HIT) === 0) continue;
+      const t = _segmentDamageOutT[row];
+      if (t >= bestT) continue;
+      bestT = t;
+      bestEntityId = _segmentDamageEntityIds[row];
+      bestHostEntityId = _segmentDamageHostEntityIds[row];
+      bestIsUnit = _segmentDamageIsUnit[row] !== 0;
     }
 
     if (bestT === Infinity) return result;
@@ -1117,12 +1253,10 @@ export class DamageSystem {
       source.current.x, source.current.y, source.current.z, sweptQueryWidth,
     );
 
-    // Check units using swept 3D collision — segment prev→current vs a
-    // sphere with the combined radius at unit.transform (full 3D: x, y,
-    // AND z). A projectile sweeping above a ground unit's head misses;
-    // one arcing into the top of the unit's sphere hits earlier in the
-    // arc than a horizontal shot because the sphere is closer to the
-    // flight path.
+    // Pack swept-damage candidates. Rust owns the 3D segment-vs-sphere
+    // and segment-vs-AABB tests; TypeScript keeps broadphase, filtering,
+    // turret mount resolution, sorting, and damage/event write-back.
+    let segmentRowCount = 0;
     for (const unit of nearbyUnits) {
       if (source.excludeEntities.has(unit.id)) continue;
       if (source.excludeCommanders && unit.commander) continue;
@@ -1132,17 +1266,17 @@ export class DamageSystem {
       if (!bodyDamageable && isConstructionBodyMaterialized(unit)) continue;
 
       if (bodyDamageable) {
-        const combinedRadius = source.radius + unitComponent.radius.hitbox;
-        const t = lineSphereIntersectionT(
-          source.prev.x, source.prev.y, source.prev.z,
-          source.current.x, source.current.y, source.current.z,
-          unit.transform.x, unit.transform.y, unit.transform.z,
-          combinedRadius
+        segmentRowCount = appendSegmentDamageSphereRow(
+          segmentRowCount,
+          unit.id,
+          unit.id,
+          true,
+          false,
+          unit.transform.x,
+          unit.transform.y,
+          unit.transform.z,
+          source.radius + unitComponent.radius.hitbox,
         );
-
-        if (t !== null) {
-          hits.push({ entityId: unit.id, t, isUnit: true, isBuilding: false, isProjectile: false });
-        }
       }
 
       const combat = unit.combat;
@@ -1162,51 +1296,36 @@ export class DamageSystem {
             },
             _subEntityPoint,
           );
-          const turretT = lineSphereIntersectionT(
-            source.prev.x, source.prev.y, source.prev.z,
-            source.current.x, source.current.y, source.current.z,
-            mount.x, mount.y, mount.z,
+          segmentRowCount = appendSegmentDamageSphereRow(
+            segmentRowCount,
+            turret.id,
+            unit.id,
+            true,
+            false,
+            mount.x,
+            mount.y,
+            mount.z,
             source.radius + turret.config.radius.hitbox,
           );
-          if (turretT !== null) {
-            hits.push({
-              entityId: turret.id,
-              hostEntityId: unit.id,
-              t: turretT,
-              isUnit: true,
-              isBuilding: false,
-              isProjectile: false,
-            });
-          }
         }
       }
 
     }
 
-    // Check buildings using swept 3D collision against the AABB expanded
-    // by the source sweep radius. Normal shots pass 0, so this is a
-    // centerline-vs-building hitbox test.
     for (const building of nearbyBuildings) {
       if (source.excludeEntities.has(building.id)) continue;
       if (!building.building || building.building.hp <= 0) continue;
 
-      const halfW = building.building.width / 2 + source.radius;
-      const halfH = building.building.height / 2 + source.radius;
-      const halfD = building.building.depth / 2 + source.radius;
-      const t = rayBoxIntersectionT(
-        source.prev.x, source.prev.y, source.prev.z,
-        source.current.x, source.current.y, source.current.z,
-        building.transform.x - halfW,
-        building.transform.y - halfH,
-        building.transform.z - halfD,
-        building.transform.x + halfW,
-        building.transform.y + halfH,
-        building.transform.z + halfD,
+      segmentRowCount = appendSegmentDamageBoxRow(
+        segmentRowCount,
+        building.id,
+        building.transform.x,
+        building.transform.y,
+        building.transform.z,
+        building.building.width / 2 + source.radius,
+        building.building.height / 2 + source.radius,
+        building.building.depth / 2 + source.radius,
       );
-
-      if (t !== null) {
-        hits.push({ entityId: building.id, t, isUnit: false, isBuilding: true, isProjectile: false });
-      }
     }
 
     for (const projectile of nearbyProjectiles) {
@@ -1221,17 +1340,38 @@ export class DamageSystem {
         continue;
       }
 
-      const combinedRadius = source.radius + proj.config.shotProfile.runtime.radius.collision;
-      const t = lineSphereIntersectionT(
-        source.prev.x, source.prev.y, source.prev.z,
-        source.current.x, source.current.y, source.current.z,
-        projectile.transform.x, projectile.transform.y, projectile.transform.z,
-        combinedRadius,
+      segmentRowCount = appendSegmentDamageSphereRow(
+        segmentRowCount,
+        projectile.id,
+        projectile.id,
+        false,
+        true,
+        projectile.transform.x,
+        projectile.transform.y,
+        projectile.transform.z,
+        source.radius + proj.config.shotProfile.runtime.radius.collision,
       );
+    }
 
-      if (t !== null) {
-        hits.push({ entityId: projectile.id, t, isUnit: false, isBuilding: false, isProjectile: true });
+    classifySegmentDamageRows(
+      segmentRowCount,
+      source.prev.x, source.prev.y, source.prev.z,
+      source.current.x, source.current.y, source.current.z,
+    );
+    for (let row = 0; row < segmentRowCount; row++) {
+      if ((_segmentDamageOutFlags[row] & DAMAGE_SEGMENT_HIT_FLAG_HIT) === 0) continue;
+      const hit: HitInfo = {
+        entityId: _segmentDamageEntityIds[row],
+        t: _segmentDamageOutT[row],
+        isUnit: _segmentDamageIsUnit[row] !== 0,
+        isBuilding: _segmentDamageIsBuilding[row] !== 0,
+        isProjectile: _segmentDamageIsProjectile[row] !== 0,
+      };
+      const hostEntityId = _segmentDamageHostEntityIds[row];
+      if (hostEntityId !== hit.entityId) {
+        hit.hostEntityId = hostEntityId;
       }
+      hits.push(hit);
     }
 
     // Sort by T and apply damage in order

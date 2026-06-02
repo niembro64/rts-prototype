@@ -253,6 +253,249 @@ const DAMAGE_APPLY_FLAG_KILLED: u8 = 1 << 1;
 
 const DAMAGE_AREA_FLAG_SLICE_PASS: u8 = 1 << 0;
 const DAMAGE_AREA_FLAG_OVERLAP: u8 = 1 << 1;
+const DAMAGE_SEGMENT_HIT_FLAG_HIT: u8 = 1 << 0;
+
+#[inline]
+fn damage_segment_sphere_intersection_t(
+    sx: f64,
+    sy: f64,
+    sz: f64,
+    ex: f64,
+    ey: f64,
+    ez: f64,
+    cx: f64,
+    cy: f64,
+    cz: f64,
+    radius: f64,
+) -> Option<f64> {
+    let dx = ex - sx;
+    let dy = ey - sy;
+    let dz = ez - sz;
+    let fx = sx - cx;
+    let fy = sy - cy;
+    let fz = sz - cz;
+
+    let a = dx * dx + dy * dy + dz * dz;
+    let b = 2.0 * (fx * dx + fy * dy + fz * dz);
+    let c = fx * fx + fy * fy + fz * fz - radius * radius;
+    if c <= 0.0 {
+        return Some(0.0);
+    }
+    if a == 0.0 {
+        return None;
+    }
+
+    let discriminant = b * b - 4.0 * a * c;
+    if discriminant < 0.0 {
+        return None;
+    }
+
+    let root = discriminant.sqrt();
+    let t1 = (-b - root) / (2.0 * a);
+    let t2 = (-b + root) / (2.0 * a);
+    if (0.0..=1.0).contains(&t1) {
+        Some(t1)
+    } else if (0.0..=1.0).contains(&t2) {
+        Some(t2)
+    } else {
+        None
+    }
+}
+
+#[inline]
+fn damage_segment_aabb_intersection_t(
+    sx: f64,
+    sy: f64,
+    sz: f64,
+    ex: f64,
+    ey: f64,
+    ez: f64,
+    min_x: f64,
+    min_y: f64,
+    min_z: f64,
+    max_x: f64,
+    max_y: f64,
+    max_z: f64,
+) -> Option<f64> {
+    let dx = ex - sx;
+    let dy = ey - sy;
+    let dz = ez - sz;
+    let mut tmin = 0.0;
+    let mut tmax = 1.0;
+
+    if dx.abs() > 1e-9 {
+        let mut t1 = (min_x - sx) / dx;
+        let mut t2 = (max_x - sx) / dx;
+        if t1 > t2 {
+            core::mem::swap(&mut t1, &mut t2);
+        }
+        if t1 > tmin {
+            tmin = t1;
+        }
+        if t2 < tmax {
+            tmax = t2;
+        }
+    } else if sx < min_x || sx > max_x {
+        return None;
+    }
+    if tmin > tmax {
+        return None;
+    }
+
+    if dy.abs() > 1e-9 {
+        let mut t1 = (min_y - sy) / dy;
+        let mut t2 = (max_y - sy) / dy;
+        if t1 > t2 {
+            core::mem::swap(&mut t1, &mut t2);
+        }
+        if t1 > tmin {
+            tmin = t1;
+        }
+        if t2 < tmax {
+            tmax = t2;
+        }
+    } else if sy < min_y || sy > max_y {
+        return None;
+    }
+    if tmin > tmax {
+        return None;
+    }
+
+    if dz.abs() > 1e-9 {
+        let mut t1 = (min_z - sz) / dz;
+        let mut t2 = (max_z - sz) / dz;
+        if t1 > t2 {
+            core::mem::swap(&mut t1, &mut t2);
+        }
+        if t1 > tmin {
+            tmin = t1;
+        }
+        if t2 < tmax {
+            tmax = t2;
+        }
+    } else if sz < min_z || sz > max_z {
+        return None;
+    }
+    if tmin > tmax || tmax < 0.0 {
+        return None;
+    }
+
+    Some(tmin.max(0.0))
+}
+
+/// C1 damage migration — line/swept segment hit classifier.
+///
+/// TypeScript still gathers spatial candidates, resolves turret mounts, and
+/// applies returned damage/event diffs. Rust owns the 3D segment-vs-sphere and
+/// segment-vs-AABB hit tests used by beam endpoint damage and swept projectile
+/// damage, returning one parametric hit `t` per packed target row.
+#[wasm_bindgen]
+pub fn damage_segment_hits_batch(
+    count: u32,
+    enabled: &[u8],
+    target_kind: &[u8],
+    start_x: f64,
+    start_y: f64,
+    start_z: f64,
+    end_x: f64,
+    end_y: f64,
+    end_z: f64,
+    target_x: &[f64],
+    target_y: &[f64],
+    target_z: &[f64],
+    target_radius: &[f64],
+    box_half_x: &[f64],
+    box_half_y: &[f64],
+    box_half_z: &[f64],
+    out_flags: &mut [u8],
+    out_t: &mut [f64],
+) -> u32 {
+    let n = count as usize;
+    if enabled.len() < n
+        || target_kind.len() < n
+        || target_x.len() < n
+        || target_y.len() < n
+        || target_z.len() < n
+        || target_radius.len() < n
+        || box_half_x.len() < n
+        || box_half_y.len() < n
+        || box_half_z.len() < n
+        || out_flags.len() < n
+        || out_t.len() < n
+    {
+        return 0;
+    }
+    if !(start_x.is_finite()
+        && start_y.is_finite()
+        && start_z.is_finite()
+        && end_x.is_finite()
+        && end_y.is_finite()
+        && end_z.is_finite())
+    {
+        return 0;
+    }
+
+    let mut processed = 0_u32;
+    for i in 0..n {
+        out_flags[i] = 0;
+        out_t[i] = 0.0;
+        if enabled[i] == 0 {
+            continue;
+        }
+
+        let tx = target_x[i];
+        let ty = target_y[i];
+        let tz = target_z[i];
+        if !(tx.is_finite() && ty.is_finite() && tz.is_finite()) {
+            continue;
+        }
+
+        let hit_t = match target_kind[i] {
+            DAMAGE_TARGET_KIND_UNIT | DAMAGE_TARGET_KIND_PROJECTILE => {
+                let radius = target_radius[i].max(0.0);
+                if !radius.is_finite() {
+                    None
+                } else {
+                    damage_segment_sphere_intersection_t(
+                        start_x, start_y, start_z, end_x, end_y, end_z, tx, ty, tz, radius,
+                    )
+                }
+            }
+            DAMAGE_TARGET_KIND_BUILDING => {
+                let hx = box_half_x[i].max(0.0);
+                let hy = box_half_y[i].max(0.0);
+                let hz = box_half_z[i].max(0.0);
+                if !(hx.is_finite() && hy.is_finite() && hz.is_finite()) {
+                    None
+                } else {
+                    damage_segment_aabb_intersection_t(
+                        start_x,
+                        start_y,
+                        start_z,
+                        end_x,
+                        end_y,
+                        end_z,
+                        tx - hx,
+                        ty - hy,
+                        tz - hz,
+                        tx + hx,
+                        ty + hy,
+                        tz + hz,
+                    )
+                }
+            }
+            _ => None,
+        };
+
+        if let Some(t) = hit_t {
+            out_flags[i] = DAMAGE_SEGMENT_HIT_FLAG_HIT;
+            out_t[i] = t;
+        }
+        processed += 1;
+    }
+
+    processed
+}
 
 #[inline]
 fn normalize_angle_pi(mut angle: f64) -> f64 {
@@ -29851,6 +30094,66 @@ mod sim_kernel_tests {
         assert!((dir_y[0] - 0.8).abs() < 1e-12);
         assert_eq!(dir_z[0], 0.0);
         assert_eq!(dist[0], 10.0);
+    }
+
+    #[test]
+    fn damage_segment_hits_batch_classifies_spheres_and_aabbs() {
+        let enabled = [1_u8, 1, 1, 1];
+        let kind = [
+            DAMAGE_TARGET_KIND_UNIT,
+            DAMAGE_TARGET_KIND_PROJECTILE,
+            DAMAGE_TARGET_KIND_BUILDING,
+            DAMAGE_TARGET_KIND_UNIT,
+        ];
+        let x = [5.0, 0.0, 8.0, 20.0];
+        let y = [0.0, 0.0, 0.0, 4.0];
+        let z = [0.0, 0.0, 0.0, 0.0];
+        let radius = [1.0, 2.0, 0.0, 1.0];
+        let half_x = [0.0, 0.0, 1.0, 0.0];
+        let half_y = [0.0, 0.0, 1.0, 0.0];
+        let half_z = [0.0, 0.0, 1.0, 0.0];
+        let mut flags = [0_u8; 4];
+        let mut t = [99.0; 4];
+
+        assert_eq!(
+            damage_segment_hits_batch(
+                4, &enabled, &kind, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, &x, &y, &z, &radius, &half_x,
+                &half_y, &half_z, &mut flags, &mut t,
+            ),
+            4,
+        );
+
+        assert_eq!(flags[0], DAMAGE_SEGMENT_HIT_FLAG_HIT);
+        assert!((t[0] - 0.4).abs() < 1e-12);
+        assert_eq!(flags[1], DAMAGE_SEGMENT_HIT_FLAG_HIT);
+        assert_eq!(t[1], 0.0);
+        assert_eq!(flags[2], DAMAGE_SEGMENT_HIT_FLAG_HIT);
+        assert!((t[2] - 0.7).abs() < 1e-12);
+        assert_eq!(flags[3], 0);
+    }
+
+    #[test]
+    fn damage_segment_hits_batch_rejects_degenerate_segment_misses() {
+        let enabled = [1_u8];
+        let kind = [DAMAGE_TARGET_KIND_UNIT];
+        let x = [5.0];
+        let y = [0.0];
+        let z = [0.0];
+        let radius = [1.0];
+        let zero = [0.0];
+        let mut flags = [99_u8];
+        let mut t = [99.0];
+
+        assert_eq!(
+            damage_segment_hits_batch(
+                1, &enabled, &kind, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, &x, &y, &z, &radius, &zero,
+                &zero, &zero, &mut flags, &mut t,
+            ),
+            1,
+        );
+
+        assert_eq!(flags[0], 0);
+        assert_eq!(t[0], 0.0);
     }
 
     #[test]
