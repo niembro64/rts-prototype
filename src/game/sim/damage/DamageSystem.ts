@@ -232,6 +232,11 @@ function ensureDamageBatchCapacity(count: number): void {
   if (count <= _damageBatchCapacity) return;
   let next = Math.max(16, _damageBatchCapacity);
   while (next < count) next *= 2;
+  const prevEnabled = _damageBatchEnabled;
+  const prevTargetKind = _damageBatchTargetKind;
+  const prevHp = _damageBatchHp;
+  const prevDamage = _damageBatchDamage;
+  const prevBuildingFortified = _damageBatchBuildingFortified;
   _damageBatchCapacity = next;
   _damageBatchEntities.length = next;
   _damageBatchDeathContexts.length = next;
@@ -243,6 +248,11 @@ function ensureDamageBatchCapacity(count: number): void {
   _damageBatchOutHp = new Float64Array(next);
   _damageBatchOutEffectiveDamage = new Float64Array(next);
   _damageBatchOutFlags = new Uint8Array(next);
+  _damageBatchEnabled.set(prevEnabled);
+  _damageBatchTargetKind.set(prevTargetKind);
+  _damageBatchHp.set(prevHp);
+  _damageBatchDamage.set(prevDamage);
+  _damageBatchBuildingFortified.set(prevBuildingFortified);
 }
 
 function ensureAreaDamageCapacity(count: number): void {
