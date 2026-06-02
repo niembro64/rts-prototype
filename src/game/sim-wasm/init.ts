@@ -950,10 +950,9 @@ export interface SimWasm {
     outNormalZ: Float64Array,
   ) => void;
   /** C1 — nearest swept hitbox contact for projectile bodies. Rust
-   *  reads unit/building/projectile colliders from the spatial slab
-   *  and writes one body/building/projectile hit per row. Turret
-   *  sub-hitboxes are still composed by TypeScript until their hitbox
-   *  data moves into a WASM-owned collision slab. */
+   *  reads unit/building/projectile colliders from the spatial slab,
+   *  includes current-tick turret sub-hitboxes from the combat-targeting
+   *  slab, and writes one nearest hit per row. */
   readonly projectileHitboxSweepBatch: (
     count: number,
     enabled: Uint8Array,
@@ -970,6 +969,7 @@ export interface SimWasm {
     removedProjectileEntityIds: Int32Array,
     maxTargetableRadius: number,
     queryExtra: number,
+    currentTick: number,
     outKind: Uint8Array,
     outSlot: Uint32Array,
     outEntityId: Int32Array,
@@ -1807,6 +1807,7 @@ export interface CombatTargetingApi {
     mountX: number,
     mountY: number,
     mountZ: number,
+    radiusHitbox: number,
     mountVx: number,
     mountVy: number,
     mountVz: number,

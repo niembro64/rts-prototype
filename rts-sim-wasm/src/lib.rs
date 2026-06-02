@@ -10885,10 +10885,9 @@ fn projectile_sweep_hit_normal(
 }
 
 /// C1 projectile migration — nearest swept hitbox contact for traveling
-/// projectile bodies. The kernel reads the WASM spatial slab directly
-/// and writes one nearest body/building/projectile hit per input sweep.
-/// Turret sub-hitboxes are still composed by TypeScript until turret
-/// hitbox radii are added to a WASM-owned turret collision slab.
+/// projectile bodies. The kernel reads the WASM spatial slab directly,
+/// includes current-tick turret sub-hitboxes from the combat-targeting
+/// slab, and writes one nearest hit per input sweep.
 #[wasm_bindgen]
 pub fn projectile_hitbox_sweep_batch(
     count: u32,
@@ -10906,6 +10905,7 @@ pub fn projectile_hitbox_sweep_batch(
     removed_projectile_entity_ids: &[i32],
     max_targetable_radius: f64,
     query_extra: f64,
+    current_tick: i32,
     out_kind: &mut [u8],
     out_slot: &mut [u32],
     out_entity_id: &mut [i32],
@@ -10937,6 +10937,7 @@ pub fn projectile_hitbox_sweep_batch(
     }
 
     let state = spatial_grid();
+    let targeting = combat_targeting_pool();
     let mut processed = 0u32;
 
     for i in 0..n {
@@ -11049,6 +11050,76 @@ pub fn projectile_hitbox_sweep_batch(
                             best_normal_x = nx;
                             best_normal_y = ny;
                             best_normal_z = nz;
+                        }
+                    }
+                    if current_tick >= 0
+                        && s < targeting.entity_id.len()
+                        && targeting.entity_id[s] == entity_id
+                        && s < targeting.turret_count_per_entity.len()
+                        && s < targeting.entity_flags.len()
+                        && (targeting.entity_flags[s] & CT_ENTITY_FLAG_ALIVE) != 0
+                    {
+                        let turret_count = (targeting.turret_count_per_entity[s] as usize)
+                            .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
+                        let base = s * (COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
+                        for turret_idx in 0..turret_count {
+                            let idx = base + turret_idx;
+                            if idx >= targeting.turret_entity_id.len()
+                                || idx >= targeting.turret_world_pos_tick.len()
+                                || idx >= targeting.turret_config_flags.len()
+                                || idx >= targeting.turret_radius_hitbox.len()
+                            {
+                                break;
+                            }
+                            let turret_entity_id = targeting.turret_entity_id[idx];
+                            if turret_entity_id < 0
+                                || targeting.turret_world_pos_tick[idx] != current_tick
+                                || (targeting.turret_config_flags[idx] & CT_TURRET_CFG_VISUAL_ONLY)
+                                    != 0
+                                || entity_id_in_slice(row_excludes, turret_entity_id)
+                            {
+                                continue;
+                            }
+                            let radius = source_radius + targeting.turret_radius_hitbox[idx].max(0.0);
+                            if radius <= 0.0 {
+                                continue;
+                            }
+                            if let Some(t) = segment_sphere_intersection_t(
+                                sx,
+                                sy,
+                                sz,
+                                tx,
+                                ty,
+                                tz,
+                                targeting.turret_mount_x[idx],
+                                targeting.turret_mount_y[idx],
+                                targeting.turret_mount_z[idx],
+                                radius,
+                            ) {
+                                if t < best_t {
+                                    let hit_x = sx + t * segment_dx;
+                                    let hit_y = sy + t * segment_dy;
+                                    let hit_z = sz + t * segment_dz;
+                                    let (nx, ny, nz) = projectile_sweep_hit_normal(
+                                        hit_x,
+                                        hit_y,
+                                        hit_z,
+                                        targeting.turret_mount_x[idx],
+                                        targeting.turret_mount_y[idx],
+                                        targeting.turret_mount_z[idx],
+                                        segment_dx,
+                                        segment_dy,
+                                        segment_dz,
+                                    );
+                                    best_t = t;
+                                    best_kind = PROJECTILE_SWEEP_HIT_KIND_UNIT;
+                                    best_slot = slot;
+                                    best_entity_id = entity_id;
+                                    best_normal_x = nx;
+                                    best_normal_y = ny;
+                                    best_normal_z = nz;
+                                }
+                            }
                         }
                     }
                 }
@@ -14330,6 +14401,7 @@ struct CombatTargetingPool {
     turret_mount_x: Vec<f64>,
     turret_mount_y: Vec<f64>,
     turret_mount_z: Vec<f64>,
+    turret_radius_hitbox: Vec<f64>,
     turret_mount_vx: Vec<f64>,
     turret_mount_vy: Vec<f64>,
     turret_mount_vz: Vec<f64>,
@@ -14491,6 +14563,7 @@ impl CombatTargetingPool {
             turret_mount_x: Vec::new(),
             turret_mount_y: Vec::new(),
             turret_mount_z: Vec::new(),
+            turret_radius_hitbox: Vec::new(),
             turret_mount_vx: Vec::new(),
             turret_mount_vy: Vec::new(),
             turret_mount_vz: Vec::new(),
@@ -14612,6 +14685,7 @@ impl CombatTargetingPool {
             self.turret_mount_x.resize(turret_needed, 0.0);
             self.turret_mount_y.resize(turret_needed, 0.0);
             self.turret_mount_z.resize(turret_needed, 0.0);
+            self.turret_radius_hitbox.resize(turret_needed, 0.0);
             self.turret_mount_vx.resize(turret_needed, 0.0);
             self.turret_mount_vy.resize(turret_needed, 0.0);
             self.turret_mount_vz.resize(turret_needed, 0.0);
@@ -15036,6 +15110,7 @@ pub fn combat_targeting_set_turret(
     mount_x: f64,
     mount_y: f64,
     mount_z: f64,
+    radius_hitbox: f64,
     mount_vx: f64,
     mount_vy: f64,
     mount_vz: f64,
@@ -15087,6 +15162,7 @@ pub fn combat_targeting_set_turret(
     pool.turret_mount_x[global_idx] = mount_x;
     pool.turret_mount_y[global_idx] = mount_y;
     pool.turret_mount_z[global_idx] = mount_z;
+    pool.turret_radius_hitbox[global_idx] = radius_hitbox.max(0.0);
     pool.turret_mount_vx[global_idx] = mount_vx;
     pool.turret_mount_vy[global_idx] = mount_vy;
     pool.turret_mount_vz[global_idx] = mount_vz;
@@ -15250,7 +15326,6 @@ pub fn combat_targeting_update_mount_kinematics(
         }
         if (flags & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
             pool.turret_state[idx] = CT_TURRET_STATE_IDLE;
-            continue;
         }
         if pool.turret_world_pos_tick[idx] == current_tick {
             continue;
@@ -30336,6 +30411,7 @@ mod lock_on_inclusion_tests {
             0.0,
             0.0,
             parent_z,
+            1.0,
             0.0,
             0.0,
             0.0,

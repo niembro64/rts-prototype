@@ -2,7 +2,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, ProjectileShot, BeamRay, LaserRay, ShotSource } from '../types';
-import { getEmissionBlueprintId, isRayType, isProjectileShot, NO_ENTITY_ID } from '../types';
+import { getEmissionBlueprintId, isRayType, isProjectileShot } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type {
@@ -23,10 +23,9 @@ import { LAND_CELL_SIZE } from '../../../config';
 import { getActiveShields } from './shieldTurret';
 import { REFLECTIVE_SHIELD_MATERIAL } from '../blueprints/shieldMaterials';
 import { getSimWasm } from '../../sim-wasm/init';
-import { getTransformCosSin, lineSphereIntersectionT } from '../../math';
-import { resolveWeaponWorldMount, updateProjectileSourceClearance } from './combatUtils';
+import { updateProjectileSourceClearance } from './combatUtils';
 import { writeTurretCooldownToSlab } from './combatActivitySlab';
-import { getUnitGroundZ } from '../unitGeometry';
+import { getCombatTargetingSourceSlots } from './targetingInputStamping';
 
 const SHIELD_PANEL_PROJECTILE_QUERY_PAD = 96;
 const PROJECTILE_HITBOX_SWEEP_QUERY_EXTRA = 32;
@@ -263,6 +262,22 @@ function getSplashExcludes(): Set<EntityId> {
   return _emptyExcludeSet;
 }
 
+function refreshProjectileCollisionTurretMounts(world: WorldState, dtMs: number): void {
+  const sourceSlots = getCombatTargetingSourceSlots();
+  if (sourceSlots.length === 0) return;
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('Projectile turret hitbox refresh requires initialized sim-wasm');
+  }
+  sim.combatTargeting.updateMountKinematicsBatch(
+    sourceSlots,
+    world.getTick(),
+    dtMs,
+    world.turretShieldPanelsEnabled ? 1 : 0,
+    world.turretShieldSpheresEnabled ? 1 : 0,
+  );
+}
+
 function ensureProjectileHitEntities(proj: { hitEntities: Set<EntityId> }): Set<EntityId> {
   return proj.hitEntities;
 }
@@ -347,48 +362,6 @@ const _projectileHitboxSweepHit = {
   normalY: 0,
   normalZ: 1,
 };
-const _projectileHitboxSweepTurretHit = {
-  entity: undefined as Entity | undefined,
-  t: Infinity,
-  normalX: 0,
-  normalY: 0,
-  normalZ: 1,
-};
-const _projectileHitboxSweepTurretMount = { x: 0, y: 0, z: 0 };
-
-function setProjectileHitboxSweepNormal(
-  out: typeof _projectileHitboxSweepHit,
-  hitX: number,
-  hitY: number,
-  hitZ: number,
-  centerX: number,
-  centerY: number,
-  centerZ: number,
-  segmentDx: number,
-  segmentDy: number,
-  segmentDz: number,
-): void {
-  let normalX = hitX - centerX;
-  let normalY = hitY - centerY;
-  let normalZ = hitZ - centerZ;
-  let normalLenSq = normalX * normalX + normalY * normalY + normalZ * normalZ;
-  if (normalLenSq <= 1e-9) {
-    normalX = -segmentDx;
-    normalY = -segmentDy;
-    normalZ = -segmentDz;
-    normalLenSq = normalX * normalX + normalY * normalY + normalZ * normalZ;
-  }
-  if (normalLenSq <= 1e-9) {
-    out.normalX = 0;
-    out.normalY = 0;
-    out.normalZ = 1;
-    return;
-  }
-  const invLen = 1 / Math.sqrt(normalLenSq);
-  out.normalX = normalX * invLen;
-  out.normalY = normalY * invLen;
-  out.normalZ = normalZ * invLen;
-}
 
 function resetProjectileHitboxSweepHit(out: typeof _projectileHitboxSweepHit): void {
   out.entity = undefined;
@@ -443,7 +416,7 @@ function isValidSpatialSweepTarget(kind: number, entity: Entity | undefined): en
   }
 }
 
-function findProjectileSpatialSweepHitWasm(
+function findProjectileHitboxSweepHit(
   world: WorldState,
   projectileHitboxRadius: number,
   prevX: number,
@@ -489,6 +462,7 @@ function findProjectileSpatialSweepHitWasm(
     _hitboxSweepRemovedProjectileIds.subarray(0, removedProjectileCount),
     world.getMaxTargetableRadius(),
     PROJECTILE_HITBOX_SWEEP_QUERY_EXTRA,
+    world.getTick(),
     _hitboxSweepOutKind,
     _hitboxSweepOutSlot,
     _hitboxSweepOutEntityId,
@@ -516,119 +490,6 @@ function findProjectileSpatialSweepHitWasm(
   _projectileHitboxSweepHit.normalY = _hitboxSweepOutNormalY[0];
   _projectileHitboxSweepHit.normalZ = _hitboxSweepOutNormalZ[0];
   return _projectileHitboxSweepHit as ProjectileHitboxSweepHit;
-}
-
-function findProjectileTurretSweepHit(
-  world: WorldState,
-  projectileHitboxRadius: number,
-  prevX: number,
-  prevY: number,
-  prevZ: number,
-  currentX: number,
-  currentY: number,
-  currentZ: number,
-  excludeEntities: Set<EntityId>,
-): ProjectileHitboxSweepHit | null {
-  resetProjectileHitboxSweepHit(_projectileHitboxSweepTurretHit);
-
-  const segmentDx = currentX - prevX;
-  const segmentDy = currentY - prevY;
-  const segmentDz = currentZ - prevZ;
-  const sourceRadius = Math.max(0, projectileHitboxRadius);
-  const sweptQueryWidth =
-    (sourceRadius + world.getMaxTargetableRadius() + PROJECTILE_HITBOX_SWEEP_QUERY_EXTRA) * 2;
-  const nearbyUnits = spatialGrid.queryUnitsAlongLine(
-    prevX, prevY, prevZ,
-    currentX, currentY, currentZ,
-    sweptQueryWidth,
-  );
-
-  for (const unit of nearbyUnits) {
-    if (excludeEntities.has(unit.id)) continue;
-    const unitComponent = unit.unit;
-    if (unitComponent === null || unitComponent.hp <= 0) continue;
-
-    const combat = unit.combat;
-    if (combat === null) continue;
-    const unitCS = getTransformCosSin(unit.transform);
-    const unitGroundZ = getUnitGroundZ(unit);
-    for (let i = 0; i < combat.turrets.length; i++) {
-      const turret = combat.turrets[i];
-      if (
-        turret.id === NO_ENTITY_ID ||
-        turret.config.visualOnly ||
-        excludeEntities.has(turret.id)
-      ) {
-        continue;
-      }
-      const mount = resolveWeaponWorldMount(
-        unit, turret, i,
-        unitCS.cos, unitCS.sin,
-        {
-          currentTick: world.getTick(),
-          unitGroundZ,
-          surfaceN: unitComponent.surfaceNormal,
-        },
-        _projectileHitboxSweepTurretMount,
-      );
-      const turretT = lineSphereIntersectionT(
-        prevX, prevY, prevZ,
-        currentX, currentY, currentZ,
-        mount.x, mount.y, mount.z,
-        sourceRadius + turret.config.radius.hitbox,
-      );
-      if (turretT !== null && turretT < _projectileHitboxSweepTurretHit.t) {
-        _projectileHitboxSweepTurretHit.entity = unit;
-        _projectileHitboxSweepTurretHit.t = turretT;
-        setProjectileHitboxSweepNormal(
-          _projectileHitboxSweepTurretHit,
-          prevX + turretT * segmentDx,
-          prevY + turretT * segmentDy,
-          prevZ + turretT * segmentDz,
-          mount.x,
-          mount.y,
-          mount.z,
-          segmentDx,
-          segmentDy,
-          segmentDz,
-        );
-      }
-    }
-  }
-
-  return _projectileHitboxSweepTurretHit.entity === undefined
-    ? null
-    : _projectileHitboxSweepTurretHit as ProjectileHitboxSweepHit;
-}
-
-function findProjectileHitboxSweepHit(
-  world: WorldState,
-  projectileHitboxRadius: number,
-  prevX: number,
-  prevY: number,
-  prevZ: number,
-  currentX: number,
-  currentY: number,
-  currentZ: number,
-  excludeEntities: Set<EntityId>,
-): ProjectileHitboxSweepHit | null {
-  const spatialHit = findProjectileSpatialSweepHitWasm(
-    world,
-    projectileHitboxRadius,
-    prevX, prevY, prevZ,
-    currentX, currentY, currentZ,
-    excludeEntities,
-  );
-  const turretHit = findProjectileTurretSweepHit(
-    world,
-    projectileHitboxRadius,
-    prevX, prevY, prevZ,
-    currentX, currentY, currentZ,
-    excludeEntities,
-  );
-  if (spatialHit === null) return turretHit;
-  if (turretHit === null) return spatialHit;
-  return turretHit.t < spatialHit.t ? turretHit : spatialHit;
 }
 
 // Reset collision-specific reusable buffers between game sessions
@@ -1016,6 +877,7 @@ export function checkProjectileCollisions(
   let reflectorImpactEvents = 0;
   const collisionDtMs = dtMs;
   const projectileEntities = world.getProjectiles();
+  refreshProjectileCollisionTurretMounts(world, dtMs);
   computeProjectileReflectorHits(world, projectileEntities);
 
   for (let projectileOrdinal = 0; projectileOrdinal < projectileEntities.length; projectileOrdinal++) {
