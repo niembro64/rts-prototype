@@ -412,6 +412,9 @@ export type TurretConfig = {
   lockOnUnitIncludeMask: number;
   lockOnTurretIncludeMask: number;
   lockOnShotIncludeMask: number;
+  /** Compiled `lockOnRequiresTargetLockedOntoSelf` enum. Mirrors
+   *  `CT_LOCK_ON_RECIPROCAL_*` in Rust/wasm. */
+  lockOnRequiresTargetLockedOntoSelfMode: number;
 };
 
 // Runtime projectile configuration. This is intentionally smaller than

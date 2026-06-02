@@ -40,6 +40,7 @@ export type {
   TurretAimAngleType,
   TurretAimStyle,
   LockOnInclusionObject,
+  LockOnRequiresTargetLockedOntoSelf,
   TurretLockOnRelationshipInclusion,
   TurretLockOnEntityFamilyInclusion,
   TurretRadiusConfig,

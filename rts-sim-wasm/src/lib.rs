@@ -14898,6 +14898,15 @@ pub const CT_LOCK_ON_FAM_INCLUDE_TURRETS: u8 = 1 << 2;
 pub const CT_LOCK_ON_FAM_INCLUDE_TOWERS: u8 = 1 << 3;
 pub const CT_LOCK_ON_FAM_INCLUDE_SHOTS: u8 = 1 << 5;
 
+// LOCK-ON-04 — Reciprocal lock-on candidacy modes. Stamped from the
+// normalized blueprint inclusion object. `REQUIRE` admits only enemy
+// candidates that were locked onto this turret/host in the prior
+// committed targeting state; `PREFER` keeps ordinary candidacy but
+// ranks those threats in a strict higher tier.
+pub const CT_LOCK_ON_RECIPROCAL_IGNORE: u8 = 0;
+pub const CT_LOCK_ON_RECIPROCAL_REQUIRE: u8 = 1;
+pub const CT_LOCK_ON_RECIPROCAL_PREFER: u8 = 2;
+
 // LOCK-ON-03 — Per-entity family encoding stamped on entity slab rows.
 // Zero is the cleared/unstamped sentinel so a stale row from
 // `clear_all` cannot match a real family in the exclusion check.
@@ -15046,6 +15055,11 @@ struct CombatTargetingPool {
     turret_pitch_velocity: Vec<f32>,
     turret_state: Vec<u8>,
     turret_target_id: Vec<i32>,
+    // Prior committed target id stamped at the start of the current
+    // targeting tick. Current-tick FSM writes mutate `turret_target_id`;
+    // reciprocal lock-on reads this frozen column so world-order updates
+    // cannot create intra-tick target cycles.
+    turret_committed_target_id: Vec<i32>,
     // Transitional AIM-08.5 runtime timers. Firing still writes these
     // on JS Turret objects after projectile emission, then the next
     // targeting stamp copies them into the slab so the scheduled Rust
@@ -15110,6 +15124,7 @@ struct CombatTargetingPool {
     turret_lockon_unit_mask: Vec<u32>,
     turret_lockon_turret_mask: Vec<u32>,
     turret_lockon_shot_mask: Vec<u32>,
+    turret_lockon_reciprocal_mode: Vec<u8>,
     // AIM-08.4 ballistic solver outputs. Written by the Rust solver
     // using turret mount data from the slab; JS reads these outputs
     // for transitional targeting gates and turret pose until AIM-08.5
@@ -15204,6 +15219,7 @@ impl CombatTargetingPool {
             turret_pitch_velocity: Vec::new(),
             turret_state: Vec::new(),
             turret_target_id: Vec::new(),
+            turret_committed_target_id: Vec::new(),
             turret_cooldown: Vec::new(),
             turret_burst_cooldown: Vec::new(),
             turret_fire_max_acquire_sq: Vec::new(),
@@ -15230,6 +15246,7 @@ impl CombatTargetingPool {
             turret_lockon_unit_mask: Vec::new(),
             turret_lockon_turret_mask: Vec::new(),
             turret_lockon_shot_mask: Vec::new(),
+            turret_lockon_reciprocal_mode: Vec::new(),
             turret_ballistic_has_solution: Vec::new(),
             turret_ballistic_flight_time: Vec::new(),
             turret_ballistic_launch_vx: Vec::new(),
@@ -15327,6 +15344,7 @@ impl CombatTargetingPool {
             self.turret_state
                 .resize(turret_needed, CT_TURRET_STATE_IDLE);
             self.turret_target_id.resize(turret_needed, -1);
+            self.turret_committed_target_id.resize(turret_needed, -1);
             self.turret_cooldown.resize(turret_needed, 0.0);
             self.turret_burst_cooldown.resize(turret_needed, 0.0);
             self.turret_fire_max_acquire_sq.resize(turret_needed, 0.0);
@@ -15356,6 +15374,8 @@ impl CombatTargetingPool {
             self.turret_lockon_unit_mask.resize(turret_needed, 0);
             self.turret_lockon_turret_mask.resize(turret_needed, 0);
             self.turret_lockon_shot_mask.resize(turret_needed, 0);
+            self.turret_lockon_reciprocal_mode
+                .resize(turret_needed, CT_LOCK_ON_RECIPROCAL_IGNORE);
             self.turret_ballistic_has_solution.resize(turret_needed, 0);
             self.turret_ballistic_flight_time.resize(turret_needed, 0.0);
             self.turret_ballistic_launch_vx.resize(turret_needed, 0.0);
@@ -15394,6 +15414,8 @@ impl CombatTargetingPool {
                 self.turret_parent_id[idx] = ENTITY_META_NO_ID;
                 self.turret_root_host_id[idx] = ENTITY_META_NO_ID;
                 self.turret_mount_index[idx] = ENTITY_META_NO_INDEX;
+                self.turret_committed_target_id[idx] = -1;
+                self.turret_lockon_reciprocal_mode[idx] = CT_LOCK_ON_RECIPROCAL_IGNORE;
                 self.turret_ballistic_has_solution[idx] = 0;
             }
         }
@@ -15431,6 +15453,8 @@ impl CombatTargetingPool {
             self.turret_parent_id[idx] = ENTITY_META_NO_ID;
             self.turret_root_host_id[idx] = ENTITY_META_NO_ID;
             self.turret_mount_index[idx] = ENTITY_META_NO_INDEX;
+            self.turret_committed_target_id[idx] = -1;
+            self.turret_lockon_reciprocal_mode[idx] = CT_LOCK_ON_RECIPROCAL_IGNORE;
         }
     }
 }
@@ -15777,6 +15801,7 @@ pub fn combat_targeting_set_turret(
     lockon_unit_mask: u32,
     lockon_turret_mask: u32,
     lockon_shot_mask: u32,
+    lockon_reciprocal_mode: u8,
 ) {
     let pool = combat_targeting_pool();
     pool.ensure_entity_capacity(entity_slot);
@@ -15799,6 +15824,7 @@ pub fn combat_targeting_set_turret(
     pool.turret_pitch_velocity[global_idx] = pitch_velocity;
     pool.turret_state[global_idx] = state;
     pool.turret_target_id[global_idx] = target_id;
+    pool.turret_committed_target_id[global_idx] = target_id;
     pool.turret_cooldown[global_idx] = if cooldown > 0.0 { cooldown } else { 0.0 };
     pool.turret_burst_cooldown[global_idx] = if burst_cooldown > 0.0 {
         burst_cooldown
@@ -15833,6 +15859,10 @@ pub fn combat_targeting_set_turret(
     pool.turret_lockon_unit_mask[global_idx] = lockon_unit_mask;
     pool.turret_lockon_turret_mask[global_idx] = lockon_turret_mask;
     pool.turret_lockon_shot_mask[global_idx] = lockon_shot_mask;
+    pool.turret_lockon_reciprocal_mode[global_idx] = match lockon_reciprocal_mode {
+        CT_LOCK_ON_RECIPROCAL_REQUIRE | CT_LOCK_ON_RECIPROCAL_PREFER => lockon_reciprocal_mode,
+        _ => CT_LOCK_ON_RECIPROCAL_IGNORE,
+    };
     combat_targeting_write_no_ballistic_solution(
         pool,
         global_idx,
@@ -17133,6 +17163,123 @@ fn combat_targeting_turret_lockon_includes_turret_family(
 }
 
 #[inline]
+fn combat_targeting_committed_turret_targets_source(
+    pool: &CombatTargetingPool,
+    source_entity_slot: usize,
+    source_entity_id: i32,
+    source_turret_idx: Option<usize>,
+    threat_turret_idx: usize,
+) -> bool {
+    if threat_turret_idx >= pool.turret_committed_target_id.len() {
+        return false;
+    }
+    let threat_target_id = pool.turret_committed_target_id[threat_turret_idx];
+    if threat_target_id == source_entity_id {
+        return true;
+    }
+    if let Some(source_idx) = source_turret_idx {
+        return source_idx < pool.turret_entity_id.len()
+            && pool.turret_entity_id[source_idx] == threat_target_id;
+    }
+    if source_entity_slot >= pool.turret_count_per_entity.len() {
+        return false;
+    }
+    let count = (pool.turret_count_per_entity[source_entity_slot] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
+    for ti in 0..count {
+        let idx = combat_targeting_turret_global_idx(source_entity_slot as u32, ti as u32);
+        let flags = pool.turret_config_flags[idx];
+        if (flags & CT_TURRET_CFG_PASSIVE) == 0
+            || (flags & CT_TURRET_CFG_SHOT_IS_FORCE) == 0
+            || (flags & CT_TURRET_CFG_VISUAL_ONLY) != 0
+        {
+            continue;
+        }
+        if pool.turret_entity_id[idx] == threat_target_id {
+            return true;
+        }
+    }
+    false
+}
+
+#[inline]
+fn combat_targeting_target_slot_locked_onto_source(
+    pool: &CombatTargetingPool,
+    source_entity_slot: usize,
+    source_entity_id: i32,
+    source_turret_idx: usize,
+    target_entity_slot: usize,
+) -> bool {
+    if target_entity_slot >= pool.turret_count_per_entity.len() {
+        return false;
+    }
+    let count = (pool.turret_count_per_entity[target_entity_slot] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
+    for ti in 0..count {
+        let idx = combat_targeting_turret_global_idx(target_entity_slot as u32, ti as u32);
+        if combat_targeting_committed_turret_targets_source(
+            pool,
+            source_entity_slot,
+            source_entity_id,
+            Some(source_turret_idx),
+            idx,
+        ) {
+            return true;
+        }
+    }
+    false
+}
+
+#[inline]
+fn combat_targeting_turret_reciprocal_require_allows(
+    pool: &CombatTargetingPool,
+    source_entity_slot: usize,
+    source_turret_idx: usize,
+    target_entity_slot: usize,
+) -> bool {
+    if source_turret_idx >= pool.turret_lockon_reciprocal_mode.len() {
+        return false;
+    }
+    if pool.turret_lockon_reciprocal_mode[source_turret_idx] != CT_LOCK_ON_RECIPROCAL_REQUIRE {
+        return true;
+    }
+    let source_entity_id = pool.entity_id[source_entity_slot];
+    combat_targeting_target_slot_locked_onto_source(
+        pool,
+        source_entity_slot,
+        source_entity_id,
+        source_turret_idx,
+        target_entity_slot,
+    )
+}
+
+#[inline]
+fn combat_targeting_turret_reciprocal_prefer_tier(
+    pool: &CombatTargetingPool,
+    source_entity_slot: usize,
+    source_turret_idx: usize,
+    target_entity_slot: usize,
+) -> u8 {
+    if source_turret_idx >= pool.turret_lockon_reciprocal_mode.len()
+        || pool.turret_lockon_reciprocal_mode[source_turret_idx] != CT_LOCK_ON_RECIPROCAL_PREFER
+    {
+        return 0;
+    }
+    let source_entity_id = pool.entity_id[source_entity_slot];
+    if combat_targeting_target_slot_locked_onto_source(
+        pool,
+        source_entity_slot,
+        source_entity_id,
+        source_turret_idx,
+        target_entity_slot,
+    ) {
+        1
+    } else {
+        0
+    }
+}
+
+#[inline]
 fn combat_targeting_entity_lockon_allows_target_turret(
     pool: &CombatTargetingPool,
     source_entity_slot: usize,
@@ -17254,27 +17401,33 @@ fn combat_targeting_turret_may_lock_entity_slot(
         return false;
     }
 
-    if combat_targeting_turret_lockon_allows_body_entity(
+    let base_allowed = if combat_targeting_turret_lockon_allows_body_entity(
         pool,
         source_turret_idx,
         target_entity_slot,
     ) {
-        return true;
-    }
-
-    if combat_targeting_turret_lockon_includes_turret_family(pool, source_turret_idx) {
+        true
+    } else if combat_targeting_turret_lockon_includes_turret_family(pool, source_turret_idx) {
         let source_entity_id = pool.entity_id[source_entity_slot];
-        return combat_targeting_pick_target_aim_turret_idx(
+        combat_targeting_pick_target_aim_turret_idx(
             pool,
             target_entity_slot,
             source_entity_slot,
             source_entity_id,
             Some(source_turret_idx),
         )
-        .is_some();
-    }
+        .is_some()
+    } else {
+        false
+    };
 
-    false
+    base_allowed
+        && combat_targeting_turret_reciprocal_require_allows(
+            pool,
+            source_entity_slot,
+            source_turret_idx,
+            target_entity_slot,
+        )
 }
 
 fn combat_targeting_entity_has_turret_that_may_lock_entity_slot(
@@ -17310,43 +17463,12 @@ fn combat_targeting_entity_has_turret_that_may_lock_entity_slot(
     false
 }
 
-#[inline]
-fn combat_targeting_threat_targets_shield_panel_source(
-    pool: &CombatTargetingPool,
-    source_entity_slot: usize,
-    source_entity_id: i32,
-    threat_target_id: i32,
-) -> bool {
-    if threat_target_id == source_entity_id {
-        return true;
-    }
-    if source_entity_slot >= pool.turret_count_per_entity.len() {
-        return false;
-    }
-    let count = (pool.turret_count_per_entity[source_entity_slot] as usize)
-        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
-    for ti in 0..count {
-        let idx = combat_targeting_turret_global_idx(source_entity_slot as u32, ti as u32);
-        let flags = pool.turret_config_flags[idx];
-        if (flags & CT_TURRET_CFG_PASSIVE) == 0
-            || (flags & CT_TURRET_CFG_SHOT_IS_FORCE) == 0
-            || (flags & CT_TURRET_CFG_VISUAL_ONLY) != 0
-        {
-            continue;
-        }
-        if pool.turret_entity_id[idx] == threat_target_id {
-            return true;
-        }
-    }
-    false
-}
-
 /// AIM-08.5 — Rust port of `pickMirrorTargetTurret` /
 /// `scoreShieldPanelTargetTurret` from `shieldTargetPriority.ts`. Walks the
 /// target entity's turrets in the slab and returns the maximum
 /// sustained DPS of any non-passive, non-visual, non-manual turret
-/// currently locked onto our host or one of our shield-panel turrets in a
-/// non-idle state. Returns 0 when no qualifying turret exists — matches the
+/// whose prior committed lock points at our host or one of our
+/// shield-panel turrets. Returns 0 when no qualifying turret exists — matches the
 /// JS scorer's "any qualifying shield-panel target scores at its DPS;
 /// otherwise 0" rule.
 #[inline]
@@ -17370,15 +17492,13 @@ fn combat_targeting_shield_panel_target_score_for_slot(
         if (flags & exclude_flags) != 0 {
             continue;
         }
-        if !combat_targeting_threat_targets_shield_panel_source(
+        if !combat_targeting_committed_turret_targets_source(
             pool,
             source_entity_slot,
             our_entity_id,
-            pool.turret_target_id[idx],
+            None,
+            idx,
         ) {
-            continue;
-        }
-        if pool.turret_state[idx] == CT_TURRET_STATE_IDLE {
             continue;
         }
         let dps = pool.turret_dps[idx];
@@ -17448,13 +17568,13 @@ fn combat_targeting_pick_target_aim_turret_idx(
         if best_any.map_or(true, |(_, best)| dps > best) {
             best_any = Some((ti, dps));
         }
-        if combat_targeting_threat_targets_shield_panel_source(
+        if combat_targeting_committed_turret_targets_source(
             pool,
             source_entity_slot,
             source_entity_id,
-            pool.turret_target_id[idx],
-        ) && pool.turret_state[idx] != CT_TURRET_STATE_IDLE
-            && best_direct.map_or(true, |(_, best)| dps > best)
+            source_turret_idx,
+            idx,
+        ) && best_direct.map_or(true, |(_, best)| dps > best)
         {
             best_direct = Some((ti, dps));
         }
@@ -18178,9 +18298,25 @@ pub fn combat_targeting_prepare_auto_scan(
             cached_fire_dist_sqs[turret_idx] = dist_sq;
         }
 
+        let prefer_non_threat_current_target = pool.turret_lockon_reciprocal_mode[idx]
+            == CT_LOCK_ON_RECIPROCAL_PREFER
+            && pool
+                .entity_slot_by_id
+                .get(&pool.turret_target_id[idx])
+                .map(|slot| {
+                    combat_targeting_turret_reciprocal_prefer_tier(
+                        pool,
+                        entity_idx,
+                        idx,
+                        *slot as usize,
+                    ) == 0
+                })
+                .unwrap_or(false);
+
         if pool.turret_target_id[idx] < 0
             || pool.turret_state[idx] == CT_TURRET_STATE_TRACKING
             || cached_rank == CT_TARGET_RANK_FIRE_FALLBACK
+            || prefer_non_threat_current_target
         {
             needs_any_query = true;
         }
@@ -20774,46 +20910,72 @@ fn targeting_rank_cylinder(
 }
 
 #[inline]
-fn targeting_is_better_candidate(rank: u8, dist_sq: f64, best_rank: u8, best_dist_sq: f64) -> bool {
+fn targeting_is_better_candidate(
+    reciprocal_tier: u8,
+    rank: u8,
+    dist_sq: f64,
+    best_reciprocal_tier: u8,
+    best_rank: u8,
+    best_dist_sq: f64,
+) -> bool {
+    if reciprocal_tier != best_reciprocal_tier {
+        return reciprocal_tier > best_reciprocal_tier;
+    }
     rank > best_rank || (rank == best_rank && dist_sq < best_dist_sq)
 }
 
 #[inline]
 fn targeting_is_better_mirror_candidate(
+    reciprocal_tier: u8,
     shield_panel_score: f64,
     rank: u8,
     dist_sq: f64,
+    best_reciprocal_tier: u8,
     best_shield_panel_score: f64,
     best_rank: u8,
     best_dist_sq: f64,
 ) -> bool {
+    if reciprocal_tier != best_reciprocal_tier {
+        return reciprocal_tier > best_reciprocal_tier;
+    }
     if shield_panel_score != best_shield_panel_score {
         return shield_panel_score > best_shield_panel_score;
     }
-    targeting_is_better_candidate(rank, dist_sq, best_rank, best_dist_sq)
+    targeting_is_better_candidate(0, rank, dist_sq, 0, best_rank, best_dist_sq)
 }
 
 #[inline]
 fn targeting_candidate_beats_seed(
     is_passive: u8,
+    reciprocal_tier: u8,
     rank: u8,
     dist_sq: f64,
     shield_panel_score: f64,
+    seed_reciprocal_tier: u8,
     seed_rank: u8,
     seed_dist_sq: f64,
     seed_shield_panel_score: f64,
 ) -> bool {
     if is_passive != 0 {
         targeting_is_better_mirror_candidate(
+            reciprocal_tier,
             shield_panel_score,
             rank,
             dist_sq,
+            seed_reciprocal_tier,
             seed_shield_panel_score,
             seed_rank,
             seed_dist_sq,
         )
     } else {
-        targeting_is_better_candidate(rank, dist_sq, seed_rank, seed_dist_sq)
+        targeting_is_better_candidate(
+            reciprocal_tier,
+            rank,
+            dist_sq,
+            seed_reciprocal_tier,
+            seed_rank,
+            seed_dist_sq,
+        )
     }
 }
 
@@ -20833,8 +20995,10 @@ fn targeting_score_candidate(
     tracking_release: f64,
     rank_mode: u8,
     minimum_rank: u8,
+    reciprocal_tier: u8,
     seed_rank: u8,
     seed_dist_sq: f64,
+    seed_reciprocal_tier: u8,
     seed_shield_panel_score: f64,
     is_passive: u8,
     candidate_observable: &[u8],
@@ -20844,7 +21008,7 @@ fn targeting_score_candidate(
     candidate_radius: &[f64],
     candidate_vertical_extent: f64,
     candidate_shield_panel_score: &[f64],
-) -> Option<(u8, f64, f64)> {
+) -> Option<(u8, f64, f64, u8)> {
     if candidate_observable[candidate_idx] == 0 {
         return None;
     }
@@ -20883,39 +21047,57 @@ fn targeting_score_candidate(
     }
     if !targeting_candidate_beats_seed(
         is_passive,
+        reciprocal_tier,
         rank,
         horizontal_dist_sq,
         shield_panel_score,
+        seed_reciprocal_tier,
         seed_rank,
         seed_dist_sq,
         seed_shield_panel_score,
     ) {
         return None;
     }
-    Some((rank, horizontal_dist_sq, shield_panel_score))
+    Some((
+        rank,
+        horizontal_dist_sq,
+        shield_panel_score,
+        reciprocal_tier,
+    ))
 }
 
 #[inline]
 fn targeting_pool_entry_is_better(
     is_passive: u8,
+    reciprocal_tier: u8,
     rank: u8,
     dist_sq: f64,
     shield_panel_score: f64,
+    best_reciprocal_tier: u8,
     best_rank: u8,
     best_dist_sq: f64,
     best_shield_panel_score: f64,
 ) -> bool {
     if is_passive != 0 {
         targeting_is_better_mirror_candidate(
+            reciprocal_tier,
             shield_panel_score,
             rank,
             dist_sq,
+            best_reciprocal_tier,
             best_shield_panel_score,
             best_rank,
             best_dist_sq,
         )
     } else {
-        targeting_is_better_candidate(rank, dist_sq, best_rank, best_dist_sq)
+        targeting_is_better_candidate(
+            reciprocal_tier,
+            rank,
+            dist_sq,
+            best_reciprocal_tier,
+            best_rank,
+            best_dist_sq,
+        )
     }
 }
 
@@ -21439,6 +21621,17 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
     let source_entity_slot = entity_slot as usize;
     let source_turret_idx = combat_targeting_turret_global_idx(entity_slot, turret_idx);
     let source_turret_bit = 1u32 << turret_idx;
+    let seed_reciprocal_tier =
+        combat_targeting_entity_slot_for_id(pool, pool.turret_target_id[source_turret_idx])
+            .map(|slot| {
+                combat_targeting_turret_reciprocal_prefer_tier(
+                    pool,
+                    source_entity_slot,
+                    source_turret_idx,
+                    slot,
+                )
+            })
+            .unwrap_or(0);
     let candidate_eligible_turret_mask =
         if let Some(mask) = precomputed_candidate_eligible_turret_mask {
             if mask.len() >= count {
@@ -21454,6 +21647,7 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
     let mut top_rank = [CT_TARGET_RANK_NONE; TARGETING_TOPK_LOS];
     let mut top_dist_sq = [0.0f64; TARGETING_TOPK_LOS];
     let mut top_shield_panel_score = [0.0f64; TARGETING_TOPK_LOS];
+    let mut top_reciprocal_tier = [0u8; TARGETING_TOPK_LOS];
     let mut top_count = 0usize;
 
     for ci in 0..count {
@@ -21474,9 +21668,15 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
         if !lock_allowed {
             continue;
         }
+        let reciprocal_tier = combat_targeting_turret_reciprocal_prefer_tier(
+            pool,
+            source_entity_slot,
+            source_turret_idx,
+            candidate_slot as usize,
+        );
         let candidate_vertical_extent =
             combat_targeting_target_vertical_extent(pool, candidate_slot as usize);
-        let Some((rank, dist_sq, shield_panel_score)) = targeting_score_candidate(
+        let Some((rank, dist_sq, shield_panel_score, reciprocal_tier)) = targeting_score_candidate(
             ci,
             weapon_x,
             weapon_y,
@@ -21491,8 +21691,10 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             tracking_release,
             rank_mode,
             minimum_rank,
+            reciprocal_tier,
             seed_rank,
             seed_dist_sq,
+            seed_reciprocal_tier,
             seed_shield_panel_score,
             is_passive,
             candidate_observable,
@@ -21514,9 +21716,11 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             let last = top_count - 1;
             if !targeting_pool_entry_is_better(
                 is_passive,
+                reciprocal_tier,
                 rank,
                 dist_sq,
                 shield_panel_score,
+                top_reciprocal_tier[last],
                 top_rank[last],
                 top_dist_sq[last],
                 top_shield_panel_score[last],
@@ -21530,15 +21734,18 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
         top_rank[insert_idx] = rank;
         top_dist_sq[insert_idx] = dist_sq;
         top_shield_panel_score[insert_idx] = shield_panel_score;
+        top_reciprocal_tier[insert_idx] = reciprocal_tier;
 
         let mut i = insert_idx;
         while i > 0 {
             let j = i - 1;
             let better = targeting_pool_entry_is_better(
                 is_passive,
+                top_reciprocal_tier[i],
                 top_rank[i],
                 top_dist_sq[i],
                 top_shield_panel_score[i],
+                top_reciprocal_tier[j],
                 top_rank[j],
                 top_dist_sq[j],
                 top_shield_panel_score[j],
@@ -21550,6 +21757,7 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             top_rank.swap(i, j);
             top_dist_sq.swap(i, j);
             top_shield_panel_score.swap(i, j);
+            top_reciprocal_tier.swap(i, j);
             i = j;
         }
     }
@@ -21625,35 +21833,45 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             continue;
         }
 
+        let reciprocal_tier = combat_targeting_turret_reciprocal_prefer_tier(
+            pool,
+            source_entity_slot,
+            source_turret_idx,
+            candidate_slot as usize,
+        );
         let candidate_vertical_extent =
             combat_targeting_target_vertical_extent(pool, candidate_slot as usize);
-        let Some((rank, _dist_sq, _shield_panel_score)) = targeting_score_candidate(
-            ci,
-            weapon_x,
-            weapon_y,
-            weapon_z,
-            fire_max_acquire,
-            fire_max_release,
-            has_fire_min,
-            fire_min_acquire,
-            fire_min_release,
-            has_tracking,
-            tracking_acquire,
-            tracking_release,
-            rank_mode,
-            minimum_rank,
-            seed_rank,
-            seed_dist_sq,
-            seed_shield_panel_score,
-            is_passive,
-            candidate_observable,
-            candidate_pos_x,
-            candidate_pos_y,
-            candidate_pos_z,
-            candidate_radius,
-            candidate_vertical_extent,
-            candidate_shield_panel_score,
-        ) else {
+        let Some((rank, _dist_sq, _shield_panel_score, _reciprocal_tier)) =
+            targeting_score_candidate(
+                ci,
+                weapon_x,
+                weapon_y,
+                weapon_z,
+                fire_max_acquire,
+                fire_max_release,
+                has_fire_min,
+                fire_min_acquire,
+                fire_min_release,
+                has_tracking,
+                tracking_acquire,
+                tracking_release,
+                rank_mode,
+                minimum_rank,
+                reciprocal_tier,
+                seed_rank,
+                seed_dist_sq,
+                seed_reciprocal_tier,
+                seed_shield_panel_score,
+                is_passive,
+                candidate_observable,
+                candidate_pos_x,
+                candidate_pos_y,
+                candidate_pos_z,
+                candidate_radius,
+                candidate_vertical_extent,
+                candidate_shield_panel_score,
+            )
+        else {
             continue;
         };
 
@@ -31894,6 +32112,7 @@ mod lock_on_inclusion_tests {
         unit_mask: u32,
         turret_mask: u32,
         shot_mask: u32,
+        reciprocal_mode: u8,
     }
 
     impl Default for TurretSpec {
@@ -31910,6 +32129,7 @@ mod lock_on_inclusion_tests {
                 unit_mask: 0,
                 turret_mask: 0,
                 shot_mask: 0,
+                reciprocal_mode: CT_LOCK_ON_RECIPROCAL_IGNORE,
             }
         }
     }
@@ -32237,6 +32457,7 @@ mod lock_on_inclusion_tests {
             spec.unit_mask,
             spec.turret_mask,
             spec.shot_mask,
+            spec.reciprocal_mode,
         );
     }
 
@@ -32843,6 +33064,7 @@ mod lock_on_inclusion_tests {
                 flags: CT_TURRET_CFG_PASSIVE | CT_TURRET_CFG_SHOT_IS_FORCE,
                 relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 family_mask: CT_LOCK_ON_FAM_INCLUDE_TURRETS,
+                reciprocal_mode: CT_LOCK_ON_RECIPROCAL_REQUIRE,
                 ..TurretSpec::default()
             },
         );
@@ -32882,6 +33104,7 @@ mod lock_on_inclusion_tests {
                 flags: CT_TURRET_CFG_PASSIVE | CT_TURRET_CFG_SHOT_IS_FORCE,
                 relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 family_mask: CT_LOCK_ON_FAM_INCLUDE_TURRETS,
+                reciprocal_mode: CT_LOCK_ON_RECIPROCAL_REQUIRE,
                 ..TurretSpec::default()
             },
         );
@@ -32915,6 +33138,7 @@ mod lock_on_inclusion_tests {
                 flags: CT_TURRET_CFG_PASSIVE | CT_TURRET_CFG_SHOT_IS_FORCE,
                 relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 family_mask: CT_LOCK_ON_FAM_INCLUDE_TURRETS,
+                reciprocal_mode: CT_LOCK_ON_RECIPROCAL_REQUIRE,
                 ..TurretSpec::default()
             },
         );
@@ -32926,6 +33150,122 @@ mod lock_on_inclusion_tests {
             "shield panels must not lock onto turrets that are not targeting the host or panel",
         );
         assert_eq!(state, CT_TURRET_STATE_IDLE);
+    }
+
+    #[test]
+    fn reciprocal_require_admits_only_targets_locked_onto_source() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
+                family_mask: CT_LOCK_ON_FAM_INCLUDE_UNITS,
+                reciprocal_mode: CT_LOCK_ON_RECIPROCAL_REQUIRE,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_turret_target_with_target_id(1, 201, PLAYER_2, 20.0, &[TURRET_CODE_A], 999_999);
+        stamp_turret_target_with_target_id(2, 202, PLAYER_2, 30.0, &[TURRET_CODE_A], SOURCE_ID);
+
+        let (target_id, state, _) = run_schedule_tick(1);
+        assert_eq!(
+            target_id, 202,
+            "require mode must skip closer enemies not locked onto the source",
+        );
+        assert_ne!(state, CT_TURRET_STATE_IDLE);
+    }
+
+    #[test]
+    fn reciprocal_require_drops_existing_lock_when_target_reaims() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                state: CT_TURRET_STATE_ENGAGED,
+                target_id: 201,
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
+                family_mask: CT_LOCK_ON_FAM_INCLUDE_UNITS,
+                reciprocal_mode: CT_LOCK_ON_RECIPROCAL_REQUIRE,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_turret_target_with_target_id(1, 201, PLAYER_2, 20.0, &[TURRET_CODE_A], 999_999);
+
+        let (target_id, state, _) = run_schedule_tick(1);
+        assert_eq!(target_id, -1);
+        assert_eq!(state, CT_TURRET_STATE_IDLE);
+    }
+
+    #[test]
+    fn reciprocal_prefer_strictly_tiers_threats_above_non_threats() {
+        let _guard = lock_tests();
+
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
+                family_mask: CT_LOCK_ON_FAM_INCLUDE_UNITS,
+                reciprocal_mode: CT_LOCK_ON_RECIPROCAL_PREFER,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target(
+            1,
+            201,
+            PLAYER_2,
+            20.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        stamp_turret_target_with_target_id(2, 202, PLAYER_2, 40.0, &[TURRET_CODE_A], SOURCE_ID);
+        let (target_id, _, _) = run_schedule_tick(1);
+        assert_eq!(
+            target_id, 202,
+            "prefer mode must choose an incoming threat over a closer non-threat",
+        );
+
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
+                family_mask: CT_LOCK_ON_FAM_INCLUDE_UNITS,
+                reciprocal_mode: CT_LOCK_ON_RECIPROCAL_PREFER,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target(
+            1,
+            203,
+            PLAYER_2,
+            20.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        stamp_body_target(
+            2,
+            204,
+            PLAYER_2,
+            40.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_B,
+        );
+        let (target_id, _, _) = run_schedule_tick(1);
+        assert_eq!(
+            target_id, 203,
+            "prefer mode must fall back to normal scoring when no threat exists",
+        );
     }
 
     #[test]

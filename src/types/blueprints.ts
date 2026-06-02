@@ -38,6 +38,7 @@ export type {
   LaserRayBlueprint,
   RayBlueprint,
   LockOnInclusionObject,
+  LockOnRequiresTargetLockedOntoSelf,
   LocomotionBlueprint,
   LocomotionPhysics,
   MountOffset,

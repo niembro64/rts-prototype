@@ -1,6 +1,7 @@
 import {
   TURRET_LOCK_ON_ENTITY_FAMILY_INCLUSIONS,
   TURRET_LOCK_ON_RELATIONSHIP_INCLUSIONS,
+  type LockOnRequiresTargetLockedOntoSelf,
   type LockOnInclusionObject,
   type TurretLockOnRelationshipInclusion,
 } from '../../../types/blueprints';
@@ -21,9 +22,18 @@ export const LOCK_ON_INCLUSION_FIELDS = [
   'includeLockOnLevel1Units',
   'includeLockOnLevel1Turrets',
   'includeLockOnLevel1Shots',
+  'lockOnRequiresTargetLockedOntoSelf',
 ] as const;
 
-const LOCK_ON_TARGET_POLICY_FIELDS = ['targets'] as const;
+const LOCK_ON_RECIPROCAL_MODES = ['ignore', 'require', 'prefer'] as const;
+const LOCK_ON_RECIPROCAL_MODE_SET: ReadonlySet<string> = new Set(
+  LOCK_ON_RECIPROCAL_MODES,
+);
+const LOCK_ON_TARGET_POLICY_REQUIRED_FIELDS = ['targets'] as const;
+const LOCK_ON_TARGET_POLICY_FIELDS = [
+  'targets',
+  'lockOnRequiresTargetLockedOntoSelf',
+] as const;
 const LOCK_ON_TARGET_RELATIONSHIP_FIELDS = ['friendly', 'enemy'] as const;
 const LOCK_ON_TARGET_FAMILY_FIELDS = [
   'buildings',
@@ -45,6 +55,7 @@ type LockOnTargetRelationshipPolicy = Partial<
 >;
 type LockOnTargetPolicyObject = {
   targets: Partial<Record<LockOnTargetRelationship, LockOnTargetRelationshipPolicy>>;
+  lockOnRequiresTargetLockedOntoSelf?: LockOnRequiresTargetLockedOntoSelf;
 };
 
 const LOCK_ON_TARGET_RELATIONSHIP_SET: ReadonlySet<string> = new Set(
@@ -223,6 +234,19 @@ function normalizeTargetRelationshipPolicy(
   return normalized;
 }
 
+function normalizeReciprocalMode(
+  label: string,
+  value: unknown,
+): LockOnRequiresTargetLockedOntoSelf {
+  if (value === undefined) return 'ignore';
+  if (typeof value !== 'string' || !LOCK_ON_RECIPROCAL_MODE_SET.has(value)) {
+    throw new Error(
+      `Invalid ${label}: lockOnRequiresTargetLockedOntoSelf must be one of [${LOCK_ON_RECIPROCAL_MODES.join(', ')}]`,
+    );
+  }
+  return value as LockOnRequiresTargetLockedOntoSelf;
+}
+
 function assertRelationshipPoliciesCanCompile(
   label: string,
   relationships: readonly LockOnTargetRelationship[],
@@ -248,10 +272,14 @@ export function normalizeLockOnTargetPolicy(
   label: string,
   value: unknown,
 ): LockOnInclusionObject {
-  assertExplicitFields(label, value, LOCK_ON_TARGET_POLICY_FIELDS);
+  assertExplicitFields(label, value, LOCK_ON_TARGET_POLICY_REQUIRED_FIELDS);
   assertKnownFields(label, value, new Set(LOCK_ON_TARGET_POLICY_FIELDS));
   const targetPolicy = value as LockOnTargetPolicyObject;
   assertKnownFields(`${label}.targets`, targetPolicy.targets, LOCK_ON_TARGET_RELATIONSHIP_SET);
+  const reciprocalMode = normalizeReciprocalMode(
+    label,
+    targetPolicy.lockOnRequiresTargetLockedOntoSelf,
+  );
 
   const relationshipPolicies: Record<
     LockOnTargetRelationship,
@@ -281,6 +309,11 @@ export function normalizeLockOnTargetPolicy(
   if (enabledRelationships.length === 0) {
     throw new Error(`Invalid ${label}.targets: expected at least one relationship`);
   }
+  if (reciprocalMode !== 'ignore' && !enabledRelationships.includes('enemy')) {
+    throw new Error(
+      `Invalid ${label}: lockOnRequiresTargetLockedOntoSelf "${reciprocalMode}" requires targets.enemy because reciprocal lock-on only applies to enemy_entities`,
+    );
+  }
   assertRelationshipPoliciesCanCompile(label, enabledRelationships, relationshipPolicies);
 
   const baseline = relationshipPolicies[enabledRelationships[0]];
@@ -294,6 +327,7 @@ export function normalizeLockOnTargetPolicy(
     includeLockOnLevel1Units: [],
     includeLockOnLevel1Turrets: [],
     includeLockOnLevel1Shots: [],
+    lockOnRequiresTargetLockedOntoSelf: reciprocalMode,
   };
   for (const family of LOCK_ON_TARGET_FAMILY_FIELDS) {
     const familyPolicy = baseline[family];
@@ -337,6 +371,7 @@ export function validateLockOnInclusionObject(
   assertStringArray(label, 'includeLockOnLevel1Units', value.includeLockOnLevel1Units);
   assertStringArray(label, 'includeLockOnLevel1Turrets', value.includeLockOnLevel1Turrets);
   assertStringArray(label, 'includeLockOnLevel1Shots', value.includeLockOnLevel1Shots);
+  normalizeReciprocalMode(label, value.lockOnRequiresTargetLockedOntoSelf);
 }
 
 export function normalizeLockOnTargetConfigSection(
@@ -367,5 +402,6 @@ export function cloneLockOnInclusionObject(
     includeLockOnLevel1Units: [...value.includeLockOnLevel1Units],
     includeLockOnLevel1Turrets: [...value.includeLockOnLevel1Turrets],
     includeLockOnLevel1Shots: [...value.includeLockOnLevel1Shots],
+    lockOnRequiresTargetLockedOntoSelf: value.lockOnRequiresTargetLockedOntoSelf,
   };
 }

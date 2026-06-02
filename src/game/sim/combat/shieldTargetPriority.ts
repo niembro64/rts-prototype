@@ -1,8 +1,8 @@
 import type { Entity, Turret } from '../types';
-import { CT_TURRET_STATE_IDLE } from '../../sim-wasm/init';
 import {
   readCombatTargetingTurretFsmInto,
   type CombatTargetingTurretFsmOut,
+  type CombatTargetingTurretStateCode,
 } from './targetingInputStamping';
 
 export type ShieldPanelTargetTurretPick = {
@@ -12,7 +12,7 @@ export type ShieldPanelTargetTurretPick = {
 };
 
 const _shieldPanelTargetFsm: CombatTargetingTurretFsmOut = {
-  stateCode: CT_TURRET_STATE_IDLE,
+  stateCode: 0 as CombatTargetingTurretStateCode,
   targetId: -1,
 };
 
@@ -32,8 +32,8 @@ function threatTargetsShieldPanel(
     (ourTurretId !== undefined && threatTargetId === ourTurretId);
 }
 
-/** A turretShieldPanel only locks onto an enemy turret that is itself
- *  actively locked onto our own host or shield-panel turret (non-idle).
+/** A turretShieldPanel only locks onto an enemy turret whose lock is
+ *  pointed at our own host or shield-panel turret.
  *  Score equals sustained DPS so the most dangerous incoming turret
  *  wins when several enemy turrets target the same protector. Reads the
  *  Rust combat-targeting slab tuple when stamped, falling back to JS
@@ -52,13 +52,11 @@ function scoreShieldPanelTargetTurretFromTarget(
     if (!threatTargetsShieldPanel(_shieldPanelTargetFsm.targetId, ourUnitId, ourTurretId)) {
       return 0;
     }
-    if (_shieldPanelTargetFsm.stateCode === CT_TURRET_STATE_IDLE) return 0;
     return turretDps(turret);
   }
   if (turret.target === null || !threatTargetsShieldPanel(turret.target, ourUnitId, ourTurretId)) {
     return 0;
   }
-  if (turret.state === 'idle') return 0;
   return turretDps(turret);
 }
 

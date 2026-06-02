@@ -74,8 +74,6 @@
       "mode": "incomingThreatReflector",
       "candidateRelationship": "enemy_entities",
       "candidateFamily": "turrets",
-      "threatMustTarget": ["self_host", "self_turret"],
-      "threatState": "locked_or_engaged",
       "rankBy": "threat_turret_sustained_dps",
       "aim": "bisect_threat_turret_origin_and_threat_host_origin",
       "intent": "Reflect incoming enemy turret fire back toward the enemy turret's host."
@@ -700,6 +698,7 @@
       }
     },
     "turretShieldPanel": {
+      "lockOnRequiresTargetLockedOntoSelf": "require",
       "targets": {
         "enemy": {
           "turrets": {

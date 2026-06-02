@@ -13,8 +13,6 @@ export type SecondaryLockOnProfile = {
   mode: 'incomingThreatReflector';
   candidateRelationship: 'enemy_entities';
   candidateFamily: 'turrets';
-  threatMustTarget: ['self_host', 'self_turret'];
-  threatState: 'locked_or_engaged';
   rankBy: 'threat_turret_sustained_dps';
   aim: 'bisect_threat_turret_origin_and_threat_host_origin';
   intent: string;
@@ -33,8 +31,6 @@ const SECONDARY_LOCK_ON_PROFILE_FIELDS = [
   'mode',
   'candidateRelationship',
   'candidateFamily',
-  'threatMustTarget',
-  'threatState',
   'rankBy',
   'aim',
   'intent',
@@ -55,19 +51,6 @@ function validateSecondaryLockOnProfile(
   }
   if (value.candidateFamily !== 'turrets') {
     throw new Error(`Invalid ${label}: candidateFamily must be "turrets"`);
-  }
-  if (
-    !Array.isArray(value.threatMustTarget) ||
-    value.threatMustTarget.length !== 2 ||
-    value.threatMustTarget[0] !== 'self_host' ||
-    value.threatMustTarget[1] !== 'self_turret'
-  ) {
-    throw new Error(
-      `Invalid ${label}: threatMustTarget must be ["self_host", "self_turret"]`,
-    );
-  }
-  if (value.threatState !== 'locked_or_engaged') {
-    throw new Error(`Invalid ${label}: threatState must be "locked_or_engaged"`);
   }
   if (value.rankBy !== 'threat_turret_sustained_dps') {
     throw new Error(`Invalid ${label}: rankBy must be "threat_turret_sustained_dps"`);

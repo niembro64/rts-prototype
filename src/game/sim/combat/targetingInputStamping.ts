@@ -718,6 +718,7 @@ function stampCombatTargetingEntityInto(
       t.config.lockOnUnitIncludeMask,
       t.config.lockOnTurretIncludeMask,
       t.config.lockOnShotIncludeMask,
+      t.config.lockOnRequiresTargetLockedOntoSelfMode,
     );
   }
   return true;

@@ -984,6 +984,13 @@
         "shots"
       ]
     },
+    "LockOnRequiresTargetLockedOntoSelf": {
+      "enum": [
+        "ignore",
+        "require",
+        "prefer"
+      ]
+    },
     "LockOnInclusionObject": {
       "type": "object",
       "required": [
@@ -993,7 +1000,8 @@
         "includeLockOnLevel1Towers",
         "includeLockOnLevel1Units",
         "includeLockOnLevel1Turrets",
-        "includeLockOnLevel1Shots"
+        "includeLockOnLevel1Shots",
+        "lockOnRequiresTargetLockedOntoSelf"
       ],
       "properties": {
         "includeLockOnLevel0FriendsAndEnemies": {
@@ -1037,6 +1045,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "lockOnRequiresTargetLockedOntoSelf": {
+          "$ref": "#/$defs/LockOnRequiresTargetLockedOntoSelf"
         }
       },
       "additionalProperties": false
@@ -1129,7 +1140,8 @@
         "includeLockOnLevel1Towers",
         "includeLockOnLevel1Units",
         "includeLockOnLevel1Turrets",
-        "includeLockOnLevel1Shots"
+        "includeLockOnLevel1Shots",
+        "lockOnRequiresTargetLockedOntoSelf"
       ],
       "properties": {
         "turretBlueprintId": {
@@ -1289,6 +1301,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "lockOnRequiresTargetLockedOntoSelf": {
+          "$ref": "#/$defs/LockOnRequiresTargetLockedOntoSelf"
         },
         "emissionKind": {
           "oneOf": [
@@ -2287,7 +2302,8 @@
         "includeLockOnLevel1Towers",
         "includeLockOnLevel1Units",
         "includeLockOnLevel1Turrets",
-        "includeLockOnLevel1Shots"
+        "includeLockOnLevel1Shots",
+        "lockOnRequiresTargetLockedOntoSelf"
       ],
       "properties": {
         "unitBlueprintId": {
@@ -2436,6 +2452,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "lockOnRequiresTargetLockedOntoSelf": {
+          "$ref": "#/$defs/LockOnRequiresTargetLockedOntoSelf"
         }
       },
       "additionalProperties": false

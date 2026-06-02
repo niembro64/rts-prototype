@@ -72,6 +72,9 @@ import {
   CT_LOCK_ON_FAM_INCLUDE_TURRETS,
   CT_LOCK_ON_FAM_INCLUDE_SHOTS,
   CT_LOCK_ON_LEVEL1_MASK_CAPACITY,
+  CT_LOCK_ON_RECIPROCAL_IGNORE,
+  CT_LOCK_ON_RECIPROCAL_PREFER,
+  CT_LOCK_ON_RECIPROCAL_REQUIRE,
 } from '../../sim-wasm/init';
 import { isTowerBuildingBlueprintId, type BuildingBlueprintId } from '../../../types/buildingTypes';
 import { getSecondaryLockOnProfile } from './lockOnConfig';
@@ -84,6 +87,7 @@ export type LockOnMasks = {
   unit: number;
   turret: number;
   shot: number;
+  reciprocal: number;
 };
 
 function lockOnLevel1Mask(
@@ -181,7 +185,17 @@ function compileLockOnMasks(label: string, policy: LockOnInclusionObject): LockO
     SHOT_BLUEPRINT_CODE_UNKNOWN,
     'shot',
   );
-  return { relationship, entityFamily, building, tower, unit, turret, shot };
+  let reciprocal = CT_LOCK_ON_RECIPROCAL_IGNORE;
+  if (policy.lockOnRequiresTargetLockedOntoSelf === 'require') {
+    reciprocal = CT_LOCK_ON_RECIPROCAL_REQUIRE;
+  } else if (policy.lockOnRequiresTargetLockedOntoSelf === 'prefer') {
+    reciprocal = CT_LOCK_ON_RECIPROCAL_PREFER;
+  } else if (policy.lockOnRequiresTargetLockedOntoSelf !== 'ignore') {
+    throw new Error(
+      `Invalid ${label}: lockOnRequiresTargetLockedOntoSelf "${policy.lockOnRequiresTargetLockedOntoSelf}" is not a known reciprocal lock-on mode`,
+    );
+  }
+  return { relationship, entityFamily, building, tower, unit, turret, shot, reciprocal };
 }
 
 function compileTurretLockOnMasks(turretBlueprint: TurretBlueprint): LockOnMasks {
@@ -200,6 +214,7 @@ export const EMPTY_LOCK_ON_MASKS: LockOnMasks = Object.freeze({
   unit: 0,
   turret: 0,
   shot: 0,
+  reciprocal: CT_LOCK_ON_RECIPROCAL_IGNORE,
 });
 
 export const UNIT_HOST_LOCK_ON_MASKS: Record<string, LockOnMasks> =
@@ -423,6 +438,11 @@ function validateTurretAimStyle(
     if (!turretBlueprint.passive) {
       throw new Error(
         `Turret ${turretBlueprintId} incomingThreatReflector profile requires passive shield-panel targeting`,
+      );
+    }
+    if (turretBlueprint.lockOnRequiresTargetLockedOntoSelf !== 'require') {
+      throw new Error(
+        `Turret ${turretBlueprintId} incomingThreatReflector profile requires lockOnRequiresTargetLockedOntoSelf "require"`,
       );
     }
     if (
@@ -698,6 +718,7 @@ export function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretC
     lockOnUnitIncludeMask: lockOn.unit,
     lockOnTurretIncludeMask: lockOn.turret,
     lockOnShotIncludeMask: lockOn.shot,
+    lockOnRequiresTargetLockedOntoSelfMode: lockOn.reciprocal,
   };
 
   // Derive barrelThickness from shot size, scaled by global multiplier.

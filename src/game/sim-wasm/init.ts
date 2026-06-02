@@ -1857,6 +1857,12 @@ export const CT_LOCK_ON_FAM_INCLUDE_TURRETS = 1 << 2;
 export const CT_LOCK_ON_FAM_INCLUDE_TOWERS = 1 << 3;
 export const CT_LOCK_ON_FAM_INCLUDE_SHOTS = 1 << 5;
 
+/** LOCK-ON-04 — Reciprocal lock-on candidacy modes. Mirrors
+ *  `CT_LOCK_ON_RECIPROCAL_*` in Rust. */
+export const CT_LOCK_ON_RECIPROCAL_IGNORE = 0;
+export const CT_LOCK_ON_RECIPROCAL_REQUIRE = 1;
+export const CT_LOCK_ON_RECIPROCAL_PREFER = 2;
+
 /** LOCK-ON-03 — Per-entity family encoding. Mirrors
  *  `CT_ENTITY_FAMILY_*` in Rust. NONE is the cleared/unstamped sentinel
  *  used after `clear()` so a stale row never matches a real family. */
@@ -2013,6 +2019,7 @@ export interface CombatTargetingApi {
     lockonUnitMask: number,
     lockonTurretMask: number,
     lockonShotMask: number,
+    lockonReciprocalMode: number,
   ) => void;
   /** AIM-08.5 — Refresh the slab's per-entity active/firing turret
    *  masks for `entitySlot`. Reads slab FSM target/state + angular/

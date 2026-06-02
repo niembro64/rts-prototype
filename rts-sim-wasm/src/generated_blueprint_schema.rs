@@ -356,6 +356,13 @@ pub enum TurretLockOnEntityFamilyInclusion {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum LockOnRequiresTargetLockedOntoSelf {
+    Ignore,
+    Require,
+    Prefer,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct LockOnInclusionObject {
     pub includeLockOnLevel0FriendsAndEnemies: Vec<TurretLockOnRelationshipInclusion>,
     pub includeLockOnLevel0Entities: Vec<TurretLockOnEntityFamilyInclusion>,
@@ -364,6 +371,7 @@ pub struct LockOnInclusionObject {
     pub includeLockOnLevel1Units: Vec<String>,
     pub includeLockOnLevel1Turrets: Vec<String>,
     pub includeLockOnLevel1Shots: Vec<String>,
+    pub lockOnRequiresTargetLockedOntoSelf: LockOnRequiresTargetLockedOntoSelf,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -425,6 +433,7 @@ pub struct TurretBlueprint {
     pub includeLockOnLevel1Units: Vec<String>,
     pub includeLockOnLevel1Turrets: Vec<String>,
     pub includeLockOnLevel1Shots: Vec<String>,
+    pub lockOnRequiresTargetLockedOntoSelf: LockOnRequiresTargetLockedOntoSelf,
     pub emissionKind: Option<EmissionKind>,
     pub emissionBlueprintId: Option<String>,
 }
@@ -777,6 +786,7 @@ pub struct UnitBlueprint {
     pub includeLockOnLevel1Units: Vec<String>,
     pub includeLockOnLevel1Turrets: Vec<String>,
     pub includeLockOnLevel1Shots: Vec<String>,
+    pub lockOnRequiresTargetLockedOntoSelf: LockOnRequiresTargetLockedOntoSelf,
 }
 
 pub type RayBlueprintId = String;

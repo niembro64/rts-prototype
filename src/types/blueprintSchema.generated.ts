@@ -237,6 +237,8 @@ export type TurretLockOnRelationshipInclusion = 'friendly_entities' | 'enemy_ent
 
 export type TurretLockOnEntityFamilyInclusion = 'buildings' | 'towers' | 'units' | 'turrets' | 'shots';
 
+export type LockOnRequiresTargetLockedOntoSelf = 'ignore' | 'require' | 'prefer';
+
 export type LockOnInclusionObject = {
   includeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipInclusion[];
   includeLockOnLevel0Entities: TurretLockOnEntityFamilyInclusion[];
@@ -245,6 +247,7 @@ export type LockOnInclusionObject = {
   includeLockOnLevel1Units: string[];
   includeLockOnLevel1Turrets: string[];
   includeLockOnLevel1Shots: string[];
+  lockOnRequiresTargetLockedOntoSelf: LockOnRequiresTargetLockedOntoSelf;
 };
 
 export type WeaponKind = 'attack' | 'construction' | 'repair';
@@ -297,6 +300,7 @@ export type TurretBlueprint = {
   includeLockOnLevel1Units: string[];
   includeLockOnLevel1Turrets: string[];
   includeLockOnLevel1Shots: string[];
+  lockOnRequiresTargetLockedOntoSelf: LockOnRequiresTargetLockedOntoSelf;
   emissionKind: EmissionKind | null;
   emissionBlueprintId: string | null;
 };
@@ -593,6 +597,7 @@ export type UnitBlueprint = {
   includeLockOnLevel1Units: string[];
   includeLockOnLevel1Turrets: string[];
   includeLockOnLevel1Shots: string[];
+  lockOnRequiresTargetLockedOntoSelf: LockOnRequiresTargetLockedOntoSelf;
 };
 
 export type RayType = 'beam' | 'laser';
