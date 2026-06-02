@@ -111,6 +111,12 @@ export function resetDamageBuffers(): void {
   _reusableResult.deathContexts.clear();
   _reusableResult.killerPlayerIds.clear();
   _reusableHits.length = 0;
+  for (let i = 0; i < _damageBatchCount; i++) {
+    _damageBatchEntities[i] = undefined;
+    _damageBatchDeathContexts[i] = undefined;
+  }
+  _damageBatchCount = 0;
+  _damageBatchEntityIds.clear();
 }
 
 type BeamReflectorPoint = {
@@ -165,9 +171,39 @@ const _damageApplyBuildingFortified = new Uint8Array(1);
 const _damageApplyOutHp = new Float64Array(1);
 const _damageApplyOutEffectiveDamage = new Float64Array(1);
 const _damageApplyOutFlags = new Uint8Array(1);
+let _damageBatchCapacity = 0;
+let _damageBatchCount = 0;
+const _damageBatchEntityIds = new Set<EntityId>();
+let _damageBatchEntities: Array<Entity | undefined> = [];
+let _damageBatchDeathContexts: Array<DeathContext | undefined> = [];
+let _damageBatchEnabled = new Uint8Array(0);
+let _damageBatchTargetKind = new Uint8Array(0);
+let _damageBatchHp = new Float64Array(0);
+let _damageBatchDamage = new Float64Array(0);
+let _damageBatchBuildingFortified = new Uint8Array(0);
+let _damageBatchOutHp = new Float64Array(0);
+let _damageBatchOutEffectiveDamage = new Float64Array(0);
+let _damageBatchOutFlags = new Uint8Array(0);
 
 function isTurretDamageable(turret: Turret): boolean {
   return turret.id !== NO_ENTITY_ID && !turret.config.visualOnly;
+}
+
+function ensureDamageBatchCapacity(count: number): void {
+  if (count <= _damageBatchCapacity) return;
+  let next = Math.max(16, _damageBatchCapacity);
+  while (next < count) next *= 2;
+  _damageBatchCapacity = next;
+  _damageBatchEntities.length = next;
+  _damageBatchDeathContexts.length = next;
+  _damageBatchEnabled = new Uint8Array(next);
+  _damageBatchTargetKind = new Uint8Array(next);
+  _damageBatchHp = new Float64Array(next);
+  _damageBatchDamage = new Float64Array(next);
+  _damageBatchBuildingFortified = new Uint8Array(next);
+  _damageBatchOutHp = new Float64Array(next);
+  _damageBatchOutEffectiveDamage = new Float64Array(next);
+  _damageBatchOutFlags = new Uint8Array(next);
 }
 
 
@@ -1148,11 +1184,11 @@ export class DamageSystem {
       const attackerVelY = sourceVelocity === undefined
         ? knockbackDirY * source.damage
         : sourceVelocity.y;
-      this.applyDamageToEntity(entity, source.damage, result, source.sourceEntityId, {
+      this.queueDamageToEntityBatch(entity, source.damage, result, source.sourceEntityId, {
         penetrationDir: { x: penNormX, y: penNormY },
         attackerVel: { x: attackerVelX, y: attackerVelY },
         attackMagnitude: source.damage,
-      }, hit.entityId);
+      });
       if (result.truncationT === undefined) {
         result.truncationT = hit.t;
       }
@@ -1165,6 +1201,7 @@ export class DamageSystem {
       }
     }
 
+    this.flushDamageBatch(result, source.sourceEntityId);
     return result;
   }
 
@@ -1245,7 +1282,7 @@ export class DamageSystem {
       if (bodyOverlaps) {
         // For area damage, penetration direction is from explosion center
         // through unit (same as knockback direction — outward from center).
-        this.applyDamageToEntity(unit, damage, result, source.sourceEntityId, {
+        this.queueDamageToEntityBatch(unit, damage, result, source.sourceEntityId, {
           penetrationDir: { x: dirX, y: dirY },
           attackerVel: { x: forceX, y: forceY },
           attackMagnitude: damage,
@@ -1280,11 +1317,11 @@ export class DamageSystem {
           const tz = mount.z - source.center.z;
           const turretMaxDist = source.radius + turret.config.radius.hitbox;
           if (tx * tx + ty * ty + tz * tz > turretMaxDist * turretMaxDist) continue;
-          this.applyDamageToEntity(unit, damage, result, source.sourceEntityId, {
+          this.queueDamageToEntityBatch(unit, damage, result, source.sourceEntityId, {
             penetrationDir: { x: dirX, y: dirY },
             attackerVel: { x: forceX, y: forceY },
             attackMagnitude: damage,
-          }, turret.id);
+          });
           result.hitEntityIds.push(unit.id);
         }
       }
@@ -1313,7 +1350,7 @@ export class DamageSystem {
       const maxDist = source.radius + targetRadius;
       if (dx * dx + dy * dy + dz * dz > maxDist * maxDist) continue;
 
-      this.applyDamageToEntity(projectile, source.damage, result, source.sourceEntityId);
+      this.queueDamageToEntityBatch(projectile, source.damage, result, source.sourceEntityId);
       result.hitEntityIds.push(projectile.id);
     }
 
@@ -1381,7 +1418,7 @@ export class DamageSystem {
       const bForce = source.knockbackForce ?? (damage * KNOCKBACK.SPLASH);
       const bForceX = dirX * bForce;
       const bForceY = dirY * bForce;
-      this.applyDamageToEntity(building, damage, result, source.sourceEntityId, {
+      this.queueDamageToEntityBatch(building, damage, result, source.sourceEntityId, {
         penetrationDir: { x: dirX, y: dirY },
         attackerVel: { x: bForceX, y: bForceY },
         attackMagnitude: damage,
@@ -1390,7 +1427,127 @@ export class DamageSystem {
 
     }
 
+    this.flushDamageBatch(result, source.sourceEntityId);
     return result;
+  }
+
+  private queueDamageToEntityBatch(
+    entity: Entity,
+    damage: number,
+    result: DamageResult,
+    sourceEntityId: EntityId,
+    deathContext: DeathContext | undefined = undefined,
+  ): void {
+    if (_damageBatchEntityIds.has(entity.id)) {
+      this.flushDamageBatch(result, sourceEntityId);
+    }
+
+    const unit = entity.unit;
+    const building = entity.building;
+    const projectile = entity.projectile;
+    let targetKind = 0;
+    let currentHp = 0;
+    let buildingFortified = false;
+
+    if (unit && unit.hp > 0) {
+      targetKind = DAMAGE_TARGET_KIND_UNIT;
+      currentHp = unit.hp;
+    } else if (building && building.hp > 0) {
+      targetKind = DAMAGE_TARGET_KIND_BUILDING;
+      currentHp = building.hp;
+      buildingFortified = isBuildingActiveStateFortified(entity);
+    } else if (
+      projectile &&
+      projectile.projectileType === 'projectile' &&
+      projectile.hp > 0 &&
+      isProjectileShot(projectile.config.shot)
+    ) {
+      targetKind = DAMAGE_TARGET_KIND_PROJECTILE;
+      currentHp = projectile.hp;
+    } else {
+      return;
+    }
+
+    ensureDamageBatchCapacity(_damageBatchCount + 1);
+    const row = _damageBatchCount++;
+    _damageBatchEntityIds.add(entity.id);
+    _damageBatchEntities[row] = entity;
+    _damageBatchDeathContexts[row] = deathContext;
+    _damageBatchEnabled[row] = 1;
+    _damageBatchTargetKind[row] = targetKind;
+    _damageBatchHp[row] = currentHp;
+    _damageBatchDamage[row] = damage;
+    _damageBatchBuildingFortified[row] = buildingFortified ? 1 : 0;
+  }
+
+  private flushDamageBatch(result: DamageResult, sourceEntityId: EntityId): void {
+    const count = _damageBatchCount;
+    if (count === 0) return;
+
+    const sim = getSimWasm();
+    if (sim === undefined) {
+      throw new Error('Damage batch HP write-back requires initialized sim-wasm');
+    }
+    const processed = sim.damageApplyBatch(
+      count,
+      _damageBatchEnabled.subarray(0, count),
+      _damageBatchTargetKind.subarray(0, count),
+      _damageBatchHp.subarray(0, count),
+      _damageBatchDamage.subarray(0, count),
+      _damageBatchBuildingFortified.subarray(0, count),
+      BUILDING_CLOSED_DAMAGE_MULTIPLIER,
+      _damageBatchOutHp.subarray(0, count),
+      _damageBatchOutEffectiveDamage.subarray(0, count),
+      _damageBatchOutFlags.subarray(0, count),
+    );
+    if (processed !== count) {
+      throw new Error(`Damage batch HP write-back failed: ${processed}/${count}`);
+    }
+
+    for (let i = 0; i < count; i++) {
+      const flags = _damageBatchOutFlags[i];
+      if ((flags & DAMAGE_APPLY_FLAG_APPLIED) === 0) continue;
+
+      const entity = _damageBatchEntities[i];
+      if (entity === undefined) continue;
+
+      const killed = (flags & DAMAGE_APPLY_FLAG_KILLED) !== 0;
+      const targetKind = _damageBatchTargetKind[i];
+      if (targetKind === DAMAGE_TARGET_KIND_UNIT && entity.unit !== null) {
+        entity.unit.hp = _damageBatchOutHp[i];
+        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
+        if (killed && !result.killedUnitIds.has(entity.id)) {
+          result.killedUnitIds.add(entity.id);
+          this.recordKiller(result, entity.id, sourceEntityId);
+          const deathContext = _damageBatchDeathContexts[i];
+          if (deathContext) {
+            result.deathContexts.set(entity.id, deathContext);
+          }
+        }
+      } else if (targetKind === DAMAGE_TARGET_KIND_BUILDING && entity.building !== null) {
+        if (buildingBlueprintHasActiveState(entity.buildingBlueprintId)) {
+          notifyBuildingActiveStateDamaged(this.world, entity);
+        }
+        entity.building.hp = _damageBatchOutHp[i];
+        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
+        if (killed && !result.killedBuildingIds.has(entity.id)) {
+          result.killedBuildingIds.add(entity.id);
+          this.recordKiller(result, entity.id, sourceEntityId);
+        }
+      } else if (targetKind === DAMAGE_TARGET_KIND_PROJECTILE && entity.projectile !== null) {
+        entity.projectile.hp = _damageBatchOutHp[i];
+        if (killed && !result.killedProjectileIds.has(entity.id)) {
+          result.killedProjectileIds.add(entity.id);
+        }
+      }
+    }
+
+    for (let i = 0; i < count; i++) {
+      _damageBatchEntities[i] = undefined;
+      _damageBatchDeathContexts[i] = undefined;
+    }
+    _damageBatchCount = 0;
+    _damageBatchEntityIds.clear();
   }
 
   // Helper to apply damage and track kills

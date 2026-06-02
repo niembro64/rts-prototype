@@ -45,9 +45,9 @@ damage/death authority are still TypeScript-orchestrated.
 Per AUTHORITY_LEDGER.md, Rust/WASM now owns projectile position integration,
 shield reflector intersections, reflected projectile response math, swept
 body/building/projectile hit selection, current-tick turret sub-hitboxes from
-the combat-targeting slab, submunition launch velocity scatter, per-target
-damage HP/kill write-back math, pending death-cleanup HP/materialization
-classification, and terminal consequence classification for timeout,
+the combat-targeting slab, submunition launch velocity scatter, batched
+direct-hit/splash damage HP/kill output math, pending death-cleanup
+HP/materialization classification, and terminal consequence classification for timeout,
 ground/water impact, terminal
 reflector contact, HP-zero stops, detonation/expire/splash eligibility, and
 out-of-bounds removal. The remaining TypeScript authority is still too large:
@@ -59,7 +59,7 @@ DamageSystem/Simulation still own damage target enumeration, entity diff
 application, kill collection, death cleanup side effects/removal, and
 death-explosion detonation/chaining.
 FIX (C1 migration): move projectile detonation payload application,
-submunition entity diffs, direct-hit/splash damage output batches, death-event
-diffs, death-explosion chaining, and death cleanup side-effect/removal diff
-generation into Rust/WASM kernels, and leave TypeScript only to apply compact
-returned event/entity diffs.
+submunition entity diffs, direct-hit/splash target enumeration, returned damage
+diff application, death-event diffs, death-explosion chaining, and death
+cleanup side-effect/removal diff generation into Rust/WASM kernels, and leave
+TypeScript only to apply compact returned event/entity diffs.
