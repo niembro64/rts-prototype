@@ -33,6 +33,7 @@ import __wbg_init, {
   economy_apply_equal_consumer_debits,
   construction_reconcile_and_grow_pieces,
   construction_apply_consumer_spends,
+  damage_area_overlap_batch,
   damage_apply_batch,
   death_cleanup_classify_batch,
   economy_apply_income_credits,
@@ -919,6 +920,34 @@ export interface SimWasm {
     forceScale: number,
     hoverOrientationK: number,
     hoverOrientationC: number,
+  ) => number;
+  /** C1 — splash/area target overlap classifier. TypeScript gathers
+   *  spatial candidates and applies damage/event diffs; Rust owns the
+   *  unit/projectile sphere tests, building AABB tests, slice filtering,
+   *  and normalized knockback directions. */
+  readonly damageAreaOverlapBatch: (
+    count: number,
+    enabled: Uint8Array,
+    targetKind: Uint8Array,
+    centerX: number,
+    centerY: number,
+    centerZ: number,
+    radius: number,
+    hasSlice: number,
+    sliceDirection: number,
+    sliceHalfAngle: number,
+    targetX: Float64Array,
+    targetY: Float64Array,
+    targetZ: Float64Array,
+    targetRadius: Float64Array,
+    boxHalfX: Float64Array,
+    boxHalfY: Float64Array,
+    boxHalfZ: Float64Array,
+    outFlags: Uint8Array,
+    outDirX: Float64Array,
+    outDirY: Float64Array,
+    outDirZ: Float64Array,
+    outDistance: Float64Array,
   ) => number;
   /** C1 — authoritative HP write-back math for damage. TypeScript
    *  gathers candidates and applies returned entity diffs; Rust owns
@@ -3554,6 +3583,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         unitGroundNormalStepPool: unit_ground_normal_step_pool,
         quatHoverOrientationStepBatch: quat_hover_orientation_step_batch,
         unitForceStepBatch: unit_force_step_batch,
+        damageAreaOverlapBatch: damage_area_overlap_batch,
         damageApplyBatch: damage_apply_batch,
         deathCleanupClassifyBatch: death_cleanup_classify_batch,
         projectilePool,

@@ -251,6 +251,227 @@ const DAMAGE_TARGET_KIND_PROJECTILE: u8 = 3;
 const DAMAGE_APPLY_FLAG_APPLIED: u8 = 1 << 0;
 const DAMAGE_APPLY_FLAG_KILLED: u8 = 1 << 1;
 
+const DAMAGE_AREA_FLAG_SLICE_PASS: u8 = 1 << 0;
+const DAMAGE_AREA_FLAG_OVERLAP: u8 = 1 << 1;
+
+#[inline]
+fn normalize_angle_pi(mut angle: f64) -> f64 {
+    const PI: f64 = core::f64::consts::PI;
+    const TWO_PI: f64 = core::f64::consts::PI * 2.0;
+    if angle <= PI && angle >= -PI {
+        return angle;
+    }
+    if !angle.is_finite() {
+        return 0.0;
+    }
+    if angle > PI && angle <= PI + TWO_PI {
+        return angle - TWO_PI;
+    }
+    if angle < -PI && angle >= -PI - TWO_PI {
+        return angle + TWO_PI;
+    }
+    angle = (angle + PI).rem_euclid(TWO_PI) - PI;
+    angle
+}
+
+#[inline]
+fn damage_area_slice_pass(
+    dx: f64,
+    dy: f64,
+    distance: f64,
+    area_radius: f64,
+    target_radius: f64,
+    has_slice: bool,
+    slice_direction: f64,
+    slice_half_angle: f64,
+) -> bool {
+    if !has_slice {
+        return true;
+    }
+    if distance > area_radius + target_radius {
+        return false;
+    }
+
+    let angle_to_point = dy.atan2(dx);
+    let angle_diff = normalize_angle_pi(angle_to_point - slice_direction);
+    let angular_size = if distance > 0.0 {
+        target_radius.atan2(distance)
+    } else {
+        core::f64::consts::PI
+    };
+    angle_diff.abs() <= slice_half_angle + angular_size
+}
+
+/// C1 damage migration — splash/area target-overlap classifier.
+///
+/// TypeScript still gathers spatial candidates and applies returned HP,
+/// knockback, death, and event diffs. Rust owns the authoritative 3D overlap
+/// tests for unit/projectile spheres, building AABBs, slice-cone filtering,
+/// and normalized knockback directions used by area damage.
+#[wasm_bindgen]
+pub fn damage_area_overlap_batch(
+    count: u32,
+    enabled: &[u8],
+    target_kind: &[u8],
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    radius: f64,
+    has_slice: u8,
+    slice_direction: f64,
+    slice_half_angle: f64,
+    target_x: &[f64],
+    target_y: &[f64],
+    target_z: &[f64],
+    target_radius: &[f64],
+    box_half_x: &[f64],
+    box_half_y: &[f64],
+    box_half_z: &[f64],
+    out_flags: &mut [u8],
+    out_dir_x: &mut [f64],
+    out_dir_y: &mut [f64],
+    out_dir_z: &mut [f64],
+    out_distance: &mut [f64],
+) -> u32 {
+    let n = count as usize;
+    if enabled.len() < n
+        || target_kind.len() < n
+        || target_x.len() < n
+        || target_y.len() < n
+        || target_z.len() < n
+        || target_radius.len() < n
+        || box_half_x.len() < n
+        || box_half_y.len() < n
+        || box_half_z.len() < n
+        || out_flags.len() < n
+        || out_dir_x.len() < n
+        || out_dir_y.len() < n
+        || out_dir_z.len() < n
+        || out_distance.len() < n
+    {
+        return 0;
+    }
+    if !(center_x.is_finite()
+        && center_y.is_finite()
+        && center_z.is_finite()
+        && radius.is_finite()
+        && slice_direction.is_finite()
+        && slice_half_angle.is_finite())
+    {
+        return 0;
+    }
+
+    let area_radius = radius.max(0.0);
+    let use_slice = has_slice != 0;
+    let mut processed = 0_u32;
+    for i in 0..n {
+        out_flags[i] = 0;
+        out_dir_x[i] = 0.0;
+        out_dir_y[i] = 0.0;
+        out_dir_z[i] = 0.0;
+        out_distance[i] = 0.0;
+
+        if enabled[i] == 0 {
+            continue;
+        }
+        let tx = target_x[i];
+        let ty = target_y[i];
+        let tz = target_z[i];
+        let tr = target_radius[i].max(0.0);
+        if !(tx.is_finite() && ty.is_finite() && tz.is_finite() && tr.is_finite()) {
+            continue;
+        }
+
+        let mut flags = 0_u8;
+        match target_kind[i] {
+            DAMAGE_TARGET_KIND_UNIT | DAMAGE_TARGET_KIND_PROJECTILE => {
+                let dx = tx - center_x;
+                let dy = ty - center_y;
+                let dz = tz - center_z;
+                let dist_sq = dx * dx + dy * dy + dz * dz;
+                let distance = dist_sq.sqrt();
+                if distance > 0.0 {
+                    let inv = 1.0 / distance;
+                    out_dir_x[i] = dx * inv;
+                    out_dir_y[i] = dy * inv;
+                    out_dir_z[i] = dz * inv;
+                }
+                out_distance[i] = distance;
+
+                let slice_pass = target_kind[i] == DAMAGE_TARGET_KIND_PROJECTILE
+                    || damage_area_slice_pass(
+                        dx,
+                        dy,
+                        distance,
+                        area_radius,
+                        tr,
+                        use_slice,
+                        slice_direction,
+                        slice_half_angle,
+                    );
+                if slice_pass {
+                    flags |= DAMAGE_AREA_FLAG_SLICE_PASS;
+                }
+                let max_dist = area_radius + tr;
+                if dist_sq <= max_dist * max_dist {
+                    flags |= DAMAGE_AREA_FLAG_OVERLAP;
+                }
+            }
+            DAMAGE_TARGET_KIND_BUILDING => {
+                let hx = box_half_x[i].max(0.0);
+                let hy = box_half_y[i].max(0.0);
+                let hz = box_half_z[i].max(0.0);
+                if !(hx.is_finite() && hy.is_finite() && hz.is_finite()) {
+                    continue;
+                }
+                let min_x = tx - hx;
+                let max_x = tx + hx;
+                let min_y = ty - hy;
+                let max_y = ty + hy;
+                let min_z = tz - hz;
+                let max_z = tz + hz;
+                let closest_x = center_x.clamp(min_x, max_x);
+                let closest_y = center_y.clamp(min_y, max_y);
+                let closest_z = center_z.clamp(min_z, max_z);
+                let box_dx = center_x - closest_x;
+                let box_dy = center_y - closest_y;
+                let box_dz = center_z - closest_z;
+                if box_dx * box_dx + box_dy * box_dy + box_dz * box_dz <= area_radius * area_radius
+                {
+                    flags |= DAMAGE_AREA_FLAG_OVERLAP;
+                }
+
+                let hdx = tx - center_x;
+                let hdy = ty - center_y;
+                let h_dist = (hdx * hdx + hdy * hdy).sqrt();
+                if h_dist > 0.0 {
+                    let inv = 1.0 / h_dist;
+                    out_dir_x[i] = hdx * inv;
+                    out_dir_y[i] = hdy * inv;
+                }
+                out_distance[i] = h_dist;
+                if damage_area_slice_pass(
+                    hdx,
+                    hdy,
+                    h_dist,
+                    area_radius,
+                    tr,
+                    use_slice,
+                    slice_direction,
+                    slice_half_angle,
+                ) {
+                    flags |= DAMAGE_AREA_FLAG_SLICE_PASS;
+                }
+            }
+            _ => {}
+        }
+        out_flags[i] = flags;
+        processed += 1;
+    }
+
+    processed
+}
+
 /// C1 damage migration — authoritative HP write-back math.
 ///
 /// TypeScript still gathers hit candidates and applies the returned entity
@@ -29464,6 +29685,172 @@ mod sim_kernel_tests {
         assert_eq!(ay, by);
         assert_eq!(az, bz);
         assert_ne!(ax, [3.0; 4]);
+    }
+
+    #[test]
+    fn damage_area_overlap_batch_classifies_spheres_and_ignores_projectile_slice() {
+        let enabled = [1_u8, 1, 1];
+        let kind = [
+            DAMAGE_TARGET_KIND_UNIT,
+            DAMAGE_TARGET_KIND_UNIT,
+            DAMAGE_TARGET_KIND_PROJECTILE,
+        ];
+        let x = [3.0, 0.0, -3.0];
+        let y = [4.0, -8.0, 0.0];
+        let z = [0.0, 0.0, 0.0];
+        let r = [1.0, 1.0, 0.5];
+        let zero = [0.0; 3];
+        let mut flags = [0_u8; 3];
+        let mut dir_x = [0.0; 3];
+        let mut dir_y = [0.0; 3];
+        let mut dir_z = [0.0; 3];
+        let mut dist = [0.0; 3];
+
+        assert_eq!(
+            damage_area_overlap_batch(
+                3,
+                &enabled,
+                &kind,
+                0.0,
+                0.0,
+                0.0,
+                5.0,
+                1,
+                0.0,
+                core::f64::consts::FRAC_PI_4,
+                &x,
+                &y,
+                &z,
+                &r,
+                &zero,
+                &zero,
+                &zero,
+                &mut flags,
+                &mut dir_x,
+                &mut dir_y,
+                &mut dir_z,
+                &mut dist,
+            ),
+            3,
+        );
+
+        assert_eq!(
+            flags[0],
+            DAMAGE_AREA_FLAG_SLICE_PASS | DAMAGE_AREA_FLAG_OVERLAP,
+        );
+        assert_eq!(flags[1], 0);
+        assert_eq!(
+            flags[2],
+            DAMAGE_AREA_FLAG_SLICE_PASS | DAMAGE_AREA_FLAG_OVERLAP
+        );
+        assert!((dir_x[0] - 0.6).abs() < 1e-12);
+        assert!((dir_y[0] - 0.8).abs() < 1e-12);
+        assert_eq!(dir_z[0], 0.0);
+        assert_eq!(dist[0], 5.0);
+    }
+
+    #[test]
+    fn damage_area_overlap_batch_does_not_prefilter_units_when_slice_disabled() {
+        let enabled = [1_u8];
+        let kind = [DAMAGE_TARGET_KIND_UNIT];
+        let x = [20.0];
+        let y = [0.0];
+        let z = [0.0];
+        let r = [1.0];
+        let zero = [0.0];
+        let mut flags = [0_u8];
+        let mut dir_x = [0.0];
+        let mut dir_y = [0.0];
+        let mut dir_z = [0.0];
+        let mut dist = [0.0];
+
+        assert_eq!(
+            damage_area_overlap_batch(
+                1,
+                &enabled,
+                &kind,
+                0.0,
+                0.0,
+                0.0,
+                5.0,
+                0,
+                0.0,
+                core::f64::consts::FRAC_PI_4,
+                &x,
+                &y,
+                &z,
+                &r,
+                &zero,
+                &zero,
+                &zero,
+                &mut flags,
+                &mut dir_x,
+                &mut dir_y,
+                &mut dir_z,
+                &mut dist,
+            ),
+            1,
+        );
+
+        assert_eq!(flags[0], DAMAGE_AREA_FLAG_SLICE_PASS);
+        assert_eq!(dir_x[0], 1.0);
+        assert_eq!(dist[0], 20.0);
+    }
+
+    #[test]
+    fn damage_area_overlap_batch_classifies_building_aabb_and_horizontal_direction() {
+        let enabled = [1_u8, 1];
+        let kind = [DAMAGE_TARGET_KIND_BUILDING, DAMAGE_TARGET_KIND_BUILDING];
+        let x = [6.0, 0.0];
+        let y = [8.0, -8.0];
+        let z = [0.0, 0.0];
+        let footprint_r = [5.0, 5.0];
+        let half_x = [3.0, 1.0];
+        let half_y = [4.0, 1.0];
+        let half_z = [4.0, 1.0];
+        let mut flags = [0_u8; 2];
+        let mut dir_x = [0.0; 2];
+        let mut dir_y = [0.0; 2];
+        let mut dir_z = [99.0; 2];
+        let mut dist = [0.0; 2];
+
+        assert_eq!(
+            damage_area_overlap_batch(
+                2,
+                &enabled,
+                &kind,
+                0.0,
+                0.0,
+                0.0,
+                5.0,
+                1,
+                0.0,
+                core::f64::consts::FRAC_PI_4,
+                &x,
+                &y,
+                &z,
+                &footprint_r,
+                &half_x,
+                &half_y,
+                &half_z,
+                &mut flags,
+                &mut dir_x,
+                &mut dir_y,
+                &mut dir_z,
+                &mut dist,
+            ),
+            2,
+        );
+
+        assert_eq!(
+            flags[0],
+            DAMAGE_AREA_FLAG_SLICE_PASS | DAMAGE_AREA_FLAG_OVERLAP,
+        );
+        assert_eq!(flags[1], 0);
+        assert!((dir_x[0] - 0.6).abs() < 1e-12);
+        assert!((dir_y[0] - 0.8).abs() < 1e-12);
+        assert_eq!(dir_z[0], 0.0);
+        assert_eq!(dist[0], 10.0);
     }
 
     #[test]

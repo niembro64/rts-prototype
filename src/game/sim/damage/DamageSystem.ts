@@ -21,7 +21,7 @@ import {
   PROJECTILE_MASS_MULTIPLIER,
 } from '../../../config';
 import { spatialGrid } from '../SpatialGrid';
-import { magnitude, lineCircleIntersectionT, lineSphereIntersectionT, lineRectIntersectionT, rayBoxIntersectionT, isPointInSlice, getTransformCosSin } from '../../math';
+import { magnitude, lineCircleIntersectionT, lineSphereIntersectionT, lineRectIntersectionT, rayBoxIntersectionT, getTransformCosSin } from '../../math';
 import { findClosestPanelHit } from '../combat/ShieldPanelHit';
 import { findShieldSegmentIntersection } from '../combat/shieldTurret';
 import { REFLECTIVE_SHIELD_MATERIAL } from '../blueprints/shieldMaterials';
@@ -117,6 +117,9 @@ export function resetDamageBuffers(): void {
   }
   _damageBatchCount = 0;
   _damageBatchEntityIds.clear();
+  for (let i = 0; i < _areaDamageEntities.length; i++) {
+    _areaDamageEntities[i] = undefined;
+  }
 }
 
 type BeamReflectorPoint = {
@@ -162,6 +165,8 @@ const DAMAGE_TARGET_KIND_BUILDING = 2;
 const DAMAGE_TARGET_KIND_PROJECTILE = 3;
 const DAMAGE_APPLY_FLAG_APPLIED = 1 << 0;
 const DAMAGE_APPLY_FLAG_KILLED = 1 << 1;
+const DAMAGE_AREA_FLAG_SLICE_PASS = 1 << 0;
+const DAMAGE_AREA_FLAG_OVERLAP = 1 << 1;
 
 const _damageApplyEnabled = new Uint8Array(1);
 const _damageApplyTargetKind = new Uint8Array(1);
@@ -184,6 +189,22 @@ let _damageBatchBuildingFortified = new Uint8Array(0);
 let _damageBatchOutHp = new Float64Array(0);
 let _damageBatchOutEffectiveDamage = new Float64Array(0);
 let _damageBatchOutFlags = new Uint8Array(0);
+let _areaDamageCapacity = 0;
+let _areaDamageEntities: Array<Entity | undefined> = [];
+let _areaDamageEnabled = new Uint8Array(0);
+let _areaDamageTargetKind = new Uint8Array(0);
+let _areaDamageTargetX = new Float64Array(0);
+let _areaDamageTargetY = new Float64Array(0);
+let _areaDamageTargetZ = new Float64Array(0);
+let _areaDamageTargetRadius = new Float64Array(0);
+let _areaDamageBoxHalfX = new Float64Array(0);
+let _areaDamageBoxHalfY = new Float64Array(0);
+let _areaDamageBoxHalfZ = new Float64Array(0);
+let _areaDamageOutFlags = new Uint8Array(0);
+let _areaDamageOutDirX = new Float64Array(0);
+let _areaDamageOutDirY = new Float64Array(0);
+let _areaDamageOutDirZ = new Float64Array(0);
+let _areaDamageOutDistance = new Float64Array(0);
 
 function isTurretDamageable(turret: Turret): boolean {
   return turret.id !== NO_ENTITY_ID && !turret.config.visualOnly;
@@ -204,6 +225,74 @@ function ensureDamageBatchCapacity(count: number): void {
   _damageBatchOutHp = new Float64Array(next);
   _damageBatchOutEffectiveDamage = new Float64Array(next);
   _damageBatchOutFlags = new Uint8Array(next);
+}
+
+function ensureAreaDamageCapacity(count: number): void {
+  if (count <= _areaDamageCapacity) return;
+  let next = Math.max(16, _areaDamageCapacity);
+  while (next < count) next *= 2;
+  _areaDamageCapacity = next;
+  _areaDamageEntities.length = next;
+  _areaDamageEnabled = new Uint8Array(next);
+  _areaDamageTargetKind = new Uint8Array(next);
+  _areaDamageTargetX = new Float64Array(next);
+  _areaDamageTargetY = new Float64Array(next);
+  _areaDamageTargetZ = new Float64Array(next);
+  _areaDamageTargetRadius = new Float64Array(next);
+  _areaDamageBoxHalfX = new Float64Array(next);
+  _areaDamageBoxHalfY = new Float64Array(next);
+  _areaDamageBoxHalfZ = new Float64Array(next);
+  _areaDamageOutFlags = new Uint8Array(next);
+  _areaDamageOutDirX = new Float64Array(next);
+  _areaDamageOutDirY = new Float64Array(next);
+  _areaDamageOutDirZ = new Float64Array(next);
+  _areaDamageOutDistance = new Float64Array(next);
+}
+
+function clearAreaDamageEntities(count: number): void {
+  for (let i = 0; i < count; i++) {
+    _areaDamageEntities[i] = undefined;
+  }
+}
+
+function classifyAreaDamageRows(
+  source: AreaDamageSource,
+  count: number,
+  hasSlice: boolean,
+  sliceHalfAngle: number,
+): void {
+  if (count === 0) return;
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('Area damage overlap classification requires initialized sim-wasm');
+  }
+  const processed = sim.damageAreaOverlapBatch(
+    count,
+    _areaDamageEnabled.subarray(0, count),
+    _areaDamageTargetKind.subarray(0, count),
+    source.center.x,
+    source.center.y,
+    source.center.z,
+    source.radius,
+    hasSlice ? 1 : 0,
+    source.sliceDirection ?? 0,
+    sliceHalfAngle,
+    _areaDamageTargetX.subarray(0, count),
+    _areaDamageTargetY.subarray(0, count),
+    _areaDamageTargetZ.subarray(0, count),
+    _areaDamageTargetRadius.subarray(0, count),
+    _areaDamageBoxHalfX.subarray(0, count),
+    _areaDamageBoxHalfY.subarray(0, count),
+    _areaDamageBoxHalfZ.subarray(0, count),
+    _areaDamageOutFlags.subarray(0, count),
+    _areaDamageOutDirX.subarray(0, count),
+    _areaDamageOutDirY.subarray(0, count),
+    _areaDamageOutDirZ.subarray(0, count),
+    _areaDamageOutDistance.subarray(0, count),
+  );
+  if (processed !== count) {
+    throw new Error(`Area damage overlap classification failed: ${processed}/${count}`);
+  }
 }
 
 
@@ -1212,7 +1301,6 @@ export class DamageSystem {
 
     const hasSlice = source.sliceAngle !== undefined && source.sliceDirection !== undefined;
     const sliceHalfAngle = hasSlice ? source.sliceAngle! / 2 : Math.PI;
-    const sliceDirection = source.sliceDirection ?? 0;
 
     // PERFORMANCE: Query only entities within the damage radius using spatial grid.
     // Combined single-sweep query — the prior back-to-back unit + building
@@ -1229,51 +1317,43 @@ export class DamageSystem {
       source.center.x, source.center.y, source.center.z, source.radius + 100, source.ownerId,
     );
 
-    // Check units — full 3D sphere-vs-sphere: the AOE sphere around
-    // source.center must overlap the unit's collision sphere. A mortar
-    // airburst above a unit hits; a blast in a pit below a unit at
-    // altitude doesn't (once air units exist).
+    // Check units. Rust owns the full 3D sphere-vs-sphere overlap and
+    // optional slice-cone filter; TypeScript keeps entity graph write-back,
+    // turret sub-hitbox fallback, and event/death side effects.
+    ensureAreaDamageCapacity(nearbyUnits.length);
+    let areaRowCount = 0;
     for (const unit of nearbyUnits) {
       if (source.excludeEntities.has(unit.id)) continue;
       if (source.excludeCommanders && unit.commander) continue;
-      if (!unit.unit) continue;
+      const unitComponent = unit.unit;
+      if (!unitComponent) continue;
 
-      const dx = unit.transform.x - source.center.x;
-      const dy = unit.transform.y - source.center.y;
-      const dz = unit.transform.z - source.center.z;
-      const targetRadius = unit.unit.radius.hitbox;
+      const row = areaRowCount++;
+      _areaDamageEntities[row] = unit;
+      _areaDamageEnabled[row] = 1;
+      _areaDamageTargetKind[row] = DAMAGE_TARGET_KIND_UNIT;
+      _areaDamageTargetX[row] = unit.transform.x;
+      _areaDamageTargetY[row] = unit.transform.y;
+      _areaDamageTargetZ[row] = unit.transform.z;
+      _areaDamageTargetRadius[row] = unitComponent.radius.hitbox;
+      _areaDamageBoxHalfX[row] = 0;
+      _areaDamageBoxHalfY[row] = 0;
+      _areaDamageBoxHalfZ[row] = 0;
+    }
+    classifyAreaDamageRows(source, areaRowCount, hasSlice, sliceHalfAngle);
+    for (let row = 0; row < areaRowCount; row++) {
+      const unit = _areaDamageEntities[row];
+      const unitComponent = unit?.unit;
+      if (unit === undefined || unitComponent === undefined || unitComponent === null) continue;
 
-      // Cheap squared-distance rejection before sqrt
-      const distSq = dx * dx + dy * dy + dz * dz;
-      const maxDist = source.radius + targetRadius;
-      const bodyOverlaps = unit.unit.hp > 0 && distSq <= maxDist * maxDist;
-
-      const dist = Math.sqrt(distSq);
-
-      // Check slice angle if wave weapon
-      if (hasSlice) {
-        if (!isPointInSlice(
-          dx, dy, dist,
-          sliceDirection,
-          sliceHalfAngle,
-          source.radius,
-          targetRadius
-        )) continue;
-      }
-
-      // Boolean AoE: full damage, full force — no distance falloff.
-      // The sphere-vs-sphere overlap test above is the entire gate.
+      const rowFlags = _areaDamageOutFlags[row];
+      if ((rowFlags & DAMAGE_AREA_FLAG_SLICE_PASS) === 0) continue;
+      const bodyOverlaps =
+        unitComponent.hp > 0 && (rowFlags & DAMAGE_AREA_FLAG_OVERLAP) !== 0;
       const damage = source.damage;
-
-      // Knockback direction is still from center outward so units are
-      // pushed AWAY from the blast — now full 3D so a blast below a
-      // unit lifts it, a blast above presses it down. dist already
-      // includes dz (line 929) so the normalized direction stays a
-      // unit vector in 3D.
-      const invDist = dist > 0 ? 1 / dist : 0;
-      const dirX = dx * invDist;
-      const dirY = dy * invDist;
-      const dirZ = dz * invDist;
+      const dirX = _areaDamageOutDirX[row];
+      const dirY = _areaDamageOutDirY[row];
+      const dirZ = _areaDamageOutDirZ[row];
       const force = source.knockbackForce ?? (damage * KNOCKBACK.SPLASH);
       const forceX = dirX * force;
       const forceY = dirY * force;
@@ -1290,7 +1370,7 @@ export class DamageSystem {
         result.hitEntityIds.push(unit.id);
 
         // Add knockback (direction is from center outward)
-        if (force > 0 && dist > 0) {
+        if (force > 0 && _areaDamageOutDistance[row] > 0) {
           pushKnockback(result, unit.id, forceX, forceY, forceZ);
         }
       }
@@ -1308,7 +1388,7 @@ export class DamageSystem {
             {
               currentTick: this.world.getTick(),
               unitGroundZ,
-              surfaceN: unit.unit.surfaceNormal,
+              surfaceN: unitComponent.surfaceNormal,
             },
             _subEntityPoint,
           );
@@ -1325,12 +1405,14 @@ export class DamageSystem {
           result.hitEntityIds.push(unit.id);
         }
       }
-
     }
+    clearAreaDamageEntities(areaRowCount);
 
     // Travelling shots are small damageable bodies. Sustained beams
     // and shields are not inserted as projectile-type bodies, so this
     // only lets weapons chip down real munitions.
+    ensureAreaDamageCapacity(nearbyProjectiles.length);
+    areaRowCount = 0;
     for (const projectile of nearbyProjectiles) {
       if (source.excludeEntities.has(projectile.id)) continue;
       const proj = projectile.projectile;
@@ -1343,77 +1425,66 @@ export class DamageSystem {
         continue;
       }
 
-      const dx = projectile.transform.x - source.center.x;
-      const dy = projectile.transform.y - source.center.y;
-      const dz = projectile.transform.z - source.center.z;
-      const targetRadius = proj.config.shotProfile.runtime.radius.collision;
-      const maxDist = source.radius + targetRadius;
-      if (dx * dx + dy * dy + dz * dz > maxDist * maxDist) continue;
+      const row = areaRowCount++;
+      _areaDamageEntities[row] = projectile;
+      _areaDamageEnabled[row] = 1;
+      _areaDamageTargetKind[row] = DAMAGE_TARGET_KIND_PROJECTILE;
+      _areaDamageTargetX[row] = projectile.transform.x;
+      _areaDamageTargetY[row] = projectile.transform.y;
+      _areaDamageTargetZ[row] = projectile.transform.z;
+      _areaDamageTargetRadius[row] = proj.config.shotProfile.runtime.radius.collision;
+      _areaDamageBoxHalfX[row] = 0;
+      _areaDamageBoxHalfY[row] = 0;
+      _areaDamageBoxHalfZ[row] = 0;
+    }
+    classifyAreaDamageRows(source, areaRowCount, false, Math.PI);
+    for (let row = 0; row < areaRowCount; row++) {
+      const projectile = _areaDamageEntities[row];
+      if (projectile === undefined || (_areaDamageOutFlags[row] & DAMAGE_AREA_FLAG_OVERLAP) === 0) {
+        continue;
+      }
 
       this.queueDamageToEntityBatch(projectile, source.damage, result, source.sourceEntityId);
       result.hitEntityIds.push(projectile.id);
     }
+    clearAreaDamageEntities(areaRowCount);
 
     // Check buildings — full 3D. Buildings are axis-aligned boxes
-    // (width × height × depth) sitting on the ground; the real
-    // sphere-vs-building test is "sphere intersects AABB," computed
-    // as distance from the sphere center to the nearest point of the
-    // box. This lets a high-arc shell's blast wash over the top of a
-    // short building without damaging it, and catches tall buildings
-    // with explosions from above.
+    // (width × height × depth) sitting on the ground. Rust owns the
+    // sphere-vs-AABB overlap and horizontal slice filter.
+    ensureAreaDamageCapacity(nearbyBuildings.length);
+    areaRowCount = 0;
     for (const building of nearbyBuildings) {
       if (source.excludeEntities.has(building.id)) continue;
       if (!building.building || building.building.hp <= 0) continue;
 
-      const hw = building.building.width / 2;
-      const hh = building.building.height / 2;
-      const bd = building.building.depth;
-      const bMinX = building.transform.x - hw;
-      const bMaxX = building.transform.x + hw;
-      const bMinY = building.transform.y - hh;
-      const bMaxY = building.transform.y + hh;
-      const bMinZ = building.transform.z - bd / 2;
-      const bMaxZ = building.transform.z + bd / 2;
-
-      // Closest point on the AABB to the sphere center.
-      const cx = source.center.x < bMinX ? bMinX : source.center.x > bMaxX ? bMaxX : source.center.x;
-      const cy = source.center.y < bMinY ? bMinY : source.center.y > bMaxY ? bMaxY : source.center.y;
-      const cz = source.center.z < bMinZ ? bMinZ : source.center.z > bMaxZ ? bMaxZ : source.center.z;
-
-      const dx = source.center.x - cx;
-      const dy = source.center.y - cy;
-      const dz = source.center.z - cz;
-      const distSq = dx * dx + dy * dy + dz * dz;
-      if (distSq > source.radius * source.radius) continue;
-
-      // Horizontal delta from explosion center to building center.
-      // Used by both the slice (wave-weapon cone) test and the knockback
-      // direction below — compute once.
-      const hDx = building.transform.x - source.center.x;
-      const hDy = building.transform.y - source.center.y;
-      const hDist = Math.hypot(hDx, hDy);
-
-      // Slice (wave-weapon cone) stays a horizontal test — the wave
-      // direction is a yaw, not a 3D vector.
-      if (hasSlice) {
-        const buildingRadius = getTargetRadius(building);
-        if (!isPointInSlice(
-          hDx, hDy, hDist,
-          sliceDirection,
-          sliceHalfAngle,
-          source.radius,
-          buildingRadius
-        )) continue;
+      const row = areaRowCount++;
+      _areaDamageEntities[row] = building;
+      _areaDamageEnabled[row] = 1;
+      _areaDamageTargetKind[row] = DAMAGE_TARGET_KIND_BUILDING;
+      _areaDamageTargetX[row] = building.transform.x;
+      _areaDamageTargetY[row] = building.transform.y;
+      _areaDamageTargetZ[row] = building.transform.z;
+      _areaDamageTargetRadius[row] = getTargetRadius(building);
+      _areaDamageBoxHalfX[row] = building.building.width / 2;
+      _areaDamageBoxHalfY[row] = building.building.height / 2;
+      _areaDamageBoxHalfZ[row] = building.building.depth / 2;
+    }
+    classifyAreaDamageRows(source, areaRowCount, hasSlice, sliceHalfAngle);
+    for (let row = 0; row < areaRowCount; row++) {
+      const building = _areaDamageEntities[row];
+      const rowFlags = _areaDamageOutFlags[row];
+      if (
+        building === undefined ||
+        (rowFlags & DAMAGE_AREA_FLAG_OVERLAP) === 0 ||
+        (rowFlags & DAMAGE_AREA_FLAG_SLICE_PASS) === 0
+      ) {
+        continue;
       }
 
-      // Boolean AoE damage to buildings — same as units above.
       const damage = source.damage;
-
-      // Knockback direction: horizontal (buildings are static, vertical
-      // force is wasted). Reuse hDist from above.
-      const invH = hDist > 0 ? 1 / hDist : 0;
-      const dirX = hDx * invH;
-      const dirY = hDy * invH;
+      const dirX = _areaDamageOutDirX[row];
+      const dirY = _areaDamageOutDirY[row];
 
       const bForce = source.knockbackForce ?? (damage * KNOCKBACK.SPLASH);
       const bForceX = dirX * bForce;
@@ -1424,8 +1495,8 @@ export class DamageSystem {
         attackMagnitude: damage,
       });
       result.hitEntityIds.push(building.id);
-
     }
+    clearAreaDamageEntities(areaRowCount);
 
     this.flushDamageBatch(result, source.sourceEntityId);
     return result;

@@ -45,7 +45,8 @@ damage/death authority are still TypeScript-orchestrated.
 Per AUTHORITY_LEDGER.md, Rust/WASM now owns projectile position integration,
 shield reflector intersections, reflected projectile response math, swept
 body/building/projectile hit selection, current-tick turret sub-hitboxes from
-the combat-targeting slab, submunition launch velocity scatter, batched
+the combat-targeting slab, submunition launch velocity scatter, splash
+unit/projectile sphere and building AABB overlap/slice classification, batched
 direct-hit/splash damage HP/kill output math, pending death-cleanup
 HP/materialization classification, and terminal consequence classification for timeout,
 ground/water impact, terminal
@@ -55,11 +56,13 @@ checkProjectileCollisions applies the returned terminal flags for live and
 recursively killed projectiles, owns direct-hit and splash damage consequences,
 submunition entity/event creation, detonation audio/events, despawn/velocity-
 update event application, and D-gun swept damage orchestration;
-DamageSystem/Simulation still own damage target enumeration, entity diff
-application, kill collection, death cleanup side effects/removal, and
-death-explosion detonation/chaining.
+DamageSystem/Simulation still own line/swept damage target enumeration, area
+candidate gathering and turret fallback, entity diff application, kill
+collection, death cleanup side effects/removal, and death-explosion
+detonation/chaining.
 FIX (C1 migration): move projectile detonation payload application,
-submunition entity diffs, direct-hit/splash target enumeration, returned damage
-diff application, death-event diffs, death-explosion chaining, and death
-cleanup side-effect/removal diff generation into Rust/WASM kernels, and leave
-TypeScript only to apply compact returned event/entity diffs.
+submunition entity diffs, line/swept target enumeration, area candidate
+packing/turret fallback, returned damage diff application, death-event diffs,
+death-explosion chaining, and death cleanup side-effect/removal diff generation
+into Rust/WASM kernels, and leave TypeScript only to apply compact returned
+event/entity diffs.
