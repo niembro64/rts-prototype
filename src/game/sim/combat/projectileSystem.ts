@@ -44,7 +44,7 @@ import {
 } from './combatActivitySlab';
 import { resolveTargetAimPoint } from './aimSolver';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
-import { resolveRayConfigRangeSphereEndpoint, type RayConfigRangeSphere } from './lineShotRange';
+import { resolveRayConfigRangeCylinderEndpoint, type RayConfigRangeCylinder } from './lineShotRange';
 import { getUnitGroundZ } from '../unitGeometry';
 import { createProjectileConfigFromTurret } from '../projectileConfigs';
 import { CT_TURRET_STATE_ENGAGED, getSimWasm } from '../../sim-wasm/init';
@@ -140,7 +140,7 @@ function refreshPackedProjectileViews(): void {
 const _fireWeaponMount = { x: 0, y: 0, z: 0 };
 const _beamWeaponMount = { x: 0, y: 0, z: 0 };
 const _lineShotRangeEnd = { x: 0, y: 0, z: 0 };
-const _lineShotRangeSphere: RayConfigRangeSphere = { centerX: 0, centerY: 0, centerZ: 0, radius: 0 };
+const _lineShotRangeCylinder: RayConfigRangeCylinder = { centerX: 0, centerY: 0, centerZ: 0, radius: 0 };
 const _fireFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_ENGAGED,
   targetId: -1,
@@ -587,19 +587,19 @@ export function fireTurrets(
           const beamStartY = spawnY;
           const beamStartZ = spawnZ;
 
-          // Line shots are bounded by the turret's 3D firing sphere.
-          // Beam length is true 3D distance — a pitched beam exits the
-          // sphere at the same radius as a level one, so altitude
-          // separation costs reach the way physical range should.
-          const rangeSphere = _lineShotRangeSphere;
-          rangeSphere.centerX = weaponX;
-          rangeSphere.centerY = weaponY;
-          rangeSphere.centerZ = mountZ;
-          rangeSphere.radius = weapon.ranges.fire.max.release;
-          const endpoint = resolveRayConfigRangeSphereEndpoint(
+          // Line shots are bounded by the same vertical range cylinder
+          // as turret acquisition: horizontal reach is authored range,
+          // upward reach is capped at mount.z + range, and downward
+          // altitude does not consume reach.
+          const rangeCylinder = _lineShotRangeCylinder;
+          rangeCylinder.centerX = weaponX;
+          rangeCylinder.centerY = weaponY;
+          rangeCylinder.centerZ = mountZ;
+          rangeCylinder.radius = weapon.ranges.fire.max.release;
+          const endpoint = resolveRayConfigRangeCylinderEndpoint(
             beamStartX, beamStartY, beamStartZ,
             dirX, dirY, dirZ,
-            rangeSphere,
+            rangeCylinder,
             _lineShotRangeEnd,
           );
           const endX = endpoint.x;
@@ -626,7 +626,7 @@ export function fireTurrets(
             beam.projectile.sourceBarrelIndex = barrelIndex;
             beam.projectile.sourceEntityId = unit.id;
             // createBeam seeds both polyline vertices at spawnZ; the
-            // pitched endpoint is the 2D range-circle exit point.
+            // pitched endpoint is the range-cylinder exit point.
             const pts = beam.projectile.points;
             if (pts && pts.length >= 2) pts[pts.length - 1].z = endZ;
           }
@@ -1364,19 +1364,19 @@ export function updateProjectiles(
         clearBeamReflectorMetadata(startPoint);
 
         // Per-tick re-trace. The beam is bounded by the firing
-        // turret's 3D fire-release sphere centered on the mount. The
-        // first segment runs to the sphere edge; reflected segments
-        // are clipped against the same original sphere inside
+        // turret's vertical fire-release cylinder centered on the
+        // mount. The first segment runs to the cylinder edge; reflected
+        // segments are clipped against the same original cylinder inside
         // findBeamPath.
-        const rangeSphere = _lineShotRangeSphere;
-        rangeSphere.centerX = beamMount.x;
-        rangeSphere.centerY = beamMount.y;
-        rangeSphere.centerZ = beamMount.z;
-        rangeSphere.radius = weapon.ranges.fire.max.release;
-        const endpoint = resolveRayConfigRangeSphereEndpoint(
+        const rangeCylinder = _lineShotRangeCylinder;
+        rangeCylinder.centerX = beamMount.x;
+        rangeCylinder.centerY = beamMount.y;
+        rangeCylinder.centerZ = beamMount.z;
+        rangeCylinder.radius = weapon.ranges.fire.max.release;
+        const endpoint = resolveRayConfigRangeCylinderEndpoint(
           beamStartX, beamStartY, beamStartZ,
           dirX, dirY, dirZ,
-          rangeSphere,
+          rangeCylinder,
           _lineShotRangeEnd,
         );
         const fullEndX = endpoint.x;
@@ -1392,7 +1392,7 @@ export function updateProjectiles(
           collisionRadius,
           proj.projectileType === 'laser' ? 'laser' : 'beam',
           BEAM_MAX_SEGMENTS,
-          rangeSphere,
+          rangeCylinder,
         );
 
         // Resize the polyline to [start, ...reflections, end] and

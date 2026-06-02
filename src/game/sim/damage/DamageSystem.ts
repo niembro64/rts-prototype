@@ -27,8 +27,8 @@ import { findShieldSegmentIntersection } from '../combat/shieldTurret';
 import { REFLECTIVE_SHIELD_MATERIAL } from '../blueprints/shieldMaterials';
 import { getTargetRadius, resolveWeaponWorldMount } from '../combat/combatUtils';
 import {
-  distanceToRayConfigRangeSphere,
-  type RayConfigRangeSphere,
+  distanceToRayConfigRangeCylinder,
+  type RayConfigRangeCylinder,
 } from '../combat/lineShotRange';
 import { ENTITY_CHANGED_HP } from '../../../types/network';
 import { getSimWasm } from '../../sim-wasm/init';
@@ -519,12 +519,11 @@ export class DamageSystem {
   // spheres — full 3D.
   //
   // Damage is clipped at the first of: a unit hit, a building hit, a
-  // ground hit, the firing turret's 3D range sphere, or the configured
-  // max segment count. Mirrors and shields bounce; reflected
-  // segments are clipped against the same original sphere so the total
-  // 3D path length cannot exceed the weapon's physical reach. A
-  // range-sphere endpoint is an open ray for visuals, not a physical
-  // impact point.
+  // ground hit, the firing turret's vertical range cylinder, or the
+  // configured max segment count. Mirrors and shields bounce; reflected
+  // segments are clipped against the same original cylinder. A range
+  // cylinder endpoint is an open ray for visuals, not a physical impact
+  // point.
   //
   // Force-field panels are tilted rectangles; shields are spherical
   // reflectors whose response comes from their shared material. Buildings
@@ -537,7 +536,7 @@ export class DamageSystem {
     lineWidth: number,
     lineShotType: RayType = 'beam',
     maxSegments: number = 4,
-    rangeSphere: RayConfigRangeSphere | undefined = undefined,
+    rangeCylinder: RayConfigRangeCylinder | undefined = undefined,
   ): {
     endX: number; endY: number; endZ: number;
     obstructionT: number | undefined;
@@ -555,27 +554,27 @@ export class DamageSystem {
     let excludePanelIndex = -1; // -1 = exclude entire entity (source), >= 0 = exclude only that panel
 
     for (let segmentIndex = 0; segmentIndex < segmentLimit; segmentIndex++) {
-      if (rangeSphere) {
+      if (rangeCylinder) {
         const segDx = curEX - curSX;
         const segDy = curEY - curSY;
         const segDz = curEZ - curSZ;
         const segLen = Math.hypot(segDx, segDy, segDz);
         if (segLen <= 1e-9) break;
         const invSegLen = 1 / segLen;
-        const sphereDistance = distanceToRayConfigRangeSphere(
+        const cylinderDistance = distanceToRayConfigRangeCylinder(
           curSX, curSY, curSZ,
           segDx * invSegLen, segDy * invSegLen, segDz * invSegLen,
-          rangeSphere,
+          rangeCylinder,
         );
-        if (sphereDistance === null || sphereDistance <= 1e-6) {
+        if (cylinderDistance === null || cylinderDistance <= 1e-6) {
           curEX = curSX;
           curEY = curSY;
           curEZ = curSZ;
           break;
         }
-        curEX = curSX + segDx * invSegLen * sphereDistance;
-        curEY = curSY + segDy * invSegLen * sphereDistance;
-        curEZ = curSZ + segDz * invSegLen * sphereDistance;
+        curEX = curSX + segDx * invSegLen * cylinderDistance;
+        curEY = curSY + segDy * invSegLen * cylinderDistance;
+        curEZ = curSZ + segDz * invSegLen * cylinderDistance;
       }
 
       const hit = this.findBeamSegmentHit(
@@ -591,7 +590,7 @@ export class DamageSystem {
           obstructionT: undefined,
           reflections,
           terminalReflection: undefined,
-          endpointDamageable: rangeSphere === undefined,
+          endpointDamageable: rangeCylinder === undefined,
           segmentLimitReached: false,
         };
       }
@@ -723,21 +722,21 @@ export class DamageSystem {
       curSX = hit.x;
       curSY = hit.y;
       curSZ = hit.z;
-      if (rangeSphere) {
-        const sphereDistance = distanceToRayConfigRangeSphere(
+      if (rangeCylinder) {
+        const cylinderDistance = distanceToRayConfigRangeCylinder(
           curSX, curSY, curSZ,
           reflDirX, reflDirY, reflDirZ,
-          rangeSphere,
+          rangeCylinder,
         );
-        if (sphereDistance === null || sphereDistance <= 1e-6) {
+        if (cylinderDistance === null || cylinderDistance <= 1e-6) {
           curEX = hit.x;
           curEY = hit.y;
           curEZ = hit.z;
           break;
         }
-        curEX = hit.x + reflDirX * sphereDistance;
-        curEY = hit.y + reflDirY * sphereDistance;
-        curEZ = hit.z + reflDirZ * sphereDistance;
+        curEX = hit.x + reflDirX * cylinderDistance;
+        curEY = hit.y + reflDirY * cylinderDistance;
+        curEZ = hit.z + reflDirZ * cylinderDistance;
       } else {
         const travelled = Math.max(0, Math.min(segLen, segLen * hit.t));
         remainingRange = Math.max(0, remainingRange - travelled)
@@ -763,7 +762,7 @@ export class DamageSystem {
       obstructionT: undefined,
       reflections,
       terminalReflection: undefined,
-      endpointDamageable: rangeSphere === undefined,
+      endpointDamageable: rangeCylinder === undefined,
       segmentLimitReached: false,
     };
   }

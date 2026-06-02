@@ -66,7 +66,3 @@ submunition entity diffs, line/swept/area candidate packing, returned damage
 diff application, death-event diffs, death-explosion chaining, and death
 cleanup side-effect application/world-removal orchestration into Rust/WASM kernels, and leave
 TypeScript only to apply compact returned event/entity diffs.
-
-
-BEAM SHOT ISSUE FOUND
-"beam" shots seem to still be using a sphere for their maximum range, instead of our new "cylinder" approach that we have recently upgraded to. It seems that the turrets are locking on correctly, but the beams are not travelling the full distance that is described.
