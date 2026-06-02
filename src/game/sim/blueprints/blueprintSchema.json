@@ -988,7 +988,8 @@
       "enum": [
         "ignore",
         "require",
-        "prefer"
+        "preferReacquire",
+        "preferHold"
       ]
     },
     "LockOnInclusionObject": {

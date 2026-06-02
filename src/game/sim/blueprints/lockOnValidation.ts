@@ -25,7 +25,12 @@ export const LOCK_ON_INCLUSION_FIELDS = [
   'lockOnRequiresTargetLockedOntoSelf',
 ] as const;
 
-const LOCK_ON_RECIPROCAL_MODES = ['ignore', 'require', 'prefer'] as const;
+const LOCK_ON_RECIPROCAL_MODES = [
+  'ignore',
+  'require',
+  'preferReacquire',
+  'preferHold',
+] as const;
 const LOCK_ON_RECIPROCAL_MODE_SET: ReadonlySet<string> = new Set(
   LOCK_ON_RECIPROCAL_MODES,
 );

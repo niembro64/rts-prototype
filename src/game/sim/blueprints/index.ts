@@ -73,7 +73,8 @@ import {
   CT_LOCK_ON_FAM_INCLUDE_SHOTS,
   CT_LOCK_ON_LEVEL1_MASK_CAPACITY,
   CT_LOCK_ON_RECIPROCAL_IGNORE,
-  CT_LOCK_ON_RECIPROCAL_PREFER,
+  CT_LOCK_ON_RECIPROCAL_PREFER_HOLD,
+  CT_LOCK_ON_RECIPROCAL_PREFER_REACQUIRE,
   CT_LOCK_ON_RECIPROCAL_REQUIRE,
 } from '../../sim-wasm/init';
 import { isTowerBuildingBlueprintId, type BuildingBlueprintId } from '../../../types/buildingTypes';
@@ -188,8 +189,10 @@ function compileLockOnMasks(label: string, policy: LockOnInclusionObject): LockO
   let reciprocal = CT_LOCK_ON_RECIPROCAL_IGNORE;
   if (policy.lockOnRequiresTargetLockedOntoSelf === 'require') {
     reciprocal = CT_LOCK_ON_RECIPROCAL_REQUIRE;
-  } else if (policy.lockOnRequiresTargetLockedOntoSelf === 'prefer') {
-    reciprocal = CT_LOCK_ON_RECIPROCAL_PREFER;
+  } else if (policy.lockOnRequiresTargetLockedOntoSelf === 'preferReacquire') {
+    reciprocal = CT_LOCK_ON_RECIPROCAL_PREFER_REACQUIRE;
+  } else if (policy.lockOnRequiresTargetLockedOntoSelf === 'preferHold') {
+    reciprocal = CT_LOCK_ON_RECIPROCAL_PREFER_HOLD;
   } else if (policy.lockOnRequiresTargetLockedOntoSelf !== 'ignore') {
     throw new Error(
       `Invalid ${label}: lockOnRequiresTargetLockedOntoSelf "${policy.lockOnRequiresTargetLockedOntoSelf}" is not a known reciprocal lock-on mode`,

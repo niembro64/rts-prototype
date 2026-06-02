@@ -1825,7 +1825,7 @@
         <li><code>includeLockOnLevel1Buildings</code> narrows an already-included building family to only the named building blueprints.</li>
         <li><code>includeLockOnLevel1Turrets</code> narrows an already-included turret family to only the named turret blueprints.</li>
         <li><code>includeLockOnLevel1Shots</code> narrows an already-included shot family to only the named shot blueprints &mdash; e.g. a point-defense turret that should pop only heavy rockets, not every plasma bolt.</li>
-        <li><code>lockOnRequiresTargetLockedOntoSelf</code> is a three-state enum, separate from the family lists, deciding how an otherwise-admitted enemy is weighed by whether it is itself locked onto this locker. <code>"ignore"</code> (the default) does not care; <code>"require"</code> admits a candidate only while it is itself locked onto this turret or its host, and drops it the instant it re-targets; <code>"prefer"</code> ranks such threats above every other candidate but still engages opportunistically when none exist. It is <code>"require"</code> on exactly one blueprint &mdash; the <code>turretShieldPanel</code> mirror &mdash; and <code>"ignore"</code> everywhere else; see <strong>Reciprocal lock-on: only hit who is hitting you</strong>.</li>
+        <li><code>lockOnRequiresTargetLockedOntoSelf</code> is a four-state enum, separate from the family lists, deciding how an otherwise-admitted enemy is weighed by whether it is itself locked onto this locker. <code>"ignore"</code> (the default) does not care; <code>"require"</code> admits a candidate only while it is itself locked onto this turret or its host, and drops it the instant it re-targets; <code>"preferReacquire"</code> ranks such threats above every other candidate and rescans when the current target stops reciprocating; <code>"preferHold"</code> applies the same threat ranking during normal scans but does not rescan solely because the current target stops reciprocating. It is <code>"require"</code> on exactly one blueprint &mdash; the <code>turretShieldPanel</code> mirror &mdash; and <code>"ignore"</code> everywhere else; see <strong>Reciprocal lock-on: only hit who is hitting you</strong>.</li>
       </ul>
       <p>
         The hierarchy should be evaluated in order: ownership, aliveness, and visibility decide
@@ -1864,23 +1864,24 @@
       <h3>Reciprocal lock-on: only hit who is hitting you</h3>
       <p>
         The inclusion object carries one mode beyond the family lists:
-        <code>lockOnRequiresTargetLockedOntoSelf</code>, a three-state enum &mdash;
-        <code>"ignore"</code>, <code>"require"</code>, or <code>"prefer"</code> &mdash; that decides
+        <code>lockOnRequiresTargetLockedOntoSelf</code>, a four-state enum &mdash;
+        <code>"ignore"</code>, <code>"require"</code>, <code>"preferReacquire"</code>, or
+        <code>"preferHold"</code> &mdash; that decides
         how a locker weighs an otherwise-admitted enemy by whether that enemy is itself locked onto
         it. <code>"ignore"</code> is the default and the value every ordinary turret, unit, and tower
         uses: reciprocal lock has no bearing on candidacy or scoring, and the locker does not care
         whether its prey is shooting back. <code>"require"</code> admits a candidate only while that
         enemy is itself locked onto this turret or its host; an enemy not aiming at us is simply not a
-        candidate, no matter how close or how otherwise valid it is. <code>"prefer"</code> treats
+        candidate, no matter how close or how otherwise valid it is. The two preference modes treat
         enemies locked onto us as a strictly higher priority tier without making them mandatory: if
-        any are aiming at us the locker engages those alone, and only when none are does it fall back
-        to the ordinary candidate pool. Today exactly one blueprint leaves the default &mdash; the
+        any are aiming at us during a scan, the locker engages those alone, and only when none are
+        does it fall back to the ordinary candidate pool. Today exactly one blueprint leaves the default &mdash; the
         <code>turretShieldPanel</code> mirror, which sets <code>"require"</code>; every other turret,
         unit, and tower stays on <code>"ignore"</code>.
       </p>
       <p>
-        <code>"require"</code> and <code>"prefer"</code> are both evaluated in real time, not just at
-        acquisition. The locker re-checks every tick against the reciprocal condition exactly as it
+        <code>"require"</code> and <code>"preferReacquire"</code> are both evaluated in real time, not just at
+        acquisition. The locker re-checks against the reciprocal condition exactly as it
         re-checks range, line-of-sight, and aliveness. Under <code>"require"</code> the instant the
         enemy re-targets &mdash; locks onto a different body, drops its lock, or dies &mdash; the
         condition fails, the mirror loses that lock the same tick, and re-acquisition runs over
@@ -1890,16 +1891,19 @@
         punishes focused fire and is trivially sidestepped by not shooting at it.
       </p>
       <p>
-        Under <code>"prefer"</code> the same per-tick re-evaluation re-sorts the two tiers instead of
+        Under <code>"preferReacquire"</code> the same re-evaluation re-sorts the two tiers instead of
         emptying the pool: the instant an enemy starts firing on the locker it jumps to the threat
-        tier and is engaged ahead of any opportunistic target, and the instant the last threat aims
-        away the locker falls back to the general pool rather than going idle. Within either tier the
-        ordinary scoring &mdash; including current-target stickiness &mdash; still picks the single
-        best lock, so a &ldquo;prefer&rdquo; weapon does not thrash between equally-ranked threats. The
-        tiering is strict by default &mdash; any threat outranks any non-threat &mdash; with a softer
-        scoring-bonus variant available if a weapon should let an overwhelmingly better opportunistic
-        target win. A &ldquo;prefer&rdquo; weapon retaliates first and suppresses second; the mirror
-        itself stays on <code>"require"</code> because reflection is its whole job.
+        tier and is engaged ahead of any opportunistic target, and the instant the current target aims
+        away the locker scans for a better reciprocal target while still falling back to the general
+        pool rather than going idle. Under <code>"preferHold"</code>, reciprocal threats still form the
+        strict higher tier whenever a normal acquisition or scan occurs, but an existing valid target
+        is not disturbed solely because it stopped reciprocating. Within either tier the ordinary
+        scoring &mdash; including current-target stickiness &mdash; still picks the single best lock, so
+        a preference weapon does not thrash between equally-ranked threats. The tiering is strict by
+        default &mdash; any threat outranks any non-threat &mdash; with a softer scoring-bonus variant
+        available if a weapon should let an overwhelmingly better opportunistic target win. A
+        reciprocal preference weapon retaliates first and suppresses second; the mirror itself stays
+        on <code>"require"</code> because reflection is its whole job.
       </p>
       <p>
         &ldquo;Locked onto us&rdquo; means locked onto either this turret or its host
@@ -1909,12 +1913,12 @@
         above is therefore the next resolution tick, imperceptible at simulation rate. The matched
         state is &ldquo;currently holds a lock onto us&rdquo;; reacting only to enemies <em>actively
         firing</em> rather than merely aimed would be a separate future refinement, not part of this
-        enum. The simulation already maintains the inverse of every lock &mdash; the
-        <em>incoming-lock</em> set of each entity, i.e. who is currently aimed at it &mdash; so a
-        locker reads its host&rsquo;s incoming set directly rather than scanning every enemy in range.
+        enum. The targeting kernel reads prior committed target ids from candidate turrets and checks
+        whether any point at this turret or host, avoiding same-tick retarget cycles without relying on
+        a speculative inverse set.
         Any value but <code>"ignore"</code> is meaningful only alongside <code>enemy_entities</code>:
         a <code>"require"</code> locker that admitted no enemy relationship would be inert and a
-        <code>"prefer"</code> one would collapse to ordinary opportunistic targeting &mdash; both
+        reciprocal preference one would collapse to ordinary opportunistic targeting &mdash; both
         authoring smells the loader can reject.
       </p>
       <p>

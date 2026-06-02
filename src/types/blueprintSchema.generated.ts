@@ -237,7 +237,7 @@ export type TurretLockOnRelationshipInclusion = 'friendly_entities' | 'enemy_ent
 
 export type TurretLockOnEntityFamilyInclusion = 'buildings' | 'towers' | 'units' | 'turrets' | 'shots';
 
-export type LockOnRequiresTargetLockedOntoSelf = 'ignore' | 'require' | 'prefer';
+export type LockOnRequiresTargetLockedOntoSelf = 'ignore' | 'require' | 'preferReacquire' | 'preferHold';
 
 export type LockOnInclusionObject = {
   includeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipInclusion[];

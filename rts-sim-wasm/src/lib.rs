@@ -14901,11 +14901,13 @@ pub const CT_LOCK_ON_FAM_INCLUDE_SHOTS: u8 = 1 << 5;
 // LOCK-ON-04 — Reciprocal lock-on candidacy modes. Stamped from the
 // normalized blueprint inclusion object. `REQUIRE` admits only enemy
 // candidates that were locked onto this turret/host in the prior
-// committed targeting state; `PREFER` keeps ordinary candidacy but
-// ranks those threats in a strict higher tier.
+// committed targeting state. Both preference modes keep ordinary
+// candidacy but rank those threats in a strict higher tier; `REACQUIRE`
+// also schedules a scan when the current target stops reciprocating.
 pub const CT_LOCK_ON_RECIPROCAL_IGNORE: u8 = 0;
 pub const CT_LOCK_ON_RECIPROCAL_REQUIRE: u8 = 1;
-pub const CT_LOCK_ON_RECIPROCAL_PREFER: u8 = 2;
+pub const CT_LOCK_ON_RECIPROCAL_PREFER_REACQUIRE: u8 = 2;
+pub const CT_LOCK_ON_RECIPROCAL_PREFER_HOLD: u8 = 3;
 
 // LOCK-ON-03 — Per-entity family encoding stamped on entity slab rows.
 // Zero is the cleared/unstamped sentinel so a stale row from
@@ -15860,7 +15862,9 @@ pub fn combat_targeting_set_turret(
     pool.turret_lockon_turret_mask[global_idx] = lockon_turret_mask;
     pool.turret_lockon_shot_mask[global_idx] = lockon_shot_mask;
     pool.turret_lockon_reciprocal_mode[global_idx] = match lockon_reciprocal_mode {
-        CT_LOCK_ON_RECIPROCAL_REQUIRE | CT_LOCK_ON_RECIPROCAL_PREFER => lockon_reciprocal_mode,
+        CT_LOCK_ON_RECIPROCAL_REQUIRE
+        | CT_LOCK_ON_RECIPROCAL_PREFER_REACQUIRE
+        | CT_LOCK_ON_RECIPROCAL_PREFER_HOLD => lockon_reciprocal_mode,
         _ => CT_LOCK_ON_RECIPROCAL_IGNORE,
     };
     combat_targeting_write_no_ballistic_solution(
@@ -17260,10 +17264,12 @@ fn combat_targeting_turret_reciprocal_prefer_tier(
     source_turret_idx: usize,
     target_entity_slot: usize,
 ) -> u8 {
-    if source_turret_idx >= pool.turret_lockon_reciprocal_mode.len()
-        || pool.turret_lockon_reciprocal_mode[source_turret_idx] != CT_LOCK_ON_RECIPROCAL_PREFER
-    {
+    if source_turret_idx >= pool.turret_lockon_reciprocal_mode.len() {
         return 0;
+    }
+    match pool.turret_lockon_reciprocal_mode[source_turret_idx] {
+        CT_LOCK_ON_RECIPROCAL_PREFER_REACQUIRE | CT_LOCK_ON_RECIPROCAL_PREFER_HOLD => {}
+        _ => return 0,
     }
     let source_entity_id = pool.entity_id[source_entity_slot];
     if combat_targeting_target_slot_locked_onto_source(
@@ -17277,6 +17283,33 @@ fn combat_targeting_turret_reciprocal_prefer_tier(
     } else {
         0
     }
+}
+
+#[inline]
+fn combat_targeting_turret_prefer_reacquire_current_target_non_threat(
+    pool: &CombatTargetingPool,
+    source_entity_slot: usize,
+    source_entity_id: i32,
+    source_turret_idx: usize,
+) -> bool {
+    if source_turret_idx >= pool.turret_lockon_reciprocal_mode.len()
+        || pool.turret_lockon_reciprocal_mode[source_turret_idx]
+            != CT_LOCK_ON_RECIPROCAL_PREFER_REACQUIRE
+    {
+        return false;
+    }
+    pool.entity_slot_by_id
+        .get(&pool.turret_target_id[source_turret_idx])
+        .map(|slot| {
+            !combat_targeting_target_slot_locked_onto_source(
+                pool,
+                source_entity_slot,
+                source_entity_id,
+                source_turret_idx,
+                *slot as usize,
+            )
+        })
+        .unwrap_or(false)
 }
 
 #[inline]
@@ -18298,20 +18331,13 @@ pub fn combat_targeting_prepare_auto_scan(
             cached_fire_dist_sqs[turret_idx] = dist_sq;
         }
 
-        let prefer_non_threat_current_target = pool.turret_lockon_reciprocal_mode[idx]
-            == CT_LOCK_ON_RECIPROCAL_PREFER
-            && pool
-                .entity_slot_by_id
-                .get(&pool.turret_target_id[idx])
-                .map(|slot| {
-                    combat_targeting_turret_reciprocal_prefer_tier(
-                        pool,
-                        entity_idx,
-                        idx,
-                        *slot as usize,
-                    ) == 0
-                })
-                .unwrap_or(false);
+        let prefer_non_threat_current_target =
+            combat_targeting_turret_prefer_reacquire_current_target_non_threat(
+                pool,
+                entity_idx,
+                pool.entity_id[entity_idx],
+                idx,
+            );
 
         if pool.turret_target_id[idx] < 0
             || pool.turret_state[idx] == CT_TURRET_STATE_TRACKING
@@ -18422,8 +18448,16 @@ pub fn combat_targeting_prepare_fire_choice_fsm_inputs(
         }
 
         let cached_rank = cached_fire_ranks[turret_idx];
+        let prefer_non_threat_current_target =
+            combat_targeting_turret_prefer_reacquire_current_target_non_threat(
+                pool,
+                entity_slot as usize,
+                source_entity_id,
+                idx,
+            );
         if pool.turret_state[idx] != CT_TURRET_STATE_TRACKING
             && cached_rank != CT_TARGET_RANK_FIRE_FALLBACK
+            && !prefer_non_threat_current_target
         {
             continue;
         }
@@ -33203,7 +33237,78 @@ mod lock_on_inclusion_tests {
     }
 
     #[test]
-    fn reciprocal_prefer_strictly_tiers_threats_above_non_threats() {
+    fn reciprocal_preference_modes_strictly_tier_threats_above_non_threats() {
+        let _guard = lock_tests();
+
+        for reciprocal_mode in [
+            CT_LOCK_ON_RECIPROCAL_PREFER_REACQUIRE,
+            CT_LOCK_ON_RECIPROCAL_PREFER_HOLD,
+        ] {
+            reset_pools();
+            stamp_source(-1);
+            stamp_turret(
+                SOURCE_SLOT,
+                0,
+                TurretSpec {
+                    relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
+                    family_mask: CT_LOCK_ON_FAM_INCLUDE_UNITS,
+                    reciprocal_mode,
+                    ..TurretSpec::default()
+                },
+            );
+            stamp_body_target(
+                1,
+                201,
+                PLAYER_2,
+                20.0,
+                CT_ENTITY_FAMILY_UNIT,
+                BODY_UNIT_CODE_A,
+            );
+            stamp_turret_target_with_target_id(2, 202, PLAYER_2, 40.0, &[TURRET_CODE_A], SOURCE_ID);
+            let (target_id, _, _) = run_schedule_tick(1);
+            assert_eq!(
+                target_id, 202,
+                "preference modes must choose an incoming threat over a closer non-threat",
+            );
+
+            reset_pools();
+            stamp_source(-1);
+            stamp_turret(
+                SOURCE_SLOT,
+                0,
+                TurretSpec {
+                    relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
+                    family_mask: CT_LOCK_ON_FAM_INCLUDE_UNITS,
+                    reciprocal_mode,
+                    ..TurretSpec::default()
+                },
+            );
+            stamp_body_target(
+                1,
+                203,
+                PLAYER_2,
+                20.0,
+                CT_ENTITY_FAMILY_UNIT,
+                BODY_UNIT_CODE_A,
+            );
+            stamp_body_target(
+                2,
+                204,
+                PLAYER_2,
+                40.0,
+                CT_ENTITY_FAMILY_UNIT,
+                BODY_UNIT_CODE_B,
+            );
+            let (target_id, _, _) = run_schedule_tick(1);
+            assert_eq!(
+                target_id, 203,
+                "preference modes must fall back to normal scoring when no threat exists",
+            );
+        }
+    }
+
+    #[test]
+    fn reciprocal_prefer_reacquire_replaces_non_threat_current_target() {
         let _guard = lock_tests();
 
         reset_pools();
@@ -33212,26 +33317,28 @@ mod lock_on_inclusion_tests {
             SOURCE_SLOT,
             0,
             TurretSpec {
+                state: CT_TURRET_STATE_ENGAGED,
+                target_id: 201,
                 relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 family_mask: CT_LOCK_ON_FAM_INCLUDE_UNITS,
-                reciprocal_mode: CT_LOCK_ON_RECIPROCAL_PREFER,
+                reciprocal_mode: CT_LOCK_ON_RECIPROCAL_PREFER_REACQUIRE,
                 ..TurretSpec::default()
             },
         );
-        stamp_body_target(
-            1,
-            201,
-            PLAYER_2,
-            20.0,
-            CT_ENTITY_FAMILY_UNIT,
-            BODY_UNIT_CODE_A,
-        );
+        stamp_turret_target_with_target_id(1, 201, PLAYER_2, 20.0, &[TURRET_CODE_A], 999_999);
         stamp_turret_target_with_target_id(2, 202, PLAYER_2, 40.0, &[TURRET_CODE_A], SOURCE_ID);
-        let (target_id, _, _) = run_schedule_tick(1);
+
+        let (target_id, state, _) = run_schedule_tick(1);
         assert_eq!(
             target_id, 202,
-            "prefer mode must choose an incoming threat over a closer non-threat",
+            "preferReacquire must rescan away from a current target that stopped reciprocating",
         );
+        assert_ne!(state, CT_TURRET_STATE_IDLE);
+    }
+
+    #[test]
+    fn reciprocal_prefer_hold_keeps_non_threat_current_target() {
+        let _guard = lock_tests();
 
         reset_pools();
         stamp_source(-1);
@@ -33239,33 +33346,23 @@ mod lock_on_inclusion_tests {
             SOURCE_SLOT,
             0,
             TurretSpec {
+                state: CT_TURRET_STATE_ENGAGED,
+                target_id: 201,
                 relationship_mask: CT_LOCK_ON_REL_INCLUDE_ENEMY,
                 family_mask: CT_LOCK_ON_FAM_INCLUDE_UNITS,
-                reciprocal_mode: CT_LOCK_ON_RECIPROCAL_PREFER,
+                reciprocal_mode: CT_LOCK_ON_RECIPROCAL_PREFER_HOLD,
                 ..TurretSpec::default()
             },
         );
-        stamp_body_target(
-            1,
-            203,
-            PLAYER_2,
-            20.0,
-            CT_ENTITY_FAMILY_UNIT,
-            BODY_UNIT_CODE_A,
-        );
-        stamp_body_target(
-            2,
-            204,
-            PLAYER_2,
-            40.0,
-            CT_ENTITY_FAMILY_UNIT,
-            BODY_UNIT_CODE_B,
-        );
-        let (target_id, _, _) = run_schedule_tick(1);
+        stamp_turret_target_with_target_id(1, 201, PLAYER_2, 20.0, &[TURRET_CODE_A], 999_999);
+        stamp_turret_target_with_target_id(2, 202, PLAYER_2, 40.0, &[TURRET_CODE_A], SOURCE_ID);
+
+        let (target_id, state, _) = run_schedule_tick(1);
         assert_eq!(
-            target_id, 203,
-            "prefer mode must fall back to normal scoring when no threat exists",
+            target_id, 201,
+            "preferHold must not rescan solely because the current target stopped reciprocating",
         );
+        assert_eq!(state, CT_TURRET_STATE_ENGAGED);
     }
 
     #[test]

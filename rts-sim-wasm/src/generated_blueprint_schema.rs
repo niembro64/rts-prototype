@@ -359,7 +359,8 @@ pub enum TurretLockOnEntityFamilyInclusion {
 pub enum LockOnRequiresTargetLockedOntoSelf {
     Ignore,
     Require,
-    Prefer,
+    PreferReacquire,
+    PreferHold,
 }
 
 #[derive(Clone, Debug, PartialEq)]

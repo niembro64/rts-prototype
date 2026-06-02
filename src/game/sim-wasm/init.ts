@@ -1861,7 +1861,8 @@ export const CT_LOCK_ON_FAM_INCLUDE_SHOTS = 1 << 5;
  *  `CT_LOCK_ON_RECIPROCAL_*` in Rust. */
 export const CT_LOCK_ON_RECIPROCAL_IGNORE = 0;
 export const CT_LOCK_ON_RECIPROCAL_REQUIRE = 1;
-export const CT_LOCK_ON_RECIPROCAL_PREFER = 2;
+export const CT_LOCK_ON_RECIPROCAL_PREFER_REACQUIRE = 2;
+export const CT_LOCK_ON_RECIPROCAL_PREFER_HOLD = 3;
 
 /** LOCK-ON-03 — Per-entity family encoding. Mirrors
  *  `CT_ENTITY_FAMILY_*` in Rust. NONE is the cleared/unstamped sentinel
