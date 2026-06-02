@@ -66,6 +66,89 @@ const LABEL_IDENTITY_PRUNE_INTERVAL_FRAMES = 180;
 const LABEL_IDENTITY_PRUNE_AFTER_FRAMES = 600;
 
 export type NameLabelTone = 'blueprint' | 'owner';
+const PIECE_NAME_PACKET_INITIAL_CAP = 512;
+const NAME_LABEL_TONE_BLUEPRINT = 0;
+const NAME_LABEL_TONE_OWNER = 1;
+
+export class PieceNameRenderPacket3D {
+  hostIds: Float64Array = new Float64Array(PIECE_NAME_PACKET_INITIAL_CAP);
+  pieceTags: Uint16Array = new Uint16Array(PIECE_NAME_PACKET_INITIAL_CAP);
+  x: Float32Array = new Float32Array(PIECE_NAME_PACKET_INITIAL_CAP);
+  y: Float32Array = new Float32Array(PIECE_NAME_PACKET_INITIAL_CAP);
+  z: Float32Array = new Float32Array(PIECE_NAME_PACKET_INITIAL_CAP);
+  tones: Uint8Array = new Uint8Array(PIECE_NAME_PACKET_INITIAL_CAP);
+  texts: string[] = [];
+  count = 0;
+
+  reset(): void {
+    this.count = 0;
+    this.texts.length = 0;
+  }
+
+  push(
+    hostId: number,
+    pieceTag: number,
+    x: number,
+    y: number,
+    z: number,
+    text: string,
+    tone: NameLabelTone = 'blueprint',
+  ): void {
+    if (text.length === 0) return;
+    const cursor = this.count;
+    this.ensureCapacity(cursor + 1);
+    this.hostIds[cursor] = hostId;
+    this.pieceTags[cursor] = pieceTag;
+    this.x[cursor] = x;
+    this.y[cursor] = y;
+    this.z[cursor] = z;
+    this.tones[cursor] = tone === 'owner'
+      ? NAME_LABEL_TONE_OWNER
+      : NAME_LABEL_TONE_BLUEPRINT;
+    this.texts[cursor] = text;
+    this.count = cursor + 1;
+  }
+
+  private ensureCapacity(required: number): void {
+    if (required <= this.hostIds.length) return;
+    let nextCapacity = this.hostIds.length;
+    while (nextCapacity < required) nextCapacity *= 2;
+    this.hostIds = growFloat64(this.hostIds, nextCapacity);
+    this.pieceTags = growUint16(this.pieceTags, nextCapacity);
+    this.x = growFloat32(this.x, nextCapacity);
+    this.y = growFloat32(this.y, nextCapacity);
+    this.z = growFloat32(this.z, nextCapacity);
+    this.tones = growUint8(this.tones, nextCapacity);
+  }
+}
+
+function growFloat32(source: Float32Array, nextCapacity: number): Float32Array {
+  const next = new Float32Array(nextCapacity);
+  next.set(source);
+  return next;
+}
+
+function growFloat64(source: Float64Array, nextCapacity: number): Float64Array {
+  const next = new Float64Array(nextCapacity);
+  next.set(source);
+  return next;
+}
+
+function growUint8(source: Uint8Array, nextCapacity: number): Uint8Array {
+  const next = new Uint8Array(nextCapacity);
+  next.set(source);
+  return next;
+}
+
+function growUint16(source: Uint16Array, nextCapacity: number): Uint16Array {
+  const next = new Uint16Array(nextCapacity);
+  next.set(source);
+  return next;
+}
+
+function toneFromPacketCode(code: number): NameLabelTone {
+  return code === NAME_LABEL_TONE_OWNER ? 'owner' : 'blueprint';
+}
 
 type LabelIdentitySnapshot = {
   frame: number;
@@ -328,6 +411,38 @@ export class NameLabel3D {
     if (this.place(text, worldX, worldY, worldZ, alpha, tone)) {
       this.recordDisplayedLabelIdentity(host, key, pieceTag, text, tone);
     }
+  }
+
+  processPieceNamePacket(packet: PieceNameRenderPacket3D): void {
+    for (let row = 0; row < packet.count; row++) {
+      this.perPackedPieceName(
+        packet.hostIds[row],
+        packet.pieceTags[row],
+        packet.x[row],
+        packet.y[row],
+        packet.z[row],
+        packet.texts[row],
+        toneFromPacketCode(packet.tones[row]),
+      );
+    }
+  }
+
+  private perPackedPieceName(
+    hostId: number,
+    pieceTag: number,
+    worldX: number,
+    worldY: number,
+    worldZ: number,
+    text: string | null,
+    tone: NameLabelTone,
+  ): void {
+    if (!text || text.length === 0) return;
+    const key = packPieceKey(hostId, pieceTag);
+    if (this._seenEntityFrame.get(key) === this._frameToken) return;
+    const alpha = this._fade ? this._fade.alphaAt(worldX, worldY, worldZ) : 1;
+    if (alpha <= FADE_CULL_ALPHA) return;
+    this._seenEntityFrame.set(key, this._frameToken);
+    this.place(text, worldX, worldY, worldZ, alpha, tone);
   }
 
   /** Shared sprite placement: acquire a pool slot, repaint if the text

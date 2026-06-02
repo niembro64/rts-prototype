@@ -8,10 +8,9 @@
 // `turret.shield.range`.
 
 import * as THREE from 'three';
-import type { Entity, EntityId, Turret } from '../sim/types';
+import type { Entity, EntityId, Turret, Unit } from '../sim/types';
 import { getChassisLiftY } from '../math/BodyDimensions';
 import { getUnitBlueprint } from '../sim/blueprints';
-import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { GraphicsConfig } from '@/types/graphics';
@@ -33,11 +32,7 @@ type FieldMesh = {
   // Per-field cache. The bubble visual is written into the shared
   // `sphereInstancedMesh` slot in the per-frame loop — every active
   // field consumes one instance slot, so the entire shield layer
-  // renders in one draw call regardless of field count. The mount*
-  // fields cache the chassis-local mount computation so we only
-  // re-derive it when the unit blueprint or mount changes.
-  mountUnitType: string | null;
-  mountRadius: number;
+  // renders in one draw call regardless of field count.
   mountOffsetX: number;
   mountOffsetY: number;
   mountZ: number;
@@ -65,6 +60,131 @@ function shieldKey(unitEntityId: number, turretIndex: number): FieldKey {
  *  one slot for the translucent bubble. 512 is well above any
  *  realistic concurrent count. */
 const SPHERE_INSTANCED_CAP = 512;
+const SHIELD_PACKET_INITIAL_CAP = SPHERE_INSTANCED_CAP;
+
+export class ShieldRenderPacket3D {
+  hostIds: Float64Array = new Float64Array(SHIELD_PACKET_INITIAL_CAP);
+  turretIndices: Uint16Array = new Uint16Array(SHIELD_PACKET_INITIAL_CAP);
+  x: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
+  y: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
+  z: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
+  rotation: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
+  bodyCenterHeight: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
+  mountLiftY: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
+  localX: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
+  localY: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
+  localZ: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
+  progress: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
+  outerRange: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
+  originOffsetZ: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
+  barrierAlpha: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
+  color: Uint32Array = new Uint32Array(SHIELD_PACKET_INITIAL_CAP);
+  private readonly mountLiftCache = new Map<string, { radius: number; liftY: number }>();
+  count = 0;
+
+  reset(): void {
+    this.count = 0;
+  }
+
+  pushUnit(unitEntity: Entity, scope: ViewportFootprint): void {
+    const unit = unitEntity.unit;
+    const combat = unitEntity.combat;
+    if (!unit || !combat) return;
+    // Force-field bubbles can be large (up to ~barrier.outerRange
+    // units across), so pad generously so a turret just off-screen
+    // with its bubble reaching in still updates.
+    if (!scope.inScope(unitEntity.transform.x, unitEntity.transform.y, 300)) return;
+
+    const unitMountLiftY = this.resolveMountLiftY(unit);
+    const fieldColor = resolveShieldSurfaceColor(unitEntity);
+    const turrets = combat.turrets;
+    for (let ti = 0; ti < turrets.length; ti++) {
+      const turret = turrets[ti];
+      if (!isShieldTurret(turret)) continue;
+      const shot = turret.config.shot;
+      if (!shot || shot.type !== 'shield' || !shot.barrier) continue;
+      const cursor = this.count;
+      this.ensureCapacity(cursor + 1);
+      const barrier = shot.barrier;
+      this.hostIds[cursor] = unitEntity.id;
+      this.turretIndices[cursor] = ti;
+      this.x[cursor] = unitEntity.transform.x;
+      this.y[cursor] = unitEntity.transform.y;
+      this.z[cursor] = unitEntity.transform.z;
+      this.rotation[cursor] = unitEntity.transform.rotation;
+      this.bodyCenterHeight[cursor] = unit.bodyCenterHeight;
+      this.mountLiftY[cursor] = unitMountLiftY;
+      this.localX[cursor] = turret.mount.x;
+      this.localY[cursor] = turret.mount.z - unitMountLiftY;
+      this.localZ[cursor] = turret.mount.y;
+      this.progress[cursor] = turret.shield?.range ?? 0;
+      this.outerRange[cursor] = barrier.outerRange;
+      this.originOffsetZ[cursor] = barrier.originOffsetZ;
+      this.barrierAlpha[cursor] = barrier.alpha;
+      this.color[cursor] = fieldColor;
+      this.count = cursor + 1;
+    }
+  }
+
+  private ensureCapacity(required: number): void {
+    if (required <= this.hostIds.length) return;
+    let nextCapacity = this.hostIds.length;
+    while (nextCapacity < required) nextCapacity *= 2;
+    this.hostIds = growFloat64(this.hostIds, nextCapacity);
+    this.turretIndices = growUint16(this.turretIndices, nextCapacity);
+    this.x = growFloat32(this.x, nextCapacity);
+    this.y = growFloat32(this.y, nextCapacity);
+    this.z = growFloat32(this.z, nextCapacity);
+    this.rotation = growFloat32(this.rotation, nextCapacity);
+    this.bodyCenterHeight = growFloat32(this.bodyCenterHeight, nextCapacity);
+    this.mountLiftY = growFloat32(this.mountLiftY, nextCapacity);
+    this.localX = growFloat32(this.localX, nextCapacity);
+    this.localY = growFloat32(this.localY, nextCapacity);
+    this.localZ = growFloat32(this.localZ, nextCapacity);
+    this.progress = growFloat32(this.progress, nextCapacity);
+    this.outerRange = growFloat32(this.outerRange, nextCapacity);
+    this.originOffsetZ = growFloat32(this.originOffsetZ, nextCapacity);
+    this.barrierAlpha = growFloat32(this.barrierAlpha, nextCapacity);
+    this.color = growUint32(this.color, nextCapacity);
+  }
+
+  private resolveMountLiftY(unit: Unit): number {
+    const unitBlueprintId = unit.unitBlueprintId;
+    const radius = unit.radius.visual;
+    const cached = this.mountLiftCache.get(unitBlueprintId);
+    if (cached !== undefined && cached.radius === radius) return cached.liftY;
+    let unitBlueprint;
+    try { unitBlueprint = getUnitBlueprint(unitBlueprintId); }
+    catch { /* keep fallback */ }
+    const liftY = getChassisLiftY(unitBlueprint, radius);
+    this.mountLiftCache.set(unitBlueprintId, { radius, liftY });
+    return liftY;
+  }
+}
+
+function growFloat32(source: Float32Array, nextCapacity: number): Float32Array {
+  const next = new Float32Array(nextCapacity);
+  next.set(source);
+  return next;
+}
+
+function growFloat64(source: Float64Array, nextCapacity: number): Float64Array {
+  const next = new Float64Array(nextCapacity);
+  next.set(source);
+  return next;
+}
+
+function growUint16(source: Uint16Array, nextCapacity: number): Uint16Array {
+  const next = new Uint16Array(nextCapacity);
+  next.set(source);
+  return next;
+}
+
+function growUint32(source: Uint32Array, nextCapacity: number): Uint32Array {
+  const next = new Uint32Array(nextCapacity);
+  next.set(source);
+  return next;
+}
 
 export class ShieldRenderer3D {
   private root: THREE.Group;
@@ -101,9 +221,6 @@ export class ShieldRenderer3D {
   /** Reused across frames to track which fields are still active this
    *  frame; everything not in here gets pruned in endFrame. */
   private _seenFieldKeys = new Set<FieldKey>();
-  /** RENDER: WIN/PAD/ALL visibility scope — off-screen shields
-   *  skip their per-frame animation work. */
-  private scope: ViewportFootprint;
   /** Look up the unit's yaw subgroup. Used to compose the field's
    *  world position from the unit's parent-chain (group → realYawGroup
    *  → liftGroup) so the bubble follows chassis tilt + yaw exactly.
@@ -114,12 +231,11 @@ export class ShieldRenderer3D {
 
   constructor(
     parentWorld: THREE.Group,
-    scope: ViewportFootprint,
+    _scope: ViewportFootprint,
     getYawGroup: (eid: EntityId) => THREE.Group | undefined,
   ) {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
-    this.scope = scope;
     this.getYawGroup = getYawGroup;
 
     // Build the shared bubble InstancedMesh. Same construction
@@ -156,8 +272,6 @@ export class ShieldRenderer3D {
     const existing = this.fields.get(key);
     if (existing) return existing;
     const field: FieldMesh = {
-      mountUnitType: null,
-      mountRadius: -1,
       mountOffsetX: NaN,
       mountOffsetY: NaN,
       mountZ: NaN,
@@ -170,37 +284,29 @@ export class ShieldRenderer3D {
     return field;
   }
 
-  private updateMountCache(field: FieldMesh, unit: Entity, turret: Turret): void {
-    const unitData = unit.unit!;
-    const unitRadius = unitData.radius.visual;
-    const offsetX = turret.mount.x;
-    const offsetY = turret.mount.y;
-    const mountZ = turret.mount.z;
-    const unitBlueprintId = unitData.unitBlueprintId;
-    let bp;
-    try { bp = getUnitBlueprint(unitBlueprintId); }
-    catch { /* keep fallback */ }
-    const mountLiftY = getChassisLiftY(bp, unitRadius);
+  private updateMountCache(
+    field: FieldMesh,
+    mountLiftY: number,
+    localX: number,
+    localY: number,
+    localZ: number,
+  ): void {
     if (
-      field.mountUnitType === unitBlueprintId &&
-      field.mountRadius === unitRadius &&
-      field.mountOffsetX === offsetX &&
-      field.mountOffsetY === offsetY &&
-      field.mountZ === mountZ &&
+      field.mountOffsetX === localX &&
+      field.mountOffsetY === localZ &&
+      field.mountZ === localY + mountLiftY &&
       field.mountLiftY === mountLiftY
     ) {
       return;
     }
 
-    field.mountUnitType = unitBlueprintId;
-    field.mountRadius = unitRadius;
-    field.mountOffsetX = offsetX;
-    field.mountOffsetY = offsetY;
-    field.mountZ = mountZ;
+    field.mountOffsetX = localX;
+    field.mountOffsetY = localZ;
+    field.mountZ = localY + mountLiftY;
     field.mountLiftY = mountLiftY;
-    field.localX = offsetX;
-    field.localY = mountZ - mountLiftY;
-    field.localZ = offsetY;
+    field.localX = localX;
+    field.localY = localY;
+    field.localZ = localZ;
   }
 
   /** Begin a fused per-frame iteration. Caller follows with a series
@@ -212,16 +318,10 @@ export class ShieldRenderer3D {
     this._sphereCursor = 0;
   }
 
-  /** Process one unit. The fill is gameplay-relevant info (a force
-   *  field is a barrier the player needs to see), so it no longer
-   *  has any camera-distance detail downgrade. */
-  perUnit(unit: Entity): void {
-    if (!unit.combat || !unit.unit) return;
-    // Force-field bubbles can be large (up to ~barrier.outerRange
-    // units across), so pad generously so a turret just off-screen
-    // with its bubble reaching in still updates.
-    if (!this.scope.inScope(unit.transform.x, unit.transform.y, 300)) return;
-    this._processUnit(unit);
+  processPacket(packet: ShieldRenderPacket3D): void {
+    for (let row = 0; row < packet.count; row++) {
+      this._processRow(packet, row);
+    }
   }
 
   /** End a fused-iteration frame: flush the InstancedMesh count + dirty
@@ -247,119 +347,94 @@ export class ShieldRenderer3D {
     }
   }
 
-  /** Legacy all-in-one entry — calls beginFrame / per-unit / endFrame
-   *  internally so existing callers don't have to migrate. */
-  update(units: readonly Entity[]): void {
+  /** Legacy all-in-one entry — calls beginFrame / processPacket /
+   *  endFrame internally so existing callers don't have to thread the
+   *  fused lifecycle. */
+  update(packet: ShieldRenderPacket3D): void {
     this.beginFrame();
-    for (const unit of units) this.perUnit(unit);
+    this.processPacket(packet);
     this.endFrame();
   }
 
-  /** Internal per-unit body. Writes the active bubble instance. */
-  private _processUnit(unit: Entity): void {
+  /** Internal packet-row body. Writes the active bubble instance. */
+  private _processRow(packet: ShieldRenderPacket3D, row: number): void {
     const seen = this._seenFieldKeys;
 
-    // Sanity guard — perUnit already filtered, but check again so
-    // _processUnit is safe to call directly.
-    if (!unit.combat || !unit.unit) return;
-    if (!this.scope.inScope(unit.transform.x, unit.transform.y, 300)) return;
+    const hostId = packet.hostIds[row] as EntityId;
+    const turretIndex = packet.turretIndices[row];
+    const key = shieldKey(hostId, turretIndex);
+    seen.add(key);
+    const field = this.acquire(key);
+    this.updateMountCache(
+      field,
+      packet.mountLiftY[row],
+      packet.localX[row],
+      packet.localY[row],
+      packet.localZ[row],
+    );
+
+    const progress = packet.progress[row];
+    if (progress <= 0) return;
+    const outer = packet.outerRange[row];
+    if (outer <= 0) return;
+    const fadeIn = Math.min(progress * 3, 1);
+    const localX = field.localX;
+    const localY = field.localY;
+    const localZ = field.localZ;
 
     // The bubble is written in absolute world coords below, so it
     // doesn't need a parent. yawGroup is only consulted to read the
     // unit's parent-chain pose for accurate world-position composition
     // (chassis tilt + yaw); when it's missing we fall back to the
-    // unit's transform.
-    const yawGroup = this.getYawGroup(unit.id);
+    // packet's transform row.
+    const liftGroupNode = this.getYawGroup(hostId); // getYawGroup returns liftGroup
+    const realYawGroup = liftGroupNode?.parent;
+    const groupOuter = realYawGroup?.parent;
+    if (liftGroupNode && realYawGroup && groupOuter) {
+      this._sphereYawQuat.setFromAxisAngle(
+        ShieldRenderer3D._SPHERE_UP,
+        realYawGroup.rotation.y,
+      );
+      this._sphereParentQuat
+        .copy(groupOuter.quaternion)
+        .multiply(this._sphereYawQuat);
+      this._sphereLocalPos.set(localX, liftGroupNode.position.y + localY, localZ);
+      this._sphereLocalPos.applyQuaternion(this._sphereParentQuat);
+      this._sphereScratchPos
+        .copy(groupOuter.position)
+        .add(this._sphereLocalPos);
+    } else {
+      // No liftGroup — use the fallback unit transform from the packet.
+      // Rebuild the same base-Y convention Render3DEntities uses:
+      // group.y = sim altitude − bodyCenterHeight, then add the
+      // cached blueprint chassis lift and this turret's chassis-
+      // local mount Y. Slope tilt lives only on the unit mesh chain;
+      // yaw and vertical body lift still stay coherent.
+      const yaw = packet.rotation[row];
+      const cosYaw = Math.cos(yaw);
+      const sinYaw = Math.sin(yaw);
+      const rx = cosYaw * localX - sinYaw * localZ;
+      const rz = sinYaw * localX + cosYaw * localZ;
+      this._sphereScratchPos.set(
+        packet.x[row] + rx,
+        packet.z[row] - packet.bodyCenterHeight[row] + field.mountLiftY + localY,
+        packet.y[row] + rz,
+      );
+    }
 
-    const turrets = unit.combat.turrets;
-    for (let ti = 0; ti < turrets.length; ti++) {
-      const turret = turrets[ti];
-      if (!isShieldTurret(turret)) continue;
-      const progress = turret.shield?.range ?? 0;
-
-      const shot = turret.config.shot;
-      if (!shot || shot.type !== 'shield' || !shot.barrier) continue;
-
-      const key = shieldKey(unit.id, ti);
-      seen.add(key);
-      const field = this.acquire(key);
-      this.updateMountCache(field, unit, turret);
-
-      if (progress <= 0) continue;
-
-      // Bubble — translucent team-color sphere with fade-in alpha.
-      // The field sphere can be configured lower in world-space than
-      // the turret mount via barrier.originOffsetZ so the shield wraps
-      // the host body instead of centering on the turret.
-      const barrier = shot.barrier;
-      const outer = barrier.outerRange;
-      if (outer <= 0) continue;
-      const fadeIn = Math.min(progress * 3, 1);
-      const fieldColor = resolveShieldSurfaceColor(unit);
-
-      // Chassis-local mount position. turret.mount is already in world
-      // units, baked from the unit blueprint's 3D mount at unit-creation
-      // time. yawGroup has scale 1, so these chassis-local coords write
-      // straight into the world-position composition below.
-      const localX = field.localX;
-      const localY = field.localY;
-      const localZ = field.localZ;
-
-      // Compose the field's WORLD position from the unit's parent
-      // chain — group → realYawGroup → liftGroup. The InstancedMesh
-      // slots live in the renderer's world group (not parented to
-      // the unit), so we reproduce what the scenegraph would do for
-      // a child of liftGroup at chassis-local (localX, localY, localZ).
-      const liftGroupNode = yawGroup; // getYawGroup returns liftGroup
-      const realYawGroup = liftGroupNode?.parent;
-      const groupOuter = realYawGroup?.parent;
-      if (liftGroupNode && realYawGroup && groupOuter) {
-        this._sphereYawQuat.setFromAxisAngle(
-          ShieldRenderer3D._SPHERE_UP,
-          realYawGroup.rotation.y,
-        );
-        this._sphereParentQuat
-          .copy(groupOuter.quaternion)
-          .multiply(this._sphereYawQuat);
-        this._sphereLocalPos.set(localX, liftGroupNode.position.y + localY, localZ);
-        this._sphereLocalPos.applyQuaternion(this._sphereParentQuat);
-        this._sphereScratchPos
-          .copy(groupOuter.position)
-          .add(this._sphereLocalPos);
-      } else {
-        // No liftGroup — use the fallback unit transform this frame.
-        // Rebuild the same base-Y convention Render3DEntities uses:
-        // group.y = sim altitude − bodyCenterHeight, then add the
-        // cached blueprint chassis lift and this turret's chassis-
-        // local mount Y. Slope tilt lives only on the unit mesh chain;
-        // yaw and vertical body lift still stay coherent.
-        const yaw = unit.transform.rotation;
-        const cosYaw = Math.cos(yaw);
-        const sinYaw = Math.sin(yaw);
-        const rx = cosYaw * localX - sinYaw * localZ;
-        const rz = sinYaw * localX + cosYaw * localZ;
-        const bodyCenterHeight = getUnitBodyCenterHeight(unit.unit);
-        this._sphereScratchPos.set(
-          unit.transform.x + rx,
-          unit.transform.z - bodyCenterHeight + field.mountLiftY + localY,
-          unit.transform.y + rz,
-        );
-      }
-
-      if (this._sphereCursor < SPHERE_INSTANCED_CAP) {
-        const fieldCenterY = this._sphereScratchPos.y - barrier.originOffsetZ;
-        this._sphereScratchScale.set(outer, outer, outer);
-        this._sphereScratchPos.y = fieldCenterY;
-        this._sphereScratchMat.compose(
-          this._sphereScratchPos,
-          ShieldRenderer3D._IDENTITY_QUAT,
-          this._sphereScratchScale,
-        );
-        this.sphereInstancedMesh.setMatrixAt(this._sphereCursor, this._sphereScratchMat);
-        this.sphereAlphaArr[this._sphereCursor] = barrier.alpha * fadeIn * FIELD_OPACITY_BOOST;
-        writeHexToRgb01Array(fieldColor, this.sphereColorArr, this._sphereCursor * 3);
-        this._sphereCursor++;
-      }
+    if (this._sphereCursor < SPHERE_INSTANCED_CAP) {
+      const fieldCenterY = this._sphereScratchPos.y - packet.originOffsetZ[row];
+      this._sphereScratchScale.set(outer, outer, outer);
+      this._sphereScratchPos.y = fieldCenterY;
+      this._sphereScratchMat.compose(
+        this._sphereScratchPos,
+        ShieldRenderer3D._IDENTITY_QUAT,
+        this._sphereScratchScale,
+      );
+      this.sphereInstancedMesh.setMatrixAt(this._sphereCursor, this._sphereScratchMat);
+      this.sphereAlphaArr[this._sphereCursor] = packet.barrierAlpha[row] * fadeIn * FIELD_OPACITY_BOOST;
+      writeHexToRgb01Array(packet.color[row], this.sphereColorArr, this._sphereCursor * 3);
+      this._sphereCursor++;
     }
   }
 

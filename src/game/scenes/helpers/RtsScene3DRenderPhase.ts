@@ -16,7 +16,10 @@ import type { ThreeApp } from '../../render3d/ThreeApp';
 import type { Render3DEntities } from '../../render3d/Render3DEntities';
 import type { Input3DManager } from '../../render3d/Input3DManager';
 import type { BeamRenderer3D } from '../../render3d/BeamRenderer3D';
-import type { ShieldRenderer3D } from '../../render3d/ShieldRenderer3D';
+import {
+  ShieldRenderPacket3D,
+  type ShieldRenderer3D,
+} from '../../render3d/ShieldRenderer3D';
 import type { TerrainTileRenderer3D } from '../../render3d/TerrainTileRenderer3D';
 import type { BuildGhost3D } from '../../render3d/BuildGhost3D';
 import type { MetalDepositRenderer3D } from '../../render3d/MetalDepositRenderer3D';
@@ -42,8 +45,11 @@ import {
   type ContactShadowRenderer3D,
 } from '../../render3d/ContactShadowRenderer3D';
 import type { HealthBar3D } from '../../render3d/HealthBar3D';
-import type { NameLabel3D } from '../../render3d/NameLabel3D';
-import { PIECE_TAG_COMMANDER_OWNER_NAME } from '../../render3d/NameLabel3D';
+import {
+  PIECE_TAG_COMMANDER_OWNER_NAME,
+  PieceNameRenderPacket3D,
+  type NameLabel3D,
+} from '../../render3d/NameLabel3D';
 import { HudFade } from '../../render3d/HudFade';
 import type { Waypoint3D } from '../../render3d/Waypoint3D';
 import {
@@ -112,8 +118,8 @@ type RenderPhaseEntityLists = {
   unitsAndBuildings: readonly Entity[];
   hudEntities: readonly Entity[];
   armedEntities: readonly Entity[];
-  shieldUnits: readonly Entity[];
-  projectiles: readonly Entity[];
+  shields: ShieldRenderPacket3D;
+  shotNames: PieceNameRenderPacket3D;
   contactShadows: ContactShadowRenderPacket3D;
   groundPrints: GroundPrintRenderPacket3D;
 };
@@ -122,8 +128,8 @@ type RenderPhaseEntityListOptions = {
   includeUnitsAndBuildings: boolean;
   includeHudEntities: boolean;
   includeArmedEntities: boolean;
-  includeShieldUnits: boolean;
-  includeProjectiles: boolean;
+  includeShields: boolean;
+  includeShotNames: boolean;
   includeContactShadows: boolean;
   includeGroundPrints: boolean;
 };
@@ -148,8 +154,8 @@ export class RtsScene3DRenderPhase {
   private readonly scopedUnitsAndBuildingsScratch: Entity[] = [];
   private readonly scopedHudEntitiesScratch: Entity[] = [];
   private readonly scopedArmedEntitiesScratch: Entity[] = [];
-  private readonly scopedShieldUnitsScratch: Entity[] = [];
-  private readonly scopedProjectilesScratch: Entity[] = [];
+  private readonly shieldPacket = new ShieldRenderPacket3D();
+  private readonly shotNamePacket = new PieceNameRenderPacket3D();
   private readonly contactShadowPacket = new ContactShadowRenderPacket3D();
   private readonly groundPrintPacket = new GroundPrintRenderPacket3D();
   private readonly renderEntityLists: RenderPhaseEntityLists = {
@@ -158,8 +164,8 @@ export class RtsScene3DRenderPhase {
     unitsAndBuildings: [],
     hudEntities: [],
     armedEntities: [],
-    shieldUnits: [],
-    projectiles: [],
+    shields: this.shieldPacket,
+    shotNames: this.shotNamePacket,
     contactShadows: this.contactShadowPacket,
     groundPrints: this.groundPrintPacket,
   };
@@ -310,8 +316,8 @@ export class RtsScene3DRenderPhase {
       includeUnitsAndBuildings: bodyNamesEnabled,
       includeHudEntities: updateEntityHudThisFrame && healthBar3D !== null,
       includeArmedEntities: turretNamesEnabled,
-      includeShieldUnits: turretShieldSpheresEnabled,
-      includeProjectiles: shotNamesEnabled,
+      includeShields: turretShieldSpheresEnabled,
+      includeShotNames: shotNamesEnabled,
       includeContactShadows:
         contactShadowRenderer?.shouldBuildPacket(this.renderFrameIndex) ?? false,
       includeGroundPrints: updateEffectsThisFrame,
@@ -441,9 +447,7 @@ export class RtsScene3DRenderPhase {
 
     shieldRenderer.beginFrame(graphicsConfig);
     if (turretShieldSpheresEnabled) {
-      for (const u of entityLists.shieldUnits) {
-        shieldRenderer.perUnit(u);
-      }
+      shieldRenderer.processPacket(entityLists.shields);
     }
     shieldRenderer.endFrame();
 
@@ -494,8 +498,12 @@ export class RtsScene3DRenderPhase {
 
   private prepareEntityLists(options: RenderPhaseEntityListOptions): RenderPhaseEntityLists {
     const lists = this.renderEntityLists;
+    const shields = this.shieldPacket;
+    const shotNames = this.shotNamePacket;
     const contactShadows = this.contactShadowPacket;
     const groundPrints = this.groundPrintPacket;
+    shields.reset();
+    shotNames.reset();
     contactShadows.reset();
     groundPrints.reset();
     if (this.renderScope.getMode() === 'all') {
@@ -510,12 +518,12 @@ export class RtsScene3DRenderPhase {
       lists.armedEntities = options.includeArmedEntities
         ? this.clientViewState.getArmedEntities()
         : EMPTY_ENTITY_LIST;
-      lists.shieldUnits = options.includeShieldUnits
-        ? this.clientViewState.getShieldUnits()
-        : EMPTY_ENTITY_LIST;
-      lists.projectiles = options.includeProjectiles
-        ? this.clientViewState.getProjectiles()
-        : EMPTY_ENTITY_LIST;
+      if (options.includeShields) {
+        this.populateShieldPacket(this.clientViewState.getShieldUnits());
+      }
+      if (options.includeShotNames) {
+        this.populateShotNamePacket(this.clientViewState.getProjectiles());
+      }
       if (options.includeContactShadows) {
         this.populateContactShadowPacket(lists.units, lists.buildings);
       }
@@ -530,15 +538,11 @@ export class RtsScene3DRenderPhase {
     const unitsAndBuildings = this.scopedUnitsAndBuildingsScratch;
     const hudEntities = this.scopedHudEntitiesScratch;
     const armedEntities = this.scopedArmedEntitiesScratch;
-    const shieldUnits = this.scopedShieldUnitsScratch;
-    const projectiles = this.scopedProjectilesScratch;
     units.length = 0;
     buildings.length = 0;
     unitsAndBuildings.length = 0;
     hudEntities.length = 0;
     armedEntities.length = 0;
-    shieldUnits.length = 0;
-    projectiles.length = 0;
 
     const scope = this.renderScope;
     for (const entity of this.clientViewState.getUnitsAndBuildings()) {
@@ -549,7 +553,7 @@ export class RtsScene3DRenderPhase {
       if (options.includeHudEntities && this.entityNeedsBodyHud(entity)) {
         hudEntities.push(entity);
       }
-      if ((options.includeArmedEntities || options.includeShieldUnits) && entity.combat) {
+      if ((options.includeArmedEntities || options.includeShields) && entity.combat) {
         let hasCombatTurret = false;
         let hasShield = false;
         const turrets = entity.combat.turrets;
@@ -564,16 +568,12 @@ export class RtsScene3DRenderPhase {
           if (hasCombatTurret && hasShield) break;
         }
         if (options.includeArmedEntities && hasCombatTurret) armedEntities.push(entity);
-        if (options.includeShieldUnits && hasShield && entity.unit) shieldUnits.push(entity);
+        if (options.includeShields && hasShield && entity.unit) shields.pushUnit(entity, scope);
       }
     }
 
-    if (options.includeProjectiles) {
-      for (const projectile of this.clientViewState.getProjectiles()) {
-        if (scope.inScope(projectile.transform.x, projectile.transform.y, 100)) {
-          projectiles.push(projectile);
-        }
-      }
+    if (options.includeShotNames) {
+      this.populateShotNamePacket(this.clientViewState.getProjectiles());
     }
 
     lists.units = units;
@@ -581,8 +581,6 @@ export class RtsScene3DRenderPhase {
     lists.unitsAndBuildings = unitsAndBuildings;
     lists.hudEntities = hudEntities;
     lists.armedEntities = armedEntities;
-    lists.shieldUnits = shieldUnits;
-    lists.projectiles = projectiles;
     if (options.includeContactShadows) {
       this.populateContactShadowPacket(units, buildings);
     }
@@ -590,6 +588,34 @@ export class RtsScene3DRenderPhase {
       this.populateGroundPrintPacket(units);
     }
     return lists;
+  }
+
+  private populateShieldPacket(units: readonly Entity[]): void {
+    const packet = this.shieldPacket;
+    for (const unit of units) {
+      packet.pushUnit(unit, this.renderScope);
+    }
+  }
+
+  private populateShotNamePacket(projectiles: readonly Entity[]): void {
+    const packet = this.shotNamePacket;
+    const mode = getSelectionHudMode();
+    const scope = this.renderScope;
+    for (const shot of projectiles) {
+      if (!scope.inScope(shot.transform.x, shot.transform.y, 100)) continue;
+      const proj = shot.projectile;
+      if (!proj || proj.projectileType !== 'projectile' || proj.maxHp <= 0) continue;
+      const name = resolveShotName(shot, true, mode);
+      if (name === null) continue;
+      packet.push(
+        shot.id,
+        PIECE_TAG_BODY,
+        shot.transform.x,
+        getShotHudNameY(shot),
+        shot.transform.y,
+        name,
+      );
+    }
   }
 
   private populateContactShadowPacket(
@@ -656,7 +682,6 @@ export class RtsScene3DRenderPhase {
     const mode = getSelectionHudMode();
     const lookup = this.lookupPlayerDisplayName;
 
-    const shotNameToggle = getEntityHudToggle('shot', 'name');
     const unitNameToggle = getEntityHudToggle('unit', 'name');
     const towerNameToggle = getEntityHudToggle('tower', 'name');
     const buildingNameToggle = getEntityHudToggle('building', 'name');
@@ -764,25 +789,7 @@ export class RtsScene3DRenderPhase {
 
     // ── Shot names. Shot HP bars stay disabled until projectile HP
     // rides a rolling authoritative snapshot instead of spawn state.
-    if (nameLabel3D && shotNameToggle) {
-      for (const shot of entityLists.projectiles) {
-        const proj = shot.projectile;
-        if (!proj || proj.projectileType !== 'projectile' || proj.maxHp <= 0) continue;
-        const name = resolveShotName(shot, shotNameToggle, mode);
-        if (name !== null) {
-          nameLabel3D.perPieceName(
-            shot,
-            PIECE_TAG_BODY,
-            this.setNameLabelAnchor(
-              shot.transform.x,
-              getShotHudNameY(shot),
-              shot.transform.y,
-            ),
-            name,
-          );
-        }
-      }
-    }
+    nameLabel3D?.processPieceNamePacket(entityLists.shotNames);
 
     if (healthBar3D) healthBar3D.endFrame();
     if (nameLabel3D) nameLabel3D.endFrame();
