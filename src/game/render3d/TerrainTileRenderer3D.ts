@@ -35,7 +35,6 @@ import {
 import { getGroundDetailTexture } from './GroundDetailTexture';
 import { getRockDetailTexture } from './RockDetailTexture';
 import {
-  getTerrainMapBoundaryFade,
   getTerrainMeshSample,
   getTerrainMeshView,
   getTerrainVersion,
@@ -50,6 +49,7 @@ import {
   WATER_FULLY_OPAQUE,
   WATER_LEVEL,
 } from '../sim/Terrain';
+import { getTerrainMapBoundaryFade } from '../sim/terrain/terrainHeightGenerator';
 import {
   CANONICAL_LAND_CELL_SIZE,
   assertCanonicalLandCellSize,

@@ -9,13 +9,6 @@ import { setPlayerClientRenderEnabled } from './gameCanvasChromeState';
 import type { GameCanvasForegroundGame } from './gameCanvasForegroundGame';
 import type { GameCanvasForegroundSceneBinding } from './gameCanvasForegroundSceneBinding';
 import type { GameCanvasRealBattleLifecycle } from './gameCanvasRealBattleLifecycle';
-import {
-  applySettingsAndStartRealBattleServer,
-  createLocalRealBattleConnection,
-  createRealBattleServer,
-  createRemoteRealBattleConnection,
-  loadAndApplyRealBattleTerrain,
-} from './gameCanvasRealBattleStartup';
 
 async function waitForLoadingOverlayPaint(): Promise<void> {
   await nextTick();
@@ -146,12 +139,14 @@ export async function startRealBattleWithPlayers(
     }
     const rect = rectContainer.getBoundingClientRect();
     let gameConnection: GameConnection;
-    const realBattleTerrain = loadAndApplyRealBattleTerrain();
+    const realBattleStartup = await import('./gameCanvasRealBattleStartup');
+    if (shouldAbortStart()) return;
+    const realBattleTerrain = realBattleStartup.loadAndApplyRealBattleTerrain();
     await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.terrainLoaded, 'Loading terrain settings');
     if (shouldAbortStart()) return;
 
     if (options.networkRole.value !== 'client') {
-      const createdServer = await createRealBattleServer({
+      const createdServer = await realBattleStartup.createRealBattleServer({
         playerIds,
         aiPlayerIds,
         terrain: realBattleTerrain,
@@ -179,7 +174,7 @@ export async function startRealBattleWithPlayers(
         );
       }
 
-      const localConnection = createLocalRealBattleConnection(
+      const localConnection = realBattleStartup.createLocalRealBattleConnection(
         createdServer,
         options.localPlayerId.value,
         options.networkRole.value === null ? 'local-offline' : 'player',
@@ -189,7 +184,7 @@ export async function startRealBattleWithPlayers(
       registeredConnection = localConnection;
       gameConnection = localConnection;
 
-      applySettingsAndStartRealBattleServer(createdServer, {
+      realBattleStartup.applySettingsAndStartRealBattleServer(createdServer, {
         ipAddress: options.localIpAddress.value,
       });
       if (options.networkRole.value === 'host') {
@@ -203,7 +198,7 @@ export async function startRealBattleWithPlayers(
       await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.connectionReady, 'Connecting local player');
       if (shouldAbortStart()) return;
     } else {
-      const remoteConnection = createRemoteRealBattleConnection();
+      const remoteConnection = realBattleStartup.createRemoteRealBattleConnection();
       ownedConnection = remoteConnection;
       options.setActiveConnection(remoteConnection);
       registeredConnection = remoteConnection;
@@ -232,7 +227,7 @@ export async function startRealBattleWithPlayers(
       }
     };
 
-    const gameInstance = options.foregroundGame.create({
+    const gameInstance = await options.foregroundGame.create({
       parent: container,
       width: rect.width || window.innerWidth,
       height: rect.height || window.innerHeight,

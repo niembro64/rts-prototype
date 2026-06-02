@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import GameCanvas from './components/GameCanvas.vue';
+import { defineAsyncComponent } from 'vue';
+
+const GameCanvas = defineAsyncComponent(() => import('./components/GameCanvas.vue'));
 
 // 3D-only: the renderer choice is no longer URL- or storage-driven.
 // Any /2d or /3d path the URL still carries is harmless; we just

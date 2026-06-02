@@ -3,11 +3,11 @@ import { COLORS } from '@/colorsConfig';
 import { GRAVITY, LAND_CELL_SIZE } from '../../config';
 import {
   getTransformCosSin,
-  getTurretWorldMount,
   solveKinematicIntercept,
   type KinematicInterceptSolution,
   type KinematicState3,
 } from '../math';
+import { getTurretWorldMount } from '../math/MountGeometry';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { Entity, EntityId, ProjectileShot, Turret } from '../sim/types';
 import { getShotMaxLifespan, isProjectileShot, isRocketLikeShot } from '../sim/types';

@@ -1,13 +1,22 @@
 import { nextTick, type Ref } from 'vue';
-import {
-  createBackgroundBattle,
-  destroyBackgroundBattle,
-  type BackgroundBattleState,
-} from '../game/lobby/LobbyManager';
+import type { BackgroundBattleState } from '../game/lobby/LobbyManager';
 import type { GameScene } from '../game/createGame';
 import type { PlayerId } from '../game/sim/types';
 import type { BattleMode } from '../battleBarConfig';
 import { waitForSceneAndBind } from './gameSceneBindings';
+
+type LobbyManagerModule = typeof import('../game/lobby/LobbyManager');
+let lobbyManagerModule: LobbyManagerModule | null = null;
+let lobbyManagerModulePromise: Promise<LobbyManagerModule> | null = null;
+
+function loadLobbyManager(): Promise<LobbyManagerModule> {
+  if (lobbyManagerModule !== null) return Promise.resolve(lobbyManagerModule);
+  lobbyManagerModulePromise ??= import('../game/lobby/LobbyManager').then((module) => {
+    lobbyManagerModule = module;
+    return module;
+  });
+  return lobbyManagerModulePromise;
+}
 
 async function waitForLoadingOverlayPaint(): Promise<void> {
   await nextTick();
@@ -80,7 +89,10 @@ export function useGameCanvasBackgroundBattle({
     backgroundBattleGen++;
     clearBackgroundSceneWait();
     if (backgroundBattle) {
-      destroyBackgroundBattle(backgroundBattle);
+      if (lobbyManagerModule === null) {
+        throw new Error('Background battle runtime missing during destroy');
+      }
+      lobbyManagerModule.destroyBackgroundBattle(backgroundBattle);
       backgroundBattle = null;
     }
     onRendererWarmupChange(false);
@@ -103,6 +115,11 @@ export function useGameCanvasBackgroundBattle({
     }
     await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.overlayPainted, 'Preparing loading screen');
     await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.settingsLoaded, 'Loading battle settings');
+    const lobbyManager = await loadLobbyManager();
+    if (myGen !== backgroundBattleGen || !backgroundContainerRef.value) {
+      onRendererWarmupChange(false);
+      return;
+    }
     let createdBattle: BackgroundBattleState | null = null;
     let startupReadyPending = false;
     const handleStartupReady = () => {
@@ -114,7 +131,7 @@ export function useGameCanvasBackgroundBattle({
       startupReadyPending = false;
       onLoadingProgress(BACKGROUND_LOAD_PROGRESS.firstSnapshot, 'Applying first snapshot');
     };
-    const battle = await createBackgroundBattle(
+    const battle = await lobbyManager.createBackgroundBattle(
       backgroundContainerRef.value,
       getLocalIpAddress(),
       getBattleMode(),
@@ -137,7 +154,7 @@ export function useGameCanvasBackgroundBattle({
       handleStartupReady,
     );
     if (myGen !== backgroundBattleGen) {
-      destroyBackgroundBattle(battle);
+      lobbyManager.destroyBackgroundBattle(battle);
       onRendererWarmupChange(false);
       return;
     }
@@ -147,7 +164,7 @@ export function useGameCanvasBackgroundBattle({
     await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.sceneCreated, 'Creating 3D scene');
     if (myGen !== backgroundBattleGen || backgroundBattle !== battle) {
       if (backgroundBattle === battle) {
-        destroyBackgroundBattle(battle);
+        lobbyManager.destroyBackgroundBattle(battle);
         backgroundBattle = null;
       }
       onRendererWarmupChange(false);
