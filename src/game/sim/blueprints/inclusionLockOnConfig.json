@@ -701,6 +701,8 @@
       "lockOnRequiresTargetLockedOntoSelf": "require",
       "targets": {
         "enemy": {
+          "buildings": "all",
+          "towers": "all",
           "turrets": {
             "only": [
               "turretGunLight",
@@ -723,6 +725,8 @@
     "turretBeam": {
       "targets": {
         "enemy": {
+          "buildings": "all",
+          "towers": "all",
           "units": {
             "only": [
               "unitJackal",
