@@ -71,20 +71,3 @@ NOT duplicated math, so no Delete-The-Old-Path violation, just un-batched). Viol
 FIX (C1 migration): move the swept-collision + termination loop into a Rust projectile
 kernel; batch the homing intercept/thrust like the existing projectileIntegrateStepBatch.
 Combine with 3.0.
-
-7.3 [LOW] Delete-The-Old-Path residue.
-
-- src/game/network/snapshotEntityWirePack.ts — legacy V1 unpackEntityRow and the array-form
-  unpack* paths allocate fresh objects/createEmptyUnitSub() spreads (e.g. :1194) instead of
-  using the V5/V6 decode pools. Current wire version is V6; remove these once no legacy
-  producers remain.
-
-7.5 [LOW / design decision] ray/shield exist as blueprint families but not runtime
-EntityType kinds.
-
-blueprints/rays.json (beam) and blueprints/shields.json are distinct families and shields
-get a turret-mounted runtime, but ray/shield are not entries in the Rust EntityType/KIND
-enum (only unit/tower/building/shot/turret). This is consistent with the philosophy (rays
-and shields are emitter-bound sustained emissions, NOT bodies, and attribute through their
-turret rather than minting an id) — so likely correct as-is. Flag only if a future design
-needs to point at an individual ray/shield instance by id.
