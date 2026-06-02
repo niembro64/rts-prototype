@@ -32,33 +32,19 @@ PERFORMANCE — SERVER / PHYSICS
 ================================================================================
 
 5.0 [MAJOR] Per-body force application + idle/hover/boundary math still runs as
-per-tick TypeScript loops with per-unit allocation.
+per-tick TypeScript loops.
 
-src/game/server/UnitForceSystem.ts:89-581 (applyForces) is a per-entity body loop
-over dynamicBodies each tick that calls getLocomotionForceProfile(...) per unit per
-tick (allocates a profile object — :292,:401). src/game/server/PhysicsEngine3D.ts
-does three separate full dynamicBodies scans per tick (clearDynamicSurfaceContacts:757,
-the integrate gather, accumulator clear :740) plus collectAwakeEntityIds:607 full-scans
-every dynamic body; applyMapBoundaryForces:974 is another per-body spring loop. Body
-integration/contacts are already Rust-owned, but force application is not. Violates
-"TypeScript must never own per-unit update loops / physics integration" and "do not
-allocate in per-unit loops."
+src/game/server/UnitForceSystem.ts:97-592 (applyForces) is still a per-entity body loop
+that owns thrust gating, water-wall escape, idle braking, hover lift, force accumulation,
+and hover orientation gather in TypeScript. src/game/server/PhysicsEngine3D.ts:742-767
+still performs per-body step preparation / final force clearing in TypeScript, and
+collectAwakeEntityIds still full-scans dynamic bodies for force-system candidates. Body
+integration/contacts are already Rust-owned, but force application and boundary-force
+bookkeeping are not. Violates "TypeScript must never own per-unit update loops / physics
+integration."
 FIX: migrate force-application math into a packed WASM kernel (the hover-orientation
-batch at PhysicsEngine3D :532 is the model). Meanwhile hoist getLocomotionForceProfile
-to write into a reused struct, and fold the three step() scans into one pass.
-
-5.1 [MAJOR] Tick loop drifts; no fixed-timestep accumulator/catch-up; no budget
-saturation metric.
-
-src/game/server/ServerTickLoop.ts:13 is a bare setInterval(cb, 1000/hz). GameServer.tick
-(:455) clamps per-tick dt to MAX_TICK_DT_MS (good vs spiral-of-death) but there is no
-accumulator and no catch-up: a 200ms hitch advances sim by one clamped step, so the
-authoritative clock silently slips behind real time and never recovers. TPS/CPU are
-measured, but tick-work-ms vs interval-ms saturation is not, so a saturated host can't
-tell it's falling behind. Violates "Measure TPS, CPU budget, ... backpressure
-continuously."
-FIX: drive the loop with a fixed-dt accumulator + bounded catch-up (max N steps/frame),
-and surface a tickMs/intervalMs saturation metric into serverMeta.
+batch is the model), including active-body candidate collection and boundary force
+bookkeeping where practical.
 
 ================================================================================
 NETWORKING / SNAPSHOTS

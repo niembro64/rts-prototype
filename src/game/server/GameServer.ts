@@ -39,7 +39,6 @@ import type { PhysicsEngine3D } from './PhysicsEngine3D';
 import {
   DEFAULT_KEYFRAME_RATIO,
   EMA_CONFIG,
-  MAX_TICK_DT_MS,
   type KeyframeRatio,
   type SnapshotRate,
 } from '../../config';
@@ -353,7 +352,7 @@ export class GameServer {
           this.emitStartupSnapshot(tickNow);
         }
         this.recordTickWork(performance.now() - workStart);
-        return;
+        return false;
       }
       this.startupGateOpen = true;
       this.tick(delta);
@@ -366,6 +365,11 @@ export class GameServer {
       }
 
       this.recordTickWork(performance.now() - workStart);
+      return true;
+    }, {
+      onFrame: ({ elapsedMs, stepsRun }) => {
+        this.recordTickCadence(elapsedMs, stepsRun);
+      },
     });
   }
 
@@ -382,6 +386,22 @@ export class GameServer {
       if (!this.startupReadyListenerKeys.has(listener.trackingKey)) return false;
     }
     return true;
+  }
+
+  private recordTickCadence(elapsedMs: number, stepsRun: number): void {
+    if (stepsRun <= 0 || elapsedMs <= 0) return;
+
+    const tps = Math.min(this.tickRateHz, (stepsRun * 1000) / elapsedMs);
+    if (!this.tpsInitialized) {
+      this.tpsAvg = tps;
+      this.tpsLow = tps;
+      this.tpsInitialized = true;
+    } else {
+      this.tpsAvg = (1 - EMA_CONFIG.tps.avg) * this.tpsAvg + EMA_CONFIG.tps.avg * tps;
+      this.tpsLow = tps < this.tpsLow
+        ? (1 - EMA_CONFIG.tps.low.drop) * this.tpsLow + EMA_CONFIG.tps.low.drop * tps
+        : (1 - EMA_CONFIG.tps.low.recovery) * this.tpsLow + EMA_CONFIG.tps.low.recovery * tps;
+    }
   }
 
   private recordTickWork(workMs: number): void {
@@ -460,25 +480,9 @@ export class GameServer {
     this.simulation.onGameOver = null;
   }
 
-  // Main simulation tick — variable timestep (driven by internal setInterval)
+  // Main simulation tick — fixed timestep driven by ServerTickLoop's accumulator.
   private tick(delta: number): void {
-    // Track TPS via EMA
-    if (delta > 0) {
-      const tps = 1000 / delta;
-      if (!this.tpsInitialized) {
-        this.tpsAvg = tps;
-        this.tpsLow = tps;
-        this.tpsInitialized = true;
-      } else {
-        this.tpsAvg = (1 - EMA_CONFIG.tps.avg) * this.tpsAvg + EMA_CONFIG.tps.avg * tps;
-        this.tpsLow = tps < this.tpsLow
-          ? (1 - EMA_CONFIG.tps.low.drop) * this.tpsLow + EMA_CONFIG.tps.low.drop * tps
-          : (1 - EMA_CONFIG.tps.low.recovery) * this.tpsLow + EMA_CONFIG.tps.low.recovery * tps;
-      }
-    }
-
-    // Clamp dt to prevent spiral of death
-    const dtMs = Math.min(delta, MAX_TICK_DT_MS);
+    const dtMs = delta;
     const dtSec = dtMs / 1000;
 
     // Update simulation (calculates thrust velocities, runs combat, etc.)

@@ -156,25 +156,47 @@ export function cloneUnitLocomotion(
   };
 }
 
+export type LocomotionForceProfile = {
+  rawDriveForce: number;
+  tractionDriveForce: number;
+  rawForceMagnitude: number;
+  tractionForceMagnitude: number;
+};
+
+export function writeLocomotionForceProfile(
+  out: LocomotionForceProfile,
+  locomotion: UnitLocomotion,
+  mass: number,
+  thrustMultiplier: number,
+  forceScale: number,
+): LocomotionForceProfile {
+  assertPositiveFinite(`${locomotion.type}.mass`, mass);
+  assertPositiveFinite('forceScale', forceScale);
+  const rawDriveForce = locomotion.driveForce * thrustMultiplier;
+  const tractionDriveForce = rawDriveForce * locomotion.traction;
+  out.rawDriveForce = rawDriveForce;
+  out.tractionDriveForce = tractionDriveForce;
+  out.rawForceMagnitude = (rawDriveForce * mass) / forceScale;
+  out.tractionForceMagnitude = (tractionDriveForce * mass) / forceScale;
+  return out;
+}
+
 export function getLocomotionForceProfile(
   locomotion: UnitLocomotion,
   mass: number,
   thrustMultiplier: number,
   forceScale: number,
-): {
-  rawDriveForce: number;
-  tractionDriveForce: number;
-  rawForceMagnitude: number;
-  tractionForceMagnitude: number;
-} {
-  assertPositiveFinite(`${locomotion.type}.mass`, mass);
-  assertPositiveFinite('forceScale', forceScale);
-  const rawDriveForce = locomotion.driveForce * thrustMultiplier;
-  const tractionDriveForce = rawDriveForce * locomotion.traction;
-  return {
-    rawDriveForce,
-    tractionDriveForce,
-    rawForceMagnitude: (rawDriveForce * mass) / forceScale,
-    tractionForceMagnitude: (tractionDriveForce * mass) / forceScale,
-  };
+): LocomotionForceProfile {
+  return writeLocomotionForceProfile(
+    {
+      rawDriveForce: 0,
+      tractionDriveForce: 0,
+      rawForceMagnitude: 0,
+      tractionForceMagnitude: 0,
+    },
+    locomotion,
+    mass,
+    thrustMultiplier,
+    forceScale,
+  );
 }

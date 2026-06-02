@@ -667,14 +667,6 @@ export class PhysicsEngine3D {
     return !body.sleeping || this.isStepTouchedBody(body);
   }
 
-  private collectAwakeStepSyncEntities(): void {
-    for (let i = 0; i < this.dynamicBodies.length; i++) {
-      const body = this.dynamicBodies[i];
-      if (body.sleeping) continue;
-      this.addStepSyncEntity(body);
-    }
-  }
-
   private addStaticToBroadphase(body: Body3D): void {
     if (body.shape !== 'cuboid') return;
     const sim = getSimWasm()!;
@@ -726,18 +718,45 @@ export class PhysicsEngine3D {
     this.stepSyncEntityIds.length = 0;
     this.stepSyncEntityIdSet.clear();
     if (this.awakeDynamicBodyCount <= 0) return;
-    this.collectAwakeStepSyncEntities();
-    this.clearDynamicSurfaceContacts();
-    this.applyMapBoundaryForces();
-    this.integrate(dtSec);
+    this.ensureIntegrationScratch(this.dynamicBodies.length);
+    const integrateCount = this.prepareIntegrationStep();
+    if (integrateCount === 0) return;
+    this.integrate(dtSec, integrateCount);
     // Bodies touched this step still need final contact cleanup even
     // if integration just put the last awake body to sleep.
     this.resolveSphereCuboidContacts();
     const sphereIterations = this.getSphereIterationBudget();
     this.resolveSphereSphereContacts(sphereIterations);
-    this.collectAwakeStepSyncEntities();
-    // Clear per-step force accumulator.
-    for (const body of this.dynamicBodies) {
+    this.collectFinalStepSyncEntitiesAndClearForces();
+  }
+
+  private ensureIntegrationScratch(maxCount: number): void {
+    if (_integrateAwakeSlots.length < maxCount) {
+      _integrateAwakeSlots = new Uint32Array(maxCount);
+      _integrateGroundZ = new Float64Array(maxCount);
+      _integrateGroundNormals = new Float64Array(maxCount * 3);
+      _integrateSleepTransitions = new Uint32Array(maxCount);
+    }
+  }
+
+  private prepareIntegrationStep(): number {
+    let count = 0;
+    for (let i = 0; i < this.dynamicBodies.length; i++) {
+      const body = this.dynamicBodies[i];
+      body.upwardSurfaceContact = false;
+      this.applyMapBoundaryForcesToBody(body);
+      if (body.sleeping) continue;
+      this.addStepSyncEntity(body);
+      _integrateAwakeSlots[count] = body.slot;
+      count++;
+    }
+    return count;
+  }
+
+  private collectFinalStepSyncEntitiesAndClearForces(): void {
+    for (let i = 0; i < this.dynamicBodies.length; i++) {
+      const body = this.dynamicBodies[i];
+      if (!body.sleeping) this.addStepSyncEntity(body);
       body.ax = 0;
       body.ay = 0;
       body.az = 0;
@@ -752,12 +771,6 @@ export class PhysicsEngine3D {
     if (count >= SPHERE_ITERATIONS_HIGH_COUNT) return 1;
     if (count >= SPHERE_ITERATIONS_MID_COUNT) return 2;
     return SPHERE_ITERATIONS;
-  }
-
-  private clearDynamicSurfaceContacts(): void {
-    for (let i = 0; i < this.dynamicBodies.length; i++) {
-      this.dynamicBodies[i].upwardSurfaceContact = false;
-    }
   }
 
   private sampleIntegrationGroundFallback(count: number): void {
@@ -808,28 +821,13 @@ export class PhysicsEngine3D {
    *  Dynamic bodies are required to be spheres; addBody() throws for any
    *  unsupported dynamic shape so integration cannot silently split back
    *  into a TypeScript fallback path. */
-  private integrate(dtSec: number): void {
+  private integrate(dtSec: number, count: number): void {
     const airDamp = getUnitAirFrictionDamp(dtSec);
     const groundDamp = getUnitGroundFrictionDamp(dtSec);
     // Pool readiness was enforced in the constructor, so getSimWasm
     // is guaranteed defined here. Cast through `!` to keep the
     // call sites tight without re-checking.
     const sim = getSimWasm()!;
-    const maxCount = this.dynamicBodies.length;
-    if (_integrateAwakeSlots.length < maxCount) {
-      _integrateAwakeSlots = new Uint32Array(maxCount);
-      _integrateGroundZ = new Float64Array(maxCount);
-      _integrateGroundNormals = new Float64Array(maxCount * 3);
-      _integrateSleepTransitions = new Uint32Array(maxCount);
-    }
-    let count = 0;
-    for (let i = 0; i < this.dynamicBodies.length; i++) {
-      const b = this.dynamicBodies[i];
-      if (b.sleeping) continue;
-      _integrateAwakeSlots[count] = b.slot;
-      count++;
-    }
-    if (count === 0) return;
     // Slice the typed arrays down to `count` so the kernel's
     // debug_assert on length matches; the underlying buffer is
     // shared so this is zero-copy.
@@ -971,32 +969,30 @@ export class PhysicsEngine3D {
   /** Apply an inward spring/damper at the map AABB edge. This keeps
    *  perimeter containment in the same force/acceleration language as
    *  terrain contact instead of editing positions after integration. */
-  private applyMapBoundaryForces(): void {
-    const springAccel = UNIT_WORLD_BOUNDARY_SPRING_ACCEL_PER_WORLD_UNIT;
-    if (springAccel <= 0) return;
-    for (const b of this.dynamicBodies) {
-      if (b.shape !== 'sphere') continue;
-      let ax = 0;
-      let ay = 0;
-      const minX = b.radius;
-      const maxX = this.mapWidth - b.radius;
-      const minY = b.radius;
-      const maxY = this.mapHeight - b.radius;
-      if (b.x < minX) {
-        ax += this.computeBoundaryAccel(minX - b.x, b.vx);
-      } else if (b.x > maxX) {
-        ax -= this.computeBoundaryAccel(b.x - maxX, -b.vx);
-      }
-      if (b.y < minY) {
-        ay += this.computeBoundaryAccel(minY - b.y, b.vy);
-      } else if (b.y > maxY) {
-        ay -= this.computeBoundaryAccel(b.y - maxY, -b.vy);
-      }
-      if (ax === 0 && ay === 0) continue;
-      this.wakeBody(b);
-      b.ax += ax;
-      b.ay += ay;
+  private applyMapBoundaryForcesToBody(b: Body3D): void {
+    if (UNIT_WORLD_BOUNDARY_SPRING_ACCEL_PER_WORLD_UNIT <= 0 || b.shape !== 'sphere') {
+      return;
     }
+    let ax = 0;
+    let ay = 0;
+    const minX = b.radius;
+    const maxX = this.mapWidth - b.radius;
+    const minY = b.radius;
+    const maxY = this.mapHeight - b.radius;
+    if (b.x < minX) {
+      ax += this.computeBoundaryAccel(minX - b.x, b.vx);
+    } else if (b.x > maxX) {
+      ax -= this.computeBoundaryAccel(b.x - maxX, -b.vx);
+    }
+    if (b.y < minY) {
+      ay += this.computeBoundaryAccel(minY - b.y, b.vy);
+    } else if (b.y > maxY) {
+      ay -= this.computeBoundaryAccel(b.y - maxY, -b.vy);
+    }
+    if (ax === 0 && ay === 0) return;
+    this.wakeBody(b);
+    b.ax += ax;
+    b.ay += ay;
   }
 
   private computeBoundaryAccel(

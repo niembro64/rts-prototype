@@ -11,7 +11,11 @@ import {
   isWaterAt,
   projectHorizontalOntoSlope,
 } from '../sim/Terrain';
-import { LOCOMOTION_FORCE_SCALE, getLocomotionForceProfile } from '../sim/locomotion';
+import {
+  LOCOMOTION_FORCE_SCALE,
+  type LocomotionForceProfile,
+  writeLocomotionForceProfile,
+} from '../sim/locomotion';
 import { isUnitGroundPointAtOrBelowTerrain } from '../sim/unitGroundPhysics';
 import {
   ENTITY_CHANGED_ROT,
@@ -61,7 +65,6 @@ const WATER_OUT_CACHE_BUCKET_SCALE = 10;
 const WATER_OUT_CACHE_MAX_ENTRIES = 4096;
 
 type WaterOutCacheEntry = { ok: boolean; x: number; y: number };
-type LocomotionForceProfile = ReturnType<typeof getLocomotionForceProfile>;
 
 export class UnitForceSystem {
   private readonly world: WorldState;
@@ -76,6 +79,12 @@ export class UnitForceSystem {
   private _idleBrakeForceZ = 0;
   private _waterOutX = 0;
   private _waterOutY = 0;
+  private readonly locomotionForceProfile: LocomotionForceProfile = {
+    rawDriveForce: 0,
+    tractionDriveForce: 0,
+    rawForceMagnitude: 0,
+    tractionForceMagnitude: 0,
+  };
   private waterOutCache = new Map<number, WaterOutCacheEntry>();
   private waterOutCacheTerrainVersion = -1;
 
@@ -289,7 +298,8 @@ export class UnitForceSystem {
         ) / 1e6;
 
         if (airHasDriveDir) {
-          const locomotionForce = getLocomotionForceProfile(
+          const locomotionForce = writeLocomotionForceProfile(
+            this.locomotionForceProfile,
             entity.unit.locomotion,
             entity.unit.mass,
             this.world.thrustMultiplier,
@@ -398,7 +408,8 @@ export class UnitForceSystem {
       // its surface, and they bounce off the boundary like it's a
       // building wall.
       if (groundContact) {
-        const locomotionForce = getLocomotionForceProfile(
+        const locomotionForce = writeLocomotionForceProfile(
+          this.locomotionForceProfile,
           entity.unit.locomotion,
           entity.unit.mass,
           this.world.thrustMultiplier,
