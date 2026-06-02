@@ -167,6 +167,10 @@ const FLYING_LOITER_INVALID_BODY_SLOT = 0xffffffff;
 const FLYING_LOITER_RADIUS_MULT = 8;
 const FLYING_LOITER_MIN_RADIUS = 80;
 const FLYING_LOITER_RADIAL_GAIN = 0.65;
+const DEATH_CLEANUP_KIND_UNIT = 1;
+const DEATH_CLEANUP_KIND_BUILDING = 2;
+const DEATH_CLEANUP_FLAG_DEAD_UNIT = 1 << 0;
+const DEATH_CLEANUP_FLAG_DEAD_BUILDING = 1 << 1;
 
 export class Simulation {
   private world: WorldState;
@@ -255,6 +259,11 @@ export class Simulation {
   private _cleanupDeadTurretIdSet = new Set<EntityId>();
   private _cleanupSyntheticDeathEventIds = new Set<EntityId>();
   private _cleanupDeathContexts = new Map<EntityId, DeathContext>();
+  private _cleanupDeathEnabledBuf = new Uint8Array(0);
+  private _cleanupDeathKindBuf = new Uint8Array(0);
+  private _cleanupDeathHpBuf = new Float64Array(0);
+  private _cleanupDeathUnitMaterializedBuf = new Uint8Array(0);
+  private _cleanupDeathFlagsBuf = new Uint8Array(0);
   private _arrivalSlotsBuf = new Uint32Array(0);
   private _arrivalDxBuf = new Float64Array(0);
   private _arrivalDyBuf = new Float64Array(0);
@@ -798,18 +807,62 @@ export class Simulation {
     this.world.drainPendingDeathCheckIds(deathCheckIds);
     if (deathCheckIds.length === 0) return;
 
-    // Check only entities whose HP changed since the last drain.
-    for (let i = 0; i < deathCheckIds.length; i++) {
+    const count = deathCheckIds.length;
+    this.ensureDeathCleanupCapacity(count);
+    const enabled = this._cleanupDeathEnabledBuf;
+    const kind = this._cleanupDeathKindBuf;
+    const hp = this._cleanupDeathHpBuf;
+    const unitMaterialized = this._cleanupDeathUnitMaterializedBuf;
+    const flags = this._cleanupDeathFlagsBuf;
+    enabled.fill(0, 0, count);
+    kind.fill(0, 0, count);
+    unitMaterialized.fill(0, 0, count);
+    flags.fill(0, 0, count);
+
+    // Pack only entities whose HP changed since the last drain. Rust
+    // owns the unit/building dead-alive classification; TypeScript keeps
+    // JS graph lookup and removal side effects until the ECS migration.
+    let expectedCleanupRows = 0;
+    for (let i = 0; i < count; i++) {
       const entity = this.world.getEntity(deathCheckIds[i]);
+      hp[i] = 0;
       if (!entity) continue;
-      if (
-        entity.unit &&
-        entity.unit.hp <= 0 &&
-        isConstructionBodyMaterialized(entity)
-      ) {
-        deadUnitIds.push(entity.id);
-      } else if (entity.building && entity.building.hp <= 0) {
-        deadBuildingIds.push(entity.id);
+      if (entity.unit !== null) {
+        enabled[i] = 1;
+        kind[i] = DEATH_CLEANUP_KIND_UNIT;
+        hp[i] = entity.unit.hp;
+        unitMaterialized[i] = isConstructionBodyMaterialized(entity) ? 1 : 0;
+        expectedCleanupRows++;
+      } else if (entity.building !== null) {
+        enabled[i] = 1;
+        kind[i] = DEATH_CLEANUP_KIND_BUILDING;
+        hp[i] = entity.building.hp;
+        expectedCleanupRows++;
+      }
+    }
+
+    const sim = getSimWasm();
+    if (sim === undefined) {
+      throw new Error('Simulation.cleanupDeadEntities: sim-wasm is not initialized');
+    }
+    const processed = sim.deathCleanupClassifyBatch(
+      count,
+      enabled.subarray(0, count),
+      kind.subarray(0, count),
+      hp.subarray(0, count),
+      unitMaterialized.subarray(0, count),
+      flags.subarray(0, count),
+    );
+    if (processed !== expectedCleanupRows) {
+      throw new Error(`Simulation.cleanupDeadEntities: death cleanup batch failed: ${processed}/${expectedCleanupRows}`);
+    }
+
+    for (let i = 0; i < count; i++) {
+      const rowFlags = flags[i];
+      if ((rowFlags & DEATH_CLEANUP_FLAG_DEAD_UNIT) !== 0) {
+        deadUnitIds.push(deathCheckIds[i]);
+      } else if ((rowFlags & DEATH_CLEANUP_FLAG_DEAD_BUILDING) !== 0) {
+        deadBuildingIds.push(deathCheckIds[i]);
       }
     }
     deathCheckIds.length = 0;
@@ -895,6 +948,17 @@ export class Simulation {
         this.world.removeEntity(id);
       }
     }
+  }
+
+  private ensureDeathCleanupCapacity(required: number): void {
+    if (required <= this._cleanupDeathEnabledBuf.length) return;
+    let next = Math.max(16, this._cleanupDeathEnabledBuf.length);
+    while (next < required) next *= 2;
+    this._cleanupDeathEnabledBuf = new Uint8Array(next);
+    this._cleanupDeathKindBuf = new Uint8Array(next);
+    this._cleanupDeathHpBuf = new Float64Array(next);
+    this._cleanupDeathUnitMaterializedBuf = new Uint8Array(next);
+    this._cleanupDeathFlagsBuf = new Uint8Array(next);
   }
 
   // Build a death SimEvent for entities dying outside the normal

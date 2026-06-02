@@ -34,6 +34,7 @@ import __wbg_init, {
   construction_reconcile_and_grow_pieces,
   construction_apply_consumer_spends,
   damage_apply_batch,
+  death_cleanup_classify_batch,
   economy_apply_income_credits,
   economy_apply_converter_transfers,
   arrival_completion_step_batch,
@@ -932,6 +933,17 @@ export interface SimWasm {
     buildingDamageMultiplier: number,
     outHp: Float64Array,
     outEffectiveDamage: Float64Array,
+    outFlags: Uint8Array,
+  ) => number;
+  /** C1 — pending death-cleanup classifier. TypeScript drains candidate
+   *  ids and applies event/removal diffs; Rust owns unit/building
+   *  HP/materialization dead-alive classification. */
+  readonly deathCleanupClassifyBatch: (
+    count: number,
+    enabled: Uint8Array,
+    entityKind: Uint8Array,
+    hp: Float64Array,
+    unitMaterialized: Uint8Array,
     outFlags: Uint8Array,
   ) => number;
   /** Phase 5a — Packed projectile SoA pool. Same lifetime / view
@@ -3543,6 +3555,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         quatHoverOrientationStepBatch: quat_hover_orientation_step_batch,
         unitForceStepBatch: unit_force_step_batch,
         damageApplyBatch: damage_apply_batch,
+        deathCleanupClassifyBatch: death_cleanup_classify_batch,
         projectilePool,
         projectileReflectorIntersectionsBatch: projectile_reflector_intersections_batch,
         projectileReflectionResponseBatch: projectile_reflection_response_batch,

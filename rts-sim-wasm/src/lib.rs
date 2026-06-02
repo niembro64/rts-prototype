@@ -329,6 +329,64 @@ pub fn damage_apply_batch(
     processed
 }
 
+const DEATH_CLEANUP_KIND_UNIT: u8 = 1;
+const DEATH_CLEANUP_KIND_BUILDING: u8 = 2;
+
+const DEATH_CLEANUP_FLAG_DEAD_UNIT: u8 = 1 << 0;
+const DEATH_CLEANUP_FLAG_DEAD_BUILDING: u8 = 1 << 1;
+
+/// C1 death-cleanup migration — classify pending HP-change rows.
+///
+/// TypeScript still drains the pending-id set and applies removal/event
+/// side effects to the JS entity graph. Rust owns the authoritative dead/alive
+/// decision for safety-cleanup candidates so unit/building HP semantics do not
+/// drift from the rest of the C1 damage write-back path.
+#[wasm_bindgen]
+pub fn death_cleanup_classify_batch(
+    count: u32,
+    enabled: &[u8],
+    entity_kind: &[u8],
+    hp: &[f64],
+    unit_materialized: &[u8],
+    out_flags: &mut [u8],
+) -> u32 {
+    let n = count as usize;
+    if enabled.len() < n
+        || entity_kind.len() < n
+        || hp.len() < n
+        || unit_materialized.len() < n
+        || out_flags.len() < n
+    {
+        return 0;
+    }
+
+    let mut processed = 0_u32;
+    for i in 0..n {
+        out_flags[i] = 0;
+        if enabled[i] == 0 {
+            continue;
+        }
+
+        match entity_kind[i] {
+            DEATH_CLEANUP_KIND_UNIT => {
+                if hp[i] <= 0.0 && unit_materialized[i] != 0 {
+                    out_flags[i] = DEATH_CLEANUP_FLAG_DEAD_UNIT;
+                }
+                processed += 1;
+            }
+            DEATH_CLEANUP_KIND_BUILDING => {
+                if hp[i] <= 0.0 {
+                    out_flags[i] = DEATH_CLEANUP_FLAG_DEAD_BUILDING;
+                }
+                processed += 1;
+            }
+            _ => {}
+        }
+    }
+
+    processed
+}
+
 /// Factory construction-site placement kernel. TypeScript supplies the
 /// authored footprint/radius constants and current factory/rally state;
 /// Rust owns the direction normalization, footprint-edge projection,
@@ -29485,6 +29543,51 @@ mod sim_kernel_tests {
         assert_eq!(out_hp, [25.0, 0.0, 14.0]);
         assert_eq!(out_effective_damage, [0.0, 0.0, -4.0]);
         assert_eq!(out_flags, [0, 0, DAMAGE_APPLY_FLAG_APPLIED]);
+    }
+
+    #[test]
+    fn death_cleanup_classify_batch_flags_dead_materialized_units_and_buildings() {
+        let enabled = [1_u8, 1, 1, 1];
+        let kind = [
+            DEATH_CLEANUP_KIND_UNIT,
+            DEATH_CLEANUP_KIND_UNIT,
+            DEATH_CLEANUP_KIND_BUILDING,
+            DEATH_CLEANUP_KIND_BUILDING,
+        ];
+        let hp = [0.0, -4.0, 0.0, 12.0];
+        let materialized = [1_u8, 0, 0, 0];
+        let mut out_flags = [99_u8; 4];
+
+        assert_eq!(
+            death_cleanup_classify_batch(4, &enabled, &kind, &hp, &materialized, &mut out_flags,),
+            4,
+        );
+
+        assert_eq!(
+            out_flags,
+            [
+                DEATH_CLEANUP_FLAG_DEAD_UNIT,
+                0,
+                DEATH_CLEANUP_FLAG_DEAD_BUILDING,
+                0,
+            ],
+        );
+    }
+
+    #[test]
+    fn death_cleanup_classify_batch_ignores_disabled_and_unknown_rows() {
+        let enabled = [0_u8, 1, 1];
+        let kind = [DEATH_CLEANUP_KIND_UNIT, 99, DEATH_CLEANUP_KIND_UNIT];
+        let hp = [-10.0, -10.0, 10.0];
+        let materialized = [1_u8, 1, 1];
+        let mut out_flags = [99_u8; 3];
+
+        assert_eq!(
+            death_cleanup_classify_batch(3, &enabled, &kind, &hp, &materialized, &mut out_flags,),
+            1,
+        );
+
+        assert_eq!(out_flags, [0, 0, 0]);
     }
 
     #[test]
