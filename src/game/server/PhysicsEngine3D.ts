@@ -86,15 +86,17 @@ let _integrateAwakeSlots: Uint32Array = new Uint32Array(0);
 let _integrateGroundZ: Float64Array = new Float64Array(0);
 let _integrateGroundNormals: Float64Array = new Float64Array(0);
 let _integrateSleepTransitions: Uint32Array = new Uint32Array(0);
+let _integrateStepSyncEntityIds: Int32Array = new Int32Array(0);
+let _finalStepSyncEntityIds: Int32Array = new Int32Array(0);
+let _collectAwakeEntityIds: Int32Array = new Int32Array(0);
+const _physicsStepStats: Uint32Array = new Uint32Array(3);
 
-let _sphereSphereSlots: Uint32Array = new Uint32Array(0);
 let _sphereSphereWakeTransitions: Uint32Array = new Uint32Array(0);
 
 // Phase 3f sphere-vs-cuboid scratch. The static broadphase itself
 // lives in WASM (per-engine via engineStatics handle). JS only
 // needs to marshal the per-tick dyn slot list, the parallel ignore-
 // pair lookup, and the wake-transition output buffer.
-let _sphereCuboidDynSlots: Uint32Array = new Uint32Array(0);
 let _sphereCuboidIgnoredStatics: Uint32Array = new Uint32Array(0);
 let _sphereCuboidWakeTransitions: Uint32Array = new Uint32Array(0);
 // Sentinel "no ignore" value passed to the kernel (matches Rust
@@ -357,6 +359,8 @@ export class PhysicsEngine3D {
   private bodies: Body3D[] = [];
   private dynamicBodies: Body3D[] = [];
   private staticBodies: Body3D[] = [];
+  private dynamicBodySlots: Uint32Array = new Uint32Array(0);
+  private dynamicBodySlotsDirty = true;
   // Slot-id → Body3D lookup. Indexed by the pool slot, so the
   // sleep-/wake-transition outputs from pool kernels (which carry
   // slot ids, not Body3D references) can resolve back to the JS
@@ -538,6 +542,7 @@ export class PhysicsEngine3D {
       this.addStaticToBroadphase(body);
     } else {
       this.dynamicBodies.push(body);
+      this.dynamicBodySlotsDirty = true;
       if (!body.sleeping) this.awakeDynamicBodyCount++;
     }
   }
@@ -548,6 +553,7 @@ export class PhysicsEngine3D {
     const j = this.dynamicBodies.indexOf(body);
     if (j >= 0) {
       this.dynamicBodies.splice(j, 1);
+      this.dynamicBodySlotsDirty = true;
       if (!body.sleeping) this.awakeDynamicBodyCount = Math.max(0, this.awakeDynamicBodyCount - 1);
     }
     const k = this.staticBodies.indexOf(body);
@@ -606,11 +612,33 @@ export class PhysicsEngine3D {
 
   collectAwakeEntityIds(out: EntityId[]): void {
     if (this.awakeDynamicBodyCount <= 0) return;
-    for (let i = 0; i < this.dynamicBodies.length; i++) {
-      const body = this.dynamicBodies[i];
-      if (body.sleeping || body.entityId === undefined) continue;
-      out.push(body.entityId);
+    const slots = this.getDynamicBodySlotsView();
+    const count = slots.length;
+    if (count === 0) return;
+    if (_collectAwakeEntityIds.length < count) {
+      _collectAwakeEntityIds = new Int32Array(count);
     }
+    const sim = getSimWasm()!;
+    const idsView = _collectAwakeEntityIds.subarray(0, count);
+    const entityCount = sim.poolCollectAwakeEntityIds(slots, idsView);
+    for (let i = 0; i < entityCount; i++) {
+      out.push(idsView[i]);
+    }
+  }
+
+  private getDynamicBodySlotsView(): Uint32Array {
+    const count = this.dynamicBodies.length;
+    if (this.dynamicBodySlots.length < count) {
+      this.dynamicBodySlots = new Uint32Array(count);
+      this.dynamicBodySlotsDirty = true;
+    }
+    if (this.dynamicBodySlotsDirty) {
+      for (let i = 0; i < count; i++) {
+        this.dynamicBodySlots[i] = this.dynamicBodies[i].slot;
+      }
+      this.dynamicBodySlotsDirty = false;
+    }
+    return this.dynamicBodySlots.subarray(0, count);
   }
 
   hasUpwardSurfaceContact(body: Body3D): boolean {
@@ -651,20 +679,10 @@ export class PhysicsEngine3D {
     body.groundLaunchAz = 0;
   }
 
-  private addStepSyncEntity(body: Body3D): void {
-    const id = body.entityId;
-    if (id === undefined || this.stepSyncEntityIdSet.has(id)) return;
+  private addStepSyncEntityId(id: EntityId): void {
+    if (this.stepSyncEntityIdSet.has(id)) return;
     this.stepSyncEntityIdSet.add(id);
     this.stepSyncEntityIds.push(id);
-  }
-
-  private isStepTouchedBody(body: Body3D): boolean {
-    const id = body.entityId;
-    return id !== undefined && this.stepSyncEntityIdSet.has(id);
-  }
-
-  private shouldProcessBodyThisStep(body: Body3D): boolean {
-    return !body.sleeping || this.isStepTouchedBody(body);
   }
 
   private addStaticToBroadphase(body: Body3D): void {
@@ -697,6 +715,7 @@ export class PhysicsEngine3D {
     }
     this.dynamicBodies.length = 0;
     this.staticBodies.length = 0;
+    this.dynamicBodySlotsDirty = true;
     this.bodyBySlot.length = 0;
     this.ignoreStatic.clear();
     this.awakeDynamicBodyCount = 0;
@@ -718,16 +737,20 @@ export class PhysicsEngine3D {
     this.stepSyncEntityIds.length = 0;
     this.stepSyncEntityIdSet.clear();
     if (this.awakeDynamicBodyCount <= 0) return;
-    this.ensureIntegrationScratch(this.dynamicBodies.length);
-    const integrateCount = this.prepareIntegrationStep();
+    const dynamicSlots = this.getDynamicBodySlotsView();
+    const maxCount = dynamicSlots.length;
+    if (maxCount === 0) return;
+    this.ensureIntegrationScratch(maxCount);
+    const integrateCount = this.prepareIntegrationStep(dynamicSlots);
     if (integrateCount === 0) return;
     this.integrate(dtSec, integrateCount);
     // Bodies touched this step still need final contact cleanup even
     // if integration just put the last awake body to sleep.
-    this.resolveSphereCuboidContacts();
+    const stepSlots = _integrateAwakeSlots.subarray(0, integrateCount);
+    this.resolveSphereCuboidContacts(stepSlots);
     const sphereIterations = this.getSphereIterationBudget();
-    this.resolveSphereSphereContacts(sphereIterations);
-    this.collectFinalStepSyncEntitiesAndClearForces();
+    this.resolveSphereSphereContacts(sphereIterations, dynamicSlots);
+    this.collectFinalStepSyncEntitiesAndClearForces(dynamicSlots);
   }
 
   private ensureIntegrationScratch(maxCount: number): void {
@@ -736,33 +759,42 @@ export class PhysicsEngine3D {
       _integrateGroundZ = new Float64Array(maxCount);
       _integrateGroundNormals = new Float64Array(maxCount * 3);
       _integrateSleepTransitions = new Uint32Array(maxCount);
+      _integrateStepSyncEntityIds = new Int32Array(maxCount);
+      _finalStepSyncEntityIds = new Int32Array(maxCount);
     }
   }
 
-  private prepareIntegrationStep(): number {
-    let count = 0;
-    for (let i = 0; i < this.dynamicBodies.length; i++) {
-      const body = this.dynamicBodies[i];
-      body.upwardSurfaceContact = false;
-      this.applyMapBoundaryForcesToBody(body);
-      if (body.sleeping) continue;
-      this.addStepSyncEntity(body);
-      _integrateAwakeSlots[count] = body.slot;
-      count++;
+  private prepareIntegrationStep(dynamicSlots: Uint32Array): number {
+    const count = dynamicSlots.length;
+    const sim = getSimWasm()!;
+    const awakeView = _integrateAwakeSlots.subarray(0, count);
+    const syncView = _integrateStepSyncEntityIds.subarray(0, count);
+    sim.poolPrepareDynamicStep(
+      dynamicSlots,
+      awakeView,
+      syncView,
+      _physicsStepStats,
+      this.mapWidth,
+      this.mapHeight,
+      UNIT_WORLD_BOUNDARY_SPRING_ACCEL_PER_WORLD_UNIT,
+      WORLD_BOUNDARY_DAMPING_ACCEL_PER_SPEED,
+    );
+    this.awakeDynamicBodyCount += _physicsStepStats[1];
+    const syncCount = _physicsStepStats[2];
+    for (let i = 0; i < syncCount; i++) {
+      this.addStepSyncEntityId(syncView[i]);
     }
-    return count;
+    return _physicsStepStats[0];
   }
 
-  private collectFinalStepSyncEntitiesAndClearForces(): void {
-    for (let i = 0; i < this.dynamicBodies.length; i++) {
-      const body = this.dynamicBodies[i];
-      if (!body.sleeping) this.addStepSyncEntity(body);
-      body.ax = 0;
-      body.ay = 0;
-      body.az = 0;
-      body.groundLaunchAx = 0;
-      body.groundLaunchAy = 0;
-      body.groundLaunchAz = 0;
+  private collectFinalStepSyncEntitiesAndClearForces(dynamicSlots: Uint32Array): void {
+    const count = dynamicSlots.length;
+    if (count === 0) return;
+    const sim = getSimWasm()!;
+    const syncView = _finalStepSyncEntityIds.subarray(0, count);
+    const syncCount = sim.poolFinalizeDynamicStep(dynamicSlots, syncView);
+    for (let i = 0; i < syncCount; i++) {
+      this.addStepSyncEntityId(syncView[i]);
     }
   }
 
@@ -874,33 +906,28 @@ export class PhysicsEngine3D {
    *  per-static visit-stamp counter, and runs the resolver in
    *  place. JS only marshals the dyn slot list, the parallel
    *  ignored-static-slot lookup, and a wake-transition output. */
-  private resolveSphereCuboidContacts(): void {
+  private resolveSphereCuboidContacts(stepSlots: Uint32Array): void {
     const sim = getSimWasm()!;
-    const bodies = this.dynamicBodies;
-    const maxCount = bodies.length;
+    const maxCount = stepSlots.length;
     if (maxCount === 0) return;
-    if (_sphereCuboidDynSlots.length < maxCount) {
-      _sphereCuboidDynSlots = new Uint32Array(maxCount);
+    if (_sphereCuboidIgnoredStatics.length < maxCount) {
       _sphereCuboidIgnoredStatics = new Uint32Array(maxCount);
       _sphereCuboidWakeTransitions = new Uint32Array(maxCount);
     }
-    let n = 0;
-    for (let i = 0; i < maxCount; i++) {
-      const dyn = bodies[i];
-      if (!this.shouldProcessBodyThisStep(dyn)) continue;
-      if (dyn.shape !== 'sphere') continue;
-      _sphereCuboidDynSlots[n] = dyn.slot;
-      const ignored = this.ignoreStatic.get(dyn);
-      _sphereCuboidIgnoredStatics[n] = ignored !== undefined ? ignored.slot : NO_IGNORE_SLOT;
-      n++;
+    if (this.ignoreStatic.size === 0) {
+      _sphereCuboidIgnoredStatics.fill(NO_IGNORE_SLOT, 0, maxCount);
+    } else {
+      for (let i = 0; i < maxCount; i++) {
+        const dyn = this.bodyBySlot[stepSlots[i]];
+        const ignored = dyn === undefined ? undefined : this.ignoreStatic.get(dyn);
+        _sphereCuboidIgnoredStatics[i] = ignored !== undefined ? ignored.slot : NO_IGNORE_SLOT;
+      }
     }
-    if (n === 0) return;
-    const dynSlotsView = _sphereCuboidDynSlots.subarray(0, n);
-    const ignoredView = _sphereCuboidIgnoredStatics.subarray(0, n);
-    const wakeView = _sphereCuboidWakeTransitions.subarray(0, n);
+    const ignoredView = _sphereCuboidIgnoredStatics.subarray(0, maxCount);
+    const wakeView = _sphereCuboidWakeTransitions.subarray(0, maxCount);
     const wakeCount = sim.poolResolveSphereCuboidFull(
       this.staticsHandle,
-      dynSlotsView,
+      stepSlots,
       ignoredView,
       CONTACT_CELL_SIZE,
       wakeView,
@@ -923,31 +950,16 @@ export class PhysicsEngine3D {
    *  velocities / upward-contact flag bit directly into the pool;
    *  JS only marshals the slot list and a wake-transition output
    *  buffer. */
-  private resolveSphereSphereContacts(iterations: number): void {
+  private resolveSphereSphereContacts(iterations: number, dynamicSlots: Uint32Array): void {
     const sim = getSimWasm()!;
-    const bodies = this.dynamicBodies;
-    const maxCount = bodies.length;
+    const maxCount = dynamicSlots.length;
     if (maxCount === 0 || iterations <= 0) return;
-    if (_sphereSphereSlots.length < maxCount) {
-      _sphereSphereSlots = new Uint32Array(maxCount);
+    if (_sphereSphereWakeTransitions.length < maxCount) {
       _sphereSphereWakeTransitions = new Uint32Array(maxCount);
     }
-    let n = 0;
-    for (let i = 0; i < maxCount; i++) {
-      const b = bodies[i];
-      if (b.shape !== 'sphere') continue;
-      // Sleeping bodies still iterate the broadphase here — see the
-      // long comment in resolveSphereSphereContactsTsIteration around
-      // line 800 for why (a body spawning into a sleeping body's slot
-      // must still get pushed apart).
-      _sphereSphereSlots[n] = b.slot;
-      n++;
-    }
-    if (n === 0) return;
-    const slotsView = _sphereSphereSlots.subarray(0, n);
-    const wakeView = _sphereSphereWakeTransitions.subarray(0, n);
+    const wakeView = _sphereSphereWakeTransitions.subarray(0, maxCount);
     const wakeCount = sim.poolResolveSphereSphere(
-      slotsView,
+      dynamicSlots,
       iterations,
       CONTACT_CELL_SIZE,
       wakeView,
@@ -966,42 +978,4 @@ export class PhysicsEngine3D {
     }
   }
 
-  /** Apply an inward spring/damper at the map AABB edge. This keeps
-   *  perimeter containment in the same force/acceleration language as
-   *  terrain contact instead of editing positions after integration. */
-  private applyMapBoundaryForcesToBody(b: Body3D): void {
-    if (UNIT_WORLD_BOUNDARY_SPRING_ACCEL_PER_WORLD_UNIT <= 0 || b.shape !== 'sphere') {
-      return;
-    }
-    let ax = 0;
-    let ay = 0;
-    const minX = b.radius;
-    const maxX = this.mapWidth - b.radius;
-    const minY = b.radius;
-    const maxY = this.mapHeight - b.radius;
-    if (b.x < minX) {
-      ax += this.computeBoundaryAccel(minX - b.x, b.vx);
-    } else if (b.x > maxX) {
-      ax -= this.computeBoundaryAccel(b.x - maxX, -b.vx);
-    }
-    if (b.y < minY) {
-      ay += this.computeBoundaryAccel(minY - b.y, b.vy);
-    } else if (b.y > maxY) {
-      ay -= this.computeBoundaryAccel(b.y - maxY, -b.vy);
-    }
-    if (ax === 0 && ay === 0) return;
-    this.wakeBody(b);
-    b.ax += ax;
-    b.ay += ay;
-  }
-
-  private computeBoundaryAccel(
-    penetration: number,
-    inwardVelocity: number,
-  ): number {
-    const spring =
-      UNIT_WORLD_BOUNDARY_SPRING_ACCEL_PER_WORLD_UNIT * Math.max(0, penetration);
-    const damped = spring - WORLD_BOUNDARY_DAMPING_ACCEL_PER_SPEED * inwardVelocity;
-    return Number.isFinite(damped) ? Math.max(0, damped) : 0;
-  }
 }

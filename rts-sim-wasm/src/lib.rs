@@ -2460,6 +2460,218 @@ pub fn unit_ground_normal_step_pool(
 //  f64s — about a 6x reduction at typical unit counts.
 // ─────────────────────────────────────────────────────────────────
 
+#[inline]
+fn pool_is_dynamic_sphere(p: &BodyPool, slot: usize) -> bool {
+    let flags = p.flags[slot];
+    flags & BODY_FLAG_OCCUPIED != 0
+        && flags & BODY_FLAG_IS_STATIC == 0
+        && flags & BODY_FLAG_SHAPE_CUBOID == 0
+}
+
+#[inline]
+fn pool_boundary_accel(
+    penetration: f64,
+    inward_velocity: f64,
+    spring_accel: f64,
+    damping: f64,
+) -> f64 {
+    let spring = spring_accel * penetration.max(0.0);
+    let damped = spring - damping * inward_velocity;
+    if damped.is_finite() {
+        damped.max(0.0)
+    } else {
+        0.0
+    }
+}
+
+#[inline]
+fn pool_wake_body(p: &mut BodyPool, slot: usize) -> bool {
+    let was_sleeping = p.flags[slot] & BODY_FLAG_SLEEPING != 0;
+    if was_sleeping {
+        p.flags[slot] &= !BODY_FLAG_SLEEPING;
+    }
+    p.sleep_ticks[slot] = 0.0;
+    was_sleeping
+}
+
+/// PhysicsEngine3D step preparation over BodyPool slots.
+///
+/// Clears the per-step upward-contact flag, applies map-boundary
+/// spring/damping acceleration in Rust, wakes boundary-pushed bodies,
+/// and emits the awake slot list used by `pool_step_integrate`.
+///
+/// stats_out layout:
+///   [0] awake slot count
+///   [1] boundary wake count
+///   [2] sync entity id count
+#[wasm_bindgen]
+pub fn pool_prepare_dynamic_step(
+    dynamic_slots: &[u32],
+    awake_slots_out: &mut [u32],
+    sync_entity_ids_out: &mut [i32],
+    stats_out: &mut [u32],
+    map_width: f64,
+    map_height: f64,
+    boundary_spring_accel: f64,
+    boundary_damping_accel_per_speed: f64,
+) -> u32 {
+    if stats_out.len() < 3 {
+        return 0;
+    }
+    stats_out[0] = 0;
+    stats_out[1] = 0;
+    stats_out[2] = 0;
+    if awake_slots_out.len() < dynamic_slots.len()
+        || sync_entity_ids_out.len() < dynamic_slots.len()
+    {
+        return 0;
+    }
+
+    let p = pool();
+    let mut awake_count = 0_u32;
+    let mut wake_count = 0_u32;
+    let mut sync_count = 0_u32;
+    let boundary_enabled = boundary_spring_accel > 0.0
+        && map_width.is_finite()
+        && map_height.is_finite()
+        && map_width > 0.0
+        && map_height > 0.0;
+
+    for &slot_u32 in dynamic_slots {
+        let slot = slot_u32 as usize;
+        if slot >= POOL_CAPACITY_USIZE || !pool_is_dynamic_sphere(p, slot) {
+            continue;
+        }
+
+        p.flags[slot] &= !BODY_FLAG_UPWARD_CONTACT;
+
+        if boundary_enabled {
+            let radius = p.radius[slot];
+            let min_x = radius;
+            let max_x = map_width - radius;
+            let min_y = radius;
+            let max_y = map_height - radius;
+            let mut ax = 0.0;
+            let mut ay = 0.0;
+            let x = p.pos_x[slot];
+            let y = p.pos_y[slot];
+
+            if x < min_x {
+                ax += pool_boundary_accel(
+                    min_x - x,
+                    p.vel_x[slot],
+                    boundary_spring_accel,
+                    boundary_damping_accel_per_speed,
+                );
+            } else if x > max_x {
+                ax -= pool_boundary_accel(
+                    x - max_x,
+                    -p.vel_x[slot],
+                    boundary_spring_accel,
+                    boundary_damping_accel_per_speed,
+                );
+            }
+
+            if y < min_y {
+                ay += pool_boundary_accel(
+                    min_y - y,
+                    p.vel_y[slot],
+                    boundary_spring_accel,
+                    boundary_damping_accel_per_speed,
+                );
+            } else if y > max_y {
+                ay -= pool_boundary_accel(
+                    y - max_y,
+                    -p.vel_y[slot],
+                    boundary_spring_accel,
+                    boundary_damping_accel_per_speed,
+                );
+            }
+
+            if ax != 0.0 || ay != 0.0 {
+                if pool_wake_body(p, slot) {
+                    wake_count += 1;
+                }
+                p.accel_x[slot] += ax;
+                p.accel_y[slot] += ay;
+            }
+        }
+
+        if p.flags[slot] & BODY_FLAG_SLEEPING == 0 {
+            awake_slots_out[awake_count as usize] = slot_u32;
+            awake_count += 1;
+            let entity_id = p.entity_id[slot];
+            if entity_id >= 0 {
+                sync_entity_ids_out[sync_count as usize] = entity_id;
+                sync_count += 1;
+            }
+        }
+    }
+
+    stats_out[0] = awake_count;
+    stats_out[1] = wake_count;
+    stats_out[2] = sync_count;
+    awake_count
+}
+
+/// Collect awake entity IDs directly from BodyPool flags.
+#[wasm_bindgen]
+pub fn pool_collect_awake_entity_ids(dynamic_slots: &[u32], entity_ids_out: &mut [i32]) -> u32 {
+    if entity_ids_out.len() < dynamic_slots.len() {
+        return 0;
+    }
+
+    let p = pool();
+    let mut count = 0_u32;
+    for &slot_u32 in dynamic_slots {
+        let slot = slot_u32 as usize;
+        if slot >= POOL_CAPACITY_USIZE || !pool_is_dynamic_sphere(p, slot) {
+            continue;
+        }
+        if p.flags[slot] & BODY_FLAG_SLEEPING != 0 {
+            continue;
+        }
+        let entity_id = p.entity_id[slot];
+        if entity_id < 0 {
+            continue;
+        }
+        entity_ids_out[count as usize] = entity_id;
+        count += 1;
+    }
+    count
+}
+
+/// Final per-step sync collection and accumulator clear.
+#[wasm_bindgen]
+pub fn pool_finalize_dynamic_step(dynamic_slots: &[u32], sync_entity_ids_out: &mut [i32]) -> u32 {
+    if sync_entity_ids_out.len() < dynamic_slots.len() {
+        return 0;
+    }
+
+    let p = pool();
+    let mut sync_count = 0_u32;
+    for &slot_u32 in dynamic_slots {
+        let slot = slot_u32 as usize;
+        if slot >= POOL_CAPACITY_USIZE || !pool_is_dynamic_sphere(p, slot) {
+            continue;
+        }
+        if p.flags[slot] & BODY_FLAG_SLEEPING == 0 {
+            let entity_id = p.entity_id[slot];
+            if entity_id >= 0 {
+                sync_entity_ids_out[sync_count as usize] = entity_id;
+                sync_count += 1;
+            }
+        }
+        p.accel_x[slot] = 0.0;
+        p.accel_y[slot] = 0.0;
+        p.accel_z[slot] = 0.0;
+        p.launch_x[slot] = 0.0;
+        p.launch_y[slot] = 0.0;
+        p.launch_z[slot] = 0.0;
+    }
+    sync_count
+}
+
 #[wasm_bindgen]
 pub fn pool_step_integrate(
     awake_slots: &[u32],
@@ -27273,6 +27485,16 @@ pub fn snapshot_encode_envelope_emit_scan_pulses(count: u32) -> u32 {
 #[cfg(test)]
 mod sim_kernel_tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn lock_tests() -> MutexGuard<'static, ()> {
+        match TEST_LOCK.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
 
     #[test]
     fn wind_sample_state_writes_deterministic_vector() {
@@ -27287,6 +27509,83 @@ mod sim_kernel_tests {
         let mut short = [0.0; 3];
         assert_eq!(wind_sample_state(0.0, &mut short), 0);
         assert_eq!(wind_sample_state(f64::NAN, &mut a), 0);
+    }
+
+    #[test]
+    fn pool_dynamic_step_prepares_collects_and_finalizes_body_slots() {
+        let _guard = lock_tests();
+        pool_init();
+        let awake_slot = pool_alloc_slot();
+        let boundary_slot = pool_alloc_slot();
+
+        {
+            let p = pool();
+            let awake = awake_slot as usize;
+            p.pos_x[awake] = 50.0;
+            p.pos_y[awake] = 50.0;
+            p.radius[awake] = 5.0;
+            p.entity_id[awake] = 101;
+
+            let boundary = boundary_slot as usize;
+            p.pos_x[boundary] = 2.0;
+            p.pos_y[boundary] = 50.0;
+            p.radius[boundary] = 5.0;
+            p.entity_id[boundary] = 202;
+            p.flags[boundary] = BODY_FLAG_OCCUPIED | BODY_FLAG_SLEEPING;
+            p.sleep_ticks[boundary] = SLEEP_TICKS;
+        }
+
+        let slots = [awake_slot, boundary_slot];
+        let mut awake_slots = [0_u32; 2];
+        let mut sync_ids = [0_i32; 2];
+        let mut stats = [99_u32; 3];
+        assert_eq!(
+            pool_prepare_dynamic_step(
+                &slots,
+                &mut awake_slots,
+                &mut sync_ids,
+                &mut stats,
+                100.0,
+                100.0,
+                10.0,
+                0.0,
+            ),
+            2,
+        );
+        assert_eq!(stats, [2, 1, 2]);
+        assert_eq!(awake_slots, slots);
+        assert_eq!(sync_ids, [101, 202]);
+
+        let mut collected = [0_i32; 2];
+        assert_eq!(pool_collect_awake_entity_ids(&slots, &mut collected), 2);
+        assert_eq!(collected, [101, 202]);
+
+        {
+            let p = pool();
+            let boundary = boundary_slot as usize;
+            assert_eq!(p.flags[boundary] & BODY_FLAG_SLEEPING, 0);
+            assert!(p.accel_x[boundary] > 0.0);
+            assert_eq!(p.sleep_ticks[boundary], 0.0);
+        }
+
+        let mut final_sync = [0_i32; 2];
+        assert_eq!(pool_finalize_dynamic_step(&slots, &mut final_sync), 2);
+        assert_eq!(final_sync, [101, 202]);
+        {
+            let p = pool();
+            for &slot in &slots {
+                let i = slot as usize;
+                assert_eq!(p.accel_x[i], 0.0);
+                assert_eq!(p.accel_y[i], 0.0);
+                assert_eq!(p.accel_z[i], 0.0);
+                assert_eq!(p.launch_x[i], 0.0);
+                assert_eq!(p.launch_y[i], 0.0);
+                assert_eq!(p.launch_z[i], 0.0);
+            }
+        }
+
+        pool_free_slot(awake_slot);
+        pool_free_slot(boundary_slot);
     }
 
     #[test]

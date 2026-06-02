@@ -45,6 +45,9 @@ import __wbg_init, {
   pool_capacity,
   pool_alloc_slot,
   pool_free_slot,
+  pool_prepare_dynamic_step,
+  pool_collect_awake_entity_ids,
+  pool_finalize_dynamic_step,
   pool_step_integrate,
   pool_resolve_sphere_sphere,
   engine_statics_create,
@@ -756,6 +759,33 @@ export interface SimWasm {
     dtSec: number,
     airDamp: number,
     groundDamp: number,
+  ) => number;
+  /** Pool-backed PhysicsEngine3D step prep. Rust clears per-step
+   *  upward-contact flags, applies map-boundary acceleration, wakes
+   *  boundary-pushed sleepers, and emits both awake slot ids and
+   *  pre-step sync entity ids. statsOut = [awakeCount, wakeCount,
+   *  syncCount]. */
+  readonly poolPrepareDynamicStep: (
+    dynamicSlots: Uint32Array,
+    awakeSlotsOut: Uint32Array,
+    syncEntityIdsOut: Int32Array,
+    statsOut: Uint32Array,
+    mapWidth: number,
+    mapHeight: number,
+    boundarySpringAccel: number,
+    boundaryDampingAccelPerSpeed: number,
+  ) => number;
+  /** Collect awake unit EntityIds from BodyPool flags without a JS
+   *  dynamic-body scan. */
+  readonly poolCollectAwakeEntityIds: (
+    dynamicSlots: Uint32Array,
+    entityIdsOut: Int32Array,
+  ) => number;
+  /** Final per-step sync collection and accumulator clear over packed
+   *  BodyPool slots. */
+  readonly poolFinalizeDynamicStep: (
+    dynamicSlots: Uint32Array,
+    syncEntityIdsOut: Int32Array,
   ) => number;
   /** Pool-backed sphere-sphere resolver — Phase 3d-2. Iterates
    *  the broadphase + N sub-passes over body slots. State read /
@@ -3330,6 +3360,9 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         stepUnitMotion: step_unit_motion,
         clientPredictUnitMotionBatch: client_predict_unit_motion_batch,
         pool,
+        poolPrepareDynamicStep: pool_prepare_dynamic_step,
+        poolCollectAwakeEntityIds: pool_collect_awake_entity_ids,
+        poolFinalizeDynamicStep: pool_finalize_dynamic_step,
         poolStepIntegrate: pool_step_integrate,
         poolResolveSphereSphere: pool_resolve_sphere_sphere,
         engineStaticsCreate: engine_statics_create,
