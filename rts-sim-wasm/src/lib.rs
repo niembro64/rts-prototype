@@ -22168,6 +22168,161 @@ pub fn projectile_reflector_intersections_batch(
     }
 }
 
+/// C1 projectile migration — reflection response for projectile bodies.
+///
+/// TypeScript still owns entity/event write-back, but the authoritative
+/// numeric consequence of a reflector hit lives here: reflected velocity,
+/// post-reflection position for the unused portion of the tick, and optional
+/// facing rotation. Rows with invalid input or zero-length velocity/normal
+/// report `out_reflected = 0`.
+#[wasm_bindgen]
+pub fn projectile_reflection_response_batch(
+    count: u32,
+    enabled: &[u8],
+    hit_t: &[f64],
+    hit_x: &[f64],
+    hit_y: &[f64],
+    hit_z: &[f64],
+    velocity_x: &[f64],
+    velocity_y: &[f64],
+    velocity_z: &[f64],
+    normal_x: &[f64],
+    normal_y: &[f64],
+    normal_z: &[f64],
+    projectile_radius: &[f64],
+    dt_ms: f64,
+    reflectivity: f64,
+    out_reflected: &mut [u8],
+    out_pos_x: &mut [f64],
+    out_pos_y: &mut [f64],
+    out_pos_z: &mut [f64],
+    out_velocity_x: &mut [f64],
+    out_velocity_y: &mut [f64],
+    out_velocity_z: &mut [f64],
+    out_rotation_changed: &mut [u8],
+    out_rotation: &mut [f64],
+) -> u32 {
+    let n = count as usize;
+    if enabled.len() < n
+        || hit_t.len() < n
+        || hit_x.len() < n
+        || hit_y.len() < n
+        || hit_z.len() < n
+        || velocity_x.len() < n
+        || velocity_y.len() < n
+        || velocity_z.len() < n
+        || normal_x.len() < n
+        || normal_y.len() < n
+        || normal_z.len() < n
+        || projectile_radius.len() < n
+        || out_reflected.len() < n
+        || out_pos_x.len() < n
+        || out_pos_y.len() < n
+        || out_pos_z.len() < n
+        || out_velocity_x.len() < n
+        || out_velocity_y.len() < n
+        || out_velocity_z.len() < n
+        || out_rotation_changed.len() < n
+        || out_rotation.len() < n
+    {
+        return 0;
+    }
+    if !(dt_ms.is_finite() && reflectivity.is_finite()) {
+        return 0;
+    }
+
+    let dt_sec = dt_ms.max(0.0) / 1000.0;
+    let reflectivity = reflectivity.max(0.0);
+    let mut processed = 0u32;
+
+    for i in 0..n {
+        out_reflected[i] = 0;
+        out_pos_x[i] = 0.0;
+        out_pos_y[i] = 0.0;
+        out_pos_z[i] = 0.0;
+        out_velocity_x[i] = 0.0;
+        out_velocity_y[i] = 0.0;
+        out_velocity_z[i] = 0.0;
+        out_rotation_changed[i] = 0;
+        out_rotation[i] = 0.0;
+
+        if enabled[i] == 0 {
+            continue;
+        }
+
+        let t = hit_t[i];
+        let hx = hit_x[i];
+        let hy = hit_y[i];
+        let hz = hit_z[i];
+        let vx = velocity_x[i];
+        let vy = velocity_y[i];
+        let vz = velocity_z[i];
+        let nx_raw = normal_x[i];
+        let ny_raw = normal_y[i];
+        let nz_raw = normal_z[i];
+        let radius = projectile_radius[i];
+        if !(t.is_finite()
+            && hx.is_finite()
+            && hy.is_finite()
+            && hz.is_finite()
+            && vx.is_finite()
+            && vy.is_finite()
+            && vz.is_finite()
+            && nx_raw.is_finite()
+            && ny_raw.is_finite()
+            && nz_raw.is_finite()
+            && radius.is_finite())
+        {
+            continue;
+        }
+
+        let speed_sq = vx * vx + vy * vy + vz * vz;
+        let normal_len_sq = nx_raw * nx_raw + ny_raw * ny_raw + nz_raw * nz_raw;
+        if speed_sq <= 1e-18 || normal_len_sq <= 1e-18 {
+            continue;
+        }
+
+        let inv_normal_len = 1.0 / normal_len_sq.sqrt();
+        let nx = nx_raw * inv_normal_len;
+        let ny = ny_raw * inv_normal_len;
+        let nz = nz_raw * inv_normal_len;
+        let dot = vx * nx + vy * ny + vz * nz;
+        let mut rx = vx - 2.0 * dot * nx;
+        let mut ry = vy - 2.0 * dot * ny;
+        let mut rz = vz - 2.0 * dot * nz;
+        let reflected_len_sq = rx * rx + ry * ry + rz * rz;
+        if reflected_len_sq <= 1e-18 {
+            continue;
+        }
+
+        let scale = speed_sq.sqrt() * reflectivity / reflected_len_sq.sqrt();
+        rx *= scale;
+        ry *= scale;
+        rz *= scale;
+
+        let remaining_sec = (dt_sec * (1.0 - t)).max(0.0);
+        let surface_offset = 0.5_f64.max(radius.max(0.0) * 0.25);
+        let reflected_normal_dot = rx * nx + ry * ny + rz * nz;
+        let offset_sign = if reflected_normal_dot >= 0.0 { 1.0 } else { -1.0 };
+
+        out_reflected[i] = 1;
+        out_velocity_x[i] = rx;
+        out_velocity_y[i] = ry;
+        out_velocity_z[i] = rz;
+        out_pos_x[i] = hx + nx * surface_offset * offset_sign + rx * remaining_sec;
+        out_pos_y[i] = hy + ny * surface_offset * offset_sign + ry * remaining_sec;
+        out_pos_z[i] = hz + nz * surface_offset * offset_sign + rz * remaining_sec;
+
+        if (rx * rx + ry * ry).sqrt() > 1e-6 {
+            out_rotation_changed[i] = 1;
+            out_rotation[i] = ry.atan2(rx);
+        }
+        processed += 1;
+    }
+
+    processed
+}
+
 // ─────────────────────────────────────────────────────────────────
 // Snapshot baselines (Phase 10 D.3b)
 //
@@ -28744,6 +28899,71 @@ mod sim_kernel_tests {
         let mut short = [0.0; 3];
         assert_eq!(wind_sample_state(0.0, &mut short), 0);
         assert_eq!(wind_sample_state(f64::NAN, &mut a), 0);
+    }
+
+    #[test]
+    fn projectile_reflection_response_preserves_speed_and_advances_remainder() {
+        let enabled = [1_u8];
+        let hit_t = [0.25];
+        let hit_x = [10.0];
+        let hit_y = [20.0];
+        let hit_z = [5.0];
+        let velocity_x = [4.0];
+        let velocity_y = [-3.0];
+        let velocity_z = [0.0];
+        let normal_x = [0.0];
+        let normal_y = [1.0];
+        let normal_z = [0.0];
+        let radius = [4.0];
+        let mut reflected = [0_u8];
+        let mut out_x = [0.0];
+        let mut out_y = [0.0];
+        let mut out_z = [0.0];
+        let mut out_vx = [0.0];
+        let mut out_vy = [0.0];
+        let mut out_vz = [0.0];
+        let mut rotation_changed = [0_u8];
+        let mut rotation = [0.0];
+
+        assert_eq!(
+            projectile_reflection_response_batch(
+                1,
+                &enabled,
+                &hit_t,
+                &hit_x,
+                &hit_y,
+                &hit_z,
+                &velocity_x,
+                &velocity_y,
+                &velocity_z,
+                &normal_x,
+                &normal_y,
+                &normal_z,
+                &radius,
+                100.0,
+                1.0,
+                &mut reflected,
+                &mut out_x,
+                &mut out_y,
+                &mut out_z,
+                &mut out_vx,
+                &mut out_vy,
+                &mut out_vz,
+                &mut rotation_changed,
+                &mut rotation,
+            ),
+            1,
+        );
+
+        assert_eq!(reflected[0], 1);
+        assert!((out_vx[0] - 4.0).abs() < 1e-12);
+        assert!((out_vy[0] - 3.0).abs() < 1e-12);
+        assert!(out_vz[0].abs() < 1e-12);
+        assert!((out_x[0] - 10.3).abs() < 1e-12);
+        assert!((out_y[0] - 21.225).abs() < 1e-12);
+        assert!((out_z[0] - 5.0).abs() < 1e-12);
+        assert_eq!(rotation_changed[0], 1);
+        assert!((rotation[0] - 3.0_f64.atan2(4.0)).abs() < 1e-12);
     }
 
     #[test]

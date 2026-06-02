@@ -313,6 +313,7 @@ import __wbg_init, {
   shield_panel_pool_set_panel,
   shield_panel_pool_set_material_mode,
   projectile_reflector_intersections_batch,
+  projectile_reflection_response_batch,
   projectile_hitbox_sweep_batch,
   snapshot_baseline_create,
   snapshot_baseline_destroy,
@@ -949,6 +950,35 @@ export interface SimWasm {
     outNormalY: Float64Array,
     outNormalZ: Float64Array,
   ) => void;
+  /** C1 — reflected projectile consequence math. Rust computes the
+   *  velocity, post-hit position, and optional rotation after a shield
+   *  reflector contact; TypeScript applies the returned entity diff. */
+  readonly projectileReflectionResponseBatch: (
+    count: number,
+    enabled: Uint8Array,
+    hitT: Float64Array,
+    hitX: Float64Array,
+    hitY: Float64Array,
+    hitZ: Float64Array,
+    velocityX: Float64Array,
+    velocityY: Float64Array,
+    velocityZ: Float64Array,
+    normalX: Float64Array,
+    normalY: Float64Array,
+    normalZ: Float64Array,
+    projectileRadius: Float64Array,
+    dtMs: number,
+    reflectivity: number,
+    outReflected: Uint8Array,
+    outPosX: Float64Array,
+    outPosY: Float64Array,
+    outPosZ: Float64Array,
+    outVelocityX: Float64Array,
+    outVelocityY: Float64Array,
+    outVelocityZ: Float64Array,
+    outRotationChanged: Uint8Array,
+    outRotation: Float64Array,
+  ) => number;
   /** C1 — nearest swept hitbox contact for projectile bodies. Rust
    *  reads unit/building/projectile colliders from the spatial slab,
    *  includes current-tick turret sub-hitboxes from the combat-targeting
@@ -3443,6 +3473,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         unitForceStepBatch: unit_force_step_batch,
         projectilePool,
         projectileReflectorIntersectionsBatch: projectile_reflector_intersections_batch,
+        projectileReflectionResponseBatch: projectile_reflection_response_batch,
         projectileHitboxSweepBatch: projectile_hitbox_sweep_batch,
         poolStepPackedProjectilesBatch: pool_step_packed_projectiles_batch,
         projectileIntegrateStepBatch: projectile_integrate_step_batch,

@@ -94,6 +94,20 @@ let _reflectorHitZ = new Float64Array(0);
 let _reflectorHitNormalX = new Float64Array(0);
 let _reflectorHitNormalY = new Float64Array(0);
 let _reflectorHitNormalZ = new Float64Array(0);
+let _reflectorResponseEnabled = new Uint8Array(0);
+let _reflectorResponseVelocityX = new Float64Array(0);
+let _reflectorResponseVelocityY = new Float64Array(0);
+let _reflectorResponseVelocityZ = new Float64Array(0);
+let _reflectorResponseRadius = new Float64Array(0);
+let _reflectorResponseReflected = new Uint8Array(0);
+let _reflectorResponsePosX = new Float64Array(0);
+let _reflectorResponsePosY = new Float64Array(0);
+let _reflectorResponsePosZ = new Float64Array(0);
+let _reflectorResponseOutVelocityX = new Float64Array(0);
+let _reflectorResponseOutVelocityY = new Float64Array(0);
+let _reflectorResponseOutVelocityZ = new Float64Array(0);
+let _reflectorResponseRotationChanged = new Uint8Array(0);
+let _reflectorResponseRotation = new Float64Array(0);
 
 const _hitboxSweepEnabled = new Uint8Array(1);
 const _hitboxSweepStartX = new Float64Array(1);
@@ -160,6 +174,20 @@ function ensureReflectorBatchCapacity(count: number): void {
   _reflectorHitNormalX = new Float64Array(next);
   _reflectorHitNormalY = new Float64Array(next);
   _reflectorHitNormalZ = new Float64Array(next);
+  _reflectorResponseEnabled = new Uint8Array(next);
+  _reflectorResponseVelocityX = new Float64Array(next);
+  _reflectorResponseVelocityY = new Float64Array(next);
+  _reflectorResponseVelocityZ = new Float64Array(next);
+  _reflectorResponseRadius = new Float64Array(next);
+  _reflectorResponseReflected = new Uint8Array(next);
+  _reflectorResponsePosX = new Float64Array(next);
+  _reflectorResponsePosY = new Float64Array(next);
+  _reflectorResponsePosZ = new Float64Array(next);
+  _reflectorResponseOutVelocityX = new Float64Array(next);
+  _reflectorResponseOutVelocityY = new Float64Array(next);
+  _reflectorResponseOutVelocityZ = new Float64Array(next);
+  _reflectorResponseRotationChanged = new Uint8Array(next);
+  _reflectorResponseRotation = new Float64Array(next);
 }
 
 function ensureHitboxSweepExcludeCapacity(count: number): void {
@@ -179,11 +207,14 @@ function ensureHitboxSweepRemovedProjectileCapacity(count: number): void {
 function computeProjectileReflectorHits(
   world: WorldState,
   projectiles: readonly Entity[],
+  dtMs: number,
 ): void {
   const count = projectiles.length;
   if (count === 0) return;
   ensureReflectorBatchCapacity(count);
   _reflectorHitKind.fill(REFLECTOR_HIT_KIND_NONE, 0, count);
+  _reflectorResponseReflected.fill(0, 0, count);
+  _reflectorResponseRotationChanged.fill(0, 0, count);
 
   const mirrorsActive = world.turretShieldPanelsEnabled && world.getShieldPanelUnits().length > 0;
   const shieldsActive = world.turretShieldSpheresEnabled && getActiveShields().length > 0;
@@ -245,6 +276,50 @@ function computeProjectileReflectorHits(
     _reflectorHitNormalX.subarray(0, count),
     _reflectorHitNormalY.subarray(0, count),
     _reflectorHitNormalZ.subarray(0, count),
+  );
+
+  let responseCount = 0;
+  for (let i = 0; i < count; i++) {
+    _reflectorResponseEnabled[i] = 0;
+    if (_reflectorHitKind[i] === REFLECTOR_HIT_KIND_NONE) continue;
+    const projEntity = projectiles[i];
+    const proj = projEntity.projectile;
+    if (!proj || proj.projectileType !== 'projectile') continue;
+    if (!shieldMaterialReflectsProjectile(proj.config.shotProfile.runtime.isRocketLike)) continue;
+    _reflectorResponseEnabled[i] = 1;
+    _reflectorResponseVelocityX[i] = proj.velocityX;
+    _reflectorResponseVelocityY[i] = proj.velocityY;
+    _reflectorResponseVelocityZ[i] = proj.velocityZ;
+    _reflectorResponseRadius[i] = proj.config.shotProfile.runtime.radius.collision;
+    responseCount++;
+  }
+  if (responseCount === 0) return;
+
+  sim.projectileReflectionResponseBatch(
+    count,
+    _reflectorResponseEnabled.subarray(0, count),
+    _reflectorHitT.subarray(0, count),
+    _reflectorHitX.subarray(0, count),
+    _reflectorHitY.subarray(0, count),
+    _reflectorHitZ.subarray(0, count),
+    _reflectorResponseVelocityX.subarray(0, count),
+    _reflectorResponseVelocityY.subarray(0, count),
+    _reflectorResponseVelocityZ.subarray(0, count),
+    _reflectorHitNormalX.subarray(0, count),
+    _reflectorHitNormalY.subarray(0, count),
+    _reflectorHitNormalZ.subarray(0, count),
+    _reflectorResponseRadius.subarray(0, count),
+    dtMs,
+    REFLECTIVE_SHIELD_MATERIAL.reflection.reflectivity,
+    _reflectorResponseReflected.subarray(0, count),
+    _reflectorResponsePosX.subarray(0, count),
+    _reflectorResponsePosY.subarray(0, count),
+    _reflectorResponsePosZ.subarray(0, count),
+    _reflectorResponseOutVelocityX.subarray(0, count),
+    _reflectorResponseOutVelocityY.subarray(0, count),
+    _reflectorResponseOutVelocityZ.subarray(0, count),
+    _reflectorResponseRotationChanged.subarray(0, count),
+    _reflectorResponseRotation.subarray(0, count),
   );
 }
 
@@ -313,38 +388,6 @@ function pushReflectorImpactEvent(
       playerId: playerId ?? 0,
     },
   });
-}
-
-function reflectVelocityPreserveSpeed(
-  vx: number,
-  vy: number,
-  vz: number,
-  normalX: number,
-  normalY: number,
-  normalZ: number,
-  reflectivity: number,
-): { x: number; y: number; z: number } | null {
-  // Inline sqrt over 3-arg Math.hypot: V8 const-folds and inlines the
-  // squared expression aggressively; Math.hypot adds overflow-safe
-  // scaling we don't need at sim scale and runs measurably slower in
-  // this reflection-per-collision hot path.
-  const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
-  const nLen = Math.sqrt(normalX * normalX + normalY * normalY + normalZ * normalZ);
-  if (speed <= 1e-9 || nLen <= 1e-9) return null;
-  const nx = normalX / nLen;
-  const ny = normalY / nLen;
-  const nz = normalZ / nLen;
-  const dot = vx * nx + vy * ny + vz * nz;
-  let rx = vx - 2 * dot * nx;
-  let ry = vy - 2 * dot * ny;
-  let rz = vz - 2 * dot * nz;
-  const rLen = Math.sqrt(rx * rx + ry * ry + rz * rz);
-  if (rLen <= 1e-9) return null;
-  const scale = (speed * reflectivity) / rLen;
-  rx *= scale;
-  ry *= scale;
-  rz *= scale;
-  return { x: rx, y: ry, z: rz };
 }
 
 type ProjectileHitboxSweepHit = {
@@ -878,7 +921,7 @@ export function checkProjectileCollisions(
   const collisionDtMs = dtMs;
   const projectileEntities = world.getProjectiles();
   refreshProjectileCollisionTurretMounts(world, dtMs);
-  computeProjectileReflectorHits(world, projectileEntities);
+  computeProjectileReflectorHits(world, projectileEntities, collisionDtMs);
 
   for (let projectileOrdinal = 0; projectileOrdinal < projectileEntities.length; projectileOrdinal++) {
     const projEntity = projectileEntities[projectileOrdinal];
@@ -894,7 +937,6 @@ export function checkProjectileCollisions(
     const isDGunProjectile = dgunProjectile !== null && dgunProjectile.isDGun === true;
     const profile = config.shotProfile;
     const runtimeProfile = profile.runtime;
-    const isRocketShot = runtimeProfile.isRocketLike;
     if (proj.projectileType === 'projectile') {
       const sweepPrevX = proj.collisionStartX ?? proj.prevX ?? projEntity.transform.x;
       const sweepPrevY = proj.collisionStartY ?? proj.prevY ?? projEntity.transform.y;
@@ -945,37 +987,21 @@ export function checkProjectileCollisions(
         hitShield = reflectorKind === REFLECTOR_HIT_KIND_SHIELD;
       }
       if (bestT < Infinity) {
-        const shouldReflectProjectile = shieldMaterialReflectsProjectile(isRocketShot);
-        const reflected = shouldReflectProjectile &&
-          reflectorNormalX !== undefined &&
-          reflectorNormalY !== undefined &&
-          reflectorNormalZ !== undefined
-          ? reflectVelocityPreserveSpeed(
-              proj.velocityX, proj.velocityY, proj.velocityZ,
-              reflectorNormalX, reflectorNormalY, reflectorNormalZ,
-              REFLECTIVE_SHIELD_MATERIAL.reflection.reflectivity,
-            )
-          : null;
-        if (reflected) {
+        if (_reflectorResponseReflected[projectileOrdinal] !== 0) {
           reflectorHitX = bestX;
           reflectorHitY = bestY;
           reflectorHitZ = bestZ;
-          const remainingSec = Math.max(0, (collisionDtMs / 1000) * (1 - bestT));
-          const nLen = Math.hypot(reflectorNormalX!, reflectorNormalY!, reflectorNormalZ!) || 1;
-          const nx = reflectorNormalX! / nLen;
-          const ny = reflectorNormalY! / nLen;
-          const nz = reflectorNormalZ! / nLen;
-          const surfaceOffset = Math.max(0.5, runtimeProfile.radius.collision * 0.25);
-          const reflectedNormalDot = reflected.x * nx + reflected.y * ny + reflected.z * nz;
-          const offsetSign = reflectedNormalDot >= 0 ? 1 : -1;
-          proj.velocityX = reflected.x;
-          proj.velocityY = reflected.y;
-          proj.velocityZ = reflected.z;
-          projEntity.transform.x = bestX + nx * surfaceOffset * offsetSign + reflected.x * remainingSec;
-          projEntity.transform.y = bestY + ny * surfaceOffset * offsetSign + reflected.y * remainingSec;
-          projEntity.transform.z = bestZ + nz * surfaceOffset * offsetSign + reflected.z * remainingSec;
-          if (Math.hypot(reflected.x, reflected.y) > 1e-6) {
-            projEntity.transform.rotation = Math.atan2(reflected.y, reflected.x);
+          const reflectedX = _reflectorResponseOutVelocityX[projectileOrdinal];
+          const reflectedY = _reflectorResponseOutVelocityY[projectileOrdinal];
+          const reflectedZ = _reflectorResponseOutVelocityZ[projectileOrdinal];
+          proj.velocityX = reflectedX;
+          proj.velocityY = reflectedY;
+          proj.velocityZ = reflectedZ;
+          projEntity.transform.x = _reflectorResponsePosX[projectileOrdinal];
+          projEntity.transform.y = _reflectorResponsePosY[projectileOrdinal];
+          projEntity.transform.z = _reflectorResponsePosZ[projectileOrdinal];
+          if (_reflectorResponseRotationChanged[projectileOrdinal] !== 0) {
+            projEntity.transform.rotation = _reflectorResponseRotation[projectileOrdinal];
           }
           proj.collisionStartX = projEntity.transform.x;
           proj.collisionStartY = projEntity.transform.y;
@@ -983,9 +1009,9 @@ export function checkProjectileCollisions(
           proj.prevX = projEntity.transform.x;
           proj.prevY = projEntity.transform.y;
           proj.prevZ = projEntity.transform.z;
-          proj.lastSentVelX = reflected.x;
-          proj.lastSentVelY = reflected.y;
-          proj.lastSentVelZ = reflected.z;
+          proj.lastSentVelX = reflectedX;
+          proj.lastSentVelY = reflectedY;
+          proj.lastSentVelZ = reflectedZ;
           spatialGrid.updateProjectile(projEntity);
           velocityUpdates.push({
             id: projEntity.id,
@@ -994,7 +1020,7 @@ export function checkProjectileCollisions(
               y: projEntity.transform.y,
               z: projEntity.transform.z,
             },
-            velocity: { x: reflected.x, y: reflected.y, z: reflected.z },
+            velocity: { x: reflectedX, y: reflectedY, z: reflectedZ },
           });
           reflectedProjectile = true;
           if (reflectorImpactEvents < MAX_REFLECTOR_IMPACT_EVENTS_PER_PASS) {
