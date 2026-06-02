@@ -128,6 +128,10 @@ const _hitboxSweepOutT = new Float64Array(1);
 const _hitboxSweepOutNormalX = new Float64Array(1);
 const _hitboxSweepOutNormalY = new Float64Array(1);
 const _hitboxSweepOutNormalZ = new Float64Array(1);
+let _submunitionLaunchCapacity = 0;
+let _submunitionLaunchVelocityX = new Float64Array(0);
+let _submunitionLaunchVelocityY = new Float64Array(0);
+let _submunitionLaunchVelocityZ = new Float64Array(0);
 
 function queueProjectileRemoval(
   id: EntityId,
@@ -202,6 +206,38 @@ function ensureHitboxSweepRemovedProjectileCapacity(count: number): void {
   let next = _hitboxSweepRemovedProjectileIds.length;
   while (next < count) next *= 2;
   _hitboxSweepRemovedProjectileIds = new Int32Array(next);
+}
+
+function ensureSubmunitionLaunchCapacity(count: number): void {
+  if (count <= _submunitionLaunchCapacity) return;
+  let next = Math.max(8, _submunitionLaunchCapacity);
+  while (next < count) next *= 2;
+  _submunitionLaunchCapacity = next;
+  _submunitionLaunchVelocityX = new Float64Array(next);
+  _submunitionLaunchVelocityY = new Float64Array(next);
+  _submunitionLaunchVelocityZ = new Float64Array(next);
+}
+
+function mixSubmunitionSeed(seed: number, value: number): number {
+  let next = Math.imul(seed ^ (value | 0), 0x85ebca6b) >>> 0;
+  next = (next ^ (next >>> 13)) >>> 0;
+  return Math.imul(next, 0xc2b2ae35) >>> 0;
+}
+
+function makeSubmunitionSeed(
+  parentShotEntityId: EntityId,
+  parentShotSource: ShotSource,
+  currentTick: number,
+): number {
+  let seed = 0x9e3779b9;
+  seed = mixSubmunitionSeed(seed, parentShotEntityId);
+  seed = mixSubmunitionSeed(seed, currentTick);
+  seed = mixSubmunitionSeed(seed, parentShotSource.spawnTick);
+  seed = mixSubmunitionSeed(seed, parentShotSource.sourceHostEntityId);
+  seed = mixSubmunitionSeed(seed, parentShotSource.sourceRootEntityId);
+  seed = mixSubmunitionSeed(seed, parentShotSource.sourceTurretEntityId ?? 0);
+  seed = mixSubmunitionSeed(seed, parentShotSource.parentShotEntityId ?? 0);
+  return seed === 0 ? 0x6d2b79f5 : seed;
 }
 
 function computeProjectileReflectorHits(
@@ -597,81 +633,47 @@ function spawnSubmunitions(
 ): void {
   const spec = parentShot.submunitions;
   if (!spec || spec.count <= 0) return;
+  const childCount = Math.floor(spec.count);
+  if (childCount <= 0) return;
 
   const sourceTurretBlueprintId = parentShotSource.sourceTurretBlueprintId;
   const childCfg = createProjectileConfigFromShot(spec.shotBlueprintId, sourceTurretBlueprintId);
 
-  // Reflect the parent's velocity across the surface normal:
-  //   bounce = V − 2(V·N)N
-  // then scale by the spec's damper to model energy loss on impact
-  // (1.0 = elastic bounce, 0.0 = velocity fully absorbed, default 1.0).
-  // No valid normal (mid-air expiry) → inherit parent velocity directly.
   const reflectedVelocityDamper = spec.reflectedVelocityDamper ?? 1.0;
-  let bounceVx = parentVx;
-  let bounceVy = parentVy;
-  let bounceVz = parentVz;
-  if (
-    surfaceNormalX !== undefined
-    && surfaceNormalY !== undefined
-    && surfaceNormalZ !== undefined
-  ) {
-    const normalLen2 =
-      surfaceNormalX * surfaceNormalX
-      + surfaceNormalY * surfaceNormalY
-      + surfaceNormalZ * surfaceNormalZ;
-    if (normalLen2 > 1e-9) {
-      // Normalize n in case the caller passed an unnormalized vector.
-      const normalInv = 1 / Math.sqrt(normalLen2);
-      const normalX = surfaceNormalX * normalInv;
-      const normalY = surfaceNormalY * normalInv;
-      const normalZ = surfaceNormalZ * normalInv;
-      const velocityDotNormal =
-        parentVx * normalX + parentVy * normalY + parentVz * normalZ;
-      bounceVx = (parentVx - 2 * velocityDotNormal * normalX) * reflectedVelocityDamper;
-      bounceVy = (parentVy - 2 * velocityDotNormal * normalY) * reflectedVelocityDamper;
-      bounceVz = (parentVz - 2 * velocityDotNormal * normalZ) * reflectedVelocityDamper;
-    }
+  const hasSurfaceNormal =
+    surfaceNormalX !== undefined &&
+    surfaceNormalY !== undefined &&
+    surfaceNormalZ !== undefined;
+  ensureSubmunitionLaunchCapacity(childCount);
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('Submunition launch velocity generation requires initialized sim-wasm');
+  }
+  const processed = sim.projectileSubmunitionLaunchVelocityBatch(
+    childCount,
+    makeSubmunitionSeed(parentShotEntityId, parentShotSource, world.getTick()),
+    parentVx,
+    parentVy,
+    parentVz,
+    surfaceNormalX ?? 0,
+    surfaceNormalY ?? 0,
+    surfaceNormalZ ?? 0,
+    hasSurfaceNormal ? 1 : 0,
+    reflectedVelocityDamper,
+    spec.randomSpreadSpeedHorizontal,
+    spec.randomSpreadSpeedVertical,
+    _submunitionLaunchVelocityX,
+    _submunitionLaunchVelocityY,
+    _submunitionLaunchVelocityZ,
+  );
+  if (processed !== childCount) {
+    throw new Error(`Submunition launch velocity batch failed: ${processed}/${childCount}`);
   }
 
-  // Sim RNG isn't exposed here, so Math.random() drives the cosmetic
-  // spread — submunition direction doesn't feed back into deterministic
-  // sim state (damage / knockback come from the parent's detonation
-  // and the fragments' own collisions, both of which use sim RNG).
-  // Horizontal and vertical spread magnitudes are independent so a
-  // shot can fan WIDE horizontally without launching half its fragments
-  // straight up (or vice versa).
-  const horizSpread = spec.randomSpreadSpeedHorizontal;
-  const vertSpread = spec.randomSpreadSpeedVertical;
-  for (let i = 0; i < spec.count; i++) {
-    // Uniform random unit vector via 3D rejection sampling — gives
-    // each fragment a different perturbation around the bounce
-    // direction. Repeat-until-inside-unit-ball avoids the cube-bias
-    // a naive (rand, rand, rand) would produce.
-    let jitterDirX = 0;
-    let jitterDirY = 0;
-    let jitterDirZ = 0;
-    let jitterLen2 = 0;
-    do {
-      jitterDirX = Math.random() * 2 - 1;
-      jitterDirY = Math.random() * 2 - 1;
-      jitterDirZ = Math.random() * 2 - 1;
-      jitterLen2 =
-        jitterDirX * jitterDirX
-        + jitterDirY * jitterDirY
-        + jitterDirZ * jitterDirZ;
-    } while (jitterLen2 > 1 || jitterLen2 < 1e-6);
-    const jitterInv = 1 / Math.sqrt(jitterLen2);
-    jitterDirX *= jitterInv;
-    jitterDirY *= jitterInv;
-    jitterDirZ *= jitterInv;
-
-    // Anisotropic scaling: horizontal speed for the XY component, a
-    // separate vertical speed for Z. The unit-vector input keeps the
-    // distribution shape uniform on the sphere; scaling per-axis
-    // turns the random offset into an ellipsoid.
-    const launchVx = bounceVx + horizSpread * jitterDirX;
-    const launchVy = bounceVy + horizSpread * jitterDirY;
-    const launchVz = bounceVz + vertSpread * jitterDirZ;
+  for (let i = 0; i < childCount; i++) {
+    const launchVx = _submunitionLaunchVelocityX[i];
+    const launchVy = _submunitionLaunchVelocityY[i];
+    const launchVz = _submunitionLaunchVelocityZ[i];
 
     const proj = world.createProjectile(
       detonationX, detonationY, launchVx, launchVy,

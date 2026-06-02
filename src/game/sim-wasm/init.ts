@@ -314,6 +314,7 @@ import __wbg_init, {
   shield_panel_pool_set_material_mode,
   projectile_reflector_intersections_batch,
   projectile_reflection_response_batch,
+  projectile_submunition_launch_velocity_batch,
   projectile_hitbox_sweep_batch,
   snapshot_baseline_create,
   snapshot_baseline_destroy,
@@ -978,6 +979,27 @@ export interface SimWasm {
     outVelocityZ: Float64Array,
     outRotationChanged: Uint8Array,
     outRotation: Float64Array,
+  ) => number;
+  /** C1 — submunition detonation consequence math. Rust computes
+   *  surface-reflected parent velocity plus deterministic per-child
+   *  scatter; TypeScript only materializes returned projectile spawn
+   *  diffs. */
+  readonly projectileSubmunitionLaunchVelocityBatch: (
+    count: number,
+    seed: number,
+    parentVelocityX: number,
+    parentVelocityY: number,
+    parentVelocityZ: number,
+    surfaceNormalX: number,
+    surfaceNormalY: number,
+    surfaceNormalZ: number,
+    hasSurfaceNormal: number,
+    reflectedVelocityDamper: number,
+    spreadSpeedHorizontal: number,
+    spreadSpeedVertical: number,
+    outVelocityX: Float64Array,
+    outVelocityY: Float64Array,
+    outVelocityZ: Float64Array,
   ) => number;
   /** C1 — nearest swept hitbox contact for projectile bodies. Rust
    *  reads unit/building/projectile colliders from the spatial slab,
@@ -3474,6 +3496,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         projectilePool,
         projectileReflectorIntersectionsBatch: projectile_reflector_intersections_batch,
         projectileReflectionResponseBatch: projectile_reflection_response_batch,
+        projectileSubmunitionLaunchVelocityBatch: projectile_submunition_launch_velocity_batch,
         projectileHitboxSweepBatch: projectile_hitbox_sweep_batch,
         poolStepPackedProjectilesBatch: pool_step_packed_projectiles_batch,
         projectileIntegrateStepBatch: projectile_integrate_step_batch,

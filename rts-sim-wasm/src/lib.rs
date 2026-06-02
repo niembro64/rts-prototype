@@ -22323,6 +22323,112 @@ pub fn projectile_reflection_response_batch(
     processed
 }
 
+#[inline]
+fn projectile_submunition_rng_next(seed: &mut u32) -> f64 {
+    *seed = seed.wrapping_add(0x6D2B79F5);
+    let mut t = *seed;
+    t = (t ^ (t >> 15)).wrapping_mul(t | 1);
+    t ^= t.wrapping_add((t ^ (t >> 7)).wrapping_mul(t | 61));
+    ((t ^ (t >> 14)) as f64) / 4294967296.0
+}
+
+fn projectile_submunition_unit_jitter(seed: &mut u32) -> (f64, f64, f64) {
+    for _ in 0..64 {
+        let mut x = projectile_submunition_rng_next(seed) * 2.0 - 1.0;
+        let mut y = projectile_submunition_rng_next(seed) * 2.0 - 1.0;
+        let mut z = projectile_submunition_rng_next(seed) * 2.0 - 1.0;
+        let len_sq = x * x + y * y + z * z;
+        if len_sq <= 1.0 && len_sq > 1e-6 {
+            let inv = 1.0 / len_sq.sqrt();
+            x *= inv;
+            y *= inv;
+            z *= inv;
+            return (x, y, z);
+        }
+    }
+
+    // Degenerate deterministic fallback. The rejection loop should almost
+    // never exhaust, but gameplay code must not spin forever on pathological
+    // seeds or future RNG changes.
+    let angle = projectile_submunition_rng_next(seed) * core::f64::consts::PI * 2.0;
+    (angle.cos(), angle.sin(), 0.0)
+}
+
+/// C1 projectile migration — deterministic launch velocities for
+/// submunition consequences emitted by a parent projectile detonation.
+///
+/// TypeScript still materializes child projectile entities and network spawn
+/// events, but the authoritative numeric consequence (surface reflection,
+/// deterministic scatter, and child launch velocities) lives in Rust.
+#[wasm_bindgen]
+pub fn projectile_submunition_launch_velocity_batch(
+    count: u32,
+    seed: u32,
+    parent_velocity_x: f64,
+    parent_velocity_y: f64,
+    parent_velocity_z: f64,
+    surface_normal_x: f64,
+    surface_normal_y: f64,
+    surface_normal_z: f64,
+    has_surface_normal: u8,
+    reflected_velocity_damper: f64,
+    spread_speed_horizontal: f64,
+    spread_speed_vertical: f64,
+    out_velocity_x: &mut [f64],
+    out_velocity_y: &mut [f64],
+    out_velocity_z: &mut [f64],
+) -> u32 {
+    let n = count as usize;
+    if out_velocity_x.len() < n || out_velocity_y.len() < n || out_velocity_z.len() < n {
+        return 0;
+    }
+    if !(parent_velocity_x.is_finite()
+        && parent_velocity_y.is_finite()
+        && parent_velocity_z.is_finite()
+        && surface_normal_x.is_finite()
+        && surface_normal_y.is_finite()
+        && surface_normal_z.is_finite()
+        && reflected_velocity_damper.is_finite()
+        && spread_speed_horizontal.is_finite()
+        && spread_speed_vertical.is_finite())
+    {
+        return 0;
+    }
+
+    let mut bounce_x = parent_velocity_x;
+    let mut bounce_y = parent_velocity_y;
+    let mut bounce_z = parent_velocity_z;
+    if has_surface_normal != 0 {
+        let normal_len_sq = surface_normal_x * surface_normal_x
+            + surface_normal_y * surface_normal_y
+            + surface_normal_z * surface_normal_z;
+        if normal_len_sq > 1e-9 {
+            let normal_inv = 1.0 / normal_len_sq.sqrt();
+            let nx = surface_normal_x * normal_inv;
+            let ny = surface_normal_y * normal_inv;
+            let nz = surface_normal_z * normal_inv;
+            let velocity_dot_normal =
+                parent_velocity_x * nx + parent_velocity_y * ny + parent_velocity_z * nz;
+            let damper = reflected_velocity_damper.max(0.0);
+            bounce_x = (parent_velocity_x - 2.0 * velocity_dot_normal * nx) * damper;
+            bounce_y = (parent_velocity_y - 2.0 * velocity_dot_normal * ny) * damper;
+            bounce_z = (parent_velocity_z - 2.0 * velocity_dot_normal * nz) * damper;
+        }
+    }
+
+    let mut rng_seed = seed;
+    let horizontal = spread_speed_horizontal.max(0.0);
+    let vertical = spread_speed_vertical.max(0.0);
+    for i in 0..n {
+        let (jx, jy, jz) = projectile_submunition_unit_jitter(&mut rng_seed);
+        out_velocity_x[i] = bounce_x + horizontal * jx;
+        out_velocity_y[i] = bounce_y + horizontal * jy;
+        out_velocity_z[i] = bounce_z + vertical * jz;
+    }
+
+    count
+}
+
 // ─────────────────────────────────────────────────────────────────
 // Snapshot baselines (Phase 10 D.3b)
 //
@@ -28964,6 +29070,94 @@ mod sim_kernel_tests {
         assert!((out_z[0] - 5.0).abs() < 1e-12);
         assert_eq!(rotation_changed[0], 1);
         assert!((rotation[0] - 3.0_f64.atan2(4.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn projectile_submunition_launch_velocity_reflects_surface_velocity() {
+        let mut out_x = [0.0; 2];
+        let mut out_y = [0.0; 2];
+        let mut out_z = [0.0; 2];
+
+        assert_eq!(
+            projectile_submunition_launch_velocity_batch(
+                2,
+                123,
+                10.0,
+                -2.0,
+                1.0,
+                0.0,
+                1.0,
+                0.0,
+                1,
+                0.5,
+                0.0,
+                0.0,
+                &mut out_x,
+                &mut out_y,
+                &mut out_z,
+            ),
+            2,
+        );
+
+        assert_eq!(out_x, [5.0, 5.0]);
+        assert_eq!(out_y, [1.0, 1.0]);
+        assert_eq!(out_z, [0.5, 0.5]);
+    }
+
+    #[test]
+    fn projectile_submunition_launch_velocity_is_seed_deterministic() {
+        let mut ax = [0.0; 4];
+        let mut ay = [0.0; 4];
+        let mut az = [0.0; 4];
+        let mut bx = [0.0; 4];
+        let mut by = [0.0; 4];
+        let mut bz = [0.0; 4];
+
+        assert_eq!(
+            projectile_submunition_launch_velocity_batch(
+                4,
+                0xC1C0FFEE,
+                3.0,
+                4.0,
+                5.0,
+                0.0,
+                0.0,
+                0.0,
+                0,
+                1.0,
+                160.0,
+                50.0,
+                &mut ax,
+                &mut ay,
+                &mut az,
+            ),
+            4,
+        );
+        assert_eq!(
+            projectile_submunition_launch_velocity_batch(
+                4,
+                0xC1C0FFEE,
+                3.0,
+                4.0,
+                5.0,
+                0.0,
+                0.0,
+                0.0,
+                0,
+                1.0,
+                160.0,
+                50.0,
+                &mut bx,
+                &mut by,
+                &mut bz,
+            ),
+            4,
+        );
+
+        assert_eq!(ax, bx);
+        assert_eq!(ay, by);
+        assert_eq!(az, bz);
+        assert_ne!(ax, [3.0; 4]);
     }
 
     #[test]

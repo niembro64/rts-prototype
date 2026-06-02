@@ -47,11 +47,13 @@ shield reflector intersections, reflected projectile response math, and swept
 body/building/projectile hit selection, including current-tick turret
 sub-hitboxes from the combat-targeting slab. The remaining TypeScript
 authority is still too large: checkProjectileCollisions owns direct-hit
-consequences, timeout/ground/water termination, submunition spawn, detonation
-audio/events, despawn/velocity-update event application, and D-gun swept damage
-orchestration; DamageSystem/Simulation still own HP write-back, kill
-collection, cleanupDeadEntities, and death-explosion detonation. This still
-violates "TypeScript Coordinates, WASM Computes."
+consequences, timeout/ground/water termination, submunition entity/event
+creation, detonation audio/events, despawn/velocity-update event application,
+and D-gun swept damage orchestration; DamageSystem/Simulation still own HP
+write-back, kill collection, cleanupDeadEntities, and death-explosion
+detonation. Submunition launch velocity scatter is now Rust/WASM-owned, but the
+remaining TS orchestration still violates "TypeScript Coordinates, WASM
+Computes."
 FIX (C1 migration): move projectile termination/detonation outputs and
 HP/death write-back into Rust/WASM kernels, and leave TypeScript only to apply
 compact returned event/entity diffs.
