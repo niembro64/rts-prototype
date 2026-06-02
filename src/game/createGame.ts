@@ -4,72 +4,89 @@ import { MAP_BG_COLOR, hexToStr } from '../config';
 import {
   acquireRendererSlot,
   releaseRendererSlot,
+  transferRendererSlot,
 } from './lifecycle/sessionSingleton';
 
 export type { GameConfig, GameInstance, GameScene, GameApp } from '@/types/game';
 import type { GameConfig, GameInstance, GameScene } from '@/types/game';
 
+const clearSceneByInstance = new WeakMap<GameInstance, () => void>();
+
 export function createGame(config: GameConfig): GameInstance {
+  const rendererSlotOwner = { constructor: { name: 'createGame' } };
+  acquireRendererSlot(rendererSlotOwner);
+
   const playerIds = config.playerIds ?? [1, 2];
   const localPlayerId = config.localPlayerId ?? 1;
   const backgroundMode = config.backgroundMode ?? false;
   const bgColor = hexToStr(MAP_BG_COLOR);
 
-  const app = new ThreeApp(
-    config.parent,
-    config.width,
-    config.height,
-    config.mapWidth,
-    config.mapHeight,
-    bgColor,
-  );
+  let app: ThreeApp | null = null;
+  let currentScene: GameScene | null = null;
+  try {
+    app = new ThreeApp(
+      config.parent,
+      config.width,
+      config.height,
+      config.mapWidth,
+      config.mapHeight,
+      bgColor,
+    );
 
-  const lobbyPreview = config.lobbyPreview ?? false;
-  const buildScene = () =>
-    new RtsScene3D(app, {
-      playerIds,
-      localPlayerId,
-      gameConnection: config.gameConnection,
-      clientViewState: config.clientViewState,
-      mapWidth: config.mapWidth,
-      mapHeight: config.mapHeight,
-      centerMagnitude: config.centerMagnitude,
-      dividersMagnitude: config.dividersMagnitude,
-      terrainMapShape: config.terrainMapShape,
-      backgroundMode,
-      lobbyPreview,
-      lookupPlayerName: config.lookupPlayerName,
-      onRendererWarmupChange: config.onRendererWarmupChange,
-      onStartupReady: config.onStartupReady,
+    const lobbyPreview = config.lobbyPreview ?? false;
+    const buildScene = () =>
+      new RtsScene3D(app!, {
+        playerIds,
+        localPlayerId,
+        gameConnection: config.gameConnection,
+        clientViewState: config.clientViewState,
+        mapWidth: config.mapWidth,
+        mapHeight: config.mapHeight,
+        centerMagnitude: config.centerMagnitude,
+        dividersMagnitude: config.dividersMagnitude,
+        terrainMapShape: config.terrainMapShape,
+        backgroundMode,
+        lobbyPreview,
+        lookupPlayerName: config.lookupPlayerName,
+        onRendererWarmupChange: config.onRendererWarmupChange,
+        onStartupReady: config.onStartupReady,
+      });
+
+    let scene = buildScene();
+    currentScene = scene;
+    scene.create();
+    app.onUpdate((time, delta) => {
+      currentScene?.update(time, delta);
     });
+    app.start();
 
-  let scene = buildScene();
-  scene.create();
+    const wireRestart = (s: RtsScene3D) => {
+      s.scene.onRestart(() => {
+        s.shutdown();
+        const newScene = buildScene();
+        newScene.create();
+        scene = newScene;
+        currentScene = newScene;
+        wireRestart(newScene);
+      });
+    };
+    wireRestart(scene);
 
-  let currentScene: GameScene | null = scene;
-  app.onUpdate((time, delta) => {
-    currentScene?.update(time, delta);
-  });
-  app.start();
-
-  const wireRestart = (s: RtsScene3D) => {
-    s.scene.onRestart(() => {
-      s.shutdown();
-      const newScene = buildScene();
-      newScene.create();
-      scene = newScene;
-      currentScene = newScene;
-      wireRestart(newScene);
+    const instance: GameInstance = {
+      app,
+      getScene: () => currentScene,
+    };
+    clearSceneByInstance.set(instance, () => {
+      currentScene = null;
     });
-  };
-  wireRestart(scene);
-
-  const instance: GameInstance = {
-    app,
-    getScene: () => currentScene,
-  };
-  acquireRendererSlot(instance);
-  return instance;
+    transferRendererSlot(rendererSlotOwner, instance);
+    return instance;
+  } catch (error) {
+    currentScene?.shutdown({ keepConnection: true });
+    app?.destroy();
+    releaseRendererSlot(rendererSlotOwner);
+    throw error;
+  }
 }
 
 /**
@@ -84,9 +101,17 @@ export function destroyGame(
   opts: { keepConnection?: boolean } = {},
 ): void {
   const scene = instance.getScene();
-  if (scene) {
-    scene.shutdown(opts);
+  try {
+    if (scene) {
+      scene.shutdown(opts);
+    }
+  } finally {
+    clearSceneByInstance.get(instance)?.();
+    clearSceneByInstance.delete(instance);
+    try {
+      instance.app.destroy();
+    } finally {
+      releaseRendererSlot(instance);
+    }
   }
-  instance.app.destroy();
-  releaseRendererSlot(instance);
 }

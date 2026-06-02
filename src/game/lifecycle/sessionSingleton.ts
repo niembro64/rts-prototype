@@ -57,6 +57,16 @@ export function acquireRendererSlot(owner: object): void {
   activeRenderer = owner;
 }
 
+export function transferRendererSlot(from: object, to: object): void {
+  if (activeRenderer !== from) {
+    throw new Error(
+      `sessionSingleton: cannot transfer frontend renderer slot from ` +
+        `${describe(from)} because the active owner is ${describe(activeRenderer)}.`,
+    );
+  }
+  activeRenderer = to;
+}
+
 export function releaseRendererSlot(owner: object): void {
   if (activeRenderer === owner) activeRenderer = null;
 }
