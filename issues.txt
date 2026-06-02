@@ -66,3 +66,27 @@ submunition entity diffs, line/swept/area candidate packing, returned damage
 diff application, death-event diffs, death-explosion chaining, and death
 cleanup side-effect/removal diff generation into Rust/WASM kernels, and leave
 TypeScript only to apply compact returned event/entity diffs.
+
+7.1 [FEATURE, lock-on targeting] Reciprocal-lock requirement is designed in
+budget_design_philosophy.html ("Reciprocal lock-on: only hit who is hitting
+you") but not implemented. The inclusion object should carry a three-state enum
+lockOnRequiresTargetLockedOntoSelf = "ignore" | "require" | "prefer" (default
+"ignore", exhaustive on every unit/tower/turret inclusion object). "require"
+admits an otherwise-eligible enemy only while that enemy is itself locked onto
+self_turret or self_host; "prefer" makes such threats a strictly higher-priority
+tier but falls back to the normal candidate pool when none exist; "ignore" is a
+no-op. The gate is re-evaluated every tick (drop or re-sort on the same tick a
+target re-aims) against the lock-on state committed at the end of the previous
+tick, read from a per-entity incoming-lock set, so it stays deterministic with
+no intra-tick cycle.
+FIX: (1) add the enum to blueprintSchema.json, the generated blueprint types,
+and the inclusionLockOnConfig.json authoring form + lockOnValidation.ts
+normalization (default "ignore"; reject any non-"ignore" value that admits no
+enemy_entities). (2) implement the runtime gate in the shared targeting kernel:
+"require" rejects non-threats, "prefer" tiers threats above non-threats (strict
+by default), both re-evaluated per tick from a per-entity incoming-lock set
+built from the prior tick's committed locks. (3) set turretShieldPanel to
+"require". (4) drop the now-redundant threatMustTarget and threatState from
+secondaryLockOnProfiles.turretShieldPanel so the enum is the single source of
+truth for candidacy; the secondary profile keeps only rankBy (sustained DPS) and
+aim (bisection).
