@@ -20,9 +20,12 @@ Please always commit and push before and after any code changes we make.
 ARCHITECTURE / PHILOSOPHY MIGRATION (budget_design_philosophy.html)
 ================================================================================
 
-7.0 [MAJOR, migration surface — ECS-gated] The last of the projectile/damage/
-death migration: move line/swept/area candidate PACKING and death-explosion
-CHAINING into Rust. Blocked on the ECS slab work.
+7.0 [MAJOR, migration surface] The last of the projectile/damage/death
+migration: move line/swept/area candidate PACKING and death-explosion CHAINING
+into Rust. NOT blocked on the full ECS migration — the per-entity data already
+exists in the CombatTargetingPool slab and can be reused. Gated only on a few
+concrete coherence/plumbing items (below); land it carefully because it is core
+hit-detection.
 
 Verified against code 2026-06-02 — all the pure-computation kernels already live
 in Rust/WASM: projectile integration, homing/terrain-follow thrust, reflector
@@ -45,15 +48,39 @@ audio events), materializing submunitions via world.createProjectile, writing
 returned HP onto JS entities, emitting death/audio events, and removing JS
 entities from WorldState.
 
-REQUIRED FIX (the only Rust work left): pull line/swept/area candidate PACKING
-and the death-explosion CHAINING loop into Rust so the segment/area kernels
-iterate the spatial-grid candidate slot list internally (killing the
-per-candidate TS packing loops) and the chaining loop accumulates kills without
-round-tripping HP to JS. Both need a Rust-authoritative per-entity combat slab:
-position, hitbox + collision radius, kind, team/owner, HP, turret mount poses,
-exclude flags. Building that slab BEFORE the ECS migration would duplicate
-authoritative HP/state (a second source of truth), which the design philosophy
-forbids — so do this as part of the ECS migration that makes Rust the entity
-store, not as a parallel mirror now. Until then this item stays blocked; the TS
-that remains is the diff-application layer the contract intends, not new
-migration debt.
+REQUIRED FIX: move line/swept/area candidate PACKING and death-explosion CHAINING
+into Rust. The data is already mirrored, so reuse it — do NOT build a parallel
+slab. The CombatTargetingPool slab (lib.rs ~14943, stamped by
+targetingInputStamping.ts) already holds, per unit/building/tower/projectile:
+position, owner/team, current HP, hitbox radius, building AABB half-extents,
+entity family, and alive flag — and already computes turret world-mount positions
++ turret hitbox radii. So damage packing can iterate broadphase candidate slots
+and read the slab instead of re-reading JS entities. Concrete blockers, in order:
+
+  1. COHERENCE. The slab is stamped ONCE per tick in updateCombat, BEFORE the
+     physics step. Unit/building/tower positions do NOT change between the stamp
+     and the damage phases (checkProjectileCollisions, detonateEntityDeath-
+     Explosions), so they are coherent. But PROJECTILE target rows are STALE at
+     collision time — projectiles integrate in updateProjectiles AFTER the stamp
+     — so projectile-vs-projectile and projectile-splash targets would read
+     pre-integration positions. Fix: re-stamp projectile rows into the slab right
+     after spatialGrid.updateProjectiles, before checkProjectileCollisions.
+  2. COLLISION RADIUS. The slab mirrors hitbox radius only. Swept/area damage vs.
+     projectiles uses radius.collision. Add collision radius to the slab stamp
+     (or pass it per-row).
+  3. SLOT MAPPING. The spatial grid returns entity objects; the packer needs each
+     candidate's CombatTargetingPool slot. Add an entity-id -> slab-slot lookup
+     (the slab already stores entity_id per slot).
+  4. KERNELS. New Rust kernels take (segment or area params + candidate slot list
+     + exclude set), iterate the slab, classify hits, and return compact hit rows
+     (entity_id, family, t / dir / distance). TS then only collects slots and
+     applies returned diffs through the existing damage_apply_batch path (HP read
+     live, as now).
+  5. CHAINING. The slab is write-once per tick, so it cannot supply post-damage HP
+     mid-chain. Keep kill accumulation on the live damage_apply_batch result (as
+     today); move only the per-blast candidate packing onto the step-4 kernel.
+
+VERIFY CAREFULLY: this is core hit-detection. A subtle packing/coherence bug
+shifts splash radii or projectile intercepts in ways a visual spot-check won't
+catch. Gate the cutover on before/after equality (same kill sets, same hit sets)
+per damage type, not a blind switch.
