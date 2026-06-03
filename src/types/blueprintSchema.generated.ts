@@ -9,6 +9,8 @@ import type { ResourceCost } from './economyTypes';
 import type { EntityId, PlayerId } from './entityTypes';
 import type { UnitSuspensionConfig } from './locomotionTypes';
 
+export type TurretRangeVolume = 'turret-range-cylinder-normal' | 'turret-range-bottom-unbounded' | 'turret-range-top-and-bottom-unbounded' | 'turret-range-sphere';
+
 export type ProjectileShotKind = 'plasma' | 'rocket';
 
 export type ShieldSurfaceResponse = 'reflect' | 'absorb' | 'passThrough';
@@ -271,6 +273,7 @@ export type TurretBlueprint = {
   name: string;
   kind: WeaponKind;
   range: number;
+  rangeVolume: TurretRangeVolume;
   cooldown: number;
   color: number;
   turretTurnAccel: number;

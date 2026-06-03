@@ -30,6 +30,14 @@ pub type BarrelShape = BlueprintJsonValue;
 
 pub type TurretRangeOverrides = BlueprintJsonValue;
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum TurretRangeVolume {
+    TurretRangeCylinderNormal,
+    TurretRangeBottomUnbounded,
+    TurretRangeTopAndBottomUnbounded,
+    TurretRangeSphere,
+}
+
 pub type ConstructionEmitterSize = String;
 
 pub type ConstructionEmitterVisualSpec = BlueprintJsonValue;
@@ -405,6 +413,7 @@ pub struct TurretBlueprint {
     pub name: String,
     pub kind: WeaponKind,
     pub range: f64,
+    pub rangeVolume: TurretRangeVolume,
     pub cooldown: f64,
     pub color: f64,
     pub turretTurnAccel: f64,

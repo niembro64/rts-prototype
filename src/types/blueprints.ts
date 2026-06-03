@@ -59,6 +59,7 @@ export type {
   TurretLockOnRelationshipInclusion,
   TurretMount,
   TurretRadiusConfig,
+  TurretRangeVolume,
   UnitBlueprint,
   UnitBodyShape,
   UnitBodyShapePart,

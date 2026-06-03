@@ -205,7 +205,7 @@
     "type": "plasma",
     "shotBlueprintId": "shotMortarMedium",
     "name": "Medium Mortar Shell",
-    "mass": 30,
+    "mass": 90,
     "health": 8,
     "radius": {
       "visual": 8,
@@ -236,9 +236,9 @@
       "mass": 30,
       "health": 8,
       "deathExplosion": {
-        "radius": 75,
-        "force": 10000,
-        "damage": 20
+        "radius": 100,
+        "force": 20000,
+        "damage": 300
       },
       "radius": {
         "visual": 8,

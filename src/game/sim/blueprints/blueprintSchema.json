@@ -74,6 +74,14 @@
         "rustType": "BlueprintJsonValue"
       }
     },
+    "TurretRangeVolume": {
+      "enum": [
+        "turret-range-cylinder-normal",
+        "turret-range-bottom-unbounded",
+        "turret-range-top-and-bottom-unbounded",
+        "turret-range-sphere"
+      ]
+    },
     "ConstructionEmitterSize": {
       "type": "string",
       "x-codegen": {
@@ -1113,6 +1121,7 @@
         "emissionKind",
         "emissionBlueprintId",
         "range",
+        "rangeVolume",
         "cooldown",
         "color",
         "turretTurnAccel",
@@ -1156,6 +1165,9 @@
         },
         "range": {
           "type": "number"
+        },
+        "rangeVolume": {
+          "$ref": "#/$defs/TurretRangeVolume"
         },
         "cooldown": {
           "type": "number"

@@ -3,7 +3,7 @@
 import type { BarrelShape } from './config';
 import type { TurretBlueprintId } from './blueprintIds';
 import type { Vec3 } from './vec2';
-import type { TurretAimStyle, TurretRadiusConfig } from './blueprints';
+import type { TurretAimStyle, TurretRadiusConfig, TurretRangeVolume } from './blueprints';
 import type {
   BuildingAnchorProfile,
   BuildingRenderProfile,
@@ -345,6 +345,7 @@ export type Building = {
 export type TurretConfig = {
   turretBlueprintId: TurretBlueprintId;
   range: number;
+  rangeVolume: TurretRangeVolume;
   cooldown: number;
   color: number;
   barrel: BarrelShape;

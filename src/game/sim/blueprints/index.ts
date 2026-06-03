@@ -675,6 +675,7 @@ export function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretC
   const config: TurretConfig = {
     turretBlueprintId: turretBlueprint.turretBlueprintId,
     range: turretBlueprint.range,
+    rangeVolume: turretBlueprint.rangeVolume,
     cooldown: turretBlueprint.cooldown ?? 0,
     color: turretBlueprint.color,
     barrel: turretBlueprint.barrel,

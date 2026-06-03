@@ -140,7 +140,13 @@ function refreshPackedProjectileViews(): void {
 const _fireWeaponMount = { x: 0, y: 0, z: 0 };
 const _beamWeaponMount = { x: 0, y: 0, z: 0 };
 const _lineShotRangeEnd = { x: 0, y: 0, z: 0 };
-const _lineShotRangeCylinder: RayConfigRangeCylinder = { centerX: 0, centerY: 0, centerZ: 0, radius: 0 };
+const _lineShotRangeCylinder: RayConfigRangeCylinder = {
+  centerX: 0,
+  centerY: 0,
+  centerZ: 0,
+  radius: 0,
+  rangeVolume: 'turret-range-cylinder-normal',
+};
 const _fireFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_ENGAGED,
   targetId: -1,
@@ -587,15 +593,14 @@ export function fireTurrets(
           const beamStartY = spawnY;
           const beamStartZ = spawnZ;
 
-          // Line shots are bounded by the same vertical range cylinder
-          // as turret acquisition: horizontal reach is authored range,
-          // upward reach is capped at mount.z + range, and downward
-          // altitude does not consume reach.
+          // Line shots are bounded by the same vertical range volume
+          // as turret acquisition.
           const rangeCylinder = _lineShotRangeCylinder;
           rangeCylinder.centerX = weaponX;
           rangeCylinder.centerY = weaponY;
           rangeCylinder.centerZ = mountZ;
           rangeCylinder.radius = weapon.ranges.fire.max.release;
+          rangeCylinder.rangeVolume = config.rangeVolume;
           const endpoint = resolveRayConfigRangeCylinderEndpoint(
             beamStartX, beamStartY, beamStartZ,
             dirX, dirY, dirZ,
@@ -1373,6 +1378,7 @@ export function updateProjectiles(
         rangeCylinder.centerY = beamMount.y;
         rangeCylinder.centerZ = beamMount.z;
         rangeCylinder.radius = weapon.ranges.fire.max.release;
+        rangeCylinder.rangeVolume = weapon.config.rangeVolume;
         const endpoint = resolveRayConfigRangeCylinderEndpoint(
           beamStartX, beamStartY, beamStartZ,
           dirX, dirY, dirZ,

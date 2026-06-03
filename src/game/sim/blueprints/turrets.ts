@@ -24,6 +24,7 @@ const TURRET_EXPLICIT_FIELDS = [
   'name',
   'emissionKind',
   'emissionBlueprintId',
+  'rangeVolume',
   'cooldown',
   'launchForce',
   'isManualFire',

@@ -15315,6 +15315,9 @@ pub const CT_TURRET_CFG_HAS_TRACKING_RANGE: u16 = 1 << 7;
 /// must skip this turret entirely so it keeps running its own
 /// independent acquisition.
 pub const CT_TURRET_CFG_HOST_DIRECTED: u16 = 1 << 8;
+pub const CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED: u16 = 1 << 9;
+pub const CT_TURRET_CFG_RANGE_TOP_UNBOUNDED: u16 = 1 << 10;
+pub const CT_TURRET_CFG_RANGE_SPHERE: u16 = 1 << 11;
 
 // FSM state encodings (CT_TURRET_STATE_*) are generated from
 // src/wireEnums.json — see the include! near the top of this file.
@@ -15513,7 +15516,8 @@ struct CombatTargetingPool {
     turret_burst_cooldown: Vec<f64>,
     // Pre-squared turret range radii. Runtime membership treats these
     // as vertical cylinders: horizontal radius R, top cap mount.z + R,
-    // no lower cap. Sentinels: fire_min_*_sq <= 0 means
+    // and either bounded or unbounded vertical caps depending
+    // on the turret blueprint. Sentinels: fire_min_*_sq <= 0 means
     // "no min preference"; tracking_*_sq <= 0 and the
     // HAS_TRACKING_RANGE flag together encode "no separate tracking
     // shell — fire.max is the outermost release boundary".
@@ -16188,7 +16192,7 @@ pub fn combat_targeting_unset_entity(entity_slot: u32) {
 }
 
 /// Bulk per-turret stamp. The range arguments are pre-squared authored
-/// radii; targeting kernels sqrt them when applying the cylinder top cap.
+/// radii; targeting kernels sqrt them when applying cylinder vertical caps.
 /// `outermost_acquire` is the raw (un-squared) outermost-shell acquire
 /// distance — the broadphase spatial query wants a radius, not a
 /// squared radius, so storing it lets the kernel avoid sqrt.
@@ -18158,6 +18162,7 @@ struct CombatTargetingCylinderTarget {
     horizontal_dist_sq: f64,
     horizontal_radius: f64,
     bottom_z: f64,
+    top_z: f64,
 }
 
 #[inline]
@@ -18180,6 +18185,7 @@ fn combat_targeting_invalid_cylinder_target() -> CombatTargetingCylinderTarget {
         horizontal_dist_sq: f64::INFINITY,
         horizontal_radius: 0.0,
         bottom_z: f64::INFINITY,
+        top_z: f64::NEG_INFINITY,
     }
 }
 
@@ -18219,6 +18225,7 @@ fn combat_targeting_cylinder_target_to_entity_slot(
             pool.entity_radius_hitbox[entity_slot],
         ),
         bottom_z: pool.entity_pos_z[entity_slot] - vertical_extent,
+        top_z: pool.entity_pos_z[entity_slot] + vertical_extent,
     }
 }
 
@@ -18239,44 +18246,117 @@ fn combat_targeting_cylinder_target_to_point(
         horizontal_dist_sq: dx * dx + dy * dy,
         horizontal_radius: 0.0,
         bottom_z: point_z,
+        top_z: point_z,
     }
 }
 
 #[inline]
-fn combat_targeting_range_cylinder_contains(
+fn combat_targeting_valid_range_target(
     range: f64,
     mount_z: f64,
     target: CombatTargetingCylinderTarget,
 ) -> bool {
-    if !range.is_finite()
-        || !mount_z.is_finite()
-        || !target.horizontal_dist_sq.is_finite()
-        || !target.bottom_z.is_finite()
-        || range < 0.0
-    {
+    range.is_finite()
+        && mount_z.is_finite()
+        && target.horizontal_dist_sq.is_finite()
+        && target.bottom_z.is_finite()
+        && target.top_z.is_finite()
+        && range >= 0.0
+}
+
+#[derive(Clone, Copy)]
+struct CombatTargetingRangeVolume {
+    bottom_unbounded: bool,
+    top_unbounded: bool,
+    sphere: bool,
+}
+
+impl CombatTargetingRangeVolume {
+    #[inline]
+    fn cylinder_normal() -> Self {
+        Self {
+            bottom_unbounded: false,
+            top_unbounded: false,
+            sphere: false,
+        }
+    }
+}
+
+#[inline]
+fn combat_targeting_range_volume_from_flags(flags: u16) -> CombatTargetingRangeVolume {
+    CombatTargetingRangeVolume {
+        bottom_unbounded: (flags & CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED) != 0,
+        top_unbounded: (flags & CT_TURRET_CFG_RANGE_TOP_UNBOUNDED) != 0,
+        sphere: (flags & CT_TURRET_CFG_RANGE_SPHERE) != 0,
+    }
+}
+
+#[inline]
+fn combat_targeting_turret_range_volume(
+    pool: &CombatTargetingPool,
+    idx: usize,
+) -> CombatTargetingRangeVolume {
+    combat_targeting_range_volume_from_flags(pool.turret_config_flags[idx])
+}
+
+#[inline]
+fn combat_targeting_target_nearest_distance_sq_to_mount(
+    mount_z: f64,
+    target: CombatTargetingCylinderTarget,
+) -> f64 {
+    let horizontal_gap = target.horizontal_dist_sq.sqrt() - target.horizontal_radius.max(0.0);
+    let horizontal_gap = horizontal_gap.max(0.0);
+    let vertical_gap = if mount_z < target.bottom_z {
+        target.bottom_z - mount_z
+    } else if mount_z > target.top_z {
+        mount_z - target.top_z
+    } else {
+        0.0
+    };
+    horizontal_gap * horizontal_gap + vertical_gap * vertical_gap
+}
+
+#[inline]
+fn combat_targeting_range_volume_contains(
+    range: f64,
+    mount_z: f64,
+    volume: CombatTargetingRangeVolume,
+    target: CombatTargetingCylinderTarget,
+) -> bool {
+    if !combat_targeting_valid_range_target(range, mount_z, target) {
         return false;
+    }
+    if volume.sphere {
+        return combat_targeting_target_nearest_distance_sq_to_mount(mount_z, target)
+            <= range * range;
     }
     let horizontal_radius = range + target.horizontal_radius.max(0.0);
     target.horizontal_dist_sq <= horizontal_radius * horizontal_radius
-        && target.bottom_z <= mount_z + range
+        && (volume.top_unbounded || target.bottom_z <= mount_z + range)
+        && (volume.bottom_unbounded || target.top_z >= mount_z - range)
 }
 
 #[inline]
 fn combat_targeting_min_range_prefers_target(
     min_range: f64,
     mount_z: f64,
+    volume: CombatTargetingRangeVolume,
     target: CombatTargetingCylinderTarget,
 ) -> bool {
     if !min_range.is_finite() || min_range <= 0.0 {
         return true;
     }
-    if !mount_z.is_finite()
-        || !target.horizontal_dist_sq.is_finite()
-        || !target.bottom_z.is_finite()
-    {
+    if !combat_targeting_valid_range_target(min_range, mount_z, target) {
         return false;
     }
-    if target.bottom_z > mount_z + min_range {
+    if volume.sphere {
+        return combat_targeting_target_nearest_distance_sq_to_mount(mount_z, target)
+            >= min_range * min_range;
+    }
+    if !volume.top_unbounded && target.bottom_z > mount_z + min_range {
+        return true;
+    }
+    if !volume.bottom_unbounded && target.top_z < mount_z - min_range {
         return true;
     }
     let threshold = min_range - target.horizontal_radius.max(0.0);
@@ -18298,9 +18378,10 @@ fn combat_targeting_fire_max_cylinder_contains(
     } else {
         pool.turret_fire_max_acquire_sq[idx]
     };
-    combat_targeting_range_cylinder_contains(
+    combat_targeting_range_volume_contains(
         combat_targeting_range_radius_from_sq(range_sq),
         pool.turret_mount_z[idx],
+        combat_targeting_turret_range_volume(pool, idx),
         target,
     )
 }
@@ -18317,9 +18398,10 @@ fn combat_targeting_outermost_release_cylinder_contains(
     } else {
         pool.turret_fire_max_release_sq[idx]
     };
-    combat_targeting_range_cylinder_contains(
+    combat_targeting_range_volume_contains(
         combat_targeting_range_radius_from_sq(range_sq),
         pool.turret_mount_z[idx],
+        combat_targeting_turret_range_volume(pool, idx),
         target,
     )
 }
@@ -18347,6 +18429,7 @@ fn combat_targeting_fire_rank_from_pool_cylinder(
     if combat_targeting_min_range_prefers_target(
         combat_targeting_range_radius_from_sq(min_sq),
         pool.turret_mount_z[idx],
+        combat_targeting_turret_range_volume(pool, idx),
         target,
     ) {
         CT_TARGET_RANK_FIRE_PREFERRED
@@ -21242,11 +21325,13 @@ fn targeting_range_cylinder_contains(
     release: f64,
     edge: u8,
     weapon_z: f64,
+    range_volume: CombatTargetingRangeVolume,
     target: CombatTargetingCylinderTarget,
 ) -> bool {
-    combat_targeting_range_cylinder_contains(
+    combat_targeting_range_volume_contains(
         targeting_edge_value(acquire, release, edge),
         weapon_z,
+        range_volume,
         target,
     )
 }
@@ -21258,6 +21343,7 @@ fn targeting_min_range_prefers_target(
     min_release: f64,
     edge: u8,
     weapon_z: f64,
+    range_volume: CombatTargetingRangeVolume,
     target: CombatTargetingCylinderTarget,
 ) -> bool {
     if has_min == 0 {
@@ -21266,6 +21352,7 @@ fn targeting_min_range_prefers_target(
     combat_targeting_min_range_prefers_target(
         targeting_edge_value(min_acquire, min_release, edge),
         weapon_z,
+        range_volume,
         target,
     )
 }
@@ -21279,6 +21366,7 @@ fn targeting_fire_rank_cylinder(
     fire_min_release: f64,
     edge: u8,
     weapon_z: f64,
+    range_volume: CombatTargetingRangeVolume,
     target: CombatTargetingCylinderTarget,
 ) -> u8 {
     if !targeting_range_cylinder_contains(
@@ -21286,6 +21374,7 @@ fn targeting_fire_rank_cylinder(
         fire_max_release,
         edge,
         weapon_z,
+        range_volume,
         target,
     ) {
         return CT_TARGET_RANK_NONE;
@@ -21296,6 +21385,7 @@ fn targeting_fire_rank_cylinder(
         fire_min_release,
         edge,
         weapon_z,
+        range_volume,
         target,
     ) {
         CT_TARGET_RANK_FIRE_PREFERRED
@@ -21316,6 +21406,7 @@ fn targeting_acquisition_rank_cylinder(
     tracking_release: f64,
     edge: u8,
     weapon_z: f64,
+    range_volume: CombatTargetingRangeVolume,
     target: CombatTargetingCylinderTarget,
 ) -> u8 {
     let fire_rank = targeting_fire_rank_cylinder(
@@ -21326,6 +21417,7 @@ fn targeting_acquisition_rank_cylinder(
         fire_min_release,
         edge,
         weapon_z,
+        range_volume,
         target,
     );
     if fire_rank != CT_TARGET_RANK_NONE {
@@ -21337,6 +21429,7 @@ fn targeting_acquisition_rank_cylinder(
             tracking_release,
             edge,
             weapon_z,
+            range_volume,
             target,
         ) {
             return CT_TARGET_RANK_TRACKING_ONLY;
@@ -21358,6 +21451,7 @@ fn targeting_rank_cylinder(
     tracking_release: f64,
     edge: u8,
     weapon_z: f64,
+    range_volume: CombatTargetingRangeVolume,
     target: CombatTargetingCylinderTarget,
 ) -> u8 {
     if rank_mode == CT_TARGET_RANK_MODE_ACQUISITION {
@@ -21372,6 +21466,7 @@ fn targeting_rank_cylinder(
             tracking_release,
             edge,
             weapon_z,
+            range_volume,
             target,
         )
     } else {
@@ -21383,6 +21478,7 @@ fn targeting_rank_cylinder(
             fire_min_release,
             edge,
             weapon_z,
+            range_volume,
             target,
         )
     }
@@ -21480,6 +21576,7 @@ fn targeting_score_candidate(
     seed_reciprocal_tier: u8,
     seed_shield_panel_score: f64,
     is_passive: u8,
+    range_volume: CombatTargetingRangeVolume,
     candidate_observable: &[u8],
     candidate_pos_x: &[f64],
     candidate_pos_y: &[f64],
@@ -21506,6 +21603,8 @@ fn targeting_score_candidate(
         horizontal_radius: combat_targeting_nonnegative_finite(candidate_radius[candidate_idx]),
         bottom_z: candidate_pos_z[candidate_idx]
             - combat_targeting_nonnegative_finite(candidate_vertical_extent),
+        top_z: candidate_pos_z[candidate_idx]
+            + combat_targeting_nonnegative_finite(candidate_vertical_extent),
     };
     let rank = targeting_rank_cylinder(
         rank_mode,
@@ -21519,6 +21618,7 @@ fn targeting_score_candidate(
         tracking_release,
         0,
         weapon_z,
+        range_volume,
         target,
     );
     if rank < minimum_rank {
@@ -21612,6 +21712,7 @@ pub fn combat_targeting_rank_target(
         horizontal_dist_sq: dist_sq,
         horizontal_radius: combat_targeting_nonnegative_finite(target_radius),
         bottom_z: 0.0,
+        top_z: 0.0,
     };
     targeting_rank_cylinder(
         rank_mode,
@@ -21625,6 +21726,7 @@ pub fn combat_targeting_rank_target(
         tracking_release,
         edge,
         0.0,
+        CombatTargetingRangeVolume::cylinder_normal(),
         target,
     )
 }
@@ -22100,6 +22202,7 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
     let source_entity_slot = entity_slot as usize;
     let source_turret_idx = combat_targeting_turret_global_idx(entity_slot, turret_idx);
     let source_turret_bit = 1u32 << turret_idx;
+    let range_volume = combat_targeting_turret_range_volume(pool, source_turret_idx);
     let seed_reciprocal_tier =
         combat_targeting_entity_slot_for_id(pool, pool.turret_target_id[source_turret_idx])
             .map(|slot| {
@@ -22176,6 +22279,7 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             seed_reciprocal_tier,
             seed_shield_panel_score,
             is_passive,
+            range_volume,
             candidate_observable,
             candidate_pos_x,
             candidate_pos_y,
@@ -22342,6 +22446,7 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
                 seed_reciprocal_tier,
                 seed_shield_panel_score,
                 is_passive,
+                range_volume,
                 candidate_observable,
                 candidate_pos_x,
                 candidate_pos_y,
@@ -33931,7 +34036,7 @@ mod lock_on_inclusion_tests {
     }
 
     #[test]
-    fn turret_range_cylinder_allows_targets_far_below() {
+    fn bottom_unbounded_turret_range_cylinder_allows_targets_far_below() {
         let _guard = lock_tests();
         reset_pools();
         stamp_entity_at_z(
@@ -33945,7 +34050,14 @@ mod lock_on_inclusion_tests {
             1,
             -1,
         );
-        stamp_turret(SOURCE_SLOT, 0, TurretSpec::default());
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                flags: CT_TURRET_CFG_HOST_DIRECTED | CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED,
+                ..TurretSpec::default()
+            },
+        );
         stamp_body_target_at_z(
             1,
             201,
@@ -33959,13 +34071,13 @@ mod lock_on_inclusion_tests {
         let (target_id, state, _) = run_schedule_tick(1);
         assert_eq!(
             target_id, 201,
-            "height below the mount must not spend turret range budget"
+            "bottom-unbounded range volumes must preserve old lower-unbounded targeting"
         );
         assert_eq!(state, CT_TURRET_STATE_ENGAGED);
     }
 
     #[test]
-    fn turret_range_cylinder_ranks_by_horizontal_distance() {
+    fn bottom_unbounded_turret_range_cylinder_ranks_by_horizontal_distance() {
         let _guard = lock_tests();
         reset_pools();
         stamp_entity_at_z(
@@ -33979,7 +34091,14 @@ mod lock_on_inclusion_tests {
             1,
             -1,
         );
-        stamp_turret(SOURCE_SLOT, 0, TurretSpec::default());
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                flags: CT_TURRET_CFG_HOST_DIRECTED | CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED,
+                ..TurretSpec::default()
+            },
+        );
         stamp_body_target_at_z(
             1,
             201,
@@ -34008,6 +34127,30 @@ mod lock_on_inclusion_tests {
     }
 
     #[test]
+    fn bounded_turret_range_cylinder_rejects_targets_below_bottom_cap() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(SOURCE_SLOT, 0, TurretSpec::default());
+        stamp_body_target_at_z(
+            1,
+            201,
+            PLAYER_2,
+            20.0,
+            -123.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+
+        let (target_id, state, _) = run_schedule_tick(1);
+        assert_eq!(
+            target_id, -1,
+            "targets whose body is fully below mount.z - range must be out of range"
+        );
+        assert_eq!(state, CT_TURRET_STATE_IDLE);
+    }
+
+    #[test]
     fn turret_range_cylinder_rejects_targets_above_top_cap() {
         let _guard = lock_tests();
         reset_pools();
@@ -34027,6 +34170,70 @@ mod lock_on_inclusion_tests {
         assert_eq!(
             target_id, -1,
             "targets whose body is fully above mount.z + range must be out of range"
+        );
+        assert_eq!(state, CT_TURRET_STATE_IDLE);
+    }
+
+    #[test]
+    fn top_and_bottom_unbounded_turret_range_cylinder_allows_targets_far_above() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                flags: CT_TURRET_CFG_HOST_DIRECTED
+                    | CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED
+                    | CT_TURRET_CFG_RANGE_TOP_UNBOUNDED,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target_at_z(
+            1,
+            201,
+            PLAYER_2,
+            20.0,
+            1000.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+
+        let (target_id, state, _) = run_schedule_tick(1);
+        assert_eq!(
+            target_id, 201,
+            "top-and-bottom-unbounded cylinders should only spend horizontal range"
+        );
+        assert_eq!(state, CT_TURRET_STATE_ENGAGED);
+    }
+
+    #[test]
+    fn sphere_turret_range_rejects_targets_inside_cylinder_but_outside_sphere() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                flags: CT_TURRET_CFG_HOST_DIRECTED | CT_TURRET_CFG_RANGE_SPHERE,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target_at_z(
+            1,
+            201,
+            PLAYER_2,
+            100.0,
+            100.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+
+        let (target_id, state, _) = run_schedule_tick(1);
+        assert_eq!(
+            target_id, -1,
+            "sphere range should use 3D distance instead of cylinder membership"
         );
         assert_eq!(state, CT_TURRET_STATE_IDLE);
     }

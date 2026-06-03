@@ -1904,6 +1904,9 @@ export const CT_TURRET_CFG_VISUAL_ONLY = 1 << 5;
 export const CT_TURRET_CFG_SHOT_IS_FORCE = 1 << 6;
 export const CT_TURRET_CFG_HAS_TRACKING_RANGE = 1 << 7;
 export const CT_TURRET_CFG_HOST_DIRECTED = 1 << 8;
+export const CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED = 1 << 9;
+export const CT_TURRET_CFG_RANGE_TOP_UNBOUNDED = 1 << 10;
+export const CT_TURRET_CFG_RANGE_SPHERE = 1 << 11;
 
 /** AIM-08.1 — FSM state encodings. Single-sourced from wireEnums.json (the
  *  same file Rust generates its CT_TURRET_STATE_* constants from), so the
@@ -1971,8 +1974,9 @@ export const CT_TARGETING_TICK_MODE_SKIP = 255;
  *  the slab is now authoritative for targeting FSM state.
  *  Ranges land pre-squared as authored radii. Targeting kernels apply
  *  them as vertical cylinders: horizontal radius R, top cap mount.z + R,
- *  no lower cap; `outermostAcquire` is the raw radius the broadphase
- *  spatial query wants. */
+ *  and either bounded or unbounded vertical caps depending on
+ *  the turret blueprint; `outermostAcquire` is the raw radius the
+ *  broadphase spatial query wants. */
 export interface CombatTargetingApi {
   init: (initialEntityCapacity: number) => void;
   clear: () => void;
@@ -2268,7 +2272,7 @@ export interface CombatTargetingApi {
   /** AIM-08.3 — Rust target preference rank helper. `rankMode`: 0 =
    *  fire-only, 1 = acquisition; `edge`: 0 = acquire, 1 = release.
    *  `distSq` is horizontal distance squared; this compatibility helper
-   *  assumes the target is inside the cylinder top cap. */
+   *  assumes any vertical range-volume gates were applied by the caller. */
   readonly rankTarget: (
     rankMode: number,
     edge: number,

@@ -12,8 +12,7 @@ import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields } from './jsonValidation';
 import type { ShotBlueprint } from './types';
 import {
-  assertNumberEquals,
-  assertRadiusEquals,
+  assertValidEntityRadius,
   assertValidEntityBaseLedger,
 } from './entityBaseLedger';
 
@@ -60,13 +59,17 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
     PROJECTILE_EXPLICIT_FIELDS,
   );
   assertValidEntityBaseLedger(`shot blueprint ${id}`, blueprint.base);
-  assertNumberEquals(`shot blueprint ${id}`, 'mass', blueprint.mass, blueprint.base.mass);
-  assertNumberEquals(`shot blueprint ${id}`, 'health', blueprint.health, blueprint.base.health);
-  assertRadiusEquals(
-    `shot blueprint ${id}`,
-    blueprint.radius,
-    blueprint.base.radius,
-  );
+  if (!Number.isFinite(blueprint.mass) || blueprint.mass <= 0) {
+    throw new Error(
+      `Shot blueprint ${id} has invalid mass: projectile shots must define positive finite mass.`,
+    );
+  }
+  if (!Number.isFinite(blueprint.health) || blueprint.health <= 0) {
+    throw new Error(
+      `Shot blueprint ${id} has invalid health: projectile shots must define positive finite health.`,
+    );
+  }
+  assertValidEntityRadius(`shot blueprint ${id}`, blueprint.radius);
   // The runtime shot explosion is derived from base.deathExplosion in
   // buildShotConfig — base.deathExplosion is the single source of truth for
   // a shot's death blast, so there is no separate authored `explosion` field
@@ -80,11 +83,6 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
   if (hasRate !== hasThrust) {
     throw new Error(
       `Shot blueprint ${id} mismatched homing: homingTurnRate=${blueprint.homingTurnRate}, homingThrust=${blueprint.homingThrust}. Both must be set or both null.`,
-    );
-  }
-  if (!Number.isFinite(blueprint.health) || blueprint.health <= 0) {
-    throw new Error(
-      `Shot blueprint ${id} has invalid health: projectile shots must define positive finite health.`,
     );
   }
   if (!Number.isFinite(blueprint.armingDelayMs) || blueprint.armingDelayMs < 0) {
