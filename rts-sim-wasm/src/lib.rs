@@ -523,6 +523,12 @@ pub fn damage_segment_candidates_batch(
     end_x: f64,
     end_y: f64,
     end_z: f64,
+    // Per-call inflations the array path pre-adds when packing: beam/swept add
+    // sphere_inflation to UNIT/SHOT/turret sphere radii (beam width/2, or swept
+    // radius); swept also adds aabb_inflation to BUILDING half-extents (line
+    // damage passes 0 here, leaving building boxes raw).
+    sphere_inflation: f64,
+    aabb_inflation: f64,
     out_flags: &mut [u8],
     out_t: &mut [f64],
 ) -> u32 {
@@ -535,7 +541,9 @@ pub fn damage_segment_candidates_batch(
         && start_z.is_finite()
         && end_x.is_finite()
         && end_y.is_finite()
-        && end_z.is_finite())
+        && end_z.is_finite()
+        && sphere_inflation.is_finite()
+        && aabb_inflation.is_finite())
     {
         return 0;
     }
@@ -564,7 +572,7 @@ pub fn damage_segment_candidates_batch(
                     let tx = pool.turret_mount_x[gidx];
                     let ty = pool.turret_mount_y[gidx];
                     let tz = pool.turret_mount_z[gidx];
-                    let radius = pool.turret_radius_hitbox[gidx].max(0.0);
+                    let radius = (pool.turret_radius_hitbox[gidx] + sphere_inflation).max(0.0);
                     if !(tx.is_finite() && ty.is_finite() && tz.is_finite() && radius.is_finite()) {
                         None
                     } else {
@@ -583,7 +591,7 @@ pub fn damage_segment_candidates_batch(
             } else {
                 match pool.entity_family[slot] {
                     CT_ENTITY_FAMILY_UNIT => {
-                        let radius = pool.entity_radius_hitbox[slot].max(0.0);
+                        let radius = (pool.entity_radius_hitbox[slot] + sphere_inflation).max(0.0);
                         if !radius.is_finite() {
                             None
                         } else {
@@ -593,7 +601,7 @@ pub fn damage_segment_candidates_batch(
                         }
                     }
                     CT_ENTITY_FAMILY_SHOT => {
-                        let radius = pool.entity_radius_collision[slot].max(0.0);
+                        let radius = (pool.entity_radius_collision[slot] + sphere_inflation).max(0.0);
                         if !radius.is_finite() {
                             None
                         } else {
@@ -603,9 +611,9 @@ pub fn damage_segment_candidates_batch(
                         }
                     }
                     CT_ENTITY_FAMILY_BUILDING | CT_ENTITY_FAMILY_TOWER => {
-                        let hx = pool.entity_aabb_half_x[slot].max(0.0);
-                        let hy = pool.entity_aabb_half_y[slot].max(0.0);
-                        let hz = pool.entity_aabb_half_z[slot].max(0.0);
+                        let hx = (pool.entity_aabb_half_x[slot] + aabb_inflation).max(0.0);
+                        let hy = (pool.entity_aabb_half_y[slot] + aabb_inflation).max(0.0);
+                        let hz = (pool.entity_aabb_half_z[slot] + aabb_inflation).max(0.0);
                         if !(hx.is_finite() && hy.is_finite() && hz.is_finite()) {
                             None
                         } else {
@@ -30954,18 +30962,27 @@ mod sim_kernel_tests {
         let tx = [0.0, 5.0, 10.0];
         let ty = [0.0, 0.0, 0.0];
         let tz = [0.0, 0.0, 0.0];
+        // Raw slab radii; the per-call inflations below are what the caller
+        // passes (beam width/2, swept radius) and the kernel adds.
         let tr = [1.5, 1.0, 0.0];
         let hx = [0.0, 0.0, 1.0];
         let hy = [0.0, 0.0, 1.0];
         let hz = [0.0, 0.0, 1.0];
+        let sphere_inflation = 0.5;
+        let aabb_inflation = 0.25;
         let (sx, sy, sz) = (-5.0, 0.0, 0.0);
         let (ex, ey, ez) = (15.0, 0.0, 0.0);
 
+        // Reference packs the inflated geometry, the way TypeScript does today.
+        let ref_tr = [tr[0] + sphere_inflation, tr[1] + sphere_inflation, 0.0];
+        let ref_hx = [0.0, 0.0, hx[2] + aabb_inflation];
+        let ref_hy = [0.0, 0.0, hy[2] + aabb_inflation];
+        let ref_hz = [0.0, 0.0, hz[2] + aabb_inflation];
         let mut ref_flags = [0_u8; 3];
         let mut ref_t = [0.0; 3];
         damage_segment_hits_batch(
-            3, &enabled, &kind, sx, sy, sz, ex, ey, ez, &tx, &ty, &tz, &tr, &hx, &hy, &hz,
-            &mut ref_flags, &mut ref_t,
+            3, &enabled, &kind, sx, sy, sz, ex, ey, ez, &tx, &ty, &tz, &ref_tr, &ref_hx, &ref_hy,
+            &ref_hz, &mut ref_flags, &mut ref_t,
         );
 
         // Stamp the unit (slot 0, one turret) and building (slot 1) into the slab.
@@ -30998,7 +31015,8 @@ mod sim_kernel_tests {
         let mut got_flags = [0_u8; 3];
         let mut got_t = [0.0; 3];
         let processed = damage_segment_candidates_batch(
-            3, &slots, &turret_idx, sx, sy, sz, ex, ey, ez, &mut got_flags, &mut got_t,
+            3, &slots, &turret_idx, sx, sy, sz, ex, ey, ez, sphere_inflation, aabb_inflation,
+            &mut got_flags, &mut got_t,
         );
 
         assert_eq!(processed, 3);
