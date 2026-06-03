@@ -17,7 +17,12 @@
         "buildingRadar",
         "buildingResourceConverter"
       ],
-      "towers": ["towerFabricator", "towerBeamMega", "towerCannon", "towerAntiAir"],
+      "towers": [
+        "towerFabricator",
+        "towerBeamMega",
+        "towerCannon",
+        "towerAntiAir"
+      ],
       "units": [
         "unitJackal",
         "unitLynx",
@@ -597,7 +602,8 @@
               "unitLoris",
               "unitBee",
               "unitConstructionDrone",
-              "unitCommander"
+              "unitCommander",
+              "unitAlbatros"
             ]
           }
         }
@@ -651,7 +657,8 @@
               "unitLoris",
               "unitBee",
               "unitConstructionDrone",
-              "unitCommander"
+              "unitCommander",
+              "unitAlbatros"
             ]
           }
         }
