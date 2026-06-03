@@ -715,6 +715,201 @@ pub fn damage_area_overlap_batch(
     processed
 }
 
+/// C1 damage migration - slab-driven splash/area candidate classifier.
+///
+/// Drop-in companion to `damage_area_overlap_batch` that reads target
+/// geometry from the combat-targeting slab by spatial-grid slot instead of
+/// accepting per-row position/radius/box arrays packed in TypeScript. The
+/// overlap math, slice-cone filter, and knockback-direction output are
+/// identical to `damage_area_overlap_batch` (same expressions, same order),
+/// so TypeScript collects one candidate slot per broadphase hit instead of
+/// marshalling four geometry columns per candidate; the per-row output stays
+/// the contract it already applies.
+///
+/// Family -> target shape mapping matches what TypeScript used to pack:
+///   UNIT            -> sphere, entity_radius_hitbox
+///   SHOT            -> sphere, entity_radius_collision (a shot's contact body)
+///   BUILDING/TOWER  -> AABB,   entity_radius_hitbox (= targetRadius) + half-extents
+/// Rows whose slot is out of range or a non-targetable family are left zeroed
+/// (no overlap, no slice pass). HP / exclude / commander filtering stays in
+/// TypeScript on the small returned hit set, exactly as before.
+#[wasm_bindgen]
+pub fn damage_area_candidates_batch(
+    count: u32,
+    candidate_slots: &[u32],
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    radius: f64,
+    has_slice: u8,
+    slice_direction: f64,
+    slice_half_angle: f64,
+    out_flags: &mut [u8],
+    out_dir_x: &mut [f64],
+    out_dir_y: &mut [f64],
+    out_dir_z: &mut [f64],
+    out_distance: &mut [f64],
+) -> u32 {
+    let n = count as usize;
+    if candidate_slots.len() < n
+        || out_flags.len() < n
+        || out_dir_x.len() < n
+        || out_dir_y.len() < n
+        || out_dir_z.len() < n
+        || out_distance.len() < n
+    {
+        return 0;
+    }
+    if !(center_x.is_finite()
+        && center_y.is_finite()
+        && center_z.is_finite()
+        && radius.is_finite()
+        && slice_direction.is_finite()
+        && slice_half_angle.is_finite())
+    {
+        return 0;
+    }
+
+    let pool = combat_targeting_pool();
+    let area_radius = radius.max(0.0);
+    let use_slice = has_slice != 0;
+    let mut processed = 0_u32;
+    for i in 0..n {
+        out_flags[i] = 0;
+        out_dir_x[i] = 0.0;
+        out_dir_y[i] = 0.0;
+        out_dir_z[i] = 0.0;
+        out_distance[i] = 0.0;
+
+        let slot = candidate_slots[i] as usize;
+        if slot >= pool.entity_id.len() {
+            continue;
+        }
+        // Map the slab family to the same sphere/AABB shape + radius column
+        // TypeScript used to pack for this candidate.
+        let (target_kind, tr, hx, hy, hz) = match pool.entity_family[slot] {
+            CT_ENTITY_FAMILY_UNIT => (
+                DAMAGE_TARGET_KIND_UNIT,
+                pool.entity_radius_hitbox[slot],
+                0.0,
+                0.0,
+                0.0,
+            ),
+            CT_ENTITY_FAMILY_SHOT => (
+                DAMAGE_TARGET_KIND_PROJECTILE,
+                pool.entity_radius_collision[slot],
+                0.0,
+                0.0,
+                0.0,
+            ),
+            CT_ENTITY_FAMILY_BUILDING | CT_ENTITY_FAMILY_TOWER => (
+                DAMAGE_TARGET_KIND_BUILDING,
+                pool.entity_radius_hitbox[slot],
+                pool.entity_aabb_half_x[slot],
+                pool.entity_aabb_half_y[slot],
+                pool.entity_aabb_half_z[slot],
+            ),
+            _ => continue,
+        };
+
+        let tx = pool.entity_pos_x[slot];
+        let ty = pool.entity_pos_y[slot];
+        let tz = pool.entity_pos_z[slot];
+        let tr = tr.max(0.0);
+        if !(tx.is_finite() && ty.is_finite() && tz.is_finite() && tr.is_finite()) {
+            continue;
+        }
+
+        let mut flags = 0_u8;
+        match target_kind {
+            DAMAGE_TARGET_KIND_UNIT | DAMAGE_TARGET_KIND_PROJECTILE => {
+                let dx = tx - center_x;
+                let dy = ty - center_y;
+                let dz = tz - center_z;
+                let dist_sq = dx * dx + dy * dy + dz * dz;
+                let distance = dist_sq.sqrt();
+                if distance > 0.0 {
+                    let inv = 1.0 / distance;
+                    out_dir_x[i] = dx * inv;
+                    out_dir_y[i] = dy * inv;
+                    out_dir_z[i] = dz * inv;
+                }
+                out_distance[i] = distance;
+
+                let slice_pass = target_kind == DAMAGE_TARGET_KIND_PROJECTILE
+                    || damage_area_slice_pass(
+                        dx,
+                        dy,
+                        distance,
+                        area_radius,
+                        tr,
+                        use_slice,
+                        slice_direction,
+                        slice_half_angle,
+                    );
+                if slice_pass {
+                    flags |= DAMAGE_AREA_FLAG_SLICE_PASS;
+                }
+                let max_dist = area_radius + tr;
+                if dist_sq <= max_dist * max_dist {
+                    flags |= DAMAGE_AREA_FLAG_OVERLAP;
+                }
+            }
+            DAMAGE_TARGET_KIND_BUILDING => {
+                let hx = hx.max(0.0);
+                let hy = hy.max(0.0);
+                let hz = hz.max(0.0);
+                if !(hx.is_finite() && hy.is_finite() && hz.is_finite()) {
+                    continue;
+                }
+                let min_x = tx - hx;
+                let max_x = tx + hx;
+                let min_y = ty - hy;
+                let max_y = ty + hy;
+                let min_z = tz - hz;
+                let max_z = tz + hz;
+                let closest_x = center_x.clamp(min_x, max_x);
+                let closest_y = center_y.clamp(min_y, max_y);
+                let closest_z = center_z.clamp(min_z, max_z);
+                let box_dx = center_x - closest_x;
+                let box_dy = center_y - closest_y;
+                let box_dz = center_z - closest_z;
+                if box_dx * box_dx + box_dy * box_dy + box_dz * box_dz <= area_radius * area_radius
+                {
+                    flags |= DAMAGE_AREA_FLAG_OVERLAP;
+                }
+
+                let hdx = tx - center_x;
+                let hdy = ty - center_y;
+                let h_dist = (hdx * hdx + hdy * hdy).sqrt();
+                if h_dist > 0.0 {
+                    let inv = 1.0 / h_dist;
+                    out_dir_x[i] = hdx * inv;
+                    out_dir_y[i] = hdy * inv;
+                }
+                out_distance[i] = h_dist;
+                if damage_area_slice_pass(
+                    hdx,
+                    hdy,
+                    h_dist,
+                    area_radius,
+                    tr,
+                    use_slice,
+                    slice_direction,
+                    slice_half_angle,
+                ) {
+                    flags |= DAMAGE_AREA_FLAG_SLICE_PASS;
+                }
+            }
+            _ => {}
+        }
+        out_flags[i] = flags;
+        processed += 1;
+    }
+
+    processed
+}
+
 /// C1 damage migration — authoritative HP write-back math.
 ///
 /// TypeScript still gathers hit candidates and applies the returned entity
@@ -14965,6 +15160,13 @@ struct CombatTargetingPool {
     entity_suspension_offset_y: Vec<f64>,
     entity_suspension_offset_z: Vec<f64>,
     entity_radius_hitbox: Vec<f64>,
+    // Body-vs-body collision radius. The hitbox radius above is the
+    // damage-receiving hurtbox; this is the contact radius. Splash/segment
+    // damage against travelling shots tests the collision radius (a shot's
+    // collision body is what an explosion or beam sweep clips), so the
+    // damage candidate kernels read this column for SHOT-family rows while
+    // unit/building rows keep using entity_radius_hitbox.
+    entity_radius_collision: Vec<f64>,
     // AABB half-extents for AABB-shaped targets (buildings). Zero on
     // sphere-shaped targets (units / projectiles) so aim-point
     // resolution can clamp uniformly without branching on entity
@@ -15177,6 +15379,7 @@ impl CombatTargetingPool {
             entity_suspension_offset_y: Vec::new(),
             entity_suspension_offset_z: Vec::new(),
             entity_radius_hitbox: Vec::new(),
+            entity_radius_collision: Vec::new(),
             entity_aabb_half_x: Vec::new(),
             entity_aabb_half_y: Vec::new(),
             entity_aabb_half_z: Vec::new(),
@@ -15296,6 +15499,7 @@ impl CombatTargetingPool {
             self.entity_suspension_offset_y.resize(entity_needed, 0.0);
             self.entity_suspension_offset_z.resize(entity_needed, 0.0);
             self.entity_radius_hitbox.resize(entity_needed, 0.0);
+            self.entity_radius_collision.resize(entity_needed, 0.0);
             self.entity_aabb_half_x.resize(entity_needed, 0.0);
             self.entity_aabb_half_y.resize(entity_needed, 0.0);
             self.entity_aabb_half_z.resize(entity_needed, 0.0);
@@ -30341,6 +30545,87 @@ mod sim_kernel_tests {
         assert!((dir_y[0] - 0.8).abs() < 1e-12);
         assert_eq!(dir_z[0], 0.0);
         assert_eq!(dist[0], 5.0);
+    }
+
+    #[test]
+    fn damage_area_candidates_batch_matches_overlap_batch() {
+        let _guard = lock_tests();
+
+        // Reference: pack geometry the way TypeScript used to, for the
+        // authoritative array-based classifier.
+        let kind = [
+            DAMAGE_TARGET_KIND_UNIT,
+            DAMAGE_TARGET_KIND_UNIT,
+            DAMAGE_TARGET_KIND_PROJECTILE,
+            DAMAGE_TARGET_KIND_BUILDING,
+        ];
+        let enabled = [1_u8; 4];
+        let tx = [3.0, 0.0, -3.0, 4.0];
+        let ty = [4.0, -8.0, 0.0, 0.0];
+        let tz = [0.0, 0.0, 0.0, 0.0];
+        let tr = [1.0, 1.0, 0.5, 1.5];
+        let hx = [0.0, 0.0, 0.0, 1.0];
+        let hy = [0.0, 0.0, 0.0, 1.0];
+        let hz = [0.0, 0.0, 0.0, 1.0];
+        let (cx, cy, cz, radius) = (0.0, 0.0, 0.0, 5.0);
+        let (has_slice, slice_dir, slice_half) = (1_u8, 0.0, core::f64::consts::FRAC_PI_4);
+
+        let mut ref_flags = [0_u8; 4];
+        let mut ref_dx = [0.0; 4];
+        let mut ref_dy = [0.0; 4];
+        let mut ref_dz = [0.0; 4];
+        let mut ref_dist = [0.0; 4];
+        damage_area_overlap_batch(
+            4, &enabled, &kind, cx, cy, cz, radius, has_slice, slice_dir, slice_half,
+            &tx, &ty, &tz, &tr, &hx, &hy, &hz,
+            &mut ref_flags, &mut ref_dx, &mut ref_dy, &mut ref_dz, &mut ref_dist,
+        );
+
+        // Stamp the same four targets into the slab at slots 0..3 and run the
+        // slab-driven kernel over those slots. UNIT/BUILDING radius rides
+        // entity_radius_hitbox; SHOT radius rides entity_radius_collision.
+        let pool = combat_targeting_pool();
+        pool.ensure_entity_capacity(3);
+        let families = [
+            CT_ENTITY_FAMILY_UNIT,
+            CT_ENTITY_FAMILY_UNIT,
+            CT_ENTITY_FAMILY_SHOT,
+            CT_ENTITY_FAMILY_BUILDING,
+        ];
+        for s in 0..4 {
+            pool.entity_id[s] = s as i32;
+            pool.entity_family[s] = families[s];
+            pool.entity_pos_x[s] = tx[s];
+            pool.entity_pos_y[s] = ty[s];
+            pool.entity_pos_z[s] = tz[s];
+            pool.entity_radius_hitbox[s] = tr[s];
+            pool.entity_radius_collision[s] = tr[s];
+            pool.entity_aabb_half_x[s] = hx[s];
+            pool.entity_aabb_half_y[s] = hy[s];
+            pool.entity_aabb_half_z[s] = hz[s];
+        }
+
+        let slots = [0_u32, 1, 2, 3];
+        let mut got_flags = [0_u8; 4];
+        let mut got_dx = [0.0; 4];
+        let mut got_dy = [0.0; 4];
+        let mut got_dz = [0.0; 4];
+        let mut got_dist = [0.0; 4];
+        let processed = damage_area_candidates_batch(
+            4, &slots, cx, cy, cz, radius, has_slice, slice_dir, slice_half,
+            &mut got_flags, &mut got_dx, &mut got_dy, &mut got_dz, &mut got_dist,
+        );
+
+        assert_eq!(processed, 4);
+        assert_eq!(got_flags, ref_flags);
+        assert_eq!(got_dx, ref_dx);
+        assert_eq!(got_dy, ref_dy);
+        assert_eq!(got_dz, ref_dz);
+        assert_eq!(got_dist, ref_dist);
+
+        // Sanity: the near unit overlapped and the projectile auto-passed slice.
+        assert_ne!(ref_flags[0] & DAMAGE_AREA_FLAG_OVERLAP, 0);
+        assert_ne!(ref_flags[2] & DAMAGE_AREA_FLAG_SLICE_PASS, 0);
     }
 
     #[test]
