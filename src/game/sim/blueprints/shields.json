@@ -21,7 +21,7 @@
     "barrier": {
       "shape": "sphere",
       "outerRatio": 0.45,
-      "originOffsetRadiusRatio": 0,
+      "originOffsetRadiusRatio": 0.2,
       "rimWidth": null
     },
     "hitSound": null,
@@ -34,7 +34,7 @@
     "transitionTime": 500,
     "barrier": {
       "shape": "infiniteVerticalCylinder",
-      "outerRatio": 0.45,
+      "outerRatio": 0.25,
       "originOffsetRadiusRatio": 0,
       "rimWidth": null
     },
