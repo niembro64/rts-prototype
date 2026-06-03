@@ -13,8 +13,14 @@ import {
 } from '../../../types/blueprintIds';
 import rawShieldBlueprints from './shields.json';
 import { resolveBlueprintRefs } from './jsonRefs';
-import { assertExplicitFields } from './jsonValidation';
+import { assertExplicitFields, isObject } from './jsonValidation';
 import type { ShieldBlueprint } from './types';
+
+export const SHIELD_SURFACE_RENDER_MODES = [
+  'finite-mesh',
+  'screen-space-analytic-shader',
+] as const;
+export type ShieldSurfaceRenderMode = typeof SHIELD_SURFACE_RENDER_MODES[number];
 
 const SHIELD_EXPLICIT_FIELDS = [
   'materialId',
@@ -24,8 +30,39 @@ const SHIELD_EXPLICIT_FIELDS = [
   'hitSound',
 ] as const;
 
+function readShieldSurfaceRenderMode(raw: unknown): ShieldSurfaceRenderMode {
+  if (!isObject(raw) || !isObject(raw.$config)) {
+    throw new Error('shields.json must define $config.shieldSurfaceRenderMode');
+  }
+  const mode = raw.$config.shieldSurfaceRenderMode;
+  if (
+    mode === 'finite-mesh' ||
+    mode === 'screen-space-analytic-shader'
+  ) {
+    return mode;
+  }
+  throw new Error(
+    'Invalid shields.json $config.shieldSurfaceRenderMode: expected "finite-mesh" or "screen-space-analytic-shader"',
+  );
+}
+
+function readShieldBlueprintEntries(raw: unknown): Record<string, unknown> {
+  if (!isObject(raw)) throw new Error('shields.json must contain a top-level object');
+  const entries: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (key === '$config') continue;
+    if (key.startsWith('$')) {
+      throw new Error(`Invalid shields.json reserved key: ${key}`);
+    }
+    entries[key] = value;
+  }
+  return entries;
+}
+
+export const SHIELD_SURFACE_RENDER_MODE = readShieldSurfaceRenderMode(rawShieldBlueprints);
+
 export const SHIELD_BLUEPRINTS = resolveBlueprintRefs(
-  rawShieldBlueprints,
+  readShieldBlueprintEntries(rawShieldBlueprints),
 ) as unknown as Record<ShieldBlueprintId, ShieldBlueprint>;
 
 export function getShieldBlueprint(id: string): ShieldBlueprint {

@@ -339,7 +339,11 @@ fn emit_blueprint_object_table(
         .as_object()
         .unwrap_or_else(|| panic!("{} must contain a top-level JSON object", path.display()));
 
-    let mut ids = object.keys().cloned().collect::<Vec<_>>();
+    let mut ids = object
+        .keys()
+        .filter(|id| !id.starts_with('$'))
+        .cloned()
+        .collect::<Vec<_>>();
     ids.sort();
 
     if let Some(entry_id_field) = table.entry_id_field {
