@@ -85,9 +85,9 @@ export function geometryKeyFor(gfx: GraphicsConfig): string {
 }
 
 function hoverSmokeUseId(unitBlueprintId: string): HoverSmokeUseId {
-  return unitBlueprintId === 'unitDragonfly'
-    ? 'locomotionDragonflyHovercraft'
-    : 'locomotionHovercraft';
+  if (unitBlueprintId === 'unitAlbatros') return 'locomotionAlbatrosHoverFans';
+  if (unitBlueprintId === 'unitDragonfly') return 'locomotionDragonflyHovercraft';
+  return 'locomotionHovercraft';
 }
 
 function flyingSmokeUseId(_unitBlueprintId: string): FlyingSmokeUseId {

@@ -411,7 +411,7 @@ function buildPreviewLocomotion(
           yawGroup,
           radius,
           locomotion.config,
-          'locomotionHovercraft',
+          'locomotionAlbatrosHoverFans',
           SHELL_ENTITY_ID,
           HOST_PLAYER_ID,
         );

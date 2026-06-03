@@ -12,7 +12,7 @@
     "fadeOutMs": 500,
     "startRadius": 2,
     "endRadiusMultiplier": 6,
-   "maxAlpha": 0.05
+    "maxAlpha": 0.05
   },
   "shotRocketFast": {
     "maxPoolSize": 100000,
@@ -23,7 +23,7 @@
     "fadeOutMs": 500,
     "startRadius": 6,
     "endRadiusMultiplier": 5,
-   "maxAlpha": 0.05
+    "maxAlpha": 0.05
   },
   "shotRocketLong": {
     "maxPoolSize": 100000,
@@ -34,10 +34,21 @@
     "fadeOutMs": 500,
     "startRadius": 6,
     "endRadiusMultiplier": 5,
-   "maxAlpha": 0.05
+    "maxAlpha": 0.05
   },
   "locomotionHovercraft": {
     "maxPoolSize": 10000,
+    "capPolicy": "evictOldest",
+    "emitFramesSkip": 0,
+    "exhaustSpeed": 40,
+    "fadeInMs": 200,
+    "fadeOutMs": 1000,
+    "startRadius": 3,
+    "endRadiusMultiplier": 2,
+    "maxAlpha": 0.05
+  },
+  "locomotionAlbatrosHoverFans": {
+    "maxPoolSize": 12000,
     "capPolicy": "evictOldest",
     "emitFramesSkip": 0,
     "exhaustSpeed": 40,
