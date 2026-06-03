@@ -198,6 +198,15 @@ let _areaDamageOutDirX = new Float64Array(0);
 let _areaDamageOutDirY = new Float64Array(0);
 let _areaDamageOutDirZ = new Float64Array(0);
 let _areaDamageOutDistance = new Float64Array(0);
+let _areaDamageSlots = new Uint32Array(0);
+// DEV-only scratch: the slab kernel is authoritative; dev builds also run
+// the array-based damageAreaOverlapBatch into these and assert per-row
+// output matches (catches slot-mapping / slab-coherence drift).
+let _areaDamageRefFlags = new Uint8Array(0);
+let _areaDamageRefDirX = new Float64Array(0);
+let _areaDamageRefDirY = new Float64Array(0);
+let _areaDamageRefDirZ = new Float64Array(0);
+let _areaDamageRefDistance = new Float64Array(0);
 let _segmentDamageCapacity = 0;
 let _segmentDamageEntityIds: EntityId[] = [];
 let _segmentDamageHostEntityIds: EntityId[] = [];
@@ -267,6 +276,12 @@ function ensureAreaDamageCapacity(count: number): void {
   _areaDamageOutDirY = new Float64Array(next);
   _areaDamageOutDirZ = new Float64Array(next);
   _areaDamageOutDistance = new Float64Array(next);
+  _areaDamageSlots = new Uint32Array(next);
+  _areaDamageRefFlags = new Uint8Array(next);
+  _areaDamageRefDirX = new Float64Array(next);
+  _areaDamageRefDirY = new Float64Array(next);
+  _areaDamageRefDirZ = new Float64Array(next);
+  _areaDamageRefDistance = new Float64Array(next);
 }
 
 function clearAreaDamageEntities(count: number): void {
@@ -312,6 +327,105 @@ function classifyAreaDamageRows(
   );
   if (processed !== count) {
     throw new Error(`Area damage overlap classification failed: ${processed}/${count}`);
+  }
+}
+
+// Slab-driven area classification: pack each candidate's combat-targeting
+// slot instead of its position/radius/box, and Rust reads the geometry from
+// the slab (damageAreaCandidatesBatch). Output is the same _areaDamageOut*
+// contract the callers already apply. In DEV the legacy array-based path is
+// run alongside and the per-row output asserted equal.
+function classifyAreaDamageRowsViaSlab(
+  source: AreaDamageSource,
+  count: number,
+  hasSlice: boolean,
+  sliceHalfAngle: number,
+): void {
+  if (count === 0) return;
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('Area damage candidate classification requires initialized sim-wasm');
+  }
+  sim.damageAreaCandidatesBatch(
+    count,
+    _areaDamageSlots.subarray(0, count),
+    source.center.x,
+    source.center.y,
+    source.center.z,
+    source.radius,
+    hasSlice ? 1 : 0,
+    source.sliceDirection ?? 0,
+    sliceHalfAngle,
+    _areaDamageOutFlags.subarray(0, count),
+    _areaDamageOutDirX.subarray(0, count),
+    _areaDamageOutDirY.subarray(0, count),
+    _areaDamageOutDirZ.subarray(0, count),
+    _areaDamageOutDistance.subarray(0, count),
+  );
+  if (import.meta.env.DEV) {
+    assertAreaSlabMatchesPacked(source, count, hasSlice, sliceHalfAngle);
+  }
+}
+
+// DEV-only: re-run the legacy array-based classifier (over geometry packed in
+// the calling loop's DEV branch) and assert it matches the slab kernel row by
+// row. Throws on the first divergence so a slot-mapping or coherence bug
+// surfaces immediately instead of as silent hit-detection drift.
+function assertAreaSlabMatchesPacked(
+  source: AreaDamageSource,
+  count: number,
+  hasSlice: boolean,
+  sliceHalfAngle: number,
+): void {
+  const sim = getSimWasm();
+  if (sim === undefined) return;
+  sim.damageAreaOverlapBatch(
+    count,
+    _areaDamageEnabled.subarray(0, count),
+    _areaDamageTargetKind.subarray(0, count),
+    source.center.x,
+    source.center.y,
+    source.center.z,
+    source.radius,
+    hasSlice ? 1 : 0,
+    source.sliceDirection ?? 0,
+    sliceHalfAngle,
+    _areaDamageTargetX.subarray(0, count),
+    _areaDamageTargetY.subarray(0, count),
+    _areaDamageTargetZ.subarray(0, count),
+    _areaDamageTargetRadius.subarray(0, count),
+    _areaDamageBoxHalfX.subarray(0, count),
+    _areaDamageBoxHalfY.subarray(0, count),
+    _areaDamageBoxHalfZ.subarray(0, count),
+    _areaDamageRefFlags.subarray(0, count),
+    _areaDamageRefDirX.subarray(0, count),
+    _areaDamageRefDirY.subarray(0, count),
+    _areaDamageRefDirZ.subarray(0, count),
+    _areaDamageRefDistance.subarray(0, count),
+  );
+  for (let i = 0; i < count; i++) {
+    if (
+      _areaDamageOutFlags[i] !== _areaDamageRefFlags[i] ||
+      _areaDamageOutDirX[i] !== _areaDamageRefDirX[i] ||
+      _areaDamageOutDirY[i] !== _areaDamageRefDirY[i] ||
+      _areaDamageOutDirZ[i] !== _areaDamageRefDirZ[i] ||
+      _areaDamageOutDistance[i] !== _areaDamageRefDistance[i]
+    ) {
+      const entity = _areaDamageEntities[i];
+      // Match the codebase's dev-compare convention (snapshot wire oracle):
+      // log the first divergence loudly instead of throwing, so a slot /
+      // coherence bug surfaces without crashing the dev session.
+      console.error('[C1-area] slab/pack hit-classification divergence', {
+        row: i,
+        entityId: entity?.id,
+        slot: _areaDamageSlots[i],
+        flags: _areaDamageOutFlags[i],
+        refFlags: _areaDamageRefFlags[i],
+        distance: _areaDamageOutDistance[i],
+        refDistance: _areaDamageRefDistance[i],
+      });
+      return;
+    }
   }
 }
 
@@ -1475,17 +1589,23 @@ export class DamageSystem {
 
       const row = areaRowCount++;
       _areaDamageEntities[row] = unit;
-      _areaDamageEnabled[row] = 1;
-      _areaDamageTargetKind[row] = DAMAGE_TARGET_KIND_UNIT;
-      _areaDamageTargetX[row] = unit.transform.x;
-      _areaDamageTargetY[row] = unit.transform.y;
-      _areaDamageTargetZ[row] = unit.transform.z;
-      _areaDamageTargetRadius[row] = unitComponent.radius.hitbox;
-      _areaDamageBoxHalfX[row] = 0;
-      _areaDamageBoxHalfY[row] = 0;
-      _areaDamageBoxHalfZ[row] = 0;
+      // Slab path: pack the combat-targeting slot; Rust reads pos + hitbox
+      // radius from the slab. Units don't move between the once-per-tick
+      // stamp and damage, so the slab geometry is coherent here.
+      _areaDamageSlots[row] = spatialGrid.getSlot(unit.id);
+      if (import.meta.env.DEV) {
+        _areaDamageEnabled[row] = 1;
+        _areaDamageTargetKind[row] = DAMAGE_TARGET_KIND_UNIT;
+        _areaDamageTargetX[row] = unit.transform.x;
+        _areaDamageTargetY[row] = unit.transform.y;
+        _areaDamageTargetZ[row] = unit.transform.z;
+        _areaDamageTargetRadius[row] = unitComponent.radius.hitbox;
+        _areaDamageBoxHalfX[row] = 0;
+        _areaDamageBoxHalfY[row] = 0;
+        _areaDamageBoxHalfZ[row] = 0;
+      }
     }
-    classifyAreaDamageRows(source, areaRowCount, hasSlice, sliceHalfAngle);
+    classifyAreaDamageRowsViaSlab(source, areaRowCount, hasSlice, sliceHalfAngle);
     for (let row = 0; row < areaRowCount; row++) {
       const unit = _areaDamageEntities[row];
       const unitComponent = unit?.unit;
@@ -1605,17 +1725,23 @@ export class DamageSystem {
 
       const row = areaRowCount++;
       _areaDamageEntities[row] = building;
-      _areaDamageEnabled[row] = 1;
-      _areaDamageTargetKind[row] = DAMAGE_TARGET_KIND_BUILDING;
-      _areaDamageTargetX[row] = building.transform.x;
-      _areaDamageTargetY[row] = building.transform.y;
-      _areaDamageTargetZ[row] = building.transform.z;
-      _areaDamageTargetRadius[row] = getTargetRadius(building);
-      _areaDamageBoxHalfX[row] = building.building.width / 2;
-      _areaDamageBoxHalfY[row] = building.building.height / 2;
-      _areaDamageBoxHalfZ[row] = building.building.depth / 2;
+      // Slab path: buildings are static, so their stamped slab geometry
+      // (targetRadius in entity_radius_hitbox + AABB half-extents) is always
+      // coherent at damage time.
+      _areaDamageSlots[row] = spatialGrid.getSlot(building.id);
+      if (import.meta.env.DEV) {
+        _areaDamageEnabled[row] = 1;
+        _areaDamageTargetKind[row] = DAMAGE_TARGET_KIND_BUILDING;
+        _areaDamageTargetX[row] = building.transform.x;
+        _areaDamageTargetY[row] = building.transform.y;
+        _areaDamageTargetZ[row] = building.transform.z;
+        _areaDamageTargetRadius[row] = getTargetRadius(building);
+        _areaDamageBoxHalfX[row] = building.building.width / 2;
+        _areaDamageBoxHalfY[row] = building.building.height / 2;
+        _areaDamageBoxHalfZ[row] = building.building.depth / 2;
+      }
     }
-    classifyAreaDamageRows(source, areaRowCount, hasSlice, sliceHalfAngle);
+    classifyAreaDamageRowsViaSlab(source, areaRowCount, hasSlice, sliceHalfAngle);
     for (let row = 0; row < areaRowCount; row++) {
       const building = _areaDamageEntities[row];
       const rowFlags = _areaDamageOutFlags[row];

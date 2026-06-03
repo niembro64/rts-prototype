@@ -34,6 +34,7 @@ import __wbg_init, {
   construction_reconcile_and_grow_pieces,
   construction_apply_consumer_spends,
   damage_area_overlap_batch,
+  damage_area_candidates_batch,
   damage_apply_batch,
   damage_segment_hits_batch,
   death_cleanup_diff_batch,
@@ -954,6 +955,26 @@ export interface SimWasm {
   /** C1 — line/swept damage segment hit classifier. TypeScript gathers
    *  candidates and applies damage/event diffs; Rust owns the
    *  segment-vs-sphere and segment-vs-AABB hit tests. */
+  /** C1 - slab-driven splash/area candidate classifier; geometry read from
+   *  the combat-targeting slab by spatial-grid slot, output identical to
+   *  damageAreaOverlapBatch. TypeScript collects one candidate slot per
+   *  broadphase hit instead of marshalling four geometry columns. */
+  readonly damageAreaCandidatesBatch: (
+    count: number,
+    candidateSlots: Uint32Array,
+    centerX: number,
+    centerY: number,
+    centerZ: number,
+    radius: number,
+    hasSlice: number,
+    sliceDirection: number,
+    sliceHalfAngle: number,
+    outFlags: Uint8Array,
+    outDirX: Float64Array,
+    outDirY: Float64Array,
+    outDirZ: Float64Array,
+    outDistance: Float64Array,
+  ) => number;
   readonly damageSegmentHitsBatch: (
     count: number,
     enabled: Uint8Array,
@@ -3633,6 +3654,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         quatHoverOrientationStepBatch: quat_hover_orientation_step_batch,
         unitForceStepBatch: unit_force_step_batch,
         damageAreaOverlapBatch: damage_area_overlap_batch,
+        damageAreaCandidatesBatch: damage_area_candidates_batch,
         damageApplyBatch: damage_apply_batch,
         damageSegmentHitsBatch: damage_segment_hits_batch,
         deathCleanupDiffBatch: death_cleanup_diff_batch,
