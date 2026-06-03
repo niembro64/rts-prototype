@@ -35,12 +35,19 @@ position is authoritative and cheap, so this is the chosen split rather than a
 gap.
 
 Remaining:
-  1. CHAINING. The slab is write-once per tick, so it cannot supply post-damage HP
-     mid-chain. Keep kill accumulation on the live damage_apply_batch result (as
-     today); move death-explosion chaining/per-blast candidate traversal onto Rust
-     using the slab-backed kernels above and return compact diffs for TS to apply.
+  1. CHAINING QUEUE. The slab is write-once per tick, so it cannot supply
+     post-damage HP mid-chain. Keep kill accumulation on the live
+     damage_apply_batch result (as today), but move the death-explosion
+     queue/dedup/next-blast planning out of Simulation.detonateEntityDeathExplosions
+     and into Rust. Rust should return compact blast work rows for TS to apply
+     one blast at a time, with TS feeding each newly killed unit/building set
+     back into the planner after applying the returned HP diffs.
+
+     Do not move travelling projectile damage rows onto the combat-targeting
+     slab during this step. They stay live-geometry rows because their
+     post-integration positions are authoritative.
 
 VERIFY CAREFULLY: this is core hit-detection. A subtle packing/coherence bug
 shifts splash radii or projectile intercepts in ways a visual spot-check won't
-catch. Gate the cutover on before/after equality (same kill sets, same hit sets)
-per damage type, not a blind switch.
+catch. Add/keep before/after equality gates for the Rust death-blast planner:
+same blast order, same hit sets, same kill sets, and same chained blast sets.

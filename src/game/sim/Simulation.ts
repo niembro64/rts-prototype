@@ -1029,7 +1029,7 @@ export class Simulation {
       areaDamage.radius = blast.radius;
       areaDamage.knockbackForce = blast.force;
 
-      const result = this.damageSystem.applyDamage(areaDamage);
+      const result = this.damageSystem.applyDeathExplosionDamage(areaDamage);
       applyKnockbackForces(result.knockbacks, this.forceAccumulator);
       collectKillsAndDeathContexts(
         result,

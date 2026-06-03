@@ -36,6 +36,7 @@ import __wbg_init, {
   damage_area_overlap_batch,
   damage_area_candidates_batch,
   damage_area_turret_candidates_batch,
+  damage_death_explosion_candidates_batch,
   damage_apply_batch,
   damage_segment_candidates_batch,
   damage_segment_hits_batch,
@@ -986,6 +987,26 @@ export interface SimWasm {
     centerZ: number,
     radius: number,
     outFlags: Uint8Array,
+  ) => number;
+  /** C1 - death-explosion unit/building candidate traversal. Rust queries
+   *  the spatial grid, classifies unit/building body rows and unit turret
+   *  fallback rows from CombatTargetingPool, and returns compact slot rows
+   *  for TypeScript to apply through damageApplyBatch. */
+  readonly damageDeathExplosionCandidatesBatch: (
+    centerX: number,
+    centerY: number,
+    centerZ: number,
+    radius: number,
+    queryRadius: number,
+    maxRows: number,
+    outSlots: Uint32Array,
+    outTargetKind: Uint8Array,
+    outFlags: Uint8Array,
+    outDirX: Float64Array,
+    outDirY: Float64Array,
+    outDirZ: Float64Array,
+    outDistance: Float64Array,
+    outCount: Uint32Array,
   ) => number;
   /** C1 — line/swept damage segment hit classifier. TypeScript gathers
    *  remaining live-geometry rows and applies damage/event diffs; Rust owns
@@ -3694,6 +3715,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         damageAreaOverlapBatch: damage_area_overlap_batch,
         damageAreaCandidatesBatch: damage_area_candidates_batch,
         damageAreaTurretCandidatesBatch: damage_area_turret_candidates_batch,
+        damageDeathExplosionCandidatesBatch: damage_death_explosion_candidates_batch,
         damageApplyBatch: damage_apply_batch,
         damageSegmentCandidatesBatch: damage_segment_candidates_batch,
         damageSegmentHitsBatch: damage_segment_hits_batch,

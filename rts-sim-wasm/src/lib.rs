@@ -253,6 +253,7 @@ const DAMAGE_APPLY_FLAG_KILLED: u8 = 1 << 1;
 
 const DAMAGE_AREA_FLAG_SLICE_PASS: u8 = 1 << 0;
 const DAMAGE_AREA_FLAG_OVERLAP: u8 = 1 << 1;
+const DAMAGE_DEATH_EXPLOSION_ROW_FLAG_BODY_HIT: u8 = 1 << 2;
 const DAMAGE_SEGMENT_HIT_FLAG_HIT: u8 = 1 << 0;
 
 #[inline]
@@ -1138,6 +1139,412 @@ pub fn damage_area_turret_candidates_batch(
     }
 
     processed
+}
+
+#[inline]
+fn damage_area_classify_slab_body(
+    pool: &CombatTargetingPool,
+    slot: usize,
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    radius: f64,
+) -> Option<(u8, u8, f64, f64, f64, f64)> {
+    if slot >= pool.entity_id.len() {
+        return None;
+    }
+
+    let target_kind = match pool.entity_family[slot] {
+        CT_ENTITY_FAMILY_UNIT => DAMAGE_TARGET_KIND_UNIT,
+        CT_ENTITY_FAMILY_BUILDING | CT_ENTITY_FAMILY_TOWER => DAMAGE_TARGET_KIND_BUILDING,
+        _ => return None,
+    };
+    let tx = pool.entity_pos_x[slot];
+    let ty = pool.entity_pos_y[slot];
+    let tz = pool.entity_pos_z[slot];
+    if !(tx.is_finite() && ty.is_finite() && tz.is_finite()) {
+        return None;
+    }
+
+    let area_radius = radius.max(0.0);
+    let mut flags = DAMAGE_AREA_FLAG_SLICE_PASS;
+    let mut dir_x = 0.0;
+    let mut dir_y = 0.0;
+    let mut dir_z = 0.0;
+    let distance;
+
+    match target_kind {
+        DAMAGE_TARGET_KIND_UNIT => {
+            let tr = pool.entity_radius_hitbox[slot].max(0.0);
+            if !tr.is_finite() {
+                return None;
+            }
+            let dx = tx - center_x;
+            let dy = ty - center_y;
+            let dz = tz - center_z;
+            let dist_sq = dx * dx + dy * dy + dz * dz;
+            distance = dist_sq.sqrt();
+            if distance > 0.0 {
+                let inv = 1.0 / distance;
+                dir_x = dx * inv;
+                dir_y = dy * inv;
+                dir_z = dz * inv;
+            }
+            let max_dist = area_radius + tr;
+            if dist_sq <= max_dist * max_dist {
+                flags |= DAMAGE_AREA_FLAG_OVERLAP;
+            }
+        }
+        DAMAGE_TARGET_KIND_BUILDING => {
+            let hx = pool.entity_aabb_half_x[slot].max(0.0);
+            let hy = pool.entity_aabb_half_y[slot].max(0.0);
+            let hz = pool.entity_aabb_half_z[slot].max(0.0);
+            if !(hx.is_finite() && hy.is_finite() && hz.is_finite()) {
+                return None;
+            }
+
+            let min_x = tx - hx;
+            let max_x = tx + hx;
+            let min_y = ty - hy;
+            let max_y = ty + hy;
+            let min_z = tz - hz;
+            let max_z = tz + hz;
+            let closest_x = center_x.clamp(min_x, max_x);
+            let closest_y = center_y.clamp(min_y, max_y);
+            let closest_z = center_z.clamp(min_z, max_z);
+            let box_dx = center_x - closest_x;
+            let box_dy = center_y - closest_y;
+            let box_dz = center_z - closest_z;
+            if box_dx * box_dx + box_dy * box_dy + box_dz * box_dz
+                <= area_radius * area_radius
+            {
+                flags |= DAMAGE_AREA_FLAG_OVERLAP;
+            }
+
+            let hdx = tx - center_x;
+            let hdy = ty - center_y;
+            let h_dist = (hdx * hdx + hdy * hdy).sqrt();
+            if h_dist > 0.0 {
+                let inv = 1.0 / h_dist;
+                dir_x = hdx * inv;
+                dir_y = hdy * inv;
+            }
+            distance = h_dist;
+        }
+        _ => return None,
+    }
+
+    Some((target_kind, flags, dir_x, dir_y, dir_z, distance))
+}
+
+#[inline]
+fn damage_death_explosion_turret_overlaps(
+    pool: &CombatTargetingPool,
+    slot: usize,
+    turret_idx: usize,
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    radius: f64,
+) -> bool {
+    if turret_idx as u32 >= COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY {
+        return false;
+    }
+    if slot >= pool.turret_count_per_entity.len()
+        || turret_idx as u8 >= pool.turret_count_per_entity[slot]
+    {
+        return false;
+    }
+    let gidx = combat_targeting_turret_global_idx(slot as u32, turret_idx as u32);
+    if gidx >= pool.turret_entity_id.len() || pool.turret_entity_id[gidx] < 0 {
+        return false;
+    }
+    if (pool.turret_config_flags[gidx] & CT_TURRET_CFG_VISUAL_ONLY) != 0 {
+        return false;
+    }
+
+    let (tx, ty, tz) = combat_targeting_resolve_turret_mount_from_slab(pool, slot, turret_idx);
+    let tr = pool.turret_radius_hitbox[gidx].max(0.0);
+    if !(tx.is_finite() && ty.is_finite() && tz.is_finite() && tr.is_finite()) {
+        return false;
+    }
+
+    let dx = tx - center_x;
+    let dy = ty - center_y;
+    let dz = tz - center_z;
+    let max_dist = radius.max(0.0) + tr;
+    dx * dx + dy * dy + dz * dz <= max_dist * max_dist
+}
+
+#[allow(clippy::too_many_arguments)]
+fn damage_death_explosion_count_slot_rows(
+    pool: &CombatTargetingPool,
+    slot: usize,
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    radius: f64,
+) -> usize {
+    let Some((target_kind, flags, _, _, _, _)) =
+        damage_area_classify_slab_body(pool, slot, center_x, center_y, center_z, radius)
+    else {
+        return 0;
+    };
+    if (flags & DAMAGE_AREA_FLAG_SLICE_PASS) == 0 {
+        return 0;
+    }
+    if target_kind == DAMAGE_TARGET_KIND_BUILDING {
+        return if (flags & DAMAGE_AREA_FLAG_OVERLAP) != 0 {
+            1
+        } else {
+            0
+        };
+    }
+    if target_kind != DAMAGE_TARGET_KIND_UNIT {
+        return 0;
+    }
+    if (flags & DAMAGE_AREA_FLAG_OVERLAP) != 0 {
+        return 1;
+    }
+
+    let turret_count = if slot < pool.turret_count_per_entity.len() {
+        pool.turret_count_per_entity[slot] as usize
+    } else {
+        0
+    }
+    .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
+    let mut rows = 0_usize;
+    for turret_idx in 0..turret_count {
+        if damage_death_explosion_turret_overlaps(
+            pool, slot, turret_idx, center_x, center_y, center_z, radius,
+        ) {
+            rows += 1;
+        }
+    }
+    rows
+}
+
+#[allow(clippy::too_many_arguments)]
+fn damage_death_explosion_write_slot_rows(
+    pool: &CombatTargetingPool,
+    slot_u32: u32,
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    radius: f64,
+    out_slots: &mut [u32],
+    out_target_kind: &mut [u8],
+    out_flags: &mut [u8],
+    out_dir_x: &mut [f64],
+    out_dir_y: &mut [f64],
+    out_dir_z: &mut [f64],
+    out_distance: &mut [f64],
+    row: &mut usize,
+) {
+    let slot = slot_u32 as usize;
+    let Some((target_kind, flags, dir_x, dir_y, dir_z, distance)) =
+        damage_area_classify_slab_body(pool, slot, center_x, center_y, center_z, radius)
+    else {
+        return;
+    };
+    if (flags & DAMAGE_AREA_FLAG_SLICE_PASS) == 0 {
+        return;
+    }
+
+    if target_kind == DAMAGE_TARGET_KIND_BUILDING {
+        if (flags & DAMAGE_AREA_FLAG_OVERLAP) == 0 {
+            return;
+        }
+        let i = *row;
+        out_slots[i] = slot_u32;
+        out_target_kind[i] = target_kind;
+        out_flags[i] = flags | DAMAGE_DEATH_EXPLOSION_ROW_FLAG_BODY_HIT;
+        out_dir_x[i] = dir_x;
+        out_dir_y[i] = dir_y;
+        out_dir_z[i] = dir_z;
+        out_distance[i] = distance;
+        *row += 1;
+        return;
+    }
+
+    if target_kind != DAMAGE_TARGET_KIND_UNIT {
+        return;
+    }
+    if (flags & DAMAGE_AREA_FLAG_OVERLAP) != 0 {
+        let i = *row;
+        out_slots[i] = slot_u32;
+        out_target_kind[i] = target_kind;
+        out_flags[i] = flags | DAMAGE_DEATH_EXPLOSION_ROW_FLAG_BODY_HIT;
+        out_dir_x[i] = dir_x;
+        out_dir_y[i] = dir_y;
+        out_dir_z[i] = dir_z;
+        out_distance[i] = distance;
+        *row += 1;
+        return;
+    }
+
+    let turret_count = if slot < pool.turret_count_per_entity.len() {
+        pool.turret_count_per_entity[slot] as usize
+    } else {
+        0
+    }
+    .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
+    for turret_idx in 0..turret_count {
+        if !damage_death_explosion_turret_overlaps(
+            pool, slot, turret_idx, center_x, center_y, center_z, radius,
+        ) {
+            continue;
+        }
+        let i = *row;
+        out_slots[i] = slot_u32;
+        out_target_kind[i] = DAMAGE_TARGET_KIND_UNIT;
+        out_flags[i] = DAMAGE_AREA_FLAG_SLICE_PASS | DAMAGE_AREA_FLAG_OVERLAP;
+        out_dir_x[i] = dir_x;
+        out_dir_y[i] = dir_y;
+        out_dir_z[i] = dir_z;
+        out_distance[i] = distance;
+        *row += 1;
+    }
+}
+
+/// C1 death-explosion migration — broadphase + slab-backed unit/building
+/// candidate classification for one death blast.
+///
+/// TypeScript still owns chaining, live HP write-back, projectile live-geometry
+/// rows, death/audio events, and entity removal. This kernel moves the
+/// per-blast unit/building spatial traversal into Rust and returns compact
+/// rows addressed by spatial/combat slab slot. Unit body rows and building rows
+/// carry DAMAGE_DEATH_EXPLOSION_ROW_FLAG_BODY_HIT; unit turret-fallback rows do
+/// not, matching the old TypeScript behavior where turret-only hits damaged the
+/// host but did not apply body knockback.
+#[wasm_bindgen]
+pub fn damage_death_explosion_candidates_batch(
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    radius: f64,
+    query_radius: f64,
+    max_rows: u32,
+    out_slots: &mut [u32],
+    out_target_kind: &mut [u8],
+    out_flags: &mut [u8],
+    out_dir_x: &mut [f64],
+    out_dir_y: &mut [f64],
+    out_dir_z: &mut [f64],
+    out_distance: &mut [f64],
+    out_count: &mut [u32],
+) -> u32 {
+    if out_count.is_empty() {
+        return 0;
+    }
+    out_count[0] = 0;
+    if !(center_x.is_finite()
+        && center_y.is_finite()
+        && center_z.is_finite()
+        && radius.is_finite()
+        && query_radius.is_finite())
+    {
+        return 0;
+    }
+
+    let capacity = (max_rows as usize)
+        .min(out_slots.len())
+        .min(out_target_kind.len())
+        .min(out_flags.len())
+        .min(out_dir_x.len())
+        .min(out_dir_y.len())
+        .min(out_dir_z.len())
+        .min(out_distance.len());
+
+    let state = spatial_grid();
+    state.scratch_u32.clear();
+    state.dedup.clear();
+    spatial_collect_cells_in_radius(state, center_x, center_y, center_z, query_radius.max(0.0));
+    let query_radius_sq = query_radius.max(0.0) * query_radius.max(0.0);
+    let nearby = std::mem::take(&mut state.nearby_cells);
+    let mut slots = std::mem::take(&mut state.scratch_u32);
+    let mut dedup = std::mem::take(&mut state.dedup);
+
+    for key in &nearby {
+        if let Some(bucket) = state.cells.get(key) {
+            for &slot in &bucket.units {
+                spatial_push_unit_if_in_radius(
+                    state,
+                    &mut slots,
+                    slot,
+                    center_x,
+                    center_y,
+                    center_z,
+                    query_radius.max(0.0),
+                    query_radius_sq,
+                    0,
+                    false,
+                    false,
+                    false,
+                );
+            }
+        }
+    }
+    for key in &nearby {
+        if let Some(bucket) = state.cells.get(key) {
+            for &slot in &bucket.buildings {
+                spatial_push_building_if_in_radius(
+                    state,
+                    &mut dedup,
+                    &mut slots,
+                    slot,
+                    center_x,
+                    center_y,
+                    center_z,
+                    query_radius_sq,
+                    0,
+                    false,
+                    false,
+                );
+            }
+        }
+    }
+    state.nearby_cells = nearby;
+    state.dedup = dedup;
+    state.scratch_u32 = slots;
+
+    let pool = combat_targeting_pool();
+    let mut needed = 0_usize;
+    for &slot in &state.scratch_u32 {
+        needed += damage_death_explosion_count_slot_rows(
+            pool,
+            slot as usize,
+            center_x,
+            center_y,
+            center_z,
+            radius,
+        );
+    }
+    out_count[0] = needed as u32;
+    if needed > capacity {
+        return 0;
+    }
+
+    let mut row = 0_usize;
+    for &slot in &state.scratch_u32 {
+        damage_death_explosion_write_slot_rows(
+            pool,
+            slot,
+            center_x,
+            center_y,
+            center_z,
+            radius,
+            out_slots,
+            out_target_kind,
+            out_flags,
+            out_dir_x,
+            out_dir_y,
+            out_dir_z,
+            out_distance,
+            &mut row,
+        );
+    }
+    row as u32
 }
 
 /// C1 damage migration — authoritative HP write-back math.
@@ -31050,6 +31457,156 @@ mod sim_kernel_tests {
         assert_eq!(flags[0], DAMAGE_AREA_FLAG_OVERLAP);
         assert_eq!(flags[1], 0);
         assert_eq!(flags[2], 0);
+    }
+
+    #[test]
+    fn damage_death_explosion_candidates_batch_queries_and_classifies_slab_rows() {
+        let _guard = lock_tests();
+
+        spatial_init(200.0, 64);
+        combat_targeting_init(64);
+
+        let pool = combat_targeting_pool();
+        pool.ensure_entity_capacity(3);
+
+        pool.entity_id[0] = 100;
+        pool.entity_family[0] = CT_ENTITY_FAMILY_UNIT;
+        pool.entity_pos_x[0] = 3.0;
+        pool.entity_pos_y[0] = 0.0;
+        pool.entity_pos_z[0] = 0.0;
+        pool.entity_radius_hitbox[0] = 1.0;
+        spatial_set_entity_id(0, 100);
+        spatial_set_unit(0, 3.0, 0.0, 0.0, 1.0, 1.0, 1, 1);
+
+        pool.entity_id[1] = 101;
+        pool.entity_family[1] = CT_ENTITY_FAMILY_UNIT;
+        pool.entity_pos_x[1] = 20.0;
+        pool.entity_pos_y[1] = 0.0;
+        pool.entity_pos_z[1] = 0.0;
+        pool.entity_ground_z[1] = 0.0;
+        pool.entity_rot_cos[1] = 1.0;
+        pool.entity_rot_sin[1] = 0.0;
+        pool.entity_surface_nx[1] = 0.0;
+        pool.entity_surface_ny[1] = 0.0;
+        pool.entity_surface_nz[1] = 1.0;
+        pool.entity_radius_hitbox[1] = 1.0;
+        pool.turret_count_per_entity[1] = 1;
+        let turret_idx = combat_targeting_turret_global_idx(1, 0);
+        pool.turret_entity_id[turret_idx] = 401;
+        pool.turret_local_mount_x[turret_idx] = -16.0;
+        pool.turret_local_mount_y[turret_idx] = 0.0;
+        pool.turret_local_mount_z[turret_idx] = 0.0;
+        pool.turret_radius_hitbox[turret_idx] = 1.0;
+        spatial_set_entity_id(1, 101);
+        spatial_set_unit(1, 20.0, 0.0, 0.0, 1.0, 1.0, 2, 1);
+
+        pool.entity_id[2] = 200;
+        pool.entity_family[2] = CT_ENTITY_FAMILY_BUILDING;
+        pool.entity_pos_x[2] = 6.0;
+        pool.entity_pos_y[2] = 0.0;
+        pool.entity_pos_z[2] = 0.0;
+        pool.entity_radius_hitbox[2] = 2.0;
+        pool.entity_aabb_half_x[2] = 1.0;
+        pool.entity_aabb_half_y[2] = 1.0;
+        pool.entity_aabb_half_z[2] = 1.0;
+        spatial_set_entity_id(2, 200);
+        spatial_set_building(2, 6.0, 0.0, 0.0, 1.0, 1.0, 1.0, 2, 1, 1);
+
+        pool.entity_id[3] = 300;
+        pool.entity_family[3] = CT_ENTITY_FAMILY_UNIT;
+        pool.entity_pos_x[3] = 160.0;
+        pool.entity_pos_y[3] = 0.0;
+        pool.entity_pos_z[3] = 0.0;
+        pool.entity_radius_hitbox[3] = 1.0;
+        spatial_set_entity_id(3, 300);
+        spatial_set_unit(3, 160.0, 0.0, 0.0, 1.0, 1.0, 1, 1);
+
+        let mut short_slots = [0_u32; 1];
+        let mut short_kind = [0_u8; 1];
+        let mut short_flags = [0_u8; 1];
+        let mut short_dir_x = [0.0; 1];
+        let mut short_dir_y = [0.0; 1];
+        let mut short_dir_z = [0.0; 1];
+        let mut short_distance = [0.0; 1];
+        let mut out_count = [0_u32; 1];
+        assert_eq!(
+            damage_death_explosion_candidates_batch(
+                0.0,
+                0.0,
+                0.0,
+                5.0,
+                105.0,
+                1,
+                &mut short_slots,
+                &mut short_kind,
+                &mut short_flags,
+                &mut short_dir_x,
+                &mut short_dir_y,
+                &mut short_dir_z,
+                &mut short_distance,
+                &mut out_count,
+            ),
+            0,
+        );
+        assert_eq!(out_count[0], 3);
+
+        let mut slots = [0_u32; 3];
+        let mut kind = [0_u8; 3];
+        let mut flags = [0_u8; 3];
+        let mut dir_x = [0.0; 3];
+        let mut dir_y = [0.0; 3];
+        let mut dir_z = [0.0; 3];
+        let mut distance = [0.0; 3];
+        assert_eq!(
+            damage_death_explosion_candidates_batch(
+                0.0,
+                0.0,
+                0.0,
+                5.0,
+                105.0,
+                3,
+                &mut slots,
+                &mut kind,
+                &mut flags,
+                &mut dir_x,
+                &mut dir_y,
+                &mut dir_z,
+                &mut distance,
+                &mut out_count,
+            ),
+            3,
+        );
+
+        assert_eq!(out_count[0], 3);
+        assert_eq!(slots, [0, 1, 2]);
+        assert_eq!(
+            kind,
+            [
+                DAMAGE_TARGET_KIND_UNIT,
+                DAMAGE_TARGET_KIND_UNIT,
+                DAMAGE_TARGET_KIND_BUILDING,
+            ],
+        );
+        assert_eq!(
+            flags[0],
+            DAMAGE_AREA_FLAG_SLICE_PASS
+                | DAMAGE_AREA_FLAG_OVERLAP
+                | DAMAGE_DEATH_EXPLOSION_ROW_FLAG_BODY_HIT,
+        );
+        assert_eq!(
+            flags[1],
+            DAMAGE_AREA_FLAG_SLICE_PASS | DAMAGE_AREA_FLAG_OVERLAP,
+        );
+        assert_eq!(
+            flags[2],
+            DAMAGE_AREA_FLAG_SLICE_PASS
+                | DAMAGE_AREA_FLAG_OVERLAP
+                | DAMAGE_DEATH_EXPLOSION_ROW_FLAG_BODY_HIT,
+        );
+        assert_eq!(dir_x, [1.0, 1.0, 1.0]);
+        assert_eq!(dir_y, [0.0, 0.0, 0.0]);
+        assert_eq!(dir_z, [0.0, 0.0, 0.0]);
+        assert_eq!(distance, [3.0, 20.0, 6.0]);
     }
 
     #[test]

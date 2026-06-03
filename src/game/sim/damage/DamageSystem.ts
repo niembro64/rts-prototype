@@ -167,6 +167,7 @@ const DAMAGE_APPLY_FLAG_APPLIED = 1 << 0;
 const DAMAGE_APPLY_FLAG_KILLED = 1 << 1;
 const DAMAGE_AREA_FLAG_SLICE_PASS = 1 << 0;
 const DAMAGE_AREA_FLAG_OVERLAP = 1 << 1;
+const DAMAGE_DEATH_EXPLOSION_ROW_FLAG_BODY_HIT = 1 << 2;
 const DAMAGE_SEGMENT_HIT_FLAG_HIT = 1 << 0;
 
 let _damageBatchCapacity = 0;
@@ -214,6 +215,15 @@ let _areaTurretDamageSlots = new Uint32Array(0);
 let _areaTurretDamageTurretIndices = new Int32Array(0);
 let _areaTurretDamageOutFlags = new Uint8Array(0);
 let _areaTurretDamageRefFlags = new Uint8Array(0);
+let _deathExplosionDamageCapacity = 0;
+let _deathExplosionDamageSlots = new Uint32Array(0);
+let _deathExplosionDamageTargetKind = new Uint8Array(0);
+let _deathExplosionDamageOutFlags = new Uint8Array(0);
+let _deathExplosionDamageOutDirX = new Float64Array(0);
+let _deathExplosionDamageOutDirY = new Float64Array(0);
+let _deathExplosionDamageOutDirZ = new Float64Array(0);
+let _deathExplosionDamageOutDistance = new Float64Array(0);
+const _deathExplosionDamageOutCount = new Uint32Array(1);
 let _segmentDamageCapacity = 0;
 let _segmentDamageEntityIds: EntityId[] = [];
 let _segmentDamageHostEntityIds: EntityId[] = [];
@@ -312,6 +322,20 @@ function ensureAreaTurretDamageCapacity(count: number): void {
   _areaTurretDamageTurretIndices = new Int32Array(next);
   _areaTurretDamageOutFlags = new Uint8Array(next);
   _areaTurretDamageRefFlags = new Uint8Array(next);
+}
+
+function ensureDeathExplosionDamageCapacity(count: number): void {
+  if (count <= _deathExplosionDamageCapacity) return;
+  let next = Math.max(16, _deathExplosionDamageCapacity);
+  while (next < count) next *= 2;
+  _deathExplosionDamageCapacity = next;
+  _deathExplosionDamageSlots = new Uint32Array(next);
+  _deathExplosionDamageTargetKind = new Uint8Array(next);
+  _deathExplosionDamageOutFlags = new Uint8Array(next);
+  _deathExplosionDamageOutDirX = new Float64Array(next);
+  _deathExplosionDamageOutDirY = new Float64Array(next);
+  _deathExplosionDamageOutDirZ = new Float64Array(next);
+  _deathExplosionDamageOutDistance = new Float64Array(next);
 }
 
 function classifyAreaDamageRows(
@@ -492,6 +516,43 @@ function assertAreaTurretSlabMatchesPacked(count: number): void {
       });
       return;
     }
+  }
+}
+
+function classifyDeathExplosionDamageRows(source: AreaDamageSource): number {
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('Death-explosion candidate classification requires initialized sim-wasm');
+  }
+
+  ensureDeathExplosionDamageCapacity(16);
+  for (;;) {
+    _deathExplosionDamageOutCount[0] = 0;
+    const processed = sim.damageDeathExplosionCandidatesBatch(
+      source.center.x,
+      source.center.y,
+      source.center.z,
+      source.radius,
+      source.radius + 100,
+      _deathExplosionDamageCapacity,
+      _deathExplosionDamageSlots,
+      _deathExplosionDamageTargetKind,
+      _deathExplosionDamageOutFlags,
+      _deathExplosionDamageOutDirX,
+      _deathExplosionDamageOutDirY,
+      _deathExplosionDamageOutDirZ,
+      _deathExplosionDamageOutDistance,
+      _deathExplosionDamageOutCount,
+    );
+    const count = _deathExplosionDamageOutCount[0];
+    if (count > _deathExplosionDamageCapacity) {
+      ensureDeathExplosionDamageCapacity(count);
+      continue;
+    }
+    if (processed !== count) {
+      throw new Error(`Death-explosion candidate classification failed: ${processed}/${count}`);
+    }
+    return count;
   }
 }
 
@@ -2162,6 +2223,130 @@ export class DamageSystem {
       result.hitEntityIds.push(building.id);
     }
     clearAreaDamageEntities(areaRowCount);
+
+    this.flushDamageBatch(result, source.sourceEntityId);
+    return result;
+  }
+
+  applyDeathExplosionDamage(source: AreaDamageSource): DamageResult {
+    const result = resetResult();
+    const rowCount = classifyDeathExplosionDamageRows(source);
+
+    // Unit/body rows and unit turret-fallback rows. Rust owns the
+    // broadphase + slab geometry; TS resolves compact slots to live
+    // entities and applies HP through the shared batch.
+    for (let row = 0; row < rowCount; row++) {
+      if (_deathExplosionDamageTargetKind[row] !== DAMAGE_TARGET_KIND_UNIT) continue;
+      const unit = spatialGrid.resolveSlot(_deathExplosionDamageSlots[row]);
+      const unitComponent = unit?.unit;
+      if (
+        unit === undefined ||
+        unitComponent === undefined ||
+        unitComponent === null ||
+        unitComponent.hp <= 0 ||
+        source.excludeEntities.has(unit.id) ||
+        (source.excludeCommanders && unit.commander)
+      ) {
+        continue;
+      }
+
+      const damage = source.damage;
+      const dirX = _deathExplosionDamageOutDirX[row];
+      const dirY = _deathExplosionDamageOutDirY[row];
+      const dirZ = _deathExplosionDamageOutDirZ[row];
+      const force = source.knockbackForce ?? (damage * KNOCKBACK.SPLASH);
+      const forceX = dirX * force;
+      const forceY = dirY * force;
+      const forceZ = dirZ * force;
+      this.queueDamageToEntityBatch(unit, damage, result, source.sourceEntityId, {
+        penetrationDir: { x: dirX, y: dirY },
+        attackerVel: { x: forceX, y: forceY },
+        attackMagnitude: damage,
+      });
+      result.hitEntityIds.push(unit.id);
+
+      if (
+        (_deathExplosionDamageOutFlags[row] & DAMAGE_DEATH_EXPLOSION_ROW_FLAG_BODY_HIT) !== 0 &&
+        force > 0 &&
+        _deathExplosionDamageOutDistance[row] > 0
+      ) {
+        pushKnockback(result, unit.id, forceX, forceY, forceZ);
+      }
+    }
+
+    // Travelling shots remain live-geometry rows by design: their
+    // post-integration position is authoritative after movement, while
+    // the combat slab is a once-per-tick targeting snapshot.
+    const nearbyProjectiles = spatialGrid.queryEnemyProjectilesInRadius(
+      source.center.x, source.center.y, source.center.z, source.radius + 100, source.ownerId,
+    );
+    ensureAreaDamageCapacity(nearbyProjectiles.length);
+    let projectileRowCount = 0;
+    for (const projectile of nearbyProjectiles) {
+      if (source.excludeEntities.has(projectile.id)) continue;
+      const proj = projectile.projectile;
+      if (
+        proj === null ||
+        proj.projectileType !== 'projectile' ||
+        proj.hp <= 0 ||
+        !isProjectileShot(proj.config.shot)
+      ) {
+        continue;
+      }
+
+      const row = projectileRowCount++;
+      _areaDamageEntities[row] = projectile;
+      _areaDamageEnabled[row] = 1;
+      _areaDamageTargetKind[row] = DAMAGE_TARGET_KIND_PROJECTILE;
+      _areaDamageTargetX[row] = projectile.transform.x;
+      _areaDamageTargetY[row] = projectile.transform.y;
+      _areaDamageTargetZ[row] = projectile.transform.z;
+      _areaDamageTargetRadius[row] = proj.config.shotProfile.runtime.radius.collision;
+      _areaDamageBoxHalfX[row] = 0;
+      _areaDamageBoxHalfY[row] = 0;
+      _areaDamageBoxHalfZ[row] = 0;
+    }
+    classifyAreaDamageRows(source, projectileRowCount, false, Math.PI);
+    for (let row = 0; row < projectileRowCount; row++) {
+      const projectile = _areaDamageEntities[row];
+      if (
+        projectile === undefined ||
+        (_areaDamageOutFlags[row] & DAMAGE_AREA_FLAG_OVERLAP) === 0
+      ) {
+        continue;
+      }
+      this.queueDamageToEntityBatch(projectile, source.damage, result, source.sourceEntityId);
+      result.hitEntityIds.push(projectile.id);
+    }
+    clearAreaDamageEntities(projectileRowCount);
+
+    for (let row = 0; row < rowCount; row++) {
+      if (_deathExplosionDamageTargetKind[row] !== DAMAGE_TARGET_KIND_BUILDING) continue;
+      const building = spatialGrid.resolveSlot(_deathExplosionDamageSlots[row]);
+      const buildingComponent = building?.building;
+      if (
+        building === undefined ||
+        buildingComponent === undefined ||
+        buildingComponent === null ||
+        buildingComponent.hp <= 0 ||
+        source.excludeEntities.has(building.id)
+      ) {
+        continue;
+      }
+
+      const damage = source.damage;
+      const dirX = _deathExplosionDamageOutDirX[row];
+      const dirY = _deathExplosionDamageOutDirY[row];
+      const bForce = source.knockbackForce ?? (damage * KNOCKBACK.SPLASH);
+      const bForceX = dirX * bForce;
+      const bForceY = dirY * bForce;
+      this.queueDamageToEntityBatch(building, damage, result, source.sourceEntityId, {
+        penetrationDir: { x: dirX, y: dirY },
+        attackerVel: { x: bForceX, y: bForceY },
+        attackMagnitude: damage,
+      });
+      result.hitEntityIds.push(building.id);
+    }
 
     this.flushDamageBatch(result, source.sourceEntityId);
     return result;
