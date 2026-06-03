@@ -497,6 +497,149 @@ pub fn damage_segment_hits_batch(
     processed
 }
 
+/// C1 damage migration - slab-driven line/swept candidate classifier.
+///
+/// Drop-in companion to `damage_segment_hits_batch` that reads each candidate's
+/// geometry from the combat-targeting slab instead of TS-packed arrays. A row
+/// addresses either an entity body (turret_idx < 0: UNIT sphere via
+/// entity_radius_hitbox, SHOT sphere via entity_radius_collision, BUILDING/TOWER
+/// AABB via entity_aabb_half_*) or one turret sub-hitbox (turret_idx >= 0:
+/// sphere at the slab-computed turret_mount_* with turret_radius_hitbox). The
+/// segment-vs-shape math is the shared damage_segment_*_intersection_t helpers,
+/// so per-row out_flags/out_t is identical to `damage_segment_hits_batch`; only
+/// the geometry source changes. This removes the per-turret
+/// resolveWeaponWorldMount calls and the per-candidate geometry marshalling from
+/// TypeScript. SHOT rows are accepted for completeness but travelling shots are
+/// event-driven bodies whose live position the caller reads directly, so the
+/// segment callers leave projectile rows on the array-based kernel.
+#[wasm_bindgen]
+pub fn damage_segment_candidates_batch(
+    count: u32,
+    candidate_slots: &[u32],
+    turret_idx: &[i32],
+    start_x: f64,
+    start_y: f64,
+    start_z: f64,
+    end_x: f64,
+    end_y: f64,
+    end_z: f64,
+    out_flags: &mut [u8],
+    out_t: &mut [f64],
+) -> u32 {
+    let n = count as usize;
+    if candidate_slots.len() < n || turret_idx.len() < n || out_flags.len() < n || out_t.len() < n {
+        return 0;
+    }
+    if !(start_x.is_finite()
+        && start_y.is_finite()
+        && start_z.is_finite()
+        && end_x.is_finite()
+        && end_y.is_finite()
+        && end_z.is_finite())
+    {
+        return 0;
+    }
+
+    let pool = combat_targeting_pool();
+    let mut processed = 0_u32;
+    for i in 0..n {
+        out_flags[i] = 0;
+        out_t[i] = 0.0;
+
+        let slot = candidate_slots[i] as usize;
+        if slot >= pool.entity_id.len() {
+            continue;
+        }
+
+        let ti = turret_idx[i];
+        let hit_t = if ti >= 0 {
+            // Turret sub-hitbox: sphere at the slab-computed world mount.
+            if (ti as u32) >= COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY {
+                None
+            } else {
+                let gidx = combat_targeting_turret_global_idx(slot as u32, ti as u32);
+                if gidx >= pool.turret_mount_x.len() {
+                    None
+                } else {
+                    let tx = pool.turret_mount_x[gidx];
+                    let ty = pool.turret_mount_y[gidx];
+                    let tz = pool.turret_mount_z[gidx];
+                    let radius = pool.turret_radius_hitbox[gidx].max(0.0);
+                    if !(tx.is_finite() && ty.is_finite() && tz.is_finite() && radius.is_finite()) {
+                        None
+                    } else {
+                        damage_segment_sphere_intersection_t(
+                            start_x, start_y, start_z, end_x, end_y, end_z, tx, ty, tz, radius,
+                        )
+                    }
+                }
+            }
+        } else {
+            let tx = pool.entity_pos_x[slot];
+            let ty = pool.entity_pos_y[slot];
+            let tz = pool.entity_pos_z[slot];
+            if !(tx.is_finite() && ty.is_finite() && tz.is_finite()) {
+                None
+            } else {
+                match pool.entity_family[slot] {
+                    CT_ENTITY_FAMILY_UNIT => {
+                        let radius = pool.entity_radius_hitbox[slot].max(0.0);
+                        if !radius.is_finite() {
+                            None
+                        } else {
+                            damage_segment_sphere_intersection_t(
+                                start_x, start_y, start_z, end_x, end_y, end_z, tx, ty, tz, radius,
+                            )
+                        }
+                    }
+                    CT_ENTITY_FAMILY_SHOT => {
+                        let radius = pool.entity_radius_collision[slot].max(0.0);
+                        if !radius.is_finite() {
+                            None
+                        } else {
+                            damage_segment_sphere_intersection_t(
+                                start_x, start_y, start_z, end_x, end_y, end_z, tx, ty, tz, radius,
+                            )
+                        }
+                    }
+                    CT_ENTITY_FAMILY_BUILDING | CT_ENTITY_FAMILY_TOWER => {
+                        let hx = pool.entity_aabb_half_x[slot].max(0.0);
+                        let hy = pool.entity_aabb_half_y[slot].max(0.0);
+                        let hz = pool.entity_aabb_half_z[slot].max(0.0);
+                        if !(hx.is_finite() && hy.is_finite() && hz.is_finite()) {
+                            None
+                        } else {
+                            damage_segment_aabb_intersection_t(
+                                start_x,
+                                start_y,
+                                start_z,
+                                end_x,
+                                end_y,
+                                end_z,
+                                tx - hx,
+                                ty - hy,
+                                tz - hz,
+                                tx + hx,
+                                ty + hy,
+                                tz + hz,
+                            )
+                        }
+                    }
+                    _ => None,
+                }
+            }
+        };
+
+        if let Some(t) = hit_t {
+            out_flags[i] = DAMAGE_SEGMENT_HIT_FLAG_HIT;
+            out_t[i] = t;
+        }
+        processed += 1;
+    }
+
+    processed
+}
+
 #[inline]
 fn normalize_angle_pi(mut angle: f64) -> f64 {
     const PI: f64 = core::f64::consts::PI;
@@ -30342,15 +30485,19 @@ pub fn snapshot_encode_envelope_emit_scan_pulses(count: u32) -> u32 {
     w.buf.len() as u32
 }
 
+// Shared across all test modules: the combat-targeting pool is a process-global
+// static, so every test that stamps or reads it must serialize on ONE lock
+// regardless of which test module it lives in.
+#[cfg(test)]
+static COMBAT_TARGETING_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(test)]
 mod sim_kernel_tests {
     use super::*;
-    use std::sync::{Mutex, MutexGuard};
-
-    static TEST_LOCK: Mutex<()> = Mutex::new(());
+    use std::sync::MutexGuard;
 
     fn lock_tests() -> MutexGuard<'static, ()> {
-        match TEST_LOCK.lock() {
+        match super::COMBAT_TARGETING_TEST_LOCK.lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         }
@@ -30790,6 +30937,75 @@ mod sim_kernel_tests {
 
         assert_eq!(flags[0], 0);
         assert_eq!(t[0], 0.0);
+    }
+
+    #[test]
+    fn damage_segment_candidates_batch_matches_segment_hits_batch() {
+        let _guard = lock_tests();
+
+        // Reference rows: a unit body sphere, that unit's turret sub-hitbox
+        // sphere, and a building AABB — packed the way TypeScript does today.
+        let kind = [
+            DAMAGE_TARGET_KIND_UNIT,
+            DAMAGE_TARGET_KIND_UNIT,
+            DAMAGE_TARGET_KIND_BUILDING,
+        ];
+        let enabled = [1_u8; 3];
+        let tx = [0.0, 5.0, 10.0];
+        let ty = [0.0, 0.0, 0.0];
+        let tz = [0.0, 0.0, 0.0];
+        let tr = [1.5, 1.0, 0.0];
+        let hx = [0.0, 0.0, 1.0];
+        let hy = [0.0, 0.0, 1.0];
+        let hz = [0.0, 0.0, 1.0];
+        let (sx, sy, sz) = (-5.0, 0.0, 0.0);
+        let (ex, ey, ez) = (15.0, 0.0, 0.0);
+
+        let mut ref_flags = [0_u8; 3];
+        let mut ref_t = [0.0; 3];
+        damage_segment_hits_batch(
+            3, &enabled, &kind, sx, sy, sz, ex, ey, ez, &tx, &ty, &tz, &tr, &hx, &hy, &hz,
+            &mut ref_flags, &mut ref_t,
+        );
+
+        // Stamp the unit (slot 0, one turret) and building (slot 1) into the slab.
+        let pool = combat_targeting_pool();
+        pool.ensure_entity_capacity(1);
+        pool.entity_id[0] = 100;
+        pool.entity_family[0] = CT_ENTITY_FAMILY_UNIT;
+        pool.entity_pos_x[0] = tx[0];
+        pool.entity_pos_y[0] = ty[0];
+        pool.entity_pos_z[0] = tz[0];
+        pool.entity_radius_hitbox[0] = tr[0];
+        pool.turret_count_per_entity[0] = 1;
+        let g0 = combat_targeting_turret_global_idx(0, 0);
+        pool.turret_mount_x[g0] = tx[1];
+        pool.turret_mount_y[g0] = ty[1];
+        pool.turret_mount_z[g0] = tz[1];
+        pool.turret_radius_hitbox[g0] = tr[1];
+        pool.entity_id[1] = 200;
+        pool.entity_family[1] = CT_ENTITY_FAMILY_BUILDING;
+        pool.entity_pos_x[1] = tx[2];
+        pool.entity_pos_y[1] = ty[2];
+        pool.entity_pos_z[1] = tz[2];
+        pool.entity_aabb_half_x[1] = hx[2];
+        pool.entity_aabb_half_y[1] = hy[2];
+        pool.entity_aabb_half_z[1] = hz[2];
+
+        // rows: unit body (slot 0), that unit's turret 0, building (slot 1).
+        let slots = [0_u32, 0, 1];
+        let turret_idx = [-1_i32, 0, -1];
+        let mut got_flags = [0_u8; 3];
+        let mut got_t = [0.0; 3];
+        let processed = damage_segment_candidates_batch(
+            3, &slots, &turret_idx, sx, sy, sz, ex, ey, ez, &mut got_flags, &mut got_t,
+        );
+
+        assert_eq!(processed, 3);
+        assert_eq!(got_flags, ref_flags);
+        assert_eq!(got_t, ref_t);
+        // Sanity: the axis-aligned beam clipped body, turret, and building.
+        assert_eq!(ref_flags, [DAMAGE_SEGMENT_HIT_FLAG_HIT; 3]);
     }
 
     #[test]
@@ -32616,9 +32832,7 @@ mod sim_kernel_tests {
 #[cfg(test)]
 mod lock_on_inclusion_tests {
     use super::*;
-    use std::sync::{Mutex, MutexGuard};
-
-    static TEST_LOCK: Mutex<()> = Mutex::new(());
+    use std::sync::MutexGuard;
 
     const MAX: usize = COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize;
     const SOURCE_SLOT: u32 = 0;
@@ -32684,7 +32898,7 @@ mod lock_on_inclusion_tests {
     }
 
     fn lock_tests() -> MutexGuard<'static, ()> {
-        match TEST_LOCK.lock() {
+        match super::COMBAT_TARGETING_TEST_LOCK.lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         }
