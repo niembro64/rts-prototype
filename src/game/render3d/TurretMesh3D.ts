@@ -104,6 +104,11 @@ export type TurretMesh3DDeps = {
   /** Half player color, half white. Used for head-only turret heads
    *  and all physical barrel meshes. */
   turretAccentMat: THREE.Material;
+  /** Optional material for visible shield emitter cores. Shield turrets
+   *  normally render through ShieldRenderer3D only, but special hosts
+   *  can request a small physical emitter so the mount is readable. */
+  shieldEmitterMat?: THREE.Material;
+  showShieldEmitterCore?: boolean;
   /** When true, skip building the per-Mesh head sphere — the caller
    *  is rendering the head through the shared InstancedMesh path
    *  instead. Barrels still build and pivot at headRadius regardless,
@@ -159,7 +164,8 @@ export function buildTurretMesh3D(
   //    shared `turretHeadInstanced` InstancedMesh path — see
   //    Render3DEntities.allocTurretHeadSlot.
   const turretOff = gfx.turretStyle === 'none';
-  const hideHead = turretOff || isShield;
+  const showShieldEmitterCore = isShield && deps.showShieldEmitterCore === true;
+  const hideHead = turretOff || (isShield && !showShieldEmitterCore);
   const skipHeadMesh = hideHead || deps.skipHead === true;
 
   // Resolved head radius drives BOTH the sphere mesh size AND its
@@ -167,7 +173,10 @@ export function buildTurretMesh3D(
   // at the head center even when the head itself is hidden.
   let head: THREE.Mesh | undefined;
   if (!skipHeadMesh) {
-    head = new THREE.Mesh(deps.headGeom, headOnly ? deps.turretAccentMat : deps.primaryMat);
+    const headMat = showShieldEmitterCore
+      ? deps.shieldEmitterMat ?? deps.turretAccentMat
+      : headOnly ? deps.turretAccentMat : deps.primaryMat;
+    head = new THREE.Mesh(deps.headGeom, headMat);
     head.scale.setScalar(headRadius);
     head.position.set(0, headRadius, 0);
     root.add(head);

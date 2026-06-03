@@ -43,6 +43,7 @@ import {
 } from './WheelRig3D';
 import {
   type HoverMesh,
+  buildAlbatrosHoverFans,
   buildHoverFans,
   updateHoverFans,
 } from './HoverRig3D';
@@ -154,7 +155,10 @@ export function buildLocomotion(
       return mesh;
     }
     case 'hover': {
-      const mesh = buildHoverFans(
+      const buildHoverMesh = bp.unitBlueprintId === 'unitAlbatros'
+        ? buildAlbatrosHoverFans
+        : buildHoverFans;
+      const mesh = buildHoverMesh(
         unitGroup,
         unitRadius,
         loc.config,

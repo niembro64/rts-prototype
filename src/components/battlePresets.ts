@@ -58,6 +58,7 @@ function demoUnits(): readonly string[] {
     'unitBee',
     'unitDragonfly',
     'unitEagle',
+    'unitAlbatros',
   ];
 }
 

@@ -18,6 +18,35 @@ import { getTurretConfig, computeTurretRanges } from './turretConfigs';
 import { getUnitBlueprint, getBuildingBlueprint } from './blueprints';
 import { createRuntimeTurretMount } from './turretMounts';
 
+const ALBATROS_SHIELD_OUTER_RANGE_MULT = 0.85;
+
+function withHostSpecificTurretConfig(
+  turretConfig: TurretConfig,
+  turretBlueprintId: string,
+  hostUnitBlueprintId: string | undefined,
+): TurretConfig {
+  if (
+    hostUnitBlueprintId !== 'unitAlbatros' ||
+    turretBlueprintId !== 'turretShieldSphere' ||
+    turretConfig.shot?.type !== 'shield' ||
+    turretConfig.shot.barrier === undefined
+  ) {
+    return turretConfig;
+  }
+
+  return {
+    ...turretConfig,
+    shot: {
+      ...turretConfig.shot,
+      barrier: {
+        ...turretConfig.shot.barrier,
+        outerRange: turretConfig.shot.barrier.outerRange * ALBATROS_SHIELD_OUTER_RANGE_MULT,
+        originOffsetZ: 0,
+      },
+    },
+  };
+}
+
 function makeRuntimeTurret(
   turretBlueprintId: string,
   mount: { x: number; y: number; z: number },
@@ -29,11 +58,17 @@ function makeRuntimeTurret(
     mountIndex: number;
   },
   visualVariant: BuildingTurretMount['visualVariant'] | undefined = undefined,
+  hostUnitBlueprintId: string | undefined = undefined,
 ): Turret {
-  const turretConfig = getTurretConfig(turretBlueprintId);
+  let turretConfig = getTurretConfig(turretBlueprintId);
   if (visualVariant !== undefined) {
     turretConfig.visualVariant = visualVariant;
   }
+  turretConfig = withHostSpecificTurretConfig(
+    turretConfig,
+    turretBlueprintId,
+    hostUnitBlueprintId,
+  );
   const ranges = computeTurretRanges(turretConfig);
   const turnAccel = turretConfig.angular.turnAccel;
   const drag = turretConfig.angular.drag;
@@ -125,7 +160,14 @@ export function createUnitRuntimeTurrets(
     const identity = allocateEntityId !== null
       ? { id: allocateEntityId(), parentId, rootHostId, mountIndex: i }
       : anonymousTurretBlueprintIdentity(i);
-    turrets.push(makeRuntimeTurret(mount.turretBlueprintId, localMount, mount.hostDirected, identity, mount.visualVariant));
+    turrets.push(makeRuntimeTurret(
+      mount.turretBlueprintId,
+      localMount,
+      mount.hostDirected,
+      identity,
+      mount.visualVariant,
+      unitBlueprintId,
+    ));
   }
   return turrets;
 }

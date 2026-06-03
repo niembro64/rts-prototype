@@ -11,6 +11,7 @@ import {
   getChassisLift,
   type LegStateSnapshot,
 } from './Locomotion3D';
+import { buildAlbatrosChassis } from './AlbatrosMesh3D';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import { getBodyGeom } from './BodyShape3D';
 import type { CommanderVisualKit3D } from './CommanderVisualKit3D';
@@ -116,6 +117,7 @@ export class UnitMeshBuilder3D {
 
     const group = new THREE.Group();
     const blueprint = this.getUnitBlueprint(entity);
+    const isAlbatros = blueprint?.unitBlueprintId === 'unitAlbatros';
     const bodyShape = blueprint?.bodyShape ?? FALLBACK_UNIT_BODY_SHAPE;
     const bodyShapeKey = getUnitBodyShapeKey(bodyShape);
     const bodyEntry = getBodyGeom(bodyShape);
@@ -133,17 +135,18 @@ export class UnitMeshBuilder3D {
     chassis.userData.entityId = entity.id;
     const chassisMeshes: THREE.Mesh[] = [];
     const useDetailedUnitInstancing = USE_DETAILED_UNIT_INSTANCING;
+    const useInstancedChassis = useDetailedUnitInstancing && !isAlbatros;
     let smoothChassisSlots: number[] | undefined;
     let polyChassisSlot: number | undefined;
 
     if (
-      useDetailedUnitInstancing &&
+      useInstancedChassis &&
       bodyEntry.isSmooth &&
       bodyEntry.parts.length > 0
     ) {
       smoothChassisSlots = this.unitDetailInstances.allocSmoothChassisSlots(bodyEntry.parts.length) ?? undefined;
     } else if (
-      useDetailedUnitInstancing &&
+      useInstancedChassis &&
       !bodyEntry.isSmooth &&
       bodyEntry.parts.length === 1
     ) {
@@ -155,7 +158,11 @@ export class UnitMeshBuilder3D {
       if (allocated !== null) polyChassisSlot = allocated;
     }
 
-    if (!smoothChassisSlots && polyChassisSlot === undefined) {
+    if (isAlbatros) {
+      chassisMeshes.push(
+        ...buildAlbatrosChassis(chassis, this.getPrimaryMat(ownerId), entity.id),
+      );
+    } else if (!smoothChassisSlots && polyChassisSlot === undefined) {
       for (const part of bodyEntry.parts) {
         const mesh = new THREE.Mesh(part.geometry, this.getPrimaryMat(ownerId));
         mesh.position.set(part.x, part.y, part.z);
@@ -248,9 +255,10 @@ export class UnitMeshBuilder3D {
       const turret = turrets[turretIdx];
       const isShield = (turret.config.barrel as { type?: string } | undefined)?.type === 'complexSingleEmitter';
       const isConstructionEmitter = turret.config.constructionEmitter !== undefined;
-      const hideHead = turretOff || isShield || isConstructionEmitter;
+      const showShieldEmitterCore = entity.unit?.unitBlueprintId === 'unitAlbatros' && isShield;
+      const hideHead = turretOff || (isShield && !showShieldEmitterCore) || isConstructionEmitter;
       let headSlot: number | undefined;
-      if (useDetailedUnitInstancing && !hideHead && !isCommanderUnit) {
+      if (useDetailedUnitInstancing && !hideHead && !isCommanderUnit && !showShieldEmitterCore) {
         const allocated = this.unitDetailInstances.allocTurretHeadSlot();
         if (allocated !== null) headSlot = allocated;
       }
@@ -261,6 +269,8 @@ export class UnitMeshBuilder3D {
         coneBarrelGeom: this.coneBarrelGeom,
         primaryMat: this.getPrimaryMat(ownerId),
         turretAccentMat: this.getTurretAccentMat(ownerId),
+        shieldEmitterMat: this.getMirrorShinyMat(),
+        showShieldEmitterCore,
         skipHead: headSlot !== undefined,
         skipBarrels: false,
       });

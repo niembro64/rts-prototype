@@ -16,6 +16,7 @@ import {
 } from '@/smokeConfig';
 import type { HoverConfig } from '@/types/blueprints';
 import type { Entity, PlayerId } from '../sim/types';
+import { ALBATROS_ICOSAHEDRON_VERTEX_DIRECTIONS } from './AlbatrosMesh3D';
 import type { LocomotionBase } from './LocomotionRigShared3D';
 import { getLocomotionSurfaceHeight } from './LocomotionTerrainSampler';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
@@ -38,6 +39,9 @@ const DEFAULT_FAN_OUTWARD_ANGLE_DEG = 14;
 const FAN_BLADE_PITCH_DEG = 24;
 const FAN_BLADE_COUNT = 3;
 const TRI_FRONT_FAN_ANGLES_RAD = [-Math.PI / 3, Math.PI / 3, Math.PI];
+const ALBATROS_FAN_POSITION_RADIUS_FRAC = 0.86;
+const ALBATROS_FAN_RADIUS_FRAC = 0.09;
+const ALBATROS_FAN_RING_TUBE_RADIUS_FRAC = 0.012;
 
 const ringGeomByTubeRatio = new Map<number, THREE.TorusGeometry>();
 const hubGeom = new THREE.SphereGeometry(1, 18, 12);
@@ -96,10 +100,12 @@ export type HoverMesh = {
 
 type FanSpec = {
   localX: number;
+  localY?: number;
   localZ: number;
   fanRadius: number;
   ringTubeRadius: number;
   outwardAngleRad: number;
+  exhaustDirection?: THREE.Vector3;
   smokeProfile: ResolvedSmokeProfile;
 };
 
@@ -111,7 +117,8 @@ function buildFan(
   ownerId: PlayerId | undefined,
 ): HoverFan {
   const {
-    localX, localZ, fanRadius, ringTubeRadius, outwardAngleRad,
+    localX, localY, localZ, fanRadius, ringTubeRadius, outwardAngleRad,
+    exhaustDirection,
     smokeProfile,
   } = spec;
   const exhaustSpeed = smokeProfile.exhaustSpeed;
@@ -120,16 +127,23 @@ function buildFan(
   const fanY = -Math.max(0.4, ringTubeRadius * 0.9);
 
   const fanGroup = new THREE.Group();
-  fanGroup.position.set(localX, fanY, localZ);
+  fanGroup.position.set(localX, localY ?? fanY, localZ);
 
-  const outward = new THREE.Vector3(localX, 0, localZ);
-  if (outward.lengthSq() > 1e-6 && outwardAngleRad > 0) {
-    outward.normalize();
-    const exhaustDir = outward
-      .multiplyScalar(Math.sin(outwardAngleRad))
-      .addScaledVector(new THREE.Vector3(0, -1, 0), Math.cos(outwardAngleRad))
-      .normalize();
-    fanGroup.quaternion.setFromUnitVectors(LOCAL_EXHAUST_DIR, exhaustDir);
+  if (exhaustDirection !== undefined && exhaustDirection.lengthSq() > 1e-6) {
+    fanGroup.quaternion.setFromUnitVectors(
+      LOCAL_EXHAUST_DIR,
+      exhaustDirection.clone().normalize(),
+    );
+  } else {
+    const outward = new THREE.Vector3(localX, 0, localZ);
+    if (outward.lengthSq() > 1e-6 && outwardAngleRad > 0) {
+      outward.normalize();
+      const exhaustDir = outward
+        .multiplyScalar(Math.sin(outwardAngleRad))
+        .addScaledVector(new THREE.Vector3(0, -1, 0), Math.cos(outwardAngleRad))
+        .normalize();
+      fanGroup.quaternion.setFromUnitVectors(LOCAL_EXHAUST_DIR, exhaustDir);
+    }
   }
 
   const ring = new THREE.Mesh(
@@ -193,6 +207,51 @@ function buildFan(
       color: HOVER_SMOKE_COLOR,
       phase: entityId * 4 + fanIndex,
     },
+  };
+}
+
+export function buildAlbatrosHoverFans(
+  unitGroup: THREE.Group,
+  unitRadius: number,
+  cfg: HoverConfig,
+  smokeUseId: HoverSmokeUseId,
+  entityId: number,
+  ownerId: PlayerId | undefined,
+): HoverMesh {
+  const group = new THREE.Group();
+  const fanDistance = unitRadius * ALBATROS_FAN_POSITION_RADIUS_FRAC;
+  const fanRadius = Math.max(1, unitRadius * ALBATROS_FAN_RADIUS_FRAC);
+  const ringTubeRadius = Math.max(0.35, unitRadius * ALBATROS_FAN_RING_TUBE_RADIUS_FRAC);
+  const smokeProfile = getSmokeProfile(smokeUseId);
+  const fans: HoverFan[] = [];
+
+  for (const direction of ALBATROS_ICOSAHEDRON_VERTEX_DIRECTIONS) {
+    fans.push(buildFan(
+      group,
+      {
+        localX: direction.x * fanDistance,
+        localY: direction.y * fanDistance,
+        localZ: direction.z * fanDistance,
+        fanRadius,
+        ringTubeRadius,
+        outwardAngleRad: 0,
+        exhaustDirection: direction,
+        smokeProfile,
+      },
+      entityId,
+      fans.length,
+      ownerId,
+    ));
+  }
+
+  unitGroup.add(group);
+  return {
+    type: 'hover',
+    group,
+    fans,
+    clearance: 0,
+    fanSpinRadPerSec: cfg.fanSpinRadPerSec ?? DEFAULT_FAN_SPIN_RAD_PER_SEC,
+    geometryKey: '',
   };
 }
 

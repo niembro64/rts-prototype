@@ -1592,6 +1592,89 @@
       }
     }
   },
+  "unitAlbatros": {
+    "unitBlueprintId": "unitAlbatros",
+    "name": "Albatros",
+    "shortName": "ALB",
+    "hp": 1600,
+    "radius": {
+      "visual": 48,
+      "hitbox": 44,
+      "collision": 58
+    },
+    "bodyCenterHeight": 0,
+    "fullVisionRadius": 1400,
+    "mass": 900,
+    "cost": {
+      "energy": 1200,
+      "metal": 1200
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretShieldSphere",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "hostDirected": true
+      }
+    ],
+    "bodyShape": {
+      "kind": "circle",
+      "radiusFrac": 0,
+      "yFrac": 0,
+      "centerYFrac": 0
+    },
+    "hud": {
+      "barsOffsetAboveTop": 18
+    },
+    "legAttachHeightFrac": null,
+    "suspension": null,
+    "builder": null,
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitEagle"
+    },
+    "fightStopEngagedRatio": 0.5,
+    "locomotion": {
+      "type": "hover",
+      "pathfindingBlueprintId": "airborneAnywhere",
+      "physics": {
+        "driveForce": 4,
+        "traction": 1
+      },
+      "config": {
+        "gravityCounterUpwardForceRatio": 0.8,
+        "hoverHeightUpwardForce": 190,
+        "hoverHeightUpwardForceRandomizationAmount": 0.99,
+        "hoverHeightUpwardForceEMA": 0.99,
+        "fanDistX": 0,
+        "fanDistY": 0,
+        "fanRadius": 0.09,
+        "fanRingTubeRadius": 0.012,
+        "fanSpinRadPerSec": -10
+      }
+    },
+    "base": {
+      "cost": {
+        "energy": 1200,
+        "metal": 1200
+      },
+      "mass": 900,
+      "health": 1600,
+      "deathExplosion": {
+        "radius": 66,
+        "force": 42000,
+        "damage": 650
+      },
+      "radius": {
+        "visual": 48,
+        "hitbox": 44,
+        "collision": 58
+      }
+    }
+  },
   "unitCommander": {
     "unitBlueprintId": "unitCommander",
     "name": "Commander",
