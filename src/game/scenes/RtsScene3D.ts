@@ -493,6 +493,7 @@ export class RtsScene3D {
     this.shieldRenderer = new ShieldRenderer3D(
       this.threeApp.world,
       this.renderScope,
+      this.threeApp.camera,
       (eid) => this.entityRenderer.getUnitYawGroup(eid),
     );
     this.terrainTileRenderer = new TerrainTileRenderer3D(

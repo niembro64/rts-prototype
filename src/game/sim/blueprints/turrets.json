@@ -181,7 +181,7 @@
     "range": 1000,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": 6000,
-    "launchForce": 20000,
+    "launchForce": 50000,
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {
@@ -292,7 +292,7 @@
     "range": 2000,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": 900,
-    "launchForce": 26000,
+    "launchForce": 90000,
     "turretTurnAccel": 20,
     "turretDrag": 0.15,
     "barrel": {

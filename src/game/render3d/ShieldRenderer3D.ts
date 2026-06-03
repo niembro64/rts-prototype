@@ -25,7 +25,102 @@ import {
 const FIELD_OPACITY_BOOST = 2.0;
 const FIELD_SHAPE_SPHERE = 0;
 const FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER = 1;
-const INFINITE_CYLINDER_VISUAL_HEIGHT = 4096;
+const IMPLICIT_CYLINDER_FIELD_CAP = 64;
+
+const IMPLICIT_CYLINDER_SURFACE_VS = `
+varying vec2 vNdc;
+
+void main() {
+  vNdc = position.xy;
+  gl_Position = vec4(position.xy, 0.0, 1.0);
+}
+`;
+
+const IMPLICIT_CYLINDER_SURFACE_FS = `
+precision highp float;
+precision highp int;
+
+#define FIELD_CAP ${IMPLICIT_CYLINDER_FIELD_CAP}
+
+uniform int uFieldCount;
+uniform vec4 uFields[FIELD_CAP];
+uniform vec3 uColors[FIELD_CAP];
+uniform mat4 uInvProjectionMatrix;
+uniform mat4 uCameraWorldMatrix;
+uniform mat4 uViewProjectionMatrix;
+uniform vec3 uCameraPosition;
+uniform float uCameraFar;
+
+varying vec2 vNdc;
+
+bool intersectInfiniteVerticalCylinder(
+  vec3 ro,
+  vec3 rd,
+  vec4 field,
+  out float hitT
+) {
+  vec2 center = field.xy;
+  float radius = field.z;
+  vec2 rel = ro.xz - center;
+  vec2 dir = rd.xz;
+  float a = dot(dir, dir);
+  if (a <= 1e-9) return false;
+
+  float b = 2.0 * dot(rel, dir);
+  float c = dot(rel, rel) - radius * radius;
+  float disc = b * b - 4.0 * a * c;
+  if (disc < 0.0) return false;
+
+  float sqrtDisc = sqrt(disc);
+  float invDenom = 1.0 / (2.0 * a);
+  float t0 = (-b - sqrtDisc) * invDenom;
+  float t1 = (-b + sqrtDisc) * invDenom;
+  float firstT = min(t0, t1);
+  float secondT = max(t0, t1);
+
+  if (firstT > 0.0) {
+    hitT = firstT;
+    return true;
+  }
+  if (secondT > 0.0) {
+    hitT = secondT;
+    return true;
+  }
+  return false;
+}
+
+void main() {
+  vec4 farView = uInvProjectionMatrix * vec4(vNdc, 1.0, 1.0);
+  farView /= farView.w;
+  vec3 farWorld = (uCameraWorldMatrix * vec4(farView.xyz, 1.0)).xyz;
+  vec3 rayDir = normalize(farWorld - uCameraPosition);
+
+  float bestT = uCameraFar;
+  vec3 bestColor = vec3(0.0);
+  float bestAlpha = 0.0;
+
+  for (int i = 0; i < FIELD_CAP; i++) {
+    if (i >= uFieldCount) break;
+    float t = 0.0;
+    if (!intersectInfiniteVerticalCylinder(uCameraPosition, rayDir, uFields[i], t)) continue;
+    if (t >= bestT) continue;
+    bestT = t;
+    bestColor = uColors[i];
+    bestAlpha = uFields[i].w;
+  }
+
+  if (bestAlpha <= 0.0) discard;
+
+  vec3 hit = uCameraPosition + rayDir * bestT;
+  vec4 clip = uViewProjectionMatrix * vec4(hit, 1.0);
+  float ndcDepth = clip.z / clip.w;
+  float depth = ndcDepth * 0.5 + 0.5;
+  if (depth < 0.0 || depth > 1.0) discard;
+
+  gl_FragDepthEXT = depth;
+  gl_FragColor = vec4(bestColor, bestAlpha);
+}
+`;
 
 function isShieldTurret(t: Turret): boolean {
   return (t.config.barrel as { type?: string } | undefined)?.type === 'complexSingleEmitter';
@@ -201,7 +296,7 @@ export class ShieldRenderer3D {
   // Unit sphere reused for the bubble write into the shared
   // sphereInstancedMesh below.
   private sphereGeom = new THREE.SphereGeometry(1, 20, 14);
-  private cylinderGeom = new THREE.CylinderGeometry(1, 1, 1, 32, 1, true);
+  private implicitCylinderGeom = new THREE.PlaneGeometry(2, 2);
   private fields = new Map<FieldKey, FieldMesh>();
 
   /** Shared InstancedMesh covering every bubble sphere across every
@@ -215,16 +310,24 @@ export class ShieldRenderer3D {
   private sphereColorArr = new Float32Array(SPHERE_INSTANCED_CAP * 3);
   private sphereAlphaAttr: THREE.InstancedBufferAttribute;
   private sphereColorAttr: THREE.InstancedBufferAttribute;
-  private cylinderInstancedMesh: THREE.InstancedMesh;
-  private cylinderInstancedMat: THREE.ShaderMaterial;
-  private cylinderAlphaArr = new Float32Array(SPHERE_INSTANCED_CAP);
-  private cylinderColorArr = new Float32Array(SPHERE_INSTANCED_CAP * 3);
-  private cylinderAlphaAttr: THREE.InstancedBufferAttribute;
-  private cylinderColorAttr: THREE.InstancedBufferAttribute;
+  private implicitCylinderMesh: THREE.Mesh;
+  private implicitCylinderMat: THREE.ShaderMaterial;
+  private implicitCylinderFields: THREE.Vector4[] = Array.from(
+    { length: IMPLICIT_CYLINDER_FIELD_CAP },
+    () => new THREE.Vector4(),
+  );
+  private implicitCylinderColors: THREE.Vector3[] = Array.from(
+    { length: IMPLICIT_CYLINDER_FIELD_CAP },
+    () => new THREE.Vector3(),
+  );
+  private implicitCylinderInvProjection = new THREE.Matrix4();
+  private implicitCylinderCameraWorld = new THREE.Matrix4();
+  private implicitCylinderViewProjection = new THREE.Matrix4();
+  private implicitCylinderCameraPosition = new THREE.Vector3();
   /** Per-frame transient slot cursor — reset in beginFrame, advanced
    *  per surface in _processUnit, used as the count at end-of-frame. */
   private _sphereCursor = 0;
-  private _cylinderCursor = 0;
+  private _implicitCylinderCursor = 0;
   /** Scratch matrices for the bubble instance write. Same pattern as
    *  the chassis pools — compose `T(worldPos) · S(scale)` per slot,
    *  no per-frame allocations. */
@@ -246,14 +349,17 @@ export class ShieldRenderer3D {
    *  (off-scope at scene start) or was torn down during a rebuild;
    *  in that case we fall back to the unit's transform. */
   private getYawGroup: (eid: EntityId) => THREE.Group | undefined;
+  private camera: THREE.PerspectiveCamera;
 
   constructor(
     parentWorld: THREE.Group,
     _scope: ViewportFootprint,
+    camera: THREE.PerspectiveCamera,
     getYawGroup: (eid: EntityId) => THREE.Group | undefined,
   ) {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
+    this.camera = camera;
     this.getYawGroup = getYawGroup;
 
     // Build the shared bubble InstancedMesh. Same construction
@@ -264,17 +370,11 @@ export class ShieldRenderer3D {
     this.sphereColorAttr.setUsage(THREE.DynamicDrawUsage);
     this.sphereGeom.setAttribute('aAlpha', this.sphereAlphaAttr);
     this.sphereGeom.setAttribute('aColor', this.sphereColorAttr);
-    this.cylinderAlphaAttr = new THREE.InstancedBufferAttribute(this.cylinderAlphaArr, 1);
-    this.cylinderAlphaAttr.setUsage(THREE.DynamicDrawUsage);
-    this.cylinderColorAttr = new THREE.InstancedBufferAttribute(this.cylinderColorArr, 3);
-    this.cylinderColorAttr.setUsage(THREE.DynamicDrawUsage);
-    this.cylinderGeom.setAttribute('aAlpha', this.cylinderAlphaAttr);
-    this.cylinderGeom.setAttribute('aColor', this.cylinderColorAttr);
 
     // Materials Are Independent Of Shape: same material as the flat-panel
     // shield surface, just carried by field geometry here.
     this.sphereInstancedMat = createShieldSurfaceMaterial();
-    this.cylinderInstancedMat = createShieldSurfaceMaterial();
+    this.implicitCylinderMat = this.createImplicitCylinderMaterial();
 
     this.sphereInstancedMesh = new THREE.InstancedMesh(
       this.sphereGeom,
@@ -292,16 +392,34 @@ export class ShieldRenderer3D {
     this.sphereInstancedMesh.renderOrder = 7;
     this.root.add(this.sphereInstancedMesh);
 
-    this.cylinderInstancedMesh = new THREE.InstancedMesh(
-      this.cylinderGeom,
-      this.cylinderInstancedMat,
-      SPHERE_INSTANCED_CAP,
+    this.implicitCylinderMesh = new THREE.Mesh(
+      this.implicitCylinderGeom,
+      this.implicitCylinderMat,
     );
-    this.cylinderInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.cylinderInstancedMesh.count = 0;
-    this.cylinderInstancedMesh.frustumCulled = false;
-    this.cylinderInstancedMesh.renderOrder = 7;
-    this.root.add(this.cylinderInstancedMesh);
+    this.implicitCylinderMesh.frustumCulled = false;
+    this.implicitCylinderMesh.renderOrder = 7;
+    this.implicitCylinderMesh.visible = false;
+    this.root.add(this.implicitCylinderMesh);
+  }
+
+  private createImplicitCylinderMaterial(): THREE.ShaderMaterial {
+    return new THREE.ShaderMaterial({
+      vertexShader: IMPLICIT_CYLINDER_SURFACE_VS,
+      fragmentShader: IMPLICIT_CYLINDER_SURFACE_FS,
+      uniforms: {
+        uFieldCount: { value: 0 },
+        uFields: { value: this.implicitCylinderFields },
+        uColors: { value: this.implicitCylinderColors },
+        uInvProjectionMatrix: { value: this.implicitCylinderInvProjection },
+        uCameraWorldMatrix: { value: this.implicitCylinderCameraWorld },
+        uViewProjectionMatrix: { value: this.implicitCylinderViewProjection },
+        uCameraPosition: { value: this.implicitCylinderCameraPosition },
+        uCameraFar: { value: this.camera.far },
+      },
+      transparent: true,
+      depthTest: true,
+      depthWrite: false,
+    });
   }
 
   private acquire(key: FieldKey): FieldMesh {
@@ -352,7 +470,7 @@ export class ShieldRenderer3D {
   beginFrame(_graphicsConfig: GraphicsConfig = getGraphicsConfig()): void {
     this._seenFieldKeys.clear();
     this._sphereCursor = 0;
-    this._cylinderCursor = 0;
+    this._implicitCylinderCursor = 0;
   }
 
   processPacket(packet: ShieldRenderPacket3D): void {
@@ -377,18 +495,7 @@ export class ShieldRenderer3D {
       this.sphereColorAttr.addUpdateRange(0, this._sphereCursor * 3);
       this.sphereColorAttr.needsUpdate = true;
     }
-    this.cylinderInstancedMesh.count = this._cylinderCursor;
-    if (this._cylinderCursor > 0) {
-      this.cylinderInstancedMesh.instanceMatrix.clearUpdateRanges();
-      this.cylinderInstancedMesh.instanceMatrix.addUpdateRange(0, this._cylinderCursor * 16);
-      this.cylinderInstancedMesh.instanceMatrix.needsUpdate = true;
-      this.cylinderAlphaAttr.clearUpdateRanges();
-      this.cylinderAlphaAttr.addUpdateRange(0, this._cylinderCursor);
-      this.cylinderAlphaAttr.needsUpdate = true;
-      this.cylinderColorAttr.clearUpdateRanges();
-      this.cylinderColorAttr.addUpdateRange(0, this._cylinderCursor * 3);
-      this.cylinderColorAttr.needsUpdate = true;
-    }
+    this.updateImplicitCylinderUniforms();
     const seen = this._seenFieldKeys;
     for (const [key] of this.fields) {
       if (seen.has(key)) continue;
@@ -403,6 +510,22 @@ export class ShieldRenderer3D {
     this.beginFrame();
     this.processPacket(packet);
     this.endFrame();
+  }
+
+  private updateImplicitCylinderUniforms(): void {
+    const count = this._implicitCylinderCursor;
+    this.implicitCylinderMesh.visible = count > 0;
+    this.implicitCylinderMat.uniforms.uFieldCount.value = count;
+    if (count <= 0) return;
+
+    this.implicitCylinderInvProjection.copy(this.camera.projectionMatrixInverse);
+    this.implicitCylinderCameraWorld.copy(this.camera.matrixWorld);
+    this.implicitCylinderViewProjection.multiplyMatrices(
+      this.camera.projectionMatrix,
+      this.camera.matrixWorldInverse,
+    );
+    this.implicitCylinderCameraPosition.setFromMatrixPosition(this.camera.matrixWorld);
+    this.implicitCylinderMat.uniforms.uCameraFar.value = this.camera.far;
   }
 
   /** Internal packet-row body. Writes the active field surface instance. */
@@ -475,21 +598,16 @@ export class ShieldRenderer3D {
     this._sphereScratchPos.y = fieldCenterY;
     const alpha = packet.barrierAlpha[row] * fadeIn * FIELD_OPACITY_BOOST;
     if (packet.shape[row] === FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER) {
-      if (this._cylinderCursor < SPHERE_INSTANCED_CAP) {
-        this._sphereScratchScale.set(
+      if (this._implicitCylinderCursor < IMPLICIT_CYLINDER_FIELD_CAP) {
+        const cursor = this._implicitCylinderCursor;
+        this.implicitCylinderFields[cursor].set(
+          this._sphereScratchPos.x,
+          this._sphereScratchPos.z,
           outer,
-          Math.max(INFINITE_CYLINDER_VISUAL_HEIGHT, outer * 10),
-          outer,
+          alpha,
         );
-        this._sphereScratchMat.compose(
-          this._sphereScratchPos,
-          ShieldRenderer3D._IDENTITY_QUAT,
-          this._sphereScratchScale,
-        );
-        this.cylinderInstancedMesh.setMatrixAt(this._cylinderCursor, this._sphereScratchMat);
-        this.cylinderAlphaArr[this._cylinderCursor] = alpha;
-        writeHexToRgb01Array(packet.color[row], this.cylinderColorArr, this._cylinderCursor * 3);
-        this._cylinderCursor++;
+        writeHexToVector3(packet.color[row], this.implicitCylinderColors[cursor]);
+        this._implicitCylinderCursor++;
       }
     } else if (this._sphereCursor < SPHERE_INSTANCED_CAP) {
       this._sphereScratchScale.set(outer, outer, outer);
@@ -508,13 +626,20 @@ export class ShieldRenderer3D {
   destroy(): void {
     this.fields.clear();
     this.root.remove(this.sphereInstancedMesh);
-    this.root.remove(this.cylinderInstancedMesh);
+    this.root.remove(this.implicitCylinderMesh);
     this.sphereInstancedMesh.dispose();
-    this.cylinderInstancedMesh.dispose();
+    this.implicitCylinderMesh.geometry.dispose();
     this.sphereInstancedMat.dispose();
-    this.cylinderInstancedMat.dispose();
+    this.implicitCylinderMat.dispose();
     this.sphereGeom.dispose();
-    this.cylinderGeom.dispose();
     this.root.parent?.remove(this.root);
   }
+}
+
+function writeHexToVector3(hex: number, out: THREE.Vector3): void {
+  out.set(
+    ((hex >> 16) & 0xff) / 255,
+    ((hex >> 8) & 0xff) / 255,
+    (hex & 0xff) / 255,
+  );
 }
