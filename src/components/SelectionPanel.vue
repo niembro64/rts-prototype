@@ -138,6 +138,7 @@ const COMPACT_BUILDING_LABELS: Record<string, string> = {
   Extractor: 'Ext',
   Radar: 'Rad',
   Converter: 'Conv',
+  'Anti-Air Tower': 'AA',
 };
 
 function compactBuildingLabel(label: string): string {

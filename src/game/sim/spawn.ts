@@ -442,9 +442,8 @@ export function spawnInitialBases(
   const factoryWaypoint = getInitialFactoryWaypointConfig(mode);
   const factoryUnitBlueprintIds = getAvailableDemoFactoryUnitBlueprintIds(availableUnitBlueprintIds);
 
-  // Concentric radii — outermost to innermost: commander, solar, wind,
-  // fabricator, megaBeam tower, cannon tower. Each ring is explicit so
-  // the demo layout can be tuned the same way metal deposit rings are tuned.
+  // Concentric radii — each ring is explicit so the demo layout can be
+  // tuned the same way metal deposit rings are tuned.
   const commanderRadius = commanderRadiusFromOuterSpawnRadius(spawnRadius);
   const solarRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
@@ -469,6 +468,10 @@ export function spawnInitialBases(
   const cannonTowerRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
     DEMO_CONFIG.baseRings.towerCannon.radiusFraction,
+  );
+  const antiAirTowerRadius = demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.baseRings.towerAntiAir.radiusFraction,
   );
   const resourceConverterRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
@@ -539,6 +542,12 @@ export function spawnInitialBases(
     entities.push(...placeArcRow(
       world, construction, 'towerCannon', DEMO_CONFIG.towerCannonCount,
       oval, cannonTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+    ));
+
+    // Anti-air tower arc — static missile cover for hover/flying units.
+    entities.push(...placeArcRow(
+      world, construction, 'towerAntiAir', DEMO_CONFIG.towerAntiAirCount,
+      oval, antiAirTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
     ));
 
     // Resource converter arc — economy buildings on their own ring

@@ -260,6 +260,13 @@
         "colorHex": "#172331",
         "metalness": 0.72,
         "roughness": 0.24
+      },
+      "towerAntiAirTrim": {
+        "colorHex": "#7fffd4",
+        "emissiveHex": "#3bd8b8",
+        "emissiveIntensity": 0.22,
+        "metalness": 0.58,
+        "roughness": 0.2
       }
     }
   },

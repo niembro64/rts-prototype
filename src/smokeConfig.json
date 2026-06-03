@@ -25,6 +25,17 @@
     "endRadiusMultiplier": 5,
    "maxAlpha": 0.05
   },
+  "shotRocketLong": {
+    "maxPoolSize": 100000,
+    "capPolicy": "evictOldest",
+    "emitFramesSkip": 0,
+    "exhaustSpeed": 0,
+    "fadeInMs": 10,
+    "fadeOutMs": 500,
+    "startRadius": 6,
+    "endRadiusMultiplier": 5,
+   "maxAlpha": 0.05
+  },
   "locomotionHovercraft": {
     "maxPoolSize": 10000,
     "capPolicy": "evictOldest",

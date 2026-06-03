@@ -128,6 +128,8 @@ export const MEGA_BEAM_TOWER_VISUAL_HEIGHT =
   BUILDING_BLUEPRINTS.towerBeamMega.visualHeight;
 export const CANNON_TOWER_VISUAL_HEIGHT =
   BUILDING_BLUEPRINTS.towerCannon.visualHeight;
+export const ANTI_AIR_TOWER_VISUAL_HEIGHT =
+  BUILDING_BLUEPRINTS.towerAntiAir.visualHeight;
 
 function firstTurretMountZ(
   blueprint: BuildingBlueprint,
@@ -146,6 +148,9 @@ export const MEGA_BEAM_TOWER_TURRET_MOUNT_Z =
 /** Pivot height for the cannon tower's heavier static turret head. */
 export const CANNON_TOWER_TURRET_MOUNT_Z =
   firstTurretMountZ(BUILDING_BLUEPRINTS.towerCannon, CANNON_TOWER_VISUAL_HEIGHT);
+/** Pivot height for the anti-air tower's missile launcher. */
+export const ANTI_AIR_TOWER_TURRET_MOUNT_Z =
+  firstTurretMountZ(BUILDING_BLUEPRINTS.towerAntiAir, ANTI_AIR_TOWER_VISUAL_HEIGHT);
 
 export type FactoryBuildingVisualMetrics = {
   minDim: number;

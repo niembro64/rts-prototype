@@ -1026,5 +1026,59 @@
     "kind": "attack",
     "emissionKind": "shot",
     "emissionBlueprintId": "shotRocketFast"
+  },
+  "turretAntiAir": {
+    "turretBlueprintId": "turretAntiAir",
+    "name": "Anti-Air Launcher",
+    "range": 1600,
+    "rangeVolume": "turret-range-top-and-bottom-unbounded",
+    "cooldown": 400,
+    "launchForce": 8000,
+    "turretTurnAccel": 650,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "singleCylinderBarrel",
+      "barrelLength": 0.9
+    },
+    "isManualFire": false,
+    "passive": false,
+    "requiresNonObstructedLineOfSight": true,
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": {
+      "angle": 0,
+      "pelletCount": 1
+    },
+    "burst": null,
+    "shieldPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.turretRocketFast"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": {
+      "visual": 7,
+      "hitbox": 5.25,
+      "collision": 7
+    },
+    "headOnly": true,
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "rayDirect"
+    },
+    "kind": "attack",
+    "emissionKind": "shot",
+    "emissionBlueprintId": "shotRocketLong"
   }
 }

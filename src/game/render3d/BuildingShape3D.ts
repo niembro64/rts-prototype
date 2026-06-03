@@ -12,6 +12,7 @@
 //             assembled outside the tower footprint by spray particles.
 //   extractor — squat metal pump with a rotating top extractor head.
 //   towerCannon — static defense tower with a heavy cannon mount.
+//   towerAntiAir — compact missile tower with a fast launcher mount.
 //
 // Shapes are additive — the caller owns a `THREE.Group` containing the
 // whole building and plugs in the primary + detail meshes returned by
@@ -51,6 +52,7 @@ import {
 } from './BuildingMeshPrimitives3D';
 import { BUILDING_PALETTE } from './BuildingVisualPalette';
 import {
+  buildAntiAirTowerMesh,
   buildCannonTowerMesh,
   buildMegaBeamTowerMesh,
   disposeMegaBeamTowerMeshGeoms,
@@ -219,6 +221,8 @@ export function buildBuildingShape(
       return buildMegaBeamTowerMesh(primaryMat);
     case 'towerCannon':
       return buildCannonTowerMesh(primaryMat);
+    case 'towerAntiAir':
+      return buildAntiAirTowerMesh(primaryMat);
     case 'buildingResourceConverter':
       return buildResourceConverterMesh(width, depth, primaryMat);
     case 'unknown':

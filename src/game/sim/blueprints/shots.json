@@ -161,6 +161,47 @@
       }
     }
   },
+  "shotRocketLong": {
+    "type": "rocket",
+    "shotBlueprintId": "shotRocketLong",
+    "name": "Long Rocket",
+    "mass": 3.2,
+    "health": 4,
+    "radius": {
+      "visual": 3,
+      "hitbox": 2,
+      "collision": 3
+    },
+    "armingDelayMs": 40,
+    "detonateOnExpiry": true,
+    "maxLifespan": 6000,
+    "hitSound": {
+      "$audio": "event.hit.shotRocketFast"
+    },
+    "submunitions": null,
+    "homingTurnRate": 3,
+    "homingThrust": 600000,
+    "gravityForceMultiplier": 0,
+    "smokeTrail": null,
+    "base": {
+      "cost": {
+        "energy": 0,
+        "metal": 0
+      },
+      "mass": 3.2,
+      "health": 4,
+      "deathExplosion": {
+        "radius": 80,
+        "force": 6000,
+        "damage": 80
+      },
+      "radius": {
+        "visual": 3,
+        "hitbox": 2,
+        "collision": 3
+      }
+    }
+  },
   "shotPlasmaHeavy": {
     "type": "plasma",
     "shotBlueprintId": "shotPlasmaHeavy",

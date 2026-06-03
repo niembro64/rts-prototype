@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import {
+  ANTI_AIR_TOWER_VISUAL_HEIGHT,
   CANNON_TOWER_VISUAL_HEIGHT,
   MEGA_BEAM_TOWER_VISUAL_HEIGHT,
 } from '../sim/blueprints';
@@ -15,6 +16,7 @@ import {
 
 const megaBeamTowerBodyGeom = createHexFrustumGeometry(0.18, 0.3);
 const cannonTowerBodyGeom = createHexFrustumGeometry(0.44, 0.54);
+const antiAirTowerBodyGeom = createHexFrustumGeometry(0.32, 0.46);
 const beamTowerTrimMat = new THREE.MeshStandardMaterial({
   color: COLORS.buildings.materials.towerBeamMegaTrim.colorHex,
   emissive: COLORS.buildings.materials.towerBeamMegaTrim.emissiveHex,
@@ -26,6 +28,13 @@ const towerCannonTrimMat = new THREE.MeshStandardMaterial({
   color: COLORS.buildings.materials.towerCannonTrim.colorHex,
   metalness: COLORS.buildings.materials.towerCannonTrim.metalness,
   roughness: COLORS.buildings.materials.towerCannonTrim.roughness,
+});
+const towerAntiAirTrimMat = new THREE.MeshStandardMaterial({
+  color: COLORS.buildings.materials.towerAntiAirTrim.colorHex,
+  emissive: COLORS.buildings.materials.towerAntiAirTrim.emissiveHex,
+  emissiveIntensity: COLORS.buildings.materials.towerAntiAirTrim.emissiveIntensity,
+  metalness: COLORS.buildings.materials.towerAntiAirTrim.metalness,
+  roughness: COLORS.buildings.materials.towerAntiAirTrim.roughness,
 });
 
 type DefenseTowerMeshProfile = {
@@ -91,6 +100,27 @@ const cannonTowerProfile: DefenseTowerMeshProfile = {
   trimMaterial: towerCannonTrimMat,
 };
 
+const antiAirTowerProfile: DefenseTowerMeshProfile = {
+  height: ANTI_AIR_TOWER_VISUAL_HEIGHT,
+  foot: 42,
+  baseHeight: 9,
+  baseRadiusFactor: 0.62,
+  lowerBandRadiusFactor: 0.5,
+  strutCount: 4,
+  strutAngleOffset: Math.PI / 4,
+  strutBottomRadiusFactor: 0.43,
+  strutTopRadiusFactor: 0.24,
+  strutBottomY: 10,
+  strutTopY: ANTI_AIR_TOWER_VISUAL_HEIGHT - 6,
+  strutRadius: 1.6,
+  neckRadiusFactor: 0.3,
+  neckHeight: 7,
+  socketRadiusFactor: 0.38,
+  socketHeight: 4,
+  socketY: ANTI_AIR_TOWER_VISUAL_HEIGHT + 2,
+  trimMaterial: towerAntiAirTrimMat,
+};
+
 /** Static beam tower — thin cyan-trimmed spine, narrow base, and a
  *  compact collar platform under the turret. The primary slab gets scaled to
  *  the building's full cuboid by the per-frame writer (so the
@@ -112,6 +142,12 @@ export function buildMegaBeamTowerMesh(primaryMat: THREE.Material): BuildingShap
  *  dark braces and a larger top socket for the cannon turret. */
 export function buildCannonTowerMesh(primaryMat: THREE.Material): BuildingShape {
   return buildDefenseTowerMesh(primaryMat, cannonTowerBodyGeom, cannonTowerProfile);
+}
+
+/** Static anti-air tower — compact missile-defense mast with a bright
+ *  top collar under the fast-tracking launcher. */
+export function buildAntiAirTowerMesh(primaryMat: THREE.Material): BuildingShape {
+  return buildDefenseTowerMesh(primaryMat, antiAirTowerBodyGeom, antiAirTowerProfile);
 }
 
 function buildDefenseTowerMesh(
@@ -213,6 +249,8 @@ function buildDefenseTowerMesh(
 export function disposeMegaBeamTowerMeshGeoms(): void {
   megaBeamTowerBodyGeom.dispose();
   cannonTowerBodyGeom.dispose();
+  antiAirTowerBodyGeom.dispose();
   beamTowerTrimMat.dispose();
   towerCannonTrimMat.dispose();
+  towerAntiAirTrimMat.dispose();
 }

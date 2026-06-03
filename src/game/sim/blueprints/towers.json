@@ -152,5 +152,56 @@
         "collision": 56.569
       }
     }
+  },
+  "towerAntiAir": {
+    "buildingBlueprintId": "towerAntiAir",
+    "name": "Anti-Air Tower",
+    "gridWidth": 2,
+    "gridHeight": 2,
+    "gridDepth": 4,
+    "hp": 3600,
+    "cost": {
+      "energy": 900,
+      "metal": 900
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "constructionRate": null,
+    "conversionRate": null,
+    "renderProfile": "towerAntiAir",
+    "visualHeight": 44,
+    "anchorProfile": "constantVisualTop",
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretAntiAir",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 66
+        },
+        "hostDirected": true
+      }
+    ],
+    "base": {
+      "cost": {
+        "energy": 900,
+        "metal": 900
+      },
+      "mass": 3600,
+      "health": 3600,
+      "deathExplosion": {
+        "radius": 33.941,
+        "force": 220000,
+        "damage": 1800
+      },
+      "radius": {
+        "visual": 28.284,
+        "hitbox": 28.284,
+        "collision": 28.284
+      }
+    }
   }
 }

@@ -17,7 +17,7 @@
         "buildingRadar",
         "buildingResourceConverter"
       ],
-      "towers": ["towerFabricator", "towerBeamMega", "towerCannon"],
+      "towers": ["towerFabricator", "towerBeamMega", "towerCannon", "towerAntiAir"],
       "units": [
         "unitJackal",
         "unitLynx",
@@ -55,13 +55,15 @@
         "turretBeamLong",
         "turretCannonLong",
         "turretRocketSlow",
-        "turretRocketFast"
+        "turretRocketFast",
+        "turretAntiAir"
       ],
       "shots": [
         "shotPlasmaLight",
         "shotPlasmaMedium",
         "shotRocketLight",
         "shotRocketFast",
+        "shotRocketLong",
         "shotPlasmaHeavy",
         "shotMortarMedium",
         "shotMortarHeavy",
@@ -931,6 +933,20 @@
           }
         }
       }
+    },
+    "turretAntiAir": {
+      "targets": {
+        "enemy": {
+          "units": {
+            "only": [
+              "unitBee",
+              "unitConstructionDrone",
+              "unitDragonfly",
+              "unitEagle"
+            ]
+          }
+        }
+      }
     }
   },
   "towers": {
@@ -981,6 +997,20 @@
           "buildings": "all",
           "towers": "all",
           "units": "all"
+        }
+      }
+    },
+    "towerAntiAir": {
+      "targets": {
+        "enemy": {
+          "units": {
+            "only": [
+              "unitBee",
+              "unitConstructionDrone",
+              "unitDragonfly",
+              "unitEagle"
+            ]
+          }
         }
       }
     }

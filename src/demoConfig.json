@@ -3,6 +3,9 @@
   "arcSectorFraction": 0.7,
   "spawnMarginPx": 100,
   "baseRings": {
+    "fogOfWar": {
+      "radiusFraction": 0.8
+    },
     "buildingSolar": {
       "radiusFraction": 0.8
     },
@@ -13,7 +16,7 @@
       "radiusFraction": 0.7
     },
     "buildingRadar": {
-      "radiusFraction": 0.62
+      "radiusFraction": 0.65
     },
     "towerFabricator": {
       "radiusFraction": 0.6
@@ -21,14 +24,14 @@
     "buildingResourceConverter": {
       "radiusFraction": 0.55
     },
+    "towerAntiAir": {
+      "radiusFraction": 0.5
+    },
     "towerCannon": {
       "radiusFraction": 0.45
     },
     "towerBeamMega": {
       "radiusFraction": 0.4
-    },
-    "fogOfWar": {
-      "radiusFraction": 0.8
     }
   },
   "initialUnitWaypointType": "patrol",
@@ -42,6 +45,7 @@
   "buildingWindCount": 2,
   "towerBeamMegaCount": 1,
   "towerCannonCount": 1,
+  "towerAntiAirCount": 1,
   "buildingRadarCount": 1,
   "buildingResourceConverterCount": 1
 }
