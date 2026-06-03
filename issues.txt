@@ -54,31 +54,39 @@ slab. The CombatTargetingPool slab (lib.rs ~14943, stamped by
 targetingInputStamping.ts) already holds, per unit/building/tower/projectile:
 position, owner/team, current HP, hitbox radius, building AABB half-extents,
 entity family, and alive flag — and already computes turret world-mount positions
-+ turret hitbox radii. So damage packing can iterate broadphase candidate slots
-and read the slab instead of re-reading JS entities. Concrete blockers, in order:
++ turret hitbox radii. So damage packing iterates broadphase candidate slots and
+reads the slab instead of re-reading JS entities.
 
-  1. COHERENCE. The slab is stamped ONCE per tick in updateCombat, BEFORE the
-     physics step. Unit/building/tower positions do NOT change between the stamp
-     and the damage phases (checkProjectileCollisions, detonateEntityDeath-
-     Explosions), so they are coherent. But PROJECTILE target rows are STALE at
-     collision time — projectiles integrate in updateProjectiles AFTER the stamp
-     — so projectile-vs-projectile and projectile-splash targets would read
-     pre-integration positions. Fix: re-stamp projectile rows into the slab right
-     after spatialGrid.updateProjectiles, before checkProjectileCollisions.
-  2. COLLISION RADIUS. The slab mirrors hitbox radius only. Swept/area damage vs.
-     projectiles uses radius.collision. Add collision radius to the slab stamp
-     (or pass it per-row).
-  3. SLOT MAPPING. The spatial grid returns entity objects; the packer needs each
-     candidate's CombatTargetingPool slot. Add an entity-id -> slab-slot lookup
-     (the slab already stores entity_id per slot).
-  4. KERNELS. New Rust kernels take (segment or area params + candidate slot list
-     + exclude set), iterate the slab, classify hits, and return compact hit rows
-     (entity_id, family, t / dir / distance). TS then only collects slots and
-     applies returned diffs through the existing damage_apply_batch path (HP read
-     live, as now).
+LANDED (the pattern to follow for the rest): damage_area_candidates_batch — a
+slab-reading drop-in for damage_area_overlap_batch, Rust-unit-tested for
+byte-identical output — now backs applyAreaDamage's UNIT and BUILDING passes.
+They pack the combat slot (spatialGrid.getSlot, which IS the slab slot) instead
+of geometry, behind a DEV-only equality gate that console.errors the first
+per-row divergence vs the legacy array path (tree-shaken from prod). The slot
+mapping needs no new lookup — getSlot already returns the slab slot.
+
+Remaining:
+  1. PROJECTILE COHERENCE. The slab is stamped ONCE per tick in updateCombat,
+     before physics; unit/building rows are coherent at the damage phases, but
+     PROJECTILE rows are STALE — projectiles integrate in updateProjectiles AFTER
+     the stamp. Re-stamp projectile rows into the slab right after
+     spatialGrid.updateProjectiles, before checkProjectileCollisions, then move
+     the projectile area pass + line/swept projectile targets onto the kernel.
+  2. COLLISION RADIUS STAMP. entity_radius_collision was added to the slab for the
+     kernel's SHOT branch but is not stamped yet. Stamp
+     shotProfile.runtime.radius.collision for SHOT rows (units/buildings keep
+     hitbox / targetRadius) so the SHOT branch matches what TS packs today.
+  3. SEGMENT KERNEL. Add damage_segment_candidates_batch (slab-reading drop-in for
+     damage_segment_hits_batch) and move applyLineDamage + applySweptDamage packing
+     onto it, same DEV gate. Beam/swept hit UNIT/BUILDING (coherent now) and
+     PROJECTILE (needs step 1). Also migrate the area unit TURRET sub-hitbox
+     fallback (the slab already has turret_mount_x/y/z + turret_radius_hitbox).
+  4. SLOT FAST-PATH (perf). TS still loops candidates to call getSlot per hit. For
+     the real win, have the broadphase hand slot-ids straight to the kernels so TS
+     does zero per-candidate work.
   5. CHAINING. The slab is write-once per tick, so it cannot supply post-damage HP
      mid-chain. Keep kill accumulation on the live damage_apply_batch result (as
-     today); move only the per-blast candidate packing onto the step-4 kernel.
+     today); move only the per-blast candidate packing onto the kernels above.
 
 VERIFY CAREFULLY: this is core hit-detection. A subtle packing/coherence bug
 shifts splash radii or projectile intercepts in ways a visual spot-check won't
