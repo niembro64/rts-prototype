@@ -1641,18 +1641,18 @@
       "type": "hover",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 4,
+        "driveForce": 3,
         "traction": 1
       },
       "config": {
         "gravityCounterUpwardForceRatio": 0.8,
-        "hoverHeightUpwardForce": 190,
+        "hoverHeightUpwardForce": 140,
         "hoverHeightUpwardForceRandomizationAmount": 0.99,
         "hoverHeightUpwardForceEMA": 0.99,
         "fanDistX": 0,
         "fanDistY": 0,
-        "fanRadius": 0.09,
-        "fanRingTubeRadius": 0.012,
+        "fanRadius": 0.2,
+        "fanRingTubeRadius": 0.02,
         "fanSpinRadPerSec": -10
       }
     },
