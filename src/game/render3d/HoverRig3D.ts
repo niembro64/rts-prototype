@@ -40,8 +40,6 @@ const FAN_BLADE_PITCH_DEG = 24;
 const FAN_BLADE_COUNT = 3;
 const TRI_FRONT_FAN_ANGLES_RAD = [-Math.PI / 3, Math.PI / 3, Math.PI];
 const ALBATROS_FAN_POSITION_RADIUS_FRAC = 0.86;
-const ALBATROS_FAN_RADIUS_FRAC = 0.09;
-const ALBATROS_FAN_RING_TUBE_RADIUS_FRAC = 0.012;
 
 const ringGeomByTubeRatio = new Map<number, THREE.TorusGeometry>();
 const hubGeom = new THREE.SphereGeometry(1, 18, 12);
@@ -220,8 +218,8 @@ export function buildAlbatrosHoverFans(
 ): HoverMesh {
   const group = new THREE.Group();
   const fanDistance = unitRadius * ALBATROS_FAN_POSITION_RADIUS_FRAC;
-  const fanRadius = Math.max(1, unitRadius * ALBATROS_FAN_RADIUS_FRAC);
-  const ringTubeRadius = Math.max(0.35, unitRadius * ALBATROS_FAN_RING_TUBE_RADIUS_FRAC);
+  const fanRadius = Math.max(1, unitRadius * cfg.fanRadius);
+  const ringTubeRadius = Math.max(0.35, unitRadius * cfg.fanRingTubeRadius);
   const smokeProfile = getSmokeProfile(smokeUseId);
   const fans: HoverFan[] = [];
 
