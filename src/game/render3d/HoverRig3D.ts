@@ -217,7 +217,8 @@ export function buildAlbatrosHoverFans(
   ownerId: PlayerId | undefined,
 ): HoverMesh {
   const group = new THREE.Group();
-  const fanDistance = unitRadius * ALBATROS_FAN_POSITION_RADIUS_FRAC;
+  const fanPositionRadius = cfg.fanPositionRadius ?? ALBATROS_FAN_POSITION_RADIUS_FRAC;
+  const fanDistance = unitRadius * fanPositionRadius;
   const fanRadius = Math.max(1, unitRadius * cfg.fanRadius);
   const ringTubeRadius = Math.max(0.35, unitRadius * cfg.fanRingTubeRadius);
   const smokeProfile = getSmokeProfile(smokeUseId);

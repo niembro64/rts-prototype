@@ -393,6 +393,7 @@ export type HoverConfig = {
   hoverHeightUpwardForceEMA?: number;
   fanDistX: number;
   fanDistY: number;
+  fanPositionRadius?: number;
   fanLayout?: 'quad' | 'triFront' | 'twin';
   fanRadius: number;
   fanRingTubeRadius: number;

@@ -1651,6 +1651,9 @@
         "fanDistY": {
           "type": "number"
         },
+        "fanPositionRadius": {
+          "type": "number"
+        },
         "fanLayout": {
           "enum": [
             "quad",

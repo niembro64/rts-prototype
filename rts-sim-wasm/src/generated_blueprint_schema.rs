@@ -548,6 +548,7 @@ pub struct HoverConfig {
     pub hoverHeightUpwardForceEMA: Option<f64>,
     pub fanDistX: f64,
     pub fanDistY: f64,
+    pub fanPositionRadius: Option<f64>,
     pub fanLayout: Option<String>,
     pub fanRadius: f64,
     pub fanRingTubeRadius: f64,
