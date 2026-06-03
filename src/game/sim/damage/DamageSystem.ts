@@ -169,14 +169,6 @@ const DAMAGE_AREA_FLAG_SLICE_PASS = 1 << 0;
 const DAMAGE_AREA_FLAG_OVERLAP = 1 << 1;
 const DAMAGE_SEGMENT_HIT_FLAG_HIT = 1 << 0;
 
-const _damageApplyEnabled = new Uint8Array(1);
-const _damageApplyTargetKind = new Uint8Array(1);
-const _damageApplyHp = new Float64Array(1);
-const _damageApplyDamage = new Float64Array(1);
-const _damageApplyBuildingFortified = new Uint8Array(1);
-const _damageApplyOutHp = new Float64Array(1);
-const _damageApplyOutEffectiveDamage = new Float64Array(1);
-const _damageApplyOutFlags = new Uint8Array(1);
 let _damageBatchCapacity = 0;
 let _damageBatchCount = 0;
 const _damageBatchEntityIds = new Set<EntityId>();
@@ -1211,11 +1203,15 @@ export class DamageSystem {
     const penNormX = penMag > 0 ? penDirX / penMag : knockbackDirX;
     const penNormY = penMag > 0 ? penDirY / penMag : knockbackDirY;
 
-    this.applyDamageToEntity(entity, source.damage, result, source.sourceEntityId, {
+    // Beam damage hits exactly one entity (the truncation target). It rides the
+    // same batched HP write-back as swept/area/death-explosion damage; there is
+    // no separate single-entity apply path.
+    this.queueDamageToEntityBatch(entity, source.damage, result, source.sourceEntityId, {
       penetrationDir: { x: penNormX, y: penNormY },
       attackerVel: { x: knockbackDirX * BEAM_EXPLOSION_MAGNITUDE, y: knockbackDirY * BEAM_EXPLOSION_MAGNITUDE },
       attackMagnitude: source.damage,
-    }, bestEntityId);
+    });
+    this.flushDamageBatch(result, source.sourceEntityId);
     result.hitEntityIds.push(entity.id);
     result.truncationT = bestT;
 
@@ -1768,99 +1764,6 @@ export class DamageSystem {
     }
     _damageBatchCount = 0;
     _damageBatchEntityIds.clear();
-  }
-
-  // Helper to apply damage and track kills
-  private applyDamageToEntity(
-    entity: Entity,
-    damage: number,
-    result: DamageResult,
-    sourceEntityId: EntityId,
-    deathContext: DeathContext | undefined = undefined,
-    _targetEntityId: EntityId = entity.id,
-  ): void {
-    // Mounted turret IDs are addressable hit targets, but turrets no longer
-    // own health. Damage that enters through a turret hitbox resolves through
-    // the host body.
-    const unit = entity.unit;
-    const building = entity.building;
-    const projectile = entity.projectile;
-    let targetKind = 0;
-    let currentHp = 0;
-    let buildingFortified = false;
-
-    if (unit && unit.hp > 0) {
-      targetKind = DAMAGE_TARGET_KIND_UNIT;
-      currentHp = unit.hp;
-    } else if (building && building.hp > 0) {
-      targetKind = DAMAGE_TARGET_KIND_BUILDING;
-      currentHp = building.hp;
-      buildingFortified = isBuildingActiveStateFortified(entity);
-    } else if (
-      projectile &&
-      projectile.projectileType === 'projectile' &&
-      projectile.hp > 0 &&
-      isProjectileShot(projectile.config.shot)
-    ) {
-      targetKind = DAMAGE_TARGET_KIND_PROJECTILE;
-      currentHp = projectile.hp;
-    } else {
-      return;
-    }
-
-    _damageApplyEnabled[0] = 1;
-    _damageApplyTargetKind[0] = targetKind;
-    _damageApplyHp[0] = currentHp;
-    _damageApplyDamage[0] = damage;
-    _damageApplyBuildingFortified[0] = buildingFortified ? 1 : 0;
-    const sim = getSimWasm();
-    if (sim === undefined) {
-      throw new Error('Damage HP write-back requires initialized sim-wasm');
-    }
-    const processed = sim.damageApplyBatch(
-      1,
-      _damageApplyEnabled,
-      _damageApplyTargetKind,
-      _damageApplyHp,
-      _damageApplyDamage,
-      _damageApplyBuildingFortified,
-      BUILDING_CLOSED_DAMAGE_MULTIPLIER,
-      _damageApplyOutHp,
-      _damageApplyOutEffectiveDamage,
-      _damageApplyOutFlags,
-    );
-    if (processed !== 1 || (_damageApplyOutFlags[0] & DAMAGE_APPLY_FLAG_APPLIED) === 0) {
-      return;
-    }
-
-    const killed = (_damageApplyOutFlags[0] & DAMAGE_APPLY_FLAG_KILLED) !== 0;
-    if (targetKind === DAMAGE_TARGET_KIND_UNIT && unit !== null) {
-      unit.hp = _damageApplyOutHp[0];
-      this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
-      if (killed && !result.killedUnitIds.has(entity.id)) {
-        result.killedUnitIds.add(entity.id);
-        this.recordKiller(result, entity.id, sourceEntityId);
-        // Store death context for explosion effects
-        if (deathContext) {
-          result.deathContexts.set(entity.id, deathContext);
-        }
-      }
-    } else if (targetKind === DAMAGE_TARGET_KIND_BUILDING && building !== null) {
-      if (buildingBlueprintHasActiveState(entity.buildingBlueprintId)) {
-        notifyBuildingActiveStateDamaged(this.world, entity);
-      }
-      building.hp = _damageApplyOutHp[0];
-      this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
-      if (killed && !result.killedBuildingIds.has(entity.id)) {
-        result.killedBuildingIds.add(entity.id);
-        this.recordKiller(result, entity.id, sourceEntityId);
-      }
-    } else if (targetKind === DAMAGE_TARGET_KIND_PROJECTILE && projectile !== null) {
-      projectile.hp = _damageApplyOutHp[0];
-      if (killed && !result.killedProjectileIds.has(entity.id)) {
-        result.killedProjectileIds.add(entity.id);
-      }
-    }
   }
 
   /** Stash the killer's playerId for the death event channel (FOW-17).

@@ -20,32 +20,40 @@ Please always commit and push before and after any code changes we make.
 ARCHITECTURE / PHILOSOPHY MIGRATION (budget_design_philosophy.html)
 ================================================================================
 
-7.0 [MAJOR, migration surface] Projectile termination/consequences and
-damage/death authority are still TypeScript-orchestrated.
+7.0 [MAJOR, migration surface — ECS-gated] The last of the projectile/damage/
+death migration: move line/swept/area candidate PACKING and death-explosion
+CHAINING into Rust. Blocked on the ECS slab work.
 
-Per AUTHORITY_LEDGER.md, Rust/WASM now owns projectile position integration,
-shield reflector intersections, reflected projectile response math, swept
-body/building/projectile hit selection, current-tick turret sub-hitboxes from
-the combat-targeting slab, submunition launch velocity scatter, line/swept
-body/projectile/building/turret segment hit classification, splash
-unit/projectile sphere and building AABB overlap/slice classification, batched
-direct-hit/splash damage HP/kill output math, pending death-cleanup
-HP/materialization classification plus compact removal diff generation,
-terminal consequence classification for timeout, ground/water impact, terminal
-reflector contact, HP-zero stops, detonation/expire/splash eligibility, and
-out-of-bounds removal, plus terminal effect planning for despawn, hit/expire/
-water/shield-impact events, splash payloads, submunition payloads, and
-has-exploded state. The remaining TypeScript authority is still too large:
-checkProjectileCollisions applies the returned terminal effect flags for live
-and recursively killed projectiles, owns direct-hit and splash damage
-consequences, submunition entity/event materialization, terminal audio/event
-construction, despawn/velocity-update event application, and D-gun swept damage
-orchestration; DamageSystem/Simulation still own line/swept/area candidate
-gathering and target packing, entity diff application, kill collection, death
-cleanup side-effect application/world removal, and death-explosion
-detonation/chaining.
-FIX (C1 migration): move projectile detonation payload application,
-submunition entity diffs, line/swept/area candidate packing, returned damage
-diff application, death-event diffs, death-explosion chaining, and death
-cleanup side-effect application/world-removal orchestration into Rust/WASM kernels, and leave
-TypeScript only to apply compact returned event/entity diffs.
+Verified against code 2026-06-02 — all the pure-computation kernels already live
+in Rust/WASM: projectile integration, homing/terrain-follow thrust, reflector
+intersections + reflected response, swept body/building/projectile/turret hit
+selection (projectile_hitbox_sweep_batch), terminal consequence classification
+(projectile_terminal_consequence_batch), terminal effect planning
+(projectile_terminal_effect_plan_batch), submunition launch-velocity scatter
+(projectile_submunition_launch_velocity_batch), line/swept segment hits
+(damage_segment_hits_batch), splash sphere/AABB overlap + slice-cone + knockback
+direction (damage_area_overlap_batch), direct-hit/splash HP/kill output math
+(damage_apply_batch), and death-cleanup HP/materialization classification +
+compact removal diffs (death_cleanup_diff_batch). All damage HP write-back
+(beam/line, swept, area, death-explosion) shares the one batched
+damage_apply_batch path (queueDamageToEntityBatch + flushDamageBatch) — there is
+no second single-entity apply path to migrate.
+
+What remains in TypeScript is mostly DIFF APPLICATION, which the C1 contract
+keeps in TS on purpose: applying terminal-effect flags (despawn / hasExploded /
+audio events), materializing submunitions via world.createProjectile, writing
+returned HP onto JS entities, emitting death/audio events, and removing JS
+entities from WorldState.
+
+REQUIRED FIX (the only Rust work left): pull line/swept/area candidate PACKING
+and the death-explosion CHAINING loop into Rust so the segment/area kernels
+iterate the spatial-grid candidate slot list internally (killing the
+per-candidate TS packing loops) and the chaining loop accumulates kills without
+round-tripping HP to JS. Both need a Rust-authoritative per-entity combat slab:
+position, hitbox + collision radius, kind, team/owner, HP, turret mount poses,
+exclude flags. Building that slab BEFORE the ECS migration would duplicate
+authoritative HP/state (a second source of truth), which the design philosophy
+forbids — so do this as part of the ECS migration that makes Rust the entity
+store, not as a parallel mirror now. Until then this item stays blocked; the TS
+that remains is the diff-application layer the contract intends, not new
+migration debt.
