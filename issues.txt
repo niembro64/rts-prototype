@@ -57,30 +57,41 @@ entity family, and alive flag — and already computes turret world-mount positi
 + turret hitbox radii. So damage packing iterates broadphase candidate slots and
 reads the slab instead of re-reading JS entities.
 
-LANDED (the pattern to follow for the rest): damage_area_candidates_batch — a
-slab-reading drop-in for damage_area_overlap_batch, Rust-unit-tested for
-byte-identical output — now backs applyAreaDamage's UNIT and BUILDING passes.
-They pack the combat slot (spatialGrid.getSlot, which IS the slab slot) instead
-of geometry, behind a DEV-only equality gate that console.errors the first
-per-row divergence vs the legacy array path (tree-shaken from prod). The slot
-mapping needs no new lookup — getSlot already returns the slab slot.
+LANDED (both kernels + the area unit/building consumer):
+  - damage_area_candidates_batch AND damage_segment_candidates_batch — slab-reading
+    drop-ins for damage_area_overlap_batch / damage_segment_hits_batch, each
+    Rust-unit-tested for byte-identical output. The segment kernel also takes the
+    per-call sphere/AABB inflations beam/swept add, and reads turret sub-hitboxes
+    from the slab's turret mounts (so it replaces resolveWeaponWorldMount too).
+  - applyAreaDamage's UNIT and BUILDING passes pack the combat slot
+    (spatialGrid.getSlot, which IS the slab slot) and classify via the area kernel,
+    behind a DEV-only equality gate that console.errors the first per-row divergence
+    vs the legacy array path (tree-shaken from prod). No new slot lookup needed.
 
 Remaining:
-  1. PROJECTILE COHERENCE. The slab is stamped ONCE per tick in updateCombat,
-     before physics; unit/building rows are coherent at the damage phases, but
-     PROJECTILE rows are STALE — projectiles integrate in updateProjectiles AFTER
-     the stamp. Re-stamp projectile rows into the slab right after
-     spatialGrid.updateProjectiles, before checkProjectileCollisions, then move
-     the projectile area pass + line/swept projectile targets onto the kernel.
-  2. COLLISION RADIUS STAMP. entity_radius_collision was added to the slab for the
-     kernel's SHOT branch but is not stamped yet. Stamp
-     shotProfile.runtime.radius.collision for SHOT rows (units/buildings keep
-     hitbox / targetRadius) so the SHOT branch matches what TS packs today.
-  3. SEGMENT KERNEL. Add damage_segment_candidates_batch (slab-reading drop-in for
-     damage_segment_hits_batch) and move applyLineDamage + applySweptDamage packing
-     onto it, same DEV gate. Beam/swept hit UNIT/BUILDING (coherent now) and
-     PROJECTILE (needs step 1). Also migrate the area unit TURRET sub-hitbox
-     fallback (the slab already has turret_mount_x/y/z + turret_radius_hitbox).
+  1. SEGMENT TS WIRING. Move applyLineDamage + applySweptDamage onto
+     damage_segment_candidates_batch: pack (slot, turret_idx) for UNIT/BUILDING
+     bodies and turret sub-hitboxes (rows 0..K), keep projectile rows on the legacy
+     array kernel (rows K..N; see step 2), and run the closest-T (beam) /
+     sorted-maxHits (swept) selection over both ranges. Pass sphere_inflation =
+     width/2 (beam) or source.radius (swept) and aabb_inflation = 0 (beam) or
+     source.radius (swept). Preserve the bodyDamageable + isConstructionBody-
+     Materialized gating. SAME DEV gate. VERIFY: this is the first damage use of the
+     slab's Rust-computed turret mounts — confirm they match resolveWeaponWorldMount
+     (the DEV gate flags any drift loudly).
+  2. PROJECTILES — live by design, OR slab-migrated (pick one, delete the other).
+     Travelling shots are event-driven bodies whose live position is authoritative
+     and cheap, so leaving the area/segment PROJECTILE rows on the legacy array
+     kernel with live geometry is a principled split, not a gap. If a projectile
+     slab path is preferred, it is cheap: spatialGrid.updateProjectiles already
+     rebuilds a fresh post-integration batch (slots + pos + radius.collision) each
+     tick right before checkProjectileCollisions; a Rust restamp writing
+     entity_family=SHOT + entity_pos + entity_radius_collision per slot from that
+     same batch makes the SHOT branch coherent (entity_radius_collision is already
+     on the slab — currently stamped only by that future restamp, else unused).
+  3. AREA TURRET FALLBACK. applyAreaDamage's unit turret sub-hitbox fallback still
+     uses resolveWeaponWorldMount; once step 1 proves slab turret mounts match,
+     fold it onto the slab turret data too.
   4. SLOT FAST-PATH (perf). TS still loops candidates to call getSlot per hit. For
      the real win, have the broadphase hand slot-ids straight to the kernels so TS
      does zero per-candidate work.
