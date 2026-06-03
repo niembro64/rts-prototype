@@ -207,6 +207,13 @@ let _areaDamageRefDirX = new Float64Array(0);
 let _areaDamageRefDirY = new Float64Array(0);
 let _areaDamageRefDirZ = new Float64Array(0);
 let _areaDamageRefDistance = new Float64Array(0);
+let _areaDamageTurretStart = new Int32Array(0);
+let _areaDamageTurretEnd = new Int32Array(0);
+let _areaTurretDamageCapacity = 0;
+let _areaTurretDamageSlots = new Uint32Array(0);
+let _areaTurretDamageTurretIndices = new Int32Array(0);
+let _areaTurretDamageOutFlags = new Uint8Array(0);
+let _areaTurretDamageRefFlags = new Uint8Array(0);
 let _segmentDamageCapacity = 0;
 let _segmentDamageEntityIds: EntityId[] = [];
 let _segmentDamageHostEntityIds: EntityId[] = [];
@@ -222,8 +229,12 @@ let _segmentDamageTargetRadius = new Float64Array(0);
 let _segmentDamageBoxHalfX = new Float64Array(0);
 let _segmentDamageBoxHalfY = new Float64Array(0);
 let _segmentDamageBoxHalfZ = new Float64Array(0);
+let _segmentDamageSlots = new Uint32Array(0);
+let _segmentDamageTurretIndices = new Int32Array(0);
 let _segmentDamageOutFlags = new Uint8Array(0);
 let _segmentDamageOutT = new Float64Array(0);
+let _segmentDamageRefFlags = new Uint8Array(0);
+let _segmentDamageRefT = new Float64Array(0);
 
 function isTurretDamageable(turret: Turret): boolean {
   return turret.id !== NO_ENTITY_ID && !turret.config.visualOnly;
@@ -282,12 +293,25 @@ function ensureAreaDamageCapacity(count: number): void {
   _areaDamageRefDirY = new Float64Array(next);
   _areaDamageRefDirZ = new Float64Array(next);
   _areaDamageRefDistance = new Float64Array(next);
+  _areaDamageTurretStart = new Int32Array(next);
+  _areaDamageTurretEnd = new Int32Array(next);
 }
 
 function clearAreaDamageEntities(count: number): void {
   for (let i = 0; i < count; i++) {
     _areaDamageEntities[i] = undefined;
   }
+}
+
+function ensureAreaTurretDamageCapacity(count: number): void {
+  if (count <= _areaTurretDamageCapacity) return;
+  let next = Math.max(16, _areaTurretDamageCapacity);
+  while (next < count) next *= 2;
+  _areaTurretDamageCapacity = next;
+  _areaTurretDamageSlots = new Uint32Array(next);
+  _areaTurretDamageTurretIndices = new Int32Array(next);
+  _areaTurretDamageOutFlags = new Uint8Array(next);
+  _areaTurretDamageRefFlags = new Uint8Array(next);
 }
 
 function classifyAreaDamageRows(
@@ -429,6 +453,48 @@ function assertAreaSlabMatchesPacked(
   }
 }
 
+function classifyAreaTurretDamageRows(
+  source: AreaDamageSource,
+  count: number,
+): void {
+  if (count === 0) return;
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('Area turret damage candidate classification requires initialized sim-wasm');
+  }
+  const processed = sim.damageAreaTurretCandidatesBatch(
+    count,
+    _areaTurretDamageSlots.subarray(0, count),
+    _areaTurretDamageTurretIndices.subarray(0, count),
+    source.center.x,
+    source.center.y,
+    source.center.z,
+    source.radius,
+    _areaTurretDamageOutFlags.subarray(0, count),
+  );
+  if (processed !== count) {
+    throw new Error(`Area turret damage candidate classification failed: ${processed}/${count}`);
+  }
+  if (import.meta.env.DEV) {
+    assertAreaTurretSlabMatchesPacked(count);
+  }
+}
+
+function assertAreaTurretSlabMatchesPacked(count: number): void {
+  for (let i = 0; i < count; i++) {
+    if (_areaTurretDamageOutFlags[i] !== _areaTurretDamageRefFlags[i]) {
+      console.error('[C1-area-turret] slab/pack hit-classification divergence', {
+        row: i,
+        slot: _areaTurretDamageSlots[i],
+        turretIndex: _areaTurretDamageTurretIndices[i],
+        flags: _areaTurretDamageOutFlags[i],
+        refFlags: _areaTurretDamageRefFlags[i],
+      });
+      return;
+    }
+  }
+}
+
 function ensureSegmentDamageCapacity(count: number): void {
   if (count <= _segmentDamageCapacity) return;
   let next = Math.max(16, _segmentDamageCapacity);
@@ -448,8 +514,64 @@ function ensureSegmentDamageCapacity(count: number): void {
   _segmentDamageBoxHalfX = new Float64Array(next);
   _segmentDamageBoxHalfY = new Float64Array(next);
   _segmentDamageBoxHalfZ = new Float64Array(next);
+  _segmentDamageSlots = new Uint32Array(next);
+  _segmentDamageTurretIndices = new Int32Array(next);
   _segmentDamageOutFlags = new Uint8Array(next);
   _segmentDamageOutT = new Float64Array(next);
+  _segmentDamageRefFlags = new Uint8Array(next);
+  _segmentDamageRefT = new Float64Array(next);
+}
+
+function writeSegmentDamageRowMetadata(
+  row: number,
+  entityId: EntityId,
+  hostEntityId: EntityId,
+  isUnit: boolean,
+  isBuilding: boolean,
+  isProjectile: boolean,
+  targetKind: number,
+): void {
+  _segmentDamageEntityIds[row] = entityId;
+  _segmentDamageHostEntityIds[row] = hostEntityId;
+  _segmentDamageIsUnit[row] = isUnit ? 1 : 0;
+  _segmentDamageIsBuilding[row] = isBuilding ? 1 : 0;
+  _segmentDamageIsProjectile[row] = isProjectile ? 1 : 0;
+  _segmentDamageEnabled[row] = 1;
+  _segmentDamageTargetKind[row] = targetKind;
+}
+
+function writeSegmentDamageSphereReference(
+  row: number,
+  x: number,
+  y: number,
+  z: number,
+  radius: number,
+): void {
+  _segmentDamageTargetX[row] = x;
+  _segmentDamageTargetY[row] = y;
+  _segmentDamageTargetZ[row] = z;
+  _segmentDamageTargetRadius[row] = radius;
+  _segmentDamageBoxHalfX[row] = 0;
+  _segmentDamageBoxHalfY[row] = 0;
+  _segmentDamageBoxHalfZ[row] = 0;
+}
+
+function writeSegmentDamageBoxReference(
+  row: number,
+  x: number,
+  y: number,
+  z: number,
+  halfX: number,
+  halfY: number,
+  halfZ: number,
+): void {
+  _segmentDamageTargetX[row] = x;
+  _segmentDamageTargetY[row] = y;
+  _segmentDamageTargetZ[row] = z;
+  _segmentDamageTargetRadius[row] = 0;
+  _segmentDamageBoxHalfX[row] = halfX;
+  _segmentDamageBoxHalfY[row] = halfY;
+  _segmentDamageBoxHalfZ[row] = halfZ;
 }
 
 function appendSegmentDamageSphereRow(
@@ -464,54 +586,47 @@ function appendSegmentDamageSphereRow(
   radius: number,
 ): number {
   ensureSegmentDamageCapacity(row + 1);
-  _segmentDamageEntityIds[row] = entityId;
-  _segmentDamageHostEntityIds[row] = hostEntityId;
-  _segmentDamageIsUnit[row] = isUnit ? 1 : 0;
-  _segmentDamageIsBuilding[row] = 0;
-  _segmentDamageIsProjectile[row] = isProjectile ? 1 : 0;
-  _segmentDamageEnabled[row] = 1;
-  _segmentDamageTargetKind[row] = isProjectile
-    ? DAMAGE_TARGET_KIND_PROJECTILE
-    : DAMAGE_TARGET_KIND_UNIT;
-  _segmentDamageTargetX[row] = x;
-  _segmentDamageTargetY[row] = y;
-  _segmentDamageTargetZ[row] = z;
-  _segmentDamageTargetRadius[row] = radius;
-  _segmentDamageBoxHalfX[row] = 0;
-  _segmentDamageBoxHalfY[row] = 0;
-  _segmentDamageBoxHalfZ[row] = 0;
+  writeSegmentDamageRowMetadata(
+    row,
+    entityId,
+    hostEntityId,
+    isUnit,
+    false,
+    isProjectile,
+    isProjectile ? DAMAGE_TARGET_KIND_PROJECTILE : DAMAGE_TARGET_KIND_UNIT,
+  );
+  _segmentDamageSlots[row] = 0;
+  _segmentDamageTurretIndices[row] = -1;
+  writeSegmentDamageSphereReference(row, x, y, z, radius);
   return row + 1;
 }
 
-function appendSegmentDamageBoxRow(
+function appendSegmentDamageSlabRow(
   row: number,
   entityId: EntityId,
-  x: number,
-  y: number,
-  z: number,
-  halfX: number,
-  halfY: number,
-  halfZ: number,
+  hostEntityId: EntityId,
+  isUnit: boolean,
+  isBuilding: boolean,
+  slot: number,
+  turretIndex: number,
 ): number {
   ensureSegmentDamageCapacity(row + 1);
-  _segmentDamageEntityIds[row] = entityId;
-  _segmentDamageHostEntityIds[row] = entityId;
-  _segmentDamageIsUnit[row] = 0;
-  _segmentDamageIsBuilding[row] = 1;
-  _segmentDamageIsProjectile[row] = 0;
-  _segmentDamageEnabled[row] = 1;
-  _segmentDamageTargetKind[row] = DAMAGE_TARGET_KIND_BUILDING;
-  _segmentDamageTargetX[row] = x;
-  _segmentDamageTargetY[row] = y;
-  _segmentDamageTargetZ[row] = z;
-  _segmentDamageTargetRadius[row] = 0;
-  _segmentDamageBoxHalfX[row] = halfX;
-  _segmentDamageBoxHalfY[row] = halfY;
-  _segmentDamageBoxHalfZ[row] = halfZ;
+  writeSegmentDamageRowMetadata(
+    row,
+    entityId,
+    hostEntityId,
+    isUnit,
+    isBuilding,
+    false,
+    isBuilding ? DAMAGE_TARGET_KIND_BUILDING : DAMAGE_TARGET_KIND_UNIT,
+  );
+  _segmentDamageSlots[row] = slot;
+  _segmentDamageTurretIndices[row] = turretIndex;
   return row + 1;
 }
 
-function classifySegmentDamageRows(
+function classifySegmentDamageRowsPackedRange(
+  rowStart: number,
   count: number,
   startX: number,
   startY: number,
@@ -525,7 +640,95 @@ function classifySegmentDamageRows(
   if (sim === undefined) {
     throw new Error('Segment damage hit classification requires initialized sim-wasm');
   }
+  const rowEnd = rowStart + count;
   const processed = sim.damageSegmentHitsBatch(
+    count,
+    _segmentDamageEnabled.subarray(rowStart, rowEnd),
+    _segmentDamageTargetKind.subarray(rowStart, rowEnd),
+    startX,
+    startY,
+    startZ,
+    endX,
+    endY,
+    endZ,
+    _segmentDamageTargetX.subarray(rowStart, rowEnd),
+    _segmentDamageTargetY.subarray(rowStart, rowEnd),
+    _segmentDamageTargetZ.subarray(rowStart, rowEnd),
+    _segmentDamageTargetRadius.subarray(rowStart, rowEnd),
+    _segmentDamageBoxHalfX.subarray(rowStart, rowEnd),
+    _segmentDamageBoxHalfY.subarray(rowStart, rowEnd),
+    _segmentDamageBoxHalfZ.subarray(rowStart, rowEnd),
+    _segmentDamageOutFlags.subarray(rowStart, rowEnd),
+    _segmentDamageOutT.subarray(rowStart, rowEnd),
+  );
+  if (processed !== count) {
+    throw new Error(`Segment damage hit classification failed: ${processed}/${count}`);
+  }
+}
+
+function classifySegmentDamageRowsViaSlab(
+  count: number,
+  startX: number,
+  startY: number,
+  startZ: number,
+  endX: number,
+  endY: number,
+  endZ: number,
+  sphereInflation: number,
+  aabbInflation: number,
+): void {
+  if (count === 0) return;
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('Segment damage candidate classification requires initialized sim-wasm');
+  }
+  const processed = sim.damageSegmentCandidatesBatch(
+    count,
+    _segmentDamageSlots.subarray(0, count),
+    _segmentDamageTurretIndices.subarray(0, count),
+    startX,
+    startY,
+    startZ,
+    endX,
+    endY,
+    endZ,
+    sphereInflation,
+    aabbInflation,
+    _segmentDamageOutFlags.subarray(0, count),
+    _segmentDamageOutT.subarray(0, count),
+  );
+  if (processed !== count) {
+    throw new Error(`Segment damage candidate classification failed: ${processed}/${count}`);
+  }
+  if (import.meta.env.DEV) {
+    assertSegmentSlabMatchesPacked(
+      count,
+      startX,
+      startY,
+      startZ,
+      endX,
+      endY,
+      endZ,
+      sphereInflation,
+      aabbInflation,
+    );
+  }
+}
+
+function assertSegmentSlabMatchesPacked(
+  count: number,
+  startX: number,
+  startY: number,
+  startZ: number,
+  endX: number,
+  endY: number,
+  endZ: number,
+  sphereInflation: number,
+  aabbInflation: number,
+): void {
+  const sim = getSimWasm();
+  if (sim === undefined) return;
+  sim.damageSegmentHitsBatch(
     count,
     _segmentDamageEnabled.subarray(0, count),
     _segmentDamageTargetKind.subarray(0, count),
@@ -542,12 +745,65 @@ function classifySegmentDamageRows(
     _segmentDamageBoxHalfX.subarray(0, count),
     _segmentDamageBoxHalfY.subarray(0, count),
     _segmentDamageBoxHalfZ.subarray(0, count),
-    _segmentDamageOutFlags.subarray(0, count),
-    _segmentDamageOutT.subarray(0, count),
+    _segmentDamageRefFlags.subarray(0, count),
+    _segmentDamageRefT.subarray(0, count),
   );
-  if (processed !== count) {
-    throw new Error(`Segment damage hit classification failed: ${processed}/${count}`);
+  for (let i = 0; i < count; i++) {
+    if (
+      _segmentDamageOutFlags[i] !== _segmentDamageRefFlags[i] ||
+      _segmentDamageOutT[i] !== _segmentDamageRefT[i]
+    ) {
+      console.error('[C1-segment] slab/pack hit-classification divergence', {
+        row: i,
+        entityId: _segmentDamageEntityIds[i],
+        hostEntityId: _segmentDamageHostEntityIds[i],
+        slot: _segmentDamageSlots[i],
+        turretIndex: _segmentDamageTurretIndices[i],
+        flags: _segmentDamageOutFlags[i],
+        refFlags: _segmentDamageRefFlags[i],
+        t: _segmentDamageOutT[i],
+        refT: _segmentDamageRefT[i],
+        sphereInflation,
+        aabbInflation,
+      });
+      return;
+    }
   }
+}
+
+function classifySegmentDamageRowsMixed(
+  slabRowCount: number,
+  totalRowCount: number,
+  startX: number,
+  startY: number,
+  startZ: number,
+  endX: number,
+  endY: number,
+  endZ: number,
+  sphereInflation: number,
+  aabbInflation: number,
+): void {
+  classifySegmentDamageRowsViaSlab(
+    slabRowCount,
+    startX,
+    startY,
+    startZ,
+    endX,
+    endY,
+    endZ,
+    sphereInflation,
+    aabbInflation,
+  );
+  classifySegmentDamageRowsPackedRange(
+    slabRowCount,
+    totalRowCount - slabRowCount,
+    startX,
+    startY,
+    startZ,
+    endX,
+    endY,
+    endZ,
+  );
 }
 
 
@@ -1172,8 +1428,12 @@ export class DamageSystem {
     let bestIsUnit = false;
 
     // PERFORMANCE: Single line-cell sweep — see findLineObstruction.
-    const { units: nearbyUnits, buildings: nearbyBuildings } =
-      spatialGrid.queryEntitiesAlongLine(
+    const {
+      units: nearbyUnits,
+      buildings: nearbyBuildings,
+      unitSlots: nearbyUnitSlots,
+      buildingSlots: nearbyBuildingSlots,
+    } = spatialGrid.queryEntitySlotsAlongLine(
         source.start.x, source.start.y, source.start.z,
         source.end.x, source.end.y, source.end.z, source.width + 100,
       );
@@ -1182,81 +1442,119 @@ export class DamageSystem {
       source.end.x, source.end.y, source.end.z, source.width + 100,
     );
 
-    // Pack line-damage candidates. Rust owns the 3D segment-vs-sphere
-    // and segment-vs-AABB tests; TypeScript keeps spatial broadphase,
-    // filtering, turret mount resolution, and damage/event write-back.
+    // Pack line-damage candidates. Unit/building bodies and turret
+    // sub-hitboxes go through the combat-targeting slab; projectile rows
+    // stay on live JS geometry because their post-integration position is
+    // authoritative for this tick.
+    const sphereInflation = source.width / 2;
+    const aabbInflation = 0;
     let segmentRowCount = 0;
-    for (const unit of nearbyUnits) {
+    for (let unitIndex = 0; unitIndex < nearbyUnits.length; unitIndex++) {
+      const unit = nearbyUnits[unitIndex];
       if (source.excludeEntities.has(unit.id)) continue;
       if (source.excludeCommanders && unit.commander) continue;
       const unitComponent = unit.unit;
       if (unitComponent === null) continue;
       const bodyDamageable = unitComponent.hp > 0;
       if (!bodyDamageable && isConstructionBodyMaterialized(unit)) continue;
+      const unitSlot = nearbyUnitSlots[unitIndex];
 
       if (bodyDamageable) {
-        segmentRowCount = appendSegmentDamageSphereRow(
+        const row = segmentRowCount;
+        segmentRowCount = appendSegmentDamageSlabRow(
           segmentRowCount,
           unit.id,
           unit.id,
           true,
           false,
-          unit.transform.x,
-          unit.transform.y,
-          unit.transform.z,
-          unitComponent.radius.hitbox + source.width / 2,
+          unitSlot,
+          -1,
         );
+        if (import.meta.env.DEV) {
+          writeSegmentDamageSphereReference(
+            row,
+            unit.transform.x,
+            unit.transform.y,
+            unit.transform.z,
+            unitComponent.radius.hitbox + sphereInflation,
+          );
+        }
       }
 
       const combat = unit.combat;
       if (combat !== null) {
-        const unitCS = getTransformCosSin(unit.transform);
-        const unitGroundZ = getUnitGroundZ(unit);
+        let unitCS: ReturnType<typeof getTransformCosSin> | undefined;
+        let unitGroundZ = 0;
+        if (import.meta.env.DEV) {
+          unitCS = getTransformCosSin(unit.transform);
+          unitGroundZ = getUnitGroundZ(unit);
+        }
         for (let i = 0; i < combat.turrets.length; i++) {
           const turret = combat.turrets[i];
           if (!isTurretDamageable(turret)) continue;
-          const mount = resolveWeaponWorldMount(
-            unit, turret, i,
-            unitCS.cos, unitCS.sin,
-            {
-              currentTick: this.world.getTick(),
-              unitGroundZ,
-              surfaceN: unitComponent.surfaceNormal,
-            },
-            _subEntityPoint,
-          );
-          segmentRowCount = appendSegmentDamageSphereRow(
+          const row = segmentRowCount;
+          segmentRowCount = appendSegmentDamageSlabRow(
             segmentRowCount,
             turret.id,
             unit.id,
             true,
             false,
-            mount.x,
-            mount.y,
-            mount.z,
-            turret.config.radius.hitbox + source.width / 2,
+            unitSlot,
+            i,
           );
+          if (import.meta.env.DEV) {
+            const mount = resolveWeaponWorldMount(
+              unit, turret, i,
+              unitCS!.cos, unitCS!.sin,
+              {
+                currentTick: this.world.getTick(),
+                unitGroundZ,
+                surfaceN: unitComponent.surfaceNormal,
+              },
+              _subEntityPoint,
+            );
+            writeSegmentDamageSphereReference(
+              row,
+              mount.x,
+              mount.y,
+              mount.z,
+              turret.config.radius.hitbox + sphereInflation,
+            );
+          }
         }
       }
 
     }
 
-    for (const building of nearbyBuildings) {
+    for (let buildingIndex = 0; buildingIndex < nearbyBuildings.length; buildingIndex++) {
+      const building = nearbyBuildings[buildingIndex];
       if (source.excludeEntities.has(building.id)) continue;
       if (!building.building || building.building.hp <= 0) continue;
 
-      segmentRowCount = appendSegmentDamageBoxRow(
+      const row = segmentRowCount;
+      segmentRowCount = appendSegmentDamageSlabRow(
         segmentRowCount,
         building.id,
-        building.transform.x,
-        building.transform.y,
-        building.transform.z,
-        building.building.width / 2,
-        building.building.height / 2,
-        building.building.depth / 2,
+        building.id,
+        false,
+        true,
+        nearbyBuildingSlots[buildingIndex],
+        -1,
       );
+      if (import.meta.env.DEV) {
+        writeSegmentDamageBoxReference(
+          row,
+          building.transform.x,
+          building.transform.y,
+          building.transform.z,
+          building.building.width / 2 + aabbInflation,
+          building.building.height / 2 + aabbInflation,
+          building.building.depth / 2 + aabbInflation,
+        );
+      }
     }
 
+    const slabRowCount = segmentRowCount;
     for (const projectile of nearbyProjectiles) {
       if (source.excludeEntities.has(projectile.id)) continue;
       const proj = projectile.projectile;
@@ -1278,14 +1576,17 @@ export class DamageSystem {
         projectile.transform.x,
         projectile.transform.y,
         projectile.transform.z,
-        proj.config.shotProfile.runtime.radius.collision + source.width / 2,
+        proj.config.shotProfile.runtime.radius.collision + sphereInflation,
       );
     }
 
-    classifySegmentDamageRows(
+    classifySegmentDamageRowsMixed(
+      slabRowCount,
       segmentRowCount,
       source.start.x, source.start.y, source.start.z,
       source.end.x, source.end.y, source.end.z,
+      sphereInflation,
+      aabbInflation,
     );
     for (let row = 0; row < segmentRowCount; row++) {
       if ((_segmentDamageOutFlags[row] & DAMAGE_SEGMENT_HIT_FLAG_HIT) === 0) continue;
@@ -1362,8 +1663,12 @@ export class DamageSystem {
     // hitbox.
     const sweptQueryWidth =
       (source.radius + this.world.getMaxTargetableRadius() + SWEPT_HITBOX_QUERY_EXTRA) * 2;
-    const { units: nearbyUnits, buildings: nearbyBuildings } =
-      spatialGrid.queryEntitiesAlongLine(
+    const {
+      units: nearbyUnits,
+      buildings: nearbyBuildings,
+      unitSlots: nearbyUnitSlots,
+      buildingSlots: nearbyBuildingSlots,
+    } = spatialGrid.queryEntitySlotsAlongLine(
         source.prev.x, source.prev.y, source.prev.z,
         source.current.x, source.current.y, source.current.z, sweptQueryWidth,
       );
@@ -1372,81 +1677,118 @@ export class DamageSystem {
       source.current.x, source.current.y, source.current.z, sweptQueryWidth,
     );
 
-    // Pack swept-damage candidates. Rust owns the 3D segment-vs-sphere
-    // and segment-vs-AABB tests; TypeScript keeps broadphase, filtering,
-    // turret mount resolution, sorting, and damage/event write-back.
+    // Pack swept-damage candidates. Unit/building bodies and turret
+    // sub-hitboxes use the combat-targeting slab; projectile rows stay on
+    // the legacy array classifier with live post-integration geometry.
+    const sphereInflation = source.radius;
+    const aabbInflation = source.radius;
     let segmentRowCount = 0;
-    for (const unit of nearbyUnits) {
+    for (let unitIndex = 0; unitIndex < nearbyUnits.length; unitIndex++) {
+      const unit = nearbyUnits[unitIndex];
       if (source.excludeEntities.has(unit.id)) continue;
       if (source.excludeCommanders && unit.commander) continue;
       const unitComponent = unit.unit;
       if (unitComponent === null) continue;
       const bodyDamageable = unitComponent.hp > 0;
       if (!bodyDamageable && isConstructionBodyMaterialized(unit)) continue;
+      const unitSlot = nearbyUnitSlots[unitIndex];
 
       if (bodyDamageable) {
-        segmentRowCount = appendSegmentDamageSphereRow(
+        const row = segmentRowCount;
+        segmentRowCount = appendSegmentDamageSlabRow(
           segmentRowCount,
           unit.id,
           unit.id,
           true,
           false,
-          unit.transform.x,
-          unit.transform.y,
-          unit.transform.z,
-          source.radius + unitComponent.radius.hitbox,
+          unitSlot,
+          -1,
         );
+        if (import.meta.env.DEV) {
+          writeSegmentDamageSphereReference(
+            row,
+            unit.transform.x,
+            unit.transform.y,
+            unit.transform.z,
+            unitComponent.radius.hitbox + sphereInflation,
+          );
+        }
       }
 
       const combat = unit.combat;
       if (combat !== null) {
-        const unitCS = getTransformCosSin(unit.transform);
-        const unitGroundZ = getUnitGroundZ(unit);
+        let unitCS: ReturnType<typeof getTransformCosSin> | undefined;
+        let unitGroundZ = 0;
+        if (import.meta.env.DEV) {
+          unitCS = getTransformCosSin(unit.transform);
+          unitGroundZ = getUnitGroundZ(unit);
+        }
         for (let i = 0; i < combat.turrets.length; i++) {
           const turret = combat.turrets[i];
           if (!isTurretDamageable(turret)) continue;
-          const mount = resolveWeaponWorldMount(
-            unit, turret, i,
-            unitCS.cos, unitCS.sin,
-            {
-              currentTick: this.world.getTick(),
-              unitGroundZ,
-              surfaceN: unitComponent.surfaceNormal,
-            },
-            _subEntityPoint,
-          );
-          segmentRowCount = appendSegmentDamageSphereRow(
+          const row = segmentRowCount;
+          segmentRowCount = appendSegmentDamageSlabRow(
             segmentRowCount,
             turret.id,
             unit.id,
             true,
             false,
-            mount.x,
-            mount.y,
-            mount.z,
-            source.radius + turret.config.radius.hitbox,
+            unitSlot,
+            i,
           );
+          if (import.meta.env.DEV) {
+            const mount = resolveWeaponWorldMount(
+              unit, turret, i,
+              unitCS!.cos, unitCS!.sin,
+              {
+                currentTick: this.world.getTick(),
+                unitGroundZ,
+                surfaceN: unitComponent.surfaceNormal,
+              },
+              _subEntityPoint,
+            );
+            writeSegmentDamageSphereReference(
+              row,
+              mount.x,
+              mount.y,
+              mount.z,
+              turret.config.radius.hitbox + sphereInflation,
+            );
+          }
         }
       }
 
     }
 
-    for (const building of nearbyBuildings) {
+    for (let buildingIndex = 0; buildingIndex < nearbyBuildings.length; buildingIndex++) {
+      const building = nearbyBuildings[buildingIndex];
       if (source.excludeEntities.has(building.id)) continue;
       if (!building.building || building.building.hp <= 0) continue;
 
-      segmentRowCount = appendSegmentDamageBoxRow(
+      const row = segmentRowCount;
+      segmentRowCount = appendSegmentDamageSlabRow(
         segmentRowCount,
         building.id,
-        building.transform.x,
-        building.transform.y,
-        building.transform.z,
-        building.building.width / 2 + source.radius,
-        building.building.height / 2 + source.radius,
-        building.building.depth / 2 + source.radius,
+        building.id,
+        false,
+        true,
+        nearbyBuildingSlots[buildingIndex],
+        -1,
       );
+      if (import.meta.env.DEV) {
+        writeSegmentDamageBoxReference(
+          row,
+          building.transform.x,
+          building.transform.y,
+          building.transform.z,
+          building.building.width / 2 + aabbInflation,
+          building.building.height / 2 + aabbInflation,
+          building.building.depth / 2 + aabbInflation,
+        );
+      }
     }
 
+    const slabRowCount = segmentRowCount;
     for (const projectile of nearbyProjectiles) {
       if (source.excludeEntities.has(projectile.id)) continue;
       const proj = projectile.projectile;
@@ -1468,14 +1810,17 @@ export class DamageSystem {
         projectile.transform.x,
         projectile.transform.y,
         projectile.transform.z,
-        source.radius + proj.config.shotProfile.runtime.radius.collision,
+        proj.config.shotProfile.runtime.radius.collision + sphereInflation,
       );
     }
 
-    classifySegmentDamageRows(
+    classifySegmentDamageRowsMixed(
+      slabRowCount,
       segmentRowCount,
       source.prev.x, source.prev.y, source.prev.z,
       source.current.x, source.current.y, source.current.z,
+      sphereInflation,
+      aabbInflation,
     );
     for (let row = 0; row < segmentRowCount; row++) {
       if ((_segmentDamageOutFlags[row] & DAMAGE_SEGMENT_HIT_FLAG_HIT) === 0) continue;
@@ -1567,11 +1912,13 @@ export class DamageSystem {
     // pad is the larger of the two old pads (+100) so neither broadphase
     // misses a candidate; the per-entity distance checks below stay
     // precise.
-    const nearby = spatialGrid.queryUnitsAndBuildingsInRadius(
+    const nearby = spatialGrid.queryUnitsAndBuildingsSlotsInRadius(
       source.center.x, source.center.y, source.center.z, source.radius + 100,
     );
     const nearbyUnits = nearby.units;
     const nearbyBuildings = nearby.buildings;
+    const nearbyUnitSlots = nearby.unitSlots;
+    const nearbyBuildingSlots = nearby.buildingSlots;
     const nearbyProjectiles = spatialGrid.queryEnemyProjectilesInRadius(
       source.center.x, source.center.y, source.center.z, source.radius + 100, source.ownerId,
     );
@@ -1581,7 +1928,8 @@ export class DamageSystem {
     // turret sub-hitbox fallback, and event/death side effects.
     ensureAreaDamageCapacity(nearbyUnits.length);
     let areaRowCount = 0;
-    for (const unit of nearbyUnits) {
+    for (let unitIndex = 0; unitIndex < nearbyUnits.length; unitIndex++) {
+      const unit = nearbyUnits[unitIndex];
       if (source.excludeEntities.has(unit.id)) continue;
       if (source.excludeCommanders && unit.commander) continue;
       const unitComponent = unit.unit;
@@ -1592,7 +1940,7 @@ export class DamageSystem {
       // Slab path: pack the combat-targeting slot; Rust reads pos + hitbox
       // radius from the slab. Units don't move between the once-per-tick
       // stamp and damage, so the slab geometry is coherent here.
-      _areaDamageSlots[row] = spatialGrid.getSlot(unit.id);
+      _areaDamageSlots[row] = nearbyUnitSlots[unitIndex];
       if (import.meta.env.DEV) {
         _areaDamageEnabled[row] = 1;
         _areaDamageTargetKind[row] = DAMAGE_TARGET_KIND_UNIT;
@@ -1606,6 +1954,62 @@ export class DamageSystem {
       }
     }
     classifyAreaDamageRowsViaSlab(source, areaRowCount, hasSlice, sliceHalfAngle);
+    let areaTurretRowCount = 0;
+    for (let row = 0; row < areaRowCount; row++) {
+      _areaDamageTurretStart[row] = -1;
+      _areaDamageTurretEnd[row] = -1;
+      const unit = _areaDamageEntities[row];
+      const unitComponent = unit?.unit;
+      if (unit === undefined || unitComponent === undefined || unitComponent === null) continue;
+
+      const rowFlags = _areaDamageOutFlags[row];
+      if ((rowFlags & DAMAGE_AREA_FLAG_SLICE_PASS) === 0) continue;
+      const bodyOverlaps =
+        unitComponent.hp > 0 && (rowFlags & DAMAGE_AREA_FLAG_OVERLAP) !== 0;
+      const combat = unit.combat;
+      if (combat !== null && !bodyOverlaps) {
+        const fallbackStart = areaTurretRowCount;
+        let unitCS: ReturnType<typeof getTransformCosSin> | undefined;
+        let unitGroundZ = 0;
+        if (import.meta.env.DEV) {
+          unitCS = getTransformCosSin(unit.transform);
+          unitGroundZ = getUnitGroundZ(unit);
+        }
+        for (let i = 0; i < combat.turrets.length; i++) {
+          const turret = combat.turrets[i];
+          if (!isTurretDamageable(turret)) continue;
+          ensureAreaTurretDamageCapacity(areaTurretRowCount + 1);
+          const turretRow = areaTurretRowCount++;
+          _areaTurretDamageSlots[turretRow] = _areaDamageSlots[row];
+          _areaTurretDamageTurretIndices[turretRow] = i;
+          if (import.meta.env.DEV) {
+            _areaTurretDamageRefFlags[turretRow] = 0;
+            const mount = resolveWeaponWorldMount(
+              unit, turret, i,
+              unitCS!.cos, unitCS!.sin,
+              {
+                currentTick: this.world.getTick(),
+                unitGroundZ,
+                surfaceN: unitComponent.surfaceNormal,
+              },
+              _subEntityPoint,
+            );
+            const tx = mount.x - source.center.x;
+            const ty = mount.y - source.center.y;
+            const tz = mount.z - source.center.z;
+            const turretMaxDist = source.radius + turret.config.radius.hitbox;
+            if (tx * tx + ty * ty + tz * tz <= turretMaxDist * turretMaxDist) {
+              _areaTurretDamageRefFlags[turretRow] = DAMAGE_AREA_FLAG_OVERLAP;
+            }
+          }
+        }
+        if (areaTurretRowCount > fallbackStart) {
+          _areaDamageTurretStart[row] = fallbackStart;
+          _areaDamageTurretEnd[row] = areaTurretRowCount;
+        }
+      }
+    }
+    classifyAreaTurretDamageRows(source, areaTurretRowCount);
     for (let row = 0; row < areaRowCount; row++) {
       const unit = _areaDamageEntities[row];
       const unitComponent = unit?.unit;
@@ -1615,6 +2019,15 @@ export class DamageSystem {
       if ((rowFlags & DAMAGE_AREA_FLAG_SLICE_PASS) === 0) continue;
       const bodyOverlaps =
         unitComponent.hp > 0 && (rowFlags & DAMAGE_AREA_FLAG_OVERLAP) !== 0;
+      const fallbackStart = _areaDamageTurretStart[row];
+      const fallbackEnd = _areaDamageTurretEnd[row];
+      if (
+        !bodyOverlaps &&
+        (fallbackStart < 0 || fallbackStart >= fallbackEnd)
+      ) {
+        continue;
+      }
+
       const damage = source.damage;
       const dirX = _areaDamageOutDirX[row];
       const dirY = _areaDamageOutDirY[row];
@@ -1626,7 +2039,7 @@ export class DamageSystem {
 
       if (bodyOverlaps) {
         // For area damage, penetration direction is from explosion center
-        // through unit (same as knockback direction — outward from center).
+        // through unit (same as knockback direction - outward from center).
         this.queueDamageToEntityBatch(unit, damage, result, source.sourceEntityId, {
           penetrationDir: { x: dirX, y: dirY },
           attackerVel: { x: forceX, y: forceY },
@@ -1638,37 +2051,17 @@ export class DamageSystem {
         if (force > 0 && _areaDamageOutDistance[row] > 0) {
           pushKnockback(result, unit.id, forceX, forceY, forceZ);
         }
+        continue;
       }
 
-      const combat = unit.combat;
-      if (combat !== null && !bodyOverlaps) {
-        const unitCS = getTransformCosSin(unit.transform);
-        const unitGroundZ = getUnitGroundZ(unit);
-        for (let i = 0; i < combat.turrets.length; i++) {
-          const turret = combat.turrets[i];
-          if (!isTurretDamageable(turret)) continue;
-          const mount = resolveWeaponWorldMount(
-            unit, turret, i,
-            unitCS.cos, unitCS.sin,
-            {
-              currentTick: this.world.getTick(),
-              unitGroundZ,
-              surfaceN: unitComponent.surfaceNormal,
-            },
-            _subEntityPoint,
-          );
-          const tx = mount.x - source.center.x;
-          const ty = mount.y - source.center.y;
-          const tz = mount.z - source.center.z;
-          const turretMaxDist = source.radius + turret.config.radius.hitbox;
-          if (tx * tx + ty * ty + tz * tz > turretMaxDist * turretMaxDist) continue;
-          this.queueDamageToEntityBatch(unit, damage, result, source.sourceEntityId, {
-            penetrationDir: { x: dirX, y: dirY },
-            attackerVel: { x: forceX, y: forceY },
-            attackMagnitude: damage,
-          });
-          result.hitEntityIds.push(unit.id);
-        }
+      for (let turretRow = fallbackStart; turretRow < fallbackEnd; turretRow++) {
+        if ((_areaTurretDamageOutFlags[turretRow] & DAMAGE_AREA_FLAG_OVERLAP) === 0) continue;
+        this.queueDamageToEntityBatch(unit, damage, result, source.sourceEntityId, {
+          penetrationDir: { x: dirX, y: dirY },
+          attackerVel: { x: forceX, y: forceY },
+          attackMagnitude: damage,
+        });
+        result.hitEntityIds.push(unit.id);
       }
     }
     clearAreaDamageEntities(areaRowCount);
@@ -1719,7 +2112,8 @@ export class DamageSystem {
     // sphere-vs-AABB overlap and horizontal slice filter.
     ensureAreaDamageCapacity(nearbyBuildings.length);
     areaRowCount = 0;
-    for (const building of nearbyBuildings) {
+    for (let buildingIndex = 0; buildingIndex < nearbyBuildings.length; buildingIndex++) {
+      const building = nearbyBuildings[buildingIndex];
       if (source.excludeEntities.has(building.id)) continue;
       if (!building.building || building.building.hp <= 0) continue;
 
@@ -1728,7 +2122,7 @@ export class DamageSystem {
       // Slab path: buildings are static, so their stamped slab geometry
       // (targetRadius in entity_radius_hitbox + AABB half-extents) is always
       // coherent at damage time.
-      _areaDamageSlots[row] = spatialGrid.getSlot(building.id);
+      _areaDamageSlots[row] = nearbyBuildingSlots[buildingIndex];
       if (import.meta.env.DEV) {
         _areaDamageEnabled[row] = 1;
         _areaDamageTargetKind[row] = DAMAGE_TARGET_KIND_BUILDING;

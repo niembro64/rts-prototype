@@ -146,6 +146,7 @@ export class SprayRenderer3D {
   private pEndB = new Float32Array(MAX_PARTICLES);
   private pTubeHandoffKey = new Array<string | null>(MAX_PARTICLES).fill(null);
   private pTubeHandoffIntensity = new Float32Array(MAX_PARTICLES);
+  private livePylonTips = new Map<string, { x: number; y: number; z: number }>();
   private spraySpawnBudget = new Map<string, number>();
   private activeSprayKeys = new Set<string>();
   private rngState = 0x9e3779b9;
@@ -214,6 +215,7 @@ export class SprayRenderer3D {
     const dtSec = Math.max(0, Math.min(dtMs, 100)) / 1000;
 
     this.advanceParticles(dtSec, onPylonTubeHandoff);
+    this.livePylonTips.clear();
     this.activeSprayKeys.clear();
 
     for (const spray of oneShotSprays) {
@@ -224,6 +226,7 @@ export class SprayRenderer3D {
     }
 
     for (const spray of sprayTargets) {
+      this.registerLivePylonTip(spray);
       const hasAbsoluteBallRate = spray.ballSpawnRate !== undefined;
       const ballSpawnRate = hasAbsoluteBallRate && Number.isFinite(spray.ballSpawnRate)
         ? Math.max(0, spray.ballSpawnRate as number)
@@ -281,6 +284,8 @@ export class SprayRenderer3D {
       }
     }
 
+    this.retargetPylonTipParticles();
+
     for (const key of this.spraySpawnBudget.keys()) {
       if (!this.activeSprayKeys.has(key)) this.spraySpawnBudget.delete(key);
     }
@@ -305,6 +310,37 @@ export class SprayRenderer3D {
 
   private sprayKey(spray: SprayTarget): string {
     return `${spray.type}:${spray.source.id}:${spray.target.id}:${spray.channel}:${spray.flow}`;
+  }
+
+  private registerLivePylonTip(spray: SprayTarget): void {
+    const key = spray.pylonTubeHandoffKey;
+    if (!key) return;
+    let tip = this.livePylonTips.get(key);
+    if (!tip) {
+      tip = { x: 0, y: 0, z: 0 };
+      this.livePylonTips.set(key, tip);
+    }
+    tip.x = spray.target.pos.x;
+    tip.y = spray.target.z ?? TRAIL_Y;
+    tip.z = spray.target.pos.y;
+  }
+
+  private retargetPylonTipParticles(): void {
+    if (this.livePylonTips.size === 0) return;
+    for (let i = 0; i < this.particleCount; i++) {
+      const key = this.pTubeHandoffKey[i];
+      if (key === null) continue;
+      const tip = this.livePylonTips.get(key);
+      if (!tip) continue;
+      this.pEndX[i] = tip.x;
+      this.pEndY[i] = tip.y;
+      this.pEndZ[i] = tip.z;
+      if (this.pMidSplit[i] > 0) {
+        this.pMidX[i] = tip.x;
+        this.pMidY[i] = tip.y;
+        this.pMidZ[i] = tip.z;
+      }
+    }
   }
 
   private resolveSprayColor(spray: SprayTarget): { r: number; g: number; b: number } {

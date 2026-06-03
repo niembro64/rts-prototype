@@ -6,6 +6,7 @@ import { spatialGrid } from './SpatialGrid';
 import type { EntityId, PlayerId } from './types';
 import { NO_ENTITY_ID } from './types';
 import { resolveWeaponWorldMount } from './combat/combatUtils';
+import { stampCombatTargetingPool } from './combat/targetingInputStamping';
 import { getUnitGroundZ } from './unitGeometry';
 import { WorldState } from './WorldState';
 
@@ -30,6 +31,7 @@ export function runTurretHostIntegrationContractTest(): void {
     );
     world.addEntity(host);
     spatialGrid.updateUnit(host);
+    stampCombatTargetingPool(world);
 
     const combat = host.combat;
     const hostUnit = host.unit;

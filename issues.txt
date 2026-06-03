@@ -20,84 +20,25 @@ Please always commit and push before and after any code changes we make.
 ARCHITECTURE / PHILOSOPHY MIGRATION (budget_design_philosophy.html)
 ================================================================================
 
-7.0 [MAJOR, migration surface] The last of the projectile/damage/death
-migration: move line/swept/area candidate PACKING and death-explosion CHAINING
-into Rust. NOT blocked on the full ECS migration — the per-entity data already
-exists in the CombatTargetingPool slab and can be reused. Gated only on a few
-concrete coherence/plumbing items (below); land it carefully because it is core
-hit-detection.
+7.0 [MAJOR, migration surface] Remaining projectile/damage/death migration.
 
-Verified against code 2026-06-02 — all the pure-computation kernels already live
-in Rust/WASM: projectile integration, homing/terrain-follow thrust, reflector
-intersections + reflected response, swept body/building/projectile/turret hit
-selection (projectile_hitbox_sweep_batch), terminal consequence classification
-(projectile_terminal_consequence_batch), terminal effect planning
-(projectile_terminal_effect_plan_batch), submunition launch-velocity scatter
-(projectile_submunition_launch_velocity_batch), line/swept segment hits
-(damage_segment_hits_batch), splash sphere/AABB overlap + slice-cone + knockback
-direction (damage_area_overlap_batch), direct-hit/splash HP/kill output math
-(damage_apply_batch), and death-cleanup HP/materialization classification +
-compact removal diffs (death_cleanup_diff_batch). All damage HP write-back
-(beam/line, swept, area, death-explosion) shares the one batched
-damage_apply_batch path (queueDamageToEntityBatch + flushDamageBatch) — there is
-no second single-entity apply path to migrate.
+Keep TypeScript on DIFF APPLICATION: applying terminal-effect flags (despawn /
+hasExploded / audio events), materializing submunitions via world.createProjectile,
+writing returned HP onto JS entities, emitting death/audio events, and removing JS
+entities from WorldState. Keep computation and per-candidate damage classification
+in Rust/WASM using the existing CombatTargetingPool slab; do NOT build a parallel
+slab.
 
-What remains in TypeScript is mostly DIFF APPLICATION, which the C1 contract
-keeps in TS on purpose: applying terminal-effect flags (despawn / hasExploded /
-audio events), materializing submunitions via world.createProjectile, writing
-returned HP onto JS entities, emitting death/audio events, and removing JS
-entities from WorldState.
-
-REQUIRED FIX: move line/swept/area candidate PACKING and death-explosion CHAINING
-into Rust. The data is already mirrored, so reuse it — do NOT build a parallel
-slab. The CombatTargetingPool slab (lib.rs ~14943, stamped by
-targetingInputStamping.ts) already holds, per unit/building/tower/projectile:
-position, owner/team, current HP, hitbox radius, building AABB half-extents,
-entity family, and alive flag — and already computes turret world-mount positions
-+ turret hitbox radii. So damage packing iterates broadphase candidate slots and
-reads the slab instead of re-reading JS entities.
-
-LANDED (both kernels + the area unit/building consumer):
-  - damage_area_candidates_batch AND damage_segment_candidates_batch — slab-reading
-    drop-ins for damage_area_overlap_batch / damage_segment_hits_batch, each
-    Rust-unit-tested for byte-identical output. The segment kernel also takes the
-    per-call sphere/AABB inflations beam/swept add, and reads turret sub-hitboxes
-    from the slab's turret mounts (so it replaces resolveWeaponWorldMount too).
-  - applyAreaDamage's UNIT and BUILDING passes pack the combat slot
-    (spatialGrid.getSlot, which IS the slab slot) and classify via the area kernel,
-    behind a DEV-only equality gate that console.errors the first per-row divergence
-    vs the legacy array path (tree-shaken from prod). No new slot lookup needed.
+Projectile damage rows are intentionally still live-geometry rows on the legacy
+array kernels. Travelling shots are event-driven bodies whose post-integration
+position is authoritative and cheap, so this is the chosen split rather than a
+gap.
 
 Remaining:
-  1. SEGMENT TS WIRING. Move applyLineDamage + applySweptDamage onto
-     damage_segment_candidates_batch: pack (slot, turret_idx) for UNIT/BUILDING
-     bodies and turret sub-hitboxes (rows 0..K), keep projectile rows on the legacy
-     array kernel (rows K..N; see step 2), and run the closest-T (beam) /
-     sorted-maxHits (swept) selection over both ranges. Pass sphere_inflation =
-     width/2 (beam) or source.radius (swept) and aabb_inflation = 0 (beam) or
-     source.radius (swept). Preserve the bodyDamageable + isConstructionBody-
-     Materialized gating. SAME DEV gate. VERIFY: this is the first damage use of the
-     slab's Rust-computed turret mounts — confirm they match resolveWeaponWorldMount
-     (the DEV gate flags any drift loudly).
-  2. PROJECTILES — live by design, OR slab-migrated (pick one, delete the other).
-     Travelling shots are event-driven bodies whose live position is authoritative
-     and cheap, so leaving the area/segment PROJECTILE rows on the legacy array
-     kernel with live geometry is a principled split, not a gap. If a projectile
-     slab path is preferred, it is cheap: spatialGrid.updateProjectiles already
-     rebuilds a fresh post-integration batch (slots + pos + radius.collision) each
-     tick right before checkProjectileCollisions; a Rust restamp writing
-     entity_family=SHOT + entity_pos + entity_radius_collision per slot from that
-     same batch makes the SHOT branch coherent (entity_radius_collision is already
-     on the slab — currently stamped only by that future restamp, else unused).
-  3. AREA TURRET FALLBACK. applyAreaDamage's unit turret sub-hitbox fallback still
-     uses resolveWeaponWorldMount; once step 1 proves slab turret mounts match,
-     fold it onto the slab turret data too.
-  4. SLOT FAST-PATH (perf). TS still loops candidates to call getSlot per hit. For
-     the real win, have the broadphase hand slot-ids straight to the kernels so TS
-     does zero per-candidate work.
-  5. CHAINING. The slab is write-once per tick, so it cannot supply post-damage HP
+  1. CHAINING. The slab is write-once per tick, so it cannot supply post-damage HP
      mid-chain. Keep kill accumulation on the live damage_apply_batch result (as
-     today); move only the per-blast candidate packing onto the kernels above.
+     today); move death-explosion chaining/per-blast candidate traversal onto Rust
+     using the slab-backed kernels above and return compact diffs for TS to apply.
 
 VERIFY CAREFULLY: this is core hit-detection. A subtle packing/coherence bug
 shifts splash radii or projectile intercepts in ways a visual spot-check won't

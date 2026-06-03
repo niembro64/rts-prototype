@@ -35,7 +35,9 @@ import __wbg_init, {
   construction_apply_consumer_spends,
   damage_area_overlap_batch,
   damage_area_candidates_batch,
+  damage_area_turret_candidates_batch,
   damage_apply_batch,
+  damage_segment_candidates_batch,
   damage_segment_hits_batch,
   death_cleanup_diff_batch,
   economy_apply_income_credits,
@@ -952,9 +954,6 @@ export interface SimWasm {
     outDirZ: Float64Array,
     outDistance: Float64Array,
   ) => number;
-  /** C1 — line/swept damage segment hit classifier. TypeScript gathers
-   *  candidates and applies damage/event diffs; Rust owns the
-   *  segment-vs-sphere and segment-vs-AABB hit tests. */
   /** C1 - slab-driven splash/area candidate classifier; geometry read from
    *  the combat-targeting slab by spatial-grid slot, output identical to
    *  damageAreaOverlapBatch. TypeScript collects one candidate slot per
@@ -975,6 +974,22 @@ export interface SimWasm {
     outDirZ: Float64Array,
     outDistance: Float64Array,
   ) => number;
+  /** C1 - slab-driven area turret fallback classifier. Reads turret
+   *  sub-hitbox mount/radius from CombatTargetingPool and reports overlap;
+   *  callers preserve the body-row slice/knockback semantics. */
+  readonly damageAreaTurretCandidatesBatch: (
+    count: number,
+    candidateSlots: Uint32Array,
+    turretIdx: Int32Array,
+    centerX: number,
+    centerY: number,
+    centerZ: number,
+    radius: number,
+    outFlags: Uint8Array,
+  ) => number;
+  /** C1 — line/swept damage segment hit classifier. TypeScript gathers
+   *  remaining live-geometry rows and applies damage/event diffs; Rust owns
+   *  the segment-vs-sphere and segment-vs-AABB hit tests. */
   readonly damageSegmentHitsBatch: (
     count: number,
     enabled: Uint8Array,
@@ -992,6 +1007,25 @@ export interface SimWasm {
     boxHalfX: Float64Array,
     boxHalfY: Float64Array,
     boxHalfZ: Float64Array,
+    outFlags: Uint8Array,
+    outT: Float64Array,
+  ) => number;
+  /** C1 - slab-driven line/swept damage segment classifier. Unit/building
+   *  bodies and turret sub-hitboxes are addressed by combat-targeting slab
+   *  slot + turret index; projectile rows stay on damageSegmentHitsBatch
+   *  with live post-integration geometry. */
+  readonly damageSegmentCandidatesBatch: (
+    count: number,
+    candidateSlots: Uint32Array,
+    turretIdx: Int32Array,
+    startX: number,
+    startY: number,
+    startZ: number,
+    endX: number,
+    endY: number,
+    endZ: number,
+    sphereInflation: number,
+    aabbInflation: number,
     outFlags: Uint8Array,
     outT: Float64Array,
   ) => number;
@@ -3655,7 +3689,9 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         unitForceStepBatch: unit_force_step_batch,
         damageAreaOverlapBatch: damage_area_overlap_batch,
         damageAreaCandidatesBatch: damage_area_candidates_batch,
+        damageAreaTurretCandidatesBatch: damage_area_turret_candidates_batch,
         damageApplyBatch: damage_apply_batch,
+        damageSegmentCandidatesBatch: damage_segment_candidates_batch,
         damageSegmentHitsBatch: damage_segment_hits_batch,
         deathCleanupDiffBatch: death_cleanup_diff_batch,
         projectilePool,

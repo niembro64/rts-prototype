@@ -66,6 +66,19 @@ export class SpatialGrid {
   private readonly _unitsAndBuildingsResult: { units: Entity[]; buildings: Entity[] } = {
     units: [], buildings: [],
   };
+  private readonly _queryResultUnitSlots: number[] = [];
+  private readonly _queryResultBuildingSlots: number[] = [];
+  private readonly _unitsAndBuildingsSlotsResult: {
+    units: Entity[];
+    buildings: Entity[];
+    unitSlots: number[];
+    buildingSlots: number[];
+  } = {
+    units: [],
+    buildings: [],
+    unitSlots: [],
+    buildingSlots: [],
+  };
   private readonly _rectResult: { units: Entity[]; buildings: Entity[] } = {
     units: [], buildings: [],
   };
@@ -387,6 +400,24 @@ export class SpatialGrid {
     }
   }
 
+  private resolveSlotsRangeWithSlots(
+    slots: Uint32Array,
+    start: number,
+    end: number,
+    outEntities: Entity[],
+    outSlots: number[],
+  ): void {
+    outEntities.length = 0;
+    outSlots.length = 0;
+    for (let i = start; i < end; i++) {
+      const slot = slots[i];
+      const e = this.entityBySlot[slot];
+      if (!e) continue;
+      outEntities.push(e);
+      outSlots.push(slot);
+    }
+  }
+
   // ===================== Queries =====================
 
   queryUnitsInRadius(x: number, y: number, z: number, radius: number): Entity[] {
@@ -413,6 +444,34 @@ export class SpatialGrid {
     this._unitsAndBuildingsResult.units = this.queryResultUnits;
     this._unitsAndBuildingsResult.buildings = this.queryResultBuildings;
     return this._unitsAndBuildingsResult;
+  }
+
+  queryUnitsAndBuildingsSlotsInRadius(
+    x: number, y: number, z: number, radius: number,
+  ): { units: Entity[]; buildings: Entity[]; unitSlots: number[]; buildingSlots: number[] } {
+    const total = this.api().queryUnitsAndBuildingsInRadius(x, y, z, radius);
+    const slots = this.scratch(total);
+    const nUnits = slots[0];
+    const nBuildings = slots[1];
+    this.resolveSlotsRangeWithSlots(
+      slots,
+      2,
+      2 + nUnits,
+      this.queryResultUnits,
+      this._queryResultUnitSlots,
+    );
+    this.resolveSlotsRangeWithSlots(
+      slots,
+      2 + nUnits,
+      2 + nUnits + nBuildings,
+      this.queryResultBuildings,
+      this._queryResultBuildingSlots,
+    );
+    this._unitsAndBuildingsSlotsResult.units = this.queryResultUnits;
+    this._unitsAndBuildingsSlotsResult.buildings = this.queryResultBuildings;
+    this._unitsAndBuildingsSlotsResult.unitSlots = this._queryResultUnitSlots;
+    this._unitsAndBuildingsSlotsResult.buildingSlots = this._queryResultBuildingSlots;
+    return this._unitsAndBuildingsSlotsResult;
   }
 
   queryUnitsAndBuildingsInRect2D(
@@ -530,6 +589,36 @@ export class SpatialGrid {
     this._unitsAndBuildingsResult.units = this.queryResultUnits;
     this._unitsAndBuildingsResult.buildings = this.queryResultBuildings;
     return this._unitsAndBuildingsResult;
+  }
+
+  queryEntitySlotsAlongLine(
+    x1: number, y1: number, z1: number,
+    x2: number, y2: number, z2: number,
+    lineWidth: number,
+  ): { units: Entity[]; buildings: Entity[]; unitSlots: number[]; buildingSlots: number[] } {
+    const total = this.api().queryEntitiesAlongLine(x1, y1, z1, x2, y2, z2, lineWidth);
+    const slots = this.scratch(total);
+    const nUnits = slots[0];
+    const nBuildings = slots[1];
+    this.resolveSlotsRangeWithSlots(
+      slots,
+      2,
+      2 + nUnits,
+      this.queryResultUnits,
+      this._queryResultUnitSlots,
+    );
+    this.resolveSlotsRangeWithSlots(
+      slots,
+      2 + nUnits,
+      2 + nUnits + nBuildings,
+      this.queryResultBuildings,
+      this._queryResultBuildingSlots,
+    );
+    this._unitsAndBuildingsSlotsResult.units = this.queryResultUnits;
+    this._unitsAndBuildingsSlotsResult.buildings = this.queryResultBuildings;
+    this._unitsAndBuildingsSlotsResult.unitSlots = this._queryResultUnitSlots;
+    this._unitsAndBuildingsSlotsResult.buildingSlots = this._queryResultBuildingSlots;
+    return this._unitsAndBuildingsSlotsResult;
   }
 
   // ===================== Debug =====================

@@ -940,17 +940,6 @@ export class Render3DEntities {
         this.constructionVisuals,
       );
 
-      // Materialization fade — mounted turrets share the host body's
-      // build fraction because they are not separate construction pieces.
-      // Finished units sit at 1, where the shared fade helper restores
-      // real materials and then becomes a no-op.
-      const turretFades = this._turretFadeScratch;
-      turretFades.length = m.turrets.length;
-      for (let i = 0; i < m.turrets.length; i++) {
-        turretFades[i] = bodyOpacity;
-      }
-      this.applyUnitEntityFade(m, bodyOpacity, turretFades);
-
       if (m.mirrors) {
         let shieldPanelTurretIndex = -1;
         for (let i = 0; i < turrets.length; i++) {
@@ -1000,6 +989,19 @@ export class Render3DEntities {
           this.hoverSmokeEmitters,
         );
       }
+
+      // Materialization fade — mounted turrets share the host body's
+      // build fraction because they are not separate construction pieces.
+      // This runs after locomotion update so leg instance geometry is
+      // faded after its per-frame pose writer has restored base thickness.
+      // Finished units sit at 1, where the shared fade helper restores
+      // real materials and then becomes a no-op.
+      const turretFades = this._turretFadeScratch;
+      turretFades.length = m.turrets.length;
+      for (let i = 0; i < m.turrets.length; i++) {
+        turretFades[i] = bodyOpacity;
+      }
+      this.applyUnitEntityFade(m, bodyOpacity, turretFades);
 
       // Health bar handled by HealthBar3D (billboarded sprite in the
       // world group, depth-occluded by terrain).

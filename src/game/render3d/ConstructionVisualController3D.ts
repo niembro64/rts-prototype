@@ -366,7 +366,13 @@ export class ConstructionVisualController3D {
     this.blendDisplaySmoothedRates(rig.displaySmoothedRates, rig.smoothedRates, dtSec);
     this.syncPylonDisplayRates(rig);
 
-    if (!active || !e.ownership) return;
+    const canTrackBuildSpot = detailsReady
+      && !!factory
+      && !!selectedUnitBlueprintId
+      && !!e.ownership;
+    if (!canTrackBuildSpot) return;
+    const ownership = e.ownership;
+    if (!ownership) return;
 
     let buildSpotRadius = 12;
     if (selectedUnitBlueprintId) {
@@ -395,7 +401,7 @@ export class ConstructionVisualController3D {
       rig,
       rig.group,
       e.id,
-      e.ownership.playerId,
+      ownership.playerId,
       e.id,
       this._factorySprayTargetWorld,
       buildSpotRadius,
@@ -890,7 +896,6 @@ export class ConstructionVisualController3D {
       const normalized = normalizeBuilderPylonRate(flow.amountPerSecond, fullRate);
       if (normalized <= 0) continue;
       const rate = rig.displaySmoothedRates[resource] * Math.min(1, normalized / aggregate);
-      if (rate < 0.05) continue;
 
       const direction = pylonDirectionFromCode(flow.direction);
       pylon.direction = direction;
@@ -960,10 +965,11 @@ export class ConstructionVisualController3D {
     absRate: number,
     channel: number,
   ): void {
-    // `rate` (cap-normalized, EMA-smoothed) still drives the idle gate and
-    // birth opacity; `absRate` (resources/second) drives how many balls are
-    // born, so density tracks absolute throughput rather than the cap.
-    if (rate < 0.05 && !(absRate > 0)) return;
+    // `rate` (cap-normalized, EMA-smoothed) still drives birth opacity;
+    // `absRate` (resources/second) drives how many balls are born, so density
+    // tracks absolute throughput rather than the cap. Keep publishing the tube
+    // even at zero birth rate: in-flight beads need the live root/tip while the
+    // visual pylon spin EMA settles.
     const ballSpawnRate = ballSpawnRateForResourceRate(absRate);
     pylon.direction = direction;
     // Live world endpoints — the construction tower orbits, so the tip

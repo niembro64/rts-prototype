@@ -8,7 +8,6 @@ export {
 export const LAND_CELL_AXIS_BIAS = 32768;
 export const LAND_CELL_AXIS_MASK = 0xffff;
 export const LAND_CELL_KEY_MULT = 0x10000;
-export const CANONICAL_LAND_CELL_SIZE = normalizeLandCellSize(LAND_CELL_SIZE);
 
 export type LandGridMetrics = {
   mapWidth: number;
@@ -28,6 +27,8 @@ export type LandCellBounds = {
 export function normalizeLandCellSize(cellSize: number = LAND_CELL_SIZE): number {
   return Math.max(1, Math.floor(cellSize > 0 ? cellSize : LAND_CELL_SIZE));
 }
+
+export const CANONICAL_LAND_CELL_SIZE = normalizeLandCellSize(LAND_CELL_SIZE);
 
 export function assertCanonicalLandCellSize(label: string, cellSize: number): void {
   const normalized = normalizeLandCellSize(cellSize);

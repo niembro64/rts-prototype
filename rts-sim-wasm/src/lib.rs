@@ -564,14 +564,17 @@ pub fn damage_segment_candidates_batch(
             // Turret sub-hitbox: sphere at the slab-computed world mount.
             if (ti as u32) >= COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY {
                 None
+            } else if slot >= pool.turret_count_per_entity.len()
+                || ti as u8 >= pool.turret_count_per_entity[slot]
+            {
+                None
             } else {
                 let gidx = combat_targeting_turret_global_idx(slot as u32, ti as u32);
                 if gidx >= pool.turret_mount_x.len() {
                     None
                 } else {
-                    let tx = pool.turret_mount_x[gidx];
-                    let ty = pool.turret_mount_y[gidx];
-                    let tz = pool.turret_mount_z[gidx];
+                    let (tx, ty, tz) =
+                        combat_targeting_resolve_turret_mount_from_slab(pool, slot, ti as usize);
                     let radius = (pool.turret_radius_hitbox[gidx] + sphere_inflation).max(0.0);
                     if !(tx.is_finite() && ty.is_finite() && tz.is_finite() && radius.is_finite()) {
                         None
@@ -601,7 +604,8 @@ pub fn damage_segment_candidates_batch(
                         }
                     }
                     CT_ENTITY_FAMILY_SHOT => {
-                        let radius = (pool.entity_radius_collision[slot] + sphere_inflation).max(0.0);
+                        let radius =
+                            (pool.entity_radius_collision[slot] + sphere_inflation).max(0.0);
                         if !radius.is_finite() {
                             None
                         } else {
@@ -1055,6 +1059,81 @@ pub fn damage_area_candidates_batch(
             _ => {}
         }
         out_flags[i] = flags;
+        processed += 1;
+    }
+
+    processed
+}
+
+/// C1 damage migration - slab-driven area turret sub-hitbox overlap.
+///
+/// Companion for applyAreaDamage's legacy fallback: TypeScript already uses
+/// damage_area_candidates_batch for the unit body row, and only checks turret
+/// sub-hitboxes when that body row did not overlap. This kernel keeps that
+/// control flow but reads the turret mount/radius from CombatTargetingPool
+/// instead of calling resolveWeaponWorldMount in TypeScript. It intentionally
+/// reports only DAMAGE_AREA_FLAG_OVERLAP; the caller preserves the existing
+/// body-row slice gate and knockback direction semantics.
+#[wasm_bindgen]
+pub fn damage_area_turret_candidates_batch(
+    count: u32,
+    candidate_slots: &[u32],
+    turret_idx: &[i32],
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    radius: f64,
+    out_flags: &mut [u8],
+) -> u32 {
+    let n = count as usize;
+    if candidate_slots.len() < n || turret_idx.len() < n || out_flags.len() < n {
+        return 0;
+    }
+    if !(center_x.is_finite() && center_y.is_finite() && center_z.is_finite() && radius.is_finite())
+    {
+        return 0;
+    }
+
+    let pool = combat_targeting_pool();
+    let area_radius = radius.max(0.0);
+    let mut processed = 0_u32;
+    for i in 0..n {
+        out_flags[i] = 0;
+
+        let slot = candidate_slots[i] as usize;
+        if slot >= pool.entity_id.len() {
+            continue;
+        }
+        let ti = turret_idx[i];
+        if ti < 0 || (ti as u32) >= COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY {
+            processed += 1;
+            continue;
+        }
+        if slot >= pool.turret_count_per_entity.len()
+            || ti as u8 >= pool.turret_count_per_entity[slot]
+        {
+            processed += 1;
+            continue;
+        }
+
+        let gidx = combat_targeting_turret_global_idx(slot as u32, ti as u32);
+        if gidx >= pool.turret_mount_x.len() {
+            continue;
+        }
+        let (tx, ty, tz) = combat_targeting_resolve_turret_mount_from_slab(pool, slot, ti as usize);
+        let tr = pool.turret_radius_hitbox[gidx].max(0.0);
+        if !(tx.is_finite() && ty.is_finite() && tz.is_finite() && tr.is_finite()) {
+            processed += 1;
+            continue;
+        }
+
+        let dx = tx - center_x;
+        let dy = ty - center_y;
+        let dz = tz - center_z;
+        let max_dist = area_radius + tr;
+        if dx * dx + dy * dy + dz * dz <= max_dist * max_dist {
+            out_flags[i] = DAMAGE_AREA_FLAG_OVERLAP;
+        }
         processed += 1;
     }
 
@@ -30731,9 +30810,28 @@ mod sim_kernel_tests {
         let mut ref_dz = [0.0; 4];
         let mut ref_dist = [0.0; 4];
         damage_area_overlap_batch(
-            4, &enabled, &kind, cx, cy, cz, radius, has_slice, slice_dir, slice_half,
-            &tx, &ty, &tz, &tr, &hx, &hy, &hz,
-            &mut ref_flags, &mut ref_dx, &mut ref_dy, &mut ref_dz, &mut ref_dist,
+            4,
+            &enabled,
+            &kind,
+            cx,
+            cy,
+            cz,
+            radius,
+            has_slice,
+            slice_dir,
+            slice_half,
+            &tx,
+            &ty,
+            &tz,
+            &tr,
+            &hx,
+            &hy,
+            &hz,
+            &mut ref_flags,
+            &mut ref_dx,
+            &mut ref_dy,
+            &mut ref_dz,
+            &mut ref_dist,
         );
 
         // Stamp the same four targets into the slab at slots 0..3 and run the
@@ -30767,8 +30865,20 @@ mod sim_kernel_tests {
         let mut got_dz = [0.0; 4];
         let mut got_dist = [0.0; 4];
         let processed = damage_area_candidates_batch(
-            4, &slots, cx, cy, cz, radius, has_slice, slice_dir, slice_half,
-            &mut got_flags, &mut got_dx, &mut got_dy, &mut got_dz, &mut got_dist,
+            4,
+            &slots,
+            cx,
+            cy,
+            cz,
+            radius,
+            has_slice,
+            slice_dir,
+            slice_half,
+            &mut got_flags,
+            &mut got_dx,
+            &mut got_dy,
+            &mut got_dz,
+            &mut got_dist,
         );
 
         assert_eq!(processed, 4);
@@ -30781,6 +30891,60 @@ mod sim_kernel_tests {
         // Sanity: the near unit overlapped and the projectile auto-passed slice.
         assert_ne!(ref_flags[0] & DAMAGE_AREA_FLAG_OVERLAP, 0);
         assert_ne!(ref_flags[2] & DAMAGE_AREA_FLAG_SLICE_PASS, 0);
+    }
+
+    #[test]
+    fn damage_area_turret_candidates_batch_classifies_slab_mounts() {
+        let _guard = lock_tests();
+
+        let pool = combat_targeting_pool();
+        pool.ensure_entity_capacity(0);
+        pool.entity_id[0] = 100;
+        pool.entity_family[0] = CT_ENTITY_FAMILY_UNIT;
+        pool.entity_pos_x[0] = 0.0;
+        pool.entity_pos_y[0] = 0.0;
+        pool.entity_pos_z[0] = 0.0;
+        pool.entity_ground_z[0] = 0.0;
+        pool.entity_rot_cos[0] = 1.0;
+        pool.entity_rot_sin[0] = 0.0;
+        pool.entity_surface_nx[0] = 0.0;
+        pool.entity_surface_ny[0] = 0.0;
+        pool.entity_surface_nz[0] = 1.0;
+        pool.entity_suspension_offset_x[0] = 0.0;
+        pool.entity_suspension_offset_y[0] = 0.0;
+        pool.entity_suspension_offset_z[0] = 0.0;
+        pool.turret_count_per_entity[0] = 2;
+        let near_idx = combat_targeting_turret_global_idx(0, 0);
+        pool.turret_mount_x[near_idx] = -99.0;
+        pool.turret_local_mount_x[near_idx] = 4.0;
+        pool.turret_local_mount_y[near_idx] = 0.0;
+        pool.turret_local_mount_z[near_idx] = 0.0;
+        pool.turret_radius_hitbox[near_idx] = 1.25;
+        let far_idx = combat_targeting_turret_global_idx(0, 1);
+        pool.turret_mount_x[far_idx] = -99.0;
+        pool.turret_local_mount_x[far_idx] = 9.0;
+        pool.turret_local_mount_y[far_idx] = 0.0;
+        pool.turret_local_mount_z[far_idx] = 0.0;
+        pool.turret_radius_hitbox[far_idx] = 0.5;
+
+        let slots = [0_u32, 0, 0];
+        let turret_idx = [0_i32, 1, 2];
+        let mut flags = [99_u8; 3];
+        let processed = damage_area_turret_candidates_batch(
+            3,
+            &slots,
+            &turret_idx,
+            0.0,
+            0.0,
+            0.0,
+            3.0,
+            &mut flags,
+        );
+
+        assert_eq!(processed, 3);
+        assert_eq!(flags[0], DAMAGE_AREA_FLAG_OVERLAP);
+        assert_eq!(flags[1], 0);
+        assert_eq!(flags[2], 0);
     }
 
     #[test]
@@ -30981,8 +31145,24 @@ mod sim_kernel_tests {
         let mut ref_flags = [0_u8; 3];
         let mut ref_t = [0.0; 3];
         damage_segment_hits_batch(
-            3, &enabled, &kind, sx, sy, sz, ex, ey, ez, &tx, &ty, &tz, &ref_tr, &ref_hx, &ref_hy,
-            &ref_hz, &mut ref_flags, &mut ref_t,
+            3,
+            &enabled,
+            &kind,
+            sx,
+            sy,
+            sz,
+            ex,
+            ey,
+            ez,
+            &tx,
+            &ty,
+            &tz,
+            &ref_tr,
+            &ref_hx,
+            &ref_hy,
+            &ref_hz,
+            &mut ref_flags,
+            &mut ref_t,
         );
 
         // Stamp the unit (slot 0, one turret) and building (slot 1) into the slab.
@@ -30993,12 +31173,19 @@ mod sim_kernel_tests {
         pool.entity_pos_x[0] = tx[0];
         pool.entity_pos_y[0] = ty[0];
         pool.entity_pos_z[0] = tz[0];
+        pool.entity_ground_z[0] = 0.0;
+        pool.entity_rot_cos[0] = 1.0;
+        pool.entity_rot_sin[0] = 0.0;
+        pool.entity_surface_nx[0] = 0.0;
+        pool.entity_surface_ny[0] = 0.0;
+        pool.entity_surface_nz[0] = 1.0;
         pool.entity_radius_hitbox[0] = tr[0];
         pool.turret_count_per_entity[0] = 1;
         let g0 = combat_targeting_turret_global_idx(0, 0);
-        pool.turret_mount_x[g0] = tx[1];
-        pool.turret_mount_y[g0] = ty[1];
-        pool.turret_mount_z[g0] = tz[1];
+        pool.turret_mount_x[g0] = -99.0;
+        pool.turret_local_mount_x[g0] = tx[1];
+        pool.turret_local_mount_y[g0] = ty[1];
+        pool.turret_local_mount_z[g0] = tz[1];
         pool.turret_radius_hitbox[g0] = tr[1];
         pool.entity_id[1] = 200;
         pool.entity_family[1] = CT_ENTITY_FAMILY_BUILDING;
@@ -31015,8 +31202,19 @@ mod sim_kernel_tests {
         let mut got_flags = [0_u8; 3];
         let mut got_t = [0.0; 3];
         let processed = damage_segment_candidates_batch(
-            3, &slots, &turret_idx, sx, sy, sz, ex, ey, ez, sphere_inflation, aabb_inflation,
-            &mut got_flags, &mut got_t,
+            3,
+            &slots,
+            &turret_idx,
+            sx,
+            sy,
+            sz,
+            ex,
+            ey,
+            ez,
+            sphere_inflation,
+            aabb_inflation,
+            &mut got_flags,
+            &mut got_t,
         );
 
         assert_eq!(processed, 3);
