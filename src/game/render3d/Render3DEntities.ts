@@ -48,7 +48,10 @@ import { ConstructionVisualController3D } from './ConstructionVisualController3D
 import { CommanderVisualKit3D } from './CommanderVisualKit3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { BuildingEntityRenderer3D } from './BuildingEntityRenderer3D';
-import { turretAccentColorHexForPlayer } from './EntityInstanceColor3D';
+import {
+  entityShieldSphereTurretHeadColorHex,
+  turretAccentColorHexForPlayer,
+} from './EntityInstanceColor3D';
 import { UnitDetailInstanceRenderer3D, type DyingUnitPartDelta } from './UnitDetailInstanceRenderer3D';
 import {
   applyEntityGroupFade,
@@ -413,6 +416,7 @@ export class Render3DEntities {
 
     const frameSpin = this.barrelSpinState.beginFrame();
     this._currentDtMs = frameSpin.currentDtMs;
+    this._currentTimeMs = frameSpin.timeMs;
     this._spinDt = frameSpin.spinDtSec;
     this.turretMountCache.reset(this._currentDtMs);
     this.updateUnits();
@@ -429,6 +433,7 @@ export class Render3DEntities {
   private _spinDt = 0;
 
   private _currentDtMs = 0;
+  private _currentTimeMs = 0;
 
   /** Remove every overlay mesh that lives in the world group (not the
    *  unit group) so a teardown/rebuild cycle doesn't leak them into
@@ -462,29 +467,52 @@ export class Render3DEntities {
   }
 
   /** Per-Mesh fallback materials are mostly static after build/rebuild.
-   *  The exception is head-only turrets: their visible head flips
-   *  between player primary and turret accent when the turret engages.
-   *  Keep that one dynamic path cached instead of rewriting every chassis,
+   *  The exceptions are head-only turrets, whose visible head flips
+   *  between player primary and turret accent when the turret engages,
+   *  and shield-sphere emitter cores, which pulse while active. Keep
+   *  those dynamic paths cached instead of rewriting every chassis,
    *  barrel, and mirror material for every unit every frame. */
   private updateUnitFallbackDynamicMaterials(
+    e: Entity,
     m: EntityMesh,
     turrets: readonly Turret[],
-    ownerId: PlayerId | undefined,
   ): void {
+    const ownerId = e.ownership?.playerId;
     let headOnlyStates = m.unitHeadOnlyTurretEngaged;
+    let dynamicHeadColors = m.unitDynamicTurretHeadColorHex;
     for (let i = 0; i < m.turrets.length; i++) {
       const turretMesh = m.turrets[i];
-      if (!turretMesh.head || turretMesh.headOnly !== true) continue;
-      const engaged = turrets[i]?.state === 'engaged';
-      if (headOnlyStates !== undefined && headOnlyStates[i] === engaged) continue;
-      if (headOnlyStates === undefined) {
-        headOnlyStates = [];
-        m.unitHeadOnlyTurretEngaged = headOnlyStates;
+      if (!turretMesh.head) continue;
+      if (turretMesh.shieldEmitterCore === true) {
+        const colorHex = entityShieldSphereTurretHeadColorHex(
+          e,
+          turrets[i],
+          this._currentTimeMs,
+        );
+        if (dynamicHeadColors !== undefined && dynamicHeadColors[i] === colorHex) continue;
+        if (dynamicHeadColors === undefined) {
+          dynamicHeadColors = [];
+          m.unitDynamicTurretHeadColorHex = dynamicHeadColors;
+        }
+        dynamicHeadColors[i] = colorHex;
+        const mat = turretMesh.shieldEmitterPulseMat ?? turretMesh.head.material;
+        if (Array.isArray(mat)) continue;
+        const colorMat = mat as THREE.Material & { color?: THREE.Color };
+        if (colorMat.color instanceof THREE.Color) colorMat.color.set(colorHex);
+        continue;
       }
-      headOnlyStates[i] = engaged;
-      turretMesh.head.material = engaged
-        ? this.getTurretAccentMat(ownerId)
-        : this.getPrimaryMat(ownerId);
+      if (turretMesh.headOnly === true) {
+        const engaged = turrets[i]?.state === 'engaged';
+        if (headOnlyStates !== undefined && headOnlyStates[i] === engaged) continue;
+        if (headOnlyStates === undefined) {
+          headOnlyStates = [];
+          m.unitHeadOnlyTurretEngaged = headOnlyStates;
+        }
+        headOnlyStates[i] = engaged;
+        turretMesh.head.material = engaged
+          ? this.getTurretAccentMat(ownerId)
+          : this.getPrimaryMat(ownerId);
+      }
     }
   }
 
@@ -760,7 +788,7 @@ export class Render3DEntities {
         this.updateUnitInstanceColors(e, m, turrets);
         this.unitMeshes.set(e.id, m);
       }
-      this.updateUnitFallbackDynamicMaterials(m, turrets, pid);
+      this.updateUnitFallbackDynamicMaterials(e, m, turrets);
       // Build-in materialization: the body reveals via per-instance
       // alpha, not by growing the chassis from a point.
       // 0 = not yet started (invisible), ramping to 1 as the body builds.
@@ -935,6 +963,7 @@ export class Render3DEntities {
         unitGfx.barrelSpin,
         this.barrelSpinState,
         this._currentDtMs,
+        this._currentTimeMs,
         this.unitDetailInstances,
         this.turretMountCache,
         this.constructionVisuals,

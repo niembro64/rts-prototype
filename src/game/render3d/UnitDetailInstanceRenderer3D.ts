@@ -341,6 +341,7 @@ export class UnitDetailInstanceRenderer3D {
         : turretHeadHex;
       if (
         turret.headSlot !== undefined &&
+        turret.shieldEmitterCore !== true &&
         this.turretHeadColorKey.get(turret.headSlot) !== headColorKey
       ) {
         this.scratchColor.set(headColorKey);
@@ -427,7 +428,7 @@ export class UnitDetailInstanceRenderer3D {
     slot: number,
     matrix: THREE.Matrix4,
     entity: Entity,
-    /** Hex override for headOnly turrets.
+    /** Hex override for dynamic turret heads.
      *  When undefined the normal entity color is used. */
     colorOverride?: number,
   ): void {

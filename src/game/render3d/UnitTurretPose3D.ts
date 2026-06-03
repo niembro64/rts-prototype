@@ -4,7 +4,10 @@ import { isConstructionPieceMaterialized } from '../sim/buildableHelpers';
 import { getTurretMountHeight } from '../sim/combat/combatUtils';
 import type { Entity, Turret } from '../sim/types';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
-import { entityHeadOnlyTurretHeadColorHex } from './EntityInstanceColor3D';
+import {
+  entityHeadOnlyTurretHeadColorHex,
+  entityShieldSphereTurretHeadColorHex,
+} from './EntityInstanceColor3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { applyTurretAimPose3D } from './TurretAimPose3D';
 import type { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
@@ -31,6 +34,7 @@ export class UnitTurretPose3D {
     barrelSpinEnabled: boolean,
     barrelSpinState: UnitBarrelSpinState3D,
     currentDtMs: number,
+    timeMs: number,
     unitDetailInstances: UnitDetailInstanceRenderer3D,
     turretMountCache: TurretMountCache3D,
     constructionVisuals: ConstructionVisualController3D,
@@ -85,7 +89,9 @@ export class UnitTurretPose3D {
       ) {
         const headColorOverride = turretMesh.headOnly
           ? entityHeadOnlyTurretHeadColorHex(entity, turret.state)
-          : undefined;
+          : turretMesh.shieldEmitterCore
+            ? entityShieldSphereTurretHeadColorHex(entity, turret, timeMs)
+            : undefined;
         this.writeHeadInstance(
           entity,
           mesh,

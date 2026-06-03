@@ -737,6 +737,67 @@
     "emissionKind": "shield",
     "emissionBlueprintId": "shieldSphere"
   },
+  "turretShieldSphereSmall": {
+    "turretBlueprintId": "turretShieldSphereSmall",
+    "name": "Small Shield Sphere",
+    "range": 540,
+    "rangeVolume": "turret-range-sphere",
+    "cooldown": 0,
+    "launchForce": 0,
+    "turretTurnAccel": 200,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "complexSingleEmitter",
+      "grate": {
+        "shape": "circle",
+        "count": 5,
+        "length": 0,
+        "width": 0.45,
+        "taper": 0.5,
+        "baseOffset": 0,
+        "originOffset": 0,
+        "thickness": 1.5,
+        "reversePhase": true
+      }
+    },
+    "isManualFire": false,
+    "passive": false,
+    "requiresNonObstructedLineOfSight": false,
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": null,
+    "burst": null,
+    "shieldPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.turretShieldSphere"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": {
+      "visual": 10,
+      "hitbox": 7.5,
+      "collision": 10
+    },
+    "headOnly": false,
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "rayDirect"
+    },
+    "kind": "attack",
+    "emissionKind": "shield",
+    "emissionBlueprintId": "shieldSphereSmall"
+  },
   "turretConstruction": {
     "turretBlueprintId": "turretConstruction",
     "name": "Construction Emitter",

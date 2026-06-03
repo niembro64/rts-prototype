@@ -52,6 +52,7 @@
         "turretBeamMini",
         "turretBeamMega",
         "turretShieldSphere",
+        "turretShieldSphereSmall",
         "turretConstruction",
         "turretBeamLong",
         "turretCannonLong",
@@ -725,6 +726,7 @@
               "turretBeamMini",
               "turretBeamMega",
               "turretShieldSphere",
+              "turretShieldSphereSmall",
               "turretConstruction",
               "turretBeamLong",
               "turretCannonLong",
@@ -825,6 +827,14 @@
       }
     },
     "turretShieldSphere": {
+      "targets": {
+        "enemy": {
+          "towers": "all",
+          "units": "all"
+        }
+      }
+    },
+    "turretShieldSphereSmall": {
       "targets": {
         "enemy": {
           "towers": "all",

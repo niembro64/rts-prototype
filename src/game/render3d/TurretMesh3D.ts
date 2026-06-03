@@ -71,6 +71,12 @@ export type TurretMesh = {
    *  The per-frame writer skips applyTurretAimPose3D and colors the
    *  head white when engaged (vs unit color when idle/tracking). */
   headOnly?: boolean;
+  /** True for visible shield-sphere emitter cores. The
+   *  per-frame writer drives the active shield pulse on these heads. */
+  shieldEmitterCore?: boolean;
+  /** Unique material for per-Mesh shield-emitter fallbacks. Instanced
+   *  heads carry the pulse through instanceColor instead. */
+  shieldEmitterPulseMat?: THREE.Material;
   /** Pitch pivot (rotation.z = pitch) — tilts firing direction up/down.
    *  Parent of spinGroup. */
   pitchGroup?: THREE.Group;
@@ -104,9 +110,10 @@ export type TurretMesh3DDeps = {
   /** Half player color, half white. Used for head-only turret heads
    *  and all physical barrel meshes. */
   turretAccentMat: THREE.Material;
-  /** Optional material for visible shield emitter cores. Shield turrets
-   *  normally render through ShieldRenderer3D only, but special hosts
-   *  can request a small physical emitter so the mount is readable. */
+  /** Optional starting material for visible shield emitter cores. Shield
+   *  turrets normally render through ShieldRenderer3D only, but shield
+   *  sphere emitters can request a small physical core so the mount is
+   *  readable. */
   shieldEmitterMat?: THREE.Material;
   showShieldEmitterCore?: boolean;
   /** When true, skip building the per-Mesh head sphere — the caller
@@ -172,10 +179,13 @@ export function buildTurretMesh3D(
   // attachment height. Computed up front so the barrel block can pivot
   // at the head center even when the head itself is hidden.
   let head: THREE.Mesh | undefined;
+  let shieldEmitterPulseMat: THREE.Material | undefined;
   if (!skipHeadMesh) {
-    const headMat = showShieldEmitterCore
-      ? deps.shieldEmitterMat ?? deps.turretAccentMat
+    const baseHeadMat = showShieldEmitterCore
+      ? deps.shieldEmitterMat ?? deps.primaryMat
       : headOnly ? deps.turretAccentMat : deps.primaryMat;
+    const headMat = showShieldEmitterCore ? baseHeadMat.clone() : baseHeadMat;
+    if (showShieldEmitterCore) shieldEmitterPulseMat = headMat;
     head = new THREE.Mesh(deps.headGeom, headMat);
     head.scale.setScalar(headRadius);
     head.position.set(0, headRadius, 0);
@@ -192,7 +202,15 @@ export function buildTurretMesh3D(
   const barrels: THREE.Mesh[] = [];
   if (!barrel || isShield || turretOff || headOnly) {
     parent.add(root);
-    return { root, head, headRadius: cachedHeadRadius, barrels, headOnly };
+    return {
+      root,
+      head,
+      headRadius: cachedHeadRadius,
+      barrels,
+      headOnly,
+      shieldEmitterCore: showShieldEmitterCore,
+      shieldEmitterPulseMat,
+    };
   }
 
   // Barrel pivots through the head's center, so its Y in turret-root

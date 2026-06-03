@@ -1611,7 +1611,7 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretShieldSphere",
+        "turretBlueprintId": "turretShieldSphereSmall",
         "mount": {
           "x": 0,
           "y": 0,

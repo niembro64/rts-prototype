@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
-import type { Entity, TurretState } from '../sim/types';
+import type { Entity, Turret, TurretState } from '../sim/types';
 import { getPlayerColors } from '../sim/types';
+
+const SHIELD_SPHERE_TURRET_PULSE_PERIOD_MS = 900;
 
 export function entityInstanceColorKey(entity: Entity): number {
   return entity.ownership?.playerId ?? -1;
@@ -30,6 +32,26 @@ export function entityHeadOnlyTurretHeadColorHex(
   return turretState === 'engaged'
     ? entityTurretAccentColorHex(entity)
     : entityInstanceColorHex(entity);
+}
+
+export function entityShieldSphereTurretHeadColorHex(
+  entity: Entity,
+  turret: Turret | undefined,
+  timeMs: number,
+): number {
+  const primary = entityInstanceColorHex(entity);
+  if (
+    turret === undefined ||
+    turret.config.shot?.type !== 'shield' ||
+    turret.config.shot.barrier === undefined ||
+    (turret.shield?.range ?? 0) <= 0
+  ) {
+    return primary;
+  }
+  const phase = (timeMs % SHIELD_SPHERE_TURRET_PULSE_PERIOD_MS) /
+    SHIELD_SPHERE_TURRET_PULSE_PERIOD_MS;
+  const towardWhite = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2);
+  return blendHexTowardWhite(primary, towardWhite);
 }
 
 export function setEntityInstanceColor(

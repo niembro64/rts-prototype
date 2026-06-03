@@ -255,10 +255,12 @@ export class UnitMeshBuilder3D {
       const turret = turrets[turretIdx];
       const isShield = (turret.config.barrel as { type?: string } | undefined)?.type === 'complexSingleEmitter';
       const isConstructionEmitter = turret.config.constructionEmitter !== undefined;
-      const showShieldEmitterCore = entity.unit?.unitBlueprintId === 'unitAlbatros' && isShield;
+      const showShieldEmitterCore = isShield &&
+        turret.config.shot?.type === 'shield' &&
+        turret.config.shot.barrier !== undefined;
       const hideHead = turretOff || (isShield && !showShieldEmitterCore) || isConstructionEmitter;
       let headSlot: number | undefined;
-      if (useDetailedUnitInstancing && !hideHead && !isCommanderUnit && !showShieldEmitterCore) {
+      if (useDetailedUnitInstancing && !hideHead && !isCommanderUnit) {
         const allocated = this.unitDetailInstances.allocTurretHeadSlot();
         if (allocated !== null) headSlot = allocated;
       }
@@ -269,7 +271,7 @@ export class UnitMeshBuilder3D {
         coneBarrelGeom: this.coneBarrelGeom,
         primaryMat: this.getPrimaryMat(ownerId),
         turretAccentMat: this.getTurretAccentMat(ownerId),
-        shieldEmitterMat: this.getMirrorShinyMat(),
+        shieldEmitterMat: this.getPrimaryMat(ownerId),
         showShieldEmitterCore,
         skipHead: headSlot !== undefined,
         skipBarrels: false,

@@ -160,6 +160,10 @@ export type EntityMesh = {
    *  the rare per-Mesh fallback path from rewriting materials every
    *  frame when the state has not changed. */
   unitHeadOnlyTurretEngaged?: boolean[];
+  /** Cached color for per-Mesh dynamic turret heads, currently shield
+   *  sphere emitter cores. Instanced heads carry this through
+   *  instanceColor instead. */
+  unitDynamicTurretHeadColorHex?: number[];
   /** Whether a per-Mesh group fade clone is currently installed on
    *  this unit. Used to restore real materials exactly once when
    *  construction/death fade returns to full opacity. */

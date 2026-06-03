@@ -51,10 +51,10 @@
     "maxPoolSize": 12000,
     "capPolicy": "evictOldest",
     "emitFramesSkip": 0,
-    "exhaustSpeed": 40,
+    "exhaustSpeed": 130,
     "fadeInMs": 200,
     "fadeOutMs": 1000,
-    "startRadius": 3,
+    "startRadius": 10,
     "endRadiusMultiplier": 2,
     "maxAlpha": 0.05
   },
