@@ -53,6 +53,7 @@
         "turretBeamMega",
         "turretShieldSphere",
         "turretShieldSphereSmall",
+        "turretShieldCylinderInfinite",
         "turretConstruction",
         "turretBeamLong",
         "turretCannonLong",
@@ -727,6 +728,7 @@
               "turretBeamMega",
               "turretShieldSphere",
               "turretShieldSphereSmall",
+              "turretShieldCylinderInfinite",
               "turretConstruction",
               "turretBeamLong",
               "turretCannonLong",
@@ -835,6 +837,14 @@
       }
     },
     "turretShieldSphereSmall": {
+      "targets": {
+        "enemy": {
+          "towers": "all",
+          "units": "all"
+        }
+      }
+    },
+    "turretShieldCylinderInfinite": {
       "targets": {
         "enemy": {
           "towers": "all",

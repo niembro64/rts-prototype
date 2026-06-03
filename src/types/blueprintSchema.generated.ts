@@ -17,7 +17,10 @@ export type ShieldSurfaceResponse = 'reflect' | 'absorb' | 'passThrough';
 
 export type ShieldReflectionMode = 'outside-in' | 'inside-out' | 'both';
 
+export type ShieldBarrierShape = 'sphere' | 'infiniteVerticalCylinder';
+
 export type ShieldBarrierRatioConfig = {
+  shape: ShieldBarrierShape;
   outerRatio?: number | null;
   rimWidth?: number | null;
   originOffsetRadiusRatio?: number | null;
@@ -115,6 +118,7 @@ export type ShotBlueprint = ProjectileShotBlueprint;
 export type ProjectileTailShape = 'cone' | 'cylinder' | 'none';
 
 export type ShieldBarrierConfig = {
+  shape: ShieldBarrierShape;
   innerRange: number;
   outerRange: number;
   originOffsetZ: number;

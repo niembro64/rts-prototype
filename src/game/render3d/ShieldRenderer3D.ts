@@ -1,10 +1,10 @@
 // ShieldRenderer3D — 3D visualization for shield turrets.
 //
 // A shield turret uses the `complexSingleEmitter` barrel type and carries
-// a `ShieldConfig` (shot.type === 'shield') configured with a barrier sphere.
+// a `ShieldConfig` (shot.type === 'shield') configured with a barrier surface.
 // It animates per-tick via `turret.shield.range` (0 → 1 progress).
 //
-// One shield look: a translucent bubble that fades in with
+// One shield look: a translucent force surface that fades in with
 // `turret.shield.range`.
 
 import * as THREE from 'three';
@@ -23,6 +23,9 @@ import {
 // Opacity multiplier on top of barrier.alpha so the bubble reads more
 // solid in 3D than the 2D translucent fill.
 const FIELD_OPACITY_BOOST = 2.0;
+const FIELD_SHAPE_SPHERE = 0;
+const FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER = 1;
+const INFINITE_CYLINDER_VISUAL_HEIGHT = 4096;
 
 function isShieldTurret(t: Turret): boolean {
   return (t.config.barrel as { type?: string } | undefined)?.type === 'complexSingleEmitter';
@@ -56,8 +59,8 @@ function shieldKey(unitEntityId: number, turretIndex: number): FieldKey {
   return `${unitEntityId}-${turretIndex}`;
 }
 
-/** Cap on shared sphere instances. Every active shield consumes
- *  one slot for the translucent bubble. 512 is well above any
+/** Cap on shared field instances. Every active shield consumes
+ *  one slot for its translucent surface. 512 is well above any
  *  realistic concurrent count. */
 const SPHERE_INSTANCED_CAP = 512;
 const SHIELD_PACKET_INITIAL_CAP = SPHERE_INSTANCED_CAP;
@@ -79,6 +82,7 @@ export class ShieldRenderPacket3D {
   originOffsetZ: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   barrierAlpha: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   color: Uint32Array = new Uint32Array(SHIELD_PACKET_INITIAL_CAP);
+  shape: Uint8Array = new Uint8Array(SHIELD_PACKET_INITIAL_CAP);
   private readonly mountLiftCache = new Map<string, { radius: number; liftY: number }>();
   count = 0;
 
@@ -90,11 +94,6 @@ export class ShieldRenderPacket3D {
     const unit = unitEntity.unit;
     const combat = unitEntity.combat;
     if (!unit || !combat) return;
-    // Force-field bubbles can be large (up to ~barrier.outerRange
-    // units across), so pad generously so a turret just off-screen
-    // with its bubble reaching in still updates.
-    if (!scope.inScope(unitEntity.transform.x, unitEntity.transform.y, 300)) return;
-
     const unitMountLiftY = this.resolveMountLiftY(unit);
     const fieldColor = resolveShieldSurfaceColor(unitEntity);
     const turrets = combat.turrets;
@@ -103,9 +102,10 @@ export class ShieldRenderPacket3D {
       if (!isShieldTurret(turret)) continue;
       const shot = turret.config.shot;
       if (!shot || shot.type !== 'shield' || !shot.barrier) continue;
+      const barrier = shot.barrier;
+      if (!scope.inScope(unitEntity.transform.x, unitEntity.transform.y, Math.max(300, barrier.outerRange))) continue;
       const cursor = this.count;
       this.ensureCapacity(cursor + 1);
-      const barrier = shot.barrier;
       this.hostIds[cursor] = unitEntity.id;
       this.turretIndices[cursor] = ti;
       this.x[cursor] = unitEntity.transform.x;
@@ -122,6 +122,9 @@ export class ShieldRenderPacket3D {
       this.originOffsetZ[cursor] = barrier.originOffsetZ;
       this.barrierAlpha[cursor] = barrier.alpha;
       this.color[cursor] = fieldColor;
+      this.shape[cursor] = barrier.shape === 'infiniteVerticalCylinder'
+        ? FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER
+        : FIELD_SHAPE_SPHERE;
       this.count = cursor + 1;
     }
   }
@@ -146,6 +149,7 @@ export class ShieldRenderPacket3D {
     this.originOffsetZ = growFloat32(this.originOffsetZ, nextCapacity);
     this.barrierAlpha = growFloat32(this.barrierAlpha, nextCapacity);
     this.color = growUint32(this.color, nextCapacity);
+    this.shape = growUint8(this.shape, nextCapacity);
   }
 
   private resolveMountLiftY(unit: Unit): number {
@@ -186,11 +190,18 @@ function growUint32(source: Uint32Array, nextCapacity: number): Uint32Array {
   return next;
 }
 
+function growUint8(source: Uint8Array, nextCapacity: number): Uint8Array {
+  const next = new Uint8Array(nextCapacity);
+  next.set(source);
+  return next;
+}
+
 export class ShieldRenderer3D {
   private root: THREE.Group;
   // Unit sphere reused for the bubble write into the shared
   // sphereInstancedMesh below.
   private sphereGeom = new THREE.SphereGeometry(1, 20, 14);
+  private cylinderGeom = new THREE.CylinderGeometry(1, 1, 1, 32, 1, true);
   private fields = new Map<FieldKey, FieldMesh>();
 
   /** Shared InstancedMesh covering every bubble sphere across every
@@ -204,9 +215,16 @@ export class ShieldRenderer3D {
   private sphereColorArr = new Float32Array(SPHERE_INSTANCED_CAP * 3);
   private sphereAlphaAttr: THREE.InstancedBufferAttribute;
   private sphereColorAttr: THREE.InstancedBufferAttribute;
+  private cylinderInstancedMesh: THREE.InstancedMesh;
+  private cylinderInstancedMat: THREE.ShaderMaterial;
+  private cylinderAlphaArr = new Float32Array(SPHERE_INSTANCED_CAP);
+  private cylinderColorArr = new Float32Array(SPHERE_INSTANCED_CAP * 3);
+  private cylinderAlphaAttr: THREE.InstancedBufferAttribute;
+  private cylinderColorAttr: THREE.InstancedBufferAttribute;
   /** Per-frame transient slot cursor — reset in beginFrame, advanced
-   *  per bubble in _processUnit, used as the count at end-of-frame. */
+   *  per surface in _processUnit, used as the count at end-of-frame. */
   private _sphereCursor = 0;
+  private _cylinderCursor = 0;
   /** Scratch matrices for the bubble instance write. Same pattern as
    *  the chassis pools — compose `T(worldPos) · S(scale)` per slot,
    *  no per-frame allocations. */
@@ -246,10 +264,17 @@ export class ShieldRenderer3D {
     this.sphereColorAttr.setUsage(THREE.DynamicDrawUsage);
     this.sphereGeom.setAttribute('aAlpha', this.sphereAlphaAttr);
     this.sphereGeom.setAttribute('aColor', this.sphereColorAttr);
+    this.cylinderAlphaAttr = new THREE.InstancedBufferAttribute(this.cylinderAlphaArr, 1);
+    this.cylinderAlphaAttr.setUsage(THREE.DynamicDrawUsage);
+    this.cylinderColorAttr = new THREE.InstancedBufferAttribute(this.cylinderColorArr, 3);
+    this.cylinderColorAttr.setUsage(THREE.DynamicDrawUsage);
+    this.cylinderGeom.setAttribute('aAlpha', this.cylinderAlphaAttr);
+    this.cylinderGeom.setAttribute('aColor', this.cylinderColorAttr);
 
     // Materials Are Independent Of Shape: same material as the flat-panel
-    // shield surface, just carried by sphere geometry here.
+    // shield surface, just carried by field geometry here.
     this.sphereInstancedMat = createShieldSurfaceMaterial();
+    this.cylinderInstancedMat = createShieldSurfaceMaterial();
 
     this.sphereInstancedMesh = new THREE.InstancedMesh(
       this.sphereGeom,
@@ -266,6 +291,17 @@ export class ShieldRenderer3D {
     // passing through it.
     this.sphereInstancedMesh.renderOrder = 7;
     this.root.add(this.sphereInstancedMesh);
+
+    this.cylinderInstancedMesh = new THREE.InstancedMesh(
+      this.cylinderGeom,
+      this.cylinderInstancedMat,
+      SPHERE_INSTANCED_CAP,
+    );
+    this.cylinderInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.cylinderInstancedMesh.count = 0;
+    this.cylinderInstancedMesh.frustumCulled = false;
+    this.cylinderInstancedMesh.renderOrder = 7;
+    this.root.add(this.cylinderInstancedMesh);
   }
 
   private acquire(key: FieldKey): FieldMesh {
@@ -316,6 +352,7 @@ export class ShieldRenderer3D {
   beginFrame(_graphicsConfig: GraphicsConfig = getGraphicsConfig()): void {
     this._seenFieldKeys.clear();
     this._sphereCursor = 0;
+    this._cylinderCursor = 0;
   }
 
   processPacket(packet: ShieldRenderPacket3D): void {
@@ -340,6 +377,18 @@ export class ShieldRenderer3D {
       this.sphereColorAttr.addUpdateRange(0, this._sphereCursor * 3);
       this.sphereColorAttr.needsUpdate = true;
     }
+    this.cylinderInstancedMesh.count = this._cylinderCursor;
+    if (this._cylinderCursor > 0) {
+      this.cylinderInstancedMesh.instanceMatrix.clearUpdateRanges();
+      this.cylinderInstancedMesh.instanceMatrix.addUpdateRange(0, this._cylinderCursor * 16);
+      this.cylinderInstancedMesh.instanceMatrix.needsUpdate = true;
+      this.cylinderAlphaAttr.clearUpdateRanges();
+      this.cylinderAlphaAttr.addUpdateRange(0, this._cylinderCursor);
+      this.cylinderAlphaAttr.needsUpdate = true;
+      this.cylinderColorAttr.clearUpdateRanges();
+      this.cylinderColorAttr.addUpdateRange(0, this._cylinderCursor * 3);
+      this.cylinderColorAttr.needsUpdate = true;
+    }
     const seen = this._seenFieldKeys;
     for (const [key] of this.fields) {
       if (seen.has(key)) continue;
@@ -356,7 +405,7 @@ export class ShieldRenderer3D {
     this.endFrame();
   }
 
-  /** Internal packet-row body. Writes the active bubble instance. */
+  /** Internal packet-row body. Writes the active field surface instance. */
   private _processRow(packet: ShieldRenderPacket3D, row: number): void {
     const seen = this._seenFieldKeys;
 
@@ -422,17 +471,35 @@ export class ShieldRenderer3D {
       );
     }
 
-    if (this._sphereCursor < SPHERE_INSTANCED_CAP) {
-      const fieldCenterY = this._sphereScratchPos.y - packet.originOffsetZ[row];
+    const fieldCenterY = this._sphereScratchPos.y - packet.originOffsetZ[row];
+    this._sphereScratchPos.y = fieldCenterY;
+    const alpha = packet.barrierAlpha[row] * fadeIn * FIELD_OPACITY_BOOST;
+    if (packet.shape[row] === FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER) {
+      if (this._cylinderCursor < SPHERE_INSTANCED_CAP) {
+        this._sphereScratchScale.set(
+          outer,
+          Math.max(INFINITE_CYLINDER_VISUAL_HEIGHT, outer * 10),
+          outer,
+        );
+        this._sphereScratchMat.compose(
+          this._sphereScratchPos,
+          ShieldRenderer3D._IDENTITY_QUAT,
+          this._sphereScratchScale,
+        );
+        this.cylinderInstancedMesh.setMatrixAt(this._cylinderCursor, this._sphereScratchMat);
+        this.cylinderAlphaArr[this._cylinderCursor] = alpha;
+        writeHexToRgb01Array(packet.color[row], this.cylinderColorArr, this._cylinderCursor * 3);
+        this._cylinderCursor++;
+      }
+    } else if (this._sphereCursor < SPHERE_INSTANCED_CAP) {
       this._sphereScratchScale.set(outer, outer, outer);
-      this._sphereScratchPos.y = fieldCenterY;
       this._sphereScratchMat.compose(
         this._sphereScratchPos,
         ShieldRenderer3D._IDENTITY_QUAT,
         this._sphereScratchScale,
       );
       this.sphereInstancedMesh.setMatrixAt(this._sphereCursor, this._sphereScratchMat);
-      this.sphereAlphaArr[this._sphereCursor] = packet.barrierAlpha[row] * fadeIn * FIELD_OPACITY_BOOST;
+      this.sphereAlphaArr[this._sphereCursor] = alpha;
       writeHexToRgb01Array(packet.color[row], this.sphereColorArr, this._sphereCursor * 3);
       this._sphereCursor++;
     }
@@ -441,9 +508,13 @@ export class ShieldRenderer3D {
   destroy(): void {
     this.fields.clear();
     this.root.remove(this.sphereInstancedMesh);
+    this.root.remove(this.cylinderInstancedMesh);
     this.sphereInstancedMesh.dispose();
+    this.cylinderInstancedMesh.dispose();
     this.sphereInstancedMat.dispose();
+    this.cylinderInstancedMat.dispose();
     this.sphereGeom.dispose();
+    this.cylinderGeom.dispose();
     this.root.parent?.remove(this.root);
   }
 }

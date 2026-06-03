@@ -21,7 +21,7 @@
 
 import type { WorldState } from '../WorldState';
 import { spatialGrid } from '../SpatialGrid';
-import { encodeShieldReflectionMode, getActiveShields } from './shieldTurret';
+import { encodeShieldBarrierShape, encodeShieldReflectionMode, getActiveShields } from './shieldTurret';
 import { REFLECTIVE_SHIELD_MATERIAL } from '../blueprints/shieldMaterials';
 import {
   MIRROR_SIGHT_QUERY_PAD,
@@ -801,8 +801,8 @@ const _mirrorStampPivot = { x: 0, y: 0, z: 0 };
  *  projectile-reflection batch read current-tick surface data.
  *
  *  Materials Are Independent Of Shape: one pool holds both shapes.
- *   - Sphere surfaces come from getActiveShields(). When
- *     world.shieldsObstructSight is false the sphere group is rebuilt at
+ *   - Field surfaces come from getActiveShields(). When
+ *     world.shieldsObstructSight is false the field group is rebuilt at
  *     count=0 (kernels short-circuit on empty and return "clear"). Projectile
  *     collision can opt into stamping the physical shields even when sight
  *     obstruction is disabled via `includeWhenSightDisabled`.
@@ -820,7 +820,7 @@ export function stampShieldSurfacePool(
   if (sim === undefined) return;
   const pool = sim.shieldSurfacePool;
 
-  // ── Sphere surfaces ──
+  // ── Spherical / infinite-cylinder field surfaces ──
   if (!options.includeWhenSightDisabled && !world.shieldsObstructSight) {
     pool.setFieldCount(0);
   } else {
@@ -834,6 +834,7 @@ export function stampShieldSurfacePool(
         f.entityId,
         f.centerX, f.centerY, f.centerZ,
         f.radius,
+        encodeShieldBarrierShape(f.shape),
         encodeShieldReflectionMode(f.reflectionMode),
       );
     }

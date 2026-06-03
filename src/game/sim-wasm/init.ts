@@ -2585,16 +2585,16 @@ export interface CombatTargetingApi {
  *  getActiveShields(). Owner entity id sentinels: -1 means the
  *  field is not tied to a stamped entity. */
 /** Materials Are Independent Of Shape — one pool, one material, two shapes.
- *  Sphere surfaces live in the flat per-field arrays (`setField` /
- *  `setFieldCount`); flat-panel surfaces live in the per-unit + per-panel
+ *  Sphere and infinite-cylinder surfaces live in the flat per-field arrays
+ *  (`setField` / `setFieldCount`); flat-panel surfaces live in the per-unit + per-panel
  *  arrays (`setUnit` / `setPanel`). The clearance + projectile kernels read
- *  both groups and apply the same reflection / occlusion policy. */
+ *  all groups and apply the same reflection / occlusion policy. */
 export interface ShieldSurfacePoolApi {
-  /** Reset all surfaces (sphere fields + panel units + panels). */
+  /** Reset all surfaces (field surfaces + panel units + panels). */
   clear: () => void;
-  /** Number of sphere surfaces currently stamped. */
+  /** Number of field surfaces currently stamped. */
   count: () => number;
-  /** ── Sphere shape ── */
+  /** ── Spherical / infinite-cylinder fields ── */
   setFieldCount: (count: number) => void;
   setField: (
     idx: number,
@@ -2604,6 +2604,7 @@ export interface ShieldSurfacePoolApi {
     centerY: number,
     centerZ: number,
     radius: number,
+    shape: number,
     reflectionMode: number,
   ) => void;
   readonly idPtr: () => number;

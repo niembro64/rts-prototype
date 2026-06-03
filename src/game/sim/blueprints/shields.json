@@ -5,6 +5,7 @@
     "angle": 6.283185307179586,
     "transitionTime": 500,
     "barrier": {
+      "shape": "sphere",
       "outerRatio": 0.8,
       "originOffsetRadiusRatio": 0.3,
       "rimWidth": null
@@ -18,12 +19,27 @@
     "angle": 6.283185307179586,
     "transitionTime": 500,
     "barrier": {
+      "shape": "sphere",
       "outerRatio": 0.45,
       "originOffsetRadiusRatio": 0,
       "rimWidth": null
     },
     "hitSound": null,
     "shieldBlueprintId": "shieldSphereSmall"
+  },
+  "shieldCylinderInfinite": {
+    "type": "shield",
+    "materialId": "reflectiveShield",
+    "angle": 6.283185307179586,
+    "transitionTime": 500,
+    "barrier": {
+      "shape": "infiniteVerticalCylinder",
+      "outerRatio": 0.45,
+      "originOffsetRadiusRatio": 0,
+      "rimWidth": null
+    },
+    "hitSound": null,
+    "shieldBlueprintId": "shieldCylinderInfinite"
   },
   "shieldPanel": {
     "type": "shield",

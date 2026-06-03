@@ -497,6 +497,7 @@ function computeBarrierConfig(
       : range * (barrier.outerRatio ?? 1);
   const originOffsetZ = outerRange * (barrier.originOffsetRadiusRatio ?? 0);
   return {
+    shape: barrier.shape,
     innerRange: 0,
     outerRange,
     originOffsetZ,

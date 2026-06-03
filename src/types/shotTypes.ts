@@ -18,6 +18,7 @@ export type {
   BeamRay,
   BeamRayBlueprint,
   ShieldBarrierConfig,
+  ShieldBarrierShape,
   ShieldBarrierRatioConfig,
   ShieldMaterialBlueprint,
   ShieldMaterialVisualConfig,

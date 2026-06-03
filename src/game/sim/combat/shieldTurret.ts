@@ -1,8 +1,8 @@
-// Shield weapon system - spherical projectile shield boundary
+// Shield weapon system - projectile shield boundaries
 
 import type { WorldState } from '../WorldState';
 import type { ShieldConfig } from '../types';
-import type { ShieldReflectionMode } from '../../../types/shotTypes';
+import type { ShieldBarrierShape, ShieldReflectionMode } from '../../../types/shotTypes';
 import { getTransformCosSin } from '../../math';
 import { CT_TURRET_STATE_ENGAGED } from '../../sim-wasm/init';
 import { updateWeaponWorldKinematics } from './combatUtils';
@@ -23,6 +23,7 @@ const _shieldFsm: CombatTargetingTurretFsmOut = {
 // updateShieldState() and consumed by projectile collision and the
 // targeting LOS clearance check.
 export type ActiveShieldRef = {
+  shape: ShieldBarrierShape;
   centerX: number;
   centerY: number;
   centerZ: number;
@@ -113,6 +114,7 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
         const originOffsetZ = barrier.originOffsetZ;
         const playerId = unit.ownership !== null ? unit.ownership.playerId : 0;
         _activeShields.push({
+          shape: barrier.shape,
           centerX: mount.x,
           centerY: mount.y,
           centerZ: mount.z - originOffsetZ,
@@ -158,6 +160,16 @@ export function encodeShieldReflectionMode(mode: ShieldReflectionMode): number {
       return 2;
   }
   return 2;
+}
+
+export function encodeShieldBarrierShape(shape: ShieldBarrierShape): number {
+  switch (shape) {
+    case 'sphere':
+      return 0;
+    case 'infiniteVerticalCylinder':
+      return 1;
+  }
+  return 0;
 }
 
 function intersectShieldSphere(
@@ -228,6 +240,65 @@ function intersectShieldSphere(
   return null;
 }
 
+function intersectShieldInfiniteVerticalCylinder(
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+  centerX: number,
+  centerY: number,
+  radius: number,
+  reflectionMode: ShieldReflectionMode,
+): number | null {
+  const sx = startX - centerX;
+  const sy = startY - centerY;
+
+  if (
+    Math.max(startX, endX) < centerX - radius ||
+    Math.min(startX, endX) > centerX + radius ||
+    Math.max(startY, endY) < centerY - radius ||
+    Math.min(startY, endY) > centerY + radius
+  ) {
+    return null;
+  }
+
+  const dx = endX - startX;
+  const dy = endY - startY;
+  const a = dx * dx + dy * dy;
+  if (a <= 1e-9) return null;
+
+  const radiusSq = radius * radius;
+  const startDistSq = sx * sx + sy * sy;
+  const startDotVelocity = sx * dx + sy * dy;
+  const b = 2 * startDotVelocity;
+  const c = startDistSq - radiusSq;
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return null;
+  const sqrtDisc = Math.sqrt(disc);
+  const invDenom = 1 / (2 * a);
+  const t0 = (-b - sqrtDisc) * invDenom;
+  const t1 = (-b + sqrtDisc) * invDenom;
+
+  const firstT = Math.min(t0, t1);
+  const secondT = Math.max(t0, t1);
+
+  if (firstT > 1e-6 && firstT <= 1) {
+    const hitX = startX + dx * firstT - centerX;
+    const hitY = startY + dy * firstT - centerY;
+    const radialVelocity = dx * hitX + dy * hitY;
+    if (shieldModeAllowsCrossing(reflectionMode, radialVelocity)) return firstT;
+  }
+
+  if (secondT > 1e-6 && secondT <= 1 && secondT !== firstT) {
+    const t = secondT;
+    const hitX = startX + dx * t - centerX;
+    const hitY = startY + dy * t - centerY;
+    const radialVelocity = dx * hitX + dy * hitY;
+    if (shieldModeAllowsCrossing(reflectionMode, radialVelocity)) return t;
+  }
+  return null;
+}
+
 export function findShieldSegmentIntersection(
   _world: WorldState,
   startX: number,
@@ -254,13 +325,21 @@ export function findShieldSegmentIntersection(
 
   for (let activeOrdinal = 0; activeOrdinal < activeFields.length; activeOrdinal++) {
     const active = activeFields[activeOrdinal];
-    const t = intersectShieldSphere(
-      startX, startY, startZ,
-      endX, endY, endZ,
-      active.centerX, active.centerY, active.centerZ,
-      active.radius,
-      active.reflectionMode,
-    );
+    const t = active.shape === 'infiniteVerticalCylinder'
+      ? intersectShieldInfiniteVerticalCylinder(
+        startX, startY,
+        endX, endY,
+        active.centerX, active.centerY,
+        active.radius,
+        active.reflectionMode,
+      )
+      : intersectShieldSphere(
+        startX, startY, startZ,
+        endX, endY, endZ,
+        active.centerX, active.centerY, active.centerZ,
+        active.radius,
+        active.reflectionMode,
+      );
     if (t === null || t >= bestT) continue;
 
     const hitX = startX + (endX - startX) * t;
@@ -268,7 +347,7 @@ export function findShieldSegmentIntersection(
     const hitZ = startZ + (endZ - startZ) * t;
     const nx = hitX - active.centerX;
     const ny = hitY - active.centerY;
-    const nz = hitZ - active.centerZ;
+    const nz = active.shape === 'infiniteVerticalCylinder' ? 0 : hitZ - active.centerZ;
     const nLen = Math.hypot(nx, ny, nz) || 1;
     bestT = t;
     bestX = hitX;

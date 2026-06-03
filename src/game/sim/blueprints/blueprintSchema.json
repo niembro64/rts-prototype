@@ -162,9 +162,21 @@
         "both"
       ]
     },
+    "ShieldBarrierShape": {
+      "enum": [
+        "sphere",
+        "infiniteVerticalCylinder"
+      ]
+    },
     "ShieldBarrierRatioConfig": {
       "type": "object",
+      "required": [
+        "shape"
+      ],
       "properties": {
+        "shape": {
+          "$ref": "#/$defs/ShieldBarrierShape"
+        },
         "outerRatio": {
           "oneOf": [
             {
@@ -559,6 +571,7 @@
     "ShieldBarrierConfig": {
       "type": "object",
       "required": [
+        "shape",
         "innerRange",
         "outerRange",
         "originOffsetZ",
@@ -567,6 +580,9 @@
         "particleAlpha"
       ],
       "properties": {
+        "shape": {
+          "$ref": "#/$defs/ShieldBarrierShape"
+        },
         "innerRange": {
           "type": "number"
         },

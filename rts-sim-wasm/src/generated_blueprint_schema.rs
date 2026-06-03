@@ -71,7 +71,14 @@ pub enum ShieldReflectionMode {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum ShieldBarrierShape {
+    Sphere,
+    InfiniteVerticalCylinder,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct ShieldBarrierRatioConfig {
+    pub shape: ShieldBarrierShape,
     pub outerRatio: Option<f64>,
     pub rimWidth: Option<f64>,
     pub originOffsetRadiusRatio: Option<f64>,
@@ -189,6 +196,7 @@ pub enum ProjectileTailShape {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ShieldBarrierConfig {
+    pub shape: ShieldBarrierShape,
     pub innerRange: f64,
     pub outerRange: f64,
     pub originOffsetZ: f64,

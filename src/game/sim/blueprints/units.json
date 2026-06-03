@@ -824,7 +824,7 @@
         "hostDirected": true
       },
       {
-        "turretBlueprintId": "turretShieldSphere",
+        "turretBlueprintId": "turretShieldSphereSmall",
         "mount": {
           "x": 0.3,
           "y": 0,
@@ -1611,7 +1611,7 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretShieldSphereSmall",
+        "turretBlueprintId": "turretShieldCylinderInfinite",
         "mount": {
           "x": 0,
           "y": 0,
