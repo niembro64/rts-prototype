@@ -59,6 +59,101 @@ type BarMode =
   | 'energyBar'
   | 'metalBar';
 
+const BODY_HUD_PACKET_INITIAL_CAP = 1024;
+const BODY_HUD_SHOW_HEALTH = 1;
+const BODY_HUD_SHOW_BUILD = 2;
+
+export class BodyHudRenderPacket3D {
+  ids: Float64Array = new Float64Array(BODY_HUD_PACKET_INITIAL_CAP);
+  x: Float32Array = new Float32Array(BODY_HUD_PACKET_INITIAL_CAP);
+  y: Float32Array = new Float32Array(BODY_HUD_PACKET_INITIAL_CAP);
+  z: Float32Array = new Float32Array(BODY_HUD_PACKET_INITIAL_CAP);
+  width: Float32Array = new Float32Array(BODY_HUD_PACKET_INITIAL_CAP);
+  healthRatio: Float32Array = new Float32Array(BODY_HUD_PACKET_INITIAL_CAP);
+  energyRatio: Float32Array = new Float32Array(BODY_HUD_PACKET_INITIAL_CAP);
+  metalRatio: Float32Array = new Float32Array(BODY_HUD_PACKET_INITIAL_CAP);
+  flags: Uint8Array = new Uint8Array(BODY_HUD_PACKET_INITIAL_CAP);
+  count = 0;
+
+  reset(): void {
+    this.count = 0;
+  }
+
+  pushEntity(
+    entity: Entity,
+    forceVisible = false,
+    showHealth = true,
+    showBuild = true,
+  ): void {
+    const unit = entity.unit;
+    const building = entity.building;
+    if (!unit && !building) return;
+    const buildable = isBuildInProgress(entity.buildable)
+      ? entity.buildable
+      : null;
+    const hp = unit ? unit.hp : building ? building.hp : 0;
+    const maxHp = unit ? unit.maxHp : building ? building.maxHp : 0;
+    const showHp = maxHp > 0 && (showHealth || forceVisible)
+      && (buildable !== null || hp > 0);
+    const showBuildBars = showBuild && buildable !== null;
+    if (!showHp && !showBuildBars) return;
+
+    const cursor = this.count;
+    this.ensureCapacity(cursor + 1);
+    this.ids[cursor] = entity.id;
+    this.x[cursor] = entity.transform.x;
+    this.y[cursor] = unit ? getUnitHudBarsY(entity) : getBuildingHudBarsY(entity);
+    this.z[cursor] = entity.transform.y;
+    this.width[cursor] = unit ? unit.radius.visual * 2 : building!.width;
+    this.healthRatio[cursor] = maxHp > 0
+      ? Math.max(0, Math.min(1, hp / maxHp))
+      : 0;
+    this.energyRatio[cursor] = buildable
+      ? getResourceFillRatio(buildable, 'energy')
+      : 0;
+    this.metalRatio[cursor] = buildable
+      ? getResourceFillRatio(buildable, 'metal')
+      : 0;
+    this.flags[cursor] =
+      (showHp ? BODY_HUD_SHOW_HEALTH : 0) |
+      (showBuildBars ? BODY_HUD_SHOW_BUILD : 0);
+    this.count = cursor + 1;
+  }
+
+  private ensureCapacity(required: number): void {
+    if (required <= this.ids.length) return;
+    let nextCapacity = this.ids.length;
+    while (nextCapacity < required) nextCapacity *= 2;
+    this.ids = growFloat64(this.ids, nextCapacity);
+    this.x = growFloat32(this.x, nextCapacity);
+    this.y = growFloat32(this.y, nextCapacity);
+    this.z = growFloat32(this.z, nextCapacity);
+    this.width = growFloat32(this.width, nextCapacity);
+    this.healthRatio = growFloat32(this.healthRatio, nextCapacity);
+    this.energyRatio = growFloat32(this.energyRatio, nextCapacity);
+    this.metalRatio = growFloat32(this.metalRatio, nextCapacity);
+    this.flags = growUint8(this.flags, nextCapacity);
+  }
+}
+
+function growFloat32(source: Float32Array, nextCapacity: number): Float32Array {
+  const next = new Float32Array(nextCapacity);
+  next.set(source);
+  return next;
+}
+
+function growFloat64(source: Float64Array, nextCapacity: number): Float64Array {
+  const next = new Float64Array(nextCapacity);
+  next.set(source);
+  return next;
+}
+
+function growUint8(source: Uint8Array, nextCapacity: number): Uint8Array {
+  const next = new Uint8Array(nextCapacity);
+  next.set(source);
+  return next;
+}
+
 type BarState = {
   /** Last-baked ratio. The canvas is only repainted when this
    *  changes by more than one texture pixel — one HP point of
@@ -316,6 +411,38 @@ export class HealthBar3D {
     }
     if (showBuildBars && buildable) {
       this.placeBuildBars(buildable, worldX, worldY, worldZ, worldWidth, stack, alpha);
+    }
+  }
+
+  processBodyHudPacket(packet: BodyHudRenderPacket3D): void {
+    for (let row = 0; row < packet.count; row++) {
+      this.perBodyHudRow(packet, row);
+    }
+  }
+
+  private perBodyHudRow(packet: BodyHudRenderPacket3D, row: number): void {
+    const key = packPieceKey(packet.ids[row], PIECE_TAG_BODY);
+    if (this._seenEntityFrame.get(key) === this._frameToken) return;
+    const flags = packet.flags[row];
+    const showHp = (flags & BODY_HUD_SHOW_HEALTH) !== 0;
+    const showBuild = (flags & BODY_HUD_SHOW_BUILD) !== 0;
+    if (!showHp && !showBuild) return;
+    this._seenEntityFrame.set(key, this._frameToken);
+    const worldX = packet.x[row];
+    const worldY = packet.y[row];
+    const worldZ = packet.z[row];
+    const alpha = this._fade ? this._fade.alphaAt(worldX, worldY, worldZ) : 1;
+    if (alpha <= FADE_CULL_ALPHA) return;
+    const worldWidth = packet.width[row];
+    let stack = 0;
+    if (showHp) {
+      this.placeBar(packet.healthRatio[row], 'health', worldX, worldY, worldZ, worldWidth, stack, alpha);
+      stack++;
+    }
+    if (showBuild) {
+      this.placeBar(packet.energyRatio[row], 'energyBar', worldX, worldY, worldZ, worldWidth, stack, alpha);
+      stack++;
+      this.placeBar(packet.metalRatio[row], 'metalBar', worldX, worldY, worldZ, worldWidth, stack, alpha);
     }
   }
 

@@ -44,7 +44,10 @@ import {
   ContactShadowRenderPacket3D,
   type ContactShadowRenderer3D,
 } from '../../render3d/ContactShadowRenderer3D';
-import type { HealthBar3D } from '../../render3d/HealthBar3D';
+import {
+  BodyHudRenderPacket3D,
+  type HealthBar3D,
+} from '../../render3d/HealthBar3D';
 import {
   PIECE_TAG_COMMANDER_OWNER_NAME,
   PieceNameRenderPacket3D,
@@ -66,6 +69,7 @@ import {
   getTurretHudNameY,
   getShotHudNameY,
   getUnitHudNameY,
+  getBuildingHudNameY,
 } from '../../render3d/HudAnchor';
 import { isBuildInProgress } from '../../sim/buildableHelpers';
 import {
@@ -115,26 +119,23 @@ export type RtsScene3DRenderPhaseResult = {
 type RenderPhaseEntityLists = {
   units: readonly Entity[];
   buildings: readonly Entity[];
-  unitsAndBuildings: readonly Entity[];
-  hudEntities: readonly Entity[];
-  armedEntities: readonly Entity[];
+  bodyHud: BodyHudRenderPacket3D;
   shields: ShieldRenderPacket3D;
-  shotNames: PieceNameRenderPacket3D;
+  pieceNames: PieceNameRenderPacket3D;
   contactShadows: ContactShadowRenderPacket3D;
   groundPrints: GroundPrintRenderPacket3D;
 };
 
 type RenderPhaseEntityListOptions = {
-  includeUnitsAndBuildings: boolean;
-  includeHudEntities: boolean;
-  includeArmedEntities: boolean;
+  includeBodyHud: boolean;
+  includeBodyNames: boolean;
+  includeTurretNames: boolean;
   includeShields: boolean;
   includeShotNames: boolean;
   includeContactShadows: boolean;
   includeGroundPrints: boolean;
+  hoveredEntity: Entity | null;
 };
-
-const EMPTY_ENTITY_LIST: readonly Entity[] = [];
 
 export class RtsScene3DRenderPhase {
   private renderFrameIndex = 0;
@@ -151,27 +152,22 @@ export class RtsScene3DRenderPhase {
   private readonly smokeTrailProjectilesScratch: Entity[] = [];
   private readonly scopedUnitsScratch: Entity[] = [];
   private readonly scopedBuildingsScratch: Entity[] = [];
-  private readonly scopedUnitsAndBuildingsScratch: Entity[] = [];
-  private readonly scopedHudEntitiesScratch: Entity[] = [];
-  private readonly scopedArmedEntitiesScratch: Entity[] = [];
+  private readonly bodyHudPacket = new BodyHudRenderPacket3D();
   private readonly shieldPacket = new ShieldRenderPacket3D();
-  private readonly shotNamePacket = new PieceNameRenderPacket3D();
+  private readonly pieceNamePacket = new PieceNameRenderPacket3D();
   private readonly contactShadowPacket = new ContactShadowRenderPacket3D();
   private readonly groundPrintPacket = new GroundPrintRenderPacket3D();
   private readonly renderEntityLists: RenderPhaseEntityLists = {
     units: [],
     buildings: [],
-    unitsAndBuildings: [],
-    hudEntities: [],
-    armedEntities: [],
+    bodyHud: this.bodyHudPacket,
     shields: this.shieldPacket,
-    shotNames: this.shotNamePacket,
+    pieceNames: this.pieceNamePacket,
     contactShadows: this.contactShadowPacket,
     groundPrints: this.groundPrintPacket,
   };
   private readonly frustum = new THREE.Frustum();
   private readonly frustumMatrix = new THREE.Matrix4();
-  private readonly nameLabelAnchorScratch = { x: 0, y: 0, z: 0 };
   private readonly enqueuePylonTubeHandoff = (flowKey: string, intensity: number): void => {
     this.resources.pylonTubeFlowRenderer.enqueueTipHandoff(flowKey, intensity);
   };
@@ -310,17 +306,20 @@ export class RtsScene3DRenderPhase {
       renderFrameState,
       serverMeta?.turretShieldPanelsEnabled ?? true,
     );
+    const inputManager = this.getInputManager();
+    const hoveredEntity = inputManager?.getHoveredEntity() ?? null;
     const updateContactShadowsThisFrame =
       contactShadowRenderer?.shouldUpdate(this.renderFrameIndex) ?? false;
     const entityLists = this.prepareEntityLists({
-      includeUnitsAndBuildings: bodyNamesEnabled,
-      includeHudEntities: updateEntityHudThisFrame && healthBar3D !== null,
-      includeArmedEntities: turretNamesEnabled,
+      includeBodyHud: updateEntityHudThisFrame && healthBar3D !== null,
+      includeBodyNames: bodyNamesEnabled,
+      includeTurretNames: turretNamesEnabled,
       includeShields: turretShieldSpheresEnabled,
       includeShotNames: shotNamesEnabled,
       includeContactShadows:
         contactShadowRenderer?.shouldBuildPacket(this.renderFrameIndex) ?? false,
       includeGroundPrints: updateEffectsThisFrame,
+      hoveredEntity,
     });
     if (contactShadowRenderer && updateContactShadowsThisFrame) {
       contactShadowRenderer.update(entityLists.contactShadows, this.renderFrameIndex);
@@ -329,7 +328,6 @@ export class RtsScene3DRenderPhase {
     // overlay + matching blue squares above each deposit coin) is gated
     // solely to the DEBUG: BUILD toggle. The build-mode hover footprint is
     // a separate, localized signal owned by BuildGhost3D's setTarget path.
-    const inputManager = this.getInputManager();
     buildGhostRenderer.setBuildGridOverlayVisible(getBuildGridDebug());
     terrainTileRenderer.update(
       graphicsConfig,
@@ -451,9 +449,8 @@ export class RtsScene3DRenderPhase {
     }
     shieldRenderer.endFrame();
 
-    const hoveredEntity = inputManager?.getHoveredEntity() ?? null;
     if (updateEntityHudThisFrame) {
-      this.drawEntityHud(healthBar3D, nameLabel3D, hudFrustum, hoveredEntity, entityLists);
+      this.drawEntityHud(healthBar3D, nameLabel3D, hudFrustum, entityLists);
     }
 
     if (updateHudThisFrame) {
@@ -498,31 +495,34 @@ export class RtsScene3DRenderPhase {
 
   private prepareEntityLists(options: RenderPhaseEntityListOptions): RenderPhaseEntityLists {
     const lists = this.renderEntityLists;
+    const bodyHud = this.bodyHudPacket;
     const shields = this.shieldPacket;
-    const shotNames = this.shotNamePacket;
+    const pieceNames = this.pieceNamePacket;
     const contactShadows = this.contactShadowPacket;
     const groundPrints = this.groundPrintPacket;
+    const mode = getSelectionHudMode();
+    bodyHud.reset();
     shields.reset();
-    shotNames.reset();
+    pieceNames.reset();
     contactShadows.reset();
     groundPrints.reset();
     if (this.renderScope.getMode() === 'all') {
       lists.units = this.clientViewState.getUnits();
       lists.buildings = this.clientViewState.getBuildings();
-      lists.unitsAndBuildings = options.includeUnitsAndBuildings
-        ? this.clientViewState.getUnitsAndBuildings()
-        : EMPTY_ENTITY_LIST;
-      lists.hudEntities = options.includeHudEntities
-        ? this.clientViewState.getHudEntities()
-        : EMPTY_ENTITY_LIST;
-      lists.armedEntities = options.includeArmedEntities
-        ? this.clientViewState.getArmedEntities()
-        : EMPTY_ENTITY_LIST;
+      if (options.includeBodyHud) {
+        this.populateBodyHudPacket(this.clientViewState.getHudEntities(), options.hoveredEntity, mode);
+      }
+      if (options.includeBodyNames) {
+        this.populateBodyNamePacket(this.clientViewState.getUnitsAndBuildings(), mode);
+      }
+      if (options.includeTurretNames) {
+        this.populateTurretNamePacket(this.clientViewState.getArmedEntities(), mode);
+      }
       if (options.includeShields) {
         this.populateShieldPacket(this.clientViewState.getShieldUnits());
       }
       if (options.includeShotNames) {
-        this.populateShotNamePacket(this.clientViewState.getProjectiles());
+        this.populateShotNamePacket(this.clientViewState.getProjectiles(), mode);
       }
       if (options.includeContactShadows) {
         this.populateContactShadowPacket(lists.units, lists.buildings);
@@ -535,52 +535,40 @@ export class RtsScene3DRenderPhase {
 
     const units = this.scopedUnitsScratch;
     const buildings = this.scopedBuildingsScratch;
-    const unitsAndBuildings = this.scopedUnitsAndBuildingsScratch;
-    const hudEntities = this.scopedHudEntitiesScratch;
-    const armedEntities = this.scopedArmedEntitiesScratch;
     units.length = 0;
     buildings.length = 0;
-    unitsAndBuildings.length = 0;
-    hudEntities.length = 0;
-    armedEntities.length = 0;
 
     const scope = this.renderScope;
+    let hoveredBodyHudPushed = false;
     for (const entity of this.clientViewState.getUnitsAndBuildings()) {
       if (!this.entityInRenderScope(entity)) continue;
-      if (options.includeUnitsAndBuildings) unitsAndBuildings.push(entity);
       if (entity.unit) units.push(entity);
       else if (entity.building) buildings.push(entity);
-      if (options.includeHudEntities && this.entityNeedsBodyHud(entity)) {
-        hudEntities.push(entity);
+      if (options.includeBodyHud && this.entityNeedsBodyHud(entity)) {
+        const forceVisible = entity === options.hoveredEntity;
+        if (forceVisible) hoveredBodyHudPushed = true;
+        this.pushBodyHudEntity(entity, forceVisible, mode);
       }
-      if ((options.includeArmedEntities || options.includeShields) && entity.combat) {
-        let hasCombatTurret = false;
-        let hasShield = false;
-        const turrets = entity.combat.turrets;
-        for (let i = 0; i < turrets.length; i++) {
-          const turret = turrets[i];
-          if (turret.config.visualOnly) continue;
-          hasCombatTurret = true;
-          const shot = turret.config.shot;
-          if (shot !== undefined && shot.type === 'shield' && shot.barrier !== undefined) {
-            hasShield = true;
-          }
-          if (hasCombatTurret && hasShield) break;
-        }
-        if (options.includeArmedEntities && hasCombatTurret) armedEntities.push(entity);
-        if (options.includeShields && hasShield && entity.unit) shields.pushUnit(entity, scope);
+      if (options.includeBodyNames) {
+        this.pushBodyNamesForEntity(entity, mode);
+      }
+      if (options.includeTurretNames) {
+        this.pushTurretNamesForEntity(entity, mode);
+      }
+      if (options.includeShields && entity.unit && entity.combat) {
+        shields.pushUnit(entity, scope);
       }
     }
 
+    if (options.includeBodyHud && options.hoveredEntity !== null && !hoveredBodyHudPushed) {
+      this.pushBodyHudEntity(options.hoveredEntity, true, mode);
+    }
     if (options.includeShotNames) {
-      this.populateShotNamePacket(this.clientViewState.getProjectiles());
+      this.populateShotNamePacket(this.clientViewState.getProjectiles(), mode);
     }
 
     lists.units = units;
     lists.buildings = buildings;
-    lists.unitsAndBuildings = unitsAndBuildings;
-    lists.hudEntities = hudEntities;
-    lists.armedEntities = armedEntities;
     if (options.includeContactShadows) {
       this.populateContactShadowPacket(units, buildings);
     }
@@ -597,9 +585,108 @@ export class RtsScene3DRenderPhase {
     }
   }
 
-  private populateShotNamePacket(projectiles: readonly Entity[]): void {
-    const packet = this.shotNamePacket;
-    const mode = getSelectionHudMode();
+  private populateBodyHudPacket(
+    entities: readonly Entity[],
+    hoveredEntity: Entity | null,
+    mode: SelectionHudMode,
+  ): void {
+    let hoveredBodyHudPushed = false;
+    for (const entity of entities) {
+      const forceVisible = entity === hoveredEntity;
+      if (forceVisible) hoveredBodyHudPushed = true;
+      this.pushBodyHudEntity(entity, forceVisible, mode);
+    }
+    if (hoveredEntity !== null && !hoveredBodyHudPushed) {
+      this.pushBodyHudEntity(hoveredEntity, true, mode);
+    }
+  }
+
+  private pushBodyHudEntity(entity: Entity, forceVisible: boolean, mode: SelectionHudMode): void {
+    const type = this.hudTypeOf(entity);
+    const selected = entity.selectable?.selected === true;
+    const buildInProgress = isBuildInProgress(entity.buildable);
+    const hp = entity.unit ? entity.unit.hp : entity.building ? entity.building.hp : 0;
+    const maxHp = entity.unit ? entity.unit.maxHp : entity.building ? entity.building.maxHp : 0;
+    const healthNotFull = maxHp > 0 && hp < maxHp;
+    const showHealth = this.barVisible(
+      getEntityHudToggle(type, 'healthBar'), selected, mode, healthNotFull,
+    );
+    const showBuild = this.barVisible(
+      getEntityHudToggle(type, 'buildBars'), selected, mode, buildInProgress,
+    );
+    this.bodyHudPacket.pushEntity(entity, forceVisible, showHealth, showBuild);
+  }
+
+  private populateBodyNamePacket(entities: readonly Entity[], mode: SelectionHudMode): void {
+    for (const entity of entities) {
+      this.pushBodyNamesForEntity(entity, mode);
+    }
+  }
+
+  private pushBodyNamesForEntity(entity: Entity, mode: SelectionHudMode): void {
+    const type = this.hudTypeOf(entity);
+    const nameToggle = type === 'unit'
+      ? getEntityHudToggle('unit', 'name')
+      : type === 'tower'
+        ? getEntityHudToggle('tower', 'name')
+        : getEntityHudToggle('building', 'name');
+    const bodyName = resolveEntityDisplayName(entity, nameToggle, mode);
+    if (bodyName !== null) {
+      this.pieceNamePacket.push(
+        entity.id,
+        PIECE_TAG_BODY,
+        entity.transform.x,
+        entity.unit ? getUnitHudNameY(entity) : getBuildingHudNameY(entity),
+        entity.transform.y,
+        bodyName,
+      );
+    }
+    const ownerName = resolveCommanderOwnerName(entity, this.lookupPlayerDisplayName, nameToggle, mode);
+    if (ownerName !== null) {
+      this.pieceNamePacket.push(
+        entity.id,
+        PIECE_TAG_COMMANDER_OWNER_NAME,
+        entity.transform.x,
+        getUnitHudNameY(entity) + NAME_LABEL_OWNER_Y_OFFSET,
+        entity.transform.y,
+        ownerName,
+        'owner',
+      );
+    }
+  }
+
+  private populateTurretNamePacket(hosts: readonly Entity[], mode: SelectionHudMode): void {
+    for (const host of hosts) {
+      this.pushTurretNamesForEntity(host, mode);
+    }
+  }
+
+  private pushTurretNamesForEntity(host: Entity, mode: SelectionHudMode): void {
+    const turrets = host.combat?.turrets;
+    if (!turrets) return;
+    const entityRenderer = this.resources.entityRenderer;
+    for (let i = 0; i < turrets.length; i++) {
+      const turret = turrets[i];
+      if (turret.config.visualOnly) continue;
+      if (turret.config.shot === undefined) continue;
+      if (turret.config.shot.type === 'shield') continue;
+      const mount = entityRenderer.getTurretMountWorldState(host.id, i);
+      if (mount === null) continue;
+      const name = resolveTurretName(host, turret, true, mode);
+      if (name === null) continue;
+      this.pieceNamePacket.push(
+        host.id,
+        turretPieceTag(i),
+        mount.x,
+        getTurretHudNameY(mount.z, turret.config),
+        mount.y,
+        name,
+      );
+    }
+  }
+
+  private populateShotNamePacket(projectiles: readonly Entity[], mode: SelectionHudMode): void {
+    const packet = this.pieceNamePacket;
     const scope = this.renderScope;
     for (const shot of projectiles) {
       if (!scope.inScope(shot.transform.x, shot.transform.y, 100)) continue;
@@ -665,141 +752,23 @@ export class RtsScene3DRenderPhase {
     return building !== null && building.hp > 0 && building.hp < building.maxHp;
   }
 
-  /** Drive every HUD bar + name pass for the frame from the live HUD
-   *  config: body bars (unit/tower/building) from getHudEntities(),
-   *  turret bars/names from getArmedEntities(), locomotion bars
-   *  from getHudEntities() units, and (only if any shot toggle is on)
-   *  shot bars/names from the projectile list. Selection is read from
-   *  the live entity ref here, never from a cached filter. */
+  /** Drive HUD sprites from prebuilt render packets so the draw step
+   *  only consumes compact rows. */
   private drawEntityHud(
     healthBar3D: HealthBar3D | null,
     nameLabel3D: NameLabel3D | null,
     hudFrustum: THREE.Frustum | undefined,
-    hoveredEntity: Entity | null,
     entityLists: RenderPhaseEntityLists,
   ): void {
     if (!healthBar3D && !nameLabel3D) return;
-    const mode = getSelectionHudMode();
-    const lookup = this.lookupPlayerDisplayName;
-
-    const unitNameToggle = getEntityHudToggle('unit', 'name');
-    const towerNameToggle = getEntityHudToggle('tower', 'name');
-    const buildingNameToggle = getEntityHudToggle('building', 'name');
-    const bodyNamesEnabled = unitNameToggle || towerNameToggle || buildingNameToggle;
 
     if (healthBar3D) healthBar3D.beginFrame(this.hudFade, hudFrustum);
     if (nameLabel3D) nameLabel3D.beginFrame(this.hudFade, hudFrustum);
 
-    // ── Body bars + names (unit / tower / building) ──
-    for (const e of entityLists.hudEntities) {
-      const type = this.hudTypeOf(e);
-      const selected = e.selectable?.selected === true;
-      const forceVisible = e === hoveredEntity;
-      const buildInProgress = isBuildInProgress(e.buildable);
-      const hp = e.unit ? e.unit.hp : e.building ? e.building.hp : 0;
-      const maxHp = e.unit ? e.unit.maxHp : e.building ? e.building.maxHp : 0;
-      const healthNotFull = maxHp > 0 && hp < maxHp;
-      const showHealth = this.barVisible(
-        getEntityHudToggle(type, 'healthBar'), selected, mode, healthNotFull,
-      );
-      // Build bars are construction paid/required progress only; once
-      // complete the buildable is gone and the bars are hidden.
-      const showBuild = this.barVisible(
-        getEntityHudToggle(type, 'buildBars'), selected, mode, buildInProgress,
-      );
-      if (healthBar3D && (showHealth || showBuild || forceVisible)) {
-        if (e.unit) healthBar3D.perUnit(e, forceVisible, showHealth, showBuild);
-        else if (e.building) healthBar3D.perBuilding(e, forceVisible, showHealth, showBuild);
-      }
-    }
-
-    // Hovered entity forces its body HEALTH bar on even when full-HP /
-    // toggle-off, matching the legacy hover behavior. It may not be in
-    // getHudEntities() (full HP, not building); the renderer's packed
-    // dedup key makes a second call a no-op if it already drew above.
-    if (healthBar3D && hoveredEntity) {
-      if (hoveredEntity.unit) healthBar3D.perUnit(hoveredEntity, true);
-      else if (hoveredEntity.building) healthBar3D.perBuilding(hoveredEntity, true);
-    }
-
-    // Body NAMES iterate every unit/building (names show even at full
-    // HP). Commander owners get a separate styled label so the body
-    // label stays a blueprint name.
-    if (nameLabel3D && bodyNamesEnabled) {
-      for (const e of entityLists.unitsAndBuildings) {
-        const type = this.hudTypeOf(e);
-        const nameToggle = type === 'unit'
-          ? unitNameToggle
-          : type === 'tower'
-            ? towerNameToggle
-            : buildingNameToggle;
-        const name = resolveEntityDisplayName(e, nameToggle, mode);
-        if (name !== null) nameLabel3D.perEntity(e, name);
-        const ownerName = resolveCommanderOwnerName(e, lookup, nameToggle, mode);
-        if (ownerName !== null) {
-          nameLabel3D.perPieceName(
-            e,
-            PIECE_TAG_COMMANDER_OWNER_NAME,
-            this.setNameLabelAnchor(
-              e.transform.x,
-              getUnitHudNameY(e) + NAME_LABEL_OWNER_Y_OFFSET,
-              e.transform.y,
-            ),
-            ownerName,
-            'owner',
-          );
-        }
-      }
-    }
-
-    // ── Turret names ──
-    const turretNameToggle = getEntityHudToggle('turret', 'name');
-    if (turretNameToggle) {
-      const entityRenderer = this.resources.entityRenderer;
-      for (const host of entityLists.armedEntities) {
-        const turrets = host.combat?.turrets;
-        if (!turrets) continue;
-        for (let i = 0; i < turrets.length; i++) {
-          const turret = turrets[i];
-          // Skip visual-only / construction-emitter (shot === undefined)
-          // and shield-emitter turrets.
-          if (turret.config.visualOnly) continue;
-          if (turret.config.shot === undefined) continue;
-          if (turret.config.shot.type === 'shield') continue;
-          const mount = entityRenderer.getTurretMountWorldState(host.id, i);
-          if (mount === null) continue;
-          if (nameLabel3D && turretNameToggle) {
-            const name = resolveTurretName(host, turret, turretNameToggle, mode);
-            if (name !== null) {
-              nameLabel3D.perPieceName(
-                host,
-                turretPieceTag(i),
-                this.setNameLabelAnchor(
-                  mount.x,
-                  getTurretHudNameY(mount.z, turret.config),
-                  mount.y,
-                ),
-                name,
-              );
-            }
-          }
-        }
-      }
-    }
-
-    // ── Shot names. Shot HP bars stay disabled until projectile HP
-    // rides a rolling authoritative snapshot instead of spawn state.
-    nameLabel3D?.processPieceNamePacket(entityLists.shotNames);
+    healthBar3D?.processBodyHudPacket(entityLists.bodyHud);
+    nameLabel3D?.processPieceNamePacket(entityLists.pieceNames);
 
     if (healthBar3D) healthBar3D.endFrame();
     if (nameLabel3D) nameLabel3D.endFrame();
-  }
-
-  private setNameLabelAnchor(x: number, y: number, z: number): { x: number; y: number; z: number } {
-    const anchor = this.nameLabelAnchorScratch;
-    anchor.x = x;
-    anchor.y = y;
-    anchor.z = z;
-    return anchor;
   }
 }

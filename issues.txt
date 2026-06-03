@@ -17,22 +17,6 @@ Please always commit and push before and after any code changes we make.
 ================================================================================
 
 ================================================================================
-PERFORMANCE — RENDERER (per-frame hot path)
-================================================================================
-
-Main per-frame chain: ThreeApp rAF -> RtsScene3DRenderPhase.run ->
-Render3DEntities.update -> updateUnitMeshes (per-unit) -> locomotion/turret/HUD.
-
-2.0 [MAJOR, per-frame scene graph] `RtsScene3DRenderPhase` still builds reusable
-scoped `Entity[]` lists for body HUD and turret-name work. Contact shadows,
-ground prints, shield sphere rendering, and projectile-name labels have moved to
-typed packet rows, but the remaining body HUD/turret-name consumers still run
-TypeScript object loops over `Entity` objects.
-FIX: move the remaining body HUD/turret-name packets toward packed typed buffers
-or WASM/GPU-owned render packets, and make those consumers read compact packet
-rows instead of `Entity` objects.
-
-================================================================================
 ARCHITECTURE / PHILOSOPHY MIGRATION (budget_design_philosophy.html)
 ================================================================================
 
