@@ -475,7 +475,7 @@ export class Render3DEntities {
     this._currentTimeMs = frameSpin.timeMs;
     this._spinDt = frameSpin.spinDtSec;
     this.turretMountCache.reset(this._currentDtMs);
-    refreshLocomotionSupportSurfaces(this.clientViewState.getUnitsAndBuildings());
+    refreshLocomotionSupportSurfaces(this.clientViewState.getPredictionSupportSurfaceEntities());
     // Populate beam-directed turret aim from the live beams BEFORE the
     // unit + building turret-pose passes read it this frame.
     this.collectBeamTurretAim();

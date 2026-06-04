@@ -59,8 +59,7 @@ import {
 import type { RenderFrameState3D } from './RenderFrameState3D';
 import { configureSpriteTexture } from './threeUtils';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
-import { getOccupiedBuildingCells } from '../sim/buildPlacementValidation';
-import { getMetalDepositGridCells } from '../sim/metalDeposits';
+import { getBuildingConfig } from '../sim/buildConfigs';
 import {
   getTerrainShadowCacheKey,
   terrainPrecomputedShadow,
@@ -263,7 +262,18 @@ export class TerrainTileRenderer3D {
   private buildGridWorldSizeUniform = { value: new THREE.Vector2(1, 1) };
   private buildGridCellSizeUniform = { value: BUILD_GRID_CELL_SIZE };
   private buildGridEnabledUniform = { value: 0 };
-  private buildGridTextureKey = '';
+  private buildGridKeyValid = false;
+  private buildGridKeyCellsX = 0;
+  private buildGridKeyCellsY = 0;
+  private buildGridKeyCellSize = 0;
+  private buildGridKeyMapWidth = 0;
+  private buildGridKeyMapHeight = 0;
+  private buildGridKeyTerrainVersion = 0;
+  private buildGridKeyBuildabilityConfigKey = '';
+  private buildGridKeyEntityVersion = 0;
+  private buildGridKeyDepositSignature = 0;
+  private buildGridOccupiedMask = new Uint8Array(1);
+  private buildGridMetalMask = new Uint8Array(1);
   private groundDetailTextureUniform: { value: THREE.Texture | null } = { value: null };
   private groundDetailTileWorldSizeUniform = { value: TERRAIN_GROUND_TEXTURE_TILE_WORLD_SIZE };
   private groundDetailEnabledUniform = { value: 0 };
@@ -601,8 +611,133 @@ export class TerrainTileRenderer3D {
     this.buildGridTexture = this.makeBuildGridTexture(safeWidth, safeHeight);
     this.buildGridMapUniform.value = this.buildGridTexture;
     old.dispose();
-    this.buildGridTextureKey = '';
+    this.buildGridKeyValid = false;
     return true;
+  }
+
+  private ensureBuildGridMasks(cellCount: number): void {
+    const safeCount = Math.max(1, cellCount | 0);
+    if (this.buildGridOccupiedMask.length < safeCount) {
+      this.buildGridOccupiedMask = new Uint8Array(safeCount);
+    }
+    if (this.buildGridMetalMask.length < safeCount) {
+      this.buildGridMetalMask = new Uint8Array(safeCount);
+    }
+  }
+
+  private computeMetalDepositSignature(): number {
+    let hash = 2166136261;
+    for (let i = 0; i < this.metalDeposits.length; i++) {
+      const deposit = this.metalDeposits[i];
+      hash = Math.imul(hash ^ deposit.id, 16777619) >>> 0;
+      hash = Math.imul(hash ^ deposit.resourceCellCount, 16777619) >>> 0;
+      hash = Math.imul(hash ^ deposit.boundsGridX, 16777619) >>> 0;
+      hash = Math.imul(hash ^ deposit.boundsGridY, 16777619) >>> 0;
+      hash = Math.imul(hash ^ deposit.boundsGridW, 16777619) >>> 0;
+      hash = Math.imul(hash ^ deposit.boundsGridH, 16777619) >>> 0;
+      const cells = deposit.cells;
+      for (let j = 0; j < cells.length; j++) {
+        hash = Math.imul(hash ^ cells[j].gx, 16777619) >>> 0;
+        hash = Math.imul(hash ^ cells[j].gy, 16777619) >>> 0;
+      }
+    }
+    return hash;
+  }
+
+  private buildGridCacheMatches(
+    cellsX: number,
+    cellsY: number,
+    buildCellSize: number,
+    terrainVersion: number,
+    buildabilityConfigKey: string,
+    entityVersion: number,
+    depositSignature: number,
+  ): boolean {
+    return this.buildGridKeyValid &&
+      this.buildGridKeyCellsX === cellsX &&
+      this.buildGridKeyCellsY === cellsY &&
+      this.buildGridKeyCellSize === buildCellSize &&
+      this.buildGridKeyMapWidth === this.mapWidth &&
+      this.buildGridKeyMapHeight === this.mapHeight &&
+      this.buildGridKeyTerrainVersion === terrainVersion &&
+      this.buildGridKeyBuildabilityConfigKey === buildabilityConfigKey &&
+      this.buildGridKeyEntityVersion === entityVersion &&
+      this.buildGridKeyDepositSignature === depositSignature;
+  }
+
+  private storeBuildGridCacheKey(
+    cellsX: number,
+    cellsY: number,
+    buildCellSize: number,
+    terrainVersion: number,
+    buildabilityConfigKey: string,
+    entityVersion: number,
+    depositSignature: number,
+  ): void {
+    this.buildGridKeyValid = true;
+    this.buildGridKeyCellsX = cellsX;
+    this.buildGridKeyCellsY = cellsY;
+    this.buildGridKeyCellSize = buildCellSize;
+    this.buildGridKeyMapWidth = this.mapWidth;
+    this.buildGridKeyMapHeight = this.mapHeight;
+    this.buildGridKeyTerrainVersion = terrainVersion;
+    this.buildGridKeyBuildabilityConfigKey = buildabilityConfigKey;
+    this.buildGridKeyEntityVersion = entityVersion;
+    this.buildGridKeyDepositSignature = depositSignature;
+  }
+
+  private refreshBuildGridOccupiedMask(cellsX: number, cellsY: number): void {
+    const cellCount = cellsX * cellsY;
+    this.buildGridOccupiedMask.fill(0, 0, cellCount);
+    const buildings = this.clientViewState.getBuildings();
+    for (let i = 0; i < buildings.length; i++) {
+      const entity = buildings[i];
+      const building = entity.building;
+      if (!building) continue;
+      const existingConfig = entity.buildingBlueprintId
+        ? getBuildingConfig(entity.buildingBlueprintId)
+        : undefined;
+      const bw = existingConfig
+        ? existingConfig.gridWidth
+        : Math.max(1, Math.ceil(building.width / BUILD_GRID_CELL_SIZE));
+      const bh = existingConfig
+        ? existingConfig.gridHeight
+        : Math.max(1, Math.ceil(building.height / BUILD_GRID_CELL_SIZE));
+      const left = Math.floor(
+        (entity.transform.x - (bw * BUILD_GRID_CELL_SIZE) / 2) /
+          BUILD_GRID_CELL_SIZE +
+          1e-6,
+      );
+      const top = Math.floor(
+        (entity.transform.y - (bh * BUILD_GRID_CELL_SIZE) / 2) /
+          BUILD_GRID_CELL_SIZE +
+          1e-6,
+      );
+      for (let dy = 0; dy < bh; dy++) {
+        const gy = top + dy;
+        if (gy < 0 || gy >= cellsY) continue;
+        const rowOffset = gy * cellsX;
+        for (let dx = 0; dx < bw; dx++) {
+          const gx = left + dx;
+          if (gx < 0 || gx >= cellsX) continue;
+          this.buildGridOccupiedMask[rowOffset + gx] = 1;
+        }
+      }
+    }
+  }
+
+  private refreshBuildGridMetalMask(cellsX: number, cellsY: number): void {
+    const cellCount = cellsX * cellsY;
+    this.buildGridMetalMask.fill(0, 0, cellCount);
+    for (let i = 0; i < this.metalDeposits.length; i++) {
+      const cells = this.metalDeposits[i].cells;
+      for (let j = 0; j < cells.length; j++) {
+        const gx = cells[j].gx;
+        const gy = cells[j].gy;
+        if (gx < 0 || gy < 0 || gx >= cellsX || gy >= cellsY) continue;
+        this.buildGridMetalMask[gy * cellsX + gx] = 1;
+      }
+    }
   }
 
   private writeBuildGridPixel(offset: number, color: readonly [number, number, number, number]): void {
@@ -619,7 +754,7 @@ export class TerrainTileRenderer3D {
     this.buildGridCellSizeUniform.value = buildCellSize;
     this.buildGridWorldSizeUniform.value.set(this.mapWidth, this.mapHeight);
     if (!enabled) {
-      this.buildGridTextureKey = '';
+      this.buildGridKeyValid = false;
       return;
     }
 
@@ -629,36 +764,36 @@ export class TerrainTileRenderer3D {
     this.buildGridMapSizeUniform.value.set(cellsX, cellsY);
 
     const entityVersion = this.clientViewState.getEntitySetVersion();
-    const depositKey = this.metalDeposits
-      .map((deposit) => `${deposit.id}:${deposit.resourceCellCount}`)
-      .join(',');
-    const key = [
-      cellsX,
-      cellsY,
-      buildCellSize,
-      this.mapWidth,
-      this.mapHeight,
-      buildabilityGrid?.version ?? getTerrainVersion(),
-      buildabilityGrid?.configKey ?? getTerrainBuildabilityConfigKey(),
-      entityVersion,
-      depositKey,
-    ].join('|');
-    if (key === this.buildGridTextureKey) return;
-
-    const occupied = getOccupiedBuildingCells(this.clientViewState.getBuildings());
-    const metalCells = new Set<string>();
-    const depositCells = getMetalDepositGridCells(this.metalDeposits);
-    for (let i = 0; i < depositCells.length; i++) {
-      metalCells.add(`${depositCells[i].gx},${depositCells[i].gy}`);
+    const terrainVersion = buildabilityGrid?.version ?? getTerrainVersion();
+    const buildabilityConfigKey = buildabilityGrid?.configKey ?? getTerrainBuildabilityConfigKey();
+    const depositSignature = this.computeMetalDepositSignature();
+    if (
+      this.buildGridCacheMatches(
+        cellsX,
+        cellsY,
+        buildCellSize,
+        terrainVersion,
+        buildabilityConfigKey,
+        entityVersion,
+        depositSignature,
+      )
+    ) {
+      return;
     }
 
+    const cellCount = cellsX * cellsY;
+    this.ensureBuildGridMasks(cellCount);
+    this.refreshBuildGridOccupiedMask(cellsX, cellsY);
+    this.refreshBuildGridMetalMask(cellsX, cellsY);
+
     for (let gy = 0; gy < cellsY; gy++) {
+      const rowOffset = gy * cellsX;
       for (let gx = 0; gx < cellsX; gx++) {
         const x = gx * buildCellSize + buildCellSize / 2;
         const y = gy * buildCellSize + buildCellSize / 2;
-        const offset = (gy * cellsX + gx) * 4;
-        const key2 = `${gx},${gy}`;
-        if (occupied.has(key2)) {
+        const cellIndex = rowOffset + gx;
+        const offset = cellIndex * 4;
+        if (this.buildGridOccupiedMask[cellIndex] !== 0) {
           this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_BLOCKED);
           continue;
         }
@@ -678,13 +813,23 @@ export class TerrainTileRenderer3D {
         }
         this.writeBuildGridPixel(
           offset,
-          metalCells.has(key2) ? BUILD_GRID_COLOR_METAL : BUILD_GRID_COLOR_OK,
+          this.buildGridMetalMask[cellIndex] !== 0
+            ? BUILD_GRID_COLOR_METAL
+            : BUILD_GRID_COLOR_OK,
         );
       }
     }
 
     this.buildGridTexture.needsUpdate = true;
-    this.buildGridTextureKey = key;
+    this.storeBuildGridCacheKey(
+      cellsX,
+      cellsY,
+      buildCellSize,
+      terrainVersion,
+      buildabilityConfigKey,
+      entityVersion,
+      depositSignature,
+    );
   }
 
   private makeTerrainGeometryKey(

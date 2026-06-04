@@ -21,8 +21,6 @@ RENDERING PIPELINE AUDIT - 2026-06-04
 1. Unit drawing does not obey the client bar all/camera/pad render scope.
 
 Evidence:
-- src/game/render3d/Render3DEntities.ts calls refreshLocomotionSupportSurfaces()
-  with clientViewState.getUnitsAndBuildings() on every update.
 - Render3DEntities.updateUnits() reads clientViewState.getUnits() and updates
   every unit mesh, locomotion rig, turret target, fading mesh, detail instance,
   path preview, shield state, and selection-related visual state at render
@@ -55,45 +53,7 @@ or relevant HUD/selection state. The packet should come from a spatially indexed
 or WASM/typed-buffer-backed source, not a fresh full-world JavaScript scan. Keep
 gameplay prediction independent of the draw scope.
 
-2. Support-surface indexing rebuilds and allocates every render frame.
-
-Evidence:
-- src/game/render3d/Render3DEntities.ts rebuilds locomotion support surfaces from
-  clientViewState.getUnitsAndBuildings() every update.
-- src/game/sim/supportSurfaceIndex.ts clears maps and creates fresh proxy
-  objects when rebuilding support surfaces.
-- SupportSurfaceIndex.findBestProxy() returns a fresh result object on hits.
-
-Problem:
-Locomotion sampling is on the visual hot path, and the current support-surface
-index creates garbage proportional to the number of support-capable entities,
-plus result objects during queries. This violates the no-allocation hot-loop
-rule and adds full-world work before any camera culling can help.
-
-Required fix:
-Make support-surface data incremental or reusable. Reuse proxy structs and
-bucket storage, use numeric keys or typed arrays where practical, and only
-rebuild changed buckets when support footprints move or appear/disappear. Query
-results should be returned through caller-owned scratch storage or split into
-primitive fields so sampling does not allocate.
-
-3. Building local-vision source collection allocates per source every frame.
-
-Evidence:
-- src/game/render3d/BuildingEntityRenderer3D.ts refreshLocalVisionSources()
-  clears localVisionSources but pushes a new { x, y, radius } object for each
-  owned building with full vision.
-
-Problem:
-The method comment says the array is pre-allocated, but the entries are not.
-Owned full-vision buildings generate garbage every render update.
-
-Required fix:
-Reuse VisionSource objects by index, convert the collection to struct-of-arrays,
-or consume a cached typed visibility packet from the snapshot/visibility system.
-Reset length after writing reused slots instead of allocating new objects.
-
-4. Scoped render phase still performs whole-world entity scans.
+2. Scoped render phase still performs whole-world entity scans.
 
 Evidence:
 - src/game/scenes/helpers/RtsScene3DRenderPhase.ts prepareEntityLists() loops
@@ -116,23 +76,7 @@ indices plus explicit exceptions for selected, hovered, and recently relevant
 entities. Building rendering should get the same treatment instead of updating
 all buildings every frame.
 
-5. Debug build-grid rendering allocates heavily when enabled.
-
-Evidence:
-- src/game/render3d/TerrainTileRenderer3D.ts refreshBuildGridTexture() builds a
-  string deposit key with map().join(), creates Set<string> occupancy data, and
-  formats string cell keys inside grid loops.
-
-Problem:
-The path is debug-only, but when BUILD debug mode is enabled it performs
-allocation-heavy whole-grid work. That can hide real render performance problems
-while profiling build placement, terrain, or fog work.
-
-Required fix:
-Use numeric cell keys, typed occupancy masks, and terrain/building/deposit
-version counters. Rebuild the debug texture only when an input version changes.
-
-6. The renderer is still centered on Three.js instead of the target raw
+3. The renderer is still centered on Three.js instead of the target raw
    WebGPU/WGSL architecture.
 
 Evidence:
@@ -157,7 +101,7 @@ surface debug visualization. Replacement paths should use owned typed buffers,
 explicit update ranges, and delete the old Three.js path once the new path is
 active.
 
-7. Auxiliary WebGL renderers are outside the main renderer singleton budget.
+4. Auxiliary WebGL renderers are outside the main renderer singleton budget.
 
 Evidence:
 - src/game/lifecycle/sessionSingleton.ts limits active main GameInstance and

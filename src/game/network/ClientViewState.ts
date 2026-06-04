@@ -883,6 +883,10 @@ export class ClientViewState {
     return out;
   }
 
+  getPredictionSupportSurfaceEntities(): readonly Entity[] {
+    return this.predictionSupportSurfaceEntities;
+  }
+
   getBuildings(): Entity[] {
     this.rebuildCachesIfNeeded();
     return this.cache.getBuildings();

@@ -305,22 +305,41 @@ export class BuildingEntityRenderer3D {
    *  FOW-OPT-06: reads from the per-player cache slice rather than
    *  filtering the world-wide list per frame. */
   private refreshLocalVisionSources(): void {
-    this.localVisionSources.length = 0;
     const localPlayerId = this.getLocalPlayerId();
-    if (localPlayerId === undefined) return;
-    const collect = (entities: readonly Entity[]): void => {
-      for (let i = 0; i < entities.length; i++) {
-        const entity = entities[i];
-        if (!canEntityProvideFullVision(entity)) continue;
-        this.localVisionSources.push({
-          x: entity.transform.x,
-          y: entity.transform.y,
-          radius: getEntityFullVisionRadius(entity),
-        });
+    if (localPlayerId === undefined) {
+      this.localVisionSources.length = 0;
+      return;
+    }
+    let writeIndex = 0;
+    writeIndex = this.collectLocalVisionSources(
+      this.clientViewState.getUnitsByPlayer(localPlayerId),
+      writeIndex,
+    );
+    writeIndex = this.collectLocalVisionSources(
+      this.clientViewState.getBuildingsByPlayer(localPlayerId),
+      writeIndex,
+    );
+    this.localVisionSources.length = writeIndex;
+  }
+
+  private collectLocalVisionSources(
+    entities: readonly Entity[],
+    writeIndex: number,
+  ): number {
+    for (let i = 0; i < entities.length; i++) {
+      const entity = entities[i];
+      if (!canEntityProvideFullVision(entity)) continue;
+      let source = this.localVisionSources[writeIndex];
+      if (source === undefined) {
+        source = { x: 0, y: 0, radius: 0 };
+        this.localVisionSources[writeIndex] = source;
       }
-    };
-    collect(this.clientViewState.getUnitsByPlayer(localPlayerId));
-    collect(this.clientViewState.getBuildingsByPlayer(localPlayerId));
+      source.x = entity.transform.x;
+      source.y = entity.transform.y;
+      source.radius = getEntityFullVisionRadius(entity);
+      writeIndex++;
+    }
+    return writeIndex;
   }
 
   /** True when the building is in the local view but no local vision
