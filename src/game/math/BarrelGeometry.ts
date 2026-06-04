@@ -46,29 +46,28 @@ type BarrelShotSource = TurretBarrelSource & {
 };
 
 function getTurretBodyRadius(config: TurretRadiusSource): number {
-  const r = config.radius?.visual;
-  if (r === undefined || r <= 0) {
-    const id = config.id ?? 'unknown-source';
-    throw new Error(
-      `Turret config '${id}' must define a positive radius.visual`,
-    );
-  }
-  return r;
+  return turretBodyRadiusFromRadius(config.radius);
 }
 
 /** Legacy name retained for the existing turret mesh/HUD vocabulary:
- *  the visible turret "head" is the same sphere as `radius.visual`. */
+ *  the visible turret "head" is the same sphere as `radius.visual`.
+ *  Returns 0 when `radius.visual` is `null` — the explicit "draw no body
+ *  sphere" signal (the head mesh is skipped and barrels, which pivot/scale
+ *  off this radius, collapse to nothing). A positive number is the drawn
+ *  sphere's world radius. */
 export function getTurretHeadRadius(config: TurretRadiusSource): number {
   return getTurretBodyRadius(config);
 }
 
+/** Turret body sphere radius from a radius config: the positive
+ *  `radius.visual`, or 0 when it is `null` / absent / non-positive (no body
+ *  sphere). Top-mounted turrets still require a positive radius — that's
+ *  enforced where `mount.z` is resolved, not here. */
 export function turretBodyRadiusFromRadius(
   radius: TurretRadiusSource['radius'] | undefined,
 ): number {
   const body = radius?.visual;
-  if (body === undefined || body <= 0) {
-    throw new Error('Turret radius.visual must be a positive number');
-  }
+  if (typeof body !== 'number' || body <= 0) return 0;
   return body;
 }
 

@@ -178,12 +178,16 @@ export function buildTurretMesh3D(
   //  - turretStyle='none': no body, no barrels — chassis only.
   //  - shield turrets at any detail: the ShieldRenderer3D's glowing
   //    sphere is the whole visual.
+  //  - radius.visual: null → headRadius 0: the explicit "draw no body
+  //    sphere" signal (barrels collapse to nothing too, since they scale
+  //    off this radius).
   //  - deps.skipHead=true: the caller is rendering the head through the
   //    shared `turretHeadInstanced` InstancedMesh path — see
   //    Render3DEntities.allocTurretHeadSlot.
   const turretOff = gfx.turretStyle === 'none';
   const showShieldEmitterCore = isShield && deps.showShieldEmitterCore === true;
-  const hideHead = turretOff || (isShield && !showShieldEmitterCore);
+  const noBodySphere = headRadius <= 0;
+  const hideHead = turretOff || (isShield && !showShieldEmitterCore) || noBodySphere;
   const skipHeadMesh = hideHead || deps.skipHead === true;
 
   // Resolved head radius drives BOTH the sphere mesh size AND its
