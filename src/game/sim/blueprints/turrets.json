@@ -1154,8 +1154,8 @@
     "name": "Anti-Air Launcher",
     "range": 1600,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
-    "cooldown": 400,
-    "launchForce": 8000,
+    "cooldown": 100,
+    "launchForce": 14000,
     "turretTurnAccel": 650,
     "turretDrag": 0.15,
     "barrel": {

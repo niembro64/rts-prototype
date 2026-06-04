@@ -26,7 +26,7 @@ import {
 const FIELD_OPACITY_BOOST = 2.0;
 const FIELD_SHAPE_SPHERE = 0;
 const FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER = 1;
-const FINITE_CYLINDER_VISUAL_HEIGHT = 4096;
+const FINITE_CYLINDER_INFINITY_VISUAL_MIN_HALF_HEIGHT = 12000;
 const IMPLICIT_FIELD_CAP = 96;
 
 const IMPLICIT_SHIELD_SURFACE_VS = `
@@ -605,6 +605,22 @@ export class ShieldRenderer3D {
     this.implicitFieldMat.uniforms.uCameraFar.value = this.camera.far;
   }
 
+  private finiteCylinderInfinityVisualHeight(outer: number): number {
+    // Same strategy as BeamRenderer3D's open-ended beam visual: finite
+    // geometry is stretched past the visible world. The gameplay shield
+    // stays mathematically infinite in the sim; this only prevents the
+    // fallback mesh from visibly ending in the sky or below the world.
+    const cameraFar = Number.isFinite(this.camera.far) && this.camera.far > 0
+      ? this.camera.far
+      : FINITE_CYLINDER_INFINITY_VISUAL_MIN_HALF_HEIGHT;
+    const halfHeight = Math.max(
+      FINITE_CYLINDER_INFINITY_VISUAL_MIN_HALF_HEIGHT,
+      cameraFar,
+      outer * 10,
+    );
+    return halfHeight * 2;
+  }
+
   /** Internal packet-row body. Writes the active field surface instance. */
   private _processRow(packet: ShieldRenderPacket3D, row: number): void {
     const seen = this._seenFieldKeys;
@@ -694,7 +710,7 @@ export class ShieldRenderer3D {
       if (this._finiteCylinderCursor < SPHERE_INSTANCED_CAP) {
         this._sphereScratchScale.set(
           outer,
-          Math.max(FINITE_CYLINDER_VISUAL_HEIGHT, outer * 10),
+          this.finiteCylinderInfinityVisualHeight(outer),
           outer,
         );
         this._sphereScratchMat.compose(
