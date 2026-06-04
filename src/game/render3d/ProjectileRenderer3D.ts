@@ -34,7 +34,6 @@ const CURVED_CONE_INDICES_PER_TAIL = CURVED_CONE_CURVE_SEGMENTS * CURVED_CONE_RA
 const TRAIL_STAMP_CAP = CURVED_CONE_CURVE_SEGMENTS;
 const TRAIL_MIN_TANGENT_SQ = 1e-6;
 const PROJ_CYL_AXIS = new THREE.Vector3(0, 1, 0);
-const IDENTITY_QUAT = new THREE.Quaternion();
 const CURVED_CONE_COS = Array.from(
   { length: CURVED_CONE_RADIAL_SEGMENTS },
   (_, i) => Math.cos((i / CURVED_CONE_RADIAL_SEGMENTS) * Math.PI * 2),
@@ -43,6 +42,59 @@ const CURVED_CONE_SIN = Array.from(
   { length: CURVED_CONE_RADIAL_SEGMENTS },
   (_, i) => Math.sin((i / CURVED_CONE_RADIAL_SEGMENTS) * Math.PI * 2),
 );
+
+function writeTranslateScaleMatrix(
+  out: Float32Array,
+  slot: number,
+  x: number,
+  y: number,
+  z: number,
+  sx: number,
+  sy: number,
+  sz: number,
+): void {
+  const o = slot * 16;
+  out[o] = sx; out[o + 1] = 0; out[o + 2] = 0; out[o + 3] = 0;
+  out[o + 4] = 0; out[o + 5] = sy; out[o + 6] = 0; out[o + 7] = 0;
+  out[o + 8] = 0; out[o + 9] = 0; out[o + 10] = sz; out[o + 11] = 0;
+  out[o + 12] = x; out[o + 13] = y; out[o + 14] = z; out[o + 15] = 1;
+}
+
+function writeComposedMatrix(
+  out: Float32Array,
+  slot: number,
+  x: number,
+  y: number,
+  z: number,
+  quat: THREE.Quaternion,
+  sx: number,
+  sy: number,
+  sz: number,
+): void {
+  const qx = quat.x, qy = quat.y, qz = quat.z, qw = quat.w;
+  const x2 = qx + qx, y2 = qy + qy, z2 = qz + qz;
+  const xx = qx * x2, xy = qx * y2, xz = qx * z2;
+  const yy = qy * y2, yz = qy * z2, zz = qz * z2;
+  const wx = qw * x2, wy = qw * y2, wz = qw * z2;
+  const o = slot * 16;
+
+  out[o] = (1 - (yy + zz)) * sx;
+  out[o + 1] = (xy + wz) * sx;
+  out[o + 2] = (xz - wy) * sx;
+  out[o + 3] = 0;
+  out[o + 4] = (xy - wz) * sy;
+  out[o + 5] = (1 - (xx + zz)) * sy;
+  out[o + 6] = (yz + wx) * sy;
+  out[o + 7] = 0;
+  out[o + 8] = (xz + wy) * sz;
+  out[o + 9] = (yz - wx) * sz;
+  out[o + 10] = (1 - (xx + yy)) * sz;
+  out[o + 11] = 0;
+  out[o + 12] = x;
+  out[o + 13] = y;
+  out[o + 14] = z;
+  out[o + 15] = 1;
+}
 
 type ProjectileRadiusMeshes = {
   collision?: THREE.LineSegments;
@@ -106,10 +158,15 @@ export class ProjectileRenderer3D {
   });
 
   private readonly sphereInstanced: THREE.InstancedMesh;
+  private readonly sphereMatrices: Float32Array;
   private readonly cylinderInstanced: THREE.InstancedMesh;
+  private readonly cylinderMatrices: Float32Array;
   private readonly curvedCone: DynamicCurvedConeGeometry;
   private readonly curvedConeMesh: THREE.Mesh;
   private readonly finInstanced: THREE.InstancedMesh;
+  private readonly finMatrices: Float32Array;
+  private readonly finColors = new Float32Array(PROJECTILE_INSTANCED_CAP * 3);
+  private readonly finColorAttr = new THREE.InstancedBufferAttribute(this.finColors, 3);
   private readonly seenProjectileIds = new Set<number>();
   private readonly projectileRenderScratch: Entity[] = [];
   private readonly projectileRadiusMeshes = new Map<number, ProjectileRadiusMeshes>();
@@ -126,7 +183,6 @@ export class ProjectileRenderer3D {
   private readonly projQuat = new THREE.Quaternion();
   private readonly projPos = new THREE.Vector3();
   private readonly projScale = new THREE.Vector3();
-  private readonly projMatrix = new THREE.Matrix4();
   private readonly curveTangent = new THREE.Vector3();
   private readonly curveRight = new THREE.Vector3();
   private readonly curveUp = new THREE.Vector3();
@@ -148,6 +204,7 @@ export class ProjectileRenderer3D {
       PROJECTILE_INSTANCED_CAP,
     );
     this.sphereInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.sphereMatrices = this.sphereInstanced.instanceMatrix.array as Float32Array;
     this.sphereInstanced.frustumCulled = false;
     this.sphereInstanced.count = 0;
     this.world.add(this.sphereInstanced);
@@ -158,6 +215,7 @@ export class ProjectileRenderer3D {
       PROJECTILE_INSTANCED_CAP,
     );
     this.cylinderInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.cylinderMatrices = this.cylinderInstanced.instanceMatrix.array as Float32Array;
     this.cylinderInstanced.frustumCulled = false;
     this.cylinderInstanced.count = 0;
     this.world.add(this.cylinderInstanced);
@@ -174,6 +232,9 @@ export class ProjectileRenderer3D {
       PROJECTILE_INSTANCED_CAP,
     );
     this.finInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.finMatrices = this.finInstanced.instanceMatrix.array as Float32Array;
+    this.finColorAttr.setUsage(THREE.DynamicDrawUsage);
+    this.finInstanced.instanceColor = this.finColorAttr;
     this.finInstanced.frustumCulled = false;
     this.finInstanced.count = 0;
     this.world.add(this.finInstanced);
@@ -222,15 +283,16 @@ export class ProjectileRenderer3D {
       const visualRadius = radius;
       const r = Math.max(visualRadius, PROJECTILE_MIN_RADIUS);
 
-      this.projPos.set(tx, tz, ty);
-
       if (sphereCount >= PROJECTILE_INSTANCED_CAP) {
         this.hideProjRadiusMeshes(e.id);
         continue;
       }
-      this.projScale.set(r, r, r);
-      this.projMatrix.compose(this.projPos, IDENTITY_QUAT, this.projScale);
-      this.sphereInstanced.setMatrixAt(sphereCount++, this.projMatrix);
+      writeTranslateScaleMatrix(
+        this.sphereMatrices,
+        sphereCount++,
+        tx, tz, ty,
+        r, r, r,
+      );
 
       const tailShape = drawProjectileTail
         ? visualProfile?.projectileTailShape ?? 'cone'
@@ -241,10 +303,20 @@ export class ProjectileRenderer3D {
       if (tailShape !== 'none' || finSizeMult > 0) {
         const tailLength = r * (visualProfile?.projectileTailLengthMult ?? 8);
         const tailRadius = r * (visualProfile?.projectileTailRadiusMult ?? 1);
-        this.composeProjectileTailMatrix(e, tx, ty, tz, tailLength, tailRadius);
+        this.composeProjectileTailPose(e, tx, ty, tz, tailLength, tailRadius);
         if (tailShape === 'cylinder') {
           if (cylinderCount < PROJECTILE_INSTANCED_CAP) {
-            this.cylinderInstanced.setMatrixAt(cylinderCount++, this.projMatrix);
+            writeComposedMatrix(
+              this.cylinderMatrices,
+              cylinderCount++,
+              this.projPos.x,
+              this.projPos.y,
+              this.projPos.z,
+              this.projQuat,
+              this.projScale.x,
+              this.projScale.y,
+              this.projScale.z,
+            );
           }
         } else if (
           tailShape === 'cone' &&
@@ -269,11 +341,24 @@ export class ProjectileRenderer3D {
           // Push the fin's rear edge past the cylinder tail end so the
           // white fin tips don't z-fight with the rocket body cap.
           const finRearOffset = tailLength + r * FIN_REAR_OVERHANG_MULT;
-          this.composeProjectileFinMatrix(tx, ty, tz, finRearOffset, r * finSizeMult, rollAngle);
-          this.finInstanced.setMatrixAt(finCount, this.projMatrix);
+          this.composeProjectileFinPose(tx, ty, tz, finRearOffset, r * finSizeMult, rollAngle);
+          writeComposedMatrix(
+            this.finMatrices,
+            finCount,
+            this.projPos.x,
+            this.projPos.y,
+            this.projPos.z,
+            this.finQuat,
+            this.projScale.x,
+            this.projScale.y,
+            this.projScale.z,
+          );
           if (proj) {
             this.finColor.set(getPlayerColors(proj.ownerId).primary);
-            this.finInstanced.setColorAt(finCount, this.finColor);
+            const colorOffset = finCount * 3;
+            this.finColors[colorOffset] = this.finColor.r;
+            this.finColors[colorOffset + 1] = this.finColor.g;
+            this.finColors[colorOffset + 2] = this.finColor.b;
             this.finColorDirty = true;
           }
           finCount++;
@@ -297,6 +382,8 @@ export class ProjectileRenderer3D {
       this.markInstanceMatrixRange(this.finInstanced, 0, finCount - 1);
     }
     if (this.finColorDirty && this.finInstanced.instanceColor) {
+      this.finInstanced.instanceColor.clearUpdateRanges();
+      this.finInstanced.instanceColor.addUpdateRange(0, finCount * 3);
       this.finInstanced.instanceColor.needsUpdate = true;
       this.finColorDirty = false;
     }
@@ -536,7 +623,7 @@ export class ProjectileRenderer3D {
     this.curvedCone.normalAttr.needsUpdate = true;
   }
 
-  private composeProjectileFinMatrix(
+  private composeProjectileFinPose(
     x: number, y: number, z: number,
     rearOffset: number,
     finScale: number,
@@ -553,13 +640,12 @@ export class ProjectileRenderer3D {
       // so rolling around local Y spins the blades around that axis.
       this.finRollQuat.setFromAxisAngle(PROJ_CYL_AXIS, rollAngle);
       this.finQuat.copy(this.projQuat).multiply(this.finRollQuat);
-      this.projMatrix.compose(this.projPos, this.finQuat, this.projScale);
     } else {
-      this.projMatrix.compose(this.projPos, this.projQuat, this.projScale);
+      this.finQuat.copy(this.projQuat);
     }
   }
 
-  private composeProjectileTailMatrix(
+  private composeProjectileTailPose(
     entity: Entity,
     x: number, y: number, z: number,
     length: number,
@@ -589,7 +675,6 @@ export class ProjectileRenderer3D {
       y + this.projDir.z * length * 0.5,
     );
     this.projScale.set(radius, length, radius);
-    this.projMatrix.compose(this.projPos, this.projQuat, this.projScale);
   }
 
   private updateProjRadiusMeshes(
