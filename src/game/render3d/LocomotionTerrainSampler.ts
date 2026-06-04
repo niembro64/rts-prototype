@@ -1,8 +1,7 @@
 import { LAND_CELL_SIZE } from '../../config';
 import type { Entity, EntityId } from '../sim/types';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
-import { sampleBuildingSupportTopZ } from '../sim/buildingSupportSurface';
-import { sampleUnitSupportTopZ } from '../sim/unitSupportSurface';
+import { SupportSurfaceIndex } from '../sim/supportSurfaceIndex';
 import { SUPPORT_SURFACE_CONTACT_EPSILON } from '../sim/supportSurface';
 import {
   getUnitGroundPenetration,
@@ -33,19 +32,10 @@ export type LocomotionPartClamp = {
   renderedY: number;
 };
 
-const locomotionSupportBuildings: Entity[] = [];
-const locomotionSupportUnits: Entity[] = [];
+const locomotionSupportIndex = new SupportSurfaceIndex();
 
 export function refreshLocomotionSupportSurfaces(supportEntities: Iterable<Entity>): void {
-  locomotionSupportBuildings.length = 0;
-  locomotionSupportUnits.length = 0;
-  for (const entity of supportEntities) {
-    if (entity.building !== null) {
-      locomotionSupportBuildings.push(entity);
-    } else if (entity.unit !== null && entity.unit.supportSurface.kind !== 'none') {
-      locomotionSupportUnits.push(entity);
-    }
-  }
+  locomotionSupportIndex.rebuild(supportEntities);
 }
 
 function getVisualSupportY(
@@ -54,24 +44,7 @@ function getVisualSupportY(
   terrainY: number,
   ignoreEntityId: EntityId | null,
 ): number | null {
-  let bestTopY = Number.NEGATIVE_INFINITY;
-  for (let i = 0; i < locomotionSupportBuildings.length; i++) {
-    const entity = locomotionSupportBuildings[i];
-    const topY = sampleBuildingSupportTopZ(entity, x, z, terrainY);
-    if (topY === null) continue;
-
-    if (topY > bestTopY) bestTopY = topY;
-  }
-
-  for (let i = 0; i < locomotionSupportUnits.length; i++) {
-    const entity = locomotionSupportUnits[i];
-    const topY = sampleUnitSupportTopZ(entity, x, z, terrainY, { ignoreEntityId });
-    if (topY === null) continue;
-
-    if (topY > bestTopY) bestTopY = topY;
-  }
-
-  return bestTopY > Number.NEGATIVE_INFINITY ? bestTopY : null;
+  return locomotionSupportIndex.sampleSupportTopZ(x, z, terrainY, { ignoreEntityId });
 }
 
 /** Floor-clamp one body-local part (a wheel center, a tread sample, a

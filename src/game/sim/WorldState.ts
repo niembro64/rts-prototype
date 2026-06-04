@@ -51,21 +51,17 @@ import { buildShieldPanelCache } from './shieldPanelCache';
 import { createProjectileConfigFromTurret } from './projectileConfigs';
 import { ENTITY_CHANGED_HP } from '../../types/network';
 import { isConstructionPieceMaterialized } from './buildableHelpers';
-import {
-  createCollisionTopBuildingSupportSurface,
-  sampleBuildingSupportTopZ,
-} from './buildingSupportSurface';
-import {
-  cloneUnitSupportSurface,
-  sampleUnitSupportTopZ,
-} from './unitSupportSurface';
+import { createCollisionTopBuildingSupportSurface } from './buildingSupportSurface';
+import { cloneUnitSupportSurface } from './unitSupportSurface';
 import {
   createWorldSupportSurface,
-  writeBuildingSupportSurface,
   writeTerrainSupportSurface,
-  writeUnitSupportSurface,
   type WorldSupportSurface,
 } from './supportSurface';
+import {
+  SupportSurfaceIndex,
+  type SupportSurfaceIndexQueryOptions,
+} from './supportSurfaceIndex';
 
 const TERRAIN_NORMAL_CACHE_CELL_SIZE = 25;
 const EMPTY_PLAYER_SET: ReadonlySet<PlayerId> = new Set();
@@ -82,13 +78,7 @@ export type ScanPulse = {
   expiresAtTick: number;
 };
 type SurfaceNormal = { nx: number; ny: number; nz: number };
-type SupportSurfaceQueryOptions = {
-  bodyZ?: number;
-  groundOffset?: number;
-  includeBuildings?: boolean;
-  includeUnits?: boolean;
-  ignoreEntityId?: EntityId | null;
-};
+type SupportSurfaceQueryOptions = SupportSurfaceIndexQueryOptions;
 
 export type RemovedSnapshotEntity = {
   id: EntityId;
@@ -245,6 +235,7 @@ export class WorldState {
   private _selectedEntitiesBuf: Entity[] = [];
   private _selectedUnitsBuf: Entity[] = [];
   private _selectedFactoriesBuf: Entity[] = [];
+  private supportSurfaceIndex = new SupportSurfaceIndex();
 
   constructor(seed: number = 12345, mapWidth: number = 2000, mapHeight: number = 2000) {
     this.rng = new SeededRNG(seed);
@@ -275,44 +266,8 @@ export class WorldState {
       getTerrainVersion(),
     );
 
-    if (options.includeBuildings !== false) {
-      const buildings = this.getBuildings();
-      for (let i = 0; i < buildings.length; i++) {
-        const entity = buildings[i];
-        const topZ = sampleBuildingSupportTopZ(entity, x, y, terrainGroundZ, options);
-        if (topZ === null) continue;
-
-        if (topZ > out.groundZ) {
-          writeBuildingSupportSurface(out, topZ, entity.id, entity.id);
-        }
-      }
-    }
-
-    if (options.includeUnits !== false) {
-      const units = this.getUnits();
-      for (let i = 0; i < units.length; i++) {
-        const entity = units[i];
-        const topZ = sampleUnitSupportTopZ(entity, x, y, terrainGroundZ, options);
-        if (topZ === null) continue;
-
-        if (topZ > out.groundZ) {
-          const unit = entity.unit;
-          writeUnitSupportSurface(
-            out,
-            topZ,
-            entity.id,
-            entity.id,
-            unit !== null
-              ? {
-                  x: unit.velocityX,
-                  y: unit.velocityY,
-                  z: unit.velocityZ,
-                }
-              : undefined,
-          );
-        }
-      }
-    }
+    this.supportSurfaceIndex.rebuild(this.getUnitsAndBuildings());
+    this.supportSurfaceIndex.sampleSupportSurface(x, y, terrainGroundZ, options, out);
 
     return out;
   }
@@ -689,6 +644,11 @@ export class WorldState {
   getBuildings(): Entity[] {
     this.rebuildCachesIfNeeded();
     return this.cache.getBuildings();
+  }
+
+  getUnitsAndBuildings(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getUnitsAndBuildings();
   }
 
   // Get all projectiles (cached - DO NOT MODIFY returned array)

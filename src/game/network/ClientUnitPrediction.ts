@@ -35,8 +35,6 @@ import {
   isUnitGroundPenetrationInContact,
 } from '../sim/unitGroundPhysics';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
-import { sampleBuildingSupportTopZ } from '../sim/buildingSupportSurface';
-import { sampleUnitSupportTopZ } from '../sim/unitSupportSurface';
 import {
   CT_TURRET_STATE_ENGAGED,
   getSimWasm,
@@ -44,11 +42,10 @@ import {
 } from '../sim-wasm/init';
 import {
   createWorldSupportSurface,
-  writeBuildingSupportSurface,
   writeTerrainSupportSurface,
-  writeUnitSupportSurface,
   type WorldSupportSurface,
 } from '../sim/supportSurface';
+import { SupportSurfaceIndex } from '../sim/supportSurfaceIndex';
 import {
   readCombatTargetingTurretFsmInto,
   type CombatTargetingTurretFsmOut,
@@ -120,8 +117,7 @@ let groundNormalBatch = new Float64Array(0);
 let contactBatch = new Uint8Array(0);
 let supportIgnoreEntityIdBatch = new Int32Array(0);
 const targetBatchRefs: UnitPredictionTarget[] = [];
-const predictionSupportBuildings: Entity[] = [];
-const predictionSupportUnits: Entity[] = [];
+const predictionSupportIndex = new SupportSurfaceIndex();
 const predictionSupportSurface = createWorldSupportSurface();
 const predictionFlatNormal = { nx: 0, ny: 0, nz: 1 };
 let orientationBatch = new Float64Array(0);
@@ -152,15 +148,7 @@ function getPredictionGroundNormal(
 }
 
 function refreshPredictionSupportSurfaces(supportEntities: Iterable<Entity>): void {
-  predictionSupportBuildings.length = 0;
-  predictionSupportUnits.length = 0;
-  for (const entity of supportEntities) {
-    if (entity.building !== null) {
-      predictionSupportBuildings.push(entity);
-    } else if (entity.unit !== null && entity.unit.supportSurface.kind !== 'none') {
-      predictionSupportUnits.push(entity);
-    }
-  }
+  predictionSupportIndex.rebuild(supportEntities);
 }
 
 function samplePredictionSupportSurface(
@@ -181,42 +169,17 @@ function samplePredictionSupportSurface(
     isWaterAt(x, y, predictionMapWidth, predictionMapHeight),
     getTerrainVersion(),
   );
-
-  for (let i = 0; i < predictionSupportBuildings.length; i++) {
-    const entity = predictionSupportBuildings[i];
-    const topZ = sampleBuildingSupportTopZ(entity, x, y, terrainGroundZ, {
-      bodyZ: z,
-      groundOffset,
-    });
-    if (topZ === null) continue;
-
-    if (topZ > out.groundZ) {
-      writeBuildingSupportSurface(out, topZ, entity.id, entity.id);
-    }
-  }
-
-  for (let i = 0; i < predictionSupportUnits.length; i++) {
-    const entity = predictionSupportUnits[i];
-    const topZ = sampleUnitSupportTopZ(entity, x, y, terrainGroundZ, {
+  predictionSupportIndex.sampleSupportSurface(
+    x,
+    y,
+    terrainGroundZ,
+    {
       bodyZ: z,
       groundOffset,
       ignoreEntityId,
-    });
-    if (topZ === null) continue;
-
-    if (topZ > out.groundZ) {
-      const unit = entity.unit;
-      writeUnitSupportSurface(
-        out,
-        topZ,
-        entity.id,
-        entity.id,
-        unit !== null
-          ? { x: unit.velocityX, y: unit.velocityY, z: unit.velocityZ }
-          : undefined,
-      );
-    }
-  }
+    },
+    out,
+  );
 
   return out;
 }
@@ -688,6 +651,9 @@ export function applyClientUnitVisualPredictionBatch(options: {
   const { entities, targets, supportEntities, deltaMs, mapWidth, mapHeight } = options;
   const count = entities.length;
   if (count === 0) return;
+  const supportEntityList = Array.isArray(supportEntities)
+    ? supportEntities
+    : Array.from(supportEntities);
 
   const dt = deltaMs / 1000;
   const movPosBlend = getChannelBlend(getMovementPosEmaMode(), dt);
@@ -703,7 +669,7 @@ export function applyClientUnitVisualPredictionBatch(options: {
   const predictionMode = getPredictionMode();
   predictionMapWidth = mapWidth;
   predictionMapHeight = mapHeight;
-  refreshPredictionSupportSurfaces(supportEntities);
+  refreshPredictionSupportSurfaces(supportEntityList);
   ensurePredictionBatchCapacity(count);
   ensureOrientationBatchCapacity(count);
 
@@ -729,6 +695,7 @@ export function applyClientUnitVisualPredictionBatch(options: {
     writeEntityOrientationPredictionBatch(entityOrientationCount);
   }
 
+  refreshPredictionSupportSurfaces(supportEntityList);
   for (let i = 0; i < count; i++) {
     const entity = entities[i];
     applyClientUnitVisualDrift(

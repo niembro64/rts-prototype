@@ -35,35 +35,25 @@ through their locomotion-specific force/contact model.
 
 Relevant current inconsistencies
 --------------------------------
-1. Render-time locomotion support sampling scans visible building/unit
-   candidates directly. Replace this with the same indexed/proxy support
-   representation the sim uses before scaling unit and building counts.
-
-2. Water is represented in the support-surface shape, but ground avoidance and
+1. Water is represented in the support-surface shape, but ground avoidance and
    escape response still use ad hoc water branches. Fold water response into
    locomotion-specific support/material behavior.
 
 Plan
 ----
-1. Replace direct render-time support scans with an indexed/proxy
-   representation shared by buildings and units. LocomotionTerrainSampler
-   should still keep frontend-only contact bands and hysteresis for
-   legs/wheels/treads, but its floor height should match the same support
-   surface the sim considers valid.
-
-2. Treat water response as locomotion-specific support/material behavior.
+1. Treat water response as locomotion-specific support/material behavior.
    Water should be a support/material result with locomotion-specific response:
    ground units avoid or escape, hover/flying use clearance and effects, and
    future amphibious units can opt into water support. Avoid separate ad hoc
    water branches where possible.
 
-3. Add diagnostics before tuning.
+2. Add diagnostics before tuning.
    Add a temporary debug overlay/log mode that shows sampled support height,
    support kind/id, body ground point, penetration, velocity, and contact state
    for selected units. This should make fabricator edge transitions and unit
    stacking behavior observable.
 
-4. Add regression tests.
+3. Add regression tests.
    Cover at least: unit spawn on terrain, unit spawn on a building/fabricator
    support, factory shell settle and exit, building top traversal, unit support
    traversal where authored, water boundary behavior, client prediction matching
