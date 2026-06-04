@@ -29,6 +29,7 @@ import {
   getUnitGroundFrictionDamp,
   isUnitGroundPenetrationInContact,
 } from '../sim/unitGroundPhysics';
+import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 import {
   CT_TURRET_STATE_ENGAGED,
   getSimWasm,
@@ -45,6 +46,7 @@ const PREDICTION_VEL_EPSILON_SQ = 0.01 * 0.01;
 const PREDICTION_ROT_EPSILON = 0.001;
 const PREDICTION_TURRET_EPSILON = 0.001;
 const PREDICTION_GROUND_REST_PENETRATION_EPSILON = 0.1;
+const TERRAIN_VERTICAL_SLAVE_EPSILON = 2;
 const TURRET_PITCH_MIN = -Math.PI / 2;
 const TURRET_PITCH_MAX = Math.PI / 2;
 const MOTION_STRIDE = 6;
@@ -128,6 +130,29 @@ function getPredictionGroundNormal(
     predictionMapHeight,
     LAND_CELL_SIZE,
   );
+}
+
+// Ground units resting on terrain sit at terrain + bodyCenterHeight. Deriving
+// that Z locally removes between-snapshot vertical float and correction bounce.
+// Elevated server targets are different: units can stand on buildings, factory
+// platforms, or other units, so when the authoritative target is clearly above
+// terrain we leave Z to the snapshot/drift path.
+function slaveGroundUnitVerticalToTerrain(
+  entity: Entity,
+  target: UnitPredictionTarget | undefined,
+): void {
+  const unit = entity.unit;
+  if (unit === null) return;
+  const type = unit.locomotion?.type;
+  if (type === 'hover' || type === 'flying') return;
+  const transform = entity.transform;
+  const terrainRestZ = getPredictionGroundZ(transform.x, transform.y)
+    + getUnitBodyCenterHeight(unit);
+  const authoritativeZ = target !== undefined && Number.isFinite(target.z)
+    ? target.z
+    : transform.z;
+  if (authoritativeZ > terrainRestZ + TERRAIN_VERTICAL_SLAVE_EPSILON) return;
+  transform.z = terrainRestZ;
 }
 
 function ensurePredictionBatchCapacity(count: number): void {
@@ -598,8 +623,9 @@ export function applyClientUnitVisualPredictionBatch(options: {
   }
 
   for (let i = 0; i < count; i++) {
+    const entity = entities[i];
     applyClientUnitVisualDrift(
-      entities[i],
+      entity,
       targets[i],
       movPosBlend,
       movVelBlend,
@@ -607,6 +633,10 @@ export function applyClientUnitVisualPredictionBatch(options: {
       rotVelBlend,
       normalAlpha,
     );
+    // Terrain-level ground units clamp to the local terrain rest height; elevated
+    // server targets keep their snapshot/drift Z. Runs after drift so the check
+    // sees the final predicted (x, y) footprint.
+    slaveGroundUnitVerticalToTerrain(entity, targets[i]);
   }
 }
 

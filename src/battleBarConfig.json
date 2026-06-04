@@ -24,7 +24,7 @@
     "options": [0, 100, 200, 400, 800]
   },
   "terrainDetail": {
-    "options": [0, 5, 10, 15, 20]
+    "options": [0, 1, 2, 4, 8, 16]
   },
   "converterTax": {
     "options": [0.0, 0.1, 0.5]
@@ -78,10 +78,7 @@
     ["rts-real-grid", "real-battle-grid"],
     ["rts-mirrors-enabled", "demo-battle-turret-shield-panels-enabled"],
     ["rts-shields-enabled", "demo-battle-turret-shield-spheres-enabled"],
-    [
-      "rts-shields-block-targeting",
-      "demo-battle-shields-obstruct-sight"
-    ],
+    ["rts-shields-block-targeting", "demo-battle-shields-obstruct-sight"],
     [
       "demo-battle-shields-block-targeting",
       "demo-battle-shields-obstruct-sight"

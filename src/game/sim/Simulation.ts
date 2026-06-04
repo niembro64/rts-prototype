@@ -1112,8 +1112,8 @@ export class Simulation {
       // Construction shells do not execute player actions or acquire
       // combat priority while incomplete, but their physics body remains
       // live. UnitForceSystem still applies contact locomotion/friction
-      // so shells can fall, settle, and be carried by construction
-      // platforms before activation.
+      // so shells can fall, collide, and settle like ordinary units
+      // before activation.
       if (isBuildBlockingActivation(entity.buildable)) {
         unit.thrustDirX = 0;
         unit.thrustDirY = 0;

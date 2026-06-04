@@ -13,9 +13,8 @@
 //            only pushes back when the unit's authored locomotion
 //            ground point penetrates the terrain surface.
 //   cuboid — buildings. Axis-aligned 3D box, always static for now.
-//            Visual/kinematic platform rotation is handled outside this
-//            broadphase; units push off the cuboid's surface instead of
-//            clipping through.
+//            Units push off the cuboid's surface instead of clipping
+//            through.
 //
 // Collision dimension by pair type:
 //   unit ↔ ground    — soft spring along the terrain normal, measured
