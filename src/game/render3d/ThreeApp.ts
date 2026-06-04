@@ -9,6 +9,10 @@ import { OrbitCamera } from './OrbitCamera';
 import { GpuTimerQuery } from '../scenes/helpers/GpuTimerQuery';
 import { installSunLighting } from './SunLighting';
 import { configureSpriteTexture } from './threeUtils';
+import {
+  acquireMainRendererContext,
+  type RendererContextToken,
+} from './RendererContextBudget';
 import { GAME_DIAGNOSTICS } from '../diagnostics';
 import {
   CAMERA_PAN_MULTIPLIER,
@@ -100,6 +104,7 @@ export class ThreeApp {
   private _lastCssHeight = 0;
   private _environmentTexture: THREE.Texture | null = null;
   private _skyTexture: THREE.Texture | null = null;
+  private _rendererContextToken: RendererContextToken | null = null;
   private _renderEnabled = true;
   private _drawSuspended = false;
   private _destroyed = false;
@@ -132,6 +137,7 @@ export class ThreeApp {
       precision: 'highp',
       powerPreference: 'high-performance',
     });
+    this._rendererContextToken = acquireMainRendererContext('ThreeApp', this);
     // Three.js checks program/shader info logs on first use by default.
     // Driver log reads are synchronous and can dwarf the actual render frame;
     // keep them opt-in for shader debugging.
@@ -377,6 +383,8 @@ export class ThreeApp {
     this.renderer.renderLists.dispose();
     this.renderer.forceContextLoss();
     this.renderer.dispose();
+    this._rendererContextToken?.release();
+    this._rendererContextToken = null;
     if (this.renderer.domElement.parentNode) {
       this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
     }

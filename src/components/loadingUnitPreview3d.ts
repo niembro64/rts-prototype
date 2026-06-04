@@ -7,6 +7,9 @@ import {
 import { BUILDING_BLUEPRINT_IDS, type BuildingBlueprintId } from '@/types/blueprintIds';
 import { isTowerBuildingBlueprintId } from '@/types/buildingTypes';
 import type { LoadingEntityBlueprintId, LoadingPreviewKind } from './loadingUnitPreviewScene';
+import {
+  acquireAuxiliaryRendererContext,
+} from '@/game/render3d/RendererContextBudget';
 
 export type { LoadingEntityBlueprintId, LoadingPreviewKind };
 
@@ -34,6 +37,12 @@ type PreviewSize = {
 type PreviewDriver = {
   resize: (size: PreviewSize) => void;
   destroy: () => void;
+};
+
+type LoadingPreviewSceneRuntime = {
+  resize: (size: PreviewSize) => void;
+  render: (now: number) => void;
+  dispose: () => void;
 };
 
 type DriverHooks = {
@@ -157,10 +166,19 @@ function createWorkerDriver(
   ) {
     return null;
   }
+  const acquiredContextToken = acquireAuxiliaryRendererContext('loading-preview-worker', canvas);
+  if (acquiredContextToken === null) return null;
+  const contextToken = acquiredContextToken;
 
-  const worker = new Worker(new URL('./loadingUnitPreviewWorker.ts', import.meta.url), {
-    type: 'module',
-  });
+  let worker: Worker;
+  try {
+    worker = new Worker(new URL('./loadingUnitPreviewWorker.ts', import.meta.url), {
+      type: 'module',
+    });
+  } catch {
+    contextToken.release();
+    return null;
+  }
   let destroyed = false;
   let terminateFallback: ReturnType<typeof setTimeout> | null = null;
 
@@ -171,6 +189,7 @@ function createWorkerDriver(
     }
     worker.removeEventListener('message', handleWorkerMessage);
     worker.terminate();
+    contextToken.release();
   }
 
   function handleWorkerMessage(event: MessageEvent<WorkerPreviewResponse>): void {
@@ -179,7 +198,13 @@ function createWorkerDriver(
   }
 
   worker.addEventListener('message', handleWorkerMessage);
-  const offscreen = canvas.transferControlToOffscreen();
+  let offscreen: OffscreenCanvas;
+  try {
+    offscreen = canvas.transferControlToOffscreen();
+  } catch {
+    finishTerminate();
+    return null;
+  }
   const initMessage: WorkerPreviewMessage = {
     type: 'init',
     canvas: offscreen,
@@ -218,8 +243,18 @@ async function createMainThreadFallbackDriver(
   size: PreviewSize,
   hooks: DriverHooks,
 ): Promise<PreviewDriver | null> {
+  const contextToken = acquireAuxiliaryRendererContext('loading-preview-fallback', canvas);
+  if (contextToken === null) {
+    return createDisabledPreviewDriver(canvas, hooks);
+  }
   const { LoadingUnitPreviewScene } = await import('./loadingUnitPreviewScene');
-  const scene = new LoadingUnitPreviewScene({ canvas, kind, blueprintId, fullBleed });
+  let scene: LoadingPreviewSceneRuntime;
+  try {
+    scene = new LoadingUnitPreviewScene({ canvas, kind, blueprintId, fullBleed });
+  } catch (error) {
+    contextToken.release();
+    throw error;
+  }
   let destroyed = false;
   let rafId = 0;
   let readyFired = false;
@@ -245,6 +280,34 @@ async function createMainThreadFallbackDriver(
       destroyed = true;
       cancelAnimationFrame(rafId);
       scene.dispose();
+      contextToken.release();
+    },
+  };
+}
+
+function createDisabledPreviewDriver(
+  canvas: HTMLCanvasElement,
+  hooks: DriverHooks,
+): PreviewDriver {
+  let destroyed = false;
+  const clear = (): void => {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+  queueMicrotask(() => {
+    if (!destroyed) hooks.onReady();
+  });
+  clear();
+  return {
+    resize: (size) => {
+      canvas.width = Math.max(1, Math.round(size.width * size.dpr));
+      canvas.height = Math.max(1, Math.round(size.height * size.dpr));
+      clear();
+    },
+    destroy: () => {
+      destroyed = true;
+      clear();
     },
   };
 }

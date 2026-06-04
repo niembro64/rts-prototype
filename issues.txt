@@ -42,22 +42,3 @@ projectiles, terrain/fog/shield overlays, HUD/nameplate packets, and support
 surface debug visualization. Replacement paths should use owned typed buffers,
 explicit update ranges, and delete the old Three.js path once the new path is
 active.
-
-2. Auxiliary WebGL renderers are outside the main renderer singleton budget.
-
-Evidence:
-- src/game/lifecycle/sessionSingleton.ts limits active main GameInstance and
-  renderer ownership.
-- Loading previews, commander/avatar previews, and the world-direction HUD create
-  their own WebGLRenderer instances outside that singleton.
-
-Problem:
-These contexts appear to have teardown paths, so this is not currently a proven
-leak. It is still an unbudgeted GPU-memory/context-count risk on low-end
-devices, especially during loading or UI-heavy screens where preview renderers
-and the main renderer may overlap.
-
-Required fix:
-Add renderer/context-count telemetry and an explicit auxiliary-renderer budget.
-Prefer shared rendering, canvas-2D, or a disabled/low-memory fallback for UI
-previews and HUDs when the main game renderer is active.

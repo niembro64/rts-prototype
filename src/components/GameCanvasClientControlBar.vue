@@ -185,7 +185,7 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel :title="`Client GPU - source: ${model.gpuSourceLabel}. Raw renderMs avg/hi ${fmt4(model.renderMsAvg)} / ${fmt4(model.renderMsHi)} ms. Timer-query (when supported) shows the actual GPU-side execution time in milliseconds; otherwise shows renderer.render() wall-clock which is mostly CPU draw-call submission.`">GPU:</BarLabel>
+        <BarLabel :title="`Client GPU - source: ${model.gpuSourceLabel}. Raw renderMs avg/hi ${fmt4(model.renderMsAvg)} / ${fmt4(model.renderMsHi)} ms. Timer-query (when supported) shows the actual GPU-side execution time in milliseconds; otherwise shows renderer.render() wall-clock which is mostly CPU draw-call submission. WebGL contexts: main ${model.rendererContextMainCount}, auxiliary ${model.rendererContextAuxiliaryCount}/${model.rendererContextAuxiliaryBudget}, denied auxiliary ${model.rendererContextDeniedAuxiliaryCount}.`">GPU:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">

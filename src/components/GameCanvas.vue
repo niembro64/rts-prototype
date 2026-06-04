@@ -461,6 +461,10 @@ const {
   fullSnapWorstRate,
   gpuSourceLabel,
   gpuTimerSupported,
+  rendererContextAuxiliaryBudget,
+  rendererContextAuxiliaryCount,
+  rendererContextDeniedAuxiliaryCount,
+  rendererContextMainCount,
   logicMsAvg,
   logicMsHi,
   longtaskMsPerSec,
@@ -889,6 +893,10 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   displayGpuMs: displayGpuMs.value,
   gpuSourceLabel: gpuSourceLabel.value,
   gpuTimerSupported: gpuTimerSupported.value,
+  rendererContextMainCount: rendererContextMainCount.value,
+  rendererContextAuxiliaryCount: rendererContextAuxiliaryCount.value,
+  rendererContextAuxiliaryBudget: rendererContextAuxiliaryBudget.value,
+  rendererContextDeniedAuxiliaryCount: rendererContextDeniedAuxiliaryCount.value,
   frameMsAvg: frameMsAvg.value,
   frameMsHi: frameMsHi.value,
   longtaskSupported: longtaskSupported.value,
@@ -1006,6 +1014,10 @@ watchEffect(() => {
   m.displayGpuMs = displayGpuMs.value;
   m.gpuSourceLabel = gpuSourceLabel.value;
   m.gpuTimerSupported = gpuTimerSupported.value;
+  m.rendererContextMainCount = rendererContextMainCount.value;
+  m.rendererContextAuxiliaryCount = rendererContextAuxiliaryCount.value;
+  m.rendererContextAuxiliaryBudget = rendererContextAuxiliaryBudget.value;
+  m.rendererContextDeniedAuxiliaryCount = rendererContextDeniedAuxiliaryCount.value;
   m.frameMsAvg = frameMsAvg.value;
   m.frameMsHi = frameMsHi.value;
   m.longtaskSupported = longtaskSupported.value;

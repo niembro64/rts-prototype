@@ -1,5 +1,6 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import type { GameScene } from '../game/createGame';
+import { getRendererContextTelemetry } from '../game/render3d/RendererContextBudget';
 
 type GameCanvasTelemetryOptions = {
   getScene: () => GameScene | null;
@@ -25,6 +26,10 @@ export function useGameCanvasTelemetry({
   const logicMsHi = ref(0);
   const gpuTimerMs = ref(0);
   const gpuTimerSupported = ref(false);
+  const rendererContextMainCount = ref(0);
+  const rendererContextAuxiliaryCount = ref(0);
+  const rendererContextAuxiliaryBudget = ref(0);
+  const rendererContextDeniedAuxiliaryCount = ref(0);
   const longtaskMsPerSec = ref(0);
   const longtaskSupported = ref(false);
   const renderTpsAvg = ref(0);
@@ -48,6 +53,16 @@ export function useGameCanvasTelemetry({
   );
 
   function update(): void {
+    const rendererContexts = getRendererContextTelemetry();
+    setNumberRefIfChanged(rendererContextMainCount, rendererContexts.activeMainCount, 0);
+    setNumberRefIfChanged(rendererContextAuxiliaryCount, rendererContexts.activeAuxiliaryCount, 0);
+    setNumberRefIfChanged(rendererContextAuxiliaryBudget, rendererContexts.auxiliaryBudget, 0);
+    setNumberRefIfChanged(
+      rendererContextDeniedAuxiliaryCount,
+      rendererContexts.deniedAuxiliaryCount,
+      0,
+    );
+
     const scene = getScene();
     if (scene) {
       // Display camera altitude: distance from the y=0 ground plane along its normal.
@@ -108,6 +123,10 @@ export function useGameCanvasTelemetry({
     fullSnapWorstRate,
     gpuSourceLabel,
     gpuTimerSupported,
+    rendererContextAuxiliaryBudget,
+    rendererContextAuxiliaryCount,
+    rendererContextDeniedAuxiliaryCount,
+    rendererContextMainCount,
     logicMsAvg,
     logicMsHi,
     longtaskMsPerSec,

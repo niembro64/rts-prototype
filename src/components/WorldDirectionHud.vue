@@ -3,6 +3,10 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import type { MinimapData } from '@/types/ui';
+import {
+  acquireAuxiliaryRendererContext,
+  type RendererContextToken,
+} from '@/game/render3d/RendererContextBudget';
 
 const props = withDefaults(defineProps<{
   data: Pick<MinimapData, 'cameraYaw' | 'wind'>;
@@ -30,6 +34,7 @@ type HudView = {
   width: number;
   height: number;
   compact: boolean;
+  contextToken: RendererContextToken;
 };
 
 let compassView: HudView | null = null;
@@ -45,6 +50,7 @@ let lastWindYaw = Number.NaN;
 let lastWindScale = Number.NaN;
 let lastWindVisible = false;
 let needsRender = true;
+let lowMemoryHud = false;
 
 const RENDER_INTERVAL_MS = 1000 / 30;
 const ANGLE_EPS = 0.0005;
@@ -187,7 +193,11 @@ function frameHudCamera(camera: THREE.PerspectiveCamera): void {
   camera.updateProjectionMatrix();
 }
 
-function createHudView(canvas: HTMLCanvasElement, root: THREE.Group): HudView {
+function createHudView(
+  canvas: HTMLCanvasElement,
+  root: THREE.Group,
+  contextToken: RendererContextToken,
+): HudView {
   const renderer = new THREE.WebGLRenderer({
     canvas,
     antialias: true,
@@ -216,6 +226,7 @@ function createHudView(canvas: HTMLCanvasElement, root: THREE.Group): HudView {
     width: 0,
     height: 0,
     compact: props.compact,
+    contextToken,
   };
 }
 
@@ -223,6 +234,15 @@ function buildScene(): void {
   const compassCanvas = compassCanvasRef.value;
   const windCanvas = windCanvasRef.value;
   if (!compassCanvas || !windCanvas) return;
+
+  const compassToken = acquireAuxiliaryRendererContext('world-direction-hud:compass', compassCanvas);
+  const windToken = acquireAuxiliaryRendererContext('world-direction-hud:wind', windCanvas);
+  if (compassToken === null || windToken === null) {
+    compassToken?.release();
+    windToken?.release();
+    enableLowMemoryHud(compassCanvas, windCanvas);
+    return;
+  }
 
   const compassMat = makeHudMaterial(HUD_COLORS.materials.compass);
   const compassAccent = makeHudMaterial(HUD_COLORS.materials.compassAccent);
@@ -235,9 +255,39 @@ function buildScene(): void {
   windArrow = makeArrow(windMat, windAccent);
   windArrow.visible = false;
 
-  compassView = createHudView(compassCanvas, compassRig);
-  windView = createHudView(windCanvas, windArrow);
+  try {
+    compassView = createHudView(compassCanvas, compassRig, compassToken);
+    windView = createHudView(windCanvas, windArrow, windToken);
+  } catch (error) {
+    if (compassView) {
+      disposeHudView(compassView);
+      compassView = null;
+    } else {
+      disposeObjectResources(compassRig);
+      compassToken.release();
+    }
+    if (windView) {
+      disposeHudView(windView);
+      windView = null;
+    } else {
+      disposeObjectResources(windArrow);
+      windToken.release();
+    }
+    compassRig = null;
+    windArrow = null;
+    enableLowMemoryHud(compassCanvas, windCanvas);
+    console.warn('WorldDirectionHud: falling back after WebGL HUD init failed.', error);
+    return;
+  }
 
+  resizeObserver = new ResizeObserver(resize);
+  resizeObserver.observe(compassCanvas);
+  resizeObserver.observe(windCanvas);
+  resize();
+}
+
+function enableLowMemoryHud(compassCanvas: HTMLCanvasElement, windCanvas: HTMLCanvasElement): void {
+  lowMemoryHud = true;
   resizeObserver = new ResizeObserver(resize);
   resizeObserver.observe(compassCanvas);
   resizeObserver.observe(windCanvas);
@@ -269,14 +319,37 @@ function resizeHudView(view: HudView): boolean {
 }
 
 function resize(): void {
+  if (lowMemoryHud) {
+    resizeLowMemoryCanvas(compassCanvasRef.value);
+    resizeLowMemoryCanvas(windCanvasRef.value);
+    requestHudRender();
+    return;
+  }
   let resized = false;
   if (compassView) resized = resizeHudView(compassView) || resized;
   if (windView) resized = resizeHudView(windView) || resized;
   if (resized) requestHudRender();
 }
 
+function resizeLowMemoryCanvas(canvas: HTMLCanvasElement | null): void {
+  if (!canvas) return;
+  const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, props.compact ? 1.5 : 2));
+  const width = Math.max(1, Math.round(canvas.clientWidth));
+  const height = Math.max(1, Math.round(canvas.clientHeight));
+  canvas.width = Math.max(1, Math.round(width * dpr));
+  canvas.height = Math.max(1, Math.round(height * dpr));
+  const ctx = canvas.getContext('2d');
+  ctx?.clearRect(0, 0, canvas.width, canvas.height);
+}
+
 function renderHud(now: number): void {
   rafId = 0;
+  if (lowMemoryHud) {
+    resizeLowMemoryCanvas(compassCanvasRef.value);
+    resizeLowMemoryCanvas(windCanvasRef.value);
+    needsRender = false;
+    return;
+  }
   if (!compassView || !windView || !compassRig || !windArrow) return;
   if (typeof document !== 'undefined' && document.hidden) {
     needsRender = true;
@@ -345,7 +418,8 @@ function handleVisibilityChange(): void {
   if (typeof document !== 'undefined' && !document.hidden) requestHudRender();
 }
 
-function disposeSceneResources(root: THREE.Scene): void {
+function disposeObjectResources(root: THREE.Object3D | null): void {
+  if (root === null) return;
   const disposedGeometries = new Set<THREE.BufferGeometry>();
   const disposedMaterials = new Set<THREE.Material>();
   root.traverse((obj) => {
@@ -368,10 +442,11 @@ function disposeSceneResources(root: THREE.Scene): void {
 }
 
 function disposeHudView(view: HudView): void {
-  disposeSceneResources(view.scene);
+  disposeObjectResources(view.scene);
   view.renderer.renderLists.dispose();
   view.renderer.forceContextLoss();
   view.renderer.dispose();
+  view.contextToken.release();
 }
 
 onMounted(() => {
@@ -392,6 +467,7 @@ onUnmounted(() => {
   throttleTimer = null;
   resizeObserver?.disconnect();
   resizeObserver = null;
+  lowMemoryHud = false;
   if (compassView) {
     disposeHudView(compassView);
   }
