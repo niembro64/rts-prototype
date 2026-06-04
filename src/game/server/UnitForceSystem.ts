@@ -3,10 +3,6 @@
 // per-unit force decisions and writes BodyPool acceleration directly.
 
 import {
-  getTerrainVersion,
-  isWaterAt,
-} from '../sim/Terrain';
-import {
   LOCOMOTION_FORCE_SCALE,
 } from '../sim/locomotion';
 import {
@@ -20,10 +16,7 @@ import type { Simulation } from '../sim/Simulation';
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId } from '../sim/types';
 import type { PhysicsEngine3D, SupportSurfaceContact } from './PhysicsEngine3D';
-import {
-  createWorldSupportSurface,
-  writeTerrainSupportSurface,
-} from '../sim/supportSurface';
+import { createWorldSupportSurface } from '../sim/supportSurface';
 import { setUnitMovementAcceleration } from '../sim/unitMovementAcceleration';
 import { isBuildInProgress } from '../sim/buildableHelpers';
 import { getSimWasm, UNIT_FORCE_BATCH_STRIDE } from '../sim-wasm/init';
@@ -107,6 +100,7 @@ let _forceOutFlags: Uint32Array = new Uint32Array(0);
 let _forceEntities: (Entity | undefined)[] = [];
 const _forceTerrainSurface = createWorldSupportSurface();
 const _forceSupportSurface = createWorldSupportSurface();
+const _forceProbeSupportSurface = createWorldSupportSurface();
 const FLAT_SUPPORT_NORMAL = { nx: 0, ny: 0, nz: 1 };
 
 function ensureForceBatchCapacity(count: number): void {
@@ -135,7 +129,6 @@ export class UnitForceSystem {
   private readonly physicsCandidateUnitIdsBuf: EntityId[] = [];
   private readonly physicsActiveUnitIds = new Set<EntityId>();
   private waterDryMaskCache = new Map<number, number>();
-  private waterDryMaskCacheTerrainVersion = -1;
 
   constructor(world: WorldState, simulation: Simulation, physics: PhysicsEngine3D) {
     this.world = world;
@@ -151,12 +144,13 @@ export class UnitForceSystem {
     sim.pool.refreshViews();
 
     const forceAccumulator = this.simulation.getForceAccumulator();
-    const mw = this.world.mapWidth;
-    const mh = this.world.mapHeight;
 
     this.collectPhysicsForceUnitIds();
     const activeIds = this.physicsForceUnitIdsBuf;
     if (activeIds.length === 0) return;
+    this.syncActiveBodyTransforms(activeIds);
+    this.world.refreshSupportSurfaceIndex();
+    this.waterDryMaskCache.clear();
 
     ensureForceBatchCapacity(activeIds.length);
 
@@ -186,13 +180,12 @@ export class UnitForceSystem {
       const terrainPenetration = terrainGroundZ - (body.z - body.groundOffset);
       const terrainContact =
         terrainPenetration >= -UNIT_GROUND_CONTACT_EPSILON;
-      const terrainInWater = isWaterAt(body.x, body.y, mw, mh);
-      writeTerrainSupportSurface(
-        _forceTerrainSurface,
+      this.world.writeTerrainSupportSurfaceAt(
+        body.x,
+        body.y,
         terrainGroundZ,
         terrainContact ? this.world.getCachedSurfaceNormal(body.x, body.y) : FLAT_SUPPORT_NORMAL,
-        terrainInWater,
-        getTerrainVersion(),
+        _forceTerrainSurface,
       );
       const supportSurface = this.physics.sampleSupportSurface(
         body,
@@ -310,22 +303,16 @@ export class UnitForceSystem {
             body.x,
             body.y,
             radius * WATER_ESCAPE_PROBE_MULTS[0],
-            mw,
-            mh,
           );
           _forceRows[base + UF_ROW_WATER_ESCAPE_MASK_1] = this.waterDryMask(
             body.x,
             body.y,
             radius * WATER_ESCAPE_PROBE_MULTS[1],
-            mw,
-            mh,
           );
           _forceRows[base + UF_ROW_WATER_ESCAPE_MASK_2] = this.waterDryMask(
             body.x,
             body.y,
             radius * WATER_ESCAPE_PROBE_MULTS[2],
-            mw,
-            mh,
           );
         } else if (supportSurfaceContact) {
           // The top of another physics body is a flat support plane for
@@ -338,14 +325,18 @@ export class UnitForceSystem {
             const probe = radius + 5;
             const aheadX = body.x + useDirX * probe;
             const aheadY = body.y + useDirY * probe;
-            if (isWaterAt(aheadX, aheadY, mw, mh)) {
+            const aheadSurface = this.world.sampleSupportSurfaceFromIndex(
+              aheadX,
+              aheadY,
+              {},
+              _forceProbeSupportSurface,
+            );
+            if (aheadSurface.materialKind === 'water') {
               flags |= UF_FLAG_AHEAD_IN_WATER;
               _forceRows[base + UF_ROW_WATER_AHEAD_MASK] = this.waterDryMask(
                 aheadX,
                 aheadY,
                 radius,
-                mw,
-                mh,
               );
             }
           }
@@ -502,6 +493,17 @@ export class UnitForceSystem {
     }
   }
 
+  private syncActiveBodyTransforms(activeIds: EntityId[]): void {
+    for (let i = 0; i < activeIds.length; i++) {
+      const entity = this.world.getEntity(activeIds[i]);
+      if (entity === undefined || entity.body === null) continue;
+      const body = entity.body.physicsBody;
+      entity.transform.x = body.x;
+      entity.transform.y = body.y;
+      entity.transform.z = body.z;
+    }
+  }
+
   private waterOutCacheKey(x: number, y: number, probeR: number): number {
     const cx = Math.floor(x / WATER_OUT_CACHE_CELL_SIZE) + 32768;
     const cy = Math.floor(y / WATER_OUT_CACHE_CELL_SIZE) + 32768;
@@ -513,16 +515,9 @@ export class UnitForceSystem {
     x: number,
     y: number,
     probeR: number,
-    mapWidth: number,
-    mapHeight: number,
   ): number {
-    const tv = getTerrainVersion();
-    if (
-      tv !== this.waterDryMaskCacheTerrainVersion ||
-      this.waterDryMaskCache.size >= WATER_OUT_CACHE_MAX_ENTRIES
-    ) {
+    if (this.waterDryMaskCache.size >= WATER_OUT_CACHE_MAX_ENTRIES) {
       this.waterDryMaskCache.clear();
-      this.waterDryMaskCacheTerrainVersion = tv;
     }
     const key = this.waterOutCacheKey(x, y, probeR);
     const cached = this.waterDryMaskCache.get(key);
@@ -530,14 +525,13 @@ export class UnitForceSystem {
 
     let mask = 0;
     for (let i = 0; i < WATER_PROBE_DX.length; i++) {
-      if (
-        !isWaterAt(
-          x + WATER_PROBE_DX[i] * probeR,
-          y + WATER_PROBE_DY[i] * probeR,
-          mapWidth,
-          mapHeight,
-        )
-      ) {
+      const surface = this.world.sampleSupportSurfaceFromIndex(
+        x + WATER_PROBE_DX[i] * probeR,
+        y + WATER_PROBE_DY[i] * probeR,
+        {},
+        _forceProbeSupportSurface,
+      );
+      if (surface.materialKind !== 'water') {
         mask |= 1 << i;
       }
     }

@@ -250,23 +250,51 @@ export class WorldState {
     return getSurfaceHeight(x, y, this.mapWidth, this.mapHeight, LAND_CELL_SIZE);
   }
 
+  writeTerrainSupportSurfaceAt(
+    x: number,
+    y: number,
+    terrainGroundZ: number,
+    normal: SurfaceNormal,
+    out: WorldSupportSurface = createWorldSupportSurface(),
+  ): WorldSupportSurface {
+    return writeTerrainSupportSurface(
+      out,
+      terrainGroundZ,
+      normal,
+      isWaterAt(x, y, this.mapWidth, this.mapHeight),
+      getTerrainVersion(),
+    );
+  }
+
+  refreshSupportSurfaceIndex(): void {
+    this.supportSurfaceIndex.rebuild(this.getUnitsAndBuildings());
+  }
+
   sampleSupportSurface(
     x: number,
     y: number,
     options: SupportSurfaceQueryOptions = {},
     out: WorldSupportSurface = createWorldSupportSurface(),
   ): WorldSupportSurface {
+    this.refreshSupportSurfaceIndex();
+    return this.sampleSupportSurfaceFromIndex(x, y, options, out);
+  }
+
+  sampleSupportSurfaceFromIndex(
+    x: number,
+    y: number,
+    options: SupportSurfaceQueryOptions = {},
+    out: WorldSupportSurface = createWorldSupportSurface(),
+  ): WorldSupportSurface {
     const terrainGroundZ = this.getGroundZ(x, y);
-    const inWater = isWaterAt(x, y, this.mapWidth, this.mapHeight);
-    writeTerrainSupportSurface(
-      out,
+    this.writeTerrainSupportSurfaceAt(
+      x,
+      y,
       terrainGroundZ,
       this.getCachedSurfaceNormal(x, y),
-      inWater,
-      getTerrainVersion(),
+      out,
     );
 
-    this.supportSurfaceIndex.rebuild(this.getUnitsAndBuildings());
     this.supportSurfaceIndex.sampleSupportSurface(x, y, terrainGroundZ, options, out);
 
     return out;
