@@ -406,7 +406,8 @@ export class PhysicsEngine3D {
 
   // Ignore a specific static body for a specific dynamic body. Same
   // purpose as the 2D engine: a newly spawned unit shouldn't immediately
-  // collide with its own factory as it exits.
+  // collide with a building it starts inside. The pair is temporary and
+  // clears once the sphere exits the ignored cuboid's expanded bounds.
   private ignoreStatic: Map<Body3D, Body3D> = new Map();
   // Dynamic slot -> static slot for the cuboid currently acting as a
   // terrain-like top support. That cuboid is skipped by the sphere-cuboid
@@ -718,6 +719,33 @@ export class PhysicsEngine3D {
     }
   }
 
+  private clearExitedStaticIgnores(): void {
+    if (this.ignoreStatic.size === 0) return;
+
+    for (const [dynamicBody, staticBody] of this.ignoreStatic) {
+      if (this.hasExitedIgnoredStatic(dynamicBody, staticBody)) {
+        this.ignoreStatic.delete(dynamicBody);
+      }
+    }
+  }
+
+  private clearExitedStaticIgnoreForBody(dynamicBody: Body3D): void {
+    const staticBody = this.ignoreStatic.get(dynamicBody);
+    if (staticBody === undefined) return;
+    if (this.hasExitedIgnoredStatic(dynamicBody, staticBody)) {
+      this.ignoreStatic.delete(dynamicBody);
+    }
+  }
+
+  private hasExitedIgnoredStatic(dynamicBody: Body3D, staticBody: Body3D): boolean {
+    if (dynamicBody.shape !== 'sphere' || staticBody.shape !== 'cuboid') return true;
+
+    const clearance = dynamicBody.radius + SUPPORT_SURFACE_FOOTPRINT_EPSILON;
+    return Math.abs(dynamicBody.x - staticBody.x) > staticBody.halfX + clearance
+      || Math.abs(dynamicBody.y - staticBody.y) > staticBody.halfY + clearance
+      || Math.abs(dynamicBody.z - staticBody.z) > staticBody.halfZ + clearance;
+  }
+
   recordWasmForceWake(body: Body3D): void {
     this.wakeBody(body);
   }
@@ -931,6 +959,7 @@ export class PhysicsEngine3D {
   ): StaticSupportSurfaceContact | null {
     if (body.isStatic || body.shape !== 'sphere') return null;
 
+    this.clearExitedStaticIgnoreForBody(body);
     const ignoredStatic = this.ignoreStatic.get(body);
     const groundPointZ = body.z - body.groundOffset;
     const sphereBottomZ = body.z - body.radius;
@@ -1109,6 +1138,7 @@ export class PhysicsEngine3D {
     const sim = getSimWasm()!;
     const maxCount = stepSlots.length;
     if (maxCount === 0) return;
+    this.clearExitedStaticIgnores();
     if (_sphereCuboidIgnoredStatics.length < maxCount) {
       _sphereCuboidIgnoredStatics = new Uint32Array(maxCount);
       _sphereCuboidWakeTransitions = new Uint32Array(maxCount);

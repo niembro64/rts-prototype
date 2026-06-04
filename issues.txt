@@ -43,13 +43,6 @@ Relevant current inconsistencies
    escape response still use ad hoc water branches. Fold water response into
    locomotion-specific support/material behavior.
 
-3. Initial/bootstrap unit physics can set `ignoreOverlappingBuildings` for
-   overlapping buildings, and that ignore pair appears to have no normal
-   "clear once exited" path. Audit this separately from factory shells. Factory
-   construction shells currently pass `ignoreOverlappingBuildings: false`, so
-   this is not the main fabricator-shell path, but it can affect other spawn
-   cases.
-
 Plan
 ----
 1. Replace direct render-time support scans with an indexed/proxy
