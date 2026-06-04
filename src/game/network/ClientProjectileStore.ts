@@ -1,5 +1,6 @@
 import type { Entity, EntityId } from '../sim/types';
 import { createEmptyEntityComponentSlots, createTransform, getEmissionBlueprintId, isProjectileShot, NO_ENTITY_ID, PROJECTILE_ABSENCE_SLOTS } from '../sim/types';
+import type { FootprintBounds } from '../ViewportFootprint';
 import type {
   NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotProjectileSpawn,
@@ -30,12 +31,44 @@ import {
   dequantizeRotation as deqRot,
   dequantizeVelocity as deqVel,
 } from './snapshotQuantization';
+import { ClientProjectileRenderSpatialIndex } from './ClientProjectileRenderSpatialIndex';
 
 type ClientProjectileStoreOptions = {
   entities: Map<EntityId, Entity>;
   clearPredictionAccum: (id: EntityId) => void;
   markEntitySetChanged: (invalidateCaches: boolean | undefined) => void;
 };
+
+const PROJECTILE_RENDER_SCOPE_PADDING = 250;
+
+function isTravelingProjectileRenderEntity(entity: Entity): boolean {
+  const projectile = entity.projectile;
+  return projectile !== null && projectile.projectileType === 'projectile';
+}
+
+function isSmokeTrailProjectileRenderEntity(entity: Entity): boolean {
+  const projectile = entity.projectile;
+  return (
+    projectile !== null &&
+    projectile.projectileType === 'projectile' &&
+    projectile.config.shotProfile.visual.smokeTrail !== undefined
+  );
+}
+
+function isLineProjectileRenderEntity(entity: Entity): boolean {
+  return isLineProjectileEntity(entity);
+}
+
+function isBurnMarkProjectileRenderEntity(entity: Entity): boolean {
+  if (isLineProjectileEntity(entity)) return true;
+  const projectile = entity.projectile;
+  return (
+    projectile !== null &&
+    projectile.projectileType === 'projectile' &&
+    entity.dgunProjectile !== null &&
+    entity.dgunProjectile.isDGun === true
+  );
+}
 
 export class ClientProjectileStore {
   readonly beamPathTargets = new Map<EntityId, BeamPathTarget>();
@@ -49,6 +82,7 @@ export class ClientProjectileStore {
   private cachedSmokeTrailProjectiles: Entity[] = [];
   private cachedLineProjectiles: Entity[] = [];
   private cachedBurnMarkProjectiles: Entity[] = [];
+  private renderSpatialIndex = new ClientProjectileRenderSpatialIndex();
 
   constructor(private readonly options: ClientProjectileStoreOptions) {}
 
@@ -64,12 +98,17 @@ export class ClientProjectileStore {
     this.renderListsDirty = true;
   }
 
+  getRenderScopePadding(): number {
+    return PROJECTILE_RENDER_SCOPE_PADDING;
+  }
+
   remove(id: EntityId, wasLineProjectile: boolean): void {
     this.beamPathTargets.delete(id);
     this.projectileSpawns.remove(id);
     this.options.clearPredictionAccum(id);
     this.activeProjectilePredictionIds.delete(id);
     this.activeBeamPathIds.delete(id);
+    this.renderSpatialIndex.remove(id);
     this.markRenderListsDirty();
     if (wasLineProjectile) this.markLineProjectilesChanged();
   }
@@ -81,6 +120,7 @@ export class ClientProjectileStore {
       const entity = this.createProjectileFromSpawn(spawn);
       this.options.markEntitySetChanged(false);
       entities.set(spawn.id, entity);
+      this.renderSpatialIndex.update(entity);
       if (isLineProjectileTypeCode(spawn.projectileType)) {
         this.activeBeamPathIds.add(spawn.id);
         this.markLineProjectilesChanged();
@@ -175,6 +215,7 @@ export class ClientProjectileStore {
       this.markRenderListsDirty();
     }
     this.options.clearPredictionAccum(update.id);
+    this.renderSpatialIndex.update(entity);
     this.markLineProjectilesChanged();
   }
 
@@ -188,6 +229,11 @@ export class ClientProjectileStore {
       this.activeProjectilePredictionIds.add(id);
       this.markRenderListsDirty();
     }
+    this.renderSpatialIndex.update(entity);
+  }
+
+  updateRenderSpatialIndex(entity: Entity): void {
+    this.renderSpatialIndex.update(entity);
   }
 
   private rebuildRenderListsIfNeeded(): void {
@@ -250,11 +296,28 @@ export class ClientProjectileStore {
     return this.cachedBurnMarkProjectiles;
   }
 
+  collectScopedTraveling(bounds: FootprintBounds, out: Entity[]): Entity[] {
+    return this.renderSpatialIndex.query(bounds, out, isTravelingProjectileRenderEntity);
+  }
+
+  collectScopedSmokeTrail(bounds: FootprintBounds, out: Entity[]): Entity[] {
+    return this.renderSpatialIndex.query(bounds, out, isSmokeTrailProjectileRenderEntity);
+  }
+
+  collectScopedLine(bounds: FootprintBounds, out: Entity[]): Entity[] {
+    return this.renderSpatialIndex.query(bounds, out, isLineProjectileRenderEntity);
+  }
+
+  collectScopedBurnMark(bounds: FootprintBounds, out: Entity[]): Entity[] {
+    return this.renderSpatialIndex.query(bounds, out, isBurnMarkProjectileRenderEntity);
+  }
+
   clear(): void {
     this.beamPathTargets.clear();
     this.projectileSpawns.clear();
     this.activeProjectilePredictionIds.clear();
     this.activeBeamPathIds.clear();
+    this.renderSpatialIndex.clear();
     this.cachedTravelingProjectiles.length = 0;
     this.cachedSmokeTrailProjectiles.length = 0;
     this.cachedLineProjectiles.length = 0;

@@ -18,31 +18,7 @@ Please always commit and push before and after any code changes we make.
 
 RENDERING PIPELINE AUDIT - 2026-06-04
 
-1. Scoped render phase still performs whole-world projectile/effect scans.
-
-Evidence:
-- src/game/scenes/helpers/RtsScene3DRenderPhase.ts still calls
-  clientViewState.getProjectiles() for scoped shot name packets and filters each
-  projectile with renderScope.inScope().
-- The same render phase collects line, smoke-trail, and burn-mark projectiles
-  from client-wide projectile caches before downstream renderers apply their own
-  scope checks.
-- Render3DEntities.collectBeamTurretAim() still scans all line projectiles each
-  frame to refresh beam-directed turret aim.
-
-Problem:
-The unit/building packet is now spatially scoped, but projectile and effect
-packet population still does JavaScript full-list iteration each frame. Scoped
-render modes reduce draw work after those scans rather than avoiding the scans.
-
-Required fix:
-Back scoped projectile/effect packets with spatially culled render lists or
-typed-buffer query ranges. Keep the existing packet objects and scratch arrays,
-but fill projectile, beam, smoke, burn-mark, HUD shot-name, and beam-aim inputs
-from visible-cell/projectile indices plus explicit exceptions for recently
-relevant projectiles or emitters.
-
-2. The renderer is still centered on Three.js instead of the target raw
+1. The renderer is still centered on Three.js instead of the target raw
    WebGPU/WGSL architecture.
 
 Evidence:
@@ -67,7 +43,7 @@ surface debug visualization. Replacement paths should use owned typed buffers,
 explicit update ranges, and delete the old Three.js path once the new path is
 active.
 
-3. Auxiliary WebGL renderers are outside the main renderer singleton budget.
+2. Auxiliary WebGL renderers are outside the main renderer singleton budget.
 
 Evidence:
 - src/game/lifecycle/sessionSingleton.ts limits active main GameInstance and

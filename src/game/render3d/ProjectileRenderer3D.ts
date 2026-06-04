@@ -120,6 +120,7 @@ export class ProjectileRenderer3D {
   // emitting rings. Reused across projectiles to avoid per-frame allocs.
   private readonly tailCenterline = new Float32Array((CURVED_CONE_CURVE_SEGMENTS + 1) * 3);
   private lastProjectileEntitySetVersion = -1;
+  private lastProjectileScopeVersion = -1;
 
   private readonly projDir = new THREE.Vector3();
   private readonly projQuat = new THREE.Quaternion();
@@ -179,12 +180,18 @@ export class ProjectileRenderer3D {
   }
 
   update(frameState: RenderFrameState3D): void {
-    const projectiles = this.clientViewState.collectTravelingProjectiles(
-      this.projectileRenderScratch,
-    );
+    const projectiles = this.scope.getMode() === 'all'
+      ? this.clientViewState.collectTravelingProjectiles(this.projectileRenderScratch)
+      : this.clientViewState.collectScopedTravelingProjectiles(
+        this.scope.getCullingBounds(this.clientViewState.getProjectileRenderScopePadding()),
+        this.projectileRenderScratch,
+      );
     const seen = this.seenProjectileIds;
     const entitySetVersion = this.clientViewState.getEntitySetVersion();
-    const pruneProjectiles = entitySetVersion !== this.lastProjectileEntitySetVersion;
+    const scopeVersion = this.scope.getVersion();
+    const pruneProjectiles =
+      entitySetVersion !== this.lastProjectileEntitySetVersion ||
+      (this.scope.getMode() !== 'all' && scopeVersion !== this.lastProjectileScopeVersion);
     if (pruneProjectiles) seen.clear();
 
     let sphereCount = 0;
@@ -306,6 +313,7 @@ export class ProjectileRenderer3D {
         if (!seen.has(id)) this.trailStamps.delete(id);
       }
       this.lastProjectileEntitySetVersion = entitySetVersion;
+      this.lastProjectileScopeVersion = scopeVersion;
     }
   }
 

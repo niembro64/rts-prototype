@@ -199,6 +199,7 @@ export class ClientViewState {
       applyProjectileSpawn: (spawn) => this.projectileStore.applySpawn(spawn),
       deleteEntityLocalState: (id) => this.deleteEntityLocalState(id),
       markLineProjectilesChanged: () => this.projectileStore.markLineProjectilesChanged(),
+      updateProjectileRenderSpatialIndex: (entity) => this.projectileStore.updateRenderSpatialIndex(entity),
     });
   }
 
@@ -898,6 +899,10 @@ export class ClientViewState {
     return this.renderSpatialIndex.getMaxEntityPadding();
   }
 
+  getProjectileRenderScopePadding(): number {
+    return this.projectileStore.getRenderScopePadding();
+  }
+
   collectScopedRenderEntities(
     bounds: FootprintBounds,
     outUnits: Entity[],
@@ -1016,16 +1021,32 @@ export class ClientViewState {
     return this.projectileStore.collectTraveling(out);
   }
 
+  collectScopedTravelingProjectiles(bounds: FootprintBounds, out: Entity[]): Entity[] {
+    return this.projectileStore.collectScopedTraveling(bounds, out);
+  }
+
   collectSmokeTrailProjectiles(out: Entity[]): Entity[] {
     return this.projectileStore.collectSmokeTrail(out);
+  }
+
+  collectScopedSmokeTrailProjectiles(bounds: FootprintBounds, out: Entity[]): Entity[] {
+    return this.projectileStore.collectScopedSmokeTrail(bounds, out);
   }
 
   collectLineProjectiles(out: Entity[]): Entity[] {
     return this.projectileStore.collectLine(out);
   }
 
+  collectScopedLineProjectiles(bounds: FootprintBounds, out: Entity[]): Entity[] {
+    return this.projectileStore.collectScopedLine(bounds, out);
+  }
+
   collectBurnMarkProjectiles(out: Entity[]): Entity[] {
     return this.projectileStore.collectBurnMark(out);
+  }
+
+  collectScopedBurnMarkProjectiles(bounds: FootprintBounds, out: Entity[]): Entity[] {
+    return this.projectileStore.collectScopedBurnMark(bounds, out);
   }
 
   getLineProjectileRenderVersion(): number {

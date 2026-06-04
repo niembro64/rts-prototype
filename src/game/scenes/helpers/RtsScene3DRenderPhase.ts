@@ -78,8 +78,7 @@ import {
 } from '@/config';
 import { NAME_LABEL_OWNER_Y_OFFSET } from '@/nameLabelConfig';
 import type { RenderFrameState3D } from '../../render3d/RenderFrameState3D';
-import type { FootprintQuad } from '../../ViewportFootprint';
-import type { ViewportFootprint } from '../../ViewportFootprint';
+import type { FootprintBounds, FootprintQuad, ViewportFootprint } from '../../ViewportFootprint';
 import { getEntityRenderScopePadding } from '../../entityRenderScope';
 import type { RtsScene3DCameraFootprintSystem } from './RtsScene3DCameraFootprintSystem';
 import type { RtsScene3DSelectionSystem } from './RtsScene3DSelectionSystem';
@@ -135,6 +134,7 @@ type RenderPhaseEntityListOptions = {
   includeContactShadows: boolean;
   includeGroundPrints: boolean;
   hoveredEntity: Entity | null;
+  projectileQueryBounds: FootprintBounds | null;
 };
 
 export class RtsScene3DRenderPhase {
@@ -150,6 +150,7 @@ export class RtsScene3DRenderPhase {
   private readonly lineProjectilesScratch: Entity[] = [];
   private readonly burnMarkProjectilesScratch: Entity[] = [];
   private readonly smokeTrailProjectilesScratch: Entity[] = [];
+  private readonly shotNameProjectilesScratch: Entity[] = [];
   private readonly scopedUnitsScratch: Entity[] = [];
   private readonly scopedBuildingsScratch: Entity[] = [];
   private readonly bodyHudPacket = new BodyHudRenderPacket3D();
@@ -288,6 +289,7 @@ export class RtsScene3DRenderPhase {
       cameraQuad,
       cameraFootprint.bounds,
     );
+    const projectileQueryBounds = this.getProjectileQueryBounds();
     environmentPropRenderer?.update();
     this.getCameraQuadUpdate()?.(cameraQuad, this.threeApp.orbit.yaw);
 
@@ -319,13 +321,16 @@ export class RtsScene3DRenderPhase {
         contactShadowRenderer?.shouldBuildPacket(this.renderFrameIndex) ?? false,
       includeGroundPrints: updateEffectsThisFrame,
       hoveredEntity,
+      projectileQueryBounds,
     }, selectionHudMode);
+    const lineProjectiles = this.collectRenderLineProjectiles(projectileQueryBounds);
     entityRenderer.update(
       renderFrameState,
       serverMeta?.turretShieldPanelsEnabled ?? true,
       {
         units: entityLists.units,
         buildings: entityLists.buildings,
+        beamAimProjectiles: lineProjectiles,
         scoped: this.renderScope.getMode() !== 'all',
       },
     );
@@ -346,9 +351,8 @@ export class RtsScene3DRenderPhase {
       renderFrameState,
     );
 
-    const lineProjectiles = this.clientViewState.collectLineProjectiles(this.lineProjectilesScratch);
     const smokeTrailProjectiles = updateEffectsThisFrame
-      ? this.clientViewState.collectSmokeTrailProjectiles(this.smokeTrailProjectilesScratch)
+      ? this.collectRenderSmokeTrailProjectiles(projectileQueryBounds)
       : this.smokeTrailProjectilesScratch;
     beamRenderer.update(
       lineProjectiles,
@@ -374,7 +378,7 @@ export class RtsScene3DRenderPhase {
     waterSplashRenderer.update(effectDtMs);
     this.burnMarkAccumMs += effectDtMs;
     if (updateEffectsThisFrame) {
-      const burnMarkProjectiles = this.clientViewState.collectBurnMarkProjectiles(this.burnMarkProjectilesScratch);
+      const burnMarkProjectiles = this.collectRenderBurnMarkProjectiles(projectileQueryBounds);
       burnMarkRenderer.update(burnMarkProjectiles, this.burnMarkAccumMs);
       this.burnMarkAccumMs = 0;
     }
@@ -533,7 +537,10 @@ export class RtsScene3DRenderPhase {
         this.populateShieldPacket(this.clientViewState.getShieldUnits());
       }
       if (options.includeShotNames) {
-        this.populateShotNamePacket(this.clientViewState.getProjectiles(), mode);
+        this.populateShotNamePacket(
+          this.collectRenderShotNameProjectiles(options.projectileQueryBounds),
+          mode,
+        );
       }
       if (options.includeContactShadows) {
         this.populateContactShadowPacket(lists.units, lists.buildings);
@@ -587,7 +594,10 @@ export class RtsScene3DRenderPhase {
       this.pushBodyHudEntity(options.hoveredEntity, true, mode);
     }
     if (options.includeShotNames) {
-      this.populateShotNamePacket(this.clientViewState.getProjectiles(), mode);
+      this.populateShotNamePacket(
+        this.collectRenderShotNameProjectiles(options.projectileQueryBounds),
+        mode,
+      );
     }
 
     lists.units = units;
@@ -599,6 +609,37 @@ export class RtsScene3DRenderPhase {
       this.populateGroundPrintPacket(units);
     }
     return lists;
+  }
+
+  private getProjectileQueryBounds(): FootprintBounds | null {
+    if (this.renderScope.getMode() === 'all') return null;
+    return this.renderScope.getCullingBounds(
+      this.clientViewState.getProjectileRenderScopePadding(),
+    );
+  }
+
+  private collectRenderLineProjectiles(bounds: FootprintBounds | null): Entity[] {
+    return bounds === null
+      ? this.clientViewState.collectLineProjectiles(this.lineProjectilesScratch)
+      : this.clientViewState.collectScopedLineProjectiles(bounds, this.lineProjectilesScratch);
+  }
+
+  private collectRenderSmokeTrailProjectiles(bounds: FootprintBounds | null): Entity[] {
+    return bounds === null
+      ? this.clientViewState.collectSmokeTrailProjectiles(this.smokeTrailProjectilesScratch)
+      : this.clientViewState.collectScopedSmokeTrailProjectiles(bounds, this.smokeTrailProjectilesScratch);
+  }
+
+  private collectRenderBurnMarkProjectiles(bounds: FootprintBounds | null): Entity[] {
+    return bounds === null
+      ? this.clientViewState.collectBurnMarkProjectiles(this.burnMarkProjectilesScratch)
+      : this.clientViewState.collectScopedBurnMarkProjectiles(bounds, this.burnMarkProjectilesScratch);
+  }
+
+  private collectRenderShotNameProjectiles(bounds: FootprintBounds | null): Entity[] {
+    return bounds === null
+      ? this.clientViewState.collectTravelingProjectiles(this.shotNameProjectilesScratch)
+      : this.clientViewState.collectScopedTravelingProjectiles(bounds, this.shotNameProjectilesScratch);
   }
 
   private populateShieldPacket(units: readonly Entity[]): void {

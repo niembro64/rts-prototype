@@ -42,6 +42,7 @@ type ClientPredictionStepperOptions = {
   applyProjectileSpawn: (spawn: NetworkServerSnapshotProjectileSpawn) => boolean;
   deleteEntityLocalState: (id: EntityId) => void;
   markLineProjectilesChanged: () => void;
+  updateProjectileRenderSpatialIndex: (entity: Entity) => void;
 };
 
 function noteTargetAge(
@@ -211,6 +212,7 @@ export class ClientPredictionStepper {
       applyProjectileSpawn,
       deleteEntityLocalState,
       markLineProjectilesChanged,
+      updateProjectileRenderSpatialIndex,
     } = this.options;
 
     this.frameCounter = (this.frameCounter + 1) & 0x3fffffff;
@@ -255,6 +257,7 @@ export class ClientPredictionStepper {
       noteTargetAge(targetAgeStats, beamTarget === undefined ? undefined : beamTarget.updatedAtMs, now);
       if (beamTarget && applyBeamPathPrediction(entity, beamTarget, deltaMs, beamMovPosBlend, beamMovVelBlend)) {
         beamPathsChanged = true;
+        updateProjectileRenderSpatialIndex(entity);
       }
     }
     if (beamPathsChanged) markLineProjectilesChanged();
@@ -339,10 +342,14 @@ export class ClientPredictionStepper {
       if (projectileResult.becameLineProjectile) {
         activeBeamPathIds.add(id);
         activeProjectilePredictionIds.delete(id);
+        updateProjectileRenderSpatialIndex(entity);
+        markLineProjectilesChanged();
         continue;
       }
       if (projectileResult.shouldDelete) {
         deleteEntityLocalState(entity.id);
+      } else {
+        updateProjectileRenderSpatialIndex(entity);
       }
     }
     return targetAgeStats;

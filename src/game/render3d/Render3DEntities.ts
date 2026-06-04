@@ -141,6 +141,7 @@ function createDyingUnitPartDelta(): DyingUnitPartDelta {
 export type RenderEntityUpdatePacket3D = {
   units: readonly Entity[];
   buildings: readonly Entity[];
+  beamAimProjectiles?: readonly Entity[];
   scoped: boolean;
 };
 
@@ -485,7 +486,7 @@ export class Render3DEntities {
     refreshLocomotionSupportSurfaces(this.clientViewState.getPredictionSupportSurfaceEntities());
     // Populate beam-directed turret aim from the live beams BEFORE the
     // unit + building turret-pose passes read it this frame.
-    this.collectBeamTurretAim();
+    this.collectBeamTurretAim(entityPacket?.beamAimProjectiles);
     this.updateUnits(entityPacket?.units, entityPacket?.scoped === true);
     this.buildingRenderer.update(
       entityPacket?.buildings ?? this.clientViewState.getBuildings(),
@@ -1219,8 +1220,8 @@ export class Render3DEntities {
    *  (sourceEntityId, plus the authoritative sourceHostEntityId /
    *  sourceRootEntityId), because composite / parented hosts can key the
    *  rendered turret by a different id than the legacy sourceEntityId. */
-  private collectBeamTurretAim(): void {
-    const beams = this.clientViewState.collectLineProjectiles(this._beamAimScratch);
+  private collectBeamTurretAim(beamProjectiles?: readonly Entity[]): void {
+    const beams = beamProjectiles ?? this.clientViewState.collectLineProjectiles(this._beamAimScratch);
     for (const e of beams) {
       const proj = e.projectile;
       if (proj === null) continue;
