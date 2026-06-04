@@ -24,18 +24,5 @@
       "rayBeamMega": 60
     }
   },
-  "startPointTorus": [
-    {
-      "radiusMultiplier": 2,
-      "tubeRadiusMultiplier": 0.3,
-      "offsetAlongBeam": -0.6,
-      "alpha": 0.5
-    },
-    {
-      "radiusMultiplier": 1.75,
-      "tubeRadiusMultiplier": 0.3,
-      "offsetAlongBeam": 0.6,
-      "alpha": 0.5
-    }
-  ]
+  "startPointTorus": []
 }

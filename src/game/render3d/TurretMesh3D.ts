@@ -13,6 +13,7 @@
 
 import * as THREE from 'three';
 import type { Turret } from '../sim/types';
+import { getBeamEmissionOffset } from '../sim/shotProfiles';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { RangeRingMesh } from './EntityMesh3D';
 import {
@@ -299,7 +300,14 @@ export function buildTurretMesh3D(
   // every instance of the same turret blueprint rendering at the same
   // size regardless of which unit mounts it.
   const barrelScale = headRadius;
-  const length = getTurretBarrelCenterToTipLength(turret.config);
+  let length = getTurretBarrelCenterToTipLength(turret.config);
+  // Beam turrets: extend the cone barrel so its tip reaches the beam's
+  // start-point orb (sits at emissionOffset along the firing axis from the
+  // mount), so the beam looks like it leaves the tip of the barrel.
+  if (followsBeam) {
+    const orbOffset = getBeamEmissionOffset(turret.config.shot);
+    if (orbOffset > 0) length = orbOffset;
+  }
   // barrelLength=0 (e.g. shield panel host) → no visible barrel.
   if (length < 1e-4) {
     parent.add(root);

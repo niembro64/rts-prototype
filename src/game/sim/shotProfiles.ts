@@ -1,5 +1,6 @@
 import type {
   ActiveProjectileShot,
+  EmissionConfig,
   ProjectileShot,
   ShotProfile,
   ShotRuntimeProfile,
@@ -29,6 +30,15 @@ const BEAM_EMISSION_OFFSET_BY_SHOT: Readonly<Record<string, number>> =
   beamStartPointSphere !== undefined && beamStartPointSphere.emissionOffset !== undefined
     ? beamStartPointSphere.emissionOffset
     : {};
+
+/** Forward distance from the turret mount where a beam visually + physically
+ *  "generates" — the position of the start-point orb. 0 for non-beam
+ *  emissions. Shared so the beam-turret cone barrel can extend its tip out
+ *  to that same orb (so the beam looks like it leaves the barrel tip). */
+export function getBeamEmissionOffset(shot: EmissionConfig | undefined): number {
+  if (shot === undefined || !isRayConfig(shot) || shot.type !== 'beam') return 0;
+  return BEAM_EMISSION_OFFSET_BY_SHOT[shot.rayBlueprintId] ?? 0;
+}
 
 export const PLASMA_TAIL_LENGTH_MULT = shotProfileConfig.plasmaTailLengthMult;
 export const ROCKET_TAIL_LENGTH_MULT = shotProfileConfig.rocketTailLengthMult;
