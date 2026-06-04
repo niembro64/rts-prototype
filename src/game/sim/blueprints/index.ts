@@ -650,12 +650,14 @@ export function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretC
     turretBlueprintId,
     turretBlueprint.rangeMultiplierOverrides,
   );
-  if (
-    !Number.isFinite(turretBlueprint.radius.visual) ||
-    turretBlueprint.radius.visual <= 0
-  ) {
+  // `radius.visual: null` is the explicit "draw no body sphere" signal —
+  // the turret renders no head sphere (and barrels, which scale off it,
+  // collapse to nothing). Any other non-positive / non-finite value is an
+  // authoring mistake.
+  const radiusVisual = turretBlueprint.radius.visual;
+  if (radiusVisual != null && (!Number.isFinite(radiusVisual) || radiusVisual <= 0)) {
     throw new Error(
-      `Turret blueprint ${turretBlueprintId} must define positive radius.visual`,
+      `Turret blueprint ${turretBlueprintId} radius.visual must be a positive number or null`,
     );
   }
 
