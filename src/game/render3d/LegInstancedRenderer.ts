@@ -20,9 +20,14 @@
 // `instanceMatrix`: position from the translation column, radius from
 // the uniform scale.
 //
-// Leg cylinders use a minimal MeshBasicMaterial with a vertex-only
-// transform patch. No per-instance alpha / transparency shader path is
-// used; that path produced cross-GPU artifacts on some drivers.
+// Materialization fade is per-instance ALPHA, in lockstep with the unit
+// body/turret instanced pools (see EntityFade3D / UnitDetailInstance-
+// Renderer3D): every pool carries an `aFade` instanced attribute in
+// [0,1] (0 = transparent, 1 = opaque) that multiplies the fragment
+// alpha. Build-in and death-out therefore fade legs in/out at CONSTANT
+// SIZE — a leg never grows or shrinks. (The old path faded by scaling
+// cylinder thickness and instance matrices to zero, which read as the
+// leg changing size as it built; materialization must be opacity only.)
 //
 // Slot lifecycle: alloc() returns a slot index from a free-list
 // (LIFO), update(slot, …) writes the per-instance state, free(slot)
@@ -40,6 +45,11 @@ import { disposeMesh } from './threeUtils';
  *  ever hit, alloc() returns -1 and the leg quietly skips rendering
  *  (logic still updates its planted-foot state). */
 const SLOT_CAP = 16384;
+
+/** Keep leg instances in the same transparent-pass render group as the
+ *  unit body/turret detail instances (UNIT_DETAIL_RENDER_ORDER) so a
+ *  fading unit's legs sort alongside the rest of its alpha-faded parts. */
+const LEG_RENDER_ORDER = 4;
 
 /** Defrag is run from flush() when freed slots make up at least this
  *  many entries AND at least this fraction of nextSlot. Keeps the
@@ -141,20 +151,80 @@ vec3 transformed = _segMid
   + _segFwd * position.z * instThickness;
 `;
 
+// ── Per-instance materialization alpha ────────────────────────────────
+// Mirrors EntityFade3D's instanced fade: a per-instance `aFade` scalar
+// drives `vFade`, which multiplies the fragment's `diffuseColor.a` before
+// `opaque_fragment`. Preserves any authored/base material opacity (the
+// pale shell material) and applies build-in / death-out as ordinary alpha.
+const FADE_VERTEX_DECL = 'attribute float aFade;\nvarying float vFade;';
+const FADE_VERTEX_ASSIGN = 'vFade = aFade;';
+const FADE_FRAGMENT_DECL = 'varying float vFade;';
+const FADE_FRAGMENT_ALPHA = 'diffuseColor.a *= clamp( vFade, 0.0, 1.0 );';
+
+function injectFadeFragment(shader: THREE.WebGLProgramParametersWithUniforms): void {
+  shader.fragmentShader = shader.fragmentShader
+    .replace('#include <common>', `${FADE_FRAGMENT_DECL}\n#include <common>`)
+    .replace('#include <opaque_fragment>', `${FADE_FRAGMENT_ALPHA}\n#include <opaque_fragment>`);
+}
+
+/** Build an `aFade` instanced attribute, default fully opaque so any slot
+ *  that is never written (or a finished unit) renders solid. */
+function makeFadeAttribute(): THREE.InstancedBufferAttribute {
+  return new THREE.InstancedBufferAttribute(
+    new Float32Array(SLOT_CAP).fill(1), 1,
+  ).setUsage(THREE.DynamicDrawUsage);
+}
+
 function makeInstancedLegMaterial(shell: boolean): THREE.MeshBasicMaterial {
   const material = shell
     ? createShellMaterial()
     : new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true });
+  // Alpha-fade in the transparent pass while still writing depth, so a
+  // finished (aFade=1) leg self-occludes like a solid body — identical to
+  // the unit body/turret instanced pools (see EntityFade3D).
+  material.transparent = true;
+  material.depthWrite = true;
   material.onBeforeCompile = (shader) => {
-    shader.vertexShader = shader.vertexShader.replace(
-      '#include <common>',
-      `${INSTANCE_HEADER}\n#include <common>`,
-    );
-    shader.vertexShader = shader.vertexShader.replace(
-      '#include <begin_vertex>',
-      INSTANCE_BEGIN_VERTEX,
-    );
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        `${INSTANCE_HEADER}\n${FADE_VERTEX_DECL}\n#include <common>`,
+      )
+      .replace(
+        '#include <begin_vertex>',
+        `${INSTANCE_BEGIN_VERTEX}\n${FADE_VERTEX_ASSIGN}`,
+      );
+    injectFadeFragment(shader);
   };
+  // Distinct from the body's 'entityFadeInstancedAlpha' program and from
+  // the joint/pad program below — the cylinder vertex shader is unique.
+  material.customProgramCacheKey = () =>
+    shell ? 'legInstancedFadeCylinderShell' : 'legInstancedFadeCylinder';
+  return material;
+}
+
+/** Joint spheres and foot pads ride on a stock InstancedMesh, so their
+ *  vertex shader keeps the standard `begin_vertex` and only needs the
+ *  fade varying appended. */
+function makeInstancedSphereMaterial(shell: boolean): THREE.MeshBasicMaterial {
+  const material = shell
+    ? createShellMaterial()
+    : new THREE.MeshBasicMaterial({ color: 0xffffff });
+  material.transparent = true;
+  material.depthWrite = true;
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `${FADE_VERTEX_DECL}\n#include <common>`)
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>\n${FADE_VERTEX_ASSIGN}`,
+      );
+    injectFadeFragment(shader);
+  };
+  // Joint and pad materials produce identical shader source, so they may
+  // share one compiled program; distinct from the cylinder program.
+  material.customProgramCacheKey = () =>
+    shell ? 'legInstancedFadeSphereShell' : 'legInstancedFadeSphere';
   return material;
 }
 
@@ -168,6 +238,7 @@ function buildInstancedCylinderGeom(
   endBuf: THREE.InstancedBufferAttribute,
   thickBuf: THREE.InstancedBufferAttribute,
   colorBuf: THREE.InstancedBufferAttribute,
+  fadeBuf: THREE.InstancedBufferAttribute,
 ): THREE.InstancedBufferGeometry {
   const base = new THREE.CylinderGeometry(1, 1, 1, 10);
   const inst = new THREE.InstancedBufferGeometry();
@@ -180,6 +251,7 @@ function buildInstancedCylinderGeom(
   inst.setAttribute('instEnd', endBuf);
   inst.setAttribute('instThickness', thickBuf);
   inst.setAttribute('color', colorBuf);
+  inst.setAttribute('aFade', fadeBuf);
   // The base geom's bounding sphere is at origin with radius 1; our
   // instances live anywhere on the map, so disable culling. Empty
   // slots have thickness 0 and contribute zero pixels anyway.
@@ -193,7 +265,10 @@ class CylinderPool {
   private endBuf: THREE.InstancedBufferAttribute;
   private thickBuf: THREE.InstancedBufferAttribute;
   private colorBuf: THREE.InstancedBufferAttribute;
-  private baseThickArr: Float32Array;
+  // Per-instance materialization alpha (0 transparent → 1 opaque). Build-in
+  // and death-out ride this; the cylinder's `instThickness` always holds its
+  // true rendered thickness so the leg never changes size as it fades.
+  private fadeBuf: THREE.InstancedBufferAttribute;
   private mesh: THREE.Mesh;
   private nextSlot = 0;
   private freeList: number[] = [];
@@ -216,15 +291,18 @@ class CylinderPool {
     this.thickBuf = new THREE.InstancedBufferAttribute(
       new Float32Array(SLOT_CAP), 1,
     ).setUsage(THREE.DynamicDrawUsage);
-    this.baseThickArr = new Float32Array(SLOT_CAP);
     this.colorBuf = new THREE.InstancedBufferAttribute(
       new Float32Array(SLOT_CAP * 3), 3,
     ).setUsage(THREE.DynamicDrawUsage);
+    this.fadeBuf = makeFadeAttribute();
 
-    const geom = buildInstancedCylinderGeom(this.startBuf, this.endBuf, this.thickBuf, this.colorBuf);
+    const geom = buildInstancedCylinderGeom(
+      this.startBuf, this.endBuf, this.thickBuf, this.colorBuf, this.fadeBuf,
+    );
     const material = makeInstancedLegMaterial(shell);
     this.mesh = new THREE.Mesh(geom, material);
     this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = LEG_RENDER_ORDER;
     parent.add(this.mesh);
   }
 
@@ -238,6 +316,7 @@ class CylinderPool {
       return -1;
     }
     this.relocators[slot] = onRelocate;
+    (this.fadeBuf.array as Float32Array)[slot] = 1;
     const c = CylinderPool._scratchColor.set(color);
     const arr = this.colorBuf.array as Float32Array;
     const i3 = slot * 3;
@@ -251,8 +330,8 @@ class CylinderPool {
     if (slot < 0) return;
     // Hide by collapsing thickness to 0 — the cylinder shrinks to
     // a degenerate line (zero radius) and contributes no pixels.
-    this.thickBuf.array[slot] = 0;
-    this.baseThickArr[slot] = 0;
+    (this.thickBuf.array as Float32Array)[slot] = 0;
+    (this.fadeBuf.array as Float32Array)[slot] = 1;
     this.relocators[slot] = null;
     this.freeList.push(slot);
   }
@@ -262,6 +341,7 @@ class CylinderPool {
     const ea = this.endBuf.array as Float32Array;
     const ta = this.thickBuf.array as Float32Array;
     const ca = this.colorBuf.array as Float32Array;
+    const fa = this.fadeBuf.array as Float32Array;
     const s3 = src * 3;
     const d3 = dst * 3;
     sa[d3 + 0] = sa[s3 + 0];
@@ -271,12 +351,12 @@ class CylinderPool {
     ea[d3 + 1] = ea[s3 + 1];
     ea[d3 + 2] = ea[s3 + 2];
     ta[dst] = ta[src];
-    this.baseThickArr[dst] = this.baseThickArr[src];
+    fa[dst] = fa[src];
     ca[d3 + 0] = ca[s3 + 0];
     ca[d3 + 1] = ca[s3 + 1];
     ca[d3 + 2] = ca[s3 + 2];
     ta[src] = 0;
-    this.baseThickArr[src] = 0;
+    fa[src] = 1;
   };
 
   update(
@@ -294,12 +374,11 @@ class CylinderPool {
     (this.endBuf.array as Float32Array)[i3 + 1] = ey;
     (this.endBuf.array as Float32Array)[i3 + 2] = ez;
     (this.thickBuf.array as Float32Array)[slot] = thick;
-    this.baseThickArr[slot] = thick;
   }
 
   fade(slot: number, fade: number): void {
     if (slot < 0) return;
-    (this.thickBuf.array as Float32Array)[slot] = this.baseThickArr[slot] * fade;
+    (this.fadeBuf.array as Float32Array)[slot] = fade;
   }
 
   translate(slot: number, dx: number, dy: number, dz: number): void {
@@ -325,6 +404,7 @@ class CylinderPool {
     this.endBuf.needsUpdate = true;
     this.thickBuf.needsUpdate = true;
     this.colorBuf.needsUpdate = true;
+    this.fadeBuf.needsUpdate = true;
     // Trim the GPU instance count to the high-water mark of allocated
     // slots. Without this, instanceCount stays at SLOT_CAP (16384) for
     // the lifetime of the pool — the GPU runs the vertex shader on
@@ -344,10 +424,10 @@ class CylinderPool {
 }
 
 /** Pool of joint spheres (hip / knee). One InstancedMesh of
- *  the canonical unit sphere; per-instance state — position +
- *  uniform scale (radius) — rides on `instanceMatrix`. Stock
- *  MeshBasicMaterial is enough because spheres are rotationally
- *  symmetric and we avoid transparent shader patches here.
+ *  the canonical unit sphere; per-instance position + uniform scale
+ *  (radius) ride on `instanceMatrix`, materialization alpha on a
+ *  per-instance `aFade` attribute. The matrix always holds the leg's
+ *  true pose so the joint never changes size as it fades.
  *
  *  Slot lifecycle mirrors the chassis pool: stable per leg, with a
  *  high-water mark `nextSlot` and a LIFO `freeList`. flush() bumps
@@ -356,7 +436,7 @@ class CylinderPool {
  *  contribute no fragments. */
 class JointSpherePool {
   private readonly mesh: THREE.InstancedMesh;
-  private readonly baseMatrices = new Float32Array(SLOT_CAP * 16);
+  private readonly fadeBuf: THREE.InstancedBufferAttribute;
   private readonly shell: boolean;
   private nextSlot = 0;
   private freeList: number[] = [];
@@ -371,9 +451,9 @@ class JointSpherePool {
   constructor(parent: THREE.Group, shell: boolean) {
     this.shell = shell;
     const geom = new THREE.SphereGeometry(1, 8, 6);
-    const material = shell
-      ? createShellMaterial()
-      : new THREE.MeshBasicMaterial({ color: 0xffffff });
+    this.fadeBuf = makeFadeAttribute();
+    geom.setAttribute('aFade', this.fadeBuf);
+    const material = makeInstancedSphereMaterial(shell);
     this.mesh = new THREE.InstancedMesh(geom, material, SLOT_CAP);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     if (!shell) {
@@ -384,6 +464,7 @@ class JointSpherePool {
     // Same caveat as the cylinder + chassis + particle pools — instances
     // live anywhere on the map, source-geom bounding sphere is at origin.
     this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = LEG_RENDER_ORDER;
     parent.add(this.mesh);
   }
 
@@ -397,6 +478,7 @@ class JointSpherePool {
       return -1;
     }
     this.relocators[slot] = onRelocate;
+    (this.fadeBuf.array as Float32Array)[slot] = 1;
     if (!this.shell) {
       this.mesh.setColorAt(slot, JointSpherePool._scratchColor.set(color));
     }
@@ -406,7 +488,7 @@ class JointSpherePool {
   free(slot: number): void {
     if (slot < 0) return;
     this.mesh.setMatrixAt(slot, JointSpherePool._ZERO_MATRIX);
-    this.writeBaseMatrix(slot, JointSpherePool._ZERO_MATRIX);
+    (this.fadeBuf.array as Float32Array)[slot] = 1;
     this.relocators[slot] = null;
     this.freeList.push(slot);
   }
@@ -416,7 +498,8 @@ class JointSpherePool {
     const s16 = src * 16;
     const d16 = dst * 16;
     for (let i = 0; i < 16; i++) arr[d16 + i] = arr[s16 + i];
-    for (let i = 0; i < 16; i++) this.baseMatrices[d16 + i] = this.baseMatrices[s16 + i];
+    const fa = this.fadeBuf.array as Float32Array;
+    fa[dst] = fa[src];
     const colorArr = this.mesh.instanceColor?.array as Float32Array | undefined;
     if (colorArr) {
       const s3 = src * 3;
@@ -428,7 +511,7 @@ class JointSpherePool {
     // Source matrix becomes the visually-zero matrix; trim by
     // instanceCount keeps it off-screen but be defensive.
     for (let i = 0; i < 16; i++) arr[s16 + i] = 0;
-    for (let i = 0; i < 16; i++) this.baseMatrices[s16 + i] = 0;
+    fa[src] = 1;
   };
 
   update(slot: number, x: number, y: number, z: number, radius: number): void {
@@ -441,12 +524,11 @@ class JointSpherePool {
       JointSpherePool._scratchScale,
     );
     this.mesh.setMatrixAt(slot, JointSpherePool._scratchMat);
-    this.writeBaseMatrix(slot, JointSpherePool._scratchMat);
   }
 
   fade(slot: number, fade: number): void {
     if (slot < 0) return;
-    this.writeFadedBaseMatrix(slot, fade);
+    (this.fadeBuf.array as Float32Array)[slot] = fade;
   }
 
   translate(slot: number, dx: number, dy: number, dz: number): void {
@@ -456,30 +538,6 @@ class JointSpherePool {
     arr[i16 + 12] += dx;
     arr[i16 + 13] += dy;
     arr[i16 + 14] += dz;
-    this.baseMatrices[i16 + 12] += dx;
-    this.baseMatrices[i16 + 13] += dy;
-    this.baseMatrices[i16 + 14] += dz;
-  }
-
-  private writeBaseMatrix(slot: number, matrix: THREE.Matrix4): void {
-    const elements = matrix.elements;
-    const i16 = slot * 16;
-    for (let i = 0; i < 16; i++) this.baseMatrices[i16 + i] = elements[i];
-  }
-
-  private writeFadedBaseMatrix(slot: number, fade: number): void {
-    const arr = this.mesh.instanceMatrix.array as Float32Array;
-    const i16 = slot * 16;
-    for (let i = 0; i < 16; i++) arr[i16 + i] = this.baseMatrices[i16 + i];
-    arr[i16 + 0] *= fade;
-    arr[i16 + 1] *= fade;
-    arr[i16 + 2] *= fade;
-    arr[i16 + 4] *= fade;
-    arr[i16 + 5] *= fade;
-    arr[i16 + 6] *= fade;
-    arr[i16 + 8] *= fade;
-    arr[i16 + 9] *= fade;
-    arr[i16 + 10] *= fade;
   }
 
   flush(): void {
@@ -492,6 +550,7 @@ class JointSpherePool {
     if (this.nextSlot > 0) {
       this.mesh.instanceMatrix.needsUpdate = true;
     }
+    this.fadeBuf.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
   }
 
@@ -505,7 +564,7 @@ class JointSpherePool {
  *  orientation, while joints are uniform balls. */
 class FootPadPool {
   private readonly mesh: THREE.InstancedMesh;
-  private readonly baseMatrices = new Float32Array(SLOT_CAP * 16);
+  private readonly fadeBuf: THREE.InstancedBufferAttribute;
   private readonly shell: boolean;
   private nextSlot = 0;
   private freeList: number[] = [];
@@ -522,9 +581,9 @@ class FootPadPool {
   constructor(parent: THREE.Group, shell: boolean) {
     this.shell = shell;
     const geom = new THREE.SphereGeometry(1, 12, 8);
-    const material = shell
-      ? createShellMaterial()
-      : new THREE.MeshBasicMaterial({ color: 0xffffff });
+    this.fadeBuf = makeFadeAttribute();
+    geom.setAttribute('aFade', this.fadeBuf);
+    const material = makeInstancedSphereMaterial(shell);
     this.mesh = new THREE.InstancedMesh(geom, material, SLOT_CAP);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     if (!shell) {
@@ -533,6 +592,7 @@ class FootPadPool {
     }
     this.mesh.count = 0;
     this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = LEG_RENDER_ORDER;
     parent.add(this.mesh);
   }
 
@@ -546,6 +606,7 @@ class FootPadPool {
       return -1;
     }
     this.relocators[slot] = onRelocate;
+    (this.fadeBuf.array as Float32Array)[slot] = 1;
     if (!this.shell) {
       this.mesh.setColorAt(slot, FootPadPool._scratchColor.set(color));
     }
@@ -555,7 +616,7 @@ class FootPadPool {
   free(slot: number): void {
     if (slot < 0) return;
     this.mesh.setMatrixAt(slot, FootPadPool._ZERO_MATRIX);
-    this.writeBaseMatrix(slot, FootPadPool._ZERO_MATRIX);
+    (this.fadeBuf.array as Float32Array)[slot] = 1;
     this.relocators[slot] = null;
     this.freeList.push(slot);
   }
@@ -565,7 +626,8 @@ class FootPadPool {
     const s16 = src * 16;
     const d16 = dst * 16;
     for (let i = 0; i < 16; i++) arr[d16 + i] = arr[s16 + i];
-    for (let i = 0; i < 16; i++) this.baseMatrices[d16 + i] = this.baseMatrices[s16 + i];
+    const fa = this.fadeBuf.array as Float32Array;
+    fa[dst] = fa[src];
     const colorArr = this.mesh.instanceColor?.array as Float32Array | undefined;
     if (colorArr) {
       const s3 = src * 3;
@@ -575,7 +637,7 @@ class FootPadPool {
       colorArr[d3 + 2] = colorArr[s3 + 2];
     }
     for (let i = 0; i < 16; i++) arr[s16 + i] = 0;
-    for (let i = 0; i < 16; i++) this.baseMatrices[s16 + i] = 0;
+    fa[src] = 1;
   };
 
   update(
@@ -604,12 +666,11 @@ class FootPadPool {
       FootPadPool._scratchScale,
     );
     this.mesh.setMatrixAt(slot, FootPadPool._scratchMat);
-    this.writeBaseMatrix(slot, FootPadPool._scratchMat);
   }
 
   fade(slot: number, fade: number): void {
     if (slot < 0) return;
-    this.writeFadedBaseMatrix(slot, fade);
+    (this.fadeBuf.array as Float32Array)[slot] = fade;
   }
 
   translate(slot: number, dx: number, dy: number, dz: number): void {
@@ -619,30 +680,6 @@ class FootPadPool {
     arr[i16 + 12] += dx;
     arr[i16 + 13] += dy;
     arr[i16 + 14] += dz;
-    this.baseMatrices[i16 + 12] += dx;
-    this.baseMatrices[i16 + 13] += dy;
-    this.baseMatrices[i16 + 14] += dz;
-  }
-
-  private writeBaseMatrix(slot: number, matrix: THREE.Matrix4): void {
-    const elements = matrix.elements;
-    const i16 = slot * 16;
-    for (let i = 0; i < 16; i++) this.baseMatrices[i16 + i] = elements[i];
-  }
-
-  private writeFadedBaseMatrix(slot: number, fade: number): void {
-    const arr = this.mesh.instanceMatrix.array as Float32Array;
-    const i16 = slot * 16;
-    for (let i = 0; i < 16; i++) arr[i16 + i] = this.baseMatrices[i16 + i];
-    arr[i16 + 0] *= fade;
-    arr[i16 + 1] *= fade;
-    arr[i16 + 2] *= fade;
-    arr[i16 + 4] *= fade;
-    arr[i16 + 5] *= fade;
-    arr[i16 + 6] *= fade;
-    arr[i16 + 8] *= fade;
-    arr[i16 + 9] *= fade;
-    arr[i16 + 10] *= fade;
   }
 
   flush(): void {
@@ -655,6 +692,7 @@ class FootPadPool {
     if (this.nextSlot > 0) {
       this.mesh.instanceMatrix.needsUpdate = true;
     }
+    this.fadeBuf.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
   }
 

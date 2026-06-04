@@ -24,6 +24,8 @@ export type {
   BuildingRenderProfile,
   BuildingAnchorProfile,
   UnitAction,
+  UnitPathPlan,
+  UnitPathPoint,
   UnitLocomotion,
   BuildingActiveState,
   Unit,

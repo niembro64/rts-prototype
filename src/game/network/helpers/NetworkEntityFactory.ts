@@ -291,6 +291,7 @@ function createUnitFromNetwork(
       actions,
       actionHash: computeUnitActionHash(actions),
       patrolStartIndex: null,
+      activePath: null,
       flyingLoiterTargetX: null,
       flyingLoiterTargetY: null,
       flyingLoiterTargetZ: null,

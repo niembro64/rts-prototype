@@ -41,7 +41,7 @@ import {
   getTerrainVersion,
 } from './Terrain';
 import { getSimWasm } from '../sim-wasm/init';
-import type { ActionType, UnitAction, UnitLocomotion, Waypoint } from './types';
+import type { ActionType, UnitAction, UnitLocomotion, UnitPathPoint, Waypoint } from './types';
 
 type Vec2 = { x: number; y: number };
 
@@ -280,13 +280,10 @@ function validatePathDoesNotCrossWater(
   return false;
 }
 
-// ── Public entry: expandPathActions ──────────────────────────────
+// ── Public entry: expandPathPoints / expandPathActions ───────────
 
 /** Plan a path from (startX, startY) to (goalX, goalY) and return one
- *  UnitAction per smoothed waypoint, all with the given `type`.
- *  Intermediate waypoints (cells the smoother kept along the route)
- *  are flagged `isPathExpansion = true` so renderers can tell them
- *  apart from the user's clicked endpoint.
+ *  transient pathfinding point per smoothed waypoint.
  *
  *  `goalZ` is the click-derived altitude (from CursorGround.pickSim).
  *  When provided AND the planner did NOT have to snap the goal, the
@@ -302,6 +299,42 @@ function validatePathDoesNotCrossWater(
  *  `terrainFilter.ignoreTerrainBlocking` is for airborne locomotion:
  *  water, terrain inflation, and slope are ignored, while map bounds
  *  and building-occupied cells remain blockers. */
+export function expandPathPoints(
+  startX: number, startY: number,
+  goalX: number, goalY: number,
+  mapWidth: number, mapHeight: number,
+  buildingGrid: BuildingGrid,
+  goalZ: number | null,
+  terrainFilter: PathTerrainFilter | null,
+): UnitPathPoint[] {
+  const path = findPath(
+    startX,
+    startY,
+    goalX,
+    goalY,
+    mapWidth,
+    mapHeight,
+    buildingGrid,
+    terrainFilter,
+  );
+  if (VALIDATE_PATHS && !shouldIgnoreTerrainBlocking(terrainFilter)) {
+    validatePathDoesNotCrossWater(startX, startY, goalX, goalY, path, mapWidth, mapHeight);
+  }
+  const out: UnitPathPoint[] = [];
+  const lastIdx = path.length - 1;
+  for (let i = 0; i < path.length; i++) {
+    const px = path[i].x;
+    const py = path[i].y;
+    const isFinal = i === lastIdx;
+    const isFinalUnsnapped = isFinal && goalZ !== null && px === goalX && py === goalY;
+    const z = isFinalUnsnapped
+      ? goalZ
+      : getSurfaceHeight(px, py, mapWidth, mapHeight, LAND_CELL_SIZE);
+    out.push({ x: px, y: py, z });
+  }
+  return out;
+}
+
 export type MultiLegWaypoint = {
   x: number;
   y: number;
@@ -356,7 +389,7 @@ export function expandPathActions(
   goalZ: number | null,
   terrainFilter: PathTerrainFilter | null,
 ): UnitAction[] {
-  const path = findPath(
+  const points = expandPathPoints(
     startX,
     startY,
     goalX,
@@ -364,22 +397,15 @@ export function expandPathActions(
     mapWidth,
     mapHeight,
     buildingGrid,
+    goalZ,
     terrainFilter,
   );
-  if (VALIDATE_PATHS && !shouldIgnoreTerrainBlocking(terrainFilter)) {
-    validatePathDoesNotCrossWater(startX, startY, goalX, goalY, path, mapWidth, mapHeight);
-  }
   const out: UnitAction[] = [];
-  const lastIdx = path.length - 1;
-  for (let i = 0; i < path.length; i++) {
-    const px = path[i].x;
-    const py = path[i].y;
+  const lastIdx = points.length - 1;
+  for (let i = 0; i < points.length; i++) {
+    const point = points[i];
     const isFinal = i === lastIdx;
-    const isFinalUnsnapped = isFinal && goalZ !== null && px === goalX && py === goalY;
-    const z = isFinalUnsnapped
-      ? goalZ
-      : getSurfaceHeight(px, py, mapWidth, mapHeight, LAND_CELL_SIZE);
-    const action: UnitAction = { type, x: px, y: py, z };
+    const action: UnitAction = { type, x: point.x, y: point.y, z: point.z };
     if (!isFinal) action.isPathExpansion = true;
     out.push(action);
   }

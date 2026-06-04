@@ -295,6 +295,7 @@ export class ClientPredictionStepper {
     applyClientUnitVisualPredictionBatch({
       entities: unitPredictionEntities,
       targets: unitPredictionTargets,
+      supportEntities: entities.values(),
       deltaMs,
       mapWidth: getMapWidth(),
       mapHeight: getMapHeight(),

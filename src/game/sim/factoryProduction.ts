@@ -4,18 +4,12 @@ import type { BuildingGrid } from './buildGrid';
 import { getUnitBlueprint } from './blueprints';
 import { aimTurretsToward } from './turretInit';
 import { COST_MULTIPLIER } from '../../config';
-import {
-  expandMultiLegPathActions,
-  pathTerrainFilterForLocomotion,
-  type PathTerrainFilter,
-} from './Pathfinder';
 import { setUnitActions } from './unitActions';
 import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_FACTORY,
   ENTITY_CHANGED_TURRETS,
 } from '../../types/network';
-import { getFactoryBuildSpot } from './factoryConstructionSite';
 import { economyManager } from './economy';
 import {
   createBuildable,
@@ -29,6 +23,7 @@ import { getSimWasm } from '../sim-wasm/init';
 
 export type { FactoryProductionResult } from '@/types/ui';
 import type { FactoryProductionResult } from '@/types/ui';
+import type { UnitAction } from './types';
 
 const FACTORY_SELECTED_NONE = 0;
 const FACTORY_SELECTED_VALID = 1;
@@ -39,8 +34,7 @@ const FACTORY_ACTION_COMPLETE_SHELL = 2;
 const FACTORY_ACTION_CLEAR_INVALID_SELECTION = 3;
 const FACTORY_ACTION_STOP_PRODUCING = 4;
 const FACTORY_ACTION_SPAWN_SHELL = 5;
-const FACTORY_SHELL_AIR_SPAWN_MIN_HEIGHT = 160;
-const FACTORY_SHELL_AIR_SPAWN_COLLISION_RADIUS_MULT = 3;
+const FACTORY_SHELL_AIR_SPAWN_HEIGHT = 160;
 
 let factoryRows: Entity[] = [];
 let factoryRowShells: Array<Entity | null> = [];
@@ -81,10 +75,32 @@ function ensureFactoryProductionCapacity(required: number): void {
   factoryProgress = new Float64Array(next);
 }
 
-function pathTerrainFilterForUnit(unit: Entity): PathTerrainFilter | null {
-  return unit.unit === null
-    ? null
-    : pathTerrainFilterForLocomotion(unit.unit.locomotion);
+function directFactoryRallyActions(
+  world: WorldState,
+  route: ReadonlyArray<{ x: number; y: number; z?: number | null; type: UnitAction['type'] }>,
+): { actions: UnitAction[]; patrolStartIndex: number | null } {
+  const actions: UnitAction[] = [];
+  let patrolStartIndex: number | null = null;
+  for (let i = 0; i < route.length; i++) {
+    const wp = route[i];
+    if (wp.type === 'patrol' && patrolStartIndex === null) {
+      patrolStartIndex = actions.length;
+    }
+    actions.push({
+      type: wp.type,
+      x: wp.x,
+      y: wp.y,
+      z: wp.z ?? world.getGroundZ(wp.x, wp.y),
+    });
+  }
+  return { actions, patrolStartIndex };
+}
+
+function getFactoryShellSpawnZ(world: WorldState, factory: Entity): number {
+  const factoryTopZ = factory.building !== null
+    ? factory.transform.z + factory.building.depth / 2
+    : world.getGroundZ(factory.transform.x, factory.transform.y);
+  return factoryTopZ + FACTORY_SHELL_AIR_SPAWN_HEIGHT;
 }
 
 // Factory production system
@@ -248,11 +264,6 @@ export class FactoryProductionSystem {
   private spawnUnitShell(world: WorldState, factory: Entity, unitBlueprintId: string): Entity | null {
     if (!factory.ownership) return null;
     const bp = getUnitBlueprint(unitBlueprintId);
-    const spawn = getFactoryBuildSpot(factory, bp.radius.collision, {
-      mapWidth: world.mapWidth,
-      mapHeight: world.mapHeight,
-      clampRadius: null,
-    });
     // Allocate the shell's sub-entity ids (locomotion + turrets) up
     // front, exactly like spawned commanders and pre-placed buildings.
     // Turrets with id === NO_ENTITY_ID are treated as visual-only and
@@ -260,14 +271,16 @@ export class FactoryProductionSystem {
     // completes because isEntityActive() gates the BUILDABLE_COMPLETE
     // flag in combat targeting, but on completion the turrets already
     // hold real ids and engage like initial units do.
-    const unit = world.createUnitFromBlueprint(spawn.x, spawn.y, factory.ownership.playerId, unitBlueprintId);
+    const unit = world.createUnitFromBlueprint(
+      factory.transform.x,
+      factory.transform.y,
+      factory.ownership.playerId,
+      unitBlueprintId,
+    );
     // Factory shells are allowed to begin above occupied pads. Physics
     // owns the fall and final resting place instead of rejecting the job
     // when a unit or building currently overlaps the authored spot.
-    unit.transform.z += Math.max(
-      FACTORY_SHELL_AIR_SPAWN_MIN_HEIGHT,
-      bp.radius.collision * FACTORY_SHELL_AIR_SPAWN_COLLISION_RADIUS_MULT,
-    );
+    unit.transform.z = getFactoryShellSpawnZ(world, factory);
     unit.buildable = createBuildable({
       energy: bp.cost.energy * COST_MULTIPLIER,
       metal: bp.cost.metal * COST_MULTIPLIER,
@@ -283,12 +296,10 @@ export class FactoryProductionSystem {
     world: WorldState,
     factory: Entity,
     unit: Entity,
-    buildingGrid: BuildingGrid,
+    _buildingGrid: BuildingGrid,
   ): void {
     if (!factory.factory) return;
     const factoryComp = factory.factory;
-    const spawnX = unit.transform.x;
-    const spawnY = unit.transform.y;
     if (unit.unit) {
       const route = factoryComp.defaultWaypoints !== null
         ? factoryComp.defaultWaypoints
@@ -298,12 +309,7 @@ export class FactoryProductionSystem {
             z: factoryComp.rallyZ,
             type: factoryComp.rallyType,
           }];
-      const { actions, patrolStartIndex } = expandMultiLegPathActions(
-        spawnX, spawnY,
-        route,
-        world.mapWidth, world.mapHeight, buildingGrid,
-        pathTerrainFilterForUnit(unit),
-      );
+      const { actions, patrolStartIndex } = directFactoryRallyActions(world, route);
       setUnitActions(unit.unit, actions);
       if (patrolStartIndex !== null) {
         unit.unit.patrolStartIndex = patrolStartIndex;

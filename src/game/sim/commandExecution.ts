@@ -36,11 +36,6 @@ import { magnitude, getTransformCosSin } from '../math';
 import { getProjectileLaunchSpeed, updateWeaponWorldKinematics } from './combat/combatUtils';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
-import {
-  expandPathActions,
-  pathTerrainFilterForLocomotion,
-  type PathTerrainFilter,
-} from './Pathfinder';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_COMBAT_MODE, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../types/network';
 import { setBuildingActiveOpen } from './buildingActiveState';
 import { getEntityTargetPoint } from './buildingAnchors';
@@ -64,11 +59,6 @@ import {
 } from './unitActionIntents';
 
 const _dgunMount = { x: 0, y: 0, z: 0 };
-function pathTerrainFilterForUnit(unit: Entity): PathTerrainFilter | null {
-  return unit.unit === null
-    ? null
-    : pathTerrainFilterForLocomotion(unit.unit.locomotion);
-}
 
 function refreshPatrolStartIndex(unit: Unit): void {
   const index = unit.actions.findIndex((action) => action.type === 'patrol');
@@ -1125,16 +1115,10 @@ export function addActionToUnit(
   }
 }
 
-/** Plan a path from the unit's current position to (goalX, goalY) and
- *  enqueue one action per smoothed waypoint. All waypoints share the
- *  same `type` — fight/patrol intermediates still let the unit engage
- *  along the way, which is what the player's chosen mode implies.
- *  Falls through to the legacy single-waypoint behaviour when the
- *  pathfinder returns one waypoint (no obstacles between unit and
- *  goal, or no path under the planning budget). `goalZ` is the
- *  click-derived altitude (from CursorGround.pickSim → MoveCommand);
- *  threaded into expandPathActions so the final waypoint records the
- *  click's z when the goal cell wasn't snapped. */
+/** Enqueue one durable command waypoint. Route resolution between
+ *  waypoints is sim-local and happens lazily when this action becomes
+ *  active, so the action queue remains the player's authored command
+ *  list rather than a serialized pathfinder result. */
 function addPathActions(
   unit: Entity,
   goalX: number, goalY: number,
@@ -1143,66 +1127,23 @@ function addPathActions(
   ctx: CommandContext,
   goalZ: number | null,
 ): void {
-  // When appending to an existing queue (queue=true), plan from the
-  // END of the current queue, not from the unit's CURRENT position.
-  // By the time the unit starts executing this new path it will
-  // already be at the last queued waypoint — planning from
-  // `unit.transform` would give the planner the wrong start, and
-  // the connecting chord between consecutive queued goals would
-  // never get pathfinder-checked. That manifests as the visualised
-  // chain dipping through water between two queued goals on
-  // opposite sides of a divider valley (each individual segment was
-  // planned correctly, but the connecting hop between them was
-  // never planned at all).
-  let planStartX = unit.transform.x;
-  let planStartY = unit.transform.y;
-  if (queue && unit.unit && unit.unit.actions.length > 0) {
-    const last = unit.unit.actions[unit.unit.actions.length - 1];
-    planStartX = last.x;
-    planStartY = last.y;
-  }
-  const actions = expandPathActions(
-    planStartX, planStartY,
-    goalX, goalY, type,
-    ctx.world.mapWidth, ctx.world.mapHeight,
-    ctx.constructionSystem.getGrid(),
-    goalZ,
-    pathTerrainFilterForUnit(unit),
-  );
+  const action: UnitAction = { type, x: goalX, y: goalY };
+  if (goalZ !== null) action.z = goalZ;
   if (GAME_DIAGNOSTICS.commandPlans) {
-    // Diagnostic: dump the plan for player-issued move commands so we
-    // can correlate "I clicked here" -> "the unit got these waypoints".
     const unitComponent = unit.unit;
     const beforeLen = unitComponent !== null ? unitComponent.actions.length : 0;
     debugLog(
       true,
-      '[plan] unit #%d (%d,%d)->(%d,%d) type=%s queue=%s: prev queue had %d action(s), planner emits %d waypoint(s)',
+      '[plan] unit #%d authored waypoint (%d,%d,%d) type=%s queue=%s: prev queue had %d action(s)',
       unit.id,
-      Math.round(unit.transform.x), Math.round(unit.transform.y),
       Math.round(goalX), Math.round(goalY),
+      goalZ !== null ? Math.round(goalZ) : -1,
       type,
       queue,
       beforeLen,
-      actions.length,
     );
-    for (let i = 0; i < actions.length; i++) {
-      const a = actions[i];
-      debugLog(
-        true,
-        '  [plan]   wp %d: (%d, %d, %d)%s',
-        i, Math.round(a.x), Math.round(a.y),
-        a.z !== undefined ? Math.round(a.z) : -1,
-        a.isPathExpansion ? ' [intermediate]' : '',
-      );
-    }
   }
-  // First action either replaces the queue (queue=false) or appends.
-  // The remaining waypoints always append regardless — they belong
-  // to the same "do this trip" intent and queue:true keeps them
-  // ordered after the first.
-  for (let i = 0; i < actions.length; i++) {
-    addActionToUnit(unit, actions[i], i === 0 ? queue : true, ctx.world);
-  }
+  addActionToUnit(unit, action, queue, ctx.world);
   if (GAME_DIAGNOSTICS.commandPlans) {
     const unitComponent = unit.unit;
     const afterLen = unitComponent !== null ? unitComponent.actions.length : 0;
@@ -1210,72 +1151,16 @@ function addPathActions(
   }
 }
 
-/** Plan a path to (goalX, goalY) and enqueue intermediate `move`
- *  waypoints + a single FINAL waypoint that carries the action-
- *  specific type and metadata (targetId / buildingBlueprintId / buildingId
- *  / etc). Used by attack / repair / build commands so the unit
- *  runs through the unit's movement filter to reach the action's
- *  target instead of writing a single bee-line action that walks
- *  terrain-bound units straight at the target's coordinates.
- *
- *  Why this matters: a `repair` / `attack` / `build` action whose
- *  (x, y) is across water made the unit press into the shoreline
- *  with the water-pusher catching them, while the visualized line
- *  cut straight across the valley — exactly the "paths over water"
- *  artifact the user reported. Routing through `expandPathActions`
- *  here makes the planner do its job for the unit's locomotion:
- *  ground profiles avoid water/buildings/mountains, while airborne
- *  profiles ignore terrain blocking and route over land or water.
- *  The visualized path matches what the unit actually walks or flies.
- *  The final waypoint inherits the original action's metadata so the
- *  per-action handler at the destination (attack the target, repair
- *  the target, build the building) still runs as before. */
+/** Enqueue one durable typed waypoint. Target/build metadata stays on
+ *  the authored action; transient movement points are computed by the
+ *  simulation only while this action is active. */
 function addPathActionsWithFinal(
   unit: Entity,
   finalAction: UnitAction,
   queue: boolean,
   ctx: CommandContext,
 ): void {
-  // Same queue-tail planning fix as addPathActions: when appending
-  // to an existing queue, plan from the last queued waypoint
-  // instead of from the unit's current position. Otherwise the
-  // implicit chord between two consecutively queued goals is
-  // never pathfinder-checked and can cross water.
-  let planStartX = unit.transform.x;
-  let planStartY = unit.transform.y;
-  if (queue && unit.unit && unit.unit.actions.length > 0) {
-    const last = unit.unit.actions[unit.unit.actions.length - 1];
-    planStartX = last.x;
-    planStartY = last.y;
-  }
-  const actions = expandPathActions(
-    planStartX, planStartY,
-    finalAction.x, finalAction.y, 'move',
-    ctx.world.mapWidth, ctx.world.mapHeight,
-    ctx.constructionSystem.getGrid(),
-    finalAction.z ?? null,
-    pathTerrainFilterForUnit(unit),
-  );
-  if (actions.length === 0) return;
-  // Promote the LAST waypoint to the original action's type and
-  // copy its metadata across (targetId / buildingBlueprintId / buildingId
-  // / gridX / gridY). The (x, y, z) on the last waypoint were
-  // already set by the planner — when the goal was snapped to a
-  // reachable cell, we use that cell's centre instead of the
-  // target's own position so the unit stops on the dry-land
-  // approach to the target rather than pushing into water.
-  const last = actions[actions.length - 1];
-  last.type = finalAction.type;
-  if (finalAction.targetId !== undefined) last.targetId = finalAction.targetId;
-  if (finalAction.buildingBlueprintId !== undefined) last.buildingBlueprintId = finalAction.buildingBlueprintId;
-  if (finalAction.buildingId !== undefined) last.buildingId = finalAction.buildingId;
-  if (finalAction.gridX !== undefined) last.gridX = finalAction.gridX;
-  if (finalAction.gridY !== undefined) last.gridY = finalAction.gridY;
-  // The last waypoint is the user-issued endpoint, not a planner
-  // intermediate, so make sure the SIMPLE-mode renderer marks it
-  // as such.
-  last.isPathExpansion = undefined;
-  for (let i = 0; i < actions.length; i++) {
-    addActionToUnit(unit, actions[i], i === 0 ? queue : true, ctx.world);
-  }
+  const action: UnitAction = { ...finalAction };
+  delete action.isPathExpansion;
+  addActionToUnit(unit, action, queue, ctx.world);
 }

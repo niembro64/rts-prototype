@@ -19,10 +19,10 @@ import {
 import type { Simulation } from '../sim/Simulation';
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId } from '../sim/types';
-import type { PhysicsEngine3D } from './PhysicsEngine3D';
+import type { PhysicsEngine3D, SupportSurfaceContact } from './PhysicsEngine3D';
 import { setUnitMovementAcceleration } from '../sim/unitMovementAcceleration';
-import { getSimWasm, UNIT_FORCE_BATCH_STRIDE } from '../sim-wasm/init';
 import { isBuildInProgress } from '../sim/buildableHelpers';
+import { getSimWasm, UNIT_FORCE_BATCH_STRIDE } from '../sim-wasm/init';
 
 const WATER_PROBE_DX = [
   1, 0.7071067811865476, 0, -0.7071067811865475,
@@ -175,12 +175,14 @@ export class UnitForceSystem {
       _forceRows[base + UF_ROW_UNIT_MASS] = unit.mass;
       _forceRows[base + UF_ROW_DRIVE_FORCE] = unit.locomotion.driveForce;
       _forceRows[base + UF_ROW_TRACTION] = unit.locomotion.traction;
-      const buildInProgress = isBuildInProgress(entity.buildable);
       const terrainGroundZ = this.world.getGroundZ(body.x, body.y);
       const terrainContact =
         terrainGroundZ - (body.z - body.groundOffset) >= -UNIT_GROUND_CONTACT_EPSILON;
-      const supportSurfaceContact =
-        !terrainContact && this.physics.hasUpwardSurfaceContact(body);
+      const supportSurface = terrainContact
+        ? null
+        : this.physics.getSupportSurfaceContact(body, terrainGroundZ);
+      const supportSurfaceContact = supportSurface !== null;
+      const buildInProgress = isBuildInProgress(entity.buildable);
       const suppressAirborneLift = buildInProgress || supportSurfaceContact;
       _forceRows[base + UF_ROW_GRAVITY_COUNTER_RATIO] =
         suppressAirborneLift ? 0 : unit.locomotion.gravityCounterUpwardForceRatio ?? 0;
@@ -233,9 +235,10 @@ export class UnitForceSystem {
 
       const locomotionType = unit.locomotion.type;
       const isFlying = locomotionType === 'flying';
-      const isAirborne = locomotionType === 'hover' || locomotionType === 'flying';
-      if (isFlying) flags |= UF_FLAG_IS_FLYING;
-      if (isAirborne) flags |= UF_FLAG_IS_AIRBORNE;
+      const isAirborneLocomotion = locomotionType === 'hover' || locomotionType === 'flying';
+      const useAirborneForcePath = isAirborneLocomotion && !buildInProgress && !supportSurfaceContact;
+      if (isFlying && useAirborneForcePath) flags |= UF_FLAG_IS_FLYING;
+      if (useAirborneForcePath) flags |= UF_FLAG_IS_AIRBORNE;
 
       const externalForce = forceAccumulator.getFinalForce(entity.id);
       if (externalForce !== null) {
@@ -247,11 +250,7 @@ export class UnitForceSystem {
 
       _forceRows[base + UF_ROW_GROUND_Z] = terrainGroundZ;
 
-      if (isAirborne) {
-        if (supportSurfaceContact) {
-          _forceRows[base + UF_ROW_GROUND_Z] = body.z - body.groundOffset;
-          this.writeSupportSurfaceNormal(entity);
-        }
+      if (useAirborneForcePath) {
         const orientation = unit.orientation;
         const omega = unit.angularVelocity3;
         if (orientation !== null && omega !== null) {
@@ -276,12 +275,12 @@ export class UnitForceSystem {
           _forceRows[base + UF_ROW_HOVER_RANDOM_SAMPLE] = this.world.rng.next();
         }
       } else if (terrainContact || supportSurfaceContact) {
-        if (supportSurfaceContact) {
-          _forceRows[base + UF_ROW_GROUND_Z] = body.z - body.groundOffset;
-          _forceRows[base + UF_ROW_NORMAL_X] = 0;
-          _forceRows[base + UF_ROW_NORMAL_Y] = 0;
-          _forceRows[base + UF_ROW_NORMAL_Z] = 1;
-          this.writeSupportSurfaceNormal(entity);
+        if (supportSurface !== null) {
+          _forceRows[base + UF_ROW_GROUND_Z] = supportSurface.groundZ;
+          _forceRows[base + UF_ROW_NORMAL_X] = supportSurface.normalX;
+          _forceRows[base + UF_ROW_NORMAL_Y] = supportSurface.normalY;
+          _forceRows[base + UF_ROW_NORMAL_Z] = supportSurface.normalZ;
+          this.writeSupportSurfaceNormal(entity, supportSurface);
         }
         const radius = body.radius || 10;
         const inWater = terrainContact && isWaterAt(body.x, body.y, mw, mh);
@@ -425,19 +424,22 @@ export class UnitForceSystem {
     }
   }
 
-  private writeSupportSurfaceNormal(entity: Entity): void {
+  private writeSupportSurfaceNormal(entity: Entity, supportSurface: SupportSurfaceContact): void {
     const body = entity.body?.physicsBody;
     if (body === undefined) return;
     if (
-      Math.abs(body.surfaceNormalX) <= SUPPORT_SURFACE_NORMAL_DIRTY_EPSILON &&
-      Math.abs(body.surfaceNormalY) <= SUPPORT_SURFACE_NORMAL_DIRTY_EPSILON &&
-      Math.abs(body.surfaceNormalZ - 1) <= SUPPORT_SURFACE_NORMAL_DIRTY_EPSILON
+      Math.abs(body.surfaceNormalX - supportSurface.normalX) <=
+        SUPPORT_SURFACE_NORMAL_DIRTY_EPSILON &&
+      Math.abs(body.surfaceNormalY - supportSurface.normalY) <=
+        SUPPORT_SURFACE_NORMAL_DIRTY_EPSILON &&
+      Math.abs(body.surfaceNormalZ - supportSurface.normalZ) <=
+        SUPPORT_SURFACE_NORMAL_DIRTY_EPSILON
     ) {
       return;
     }
-    body.surfaceNormalX = 0;
-    body.surfaceNormalY = 0;
-    body.surfaceNormalZ = 1;
+    body.surfaceNormalX = supportSurface.normalX;
+    body.surfaceNormalY = supportSurface.normalY;
+    body.surfaceNormalZ = supportSurface.normalZ;
     this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_NORMAL);
   }
 

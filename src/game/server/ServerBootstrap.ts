@@ -176,7 +176,6 @@ export class ServerBootstrap {
       await report(0.9, 'Generating demo units');
       spawnBackgroundUnitsStandalone(
         world, physics, true,
-        constructionSystem.getGrid(),
         backgroundAllowedUnitBlueprintIds,
         playerIds,
       );
@@ -334,7 +333,6 @@ export class ServerBootstrap {
       // Background mode: spawn a cluster of units near center for immediate combat
       spawnBackgroundUnitsStandalone(
         world, physics, true,
-        constructionSystem.getGrid(),
         backgroundAllowedUnitBlueprintIds,
         playerIds,
       );

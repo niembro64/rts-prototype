@@ -37,3 +37,23 @@ export type UnitAction = {
   targetId?: EntityId;
   isPathExpansion?: boolean;
 };
+
+export type UnitPathPoint = {
+  x: number;
+  y: number;
+  z?: number;
+};
+
+export type UnitPathPlan = {
+  points: UnitPathPoint[];
+  index: number;
+  actionHash: number;
+  terrainVersion: number;
+  buildingGridVersion: number;
+  goalX: number;
+  goalY: number;
+  goalZ?: number;
+  actionType: ActionType;
+  targetId?: EntityId;
+  buildingId?: EntityId;
+};

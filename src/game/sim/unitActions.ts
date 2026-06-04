@@ -20,6 +20,7 @@ export function computeUnitActionHash(actions: readonly UnitAction[]): number {
 export function refreshUnitActionHash(unit: Unit): number {
   const hash = computeUnitActionHash(unit.actions);
   unit.actionHash = hash;
+  unit.activePath = null;
   return hash;
 }
 

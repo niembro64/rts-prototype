@@ -68,6 +68,15 @@ import {
 import type { EntityId } from '../sim/types';
 
 type SurfaceNormal = { nx: number; ny: number; nz: number };
+export type SupportSurfaceContact = {
+  groundZ: number;
+  normalX: number;
+  normalY: number;
+  normalZ: number;
+};
+type StaticSupportSurfaceContact = SupportSurfaceContact & {
+  staticBody: Body3D;
+};
 type ApplyForceOptions = { canLaunchFromGround: boolean };
 
 const DEFAULT_APPLY_FORCE_OPTIONS: ApplyForceOptions = {
@@ -343,6 +352,8 @@ const SPHERE_ITERATIONS_HIGH_COUNT = 6000;
 // common query to the immediate 3x3x3 neighborhood while the dynamic
 // range below still handles future oversized bodies correctly.
 const CONTACT_CELL_SIZE = 160;
+const SUPPORT_SURFACE_CONTACT_EPSILON = Math.max(UNIT_GROUND_CONTACT_EPSILON, 1);
+const SUPPORT_SURFACE_FOOTPRINT_EPSILON = 0.5;
 const WORLD_BOUNDARY_DAMPING_ACCEL_PER_SPEED =
   UNIT_WORLD_BOUNDARY_SPRING_ACCEL_PER_WORLD_UNIT > 0
     ? 2
@@ -385,6 +396,11 @@ export class PhysicsEngine3D {
   // purpose as the 2D engine: a newly spawned unit shouldn't immediately
   // collide with its own factory as it exits.
   private ignoreStatic: Map<Body3D, Body3D> = new Map();
+  // Dynamic slot -> static slot for the cuboid currently acting as a
+  // terrain-like top support. That cuboid is skipped by the sphere-cuboid
+  // resolver for this step so the unit rests by `groundOffset`, not by its
+  // collision radius.
+  private stepSupportIgnoredStaticSlots = new Map<number, number>();
 
   /** Callback that returns the ground elevation under any (x, y).
    *  Defaults to a flat z=0 plane; the simulator overrides it with
@@ -645,6 +661,33 @@ export class PhysicsEngine3D {
     return body.upwardSurfaceContact === true;
   }
 
+  getSupportSurfaceContact(
+    body: Body3D,
+    terrainGroundZ: number,
+  ): SupportSurfaceContact | null {
+    const staticSupport = this.findStaticSupportSurface(body, terrainGroundZ);
+    if (staticSupport !== null) {
+      const groundPointZ = body.z - body.groundOffset;
+      return {
+        groundZ: Math.max(staticSupport.groundZ, groundPointZ),
+        normalX: staticSupport.normalX,
+        normalY: staticSupport.normalY,
+        normalZ: staticSupport.normalZ,
+      };
+    }
+
+    if (body.upwardSurfaceContact === true) {
+      return {
+        groundZ: body.z - body.groundOffset,
+        normalX: 0,
+        normalY: 0,
+        normalZ: 1,
+      };
+    }
+
+    return null;
+  }
+
   collectLastStepEntityIds(out: EntityId[]): void {
     for (let i = 0; i < this.stepSyncEntityIds.length; i++) {
       out.push(this.stepSyncEntityIds[i]);
@@ -748,6 +791,7 @@ export class PhysicsEngine3D {
     getSimWasm()!.pool.refreshViews();
     this.stepSyncEntityIds.length = 0;
     this.stepSyncEntityIdSet.clear();
+    this.stepSupportIgnoredStaticSlots.clear();
     if (this.awakeDynamicBodyCount <= 0) return;
     const dynamicSlots = this.getDynamicBodySlotsView();
     const maxCount = dynamicSlots.length;
@@ -842,6 +886,83 @@ export class PhysicsEngine3D {
     }
   }
 
+  private overlayIntegrationSupportSurfaces(count: number): void {
+    for (let i = 0; i < count; i++) {
+      const slot = _integrateAwakeSlots[i];
+      const b = this.bodyBySlot[slot];
+      if (b === undefined) continue;
+
+      const support = this.findStaticSupportSurface(b, _integrateGroundZ[i]);
+      if (support === null) continue;
+
+      _integrateGroundZ[i] = support.groundZ;
+      _integrateGroundNormals[i * 3] = support.normalX;
+      _integrateGroundNormals[i * 3 + 1] = support.normalY;
+      _integrateGroundNormals[i * 3 + 2] = support.normalZ;
+
+      const targetZ = support.groundZ + b.groundOffset;
+      if (Math.abs(b.z - targetZ) > SUPPORT_SURFACE_CONTACT_EPSILON) {
+        b.z = targetZ;
+        if (b.vz < 0) b.vz = 0;
+      }
+    }
+  }
+
+  private refreshStepSupportIgnoredStaticSlots(count: number): void {
+    this.stepSupportIgnoredStaticSlots.clear();
+    for (let i = 0; i < count; i++) {
+      const slot = _integrateAwakeSlots[i];
+      const b = this.bodyBySlot[slot];
+      if (b === undefined) continue;
+      const support = this.findStaticSupportSurface(b, this.getGroundZ(b.x, b.y));
+      if (support !== null) {
+        this.stepSupportIgnoredStaticSlots.set(b.slot, support.staticBody.slot);
+      }
+    }
+  }
+
+  private findStaticSupportSurface(
+    body: Body3D,
+    terrainGroundZ: number,
+  ): StaticSupportSurfaceContact | null {
+    if (body.isStatic || body.shape !== 'sphere') return null;
+
+    const ignoredStatic = this.ignoreStatic.get(body);
+    const groundPointZ = body.z - body.groundOffset;
+    const sphereBottomZ = body.z - body.radius;
+    let best: StaticSupportSurfaceContact | null = null;
+
+    for (let i = 0; i < this.staticBodies.length; i++) {
+      const st = this.staticBodies[i];
+      if (st === ignoredStatic || st.shape !== 'cuboid') continue;
+
+      const topZ = st.z + st.halfZ;
+      if (topZ < terrainGroundZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
+      if (body.z < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
+
+      const dx = body.x - st.x;
+      const dy = body.y - st.y;
+      if (Math.abs(dx) > st.halfX + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
+      if (Math.abs(dy) > st.halfY + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
+
+      const groundPointNearTop = groundPointZ <= topZ + SUPPORT_SURFACE_CONTACT_EPSILON;
+      const sphereBottomNearTop = sphereBottomZ <= topZ + SUPPORT_SURFACE_CONTACT_EPSILON;
+      if (!groundPointNearTop && !sphereBottomNearTop) continue;
+
+      if (best === null || topZ > best.groundZ) {
+        best = {
+          groundZ: topZ,
+          normalX: 0,
+          normalY: 0,
+          normalZ: 1,
+          staticBody: st,
+        };
+      }
+    }
+
+    return best;
+  }
+
   /** Explicit-Euler integration with a soft terrain contact model.
    *  Every dynamic unit follows the same path:
    *
@@ -888,6 +1009,7 @@ export class PhysicsEngine3D {
     if (!groundSampled) {
       this.sampleIntegrationGroundFallback(count);
     }
+    this.overlayIntegrationSupportSurfaces(count);
     const transitionCount = sim.poolStepIntegrate(
       slotsView,
       groundZView,
@@ -910,6 +1032,7 @@ export class PhysicsEngine3D {
         this.sleepBody(b);
       }
     }
+    this.refreshStepSupportIgnoredStaticSlots(count);
   }
 
   /** Phase 3f sphere-vs-cuboid contact resolver. The static
@@ -927,12 +1050,21 @@ export class PhysicsEngine3D {
       _sphereCuboidWakeTransitions = new Uint32Array(maxCount);
     }
     if (this.ignoreStatic.size === 0) {
-      _sphereCuboidIgnoredStatics.fill(NO_IGNORE_SLOT, 0, maxCount);
+      if (this.stepSupportIgnoredStaticSlots.size === 0) {
+        _sphereCuboidIgnoredStatics.fill(NO_IGNORE_SLOT, 0, maxCount);
+      } else {
+        for (let i = 0; i < maxCount; i++) {
+          _sphereCuboidIgnoredStatics[i] =
+            this.stepSupportIgnoredStaticSlots.get(stepSlots[i]) ?? NO_IGNORE_SLOT;
+        }
+      }
     } else {
       for (let i = 0; i < maxCount; i++) {
         const dyn = this.bodyBySlot[stepSlots[i]];
         const ignored = dyn === undefined ? undefined : this.ignoreStatic.get(dyn);
-        _sphereCuboidIgnoredStatics[i] = ignored !== undefined ? ignored.slot : NO_IGNORE_SLOT;
+        _sphereCuboidIgnoredStatics[i] = ignored !== undefined
+          ? ignored.slot
+          : this.stepSupportIgnoredStaticSlots.get(stepSlots[i]) ?? NO_IGNORE_SLOT;
       }
     }
     const ignoredView = _sphereCuboidIgnoredStatics.subarray(0, maxCount);

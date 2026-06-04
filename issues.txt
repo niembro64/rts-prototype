@@ -16,6 +16,3 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 Please always commit and push before and after any code changes we make.
 ================================================================================
 
-================================================================================
-ARCHITECTURE / PHILOSOPHY MIGRATION (budget_design_philosophy.html)
-================================================================================

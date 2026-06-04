@@ -40,6 +40,7 @@ import type { ViewportFootprint } from '../ViewportFootprint';
 import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
 import {
   getConstructionPieceOpacity,
+  isBuildInProgress,
   isConstructionPieceMaterialized,
 } from '../sim/buildableHelpers';
 import { ProjectileRenderer3D } from './ProjectileRenderer3D';
@@ -1010,19 +1011,23 @@ export class Render3DEntities {
         m.locomotion.group.visible = isConstructionPieceMaterialized(e, 'body');
       }
       if (m.locomotion && m.locomotion.group.visible) {
+        const locomotionSmokeEmitters = isBuildInProgress(e.buildable)
+          ? undefined
+          : this.hoverSmokeEmitters;
         updateLocomotion(
           m.locomotion, e, this._currentDtMs,
           mapWidth,
           mapHeight,
           this.legRenderer,
-          this.hoverSmokeEmitters,
+          locomotionSmokeEmitters,
         );
       }
 
       // Materialization fade — mounted turrets share the host body's
       // build fraction because they are not separate construction pieces.
-      // This runs after locomotion update so leg instance geometry is
-      // faded after its per-frame pose writer has restored base thickness.
+      // Every part fades by per-instance / per-object ALPHA at constant
+      // size — body, turrets, and locomotion legs alike (see EntityFade3D
+      // and LegInstancedRenderer) — so nothing changes shape as it builds.
       // Finished units sit at 1, where the shared fade helper restores
       // real materials and then becomes a no-op.
       const turretFades = this._turretFadeScratch;

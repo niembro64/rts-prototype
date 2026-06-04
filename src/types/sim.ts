@@ -11,6 +11,7 @@ import type {
 } from './buildingTypes';
 import type {
   UnitAction,
+  UnitPathPlan,
   WaypointType,
 } from './commandTypes';
 import type { TurretRangeOverrides, TurretRanges } from './combatTypes';
@@ -34,6 +35,8 @@ export type {
 export type {
   ActionType,
   UnitAction,
+  UnitPathPlan,
+  UnitPathPoint,
   Waypoint,
   WaypointType,
 } from './commandTypes';
@@ -187,6 +190,10 @@ export type Unit = {
   actions: UnitAction[];
   actionHash: number;
   patrolStartIndex: number | null;
+  /** Current route resolution for actions[0]. This is sim-only state:
+   *  actions are durable player/factory waypoints, while activePath
+   *  holds transient pathfinder points for the leg being executed. */
+  activePath: UnitPathPlan | null;
   /** Flying-only loiter center. When a flying unit exhausts its action
    *  queue, it keeps steering around this last destination instead of
    *  dropping thrust and drifting off-map. */

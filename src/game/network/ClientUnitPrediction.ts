@@ -27,6 +27,7 @@ import {
 import { getUnitAirFrictionDamp } from '../sim/unitAirFriction';
 import {
   getUnitGroundFrictionDamp,
+  UNIT_GROUND_CONTACT_EPSILON,
   isUnitGroundPenetrationInContact,
 } from '../sim/unitGroundPhysics';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
@@ -47,6 +48,9 @@ const PREDICTION_ROT_EPSILON = 0.001;
 const PREDICTION_TURRET_EPSILON = 0.001;
 const PREDICTION_GROUND_REST_PENETRATION_EPSILON = 0.1;
 const TERRAIN_VERTICAL_SLAVE_EPSILON = 2;
+const SUPPORT_SURFACE_CONTACT_EPSILON = Math.max(UNIT_GROUND_CONTACT_EPSILON, 1);
+const SUPPORT_SURFACE_VERTICAL_PROBE = 8;
+const SUPPORT_SURFACE_FOOTPRINT_EPSILON = 0.5;
 const TURRET_PITCH_MIN = -Math.PI / 2;
 const TURRET_PITCH_MAX = Math.PI / 2;
 const MOTION_STRIDE = 6;
@@ -105,6 +109,7 @@ let groundZBatch = new Float64Array(0);
 let groundNormalBatch = new Float64Array(0);
 let contactBatch = new Uint8Array(0);
 const targetBatchRefs: UnitPredictionTarget[] = [];
+const predictionSupportBuildings: Entity[] = [];
 let orientationBatch = new Float64Array(0);
 const entityOrientationBatchRefs: Entity[] = [];
 const targetOrientationBatchRefs: UnitPredictionTarget[] = [];
@@ -130,6 +135,48 @@ function getPredictionGroundNormal(
     predictionMapHeight,
     LAND_CELL_SIZE,
   );
+}
+
+function refreshPredictionSupportBuildings(supportEntities: Iterable<Entity>): void {
+  predictionSupportBuildings.length = 0;
+  for (const entity of supportEntities) {
+    if (entity.building !== null) {
+      predictionSupportBuildings.push(entity);
+    }
+  }
+}
+
+function getPredictionSupportGroundZ(
+  x: number,
+  y: number,
+  z: number,
+  groundOffset: number,
+  terrainGroundZ: number,
+): number | null {
+  const groundPointZ = z - groundOffset;
+  let bestTopZ = Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < predictionSupportBuildings.length; i++) {
+    const entity = predictionSupportBuildings[i];
+    const building = entity.building;
+    if (building === null) continue;
+
+    const topZ = entity.transform.z + building.depth / 2;
+    if (topZ < terrainGroundZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
+    if (z < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
+    if (groundPointZ < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
+    if (groundPointZ > topZ + SUPPORT_SURFACE_VERTICAL_PROBE) continue;
+
+    const dx = x - entity.transform.x;
+    const dy = y - entity.transform.y;
+    if (Math.abs(dx) > building.width / 2 + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
+    if (Math.abs(dy) > building.height / 2 + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
+
+    if (topZ > bestTopZ) bestTopZ = topZ;
+  }
+
+  return bestTopZ > Number.NEGATIVE_INFINITY
+    ? Math.max(bestTopZ, groundPointZ)
+    : null;
 }
 
 // Ground units resting on terrain sit at terrain + bodyCenterHeight. Deriving
@@ -313,13 +360,21 @@ function sampleInitialGroundBatch(count: number): void {
     const base = i * MOTION_STRIDE;
     const x = motionBatch[base];
     const y = motionBatch[base + 1];
-    const groundZ = getPredictionGroundZ(x, y);
+    const terrainGroundZ = getPredictionGroundZ(x, y);
+    const supportGroundZ = getPredictionSupportGroundZ(
+      x,
+      y,
+      motionBatch[base + 2],
+      groundOffsetBatch[i],
+      terrainGroundZ,
+    );
+    const groundZ = supportGroundZ ?? terrainGroundZ;
     const penetration = groundZ - (motionBatch[base + 2] - groundOffsetBatch[i]);
     groundZBatch[i] = groundZ;
     let nx = 0;
     let ny = 0;
     let nz = 1;
-    if (isUnitGroundPenetrationInContact(penetration)) {
+    if (supportGroundZ === null && isUnitGroundPenetrationInContact(penetration)) {
       const normal = getPredictionGroundNormal(x, y);
       nx = normal.nx;
       ny = normal.ny;
@@ -346,7 +401,16 @@ function snapContactMotionBatch(count: number): void {
 function updateCurrentMotionContacts(count: number): void {
   for (let i = 0; i < count; i++) {
     const base = i * MOTION_STRIDE;
-    const nextGroundZ = getPredictionGroundZ(motionBatch[base], motionBatch[base + 1]);
+    const x = motionBatch[base];
+    const y = motionBatch[base + 1];
+    const terrainGroundZ = getPredictionGroundZ(x, y);
+    const nextGroundZ = getPredictionSupportGroundZ(
+      x,
+      y,
+      motionBatch[base + 2],
+      groundOffsetBatch[i],
+      terrainGroundZ,
+    ) ?? terrainGroundZ;
     contactBatch[i] = isUnitGroundPenetrationInContact(
       nextGroundZ - (motionBatch[base + 2] - groundOffsetBatch[i]),
     ) ? 1 : 0;
@@ -575,11 +639,12 @@ function applyClientUnitVisualDrift(
 export function applyClientUnitVisualPredictionBatch(options: {
   entities: Entity[];
   targets: Array<UnitPredictionTarget | undefined>;
+  supportEntities: Iterable<Entity>;
   deltaMs: number;
   mapWidth: number;
   mapHeight: number;
 }): void {
-  const { entities, targets, deltaMs, mapWidth, mapHeight } = options;
+  const { entities, targets, supportEntities, deltaMs, mapWidth, mapHeight } = options;
   const count = entities.length;
   if (count === 0) return;
 
@@ -597,6 +662,7 @@ export function applyClientUnitVisualPredictionBatch(options: {
   const predictionMode = getPredictionMode();
   predictionMapWidth = mapWidth;
   predictionMapHeight = mapHeight;
+  refreshPredictionSupportBuildings(supportEntities);
   ensurePredictionBatchCapacity(count);
   ensureOrientationBatchCapacity(count);
 

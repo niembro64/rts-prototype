@@ -945,6 +945,7 @@ export class WorldState {
         actions: [],
         actionHash: 0,
         patrolStartIndex: null,
+        activePath: null,
         flyingLoiterTargetX: null,
         flyingLoiterTargetY: null,
         flyingLoiterTargetZ: null,

@@ -453,8 +453,12 @@ export class BuildingEntityRenderer3D {
     }
 
     if (mesh.buildingDetails) {
+      // Details fade in with the body via applyEntityGroupFade — build-in
+      // is opacity only, so every part materializes together at constant
+      // size instead of popping in at completion. detailsReady still gates
+      // their animation (see BuildingAnimationController3D), not existence.
       for (const detail of mesh.buildingDetails) {
-        detail.mesh.visible = detailsReady;
+        detail.mesh.visible = true;
       }
     }
 

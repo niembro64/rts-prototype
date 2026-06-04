@@ -1,6 +1,6 @@
 // Background battle spawning logic.
 
-import type { Entity, PlayerId } from '../sim/types';
+import type { Entity, PlayerId, UnitAction } from '../sim/types';
 import type { WorldState } from '../sim/WorldState';
 import { aimTurretsToward } from '../sim/turretInit';
 import type { PhysicsEngine3D as PhysicsEngine } from './PhysicsEngine3D';
@@ -16,14 +16,9 @@ import {
   mapOvalPointAt,
   type MapOvalMetrics,
 } from '../sim/mapOval';
-import {
-  expandMultiLegPathActions,
-  pathTerrainFilterForLocomotion,
-  type MultiLegWaypoint,
-} from '../sim/Pathfinder';
+import type { MultiLegWaypoint } from '../sim/Pathfinder';
 import { setUnitActions } from '../sim/unitActions';
 import { setUnitFacingYaw } from '../sim/unitOrientation';
-import type { BuildingGrid } from '../sim/buildGrid';
 import { createPhysicsBodyForUnit } from './unitPhysicsBody';
 
 // Available unit blueprints for background spawning (excludes commander)
@@ -106,7 +101,6 @@ function spawnUnit(
   x: number,
   y: number,
   waypoints: readonly MultiLegWaypoint[],
-  buildingGrid: BuildingGrid,
   allowedUnitBlueprintIds: ReadonlySet<string> | undefined = undefined,
 ): Entity | null {
   if (allowedUnitBlueprintIds !== undefined && allowedUnitBlueprintIds.size === 0) return null;
@@ -126,13 +120,14 @@ function spawnUnit(
   aimTurretsToward(unit, firstWp.x, firstWp.y);
 
   if (unit.unit) {
-    const { actions, patrolStartIndex } = expandMultiLegPathActions(
-      x, y, waypoints,
-      world.mapWidth, world.mapHeight, buildingGrid,
-      pathTerrainFilterForLocomotion(unit.unit.locomotion),
-    );
+    const actions: UnitAction[] = waypoints.map((wp) => {
+      const action: UnitAction = { type: wp.type, x: wp.x, y: wp.y };
+      if (wp.z !== null) action.z = wp.z;
+      return action;
+    });
+    const patrolStartIndex = actions.findIndex((action) => action.type === 'patrol');
     setUnitActions(unit.unit, actions);
-    if (patrolStartIndex !== null) {
+    if (patrolStartIndex >= 0) {
       unit.unit.patrolStartIndex = patrolStartIndex;
     }
   }
@@ -188,7 +183,6 @@ export function spawnBackgroundUnitsStandalone(
   world: WorldState,
   physics: PhysicsEngine,
   initialSpawn: boolean,
-  buildingGrid: BuildingGrid,
   allowedUnitBlueprintIds: ReadonlySet<string> | undefined = undefined,
   playerIds: readonly PlayerId[] | undefined = undefined,
 ): Entity[] {
@@ -266,7 +260,7 @@ export function spawnBackgroundUnitsStandalone(
             { x: targetX, y: targetY, z: null, type: 'patrol' },
             { x: spawn.x, y: spawn.y, z: null, type: 'patrol' },
           ],
-          buildingGrid, allowedUnitBlueprintIds,
+          allowedUnitBlueprintIds,
         );
         if (unit) spawned.push(unit);
       }
@@ -293,7 +287,7 @@ export function spawnBackgroundUnitsStandalone(
           { x: cx, y: cy, z: null, type: 'patrol' },
           { x: point.x, y: point.y, z: null, type: 'patrol' },
         ],
-        buildingGrid, allowedUnitBlueprintIds,
+        allowedUnitBlueprintIds,
       );
       if (unit) spawned.push(unit);
     }

@@ -1,6 +1,6 @@
 import { WorldState } from './WorldState';
 import { CommandQueue } from './commands';
-import type { Entity, EntityId, PlayerId, Unit, UnitAction } from './types';
+import type { Entity, EntityId, PlayerId, Unit, UnitAction, UnitPathPoint } from './types';
 import { NO_ENTITY_ID } from './types';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import {
@@ -65,10 +65,11 @@ import { UNIT_MASS_MULTIPLIER } from '../../config';
 import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
 import {
-  expandPathActions,
+  expandPathPoints,
   pathTerrainFilterForLocomotion,
   type PathTerrainFilter,
 } from './Pathfinder';
+import { getTerrainVersion } from './Terrain';
 import {
   getBuildingBlueprint,
   getUnitBlueprint,
@@ -89,8 +90,7 @@ import {
 } from '../sim-wasm/init';
 import {
   rotateFirstUnitActionToEnd,
-  replaceLeadingUnitActions,
-  setUnitActions,
+  refreshUnitActionHash,
   shiftUnitAction,
   spliceUnitActions,
 } from './unitActions';
@@ -109,6 +109,9 @@ type DeathExplosionBlast = {
   sourceType: 'turret' | 'unit' | 'building' | 'system';
   sourceEntityId: EntityId;
   center: { x: number; y: number; z: number };
+};
+type ActiveMovementTarget = UnitPathPoint & {
+  isFinalActionPoint: boolean;
 };
 
 function safeVelocityUpdates(value: unknown): ProjectileVelocityUpdateEvent[] {
@@ -292,6 +295,7 @@ export class Simulation {
   private _arrivalCompletionFallbackVxBuf = new Float64Array(0);
   private _arrivalCompletionFallbackVyBuf = new Float64Array(0);
   private _arrivalCompletionFlagsBuf = new Uint8Array(0);
+  private _arrivalCompletionFinalPointBuf = new Uint8Array(0);
   private _arrivalCompletionDistanceBuf = new Float64Array(0);
   private _arrivalCompletionArrivedBuf = new Uint8Array(0);
   private _arrivalCompletionCount = 0;
@@ -1166,6 +1170,113 @@ export class Simulation {
     return false;
   }
 
+  private isActivePathValid(
+    unit: Unit,
+    action: UnitAction,
+    terrainVersion: number,
+    buildingGridVersion: number,
+  ): boolean {
+    const plan = unit.activePath;
+    return plan !== null &&
+      plan.actionHash === unit.actionHash &&
+      plan.terrainVersion === terrainVersion &&
+      plan.buildingGridVersion === buildingGridVersion &&
+      plan.goalX === action.x &&
+      plan.goalY === action.y &&
+      plan.goalZ === action.z &&
+      plan.actionType === action.type &&
+      plan.targetId === action.targetId &&
+      plan.buildingId === action.buildingId;
+  }
+
+  private ensureActivePathPlan(entity: Entity, action: UnitAction): Unit['activePath'] {
+    const unit = entity.unit;
+    if (!unit) return null;
+
+    const buildingGrid = this.constructionSystem.getGrid();
+    const terrainVersion = getTerrainVersion();
+    const buildingGridVersion = buildingGrid.getVersion();
+    if (this.isActivePathValid(unit, action, terrainVersion, buildingGridVersion)) {
+      return unit.activePath;
+    }
+
+    const points = expandPathPoints(
+      entity.transform.x,
+      entity.transform.y,
+      action.x,
+      action.y,
+      this.world.mapWidth,
+      this.world.mapHeight,
+      buildingGrid,
+      action.z ?? null,
+      this.pathTerrainFilterForUnit(entity),
+    );
+    unit.activePath = {
+      points,
+      index: 0,
+      actionHash: unit.actionHash,
+      terrainVersion,
+      buildingGridVersion,
+      goalX: action.x,
+      goalY: action.y,
+      goalZ: action.z,
+      actionType: action.type,
+      targetId: action.targetId,
+      buildingId: action.buildingId,
+    };
+    return unit.activePath;
+  }
+
+  private resolveActiveMovementTarget(entity: Entity, action: UnitAction): ActiveMovementTarget {
+    const plan = this.ensureActivePathPlan(entity, action);
+    if (plan === null || plan.points.length === 0) {
+      return {
+        x: action.x,
+        y: action.y,
+        z: action.z,
+        isFinalActionPoint: true,
+      };
+    }
+
+    while (plan.index < plan.points.length - 1) {
+      const point = plan.points[plan.index];
+      const dx = point.x - entity.transform.x;
+      const dy = point.y - entity.transform.y;
+      if (magnitude(dx, dy) > ARRIVAL_RADIUS) break;
+      plan.index++;
+    }
+
+    const point = plan.points[plan.index];
+    return {
+      x: point.x,
+      y: point.y,
+      z: point.z,
+      isFinalActionPoint: plan.index >= plan.points.length - 1,
+    };
+  }
+
+  private advanceActivePathPoint(entity: Entity): void {
+    const unit = entity.unit;
+    const plan = unit?.activePath ?? null;
+    if (plan === null) return;
+    if (plan.index < plan.points.length - 1) {
+      plan.index++;
+    }
+  }
+
+  private updateCurrentActionApproach(
+    entity: Entity,
+    currentAction: UnitAction,
+    targetPoint: { x: number; y: number; z: number },
+  ): void {
+    if (!entity.unit) return;
+    currentAction.x = targetPoint.x;
+    currentAction.y = targetPoint.y;
+    currentAction.z = targetPoint.z;
+    refreshUnitActionHash(entity.unit);
+    this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+  }
+
   // Update unit movement with action queue processing.
   // unit.thrustDirX/Y is what GameServer.applyForces reads — a (0, 0)
   // means "no powered thrust this tick"; vector magnitude scales drive
@@ -1226,15 +1337,16 @@ export class Simulation {
       }
 
       // Sweep targeted intents whose target disappeared or no longer
-      // needs work. Pathfinding stores intermediate `move` waypoints
-      // before the final attack/build/repair action, so remove that
-      // whole local path segment with the stale final action.
+      // needs work. The action queue holds durable command waypoints;
+      // transient pathfinding points live in unit.activePath and are
+      // discarded automatically when the queue changes.
       if (this.sweepInvalidTargetActions(entity)) {
         this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
       }
 
       // No actions - flying units keep circling their last destination.
       if (unit.actions.length === 0) {
+        unit.activePath = null;
         unit.stuckTicks = 0;
         this.queueFlyingLoiterThrust(entity);
         continue;
@@ -1247,6 +1359,7 @@ export class Simulation {
       this.rememberFlyingLoiterTarget(unit, currentAction);
 
       if (currentAction.type === 'wait') {
+        unit.activePath = null;
         unit.stuckTicks = 0;
         this.queueFlyingLoiterThrust(entity);
         continue;
@@ -1267,15 +1380,17 @@ export class Simulation {
           continue;
         }
 
-        const dx = currentAction.x - transform.x;
-        const dy = currentAction.y - transform.y;
+        const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
+        const dx = movementTarget.x - transform.x;
+        const dy = movementTarget.y - transform.y;
         const distance = magnitude(dx, dy);
         if (distance <= 1) {
+          if (!movementTarget.isFinalActionPoint) this.advanceActivePathPoint(entity);
           unit.stuckTicks = 0;
           continue;
         }
 
-        this.queueArrivalThrust(entity, currentAction, dx, dy, distance);
+        this.queueArrivalThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
         continue;
       }
 
@@ -1297,11 +1412,15 @@ export class Simulation {
         // target's raw position. If the target moved and this approach
         // point no longer gets us into range, replan only after reaching
         // the approach point so we do not recreate an obstacle beeline.
-        const dx = currentAction.x - transform.x;
-        const dy = currentAction.y - transform.y;
+        const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
+        const dx = movementTarget.x - transform.x;
+        const dy = movementTarget.y - transform.y;
         const distance = magnitude(dx, dy);
         if (distance > 15) {
-          this.queueArrivalThrust(entity, currentAction, dx, dy, distance);
+          this.queueArrivalThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
+        } else if (!movementTarget.isFinalActionPoint) {
+          this.advanceActivePathPoint(entity);
+          unit.stuckTicks = 0;
         } else {
           if ((unit.stuckTicks ?? 0) < 0) {
             unit.stuckTicks = (unit.stuckTicks ?? 0) + 1;
@@ -1331,11 +1450,15 @@ export class Simulation {
           continue;
         }
 
-        const dx = currentAction.x - transform.x;
-        const dy = currentAction.y - transform.y;
+        const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
+        const dx = movementTarget.x - transform.x;
+        const dy = movementTarget.y - transform.y;
         const distance = magnitude(dx, dy);
         if (distance > 15) {
-          this.queueArrivalThrust(entity, currentAction, dx, dy, distance);
+          this.queueArrivalThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
+        } else if (!movementTarget.isFinalActionPoint) {
+          this.advanceActivePathPoint(entity);
+          unit.stuckTicks = 0;
         } else {
           unit.stuckTicks = 0;
         }
@@ -1364,11 +1487,15 @@ export class Simulation {
           continue;
         }
 
-        const dx = currentAction.x - transform.x;
-        const dy = currentAction.y - transform.y;
+        const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
+        const dx = movementTarget.x - transform.x;
+        const dy = movementTarget.y - transform.y;
         const distance = magnitude(dx, dy);
         if (distance > 15) {
-          this.queueArrivalThrust(entity, currentAction, dx, dy, distance);
+          this.queueArrivalThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
+        } else if (!movementTarget.isFinalActionPoint) {
+          this.advanceActivePathPoint(entity);
+          unit.stuckTicks = 0;
         } else if (this.tryRefreshGuardApproach(entity, currentAction, targetPoint)) {
           unit.stuckTicks = 0;
         } else {
@@ -1390,13 +1517,21 @@ export class Simulation {
         }
       }
 
-      // Calculate direction to waypoint
-      const dx = currentAction.x - transform.x;
-      const dy = currentAction.y - transform.y;
+      // Calculate direction to the current transient path point for
+      // this durable waypoint.
+      const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
+      const dx = movementTarget.x - transform.x;
+      const dy = movementTarget.y - transform.y;
 
       // Completion classification is batched below so Rust reads the
       // current body velocity and applies the final-waypoint brake gate.
-      this.queueArrivalCompletion(entity, currentAction, dx, dy);
+      this.queueArrivalCompletion(
+        entity,
+        currentAction,
+        dx,
+        dy,
+        movementTarget.isFinalActionPoint,
+      );
     }
 
     this.flushArrivalCompletion();
@@ -1743,6 +1878,9 @@ export class Simulation {
     const flags = new Uint8Array(next);
     flags.set(this._arrivalCompletionFlagsBuf);
     this._arrivalCompletionFlagsBuf = flags;
+    const finalPoint = new Uint8Array(next);
+    finalPoint.set(this._arrivalCompletionFinalPointBuf);
+    this._arrivalCompletionFinalPointBuf = finalPoint;
     this._arrivalCompletionDistanceBuf = new Float64Array(next);
     this._arrivalCompletionArrivedBuf = new Uint8Array(next);
   }
@@ -1755,6 +1893,7 @@ export class Simulation {
     action: UnitAction,
     dx: number,
     dy: number,
+    isFinalActionPoint: boolean,
   ): void {
     const unit = entity.unit;
     if (!unit) return;
@@ -1770,10 +1909,12 @@ export class Simulation {
     this._arrivalCompletionFallbackVxBuf[index] = unit.velocityX;
     this._arrivalCompletionFallbackVyBuf[index] = unit.velocityY;
     let flags = unit.actions.length <= 1 && action.type !== 'patrol'
+      && isFinalActionPoint
       ? ARRIVAL_BATCH_FLAG_LAST_ACTION
       : 0;
     if (unit.locomotion.type === 'flying') flags |= ARRIVAL_COMPLETION_BATCH_FLAG_FLYING;
     this._arrivalCompletionFlagsBuf[index] = flags;
+    this._arrivalCompletionFinalPointBuf[index] = isFinalActionPoint ? 1 : 0;
   }
 
   private flushArrivalCompletion(): void {
@@ -1804,7 +1945,11 @@ export class Simulation {
       const unit = entity.unit;
       if (unit) {
         if (this._arrivalCompletionArrivedBuf[i] !== 0) {
-          this.advanceAction(entity);
+          if (this._arrivalCompletionFinalPointBuf[i] !== 0) {
+            this.advanceAction(entity);
+          } else {
+            this.advanceActivePathPoint(entity);
+          }
           unit.stuckTicks = 0;
           if (unit.actions.length === 0) this.queueFlyingLoiterThrust(entity);
         } else {
@@ -1814,11 +1959,13 @@ export class Simulation {
             this._arrivalCompletionDxBuf[i],
             this._arrivalCompletionDyBuf[i],
             this._arrivalCompletionDistanceBuf[i],
+            this._arrivalCompletionFinalPointBuf[i] !== 0,
           );
         }
       }
       this._arrivalCompletionEntitiesBuf[i] = undefined as unknown as Entity;
       this._arrivalCompletionActionsBuf[i] = undefined as unknown as UnitAction;
+      this._arrivalCompletionFinalPointBuf[i] = 0;
     }
     this._arrivalCompletionCount = 0;
   }
@@ -1832,6 +1979,7 @@ export class Simulation {
     dx: number,
     dy: number,
     distance: number,
+    isFinalActionPoint = true,
   ): void {
     const unit = entity.unit;
     const body = entity.body;
@@ -1844,12 +1992,11 @@ export class Simulation {
       return;
     }
 
-    // Intermediate waypoints (anything that isn't the final action in
-    // the queue) just steer full-power toward the waypoint and let the
-    // arrival radius catch the fly-through. The PD braking math below
-    // only fires when the unit needs to stop at a precise point — i.e.
-    // the very last action in the queue.
-    const isLastAction = unit.actions.length <= 1 && action.type !== 'patrol';
+    // Intermediate path points and queued waypoints steer full-power
+    // through the point. The PD braking math only fires when the unit
+    // needs to stop at a precise point: the final path point for the
+    // last durable action in the queue.
+    const isLastAction = isFinalActionPoint && unit.actions.length <= 1 && action.type !== 'patrol';
     const index = this._arrivalCount++;
     this.ensureArrivalCapacity(this._arrivalCount);
     this._arrivalEntitiesBuf[index] = entity;
@@ -2142,8 +2289,8 @@ export class Simulation {
   /** Per-tick stuck check. For each unit that wanted to move this
    *  tick but is barely moving, increment its stuck counter; once
    *  past the threshold and within the per-tick replan budget, run
-   *  a fresh A* from the unit's current position to the trip's
-   *  final destination and replace its action queue. */
+   *  a fresh A* from the unit's current position to the active
+   *  waypoint without rewriting the authored action queue. */
   private evaluateStuckAndReplan(movingUnits: readonly Entity[]): void {
     const maxRows = movingUnits.length;
     if (maxRows === 0) return;
@@ -2160,7 +2307,6 @@ export class Simulation {
       let settlingFlags = 0;
       if (
         action !== undefined &&
-        !action.isPathExpansion &&
         action.type !== 'patrol' &&
         (action.type === 'move' || action.type === 'fight')
       ) {
@@ -2217,90 +2363,56 @@ export class Simulation {
         unit.stuckTicks = 0;
         this.replansThisTick++;
       } else {
-        // Replan didn't improve the unit's path — most often the
+        // Replan didn't improve the unit's active path — most often the
         // planner bailed (target unreachable from current position
         // under the JP-expansion budget) or the action type isn't
         // replan-eligible (patrol / build / repair). Either way,
         // hammering the planner again next tick won't help. Set
         // stuckTicks to a negative cooldown so the unit waits a
         // few seconds before its next eligibility window. The
-        // current path stays untouched (tryReplan didn't replace
-        // it) so the unit keeps trying its existing route.
+        // active path stays untouched (tryReplan didn't replace it)
+        // so the unit keeps trying its existing route.
         unit.stuckTicks = REPLAN_FAILURE_COOLDOWN;
       }
       this._stuckEntitiesBuf[i] = undefined as unknown as Entity;
     }
   }
 
-  /** Replan the given unit's path from its current position to the
-   *  final waypoint of its existing action queue. Returns true on a
-   *  successful replan (queue replaced), false when the action type
-   *  isn't replan-eligible (patrol loops have wrap semantics that
-   *  break under naive replan; build/repair are short-range and
-   *  bound to specific targets). Attack-action target IDs are
-   *  preserved on the new final waypoint so the unit keeps tracking
-   *  the right enemy through the new route. */
+  /** Replan the given unit's active route from its current position to
+   *  the current durable waypoint. Returns true on a successful active
+   *  path refresh, false when the action type isn't replan-eligible or
+   *  when the planner collapses to a worse stay-put fallback. */
   private tryReplan(entity: Entity): boolean {
-    if (!entity.unit) return false;
-    const actions = entity.unit.actions;
+    const unit = entity.unit;
+    if (!unit) return false;
+    const actions = unit.actions;
     if (actions.length === 0) return false;
-    const finalAction = actions[actions.length - 1];
+    const action = actions[0];
     if (
-      finalAction.type !== 'move' &&
-      finalAction.type !== 'fight' &&
-      finalAction.type !== 'attack' &&
-      finalAction.type !== 'attackGround' &&
-      finalAction.type !== 'guard'
+      action.type !== 'move' &&
+      action.type !== 'fight' &&
+      action.type !== 'attack' &&
+      action.type !== 'attackGround' &&
+      action.type !== 'guard'
     ) {
       return false;
     }
-    // Forward the original action's altitude so a replan keeps the
-    // click-derived final-waypoint z (used by Waypoint3D rendering)
-    // instead of falling back to a fresh terrain sample.
-    const pathActionType =
-      finalAction.type === 'attack' ||
-      finalAction.type === 'attackGround' ||
-      finalAction.type === 'guard'
-        ? 'move'
-        : finalAction.type;
-    const newPath = expandPathActions(
-      entity.transform.x, entity.transform.y,
-      finalAction.x, finalAction.y,
-      pathActionType,
-      this.world.mapWidth, this.world.mapHeight,
-      this.constructionSystem.getGrid(),
-      finalAction.z ?? null,
-      this.pathTerrainFilterForUnit(entity),
-    );
-    if (newPath.length === 0) return false;
-    // CRITICAL: a single-waypoint result is the planner's
-    // straight-line fallback — it fires when JPS hit its expansion
-    // cap, when the snap couldn't find an open cell within radius,
-    // or when the goal was unreachable. Overwriting the unit's
-    // existing multi-waypoint path with that single-waypoint
-    // fallback would REPLACE a good route with a beeline straight
-    // at the obstacle the unit was already routing around. The
-    // existing path is strictly more useful than the fallback;
-    // keep it and let the unit's current motion resolve via
-    // physics push or by reaching the next waypoint. Stuck
-    // detection re-fires next tick if the unit is still wedged,
-    // so we'll retry the replan on the next stuck-tick threshold.
-    if (newPath.length <= 1 && actions.length > 1) return false;
-    if (
-      (finalAction.type === 'attack' || finalAction.type === 'guard') &&
-      finalAction.targetId !== undefined
-    ) {
-      const last = newPath[newPath.length - 1];
-      last.type = finalAction.type;
-      last.targetId = finalAction.targetId;
-      last.isPathExpansion = undefined;
-    } else if (finalAction.type === 'attackGround') {
-      const last = newPath[newPath.length - 1];
-      last.type = finalAction.type;
-      last.isPathExpansion = undefined;
+
+    const previousPath = unit.activePath;
+    unit.activePath = null;
+    const nextPath = this.ensureActivePathPlan(entity, action);
+    if (nextPath === null || nextPath.points.length === 0) {
+      unit.activePath = previousPath;
+      return false;
     }
-    setUnitActions(entity.unit, newPath);
-    this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+    if (
+      previousPath !== null &&
+      previousPath.points.length > 1 &&
+      nextPath.points.length <= 1
+    ) {
+      unit.activePath = previousPath;
+      return false;
+    }
     return true;
   }
 
@@ -2312,31 +2424,18 @@ export class Simulation {
     if (!entity.unit || currentAction.type !== 'attack' || currentAction.targetId === undefined) {
       return false;
     }
-    const newPath = expandPathActions(
-      entity.transform.x,
-      entity.transform.y,
-      targetPoint.x,
-      targetPoint.y,
-      'move',
-      this.world.mapWidth,
-      this.world.mapHeight,
-      this.constructionSystem.getGrid(),
-      targetPoint.z,
-      this.pathTerrainFilterForUnit(entity),
-    );
-    if (newPath.length === 0) return false;
+    const nextAction: UnitAction = {
+      ...currentAction,
+      x: targetPoint.x,
+      y: targetPoint.y,
+      z: targetPoint.z,
+    };
 
-    const last = newPath[newPath.length - 1];
-    last.type = 'attack';
-    last.targetId = currentAction.targetId;
-    last.isPathExpansion = undefined;
-
-    if (newPath.length === 1 && this.sameAttackApproach(currentAction, last)) {
+    if (this.sameAttackApproach(currentAction, nextAction)) {
       return false;
     }
 
-    replaceLeadingUnitActions(entity.unit, 1, newPath);
-    this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+    this.updateCurrentActionApproach(entity, currentAction, targetPoint);
     return true;
   }
 
@@ -2358,31 +2457,18 @@ export class Simulation {
     if (!entity.unit || currentAction.type !== 'guard' || currentAction.targetId === undefined) {
       return false;
     }
-    const newPath = expandPathActions(
-      entity.transform.x,
-      entity.transform.y,
-      targetPoint.x,
-      targetPoint.y,
-      'move',
-      this.world.mapWidth,
-      this.world.mapHeight,
-      this.constructionSystem.getGrid(),
-      targetPoint.z,
-      this.pathTerrainFilterForUnit(entity),
-    );
-    if (newPath.length === 0) return false;
+    const nextAction: UnitAction = {
+      ...currentAction,
+      x: targetPoint.x,
+      y: targetPoint.y,
+      z: targetPoint.z,
+    };
 
-    const last = newPath[newPath.length - 1];
-    last.type = 'guard';
-    last.targetId = currentAction.targetId;
-    last.isPathExpansion = undefined;
-
-    if (newPath.length === 1 && this.sameAttackApproach(currentAction, last)) {
+    if (this.sameAttackApproach(currentAction, nextAction)) {
       return false;
     }
 
-    replaceLeadingUnitActions(entity.unit, 1, newPath);
-    this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+    this.updateCurrentActionApproach(entity, currentAction, targetPoint);
     return true;
   }
 
