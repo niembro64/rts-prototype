@@ -21,7 +21,7 @@ import type { Entity, EntityId } from '../sim/types';
 import type { PhysicsEngine3D } from './PhysicsEngine3D';
 import { setUnitMovementAcceleration } from '../sim/unitMovementAcceleration';
 import { getSimWasm, UNIT_FORCE_BATCH_STRIDE } from '../sim-wasm/init';
-import { isBuildBlockingActivation } from '../sim/buildableHelpers';
+import { isBuildInProgress } from '../sim/buildableHelpers';
 
 const WATER_PROBE_DX = [
   1, 0.7071067811865476, 0, -0.7071067811865475,
@@ -204,10 +204,7 @@ export class UnitForceSystem {
 
       let flags = 0;
 
-      if (
-        isBuildBlockingActivation(entity.buildable) ||
-        unit.hp <= 0
-      ) {
+      if (unit.hp <= 0) {
         _forceRows[base + UF_ROW_DIR_X] = 0;
         _forceRows[base + UF_ROW_DIR_Y] = 0;
         _forceRows[base + UF_ROW_GROUND_Z] = 0;
@@ -226,8 +223,12 @@ export class UnitForceSystem {
       const thrustInputMag = hasThrustDir ? Math.sqrt(dirLenSq) : 0;
 
       const locomotionType = unit.locomotion.type;
-      const isFlying = locomotionType === 'flying';
-      const isAirborne = locomotionType === 'hover' || locomotionType === 'flying';
+      const isConstructionShell = isBuildInProgress(entity.buildable);
+      // Construction shells keep their locomotion contact/friction, but
+      // they do not get autonomous hover/flying lift while the factory is
+      // trying to drop them onto a build platform.
+      const isFlying = !isConstructionShell && locomotionType === 'flying';
+      const isAirborne = !isConstructionShell && (locomotionType === 'hover' || locomotionType === 'flying');
       if (isFlying) flags |= UF_FLAG_IS_FLYING;
       if (isAirborne) flags |= UF_FLAG_IS_AIRBORNE;
 
@@ -267,11 +268,18 @@ export class UnitForceSystem {
           _forceRows[base + UF_ROW_HOVER_RANDOM_SAMPLE] = this.world.rng.next();
         }
       } else {
-        const groundContact =
+        const terrainContact =
           groundZ - (body.z - body.groundOffset) >= -UNIT_GROUND_CONTACT_EPSILON;
-        if (groundContact) {
+        const surfaceContact = !terrainContact && this.physics.hasUpwardSurfaceContact(body);
+        if (terrainContact || surfaceContact) {
+          if (surfaceContact) {
+            _forceRows[base + UF_ROW_GROUND_Z] = body.z - body.groundOffset;
+            _forceRows[base + UF_ROW_NORMAL_X] = 0;
+            _forceRows[base + UF_ROW_NORMAL_Y] = 0;
+            _forceRows[base + UF_ROW_NORMAL_Z] = 1;
+          }
           const radius = body.radius || 10;
-          const inWater = isWaterAt(body.x, body.y, mw, mh);
+          const inWater = terrainContact && isWaterAt(body.x, body.y, mw, mh);
           if (inWater) {
             flags |= UF_FLAG_IN_WATER;
             _forceRows[base + UF_ROW_WATER_ESCAPE_MASK_0] = this.waterDryMask(

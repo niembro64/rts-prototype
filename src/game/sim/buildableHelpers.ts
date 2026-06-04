@@ -170,7 +170,7 @@ export function getTotalRemainingCost(b: Buildable): number {
 
 /** Active iff the entity has no Buildable, or its Buildable is
  *  complete. Inert shells (Buildable present + !isComplete) skip
- *  combat, movement, production, income, animation, etc. */
+ *  combat, commanded movement, production, income, animation, etc. */
 export function isEntityActive(entity: Entity): boolean {
   const b = entity.buildable;
   if (!b) return true;

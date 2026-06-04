@@ -2,9 +2,9 @@
   "towerFabricator": {
     "buildingBlueprintId": "towerFabricator",
     "name": "Fabricator",
-    "gridWidth": 6,
-    "gridHeight": 6,
-    "gridDepth": 6,
+    "gridWidth": 12,
+    "gridHeight": 12,
+    "gridDepth": 1.5,
     "hp": 864,
     "cost": {
       "energy": 300,
@@ -40,14 +40,14 @@
       "mass": 812,
       "health": 864,
       "deathExplosion": {
-        "radius": 101.824,
+        "radius": 203.647,
         "force": 48000,
         "damage": 600
       },
       "radius": {
-        "visual": 84.853,
-        "hitbox": 84.853,
-        "collision": 84.853
+        "visual": 169.706,
+        "hitbox": 169.706,
+        "collision": 169.706
       }
     }
   },

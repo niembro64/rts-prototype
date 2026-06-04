@@ -241,10 +241,10 @@ export class FactoryProductionSystem {
     return { spawnedUnits, completedUnits };
   }
 
-  // Spawn an inert shell of `unitBlueprintId` above the factory's center bay.
+  // Spawn a construction shell of `unitBlueprintId` above the factory's center bay.
   // The shell starts at 0/0/0 paid; energyDistribution fills it. The
   // unit is fully constructed (renderer-ready), but its active build
-  // state suppresses combat/movement until each resource bar tops up.
+  // state suppresses combat/orders until each resource bar tops up.
   private spawnUnitShell(world: WorldState, factory: Entity, unitBlueprintId: string): Entity | null {
     if (!factory.ownership) return null;
     const bp = getUnitBlueprint(unitBlueprintId);

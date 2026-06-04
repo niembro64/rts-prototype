@@ -1109,9 +1109,11 @@ export class Simulation {
 
       const { unit, transform } = entity;
 
-      // Inert shells stay put — zero thrust, no actions, no priority
-      // target. The shell occupies its build-spot footprint until it
-      // completes or is destroyed.
+      // Construction shells do not execute player actions or acquire
+      // combat priority while incomplete, but their physics body remains
+      // live. UnitForceSystem still applies contact locomotion/friction
+      // so shells can fall, settle, and be carried by construction
+      // platforms before activation.
       if (isBuildBlockingActivation(entity.buildable)) {
         unit.thrustDirX = 0;
         unit.thrustDirY = 0;

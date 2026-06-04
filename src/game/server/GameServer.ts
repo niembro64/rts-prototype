@@ -66,6 +66,7 @@ import {
 } from './ServerSnapshotPublisher';
 import type { BootstrappedServerWorld } from './ServerBootstrap';
 import { UnitForceSystem } from './UnitForceSystem';
+import { FactoryConstructionPlatformSystem } from './FactoryConstructionPlatformSystem';
 import { computeHostEffectiveMass, createPhysicsBodyForUnit } from './unitPhysicsBody';
 import {
   isShieldReflectionMode,
@@ -126,6 +127,7 @@ export class GameServer {
   private gameOverListeners: GameOverCallback[] = [];
   private physicsSyncUnitIdsBuf: EntityId[] = [];
   private unitForceSystem: UnitForceSystem;
+  private factoryConstructionPlatformSystem: FactoryConstructionPlatformSystem;
   private stopped = false;
 
   // Game over tracking
@@ -249,6 +251,7 @@ export class GameServer {
       this.terrainBuildabilityGrid = boot.terrainBuildabilityGrid;
 
       this.unitForceSystem = new UnitForceSystem(this.world, this.simulation, this.physics);
+      this.factoryConstructionPlatformSystem = new FactoryConstructionPlatformSystem(this.world, this.physics);
 
       // Setup simulation callbacks (need `this` references for physics
       // body cleanup and game-over fan-out, so they live here rather than
@@ -439,6 +442,7 @@ export class GameServer {
 
     // Reset simulation-owned state (ForceAccumulator, pending event buffers)
     this.simulation.resetSessionState();
+    this.factoryConstructionPlatformSystem.reset();
 
     // Reset module-level reusable buffers that hold stale entity references
     resetProjectileBuffers();
@@ -490,11 +494,20 @@ export class GameServer {
     // Update simulation (calculates thrust velocities, runs combat, etc.)
     this.simulation.update(dtMs);
 
+    // Fabricator construction decks are server-authored kinematic
+    // supports: rotate the platform and carry any seated factory shell
+    // before locomotion forces/contacts run.
+    this.factoryConstructionPlatformSystem.updateBeforePhysics(dtSec);
+
     // Apply thrust + external forces to physics bodies
     this.unitForceSystem.applyForces(dtSec);
 
     // Step physics (integrate + collisions)
     this.physics.step(dtSec);
+
+    // Re-seat factory shells after collision resolution so the visible
+    // build deck behaves like the shell's locomotion support surface.
+    this.factoryConstructionPlatformSystem.updateAfterPhysics();
 
     // Sync positions/velocities from physics to entities
     this.syncFromPhysics();

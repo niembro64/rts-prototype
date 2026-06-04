@@ -12,9 +12,10 @@
 //            horizontal plane. Gravity always pulls down; terrain
 //            only pushes back when the unit's authored locomotion
 //            ground point penetrates the terrain surface.
-//   cuboid — buildings. Axis-aligned 3D box, always static for now
-//            (rotating buildings aren't a thing in this game). Units
-//            push off the cuboid's surface instead of clipping through.
+//   cuboid — buildings. Axis-aligned 3D box, always static for now.
+//            Visual/kinematic platform rotation is handled outside this
+//            broadphase; units push off the cuboid's surface instead of
+//            clipping through.
 //
 // Collision dimension by pair type:
 //   unit ↔ ground    — soft spring along the terrain normal, measured
@@ -657,11 +658,19 @@ export class PhysicsEngine3D {
     this.ignoreStatic.set(dynamicBody, staticBody);
   }
 
+  /** Clear a specific temporary static-body ignore. If `staticBody` is
+   *  omitted, any ignore for the dynamic body is removed. */
+  clearIgnoreStatic(dynamicBody: Body3D, staticBody: Body3D | undefined = undefined): void {
+    if (staticBody === undefined || this.ignoreStatic.get(dynamicBody) === staticBody) {
+      this.ignoreStatic.delete(dynamicBody);
+    }
+  }
+
   recordWasmForceWake(body: Body3D): void {
     this.wakeBody(body);
   }
 
-  private wakeBody(body: Body3D): void {
+  wakeBody(body: Body3D): void {
     if (body.sleeping) {
       body.sleeping = false;
       this.awakeDynamicBodyCount++;

@@ -364,7 +364,7 @@ export class ConstructionVisualController3D {
     const rateAlpha = halfLifeBlend(dtSec, halfLife);
     const targetEnergy = active ? Math.max(0, Math.min(1, factory?.energyRateFraction ?? 0)) : 0;
     const targetMetal  = active ? Math.max(0, Math.min(1, factory?.metalRateFraction  ?? 0)) : 0;
-    this.updateConstructionTowerSpin(rig, targetEnergy + targetMetal, dtSec);
+    this.resetConstructionTowerSpin(rig);
     this.blendSmoothedRates(rig.smoothedRates, targetEnergy, targetMetal, rateAlpha);
     this.blendDisplaySmoothedRates(rig.displaySmoothedRates, rig.smoothedRates, dtSec);
     this.syncPylonDisplayRates(rig);
@@ -811,6 +811,33 @@ export class ConstructionVisualController3D {
       root.x = rootBase.x * c - rootBase.z * s;
       root.y = rootBase.y;
       root.z = rootBase.x * s + rootBase.z * c;
+    }
+  }
+
+  private resetConstructionTowerSpin(rig: ConstructionTowerSpinRig): void {
+    if (
+      rig.towerOrbitParts.length === 0 ||
+      (
+        rig.towerSpinPhase === 0 &&
+        rig.towerSpinAmount === 0 &&
+        rig.displayTowerSpinAmount === 0
+      )
+    ) {
+      return;
+    }
+    rig.towerSpinPhase = 0;
+    rig.towerSpinAmount = 0;
+    rig.displayTowerSpinAmount = 0;
+    for (let i = 0; i < rig.towerOrbitParts.length; i++) {
+      const part = rig.towerOrbitParts[i];
+      part.mesh.position.x = part.baseX;
+      part.mesh.position.z = part.baseZ;
+      part.mesh.rotation.y = part.baseRotationY;
+    }
+    for (let i = 0; i < rig.pylons.length; i++) {
+      const pylon = rig.pylons[i];
+      pylon.topLocal.copy(pylon.topBaseLocal);
+      pylon.rootLocal.copy(pylon.rootBaseLocal);
     }
   }
 

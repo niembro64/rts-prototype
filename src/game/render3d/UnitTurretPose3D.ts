@@ -57,7 +57,13 @@ export class UnitTurretPose3D {
 
       if (turretMesh.constructionEmitter) {
         turretMesh.root.visible = true;
-        turretMesh.root.rotation.y = 0;
+        applyTurretAimPose3D(
+          turretMesh,
+          entity.transform.rotation,
+          turret.rotation,
+          0,
+          chassisTiltInverse,
+        );
         if (turretMesh.pitchGroup) turretMesh.pitchGroup.rotation.z = 0;
         if (turretMesh.spinGroup) turretMesh.spinGroup.rotation.x = 0;
         constructionVisuals.updateBuilderConstructionEmitter(

@@ -490,10 +490,18 @@ export class BuildingEntityRenderer3D {
         turret.mount.y,
       );
       // Construction emitters have no head sphere, no barrels, and
-      // don't aim — the rig is parented directly to turretMesh.root and
-      // is driven each frame by ConstructionVisualController. Skip the
-      // head/aim/barrel work that follows.
-      if (turret.config.constructionEmitter) continue;
+      // don't pitch barrels. The root still consumes the authoritative
+      // turret yaw/velocity stream so the whole fabricator construction
+      // deck can rotate smoothly on the client.
+      if (turret.config.constructionEmitter) {
+        applyTurretAimPose3D(
+          turretMesh,
+          entity.transform.rotation,
+          turret.rotation,
+          0,
+        );
+        continue;
+      }
       if (turret.config.headOnly) {
         // No barrel to orient — skip the aim pose entirely. While the
         // shell override owns the head material during construction,

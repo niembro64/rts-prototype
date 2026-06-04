@@ -11,8 +11,8 @@
 //     selected build site.
 //   - Factory building (fabricator) → emitter rate read from the
 //     factory's per-resource transfer fractions; sprays target the
-//     live shell above the fabricator center. The "forming unit" orb + sparks at that
-//     spot belongs to a separate `FactoryBuildSpotRig`, not this rig.
+//     live shell above the fabricator center. The "forming unit" orb +
+//     sparks belongs to a separate `FactoryBuildSpotRig`, not this rig.
 
 import * as THREE from 'three';
 import type { ConstructionEmitterSize } from '@/types/blueprints';
@@ -106,6 +106,7 @@ export type ResourcePylonBuildOptions = {
 
 const cylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 18);
 const hexCylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 6);
+const octagonCylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 8);
 const sphereGeom = new THREE.SphereGeometry(1, 18, 12);
 const frameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
 
@@ -272,6 +273,9 @@ export function buildConstructionEmitterRigFromTurretConfig(
     dims.innerPylonRadius,
     pylonBaseY,
   );
+  if (variant === 'large') {
+    root.add(buildConstructionTurretDeck(dims.pylonOffset, dims.innerPylonRadius, primaryMat));
+  }
   for (const mesh of pylonTrio.staticMeshes) root.add(mesh);
   for (const pylon of pylonTrio.pylons) {
     pylon.sprayTravelSpeed = spec.particleTravelSpeed;
@@ -295,6 +299,7 @@ export function buildConstructionEmitterRigFromTurretConfig(
 export function disposeConstructionEmitterGeoms(): void {
   cylinderGeom.dispose();
   hexCylinderGeom.dispose();
+  octagonCylinderGeom.dispose();
   sphereGeom.dispose();
   frameMat.dispose();
   strawOuterMat.dispose();
@@ -302,6 +307,19 @@ export function disposeConstructionEmitterGeoms(): void {
   constructionBandMat.dispose();
   energyCapMat.dispose();
   metalCapMat.dispose();
+}
+
+function buildConstructionTurretDeck(
+  pylonOffset: number,
+  innerPylonRadius: number,
+  primaryMat: THREE.Material,
+): THREE.Mesh {
+  const radius = Math.max(16, pylonOffset + innerPylonRadius * 5);
+  const height = Math.max(4, innerPylonRadius * 1.6);
+  const deck = new THREE.Mesh(octagonCylinderGeom, primaryMat);
+  deck.position.set(0, -height * 0.5, 0);
+  deck.scale.set(radius * 2, height, radius * 2);
+  return deck;
 }
 
 function buildConstructionPylonTrio(

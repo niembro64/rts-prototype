@@ -793,7 +793,7 @@ export type Builder = {
 
 // Building configuration. gridWidth/gridHeight are the footprint on
 // the ground plane (measured in build-grid cells); gridDepth is the
-// vertical extent (how many build-grid cell-heights tall the building stands).
+// vertical extent measured in build-grid cell heights.
 // The sim is fully 3D, so buildings need a real z-extent — it's a
 // first-class property of the shape, not a render-only detail.
 export type BuildingConfig = {
