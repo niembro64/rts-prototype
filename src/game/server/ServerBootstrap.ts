@@ -377,6 +377,7 @@ export class ServerBootstrap {
           entity.building.height,
           entity.building.depth,
           baseZ,
+          entity.building.supportSurface,
           `building_${entity.id}`,
           entity.id,
         );
@@ -416,6 +417,7 @@ export class ServerBootstrap {
           entity.building.height,
           entity.building.depth,
           baseZ,
+          entity.building.supportSurface,
           `building_${entity.id}`,
           entity.id,
         );

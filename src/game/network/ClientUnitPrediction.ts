@@ -35,15 +35,13 @@ import {
   isUnitGroundPenetrationInContact,
 } from '../sim/unitGroundPhysics';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
+import { sampleBuildingSupportTopZ } from '../sim/buildingSupportSurface';
 import {
   CT_TURRET_STATE_ENGAGED,
   getSimWasm,
   QUAT_HOVER_BATCH_STRIDE,
 } from '../sim-wasm/init';
 import {
-  SUPPORT_SURFACE_CONTACT_EPSILON,
-  SUPPORT_SURFACE_FOOTPRINT_EPSILON,
-  SUPPORT_SURFACE_VERTICAL_PROBE,
   createWorldSupportSurface,
   writeBuildingSupportSurface,
   writeTerrainSupportSurface,
@@ -176,22 +174,13 @@ function samplePredictionSupportSurface(
     getTerrainVersion(),
   );
 
-  const groundPointZ = z - groundOffset;
   for (let i = 0; i < predictionSupportBuildings.length; i++) {
     const entity = predictionSupportBuildings[i];
-    const building = entity.building;
-    if (building === null) continue;
-
-    const topZ = entity.transform.z + building.depth / 2;
-    if (topZ < terrainGroundZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
-    if (z < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
-    if (groundPointZ < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
-    if (groundPointZ > topZ + SUPPORT_SURFACE_VERTICAL_PROBE) continue;
-
-    const dx = x - entity.transform.x;
-    const dy = y - entity.transform.y;
-    if (Math.abs(dx) > building.width / 2 + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
-    if (Math.abs(dy) > building.height / 2 + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
+    const topZ = sampleBuildingSupportTopZ(entity, x, y, terrainGroundZ, {
+      bodyZ: z,
+      groundOffset,
+    });
+    if (topZ === null) continue;
 
     if (topZ > out.groundZ) {
       writeBuildingSupportSurface(out, topZ, entity.id, entity.id);

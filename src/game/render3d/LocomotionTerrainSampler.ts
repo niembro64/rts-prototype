@@ -1,10 +1,8 @@
 import { LAND_CELL_SIZE } from '../../config';
 import type { Entity } from '../sim/types';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
-import {
-  SUPPORT_SURFACE_CONTACT_EPSILON,
-  SUPPORT_SURFACE_FOOTPRINT_EPSILON,
-} from '../sim/supportSurface';
+import { sampleBuildingSupportTopZ } from '../sim/buildingSupportSurface';
+import { SUPPORT_SURFACE_CONTACT_EPSILON } from '../sim/supportSurface';
 import {
   getUnitGroundPenetration,
   isUnitGroundPenetrationInContact,
@@ -49,16 +47,8 @@ function getVisualBuildingSupportY(x: number, z: number, terrainY: number): numb
   let bestTopY = Number.NEGATIVE_INFINITY;
   for (let i = 0; i < locomotionSupportBuildings.length; i++) {
     const entity = locomotionSupportBuildings[i];
-    const building = entity.building;
-    if (building === null) continue;
-
-    const topY = entity.transform.z + building.depth / 2;
-    if (topY < terrainY - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
-
-    const dx = x - entity.transform.x;
-    const dz = z - entity.transform.y;
-    if (Math.abs(dx) > building.width / 2 + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
-    if (Math.abs(dz) > building.height / 2 + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
+    const topY = sampleBuildingSupportTopZ(entity, x, z, terrainY);
+    if (topY === null) continue;
 
     if (topY > bestTopY) bestTopY = topY;
   }

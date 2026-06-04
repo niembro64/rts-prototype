@@ -17,6 +17,12 @@
     "renderProfile": "buildingSolar",
     "visualHeight": 52,
     "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 20,
+      "width": 60,
+      "height": 60
+    },
     "hud": {
       "barsOffsetAboveTop": 12
     },
@@ -58,6 +64,12 @@
     "renderProfile": "buildingWind",
     "visualHeight": 250,
     "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 100,
+      "width": 40,
+      "height": 40
+    },
     "hud": {
       "barsOffsetAboveTop": -10
     },
@@ -99,6 +111,12 @@
     "renderProfile": "buildingExtractor",
     "visualHeight": 50,
     "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 40,
+      "width": 100,
+      "height": 100
+    },
     "hud": {
       "barsOffsetAboveTop": 38
     },
@@ -140,6 +158,12 @@
     "renderProfile": "buildingRadar",
     "visualHeight": 150,
     "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 140,
+      "width": 40,
+      "height": 40
+    },
     "hud": {
       "barsOffsetAboveTop": 16
     },
@@ -181,6 +205,12 @@
     "renderProfile": "buildingResourceConverter",
     "visualHeight": 60,
     "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 60,
+      "width": 60,
+      "height": 60
+    },
     "hud": {
       "barsOffsetAboveTop": 12
     },

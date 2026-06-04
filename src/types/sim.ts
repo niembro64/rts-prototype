@@ -8,6 +8,7 @@ import type {
   BuildingAnchorProfile,
   BuildingRenderProfile,
   BuildingBlueprintId,
+  BuildingSupportSurface,
 } from './buildingTypes';
 import type {
   UnitAction,
@@ -31,6 +32,7 @@ export type {
   BuildingAnchorProfile,
   BuildingRenderProfile,
   BuildingBlueprintId,
+  BuildingSupportSurface,
 } from './buildingTypes';
 export type {
   ActionType,
@@ -338,6 +340,10 @@ export type Building = {
   width: number;
   height: number;
   depth: number;
+  /** Authored support proxy. This is intentionally separate from the
+   *  collision cuboid so a building can block one shape while exposing
+   *  a different walkable top, pad, or no top support at all. */
+  supportSurface: BuildingSupportSurface;
   hp: number;
   maxHp: number;
   /** sqrt(width² + height²) / 2 — precomputed at construction so the
@@ -825,6 +831,7 @@ export type BuildingConfig = {
   renderProfile: BuildingRenderProfile;
   visualHeight: number;
   anchorProfile: BuildingAnchorProfile;
+  supportSurface: BuildingSupportSurface;
   hud: import('./blueprints').EntityHudBlueprint;
 };
 

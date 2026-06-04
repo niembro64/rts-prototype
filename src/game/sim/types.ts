@@ -23,6 +23,7 @@ export type {
   BuildingBlueprintId,
   BuildingRenderProfile,
   BuildingAnchorProfile,
+  BuildingSupportSurface,
   UnitAction,
   UnitPathPlan,
   UnitPathPoint,

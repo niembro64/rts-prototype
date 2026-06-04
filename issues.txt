@@ -21,10 +21,8 @@ SURFACE AND LOCOMOTION UNIFICATION: UNITS SNAP OR DROP WHEN LEAVING FABRICATORS
 Problem
 -------
 Units still do not have authored support surfaces for every valid thing they
-can stand on. Terrain, water, and building tops have a shared support-surface
-shape, but building support is still inferred from cuboid tops, unit support is
-still inferred from sphere contacts, and the fabricator's actual walkable pad is
-not authored independently from its collision box.
+can stand on. Terrain, water, and authored building tops have a shared
+support-surface shape, but unit support is still inferred from sphere contacts.
 
 Design target
 -------------
@@ -37,34 +35,25 @@ through their locomotion-specific force/contact model.
 
 Relevant current inconsistencies
 --------------------------------
-1. Building support is still the top face of the static cuboid collider. Support
-   shape and collision shape need to be separate authored proxies.
-
-2. Unit-on-unit support is only implied by sphere-sphere upward contact. Sphere
+1. Unit-on-unit support is only implied by sphere-sphere upward contact. Sphere
    collision is not the same thing as a walkable top surface, and it is not
    exposed to client prediction or locomotion visuals as a stable support plane.
 
-3. Unit support contacts do not identify the support source, so the support
+2. Unit support contacts do not identify the support source, so the support
    result cannot yet carry a stable support entity id for unit surfaces.
 
-4. Client prediction and render-time locomotion support candidates include
+3. Client prediction and render-time locomotion support candidates include
    buildings, but not authored unit support surfaces.
 
-5. Render-time locomotion support sampling scans visible building candidates
+4. Render-time locomotion support sampling scans visible building candidates
    directly. Replace this with the same indexed/proxy support representation the
    sim uses before scaling unit and building counts.
 
-6. Fabricator physical support height may not match the player's visual
-   expectation. `towerFabricator.gridDepth` defines a shallow collider/support
-   top, while the factory visual profile and construction turret imply a taller
-   structure. Decide what part of the fabricator is actually walkable/supportive
-   and make physics, spawn, targeting, and visuals agree.
-
-7. Water is represented in the support-surface shape, but ground avoidance and
+5. Water is represented in the support-surface shape, but ground avoidance and
    escape response still use ad hoc water branches. Fold water response into
    locomotion-specific support/material behavior.
 
-8. Initial/bootstrap unit physics can set `ignoreOverlappingBuildings` for
+6. Initial/bootstrap unit physics can set `ignoreOverlappingBuildings` for
    overlapping buildings, and that ignore pair appears to have no normal
    "clear once exited" path. Audit this separately from factory shells. Factory
    construction shells currently pass `ignoreOverlappingBuildings: false`, so
@@ -73,43 +62,31 @@ Relevant current inconsistencies
 
 Plan
 ----
-1. Separate collision shape from support shape.
-   Do not infer "walkable top" directly from a unit's sphere collider. Add
-   authored support proxies where needed: flat deck, capsule top, platform pad,
-   or no support. Buildings should also expose support proxies instead of
-   relying only on cuboid top math.
-
-2. Make fabricator support explicit.
-   Decide whether the fabricator walkable/support surface is the shallow base
-   top, a raised visual platform, or a central build pad. Encode that as a
-   support proxy and use it for shell spawn, settling, exit movement, targeting
-   height, render alignment, and client prediction.
-
-3. Add unit support to prediction deliberately.
+1. Add unit support to prediction deliberately.
    Client prediction needs the same support candidates that the server can use:
    terrain, water, buildings, and authored unit support surfaces. Use stable
    snapshot state or deterministic local proxies so visible prediction does not
    fight authoritative correction.
 
-4. Update render-time locomotion floor sampling for authored support proxies.
+2. Update render-time locomotion floor sampling for authored support proxies.
    LocomotionTerrainSampler should consume indexed visual support candidates,
    including unit support surfaces. It should still keep frontend-only contact
    bands and hysteresis for legs/wheels/treads, but its floor height should
    match the same support surface the sim considers valid.
 
-5. Treat water response as locomotion-specific support/material behavior.
+3. Treat water response as locomotion-specific support/material behavior.
    Water should be a support/material result with locomotion-specific response:
    ground units avoid or escape, hover/flying use clearance and effects, and
    future amphibious units can opt into water support. Avoid separate ad hoc
    water branches where possible.
 
-6. Add diagnostics before tuning.
+4. Add diagnostics before tuning.
    Add a temporary debug overlay/log mode that shows sampled support height,
    support kind/id, body ground point, penetration, velocity, and contact state
    for selected units. This should make fabricator edge transitions and unit
    stacking behavior observable.
 
-7. Add regression tests.
+5. Add regression tests.
    Cover at least: unit spawn on terrain, unit spawn on a building/fabricator
    support, factory shell settle and exit, building top traversal, unit support
    traversal where authored, water boundary behavior, client prediction matching

@@ -6,6 +6,17 @@ import { type BuildingBlueprintId } from './blueprintIds';
 export type { BuildingBlueprintId };
 export type BuildingRenderProfile = BuildingBlueprintId | 'unknown' | 'bodyless';
 export type BuildingAnchorProfile = 'constantVisualTop' | 'factoryTower' | 'collisionDepth';
+export type BuildingSupportSurface =
+  | { kind: 'none' }
+  | {
+      kind: 'boxTop';
+      /** Walkable top height above the building base, in world units. */
+      topZ: number;
+      /** Support footprint width on the world X axis, in world units. */
+      width: number;
+      /** Support footprint height on the world Y axis, in world units. */
+      height: number;
+    };
 
 // Tower-class buildingTypes. A "tower" is the immobile peer of a unit —
 // it mounts turrets and carries a host-level lock-on target. Distinct

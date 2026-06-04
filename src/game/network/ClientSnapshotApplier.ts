@@ -31,6 +31,8 @@ import {
   getBuildingBuildRequired,
   getUnitBuildRequired,
 } from './ClientBuildStateApplier';
+import { getBuildingConfig } from '../sim/buildConfigs';
+import { cloneBuildingSupportSurface } from '../sim/buildingSupportSurface';
 
 /**
  * Applies snapshot fields that should snap immediately instead of entering the
@@ -101,7 +103,12 @@ export function snapClientNonVisualState(
 
   if (entity.building && sb !== null && sb.buildingBlueprintCode !== null && isFull) {
     const buildingBlueprintId = codeToBuildingBlueprintId(sb.buildingBlueprintCode);
-    if (buildingBlueprintId) entity.buildingBlueprintId = buildingBlueprintId as BuildingBlueprintId;
+    if (buildingBlueprintId) {
+      entity.buildingBlueprintId = buildingBlueprintId as BuildingBlueprintId;
+      entity.building.supportSurface = cloneBuildingSupportSurface(
+        getBuildingConfig(entity.buildingBlueprintId).supportSurface,
+      );
+    }
   }
 
   if (entity.building && sb !== null && sb.turrets !== null) {

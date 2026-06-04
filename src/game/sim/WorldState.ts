@@ -51,9 +51,10 @@ import { createProjectileConfigFromTurret } from './projectileConfigs';
 import { ENTITY_CHANGED_HP } from '../../types/network';
 import { isConstructionPieceMaterialized } from './buildableHelpers';
 import {
-  SUPPORT_SURFACE_CONTACT_EPSILON,
-  SUPPORT_SURFACE_FOOTPRINT_EPSILON,
-  SUPPORT_SURFACE_VERTICAL_PROBE,
+  createCollisionTopBuildingSupportSurface,
+  sampleBuildingSupportTopZ,
+} from './buildingSupportSurface';
+import {
   createWorldSupportSurface,
   writeBuildingSupportSurface,
   writeTerrainSupportSurface,
@@ -268,31 +269,11 @@ export class WorldState {
 
     if (options.includeBuildings === false) return out;
 
-    const hasBodyZ = options.bodyZ !== undefined && Number.isFinite(options.bodyZ);
-    const bodyZ = hasBodyZ ? options.bodyZ! : 0;
-    const groundOffset = options.groundOffset !== undefined && Number.isFinite(options.groundOffset)
-      ? options.groundOffset
-      : 0;
-    const groundPointZ = bodyZ - groundOffset;
     const buildings = this.getBuildings();
     for (let i = 0; i < buildings.length; i++) {
       const entity = buildings[i];
-      const building = entity.building;
-      if (building === null) continue;
-
-      const topZ = entity.transform.z + building.depth / 2;
-      if (topZ < terrainGroundZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
-
-      const dx = x - entity.transform.x;
-      const dy = y - entity.transform.y;
-      if (Math.abs(dx) > building.width / 2 + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
-      if (Math.abs(dy) > building.height / 2 + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
-
-      if (hasBodyZ) {
-        if (bodyZ < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
-        if (groundPointZ < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
-        if (groundPointZ > topZ + SUPPORT_SURFACE_VERTICAL_PROBE) continue;
-      }
+      const topZ = sampleBuildingSupportTopZ(entity, x, y, terrainGroundZ, options);
+      if (topZ === null) continue;
 
       if (topZ > out.groundZ) {
         writeBuildingSupportSurface(out, topZ, entity.id, entity.id);
@@ -1181,6 +1162,7 @@ export class WorldState {
         width,
         height,
         depth,
+        supportSurface: createCollisionTopBuildingSupportSurface(width, height, depth),
         hp: 500,
         maxHp: 500,
         targetRadius: Math.sqrt(width * width + height * height) / 2,

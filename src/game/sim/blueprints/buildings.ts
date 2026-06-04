@@ -7,7 +7,13 @@
  * derived runtime config while the blueprint tables themselves are data.
  */
 
-import type { BuildingAnchorProfile, BuildingRenderProfile, BuildingBlueprintId, ResourceCost } from '../types';
+import type {
+  BuildingAnchorProfile,
+  BuildingRenderProfile,
+  BuildingBlueprintId,
+  BuildingSupportSurface,
+  ResourceCost,
+} from '../types';
 import { isTowerBuildingBlueprintId } from '../../../types/buildingTypes';
 import type {
   BuildingTurretMount,
@@ -59,6 +65,8 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   /** Primary visual/anchor height above ground, in world units. */
   visualHeight: number;
   anchorProfile: BuildingAnchorProfile;
+  /** Authored walkable/support proxy, independent from the collision cuboid. */
+  supportSurface: BuildingSupportSurface;
   hud: EntityHudBlueprint;
   /** Optional reusable turret hardpoints mounted on this building.
    *  Building mount coordinates are absolute world units relative to
@@ -114,6 +122,7 @@ const BUILDING_EXPLICIT_FIELDS = [
   'metalProduction',
   'constructionRate',
   'conversionRate',
+  'supportSurface',
   'turrets',
 ] as const;
 
@@ -206,6 +215,30 @@ export function getFactoryBuildingVisualMetrics(
   };
 }
 
+function validateBuildingSupportSurface(
+  id: string,
+  supportSurface: BuildingSupportSurface,
+): void {
+  if (!supportSurface || typeof supportSurface !== 'object') {
+    throw new Error(`Invalid building blueprint ${id}: supportSurface must be an object`);
+  }
+  if (supportSurface.kind === 'none') return;
+  if (supportSurface.kind !== 'boxTop') {
+    throw new Error(
+      `Invalid building blueprint ${id}: unknown supportSurface kind "${String((supportSurface as { kind?: unknown }).kind)}"`,
+    );
+  }
+  if (!Number.isFinite(supportSurface.topZ) || supportSurface.topZ <= 0) {
+    throw new Error(`Invalid building blueprint ${id}: supportSurface.topZ must be positive`);
+  }
+  if (!Number.isFinite(supportSurface.width) || supportSurface.width <= 0) {
+    throw new Error(`Invalid building blueprint ${id}: supportSurface.width must be positive`);
+  }
+  if (!Number.isFinite(supportSurface.height) || supportSurface.height <= 0) {
+    throw new Error(`Invalid building blueprint ${id}: supportSurface.height must be positive`);
+  }
+}
+
 for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   assertExplicitFields(`building blueprint ${id}`, blueprint, BUILDING_EXPLICIT_FIELDS);
   const towerBlueprint = isTowerBuildingBlueprintId(id as BuildingBlueprintId);
@@ -256,6 +289,7 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   if (!Number.isFinite(blueprint.visualHeight) || blueprint.visualHeight <= 0) {
     throw new Error(`Invalid building blueprint ${id}: visualHeight must be positive`);
   }
+  validateBuildingSupportSurface(id, blueprint.supportSurface);
   if (
     !blueprint.hud ||
     !Number.isFinite(blueprint.hud.barsOffsetAboveTop)

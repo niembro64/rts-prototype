@@ -22,6 +22,7 @@ function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): Building
     renderProfile: bp.renderProfile,
     visualHeight: bp.visualHeight,
     anchorProfile: bp.anchorProfile,
+    supportSurface: bp.supportSurface,
     hud: bp.hud,
   };
 }

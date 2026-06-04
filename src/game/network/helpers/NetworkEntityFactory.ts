@@ -18,6 +18,7 @@ import {
 } from '../../../types/network';
 import { getUnitBlueprint, getUnitLocomotion } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
+import { cloneBuildingSupportSurface } from '../../sim/buildingSupportSurface';
 import { BUILD_GRID_CELL_SIZE } from '../../sim/buildGrid';
 import { COST_MULTIPLIER } from '../../../config';
 import { buildShieldPanelCache } from '../../sim/shieldPanelCache';
@@ -428,6 +429,7 @@ function createBuildingFromNetwork(
       width,
       height,
       depth,
+      supportSurface: cloneBuildingSupportSurface(config.supportSurface),
       hp: buildingHp !== null ? buildingHp.curr : config.hp,
       maxHp: buildingHp !== null ? buildingHp.max : config.hp,
       targetRadius: Math.sqrt(width * width + height * height) / 2,

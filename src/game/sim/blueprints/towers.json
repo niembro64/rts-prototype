@@ -17,6 +17,12 @@
     "renderProfile": "towerFabricator",
     "visualHeight": 30,
     "anchorProfile": "factoryTower",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 30,
+      "width": 240,
+      "height": 240
+    },
     "hud": {
       "barsOffsetAboveTop": 12
     },
@@ -69,6 +75,12 @@
     "renderProfile": "towerBeamMega",
     "visualHeight": 96,
     "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 100,
+      "width": 20,
+      "height": 20
+    },
     "hud": {
       "barsOffsetAboveTop": 12
     },
@@ -120,6 +132,12 @@
     "renderProfile": "towerCannon",
     "visualHeight": 30,
     "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 60,
+      "width": 80,
+      "height": 80
+    },
     "hud": {
       "barsOffsetAboveTop": 12
     },
@@ -171,6 +189,12 @@
     "renderProfile": "towerAntiAir",
     "visualHeight": 44,
     "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 80,
+      "width": 40,
+      "height": 40
+    },
     "hud": {
       "barsOffsetAboveTop": 12
     },

@@ -74,7 +74,7 @@ import {
   BODY_FLAG_OCCUPIED,
   type BodyPoolViews,
 } from '../sim-wasm/init';
-import type { EntityId } from '../sim/types';
+import type { BuildingSupportSurface, EntityId } from '../sim/types';
 
 type SurfaceNormal = { nx: number; ny: number; nz: number };
 export type SupportSurfaceContact = WorldSupportSurface;
@@ -170,6 +170,11 @@ export class Body3D {
   label: string;
   /** Owning sim entity id for bodies that mirror an entity. */
   entityId: EntityId | undefined;
+  /** Optional authored support proxy for static cuboids. These JS-side
+   *  fields intentionally do not change the WASM collision shape. */
+  supportTopZ: number | null = null;
+  supportHalfX: number = 0;
+  supportHalfY: number = 0;
 
   private constructor(args: {
     slot: number;
@@ -523,6 +528,7 @@ export class PhysicsEngine3D {
     height: number,
     depth: number,
     baseZ: number,
+    supportSurface: BuildingSupportSurface,
     label: string,
     entityId: EntityId | undefined = undefined,
   ): Body3D {
@@ -544,6 +550,11 @@ export class PhysicsEngine3D {
       surfaceNormal: null,
       entityId,
     });
+    if (supportSurface.kind === 'boxTop') {
+      body.supportTopZ = baseZ + supportSurface.topZ;
+      body.supportHalfX = supportSurface.width / 2;
+      body.supportHalfY = supportSurface.height / 2;
+    }
     this.addBody(body);
     return body;
   }
@@ -927,15 +938,16 @@ export class PhysicsEngine3D {
     for (let i = 0; i < this.staticBodies.length; i++) {
       const st = this.staticBodies[i];
       if (st === ignoredStatic || st.shape !== 'cuboid') continue;
+      if (st.supportTopZ === null) continue;
 
-      const topZ = st.z + st.halfZ;
+      const topZ = st.supportTopZ;
       if (topZ < terrainGroundZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
       if (body.z < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
 
       const dx = body.x - st.x;
       const dy = body.y - st.y;
-      if (Math.abs(dx) > st.halfX + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
-      if (Math.abs(dy) > st.halfY + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
+      if (Math.abs(dx) > st.supportHalfX + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
+      if (Math.abs(dy) > st.supportHalfY + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
 
       const groundPointNearTop = groundPointZ <= topZ + SUPPORT_SURFACE_CONTACT_EPSILON;
       const sphereBottomNearTop = sphereBottomZ <= topZ + SUPPORT_SURFACE_CONTACT_EPSILON;

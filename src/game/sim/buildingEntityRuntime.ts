@@ -5,6 +5,8 @@ import {
   buildingBlueprintHasActiveState,
   ensureBuildingActiveState,
 } from './buildingActiveState';
+import { cloneBuildingSupportSurface } from './buildingSupportSurface';
+import { getBuildingConfig } from './buildConfigs';
 import { createBuildingRuntimeTurrets } from './runtimeTurrets';
 
 export type ApplyBuildingBlueprintRuntimeOptions = {
@@ -18,6 +20,12 @@ export function applyBuildingBlueprintRuntime(
 ): void {
   entity.buildingBlueprintId = buildingBlueprintId;
   entity.type = isTowerBuildingBlueprintId(buildingBlueprintId) ? 'tower' : 'building';
+
+  if (entity.building !== null) {
+    entity.building.supportSurface = cloneBuildingSupportSurface(
+      getBuildingConfig(buildingBlueprintId).supportSurface,
+    );
+  }
 
   if (buildingBlueprintHasActiveState(buildingBlueprintId)) {
     ensureBuildingActiveState(entity);
