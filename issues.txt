@@ -18,65 +18,31 @@ Please always commit and push before and after any code changes we make.
 
 RENDERING PIPELINE AUDIT - 2026-06-04
 
-1. Unit drawing does not obey the client bar all/camera/pad render scope.
+1. Scoped render phase still performs whole-world projectile/effect scans.
 
 Evidence:
-- Render3DEntities.updateUnits() reads clientViewState.getUnits() and updates
-  every unit mesh, locomotion rig, turret target, fading mesh, detail instance,
-  path preview, shield state, and selection-related visual state at render
-  cadence.
-- The file explicitly documents that pose, locomotion, and turret updates ignore
-  the render scope so screen-edge units do not pop.
-- The client bar already has a RENDER option for ALL/WIN/PAD. The authored
-  config stores those as all/window/padded, which correspond to the intended
-  all/camera/pad draw choices.
-- src/game/network/ClientViewState.ts has collectActiveUnitRenderEntities(), but
-  the renderer does not use it.
+- src/game/scenes/helpers/RtsScene3DRenderPhase.ts still calls
+  clientViewState.getProjectiles() for scoped shot name packets and filters each
+  projectile with renderScope.inScope().
+- The same render phase collects line, smoke-trail, and burn-mark projectiles
+  from client-wide projectile caches before downstream renderers apply their own
+  scope checks.
+- Render3DEntities.collectBeamTurretAim() still scans all line projectiles each
+  frame to refresh beam-directed turret aim.
 
 Problem:
-This contradicts budget_design_philosophy.html: off-screen units should skip
-frontend locomotion/pose work for free, and TypeScript should not own per-unit
-hot loops at battle scale. The current path scales with every client-visible
-unit regardless of whether the client bar is set to draw all units, only the
-camera footprint, or the camera footprint plus pad.
+The unit/building packet is now spatially scoped, but projectile and effect
+packet population still does JavaScript full-list iteration each frame. Scoped
+render modes reduce draw work after those scans rather than avoiding the scans.
 
 Required fix:
-Use the client bar render option as the source of truth for what gets drawn:
-- all: draw/update all client-visible render entities.
-- camera: draw/update only entities inside the current camera footprint.
-- pad: draw/update entities inside the camera footprint plus the configured
-  padding margin.
-Feed expensive unit visual work from that mode-selected render packet instead
-of getUnits(). The packet should still include explicit visual exceptions when
-needed for selected, hovered, active-prediction, dying/fading, recently fired,
-or relevant HUD/selection state. The packet should come from a spatially indexed
-or WASM/typed-buffer-backed source, not a fresh full-world JavaScript scan. Keep
-gameplay prediction independent of the draw scope.
+Back scoped projectile/effect packets with spatially culled render lists or
+typed-buffer query ranges. Keep the existing packet objects and scratch arrays,
+but fill projectile, beam, smoke, burn-mark, HUD shot-name, and beam-aim inputs
+from visible-cell/projectile indices plus explicit exceptions for recently
+relevant projectiles or emitters.
 
-2. Scoped render phase still performs whole-world entity scans.
-
-Evidence:
-- src/game/scenes/helpers/RtsScene3DRenderPhase.ts prepareEntityLists() loops
-  over clientViewState.getUnitsAndBuildings() in scoped modes and filters each
-  entity with entityInRenderScope().
-- The same render phase separately scans projectiles and other render caches to
-  build HUD, shield, ground-print, and nameplate packets.
-- src/game/render3d/BuildingEntityRenderer3D.ts still updates all buildings each
-  frame before scoped render-phase filtering.
-
-Problem:
-The render phase has typed packet buffers, but packet population still does
-JavaScript full-list iteration each frame. Scoped render modes reduce draw work
-after the scan rather than avoiding the scan.
-
-Required fix:
-Back scoped render packets with spatially culled render lists. Keep the existing
-packet objects and scratch arrays, but fill them from visible-cell/entity
-indices plus explicit exceptions for selected, hovered, and recently relevant
-entities. Building rendering should get the same treatment instead of updating
-all buildings every frame.
-
-3. The renderer is still centered on Three.js instead of the target raw
+2. The renderer is still centered on Three.js instead of the target raw
    WebGPU/WGSL architecture.
 
 Evidence:
@@ -101,7 +67,7 @@ surface debug visualization. Replacement paths should use owned typed buffers,
 explicit update ranges, and delete the old Three.js path once the new path is
 active.
 
-4. Auxiliary WebGL renderers are outside the main renderer singleton budget.
+3. Auxiliary WebGL renderers are outside the main renderer singleton budget.
 
 Evidence:
 - src/game/lifecycle/sessionSingleton.ts limits active main GameInstance and

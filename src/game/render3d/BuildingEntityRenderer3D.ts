@@ -224,24 +224,21 @@ export class BuildingEntityRenderer3D {
     this.dyingBuildings = new DyingMeshFade<EntityMesh>(
       ENTITY_DEATH_FADE_MS,
       (mesh, fade) => applyEntityGroupFade(mesh.group, fade),
-      (_id, mesh) => {
-        this.world.remove(mesh.group);
-        disposeEntityGroupFade(mesh.group);
-        this.disposeWorldParentedOverlays(mesh);
-      },
+      (_id, mesh) => this.disposeBuildingMesh(mesh),
     );
   }
 
   update(
+    buildings: readonly Entity[],
     frameState: RenderFrameState3D,
     spinDt: number,
     currentDtMs: number,
     timeMs: number,
     beamAimCache: TurretBeamAimCache3D,
+    scopedRender: boolean = false,
   ): void {
-    const buildings = this.clientViewState.getBuildings();
     const entitySetVersion = this.clientViewState.getEntitySetVersion();
-    const pruneBuildings = entitySetVersion !== this.lastEntitySetVersion;
+    const pruneBuildings = scopedRender || entitySetVersion !== this.lastEntitySetVersion;
     if (pruneBuildings) this.seenIds.clear();
     this.constructionVisuals.beginFrame();
     this.beamAimCache = beamAimCache;
@@ -267,6 +264,14 @@ export class BuildingEntityRenderer3D {
     if (!pruneBuildings) return;
     for (const [id, mesh] of this.meshes) {
       if (this.seenIds.has(id)) continue;
+      const liveEntity = this.clientViewState.getEntity(id);
+      if (scopedRender && liveEntity !== undefined && liveEntity.building !== null) {
+        this.animations.unregister(id);
+        this.meshes.delete(id);
+        beamAimCache.delete(id);
+        this.disposeBuildingMesh(mesh);
+        continue;
+      }
       // Died: hand the mesh to the shared death-out fade rather than
       // tearing it down now — it dissolves in place while the blast +
       // debris play out, then frees. Overlays / selection ring / animation
@@ -284,11 +289,15 @@ export class BuildingEntityRenderer3D {
     this.lastEntitySetVersion = entitySetVersion;
   }
 
+  private disposeBuildingMesh(mesh: EntityMesh): void {
+    this.world.remove(mesh.group);
+    disposeEntityGroupFade(mesh.group);
+    this.disposeWorldParentedOverlays(mesh);
+  }
+
   destroy(): void {
     for (const mesh of this.meshes.values()) {
-      this.world.remove(mesh.group);
-      disposeEntityGroupFade(mesh.group);
-      this.disposeWorldParentedOverlays(mesh);
+      this.disposeBuildingMesh(mesh);
     }
     this.meshes.clear();
     this.dyingBuildings.destroyAll();

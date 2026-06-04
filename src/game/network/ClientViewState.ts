@@ -20,6 +20,7 @@ import type {
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { MinimapEntity } from '@/types/ui';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
+import type { FootprintBounds } from '../ViewportFootprint';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork } from './helpers';
 import {
@@ -59,6 +60,7 @@ import type {
 import { ClientProjectileStore } from './ClientProjectileStore';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
 import { applyNetworkUnitDriftFieldsToTarget } from './unitSnapshotFields';
+import { ClientRenderSpatialIndex } from './ClientRenderSpatialIndex';
 import {
   dequantizeEntityPosition as deqEntityPos,
   dequantizeProjectilePosition as deqProjPos,
@@ -136,6 +138,10 @@ export class ClientViewState {
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   private cache = new EntityCacheManager();
+  private renderSpatialIndex = new ClientRenderSpatialIndex();
+  private readonly scopedRenderQueryUnitsScratch: Entity[] = [];
+  private readonly scopedRenderQueryBuildingsScratch: Entity[] = [];
+  private readonly scopedRenderIncludedIds = new Set<EntityId>();
   private entitySetVersion = 0;
   private projectileCacheDirty = false;
 
@@ -305,6 +311,7 @@ export class ClientViewState {
     this.entities.delete(id);
     this.serverTargets.delete(id);
     this.projectileStore.remove(id, wasLineProjectile);
+    this.renderSpatialIndex.remove(id);
     this.selectionState.delete(id);
     this.activeEntityPredictionIds.delete(id);
     this.dirtyUnitRenderIds.delete(id);
@@ -619,6 +626,7 @@ export class ClientViewState {
             newEntity.selectable.selected = true;
           }
           this.entities.set(netEntity.id, newEntity);
+          this.renderSpatialIndex.update(newEntity);
           this.markEntityPredictionActive(newEntity);
           this.refreshPredictionSupportSurfaceProvider(newEntity);
           this.entitySetVersion++;
@@ -632,6 +640,7 @@ export class ClientViewState {
         if (snapClientNonVisualState(existing, netEntity)) {
           this.cache.invalidate();
         }
+        this.renderSpatialIndex.update(existing);
         this.refreshPredictionSupportSurfaceProvider(existing);
         this.markNetworkEntityPredictionActive(netEntity, existing);
       }
@@ -822,7 +831,9 @@ export class ClientViewState {
    * 2. Drift: EMA blend position/velocity/rotation toward server targets
    */
   applyPrediction(deltaMs: number): ClientPredictionTargetAgeStats {
-    return this.predictionStepper.apply(deltaMs);
+    const stats = this.predictionStepper.apply(deltaMs);
+    this.refreshPredictedRenderSpatialIndex();
+    return stats;
   }
 
   // === Accessors for rendering and input ===
@@ -881,6 +892,81 @@ export class ClientViewState {
     }
     this.dirtyUnitRenderIds.clear();
     return out;
+  }
+
+  getRenderSpatialEntityPadding(): number {
+    return this.renderSpatialIndex.getMaxEntityPadding();
+  }
+
+  collectScopedRenderEntities(
+    bounds: FootprintBounds,
+    outUnits: Entity[],
+    outBuildings: Entity[],
+    includeEntity: (entity: Entity) => boolean,
+    hoveredEntity: Entity | null,
+  ): void {
+    const queryUnits = this.scopedRenderQueryUnitsScratch;
+    const queryBuildings = this.scopedRenderQueryBuildingsScratch;
+    const included = this.scopedRenderIncludedIds;
+    outUnits.length = 0;
+    outBuildings.length = 0;
+    included.clear();
+    this.renderSpatialIndex.queryUnitsAndBuildings(bounds, queryUnits, queryBuildings);
+    for (let i = 0; i < queryUnits.length; i++) {
+      const entity = queryUnits[i];
+      if (!includeEntity(entity)) continue;
+      outUnits.push(entity);
+      included.add(entity.id);
+    }
+    for (let i = 0; i < queryBuildings.length; i++) {
+      const entity = queryBuildings[i];
+      if (!includeEntity(entity)) continue;
+      outBuildings.push(entity);
+      included.add(entity.id);
+    }
+
+    if (hoveredEntity !== null) {
+      this.pushScopedRenderException(hoveredEntity, outUnits, outBuildings, included);
+    }
+    for (const id of this.selectionState.get()) {
+      const entity = this.entities.get(id);
+      if (entity !== undefined) {
+        this.pushScopedRenderException(entity, outUnits, outBuildings, included);
+      }
+    }
+  }
+
+  consumeUnitRenderDirties(): void {
+    this.dirtyUnitRenderIds.clear();
+  }
+
+  private refreshPredictedRenderSpatialIndex(): void {
+    for (const id of this.activeEntityPredictionIds) {
+      const entity = this.entities.get(id);
+      if (entity !== undefined) this.renderSpatialIndex.update(entity);
+      else this.renderSpatialIndex.remove(id);
+    }
+    for (const id of this.dirtyUnitRenderIds) {
+      const entity = this.entities.get(id);
+      if (entity !== undefined) this.renderSpatialIndex.update(entity);
+      else this.renderSpatialIndex.remove(id);
+    }
+  }
+
+  private pushScopedRenderException(
+    entity: Entity,
+    outUnits: Entity[],
+    outBuildings: Entity[],
+    included: Set<EntityId>,
+  ): void {
+    if (included.has(entity.id)) return;
+    if (entity.unit !== null) {
+      outUnits.push(entity);
+      included.add(entity.id);
+    } else if (entity.building !== null) {
+      outBuildings.push(entity);
+      included.add(entity.id);
+    }
   }
 
   getPredictionSupportSurfaceEntities(): readonly Entity[] {
@@ -1081,6 +1167,7 @@ export class ClientViewState {
     this.gridCellSize = 0;
     this.terrainBuildabilityGrid = null;
     this.serverMeta = null;
+    this.renderSpatialIndex.clear();
     this.predictionStepper.reset();
     this.predictionCadence.clearAll();
     this.activeEntityPredictionIds.clear();

@@ -80,6 +80,7 @@ import { NAME_LABEL_OWNER_Y_OFFSET } from '@/nameLabelConfig';
 import type { RenderFrameState3D } from '../../render3d/RenderFrameState3D';
 import type { FootprintQuad } from '../../ViewportFootprint';
 import type { ViewportFootprint } from '../../ViewportFootprint';
+import { getEntityRenderScopePadding } from '../../entityRenderScope';
 import type { RtsScene3DCameraFootprintSystem } from './RtsScene3DCameraFootprintSystem';
 import type { RtsScene3DSelectionSystem } from './RtsScene3DSelectionSystem';
 
@@ -129,7 +130,6 @@ type RenderPhaseEntityLists = {
 type RenderPhaseEntityListOptions = {
   includeBodyHud: boolean;
   includeBodyNames: boolean;
-  includeTurretNames: boolean;
   includeShields: boolean;
   includeShotNames: boolean;
   includeContactShadows: boolean;
@@ -280,6 +280,7 @@ export class RtsScene3DRenderPhase {
     const shotNamesEnabled = updateEntityHudThisFrame &&
       nameLabel3D !== null &&
       getEntityHudToggle('shot', 'name');
+    const selectionHudMode = getSelectionHudMode();
 
     const cameraFootprint = this.cameraFootprintSystem.update(this.threeApp.camera);
     const cameraQuad = cameraFootprint.quad;
@@ -305,10 +306,6 @@ export class RtsScene3DRenderPhase {
       getRadarBoundary(),
       this.renderScope,
     );
-    entityRenderer.update(
-      renderFrameState,
-      serverMeta?.turretShieldPanelsEnabled ?? true,
-    );
     const inputManager = this.getInputManager();
     const hoveredEntity = inputManager?.getHoveredEntity() ?? null;
     const updateContactShadowsThisFrame =
@@ -316,14 +313,26 @@ export class RtsScene3DRenderPhase {
     const entityLists = this.prepareEntityLists({
       includeBodyHud: updateEntityHudThisFrame && healthBar3D !== null,
       includeBodyNames: bodyNamesEnabled,
-      includeTurretNames: turretNamesEnabled,
       includeShields: turretShieldSpheresEnabled,
       includeShotNames: shotNamesEnabled,
       includeContactShadows:
         contactShadowRenderer?.shouldBuildPacket(this.renderFrameIndex) ?? false,
       includeGroundPrints: updateEffectsThisFrame,
       hoveredEntity,
-    });
+    }, selectionHudMode);
+    entityRenderer.update(
+      renderFrameState,
+      serverMeta?.turretShieldPanelsEnabled ?? true,
+      {
+        units: entityLists.units,
+        buildings: entityLists.buildings,
+        scoped: this.renderScope.getMode() !== 'all',
+      },
+    );
+    this.clientViewState.consumeUnitRenderDirties();
+    if (turretNamesEnabled) {
+      this.populateRenderListTurretNamePacket(entityLists, selectionHudMode);
+    }
     if (contactShadowRenderer && updateContactShadowsThisFrame) {
       contactShadowRenderer.update(entityLists.contactShadows, this.renderFrameIndex);
     }
@@ -496,14 +505,16 @@ export class RtsScene3DRenderPhase {
     return 'building';
   }
 
-  private prepareEntityLists(options: RenderPhaseEntityListOptions): RenderPhaseEntityLists {
+  private prepareEntityLists(
+    options: RenderPhaseEntityListOptions,
+    mode: SelectionHudMode,
+  ): RenderPhaseEntityLists {
     const lists = this.renderEntityLists;
     const bodyHud = this.bodyHudPacket;
     const shields = this.shieldPacket;
     const pieceNames = this.pieceNamePacket;
     const contactShadows = this.contactShadowPacket;
     const groundPrints = this.groundPrintPacket;
-    const mode = getSelectionHudMode();
     bodyHud.reset();
     shields.reset();
     pieceNames.reset();
@@ -517,9 +528,6 @@ export class RtsScene3DRenderPhase {
       }
       if (options.includeBodyNames) {
         this.populateBodyNamePacket(this.clientViewState.getUnitsAndBuildings(), mode);
-      }
-      if (options.includeTurretNames) {
-        this.populateTurretNamePacket(this.clientViewState.getArmedEntities(), mode);
       }
       if (options.includeShields) {
         this.populateShieldPacket(this.clientViewState.getShieldUnits());
@@ -538,15 +546,17 @@ export class RtsScene3DRenderPhase {
 
     const units = this.scopedUnitsScratch;
     const buildings = this.scopedBuildingsScratch;
-    units.length = 0;
-    buildings.length = 0;
+    this.clientViewState.collectScopedRenderEntities(
+      this.renderScope.getCullingBounds(this.clientViewState.getRenderSpatialEntityPadding()),
+      units,
+      buildings,
+      (entity) => this.entityInRenderScope(entity),
+      options.hoveredEntity,
+    );
 
     const scope = this.renderScope;
     let hoveredBodyHudPushed = false;
-    for (const entity of this.clientViewState.getUnitsAndBuildings()) {
-      if (!this.entityInRenderScope(entity)) continue;
-      if (entity.unit) units.push(entity);
-      else if (entity.building) buildings.push(entity);
+    for (const entity of units) {
       if (options.includeBodyHud && this.entityNeedsBodyHud(entity)) {
         const forceVisible = entity === options.hoveredEntity;
         if (forceVisible) hoveredBodyHudPushed = true;
@@ -555,8 +565,18 @@ export class RtsScene3DRenderPhase {
       if (options.includeBodyNames) {
         this.pushBodyNamesForEntity(entity, mode);
       }
-      if (options.includeTurretNames) {
-        this.pushTurretNamesForEntity(entity, mode);
+      if (options.includeShields && entity.unit && entity.combat) {
+        shields.pushUnit(entity, scope);
+      }
+    }
+    for (const entity of buildings) {
+      if (options.includeBodyHud && this.entityNeedsBodyHud(entity)) {
+        const forceVisible = entity === options.hoveredEntity;
+        if (forceVisible) hoveredBodyHudPushed = true;
+        this.pushBodyHudEntity(entity, forceVisible, mode);
+      }
+      if (options.includeBodyNames) {
+        this.pushBodyNamesForEntity(entity, mode);
       }
       if (options.includeShields && entity.unit && entity.combat) {
         shields.pushUnit(entity, scope);
@@ -664,6 +684,18 @@ export class RtsScene3DRenderPhase {
     }
   }
 
+  private populateRenderListTurretNamePacket(
+    lists: RenderPhaseEntityLists,
+    mode: SelectionHudMode,
+  ): void {
+    if (this.renderScope.getMode() === 'all') {
+      this.populateTurretNamePacket(this.clientViewState.getArmedEntities(), mode);
+      return;
+    }
+    for (const unit of lists.units) this.pushTurretNamesForEntity(unit, mode);
+    for (const building of lists.buildings) this.pushTurretNamesForEntity(building, mode);
+  }
+
   private pushTurretNamesForEntity(host: Entity, mode: SelectionHudMode): void {
     const turrets = host.combat?.turrets;
     if (!turrets) return;
@@ -733,17 +765,11 @@ export class RtsScene3DRenderPhase {
   }
 
   private entityInRenderScope(entity: Entity): boolean {
-    const unit = entity.unit;
-    if (unit) {
-      const radius = unit.radius.visual ?? unit.radius.hitbox ?? 100;
-      return this.renderScope.inScope(entity.transform.x, entity.transform.y, Math.max(350, radius));
-    }
-    const building = entity.building;
-    if (building) {
-      const radius = Math.max(building.width, building.height) * 0.75;
-      return this.renderScope.inScope(entity.transform.x, entity.transform.y, Math.max(200, radius));
-    }
-    return this.renderScope.inScope(entity.transform.x, entity.transform.y, 100);
+    return this.renderScope.inScope(
+      entity.transform.x,
+      entity.transform.y,
+      getEntityRenderScopePadding(entity),
+    );
   }
 
   private entityNeedsBodyHud(entity: Entity): boolean {

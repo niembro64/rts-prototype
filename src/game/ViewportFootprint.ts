@@ -131,6 +131,17 @@ export class ViewportFootprint {
     };
   }
 
+  /** Bounds that match inScope() for broadphase render queries. */
+  getCullingBounds(padding: number = 0): FootprintBounds {
+    const p = Math.max(0, padding) + this.paddedExtra;
+    return {
+      minX: this.minX - p,
+      maxX: this.maxX + p,
+      minY: this.minY - p,
+      maxY: this.maxY + p,
+    };
+  }
+
   /** Conservative AABB scope test:
    *   - mode='all'     → always true (no culling).
    *   - mode='window'  → AABB + per-entity padding.

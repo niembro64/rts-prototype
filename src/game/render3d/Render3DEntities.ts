@@ -138,6 +138,12 @@ function createDyingUnitPartDelta(): DyingUnitPartDelta {
   return { dx: 0, dy: 0, dz: 0, drx: 0, dry: 0, drz: 0 };
 }
 
+export type RenderEntityUpdatePacket3D = {
+  units: readonly Entity[];
+  buildings: readonly Entity[];
+  scoped: boolean;
+};
+
 // Shared Y-up axis for manual instanced transform composition.
 const _INST_UP = new THREE.Vector3(0, 1, 0);
 
@@ -463,6 +469,7 @@ export class Render3DEntities {
   update(
     frameStateOverride?: RenderFrameState3D,
     turretShieldPanelsEnabled: boolean = true,
+    entityPacket?: RenderEntityUpdatePacket3D,
   ): void {
     // Refresh the single render-detail snapshot once per frame.
     const newFrameState = frameStateOverride
@@ -479,8 +486,16 @@ export class Render3DEntities {
     // Populate beam-directed turret aim from the live beams BEFORE the
     // unit + building turret-pose passes read it this frame.
     this.collectBeamTurretAim();
-    this.updateUnits();
-    this.buildingRenderer.update(this.frameState, this._spinDt, this._currentDtMs, frameSpin.timeMs, this.turretBeamAimCache);
+    this.updateUnits(entityPacket?.units, entityPacket?.scoped === true);
+    this.buildingRenderer.update(
+      entityPacket?.buildings ?? this.clientViewState.getBuildings(),
+      this.frameState,
+      this._spinDt,
+      this._currentDtMs,
+      frameSpin.timeMs,
+      this.turretBeamAimCache,
+      entityPacket?.scoped === true,
+    );
     this.projectileRangeEnvelope.update();
     this.projectileRenderer.update(this.frameState);
     // One flush per frame uploads the per-instance leg cylinder
@@ -754,13 +769,13 @@ export class Render3DEntities {
     obj.rotation.z += delta.drz;
   }
 
-  private updateUnits(): void {
+  private updateUnits(scopedUnits: readonly Entity[] | undefined, scopedRender: boolean): void {
     this.hoverSmokeEmitters.length = 0;
-    const units = this.clientViewState.getUnits();
-    this.updateUnitMeshes(units);
+    const units = scopedUnits ?? this.clientViewState.getUnits();
+    this.updateUnitMeshes(units, scopedRender);
   }
 
-  private updateUnitMeshes(units: readonly Entity[]): void {
+  private updateUnitMeshes(units: readonly Entity[], scopedRender: boolean): void {
     const seen = this._seenUnitIds;
     seen.clear();
     const spinDt = this._spinDt;
@@ -1120,6 +1135,15 @@ export class Render3DEntities {
     //     alpha fade-out in place with no scatter or explosion.
     for (const [id, m] of this.unitMeshes) {
       if (!seen.has(id)) {
+        const liveEntity = this.clientViewState.getEntity(id);
+        if (scopedRender && liveEntity !== undefined && liveEntity.unit !== null) {
+          const legSnap = captureLegState(m.locomotion);
+          if (legSnap) this.legStateCache.set(id, legSnap);
+          this.destroyUnitMesh(id, m);
+          this.barrelSpinState.delete(id);
+          this.turretBeamAimCache.delete(id);
+          continue;
+        }
         // World-parented overlays (range circles) and the selection ring
         // leave immediately for both paths; the body/turrets/locomotion
         // remain for the render-only fade.
