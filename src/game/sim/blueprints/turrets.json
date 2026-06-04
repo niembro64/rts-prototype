@@ -914,9 +914,9 @@
         },
         "large": {
           "towerSize": "large",
-          "pylonHeight": 50,
-          "pylonOffset": 15,
-          "innerPylonRadius": 2
+          "pylonHeight": 80,
+          "pylonOffset": 48,
+          "innerPylonRadius": 3.2
         }
       }
     },

@@ -176,16 +176,19 @@ export function getFactoryBuildingVisualMetrics(
   depth: number,
 ): FactoryBuildingVisualMetrics {
   const minDim = Math.min(width, depth);
-  const towerRadius = Math.max(7, minDim * 0.22);
-  const collarRadius = Math.max(towerRadius * 1.35, minDim * 0.34);
-  const towerHeight = Math.max(78, minDim * 1.9);
-  const towerBaseY = FACTORY_BASE_VISUAL_HEIGHT;
-  const pylonRadius = Math.max(2.3, minDim * 0.055);
-  const pylonOffset = Math.min(minDim * 0.38, collarRadius * 1.15);
-  const pylonHeight = towerHeight * 0.66;
-  const capY = towerBaseY + towerHeight + 5;
-  const nozzleRadius = Math.max(6, towerRadius * 0.95);
-  const nozzleY = capY + 5 + nozzleRadius * 0.45;
+  const emitter = TURRET_BLUEPRINTS.turretConstruction.constructionEmitter;
+  const largeEmitter = emitter?.sizes.large;
+  const pylonRadius = largeEmitter?.innerPylonRadius ?? Math.max(2.3, minDim * 0.055);
+  const pylonOffset = largeEmitter?.pylonOffset ?? Math.max(15, minDim * 0.4);
+  const pylonHeight = largeEmitter?.pylonHeight ?? 50;
+  const towerRadius = Math.max(7, minDim * 0.09);
+  const collarRadius = Math.max(towerRadius * 1.35, minDim * 0.16);
+  const towerHeight = pylonHeight;
+  const towerBaseY = Math.max(0, FACTORY_CONSTRUCTION_TURRET_MOUNT_Z - TURRET_BLUEPRINTS.turretConstruction.radius.visual);
+  const capRadius = Math.max(1.35, pylonRadius * 1.65);
+  const capY = towerBaseY + pylonHeight + capRadius * 0.36;
+  const nozzleRadius = capRadius;
+  const nozzleY = capY + capRadius * 0.35;
   return {
     minDim,
     baseHeight: FACTORY_BASE_VISUAL_HEIGHT,
@@ -199,7 +202,7 @@ export function getFactoryBuildingVisualMetrics(
     capY,
     nozzleRadius,
     nozzleY,
-    visualTop: nozzleY + nozzleRadius,
+    visualTop: towerBaseY + pylonHeight + capRadius,
   };
 }
 

@@ -21,7 +21,7 @@ import {
 } from './BuildingMeshPrimitives3D';
 
 /** Factory-only "what's being built" visualizer. Lives at the factory's
- *  build spot (next to the chassis, not on the turret) and shows the
+ *  centered build bay (not on the turret) and shows the
  *  forming unit as a translucent ghost orb with sparks. This is
  *  conceptually separate from the construction emitter rig that lives on
  *  the turretConstruction — the emitter is shared with commanders and
@@ -80,7 +80,7 @@ export function buildFactoryMesh(
   const details: BuildingShape['details'] = [];
   const blueprint = getBuildingBlueprint('towerFabricator');
 
-  // Build-spot visuals. These follow the FORMING UNIT (not the tower)
+  // Build-bay visuals. These follow the FORMING UNIT (not the tower)
   // so they stay even after the central tower pieces were removed.
   const unitGhost = new THREE.Mesh(constructionOrbGeom, constructionGhostMat);
   unitGhost.visible = false;

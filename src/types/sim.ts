@@ -834,20 +834,20 @@ export type UnitBuildConfig = {
   fireRange: number | undefined;
 };
 
-// Factory component. The host (today: the fabricator tower) produces
-// **units** at a fixed build spot adjacent to its footprint. The factory
+// Factory component. The host (today: the fabricator platform) produces
+// **units** from a fixed launch spot at the center of its footprint. The factory
 // carries one repeat-build selection: `selectedUnitBlueprintId` is either
 // the unit blueprint to produce forever or null for off. The factory
-// spawns that selected unit as a shell at its build spot; the shell then
-// absorbs resources from the player's stockpiles via energyDistribution.
+// spawns that selected unit as an airborne shell above its center bay; the
+// shell then falls through normal physics and absorbs resources from the
+// player's stockpiles via energyDistribution regardless of where it settles.
 // `currentShellId` is the shell currently being funded (null while no
-// unit is selected or while the build spot is blocked). Once the shell
-// flips `isComplete`, it leaves the spot and the factory clears
+// unit is selected). Once the shell flips `isComplete`, the factory clears
 // `currentShellId` so the same selected unit can repeat.
 //
-// Factory ≠ builder: factories produce units at a fixed spot; builders
-// (commanders, future construction aircraft) construct buildings at
-// chosen locations.
+// Factory ≠ builder: factories produce units from a fixed center launch spot;
+// builders (commanders, future construction aircraft) construct buildings
+// at chosen locations.
 //
 // `currentBuildProgress` is the average fill ratio of that shell,
 // kept as a pure UI/snapshot mirror so the production button can draw a

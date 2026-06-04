@@ -28,15 +28,15 @@ export const SHELL_PALE_HEX = COLORS.construction.shell.pale.colorHex;
 
 // ── Build-bubble visuals ─────────────────────────────────────────
 // The "build bubble" is the cluster of orbs the factory's
-// FactoryBuildSpotRig emits while a unit is forming at the build
-// spot — outer ghost shell, inner glowing core, travelling pulses
+// FactoryBuildSpotRig emits while a unit is forming at the center
+// bay — outer ghost shell, inner glowing core, travelling pulses
 // from the nozzle, orbiting sparks. Per user direction the palette is
 // strictly whitish / grayish (no team color, no amber, no cyan
 // glass), and the outer ghost shell sizes off the queued unit's collision
 // radius (not its visual radius).
 
 /** Outer ghost shell — the big translucent bubble centered on the
- *  build spot. */
+ *  center bay. */
 export const BUILD_BUBBLE_GHOST_COLOR_HEX =
   COLORS.construction.buildBubble.ghost.colorHex;
 export const BUILD_BUBBLE_GHOST_OPACITY = COLORS.construction.buildBubble.ghost.opacity;
@@ -45,8 +45,8 @@ export const BUILD_BUBBLE_GHOST_OPACITY = COLORS.construction.buildBubble.ghost.
 export const BUILD_BUBBLE_CORE_COLOR_HEX = COLORS.construction.buildBubble.core.colorHex;
 export const BUILD_BUBBLE_CORE_OPACITY = COLORS.construction.buildBubble.core.opacity;
 
-/** Travelling pulses that arc from the factory nozzle to the build
- *  spot. Slightly cooler / more saturated than core so they read as
+/** Travelling pulses that arc from the factory nozzle to the center
+ *  bay. Slightly cooler / more saturated than core so they read as
  *  "energy being delivered". Still strictly grayscale. */
 export const BUILD_BUBBLE_PULSE_COLOR_HEX =
   COLORS.construction.buildBubble.pulse.colorHex;

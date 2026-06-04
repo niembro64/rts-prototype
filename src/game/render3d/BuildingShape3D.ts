@@ -8,8 +8,8 @@
 //             dark photovoltaic inner pyramid.
 //   wind    — tower turbine with a globally wind-aligned nacelle and
 //             spinning three-blade rotor.
-//   factory — compact radial construction tower. Produced units are
-//             assembled outside the tower footprint by spray particles.
+//   factory — wide radial construction platform. Produced units are
+//             assembled above the platform center by spray particles.
 //   extractor — squat metal pump with a rotating top extractor head.
 //   towerCannon — static defense tower with a heavy cannon mount.
 //   towerAntiAir — compact missile tower with a fast launcher mount.

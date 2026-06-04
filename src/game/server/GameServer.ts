@@ -54,6 +54,7 @@ import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDisabledTurretJsOnlyFields } from '../sim/combat/combatActivity';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { factoryProductionSystem } from '../sim/factoryProduction';
+import { isBuildInProgress } from '../sim/buildableHelpers';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import { initSimWasm } from '../sim-wasm/init';
 import { ServerBootstrap } from './ServerBootstrap';
@@ -300,8 +301,9 @@ export class GameServer {
     // Handle unit spawns: create physics bodies
     this.simulation.onUnitSpawn = (newUnits: Entity[]) => {
       for (const entity of newUnits) {
+        const isFactoryShell = entity.unit !== null && isBuildInProgress(entity.buildable);
         createPhysicsBodyForUnit(this.world, this.physics, entity, {
-          ignoreOverlappingBuildings: true,
+          ignoreOverlappingBuildings: !isFactoryShell,
           overlapPadding: undefined,
         });
       }

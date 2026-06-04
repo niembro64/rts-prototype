@@ -11,7 +11,7 @@
 //     selected build site.
 //   - Factory building (fabricator) → emitter rate read from the
 //     factory's per-resource transfer fractions; sprays target the
-//     external build spot. The "forming unit" orb + sparks at that
+//     live shell above the fabricator center. The "forming unit" orb + sparks at that
 //     spot belongs to a separate `FactoryBuildSpotRig`, not this rig.
 
 import * as THREE from 'three';

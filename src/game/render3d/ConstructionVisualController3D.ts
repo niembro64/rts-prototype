@@ -18,6 +18,7 @@ import { ballSpawnRateForResourceRate } from '@/resourceConfig';
 import { getRotationVelEmaMode } from '@/clientBarConfig';
 import {
   RESOURCE_FLOW_INBOUND,
+  RESOURCE_FLOW_OUTBOUND,
   RESOURCE_KIND_ENERGY,
   RESOURCE_KIND_METAL,
   type ResourceFlowDirectionCode,
@@ -25,7 +26,6 @@ import {
 } from '@/types/network';
 import type { ClientResourcePylonFlow, ClientViewState } from '../network/ClientViewState';
 import { halfLifeBlend } from '../network/driftEma';
-import { getTransformCosSin } from '../math';
 import { getUnitBlueprint } from '../sim/blueprints';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
@@ -103,6 +103,7 @@ export class ConstructionVisualController3D {
   private _factorySpraySourceWorld = new THREE.Vector3();
   private _factorySprayTargetWorld = new THREE.Vector3();
   private _factorySprayRootWorld = new THREE.Vector3();
+  private factoryConstructionTargetBySource = new Map<EntityId, EntityId>();
   private _converterSourceRootWorld = new THREE.Vector3();
   private _converterSourceTipWorld = new THREE.Vector3();
   private _converterSinkTipWorld = new THREE.Vector3();
@@ -143,6 +144,7 @@ export class ConstructionVisualController3D {
   destroy(): void {
     this.factorySprayTargets.length = 0;
     this.factorySprayTargetPool.length = 0;
+    this.factoryConstructionTargetBySource.clear();
     this.tubeFlows.length = 0;
     this.tubeFlowPool.length = 0;
   }
@@ -341,7 +343,8 @@ export class ConstructionVisualController3D {
   /** Drive a factory's construction emitter (the tower/sprays
    *  rig mounted on the factory's `turretConstruction`). The rate is
    *  read directly from the factory's per-resource transfer fractions.
-   *  Spray target is the factory's external build spot. */
+   *  Spray target follows the live shell once resource flow identifies it,
+   *  with the static center bay as a short-lived fallback. */
   updateFactoryConstructionEmitter(
     rig: ConstructionEmitterRig,
     e: Entity,
@@ -382,13 +385,21 @@ export class ConstructionVisualController3D {
         // Unknown selection ids should not break rendering; keep the default.
       }
     }
-    const buildSpot = getFactoryBuildSpot(e, buildSpotRadius, {
-      mapWidth: this.clientViewState.getMapWidth(),
-      mapHeight: this.clientViewState.getMapHeight(),
-      clampRadius: null,
-    }, this._factoryBuildSpot);
     rig.group.updateWorldMatrix(true, false);
-    this._factorySprayTargetWorld.set(buildSpot.x, e.transform.z, buildSpot.y);
+    let targetId = e.id;
+    let targetRadius = buildSpotRadius;
+    const shell = this.resolveFactoryConstructionTarget(e.id, ownership.playerId);
+    if (shell !== null) {
+      targetId = shell.id;
+      targetRadius = this.writeEntityResourceEndpoint(shell, this._factorySprayTargetWorld);
+    } else {
+      const buildSpot = getFactoryBuildSpot(e, buildSpotRadius, {
+        mapWidth: this.clientViewState.getMapWidth(),
+        mapHeight: this.clientViewState.getMapHeight(),
+        clampRadius: null,
+      }, this._factoryBuildSpot);
+      this._factorySprayTargetWorld.set(buildSpot.x, e.transform.z, buildSpot.y);
+    }
     // Absolute construction spend (resources/second) for THIS factory, read
     // from the single resource-movement channel (factory build payments are
     // recorded with the factory as their source entity). Ball density tracks
@@ -402,14 +413,14 @@ export class ConstructionVisualController3D {
       rig.group,
       e.id,
       ownership.playerId,
-      e.id,
+      targetId,
       this._factorySprayTargetWorld,
-      buildSpotRadius,
+      targetRadius,
       factoryAbsRates,
     );
   }
 
-  /** Drive the factory's "forming unit" visualizer at the build spot —
+  /** Drive the factory's "forming unit" visualizer at the center build bay —
    *  ghost orb, core orb, sparks. This is the unit-being-assembled
    *  preview that's specific to factories (commanders/aircraft don't
    *  show a forming-unit shell, they spray at the buildable shell that
@@ -470,11 +481,8 @@ export class ConstructionVisualController3D {
       mapHeight: this.clientViewState.getMapHeight(),
       clampRadius: null,
     }, this._factoryBuildSpot);
-    const spotDx = buildSpot.x - e.transform.x;
-    const spotDz = buildSpot.y - e.transform.y;
-    const { cos, sin } = getTransformCosSin(e.transform);
-    const localSpotX = cos * spotDx + sin * spotDz;
-    const localSpotZ = -sin * spotDx + cos * spotDz;
+    const localSpotX = buildSpot.localX;
+    const localSpotZ = buildSpot.localY;
 
     rig.unitGhost.visible = false;
     rig.unitGhost.position.set(localSpotX, centerY, localSpotZ);
@@ -936,6 +944,36 @@ export class ConstructionVisualController3D {
       if (pylon.resource === resource) return pylon;
     }
     return undefined;
+  }
+
+  private isFactoryConstructionTarget(entity: Entity | undefined, playerId: PlayerId): entity is Entity {
+    return entity !== undefined
+      && entity.unit !== null
+      && entity.buildable !== null
+      && isBuildInProgress(entity.buildable)
+      && entity.ownership !== null
+      && entity.ownership.playerId === playerId;
+  }
+
+  private resolveFactoryConstructionTarget(sourceId: EntityId, playerId: PlayerId): Entity | null {
+    const flows = this.clientViewState.getResourcePylonFlows(sourceId);
+    for (let i = 0; i < flows.length; i++) {
+      const flow = flows[i];
+      if (flow.direction !== RESOURCE_FLOW_OUTBOUND || flow.targetEntityId === null) continue;
+      const target = this.clientViewState.getEntity(flow.targetEntityId);
+      if (!this.isFactoryConstructionTarget(target, playerId)) continue;
+      this.factoryConstructionTargetBySource.set(sourceId, target.id);
+      return target;
+    }
+
+    const cachedTargetId = this.factoryConstructionTargetBySource.get(sourceId);
+    if (cachedTargetId === undefined) return null;
+    const cachedTarget = this.clientViewState.getEntity(cachedTargetId);
+    if (this.isFactoryConstructionTarget(cachedTarget, playerId)) {
+      return cachedTarget;
+    }
+    this.factoryConstructionTargetBySource.delete(sourceId);
+    return null;
   }
 
   private writeEntityResourceEndpoint(entity: Entity, out: THREE.Vector3): number {

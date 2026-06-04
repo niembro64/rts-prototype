@@ -30,10 +30,6 @@ import { getSimWasm } from '../sim-wasm/init';
 export type { FactoryProductionResult } from '@/types/ui';
 import type { FactoryProductionResult } from '@/types/ui';
 
-let buildSpotObstacleX = new Float64Array(64);
-let buildSpotObstacleY = new Float64Array(64);
-let buildSpotObstacleRadius = new Float64Array(64);
-
 const FACTORY_SELECTED_NONE = 0;
 const FACTORY_SELECTED_VALID = 1;
 const FACTORY_SELECTED_INVALID = 2;
@@ -43,6 +39,8 @@ const FACTORY_ACTION_COMPLETE_SHELL = 2;
 const FACTORY_ACTION_CLEAR_INVALID_SELECTION = 3;
 const FACTORY_ACTION_STOP_PRODUCING = 4;
 const FACTORY_ACTION_SPAWN_SHELL = 5;
+const FACTORY_SHELL_AIR_SPAWN_MIN_HEIGHT = 160;
+const FACTORY_SHELL_AIR_SPAWN_COLLISION_RADIUS_MULT = 3;
 
 let factoryRows: Entity[] = [];
 let factoryRowShells: Array<Entity | null> = [];
@@ -61,15 +59,6 @@ let factoryCanBuildUnit = new Uint8Array(16);
 let factoryIsProducing = new Uint8Array(16);
 let factoryAction = new Uint8Array(16);
 let factoryProgress = new Float64Array(16);
-
-function ensureBuildSpotObstacleCapacity(required: number): void {
-  if (required <= buildSpotObstacleX.length) return;
-  let next = buildSpotObstacleX.length;
-  while (next < required) next *= 2;
-  buildSpotObstacleX = new Float64Array(next);
-  buildSpotObstacleY = new Float64Array(next);
-  buildSpotObstacleRadius = new Float64Array(next);
-}
 
 function ensureFactoryProductionCapacity(required: number): void {
   if (required <= factoryHasShell.length) return;
@@ -101,8 +90,8 @@ function pathTerrainFilterForUnit(unit: Entity): PathTerrainFilter | null {
 // Factory production system
 export class FactoryProductionSystem {
   // Update all factories. The factory's job is now (a) spawning a
-  // shell of the selected repeat-build unit at its build spot when work
-  // begins, and (b) detecting completion of the shell and finishing the
+  // shell of the selected repeat-build unit above its center bay when
+  // work begins, and (b) detecting completion of the shell and finishing the
   // activation (static rally + turret aim). Resource transfer into the
   // shell is handled by energyDistribution, the same path that funds
   // buildings.
@@ -252,7 +241,7 @@ export class FactoryProductionSystem {
     return { spawnedUnits, completedUnits };
   }
 
-  // Spawn an inert shell of `unitBlueprintId` at the factory's build spot.
+  // Spawn an inert shell of `unitBlueprintId` above the factory's center bay.
   // The shell starts at 0/0/0 paid; energyDistribution fills it. The
   // unit is fully constructed (renderer-ready), but its active build
   // state suppresses combat/movement until each resource bar tops up.
@@ -264,9 +253,6 @@ export class FactoryProductionSystem {
       mapHeight: world.mapHeight,
       clampRadius: null,
     });
-    if (this.isBuildSpotBlocked(world, spawn.x, spawn.y, bp.radius.collision)) {
-      return null;
-    }
     // Allocate the shell's sub-entity ids (locomotion + turrets) up
     // front, exactly like spawned commanders and pre-placed buildings.
     // Turrets with id === NO_ENTITY_ID are treated as visual-only and
@@ -275,6 +261,13 @@ export class FactoryProductionSystem {
     // flag in combat targeting, but on completion the turrets already
     // hold real ids and engage like initial units do.
     const unit = world.createUnitFromBlueprint(spawn.x, spawn.y, factory.ownership.playerId, unitBlueprintId);
+    // Factory shells are allowed to begin above occupied pads. Physics
+    // owns the fall and final resting place instead of rejecting the job
+    // when a unit or building currently overlaps the authored spot.
+    unit.transform.z += Math.max(
+      FACTORY_SHELL_AIR_SPAWN_MIN_HEIGHT,
+      bp.radius.collision * FACTORY_SHELL_AIR_SPAWN_COLLISION_RADIUS_MULT,
+    );
     unit.buildable = createBuildable({
       energy: bp.cost.energy * COST_MULTIPLIER,
       metal: bp.cost.metal * COST_MULTIPLIER,
@@ -282,47 +275,6 @@ export class FactoryProductionSystem {
     initializeConstructionPieceHealth(unit, world);
     world.addEntity(unit);
     return unit;
-  }
-
-  private isBuildSpotBlocked(world: WorldState, x: number, y: number, radius: number): boolean {
-    const units = world.getUnits();
-    const buildings = world.getBuildings();
-    ensureBuildSpotObstacleCapacity(units.length + buildings.length);
-
-    let count = 0;
-    for (const unit of units) {
-      if (unit.unit === null) continue;
-      buildSpotObstacleX[count] = unit.transform.x;
-      buildSpotObstacleY[count] = unit.transform.y;
-      buildSpotObstacleRadius[count] = unit.unit.radius.collision;
-      count += 1;
-    }
-
-    for (const building of buildings) {
-      if (building.building === null || building.building.hp <= 0) continue;
-      buildSpotObstacleX[count] = building.transform.x;
-      buildSpotObstacleY[count] = building.transform.y;
-      buildSpotObstacleRadius[count] = building.building.targetRadius;
-      count += 1;
-    }
-
-    const sim = getSimWasm();
-    if (sim === undefined) {
-      throw new Error('FactoryProductionSystem.isBuildSpotBlocked: sim-wasm is not initialized');
-    }
-    const result = sim.factoryBuildSpotBlocked(
-      x,
-      y,
-      radius,
-      buildSpotObstacleX,
-      buildSpotObstacleY,
-      buildSpotObstacleRadius,
-      count,
-    );
-    if (result > 1) {
-      throw new Error('FactoryProductionSystem.isBuildSpotBlocked: factory_build_spot_blocked rejected its buffers');
-    }
-    return result === 1;
   }
 
   // Called when a unit shell completes. Stamps the static factory rally
