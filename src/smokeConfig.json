@@ -8,11 +8,11 @@
     "capPolicy": "evictOldest",
     "emitFramesSkip": 0,
     "exhaustSpeed": 0,
-    "fadeInMs": 10,
+    "fadeInMs": 0,
     "fadeOutMs": 500,
-    "startRadius": 2,
-    "endRadiusMultiplier": 6,
-    "maxAlpha": 0.05
+    "startRadius": 3,
+    "endRadiusMultiplier": 2,
+    "maxAlpha": 0.2
   },
   "shotRocketFast": {
     "maxPoolSize": 100000,
@@ -22,7 +22,7 @@
     "fadeInMs": 10,
     "fadeOutMs": 500,
     "startRadius": 6,
-    "endRadiusMultiplier": 5,
+    "endRadiusMultiplier": 2,
     "maxAlpha": 0.05
   },
   "shotRocketLong": {
@@ -33,7 +33,7 @@
     "fadeInMs": 10,
     "fadeOutMs": 500,
     "startRadius": 6,
-    "endRadiusMultiplier": 5,
+    "endRadiusMultiplier": 2,
     "maxAlpha": 0.05
   },
   "locomotionHovercraft": {
