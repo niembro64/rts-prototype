@@ -207,18 +207,18 @@ export function getTurretBarrelDiameter(
   }
 
   const shot = config.shot;
-  const lineShotWidth = shot && isRayConfig(shot) ? shot.width : undefined;
-  const projectileShotWidth = shot && isProjectileShot(shot)
-    ? shot.radius.visual * 2 * (isRocketLikeShot(shot) ? 1.5 : 1)
-    : undefined;
-  const isSingleBarrel =
-    barrel.type === 'singleCylinderBarrel' || barrel.type === 'singleConeBarrel';
-  const diameter =
-    barrel.barrelThickness ??
-    (isSingleBarrel ? lineShotWidth : undefined) ??
-    (barrel.type === 'coneMultiBarrel' ? lineShotWidth : undefined) ??
-    projectileShotWidth ??
-    TURRET_BARREL_MIN_DIAMETER;
+  // Shots and rockets: the barrel cylinder ALWAYS inherits its width from the
+  // munition it fires — it is never authored. Any `barrelThickness` on a
+  // shot/rocket turret is intentionally ignored. A rocket reads 1.5x its
+  // visual radius so the launch tube looks chunkier than the projectile.
+  if (shot !== undefined && isProjectileShot(shot)) {
+    const width = shot.radius.visual * 2 * (isRocketLikeShot(shot) ? 1.5 : 1);
+    return Math.max(width, TURRET_BARREL_MIN_DIAMETER);
+  }
+  // Rays (beams/lasers): width comes from the ray emission, or an explicit
+  // `barrelThickness` override on the cone barrel.
+  const lineShotWidth = shot !== undefined && isRayConfig(shot) ? shot.width : undefined;
+  const diameter = barrel.barrelThickness ?? lineShotWidth ?? TURRET_BARREL_MIN_DIAMETER;
   return Math.max(diameter, TURRET_BARREL_MIN_DIAMETER);
 }
 
