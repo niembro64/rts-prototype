@@ -8,6 +8,7 @@ import {
 } from '@/game/sim/blueprints';
 import { createBuildingRuntimeTurrets, createUnitRuntimeTurrets } from '@/game/sim/runtimeTurrets';
 import { BUILD_GRID_CELL_SIZE } from '@/game/sim/buildGrid';
+import { getTurretCooldownDuration } from '@/game/sim/turretCooldown';
 import type { BuildingBlueprint } from '@/game/sim/blueprints';
 import type {
   LocomotionBlueprint,
@@ -306,9 +307,10 @@ function describeTurret(turret: Turret, index: number): LoadingUnitInfoNode {
   const config = turret.config;
   const blueprint = getTurretBlueprint(config.turretBlueprintId);
   const firepower = computeTurretFirepower(config);
+  const cooldownDuration = getTurretCooldownDuration(config.cooldown);
   const children: LoadingUnitInfoNode[] = [
     stat('Range', `fire ${rangePair(turret.ranges.fire.max)}${turret.ranges.tracking ? ` / track ${rangePair(turret.ranges.tracking)}` : ''}`),
-    stat('Cooldown', config.cooldown > 0 ? ms(config.cooldown) : 'continuous'),
+    stat('Cooldown', cooldownDuration > 0 ? ms(cooldownDuration) : 'continuous'),
     stat('Firepower', firepower.sustainedDps > 0 ? `${fmt(firepower.sustainedDps, 1)} DPS` : 'utility'),
     stat('Aim', config.aimStyle.angleType),
     stat('Line of sight', config.requiresNonObstructedLineOfSight ? 'required' : 'not required'),
@@ -445,9 +447,10 @@ function computeTurretFirepower(config: TurretConfig): Firepower {
   if (shot.type === 'beam') {
     return { alphaDamage: shot.dps, sustainedDps: shot.dps };
   }
+  const cooldownDuration = getTurretCooldownDuration(config.cooldown);
   if (shot.type === 'laser') {
     const alphaDamage = shot.dps * (shot.duration / 1000) * pelletCount * burstCount;
-    const cycleMs = Math.max(shot.duration, config.cooldown, (burstCount - 1) * burstDelay + shot.duration);
+    const cycleMs = Math.max(shot.duration, cooldownDuration, (burstCount - 1) * burstDelay + shot.duration);
     return {
       alphaDamage,
       sustainedDps: cycleMs > 0 ? (alphaDamage * 1000) / cycleMs : 0,
@@ -455,7 +458,7 @@ function computeTurretFirepower(config: TurretConfig): Firepower {
   }
   if (isProjectileShot(shot)) {
     const alphaDamage = projectileDamageWithSubmunitions(shot) * pelletCount * burstCount;
-    const cycleMs = Math.max(config.cooldown, (burstCount - 1) * burstDelay + 1);
+    const cycleMs = Math.max(cooldownDuration, (burstCount - 1) * burstDelay + 1);
     return {
       alphaDamage,
       sustainedDps: cycleMs > 0 ? (alphaDamage * 1000) / cycleMs : 0,

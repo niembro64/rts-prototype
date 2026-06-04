@@ -78,6 +78,7 @@ export type VisibilityClass = 0 | 1 | 2;
 export class SnapshotVisibility {
   private readonly fullSources: VisionSource[] = [];
   private readonly fullSourceCells = new Map<number, number[]>();
+  private readonly earshotSourceCells = new Map<number, number[]>();
   private readonly radarSources: VisionSource[] = [];
   private readonly radarSourceCells = new Map<number, number[]>();
   private readonly gridW: number;
@@ -300,7 +301,7 @@ export class SnapshotVisibility {
    *  off, so admin observers still hear everything. */
   isPointWithinEarshot(x: number, y: number): boolean {
     if (!this.isFiltered) return true;
-    return this.isPointVisibleIn(this.fullSources, this.fullSourceCells, x, y, EARSHOT_PAD);
+    return this.isPointVisibleIn(this.fullSources, this.earshotSourceCells, x, y, EARSHOT_PAD);
   }
 
   /** Combined vision/earshot test in a single bucket walk
@@ -320,7 +321,7 @@ export class SnapshotVisibility {
     if (cx < 0 || cy < 0 || cx >= this.gridW || cy >= this.gridH) {
       return VISIBILITY_CLASS_OUT_OF_RANGE;
     }
-    const sourceIndexes = this.fullSourceCells.get(this.cellKey(cx, cy));
+    const sourceIndexes = this.earshotSourceCells.get(this.cellKey(cx, cy));
     if (!sourceIndexes) return VISIBILITY_CLASS_OUT_OF_RANGE;
     let result: VisibilityClass = VISIBILITY_CLASS_OUT_OF_RANGE;
     for (let i = 0; i < sourceIndexes.length; i++) {
@@ -330,12 +331,9 @@ export class SnapshotVisibility {
       const distSq = dx * dx + dy * dy;
       const visionR = source.radius;
       if (distSq <= visionR * visionR) return VISIBILITY_CLASS_IN_VISION;
-      // Vision dominates earshot — only check the padded radius
-      // when we haven't already promoted to IN_EARSHOT. (The hash
-      // bucket only covers the source's vision radius, so some
-      // earshot-edge points may not appear in this cell's bucket
-      // at all; this matches the prior isPointWithinEarshot
-      // approximation rather than changing it.)
+      // Vision dominates earshot; the padded earshot broadphase makes
+      // radius + EARSHOT_PAD candidates available even outside the full
+      // vision cell footprint.
       if (result === VISIBILITY_CLASS_OUT_OF_RANGE) {
         const earshotR = source.radius + EARSHOT_PAD;
         if (distSq <= earshotR * earshotR) result = VISIBILITY_CLASS_IN_EARSHOT;
@@ -383,14 +381,24 @@ export class SnapshotVisibility {
         // bump, units behind a tall ridge can't.
         const eyeZ = entity.transform.z + VISION_SOURCE_EYE_HEIGHT;
         if (canEntityProvideFullVision(entity)) {
-          this.addSource(
+          const radius = getEntityFullVisionRadius(entity);
+          const sourceIndex = this.addSource(
             this.fullSources,
             this.fullSourceCells,
             entity.transform.x,
             entity.transform.y,
             eyeZ,
-            getEntityFullVisionRadius(entity),
+            radius,
           );
+          if (sourceIndex >= 0) {
+            this.addSourceCells(
+              this.earshotSourceCells,
+              sourceIndex,
+              entity.transform.x,
+              entity.transform.y,
+              radius + EARSHOT_PAD,
+            );
+          }
         }
         if (canEntityProvideRadarVision(entity)) {
           this.addSource(
@@ -427,7 +435,7 @@ export class SnapshotVisibility {
     for (let i = 0; i < pulses.length; i++) {
       const pulse = pulses[i];
       if ((this.viewMask & (1 << (pulse.playerId - 1))) === 0) continue;
-      this.addSource(
+      const sourceIndex = this.addSource(
         this.fullSources,
         this.fullSourceCells,
         pulse.x,
@@ -435,6 +443,15 @@ export class SnapshotVisibility {
         pulse.z + VISION_SOURCE_EYE_HEIGHT,
         pulse.radius,
       );
+      if (sourceIndex >= 0) {
+        this.addSourceCells(
+          this.earshotSourceCells,
+          sourceIndex,
+          pulse.x,
+          pulse.y,
+          pulse.radius + EARSHOT_PAD,
+        );
+      }
       this.cachedScanPulseDtos.push({
         playerId: pulse.playerId,
         x: pulse.x,
@@ -462,10 +479,21 @@ export class SnapshotVisibility {
     y: number,
     z: number,
     radius: number,
-  ): void {
-    if (radius <= 0) return;
+  ): number {
+    if (radius <= 0) return -1;
     const index = sources.length;
     sources.push({ x, y, z, radius });
+    this.addSourceCells(cells, index, x, y, radius);
+    return index;
+  }
+
+  private addSourceCells(
+    cells: Map<number, number[]>,
+    sourceIndex: number,
+    x: number,
+    y: number,
+    radius: number,
+  ): void {
     const minCx = Math.max(0, Math.floor((x - radius) / VISION_CELL_SIZE));
     const maxCx = Math.min(this.gridW - 1, Math.floor((x + radius) / VISION_CELL_SIZE));
     const minCy = Math.max(0, Math.floor((y - radius) / VISION_CELL_SIZE));
@@ -478,7 +506,7 @@ export class SnapshotVisibility {
           bucket = [];
           cells.set(key, bucket);
         }
-        bucket.push(index);
+        bucket.push(sourceIndex);
       }
     }
   }

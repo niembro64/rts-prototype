@@ -34,6 +34,7 @@ type ClientPredictionStepperOptions = {
   activeProjectilePredictionIds: Set<EntityId>;
   activeBeamPathIds: Set<EntityId>;
   dirtyUnitRenderIds: Set<EntityId>;
+  supportSurfaceEntities: readonly Entity[];
   getMapWidth: () => number;
   getMapHeight: () => number;
   getServerShieldsEnabled: () => boolean;
@@ -202,6 +203,7 @@ export class ClientPredictionStepper {
       activeProjectilePredictionIds,
       activeBeamPathIds,
       dirtyUnitRenderIds,
+      supportSurfaceEntities,
       getMapWidth,
       getMapHeight,
       getServerShieldsEnabled,
@@ -295,7 +297,7 @@ export class ClientPredictionStepper {
     applyClientUnitVisualPredictionBatch({
       entities: unitPredictionEntities,
       targets: unitPredictionTargets,
-      supportEntities: entities.values(),
+      supportEntities: supportSurfaceEntities,
       deltaMs,
       mapWidth: getMapWidth(),
       mapHeight: getMapHeight(),

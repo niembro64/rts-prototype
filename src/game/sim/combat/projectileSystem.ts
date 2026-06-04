@@ -47,6 +47,7 @@ import { resetCollisionBuffers } from './ProjectileCollisionHandler';
 import { resolveRayConfigRangeCylinderEndpoint, type RayConfigRangeCylinder } from './lineShotRange';
 import { getUnitGroundZ } from '../unitGeometry';
 import { createProjectileConfigFromTurret } from '../projectileConfigs';
+import { rollTurretCooldownDuration } from '../turretCooldown';
 import { CT_TURRET_STATE_ENGAGED, getSimWasm } from '../../sim-wasm/init';
 import {
   readCombatTargetingTurretFsmInto,
@@ -504,7 +505,11 @@ export function fireTurrets(
             weapon.burst = undefined;
           }
         } else if (canFire && shot.type !== 'laser') {
-          writeTurretCooldownToSlab(unit, weaponIndex, config.cooldown);
+          writeTurretCooldownToSlab(
+            unit,
+            weaponIndex,
+            rollTurretCooldownDuration(config.cooldown, () => world.rng.next()),
+          );
           const burstConfig = config.burst;
           if (burstConfig !== undefined && burstConfig.count > 1) {
             // burst.remaining is JS-only state; burst.cooldown lives

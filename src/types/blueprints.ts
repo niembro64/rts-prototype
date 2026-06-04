@@ -55,6 +55,7 @@ export type {
   TurretAimAngleType,
   TurretAimStyle,
   TurretBlueprint,
+  TurretCooldownConfig,
   TurretLockOnEntityFamilyInclusion,
   TurretLockOnRelationshipInclusion,
   TurretMount,

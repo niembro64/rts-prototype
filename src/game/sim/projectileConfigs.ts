@@ -51,7 +51,7 @@ export function createProjectileConfigFromShot(
     shotProfile: getShotProfile(shot),
     sourceTurretBlueprintId,
     range: 0,
-    cooldown: 0,
+    cooldown: null,
     barrel: undefined,
     radius: undefined,
     turretIndex: undefined,

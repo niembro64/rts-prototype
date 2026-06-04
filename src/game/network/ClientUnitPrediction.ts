@@ -151,6 +151,13 @@ function refreshPredictionSupportSurfaces(supportEntities: Iterable<Entity>): vo
   predictionSupportIndex.rebuild(supportEntities);
 }
 
+export function isPredictionSupportSurfaceProvider(entity: Entity): boolean {
+  const building = entity.building;
+  if (building !== null) return building.supportSurface.kind === 'boxTop';
+  const unit = entity.unit;
+  return unit !== null && unit.hp > 0 && unit.supportSurface.kind === 'discTop';
+}
+
 function samplePredictionSupportSurface(
   x: number,
   y: number,
@@ -523,11 +530,14 @@ function writeEntityPredictionBatch(
   entities: Entity[],
   count: number,
   deltaMs: number,
-): void {
+): boolean {
+  let supportProviderMoved = false;
   for (let i = 0; i < count; i++) {
     const entity = entities[i];
     const unit = entity.unit;
     if (!unit) continue;
+    const oldX = entity.transform.x;
+    const oldY = entity.transform.y;
     const base = i * MOTION_STRIDE;
     entity.transform.x = motionBatch[base];
     entity.transform.y = motionBatch[base + 1];
@@ -538,7 +548,15 @@ function writeEntityPredictionBatch(
     advanceUnitSuspension(unit, entity.transform.rotation, deltaMs, {
       legContact: contactBatch[i] !== 0,
     });
+    if (
+      !supportProviderMoved &&
+      unit.supportSurface.kind === 'discTop' &&
+      (Math.abs(entity.transform.x - oldX) > 1e-4 || Math.abs(entity.transform.y - oldY) > 1e-4)
+    ) {
+      supportProviderMoved = true;
+    }
   }
+  return supportProviderMoved;
 }
 
 function applyClientUnitVisualDrift(
@@ -643,7 +661,7 @@ function applyClientUnitVisualDrift(
 export function applyClientUnitVisualPredictionBatch(options: {
   entities: Entity[];
   targets: Array<UnitPredictionTarget | undefined>;
-  supportEntities: Iterable<Entity>;
+  supportEntities: readonly Entity[];
   deltaMs: number;
   mapWidth: number;
   mapHeight: number;
@@ -651,9 +669,6 @@ export function applyClientUnitVisualPredictionBatch(options: {
   const { entities, targets, supportEntities, deltaMs, mapWidth, mapHeight } = options;
   const count = entities.length;
   if (count === 0) return;
-  const supportEntityList = Array.isArray(supportEntities)
-    ? supportEntities
-    : Array.from(supportEntities);
 
   const dt = deltaMs / 1000;
   const movPosBlend = getChannelBlend(getMovementPosEmaMode(), dt);
@@ -669,7 +684,7 @@ export function applyClientUnitVisualPredictionBatch(options: {
   const predictionMode = getPredictionMode();
   predictionMapWidth = mapWidth;
   predictionMapHeight = mapHeight;
-  refreshPredictionSupportSurfaces(supportEntityList);
+  refreshPredictionSupportSurfaces(supportEntities);
   ensurePredictionBatchCapacity(count);
   ensureOrientationBatchCapacity(count);
 
@@ -683,7 +698,7 @@ export function applyClientUnitVisualPredictionBatch(options: {
 
   packEntityPredictionBatch(entities, count);
   advancePackedMotionBatch(count, predictionMode, dt, airDamp, groundDamp);
-  writeEntityPredictionBatch(entities, count, deltaMs);
+  const supportProviderMoved = writeEntityPredictionBatch(entities, count, deltaMs);
 
   if (predictionMode !== 'pos') {
     const targetOrientationCount = packTargetOrientationPredictionBatch(targets, count);
@@ -695,7 +710,7 @@ export function applyClientUnitVisualPredictionBatch(options: {
     writeEntityOrientationPredictionBatch(entityOrientationCount);
   }
 
-  refreshPredictionSupportSurfaces(supportEntityList);
+  if (supportProviderMoved) refreshPredictionSupportSurfaces(supportEntities);
   for (let i = 0; i < count; i++) {
     const entity = entities[i];
     applyClientUnitVisualDrift(

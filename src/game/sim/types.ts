@@ -46,6 +46,7 @@ export type {
   ShotRuntimeProfile,
   ShotVisualProfile,
   ShotProfile,
+  TurretCooldownConfig,
   TurretConfig,
   ProjectileConfig,
   TurretState,

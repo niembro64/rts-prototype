@@ -17,6 +17,7 @@ import { NO_ENTITY_ID } from '../../types/entityTypes';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
 import { getUnitBlueprint, getBuildingBlueprint } from './blueprints';
 import { createRuntimeTurretMount } from './turretMounts';
+import { getTurretCooldownDuration } from './turretCooldown';
 
 function makeRuntimeTurret(
   turretBlueprintId: string,
@@ -85,13 +86,14 @@ function computeTurretSustainedDps(config: TurretConfig): number {
   const shot = config.shot;
   if (!shot) return 0;
   if (shot.type === 'beam') return shot.dps;
+  const cooldownDuration = getTurretCooldownDuration(config.cooldown);
   if (shot.type === 'laser') {
-    const period = Math.max(shot.duration, config.cooldown);
+    const period = Math.max(shot.duration, cooldownDuration);
     return period > 0 ? (shot.dps * shot.duration) / period : 0;
   }
   if (isProjectileShot(shot)) {
     const damage = shot.explosion !== undefined ? shot.explosion.damage : 0;
-    return config.cooldown > 0 ? (damage * 1000) / config.cooldown : 0;
+    return cooldownDuration > 0 ? (damage * 1000) / cooldownDuration : 0;
   }
   return 0;
 }

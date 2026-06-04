@@ -12,7 +12,7 @@ import {
 } from '../../../types/blueprints';
 import rawTurretBlueprints from './turrets.json';
 import { resolveBlueprintRefs } from './jsonRefs';
-import { assertExplicitFields } from './jsonValidation';
+import { assertExplicitFields, isObject } from './jsonValidation';
 import type { LockOnInclusionObject, TurretBlueprint } from './types';
 import { assertNoInlineLockOnInclusionFields } from './lockOnValidation';
 import {
@@ -45,6 +45,41 @@ const TURRET_EXPLICIT_FIELDS = [
 const WEAPON_KIND_SET: ReadonlySet<string> = new Set(WEAPON_KINDS);
 
 type JsonTurretBlueprint = Omit<TurretBlueprint, keyof LockOnInclusionObject>;
+
+const TURRET_COOLDOWN_FIELDS = ['duration', 'durationRandomness'] as const;
+
+function validateTurretCooldown(label: string, cooldown: unknown): void {
+  if (cooldown === null) return;
+  if (!isObject(cooldown)) {
+    throw new Error(`Invalid ${label}.cooldown: expected object or null`);
+  }
+
+  assertExplicitFields(`${label}.cooldown`, cooldown, TURRET_COOLDOWN_FIELDS);
+  for (const field of Object.keys(cooldown)) {
+    if (!TURRET_COOLDOWN_FIELDS.includes(field as typeof TURRET_COOLDOWN_FIELDS[number])) {
+      throw new Error(`Invalid ${label}.cooldown: unexpected field "${field}"`);
+    }
+  }
+
+  const duration = cooldown.duration;
+  if (typeof duration !== 'number' || !Number.isFinite(duration) || duration <= 0) {
+    throw new Error(
+      `Invalid ${label}.cooldown.duration: expected finite positive milliseconds, got ${duration}`,
+    );
+  }
+
+  const durationRandomness = cooldown.durationRandomness;
+  if (
+    typeof durationRandomness !== 'number' ||
+    !Number.isFinite(durationRandomness) ||
+    durationRandomness < 0 ||
+    durationRandomness >= 1
+  ) {
+    throw new Error(
+      `Invalid ${label}.cooldown.durationRandomness: expected finite [0,1), got ${durationRandomness}`,
+    );
+  }
+}
 
 const RESOLVED_TURRET_BLUEPRINTS = resolveBlueprintRefs(
   rawTurretBlueprints,
@@ -101,4 +136,5 @@ for (const [id, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
       `Invalid ${label}: kind "${blueprint.kind}" is not one of [${[...WEAPON_KIND_SET].join(', ')}]`,
     );
   }
+  validateTurretCooldown(label, blueprint.cooldown);
 }

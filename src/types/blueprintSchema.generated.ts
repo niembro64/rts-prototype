@@ -268,6 +268,11 @@ export type TurretBurstConfig = {
   delay: number;
 };
 
+export type TurretCooldownConfig = {
+  duration: number;
+  durationRandomness: number;
+};
+
 export type TurretAudioConfig = {
   fireSound: SoundEntry;
 };
@@ -278,7 +283,7 @@ export type TurretBlueprint = {
   kind: WeaponKind;
   range: number;
   rangeVolume: TurretRangeVolume;
-  cooldown: number;
+  cooldown: TurretCooldownConfig | null;
   color: number;
   turretTurnAccel: number;
   turretDrag: number;

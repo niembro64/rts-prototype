@@ -1116,6 +1116,25 @@
       },
       "additionalProperties": false
     },
+    "TurretCooldownConfig": {
+      "type": "object",
+      "required": [
+        "duration",
+        "durationRandomness"
+      ],
+      "properties": {
+        "duration": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "durationRandomness": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 1
+        }
+      },
+      "additionalProperties": false
+    },
     "TurretAudioConfig": {
       "type": "object",
       "required": [
@@ -1186,7 +1205,14 @@
           "$ref": "#/$defs/TurretRangeVolume"
         },
         "cooldown": {
-          "type": "number"
+          "oneOf": [
+            {
+              "$ref": "#/$defs/TurretCooldownConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "color": {
           "type": "number"

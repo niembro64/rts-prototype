@@ -52,6 +52,12 @@ export class SupportSurfaceIndex {
 
   rebuild(supportEntities: Iterable<Entity>): void {
     this.clear();
+    if (Array.isArray(supportEntities)) {
+      for (let i = 0; i < supportEntities.length; i++) {
+        this.addEntity(supportEntities[i]);
+      }
+      return;
+    }
     for (const entity of supportEntities) {
       this.addEntity(entity);
     }

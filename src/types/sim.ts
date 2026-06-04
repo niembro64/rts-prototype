@@ -5,6 +5,7 @@ import type { TurretBlueprintId } from './blueprintIds';
 import type { Vec3 } from './vec2';
 import type {
   TurretAimStyle,
+  TurretCooldownConfig,
   TurretRadiusConfig,
   TurretRangeVolume,
   UnitSupportSurface,
@@ -59,7 +60,7 @@ export { NO_ENTITY_ID } from './entityTypes';
 export type { UnitLocomotion } from './locomotionTypes';
 export type { ResourceCost } from './economyTypes';
 export type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
-export type { TurretAimStyle, UnitSupportSurface } from './blueprints';
+export type { TurretAimStyle, TurretCooldownConfig, UnitSupportSurface } from './blueprints';
 export type {
   ActiveProjectileShot,
   BeamReflectorKind,
@@ -367,7 +368,7 @@ export type TurretConfig = {
   turretBlueprintId: TurretBlueprintId;
   range: number;
   rangeVolume: TurretRangeVolume;
-  cooldown: number;
+  cooldown: TurretCooldownConfig | null;
   color: number;
   barrel: BarrelShape;
   angular: { turnAccel: number; drag: number };
@@ -452,7 +453,7 @@ export type ProjectileConfig = {
    *  computed 2D fire circle while retracing; shot-only children keep 0. */
   range: number;
   /** Source-turret cooldown. Used when laser projectiles expire. */
-  cooldown: number;
+  cooldown: TurretCooldownConfig | null;
   /** Source-turret visual barrel geometry. Present only for turret-fired shots. */
   barrel: BarrelShape | undefined;
   radius: TurretRadiusConfig | undefined;

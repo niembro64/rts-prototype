@@ -4,11 +4,83 @@
 // start/stop) are always played immediately.
 
 import type { NetworkServerSnapshotSimEvent } from '../../network/NetworkTypes';
+import { createSimEventDto } from '../../network/snapshotDtoCopy';
+
+type QueuedAudioEvent = {
+  event: NetworkServerSnapshotSimEvent;
+  playAt: number;
+};
+
+function isContinuousAudioEvent(event: NetworkServerSnapshotSimEvent): boolean {
+  return event.type === 'laserStart' || event.type === 'laserStop' ||
+    event.type === 'shieldStart' || event.type === 'shieldStop';
+}
+
+function copyQueuedAudioEventInto(
+  src: NetworkServerSnapshotSimEvent,
+  dst: NetworkServerSnapshotSimEvent,
+): NetworkServerSnapshotSimEvent {
+  dst.type = src.type;
+  dst.turretBlueprintId = src.turretBlueprintId;
+  dst.sourceType = src.sourceType;
+  dst.sourceKey = src.sourceKey;
+  dst.pos.x = src.pos.x;
+  dst.pos.y = src.pos.y;
+  dst.pos.z = src.pos.z;
+  dst.playerId = src.playerId;
+  dst.entityId = src.entityId;
+  dst.deathContext = src.deathContext;
+  dst.impactContext = src.impactContext;
+  if (src.shieldImpact === null) {
+    dst.shieldImpact = null;
+  } else if (dst.shieldImpact === null) {
+    dst.shieldImpact = {
+      normal: {
+        x: src.shieldImpact.normal.x,
+        y: src.shieldImpact.normal.y,
+        z: src.shieldImpact.normal.z,
+      },
+      playerId: src.shieldImpact.playerId,
+    };
+  } else {
+    dst.shieldImpact.normal.x = src.shieldImpact.normal.x;
+    dst.shieldImpact.normal.y = src.shieldImpact.normal.y;
+    dst.shieldImpact.normal.z = src.shieldImpact.normal.z;
+    dst.shieldImpact.playerId = src.shieldImpact.playerId;
+  }
+  dst.killerPlayerId = src.killerPlayerId;
+  dst.victimPlayerId = src.victimPlayerId;
+  dst.audioOnly = src.audioOnly;
+  return dst;
+}
 
 export class AudioEventScheduler {
-  private queue: { event: NetworkServerSnapshotSimEvent; playAt: number }[] = [];
+  private queue: QueuedAudioEvent[] = [];
+  private queuePool: QueuedAudioEvent[] = [];
+  private eventPool: NetworkServerSnapshotSimEvent[] = [];
   private lastSnapshotTime = 0;
   private snapshotInterval = 100; // EMA of snapshot interval (ms)
+
+  private acquireQueuedEvent(
+    event: NetworkServerSnapshotSimEvent,
+    playAt: number,
+  ): QueuedAudioEvent {
+    const ownedEvent = this.eventPool.pop() ?? createSimEventDto();
+    copyQueuedAudioEventInto(event, ownedEvent);
+    const queued = this.queuePool.pop();
+    if (queued !== undefined) {
+      queued.event = ownedEvent;
+      queued.playAt = playAt;
+      return queued;
+    }
+    return { event: ownedEvent, playAt };
+  }
+
+  private releaseQueuedEvent(queued: QueuedAudioEvent): void {
+    this.eventPool.push(queued.event);
+    queued.playAt = 0;
+    this.queuePool.push(queued);
+  }
 
   /**
    * Drain queued events whose scheduled time has arrived.
@@ -17,11 +89,12 @@ export class AudioEventScheduler {
   drain(now: number, play: (event: NetworkServerSnapshotSimEvent) => void): void {
     const q = this.queue;
     for (let i = q.length - 1; i >= 0; i--) {
-      if (now >= q[i].playAt) {
-        play(q[i].event);
-        // Swap-remove for efficiency
-        q[i] = q[q.length - 1];
-        q.length--;
+      const queued = q[i];
+      if (now >= queued.playAt) {
+        play(queued.event);
+        const last = q.pop();
+        if (last !== undefined && i < q.length) q[i] = last;
+        this.releaseQueuedEvent(queued);
       }
     }
   }
@@ -38,17 +111,13 @@ export class AudioEventScheduler {
     play: (event: NetworkServerSnapshotSimEvent) => void,
   ): void {
     for (const event of events) {
-      const isContinuous =
-        event.type === 'laserStart' || event.type === 'laserStop' ||
-        event.type === 'shieldStart' || event.type === 'shieldStop';
-
-      if (!smoothingEnabled || isContinuous) {
+      if (!smoothingEnabled || isContinuousAudioEvent(event)) {
         play(event);
       } else {
-        this.queue.push({
+        this.queue.push(this.acquireQueuedEvent(
           event,
-          playAt: now + Math.random() * this.snapshotInterval,
-        });
+          now + Math.random() * this.snapshotInterval,
+        ));
       }
     }
   }
@@ -68,6 +137,9 @@ export class AudioEventScheduler {
   }
 
   clear(): void {
+    for (let i = 0; i < this.queue.length; i++) {
+      this.releaseQueuedEvent(this.queue[i]);
+    }
     this.queue.length = 0;
     this.lastSnapshotTime = 0;
     this.snapshotInterval = 100;

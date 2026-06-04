@@ -26,6 +26,7 @@ import { getSimWasm } from '../../sim-wasm/init';
 import { updateProjectileSourceClearance } from './combatUtils';
 import { writeTurretCooldownToSlab } from './combatActivitySlab';
 import { getCombatTargetingSourceSlots } from './targetingInputStamping';
+import { rollTurretCooldownDuration } from '../turretCooldown';
 
 const SHIELD_PANEL_PROJECTILE_QUERY_PAD = 96;
 const PROJECTILE_HITBOX_SWEEP_QUERY_EXTRA = 32;
@@ -1714,7 +1715,7 @@ export function checkProjectileCollisions(
       // the slab. The source entity may have despawned between the
       // beam's creation and its expiry; writeTurretCooldownToSlab is a
       // no-op when the slab slot is missing.
-      const cooldown = proj.config.cooldown;
+      const cooldown = rollTurretCooldownDuration(proj.config.cooldown, () => world.rng.next());
       if (cooldown > 0) {
         const source = world.getEntity(proj.sourceEntityId);
         if (source) {

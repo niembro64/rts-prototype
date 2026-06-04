@@ -411,6 +411,12 @@ pub struct TurretBurstConfig {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct TurretCooldownConfig {
+    pub duration: f64,
+    pub durationRandomness: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct TurretAudioConfig {
     pub fireSound: BlueprintJsonValue,
 }
@@ -422,7 +428,7 @@ pub struct TurretBlueprint {
     pub kind: WeaponKind,
     pub range: f64,
     pub rangeVolume: TurretRangeVolume,
-    pub cooldown: f64,
+    pub cooldown: Option<TurretCooldownConfig>,
     pub color: f64,
     pub turretTurnAccel: f64,
     pub turretDrag: f64,

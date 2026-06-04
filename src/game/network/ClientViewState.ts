@@ -47,7 +47,10 @@ import {
 import { snapClientNonVisualState } from './ClientSnapshotApplier';
 import { ClientSelectionState } from './ClientSelectionState';
 import { ClientPredictionCadence } from './ClientPredictionCadence';
-import { clientUnitPredictionIsSettled } from './ClientUnitPrediction';
+import {
+  clientUnitPredictionIsSettled,
+  isPredictionSupportSurfaceProvider,
+} from './ClientUnitPrediction';
 import { ClientPredictionStepper } from './ClientPredictionStepper';
 import type {
   ClientPredictionCorrectionStats,
@@ -139,6 +142,8 @@ export class ClientViewState {
   private predictionCadence = new ClientPredictionCadence();
   private activeEntityPredictionIds: Set<EntityId> = new Set();
   private dirtyUnitRenderIds: Set<EntityId> = new Set();
+  private predictionSupportSurfaceEntities: Entity[] = [];
+  private predictionSupportSurfaceEntityIds = new Set<EntityId>();
   private selectionState = new ClientSelectionState(
     this.entities,
     this.dirtyUnitRenderIds,
@@ -169,6 +174,7 @@ export class ClientViewState {
       activeProjectilePredictionIds: this.projectileStore.activeProjectilePredictionIds,
       activeBeamPathIds: this.projectileStore.activeBeamPathIds,
       dirtyUnitRenderIds: this.dirtyUnitRenderIds,
+      supportSurfaceEntities: this.predictionSupportSurfaceEntities,
       getMapWidth: () => this.mapWidth,
       getMapHeight: () => this.mapHeight,
       getServerShieldsEnabled: () => {
@@ -226,6 +232,31 @@ export class ClientViewState {
     this.predictionCadence.clearTarget(id);
   }
 
+  private addPredictionSupportSurfaceProvider(entity: Entity): void {
+    if (this.predictionSupportSurfaceEntityIds.has(entity.id)) return;
+    this.predictionSupportSurfaceEntityIds.add(entity.id);
+    this.predictionSupportSurfaceEntities.push(entity);
+  }
+
+  private removePredictionSupportSurfaceProvider(id: EntityId): void {
+    if (!this.predictionSupportSurfaceEntityIds.delete(id)) return;
+    const providers = this.predictionSupportSurfaceEntities;
+    for (let i = 0; i < providers.length; i++) {
+      if (providers[i].id !== id) continue;
+      const last = providers.pop();
+      if (last !== undefined && i < providers.length) providers[i] = last;
+      return;
+    }
+  }
+
+  private refreshPredictionSupportSurfaceProvider(entity: Entity): void {
+    if (isPredictionSupportSurfaceProvider(entity)) {
+      this.addPredictionSupportSurfaceProvider(entity);
+    } else {
+      this.removePredictionSupportSurfaceProvider(entity.id);
+    }
+  }
+
   private getOrCreateServerTarget(id: EntityId): ServerTarget {
     let target = this.serverTargets.get(id);
     if (!target) {
@@ -270,6 +301,7 @@ export class ClientViewState {
   private deleteEntityLocalState(id: EntityId): void {
     const existing = this.entities.get(id);
     const wasLineProjectile = existing ? isLineProjectileEntity(existing) : false;
+    this.removePredictionSupportSurfaceProvider(id);
     this.entities.delete(id);
     this.serverTargets.delete(id);
     this.projectileStore.remove(id, wasLineProjectile);
@@ -588,6 +620,7 @@ export class ClientViewState {
           }
           this.entities.set(netEntity.id, newEntity);
           this.markEntityPredictionActive(newEntity);
+          this.refreshPredictionSupportSurfaceProvider(newEntity);
           this.entitySetVersion++;
           cacheNeedsInvalidate = true;
         }
@@ -599,6 +632,7 @@ export class ClientViewState {
         if (snapClientNonVisualState(existing, netEntity)) {
           this.cache.invalidate();
         }
+        this.refreshPredictionSupportSurfaceProvider(existing);
         this.markNetworkEntityPredictionActive(netEntity, existing);
       }
     }
@@ -1047,6 +1081,8 @@ export class ClientViewState {
     this.predictionCadence.clearAll();
     this.activeEntityPredictionIds.clear();
     this.dirtyUnitRenderIds.clear();
+    this.predictionSupportSurfaceEntities.length = 0;
+    this.predictionSupportSurfaceEntityIds.clear();
     this.entitySetVersion++;
     this.invalidateCaches();
   }

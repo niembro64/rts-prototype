@@ -71,7 +71,6 @@ export class NetworkSnapshotTransport {
     if (this.shouldDropForBackpressure(playerId, conn)) return null;
     if (this.shouldDropForPendingFullCompression(playerId)) return null;
 
-    this.snapshotsSent++;
     const encodeStart = performance.now();
     const buf = encodeNetworkSnapshot(state);
     const encodeMs = performance.now() - encodeStart;
@@ -98,6 +97,7 @@ export class NetworkSnapshotTransport {
       SNAPSHOT_TRANSPORT_COMPRESSION.recordUnsupported(buf.byteLength);
     }
 
+    if (this.shouldDropForBackpressure(playerId, conn, buf.byteLength)) return null;
     this.recordSentSnapshot(playerId, conn, telemetry, buf.byteLength, encodeMs, state);
     return {
       type: 'state',
@@ -227,7 +227,7 @@ export class NetworkSnapshotTransport {
       const compressMs = performance.now() - compressStart;
       if (compressed.byteLength >= raw.byteLength) {
         SNAPSHOT_TRANSPORT_COMPRESSION.recordRawFallback(raw.byteLength, compressMs);
-        if (this.shouldDropForBackpressure(playerId, conn)) return null;
+        if (this.shouldDropForBackpressure(playerId, conn, raw.byteLength)) return null;
         this.recordSentSnapshot(
           playerId,
           conn,
@@ -247,7 +247,7 @@ export class NetworkSnapshotTransport {
         compressed.byteLength,
         compressMs,
       );
-      if (this.shouldDropForBackpressure(playerId, conn)) return null;
+      if (this.shouldDropForBackpressure(playerId, conn, compressed.byteLength)) return null;
       this.recordSentSnapshot(
         playerId,
         conn,
@@ -272,7 +272,7 @@ export class NetworkSnapshotTransport {
         this.compressionFailureLogged = true;
         console.warn('[NET] FULLSNAP compression failed; sending raw snapshots.', err);
       }
-      if (this.shouldDropForBackpressure(playerId, conn)) return null;
+      if (this.shouldDropForBackpressure(playerId, conn, raw.byteLength)) return null;
       this.recordSentSnapshot(
         playerId,
         conn,
@@ -299,6 +299,7 @@ export class NetworkSnapshotTransport {
     encodeMs: number,
     breakdownState: NetworkServerSnapshot | undefined = undefined,
   ): void {
+    this.snapshotsSent++;
     SNAPSHOT_CADENCE_REGRESSION.recordSnapshotEncode({
       rate: telemetry.rate,
       bytes: wireBytes,
@@ -337,16 +338,26 @@ export class NetworkSnapshotTransport {
     };
   }
 
-  private shouldDropForBackpressure(playerId: PlayerId, conn: DataConnection): boolean {
+  private shouldDropForBackpressure(
+    playerId: PlayerId,
+    conn: DataConnection,
+    pendingBytes = 0,
+  ): boolean {
     const dc = conn.dataChannel;
     if (!conn.open || !dc || dc.readyState !== 'open') return true;
-    if (dc.bufferedAmount < SNAPSHOT_BACKPRESSURE_DROP_BYTES) return false;
+    const buffered = dc.bufferedAmount;
+    const bytes = Math.max(0, pendingBytes);
+    const overCurrentBudget = buffered >= SNAPSHOT_BACKPRESSURE_DROP_BYTES;
+    const wouldExceedBudget = bytes > 0 &&
+      buffered > 0 &&
+      buffered + bytes > SNAPSHOT_BACKPRESSURE_DROP_BYTES;
+    if (!overCurrentBudget && !wouldExceedBudget) return false;
 
     const playerDrops = this.recordDroppedSnapshot(playerId);
     if (GAME_DIAGNOSTICS.networkSnapshots && (playerDrops === 1 || playerDrops % 100 === 0)) {
       debugLog(
         true,
-        `[NET] Dropping snapshot for player ${playerId}: data channel buffered=${dc.bufferedAmount} dropped=${playerDrops} totalDropped=${this.snapshotsDropped}`,
+        `[NET] Dropping snapshot for player ${playerId}: data channel buffered=${buffered} pending=${bytes} limit=${SNAPSHOT_BACKPRESSURE_DROP_BYTES} dropped=${playerDrops} totalDropped=${this.snapshotsDropped}`,
       );
     }
     return true;

@@ -677,7 +677,7 @@ export function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretC
     turretBlueprintId: turretBlueprint.turretBlueprintId,
     range: turretBlueprint.range,
     rangeVolume: turretBlueprint.rangeVolume,
-    cooldown: turretBlueprint.cooldown ?? 0,
+    cooldown: turretBlueprint.cooldown,
     color: turretBlueprint.color,
     barrel: turretBlueprint.barrel,
     angular: {
