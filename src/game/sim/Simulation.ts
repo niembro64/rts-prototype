@@ -85,6 +85,7 @@ import {
   CT_COMBAT_HALT_MODE_ANY_ENGAGED,
   CT_COMBAT_HALT_MODE_FIGHT_RATIO,
   getSimWasm,
+  type SimWasm,
 } from '../sim-wasm/init';
 import {
   rotateFirstUnitActionToEnd,
@@ -168,6 +169,8 @@ const FLYING_LOITER_INVALID_BODY_SLOT = 0xffffffff;
 const FLYING_LOITER_RADIUS_MULT = 8;
 const FLYING_LOITER_MIN_RADIUS = 80;
 const FLYING_LOITER_RADIAL_GAIN = 0.65;
+const DEATH_EXPLOSION_WORK_KIND_UNIT = 1;
+const DEATH_EXPLOSION_WORK_KIND_BUILDING = 2;
 const DEATH_CLEANUP_KIND_UNIT = 1;
 const DEATH_CLEANUP_KIND_BUILDING = 2;
 
@@ -230,8 +233,10 @@ export class Simulation {
   private _deathCheckIdsBuf: EntityId[] = [];
   private _movingUnitsBuf: Entity[] = [];
   private _arrivalEntitiesBuf: Entity[] = [];
-  private _deathExplosionQueueBuf: EntityId[] = [];
-  private _deathExplosionDetonatedIds = new Set<EntityId>();
+  private _deathExplosionUnitIdsBuf = new Int32Array(0);
+  private _deathExplosionBuildingIdsBuf = new Int32Array(0);
+  private _deathExplosionWorkEntityIdBuf = new Int32Array(1);
+  private _deathExplosionWorkKindBuf = new Uint8Array(1);
   private _deathExplosionBlastScratch: DeathExplosionBlast = {
     radius: 0,
     force: 0,
@@ -610,7 +615,11 @@ export class Simulation {
 
   // Update combat systems
   private updateCombat(dtMs: number): void {
-    this._deathExplosionDetonatedIds.clear();
+    const sim = getSimWasm();
+    if (sim === undefined) {
+      throw new Error('Simulation.updateCombat: sim-wasm is not initialized');
+    }
+    sim.deathExplosionPlannerReset();
 
     // AIM-08.2 — stamp the FF pool BEFORE the FSM so the shield
     // clearance kernels read the latest sphere list. The list is
@@ -996,6 +1005,58 @@ export class Simulation {
     }
   }
 
+  private ensureDeathExplosionPlannerIdCapacity(unitCount: number, buildingCount: number): void {
+    if (unitCount > this._deathExplosionUnitIdsBuf.length) {
+      let next = Math.max(16, this._deathExplosionUnitIdsBuf.length);
+      while (next < unitCount) next *= 2;
+      this._deathExplosionUnitIdsBuf = new Int32Array(next);
+    }
+    if (buildingCount > this._deathExplosionBuildingIdsBuf.length) {
+      let next = Math.max(16, this._deathExplosionBuildingIdsBuf.length);
+      while (next < buildingCount) next *= 2;
+      this._deathExplosionBuildingIdsBuf = new Int32Array(next);
+    }
+  }
+
+  private packDeathExplosionIds(
+    ids: Set<EntityId>,
+    out: Int32Array,
+  ): number {
+    let count = 0;
+    for (const id of ids) {
+      out[count++] = id;
+    }
+    return count;
+  }
+
+  private seedDeathExplosionPlanner(
+    sim: SimWasm,
+    deadUnitIds: Set<EntityId>,
+    deadBuildingIds: Set<EntityId>,
+  ): void {
+    this.ensureDeathExplosionPlannerIdCapacity(deadUnitIds.size, deadBuildingIds.size);
+    const unitCount = this.packDeathExplosionIds(deadUnitIds, this._deathExplosionUnitIdsBuf);
+    const buildingCount = this.packDeathExplosionIds(deadBuildingIds, this._deathExplosionBuildingIdsBuf);
+    sim.deathExplosionPlannerSeed(
+      this._deathExplosionUnitIdsBuf.subarray(0, unitCount),
+      this._deathExplosionBuildingIdsBuf.subarray(0, buildingCount),
+    );
+  }
+
+  private appendDeathExplosionPlannerKills(
+    sim: SimWasm,
+    killedUnitIds: Set<EntityId>,
+    killedBuildingIds: Set<EntityId>,
+  ): void {
+    this.ensureDeathExplosionPlannerIdCapacity(killedUnitIds.size, killedBuildingIds.size);
+    const unitCount = this.packDeathExplosionIds(killedUnitIds, this._deathExplosionUnitIdsBuf);
+    const buildingCount = this.packDeathExplosionIds(killedBuildingIds, this._deathExplosionBuildingIdsBuf);
+    sim.deathExplosionPlannerAppendKills(
+      this._deathExplosionUnitIdsBuf.subarray(0, unitCount),
+      this._deathExplosionBuildingIdsBuf.subarray(0, buildingCount),
+    );
+  }
+
   private detonateEntityDeathExplosions(
     deadUnitIds: Set<EntityId>,
     deadBuildingIds: Set<EntityId>,
@@ -1003,16 +1064,31 @@ export class Simulation {
     audioEvents: SimEvent[],
     deathContexts: Map<EntityId, DeathContext>,
   ): void {
-    const queue = this._deathExplosionQueueBuf;
-    const detonated = this._deathExplosionDetonatedIds;
-    queue.length = 0;
-    for (const id of deadUnitIds) queue.push(id);
-    for (const id of deadBuildingIds) queue.push(id);
+    const sim = getSimWasm();
+    if (sim === undefined) {
+      throw new Error('Simulation.detonateEntityDeathExplosions: sim-wasm is not initialized');
+    }
 
-    for (let index = 0; index < queue.length; index++) {
-      const id = queue[index];
-      if (detonated.has(id)) continue;
-      detonated.add(id);
+    this.seedDeathExplosionPlanner(sim, deadUnitIds, deadBuildingIds);
+
+    for (;;) {
+      const next = sim.deathExplosionPlannerNext(
+        this._deathExplosionWorkEntityIdBuf,
+        this._deathExplosionWorkKindBuf,
+      );
+      if (next === 0) break;
+      if (next !== 1) {
+        throw new Error(`Simulation.detonateEntityDeathExplosions: invalid planner result ${next}`);
+      }
+
+      const id = this._deathExplosionWorkEntityIdBuf[0];
+      const workKind = this._deathExplosionWorkKindBuf[0];
+      if (
+        workKind !== DEATH_EXPLOSION_WORK_KIND_UNIT &&
+        workKind !== DEATH_EXPLOSION_WORK_KIND_BUILDING
+      ) {
+        throw new Error(`Simulation.detonateEntityDeathExplosions: invalid planner work kind ${workKind}`);
+      }
 
       const blast = this._deathExplosionBlastScratch;
       if (
@@ -1043,12 +1119,11 @@ export class Simulation {
         blast.sourceEntityId,
         deadTurretIds,
       );
-      for (const killedUnitId of result.killedUnitIds) {
-        if (!detonated.has(killedUnitId)) queue.push(killedUnitId);
-      }
-      for (const killedBuildingId of result.killedBuildingIds) {
-        if (!detonated.has(killedBuildingId)) queue.push(killedBuildingId);
-      }
+      this.appendDeathExplosionPlannerKills(
+        sim,
+        result.killedUnitIds,
+        result.killedBuildingIds,
+      );
     }
   }
 

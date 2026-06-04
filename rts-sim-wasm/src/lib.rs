@@ -1215,9 +1215,7 @@ fn damage_area_classify_slab_body(
             let box_dx = center_x - closest_x;
             let box_dy = center_y - closest_y;
             let box_dz = center_z - closest_z;
-            if box_dx * box_dx + box_dy * box_dy + box_dz * box_dz
-                <= area_radius * area_radius
-            {
+            if box_dx * box_dx + box_dy * box_dy + box_dz * box_dz <= area_radius * area_radius {
                 flags |= DAMAGE_AREA_FLAG_OVERLAP;
             }
 
@@ -1545,6 +1543,116 @@ pub fn damage_death_explosion_candidates_batch(
         );
     }
     row as u32
+}
+
+const DEATH_EXPLOSION_WORK_KIND_UNIT: u8 = 1;
+const DEATH_EXPLOSION_WORK_KIND_BUILDING: u8 = 2;
+
+#[derive(Default)]
+struct DeathExplosionPlanner {
+    queue_entity_ids: Vec<i32>,
+    queue_kind: Vec<u8>,
+    read_index: usize,
+    queued_ids: HashSet<i32>,
+    detonated_ids: HashSet<i32>,
+}
+
+impl DeathExplosionPlanner {
+    fn reset(&mut self) {
+        self.queue_entity_ids.clear();
+        self.queue_kind.clear();
+        self.read_index = 0;
+        self.queued_ids.clear();
+        self.detonated_ids.clear();
+    }
+
+    fn enqueue_one(&mut self, entity_id: i32, kind: u8) -> bool {
+        if self.detonated_ids.contains(&entity_id) || self.queued_ids.contains(&entity_id) {
+            return false;
+        }
+        self.queued_ids.insert(entity_id);
+        self.queue_entity_ids.push(entity_id);
+        self.queue_kind.push(kind);
+        true
+    }
+
+    fn enqueue_many(&mut self, entity_ids: &[i32], kind: u8) -> u32 {
+        let mut appended = 0_u32;
+        for &entity_id in entity_ids {
+            if self.enqueue_one(entity_id, kind) {
+                appended += 1;
+            }
+        }
+        appended
+    }
+
+    fn next(&mut self, out_entity_ids: &mut [i32], out_kind: &mut [u8]) -> u32 {
+        if out_entity_ids.is_empty() || out_kind.is_empty() {
+            return 0;
+        }
+        while self.read_index < self.queue_entity_ids.len() {
+            let idx = self.read_index;
+            self.read_index += 1;
+            let entity_id = self.queue_entity_ids[idx];
+            if self.detonated_ids.contains(&entity_id) {
+                continue;
+            }
+            self.detonated_ids.insert(entity_id);
+            out_entity_ids[0] = entity_id;
+            out_kind[0] = self.queue_kind[idx];
+            return 1;
+        }
+        0
+    }
+}
+
+struct DeathExplosionPlannerHolder(UnsafeCell<Option<DeathExplosionPlanner>>);
+unsafe impl Sync for DeathExplosionPlannerHolder {}
+static DEATH_EXPLOSION_PLANNER: DeathExplosionPlannerHolder =
+    DeathExplosionPlannerHolder(UnsafeCell::new(None));
+
+fn death_explosion_planner() -> &'static mut DeathExplosionPlanner {
+    unsafe {
+        let cell = &mut *DEATH_EXPLOSION_PLANNER.0.get();
+        if cell.is_none() {
+            *cell = Some(DeathExplosionPlanner::default());
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+/// C1 death-explosion chaining planner reset. Called once per combat tick;
+/// the planner then persists across collision and cleanup death passes in
+/// that tick so an entity death blast can never detonate twice.
+#[wasm_bindgen]
+pub fn death_explosion_planner_reset() {
+    death_explosion_planner().reset();
+}
+
+/// Seed the death-explosion planner with the initial deaths for a pass.
+/// Unit ids are enqueued before building ids to match the legacy TS queue.
+#[wasm_bindgen]
+pub fn death_explosion_planner_seed(unit_ids: &[i32], building_ids: &[i32]) -> u32 {
+    let planner = death_explosion_planner();
+    planner.enqueue_many(unit_ids, DEATH_EXPLOSION_WORK_KIND_UNIT)
+        + planner.enqueue_many(building_ids, DEATH_EXPLOSION_WORK_KIND_BUILDING)
+}
+
+/// Feed newly killed unit/building ids back into the death-explosion planner
+/// after TypeScript has applied one blast's HP diffs. This preserves the
+/// previous breadth-first chain order: killed units first, then buildings.
+#[wasm_bindgen]
+pub fn death_explosion_planner_append_kills(unit_ids: &[i32], building_ids: &[i32]) -> u32 {
+    death_explosion_planner_seed(unit_ids, building_ids)
+}
+
+/// Return the next compact death-blast work row.
+///
+/// out_entity_ids[0] = entity id, out_kind[0] = 1 unit / 2 building.
+/// Returns 1 when a row was written, 0 when the queue is drained.
+#[wasm_bindgen]
+pub fn death_explosion_planner_next(out_entity_ids: &mut [i32], out_kind: &mut [u8]) -> u32 {
+    death_explosion_planner().next(out_entity_ids, out_kind)
 }
 
 /// C1 damage migration — authoritative HP write-back math.
@@ -23256,7 +23364,9 @@ fn shield_segment_crosses_field(
     hi: f64,
 ) -> bool {
     if shape == SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER {
-        return shield_segment_crosses_infinite_vertical_cylinder(sx, sy, tx, ty, cx, cy, r, lo, hi);
+        return shield_segment_crosses_infinite_vertical_cylinder(
+            sx, sy, tx, ty, cx, cy, r, lo, hi,
+        );
     }
     shield_segment_crosses_sphere(sx, sy, sz, tx, ty, tz, cx, cy, cz, r, lo, hi)
 }
@@ -23721,8 +23831,7 @@ pub fn shield_clearance_arc(
                 pool.field_shape[f],
                 lo,
                 hi,
-            )
-            {
+            ) {
                 crossed = true;
                 break;
             }
@@ -31774,6 +31883,47 @@ mod sim_kernel_tests {
         assert_eq!(dir_y, [0.0, 0.0, 0.0]);
         assert_eq!(dir_z, [0.0, 0.0, 0.0]);
         assert_eq!(distance, [3.0, 20.0, 6.0]);
+    }
+
+    #[test]
+    fn death_explosion_planner_preserves_legacy_breadth_first_chain_order() {
+        let _guard = lock_tests();
+
+        death_explosion_planner_reset();
+
+        assert_eq!(death_explosion_planner_seed(&[1, 2], &[10]), 3);
+
+        let mut out_ids = [0_i32; 1];
+        let mut out_kind = [0_u8; 1];
+        assert_eq!(death_explosion_planner_next(&mut out_ids, &mut out_kind), 1);
+        assert_eq!(out_ids[0], 1);
+        assert_eq!(out_kind[0], DEATH_EXPLOSION_WORK_KIND_UNIT);
+
+        // Legacy chain order appends the new unit set before the new
+        // building set, but skips ids already queued or detonated.
+        assert_eq!(death_explosion_planner_append_kills(&[2, 3], &[10, 11]), 2);
+        assert_eq!(death_explosion_planner_append_kills(&[1], &[]), 0);
+
+        let mut got = Vec::new();
+        while death_explosion_planner_next(&mut out_ids, &mut out_kind) != 0 {
+            got.push((out_ids[0], out_kind[0]));
+        }
+
+        assert_eq!(
+            got,
+            vec![
+                (2, DEATH_EXPLOSION_WORK_KIND_UNIT),
+                (10, DEATH_EXPLOSION_WORK_KIND_BUILDING),
+                (3, DEATH_EXPLOSION_WORK_KIND_UNIT),
+                (11, DEATH_EXPLOSION_WORK_KIND_BUILDING),
+            ],
+        );
+        assert_eq!(death_explosion_planner_next(&mut out_ids, &mut out_kind), 0);
+
+        death_explosion_planner_reset();
+        assert_eq!(death_explosion_planner_seed(&[1], &[]), 1);
+        assert_eq!(death_explosion_planner_next(&mut out_ids, &mut out_kind), 1);
+        assert_eq!(out_ids[0], 1);
     }
 
     #[test]

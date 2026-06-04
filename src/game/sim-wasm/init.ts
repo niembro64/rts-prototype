@@ -37,6 +37,10 @@ import __wbg_init, {
   damage_area_candidates_batch,
   damage_area_turret_candidates_batch,
   damage_death_explosion_candidates_batch,
+  death_explosion_planner_reset,
+  death_explosion_planner_seed,
+  death_explosion_planner_append_kills,
+  death_explosion_planner_next,
   damage_apply_batch,
   damage_segment_candidates_batch,
   damage_segment_hits_batch,
@@ -1007,6 +1011,22 @@ export interface SimWasm {
     outDirZ: Float64Array,
     outDistance: Float64Array,
     outCount: Uint32Array,
+  ) => number;
+  /** C1 - death-explosion chain planner. Rust owns queue/dedupe/next
+   *  blast order; TypeScript applies each returned blast row and feeds
+   *  newly killed unit/building ids back into the planner. */
+  readonly deathExplosionPlannerReset: () => void;
+  readonly deathExplosionPlannerSeed: (
+    unitIds: Int32Array,
+    buildingIds: Int32Array,
+  ) => number;
+  readonly deathExplosionPlannerAppendKills: (
+    unitIds: Int32Array,
+    buildingIds: Int32Array,
+  ) => number;
+  readonly deathExplosionPlannerNext: (
+    outEntityIds: Int32Array,
+    outKind: Uint8Array,
   ) => number;
   /** C1 — line/swept damage segment hit classifier. TypeScript gathers
    *  remaining live-geometry rows and applies damage/event diffs; Rust owns
@@ -3717,6 +3737,10 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         damageAreaCandidatesBatch: damage_area_candidates_batch,
         damageAreaTurretCandidatesBatch: damage_area_turret_candidates_batch,
         damageDeathExplosionCandidatesBatch: damage_death_explosion_candidates_batch,
+        deathExplosionPlannerReset: death_explosion_planner_reset,
+        deathExplosionPlannerSeed: death_explosion_planner_seed,
+        deathExplosionPlannerAppendKills: death_explosion_planner_append_kills,
+        deathExplosionPlannerNext: death_explosion_planner_next,
         damageApplyBatch: damage_apply_batch,
         damageSegmentCandidatesBatch: damage_segment_candidates_batch,
         damageSegmentHitsBatch: damage_segment_hits_batch,

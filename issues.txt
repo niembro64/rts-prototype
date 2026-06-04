@@ -19,35 +19,3 @@ Please always commit and push before and after any code changes we make.
 ================================================================================
 ARCHITECTURE / PHILOSOPHY MIGRATION (budget_design_philosophy.html)
 ================================================================================
-
-7.0 [MAJOR, migration surface] Remaining projectile/damage/death migration.
-
-Keep TypeScript on DIFF APPLICATION: applying terminal-effect flags (despawn /
-hasExploded / audio events), materializing submunitions via world.createProjectile,
-writing returned HP onto JS entities, emitting death/audio events, and removing JS
-entities from WorldState. Keep computation and per-candidate damage classification
-in Rust/WASM using the existing CombatTargetingPool slab; do NOT build a parallel
-slab.
-
-Projectile damage rows are intentionally still live-geometry rows on the legacy
-array kernels. Travelling shots are event-driven bodies whose post-integration
-position is authoritative and cheap, so this is the chosen split rather than a
-gap.
-
-Remaining:
-  1. CHAINING QUEUE. The slab is write-once per tick, so it cannot supply
-     post-damage HP mid-chain. Keep kill accumulation on the live
-     damage_apply_batch result (as today), but move the death-explosion
-     queue/dedup/next-blast planning out of Simulation.detonateEntityDeathExplosions
-     and into Rust. Rust should return compact blast work rows for TS to apply
-     one blast at a time, with TS feeding each newly killed unit/building set
-     back into the planner after applying the returned HP diffs.
-
-     Do not move travelling projectile damage rows onto the combat-targeting
-     slab during this step. They stay live-geometry rows because their
-     post-integration positions are authoritative.
-
-VERIFY CAREFULLY: this is core hit-detection. A subtle packing/coherence bug
-shifts splash radii or projectile intercepts in ways a visual spot-check won't
-catch. Add/keep before/after equality gates for the Rust death-blast planner:
-same blast order, same hit sets, same kill sets, and same chained blast sets.
