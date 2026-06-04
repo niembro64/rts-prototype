@@ -283,10 +283,12 @@ export class Render3DEntities {
 
   private _unitOneVec = new THREE.Vector3(1, 1, 1);
   private turretMountCache = new TurretMountCache3D();
-  // Last beam-firing direction per turret, written by BeamRenderer3D and
-  // read by the unit + building turret-pose passes to aim beam-directed
-  // barrels. Persists across frames (freezes on the last direction).
+  // Last beam-firing direction per turret, collected from the live beam
+  // line-projectiles each frame (collectBeamTurretAim) and read by the
+  // unit + building turret-pose passes to aim beam-directed barrels.
+  // Persists across frames (freezes on the last direction).
   private turretBeamAimCache = new TurretBeamAimCache3D();
+  private _beamAimScratch: Entity[] = [];
 
   /** Per-unit cached prefix matrix `T(liftedPos) · R(parentQuat) · S(1)`
    *  — i.e. the scenegraph chain `group · yawGroup · liftGroup` evaluated
@@ -474,6 +476,9 @@ export class Render3DEntities {
     this._spinDt = frameSpin.spinDtSec;
     this.turretMountCache.reset(this._currentDtMs);
     refreshLocomotionSupportSurfaces(this.clientViewState.getUnitsAndBuildings());
+    // Populate beam-directed turret aim from the live beams BEFORE the
+    // unit + building turret-pose passes read it this frame.
+    this.collectBeamTurretAim();
     this.updateUnits();
     this.buildingRenderer.update(this.frameState, this._spinDt, this._currentDtMs, frameSpin.timeMs, this.turretBeamAimCache);
     this.projectileRangeEnvelope.update();
@@ -1179,18 +1184,42 @@ export class Render3DEntities {
     return this.turretMountCache.get(entityId, turretIdx);
   }
 
-  /** BeamRenderer3D reports each active beam's firing direction (sim
-   *  world coords, unit length) so beam-directed turret barrels can aim
-   *  along it. Written after the turret-pose pass, so the pose reads it
-   *  one frame later — imperceptible for a "last fired" visual. */
-  recordTurretBeamDir(
-    entityId: EntityId,
-    turretIdx: number,
-    x: number,
-    y: number,
-    z: number,
-  ): void {
-    this.turretBeamAimCache.record(entityId, turretIdx, x, y, z);
+  /** Populate the beam-aim cache from the active beam line-projectiles,
+   *  BEFORE the unit + building turret-pose passes read it this frame.
+   *  A beam's first segment — points[0] (the turret mount center) →
+   *  points[1] — is exactly the direction the barrel of its emitting
+   *  beam turret should point; the pose pass reads it back and aims the
+   *  barrel along it (freezing on the last value when the beam stops).
+   *
+   *  Recorded under every candidate host id the beam carries
+   *  (sourceEntityId, plus the authoritative sourceHostEntityId /
+   *  sourceRootEntityId), because composite / parented hosts can key the
+   *  rendered turret by a different id than the legacy sourceEntityId. */
+  private collectBeamTurretAim(): void {
+    const beams = this.clientViewState.collectLineProjectiles(this._beamAimScratch);
+    for (const e of beams) {
+      const proj = e.projectile;
+      if (proj === null) continue;
+      const pts = proj.points;
+      if (!pts || pts.length < 2) continue;
+      const dx = pts[1].x - pts[0].x;
+      const dy = pts[1].y - pts[0].y;
+      const dz = pts[1].z - pts[0].z;
+      const len = Math.hypot(dx, dy, dz);
+      if (len < 1e-5) continue;
+      const inv = 1 / len;
+      const ux = dx * inv;
+      const uy = dy * inv;
+      const uz = dz * inv;
+      const ti = proj.config.turretIndex ?? 0;
+      const ss = proj.shotSource;
+      const id0 = proj.sourceEntityId;
+      const id1 = ss?.sourceHostEntityId;
+      const id2 = ss?.sourceRootEntityId;
+      if (id0) this.turretBeamAimCache.record(id0, ti, ux, uy, uz);
+      if (id1 && id1 !== id0) this.turretBeamAimCache.record(id1, ti, ux, uy, uz);
+      if (id2 && id2 !== id0 && id2 !== id1) this.turretBeamAimCache.record(id2, ti, ux, uy, uz);
+    }
   }
 
   /** Look up an entity's currently built locomotion mesh — undefined

@@ -50,13 +50,15 @@ export function applyTurretAimWorldDir3D(
   dirZ: number,
   inverseTiltQuat?: THREE.Quaternion,
 ): void {
-  const cosH = Math.cos(hostRotation);
-  const sinH = Math.sin(hostRotation);
-  // Rotate the world direction into the flat (untilted) host frame.
-  const localX = dirX * cosH + dirY * sinH;
-  const localY = -dirX * sinH + dirY * cosH;
-  const localPlanar = Math.hypot(localX, localY);
-  const localYaw = Math.atan2(localY, localX);
-  const localPitch = Math.atan2(dirZ, localPlanar);
-  applyTurretAimPose3D(mesh, hostRotation, localYaw, localPitch, inverseTiltQuat);
+  // turret.rotation/pitch are stored as ABSOLUTE world angles — the aim
+  // solver writes atan2(target - mount) with no host term (aimSolver.ts),
+  // and applyTurretAimPose3D adds hostRotation back itself to cancel the
+  // host yaw the parent scene-graph node already applies. So feed the
+  // absolute world yaw/pitch straight through, exactly as the sim-aim
+  // path passes turret.rotation. (Subtracting hostRotation here rotated
+  // the barrel by the unit's heading — a constant-looking offset equal to
+  // the host's facing.)
+  const worldYaw = Math.atan2(dirY, dirX);
+  const worldPitch = Math.atan2(dirZ, Math.hypot(dirX, dirY));
+  applyTurretAimPose3D(mesh, hostRotation, worldYaw, worldPitch, inverseTiltQuat);
 }

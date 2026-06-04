@@ -12,8 +12,9 @@ function packKey(entityId: number, turretIdx: number): number {
  * Persistent per-turret cache of the last beam-firing direction, the
  * channel by which a beam tells its turret where to point.
  *
- * The beam renderer records the live firing direction of every active
- * beam each frame (see `BeamRenderer3D`); the turret-pose pass reads it
+ * The entity renderer records the live firing direction of every active
+ * beam each frame from its first segment (see
+ * `Render3DEntities.collectBeamTurretAim`); the turret-pose pass reads it
  * back to aim beam-directed barrels (`turretBarrelFollowsBeam`). Unlike
  * `TurretMountCache3D`, entries are NOT cleared per frame: when a beam
  * stops, the last direction persists so the barrel freezes pointing
