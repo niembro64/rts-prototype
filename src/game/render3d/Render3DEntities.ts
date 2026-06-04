@@ -561,7 +561,7 @@ export class Render3DEntities {
         if (colorMat.color instanceof THREE.Color) colorMat.color.set(colorHex);
         continue;
       }
-      if (turretMesh.headOnly === true) {
+      if (turretMesh.headOnly === true && turretMesh.barrelFollowsBeam !== true) {
         const engaged = turrets[i]?.state === 'engaged';
         if (headOnlyStates !== undefined && headOnlyStates[i] === engaged) continue;
         if (headOnlyStates === undefined) {

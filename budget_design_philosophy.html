@@ -1311,23 +1311,28 @@
         Beam-family turrets (<code>turretBeam</code>, <code>turretBeamMini</code>,
         <code>turretBeamMega</code>, <code>turretBeamLong</code>) render their tapered
         emitter barrel, but the renderer never reads turret aim for them. Instead the
-        beam <em>is</em> the aim: each frame the beam renderer records the firing
-        direction of every active beam &mdash; the first segment of the beam polyline,
-        running from the turret mount toward the target &mdash; keyed by the emitting
-        (entity, turret) pair. The turret-pose pass reads that cached direction one
-        frame later and orients the barrel and head along it. When the beam stops, the
-        cache keeps the last direction, so the barrel <em>freezes pointing wherever it
-        last fired</em> rather than snapping back to forward. The head still shifts
-        halfway toward white the instant the turret engages, so the lock-on cue is
-        intact and blended with the player color.
+        beam <em>is</em> the aim: each frame, just before the turret-pose passes run,
+        the entity renderer records the firing direction of every active beam &mdash;
+        the first segment of the beam polyline, running from the turret mount toward the
+        target &mdash; keyed by the emitting host (recorded under every candidate id the
+        beam carries, since composite/parented hosts can differ). The turret-pose pass
+        reads that direction the same frame and orients the barrel and head along it.
+        When the beam stops, the cache keeps the last direction, so the barrel
+        <em>freezes pointing wherever it last fired</em> rather than snapping back to
+        forward. The cone barrel extends out to the beam's start-point orb, so the beam
+        reads as leaving the barrel tip. A beam turret otherwise colours exactly like
+        every other turret &mdash; a plain team-color head and white barrel, with no
+        engage-time colour flip.
       </p>
-      <h3>The <code>headOnly</code> contract is wire + colour, not &ldquo;no barrel&rdquo;</h3>
+      <h3>The <code>headOnly</code> contract is wire-only, not &ldquo;no barrel&rdquo;</h3>
       <p>
-        Marking a turret <code>headOnly: true</code> still means two things, and only
-        these two: its aim motion is pinned to zero on the wire (the snapshot
-        serializer drops the rotation / angular-velocity / pitch / pitch-velocity
-        slots), and its head shifts toward white when engaged. It no longer implies
-        &ldquo;no barrel.&rdquo; Whether a head-only turret draws a barrel is
+        Marking a turret <code>headOnly: true</code> now means exactly one thing: its
+        aim motion is pinned to zero on the wire (the snapshot serializer drops the
+        rotation / angular-velocity / pitch / pitch-velocity slots). It no longer
+        implies &ldquo;no barrel,&rdquo; and it no longer changes the turret&rsquo;s
+        colour &mdash; a beam turret renders with the same team-color head and white
+        barrel as every other turret, with no engage-time flip. Whether a head-only
+        turret draws a barrel is
         <em>derived</em>, not a separate flag:
         <code>turretBarrelFollowsBeam(config)</code> is exactly <code>headOnly &amp;&amp;
         the turret emits a ray</code>. A head-only ray turret renders a beam-directed

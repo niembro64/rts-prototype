@@ -121,7 +121,7 @@ export class UnitTurretPose3D {
         turretMesh.headSlot !== undefined &&
         turretMesh.headRadius !== undefined
       ) {
-        const headColorOverride = turretMesh.headOnly
+        const headColorOverride = turretMesh.headOnly && !turretMesh.barrelFollowsBeam
           ? entityHeadOnlyTurretHeadColorHex(entity, turret.state)
           : turretMesh.shieldEmitterCore
             ? entityShieldSphereTurretHeadColorHex(entity, turret, timeMs)

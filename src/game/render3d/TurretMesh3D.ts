@@ -194,7 +194,7 @@ export function buildTurretMesh3D(
   if (!skipHeadMesh) {
     const baseHeadMat = showShieldEmitterCore
       ? deps.shieldEmitterMat ?? deps.primaryMat
-      : headOnly ? deps.turretAccentMat : deps.primaryMat;
+      : (headOnly && !followsBeam) ? deps.turretAccentMat : deps.primaryMat;
     const headMat = showShieldEmitterCore ? baseHeadMat.clone() : baseHeadMat;
     if (showShieldEmitterCore) shieldEmitterPulseMat = headMat;
     head = new THREE.Mesh(deps.headGeom, headMat);

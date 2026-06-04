@@ -544,12 +544,10 @@ export class BuildingEntityRenderer3D {
         }
         continue;
       }
-      // Beam turrets keep that head engage-colour cue while their barrel
-      // tracks the beam below.
+      // Beam turrets colour like any other turret: a plain team-color head
+      // (no engage flip) while their barrel tracks the beam below.
       if (followsBeam && turretMesh.head && !underConstruction) {
-        turretMesh.head.material = turret.state === 'engaged'
-          ? this.getTurretAccentMat(entity.ownership?.playerId)
-          : this.getPrimaryMat(entity.ownership?.playerId);
+        turretMesh.head.material = this.getPrimaryMat(entity.ownership?.playerId);
       }
       if (!underConstruction) {
         const turretAccentMat = this.getTurretAccentMat(entity.ownership?.playerId);
