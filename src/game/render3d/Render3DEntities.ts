@@ -65,6 +65,7 @@ import { createShieldFallbackPanelMaterial } from './ShieldReflectorVisual3D';
 import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
 import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
 import { TurretMountCache3D, type TurretMountEntry } from './TurretMountCache3D';
+import { TurretBeamAimCache3D } from './TurretBeamAimCache3D';
 import { ShieldPanelPose3D } from './ShieldPanelPose3D';
 import { UnitChassisInstancePose3D } from './UnitChassisInstancePose3D';
 import { UnitTurretPose3D } from './UnitTurretPose3D';
@@ -282,6 +283,10 @@ export class Render3DEntities {
 
   private _unitOneVec = new THREE.Vector3(1, 1, 1);
   private turretMountCache = new TurretMountCache3D();
+  // Last beam-firing direction per turret, written by BeamRenderer3D and
+  // read by the unit + building turret-pose passes to aim beam-directed
+  // barrels. Persists across frames (freezes on the last direction).
+  private turretBeamAimCache = new TurretBeamAimCache3D();
 
   /** Per-unit cached prefix matrix `T(liftedPos) · R(parentQuat) · S(1)`
    *  — i.e. the scenegraph chain `group · yawGroup · liftGroup` evaluated
@@ -470,7 +475,7 @@ export class Render3DEntities {
     this.turretMountCache.reset(this._currentDtMs);
     refreshLocomotionSupportSurfaces(this.clientViewState.getBuildings());
     this.updateUnits();
-    this.buildingRenderer.update(this.frameState, this._spinDt, this._currentDtMs, frameSpin.timeMs);
+    this.buildingRenderer.update(this.frameState, this._spinDt, this._currentDtMs, frameSpin.timeMs, this.turretBeamAimCache);
     this.projectileRangeEnvelope.update();
     this.projectileRenderer.update(this.frameState);
     // One flush per frame uploads the per-instance leg cylinder
@@ -1024,6 +1029,7 @@ export class Render3DEntities {
         this._currentTimeMs,
         this.unitDetailInstances,
         this.turretMountCache,
+        this.turretBeamAimCache,
         this.constructionVisuals,
       );
 
@@ -1128,6 +1134,7 @@ export class Render3DEntities {
         this.spawnFadeElapsed.delete(id);
         this.unitMeshes.delete(id);
         this.barrelSpinState.delete(id);
+        this.turretBeamAimCache.delete(id);
       }
     }
     // Advance any in-progress fade-outs before the flush so their updated
@@ -1172,6 +1179,20 @@ export class Render3DEntities {
     return this.turretMountCache.get(entityId, turretIdx);
   }
 
+  /** BeamRenderer3D reports each active beam's firing direction (sim
+   *  world coords, unit length) so beam-directed turret barrels can aim
+   *  along it. Written after the turret-pose pass, so the pose reads it
+   *  one frame later — imperceptible for a "last fired" visual. */
+  recordTurretBeamDir(
+    entityId: EntityId,
+    turretIdx: number,
+    x: number,
+    y: number,
+    z: number,
+  ): void {
+    this.turretBeamAimCache.record(entityId, turretIdx, x, y, z);
+  }
+
   /** Look up an entity's currently built locomotion mesh — undefined
    *  if the unit has no rendered mesh yet, has been torn down, or
    *  its blueprint has no locomotion (statics, buildings). Used by
@@ -1203,6 +1224,7 @@ export class Render3DEntities {
     this.projectileRenderer.destroy();
     this.unitMeshes.clear();
     this.barrelSpinState.clear();
+    this.turretBeamAimCache.clear();
     this._seenUnitIds.clear();
     this.constructionVisuals.destroy();
     this.unitDetailInstances.destroy();

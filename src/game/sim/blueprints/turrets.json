@@ -1047,9 +1047,17 @@
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 2,
-      "barrelThickness": 9
+      "type": "simpleMultiBarrel",
+      "barrelCount": 3,
+      "barrelLength": 1.4,
+      "barrelThickness": 3.5,
+      "orbitRadius": 0.45,
+      "spin": {
+        "idle": 1.5,
+        "max": 9,
+        "accel": 18,
+        "decel": 8
+      }
     },
     "isManualFire": false,
     "passive": false,
@@ -1086,7 +1094,7 @@
       "hitbox": 6,
       "collision": 8
     },
-    "headOnly": true,
+    "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "rayDirect"
@@ -1105,8 +1113,17 @@
     "turretTurnAccel": 1200,
     "turretDrag": 0.15,
     "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0.5
+      "type": "simpleMultiBarrel",
+      "barrelCount": 3,
+      "barrelLength": 1,
+      "barrelThickness": 2.2,
+      "orbitRadius": 0.45,
+      "spin": {
+        "idle": 2,
+        "max": 14,
+        "accel": 30,
+        "decel": 12
+      }
     },
     "isManualFire": false,
     "passive": false,
@@ -1140,7 +1157,7 @@
       "hitbox": 3,
       "collision": 4
     },
-    "headOnly": true,
+    "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "rayDirect"
@@ -1159,8 +1176,17 @@
     "turretTurnAccel": 650,
     "turretDrag": 0.15,
     "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0.9
+      "type": "simpleMultiBarrel",
+      "barrelCount": 3,
+      "barrelLength": 1.2,
+      "barrelThickness": 3.2,
+      "orbitRadius": 0.45,
+      "spin": {
+        "idle": 2,
+        "max": 12,
+        "accel": 26,
+        "decel": 10
+      }
     },
     "isManualFire": false,
     "passive": false,
@@ -1194,7 +1220,7 @@
       "hitbox": 5.25,
       "collision": 7
     },
-    "headOnly": true,
+    "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "rayDirect"

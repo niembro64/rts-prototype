@@ -9,8 +9,9 @@ import {
   entityShieldSphereTurretHeadColorHex,
 } from './EntityInstanceColor3D';
 import type { EntityMesh } from './EntityMesh3D';
-import { applyTurretAimPose3D } from './TurretAimPose3D';
+import { applyTurretAimPose3D, applyTurretAimWorldDir3D } from './TurretAimPose3D';
 import type { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
+import type { TurretBeamAimCache3D } from './TurretBeamAimCache3D';
 import type { TurretMesh } from './TurretMesh3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import type { TurretMountCache3D } from './TurretMountCache3D';
@@ -37,6 +38,7 @@ export class UnitTurretPose3D {
     timeMs: number,
     unitDetailInstances: UnitDetailInstanceRenderer3D,
     turretMountCache: TurretMountCache3D,
+    turretBeamAimCache: TurretBeamAimCache3D,
     constructionVisuals: ConstructionVisualController3D,
   ): void {
     for (let turretIdx = 0; turretIdx < mesh.turrets.length && turretIdx < turrets.length; turretIdx++) {
@@ -74,7 +76,33 @@ export class UnitTurretPose3D {
         continue;
       }
 
-      if (!turret.config.headOnly) {
+      if (turretMesh.barrelFollowsBeam) {
+        // Beam turret: aim the barrel + head along the last beam fired
+        // (frozen at the last direction when not firing). Sim turret aim
+        // is pinned to zero on the wire for these, so fall back to the
+        // forward idle pose until the first beam is cached.
+        const beamDir = turretBeamAimCache.get(entity.id, turretIdx);
+        if (beamDir) {
+          applyTurretAimWorldDir3D(
+            turretMesh,
+            entity.transform.rotation,
+            beamDir.x,
+            beamDir.y,
+            beamDir.z,
+            chassisTiltInverse,
+          );
+        } else {
+          applyTurretAimPose3D(
+            turretMesh,
+            entity.transform.rotation,
+            turret.rotation,
+            turret.pitch,
+            chassisTiltInverse,
+          );
+        }
+        // Beam barrels never spin.
+        if (turretMesh.spinGroup) turretMesh.spinGroup.rotation.x = 0;
+      } else if (!turret.config.headOnly) {
         applyTurretAimPose3D(
           turretMesh,
           entity.transform.rotation,

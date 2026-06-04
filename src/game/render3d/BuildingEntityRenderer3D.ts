@@ -31,7 +31,9 @@ import {
   buildTurretMesh3D,
   type TurretMesh,
 } from './TurretMesh3D';
-import { applyTurretAimPose3D } from './TurretAimPose3D';
+import { applyTurretAimPose3D, applyTurretAimWorldDir3D } from './TurretAimPose3D';
+import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
+import type { TurretBeamAimCache3D } from './TurretBeamAimCache3D';
 import {
   canEntityProvideFullVision,
   getEntityFullVisionRadius,
@@ -187,6 +189,14 @@ export class BuildingEntityRenderer3D {
    *  so it stays in sync with whichever seat the user is currently
    *  toggled to. */
   private readonly localVisionSources: VisionSource[] = [];
+  /** Gatling spin for tower-mounted multi-barrel turrets (e.g. the
+   *  Anti-Air rocket gatling). Towers render per-Mesh, so they keep
+   *  their own spin state separate from the unit renderer's. */
+  private readonly barrelSpin = new UnitBarrelSpinState3D();
+  /** Set each frame from update(): last beam direction per turret, read
+   *  to aim beam-directed barrels on beam towers (turretBeamLong). */
+  private beamAimCache: TurretBeamAimCache3D | null = null;
+  private barrelSpinEnabled = false;
 
   constructor(options: BuildingEntityRenderer3DOptions) {
     this.world = options.world;
@@ -222,12 +232,20 @@ export class BuildingEntityRenderer3D {
     );
   }
 
-  update(frameState: RenderFrameState3D, spinDt: number, currentDtMs: number, timeMs: number): void {
+  update(
+    frameState: RenderFrameState3D,
+    spinDt: number,
+    currentDtMs: number,
+    timeMs: number,
+    beamAimCache: TurretBeamAimCache3D,
+  ): void {
     const buildings = this.clientViewState.getBuildings();
     const entitySetVersion = this.clientViewState.getEntitySetVersion();
     const pruneBuildings = entitySetVersion !== this.lastEntitySetVersion;
     if (pruneBuildings) this.seenIds.clear();
     this.constructionVisuals.beginFrame();
+    this.beamAimCache = beamAimCache;
+    this.barrelSpinEnabled = getGraphicsConfig().barrelSpin;
 
     // Refresh local vision sources once per frame for ghost detection
     // (FOW-02a). Reuses the same predicate / radius helpers the server
@@ -237,6 +255,7 @@ export class BuildingEntityRenderer3D {
 
     for (const entity of buildings) {
       if (pruneBuildings) this.seenIds.add(entity.id);
+      this.barrelSpin.advance(entity, spinDt);
       this.updateBuilding(entity, frameState);
     }
 
@@ -256,8 +275,12 @@ export class BuildingEntityRenderer3D {
       if (mesh.ring) mesh.ring.visible = false;
       this.animations.unregister(id);
       this.meshes.delete(id);
+      // Shared beam-aim cache spans units + towers, so drop this tower's
+      // entries precisely rather than via a seen-set sweep.
+      beamAimCache.delete(id);
       this.dyingBuildings.markDying(id, mesh);
     }
+    this.barrelSpin.prune(this.seenIds);
     this.lastEntitySetVersion = entitySetVersion;
   }
 
@@ -272,6 +295,7 @@ export class BuildingEntityRenderer3D {
     this.seenIds.clear();
     this.lastEntitySetVersion = -1;
     this.animations.destroy();
+    this.barrelSpin.clear();
     this.ghostMat.dispose();
   }
 
@@ -506,11 +530,13 @@ export class BuildingEntityRenderer3D {
         );
         continue;
       }
-      if (turret.config.headOnly) {
-        // No barrel to orient — skip the aim pose entirely. While the
-        // shell override owns the head material during construction,
-        // leave it alone; after construction, the engaged state flips
-        // the head from player primary to the half-white lock-on cue.
+      const followsBeam = turretMesh.barrelFollowsBeam === true;
+      // Head-only turrets that don't follow a beam draw a bare head: flip
+      // its colour on engage and skip barrel posing entirely. While the
+      // shell override owns the head material during construction, leave
+      // it alone; after construction, the engaged state flips the head
+      // from player primary to the half-white lock-on cue.
+      if (turret.config.headOnly && !followsBeam) {
         if (turretMesh.head && !underConstruction) {
           turretMesh.head.material = turret.state === 'engaged'
             ? this.getTurretAccentMat(entity.ownership?.playerId)
@@ -518,16 +544,53 @@ export class BuildingEntityRenderer3D {
         }
         continue;
       }
+      // Beam turrets keep that head engage-colour cue while their barrel
+      // tracks the beam below.
+      if (followsBeam && turretMesh.head && !underConstruction) {
+        turretMesh.head.material = turret.state === 'engaged'
+          ? this.getTurretAccentMat(entity.ownership?.playerId)
+          : this.getPrimaryMat(entity.ownership?.playerId);
+      }
       if (!underConstruction) {
         const turretAccentMat = this.getTurretAccentMat(entity.ownership?.playerId);
         for (const barrel of turretMesh.barrels) barrel.material = turretAccentMat;
       }
-      applyTurretAimPose3D(
-        turretMesh,
-        entity.transform.rotation,
-        turret.rotation,
-        turret.pitch,
-      );
+      if (followsBeam) {
+        // Aim the barrel along the last beam fired (frozen there when
+        // idle); fall back to the forward idle pose until it first fires.
+        const beamDir = this.beamAimCache?.get(entity.id, turretIndex) ?? null;
+        if (beamDir) {
+          applyTurretAimWorldDir3D(
+            turretMesh,
+            entity.transform.rotation,
+            beamDir.x,
+            beamDir.y,
+            beamDir.z,
+          );
+        } else {
+          applyTurretAimPose3D(
+            turretMesh,
+            entity.transform.rotation,
+            turret.rotation,
+            turret.pitch,
+          );
+        }
+      } else {
+        applyTurretAimPose3D(
+          turretMesh,
+          entity.transform.rotation,
+          turret.rotation,
+          turret.pitch,
+        );
+      }
+      // Gatling spin for multi-barrel tower turrets (e.g. the Anti-Air
+      // rocket cluster). Single-barrel turrets have no spin state, so
+      // angleFor returns undefined and the cluster stays still.
+      if (turretMesh.spinGroup) {
+        turretMesh.spinGroup.rotation.x = this.barrelSpinEnabled
+          ? this.barrelSpin.angleFor(entity.id, turretIndex) ?? 0
+          : 0;
+      }
     }
   }
 }

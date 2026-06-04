@@ -33,3 +33,30 @@ export function applyTurretAimPose3D(
   mesh.root.rotation.y = combinedYaw + hostRotation;
   if (mesh.pitchGroup) mesh.pitchGroup.rotation.z = Math.asin(clampUnit(_aimDir.y));
 }
+
+/** Pose a turret rig to point along a SIM-world direction (x/y horizontal,
+ *  z up) instead of the sim's stored turret yaw/pitch. Used by beam-directed
+ *  barrels, whose aim comes from the last beam fired rather than the wire.
+ *
+ *  The sim stores `turret.rotation` host-relative (applyTurretAimPose3D adds
+ *  hostRotation back), so we strip the host yaw to recover the host-relative
+ *  yaw/pitch the pose math expects, then reuse the same path — including the
+ *  inverse-tilt compensation for sloped chassis. */
+export function applyTurretAimWorldDir3D(
+  mesh: Pick<TurretMesh, 'root' | 'pitchGroup'>,
+  hostRotation: number,
+  dirX: number,
+  dirY: number,
+  dirZ: number,
+  inverseTiltQuat?: THREE.Quaternion,
+): void {
+  const cosH = Math.cos(hostRotation);
+  const sinH = Math.sin(hostRotation);
+  // Rotate the world direction into the flat (untilted) host frame.
+  const localX = dirX * cosH + dirY * sinH;
+  const localY = -dirX * sinH + dirY * cosH;
+  const localPlanar = Math.hypot(localX, localY);
+  const localYaw = Math.atan2(localY, localX);
+  const localPitch = Math.atan2(dirZ, localPlanar);
+  applyTurretAimPose3D(mesh, hostRotation, localYaw, localPitch, inverseTiltQuat);
+}

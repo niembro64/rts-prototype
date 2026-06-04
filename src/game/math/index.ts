@@ -42,6 +42,7 @@ export {
   type BarrelEndpoint,
   getBarrelTip,
   countBarrels,
+  turretBarrelFollowsBeam,
   getBarrelOrbitAngle,
   getConeBarrelBaseOrbitRadius,
   getConeBarrelTipOrbitRadius,

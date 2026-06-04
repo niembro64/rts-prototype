@@ -37,6 +37,15 @@ export type TurretMountResolver = {
     entityId: number,
     turretIdx: number,
   ): { x: number; y: number; z: number; vx: number; vy: number; vz: number; ax: number; ay: number; az: number } | null;
+  /** Report a beam's current firing direction (sim world coords, unit
+   *  length) so beam-directed turret barrels can aim along it. */
+  recordTurretBeamDir(
+    entityId: number,
+    turretIdx: number,
+    x: number,
+    y: number,
+    z: number,
+  ): void;
 };
 
 // GLSL needs decimal-pointed float literals (`1.0`, not `1`); JSON values
@@ -570,6 +579,16 @@ export class BeamRenderer3D {
         beamDirY *= inv;
         beamDirZ *= inv;
         hasBeamDir = true;
+        // Tell the emitting turret where its beam is firing, so a
+        // beam-directed barrel can point along it (and freeze here when
+        // the beam stops). Independent of the snap-to-turret debug toggle.
+        turretMountResolver?.recordTurretBeamDir(
+          proj.sourceEntityId,
+          proj.config.turretIndex ?? 0,
+          beamDirX,
+          beamDirY,
+          beamDirZ,
+        );
       }
 
       // Sim's points[0] sits at the turret mount center; snap-to-turret

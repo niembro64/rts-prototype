@@ -23,6 +23,7 @@ import {
   getTurretBarrelCenterToTipLength,
   getTurretBarrelDiameter,
   getTurretHeadRadius,
+  turretBarrelFollowsBeam,
 } from '../math';
 import {
   buildConstructionEmitterRigFromTurretConfig,
@@ -67,10 +68,16 @@ export type TurretMesh = {
    *  (beam/laser turrets). Tells the alloc + per-frame writer to route
    *  through the cone instanced pool instead of the cylinder pool. */
   barrelUsesCone?: boolean;
-  /** True for beam/rocket turrets that render as a head sphere only.
-   *  The per-frame writer skips applyTurretAimPose3D and colors the
-   *  head white when engaged (vs unit color when idle/tracking). */
+  /** True for head-only turrets: the per-frame writer colors the head
+   *  white when engaged (vs unit color when idle/tracking) and the
+   *  snapshot serializer keeps aim motion off the wire. No longer
+   *  implies "no barrel" — a head-only ray turret still renders a
+   *  beam-directed barrel (see `barrelFollowsBeam`). */
   headOnly?: boolean;
+  /** True for beam (ray) turrets whose barrel + head are posed from the
+   *  last beam direction (`TurretBeamAimCache3D`) instead of the sim's
+   *  turret aim. Set iff `turretBarrelFollowsBeam(config)`. */
+  barrelFollowsBeam?: boolean;
   /** True for visible shield-sphere emitter cores. The
    *  per-frame writer drives the active shield pulse on these heads. */
   shieldEmitterCore?: boolean;
@@ -146,6 +153,9 @@ export function buildTurretMesh3D(
   const isShield = barrel?.type === 'complexSingleEmitter';
   const headRadius = getTurretHeadRadius(turret.config);
   const headOnly = turret.config.headOnly === true;
+  // Beam (ray) turrets stay head-only on the wire but still render a
+  // barrel — posed from the last beam fired, not from turret aim.
+  const followsBeam = turretBarrelFollowsBeam(turret.config);
 
   if (turret.config.constructionEmitter) {
     const constructionEmitter = buildConstructionEmitterRigFromTurretConfig(
@@ -200,7 +210,10 @@ export function buildTurretMesh3D(
   const cachedHeadRadius = hideHead ? undefined : headRadius;
 
   const barrels: THREE.Mesh[] = [];
-  if (!barrel || isShield || turretOff || headOnly) {
+  // Head-only turrets normally stop here (bare head sphere). Beam-directed
+  // turrets (headOnly && emits a ray) fall through and build their barrel,
+  // which the per-frame pass aims along the last beam fired.
+  if (!barrel || isShield || turretOff || (headOnly && !followsBeam)) {
     parent.add(root);
     return {
       root,
@@ -290,7 +303,10 @@ export function buildTurretMesh3D(
   // barrelLength=0 (e.g. shield panel host) → no visible barrel.
   if (length < 1e-4) {
     parent.add(root);
-    return { root, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup };
+    return {
+      root, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup,
+      headOnly, barrelFollowsBeam: followsBeam,
+    };
   }
 
   if (barrel.type === 'singleCylinderBarrel' || barrel.type === 'singleConeBarrel') {
@@ -329,6 +345,6 @@ export function buildTurretMesh3D(
   parent.add(root);
   return {
     root, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup,
-    barrelUsesCone,
+    barrelUsesCone, headOnly, barrelFollowsBeam: followsBeam,
   };
 }
