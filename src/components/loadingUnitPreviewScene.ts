@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { BuildableUnitBlueprintId } from '@/game/sim/blueprints';
 import { getBuildingBlueprint, getUnitBlueprint } from '@/game/sim/blueprints';
 import type { BuildingBlueprintId } from '@/types/blueprintIds';
@@ -84,6 +85,10 @@ const DEFAULT_WIDTH = 640;
 const DEFAULT_HEIGHT = 480;
 const CAMERA_FOV_DEGREES = 34;
 const SPIN_RAD_PER_MS = (Math.PI * 2) / 7600;
+// Extra soft fill added only on the loading stage so the spinning unit
+// isn't dimly lit; bump toward ~0.8 for a brighter hero, drop toward 0 to
+// match the battlefield exactly.
+const PREVIEW_FILL_INTENSITY = 0.5;
 const SHELL_ENTITY_ID = 1;
 // Render the loading unit as the primary host player (slot 1 → red),
 // matching GameCanvas's `localPlayerId` default so it looks exactly as
@@ -136,6 +141,37 @@ function installPreviewLighting(scene: THREE.Scene): void {
   // rays, so any positive scale along the sun direction works.
   writeSunDirectionThree(sun.position).multiplyScalar(100);
   scene.add(sun);
+  // Loading-screen-only hero fill. The battlefield sun alone leaves the
+  // shaded side of the unit dark against the black loading stage. A gentle
+  // hemisphere fill (warm sky above, dim cool ground below) lifts the
+  // shadow side without shifting the lit-side hue, so the unit still reads
+  // as its in-game self — just brighter and better presented here.
+  scene.add(new THREE.HemisphereLight(SUN_RENDER_CONFIG.color, 0x2c3340, PREVIEW_FILL_INTENSITY));
+}
+
+/** Mirror ThreeApp's image-based lighting: a PMREM-preprocessed
+ *  RoomEnvironment cube assigned to `scene.environment`. The in-game
+ *  shield/chrome PBR panels reflect this cube — they render dark and flat
+ *  without it — and it lends the lit Lambert body the same subtle fill it
+ *  receives on the battlefield, so the preview grades like the game. */
+function installPreviewEnvironment(
+  renderer: THREE.WebGLRenderer,
+  scene: THREE.Scene,
+): THREE.Texture {
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const roomEnv = new RoomEnvironment();
+  const texture = pmrem.fromScene(roomEnv, 0.04).texture;
+  scene.environment = texture;
+  roomEnv.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    if ('dispose' in (mesh.geometry ?? {})) mesh.geometry.dispose();
+    const material = mesh.material;
+    if (Array.isArray(material)) for (const mat of material) mat.dispose();
+    else material?.dispose();
+  });
+  pmrem.dispose();
+  return texture;
 }
 
 const turretHeadGeom = new THREE.SphereGeometry(1, 16, 12);
@@ -164,6 +200,7 @@ export class LoadingUnitPreviewScene {
   private startTime = 0;
   private width = DEFAULT_WIDTH;
   private height = DEFAULT_HEIGHT;
+  private environmentTexture: THREE.Texture | null = null;
   private disposed = false;
 
   constructor(options: LoadingUnitPreviewSceneOptions) {
@@ -175,9 +212,16 @@ export class LoadingUnitPreviewScene {
       powerPreference: 'low-power',
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    // Match ThreeApp's color pipeline so the preview grades identically to
+    // the battlefield. Without ACES the raw colors read more saturated than
+    // in-game — that mismatch was why the loading unit's team color looked
+    // slightly off.
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
     this.renderer.setClearColor(0x000000, 0);
     this.scene.add(this.spinRoot);
     installPreviewLighting(this.scene);
+    this.environmentTexture = installPreviewEnvironment(this.renderer, this.scene);
 
     const model = buildPreviewModel(options.kind, options.blueprintId, this.materials);
     this.centerModel(model);
@@ -212,6 +256,7 @@ export class LoadingUnitPreviewScene {
     this.scene.clear();
     this.renderer.renderLists.dispose();
     disposePreviewUnitMaterials(this.materials);
+    this.environmentTexture?.dispose();
     this.renderer.forceContextLoss();
     this.renderer.dispose();
   }
