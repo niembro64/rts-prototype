@@ -53,6 +53,7 @@ export class ContactShadowRenderPacket3D {
       entity.transform.y,
       mapWidth,
       mapHeight,
+      entity.id,
     );
     const casterHeight = Math.max(0, entity.transform.z - groundZ);
     const airHeight = Math.max(0, casterHeight - restHeight);

@@ -31,6 +31,7 @@ export function createPhysicsBodyForUnit(
     entity.transform.y,
     entity.unit.radius.collision,
     entity.unit.bodyCenterHeight,
+    entity.unit.supportSurface,
     computeHostEffectiveMass(entity),
     `unit_${entity.id}`,
     entity.id,

@@ -730,6 +730,7 @@ export function updateLegs(
       footCylinderRadius,
       leg.footPadHalfHeight,
       FOOT_PAD_GROUND_CLEARANCE,
+      entity.id,
       _footSurface,
     );
     const visualFootY = Math.max(footY, footSurface.visualFootY);
@@ -824,7 +825,13 @@ function beginLegStepToRest(
   );
   const targetX = _worldOut.x;
   const targetZ = _worldOut.z;
-  const targetY = getLocomotionSurfaceHeight(targetX, targetZ, mapWidth, mapHeight);
+  const targetY = getLocomotionSurfaceHeight(
+    targetX,
+    targetZ,
+    mapWidth,
+    mapHeight,
+    entity.id,
+  );
   beginLegSlideTo(leg, targetX, targetY, targetZ);
 }
 
@@ -859,6 +866,7 @@ function resolveVisualLegGrounded(
     entity.transform.y,
     mapWidth,
     mapHeight,
+    entity.id,
   );
   const bodyBaseY = entity.transform.z - bodyCenterHeight;
   const clearance = bodyBaseY - groundY;
@@ -926,6 +934,7 @@ function updateAirborneLegPose(
     entity.transform.y,
     mapWidth,
     mapHeight,
+    entity.id,
   );
   const bodyClearance = Math.max(0, bodyBaseY - bodyGroundY);
   const descentSpeed = Math.max(0, -(entity.unit?.velocityZ ?? 0));
@@ -965,6 +974,7 @@ function updateAirborneLegPose(
       footCylinderRadius,
       leg.footPadHalfHeight,
       FOOT_PAD_GROUND_CLEARANCE,
+      entity.id,
       _footSurface,
     );
     const horizontalReach = Math.hypot(
@@ -1002,6 +1012,7 @@ function updateAirborneLegPose(
       footCylinderRadius,
       leg.footPadHalfHeight,
       FOOT_PAD_GROUND_CLEARANCE,
+      entity.id,
       _footSurface,
     );
     const targetFootY = Math.max(_worldOut.y, targetFootSurface.visualFootY);
@@ -1025,6 +1036,7 @@ function updateAirborneLegPose(
       footCylinderRadius,
       leg.footPadHalfHeight,
       FOOT_PAD_GROUND_CLEARANCE,
+      entity.id,
       _footSurface,
     );
     if (leg.worldY < footSurface.groundY) leg.worldY = footSurface.groundY;
@@ -1156,7 +1168,13 @@ function initializeLegAt(
   // Transform to world to find the foot's spawn XZ, then snap Y to
   // the actual terrain elevation so the foot lands ON the ground.
   transformChassisToWorld(cx, cy, cz, entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut);
-  const groundY = getLocomotionSurfaceHeight(_worldOut.x, _worldOut.z, mapWidth, mapHeight);
+  const groundY = getLocomotionSurfaceHeight(
+    _worldOut.x,
+    _worldOut.z,
+    mapWidth,
+    mapHeight,
+    entity.id,
+  );
   leg.worldX = _worldOut.x;
   leg.worldY = groundY;
   leg.worldZ = _worldOut.z;

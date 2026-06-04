@@ -88,6 +88,7 @@ export function writeUnitSupportSurface(
   groundZ: number,
   supportEntityId: EntityId | null,
   sourceKey: number,
+  supportVelocity: { x: number; y: number; z: number } | undefined = undefined,
 ): WorldSupportSurface {
   out.groundZ = groundZ;
   out.normalX = 0;
@@ -96,9 +97,9 @@ export function writeUnitSupportSurface(
   out.supportEntityId = supportEntityId;
   out.supportKind = 'unit';
   out.materialKind = 'solid';
-  out.supportVelocityX = 0;
-  out.supportVelocityY = 0;
-  out.supportVelocityZ = 0;
+  out.supportVelocityX = supportVelocity?.x ?? 0;
+  out.supportVelocityY = supportVelocity?.y ?? 0;
+  out.supportVelocityZ = supportVelocity?.z ?? 0;
   out.walkable = true;
   out.sourceKey = sourceKey;
   return out;

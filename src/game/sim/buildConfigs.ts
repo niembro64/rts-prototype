@@ -1,6 +1,7 @@
 import type { BuildingConfig, BuildingBlueprintId, UnitBuildConfig } from './types';
 import { COST_MULTIPLIER } from '../../config';
 import { BUILDING_BLUEPRINTS, getUnitBlueprint, getUnitLocomotion, BUILDABLE_UNIT_BLUEPRINT_IDS } from './blueprints';
+import { cloneUnitSupportSurface } from './unitSupportSurface';
 
 function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): BuildingConfig {
   const bp = BUILDING_BLUEPRINTS[buildingBlueprintId];
@@ -55,6 +56,7 @@ export function getUnitBuildConfig(unitBlueprintId: string): UnitBuildConfig | u
     },
     radius: { ...bp.radius },
     bodyCenterHeight: bp.bodyCenterHeight,
+    supportSurface: cloneUnitSupportSurface(bp.supportSurface),
     locomotion: getUnitLocomotion(unitBlueprintId),
     mass: bp.mass,
     hp: bp.hp,

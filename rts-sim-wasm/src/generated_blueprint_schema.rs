@@ -777,6 +777,24 @@ pub struct UnitDgunConfig {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct UnitSupportSurfaceNone {
+    pub kind: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnitSupportSurfaceDiscTop {
+    pub kind: String,
+    pub topZ: f64,
+    pub radius: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum UnitSupportSurface {
+    UnitSupportSurfaceNone(UnitSupportSurfaceNone),
+    UnitSupportSurfaceDiscTop(UnitSupportSurfaceDiscTop),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct UnitBlueprint {
     pub unitBlueprintId: String,
     pub name: String,
@@ -785,6 +803,7 @@ pub struct UnitBlueprint {
     pub hp: f64,
     pub radius: UnitRadiusConfig,
     pub bodyCenterHeight: f64,
+    pub supportSurface: UnitSupportSurface,
     pub fullVisionRadius: f64,
     pub mass: f64,
     pub cost: BlueprintJsonValue,

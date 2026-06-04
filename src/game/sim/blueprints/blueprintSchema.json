@@ -2305,6 +2305,48 @@
       },
       "additionalProperties": false
     },
+    "UnitSupportSurfaceNone": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "none"
+        }
+      },
+      "additionalProperties": false
+    },
+    "UnitSupportSurfaceDiscTop": {
+      "type": "object",
+      "required": [
+        "kind",
+        "topZ",
+        "radius"
+      ],
+      "properties": {
+        "kind": {
+          "const": "discTop"
+        },
+        "topZ": {
+          "type": "number"
+        },
+        "radius": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "UnitSupportSurface": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/UnitSupportSurfaceNone"
+        },
+        {
+          "$ref": "#/$defs/UnitSupportSurfaceDiscTop"
+        }
+      ]
+    },
     "UnitBlueprint": {
       "type": "object",
       "required": [
@@ -2315,6 +2357,7 @@
         "hp",
         "radius",
         "bodyCenterHeight",
+        "supportSurface",
         "fullVisionRadius",
         "mass",
         "cost",
@@ -2358,6 +2401,9 @@
         },
         "bodyCenterHeight": {
           "type": "number"
+        },
+        "supportSurface": {
+          "$ref": "#/$defs/UnitSupportSurface"
         },
         "fullVisionRadius": {
           "type": "number"

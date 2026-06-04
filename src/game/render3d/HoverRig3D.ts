@@ -417,7 +417,7 @@ export function updateHoverFans(
   // case (chassis floating cleanly above ground) this is a no-op.
   const chassisWorldY = entity.transform.z;
   const groundY = getLocomotionSurfaceHeight(
-    entity.transform.x, entity.transform.y, mapWidth, mapHeight,
+    entity.transform.x, entity.transform.y, mapWidth, mapHeight, entity.id,
   );
   const rawClearance = chassisWorldY - groundY;
   const floorDeficit = HOVER_FLOOR_MARGIN - rawClearance;

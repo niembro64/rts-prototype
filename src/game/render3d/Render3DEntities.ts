@@ -473,7 +473,7 @@ export class Render3DEntities {
     this._currentTimeMs = frameSpin.timeMs;
     this._spinDt = frameSpin.spinDtSec;
     this.turretMountCache.reset(this._currentDtMs);
-    refreshLocomotionSupportSurfaces(this.clientViewState.getBuildings());
+    refreshLocomotionSupportSurfaces(this.clientViewState.getUnitsAndBuildings());
     this.updateUnits();
     this.buildingRenderer.update(this.frameState, this._spinDt, this._currentDtMs, frameSpin.timeMs, this.turretBeamAimCache);
     this.projectileRangeEnvelope.update();

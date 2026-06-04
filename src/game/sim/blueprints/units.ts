@@ -30,6 +30,7 @@ import {
   assertRadiusEquals,
   assertValidEntityBaseLedger,
 } from './entityBaseLedger';
+import type { UnitSupportSurface } from '../../../types/blueprints';
 
 type JsonUnitBlueprint = Omit<UnitBlueprint, 'locomotion' | keyof LockOnInclusionObject> & {
   locomotion: Omit<LocomotionBlueprint, 'pathfinding'>;
@@ -37,6 +38,7 @@ type JsonUnitBlueprint = Omit<UnitBlueprint, 'locomotion' | keyof LockOnInclusio
 
 const UNIT_EXPLICIT_FIELDS = [
   'base',
+  'supportSurface',
   'legAttachHeightFrac',
   'suspension',
   'builder',
@@ -118,7 +120,30 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
 
 export const UNIT_BLUEPRINTS = buildUnitBlueprints();
 
+function validateUnitSupportSurface(
+  unitBlueprintId: string,
+  supportSurface: UnitSupportSurface,
+): void {
+  if (!supportSurface || typeof supportSurface !== 'object') {
+    throw new Error(`Invalid unit blueprint ${unitBlueprintId}: supportSurface must be an object`);
+  }
+  if (supportSurface.kind === 'none') return;
+  if (supportSurface.kind !== 'discTop') {
+    throw new Error(
+      `Invalid unit blueprint ${unitBlueprintId}: unknown supportSurface kind "${String((supportSurface as { kind?: unknown }).kind)}"`,
+    );
+  }
+  if (!Number.isFinite(supportSurface.topZ) || supportSurface.topZ <= 0) {
+    throw new Error(`Invalid unit blueprint ${unitBlueprintId}: supportSurface.topZ must be positive`);
+  }
+  if (!Number.isFinite(supportSurface.radius) || supportSurface.radius <= 0) {
+    throw new Error(`Invalid unit blueprint ${unitBlueprintId}: supportSurface.radius must be positive`);
+  }
+}
+
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
+  validateUnitSupportSurface(bp.unitBlueprintId, bp.supportSurface);
+
   if (!Number.isFinite(bp.bodyCenterHeight) || bp.bodyCenterHeight < 0) {
     throw new Error(
       `Invalid bodyCenterHeight for ${bp.unitBlueprintId}: bodyCenterHeight must be a finite non-negative number`,

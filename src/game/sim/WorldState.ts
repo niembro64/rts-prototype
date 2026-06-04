@@ -12,6 +12,7 @@ import type {
   ProjectileConfig,
   ProjectileType,
   UnitLocomotion,
+  UnitSupportSurface,
 } from './types';
 import {
   createCombatComponent,
@@ -55,9 +56,14 @@ import {
   sampleBuildingSupportTopZ,
 } from './buildingSupportSurface';
 import {
+  cloneUnitSupportSurface,
+  sampleUnitSupportTopZ,
+} from './unitSupportSurface';
+import {
   createWorldSupportSurface,
   writeBuildingSupportSurface,
   writeTerrainSupportSurface,
+  writeUnitSupportSurface,
   type WorldSupportSurface,
 } from './supportSurface';
 
@@ -80,6 +86,8 @@ type SupportSurfaceQueryOptions = {
   bodyZ?: number;
   groundOffset?: number;
   includeBuildings?: boolean;
+  includeUnits?: boolean;
+  ignoreEntityId?: EntityId | null;
 };
 
 export type RemovedSnapshotEntity = {
@@ -246,7 +254,7 @@ export class WorldState {
 
   /** Terrain/water elevation at world point (x, y). Use
    *  sampleSupportSurface() when the caller needs the complete support
-   *  contract including building tops. */
+   *  contract including authored building/unit supports. */
   getGroundZ(x: number, y: number): number {
     return getSurfaceHeight(x, y, this.mapWidth, this.mapHeight, LAND_CELL_SIZE);
   }
@@ -267,16 +275,42 @@ export class WorldState {
       getTerrainVersion(),
     );
 
-    if (options.includeBuildings === false) return out;
+    if (options.includeBuildings !== false) {
+      const buildings = this.getBuildings();
+      for (let i = 0; i < buildings.length; i++) {
+        const entity = buildings[i];
+        const topZ = sampleBuildingSupportTopZ(entity, x, y, terrainGroundZ, options);
+        if (topZ === null) continue;
 
-    const buildings = this.getBuildings();
-    for (let i = 0; i < buildings.length; i++) {
-      const entity = buildings[i];
-      const topZ = sampleBuildingSupportTopZ(entity, x, y, terrainGroundZ, options);
-      if (topZ === null) continue;
+        if (topZ > out.groundZ) {
+          writeBuildingSupportSurface(out, topZ, entity.id, entity.id);
+        }
+      }
+    }
 
-      if (topZ > out.groundZ) {
-        writeBuildingSupportSurface(out, topZ, entity.id, entity.id);
+    if (options.includeUnits !== false) {
+      const units = this.getUnits();
+      for (let i = 0; i < units.length; i++) {
+        const entity = units[i];
+        const topZ = sampleUnitSupportTopZ(entity, x, y, terrainGroundZ, options);
+        if (topZ === null) continue;
+
+        if (topZ > out.groundZ) {
+          const unit = entity.unit;
+          writeUnitSupportSurface(
+            out,
+            topZ,
+            entity.id,
+            entity.id,
+            unit !== null
+              ? {
+                  x: unit.velocityX,
+                  y: unit.velocityY,
+                  z: unit.velocityZ,
+                }
+              : undefined,
+          );
+        }
       }
     }
 
@@ -946,6 +980,7 @@ export class WorldState {
     unitBlueprintId: string,
     radius: { visual: number; hitbox: number; collision: number } = { visual: 15, hitbox: 15, collision: 15 },
     bodyCenterHeight: number = radius.collision,
+    supportSurface: UnitSupportSurface = cloneUnitSupportSurface(undefined),
     fullVisionRadius: number = 1200,
     locomotion: UnitLocomotion = getUnitLocomotion(unitBlueprintId),
     mass: number = 25,
@@ -986,6 +1021,7 @@ export class WorldState {
         locomotion: cloneUnitLocomotion(locomotion),
         radius: { ...radius },
         bodyCenterHeight,
+        supportSurface: cloneUnitSupportSurface(supportSurface),
         fullVisionRadius,
         mass,
         hp,
@@ -1054,6 +1090,7 @@ export class WorldState {
       x, y, playerId, unitBlueprintId,
       bp.radius,
       bp.bodyCenterHeight,
+      cloneUnitSupportSurface(bp.supportSurface),
       bp.fullVisionRadius,
       getUnitLocomotion(unitBlueprintId),
       bp.mass,

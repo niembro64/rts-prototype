@@ -22,7 +22,7 @@ Problem
 -------
 Units still do not have authored support surfaces for every valid thing they
 can stand on. Terrain, water, and authored building tops have a shared
-support-surface shape, but unit support is still inferred from sphere contacts.
+support-surface shape, and units can now opt into authored support surfaces.
 
 Design target
 -------------
@@ -35,25 +35,15 @@ through their locomotion-specific force/contact model.
 
 Relevant current inconsistencies
 --------------------------------
-1. Unit-on-unit support is only implied by sphere-sphere upward contact. Sphere
-   collision is not the same thing as a walkable top surface, and it is not
-   exposed to client prediction or locomotion visuals as a stable support plane.
+1. Render-time locomotion support sampling scans visible building/unit
+   candidates directly. Replace this with the same indexed/proxy support
+   representation the sim uses before scaling unit and building counts.
 
-2. Unit support contacts do not identify the support source, so the support
-   result cannot yet carry a stable support entity id for unit surfaces.
-
-3. Client prediction and render-time locomotion support candidates include
-   buildings, but not authored unit support surfaces.
-
-4. Render-time locomotion support sampling scans visible building candidates
-   directly. Replace this with the same indexed/proxy support representation the
-   sim uses before scaling unit and building counts.
-
-5. Water is represented in the support-surface shape, but ground avoidance and
+2. Water is represented in the support-surface shape, but ground avoidance and
    escape response still use ad hoc water branches. Fold water response into
    locomotion-specific support/material behavior.
 
-6. Initial/bootstrap unit physics can set `ignoreOverlappingBuildings` for
+3. Initial/bootstrap unit physics can set `ignoreOverlappingBuildings` for
    overlapping buildings, and that ignore pair appears to have no normal
    "clear once exited" path. Audit this separately from factory shells. Factory
    construction shells currently pass `ignoreOverlappingBuildings: false`, so
@@ -62,31 +52,25 @@ Relevant current inconsistencies
 
 Plan
 ----
-1. Add unit support to prediction deliberately.
-   Client prediction needs the same support candidates that the server can use:
-   terrain, water, buildings, and authored unit support surfaces. Use stable
-   snapshot state or deterministic local proxies so visible prediction does not
-   fight authoritative correction.
+1. Replace direct render-time support scans with an indexed/proxy
+   representation shared by buildings and units. LocomotionTerrainSampler
+   should still keep frontend-only contact bands and hysteresis for
+   legs/wheels/treads, but its floor height should match the same support
+   surface the sim considers valid.
 
-2. Update render-time locomotion floor sampling for authored support proxies.
-   LocomotionTerrainSampler should consume indexed visual support candidates,
-   including unit support surfaces. It should still keep frontend-only contact
-   bands and hysteresis for legs/wheels/treads, but its floor height should
-   match the same support surface the sim considers valid.
-
-3. Treat water response as locomotion-specific support/material behavior.
+2. Treat water response as locomotion-specific support/material behavior.
    Water should be a support/material result with locomotion-specific response:
    ground units avoid or escape, hover/flying use clearance and effects, and
    future amphibious units can opt into water support. Avoid separate ad hoc
    water branches where possible.
 
-4. Add diagnostics before tuning.
+3. Add diagnostics before tuning.
    Add a temporary debug overlay/log mode that shows sampled support height,
    support kind/id, body ground point, penetration, velocity, and contact state
    for selected units. This should make fabricator edge transitions and unit
    stacking behavior observable.
 
-5. Add regression tests.
+4. Add regression tests.
    Cover at least: unit spawn on terrain, unit spawn on a building/fabricator
    support, factory shell settle and exit, building top traversal, unit support
    traversal where authored, water boundary behavior, client prediction matching

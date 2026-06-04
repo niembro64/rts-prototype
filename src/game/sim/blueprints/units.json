@@ -10,6 +10,9 @@
       "collision": 9.6
     },
     "bodyCenterHeight": 5.680000000000001,
+    "supportSurface": {
+      "kind": "none"
+    },
     "fullVisionRadius": 1200,
     "mass": 42,
     "cost": {
@@ -91,6 +94,9 @@
       "collision": 13
     },
     "bodyCenterHeight": 11.5,
+    "supportSurface": {
+      "kind": "none"
+    },
     "fullVisionRadius": 1200,
     "mass": 63.5,
     "cost": {
@@ -171,6 +177,9 @@
       "collision": 15
     },
     "bodyCenterHeight": 58.5,
+    "supportSurface": {
+      "kind": "none"
+    },
     "fullVisionRadius": 1200,
     "mass": 64.5,
     "cost": {
@@ -280,6 +289,9 @@
       "collision": 22.4
     },
     "bodyCenterHeight": 12.4,
+    "supportSurface": {
+      "kind": "none"
+    },
     "fullVisionRadius": 1200,
     "mass": 387,
     "cost": {
@@ -360,6 +372,9 @@
       "collision": 24
     },
     "bodyCenterHeight": 11.8,
+    "supportSurface": {
+      "kind": "none"
+    },
     "fullVisionRadius": 1200,
     "mass": 268,
     "cost": {
@@ -441,6 +456,9 @@
       "collision": 12.1
     },
     "bodyCenterHeight": 8,
+    "supportSurface": {
+      "kind": "none"
+    },
     "fullVisionRadius": 1200,
     "mass": 29.5,
     "cost": {
@@ -541,6 +559,9 @@
       "collision": 36
     },
     "bodyCenterHeight": 13.6,
+    "supportSurface": {
+      "kind": "none"
+    },
     "fullVisionRadius": 1200,
     "mass": 1265,
     "cost": {
@@ -621,6 +642,9 @@
       "collision": 65
     },
     "bodyCenterHeight": 54,
+    "supportSurface": {
+      "kind": "none"
+    },
     "fullVisionRadius": 1200,
     "mass": 3173,
     "cost": {
@@ -751,6 +775,9 @@
       "collision": 52
     },
     "bodyCenterHeight": 49.5,
+    "supportSurface": {
+      "kind": "none"
+    },
     "fullVisionRadius": 1200,
     "mass": 1308.5,
     "cost": {
@@ -932,6 +959,9 @@
       "collision": 54
     },
     "bodyCenterHeight": 19,
+    "supportSurface": {
+      "kind": "none"
+    },
     "fullVisionRadius": 1200,
     "mass": 1899,
     "cost": {
@@ -1011,6 +1041,9 @@
       "collision": 19.8
     },
     "bodyCenterHeight": 14.025,
+    "supportSurface": {
+      "kind": "none"
+    },
     "fullVisionRadius": 1200,
     "mass": 46.5,
     "cost": {
@@ -1124,6 +1157,9 @@
       "collision": 24
     },
     "bodyCenterHeight": 24,
+    "supportSurface": {
+      "kind": "none"
+    },
     "fullVisionRadius": 1200,
     "mass": 124.5,
     "cost": {
@@ -1209,6 +1245,9 @@
       "collision": 10.8
     },
     "bodyCenterHeight": 1.3499999999999999,
+    "supportSurface": {
+      "kind": "none"
+    },
     "fullVisionRadius": 1200,
     "mass": 35.75,
     "cost": {
@@ -1293,6 +1332,9 @@
       "collision": 50
     },
     "bodyCenterHeight": 3.2,
+    "supportSurface": {
+      "kind": "none"
+    },
     "fullVisionRadius": 1200,
     "mass": 135,
     "cost": {
@@ -1401,6 +1443,9 @@
       "collision": 14
     },
     "bodyCenterHeight": 3.3,
+    "supportSurface": {
+      "kind": "none"
+    },
     "fullVisionRadius": 1200,
     "mass": 68.25,
     "cost": {
@@ -1504,6 +1549,9 @@
       "collision": 21.6
     },
     "bodyCenterHeight": 5.4,
+    "supportSurface": {
+      "kind": "none"
+    },
     "fullVisionRadius": 1200,
     "mass": 124.75,
     "cost": {
@@ -1603,6 +1651,9 @@
       "collision": 58
     },
     "bodyCenterHeight": 0,
+    "supportSurface": {
+      "kind": "none"
+    },
     "fullVisionRadius": 1400,
     "mass": 900,
     "cost": {
@@ -1686,6 +1737,9 @@
       "collision": 20
     },
     "bodyCenterHeight": 22.4,
+    "supportSurface": {
+      "kind": "none"
+    },
     "fullVisionRadius": 1600,
     "mass": 408,
     "cost": {

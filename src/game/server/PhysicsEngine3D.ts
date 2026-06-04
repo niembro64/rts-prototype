@@ -74,12 +74,15 @@ import {
   BODY_FLAG_OCCUPIED,
   type BodyPoolViews,
 } from '../sim-wasm/init';
-import type { BuildingSupportSurface, EntityId } from '../sim/types';
+import type { BuildingSupportSurface, EntityId, UnitSupportSurface } from '../sim/types';
 
 type SurfaceNormal = { nx: number; ny: number; nz: number };
 export type SupportSurfaceContact = WorldSupportSurface;
 type StaticSupportSurfaceContact = WorldSupportSurface & {
   staticBody: Body3D;
+};
+type DynamicSupportSurfaceContact = WorldSupportSurface & {
+  dynamicBody: Body3D;
 };
 type ApplyForceOptions = { canLaunchFromGround: boolean };
 
@@ -175,6 +178,8 @@ export class Body3D {
   supportTopZ: number | null = null;
   supportHalfX: number = 0;
   supportHalfY: number = 0;
+  unitSupportTopOffsetZ: number | null = null;
+  unitSupportRadius: number = 0;
 
   private constructor(args: {
     slot: number;
@@ -466,6 +471,7 @@ export class PhysicsEngine3D {
     y: number,
     physicsRadius: number,
     bodyCenterHeight: number,
+    supportSurface: UnitSupportSurface,
     mass: number,
     label: string,
     entityId: EntityId | undefined = undefined,
@@ -496,6 +502,10 @@ export class PhysicsEngine3D {
       groundFrictionScale,
       surfaceNormal,
     });
+    if (supportSurface.kind === 'discTop') {
+      body.unitSupportTopOffsetZ = supportSurface.topZ;
+      body.unitSupportRadius = supportSurface.radius;
+    }
     this.addBody(body);
     return body;
   }
@@ -680,18 +690,9 @@ export class PhysicsEngine3D {
     terrainSurface: WorldSupportSurface,
     out: WorldSupportSurface = createWorldSupportSurface(),
   ): WorldSupportSurface {
-    const staticSupport = this.findStaticSupportSurface(body, terrainSurface.groundZ);
-    if (staticSupport !== null) {
-      return copyWorldSupportSurface(staticSupport, out);
-    }
-
-    if (body.upwardSurfaceContact === true) {
-      return writeUnitSupportSurface(
-        out,
-        body.z - body.groundOffset,
-        null,
-        body.slot,
-      );
+    const support = this.findSupportSurface(body, terrainSurface.groundZ);
+    if (support !== null) {
+      return copyWorldSupportSurface(support, out);
     }
 
     return copyWorldSupportSurface(terrainSurface, out);
@@ -901,7 +902,7 @@ export class PhysicsEngine3D {
       const b = this.bodyBySlot[slot];
       if (b === undefined) continue;
 
-      const support = this.findStaticSupportSurface(b, _integrateGroundZ[i]);
+      const support = this.findSupportSurface(b, _integrateGroundZ[i]);
       if (support === null) continue;
 
       _integrateGroundZ[i] = support.groundZ;
@@ -967,6 +968,63 @@ export class PhysicsEngine3D {
     }
 
     return best;
+  }
+
+  private findDynamicSupportSurface(
+    body: Body3D,
+    terrainGroundZ: number,
+  ): DynamicSupportSurfaceContact | null {
+    if (body.isStatic || body.shape !== 'sphere') return null;
+
+    const groundPointZ = body.z - body.groundOffset;
+    const sphereBottomZ = body.z - body.radius;
+    let best: DynamicSupportSurfaceContact | null = null;
+
+    for (let i = 0; i < this.dynamicBodies.length; i++) {
+      const supportBody = this.dynamicBodies[i];
+      if (supportBody === body || supportBody.shape !== 'sphere') continue;
+      const supportTopOffsetZ = supportBody.unitSupportTopOffsetZ;
+      if (supportTopOffsetZ === null) continue;
+
+      const topZ = supportBody.z - supportBody.groundOffset + supportTopOffsetZ;
+      if (topZ < terrainGroundZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
+      if (body.z < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
+
+      const dx = body.x - supportBody.x;
+      const dy = body.y - supportBody.y;
+      const radius = supportBody.unitSupportRadius + SUPPORT_SURFACE_FOOTPRINT_EPSILON;
+      if (dx * dx + dy * dy > radius * radius) continue;
+
+      const groundPointNearTop = groundPointZ <= topZ + SUPPORT_SURFACE_CONTACT_EPSILON;
+      const sphereBottomNearTop = sphereBottomZ <= topZ + SUPPORT_SURFACE_CONTACT_EPSILON;
+      if (!groundPointNearTop && !sphereBottomNearTop) continue;
+
+      if (best === null || topZ > best.groundZ) {
+        const candidate = createWorldSupportSurface() as DynamicSupportSurfaceContact;
+        candidate.dynamicBody = supportBody;
+        best = writeUnitSupportSurface(
+          candidate,
+          topZ,
+          supportBody.entityId ?? null,
+          supportBody.entityId ?? supportBody.slot,
+          { x: supportBody.vx, y: supportBody.vy, z: supportBody.vz },
+        ) as DynamicSupportSurfaceContact;
+        best.dynamicBody = supportBody;
+      }
+    }
+
+    return best;
+  }
+
+  private findSupportSurface(
+    body: Body3D,
+    terrainGroundZ: number,
+  ): WorldSupportSurface | null {
+    const staticSupport = this.findStaticSupportSurface(body, terrainGroundZ);
+    const dynamicSupport = this.findDynamicSupportSurface(body, terrainGroundZ);
+    if (staticSupport === null) return dynamicSupport;
+    if (dynamicSupport === null) return staticSupport;
+    return dynamicSupport.groundZ > staticSupport.groundZ ? dynamicSupport : staticSupport;
   }
 
   /** Explicit-Euler integration with a soft terrain contact model.

@@ -320,6 +320,7 @@ export function updateTreads(
         _treadWorld.x, _treadWorld.z,
         naturalWorldY, mesh.treadRadius,
         mapWidth, mapHeight,
+        entity.id,
         _treadClamp,
       );
       const worldLift = clamp.renderedY - naturalWorldY;

@@ -19,6 +19,7 @@ import {
 import { getUnitBlueprint, getUnitLocomotion } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { cloneBuildingSupportSurface } from '../../sim/buildingSupportSurface';
+import { cloneUnitSupportSurface } from '../../sim/unitSupportSurface';
 import { BUILD_GRID_CELL_SIZE } from '../../sim/buildGrid';
 import { COST_MULTIPLIER } from '../../../config';
 import { buildShieldPanelCache } from '../../sim/shieldPanelCache';
@@ -286,6 +287,7 @@ function createUnitFromNetwork(
         u,
         blueprintBodyCenterHeight,
       ),
+      supportSurface: cloneUnitSupportSurface(unitBlueprint?.supportSurface),
       fullVisionRadius,
       locomotion: getUnitLocomotion(unitBlueprintId),
       mass: readNetworkUnitMass(u, blueprintMass),

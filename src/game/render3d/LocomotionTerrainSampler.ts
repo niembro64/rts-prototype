@@ -1,7 +1,8 @@
 import { LAND_CELL_SIZE } from '../../config';
-import type { Entity } from '../sim/types';
+import type { Entity, EntityId } from '../sim/types';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { sampleBuildingSupportTopZ } from '../sim/buildingSupportSurface';
+import { sampleUnitSupportTopZ } from '../sim/unitSupportSurface';
 import { SUPPORT_SURFACE_CONTACT_EPSILON } from '../sim/supportSurface';
 import {
   getUnitGroundPenetration,
@@ -33,21 +34,38 @@ export type LocomotionPartClamp = {
 };
 
 const locomotionSupportBuildings: Entity[] = [];
+const locomotionSupportUnits: Entity[] = [];
 
 export function refreshLocomotionSupportSurfaces(supportEntities: Iterable<Entity>): void {
   locomotionSupportBuildings.length = 0;
+  locomotionSupportUnits.length = 0;
   for (const entity of supportEntities) {
     if (entity.building !== null) {
       locomotionSupportBuildings.push(entity);
+    } else if (entity.unit !== null && entity.unit.supportSurface.kind !== 'none') {
+      locomotionSupportUnits.push(entity);
     }
   }
 }
 
-function getVisualBuildingSupportY(x: number, z: number, terrainY: number): number | null {
+function getVisualSupportY(
+  x: number,
+  z: number,
+  terrainY: number,
+  ignoreEntityId: EntityId | null,
+): number | null {
   let bestTopY = Number.NEGATIVE_INFINITY;
   for (let i = 0; i < locomotionSupportBuildings.length; i++) {
     const entity = locomotionSupportBuildings[i];
     const topY = sampleBuildingSupportTopZ(entity, x, z, terrainY);
+    if (topY === null) continue;
+
+    if (topY > bestTopY) bestTopY = topY;
+  }
+
+  for (let i = 0; i < locomotionSupportUnits.length; i++) {
+    const entity = locomotionSupportUnits[i];
+    const topY = sampleUnitSupportTopZ(entity, x, z, terrainY, { ignoreEntityId });
     if (topY === null) continue;
 
     if (topY > bestTopY) bestTopY = topY;
@@ -69,9 +87,16 @@ export function sampleLocomotionPartClamp(
   clearance: number,
   mapWidth: number,
   mapHeight: number,
+  ignoreEntityId?: EntityId | null,
   out?: LocomotionPartClamp,
 ): LocomotionPartClamp {
-  const groundY = getLocomotionSurfaceHeight(worldX, worldZ, mapWidth, mapHeight);
+  const groundY = getLocomotionSurfaceHeight(
+    worldX,
+    worldZ,
+    mapWidth,
+    mapHeight,
+    ignoreEntityId,
+  );
   const floorY = groundY + clearance;
   const result = out ?? { groundY: 0, renderedY: 0 };
   result.groundY = groundY;
@@ -104,9 +129,10 @@ export function getLocomotionSurfaceHeight(
   z: number,
   mapWidth: number,
   mapHeight: number,
+  ignoreEntityId?: EntityId | null,
 ): number {
   const terrainY = getSurfaceHeight(x, z, mapWidth, mapHeight, LAND_CELL_SIZE);
-  return getVisualBuildingSupportY(x, z, terrainY) ?? terrainY;
+  return getVisualSupportY(x, z, terrainY, ignoreEntityId ?? null) ?? terrainY;
 }
 
 export function sampleLocomotionGroundContact(
@@ -119,6 +145,7 @@ export function sampleLocomotionGroundContact(
     entity.transform.y,
     mapWidth,
     mapHeight,
+    entity.id,
   );
   const unit = entity.unit;
   if (!unit) {
@@ -152,9 +179,10 @@ export function sampleLocomotionFootSurface(
   cylinderRadius: number,
   footPadHalfHeight: number,
   clearance: number,
+  ignoreEntityId?: EntityId | null,
   out?: LocomotionFootSurfaceSample,
 ): LocomotionFootSurfaceSample {
-  const groundY = getLocomotionSurfaceHeight(x, z, mapWidth, mapHeight);
+  const groundY = getLocomotionSurfaceHeight(x, z, mapWidth, mapHeight, ignoreEntityId);
   const result = out ?? {
     groundY: 0,
     visualFootY: 0,

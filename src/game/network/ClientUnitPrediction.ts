@@ -8,7 +8,7 @@ import {
 } from '@/clientBarConfig';
 import { LAND_CELL_SIZE } from '../../config';
 import { UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC } from '@/shellConfig';
-import type { Entity, TurretState } from '../sim/types';
+import type { Entity, EntityId, TurretState } from '../sim/types';
 import {
   angleDeltaAbs,
   clamp,
@@ -36,6 +36,7 @@ import {
 } from '../sim/unitGroundPhysics';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 import { sampleBuildingSupportTopZ } from '../sim/buildingSupportSurface';
+import { sampleUnitSupportTopZ } from '../sim/unitSupportSurface';
 import {
   CT_TURRET_STATE_ENGAGED,
   getSimWasm,
@@ -45,6 +46,7 @@ import {
   createWorldSupportSurface,
   writeBuildingSupportSurface,
   writeTerrainSupportSurface,
+  writeUnitSupportSurface,
   type WorldSupportSurface,
 } from '../sim/supportSurface';
 import {
@@ -116,8 +118,10 @@ let groundOffsetBatch = new Float64Array(0);
 let groundZBatch = new Float64Array(0);
 let groundNormalBatch = new Float64Array(0);
 let contactBatch = new Uint8Array(0);
+let supportIgnoreEntityIdBatch = new Int32Array(0);
 const targetBatchRefs: UnitPredictionTarget[] = [];
 const predictionSupportBuildings: Entity[] = [];
+const predictionSupportUnits: Entity[] = [];
 const predictionSupportSurface = createWorldSupportSurface();
 const predictionFlatNormal = { nx: 0, ny: 0, nz: 1 };
 let orientationBatch = new Float64Array(0);
@@ -147,11 +151,14 @@ function getPredictionGroundNormal(
   );
 }
 
-function refreshPredictionSupportBuildings(supportEntities: Iterable<Entity>): void {
+function refreshPredictionSupportSurfaces(supportEntities: Iterable<Entity>): void {
   predictionSupportBuildings.length = 0;
+  predictionSupportUnits.length = 0;
   for (const entity of supportEntities) {
     if (entity.building !== null) {
       predictionSupportBuildings.push(entity);
+    } else if (entity.unit !== null && entity.unit.supportSurface.kind !== 'none') {
+      predictionSupportUnits.push(entity);
     }
   }
 }
@@ -161,6 +168,7 @@ function samplePredictionSupportSurface(
   y: number,
   z: number,
   groundOffset: number,
+  ignoreEntityId: EntityId | null,
   out: WorldSupportSurface,
 ): WorldSupportSurface {
   const terrainGroundZ = getPredictionGroundZ(x, y);
@@ -187,6 +195,29 @@ function samplePredictionSupportSurface(
     }
   }
 
+  for (let i = 0; i < predictionSupportUnits.length; i++) {
+    const entity = predictionSupportUnits[i];
+    const topZ = sampleUnitSupportTopZ(entity, x, y, terrainGroundZ, {
+      bodyZ: z,
+      groundOffset,
+      ignoreEntityId,
+    });
+    if (topZ === null) continue;
+
+    if (topZ > out.groundZ) {
+      const unit = entity.unit;
+      writeUnitSupportSurface(
+        out,
+        topZ,
+        entity.id,
+        entity.id,
+        unit !== null
+          ? { x: unit.velocityX, y: unit.velocityY, z: unit.velocityZ }
+          : undefined,
+      );
+    }
+  }
+
   return out;
 }
 
@@ -208,6 +239,7 @@ function slaveGroundUnitVerticalToSupport(
     transform.y,
     transform.z,
     bodyCenterHeight,
+    entity.id,
     predictionSupportSurface,
   );
   const supportRestZ = support.groundZ + bodyCenterHeight;
@@ -231,6 +263,7 @@ function ensurePredictionBatchCapacity(count: number): void {
   groundZBatch = new Float64Array(capacity);
   groundNormalBatch = new Float64Array(capacity * 3);
   contactBatch = new Uint8Array(capacity);
+  supportIgnoreEntityIdBatch = new Int32Array(capacity);
 }
 
 function ensureOrientationBatchCapacity(count: number): void {
@@ -381,6 +414,7 @@ function sampleInitialGroundBatch(count: number): void {
       y,
       motionBatch[base + 2],
       groundOffsetBatch[i],
+      supportIgnoreEntityIdBatch[i] >= 0 ? supportIgnoreEntityIdBatch[i] : null,
       predictionSupportSurface,
     );
     groundZBatch[i] = supportSurface.groundZ;
@@ -412,6 +446,7 @@ function updateCurrentMotionContacts(count: number): void {
       y,
       motionBatch[base + 2],
       groundOffsetBatch[i],
+      supportIgnoreEntityIdBatch[i] >= 0 ? supportIgnoreEntityIdBatch[i] : null,
       predictionSupportSurface,
     );
     contactBatch[i] = isUnitGroundPenetrationInContact(
@@ -459,6 +494,7 @@ function advancePackedMotionBatch(
 }
 
 function packTargetPredictionBatch(
+  entities: Entity[],
   targets: Array<UnitPredictionTarget | undefined>,
   count: number,
 ): number {
@@ -475,6 +511,7 @@ function packTargetPredictionBatch(
     motionBatch[base + 4] = target.velocityY ?? 0;
     motionBatch[base + 5] = target.velocityZ ?? 0;
     groundOffsetBatch[batchCount] = target.bodyCenterHeight;
+    supportIgnoreEntityIdBatch[batchCount] = entities[i]?.id ?? -1;
     targetBatchRefs[batchCount] = target;
     batchCount++;
   }
@@ -515,6 +552,7 @@ function packEntityPredictionBatch(entities: Entity[], count: number): void {
       motionBatch[base + 5] = unit.velocityZ;
       groundOffsetBatch[i] = unit.bodyCenterHeight;
     }
+    supportIgnoreEntityIdBatch[i] = entity.id;
   }
 }
 
@@ -665,7 +703,7 @@ export function applyClientUnitVisualPredictionBatch(options: {
   const predictionMode = getPredictionMode();
   predictionMapWidth = mapWidth;
   predictionMapHeight = mapHeight;
-  refreshPredictionSupportBuildings(supportEntities);
+  refreshPredictionSupportSurfaces(supportEntities);
   ensurePredictionBatchCapacity(count);
   ensureOrientationBatchCapacity(count);
 
@@ -673,7 +711,7 @@ export function applyClientUnitVisualPredictionBatch(options: {
   // Keep both the stored server target and the rendered entity moving
   // smoothly at render cadence while crossing JS/WASM only twice per
   // frame for all predicted units.
-  const targetCount = packTargetPredictionBatch(targets, count);
+  const targetCount = packTargetPredictionBatch(entities, targets, count);
   advancePackedMotionBatch(targetCount, predictionMode, dt, airDamp, groundDamp);
   writeTargetPredictionBatch(targetCount);
 

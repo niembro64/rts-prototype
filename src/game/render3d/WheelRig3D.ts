@@ -216,6 +216,7 @@ export function updateWheels(
       _wheelWorld.x, _wheelWorld.z,
       naturalWorldY, mount.wheelR,
       mapWidth, mapHeight,
+      entity.id,
       _wheelClamp,
     );
 

@@ -3,7 +3,12 @@
 import type { BarrelShape } from './config';
 import type { TurretBlueprintId } from './blueprintIds';
 import type { Vec3 } from './vec2';
-import type { TurretAimStyle, TurretRadiusConfig, TurretRangeVolume } from './blueprints';
+import type {
+  TurretAimStyle,
+  TurretRadiusConfig,
+  TurretRangeVolume,
+  UnitSupportSurface,
+} from './blueprints';
 import type {
   BuildingAnchorProfile,
   BuildingRenderProfile,
@@ -54,7 +59,7 @@ export { NO_ENTITY_ID } from './entityTypes';
 export type { UnitLocomotion } from './locomotionTypes';
 export type { ResourceCost } from './economyTypes';
 export type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
-export type { TurretAimStyle } from './blueprints';
+export type { TurretAimStyle, UnitSupportSurface } from './blueprints';
 export type {
   ActiveProjectileShot,
   BeamReflectorKind,
@@ -183,6 +188,9 @@ export type Unit = {
   radius: EntityRadii;
   /** World-space height of the unit's authored body center above terrain. */
   bodyCenterHeight: number;
+  /** Authored unit support proxy. Unit collision remains sphere-based;
+   *  this separate proxy decides whether anything can stand on the unit. */
+  supportSurface: UnitSupportSurface;
   /** Authored full-sight sensor radius for this unit. Separate from
    *  weapon, tracking, radar, and builder action range. */
   fullVisionRadius: number;
@@ -842,6 +850,7 @@ export type UnitBuildConfig = {
   cost: ResourceCost;
   radius: EntityRadii;
   bodyCenterHeight: number;
+  supportSurface: UnitSupportSurface;
   locomotion: UnitLocomotion;
   mass: number;
   hp: number;

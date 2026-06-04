@@ -577,6 +577,18 @@ export type UnitDgunConfig = {
   energyCost: number;
 };
 
+export type UnitSupportSurfaceNone = {
+  kind: 'none';
+};
+
+export type UnitSupportSurfaceDiscTop = {
+  kind: 'discTop';
+  topZ: number;
+  radius: number;
+};
+
+export type UnitSupportSurface = UnitSupportSurfaceNone | UnitSupportSurfaceDiscTop;
+
 export type UnitBlueprint = {
   unitBlueprintId: UnitBlueprintId;
   name: string;
@@ -585,6 +597,7 @@ export type UnitBlueprint = {
   hp: number;
   radius: UnitRadiusConfig;
   bodyCenterHeight: number;
+  supportSurface: UnitSupportSurface;
   fullVisionRadius: number;
   mass: number;
   cost: ResourceCost;

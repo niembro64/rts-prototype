@@ -63,6 +63,7 @@ export type {
   UnitBlueprint,
   UnitBodyShape,
   UnitBodyShapePart,
+  UnitSupportSurface,
   UnitTurretMountZResolver,
   WheelConfig,
   LegConfig,
