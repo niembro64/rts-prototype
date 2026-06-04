@@ -226,44 +226,51 @@
     </section>
 
     <section>
-      <h2>Engine Ownership: No Libraries, In-House Rust</h2>
+      <h2>Engine Ownership: In-House Simulation, Practical Renderer</h2>
       <p>
         The end-state engine is something we own end-to-end. The simulation
         is <code>Rust</code> compiled to <code>WebAssembly</code>, living in
-        <code>rts-sim-wasm/</code>. The renderer is raw <code>WebGPU</code>
-        with <code>WGSL</code> shaders, driven directly. Networking glue,
-        input plumbing, asset pipeline, audio mixer, math kernels, ECS,
-        physics, collision, pathfinding, fog of war, snapshot serializer,
-        prediction integrator &mdash; all written by us, for this game. The
+        <code>rts-sim-wasm/</code>. The renderer may be built on
+        <code>Three.js</code>, raw <code>WebGL2</code>, or raw
+        <code>WebGPU</code> where each makes sense, but the high-count paths
+        must still be ours: owned typed buffers, explicit update ranges,
+        deliberate shader code, predictable batching, and measured draw-call
+        behavior. Networking glue, input plumbing, asset pipeline, audio mixer,
+        math kernels, ECS, physics, collision, pathfinding, fog of war,
+        snapshot serializer, prediction integrator &mdash; all written by us,
+        for this game. The
         defining trait of this project is that we are <em>building the
         engine</em>, not assembling one.
       </p>
       <p>
         A major goal of this project is to move as much code as possible,
-        whenever possible, out of third-party libraries and out of
-        JavaScript/TypeScript runtime ownership. If a system can reasonably
-        live in <code>Rust</code>/<code>WebAssembly</code>, raw GPU buffers,
-        or shader code, that is where it belongs. JavaScript and TypeScript
-        are coordination layers, not the place we leave game logic, physical
+        whenever possible, out of JavaScript/TypeScript runtime ownership. If a
+        simulation or data-transform system can reasonably live in
+        <code>Rust</code>/<code>WebAssembly</code>, raw GPU buffers, or shader
+        code, that is where it belongs. JavaScript and TypeScript are
+        coordination layers, not the place we leave game logic, physical
         kernels, serialization loops, or high-count data transforms once a
-        Rust/WASM path is viable.
+        Rust/WASM or GPU-buffer path is viable.
       </p>
       <p>
         The libraries currently in <code>package.json</code>
         (<code>three</code>, <code>vue</code>, <code>peerjs</code>,
         <code>@msgpack/msgpack</code>, <code>@tonejs/midi</code>,
-        <code>@tauri-apps/*</code>) are scaffolding. They got the prototype
-        walking; they are not the destination. The Rust sim crate, raw
-        GPU/shader code, and a thin TypeScript orchestration shell are the
-        destination. Every change should leave the codebase with either the
-        same library surface or less; never more.
+        <code>@tauri-apps/*</code>) are tools with different budgets, not all
+        equal sins. <code>Three.js</code> is acceptable as the active renderer
+        shell while it lets us ship faster without hiding the high-count data
+        flow. Vue remains UI-only. Networking, audio, and desktop wrappers are
+        allowed where they are boundary glue. The Rust sim crate, owned
+        GPU/shader data paths, and a thin TypeScript orchestration shell are
+        the destination. Every dependency still needs a reason, and every hot
+        path still needs an owned, inspectable contract.
       </p>
       <ul class="rule-list">
         <li>The default answer to &ldquo;should we add a library for this?&rdquo; is <strong>no</strong>. Write it ourselves, preferably in Rust, ideally in the sim crate.</li>
-        <li>The default answer to &ldquo;can we keep this library?&rdquo; is <strong>only until we have time to replace it</strong>. The renderer migration off Three.js to raw WebGPU is the largest example; smaller libraries should follow the same path.</li>
+        <li>The default answer to &ldquo;can we keep this library?&rdquo; is <strong>only if it preserves ownership of the hot path</strong>. Three.js may stay when it is a renderer shell over our buffers, shaders, culling, and batching; it should not become an excuse for per-object scene-graph work at battlefield scale.</li>
         <li>Adding a new <code>npm</code> or <code>cargo</code> dependency requires a deliberate, named justification &mdash; not a reflex. Vendoring the few lines we actually need is almost always preferable to taking a whole library on.</li>
         <li>Libraries that have already been removed (Phaser, Pixi, Matter.js, standalone matter-js) are gone for good. Do not reintroduce them under any architectural argument. They were tried and failed our scaling rules.</li>
-        <li>&ldquo;In-house&rdquo; means the code is in our repo, in a language we ship from source, that we are willing to debug at any layer. Wrapping a library does not count as in-house ownership.</li>
+        <li>&ldquo;In-house&rdquo; means the behavior, data layout, and performance contract are in our repo, in code we are willing to debug at any layer. A Three.js draw wrapper can still be in-house when the buffers, shaders, update ranges, and culling policy are ours.</li>
         <li>Whenever a Rust/WASM implementation can replace JavaScript or TypeScript functionality, the Rust/WASM version is the active target and the JS/TS version becomes removal work, not a fallback architecture.</li>
         <li>The Rust sim crate is the preferred home for new logic. New TypeScript modules are acceptable for orchestration, but new <em>simulation</em>, <em>physics</em>, <em>math</em>, or <em>per-unit-loop</em> code should land in <code>rts-sim-wasm/</code> from the start, not get written in TS and ported later.</li>
       </ul>
@@ -274,8 +281,9 @@
         the end-state engine looks like and how migrations land; this
         section states why we are doing it: nobody else&rsquo;s engine is
         going to give us thousands of physically-simulated units in a
-        browser, and every library we keep is a ceiling someone else set
-        for us.
+        browser by accident. A library is acceptable only when it helps us
+        reach that target while leaving the hot data flow legible and under
+        our control.
       </p>
     </section>
 
@@ -923,10 +931,11 @@
         or carries large serialization work. Those belong in WebAssembly,
         compiled from Rust, running over typed linear memory with
         SIMD-friendly, struct-of-arrays layouts. The renderer that consumes
-        the engine&rsquo;s output belongs on <code>WebGPU</code> with
-        <code>WGSL</code> shaders, so the GPU can be driven directly with
-        instancing, compute, and large buffers instead of one draw call per
-        object.
+        the engine&rsquo;s output should be data-oriented regardless of backend:
+        it may draw through <code>Three.js</code>, raw <code>WebGL2</code>, or
+        raw <code>WebGPU</code>, but high-count visuals must flow through
+        owned typed buffers, explicit update ranges, instancing, and custom
+        shader code instead of one draw call or one object graph per thing.
       </p>
       <p>
         This is the same commitment that <strong>Languages and Frameworks</strong>
@@ -935,17 +944,17 @@
         layers are stacked so that hot data crosses the JS/WASM boundary as
         rarely as possible, and the JS side never owns the inner loop. The
         end-state shape is a TypeScript shell wrapped around a Rust + WASM
-        simulation that talks to a WebGPU renderer through GPU-resident buffers,
-        with Web Workers and <code>SharedArrayBuffer</code> separating cadences
-        where independent stepping or true cross-thread shared memory pays for
-        itself.
+        simulation that talks to a data-oriented renderer through stable
+        render packets and GPU-resident buffers, with Web Workers and
+        <code>SharedArrayBuffer</code> separating cadences where independent
+        stepping or true cross-thread shared memory pays for itself.
       </p>
 
       <h3>Layer responsibilities</h3>
       <ul class="rule-list">
-        <li><strong>TypeScript shell</strong> &mdash; application boot, asset loading, canvas creation, WebGPU initialization, input collection, UI / menus / dev tools, WebSocket and WebRTC setup, and the bridge that calls into WASM. This layer coordinates; it does not compute.</li>
+        <li><strong>TypeScript shell</strong> &mdash; application boot, asset loading, canvas creation, renderer initialization, input collection, UI / menus / dev tools, WebSocket and WebRTC setup, and the bridge that calls into WASM. This layer coordinates; it does not compute.</li>
         <li><strong>WebAssembly engine (Rust)</strong> &mdash; ECS, physics, collision, pathfinding, visibility and fog, animation state, projectile simulation, spatial queries, culling, and render-packet generation. Everything that runs every tick or every unit lives here.</li>
-        <li><strong>WebGPU + WGSL</strong> &mdash; GPU buffers, pipelines, compute shaders, instanced rendering, post-processing. Where the pixel work happens and where mass parallelism is recovered.</li>
+        <li><strong>Renderer backend</strong> &mdash; currently allowed to use Three.js, raw WebGL2, or raw WebGPU. The backend owns GPU buffers, shader programs, instanced rendering, post-processing, and optional compute work; the architectural requirement is explicit data flow and batch control, not a specific library ban.</li>
         <li><strong>Web Workers + <code>SharedArrayBuffer</code></strong> &mdash; when simulation and render need to step on independent cadences, or when a kernel can be parallelized across cores against shared linear memory without copying.</li>
       </ul>
 
@@ -971,7 +980,7 @@
         <li>Bootstrapping, developer tools, debug overlays.</li>
         <li>Settings, lobby, and the Vue / UI layer.</li>
         <li>Asset loading and input event collection.</li>
-        <li>WebGPU initialization and pipeline assembly.</li>
+        <li>Renderer initialization, asset upload, shader/pipeline assembly, and boundary glue.</li>
         <li>WebSocket / WebRTC setup and the network glue.</li>
         <li>Calling exported WASM functions and marshalling the few values that genuinely need to cross the boundary.</li>
       </ul>
@@ -1017,21 +1026,22 @@
       <h3>Rendering language and API</h3>
       <ul class="rule-list">
         <li>Use GPU-native code for the expensive work: custom <code>GLSL</code> for WebGL2 or <code>WGSL</code> for WebGPU.</li>
-        <li>Prefer raw <code>WebGPU</code> or raw <code>WebGL2</code> for long-term high-count rendering paths where framework overhead blocks scale.</li>
-        <li>Three.js is treated as legacy scaffolding, not endorsed architecture. It can remain in place while it is still productive, but every bottlenecked renderer path should be replaced with owned buffers, owned shaders, and direct instancing &mdash; the end state is raw <code>WebGPU</code> + <code>WGSL</code> with no rendering library in the tree. See <strong>Engine Ownership</strong>.</li>
+        <li>Three.js is an allowed renderer backend. Use it when it provides useful camera, scene, geometry, material, or asset-loading leverage without taking ownership away from our high-count buffers, culling, shader code, update ranges, and draw budgets.</li>
+        <li>Prefer raw <code>WebGPU</code> or raw <code>WebGL2</code> only for renderer paths where Three.js overhead measurably blocks scale or prevents the buffer/shader contract we need.</li>
         <li>Vue is UI only. Vue must not own simulation cadence, render-loop state, per-unit updates, or per-frame battlefield data.</li>
         <li>Do not introduce rendering frameworks that hide draw-call count, buffer ownership, material compilation, culling, or shader control from us.</li>
       </ul>
 
-      <h3>Raw by default</h3>
+      <h3>Owned by default</h3>
       <p>
-        The preferred implementation is owned code in Rust/WASM, TypeScript, and shader code, not a
-        stack of general-purpose frameworks. If a library saves time but costs measurable simulation
-        or rendering throughput, it should be treated as temporary scaffolding. The end-state engine
-        should be raw enough that we know where every per-frame allocation, buffer upload, kernel
-        call, draw call, and branch-heavy world scan comes from. When scaffolding is replaced by
-        owned code, the scaffolding leaves the tree in the same change &mdash; see
-        <strong>Delete The Old Path</strong>.
+        The preferred implementation is owned code in Rust/WASM, TypeScript, and shader code, with
+        libraries acting as boundaries or backends rather than owners of the game&rsquo;s hot behavior.
+        If a library saves time but costs measurable simulation or rendering throughput, that specific
+        path should be rebuilt around owned buffers, owned shaders, and explicit batching. The
+        end-state engine should be transparent enough that we know where every per-frame allocation,
+        buffer upload, kernel call, draw call, and branch-heavy world scan comes from. When a
+        scaffolded path is replaced by an owned one, the scaffolding leaves the tree in the same
+        change &mdash; see <strong>Delete The Old Path</strong>.
       </p>
     </section>
 
@@ -2740,7 +2750,8 @@
       <p>
         Migration is not done when the new path works. Migration is done when the old path is gone.
         As we remove libraries, port hot kernels from TypeScript to Rust/WASM, replace framework
-        helpers with owned code, and rebuild renderer paths on raw GPU APIs, the old implementation
+        helpers with owned code, and rebuild renderer paths around owned buffers or lower-level GPU
+        APIs, the old implementation
         must be removed in the same change that lands the new one. Two implementations of the same
         behavior is two sources of truth, two places to fix bugs, two places to read when something
         looks wrong six months later, and a near certainty that one of them will drift.
@@ -2766,10 +2777,12 @@
       <p>
         We need <strong>one version of code, not separate code between multiple languages or
         libraries</strong>. A physics kernel ported to Rust deletes the TypeScript physics kernel
-        it replaced. A renderer path rebuilt on raw <code>WebGPU</code> / <code>WGSL</code>
-        deletes the Three.js abstraction it replaced. A custom data structure or algorithm that
+        it replaced. A renderer path rebuilt around a direct typed-buffer or custom-shader contract
+        deletes the older per-object renderer path it replaced, whether the final draw still goes
+        through Three.js or a lower-level API. A custom data structure or algorithm that
         supplants a library removes that library from <code>package.json</code>, its lockfile
-        entry, and every import. &ldquo;Working in Rust&rdquo; <em>is</em> the trigger; there is
+        entry, and every import only when the library itself is no longer part of the chosen
+        architecture. &ldquo;Working in Rust&rdquo; <em>is</em> the trigger; there is
         no &ldquo;we&rsquo;ll keep the TS version for safety&rdquo; pause, no
         &ldquo;leave the library installed in case we need it,&rdquo; no parallel-paths phase
         that lingers across more than one commit.
@@ -2786,7 +2799,8 @@
       <p>
         The end-state shape is one implementation per behavior, written in the language that
         layer commits to: Rust/WASM for simulation, physics, and dense numeric work; TypeScript
-        for coordination, UI, and IO; <code>WGSL</code> / raw GPU code for shaders. A behavior
+        for coordination, UI, and IO; custom <code>GLSL</code> / <code>WGSL</code> / GPU-buffer
+        code for renderer hot paths. A behavior
         that exists in two of those languages is a half-finished migration, not a redundancy
         worth preserving. The moment the replacement works, the predecessor is dead code &mdash;
         and dead code in the working tree is treated as a bug to be fixed in the same change,
@@ -2796,7 +2810,7 @@
       <h3>Why this matters here specifically</h3>
       <ul class="rule-list">
         <li>We are actively moving from JavaScript object loops and JavaScript physics math toward Rust/WASM kernels over typed-array linear memory. Leaving the JS implementation alongside the WASM kernel guarantees one becomes the de-facto path and the other rots, undetected, until something invokes it and produces a result that disagrees with the live path.</li>
-        <li>We are moving from Three.js convenience helpers toward owned buffers, owned shaders, and direct instancing. A renderer with both shapes present makes it impossible to reason about draw-call count, allocation behavior, material compilation, or culling &mdash; the two paths interfere even when only one is supposed to be active.</li>
+        <li>We are moving from per-object Three.js convenience helpers toward owned buffers, owned shaders, and direct instancing. Three.js may remain the backend, but a renderer with two active paths for the same visual makes it impossible to reason about draw-call count, allocation behavior, material compilation, or culling &mdash; the two paths interfere even when only one is supposed to be active.</li>
         <li>Pooled DTOs, prediction state, snapshot buffers, and entity-state shapes are sensitive to dead code paths that still write to them. A &ldquo;removed&rdquo; system that still touches pooled fields is a class of zombie-write bug that does not surface in normal tests.</li>
         <li>Future readers &mdash; including future-us &mdash; should never have to ask &ldquo;is this the current path or the old one?&rdquo;. The codebase should answer that question by only containing the current path.</li>
       </ul>
@@ -2903,10 +2917,10 @@
         <li>Route every resource movement &mdash; production, consumption, construction payment, conversion, repair drain, future ammo costs &mdash; through one shared pylon abstraction in both simulation and renderer. One typed channel publishes <code>(resource, amount, direction, source, optional target)</code>; one rig renders the flow as resource balls travelling through a conduit, their density showing magnitude and their travel direction showing inbound or outbound. A pylon is a tube between a <em>root</em> (the pool tap) and a <em>tip</em> (the world); balls down the tube mean gaining, up the tube mean spending, and the tip conserves &mdash; every ball up the tube exits the tip, every ball into the tip goes down the tube, and balls are spawned or sunk only at the root and the world point, never at the tip. Producers source balls at the physical world point (deposit, sun, upwind) and run them down the tube; construction turrets run balls up the tube and out the tip onto the build target; the converter joins its two tips with a taxed arc that recolors energy into metal in flight, the unconverted fraction visibly dispersing. The flowing balls are the sole indicator; standalone usage readouts and any separate magnitude bar are retired. No parallel resource paths in the sim, no special-case &ldquo;production trickle&rdquo; or &ldquo;converter visual&rdquo; in the renderer.</li>
         <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>
         <li>Keep files small. If a file is large, split cohesive behavior into helper functions exported from focused helper files and import them; never duplicate code and never let file size become the reason a behavior is hard to find, test, port, or delete.</li>
-        <li>When a replacement lands &mdash; a WASM kernel for a JS loop, owned shaders for a framework helper, a raw renderer path for a Three.js abstraction, a removed library &mdash; delete the predecessor in the same change. Migration is not done until the old path is gone from the tree.</li>
+        <li>When a replacement lands &mdash; a WASM kernel for a JS loop, owned shaders for a framework helper, an owned-buffer renderer path for an older per-object path, a removed library &mdash; delete the predecessor in the same change. Migration is not done until the old path is gone from the tree.</li>
         <li>Prefer explicit <code>null</code> (or numeric sentinels) over optional properties and optional chaining in our own code; treat every file you touch as an opportunity to migrate fields off <code>?:</code> and <code>?.</code>.</li>
-        <li>Use Rust/WASM, TypeScript orchestration, and custom GPU shader code; keep frameworks out of simulation and rendering hot paths.</li>
-        <li>Stack the runtime so TypeScript coordinates and WASM computes: the TS shell handles boot, UI, IO, and WASM calls; the Rust/WASM engine owns every per-unit and per-tick loop; WebGPU/WGSL owns the GPU buffers, instancing, and compute work. Hot data should cross the JS/WASM boundary as rarely as the design allows.</li>
+        <li>Use Rust/WASM, TypeScript orchestration, and custom GPU shader code; keep frameworks out of simulation hot paths and keep renderer framework use behind owned buffer, shader, culling, and batching contracts.</li>
+        <li>Stack the runtime so TypeScript coordinates and WASM computes: the TS shell handles boot, UI, IO, and WASM calls; the Rust/WASM engine owns every per-unit and per-tick loop; the renderer backend owns GPU buffers, instancing, shader programs, and optional compute work. Hot data should cross the JS/WASM boundary as rarely as the design allows.</li>
         <li>Author blueprints, tuning tables, maps, and other content as JSON data validated by a shared schema, not as TypeScript modules. Data the Rust/WASM simulation cannot read is a wall that prevents the TS-to-Rust migration from ever completing.</li>
         <li>Move dense numeric kernels toward WASM when batching can beat JS object loops.</li>
         <li>Design every feature with 5,000 units in mind before celebrating it at 50 units.</li>

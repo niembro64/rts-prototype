@@ -18,27 +18,30 @@ Please always commit and push before and after any code changes we make.
 
 RENDERING PIPELINE AUDIT - 2026-06-04
 
-1. The renderer is still centered on Three.js instead of the target raw
-   WebGPU/WGSL architecture.
+1. Some high-count renderer paths still lean on object-style Three.js APIs
+   instead of owned buffer contracts.
 
 Evidence:
 - src/game/render3d/ThreeApp.ts owns the main renderer and the render tree is
   composed from many Three.js-specific renderers, meshes, materials, and
   instanced helpers.
-- budget_design_philosophy.html says Three.js is legacy scaffolding and the
-  long-term renderer should use owned buffers, explicit WGSL, and predictable
-  batched data flow.
+- budget_design_philosophy.html now allows Three.js as the renderer backend,
+  but still requires high-count paths to use owned typed buffers, explicit
+  update ranges, custom shader code, predictable batching, and measurable
+  draw-call behavior.
+- Recent projectile work moved one hot path from setMatrixAt/setColorAt calls
+  toward direct typed-buffer writes, but similar patterns remain in unit
+  detail instances, legs, terrain/fog/shield overlays, HUD/nameplate packets,
+  and support surface debug visualization.
 
 Problem:
-The current architecture makes it easy to add more object-oriented Three.js
-render paths, but the project target is data-oriented rendering. Each new
-Three.js path increases migration cost and can hide JS allocation or buffer
-upload costs behind library abstractions.
+The current architecture can still hide allocation, culling, material, or
+buffer-upload costs behind object-oriented Three.js helper APIs. Three.js is
+allowed, but high-count paths must expose the data flow clearly enough to
+audit and eventually move to lower-level GPU APIs if needed.
 
 Required fix:
-Stop adding new high-count visuals as bespoke Three.js object graphs. Identify
-and migrate the highest-count paths first, such as unit detail instances, legs,
-projectiles, terrain/fog/shield overlays, HUD/nameplate packets, and support
-surface debug visualization. Replacement paths should use owned typed buffers,
-explicit update ranges, and delete the old Three.js path once the new path is
-active.
+Stop adding new high-count visuals as bespoke Three.js object graphs. Continue
+migrating the highest-count paths to owned typed buffers, explicit update
+ranges, stable render packets, and custom shader contracts. Delete older
+per-object or duplicate paths once the owned-buffer path is active.
