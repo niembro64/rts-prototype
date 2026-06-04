@@ -22,6 +22,11 @@ export type ImpactContext = {
   penetrationDir: Vec2;
 };
 
+export type WaterSplashContext = {
+  velocity: Vec3;
+  mass: number;
+};
+
 export type SimDeathContext = {
   unitVel: Vec2;
   hitDir: Vec2;
@@ -95,6 +100,7 @@ export type SimEvent = {
   entityId?: EntityId;
   deathContext?: SimDeathContext;
   impactContext?: ImpactContext;
+  waterSplash?: WaterSplashContext;
   shieldImpact?: ShieldImpactContext;
   /** For 'death' events: the playerId that owned the killer (the
    *  entity dealing the killing blow). Drives the kill-credit routing

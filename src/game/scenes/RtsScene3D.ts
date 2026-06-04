@@ -1038,11 +1038,23 @@ export class RtsScene3D {
         effectGfx.fireExplosionStyle,
       );
     } else if (event.type === 'waterSplash') {
+      const splash = event.waterSplash;
       const ctx = event.impactContext;
-      const mass = ctx ? finiteAtLeast(ctx.radiusCollision, 1, 1) : 2;
-      const vx = ctx ? finiteOr(ctx.projectile.vel.x, 0) : 0;
-      const vy = ctx ? finiteOr(ctx.projectile.vel.y, 0) : 0;
-      this.waterSplashRenderer.spawn(event.pos.x, event.pos.y, vx, vy, mass);
+      const fallbackVelocity = {
+        x: ctx ? finiteOr(ctx.projectile.vel.x, 0) : 0,
+        y: ctx ? finiteOr(ctx.projectile.vel.y, 0) : 0,
+        z: 0,
+      };
+      const mass = splash
+        ? finiteAtLeast(splash.mass, 0.001, 1)
+        : ctx
+          ? finiteAtLeast(ctx.radiusCollision, 1, 1)
+          : 2;
+      this.waterSplashRenderer.createSplash(
+        event.pos,
+        splash ? splash.velocity : fallbackVelocity,
+        mass,
+      );
       // Surface ripple — reuse the shield impact ring as
       // the spreading surface-reflection flash. Same material
       // contract (Materials Are Independent Of Shape): a circular

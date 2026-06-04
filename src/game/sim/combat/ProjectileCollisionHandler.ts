@@ -17,7 +17,7 @@ import { beamIndex } from '../BeamIndex';
 import type { DamageResult, DeathContext } from '../damage/types';
 import { buildImpactContext, applyKnockbackForces, collectKillsAndDeathContexts, emitBeamHitAudio } from './damageHelpers';
 import { createProjectileConfigFromShot } from '../projectileConfigs';
-import { getSurfaceNormal, isWaterAt } from '../Terrain';
+import { getSurfaceNormal, isWaterAt, WATER_LEVEL } from '../Terrain';
 import { spatialGrid } from '../SpatialGrid';
 import { LAND_CELL_SIZE } from '../../../config';
 import { getActiveShields } from './shieldTurret';
@@ -1540,12 +1540,21 @@ export function checkProjectileCollisions(
     // returned visual event plus despawn diff for TypeScript to apply.
     if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_WATER_SPLASH_EVENT) !== 0) {
       const projRadius = runtimeProfile.radius.collision;
+      const splashMass = isProjectileShot(config.shot) ? config.shot.mass : projRadius;
       audioEvents.push({
         type: 'waterSplash',
         turretBlueprintId: shotBlueprintId,
-        pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+        pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: WATER_LEVEL },
         playerId: projEntity.ownership.playerId,
         entityId: projEntity.id,
+        waterSplash: {
+          velocity: {
+            x: proj.velocityX ?? 0,
+            y: proj.velocityY ?? 0,
+            z: proj.velocityZ ?? 0,
+          },
+          mass: splashMass,
+        },
         impactContext: buildImpactContext(
           config, projEntity.transform.x, projEntity.transform.y,
           proj.velocityX ?? 0, proj.velocityY ?? 0,

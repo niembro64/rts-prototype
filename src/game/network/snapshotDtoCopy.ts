@@ -221,6 +221,7 @@ export function createSimEventDto(): NetworkServerSnapshotSimEvent {
     entityId: null,
     deathContext: null,
     impactContext: null,
+    waterSplash: null,
     shieldImpact: null,
     killerPlayerId: null,
     victimPlayerId: null,
@@ -248,6 +249,12 @@ export function copySimEventInto(
   // the surrounding event-emit work.
   dst.deathContext = src.deathContext;
   dst.impactContext = src.impactContext;
+  dst.waterSplash = src.waterSplash
+    ? {
+        velocity: { ...src.waterSplash.velocity },
+        mass: src.waterSplash.mass,
+      }
+    : null;
   dst.shieldImpact = src.shieldImpact
     ? {
         normal: { ...src.shieldImpact.normal },

@@ -39,6 +39,7 @@ function createPooledSimEvent(): NetworkServerSnapshotSimEvent {
     entityId: null,
     deathContext: null,
     impactContext: null,
+    waterSplash: null,
     shieldImpact: null,
     killerPlayerId: null,
     victimPlayerId: null,
@@ -150,6 +151,7 @@ export function serializeAudioEvents(
     out.entityId = source.entityId ?? null;
     out.deathContext = source.deathContext ?? null;
     out.impactContext = source.impactContext ?? null;
+    out.waterSplash = source.waterSplash ?? null;
     out.shieldImpact = source.shieldImpact ?? null;
     out.killerPlayerId = source.killerPlayerId ?? null;
     out.victimPlayerId = source.victimPlayerId ?? null;

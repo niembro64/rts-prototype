@@ -15,3 +15,163 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 
 Please always commit and push before and after any code changes we make.
 ================================================================================
+
+RENDERING PIPELINE AUDIT - 2026-06-04
+
+1. Unit drawing does not obey the client bar all/camera/pad render scope.
+
+Evidence:
+- src/game/render3d/Render3DEntities.ts calls refreshLocomotionSupportSurfaces()
+  with clientViewState.getUnitsAndBuildings() on every update.
+- Render3DEntities.updateUnits() reads clientViewState.getUnits() and updates
+  every unit mesh, locomotion rig, turret target, fading mesh, detail instance,
+  path preview, shield state, and selection-related visual state at render
+  cadence.
+- The file explicitly documents that pose, locomotion, and turret updates ignore
+  the render scope so screen-edge units do not pop.
+- The client bar already has a RENDER option for ALL/WIN/PAD. The authored
+  config stores those as all/window/padded, which correspond to the intended
+  all/camera/pad draw choices.
+- src/game/network/ClientViewState.ts has collectActiveUnitRenderEntities(), but
+  the renderer does not use it.
+
+Problem:
+This contradicts budget_design_philosophy.html: off-screen units should skip
+frontend locomotion/pose work for free, and TypeScript should not own per-unit
+hot loops at battle scale. The current path scales with every client-visible
+unit regardless of whether the client bar is set to draw all units, only the
+camera footprint, or the camera footprint plus pad.
+
+Required fix:
+Use the client bar render option as the source of truth for what gets drawn:
+- all: draw/update all client-visible render entities.
+- camera: draw/update only entities inside the current camera footprint.
+- pad: draw/update entities inside the camera footprint plus the configured
+  padding margin.
+Feed expensive unit visual work from that mode-selected render packet instead
+of getUnits(). The packet should still include explicit visual exceptions when
+needed for selected, hovered, active-prediction, dying/fading, recently fired,
+or relevant HUD/selection state. The packet should come from a spatially indexed
+or WASM/typed-buffer-backed source, not a fresh full-world JavaScript scan. Keep
+gameplay prediction independent of the draw scope.
+
+2. Support-surface indexing rebuilds and allocates every render frame.
+
+Evidence:
+- src/game/render3d/Render3DEntities.ts rebuilds locomotion support surfaces from
+  clientViewState.getUnitsAndBuildings() every update.
+- src/game/sim/supportSurfaceIndex.ts clears maps and creates fresh proxy
+  objects when rebuilding support surfaces.
+- SupportSurfaceIndex.findBestProxy() returns a fresh result object on hits.
+
+Problem:
+Locomotion sampling is on the visual hot path, and the current support-surface
+index creates garbage proportional to the number of support-capable entities,
+plus result objects during queries. This violates the no-allocation hot-loop
+rule and adds full-world work before any camera culling can help.
+
+Required fix:
+Make support-surface data incremental or reusable. Reuse proxy structs and
+bucket storage, use numeric keys or typed arrays where practical, and only
+rebuild changed buckets when support footprints move or appear/disappear. Query
+results should be returned through caller-owned scratch storage or split into
+primitive fields so sampling does not allocate.
+
+3. Building local-vision source collection allocates per source every frame.
+
+Evidence:
+- src/game/render3d/BuildingEntityRenderer3D.ts refreshLocalVisionSources()
+  clears localVisionSources but pushes a new { x, y, radius } object for each
+  owned building with full vision.
+
+Problem:
+The method comment says the array is pre-allocated, but the entries are not.
+Owned full-vision buildings generate garbage every render update.
+
+Required fix:
+Reuse VisionSource objects by index, convert the collection to struct-of-arrays,
+or consume a cached typed visibility packet from the snapshot/visibility system.
+Reset length after writing reused slots instead of allocating new objects.
+
+4. Scoped render phase still performs whole-world entity scans.
+
+Evidence:
+- src/game/scenes/helpers/RtsScene3DRenderPhase.ts prepareEntityLists() loops
+  over clientViewState.getUnitsAndBuildings() in scoped modes and filters each
+  entity with entityInRenderScope().
+- The same render phase separately scans projectiles and other render caches to
+  build HUD, shield, ground-print, and nameplate packets.
+- src/game/render3d/BuildingEntityRenderer3D.ts still updates all buildings each
+  frame before scoped render-phase filtering.
+
+Problem:
+The render phase has typed packet buffers, but packet population still does
+JavaScript full-list iteration each frame. Scoped render modes reduce draw work
+after the scan rather than avoiding the scan.
+
+Required fix:
+Back scoped render packets with spatially culled render lists. Keep the existing
+packet objects and scratch arrays, but fill them from visible-cell/entity
+indices plus explicit exceptions for selected, hovered, and recently relevant
+entities. Building rendering should get the same treatment instead of updating
+all buildings every frame.
+
+5. Debug build-grid rendering allocates heavily when enabled.
+
+Evidence:
+- src/game/render3d/TerrainTileRenderer3D.ts refreshBuildGridTexture() builds a
+  string deposit key with map().join(), creates Set<string> occupancy data, and
+  formats string cell keys inside grid loops.
+
+Problem:
+The path is debug-only, but when BUILD debug mode is enabled it performs
+allocation-heavy whole-grid work. That can hide real render performance problems
+while profiling build placement, terrain, or fog work.
+
+Required fix:
+Use numeric cell keys, typed occupancy masks, and terrain/building/deposit
+version counters. Rebuild the debug texture only when an input version changes.
+
+6. The renderer is still centered on Three.js instead of the target raw
+   WebGPU/WGSL architecture.
+
+Evidence:
+- src/game/render3d/ThreeApp.ts owns the main renderer and the render tree is
+  composed from many Three.js-specific renderers, meshes, materials, and
+  instanced helpers.
+- budget_design_philosophy.html says Three.js is legacy scaffolding and the
+  long-term renderer should use owned buffers, explicit WGSL, and predictable
+  batched data flow.
+
+Problem:
+The current architecture makes it easy to add more object-oriented Three.js
+render paths, but the project target is data-oriented rendering. Each new
+Three.js path increases migration cost and can hide JS allocation or buffer
+upload costs behind library abstractions.
+
+Required fix:
+Stop adding new high-count visuals as bespoke Three.js object graphs. Identify
+and migrate the highest-count paths first, such as unit detail instances, legs,
+projectiles, terrain/fog/shield overlays, HUD/nameplate packets, and support
+surface debug visualization. Replacement paths should use owned typed buffers,
+explicit update ranges, and delete the old Three.js path once the new path is
+active.
+
+7. Auxiliary WebGL renderers are outside the main renderer singleton budget.
+
+Evidence:
+- src/game/lifecycle/sessionSingleton.ts limits active main GameInstance and
+  renderer ownership.
+- Loading previews, commander/avatar previews, and the world-direction HUD create
+  their own WebGLRenderer instances outside that singleton.
+
+Problem:
+These contexts appear to have teardown paths, so this is not currently a proven
+leak. It is still an unbudgeted GPU-memory/context-count risk on low-end
+devices, especially during loading or UI-heavy screens where preview renderers
+and the main renderer may overlap.
+
+Required fix:
+Add renderer/context-count telemetry and an explicit auxiliary-renderer budget.
+Prefer shared rendering, canvas-2D, or a disabled/low-memory fallback for UI
+previews and HUDs when the main game renderer is active.

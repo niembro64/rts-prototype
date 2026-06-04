@@ -10,14 +10,16 @@
 // built directly from its velocity vector so the long axis aligns
 // with direction of travel — real water droplets read as streaks,
 // not as spheres, because surface tension elongates a fast-moving
-// drop along its motion. A spawn deposits droplets in three groups
+// drop along its motion. A splash deposits droplets in three groups
 // (vertical jet at the impact, forward-biased crown, forward-biased
-// spray) so the splash reads as a real directional impact instead
-// of an isotropic puff. No per-frame allocations.
+// spray) so the visual is driven by the impacting body's 3D position,
+// 3D velocity, and mass instead of an isotropic puff. No per-frame
+// allocations.
 
 import * as THREE from 'three';
 import { WATER_LEVEL } from '../sim/Terrain';
 import { SPLASH_CONFIG } from '@/splashConfig';
+import type { Vec3 } from '@/types/vec2';
 import { disposeMesh } from './threeUtils';
 
 const VS = `
@@ -110,54 +112,53 @@ export class WaterSplash3D {
     }
   }
 
-  /** Spawn a water-splash burst.
-   *  @param simX sim X at impact
-   *  @param simY sim Y at impact (becomes three Z)
-   *  @param incomingVelX horizontal sim X velocity at impact
-   *  @param incomingVelY horizontal sim Y velocity at impact
-   *  @param mass projectile mass surrogate (collision radius)
-   */
-  spawn(
-    simX: number,
-    simY: number,
-    incomingVelX: number,
-    incomingVelY: number,
-    mass: number,
-  ): void {
+  /** Create a water splash from physical impact inputs in sim coords. */
+  createSplash(position: Readonly<Vec3>, velocity: Readonly<Vec3>, massInput: number): void {
     const cfg = SPLASH_CONFIG;
+    const incomingVelX = finiteOrZero(velocity.x);
+    const incomingVelY = finiteOrZero(velocity.y);
+    const incomingVelZ = finiteOrZero(velocity.z);
+    const mass = Math.max(0, finiteOrZero(massInput));
     const horizSpeed = Math.sqrt(
       incomingVelX * incomingVelX + incomingVelY * incomingVelY,
     );
-    const descentSpeed =
-      Math.max(cfg.descent.minSpeed, horizSpeed * cfg.descent.horizScale)
-      + mass * cfg.descent.massScale;
-    const energy = descentSpeed + horizSpeed;
+    const impactSpeed = Math.sqrt(
+      horizSpeed * horizSpeed + incomingVelZ * incomingVelZ,
+    );
+    const downwardSpeed = Math.max(0, -incomingVelZ);
+    const impactImpulse = Math.max(
+      cfg.descent.minSpeed,
+      impactSpeed * cfg.descent.velocityScale +
+        downwardSpeed * cfg.descent.downwardScale +
+        mass * cfg.descent.massScale,
+    );
 
     const total = Math.max(
       cfg.count.minTotal,
       Math.min(
         cfg.pool.maxDropletsPerSpawn,
-        Math.floor(mass * cfg.count.massScale + energy / cfg.count.energyDivisor),
+        Math.floor(mass * cfg.count.massScale + impactImpulse / cfg.count.energyDivisor),
       ),
     );
     const jetCount = Math.max(2, Math.floor(total * cfg.count.jetFraction));
     const crownCount = Math.max(2, Math.floor(total * cfg.count.crownFraction));
     const sprayCount = Math.max(0, total - jetCount - crownCount);
 
-    const hSpeedSafe = horizSpeed > 0.001 ? horizSpeed : 1;
-    const fwdX = incomingVelX / hSpeedSafe;
-    const fwdZ = incomingVelY / hSpeedSafe;
+    const hasForwardDirection = horizSpeed > 0.001;
+    const hSpeedSafe = hasForwardDirection ? horizSpeed : 1;
+    const fwdX = hasForwardDirection ? incomingVelX / hSpeedSafe : 0;
+    const fwdZ = hasForwardDirection ? incomingVelY / hSpeedSafe : 0;
 
-    const reboundUp = descentSpeed * cfg.rebound.verticalFraction;
+    const reboundUp = impactImpulse * cfg.rebound.verticalFraction;
     const lateralCarry = horizSpeed * cfg.rebound.lateralCarryFraction;
     const widthBase = Math.max(
       cfg.dropletWidth.min,
       mass * cfg.dropletWidth.massScale,
     );
 
-    const threeX = simX;
-    const threeZ = simY;
-    const threeY = WATER_LEVEL;
+    const threeX = finiteOrZero(position.x);
+    const threeZ = finiteOrZero(position.y);
+    const threeY = finiteOr(position.z, WATER_LEVEL);
 
     // --- Vertical jet.
     const jet = cfg.jet;
@@ -179,7 +180,7 @@ export class WaterSplash3D {
     const crown = cfg.crown;
     for (let i = 0; i < crownCount; i++) {
       const theta = crown.thetaMinRad + Math.random() * crown.thetaRangeRad;
-      const phi = forwardBiasedPhi(fwdX, fwdZ);
+      const phi = forwardBiasedPhi(fwdX, fwdZ, hasForwardDirection);
       if (!this.seed(
         threeX, threeY, threeZ,
         theta, phi,
@@ -196,7 +197,7 @@ export class WaterSplash3D {
     const spray = cfg.spray;
     for (let i = 0; i < sprayCount; i++) {
       const theta = Math.random() * spray.thetaRangeRad;
-      const phi = forwardBiasedPhi(fwdX, fwdZ);
+      const phi = forwardBiasedPhi(fwdX, fwdZ, hasForwardDirection);
       if (!this.seed(
         threeX, threeY, threeZ,
         theta, phi,
@@ -330,8 +331,17 @@ export class WaterSplash3D {
   }
 }
 
+function finiteOr(value: number, fallback: number): number {
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function finiteOrZero(value: number): number {
+  return finiteOr(value, 0);
+}
+
 /** Pick a phi angle biased toward the incoming horizontal direction. */
-function forwardBiasedPhi(fwdX: number, fwdZ: number): number {
+function forwardBiasedPhi(fwdX: number, fwdZ: number, hasForwardDirection: boolean): number {
+  if (!hasForwardDirection) return Math.random() * Math.PI * 2;
   const bias = SPLASH_CONFIG.forwardBias;
   const baseHeading = Math.atan2(fwdZ, fwdX);
   if (Math.random() < bias.weightedFraction) {

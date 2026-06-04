@@ -1628,6 +1628,10 @@ type ImpactContextFixture = {
   entity: { vel: { x: number; y: number }; radiusCollision: number };
   penetrationDir: { x: number; y: number };
 };
+type WaterSplashContextFixture = {
+  velocity: { x: number; y: number; z: number };
+  mass: number;
+};
 type AudioEventFixture = {
   type: AudioEventType;
   turretBlueprintId: string;
@@ -1645,6 +1649,7 @@ type AudioEventFixture = {
   audioOnly?: boolean;
   deathContext?: DeathContextFixture;
   impactContext?: ImpactContextFixture;
+  waterSplash?: WaterSplashContextFixture;
 };
 
 const DEATH_CONTEXT_STRIDE = 16;
@@ -1737,7 +1742,7 @@ function packImpactContextsIntoScratch(
   }
 }
 
-const AUDIO_EVENT_SCRATCH_STRIDE = 16;
+const AUDIO_EVENT_SCRATCH_STRIDE = 20;
 
 function packAudioEventsIntoScratch(
   memory: WebAssembly.Memory,
@@ -1781,6 +1786,14 @@ function packAudioEventsIntoScratch(
     if (e.deathContext !== undefined) flags |= 0x200;
     if (e.impactContext !== undefined) flags |= 0x400;
     view[base + 15] = flags;
+    if (e.waterSplash !== undefined) {
+      flags |= 0x800;
+      view[base + 16] = e.waterSplash.velocity.x;
+      view[base + 17] = e.waterSplash.velocity.y;
+      view[base + 18] = e.waterSplash.velocity.z;
+      view[base + 19] = e.waterSplash.mass;
+      view[base + 15] = flags;
+    }
   }
 }
 
@@ -2621,6 +2634,21 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           projectile: { pos: { x: 600, y: 600 }, vel: { x: 50, y: 0 } },
           entity: { vel: { x: 0, y: 0 }, radiusCollision: 12 },
           penetrationDir: { x: 1, y: 0 },
+        },
+      }],
+      isDelta: true,
+    },
+    // audioEvents — waterSplash carries physical 3D velocity + mass.
+    {
+      tick: 14125, entities: [], economy: {},
+      audioEvents: [{
+        type: 'waterSplash',
+        turretBlueprintId: 'shot.shell',
+        pos: { x: 640, y: 604, z: 0 },
+        entityId: 410,
+        waterSplash: {
+          velocity: { x: 120, y: -30, z: -80 },
+          mass: 30,
         },
       }],
       isDelta: true,

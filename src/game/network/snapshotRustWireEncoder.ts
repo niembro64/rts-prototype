@@ -1328,6 +1328,7 @@ const EVENT_HAS_AUDIO_ONLY = 0x080;
 const EVENT_AUDIO_ONLY_VALUE = 0x100;
 const EVENT_HAS_DEATH_CONTEXT = 0x200;
 const EVENT_HAS_IMPACT_CONTEXT = 0x400;
+const EVENT_HAS_WATER_SPLASH_CONTEXT = 0x800;
 
 const DEATH_HAS_VISUAL_RADIUS = 0x01;
 const DEATH_HAS_COLLISION_RADIUS = 0x02;
@@ -1501,6 +1502,7 @@ function packPackedAudioEventsIntoScratch(
     }
     if (event.deathContext !== null) flags |= EVENT_HAS_DEATH_CONTEXT;
     if (event.impactContext !== null) flags |= EVENT_HAS_IMPACT_CONTEXT;
+    if (event.waterSplash !== null) flags |= EVENT_HAS_WATER_SPLASH_CONTEXT;
 
     view[base + 0] = AUDIO_EVENT_TYPE_CODES[event.type];
     view[base + 1] = quantizeProjectilePosition(event.pos.x);
@@ -1528,6 +1530,18 @@ function packPackedAudioEventsIntoScratch(
       ? stringSlots.get(event.sourceKey) ?? 0
       : 0;
     view[base + 15] = flags;
+    view[base + 16] = event.waterSplash !== null
+      ? quantizeVelocity(event.waterSplash.velocity.x)
+      : 0;
+    view[base + 17] = event.waterSplash !== null
+      ? quantizeVelocity(event.waterSplash.velocity.y)
+      : 0;
+    view[base + 18] = event.waterSplash !== null
+      ? quantizeVelocity(event.waterSplash.velocity.z)
+      : 0;
+    view[base + 19] = event.waterSplash !== null
+      ? event.waterSplash.mass
+      : 0;
   }
 }
 

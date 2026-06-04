@@ -315,9 +315,9 @@
     "turretDrag": 0.15,
     "barrel": {
       "type": "simpleMultiBarrel",
-      "barrelCount": 6,
+      "barrelCount": 3,
       "barrelLength": 1,
-      "orbitRadius": 0.9,
+      "orbitRadius": 0.7,
       "spin": {
         "idle": 2,
         "max": 10,
@@ -367,7 +367,7 @@
     },
     "kind": "attack",
     "emissionKind": "shot",
-    "emissionBlueprintId": "shotMortarMedium"
+    "emissionBlueprintId": "shotMortarHeavy"
   },
   "turretGatling": {
     "turretBlueprintId": "turretGatling",
@@ -475,7 +475,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 8,
+      "visual": null,
       "hitbox": 6,
       "collision": 8
     },
@@ -1143,7 +1143,7 @@
       "type": "simpleMultiBarrel",
       "barrelCount": 3,
       "barrelLength": 1,
-      "orbitRadius": 0.45,
+      "orbitRadius": 0.7,
       "spin": {
         "idle": 2,
         "max": 14,
@@ -1179,7 +1179,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 4,
+      "visual": 20,
       "hitbox": 3,
       "collision": 4
     },
@@ -1244,7 +1244,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 7,
+      "visual": 20,
       "hitbox": 5.25,
       "collision": 7
     },

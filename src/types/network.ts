@@ -201,7 +201,14 @@ export function codeToTurretBlueprintId(c: number): TurretBlueprintId | null {
   return _TURRET_BLUEPRINT_IDS[c] ?? null;
 }
 import type { Command } from './commands';
-import type { SimEventAudioKey, ImpactContext, SimDeathContext, SimEventSourceType, ShieldImpactContext } from './combat';
+import type {
+  SimEventAudioKey,
+  ImpactContext,
+  SimDeathContext,
+  SimEventSourceType,
+  ShieldImpactContext,
+  WaterSplashContext,
+} from './combat';
 import type { ShieldReflectionMode } from './shotTypes';
 import type { Vec2, Vec3 } from './vec2';
 import type { SnapshotCompressionFormat } from './config';
@@ -353,6 +360,7 @@ export type NetworkServerSnapshotSimEvent = {
   entityId: number | null;
   deathContext: SimDeathContext | null;
   impactContext: ImpactContext | null;
+  waterSplash: WaterSplashContext | null;
   shieldImpact: ShieldImpactContext | null;
   /** For 'death' events: playerId of the entity that landed the
    *  killing blow. Carries through serializeAudioEvents' kill-credit

@@ -13,7 +13,7 @@ import {
   quantizeVelocity,
 } from './snapshotQuantization';
 
-const PACKED_AUDIO_EVENTS_VERSION = 1;
+const PACKED_AUDIO_EVENTS_VERSION = 2;
 
 const EVENT_HAS_SOURCE_TYPE = 0x001;
 const EVENT_HAS_SOURCE_KEY = 0x002;
@@ -26,6 +26,7 @@ const EVENT_HAS_AUDIO_ONLY = 0x080;
 const EVENT_AUDIO_ONLY_VALUE = 0x100;
 const EVENT_HAS_DEATH_CONTEXT = 0x200;
 const EVENT_HAS_IMPACT_CONTEXT = 0x400;
+const EVENT_HAS_WATER_SPLASH_CONTEXT = 0x800;
 
 const DEATH_HAS_VISUAL_RADIUS = 0x01;
 const DEATH_HAS_COLLISION_RADIUS = 0x02;
@@ -186,6 +187,7 @@ export function packAudioEventsForWire(
     }
     if (event.deathContext !== null) flags |= EVENT_HAS_DEATH_CONTEXT;
     if (event.impactContext !== null) flags |= EVENT_HAS_IMPACT_CONTEXT;
+    if (event.waterSplash !== null) flags |= EVENT_HAS_WATER_SPLASH_CONTEXT;
 
     const row = rentRow(_packEventRowPool);
     row.push(
@@ -216,6 +218,14 @@ export function packAudioEventsForWire(
     if (event.killerPlayerId !== null) row.push(event.killerPlayerId);
     if (event.victimPlayerId !== null) row.push(event.victimPlayerId);
     if (event.audioOnly !== null) row.push(event.audioOnly ? 1 : 0);
+    if (event.waterSplash !== null) {
+      row.push(
+        quantizeVelocity(event.waterSplash.velocity.x),
+        quantizeVelocity(event.waterSplash.velocity.y),
+        quantizeVelocity(event.waterSplash.velocity.z),
+        event.waterSplash.mass,
+      );
+    }
     if (event.deathContext !== null) {
       appendDeathContextRow(event.deathContext, strings, stringSlots, deathRows, turretPoseRows);
     }
@@ -282,6 +292,7 @@ export function unpackAudioEventsFromWire(
       entityId: null,
       deathContext: null,
       impactContext: null,
+      waterSplash: null,
       shieldImpact: null,
       killerPlayerId: null,
       victimPlayerId: null,
@@ -309,6 +320,16 @@ export function unpackAudioEventsFromWire(
     if ((flags & EVENT_HAS_KILLER_PLAYER_ID) !== 0) event.killerPlayerId = row[cursor++];
     if ((flags & EVENT_HAS_VICTIM_PLAYER_ID) !== 0) event.victimPlayerId = row[cursor++];
     if ((flags & EVENT_HAS_AUDIO_ONLY) !== 0) event.audioOnly = row[cursor++] !== 0;
+    if ((flags & EVENT_HAS_WATER_SPLASH_CONTEXT) !== 0) {
+      event.waterSplash = {
+        velocity: {
+          x: dequantizeVelocity(row[cursor++] ?? 0),
+          y: dequantizeVelocity(row[cursor++] ?? 0),
+          z: dequantizeVelocity(row[cursor++] ?? 0),
+        },
+        mass: row[cursor++] ?? 0,
+      };
+    }
     if ((flags & EVENT_HAS_DEATH_CONTEXT) !== 0) {
       const result = unpackDeathContextRow(
         deathRows[deathOffset++],

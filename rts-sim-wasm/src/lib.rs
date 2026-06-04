@@ -27703,13 +27703,13 @@ pub fn snapshot_encode_impact_context_scratch_ensure(count: u32) {
 ///   [0]    type_code (0='fire', 1='hit', 2='death', 3='laserStart',
 ///           4='laserStop', 5='shieldStart', 6='shieldStop',
 ///           7='shieldImpact', 8='ping', 9='attackAlert',
-///           10='projectileExpire')
-///   [1..4] pos.x, pos.y, pos.z (always present)
+///           10='projectileExpire', 11='waterSplash')
+///   [1..3] pos.x, pos.y, pos.z (always present)
 ///   [4]    playerId (gated by flags bit 2)
 ///   [5]    entityId (gated by flags bit 3)
 ///   [6]    killerPlayerId (gated by flags bit 5)
 ///   [7]    victimPlayerId (gated by flags bit 6)
-///   [8..11] shieldImpact.normal.x/y/z (gated by flags bit 4)
+///   [8..10] shieldImpact.normal.x/y/z (gated by flags bit 4)
 ///   [11]   shieldImpact.playerId
 ///   [12]   sourceType_code (gated by flags bit 0; 0='turret', 1='unit',
 ///           2='building', 3='system')
@@ -27721,8 +27721,11 @@ pub fn snapshot_encode_impact_context_scratch_ensure(count: u32) {
 ///           bit 4 has_shieldImpact, bit 5 has_killerPlayerId,
 ///           bit 6 has_victimPlayerId, bit 7 has_audioOnly,
 ///           bit 8 audioOnly_value, bit 9 has_deathContext (TBD),
-///           bit 10 has_impactContext (TBD).
-const SNAPSHOT_ENCODE_AUDIO_EVENT_STRIDE: usize = 16;
+///           bit 10 has_impactContext (TBD),
+///           bit 11 has_waterSplash.
+///   [16..18] waterSplash.velocity.x/y/z (gated by flags bit 11)
+///   [19]   waterSplash.mass (gated by flags bit 11)
+const SNAPSHOT_ENCODE_AUDIO_EVENT_STRIDE: usize = 20;
 
 struct SnapshotEncodeAudioEventScratch {
     buf: Vec<f64>,
@@ -30350,8 +30353,8 @@ pub fn snapshot_encode_envelope_emit_economy(player_count: u32) -> u32 {
 /// projectiles in iteration order. Per-event pool-iteration order
 /// matches NetworkServerSnapshotSimEvent / createPooledSimEvent:
 /// type, turretBlueprintId, sourceType, sourceKey, pos, playerId, entityId,
-/// deathContext, impactContext, shieldImpact, killerPlayerId,
-/// victimPlayerId, audioOnly.
+/// deathContext, impactContext, waterSplash, shieldImpact,
+/// killerPlayerId, victimPlayerId, audioOnly.
 ///
 /// D.3j-27 adds deathContext + impactContext support. Caller pre-packs
 /// per-context scratches in event order; the encoder walks audio
@@ -30399,6 +30402,7 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
         let audio_only_value = (flags & 0x100) != 0;
         let has_death_context = (flags & 0x200) != 0;
         let has_impact_context = (flags & 0x400) != 0;
+        let has_water_splash = (flags & 0x800) != 0;
 
         // Per-event field count: 3 always (type, turretBlueprintId, pos) +
         // optionals.
@@ -30419,6 +30423,9 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
             field_count += 1;
         }
         if has_impact_context {
+            field_count += 1;
+        }
+        if has_water_splash {
             field_count += 1;
         }
         if has_ff_impact {
@@ -30635,6 +30642,20 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
             w.write_number(pen_dir_y);
             impact_offset += 1;
         }
+        if has_water_splash {
+            w.write_str("waterSplash");
+            w.write_map_header(2);
+            w.write_str("velocity");
+            w.write_map_header(3);
+            w.write_str("x");
+            w.write_number(scratch.buf[base + 16]);
+            w.write_str("y");
+            w.write_number(scratch.buf[base + 17]);
+            w.write_str("z");
+            w.write_number(scratch.buf[base + 18]);
+            w.write_str("mass");
+            w.write_number(scratch.buf[base + 19]);
+        }
         if has_ff_impact {
             w.write_str("shieldImpact");
             // Pool order: normal, playerId (from copySimEventInto's
@@ -30704,7 +30725,7 @@ pub fn snapshot_encode_envelope_emit_packed_audio_events(
     w.write_map_header(packed_key_count);
 
     w.write_str("v");
-    w.write_uint(1);
+    w.write_uint(2);
 
     w.write_str("s");
     w.write_array_header(string_n);
@@ -30742,6 +30763,9 @@ pub fn snapshot_encode_envelope_emit_packed_audio_events(
         if (flags & 0x080) != 0 {
             row_len += 1;
         }
+        if (flags & 0x800) != 0 {
+            row_len += 4;
+        }
 
         w.write_array_header(row_len);
         w.write_number(scratch.buf[base]);
@@ -30776,6 +30800,12 @@ pub fn snapshot_encode_envelope_emit_packed_audio_events(
         }
         if (flags & 0x080) != 0 {
             w.write_number(if (flags & 0x100) != 0 { 1.0 } else { 0.0 });
+        }
+        if (flags & 0x800) != 0 {
+            w.write_number(scratch.buf[base + 16]);
+            w.write_number(scratch.buf[base + 17]);
+            w.write_number(scratch.buf[base + 18]);
+            w.write_number(scratch.buf[base + 19]);
         }
     }
 

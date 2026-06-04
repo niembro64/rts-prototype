@@ -64,7 +64,8 @@ export type SplashConfig = {
   };
   descent: {
     minSpeed: number;
-    horizScale: number;
+    velocityScale: number;
+    downwardScale: number;
     massScale: number;
   };
   rebound: {
@@ -119,7 +120,8 @@ function buildConfig(): SplashConfig {
     physics: Object.freeze({ gravity: raw.physics.gravity }),
     descent: Object.freeze({
       minSpeed: raw.descent.minSpeed,
-      horizScale: raw.descent.horizScale,
+      velocityScale: raw.descent.velocityScale,
+      downwardScale: raw.descent.downwardScale,
       massScale: raw.descent.massScale,
     }),
     rebound: Object.freeze({

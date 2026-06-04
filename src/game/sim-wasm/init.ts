@@ -3221,7 +3221,7 @@ export interface SnapshotEncodeApi {
     impactContextCount: number,
     turretPoseCount: number,
   ) => number;
-  /** Raw pointer to the audio-event scratch (Float64Array, 16 f64
+  /** Raw pointer to the audio-event scratch (Float64Array, 20 f64
    *  per event — see lib.rs SNAPSHOT_ENCODE_AUDIO_EVENT_STRIDE). */
   audioEventScratchPtr: () => number;
   /** Pre-grow the audio-event scratch to hold `count` events. */
@@ -3487,7 +3487,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
       // other pools; auto-grows past it.
       combat_targeting_init(1024);
       // Phase 10 D.2 — verify the hand-rolled MessagePack encoder
-      // matches its expected byte output across 21 fixture cases.
+      // matches its expected byte output across representative fixture cases.
       // Returns a bitmask of failed cases (0 = all pass). Future
       // Phase 10 sub-commits depend on byte-equality with the JS
       // @msgpack/msgpack output, so a regression here is fatal.
@@ -4030,7 +4030,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           emitPackedAudioEvents: snapshot_encode_envelope_emit_packed_audio_events,
           audioEventScratchPtr: snapshot_encode_audio_event_scratch_ptr,
           audioEventScratchEnsure: snapshot_encode_audio_event_scratch_ensure,
-          audioEventScratchStride: 16,
+          audioEventScratchStride: 20,
           deathContextScratchPtr: snapshot_encode_death_context_scratch_ptr,
           deathContextScratchEnsure: snapshot_encode_death_context_scratch_ensure,
           deathContextScratchStride: 16,

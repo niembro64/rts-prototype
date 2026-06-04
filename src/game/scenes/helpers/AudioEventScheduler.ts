@@ -31,6 +31,12 @@ function copyQueuedAudioEventInto(
   dst.entityId = src.entityId;
   dst.deathContext = src.deathContext;
   dst.impactContext = src.impactContext;
+  dst.waterSplash = src.waterSplash
+    ? {
+        velocity: { ...src.waterSplash.velocity },
+        mass: src.waterSplash.mass,
+      }
+    : null;
   if (src.shieldImpact === null) {
     dst.shieldImpact = null;
   } else if (dst.shieldImpact === null) {

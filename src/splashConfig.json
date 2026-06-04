@@ -1,7 +1,7 @@
 {
   "pool": {
-    "maxDroplets": 100,
-    "maxDropletsPerSpawn": 24
+    "maxDroplets": 140,
+    "maxDropletsPerSpawn": 36
   },
 
   "geometry": {
@@ -20,23 +20,24 @@
   },
 
   "descent": {
-    "comment": "Synthesized incoming downward speed = max(minSpeed, incomingHorizSpeed * horizScale) + mass * massScale.",
-    "minSpeed": 50,
-    "horizScale": 0.45,
-    "massScale": 1.5
+    "comment": "Linear impact impulse = max(minSpeed, incomingSpeed3d * velocityScale + downwardSpeed * downwardScale + mass * massScale).",
+    "minSpeed": 70,
+    "velocityScale": 0.32,
+    "downwardScale": 0.45,
+    "massScale": 1.2
   },
 
   "rebound": {
-    "comment": "Fraction of synthesized descent that becomes upward rebound velocity, and fraction of incoming horizontal velocity that carries the spray forward.",
-    "verticalFraction": 0.35,
-    "lateralCarryFraction": 0.12
+    "comment": "Fraction of linear impact impulse that becomes upward rebound velocity, and fraction of incoming horizontal velocity that carries the spray forward.",
+    "verticalFraction": 0.5,
+    "lateralCarryFraction": 0.28
   },
 
   "count": {
-    "comment": "Total droplets = clamp(minTotal, maxDropletsPerSpawn, floor(mass * massScale + energy / energyDivisor)). energy = descent + horizSpeed.",
-    "minTotal": 6,
-    "massScale": 1.6,
-    "energyDivisor": 80,
+    "comment": "Total droplets = clamp(minTotal, maxDropletsPerSpawn, floor(mass * massScale + impactImpulse / energyDivisor)).",
+    "minTotal": 8,
+    "massScale": 0.28,
+    "energyDivisor": 58,
     "jetFraction": 0.18,
     "crownFraction": 0.42
   },
@@ -44,7 +45,7 @@
   "dropletWidth": {
     "comment": "Per-droplet base radius (cross-section) used for streak width and impact-jitter.",
     "min": 0.35,
-    "massScale": 0.32
+    "massScale": 0.035
   },
 
   "streak": {
@@ -63,8 +64,8 @@
     "lateralCarryFactor": 0.1,
     "widthMultMin": 1.0,
     "widthMultRange": 0.4,
-    "lifetimeMinMs": 500,
-    "lifetimeRangeMs": 300,
+    "lifetimeMinMs": 650,
+    "lifetimeRangeMs": 350,
     "lengthScale": 0.5
   },
 
@@ -78,8 +79,8 @@
     "lateralCarryMultRange": 0.7,
     "widthMultMin": 0.7,
     "widthMultRange": 0.6,
-    "lifetimeMinMs": 400,
-    "lifetimeRangeMs": 400,
+    "lifetimeMinMs": 650,
+    "lifetimeRangeMs": 450,
     "lengthScale": 1.0
   },
 
@@ -92,8 +93,8 @@
     "lateralCarryMultRange": 0.6,
     "widthMultMin": 0.55,
     "widthMultRange": 0.6,
-    "lifetimeMinMs": 450,
-    "lifetimeRangeMs": 400,
+    "lifetimeMinMs": 650,
+    "lifetimeRangeMs": 450,
     "lengthScale": 0.85
   },
 
