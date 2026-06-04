@@ -207,7 +207,10 @@ export class RtsScene3DRenderPhase {
   }
 
   isStartupReady(): boolean {
-    return this.resources.environmentPropRenderer?.isReady() ?? true;
+    return (
+      this.resources.terrainTileRenderer.isReady() &&
+      (this.resources.environmentPropRenderer?.isReady() ?? true)
+    );
   }
 
   beginRenderFrame(): { effectDtMs: number } {

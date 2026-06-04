@@ -79,7 +79,7 @@ export function useGameCanvasRealBattleLifecycle(): GameCanvasRealBattleLifecycl
       const trackingKey = server.addSnapshotListener((state) => {
         const sent = network.sendStateTo(playerId, state);
         if (!sent && getCurrentServer() === server) {
-          server.forceNextSnapshotKeyframe();
+          server.forceNextSnapshotKeyframe(true);
         }
       }, playerId);
       snapshotListenerKeys.set(playerId, trackingKey);
@@ -90,7 +90,7 @@ export function useGameCanvasRealBattleLifecycle(): GameCanvasRealBattleLifecycl
     };
     network.onSnapshotDropped = (playerId) => {
       if (!snapshotListenerKeys.has(playerId)) return;
-      if (getCurrentServer() === server) server.forceNextSnapshotKeyframe();
+      if (getCurrentServer() === server) server.forceNextSnapshotKeyframe(true);
     };
   }
 
@@ -105,7 +105,7 @@ export function useGameCanvasRealBattleLifecycle(): GameCanvasRealBattleLifecycl
           (item) => item !== timeout,
         );
         if (startGeneration === generation && getCurrentServer() === server) {
-          server.forceNextSnapshotKeyframe();
+          server.forceNextSnapshotKeyframe(true);
         }
       }, delayMs);
       recoveryKeyframeTimeouts.push(timeout);

@@ -1193,6 +1193,10 @@ export class TerrainTileRenderer3D {
     this.refreshBuildGridTexture(getBuildGridDebug());
   }
 
+  isReady(): boolean {
+    return this.terrainGeometryReady;
+  }
+
   getMesh(): THREE.Mesh {
     return this.terrainMesh;
   }

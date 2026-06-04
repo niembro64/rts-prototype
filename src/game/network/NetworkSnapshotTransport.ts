@@ -164,7 +164,20 @@ export class NetworkSnapshotTransport {
   storePendingState(state: NetworkServerSnapshot): void {
     if (!state.isDelta) {
       // A newer full keyframe supersedes any buffered state.
-      this.pendingReceivedState = this.pendingReceivedStateCloner.clone(state);
+      const previousTerrain = this.pendingReceivedState?.terrain;
+      const previousBuildability = this.pendingReceivedState?.buildability;
+      const pending = this.pendingReceivedStateCloner.clone(state);
+      // If the real-battle scene has not attached yet, a later dynamic
+      // keyframe can arrive after the initial static terrain keyframe. Keep
+      // the map payload with the newest pending full snapshot so startup
+      // cannot lose terrain before the renderer consumes it.
+      if (pending.terrain === undefined && previousTerrain !== undefined) {
+        pending.terrain = previousTerrain;
+      }
+      if (pending.buildability === undefined && previousBuildability !== undefined) {
+        pending.buildability = previousBuildability;
+      }
+      this.pendingReceivedState = pending;
       return;
     }
 

@@ -170,10 +170,23 @@ export class SnapshotBuffer {
       // The cloner reuses its destination object graph so full
       // keyframes do not allocate a fresh 10k-entity tree each time.
       if (!this.pendingSnapshot || !state.isDelta || this.pendingSnapshot.isDelta) {
+        const previousTerrain = this.pendingSnapshot?.terrain;
+        const previousBuildability = this.pendingSnapshot?.buildability;
         this.releasePendingSnapshot();
         const pending = state.isDelta
           ? state
           : this.fullSnapshotCloner.clone(state);
+        if (!state.isDelta) {
+          if (pending.terrain === undefined && previousTerrain !== undefined) {
+            pending.terrain = previousTerrain;
+          }
+          if (
+            pending.buildability === undefined &&
+            previousBuildability !== undefined
+          ) {
+            pending.buildability = previousBuildability;
+          }
+        }
         this.pendingSnapshot = pending;
         if (!state.isDelta && pending.grid !== undefined) {
           this.bufferedGrid = pending.grid;
