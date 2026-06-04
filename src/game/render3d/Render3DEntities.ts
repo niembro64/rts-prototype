@@ -70,6 +70,7 @@ import { UnitChassisInstancePose3D } from './UnitChassisInstancePose3D';
 import { UnitTurretPose3D } from './UnitTurretPose3D';
 import { applyUnitLiftGroupPose3D, UnitMeshBuilder3D } from './UnitMeshBuilder3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
+import { refreshLocomotionSupportSurfaces } from './LocomotionTerrainSampler';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -467,6 +468,7 @@ export class Render3DEntities {
     this._currentTimeMs = frameSpin.timeMs;
     this._spinDt = frameSpin.spinDtSec;
     this.turretMountCache.reset(this._currentDtMs);
+    refreshLocomotionSupportSurfaces(this.clientViewState.getBuildings());
     this.updateUnits();
     this.buildingRenderer.update(this.frameState, this._spinDt, this._currentDtMs, frameSpin.timeMs);
     this.projectileRangeEnvelope.update();

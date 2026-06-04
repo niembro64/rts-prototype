@@ -40,11 +40,25 @@ import {
   DGUN_TERRAIN_FOLLOW_HEIGHT,
 } from '../../config';
 import type { ShieldReflectionMode } from '../../types/shotTypes';
-import { getSurfaceHeight, getSurfaceNormal } from './Terrain';
+import {
+  getSurfaceHeight,
+  getSurfaceNormal,
+  getTerrainVersion,
+  isWaterAt,
+} from './Terrain';
 import { buildShieldPanelCache } from './shieldPanelCache';
 import { createProjectileConfigFromTurret } from './projectileConfigs';
 import { ENTITY_CHANGED_HP } from '../../types/network';
 import { isConstructionPieceMaterialized } from './buildableHelpers';
+import {
+  SUPPORT_SURFACE_CONTACT_EPSILON,
+  SUPPORT_SURFACE_FOOTPRINT_EPSILON,
+  SUPPORT_SURFACE_VERTICAL_PROBE,
+  createWorldSupportSurface,
+  writeBuildingSupportSurface,
+  writeTerrainSupportSurface,
+  type WorldSupportSurface,
+} from './supportSurface';
 
 const TERRAIN_NORMAL_CACHE_CELL_SIZE = 25;
 const EMPTY_PLAYER_SET: ReadonlySet<PlayerId> = new Set();
@@ -61,6 +75,11 @@ export type ScanPulse = {
   expiresAtTick: number;
 };
 type SurfaceNormal = { nx: number; ny: number; nz: number };
+type SupportSurfaceQueryOptions = {
+  bodyZ?: number;
+  groundOffset?: number;
+  includeBuildings?: boolean;
+};
 
 export type RemovedSnapshotEntity = {
   id: EntityId;
@@ -224,13 +243,63 @@ export class WorldState {
     this.mapHeight = mapHeight;
   }
 
-  /** Canonical ground-surface elevation at world point (x, y). One
-   *  source of truth for "what is the ground here?" — sim, physics,
-   *  client dead-reckoning, and the tile renderer all read the same
-   *  authoritative triangle mesh. The surface returned matches what the
-   *  player sees. */
+  /** Terrain/water elevation at world point (x, y). Use
+   *  sampleSupportSurface() when the caller needs the complete support
+   *  contract including building tops. */
   getGroundZ(x: number, y: number): number {
     return getSurfaceHeight(x, y, this.mapWidth, this.mapHeight, LAND_CELL_SIZE);
+  }
+
+  sampleSupportSurface(
+    x: number,
+    y: number,
+    options: SupportSurfaceQueryOptions = {},
+    out: WorldSupportSurface = createWorldSupportSurface(),
+  ): WorldSupportSurface {
+    const terrainGroundZ = this.getGroundZ(x, y);
+    const inWater = isWaterAt(x, y, this.mapWidth, this.mapHeight);
+    writeTerrainSupportSurface(
+      out,
+      terrainGroundZ,
+      this.getCachedSurfaceNormal(x, y),
+      inWater,
+      getTerrainVersion(),
+    );
+
+    if (options.includeBuildings === false) return out;
+
+    const hasBodyZ = options.bodyZ !== undefined && Number.isFinite(options.bodyZ);
+    const bodyZ = hasBodyZ ? options.bodyZ! : 0;
+    const groundOffset = options.groundOffset !== undefined && Number.isFinite(options.groundOffset)
+      ? options.groundOffset
+      : 0;
+    const groundPointZ = bodyZ - groundOffset;
+    const buildings = this.getBuildings();
+    for (let i = 0; i < buildings.length; i++) {
+      const entity = buildings[i];
+      const building = entity.building;
+      if (building === null) continue;
+
+      const topZ = entity.transform.z + building.depth / 2;
+      if (topZ < terrainGroundZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
+
+      const dx = x - entity.transform.x;
+      const dy = y - entity.transform.y;
+      if (Math.abs(dx) > building.width / 2 + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
+      if (Math.abs(dy) > building.height / 2 + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
+
+      if (hasBodyZ) {
+        if (bodyZ < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
+        if (groundPointZ < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
+        if (groundPointZ > topZ + SUPPORT_SURFACE_VERTICAL_PROBE) continue;
+      }
+
+      if (topZ > out.groundZ) {
+        writeBuildingSupportSurface(out, topZ, entity.id, entity.id);
+      }
+    }
+
+    return out;
   }
 
   private surfaceNormalCacheKey(x: number, y: number): number {
@@ -910,7 +979,7 @@ export class WorldState {
     // implied by their constant counter-gravity and inverse-distance
     // ground-effect lift; dropping them at ground height makes the
     // inverse-distance lift kick violently on the first tick.
-    const groundZ = this.getGroundZ(x, y);
+    const spawnSupport = this.sampleSupportSurface(x, y);
     const isAirborneLocomotion =
       locomotion.type === 'hover' || locomotion.type === 'flying';
     const spawnCenterHeight = isAirborneLocomotion &&
@@ -921,16 +990,14 @@ export class WorldState {
       Number.isFinite(locomotion.hoverHeightUpwardForce)
       ? locomotion.hoverHeightUpwardForce / (1 - locomotion.gravityCounterUpwardForceRatio)
       : bodyCenterHeight + UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND;
-    // Seed the per-unit smoothed normal with the raw normal at the
+    // Seed the per-unit smoothed normal with the support normal at the
     // spawn position so the first tick after spawn doesn't snap from
-    // the flat default to a tilted slope. The cache lookup also seeds
-    // the cell entry for any downstream reader on this tick.
-    const spawnNormal = this.getCachedSurfaceNormal(x, y);
+    // the flat default to a tilted slope or platform.
     const entity: Entity = {
       ...createEmptyEntityComponentSlots(),
       id,
       type: 'unit',
-      transform: createTransform(x, y, groundZ + spawnCenterHeight, 0),
+      transform: createTransform(x, y, spawnSupport.groundZ + spawnCenterHeight, 0),
       selectable: { selected: false },
       ownership: { playerId },
       unit: {
@@ -961,7 +1028,11 @@ export class WorldState {
         suspension: null,
         shieldPanels: [],
         shieldBoundRadius: 0,
-        surfaceNormal: { nx: spawnNormal.nx, ny: spawnNormal.ny, nz: spawnNormal.nz },
+        surfaceNormal: {
+          nx: spawnSupport.normalX,
+          ny: spawnSupport.normalY,
+          nz: spawnSupport.normalZ,
+        },
         // Airborne units carry a full quaternion + ω-vector + α-vector
         // orientation triad so they can express roll (banking into a
         // turn). Ground units stay yaw-scalar-only (transform.rotation).

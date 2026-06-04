@@ -57,6 +57,15 @@ import {
   UNIT_GROUND_CONTACT_EPSILON,
 } from '../sim/unitGroundPhysics';
 import {
+  SUPPORT_SURFACE_CONTACT_EPSILON,
+  SUPPORT_SURFACE_FOOTPRINT_EPSILON,
+  copyWorldSupportSurface,
+  createWorldSupportSurface,
+  writeBuildingSupportSurface,
+  writeUnitSupportSurface,
+  type WorldSupportSurface,
+} from '../sim/supportSurface';
+import {
   getSimWasm,
   BODY_FLAG_SLEEPING,
   BODY_FLAG_IS_STATIC,
@@ -68,13 +77,8 @@ import {
 import type { EntityId } from '../sim/types';
 
 type SurfaceNormal = { nx: number; ny: number; nz: number };
-export type SupportSurfaceContact = {
-  groundZ: number;
-  normalX: number;
-  normalY: number;
-  normalZ: number;
-};
-type StaticSupportSurfaceContact = SupportSurfaceContact & {
+export type SupportSurfaceContact = WorldSupportSurface;
+type StaticSupportSurfaceContact = WorldSupportSurface & {
   staticBody: Body3D;
 };
 type ApplyForceOptions = { canLaunchFromGround: boolean };
@@ -164,7 +168,7 @@ export class Body3D {
   readonly isStatic: boolean;
   /** Debug / log tag — entity type or id for tracing. */
   label: string;
-  /** Owning sim entity id for dynamic unit bodies. */
+  /** Owning sim entity id for bodies that mirror an entity. */
   entityId: EntityId | undefined;
 
   private constructor(args: {
@@ -352,8 +356,6 @@ const SPHERE_ITERATIONS_HIGH_COUNT = 6000;
 // common query to the immediate 3x3x3 neighborhood while the dynamic
 // range below still handles future oversized bodies correctly.
 const CONTACT_CELL_SIZE = 160;
-const SUPPORT_SURFACE_CONTACT_EPSILON = Math.max(UNIT_GROUND_CONTACT_EPSILON, 1);
-const SUPPORT_SURFACE_FOOTPRINT_EPSILON = 0.5;
 const WORLD_BOUNDARY_DAMPING_ACCEL_PER_SPEED =
   UNIT_WORLD_BOUNDARY_SPRING_ACCEL_PER_WORLD_UNIT > 0
     ? 2
@@ -522,6 +524,7 @@ export class PhysicsEngine3D {
     depth: number,
     baseZ: number,
     label: string,
+    entityId: EntityId | undefined = undefined,
   ): Body3D {
     refreshAndBindBody3DPool(getSimWasm()!.pool);
     const body = Body3D.allocate({
@@ -529,7 +532,6 @@ export class PhysicsEngine3D {
       isStatic: true,
       mass: 0,
       label,
-      entityId: undefined,
       x,
       y,
       z: baseZ + depth / 2,
@@ -540,6 +542,7 @@ export class PhysicsEngine3D {
       groundOffset: undefined,
       restitution: 0.1,
       surfaceNormal: null,
+      entityId,
     });
     this.addBody(body);
     return body;
@@ -661,31 +664,26 @@ export class PhysicsEngine3D {
     return body.upwardSurfaceContact === true;
   }
 
-  getSupportSurfaceContact(
+  sampleSupportSurface(
     body: Body3D,
-    terrainGroundZ: number,
-  ): SupportSurfaceContact | null {
-    const staticSupport = this.findStaticSupportSurface(body, terrainGroundZ);
+    terrainSurface: WorldSupportSurface,
+    out: WorldSupportSurface = createWorldSupportSurface(),
+  ): WorldSupportSurface {
+    const staticSupport = this.findStaticSupportSurface(body, terrainSurface.groundZ);
     if (staticSupport !== null) {
-      const groundPointZ = body.z - body.groundOffset;
-      return {
-        groundZ: Math.max(staticSupport.groundZ, groundPointZ),
-        normalX: staticSupport.normalX,
-        normalY: staticSupport.normalY,
-        normalZ: staticSupport.normalZ,
-      };
+      return copyWorldSupportSurface(staticSupport, out);
     }
 
     if (body.upwardSurfaceContact === true) {
-      return {
-        groundZ: body.z - body.groundOffset,
-        normalX: 0,
-        normalY: 0,
-        normalZ: 1,
-      };
+      return writeUnitSupportSurface(
+        out,
+        body.z - body.groundOffset,
+        null,
+        body.slot,
+      );
     }
 
-    return null;
+    return copyWorldSupportSurface(terrainSurface, out);
   }
 
   collectLastStepEntityIds(out: EntityId[]): void {
@@ -886,7 +884,7 @@ export class PhysicsEngine3D {
     }
   }
 
-  private overlayIntegrationSupportSurfaces(count: number): void {
+  private sampleIntegrationSupportSurfaces(count: number): void {
     for (let i = 0; i < count; i++) {
       const slot = _integrateAwakeSlots[i];
       const b = this.bodyBySlot[slot];
@@ -899,12 +897,6 @@ export class PhysicsEngine3D {
       _integrateGroundNormals[i * 3] = support.normalX;
       _integrateGroundNormals[i * 3 + 1] = support.normalY;
       _integrateGroundNormals[i * 3 + 2] = support.normalZ;
-
-      const targetZ = support.groundZ + b.groundOffset;
-      if (Math.abs(b.z - targetZ) > SUPPORT_SURFACE_CONTACT_EPSILON) {
-        b.z = targetZ;
-        if (b.vz < 0) b.vz = 0;
-      }
     }
   }
 
@@ -950,13 +942,15 @@ export class PhysicsEngine3D {
       if (!groundPointNearTop && !sphereBottomNearTop) continue;
 
       if (best === null || topZ > best.groundZ) {
-        best = {
-          groundZ: topZ,
-          normalX: 0,
-          normalY: 0,
-          normalZ: 1,
-          staticBody: st,
-        };
+        const candidate = createWorldSupportSurface() as StaticSupportSurfaceContact;
+        candidate.staticBody = st;
+        best = writeBuildingSupportSurface(
+          candidate,
+          topZ,
+          st.entityId ?? null,
+          st.entityId ?? st.slot,
+        ) as StaticSupportSurfaceContact;
+        best.staticBody = st;
       }
     }
 
@@ -1009,7 +1003,7 @@ export class PhysicsEngine3D {
     if (!groundSampled) {
       this.sampleIntegrationGroundFallback(count);
     }
-    this.overlayIntegrationSupportSurfaces(count);
+    this.sampleIntegrationSupportSurfaces(count);
     const transitionCount = sim.poolStepIntegrate(
       slotsView,
       groundZView,

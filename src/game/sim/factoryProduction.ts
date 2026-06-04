@@ -90,17 +90,15 @@ function directFactoryRallyActions(
       type: wp.type,
       x: wp.x,
       y: wp.y,
-      z: wp.z ?? world.getGroundZ(wp.x, wp.y),
+      z: wp.z ?? world.sampleSupportSurface(wp.x, wp.y).groundZ,
     });
   }
   return { actions, patrolStartIndex };
 }
 
 function getFactoryShellSpawnZ(world: WorldState, factory: Entity): number {
-  const factoryTopZ = factory.building !== null
-    ? factory.transform.z + factory.building.depth / 2
-    : world.getGroundZ(factory.transform.x, factory.transform.y);
-  return factoryTopZ + FACTORY_SHELL_AIR_SPAWN_HEIGHT;
+  return world.sampleSupportSurface(factory.transform.x, factory.transform.y).groundZ
+    + FACTORY_SHELL_AIR_SPAWN_HEIGHT;
 }
 
 // Factory production system

@@ -20,6 +20,10 @@ import type { Simulation } from '../sim/Simulation';
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId } from '../sim/types';
 import type { PhysicsEngine3D, SupportSurfaceContact } from './PhysicsEngine3D';
+import {
+  createWorldSupportSurface,
+  writeTerrainSupportSurface,
+} from '../sim/supportSurface';
 import { setUnitMovementAcceleration } from '../sim/unitMovementAcceleration';
 import { isBuildInProgress } from '../sim/buildableHelpers';
 import { getSimWasm, UNIT_FORCE_BATCH_STRIDE } from '../sim-wasm/init';
@@ -101,6 +105,9 @@ let _forceFlags: Uint32Array = new Uint32Array(0);
 let _forceRows: Float64Array = new Float64Array(0);
 let _forceOutFlags: Uint32Array = new Uint32Array(0);
 let _forceEntities: (Entity | undefined)[] = [];
+const _forceTerrainSurface = createWorldSupportSurface();
+const _forceSupportSurface = createWorldSupportSurface();
+const FLAT_SUPPORT_NORMAL = { nx: 0, ny: 0, nz: 1 };
 
 function ensureForceBatchCapacity(count: number): void {
   if (_forceSlots.length < count) {
@@ -176,12 +183,25 @@ export class UnitForceSystem {
       _forceRows[base + UF_ROW_DRIVE_FORCE] = unit.locomotion.driveForce;
       _forceRows[base + UF_ROW_TRACTION] = unit.locomotion.traction;
       const terrainGroundZ = this.world.getGroundZ(body.x, body.y);
+      const terrainPenetration = terrainGroundZ - (body.z - body.groundOffset);
       const terrainContact =
-        terrainGroundZ - (body.z - body.groundOffset) >= -UNIT_GROUND_CONTACT_EPSILON;
-      const supportSurface = terrainContact
-        ? null
-        : this.physics.getSupportSurfaceContact(body, terrainGroundZ);
-      const supportSurfaceContact = supportSurface !== null;
+        terrainPenetration >= -UNIT_GROUND_CONTACT_EPSILON;
+      const terrainInWater = isWaterAt(body.x, body.y, mw, mh);
+      writeTerrainSupportSurface(
+        _forceTerrainSurface,
+        terrainGroundZ,
+        terrainContact ? this.world.getCachedSurfaceNormal(body.x, body.y) : FLAT_SUPPORT_NORMAL,
+        terrainInWater,
+        getTerrainVersion(),
+      );
+      const supportSurface = this.physics.sampleSupportSurface(
+        body,
+        _forceTerrainSurface,
+        _forceSupportSurface,
+      );
+      const supportSurfaceContact =
+        supportSurface.supportKind === 'building' || supportSurface.supportKind === 'unit';
+      const surfaceContact = supportSurfaceContact || terrainContact;
       const buildInProgress = isBuildInProgress(entity.buildable);
       const suppressAirborneLift = buildInProgress || supportSurfaceContact;
       _forceRows[base + UF_ROW_GRAVITY_COUNTER_RATIO] =
@@ -248,7 +268,7 @@ export class UnitForceSystem {
         _forceRows[base + UF_ROW_EXTERNAL_FZ] = externalForce.fz;
       }
 
-      _forceRows[base + UF_ROW_GROUND_Z] = terrainGroundZ;
+      _forceRows[base + UF_ROW_GROUND_Z] = supportSurface.groundZ;
 
       if (useAirborneForcePath) {
         const orientation = unit.orientation;
@@ -274,16 +294,16 @@ export class UnitForceSystem {
         if (!willRustSkipSleeping && randAmount > 0) {
           _forceRows[base + UF_ROW_HOVER_RANDOM_SAMPLE] = this.world.rng.next();
         }
-      } else if (terrainContact || supportSurfaceContact) {
-        if (supportSurface !== null) {
-          _forceRows[base + UF_ROW_GROUND_Z] = supportSurface.groundZ;
-          _forceRows[base + UF_ROW_NORMAL_X] = supportSurface.normalX;
-          _forceRows[base + UF_ROW_NORMAL_Y] = supportSurface.normalY;
-          _forceRows[base + UF_ROW_NORMAL_Z] = supportSurface.normalZ;
+      } else if (surfaceContact) {
+        if (supportSurfaceContact) {
           this.writeSupportSurfaceNormal(entity, supportSurface);
         }
+        _forceRows[base + UF_ROW_GROUND_Z] = supportSurface.groundZ;
+        _forceRows[base + UF_ROW_NORMAL_X] = supportSurface.normalX;
+        _forceRows[base + UF_ROW_NORMAL_Y] = supportSurface.normalY;
+        _forceRows[base + UF_ROW_NORMAL_Z] = supportSurface.normalZ;
         const radius = body.radius || 10;
-        const inWater = terrainContact && isWaterAt(body.x, body.y, mw, mh);
+        const inWater = supportSurface.materialKind === 'water';
         if (inWater) {
           flags |= UF_FLAG_IN_WATER;
           _forceRows[base + UF_ROW_WATER_ESCAPE_MASK_0] = this.waterDryMask(

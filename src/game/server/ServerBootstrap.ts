@@ -378,6 +378,7 @@ export class ServerBootstrap {
           entity.building.depth,
           baseZ,
           `building_${entity.id}`,
+          entity.id,
         );
         entity.body = { physicsBody: body };
       }
@@ -416,6 +417,7 @@ export class ServerBootstrap {
           entity.building.depth,
           baseZ,
           `building_${entity.id}`,
+          entity.id,
         );
         entity.body = { physicsBody: body };
       }

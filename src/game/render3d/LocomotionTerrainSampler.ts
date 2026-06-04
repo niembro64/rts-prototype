@@ -2,6 +2,10 @@ import { LAND_CELL_SIZE } from '../../config';
 import type { Entity } from '../sim/types';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import {
+  SUPPORT_SURFACE_CONTACT_EPSILON,
+  SUPPORT_SURFACE_FOOTPRINT_EPSILON,
+} from '../sim/supportSurface';
+import {
   getUnitGroundPenetration,
   isUnitGroundPenetrationInContact,
 } from '../sim/unitGroundPhysics';
@@ -18,24 +22,56 @@ export type LocomotionFootSurfaceSample = LocomotionSurfaceNormal & {
 };
 
 /** Per-part floor-clamp result. The visual rig hands in the part's
- *  natural world Y (what it would render at if terrain weren't a
+ *  natural world Y (what it would render at if support weren't a
  *  consideration) and gets back the rendered Y. The clamp is purely
  *  positional — the rig EMAs its movement-position channel toward
  *  this value every frame, no contact bit involved. */
 export type LocomotionPartClamp = {
-  /** Terrain height under the part's world XZ. */
+  /** Support height under the part's world XZ. */
   groundY: number;
   /** Where the part should actually render (Y in world units). Equal
    *  to `max(naturalWorldY, groundY + clearance)`. */
   renderedY: number;
 };
 
+const locomotionSupportBuildings: Entity[] = [];
+
+export function refreshLocomotionSupportSurfaces(supportEntities: Iterable<Entity>): void {
+  locomotionSupportBuildings.length = 0;
+  for (const entity of supportEntities) {
+    if (entity.building !== null) {
+      locomotionSupportBuildings.push(entity);
+    }
+  }
+}
+
+function getVisualBuildingSupportY(x: number, z: number, terrainY: number): number | null {
+  let bestTopY = Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < locomotionSupportBuildings.length; i++) {
+    const entity = locomotionSupportBuildings[i];
+    const building = entity.building;
+    if (building === null) continue;
+
+    const topY = entity.transform.z + building.depth / 2;
+    if (topY < terrainY - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
+
+    const dx = x - entity.transform.x;
+    const dz = z - entity.transform.y;
+    if (Math.abs(dx) > building.width / 2 + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
+    if (Math.abs(dz) > building.height / 2 + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
+
+    if (topY > bestTopY) bestTopY = topY;
+  }
+
+  return bestTopY > Number.NEGATIVE_INFINITY ? bestTopY : null;
+}
+
 /** Floor-clamp one body-local part (a wheel center, a tread sample, a
- *  hover fan ring) against the terrain under its world XZ. The clamp
+ *  hover fan ring) against the support under its world XZ. The clamp
  *  is one-sided: parts can float above the ground but never tunnel
  *  through it. Use a positive `clearance` to push the rendered Y up
  *  by the part's "ground offset" (e.g. wheel radius), so the part's
- *  bottom rests on terrain when the terrain term wins. */
+ *  bottom rests on the support when that term wins. */
 export function sampleLocomotionPartClamp(
   worldX: number,
   worldZ: number,
@@ -79,7 +115,8 @@ export function getLocomotionSurfaceHeight(
   mapWidth: number,
   mapHeight: number,
 ): number {
-  return getSurfaceHeight(x, z, mapWidth, mapHeight, LAND_CELL_SIZE);
+  const terrainY = getSurfaceHeight(x, z, mapWidth, mapHeight, LAND_CELL_SIZE);
+  return getVisualBuildingSupportY(x, z, terrainY) ?? terrainY;
 }
 
 export function sampleLocomotionGroundContact(
@@ -135,7 +172,14 @@ export function sampleLocomotionFootSurface(
     ny: 0,
     nz: 1,
   };
-  getSurfaceNormal(x, z, mapWidth, mapHeight, LAND_CELL_SIZE, result);
+  const terrainY = getSurfaceHeight(x, z, mapWidth, mapHeight, LAND_CELL_SIZE);
+  if (groundY > terrainY + SUPPORT_SURFACE_CONTACT_EPSILON) {
+    result.nx = 0;
+    result.ny = 0;
+    result.nz = 1;
+  } else {
+    getSurfaceNormal(x, z, mapWidth, mapHeight, LAND_CELL_SIZE, result);
+  }
   const normalY = Math.max(0.35, result.nz);
   const padVerticalLift = (footPadHalfHeight + clearance) / normalY;
   const cylinderVerticalLift = cylinderRadius + clearance;
