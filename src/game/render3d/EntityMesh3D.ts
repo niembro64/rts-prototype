@@ -164,6 +164,12 @@ export type EntityMesh = {
    *  sphere emitter cores. Instanced heads carry this through
    *  instanceColor instead. */
   unitDynamicTurretHeadColorHex?: number[];
+  /** Set when the sim reports this unit was DESTROYED (a 'death' SimEvent),
+   *  as opposed to merely leaving the local player's vision. Read once when
+   *  the mesh leaves the live set (Render3DEntities removal sweep): killed
+   *  units play the scatter + death-fade; units that just lost vision fade
+   *  out quietly in place. */
+  killed?: boolean;
   /** Whether a per-Mesh group fade clone is currently installed on
    *  this unit. Used to restore real materials exactly once when
    *  construction/death fade returns to full opacity. */

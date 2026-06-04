@@ -60,6 +60,7 @@ import {
   DyingMeshFade,
   ENTITY_DEATH_FADE_MS,
 } from './EntityFade3D';
+import { VISION_FADE_IN_MS, VISION_FADE_OUT_MS } from '@/visionConfig';
 import { createShieldFallbackPanelMaterial } from './ShieldReflectorVisual3D';
 import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
 import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
@@ -181,7 +182,16 @@ export class Render3DEntities {
   // Same controller buildings use — see EntityFade3D. Assigned in the
   // constructor (needs `this`).
   private dyingUnits!: DyingMeshFade<EntityMesh>;
+  // Units that left the local player's VISION (not killed). Same fade
+  // controller, but a plain alpha fade-out with no scatter/explosion and
+  // its own VISION_FADE_OUT_MS clock. Assigned in the constructor.
+  private vanishingUnits!: DyingMeshFade<EntityMesh>;
   private readonly dyingUnitScatter = new WeakMap<EntityMesh, DyingUnitScatter>();
+  /** Per-entity vision fade-IN clock (ms elapsed, 0..VISION_FADE_IN_MS) for
+   *  units that have newly entered vision. Keyed by entity id so it survives
+   *  mesh rebuilds (LOD / owner recolor) and only resets when the unit truly
+   *  leaves the live set, so re-entering vision fades in afresh. */
+  private readonly spawnFadeElapsed = new Map<EntityId, number>();
   // Reusable per-entity turret fade buffer — avoids a fresh array per
   // unit per frame in the build-in materialization write.
   private _turretFadeScratch: number[] = [];
@@ -364,20 +374,57 @@ export class Render3DEntities {
       getMapHeight: () => this.clientViewState.getMapHeight(),
     });
 
+    // KILLED units: scatter the corpse pieces while ramping the death fade.
     this.dyingUnits = new DyingMeshFade<EntityMesh>(
       ENTITY_DEATH_FADE_MS,
       (mesh, fade, dtMs) => {
         this.advanceDyingUnitScatter(mesh, dtMs);
         this.applyUnitEntityFade(mesh, fade, null);
       },
-      (id, mesh) => {
-        disposeEntityGroupFade(mesh.group);
-        destroyLocomotion(mesh.locomotion, this.legRenderer);
-        this.world.remove(mesh.group);
-        this.disposeWorldParentedOverlays(mesh);
-        this.unitDetailInstances.freeMeshSlots(id, mesh);
-      },
+      (id, mesh) => this.disposeDeadUnitMesh(id, mesh),
     );
+    // OUT-OF-VISION units: a plain alpha fade-out in place — frozen pose,
+    // no scatter, no explosion — over the separate VISION_FADE_OUT_MS clock.
+    this.vanishingUnits = new DyingMeshFade<EntityMesh>(
+      VISION_FADE_OUT_MS,
+      (mesh, fade) => this.applyUnitEntityFade(mesh, fade, null),
+      (id, mesh) => this.disposeDeadUnitMesh(id, mesh),
+    );
+  }
+
+  /** Shared teardown for a unit mesh once its death / vision fade has run
+   *  out: drop the per-object fade clones, free the locomotion + instanced
+   *  slots, and detach the group from the world. */
+  private disposeDeadUnitMesh(id: EntityId, mesh: EntityMesh): void {
+    disposeEntityGroupFade(mesh.group);
+    destroyLocomotion(mesh.locomotion, this.legRenderer);
+    this.world.remove(mesh.group);
+    this.disposeWorldParentedOverlays(mesh);
+    this.unitDetailInstances.freeMeshSlots(id, mesh);
+  }
+
+  /** Advance and return a unit's vision fade-IN factor (0..1). A unit that
+   *  has just entered the local player's vision ramps from 0 → 1 over
+   *  VISION_FADE_IN_MS; once complete it pins at 1 for no further cost. The
+   *  caller multiplies this into the body opacity so it composes with the
+   *  construction materialization fade. */
+  private advanceSpawnFadeIn(id: EntityId): number {
+    if (VISION_FADE_IN_MS <= 0) return 1;
+    const prev = this.spawnFadeElapsed.get(id);
+    if (prev === VISION_FADE_IN_MS) return 1; // already fully faded in
+    const elapsed = Math.min((prev ?? 0) + this._currentDtMs, VISION_FADE_IN_MS);
+    this.spawnFadeElapsed.set(id, elapsed);
+    return elapsed / VISION_FADE_IN_MS;
+  }
+
+  /** Flag a unit as DESTROYED so its mesh plays the scatter + death-fade
+   *  when it leaves the live set, instead of the quiet vision fade-out.
+   *  Driven by 'death' SimEvents (see RtsScene3D); units that merely leave
+   *  vision are never flagged and so fade away without exploding. Runs
+   *  before the per-frame removal sweep, while the mesh is still live. */
+  markEntityKilled(id: EntityId): void {
+    const m = this.unitMeshes.get(id);
+    if (m) m.killed = true;
   }
 
   private getMirrorShinyMat(): THREE.Material {
@@ -713,11 +760,15 @@ export class Render3DEntities {
     for (let unitIndex = 0; unitIndex < units.length; unitIndex++) {
       const e = units[unitIndex];
       seen.add(e.id);
-      // If this entity id is mid death-fade and has reappeared (id reuse
-      // or a re-add), finalize the dying mesh now so we don't draw the
-      // fading old mesh on top of the freshly built unit.
+      // If this entity id is mid fade-out (death scatter OR vision fade)
+      // and has reappeared (id reuse, re-add, or vision regained before
+      // the fade finished), finalize the old mesh now so we don't draw the
+      // fading corpse on top of the freshly built unit.
       if (this.dyingUnits.size > 0 && this.dyingUnits.has(e.id)) {
         this.dyingUnits.finalize(e.id);
+      }
+      if (this.vanishingUnits.size > 0 && this.vanishingUnits.has(e.id)) {
+        this.vanishingUnits.finalize(e.id);
       }
       // Hoist transform reads for the per-tick group / yaw write;
       // reading the same prop slot off `e.transform` four+ times for
@@ -793,7 +844,11 @@ export class Render3DEntities {
       // Build-in materialization: the body reveals via per-instance
       // alpha, not by growing the chassis from a point.
       // 0 = not yet started (invisible), ramping to 1 as the body builds.
-      const bodyOpacity = getConstructionPieceOpacity(e, 'body');
+      // Composed with the vision fade-in so a unit that pops into the
+      // local player's vision eases in instead of appearing instantly;
+      // the two alpha reasons multiply (a half-built unit just scouted
+      // fades toward its current build opacity, not past it).
+      const bodyOpacity = getConstructionPieceOpacity(e, 'body') * this.advanceSpawnFadeIn(e.id);
       const bodyVisible = fullUnitDetail && bodyOpacity > 0;
       m.chassis.visible = bodyVisible;
 
@@ -1041,32 +1096,42 @@ export class Render3DEntities {
       // world group, depth-occluded by terrain).
     }
 
-    // Units no longer present have died: hand the mesh to the shared
-    // death-out fade (dyingUnits) instead of tearing it down immediately.
-    // The instanced slots stay allocated with their last pose frozen while
-    // dyingUnits.update scatters the corpse pieces, ramps the fade to zero,
-    // then frees them.
+    // Units no longer present leave the live set. Rather than tearing the
+    // mesh down immediately, hand it to a shared fade controller: the
+    // instanced slots stay allocated with their last pose frozen while the
+    // fade ramps to zero, then frees them. Which controller depends on WHY
+    // the unit left:
+    //   - killed (a 'death' SimEvent flagged m.killed) → dyingUnits, which
+    //     scatters the corpse pieces over the death fade.
+    //   - merely out of the local player's vision → vanishingUnits, a plain
+    //     alpha fade-out in place with no scatter or explosion.
     for (const [id, m] of this.unitMeshes) {
       if (!seen.has(id)) {
         // World-parented overlays (range circles) and the selection ring
-        // leave immediately, but the body/turrets/locomotion remain for
-        // the render-only death fade and scatter motion.
-        this.prepareDyingUnitScatter(m);
+        // leave immediately for both paths; the body/turrets/locomotion
+        // remain for the render-only fade.
         this.disposeWorldParentedOverlays(m);
         if (m.ring) m.ring.visible = false;
-        this.dyingUnits.markDying(id, m);
-        // True entity removal — drop any stashed leg-state snapshot
-        // so a future re-spawn of a different unit reusing this
-        // entityId starts fresh instead of inheriting last unit's
-        // foot positions.
+        if (m.killed) {
+          this.prepareDyingUnitScatter(m);
+          this.dyingUnits.markDying(id, m);
+        } else {
+          this.vanishingUnits.markDying(id, m);
+        }
+        // True entity removal — drop any stashed leg-state snapshot and
+        // vision fade-in clock so a future re-spawn (or this unit
+        // re-entering vision) starts fresh instead of inheriting the
+        // last unit's foot positions / fade progress.
         this.legStateCache.delete(id);
+        this.spawnFadeElapsed.delete(id);
         this.unitMeshes.delete(id);
         this.barrelSpinState.delete(id);
       }
     }
-    // Advance any in-progress death-out fades before the flush so their
-    // updated per-instance fade is uploaded this frame.
+    // Advance any in-progress fade-outs before the flush so their updated
+    // per-instance fade is uploaded this frame.
     this.dyingUnits.update(this._currentDtMs);
+    this.vanishingUnits.update(this._currentDtMs);
     // Drop barrel-spin state and persisted turret-mount history for
     // units that no longer exist. Reuses the same `seen` set populated
     // by the unit loop above — no separate sweep needed.
@@ -1124,8 +1189,10 @@ export class Render3DEntities {
       this.world.remove(m.group);
       this.disposeWorldParentedOverlays(m);
     }
-    // Drop any meshes still playing their death-out fade.
+    // Drop any meshes still playing their death-out / vision fade-out.
     this.dyingUnits.destroyAll();
+    this.vanishingUnits.destroyAll();
+    this.spawnFadeElapsed.clear();
     // Renderer-wide teardown — drop every cached leg snapshot, no
     // future build will consume them.
     this.legStateCache.clear();

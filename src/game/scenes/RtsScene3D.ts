@@ -1085,6 +1085,14 @@ export class RtsScene3D {
         );
       }
     } else if (event.type === 'death') {
+      if (event.entityId !== null) {
+        // Mark the unit as DESTROYED so its render mesh plays the scatter +
+        // death-fade instead of the quiet out-of-vision fade-out. SimEvents
+        // are drained during snapshot intake, ahead of the entity-render
+        // sweep that clears the mesh this frame, so the flag is set while
+        // the mesh is still live.
+        this.entityRenderer.markEntityKilled(event.entityId);
+      }
       // Some kill paths (splash, bleed-out, shield zone damage) emit
       // a death event with no deathContext. Rather than skipping the
       // material explosion entirely, try to reconstruct a minimal context

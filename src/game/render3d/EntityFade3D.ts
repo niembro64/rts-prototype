@@ -16,10 +16,13 @@
 
 import * as THREE from 'three';
 import type { EntityId } from '../sim/types';
+import { UNIT_DEATH_FADE_MS } from '@/visionConfig';
 
 /** Shared death-out fade duration (ms). Build-in is driven by the sim's
- *  build fraction, so only the cosmetic death fade needs a clock. */
-export const ENTITY_DEATH_FADE_MS = 900;
+ *  build fraction, so only the cosmetic death fade needs a clock. Sourced
+ *  from visionConfig.json (`deathFadeMs`) alongside the leaving-vision and
+ *  entering-vision fade durations. */
+export const ENTITY_DEATH_FADE_MS = UNIT_DEATH_FADE_MS;
 
 // ── The one fragment alpha patch both backends emit ───────────────────
 // Standard Three.js materials route their final alpha through
