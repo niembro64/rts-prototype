@@ -35,13 +35,7 @@ through their locomotion-specific force/contact model.
 
 Plan
 ----
-1. Add diagnostics before tuning.
-   Add a temporary debug overlay/log mode that shows sampled support height,
-   support kind/id, body ground point, penetration, velocity, and contact state
-   for selected units. This should make fabricator edge transitions and unit
-   stacking behavior observable.
-
-2. Add regression tests.
+1. Add regression tests.
    Cover at least: unit spawn on terrain, unit spawn on a building/fabricator
    support, factory shell settle and exit, building top traversal, unit support
    traversal where authored, water boundary behavior, client prediction matching

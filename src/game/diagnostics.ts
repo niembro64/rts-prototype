@@ -33,6 +33,9 @@ export const GAME_DIAGNOSTICS = {
   clientPredictionDiagnostics:
     envFlag('VITE_BA_DP03_CLIENT_PREDICTION') ||
     queryFlag('dp03', 'clientPredictionDiagnostics', 'predictionDiagnostics'),
+  supportSurfaceDiagnostics:
+    envFlag('VITE_BA_DEBUG_SUPPORT_SURFACES') ||
+    queryFlag('supportDiagnostics', 'supportSurfaceDiagnostics'),
   nameLabelIdentityTrace:
     envFlag('VITE_BA_DEBUG_NAME_LABEL_IDENTITY') ||
     queryFlag('nameLabelIdentityTrace', 'debugNameLabelIdentity'),

@@ -7,12 +7,18 @@ import { isConstructionPieceMaterialized } from '../sim/buildableHelpers';
 import type { ClientViewState } from '../network/ClientViewState';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
+import { isUnitGroundPenetrationInContact } from '../sim/unitGroundPhysics';
 import { getTurretWorldMount } from '../math/MountGeometry';
 import { getTransformCosSin } from '../math';
 import { getTurretMountHeight } from '../sim/combat/combatUtils';
+import {
+  createWorldSupportSurface,
+} from '../sim/supportSurface';
+import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { RADAR_VISION_RADIUS } from '../network/stateSerializerVisibility';
 import type { TurretMesh } from './TurretMesh3D';
 import type { EntityMesh, RangeRingMesh, RadiusRingMeshes } from './EntityMesh3D';
+import { sampleLocomotionSupportSurface } from './LocomotionTerrainSampler';
 import {
   createClosedRibbonGeometry,
   writeCircleRibbonGeometry,
@@ -23,6 +29,7 @@ const RANGE_CIRCLE_SEGMENTS = 96;
 const RANGE_CIRCLE_GROUND_LIFT = 6;
 const RANGE_CIRCLE_RENDER_ORDER = 20;
 const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
+const SUPPORT_DIAGNOSTIC_LOG_INTERVAL_MS = 500;
 
 export type OverlayEntityMesh = Pick<
   EntityMesh,
@@ -51,6 +58,8 @@ export class SelectionOverlayRenderer3D {
   private readonly world: THREE.Group;
   private readonly clientViewState: ClientViewState;
   private readonly radiusSphereGeom: THREE.BufferGeometry;
+  private readonly supportDiagnosticSurface = createWorldSupportSurface();
+  private readonly supportDiagnosticNextLogAtMs = new Map<number, number>();
 
   private readonly ringGeom = new THREE.TorusGeometry(1.0, 0.06, 8, 36);
   private readonly radiusMatVisual = new THREE.LineBasicMaterial({
@@ -172,6 +181,7 @@ export class SelectionOverlayRenderer3D {
   }
 
   updateRangeRings(m: OverlayEntityMesh, entity: Entity): void {
+    this.logSupportDiagnostics(entity);
     if (!entity.unit && !entity.building) return;
 
     const showTrackAcquire = getRangeToggle('trackAcquire');
@@ -432,4 +442,60 @@ export class SelectionOverlayRenderer3D {
     this.world.remove(mesh);
     mesh.geometry.dispose();
   }
+
+  private logSupportDiagnostics(entity: Entity): void {
+    if (!GAME_DIAGNOSTICS.supportSurfaceDiagnostics) return;
+    const unit = entity.unit;
+    if (unit === null || entity.selectable?.selected !== true) return;
+
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const nextLogAt = this.supportDiagnosticNextLogAtMs.get(entity.id) ?? 0;
+    if (now < nextLogAt) return;
+    this.supportDiagnosticNextLogAtMs.set(
+      entity.id,
+      now + SUPPORT_DIAGNOSTIC_LOG_INTERVAL_MS,
+    );
+
+    const mapWidth = this.clientViewState.getMapWidth();
+    const mapHeight = this.clientViewState.getMapHeight();
+    const bodyGroundY = getUnitGroundZ(entity);
+    const support = sampleLocomotionSupportSurface(
+      entity.transform.x,
+      entity.transform.y,
+      mapWidth,
+      mapHeight,
+      entity.transform.z,
+      getUnitBodyCenterHeight(unit),
+      entity.id,
+      this.supportDiagnosticSurface,
+    );
+    const penetration = support.groundZ - bodyGroundY;
+    debugLog(GAME_DIAGNOSTICS.supportSurfaceDiagnostics, '[support-surface]', {
+      id: entity.id,
+      unitBlueprintId: unit.unitBlueprintId,
+      supportKind: support.supportKind,
+      materialKind: support.materialKind,
+      supportEntityId: support.supportEntityId,
+      sourceKey: support.sourceKey,
+      walkable: support.walkable,
+      sampledSupportY: roundSupportDiagnostic(support.groundZ),
+      bodyGroundY: roundSupportDiagnostic(bodyGroundY),
+      penetration: roundSupportDiagnostic(penetration),
+      contact: isUnitGroundPenetrationInContact(penetration),
+      velocity: {
+        x: roundSupportDiagnostic(unit.velocityX),
+        y: roundSupportDiagnostic(unit.velocityY),
+        z: roundSupportDiagnostic(unit.velocityZ),
+      },
+      position: {
+        x: roundSupportDiagnostic(entity.transform.x),
+        y: roundSupportDiagnostic(entity.transform.z),
+        z: roundSupportDiagnostic(entity.transform.y),
+      },
+    });
+  }
+}
+
+function roundSupportDiagnostic(value: number): number {
+  return Math.round(value * 1000) / 1000;
 }

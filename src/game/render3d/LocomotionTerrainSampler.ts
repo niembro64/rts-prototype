@@ -1,8 +1,18 @@
 import { LAND_CELL_SIZE } from '../../config';
 import type { Entity, EntityId } from '../sim/types';
-import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
+import {
+  getSurfaceHeight,
+  getSurfaceNormal,
+  getTerrainVersion,
+  isWaterAt,
+} from '../sim/Terrain';
 import { SupportSurfaceIndex } from '../sim/supportSurfaceIndex';
-import { SUPPORT_SURFACE_CONTACT_EPSILON } from '../sim/supportSurface';
+import {
+  SUPPORT_SURFACE_CONTACT_EPSILON,
+  createWorldSupportSurface,
+  writeTerrainSupportSurface,
+  type WorldSupportSurface,
+} from '../sim/supportSurface';
 import {
   getUnitGroundPenetration,
   isUnitGroundPenetrationInContact,
@@ -45,6 +55,36 @@ function getVisualSupportY(
   ignoreEntityId: EntityId | null,
 ): number | null {
   return locomotionSupportIndex.sampleSupportTopZ(x, z, terrainY, { ignoreEntityId });
+}
+
+export function sampleLocomotionSupportSurface(
+  x: number,
+  z: number,
+  mapWidth: number,
+  mapHeight: number,
+  bodyY: number | undefined = undefined,
+  groundOffset: number | undefined = undefined,
+  ignoreEntityId: EntityId | null = null,
+  out: WorldSupportSurface = createWorldSupportSurface(),
+): WorldSupportSurface {
+  const terrainY = getSurfaceHeight(x, z, mapWidth, mapHeight, LAND_CELL_SIZE);
+  writeTerrainSupportSurface(
+    out,
+    terrainY,
+    getSurfaceNormal(x, z, mapWidth, mapHeight, LAND_CELL_SIZE),
+    isWaterAt(x, z, mapWidth, mapHeight),
+    getTerrainVersion(),
+  );
+  locomotionSupportIndex.sampleSupportSurface(
+    x,
+    z,
+    terrainY,
+    bodyY !== undefined && Number.isFinite(bodyY)
+      ? { bodyZ: bodyY, groundOffset: groundOffset ?? 0, ignoreEntityId }
+      : { ignoreEntityId },
+    out,
+  );
+  return out;
 }
 
 /** Floor-clamp one body-local part (a wheel center, a tread sample, a
