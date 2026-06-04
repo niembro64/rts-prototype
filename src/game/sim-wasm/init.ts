@@ -4120,6 +4120,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
       if (import.meta.env.DEV) {
         const { runTurretHostIntegrationContractTest } = await import('../sim/turretHostIntegrationTest');
         runTurretHostIntegrationContractTest();
+        const { runSupportSurfaceContractTest } = await import('../sim/supportSurfaceContractTest');
+        runSupportSurfaceContractTest();
       }
       return handle;
     })();
