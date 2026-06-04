@@ -16,3 +16,160 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 Please always commit and push before and after any code changes we make.
 ================================================================================
 
+SURFACE AND LOCOMOTION UNIFICATION: UNITS SNAP OR DROP WHEN LEAVING FABRICATORS
+
+Problem
+-------
+Units do not currently have one shared definition of "the surface under me."
+Terrain, water, building tops, unit tops, factory shell spawn height, client
+prediction, and render-time locomotion rigs each answer that question through
+different code paths. This causes visible snapping when units come off the
+fabricator and makes the fabricator surface behave differently from ordinary
+ground.
+
+Design target
+-------------
+Every unit, regardless of locomotion type, should query the same world support
+surface contract. Terrain, building tops, and authored unit support surfaces
+should all be valid support surfaces. Water should remain a distinct material or
+surface kind in that same query, not a separate movement exception. Wheels,
+treads, legs, hover, and flying units should share the same query but respond
+through their locomotion-specific force/contact model.
+
+Relevant current inconsistencies
+--------------------------------
+1. `WorldState.getGroundZ()` is terrain/water only, despite being documented as
+   canonical ground. It does not include building tops or unit support surfaces.
+
+2. Normal unit spawn initializes altitude from terrain-only `getGroundZ()`.
+   Factory shells then override `transform.z` with `factory collider top + 160`,
+   which is a fabricator-specific height rule rather than a shared spawn
+   surface rule.
+
+3. Factory rally actions fill missing waypoint `z` with terrain-only
+   `world.getGroundZ()`. Produced units may inherit a high-level route whose
+   vertical target does not represent the real support surface at that point.
+
+4. The server physics engine has a special static-support overlay for building
+   tops. When a dynamic body is near a support top, it overwrites the body's
+   vertical position with `support.groundZ + groundOffset`. This is likely the
+   authoritative source of the visible snap.
+
+5. Unit force application detects terrain contact first, then asks the physics
+   engine for support contact only if not touching terrain. Building-top support
+   is therefore not part of one first-class surface query; it is an overlay.
+
+6. Unit-on-unit support is only implied by sphere-sphere upward contact. Sphere
+   collision is not the same thing as a walkable top surface, and it is not
+   exposed to client prediction or locomotion visuals as a stable support plane.
+
+7. Client prediction mirrors only building support surfaces. It does not include
+   unit support surfaces, and it has a terrain-slave correction that forces
+   ground units back to `terrain + bodyCenterHeight` when the server target is
+   not clearly elevated. This can sharpen the apparent drop from a platform.
+
+8. Render-time locomotion floor sampling is terrain-only. Wheels, treads, legs,
+   hover fans, contact shadows, and related visual floor clamps can disagree
+   with authoritative building or unit support.
+
+9. Fabricator physical support height may not match the player's visual
+   expectation. `towerFabricator.gridDepth` defines a shallow collider/support
+   top, while the factory visual profile and construction turret imply a taller
+   structure. Decide what part of the fabricator is actually walkable/supportive
+   and make physics, spawn, targeting, and visuals agree.
+
+10. Initial/bootstrap unit physics can set `ignoreOverlappingBuildings` for
+    overlapping buildings, and that ignore pair appears to have no normal
+    "clear once exited" path. Audit this separately from factory shells. Factory
+    construction shells currently pass `ignoreOverlappingBuildings: false`, so
+    this is not the main fabricator-shell path, but it can affect other spawn
+    cases.
+
+Plan
+----
+1. Define a shared support-surface contract.
+   Create one conceptual query that returns at least: support height, normal,
+   support entity id, support kind, material kind, support velocity, walkable
+   flag, and a stable version/source key. This contract should cover terrain,
+   water, buildings, and authored unit support surfaces.
+
+2. Separate collision shape from support shape.
+   Do not infer "walkable top" directly from a unit's sphere collider. Add
+   authored support proxies where needed: flat deck, capsule top, platform pad,
+   or no support. Buildings should also expose support proxies instead of
+   relying only on cuboid top math.
+
+3. Make fabricator support explicit.
+   Decide whether the fabricator walkable/support surface is the shallow base
+   top, a raised visual platform, or a central build pad. Encode that as a
+   support proxy and use it for shell spawn, settling, exit movement, targeting
+   height, render alignment, and client prediction.
+
+4. Replace terrain-only spawn height selection.
+   Unit spawn, building shell spawn, factory shell spawn, and any later drop or
+   release mechanic should ask the support-surface query for the initial support
+   at the authored spawn point. They may add an authored spawn clearance, but
+   the base height must come from the shared surface query.
+
+5. Remove active-motion support snaps.
+   Building or platform support should enter the integrator as contact height
+   and normal for the same spring/damper path used by terrain. Hard vertical
+   snapping should be allowed only as a final rest/sleep correction when the
+   unit is already slow and nearly settled.
+
+6. Route all server force/contact logic through the support query.
+   UnitForceSystem and PhysicsEngine3D should consume the same sampled support
+   result. Locomotion should ask, "what force do I apply against this support?"
+   not "am I on terrain or a special platform overlay?"
+
+7. Add unit support to prediction deliberately.
+   Client prediction needs the same support candidates that the server can use:
+   terrain, water, buildings, and authored unit support surfaces. Use stable
+   snapshot state or deterministic local proxies so visible prediction does not
+   fight authoritative correction.
+
+8. Update render-time locomotion floor sampling.
+   LocomotionTerrainSampler should become a visual support sampler, not a
+   terrain-only sampler. It should still keep frontend-only contact bands and
+   hysteresis for legs/wheels/treads, but its floor height should match the same
+   support surface the sim considers valid.
+
+9. Treat water as a material in the same system.
+   Water should be a support/material result with locomotion-specific response:
+   ground units avoid or escape, hover/flying use clearance and effects, and
+   future amphibious units can opt into water support. Avoid separate ad hoc
+   water branches where possible.
+
+10. Rebuild factory exit behavior through normal movement.
+    A completed shell should receive high-level waypoints only. It should exit
+    the fabricator by normal locomotion over support surfaces, including edge
+    transition from platform to terrain, with no fabricator-specific movement
+    code.
+
+11. Add diagnostics before tuning.
+    Add a temporary debug overlay/log mode that shows sampled support height,
+    support kind/id, body ground point, penetration, velocity, and contact state
+    for selected units. This should make fabricator edge transitions and unit
+    stacking behavior observable.
+
+12. Add regression tests.
+    Cover at least: unit spawn on terrain, unit spawn on a building/fabricator
+    support, factory shell settle and exit, building top traversal, unit support
+    traversal where authored, water boundary behavior, client prediction matching
+    elevated support, and render locomotion clamps matching elevated support.
+
+Acceptance criteria
+-------------------
+1. Units no longer visibly snap down when settling on or leaving the fabricator.
+
+2. A unit standing on a valid building or unit support surface has the same
+   authoritative, predicted, and rendered base height.
+
+3. Every locomotion type uses the same support-surface query path, with only the
+   response model varying by locomotion profile.
+
+4. Fabricator-produced units inherit only high-level waypoints and leave through
+   normal movement systems.
+
+5. Water remains distinct from solid ground, but is represented through the same
+   surface/material contract rather than an unrelated movement path.
