@@ -3,22 +3,24 @@ import { getEntityRenderScopePadding } from '../entityRenderScope';
 import type { Entity, EntityId } from '../sim/types';
 
 const CLIENT_RENDER_CELL_SIZE = 512;
+const DEFAULT_MAX_ENTITY_PADDING = 350;
 
 type ClientRenderSpatialEntry = {
   entity: Entity;
   cellKey: string;
   bucketIndex: number;
+  padding: number;
 };
 
 export class ClientRenderSpatialIndex {
   private readonly buckets = new Map<string, Entity[]>();
   private readonly entries = new Map<EntityId, ClientRenderSpatialEntry>();
-  private maxEntityPadding = 350;
+  private maxEntityPadding = DEFAULT_MAX_ENTITY_PADDING;
 
   clear(): void {
     this.buckets.clear();
     this.entries.clear();
-    this.maxEntityPadding = 350;
+    this.maxEntityPadding = DEFAULT_MAX_ENTITY_PADDING;
   }
 
   getMaxEntityPadding(): number {
@@ -33,10 +35,11 @@ export class ClientRenderSpatialIndex {
 
     const cellKey = this.cellKeyFor(entity.transform.x, entity.transform.y);
     const existing = this.entries.get(entity.id);
-    this.maxEntityPadding = Math.max(this.maxEntityPadding, getEntityRenderScopePadding(entity));
+    const padding = getEntityRenderScopePadding(entity);
 
     if (existing !== undefined && existing.cellKey === cellKey) {
       existing.entity = entity;
+      this.updateEntryPadding(existing, padding);
       const bucket = this.buckets.get(cellKey);
       if (bucket !== undefined) bucket[existing.bucketIndex] = entity;
       return;
@@ -48,9 +51,11 @@ export class ClientRenderSpatialIndex {
       entity,
       cellKey,
       bucketIndex: bucket.length,
+      padding,
     };
     bucket.push(entity);
     this.entries.set(entity.id, entry);
+    if (padding > this.maxEntityPadding) this.maxEntityPadding = padding;
   }
 
   remove(id: EntityId): void {
@@ -67,6 +72,7 @@ export class ClientRenderSpatialIndex {
       if (bucket.length === 0) this.buckets.delete(entry.cellKey);
     }
     this.entries.delete(id);
+    if (entry.padding >= this.maxEntityPadding) this.recomputeMaxEntityPadding();
   }
 
   queryUnitsAndBuildings(
@@ -101,6 +107,24 @@ export class ClientRenderSpatialIndex {
       this.buckets.set(cellKey, bucket);
     }
     return bucket;
+  }
+
+  private updateEntryPadding(entry: ClientRenderSpatialEntry, padding: number): void {
+    const previous = entry.padding;
+    entry.padding = padding;
+    if (padding >= this.maxEntityPadding) {
+      this.maxEntityPadding = padding;
+    } else if (previous >= this.maxEntityPadding) {
+      this.recomputeMaxEntityPadding();
+    }
+  }
+
+  private recomputeMaxEntityPadding(): void {
+    let next = DEFAULT_MAX_ENTITY_PADDING;
+    for (const entry of this.entries.values()) {
+      if (entry.padding > next) next = entry.padding;
+    }
+    this.maxEntityPadding = next;
   }
 
   private cellKeyFor(x: number, y: number): string {

@@ -18,30 +18,7 @@ Please always commit and push before and after any code changes we make.
 
 CODE AUDIT - 2026-06-04
 
-1. Scoped entity rendering keeps an inflated culling padding forever after a
-   large entity appears.
-
-Evidence:
-- src/game/network/ClientRenderSpatialIndex.ts tracks maxEntityPadding and
-  increases it in update() with getEntityRenderScopePadding(entity).
-- clear() resets maxEntityPadding, but remove() does not recompute it and
-  update() does not reduce it when a large entity shrinks or disappears.
-- RtsScene3DRenderPhase asks ClientViewState for this max padding when building
-  the camera culling bounds.
-
-Problem:
-Once a large unit/building is observed, scoped rendering uses that larger
-padding for all later queries until the whole client view state is cleared. This
-silently broadens culling bounds and can make RENDER: WIN/PAD draw more units,
-buildings, HUD rows, shadows, shields, and ground prints than necessary.
-
-Required fix:
-Store per-entry padding in ClientRenderSpatialIndex and recompute the max when
-the previous maximum is removed or reduced. Alternatively keep a small
-histogram/count of padding buckets so max padding can shrink without a full
-scan on every removal.
-
-2. Terrain geometry caching is entry-count limited, not memory-budget limited.
+1. Terrain geometry caching is entry-count limited, not memory-budget limited.
 
 Evidence:
 - src/game/render3d/TerrainTileRenderer3D.ts keeps up to eight cached
