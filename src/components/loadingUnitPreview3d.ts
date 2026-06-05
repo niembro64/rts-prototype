@@ -180,24 +180,41 @@ function createWorkerDriver(
     return null;
   }
   let destroyed = false;
+  let terminated = false;
   let terminateFallback: ReturnType<typeof setTimeout> | null = null;
 
   function finishTerminate(): void {
+    if (terminated) return;
+    terminated = true;
     if (terminateFallback !== null) {
       clearTimeout(terminateFallback);
       terminateFallback = null;
     }
     worker.removeEventListener('message', handleWorkerMessage);
+    worker.removeEventListener('error', handleWorkerFailure);
+    worker.removeEventListener('messageerror', handleWorkerFailure);
     worker.terminate();
     contextToken.release();
   }
 
   function handleWorkerMessage(event: MessageEvent<WorkerPreviewResponse>): void {
     if (event.data.type === 'destroyed') finishTerminate();
-    else if (event.data.type === 'ready') hooks.onReady();
+    else if (event.data.type === 'ready' && !destroyed) hooks.onReady();
+  }
+
+  function handleWorkerFailure(): void {
+    if (destroyed) {
+      finishTerminate();
+      return;
+    }
+    destroyed = true;
+    finishTerminate();
+    hooks.onReady();
   }
 
   worker.addEventListener('message', handleWorkerMessage);
+  worker.addEventListener('error', handleWorkerFailure);
+  worker.addEventListener('messageerror', handleWorkerFailure);
   let offscreen: OffscreenCanvas;
   try {
     offscreen = canvas.transferControlToOffscreen();
@@ -213,13 +230,23 @@ function createWorkerDriver(
     fullBleed,
     ...size,
   };
-  worker.postMessage(initMessage, [offscreen]);
+  try {
+    worker.postMessage(initMessage, [offscreen]);
+  } catch {
+    destroyed = true;
+    finishTerminate();
+    return createDisabledPreviewDriver(canvas, hooks);
+  }
 
   return {
     resize: (nextSize) => {
       if (destroyed) return;
       const message: WorkerPreviewMessage = { type: 'resize', ...nextSize };
-      worker.postMessage(message);
+      try {
+        worker.postMessage(message);
+      } catch {
+        handleWorkerFailure();
+      }
     },
     destroy: () => {
       if (destroyed) return;
@@ -247,21 +274,38 @@ async function createMainThreadFallbackDriver(
   if (contextToken === null) {
     return createDisabledPreviewDriver(canvas, hooks);
   }
-  const { LoadingUnitPreviewScene } = await import('./loadingUnitPreviewScene');
-  let scene: LoadingPreviewSceneRuntime;
+  let scene: LoadingPreviewSceneRuntime | null = null;
   try {
+    const { LoadingUnitPreviewScene } = await import('./loadingUnitPreviewScene');
     scene = new LoadingUnitPreviewScene({ canvas, kind, blueprintId, fullBleed });
-  } catch (error) {
+    scene.resize(size);
+  } catch {
+    scene?.dispose();
     contextToken.release();
-    throw error;
+    return createDisabledPreviewDriver(canvas, hooks);
   }
+  const previewScene = scene;
   let destroyed = false;
   let rafId = 0;
   let readyFired = false;
 
+  const fail = (): void => {
+    if (destroyed) return;
+    destroyed = true;
+    cancelAnimationFrame(rafId);
+    previewScene.dispose();
+    contextToken.release();
+    hooks.onReady();
+  };
+
   const tick = (now: number): void => {
     if (destroyed) return;
-    scene.render(now);
+    try {
+      previewScene.render(now);
+    } catch {
+      fail();
+      return;
+    }
     if (!readyFired) {
       readyFired = true;
       hooks.onReady();
@@ -269,17 +313,22 @@ async function createMainThreadFallbackDriver(
     rafId = requestAnimationFrame(tick);
   };
 
-  scene.resize(size);
   rafId = requestAnimationFrame(tick);
 
   return {
     resize: (nextSize) => {
-      scene.resize(nextSize);
+      if (destroyed) return;
+      try {
+        previewScene.resize(nextSize);
+      } catch {
+        fail();
+      }
     },
     destroy: () => {
+      if (destroyed) return;
       destroyed = true;
       cancelAnimationFrame(rafId);
-      scene.dispose();
+      previewScene.dispose();
       contextToken.release();
     },
   };
@@ -291,9 +340,13 @@ function createDisabledPreviewDriver(
 ): PreviewDriver {
   let destroyed = false;
   const clear = (): void => {
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    try {
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    } catch {
+      // A canvas transferred to a failed worker can no longer be painted here.
+    }
   };
   queueMicrotask(() => {
     if (!destroyed) hooks.onReady();
@@ -301,8 +354,12 @@ function createDisabledPreviewDriver(
   clear();
   return {
     resize: (size) => {
-      canvas.width = Math.max(1, Math.round(size.width * size.dpr));
-      canvas.height = Math.max(1, Math.round(size.height * size.dpr));
+      try {
+        canvas.width = Math.max(1, Math.round(size.width * size.dpr));
+        canvas.height = Math.max(1, Math.round(size.height * size.dpr));
+      } catch {
+        // Keep disabled fallback inert when the canvas has been transferred.
+      }
       clear();
     },
     destroy: () => {

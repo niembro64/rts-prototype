@@ -18,64 +18,7 @@ Please always commit and push before and after any code changes we make.
 
 CODE AUDIT - 2026-06-04
 
-1. Loading preview worker failures can leak auxiliary renderer budget and leave
-   the loading overlay waiting forever.
-
-Evidence:
-- src/components/loadingUnitPreview3d.ts acquires an auxiliary renderer context
-  token before creating the loading preview worker.
-- createWorkerDriver() only listens for worker "message" events. The context
-  token is released from finishTerminate(), which is reached on an explicit
-  destroy message, transfer failure, constructor failure, or the destroy
-  timeout.
-- There is no worker "error" or "messageerror" handler. A worker that throws
-  after creation but before replying "ready" or "destroyed" keeps the token
-  active until the whole preview is destroyed.
-- The main-thread fallback path also lets import/constructor errors reject the
-  async driver promise without swapping to the disabled preview driver.
-
-Problem:
-RendererContextBudget protects the browser from too many WebGL contexts, but
-these failure paths can leave stale auxiliary contexts counted as active and
-can keep the loading screen's ready callback from firing. A failed decorative
-preview should not consume WebGL budget or block startup progress.
-
-Required fix:
-Route worker "error" and "messageerror" through the same idempotent teardown
-path as destroy, release the context token there, and fall back to a disabled or
-main-thread preview when possible. Add a catch path for
-createMainThreadFallbackDriver() so preview construction failures release
-budget and still fire ready with a non-WebGL fallback.
-
-2. Unit detail instancing still uses high-count Three.js object helpers and
-   full-buffer uploads.
-
-Evidence:
-- src/game/render3d/UnitDetailInstanceRenderer3D.ts owns capacities of 16,384
-  smooth chassis instances, 16,384 turret heads, 32,768 barrels, and multiple
-  other instanced pools.
-- The hot pose writers call setMatrixAt() for chassis, turret heads, barrels,
-  cone barrels, and shield panels. Color paths still call setColorAt().
-- flush() marks whole instanceMatrix and instanceColor buffers dirty for each
-  active pool instead of tracking explicit dirty ranges.
-- createPool() initializes every slot in every pool with setMatrixAt() even
-  though mesh.count starts at 0.
-
-Problem:
-Three.js is allowed as the renderer backend, but this path does not yet satisfy
-the design requirement that high-count visuals use owned typed buffers,
-explicit update ranges, and predictable upload behavior. Large battles can pay
-for whole-buffer uploads and helper-method overhead even when only a subset of
-slots changed.
-
-Required fix:
-Migrate UnitDetailInstanceRenderer3D to direct typed-array writes for matrices,
-colors, fades, and shield panel attributes. Track dirty min/max slot ranges per
-buffer and call clearUpdateRanges()/addUpdateRange() before setting
-needsUpdate. Avoid full-capacity initialization work; clear only slots that
-become visible or are returned to the free list.
-
-3. Leg instance pools upload static and dynamic attributes every flush.
+1. Leg instance pools upload static and dynamic attributes every flush.
 
 Evidence:
 - src/game/render3d/LegInstancedRenderer.ts uses owned InstancedBufferGeometry
@@ -99,7 +42,7 @@ Upload color only when allocation/recoloring/defrag actually changes it, and
 upload fade only when materialization/death fade changes. For joint and foot
 matrices, write matrix arrays directly and use explicit update ranges.
 
-4. Smoke emitter rendering still allocates a Map during the render update.
+2. Smoke emitter rendering still allocates a Map during the render update.
 
 Evidence:
 - src/game/render3d/SmokeTrail3D.ts has a reusable _emittedByUse map for the
@@ -117,7 +60,7 @@ Hoist the emitter emitted-by-use map to a reusable instance field, clear it per
 update, and audit the rest of SmokeTrail3D for temporary collections in render
 loops.
 
-5. HUD label and health-bar sprite pools retain peak visible GPU/DOM resources.
+3. HUD label and health-bar sprite pools retain peak visible GPU/DOM resources.
 
 Evidence:
 - src/game/render3d/CanvasSpritePool.ts grows by creating one canvas, one
@@ -140,7 +83,7 @@ old unused slots after a cooldown, cap rows under load, or replace the per-row
 Sprite/CanvasTexture path with an atlas or instanced-quad renderer. Toggling HUD
 features off should be able to release or aggressively shrink these pools.
 
-6. Scoped entity rendering keeps an inflated culling padding forever after a
+4. Scoped entity rendering keeps an inflated culling padding forever after a
    large entity appears.
 
 Evidence:
@@ -163,7 +106,7 @@ the previous maximum is removed or reduced. Alternatively keep a small
 histogram/count of padding buckets so max padding can shrink without a full
 scan on every removal.
 
-7. Terrain geometry caching is entry-count limited, not memory-budget limited.
+5. Terrain geometry caching is entry-count limited, not memory-budget limited.
 
 Evidence:
 - src/game/render3d/TerrainTileRenderer3D.ts keeps up to eight cached
