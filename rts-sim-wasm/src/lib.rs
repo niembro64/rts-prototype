@@ -23277,6 +23277,7 @@ shield_pool_ptr_export!(shield_pool_radius_ptr, radius, f64);
 
 const SHIELD_GRAZE_EPS: f64 = 1e-6;
 const ARC_FF_CLEARANCE_SAMPLES: u32 = 16;
+const SHIELD_MOVING_FIELD_TOI_STEPS: usize = 8;
 const SHIELD_REFLECTION_MODE_OUTSIDE_IN: u8 = 0;
 const SHIELD_REFLECTION_MODE_INSIDE_OUT: u8 = 1;
 const SHIELD_REFLECTION_MODE_BOTH: u8 = 2;
@@ -23300,6 +23301,14 @@ struct ProjectileReflectorHit {
     normal_x: f64,
     normal_y: f64,
     normal_z: f64,
+    surface_velocity_x: f64,
+    surface_velocity_y: f64,
+    surface_velocity_z: f64,
+}
+
+struct ShieldFieldContact {
+    t: f64,
+    threshold: f64,
 }
 
 #[inline]
@@ -23754,6 +23763,66 @@ fn shield_projectile_intersection_t(
 }
 
 #[inline]
+fn shield_projectile_intersection_contact(
+    start_x: f64,
+    start_y: f64,
+    start_z: f64,
+    end_x: f64,
+    end_y: f64,
+    end_z: f64,
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    axis_end_x: f64,
+    axis_end_y: f64,
+    axis_end_z: f64,
+    radius: f64,
+    projectile_radius: f64,
+    shape: u8,
+    reflection_mode: u8,
+) -> Option<ShieldFieldContact> {
+    let projectile_radius = projectile_radius.max(0.0);
+    let mut best: Option<ShieldFieldContact> = None;
+
+    let mut try_radius = |effective_radius: f64, threshold: f64| {
+        if effective_radius <= SHIELD_GRAZE_EPS {
+            return;
+        }
+        let Some(t) = shield_projectile_intersection_t(
+            start_x,
+            start_y,
+            start_z,
+            end_x,
+            end_y,
+            end_z,
+            center_x,
+            center_y,
+            center_z,
+            axis_end_x,
+            axis_end_y,
+            axis_end_z,
+            effective_radius,
+            shape,
+            reflection_mode,
+        ) else {
+            return;
+        };
+        if best.as_ref().map(|hit| t < hit.t).unwrap_or(true) {
+            best = Some(ShieldFieldContact { t, threshold });
+        }
+    };
+
+    if projectile_radius > SHIELD_GRAZE_EPS {
+        try_radius(radius - projectile_radius, -projectile_radius);
+        try_radius(radius + projectile_radius, projectile_radius);
+    } else {
+        try_radius(radius, 0.0);
+    }
+
+    best
+}
+
+#[inline]
 fn shield_field_signed_distance_and_normal(
     px: f64,
     py: f64,
@@ -23830,7 +23899,12 @@ fn shield_field_signed_distance_and_normal(
 }
 
 #[inline]
-fn shield_projectile_moving_field_hit(
+fn lerp_f64(a: f64, b: f64, t: f64) -> f64 {
+    a + (b - a) * t
+}
+
+#[inline]
+fn shield_field_sample_at_t(
     start_x: f64,
     start_y: f64,
     start_z: f64,
@@ -23851,29 +23925,182 @@ fn shield_projectile_moving_field_hit(
     axis_end_z: f64,
     radius: f64,
     shape: u8,
+    t: f64,
+) -> Option<(f64, f64, f64, f64, f64, f64, f64)> {
+    let px = lerp_f64(start_x, end_x, t);
+    let py = lerp_f64(start_y, end_y, t);
+    let pz = lerp_f64(start_z, end_z, t);
+    let cx = lerp_f64(prev_center_x, center_x, t);
+    let cy = lerp_f64(prev_center_y, center_y, t);
+    let cz = lerp_f64(prev_center_z, center_z, t);
+    let ax = lerp_f64(prev_axis_end_x, axis_end_x, t);
+    let ay = lerp_f64(prev_axis_end_y, axis_end_y, t);
+    let az = lerp_f64(prev_axis_end_z, axis_end_z, t);
+    let (dist, nx, ny, nz) =
+        shield_field_signed_distance_and_normal(px, py, pz, cx, cy, cz, ax, ay, az, radius, shape)?;
+    Some((dist, nx, ny, nz, px, py, pz))
+}
+
+#[inline]
+fn shield_field_surface_velocity(
+    hit_x: f64,
+    hit_y: f64,
+    hit_z: f64,
+    normal_x: f64,
+    normal_y: f64,
+    normal_z: f64,
+    threshold: f64,
+    prev_center_x: f64,
+    prev_center_y: f64,
+    prev_center_z: f64,
+    prev_axis_end_x: f64,
+    prev_axis_end_y: f64,
+    prev_axis_end_z: f64,
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    axis_end_x: f64,
+    axis_end_y: f64,
+    axis_end_z: f64,
+    radius: f64,
+    shape: u8,
+    dt_sec: f64,
+) -> (f64, f64, f64) {
+    if dt_sec <= 1e-9 || !dt_sec.is_finite() {
+        return (0.0, 0.0, 0.0);
+    }
+    let effective_radius = (radius + threshold).max(0.0);
+    let (prev_x, prev_y, prev_z, curr_x, curr_y, curr_z) = if shape
+        == SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER
+    {
+        (
+            prev_center_x + normal_x * effective_radius,
+            prev_center_y + normal_y * effective_radius,
+            hit_z,
+            center_x + normal_x * effective_radius,
+            center_y + normal_y * effective_radius,
+            hit_z,
+        )
+    } else if shape == SHIELD_FIELD_SHAPE_AIMED_CYLINDER {
+        let cur_axis_x = axis_end_x - center_x;
+        let cur_axis_y = axis_end_y - center_y;
+        let cur_axis_z = axis_end_z - center_z;
+        let prev_axis_x = prev_axis_end_x - prev_center_x;
+        let prev_axis_y = prev_axis_end_y - prev_center_y;
+        let prev_axis_z = prev_axis_end_z - prev_center_z;
+        let cur_axis_len =
+            (cur_axis_x * cur_axis_x + cur_axis_y * cur_axis_y + cur_axis_z * cur_axis_z).sqrt();
+        let prev_axis_len =
+            (prev_axis_x * prev_axis_x + prev_axis_y * prev_axis_y + prev_axis_z * prev_axis_z)
+                .sqrt();
+        if cur_axis_len <= 1e-9 || prev_axis_len <= 1e-9 {
+            return (0.0, 0.0, 0.0);
+        }
+        let cux = cur_axis_x / cur_axis_len;
+        let cuy = cur_axis_y / cur_axis_len;
+        let cuz = cur_axis_z / cur_axis_len;
+        let pux = prev_axis_x / prev_axis_len;
+        let puy = prev_axis_y / prev_axis_len;
+        let puz = prev_axis_z / prev_axis_len;
+        let rel_x = hit_x - center_x;
+        let rel_y = hit_y - center_y;
+        let rel_z = hit_z - center_z;
+        let axial = rel_x * cux + rel_y * cuy + rel_z * cuz;
+        let prev_normal_dot = normal_x * pux + normal_y * puy + normal_z * puz;
+        let mut pnx = normal_x - pux * prev_normal_dot;
+        let mut pny = normal_y - puy * prev_normal_dot;
+        let mut pnz = normal_z - puz * prev_normal_dot;
+        let prev_normal_len = (pnx * pnx + pny * pny + pnz * pnz).sqrt();
+        if prev_normal_len <= 1e-9 {
+            pnx = normal_x;
+            pny = normal_y;
+            pnz = normal_z;
+        } else {
+            let inv = 1.0 / prev_normal_len;
+            pnx *= inv;
+            pny *= inv;
+            pnz *= inv;
+        }
+        (
+            prev_center_x + pux * axial + pnx * effective_radius,
+            prev_center_y + puy * axial + pny * effective_radius,
+            prev_center_z + puz * axial + pnz * effective_radius,
+            center_x + cux * axial + normal_x * effective_radius,
+            center_y + cuy * axial + normal_y * effective_radius,
+            center_z + cuz * axial + normal_z * effective_radius,
+        )
+    } else {
+        (
+            prev_center_x + normal_x * effective_radius,
+            prev_center_y + normal_y * effective_radius,
+            prev_center_z + normal_z * effective_radius,
+            center_x + normal_x * effective_radius,
+            center_y + normal_y * effective_radius,
+            center_z + normal_z * effective_radius,
+        )
+    };
+
+    (
+        (curr_x - prev_x) / dt_sec,
+        (curr_y - prev_y) / dt_sec,
+        (curr_z - prev_z) / dt_sec,
+    )
+}
+
+#[inline]
+fn shield_projectile_moving_field_hit(
+    start_x: f64,
+    start_y: f64,
+    start_z: f64,
+    end_x: f64,
+    end_y: f64,
+    end_z: f64,
+    prev_center_x: f64,
+    prev_center_y: f64,
+    prev_center_z: f64,
+    prev_axis_end_x: f64,
+    prev_axis_end_y: f64,
+    prev_axis_end_z: f64,
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    axis_end_x: f64,
+    axis_end_y: f64,
+    axis_end_z: f64,
+    radius: f64,
+    projectile_radius: f64,
+    shape: u8,
     reflection_mode: u8,
     owner_entity_id: i32,
+    dt_sec: f64,
 ) -> Option<ProjectileReflectorHit> {
-    let Some((prev_dist, _, _, _)) = shield_field_signed_distance_and_normal(
-        start_x,
-        start_y,
-        start_z,
-        prev_center_x,
-        prev_center_y,
-        prev_center_z,
-        prev_axis_end_x,
-        prev_axis_end_y,
-        prev_axis_end_z,
-        radius,
-        shape,
-    ) else {
-        return None;
-    };
-    let Some((current_dist, normal_x, normal_y, normal_z)) =
-        shield_field_signed_distance_and_normal(
+    let projectile_radius = projectile_radius.max(0.0);
+    let mut contact: Option<ShieldFieldContact> = None;
+    let mut try_threshold = |candidate: f64, fallback_only: bool| {
+        if fallback_only && contact.is_some() {
+            return;
+        }
+        if contact
+            .as_ref()
+            .map(|hit| hit.t <= SHIELD_GRAZE_EPS)
+            .unwrap_or(false)
+        {
+            return;
+        }
+        let mut lo_t = 0.0;
+        let Some((lo_dist, _, _, _, _, _, _)) = shield_field_sample_at_t(
+            start_x,
+            start_y,
+            start_z,
             end_x,
             end_y,
             end_z,
+            prev_center_x,
+            prev_center_y,
+            prev_center_z,
+            prev_axis_end_x,
+            prev_axis_end_y,
+            prev_axis_end_z,
             center_x,
             center_y,
             center_z,
@@ -23882,32 +24109,196 @@ fn shield_projectile_moving_field_hit(
             axis_end_z,
             radius,
             shape,
-        )
-    else {
-        return None;
+            lo_t,
+        ) else {
+            return;
+        };
+        let mut lo_side = lo_dist - candidate;
+
+        for step in 1..=SHIELD_MOVING_FIELD_TOI_STEPS {
+            let sample_t = step as f64 / SHIELD_MOVING_FIELD_TOI_STEPS as f64;
+            let Some((sample_dist, _, _, _, _, _, _)) = shield_field_sample_at_t(
+                start_x,
+                start_y,
+                start_z,
+                end_x,
+                end_y,
+                end_z,
+                prev_center_x,
+                prev_center_y,
+                prev_center_z,
+                prev_axis_end_x,
+                prev_axis_end_y,
+                prev_axis_end_z,
+                center_x,
+                center_y,
+                center_z,
+                axis_end_x,
+                axis_end_y,
+                axis_end_z,
+                radius,
+                shape,
+                sample_t,
+            ) else {
+                return;
+            };
+            let sample_side = sample_dist - candidate;
+            let exact_sample = sample_side.abs() <= SHIELD_GRAZE_EPS
+                && lo_side.abs() > SHIELD_GRAZE_EPS
+                && shield_reflection_mode_allows_crossing(reflection_mode, sample_side - lo_side);
+            if exact_sample {
+                if contact.as_ref().map(|hit| sample_t < hit.t).unwrap_or(true) {
+                    contact = Some(ShieldFieldContact {
+                        t: sample_t,
+                        threshold: candidate,
+                    });
+                }
+                return;
+            }
+
+            let crossed = (lo_side <= SHIELD_GRAZE_EPS && sample_side > SHIELD_GRAZE_EPS)
+                || (lo_side >= -SHIELD_GRAZE_EPS && sample_side < -SHIELD_GRAZE_EPS);
+            if crossed
+                && shield_reflection_mode_allows_crossing(reflection_mode, sample_side - lo_side)
+            {
+                let mut root_lo_t = lo_t;
+                let mut root_hi_t = sample_t;
+                let mut root_lo_side = lo_side;
+                for _ in 0..18 {
+                    let mid = (root_lo_t + root_hi_t) * 0.5;
+                    let Some((mid_dist, _, _, _, _, _, _)) = shield_field_sample_at_t(
+                        start_x,
+                        start_y,
+                        start_z,
+                        end_x,
+                        end_y,
+                        end_z,
+                        prev_center_x,
+                        prev_center_y,
+                        prev_center_z,
+                        prev_axis_end_x,
+                        prev_axis_end_y,
+                        prev_axis_end_z,
+                        center_x,
+                        center_y,
+                        center_z,
+                        axis_end_x,
+                        axis_end_y,
+                        axis_end_z,
+                        radius,
+                        shape,
+                        mid,
+                    ) else {
+                        return;
+                    };
+                    let mid_side = mid_dist - candidate;
+                    if mid_side.abs() <= SHIELD_GRAZE_EPS {
+                        root_hi_t = mid;
+                        break;
+                    }
+                    if (root_lo_side < 0.0 && mid_side < 0.0)
+                        || (root_lo_side > 0.0 && mid_side > 0.0)
+                    {
+                        root_lo_t = mid;
+                        root_lo_side = mid_side;
+                    } else {
+                        root_hi_t = mid;
+                    }
+                }
+                if contact
+                    .as_ref()
+                    .map(|hit| root_hi_t < hit.t)
+                    .unwrap_or(true)
+                {
+                    contact = Some(ShieldFieldContact {
+                        t: root_hi_t,
+                        threshold: candidate,
+                    });
+                }
+                return;
+            }
+
+            lo_t = sample_t;
+            lo_side = sample_side;
+        }
     };
 
-    let crossed_out = prev_dist <= SHIELD_GRAZE_EPS && current_dist > SHIELD_GRAZE_EPS;
-    let crossed_in = prev_dist > SHIELD_GRAZE_EPS && current_dist <= SHIELD_GRAZE_EPS;
-    if !crossed_out && !crossed_in {
-        return None;
+    if projectile_radius > SHIELD_GRAZE_EPS {
+        try_threshold(-projectile_radius, false);
+        try_threshold(projectile_radius, false);
+        try_threshold(0.0, true);
+    } else {
+        try_threshold(0.0, false);
     }
-
-    let radial_velocity = current_dist - prev_dist;
-    if !shield_reflection_mode_allows_crossing(reflection_mode, radial_velocity) {
+    let Some(contact) = contact else {
         return None;
-    }
+    };
+    let t = contact.t;
+    let threshold = contact.threshold;
+    let Some((_, normal_x, normal_y, normal_z, hit_x, hit_y, hit_z)) = shield_field_sample_at_t(
+        start_x,
+        start_y,
+        start_z,
+        end_x,
+        end_y,
+        end_z,
+        prev_center_x,
+        prev_center_y,
+        prev_center_z,
+        prev_axis_end_x,
+        prev_axis_end_y,
+        prev_axis_end_z,
+        center_x,
+        center_y,
+        center_z,
+        axis_end_x,
+        axis_end_y,
+        axis_end_z,
+        radius,
+        shape,
+        t,
+    ) else {
+        return None;
+    };
+    let (surface_velocity_x, surface_velocity_y, surface_velocity_z) =
+        shield_field_surface_velocity(
+            hit_x,
+            hit_y,
+            hit_z,
+            normal_x,
+            normal_y,
+            normal_z,
+            threshold,
+            prev_center_x,
+            prev_center_y,
+            prev_center_z,
+            prev_axis_end_x,
+            prev_axis_end_y,
+            prev_axis_end_z,
+            center_x,
+            center_y,
+            center_z,
+            axis_end_x,
+            axis_end_y,
+            axis_end_z,
+            radius,
+            shape,
+            dt_sec,
+        );
 
     Some(ProjectileReflectorHit {
         kind: REFLECTOR_HIT_KIND_SHIELD,
         entity_id: owner_entity_id,
-        t: 1.0,
-        x: end_x - normal_x * current_dist,
-        y: end_y - normal_y * current_dist,
-        z: end_z - normal_z * current_dist,
+        t,
+        x: hit_x,
+        y: hit_y,
+        z: hit_z,
         normal_x,
         normal_y,
         normal_z,
+        surface_velocity_x,
+        surface_velocity_y,
+        surface_velocity_z,
     })
 }
 
@@ -23919,6 +24310,8 @@ fn shield_projectile_intersection(
     end_x: f64,
     end_y: f64,
     end_z: f64,
+    projectile_radius: f64,
+    dt_sec: f64,
     max_t: f64,
 ) -> Option<ProjectileReflectorHit> {
     let pool = shield_pool();
@@ -23930,7 +24323,7 @@ fn shield_projectile_intersection(
     let mut best_t = max_t;
     let mut best: Option<ProjectileReflectorHit> = None;
     for i in 0..count {
-        let static_t = shield_projectile_intersection_t(
+        let static_contact = shield_projectile_intersection_contact(
             start_x,
             start_y,
             start_z,
@@ -23944,13 +24337,15 @@ fn shield_projectile_intersection(
             pool.axis_end_y[i],
             pool.axis_end_z[i],
             pool.radius[i],
+            projectile_radius,
             pool.field_shape[i],
             pool.field_reflection_mode[i],
         );
-        let candidate = if let Some(t) = static_t {
-            if t >= best_t {
+        let candidate = if let Some(contact) = static_contact {
+            if contact.t >= best_t {
                 None
             } else {
+                let t = contact.t;
                 let dx = end_x - start_x;
                 let dy = end_y - start_y;
                 let dz = end_z - start_z;
@@ -23990,6 +24385,34 @@ fn shield_projectile_intersection(
                 } else {
                     1.0
                 };
+                normal_x *= inv_normal_len;
+                normal_y *= inv_normal_len;
+                normal_z *= inv_normal_len;
+                let (surface_velocity_x, surface_velocity_y, surface_velocity_z) =
+                    shield_field_surface_velocity(
+                        hit_x,
+                        hit_y,
+                        hit_z,
+                        normal_x,
+                        normal_y,
+                        normal_z,
+                        contact.threshold,
+                        pool.prev_center_x[i],
+                        pool.prev_center_y[i],
+                        pool.prev_center_z[i],
+                        pool.prev_axis_end_x[i],
+                        pool.prev_axis_end_y[i],
+                        pool.prev_axis_end_z[i],
+                        pool.center_x[i],
+                        pool.center_y[i],
+                        pool.center_z[i],
+                        pool.axis_end_x[i],
+                        pool.axis_end_y[i],
+                        pool.axis_end_z[i],
+                        pool.radius[i],
+                        pool.field_shape[i],
+                        dt_sec,
+                    );
                 Some(ProjectileReflectorHit {
                     kind: REFLECTOR_HIT_KIND_SHIELD,
                     entity_id: pool.owner_entity_id[i],
@@ -23997,9 +24420,12 @@ fn shield_projectile_intersection(
                     x: hit_x,
                     y: hit_y,
                     z: hit_z,
-                    normal_x: normal_x * inv_normal_len,
-                    normal_y: normal_y * inv_normal_len,
-                    normal_z: normal_z * inv_normal_len,
+                    normal_x,
+                    normal_y,
+                    normal_z,
+                    surface_velocity_x,
+                    surface_velocity_y,
+                    surface_velocity_z,
                 })
             }
         } else {
@@ -24023,9 +24449,11 @@ fn shield_projectile_intersection(
                 pool.axis_end_y[i],
                 pool.axis_end_z[i],
                 pool.radius[i],
+                projectile_radius,
                 pool.field_shape[i],
                 pool.field_reflection_mode[i],
                 pool.owner_entity_id[i],
+                dt_sec,
             )
         };
         let Some(hit) = candidate else {
@@ -24588,6 +25016,9 @@ fn shield_panel_projectile_intersection(
                 normal_x: nx,
                 normal_y: ny,
                 normal_z: nz,
+                surface_velocity_x: 0.0,
+                surface_velocity_y: 0.0,
+                surface_velocity_z: 0.0,
             });
         }
     }
@@ -24617,6 +25048,7 @@ pub fn projectile_reflector_intersections_batch(
     turret_shield_panels_enabled: u8,
     turret_shield_spheres_enabled: u8,
     shield_panel_query_pad: f64,
+    dt_ms: f64,
     out_kind: &mut [u8],
     out_entity_id: &mut [i32],
     out_t: &mut [f64],
@@ -24626,6 +25058,9 @@ pub fn projectile_reflector_intersections_batch(
     out_normal_x: &mut [f64],
     out_normal_y: &mut [f64],
     out_normal_z: &mut [f64],
+    out_surface_velocity_x: &mut [f64],
+    out_surface_velocity_y: &mut [f64],
+    out_surface_velocity_z: &mut [f64],
 ) {
     let n = count as usize;
     debug_assert!(enabled.len() >= n);
@@ -24646,6 +25081,15 @@ pub fn projectile_reflector_intersections_batch(
     debug_assert!(out_normal_x.len() >= n);
     debug_assert!(out_normal_y.len() >= n);
     debug_assert!(out_normal_z.len() >= n);
+    debug_assert!(out_surface_velocity_x.len() >= n);
+    debug_assert!(out_surface_velocity_y.len() >= n);
+    debug_assert!(out_surface_velocity_z.len() >= n);
+
+    let dt_sec = if dt_ms.is_finite() {
+        dt_ms.max(0.0) / 1000.0
+    } else {
+        0.0
+    };
 
     for i in 0..n {
         out_kind[i] = REFLECTOR_HIT_KIND_NONE;
@@ -24657,6 +25101,9 @@ pub fn projectile_reflector_intersections_batch(
         out_normal_x[i] = 0.0;
         out_normal_y[i] = 0.0;
         out_normal_z[i] = 0.0;
+        out_surface_velocity_x[i] = 0.0;
+        out_surface_velocity_y[i] = 0.0;
+        out_surface_velocity_z[i] = 0.0;
 
         if enabled[i] == 0 {
             continue;
@@ -24668,12 +25115,14 @@ pub fn projectile_reflector_intersections_batch(
         let tx = end_x[i];
         let ty = end_y[i];
         let tz = end_z[i];
+        let radius = projectile_radius[i];
         if !(sx.is_finite()
             && sy.is_finite()
             && sz.is_finite()
             && tx.is_finite()
             && ty.is_finite()
-            && tz.is_finite())
+            && tz.is_finite()
+            && radius.is_finite())
         {
             continue;
         }
@@ -24688,14 +25137,16 @@ pub fn projectile_reflector_intersections_batch(
                 ty,
                 tz,
                 exclude_entity_id[i],
-                projectile_radius[i],
+                radius,
                 shield_panel_query_pad,
                 f64::INFINITY,
             );
         }
         let max_t = best.as_ref().map(|hit| hit.t).unwrap_or(f64::INFINITY);
         if turret_shield_spheres_enabled != 0 {
-            if let Some(force_hit) = shield_projectile_intersection(sx, sy, sz, tx, ty, tz, max_t) {
+            if let Some(force_hit) =
+                shield_projectile_intersection(sx, sy, sz, tx, ty, tz, radius, dt_sec, max_t)
+            {
                 best = Some(force_hit);
             }
         }
@@ -24712,6 +25163,9 @@ pub fn projectile_reflector_intersections_batch(
         out_normal_x[i] = hit.normal_x;
         out_normal_y[i] = hit.normal_y;
         out_normal_z[i] = hit.normal_z;
+        out_surface_velocity_x[i] = hit.surface_velocity_x;
+        out_surface_velocity_y[i] = hit.surface_velocity_y;
+        out_surface_velocity_z[i] = hit.surface_velocity_z;
     }
 }
 
@@ -24736,6 +25190,9 @@ pub fn projectile_reflection_response_batch(
     normal_x: &[f64],
     normal_y: &[f64],
     normal_z: &[f64],
+    surface_velocity_x: &[f64],
+    surface_velocity_y: &[f64],
+    surface_velocity_z: &[f64],
     projectile_radius: &[f64],
     dt_ms: f64,
     reflectivity: f64,
@@ -24761,6 +25218,9 @@ pub fn projectile_reflection_response_batch(
         || normal_x.len() < n
         || normal_y.len() < n
         || normal_z.len() < n
+        || surface_velocity_x.len() < n
+        || surface_velocity_y.len() < n
+        || surface_velocity_z.len() < n
         || projectile_radius.len() < n
         || out_reflected.len() < n
         || out_pos_x.len() < n
@@ -24807,6 +25267,9 @@ pub fn projectile_reflection_response_batch(
         let nx_raw = normal_x[i];
         let ny_raw = normal_y[i];
         let nz_raw = normal_z[i];
+        let svx = surface_velocity_x[i];
+        let svy = surface_velocity_y[i];
+        let svz = surface_velocity_z[i];
         let radius = projectile_radius[i];
         if !(t.is_finite()
             && hx.is_finite()
@@ -24818,14 +25281,20 @@ pub fn projectile_reflection_response_batch(
             && nx_raw.is_finite()
             && ny_raw.is_finite()
             && nz_raw.is_finite()
+            && svx.is_finite()
+            && svy.is_finite()
+            && svz.is_finite()
             && radius.is_finite())
         {
             continue;
         }
 
-        let speed_sq = vx * vx + vy * vy + vz * vz;
+        let rel_vx = vx - svx;
+        let rel_vy = vy - svy;
+        let rel_vz = vz - svz;
+        let rel_speed_sq = rel_vx * rel_vx + rel_vy * rel_vy + rel_vz * rel_vz;
         let normal_len_sq = nx_raw * nx_raw + ny_raw * ny_raw + nz_raw * nz_raw;
-        if speed_sq <= 1e-18 || normal_len_sq <= 1e-18 {
+        if rel_speed_sq <= 1e-18 || normal_len_sq <= 1e-18 {
             continue;
         }
 
@@ -24833,23 +25302,29 @@ pub fn projectile_reflection_response_batch(
         let nx = nx_raw * inv_normal_len;
         let ny = ny_raw * inv_normal_len;
         let nz = nz_raw * inv_normal_len;
-        let dot = vx * nx + vy * ny + vz * nz;
-        let mut rx = vx - 2.0 * dot * nx;
-        let mut ry = vy - 2.0 * dot * ny;
-        let mut rz = vz - 2.0 * dot * nz;
-        let reflected_len_sq = rx * rx + ry * ry + rz * rz;
+        let dot = rel_vx * nx + rel_vy * ny + rel_vz * nz;
+        let mut reflected_rel_x = rel_vx - 2.0 * dot * nx;
+        let mut reflected_rel_y = rel_vy - 2.0 * dot * ny;
+        let mut reflected_rel_z = rel_vz - 2.0 * dot * nz;
+        let reflected_len_sq = reflected_rel_x * reflected_rel_x
+            + reflected_rel_y * reflected_rel_y
+            + reflected_rel_z * reflected_rel_z;
         if reflected_len_sq <= 1e-18 {
             continue;
         }
 
-        let scale = speed_sq.sqrt() * reflectivity / reflected_len_sq.sqrt();
-        rx *= scale;
-        ry *= scale;
-        rz *= scale;
+        let scale = rel_speed_sq.sqrt() * reflectivity / reflected_len_sq.sqrt();
+        reflected_rel_x *= scale;
+        reflected_rel_y *= scale;
+        reflected_rel_z *= scale;
+        let rx = svx + reflected_rel_x;
+        let ry = svy + reflected_rel_y;
+        let rz = svz + reflected_rel_z;
 
         let remaining_sec = (dt_sec * (1.0 - t)).max(0.0);
         let surface_offset = 0.5_f64.max(radius.max(0.0) * 0.25);
-        let reflected_normal_dot = rx * nx + ry * ny + rz * nz;
+        let reflected_normal_dot =
+            reflected_rel_x * nx + reflected_rel_y * ny + reflected_rel_z * nz;
         let offset_sign = if reflected_normal_dot >= 0.0 {
             1.0
         } else {
@@ -31871,6 +32346,9 @@ mod sim_kernel_tests {
         let normal_x = [0.0];
         let normal_y = [1.0];
         let normal_z = [0.0];
+        let surface_velocity_x = [0.0];
+        let surface_velocity_y = [0.0];
+        let surface_velocity_z = [0.0];
         let radius = [4.0];
         let mut reflected = [0_u8];
         let mut out_x = [0.0];
@@ -31896,6 +32374,9 @@ mod sim_kernel_tests {
                 &normal_x,
                 &normal_y,
                 &normal_z,
+                &surface_velocity_x,
+                &surface_velocity_y,
+                &surface_velocity_z,
                 &radius,
                 100.0,
                 1.0,
@@ -31924,6 +32405,75 @@ mod sim_kernel_tests {
     }
 
     #[test]
+    fn projectile_reflection_response_uses_surface_relative_velocity() {
+        let enabled = [1_u8];
+        let hit_t = [0.5];
+        let hit_x = [0.0];
+        let hit_y = [0.0];
+        let hit_z = [0.0];
+        let velocity_x = [0.0];
+        let velocity_y = [0.0];
+        let velocity_z = [0.0];
+        let normal_x = [0.0];
+        let normal_y = [1.0];
+        let normal_z = [0.0];
+        let surface_velocity_x = [0.0];
+        let surface_velocity_y = [10.0];
+        let surface_velocity_z = [0.0];
+        let radius = [0.0];
+        let mut reflected = [0_u8];
+        let mut out_x = [0.0];
+        let mut out_y = [0.0];
+        let mut out_z = [0.0];
+        let mut out_vx = [0.0];
+        let mut out_vy = [0.0];
+        let mut out_vz = [0.0];
+        let mut rotation_changed = [0_u8];
+        let mut rotation = [0.0];
+
+        assert_eq!(
+            projectile_reflection_response_batch(
+                1,
+                &enabled,
+                &hit_t,
+                &hit_x,
+                &hit_y,
+                &hit_z,
+                &velocity_x,
+                &velocity_y,
+                &velocity_z,
+                &normal_x,
+                &normal_y,
+                &normal_z,
+                &surface_velocity_x,
+                &surface_velocity_y,
+                &surface_velocity_z,
+                &radius,
+                100.0,
+                1.0,
+                &mut reflected,
+                &mut out_x,
+                &mut out_y,
+                &mut out_z,
+                &mut out_vx,
+                &mut out_vy,
+                &mut out_vz,
+                &mut rotation_changed,
+                &mut rotation,
+            ),
+            1,
+        );
+
+        assert_eq!(reflected[0], 1);
+        assert!(out_vx[0].abs() < 1e-12);
+        assert!((out_vy[0] - 20.0).abs() < 1e-12);
+        assert!(out_vz[0].abs() < 1e-12);
+        assert!((out_x[0]).abs() < 1e-12);
+        assert!((out_y[0] - 1.5).abs() < 1e-12);
+        assert!((out_z[0]).abs() < 1e-12);
+    }
+
+    #[test]
     fn moving_aimed_cylinder_reports_pose_driven_escape() {
         let hit = shield_projectile_moving_field_hit(
             5.0,
@@ -31945,21 +32495,74 @@ mod sim_kernel_tests {
             2.0,
             0.0,
             1.0,
+            0.0,
             SHIELD_FIELD_SHAPE_AIMED_CYLINDER,
             SHIELD_REFLECTION_MODE_BOTH,
             42,
+            1.0 / 60.0,
         )
         .expect("moving tube should catch a projectile left outside by shield motion");
 
         assert_eq!(hit.kind, REFLECTOR_HIT_KIND_SHIELD);
         assert_eq!(hit.entity_id, 42);
-        assert_eq!(hit.t, 1.0);
+        assert!(
+            (hit.t - 0.75).abs() < 1e-5,
+            "expected hit.t near 0.75, got {}",
+            hit.t
+        );
         assert!((hit.x - 5.0).abs() < 1e-12);
-        assert!((hit.y - 1.0).abs() < 1e-12);
+        assert!((hit.y - 0.5).abs() < 1e-12);
         assert!(hit.z.abs() < 1e-12);
         assert!(hit.normal_x.abs() < 1e-12);
         assert!((hit.normal_y + 1.0).abs() < 1e-12);
         assert!(hit.normal_z.abs() < 1e-12);
+        assert!(hit.surface_velocity_x.abs() < 1e-12);
+        assert!((hit.surface_velocity_y - 120.0).abs() < 1e-9);
+        assert!(hit.surface_velocity_z.abs() < 1e-12);
+    }
+
+    #[test]
+    fn moving_aimed_cylinder_reports_swept_entry_between_matching_endpoint_sides() {
+        let hit = shield_projectile_moving_field_hit(
+            5.0,
+            2.5,
+            0.0,
+            5.0,
+            2.5,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            10.0,
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            0.0,
+            10.0,
+            4.0,
+            0.0,
+            1.0,
+            0.0,
+            SHIELD_FIELD_SHAPE_AIMED_CYLINDER,
+            SHIELD_REFLECTION_MODE_BOTH,
+            42,
+            1.0 / 60.0,
+        )
+        .expect("moving tube should catch a swept boundary even when endpoints are outside");
+
+        assert_eq!(hit.kind, REFLECTOR_HIT_KIND_SHIELD);
+        assert_eq!(hit.entity_id, 42);
+        assert!((hit.t - 0.375).abs() < 1e-5);
+        assert!((hit.x - 5.0).abs() < 1e-12);
+        assert!((hit.y - 2.5).abs() < 1e-12);
+        assert!(hit.z.abs() < 1e-12);
+        assert!(hit.normal_x.abs() < 1e-12);
+        assert!((hit.normal_y - 1.0).abs() < 1e-12);
+        assert!(hit.normal_z.abs() < 1e-12);
+        assert!(hit.surface_velocity_x.abs() < 1e-12);
+        assert!((hit.surface_velocity_y - 240.0).abs() < 1e-9);
+        assert!(hit.surface_velocity_z.abs() < 1e-12);
     }
 
     #[test]
@@ -35166,10 +35769,7 @@ mod lock_on_inclusion_tests {
         let modes = [CT_COMBAT_HALT_MODE_FIGHT_REQUIRED];
         let mut out = [0u8];
         combat_targeting_halt_decision_batch(&slots, &modes, &[0], &mut out);
-        assert_eq!(
-            out[0], 0,
-            "all required fight-stop turrets must be engaged"
-        );
+        assert_eq!(out[0], 0, "all required fight-stop turrets must be engaged");
         stamp_turret(
             SOURCE_SLOT,
             1,

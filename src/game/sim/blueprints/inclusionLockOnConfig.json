@@ -735,10 +735,6 @@
               "turretBeam",
               "turretBeamMini",
               "turretBeamMega",
-              "turretShieldSphere",
-              "turretShieldSphereSmall",
-              "turretShieldCylinderInfinite",
-              "turretShieldCylinderInfiniteAimed",
               "turretConstruction",
               "turretBeamLong",
               "turretCannonLong",
@@ -867,8 +863,29 @@
       "targets": {
         "enemy": {
           "towers": "all",
-          "units": "all",
-          "buildings": "all"
+          "buildings": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitBee",
+              "unitDragonfly",
+              "unitConstructionDrone",
+              "unitEagle",
+              "unitAlbatros",
+              "unitCommander"
+            ]
+          }
         }
       }
     },

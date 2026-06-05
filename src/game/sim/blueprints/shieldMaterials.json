@@ -20,7 +20,7 @@
     },
     "visual": {
       "color": 16777215,
-      "alpha": 0.05,
+      "alpha": 0.02,
       "particleAlpha": 0.2
     }
   }

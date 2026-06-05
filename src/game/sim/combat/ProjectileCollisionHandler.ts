@@ -95,6 +95,9 @@ let _reflectorHitZ = new Float64Array(0);
 let _reflectorHitNormalX = new Float64Array(0);
 let _reflectorHitNormalY = new Float64Array(0);
 let _reflectorHitNormalZ = new Float64Array(0);
+let _reflectorHitSurfaceVelocityX = new Float64Array(0);
+let _reflectorHitSurfaceVelocityY = new Float64Array(0);
+let _reflectorHitSurfaceVelocityZ = new Float64Array(0);
 let _reflectorResponseEnabled = new Uint8Array(0);
 let _reflectorResponseVelocityX = new Float64Array(0);
 let _reflectorResponseVelocityY = new Float64Array(0);
@@ -219,6 +222,9 @@ function ensureReflectorBatchCapacity(count: number): void {
   _reflectorHitNormalX = new Float64Array(next);
   _reflectorHitNormalY = new Float64Array(next);
   _reflectorHitNormalZ = new Float64Array(next);
+  _reflectorHitSurfaceVelocityX = new Float64Array(next);
+  _reflectorHitSurfaceVelocityY = new Float64Array(next);
+  _reflectorHitSurfaceVelocityZ = new Float64Array(next);
   _reflectorResponseEnabled = new Uint8Array(next);
   _reflectorResponseVelocityX = new Float64Array(next);
   _reflectorResponseVelocityY = new Float64Array(next);
@@ -344,6 +350,7 @@ function computeProjectileReflectorHits(
     mirrorsActive ? 1 : 0,
     shieldsActive ? 1 : 0,
     SHIELD_PANEL_PROJECTILE_QUERY_PAD,
+    dtMs,
     _reflectorHitKind.subarray(0, count),
     _reflectorHitEntityId.subarray(0, count),
     _reflectorHitT.subarray(0, count),
@@ -353,6 +360,9 @@ function computeProjectileReflectorHits(
     _reflectorHitNormalX.subarray(0, count),
     _reflectorHitNormalY.subarray(0, count),
     _reflectorHitNormalZ.subarray(0, count),
+    _reflectorHitSurfaceVelocityX.subarray(0, count),
+    _reflectorHitSurfaceVelocityY.subarray(0, count),
+    _reflectorHitSurfaceVelocityZ.subarray(0, count),
   );
 
   let responseCount = 0;
@@ -385,6 +395,9 @@ function computeProjectileReflectorHits(
     _reflectorHitNormalX.subarray(0, count),
     _reflectorHitNormalY.subarray(0, count),
     _reflectorHitNormalZ.subarray(0, count),
+    _reflectorHitSurfaceVelocityX.subarray(0, count),
+    _reflectorHitSurfaceVelocityY.subarray(0, count),
+    _reflectorHitSurfaceVelocityZ.subarray(0, count),
     _reflectorResponseRadius.subarray(0, count),
     dtMs,
     REFLECTIVE_SHIELD_MATERIAL.reflection.reflectivity,

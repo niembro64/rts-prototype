@@ -1124,6 +1124,7 @@ export interface SimWasm {
     turretShieldPanelsEnabled: number,
     turretShieldSpheresEnabled: number,
     mirrorQueryPad: number,
+    dtMs: number,
     outKind: Uint8Array,
     outEntityId: Int32Array,
     outT: Float64Array,
@@ -1133,6 +1134,9 @@ export interface SimWasm {
     outNormalX: Float64Array,
     outNormalY: Float64Array,
     outNormalZ: Float64Array,
+    outSurfaceVelocityX: Float64Array,
+    outSurfaceVelocityY: Float64Array,
+    outSurfaceVelocityZ: Float64Array,
   ) => void;
   /** C1 — reflected projectile consequence math. Rust computes the
    *  velocity, post-hit position, and optional rotation after a shield
@@ -1150,6 +1154,9 @@ export interface SimWasm {
     normalX: Float64Array,
     normalY: Float64Array,
     normalZ: Float64Array,
+    surfaceVelocityX: Float64Array,
+    surfaceVelocityY: Float64Array,
+    surfaceVelocityZ: Float64Array,
     projectileRadius: Float64Array,
     dtMs: number,
     reflectivity: number,
