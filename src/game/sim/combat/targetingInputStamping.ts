@@ -836,6 +836,8 @@ export function stampShieldSurfacePool(
         i,
         f.entityId,
         f.entityId,
+        f.prevCenterX, f.prevCenterY, f.prevCenterZ,
+        f.prevAxisEndX, f.prevAxisEndY, f.prevAxisEndZ,
         f.centerX, f.centerY, f.centerZ,
         f.axisEndX, f.axisEndY, f.axisEndZ,
         f.radius,

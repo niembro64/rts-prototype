@@ -26,6 +26,12 @@ const _shieldFsm: CombatTargetingTurretFsmOut = {
 // targeting LOS clearance check.
 export type ActiveShieldRef = {
   shape: ShieldBarrierShape;
+  prevCenterX: number;
+  prevCenterY: number;
+  prevCenterZ: number;
+  prevAxisEndX: number;
+  prevAxisEndY: number;
+  prevAxisEndZ: number;
   centerX: number;
   centerY: number;
   centerZ: number;
@@ -38,10 +44,22 @@ export type ActiveShieldRef = {
   entityId: number;
 };
 const _activeShields: ActiveShieldRef[] = [];
+type ShieldPose = {
+  centerX: number;
+  centerY: number;
+  centerZ: number;
+  axisEndX: number;
+  axisEndY: number;
+  axisEndZ: number;
+};
+let _previousShieldPoses = new Map<string, ShieldPose>();
+let _nextShieldPoses = new Map<string, ShieldPose>();
 
 // Reset module-level buffers (call between game sessions)
 export function resetShieldBuffers(): void {
   _activeShields.length = 0;
+  _previousShieldPoses.clear();
+  _nextShieldPoses.clear();
 }
 
 /** Read-only view of the active shield list maintained by
@@ -61,6 +79,7 @@ export function getActiveShields(): readonly ActiveShieldRef[] {
 // rather than running an independent visual-only timer.
 export function updateShieldState(world: WorldState, dtMs: number): void {
   _activeShields.length = 0;
+  _nextShieldPoses.clear();
 
   for (const unit of world.getShieldUnits()) {
     const turrets = unit.combat!.turrets;
@@ -137,9 +156,25 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
             continue;
           }
         }
+        const poseKey = `${unit.id}:${weapon.id}:${weaponIndex}`;
+        const previousPose = _previousShieldPoses.get(poseKey);
+        _nextShieldPoses.set(poseKey, {
+          centerX,
+          centerY,
+          centerZ,
+          axisEndX,
+          axisEndY,
+          axisEndZ,
+        });
         const playerId = unit.ownership !== null ? unit.ownership.playerId : 0;
         _activeShields.push({
           shape: barrier.shape,
+          prevCenterX: previousPose?.centerX ?? centerX,
+          prevCenterY: previousPose?.centerY ?? centerY,
+          prevCenterZ: previousPose?.centerZ ?? centerZ,
+          prevAxisEndX: previousPose?.axisEndX ?? axisEndX,
+          prevAxisEndY: previousPose?.axisEndY ?? axisEndY,
+          prevAxisEndZ: previousPose?.axisEndZ ?? axisEndZ,
           centerX,
           centerY,
           centerZ,
@@ -154,6 +189,10 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
       }
     }
   }
+
+  const oldPrevious = _previousShieldPoses;
+  _previousShieldPoses = _nextShieldPoses;
+  _nextShieldPoses = oldPrevious;
 }
 
 export type ShieldProjectileIntersection = {
@@ -397,6 +436,116 @@ function intersectShieldAimedCylinder(
   return null;
 }
 
+type ShieldFieldHit = {
+  t: number;
+  x: number;
+  y: number;
+  z: number;
+  nx: number;
+  ny: number;
+  nz: number;
+};
+
+function shieldFieldSignedDistanceAndNormal(
+  x: number,
+  y: number,
+  z: number,
+  centerX: number,
+  centerY: number,
+  centerZ: number,
+  axisEndX: number,
+  axisEndY: number,
+  axisEndZ: number,
+  radius: number,
+  shape: ShieldBarrierShape,
+): { distance: number; nx: number; ny: number; nz: number } | null {
+  if (radius <= 0) return null;
+  if (shape === 'infiniteVerticalCylinder') {
+    const dx = x - centerX;
+    const dy = y - centerY;
+    const len = Math.hypot(dx, dy);
+    if (len <= 1e-9) return { distance: -radius, nx: 1, ny: 0, nz: 0 };
+    return { distance: len - radius, nx: dx / len, ny: dy / len, nz: 0 };
+  }
+  if (shape === 'aimedCylinder') {
+    const axisX = axisEndX - centerX;
+    const axisY = axisEndY - centerY;
+    const axisZ = axisEndZ - centerZ;
+    const axisLen = Math.hypot(axisX, axisY, axisZ);
+    if (axisLen <= 1e-6) return null;
+    const ux = axisX / axisLen;
+    const uy = axisY / axisLen;
+    const uz = axisZ / axisLen;
+    const relX = x - centerX;
+    const relY = y - centerY;
+    const relZ = z - centerZ;
+    const axial = relX * ux + relY * uy + relZ * uz;
+    const perpX = relX - ux * axial;
+    const perpY = relY - uy * axial;
+    const perpZ = relZ - uz * axial;
+    const len = Math.hypot(perpX, perpY, perpZ);
+    if (len <= 1e-9) {
+      const fallbackX = -uy;
+      const fallbackY = ux;
+      const fallbackLen = Math.hypot(fallbackX, fallbackY);
+      if (fallbackLen > 1e-9) {
+        return { distance: -radius, nx: fallbackX / fallbackLen, ny: fallbackY / fallbackLen, nz: 0 };
+      }
+      return { distance: -radius, nx: 1, ny: 0, nz: 0 };
+    }
+    return { distance: len - radius, nx: perpX / len, ny: perpY / len, nz: perpZ / len };
+  }
+
+  const dx = x - centerX;
+  const dy = y - centerY;
+  const dz = z - centerZ;
+  const len = Math.hypot(dx, dy, dz);
+  if (len <= 1e-9) return { distance: -radius, nx: 1, ny: 0, nz: 0 };
+  return { distance: len - radius, nx: dx / len, ny: dy / len, nz: dz / len };
+}
+
+function movingShieldFieldHit(
+  active: ActiveShieldRef,
+  startX: number,
+  startY: number,
+  startZ: number,
+  endX: number,
+  endY: number,
+  endZ: number,
+): ShieldFieldHit | null {
+  const previous = shieldFieldSignedDistanceAndNormal(
+    startX, startY, startZ,
+    active.prevCenterX, active.prevCenterY, active.prevCenterZ,
+    active.prevAxisEndX, active.prevAxisEndY, active.prevAxisEndZ,
+    active.radius,
+    active.shape,
+  );
+  if (previous === null) return null;
+  const current = shieldFieldSignedDistanceAndNormal(
+    endX, endY, endZ,
+    active.centerX, active.centerY, active.centerZ,
+    active.axisEndX, active.axisEndY, active.axisEndZ,
+    active.radius,
+    active.shape,
+  );
+  if (current === null) return null;
+  const crossedOut = previous.distance <= 1e-6 && current.distance > 1e-6;
+  const crossedIn = previous.distance > 1e-6 && current.distance <= 1e-6;
+  if (!crossedOut && !crossedIn) return null;
+  if (!shieldModeAllowsCrossing(active.reflectionMode, current.distance - previous.distance)) {
+    return null;
+  }
+  return {
+    t: 1,
+    x: endX - current.nx * current.distance,
+    y: endY - current.ny * current.distance,
+    z: endZ - current.nz * current.distance,
+    nx: current.nx,
+    ny: current.ny,
+    nz: current.nz,
+  };
+}
+
 export function findShieldSegmentIntersection(
   _world: WorldState,
   startX: number,
@@ -447,38 +596,44 @@ export function findShieldSegmentIntersection(
         active.radius,
         active.reflectionMode,
       );
-    if (t === null || t >= bestT) continue;
-
-    const hitX = startX + (endX - startX) * t;
-    const hitY = startY + (endY - startY) * t;
-    const hitZ = startZ + (endZ - startZ) * t;
-    let nx = hitX - active.centerX;
-    let ny = hitY - active.centerY;
-    let nz = active.shape === 'infiniteVerticalCylinder' ? 0 : hitZ - active.centerZ;
-    if (active.shape === 'aimedCylinder') {
-      const axisX = active.axisEndX - active.centerX;
-      const axisY = active.axisEndY - active.centerY;
-      const axisZ = active.axisEndZ - active.centerZ;
-      const axisLen = Math.hypot(axisX, axisY, axisZ) || 1;
-      const ux = axisX / axisLen;
-      const uy = axisY / axisLen;
-      const uz = axisZ / axisLen;
-      const relX = hitX - active.centerX;
-      const relY = hitY - active.centerY;
-      const relZ = hitZ - active.centerZ;
-      const axial = relX * ux + relY * uy + relZ * uz;
-      nx = relX - ux * axial;
-      ny = relY - uy * axial;
-      nz = relZ - uz * axial;
+    let hit: ShieldFieldHit | null = null;
+    if (t !== null) {
+      const hitX = startX + (endX - startX) * t;
+      const hitY = startY + (endY - startY) * t;
+      const hitZ = startZ + (endZ - startZ) * t;
+      let nx = hitX - active.centerX;
+      let ny = hitY - active.centerY;
+      let nz = active.shape === 'infiniteVerticalCylinder' ? 0 : hitZ - active.centerZ;
+      if (active.shape === 'aimedCylinder') {
+        const axisX = active.axisEndX - active.centerX;
+        const axisY = active.axisEndY - active.centerY;
+        const axisZ = active.axisEndZ - active.centerZ;
+        const axisLen = Math.hypot(axisX, axisY, axisZ) || 1;
+        const ux = axisX / axisLen;
+        const uy = axisY / axisLen;
+        const uz = axisZ / axisLen;
+        const relX = hitX - active.centerX;
+        const relY = hitY - active.centerY;
+        const relZ = hitZ - active.centerZ;
+        const axial = relX * ux + relY * uy + relZ * uz;
+        nx = relX - ux * axial;
+        ny = relY - uy * axial;
+        nz = relZ - uz * axial;
+      }
+      const nLen = Math.hypot(nx, ny, nz) || 1;
+      hit = { t, x: hitX, y: hitY, z: hitZ, nx: nx / nLen, ny: ny / nLen, nz: nz / nLen };
+    } else {
+      hit = movingShieldFieldHit(active, startX, startY, startZ, endX, endY, endZ);
     }
-    const nLen = Math.hypot(nx, ny, nz) || 1;
-    bestT = t;
-    bestX = hitX;
-    bestY = hitY;
-    bestZ = hitZ;
-    bestNx = nx / nLen;
-    bestNy = ny / nLen;
-    bestNz = nz / nLen;
+    if (hit === null || hit.t >= bestT) continue;
+
+    bestT = hit.t;
+    bestX = hit.x;
+    bestY = hit.y;
+    bestZ = hit.z;
+    bestNx = hit.nx;
+    bestNy = hit.ny;
+    bestNz = hit.nz;
     bestPlayerId = active.playerId;
     bestEntityId = active.entityId;
   }

@@ -23016,6 +23016,12 @@ struct ShieldSurfacePool {
     count: u32,
     id: Vec<i32>,
     owner_entity_id: Vec<i32>,
+    prev_center_x: Vec<f64>,
+    prev_center_y: Vec<f64>,
+    prev_center_z: Vec<f64>,
+    prev_axis_end_x: Vec<f64>,
+    prev_axis_end_y: Vec<f64>,
+    prev_axis_end_z: Vec<f64>,
     center_x: Vec<f64>,
     center_y: Vec<f64>,
     center_z: Vec<f64>,
@@ -23061,6 +23067,12 @@ impl ShieldSurfacePool {
             count: 0,
             id: Vec::new(),
             owner_entity_id: Vec::new(),
+            prev_center_x: Vec::new(),
+            prev_center_y: Vec::new(),
+            prev_center_z: Vec::new(),
+            prev_axis_end_x: Vec::new(),
+            prev_axis_end_y: Vec::new(),
+            prev_axis_end_z: Vec::new(),
             center_x: Vec::new(),
             center_y: Vec::new(),
             center_z: Vec::new(),
@@ -23100,6 +23112,12 @@ impl ShieldSurfacePool {
         if self.id.len() < needed {
             self.id.resize(needed, -1);
             self.owner_entity_id.resize(needed, -1);
+            self.prev_center_x.resize(needed, 0.0);
+            self.prev_center_y.resize(needed, 0.0);
+            self.prev_center_z.resize(needed, 0.0);
+            self.prev_axis_end_x.resize(needed, 0.0);
+            self.prev_axis_end_y.resize(needed, 0.0);
+            self.prev_axis_end_z.resize(needed, 0.0);
             self.center_x.resize(needed, 0.0);
             self.center_y.resize(needed, 0.0);
             self.center_z.resize(needed, 0.0);
@@ -23185,6 +23203,12 @@ pub fn shield_pool_set_field(
     idx: u32,
     id: i32,
     owner_entity_id: i32,
+    prev_center_x: f64,
+    prev_center_y: f64,
+    prev_center_z: f64,
+    prev_axis_end_x: f64,
+    prev_axis_end_y: f64,
+    prev_axis_end_z: f64,
     center_x: f64,
     center_y: f64,
     center_z: f64,
@@ -23200,6 +23224,12 @@ pub fn shield_pool_set_field(
     let i = idx as usize;
     pool.id[i] = id;
     pool.owner_entity_id[i] = owner_entity_id;
+    pool.prev_center_x[i] = prev_center_x;
+    pool.prev_center_y[i] = prev_center_y;
+    pool.prev_center_z[i] = prev_center_z;
+    pool.prev_axis_end_x[i] = prev_axis_end_x;
+    pool.prev_axis_end_y[i] = prev_axis_end_y;
+    pool.prev_axis_end_z[i] = prev_axis_end_z;
     pool.center_x[i] = center_x;
     pool.center_y[i] = center_y;
     pool.center_z[i] = center_z;
@@ -23724,6 +23754,164 @@ fn shield_projectile_intersection_t(
 }
 
 #[inline]
+fn shield_field_signed_distance_and_normal(
+    px: f64,
+    py: f64,
+    pz: f64,
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    axis_end_x: f64,
+    axis_end_y: f64,
+    axis_end_z: f64,
+    radius: f64,
+    shape: u8,
+) -> Option<(f64, f64, f64, f64)> {
+    if radius <= 0.0 {
+        return None;
+    }
+    if shape == SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER {
+        let dx = px - center_x;
+        let dy = py - center_y;
+        let len = (dx * dx + dy * dy).sqrt();
+        if len <= 1e-9 {
+            return Some((-radius, 1.0, 0.0, 0.0));
+        }
+        let inv_len = 1.0 / len;
+        return Some((len - radius, dx * inv_len, dy * inv_len, 0.0));
+    }
+    if shape == SHIELD_FIELD_SHAPE_AIMED_CYLINDER {
+        let axis_x = axis_end_x - center_x;
+        let axis_y = axis_end_y - center_y;
+        let axis_z = axis_end_z - center_z;
+        let axis_len = (axis_x * axis_x + axis_y * axis_y + axis_z * axis_z).sqrt();
+        if axis_len <= 1e-6 {
+            return None;
+        }
+        let ux = axis_x / axis_len;
+        let uy = axis_y / axis_len;
+        let uz = axis_z / axis_len;
+        let rel_x = px - center_x;
+        let rel_y = py - center_y;
+        let rel_z = pz - center_z;
+        let axial = rel_x * ux + rel_y * uy + rel_z * uz;
+        let perp_x = rel_x - ux * axial;
+        let perp_y = rel_y - uy * axial;
+        let perp_z = rel_z - uz * axial;
+        let len = (perp_x * perp_x + perp_y * perp_y + perp_z * perp_z).sqrt();
+        if len <= 1e-9 {
+            let fallback_x = -uy;
+            let fallback_y = ux;
+            let fallback_len = (fallback_x * fallback_x + fallback_y * fallback_y).sqrt();
+            if fallback_len > 1e-9 {
+                let inv = 1.0 / fallback_len;
+                return Some((-radius, fallback_x * inv, fallback_y * inv, 0.0));
+            }
+            return Some((-radius, 1.0, 0.0, 0.0));
+        }
+        let inv_len = 1.0 / len;
+        return Some((
+            len - radius,
+            perp_x * inv_len,
+            perp_y * inv_len,
+            perp_z * inv_len,
+        ));
+    }
+
+    let dx = px - center_x;
+    let dy = py - center_y;
+    let dz = pz - center_z;
+    let len = (dx * dx + dy * dy + dz * dz).sqrt();
+    if len <= 1e-9 {
+        return Some((-radius, 1.0, 0.0, 0.0));
+    }
+    let inv_len = 1.0 / len;
+    Some((len - radius, dx * inv_len, dy * inv_len, dz * inv_len))
+}
+
+#[inline]
+fn shield_projectile_moving_field_hit(
+    start_x: f64,
+    start_y: f64,
+    start_z: f64,
+    end_x: f64,
+    end_y: f64,
+    end_z: f64,
+    prev_center_x: f64,
+    prev_center_y: f64,
+    prev_center_z: f64,
+    prev_axis_end_x: f64,
+    prev_axis_end_y: f64,
+    prev_axis_end_z: f64,
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    axis_end_x: f64,
+    axis_end_y: f64,
+    axis_end_z: f64,
+    radius: f64,
+    shape: u8,
+    reflection_mode: u8,
+    owner_entity_id: i32,
+) -> Option<ProjectileReflectorHit> {
+    let Some((prev_dist, _, _, _)) = shield_field_signed_distance_and_normal(
+        start_x,
+        start_y,
+        start_z,
+        prev_center_x,
+        prev_center_y,
+        prev_center_z,
+        prev_axis_end_x,
+        prev_axis_end_y,
+        prev_axis_end_z,
+        radius,
+        shape,
+    ) else {
+        return None;
+    };
+    let Some((current_dist, normal_x, normal_y, normal_z)) =
+        shield_field_signed_distance_and_normal(
+            end_x,
+            end_y,
+            end_z,
+            center_x,
+            center_y,
+            center_z,
+            axis_end_x,
+            axis_end_y,
+            axis_end_z,
+            radius,
+            shape,
+        )
+    else {
+        return None;
+    };
+
+    let crossed_out = prev_dist <= SHIELD_GRAZE_EPS && current_dist > SHIELD_GRAZE_EPS;
+    let crossed_in = prev_dist > SHIELD_GRAZE_EPS && current_dist <= SHIELD_GRAZE_EPS;
+    if !crossed_out && !crossed_in {
+        return None;
+    }
+
+    let radial_velocity = current_dist - prev_dist;
+    if !shield_reflection_mode_allows_crossing(reflection_mode, radial_velocity) {
+        return None;
+    }
+
+    Some(ProjectileReflectorHit {
+        kind: REFLECTOR_HIT_KIND_SHIELD,
+        entity_id: owner_entity_id,
+        t: 1.0,
+        x: end_x - normal_x * current_dist,
+        y: end_y - normal_y * current_dist,
+        z: end_z - normal_z * current_dist,
+        normal_x,
+        normal_y,
+        normal_z,
+    })
+}
+
+#[inline]
 fn shield_projectile_intersection(
     start_x: f64,
     start_y: f64,
@@ -23739,13 +23927,10 @@ fn shield_projectile_intersection(
         return None;
     }
 
-    let dx = end_x - start_x;
-    let dy = end_y - start_y;
-    let dz = end_z - start_z;
     let mut best_t = max_t;
     let mut best: Option<ProjectileReflectorHit> = None;
     for i in 0..count {
-        let t = shield_projectile_intersection_t(
+        let static_t = shield_projectile_intersection_t(
             start_x,
             start_y,
             start_z,
@@ -23762,58 +23947,95 @@ fn shield_projectile_intersection(
             pool.field_shape[i],
             pool.field_reflection_mode[i],
         );
-        let Some(t) = t else {
-            continue;
-        };
-        if t >= best_t {
-            continue;
-        }
-        let hit_x = start_x + dx * t;
-        let hit_y = start_y + dy * t;
-        let hit_z = start_z + dz * t;
-        let mut normal_x = hit_x - pool.center_x[i];
-        let mut normal_y = hit_y - pool.center_y[i];
-        let mut normal_z = if pool.field_shape[i] == SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER {
-            0.0
-        } else {
-            hit_z - pool.center_z[i]
-        };
-        if pool.field_shape[i] == SHIELD_FIELD_SHAPE_AIMED_CYLINDER {
-            let axis_x = pool.axis_end_x[i] - pool.center_x[i];
-            let axis_y = pool.axis_end_y[i] - pool.center_y[i];
-            let axis_z = pool.axis_end_z[i] - pool.center_z[i];
-            let axis_len = (axis_x * axis_x + axis_y * axis_y + axis_z * axis_z).sqrt();
-            if axis_len > 1e-9 {
-                let ux = axis_x / axis_len;
-                let uy = axis_y / axis_len;
-                let uz = axis_z / axis_len;
-                let rel_x = hit_x - pool.center_x[i];
-                let rel_y = hit_y - pool.center_y[i];
-                let rel_z = hit_z - pool.center_z[i];
-                let axial = rel_x * ux + rel_y * uy + rel_z * uz;
-                normal_x = rel_x - ux * axial;
-                normal_y = rel_y - uy * axial;
-                normal_z = rel_z - uz * axial;
+        let candidate = if let Some(t) = static_t {
+            if t >= best_t {
+                None
+            } else {
+                let dx = end_x - start_x;
+                let dy = end_y - start_y;
+                let dz = end_z - start_z;
+                let hit_x = start_x + dx * t;
+                let hit_y = start_y + dy * t;
+                let hit_z = start_z + dz * t;
+                let mut normal_x = hit_x - pool.center_x[i];
+                let mut normal_y = hit_y - pool.center_y[i];
+                let mut normal_z =
+                    if pool.field_shape[i] == SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER {
+                        0.0
+                    } else {
+                        hit_z - pool.center_z[i]
+                    };
+                if pool.field_shape[i] == SHIELD_FIELD_SHAPE_AIMED_CYLINDER {
+                    let axis_x = pool.axis_end_x[i] - pool.center_x[i];
+                    let axis_y = pool.axis_end_y[i] - pool.center_y[i];
+                    let axis_z = pool.axis_end_z[i] - pool.center_z[i];
+                    let axis_len = (axis_x * axis_x + axis_y * axis_y + axis_z * axis_z).sqrt();
+                    if axis_len > 1e-9 {
+                        let ux = axis_x / axis_len;
+                        let uy = axis_y / axis_len;
+                        let uz = axis_z / axis_len;
+                        let rel_x = hit_x - pool.center_x[i];
+                        let rel_y = hit_y - pool.center_y[i];
+                        let rel_z = hit_z - pool.center_z[i];
+                        let axial = rel_x * ux + rel_y * uy + rel_z * uz;
+                        normal_x = rel_x - ux * axial;
+                        normal_y = rel_y - uy * axial;
+                        normal_z = rel_z - uz * axial;
+                    }
+                }
+                let normal_len =
+                    (normal_x * normal_x + normal_y * normal_y + normal_z * normal_z).sqrt();
+                let inv_normal_len = if normal_len > 1e-9 {
+                    1.0 / normal_len
+                } else {
+                    1.0
+                };
+                Some(ProjectileReflectorHit {
+                    kind: REFLECTOR_HIT_KIND_SHIELD,
+                    entity_id: pool.owner_entity_id[i],
+                    t,
+                    x: hit_x,
+                    y: hit_y,
+                    z: hit_z,
+                    normal_x: normal_x * inv_normal_len,
+                    normal_y: normal_y * inv_normal_len,
+                    normal_z: normal_z * inv_normal_len,
+                })
             }
-        }
-        let normal_len = (normal_x * normal_x + normal_y * normal_y + normal_z * normal_z).sqrt();
-        let inv_normal_len = if normal_len > 1e-9 {
-            1.0 / normal_len
         } else {
-            1.0
+            shield_projectile_moving_field_hit(
+                start_x,
+                start_y,
+                start_z,
+                end_x,
+                end_y,
+                end_z,
+                pool.prev_center_x[i],
+                pool.prev_center_y[i],
+                pool.prev_center_z[i],
+                pool.prev_axis_end_x[i],
+                pool.prev_axis_end_y[i],
+                pool.prev_axis_end_z[i],
+                pool.center_x[i],
+                pool.center_y[i],
+                pool.center_z[i],
+                pool.axis_end_x[i],
+                pool.axis_end_y[i],
+                pool.axis_end_z[i],
+                pool.radius[i],
+                pool.field_shape[i],
+                pool.field_reflection_mode[i],
+                pool.owner_entity_id[i],
+            )
         };
-        best_t = t;
-        best = Some(ProjectileReflectorHit {
-            kind: REFLECTOR_HIT_KIND_SHIELD,
-            entity_id: pool.owner_entity_id[i],
-            t,
-            x: hit_x,
-            y: hit_y,
-            z: hit_z,
-            normal_x: normal_x * inv_normal_len,
-            normal_y: normal_y * inv_normal_len,
-            normal_z: normal_z * inv_normal_len,
-        });
+        let Some(hit) = candidate else {
+            continue;
+        };
+        if hit.t >= best_t {
+            continue;
+        }
+        best_t = hit.t;
+        best = Some(hit);
     }
     best
 }
@@ -31699,6 +31921,45 @@ mod sim_kernel_tests {
         assert!((out_z[0] - 5.0).abs() < 1e-12);
         assert_eq!(rotation_changed[0], 1);
         assert!((rotation[0] - 3.0_f64.atan2(4.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn moving_aimed_cylinder_reports_pose_driven_escape() {
+        let hit = shield_projectile_moving_field_hit(
+            5.0,
+            0.5,
+            0.0,
+            5.0,
+            0.5,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            10.0,
+            0.0,
+            0.0,
+            0.0,
+            2.0,
+            0.0,
+            10.0,
+            2.0,
+            0.0,
+            1.0,
+            SHIELD_FIELD_SHAPE_AIMED_CYLINDER,
+            SHIELD_REFLECTION_MODE_BOTH,
+            42,
+        )
+        .expect("moving tube should catch a projectile left outside by shield motion");
+
+        assert_eq!(hit.kind, REFLECTOR_HIT_KIND_SHIELD);
+        assert_eq!(hit.entity_id, 42);
+        assert_eq!(hit.t, 1.0);
+        assert!((hit.x - 5.0).abs() < 1e-12);
+        assert!((hit.y - 1.0).abs() < 1e-12);
+        assert!(hit.z.abs() < 1e-12);
+        assert!(hit.normal_x.abs() < 1e-12);
+        assert!((hit.normal_y + 1.0).abs() < 1e-12);
+        assert!(hit.normal_z.abs() < 1e-12);
     }
 
     #[test]
