@@ -491,7 +491,8 @@ export class SmokeTrail3D {
     const len = emitters.length;
     if (len === 0 || pool.maxParticles <= 0) return;
     const start = pool.emitterCursor % len;
-    const emittedByUse = new Map<SmokeUseId, number>();
+    const emittedByUse = this._emittedByUse;
+    emittedByUse.clear();
     let emitted = 0;
     for (let n = 0; n < len; n++) {
       const emitter = emitters[(start + n) % len];

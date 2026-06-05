@@ -18,25 +18,7 @@ Please always commit and push before and after any code changes we make.
 
 CODE AUDIT - 2026-06-04
 
-1. Smoke emitter rendering still allocates a Map during the render update.
-
-Evidence:
-- src/game/render3d/SmokeTrail3D.ts has a reusable _emittedByUse map for the
-  projectile smoke path.
-- emitFromEmittersForPool() still creates a new Map<SmokeUseId, number> each
-  update for generic smoke emitters such as hover/factory/pylon sources.
-
-Problem:
-This is a per-frame allocation in an effect path that can run while many units
-emit smoke. It violates the design rule against allocations in per-frame or
-high-count loops and can contribute to GC spikes during battles.
-
-Required fix:
-Hoist the emitter emitted-by-use map to a reusable instance field, clear it per
-update, and audit the rest of SmokeTrail3D for temporary collections in render
-loops.
-
-2. HUD label and health-bar sprite pools retain peak visible GPU/DOM resources.
+1. HUD label and health-bar sprite pools retain peak visible GPU/DOM resources.
 
 Evidence:
 - src/game/render3d/CanvasSpritePool.ts grows by creating one canvas, one
@@ -59,7 +41,7 @@ old unused slots after a cooldown, cap rows under load, or replace the per-row
 Sprite/CanvasTexture path with an atlas or instanced-quad renderer. Toggling HUD
 features off should be able to release or aggressively shrink these pools.
 
-3. Scoped entity rendering keeps an inflated culling padding forever after a
+2. Scoped entity rendering keeps an inflated culling padding forever after a
    large entity appears.
 
 Evidence:
@@ -82,7 +64,7 @@ the previous maximum is removed or reduced. Alternatively keep a small
 histogram/count of padding buckets so max padding can shrink without a full
 scan on every removal.
 
-4. Terrain geometry caching is entry-count limited, not memory-budget limited.
+3. Terrain geometry caching is entry-count limited, not memory-budget limited.
 
 Evidence:
 - src/game/render3d/TerrainTileRenderer3D.ts keeps up to eight cached
