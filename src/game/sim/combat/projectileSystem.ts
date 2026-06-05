@@ -220,7 +220,6 @@ const _projectilePositionScratch = { x: 0, y: 0, z: 0 };
 const _homingTargetVelocity = { x: 0, y: 0, z: 0 };
 const _homingTargetAcceleration = { x: 0, y: 0, z: 0 };
 const _homingAimPoint = { x: 0, y: 0, z: 0 };
-const _shieldSprayAimPoint = { x: 0, y: 0, z: 0 };
 const _homingOriginVelocity = { x: 0, y: 0, z: 0 };
 const _homingOriginAcceleration = { x: 0, y: 0, z: 0 };
 const FIRE_YAW_TOLERANCE = 0.16;
@@ -548,19 +547,10 @@ export function fireTurrets(
         if (spec === undefined || lockedTarget === undefined) continue;
         if (readTurretCooldownForFire(unit, weaponIndex) > 0) continue;
 
-        resolveTargetAimPoint(
-          lockedTarget,
-          weaponX, weaponY, mountZ,
-          _shieldSprayAimPoint,
-        );
-        let axisX = _shieldSprayAimPoint.x - weaponX;
-        let axisY = _shieldSprayAimPoint.y - weaponY;
-        let axisZ = _shieldSprayAimPoint.z - mountZ;
-        const axisLen = Math.hypot(axisX, axisY, axisZ);
-        if (axisLen <= 1e-6) continue;
-        axisX /= axisLen;
-        axisY /= axisLen;
-        axisZ /= axisLen;
+        const pitchCos = Math.cos(weapon.pitch);
+        const axisX = Math.cos(weapon.rotation) * pitchCos;
+        const axisY = Math.sin(weapon.rotation) * pitchCos;
+        const axisZ = Math.sin(weapon.pitch);
 
         writeTurretCooldownToSlab(
           unit,

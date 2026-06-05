@@ -21,7 +21,6 @@ import {
   createShieldSurfaceMaterial,
   resolveShieldSurfaceColor,
 } from './ShieldReflectorVisual3D';
-import { resolveTargetAimPoint } from '../sim/combat/aimSolver';
 
 // Opacity multiplier on top of barrier.alpha so the bubble reads more
 // solid in 3D than the 2D translucent fill.
@@ -183,7 +182,6 @@ type FieldMesh = {
 
 type FieldKey = number | string;
 const FIELD_KEY_TURRET_STRIDE = 1024;
-type ShieldTargetResolver = (id: EntityId) => Entity | undefined;
 
 function shieldKey(unitEntityId: number, turretIndex: number): FieldKey {
   if (
@@ -224,7 +222,6 @@ export class ShieldRenderPacket3D {
   color: Uint32Array = new Uint32Array(SHIELD_PACKET_INITIAL_CAP);
   shape: Uint8Array = new Uint8Array(SHIELD_PACKET_INITIAL_CAP);
   private readonly mountLiftCache = new Map<string, { radius: number; liftY: number }>();
-  private readonly _targetAimPoint = { x: 0, y: 0, z: 0 };
   count = 0;
 
   reset(): void {
@@ -234,7 +231,6 @@ export class ShieldRenderPacket3D {
   pushUnit(
     unitEntity: Entity,
     scope: ViewportFootprint,
-    resolveTarget: ShieldTargetResolver | undefined = undefined,
   ): void {
     const unit = unitEntity.unit;
     const combat = unitEntity.combat;
@@ -252,32 +248,15 @@ export class ShieldRenderPacket3D {
       let targetY = unitEntity.transform.y;
       let targetZ = unitEntity.transform.z;
       if (barrier.shape === 'aimedCylinder') {
-        const targetId = turret.target;
-        const target = typeof targetId === 'number' && targetId >= 0
-          ? resolveTarget?.(targetId)
-          : undefined;
         const { cos, sin } = getTransformCosSin(unitEntity.transform);
         const originX = unitEntity.transform.x + turret.mount.x * cos - turret.mount.y * sin;
         const originY = unitEntity.transform.y + turret.mount.x * sin + turret.mount.y * cos;
         const originZ = unitEntity.transform.z - unit.bodyCenterHeight + turret.mount.z;
-        if (target !== undefined) {
-          const aim = resolveTargetAimPoint(
-            target,
-            originX,
-            originY,
-            originZ,
-            this._targetAimPoint,
-          );
-          targetX = aim.x;
-          targetY = aim.y;
-          targetZ = aim.z;
-        } else {
-          const pitchSin = Math.sin(turret.pitch);
-          const pitchCos = Math.cos(turret.pitch);
-          targetX = originX + Math.cos(turret.rotation) * pitchCos * turret.config.range;
-          targetY = originY + Math.sin(turret.rotation) * pitchCos * turret.config.range;
-          targetZ = originZ + pitchSin * turret.config.range;
-        }
+        const pitchSin = Math.sin(turret.pitch);
+        const pitchCos = Math.cos(turret.pitch);
+        targetX = originX + Math.cos(turret.rotation) * pitchCos * turret.config.range;
+        targetY = originY + Math.sin(turret.rotation) * pitchCos * turret.config.range;
+        targetZ = originZ + pitchSin * turret.config.range;
       }
       if (!scope.inScope(unitEntity.transform.x, unitEntity.transform.y, Math.max(300, barrier.outerRange))) continue;
       const cursor = this.count;

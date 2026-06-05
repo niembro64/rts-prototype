@@ -645,7 +645,7 @@ export class RtsScene3DRenderPhase {
   private populateShieldPacket(units: readonly Entity[]): void {
     const packet = this.shieldPacket;
     for (const unit of units) {
-      packet.pushUnit(unit, this.renderScope, (id) => this.clientViewState.getEntity(id));
+      packet.pushUnit(unit, this.renderScope);
     }
   }
 

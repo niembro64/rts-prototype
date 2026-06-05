@@ -11,15 +11,22 @@ import {
   type CombatTargetingTurretFsmOut,
 } from './targetingInputStamping';
 import { getUnitGroundZ } from '../unitGeometry';
-import { resolveTargetAimPoint } from './aimSolver';
 
 const _shieldMount = { x: 0, y: 0, z: 0 };
-const _shieldTargetAim = { x: 0, y: 0, z: 0 };
 const _shieldHit = { t: 0, x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, playerId: 0, entityId: 0 };
 const _shieldFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_ENGAGED,
   targetId: -1,
 };
+const SHIELD_FIRE_YAW_TOLERANCE = 0.16;
+const SHIELD_FIRE_PITCH_TOLERANCE = 0.16;
+
+function isAimedCylinderReadyForEmission(weapon: { aimErrorYaw: number; aimErrorPitch: number }): boolean {
+  return (
+    Math.abs(weapon.aimErrorYaw) <= SHIELD_FIRE_YAW_TOLERANCE &&
+    Math.abs(weapon.aimErrorPitch) <= SHIELD_FIRE_PITCH_TOLERANCE
+  );
+}
 
 // Compact list of shield weapons with progress > 0, built by
 // updateShieldState() and consumed by projectile collision and the
@@ -103,7 +110,10 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
         ? _shieldFsm.stateCode === CT_TURRET_STATE_ENGAGED
         : weapon.state === 'engaged';
       const targetId = hasTargetingFsm ? _shieldFsm.targetId : (weapon.target ?? -1);
-      const targetProgress = engaged ? 1 : 0;
+      const aimedCylinderReady = fieldShot.barrier?.shape === 'aimedCylinder'
+        ? isAimedCylinderReadyForEmission(weapon)
+        : true;
+      const targetProgress = engaged && aimedCylinderReady ? 1 : 0;
       const progressDelta = dtMs / transitionTime;
 
       if (weapon.shield.transition < targetProgress) {
@@ -146,12 +156,10 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
         let axisEndZ = centerZ;
         if (barrier.shape === 'aimedCylinder') {
           if (targetId === -1) continue;
-          const target = world.getEntity(targetId);
-          if (target === undefined) continue;
-          resolveTargetAimPoint(target, centerX, centerY, centerZ, _shieldTargetAim);
-          axisEndX = _shieldTargetAim.x;
-          axisEndY = _shieldTargetAim.y;
-          axisEndZ = _shieldTargetAim.z;
+          const pitchCos = Math.cos(weapon.pitch);
+          axisEndX = centerX + Math.cos(weapon.rotation) * pitchCos * config.range;
+          axisEndY = centerY + Math.sin(weapon.rotation) * pitchCos * config.range;
+          axisEndZ = centerZ + Math.sin(weapon.pitch) * config.range;
           if (Math.hypot(axisEndX - centerX, axisEndY - centerY, axisEndZ - centerZ) <= 1e-6) {
             continue;
           }
