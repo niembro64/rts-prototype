@@ -481,6 +481,7 @@ pub struct TurretMount {
     pub mount: MountOffset,
     pub shieldPanels: Option<Vec<ShieldPanel>>,
     pub hostDirected: bool,
+    pub requiredEngagedForFightStop: bool,
     pub zResolver: Option<UnitTurretMountZResolver>,
     pub visualVariant: Option<String>,
 }
@@ -822,7 +823,6 @@ pub struct UnitBlueprint {
     pub builder: Option<UnitBuilderConfig>,
     pub dgun: Option<UnitDgunConfig>,
     pub deathSound: Option<BlueprintJsonValue>,
-    pub fightStopEngagedRatio: Option<f64>,
     pub includeLockOnLevel0FriendsAndEnemies: Vec<TurretLockOnRelationshipInclusion>,
     pub includeLockOnLevel0Entities: Vec<TurretLockOnEntityFamilyInclusion>,
     pub includeLockOnLevel1Buildings: Vec<String>,

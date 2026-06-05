@@ -45,6 +45,7 @@
       ],
       "turrets": [
         "turretGunLight",
+        "turretGunTerribleAim",
         "turretGunBurst",
         "turretCannon",
         "turretMortarSlow",
@@ -68,6 +69,7 @@
       ],
       "shots": [
         "shotPlasmaLight",
+        "shotPlasmaOther",
         "shotPlasmaMedium",
         "shotRocketLight",
         "shotRocketFast",
@@ -527,6 +529,14 @@
         }
       }
     },
+    "turretGunTerribleAim": {
+      "targets": {
+        "enemy": {
+          "towers": "all",
+          "units": "all"
+        }
+      }
+    },
     "turretGunBurst": {
       "targets": {
         "enemy": {
@@ -727,6 +737,7 @@
           "turrets": {
             "only": [
               "turretGunLight",
+              "turretGunTerribleAim",
               "turretGunBurst",
               "turretCannon",
               "turretGatling",

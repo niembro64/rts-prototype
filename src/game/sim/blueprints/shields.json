@@ -37,7 +37,7 @@
     "transitionTime": 500,
     "barrier": {
       "shape": "infiniteVerticalCylinder",
-      "outerRatio": 0.25,
+      "outerRatio": 1.0,
       "originOffsetRadiusRatio": 0,
       "rimWidth": null
     },

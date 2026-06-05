@@ -73,6 +73,69 @@ const _fireSimEvents: import('./types').SimEvent[] = [];
 const _fireSpawnEvents: ProjectileSpawnEvent[] = [];
 const _orphanedIds: EntityId[] = [];
 const _despawnEvents: ProjectileDespawnEvent[] = [];
+const TWO_PI = Math.PI * 2;
+const _spreadConeDir = { x: 0, y: 0, z: 0 };
+
+function writeRandomDirectionInCone(
+  axisX: number,
+  axisY: number,
+  axisZ: number,
+  spreadAngle: number,
+  rngNext: () => number,
+  out: { x: number; y: number; z: number },
+): void {
+  const axisLen = Math.hypot(axisX, axisY, axisZ);
+  if (
+    axisLen <= 0 ||
+    !Number.isFinite(axisLen) ||
+    !Number.isFinite(spreadAngle) ||
+    spreadAngle <= 0
+  ) {
+    out.x = axisLen > 0 ? axisX / axisLen : 1;
+    out.y = axisLen > 0 ? axisY / axisLen : 0;
+    out.z = axisLen > 0 ? axisZ / axisLen : 0;
+    return;
+  }
+
+  axisX /= axisLen;
+  axisY /= axisLen;
+  axisZ /= axisLen;
+
+  const halfAngle = Math.min(Math.PI, spreadAngle * 0.5);
+  const cosTheta = 1 - rngNext() * (1 - Math.cos(halfAngle));
+  const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
+  const phi = rngNext() * TWO_PI;
+  const cosPhi = Math.cos(phi);
+  const sinPhi = Math.sin(phi);
+
+  let basisX: number;
+  let basisY: number;
+  let basisZ: number;
+  if (Math.abs(axisZ) < 0.9) {
+    basisX = -axisY;
+    basisY = axisX;
+    basisZ = 0;
+  } else {
+    basisX = axisZ;
+    basisY = 0;
+    basisZ = -axisX;
+  }
+  const basisLen = Math.hypot(basisX, basisY, basisZ);
+  basisX /= basisLen;
+  basisY /= basisLen;
+  basisZ /= basisLen;
+
+  const tangentX = axisY * basisZ - axisZ * basisY;
+  const tangentY = axisZ * basisX - axisX * basisZ;
+  const tangentZ = axisX * basisY - axisY * basisX;
+  const radialX = basisX * cosPhi + tangentX * sinPhi;
+  const radialY = basisY * cosPhi + tangentY * sinPhi;
+  const radialZ = basisZ * cosPhi + tangentZ * sinPhi;
+
+  out.x = axisX * cosTheta + radialX * sinTheta;
+  out.y = axisY * cosTheta + radialY * sinTheta;
+  out.z = axisZ * cosTheta + radialZ * sinTheta;
+}
 
 // Phase 5a — packed projectile dense state lives in the WASM-side
 // ProjectilePool (see rts-sim-wasm/src/lib.rs). The local typed-
@@ -540,13 +603,6 @@ export function fireTurrets(
         // center.
         const barrelIndex = (fireBaseIndex + i) % barrelCount;
 
-        // Optional random yaw jitter for cone-shotgun spread. Applied
-        // only to the outbound direction per pellet.
-        let yaw = turretAngle;
-        if (spreadAngle > 0) {
-          yaw += (world.rng.next() - 0.5) * spreadAngle;
-        }
-
         const spawnX = weaponX;
         const spawnY = weaponY;
         const spawnZ = mountZ;
@@ -566,11 +622,14 @@ export function fireTurrets(
 
         // Firing direction. Two modes:
         //
-        //  Vertical launcher: every rocket leaves straight up (+Z).
-        //  Homing bends it back toward the target from there.
+        //  Vertical launcher: the base axis is straight up (+Z).
+        //  Spread can cone around that axis; homing bends it back
+        //  toward the target from there.
         //
-        //  Standard turret: use the jittered yaw combined with the
-        //  turret's pitch contribution (ballistic arc aim).
+        //  Standard turret: use the turret's full 3D aim vector. Spread
+        //  samples a circular cone around that vector; spread.angle is
+        //  the cone's full aperture, so angle / 2 is the center-to-edge
+        //  half-angle.
         let dirX: number;
         let dirY: number;
         let dirZ: number;
@@ -581,12 +640,26 @@ export function fireTurrets(
         } else {
           const dirPitchSin = Math.sin(turretPitch);
           const dirPitchCos = Math.cos(turretPitch);
-          const fireCos = Math.cos(yaw);
-          const fireSin = Math.sin(yaw);
+          const fireCos = Math.cos(turretAngle);
+          const fireSin = Math.sin(turretAngle);
           dirX = fireCos * dirPitchCos;
           dirY = fireSin * dirPitchCos;
           dirZ = dirPitchSin;
         }
+        if (spreadAngle > 0) {
+          writeRandomDirectionInCone(
+            dirX, dirY, dirZ,
+            spreadAngle,
+            () => world.rng.next(),
+            _spreadConeDir,
+          );
+          dirX = _spreadConeDir.x;
+          dirY = _spreadConeDir.y;
+          dirZ = _spreadConeDir.z;
+        }
+        const fireYaw = Math.hypot(dirX, dirY) > 1e-9
+          ? Math.atan2(dirY, dirX)
+          : turretAngle;
 
         if (isBeamWeapon) {
           // Logical beam start is the turret mount center — the
@@ -645,7 +718,7 @@ export function fireTurrets(
           newProjectiles.push(beam);
           spawnEvents.push({
             id: beam.id,
-            pos: { x: beamStartX, y: beamStartY, z: beamStartZ }, rotation: yaw,
+            pos: { x: beamStartX, y: beamStartY, z: beamStartZ }, rotation: fireYaw,
             velocity: { x: 0, y: 0, z: 0 },
             projectileType: beamProjectileType,
             turretBlueprintId: config.turretBlueprintId,
@@ -714,7 +787,7 @@ export function fireTurrets(
           newProjectiles.push(projectile);
           spawnEvents.push({
             id: projectile.id,
-            pos: { x: spawnX, y: spawnY, z: spawnZ }, rotation: yaw,
+            pos: { x: spawnX, y: spawnY, z: spawnZ }, rotation: fireYaw,
             velocity: { x: projVx, y: projVy, z: projVz },
             projectileType: 'projectile',
             maxLifespan: typeof maxLifespan === 'number' && Number.isFinite(maxLifespan)

@@ -710,6 +710,9 @@ export function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretC
     // shared TurretConfig defaults to false; the runtime turret factory
     // (makeRuntimeTurret) overrides it from each mount's hostDirected flag.
     hostDirected: false,
+    // Unit mounts opt into fight/patrol halt gating individually. Building
+    // mounts never participate in unit movement halt checks.
+    requiredEngagedForFightStop: false,
     constructionEmitter: turretBlueprint.constructionEmitter !== null
       ? {
           defaultSize: turretBlueprint.constructionEmitter.defaultSize,
@@ -820,35 +823,20 @@ for (const bp of Object.values(BUILDING_BLUEPRINTS)) {
   }
 }
 
-// Host-directed-per-kind validation. "Host-directed turrets carry the
-// host lock-on" requires that, for each turret KIND a host (unit or
-// tower) mounts, EXACTLY ONE mount is tagged hostDirected — zero means
-// the player's order for that kind has no weapon to land on; two-or-more
-// means the primary is ambiguous. Pure buildings carry no turrets and
-// are no-ops here. Runs at module-load so a bad host throws on import.
+// Host-directed validation. "Host-directed turrets carry the host
+// lock-on" is a per-mount choice: zero, one, or many mounts may inherit
+// the host target. The loader only enforces that every mount states the
+// choice explicitly so blueprint behavior is auditable at import time.
 export function validateHostDirectedMounts(
   hostLabel: string,
   hostId: string,
   mounts: ReadonlyArray<{ turretBlueprintId: string; hostDirected: unknown }>,
 ): void {
-  const total = new Map<string, number>();
-  const directed = new Map<string, number>();
   for (let i = 0; i < mounts.length; i++) {
     const mount = mounts[i];
     if (typeof mount.hostDirected !== 'boolean') {
       throw new Error(
         `Invalid ${hostLabel} ${hostId}[${i}] ${mount.turretBlueprintId}: mount must define a boolean hostDirected`,
-      );
-    }
-    const kind = TURRET_BLUEPRINTS[mount.turretBlueprintId as TurretBlueprintId].kind;
-    total.set(kind, (total.get(kind) ?? 0) + 1);
-    if (mount.hostDirected) directed.set(kind, (directed.get(kind) ?? 0) + 1);
-  }
-  for (const kind of total.keys()) {
-    const count = directed.get(kind) ?? 0;
-    if (count !== 1) {
-      throw new Error(
-        `Invalid ${hostLabel} ${hostId}: turret kind "${kind}" has ${count} host-directed mount(s); exactly one is required so the host's ${kind} order lands on a single primary turret`,
       );
     }
   }

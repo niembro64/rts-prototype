@@ -1948,6 +1948,7 @@ export const CT_TURRET_CFG_HOST_DIRECTED = 1 << 8;
 export const CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED = 1 << 9;
 export const CT_TURRET_CFG_RANGE_TOP_UNBOUNDED = 1 << 10;
 export const CT_TURRET_CFG_RANGE_SPHERE = 1 << 11;
+export const CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP = 1 << 12;
 
 /** AIM-08.1 — FSM state encodings. Single-sourced from wireEnums.json (the
  *  same file Rust generates its CT_TURRET_STATE_* constants from), so the
@@ -1960,7 +1961,7 @@ export const CT_TURRET_STATE_ENGAGED = wireEnums.turretState.engaged;
 /** C1 movement/combat halt modes. Single-sourced from wireEnums.json
  *  because the mode byte crosses the JS/WASM boundary. */
 export const CT_COMBAT_HALT_MODE_ANY_ENGAGED = wireEnums.combatHaltMode.anyEngaged;
-export const CT_COMBAT_HALT_MODE_FIGHT_RATIO = wireEnums.combatHaltMode.fightRatio;
+export const CT_COMBAT_HALT_MODE_FIGHT_REQUIRED = wireEnums.combatHaltMode.fightRequired;
 
 /** LOCK-ON-03 — Per-turret lock-on exclusion masks compiled from each
  *  turret blueprint's authored exclusion arrays. Mirrors
@@ -2186,11 +2187,10 @@ export interface CombatTargetingApi {
   ) => number;
   /** C1 — Rust-owned per-turret combat halt classifier for movement.
    *  Mode anyEngaged covers attack / attack-ground / guard; mode
-   *  fightRatio covers fight / patrol with the per-unit halt ratio. */
+   *  fightRequired covers fight / patrol with per-mount stop flags. */
   haltDecisionBatch: (
     entitySlots: Uint32Array,
     modes: Uint8Array,
-    ratios: Float64Array,
     priorityPointPresent: Uint8Array,
     outShouldHalt: Uint8Array,
   ) => number;

@@ -15833,6 +15833,7 @@ pub const CT_TURRET_CFG_HOST_DIRECTED: u16 = 1 << 8;
 pub const CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED: u16 = 1 << 9;
 pub const CT_TURRET_CFG_RANGE_TOP_UNBOUNDED: u16 = 1 << 10;
 pub const CT_TURRET_CFG_RANGE_SPHERE: u16 = 1 << 11;
+pub const CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP: u16 = 1 << 12;
 
 // FSM state encodings (CT_TURRET_STATE_*) are generated from
 // src/wireEnums.json — see the include! near the top of this file.
@@ -19136,21 +19137,19 @@ fn combat_targeting_turret_halts_host(
 ///
 /// Mode `anyEngaged` mirrors attack / attack-ground / guard: any
 /// non-visual turret in ENGAGED state with a target, or with an active
-/// priority point, pins the unit. Mode `fightRatio` mirrors fight /
-/// patrol: only host-directed, non-visual turrets contribute, and the
-/// engaged count must cross the supplied per-unit ratio.
+/// priority point, pins the unit. Mode `fightRequired` mirrors fight /
+/// patrol: every non-visual turret whose mount is flagged as required
+/// for fight-stop must be engaged.
 #[wasm_bindgen]
 pub fn combat_targeting_halt_decision_batch(
     entity_slots: &[u32],
     modes: &[u8],
-    ratios: &[f64],
     priority_point_present: &[u8],
     out_should_halt: &mut [u8],
 ) -> u32 {
     let count = entity_slots
         .len()
         .min(modes.len())
-        .min(ratios.len())
         .min(priority_point_present.len())
         .min(out_should_halt.len());
     let pool = combat_targeting_pool();
@@ -19181,30 +19180,26 @@ pub fn combat_targeting_halt_decision_batch(
             continue;
         }
 
-        if modes[i] != CT_COMBAT_HALT_MODE_FIGHT_RATIO {
+        if modes[i] != CT_COMBAT_HALT_MODE_FIGHT_REQUIRED {
             continue;
         }
-        let ratio = ratios[i];
-        if !ratio.is_finite() {
-            continue;
-        }
-        let mut total = 0_u32;
-        let mut engaged = 0_u32;
+        let mut required = 0_u32;
+        let mut engaged_required = 0_u32;
         for turret_idx in 0..turret_count {
             let idx = combat_targeting_turret_global_idx(entity_slots[i], turret_idx as u32);
             let flags = pool.turret_config_flags[idx];
             if (flags & CT_TURRET_CFG_VISUAL_ONLY) != 0 {
                 continue;
             }
-            if (flags & CT_TURRET_CFG_HOST_DIRECTED) == 0 {
+            if (flags & CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP) == 0 {
                 continue;
             }
-            total += 1;
+            required += 1;
             if combat_targeting_turret_halts_host(pool, idx, has_priority_point) {
-                engaged += 1;
+                engaged_required += 1;
             }
         }
-        if total > 0 && (engaged as f64) >= (total as f64) * ratio {
+        if required > 0 && engaged_required == required {
             out_should_halt[i] = 1;
         }
     }
@@ -34618,14 +34613,13 @@ mod lock_on_inclusion_tests {
 
         let slots = [SOURCE_SLOT];
         let modes = [CT_COMBAT_HALT_MODE_ANY_ENGAGED];
-        let ratios = [0.0];
         let mut out = [0u8];
-        combat_targeting_halt_decision_batch(&slots, &modes, &ratios, &[0], &mut out);
+        combat_targeting_halt_decision_batch(&slots, &modes, &[0], &mut out);
         assert_eq!(
             out[0], 0,
             "engaged priority-point turret needs an active point"
         );
-        combat_targeting_halt_decision_batch(&slots, &modes, &ratios, &[1], &mut out);
+        combat_targeting_halt_decision_batch(&slots, &modes, &[1], &mut out);
         assert_eq!(out[0], 1);
 
         reset_pools();
@@ -34640,12 +34634,12 @@ mod lock_on_inclusion_tests {
                 ..TurretSpec::default()
             },
         );
-        combat_targeting_halt_decision_batch(&slots, &modes, &ratios, &[0], &mut out);
+        combat_targeting_halt_decision_batch(&slots, &modes, &[0], &mut out);
         assert_eq!(out[0], 0, "visual-only turrets must not halt movement");
     }
 
     #[test]
-    fn combat_halt_fight_ratio_counts_only_host_directed_turrets() {
+    fn combat_halt_fight_required_requires_all_marked_turrets() {
         let _guard = lock_tests();
         reset_pools();
         stamp_entity(
@@ -34664,7 +34658,7 @@ mod lock_on_inclusion_tests {
             TurretSpec {
                 state: CT_TURRET_STATE_ENGAGED,
                 target_id: 201,
-                flags: CT_TURRET_CFG_HOST_DIRECTED,
+                flags: CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP,
                 ..TurretSpec::default()
             },
         );
@@ -34674,7 +34668,7 @@ mod lock_on_inclusion_tests {
             TurretSpec {
                 state: CT_TURRET_STATE_IDLE,
                 target_id: -1,
-                flags: CT_TURRET_CFG_HOST_DIRECTED,
+                flags: CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP,
                 ..TurretSpec::default()
             },
         );
@@ -34684,23 +34678,33 @@ mod lock_on_inclusion_tests {
             TurretSpec {
                 state: CT_TURRET_STATE_ENGAGED,
                 target_id: 202,
-                flags: 0,
+                flags: CT_TURRET_CFG_HOST_DIRECTED,
                 ..TurretSpec::default()
             },
         );
 
         let slots = [SOURCE_SLOT];
-        let modes = [CT_COMBAT_HALT_MODE_FIGHT_RATIO];
+        let modes = [CT_COMBAT_HALT_MODE_FIGHT_REQUIRED];
         let mut out = [0u8];
-        combat_targeting_halt_decision_batch(&slots, &modes, &[0.5], &[0], &mut out);
-        assert_eq!(
-            out[0], 1,
-            "one of two host-directed turrets satisfies a 0.5 ratio"
-        );
-        combat_targeting_halt_decision_batch(&slots, &modes, &[0.75], &[0], &mut out);
+        combat_targeting_halt_decision_batch(&slots, &modes, &[0], &mut out);
         assert_eq!(
             out[0], 0,
-            "autonomous turrets must not inflate fight halt engagement"
+            "all required fight-stop turrets must be engaged"
+        );
+        stamp_turret(
+            SOURCE_SLOT,
+            1,
+            TurretSpec {
+                state: CT_TURRET_STATE_ENGAGED,
+                target_id: 203,
+                flags: CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP,
+                ..TurretSpec::default()
+            },
+        );
+        combat_targeting_halt_decision_batch(&slots, &modes, &[0], &mut out);
+        assert_eq!(
+            out[0], 1,
+            "host-directed turrets do not matter unless their mount is marked required"
         );
     }
 

@@ -1424,7 +1424,8 @@
       "required": [
         "turretBlueprintId",
         "mount",
-        "hostDirected"
+        "hostDirected",
+        "requiredEngagedForFightStop"
       ],
       "properties": {
         "turretBlueprintId": {
@@ -1440,6 +1441,9 @@
           }
         },
         "hostDirected": {
+          "type": "boolean"
+        },
+        "requiredEngagedForFightStop": {
           "type": "boolean"
         },
         "zResolver": {
@@ -2396,7 +2400,6 @@
         "builder",
         "dgun",
         "deathSound",
-        "fightStopEngagedRatio",
         "includeLockOnLevel0FriendsAndEnemies",
         "includeLockOnLevel0Entities",
         "includeLockOnLevel1Buildings",
@@ -2499,16 +2502,6 @@
           "oneOf": [
             {
               "$ref": "#/$defs/SoundEntry"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "fightStopEngagedRatio": {
-          "oneOf": [
-            {
-              "type": "number"
             },
             {
               "type": "null"

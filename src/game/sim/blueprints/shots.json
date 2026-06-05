@@ -1,4 +1,44 @@
 {
+  "shotPlasmaOther": {
+    "type": "plasma",
+    "shotBlueprintId": "shotPlasmaOther",
+    "name": "Heavy Plasma",
+    "mass": 30,
+    "health": 10,
+    "radius": {
+      "visual": 4,
+      "hitbox": 3.2,
+      "collision": 4
+    },
+    "armingDelayMs": 400,
+    "detonateOnExpiry": true,
+    "hitSound": {
+      "$audio": "event.hit.shotPlasmaOther"
+    },
+    "submunitions": null,
+    "homingTurnRate": null,
+    "homingThrust": null,
+    "gravityForceMultiplier": 1,
+    "smokeTrail": null,
+    "base": {
+      "cost": {
+        "energy": 0,
+        "metal": 0
+      },
+      "mass": 30,
+      "health": 10,
+      "deathExplosion": {
+        "radius": 75,
+        "force": 7000,
+        "damage": 150
+      },
+      "radius": {
+        "visual": 4,
+        "hitbox": 3.2,
+        "collision": 4
+      }
+    }
+  },
   "shotPlasmaLight": {
     "type": "plasma",
     "shotBlueprintId": "shotPlasmaLight",

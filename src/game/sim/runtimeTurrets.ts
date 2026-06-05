@@ -23,6 +23,7 @@ function makeRuntimeTurret(
   turretBlueprintId: string,
   mount: { x: number; y: number; z: number },
   hostDirected: boolean,
+  requiredEngagedForFightStop: boolean,
   identity: {
     id: EntityId;
     parentId: EntityId;
@@ -38,10 +39,9 @@ function makeRuntimeTurret(
   const ranges = computeTurretRanges(turretConfig);
   const turnAccel = turretConfig.angular.turnAccel;
   const drag = turretConfig.angular.drag;
-  // hostDirected is authored per-mount, not per-turret-blueprint, so the
-  // per-instance config is what carries it. The shared config defaults
-  // false; override it here from this mount's flag.
-  const config = { ...turretConfig, hostDirected };
+  // Mount-authored flags live on the per-instance config, not the shared
+  // turret blueprint config.
+  const config = { ...turretConfig, hostDirected, requiredEngagedForFightStop };
   const mountOffset2d = Math.hypot(mount.x, mount.y);
   const sustainedDps = computeTurretSustainedDps(config);
   // Initial pitch comes from the blueprint's `idlePitch` knob (e.g.
@@ -131,6 +131,7 @@ export function createUnitRuntimeTurrets(
       mount.turretBlueprintId,
       localMount,
       mount.hostDirected,
+      mount.requiredEngagedForFightStop,
       identity,
       mount.visualVariant,
     ));
@@ -161,6 +162,7 @@ export function createBuildingRuntimeTurrets(
       m.turretBlueprintId,
       { x: m.mount.x, y: m.mount.y, z: m.mount.z },
       m.hostDirected,
+      false,
       identity,
       m.visualVariant,
     ));

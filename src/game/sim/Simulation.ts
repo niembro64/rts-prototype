@@ -84,7 +84,7 @@ import { setUnitMovementAcceleration } from './unitMovementAcceleration';
 import { getActionIntentStart, getUnitActionTargetId } from './unitActionIntents';
 import {
   CT_COMBAT_HALT_MODE_ANY_ENGAGED,
-  CT_COMBAT_HALT_MODE_FIGHT_RATIO,
+  CT_COMBAT_HALT_MODE_FIGHT_REQUIRED,
   getSimWasm,
   type SimWasm,
 } from '../sim-wasm/init';
@@ -325,13 +325,11 @@ export class Simulation {
   private _combatHaltTouchedSlotsBuf: number[] = [];
   private _combatHaltSlotsBuf = new Uint32Array(0);
   private _combatHaltModesBuf = new Uint8Array(0);
-  private _combatHaltRatiosBuf = new Float64Array(0);
   private _combatHaltPriorityPointBuf = new Uint8Array(0);
   private _combatHaltOutBuf = new Uint8Array(0);
   private _combatHaltModeBySlot = new Uint8Array(0);
   private _combatHaltPriorityPointBySlot = new Uint8Array(0);
   private _combatHaltStopBySlot = new Uint8Array(0);
-  private _combatHaltRatioBySlot = new Float64Array(0);
 
   // Reusable buffers for shared energy distribution (avoid per-tick allocations)
   private energyBuffers: EnergyBuffers = createEnergyBuffers();
@@ -1504,12 +1502,10 @@ export class Simulation {
         continue;
       }
 
-      // Fight/patrol halt is per-blueprint: each unit's
-      // fightStopEngagedRatio decides when "enough" turrets are engaged to
-      // stop and brawl. `null` means never halt — march through enemy
-      // fire with turrets engaging opportunistically (canonical RTS
-      // attack-move). Distinct from the always-halt-on-engagement
-      // helper used for attack / attackGround / guard.
+      // Fight/patrol halt is per-mount: unit blueprints mark the exact
+      // turret mount(s) that must be engaged before the unit stops and
+      // brawls. If no mount is marked, the unit keeps moving while
+      // weapons engage opportunistically.
       if (currentAction.type === 'fight' || currentAction.type === 'patrol') {
         if (this.shouldStopForFightCombat(entity)) {
           unit.stuckTicks = 0;
@@ -2063,9 +2059,6 @@ export class Simulation {
     const modes = new Uint8Array(next);
     modes.set(this._combatHaltModesBuf);
     this._combatHaltModesBuf = modes;
-    const ratios = new Float64Array(next);
-    ratios.set(this._combatHaltRatiosBuf);
-    this._combatHaltRatiosBuf = ratios;
     const priorityPoint = new Uint8Array(next);
     priorityPoint.set(this._combatHaltPriorityPointBuf);
     this._combatHaltPriorityPointBuf = priorityPoint;
@@ -2084,9 +2077,6 @@ export class Simulation {
     const stop = new Uint8Array(next);
     stop.set(this._combatHaltStopBySlot);
     this._combatHaltStopBySlot = stop;
-    const ratios = new Float64Array(next);
-    ratios.set(this._combatHaltRatioBySlot);
-    this._combatHaltRatioBySlot = ratios;
   }
 
   private clearCombatHaltDecisionCache(): void {
@@ -2096,7 +2086,6 @@ export class Simulation {
       this._combatHaltModeBySlot[slot] = 0;
       this._combatHaltPriorityPointBySlot[slot] = 0;
       this._combatHaltStopBySlot[slot] = 0;
-      this._combatHaltRatioBySlot[slot] = 0;
     }
     touched.length = 0;
   }
@@ -2105,26 +2094,22 @@ export class Simulation {
     index: number,
     slot: number,
     mode: number,
-    ratio: number,
     priorityPointPresent: boolean,
   ): void {
     this._combatHaltSlotsBuf[index] = slot;
     this._combatHaltModesBuf[index] = mode;
-    this._combatHaltRatiosBuf[index] = ratio;
     this._combatHaltPriorityPointBuf[index] = priorityPointPresent ? 1 : 0;
   }
 
   private cacheCombatHaltDecision(
     slot: number,
     mode: number,
-    ratio: number,
     priorityPointPresent: number,
     shouldStop: number,
   ): void {
     this.ensureCombatHaltSlotCapacity(slot + 1);
     this._combatHaltModeBySlot[slot] = mode + 1;
     this._combatHaltPriorityPointBySlot[slot] = priorityPointPresent;
-    this._combatHaltRatioBySlot[slot] = ratio;
     this._combatHaltStopBySlot[slot] = shouldStop;
     this._combatHaltTouchedSlotsBuf.push(slot);
   }
@@ -2143,7 +2128,6 @@ export class Simulation {
       if (!unit || !entity.combat || unit.actions.length === 0) continue;
       const action = unit.actions[0];
       let mode = -1;
-      let ratio = 0;
       let priorityPointPresent = false;
       if (
         (action.type === 'attack' && action.targetId !== undefined) ||
@@ -2154,16 +2138,14 @@ export class Simulation {
         mode = CT_COMBAT_HALT_MODE_ANY_ENGAGED;
         priorityPointPresent = true;
       } else if (action.type === 'fight' || action.type === 'patrol') {
-        const fightRatio = getUnitBlueprint(unit.unitBlueprintId).fightStopEngagedRatio;
-        if (fightRatio === null) continue;
-        mode = CT_COMBAT_HALT_MODE_FIGHT_RATIO;
-        ratio = fightRatio;
+        if (!this.unitHasFightStopRequiredMount(unit.unitBlueprintId)) continue;
+        mode = CT_COMBAT_HALT_MODE_FIGHT_REQUIRED;
       } else {
         continue;
       }
       const slot = spatialGrid.getSlot(entity.id);
       if (slot < 0) continue;
-      this.queueCombatHaltDecision(count, slot, mode, ratio, priorityPointPresent);
+      this.queueCombatHaltDecision(count, slot, mode, priorityPointPresent);
       count++;
     }
     if (count === 0) return;
@@ -2171,7 +2153,6 @@ export class Simulation {
     sim.combatTargeting.haltDecisionBatch(
       this._combatHaltSlotsBuf.subarray(0, count),
       this._combatHaltModesBuf.subarray(0, count),
-      this._combatHaltRatiosBuf.subarray(0, count),
       this._combatHaltPriorityPointBuf.subarray(0, count),
       this._combatHaltOutBuf.subarray(0, count),
     );
@@ -2180,7 +2161,6 @@ export class Simulation {
       this.cacheCombatHaltDecision(
         this._combatHaltSlotsBuf[i],
         this._combatHaltModesBuf[i],
-        this._combatHaltRatiosBuf[i],
         this._combatHaltPriorityPointBuf[i],
         this._combatHaltOutBuf[i],
       );
@@ -2190,7 +2170,6 @@ export class Simulation {
   private readCombatHaltDecision(
     entity: Entity,
     mode: number,
-    ratio: number,
     priorityPointPresent: boolean,
   ): boolean {
     const slot = spatialGrid.getSlot(entity.id);
@@ -2200,8 +2179,7 @@ export class Simulation {
     const priorityPointFlag = priorityPointPresent ? 1 : 0;
     if (
       this._combatHaltModeBySlot[slot] === modeKey &&
-      this._combatHaltPriorityPointBySlot[slot] === priorityPointFlag &&
-      (mode !== CT_COMBAT_HALT_MODE_FIGHT_RATIO || this._combatHaltRatioBySlot[slot] === ratio)
+      this._combatHaltPriorityPointBySlot[slot] === priorityPointFlag
     ) {
       return this._combatHaltStopBySlot[slot] !== 0;
     }
@@ -2209,18 +2187,16 @@ export class Simulation {
     const sim = getSimWasm();
     if (sim === undefined) return false;
     this.ensureCombatHaltRowCapacity(1);
-    this.queueCombatHaltDecision(0, slot, mode, ratio, priorityPointPresent);
+    this.queueCombatHaltDecision(0, slot, mode, priorityPointPresent);
     sim.combatTargeting.haltDecisionBatch(
       this._combatHaltSlotsBuf.subarray(0, 1),
       this._combatHaltModesBuf.subarray(0, 1),
-      this._combatHaltRatiosBuf.subarray(0, 1),
       this._combatHaltPriorityPointBuf.subarray(0, 1),
       this._combatHaltOutBuf.subarray(0, 1),
     );
     this.cacheCombatHaltDecision(
       slot,
       mode,
-      ratio,
       priorityPointFlag,
       this._combatHaltOutBuf[0],
     );
@@ -2237,29 +2213,29 @@ export class Simulation {
     return this.readCombatHaltDecision(
       entity,
       CT_COMBAT_HALT_MODE_ANY_ENGAGED,
-      0,
       combat.priorityTargetPoint !== null,
     );
   }
 
+  private unitHasFightStopRequiredMount(unitBlueprintId: string): boolean {
+    return getUnitBlueprint(unitBlueprintId).turrets.some(
+      (mount) => mount.requiredEngagedForFightStop === true,
+    );
+  }
+
   /** Fight/patrol variant of the engagement halt check. Halts only when
-   *  the engaged-turret fraction crosses the unit blueprint's
-   *  fightStopEngagedRatio. `null` ratio = never halt (skirmishers
-   *  march through fire). visualOnly turrets are excluded from both
-   *  the engaged count and the denominator. Fully-autonomous
-   *  (non-host-directed) turrets are also excluded: only the weapons
-   *  that define the unit's commanded role can pin a fight-move or
-   *  patrol leg. */
+   *  every unit mount marked `requiredEngagedForFightStop` has an engaged,
+   *  non-visual turret. Units with no required mounts never halt for
+   *  fight/patrol combat. Host-directed targeting is independent: a turret
+   *  may inherit host orders without participating in fight-stop gating. */
   private shouldStopForFightCombat(entity: Entity): boolean {
     if (!entity.unit) return false;
-    const ratio = getUnitBlueprint(entity.unit.unitBlueprintId).fightStopEngagedRatio;
-    if (ratio === null) return false;
+    if (!this.unitHasFightStopRequiredMount(entity.unit.unitBlueprintId)) return false;
     const combat = entity.combat;
     if (!combat || combat.turrets.length === 0) return false;
     return this.readCombatHaltDecision(
       entity,
-      CT_COMBAT_HALT_MODE_FIGHT_RATIO,
-      ratio,
+      CT_COMBAT_HALT_MODE_FIGHT_REQUIRED,
       combat.priorityTargetPoint !== null,
     );
   }

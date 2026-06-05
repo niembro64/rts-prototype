@@ -7,7 +7,7 @@
   },
   "combatHaltMode": {
     "anyEngaged": 0,
-    "fightRatio": 1
+    "fightRequired": 1
   },
   "entityChanged": {
     "pos": 1,

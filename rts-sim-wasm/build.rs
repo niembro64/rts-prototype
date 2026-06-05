@@ -57,8 +57,8 @@ fn generate_wire_enums(manifest_dir: &Path) {
             "pub ",
         ),
         (
-            "/combatHaltMode/fightRatio",
-            "CT_COMBAT_HALT_MODE_FIGHT_RATIO",
+            "/combatHaltMode/fightRequired",
+            "CT_COMBAT_HALT_MODE_FIGHT_REQUIRED",
             "u8",
             "pub ",
         ),

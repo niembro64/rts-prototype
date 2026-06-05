@@ -5,10 +5,10 @@
     "range": 200,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
-      "duration": 450,
+      "duration": 600,
       "durationRandomness": 0.2
     },
-    "launchForce": 2000,
+    "launchForce": 1000,
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {
@@ -29,7 +29,7 @@
     "eventsSmooth": false,
     "color": 16777215,
     "spread": {
-      "angle": 0,
+      "angle": 0.15,
       "pelletCount": 1
     },
     "burst": null,
@@ -43,9 +43,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 3,
-      "hitbox": 2.25,
-      "collision": 3
+      "visual": 3
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -56,13 +54,68 @@
     "emissionKind": "shot",
     "emissionBlueprintId": "shotPlasmaLight"
   },
+  "turretGunTerribleAim": {
+    "turretBlueprintId": "turretGunTerribleAim",
+    "name": "Terrible Aim Plasma",
+    "range": 200,
+    "rangeVolume": "turret-range-bottom-unbounded",
+    "cooldown": {
+      "duration": 30,
+      "durationRandomness": 0.2
+    },
+    "launchForce": 20000,
+    "turretTurnAccel": 200,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "singleCylinderBarrel",
+      "barrelLength": 2
+    },
+    "isManualFire": false,
+    "passive": false,
+    "requiresNonObstructedLineOfSight": true,
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": {
+      "angle": 2.6,
+      "pelletCount": 1
+    },
+    "burst": null,
+    "shieldPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.turretGunLight"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": {
+      "visual": 3
+    },
+    "headOnly": false,
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "ballisticArcLow"
+    },
+    "kind": "attack",
+    "emissionKind": "shot",
+    "emissionBlueprintId": "shotPlasmaOther"
+  },
   "turretGunBurst": {
     "turretBlueprintId": "turretGunBurst",
     "name": "Burst Gun",
     "range": 230,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
-      "duration": 3000,
+      "duration": 2000,
       "durationRandomness": 0.2
     },
     "launchForce": 5000,
@@ -94,12 +147,12 @@
     "eventsSmooth": true,
     "color": 16777215,
     "spread": {
-      "angle": 0.39269908169872414,
+      "angle": 0.2,
       "pelletCount": 1
     },
     "burst": {
       "count": 4,
-      "delay": 100
+      "delay": 30
     },
     "shieldPanels": [],
     "audio": {
@@ -111,9 +164,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 9,
-      "hitbox": 6.75,
-      "collision": 9
+      "visual": 9
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -171,9 +222,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 10,
-      "hitbox": 7.5,
-      "collision": 10
+      "visual": 10
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -231,9 +280,7 @@
     "idlePitch": 0,
     "groundAimFraction": 1,
     "radius": {
-      "visual": 12,
-      "hitbox": 9,
-      "collision": 12
+      "visual": 12
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -288,9 +335,7 @@
     "idlePitch": -1.5707963267948966,
     "groundAimFraction": 1,
     "radius": {
-      "visual": 9,
-      "hitbox": 6.75,
-      "collision": 9
+      "visual": 9
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -356,9 +401,7 @@
     "idlePitch": 0,
     "groundAimFraction": 1,
     "radius": {
-      "visual": 32,
-      "hitbox": 24,
-      "collision": 32
+      "visual": 32
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -424,9 +467,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 16,
-      "hitbox": 12,
-      "collision": 16
+      "visual": 16
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -475,9 +516,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": null,
-      "hitbox": 6,
-      "collision": 8
+      "visual": null
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -527,9 +566,7 @@
     "idlePitch": 1.5707963267948966,
     "groundAimFraction": null,
     "radius": {
-      "visual": 8,
-      "hitbox": 6,
-      "collision": 8
+      "visual": 8
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -579,9 +616,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 6,
-      "hitbox": 4.5,
-      "collision": 6
+      "visual": 6
     },
     "headOnly": true,
     "constructionEmitter": null,
@@ -631,9 +666,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 3,
-      "hitbox": 2.25,
-      "collision": 3
+      "visual": 3
     },
     "headOnly": true,
     "constructionEmitter": null,
@@ -683,9 +716,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 15,
-      "hitbox": 11.25,
-      "collision": 15
+      "visual": 15
     },
     "headOnly": true,
     "constructionEmitter": null,
@@ -744,9 +775,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 12,
-      "hitbox": 9,
-      "collision": 12
+      "visual": 12
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -805,9 +834,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 10,
-      "hitbox": 7.5,
-      "collision": 10
+      "visual": 10
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -821,7 +848,7 @@
   "turretShieldCylinderInfinite": {
     "turretBlueprintId": "turretShieldCylinderInfinite",
     "name": "Infinite Cylinder Shield",
-    "range": 540,
+    "range": 200,
     "rangeVolume": "turret-range-sphere",
     "cooldown": null,
     "launchForce": 0,
@@ -866,9 +893,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 10,
-      "hitbox": 7.5,
-      "collision": 10
+      "visual": 10
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -916,9 +941,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 8,
-      "hitbox": 6,
-      "collision": 8
+      "visual": 8
     },
     "headOnly": false,
     "constructionEmitter": {
@@ -986,9 +1009,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 16,
-      "hitbox": 12,
-      "collision": 16
+      "visual": 16
     },
     "headOnly": true,
     "constructionEmitter": null,
@@ -1046,9 +1067,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 16,
-      "hitbox": 12,
-      "collision": 16
+      "visual": 16
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -1114,9 +1133,7 @@
     "idlePitch": 1.5707963267948966,
     "groundAimFraction": null,
     "radius": {
-      "visual": 8,
-      "hitbox": 6,
-      "collision": 8
+      "visual": 8
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -1179,9 +1196,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 20,
-      "hitbox": 3,
-      "collision": 4
+      "visual": 6
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -1198,7 +1213,7 @@
     "range": 1600,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
-      "duration": 100,
+      "duration": 250,
       "durationRandomness": 0.2
     },
     "launchForce": 9000,
@@ -1244,9 +1259,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 20,
-      "hitbox": 5.25,
-      "collision": 7
+      "visual": 20
     },
     "headOnly": false,
     "constructionEmitter": null,

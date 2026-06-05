@@ -87,6 +87,11 @@
         "volume": 0.2,
         "playSpeed": 0.5
       },
+      "shotPlasmaOther": {
+        "synth": "heavy",
+        "volume": 0.2,
+        "playSpeed": 0.5
+      },
       "shotRocketLight": {
         "synth": "heavy",
         "volume": 0.3,

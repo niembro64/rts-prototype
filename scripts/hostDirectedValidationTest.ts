@@ -24,27 +24,19 @@ function assertDoesNotThrow(name: string, mounts: readonly TestMount[]): void {
   }
 }
 
-assertDoesNotThrow('one-primary-per-kind', [
+assertDoesNotThrow('one-host-directed-per-kind', [
   { turretBlueprintId: 'turretGunLight', hostDirected: true },
   { turretBlueprintId: 'turretGunLight', hostDirected: false },
 ]);
 
-assertThrows(
-  'zero-primary-for-kind',
-  () => validateHostDirectedMounts('unit blueprint', 'zero-primary-for-kind', [
-    { turretBlueprintId: 'turretGunLight', hostDirected: false },
-  ]),
-  /has 0 host-directed mount\(s\); exactly one is required/,
-);
+assertDoesNotThrow('zero-host-directed-for-kind', [
+  { turretBlueprintId: 'turretGunLight', hostDirected: false },
+]);
 
-assertThrows(
-  'two-primaries-for-kind',
-  () => validateHostDirectedMounts('unit blueprint', 'two-primaries-for-kind', [
-    { turretBlueprintId: 'turretGunLight', hostDirected: true },
-    { turretBlueprintId: 'turretGunLight', hostDirected: true },
-  ]),
-  /has 2 host-directed mount\(s\); exactly one is required/,
-);
+assertDoesNotThrow('two-host-directed-for-kind', [
+  { turretBlueprintId: 'turretGunLight', hostDirected: true },
+  { turretBlueprintId: 'turretGunLight', hostDirected: true },
+]);
 
 assertThrows(
   'missing-host-directed-flag',

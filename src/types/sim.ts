@@ -415,6 +415,9 @@ export type TurretConfig = {
   visualOnly: boolean;
   /** Host-directed turret. See TurretBlueprint.hostDirected. */
   hostDirected: boolean;
+  /** Unit-mount authored fight/patrol stop gate. If true, this turret must
+   *  be engaged before the host halts for fight/patrol combat. */
+  requiredEngagedForFightStop: boolean;
   constructionEmitter: ConstructionEmitterVisualSpec | undefined;
   visualVariant: ConstructionEmitterSize | undefined;
   /** LOCK-ON-03 — Compiled per-turret lock-on inclusion bitmasks. JS

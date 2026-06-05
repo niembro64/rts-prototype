@@ -333,6 +333,7 @@ export type TurretMount = {
   mount: MountOffset;
   shieldPanels?: ShieldPanel[];
   hostDirected: boolean;
+  requiredEngagedForFightStop: boolean;
   zResolver?: UnitTurretMountZResolver;
   visualVariant?: ConstructionEmitterSize;
 };
@@ -615,7 +616,6 @@ export type UnitBlueprint = {
   builder: UnitBuilderConfig | null;
   dgun: UnitDgunConfig | null;
   deathSound: SoundEntry | null;
-  fightStopEngagedRatio: number | null;
   includeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipInclusion[];
   includeLockOnLevel0Entities: TurretLockOnEntityFamilyInclusion[];
   includeLockOnLevel1Buildings: string[];

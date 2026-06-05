@@ -210,6 +210,9 @@ function buildEconomySection(
   blueprint: UnitBlueprint,
   buildCost: { energy: number; metal: number },
 ): LoadingUnitInfoSection {
+  const fightStopMounts = blueprint.turrets
+    .filter((mount) => mount.requiredEngagedForFightStop)
+    .map((mount) => mount.turretBlueprintId);
   return {
     id: 'economy',
     title: 'Unit',
@@ -221,9 +224,9 @@ function buildEconomySection(
       stat('Size', fmt(blueprint.radius.visual)),
       stat(
         'Fight-move stop',
-        blueprint.fightStopEngagedRatio === null
+        fightStopMounts.length === 0
           ? 'never; keeps moving'
-          : `${fmt(blueprint.fightStopEngagedRatio * 100)}% turrets engaged`,
+          : `requires ${fightStopMounts.join(', ')}`,
       ),
     ],
   };
@@ -315,6 +318,7 @@ function describeTurret(turret: Turret, index: number): LoadingUnitInfoNode {
     stat('Aim', config.aimStyle.angleType),
     stat('Line of sight', config.requiresNonObstructedLineOfSight ? 'required' : 'not required'),
     stat('Targeting', config.hostDirected ? 'host-directed' : 'autonomous'),
+    stat('Fight-move stop', config.requiredEngagedForFightStop ? 'required engaged' : 'not required'),
   ];
 
   if (config.spread) {

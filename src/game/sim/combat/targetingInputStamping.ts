@@ -58,6 +58,7 @@ import {
   CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED,
   CT_TURRET_CFG_RANGE_TOP_UNBOUNDED,
   CT_TURRET_CFG_RANGE_SPHERE,
+  CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP,
   CT_TURRET_STATE_IDLE,
   CT_TURRET_STATE_TRACKING,
   CT_TURRET_STATE_ENGAGED,
@@ -472,6 +473,9 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   }
   if (ranges.tracking) f |= CT_TURRET_CFG_HAS_TRACKING_RANGE;
   if (turret.config.hostDirected) f |= CT_TURRET_CFG_HOST_DIRECTED;
+  if (turret.config.requiredEngagedForFightStop) {
+    f |= CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP;
+  }
   switch (turret.config.rangeVolume) {
     case 'turret-range-bottom-unbounded':
       f |= CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED;

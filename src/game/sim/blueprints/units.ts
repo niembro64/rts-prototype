@@ -44,7 +44,6 @@ const UNIT_EXPLICIT_FIELDS = [
   'builder',
   'dgun',
   'deathSound',
-  'fightStopEngagedRatio',
   'locomotion',
 ] as const;
 
@@ -105,6 +104,11 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
       if (!turretBlueprint) {
         throw new Error(
           `Invalid unit blueprint ${id}: unknown turretBlueprintId "${mount.turretBlueprintId}"`,
+        );
+      }
+      if (typeof mount.requiredEngagedForFightStop !== 'boolean') {
+        throw new Error(
+          `Invalid unit blueprint ${id}: turret mount ${mount.turretBlueprintId} must define a boolean requiredEngagedForFightStop`,
         );
       }
     }

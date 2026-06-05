@@ -25,6 +25,7 @@ export const SHOT_BLUEPRINT_IDS = [
   'shotRocketFast',
   'shotMortarHeavy',
   'shotRocketLong',
+  'shotPlasmaOther',
 ] as const;
 export type ShotBlueprintId = typeof SHOT_BLUEPRINT_IDS[number];
 
@@ -71,6 +72,7 @@ export const TURRET_BLUEPRINT_IDS = [
   'turretAntiAir',
   'turretShieldSphereSmall',
   'turretShieldCylinderInfinite',
+  'turretGunTerribleAim',
 ] as const;
 export type TurretBlueprintId = typeof TURRET_BLUEPRINT_IDS[number];
 
