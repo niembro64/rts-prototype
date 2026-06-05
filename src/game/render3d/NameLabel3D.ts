@@ -16,7 +16,11 @@
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
 import { getBuildingHudNameY, getUnitHudNameY } from './HudAnchor';
-import { CanvasSpritePool, type CanvasSpriteSlot } from './CanvasSpritePool';
+import {
+  CanvasSpritePool,
+  type CanvasSpritePoolTelemetry,
+  type CanvasSpriteSlot,
+} from './CanvasSpritePool';
 import { FADE_CULL_ALPHA, type HudFade } from './HudFade';
 import { PIECE_TAG_BODY, PIECE_TAG_TURRET_BASE, packPieceKey } from './HealthBar3D';
 import {
@@ -64,6 +68,9 @@ export const PIECE_TAG_COMMANDER_OWNER_NAME = 2;
 const LABEL_IDENTITY_TRACE_FRAMES = 120;
 const LABEL_IDENTITY_PRUNE_INTERVAL_FRAMES = 180;
 const LABEL_IDENTITY_PRUNE_AFTER_FRAMES = 600;
+const NAME_LABEL_MAX_RETAINED_SPRITES = 512;
+const NAME_LABEL_SHRINK_COOLDOWN_FRAMES = 90;
+const NAME_LABEL_SHRINK_BATCH_SIZE = 64;
 
 export type NameLabelTone = 'blueprint' | 'owner';
 const PIECE_NAME_PACKET_INITIAL_CAP = 512;
@@ -342,9 +349,17 @@ export class NameLabel3D {
       canvasWidth: STYLE.canvasMinWidth,
       canvasHeight: CANVAS_HEIGHT_PX,
       debugName: 'NameLabel3D',
+      maxRetainedSlots: NAME_LABEL_MAX_RETAINED_SPRITES,
+      emptyRetainedSlots: 0,
+      shrinkCooldownFrames: NAME_LABEL_SHRINK_COOLDOWN_FRAMES,
+      shrinkBatchSize: NAME_LABEL_SHRINK_BATCH_SIZE,
       makeState: makeLabelState,
       repaint: repaintLabel,
     });
+  }
+
+  getSpritePoolTelemetry(): CanvasSpritePoolTelemetry {
+    return this.pool.getTelemetry();
   }
 
   /** Reset frame state. Caller follows with a series of perEntity

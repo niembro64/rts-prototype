@@ -21,7 +21,11 @@ import {
 } from '../sim/buildableHelpers';
 import type { Buildable } from '../sim/types';
 import { ENTITY_HUD_BAR_STACK_GAP } from '@/config';
-import { CanvasSpritePool, type CanvasSpriteSlot } from './CanvasSpritePool';
+import {
+  CanvasSpritePool,
+  type CanvasSpritePoolTelemetry,
+  type CanvasSpriteSlot,
+} from './CanvasSpritePool';
 import { FADE_CULL_ALPHA, type HudFade } from './HudFade';
 import {
   SHELL_BAR_COLORS,
@@ -62,6 +66,9 @@ type BarMode =
 const BODY_HUD_PACKET_INITIAL_CAP = 1024;
 const BODY_HUD_SHOW_HEALTH = 1;
 const BODY_HUD_SHOW_BUILD = 2;
+const HEALTH_BAR_MAX_RETAINED_SPRITES = 768;
+const HEALTH_BAR_SHRINK_COOLDOWN_FRAMES = 90;
+const HEALTH_BAR_SHRINK_BATCH_SIZE = 128;
 
 export class BodyHudRenderPacket3D {
   ids: Float64Array = new Float64Array(BODY_HUD_PACKET_INITIAL_CAP);
@@ -233,9 +240,17 @@ export class HealthBar3D {
       canvasWidth: STYLE.canvasWidth,
       canvasHeight: STYLE.canvasHeight,
       debugName: 'HealthBar3D',
+      maxRetainedSlots: HEALTH_BAR_MAX_RETAINED_SPRITES,
+      emptyRetainedSlots: 0,
+      shrinkCooldownFrames: HEALTH_BAR_SHRINK_COOLDOWN_FRAMES,
+      shrinkBatchSize: HEALTH_BAR_SHRINK_BATCH_SIZE,
       makeState: () => ({ lastRatioPx: -1, lastMode: null }),
       repaint: repaintBar,
     });
+  }
+
+  getSpritePoolTelemetry(): CanvasSpritePoolTelemetry {
+    return this.pool.getTelemetry();
   }
 
   /** Acquire (or grow) a pool slot and ensure its sprite is visible. */

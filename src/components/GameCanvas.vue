@@ -461,6 +461,11 @@ const {
   fullSnapWorstRate,
   gpuSourceLabel,
   gpuTimerSupported,
+  hudSpriteActiveCount,
+  hudSpriteBudgetCount,
+  hudSpriteDisposedCount,
+  hudSpritePeakCount,
+  hudSpriteRetainedCount,
   rendererContextAuxiliaryBudget,
   rendererContextAuxiliaryCount,
   rendererContextDeniedAuxiliaryCount,
@@ -897,6 +902,11 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   rendererContextAuxiliaryCount: rendererContextAuxiliaryCount.value,
   rendererContextAuxiliaryBudget: rendererContextAuxiliaryBudget.value,
   rendererContextDeniedAuxiliaryCount: rendererContextDeniedAuxiliaryCount.value,
+  hudSpriteActiveCount: hudSpriteActiveCount.value,
+  hudSpriteRetainedCount: hudSpriteRetainedCount.value,
+  hudSpritePeakCount: hudSpritePeakCount.value,
+  hudSpriteDisposedCount: hudSpriteDisposedCount.value,
+  hudSpriteBudgetCount: hudSpriteBudgetCount.value,
   frameMsAvg: frameMsAvg.value,
   frameMsHi: frameMsHi.value,
   longtaskSupported: longtaskSupported.value,
@@ -1018,6 +1028,11 @@ watchEffect(() => {
   m.rendererContextAuxiliaryCount = rendererContextAuxiliaryCount.value;
   m.rendererContextAuxiliaryBudget = rendererContextAuxiliaryBudget.value;
   m.rendererContextDeniedAuxiliaryCount = rendererContextDeniedAuxiliaryCount.value;
+  m.hudSpriteActiveCount = hudSpriteActiveCount.value;
+  m.hudSpriteRetainedCount = hudSpriteRetainedCount.value;
+  m.hudSpritePeakCount = hudSpritePeakCount.value;
+  m.hudSpriteDisposedCount = hudSpriteDisposedCount.value;
+  m.hudSpriteBudgetCount = hudSpriteBudgetCount.value;
   m.frameMsAvg = frameMsAvg.value;
   m.frameMsHi = frameMsHi.value;
   m.longtaskSupported = longtaskSupported.value;

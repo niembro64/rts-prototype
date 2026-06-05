@@ -20,13 +20,35 @@ export type CanvasSpritePoolOptions<TState, TPaintArgs extends unknown[]> = {
   debugName: string;
   textureFilter?: 'linear' | 'nearest';
   material?: Omit<THREE.SpriteMaterialParameters, 'map'>;
+  maxRetainedSlots?: number;
+  emptyRetainedSlots?: number;
+  shrinkCooldownFrames?: number;
+  shrinkBatchSize?: number;
   makeState: (slot: CanvasSpriteBaseSlot, index: number) => TState;
   configureSprite?: (slot: CanvasSpriteSlot<TState>, index: number) => void;
   repaint?: (slot: CanvasSpriteSlot<TState>, ...args: TPaintArgs) => boolean;
 };
 
+export type CanvasSpritePoolTelemetry = {
+  debugName: string;
+  activeSlots: number;
+  retainedSlots: number;
+  peakRetainedSlots: number;
+  createdSlots: number;
+  disposedSlots: number;
+  maxRetainedSlots: number | null;
+  emptyRetainedSlots: number;
+  shrinkCooldownFrames: number;
+  idleFramesOverBudget: number;
+};
+
 export class CanvasSpritePool<TState, TPaintArgs extends unknown[] = []> {
   private readonly slots: CanvasSpriteSlot<TState>[] = [];
+  private activeSlots = 0;
+  private peakRetainedSlots = 0;
+  private createdSlots = 0;
+  private disposedSlots = 0;
+  private idleFramesOverBudget = 0;
 
   constructor(private readonly options: CanvasSpritePoolOptions<TState, TPaintArgs>) {}
 
@@ -36,8 +58,11 @@ export class CanvasSpritePool<TState, TPaintArgs extends unknown[] = []> {
 
   acquire(index: number): CanvasSpriteSlot<TState> {
     while (this.slots.length <= index) {
-      this.slots.push(this.createSlot(this.slots.length));
+      const slot = this.createSlot(this.slots.length);
+      this.slots.push(slot);
+      this.noteSlotCreated();
     }
+    if (index + 1 > this.activeSlots) this.activeSlots = index + 1;
     const slot = this.slots[index];
     slot.sprite.visible = true;
     return slot;
@@ -51,22 +76,96 @@ export class CanvasSpritePool<TState, TPaintArgs extends unknown[] = []> {
   }
 
   hideUnused(used: number): void {
-    for (let i = used; i < this.slots.length; i++) {
-      this.slots[i].sprite.visible = false;
-    }
+    this.hideUnusedInternal(used, false);
   }
 
   hideAll(): void {
-    this.hideUnused(0);
+    this.hideUnusedInternal(0, true);
+  }
+
+  getTelemetry(): CanvasSpritePoolTelemetry {
+    return {
+      debugName: this.options.debugName,
+      activeSlots: this.activeSlots,
+      retainedSlots: this.slots.length,
+      peakRetainedSlots: this.peakRetainedSlots,
+      createdSlots: this.createdSlots,
+      disposedSlots: this.disposedSlots,
+      maxRetainedSlots: this.options.maxRetainedSlots ?? null,
+      emptyRetainedSlots: this.emptyRetainedSlots(),
+      shrinkCooldownFrames: this.shrinkCooldownFrames(),
+      idleFramesOverBudget: this.idleFramesOverBudget,
+    };
+  }
+
+  private hideUnusedInternal(used: number, immediateShrink: boolean): void {
+    const active = Math.max(0, Math.min(this.slots.length, used | 0));
+    this.activeSlots = active;
+    for (let i = active; i < this.slots.length; i++) {
+      this.slots[i].sprite.visible = false;
+    }
+    this.shrinkUnusedTail(active, immediateShrink);
   }
 
   destroy(): void {
-    for (const slot of this.slots) {
-      detachObject(slot.sprite);
-      slot.texture.dispose();
-      disposeMaterial(slot.material);
+    while (this.slots.length > 0) this.disposeTailSlot();
+    this.activeSlots = 0;
+    this.idleFramesOverBudget = 0;
+  }
+
+  private shrinkUnusedTail(used: number, immediate: boolean): void {
+    const target = this.retentionTarget(used);
+    if (this.slots.length <= target) {
+      this.idleFramesOverBudget = 0;
+      return;
     }
-    this.slots.length = 0;
+    if (!immediate) {
+      this.idleFramesOverBudget++;
+      if (this.idleFramesOverBudget < this.shrinkCooldownFrames()) return;
+    }
+    const removeCount = Math.min(
+      this.slots.length - target,
+      immediate ? this.slots.length : this.shrinkBatchSize(),
+    );
+    for (let i = 0; i < removeCount; i++) this.disposeTailSlot();
+  }
+
+  private retentionTarget(used: number): number {
+    const maxRetained = this.options.maxRetainedSlots;
+    if (maxRetained === undefined) return this.slots.length;
+    const budget = Math.max(0, maxRetained | 0);
+    const target = used === 0
+      ? this.emptyRetainedSlots()
+      : Math.max(used, budget);
+    return Math.min(this.slots.length, target);
+  }
+
+  private emptyRetainedSlots(): number {
+    return Math.max(0, this.options.emptyRetainedSlots ?? 0);
+  }
+
+  private shrinkCooldownFrames(): number {
+    return Math.max(1, this.options.shrinkCooldownFrames ?? 90);
+  }
+
+  private shrinkBatchSize(): number {
+    return Math.max(1, this.options.shrinkBatchSize ?? 64);
+  }
+
+  private disposeTailSlot(): void {
+    const slot = this.slots.pop();
+    if (!slot) return;
+    detachObject(slot.sprite);
+    slot.texture.dispose();
+    disposeMaterial(slot.material);
+    this.disposedSlots++;
+  }
+
+  private noteSlotCreated(): void {
+    this.createdSlots++;
+    if (this.slots.length > this.peakRetainedSlots) {
+      this.peakRetainedSlots = this.slots.length;
+    }
   }
 
   private createSlot(index: number): CanvasSpriteSlot<TState> {

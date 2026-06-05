@@ -30,6 +30,11 @@ export function useGameCanvasTelemetry({
   const rendererContextAuxiliaryCount = ref(0);
   const rendererContextAuxiliaryBudget = ref(0);
   const rendererContextDeniedAuxiliaryCount = ref(0);
+  const hudSpriteActiveCount = ref(0);
+  const hudSpriteRetainedCount = ref(0);
+  const hudSpritePeakCount = ref(0);
+  const hudSpriteDisposedCount = ref(0);
+  const hudSpriteBudgetCount = ref(0);
   const longtaskMsPerSec = ref(0);
   const longtaskSupported = ref(false);
   const renderTpsAvg = ref(0);
@@ -84,6 +89,13 @@ export function useGameCanvasTelemetry({
       setNumberRefIfChanged(renderTpsAvg, renderTpsStats.avgRate, 0.05);
       setNumberRefIfChanged(renderTpsWorst, renderTpsStats.worstRate, 0.05);
 
+      const hudSprites = scene.getHudSpriteTelemetry();
+      setNumberRefIfChanged(hudSpriteActiveCount, hudSprites.activeSlots, 0);
+      setNumberRefIfChanged(hudSpriteRetainedCount, hudSprites.retainedSlots, 0);
+      setNumberRefIfChanged(hudSpritePeakCount, hudSprites.peakRetainedSlots, 0);
+      setNumberRefIfChanged(hudSpriteDisposedCount, hudSprites.disposedSlots, 0);
+      setNumberRefIfChanged(hudSpriteBudgetCount, hudSprites.maxRetainedSlots, 0);
+
       const snapStats = scene.getSnapshotStats();
       setNumberRefIfChanged(snapAvgRate, snapStats.avgRate, 0.05);
       setNumberRefIfChanged(snapWorstRate, snapStats.worstRate, 0.05);
@@ -123,6 +135,11 @@ export function useGameCanvasTelemetry({
     fullSnapWorstRate,
     gpuSourceLabel,
     gpuTimerSupported,
+    hudSpriteActiveCount,
+    hudSpriteBudgetCount,
+    hudSpriteDisposedCount,
+    hudSpritePeakCount,
+    hudSpriteRetainedCount,
     rendererContextAuxiliaryBudget,
     rendererContextAuxiliaryCount,
     rendererContextDeniedAuxiliaryCount,

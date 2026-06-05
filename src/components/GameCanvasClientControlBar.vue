@@ -161,6 +161,13 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
+        <div class="fps-stats">
+          <BarLabel :title="`Canvas HUD sprite pools for bars, labels, and waypoint flags. Active ${model.hudSpriteActiveCount}, retained ${model.hudSpriteRetainedCount}, peak retained ${model.hudSpritePeakCount}, retained budget ${model.hudSpriteBudgetCount}, disposed ${model.hudSpriteDisposedCount}.`">HUD SPR:</BarLabel>
+          <span class="fps-value">{{ model.hudSpriteActiveCount }}/{{ model.hudSpriteRetainedCount }}</span>
+        </div>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
         <BarLabel title="Client CPU - simulation prediction, input, HUD updates. Raw logicMs avg/hi in milliseconds per frame.">CPU:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">

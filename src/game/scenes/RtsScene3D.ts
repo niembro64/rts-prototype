@@ -70,6 +70,7 @@ import {
 import { HealthBar3D } from '../render3d/HealthBar3D';
 import { NameLabel3D } from '../render3d/NameLabel3D';
 import { Waypoint3D } from '../render3d/Waypoint3D';
+import type { CanvasSpritePoolTelemetry } from '../render3d/CanvasSpritePool';
 import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
 
 import type { GameConnection } from '../server/GameConnection';
@@ -95,6 +96,16 @@ import {
 } from '../../config';
 
 type SimDeathContext3D = NonNullable<NetworkServerSnapshotSimEvent['deathContext']>;
+
+export type HudSpriteTelemetry = {
+  activeSlots: number;
+  retainedSlots: number;
+  peakRetainedSlots: number;
+  createdSlots: number;
+  disposedSlots: number;
+  maxRetainedSlots: number;
+  poolCount: number;
+};
 
 let warnedNonFiniteVisualEvent = false;
 
@@ -1507,6 +1518,36 @@ export class RtsScene3D {
       avgRate: this.renderTpsTracker.getAvg(),
       worstRate: this.renderTpsTracker.getLow(),
     };
+  }
+
+  public getHudSpriteTelemetry(): HudSpriteTelemetry {
+    const out: HudSpriteTelemetry = {
+      activeSlots: 0,
+      retainedSlots: 0,
+      peakRetainedSlots: 0,
+      createdSlots: 0,
+      disposedSlots: 0,
+      maxRetainedSlots: 0,
+      poolCount: 0,
+    };
+    this.addHudSpritePoolTelemetry(out, this.healthBar3D?.getSpritePoolTelemetry());
+    this.addHudSpritePoolTelemetry(out, this.nameLabel3D?.getSpritePoolTelemetry());
+    this.addHudSpritePoolTelemetry(out, this.waypoint3D?.getSpritePoolTelemetry());
+    return out;
+  }
+
+  private addHudSpritePoolTelemetry(
+    out: HudSpriteTelemetry,
+    pool: CanvasSpritePoolTelemetry | undefined,
+  ): void {
+    if (!pool) return;
+    out.activeSlots += pool.activeSlots;
+    out.retainedSlots += pool.retainedSlots;
+    out.peakRetainedSlots += pool.peakRetainedSlots;
+    out.createdSlots += pool.createdSlots;
+    out.disposedSlots += pool.disposedSlots;
+    out.maxRetainedSlots += pool.maxRetainedSlots ?? 0;
+    out.poolCount++;
   }
 
   public getSnapshotStats(): { avgRate: number; worstRate: number } {

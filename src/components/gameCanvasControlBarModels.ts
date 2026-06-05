@@ -111,6 +111,11 @@ export type GameCanvasClientControlBarModel = {
   readonly rendererContextAuxiliaryCount: number;
   readonly rendererContextAuxiliaryBudget: number;
   readonly rendererContextDeniedAuxiliaryCount: number;
+  readonly hudSpriteActiveCount: number;
+  readonly hudSpriteRetainedCount: number;
+  readonly hudSpritePeakCount: number;
+  readonly hudSpriteDisposedCount: number;
+  readonly hudSpriteBudgetCount: number;
   readonly frameMsAvg: number;
   readonly frameMsHi: number;
   readonly longtaskSupported: boolean;

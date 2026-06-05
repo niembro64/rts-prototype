@@ -27,8 +27,15 @@ import { LAND_CELL_SIZE, WAYPOINT_GROUND_LIFT } from '../../config';
 import { getWaypointDetail } from '../../clientBarConfig';
 import { getEntityTargetPoint } from '../sim/buildingAnchors';
 import { hexToRgb01, writeHexToRgb01Array } from './colorUtils';
-import { CanvasSpritePool, type CanvasSpriteSlot } from './CanvasSpritePool';
+import {
+  CanvasSpritePool,
+  type CanvasSpritePoolTelemetry,
+  type CanvasSpriteSlot,
+} from './CanvasSpritePool';
 import { DynamicLineBuffer3D } from './DynamicLineBuffer3D';
+
+const WAYPOINT_FLAG_MAX_RETAINED_SPRITES = 64;
+const WAYPOINT_FLAG_SHRINK_COOLDOWN_FRAMES = 120;
 
 const STYLE = {
   /** Vertical lift above the terrain so lines / dots / flags clear
@@ -122,6 +129,10 @@ export class Waypoint3D {
       canvasWidth: 32,
       canvasHeight: 32,
       debugName: 'Waypoint3D',
+      maxRetainedSlots: WAYPOINT_FLAG_MAX_RETAINED_SPRITES,
+      emptyRetainedSlots: 0,
+      shrinkCooldownFrames: WAYPOINT_FLAG_SHRINK_COOLDOWN_FRAMES,
+      shrinkBatchSize: 16,
       makeState: () => ({ lastColor: -1 }),
       configureSprite: configureFlagSprite,
       repaint: repaintFlag,
@@ -479,5 +490,9 @@ export class Waypoint3D {
     (this.lineMesh.material as THREE.Material).dispose();
     (this.dotMesh.material as THREE.Material).dispose();
     this.flagPool.destroy();
+  }
+
+  getSpritePoolTelemetry(): CanvasSpritePoolTelemetry {
+    return this.flagPool.getTelemetry();
   }
 }

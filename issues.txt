@@ -18,30 +18,7 @@ Please always commit and push before and after any code changes we make.
 
 CODE AUDIT - 2026-06-04
 
-1. HUD label and health-bar sprite pools retain peak visible GPU/DOM resources.
-
-Evidence:
-- src/game/render3d/CanvasSpritePool.ts grows by creating one canvas, one
-  CanvasTexture, one SpriteMaterial, and one Sprite per acquired slot.
-- hideUnused() only marks trailing sprites invisible; slots are not reclaimed
-  until the whole renderer is destroyed.
-- NameLabel3D and HealthBar3D use this pool for every visible label/bar row.
-  Camera scoping limits normal work, but a spike in visible HUD rows becomes a
-  retained high-water allocation for the scene lifetime.
-
-Problem:
-This is not an immediate reference leak, but it is a persistent peak-memory and
-draw-call risk. Thousands of labels or bars can leave thousands of canvases,
-textures, materials, and sprites alive even after the camera moves away or HUD
-toggles are disabled.
-
-Required fix:
-Put an explicit budget and telemetry on HUD sprite resources. Either reclaim
-old unused slots after a cooldown, cap rows under load, or replace the per-row
-Sprite/CanvasTexture path with an atlas or instanced-quad renderer. Toggling HUD
-features off should be able to release or aggressively shrink these pools.
-
-2. Scoped entity rendering keeps an inflated culling padding forever after a
+1. Scoped entity rendering keeps an inflated culling padding forever after a
    large entity appears.
 
 Evidence:
@@ -64,7 +41,7 @@ the previous maximum is removed or reduced. Alternatively keep a small
 histogram/count of padding buckets so max padding can shrink without a full
 scan on every removal.
 
-3. Terrain geometry caching is entry-count limited, not memory-budget limited.
+2. Terrain geometry caching is entry-count limited, not memory-budget limited.
 
 Evidence:
 - src/game/render3d/TerrainTileRenderer3D.ts keeps up to eight cached
