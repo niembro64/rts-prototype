@@ -491,7 +491,6 @@ export class RtsScene3D {
       this.legInstancedRenderer,
       this.threeApp.camera,
       () => this.threeApp.renderer.domElement.clientHeight,
-      () => this.localPlayerId,
       this.metalDeposits,
     );
     this.beamRenderer = new BeamRenderer3D(this.threeApp.world, this.renderScope);

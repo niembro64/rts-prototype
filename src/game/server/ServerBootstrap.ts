@@ -119,6 +119,7 @@ export class ServerBootstrap {
     await report(0.48, 'Building placement grid');
 
     const physics = providedPhysics ?? new PhysicsEngine3D(mapWidth, mapHeight);
+    try {
     const world = new WorldState(42, mapWidth, mapHeight);
     world.playerCount = playerIds.length;
     world.metalDeposits = deposits;
@@ -207,6 +208,10 @@ export class ServerBootstrap {
       terrainTileMap,
       terrainBuildabilityGrid,
     };
+    } catch (err) {
+      if (providedPhysics === undefined) physics.dispose();
+      throw err;
+    }
   }
 
   static bootstrap(
@@ -266,6 +271,7 @@ export class ServerBootstrap {
 
     // The physics engine is now fully 3D — same module for every path.
     const physics = providedPhysics ?? new PhysicsEngine3D(mapWidth, mapHeight);
+    try {
     const world = new WorldState(42, mapWidth, mapHeight);
     world.playerCount = playerIds.length;
     world.metalDeposits = deposits;
@@ -353,6 +359,10 @@ export class ServerBootstrap {
       terrainTileMap,
       terrainBuildabilityGrid,
     };
+    } catch (err) {
+      if (providedPhysics === undefined) physics.dispose();
+      throw err;
+    }
   }
 
   // Buildings are created first so units can set ignore-static for

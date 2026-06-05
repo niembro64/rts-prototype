@@ -18,91 +18,9 @@ Please always commit and push before and after any code changes we make.
 
 CODE AUDIT - 2026-06-05
 
-DESIGN PHILOSOPHY ALIGNMENT ISSUES
-
-1. Normal snapshot defaults are configured as diagnostic cadence.
-
-Files:
-src/serverBarConfig.json
-src/serverBarConfig.ts
-src/game/server/GameServer.ts
-
-The philosophy says normal authoritative snapshots should run at 5-10 Hz. The
-config defines 5-10 as the normal range, but both demoDefault and realDefault
-are 16 Hz, and 16 Hz is classified by the same config as diagnostic cadence.
-GameServer then uses HOST_SNAPSHOT_RATE_DEFAULT when maxSnapshotsPerSec is not
-provided, so normal demo and real games boot outside the documented baseline.
-
-Required fix:
-Set demoDefault and realDefault to a normal option, preferably 8 or 10, or
-change the philosophy/config labels if 16 Hz is intentionally the new normal.
-Add a regression check that the default snapshot rate is inside
-HOST_SNAPSHOT_RATE_NORMAL_MIN/HOST_SNAPSHOT_RATE_NORMAL_MAX.
-
-2. The command sanitizer rewrites valid battle-control commands into different
-commands.
-
-Files:
-src/game/server/commandSanitizer.ts
-
-setTurretShieldPanelsEnabled and setTurretShieldSpheresEnabled accept a boolean
-enabled field, then always return enabled: true. That makes the "disable" path
-impossible through the authoritative command flow. setShieldReflectionMode
-accepts a valid requested mode, then rewrites it to the default mode. This
-breaks the host/server validation rule: valid commands should be sanitized and
-executed as requested, not silently changed into another battle truth.
-
-Required fix:
-Return enabled: command.enabled for the shield panel/sphere toggles, and return
-mode: command.mode for setShieldReflectionMode. Add command-sanitizer tests for
-false shield toggles and every shield reflection mode option.
-
-3. Remote compact snapshots drop factory default routes that local snapshots
-keep.
-
-Files:
-src/game/network/stateSerializerEntities.ts
-src/game/network/snapshotEntityWirePack.ts
-src/game/network/ClientSnapshotApplier.ts
-src/game/render3d/Waypoint3D.ts
-
-stateSerializerEntities serializes factory.defaultWaypoints as factory.route,
-and ClientSnapshotApplier applies that route to the client entity. The compact
-V6 wire path explicitly does not carry the multi-leg route and returns
-route: null, so remote WebRTC clients fall back to a single rally point while
-the local DTO-clone path can draw the full default route. The philosophy
-requires command/path state to stay stable across local host play, remote
-WebRTC play, and future server/worker paths.
-
-Required fix:
-Add factory route rows to the compact wire format and decode them into
-FactorySub.route, or remove the DTO-only route field and replace it with a
-single authoritative route packet that all delivery paths share.
-
-4. Static out-of-vision ghosts conflict with the live-only fog model.
-
-Files:
-src/game/network/stateSerializer.ts
-src/game/render3d/BuildingEntityRenderer3D.ts
-
-The philosophy says fog has no persistent explored/unexplored black shroud and
-that unseen enemy entities should be either fully visible, radar-only, or absent
-from the client view. The serializer keeps out-of-vision buildings and towers as
-last-seen ghost state, tracks ghostedBuildingPositions, and only cleans dead
-ghosts when the last-known area is re-scouted. BuildingEntityRenderer3D then
-reconstructs local vision each frame and renders those stale static entities in
-a desaturated ghost material.
-
-Required fix:
-Decide the product rule. Either remove the static ghost retention/rendering and
-use live-only visibility plus generic radar contacts, or update the philosophy
-and UI vocabulary to explicitly allow last-seen static intel. If ghosts remain,
-make the keyframe, delta, minimap, and remote-client behavior consistent and
-server-authored instead of partially inferred in the renderer.
-
 OPTIMIZATIONS TO MAKE
 
-5. Snapshot visibility and minimap serialization still do broad TypeScript
+1. Snapshot visibility and minimap serialization still do broad TypeScript
 world walks in normal play.
 
 Files:
@@ -124,7 +42,7 @@ toward dense Rust/WASM slabs or maintained AOI/radar bitsets. At minimum, feed
 the serializer precomputed per-recipient visible/radar entity id buffers so
 normal deltas do not scan every unit/building.
 
-6. Render-list generation and per-unit pose work still spend too much time in
+2. Render-list generation and per-unit pose work still spend too much time in
 TypeScript object and scenegraph loops.
 
 Files:
@@ -136,9 +54,10 @@ The renderer uses instancing in places, but high-count paths still build HUD,
 shield, contact-shadow, ground-print, and entity render lists by iterating
 Entity objects in TypeScript. Render3DEntities then walks every rendered unit
 each frame to update group transforms, tilt, turret pose, shield panel pose,
-locomotion, fade, overlays, and cache pruning. BuildingEntityRenderer3D also
-rebuilds local vision sources from client entities for ghost classification.
-This is likely to dominate at the "thousands of units" target.
+locomotion, fade, overlays, and cache pruning. BuildingEntityRenderer3D still
+does per-building mesh, turret, animation, overlay, and cache-pruning work
+through object and scenegraph loops. This is likely to dominate at the
+"thousands of units" target.
 
 Required fix:
 Introduce packed render packets/SoA buffers from ClientViewState/prediction,
@@ -149,7 +68,7 @@ explicit buffer range uploads and lifecycle changes.
 
 MEMORY LEAKS / RETENTION RISKS
 
-7. Peak-sized module pools and typed arrays retain memory across sessions with
+3. Peak-sized module pools and typed arrays retain memory across sessions with
 no teardown cap.
 
 Files:
@@ -170,24 +89,3 @@ Add explicit pool reset/cap functions for session teardown. Keep a sane warm
 capacity, release extreme peaks on GameServer.stop/RtsScene3D.shutdown/client
 disconnect, and expose retained pool sizes in debug/perf telemetry so regressions
 are visible.
-
-8. Server startup failures can leak WASM static broadphase handles.
-
-Files:
-src/game/server/GameServer.ts
-src/game/server/ServerBootstrap.ts
-src/game/server/PhysicsEngine3D.ts
-
-PhysicsEngine3D allocates a WASM-side static broadphase handle in its
-constructor and releases it only through dispose(). Normal GameServer.stop()
-does call physics.dispose(), but the GameServer.create catch path only releases
-the sim singleton slot. If ServerBootstrap.bootstrap/bootstrapAsync, a progress
-callback, UnitForceSystem construction, or later constructor wiring throws after
-PhysicsEngine3D has been allocated and before a GameServer instance can be
-stopped, the WASM handle and any created bodies/static cells are not disposed.
-
-Required fix:
-Track ownership of the bootstrapped PhysicsEngine3D during create/constructor
-startup and dispose it on every failure path. Bootstrap should either clean up
-partially-created physics before throwing or return through a helper that owns a
-try/finally cleanup until the GameServer has successfully taken ownership.

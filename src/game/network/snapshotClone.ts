@@ -109,9 +109,8 @@ function copyFactoryInto(src: ReusableFactory, dst: ReusableFactory): ReusableFa
   dst.energyRate = src.energyRate;
   dst.metalRate = src.metalRate;
   copyWaypointInto(src.rally, dst.rally);
-  // `route` only rides the local-clone delivery path; the compact V6
-  // byte wire decodes it as null. Guard against `undefined` too (some
-  // decode paths omit the field) so cloning never throws.
+  // Guard against `undefined` too so cloning remains tolerant of older
+  // decode paths that omitted the route field.
   const srcRoute = src.route ?? null;
   if (srcRoute !== null) {
     const route = dst.route ?? (dst.route = []);

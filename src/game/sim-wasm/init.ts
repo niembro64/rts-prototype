@@ -4134,6 +4134,12 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
       };
       resolvedHandle = handle;
       if (import.meta.env.DEV) {
+        const { runServerBarConfigContractTest } = await import('../../serverBarConfigContractTest');
+        runServerBarConfigContractTest();
+        const { runCommandSanitizerContractTest } = await import('../server/commandSanitizerContractTest');
+        runCommandSanitizerContractTest();
+        const { runSnapshotEntityWirePackContractTest } = await import('../network/snapshotEntityWirePackContractTest');
+        runSnapshotEntityWirePackContractTest();
         const { runTurretHostIntegrationContractTest } = await import('../sim/turretHostIntegrationTest');
         runTurretHostIntegrationContractTest();
         const { runSupportSurfaceContractTest } = await import('../sim/supportSurfaceContractTest');

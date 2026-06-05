@@ -119,14 +119,14 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
     case 'setTurretShieldPanelsEnabled':
     case 'setTurretShieldSpheresEnabled':
       return typeof command.enabled === 'boolean'
-        ? { ...command, tick, enabled: true }
+        ? { ...command, tick, enabled: command.enabled }
         : null;
     case 'setShieldsObstructSight':
     case 'setFogOfWarEnabled':
       return typeof command.enabled === 'boolean' ? { ...command, tick } : null;
     case 'setShieldReflectionMode':
       return isShieldReflectionMode(command.mode)
-        ? { ...command, tick, mode: BATTLE_CONFIG.shieldReflectionMode.default }
+        ? { ...command, tick, mode: command.mode }
         : null;
     case 'setConverterTax': {
       const tax = command.tax;

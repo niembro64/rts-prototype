@@ -1379,6 +1379,7 @@ function packFactory(factory: FactorySub): unknown[] {
     factory.energyRate,
     factory.metalRate,
     packWaypoint(factory.rally),
+    factory.route !== null ? packWaypointRoute(factory.route) : null,
   ];
 }
 
@@ -1388,11 +1389,27 @@ function unpackFactory(row: unknown[], producing: boolean): FactorySub {
   const energyRate = row[2] as number;
   const metalRate = row[3] as number;
   const rally = unpackWaypoint(row[4] as unknown[]);
-  // The compact V6 wire does not yet carry the multi-leg default route
-  // (it is only needed for the rally-line visualization, and the local
-  // demo path delivers it via the DTO clone, not this byte wire). Remote
-  // clients fall back to drawing the single rally point.
-  return { selectedUnitBlueprintCode, progress, producing, energyRate, metalRate, rally, route: null };
+  const routeRow = row[5] as unknown[] | null | undefined;
+  const route = routeRow !== null && routeRow !== undefined
+    ? unpackWaypointRoute(routeRow)
+    : null;
+  return { selectedUnitBlueprintCode, progress, producing, energyRate, metalRate, rally, route };
+}
+
+function packWaypointRoute(route: NonNullable<FactorySub['route']>): unknown[] {
+  const out: unknown[] = new Array(route.length);
+  for (let i = 0; i < route.length; i++) {
+    out[i] = packWaypoint(route[i]);
+  }
+  return out;
+}
+
+function unpackWaypointRoute(rows: unknown[]): WaypointSub[] {
+  const out: WaypointSub[] = new Array(rows.length);
+  for (let i = 0; i < rows.length; i++) {
+    out[i] = unpackWaypoint(rows[i] as unknown[]);
+  }
+  return out;
 }
 
 function packWaypoint(waypoint: WaypointSub): unknown[] {

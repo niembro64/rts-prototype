@@ -238,8 +238,9 @@ export class GameServer {
     // tile map before physics ground lookup, etc.) and lives inside
     // ServerBootstrap so this constructor can stay focused on
     // instance-level concerns.
+    let boot: BootstrappedServerWorld | undefined;
     try {
-      const boot = bootstrapped ?? ServerBootstrap.bootstrap(config, physics);
+      boot = bootstrapped ?? ServerBootstrap.bootstrap(config, physics);
       this.physics = boot.physics;
       this.world = boot.world;
       this.simulation = boot.simulation;
@@ -258,6 +259,7 @@ export class GameServer {
       // inside ServerBootstrap).
       this.setupSimulationCallbacks();
     } catch (err) {
+      boot?.physics.dispose();
       releaseSimSlot(this);
       throw err;
     }

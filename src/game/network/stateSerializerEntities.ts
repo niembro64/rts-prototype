@@ -553,6 +553,10 @@ function hasInactiveTurretWire(turrets: readonly NetworkServerSnapshotTurret[] |
   return false;
 }
 
+function hasFactoryRouteWire(building: BuildingSub): boolean {
+  return building.factory?.route !== null && building.factory?.route !== undefined;
+}
+
 function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void {
   if (
     entity.type === 'unit' &&
@@ -584,6 +588,10 @@ function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void 
       entity.building.build?.interrupted === true ||
       hasInactiveTurretWire(entity.building.turrets)
     ) {
+      appendRawEntityWireRow();
+      return;
+    }
+    if (hasFactoryRouteWire(entity.building)) {
       appendRawEntityWireRow();
       return;
     }

@@ -658,7 +658,12 @@ function encodeEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity): boolea
     // TOWER vs BUILDING peer discriminator is reconstructed on the
     // receive side via isTowerBuildingBlueprintId().
     if (entity.unit !== null) return false;
-    if (entity.building !== null) return encodeBuildingEntity(sim, entity, entity.building);
+    if (entity.building !== null) {
+      if (entity.building.factory?.route !== null && entity.building.factory?.route !== undefined) {
+        return false;
+      }
+      return encodeBuildingEntity(sim, entity, entity.building);
+    }
     const pos = entity.pos;
     sim.snapshotEncode.encodeEntityBasic(
       entity.id,

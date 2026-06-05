@@ -102,11 +102,6 @@ export type PrevEntityState = {
   factorySelectedUnitCode: number;
 };
 
-export type GhostedBuildingPosition = {
-  x: number;
-  y: number;
-};
-
 export type DeltaTrackingState = {
   prevStates: Map<number, PrevEntityState>;
   prevEntityIds: Set<number>;
@@ -117,13 +112,6 @@ export type DeltaTrackingState = {
    *  a one-shot visual dirty bit still ships on the next detail-cadence
    *  snapshot instead of being drained from WorldState and lost. */
   deferredDetailFields: Map<EntityId, number>;
-  /** Per-recipient last-seen positions for enemy buildings the client
-   *  has as ghosts (FOW-02b). Populated when a building
-   *  exits the recipient's vision or dies out-of-vision; cleared when
-   *  the recipient's vision later confirms the position (either the
-   *  building is still there → normal delta resumes, or it's gone →
-   *  removal emitted so the ghost cleans up on the client). */
-  ghostedBuildingPositions: Map<EntityId, GhostedBuildingPosition>;
 };
 
 export const removedEntityIdsBuf: number[] = [];
@@ -186,7 +174,6 @@ function createDeltaTrackingState(): DeltaTrackingState {
     prevStatePool: [],
     prevStatePoolIndex: 0,
     deferredDetailFields: new Map<EntityId, number>(),
-    ghostedBuildingPositions: new Map<EntityId, GhostedBuildingPosition>(),
   };
 }
 

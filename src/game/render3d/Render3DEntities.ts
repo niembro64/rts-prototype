@@ -311,8 +311,6 @@ export class Render3DEntities {
 
   private turretShieldPanelsEnabled = true;
 
-  private getLocalPlayerId: () => PlayerId | undefined;
-
   constructor(
     world: THREE.Group,
     clientViewState: ClientViewState,
@@ -320,7 +318,6 @@ export class Render3DEntities {
     legRenderer: LegInstancedRenderer,
     camera: THREE.PerspectiveCamera,
     getViewportHeight: () => number,
-    getLocalPlayerId: () => PlayerId | undefined,
     metalDeposits: readonly MetalDeposit[],
   ) {
     this.world = world;
@@ -329,7 +326,6 @@ export class Render3DEntities {
     this.legRenderer = legRenderer;
     this.camera = camera;
     this.getViewportHeight = getViewportHeight;
-    this.getLocalPlayerId = getLocalPlayerId;
     this.metalDeposits = metalDeposits;
     this.selectionOverlays = new SelectionOverlayRenderer3D({
       world: this.world,
@@ -349,7 +345,6 @@ export class Render3DEntities {
       getPrimaryMat: (playerId) => this.getPrimaryMat(playerId),
       getTurretAccentMat: (playerId) => this.getTurretAccentMat(playerId),
       disposeWorldParentedOverlays: (mesh) => this.disposeWorldParentedOverlays(mesh),
-      getLocalPlayerId: () => this.getLocalPlayerId(),
       metalDeposits: this.metalDeposits,
     });
     this.projectileRenderer = new ProjectileRenderer3D({
