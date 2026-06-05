@@ -36,6 +36,7 @@ export type StartRealBattleWithPlayersOptions = {
   foregroundGame: GameCanvasForegroundGame;
   foregroundSceneBinding: GameCanvasForegroundSceneBinding;
   stopBackgroundBattle: () => void;
+  waitForBackgroundBattleIdle: () => Promise<void>;
   getCurrentServer: () => GameServer | null;
   setCurrentServer: (server: GameServer | null) => void;
   setActiveConnection: (connection: GameConnection | null) => void;
@@ -78,7 +79,6 @@ export async function startRealBattleWithPlayers(
     options.activePlayer.value = options.localPlayerId.value;
   }
 
-  options.stopBackgroundBattle();
   let ownedServer: GameServer | null = null;
   let registeredServer: GameServer | null = null;
   let ownedConnection: GameConnection | null = null;
@@ -120,6 +120,12 @@ export async function startRealBattleWithPlayers(
     cleanupOwnedStartResources(current);
     return true;
   }
+
+  options.stopBackgroundBattle();
+  // A preview start may still be inside GameServer.create()/createGame().
+  // Wait for its generation cleanup before foreground startup claims slots.
+  await options.waitForBackgroundBattleIdle();
+  if (shouldAbortStart()) return;
 
   await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.start, 'Preparing battle');
   if (shouldAbortStart()) return;

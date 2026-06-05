@@ -43,6 +43,7 @@ type UseGameCanvasRealBattleHandoffOptions = {
   foregroundGame: GameCanvasForegroundGame;
   foregroundSceneBinding: GameCanvasForegroundSceneBinding;
   stopBackgroundBattle: () => void;
+  waitForBackgroundBattleIdle: () => Promise<void>;
   getCurrentServer: () => GameServer | null;
   setCurrentServer: (server: GameServer | null) => void;
   setActiveConnection: (connection: GameConnection | null) => void;
@@ -80,6 +81,7 @@ export function useGameCanvasRealBattleHandoff({
   foregroundGame,
   foregroundSceneBinding,
   stopBackgroundBattle,
+  waitForBackgroundBattleIdle,
   getCurrentServer,
   setCurrentServer,
   setActiveConnection,
@@ -112,6 +114,7 @@ export function useGameCanvasRealBattleHandoff({
       foregroundGame,
       foregroundSceneBinding,
       stopBackgroundBattle,
+      waitForBackgroundBattleIdle,
       getCurrentServer,
       setCurrentServer,
       setActiveConnection,

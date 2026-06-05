@@ -114,6 +114,7 @@ function setLoadingProgress(progress: number, phase?: string): void {
 let getBackgroundBattle = (): BackgroundBattleState | null => null;
 let startBackgroundBattle = async (): Promise<void> => {};
 let stopBackgroundBattle = (): void => {};
+let waitForBackgroundBattleIdle = async (): Promise<void> => {};
 
 // Current game server (owned by this component)
 let currentServer: GameServer | null = null;
@@ -388,6 +389,7 @@ const {
   getBackgroundBattle,
   startBackgroundBattle,
   stopBackgroundBattle,
+  waitForBackgroundBattleIdle,
 } = useGameCanvasBackgroundBattle({
   backgroundContainerRef,
   getLocalIpAddress: () => localIpAddress.value,
@@ -665,6 +667,7 @@ const {
   foregroundGame,
   foregroundSceneBinding,
   stopBackgroundBattle,
+  waitForBackgroundBattleIdle,
   getCurrentServer: () => currentServer,
   setCurrentServer: (server) => {
     currentServer = server;

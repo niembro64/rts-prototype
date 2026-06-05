@@ -28,9 +28,9 @@
       "mass": 5,
       "health": 10,
       "deathExplosion": {
-        "radius": 75,
+        "radius": 25,
         "force": 7000,
-        "damage": 150
+        "damage": 50
       },
       "radius": {
         "visual": 4,
