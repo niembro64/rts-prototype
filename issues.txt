@@ -17,28 +17,3 @@ Please always commit and push before and after any code changes we make.
 ================================================================================
 
 CODE AUDIT - 2026-06-04
-
-1. Terrain geometry caching is entry-count limited, not memory-budget limited.
-
-Evidence:
-- src/game/render3d/TerrainTileRenderer3D.ts keeps up to eight cached
-  BufferGeometry variants.
-- Triangle-debug geometry expands indexed terrain into one vertex per index and
-  allocates large position/normal/shade/slope/fade/debug-color buffers.
-- Normal geometry also creates multiple large typed arrays from temporary JS
-  number arrays before caching the finished BufferGeometry.
-- The cache prunes only by entry count, not estimated CPU/GPU byte size or
-  debug-vs-production priority.
-
-Problem:
-Terrain variants are not a hot per-frame path, but debug toggles or graphics
-settings can retain several large geometries simultaneously. On large maps this
-can become an avoidable memory spike, especially when triangle-debug variants
-are mixed with normal variants.
-
-Required fix:
-Track approximate byte size for each cached terrain geometry and prune by a
-byte budget. Prefer evicting debug geometries first, or do not cache
-triangle-debug geometries beyond the active one. Consider building typed arrays
-directly for the normal path instead of building JS number arrays and then
-copying them into typed arrays.

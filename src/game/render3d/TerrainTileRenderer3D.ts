@@ -73,6 +73,7 @@ const CUBE_FLOOR_Y = TILE_FLOOR_Y;
 const TERRAIN_GEOMETRY_REBUILD_SETTLE_FRAMES = 3;
 const TERRAIN_GEOMETRY_REBUILD_MIN_FRAME_SPACING = 24;
 const TERRAIN_GEOMETRY_CACHE_MAX_ENTRIES = 8;
+const TERRAIN_GEOMETRY_CACHE_MAX_BYTES = 96 * 1024 * 1024;
 const SIDE_WALL_TERRAIN_SHADE = 0.68;
 const BUILD_GRID_COLOR_OK = readRgbaTuple(
   COLORS.world.terrain.buildGrid.okRgba,
@@ -231,13 +232,32 @@ function writeTriangleDebugColor(
 type CachedTerrainGeometry = {
   geometry: THREE.BufferGeometry;
   lastUsedFrame: number;
+  byteSize: number;
+  triangleDebug: boolean;
 };
+
+function bufferAttributeByteSize(
+  attr: THREE.BufferAttribute | THREE.InterleavedBufferAttribute,
+): number {
+  const direct = (attr as { array?: { byteLength: number } }).array;
+  if (direct) return direct.byteLength;
+  return (attr as THREE.InterleavedBufferAttribute).data.array.byteLength;
+}
+
+function estimateTerrainGeometryByteSize(geometry: THREE.BufferGeometry): number {
+  let bytes = geometry.index ? bufferAttributeByteSize(geometry.index) : 0;
+  for (const attr of Object.values(geometry.attributes)) {
+    bytes += bufferAttributeByteSize(attr);
+  }
+  return bytes;
+}
 
 export class TerrainTileRenderer3D {
   private terrainMesh: THREE.Mesh;
   private terrainGeometry: THREE.BufferGeometry;
   private terrainMaterial: THREE.MeshLambertMaterial;
   private terrainGeometryCache = new Map<string, CachedTerrainGeometry>();
+  private terrainGeometryCacheBytes = 0;
   private currentTerrainGeometryCacheKey = '';
 
   private triangleDebugEnabledUniform = { value: 0 };
@@ -938,31 +958,64 @@ export class TerrainTileRenderer3D {
     if (cached) cached.lastUsedFrame = this.renderFrameIndex;
   }
 
-  private cacheTerrainGeometry(nextKey: string, geometry: THREE.BufferGeometry): void {
+  private cacheTerrainGeometry(
+    nextKey: string,
+    geometry: THREE.BufferGeometry,
+    triangleDebug: boolean,
+  ): void {
+    const previous = this.terrainGeometryCache.get(nextKey);
+    if (previous && previous.geometry !== geometry) {
+      this.terrainGeometryCacheBytes -= previous.byteSize;
+      previous.geometry.dispose();
+    }
+    const byteSize = estimateTerrainGeometryByteSize(geometry);
     this.terrainGeometryCache.set(nextKey, {
       geometry,
       lastUsedFrame: this.renderFrameIndex,
+      byteSize,
+      triangleDebug,
     });
+    this.terrainGeometryCacheBytes += byteSize - (previous?.byteSize ?? 0);
     this.useTerrainGeometry(nextKey, geometry);
     this.pruneTerrainGeometryCache();
   }
 
   private pruneTerrainGeometryCache(): void {
-    while (this.terrainGeometryCache.size > TERRAIN_GEOMETRY_CACHE_MAX_ENTRIES) {
-      let oldestKey = '';
-      let oldestFrame = Number.POSITIVE_INFINITY;
-      for (const [key, cached] of this.terrainGeometryCache) {
-        if (key === this.currentTerrainGeometryCacheKey) continue;
-        if (cached.lastUsedFrame < oldestFrame) {
-          oldestFrame = cached.lastUsedFrame;
-          oldestKey = key;
-        }
-      }
-      if (oldestKey === '') return;
-      const evicted = this.terrainGeometryCache.get(oldestKey);
-      this.terrainGeometryCache.delete(oldestKey);
-      evicted?.geometry.dispose();
+    while (
+      this.terrainGeometryCache.size > TERRAIN_GEOMETRY_CACHE_MAX_ENTRIES ||
+      this.terrainGeometryCacheBytes > TERRAIN_GEOMETRY_CACHE_MAX_BYTES
+    ) {
+      const evictKey = this.pickTerrainGeometryEvictionKey();
+      if (evictKey === '') return;
+      this.evictTerrainGeometry(evictKey);
     }
+  }
+
+  private pickTerrainGeometryEvictionKey(): string {
+    let oldestDebugKey = '';
+    let oldestDebugFrame = Number.POSITIVE_INFINITY;
+    let oldestKey = '';
+    let oldestFrame = Number.POSITIVE_INFINITY;
+    for (const [key, cached] of this.terrainGeometryCache) {
+      if (key === this.currentTerrainGeometryCacheKey) continue;
+      if (cached.triangleDebug && cached.lastUsedFrame < oldestDebugFrame) {
+        oldestDebugFrame = cached.lastUsedFrame;
+        oldestDebugKey = key;
+      }
+      if (cached.lastUsedFrame < oldestFrame) {
+        oldestFrame = cached.lastUsedFrame;
+        oldestKey = key;
+      }
+    }
+    return oldestDebugKey || oldestKey;
+  }
+
+  private evictTerrainGeometry(key: string): void {
+    const evicted = this.terrainGeometryCache.get(key);
+    if (!evicted) return;
+    this.terrainGeometryCache.delete(key);
+    this.terrainGeometryCacheBytes -= evicted.byteSize;
+    evicted.geometry.dispose();
   }
 
   private rebuildGeometryIfNeeded(
@@ -1306,7 +1359,7 @@ export class TerrainTileRenderer3D {
       geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(terrainIndices), 1));
     }
     geometry.computeBoundingSphere();
-    this.cacheTerrainGeometry(nextTerrainGeometryKey, geometry);
+    this.cacheTerrainGeometry(nextTerrainGeometryKey, geometry, triangleDebug);
     this.markTerrainGeometryRebuilt(nextTerrainGeometryKey);
 
     return true;
@@ -1351,6 +1404,7 @@ export class TerrainTileRenderer3D {
       cached.geometry.dispose();
     }
     this.terrainGeometryCache.clear();
+    this.terrainGeometryCacheBytes = 0;
     if (this.currentTerrainGeometryCacheKey === '') this.terrainGeometry.dispose();
     this.terrainMaterial.dispose();
     this.terrainMesh.parent?.remove(this.terrainMesh);
