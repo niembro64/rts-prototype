@@ -31,9 +31,9 @@
 //
 // Slot lifecycle: alloc() returns a slot index from a free-list
 // (LIFO), update(slot, …) writes the per-instance state, free(slot)
-// hides the slot and pushes it back on the free-list. flush() fires
-// the dirty flags on every pool's buffers — call once per frame
-// after every leg has updated.
+// hides the slot and pushes it back on the free-list. flush() uploads
+// only the dirty slot spans — call once per frame after every leg has
+// updated.
 
 import * as THREE from 'three';
 import { createShellMaterial } from './ShellMaterial';
@@ -62,6 +62,72 @@ const DEFRAG_MIN_FREE_FRAC = 0.25;
 /** Callback invoked when defrag relocates a live slot: receives the
  *  new slot index, lets the owner update its stored reference. */
 type SlotRelocator = (newSlot: number) => void;
+
+type DirtySpan = {
+  minSlot: number;
+  maxSlot: number;
+};
+
+function createDirtySpan(): DirtySpan {
+  return { minSlot: Number.POSITIVE_INFINITY, maxSlot: -1 };
+}
+
+function markDirtySlot(span: DirtySpan, slot: number): void {
+  if (slot < span.minSlot) span.minSlot = slot;
+  if (slot > span.maxSlot) span.maxSlot = slot;
+}
+
+function clearDirtySpan(span: DirtySpan): void {
+  span.minSlot = Number.POSITIVE_INFINITY;
+  span.maxSlot = -1;
+}
+
+function hasDirtySpan(span: DirtySpan): boolean {
+  return span.maxSlot >= span.minSlot;
+}
+
+function uploadDirtySpan(
+  attr: THREE.BufferAttribute,
+  span: DirtySpan,
+  itemSize: number,
+): void {
+  if (!hasDirtySpan(span)) return;
+  attr.clearUpdateRanges();
+  attr.addUpdateRange(
+    span.minSlot * itemSize,
+    (span.maxSlot - span.minSlot + 1) * itemSize,
+  );
+  attr.needsUpdate = true;
+  clearDirtySpan(span);
+}
+
+function writeMatrixAt(
+  mesh: THREE.InstancedMesh,
+  slot: number,
+  matrix: THREE.Matrix4,
+  dirty: DirtySpan,
+): void {
+  const out = mesh.instanceMatrix.array;
+  const src = matrix.elements;
+  const offset = slot * 16;
+  out[offset] = src[0];
+  out[offset + 1] = src[1];
+  out[offset + 2] = src[2];
+  out[offset + 3] = src[3];
+  out[offset + 4] = src[4];
+  out[offset + 5] = src[5];
+  out[offset + 6] = src[6];
+  out[offset + 7] = src[7];
+  out[offset + 8] = src[8];
+  out[offset + 9] = src[9];
+  out[offset + 10] = src[10];
+  out[offset + 11] = src[11];
+  out[offset + 12] = src[12];
+  out[offset + 13] = src[13];
+  out[offset + 14] = src[14];
+  out[offset + 15] = src[15];
+  markDirtySlot(dirty, slot);
+}
 
 /** Pack live entries down to the bottom of a slot pool. Walks
  *  top-down; for each topmost free slot just shrinks `nextSlot`,
@@ -167,11 +233,11 @@ function injectFadeFragment(shader: THREE.WebGLProgramParametersWithUniforms): v
     .replace('#include <opaque_fragment>', `${FADE_FRAGMENT_ALPHA}\n#include <opaque_fragment>`);
 }
 
-/** Build an `aFade` instanced attribute, default fully opaque so any slot
- *  that is never written (or a finished unit) renders solid. */
+/** Build an `aFade` instanced attribute. Slots are reset to fully opaque when
+ *  allocated so we do not initialize the full capacity up front. */
 function makeFadeAttribute(): THREE.InstancedBufferAttribute {
   return new THREE.InstancedBufferAttribute(
-    new Float32Array(SLOT_CAP).fill(1), 1,
+    new Float32Array(SLOT_CAP), 1,
   ).setUsage(THREE.DynamicDrawUsage);
 }
 
@@ -269,13 +335,18 @@ class CylinderPool {
   // and death-out ride this; the cylinder's `instThickness` always holds its
   // true rendered thickness so the leg never changes size as it fades.
   private fadeBuf: THREE.InstancedBufferAttribute;
+  private readonly startDirty = createDirtySpan();
+  private readonly endDirty = createDirtySpan();
+  private readonly thickDirty = createDirtySpan();
+  private readonly colorDirty = createDirtySpan();
+  private readonly fadeDirty = createDirtySpan();
   private mesh: THREE.Mesh;
   private nextSlot = 0;
   private freeList: number[] = [];
   private relocators: (SlotRelocator | null)[] = [];
   // Route hex colors through THREE.Color so the sRGB → working-linear
-  // conversion matches the joint / foot-pad pools (which use
-  // setColorAt). Writing hex/255 raw to the vertex-color attribute
+  // conversion matches the joint / foot-pad pools (which use the same
+  // THREE.Color channel values). Writing hex/255 raw to the vertex-color attribute
   // bypasses color management and renders cylinders visibly brighter
   // than the spheres they connect to. See BurnMark3D for the same
   // pitfall documented in detail.
@@ -316,13 +387,17 @@ class CylinderPool {
       return -1;
     }
     this.relocators[slot] = onRelocate;
+    (this.thickBuf.array as Float32Array)[slot] = 0;
+    markDirtySlot(this.thickDirty, slot);
     (this.fadeBuf.array as Float32Array)[slot] = 1;
+    markDirtySlot(this.fadeDirty, slot);
     const c = CylinderPool._scratchColor.set(color);
     const arr = this.colorBuf.array as Float32Array;
     const i3 = slot * 3;
     arr[i3 + 0] = c.r;
     arr[i3 + 1] = c.g;
     arr[i3 + 2] = c.b;
+    markDirtySlot(this.colorDirty, slot);
     return slot;
   }
 
@@ -331,7 +406,9 @@ class CylinderPool {
     // Hide by collapsing thickness to 0 — the cylinder shrinks to
     // a degenerate line (zero radius) and contributes no pixels.
     (this.thickBuf.array as Float32Array)[slot] = 0;
+    markDirtySlot(this.thickDirty, slot);
     (this.fadeBuf.array as Float32Array)[slot] = 1;
+    markDirtySlot(this.fadeDirty, slot);
     this.relocators[slot] = null;
     this.freeList.push(slot);
   }
@@ -357,6 +434,13 @@ class CylinderPool {
     ca[d3 + 2] = ca[s3 + 2];
     ta[src] = 0;
     fa[src] = 1;
+    markDirtySlot(this.startDirty, dst);
+    markDirtySlot(this.endDirty, dst);
+    markDirtySlot(this.thickDirty, dst);
+    markDirtySlot(this.thickDirty, src);
+    markDirtySlot(this.fadeDirty, dst);
+    markDirtySlot(this.fadeDirty, src);
+    markDirtySlot(this.colorDirty, dst);
   };
 
   update(
@@ -374,11 +458,17 @@ class CylinderPool {
     (this.endBuf.array as Float32Array)[i3 + 1] = ey;
     (this.endBuf.array as Float32Array)[i3 + 2] = ez;
     (this.thickBuf.array as Float32Array)[slot] = thick;
+    markDirtySlot(this.startDirty, slot);
+    markDirtySlot(this.endDirty, slot);
+    markDirtySlot(this.thickDirty, slot);
   }
 
   fade(slot: number, fade: number): void {
     if (slot < 0) return;
-    (this.fadeBuf.array as Float32Array)[slot] = fade;
+    const arr = this.fadeBuf.array as Float32Array;
+    if (arr[slot] === fade) return;
+    arr[slot] = fade;
+    markDirtySlot(this.fadeDirty, slot);
   }
 
   translate(slot: number, dx: number, dy: number, dz: number): void {
@@ -392,6 +482,8 @@ class CylinderPool {
     ends[i3 + 0] += dx;
     ends[i3 + 1] += dy;
     ends[i3 + 2] += dz;
+    markDirtySlot(this.startDirty, slot);
+    markDirtySlot(this.endDirty, slot);
   }
 
   flush(): void {
@@ -400,11 +492,11 @@ class CylinderPool {
         this.nextSlot, this.freeList, this.relocators, this.copyData,
       );
     }
-    this.startBuf.needsUpdate = true;
-    this.endBuf.needsUpdate = true;
-    this.thickBuf.needsUpdate = true;
-    this.colorBuf.needsUpdate = true;
-    this.fadeBuf.needsUpdate = true;
+    uploadDirtySpan(this.startBuf, this.startDirty, 3);
+    uploadDirtySpan(this.endBuf, this.endDirty, 3);
+    uploadDirtySpan(this.thickBuf, this.thickDirty, 1);
+    uploadDirtySpan(this.colorBuf, this.colorDirty, 3);
+    uploadDirtySpan(this.fadeBuf, this.fadeDirty, 1);
     // Trim the GPU instance count to the high-water mark of allocated
     // slots. Without this, instanceCount stays at SLOT_CAP (16384) for
     // the lifetime of the pool — the GPU runs the vertex shader on
@@ -438,6 +530,9 @@ class JointSpherePool {
   private readonly mesh: THREE.InstancedMesh;
   private readonly fadeBuf: THREE.InstancedBufferAttribute;
   private readonly shell: boolean;
+  private readonly matrixDirty = createDirtySpan();
+  private readonly colorDirty = createDirtySpan();
+  private readonly fadeDirty = createDirtySpan();
   private nextSlot = 0;
   private freeList: number[] = [];
   private relocators: (SlotRelocator | null)[] = [];
@@ -457,8 +552,9 @@ class JointSpherePool {
     this.mesh = new THREE.InstancedMesh(geom, material, SLOT_CAP);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     if (!shell) {
-      this.mesh.setColorAt(0, JointSpherePool._scratchColor.set(0xffffff));
-      this.mesh.instanceColor!.setUsage(THREE.DynamicDrawUsage);
+      const colorAttr = new THREE.InstancedBufferAttribute(new Float32Array(SLOT_CAP * 3), 3);
+      colorAttr.setUsage(THREE.DynamicDrawUsage);
+      this.mesh.instanceColor = colorAttr;
     }
     this.mesh.count = 0;
     // Same caveat as the cylinder + chassis + particle pools — instances
@@ -478,17 +574,28 @@ class JointSpherePool {
       return -1;
     }
     this.relocators[slot] = onRelocate;
+    writeMatrixAt(this.mesh, slot, JointSpherePool._ZERO_MATRIX, this.matrixDirty);
     (this.fadeBuf.array as Float32Array)[slot] = 1;
+    markDirtySlot(this.fadeDirty, slot);
     if (!this.shell) {
-      this.mesh.setColorAt(slot, JointSpherePool._scratchColor.set(color));
+      const c = JointSpherePool._scratchColor.set(color);
+      const arr = this.mesh.instanceColor?.array as Float32Array | undefined;
+      if (arr) {
+        const i3 = slot * 3;
+        arr[i3 + 0] = c.r;
+        arr[i3 + 1] = c.g;
+        arr[i3 + 2] = c.b;
+        markDirtySlot(this.colorDirty, slot);
+      }
     }
     return slot;
   }
 
   free(slot: number): void {
     if (slot < 0) return;
-    this.mesh.setMatrixAt(slot, JointSpherePool._ZERO_MATRIX);
+    writeMatrixAt(this.mesh, slot, JointSpherePool._ZERO_MATRIX, this.matrixDirty);
     (this.fadeBuf.array as Float32Array)[slot] = 1;
+    markDirtySlot(this.fadeDirty, slot);
     this.relocators[slot] = null;
     this.freeList.push(slot);
   }
@@ -512,6 +619,11 @@ class JointSpherePool {
     // instanceCount keeps it off-screen but be defensive.
     for (let i = 0; i < 16; i++) arr[s16 + i] = 0;
     fa[src] = 1;
+    markDirtySlot(this.matrixDirty, dst);
+    markDirtySlot(this.matrixDirty, src);
+    markDirtySlot(this.fadeDirty, dst);
+    markDirtySlot(this.fadeDirty, src);
+    if (colorArr) markDirtySlot(this.colorDirty, dst);
   };
 
   update(slot: number, x: number, y: number, z: number, radius: number): void {
@@ -523,12 +635,15 @@ class JointSpherePool {
       JointSpherePool._IDENTITY_QUAT,
       JointSpherePool._scratchScale,
     );
-    this.mesh.setMatrixAt(slot, JointSpherePool._scratchMat);
+    writeMatrixAt(this.mesh, slot, JointSpherePool._scratchMat, this.matrixDirty);
   }
 
   fade(slot: number, fade: number): void {
     if (slot < 0) return;
-    (this.fadeBuf.array as Float32Array)[slot] = fade;
+    const arr = this.fadeBuf.array as Float32Array;
+    if (arr[slot] === fade) return;
+    arr[slot] = fade;
+    markDirtySlot(this.fadeDirty, slot);
   }
 
   translate(slot: number, dx: number, dy: number, dz: number): void {
@@ -538,6 +653,7 @@ class JointSpherePool {
     arr[i16 + 12] += dx;
     arr[i16 + 13] += dy;
     arr[i16 + 14] += dz;
+    markDirtySlot(this.matrixDirty, slot);
   }
 
   flush(): void {
@@ -547,11 +663,9 @@ class JointSpherePool {
       );
     }
     this.mesh.count = this.nextSlot;
-    if (this.nextSlot > 0) {
-      this.mesh.instanceMatrix.needsUpdate = true;
-    }
-    this.fadeBuf.needsUpdate = true;
-    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    uploadDirtySpan(this.mesh.instanceMatrix, this.matrixDirty, 16);
+    uploadDirtySpan(this.fadeBuf, this.fadeDirty, 1);
+    if (this.mesh.instanceColor) uploadDirtySpan(this.mesh.instanceColor, this.colorDirty, 3);
   }
 
   destroy(): void {
@@ -566,6 +680,9 @@ class FootPadPool {
   private readonly mesh: THREE.InstancedMesh;
   private readonly fadeBuf: THREE.InstancedBufferAttribute;
   private readonly shell: boolean;
+  private readonly matrixDirty = createDirtySpan();
+  private readonly colorDirty = createDirtySpan();
+  private readonly fadeDirty = createDirtySpan();
   private nextSlot = 0;
   private freeList: number[] = [];
   private relocators: (SlotRelocator | null)[] = [];
@@ -587,8 +704,9 @@ class FootPadPool {
     this.mesh = new THREE.InstancedMesh(geom, material, SLOT_CAP);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     if (!shell) {
-      this.mesh.setColorAt(0, FootPadPool._scratchColor.set(0xffffff));
-      this.mesh.instanceColor!.setUsage(THREE.DynamicDrawUsage);
+      const colorAttr = new THREE.InstancedBufferAttribute(new Float32Array(SLOT_CAP * 3), 3);
+      colorAttr.setUsage(THREE.DynamicDrawUsage);
+      this.mesh.instanceColor = colorAttr;
     }
     this.mesh.count = 0;
     this.mesh.frustumCulled = false;
@@ -606,17 +724,28 @@ class FootPadPool {
       return -1;
     }
     this.relocators[slot] = onRelocate;
+    writeMatrixAt(this.mesh, slot, FootPadPool._ZERO_MATRIX, this.matrixDirty);
     (this.fadeBuf.array as Float32Array)[slot] = 1;
+    markDirtySlot(this.fadeDirty, slot);
     if (!this.shell) {
-      this.mesh.setColorAt(slot, FootPadPool._scratchColor.set(color));
+      const c = FootPadPool._scratchColor.set(color);
+      const arr = this.mesh.instanceColor?.array as Float32Array | undefined;
+      if (arr) {
+        const i3 = slot * 3;
+        arr[i3 + 0] = c.r;
+        arr[i3 + 1] = c.g;
+        arr[i3 + 2] = c.b;
+        markDirtySlot(this.colorDirty, slot);
+      }
     }
     return slot;
   }
 
   free(slot: number): void {
     if (slot < 0) return;
-    this.mesh.setMatrixAt(slot, FootPadPool._ZERO_MATRIX);
+    writeMatrixAt(this.mesh, slot, FootPadPool._ZERO_MATRIX, this.matrixDirty);
     (this.fadeBuf.array as Float32Array)[slot] = 1;
+    markDirtySlot(this.fadeDirty, slot);
     this.relocators[slot] = null;
     this.freeList.push(slot);
   }
@@ -638,6 +767,11 @@ class FootPadPool {
     }
     for (let i = 0; i < 16; i++) arr[s16 + i] = 0;
     fa[src] = 1;
+    markDirtySlot(this.matrixDirty, dst);
+    markDirtySlot(this.matrixDirty, src);
+    markDirtySlot(this.fadeDirty, dst);
+    markDirtySlot(this.fadeDirty, src);
+    if (colorArr) markDirtySlot(this.colorDirty, dst);
   };
 
   update(
@@ -665,12 +799,15 @@ class FootPadPool {
       FootPadPool._scratchQuat,
       FootPadPool._scratchScale,
     );
-    this.mesh.setMatrixAt(slot, FootPadPool._scratchMat);
+    writeMatrixAt(this.mesh, slot, FootPadPool._scratchMat, this.matrixDirty);
   }
 
   fade(slot: number, fade: number): void {
     if (slot < 0) return;
-    (this.fadeBuf.array as Float32Array)[slot] = fade;
+    const arr = this.fadeBuf.array as Float32Array;
+    if (arr[slot] === fade) return;
+    arr[slot] = fade;
+    markDirtySlot(this.fadeDirty, slot);
   }
 
   translate(slot: number, dx: number, dy: number, dz: number): void {
@@ -680,6 +817,7 @@ class FootPadPool {
     arr[i16 + 12] += dx;
     arr[i16 + 13] += dy;
     arr[i16 + 14] += dz;
+    markDirtySlot(this.matrixDirty, slot);
   }
 
   flush(): void {
@@ -689,11 +827,9 @@ class FootPadPool {
       );
     }
     this.mesh.count = this.nextSlot;
-    if (this.nextSlot > 0) {
-      this.mesh.instanceMatrix.needsUpdate = true;
-    }
-    this.fadeBuf.needsUpdate = true;
-    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    uploadDirtySpan(this.mesh.instanceMatrix, this.matrixDirty, 16);
+    uploadDirtySpan(this.fadeBuf, this.fadeDirty, 1);
+    if (this.mesh.instanceColor) uploadDirtySpan(this.mesh.instanceColor, this.colorDirty, 3);
   }
 
   destroy(): void {
@@ -824,9 +960,8 @@ export class LegInstancedRenderer {
     );
   }
 
-  /** Mark all per-instance buffers dirty — call once per frame
-   *  after every leg has been updated. Cheap (just sets the dirty
-   *  flags); the actual GPU upload happens at the next render. */
+  /** Upload dirty per-instance spans — call once per frame after every
+   *  leg has been updated. The actual GPU upload happens at the next render. */
   flush(): void {
     this.upper.flush();
     this.lower.flush();
