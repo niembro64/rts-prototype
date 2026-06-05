@@ -46,6 +46,7 @@ export type {
   TurretLockOnEntityFamilyInclusion,
   TurretRadiusConfig,
   TurretBlueprint,
+  TurretSubmunitionEmitterConfig,
   MountOffset,
   TurretMount,
   UnitTurretMountZResolver,

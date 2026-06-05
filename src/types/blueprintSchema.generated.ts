@@ -26,7 +26,7 @@ export type ShieldBarrierRatioConfig = {
   originOffsetRadiusRatio?: number | null;
 };
 
-export type ShieldSubmunitionEmitterConfig = {
+export type TurretSubmunitionEmitterConfig = {
   shotBlueprintId: ShotBlueprintId;
   launchForce: number;
   cooldown: TurretCooldownConfig;
@@ -302,6 +302,7 @@ export type TurretBlueprint = {
   passive: boolean;
   requiresNonObstructedLineOfSight: boolean;
   spread: TurretSpreadConfig | null;
+  submunitions?: TurretSubmunitionEmitterConfig | null;
   burst: TurretBurstConfig | null;
   shieldPanels: ShieldPanel[];
   audio: TurretAudioConfig | null;
@@ -670,7 +671,6 @@ export type ShieldBlueprint = {
   angle: number;
   transitionTime: number;
   barrier: ShieldBarrierRatioConfig | null;
-  submunitions: ShieldSubmunitionEmitterConfig | null;
   hitSound: SoundEntry | null;
   shieldBlueprintId: ShieldBlueprintId;
 };
@@ -710,7 +710,6 @@ export type ShieldConfig = {
   angle: number;
   transitionTime: number;
   barrier?: ShieldBarrierConfig;
-  submunitions?: ShieldSubmunitionEmitterConfig;
   shieldBlueprintId: ShieldBlueprintId;
 };
 

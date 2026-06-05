@@ -211,7 +211,7 @@
       },
       "additionalProperties": false
     },
-    "ShieldSubmunitionEmitterConfig": {
+    "TurretSubmunitionEmitterConfig": {
       "type": "object",
       "required": [
         "shotBlueprintId",
@@ -1273,6 +1273,16 @@
           "oneOf": [
             {
               "$ref": "#/$defs/TurretSpreadConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "submunitions": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/TurretSubmunitionEmitterConfig"
             },
             {
               "type": "null"
@@ -2737,7 +2747,6 @@
         "angle",
         "transitionTime",
         "barrier",
-        "submunitions",
         "hitSound"
       ],
       "properties": {
@@ -2757,16 +2766,6 @@
           "oneOf": [
             {
               "$ref": "#/$defs/ShieldBarrierRatioConfig"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "submunitions": {
-          "oneOf": [
-            {
-              "$ref": "#/$defs/ShieldSubmunitionEmitterConfig"
             },
             {
               "type": "null"
@@ -2925,9 +2924,6 @@
         },
         "barrier": {
           "$ref": "#/$defs/ShieldBarrierConfig"
-        },
-        "submunitions": {
-          "$ref": "#/$defs/ShieldSubmunitionEmitterConfig"
         },
         "shieldBlueprintId": {
           "$ref": "#/$defs/ShieldBlueprintId"

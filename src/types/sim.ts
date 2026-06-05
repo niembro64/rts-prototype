@@ -8,6 +8,7 @@ import type {
   TurretCooldownConfig,
   TurretRadiusConfig,
   TurretRangeVolume,
+  TurretSubmunitionEmitterConfig,
   UnitSupportSurface,
 } from './blueprints';
 import type {
@@ -386,6 +387,8 @@ export type TurretConfig = {
    *  mount renderer-owned construction hardware but do not represent a
    *  simulated weapon or projectile. */
   shot: EmissionConfig | undefined;
+  /** Optional secondary projectile spray driven by this turret's own engagement. */
+  submunitions: TurretSubmunitionEmitterConfig | undefined;
   turretIndex: number | undefined;
   /** Explicit aiming solver mode. See TurretBlueprint.aimStyle. */
   aimStyle: TurretAimStyle;

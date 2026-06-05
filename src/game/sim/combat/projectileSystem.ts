@@ -1,7 +1,7 @@
 // Projectile system - firing, movement, and beam updates
 
 import type { WorldState } from '../WorldState';
-import type { BeamPoint, Entity, EntityId, ProjectileShot, BeamRay, LaserRay, ShieldConfig, ShotSource, Turret } from '../types';
+import type { BeamPoint, Entity, EntityId, ProjectileShot, BeamRay, LaserRay, ShotSource, Turret } from '../types';
 import { getEmissionBlueprintId, isRayConfig, isRayType, isProjectileShot, NO_ENTITY_ID } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
@@ -474,7 +474,7 @@ export function fireTurrets(
       if (config.visualOnly) continue;
       const shot = config.shot;
       if (!shot) continue;
-      const shieldSubmunitions = shot.type === 'shield' ? shot.submunitions : undefined;
+      const shieldSubmunitions = shot.type === 'shield' ? config.submunitions : undefined;
       const mask = shieldSubmunitions !== undefined ? activeMask : firingMask;
       if (!turretMaskIncludes(mask, weaponIndex)) continue;
       if (config.passive) continue; // Passive turrets track/engage but never fire
@@ -544,8 +544,7 @@ export function fireTurrets(
       const mountZ = weaponMount.z;
 
       if (shot.type === 'shield') {
-        const fieldShot = shot as ShieldConfig;
-        const spec = fieldShot.submunitions;
+        const spec = shieldSubmunitions;
         if (spec === undefined || lockedTarget === undefined) continue;
         if (readTurretCooldownForFire(unit, weaponIndex) > 0) continue;
 

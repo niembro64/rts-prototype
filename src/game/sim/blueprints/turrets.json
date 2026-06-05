@@ -886,6 +886,18 @@
     "eventsSmooth": false,
     "color": 16777215,
     "spread": null,
+    "submunitions": {
+      "shotBlueprintId": "shotPlasmaOther",
+      "launchForce": 1000,
+      "cooldown": {
+        "duration": 30,
+        "durationRandomness": 0.2
+      },
+      "spread": {
+        "angle": 2.6,
+        "pelletCount": 3
+      }
+    },
     "burst": null,
     "shieldPanels": [],
     "audio": {

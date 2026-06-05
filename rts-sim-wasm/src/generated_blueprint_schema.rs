@@ -86,7 +86,7 @@ pub struct ShieldBarrierRatioConfig {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ShieldSubmunitionEmitterConfig {
+pub struct TurretSubmunitionEmitterConfig {
     pub shotBlueprintId: String,
     pub launchForce: f64,
     pub cooldown: TurretCooldownConfig,
@@ -449,6 +449,7 @@ pub struct TurretBlueprint {
     pub passive: bool,
     pub requiresNonObstructedLineOfSight: bool,
     pub spread: Option<TurretSpreadConfig>,
+    pub submunitions: Option<TurretSubmunitionEmitterConfig>,
     pub burst: Option<TurretBurstConfig>,
     pub shieldPanels: Vec<ShieldPanel>,
     pub audio: Option<TurretAudioConfig>,
@@ -895,7 +896,6 @@ pub struct ShieldBlueprint {
     pub angle: f64,
     pub transitionTime: f64,
     pub barrier: Option<ShieldBarrierRatioConfig>,
-    pub submunitions: Option<ShieldSubmunitionEmitterConfig>,
     pub hitSound: Option<BlueprintJsonValue>,
     pub shieldBlueprintId: String,
 }
@@ -946,7 +946,6 @@ pub struct ShieldConfig {
     pub angle: f64,
     pub transitionTime: f64,
     pub barrier: Option<ShieldBarrierConfig>,
-    pub submunitions: Option<ShieldSubmunitionEmitterConfig>,
     pub shieldBlueprintId: String,
 }
 

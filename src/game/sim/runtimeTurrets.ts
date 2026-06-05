@@ -95,8 +95,8 @@ function computeTurretSustainedDps(config: TurretConfig): number {
     const damage = shot.explosion !== undefined ? shot.explosion.damage : 0;
     return cooldownDuration > 0 ? (damage * 1000) / cooldownDuration : 0;
   }
-  if (shot.type === 'shield' && shot.submunitions !== undefined) {
-    const spec = shot.submunitions;
+  if (config.submunitions !== undefined) {
+    const spec = config.submunitions;
     const child = SHOT_BLUEPRINTS[spec.shotBlueprintId];
     const damage = child?.base.deathExplosion.damage ?? 0;
     const shieldCooldown = getTurretCooldownDuration(spec.cooldown);

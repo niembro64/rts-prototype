@@ -10,7 +10,7 @@
       "hitbox": 3.2,
       "collision": 4
     },
-    "armingDelayMs": 400,
+    "armingDelayMs": 1000,
     "detonateOnExpiry": true,
     "hitSound": {
       "$audio": "event.hit.shotPlasmaOther"

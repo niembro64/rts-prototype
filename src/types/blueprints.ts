@@ -61,6 +61,7 @@ export type {
   TurretMount,
   TurretRadiusConfig,
   TurretRangeVolume,
+  TurretSubmunitionEmitterConfig,
   UnitBlueprint,
   UnitBodyShape,
   UnitBodyShapePart,

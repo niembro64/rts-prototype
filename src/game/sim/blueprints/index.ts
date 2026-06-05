@@ -592,7 +592,6 @@ function buildShieldConfig(
     material,
     angle: shieldBlueprint.angle,
     transitionTime: shieldBlueprint.transitionTime,
-    submunitions: shieldBlueprint.submunitions ?? undefined,
     barrier:
       computeBarrierConfig(
         shieldBlueprint.barrier,
@@ -694,6 +693,7 @@ export function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretC
     isManualFire: turretBlueprint.isManualFire,
     passive: turretBlueprint.passive,
     shot: shot ?? undefined,
+    submunitions: turretBlueprint.submunitions ?? undefined,
     turretIndex: undefined,
     requiresNonObstructedLineOfSight: turretBlueprint.requiresNonObstructedLineOfSight,
     aimStyle: { ...turretBlueprint.aimStyle },

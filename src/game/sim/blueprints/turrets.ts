@@ -6,7 +6,11 @@
  * language-neutral for the Rust/WASM port.
  */
 
-import { isTurretBlueprintId, type TurretBlueprintId } from '../../../types/blueprintIds';
+import {
+  isShotBlueprintId,
+  isTurretBlueprintId,
+  type TurretBlueprintId,
+} from '../../../types/blueprintIds';
 import {
   WEAPON_KINDS,
 } from '../../../types/blueprints';
@@ -47,6 +51,13 @@ const WEAPON_KIND_SET: ReadonlySet<string> = new Set(WEAPON_KINDS);
 type JsonTurretBlueprint = Omit<TurretBlueprint, keyof LockOnInclusionObject>;
 
 const TURRET_COOLDOWN_FIELDS = ['duration', 'durationRandomness'] as const;
+const TURRET_SUBMUNITION_EXPLICIT_FIELDS = [
+  'shotBlueprintId',
+  'launchForce',
+  'cooldown',
+  'spread',
+] as const;
+const TURRET_SUBMUNITION_SPREAD_FIELDS = ['angle', 'pelletCount'] as const;
 
 function validateTurretCooldown(label: string, cooldown: unknown): void {
   if (cooldown === null) return;
@@ -78,6 +89,45 @@ function validateTurretCooldown(label: string, cooldown: unknown): void {
     throw new Error(
       `Invalid ${label}.cooldown.durationRandomness: expected finite [0,1), got ${durationRandomness}`,
     );
+  }
+}
+
+function validateTurretSubmunitions(label: string, value: unknown): void {
+  if (value == null) return;
+  assertExplicitFields(label, value, TURRET_SUBMUNITION_EXPLICIT_FIELDS);
+  if (!isObject(value)) throw new Error(`Invalid ${label}: expected object or null`);
+  if (typeof value.shotBlueprintId !== 'string' || !isShotBlueprintId(value.shotBlueprintId)) {
+    throw new Error(
+      `Invalid ${label}.shotBlueprintId: unknown shot blueprint ${String(value.shotBlueprintId)}`,
+    );
+  }
+  if (
+    typeof value.launchForce !== 'number' ||
+    !Number.isFinite(value.launchForce) ||
+    value.launchForce < 0
+  ) {
+    throw new Error(`Invalid ${label}.launchForce: expected finite non-negative number`);
+  }
+  if (value.cooldown === null) {
+    throw new Error(`Invalid ${label}.cooldown: expected object`);
+  }
+  validateTurretCooldown(label, value.cooldown);
+  const spread = value.spread;
+  assertExplicitFields(`${label}.spread`, spread, TURRET_SUBMUNITION_SPREAD_FIELDS);
+  if (!isObject(spread)) throw new Error(`Invalid ${label}.spread: expected object`);
+  if (
+    typeof spread.angle !== 'number' ||
+    !Number.isFinite(spread.angle) ||
+    spread.angle < 0
+  ) {
+    throw new Error(`Invalid ${label}.spread.angle: expected finite non-negative radians`);
+  }
+  if (
+    typeof spread.pelletCount !== 'number' ||
+    !Number.isInteger(spread.pelletCount) ||
+    spread.pelletCount <= 0
+  ) {
+    throw new Error(`Invalid ${label}.spread.pelletCount: expected positive integer`);
   }
 }
 
@@ -137,4 +187,10 @@ for (const [id, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
     );
   }
   validateTurretCooldown(label, blueprint.cooldown);
+  validateTurretSubmunitions(`${label}.submunitions`, blueprint.submunitions);
+  if (blueprint.submunitions != null && blueprint.emissionKind !== 'shield') {
+    throw new Error(
+      `Invalid ${label}: submunitions are currently supported only for shield-emission turrets`,
+    );
+  }
 }
