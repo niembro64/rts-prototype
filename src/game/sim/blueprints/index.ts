@@ -699,7 +699,11 @@ export function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretC
     verticalLauncher: turretBlueprint.verticalLauncher,
     idlePitch: turretBlueprint.idlePitch,
     groundAimFraction: turretBlueprint.groundAimFraction ?? undefined,
-    radius: { ...turretBlueprint.radius },
+    // Turrets author only `radius.visual` (the body sphere). hitbox/collision
+    // are pinned to 0 here: a turret is not a separate hit/collide body — it
+    // extends no hit-surface and does its own muzzle self-clearance off 0
+    // (the host body's own collision covers clearance). See turretHostIntegration.
+    radius: { visual: turretBlueprint.radius.visual, hitbox: 0, collision: 0 },
     headOnly: turretBlueprint.headOnly,
     visualOnly: shot === null,
     // hostDirected is a per-MOUNT tag, not a per-blueprint constant. The

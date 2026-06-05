@@ -78,22 +78,23 @@ export function runTurretHostIntegrationContractTest(): void {
         surfaceN: hostUnit.surfaceNormal,
       },
     );
-    const damage = 7;
-    const hpBefore = hostUnit.hp;
+    // A turret is not a separate hit/collide body — radius.hitbox/collision
+    // are removed. Area damage landing on a turret mount must never spawn a
+    // separate turret kill, and the turret stays part of its host assembly.
+    // (Whether the host body is hit now depends solely on the host's own
+    // collider, never on a turret hit-surface, so we don't assert that here.)
     const damageResult = new DamageSystem(world).applyDamage({
       type: 'area',
       sourceEntityId: 9999 as EntityId,
       ownerId: 2 as PlayerId,
-      damage,
+      damage: 7,
       excludeEntities: new Set<EntityId>(),
       center: { x: mount.x, y: mount.y, z: mount.z },
       radius: 1,
       knockbackForce: 0,
     });
-    assertContract(damageResult.hitEntityIds.includes(host.id), 'turret hitbox damage must report a host-body hit');
-    assertContract(hostUnit.hp === hpBefore - damage, 'turret hitbox damage must subtract host-body HP');
-    assertContract(damageResult.killedTurretIds.size === 0, 'turret hitbox damage must not kill a separate turret body');
-    assertContract(world.resolveMountedTurret(turret.id)?.host === host, 'turret must remain mounted after nonlethal host damage');
+    assertContract(damageResult.killedTurretIds.size === 0, 'damage at a turret mount must not kill a separate turret body');
+    assertContract(world.resolveMountedTurret(turret.id)?.host === host, 'turret must remain mounted after area damage at its mount');
 
     const authoredTurrets = combat.turrets;
     host.buildable = createBuildable({ energy: 1, metal: 1 });
