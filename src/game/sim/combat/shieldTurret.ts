@@ -11,8 +11,10 @@ import {
   type CombatTargetingTurretFsmOut,
 } from './targetingInputStamping';
 import { getUnitGroundZ } from '../unitGeometry';
+import { resolveTargetAimPoint } from './aimSolver';
 
 const _shieldMount = { x: 0, y: 0, z: 0 };
+const _shieldTargetAim = { x: 0, y: 0, z: 0 };
 const _shieldHit = { t: 0, x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, playerId: 0, entityId: 0 };
 const _shieldFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_ENGAGED,
@@ -27,6 +29,9 @@ export type ActiveShieldRef = {
   centerX: number;
   centerY: number;
   centerZ: number;
+  axisEndX: number;
+  axisEndY: number;
+  axisEndZ: number;
   radius: number;
   reflectionMode: ShieldReflectionMode;
   playerId: number;
@@ -74,9 +79,11 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
       }
 
       // Move progress toward target based on engaged state
-      const engaged = readCombatTargetingTurretFsmInto(unit, weaponIndex, _shieldFsm)
+      const hasTargetingFsm = readCombatTargetingTurretFsmInto(unit, weaponIndex, _shieldFsm);
+      const engaged = hasTargetingFsm
         ? _shieldFsm.stateCode === CT_TURRET_STATE_ENGAGED
         : weapon.state === 'engaged';
+      const targetId = hasTargetingFsm ? _shieldFsm.targetId : (weapon.target ?? -1);
       const targetProgress = engaged ? 1 : 0;
       const progressDelta = dtMs / transitionTime;
 
@@ -112,12 +119,33 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
           _shieldMount,
         );
         const originOffsetZ = barrier.originOffsetZ;
+        const centerX = mount.x;
+        const centerY = mount.y;
+        const centerZ = mount.z - originOffsetZ;
+        let axisEndX = centerX;
+        let axisEndY = centerY;
+        let axisEndZ = centerZ;
+        if (barrier.shape === 'aimedCylinder') {
+          if (targetId === -1) continue;
+          const target = world.getEntity(targetId);
+          if (target === undefined) continue;
+          resolveTargetAimPoint(target, centerX, centerY, centerZ, _shieldTargetAim);
+          axisEndX = _shieldTargetAim.x;
+          axisEndY = _shieldTargetAim.y;
+          axisEndZ = _shieldTargetAim.z;
+          if (Math.hypot(axisEndX - centerX, axisEndY - centerY, axisEndZ - centerZ) <= 1e-6) {
+            continue;
+          }
+        }
         const playerId = unit.ownership !== null ? unit.ownership.playerId : 0;
         _activeShields.push({
           shape: barrier.shape,
-          centerX: mount.x,
-          centerY: mount.y,
-          centerZ: mount.z - originOffsetZ,
+          centerX,
+          centerY,
+          centerZ,
+          axisEndX,
+          axisEndY,
+          axisEndZ,
           radius,
           reflectionMode: fieldShot.material.reflection.mode,
           playerId,
@@ -168,6 +196,8 @@ export function encodeShieldBarrierShape(shape: ShieldBarrierShape): number {
       return 0;
     case 'infiniteVerticalCylinder':
       return 1;
+    case 'aimedCylinder':
+      return 2;
   }
   return 0;
 }
@@ -299,6 +329,74 @@ function intersectShieldInfiniteVerticalCylinder(
   return null;
 }
 
+function intersectShieldAimedCylinder(
+  startX: number,
+  startY: number,
+  startZ: number,
+  endX: number,
+  endY: number,
+  endZ: number,
+  axisStartX: number,
+  axisStartY: number,
+  axisStartZ: number,
+  axisEndX: number,
+  axisEndY: number,
+  axisEndZ: number,
+  radius: number,
+  reflectionMode: ShieldReflectionMode,
+): number | null {
+  const axisX = axisEndX - axisStartX;
+  const axisY = axisEndY - axisStartY;
+  const axisZ = axisEndZ - axisStartZ;
+  const axisLen = Math.hypot(axisX, axisY, axisZ);
+  if (axisLen <= 1e-6 || radius <= 0) return null;
+
+  const ux = axisX / axisLen;
+  const uy = axisY / axisLen;
+  const uz = axisZ / axisLen;
+  const dx = endX - startX;
+  const dy = endY - startY;
+  const dz = endZ - startZ;
+  const wx = startX - axisStartX;
+  const wy = startY - axisStartY;
+  const wz = startZ - axisStartZ;
+  const dDotAxis = dx * ux + dy * uy + dz * uz;
+  const wDotAxis = wx * ux + wy * uy + wz * uz;
+  const mx = dx - ux * dDotAxis;
+  const my = dy - uy * dDotAxis;
+  const mz = dz - uz * dDotAxis;
+  const nx = wx - ux * wDotAxis;
+  const ny = wy - uy * wDotAxis;
+  const nz = wz - uz * wDotAxis;
+  const a = mx * mx + my * my + mz * mz;
+  if (a <= 1e-9) return null;
+
+  const radiusSq = radius * radius;
+  const b = 2 * (nx * mx + ny * my + nz * mz);
+  const c = nx * nx + ny * ny + nz * nz - radiusSq;
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return null;
+  const sqrtDisc = Math.sqrt(disc);
+  const invDenom = 1 / (2 * a);
+  const t0 = (-b - sqrtDisc) * invDenom;
+  const t1 = (-b + sqrtDisc) * invDenom;
+  const firstT = Math.min(t0, t1);
+  const secondT = Math.max(t0, t1);
+
+  const accepts = (t: number): boolean => {
+    if (t <= 1e-6 || t > 1) return false;
+    const hitPerpX = nx + mx * t;
+    const hitPerpY = ny + my * t;
+    const hitPerpZ = nz + mz * t;
+    const radialVelocity = mx * hitPerpX + my * hitPerpY + mz * hitPerpZ;
+    return shieldModeAllowsCrossing(reflectionMode, radialVelocity);
+  };
+
+  if (accepts(firstT)) return firstT;
+  if (secondT !== firstT && accepts(secondT)) return secondT;
+  return null;
+}
+
 export function findShieldSegmentIntersection(
   _world: WorldState,
   startX: number,
@@ -333,6 +431,15 @@ export function findShieldSegmentIntersection(
         active.radius,
         active.reflectionMode,
       )
+      : active.shape === 'aimedCylinder'
+        ? intersectShieldAimedCylinder(
+          startX, startY, startZ,
+          endX, endY, endZ,
+          active.centerX, active.centerY, active.centerZ,
+          active.axisEndX, active.axisEndY, active.axisEndZ,
+          active.radius,
+          active.reflectionMode,
+        )
       : intersectShieldSphere(
         startX, startY, startZ,
         endX, endY, endZ,
@@ -345,9 +452,25 @@ export function findShieldSegmentIntersection(
     const hitX = startX + (endX - startX) * t;
     const hitY = startY + (endY - startY) * t;
     const hitZ = startZ + (endZ - startZ) * t;
-    const nx = hitX - active.centerX;
-    const ny = hitY - active.centerY;
-    const nz = active.shape === 'infiniteVerticalCylinder' ? 0 : hitZ - active.centerZ;
+    let nx = hitX - active.centerX;
+    let ny = hitY - active.centerY;
+    let nz = active.shape === 'infiniteVerticalCylinder' ? 0 : hitZ - active.centerZ;
+    if (active.shape === 'aimedCylinder') {
+      const axisX = active.axisEndX - active.centerX;
+      const axisY = active.axisEndY - active.centerY;
+      const axisZ = active.axisEndZ - active.centerZ;
+      const axisLen = Math.hypot(axisX, axisY, axisZ) || 1;
+      const ux = axisX / axisLen;
+      const uy = axisY / axisLen;
+      const uz = axisZ / axisLen;
+      const relX = hitX - active.centerX;
+      const relY = hitY - active.centerY;
+      const relZ = hitZ - active.centerZ;
+      const axial = relX * ux + relY * uy + relZ * uz;
+      nx = relX - ux * axial;
+      ny = relY - uy * axial;
+      nz = relZ - uz * axial;
+    }
     const nLen = Math.hypot(nx, ny, nz) || 1;
     bestT = t;
     bestX = hitX;

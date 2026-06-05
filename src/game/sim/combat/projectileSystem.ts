@@ -1,7 +1,7 @@
 // Projectile system - firing, movement, and beam updates
 
 import type { WorldState } from '../WorldState';
-import type { BeamPoint, Entity, EntityId, ProjectileShot, BeamRay, LaserRay, ShotSource, Turret } from '../types';
+import type { BeamPoint, Entity, EntityId, ProjectileShot, BeamRay, LaserRay, ShieldConfig, ShotSource, Turret } from '../types';
 import { getEmissionBlueprintId, isRayConfig, isRayType, isProjectileShot, NO_ENTITY_ID } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
@@ -35,6 +35,7 @@ import {
 import { isBuildBlockingActivation } from '../buildableHelpers';
 import {
   dropTurretLockMidTick,
+  readActiveTurretMaskForUnit,
   readFiringTurretMaskForUnit,
   readTurretBurstCooldownForFire,
   readTurretCooldownForFire,
@@ -46,7 +47,7 @@ import { resolveTargetAimPoint } from './aimSolver';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
 import { resolveRayConfigRangeCylinderEndpoint, type RayConfigRangeCylinder } from './lineShotRange';
 import { getUnitGroundZ } from '../unitGeometry';
-import { createProjectileConfigFromTurret } from '../projectileConfigs';
+import { createProjectileConfigFromShot, createProjectileConfigFromTurret } from '../projectileConfigs';
 import { rollTurretCooldownDuration } from '../turretCooldown';
 import { CT_TURRET_STATE_ENGAGED, getSimWasm } from '../../sim-wasm/init';
 import {
@@ -219,6 +220,7 @@ const _projectilePositionScratch = { x: 0, y: 0, z: 0 };
 const _homingTargetVelocity = { x: 0, y: 0, z: 0 };
 const _homingTargetAcceleration = { x: 0, y: 0, z: 0 };
 const _homingAimPoint = { x: 0, y: 0, z: 0 };
+const _shieldSprayAimPoint = { x: 0, y: 0, z: 0 };
 const _homingOriginVelocity = { x: 0, y: 0, z: 0 };
 const _homingOriginAcceleration = { x: 0, y: 0, z: 0 };
 const FIRE_YAW_TOLERANCE = 0.16;
@@ -460,19 +462,21 @@ export function fireTurrets(
     const playerId = unit.ownership.playerId;
     const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
     const firingMask = readFiringTurretMaskForUnit(unit);
+    const activeMask = readActiveTurretMaskForUnit(unit);
     const currentTick = world.getTick();
     const unitGroundZ = getUnitGroundZ(unit);
 
     // Fire each weapon independently
     const turrets = combat.turrets;
     for (let weaponIndex = 0; weaponIndex < turrets.length; weaponIndex++) {
-      if (!turretMaskIncludes(firingMask, weaponIndex)) continue;
       const weapon = turrets[weaponIndex];
       const config = weapon.config;
       if (config.visualOnly) continue;
       const shot = config.shot;
       if (!shot) continue;
-      if (shot.type === 'shield') continue; // Shields don't create projectiles
+      const shieldSubmunitions = shot.type === 'shield' ? shot.submunitions : undefined;
+      const mask = shieldSubmunitions !== undefined ? activeMask : firingMask;
+      if (!turretMaskIncludes(mask, weaponIndex)) continue;
       if (config.passive) continue; // Passive turrets track/engage but never fire
       const isBeamWeapon = isRayConfig(shot);
       const hasTargetingFsm = readCombatTargetingTurretFsmInto(unit, weaponIndex, _fireFsm);
@@ -504,13 +508,21 @@ export function fireTurrets(
       }
 
       const groundTargetPoint = combat.priorityTargetPoint;
-      if (targetingTargetId !== -1 && !world.getEntity(targetingTargetId)) {
+      let lockedTarget: Entity | undefined;
+      if (targetingTargetId !== -1) {
+        lockedTarget = world.getEntity(targetingTargetId);
+      }
+      if (targetingTargetId !== -1 && lockedTarget === undefined) {
         // Target despawned mid-fire — drop the lock everywhere in one
         // call (JS Turret + beam index + slab FSM).
         dropTurretLockMidTick(unit, weaponIndex);
         continue;
       }
-      if (targetingTargetId === -1 && groundTargetPoint === null) continue;
+      if (shot.type === 'shield' && shieldSubmunitions !== undefined) {
+        if (lockedTarget === undefined) continue;
+      } else if (targetingTargetId === -1 && groundTargetPoint === null) {
+        continue;
+      }
       if (!isWeaponAimedForFire(weapon)) continue;
 
       // Use the canonical 3D turret mount cache. Targeting normally
@@ -529,6 +541,140 @@ export function fireTurrets(
       );
       const weaponX = weaponMount.x;
       const weaponY = weaponMount.y;
+      const mountZ = weaponMount.z;
+
+      if (shot.type === 'shield') {
+        const fieldShot = shot as ShieldConfig;
+        const spec = fieldShot.submunitions;
+        if (spec === undefined || lockedTarget === undefined) continue;
+        if (readTurretCooldownForFire(unit, weaponIndex) > 0) continue;
+
+        resolveTargetAimPoint(
+          lockedTarget,
+          weaponX, weaponY, mountZ,
+          _shieldSprayAimPoint,
+        );
+        let axisX = _shieldSprayAimPoint.x - weaponX;
+        let axisY = _shieldSprayAimPoint.y - weaponY;
+        let axisZ = _shieldSprayAimPoint.z - mountZ;
+        const axisLen = Math.hypot(axisX, axisY, axisZ);
+        if (axisLen <= 1e-6) continue;
+        axisX /= axisLen;
+        axisY /= axisLen;
+        axisZ /= axisLen;
+
+        writeTurretCooldownToSlab(
+          unit,
+          weaponIndex,
+          rollTurretCooldownDuration(spec.cooldown, () => world.rng.next()),
+        );
+
+        const projectileConfig = createProjectileConfigFromShot(
+          spec.shotBlueprintId,
+          config.turretBlueprintId,
+          spec.launchForce,
+        );
+        const projShot = projectileConfig.shot as ProjectileShot;
+        const speed = getProjectileLaunchSpeed(projShot);
+        const pellets = spec.spread.pelletCount;
+        const spreadAngle = spec.spread.angle;
+        const barrelCount = countBarrels(config);
+        const fireBaseIndex = weapon.barrelFireIndex;
+        const shotSource = createTurretShotSource(
+          world,
+          unit,
+          weapon,
+          projShot.shotBlueprintId,
+          playerId,
+        );
+
+        for (let i = 0; i < pellets; i++) {
+          const barrelIndex = (fireBaseIndex + i) % barrelCount;
+          let dirX = axisX;
+          let dirY = axisY;
+          let dirZ = axisZ;
+          if (spreadAngle > 0) {
+            writeRandomDirectionInCone(
+              axisX, axisY, axisZ,
+              spreadAngle,
+              () => world.rng.next(),
+              _spreadConeDir,
+            );
+            dirX = _spreadConeDir.x;
+            dirY = _spreadConeDir.y;
+            dirZ = _spreadConeDir.z;
+          }
+
+          const spawnX = weaponX;
+          const spawnY = weaponY;
+          const spawnZ = mountZ;
+          if (i === 0) {
+            audioEvents.push({
+              type: 'fire',
+              turretBlueprintId: config.turretBlueprintId,
+              pos: { x: spawnX, y: spawnY, z: spawnZ },
+              playerId,
+              entityId: unit.id,
+            });
+          }
+
+          const projVx = dirX * speed + weapon.worldVelocity.x;
+          const projVy = dirY * speed + weapon.worldVelocity.y;
+          const projVz = dirZ * speed + weapon.worldVelocity.z;
+          const projectile = world.createProjectile(
+            spawnX,
+            spawnY,
+            projVx,
+            projVy,
+            playerId,
+            unit.id,
+            projectileConfig,
+            'projectile',
+            { shotBlueprintId: projShot.shotBlueprintId, shotSource },
+          );
+          projectile.transform.z = spawnZ;
+          const projectileComponent = projectile.projectile;
+          if (projectileComponent !== null) {
+            projectileComponent.velocityZ = projVz;
+            projectileComponent.lastSentVelZ = projVz;
+          }
+          const maxLifespan = projectileComponent !== null ? projectileComponent.maxLifespan : undefined;
+          const fireYaw = Math.hypot(dirX, dirY) > 1e-9
+            ? Math.atan2(dirY, dirX)
+            : weapon.rotation;
+
+          newProjectiles.push(projectile);
+          spawnEvents.push({
+            id: projectile.id,
+            pos: { x: spawnX, y: spawnY, z: spawnZ }, rotation: fireYaw,
+            velocity: { x: projVx, y: projVy, z: projVz },
+            projectileType: 'projectile',
+            maxLifespan: typeof maxLifespan === 'number' && Number.isFinite(maxLifespan)
+              ? maxLifespan
+              : undefined,
+            turretBlueprintId: config.turretBlueprintId,
+            shotBlueprintId: projShot.shotBlueprintId,
+            sourceTurretBlueprintId: config.turretBlueprintId,
+            sourceTurretEntityId: shotSource.sourceTurretEntityId ?? undefined,
+            sourceHostEntityId: shotSource.sourceHostEntityId,
+            sourceRootEntityId: shotSource.sourceRootEntityId,
+            sourceTeamId: shotSource.sourceTeamId,
+            spawnTick: shotSource.spawnTick,
+            parentShotEntityId: shotSource.parentShotEntityId,
+            playerId,
+            sourceEntityId: unit.id,
+            turretIndex: weaponIndex,
+            barrelIndex,
+          });
+
+          if (forceAccumulator && projShot.mass > 0) {
+            const recoilForce = projShot.launchForce * PROJECTILE_MASS_MULTIPLIER;
+            forceAccumulator.addForce(unit.id, -dirX * recoilForce, -dirY * recoilForce, 'recoil');
+          }
+        }
+        weapon.barrelFireIndex = (fireBaseIndex + pellets) % barrelCount;
+        continue;
+      }
 
       // Check cooldown / active beam. Beam weapons gate purely on whether
       // their existing beam is still alive; non-beam weapons gate on
@@ -589,8 +735,6 @@ export function fireTurrets(
       const turretPitch = weapon.pitch;
 
       // Turret mount point in world (full XYZ from the resolver above).
-      const mountZ = weaponMount.z;
-
       const spreadConfig = config.spread;
       const pellets = spreadConfig !== undefined ? spreadConfig.pelletCount : 1;
       const spreadAngle = spreadConfig !== undefined ? spreadConfig.angle : 0;

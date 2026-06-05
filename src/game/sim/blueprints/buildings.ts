@@ -36,8 +36,7 @@ import {
 import { BUILDING_BLUEPRINT_IDS } from '../../../types/blueprintIds';
 import { TURRET_BLUEPRINTS } from './turrets';
 import {
-  assertNumberEquals,
-  assertValidEntityBaseLedger,
+  normalizeEntityBaseLedgerFromAliases,
 } from './entityBaseLedger';
 
 export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
@@ -262,12 +261,13 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
       `Building blueprint key mismatch: key '${id}' has buildingBlueprintId '${blueprint.buildingBlueprintId}'`,
     );
   }
-  assertValidEntityBaseLedger(`${towerBlueprint ? 'tower' : 'building'} blueprint ${id}`, blueprint.base);
-  assertNumberEquals(
+  blueprint.base = normalizeEntityBaseLedgerFromAliases(
     `${towerBlueprint ? 'tower' : 'building'} blueprint ${id}`,
-    'health',
-    blueprint.hp,
-    blueprint.base.health,
+    blueprint.base,
+    {
+      cost: blueprint.cost,
+      health: blueprint.hp,
+    },
   );
   for (const mount of blueprint.turrets) {
     const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];

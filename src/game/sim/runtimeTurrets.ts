@@ -15,7 +15,7 @@ import type { BuildingTurretMount } from '../../types/blueprints';
 import type { EntityId } from '../../types/entityTypes';
 import { NO_ENTITY_ID } from '../../types/entityTypes';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
-import { getUnitBlueprint, getBuildingBlueprint } from './blueprints';
+import { getUnitBlueprint, getBuildingBlueprint, SHOT_BLUEPRINTS } from './blueprints';
 import { createRuntimeTurretMount } from './turretMounts';
 import { getTurretCooldownDuration } from './turretCooldown';
 
@@ -94,6 +94,15 @@ function computeTurretSustainedDps(config: TurretConfig): number {
   if (isProjectileShot(shot)) {
     const damage = shot.explosion !== undefined ? shot.explosion.damage : 0;
     return cooldownDuration > 0 ? (damage * 1000) / cooldownDuration : 0;
+  }
+  if (shot.type === 'shield' && shot.submunitions !== undefined) {
+    const spec = shot.submunitions;
+    const child = SHOT_BLUEPRINTS[spec.shotBlueprintId];
+    const damage = child?.base.deathExplosion.damage ?? 0;
+    const shieldCooldown = getTurretCooldownDuration(spec.cooldown);
+    return shieldCooldown > 0
+      ? (damage * spec.spread.pelletCount * 1000) / shieldCooldown
+      : 0;
   }
   return 0;
 }

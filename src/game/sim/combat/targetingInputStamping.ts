@@ -837,6 +837,7 @@ export function stampShieldSurfacePool(
         f.entityId,
         f.entityId,
         f.centerX, f.centerY, f.centerZ,
+        f.axisEndX, f.axisEndY, f.axisEndZ,
         f.radius,
         encodeShieldBarrierShape(f.shape),
         encodeShieldReflectionMode(f.reflectionMode),

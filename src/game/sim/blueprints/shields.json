@@ -13,6 +13,7 @@
       "originOffsetRadiusRatio": 0.3,
       "rimWidth": null
     },
+    "submunitions": null,
     "hitSound": null,
     "shieldBlueprintId": "shieldSphere"
   },
@@ -27,6 +28,7 @@
       "originOffsetRadiusRatio": 0.2,
       "rimWidth": null
     },
+    "submunitions": null,
     "hitSound": null,
     "shieldBlueprintId": "shieldSphereSmall"
   },
@@ -41,8 +43,35 @@
       "originOffsetRadiusRatio": 0,
       "rimWidth": null
     },
+    "submunitions": null,
     "hitSound": null,
     "shieldBlueprintId": "shieldCylinderInfinite"
+  },
+  "shieldCylinderInfiniteAimed": {
+    "type": "shield",
+    "materialId": "reflectiveShield",
+    "angle": 6.283185307179586,
+    "transitionTime": 500,
+    "barrier": {
+      "shape": "aimedCylinder",
+      "outerRatio": 0.2,
+      "originOffsetRadiusRatio": 0,
+      "rimWidth": null
+    },
+    "submunitions": {
+      "shotBlueprintId": "shotPlasmaOther",
+      "launchForce": 20000,
+      "cooldown": {
+        "duration": 30,
+        "durationRandomness": 0.2
+      },
+      "spread": {
+        "angle": 2.6,
+        "pelletCount": 3
+      }
+    },
+    "hitSound": null,
+    "shieldBlueprintId": "shieldCylinderInfiniteAimed"
   },
   "shieldPanel": {
     "type": "shield",
@@ -50,6 +79,7 @@
     "angle": 0,
     "transitionTime": 500,
     "barrier": null,
+    "submunitions": null,
     "hitSound": null,
     "shieldBlueprintId": "shieldPanel"
   }

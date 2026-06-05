@@ -44,8 +44,11 @@ export function createProjectileConfigFromTurret(
 export function createProjectileConfigFromShot(
   shotBlueprintId: ShotBlueprintId,
   sourceTurretBlueprintId: TurretBlueprintId | undefined = undefined,
+  launchForce = 0,
 ): ProjectileConfig {
-  const shot = getShotOnlyConfig(shotBlueprintId);
+  const shot = launchForce === 0
+    ? getShotOnlyConfig(shotBlueprintId)
+    : buildProjectileShotConfig(shotBlueprintId, launchForce);
   return {
     shot,
     shotProfile: getShotProfile(shot),

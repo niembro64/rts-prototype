@@ -74,6 +74,7 @@ pub enum ShieldReflectionMode {
 pub enum ShieldBarrierShape {
     Sphere,
     InfiniteVerticalCylinder,
+    AimedCylinder,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -82,6 +83,14 @@ pub struct ShieldBarrierRatioConfig {
     pub outerRatio: Option<f64>,
     pub rimWidth: Option<f64>,
     pub originOffsetRadiusRatio: Option<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShieldSubmunitionEmitterConfig {
+    pub shotBlueprintId: String,
+    pub launchForce: f64,
+    pub cooldown: TurretCooldownConfig,
+    pub spread: TurretSpreadConfig,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -886,6 +895,7 @@ pub struct ShieldBlueprint {
     pub angle: f64,
     pub transitionTime: f64,
     pub barrier: Option<ShieldBarrierRatioConfig>,
+    pub submunitions: Option<ShieldSubmunitionEmitterConfig>,
     pub hitSound: Option<BlueprintJsonValue>,
     pub shieldBlueprintId: String,
 }
@@ -936,6 +946,7 @@ pub struct ShieldConfig {
     pub angle: f64,
     pub transitionTime: f64,
     pub barrier: Option<ShieldBarrierConfig>,
+    pub submunitions: Option<ShieldSubmunitionEmitterConfig>,
     pub shieldBlueprintId: String,
 }
 

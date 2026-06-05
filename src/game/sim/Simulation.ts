@@ -650,10 +650,22 @@ export class Simulation {
       }
     }
 
-    // Update shield sounds based on transition progress (every frame)
+    // Update turret rotation (before firing, so weapons fire in turret direction)
+    updateTurretRotation(this.world, dtMs, activeCombatUnits);
+
+    // Update shield state before projectile emission. Aimed tube shields
+    // are one turret with two emissions: the physical tube and the
+    // sprayed payload both derive from the same engaged lock this tick.
     const shieldUnits = this.world.turretShieldSpheresEnabled
       ? this.world.getShieldUnits()
       : undefined;
+    if (shieldUnits && shieldUnits.length > 0) {
+      updateShieldState(this.world, dtMs);
+    } else {
+      resetShieldBuffers();
+    }
+
+    // Update shield sounds based on the just-written transition progress.
     if (shieldUnits && shieldUnits.length > 0) {
       const shieldSimEvents = updateShieldSounds(shieldUnits);
       for (const event of shieldSimEvents) {
@@ -662,9 +674,6 @@ export class Simulation {
         this.pendingSimEvents.push(event);
       }
     }
-
-    // Update turret rotation (before firing, so weapons fire in turret direction)
-    updateTurretRotation(this.world, dtMs, activeCombatUnits);
 
     // Fire weapons and create projectiles (with recoil force for projectiles)
     const fireResult = fireTurrets(this.world, dtMs, this.forceAccumulator, activeCombatUnits);
@@ -683,13 +692,6 @@ export class Simulation {
       const onSimEvent = this.onSimEvent;
       if (onSimEvent !== null) onSimEvent(event);
       this.pendingSimEvents.push(event);
-    }
-
-    // Update shield state (range transitions)
-    if (shieldUnits && shieldUnits.length > 0) {
-      updateShieldState(this.world, dtMs);
-    } else {
-      resetShieldBuffers();
     }
 
     for (const unit of activeCombatUnits) {

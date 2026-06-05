@@ -592,6 +592,7 @@ function buildShieldConfig(
     material,
     angle: shieldBlueprint.angle,
     transitionTime: shieldBlueprint.transitionTime,
+    submunitions: shieldBlueprint.submunitions ?? undefined,
     barrier:
       computeBarrierConfig(
         shieldBlueprint.barrier,

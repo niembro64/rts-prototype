@@ -3,10 +3,10 @@
     "type": "plasma",
     "shotBlueprintId": "shotPlasmaOther",
     "name": "Heavy Plasma",
-    "mass": 30,
+    "mass": 3,
     "health": 10,
     "radius": {
-      "visual": 4,
+      "visual": 1,
       "hitbox": 3.2,
       "collision": 4
     },
@@ -25,7 +25,7 @@
         "energy": 0,
         "metal": 0
       },
-      "mass": 30,
+      "mass": 5,
       "health": 10,
       "deathExplosion": {
         "radius": 75,

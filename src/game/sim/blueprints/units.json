@@ -1662,14 +1662,14 @@
       "kind": "none"
     },
     "fullVisionRadius": 1400,
-    "mass": 900,
+    "mass": 10000,
     "cost": {
       "energy": 1200,
       "metal": 1200
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretShieldCylinderInfinite",
+        "turretBlueprintId": "turretShieldCylinderInfiniteAimed",
         "mount": {
           "x": 0,
           "y": 0,
@@ -1677,16 +1677,6 @@
         },
         "hostDirected": true,
         "requiredEngagedForFightStop": true
-      },
-      {
-        "turretBlueprintId": "turretGunTerribleAim",
-        "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 0
-        },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": false
       }
     ],
     "bodyShape": {

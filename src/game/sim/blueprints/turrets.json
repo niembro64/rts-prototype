@@ -54,61 +54,6 @@
     "emissionKind": "shot",
     "emissionBlueprintId": "shotPlasmaLight"
   },
-  "turretGunTerribleAim": {
-    "turretBlueprintId": "turretGunTerribleAim",
-    "name": "Terrible Aim Plasma",
-    "range": 200,
-    "rangeVolume": "turret-range-bottom-unbounded",
-    "cooldown": {
-      "duration": 30,
-      "durationRandomness": 0.2
-    },
-    "launchForce": 20000,
-    "turretTurnAccel": 200,
-    "turretDrag": 0.15,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 2
-    },
-    "isManualFire": false,
-    "passive": false,
-    "requiresNonObstructedLineOfSight": true,
-    "rangeMultiplierOverrides": {
-      "engageRangeMax": {
-        "acquire": 0.95,
-        "release": 1
-      },
-      "engageRangeMin": null,
-      "trackingRange": null
-    },
-    "eventsSmooth": false,
-    "color": 16777215,
-    "spread": {
-      "angle": 2.6,
-      "pelletCount": 1
-    },
-    "burst": null,
-    "shieldPanels": [],
-    "audio": {
-      "fireSound": {
-        "$audio": "event.fire.turretGunLight"
-      }
-    },
-    "verticalLauncher": false,
-    "idlePitch": 0,
-    "groundAimFraction": null,
-    "radius": {
-      "visual": 3
-    },
-    "headOnly": false,
-    "constructionEmitter": null,
-    "aimStyle": {
-      "angleType": "ballisticArcLow"
-    },
-    "kind": "attack",
-    "emissionKind": "shot",
-    "emissionBlueprintId": "shotPlasmaOther"
-  },
   "turretGunBurst": {
     "turretBlueprintId": "turretGunBurst",
     "name": "Burst Gun",
@@ -355,7 +300,7 @@
       "duration": 900,
       "durationRandomness": 0.2
     },
-    "launchForce": 90000,
+    "launchForce": 9000,
     "turretTurnAccel": 20,
     "turretDrag": 0.15,
     "barrel": {
@@ -903,6 +848,65 @@
     "kind": "attack",
     "emissionKind": "shield",
     "emissionBlueprintId": "shieldCylinderInfinite"
+  },
+  "turretShieldCylinderInfiniteAimed": {
+    "turretBlueprintId": "turretShieldCylinderInfiniteAimed",
+    "name": "Aimed Infinite Cylinder Shield",
+    "range": 500,
+    "rangeVolume": "turret-range-bottom-unbounded",
+    "cooldown": null,
+    "launchForce": 0,
+    "turretTurnAccel": 200,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "complexSingleEmitter",
+      "grate": {
+        "shape": "circle",
+        "count": 5,
+        "length": 0,
+        "width": 0.45,
+        "taper": 0.5,
+        "baseOffset": 0,
+        "originOffset": 0,
+        "thickness": 1.5,
+        "reversePhase": true
+      }
+    },
+    "isManualFire": false,
+    "passive": false,
+    "requiresNonObstructedLineOfSight": false,
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": null,
+    "burst": null,
+    "shieldPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.turretGunLight"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": {
+      "visual": 10
+    },
+    "headOnly": false,
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "rayDirect"
+    },
+    "kind": "attack",
+    "emissionKind": "shield",
+    "emissionBlueprintId": "shieldCylinderInfiniteAimed"
   },
   "turretConstruction": {
     "turretBlueprintId": "turretConstruction",

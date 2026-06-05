@@ -17,13 +17,20 @@ export type ShieldSurfaceResponse = 'reflect' | 'absorb' | 'passThrough';
 
 export type ShieldReflectionMode = 'outside-in' | 'inside-out' | 'both';
 
-export type ShieldBarrierShape = 'sphere' | 'infiniteVerticalCylinder';
+export type ShieldBarrierShape = 'sphere' | 'infiniteVerticalCylinder' | 'aimedCylinder';
 
 export type ShieldBarrierRatioConfig = {
   shape: ShieldBarrierShape;
   outerRatio?: number | null;
   rimWidth?: number | null;
   originOffsetRadiusRatio?: number | null;
+};
+
+export type ShieldSubmunitionEmitterConfig = {
+  shotBlueprintId: ShotBlueprintId;
+  launchForce: number;
+  cooldown: TurretCooldownConfig;
+  spread: TurretSpreadConfig;
 };
 
 export type ShieldMaterialVisualConfig = {
@@ -663,6 +670,7 @@ export type ShieldBlueprint = {
   angle: number;
   transitionTime: number;
   barrier: ShieldBarrierRatioConfig | null;
+  submunitions: ShieldSubmunitionEmitterConfig | null;
   hitSound: SoundEntry | null;
   shieldBlueprintId: ShieldBlueprintId;
 };
@@ -702,6 +710,7 @@ export type ShieldConfig = {
   angle: number;
   transitionTime: number;
   barrier?: ShieldBarrierConfig;
+  submunitions?: ShieldSubmunitionEmitterConfig;
   shieldBlueprintId: ShieldBlueprintId;
 };
 

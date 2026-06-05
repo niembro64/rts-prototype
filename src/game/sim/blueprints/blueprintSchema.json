@@ -165,7 +165,8 @@
     "ShieldBarrierShape": {
       "enum": [
         "sphere",
-        "infiniteVerticalCylinder"
+        "infiniteVerticalCylinder",
+        "aimedCylinder"
       ]
     },
     "ShieldBarrierRatioConfig": {
@@ -206,6 +207,30 @@
               "type": "null"
             }
           ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ShieldSubmunitionEmitterConfig": {
+      "type": "object",
+      "required": [
+        "shotBlueprintId",
+        "launchForce",
+        "cooldown",
+        "spread"
+      ],
+      "properties": {
+        "shotBlueprintId": {
+          "$ref": "#/$defs/ShotBlueprintId"
+        },
+        "launchForce": {
+          "type": "number"
+        },
+        "cooldown": {
+          "$ref": "#/$defs/TurretCooldownConfig"
+        },
+        "spread": {
+          "$ref": "#/$defs/TurretSpreadConfig"
         }
       },
       "additionalProperties": false
@@ -2712,6 +2737,7 @@
         "angle",
         "transitionTime",
         "barrier",
+        "submunitions",
         "hitSound"
       ],
       "properties": {
@@ -2731,6 +2757,16 @@
           "oneOf": [
             {
               "$ref": "#/$defs/ShieldBarrierRatioConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "submunitions": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ShieldSubmunitionEmitterConfig"
             },
             {
               "type": "null"
@@ -2889,6 +2925,9 @@
         },
         "barrier": {
           "$ref": "#/$defs/ShieldBarrierConfig"
+        },
+        "submunitions": {
+          "$ref": "#/$defs/ShieldSubmunitionEmitterConfig"
         },
         "shieldBlueprintId": {
           "$ref": "#/$defs/ShieldBlueprintId"

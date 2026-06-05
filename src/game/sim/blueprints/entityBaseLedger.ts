@@ -58,6 +58,53 @@ export function assertValidEntityBaseLedger(label: string, base: EntityBaseLedge
   assertFiniteNonNegative(label, 'base.deathExplosion.damage', base.deathExplosion.damage);
 }
 
+type EntityBaseLedgerAliasFields = {
+  cost?: ResourceCost;
+  mass?: number;
+  health?: number;
+  radius?: EntityRadiusConfig;
+};
+
+/** Reconcile legacy top-level body fields with the canonical base ledger.
+ *
+ *  The JSON still carries aliases such as unit.mass / unit.hp because
+ *  runtime and UI consumers read those fields directly. During tuning,
+ *  authors naturally edit the visible top-level value first. Treat that
+ *  value as the authored override and mirror it into base so the app does
+ *  not fail boot just because the duplicate ledger copy was not updated.
+ */
+export function normalizeEntityBaseLedgerFromAliases(
+  label: string,
+  base: EntityBaseLedger,
+  aliases: EntityBaseLedgerAliasFields,
+): EntityBaseLedger {
+  assertValidEntityBaseLedger(label, base);
+  const normalized: EntityBaseLedger = {
+    ...base,
+    cost: { ...base.cost },
+    radius: { ...base.radius },
+    deathExplosion: { ...base.deathExplosion },
+  };
+
+  if (aliases.cost !== undefined) {
+    assertValidResourceCost(label, aliases.cost);
+    normalized.cost = { ...aliases.cost };
+  }
+  if (aliases.mass !== undefined) {
+    assertFinitePositive(label, 'mass', aliases.mass);
+    normalized.mass = aliases.mass;
+  }
+  if (aliases.health !== undefined) {
+    assertFinitePositive(label, 'health', aliases.health);
+    normalized.health = aliases.health;
+  }
+  if (aliases.radius !== undefined) {
+    assertValidEntityRadius(label, aliases.radius);
+    normalized.radius = { ...aliases.radius };
+  }
+  return normalized;
+}
+
 export function assertResourceCostEquals(
   label: string,
   actual: ResourceCost,

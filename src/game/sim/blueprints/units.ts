@@ -26,9 +26,7 @@ import {
   getUnitLockOnInclusions,
 } from './lockOnConfig';
 import {
-  assertNumberEquals,
-  assertRadiusEquals,
-  assertValidEntityBaseLedger,
+  normalizeEntityBaseLedgerFromAliases,
 } from './entityBaseLedger';
 import type { UnitSupportSurface } from '../../../types/blueprints';
 
@@ -95,10 +93,16 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
     assertExplicitFields(`unit blueprint ${id}`, blueprint, UNIT_EXPLICIT_FIELDS);
     assertNoInlineLockOnInclusionFields(`unit blueprint ${id}`, blueprint);
     const locomotion = resolveInlineLocomotion(id, blueprint.locomotion);
-    assertValidEntityBaseLedger(`unit blueprint ${id}`, blueprint.base);
-    assertRadiusEquals(`unit blueprint ${id}`, blueprint.radius, blueprint.base.radius);
-    assertNumberEquals(`unit blueprint ${id}`, 'mass', blueprint.mass, blueprint.base.mass);
-    assertNumberEquals(`unit blueprint ${id}`, 'health', blueprint.hp, blueprint.base.health);
+    const base = normalizeEntityBaseLedgerFromAliases(
+      `unit blueprint ${id}`,
+      blueprint.base,
+      {
+        cost: blueprint.cost,
+        mass: blueprint.mass,
+        health: blueprint.hp,
+        radius: blueprint.radius,
+      },
+    );
     for (const mount of blueprint.turrets) {
       const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
       if (!turretBlueprint) {
@@ -114,6 +118,7 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
     }
     blueprints[id] = {
       ...blueprint,
+      base,
       ...getUnitLockOnInclusions(id),
       locomotion,
     };

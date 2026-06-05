@@ -45,7 +45,6 @@
       ],
       "turrets": [
         "turretGunLight",
-        "turretGunTerribleAim",
         "turretGunBurst",
         "turretCannon",
         "turretMortarSlow",
@@ -60,6 +59,7 @@
         "turretShieldSphere",
         "turretShieldSphereSmall",
         "turretShieldCylinderInfinite",
+        "turretShieldCylinderInfiniteAimed",
         "turretConstruction",
         "turretBeamLong",
         "turretCannonLong",
@@ -529,14 +529,6 @@
         }
       }
     },
-    "turretGunTerribleAim": {
-      "targets": {
-        "enemy": {
-          "towers": "all",
-          "units": "all"
-        }
-      }
-    },
     "turretGunBurst": {
       "targets": {
         "enemy": {
@@ -737,7 +729,6 @@
           "turrets": {
             "only": [
               "turretGunLight",
-              "turretGunTerribleAim",
               "turretGunBurst",
               "turretCannon",
               "turretGatling",
@@ -747,6 +738,7 @@
               "turretShieldSphere",
               "turretShieldSphereSmall",
               "turretShieldCylinderInfinite",
+              "turretShieldCylinderInfiniteAimed",
               "turretConstruction",
               "turretBeamLong",
               "turretCannonLong",
@@ -866,7 +858,17 @@
       "targets": {
         "enemy": {
           "towers": "all",
-          "units": "all"
+          "units": "all",
+          "buildings": "all"
+        }
+      }
+    },
+    "turretShieldCylinderInfiniteAimed": {
+      "targets": {
+        "enemy": {
+          "towers": "all",
+          "units": "all",
+          "buildings": "all"
         }
       }
     },

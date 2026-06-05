@@ -42,6 +42,7 @@ export const SHIELD_BLUEPRINT_IDS = [
   'shieldPanel',
   'shieldSphereSmall',
   'shieldCylinderInfinite',
+  'shieldCylinderInfiniteAimed',
 ] as const;
 export type ShieldBlueprintId = typeof SHIELD_BLUEPRINT_IDS[number];
 
@@ -72,7 +73,7 @@ export const TURRET_BLUEPRINT_IDS = [
   'turretAntiAir',
   'turretShieldSphereSmall',
   'turretShieldCylinderInfinite',
-  'turretGunTerribleAim',
+  'turretShieldCylinderInfiniteAimed',
 ] as const;
 export type TurretBlueprintId = typeof TURRET_BLUEPRINT_IDS[number];
 
