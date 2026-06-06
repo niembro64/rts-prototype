@@ -689,6 +689,34 @@ export class UnitDetailInstanceRenderer3D {
     }
   }
 
+  writeTurretHeadMatrixArray(
+    slot: number,
+    matrix: ArrayLike<number>,
+    offset: number,
+    entity: Entity,
+    /** Hex override for dynamic turret heads.
+     *  When undefined the normal entity color is used. */
+    colorOverride?: number,
+  ): void {
+    writeInstanceMatrixArray(
+      this.turretHeadInstanced,
+      slot,
+      matrix,
+      offset,
+      this.turretHeadMatrixDirty,
+    );
+    const colorHex = colorOverride ?? entityInstanceColorHex(entity);
+    if (this.turretHeadColorKey.get(slot) !== colorHex) {
+      writeInstanceColorHex(
+        this.turretHeadInstanced,
+        slot,
+        colorHex,
+        this.turretHeadColorDirty,
+      );
+      this.turretHeadColorKey.set(slot, colorHex);
+    }
+  }
+
   writeBarrelMatrix(slot: number, matrix: THREE.Matrix4, useCone: boolean = false): void {
     if (useCone) {
       writeInstanceMatrix(

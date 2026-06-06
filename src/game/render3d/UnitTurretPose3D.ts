@@ -15,23 +15,38 @@ import {
   TURRET_BARREL_INPUT_STRIDE,
   UnitTurretBarrelMatrixBatch3D,
 } from './UnitTurretBarrelMatrixBatch3D';
+import {
+  TURRET_HEAD_INPUT_STRIDE,
+  UnitTurretHeadMatrixBatch3D,
+} from './UnitTurretHeadMatrixBatch3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import type { TurretMountCache3D } from './TurretMountCache3D';
 
 export class UnitTurretPose3D {
-  private readonly headMat = new THREE.Matrix4();
-  private readonly headLocalPos = new THREE.Vector3();
-  private readonly headWorldPos = new THREE.Vector3();
-  private readonly batch = new UnitTurretBarrelMatrixBatch3D();
-  private input = new Float32Array(TURRET_BARREL_INPUT_STRIDE * 2048);
-  private count = 0;
+  private readonly barrelBatch = new UnitTurretBarrelMatrixBatch3D();
+  private barrelInput = new Float32Array(TURRET_BARREL_INPUT_STRIDE * 2048);
+  private barrelCount = 0;
   private readonly barrelSlots: number[] = [];
   private readonly barrelUsesCone: boolean[] = [];
+  private readonly headBatch = new UnitTurretHeadMatrixBatch3D();
+  private headInput = new Float32Array(TURRET_HEAD_INPUT_STRIDE * 2048);
+  private headCount = 0;
+  private readonly headSlots: number[] = [];
+  private readonly headEntities: Entity[] = [];
+  private readonly headColorOverrides: (number | undefined)[] = [];
+  private readonly headEntityIds: number[] = [];
+  private readonly headTurretIndexes: number[] = [];
 
   begin(): void {
-    this.count = 0;
+    this.barrelCount = 0;
     this.barrelSlots.length = 0;
     this.barrelUsesCone.length = 0;
+    this.headCount = 0;
+    this.headSlots.length = 0;
+    this.headEntities.length = 0;
+    this.headColorOverrides.length = 0;
+    this.headEntityIds.length = 0;
+    this.headTurretIndexes.length = 0;
   }
 
   update(
@@ -48,7 +63,6 @@ export class UnitTurretPose3D {
     currentDtMs: number,
     timeMs: number,
     unitDetailInstances: UnitDetailInstanceRenderer3D,
-    turretMountCache: TurretMountCache3D,
     turretBeamAimCache: TurretBeamAimCache3D,
     constructionVisuals: ConstructionVisualController3D,
   ): void {
@@ -68,9 +82,18 @@ export class UnitTurretPose3D {
         : bodyCenterHeight;
       const turretMountY = turretHeadCenterY - (mesh.chassisLift ?? 0) - headRadius;
       turretMesh.root.position.set(turret.mount.x, turretMountY, turret.mount.y);
-      this.writeMountCache(entity, turretIdx, mesh, turretMesh, headRadius, parentQuaternion, turretMountCache);
 
       if (turretMesh.constructionEmitter) {
+        this.enqueueHeadMount(
+          entity,
+          turretIdx,
+          undefined,
+          undefined,
+          parentPosition,
+          parentQuaternion,
+          turretMesh.root,
+          headRadius,
+        );
         turretMesh.root.visible = true;
         applyTurretAimPose3D(
           turretMesh,
@@ -139,13 +162,26 @@ export class UnitTurretPose3D {
           : turretMesh.shieldEmitterCore
             ? entityShieldSphereTurretHeadColorHex(entity, turret, timeMs)
             : undefined;
-        this.writeHeadInstance(
+        this.enqueueHeadMount(
           entity,
-          mesh,
-          turretMesh,
-          parentQuaternion,
-          unitDetailInstances,
+          turretIdx,
+          turretMesh.headSlot,
           headColorOverride,
+          parentPosition,
+          parentQuaternion,
+          turretMesh.root,
+          turretMesh.headRadius,
+        );
+      } else {
+        this.enqueueHeadMount(
+          entity,
+          turretIdx,
+          undefined,
+          undefined,
+          parentPosition,
+          parentQuaternion,
+          turretMesh.root,
+          headRadius,
         );
       }
 
@@ -157,14 +193,58 @@ export class UnitTurretPose3D {
     }
   }
 
-  flush(unitDetailInstances: UnitDetailInstanceRenderer3D): void {
-    const count = this.count;
+  flush(
+    unitDetailInstances: UnitDetailInstanceRenderer3D,
+    turretMountCache: TurretMountCache3D,
+  ): void {
+    this.flushHeadMounts(unitDetailInstances, turretMountCache);
+    this.flushBarrels(unitDetailInstances);
+  }
+
+  private flushHeadMounts(
+    unitDetailInstances: UnitDetailInstanceRenderer3D,
+    turretMountCache: TurretMountCache3D,
+  ): void {
+    const count = this.headCount;
     if (count <= 0) return;
 
-    const input = this.batch.begin(count);
-    input.set(this.input.subarray(0, count * TURRET_BARREL_INPUT_STRIDE));
-    const output = this.batch.compute(count);
-    const outputStride = this.batch.outputStride;
+    const input = this.headBatch.begin(count);
+    input.set(this.headInput.subarray(0, count * TURRET_HEAD_INPUT_STRIDE));
+    const output = this.headBatch.compute(count);
+    const outputStride = this.headBatch.outputStride;
+
+    for (let i = 0; i < count; i++) {
+      const offset = i * outputStride;
+      const headX = output[offset + 12];
+      const headY = output[offset + 13];
+      const headZ = output[offset + 14];
+      turretMountCache.write(
+        this.headEntityIds[i],
+        this.headTurretIndexes[i],
+        headX,
+        headZ,
+        headY,
+      );
+      const slot = this.headSlots[i];
+      if (slot < 0) continue;
+      unitDetailInstances.writeTurretHeadMatrixArray(
+        slot,
+        output,
+        offset,
+        this.headEntities[i],
+        this.headColorOverrides[i],
+      );
+    }
+  }
+
+  private flushBarrels(unitDetailInstances: UnitDetailInstanceRenderer3D): void {
+    const count = this.barrelCount;
+    if (count <= 0) return;
+
+    const input = this.barrelBatch.begin(count);
+    input.set(this.barrelInput.subarray(0, count * TURRET_BARREL_INPUT_STRIDE));
+    const output = this.barrelBatch.compute(count);
+    const outputStride = this.barrelBatch.outputStride;
 
     for (let i = 0; i < count; i++) {
       unitDetailInstances.writeBarrelMatrixArray(
@@ -176,58 +256,39 @@ export class UnitTurretPose3D {
     }
   }
 
-  private writeHeadInstance(
-    entity: Entity,
-    mesh: EntityMesh,
-    turretMesh: TurretMesh,
-    parentQuaternion: THREE.Quaternion,
-    unitDetailInstances: UnitDetailInstanceRenderer3D,
-    colorOverride: number | undefined,
-  ): void {
-    const liftPos = mesh.liftGroup?.position;
-    const headRadius = turretMesh.headRadius;
-    if (headRadius === undefined || turretMesh.headSlot === undefined) return;
-    this.headLocalPos.set(
-      (liftPos?.x ?? 0) + turretMesh.root.position.x,
-      (liftPos?.y ?? (mesh.chassisLift ?? 0)) + turretMesh.root.position.y + headRadius,
-      (liftPos?.z ?? 0) + turretMesh.root.position.z,
-    );
-    this.headLocalPos.applyQuaternion(parentQuaternion);
-    this.headWorldPos.copy(mesh.group.position).add(this.headLocalPos);
-    this.headMat.makeScale(headRadius, headRadius, headRadius);
-    this.headMat.setPosition(this.headWorldPos);
-    unitDetailInstances.writeTurretHeadMatrix(
-      turretMesh.headSlot,
-      this.headMat,
-      entity,
-      colorOverride,
-    );
-  }
-
-  private writeMountCache(
+  private enqueueHeadMount(
     entity: Entity,
     turretIdx: number,
-    mesh: EntityMesh,
-    turretMesh: TurretMesh,
-    headRadius: number,
+    headSlot: number | undefined,
+    colorOverride: number | undefined,
+    parentPosition: THREE.Vector3,
     parentQuaternion: THREE.Quaternion,
-    turretMountCache: TurretMountCache3D,
+    root: THREE.Group,
+    headRadius: number,
   ): void {
-    const liftPos = mesh.liftGroup?.position;
-    this.headLocalPos.set(
-      (liftPos?.x ?? 0) + turretMesh.root.position.x,
-      (liftPos?.y ?? (mesh.chassisLift ?? 0)) + turretMesh.root.position.y + headRadius,
-      (liftPos?.z ?? 0) + turretMesh.root.position.z,
-    );
-    this.headLocalPos.applyQuaternion(parentQuaternion);
-    this.headWorldPos.copy(mesh.group.position).add(this.headLocalPos);
-    turretMountCache.write(
-      entity.id,
-      turretIdx,
-      this.headWorldPos.x,
-      this.headWorldPos.z,
-      this.headWorldPos.y,
-    );
+    const index = this.headCount;
+    this.headCount++;
+    this.ensureHeadInputCapacity(this.headCount);
+
+    const base = index * TURRET_HEAD_INPUT_STRIDE;
+    const input = this.headInput;
+    input[base] = parentPosition.x;
+    input[base + 1] = parentPosition.y;
+    input[base + 2] = parentPosition.z;
+    input[base + 3] = parentQuaternion.x;
+    input[base + 4] = parentQuaternion.y;
+    input[base + 5] = parentQuaternion.z;
+    input[base + 6] = parentQuaternion.w;
+    input[base + 7] = root.position.x;
+    input[base + 8] = root.position.y;
+    input[base + 9] = root.position.z;
+    input[base + 10] = headRadius;
+
+    this.headSlots[index] = headSlot ?? -1;
+    this.headEntities[index] = entity;
+    this.headColorOverrides[index] = colorOverride;
+    this.headEntityIds[index] = entity.id;
+    this.headTurretIndexes[index] = turretIdx;
   }
 
   private writeBarrelInstances(
@@ -267,16 +328,16 @@ export class UnitTurretPose3D {
     spinGroup: THREE.Group | undefined,
     barrel: THREE.Mesh,
   ): void {
-    const index = this.count;
-    this.count++;
-    this.ensureInputCapacity(this.count);
+    const index = this.barrelCount;
+    this.barrelCount++;
+    this.ensureBarrelInputCapacity(this.barrelCount);
 
     const pitchPos = pitchGroup?.position;
     const pitchQuat = pitchGroup?.quaternion;
     const spinPos = spinGroup?.position;
     const spinQuat = spinGroup?.quaternion;
     const base = index * TURRET_BARREL_INPUT_STRIDE;
-    const input = this.input;
+    const input = this.barrelInput;
     input[base] = parentPosition.x;
     input[base + 1] = parentPosition.y;
     input[base + 2] = parentPosition.z;
@@ -320,13 +381,23 @@ export class UnitTurretPose3D {
     this.barrelUsesCone[index] = useCone;
   }
 
-  private ensureInputCapacity(count: number): void {
+  private ensureBarrelInputCapacity(count: number): void {
     const needed = count * TURRET_BARREL_INPUT_STRIDE;
-    if (this.input.length >= needed) return;
-    let next = this.input.length;
+    if (this.barrelInput.length >= needed) return;
+    let next = this.barrelInput.length;
     while (next < needed) next *= 2;
     const expanded = new Float32Array(next);
-    expanded.set(this.input);
-    this.input = expanded;
+    expanded.set(this.barrelInput);
+    this.barrelInput = expanded;
+  }
+
+  private ensureHeadInputCapacity(count: number): void {
+    const needed = count * TURRET_HEAD_INPUT_STRIDE;
+    if (this.headInput.length >= needed) return;
+    let next = this.headInput.length;
+    while (next < needed) next *= 2;
+    const expanded = new Float32Array(next);
+    expanded.set(this.headInput);
+    this.headInput = expanded;
   }
 }

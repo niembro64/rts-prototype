@@ -1035,7 +1035,6 @@ export class Render3DEntities {
         this._currentDtMs,
         this._currentTimeMs,
         this.unitDetailInstances,
-        this.turretMountCache,
         this.turretBeamAimCache,
         this.constructionVisuals,
       );
@@ -1104,7 +1103,7 @@ export class Render3DEntities {
       // world group, depth-occluded by terrain).
     }
     this.chassisInstancePose.flush(this.unitDetailInstances);
-    this.turretPose.flush(this.unitDetailInstances);
+    this.turretPose.flush(this.unitDetailInstances, this.turretMountCache);
     this.shieldPanelPose.flush(this.unitDetailInstances);
 
     // Units no longer present leave the live set. Rather than tearing the

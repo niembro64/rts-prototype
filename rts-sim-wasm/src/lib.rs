@@ -5804,6 +5804,114 @@ pub fn render_turret_barrel_compute(count: u32) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+//  Render pose helper — unit turret head/mount matrices
+//
+//  Each row composes the visible turret mount center:
+//    parentPos + R(parentQuat) · (rootPos + (0, headRadius, 0))
+//
+//  The output is the head sphere's scale matrix with that translation;
+//  TS also reads translation columns 12..14 back into TurretMountCache3D.
+// ─────────────────────────────────────────────────────────────────
+
+pub const RENDER_TURRET_HEAD_INPUT_STRIDE: usize = 11;
+pub const RENDER_TURRET_HEAD_OUTPUT_STRIDE: usize = 16;
+
+struct RenderTurretHeadScratch {
+    input: Vec<f32>,
+    output: Vec<f32>,
+}
+
+struct RenderTurretHeadScratchHolder(UnsafeCell<Option<RenderTurretHeadScratch>>);
+unsafe impl Sync for RenderTurretHeadScratchHolder {}
+static RENDER_TURRET_HEAD_SCRATCH: RenderTurretHeadScratchHolder =
+    RenderTurretHeadScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn render_turret_head_scratch() -> &'static mut RenderTurretHeadScratch {
+    unsafe {
+        let cell = &mut *RENDER_TURRET_HEAD_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(RenderTurretHeadScratch {
+                input: vec![0.0; RENDER_TURRET_HEAD_INPUT_STRIDE * 2048],
+                output: vec![0.0; RENDER_TURRET_HEAD_OUTPUT_STRIDE * 2048],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn render_turret_head_input_scratch_ptr() -> *const f32 {
+    render_turret_head_scratch().input.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn render_turret_head_output_scratch_ptr() -> *const f32 {
+    render_turret_head_scratch().output.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn render_turret_head_scratch_ensure(count: u32) {
+    let s = render_turret_head_scratch();
+    let input_needed = (count as usize) * RENDER_TURRET_HEAD_INPUT_STRIDE;
+    if s.input.len() < input_needed {
+        s.input.resize(input_needed, 0.0);
+    }
+    let output_needed = (count as usize) * RENDER_TURRET_HEAD_OUTPUT_STRIDE;
+    if s.output.len() < output_needed {
+        s.output.resize(output_needed, 0.0);
+    }
+}
+
+#[wasm_bindgen]
+pub fn render_turret_head_compute(count: u32) {
+    let s = render_turret_head_scratch();
+    let count_usize = count as usize;
+    debug_assert!(s.input.len() >= count_usize * RENDER_TURRET_HEAD_INPUT_STRIDE);
+    debug_assert!(s.output.len() >= count_usize * RENDER_TURRET_HEAD_OUTPUT_STRIDE);
+
+    for i in 0..count_usize {
+        let ib = i * RENDER_TURRET_HEAD_INPUT_STRIDE;
+        let ob = i * RENDER_TURRET_HEAD_OUTPUT_STRIDE;
+        let parent_pos = [
+            s.input[ib] as f64,
+            s.input[ib + 1] as f64,
+            s.input[ib + 2] as f64,
+        ];
+        let parent_q = [
+            s.input[ib + 3] as f64,
+            s.input[ib + 4] as f64,
+            s.input[ib + 5] as f64,
+            s.input[ib + 6] as f64,
+        ];
+        let head_radius = s.input[ib + 10] as f64;
+        let local_center = [
+            s.input[ib + 7] as f64,
+            s.input[ib + 8] as f64 + head_radius,
+            s.input[ib + 9] as f64,
+        ];
+        let center = render_compose_child_offset(parent_q, parent_pos, local_center);
+
+        s.output[ob] = head_radius as f32;
+        s.output[ob + 1] = 0.0;
+        s.output[ob + 2] = 0.0;
+        s.output[ob + 3] = 0.0;
+        s.output[ob + 4] = 0.0;
+        s.output[ob + 5] = head_radius as f32;
+        s.output[ob + 6] = 0.0;
+        s.output[ob + 7] = 0.0;
+        s.output[ob + 8] = 0.0;
+        s.output[ob + 9] = 0.0;
+        s.output[ob + 10] = head_radius as f32;
+        s.output[ob + 11] = 0.0;
+        s.output[ob + 12] = center[0] as f32;
+        s.output[ob + 13] = center[1] as f32;
+        s.output[ob + 14] = center[2] as f32;
+        s.output[ob + 15] = 1.0;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────
 //  Phase 3e — Batched hover orientation kernel
 //
 //  Replaces the per-entity quatFromYawPitchRoll + quatDampedSpringStep

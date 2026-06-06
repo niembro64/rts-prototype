@@ -84,6 +84,10 @@ import __wbg_init, {
   render_turret_barrel_input_scratch_ptr,
   render_turret_barrel_output_scratch_ptr,
   render_turret_barrel_scratch_ensure,
+  render_turret_head_compute,
+  render_turret_head_input_scratch_ptr,
+  render_turret_head_output_scratch_ptr,
+  render_turret_head_scratch_ensure,
   unit_force_step_batch,
   projectile_pool_init,
   projectile_pool_capacity,
@@ -1642,6 +1646,12 @@ export interface RenderPoseApi {
   turretBarrelCompute: (count: number) => void;
   turretBarrelInputStride: number;
   turretBarrelOutputStride: number;
+  turretHeadInputScratchPtr: () => number;
+  turretHeadOutputScratchPtr: () => number;
+  turretHeadScratchEnsure: (count: number) => void;
+  turretHeadCompute: (count: number) => void;
+  turretHeadInputStride: number;
+  turretHeadOutputStride: number;
 }
 
 /** Constants exposed alongside the SpatialGrid API. Mirrors the
@@ -4060,6 +4070,12 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           turretBarrelCompute: render_turret_barrel_compute,
           turretBarrelInputStride: 38,
           turretBarrelOutputStride: 16,
+          turretHeadInputScratchPtr: render_turret_head_input_scratch_ptr,
+          turretHeadOutputScratchPtr: render_turret_head_output_scratch_ptr,
+          turretHeadScratchEnsure: render_turret_head_scratch_ensure,
+          turretHeadCompute: render_turret_head_compute,
+          turretHeadInputStride: 11,
+          turretHeadOutputStride: 16,
         },
         snapshotBaseline: {
           create: snapshot_baseline_create,
