@@ -68,6 +68,10 @@ import __wbg_init, {
   engine_statics_remove,
   pool_resolve_sphere_cuboid_full,
   quat_hover_orientation_step_batch,
+  render_unit_pose_compute,
+  render_unit_pose_input_scratch_ptr,
+  render_unit_pose_output_scratch_ptr,
+  render_unit_pose_scratch_ensure,
   unit_force_step_batch,
   projectile_pool_init,
   projectile_pool_capacity,
@@ -1591,10 +1595,23 @@ export interface SimWasm {
    *  @msgpack/msgpack's `ignoreUndefined: true` output on every
    *  dev build. No consumer reads the bytes yet. */
   readonly snapshotEncode: SnapshotEncodeApi;
+  /** Render-pose scratch kernels. These are presentation-side matrix
+   *  transforms whose inputs come from client render packets and whose
+   *  outputs are consumed synchronously by Three.js instance writers. */
+  readonly renderPose: RenderPoseApi;
   /** The WASM linear memory — JS wrapper code constructs typed-array
    *  views over this for zero-copy result reads. Re-bind views after
    *  any operation that might grow the memory (rare). */
   readonly memory: WebAssembly.Memory;
+}
+
+export interface RenderPoseApi {
+  unitInputScratchPtr: () => number;
+  unitOutputScratchPtr: () => number;
+  unitScratchEnsure: (count: number) => void;
+  unitCompute: (count: number) => void;
+  unitInputStride: number;
+  unitOutputStride: number;
 }
 
 /** Constants exposed alongside the SpatialGrid API. Mirrors the
@@ -3987,6 +4004,14 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           setPanelMaterialMode: shield_panel_pool_set_material_mode,
           clearanceSegment: shield_clearance_segment,
           clearanceArc: shield_clearance_arc,
+        },
+        renderPose: {
+          unitInputScratchPtr: render_unit_pose_input_scratch_ptr,
+          unitOutputScratchPtr: render_unit_pose_output_scratch_ptr,
+          unitScratchEnsure: render_unit_pose_scratch_ensure,
+          unitCompute: render_unit_pose_compute,
+          unitInputStride: 11,
+          unitOutputStride: 32,
         },
         snapshotBaseline: {
           create: snapshot_baseline_create,

@@ -63,6 +63,7 @@ import { ShieldPanelPose3D } from './ShieldPanelPose3D';
 import { UnitChassisInstancePose3D } from './UnitChassisInstancePose3D';
 import { UnitTurretPose3D } from './UnitTurretPose3D';
 import { applyUnitLiftGroupPose3D, UnitMeshBuilder3D } from './UnitMeshBuilder3D';
+import { UnitRenderPoseBatch3D } from './UnitRenderPoseBatch3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 import { refreshLocomotionSupportSurfaces } from './LocomotionTerrainSampler';
 import {
@@ -142,15 +143,6 @@ export type RenderEntityUpdatePacket3D = {
   scoped: boolean;
 };
 
-// Shared Y-up axis for manual instanced transform composition.
-const _INST_UP = new THREE.Vector3(0, 1, 0);
-
-// Scratch globals reused by the per-unit surface-tilt path so the
-// per-frame loop allocates no quaternions/vectors. Tilt is applied
-// to every unit, every frame — keep this fast.
-const _threeUp = new THREE.Vector3(0, 1, 0);
-const _tiltSurfaceN = new THREE.Vector3();
-const _tiltQuat = new THREE.Quaternion();
 // Inverse of the tilt quaternion — used to project a world barrel
 // direction into the chassis-local (tiltGroup) frame so the turret's
 // articulated yaw + pitch can compensate for the chassis tilt and
@@ -221,7 +213,11 @@ export class Render3DEntities {
   private shieldPanelPose = new ShieldPanelPose3D();
   private chassisInstancePose = new UnitChassisInstancePose3D();
   private turretPose = new UnitTurretPose3D();
+  private unitRenderPose = new UnitRenderPoseBatch3D();
   private readonly fallbackUnitRenderRows = new UnitRenderPacket3D();
+  private readonly _poseUnitRows: number[] = [];
+  private readonly _poseUnitMeshes: EntityMesh[] = [];
+  private readonly _poseBodyOpacity: number[] = [];
 
   // Per-entity leg-state snapshots stashed right before a mesh teardown
   // mesh teardown and consumed immediately after rebuild, so feet keep
@@ -270,23 +266,19 @@ export class Render3DEntities {
   // shield shield treatment so they read as reflector surfaces
   // instead of chrome slabs.
   private mirrorShinyNeutralMat = createShieldFallbackPanelMaterial();
-  /** Per-frame scratch: combined `tilt · Ry(yaw)` quaternion + scratch
-   *  yaw-only quaternion. Module-local axis (`_INST_UP`) drives the yaw
-   *  quaternion. */
+  /** Per-frame scratch populated from UnitRenderPoseBatch3D's
+   *  `tilt · Ry(yaw)` output before chassis/turret writers consume it. */
   private _smoothParentQuat = new THREE.Quaternion();
-  private _smoothYawQuat = new THREE.Quaternion();
-  /** Lift offset (0, chassisLift, 0) rotated by parentQuat, added to
-   *  groupPos so parentMat reproduces the scenegraph chain
+  /** Lifted world position from the unit base-pose batch. Reproduces
+   *  the scenegraph chain
    *    group → yawGroup → liftGroup → chassis
    *  (which inserts T(0, lift, 0) after Ry(yaw) and before S(radius)).
    *  Without this, smooth-chassis + poly-chassis instances render at
    *  the OLD ground height while per-Mesh chassis (correctly parented
    *  through liftGroup) render lifted — visible mismatch on every
    *  chassis-instanced unit. */
-  private _smoothLiftOffset = new THREE.Vector3();
   private _smoothLiftedPos = new THREE.Vector3();
 
-  private _unitOneVec = new THREE.Vector3(1, 1, 1);
   private turretMountCache = new TurretMountCache3D();
   // Last beam-firing direction per turret, collected from the live beam
   // line-projectiles each frame (collectBeamTurretAim) and read by the
@@ -786,6 +778,15 @@ export class Render3DEntities {
     const mapWidth = this.clientViewState.getMapWidth();
     const mapHeight = this.clientViewState.getMapHeight();
 
+    const poseRows = this._poseUnitRows;
+    const poseMeshes = this._poseUnitMeshes;
+    const poseBodyOpacity = this._poseBodyOpacity;
+    poseRows.length = 0;
+    poseMeshes.length = 0;
+    poseBodyOpacity.length = 0;
+    this.unitRenderPose.begin(unitRows.count);
+    let poseCount = 0;
+
     for (let row = 0; row < unitRows.count; row++) {
       const entityId = unitRows.entityIdAt(row);
       const e = unitRows.entityAt(row);
@@ -803,25 +804,8 @@ export class Render3DEntities {
       }
       const tx = unitRows.x[row];
       const ty = unitRows.y[row];
-      const tRot = unitRows.rotation[row];
       const turrets = unitRows.turretsAt(row);
       const groundZ = unitRows.groundY[row];
-      // RIGID-BODY POSE TRACKS THE SIM EVERY FRAME. The unit group
-      // carries the chassis AND its child turret / mirror groups
-      // (both parented to yawGroup), so all pose/detail work below
-      // runs at render cadence instead of being scope/camera gated.
-      const existing = this.unitMeshes.get(entityId);
-      if (existing) {
-        existing.group.position.set(tx, groundZ, ty);
-        // Note: the canonical yawGroup orientation write happens later
-        // in this iteration after the surface-tilt block (see
-        // `m.yawGroup.rotation.set(0, yaw, 0)` and the airborne bank
-        // composition that follows it). Setting yawGroup here would
-        // be overwritten anyway.
-        applyUnitLiftGroupPose3D(existing, e);
-        this.updateUnitInstanceColors(e, existing, turrets);
-      }
-      this.barrelSpinState.advance(e, spinDt);
       // Use `scale` (visual) rather than `shot` (collider) for horizontal
       // footprint, matching the 2D renderer. Body height is per-unit
       // (see BodyShape3D / BodyDimensions); turrets mount on top of
@@ -866,10 +850,13 @@ export class Render3DEntities {
           legState: legSnap,
         });
         if (legSnap !== undefined) this.legStateCache.delete(entityId);
-        this.updateUnitInstanceColors(e, m, turrets);
         this.unitMeshes.set(entityId, m);
       }
+      applyUnitLiftGroupPose3D(m, e);
+      this.updateUnitInstanceColors(e, m, turrets);
+      this.barrelSpinState.advance(e, spinDt);
       this.updateUnitFallbackDynamicMaterials(e, m, turrets);
+
       // Build-in materialization: the body reveals via per-instance
       // alpha, not by growing the chassis from a point.
       // 0 = not yet started (invisible), ramping to 1 as the body builds.
@@ -877,10 +864,50 @@ export class Render3DEntities {
       // local player's vision eases in instead of appearing instantly;
       // the two alpha reasons multiply (a half-built unit just scouted
       // fades toward its current build opacity, not past it).
-      const bodyMaterialized = unitRows.bodyMaterializedAt(row);
       const bodyOpacity = unitRows.bodyOpacity[row] * this.advanceSpawnFadeIn(entityId);
-      const bodyVisible = fullUnitDetail && bodyOpacity > 0;
-      m.chassis.visible = bodyVisible;
+      m.chassis.visible = fullUnitDetail && bodyOpacity > 0;
+
+      const liftPos = m.liftGroup?.position;
+      this.unitRenderPose.writeUnit(
+        poseCount,
+        tx,
+        groundZ,
+        ty,
+        unitRows.rotation[row],
+        unitRows.normalX[row],
+        unitRows.normalY[row],
+        unitRows.normalZ[row],
+        liftPos?.x ?? 0,
+        liftPos?.y ?? (m.chassisLift ?? 0),
+        liftPos?.z ?? 0,
+        unitRows.airborneAt(row),
+      );
+      poseRows[poseCount] = row;
+      poseMeshes[poseCount] = m;
+      poseBodyOpacity[poseCount] = bodyOpacity;
+      poseCount++;
+    }
+
+    const poseOutput = this.unitRenderPose.compute(poseCount);
+    const poseOutputStride = this.unitRenderPose.outputStride;
+
+    for (let poseIndex = 0; poseIndex < poseCount; poseIndex++) {
+      const row = poseRows[poseIndex];
+      const e = unitRows.entityAt(row);
+      if (e === undefined || e.unit === null) continue;
+      const m = poseMeshes[poseIndex];
+      const tx = unitRows.x[row];
+      const ty = unitRows.y[row];
+      const tRot = unitRows.rotation[row];
+      const turrets = unitRows.turretsAt(row);
+      const groundZ = unitRows.groundY[row];
+      const radius = unitRows.radiusVisual[row];
+      const bodyOpacity = poseBodyOpacity[poseIndex];
+      const bodyMaterialized = unitRows.bodyMaterializedAt(row);
+      const bodyVisible = bodyOpacity > 0;
+      const airborne = unitRows.airborneAt(row);
+      const yaw = -tRot;
+      const poseBase = poseIndex * poseOutputStride;
 
       // Position group at the unit's footprint. sim.x → Three.x, sim.y
       // → Three.z (the existing horizontal convention). Vertical =
@@ -888,48 +915,20 @@ export class Render3DEntities {
       // terrain + bodyCenterHeight, so the group sits at the terrain
       // surface and the chassis/turret meshes stack from there.
       m.group.position.set(tx, groundZ, ty);
-
-      // unitGroup (m.group) carries POSITION + the world-frame TILT.
-      // m.yawGroup (the inner group) carries the chassis YAW around
-      // the slope's local up. The hierarchy is:
-      //
-      //   world  =  T(unit_base) · tilt · Ry(yaw) · local_point
-      //
-      // — tilt OUTER (world frame), yaw INNER (slope tangent plane).
-      // This matches a vehicle yawing along its slope: the unit's
-      // tilt direction is property of the ground (not the unit's
-      // facing), and the yaw rotates the unit's "facing" within the
-      // slope tangent plane. Outside the ripple disc the surface
-      // gradient is exactly zero and `m.group.quaternion` collapses
-      // to identity — same fast path as before.
-      const yaw = -tRot;
-      let chassisTilted = false;
-      // Hover and flying chassis never contact terrain, so the ground
-      // normal is not their "up." Leaving the group quaternion at
-      // identity keeps the body level regardless of the slope below.
-      const airborne = unitRows.airborneAt(row);
-      // Read the unit's sim-side smoothed normal instead of querying
-      // the raw terrain mesh per frame. The sim's updateUnitGroundNormal
-      // owns the canonical value (initialized at spawn, blended each
-      // tick); for unit entities this is what we want.
-      // For non-unit entities (buildings, projectiles) we fall back
-      // to the raw terrain query since they don't run through the
-      // unit ground normal EMA.
-      const n = {
-        nx: unitRows.normalX[row],
-        ny: unitRows.normalY[row],
-        nz: unitRows.normalZ[row],
-      };
-      if (airborne || (n.nx === 0 && n.ny === 0)) {
-        m.group.quaternion.identity();
-      } else {
-        // sim normal (nx, ny, nz=up) → three.js (nx, nz, ny).
-        _tiltSurfaceN.set(n.nx, n.nz, n.ny);
-        _tiltQuat.setFromUnitVectors(_threeUp, _tiltSurfaceN);
-        m.group.quaternion.copy(_tiltQuat);
-        // Cache inverse for the per-turret aim compensation below.
-        _invTiltQuat.copy(_tiltQuat).invert();
-        chassisTilted = true;
+      m.group.quaternion.set(
+        poseOutput[poseBase],
+        poseOutput[poseBase + 1],
+        poseOutput[poseBase + 2],
+        poseOutput[poseBase + 3],
+      );
+      const chassisTilted = poseOutput[poseBase + 15] !== 0;
+      if (chassisTilted) {
+        _invTiltQuat.set(
+          poseOutput[poseBase + 4],
+          poseOutput[poseBase + 5],
+          poseOutput[poseBase + 6],
+          poseOutput[poseBase + 7],
+        );
       }
       if (m.yawGroup) m.yawGroup.rotation.set(0, yaw, 0);
 
@@ -991,35 +990,18 @@ export class Render3DEntities {
       const bodyRadius = radius;
       m.chassis.scale.setScalar(bodyRadius);
 
-      // ── Per-unit chain cache ───────────────────────────────────────
-      // The scenegraph chain `group · yawGroup · liftGroup` is used by
-      // THREE downstream passes per unit: chassis (1×), turret-head
-      // (K×), barrel (K×). Recomputing the parent quaternion + lifted
-      // position 2K + 1 times — and rebuilding the barrel-chain prefix
-      // matrix from m.group up via three Matrix4.compose / .multiply
-      // pairs every turret — is wasted work that scales with turret
-      // count. Precompute once here, then every consumer pulls from
-      // the cached scratch vars (`_smoothParentQuat`, `_smoothLiftedPos`)
-      // and the cached prefix matrix `_unitChainMat`.
-      this._smoothYawQuat.setFromAxisAngle(_INST_UP, yaw);
-      this._smoothParentQuat
-        .copy(m.group.quaternion)
-        .multiply(this._smoothYawQuat);
-      {
-        const liftPos = m.liftGroup?.position;
-        this._smoothLiftOffset
-          .set(liftPos?.x ?? 0, liftPos?.y ?? (m.chassisLift ?? 0), liftPos?.z ?? 0)
-          .applyQuaternion(this._smoothParentQuat);
-        this._smoothLiftedPos.copy(m.group.position).add(this._smoothLiftOffset);
-      }
-      // Unscaled prefix matrix `T(liftedPos) · R(parentQuat) · S(1)`.
-      // Barrel chain seeds from this; chassis paths still apply their
-      // own radius scale on top of the cached parentQuat / liftedPos.
-      this._unitChainMat.compose(
-        this._smoothLiftedPos,
-        this._smoothParentQuat,
-        this._unitOneVec,
+      this._smoothParentQuat.set(
+        poseOutput[poseBase + 8],
+        poseOutput[poseBase + 9],
+        poseOutput[poseBase + 10],
+        poseOutput[poseBase + 11],
       );
+      this._smoothLiftedPos.set(
+        poseOutput[poseBase + 12],
+        poseOutput[poseBase + 13],
+        poseOutput[poseBase + 14],
+      );
+      this._unitChainMat.fromArray(poseOutput, poseBase + 16);
       this.chassisInstancePose.update(
         e,
         m,

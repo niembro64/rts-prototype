@@ -5074,6 +5074,222 @@ fn quat_yaw(q: [f64; 4]) -> f64 {
 }
 
 // ─────────────────────────────────────────────────────────────────
+//  Render pose scratch — unit base chain
+//
+//  Computes the high-count unit render chain:
+//    group tilt quaternion, inverse tilt, parent quaternion
+//    (tilt · Ry(-simRotation)), lifted world position, and
+//    T(liftedPos) · R(parentQuat) matrix.
+//
+//  This mirrors the Render3DEntities unit base-pose math. The visual
+//  airborne bank intentionally stays out of the parent quaternion here,
+//  matching the current instanced chassis/turret path.
+// ─────────────────────────────────────────────────────────────────
+
+pub const RENDER_UNIT_POSE_INPUT_STRIDE: usize = 11;
+pub const RENDER_UNIT_POSE_OUTPUT_STRIDE: usize = 32;
+
+struct RenderUnitPoseScratch {
+    input: Vec<f32>,
+    output: Vec<f32>,
+}
+
+struct RenderUnitPoseScratchHolder(UnsafeCell<Option<RenderUnitPoseScratch>>);
+unsafe impl Sync for RenderUnitPoseScratchHolder {}
+static RENDER_UNIT_POSE_SCRATCH: RenderUnitPoseScratchHolder =
+    RenderUnitPoseScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn render_unit_pose_scratch() -> &'static mut RenderUnitPoseScratch {
+    unsafe {
+        let cell = &mut *RENDER_UNIT_POSE_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(RenderUnitPoseScratch {
+                input: vec![0.0; RENDER_UNIT_POSE_INPUT_STRIDE * 512],
+                output: vec![0.0; RENDER_UNIT_POSE_OUTPUT_STRIDE * 512],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn render_unit_pose_input_scratch_ptr() -> *const f32 {
+    render_unit_pose_scratch().input.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn render_unit_pose_output_scratch_ptr() -> *const f32 {
+    render_unit_pose_scratch().output.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn render_unit_pose_scratch_ensure(count: u32) {
+    let s = render_unit_pose_scratch();
+    let input_needed = (count as usize) * RENDER_UNIT_POSE_INPUT_STRIDE;
+    if s.input.len() < input_needed {
+        s.input.resize(input_needed, 0.0);
+    }
+    let output_needed = (count as usize) * RENDER_UNIT_POSE_OUTPUT_STRIDE;
+    if s.output.len() < output_needed {
+        s.output.resize(output_needed, 0.0);
+    }
+}
+
+#[inline]
+fn quat_mul(a: [f64; 4], b: [f64; 4]) -> [f64; 4] {
+    [
+        a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+        a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+        a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+        a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+    ]
+}
+
+#[inline]
+fn quat_rotate_vec(q: [f64; 4], v: [f64; 3]) -> [f64; 3] {
+    let qx = q[0];
+    let qy = q[1];
+    let qz = q[2];
+    let qw = q[3];
+    let vx = v[0];
+    let vy = v[1];
+    let vz = v[2];
+
+    let tx = 2.0 * (qy * vz - qz * vy);
+    let ty = 2.0 * (qz * vx - qx * vz);
+    let tz = 2.0 * (qx * vy - qy * vx);
+
+    [
+        vx + qw * tx + (qy * tz - qz * ty),
+        vy + qw * ty + (qz * tx - qx * tz),
+        vz + qw * tz + (qx * ty - qy * tx),
+    ]
+}
+
+#[inline]
+fn render_tilt_quat_from_surface_normal(
+    sim_nx: f64,
+    sim_ny: f64,
+    sim_nz: f64,
+    airborne: bool,
+) -> ([f64; 4], bool) {
+    if airborne || (sim_nx == 0.0 && sim_ny == 0.0) {
+        return ([0.0, 0.0, 0.0, 1.0], false);
+    }
+
+    // Three.js normal = (sim.nx, sim.nz, sim.ny). Quaternion equals
+    // THREE.Quaternion.setFromUnitVectors((0,1,0), threeNormal).
+    let tx = sim_nx;
+    let ty = sim_nz;
+    let tz = sim_ny;
+    let r = ty + 1.0;
+    let mut q = if r < 1e-6 {
+        [0.0, 0.0, 1.0, 0.0]
+    } else {
+        [tz, 0.0, -tx, r]
+    };
+    quat_normalize_inplace(&mut q);
+    (q, true)
+}
+
+#[inline]
+fn render_write_mat4_compose(out: &mut [f32], offset: usize, pos: [f64; 3], q: [f64; 4]) {
+    let x = q[0];
+    let y = q[1];
+    let z = q[2];
+    let w = q[3];
+    let x2 = x + x;
+    let y2 = y + y;
+    let z2 = z + z;
+    let xx = x * x2;
+    let xy = x * y2;
+    let xz = x * z2;
+    let yy = y * y2;
+    let yz = y * z2;
+    let zz = z * z2;
+    let wx = w * x2;
+    let wy = w * y2;
+    let wz = w * z2;
+
+    out[offset] = (1.0 - (yy + zz)) as f32;
+    out[offset + 1] = (xy + wz) as f32;
+    out[offset + 2] = (xz - wy) as f32;
+    out[offset + 3] = 0.0;
+    out[offset + 4] = (xy - wz) as f32;
+    out[offset + 5] = (1.0 - (xx + zz)) as f32;
+    out[offset + 6] = (yz + wx) as f32;
+    out[offset + 7] = 0.0;
+    out[offset + 8] = (xz + wy) as f32;
+    out[offset + 9] = (yz - wx) as f32;
+    out[offset + 10] = (1.0 - (xx + yy)) as f32;
+    out[offset + 11] = 0.0;
+    out[offset + 12] = pos[0] as f32;
+    out[offset + 13] = pos[1] as f32;
+    out[offset + 14] = pos[2] as f32;
+    out[offset + 15] = 1.0;
+}
+
+#[wasm_bindgen]
+pub fn render_unit_pose_compute(count: u32) {
+    let s = render_unit_pose_scratch();
+    let count_usize = count as usize;
+    debug_assert!(s.input.len() >= count_usize * RENDER_UNIT_POSE_INPUT_STRIDE);
+    debug_assert!(s.output.len() >= count_usize * RENDER_UNIT_POSE_OUTPUT_STRIDE);
+
+    for i in 0..count_usize {
+        let ib = i * RENDER_UNIT_POSE_INPUT_STRIDE;
+        let ob = i * RENDER_UNIT_POSE_OUTPUT_STRIDE;
+        let base_x = s.input[ib] as f64;
+        let base_y = s.input[ib + 1] as f64;
+        let base_z = s.input[ib + 2] as f64;
+        let sim_rotation = s.input[ib + 3] as f64;
+        let normal_x = s.input[ib + 4] as f64;
+        let normal_y = s.input[ib + 5] as f64;
+        let normal_z = s.input[ib + 6] as f64;
+        let lift_x = s.input[ib + 7] as f64;
+        let lift_y = s.input[ib + 8] as f64;
+        let lift_z = s.input[ib + 9] as f64;
+        let airborne = s.input[ib + 10] != 0.0;
+
+        let (tilt_q, chassis_tilted) =
+            render_tilt_quat_from_surface_normal(normal_x, normal_y, normal_z, airborne);
+        let inv_tilt_q = if chassis_tilted {
+            [-tilt_q[0], -tilt_q[1], -tilt_q[2], tilt_q[3]]
+        } else {
+            [0.0, 0.0, 0.0, 1.0]
+        };
+        let yaw = -sim_rotation;
+        let yaw_q = [0.0, (yaw * 0.5).sin(), 0.0, (yaw * 0.5).cos()];
+        let parent_q = quat_mul(tilt_q, yaw_q);
+        let lifted_offset = quat_rotate_vec(parent_q, [lift_x, lift_y, lift_z]);
+        let lifted_pos = [
+            base_x + lifted_offset[0],
+            base_y + lifted_offset[1],
+            base_z + lifted_offset[2],
+        ];
+
+        s.output[ob] = tilt_q[0] as f32;
+        s.output[ob + 1] = tilt_q[1] as f32;
+        s.output[ob + 2] = tilt_q[2] as f32;
+        s.output[ob + 3] = tilt_q[3] as f32;
+        s.output[ob + 4] = inv_tilt_q[0] as f32;
+        s.output[ob + 5] = inv_tilt_q[1] as f32;
+        s.output[ob + 6] = inv_tilt_q[2] as f32;
+        s.output[ob + 7] = inv_tilt_q[3] as f32;
+        s.output[ob + 8] = parent_q[0] as f32;
+        s.output[ob + 9] = parent_q[1] as f32;
+        s.output[ob + 10] = parent_q[2] as f32;
+        s.output[ob + 11] = parent_q[3] as f32;
+        s.output[ob + 12] = lifted_pos[0] as f32;
+        s.output[ob + 13] = lifted_pos[1] as f32;
+        s.output[ob + 14] = lifted_pos[2] as f32;
+        s.output[ob + 15] = if chassis_tilted { 1.0 } else { 0.0 };
+        render_write_mat4_compose(&mut s.output, ob + 16, lifted_pos, parent_q);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────
 //  Phase 3e — Batched hover orientation kernel
 //
 //  Replaces the per-entity quatFromYawPitchRoll + quatDampedSpringStep

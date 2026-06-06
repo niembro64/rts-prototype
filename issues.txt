@@ -24,23 +24,28 @@ OPTIMIZATIONS TO MAKE
 object and scenegraph loops.
 
 Files:
+rts-sim-wasm/src/lib.rs
 src/game/network/ClientViewState.ts
+src/game/sim-wasm/init.ts
 src/game/render3d/EntityRenderPackets3D.ts
 src/game/render3d/Render3DEntities.ts
 src/game/render3d/BuildingEntityRenderer3D.ts
+src/game/render3d/UnitRenderPoseBatch3D.ts
 
 ClientViewState prepares body HUD, body-name, shield, contact-shadow,
 ground-print, unit render-row, and building render-row packets. Unit/building
 rows carry render keys, entity/turret row references, and dirty/lifecycle flags,
 and the renderers consume those rows without steady-state per-row Entity map
-lookups. The remaining hot work is still TypeScript pose generation and
-Three.js scenegraph churn: unit group transforms, tilt, turret pose, shield
-panel pose, locomotion, fade, overlays, and cache pruning; plus per-building
-mesh, turret, animation, overlay, and cache-pruning work. This is likely to
-dominate at the "thousands of units" target.
+lookups. Unit base-pose chain generation (tilt quaternion, inverse tilt,
+parent quaternion, lifted position, and parent matrix) now runs as a batched
+WASM scratch-buffer kernel. The remaining hot work is still TypeScript pose
+generation and Three.js scenegraph churn: per-body-part chassis matrices,
+turret pose, shield-panel pose, locomotion, fade, overlays, and cache pruning;
+plus per-building mesh, turret, animation, overlay, and cache-pruning work.
+This is likely to dominate at the "thousands of units" target.
 
 Required fix:
-Move as much unit pose-matrix, turret pose, shield-panel pose, building pose,
-locomotion, fade, overlay, and cache-pruning work as practical into WASM or
-GPU-updated buffers, then restrict Three.js work to explicit buffer range
-uploads and lifecycle changes.
+Move as much remaining unit part-matrix, turret pose, shield-panel pose,
+building pose, locomotion, fade, overlay, and cache-pruning work as practical
+into WASM or GPU-updated buffers, then restrict Three.js work to explicit
+buffer range uploads and lifecycle changes.
