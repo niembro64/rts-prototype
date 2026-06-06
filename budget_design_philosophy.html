@@ -186,6 +186,33 @@
     </section>
 
     <section>
+      <h2>Design Inheritance</h2>
+      <p>
+        Budget Annihilation, the <code>rts-prototype</code> repo, is our
+        browser-native extension of Beyond All Reason. This document describes
+        the places where the prototype deliberately differs: authoritative
+        server networking, client prediction, force-and-mass physical systems,
+        browser constraints, owned simulation code, and the atomic gameplay
+        pieces this project adds or reshapes.
+      </p>
+      <p>
+        When this document does not describe a gameplay or player-facing
+        behavior, the default is Beyond All Reason as implemented in the
+        <code>Beyond-All-Reason</code> repo. That fallback covers command
+        ergonomics, battlefield expectations, economy feel, construction and
+        production behavior, unit control language, selection behavior,
+        minimap/radar/sight expectations, and any other ordinary RTS behavior
+        this document leaves unstated.
+      </p>
+      <ul class="rule-list">
+        <li>Rules written in this document override the BAR fallback.</li>
+        <li>Intentional departures from BAR should be written into this document.</li>
+        <li>BAR is the behavioral fallback, not a requirement to copy BAR code, Lua structure, assets, Recoil/Spring engine internals, or network assumptions.</li>
+        <li>When BAR behavior depends on Recoil/Spring details, translate the player-facing behavior into Budget Annihilation's browser, authoritative-server, physics-first architecture.</li>
+      </ul>
+    </section>
+
+    <section>
       <h2>North Star</h2>
       <p>
         We are not building a lockstep RTS where every browser must simulate the same authoritative
@@ -1387,7 +1414,8 @@
       <p>
         The project identity is different: the browser is a hard constraint, the network model is
         authoritative snapshots plus client prediction, and the world should be even more physically
-        grounded. BAR is a benchmark, not a source of code or assets.
+        grounded. BAR is the gameplay fallback and ergonomics reference; this
+        project owns its implementation, data contracts, and browser runtime.
       </p>
       <p>
         One BAR behavior we deliberately imitate is the separation between player-visible command
