@@ -325,7 +325,7 @@ export class RtsScene3DRenderPhase {
         scoped: this.renderScope.getMode() !== 'all',
       },
     );
-    this.clientViewState.consumeUnitRenderDirties();
+    this.clientViewState.consumeRenderDirties();
     if (shotNamesEnabled) {
       this.populateShotNamePacket(
         this.collectRenderShotNameProjectiles(projectileQueryBounds),

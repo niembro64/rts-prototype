@@ -146,6 +146,7 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
     buildingRenderFrameKey: geometryKey,
     buildingRenderBlueprintId: entity.buildingBlueprintId,
     buildingRenderTurretCount: buildingTurrets?.length ?? 0,
+    buildingHasPerFrameTurretWork: entityHasPerFrameBuildingTurretWork(entity),
     buildingHeight: shape.height,
     buildingPrimaryMaterialLocked: shape.primaryMaterialLocked === true,
     buildingBodyless: shape.bodyless === true,
@@ -204,6 +205,8 @@ export class BuildingEntityRenderer3D {
   private buildingPoseCount = 0;
   private readonly buildingPoseMeshes: EntityMesh[] = [];
   private readonly buildingPoseRotations: number[] = [];
+  private lastFrameStateKey: string | null = null;
+  private lastRangeOverlayStateVersion = -1;
 
   constructor(options: BuildingEntityRenderer3DOptions) {
     this.world = options.world;
@@ -240,7 +243,16 @@ export class BuildingEntityRenderer3D {
     const entitySetVersion = this.clientViewState.getEntitySetVersion();
     const packetProvided = buildingRows !== undefined;
     const fallbackFullPrune = !packetProvided && entitySetVersion !== this.lastEntitySetVersion;
-    const pruneBuildings = scopedRender || fallbackFullPrune;
+    const rangeOverlayStateVersion = this.selectionOverlays.getRangeStateVersion();
+    const forceFullRows =
+      !scopedRender &&
+      (
+        !packetProvided ||
+        this.lastFrameStateKey !== frameState.key ||
+        this.lastRangeOverlayStateVersion !== rangeOverlayStateVersion ||
+        (this.meshes.size === 0 && this.clientViewState.getBuildings().length > 0)
+      );
+    const pruneBuildings = scopedRender || fallbackFullPrune || forceFullRows;
     const pruneToken = pruneBuildings
       ? ++this.renderScopeToken
       : 0;
@@ -249,8 +261,13 @@ export class BuildingEntityRenderer3D {
     this.barrelSpinEnabled = getGraphicsConfig().barrelSpin;
     this.beginTurretAimFrame();
     this.beginBuildingPoseFrame();
-    const rows = buildingRows ?? this.populateFallbackBuildingRenderRows();
-    this.removeBuildingMeshesFromPacket(rows, beamAimCache);
+    if (buildingRows !== undefined) {
+      this.removeBuildingMeshesFromPacket(buildingRows, beamAimCache);
+    }
+    const rows = forceFullRows
+      ? this.populateFallbackBuildingRenderRows()
+      : buildingRows ?? this.populateFallbackBuildingRenderRows();
+    if (buildingRows === undefined) this.removeBuildingMeshesFromPacket(rows, beamAimCache);
 
     for (let row = 0; row < rows.count; row++) {
       const entityId = rows.entityIdAt(row);
@@ -261,7 +278,9 @@ export class BuildingEntityRenderer3D {
       const rowDirty = rows.renderDirtyAt(row) || rows.lifecycleDirtyAt(row);
       const activePrediction = rows.activePredictionAt(row);
       const needsTurretFrame =
-        activePrediction || entityHasPerFrameBuildingTurretWork(entity);
+        activePrediction ||
+        mesh?.buildingHasPerFrameTurretWork === true ||
+        (mesh === undefined && entityHasPerFrameBuildingTurretWork(entity));
       const bodyFadeActive =
         rows.bodyOpacity[row] < 1 || mesh?.buildingGroupFadeActive === true;
       const overlayDirty = mesh !== undefined && this.staticBuildingOverlaysNeedUpdate(
@@ -299,6 +318,8 @@ export class BuildingEntityRenderer3D {
 
     if (pruneBuildings) this.pruneUnseenBuildingMeshes(pruneToken, scopedRender, beamAimCache);
     this.lastEntitySetVersion = entitySetVersion;
+    this.lastFrameStateKey = frameState.key;
+    this.lastRangeOverlayStateVersion = rangeOverlayStateVersion;
   }
 
   private populateFallbackBuildingRenderRows(): BuildingRenderPacket3D {

@@ -78,6 +78,8 @@ export class SelectionOverlayRenderer3D {
   private showAnyRange = false;
   private showAnyUnitRadius = false;
   private selectedCount = 0;
+  private rangeStateKey = '';
+  private rangeStateVersion = 0;
 
   private readonly ringGeom = new THREE.TorusGeometry(1.0, 0.06, 8, 36);
   private readonly radiusMatVisual = new THREE.LineBasicMaterial({
@@ -163,6 +165,23 @@ export class SelectionOverlayRenderer3D {
     this.showAnyRange = anyRangeToggleActive();
     this.showAnyUnitRadius = anyUnitRadiusToggleActive();
     this.selectedCount = this.clientViewState.getSelectedIds().size;
+    const nextRangeStateKey = [
+      this.showTrackAcquire,
+      this.showTrackRelease,
+      this.showEngageAcquire,
+      this.showEngageRelease,
+      this.showEngageMinAcquire,
+      this.showEngageMinRelease,
+      this.showBuild,
+    ].join('|');
+    if (nextRangeStateKey !== this.rangeStateKey) {
+      this.rangeStateKey = nextRangeStateKey;
+      this.rangeStateVersion++;
+    }
+  }
+
+  getRangeStateVersion(): number {
+    return this.rangeStateVersion;
   }
 
   unitOverlaysNeedUpdate(m: OverlayEntityMesh, selected: boolean): boolean {

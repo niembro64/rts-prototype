@@ -1048,7 +1048,7 @@ export class ClientViewState {
       const units = this.getUnits();
       const buildings = this.getBuildings();
       this.populateUnitRenderRows3D(units, out);
-      this.populateBuildingRenderRows3D(buildings, out);
+      this.populateQueuedBuildingRenderRows3D(out);
       if (options.includeBodyHud) {
         this.populateBodyHudPacket3D(this.getHudEntities(), options.hoveredEntity, options, out);
       }
@@ -1118,7 +1118,7 @@ export class ClientViewState {
     return out;
   }
 
-  consumeUnitRenderDirties(): void {
+  consumeRenderDirties(): void {
     this.dirtyUnitRenderIds.clear();
     this.dirtyBuildingRenderIds.clear();
     this.removedUnitRenderIds.length = 0;
@@ -1202,12 +1202,20 @@ export class ClientViewState {
     }
   }
 
-  private populateBuildingRenderRows3D(
-    buildings: readonly Entity[],
-    out: ClientViewRenderEntityPackets3D,
-  ): void {
-    for (let i = 0; i < buildings.length; i++) {
-      this.pushBuildingRenderRow3D(buildings[i], out);
+  private populateQueuedBuildingRenderRows3D(out: ClientViewRenderEntityPackets3D): void {
+    for (const id of this.activeEntityPredictionIds) {
+      const entity = this.entities.get(id);
+      if (entity !== undefined && entity.building !== null) this.pushBuildingRenderRow3D(entity, out);
+    }
+    for (const id of this.dirtyBuildingRenderIds) {
+      if (this.activeEntityPredictionIds.has(id)) continue;
+      const entity = this.entities.get(id);
+      if (entity !== undefined && entity.building !== null) this.pushBuildingRenderRow3D(entity, out);
+    }
+    for (const id of this.renderLifecycleDirtyIds) {
+      if (this.activeEntityPredictionIds.has(id) || this.dirtyBuildingRenderIds.has(id)) continue;
+      const entity = this.entities.get(id);
+      if (entity !== undefined && entity.building !== null) this.pushBuildingRenderRow3D(entity, out);
     }
   }
 
