@@ -5290,6 +5290,157 @@ pub fn render_unit_pose_compute(count: u32) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+//  Render pose helper — building group + body matrices
+//
+//  Each row writes:
+//    group: T(sim.x, baseY, sim.y) · Ry(-simRotation)
+//    body:  T(0, height / 2, 0) · S(width, height, footprintDepth)
+//
+//  Output uses Three.js Matrix4 column-major layout. Bodyless render
+//  profiles receive an identity body matrix; visibility still lives in
+//  the TS renderer because it is lifecycle/material orchestration.
+// ─────────────────────────────────────────────────────────────────
+
+pub const RENDER_BUILDING_POSE_INPUT_STRIDE: usize = 8;
+pub const RENDER_BUILDING_POSE_OUTPUT_STRIDE: usize = 32;
+
+struct RenderBuildingPoseScratch {
+    input: Vec<f32>,
+    output: Vec<f32>,
+}
+
+struct RenderBuildingPoseScratchHolder(UnsafeCell<Option<RenderBuildingPoseScratch>>);
+unsafe impl Sync for RenderBuildingPoseScratchHolder {}
+static RENDER_BUILDING_POSE_SCRATCH: RenderBuildingPoseScratchHolder =
+    RenderBuildingPoseScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn render_building_pose_scratch() -> &'static mut RenderBuildingPoseScratch {
+    unsafe {
+        let cell = &mut *RENDER_BUILDING_POSE_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(RenderBuildingPoseScratch {
+                input: vec![0.0; RENDER_BUILDING_POSE_INPUT_STRIDE * 512],
+                output: vec![0.0; RENDER_BUILDING_POSE_OUTPUT_STRIDE * 512],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn render_building_pose_input_scratch_ptr() -> *const f32 {
+    render_building_pose_scratch().input.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn render_building_pose_output_scratch_ptr() -> *const f32 {
+    render_building_pose_scratch().output.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn render_building_pose_scratch_ensure(count: u32) {
+    let s = render_building_pose_scratch();
+    let input_needed = (count as usize) * RENDER_BUILDING_POSE_INPUT_STRIDE;
+    if s.input.len() < input_needed {
+        s.input.resize(input_needed, 0.0);
+    }
+    let output_needed = (count as usize) * RENDER_BUILDING_POSE_OUTPUT_STRIDE;
+    if s.output.len() < output_needed {
+        s.output.resize(output_needed, 0.0);
+    }
+}
+
+#[inline]
+fn render_write_building_group_matrix(
+    out: &mut [f32],
+    offset: usize,
+    x: f64,
+    sim_y: f64,
+    base_y: f64,
+    sim_rotation: f64,
+) {
+    let yaw = -sim_rotation;
+    let c = yaw.cos() as f32;
+    let s = yaw.sin() as f32;
+    out[offset] = c;
+    out[offset + 1] = 0.0;
+    out[offset + 2] = -s;
+    out[offset + 3] = 0.0;
+    out[offset + 4] = 0.0;
+    out[offset + 5] = 1.0;
+    out[offset + 6] = 0.0;
+    out[offset + 7] = 0.0;
+    out[offset + 8] = s;
+    out[offset + 9] = 0.0;
+    out[offset + 10] = c;
+    out[offset + 11] = 0.0;
+    out[offset + 12] = x as f32;
+    out[offset + 13] = base_y as f32;
+    out[offset + 14] = sim_y as f32;
+    out[offset + 15] = 1.0;
+}
+
+#[inline]
+fn render_write_building_body_matrix(
+    out: &mut [f32],
+    offset: usize,
+    width: f64,
+    height: f64,
+    depth: f64,
+    bodyless: bool,
+) {
+    let sx = (if bodyless { 1.0 } else { width }) as f32;
+    let sy = (if bodyless { 1.0 } else { height }) as f32;
+    let sz = (if bodyless { 1.0 } else { depth }) as f32;
+    out[offset] = sx;
+    out[offset + 1] = 0.0;
+    out[offset + 2] = 0.0;
+    out[offset + 3] = 0.0;
+    out[offset + 4] = 0.0;
+    out[offset + 5] = sy;
+    out[offset + 6] = 0.0;
+    out[offset + 7] = 0.0;
+    out[offset + 8] = 0.0;
+    out[offset + 9] = 0.0;
+    out[offset + 10] = sz;
+    out[offset + 11] = 0.0;
+    out[offset + 12] = 0.0;
+    out[offset + 13] = if bodyless { 0.0 } else { (height * 0.5) as f32 };
+    out[offset + 14] = 0.0;
+    out[offset + 15] = 1.0;
+}
+
+#[wasm_bindgen]
+pub fn render_building_pose_compute(count: u32) {
+    let s = render_building_pose_scratch();
+    let count_usize = count as usize;
+    debug_assert!(s.input.len() >= count_usize * RENDER_BUILDING_POSE_INPUT_STRIDE);
+    debug_assert!(s.output.len() >= count_usize * RENDER_BUILDING_POSE_OUTPUT_STRIDE);
+
+    for i in 0..count_usize {
+        let ib = i * RENDER_BUILDING_POSE_INPUT_STRIDE;
+        let ob = i * RENDER_BUILDING_POSE_OUTPUT_STRIDE;
+        render_write_building_group_matrix(
+            &mut s.output,
+            ob,
+            s.input[ib] as f64,
+            s.input[ib + 1] as f64,
+            s.input[ib + 2] as f64,
+            s.input[ib + 3] as f64,
+        );
+        render_write_building_body_matrix(
+            &mut s.output,
+            ob + 16,
+            s.input[ib + 4] as f64,
+            s.input[ib + 5] as f64,
+            s.input[ib + 6] as f64,
+            s.input[ib + 7] != 0.0,
+        );
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────
 //  Render pose helper — unit chassis part matrices
 //
 //  Each row composes the already-smoothed unit parent transform with one

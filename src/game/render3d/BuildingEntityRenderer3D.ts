@@ -33,6 +33,10 @@ import {
   TURRET_AIM_MODE_WORLD_DIR,
   UnitTurretAimBatch3D,
 } from './UnitTurretAimBatch3D';
+import {
+  BUILDING_POSE_INPUT_STRIDE,
+  BuildingPoseBatch3D,
+} from './BuildingPoseBatch3D';
 
 const BUILDING_HEIGHT = 120;
 
@@ -68,9 +72,11 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
     ? getBuildingConfig(entity.buildingBlueprintId).renderProfile
     : 'unknown';
   const group = new THREE.Group();
+  group.matrixAutoUpdate = false;
   group.userData.entityId = entity.id;
 
   const shape = buildBuildingShape(shapeType, width, depth, getPrimaryMat(ownerId));
+  shape.primary.matrixAutoUpdate = false;
   shape.primary.userData.entityId = entity.id;
 
   const chassis = new THREE.Group();
@@ -176,6 +182,11 @@ export class BuildingEntityRenderer3D {
   private turretAimInput = new Float32Array(TURRET_AIM_INPUT_STRIDE * 256);
   private turretAimCount = 0;
   private readonly turretAimMeshes: TurretMesh[] = [];
+  private readonly buildingPoseBatch = new BuildingPoseBatch3D();
+  private buildingPoseInput = new Float32Array(BUILDING_POSE_INPUT_STRIDE * 256);
+  private buildingPoseCount = 0;
+  private readonly buildingPoseMeshes: EntityMesh[] = [];
+  private readonly buildingPoseRotations: number[] = [];
 
   constructor(options: BuildingEntityRenderer3DOptions) {
     this.world = options.world;
@@ -216,6 +227,7 @@ export class BuildingEntityRenderer3D {
     this.beamAimCache = beamAimCache;
     this.barrelSpinEnabled = getGraphicsConfig().barrelSpin;
     this.beginTurretAimFrame();
+    this.beginBuildingPoseFrame();
     const rows = buildingRows ?? this.populateFallbackBuildingRenderRows();
 
     for (let row = 0; row < rows.count; row++) {
@@ -227,6 +239,7 @@ export class BuildingEntityRenderer3D {
       this.updateBuilding(entity, rows, row, frameState);
     }
 
+    this.flushBuildingPoseRecords();
     this.flushTurretAimRecords();
     this.animations.update(this.meshes, spinDt, currentDtMs, timeMs);
     // Advance any in-progress death-out fades every frame (independent of
@@ -415,23 +428,30 @@ export class BuildingEntityRenderer3D {
     // Transform.z is the building's vertical center in sim space.
     // Render from the footprint base so buildings sit on the same
     // terrain height the server used when creating their collider.
-    mesh.group.position.set(x, buildingBaseY, y);
-    mesh.group.rotation.y = -rotation;
+    const height = mesh.buildingHeight ?? BUILDING_HEIGHT;
+    this.enqueueBuildingPose(
+      mesh,
+      x,
+      y,
+      buildingBaseY,
+      rotation,
+      width,
+      height,
+      depth,
+      mesh.buildingBodyless === true,
+    );
     // Construction appearance is now the shared materialization fade
     // (applied per frame in updateBuilding), not a pale shell-material
     // swap — buildings alpha-fade in the same way as units.
 
     // Full size from frame one — construction is revealed by the shared
     // opacity fade (same as units), never by rising out of the ground.
-    const height = mesh.buildingHeight ?? BUILDING_HEIGHT;
     const primary = mesh.chassisMeshes[0];
     if (mesh.buildingBodyless) {
       // Bodyless render profiles have no chassis to show. Keep the
       // primary hidden and unscaled.
       primary.visible = false;
     } else {
-      primary.position.set(0, height / 2, 0);
-      primary.scale.set(width, height, depth);
       primary.visible = true;
     }
 
@@ -577,6 +597,39 @@ export class BuildingEntityRenderer3D {
     this.turretAimMeshes.length = 0;
   }
 
+  private beginBuildingPoseFrame(): void {
+    this.buildingPoseCount = 0;
+    this.buildingPoseMeshes.length = 0;
+    this.buildingPoseRotations.length = 0;
+  }
+
+  private flushBuildingPoseRecords(): void {
+    const count = this.buildingPoseCount;
+    if (count <= 0) return;
+
+    const input = this.buildingPoseBatch.begin(count);
+    input.set(this.buildingPoseInput.subarray(0, count * BUILDING_POSE_INPUT_STRIDE));
+    const output = this.buildingPoseBatch.compute(count);
+    const outputStride = this.buildingPoseBatch.outputStride;
+
+    for (let i = 0; i < count; i++) {
+      const mesh = this.buildingPoseMeshes[i];
+      const outputBase = i * outputStride;
+      mesh.group.matrix.fromArray(output, outputBase);
+      mesh.group.position.set(
+        output[outputBase + 12],
+        output[outputBase + 13],
+        output[outputBase + 14],
+      );
+      mesh.group.rotation.y = this.buildingPoseRotations[i];
+      mesh.group.matrixWorldNeedsUpdate = true;
+
+      const primary = mesh.chassisMeshes[0];
+      primary.matrix.fromArray(output, outputBase + 16);
+      primary.matrixWorldNeedsUpdate = true;
+    }
+  }
+
   private flushTurretAimRecords(): void {
     const count = this.turretAimCount;
     if (count <= 0) return;
@@ -625,6 +678,35 @@ export class BuildingEntityRenderer3D {
     this.turretAimMeshes[index] = turretMesh;
   }
 
+  private enqueueBuildingPose(
+    mesh: EntityMesh,
+    x: number,
+    y: number,
+    baseY: number,
+    rotation: number,
+    width: number,
+    height: number,
+    depth: number,
+    bodyless: boolean,
+  ): void {
+    const index = this.buildingPoseCount;
+    this.buildingPoseCount++;
+    this.ensureBuildingPoseInputCapacity(this.buildingPoseCount);
+
+    const base = index * BUILDING_POSE_INPUT_STRIDE;
+    const input = this.buildingPoseInput;
+    input[base] = x;
+    input[base + 1] = y;
+    input[base + 2] = baseY;
+    input[base + 3] = rotation;
+    input[base + 4] = width;
+    input[base + 5] = height;
+    input[base + 6] = depth;
+    input[base + 7] = bodyless ? 1 : 0;
+    this.buildingPoseMeshes[index] = mesh;
+    this.buildingPoseRotations[index] = -rotation;
+  }
+
   private ensureTurretAimInputCapacity(count: number): void {
     const needed = count * TURRET_AIM_INPUT_STRIDE;
     if (this.turretAimInput.length >= needed) return;
@@ -633,5 +715,15 @@ export class BuildingEntityRenderer3D {
     const expanded = new Float32Array(next);
     expanded.set(this.turretAimInput);
     this.turretAimInput = expanded;
+  }
+
+  private ensureBuildingPoseInputCapacity(count: number): void {
+    const needed = count * BUILDING_POSE_INPUT_STRIDE;
+    if (this.buildingPoseInput.length >= needed) return;
+    let next = this.buildingPoseInput.length;
+    while (next < needed) next *= 2;
+    const expanded = new Float32Array(next);
+    expanded.set(this.buildingPoseInput);
+    this.buildingPoseInput = expanded;
   }
 }

@@ -72,6 +72,10 @@ import __wbg_init, {
   render_unit_pose_input_scratch_ptr,
   render_unit_pose_output_scratch_ptr,
   render_unit_pose_scratch_ensure,
+  render_building_pose_compute,
+  render_building_pose_input_scratch_ptr,
+  render_building_pose_output_scratch_ptr,
+  render_building_pose_scratch_ensure,
   render_chassis_part_compute,
   render_chassis_part_input_scratch_ptr,
   render_chassis_part_output_scratch_ptr,
@@ -1632,6 +1636,12 @@ export interface RenderPoseApi {
   unitCompute: (count: number) => void;
   unitInputStride: number;
   unitOutputStride: number;
+  buildingInputScratchPtr: () => number;
+  buildingOutputScratchPtr: () => number;
+  buildingScratchEnsure: (count: number) => void;
+  buildingCompute: (count: number) => void;
+  buildingInputStride: number;
+  buildingOutputStride: number;
   chassisPartInputScratchPtr: () => number;
   chassisPartOutputScratchPtr: () => number;
   chassisPartScratchEnsure: (count: number) => void;
@@ -4062,6 +4072,12 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           unitCompute: render_unit_pose_compute,
           unitInputStride: 11,
           unitOutputStride: 32,
+          buildingInputScratchPtr: render_building_pose_input_scratch_ptr,
+          buildingOutputScratchPtr: render_building_pose_output_scratch_ptr,
+          buildingScratchEnsure: render_building_pose_scratch_ensure,
+          buildingCompute: render_building_pose_compute,
+          buildingInputStride: 8,
+          buildingOutputStride: 32,
           chassisPartInputScratchPtr: render_chassis_part_input_scratch_ptr,
           chassisPartOutputScratchPtr: render_chassis_part_output_scratch_ptr,
           chassisPartScratchEnsure: render_chassis_part_scratch_ensure,
