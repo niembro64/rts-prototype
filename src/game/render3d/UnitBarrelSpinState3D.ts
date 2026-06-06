@@ -86,12 +86,6 @@ export class UnitBarrelSpinState3D {
     this.spins.delete(entityId);
   }
 
-  prune(seenIds: ReadonlySet<EntityId>): void {
-    for (const id of this.spins.keys()) {
-      if (!seenIds.has(id)) this.spins.delete(id);
-    }
-  }
-
   clear(): void {
     this.spins.clear();
   }

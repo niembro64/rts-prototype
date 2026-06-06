@@ -29,6 +29,10 @@ export type RangeRingMesh = THREE.Mesh & {
 
 export type EntityMesh = {
   group: THREE.Group;
+  /** Renderer-owned visibility token for scoped render pruning. Live rows
+   *  stamp the current token; meshes with an older token are outside the
+   *  active render scope and can be torn down without querying view state. */
+  renderSeenToken?: number;
   /** Yaw subgroup. Hierarchy: `group` carries position + the surface
    *  TILT (world-frame), `yawGroup` carries the unit's facing yaw
    *  (around the chassis-local up axis = the slope's up). Locomotion
@@ -165,10 +169,10 @@ export type EntityMesh = {
    *  instanceColor instead. */
   unitDynamicTurretHeadColorHex?: number[];
   /** Set when the sim reports this unit was DESTROYED (a 'death' SimEvent),
-   *  as opposed to merely leaving the local player's vision. Read once when
-   *  the mesh leaves the live set (Render3DEntities removal sweep): killed
-   *  units play the scatter + death-fade; units that just lost vision fade
-   *  out quietly in place. */
+   *  as opposed to merely leaving the local player's vision. Read when the
+   *  render removal queue drops the mesh from the live set: killed units play
+   *  the scatter + death-fade; units that just lost vision fade out quietly
+   *  in place. */
   killed?: boolean;
   /** Whether a per-Mesh group fade clone is currently installed on
    *  this unit. Used to restore real materials exactly once when

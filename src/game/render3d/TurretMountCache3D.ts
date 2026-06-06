@@ -89,17 +89,11 @@ export class TurretMountCache3D {
     return this.current.get(packTurretMountKey(entityId, turretIdx)) ?? null;
   }
 
-  /** Drop persisted per-turret history for entities that no longer
-   *  exist. `current` is cleared every frame in reset(), but `previous`
-   *  (the prior-frame samples used to derive velocity/acceleration)
-   *  would otherwise retain an entry for every (entityId, turretIdx)
-   *  ever written. Keys pack entityId * 256 + turretIdx, so unpack the
-   *  entityId to test membership in the live set. Mirrors
-   *  UnitBarrelSpinState3D.prune. */
-  prune(seenIds: ReadonlySet<EntityId>): void {
-    for (const key of this.previous.keys()) {
-      const entityId = Math.floor(key / 256);
-      if (!seenIds.has(entityId)) this.previous.delete(key);
+  delete(entityId: EntityId): void {
+    for (let turretIdx = 0; turretIdx < 256; turretIdx++) {
+      const key = packTurretMountKey(entityId, turretIdx);
+      this.current.delete(key);
+      this.previous.delete(key);
     }
   }
 }

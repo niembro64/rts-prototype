@@ -180,7 +180,7 @@ export class BuildingEntityRenderer3D {
   private readonly disposeWorldParentedOverlays: (mesh: EntityMesh) => void;
   private readonly animations: BuildingAnimationController3D;
   private readonly meshes = new Map<EntityId, EntityMesh>();
-  private readonly seenIds = new Set<EntityId>();
+  private renderScopeToken = 0;
   private lastEntitySetVersion = -1;
   // Shared death-out flow (same controller units use, see EntityFade3D): a
   // dead building/tower is kept and its whole group dissolved 1 → 0 before
@@ -238,20 +238,24 @@ export class BuildingEntityRenderer3D {
     scopedRender: boolean = false,
   ): void {
     const entitySetVersion = this.clientViewState.getEntitySetVersion();
-    const pruneBuildings = scopedRender || entitySetVersion !== this.lastEntitySetVersion;
-    if (pruneBuildings) this.seenIds.clear();
+    const packetProvided = buildingRows !== undefined;
+    const fallbackFullPrune = !packetProvided && entitySetVersion !== this.lastEntitySetVersion;
+    const pruneBuildings = scopedRender || fallbackFullPrune;
+    const pruneToken = pruneBuildings
+      ? ++this.renderScopeToken
+      : 0;
     this.constructionVisuals.beginFrame();
     this.beamAimCache = beamAimCache;
     this.barrelSpinEnabled = getGraphicsConfig().barrelSpin;
     this.beginTurretAimFrame();
     this.beginBuildingPoseFrame();
     const rows = buildingRows ?? this.populateFallbackBuildingRenderRows();
+    this.removeBuildingMeshesFromPacket(rows, beamAimCache);
 
     for (let row = 0; row < rows.count; row++) {
       const entityId = rows.entityIdAt(row);
       const entity = rows.entityAt(row);
       if (entity === undefined || entity.building === null) continue;
-      if (pruneBuildings) this.seenIds.add(entityId);
 
       const mesh = this.meshes.get(entityId);
       const rowDirty = rows.renderDirtyAt(row) || rows.lifecycleDirtyAt(row);
@@ -274,11 +278,16 @@ export class BuildingEntityRenderer3D {
         !overlayDirty
       ) {
         mesh.group.visible = true;
+        if (pruneBuildings) mesh.renderSeenToken = pruneToken;
         continue;
       }
 
       if (needsTurretFrame) this.barrelSpin.advance(entity, spinDt);
       this.updateBuilding(entity, rows, row, frameState);
+      if (pruneBuildings) {
+        const updatedMesh = this.meshes.get(entityId);
+        if (updatedMesh !== undefined) updatedMesh.renderSeenToken = pruneToken;
+      }
     }
 
     this.flushBuildingPoseRecords();
@@ -288,31 +297,7 @@ export class BuildingEntityRenderer3D {
     // the entity-set prune cadence below).
     this.dyingBuildings.update(currentDtMs);
 
-    if (!pruneBuildings) return;
-    for (const [id, mesh] of this.meshes) {
-      if (this.seenIds.has(id)) continue;
-      const liveEntity = this.clientViewState.getEntity(id);
-      if (scopedRender && liveEntity !== undefined && liveEntity.building !== null) {
-        this.animations.unregister(id);
-        this.meshes.delete(id);
-        beamAimCache.delete(id);
-        this.disposeBuildingMesh(mesh);
-        continue;
-      }
-      // Died: hand the mesh to the shared death-out fade rather than
-      // tearing it down now — it dissolves in place while the blast +
-      // debris play out, then frees. Overlays / selection ring / animation
-      // stop immediately.
-      this.disposeWorldParentedOverlays(mesh);
-      if (mesh.ring) mesh.ring.visible = false;
-      this.animations.unregister(id);
-      this.meshes.delete(id);
-      // Shared beam-aim cache spans units + towers, so drop this tower's
-      // entries precisely rather than via a seen-set sweep.
-      beamAimCache.delete(id);
-      this.dyingBuildings.markDying(id, mesh);
-    }
-    this.barrelSpin.prune(this.seenIds);
+    if (pruneBuildings) this.pruneUnseenBuildingMeshes(pruneToken, scopedRender, beamAimCache);
     this.lastEntitySetVersion = entitySetVersion;
   }
 
@@ -345,13 +330,58 @@ export class BuildingEntityRenderer3D {
     this.disposeWorldParentedOverlays(mesh);
   }
 
+  private removeBuildingMeshesFromPacket(
+    rows: BuildingRenderPacket3D,
+    beamAimCache: TurretBeamAimCache3D,
+  ): void {
+    for (let i = 0; i < rows.removedCount; i++) {
+      this.removeBuildingMeshForViewRemoval(rows.removedEntityIdAt(i), beamAimCache);
+    }
+  }
+
+  private removeBuildingMeshForViewRemoval(
+    id: EntityId,
+    beamAimCache: TurretBeamAimCache3D,
+  ): void {
+    this.barrelSpin.delete(id);
+    beamAimCache.delete(id);
+
+    const mesh = this.meshes.get(id);
+    if (!mesh) return;
+
+    this.disposeWorldParentedOverlays(mesh);
+    if (mesh.ring) mesh.ring.visible = false;
+    this.animations.unregister(id);
+    this.meshes.delete(id);
+    this.dyingBuildings.markDying(id, mesh);
+  }
+
+  private pruneUnseenBuildingMeshes(
+    pruneToken: number,
+    scopedRender: boolean,
+    beamAimCache: TurretBeamAimCache3D,
+  ): void {
+    for (const [id, mesh] of this.meshes) {
+      if (mesh.renderSeenToken === pruneToken) continue;
+      if (scopedRender) {
+        this.animations.unregister(id);
+        this.meshes.delete(id);
+        this.barrelSpin.delete(id);
+        beamAimCache.delete(id);
+        this.disposeBuildingMesh(mesh);
+      } else {
+        this.removeBuildingMeshForViewRemoval(id, beamAimCache);
+      }
+    }
+  }
+
   destroy(): void {
     for (const mesh of this.meshes.values()) {
       this.disposeBuildingMesh(mesh);
     }
     this.meshes.clear();
     this.dyingBuildings.destroyAll();
-    this.seenIds.clear();
+    this.renderScopeToken = 0;
     this.lastEntitySetVersion = -1;
     this.animations.destroy();
     this.barrelSpin.clear();

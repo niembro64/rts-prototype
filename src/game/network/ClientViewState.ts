@@ -211,6 +211,8 @@ export class ClientViewState {
   private activeEntityPredictionIds: Set<EntityId> = new Set();
   private dirtyUnitRenderIds: Set<EntityId> = new Set();
   private dirtyBuildingRenderIds: Set<EntityId> = new Set();
+  private removedUnitRenderIds: EntityId[] = [];
+  private removedBuildingRenderIds: EntityId[] = [];
   private renderLifecycleDirtyIds: Set<EntityId> = new Set();
   private predictionSupportSurfaceEntities: Entity[] = [];
   private predictionSupportSurfaceEntityIds = new Set<EntityId>();
@@ -373,6 +375,13 @@ export class ClientViewState {
   private deleteEntityLocalState(id: EntityId): void {
     const existing = this.entities.get(id);
     const wasLineProjectile = existing ? isLineProjectileEntity(existing) : false;
+    if (existing !== undefined) {
+      if (existing.unit !== null) {
+        this.removedUnitRenderIds.push(id);
+      } else if (existing.building !== null) {
+        this.removedBuildingRenderIds.push(id);
+      }
+    }
     this.removePredictionSupportSurfaceProvider(id);
     this.entities.delete(id);
     this.serverTargets.delete(id);
@@ -1032,6 +1041,7 @@ export class ClientViewState {
     out.pieceNames.reset();
     out.contactShadows.reset();
     out.groundPrints.reset();
+    this.populateRenderRemovalRows3D(out);
 
     const renderScope = options.renderScope;
     if (renderScope.getMode() === 'all') {
@@ -1111,6 +1121,8 @@ export class ClientViewState {
   consumeUnitRenderDirties(): void {
     this.dirtyUnitRenderIds.clear();
     this.dirtyBuildingRenderIds.clear();
+    this.removedUnitRenderIds.length = 0;
+    this.removedBuildingRenderIds.length = 0;
     this.renderLifecycleDirtyIds.clear();
   }
 
@@ -1221,6 +1233,17 @@ export class ClientViewState {
       this.dirtyBuildingRenderIds.has(entity.id),
       this.renderLifecycleDirtyIds.has(entity.id),
     );
+  }
+
+  private populateRenderRemovalRows3D(out: ClientViewRenderEntityPackets3D): void {
+    const removedUnits = this.removedUnitRenderIds;
+    for (let i = 0; i < removedUnits.length; i++) {
+      out.unitRows.pushRemovedEntityId(removedUnits[i]);
+    }
+    const removedBuildings = this.removedBuildingRenderIds;
+    for (let i = 0; i < removedBuildings.length; i++) {
+      out.buildingRows.pushRemovedEntityId(removedBuildings[i]);
+    }
   }
 
   private populateBodyHudPacket3D(

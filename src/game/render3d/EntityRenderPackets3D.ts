@@ -9,6 +9,7 @@ import {
 import { getUnitGroundZ } from '../sim/unitGeometry';
 
 const ENTITY_RENDER_PACKET_INITIAL_CAP = 4096;
+const ENTITY_RENDER_REMOVAL_INITIAL_CAP = 256;
 const NO_OWNER_ID = 0;
 const NO_PASSIVE_TURRET_INDEX = -1;
 
@@ -88,6 +89,7 @@ export class UnitRenderPacket3D {
   private readonly entities: (Entity | undefined)[] = [];
   private readonly turrets: (readonly Turret[] | undefined)[] = [];
   unitBlueprintIds: (string | undefined)[] = [];
+  removedIds = new Float64Array(ENTITY_RENDER_REMOVAL_INITIAL_CAP);
   ids = new Float64Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   ownerIds = new Float64Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   x = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
@@ -108,12 +110,21 @@ export class UnitRenderPacket3D {
   passiveTurretIndex = new Int16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   flags = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   count = 0;
+  removedCount = 0;
 
   reset(): void {
     this.count = 0;
+    this.removedCount = 0;
     this.entities.length = 0;
     this.turrets.length = 0;
     this.unitBlueprintIds.length = 0;
+  }
+
+  pushRemovedEntityId(id: EntityId): void {
+    const cursor = this.removedCount;
+    this.ensureRemovalCapacity(cursor + 1);
+    this.removedIds[cursor] = id;
+    this.removedCount = cursor + 1;
   }
 
   pushEntity(
@@ -169,6 +180,10 @@ export class UnitRenderPacket3D {
 
   entityIdAt(row: number): EntityId {
     return this.ids[row] as EntityId;
+  }
+
+  removedEntityIdAt(row: number): EntityId {
+    return this.removedIds[row] as EntityId;
   }
 
   ownerIdAt(row: number): PlayerId | undefined {
@@ -232,12 +247,20 @@ export class UnitRenderPacket3D {
     this.passiveTurretIndex = growInt16(this.passiveTurretIndex, nextCapacity);
     this.flags = growUint16(this.flags, nextCapacity);
   }
+
+  private ensureRemovalCapacity(required: number): void {
+    if (required <= this.removedIds.length) return;
+    let nextCapacity = this.removedIds.length;
+    while (nextCapacity < required) nextCapacity *= 2;
+    this.removedIds = growFloat64(this.removedIds, nextCapacity);
+  }
 }
 
 export class BuildingRenderPacket3D {
   private readonly entities: (Entity | undefined)[] = [];
   private readonly turrets: (readonly Turret[] | undefined)[] = [];
   buildingBlueprintIds: (string | null | undefined)[] = [];
+  removedIds = new Float64Array(ENTITY_RENDER_REMOVAL_INITIAL_CAP);
   ids = new Float64Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   ownerIds = new Float64Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   x = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
@@ -252,12 +275,21 @@ export class BuildingRenderPacket3D {
   turretCount = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   flags = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   count = 0;
+  removedCount = 0;
 
   reset(): void {
     this.count = 0;
+    this.removedCount = 0;
     this.entities.length = 0;
     this.turrets.length = 0;
     this.buildingBlueprintIds.length = 0;
+  }
+
+  pushRemovedEntityId(id: EntityId): void {
+    const cursor = this.removedCount;
+    this.ensureRemovalCapacity(cursor + 1);
+    this.removedIds[cursor] = id;
+    this.removedCount = cursor + 1;
   }
 
   pushEntity(
@@ -301,6 +333,10 @@ export class BuildingRenderPacket3D {
 
   entityIdAt(row: number): EntityId {
     return this.ids[row] as EntityId;
+  }
+
+  removedEntityIdAt(row: number): EntityId {
+    return this.removedIds[row] as EntityId;
   }
 
   ownerIdAt(row: number): PlayerId | undefined {
@@ -353,5 +389,12 @@ export class BuildingRenderPacket3D {
     this.bodyOpacity = growFloat32(this.bodyOpacity, nextCapacity);
     this.turretCount = growUint16(this.turretCount, nextCapacity);
     this.flags = growUint16(this.flags, nextCapacity);
+  }
+
+  private ensureRemovalCapacity(required: number): void {
+    if (required <= this.removedIds.length) return;
+    let nextCapacity = this.removedIds.length;
+    while (nextCapacity < required) nextCapacity *= 2;
+    this.removedIds = growFloat64(this.removedIds, nextCapacity);
   }
 }
