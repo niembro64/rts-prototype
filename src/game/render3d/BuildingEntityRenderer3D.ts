@@ -24,10 +24,15 @@ import {
   buildTurretMesh3D,
   type TurretMesh,
 } from './TurretMesh3D';
-import { applyTurretAimPose3D, applyTurretAimWorldDir3D } from './TurretAimPose3D';
 import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
 import type { TurretBeamAimCache3D } from './TurretBeamAimCache3D';
 import { BuildingRenderPacket3D } from './EntityRenderPackets3D';
+import {
+  TURRET_AIM_INPUT_STRIDE,
+  TURRET_AIM_MODE_POSE,
+  TURRET_AIM_MODE_WORLD_DIR,
+  UnitTurretAimBatch3D,
+} from './UnitTurretAimBatch3D';
 
 const BUILDING_HEIGHT = 120;
 
@@ -167,6 +172,10 @@ export class BuildingEntityRenderer3D {
   private beamAimCache: TurretBeamAimCache3D | null = null;
   private barrelSpinEnabled = false;
   private readonly fallbackBuildingRenderRows = new BuildingRenderPacket3D();
+  private readonly turretAimBatch = new UnitTurretAimBatch3D();
+  private turretAimInput = new Float32Array(TURRET_AIM_INPUT_STRIDE * 256);
+  private turretAimCount = 0;
+  private readonly turretAimMeshes: TurretMesh[] = [];
 
   constructor(options: BuildingEntityRenderer3DOptions) {
     this.world = options.world;
@@ -206,6 +215,7 @@ export class BuildingEntityRenderer3D {
     this.constructionVisuals.beginFrame();
     this.beamAimCache = beamAimCache;
     this.barrelSpinEnabled = getGraphicsConfig().barrelSpin;
+    this.beginTurretAimFrame();
     const rows = buildingRows ?? this.populateFallbackBuildingRenderRows();
 
     for (let row = 0; row < rows.count; row++) {
@@ -217,6 +227,7 @@ export class BuildingEntityRenderer3D {
       this.updateBuilding(entity, rows, row, frameState);
     }
 
+    this.flushTurretAimRecords();
     this.animations.update(this.meshes, spinDt, currentDtMs, timeMs);
     // Advance any in-progress death-out fades every frame (independent of
     // the entity-set prune cadence below).
@@ -476,10 +487,14 @@ export class BuildingEntityRenderer3D {
       // turret yaw/velocity stream so the whole fabricator construction
       // deck can rotate smoothly on the client.
       if (turret.config.constructionEmitter) {
-        applyTurretAimPose3D(
+        this.enqueueTurretAim(
           turretMesh,
           entity.transform.rotation,
+          TURRET_AIM_MODE_POSE,
           turret.rotation,
+          0,
+          0,
+          0,
           0,
         );
         continue;
@@ -512,27 +527,38 @@ export class BuildingEntityRenderer3D {
         // idle); fall back to the forward idle pose until it first fires.
         const beamDir = this.beamAimCache?.get(entity.id, turretIndex) ?? null;
         if (beamDir) {
-          applyTurretAimWorldDir3D(
+          this.enqueueTurretAim(
             turretMesh,
             entity.transform.rotation,
+            TURRET_AIM_MODE_WORLD_DIR,
+            0,
+            0,
             beamDir.x,
             beamDir.y,
             beamDir.z,
           );
         } else {
-          applyTurretAimPose3D(
+          this.enqueueTurretAim(
             turretMesh,
             entity.transform.rotation,
+            TURRET_AIM_MODE_POSE,
             turret.rotation,
             turret.pitch,
+            0,
+            0,
+            0,
           );
         }
       } else {
-        applyTurretAimPose3D(
+        this.enqueueTurretAim(
           turretMesh,
           entity.transform.rotation,
+          TURRET_AIM_MODE_POSE,
           turret.rotation,
           turret.pitch,
+          0,
+          0,
+          0,
         );
       }
       // Gatling spin for multi-barrel tower turrets (e.g. the Anti-Air
@@ -544,5 +570,68 @@ export class BuildingEntityRenderer3D {
           : 0;
       }
     }
+  }
+
+  private beginTurretAimFrame(): void {
+    this.turretAimCount = 0;
+    this.turretAimMeshes.length = 0;
+  }
+
+  private flushTurretAimRecords(): void {
+    const count = this.turretAimCount;
+    if (count <= 0) return;
+
+    const input = this.turretAimBatch.begin(count);
+    input.set(this.turretAimInput.subarray(0, count * TURRET_AIM_INPUT_STRIDE));
+    const output = this.turretAimBatch.compute(count);
+    const outputStride = this.turretAimBatch.outputStride;
+
+    for (let i = 0; i < count; i++) {
+      const turretMesh = this.turretAimMeshes[i];
+      const outputBase = i * outputStride;
+      turretMesh.root.rotation.y = output[outputBase];
+      if (turretMesh.pitchGroup) turretMesh.pitchGroup.rotation.z = output[outputBase + 1];
+    }
+  }
+
+  private enqueueTurretAim(
+    turretMesh: TurretMesh,
+    hostRotation: number,
+    mode: number,
+    aimRotation: number,
+    aimPitch: number,
+    dirX: number,
+    dirY: number,
+    dirZ: number,
+  ): void {
+    const index = this.turretAimCount;
+    this.turretAimCount++;
+    this.ensureTurretAimInputCapacity(this.turretAimCount);
+
+    const base = index * TURRET_AIM_INPUT_STRIDE;
+    const input = this.turretAimInput;
+    input[base] = hostRotation;
+    input[base + 1] = mode;
+    input[base + 2] = aimRotation;
+    input[base + 3] = aimPitch;
+    input[base + 4] = dirX;
+    input[base + 5] = dirY;
+    input[base + 6] = dirZ;
+    input[base + 7] = 0;
+    input[base + 8] = 0;
+    input[base + 9] = 0;
+    input[base + 10] = 1;
+    input[base + 11] = 0;
+    this.turretAimMeshes[index] = turretMesh;
+  }
+
+  private ensureTurretAimInputCapacity(count: number): void {
+    const needed = count * TURRET_AIM_INPUT_STRIDE;
+    if (this.turretAimInput.length >= needed) return;
+    let next = this.turretAimInput.length;
+    while (next < needed) next *= 2;
+    const expanded = new Float32Array(next);
+    expanded.set(this.turretAimInput);
+    this.turretAimInput = expanded;
   }
 }
