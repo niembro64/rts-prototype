@@ -51,15 +51,16 @@ part-matrix generation now run as batched WASM scratch-buffer kernels.
 Instanced shield-panel slab matrices also run through a WASM scratch-buffer
 kernel, and instanced unit turret barrel/head matrices plus turret mount-center
 positions now batch through WASM. Unit turret aim/root-pitch math also batches
-through WASM, with TypeScript still owning construction-emitter timing and
-which semantic aim source to use. The remaining hot work is still TypeScript
-pose generation and Three.js scenegraph churn: mirror support-root scenegraph work,
-locomotion, fade, overlays, and cache pruning; plus per-building mesh, turret,
-animation, overlay, and cache-pruning work. This is likely to dominate at the
-"thousands of units" target.
+through WASM, and shield-panel support-root aim math reuses that same batch.
+TypeScript still owns construction-emitter timing and which semantic aim source
+to use. The remaining hot work is still TypeScript pose generation and Three.js
+scenegraph churn: mirror support-root attachment/visibility work, locomotion,
+fade, overlays, and cache pruning; plus per-building mesh, turret, animation,
+overlay, and cache-pruning work. This is likely to dominate at the "thousands
+of units" target.
 
 Required fix:
-Move as much remaining mirror support-root work, building pose, locomotion,
-fade, overlay, and cache-pruning work as practical into WASM or GPU-updated
-buffers, then restrict Three.js work to explicit buffer range uploads and
-lifecycle changes.
+Move as much remaining mirror support-root attachment/visibility work, building
+pose, locomotion, fade, overlay, and cache-pruning work as practical into WASM
+or GPU-updated buffers, then restrict Three.js work to explicit buffer range
+uploads and lifecycle changes.

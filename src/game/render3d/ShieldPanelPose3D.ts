@@ -5,10 +5,23 @@ import {
   SHIELD_PANEL_INPUT_STRIDE,
   ShieldPanelMatrixBatch3D,
 } from './ShieldPanelMatrixBatch3D';
+import {
+  TURRET_AIM_INPUT_STRIDE,
+  TURRET_AIM_MODE_POSE,
+  UnitTurretAimBatch3D,
+} from './UnitTurretAimBatch3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 
 export class ShieldPanelPose3D {
-  private readonly aimDir = new THREE.Vector3();
+  private readonly aimBatch = new UnitTurretAimBatch3D();
+  private aimInput = new Float32Array(TURRET_AIM_INPUT_STRIDE * 256);
+  private aimParentPose = new Float32Array(7 * 256);
+  private aimCount = 0;
+  private readonly aimEntities: Entity[] = [];
+  private readonly aimMirrors: ShieldPanelMesh[] = [];
+  private readonly parentPositionScratch = new THREE.Vector3();
+  private readonly parentQuaternionScratch = new THREE.Quaternion();
+
   private readonly batch = new ShieldPanelMatrixBatch3D();
   private input = new Float32Array(SHIELD_PANEL_INPUT_STRIDE * 256);
   private count = 0;
@@ -16,6 +29,9 @@ export class ShieldPanelPose3D {
   private readonly entities: Entity[] = [];
 
   begin(): void {
+    this.aimCount = 0;
+    this.aimEntities.length = 0;
+    this.aimMirrors.length = 0;
     this.count = 0;
     this.slots.length = 0;
     this.entities.length = 0;
@@ -37,47 +53,20 @@ export class ShieldPanelPose3D {
 
     const shieldPanelRot = shieldPanelTurret?.rotation ?? entity.transform.rotation;
     const shieldPanelPitch = shieldPanelTurret?.pitch ?? 0;
-    const cosShieldPanelRot = Math.cos(shieldPanelRot);
-    const sinShieldPanelRot = Math.sin(shieldPanelRot);
-    const cosShieldPanelPitch = Math.cos(shieldPanelPitch);
-    const sinShieldPanelPitch = Math.sin(shieldPanelPitch);
-
-    this.aimDir.set(
-      cosShieldPanelRot * cosShieldPanelPitch,
-      sinShieldPanelPitch,
-      sinShieldPanelRot * cosShieldPanelPitch,
+    this.enqueueAim(
+      entity,
+      mirrors,
+      parentPosition,
+      parentQuaternion,
+      entity.transform.rotation,
+      shieldPanelRot,
+      shieldPanelPitch,
+      chassisTiltInverse,
     );
-    if (chassisTiltInverse) this.aimDir.applyQuaternion(chassisTiltInverse);
-
-    const combinedYaw = Math.atan2(-this.aimDir.z, this.aimDir.x);
-    const ny = this.aimDir.y;
-    const localPitch = Math.asin(ny < -1 ? -1 : ny > 1 ? 1 : ny);
-    mirrors.root.rotation.set(
-      0,
-      combinedYaw + entity.transform.rotation,
-      localPitch,
-      'YZX',
-    );
-
-    if (!mirrors.panelSlots) return;
-
-    const slotCount = Math.min(
-      mirrors.panels.length,
-      mirrors.panelSlots.length,
-    );
-    for (let panelIdx = 0; panelIdx < slotCount; panelIdx++) {
-      this.enqueuePanel(
-        entity,
-        mirrors.panelSlots[panelIdx],
-        parentPosition,
-        parentQuaternion,
-        mirrors.root,
-        mirrors.panels[panelIdx],
-      );
-    }
   }
 
   flush(unitDetailInstances: UnitDetailInstanceRenderer3D): void {
+    this.flushAimRecords();
     const count = this.count;
     if (count <= 0) return;
 
@@ -92,6 +81,66 @@ export class ShieldPanelPose3D {
         output,
         i * outputStride,
         this.entities[i],
+      );
+    }
+  }
+
+  private flushAimRecords(): void {
+    const count = this.aimCount;
+    if (count <= 0) return;
+
+    const input = this.aimBatch.begin(count);
+    input.set(this.aimInput.subarray(0, count * TURRET_AIM_INPUT_STRIDE));
+    const output = this.aimBatch.compute(count);
+    const outputStride = this.aimBatch.outputStride;
+
+    for (let i = 0; i < count; i++) {
+      const mirrors = this.aimMirrors[i];
+      const outputBase = i * outputStride;
+      mirrors.root.rotation.set(0, output[outputBase], output[outputBase + 1], 'YZX');
+
+      const poseBase = i * 7;
+      this.parentPositionScratch.set(
+        this.aimParentPose[poseBase],
+        this.aimParentPose[poseBase + 1],
+        this.aimParentPose[poseBase + 2],
+      );
+      this.parentQuaternionScratch.set(
+        this.aimParentPose[poseBase + 3],
+        this.aimParentPose[poseBase + 4],
+        this.aimParentPose[poseBase + 5],
+        this.aimParentPose[poseBase + 6],
+      );
+
+      this.enqueuePanels(
+        this.aimEntities[i],
+        mirrors,
+        this.parentPositionScratch,
+        this.parentQuaternionScratch,
+      );
+    }
+  }
+
+  private enqueuePanels(
+    entity: Entity,
+    mirrors: ShieldPanelMesh,
+    parentPosition: THREE.Vector3,
+    parentQuaternion: THREE.Quaternion,
+  ): void {
+    if (!mirrors.panelSlots) return;
+
+    const slotCount = Math.min(
+      mirrors.panels.length,
+      mirrors.panelSlots.length,
+    );
+    for (let panelIdx = 0; panelIdx < slotCount; panelIdx++) {
+      this.enqueuePanel(
+        entity,
+        mirrors.panelSlots[panelIdx],
+        parentPosition,
+        parentQuaternion,
+        mirrors.root,
+        mirrors.panels[panelIdx],
       );
     }
   }
@@ -139,6 +188,49 @@ export class ShieldPanelPose3D {
     this.entities[index] = entity;
   }
 
+  private enqueueAim(
+    entity: Entity,
+    mirrors: ShieldPanelMesh,
+    parentPosition: THREE.Vector3,
+    parentQuaternion: THREE.Quaternion,
+    hostRotation: number,
+    aimRotation: number,
+    aimPitch: number,
+    chassisTiltInverse: THREE.Quaternion | undefined,
+  ): void {
+    const index = this.aimCount;
+    this.aimCount++;
+    this.ensureAimCapacity(this.aimCount);
+
+    const base = index * TURRET_AIM_INPUT_STRIDE;
+    const input = this.aimInput;
+    input[base] = hostRotation;
+    input[base + 1] = TURRET_AIM_MODE_POSE;
+    input[base + 2] = aimRotation;
+    input[base + 3] = aimPitch;
+    input[base + 4] = 0;
+    input[base + 5] = 0;
+    input[base + 6] = 0;
+    input[base + 7] = chassisTiltInverse?.x ?? 0;
+    input[base + 8] = chassisTiltInverse?.y ?? 0;
+    input[base + 9] = chassisTiltInverse?.z ?? 0;
+    input[base + 10] = chassisTiltInverse?.w ?? 1;
+    input[base + 11] = chassisTiltInverse ? 1 : 0;
+
+    const poseBase = index * 7;
+    const parentPose = this.aimParentPose;
+    parentPose[poseBase] = parentPosition.x;
+    parentPose[poseBase + 1] = parentPosition.y;
+    parentPose[poseBase + 2] = parentPosition.z;
+    parentPose[poseBase + 3] = parentQuaternion.x;
+    parentPose[poseBase + 4] = parentQuaternion.y;
+    parentPose[poseBase + 5] = parentQuaternion.z;
+    parentPose[poseBase + 6] = parentQuaternion.w;
+
+    this.aimEntities[index] = entity;
+    this.aimMirrors[index] = mirrors;
+  }
+
   private ensureInputCapacity(count: number): void {
     const needed = count * SHIELD_PANEL_INPUT_STRIDE;
     if (this.input.length >= needed) return;
@@ -147,5 +239,24 @@ export class ShieldPanelPose3D {
     const expanded = new Float32Array(next);
     expanded.set(this.input);
     this.input = expanded;
+  }
+
+  private ensureAimCapacity(count: number): void {
+    const needed = count * TURRET_AIM_INPUT_STRIDE;
+    if (this.aimInput.length < needed) {
+      let next = this.aimInput.length;
+      while (next < needed) next *= 2;
+      const expanded = new Float32Array(next);
+      expanded.set(this.aimInput);
+      this.aimInput = expanded;
+    }
+
+    const poseNeeded = count * 7;
+    if (this.aimParentPose.length >= poseNeeded) return;
+    let nextPose = this.aimParentPose.length;
+    while (nextPose < poseNeeded) nextPose *= 2;
+    const expandedPose = new Float32Array(nextPose);
+    expandedPose.set(this.aimParentPose);
+    this.aimParentPose = expandedPose;
   }
 }
