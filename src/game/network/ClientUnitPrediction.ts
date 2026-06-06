@@ -247,6 +247,47 @@ function ensureOrientationBatchCapacity(count: number): void {
   orientationBatch = new Float64Array(capacity * QUAT_HOVER_BATCH_STRIDE);
 }
 
+export type ClientUnitPredictionPoolStats = {
+  motionCapacity: number;
+  orientationCapacity: number;
+  targetRefs: number;
+  entityOrientationRefs: number;
+  targetOrientationRefs: number;
+  warmCapacity: number;
+};
+
+export function getClientUnitPredictionPoolStats(): ClientUnitPredictionPoolStats {
+  return {
+    motionCapacity: motionBatch.length / MOTION_STRIDE,
+    orientationCapacity: orientationBatch.length / QUAT_HOVER_BATCH_STRIDE,
+    targetRefs: targetBatchRefs.length,
+    entityOrientationRefs: entityOrientationBatchRefs.length,
+    targetOrientationRefs: targetOrientationBatchRefs.length,
+    warmCapacity: INITIAL_BATCH_CAPACITY,
+  };
+}
+
+export function resetClientUnitPredictionPools(maxRetained = INITIAL_BATCH_CAPACITY): ClientUnitPredictionPoolStats {
+  const retained = Math.max(INITIAL_BATCH_CAPACITY, Math.floor(maxRetained));
+  targetBatchRefs.length = 0;
+  entityOrientationBatchRefs.length = 0;
+  targetOrientationBatchRefs.length = 0;
+  predictionSupportIndex.clear();
+
+  if (motionBatch.length !== retained * MOTION_STRIDE) {
+    motionBatch = new Float64Array(retained * MOTION_STRIDE);
+    groundOffsetBatch = new Float64Array(retained);
+    groundZBatch = new Float64Array(retained);
+    groundNormalBatch = new Float64Array(retained * 3);
+    contactBatch = new Uint8Array(retained);
+    supportIgnoreEntityIdBatch = new Int32Array(retained);
+  }
+  if (orientationBatch.length !== retained * QUAT_HOVER_BATCH_STRIDE) {
+    orientationBatch = new Float64Array(retained * QUAT_HOVER_BATCH_STRIDE);
+  }
+  return getClientUnitPredictionPoolStats();
+}
+
 function packOrientationPredictionEntry(
   base: number,
   orientation: UnitOrientationTarget,

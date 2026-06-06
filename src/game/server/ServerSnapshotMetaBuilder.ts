@@ -29,6 +29,7 @@ export type ServerSnapshotMetaInput = {
     speed: number;
     angle: number;
   };
+  retainedPools: NetworkServerSnapshotMeta['retainedPools'];
   unitGroundNormalEmaMode: UnitGroundNormalEmaMode;
 };
 
@@ -79,6 +80,7 @@ export class ServerSnapshotMetaBuilder {
         speed: input.wind.speed,
         angle: input.wind.angle,
       },
+      retainedPools: input.retainedPools,
       unitGroundNormalEma: input.unitGroundNormalEmaMode,
     };
   }

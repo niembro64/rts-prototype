@@ -118,31 +118,44 @@ export function serializeMinimapSnapshotEntities(
   state.index = 0;
   state.buf.length = 0;
 
-  const minimapSources: ReadonlyArray<readonly Entity[]> = [
-    world.getUnits(),
-    world.getBuildings(),
-  ];
-  for (let s = 0; s < minimapSources.length; s++) {
-    const source = minimapSources[s];
-    for (let i = 0; i < source.length; i++) {
-      const entity = source[i];
-      if (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower') {
-        continue;
-      }
-      // Minimap uses the wider full-vision-OR-radar check (FOW-03):
-      // radar buildings reveal enemy positions on the minimap without
-      // sending them through the main snapshot. Audio events and
-      // projectiles still gate on isPointVisible (full vision only).
-      if (visibility && !visibility.isEntityOnRadar(entity)) continue;
-      // FOW-03a: tag entities the recipient only sees via radar so
-      // the client minimap can render them as generic blips (no team
-      // color, no type icon). Full-vision contacts get the normal
-      // identifiable rendering.
-      const radarOnly = visibility !== undefined && !visibility.isEntityVisible(entity);
+  const radarEntityIds = visibility?.getRadarEntityIds();
+  if (radarEntityIds !== undefined) {
+    for (let i = 0; i < radarEntityIds.length; i++) {
+      const entity = world.getEntity(radarEntityIds[i]);
+      if (!entity) continue;
+      const radarOnly = !visibility!.isEntityVisible(entity);
       const out = getPooledItem(state, createMinimapEntityDto);
       writeMinimapEntity(out, entity, radarOnly);
       appendMinimapWireRow(wireSource, entity, radarOnly);
       state.buf.push(out);
+    }
+  } else {
+    const minimapSources: ReadonlyArray<readonly Entity[]> = [
+      world.getUnits(),
+      world.getBuildings(),
+    ];
+    for (let s = 0; s < minimapSources.length; s++) {
+      const source = minimapSources[s];
+      for (let i = 0; i < source.length; i++) {
+        const entity = source[i];
+        if (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower') {
+          continue;
+        }
+        // Minimap uses the wider full-vision-OR-radar check (FOW-03):
+        // radar buildings reveal enemy positions on the minimap without
+        // sending them through the main snapshot. Audio events and
+        // projectiles still gate on isPointVisible (full vision only).
+        if (visibility && !visibility.isEntityOnRadar(entity)) continue;
+        // FOW-03a: tag entities the recipient only sees via radar so
+        // the client minimap can render them as generic blips (no team
+        // color, no type icon). Full-vision contacts get the normal
+        // identifiable rendering.
+        const radarOnly = visibility !== undefined && !visibility.isEntityVisible(entity);
+        const out = getPooledItem(state, createMinimapEntityDto);
+        writeMinimapEntity(out, entity, radarOnly);
+        appendMinimapWireRow(wireSource, entity, radarOnly);
+        state.buf.push(out);
+      }
     }
   }
   return state.buf;

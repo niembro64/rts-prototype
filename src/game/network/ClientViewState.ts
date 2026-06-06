@@ -43,6 +43,7 @@ import { ClientMinimapOverrideStore } from './ClientMinimapOverrideStore';
 import { ClientSprayTargetStore } from './ClientSprayTargetStore';
 import {
   createServerTarget,
+  resetClientPredictionTargetPools,
   type ServerTarget,
 } from './ClientPredictionTargets';
 import { snapClientNonVisualState } from './ClientSnapshotApplier';
@@ -51,6 +52,7 @@ import { ClientPredictionCadence } from './ClientPredictionCadence';
 import {
   clientUnitPredictionIsSettled,
   isPredictionSupportSurfaceProvider,
+  resetClientUnitPredictionPools,
 } from './ClientUnitPrediction';
 import { ClientPredictionStepper } from './ClientPredictionStepper';
 import type {
@@ -1195,6 +1197,8 @@ export class ClientViewState {
     this.dirtyUnitRenderIds.clear();
     this.predictionSupportSurfaceEntities.length = 0;
     this.predictionSupportSurfaceEntityIds.clear();
+    resetClientUnitPredictionPools();
+    resetClientPredictionTargetPools();
     this.entitySetVersion++;
     this.invalidateCaches();
   }

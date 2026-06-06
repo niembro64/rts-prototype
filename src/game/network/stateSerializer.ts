@@ -435,15 +435,11 @@ export function serializeGameState(
     }
 
     if (visibility.isFiltered) {
-      const visibilitySources: ReadonlyArray<readonly Entity[]> = [
-        world.getUnits(),
-        world.getBuildings(),
-      ];
-      for (let s = 0; s < visibilitySources.length; s++) {
-        const source = visibilitySources[s];
-        for (let i = 0; i < source.length; i++) {
-          const entity = source[i];
-          if (tracking.prevEntityIds.has(entity.id)) continue;
+      const visibleEntityIds = visibility.getVisibleEntityIds();
+      if (visibleEntityIds !== undefined) {
+        for (let i = 0; i < visibleEntityIds.length; i++) {
+          const entity = world.getEntity(visibleEntityIds[i]);
+          if (!entity || tracking.prevEntityIds.has(entity.id)) continue;
           if (!acceptsSerializedEntity(entity, visibility)) continue;
           tracking.prevEntityIds.add(entity.id);
           const next = getNextEntityState(entity);
@@ -455,8 +451,29 @@ export function serializeGameState(
             captureToRustBaseline(baselineSim, baselineHandle, entity, next, tick, undefined);
           }
         }
+      } else {
+        const visibilitySources: ReadonlyArray<readonly Entity[]> = [
+          world.getUnits(),
+          world.getBuildings(),
+        ];
+        for (let s = 0; s < visibilitySources.length; s++) {
+          const source = visibilitySources[s];
+          for (let i = 0; i < source.length; i++) {
+            const entity = source[i];
+            if (tracking.prevEntityIds.has(entity.id)) continue;
+            if (!acceptsSerializedEntity(entity, visibility)) continue;
+            tracking.prevEntityIds.add(entity.id);
+            const next = getNextEntityState(entity);
+            const netEntity = serializeEntitySnapshot(entity, undefined, world, visibility);
+            if (netEntity) _entityBuf.push(netEntity);
+            const prev = getPrevState(tracking, entity.id);
+            copyPrevState(next, prev);
+            if (baselineSim !== undefined && baselineHandle !== undefined) {
+              captureToRustBaseline(baselineSim, baselineHandle, entity, next, tick, undefined);
+            }
+          }
+        }
       }
-
     }
   } else {
     tracking.currentEntityIds.clear();
@@ -468,15 +485,11 @@ export function serializeGameState(
     // (e.g. future entity-like payloads) means appending one more source
     // here, not duplicating another loop.
     //
-    const keyframeSources: ReadonlyArray<readonly Entity[]> = [
-      world.getUnits(),
-      world.getBuildings(),
-    ];
-    for (let s = 0; s < keyframeSources.length; s++) {
-      const source = keyframeSources[s];
-      for (let i = 0; i < source.length; i++) {
-        const entity = source[i];
-        if (!acceptsSerializedEntity(entity, visibility)) continue;
+    const keyframeVisibleEntityIds = visibility.getVisibleEntityIds();
+    if (keyframeVisibleEntityIds !== undefined) {
+      for (let i = 0; i < keyframeVisibleEntityIds.length; i++) {
+        const entity = world.getEntity(keyframeVisibleEntityIds[i]);
+        if (!entity || !acceptsSerializedEntity(entity, visibility)) continue;
         tracking.currentEntityIds.add(entity.id);
         const netEntity = serializeEntitySnapshot(entity, undefined, world, visibility);
         if (netEntity) _entityBuf.push(netEntity);
@@ -485,6 +498,27 @@ export function serializeGameState(
         copyPrevState(next, prev);
         if (baselineSim !== undefined && baselineHandle !== undefined) {
           captureToRustBaseline(baselineSim, baselineHandle, entity, next, tick, undefined);
+        }
+      }
+    } else {
+      const keyframeSources: ReadonlyArray<readonly Entity[]> = [
+        world.getUnits(),
+        world.getBuildings(),
+      ];
+      for (let s = 0; s < keyframeSources.length; s++) {
+        const source = keyframeSources[s];
+        for (let i = 0; i < source.length; i++) {
+          const entity = source[i];
+          if (!acceptsSerializedEntity(entity, visibility)) continue;
+          tracking.currentEntityIds.add(entity.id);
+          const netEntity = serializeEntitySnapshot(entity, undefined, world, visibility);
+          if (netEntity) _entityBuf.push(netEntity);
+          const prev = getPrevState(tracking, entity.id);
+          const next = getNextEntityState(entity);
+          copyPrevState(next, prev);
+          if (baselineSim !== undefined && baselineHandle !== undefined) {
+            captureToRustBaseline(baselineSim, baselineHandle, entity, next, tick, undefined);
+          }
         }
       }
     }

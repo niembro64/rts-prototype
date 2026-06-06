@@ -5,6 +5,8 @@ import {
   formatRunningMax,
   type RunningStats,
 } from '../diagnosticStats';
+import { getClientPredictionTargetPoolStats } from './ClientPredictionTargets';
+import { getClientUnitPredictionPoolStats } from './ClientUnitPrediction';
 
 export type ClientPredictionTargetAgeStats = {
   activeTargets: number;
@@ -41,6 +43,11 @@ export type ClientPredictionDiagnosticsReport = {
   correctionTargetAgeAvgMs: number | string;
   correctionTargetAgeMaxMs: number | string;
   correctionTargetAgeSamples: number;
+  retainedPools: {
+    unitMotionCapacity: number;
+    unitOrientationCapacity: number;
+    beamPointFreeList: number;
+  };
 };
 
 export type ClientPredictionDiagnosticsDebugApi = {
@@ -146,6 +153,8 @@ export class ClientPredictionDiagnostics {
   }
 
   report(): ClientPredictionDiagnosticsReport {
+    const unitPools = getClientUnitPredictionPoolStats();
+    const targetPools = getClientPredictionTargetPoolStats();
     return {
       frames: this.frames,
       snapshotApplies: this.snapshotApplies,
@@ -163,6 +172,11 @@ export class ClientPredictionDiagnostics {
       correctionTargetAgeAvgMs: formatRunningAverage(this.stats.correctionTargetAgeMs),
       correctionTargetAgeMaxMs: formatRunningMax(this.stats.correctionTargetAgeMs),
       correctionTargetAgeSamples: this.stats.correctionTargetAgeMs.count,
+      retainedPools: {
+        unitMotionCapacity: unitPools.motionCapacity,
+        unitOrientationCapacity: unitPools.orientationCapacity,
+        beamPointFreeList: targetPools.freeBeamPoints,
+      },
     };
   }
 }

@@ -2,6 +2,7 @@ import type { RemovedSnapshotEntity, WorldState } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { NetworkServerSnapshotScanPulse } from '../../types/network';
 import { hasFogOfWarLineOfSight } from '../sim/combat/lineOfSight';
+import { spatialGrid } from '../sim/SpatialGrid';
 import {
   canEntityProvideFullVision,
   canEntityProvideRadarVision,
@@ -9,6 +10,7 @@ import {
   getEntityRadarRadius,
   getEntityVisibilityPadding,
 } from '../sim/sensorCoverage';
+import { getSimWasm } from '../sim-wasm/init';
 
 export {
   BUILDING_VISION_RADIUS,
@@ -81,8 +83,13 @@ export class SnapshotVisibility {
   private readonly earshotSourceCells = new Map<number, number[]>();
   private readonly radarSources: VisionSource[] = [];
   private readonly radarSourceCells = new Map<number, number[]>();
+  private readonly visibleEntityIds: EntityId[] = [];
+  private readonly radarEntityIds: EntityId[] = [];
+  private readonly visibleEntityIdSet = new Set<EntityId>();
+  private readonly radarEntityIdSet = new Set<EntityId>();
   private readonly gridW: number;
   private readonly gridH: number;
+  private entityIdBuffersReady = false;
   /** Recipient + their declared allies (FOW-06). Populated whenever a
    *  recipient is set, regardless of fog status. Used by
    *  isOwnedByRecipientOrAlly so every ownership check across the
@@ -284,6 +291,124 @@ export class SnapshotVisibility {
       return true;
     }
     return this.isPointVisibleIn(this.radarSources, this.radarSourceCells, entity.transform.x, entity.transform.y, padding);
+  }
+
+  /** Full-visibility entity ids for the main snapshot serializer.
+   *  Built once per filtered team visibility, then shared by delta
+   *  re-entry and keyframe paths so they do not independently scan the
+   *  world's unit/building arrays. Undefined for unfiltered snapshots,
+   *  where the caller's existing all-entity walk is already the right
+   *  shape. */
+  getVisibleEntityIds(): readonly EntityId[] | undefined {
+    if (!this.isFiltered) return undefined;
+    this.ensureEntityIdBuffers();
+    return this.visibleEntityIds;
+  }
+
+  /** Full-vision + radar-contact ids for minimap serialization. */
+  getRadarEntityIds(): readonly EntityId[] | undefined {
+    if (!this.isFiltered) return undefined;
+    this.ensureEntityIdBuffers();
+    return this.radarEntityIds;
+  }
+
+  private ensureEntityIdBuffers(): void {
+    if (this.entityIdBuffersReady) return;
+    this.entityIdBuffersReady = true;
+    this.visibleEntityIds.length = 0;
+    this.radarEntityIds.length = 0;
+    this.visibleEntityIdSet.clear();
+    this.radarEntityIdSet.clear();
+
+    let pending = this.viewMask;
+    while (pending !== 0) {
+      const lowBit = pending & -pending;
+      const playerId = (32 - Math.clz32(lowBit)) as PlayerId;
+      this.addOwnedEntityIds(playerId);
+      pending ^= lowBit;
+    }
+
+    if (getSimWasm() === undefined) {
+      this.addWorldScanEntityCandidates();
+      return;
+    }
+
+    this.addSourceEntityCandidates(this.fullSources, true);
+    this.addSourceEntityCandidates(this.radarSources, false);
+  }
+
+  private addOwnedEntityIds(playerId: PlayerId): void {
+    this.addOwnedEntitySource(this.world.getUnitsByPlayer(playerId));
+    this.addOwnedEntitySource(this.world.getBuildingsByPlayer(playerId));
+  }
+
+  private addOwnedEntitySource(source: readonly Entity[]): void {
+    for (let i = 0; i < source.length; i++) {
+      const entity = source[i];
+      this.appendVisibleEntityId(entity);
+      this.appendRadarEntityId(entity);
+    }
+  }
+
+  private addWorldScanEntityCandidates(): void {
+    const sources: ReadonlyArray<readonly Entity[]> = [
+      this.world.getUnits(),
+      this.world.getBuildings(),
+    ];
+    for (let s = 0; s < sources.length; s++) {
+      const source = sources[s];
+      for (let i = 0; i < source.length; i++) {
+        const entity = source[i];
+        this.addCandidateEntity(entity, true);
+      }
+    }
+  }
+
+  private addSourceEntityCandidates(
+    sources: readonly VisionSource[],
+    canGrantFullVisibility: boolean,
+  ): void {
+    const maxPadding = this.world.getMaxVisibilityPadding();
+    for (let i = 0; i < sources.length; i++) {
+      const source = sources[i];
+      const candidates = spatialGrid.queryUnitsAndBuildingsInRadius(
+        source.x,
+        source.y,
+        source.z,
+        source.radius + maxPadding,
+      );
+      const units = candidates.units;
+      for (let u = 0; u < units.length; u++) {
+        this.addCandidateEntity(units[u], canGrantFullVisibility);
+      }
+      const buildings = candidates.buildings;
+      for (let b = 0; b < buildings.length; b++) {
+        this.addCandidateEntity(buildings[b], canGrantFullVisibility);
+      }
+    }
+  }
+
+  private addCandidateEntity(entity: Entity, canGrantFullVisibility: boolean): void {
+    if (canGrantFullVisibility && this.isEntityVisible(entity)) {
+      this.appendVisibleEntityId(entity);
+    }
+    if (this.isEntityOnRadar(entity)) {
+      this.appendRadarEntityId(entity);
+    }
+  }
+
+  private appendVisibleEntityId(entity: Entity): void {
+    const id = entity.id;
+    if (this.visibleEntityIdSet.has(id)) return;
+    this.visibleEntityIdSet.add(id);
+    this.visibleEntityIds.push(id);
+  }
+
+  private appendRadarEntityId(entity: Entity): void {
+    const id = entity.id;
+    if (this.radarEntityIdSet.has(id)) return;
+    this.radarEntityIdSet.add(id);
+    this.radarEntityIds.push(id);
   }
 
   /** Full-vision point test. Audio events and projectile spawns hang

@@ -29,6 +29,7 @@ import {
 import { resetAudioPoolForKey } from '../network/stateSerializerAudio';
 import { resetSprayPoolForKey } from '../network/stateSerializerSpray';
 import { resetMinimapPoolForKey } from '../network/stateSerializerMinimap';
+import { trimEntitySnapshotPool } from '../network/stateSerializerEntities';
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { DeathContext } from '../sim/combat';
@@ -449,6 +450,7 @@ export class GameServer {
     // Reset module-level reusable buffers that hold stale entity references
     resetProjectileBuffers();
     resetDamageBuffers();
+    trimEntitySnapshotPool();
     const sim = getSimWasm();
     if (sim !== undefined) {
       sim.combatTargeting.clear();

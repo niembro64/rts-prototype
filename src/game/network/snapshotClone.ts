@@ -313,11 +313,19 @@ export class ReusableNetworkSnapshotCloner {
     converterTax: undefined,
     cpu: undefined,
     wind: undefined,
+    retainedPools: undefined,
     unitGroundNormalEma: undefined,
   };
   private serverMetaUnitsAllowed: string[] = [];
   private serverMetaCpu = { avg: 0, hi: 0 };
   private serverMetaWind = { x: 0, y: 0, speed: 0, angle: 0 };
+  private serverMetaRetainedPools = {
+    entitySnapshots: {
+      retained: 0,
+      active: 0,
+      warm: 0,
+    },
+  };
   private removedEntityIds: number[] = [];
 
   clear(): void {
@@ -469,6 +477,17 @@ export class ReusableNetworkSnapshotCloner {
         dsm.wind = this.serverMetaWind;
       } else {
         dsm.wind = undefined;
+      }
+      if (sm.retainedPools) {
+        this.serverMetaRetainedPools.entitySnapshots.retained =
+          sm.retainedPools.entitySnapshots.retained;
+        this.serverMetaRetainedPools.entitySnapshots.active =
+          sm.retainedPools.entitySnapshots.active;
+        this.serverMetaRetainedPools.entitySnapshots.warm =
+          sm.retainedPools.entitySnapshots.warm;
+        dsm.retainedPools = this.serverMetaRetainedPools;
+      } else {
+        dsm.retainedPools = undefined;
       }
       dsm.unitGroundNormalEma = sm.unitGroundNormalEma;
       dst.serverMeta = dsm;

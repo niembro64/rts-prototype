@@ -20,29 +20,7 @@ CODE AUDIT - 2026-06-05
 
 OPTIMIZATIONS TO MAKE
 
-1. Snapshot visibility and minimap serialization still do broad TypeScript
-world walks in normal play.
-
-Files:
-src/game/network/stateSerializer.ts
-src/game/network/stateSerializerMinimap.ts
-src/game/network/stateSerializerVisibility.ts
-
-The philosophy says steady-state simulation and network hot paths should avoid
-broad scans and should use data-oriented buffers/WASM for thousands of units.
-The main serializer still walks world.getUnits() and world.getBuildings() for
-filtered visibility re-entry and keyframes, and the minimap serializer walks the
-same sources on every minimap emit. stateSerializerVisibility has cached source
-cells, but the emit path still does object-level scanning and per-entity
-acceptance work in TypeScript.
-
-Required fix:
-Move visibility acceptance, newly-visible detection, and minimap contact packing
-toward dense Rust/WASM slabs or maintained AOI/radar bitsets. At minimum, feed
-the serializer precomputed per-recipient visible/radar entity id buffers so
-normal deltas do not scan every unit/building.
-
-2. Render-list generation and per-unit pose work still spend too much time in
+1. Render-list generation and per-unit pose work still spend too much time in
 TypeScript object and scenegraph loops.
 
 Files:
@@ -65,27 +43,3 @@ with scoped id lists, transforms, visibility flags, and HUD/shield rows already
 prepared. Move culling/list construction and as much pose-matrix generation as
 practical into WASM or GPU-updated buffers, then restrict Three.js work to
 explicit buffer range uploads and lifecycle changes.
-
-MEMORY LEAKS / RETENTION RISKS
-
-3. Peak-sized module pools and typed arrays retain memory across sessions with
-no teardown cap.
-
-Files:
-src/game/network/stateSerializerEntities.ts
-src/game/network/ClientUnitPrediction.ts
-src/game/network/ClientPredictionTargets.ts
-
-The entity snapshot pool grows to the largest emitted entity count and
-resetEntitySnapshotPool only resets the index. ClientUnitPrediction doubles its
-module-level Float64Array/Uint8Array batches to peak prediction size and has no
-session reset. ClientPredictionTargets keeps a module-level BeamPoint free list
-that can grow to peak beam/reflection complexity. This is useful steady-state
-pooling, but after a huge battle or background preview those allocations remain
-for the lifetime of the tab even after the game/session is stopped.
-
-Required fix:
-Add explicit pool reset/cap functions for session teardown. Keep a sane warm
-capacity, release extreme peaks on GameServer.stop/RtsScene3D.shutdown/client
-disconnect, and expose retained pool sizes in debug/perf telemetry so regressions
-are visible.

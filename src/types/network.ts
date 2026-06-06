@@ -566,6 +566,13 @@ export type NetworkServerSnapshotMeta = {
     speed: number;
     angle: number;
   } | undefined;
+  retainedPools?: {
+    entitySnapshots: {
+      retained: number;
+      active: number;
+      warm: number;
+    };
+  };
   /** HOST SERVER unit ground normal EMA mode (UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC key).
    *  Bare string on the wire — the value space is just 'snap' / 'fast'
    *  / 'mid' / 'slow'. Remote clients read this so their HOST SERVER

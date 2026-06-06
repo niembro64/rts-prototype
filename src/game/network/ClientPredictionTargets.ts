@@ -71,6 +71,29 @@ export function createBeamPathTarget(): BeamPathTarget {
 // GC and every regrowth allocates fresh ones — pure churn for a value
 // type that's recycled minutes later.
 const _beamPointFreeList: BeamPoint[] = [];
+const BEAM_POINT_FREE_LIST_WARM_CAPACITY = 512;
+
+export type ClientPredictionTargetPoolStats = {
+  freeBeamPoints: number;
+  warmBeamPoints: number;
+};
+
+export function getClientPredictionTargetPoolStats(): ClientPredictionTargetPoolStats {
+  return {
+    freeBeamPoints: _beamPointFreeList.length,
+    warmBeamPoints: BEAM_POINT_FREE_LIST_WARM_CAPACITY,
+  };
+}
+
+export function resetClientPredictionTargetPools(
+  maxRetained = BEAM_POINT_FREE_LIST_WARM_CAPACITY,
+): ClientPredictionTargetPoolStats {
+  const retained = Math.max(0, Math.floor(maxRetained));
+  if (_beamPointFreeList.length > retained) {
+    _beamPointFreeList.length = retained;
+  }
+  return getClientPredictionTargetPoolStats();
+}
 
 function clearBeamPoint(p: BeamPoint): void {
   p.x = 0; p.y = 0; p.z = 0;

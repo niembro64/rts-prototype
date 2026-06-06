@@ -150,6 +150,11 @@ export class WorldState {
   // array. Stale-too-large is harmless: per-candidate distance checks
   // still enforce the exact range contract.
   private maxTargetableRadius: number = 0;
+  // Monotonically-growing upper bound on snapshot visibility padding.
+  // Visibility/radar broadphase queries need the target silhouette pad,
+  // which is visual/hitbox/collision for units and footprint half-extent
+  // for buildings. Stale-too-large mirrors maxTargetableRadius.
+  private maxVisibilityPadding: number = 0;
   public rng: SeededRNG;
 
   // Current player being controlled
@@ -541,6 +546,10 @@ export class WorldState {
         ? entity.unit.radius.hitbox
         : (entity.building ? entity.building.targetRadius : 0);
       if (r > this.maxTargetableRadius) this.maxTargetableRadius = r;
+      const visibilityPadding = entity.unit
+        ? Math.max(entity.unit.radius.visual, entity.unit.radius.hitbox, entity.unit.radius.collision)
+        : (entity.building ? Math.max(entity.building.width, entity.building.height) * 0.5 : 0);
+      if (visibilityPadding > this.maxVisibilityPadding) this.maxVisibilityPadding = visibilityPadding;
     }
     this.markSnapshotDirty(entity.id, 0xff);
     this.cache.invalidate();
@@ -552,6 +561,14 @@ export class WorldState {
    *  queries slightly wider than strictly needed). */
   getMaxTargetableRadius(): number {
     return this.maxTargetableRadius;
+  }
+
+  /** Upper bound on getEntityVisibilityPadding(e) for any unit/building
+   *  entity in the world. Grows monotonically so broadphase visibility
+   *  candidate queries can stay conservative without rescanning every
+   *  entity to rediscover the largest silhouette each snapshot. */
+  getMaxVisibilityPadding(): number {
+    return this.maxVisibilityPadding;
   }
 
   // Remove entity from world

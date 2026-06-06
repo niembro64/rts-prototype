@@ -279,6 +279,33 @@ export function resetEntitySnapshotPool(): void {
   resetEntitySnapshotWireSource();
 }
 
+export type EntitySnapshotPoolStats = {
+  retainedEntries: number;
+  activeEntries: number;
+  warmEntries: number;
+};
+
+export function getEntitySnapshotPoolStats(): EntitySnapshotPoolStats {
+  return {
+    retainedEntries: pool.length,
+    activeEntries: poolIndex,
+    warmEntries: INITIAL_ENTITY_POOL,
+  };
+}
+
+export function trimEntitySnapshotPool(maxRetained = INITIAL_ENTITY_POOL): EntitySnapshotPoolStats {
+  poolIndex = 0;
+  const retained = Math.max(INITIAL_ENTITY_POOL, Math.floor(maxRetained));
+  if (pool.length > retained) {
+    pool.length = retained;
+  }
+  while (pool.length < INITIAL_ENTITY_POOL) {
+    pool.push(createPooledEntry());
+  }
+  resetEntitySnapshotWireSource();
+  return getEntitySnapshotPoolStats();
+}
+
 export function registerEntitySnapshotWireSource(
   entities: NetworkServerSnapshotEntity[],
 ): void {

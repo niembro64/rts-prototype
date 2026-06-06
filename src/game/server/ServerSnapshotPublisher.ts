@@ -16,6 +16,7 @@ import {
 import { serializeAudioEvents } from '../network/stateSerializerAudio';
 import { serializeSprayTargets } from '../network/stateSerializerSpray';
 import { serializeMinimapSnapshotEntities } from '../network/stateSerializerMinimap';
+import { getEntitySnapshotPoolStats } from '../network/stateSerializerEntities';
 import type {
   SerializerAudioOverride,
   SerializerMinimapOverride,
@@ -142,6 +143,7 @@ export class ServerSnapshotPublisher {
     // We only pass removedEntities below.
 
     const wind = input.simulation.getWindState();
+    const entityPoolStats = getEntitySnapshotPoolStats();
     const serverMeta = this.metaBuilder.build({
       tickAvg: input.tpsAvg,
       tickLow: input.tpsLow,
@@ -163,6 +165,13 @@ export class ServerSnapshotPublisher {
       tickMsHi: input.tickMsHi,
       tickMsInitialized: input.tickMsInitialized,
       wind,
+      retainedPools: {
+        entitySnapshots: {
+          retained: entityPoolStats.retainedEntries,
+          active: entityPoolStats.activeEntries,
+          warm: entityPoolStats.warmEntries,
+        },
+      },
       unitGroundNormalEmaMode: getUnitGroundNormalEmaMode(),
     });
 
