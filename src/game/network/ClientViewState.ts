@@ -32,6 +32,7 @@ import {
   ENTITY_CHANGED_VEL,
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_BUILDING,
+  ENTITY_CHANGED_FACTORY,
   ENTITY_CHANGED_NORMAL,
   RESOURCE_FLOW_OUTBOUND,
   RESOURCE_KIND_ENERGY,
@@ -209,12 +210,14 @@ export class ClientViewState {
   private predictionCadence = new ClientPredictionCadence();
   private activeEntityPredictionIds: Set<EntityId> = new Set();
   private dirtyUnitRenderIds: Set<EntityId> = new Set();
+  private dirtyBuildingRenderIds: Set<EntityId> = new Set();
   private renderLifecycleDirtyIds: Set<EntityId> = new Set();
   private predictionSupportSurfaceEntities: Entity[] = [];
   private predictionSupportSurfaceEntityIds = new Set<EntityId>();
   private selectionState = new ClientSelectionState(
     this.entities,
     this.dirtyUnitRenderIds,
+    this.dirtyBuildingRenderIds,
     (entity) => this.markEntityPredictionActive(entity),
   );
   private predictionStepper!: ClientPredictionStepper;
@@ -378,6 +381,7 @@ export class ClientViewState {
     this.selectionState.delete(id);
     this.activeEntityPredictionIds.delete(id);
     this.dirtyUnitRenderIds.delete(id);
+    this.dirtyBuildingRenderIds.delete(id);
     this.renderLifecycleDirtyIds.delete(id);
     if (existing !== undefined) {
       this.markEntitySetChanged(existing.type !== 'shot');
@@ -404,6 +408,18 @@ export class ClientViewState {
       // Towers ride the same building turret-prediction path because
       // their wire payload (server.building) carries turrets identically.
       const building = server.building;
+      if (
+        cf == null ||
+        (cf & (
+          ENTITY_CHANGED_POS |
+          ENTITY_CHANGED_ROT |
+          ENTITY_CHANGED_HP |
+          ENTITY_CHANGED_BUILDING |
+          ENTITY_CHANGED_FACTORY
+        )) !== 0
+      ) {
+        this.dirtyBuildingRenderIds.add(server.id);
+      }
       if (building !== null && Array.isArray(building.turrets)) {
         this.activeEntityPredictionIds.add(server.id);
       }
@@ -1094,6 +1110,7 @@ export class ClientViewState {
 
   consumeUnitRenderDirties(): void {
     this.dirtyUnitRenderIds.clear();
+    this.dirtyBuildingRenderIds.clear();
     this.renderLifecycleDirtyIds.clear();
   }
 
@@ -1201,7 +1218,7 @@ export class ClientViewState {
     out.buildingRows.pushEntity(
       entity,
       this.activeEntityPredictionIds.has(entity.id),
-      false,
+      this.dirtyBuildingRenderIds.has(entity.id),
       this.renderLifecycleDirtyIds.has(entity.id),
     );
   }
@@ -1586,6 +1603,7 @@ export class ClientViewState {
     this.predictionCadence.clearAll();
     this.activeEntityPredictionIds.clear();
     this.dirtyUnitRenderIds.clear();
+    this.dirtyBuildingRenderIds.clear();
     this.renderLifecycleDirtyIds.clear();
     this.predictionSupportSurfaceEntities.length = 0;
     this.predictionSupportSurfaceEntityIds.clear();

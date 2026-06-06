@@ -54,18 +54,23 @@ positions now batch through WASM. Unit turret aim/root-pitch math also batches
 through WASM, and shield-panel support-root aim math reuses that same batch.
 Building turret aim/root-pitch math now uses that shared batch too. Building
 group and primary-body transform matrices now batch through a render-pose
-WASM scratch-buffer kernel. TypeScript still owns construction-emitter timing,
-which semantic aim source to use, dirty-row selection, material and visibility
-orchestration, and mesh lifecycle. The remaining hot work is still TypeScript
-pose/lifecycle generation and Three.js scenegraph churn: mirror support-root
-attachment/visibility work, locomotion, fade, overlays, and cache pruning; plus
-per-building turret attachment/visibility/material/spin, animation, overlay,
-and cache-pruning work. This is likely to dominate at the "thousands of units"
+WASM scratch-buffer kernel. Building render rows carry building render-dirty
+flags from snapshot and selection changes, and static building rows skip body,
+fade, overlay, and turret scenegraph work unless they are dirty, actively
+predicting turrets, running multi-barrel spin or construction emitters, fading,
+or clearing/updating visible range overlays. TypeScript still owns
+construction-emitter timing, which semantic aim source to use, dirty-row
+selection, material and visibility orchestration, and mesh lifecycle. The
+remaining hot work is still TypeScript pose/lifecycle generation and Three.js
+scenegraph churn: mirror support-root attachment/visibility work, locomotion,
+fade, overlays, and cache pruning; plus active building turret
+attachment/visibility/material/spin, building animation, active overlay, and
+cache-pruning work. This is likely to dominate at the "thousands of units"
 target.
 
 Required fix:
 Move the remaining mirror support-root attachment/visibility work, locomotion,
-fade, overlay, building turret attachment/material/spin, animation, and cache
-pruning into WASM-owned slabs, GPU-updated buffers, or explicit dirty queues as
-practical, then restrict Three.js work to buffer uploads and true lifecycle
-changes.
+unit fade, unit overlay, active building turret attachment/material/spin,
+building animation, active overlay, and cache pruning into WASM-owned slabs,
+GPU-updated buffers, or explicit dirty queues as practical, then restrict
+Three.js work to buffer uploads and true lifecycle changes.

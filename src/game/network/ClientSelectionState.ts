@@ -6,6 +6,7 @@ export class ClientSelectionState {
   constructor(
     private readonly entities: Map<EntityId, Entity>,
     private readonly dirtyUnitRenderIds: Set<EntityId>,
+    private readonly dirtyBuildingRenderIds: Set<EntityId>,
     private readonly markPredictionActive: (entity: Entity) => void,
   ) {}
 
@@ -23,9 +24,7 @@ export class ClientSelectionState {
     for (const entity of this.entities.values()) {
       if (!entity.selectable) continue;
       const selected = this.selectedIds.has(entity.id);
-      if (entity.selectable.selected !== selected && entity.unit) {
-        this.dirtyUnitRenderIds.add(entity.id);
-      }
+      if (entity.selectable.selected !== selected) this.markRenderDirty(entity);
       entity.selectable.selected = selected;
       if (selected) this.markPredictionActive(entity);
     }
@@ -39,7 +38,7 @@ export class ClientSelectionState {
     this.selectedIds.add(id);
     const entity = this.entities.get(id);
     if (entity === undefined || entity.selectable === null) return;
-    if (!entity.selectable.selected && entity.unit) this.dirtyUnitRenderIds.add(id);
+    if (!entity.selectable.selected) this.markRenderDirty(entity);
     entity.selectable.selected = true;
     this.markPredictionActive(entity);
   }
@@ -48,7 +47,7 @@ export class ClientSelectionState {
     this.selectedIds.delete(id);
     const entity = this.entities.get(id);
     if (entity === undefined || entity.selectable === null) return;
-    if (entity.selectable.selected && entity.unit) this.dirtyUnitRenderIds.add(id);
+    if (entity.selectable.selected) this.markRenderDirty(entity);
     entity.selectable.selected = false;
   }
 
@@ -56,7 +55,7 @@ export class ClientSelectionState {
     for (const id of this.selectedIds) {
       const entity = this.entities.get(id);
       if (entity === undefined || entity.selectable === null) continue;
-      if (entity.selectable.selected && entity.unit) this.dirtyUnitRenderIds.add(id);
+      if (entity.selectable.selected) this.markRenderDirty(entity);
       entity.selectable.selected = false;
     }
     this.selectedIds.clear();
@@ -64,5 +63,13 @@ export class ClientSelectionState {
 
   reset(): void {
     this.selectedIds.clear();
+  }
+
+  private markRenderDirty(entity: Entity): void {
+    if (entity.unit) {
+      this.dirtyUnitRenderIds.add(entity.id);
+    } else if (entity.building) {
+      this.dirtyBuildingRenderIds.add(entity.id);
+    }
   }
 }

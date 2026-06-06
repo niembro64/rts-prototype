@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
-import { getGraphicsConfig } from '@/clientBarConfig';
+import { anyRangeToggleActive, getGraphicsConfig } from '@/clientBarConfig';
 import type { ClientViewState } from '../network/ClientViewState';
 import { getTurretHeadRadius } from '../math';
 import {
@@ -39,6 +39,23 @@ import {
 } from './BuildingPoseBatch3D';
 
 const BUILDING_HEIGHT = 120;
+
+function entityHasPerFrameBuildingTurretWork(entity: Entity): boolean {
+  const turrets = entity.combat?.turrets;
+  if (!turrets || turrets.length === 0) return false;
+  for (let i = 0; i < turrets.length; i++) {
+    const turret = turrets[i];
+    if (turret.config.constructionEmitter) return true;
+    const barrel = turret.config.barrel;
+    if (
+      barrel !== undefined &&
+      (barrel.type === 'simpleMultiBarrel' || barrel.type === 'coneMultiBarrel')
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
 
 export type BuildingEntityMeshFactoryOptions = {
   entity: Entity;
@@ -235,7 +252,32 @@ export class BuildingEntityRenderer3D {
       const entity = rows.entityAt(row);
       if (entity === undefined || entity.building === null) continue;
       if (pruneBuildings) this.seenIds.add(entityId);
-      this.barrelSpin.advance(entity, spinDt);
+
+      const mesh = this.meshes.get(entityId);
+      const rowDirty = rows.renderDirtyAt(row) || rows.lifecycleDirtyAt(row);
+      const activePrediction = rows.activePredictionAt(row);
+      const needsTurretFrame =
+        activePrediction || entityHasPerFrameBuildingTurretWork(entity);
+      const bodyFadeActive =
+        rows.bodyOpacity[row] < 1 || mesh?.buildingGroupFadeActive === true;
+      const overlayDirty = mesh !== undefined && this.staticBuildingOverlaysNeedUpdate(
+        mesh,
+        entity,
+        rows,
+        row,
+      );
+      if (
+        mesh !== undefined &&
+        !rowDirty &&
+        !needsTurretFrame &&
+        !bodyFadeActive &&
+        !overlayDirty
+      ) {
+        mesh.group.visible = true;
+        continue;
+      }
+
+      if (needsTurretFrame) this.barrelSpin.advance(entity, spinDt);
       this.updateBuilding(entity, rows, row, frameState);
     }
 
@@ -278,8 +320,21 @@ export class BuildingEntityRenderer3D {
     const rows = this.fallbackBuildingRenderRows;
     rows.reset();
     const buildings = this.clientViewState.getBuildings();
-    for (let i = 0; i < buildings.length; i++) rows.pushEntity(buildings[i]);
+    for (let i = 0; i < buildings.length; i++) {
+      rows.pushEntity(buildings[i], false, true, true);
+    }
     return rows;
+  }
+
+  private staticBuildingOverlaysNeedUpdate(
+    mesh: EntityMesh,
+    entity: Entity,
+    rows: BuildingRenderPacket3D,
+    row: number,
+  ): boolean {
+    if (mesh.rangeRingsVisible === true) return true;
+    if (anyRangeToggleActive()) return true;
+    return entity.buildingBlueprintId === 'buildingRadar' && rows.selectedAt(row);
   }
 
   private disposeBuildingMesh(mesh: EntityMesh): void {
@@ -396,7 +451,10 @@ export class BuildingEntityRenderer3D {
     // Finished buildings sit at opacity 1, where applyEntityGroupFade
     // restores the real materials and costs nothing.
     const bodyOpacity = rows.bodyOpacity[row];
-    applyEntityGroupFade(mesh.group, bodyOpacity);
+    if (bodyOpacity < 1 || mesh.buildingGroupFadeActive === true) {
+      applyEntityGroupFade(mesh.group, bodyOpacity);
+      mesh.buildingGroupFadeActive = bodyOpacity < 1;
+    }
   }
 
   private updateBuildingMesh(

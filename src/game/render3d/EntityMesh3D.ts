@@ -137,6 +137,7 @@ export type EntityMesh = {
   buildingCachedZ?: number;
   buildingCachedRotation?: number;
   buildingCachedDetailsReady?: boolean;
+  buildingGroupFadeActive?: boolean;
   buildingRenderFrameKey?: string;
   buildingRenderBlueprintId?: string | null;
   buildingRenderTurretCount?: number;
