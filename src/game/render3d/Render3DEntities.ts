@@ -891,6 +891,7 @@ export class Render3DEntities {
     const poseOutput = this.unitRenderPose.compute(poseCount);
     const poseOutputStride = this.unitRenderPose.outputStride;
     this.chassisInstancePose.begin();
+    this.shieldPanelPose.begin();
 
     for (let poseIndex = 0; poseIndex < poseCount; poseIndex++) {
       const row = poseRows[poseIndex];
@@ -1053,10 +1054,10 @@ export class Render3DEntities {
             m.mirrors,
             shieldPanelTurret,
             this._mirrorPivotLocal,
-            this._unitChainMat,
+            this._smoothLiftedPos,
+            this._smoothParentQuat,
             chassisTilted ? _invTiltQuat : undefined,
             this.turretShieldPanelsEnabled,
-            this.unitDetailInstances,
           );
         } else {
           m.mirrors.root.visible = false;
@@ -1102,6 +1103,7 @@ export class Render3DEntities {
       // world group, depth-occluded by terrain).
     }
     this.chassisInstancePose.flush(this.unitDetailInstances);
+    this.shieldPanelPose.flush(this.unitDetailInstances);
 
     // Units no longer present leave the live set. Rather than tearing the
     // mesh down immediately, hand it to a shared fade controller: the

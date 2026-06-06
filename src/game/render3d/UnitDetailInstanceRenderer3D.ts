@@ -734,6 +734,22 @@ export class UnitDetailInstanceRenderer3D {
     this.writeShieldPanelInstanceColor(slot, resolveShieldSurfaceColor(entity));
   }
 
+  writeShieldPanelMatrixArray(
+    slot: number,
+    matrix: ArrayLike<number>,
+    offset: number,
+    entity: Entity,
+  ): void {
+    writeInstanceMatrixArray(
+      this.shieldPanelInstanced,
+      slot,
+      matrix,
+      offset,
+      this.shieldPanelMatrixDirty,
+    );
+    this.writeShieldPanelInstanceColor(slot, resolveShieldSurfaceColor(entity));
+  }
+
   clearShieldPanelSlots(slots: readonly number[]): void {
     for (const slot of slots) {
       writeInstanceMatrix(

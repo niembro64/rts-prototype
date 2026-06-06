@@ -76,6 +76,10 @@ import __wbg_init, {
   render_chassis_part_input_scratch_ptr,
   render_chassis_part_output_scratch_ptr,
   render_chassis_part_scratch_ensure,
+  render_shield_panel_compute,
+  render_shield_panel_input_scratch_ptr,
+  render_shield_panel_output_scratch_ptr,
+  render_shield_panel_scratch_ensure,
   unit_force_step_batch,
   projectile_pool_init,
   projectile_pool_capacity,
@@ -1622,6 +1626,12 @@ export interface RenderPoseApi {
   chassisPartCompute: (count: number) => void;
   chassisPartInputStride: number;
   chassisPartOutputStride: number;
+  shieldPanelInputScratchPtr: () => number;
+  shieldPanelOutputScratchPtr: () => number;
+  shieldPanelScratchEnsure: (count: number) => void;
+  shieldPanelCompute: (count: number) => void;
+  shieldPanelInputStride: number;
+  shieldPanelOutputStride: number;
 }
 
 /** Constants exposed alongside the SpatialGrid API. Mirrors the
@@ -4028,6 +4038,12 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           chassisPartCompute: render_chassis_part_compute,
           chassisPartInputStride: 15,
           chassisPartOutputStride: 16,
+          shieldPanelInputScratchPtr: render_shield_panel_input_scratch_ptr,
+          shieldPanelOutputScratchPtr: render_shield_panel_output_scratch_ptr,
+          shieldPanelScratchEnsure: render_shield_panel_scratch_ensure,
+          shieldPanelCompute: render_shield_panel_compute,
+          shieldPanelInputStride: 24,
+          shieldPanelOutputStride: 16,
         },
         snapshotBaseline: {
           create: snapshot_baseline_create,

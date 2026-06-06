@@ -5464,6 +5464,179 @@ pub fn render_chassis_part_compute(count: u32) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+//  Render pose helper — unit shield-panel slab matrices
+//
+//  Each row composes:
+//    T(parentPos) · R(parentQuat) · T(rootPos) · R(rootQuat)
+//    · T(panelPos) · R(panelQuat) · S(panelScale)
+//
+//  Root still exists on the JS scenegraph for the small per-mesh
+//  support arms; this kernel only writes the shared panel InstancedMesh
+//  slab matrices.
+// ─────────────────────────────────────────────────────────────────
+
+pub const RENDER_SHIELD_PANEL_INPUT_STRIDE: usize = 24;
+pub const RENDER_SHIELD_PANEL_OUTPUT_STRIDE: usize = 16;
+
+struct RenderShieldPanelScratch {
+    input: Vec<f32>,
+    output: Vec<f32>,
+}
+
+struct RenderShieldPanelScratchHolder(UnsafeCell<Option<RenderShieldPanelScratch>>);
+unsafe impl Sync for RenderShieldPanelScratchHolder {}
+static RENDER_SHIELD_PANEL_SCRATCH: RenderShieldPanelScratchHolder =
+    RenderShieldPanelScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn render_shield_panel_scratch() -> &'static mut RenderShieldPanelScratch {
+    unsafe {
+        let cell = &mut *RENDER_SHIELD_PANEL_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(RenderShieldPanelScratch {
+                input: vec![0.0; RENDER_SHIELD_PANEL_INPUT_STRIDE * 256],
+                output: vec![0.0; RENDER_SHIELD_PANEL_OUTPUT_STRIDE * 256],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn render_shield_panel_input_scratch_ptr() -> *const f32 {
+    render_shield_panel_scratch().input.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn render_shield_panel_output_scratch_ptr() -> *const f32 {
+    render_shield_panel_scratch().output.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn render_shield_panel_scratch_ensure(count: u32) {
+    let s = render_shield_panel_scratch();
+    let input_needed = (count as usize) * RENDER_SHIELD_PANEL_INPUT_STRIDE;
+    if s.input.len() < input_needed {
+        s.input.resize(input_needed, 0.0);
+    }
+    let output_needed = (count as usize) * RENDER_SHIELD_PANEL_OUTPUT_STRIDE;
+    if s.output.len() < output_needed {
+        s.output.resize(output_needed, 0.0);
+    }
+}
+
+#[inline]
+fn render_write_mat4_compose_scaled(
+    out: &mut [f32],
+    offset: usize,
+    pos: [f64; 3],
+    q: [f64; 4],
+    scale: [f64; 3],
+) {
+    let x = q[0];
+    let y = q[1];
+    let z = q[2];
+    let w = q[3];
+    let x2 = x + x;
+    let y2 = y + y;
+    let z2 = z + z;
+    let xx = x * x2;
+    let xy = x * y2;
+    let xz = x * z2;
+    let yy = y * y2;
+    let yz = y * z2;
+    let zz = z * z2;
+    let wx = w * x2;
+    let wy = w * y2;
+    let wz = w * z2;
+    let sx = scale[0];
+    let sy = scale[1];
+    let sz = scale[2];
+
+    out[offset] = ((1.0 - (yy + zz)) * sx) as f32;
+    out[offset + 1] = ((xy + wz) * sx) as f32;
+    out[offset + 2] = ((xz - wy) * sx) as f32;
+    out[offset + 3] = 0.0;
+    out[offset + 4] = ((xy - wz) * sy) as f32;
+    out[offset + 5] = ((1.0 - (xx + zz)) * sy) as f32;
+    out[offset + 6] = ((yz + wx) * sy) as f32;
+    out[offset + 7] = 0.0;
+    out[offset + 8] = ((xz + wy) * sz) as f32;
+    out[offset + 9] = ((yz - wx) * sz) as f32;
+    out[offset + 10] = ((1.0 - (xx + yy)) * sz) as f32;
+    out[offset + 11] = 0.0;
+    out[offset + 12] = pos[0] as f32;
+    out[offset + 13] = pos[1] as f32;
+    out[offset + 14] = pos[2] as f32;
+    out[offset + 15] = 1.0;
+}
+
+#[wasm_bindgen]
+pub fn render_shield_panel_compute(count: u32) {
+    let s = render_shield_panel_scratch();
+    let count_usize = count as usize;
+    debug_assert!(s.input.len() >= count_usize * RENDER_SHIELD_PANEL_INPUT_STRIDE);
+    debug_assert!(s.output.len() >= count_usize * RENDER_SHIELD_PANEL_OUTPUT_STRIDE);
+
+    for i in 0..count_usize {
+        let ib = i * RENDER_SHIELD_PANEL_INPUT_STRIDE;
+        let ob = i * RENDER_SHIELD_PANEL_OUTPUT_STRIDE;
+        let parent_pos = [
+            s.input[ib] as f64,
+            s.input[ib + 1] as f64,
+            s.input[ib + 2] as f64,
+        ];
+        let parent_q = [
+            s.input[ib + 3] as f64,
+            s.input[ib + 4] as f64,
+            s.input[ib + 5] as f64,
+            s.input[ib + 6] as f64,
+        ];
+        let root_pos = [
+            s.input[ib + 7] as f64,
+            s.input[ib + 8] as f64,
+            s.input[ib + 9] as f64,
+        ];
+        let root_q = [
+            s.input[ib + 10] as f64,
+            s.input[ib + 11] as f64,
+            s.input[ib + 12] as f64,
+            s.input[ib + 13] as f64,
+        ];
+        let panel_pos = [
+            s.input[ib + 14] as f64,
+            s.input[ib + 15] as f64,
+            s.input[ib + 16] as f64,
+        ];
+        let panel_q = [
+            s.input[ib + 17] as f64,
+            s.input[ib + 18] as f64,
+            s.input[ib + 19] as f64,
+            s.input[ib + 20] as f64,
+        ];
+        let panel_scale = [
+            s.input[ib + 21] as f64,
+            s.input[ib + 22] as f64,
+            s.input[ib + 23] as f64,
+        ];
+        let root_panel_offset = quat_rotate_vec(root_q, panel_pos);
+        let local_pos = [
+            root_pos[0] + root_panel_offset[0],
+            root_pos[1] + root_panel_offset[1],
+            root_pos[2] + root_panel_offset[2],
+        ];
+        let world_offset = quat_rotate_vec(parent_q, local_pos);
+        let world_pos = [
+            parent_pos[0] + world_offset[0],
+            parent_pos[1] + world_offset[1],
+            parent_pos[2] + world_offset[2],
+        ];
+        let world_q = quat_mul(quat_mul(parent_q, root_q), panel_q);
+        render_write_mat4_compose_scaled(&mut s.output, ob, world_pos, world_q, panel_scale);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────
 //  Phase 3e — Batched hover orientation kernel
 //
 //  Replaces the per-entity quatFromYawPitchRoll + quatDampedSpringStep
