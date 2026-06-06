@@ -702,6 +702,31 @@ export class UnitDetailInstanceRenderer3D {
     }
   }
 
+  writeBarrelMatrixArray(
+    slot: number,
+    matrix: ArrayLike<number>,
+    offset: number,
+    useCone: boolean = false,
+  ): void {
+    if (useCone) {
+      writeInstanceMatrixArray(
+        this.coneBarrelInstanced,
+        slot,
+        matrix,
+        offset,
+        this.coneBarrelMatrixDirty,
+      );
+    } else {
+      writeInstanceMatrixArray(
+        this.barrelInstanced,
+        slot,
+        matrix,
+        offset,
+        this.barrelMatrixDirty,
+      );
+    }
+  }
+
   clearTurretSlots(turret: Pick<TurretMesh, 'headSlot' | 'barrelSlots' | 'barrelUsesCone'>): void {
     if (turret.headSlot !== undefined) {
       writeInstanceMatrix(

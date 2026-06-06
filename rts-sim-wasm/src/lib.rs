@@ -5637,6 +5637,173 @@ pub fn render_shield_panel_compute(count: u32) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+//  Render pose helper — unit turret barrel matrices
+//
+//  Each row composes:
+//    T(parentPos) · R(parentQuat) · T(rootPos) · R(rootQuat)
+//    · T(pitchPos) · R(pitchQuat) · T(spinPos) · R(spinQuat)
+//    · T(barrelPos) · R(barrelQuat) · S(barrelScale)
+//
+//  TS still owns the semantic aim state; this kernel only turns the
+//  already-written rig transforms into InstancedMesh matrices.
+// ─────────────────────────────────────────────────────────────────
+
+pub const RENDER_TURRET_BARREL_INPUT_STRIDE: usize = 38;
+pub const RENDER_TURRET_BARREL_OUTPUT_STRIDE: usize = 16;
+
+struct RenderTurretBarrelScratch {
+    input: Vec<f32>,
+    output: Vec<f32>,
+}
+
+struct RenderTurretBarrelScratchHolder(UnsafeCell<Option<RenderTurretBarrelScratch>>);
+unsafe impl Sync for RenderTurretBarrelScratchHolder {}
+static RENDER_TURRET_BARREL_SCRATCH: RenderTurretBarrelScratchHolder =
+    RenderTurretBarrelScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn render_turret_barrel_scratch() -> &'static mut RenderTurretBarrelScratch {
+    unsafe {
+        let cell = &mut *RENDER_TURRET_BARREL_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(RenderTurretBarrelScratch {
+                input: vec![0.0; RENDER_TURRET_BARREL_INPUT_STRIDE * 2048],
+                output: vec![0.0; RENDER_TURRET_BARREL_OUTPUT_STRIDE * 2048],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn render_turret_barrel_input_scratch_ptr() -> *const f32 {
+    render_turret_barrel_scratch().input.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn render_turret_barrel_output_scratch_ptr() -> *const f32 {
+    render_turret_barrel_scratch().output.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn render_turret_barrel_scratch_ensure(count: u32) {
+    let s = render_turret_barrel_scratch();
+    let input_needed = (count as usize) * RENDER_TURRET_BARREL_INPUT_STRIDE;
+    if s.input.len() < input_needed {
+        s.input.resize(input_needed, 0.0);
+    }
+    let output_needed = (count as usize) * RENDER_TURRET_BARREL_OUTPUT_STRIDE;
+    if s.output.len() < output_needed {
+        s.output.resize(output_needed, 0.0);
+    }
+}
+
+#[inline]
+fn render_compose_child_offset(
+    parent_q: [f64; 4],
+    parent_pos: [f64; 3],
+    child_pos: [f64; 3],
+) -> [f64; 3] {
+    let rotated = quat_rotate_vec(parent_q, child_pos);
+    [
+        parent_pos[0] + rotated[0],
+        parent_pos[1] + rotated[1],
+        parent_pos[2] + rotated[2],
+    ]
+}
+
+#[wasm_bindgen]
+pub fn render_turret_barrel_compute(count: u32) {
+    let s = render_turret_barrel_scratch();
+    let count_usize = count as usize;
+    debug_assert!(s.input.len() >= count_usize * RENDER_TURRET_BARREL_INPUT_STRIDE);
+    debug_assert!(s.output.len() >= count_usize * RENDER_TURRET_BARREL_OUTPUT_STRIDE);
+
+    for i in 0..count_usize {
+        let ib = i * RENDER_TURRET_BARREL_INPUT_STRIDE;
+        let ob = i * RENDER_TURRET_BARREL_OUTPUT_STRIDE;
+        let parent_pos = [
+            s.input[ib] as f64,
+            s.input[ib + 1] as f64,
+            s.input[ib + 2] as f64,
+        ];
+        let parent_q = [
+            s.input[ib + 3] as f64,
+            s.input[ib + 4] as f64,
+            s.input[ib + 5] as f64,
+            s.input[ib + 6] as f64,
+        ];
+        let root_pos = [
+            s.input[ib + 7] as f64,
+            s.input[ib + 8] as f64,
+            s.input[ib + 9] as f64,
+        ];
+        let root_q = [
+            s.input[ib + 10] as f64,
+            s.input[ib + 11] as f64,
+            s.input[ib + 12] as f64,
+            s.input[ib + 13] as f64,
+        ];
+        let pitch_pos = [
+            s.input[ib + 14] as f64,
+            s.input[ib + 15] as f64,
+            s.input[ib + 16] as f64,
+        ];
+        let pitch_q = [
+            s.input[ib + 17] as f64,
+            s.input[ib + 18] as f64,
+            s.input[ib + 19] as f64,
+            s.input[ib + 20] as f64,
+        ];
+        let spin_pos = [
+            s.input[ib + 21] as f64,
+            s.input[ib + 22] as f64,
+            s.input[ib + 23] as f64,
+        ];
+        let spin_q = [
+            s.input[ib + 24] as f64,
+            s.input[ib + 25] as f64,
+            s.input[ib + 26] as f64,
+            s.input[ib + 27] as f64,
+        ];
+        let barrel_pos = [
+            s.input[ib + 28] as f64,
+            s.input[ib + 29] as f64,
+            s.input[ib + 30] as f64,
+        ];
+        let barrel_q = [
+            s.input[ib + 31] as f64,
+            s.input[ib + 32] as f64,
+            s.input[ib + 33] as f64,
+            s.input[ib + 34] as f64,
+        ];
+        let barrel_scale = [
+            s.input[ib + 35] as f64,
+            s.input[ib + 36] as f64,
+            s.input[ib + 37] as f64,
+        ];
+
+        let root_world_pos = render_compose_child_offset(parent_q, parent_pos, root_pos);
+        let root_world_q = quat_mul(parent_q, root_q);
+        let pitch_world_pos = render_compose_child_offset(root_world_q, root_world_pos, pitch_pos);
+        let pitch_world_q = quat_mul(root_world_q, pitch_q);
+        let spin_world_pos = render_compose_child_offset(pitch_world_q, pitch_world_pos, spin_pos);
+        let spin_world_q = quat_mul(pitch_world_q, spin_q);
+        let barrel_world_pos =
+            render_compose_child_offset(spin_world_q, spin_world_pos, barrel_pos);
+        let barrel_world_q = quat_mul(spin_world_q, barrel_q);
+
+        render_write_mat4_compose_scaled(
+            &mut s.output,
+            ob,
+            barrel_world_pos,
+            barrel_world_q,
+            barrel_scale,
+        );
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────
 //  Phase 3e — Batched hover orientation kernel
 //
 //  Replaces the per-entity quatFromYawPitchRoll + quatDampedSpringStep

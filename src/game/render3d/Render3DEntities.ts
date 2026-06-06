@@ -891,6 +891,7 @@ export class Render3DEntities {
     const poseOutput = this.unitRenderPose.compute(poseCount);
     const poseOutputStride = this.unitRenderPose.outputStride;
     this.chassisInstancePose.begin();
+    this.turretPose.begin();
     this.shieldPanelPose.begin();
 
     for (let poseIndex = 0; poseIndex < poseCount; poseIndex++) {
@@ -1026,8 +1027,8 @@ export class Render3DEntities {
         turrets,
         bodyMaterialized,
         unitRows.bodyCenterHeight[row],
+        this._smoothLiftedPos,
         this._smoothParentQuat,
-        this._unitChainMat,
         chassisTilted ? _invTiltQuat : undefined,
         unitGfx.barrelSpin,
         this.barrelSpinState,
@@ -1103,6 +1104,7 @@ export class Render3DEntities {
       // world group, depth-occluded by terrain).
     }
     this.chassisInstancePose.flush(this.unitDetailInstances);
+    this.turretPose.flush(this.unitDetailInstances);
     this.shieldPanelPose.flush(this.unitDetailInstances);
 
     // Units no longer present leave the live set. Rather than tearing the

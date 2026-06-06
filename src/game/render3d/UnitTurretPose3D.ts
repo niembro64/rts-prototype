@@ -11,17 +11,28 @@ import { applyTurretAimPose3D, applyTurretAimWorldDir3D } from './TurretAimPose3
 import type { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
 import type { TurretBeamAimCache3D } from './TurretBeamAimCache3D';
 import type { TurretMesh } from './TurretMesh3D';
+import {
+  TURRET_BARREL_INPUT_STRIDE,
+  UnitTurretBarrelMatrixBatch3D,
+} from './UnitTurretBarrelMatrixBatch3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import type { TurretMountCache3D } from './TurretMountCache3D';
 
 export class UnitTurretPose3D {
   private readonly headMat = new THREE.Matrix4();
-  private readonly barrelParentMat = new THREE.Matrix4();
-  private readonly barrelStepMat = new THREE.Matrix4();
-  private readonly barrelWorldMat = new THREE.Matrix4();
   private readonly headLocalPos = new THREE.Vector3();
   private readonly headWorldPos = new THREE.Vector3();
-  private readonly oneVec = new THREE.Vector3(1, 1, 1);
+  private readonly batch = new UnitTurretBarrelMatrixBatch3D();
+  private input = new Float32Array(TURRET_BARREL_INPUT_STRIDE * 2048);
+  private count = 0;
+  private readonly barrelSlots: number[] = [];
+  private readonly barrelUsesCone: boolean[] = [];
+
+  begin(): void {
+    this.count = 0;
+    this.barrelSlots.length = 0;
+    this.barrelUsesCone.length = 0;
+  }
 
   update(
     entity: Entity,
@@ -29,8 +40,8 @@ export class UnitTurretPose3D {
     turrets: readonly Turret[],
     bodyMaterialized: boolean,
     bodyCenterHeight: number,
+    parentPosition: THREE.Vector3,
     parentQuaternion: THREE.Quaternion,
-    unitChainMat: THREE.Matrix4,
     chassisTiltInverse: THREE.Quaternion | undefined,
     barrelSpinEnabled: boolean,
     barrelSpinState: UnitBarrelSpinState3D,
@@ -140,8 +151,27 @@ export class UnitTurretPose3D {
 
       this.writeBarrelInstances(
         turretMesh,
-        unitChainMat,
-        unitDetailInstances,
+        parentPosition,
+        parentQuaternion,
+      );
+    }
+  }
+
+  flush(unitDetailInstances: UnitDetailInstanceRenderer3D): void {
+    const count = this.count;
+    if (count <= 0) return;
+
+    const input = this.batch.begin(count);
+    input.set(this.input.subarray(0, count * TURRET_BARREL_INPUT_STRIDE));
+    const output = this.batch.compute(count);
+    const outputStride = this.batch.outputStride;
+
+    for (let i = 0; i < count; i++) {
+      unitDetailInstances.writeBarrelMatrixArray(
+        this.barrelSlots[i],
+        output,
+        i * outputStride,
+        this.barrelUsesCone[i],
       );
     }
   }
@@ -202,8 +232,8 @@ export class UnitTurretPose3D {
 
   private writeBarrelInstances(
     turretMesh: TurretMesh,
-    unitChainMat: THREE.Matrix4,
-    unitDetailInstances: UnitDetailInstanceRenderer3D,
+    parentPosition: THREE.Vector3,
+    parentQuaternion: THREE.Quaternion,
   ): void {
     if (
       !turretMesh.barrelSlots ||
@@ -213,45 +243,90 @@ export class UnitTurretPose3D {
       return;
     }
 
-    this.barrelParentMat.copy(unitChainMat);
-    this.barrelStepMat.compose(
-      turretMesh.root.position,
-      turretMesh.root.quaternion,
-      this.oneVec,
-    );
-    this.barrelParentMat.multiply(this.barrelStepMat);
-
-    if (turretMesh.pitchGroup) {
-      this.barrelStepMat.compose(
-        turretMesh.pitchGroup.position,
-        turretMesh.pitchGroup.quaternion,
-        this.oneVec,
-      );
-      this.barrelParentMat.multiply(this.barrelStepMat);
-    }
-    if (turretMesh.spinGroup) {
-      this.barrelStepMat.compose(
-        turretMesh.spinGroup.position,
-        turretMesh.spinGroup.quaternion,
-        this.oneVec,
-      );
-      this.barrelParentMat.multiply(this.barrelStepMat);
-    }
-
     for (let barrelIdx = 0; barrelIdx < turretMesh.barrels.length; barrelIdx++) {
-      const barrel = turretMesh.barrels[barrelIdx];
-      const slot = turretMesh.barrelSlots[barrelIdx];
-      this.barrelStepMat.compose(
-        barrel.position,
-        barrel.quaternion,
-        barrel.scale,
-      );
-      this.barrelWorldMat.multiplyMatrices(this.barrelParentMat, this.barrelStepMat);
-      unitDetailInstances.writeBarrelMatrix(
-        slot,
-        this.barrelWorldMat,
+      this.enqueueBarrel(
+        turretMesh.barrelSlots[barrelIdx],
         turretMesh.barrelUsesCone === true,
+        parentPosition,
+        parentQuaternion,
+        turretMesh.root,
+        turretMesh.pitchGroup,
+        turretMesh.spinGroup,
+        turretMesh.barrels[barrelIdx],
       );
     }
+  }
+
+  private enqueueBarrel(
+    slot: number,
+    useCone: boolean,
+    parentPosition: THREE.Vector3,
+    parentQuaternion: THREE.Quaternion,
+    root: THREE.Group,
+    pitchGroup: THREE.Group | undefined,
+    spinGroup: THREE.Group | undefined,
+    barrel: THREE.Mesh,
+  ): void {
+    const index = this.count;
+    this.count++;
+    this.ensureInputCapacity(this.count);
+
+    const pitchPos = pitchGroup?.position;
+    const pitchQuat = pitchGroup?.quaternion;
+    const spinPos = spinGroup?.position;
+    const spinQuat = spinGroup?.quaternion;
+    const base = index * TURRET_BARREL_INPUT_STRIDE;
+    const input = this.input;
+    input[base] = parentPosition.x;
+    input[base + 1] = parentPosition.y;
+    input[base + 2] = parentPosition.z;
+    input[base + 3] = parentQuaternion.x;
+    input[base + 4] = parentQuaternion.y;
+    input[base + 5] = parentQuaternion.z;
+    input[base + 6] = parentQuaternion.w;
+    input[base + 7] = root.position.x;
+    input[base + 8] = root.position.y;
+    input[base + 9] = root.position.z;
+    input[base + 10] = root.quaternion.x;
+    input[base + 11] = root.quaternion.y;
+    input[base + 12] = root.quaternion.z;
+    input[base + 13] = root.quaternion.w;
+    input[base + 14] = pitchPos?.x ?? 0;
+    input[base + 15] = pitchPos?.y ?? 0;
+    input[base + 16] = pitchPos?.z ?? 0;
+    input[base + 17] = pitchQuat?.x ?? 0;
+    input[base + 18] = pitchQuat?.y ?? 0;
+    input[base + 19] = pitchQuat?.z ?? 0;
+    input[base + 20] = pitchQuat?.w ?? 1;
+    input[base + 21] = spinPos?.x ?? 0;
+    input[base + 22] = spinPos?.y ?? 0;
+    input[base + 23] = spinPos?.z ?? 0;
+    input[base + 24] = spinQuat?.x ?? 0;
+    input[base + 25] = spinQuat?.y ?? 0;
+    input[base + 26] = spinQuat?.z ?? 0;
+    input[base + 27] = spinQuat?.w ?? 1;
+    input[base + 28] = barrel.position.x;
+    input[base + 29] = barrel.position.y;
+    input[base + 30] = barrel.position.z;
+    input[base + 31] = barrel.quaternion.x;
+    input[base + 32] = barrel.quaternion.y;
+    input[base + 33] = barrel.quaternion.z;
+    input[base + 34] = barrel.quaternion.w;
+    input[base + 35] = barrel.scale.x;
+    input[base + 36] = barrel.scale.y;
+    input[base + 37] = barrel.scale.z;
+
+    this.barrelSlots[index] = slot;
+    this.barrelUsesCone[index] = useCone;
+  }
+
+  private ensureInputCapacity(count: number): void {
+    const needed = count * TURRET_BARREL_INPUT_STRIDE;
+    if (this.input.length >= needed) return;
+    let next = this.input.length;
+    while (next < needed) next *= 2;
+    const expanded = new Float32Array(next);
+    expanded.set(this.input);
+    this.input = expanded;
   }
 }

@@ -80,6 +80,10 @@ import __wbg_init, {
   render_shield_panel_input_scratch_ptr,
   render_shield_panel_output_scratch_ptr,
   render_shield_panel_scratch_ensure,
+  render_turret_barrel_compute,
+  render_turret_barrel_input_scratch_ptr,
+  render_turret_barrel_output_scratch_ptr,
+  render_turret_barrel_scratch_ensure,
   unit_force_step_batch,
   projectile_pool_init,
   projectile_pool_capacity,
@@ -1632,6 +1636,12 @@ export interface RenderPoseApi {
   shieldPanelCompute: (count: number) => void;
   shieldPanelInputStride: number;
   shieldPanelOutputStride: number;
+  turretBarrelInputScratchPtr: () => number;
+  turretBarrelOutputScratchPtr: () => number;
+  turretBarrelScratchEnsure: (count: number) => void;
+  turretBarrelCompute: (count: number) => void;
+  turretBarrelInputStride: number;
+  turretBarrelOutputStride: number;
 }
 
 /** Constants exposed alongside the SpatialGrid API. Mirrors the
@@ -4044,6 +4054,12 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           shieldPanelCompute: render_shield_panel_compute,
           shieldPanelInputStride: 24,
           shieldPanelOutputStride: 16,
+          turretBarrelInputScratchPtr: render_turret_barrel_input_scratch_ptr,
+          turretBarrelOutputScratchPtr: render_turret_barrel_output_scratch_ptr,
+          turretBarrelScratchEnsure: render_turret_barrel_scratch_ensure,
+          turretBarrelCompute: render_turret_barrel_compute,
+          turretBarrelInputStride: 38,
+          turretBarrelOutputStride: 16,
         },
         snapshotBaseline: {
           create: snapshot_baseline_create,
