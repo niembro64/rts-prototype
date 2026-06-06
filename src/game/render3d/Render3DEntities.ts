@@ -190,9 +190,6 @@ export class Render3DEntities {
    *  mesh rebuilds (LOD / owner recolor) and only resets when the unit truly
    *  leaves the live set, so re-entering vision fades in afresh. */
   private readonly spawnFadeElapsed = new Map<EntityId, number>();
-  // Reusable per-entity turret fade buffer — avoids a fresh array per
-  // unit per frame in the build-in materialization write.
-  private _turretFadeScratch: number[] = [];
   private readonly _turretScatterScratch: DyingUnitPartDelta[] = [];
   private readonly _deathScatterBodyDelta = createDyingUnitPartDelta();
   private readonly _deathScatterLocomotionDelta = createDyingUnitPartDelta();
@@ -588,17 +585,28 @@ export class Render3DEntities {
     bodyFade: number,
     turretFades: readonly number[] | null,
   ): void {
-    this.unitDetailInstances.writeEntityFade(m, bodyFade, turretFades);
-    fadeLocomotion(m.locomotion, bodyFade, this.legRenderer);
-
     const bodyFadeActive = bodyFade < 1;
+    const specificTurretFadeActive = this.hasSpecificUnitTurretFade(
+      m,
+      bodyFade,
+      turretFades,
+    );
+    if (bodyFadeActive || specificTurretFadeActive || m.unitFadeActive === true) {
+      this.unitDetailInstances.writeEntityFade(m, bodyFade, turretFades);
+      fadeLocomotion(m.locomotion, bodyFade, this.legRenderer);
+      m.unitFadeActive = bodyFadeActive || specificTurretFadeActive;
+    }
+
     if (bodyFadeActive || m.unitGroupFadeActive === true) {
       applyEntityGroupFade(m.group, bodyFade);
       m.unitGroupFadeActive = bodyFadeActive;
     }
 
     if (turretFades === null) return;
-    const turretStates = m.unitTurretGroupFadeActive ?? [];
+    const previousTurretStates = m.unitTurretGroupFadeActive;
+    if (!specificTurretFadeActive && previousTurretStates === undefined) return;
+    const turretStates = previousTurretStates ?? [];
+    let anyTurretFadeActive = false;
     for (let i = 0; i < m.turrets.length; i++) {
       const fade = turretFades[i] ?? bodyFade;
       const hasSpecificFade = fade < 1 && fade !== bodyFade;
@@ -606,8 +614,22 @@ export class Render3DEntities {
         applyEntityGroupFade(m.turrets[i].root, fade);
         turretStates[i] = hasSpecificFade;
       }
+      if (hasSpecificFade) anyTurretFadeActive = true;
     }
-    m.unitTurretGroupFadeActive = turretStates;
+    m.unitTurretGroupFadeActive = anyTurretFadeActive ? turretStates : undefined;
+  }
+
+  private hasSpecificUnitTurretFade(
+    m: EntityMesh,
+    bodyFade: number,
+    turretFades: readonly number[] | null,
+  ): boolean {
+    if (turretFades === null) return false;
+    for (let i = 0; i < m.turrets.length; i++) {
+      const fade = turretFades[i] ?? bodyFade;
+      if (fade < 1 && fade !== bodyFade) return true;
+    }
+    return false;
   }
 
   private prepareDyingUnitScatter(m: EntityMesh): void {
@@ -1102,17 +1124,9 @@ export class Render3DEntities {
 
       // Materialization fade — mounted turrets share the host body's
       // build fraction because they are not separate construction pieces.
-      // Every part fades by per-instance / per-object ALPHA at constant
-      // size — body, turrets, and locomotion legs alike (see EntityFade3D
-      // and LegInstancedRenderer) — so nothing changes shape as it builds.
-      // Finished units sit at 1, where the shared fade helper restores
-      // real materials and then becomes a no-op.
-      const turretFades = this._turretFadeScratch;
-      turretFades.length = m.turrets.length;
-      for (let i = 0; i < m.turrets.length; i++) {
-        turretFades[i] = bodyOpacity;
-      }
-      this.applyUnitEntityFade(m, bodyOpacity, turretFades);
+      // Pass null for the uniform fade so finished units skip the per-turret
+      // scratch loop and only restore instanced/leg fade slots once.
+      this.applyUnitEntityFade(m, bodyOpacity, null);
 
       // Health bar handled by HealthBar3D (billboarded sprite in the
       // world group, depth-occluded by terrain).

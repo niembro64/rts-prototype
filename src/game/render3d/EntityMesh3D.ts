@@ -179,6 +179,10 @@ export type EntityMesh = {
    *  this unit. Used to restore real materials exactly once when
    *  construction/death fade returns to full opacity. */
   unitGroupFadeActive?: boolean;
+  /** Whether instanced body/turret/mirror slots or leg slots are carrying
+   *  a non-opaque materialization fade. Used to restore those slots to
+   *  opacity 1 exactly once, then skip steady-state fade writes. */
+  unitFadeActive?: boolean;
   unitTurretGroupFadeActive?: boolean[];
   /** Smoothed visual bank angle (radians, sim-frame: positive rolls
    *  the body-+Y wing down) for hover/flying chassis. EMA-tracked at
