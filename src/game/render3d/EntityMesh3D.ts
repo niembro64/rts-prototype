@@ -141,6 +141,7 @@ export type EntityMesh = {
   buildingCachedZ?: number;
   buildingCachedRotation?: number;
   buildingCachedDetailsReady?: boolean;
+  buildingRangeOverlayVersion?: number;
   buildingGroupFadeActive?: boolean;
   buildingHasPerFrameTurretWork?: boolean;
   buildingRenderFrameKey?: string;
@@ -169,6 +170,7 @@ export type EntityMesh = {
    *  sphere emitter cores. Instanced heads carry this through
    *  instanceColor instead. */
   unitDynamicTurretHeadColorHex?: number[];
+  unitOverlayVersion?: number;
   /** Set when the sim reports this unit was DESTROYED (a 'death' SimEvent),
    *  as opposed to merely leaving the local player's vision. Read when the
    *  render removal queue drops the mesh from the live set: killed units play

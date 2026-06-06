@@ -80,6 +80,8 @@ export class SelectionOverlayRenderer3D {
   private selectedCount = 0;
   private rangeStateKey = '';
   private rangeStateVersion = 0;
+  private unitOverlayStateKey = '';
+  private unitOverlayStateVersion = 0;
 
   private readonly ringGeom = new THREE.TorusGeometry(1.0, 0.06, 8, 36);
   private readonly radiusMatVisual = new THREE.LineBasicMaterial({
@@ -178,20 +180,41 @@ export class SelectionOverlayRenderer3D {
       this.rangeStateKey = nextRangeStateKey;
       this.rangeStateVersion++;
     }
+    const nextUnitOverlayStateKey = [
+      nextRangeStateKey,
+      this.showVisualRadius,
+      this.showHitboxRadius,
+      this.showCollisionRadius,
+      this.selectedCount,
+    ].join('|');
+    if (nextUnitOverlayStateKey !== this.unitOverlayStateKey) {
+      this.unitOverlayStateKey = nextUnitOverlayStateKey;
+      this.unitOverlayStateVersion++;
+    }
   }
 
   getRangeStateVersion(): number {
     return this.rangeStateVersion;
   }
 
-  unitOverlaysNeedUpdate(m: OverlayEntityMesh, selected: boolean): boolean {
+  getUnitOverlayStateVersion(): number {
+    return this.unitOverlayStateVersion;
+  }
+
+  unitStaticOverlaysNeedUpdate(m: OverlayEntityMesh, selected: boolean): boolean {
     return (
       selected ||
       m.ring !== undefined ||
       this.showAnyUnitRadius ||
-      m.radiusRingsVisible === true ||
+      m.radiusRingsVisible === true
+    );
+  }
+
+  unitRangeOverlaysNeedUpdate(m: OverlayEntityMesh, selected: boolean): boolean {
+    return (
       this.showAnyRange ||
-      m.rangeRingsVisible === true
+      m.rangeRingsVisible === true ||
+      (selected && this.selectedCount === 1)
     );
   }
 

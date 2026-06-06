@@ -283,12 +283,15 @@ export class BuildingEntityRenderer3D {
         (mesh === undefined && entityHasPerFrameBuildingTurretWork(entity));
       const bodyFadeActive =
         rows.bodyOpacity[row] < 1 || mesh?.buildingGroupFadeActive === true;
-      const overlayDirty = mesh !== undefined && this.staticBuildingOverlaysNeedUpdate(
-        mesh,
-        entity,
-        rows,
-        row,
-      );
+      const rangeOverlayVersionDirty =
+        mesh !== undefined && mesh.buildingRangeOverlayVersion !== rangeOverlayStateVersion;
+      const overlayDirty =
+        mesh !== undefined &&
+        (rowDirty || rangeOverlayVersionDirty) &&
+        this.staticBuildingOverlaysNeedUpdate(mesh, entity, rows, row);
+      if (mesh !== undefined && rangeOverlayVersionDirty && !overlayDirty) {
+        mesh.buildingRangeOverlayVersion = rangeOverlayStateVersion;
+      }
       if (
         mesh !== undefined &&
         !rowDirty &&
@@ -302,7 +305,14 @@ export class BuildingEntityRenderer3D {
       }
 
       if (needsTurretFrame) this.barrelSpin.advance(entity, spinDt);
-      this.updateBuilding(entity, rows, row, frameState);
+      this.updateBuilding(
+        entity,
+        rows,
+        row,
+        frameState,
+        rangeOverlayStateVersion,
+        mesh === undefined || overlayDirty,
+      );
       if (pruneBuildings) {
         const updatedMesh = this.meshes.get(entityId);
         if (updatedMesh !== undefined) updatedMesh.renderSeenToken = pruneToken;
@@ -413,6 +423,8 @@ export class BuildingEntityRenderer3D {
     rows: BuildingRenderPacket3D,
     row: number,
     frameState: RenderFrameState3D,
+    rangeOverlayStateVersion: number,
+    updateRangeOverlays: boolean,
   ): void {
     // If this id is mid death-fade and reappeared (id reuse / re-add),
     // finalize the dying mesh so we don't draw it under the rebuilt one.
@@ -497,7 +509,10 @@ export class BuildingEntityRenderer3D {
     }
 
     this.updateTurretPoses(entity, mesh, rows, row);
-    this.selectionOverlays.updateRangeRings(mesh, entity);
+    if (updateRangeOverlays) {
+      this.selectionOverlays.updateRangeRings(mesh, entity);
+      mesh.buildingRangeOverlayVersion = rangeOverlayStateVersion;
+    }
 
     // Materialization fade — mounted turrets share the host body's build
     // fraction because they are not separate construction pieces.

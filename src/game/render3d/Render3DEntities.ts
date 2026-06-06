@@ -810,6 +810,7 @@ export class Render3DEntities {
     const unitGeometryKey = this.frameState.key;
     const mapWidth = this.clientViewState.getMapWidth();
     const mapHeight = this.clientViewState.getMapHeight();
+    const unitOverlayStateVersion = this.selectionOverlays.getUnitOverlayStateVersion();
 
     const poseRows = this._poseUnitRows;
     const poseMeshes = this._poseUnitMeshes;
@@ -1052,11 +1053,22 @@ export class Render3DEntities {
       );
 
       const selected = unitRows.selectedAt(row);
-      if (this.selectionOverlays.unitOverlaysNeedUpdate(m, selected)) {
+      const unitOverlayVersionDirty = m.unitOverlayVersion !== unitOverlayStateVersion;
+      const unitOverlayRenderDirty =
+        unitRows.renderDirtyAt(row) ||
+        unitRows.lifecycleDirtyAt(row) ||
+        unitOverlayVersionDirty;
+      if (
+        unitOverlayRenderDirty &&
+        this.selectionOverlays.unitStaticOverlaysNeedUpdate(m, selected)
+      ) {
         this.selectionOverlays.updateSelectionRing(m, selected, radius * 1.35);
         this.selectionOverlays.updateUnitRadiusRings(m, e);
+      }
+      if (this.selectionOverlays.unitRangeOverlaysNeedUpdate(m, selected)) {
         this.selectionOverlays.updateRangeRings(m, e);
       }
+      if (unitOverlayVersionDirty) m.unitOverlayVersion = unitOverlayStateVersion;
 
       this.turretPose.update(
         e,

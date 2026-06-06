@@ -46,17 +46,15 @@ Current remaining issue:
 Several high-count render paths still execute TypeScript object loops and
 Three.js scenegraph mutations per visible unit/building. The remaining hot work
 includes unit mirror support-root attachment/visibility, locomotion visual
-updates, active/debug overlay updates, active
-building turret attachment/material/spin, animated building rig/pylon
-transform writes, and active building overlays. These paths are likely to
-dominate at the "thousands of units" target. Reuse or extend the existing
-batched packet, explicit lifecycle queue, and WASM kernel contracts; do not add
-new broad per-entity scenegraph scans.
+updates, active building turret attachment/material/spin, and animated
+building rig/pylon transform writes. These paths are likely to dominate at the
+"thousands of units" target. Reuse or extend the existing batched packet,
+explicit lifecycle queue, and WASM kernel contracts; do not add new broad
+per-entity scenegraph scans.
 
 Required fix:
 Move the remaining mirror support-root attachment/visibility work, locomotion,
-active/debug unit overlays, active building turret attachment/material/spin,
-animated building rig/pylon transform writes, and active building overlays into
-WASM-owned slabs, GPU-updated buffers, or explicit dirty/removal queues as
-practical. Keep Three.js work limited to buffer uploads and true lifecycle
-changes.
+active building turret attachment/material/spin, and animated building
+rig/pylon transform writes into WASM-owned slabs, GPU-updated buffers, or
+explicit dirty/removal queues as practical. Keep Three.js work limited to
+buffer uploads and true lifecycle changes.
