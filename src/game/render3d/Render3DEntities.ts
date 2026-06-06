@@ -36,12 +36,6 @@ import {
   disposeBuildingGeoms,
 } from './BuildingShape3D';
 import type { ViewportFootprint } from '../ViewportFootprint';
-import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
-import {
-  getConstructionPieceOpacity,
-  isBuildInProgress,
-  isConstructionPieceMaterialized,
-} from '../sim/buildableHelpers';
 import { ProjectileRenderer3D } from './ProjectileRenderer3D';
 import { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
 import { ConstructionVisualController3D } from './ConstructionVisualController3D';
@@ -794,7 +788,7 @@ export class Render3DEntities {
 
     for (let row = 0; row < unitRows.count; row++) {
       const entityId = unitRows.entityIdAt(row);
-      const e = this.clientViewState.getEntity(entityId);
+      const e = unitRows.entityAt(row);
       if (e === undefined || e.unit === null) continue;
       seen.add(entityId);
       // If this entity id is mid fade-out (death scatter OR vision fade)
@@ -810,7 +804,7 @@ export class Render3DEntities {
       const tx = unitRows.x[row];
       const ty = unitRows.y[row];
       const tRot = unitRows.rotation[row];
-      const turrets = e.combat?.turrets ?? EMPTY_TURRETS;
+      const turrets = unitRows.turretsAt(row);
       const groundZ = unitRows.groundY[row];
       // RIGID-BODY POSE TRACKS THE SIM EVERY FRAME. The unit group
       // carries the chassis AND its child turret / mirror groups
@@ -834,6 +828,8 @@ export class Render3DEntities {
       // whatever height the body resolves to.
       const radius = unitRows.radiusVisual[row];
       const pid = unitRows.ownerIdAt(row);
+      const unitBlueprintId = unitRows.unitBlueprintIds[row];
+      const unitTurretCount = unitRows.turretCount[row];
       const fullUnitDetail = true;
 
       let m = this.unitMeshes.get(entityId);
@@ -841,7 +837,9 @@ export class Render3DEntities {
         m &&
         (
           m.unitRenderFrameKey !== unitGeometryKey ||
-          m.unitRenderOwnerId !== pid
+          m.unitRenderOwnerId !== pid ||
+          m.unitRenderBlueprintId !== unitBlueprintId ||
+          m.unitRenderTurretCount !== unitTurretCount
         )
       ) {
         // Preserve leg state across the rebuild — feet keep
@@ -856,7 +854,7 @@ export class Render3DEntities {
       if (!m) {
         const legSnap = this.legStateCache.get(entityId);
         const ownerKey = pid ?? 'neutral';
-        const unitRenderKey = `${unitGeometryKey}|owner:${ownerKey}`;
+        const unitRenderKey = `${unitGeometryKey}|owner:${ownerKey}|unit:${unitBlueprintId ?? 'unknown'}|turrets:${unitTurretCount}`;
         m = this.unitMeshBuilder.build({
           entity: e,
           radius,
@@ -879,7 +877,8 @@ export class Render3DEntities {
       // local player's vision eases in instead of appearing instantly;
       // the two alpha reasons multiply (a half-built unit just scouted
       // fades toward its current build opacity, not past it).
-      const bodyOpacity = getConstructionPieceOpacity(e, 'body') * this.advanceSpawnFadeIn(entityId);
+      const bodyMaterialized = unitRows.bodyMaterializedAt(row);
+      const bodyOpacity = unitRows.bodyOpacity[row] * this.advanceSpawnFadeIn(entityId);
       const bodyVisible = fullUnitDetail && bodyOpacity > 0;
       m.chassis.visible = bodyVisible;
 
@@ -908,8 +907,7 @@ export class Render3DEntities {
       // Hover and flying chassis never contact terrain, so the ground
       // normal is not their "up." Leaving the group quaternion at
       // identity keeps the body level regardless of the slope below.
-      const locoType = m.locomotion?.type;
-      const airborne = locoType === 'hover' || locoType === 'flying';
+      const airborne = unitRows.airborneAt(row);
       // Read the unit's sim-side smoothed normal instead of querying
       // the raw terrain mesh per frame. The sim's updateUnitGroundNormal
       // owns the canonical value (initialized at spawn, blended each
@@ -1042,6 +1040,8 @@ export class Render3DEntities {
         e,
         m,
         turrets,
+        bodyMaterialized,
+        unitRows.bodyCenterHeight[row],
         this._smoothParentQuat,
         this._unitChainMat,
         chassisTilted ? _invTiltQuat : undefined,
@@ -1056,19 +1056,12 @@ export class Render3DEntities {
       );
 
       if (m.mirrors) {
-        let shieldPanelTurretIndex = -1;
-        for (let i = 0; i < turrets.length; i++) {
-          if (turrets[i].config.passive) {
-            shieldPanelTurretIndex = i;
-            break;
-          }
-        }
+        const shieldPanelTurretIndex = unitRows.passiveTurretIndex[row];
         const shieldPanelTurret = shieldPanelTurretIndex >= 0 ? turrets[shieldPanelTurretIndex] : undefined;
-        const shieldPanelMaterialized = shieldPanelTurret !== undefined &&
-          isConstructionPieceMaterialized(e, 'body');
+        const shieldPanelMaterialized = shieldPanelTurret !== undefined && bodyMaterialized;
         this._mirrorPivotLocal.set(
           shieldPanelTurret?.mount.x ?? 0,
-          (shieldPanelTurret?.mount.z ?? getUnitBodyCenterHeight(e.unit)) - (m.chassisLift ?? 0),
+          (shieldPanelTurret?.mount.z ?? unitRows.bodyCenterHeight[row]) - (m.chassisLift ?? 0),
           shieldPanelTurret?.mount.y ?? 0,
         );
         if (shieldPanelMaterialized) {
@@ -1093,10 +1086,10 @@ export class Render3DEntities {
       // Locomotion: spin tread wheels per velocity; legs write per-
       // instance buffers in the shared cylinder pool.
       if (m.locomotion) {
-        m.locomotion.group.visible = isConstructionPieceMaterialized(e, 'body');
+        m.locomotion.group.visible = bodyMaterialized;
       }
       if (m.locomotion && m.locomotion.group.visible) {
-        const locomotionSmokeEmitters = isBuildInProgress(e.buildable)
+        const locomotionSmokeEmitters = unitRows.buildInProgressAt(row)
           ? undefined
           : this.hoverSmokeEmitters;
         updateLocomotion(

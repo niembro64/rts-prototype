@@ -3,11 +3,6 @@ import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { getGraphicsConfig } from '@/clientBarConfig';
-import {
-  getConstructionPieceOpacity,
-  isConstructionPieceMaterialized,
-  isShell,
-} from '../sim/buildableHelpers';
 import type { ClientViewState } from '../network/ClientViewState';
 import { getTurretHeadRadius } from '../math';
 import {
@@ -120,6 +115,9 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
     solarRig: shape.solarRig,
     radarRig: shape.radarRig,
     converterRig: shape.converterRig,
+    buildingRenderFrameKey: geometryKey,
+    buildingRenderBlueprintId: entity.buildingBlueprintId,
+    buildingRenderTurretCount: buildingTurrets?.length ?? 0,
     buildingHeight: shape.height,
     buildingPrimaryMaterialLocked: shape.primaryMaterialLocked === true,
     buildingBodyless: shape.bodyless === true,
@@ -212,7 +210,7 @@ export class BuildingEntityRenderer3D {
 
     for (let row = 0; row < rows.count; row++) {
       const entityId = rows.entityIdAt(row);
-      const entity = this.clientViewState.getEntity(entityId);
+      const entity = rows.entityAt(row);
       if (entity === undefined || entity.building === null) continue;
       if (pruneBuildings) this.seenIds.add(entityId);
       this.barrelSpin.advance(entity, spinDt);
@@ -292,8 +290,24 @@ export class BuildingEntityRenderer3D {
     const ownerId = rows.ownerIdAt(row);
     const width = rows.width[row];
     const depth = rows.footprintDepth[row];
+    const blueprintId = rows.buildingBlueprintIds[row] ?? null;
+    const turretCount = rows.turretCount[row];
 
     let mesh = this.meshes.get(entity.id);
+    if (
+      mesh &&
+      (
+        mesh.buildingRenderFrameKey !== frameState.key ||
+        mesh.buildingRenderBlueprintId !== blueprintId ||
+        mesh.buildingRenderTurretCount !== turretCount
+      )
+    ) {
+      this.animations.unregister(entity.id);
+      this.meshes.delete(entity.id);
+      this.beamAimCache?.delete(entity.id);
+      this.disposeBuildingMesh(mesh);
+      mesh = undefined;
+    }
     if (!mesh) {
       mesh = createBuildingEntityMesh3D({
         entity,
@@ -350,14 +364,14 @@ export class BuildingEntityRenderer3D {
       mesh.group.visible = true;
     }
 
-    this.updateTurretPoses(entity, mesh);
+    this.updateTurretPoses(entity, mesh, rows, row);
     this.selectionOverlays.updateRangeRings(mesh, entity);
 
     // Materialization fade — mounted turrets share the host body's build
     // fraction because they are not separate construction pieces.
     // Finished buildings sit at opacity 1, where applyEntityGroupFade
     // restores the real materials and costs nothing.
-    const bodyOpacity = getConstructionPieceOpacity(entity, 'body');
+    const bodyOpacity = rows.bodyOpacity[row];
     applyEntityGroupFade(mesh.group, bodyOpacity);
   }
 
@@ -434,14 +448,21 @@ export class BuildingEntityRenderer3D {
     mesh.buildingCachedDetailsReady = detailsReady;
   }
 
-  private updateTurretPoses(entity: Entity, mesh: EntityMesh): void {
-    const combatTurrets = entity.combat?.turrets;
+  private updateTurretPoses(
+    entity: Entity,
+    mesh: EntityMesh,
+    rows: BuildingRenderPacket3D,
+    row: number,
+  ): void {
+    const combatTurrets = rows.turretsAt(row);
     if (!combatTurrets || mesh.turrets.length !== combatTurrets.length) return;
-    const underConstruction = isShell(entity);
+    const underConstruction = rows.shellAt(row);
+    const bodyMaterialized = rows.bodyMaterializedAt(row);
+    const ownerId = rows.ownerIdAt(row);
     for (let turretIndex = 0; turretIndex < combatTurrets.length; turretIndex++) {
       const turret = combatTurrets[turretIndex];
       const turretMesh = mesh.turrets[turretIndex];
-      const visible = isConstructionPieceMaterialized(entity, 'body');
+      const visible = bodyMaterialized;
       turretMesh.root.visible = visible;
       if (!visible) continue;
       const headRadius = turretMesh.headRadius ?? getTurretHeadRadius(turret.config);
@@ -472,18 +493,18 @@ export class BuildingEntityRenderer3D {
       if (turret.config.headOnly && !followsBeam) {
         if (turretMesh.head && !underConstruction) {
           turretMesh.head.material = turret.state === 'engaged'
-            ? this.getTurretAccentMat(entity.ownership?.playerId)
-            : this.getPrimaryMat(entity.ownership?.playerId);
+            ? this.getTurretAccentMat(ownerId)
+            : this.getPrimaryMat(ownerId);
         }
         continue;
       }
       // Beam turrets colour like any other turret: a plain team-color head
       // (no engage flip) while their barrel tracks the beam below.
       if (followsBeam && turretMesh.head && !underConstruction) {
-        turretMesh.head.material = this.getPrimaryMat(entity.ownership?.playerId);
+        turretMesh.head.material = this.getPrimaryMat(ownerId);
       }
       if (!underConstruction) {
-        const turretAccentMat = this.getTurretAccentMat(entity.ownership?.playerId);
+        const turretAccentMat = this.getTurretAccentMat(ownerId);
         for (const barrel of turretMesh.barrels) barrel.material = turretAccentMat;
       }
       if (followsBeam) {

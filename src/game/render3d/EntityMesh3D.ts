@@ -137,6 +137,9 @@ export type EntityMesh = {
   buildingCachedZ?: number;
   buildingCachedRotation?: number;
   buildingCachedDetailsReady?: boolean;
+  buildingRenderFrameKey?: string;
+  buildingRenderBlueprintId?: string | null;
+  buildingRenderTurretCount?: number;
   unitDetailCachedX?: number;
   unitDetailCachedY?: number;
   unitDetailCachedZ?: number;
@@ -149,6 +152,8 @@ export type EntityMesh = {
    *  full template-string key for every unchanged unit. */
   unitRenderFrameKey?: string;
   unitRenderOwnerId?: PlayerId;
+  unitRenderBlueprintId?: string;
+  unitRenderTurretCount?: number;
   /** Per-Mesh fallback head-only turrets switch material when engaged.
    *  Instanced heads carry this through instanceColor; this cache keeps
    *  the rare per-Mesh fallback path from rewriting materials every

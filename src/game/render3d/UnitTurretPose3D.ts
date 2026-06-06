@@ -1,7 +1,5 @@
 import * as THREE from 'three';
 import { getTurretHeadRadius } from '../math';
-import { isConstructionPieceMaterialized } from '../sim/buildableHelpers';
-import { getTurretMountHeight } from '../sim/combat/combatUtils';
 import type { Entity, Turret } from '../sim/types';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import {
@@ -29,6 +27,8 @@ export class UnitTurretPose3D {
     entity: Entity,
     mesh: EntityMesh,
     turrets: readonly Turret[],
+    bodyMaterialized: boolean,
+    bodyCenterHeight: number,
     parentQuaternion: THREE.Quaternion,
     unitChainMat: THREE.Matrix4,
     chassisTiltInverse: THREE.Quaternion | undefined,
@@ -45,14 +45,16 @@ export class UnitTurretPose3D {
       const turretMesh = mesh.turrets[turretIdx];
       const turret = turrets[turretIdx];
       const headRadius = turretMesh.headRadius ?? getTurretHeadRadius(turret.config);
-      const visible = isConstructionPieceMaterialized(entity, 'body');
+      const visible = bodyMaterialized;
       turretMesh.root.visible = visible;
       if (!visible) {
         unitDetailInstances.clearTurretSlots(turretMesh);
         continue;
       }
 
-      const turretHeadCenterY = getTurretMountHeight(entity, turretIdx);
+      const turretHeadCenterY = Number.isFinite(turret.mount.z)
+        ? turret.mount.z
+        : bodyCenterHeight;
       const turretMountY = turretHeadCenterY - (mesh.chassisLift ?? 0) - headRadius;
       turretMesh.root.position.set(turret.mount.x, turretMountY, turret.mount.y);
       this.writeMountCache(entity, turretIdx, mesh, turretMesh, headRadius, parentQuaternion, turretMountCache);

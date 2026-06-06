@@ -209,6 +209,7 @@ export class ClientViewState {
   private predictionCadence = new ClientPredictionCadence();
   private activeEntityPredictionIds: Set<EntityId> = new Set();
   private dirtyUnitRenderIds: Set<EntityId> = new Set();
+  private renderLifecycleDirtyIds: Set<EntityId> = new Set();
   private predictionSupportSurfaceEntities: Entity[] = [];
   private predictionSupportSurfaceEntityIds = new Set<EntityId>();
   private selectionState = new ClientSelectionState(
@@ -377,6 +378,7 @@ export class ClientViewState {
     this.selectionState.delete(id);
     this.activeEntityPredictionIds.delete(id);
     this.dirtyUnitRenderIds.delete(id);
+    this.renderLifecycleDirtyIds.delete(id);
     if (existing !== undefined) {
       this.markEntitySetChanged(existing.type !== 'shot');
     }
@@ -692,6 +694,7 @@ export class ClientViewState {
           this.markEntityPredictionActive(newEntity);
           this.refreshPredictionSupportSurfaceProvider(newEntity);
           this.entitySetVersion++;
+          this.renderLifecycleDirtyIds.add(netEntity.id);
           cacheNeedsInvalidate = true;
         }
       } else {
@@ -1051,7 +1054,7 @@ export class ClientViewState {
     let hoveredBodyHudPushed = false;
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
-      out.unitRows.pushEntity(entity);
+      this.pushUnitRenderRow3D(entity, out);
       if (options.includeBodyHud && this.entityNeedsBodyHud3D(entity)) {
         const forceVisible = entity === options.hoveredEntity;
         if (forceVisible) hoveredBodyHudPushed = true;
@@ -1066,7 +1069,7 @@ export class ClientViewState {
     }
     for (let i = 0; i < buildings.length; i++) {
       const entity = buildings[i];
-      out.buildingRows.pushEntity(entity);
+      this.pushBuildingRenderRow3D(entity, out);
       if (options.includeBodyHud && this.entityNeedsBodyHud3D(entity)) {
         const forceVisible = entity === options.hoveredEntity;
         if (forceVisible) hoveredBodyHudPushed = true;
@@ -1091,6 +1094,7 @@ export class ClientViewState {
 
   consumeUnitRenderDirties(): void {
     this.dirtyUnitRenderIds.clear();
+    this.renderLifecycleDirtyIds.clear();
   }
 
   private refreshPredictedRenderSpatialIndex(): void {
@@ -1165,7 +1169,7 @@ export class ClientViewState {
     out: ClientViewRenderEntityPackets3D,
   ): void {
     for (let i = 0; i < units.length; i++) {
-      out.unitRows.pushEntity(units[i]);
+      this.pushUnitRenderRow3D(units[i], out);
     }
   }
 
@@ -1174,8 +1178,32 @@ export class ClientViewState {
     out: ClientViewRenderEntityPackets3D,
   ): void {
     for (let i = 0; i < buildings.length; i++) {
-      out.buildingRows.pushEntity(buildings[i]);
+      this.pushBuildingRenderRow3D(buildings[i], out);
     }
+  }
+
+  private pushUnitRenderRow3D(
+    entity: Entity,
+    out: ClientViewRenderEntityPackets3D,
+  ): void {
+    out.unitRows.pushEntity(
+      entity,
+      this.activeEntityPredictionIds.has(entity.id),
+      this.dirtyUnitRenderIds.has(entity.id),
+      this.renderLifecycleDirtyIds.has(entity.id),
+    );
+  }
+
+  private pushBuildingRenderRow3D(
+    entity: Entity,
+    out: ClientViewRenderEntityPackets3D,
+  ): void {
+    out.buildingRows.pushEntity(
+      entity,
+      this.activeEntityPredictionIds.has(entity.id),
+      false,
+      this.renderLifecycleDirtyIds.has(entity.id),
+    );
   }
 
   private populateBodyHudPacket3D(
@@ -1558,6 +1586,7 @@ export class ClientViewState {
     this.predictionCadence.clearAll();
     this.activeEntityPredictionIds.clear();
     this.dirtyUnitRenderIds.clear();
+    this.renderLifecycleDirtyIds.clear();
     this.predictionSupportSurfaceEntities.length = 0;
     this.predictionSupportSurfaceEntityIds.clear();
     resetClientUnitPredictionPools();

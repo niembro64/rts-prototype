@@ -205,6 +205,8 @@ export class UnitMeshBuilder3D {
       geometryKey: unitRenderKey,
       unitRenderFrameKey: unitFrameKey,
       unitRenderOwnerId: ownerId,
+      unitRenderBlueprintId: entity.unit?.unitBlueprintId,
+      unitRenderTurretCount: turrets.length,
       smoothChassisSlots,
       polyChassisSlot,
       chassisLift: liftGroup.position.y,
