@@ -9,7 +9,10 @@
 
 import type { Entity, PlayerId, EntityId } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
-import { isBuildInProgress } from '../sim/buildableHelpers';
+import {
+  getResourceFillRatio,
+  isBuildInProgress,
+} from '../sim/buildableHelpers';
 import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotEntity,
@@ -20,7 +23,7 @@ import type {
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { MinimapEntity } from '@/types/ui';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
-import type { FootprintBounds } from '../ViewportFootprint';
+import type { FootprintBounds, ViewportFootprint } from '../ViewportFootprint';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork } from './helpers';
 import {
@@ -63,12 +66,38 @@ import { ClientProjectileStore } from './ClientProjectileStore';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
 import { applyNetworkUnitDriftFieldsToTarget } from './unitSnapshotFields';
 import { ClientRenderSpatialIndex } from './ClientRenderSpatialIndex';
+import { getEntityRenderScopePadding } from '../entityRenderScope';
 import {
   dequantizeEntityPosition as deqEntityPos,
   dequantizeProjectilePosition as deqProjPos,
   dequantizeRotation as deqRot,
   dequantizeVelocity as deqVel,
 } from './snapshotQuantization';
+import type { EntityHudElement, EntityHudType, SelectionHudMode } from '@/clientBarConfig';
+import { getDefaultPlayerName } from '@/playerNamesConfig';
+import { NAME_LABEL_OWNER_Y_OFFSET } from '@/nameLabelConfig';
+import {
+  getBuildingHudBarsY,
+  getBuildingHudNameY,
+  getUnitHudBarsY,
+  getUnitHudNameY,
+} from '../render3d/HudAnchor';
+import {
+  resolveCommanderOwnerName,
+  resolveEntityDisplayName,
+} from '../render3d/EntityName';
+import {
+  PIECE_TAG_BODY,
+  type BodyHudRenderPacket3D,
+} from '../render3d/HealthBar3D';
+import {
+  PIECE_TAG_COMMANDER_OWNER_NAME,
+  type PieceNameRenderPacket3D,
+} from '../render3d/NameLabel3D';
+import type { ShieldRenderPacket3D } from '../render3d/ShieldRenderer3D';
+import type { ContactShadowRenderPacket3D } from '../render3d/ContactShadowRenderer3D';
+import type { GroundPrintRenderPacket3D } from '../render3d/GroundPrint3D';
+import type { Locomotion3DMesh } from '../render3d/Locomotion3D';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
@@ -86,6 +115,32 @@ export type ClientResourcePylonFlow = {
 };
 
 const EMPTY_RESOURCE_PYLON_FLOWS: readonly ClientResourcePylonFlow[] = [];
+
+export type ClientViewRenderEntityPackets3D = {
+  units: readonly Entity[];
+  buildings: readonly Entity[];
+  bodyHud: BodyHudRenderPacket3D;
+  shields: ShieldRenderPacket3D;
+  pieceNames: PieceNameRenderPacket3D;
+  contactShadows: ContactShadowRenderPacket3D;
+  groundPrints: GroundPrintRenderPacket3D;
+};
+
+export type ClientViewRenderPacketOptions3D = {
+  renderScope: ViewportFootprint;
+  includeBodyHud: boolean;
+  includeBodyNames: boolean;
+  includeShields: boolean;
+  includeContactShadows: boolean;
+  includeGroundPrints: boolean;
+  hoveredEntity: Entity | null;
+  scopedUnitsOut: Entity[];
+  scopedBuildingsOut: Entity[];
+  selectionHudMode: SelectionHudMode;
+  getEntityHudToggle: (type: EntityHudType, toggle: EntityHudElement) => boolean;
+  lookupPlayerName: (id: PlayerId) => string | null;
+  getGroundPrintLocomotionMesh: (entityId: EntityId) => Locomotion3DMesh;
+};
 
 export type ClientSnapshotApplyStats = {
   correction: ClientPredictionCorrectionStats;
@@ -943,6 +998,89 @@ export class ClientViewState {
     }
   }
 
+  prepareRenderEntityPackets3D(
+    out: ClientViewRenderEntityPackets3D,
+    options: ClientViewRenderPacketOptions3D,
+  ): ClientViewRenderEntityPackets3D {
+    out.bodyHud.reset();
+    out.shields.reset();
+    out.pieceNames.reset();
+    out.contactShadows.reset();
+    out.groundPrints.reset();
+
+    const renderScope = options.renderScope;
+    if (renderScope.getMode() === 'all') {
+      out.units = this.getUnits();
+      out.buildings = this.getBuildings();
+      if (options.includeBodyHud) {
+        this.populateBodyHudPacket3D(this.getHudEntities(), options.hoveredEntity, options, out);
+      }
+      if (options.includeBodyNames) {
+        this.populateBodyNamePacket3D(this.getUnitsAndBuildings(), options, out);
+      }
+      if (options.includeShields) {
+        this.populateShieldPacket3D(this.getShieldUnits(), renderScope, out);
+      }
+      if (options.includeContactShadows) {
+        this.populateContactShadowPacket3D(out.units, out.buildings, renderScope, out);
+      }
+      if (options.includeGroundPrints) {
+        this.populateGroundPrintPacket3D(out.units, options, out);
+      }
+      return out;
+    }
+
+    const units = options.scopedUnitsOut;
+    const buildings = options.scopedBuildingsOut;
+    this.collectScopedRenderEntities(
+      renderScope.getCullingBounds(this.getRenderSpatialEntityPadding()),
+      units,
+      buildings,
+      (entity) => this.entityInRenderScope3D(entity, renderScope),
+      options.hoveredEntity,
+    );
+    out.units = units;
+    out.buildings = buildings;
+
+    let hoveredBodyHudPushed = false;
+    for (let i = 0; i < units.length; i++) {
+      const entity = units[i];
+      if (options.includeBodyHud && this.entityNeedsBodyHud3D(entity)) {
+        const forceVisible = entity === options.hoveredEntity;
+        if (forceVisible) hoveredBodyHudPushed = true;
+        this.pushBodyHudEntity3D(entity, forceVisible, options, out);
+      }
+      if (options.includeBodyNames) {
+        this.pushBodyNamesForEntity3D(entity, options, out);
+      }
+      if (options.includeShields && entity.unit !== null && entity.combat !== null) {
+        out.shields.pushUnit(entity, renderScope);
+      }
+    }
+    for (let i = 0; i < buildings.length; i++) {
+      const entity = buildings[i];
+      if (options.includeBodyHud && this.entityNeedsBodyHud3D(entity)) {
+        const forceVisible = entity === options.hoveredEntity;
+        if (forceVisible) hoveredBodyHudPushed = true;
+        this.pushBodyHudEntity3D(entity, forceVisible, options, out);
+      }
+      if (options.includeBodyNames) {
+        this.pushBodyNamesForEntity3D(entity, options, out);
+      }
+    }
+
+    if (options.includeBodyHud && options.hoveredEntity !== null && !hoveredBodyHudPushed) {
+      this.pushBodyHudEntity3D(options.hoveredEntity, true, options, out);
+    }
+    if (options.includeContactShadows) {
+      this.populateContactShadowPacket3D(units, buildings, renderScope, out);
+    }
+    if (options.includeGroundPrints) {
+      this.populateGroundPrintPacket3D(units, options, out);
+    }
+    return out;
+  }
+
   consumeUnitRenderDirties(): void {
     this.dirtyUnitRenderIds.clear();
   }
@@ -973,6 +1111,205 @@ export class ClientViewState {
     } else if (entity.building !== null) {
       outBuildings.push(entity);
       included.add(entity.id);
+    }
+  }
+
+  private barVisible3D(
+    perType: boolean,
+    selected: boolean,
+    mode: SelectionHudMode,
+    notFull: boolean,
+  ): boolean {
+    if (!perType) return false;
+    if (selected) {
+      if (mode === 'always') return true;
+      if (mode === 'never') return false;
+      return notFull;
+    }
+    return notFull;
+  }
+
+  private hudTypeOf3D(entity: Entity): EntityHudType {
+    if (entity.type === 'unit') return 'unit';
+    if (entity.type === 'tower') return 'tower';
+    return 'building';
+  }
+
+  private entityInRenderScope3D(entity: Entity, renderScope: ViewportFootprint): boolean {
+    return renderScope.inScope(
+      entity.transform.x,
+      entity.transform.y,
+      getEntityRenderScopePadding(entity),
+    );
+  }
+
+  private entityNeedsBodyHud3D(entity: Entity): boolean {
+    const buildInProgress = isBuildInProgress(entity.buildable);
+    if (buildInProgress) return true;
+    const unit = entity.unit;
+    if (unit !== null) return unit.hp > 0 && unit.hp < unit.maxHp;
+    const building = entity.building;
+    return building !== null && building.hp > 0 && building.hp < building.maxHp;
+  }
+
+  private populateBodyHudPacket3D(
+    entities: readonly Entity[],
+    hoveredEntity: Entity | null,
+    options: ClientViewRenderPacketOptions3D,
+    out: ClientViewRenderEntityPackets3D,
+  ): void {
+    let hoveredBodyHudPushed = false;
+    for (let i = 0; i < entities.length; i++) {
+      const entity = entities[i];
+      const forceVisible = entity === hoveredEntity;
+      if (forceVisible) hoveredBodyHudPushed = true;
+      this.pushBodyHudEntity3D(entity, forceVisible, options, out);
+    }
+    if (hoveredEntity !== null && !hoveredBodyHudPushed) {
+      this.pushBodyHudEntity3D(hoveredEntity, true, options, out);
+    }
+  }
+
+  private pushBodyHudEntity3D(
+    entity: Entity,
+    forceVisible: boolean,
+    options: ClientViewRenderPacketOptions3D,
+    out: ClientViewRenderEntityPackets3D,
+  ): void {
+    const unit = entity.unit;
+    const building = entity.building;
+    if (unit === null && building === null) return;
+
+    const type = this.hudTypeOf3D(entity);
+    const selected = entity.selectable?.selected === true;
+    const buildable = isBuildInProgress(entity.buildable)
+      ? entity.buildable
+      : null;
+    const hp = unit !== null ? unit.hp : building !== null ? building.hp : 0;
+    const maxHp = unit !== null ? unit.maxHp : building !== null ? building.maxHp : 0;
+    const healthNotFull = maxHp > 0 && hp < maxHp;
+    const showHealth = this.barVisible3D(
+      options.getEntityHudToggle(type, 'healthBar'),
+      selected,
+      options.selectionHudMode,
+      healthNotFull,
+    );
+    const showBuild = this.barVisible3D(
+      options.getEntityHudToggle(type, 'buildBars'),
+      selected,
+      options.selectionHudMode,
+      buildable !== null,
+    );
+    const showHp = maxHp > 0 && (showHealth || forceVisible)
+      && (buildable !== null || hp > 0);
+    const showBuildBars = showBuild && buildable !== null;
+    if (!showHp && !showBuildBars) return;
+
+    out.bodyHud.pushRow(
+      entity.id,
+      entity.transform.x,
+      unit !== null ? getUnitHudBarsY(entity) : getBuildingHudBarsY(entity),
+      entity.transform.y,
+      unit !== null ? unit.radius.visual * 2 : building!.width,
+      maxHp > 0 ? hp / maxHp : 0,
+      buildable !== null ? getResourceFillRatio(buildable, 'energy') : 0,
+      buildable !== null ? getResourceFillRatio(buildable, 'metal') : 0,
+      showHp,
+      showBuildBars,
+    );
+  }
+
+  private populateBodyNamePacket3D(
+    entities: readonly Entity[],
+    options: ClientViewRenderPacketOptions3D,
+    out: ClientViewRenderEntityPackets3D,
+  ): void {
+    for (let i = 0; i < entities.length; i++) {
+      this.pushBodyNamesForEntity3D(entities[i], options, out);
+    }
+  }
+
+  private pushBodyNamesForEntity3D(
+    entity: Entity,
+    options: ClientViewRenderPacketOptions3D,
+    out: ClientViewRenderEntityPackets3D,
+  ): void {
+    const type = this.hudTypeOf3D(entity);
+    const nameToggle = options.getEntityHudToggle(type, 'name');
+    const bodyName = resolveEntityDisplayName(
+      entity,
+      nameToggle,
+      options.selectionHudMode,
+    );
+    if (bodyName !== null) {
+      out.pieceNames.push(
+        entity.id,
+        PIECE_TAG_BODY,
+        entity.transform.x,
+        entity.unit !== null ? getUnitHudNameY(entity) : getBuildingHudNameY(entity),
+        entity.transform.y,
+        bodyName,
+      );
+    }
+    const ownerName = resolveCommanderOwnerName(
+      entity,
+      (playerId) => options.lookupPlayerName(playerId) ?? getDefaultPlayerName(playerId),
+      nameToggle,
+      options.selectionHudMode,
+    );
+    if (ownerName !== null) {
+      out.pieceNames.push(
+        entity.id,
+        PIECE_TAG_COMMANDER_OWNER_NAME,
+        entity.transform.x,
+        getUnitHudNameY(entity) + NAME_LABEL_OWNER_Y_OFFSET,
+        entity.transform.y,
+        ownerName,
+        'owner',
+      );
+    }
+  }
+
+  private populateShieldPacket3D(
+    units: readonly Entity[],
+    renderScope: ViewportFootprint,
+    out: ClientViewRenderEntityPackets3D,
+  ): void {
+    for (let i = 0; i < units.length; i++) {
+      out.shields.pushUnit(units[i], renderScope);
+    }
+  }
+
+  private populateContactShadowPacket3D(
+    units: readonly Entity[],
+    buildings: readonly Entity[],
+    renderScope: ViewportFootprint,
+    out: ClientViewRenderEntityPackets3D,
+  ): void {
+    const mapWidth = this.getMapWidth();
+    const mapHeight = this.getMapHeight();
+    for (let i = 0; i < units.length; i++) {
+      out.contactShadows.pushUnit(units[i], mapWidth, mapHeight, renderScope);
+    }
+    for (let i = 0; i < buildings.length; i++) {
+      out.contactShadows.pushBuilding(buildings[i], renderScope);
+    }
+  }
+
+  private populateGroundPrintPacket3D(
+    units: readonly Entity[],
+    options: ClientViewRenderPacketOptions3D,
+    out: ClientViewRenderEntityPackets3D,
+  ): void {
+    const mapWidth = this.getMapWidth();
+    const mapHeight = this.getMapHeight();
+    for (let i = 0; i < units.length; i++) {
+      out.groundPrints.pushUnit(
+        units[i],
+        options.getGroundPrintLocomotionMesh,
+        mapWidth,
+        mapHeight,
+      );
     }
   }
 

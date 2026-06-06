@@ -20,26 +20,26 @@ CODE AUDIT - 2026-06-05
 
 OPTIMIZATIONS TO MAKE
 
-1. Render-list generation and per-unit pose work still spend too much time in
-TypeScript object and scenegraph loops.
+1. Unit/building render pose work still spends too much time in TypeScript
+object and scenegraph loops.
 
 Files:
-src/game/scenes/helpers/RtsScene3DRenderPhase.ts
+src/game/network/ClientViewState.ts
 src/game/render3d/Render3DEntities.ts
 src/game/render3d/BuildingEntityRenderer3D.ts
 
-The renderer uses instancing in places, but high-count paths still build HUD,
-shield, contact-shadow, ground-print, and entity render lists by iterating
-Entity objects in TypeScript. Render3DEntities then walks every rendered unit
-each frame to update group transforms, tilt, turret pose, shield panel pose,
-locomotion, fade, overlays, and cache pruning. BuildingEntityRenderer3D still
-does per-building mesh, turret, animation, overlay, and cache-pruning work
-through object and scenegraph loops. This is likely to dominate at the
-"thousands of units" target.
+ClientViewState now prepares body HUD, body-name, shield, contact-shadow, and
+ground-print packets, but it still returns scoped unit/building Entity lists to
+the mesh renderer. Render3DEntities walks every rendered unit each frame to
+update group transforms, tilt, turret pose, shield panel pose, locomotion, fade,
+overlays, and cache pruning. BuildingEntityRenderer3D still does per-building
+mesh, turret, animation, overlay, and cache-pruning work through object and
+scenegraph loops. This is likely to dominate at the "thousands of units" target.
 
 Required fix:
-Introduce packed render packets/SoA buffers from ClientViewState/prediction,
-with scoped id lists, transforms, visibility flags, and HUD/shield rows already
-prepared. Move culling/list construction and as much pose-matrix generation as
-practical into WASM or GPU-updated buffers, then restrict Three.js work to
-explicit buffer range uploads and lifecycle changes.
+Replace the remaining unit/building Entity-list handoff with packed
+ClientViewState/prediction SoA buffers: scoped ids, transforms, visibility
+flags, render keys, and dirty/lifecycle flags. Move as much unit pose-matrix,
+turret pose, shield-panel pose, and building pose generation as practical into
+WASM or GPU-updated buffers, then restrict Three.js work to explicit buffer
+range uploads and lifecycle changes.

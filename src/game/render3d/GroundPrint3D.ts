@@ -148,6 +148,21 @@ export class GroundPrintRenderPacket3D {
     this.count = cursor + 1;
   }
 
+  pushRow(
+    entityId: EntityId,
+    x: number,
+    y: number,
+    grounded: boolean,
+  ): void {
+    const cursor = this.count;
+    this.ensureCapacity(cursor + 1);
+    this.ids[cursor] = entityId;
+    this.x[cursor] = x;
+    this.y[cursor] = y;
+    this.grounded[cursor] = grounded ? 1 : 0;
+    this.count = cursor + 1;
+  }
+
   private ensureCapacity(required: number): void {
     if (required <= this.ids.length) return;
     let nextCapacity = this.ids.length;

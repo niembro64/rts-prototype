@@ -104,6 +104,18 @@ export class ContactShadowRenderPacket3D {
     );
   }
 
+  pushRow(
+    x: number,
+    y: number,
+    crossRadius: number,
+    sunRadius: number,
+    casterHeight: number,
+    offsetPerHeight: number,
+    alpha: number,
+  ): void {
+    this.push(x, y, crossRadius, sunRadius, casterHeight, offsetPerHeight, alpha);
+  }
+
   private push(
     x: number,
     y: number,

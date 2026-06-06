@@ -25,9 +25,9 @@ import {
 // Opacity multiplier on top of barrier.alpha so the bubble reads more
 // solid in 3D than the 2D translucent fill.
 const FIELD_OPACITY_BOOST = 2.0;
-const FIELD_SHAPE_SPHERE = 0;
-const FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER = 1;
-const FIELD_SHAPE_AIMED_CYLINDER = 2;
+export const SHIELD_FIELD_SHAPE_SPHERE = 0;
+export const SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER = 1;
+export const SHIELD_FIELD_SHAPE_AIMED_CYLINDER = 2;
 const FINITE_CYLINDER_INFINITY_VISUAL_MIN_HALF_HEIGHT = 12000;
 const IMPLICIT_FIELD_CAP = 96;
 
@@ -281,12 +281,59 @@ export class ShieldRenderPacket3D {
       this.barrierAlpha[cursor] = barrier.alpha;
       this.color[cursor] = fieldColor;
       this.shape[cursor] = barrier.shape === 'infiniteVerticalCylinder'
-        ? FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER
+        ? SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER
         : barrier.shape === 'aimedCylinder'
-          ? FIELD_SHAPE_AIMED_CYLINDER
-        : FIELD_SHAPE_SPHERE;
+          ? SHIELD_FIELD_SHAPE_AIMED_CYLINDER
+        : SHIELD_FIELD_SHAPE_SPHERE;
       this.count = cursor + 1;
     }
+  }
+
+  pushRow(options: {
+    hostId: number;
+    turretIndex: number;
+    x: number;
+    y: number;
+    z: number;
+    rotation: number;
+    bodyCenterHeight: number;
+    mountLiftY: number;
+    localX: number;
+    localY: number;
+    localZ: number;
+    targetX: number;
+    targetY: number;
+    targetZ: number;
+    progress: number;
+    outerRange: number;
+    originOffsetZ: number;
+    barrierAlpha: number;
+    color: number;
+    shape: number;
+  }): void {
+    const cursor = this.count;
+    this.ensureCapacity(cursor + 1);
+    this.hostIds[cursor] = options.hostId;
+    this.turretIndices[cursor] = options.turretIndex;
+    this.x[cursor] = options.x;
+    this.y[cursor] = options.y;
+    this.z[cursor] = options.z;
+    this.rotation[cursor] = options.rotation;
+    this.bodyCenterHeight[cursor] = options.bodyCenterHeight;
+    this.mountLiftY[cursor] = options.mountLiftY;
+    this.localX[cursor] = options.localX;
+    this.localY[cursor] = options.localY;
+    this.localZ[cursor] = options.localZ;
+    this.targetX[cursor] = options.targetX;
+    this.targetY[cursor] = options.targetY;
+    this.targetZ[cursor] = options.targetZ;
+    this.progress[cursor] = options.progress;
+    this.outerRange[cursor] = options.outerRange;
+    this.originOffsetZ[cursor] = options.originOffsetZ;
+    this.barrierAlpha[cursor] = options.barrierAlpha;
+    this.color[cursor] = options.color;
+    this.shape[cursor] = options.shape;
+    this.count = cursor + 1;
   }
 
   private ensureCapacity(required: number): void {
@@ -727,7 +774,7 @@ export class ShieldRenderer3D {
     const shape = packet.shape[row];
     if (
       SHIELD_SURFACE_RENDER_MODE === 'screen-space-analytic-shader' &&
-      shape !== FIELD_SHAPE_AIMED_CYLINDER
+      shape !== SHIELD_FIELD_SHAPE_AIMED_CYLINDER
     ) {
       if (this._implicitFieldCursor < IMPLICIT_FIELD_CAP) {
         const cursor = this._implicitFieldCursor;
@@ -735,7 +782,7 @@ export class ShieldRenderer3D {
           this._sphereScratchPos.x,
           this._sphereScratchPos.y,
           this._sphereScratchPos.z,
-          shape === FIELD_SHAPE_SPHERE ? outer : -outer,
+          shape === SHIELD_FIELD_SHAPE_SPHERE ? outer : -outer,
         );
         writeHexAlphaToVector4(packet.color[row], alpha, this.implicitFieldStyle[cursor]);
         this._implicitFieldCursor++;
@@ -743,7 +790,7 @@ export class ShieldRenderer3D {
       return;
     }
 
-    if (shape === FIELD_SHAPE_AIMED_CYLINDER) {
+    if (shape === SHIELD_FIELD_SHAPE_AIMED_CYLINDER) {
       if (this._finiteCylinderCursor < SPHERE_INSTANCED_CAP) {
         this._cylinderTargetPos.set(
           packet.targetX[row],
@@ -786,7 +833,7 @@ export class ShieldRenderer3D {
       return;
     }
 
-    if (shape === FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER) {
+    if (shape === SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER) {
       if (this._finiteCylinderCursor < SPHERE_INSTANCED_CAP) {
         this._sphereScratchScale.set(
           outer,

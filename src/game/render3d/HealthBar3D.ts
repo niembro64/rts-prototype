@@ -127,6 +127,35 @@ export class BodyHudRenderPacket3D {
     this.count = cursor + 1;
   }
 
+  pushRow(
+    entityId: number,
+    x: number,
+    y: number,
+    z: number,
+    width: number,
+    healthRatio: number,
+    energyRatio: number,
+    metalRatio: number,
+    showHealth: boolean,
+    showBuild: boolean,
+  ): void {
+    if (!showHealth && !showBuild) return;
+    const cursor = this.count;
+    this.ensureCapacity(cursor + 1);
+    this.ids[cursor] = entityId;
+    this.x[cursor] = x;
+    this.y[cursor] = y;
+    this.z[cursor] = z;
+    this.width[cursor] = width;
+    this.healthRatio[cursor] = Math.max(0, Math.min(1, healthRatio));
+    this.energyRatio[cursor] = Math.max(0, Math.min(1, energyRatio));
+    this.metalRatio[cursor] = Math.max(0, Math.min(1, metalRatio));
+    this.flags[cursor] =
+      (showHealth ? BODY_HUD_SHOW_HEALTH : 0) |
+      (showBuild ? BODY_HUD_SHOW_BUILD : 0);
+    this.count = cursor + 1;
+  }
+
   private ensureCapacity(required: number): void {
     if (required <= this.ids.length) return;
     let nextCapacity = this.ids.length;
