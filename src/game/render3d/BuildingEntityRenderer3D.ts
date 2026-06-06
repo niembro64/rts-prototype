@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
-import { anyRangeToggleActive, getGraphicsConfig } from '@/clientBarConfig';
+import { getGraphicsConfig } from '@/clientBarConfig';
 import type { ClientViewState } from '../network/ClientViewState';
 import { getTurretHeadRadius } from '../math';
 import {
@@ -332,9 +332,11 @@ export class BuildingEntityRenderer3D {
     rows: BuildingRenderPacket3D,
     row: number,
   ): boolean {
-    if (mesh.rangeRingsVisible === true) return true;
-    if (anyRangeToggleActive()) return true;
-    return entity.buildingBlueprintId === 'buildingRadar' && rows.selectedAt(row);
+    return this.selectionOverlays.buildingRangeOverlaysNeedUpdate(
+      mesh,
+      entity,
+      rows.selectedAt(row),
+    );
   }
 
   private disposeBuildingMesh(mesh: EntityMesh): void {

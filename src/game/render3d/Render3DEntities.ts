@@ -469,6 +469,7 @@ export class Render3DEntities {
     this._spinDt = frameSpin.spinDtSec;
     this.turretMountCache.reset(this._currentDtMs);
     refreshLocomotionSupportSurfaces(this.clientViewState.getPredictionSupportSurfaceEntities());
+    this.selectionOverlays.beginFrame();
     // Populate beam-directed turret aim from the live beams BEFORE the
     // unit + building turret-pose passes read it this frame.
     this.collectBeamTurretAim(entityPacket?.beamAimProjectiles);
@@ -1019,9 +1020,11 @@ export class Render3DEntities {
       );
 
       const selected = unitRows.selectedAt(row);
-      this.selectionOverlays.updateSelectionRing(m, selected, radius * 1.35);
-      this.selectionOverlays.updateUnitRadiusRings(m, e);
-      this.selectionOverlays.updateRangeRings(m, e);
+      if (this.selectionOverlays.unitOverlaysNeedUpdate(m, selected)) {
+        this.selectionOverlays.updateSelectionRing(m, selected, radius * 1.35);
+        this.selectionOverlays.updateUnitRadiusRings(m, e);
+        this.selectionOverlays.updateRangeRings(m, e);
+      }
 
       this.turretPose.update(
         e,

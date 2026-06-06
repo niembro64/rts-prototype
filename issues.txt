@@ -45,7 +45,7 @@ Current remaining issue:
 Several high-count render paths still execute TypeScript object loops and
 Three.js scenegraph mutations per visible unit/building. The remaining hot work
 includes unit mirror support-root attachment/visibility, locomotion visual
-updates, fade/overlay orchestration, scoped-mode live-mesh pruning, active
+updates, fade orchestration, active/debug overlay updates, scoped-mode live-mesh pruning, active
 building turret attachment/material/spin, building animation, active building
 overlays, and lifecycle cleanup. These paths are likely to dominate at the
 "thousands of units" target even though base pose, chassis, turret, shield
@@ -53,7 +53,7 @@ panel, and building pose math already use batched render packets/WASM kernels.
 
 Required fix:
 Move the remaining mirror support-root attachment/visibility work, locomotion,
-unit fade, unit overlays, active building turret attachment/material/spin,
+unit fade, active/debug unit overlays, active building turret attachment/material/spin,
 building animation, active building overlays, scoped-mode pruning, and lifecycle
 cleanup into WASM-owned slabs, GPU-updated buffers, or explicit dirty/removal
 queues as practical. Keep Three.js work limited to buffer uploads and true

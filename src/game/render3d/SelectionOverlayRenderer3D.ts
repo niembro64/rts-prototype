@@ -1,5 +1,10 @@
 import * as THREE from 'three';
-import { getRangeToggle, getUnitRadiusToggle } from '@/clientBarConfig';
+import {
+  anyRangeToggleActive,
+  anyUnitRadiusToggleActive,
+  getRangeToggle,
+  getUnitRadiusToggle,
+} from '@/clientBarConfig';
 import { COLORS } from '@/colorsConfig';
 import { LAND_CELL_SIZE } from '../../config';
 import type { Entity } from '../sim/types';
@@ -60,6 +65,19 @@ export class SelectionOverlayRenderer3D {
   private readonly radiusSphereGeom: THREE.BufferGeometry;
   private readonly supportDiagnosticSurface = createWorldSupportSurface();
   private readonly supportDiagnosticNextLogAtMs = new Map<number, number>();
+  private showTrackAcquire = false;
+  private showTrackRelease = false;
+  private showEngageAcquire = false;
+  private showEngageRelease = false;
+  private showEngageMinAcquire = false;
+  private showEngageMinRelease = false;
+  private showBuild = false;
+  private showVisualRadius = false;
+  private showHitboxRadius = false;
+  private showCollisionRadius = false;
+  private showAnyRange = false;
+  private showAnyUnitRadius = false;
+  private selectedCount = 0;
 
   private readonly ringGeom = new THREE.TorusGeometry(1.0, 0.06, 8, 36);
   private readonly radiusMatVisual = new THREE.LineBasicMaterial({
@@ -128,6 +146,46 @@ export class SelectionOverlayRenderer3D {
     this.world = options.world;
     this.clientViewState = options.clientViewState;
     this.radiusSphereGeom = options.radiusSphereGeom;
+    this.beginFrame();
+  }
+
+  beginFrame(): void {
+    this.showTrackAcquire = getRangeToggle('trackAcquire');
+    this.showTrackRelease = getRangeToggle('trackRelease');
+    this.showEngageAcquire = getRangeToggle('engageAcquire');
+    this.showEngageRelease = getRangeToggle('engageRelease');
+    this.showEngageMinAcquire = getRangeToggle('engageMinAcquire');
+    this.showEngageMinRelease = getRangeToggle('engageMinRelease');
+    this.showBuild = getRangeToggle('build');
+    this.showVisualRadius = getUnitRadiusToggle('visual');
+    this.showHitboxRadius = getUnitRadiusToggle('hitbox');
+    this.showCollisionRadius = getUnitRadiusToggle('collision');
+    this.showAnyRange = anyRangeToggleActive();
+    this.showAnyUnitRadius = anyUnitRadiusToggleActive();
+    this.selectedCount = this.clientViewState.getSelectedIds().size;
+  }
+
+  unitOverlaysNeedUpdate(m: OverlayEntityMesh, selected: boolean): boolean {
+    return (
+      selected ||
+      m.ring !== undefined ||
+      this.showAnyUnitRadius ||
+      m.radiusRingsVisible === true ||
+      this.showAnyRange ||
+      m.rangeRingsVisible === true
+    );
+  }
+
+  buildingRangeOverlaysNeedUpdate(
+    m: OverlayEntityMesh,
+    entity: Entity,
+    selected: boolean,
+  ): boolean {
+    return (
+      m.rangeRingsVisible === true ||
+      this.showAnyRange ||
+      (entity.buildingBlueprintId === 'buildingRadar' && selected)
+    );
   }
 
   updateSelectionRing(m: OverlayEntityMesh, selected: boolean, radius: number): void {
@@ -146,9 +204,9 @@ export class SelectionOverlayRenderer3D {
   }
 
   updateUnitRadiusRings(m: OverlayEntityMesh, entity: Entity): void {
-    const showVisual = getUnitRadiusToggle('visual');
-    const showHitbox = getUnitRadiusToggle('hitbox');
-    const showCollision = getUnitRadiusToggle('collision');
+    const showVisual = this.showVisualRadius;
+    const showHitbox = this.showHitboxRadius;
+    const showCollision = this.showCollisionRadius;
     if (!showVisual && !showHitbox && !showCollision) {
       if (m.radiusRingsVisible && m.radiusRings) {
         if (m.radiusRings.visual) m.radiusRings.visual.visible = false;
@@ -184,18 +242,18 @@ export class SelectionOverlayRenderer3D {
     this.logSupportDiagnostics(entity);
     if (!entity.unit && !entity.building) return;
 
-    const showTrackAcquire = getRangeToggle('trackAcquire');
-    const showTrackRelease = getRangeToggle('trackRelease');
-    const showEngageAcquire = getRangeToggle('engageAcquire');
+    const showTrackAcquire = this.showTrackAcquire;
+    const showTrackRelease = this.showTrackRelease;
+    const showEngageAcquire = this.showEngageAcquire;
     const showSingleSelectedUnitTurretCircle =
       entity.unit !== null &&
       entity.selectable?.selected === true &&
-      this.clientViewState.getSelectedIds().size === 1;
+      this.selectedCount === 1;
     const showEngageRelease =
-      getRangeToggle('engageRelease') || showSingleSelectedUnitTurretCircle;
-    const showEngageMinAcquire = getRangeToggle('engageMinAcquire');
-    const showEngageMinRelease = getRangeToggle('engageMinRelease');
-    const showBuild = getRangeToggle('build');
+      this.showEngageRelease || showSingleSelectedUnitTurretCircle;
+    const showEngageMinAcquire = this.showEngageMinAcquire;
+    const showEngageMinRelease = this.showEngageMinRelease;
+    const showBuild = this.showBuild;
     const showRadar = entity.buildingBlueprintId === 'buildingRadar' && entity.selectable?.selected === true;
     const showAnyTurretRange =
       showTrackAcquire || showTrackRelease
