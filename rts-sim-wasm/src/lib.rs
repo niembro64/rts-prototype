@@ -5912,6 +5912,117 @@ pub fn render_turret_head_compute(count: u32) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+//  Render pose helper — unit turret aim/root pose
+//
+//  Converts the sim aim into the local turret rig's root yaw and pitch.
+//  Mode 0 reads turret rotation/pitch. Mode 1 reads a world direction
+//  vector first, matching applyTurretAimWorldDir3D's beam path.
+// ─────────────────────────────────────────────────────────────────
+
+pub const RENDER_TURRET_AIM_INPUT_STRIDE: usize = 12;
+pub const RENDER_TURRET_AIM_OUTPUT_STRIDE: usize = 2;
+const RENDER_TURRET_AIM_MODE_WORLD_DIR: f32 = 1.0;
+
+struct RenderTurretAimScratch {
+    input: Vec<f32>,
+    output: Vec<f32>,
+}
+
+struct RenderTurretAimScratchHolder(UnsafeCell<Option<RenderTurretAimScratch>>);
+unsafe impl Sync for RenderTurretAimScratchHolder {}
+static RENDER_TURRET_AIM_SCRATCH: RenderTurretAimScratchHolder =
+    RenderTurretAimScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn render_turret_aim_scratch() -> &'static mut RenderTurretAimScratch {
+    unsafe {
+        let cell = &mut *RENDER_TURRET_AIM_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(RenderTurretAimScratch {
+                input: vec![0.0; RENDER_TURRET_AIM_INPUT_STRIDE * 2048],
+                output: vec![0.0; RENDER_TURRET_AIM_OUTPUT_STRIDE * 2048],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn render_turret_aim_input_scratch_ptr() -> *const f32 {
+    render_turret_aim_scratch().input.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn render_turret_aim_output_scratch_ptr() -> *const f32 {
+    render_turret_aim_scratch().output.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn render_turret_aim_scratch_ensure(count: u32) {
+    let s = render_turret_aim_scratch();
+    let input_needed = (count as usize) * RENDER_TURRET_AIM_INPUT_STRIDE;
+    if s.input.len() < input_needed {
+        s.input.resize(input_needed, 0.0);
+    }
+    let output_needed = (count as usize) * RENDER_TURRET_AIM_OUTPUT_STRIDE;
+    if s.output.len() < output_needed {
+        s.output.resize(output_needed, 0.0);
+    }
+}
+
+#[wasm_bindgen]
+pub fn render_turret_aim_compute(count: u32) {
+    let s = render_turret_aim_scratch();
+    let count_usize = count as usize;
+    debug_assert!(s.input.len() >= count_usize * RENDER_TURRET_AIM_INPUT_STRIDE);
+    debug_assert!(s.output.len() >= count_usize * RENDER_TURRET_AIM_OUTPUT_STRIDE);
+
+    for i in 0..count_usize {
+        let ib = i * RENDER_TURRET_AIM_INPUT_STRIDE;
+        let ob = i * RENDER_TURRET_AIM_OUTPUT_STRIDE;
+        let host_rotation = s.input[ib] as f64;
+        let mode = s.input[ib + 1];
+        let (aim_rotation, aim_pitch) = if mode == RENDER_TURRET_AIM_MODE_WORLD_DIR {
+            let dir_x = s.input[ib + 4] as f64;
+            let dir_y = s.input[ib + 5] as f64;
+            let dir_z = s.input[ib + 6] as f64;
+            (
+                dir_y.atan2(dir_x),
+                dir_z.atan2((dir_x * dir_x + dir_y * dir_y).sqrt()),
+            )
+        } else {
+            (s.input[ib + 2] as f64, s.input[ib + 3] as f64)
+        };
+
+        let cos_rot = aim_rotation.cos();
+        let sin_rot = aim_rotation.sin();
+        let cos_pitch = aim_pitch.cos();
+        let sin_pitch = aim_pitch.sin();
+        let mut aim_dir = [cos_rot * cos_pitch, sin_pitch, sin_rot * cos_pitch];
+        if s.input[ib + 11] != 0.0 {
+            let inv_tilt = [
+                s.input[ib + 7] as f64,
+                s.input[ib + 8] as f64,
+                s.input[ib + 9] as f64,
+                s.input[ib + 10] as f64,
+            ];
+            aim_dir = quat_rotate_vec(inv_tilt, aim_dir);
+        }
+
+        let combined_yaw = (-aim_dir[2]).atan2(aim_dir[0]);
+        let y = if aim_dir[1] < -1.0 {
+            -1.0
+        } else if aim_dir[1] > 1.0 {
+            1.0
+        } else {
+            aim_dir[1]
+        };
+        s.output[ob] = (combined_yaw + host_rotation) as f32;
+        s.output[ob + 1] = y.asin() as f32;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────
 //  Phase 3e — Batched hover orientation kernel
 //
 //  Replaces the per-entity quatFromYawPitchRoll + quatDampedSpringStep

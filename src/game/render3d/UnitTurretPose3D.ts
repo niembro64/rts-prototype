@@ -7,10 +7,16 @@ import {
   entityShieldSphereTurretHeadColorHex,
 } from './EntityInstanceColor3D';
 import type { EntityMesh } from './EntityMesh3D';
-import { applyTurretAimPose3D, applyTurretAimWorldDir3D } from './TurretAimPose3D';
+import { applyTurretAimPose3D } from './TurretAimPose3D';
 import type { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
 import type { TurretBeamAimCache3D } from './TurretBeamAimCache3D';
 import type { TurretMesh } from './TurretMesh3D';
+import {
+  TURRET_AIM_INPUT_STRIDE,
+  TURRET_AIM_MODE_POSE,
+  TURRET_AIM_MODE_WORLD_DIR,
+  UnitTurretAimBatch3D,
+} from './UnitTurretAimBatch3D';
 import {
   TURRET_BARREL_INPUT_STRIDE,
   UnitTurretBarrelMatrixBatch3D,
@@ -23,6 +29,19 @@ import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3
 import type { TurretMountCache3D } from './TurretMountCache3D';
 
 export class UnitTurretPose3D {
+  private readonly aimBatch = new UnitTurretAimBatch3D();
+  private aimInput = new Float32Array(TURRET_AIM_INPUT_STRIDE * 2048);
+  private aimParentPose = new Float32Array(7 * 2048);
+  private aimCount = 0;
+  private readonly aimTurretMeshes: TurretMesh[] = [];
+  private readonly aimEntities: Entity[] = [];
+  private readonly aimTurretIndexes: number[] = [];
+  private readonly aimHeadSlots: number[] = [];
+  private readonly aimHeadRadii: number[] = [];
+  private readonly aimColorOverrides: (number | undefined)[] = [];
+  private readonly deferredParentPosition = new THREE.Vector3();
+  private readonly deferredParentQuaternion = new THREE.Quaternion();
+
   private readonly barrelBatch = new UnitTurretBarrelMatrixBatch3D();
   private barrelInput = new Float32Array(TURRET_BARREL_INPUT_STRIDE * 2048);
   private barrelCount = 0;
@@ -38,6 +57,13 @@ export class UnitTurretPose3D {
   private readonly headTurretIndexes: number[] = [];
 
   begin(): void {
+    this.aimCount = 0;
+    this.aimTurretMeshes.length = 0;
+    this.aimEntities.length = 0;
+    this.aimTurretIndexes.length = 0;
+    this.aimHeadSlots.length = 0;
+    this.aimHeadRadii.length = 0;
+    this.aimColorOverrides.length = 0;
     this.barrelCount = 0;
     this.barrelSlots.length = 0;
     this.barrelUsesCone.length = 0;
@@ -112,6 +138,13 @@ export class UnitTurretPose3D {
         continue;
       }
 
+      let deferAim = false;
+      let aimMode = TURRET_AIM_MODE_POSE;
+      let aimRotation = turret.rotation;
+      let aimPitch = turret.pitch;
+      let aimDirX = 0;
+      let aimDirY = 0;
+      let aimDirZ = 0;
       if (turretMesh.barrelFollowsBeam) {
         // Beam turret: aim the barrel + head along the last beam fired
         // (frozen at the last direction when not firing). Sim turret aim
@@ -119,33 +152,16 @@ export class UnitTurretPose3D {
         // forward idle pose until the first beam is cached.
         const beamDir = turretBeamAimCache.get(entity.id, turretIdx);
         if (beamDir) {
-          applyTurretAimWorldDir3D(
-            turretMesh,
-            entity.transform.rotation,
-            beamDir.x,
-            beamDir.y,
-            beamDir.z,
-            chassisTiltInverse,
-          );
-        } else {
-          applyTurretAimPose3D(
-            turretMesh,
-            entity.transform.rotation,
-            turret.rotation,
-            turret.pitch,
-            chassisTiltInverse,
-          );
+          aimMode = TURRET_AIM_MODE_WORLD_DIR;
+          aimDirX = beamDir.x;
+          aimDirY = beamDir.y;
+          aimDirZ = beamDir.z;
         }
+        deferAim = true;
         // Beam barrels never spin.
         if (turretMesh.spinGroup) turretMesh.spinGroup.rotation.x = 0;
       } else if (!turret.config.headOnly) {
-        applyTurretAimPose3D(
-          turretMesh,
-          entity.transform.rotation,
-          turret.rotation,
-          turret.pitch,
-          chassisTiltInverse,
-        );
+        deferAim = true;
         if (turretMesh.spinGroup) {
           turretMesh.spinGroup.rotation.x = barrelSpinEnabled
             ? barrelSpinState.angleFor(entity.id, turretIdx) ?? 0
@@ -162,6 +178,27 @@ export class UnitTurretPose3D {
           : turretMesh.shieldEmitterCore
             ? entityShieldSphereTurretHeadColorHex(entity, turret, timeMs)
             : undefined;
+        if (deferAim) {
+          this.enqueueAim(
+            entity,
+            turretIdx,
+            turretMesh,
+            turretMesh.headSlot,
+            turretMesh.headRadius,
+            headColorOverride,
+            parentPosition,
+            parentQuaternion,
+            entity.transform.rotation,
+            aimMode,
+            aimRotation,
+            aimPitch,
+            aimDirX,
+            aimDirY,
+            aimDirZ,
+            chassisTiltInverse,
+          );
+          continue;
+        }
         this.enqueueHeadMount(
           entity,
           turretIdx,
@@ -173,6 +210,27 @@ export class UnitTurretPose3D {
           turretMesh.headRadius,
         );
       } else {
+        if (deferAim) {
+          this.enqueueAim(
+            entity,
+            turretIdx,
+            turretMesh,
+            undefined,
+            headRadius,
+            undefined,
+            parentPosition,
+            parentQuaternion,
+            entity.transform.rotation,
+            aimMode,
+            aimRotation,
+            aimPitch,
+            aimDirX,
+            aimDirY,
+            aimDirZ,
+            chassisTiltInverse,
+          );
+          continue;
+        }
         this.enqueueHeadMount(
           entity,
           turretIdx,
@@ -197,8 +255,54 @@ export class UnitTurretPose3D {
     unitDetailInstances: UnitDetailInstanceRenderer3D,
     turretMountCache: TurretMountCache3D,
   ): void {
+    this.flushAimRecords();
     this.flushHeadMounts(unitDetailInstances, turretMountCache);
     this.flushBarrels(unitDetailInstances);
+  }
+
+  private flushAimRecords(): void {
+    const count = this.aimCount;
+    if (count <= 0) return;
+
+    const input = this.aimBatch.begin(count);
+    input.set(this.aimInput.subarray(0, count * TURRET_AIM_INPUT_STRIDE));
+    const output = this.aimBatch.compute(count);
+    const outputStride = this.aimBatch.outputStride;
+
+    for (let i = 0; i < count; i++) {
+      const turretMesh = this.aimTurretMeshes[i];
+      const outputBase = i * outputStride;
+      turretMesh.root.rotation.y = output[outputBase];
+      if (turretMesh.pitchGroup) turretMesh.pitchGroup.rotation.z = output[outputBase + 1];
+
+      const poseBase = i * 7;
+      this.deferredParentPosition.set(
+        this.aimParentPose[poseBase],
+        this.aimParentPose[poseBase + 1],
+        this.aimParentPose[poseBase + 2],
+      );
+      this.deferredParentQuaternion.set(
+        this.aimParentPose[poseBase + 3],
+        this.aimParentPose[poseBase + 4],
+        this.aimParentPose[poseBase + 5],
+        this.aimParentPose[poseBase + 6],
+      );
+      this.enqueueHeadMount(
+        this.aimEntities[i],
+        this.aimTurretIndexes[i],
+        this.aimHeadSlots[i] >= 0 ? this.aimHeadSlots[i] : undefined,
+        this.aimColorOverrides[i],
+        this.deferredParentPosition,
+        this.deferredParentQuaternion,
+        turretMesh.root,
+        this.aimHeadRadii[i],
+      );
+      this.writeBarrelInstances(
+        turretMesh,
+        this.deferredParentPosition,
+        this.deferredParentQuaternion,
+      );
+    }
   }
 
   private flushHeadMounts(
@@ -289,6 +393,61 @@ export class UnitTurretPose3D {
     this.headColorOverrides[index] = colorOverride;
     this.headEntityIds[index] = entity.id;
     this.headTurretIndexes[index] = turretIdx;
+  }
+
+  private enqueueAim(
+    entity: Entity,
+    turretIdx: number,
+    turretMesh: TurretMesh,
+    headSlot: number | undefined,
+    headRadius: number,
+    colorOverride: number | undefined,
+    parentPosition: THREE.Vector3,
+    parentQuaternion: THREE.Quaternion,
+    hostRotation: number,
+    mode: number,
+    aimRotation: number,
+    aimPitch: number,
+    dirX: number,
+    dirY: number,
+    dirZ: number,
+    chassisTiltInverse: THREE.Quaternion | undefined,
+  ): void {
+    const index = this.aimCount;
+    this.aimCount++;
+    this.ensureAimInputCapacity(this.aimCount);
+
+    const base = index * TURRET_AIM_INPUT_STRIDE;
+    const input = this.aimInput;
+    input[base] = hostRotation;
+    input[base + 1] = mode;
+    input[base + 2] = aimRotation;
+    input[base + 3] = aimPitch;
+    input[base + 4] = dirX;
+    input[base + 5] = dirY;
+    input[base + 6] = dirZ;
+    input[base + 7] = chassisTiltInverse?.x ?? 0;
+    input[base + 8] = chassisTiltInverse?.y ?? 0;
+    input[base + 9] = chassisTiltInverse?.z ?? 0;
+    input[base + 10] = chassisTiltInverse?.w ?? 1;
+    input[base + 11] = chassisTiltInverse ? 1 : 0;
+
+    const poseBase = index * 7;
+    const parentPose = this.aimParentPose;
+    parentPose[poseBase] = parentPosition.x;
+    parentPose[poseBase + 1] = parentPosition.y;
+    parentPose[poseBase + 2] = parentPosition.z;
+    parentPose[poseBase + 3] = parentQuaternion.x;
+    parentPose[poseBase + 4] = parentQuaternion.y;
+    parentPose[poseBase + 5] = parentQuaternion.z;
+    parentPose[poseBase + 6] = parentQuaternion.w;
+
+    this.aimTurretMeshes[index] = turretMesh;
+    this.aimEntities[index] = entity;
+    this.aimTurretIndexes[index] = turretIdx;
+    this.aimHeadSlots[index] = headSlot ?? -1;
+    this.aimHeadRadii[index] = headRadius;
+    this.aimColorOverrides[index] = colorOverride;
   }
 
   private writeBarrelInstances(
@@ -399,5 +558,24 @@ export class UnitTurretPose3D {
     const expanded = new Float32Array(next);
     expanded.set(this.headInput);
     this.headInput = expanded;
+  }
+
+  private ensureAimInputCapacity(count: number): void {
+    const needed = count * TURRET_AIM_INPUT_STRIDE;
+    if (this.aimInput.length < needed) {
+      let next = this.aimInput.length;
+      while (next < needed) next *= 2;
+      const expanded = new Float32Array(next);
+      expanded.set(this.aimInput);
+      this.aimInput = expanded;
+    }
+
+    const poseNeeded = count * 7;
+    if (this.aimParentPose.length >= poseNeeded) return;
+    let nextPose = this.aimParentPose.length;
+    while (nextPose < poseNeeded) nextPose *= 2;
+    const expandedPose = new Float32Array(nextPose);
+    expandedPose.set(this.aimParentPose);
+    this.aimParentPose = expandedPose;
   }
 }
