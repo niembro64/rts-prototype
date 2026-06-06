@@ -72,6 +72,10 @@ import __wbg_init, {
   render_unit_pose_input_scratch_ptr,
   render_unit_pose_output_scratch_ptr,
   render_unit_pose_scratch_ensure,
+  render_chassis_part_compute,
+  render_chassis_part_input_scratch_ptr,
+  render_chassis_part_output_scratch_ptr,
+  render_chassis_part_scratch_ensure,
   unit_force_step_batch,
   projectile_pool_init,
   projectile_pool_capacity,
@@ -1612,6 +1616,12 @@ export interface RenderPoseApi {
   unitCompute: (count: number) => void;
   unitInputStride: number;
   unitOutputStride: number;
+  chassisPartInputScratchPtr: () => number;
+  chassisPartOutputScratchPtr: () => number;
+  chassisPartScratchEnsure: (count: number) => void;
+  chassisPartCompute: (count: number) => void;
+  chassisPartInputStride: number;
+  chassisPartOutputStride: number;
 }
 
 /** Constants exposed alongside the SpatialGrid API. Mirrors the
@@ -4012,6 +4022,12 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           unitCompute: render_unit_pose_compute,
           unitInputStride: 11,
           unitOutputStride: 32,
+          chassisPartInputScratchPtr: render_chassis_part_input_scratch_ptr,
+          chassisPartOutputScratchPtr: render_chassis_part_output_scratch_ptr,
+          chassisPartScratchEnsure: render_chassis_part_scratch_ensure,
+          chassisPartCompute: render_chassis_part_compute,
+          chassisPartInputStride: 15,
+          chassisPartOutputStride: 16,
         },
         snapshotBaseline: {
           create: snapshot_baseline_create,

@@ -890,6 +890,7 @@ export class Render3DEntities {
 
     const poseOutput = this.unitRenderPose.compute(poseCount);
     const poseOutputStride = this.unitRenderPose.outputStride;
+    this.chassisInstancePose.begin();
 
     for (let poseIndex = 0; poseIndex < poseCount; poseIndex++) {
       const row = poseRows[poseIndex];
@@ -1100,6 +1101,7 @@ export class Render3DEntities {
       // Health bar handled by HealthBar3D (billboarded sprite in the
       // world group, depth-occluded by terrain).
     }
+    this.chassisInstancePose.flush(this.unitDetailInstances);
 
     // Units no longer present leave the live set. Rather than tearing the
     // mesh down immediately, hand it to a shared fade controller: the

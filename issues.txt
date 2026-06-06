@@ -31,21 +31,24 @@ src/game/render3d/EntityRenderPackets3D.ts
 src/game/render3d/Render3DEntities.ts
 src/game/render3d/BuildingEntityRenderer3D.ts
 src/game/render3d/UnitRenderPoseBatch3D.ts
+src/game/render3d/UnitChassisMatrixBatch3D.ts
+src/game/render3d/UnitChassisInstancePose3D.ts
+src/game/render3d/UnitDetailInstanceRenderer3D.ts
 
 ClientViewState prepares body HUD, body-name, shield, contact-shadow,
 ground-print, unit render-row, and building render-row packets. Unit/building
 rows carry render keys, entity/turret row references, and dirty/lifecycle flags,
 and the renderers consume those rows without steady-state per-row Entity map
 lookups. Unit base-pose chain generation (tilt quaternion, inverse tilt,
-parent quaternion, lifted position, and parent matrix) now runs as a batched
-WASM scratch-buffer kernel. The remaining hot work is still TypeScript pose
-generation and Three.js scenegraph churn: per-body-part chassis matrices,
-turret pose, shield-panel pose, locomotion, fade, overlays, and cache pruning;
-plus per-building mesh, turret, animation, overlay, and cache-pruning work.
-This is likely to dominate at the "thousands of units" target.
+parent quaternion, lifted position, and parent matrix) and unit chassis
+part-matrix generation now run as batched WASM scratch-buffer kernels. The
+remaining hot work is still TypeScript pose generation and Three.js scenegraph
+churn: turret pose, shield-panel pose, locomotion, fade, overlays, and cache
+pruning; plus per-building mesh, turret, animation, overlay, and cache-pruning
+work. This is likely to dominate at the "thousands of units" target.
 
 Required fix:
-Move as much remaining unit part-matrix, turret pose, shield-panel pose,
-building pose, locomotion, fade, overlay, and cache-pruning work as practical
-into WASM or GPU-updated buffers, then restrict Three.js work to explicit
-buffer range uploads and lifecycle changes.
+Move as much remaining unit turret pose, shield-panel pose, building pose,
+locomotion, fade, overlay, and cache-pruning work as practical into WASM or
+GPU-updated buffers, then restrict Three.js work to explicit buffer range
+uploads and lifecycle changes.

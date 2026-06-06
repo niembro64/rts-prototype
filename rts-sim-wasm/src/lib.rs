@@ -5290,6 +5290,180 @@ pub fn render_unit_pose_compute(count: u32) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+//  Render pose helper — unit chassis part matrices
+//
+//  Each row composes the already-smoothed unit parent transform with one
+//  chassis-local body part:
+//    T(parentPos) · R(parentQuat) · S(radius) · T(partPos)
+//    · Rz(partRotZ) · S(partScale)
+//
+//  Output uses Three.js Matrix4/InstancedMesh column-major layout.
+// ─────────────────────────────────────────────────────────────────
+
+pub const RENDER_CHASSIS_PART_INPUT_STRIDE: usize = 15;
+pub const RENDER_CHASSIS_PART_OUTPUT_STRIDE: usize = 16;
+
+struct RenderChassisPartScratch {
+    input: Vec<f32>,
+    output: Vec<f32>,
+}
+
+struct RenderChassisPartScratchHolder(UnsafeCell<Option<RenderChassisPartScratch>>);
+unsafe impl Sync for RenderChassisPartScratchHolder {}
+static RENDER_CHASSIS_PART_SCRATCH: RenderChassisPartScratchHolder =
+    RenderChassisPartScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn render_chassis_part_scratch() -> &'static mut RenderChassisPartScratch {
+    unsafe {
+        let cell = &mut *RENDER_CHASSIS_PART_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(RenderChassisPartScratch {
+                input: vec![0.0; RENDER_CHASSIS_PART_INPUT_STRIDE * 1024],
+                output: vec![0.0; RENDER_CHASSIS_PART_OUTPUT_STRIDE * 1024],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn render_chassis_part_input_scratch_ptr() -> *const f32 {
+    render_chassis_part_scratch().input.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn render_chassis_part_output_scratch_ptr() -> *const f32 {
+    render_chassis_part_scratch().output.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn render_chassis_part_scratch_ensure(count: u32) {
+    let s = render_chassis_part_scratch();
+    let input_needed = (count as usize) * RENDER_CHASSIS_PART_INPUT_STRIDE;
+    if s.input.len() < input_needed {
+        s.input.resize(input_needed, 0.0);
+    }
+    let output_needed = (count as usize) * RENDER_CHASSIS_PART_OUTPUT_STRIDE;
+    if s.output.len() < output_needed {
+        s.output.resize(output_needed, 0.0);
+    }
+}
+
+#[inline]
+fn render_write_chassis_part_matrix(
+    out: &mut [f32],
+    offset: usize,
+    parent_pos: [f64; 3],
+    parent_q: [f64; 4],
+    radius: f64,
+    part_pos: [f64; 3],
+    part_scale: [f64; 3],
+    part_rot_z: f64,
+) {
+    let x = parent_q[0];
+    let y = parent_q[1];
+    let z = parent_q[2];
+    let w = parent_q[3];
+    let x2 = x + x;
+    let y2 = y + y;
+    let z2 = z + z;
+    let xx = x * x2;
+    let xy = x * y2;
+    let xz = x * z2;
+    let yy = y * y2;
+    let yz = y * z2;
+    let zz = z * z2;
+    let wx = w * x2;
+    let wy = w * y2;
+    let wz = w * z2;
+
+    // Parent linear basis columns: R(parentQuat) · uniform radius.
+    let p0x = (1.0 - (yy + zz)) * radius;
+    let p0y = (xy + wz) * radius;
+    let p0z = (xz - wy) * radius;
+    let p1x = (xy - wz) * radius;
+    let p1y = (1.0 - (xx + zz)) * radius;
+    let p1z = (yz + wx) * radius;
+    let p2x = (xz + wy) * radius;
+    let p2y = (yz - wx) * radius;
+    let p2z = (1.0 - (xx + yy)) * radius;
+
+    let c = part_rot_z.cos();
+    let s = part_rot_z.sin();
+    let sx = part_scale[0];
+    let sy = part_scale[1];
+    let sz = part_scale[2];
+
+    // Local part rotation around +Z, then per-axis scale.
+    out[offset] = ((p0x * c + p1x * s) * sx) as f32;
+    out[offset + 1] = ((p0y * c + p1y * s) * sx) as f32;
+    out[offset + 2] = ((p0z * c + p1z * s) * sx) as f32;
+    out[offset + 3] = 0.0;
+    out[offset + 4] = ((-p0x * s + p1x * c) * sy) as f32;
+    out[offset + 5] = ((-p0y * s + p1y * c) * sy) as f32;
+    out[offset + 6] = ((-p0z * s + p1z * c) * sy) as f32;
+    out[offset + 7] = 0.0;
+    out[offset + 8] = (p2x * sz) as f32;
+    out[offset + 9] = (p2y * sz) as f32;
+    out[offset + 10] = (p2z * sz) as f32;
+    out[offset + 11] = 0.0;
+    out[offset + 12] =
+        (parent_pos[0] + p0x * part_pos[0] + p1x * part_pos[1] + p2x * part_pos[2]) as f32;
+    out[offset + 13] =
+        (parent_pos[1] + p0y * part_pos[0] + p1y * part_pos[1] + p2y * part_pos[2]) as f32;
+    out[offset + 14] =
+        (parent_pos[2] + p0z * part_pos[0] + p1z * part_pos[1] + p2z * part_pos[2]) as f32;
+    out[offset + 15] = 1.0;
+}
+
+#[wasm_bindgen]
+pub fn render_chassis_part_compute(count: u32) {
+    let s = render_chassis_part_scratch();
+    let count_usize = count as usize;
+    debug_assert!(s.input.len() >= count_usize * RENDER_CHASSIS_PART_INPUT_STRIDE);
+    debug_assert!(s.output.len() >= count_usize * RENDER_CHASSIS_PART_OUTPUT_STRIDE);
+
+    for i in 0..count_usize {
+        let ib = i * RENDER_CHASSIS_PART_INPUT_STRIDE;
+        let ob = i * RENDER_CHASSIS_PART_OUTPUT_STRIDE;
+        let parent_pos = [
+            s.input[ib] as f64,
+            s.input[ib + 1] as f64,
+            s.input[ib + 2] as f64,
+        ];
+        let parent_q = [
+            s.input[ib + 3] as f64,
+            s.input[ib + 4] as f64,
+            s.input[ib + 5] as f64,
+            s.input[ib + 6] as f64,
+        ];
+        let radius = s.input[ib + 7] as f64;
+        let part_pos = [
+            s.input[ib + 8] as f64,
+            s.input[ib + 9] as f64,
+            s.input[ib + 10] as f64,
+        ];
+        let part_scale = [
+            s.input[ib + 11] as f64,
+            s.input[ib + 12] as f64,
+            s.input[ib + 13] as f64,
+        ];
+        let part_rot_z = s.input[ib + 14] as f64;
+        render_write_chassis_part_matrix(
+            &mut s.output,
+            ob,
+            parent_pos,
+            parent_q,
+            radius,
+            part_pos,
+            part_scale,
+            part_rot_z,
+        );
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────
 //  Phase 3e — Batched hover orientation kernel
 //
 //  Replaces the per-entity quatFromYawPitchRoll + quatDampedSpringStep

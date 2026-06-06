@@ -96,6 +96,34 @@ function writeInstanceMatrix(
   markDirtySlot(dirty, slot);
 }
 
+function writeInstanceMatrixArray(
+  mesh: THREE.InstancedMesh,
+  slot: number,
+  matrix: ArrayLike<number>,
+  srcOffset: number,
+  dirty: DirtySpan,
+): void {
+  const out = mesh.instanceMatrix.array;
+  const offset = slot * 16;
+  out[offset] = matrix[srcOffset];
+  out[offset + 1] = matrix[srcOffset + 1];
+  out[offset + 2] = matrix[srcOffset + 2];
+  out[offset + 3] = matrix[srcOffset + 3];
+  out[offset + 4] = matrix[srcOffset + 4];
+  out[offset + 5] = matrix[srcOffset + 5];
+  out[offset + 6] = matrix[srcOffset + 6];
+  out[offset + 7] = matrix[srcOffset + 7];
+  out[offset + 8] = matrix[srcOffset + 8];
+  out[offset + 9] = matrix[srcOffset + 9];
+  out[offset + 10] = matrix[srcOffset + 10];
+  out[offset + 11] = matrix[srcOffset + 11];
+  out[offset + 12] = matrix[srcOffset + 12];
+  out[offset + 13] = matrix[srcOffset + 13];
+  out[offset + 14] = matrix[srcOffset + 14];
+  out[offset + 15] = matrix[srcOffset + 15];
+  markDirtySlot(dirty, slot);
+}
+
 function readInstanceMatrix(
   mesh: THREE.InstancedMesh,
   slot: number,
@@ -568,6 +596,24 @@ export class UnitDetailInstanceRenderer3D {
     }
   }
 
+  writeSmoothChassisMatrixArray(
+    slot: number,
+    matrix: ArrayLike<number>,
+    offset: number,
+    entity: Entity,
+    writeColor: boolean,
+  ): void {
+    writeInstanceMatrixArray(this.smoothChassis, slot, matrix, offset, this.smoothChassisMatrixDirty);
+    if (writeColor) {
+      writeInstanceColorHex(
+        this.smoothChassis,
+        slot,
+        entityInstanceColorHex(entity),
+        this.smoothChassisColorDirty,
+      );
+    }
+  }
+
   writePolyChassisMatrix(
     entity: Entity,
     bodyShapeKey: string,
@@ -582,6 +628,31 @@ export class UnitDetailInstanceRenderer3D {
       pool.colorKeys.set(entity.id, colorKey);
     }
     writeInstanceMatrix(pool.mesh, slot, matrix, pool.matrixDirty);
+    if (writeColor) {
+      writeInstanceColorHex(
+        pool.mesh,
+        slot,
+        entityInstanceColorHex(entity),
+        pool.colorDirty,
+      );
+    }
+  }
+
+  writePolyChassisMatrixArray(
+    entity: Entity,
+    bodyShapeKey: string,
+    slot: number,
+    matrix: ArrayLike<number>,
+    offset: number,
+  ): void {
+    const pool = this.polyChassis.get(bodyShapeKey);
+    if (!pool) return;
+    const colorKey = entityInstanceColorKey(entity);
+    const writeColor = pool.colorKeys.get(entity.id) !== colorKey;
+    if (writeColor) {
+      pool.colorKeys.set(entity.id, colorKey);
+    }
+    writeInstanceMatrixArray(pool.mesh, slot, matrix, offset, pool.matrixDirty);
     if (writeColor) {
       writeInstanceColorHex(
         pool.mesh,
