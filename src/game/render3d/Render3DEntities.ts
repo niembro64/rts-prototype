@@ -15,8 +15,7 @@ import type { PylonTubeFlow, SprayTarget } from '@/types/ui';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { COLORS } from '@/colorsConfig';
 import { getPlayerColors } from '../sim/types';
-import { GRAVITY, LAND_CELL_SIZE } from '../../config';
-import { getSurfaceNormal } from '../sim/Terrain';
+import { GRAVITY } from '../../config';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
   updateLocomotion,
@@ -37,7 +36,7 @@ import {
   disposeBuildingGeoms,
 } from './BuildingShape3D';
 import type { ViewportFootprint } from '../ViewportFootprint';
-import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
+import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 import {
   getConstructionPieceOpacity,
   isBuildInProgress,
@@ -72,6 +71,10 @@ import { UnitTurretPose3D } from './UnitTurretPose3D';
 import { applyUnitLiftGroupPose3D, UnitMeshBuilder3D } from './UnitMeshBuilder3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 import { refreshLocomotionSupportSurfaces } from './LocomotionTerrainSampler';
+import {
+  UnitRenderPacket3D,
+  type BuildingRenderPacket3D,
+} from './EntityRenderPackets3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -139,8 +142,8 @@ function createDyingUnitPartDelta(): DyingUnitPartDelta {
 }
 
 export type RenderEntityUpdatePacket3D = {
-  units: readonly Entity[];
-  buildings: readonly Entity[];
+  unitRows: UnitRenderPacket3D;
+  buildingRows: BuildingRenderPacket3D;
   beamAimProjectiles?: readonly Entity[];
   scoped: boolean;
 };
@@ -224,6 +227,7 @@ export class Render3DEntities {
   private shieldPanelPose = new ShieldPanelPose3D();
   private chassisInstancePose = new UnitChassisInstancePose3D();
   private turretPose = new UnitTurretPose3D();
+  private readonly fallbackUnitRenderRows = new UnitRenderPacket3D();
 
   // Per-entity leg-state snapshots stashed right before a mesh teardown
   // mesh teardown and consumed immediately after rebuild, so feet keep
@@ -482,9 +486,9 @@ export class Render3DEntities {
     // Populate beam-directed turret aim from the live beams BEFORE the
     // unit + building turret-pose passes read it this frame.
     this.collectBeamTurretAim(entityPacket?.beamAimProjectiles);
-    this.updateUnits(entityPacket?.units, entityPacket?.scoped === true);
+    this.updateUnits(entityPacket?.unitRows, entityPacket?.scoped === true);
     this.buildingRenderer.update(
-      entityPacket?.buildings ?? this.clientViewState.getBuildings(),
+      entityPacket?.buildingRows,
       this.frameState,
       this._spinDt,
       this._currentDtMs,
@@ -765,13 +769,21 @@ export class Render3DEntities {
     obj.rotation.z += delta.drz;
   }
 
-  private updateUnits(scopedUnits: readonly Entity[] | undefined, scopedRender: boolean): void {
+  private updateUnits(unitRows: UnitRenderPacket3D | undefined, scopedRender: boolean): void {
     this.hoverSmokeEmitters.length = 0;
-    const units = scopedUnits ?? this.clientViewState.getUnits();
-    this.updateUnitMeshes(units, scopedRender);
+    const rows = unitRows ?? this.populateFallbackUnitRenderRows();
+    this.updateUnitMeshes(rows, scopedRender);
   }
 
-  private updateUnitMeshes(units: readonly Entity[], scopedRender: boolean): void {
+  private populateFallbackUnitRenderRows(): UnitRenderPacket3D {
+    const rows = this.fallbackUnitRenderRows;
+    rows.reset();
+    const units = this.clientViewState.getUnits();
+    for (let i = 0; i < units.length; i++) rows.pushEntity(units[i]);
+    return rows;
+  }
+
+  private updateUnitMeshes(unitRows: UnitRenderPacket3D, scopedRender: boolean): void {
     const seen = this._seenUnitIds;
     seen.clear();
     const spinDt = this._spinDt;
@@ -780,33 +792,31 @@ export class Render3DEntities {
     const mapWidth = this.clientViewState.getMapWidth();
     const mapHeight = this.clientViewState.getMapHeight();
 
-    for (let unitIndex = 0; unitIndex < units.length; unitIndex++) {
-      const e = units[unitIndex];
-      seen.add(e.id);
+    for (let row = 0; row < unitRows.count; row++) {
+      const entityId = unitRows.entityIdAt(row);
+      const e = this.clientViewState.getEntity(entityId);
+      if (e === undefined || e.unit === null) continue;
+      seen.add(entityId);
       // If this entity id is mid fade-out (death scatter OR vision fade)
       // and has reappeared (id reuse, re-add, or vision regained before
       // the fade finished), finalize the old mesh now so we don't draw the
       // fading corpse on top of the freshly built unit.
-      if (this.dyingUnits.size > 0 && this.dyingUnits.has(e.id)) {
-        this.dyingUnits.finalize(e.id);
+      if (this.dyingUnits.size > 0 && this.dyingUnits.has(entityId)) {
+        this.dyingUnits.finalize(entityId);
       }
-      if (this.vanishingUnits.size > 0 && this.vanishingUnits.has(e.id)) {
-        this.vanishingUnits.finalize(e.id);
+      if (this.vanishingUnits.size > 0 && this.vanishingUnits.has(entityId)) {
+        this.vanishingUnits.finalize(entityId);
       }
-      // Hoist transform reads for the per-tick group / yaw write;
-      // reading the same prop slot off `e.transform` four+ times for
-      // thousands of units adds up.
-      const transform = e.transform;
-      const tx = transform.x;
-      const ty = transform.y;
-      const tRot = transform.rotation;
+      const tx = unitRows.x[row];
+      const ty = unitRows.y[row];
+      const tRot = unitRows.rotation[row];
       const turrets = e.combat?.turrets ?? EMPTY_TURRETS;
-      const groundZ = getUnitGroundZ(e);
+      const groundZ = unitRows.groundY[row];
       // RIGID-BODY POSE TRACKS THE SIM EVERY FRAME. The unit group
       // carries the chassis AND its child turret / mirror groups
       // (both parented to yawGroup), so all pose/detail work below
       // runs at render cadence instead of being scope/camera gated.
-      const existing = this.unitMeshes.get(e.id);
+      const existing = this.unitMeshes.get(entityId);
       if (existing) {
         existing.group.position.set(tx, groundZ, ty);
         // Note: the canonical yawGroup orientation write happens later
@@ -822,13 +832,11 @@ export class Render3DEntities {
       // footprint, matching the 2D renderer. Body height is per-unit
       // (see BodyShape3D / BodyDimensions); turrets mount on top of
       // whatever height the body resolves to.
-      const radius = e.unit?.radius.visual
-        ?? e.unit?.radius.hitbox
-        ?? 15;
-      const pid = e.ownership?.playerId;
+      const radius = unitRows.radiusVisual[row];
+      const pid = unitRows.ownerIdAt(row);
       const fullUnitDetail = true;
 
-      let m = this.unitMeshes.get(e.id);
+      let m = this.unitMeshes.get(entityId);
       if (
         m &&
         (
@@ -841,12 +849,12 @@ export class Render3DEntities {
         // newly built mesh resumes the gait instead of snapping back
         // to rest. Captured BEFORE destroyUnitMesh frees the legs.
         const legSnap = captureLegState(m.locomotion);
-        if (legSnap) this.legStateCache.set(e.id, legSnap);
-        this.destroyUnitMesh(e.id, m);
+        if (legSnap) this.legStateCache.set(entityId, legSnap);
+        this.destroyUnitMesh(entityId, m);
         m = undefined;
       }
       if (!m) {
-        const legSnap = this.legStateCache.get(e.id);
+        const legSnap = this.legStateCache.get(entityId);
         const ownerKey = pid ?? 'neutral';
         const unitRenderKey = `${unitGeometryKey}|owner:${ownerKey}`;
         m = this.unitMeshBuilder.build({
@@ -859,9 +867,9 @@ export class Render3DEntities {
           unitRenderKey,
           legState: legSnap,
         });
-        if (legSnap !== undefined) this.legStateCache.delete(e.id);
+        if (legSnap !== undefined) this.legStateCache.delete(entityId);
         this.updateUnitInstanceColors(e, m, turrets);
-        this.unitMeshes.set(e.id, m);
+        this.unitMeshes.set(entityId, m);
       }
       this.updateUnitFallbackDynamicMaterials(e, m, turrets);
       // Build-in materialization: the body reveals via per-instance
@@ -871,7 +879,7 @@ export class Render3DEntities {
       // local player's vision eases in instead of appearing instantly;
       // the two alpha reasons multiply (a half-built unit just scouted
       // fades toward its current build opacity, not past it).
-      const bodyOpacity = getConstructionPieceOpacity(e, 'body') * this.advanceSpawnFadeIn(e.id);
+      const bodyOpacity = getConstructionPieceOpacity(e, 'body') * this.advanceSpawnFadeIn(entityId);
       const bodyVisible = fullUnitDetail && bodyOpacity > 0;
       m.chassis.visible = bodyVisible;
 
@@ -895,7 +903,7 @@ export class Render3DEntities {
       // slope tangent plane. Outside the ripple disc the surface
       // gradient is exactly zero and `m.group.quaternion` collapses
       // to identity — same fast path as before.
-      const yaw = -e.transform.rotation;
+      const yaw = -tRot;
       let chassisTilted = false;
       // Hover and flying chassis never contact terrain, so the ground
       // normal is not their "up." Leaving the group quaternion at
@@ -909,13 +917,11 @@ export class Render3DEntities {
       // For non-unit entities (buildings, projectiles) we fall back
       // to the raw terrain query since they don't run through the
       // unit ground normal EMA.
-      const n = e.unit
-        ? e.unit.surfaceNormal
-        : getSurfaceNormal(
-            e.transform.x, e.transform.y,
-            mapWidth, mapHeight,
-            LAND_CELL_SIZE,
-          );
+      const n = {
+        nx: unitRows.normalX[row],
+        ny: unitRows.normalY[row],
+        nz: unitRows.normalZ[row],
+      };
       if (airborne || (n.nx === 0 && n.ny === 0)) {
         m.group.quaternion.identity();
       } else {
@@ -950,12 +956,12 @@ export class Render3DEntities {
         // as much as the rest of the unit's rotation/movement
         // visuals — a slower channel (MED/SLOW) yields a more
         // sluggish bank by design.
-        const vx = e.unit?.velocityX ?? 0;
-        const vy = e.unit?.velocityY ?? 0;
+        const vx = unitRows.velocityX[row];
+        const vy = unitRows.velocityY[row];
         const cosY = Math.cos(tRot);
         const sinY = Math.sin(tRot);
         const vForward = vx * cosY + vy * sinY;
-        const yawRate = e.unit?.angularVelocity3?.z ?? 0;
+        const yawRate = unitRows.yawRate[row];
         const aLateral = -vForward * yawRate;
         let target = AIRBORNE_BANK_PER_LATERAL_A * aLateral;
         if (target > AIRBORNE_BANK_MAX) target = AIRBORNE_BANK_MAX;
@@ -1027,7 +1033,7 @@ export class Render3DEntities {
         this.unitDetailInstances,
       );
 
-      const selected = e.selectable?.selected === true;
+      const selected = unitRows.selectedAt(row);
       this.selectionOverlays.updateSelectionRing(m, selected, radius * 1.35);
       this.selectionOverlays.updateUnitRadiusRings(m, e);
       this.selectionOverlays.updateRangeRings(m, e);

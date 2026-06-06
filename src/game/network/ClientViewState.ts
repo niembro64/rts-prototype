@@ -98,6 +98,10 @@ import type { ShieldRenderPacket3D } from '../render3d/ShieldRenderer3D';
 import type { ContactShadowRenderPacket3D } from '../render3d/ContactShadowRenderer3D';
 import type { GroundPrintRenderPacket3D } from '../render3d/GroundPrint3D';
 import type { Locomotion3DMesh } from '../render3d/Locomotion3D';
+import type {
+  BuildingRenderPacket3D,
+  UnitRenderPacket3D,
+} from '../render3d/EntityRenderPackets3D';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
@@ -117,8 +121,8 @@ export type ClientResourcePylonFlow = {
 const EMPTY_RESOURCE_PYLON_FLOWS: readonly ClientResourcePylonFlow[] = [];
 
 export type ClientViewRenderEntityPackets3D = {
-  units: readonly Entity[];
-  buildings: readonly Entity[];
+  unitRows: UnitRenderPacket3D;
+  buildingRows: BuildingRenderPacket3D;
   bodyHud: BodyHudRenderPacket3D;
   shields: ShieldRenderPacket3D;
   pieceNames: PieceNameRenderPacket3D;
@@ -1002,6 +1006,8 @@ export class ClientViewState {
     out: ClientViewRenderEntityPackets3D,
     options: ClientViewRenderPacketOptions3D,
   ): ClientViewRenderEntityPackets3D {
+    out.unitRows.reset();
+    out.buildingRows.reset();
     out.bodyHud.reset();
     out.shields.reset();
     out.pieceNames.reset();
@@ -1010,8 +1016,10 @@ export class ClientViewState {
 
     const renderScope = options.renderScope;
     if (renderScope.getMode() === 'all') {
-      out.units = this.getUnits();
-      out.buildings = this.getBuildings();
+      const units = this.getUnits();
+      const buildings = this.getBuildings();
+      this.populateUnitRenderRows3D(units, out);
+      this.populateBuildingRenderRows3D(buildings, out);
       if (options.includeBodyHud) {
         this.populateBodyHudPacket3D(this.getHudEntities(), options.hoveredEntity, options, out);
       }
@@ -1022,10 +1030,10 @@ export class ClientViewState {
         this.populateShieldPacket3D(this.getShieldUnits(), renderScope, out);
       }
       if (options.includeContactShadows) {
-        this.populateContactShadowPacket3D(out.units, out.buildings, renderScope, out);
+        this.populateContactShadowPacket3D(units, buildings, renderScope, out);
       }
       if (options.includeGroundPrints) {
-        this.populateGroundPrintPacket3D(out.units, options, out);
+        this.populateGroundPrintPacket3D(units, options, out);
       }
       return out;
     }
@@ -1039,12 +1047,11 @@ export class ClientViewState {
       (entity) => this.entityInRenderScope3D(entity, renderScope),
       options.hoveredEntity,
     );
-    out.units = units;
-    out.buildings = buildings;
 
     let hoveredBodyHudPushed = false;
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
+      out.unitRows.pushEntity(entity);
       if (options.includeBodyHud && this.entityNeedsBodyHud3D(entity)) {
         const forceVisible = entity === options.hoveredEntity;
         if (forceVisible) hoveredBodyHudPushed = true;
@@ -1059,6 +1066,7 @@ export class ClientViewState {
     }
     for (let i = 0; i < buildings.length; i++) {
       const entity = buildings[i];
+      out.buildingRows.pushEntity(entity);
       if (options.includeBodyHud && this.entityNeedsBodyHud3D(entity)) {
         const forceVisible = entity === options.hoveredEntity;
         if (forceVisible) hoveredBodyHudPushed = true;
@@ -1150,6 +1158,24 @@ export class ClientViewState {
     if (unit !== null) return unit.hp > 0 && unit.hp < unit.maxHp;
     const building = entity.building;
     return building !== null && building.hp > 0 && building.hp < building.maxHp;
+  }
+
+  private populateUnitRenderRows3D(
+    units: readonly Entity[],
+    out: ClientViewRenderEntityPackets3D,
+  ): void {
+    for (let i = 0; i < units.length; i++) {
+      out.unitRows.pushEntity(units[i]);
+    }
+  }
+
+  private populateBuildingRenderRows3D(
+    buildings: readonly Entity[],
+    out: ClientViewRenderEntityPackets3D,
+  ): void {
+    for (let i = 0; i < buildings.length; i++) {
+      out.buildingRows.pushEntity(buildings[i]);
+    }
   }
 
   private populateBodyHudPacket3D(

@@ -33,6 +33,10 @@ import {
   GroundPrintRenderPacket3D,
   type GroundPrint3D,
 } from '../../render3d/GroundPrint3D';
+import {
+  BuildingRenderPacket3D,
+  UnitRenderPacket3D,
+} from '../../render3d/EntityRenderPackets3D';
 import type { LineDrag3D } from '../../render3d/LineDrag3D';
 import type { SprayRenderer3D } from '../../render3d/SprayRenderer3D';
 import type { PylonTubeFlowRenderer } from '../../render3d/PylonTubeFlowRenderer';
@@ -108,8 +112,8 @@ export type RtsScene3DRenderPhaseResult = {
 };
 
 type RenderPhaseEntityLists = {
-  units: readonly Entity[];
-  buildings: readonly Entity[];
+  unitRows: UnitRenderPacket3D;
+  buildingRows: BuildingRenderPacket3D;
   bodyHud: BodyHudRenderPacket3D;
   shields: ShieldRenderPacket3D;
   pieceNames: PieceNameRenderPacket3D;
@@ -147,9 +151,11 @@ export class RtsScene3DRenderPhase {
   private readonly pieceNamePacket = new PieceNameRenderPacket3D();
   private readonly contactShadowPacket = new ContactShadowRenderPacket3D();
   private readonly groundPrintPacket = new GroundPrintRenderPacket3D();
+  private readonly unitRenderPacket = new UnitRenderPacket3D();
+  private readonly buildingRenderPacket = new BuildingRenderPacket3D();
   private readonly renderEntityLists: RenderPhaseEntityLists = {
-    units: [],
-    buildings: [],
+    unitRows: this.unitRenderPacket,
+    buildingRows: this.buildingRenderPacket,
     bodyHud: this.bodyHudPacket,
     shields: this.shieldPacket,
     pieceNames: this.pieceNamePacket,
@@ -313,8 +319,8 @@ export class RtsScene3DRenderPhase {
       renderFrameState,
       serverMeta?.turretShieldPanelsEnabled ?? true,
       {
-        units: entityLists.units,
-        buildings: entityLists.buildings,
+        unitRows: entityLists.unitRows,
+        buildingRows: entityLists.buildingRows,
         beamAimProjectiles: lineProjectiles,
         scoped: this.renderScope.getMode() !== 'all',
       },
@@ -542,8 +548,17 @@ export class RtsScene3DRenderPhase {
       this.populateTurretNamePacket(this.clientViewState.getArmedEntities(), mode);
       return;
     }
-    for (const unit of lists.units) this.pushTurretNamesForEntity(unit, mode);
-    for (const building of lists.buildings) this.pushTurretNamesForEntity(building, mode);
+    for (let row = 0; row < lists.unitRows.count; row++) {
+      this.pushTurretNamesForEntityId(lists.unitRows.entityIdAt(row), mode);
+    }
+    for (let row = 0; row < lists.buildingRows.count; row++) {
+      this.pushTurretNamesForEntityId(lists.buildingRows.entityIdAt(row), mode);
+    }
+  }
+
+  private pushTurretNamesForEntityId(entityId: EntityId, mode: SelectionHudMode): void {
+    const entity = this.clientViewState.getEntity(entityId);
+    if (entity !== undefined) this.pushTurretNamesForEntity(entity, mode);
   }
 
   private pushTurretNamesForEntity(host: Entity, mode: SelectionHudMode): void {

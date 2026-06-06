@@ -5,7 +5,6 @@ import { getBuildingConfig } from '../sim/buildConfigs';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import {
   getConstructionPieceOpacity,
-  getConstructionPieceRenderFraction,
   isConstructionPieceMaterialized,
   isShell,
 } from '../sim/buildableHelpers';
@@ -33,6 +32,7 @@ import {
 import { applyTurretAimPose3D, applyTurretAimWorldDir3D } from './TurretAimPose3D';
 import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
 import type { TurretBeamAimCache3D } from './TurretBeamAimCache3D';
+import { BuildingRenderPacket3D } from './EntityRenderPackets3D';
 
 const BUILDING_HEIGHT = 120;
 
@@ -168,6 +168,7 @@ export class BuildingEntityRenderer3D {
    *  to aim beam-directed barrels on beam towers (turretBeamLong). */
   private beamAimCache: TurretBeamAimCache3D | null = null;
   private barrelSpinEnabled = false;
+  private readonly fallbackBuildingRenderRows = new BuildingRenderPacket3D();
 
   constructor(options: BuildingEntityRenderer3DOptions) {
     this.world = options.world;
@@ -193,7 +194,7 @@ export class BuildingEntityRenderer3D {
   }
 
   update(
-    buildings: readonly Entity[],
+    buildingRows: BuildingRenderPacket3D | undefined,
     frameState: RenderFrameState3D,
     spinDt: number,
     currentDtMs: number,
@@ -207,11 +208,15 @@ export class BuildingEntityRenderer3D {
     this.constructionVisuals.beginFrame();
     this.beamAimCache = beamAimCache;
     this.barrelSpinEnabled = getGraphicsConfig().barrelSpin;
+    const rows = buildingRows ?? this.populateFallbackBuildingRenderRows();
 
-    for (const entity of buildings) {
-      if (pruneBuildings) this.seenIds.add(entity.id);
+    for (let row = 0; row < rows.count; row++) {
+      const entityId = rows.entityIdAt(row);
+      const entity = this.clientViewState.getEntity(entityId);
+      if (entity === undefined || entity.building === null) continue;
+      if (pruneBuildings) this.seenIds.add(entityId);
       this.barrelSpin.advance(entity, spinDt);
-      this.updateBuilding(entity, frameState);
+      this.updateBuilding(entity, rows, row, frameState);
     }
 
     this.animations.update(this.meshes, spinDt, currentDtMs, timeMs);
@@ -247,6 +252,14 @@ export class BuildingEntityRenderer3D {
     this.lastEntitySetVersion = entitySetVersion;
   }
 
+  private populateFallbackBuildingRenderRows(): BuildingRenderPacket3D {
+    const rows = this.fallbackBuildingRenderRows;
+    rows.reset();
+    const buildings = this.clientViewState.getBuildings();
+    for (let i = 0; i < buildings.length; i++) rows.pushEntity(buildings[i]);
+    return rows;
+  }
+
   private disposeBuildingMesh(mesh: EntityMesh): void {
     this.world.remove(mesh.group);
     disposeEntityGroupFade(mesh.group);
@@ -265,15 +278,20 @@ export class BuildingEntityRenderer3D {
     this.barrelSpin.clear();
   }
 
-  private updateBuilding(entity: Entity, frameState: RenderFrameState3D): void {
+  private updateBuilding(
+    entity: Entity,
+    rows: BuildingRenderPacket3D,
+    row: number,
+    frameState: RenderFrameState3D,
+  ): void {
     // If this id is mid death-fade and reappeared (id reuse / re-add),
     // finalize the dying mesh so we don't draw it under the rebuilt one.
     if (this.dyingBuildings.size > 0 && this.dyingBuildings.has(entity.id)) {
       this.dyingBuildings.finalize(entity.id);
     }
-    const ownerId = entity.ownership?.playerId;
-    const width = entity.building?.width ?? 100;
-    const depth = entity.building?.height ?? 100;
+    const ownerId = rows.ownerIdAt(row);
+    const width = rows.width[row];
+    const depth = rows.footprintDepth[row];
 
     let mesh = this.meshes.get(entity.id);
     if (!mesh) {
@@ -294,9 +312,13 @@ export class BuildingEntityRenderer3D {
       this.animations.register(entity, mesh);
     }
 
-    const progress = getConstructionPieceRenderFraction(entity, 'body');
-    const selected = entity.selectable?.selected === true;
-    const buildingBaseY = entity.building ? entity.transform.z - entity.building.depth / 2 : 0;
+    const progress = rows.progress[row];
+    const selected = rows.selectedAt(row);
+    const x = rows.x[row];
+    const y = rows.y[row];
+    const z = rows.z[row];
+    const rotation = rows.rotation[row];
+    const buildingBaseY = rows.baseY[row];
     const detailsReady = progress >= 1;
     const renderDirty =
       mesh.buildingCachedOwnerId !== ownerId ||
@@ -304,20 +326,23 @@ export class BuildingEntityRenderer3D {
       mesh.buildingCachedSelected !== selected ||
       mesh.buildingCachedWidth !== width ||
       mesh.buildingCachedDepth !== depth ||
-      mesh.buildingCachedX !== entity.transform.x ||
-      mesh.buildingCachedY !== entity.transform.y ||
-      mesh.buildingCachedZ !== entity.transform.z ||
-      mesh.buildingCachedRotation !== entity.transform.rotation;
+      mesh.buildingCachedX !== x ||
+      mesh.buildingCachedY !== y ||
+      mesh.buildingCachedZ !== z ||
+      mesh.buildingCachedRotation !== rotation;
 
     if (renderDirty) {
       this.updateBuildingMesh(
-        entity,
         mesh,
         ownerId,
         width,
         depth,
         progress,
         selected,
+        x,
+        y,
+        z,
+        rotation,
         buildingBaseY,
         detailsReady,
       );
@@ -337,13 +362,16 @@ export class BuildingEntityRenderer3D {
   }
 
   private updateBuildingMesh(
-    entity: Entity,
     mesh: EntityMesh,
     ownerId: PlayerId | undefined,
     width: number,
     depth: number,
     progress: number,
     selected: boolean,
+    x: number,
+    y: number,
+    z: number,
+    rotation: number,
     buildingBaseY: number,
     detailsReady: boolean,
   ): void {
@@ -362,8 +390,8 @@ export class BuildingEntityRenderer3D {
     // Transform.z is the building's vertical center in sim space.
     // Render from the footprint base so buildings sit on the same
     // terrain height the server used when creating their collider.
-    mesh.group.position.set(entity.transform.x, buildingBaseY, entity.transform.y);
-    mesh.group.rotation.y = -entity.transform.rotation;
+    mesh.group.position.set(x, buildingBaseY, y);
+    mesh.group.rotation.y = -rotation;
     // Construction appearance is now the shared materialization fade
     // (applied per frame in updateBuilding), not a pale shell-material
     // swap — buildings alpha-fade in the same way as units.
@@ -399,10 +427,10 @@ export class BuildingEntityRenderer3D {
     mesh.buildingCachedSelected = selected;
     mesh.buildingCachedWidth = width;
     mesh.buildingCachedDepth = depth;
-    mesh.buildingCachedX = entity.transform.x;
-    mesh.buildingCachedY = entity.transform.y;
-    mesh.buildingCachedZ = entity.transform.z;
-    mesh.buildingCachedRotation = entity.transform.rotation;
+    mesh.buildingCachedX = x;
+    mesh.buildingCachedY = y;
+    mesh.buildingCachedZ = z;
+    mesh.buildingCachedRotation = rotation;
     mesh.buildingCachedDetailsReady = detailsReady;
   }
 

@@ -25,21 +25,21 @@ object and scenegraph loops.
 
 Files:
 src/game/network/ClientViewState.ts
+src/game/render3d/EntityRenderPackets3D.ts
 src/game/render3d/Render3DEntities.ts
 src/game/render3d/BuildingEntityRenderer3D.ts
 
-ClientViewState now prepares body HUD, body-name, shield, contact-shadow, and
-ground-print packets, but it still returns scoped unit/building Entity lists to
-the mesh renderer. Render3DEntities walks every rendered unit each frame to
-update group transforms, tilt, turret pose, shield panel pose, locomotion, fade,
-overlays, and cache pruning. BuildingEntityRenderer3D still does per-building
-mesh, turret, animation, overlay, and cache-pruning work through object and
-scenegraph loops. This is likely to dominate at the "thousands of units" target.
+ClientViewState now prepares body HUD, body-name, shield, contact-shadow,
+ground-print, unit render-row, and building render-row packets. Render3DEntities
+and BuildingEntityRenderer3D consume those row packets, but still look up Entity
+objects per row and perform pose generation in TypeScript: unit group transforms,
+tilt, turret pose, shield panel pose, locomotion, fade, overlays, and cache
+pruning; plus per-building mesh, turret, animation, overlay, and cache-pruning
+work. This is likely to dominate at the "thousands of units" target.
 
 Required fix:
-Replace the remaining unit/building Entity-list handoff with packed
-ClientViewState/prediction SoA buffers: scoped ids, transforms, visibility
-flags, render keys, and dirty/lifecycle flags. Move as much unit pose-matrix,
-turret pose, shield-panel pose, and building pose generation as practical into
-WASM or GPU-updated buffers, then restrict Three.js work to explicit buffer
-range uploads and lifecycle changes.
+Extend the unit/building row packets with render keys and dirty/lifecycle flags
+so the renderers do not need per-row Entity lookups for steady-state pose work.
+Move as much unit pose-matrix, turret pose, shield-panel pose, and building pose
+generation as practical into WASM or GPU-updated buffers, then restrict Three.js
+work to explicit buffer range uploads and lifecycle changes.
