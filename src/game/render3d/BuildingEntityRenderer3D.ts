@@ -311,12 +311,12 @@ export class BuildingEntityRenderer3D {
 
     this.flushBuildingPoseRecords();
     this.flushTurretAimRecords();
-    this.animations.update(this.meshes, spinDt, currentDtMs, timeMs);
+    if (pruneBuildings) this.pruneUnseenBuildingMeshes(pruneToken, scopedRender, beamAimCache);
+    this.animations.update(spinDt, currentDtMs, timeMs);
     // Advance any in-progress death-out fades every frame (independent of
     // the entity-set prune cadence below).
     this.dyingBuildings.update(currentDtMs);
 
-    if (pruneBuildings) this.pruneUnseenBuildingMeshes(pruneToken, scopedRender, beamAimCache);
     this.lastEntitySetVersion = entitySetVersion;
     this.lastFrameStateKey = frameState.key;
     this.lastRangeOverlayStateVersion = rangeOverlayStateVersion;

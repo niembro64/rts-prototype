@@ -96,21 +96,27 @@ function applyResourcePylonDirection(pylon: ResourcePylonRig | undefined, signed
   pylon.direction = signedRate > 0 ? 'outbound' : 'inbound';
 }
 
+type AnimatedBuildingEntry = {
+  id: EntityId;
+  entity: Entity;
+  mesh: EntityMesh;
+};
+
 export class BuildingAnimationController3D {
   private readonly clientViewState: ClientViewState;
   private readonly constructionVisuals: ConstructionVisualController3D;
   private readonly metalDeposits: readonly MetalDeposit[];
-  private solarBuildingIds: EntityId[] = [];
+  private solarBuildings: AnimatedBuildingEntry[] = [];
   private solarBuildingIdSet = new Set<EntityId>();
-  private windBuildingIds: EntityId[] = [];
+  private windBuildings: AnimatedBuildingEntry[] = [];
   private windBuildingIdSet = new Set<EntityId>();
-  private extractorBuildingIds: EntityId[] = [];
+  private extractorBuildings: AnimatedBuildingEntry[] = [];
   private extractorBuildingIdSet = new Set<EntityId>();
-  private converterBuildingIds: EntityId[] = [];
+  private converterBuildings: AnimatedBuildingEntry[] = [];
   private converterBuildingIdSet = new Set<EntityId>();
-  private factoryBuildingIds: EntityId[] = [];
+  private factoryBuildings: AnimatedBuildingEntry[] = [];
   private factoryBuildingIdSet = new Set<EntityId>();
-  private radarBuildingIds: EntityId[] = [];
+  private radarBuildings: AnimatedBuildingEntry[] = [];
   private radarBuildingIdSet = new Set<EntityId>();
   private windFanYaw: number | null = null;
   private windVisualSpeed: number | null = null;
@@ -166,40 +172,39 @@ export class BuildingAnimationController3D {
   }
 
   register(entity: Entity, mesh: EntityMesh): void {
-    const id = entity.id;
     if (entity.buildingBlueprintId === 'buildingSolar' && mesh.buildingDetails) {
-      this.addAnimatedBuilding(this.solarBuildingIds, this.solarBuildingIdSet, id);
+      this.addAnimatedBuilding(this.solarBuildings, this.solarBuildingIdSet, entity, mesh);
     }
     if (mesh.windRig) {
-      this.addAnimatedBuilding(this.windBuildingIds, this.windBuildingIdSet, id);
+      this.addAnimatedBuilding(this.windBuildings, this.windBuildingIdSet, entity, mesh);
     }
     if (mesh.extractorRig) {
-      this.addAnimatedBuilding(this.extractorBuildingIds, this.extractorBuildingIdSet, id);
+      this.addAnimatedBuilding(this.extractorBuildings, this.extractorBuildingIdSet, entity, mesh);
     }
     if (mesh.converterRig) {
-      this.addAnimatedBuilding(this.converterBuildingIds, this.converterBuildingIdSet, id);
+      this.addAnimatedBuilding(this.converterBuildings, this.converterBuildingIdSet, entity, mesh);
     }
     if (mesh.factoryBuildSpotRig) {
-      this.addAnimatedBuilding(this.factoryBuildingIds, this.factoryBuildingIdSet, id);
+      this.addAnimatedBuilding(this.factoryBuildings, this.factoryBuildingIdSet, entity, mesh);
     }
     if (mesh.radarRig) {
-      this.addAnimatedBuilding(this.radarBuildingIds, this.radarBuildingIdSet, id);
+      this.addAnimatedBuilding(this.radarBuildings, this.radarBuildingIdSet, entity, mesh);
     }
   }
 
   unregister(id: EntityId): void {
-    this.removeAnimatedBuilding(this.solarBuildingIds, this.solarBuildingIdSet, id);
-    this.removeAnimatedBuilding(this.windBuildingIds, this.windBuildingIdSet, id);
-    this.removeAnimatedBuilding(this.extractorBuildingIds, this.extractorBuildingIdSet, id);
-    this.removeAnimatedBuilding(this.converterBuildingIds, this.converterBuildingIdSet, id);
+    this.removeAnimatedBuilding(this.solarBuildings, this.solarBuildingIdSet, id);
+    this.removeAnimatedBuilding(this.windBuildings, this.windBuildingIdSet, id);
+    this.removeAnimatedBuilding(this.extractorBuildings, this.extractorBuildingIdSet, id);
+    this.removeAnimatedBuilding(this.converterBuildings, this.converterBuildingIdSet, id);
     this.extractorRotorPhases.delete(id);
     this.extractorRotorSpeeds.delete(id);
     this.extractorCloseAmounts.delete(id);
     this.extractorRotorYaws.delete(id);
     this.extractorDepositSourceCache.delete(id);
     this.windCloseAmounts.delete(id);
-    this.removeAnimatedBuilding(this.factoryBuildingIds, this.factoryBuildingIdSet, id);
-    this.removeAnimatedBuilding(this.radarBuildingIds, this.radarBuildingIdSet, id);
+    this.removeAnimatedBuilding(this.factoryBuildings, this.factoryBuildingIdSet, id);
+    this.removeAnimatedBuilding(this.radarBuildings, this.radarBuildingIdSet, id);
     this.radarHeadPhases.delete(id);
     this.radarSweepPhases.delete(id);
     this.radarHeadSpeeds.delete(id);
@@ -213,17 +218,14 @@ export class BuildingAnimationController3D {
   }
 
   update(
-    buildingMeshes: ReadonlyMap<EntityId, EntityMesh>,
     spinDt: number,
     currentDtMs: number,
     timeMs: number,
   ): void {
-    if (this.solarBuildingIds.length > 0) {
+    if (this.solarBuildings.length > 0) {
       const rateAlpha = halfLifeBlend(spinDt, BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE]);
-      for (const id of this.solarBuildingIds) {
-        const mesh = buildingMeshes.get(id);
-        const entity = this.clientViewState.getEntity(id);
-        if (!mesh || !entity) continue;
+      for (const entry of this.solarBuildings) {
+        const { id, entity, mesh } = entry;
         this.updateSolarCollectorAnimation(mesh, entity, mesh.buildingCachedDetailsReady === true);
         const open = entity.building?.activeState?.open !== false;
         const signedRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_ENERGY);
@@ -247,14 +249,12 @@ export class BuildingAnimationController3D {
       }
     }
 
-    if (this.windBuildingIds.length > 0) {
+    if (this.windBuildings.length > 0) {
       this.updateWindAnimationGlobals();
       const rateAlpha = halfLifeBlend(spinDt, BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE]);
       const closeAmounts = this.windCloseAmounts;
-      for (const id of this.windBuildingIds) {
-        const mesh = buildingMeshes.get(id);
-        const entity = this.clientViewState.getEntity(id);
-        if (!mesh || !entity) continue;
+      for (const entry of this.windBuildings) {
+        const { id, entity, mesh } = entry;
         const open = entity.building?.activeState?.open !== false;
         const closeTarget = open ? 0 : 1;
         let close = closeAmounts.get(id) ?? closeTarget;
@@ -283,7 +283,7 @@ export class BuildingAnimationController3D {
       }
     }
 
-    if (this.extractorBuildingIds.length > 0) {
+    if (this.extractorBuildings.length > 0) {
       // Each extractor EMA-blends its local rotor angular speed toward
       // base × coverageFraction, so spin scales 1:1 with
       // metal-per-second while still honoring the ROT VEL courtesy
@@ -300,10 +300,8 @@ export class BuildingAnimationController3D {
       const rotorYaws = this.extractorRotorYaws;
       const rateAlpha = halfLifeBlend(spinDt, BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE]);
       const rotorSpeedAlpha = visualAnimBlend(getRotationVelEmaMode(), spinDt);
-      for (const id of this.extractorBuildingIds) {
-        const mesh = buildingMeshes.get(id);
-        const entity = this.clientViewState.getEntity(id);
-        if (!mesh || !entity) continue;
+      for (const entry of this.extractorBuildings) {
+        const { id, entity, mesh } = entry;
         const open = entity.building?.activeState?.open !== false;
         // Smooth fold blend so toggling closed doesn't snap the blades.
         const closeTarget = open ? 0 : 1;
@@ -386,15 +384,14 @@ export class BuildingAnimationController3D {
       }
     }
 
-    if (this.converterBuildingIds.length > 0) {
+    if (this.converterBuildings.length > 0) {
       const rateAlpha = halfLifeBlend(spinDt, BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE]);
       const ringSpeedAlpha = visualAnimBlend(getRotationVelEmaMode(), spinDt);
       const invBase = INV_CONVERTER_BASE_RATE;
-      for (const id of this.converterBuildingIds) {
-        const mesh = buildingMeshes.get(id);
-        const entity = this.clientViewState.getEntity(id);
+      for (const entry of this.converterBuildings) {
+        const { id, entity, mesh } = entry;
         const rig = mesh?.converterRig;
-        if (!mesh || !entity || !rig) continue;
+        if (!rig) continue;
         const detailsReady = mesh.buildingCachedDetailsReady === true;
         const energyRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_ENERGY);
         const metalRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_METAL);
@@ -494,10 +491,8 @@ export class BuildingAnimationController3D {
       }
     }
 
-    for (const id of this.factoryBuildingIds) {
-      const mesh = buildingMeshes.get(id);
-      const entity = this.clientViewState.getEntity(id);
-      if (!mesh || !entity) continue;
+    for (const entry of this.factoryBuildings) {
+      const { entity, mesh } = entry;
       const detailsReady = mesh.buildingCachedDetailsReady === true;
       const emitterRig = findConstructionEmitterRig(mesh, entity);
       if (emitterRig) {
@@ -518,13 +513,12 @@ export class BuildingAnimationController3D {
       );
     }
 
-    if (this.radarBuildingIds.length > 0) {
+    if (this.radarBuildings.length > 0) {
       const radarSpeedAlpha = visualAnimBlend(getRotationVelEmaMode(), spinDt);
-      for (const id of this.radarBuildingIds) {
-        const mesh = buildingMeshes.get(id);
-        const entity = this.clientViewState.getEntity(id);
+      for (const entry of this.radarBuildings) {
+        const { id, entity, mesh } = entry;
         const rig = mesh?.radarRig;
-        if (!mesh || !rig || mesh.buildingCachedDetailsReady !== true) continue;
+        if (!rig || mesh.buildingCachedDetailsReady !== true) continue;
         // ON/OFF gate: a closed (OFF) radar stops spinning so the
         // renderer's open/closed pose tracks the same state that gates
         // sensor coverage (see design_philosophy.html "Producer
@@ -550,17 +544,17 @@ export class BuildingAnimationController3D {
   }
 
   destroy(): void {
-    this.solarBuildingIds.length = 0;
+    this.solarBuildings.length = 0;
     this.solarBuildingIdSet.clear();
-    this.windBuildingIds.length = 0;
+    this.windBuildings.length = 0;
     this.windBuildingIdSet.clear();
-    this.extractorBuildingIds.length = 0;
+    this.extractorBuildings.length = 0;
     this.extractorBuildingIdSet.clear();
-    this.converterBuildingIds.length = 0;
+    this.converterBuildings.length = 0;
     this.converterBuildingIdSet.clear();
-    this.factoryBuildingIds.length = 0;
+    this.factoryBuildings.length = 0;
     this.factoryBuildingIdSet.clear();
-    this.radarBuildingIds.length = 0;
+    this.radarBuildings.length = 0;
     this.radarBuildingIdSet.clear();
     this.extractorRotorPhases.clear();
     this.extractorRotorSpeeds.clear();
@@ -584,22 +578,24 @@ export class BuildingAnimationController3D {
   }
 
   private addAnimatedBuilding(
-    list: EntityId[],
+    list: AnimatedBuildingEntry[],
     set: Set<EntityId>,
-    id: EntityId,
+    entity: Entity,
+    mesh: EntityMesh,
   ): void {
+    const id = entity.id;
     if (set.has(id)) return;
     set.add(id);
-    list.push(id);
+    list.push({ id, entity, mesh });
   }
 
   private removeAnimatedBuilding(
-    list: EntityId[],
+    list: AnimatedBuildingEntry[],
     set: Set<EntityId>,
     id: EntityId,
   ): void {
     if (!set.delete(id)) return;
-    const idx = list.indexOf(id);
+    const idx = list.findIndex((entry) => entry.id === id);
     if (idx >= 0) list.splice(idx, 1);
   }
 

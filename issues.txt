@@ -30,6 +30,7 @@ src/game/sim-wasm/init.ts
 src/game/render3d/EntityRenderPackets3D.ts
 src/game/render3d/Render3DEntities.ts
 src/game/render3d/BuildingEntityRenderer3D.ts
+src/game/render3d/BuildingAnimationController3D.ts
 src/game/render3d/UnitRenderPoseBatch3D.ts
 src/game/render3d/UnitChassisMatrixBatch3D.ts
 src/game/render3d/UnitChassisInstancePose3D.ts
@@ -46,15 +47,16 @@ Several high-count render paths still execute TypeScript object loops and
 Three.js scenegraph mutations per visible unit/building. The remaining hot work
 includes unit mirror support-root attachment/visibility, locomotion visual
 updates, fade orchestration, active/debug overlay updates, active
-building turret attachment/material/spin, building animation, active building
-overlays. These paths are likely to dominate at the "thousands of units" target
-even though base pose, chassis, turret, shield panel, building pose math, and
-entity render removal cleanup paths already use batched packets, explicit
-queues, or WASM kernels.
+building turret attachment/material/spin, animated building rig/pylon
+transform writes, and active building overlays. These paths are likely to
+dominate at the "thousands of units" target. Reuse or extend the existing
+batched packet, explicit lifecycle queue, and WASM kernel contracts; do not add
+new broad per-entity scenegraph scans.
 
 Required fix:
 Move the remaining mirror support-root attachment/visibility work, locomotion,
 unit fade, active/debug unit overlays, active building turret attachment/material/spin,
-building animation, and active building overlays into WASM-owned slabs,
-GPU-updated buffers, or explicit dirty/removal queues as practical. Keep
-Three.js work limited to buffer uploads and true lifecycle changes.
+animated building rig/pylon transform writes, and active building overlays into
+WASM-owned slabs, GPU-updated buffers, or explicit dirty/removal queues as
+practical. Keep Three.js work limited to buffer uploads and true lifecycle
+changes.
