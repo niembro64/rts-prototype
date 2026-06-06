@@ -6597,17 +6597,6 @@ fn compute_damped_rotation(
     (new_angle, new_vel, out_acc)
 }
 
-#[inline]
-fn js_math_max_2(a: f64, b: f64) -> f64 {
-    if a.is_nan() || b.is_nan() {
-        f64::NAN
-    } else if a > b {
-        a
-    } else {
-        b
-    }
-}
-
 #[wasm_bindgen]
 pub fn turret_rotation_step_batch(
     current_yaw: &[f64],
@@ -6650,8 +6639,9 @@ pub fn turret_rotation_step_batch(
     debug_assert!(out_aim_error_pitch.len() >= count);
 
     for i in 0..count {
-        let k = js_math_max_2(turn_accel[i], 1.0);
-        let c_critical = 2.0 * k.sqrt();
+        let k = turn_accel[i];
+        let damping_k = if k.is_finite() { k.max(0.0) } else { 0.0 };
+        let c_critical = 2.0 * damping_k.sqrt();
         let c = c_critical * (1.0 + drag[i]);
 
         let (yaw, yaw_vel, yaw_acc) = compute_damped_rotation(
@@ -33947,6 +33937,90 @@ mod sim_kernel_tests {
         assert_eq!(out_pitch_velocity[0], 0.0);
         assert_eq!(out_pitch_acceleration[0], 0.0);
         assert!((out_aim_error_pitch[0] - (target_pitch[0] - pitch_max)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn turret_rotation_batch_preserves_sub_one_turn_accel() {
+        let current_yaw = [0.0];
+        let yaw_velocity = [0.0];
+        let target_yaw = [1.0];
+        let current_pitch = [0.0];
+        let pitch_velocity = [0.0];
+        let target_pitch = [0.0];
+        let drag = [0.0];
+        let mut low_out_yaw = [0.0];
+        let mut low_out_yaw_velocity = [0.0];
+        let mut low_out_yaw_acceleration = [0.0];
+        let mut low_out_pitch = [0.0];
+        let mut low_out_pitch_velocity = [0.0];
+        let mut low_out_pitch_acceleration = [0.0];
+        let mut low_out_aim_error_yaw = [0.0];
+        let mut low_out_aim_error_pitch = [0.0];
+        let mut one_out_yaw = [0.0];
+        let mut one_out_yaw_velocity = [0.0];
+        let mut one_out_yaw_acceleration = [0.0];
+        let mut one_out_pitch = [0.0];
+        let mut one_out_pitch_velocity = [0.0];
+        let mut one_out_pitch_acceleration = [0.0];
+        let mut one_out_aim_error_yaw = [0.0];
+        let mut one_out_aim_error_pitch = [0.0];
+        let pitch_min = -core::f64::consts::PI / 2.0;
+        let pitch_max = core::f64::consts::PI / 2.0;
+
+        assert_eq!(
+            turret_rotation_step_batch(
+                &current_yaw,
+                &yaw_velocity,
+                &target_yaw,
+                &current_pitch,
+                &pitch_velocity,
+                &target_pitch,
+                &[0.1],
+                &drag,
+                &mut low_out_yaw,
+                &mut low_out_yaw_velocity,
+                &mut low_out_yaw_acceleration,
+                &mut low_out_pitch,
+                &mut low_out_pitch_velocity,
+                &mut low_out_pitch_acceleration,
+                &mut low_out_aim_error_yaw,
+                &mut low_out_aim_error_pitch,
+                1,
+                1.0 / 30.0,
+                pitch_min,
+                pitch_max,
+            ),
+            1,
+        );
+        assert_eq!(
+            turret_rotation_step_batch(
+                &current_yaw,
+                &yaw_velocity,
+                &target_yaw,
+                &current_pitch,
+                &pitch_velocity,
+                &target_pitch,
+                &[1.0],
+                &drag,
+                &mut one_out_yaw,
+                &mut one_out_yaw_velocity,
+                &mut one_out_yaw_acceleration,
+                &mut one_out_pitch,
+                &mut one_out_pitch_velocity,
+                &mut one_out_pitch_acceleration,
+                &mut one_out_aim_error_yaw,
+                &mut one_out_aim_error_pitch,
+                1,
+                1.0 / 30.0,
+                pitch_min,
+                pitch_max,
+            ),
+            1,
+        );
+
+        assert!(low_out_yaw[0] > 0.0);
+        assert!(one_out_yaw[0] > low_out_yaw[0] * 5.0);
+        assert!(one_out_yaw_velocity[0] > low_out_yaw_velocity[0] * 5.0);
     }
 
     #[test]

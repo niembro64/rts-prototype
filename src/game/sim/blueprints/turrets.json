@@ -797,7 +797,7 @@
     "rangeVolume": "turret-range-sphere",
     "cooldown": null,
     "launchForce": 0,
-    "turretTurnAccel": 20,
+    "turretTurnAccel": 0.1,
     "turretDrag": 0.6,
     "barrel": {
       "type": "complexSingleEmitter",
