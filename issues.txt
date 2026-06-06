@@ -41,36 +41,20 @@ src/game/render3d/UnitTurretAimBatch3D.ts
 src/game/render3d/UnitTurretPose3D.ts
 src/game/render3d/UnitDetailInstanceRenderer3D.ts
 
-ClientViewState prepares body HUD, body-name, shield, contact-shadow,
-ground-print, unit render-row, and building render-row packets. Unit/building
-rows carry render keys, entity/turret row references, and dirty/lifecycle flags,
-and the renderers consume those rows without steady-state per-row Entity map
-lookups. Unit base-pose chain generation (tilt quaternion, inverse tilt,
-parent quaternion, lifted position, and parent matrix) and unit chassis
-part-matrix generation now run as batched WASM scratch-buffer kernels.
-Instanced shield-panel slab matrices also run through a WASM scratch-buffer
-kernel, and instanced unit turret barrel/head matrices plus turret mount-center
-positions now batch through WASM. Unit turret aim/root-pitch math also batches
-through WASM, and shield-panel support-root aim math reuses that same batch.
-Building turret aim/root-pitch math now uses that shared batch too. Building
-group and primary-body transform matrices now batch through a render-pose
-WASM scratch-buffer kernel. Building render rows carry building render-dirty
-flags from snapshot and selection changes, and static building rows skip body,
-fade, overlay, and turret scenegraph work unless they are dirty, actively
-predicting turrets, running multi-barrel spin or construction emitters, fading,
-or clearing/updating visible range overlays. TypeScript still owns
-construction-emitter timing, which semantic aim source to use, dirty-row
-selection, material and visibility orchestration, and mesh lifecycle. The
-remaining hot work is still TypeScript pose/lifecycle generation and Three.js
-scenegraph churn: mirror support-root attachment/visibility work, locomotion,
-fade, overlays, and cache pruning; plus active building turret
-attachment/visibility/material/spin, building animation, active overlay, and
-cache-pruning work. This is likely to dominate at the "thousands of units"
-target.
+Current remaining issue:
+Several high-count render paths still execute TypeScript object loops and
+Three.js scenegraph mutations per visible unit/building. The remaining hot work
+includes unit mirror support-root attachment/visibility, locomotion visual
+updates, fade/overlay orchestration, scoped-mode live-mesh pruning, active
+building turret attachment/material/spin, building animation, active building
+overlays, and lifecycle cleanup. These paths are likely to dominate at the
+"thousands of units" target even though base pose, chassis, turret, shield
+panel, and building pose math already use batched render packets/WASM kernels.
 
 Required fix:
 Move the remaining mirror support-root attachment/visibility work, locomotion,
-unit fade, unit overlay, active building turret attachment/material/spin,
-building animation, active overlay, and cache pruning into WASM-owned slabs,
-GPU-updated buffers, or explicit dirty queues as practical, then restrict
-Three.js work to buffer uploads and true lifecycle changes.
+unit fade, unit overlays, active building turret attachment/material/spin,
+building animation, active building overlays, scoped-mode pruning, and lifecycle
+cleanup into WASM-owned slabs, GPU-updated buffers, or explicit dirty/removal
+queues as practical. Keep Three.js work limited to buffer uploads and true
+lifecycle changes.

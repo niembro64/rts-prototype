@@ -196,10 +196,10 @@ export class Render3DEntities {
   private readonly _turretScatterScratch: DyingUnitPartDelta[] = [];
   private readonly _deathScatterBodyDelta = createDyingUnitPartDelta();
   private readonly _deathScatterLocomotionDelta = createDyingUnitPartDelta();
-  // Reusable "seen this frame" set for unit pruning. Keeping it as an
-  // instance field and calling `.clear()` avoids a fresh Set allocation
-  // every render frame.
+  // Reusable seen set for unit pruning. It is populated only when render
+  // scope or entity-set version changes force a live-mesh sweep.
   private _seenUnitIds = new Set<EntityId>();
+  private lastUnitEntitySetVersion = -1;
   private projectileRenderer: ProjectileRenderer3D;
   private selectionOverlays: SelectionOverlayRenderer3D;
   private constructionVisuals: ConstructionVisualController3D;
@@ -771,7 +771,9 @@ export class Render3DEntities {
 
   private updateUnitMeshes(unitRows: UnitRenderPacket3D, scopedRender: boolean): void {
     const seen = this._seenUnitIds;
-    seen.clear();
+    const entitySetVersion = this.clientViewState.getEntitySetVersion();
+    const pruneUnits = scopedRender || entitySetVersion !== this.lastUnitEntitySetVersion;
+    if (pruneUnits) seen.clear();
     const spinDt = this._spinDt;
     const unitGfx = this.frameState.gfx;
     const unitGeometryKey = this.frameState.key;
@@ -791,7 +793,7 @@ export class Render3DEntities {
       const entityId = unitRows.entityIdAt(row);
       const e = unitRows.entityAt(row);
       if (e === undefined || e.unit === null) continue;
-      seen.add(entityId);
+      if (pruneUnits) seen.add(entityId);
       // If this entity id is mid fade-out (death scatter OR vision fade)
       // and has reappeared (id reuse, re-add, or vision regained before
       // the fade finished), finalize the old mesh now so we don't draw the
@@ -1106,57 +1108,60 @@ export class Render3DEntities {
     this.turretPose.flush(this.unitDetailInstances, this.turretMountCache);
     this.shieldPanelPose.flush(this.unitDetailInstances);
 
-    // Units no longer present leave the live set. Rather than tearing the
-    // mesh down immediately, hand it to a shared fade controller: the
-    // instanced slots stay allocated with their last pose frozen while the
-    // fade ramps to zero, then frees them. Which controller depends on WHY
-    // the unit left:
-    //   - killed (a 'death' SimEvent flagged m.killed) → dyingUnits, which
-    //     scatters the corpse pieces over the death fade.
-    //   - merely out of the local player's vision → vanishingUnits, a plain
-    //     alpha fade-out in place with no scatter or explosion.
-    for (const [id, m] of this.unitMeshes) {
-      if (!seen.has(id)) {
-        const liveEntity = this.clientViewState.getEntity(id);
-        if (scopedRender && liveEntity !== undefined && liveEntity.unit !== null) {
-          const legSnap = captureLegState(m.locomotion);
-          if (legSnap) this.legStateCache.set(id, legSnap);
-          this.destroyUnitMesh(id, m);
+    if (pruneUnits) {
+      // Units no longer present leave the live set. Rather than tearing the
+      // mesh down immediately, hand it to a shared fade controller: the
+      // instanced slots stay allocated with their last pose frozen while the
+      // fade ramps to zero, then frees them. Which controller depends on WHY
+      // the unit left:
+      //   - killed (a 'death' SimEvent flagged m.killed) -> dyingUnits, which
+      //     scatters the corpse pieces over the death fade.
+      //   - merely out of the local player's vision -> vanishingUnits, a plain
+      //     alpha fade-out in place with no scatter or explosion.
+      for (const [id, m] of this.unitMeshes) {
+        if (!seen.has(id)) {
+          const liveEntity = this.clientViewState.getEntity(id);
+          if (scopedRender && liveEntity !== undefined && liveEntity.unit !== null) {
+            const legSnap = captureLegState(m.locomotion);
+            if (legSnap) this.legStateCache.set(id, legSnap);
+            this.destroyUnitMesh(id, m);
+            this.barrelSpinState.delete(id);
+            this.turretBeamAimCache.delete(id);
+            continue;
+          }
+          // World-parented overlays (range circles) and the selection ring
+          // leave immediately for both paths; the body/turrets/locomotion
+          // remain for the render-only fade.
+          this.disposeWorldParentedOverlays(m);
+          if (m.ring) m.ring.visible = false;
+          if (m.killed) {
+            this.prepareDyingUnitScatter(m);
+            this.dyingUnits.markDying(id, m);
+          } else {
+            this.vanishingUnits.markDying(id, m);
+          }
+          // True entity removal — drop any stashed leg-state snapshot and
+          // vision fade-in clock so a future re-spawn (or this unit
+          // re-entering vision) starts fresh instead of inheriting the
+          // last unit's foot positions / fade progress.
+          this.legStateCache.delete(id);
+          this.spawnFadeElapsed.delete(id);
+          this.unitMeshes.delete(id);
           this.barrelSpinState.delete(id);
           this.turretBeamAimCache.delete(id);
-          continue;
         }
-        // World-parented overlays (range circles) and the selection ring
-        // leave immediately for both paths; the body/turrets/locomotion
-        // remain for the render-only fade.
-        this.disposeWorldParentedOverlays(m);
-        if (m.ring) m.ring.visible = false;
-        if (m.killed) {
-          this.prepareDyingUnitScatter(m);
-          this.dyingUnits.markDying(id, m);
-        } else {
-          this.vanishingUnits.markDying(id, m);
-        }
-        // True entity removal — drop any stashed leg-state snapshot and
-        // vision fade-in clock so a future re-spawn (or this unit
-        // re-entering vision) starts fresh instead of inheriting the
-        // last unit's foot positions / fade progress.
-        this.legStateCache.delete(id);
-        this.spawnFadeElapsed.delete(id);
-        this.unitMeshes.delete(id);
-        this.barrelSpinState.delete(id);
-        this.turretBeamAimCache.delete(id);
       }
+      // Drop barrel-spin state and persisted turret-mount history for
+      // units that no longer exist. Reuses the same `seen` set populated
+      // by the unit loop above; steady-state frames skip this sweep.
+      this.barrelSpinState.prune(seen);
+      this.turretMountCache.prune(seen);
+      this.lastUnitEntitySetVersion = entitySetVersion;
     }
     // Advance any in-progress fade-outs before the flush so their updated
     // per-instance fade is uploaded this frame.
     this.dyingUnits.update(this._currentDtMs);
     this.vanishingUnits.update(this._currentDtMs);
-    // Drop barrel-spin state and persisted turret-mount history for
-    // units that no longer exist. Reuses the same `seen` set populated
-    // by the unit loop above — no separate sweep needed.
-    this.barrelSpinState.prune(seen);
-    this.turretMountCache.prune(seen);
     this.unitDetailInstances.flush(this.turretShieldPanelsEnabled);
   }
 
@@ -1261,6 +1266,7 @@ export class Render3DEntities {
     this.barrelSpinState.clear();
     this.turretBeamAimCache.clear();
     this._seenUnitIds.clear();
+    this.lastUnitEntitySetVersion = -1;
     this.constructionVisuals.destroy();
     this.unitDetailInstances.destroy();
     this.legRenderer.destroy();
