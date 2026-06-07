@@ -16,22 +16,6 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 Please always commit and push before and after any code changes we make.
 ================================================================================
 
-[BA-NET-001] Non-snapshot PeerJS sends bypass data-channel backpressure
-
-Severity: High
-
-Evidence:
-- src/game/network/NetworkSnapshotTransport.ts:341-364 checks RTCDataChannel.bufferedAmount and drops snapshots above SNAPSHOT_BACKPRESSURE_DROP_BYTES.
-- src/game/network/NetworkManager.ts:94-117 routes command and heartbeat sends through safeSend().
-- src/game/network/NetworkManager.ts:928-951 safeSend() only checks conn.open and try/catches conn.send(message); it does not inspect bufferedAmount or coalesce/drop noncritical messages.
-- src/game/network/NetworkManager.ts:586-617, 665, 738, 833, 868, 877, 904, 910, 982, 990, and 1031 send roster/lobby/heartbeat/command/state messages through this path.
-
-Risk:
-Snapshot traffic is bounded, but roster updates, lobby messages, heartbeat traffic, resync requests, and command messages can still pile up behind a saturated RTCDataChannel. budget_design_philosophy.html requires backpressure to drop or coarsen before queues grow without bound. Commands are authoritative input, so blindly dropping them would be wrong; they need a separate bounded/rate-limited policy.
-
-Required fix:
-Centralize send budgeting for all PeerJS messages. Coalesce or drop stale noncritical messages such as heartbeat, playerInfo, and lobbySettings. Rate-limit or reject commands explicitly instead of letting the browser send queue grow. Add bufferedAmount telemetry by message class.
-
 [BA-PERF-002] Snapshot publishing still builds JS DTO object graphs before binary packing
 
 Severity: High

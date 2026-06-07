@@ -57,6 +57,10 @@ import {
   normalizeRoomCode,
   roomCodeToGameId,
 } from './NetworkRoomCode';
+import {
+  NetworkSendBudget,
+  type NetworkSendBudgetTelemetry,
+} from './NetworkSendBudget';
 import { NetworkSnapshotTransport } from './NetworkSnapshotTransport';
 
 // Player-name policy lives in @/playerNamesConfig — single source of
@@ -106,6 +110,9 @@ export class NetworkManager {
     send: (conn, message) => this.safeSend(conn, message),
   });
   private dataChannelMonitor = new NetworkDataChannelMonitor();
+  private sendBudget = new NetworkSendBudget({
+    onPendingQueued: () => this.scheduleSendBudgetFlush(),
+  });
   private heartbeatTracker = new NetworkHeartbeatTracker({
     buildHeartbeat: () => this.buildHeartbeatMessage(),
     closeConnection: (playerId) => {
@@ -119,6 +126,7 @@ export class NetworkManager {
     timeoutMs: undefined,
   });
   private signalingReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private sendBudgetFlushTimer: ReturnType<typeof setTimeout> | null = null;
   private signalingReconnectDelayMs = SIGNALING_RECONNECT_INITIAL_DELAY_MS;
   private pendingStateMessage: NetworkStateMessage | null = null;
   private pendingStateMessageSeq = 0;
@@ -248,6 +256,13 @@ export class NetworkManager {
     }
   }
 
+  private clearSendBudgetFlush(): void {
+    if (this.sendBudgetFlushTimer !== null) {
+      clearTimeout(this.sendBudgetFlushTimer);
+      this.sendBudgetFlushTimer = null;
+    }
+  }
+
   private cancelPendingSetup(reason: string): void {
     const reject = this.pendingSetupReject;
     this.pendingSetupReject = null;
@@ -258,9 +273,11 @@ export class NetworkManager {
     this.cancelPendingSetup('Network setup canceled');
     this.clearSignalingReconnect();
     this.clearSetupTimeout();
+    this.clearSendBudgetFlush();
     this.signalingReconnectDelayMs = SIGNALING_RECONNECT_INITIAL_DELAY_MS;
     this.sessionGeneration++;
     this.heartbeatTracker.stop();
+    this.sendBudget.clear();
     this.dataChannelMonitor.clear();
     for (const conn of this.connections.values()) {
       conn.close();
@@ -655,6 +672,7 @@ export class NetworkManager {
       if (!this.isCurrentSession(generation) || this.connections.get(playerId) !== conn) return;
       console.warn(`[NET] Player ${playerId} connection CLOSED (role=${this.role})`);
       this.connections.delete(playerId);
+      this.sendBudget.clearConnection(conn);
       this.roster.delete(playerId);
       this.heartbeatTracker.untrack(playerId);
       this.snapshotTransport.clearPlayer(playerId);
@@ -940,6 +958,14 @@ export class NetworkManager {
   }
 
   private safeSend(conn: DataConnection, message: NetworkMessage): boolean {
+    return this.sendBudget.send(
+      conn,
+      message,
+      (target, payload) => this.rawSend(target, payload),
+    );
+  }
+
+  private rawSend(conn: DataConnection, message: NetworkMessage): boolean {
     if (!conn.open) return false;
     try {
       conn.send(message);
@@ -948,6 +974,22 @@ export class NetworkManager {
       console.warn('[NET] Failed to send message:', err);
       return false;
     }
+  }
+
+  private scheduleSendBudgetFlush(): void {
+    if (this.sendBudgetFlushTimer !== null) return;
+    this.sendBudgetFlushTimer = setTimeout(() => {
+      this.sendBudgetFlushTimer = null;
+      const hasPending = this.sendBudget.flushPending(
+        this.connections.values(),
+        (conn, message) => this.rawSend(conn, message),
+      );
+      if (hasPending) this.scheduleSendBudgetFlush();
+    }, 100);
+  }
+
+  getSendBudgetTelemetry(): NetworkSendBudgetTelemetry {
+    return this.sendBudget.getTelemetry();
   }
 
   // Send game state to a specific client (host only).
