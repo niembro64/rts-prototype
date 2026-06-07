@@ -67,7 +67,7 @@ import { applyUnitLiftGroupPose3D, UnitMeshBuilder3D } from './UnitMeshBuilder3D
 import { UnitRenderPoseBatch3D } from './UnitRenderPoseBatch3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 import { refreshLocomotionSupportSurfaces } from './LocomotionTerrainSampler';
-import { getLegsRadiusToggle } from '@/clientBarConfig';
+import { getLegsRadiusToggle, getSmokeTrails } from '@/clientBarConfig';
 import {
   UnitRenderPacket3D,
   type BuildingRenderPacket3D,
@@ -189,6 +189,7 @@ export class Render3DEntities {
   private readonly dyingUnitScatter = new WeakMap<EntityMesh, DyingUnitScatter>();
   private readonly activeLocomotionUnitIds = new Set<EntityId>();
   private legsRadiusToggle = getLegsRadiusToggle();
+  private smokeTrailsEnabled = getSmokeTrails();
   /** Per-entity vision fade-IN clock (ms elapsed, 0..VISION_FADE_IN_MS) for
    *  units that have newly entered vision. Keyed by entity id so it survives
    *  mesh rebuilds (LOD / owner recolor) and only resets when the unit truly
@@ -471,6 +472,7 @@ export class Render3DEntities {
     this._spinDt = frameSpin.spinDtSec;
     this.turretMountCache.reset(this._currentDtMs);
     refreshLocomotionSupportSurfaces(this.clientViewState.getPredictionSupportSurfaceEntities());
+    this.syncSmokeTrailsQueue();
     this.syncLegsRadiusToggleQueue();
     this.selectionOverlays.beginFrame();
     // Populate beam-directed turret aim from the live beams BEFORE the
@@ -1129,7 +1131,7 @@ export class Render3DEntities {
           unitRows.renderDirtyAt(row) ||
           unitRows.lifecycleDirtyAt(row)
         ) {
-          const locomotionSmokeEmitters = unitRows.buildInProgressAt(row)
+          const locomotionSmokeEmitters = unitRows.buildInProgressAt(row) || !this.smokeTrailsEnabled
             ? undefined
             : this.hoverSmokeEmitters;
           const keepLocomotionActive = updateLocomotion(
@@ -1172,6 +1174,16 @@ export class Render3DEntities {
     this.legsRadiusToggle = current;
     for (const [id, mesh] of this.unitMeshes) {
       if (mesh.locomotion?.type === 'legs') this.activeLocomotionUnitIds.add(id);
+    }
+  }
+
+  private syncSmokeTrailsQueue(): void {
+    const current = getSmokeTrails();
+    if (current === this.smokeTrailsEnabled) return;
+    this.smokeTrailsEnabled = current;
+    for (const [id, mesh] of this.unitMeshes) {
+      const type = mesh.locomotion?.type;
+      if (type === 'hover' || type === 'flying') this.activeLocomotionUnitIds.add(id);
     }
   }
 

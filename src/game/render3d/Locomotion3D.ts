@@ -209,8 +209,7 @@ export function updateLocomotion(
       updateHoverFans(mesh, entity, dtMs, mapWidth, mapHeight, hoverSmokeEmitters);
       return true;
     case 'flying':
-      updateFlyingRig(mesh, entity, dtMs, hoverSmokeEmitters);
-      return true;
+      return updateFlyingRig(mesh, entity, dtMs, hoverSmokeEmitters);
   }
 }
 

@@ -248,8 +248,8 @@ export function updateFlyingRig(
   _entity: Entity,
   _dtMs: number,
   smokeOut?: SmokePuffEmitter[],
-): void {
-  if (!smokeOut) return;
+): boolean {
+  if (!smokeOut) return false;
 
   for (const jet of mesh.jets) {
     jet.emitter.getWorldPosition(_jetWorldPos);
@@ -264,4 +264,5 @@ export function updateFlyingRig(
     jet.smoke.vz = _jetWorldDir.y * mesh.smokeExhaustSpeed;
     smokeOut.push(jet.smoke);
   }
+  return true;
 }
