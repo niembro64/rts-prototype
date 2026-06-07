@@ -102,22 +102,26 @@ type AnimatedBuildingEntry = {
   mesh: EntityMesh;
 };
 
+const FACTORY_ANIMATION_IDLE_EPSILON = 0.001;
+
 export class BuildingAnimationController3D {
   private readonly clientViewState: ClientViewState;
   private readonly constructionVisuals: ConstructionVisualController3D;
   private readonly metalDeposits: readonly MetalDeposit[];
   private solarBuildings: AnimatedBuildingEntry[] = [];
-  private solarBuildingIdSet = new Set<EntityId>();
+  private solarBuildingIndexById = new Map<EntityId, number>();
   private windBuildings: AnimatedBuildingEntry[] = [];
-  private windBuildingIdSet = new Set<EntityId>();
+  private windBuildingIndexById = new Map<EntityId, number>();
   private extractorBuildings: AnimatedBuildingEntry[] = [];
-  private extractorBuildingIdSet = new Set<EntityId>();
+  private extractorBuildingIndexById = new Map<EntityId, number>();
   private converterBuildings: AnimatedBuildingEntry[] = [];
-  private converterBuildingIdSet = new Set<EntityId>();
+  private converterBuildingIndexById = new Map<EntityId, number>();
   private factoryBuildings: AnimatedBuildingEntry[] = [];
-  private factoryBuildingIdSet = new Set<EntityId>();
+  private factoryBuildingIndexById = new Map<EntityId, number>();
+  private activeFactoryBuildings: AnimatedBuildingEntry[] = [];
+  private activeFactoryBuildingIndexById = new Map<EntityId, number>();
   private radarBuildings: AnimatedBuildingEntry[] = [];
-  private radarBuildingIdSet = new Set<EntityId>();
+  private radarBuildingIndexById = new Map<EntityId, number>();
   private windFanYaw: number | null = null;
   private windVisualSpeed: number | null = null;
   private windRotorPhase = 0;
@@ -173,38 +177,56 @@ export class BuildingAnimationController3D {
 
   register(entity: Entity, mesh: EntityMesh): void {
     if (entity.buildingBlueprintId === 'buildingSolar' && mesh.buildingDetails) {
-      this.addAnimatedBuilding(this.solarBuildings, this.solarBuildingIdSet, entity, mesh);
+      this.addAnimatedBuilding(this.solarBuildings, this.solarBuildingIndexById, entity, mesh);
     }
     if (mesh.windRig) {
-      this.addAnimatedBuilding(this.windBuildings, this.windBuildingIdSet, entity, mesh);
+      this.addAnimatedBuilding(this.windBuildings, this.windBuildingIndexById, entity, mesh);
     }
     if (mesh.extractorRig) {
-      this.addAnimatedBuilding(this.extractorBuildings, this.extractorBuildingIdSet, entity, mesh);
+      this.addAnimatedBuilding(this.extractorBuildings, this.extractorBuildingIndexById, entity, mesh);
     }
     if (mesh.converterRig) {
-      this.addAnimatedBuilding(this.converterBuildings, this.converterBuildingIdSet, entity, mesh);
+      this.addAnimatedBuilding(this.converterBuildings, this.converterBuildingIndexById, entity, mesh);
     }
     if (mesh.factoryBuildSpotRig) {
-      this.addAnimatedBuilding(this.factoryBuildings, this.factoryBuildingIdSet, entity, mesh);
+      const entry = this.addAnimatedBuilding(
+        this.factoryBuildings,
+        this.factoryBuildingIndexById,
+        entity,
+        mesh,
+      );
+      this.updateFactoryAnimationQueue(entry);
     }
     if (mesh.radarRig) {
-      this.addAnimatedBuilding(this.radarBuildings, this.radarBuildingIdSet, entity, mesh);
+      this.addAnimatedBuilding(this.radarBuildings, this.radarBuildingIndexById, entity, mesh);
     }
   }
 
+  sync(entity: Entity, mesh: EntityMesh): void {
+    if (!mesh.factoryBuildSpotRig) return;
+    const entry = this.addAnimatedBuilding(
+      this.factoryBuildings,
+      this.factoryBuildingIndexById,
+      entity,
+      mesh,
+    );
+    this.updateFactoryAnimationQueue(entry);
+  }
+
   unregister(id: EntityId): void {
-    this.removeAnimatedBuilding(this.solarBuildings, this.solarBuildingIdSet, id);
-    this.removeAnimatedBuilding(this.windBuildings, this.windBuildingIdSet, id);
-    this.removeAnimatedBuilding(this.extractorBuildings, this.extractorBuildingIdSet, id);
-    this.removeAnimatedBuilding(this.converterBuildings, this.converterBuildingIdSet, id);
+    this.removeAnimatedBuilding(this.solarBuildings, this.solarBuildingIndexById, id);
+    this.removeAnimatedBuilding(this.windBuildings, this.windBuildingIndexById, id);
+    this.removeAnimatedBuilding(this.extractorBuildings, this.extractorBuildingIndexById, id);
+    this.removeAnimatedBuilding(this.converterBuildings, this.converterBuildingIndexById, id);
     this.extractorRotorPhases.delete(id);
     this.extractorRotorSpeeds.delete(id);
     this.extractorCloseAmounts.delete(id);
     this.extractorRotorYaws.delete(id);
     this.extractorDepositSourceCache.delete(id);
     this.windCloseAmounts.delete(id);
-    this.removeAnimatedBuilding(this.factoryBuildings, this.factoryBuildingIdSet, id);
-    this.removeAnimatedBuilding(this.radarBuildings, this.radarBuildingIdSet, id);
+    this.removeAnimatedBuilding(this.factoryBuildings, this.factoryBuildingIndexById, id);
+    this.removeAnimatedBuilding(this.activeFactoryBuildings, this.activeFactoryBuildingIndexById, id);
+    this.removeAnimatedBuilding(this.radarBuildings, this.radarBuildingIndexById, id);
     this.radarHeadPhases.delete(id);
     this.radarSweepPhases.delete(id);
     this.radarHeadSpeeds.delete(id);
@@ -491,12 +513,14 @@ export class BuildingAnimationController3D {
       }
     }
 
-    for (const entry of this.factoryBuildings) {
+    for (let i = 0; i < this.activeFactoryBuildings.length;) {
+      const entry = this.activeFactoryBuildings[i];
       const { entity, mesh } = entry;
       const detailsReady = mesh.buildingCachedDetailsReady === true;
       const emitterRig = findConstructionEmitterRig(mesh, entity);
+      let emitterVisualActive = false;
       if (emitterRig) {
-        this.constructionVisuals.updateFactoryConstructionEmitter(
+        emitterVisualActive = this.constructionVisuals.updateFactoryConstructionEmitter(
           emitterRig,
           entity,
           detailsReady,
@@ -511,6 +535,15 @@ export class BuildingAnimationController3D {
         mesh.buildingCachedDepth ?? entity.building?.height ?? 100,
         timeMs,
       );
+      if (this.factoryBuildSpotActive(entry) || emitterVisualActive) {
+        i++;
+      } else {
+        this.removeAnimatedBuilding(
+          this.activeFactoryBuildings,
+          this.activeFactoryBuildingIndexById,
+          entry.id,
+        );
+      }
     }
 
     if (this.radarBuildings.length > 0) {
@@ -545,17 +578,19 @@ export class BuildingAnimationController3D {
 
   destroy(): void {
     this.solarBuildings.length = 0;
-    this.solarBuildingIdSet.clear();
+    this.solarBuildingIndexById.clear();
     this.windBuildings.length = 0;
-    this.windBuildingIdSet.clear();
+    this.windBuildingIndexById.clear();
     this.extractorBuildings.length = 0;
-    this.extractorBuildingIdSet.clear();
+    this.extractorBuildingIndexById.clear();
     this.converterBuildings.length = 0;
-    this.converterBuildingIdSet.clear();
+    this.converterBuildingIndexById.clear();
     this.factoryBuildings.length = 0;
-    this.factoryBuildingIdSet.clear();
+    this.factoryBuildingIndexById.clear();
+    this.activeFactoryBuildings.length = 0;
+    this.activeFactoryBuildingIndexById.clear();
     this.radarBuildings.length = 0;
-    this.radarBuildingIdSet.clear();
+    this.radarBuildingIndexById.clear();
     this.extractorRotorPhases.clear();
     this.extractorRotorSpeeds.clear();
     this.extractorCloseAmounts.clear();
@@ -579,24 +614,82 @@ export class BuildingAnimationController3D {
 
   private addAnimatedBuilding(
     list: AnimatedBuildingEntry[],
-    set: Set<EntityId>,
+    indexById: Map<EntityId, number>,
     entity: Entity,
     mesh: EntityMesh,
-  ): void {
+  ): AnimatedBuildingEntry {
     const id = entity.id;
-    if (set.has(id)) return;
-    set.add(id);
-    list.push({ id, entity, mesh });
+    const existingIndex = indexById.get(id);
+    if (existingIndex !== undefined) {
+      const entry = list[existingIndex];
+      entry.entity = entity;
+      entry.mesh = mesh;
+      return entry;
+    }
+    const entry = { id, entity, mesh };
+    indexById.set(id, list.length);
+    list.push(entry);
+    return entry;
   }
 
   private removeAnimatedBuilding(
     list: AnimatedBuildingEntry[],
-    set: Set<EntityId>,
+    indexById: Map<EntityId, number>,
     id: EntityId,
   ): void {
-    if (!set.delete(id)) return;
-    const idx = list.findIndex((entry) => entry.id === id);
-    if (idx >= 0) list.splice(idx, 1);
+    const index = indexById.get(id);
+    if (index === undefined) return;
+    indexById.delete(id);
+    const lastIndex = list.length - 1;
+    if (index !== lastIndex) {
+      const last = list[lastIndex];
+      list[index] = last;
+      indexById.set(last.id, index);
+    }
+    list.pop();
+  }
+
+  private updateFactoryAnimationQueue(entry: AnimatedBuildingEntry): void {
+    const activeIndex = this.activeFactoryBuildingIndexById.get(entry.id);
+    if (!this.factoryAnimationNeedsFrame(entry)) {
+      if (activeIndex !== undefined) {
+        this.removeAnimatedBuilding(
+          this.activeFactoryBuildings,
+          this.activeFactoryBuildingIndexById,
+          entry.id,
+        );
+      }
+      return;
+    }
+    if (activeIndex !== undefined) {
+      this.activeFactoryBuildings[activeIndex] = entry;
+      return;
+    }
+    this.activeFactoryBuildingIndexById.set(entry.id, this.activeFactoryBuildings.length);
+    this.activeFactoryBuildings.push(entry);
+  }
+
+  private factoryAnimationNeedsFrame(entry: AnimatedBuildingEntry): boolean {
+    return this.factoryBuildSpotActive(entry) ||
+      this.factoryConstructionEmitterDraining(entry);
+  }
+
+  private factoryBuildSpotActive(entry: AnimatedBuildingEntry): boolean {
+    const { entity, mesh } = entry;
+    const factory = entity.factory;
+    return mesh.buildingCachedDetailsReady === true &&
+      factory !== null &&
+      !!factory.selectedUnitBlueprintId &&
+      factory.isProducing;
+  }
+
+  private factoryConstructionEmitterDraining(entry: AnimatedBuildingEntry): boolean {
+    const rig = findConstructionEmitterRig(entry.mesh, entry.entity);
+    if (!rig) return false;
+    return rig.smoothedRates.energy > FACTORY_ANIMATION_IDLE_EPSILON ||
+      rig.smoothedRates.metal > FACTORY_ANIMATION_IDLE_EPSILON ||
+      rig.displaySmoothedRates.energy > FACTORY_ANIMATION_IDLE_EPSILON ||
+      rig.displaySmoothedRates.metal > FACTORY_ANIMATION_IDLE_EPSILON;
   }
 
   private updateSolarCollectorAnimation(

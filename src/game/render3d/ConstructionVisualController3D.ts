@@ -350,7 +350,7 @@ export class ConstructionVisualController3D {
     e: Entity,
     detailsReady: boolean,
     dtMs: number,
-  ): void {
+  ): boolean {
     const factory = e.factory;
     const selectedUnitBlueprintId = factory?.selectedUnitBlueprintId;
     const active = detailsReady
@@ -368,14 +368,20 @@ export class ConstructionVisualController3D {
     this.blendSmoothedRates(rig.smoothedRates, targetEnergy, targetMetal, rateAlpha);
     this.blendDisplaySmoothedRates(rig.displaySmoothedRates, rig.smoothedRates, dtSec);
     this.syncPylonDisplayRates(rig);
+    const visualActive =
+      active ||
+      rig.smoothedRates.energy > 0.001 ||
+      rig.smoothedRates.metal > 0.001 ||
+      rig.displaySmoothedRates.energy > 0.001 ||
+      rig.displaySmoothedRates.metal > 0.001;
 
     const canTrackBuildSpot = detailsReady
       && !!factory
       && !!selectedUnitBlueprintId
       && !!e.ownership;
-    if (!canTrackBuildSpot) return;
+    if (!canTrackBuildSpot) return visualActive;
     const ownership = e.ownership;
-    if (!ownership) return;
+    if (!ownership) return visualActive;
 
     let buildSpotRadius = 12;
     if (selectedUnitBlueprintId) {
@@ -418,6 +424,7 @@ export class ConstructionVisualController3D {
       targetRadius,
       factoryAbsRates,
     );
+    return visualActive;
   }
 
   /** Drive the factory's "forming unit" visualizer at the center build bay —

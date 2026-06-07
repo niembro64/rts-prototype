@@ -535,6 +535,7 @@ export class BuildingEntityRenderer3D {
       applyEntityGroupFade(mesh.group, bodyOpacity);
       mesh.buildingGroupFadeActive = bodyOpacity < 1;
     }
+    this.animations.sync(entity, mesh);
   }
 
   private updateBuildingMesh(
