@@ -17,6 +17,10 @@ import {
 import type { HoverConfig } from '@/types/blueprints';
 import type { Entity, PlayerId } from '../sim/types';
 import { ALBATROS_ICOSAHEDRON_VERTEX_DIRECTIONS } from './AlbatrosMesh3D';
+import type {
+  AirborneEmitterBatch3D,
+  AirborneEmitterParentPose3D,
+} from './AirborneEmitterBatch3D';
 import type { LocomotionBase } from './LocomotionRigShared3D';
 import { getLocomotionSurfaceHeight } from './LocomotionTerrainSampler';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
@@ -42,11 +46,11 @@ const TRI_FRONT_FAN_ANGLES_RAD = [-Math.PI / 3, Math.PI / 3, Math.PI];
 const ALBATROS_FAN_POSITION_RADIUS_FRAC = 0.86;
 
 const ringGeomByTubeRatio = new Map<number, THREE.TorusGeometry>();
+const bladeRotorGeoms = new Map<string, THREE.BufferGeometry>();
 const hubGeom = new THREE.SphereGeometry(1, 18, 12);
-const bladeGeom = new THREE.BoxGeometry(1, 1, 1);
 const ringMats = new Map<number, THREE.MeshBasicMaterial>();
-const bladeMats = new Map<number, THREE.MeshBasicMaterial>();
 const hubMats = new Map<number, THREE.MeshBasicMaterial>();
+const bladeRotorMats = new Map<string, THREE.ShaderMaterial>();
 const LOCAL_EXHAUST_DIR = new THREE.Vector3(0, -1, 0);
 const _fanWorldPos = new THREE.Vector3();
 const _fanWorldQuat = new THREE.Quaternion();
@@ -76,9 +80,161 @@ function getRingGeom(tubeRatio: number): THREE.TorusGeometry {
   return geom;
 }
 
+function rotorGeomKey(
+  bladeLength: number,
+  bladeThickness: number,
+  bladeChord: number,
+  bladeRootRadius: number,
+  bladePitchRad: number,
+): string {
+  return [
+    bladeLength,
+    bladeThickness,
+    bladeChord,
+    bladeRootRadius,
+    bladePitchRad,
+  ].map((value) => value.toFixed(3)).join(':');
+}
+
+function pushRotorBladeBox(
+  positions: number[],
+  centerX: number,
+  length: number,
+  thickness: number,
+  chord: number,
+  pitchRad: number,
+  yawRad: number,
+): void {
+  const hx = length * 0.5;
+  const hy = thickness * 0.5;
+  const hz = chord * 0.5;
+  const cp = Math.cos(pitchRad);
+  const sp = Math.sin(pitchRad);
+  const cy = Math.cos(yawRad);
+  const sy = Math.sin(yawRad);
+  const corners = [
+    [-hx, -hy, -hz],
+    [hx, -hy, -hz],
+    [hx, hy, -hz],
+    [-hx, hy, -hz],
+    [-hx, -hy, hz],
+    [hx, -hy, hz],
+    [hx, hy, hz],
+    [-hx, hy, hz],
+  ] as const;
+  const transformed: number[] = [];
+  for (const corner of corners) {
+    const px = corner[0] + centerX;
+    const py = corner[1] * cp - corner[2] * sp;
+    const pz = corner[1] * sp + corner[2] * cp;
+    transformed.push(
+      px * cy + pz * sy,
+      py,
+      -px * sy + pz * cy,
+    );
+  }
+  const faces = [
+    [0, 2, 1], [0, 3, 2],
+    [4, 5, 6], [4, 6, 7],
+    [0, 1, 5], [0, 5, 4],
+    [3, 6, 2], [3, 7, 6],
+    [1, 2, 6], [1, 6, 5],
+    [0, 4, 7], [0, 7, 3],
+  ] as const;
+  for (const face of faces) {
+    for (const idx of face) {
+      const base = idx * 3;
+      positions.push(transformed[base], transformed[base + 1], transformed[base + 2]);
+    }
+  }
+}
+
+function getBladeRotorGeom(
+  bladeLength: number,
+  bladeThickness: number,
+  bladeChord: number,
+  bladeRootRadius: number,
+  bladePitchRad: number,
+): THREE.BufferGeometry {
+  const key = rotorGeomKey(
+    bladeLength,
+    bladeThickness,
+    bladeChord,
+    bladeRootRadius,
+    bladePitchRad,
+  );
+  let geom = bladeRotorGeoms.get(key);
+  if (!geom) {
+    const positions: number[] = [];
+    const bladeCenterX = bladeRootRadius + bladeLength * 0.5;
+    for (let i = 0; i < FAN_BLADE_COUNT; i++) {
+      pushRotorBladeBox(
+        positions,
+        bladeCenterX,
+        bladeLength,
+        bladeThickness,
+        bladeChord,
+        bladePitchRad,
+        (i * Math.PI * 2) / FAN_BLADE_COUNT,
+      );
+    }
+    geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geom.computeBoundingSphere();
+    bladeRotorGeoms.set(key, geom);
+  }
+  return geom;
+}
+
+function getRotorBladeMat(
+  baseColor: number,
+  ownerId: PlayerId | undefined,
+  spinRadPerSec: number,
+): THREE.ShaderMaterial {
+  const color = locomotionPieceColorHex(baseColor, ownerId);
+  const speedKey = Math.round(spinRadPerSec * 1000) / 1000;
+  const key = `${color}:${speedKey}`;
+  let mat = bladeRotorMats.get(key);
+  if (!mat) {
+    mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uColor: { value: new THREE.Color(color) },
+        uTimeSec: { value: 0 },
+        uSpinRadPerSec: { value: spinRadPerSec },
+      },
+      vertexShader: `
+        uniform float uTimeSec;
+        uniform float uSpinRadPerSec;
+        void main() {
+          float a = -uTimeSec * uSpinRadPerSec;
+          float c = cos(a);
+          float s = sin(a);
+          vec3 p = position;
+          p = vec3(c * p.x + s * p.z, p.y, -s * p.x + c * p.z);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uColor;
+        void main() {
+          gl_FragColor = vec4(uColor, 1.0);
+        }
+      `,
+      side: THREE.DoubleSide,
+    });
+    bladeRotorMats.set(key, mat);
+  }
+  return mat;
+}
+
+export function setHoverFanAnimationTime(timeSec: number): void {
+  for (const mat of bladeRotorMats.values()) {
+    mat.uniforms.uTimeSec.value = timeSec;
+  }
+}
+
 type HoverFan = {
   group: THREE.Group;
-  rotor: THREE.Group;
   emitter: THREE.Object3D;
   smoke: SmokePuffEmitter;
   exhaustSpeed: number;
@@ -103,6 +259,7 @@ type FanSpec = {
   fanRadius: number;
   ringTubeRadius: number;
   outwardAngleRad: number;
+  fanSpinRadPerSec: number;
   exhaustDirection?: THREE.Vector3;
   smokeProfile: ResolvedSmokeProfile;
 };
@@ -116,6 +273,7 @@ function buildFan(
 ): HoverFan {
   const {
     localX, localY, localZ, fanRadius, ringTubeRadius, outwardAngleRad,
+    fanSpinRadPerSec,
     exhaustDirection,
     smokeProfile,
   } = spec;
@@ -152,7 +310,6 @@ function buildFan(
   ring.scale.setScalar(fanRadius);
   fanGroup.add(ring);
 
-  const rotor = new THREE.Group();
   const hubRadius = fanRadius * 0.22;
   const bladeRootRadius = hubRadius * 0.9;
   const bladeTipRadius = fanRadius * 0.82;
@@ -160,21 +317,21 @@ function buildFan(
   const bladeChord = Math.max(0.55, bladeLength * 0.42);
   const bladeThickness = Math.max(0.14, ringTubeRadius * 0.32);
   const bladePitchRad = THREE.MathUtils.degToRad(FAN_BLADE_PITCH_DEG);
-  for (let i = 0; i < FAN_BLADE_COUNT; i++) {
-    const blade = new THREE.Mesh(bladeGeom, getFanMat(bladeMats, FAN_BLADE_COLOR, ownerId));
-    blade.scale.set(bladeLength, bladeThickness, bladeChord);
-    blade.position.x = bladeRootRadius + bladeLength * 0.5;
-    blade.rotation.x = bladePitchRad;
-    const bladePivot = new THREE.Group();
-    bladePivot.rotation.y = (i * Math.PI * 2) / FAN_BLADE_COUNT;
-    bladePivot.add(blade);
-    rotor.add(bladePivot);
-  }
+  const rotor = new THREE.Mesh(
+    getBladeRotorGeom(
+      bladeLength,
+      bladeThickness,
+      bladeChord,
+      bladeRootRadius,
+      bladePitchRad,
+    ),
+    getRotorBladeMat(FAN_BLADE_COLOR, ownerId, fanSpinRadPerSec),
+  );
+  fanGroup.add(rotor);
 
   const hub = new THREE.Mesh(hubGeom, getFanMat(hubMats, FAN_HUB_COLOR, ownerId));
   hub.scale.setScalar(hubRadius);
-  rotor.add(hub);
-  fanGroup.add(rotor);
+  fanGroup.add(hub);
 
   const emitter = new THREE.Object3D();
   emitter.position.set(0, -Math.max(0.35, ringTubeRadius * 0.9), 0);
@@ -183,7 +340,6 @@ function buildFan(
   parent.add(fanGroup);
   return {
     group: fanGroup,
-    rotor,
     emitter,
     exhaustSpeed,
     smoke: {
@@ -221,6 +377,7 @@ export function buildAlbatrosHoverFans(
   const fanDistance = unitRadius * fanPositionRadius;
   const fanRadius = Math.max(1, unitRadius * cfg.fanRadius);
   const ringTubeRadius = Math.max(0.35, unitRadius * cfg.fanRingTubeRadius);
+  const fanSpinRadPerSec = cfg.fanSpinRadPerSec ?? DEFAULT_FAN_SPIN_RAD_PER_SEC;
   const smokeProfile = getSmokeProfile(smokeUseId);
   const fans: HoverFan[] = [];
 
@@ -234,6 +391,7 @@ export function buildAlbatrosHoverFans(
         fanRadius,
         ringTubeRadius,
         outwardAngleRad: 0,
+        fanSpinRadPerSec,
         exhaustDirection: direction,
         smokeProfile,
       },
@@ -249,7 +407,7 @@ export function buildAlbatrosHoverFans(
     group,
     fans,
     clearance: 0,
-    fanSpinRadPerSec: cfg.fanSpinRadPerSec ?? DEFAULT_FAN_SPIN_RAD_PER_SEC,
+    fanSpinRadPerSec,
     geometryKey: '',
   };
 }
@@ -265,6 +423,7 @@ export function buildHoverFans(
   const group = new THREE.Group();
   const mainFanRadius = Math.max(1, unitRadius * cfg.fanRadius);
   const mainRingTubeRadius = Math.max(0.35, unitRadius * cfg.fanRingTubeRadius);
+  const fanSpinRadPerSec = cfg.fanSpinRadPerSec ?? DEFAULT_FAN_SPIN_RAD_PER_SEC;
   const outwardAngleRad = THREE.MathUtils.degToRad(
     Math.max(0, Math.min(35, cfg.fanOutwardAngleDeg ?? DEFAULT_FAN_OUTWARD_ANGLE_DEG)),
   );
@@ -291,6 +450,7 @@ export function buildHoverFans(
           fanRadius: mainFanRadius,
           ringTubeRadius: mainRingTubeRadius,
           outwardAngleRad,
+          fanSpinRadPerSec,
           smokeProfile,
         },
         entityId,
@@ -320,6 +480,7 @@ export function buildHoverFans(
           fanRadius: tailFanRadius,
           ringTubeRadius: tailRingTubeRadius,
           outwardAngleRad: tailBackAngleRad,
+          fanSpinRadPerSec,
           smokeProfile,
         },
         entityId,
@@ -340,6 +501,7 @@ export function buildHoverFans(
           fanRadius: mainFanRadius,
           ringTubeRadius: mainRingTubeRadius,
           outwardAngleRad,
+          fanSpinRadPerSec,
           smokeProfile,
         },
         entityId,
@@ -358,6 +520,7 @@ export function buildHoverFans(
           fanRadius: mainFanRadius,
           ringTubeRadius: mainRingTubeRadius,
           outwardAngleRad,
+          fanSpinRadPerSec,
           smokeProfile,
         },
         entityId,
@@ -378,6 +541,7 @@ export function buildHoverFans(
             fanRadius: mainFanRadius,
             ringTubeRadius: mainRingTubeRadius,
             outwardAngleRad,
+            fanSpinRadPerSec,
             smokeProfile,
           },
           entityId,
@@ -394,7 +558,7 @@ export function buildHoverFans(
     group,
     fans,
     clearance: 0,
-    fanSpinRadPerSec: cfg.fanSpinRadPerSec ?? DEFAULT_FAN_SPIN_RAD_PER_SEC,
+    fanSpinRadPerSec,
     geometryKey: '',
   };
 }
@@ -402,13 +566,13 @@ export function buildHoverFans(
 export function updateHoverFans(
   mesh: HoverMesh,
   entity: Entity,
-  dtMs: number,
+  _dtMs: number,
   mapWidth: number,
   mapHeight: number,
   smokeOut?: SmokePuffEmitter[],
-): void {
-  const dtSec = dtMs / 1000;
-
+  emitterBatch?: AirborneEmitterBatch3D,
+  parentPose?: AirborneEmitterParentPose3D,
+): boolean {
   // Per-frame clearance + soft floor safety. The chassis world Y is
   // sim altitude (entity.transform.z); the rendered rig group is a
   // child of the unitGroup, so local-Y adjustments shift it relative
@@ -421,13 +585,38 @@ export function updateHoverFans(
   );
   const rawClearance = chassisWorldY - groundY;
   const floorDeficit = HOVER_FLOOR_MARGIN - rawClearance;
-  mesh.group.position.y = floorDeficit > 0 ? floorDeficit : 0;
+  const groupY = floorDeficit > 0 ? floorDeficit : 0;
+  if (mesh.group.position.y !== groupY) mesh.group.position.y = groupY;
   mesh.clearance = Math.max(rawClearance, HOVER_FLOOR_MARGIN);
+
+  if (!smokeOut) return false;
 
   for (let i = 0; i < mesh.fans.length; i++) {
     const fan = mesh.fans[i];
-    fan.rotor.rotation.y -= mesh.fanSpinRadPerSec * dtSec;
-    if (!smokeOut) continue;
+    if (emitterBatch && parentPose) {
+      emitterBatch.enqueue(
+        parentPose,
+        mesh.group.position.x,
+        groupY,
+        mesh.group.position.z,
+        fan.group.position.x,
+        fan.group.position.y,
+        fan.group.position.z,
+        fan.group.quaternion.x,
+        fan.group.quaternion.y,
+        fan.group.quaternion.z,
+        fan.group.quaternion.w,
+        fan.emitter.position.x,
+        fan.emitter.position.y,
+        fan.emitter.position.z,
+        LOCAL_EXHAUST_DIR.x,
+        LOCAL_EXHAUST_DIR.y,
+        LOCAL_EXHAUST_DIR.z,
+        fan.exhaustSpeed,
+        fan.smoke,
+      );
+      continue;
+    }
 
     fan.emitter.getWorldPosition(_fanWorldPos);
     fan.group.getWorldQuaternion(_fanWorldQuat);
@@ -441,4 +630,5 @@ export function updateHoverFans(
     fan.smoke.vz = _fanWorldDir.y * fan.exhaustSpeed;
     smokeOut.push(fan.smoke);
   }
+  return true;
 }

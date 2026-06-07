@@ -23,6 +23,8 @@ import {
   fadeLocomotion,
   translateLocomotion,
   captureLegState,
+  setHoverFanAnimationTime,
+  type AirborneEmitterUpdate3D,
   type LegStateSnapshot,
 } from './Locomotion3D';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
@@ -72,6 +74,7 @@ import {
   UnitRenderPacket3D,
   type BuildingRenderPacket3D,
 } from './EntityRenderPackets3D';
+import { AirborneEmitterBatch3D } from './AirborneEmitterBatch3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -210,6 +213,7 @@ export class Render3DEntities {
   private unitMeshBuilder!: UnitMeshBuilder3D;
   private projectileRangeEnvelope: ProjectileRangeEnvelope3D;
   private readonly hoverSmokeEmitters: SmokePuffEmitter[] = [];
+  private readonly airborneEmitterBatch = new AirborneEmitterBatch3D();
 
   private barrelSpinState = new UnitBarrelSpinState3D();
   private shieldPanelPose = new ShieldPanelPose3D();
@@ -280,6 +284,20 @@ export class Render3DEntities {
    *  through liftGroup) render lifted — visible mismatch on every
    *  chassis-instanced unit. */
   private _smoothLiftedPos = new THREE.Vector3();
+  private _locomotionParentQuat = new THREE.Quaternion();
+  private _airborneBankQuat = new THREE.Quaternion();
+  private readonly _airborneEmitterUpdate: AirborneEmitterUpdate3D = {
+    batch: this.airborneEmitterBatch,
+    pose: {
+      parentX: 0,
+      parentY: 0,
+      parentZ: 0,
+      parentQX: 0,
+      parentQY: 0,
+      parentQZ: 0,
+      parentQW: 1,
+    },
+  };
 
   private turretMountCache = new TurretMountCache3D();
   // Last beam-firing direction per turret, collected from the live beam
@@ -470,6 +488,7 @@ export class Render3DEntities {
     this._currentDtMs = frameSpin.currentDtMs;
     this._currentTimeMs = frameSpin.timeMs;
     this._spinDt = frameSpin.spinDtSec;
+    setHoverFanAnimationTime(frameSpin.timeMs / 1000);
     this.turretMountCache.reset(this._currentDtMs);
     refreshLocomotionSupportSurfaces(this.clientViewState.getPredictionSupportSurfaceEntities());
     this.syncSmokeTrailsQueue();
@@ -789,6 +808,7 @@ export class Render3DEntities {
 
   private updateUnits(unitRows: UnitRenderPacket3D | undefined, scopedRender: boolean): void {
     this.hoverSmokeEmitters.length = 0;
+    this.airborneEmitterBatch.begin();
     const packetProvided = unitRows !== undefined;
     const rows = unitRows ?? this.populateFallbackUnitRenderRows();
     this.updateUnitMeshes(rows, scopedRender, packetProvided);
@@ -1050,6 +1070,22 @@ export class Render3DEntities {
         poseOutput[poseBase + 14],
       );
       this._unitChainMat.fromArray(poseOutput, poseBase + 16);
+      this._locomotionParentQuat.set(
+        poseOutput[poseBase + 8],
+        poseOutput[poseBase + 9],
+        poseOutput[poseBase + 10],
+        poseOutput[poseBase + 11],
+      );
+      if (airborne && m.visualBankRoll !== undefined && m.visualBankRoll !== 0) {
+        const bankHalfAngle = -m.visualBankRoll * 0.5;
+        this._airborneBankQuat.set(
+          Math.sin(bankHalfAngle),
+          0,
+          0,
+          Math.cos(bankHalfAngle),
+        );
+        this._locomotionParentQuat.multiply(this._airborneBankQuat);
+      }
       this.chassisInstancePose.update(
         e,
         m,
@@ -1140,6 +1176,7 @@ export class Render3DEntities {
             mapHeight,
             this.legRenderer,
             locomotionSmokeEmitters,
+            this.prepareAirborneEmitterUpdate(tx, groundZ, ty, this._locomotionParentQuat),
           );
           if (keepLocomotionActive) this.activeLocomotionUnitIds.add(e.id);
           else this.activeLocomotionUnitIds.delete(e.id);
@@ -1158,6 +1195,7 @@ export class Render3DEntities {
     this.chassisInstancePose.flush(this.unitDetailInstances);
     this.turretPose.flush(this.unitDetailInstances, this.turretMountCache);
     this.shieldPanelPose.flush(this.unitDetailInstances);
+    this.airborneEmitterBatch.flush(this.hoverSmokeEmitters);
 
     if (pruneUnits) this.pruneUnseenUnitMeshes(pruneToken, scopedRender);
     this.lastUnitEntitySetVersion = entitySetVersion;
@@ -1166,6 +1204,24 @@ export class Render3DEntities {
     this.dyingUnits.update(this._currentDtMs);
     this.vanishingUnits.update(this._currentDtMs);
     this.unitDetailInstances.flush(this.turretShieldPanelsEnabled);
+  }
+
+  private prepareAirborneEmitterUpdate(
+    parentX: number,
+    parentY: number,
+    parentZ: number,
+    parentQuat: THREE.Quaternion,
+  ): AirborneEmitterUpdate3D {
+    const update = this._airborneEmitterUpdate;
+    const pose = update.pose;
+    pose.parentX = parentX;
+    pose.parentY = parentY;
+    pose.parentZ = parentZ;
+    pose.parentQX = parentQuat.x;
+    pose.parentQY = parentQuat.y;
+    pose.parentQZ = parentQuat.z;
+    pose.parentQW = parentQuat.w;
+    return update;
   }
 
   private syncLegsRadiusToggleQueue(): void {

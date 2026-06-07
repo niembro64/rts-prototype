@@ -45,6 +45,7 @@ import {
   type HoverMesh,
   buildAlbatrosHoverFans,
   buildHoverFans,
+  setHoverFanAnimationTime,
   updateHoverFans,
 } from './HoverRig3D';
 import {
@@ -54,6 +55,10 @@ import {
 } from './FlyingRig3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 import type { FlyingSmokeUseId, HoverSmokeUseId } from '@/smokeConfig';
+import type {
+  AirborneEmitterBatch3D,
+  AirborneEmitterParentPose3D,
+} from './AirborneEmitterBatch3D';
 
 export type Locomotion3DMesh =
   | TreadMesh
@@ -65,6 +70,12 @@ export type Locomotion3DMesh =
 
 export type { LegStateSnapshot };
 export { TREAD_HEIGHT };
+export { setHoverFanAnimationTime };
+
+export type AirborneEmitterUpdate3D = {
+  batch: AirborneEmitterBatch3D;
+  pose: AirborneEmitterParentPose3D;
+};
 
 /** Vertical offset (world units) by which the unit's BODY (chassis,
  *  turrets, mirrors, shield) sits above the ground plane.
@@ -196,6 +207,7 @@ export function updateLocomotion(
   mapHeight: number,
   legRenderer: LegInstancedRenderer,
   hoverSmokeEmitters?: SmokePuffEmitter[],
+  airborneEmitters?: AirborneEmitterUpdate3D,
 ): boolean {
   if (!mesh) return false;
   switch (mesh.type) {
@@ -206,10 +218,25 @@ export function updateLocomotion(
     case 'legs':
       return updateLegs(mesh, entity, dtMs, mapWidth, mapHeight, legRenderer);
     case 'hover':
-      updateHoverFans(mesh, entity, dtMs, mapWidth, mapHeight, hoverSmokeEmitters);
-      return true;
+      return updateHoverFans(
+        mesh,
+        entity,
+        dtMs,
+        mapWidth,
+        mapHeight,
+        hoverSmokeEmitters,
+        airborneEmitters?.batch,
+        airborneEmitters?.pose,
+      );
     case 'flying':
-      return updateFlyingRig(mesh, entity, dtMs, hoverSmokeEmitters);
+      return updateFlyingRig(
+        mesh,
+        entity,
+        dtMs,
+        hoverSmokeEmitters,
+        airborneEmitters?.batch,
+        airborneEmitters?.pose,
+      );
   }
 }
 

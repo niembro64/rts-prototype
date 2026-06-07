@@ -5290,6 +5290,132 @@ pub fn render_unit_pose_compute(count: u32) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+//  Render pose helper — airborne locomotion smoke emitters
+//
+//  Each row composes:
+//    T(parentPos) · R(parentQuat) · T(groupPos)
+//    · T(childPos) · R(childQuat) · T(emitterPos)
+//
+//  Output is in sim coordinate order for SmokeTrail3D:
+//    smoke position x/y/z, smoke velocity x/y/z.
+// ─────────────────────────────────────────────────────────────────
+
+pub const RENDER_AIRBORNE_EMITTER_INPUT_STRIDE: usize = 24;
+pub const RENDER_AIRBORNE_EMITTER_OUTPUT_STRIDE: usize = 6;
+
+struct RenderAirborneEmitterScratch {
+    input: Vec<f32>,
+    output: Vec<f32>,
+}
+
+struct RenderAirborneEmitterScratchHolder(UnsafeCell<Option<RenderAirborneEmitterScratch>>);
+unsafe impl Sync for RenderAirborneEmitterScratchHolder {}
+static RENDER_AIRBORNE_EMITTER_SCRATCH: RenderAirborneEmitterScratchHolder =
+    RenderAirborneEmitterScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn render_airborne_emitter_scratch() -> &'static mut RenderAirborneEmitterScratch {
+    unsafe {
+        let cell = &mut *RENDER_AIRBORNE_EMITTER_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(RenderAirborneEmitterScratch {
+                input: vec![0.0; RENDER_AIRBORNE_EMITTER_INPUT_STRIDE * 512],
+                output: vec![0.0; RENDER_AIRBORNE_EMITTER_OUTPUT_STRIDE * 512],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn render_airborne_emitter_input_scratch_ptr() -> *const f32 {
+    render_airborne_emitter_scratch().input.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn render_airborne_emitter_output_scratch_ptr() -> *const f32 {
+    render_airborne_emitter_scratch().output.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn render_airborne_emitter_scratch_ensure(count: u32) {
+    let s = render_airborne_emitter_scratch();
+    let input_needed = (count as usize) * RENDER_AIRBORNE_EMITTER_INPUT_STRIDE;
+    if s.input.len() < input_needed {
+        s.input.resize(input_needed, 0.0);
+    }
+    let output_needed = (count as usize) * RENDER_AIRBORNE_EMITTER_OUTPUT_STRIDE;
+    if s.output.len() < output_needed {
+        s.output.resize(output_needed, 0.0);
+    }
+}
+
+#[wasm_bindgen]
+pub fn render_airborne_emitter_compute(count: u32) {
+    let s = render_airborne_emitter_scratch();
+    let count_usize = count as usize;
+    debug_assert!(s.input.len() >= count_usize * RENDER_AIRBORNE_EMITTER_INPUT_STRIDE);
+    debug_assert!(s.output.len() >= count_usize * RENDER_AIRBORNE_EMITTER_OUTPUT_STRIDE);
+
+    for i in 0..count_usize {
+        let ib = i * RENDER_AIRBORNE_EMITTER_INPUT_STRIDE;
+        let ob = i * RENDER_AIRBORNE_EMITTER_OUTPUT_STRIDE;
+        let parent_pos = [
+            s.input[ib] as f64,
+            s.input[ib + 1] as f64,
+            s.input[ib + 2] as f64,
+        ];
+        let parent_q = [
+            s.input[ib + 3] as f64,
+            s.input[ib + 4] as f64,
+            s.input[ib + 5] as f64,
+            s.input[ib + 6] as f64,
+        ];
+        let group_pos = [
+            s.input[ib + 7] as f64,
+            s.input[ib + 8] as f64,
+            s.input[ib + 9] as f64,
+        ];
+        let child_pos = [
+            s.input[ib + 10] as f64,
+            s.input[ib + 11] as f64,
+            s.input[ib + 12] as f64,
+        ];
+        let child_q = [
+            s.input[ib + 13] as f64,
+            s.input[ib + 14] as f64,
+            s.input[ib + 15] as f64,
+            s.input[ib + 16] as f64,
+        ];
+        let emitter_pos = [
+            s.input[ib + 17] as f64,
+            s.input[ib + 18] as f64,
+            s.input[ib + 19] as f64,
+        ];
+        let exhaust_dir = [
+            s.input[ib + 20] as f64,
+            s.input[ib + 21] as f64,
+            s.input[ib + 22] as f64,
+        ];
+        let exhaust_speed = s.input[ib + 23] as f64;
+
+        let group_world_pos = render_compose_child_offset(parent_q, parent_pos, group_pos);
+        let child_world_pos = render_compose_child_offset(parent_q, group_world_pos, child_pos);
+        let child_world_q = quat_mul(parent_q, child_q);
+        let emitter_world_pos =
+            render_compose_child_offset(child_world_q, child_world_pos, emitter_pos);
+        let world_dir = quat_rotate_vec(child_world_q, exhaust_dir);
+
+        s.output[ob] = emitter_world_pos[0] as f32;
+        s.output[ob + 1] = emitter_world_pos[2] as f32;
+        s.output[ob + 2] = emitter_world_pos[1] as f32;
+        s.output[ob + 3] = (world_dir[0] * exhaust_speed) as f32;
+        s.output[ob + 4] = (world_dir[2] * exhaust_speed) as f32;
+        s.output[ob + 5] = (world_dir[1] * exhaust_speed) as f32;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────
 //  Render pose helper — building group + body matrices
 //
 //  Each row writes:

@@ -9,6 +9,10 @@ import {
 } from '@/smokeConfig';
 import type { FlyingConfig } from '@/types/blueprints';
 import type { Entity, PlayerId } from '../sim/types';
+import type {
+  AirborneEmitterBatch3D,
+  AirborneEmitterParentPose3D,
+} from './AirborneEmitterBatch3D';
 import type { LocomotionBase } from './LocomotionRigShared3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 import { locomotionPieceColorHex } from './colorUtils';
@@ -248,10 +252,37 @@ export function updateFlyingRig(
   _entity: Entity,
   _dtMs: number,
   smokeOut?: SmokePuffEmitter[],
+  emitterBatch?: AirborneEmitterBatch3D,
+  parentPose?: AirborneEmitterParentPose3D,
 ): boolean {
   if (!smokeOut) return false;
 
   for (const jet of mesh.jets) {
+    if (emitterBatch && parentPose) {
+      emitterBatch.enqueue(
+        parentPose,
+        mesh.group.position.x,
+        mesh.group.position.y,
+        mesh.group.position.z,
+        jet.group.position.x,
+        jet.group.position.y,
+        jet.group.position.z,
+        jet.group.quaternion.x,
+        jet.group.quaternion.y,
+        jet.group.quaternion.z,
+        jet.group.quaternion.w,
+        jet.emitter.position.x,
+        jet.emitter.position.y,
+        jet.emitter.position.z,
+        LOCAL_EXHAUST_DIR.x,
+        LOCAL_EXHAUST_DIR.y,
+        LOCAL_EXHAUST_DIR.z,
+        mesh.smokeExhaustSpeed,
+        jet.smoke,
+      );
+      continue;
+    }
+
     jet.emitter.getWorldPosition(_jetWorldPos);
     jet.group.getWorldQuaternion(_jetWorldQuat);
     _jetWorldDir.copy(LOCAL_EXHAUST_DIR).applyQuaternion(_jetWorldQuat).normalize();

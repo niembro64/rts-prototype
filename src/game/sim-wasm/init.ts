@@ -72,6 +72,10 @@ import __wbg_init, {
   render_unit_pose_input_scratch_ptr,
   render_unit_pose_output_scratch_ptr,
   render_unit_pose_scratch_ensure,
+  render_airborne_emitter_compute,
+  render_airborne_emitter_input_scratch_ptr,
+  render_airborne_emitter_output_scratch_ptr,
+  render_airborne_emitter_scratch_ensure,
   render_building_pose_compute,
   render_building_pose_input_scratch_ptr,
   render_building_pose_output_scratch_ptr,
@@ -1636,6 +1640,12 @@ export interface RenderPoseApi {
   unitCompute: (count: number) => void;
   unitInputStride: number;
   unitOutputStride: number;
+  airborneEmitterInputScratchPtr: () => number;
+  airborneEmitterOutputScratchPtr: () => number;
+  airborneEmitterScratchEnsure: (count: number) => void;
+  airborneEmitterCompute: (count: number) => void;
+  airborneEmitterInputStride: number;
+  airborneEmitterOutputStride: number;
   buildingInputScratchPtr: () => number;
   buildingOutputScratchPtr: () => number;
   buildingScratchEnsure: (count: number) => void;
@@ -4073,6 +4083,12 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           unitCompute: render_unit_pose_compute,
           unitInputStride: 11,
           unitOutputStride: 32,
+          airborneEmitterInputScratchPtr: render_airborne_emitter_input_scratch_ptr,
+          airborneEmitterOutputScratchPtr: render_airborne_emitter_output_scratch_ptr,
+          airborneEmitterScratchEnsure: render_airborne_emitter_scratch_ensure,
+          airborneEmitterCompute: render_airborne_emitter_compute,
+          airborneEmitterInputStride: 24,
+          airborneEmitterOutputStride: 6,
           buildingInputScratchPtr: render_building_pose_input_scratch_ptr,
           buildingOutputScratchPtr: render_building_pose_output_scratch_ptr,
           buildingScratchEnsure: render_building_pose_scratch_ensure,
