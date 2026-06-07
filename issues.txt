@@ -43,18 +43,18 @@ src/game/render3d/UnitDetailInstanceRenderer3D.ts
 Current remaining issue:
 Several high-count render paths still execute TypeScript object loops and
 Three.js scenegraph mutations per visible unit/building. The remaining hot work
-includes airborne leg poses, hover/flying fan and smoke updates, and live
-enabled building turret spin. Grounded legged locomotion, rolling wheel/tread
-locomotion, ambient producer resource pylon rate/spray updates, solar petal
-poses, and producer rig poses such as wind/extractor rotors and folds,
-converter rings, and radar spins should stay on their active-source/drain queues
-rather than returning to broad per-producer frame loops. These paths are likely
-to dominate at the "thousands of units" target. Reuse or extend the existing
-batched packet, explicit active/drain queues, explicit lifecycle queue, and WASM
-kernel contracts; do not add new broad per-entity scenegraph scans.
+includes hover/flying fan and smoke updates and live enabled building turret
+spin. Legged locomotion, rolling wheel/tread locomotion, ambient producer
+resource pylon rate/spray updates, solar petal poses, and producer rig poses
+such as wind/extractor rotors and folds, converter rings, and radar spins
+should stay on their active-source/drain queues rather than returning to broad
+per-producer frame loops. These paths are likely to dominate at the "thousands
+of units" target. Reuse or extend the existing batched packet, explicit
+active/drain queues, explicit lifecycle queue, and WASM kernel contracts; do
+not add new broad per-entity scenegraph scans.
 
 Required fix:
-Move the remaining airborne locomotion and live enabled building turret spin
-writes into WASM-owned slabs, GPU-updated buffers, or explicit
+Move the remaining hover/flying fan and smoke updates and live enabled building
+turret spin writes into WASM-owned slabs, GPU-updated buffers, or explicit
 dirty/active/removal queues as practical. Keep Three.js work limited to buffer
 uploads and true lifecycle changes.

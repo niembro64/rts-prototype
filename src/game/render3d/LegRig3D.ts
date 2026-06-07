@@ -122,6 +122,10 @@ const AIRBORNE_BASE_EXTENSION = 0.65;
 const AIRBORNE_NEAR_GROUND_REACH_FRACTION = 1.2;
 const AIRBORNE_DESCENT_SPEED_FOR_FULL_EXTENSION = 45;
 const AIRBORNE_FOOT_POSE_TAU_SEC = 0.12;
+const AIRBORNE_LEG_POSE_SETTLED_EPSILON_SQ = 0.05 * 0.05;
+const AIRBORNE_LEG_LINEAR_SPEED_EPSILON_SQ = 1e-4;
+const AIRBORNE_LEG_ANGULAR_SPEED_EPSILON_SQ = 1e-8;
+const AIRBORNE_LEG_SUSPENSION_EPSILON = 1e-3;
 const MIN_LEG_SWING_DURATION_MS = 80;
 
 // Render-only contact band for leg gait. Physics contact uses a tiny
@@ -554,7 +558,7 @@ export function updateLegs(
   const vLocalLateral = -sinYaw * vx + cosYaw * vy;
 
   if (!grounded) {
-    updateAirborneLegPose(
+    return updateAirborneLegPose(
       mesh,
       entity,
       dtMs,
@@ -566,7 +570,6 @@ export function updateLegs(
       chassisUpY,
       chassisUpZ,
     );
-    return true;
   }
 
   for (const leg of mesh.legs) {
@@ -760,6 +763,34 @@ function legsNeedFrame(mesh: LegMesh, entity: Entity, showViz: boolean): boolean
   return false;
 }
 
+function airborneLegBodyActive(entity: Entity): boolean {
+  const unit = entity.unit;
+  if (!unit) return false;
+  const vx = unit.velocityX ?? 0;
+  const vy = unit.velocityY ?? 0;
+  const vz = unit.velocityZ ?? 0;
+  if (vx * vx + vy * vy + vz * vz > AIRBORNE_LEG_LINEAR_SPEED_EPSILON_SQ) return true;
+  const angularVelocity = unit.angularVelocity3;
+  if (
+    angularVelocity !== null &&
+    angularVelocity.x * angularVelocity.x +
+      angularVelocity.y * angularVelocity.y +
+      angularVelocity.z * angularVelocity.z > AIRBORNE_LEG_ANGULAR_SPEED_EPSILON_SQ
+  ) {
+    return true;
+  }
+  const suspension = unit.suspension;
+  if (!suspension) return false;
+  return (
+    Math.abs(suspension.offsetX) > AIRBORNE_LEG_SUSPENSION_EPSILON ||
+    Math.abs(suspension.offsetY) > AIRBORNE_LEG_SUSPENSION_EPSILON ||
+    Math.abs(suspension.offsetZ) > AIRBORNE_LEG_SUSPENSION_EPSILON ||
+    Math.abs(suspension.velocityX) > AIRBORNE_LEG_SUSPENSION_EPSILON ||
+    Math.abs(suspension.velocityY) > AIRBORNE_LEG_SUSPENSION_EPSILON ||
+    Math.abs(suspension.velocityZ) > AIRBORNE_LEG_SUSPENSION_EPSILON
+  );
+}
+
 function totalLegLength(c: ArachnidLegConfig): number {
   return c.upperLegLength + c.lowerLegLength;
 }
@@ -940,7 +971,7 @@ function updateAirborneLegPose(
   chassisUpX: number,
   chassisUpY: number,
   chassisUpZ: number,
-): void {
+): boolean {
   const bodyBaseY = entity.transform.z - bodyCenterHeight;
   const bodyGroundY = getLocomotionSurfaceHeight(
     entity.transform.x,
@@ -952,6 +983,7 @@ function updateAirborneLegPose(
   const bodyClearance = Math.max(0, bodyBaseY - bodyGroundY);
   const descentSpeed = Math.max(0, -(entity.unit?.velocityZ ?? 0));
   const poseAlpha = emaAlpha(Math.max(0, dtMs) / 1000, AIRBORNE_FOOT_POSE_TAU_SEC);
+  let needsFrame = airborneLegBodyActive(entity);
 
   for (const leg of mesh.legs) {
     if (leg.restSphere) leg.restSphere.visible = false;
@@ -1040,6 +1072,12 @@ function updateAirborneLegPose(
       leg.worldY += (targetFootY - leg.worldY) * poseAlpha;
       leg.worldZ += (targetFootZ - leg.worldZ) * poseAlpha;
     }
+    const poseDx = targetFootX - leg.worldX;
+    const poseDy = targetFootY - leg.worldY;
+    const poseDz = targetFootZ - leg.worldZ;
+    if (poseDx * poseDx + poseDy * poseDy + poseDz * poseDz > AIRBORNE_LEG_POSE_SETTLED_EPSILON_SQ) {
+      needsFrame = true;
+    }
 
     const footSurface = sampleLocomotionFootSurface(
       leg.worldX,
@@ -1074,6 +1112,7 @@ function updateAirborneLegPose(
       chassisUpX, chassisUpY, chassisUpZ,
     );
   }
+  return needsFrame;
 }
 
 function writeLegRenderPose(
