@@ -290,8 +290,13 @@ export class BuildingEntityRenderer3D {
       const activePrediction = rows.activePredictionAt(row);
       const needsTurretFrame =
         activePrediction ||
-        mesh?.buildingHasPerFrameTurretWork === true ||
-        (mesh === undefined && entityHasPerFrameBuildingTurretWork(entity));
+        (
+          this.barrelSpinEnabled &&
+          (
+            mesh?.buildingHasPerFrameTurretWork === true ||
+            (mesh === undefined && entityHasPerFrameBuildingTurretWork(entity))
+          )
+        );
       const bodyFadeActive =
         rows.bodyOpacity[row] < 1 || mesh?.buildingGroupFadeActive === true;
       const rangeOverlayVersionDirty =
@@ -315,7 +320,7 @@ export class BuildingEntityRenderer3D {
         continue;
       }
 
-      if (needsTurretFrame) this.barrelSpin.advance(entity, spinDt);
+      if (needsTurretFrame && this.barrelSpinEnabled) this.barrelSpin.advance(entity, spinDt);
       this.updateBuilding(
         entity,
         rows,
