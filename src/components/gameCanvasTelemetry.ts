@@ -35,6 +35,12 @@ export function useGameCanvasTelemetry({
   const hudSpritePeakCount = ref(0);
   const hudSpriteDisposedCount = ref(0);
   const hudSpriteBudgetCount = ref(0);
+  const scopedRetainedUnitMeshes = ref(0);
+  const scopedRetainedBuildingMeshes = ref(0);
+  const scopedMeshHiddenPerSec = ref(0);
+  const scopedMeshReactivatedPerSec = ref(0);
+  const scopedMeshDestroyPerSec = ref(0);
+  const scopedMeshRebuildPerSec = ref(0);
   const longtaskMsPerSec = ref(0);
   const longtaskSupported = ref(false);
   const renderTpsAvg = ref(0);
@@ -96,6 +102,30 @@ export function useGameCanvasTelemetry({
       setNumberRefIfChanged(hudSpriteDisposedCount, hudSprites.disposedSlots, 0);
       setNumberRefIfChanged(hudSpriteBudgetCount, hudSprites.maxRetainedSlots, 0);
 
+      const scopedMeshes = scene.getScopedMeshRetentionTelemetry();
+      setNumberRefIfChanged(scopedRetainedUnitMeshes, scopedMeshes.retainedUnitMeshes, 0);
+      setNumberRefIfChanged(scopedRetainedBuildingMeshes, scopedMeshes.retainedBuildingMeshes, 0);
+      setNumberRefIfChanged(
+        scopedMeshHiddenPerSec,
+        scopedMeshes.unitHiddenPerSec + scopedMeshes.buildingHiddenPerSec,
+        0.05,
+      );
+      setNumberRefIfChanged(
+        scopedMeshReactivatedPerSec,
+        scopedMeshes.unitReactivatedPerSec + scopedMeshes.buildingReactivatedPerSec,
+        0.05,
+      );
+      setNumberRefIfChanged(
+        scopedMeshDestroyPerSec,
+        scopedMeshes.unitScopedDestroyPerSec + scopedMeshes.buildingScopedDestroyPerSec,
+        0.05,
+      );
+      setNumberRefIfChanged(
+        scopedMeshRebuildPerSec,
+        scopedMeshes.unitScopedRebuildPerSec + scopedMeshes.buildingScopedRebuildPerSec,
+        0.05,
+      );
+
       const snapStats = scene.getSnapshotStats();
       setNumberRefIfChanged(snapAvgRate, snapStats.avgRate, 0.05);
       setNumberRefIfChanged(snapWorstRate, snapStats.worstRate, 0.05);
@@ -140,6 +170,12 @@ export function useGameCanvasTelemetry({
     hudSpriteDisposedCount,
     hudSpritePeakCount,
     hudSpriteRetainedCount,
+    scopedMeshDestroyPerSec,
+    scopedMeshHiddenPerSec,
+    scopedMeshReactivatedPerSec,
+    scopedMeshRebuildPerSec,
+    scopedRetainedBuildingMeshes,
+    scopedRetainedUnitMeshes,
     rendererContextAuxiliaryBudget,
     rendererContextAuxiliaryCount,
     rendererContextDeniedAuxiliaryCount,

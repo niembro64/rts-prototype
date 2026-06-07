@@ -47,23 +47,6 @@ The snapshot path still pays JS object graph construction plus binary packing. E
 Required fix:
 Continue migrating snapshot deltas/keyframes toward a Rust/WASM or typed-buffer writer that emits binary rows directly from SoA/baseline state. Keep the existing serializer only as a parity fallback until the direct writer covers full snapshots, deltas, visibility filtering, projectile events, minimap, and metadata.
 
-[BA-PERF-003] Scoped rendering disposes off-scope meshes and rebuilds them when the camera pans back
-
-Severity: Medium
-
-Evidence:
-- src/game/render3d/Render3DEntities.ts:829-839 enables pruneUnits whenever scopedRender is true.
-- src/game/render3d/Render3DEntities.ts:905-920 builds a unit mesh when no mesh is present.
-- src/game/render3d/Render3DEntities.ts:1293-1303 destroys unseen unit meshes in scopedRender mode.
-- src/game/render3d/BuildingEntityRenderer3D.ts:470-482 destroys unseen building meshes in scopedRender mode.
-- src/game/render3d/BuildingEntityRenderer3D.ts:545-560 rebuilds a building mesh when it re-enters scope.
-
-Risk:
-The renderer correctly avoids updating off-screen units, but it does so by tearing down and later recreating Three.js object graphs as the camera moves. Large pan/zoom movements across a battlefield can create GC churn and GPU resource churn. The philosophy doc asks for renderer-owned buffers, instancing, and work scaling with visible units; it does not require disposal/reallocation for every scoped visibility transition.
-
-Required fix:
-Replace immediate scoped dispose/rebuild with dormant mesh pools, hidden/deactivated records, or an LRU retention budget. Dispose on entity death, actual view removal, style/geometry invalidation, session teardown, or when an explicit memory budget is exceeded. Add telemetry for scoped mesh destroys/rebuilds per second.
-
 [BA-ARCH-001] Large hot-path files make lifecycle, pooling, and Rust/WASM migration hard to audit
 
 Severity: Medium

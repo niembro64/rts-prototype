@@ -38,6 +38,7 @@ import {
   BUILDING_POSE_INPUT_STRIDE,
   BuildingPoseBatch3D,
 } from './BuildingPoseBatch3D';
+import type { ScopedRenderMeshRetention3D } from './ScopedRenderMeshRetention3D';
 
 const BUILDING_HEIGHT = 120;
 
@@ -184,6 +185,7 @@ export type BuildingEntityRenderer3DOptions = {
   getTurretAccentMat: (playerId: PlayerId | undefined) => THREE.Material;
   disposeWorldParentedOverlays: (mesh: EntityMesh) => void;
   metalDeposits: readonly MetalDeposit[];
+  scopedMeshRetention: ScopedRenderMeshRetention3D;
 };
 
 export class BuildingEntityRenderer3D {
@@ -197,6 +199,7 @@ export class BuildingEntityRenderer3D {
   private readonly getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
   private readonly getTurretAccentMat: (playerId: PlayerId | undefined) => THREE.Material;
   private readonly disposeWorldParentedOverlays: (mesh: EntityMesh) => void;
+  private readonly scopedMeshRetention: ScopedRenderMeshRetention3D;
   private readonly animations: BuildingAnimationController3D;
   private readonly meshes = new Map<EntityId, EntityMesh>();
   private renderScopeToken = 0;
@@ -247,6 +250,7 @@ export class BuildingEntityRenderer3D {
     this.getPrimaryMat = options.getPrimaryMat;
     this.getTurretAccentMat = options.getTurretAccentMat;
     this.disposeWorldParentedOverlays = options.disposeWorldParentedOverlays;
+    this.scopedMeshRetention = options.scopedMeshRetention;
     this.animations = new BuildingAnimationController3D(
       this.clientViewState,
       this.constructionVisuals,
@@ -317,6 +321,7 @@ export class BuildingEntityRenderer3D {
       if (entity === undefined || entity.building === null) continue;
 
       const mesh = this.meshes.get(entityId);
+      if (mesh !== undefined) this.reactivateBuildingMeshForScope(entity, mesh);
       const rowDirty = rows.renderDirtyAt(row) || rows.lifecycleDirtyAt(row);
       const activePrediction = rows.activePredictionAt(row);
       const needsTurretFrame = activePrediction;
@@ -452,6 +457,7 @@ export class BuildingEntityRenderer3D {
     id: EntityId,
     beamAimCache: TurretBeamAimCache3D,
   ): void {
+    const wasScopedHidden = this.scopedMeshRetention.forgetBuilding(id);
     this.unregisterBuildingSpinTurrets(id);
     beamAimCache.delete(id);
     this.spawnFadeElapsed.delete(id);
@@ -463,6 +469,10 @@ export class BuildingEntityRenderer3D {
     if (mesh.ring) mesh.ring.visible = false;
     this.animations.unregister(id);
     this.meshes.delete(id);
+    if (wasScopedHidden) {
+      this.disposeBuildingMesh(mesh);
+      return;
+    }
     if (mesh.killed) this.dyingBuildings.markDying(id, mesh);
     else this.vanishingBuildings.markDying(id, mesh);
   }
@@ -475,15 +485,36 @@ export class BuildingEntityRenderer3D {
     for (const [id, mesh] of this.meshes) {
       if (mesh.renderSeenToken === pruneToken) continue;
       if (scopedRender) {
-        this.animations.unregister(id);
-        this.meshes.delete(id);
-        this.unregisterBuildingSpinTurrets(id);
-        beamAimCache.delete(id);
-        this.disposeBuildingMesh(mesh);
+        this.deactivateBuildingMeshForScope(id, mesh, beamAimCache);
       } else {
         this.removeBuildingMeshForViewRemoval(id, beamAimCache);
       }
     }
+  }
+
+  private deactivateBuildingMeshForScope(
+    id: EntityId,
+    mesh: EntityMesh,
+    beamAimCache: TurretBeamAimCache3D,
+  ): void {
+    if (!this.scopedMeshRetention.markBuildingHidden(id)) return;
+    this.animations.unregister(id);
+    this.unregisterBuildingSpinTurrets(id);
+    beamAimCache.delete(id);
+    this.disposeWorldParentedOverlays(mesh);
+    this.applyBuildingEntityFade(mesh, 0);
+    mesh.group.visible = false;
+  }
+
+  private reactivateBuildingMeshForScope(entity: Entity, mesh: EntityMesh): void {
+    if (!this.scopedMeshRetention.markBuildingActive(entity.id)) return;
+    mesh.group.visible = true;
+    this.animations.register(entity, mesh);
+    this.registerBuildingSpinTurrets(entity, mesh);
+    this.applyBuildingEntityFade(
+      mesh,
+      (mesh.buildingMaterializationOpacity ?? 1) * this.currentSpawnFadeIn(entity.id),
+    );
   }
 
   destroy(): void {
@@ -539,6 +570,7 @@ export class BuildingEntityRenderer3D {
       this.meshes.delete(entity.id);
       this.beamAimCache?.delete(entity.id);
       this.unregisterBuildingSpinTurrets(entity.id);
+      this.scopedMeshRetention.forgetBuilding(entity.id);
       this.disposeBuildingMesh(mesh);
       mesh = undefined;
     }

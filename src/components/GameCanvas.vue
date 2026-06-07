@@ -468,6 +468,12 @@ const {
   hudSpriteDisposedCount,
   hudSpritePeakCount,
   hudSpriteRetainedCount,
+  scopedMeshDestroyPerSec,
+  scopedMeshHiddenPerSec,
+  scopedMeshReactivatedPerSec,
+  scopedMeshRebuildPerSec,
+  scopedRetainedBuildingMeshes,
+  scopedRetainedUnitMeshes,
   rendererContextAuxiliaryBudget,
   rendererContextAuxiliaryCount,
   rendererContextDeniedAuxiliaryCount,
@@ -910,6 +916,12 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   hudSpritePeakCount: hudSpritePeakCount.value,
   hudSpriteDisposedCount: hudSpriteDisposedCount.value,
   hudSpriteBudgetCount: hudSpriteBudgetCount.value,
+  scopedRetainedUnitMeshes: scopedRetainedUnitMeshes.value,
+  scopedRetainedBuildingMeshes: scopedRetainedBuildingMeshes.value,
+  scopedMeshHiddenPerSec: scopedMeshHiddenPerSec.value,
+  scopedMeshReactivatedPerSec: scopedMeshReactivatedPerSec.value,
+  scopedMeshDestroyPerSec: scopedMeshDestroyPerSec.value,
+  scopedMeshRebuildPerSec: scopedMeshRebuildPerSec.value,
   frameMsAvg: frameMsAvg.value,
   frameMsHi: frameMsHi.value,
   longtaskSupported: longtaskSupported.value,
@@ -1036,6 +1048,12 @@ watchEffect(() => {
   m.hudSpritePeakCount = hudSpritePeakCount.value;
   m.hudSpriteDisposedCount = hudSpriteDisposedCount.value;
   m.hudSpriteBudgetCount = hudSpriteBudgetCount.value;
+  m.scopedRetainedUnitMeshes = scopedRetainedUnitMeshes.value;
+  m.scopedRetainedBuildingMeshes = scopedRetainedBuildingMeshes.value;
+  m.scopedMeshHiddenPerSec = scopedMeshHiddenPerSec.value;
+  m.scopedMeshReactivatedPerSec = scopedMeshReactivatedPerSec.value;
+  m.scopedMeshDestroyPerSec = scopedMeshDestroyPerSec.value;
+  m.scopedMeshRebuildPerSec = scopedMeshRebuildPerSec.value;
   m.frameMsAvg = frameMsAvg.value;
   m.frameMsHi = frameMsHi.value;
   m.longtaskSupported = longtaskSupported.value;

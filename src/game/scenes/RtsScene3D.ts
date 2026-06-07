@@ -43,6 +43,7 @@ import { SightBoundaryRenderer3D } from '../render3d/SightBoundaryRenderer3D';
 import { Explosion3D } from '../render3d/Explosion3D';
 import { ShieldImpactRenderer3D } from '../render3d/ShieldImpactRenderer3D';
 import { WaterSplash3D } from '../render3d/WaterSplash3D';
+import type { ScopedRenderMeshRetentionTelemetry } from '../render3d/ScopedRenderMeshRetention3D';
 
 // Sim z-up surface normal for a flat water plane. Reused for every
 // water-splash event so the shield impact ring spawns at the
@@ -1539,6 +1540,10 @@ export class RtsScene3D {
     this.addHudSpritePoolTelemetry(out, this.nameLabel3D?.getSpritePoolTelemetry());
     this.addHudSpritePoolTelemetry(out, this.waypoint3D?.getSpritePoolTelemetry());
     return out;
+  }
+
+  public getScopedMeshRetentionTelemetry(): ScopedRenderMeshRetentionTelemetry {
+    return this.entityRenderer.getScopedMeshRetentionTelemetry();
   }
 
   private addHudSpritePoolTelemetry(

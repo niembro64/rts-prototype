@@ -168,6 +168,16 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
+        <div class="fps-stats">
+          <BarLabel :title="`Scoped render mesh retention. Retained units ${model.scopedRetainedUnitMeshes}, retained buildings ${model.scopedRetainedBuildingMeshes}, hidden ${fmt4(model.scopedMeshHiddenPerSec)}/s, shown ${fmt4(model.scopedMeshReactivatedPerSec)}/s, scoped destroys ${fmt4(model.scopedMeshDestroyPerSec)}/s, scoped rebuilds ${fmt4(model.scopedMeshRebuildPerSec)}/s.`">SCOPE:</BarLabel>
+          <span class="fps-value">{{ model.scopedRetainedUnitMeshes }}/{{ model.scopedRetainedBuildingMeshes }}</span>
+          <span class="fps-label">u/b</span>
+          <span class="fps-value">{{ fmt4(model.scopedMeshDestroyPerSec) }}/{{ fmt4(model.scopedMeshRebuildPerSec) }}</span>
+          <span class="fps-label">d/r</span>
+        </div>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
         <BarLabel title="Client CPU - simulation prediction, input, HUD updates. Raw logicMs avg/hi in milliseconds per frame.">CPU:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">

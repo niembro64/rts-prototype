@@ -422,7 +422,7 @@ export class SelectionOverlayRenderer3D {
       if (tm.rangeRings.engageMinRelease) this.removeRangeCircle(tm.rangeRings.engageMinRelease);
       tm.rangeRings = undefined;
     }
-    m.ring = undefined;
+    m.rangeRingsVisible = false;
   }
 
   dispose(): void {

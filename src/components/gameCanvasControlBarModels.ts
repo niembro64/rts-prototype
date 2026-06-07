@@ -116,6 +116,12 @@ export type GameCanvasClientControlBarModel = {
   readonly hudSpritePeakCount: number;
   readonly hudSpriteDisposedCount: number;
   readonly hudSpriteBudgetCount: number;
+  readonly scopedRetainedUnitMeshes: number;
+  readonly scopedRetainedBuildingMeshes: number;
+  readonly scopedMeshHiddenPerSec: number;
+  readonly scopedMeshReactivatedPerSec: number;
+  readonly scopedMeshDestroyPerSec: number;
+  readonly scopedMeshRebuildPerSec: number;
   readonly frameMsAvg: number;
   readonly frameMsHi: number;
   readonly longtaskSupported: boolean;

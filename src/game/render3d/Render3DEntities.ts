@@ -71,6 +71,10 @@ import type { SmokePuffEmitter } from './SmokeTrail3D';
 import { refreshLocomotionSupportSurfaces } from './LocomotionTerrainSampler';
 import { getLegsRadiusToggle, getSmokeTrails } from '@/clientBarConfig';
 import {
+  ScopedRenderMeshRetention3D,
+  type ScopedRenderMeshRetentionTelemetry,
+} from './ScopedRenderMeshRetention3D';
+import {
   UnitRenderPacket3D,
   type BuildingRenderPacket3D,
 } from './EntityRenderPackets3D';
@@ -195,6 +199,7 @@ export class Render3DEntities {
   private readonly activeLocomotionUnitIds = new Set<EntityId>();
   private legsRadiusToggle = getLegsRadiusToggle();
   private smokeTrailsEnabled = getSmokeTrails();
+  private readonly scopedMeshRetention = new ScopedRenderMeshRetention3D();
   /** Per-entity vision fade-IN clock (ms elapsed, 0..VISION_FADE_IN_MS) for
    *  units that have newly entered vision. Keyed by entity id so it survives
    *  mesh rebuilds (LOD / owner recolor) and only resets when the unit truly
@@ -356,6 +361,7 @@ export class Render3DEntities {
       getTurretAccentMat: (playerId) => this.getTurretAccentMat(playerId),
       disposeWorldParentedOverlays: (mesh) => this.disposeWorldParentedOverlays(mesh),
       metalDeposits: this.metalDeposits,
+      scopedMeshRetention: this.scopedMeshRetention,
     });
     this.projectileRenderer = new ProjectileRenderer3D({
       world: this.world,
@@ -537,6 +543,7 @@ export class Render3DEntities {
   }
 
   private destroyUnitMesh(id: EntityId, m: EntityMesh): void {
+    this.scopedMeshRetention.forgetUnit(id);
     disposeEntityGroupFade(m.group);
     destroyLocomotion(m.locomotion, this.legRenderer);
     this.world.remove(m.group);
@@ -920,6 +927,7 @@ export class Render3DEntities {
         this.unitMeshes.set(entityId, m);
         if (m.locomotion) this.activeLocomotionUnitIds.add(entityId);
       }
+      this.reactivateUnitMeshForScope(entityId, m);
       if (pruneUnits) m.renderSeenToken = pruneToken;
       applyUnitLiftGroupPose3D(m, e);
       this.updateUnitInstanceColors(e, m, turrets);
@@ -1266,6 +1274,7 @@ export class Render3DEntities {
   }
 
   private removeUnitMeshForViewRemoval(id: EntityId): void {
+    const wasScopedHidden = this.scopedMeshRetention.forgetUnit(id);
     this.barrelSpinState.delete(id);
     this.turretBeamAimCache.delete(id);
     this.turretMountCache.delete(id);
@@ -1275,6 +1284,10 @@ export class Render3DEntities {
 
     const m = this.unitMeshes.get(id);
     if (!m) return;
+    if (wasScopedHidden) {
+      this.destroyUnitMesh(id, m);
+      return;
+    }
 
     // World-parented overlays (range circles) and the selection ring leave
     // immediately for both removal paths; the body/turrets/locomotion remain
@@ -1294,16 +1307,30 @@ export class Render3DEntities {
     for (const [id, m] of this.unitMeshes) {
       if (m.renderSeenToken === pruneToken) continue;
       if (scopedRender) {
-        const legSnap = captureLegState(m.locomotion);
-        if (legSnap) this.legStateCache.set(id, legSnap);
-        this.destroyUnitMesh(id, m);
-        this.barrelSpinState.delete(id);
-        this.turretBeamAimCache.delete(id);
-        this.turretMountCache.delete(id);
+        this.deactivateUnitMeshForScope(id, m);
       } else {
         this.removeUnitMeshForViewRemoval(id);
       }
     }
+  }
+
+  private deactivateUnitMeshForScope(id: EntityId, m: EntityMesh): void {
+    if (!this.scopedMeshRetention.markUnitHidden(id)) return;
+    this.disposeWorldParentedOverlays(m);
+    this.unitDetailInstances.clearChassisSlots(m);
+    for (const turret of m.turrets) this.unitDetailInstances.clearTurretSlots(turret);
+    if (m.mirrors) this.deactivateShieldPanelMesh(m.mirrors);
+    this.applyUnitEntityFade(m, 0, null);
+    m.group.visible = false;
+    this.activeLocomotionUnitIds.delete(id);
+    this.barrelSpinState.delete(id);
+    this.turretBeamAimCache.delete(id);
+    this.turretMountCache.delete(id);
+  }
+
+  private reactivateUnitMeshForScope(id: EntityId, m: EntityMesh): void {
+    if (!this.scopedMeshRetention.markUnitActive(id)) return;
+    m.group.visible = true;
   }
 
   /** Look up the lift subgroup for a unit's mesh. The lift group
@@ -1382,6 +1409,10 @@ export class Render3DEntities {
     return this.unitMeshes.get(eid)?.locomotion;
   }
 
+  getScopedMeshRetentionTelemetry(): ScopedRenderMeshRetentionTelemetry {
+    return this.scopedMeshRetention.getTelemetry();
+  }
+
   destroy(): void {
     // TURR CIR / BLD overlays are world-parented so they stay flat on
     // the terrain regardless of unit rotation; release those explicitly.
@@ -1406,6 +1437,7 @@ export class Render3DEntities {
     this.barrelSpinState.clear();
     this.turretBeamAimCache.clear();
     this.activeLocomotionUnitIds.clear();
+    this.scopedMeshRetention.clear();
     this.unitRenderScopeToken = 0;
     this.lastUnitEntitySetVersion = -1;
     this.constructionVisuals.destroy();
