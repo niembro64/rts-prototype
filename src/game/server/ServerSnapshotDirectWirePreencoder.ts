@@ -30,7 +30,7 @@ import {
 } from '../network/stateSerializerEntityDelta';
 import { serializeGridSnapshot } from '../network/stateSerializerGrid';
 import { writeMinimapSnapshotWireRowsDirect } from '../network/stateSerializerMinimap';
-import { serializeProjectileSnapshot } from '../network/stateSerializerProjectiles';
+import { writeProjectileSnapshotWireRowsDirect } from '../network/stateSerializerProjectiles';
 import { serializeResourceMovements } from '../network/stateSerializerResourceMovements';
 import { writeSprayTargetWireRowsDirect } from '../network/stateSerializerSpray';
 import {
@@ -220,7 +220,7 @@ export class ServerSnapshotDirectWirePreencoder {
       ? input.audioOverride.value
       : serializeAudioEvents(input.audioEvents, input.visibility, input.trackingKey);
     const netScanPulses = serializeScanPulses(input.world, input.visibility);
-    const netProjectiles = serializeProjectileSnapshot({
+    const netProjectiles = writeProjectileSnapshotWireRowsDirect({
       world: input.world,
       deltaEnabled: input.isDelta && SNAPSHOT_CONFIG.deltaEnabled,
       visibility: input.visibility,

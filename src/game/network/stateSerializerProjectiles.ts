@@ -127,6 +127,16 @@ const _projectilesBuf: ProjectileSnapshot = {
   velocityUpdates: undefined,
   beamUpdates: undefined,
 };
+const _directProjectileSpawnPlaceholders: NetworkServerSnapshotProjectileSpawn[] = [];
+const _directProjectileDespawnPlaceholders: NetworkServerSnapshotProjectileDespawn[] = [];
+const _directProjectileVelocityPlaceholders: NetworkServerSnapshotVelocityUpdate[] = [];
+const _directProjectileBeamUpdatePlaceholders: NetworkServerSnapshotBeamUpdate[] = [];
+const _directProjectilesBuf: ProjectileSnapshot = {
+  spawns: undefined,
+  despawns: undefined,
+  velocityUpdates: undefined,
+  beamUpdates: undefined,
+};
 const projectileWireSource: ProjectileSnapshotWireSource = {
   spawns: createFloat64WireRows(),
   despawns: createUint32WireRows(),
@@ -136,6 +146,7 @@ const projectileWireSource: ProjectileSnapshotWireSource = {
 };
 const projectileWireSources = new WeakMap<object, ProjectileSnapshotWireSource>([
   [_projectilesBuf, projectileWireSource],
+  [_directProjectilesBuf, projectileWireSource],
 ]);
 
 function createPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
@@ -223,6 +234,11 @@ function createPooledVelocityUpdate(): NetworkServerSnapshotVelocityUpdate {
   update.velocity = update._velocity;
   return update;
 }
+
+const _directProjectileSpawnScratch = createPooledProjectileSpawn() as PooledProjectileSpawn;
+const _directProjectileVelocityScratch = createPooledVelocityUpdate() as PooledVelocityUpdate;
+const _directBeamUpdateScratch = createPooledBeamUpdate();
+const _directBeamPointScratch = createPooledBeamPoint();
 
 function getPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
   let update = _beamUpdatePool[_beamUpdatePoolIndex];
@@ -859,4 +875,266 @@ export function serializeProjectileSnapshot({
   _projectilesBuf.velocityUpdates = netVelocityUpdates;
   _projectilesBuf.beamUpdates = netBeamUpdates;
   return _projectilesBuf;
+}
+
+export function writeProjectileSnapshotWireRowsDirect({
+  world,
+  deltaEnabled,
+  visibility,
+  emitBeamUpdates,
+  projectileSpawns,
+  projectileDespawns,
+  projectileVelocityUpdates,
+}: SerializeProjectileSnapshotOptions): ProjectileSnapshot | undefined {
+  resetProjectileWireSource();
+  _directProjectileSpawnPlaceholders.length = 0;
+  _directProjectileDespawnPlaceholders.length = 0;
+  _directProjectileVelocityPlaceholders.length = 0;
+  _directProjectileBeamUpdatePlaceholders.length = 0;
+  _directProjectilesBuf.spawns = undefined;
+  _directProjectilesBuf.despawns = undefined;
+  _directProjectilesBuf.velocityUpdates = undefined;
+  _directProjectilesBuf.beamUpdates = undefined;
+
+  const wantKeyframeProjectileResync = !deltaEnabled;
+  const tickSpawnCount = projectileSpawns === undefined ? 0 : projectileSpawns.length;
+  if (tickSpawnCount > 0 || wantKeyframeProjectileResync) {
+    if (wantKeyframeProjectileResync) _resyncSeenIds.clear();
+    if (projectileSpawns) {
+      for (let i = 0; i < tickSpawnCount; i++) {
+        const ps = projectileSpawns[i];
+        if (!shouldSendProjectileSpawnEvent(ps, visibility, world)) continue;
+        const out = _directProjectileSpawnScratch;
+        out.id = ps.id;
+        out._pos.x = qPos(ps.pos.x);
+        out._pos.y = qPos(ps.pos.y);
+        out._pos.z = qPos(ps.pos.z);
+        out.rotation = qRot(ps.rotation);
+        out._velocity.x = qVel(ps.velocity.x);
+        out._velocity.y = qVel(ps.velocity.y);
+        out._velocity.z = qVel(ps.velocity.z);
+        out.projectileType = projectileTypeToCode(ps.projectileType);
+        out.maxLifespan = typeof ps.maxLifespan === 'number' && Number.isFinite(ps.maxLifespan)
+          ? ps.maxLifespan
+          : null;
+        out.turretBlueprintCode = turretBlueprintIdToCode(ps.turretBlueprintId);
+        out.shotBlueprintCode = shotBlueprintIdToCode(ps.shotBlueprintId);
+        out.sourceTurretBlueprintCode = ps.sourceTurretBlueprintId !== undefined
+          ? turretBlueprintIdToCode(ps.sourceTurretBlueprintId)
+          : null;
+        out.playerId = ps.playerId;
+        copyProjectileSourceProvenance(out, world, visibility, ps);
+        out.turretIndex = ps.turretIndex;
+        out.barrelIndex = ps.barrelIndex;
+        out.isDGun = ps.isDGun === true ? true : null;
+        out.fromParentDetonation = ps.fromParentDetonation === true ? true : null;
+        if (ps.beam) {
+          out._beamStart.x = qPos(ps.beam.start.x);
+          out._beamStart.y = qPos(ps.beam.start.y);
+          out._beamStart.z = qPos(ps.beam.start.z);
+          out._beamEnd.x = qPos(ps.beam.end.x);
+          out._beamEnd.y = qPos(ps.beam.end.y);
+          out._beamEnd.z = qPos(ps.beam.end.z);
+          out.beam = out._beam;
+        } else {
+          out.beam = null;
+        }
+        out.targetEntityId = canReferenceEntityId(world, visibility, ps.targetEntityId)
+          ? ps.targetEntityId ?? null
+          : null;
+        out.homingTurnRate = ps.homingTurnRate ?? null;
+        copyProjectileSpawnIntoWireRow(out);
+        if (wantKeyframeProjectileResync) _resyncSeenIds.add(ps.id);
+      }
+    }
+
+    if (wantKeyframeProjectileResync) {
+      const liveProjectiles = world.getProjectiles();
+      for (let i = 0; i < liveProjectiles.length; i++) {
+        const entity = liveProjectiles[i];
+        if (_resyncSeenIds.has(entity.id)) continue;
+        const proj = entity.projectile;
+        if (!proj) continue;
+        if (
+          !shouldSendProjectileAtPoint(
+            proj.ownerId,
+            visibility,
+            entity.transform.x,
+            entity.transform.y,
+            proj.homingTargetId,
+            world,
+          )
+        ) {
+          continue;
+        }
+        const out = _directProjectileSpawnScratch;
+        out.id = entity.id;
+        out._pos.x = qPos(entity.transform.x);
+        out._pos.y = qPos(entity.transform.y);
+        out._pos.z = qPos(entity.transform.z);
+        out.rotation = qRot(entity.transform.rotation);
+        out._velocity.x = qVel(proj.velocityX);
+        out._velocity.y = qVel(proj.velocityY);
+        out._velocity.z = qVel(proj.velocityZ);
+        out.projectileType = projectileTypeToCode(proj.projectileType);
+        out.maxLifespan = Number.isFinite(proj.maxLifespan)
+          ? proj.maxLifespan
+          : null;
+        out.turretBlueprintCode = proj.sourceTurretBlueprintId !== undefined
+          ? turretBlueprintIdToCode(proj.sourceTurretBlueprintId)
+          : TURRET_BLUEPRINT_CODE_UNKNOWN;
+        out.shotBlueprintCode = shotBlueprintIdToCode(proj.shotBlueprintId);
+        out.sourceTurretBlueprintCode = proj.sourceTurretBlueprintId !== undefined
+          ? turretBlueprintIdToCode(proj.sourceTurretBlueprintId)
+          : null;
+        out.playerId = proj.ownerId;
+        copyProjectileSourceProvenance(out, world, visibility, {
+          playerId: proj.ownerId,
+          sourceEntityId: proj.sourceEntityId,
+          sourceTurretEntityId: proj.shotSource.sourceTurretEntityId,
+          sourceHostEntityId: proj.shotSource.sourceHostEntityId,
+          sourceRootEntityId: proj.shotSource.sourceRootEntityId,
+          sourceTeamId: proj.shotSource.sourceTeamId,
+          spawnTick: proj.shotSource.spawnTick,
+          parentShotEntityId: proj.shotSource.parentShotEntityId,
+        });
+        out.turretIndex = proj.config.turretIndex ?? 0;
+        out.barrelIndex = proj.sourceBarrelIndex ?? 0;
+        const dgunProjectile = entity.dgunProjectile;
+        out.isDGun = dgunProjectile !== null && dgunProjectile.isDGun ? true : null;
+        out.fromParentDetonation = true;
+        const pts = proj.points;
+        if (pts && pts.length >= 2) {
+          const start = pts[0];
+          const end = pts[pts.length - 1];
+          out._beamStart.x = qPos(start.x);
+          out._beamStart.y = qPos(start.y);
+          out._beamStart.z = qPos(start.z);
+          out._beamEnd.x = qPos(end.x);
+          out._beamEnd.y = qPos(end.y);
+          out._beamEnd.z = qPos(end.z);
+          out.beam = out._beam;
+        } else {
+          out.beam = null;
+        }
+        out.targetEntityId = canReferenceEntityId(world, visibility, proj.homingTargetId)
+          ? proj.homingTargetId ?? null
+          : null;
+        out.homingTurnRate = proj.homingTurnRate ?? null;
+        copyProjectileSpawnIntoWireRow(out);
+      }
+    }
+  }
+
+  if (projectileDespawns && projectileDespawns.length > 0) {
+    for (let i = 0; i < projectileDespawns.length; i++) {
+      const rows = projectileWireSource.despawns;
+      const rowIndex = reserveUint32WireRows(rows, 1, PROJECTILE_DESPAWN_WIRE_STRIDE);
+      rows.values[rowIndex] = projectileDespawns[i].id;
+    }
+  }
+
+  if (projectileVelocityUpdates && projectileVelocityUpdates.length > 0) {
+    for (let i = 0; i < projectileVelocityUpdates.length; i++) {
+      const vu = projectileVelocityUpdates[i];
+      const projectileEntity = world.getEntity(vu.id);
+      const projectile = projectileEntity === undefined ? undefined : projectileEntity.projectile;
+      const ownerId = projectile !== null && projectile !== undefined ? projectile.ownerId : undefined;
+      if (
+        !shouldSendProjectileAtPoint(
+          ownerId,
+          visibility,
+          vu.pos.x,
+          vu.pos.y,
+          projectile !== null && projectile !== undefined && projectile.homingTargetId !== NO_ENTITY_ID
+            ? projectile.homingTargetId
+            : vu.visibilityHomingTargetId,
+          world,
+        )
+      ) {
+        continue;
+      }
+      const out = _directProjectileVelocityScratch;
+      out.id = vu.id;
+      out._pos.x = qPos(vu.pos.x);
+      out._pos.y = qPos(vu.pos.y);
+      out._pos.z = qPos(vu.pos.z);
+      out._velocity.x = qVel(vu.velocity.x);
+      out._velocity.y = qVel(vu.velocity.y);
+      out._velocity.z = qVel(vu.velocity.z);
+      out.clearHomingTarget = vu.clearHomingTarget === true ? true : null;
+      copyProjectileVelocityUpdateIntoWireRow(out);
+    }
+  }
+
+  const lineProjectiles = world.getLineProjectiles();
+  if (emitBeamUpdates && lineProjectiles.length > 0) {
+    for (let i = 0; i < lineProjectiles.length; i++) {
+      const entity = lineProjectiles[i];
+      const proj = entity.projectile;
+      if (!proj) continue;
+      const srcPts = proj.points;
+      if (!srcPts || srcPts.length < 2) continue;
+      if (!shouldSendBeamPath(proj.ownerId, visibility, srcPts)) continue;
+
+      const update = _directBeamUpdateScratch;
+      update.id = entity.id;
+      update.obstructionT = proj.obstructionT === undefined ? null : qRot(proj.obstructionT);
+      update.endpointDamageable = proj.endpointDamageable === false ? false : null;
+      const wirePointCount = getBeamWirePointCount(srcPts.length);
+      update.points.length = wirePointCount;
+      for (let p = 0; p < wirePointCount; p++) {
+        const sp = srcPts[getBeamWireSourcePointIndex(p, srcPts.length, wirePointCount)];
+        const out = _directBeamPointScratch;
+        out.x = qPos(sp.x);
+        out.y = qPos(sp.y);
+        out.z = qPos(sp.z);
+        if (sp.vx === 0 && sp.vy === 0 && sp.vz === 0) {
+          out.vx = 0;
+          out.vy = 0;
+          out.vz = 0;
+        } else {
+          out.vx = qVel(sp.vx);
+          out.vy = qVel(sp.vy);
+          out.vz = qVel(sp.vz);
+        }
+        const canReferenceReflector = canReferenceEntityId(world, visibility, sp.reflectorEntityId);
+        out.reflectorEntityId = canReferenceReflector ? sp.reflectorEntityId ?? null : null;
+        out.reflectorKind = canReferenceReflector ? sp.reflectorKind ?? null : null;
+        out.reflectorPlayerId = canReferenceReflector ? sp.reflectorPlayerId ?? null : null;
+        out.normalX = canReferenceReflector && sp.normalX !== undefined ? qNormal(sp.normalX) : null;
+        out.normalY = canReferenceReflector && sp.normalY !== undefined ? qNormal(sp.normalY) : null;
+        out.normalZ = canReferenceReflector && sp.normalZ !== undefined ? qNormal(sp.normalZ) : null;
+        copyBeamPointIntoWireRow(out);
+      }
+
+      copyBeamUpdateIntoWireRow(update);
+    }
+  }
+
+  const spawnCount = projectileWireSource.spawns.count;
+  const despawnCount = projectileWireSource.despawns.count;
+  const velocityCount = projectileWireSource.velocityUpdates.count;
+  const beamUpdateCount = projectileWireSource.beamUpdates.count;
+  if (spawnCount === 0 && despawnCount === 0 && velocityCount === 0 && beamUpdateCount === 0) {
+    return undefined;
+  }
+
+  if (spawnCount > 0) {
+    _directProjectileSpawnPlaceholders.length = spawnCount;
+    _directProjectilesBuf.spawns = _directProjectileSpawnPlaceholders;
+  }
+  if (despawnCount > 0) {
+    _directProjectileDespawnPlaceholders.length = despawnCount;
+    _directProjectilesBuf.despawns = _directProjectileDespawnPlaceholders;
+  }
+  if (velocityCount > 0) {
+    _directProjectileVelocityPlaceholders.length = velocityCount;
+    _directProjectilesBuf.velocityUpdates = _directProjectileVelocityPlaceholders;
+  }
+  if (beamUpdateCount > 0) {
+    _directProjectileBeamUpdatePlaceholders.length = beamUpdateCount;
+    _directProjectilesBuf.beamUpdates = _directProjectileBeamUpdatePlaceholders;
+  }
+  return _directProjectilesBuf;
 }
