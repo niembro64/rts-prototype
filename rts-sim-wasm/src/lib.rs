@@ -30004,6 +30004,54 @@ pub fn snapshot_encode_economy_scratch_ensure(count: u32) {
     }
 }
 
+/// Resource-movement scratch — 7 f64 per movement.
+///   [0] playerId
+///   [1] sourceEntityId
+///   [2] targetEntityId (gated by has_target flag)
+///   [3] resource code
+///   [4] amountPerSecond
+///   [5] direction code
+///   [6] has_target flag
+const SNAPSHOT_ENCODE_RESOURCE_MOVEMENT_STRIDE: usize = 7;
+
+struct SnapshotEncodeResourceMovementScratch {
+    buf: Vec<f64>,
+}
+
+struct SnapshotEncodeResourceMovementScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeResourceMovementScratch>>,
+);
+unsafe impl Sync for SnapshotEncodeResourceMovementScratchHolder {}
+static SNAPSHOT_ENCODE_RESOURCE_MOVEMENT_SCRATCH: SnapshotEncodeResourceMovementScratchHolder =
+    SnapshotEncodeResourceMovementScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_resource_movement_scratch() -> &'static mut SnapshotEncodeResourceMovementScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_RESOURCE_MOVEMENT_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeResourceMovementScratch {
+                buf: vec![0.0; SNAPSHOT_ENCODE_RESOURCE_MOVEMENT_STRIDE * 16],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_resource_movement_scratch_ptr() -> *const f64 {
+    snapshot_encode_resource_movement_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_resource_movement_scratch_ensure(count: u32) {
+    let needed = (count as usize) * SNAPSHOT_ENCODE_RESOURCE_MOVEMENT_STRIDE;
+    let s = snapshot_encode_resource_movement_scratch();
+    if s.buf.len() < needed {
+        s.buf.resize(needed, 0.0);
+    }
+}
+
 /// Spray-target scratch — 17 f64 per spray (NetworkServerSnapshotSprayTarget).
 ///   [0]    source.id
 ///   [1..3] source.pos.x, source.pos.y
@@ -32508,6 +32556,50 @@ pub fn snapshot_encode_envelope_emit_economy(player_count: u32) -> u32 {
         w.write_number(scratch.buf[base + 9]);
         w.write_str("expenditure");
         w.write_number(scratch.buf[base + 10]);
+    }
+    w.buf.len() as u32
+}
+
+/// Append `resourceMovements: [...]`. Sits between economy and
+/// sprayTargets in pool insertion order. Each movement is emitted as
+/// the full DTO map; targetEntityId is null when the row's has-target
+/// flag is unset.
+#[wasm_bindgen]
+pub fn snapshot_encode_envelope_emit_resource_movements(count: u32) -> u32 {
+    let w = messagepack_writer();
+    let n = count as usize;
+    w.write_str("resourceMovements");
+    w.write_array_header(n);
+    if n == 0 {
+        return w.buf.len() as u32;
+    }
+
+    let scratch = snapshot_encode_resource_movement_scratch();
+    for i in 0..n {
+        let base = i * SNAPSHOT_ENCODE_RESOURCE_MOVEMENT_STRIDE;
+        w.write_map_header(6);
+
+        w.write_str("playerId");
+        w.write_uint(scratch.buf[base] as u64);
+
+        w.write_str("sourceEntityId");
+        w.write_uint(scratch.buf[base + 1] as u64);
+
+        w.write_str("targetEntityId");
+        if scratch.buf[base + 6] != 0.0 {
+            w.write_uint(scratch.buf[base + 2] as u64);
+        } else {
+            w.write_nil();
+        }
+
+        w.write_str("resource");
+        w.write_uint(scratch.buf[base + 3] as u64);
+
+        w.write_str("amountPerSecond");
+        w.write_number(scratch.buf[base + 4]);
+
+        w.write_str("direction");
+        w.write_uint(scratch.buf[base + 5] as u64);
     }
     w.buf.len() as u32
 }

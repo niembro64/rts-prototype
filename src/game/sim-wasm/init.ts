@@ -407,6 +407,9 @@ import __wbg_init, {
   snapshot_encode_spray_scratch_ensure,
   snapshot_encode_economy_scratch_ptr,
   snapshot_encode_economy_scratch_ensure,
+  snapshot_encode_envelope_emit_resource_movements,
+  snapshot_encode_resource_movement_scratch_ptr,
+  snapshot_encode_resource_movement_scratch_ensure,
   snapshot_encode_envelope_emit_audio_events,
   snapshot_encode_envelope_emit_packed_audio_events,
   snapshot_encode_audio_event_scratch_ptr,
@@ -3146,6 +3149,15 @@ export interface SnapshotEncodeApi {
    *  economy scratch (16 f64 per player, ASC by playerId) and passes
    *  the player count. Pass 0 to emit an empty economy map. */
   emitEconomy: (playerCount: number) => number;
+  /** Emit `resourceMovements: [...]`. Reads `count` entries from the
+   *  resource-movement scratch (7 f64 per movement). */
+  emitResourceMovements: (count: number) => number;
+  /** Raw pointer to the resource-movement scratch (Float64Array, 7 f64 per movement). */
+  resourceMovementScratchPtr: () => number;
+  /** Pre-grow the resource-movement scratch to hold `count` movements. */
+  resourceMovementScratchEnsure: (count: number) => void;
+  /** Stride per resource-movement entry (f64 count). */
+  readonly resourceMovementScratchStride: number;
   /** Emit `minimapEntities: [...]`. Reads `count` entries from the
    *  minimap scratch (6 f64 per entry). */
   emitMinimap: (count: number) => void;
@@ -4180,6 +4192,10 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           economyScratchPtr: snapshot_encode_economy_scratch_ptr,
           economyScratchEnsure: snapshot_encode_economy_scratch_ensure,
           economyScratchStride: 11,
+          emitResourceMovements: snapshot_encode_envelope_emit_resource_movements,
+          resourceMovementScratchPtr: snapshot_encode_resource_movement_scratch_ptr,
+          resourceMovementScratchEnsure: snapshot_encode_resource_movement_scratch_ensure,
+          resourceMovementScratchStride: 7,
           emitAudioEvents: snapshot_encode_envelope_emit_audio_events,
           emitPackedAudioEvents: snapshot_encode_envelope_emit_packed_audio_events,
           audioEventScratchPtr: snapshot_encode_audio_event_scratch_ptr,

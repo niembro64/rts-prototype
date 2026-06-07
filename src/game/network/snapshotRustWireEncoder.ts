@@ -10,6 +10,7 @@ import type {
   NetworkServerSnapshotProjectileSpawn,
   NetworkServerSnapshotMeta,
   NetworkServerSnapshotSimEvent,
+  NetworkServerSnapshotResourceMovement,
   NetworkServerSnapshotSprayTarget,
   NetworkServerSnapshotTurret,
 } from './NetworkTypes';
@@ -58,6 +59,10 @@ import {
   SPRAY_TARGET_WIRE_STRIDE,
   getSprayTargetWireSource,
 } from './stateSerializerSpray';
+import {
+  RESOURCE_MOVEMENT_WIRE_STRIDE,
+  getResourceMovementWireSource,
+} from './stateSerializerResourceMovements';
 import {
   SCAN_PULSE_WIRE_STRIDE,
   getScanPulseWireSource,
@@ -1263,6 +1268,45 @@ function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
   );
 }
 
+function packResourceMovementsIntoScratch(
+  sim: SimWasm,
+  movements: readonly NetworkServerSnapshotResourceMovement[],
+): void {
+  if (movements.length === 0) return;
+  const api = sim.snapshotEncode;
+  api.resourceMovementScratchEnsure(movements.length);
+  const source = getResourceMovementWireSource(movements);
+  if (
+    source !== undefined &&
+    source.count === movements.length &&
+    api.resourceMovementScratchStride === RESOURCE_MOVEMENT_WIRE_STRIDE
+  ) {
+    const view = new Float64Array(
+      sim.memory.buffer,
+      api.resourceMovementScratchPtr(),
+      movements.length * api.resourceMovementScratchStride,
+    );
+    view.set(activeFloat64WireValues(source, RESOURCE_MOVEMENT_WIRE_STRIDE));
+    return;
+  }
+  const view = new Float64Array(
+    sim.memory.buffer,
+    api.resourceMovementScratchPtr(),
+    movements.length * api.resourceMovementScratchStride,
+  );
+  for (let i = 0; i < movements.length; i++) {
+    const movement = movements[i];
+    const base = i * api.resourceMovementScratchStride;
+    view[base + 0] = movement.playerId;
+    view[base + 1] = movement.sourceEntityId;
+    view[base + 2] = movement.targetEntityId ?? 0;
+    view[base + 3] = movement.resource;
+    view[base + 4] = movement.amountPerSecond;
+    view[base + 5] = movement.direction;
+    view[base + 6] = movement.targetEntityId !== null ? 1 : 0;
+  }
+}
+
 function packSprayTargetsIntoScratch(
   sim: SimWasm,
   sprays: readonly NetworkServerSnapshotSprayTarget[],
@@ -2014,6 +2058,12 @@ function emitTopLevelKey(
         value as Record<number, NetworkServerSnapshotEconomy>,
       );
       api.emitEconomy(playerCount);
+      return;
+    }
+    case 'resourceMovements': {
+      const movements = value as NetworkServerSnapshotResourceMovement[];
+      packResourceMovementsIntoScratch(sim, movements);
+      api.emitResourceMovements(movements.length);
       return;
     }
     case 'serverMeta': {

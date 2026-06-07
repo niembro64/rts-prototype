@@ -31,7 +31,7 @@ import {
 import { serializeGridSnapshot } from '../network/stateSerializerGrid';
 import { writeMinimapSnapshotWireRowsDirect } from '../network/stateSerializerMinimap';
 import { writeProjectileSnapshotWireRowsDirect } from '../network/stateSerializerProjectiles';
-import { serializeResourceMovements } from '../network/stateSerializerResourceMovements';
+import { writeResourceMovementWireRowsDirect } from '../network/stateSerializerResourceMovements';
 import { writeSprayTargetWireRowsDirect } from '../network/stateSerializerSpray';
 import {
   writeScanPulseWireRowsDirect,
@@ -111,6 +111,7 @@ export class ServerSnapshotDirectWirePreencoder {
   private readonly minimapPlaceholders: NonNullable<NetworkServerSnapshot['minimapEntities']> = [];
   private readonly sprayPlaceholders: NonNullable<NetworkServerSnapshot['sprayTargets']> = [];
   private readonly scanPulsePlaceholders: NonNullable<NetworkServerSnapshot['scanPulses']> = [];
+  private readonly resourceMovementPlaceholders: NonNullable<NetworkServerSnapshot['resourceMovements']> = [];
   private readonly economyPlaceholder = {} as NetworkServerSnapshot['economy'];
   private readonly removedEntityIds: number[] = [];
   private readonly visibilityHiddenIds: EntityId[] = [];
@@ -209,7 +210,11 @@ export class ServerSnapshotDirectWirePreencoder {
       input.recipientPlayerId,
       this.economyPlaceholder,
     );
-    const netResourceMovements = serializeResourceMovements(input.world, input.visibility);
+    const netResourceMovements = writeResourceMovementWireRowsDirect(
+      input.world,
+      input.visibility,
+      this.resourceMovementPlaceholders,
+    );
     const netSprayTargets = input.sprayOverride !== undefined
       ? input.sprayOverride.value
       : writeSprayTargetWireRowsDirect(
