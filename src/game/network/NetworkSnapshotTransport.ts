@@ -205,11 +205,16 @@ export class NetworkSnapshotTransport {
 
   reset(): void {
     this.pendingReceivedState = null;
+    this.pendingReceivedStateCloner.clear();
     this.snapshotDropCounts.clear();
     this.pendingFullCompressionPlayerIds.clear();
     this.snapshotsDropped = 0;
     this.compressionFailureLogged = false;
     SNAPSHOT_ENCODE_INSTRUMENTATION.clearSource('remote');
+  }
+
+  getPendingCloneRetainedCounts(): ReturnType<ReusableNetworkSnapshotCloner['getRetainedCounts']> {
+    return this.pendingReceivedStateCloner.getRetainedCounts();
   }
 
   private async buildCompressedFullStateMessage(

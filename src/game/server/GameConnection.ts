@@ -3,6 +3,7 @@
 export type {
   GameConnection,
   SnapshotCallback,
+  SnapshotUnsubscribe,
   SimEventCallback,
   GameOverCallback,
 } from '@/types/game';

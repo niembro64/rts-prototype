@@ -4278,6 +4278,10 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runCommandSanitizerContractTest();
         const { runSnapshotEntityWirePackContractTest } = await import('../network/snapshotEntityWirePackContractTest');
         runSnapshotEntityWirePackContractTest();
+        const { runSnapshotLifecycleContractTest } = await import('../server/snapshotLifecycleContractTest');
+        runSnapshotLifecycleContractTest();
+        const { runSnapshotBufferContractTest } = await import('../scenes/helpers/SnapshotBufferContractTest');
+        runSnapshotBufferContractTest();
         const { runTurretHostIntegrationContractTest } = await import('../sim/turretHostIntegrationTest');
         runTurretHostIntegrationContractTest();
         const { runSupportSurfaceContractTest } = await import('../sim/supportSurfaceContractTest');

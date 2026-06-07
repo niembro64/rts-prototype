@@ -75,6 +75,7 @@ export type SnapshotCallback = (
   state: NetworkServerSnapshot,
   releaseSnapshot?: SnapshotRelease,
 ) => void;
+export type SnapshotUnsubscribe = () => void;
 export type SimEventCallback = (event: SimEvent) => void;
 export type GameOverCallback = (winnerId: PlayerId) => void;
 
@@ -84,7 +85,8 @@ export type GameConnection = {
   readonly sharesAuthoritativeState?: boolean;
   sendCommand(command: Command): void;
   markClientReady(): void;
-  onSnapshot(callback: SnapshotCallback): void;
+  onSnapshot(callback: SnapshotCallback): SnapshotUnsubscribe;
+  clearSnapshotCallback(): void;
   onSimEvent(callback: SimEventCallback): void;
   onGameOver(callback: GameOverCallback): void;
   disconnect(): void;

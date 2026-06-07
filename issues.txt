@@ -16,72 +16,6 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 Please always commit and push before and after any code changes we make.
 ================================================================================
 
-[BA-MEM-001] NetworkSnapshotTransport.reset() leaves the pooled pending snapshot graph retained
-
-Severity: High
-
-Evidence:
-- src/game/network/NetworkSnapshotTransport.ts:53-60 owns pendingReceivedStateCloner.
-- src/game/network/NetworkSnapshotTransport.ts:164-180 and 184-188 clone full/pending snapshots into that reusable graph.
-- src/game/network/NetworkSnapshotTransport.ts:206-213 reset() clears pendingReceivedState and counters, but does not call pendingReceivedStateCloner.clear().
-- src/game/network/snapshotClone.ts:247-251 says the cloner can hold a 10k-entity graph, and src/game/network/snapshotClone.ts:331-368 provides the clear() method that drops entity arrays, terrain, buildability, projectile arrays, minimap arrays, and metadata references.
-- src/game/network/NetworkManager.ts:257-280 calls snapshotTransport.reset() from beginNetworkSetup(), and networkManager is a long-lived singleton.
-
-Risk:
-Remote clients can retain the largest received full snapshot across disconnect/rejoin or failed setup. That graph can include thousands of entity DTOs plus terrain/buildability references, so memory may not fall after leaving a match. This conflicts with budget_design_philosophy.html's rule that retained pools need explicit lifecycle release.
-
-Required fix:
-Call pendingReceivedStateCloner.clear() from NetworkSnapshotTransport.reset(). Add a targeted regression test or debug stat that stores a large full snapshot, calls reset(), and verifies the retained clone graph is released.
-
-[BA-MEM-002] RemoteGameConnection.disconnect() releases the pending snapshot reference but not the retained clone pool
-
-Severity: High
-
-Evidence:
-- src/game/server/RemoteGameConnection.ts:13-16 owns pendingSnapshot, pendingSnapshotRelease, and pendingSnapshotCloner.
-- src/game/server/RemoteGameConnection.ts:45-50 clones snapshots into pendingSnapshotCloner when no renderer callback is attached.
-- src/game/server/RemoteGameConnection.ts:99-109 disconnect() clears callbacks and releasePendingSnapshot(), but never calls pendingSnapshotCloner.clear().
-- src/game/server/LocalGameConnection.ts:199-211 is the equivalent local lifecycle and does call pendingSnapshotCloner.clear().
-
-Risk:
-A remote connection object that remains reachable after disconnect can keep the largest cloned snapshot graph alive. The local and remote connection lifecycles are inconsistent, which makes this easy to regress during renderer swaps or remote reconnect flows.
-
-Required fix:
-Mirror LocalGameConnection by calling pendingSnapshotCloner.clear() during RemoteGameConnection.disconnect(). Cover this with a small lifecycle test if the connection classes are testable in isolation.
-
-[BA-MEM-003] Snapshot intake has no detach path when a scene shuts down with keepConnection=true
-
-Severity: Medium
-
-Evidence:
-- src/game/scenes/helpers/RtsScene3DSnapshotIntake.ts:63-68 attaches SnapshotBuffer to gameConnection.
-- src/game/scenes/helpers/SnapshotBuffer.ts:109-199 installs a closure through gameConnection.onSnapshot().
-- src/game/server/LocalGameConnection.ts:180-189 and src/game/server/RemoteGameConnection.ts:75-88 expose only a setter-style onSnapshot(callback); there is no unsubscribe or clear callback API.
-- src/game/scenes/RtsScene3D.ts:1584-1631 skips gameConnection.disconnect() when keepConnection=true, then only calls snapshotIntake.clear().
-- src/game/createGame.ts:84-88 uses shutdown({ keepConnection: true }) in the createGame error path.
-
-Risk:
-Clearing the SnapshotBuffer does not detach the old callback. If a connection is kept alive and a replacement scene fails to attach immediately, snapshots can continue to call into the old intake/buffer closure, retaining the previous ClientViewState path and refilling buffers after shutdown.
-
-Required fix:
-Add an explicit unsubscribe/clearSnapshotCallback path to GameConnection. RtsScene3DSnapshotIntake should detach before clear() during shutdown, including keepConnection=true paths. Ensure a replacement scene can attach cleanly after the old scene detaches.
-
-[BA-MEM-004] SnapshotBuffer accumulates projectile despawns without a cap or coalescing
-
-Severity: Medium
-
-Evidence:
-- src/game/scenes/helpers/SnapshotBuffer.ts:1-6 explicitly says cleanup streams stay unbounded.
-- src/game/scenes/helpers/SnapshotBuffer.ts:29-30 caps projectile spawns and sim/audio events.
-- src/game/scenes/helpers/SnapshotBuffer.ts:119-126 appends every projectile despawn into bufferedDespawns with no cap, dedupe, or backpressure.
-- src/game/scenes/helpers/SnapshotBuffer.ts:224-229 only drains despawns when consume() runs on a render frame.
-
-Risk:
-When snapshots arrive while frames are stalled, hidden, or slower than intake, despawns can grow without bound and produce both memory pressure and a long catch-up hitch. Despawns are cleanup-critical, but repeated ids can be coalesced without keeping every event object.
-
-Required fix:
-Represent despawns as a coalesced id set/map or a bounded typed id buffer with an overflow/keyframe-resync path. Track coalesced or dropped despawn counts in diagnostics so stalls are visible.
-
 [BA-NET-001] Non-snapshot PeerJS sends bypass data-channel backpressure
 
 Severity: High
@@ -97,22 +31,6 @@ Snapshot traffic is bounded, but roster updates, lobby messages, heartbeat traff
 
 Required fix:
 Centralize send budgeting for all PeerJS messages. Coalesce or drop stale noncritical messages such as heartbeat, playerInfo, and lobbySettings. Rate-limit or reject commands explicitly instead of letting the browser send queue grow. Add bufferedAmount telemetry by message class.
-
-[BA-PERF-001] LocalGameConnection encodes local snapshots into wire bytes even when no network send occurs
-
-Severity: High
-
-Evidence:
-- src/game/server/LocalGameConnection.ts:102-109 registers the local in-memory snapshot listener.
-- src/game/server/LocalGameConnection.ts:130-134 calls encodeNetworkSnapshot(state), measures elapsed time, and writes the byte count on every local snapshot.
-- src/game/server/LocalGameConnection.ts:135 only checks SNAPSHOT_CADENCE_REGRESSION.enabled and SNAPSHOT_ENCODE_INSTRUMENTATION.enabled after the encode has already allocated the Uint8Array.
-- src/game/scenes/helpers/RtsScene3DSnapshotIntake.ts:187-192 only uses the wire byte metadata for payload-size telemetry.
-
-Risk:
-Offline/local host play pays the binary encoder cost and allocation pressure even though snapshots are delivered in memory. This violates the philosophy doc's "avoid per-unit/per-frame allocations" budget, and it can hide real local render/sim costs behind measurement overhead.
-
-Required fix:
-Gate local encode measurement behind diagnostics or an explicit payload-size setting. If the HUD needs approximate local payload sizes, add a cheap estimator or sample at a much lower cadence. Do not encode every in-memory snapshot by default.
 
 [BA-PERF-002] Snapshot publishing still builds JS DTO object graphs before binary packing
 

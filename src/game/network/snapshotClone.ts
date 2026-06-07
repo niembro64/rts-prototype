@@ -74,6 +74,24 @@ type ReusableEntityBuilding = NonNullable<NetworkServerSnapshotEntity['building'
 type ReusableFactory = NonNullable<ReusableEntityBuilding['factory']>;
 type ReusableBuildState = NonNullable<ReusableEntityBuilding['build']>;
 
+export type ReusableNetworkSnapshotClonerRetainedCounts = {
+  entities: number;
+  minimapEntities: number;
+  resourceMovements: number;
+  sprayTargets: number;
+  audioEvents: number;
+  scanPulses: number;
+  projectileSpawns: number;
+  projectileDespawns: number;
+  projectileVelocityUpdates: number;
+  beamUpdates: number;
+  gridCells: number;
+  gridSearchCells: number;
+  removedEntityIds: number;
+  hasTerrain: boolean;
+  hasBuildability: boolean;
+};
+
 function copyBuildStateInto(
   src: ReusableBuildState,
   dst: ReusableBuildState,
@@ -365,6 +383,26 @@ export class ReusableNetworkSnapshotCloner {
     this.snapshot.removedEntityIds = undefined;
     this.snapshot.visibilityFiltered = undefined;
     this.snapshot.visionPlayerMask = undefined;
+  }
+
+  getRetainedCounts(): ReusableNetworkSnapshotClonerRetainedCounts {
+    return {
+      entities: this.snapshot.entities.length,
+      minimapEntities: this.minimapEntities.length,
+      resourceMovements: this.resourceMovements.length,
+      sprayTargets: this.sprayTargets.length,
+      audioEvents: this.audioEvents.length,
+      scanPulses: this.scanPulses.length,
+      projectileSpawns: this.spawns.length,
+      projectileDespawns: this.despawns.length,
+      projectileVelocityUpdates: this.velocityUpdates.length,
+      beamUpdates: this.beamUpdates.length,
+      gridCells: this.grid.cells.length,
+      gridSearchCells: this.grid.searchCells.length,
+      removedEntityIds: this.removedEntityIds.length,
+      hasTerrain: this.snapshot.terrain !== undefined,
+      hasBuildability: this.snapshot.buildability !== undefined,
+    };
   }
 
   clone(state: NetworkServerSnapshot): NetworkServerSnapshot {

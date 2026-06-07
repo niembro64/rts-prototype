@@ -128,11 +128,11 @@ export class LocalGameConnection implements GameConnection {
   }
 
   private recordLocalSnapshotWireCost(state: NetworkServerSnapshot): void {
+    if (!SNAPSHOT_CADENCE_REGRESSION.enabled && !SNAPSHOT_ENCODE_INSTRUMENTATION.enabled) return;
     const start = performance.now();
     const payload = encodeNetworkSnapshot(state);
     const encodeMs = performance.now() - start;
     setSnapshotWireBytes(state, payload.byteLength);
-    if (!SNAPSHOT_CADENCE_REGRESSION.enabled && !SNAPSHOT_ENCODE_INSTRUMENTATION.enabled) return;
     const serverMeta = state.serverMeta;
     const snapshotRate = serverMeta !== undefined ? serverMeta.snaps.rate : undefined;
     const unitCount = serverMeta !== undefined ? serverMeta.units.count : undefined;
@@ -177,7 +177,7 @@ export class LocalGameConnection implements GameConnection {
     server.markSnapshotListenerReady(this.snapshotListenerKey);
   }
 
-  onSnapshot(callback: SnapshotCallback): void {
+  onSnapshot(callback: SnapshotCallback): () => void {
     this.snapshotCallback = callback;
     if (this.pendingSnapshot) {
       const pending = this.pendingSnapshot;
@@ -186,6 +186,13 @@ export class LocalGameConnection implements GameConnection {
       this.pendingSnapshotRelease = null;
       callback(pending, releasePending ?? undefined);
     }
+    return () => {
+      if (this.snapshotCallback === callback) this.snapshotCallback = null;
+    };
+  }
+
+  clearSnapshotCallback(): void {
+    this.snapshotCallback = null;
   }
 
   onSimEvent(_callback: SimEventCallback): void {

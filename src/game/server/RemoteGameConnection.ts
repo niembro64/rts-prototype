@@ -72,8 +72,8 @@ export class RemoteGameConnection implements GameConnection {
     networkManager.sendClientReady();
   }
 
-  onSnapshot(callback: SnapshotCallback): void {
-    if (this.disconnected) return;
+  onSnapshot(callback: SnapshotCallback): () => void {
+    if (this.disconnected) return () => undefined;
     this.snapshotCallback = callback;
     const pendingFromNetworkManager = networkManager.consumePendingState();
     const pending = !this.pendingSnapshot ||
@@ -85,6 +85,13 @@ export class RemoteGameConnection implements GameConnection {
     this.pendingSnapshot = null;
     this.pendingSnapshotRelease = null;
     if (pending) callback(pending, releasePending ?? undefined);
+    return () => {
+      if (this.snapshotCallback === callback) this.snapshotCallback = null;
+    };
+  }
+
+  clearSnapshotCallback(): void {
+    this.snapshotCallback = null;
   }
 
   onSimEvent(_callback: SimEventCallback): void {
@@ -103,9 +110,14 @@ export class RemoteGameConnection implements GameConnection {
     this.snapshotCallback = null;
     this.gameOverCallback = null;
     this.releasePendingSnapshot();
+    this.pendingSnapshotCloner.clear();
     if (networkManager.onStateReceived === this.stateHandler) {
       networkManager.onStateReceived = undefined;
     }
+  }
+
+  getPendingCloneRetainedCounts(): ReturnType<ReusableNetworkSnapshotCloner['getRetainedCounts']> {
+    return this.pendingSnapshotCloner.getRetainedCounts();
   }
 
   private releasePendingSnapshot(): void {

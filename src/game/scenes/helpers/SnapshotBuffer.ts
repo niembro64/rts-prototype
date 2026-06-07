@@ -1,9 +1,9 @@
 // Double-buffered snapshot accumulator.
 // PeerJS callback stores snapshots instantly; update() consumes one per frame.
-// One-shot events are accumulated across intermediate snapshots. Critical
-// cleanup streams stay unbounded; visual-heavy streams are capped so a stalled
-// frame cannot turn thousands of projectile/effect events into a long catch-up
-// hitch.
+// One-shot events are accumulated across intermediate snapshots. Cleanup
+// despawns coalesce by projectile id; visual-heavy streams are capped so a
+// stalled frame cannot turn thousands of projectile/effect events into a long
+// catch-up hitch.
 
 import type {
   NetworkServerSnapshot,
@@ -30,12 +30,17 @@ const MAX_BUFFERED_PROJECTILE_SPAWNS = 4096;
 const MAX_BUFFERED_SIM_EVENTS = 512;
 
 type SnapshotBufferCallback = (state: NetworkServerSnapshot) => void;
+export type SnapshotBufferDiagnostics = {
+  bufferedDespawns: number;
+  coalescedDespawns: number;
+};
 
 export class SnapshotBuffer {
   private pendingSnapshot: NetworkServerSnapshot | null = null;
   private pendingSnapshotRelease: (() => void) | null = null;
   private consumedSnapshotRelease: (() => void) | null = null;
   private fullSnapshotCloner = new ReusableNetworkSnapshotCloner();
+  private detachSnapshotCallback: (() => void) | null = null;
 
   // Double-buffered event arrays (swap instead of allocating new arrays each frame)
   private _spawnsA: NetworkServerSnapshotProjectileSpawn[] = [];
@@ -46,12 +51,15 @@ export class SnapshotBuffer {
   private bufferedSpawnsPool: NetworkServerSnapshotProjectileSpawn[] = this._spawnsPoolA;
   private bufferedSpawnOverwriteIndex = 0;
 
-  private _despawnsA: NetworkServerSnapshotProjectileDespawn[] = [];
-  private _despawnsB: NetworkServerSnapshotProjectileDespawn[] = [];
-  private _despawnsPoolA: NetworkServerSnapshotProjectileDespawn[] = [];
-  private _despawnsPoolB: NetworkServerSnapshotProjectileDespawn[] = [];
-  private bufferedDespawns: NetworkServerSnapshotProjectileDespawn[] = this._despawnsA;
-  private bufferedDespawnsPool: NetworkServerSnapshotProjectileDespawn[] = this._despawnsPoolA;
+  private bufferedDespawns = new Map<number, NetworkServerSnapshotProjectileDespawn>();
+  private despawnStagePool: NetworkServerSnapshotProjectileDespawn[] = [];
+  private despawnStagePoolIndex = 0;
+  private _despawnBufA: NetworkServerSnapshotProjectileDespawn[] = [];
+  private _despawnBufB: NetworkServerSnapshotProjectileDespawn[] = [];
+  private _despawnPoolA: NetworkServerSnapshotProjectileDespawn[] = [];
+  private _despawnPoolB: NetworkServerSnapshotProjectileDespawn[] = [];
+  private _despawnBufToggle = false;
+  private coalescedDespawns = 0;
 
   private _audioA: NetworkServerSnapshotSimEvent[] = [];
   private _audioB: NetworkServerSnapshotSimEvent[] = [];
@@ -106,9 +114,25 @@ export class SnapshotBuffer {
     else this.bufferedAudio[index] = copied;
   }
 
+  private pushBufferedDespawn(despawn: NetworkServerSnapshotProjectileDespawn): void {
+    if (this.bufferedDespawns.has(despawn.id)) {
+      this.coalescedDespawns++;
+      return;
+    }
+    const out = this.despawnStagePool[this.despawnStagePoolIndex] ?? { id: 0 };
+    this.despawnStagePool[this.despawnStagePoolIndex] = out;
+    this.despawnStagePoolIndex++;
+    out.id = despawn.id;
+    this.bufferedDespawns.set(despawn.id, out);
+  }
+
   /** Wire the gameConnection snapshot callback to accumulate events. */
   attach(gameConnection: GameConnection, onBufferedSnapshot?: SnapshotBufferCallback): void {
-    gameConnection.onSnapshot((state: NetworkServerSnapshot, releaseSnapshot?: () => void) => {
+    this.detachSnapshotCallback?.();
+    this.detachSnapshotCallback = gameConnection.onSnapshot((
+      state: NetworkServerSnapshot,
+      releaseSnapshot?: () => void,
+    ) => {
       if (onBufferedSnapshot !== undefined) onBufferedSnapshot(state);
       const proj = state.projectiles;
       if (proj !== undefined && proj.spawns !== undefined) {
@@ -118,11 +142,7 @@ export class SnapshotBuffer {
       }
       if (proj !== undefined && proj.despawns !== undefined) {
         for (let i = 0; i < proj.despawns.length; i++) {
-          const index = this.bufferedDespawns.length;
-          const out = this.bufferedDespawnsPool[index] ?? { id: 0 };
-          this.bufferedDespawnsPool[index] = out;
-          out.id = proj.despawns[i].id;
-          this.bufferedDespawns.push(out);
+          this.pushBufferedDespawn(proj.despawns[i]);
         }
       }
       if (state.audioEvents) {
@@ -221,12 +241,26 @@ export class SnapshotBuffer {
     this.bufferedSpawnOverwriteIndex = 0;
     const netSpawns = spawns.length > 0 ? spawns : undefined;
 
-    // Swap despawns
-    const despawns = this.bufferedDespawns;
-    this.bufferedDespawns = (despawns === this._despawnsA) ? this._despawnsB : this._despawnsA;
-    this.bufferedDespawnsPool = (despawns === this._despawnsA) ? this._despawnsPoolB : this._despawnsPoolA;
-    this.bufferedDespawns.length = 0;
-    const netDespawns = despawns.length > 0 ? despawns : undefined;
+    // Swap despawns. Cleanup events are idempotent, so repeated ids can
+    // collapse to one authoritative cleanup without keeping every event.
+    let netDespawns: NetworkServerSnapshotProjectileDespawn[] | undefined;
+    if (this.bufferedDespawns.size > 0) {
+      const buf = this._despawnBufToggle ? this._despawnBufB : this._despawnBufA;
+      const pool = this._despawnBufToggle ? this._despawnPoolB : this._despawnPoolA;
+      this._despawnBufToggle = !this._despawnBufToggle;
+      buf.length = 0;
+      let writeIdx = 0;
+      for (const despawn of this.bufferedDespawns.values()) {
+        const out = pool[writeIdx] ?? { id: 0 };
+        pool[writeIdx] = out;
+        out.id = despawn.id;
+        buf.push(out);
+        writeIdx++;
+      }
+      this.bufferedDespawns.clear();
+      this.despawnStagePoolIndex = 0;
+      netDespawns = buf;
+    }
 
     // Swap audio
     const audio = this.bufferedAudio;
@@ -312,6 +346,8 @@ export class SnapshotBuffer {
 
   /** Release all buffered data. */
   clear(): void {
+    this.detachSnapshotCallback?.();
+    this.detachSnapshotCallback = null;
     this.releasePendingSnapshot();
     this.consumedSnapshotRelease?.();
     this.consumedSnapshotRelease = null;
@@ -321,10 +357,14 @@ export class SnapshotBuffer {
     this._spawnsPoolA.length = 0;
     this._spawnsPoolB.length = 0;
     this.bufferedSpawnOverwriteIndex = 0;
-    this._despawnsA.length = 0;
-    this._despawnsB.length = 0;
-    this._despawnsPoolA.length = 0;
-    this._despawnsPoolB.length = 0;
+    this.bufferedDespawns.clear();
+    this.despawnStagePool.length = 0;
+    this.despawnStagePoolIndex = 0;
+    this._despawnBufA.length = 0;
+    this._despawnBufB.length = 0;
+    this._despawnPoolA.length = 0;
+    this._despawnPoolB.length = 0;
+    this.coalescedDespawns = 0;
     this._audioA.length = 0;
     this._audioB.length = 0;
     this._audioPoolA.length = 0;
@@ -345,6 +385,13 @@ export class SnapshotBuffer {
     this._beamBufB.length = 0;
     this._beamPoolA.length = 0;
     this._beamPoolB.length = 0;
+  }
+
+  getDiagnostics(): SnapshotBufferDiagnostics {
+    return {
+      bufferedDespawns: this.bufferedDespawns.size,
+      coalescedDespawns: this.coalescedDespawns,
+    };
   }
 
   private releasePendingSnapshot(): void {
