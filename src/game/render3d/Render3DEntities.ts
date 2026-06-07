@@ -890,7 +890,7 @@ export class Render3DEntities {
       if (pruneUnits) m.renderSeenToken = pruneToken;
       applyUnitLiftGroupPose3D(m, e);
       this.updateUnitInstanceColors(e, m, turrets);
-      this.barrelSpinState.advance(e, spinDt);
+      if (unitGfx.barrelSpin) this.barrelSpinState.advance(e, spinDt);
       this.updateUnitFallbackDynamicMaterials(e, m, turrets);
 
       // Build-in materialization: the body reveals via per-instance
