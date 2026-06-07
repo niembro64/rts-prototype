@@ -47,6 +47,7 @@ import {
   easeOutCubic,
   emaAlpha,
   kneeFromIK,
+  rollingLocomotionBodyActive,
   transformChassisToWorld,
 } from './LocomotionRigShared3D';
 import { clamp, clamp01 } from '../math';
@@ -489,7 +490,8 @@ export function translateLegSlots(
 
 /** Per-frame: advance each leg's snap-lerp physics + IK, write
  *  cylinder + joint + foot-pad transforms into the shared instanced
- *  renderer pools. */
+ *  renderer pools. Returns true while the rig needs another visual
+ *  frame without an external render dirty waking it. */
 export function updateLegs(
   mesh: LegMesh,
   entity: Entity,
@@ -497,7 +499,7 @@ export function updateLegs(
   mapWidth: number,
   mapHeight: number,
   legRenderer: LegInstancedRenderer,
-): void {
+): boolean {
   const vx = entity.unit?.velocityX ?? 0;
   const vy = entity.unit?.velocityY ?? 0;
 
@@ -564,7 +566,7 @@ export function updateLegs(
       chassisUpY,
       chassisUpZ,
     );
-    return;
+    return true;
   }
 
   for (const leg of mesh.legs) {
@@ -745,6 +747,17 @@ export function updateLegs(
       chassisUpX, chassisUpY, chassisUpZ,
     );
   }
+  return legsNeedFrame(mesh, entity, showViz);
+}
+
+function legsNeedFrame(mesh: LegMesh, entity: Entity, showViz: boolean): boolean {
+  if (showViz) return true;
+  if (!mesh.visualGrounded) return true;
+  if (rollingLocomotionBodyActive(entity)) return true;
+  for (const leg of mesh.legs) {
+    if (!leg.initialized || leg.isSliding) return true;
+  }
+  return false;
 }
 
 function totalLegLength(c: ArachnidLegConfig): number {

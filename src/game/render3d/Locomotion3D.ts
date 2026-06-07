@@ -204,8 +204,7 @@ export function updateLocomotion(
     case 'treads':
       return updateTreads(mesh, entity, dtMs, mapWidth, mapHeight);
     case 'legs':
-      updateLegs(mesh, entity, dtMs, mapWidth, mapHeight, legRenderer);
-      return true;
+      return updateLegs(mesh, entity, dtMs, mapWidth, mapHeight, legRenderer);
     case 'hover':
       updateHoverFans(mesh, entity, dtMs, mapWidth, mapHeight, hoverSmokeEmitters);
       return true;

@@ -67,6 +67,7 @@ import { applyUnitLiftGroupPose3D, UnitMeshBuilder3D } from './UnitMeshBuilder3D
 import { UnitRenderPoseBatch3D } from './UnitRenderPoseBatch3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 import { refreshLocomotionSupportSurfaces } from './LocomotionTerrainSampler';
+import { getLegsRadiusToggle } from '@/clientBarConfig';
 import {
   UnitRenderPacket3D,
   type BuildingRenderPacket3D,
@@ -187,6 +188,7 @@ export class Render3DEntities {
   private vanishingUnits!: DyingMeshFade<EntityMesh>;
   private readonly dyingUnitScatter = new WeakMap<EntityMesh, DyingUnitScatter>();
   private readonly activeLocomotionUnitIds = new Set<EntityId>();
+  private legsRadiusToggle = getLegsRadiusToggle();
   /** Per-entity vision fade-IN clock (ms elapsed, 0..VISION_FADE_IN_MS) for
    *  units that have newly entered vision. Keyed by entity id so it survives
    *  mesh rebuilds (LOD / owner recolor) and only resets when the unit truly
@@ -469,6 +471,7 @@ export class Render3DEntities {
     this._spinDt = frameSpin.spinDtSec;
     this.turretMountCache.reset(this._currentDtMs);
     refreshLocomotionSupportSurfaces(this.clientViewState.getPredictionSupportSurfaceEntities());
+    this.syncLegsRadiusToggleQueue();
     this.selectionOverlays.beginFrame();
     // Populate beam-directed turret aim from the live beams BEFORE the
     // unit + building turret-pose passes read it this frame.
@@ -1161,6 +1164,15 @@ export class Render3DEntities {
     this.dyingUnits.update(this._currentDtMs);
     this.vanishingUnits.update(this._currentDtMs);
     this.unitDetailInstances.flush(this.turretShieldPanelsEnabled);
+  }
+
+  private syncLegsRadiusToggleQueue(): void {
+    const current = getLegsRadiusToggle();
+    if (current === this.legsRadiusToggle) return;
+    this.legsRadiusToggle = current;
+    for (const [id, mesh] of this.unitMeshes) {
+      if (mesh.locomotion?.type === 'legs') this.activeLocomotionUnitIds.add(id);
+    }
   }
 
   private deactivateShieldPanelMesh(mirrors: ShieldPanelMesh): void {
