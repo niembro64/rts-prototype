@@ -122,8 +122,12 @@ export class BuildingAnimationController3D {
   private activeSolarBuildingIndexById = new Map<EntityId, number>();
   private windBuildings: AnimatedBuildingEntry[] = [];
   private windBuildingIndexById = new Map<EntityId, number>();
+  private activeWindBuildings: AnimatedBuildingEntry[] = [];
+  private activeWindBuildingIndexById = new Map<EntityId, number>();
   private extractorBuildings: AnimatedBuildingEntry[] = [];
   private extractorBuildingIndexById = new Map<EntityId, number>();
+  private activeExtractorBuildings: AnimatedBuildingEntry[] = [];
+  private activeExtractorBuildingIndexById = new Map<EntityId, number>();
   private converterBuildings: AnimatedBuildingEntry[] = [];
   private converterBuildingIndexById = new Map<EntityId, number>();
   private activeConverterBuildings: AnimatedBuildingEntry[] = [];
@@ -138,6 +142,8 @@ export class BuildingAnimationController3D {
   private activeFactoryBuildingIndexById = new Map<EntityId, number>();
   private radarBuildings: AnimatedBuildingEntry[] = [];
   private radarBuildingIndexById = new Map<EntityId, number>();
+  private activeRadarBuildings: AnimatedBuildingEntry[] = [];
+  private activeRadarBuildingIndexById = new Map<EntityId, number>();
   private windFanYaw: number | null = null;
   private windVisualSpeed: number | null = null;
   private windRotorPhase = 0;
@@ -162,6 +168,7 @@ export class BuildingAnimationController3D {
   /** Per-entity "closed amount" for the wind turbine's stowed pose
    *  (nacelle tilts skyward + blades fold against the pole). */
   private windCloseAmounts = new Map<EntityId, number>();
+  private windAppliedCloseAmounts = new Map<EntityId, number>();
   /** Courtesy ROT VEL binding for radar decorative angular speeds. */
   private radarHeadPhases = new Map<EntityId, number>();
   private radarSweepPhases = new Map<EntityId, number>();
@@ -176,6 +183,7 @@ export class BuildingAnimationController3D {
   private converterEnergyRingSpeeds = new Map<EntityId, number>();
   private converterMetalRingSpeeds = new Map<EntityId, number>();
   private converterAccentRingSpeeds = new Map<EntityId, number>();
+  private extractorAppliedCloseAmounts = new Map<EntityId, number>();
   private extractorDepositSourceCache = new Map<EntityId, THREE.Vector3>();
   private extractorCoverageCells: MetalDepositFootprintCell[] = [];
   private _pylonSourceWorld = new THREE.Vector3();
@@ -197,10 +205,12 @@ export class BuildingAnimationController3D {
       this.updateSolarAnimationQueue(entry);
     }
     if (mesh.windRig) {
-      this.addAnimatedBuilding(this.windBuildings, this.windBuildingIndexById, entity, mesh);
+      const entry = this.addAnimatedBuilding(this.windBuildings, this.windBuildingIndexById, entity, mesh);
+      this.updateWindAnimationQueue(entry);
     }
     if (mesh.extractorRig) {
-      this.addAnimatedBuilding(this.extractorBuildings, this.extractorBuildingIndexById, entity, mesh);
+      const entry = this.addAnimatedBuilding(this.extractorBuildings, this.extractorBuildingIndexById, entity, mesh);
+      this.updateExtractorAnimationQueue(entry);
     }
     if (mesh.converterRig) {
       const entry = this.addAnimatedBuilding(this.converterBuildings, this.converterBuildingIndexById, entity, mesh);
@@ -225,7 +235,8 @@ export class BuildingAnimationController3D {
       this.updateFactoryAnimationQueue(entry);
     }
     if (mesh.radarRig) {
-      this.addAnimatedBuilding(this.radarBuildings, this.radarBuildingIndexById, entity, mesh);
+      const entry = this.addAnimatedBuilding(this.radarBuildings, this.radarBuildingIndexById, entity, mesh);
+      this.updateRadarAnimationQueue(entry);
     }
   }
 
@@ -237,6 +248,18 @@ export class BuildingAnimationController3D {
     if (mesh.converterRig) {
       const entry = this.addAnimatedBuilding(this.converterBuildings, this.converterBuildingIndexById, entity, mesh);
       this.updateConverterAnimationQueue(entry);
+    }
+    if (mesh.windRig) {
+      const entry = this.addAnimatedBuilding(this.windBuildings, this.windBuildingIndexById, entity, mesh);
+      this.updateWindAnimationQueue(entry);
+    }
+    if (mesh.extractorRig) {
+      const entry = this.addAnimatedBuilding(this.extractorBuildings, this.extractorBuildingIndexById, entity, mesh);
+      this.updateExtractorAnimationQueue(entry);
+    }
+    if (mesh.radarRig) {
+      const entry = this.addAnimatedBuilding(this.radarBuildings, this.radarBuildingIndexById, entity, mesh);
+      this.updateRadarAnimationQueue(entry);
     }
     if (mesh.factoryBuildSpotRig) {
       const entry = this.addAnimatedBuilding(
@@ -253,7 +276,9 @@ export class BuildingAnimationController3D {
     this.removeAnimatedBuilding(this.solarBuildings, this.solarBuildingIndexById, id);
     this.removeAnimatedBuilding(this.activeSolarBuildings, this.activeSolarBuildingIndexById, id);
     this.removeAnimatedBuilding(this.windBuildings, this.windBuildingIndexById, id);
+    this.removeAnimatedBuilding(this.activeWindBuildings, this.activeWindBuildingIndexById, id);
     this.removeAnimatedBuilding(this.extractorBuildings, this.extractorBuildingIndexById, id);
+    this.removeAnimatedBuilding(this.activeExtractorBuildings, this.activeExtractorBuildingIndexById, id);
     this.removeAnimatedBuilding(this.converterBuildings, this.converterBuildingIndexById, id);
     this.removeAnimatedBuilding(this.activeConverterBuildings, this.activeConverterBuildingIndexById, id);
     this.removeResourcePylonBuilding(id);
@@ -263,10 +288,13 @@ export class BuildingAnimationController3D {
     this.extractorCloseAmounts.delete(id);
     this.extractorRotorYaws.delete(id);
     this.extractorDepositSourceCache.delete(id);
+    this.extractorAppliedCloseAmounts.delete(id);
     this.windCloseAmounts.delete(id);
+    this.windAppliedCloseAmounts.delete(id);
     this.removeAnimatedBuilding(this.factoryBuildings, this.factoryBuildingIndexById, id);
     this.removeAnimatedBuilding(this.activeFactoryBuildings, this.activeFactoryBuildingIndexById, id);
     this.removeAnimatedBuilding(this.radarBuildings, this.radarBuildingIndexById, id);
+    this.removeAnimatedBuilding(this.activeRadarBuildings, this.activeRadarBuildingIndexById, id);
     this.radarHeadPhases.delete(id);
     this.radarSweepPhases.delete(id);
     this.radarHeadSpeeds.delete(id);
@@ -287,108 +315,8 @@ export class BuildingAnimationController3D {
     this.refreshActiveResourcePylonQueue();
     this.updateActiveSolarAnimations();
 
-    if (this.windBuildings.length > 0) {
-      this.updateWindAnimationGlobals();
-      const closeAmounts = this.windCloseAmounts;
-      for (const entry of this.windBuildings) {
-        const { id, entity, mesh } = entry;
-        const open = entity.building?.activeState?.open !== false;
-        const closeTarget = open ? 0 : 1;
-        let close = closeAmounts.get(id) ?? closeTarget;
-        close = Math.abs(closeTarget - close) < 0.002
-          ? closeTarget
-          : close + (closeTarget - close) * BUILDING_FORTIFY_ANIM_ALPHA;
-        closeAmounts.set(id, close);
-
-        this.updateWindTurbineRig(mesh, mesh.buildingCachedDetailsReady === true, close);
-      }
-    }
-
-    if (this.extractorBuildings.length > 0) {
-      // Each extractor EMA-blends its local rotor angular speed toward
-      // base × coverageFraction, so spin scales 1:1 with
-      // metal-per-second while still honoring the ROT VEL courtesy
-      // binding.
-      // 0 covered tiles → stationary; full coverage → full base rate.
-      // While the extractor is fortified (closed) we suspend spin
-      // entirely — the blades have folded down against the pyramid
-      // sides and are no longer producing.
-      const invBase = INV_EXTRACTOR_BASE_PRODUCTION;
-      const twoPi = Math.PI * 2;
-      const phases = this.extractorRotorPhases;
-      const speeds = this.extractorRotorSpeeds;
-      const closeAmounts = this.extractorCloseAmounts;
-      const rotorYaws = this.extractorRotorYaws;
-      const rotorSpeedAlpha = visualAnimBlend(getRotationVelEmaMode(), spinDt);
-      for (const entry of this.extractorBuildings) {
-        const { id, entity, mesh } = entry;
-        const open = entity.building?.activeState?.open !== false;
-        // Smooth fold blend so toggling closed doesn't snap the blades.
-        const closeTarget = open ? 0 : 1;
-        let close = closeAmounts.get(id) ?? closeTarget;
-        close = Math.abs(closeTarget - close) < 0.002
-          ? closeTarget
-          : close + (closeTarget - close) * BUILDING_FORTIFY_ANIM_ALPHA;
-        closeAmounts.set(id, close);
-
-        const rate = open ? (entity.metalExtractionRate ?? 0) : 0;
-        const normalizedRate = rate * invBase;
-        let phase = phases.get(id);
-        if (phase === undefined) phase = id * 0.173; // first-frame jitter seed
-        const targetSpeed = EXTRACTOR_ROTOR_RAD_PER_SEC * normalizedRate * (1 - close);
-        let speed = speeds.get(id) ?? 0;
-        speed = lerp(speed, targetSpeed, rotorSpeedAlpha);
-        if (targetSpeed === 0 && speed < 0.001) speed = 0;
-        phase += spinDt * speed;
-
-        const rig = mesh.extractorRig;
-        if (rig && mesh.buildingCachedDetailsReady === true) {
-          // The visual spin direction is negative yaw. When closing,
-          // settle onto the next full-turn alignment in that direction
-          // instead of the shortest path back to 0, which would reverse
-          // for half the phase range. Once fully closed, snap the stored
-          // phase to that aligned turn so opening resumes forward too.
-          const alignedPhase = getNextExtractorAlignedPhase(phase, twoPi);
-          const openYaw = -phase;
-          const closedYaw = -alignedPhase;
-          let yaw: number;
-          if (open) {
-            yaw = openYaw;
-          } else {
-            yaw = close >= 0.999
-              ? closedYaw
-              : openYaw + (closedYaw - openYaw) * close;
-            if (close >= 0.999) phase = alignedPhase;
-          }
-          const previousYaw = rotorYaws.get(id);
-          if (previousYaw !== undefined && yaw > previousYaw) yaw = previousYaw;
-          rotorYaws.set(id, yaw);
-          const rotors = rig.rotors;
-          for (let r = 0; r < rotors.length; r++) {
-            const rotor = rotors[r];
-            rotor.rotation.y = yaw;
-            // Slerp each blade between its baked open and closed
-            // transforms. The closed pose lays the blade flat against
-            // one face of the hexagonal pyramid; six blades cover the
-            // six faces. userData carries the precomputed endpoints for
-            // the exact extruded face-panel mesh.
-            for (const child of rotor.children) {
-              const anim = child.userData.extractorBlade as ExtractorBladeAnim | undefined;
-              if (!anim) continue;
-              _extractorBladeQuat.copy(anim.openQuat).slerp(anim.closedQuat, close);
-              child.quaternion.copy(_extractorBladeQuat);
-              _extractorBladePos.copy(anim.openPos).lerp(anim.closedPos, close);
-              child.position.copy(_extractorBladePos);
-              _extractorBladeScale.copy(anim.openScale).lerp(anim.closedScale, close);
-              child.scale.copy(_extractorBladeScale);
-            }
-          }
-        }
-        phases.set(id, phase);
-        speeds.set(id, speed);
-      }
-    }
-
+    this.updateActiveWindAnimations();
+    this.updateActiveExtractorAnimations(spinDt);
     this.updateActiveConverterAnimations(spinDt, timeMs);
     this.updateActiveResourcePylons(spinDt);
 
@@ -425,34 +353,7 @@ export class BuildingAnimationController3D {
       }
     }
 
-    if (this.radarBuildings.length > 0) {
-      const radarSpeedAlpha = visualAnimBlend(getRotationVelEmaMode(), spinDt);
-      for (const entry of this.radarBuildings) {
-        const { id, entity, mesh } = entry;
-        const rig = mesh?.radarRig;
-        if (!rig || mesh.buildingCachedDetailsReady !== true) continue;
-        // ON/OFF gate: a closed (OFF) radar stops spinning so the
-        // renderer's open/closed pose tracks the same state that gates
-        // sensor coverage (see design_philosophy.html "Producer
-        // Buildings Are ON/OFF").
-        const open = entity?.building?.activeState?.open !== false;
-        const seed = id * 0.137;
-        let headSpeed = this.radarHeadSpeeds.get(id) ?? 0;
-        let sweepSpeed = this.radarSweepSpeeds.get(id) ?? 0;
-        headSpeed = lerp(headSpeed, open ? RADAR_HEAD_RAD_PER_SEC : 0, radarSpeedAlpha);
-        sweepSpeed = lerp(sweepSpeed, open ? -RADAR_SWEEP_RAD_PER_SEC : 0, radarSpeedAlpha);
-        let headPhase = this.radarHeadPhases.get(id) ?? seed;
-        let sweepPhase = this.radarSweepPhases.get(id) ?? seed * 2.7;
-        headPhase += spinDt * headSpeed;
-        sweepPhase += spinDt * sweepSpeed;
-        this.radarHeadSpeeds.set(id, headSpeed);
-        this.radarSweepSpeeds.set(id, sweepSpeed);
-        this.radarHeadPhases.set(id, headPhase);
-        this.radarSweepPhases.set(id, sweepPhase);
-        rig.head.rotation.y = headPhase;
-        rig.sweep.rotation.y = sweepPhase;
-      }
-    }
+    this.updateActiveRadarAnimations(spinDt);
   }
 
   destroy(): void {
@@ -462,8 +363,12 @@ export class BuildingAnimationController3D {
     this.activeSolarBuildingIndexById.clear();
     this.windBuildings.length = 0;
     this.windBuildingIndexById.clear();
+    this.activeWindBuildings.length = 0;
+    this.activeWindBuildingIndexById.clear();
     this.extractorBuildings.length = 0;
     this.extractorBuildingIndexById.clear();
+    this.activeExtractorBuildings.length = 0;
+    this.activeExtractorBuildingIndexById.clear();
     this.converterBuildings.length = 0;
     this.converterBuildingIndexById.clear();
     this.activeConverterBuildings.length = 0;
@@ -478,11 +383,15 @@ export class BuildingAnimationController3D {
     this.activeFactoryBuildingIndexById.clear();
     this.radarBuildings.length = 0;
     this.radarBuildingIndexById.clear();
+    this.activeRadarBuildings.length = 0;
+    this.activeRadarBuildingIndexById.clear();
     this.extractorRotorPhases.clear();
     this.extractorRotorSpeeds.clear();
     this.extractorCloseAmounts.clear();
     this.extractorRotorYaws.clear();
     this.windCloseAmounts.clear();
+    this.windAppliedCloseAmounts.clear();
+    this.extractorAppliedCloseAmounts.clear();
     this.radarHeadPhases.clear();
     this.radarSweepPhases.clear();
     this.radarHeadSpeeds.clear();
@@ -575,6 +484,170 @@ export class BuildingAnimationController3D {
 
   private solarTargetAmount(entity: Entity): number {
     return entity.building?.activeState?.open === false ? 0 : 1;
+  }
+
+  private updateWindAnimationQueue(entry: AnimatedBuildingEntry): void {
+    const activeIndex = this.activeWindBuildingIndexById.get(entry.id);
+    if (!this.windAnimationNeedsFrame(entry)) {
+      if (activeIndex !== undefined) {
+        this.removeAnimatedBuilding(this.activeWindBuildings, this.activeWindBuildingIndexById, entry.id);
+      }
+      return;
+    }
+    if (activeIndex !== undefined) {
+      this.activeWindBuildings[activeIndex] = entry;
+      return;
+    }
+    this.activeWindBuildingIndexById.set(entry.id, this.activeWindBuildings.length);
+    this.activeWindBuildings.push(entry);
+  }
+
+  private updateActiveWindAnimations(): void {
+    if (this.activeWindBuildings.length === 0) return;
+    this.updateWindAnimationGlobals();
+    for (let i = 0; i < this.activeWindBuildings.length;) {
+      const entry = this.activeWindBuildings[i];
+      if (this.updateWindAnimationEntry(entry)) {
+        i++;
+      } else {
+        this.removeAnimatedBuilding(this.activeWindBuildings, this.activeWindBuildingIndexById, entry.id);
+      }
+    }
+  }
+
+  private windAnimationNeedsFrame(entry: AnimatedBuildingEntry): boolean {
+    if (!entry.mesh.windRig) return false;
+    if (entry.entity.building?.activeState?.open !== false) return true;
+    const appliedClose = this.windAppliedCloseAmounts.get(entry.id) ?? 0;
+    return Math.abs(1 - appliedClose) >= BUILDING_RIG_IDLE_EPSILON;
+  }
+
+  private updateWindAnimationEntry(entry: AnimatedBuildingEntry): boolean {
+    const { id, entity, mesh } = entry;
+    const open = entity.building?.activeState?.open !== false;
+    const closeTarget = open ? 0 : 1;
+    let close = this.windCloseAmounts.get(id) ?? closeTarget;
+    close = Math.abs(closeTarget - close) < 0.002
+      ? closeTarget
+      : close + (closeTarget - close) * BUILDING_FORTIFY_ANIM_ALPHA;
+    this.windCloseAmounts.set(id, close);
+    const detailsReady = mesh.buildingCachedDetailsReady === true;
+    this.updateWindTurbineRig(mesh, detailsReady, close);
+    if (detailsReady) this.windAppliedCloseAmounts.set(id, close);
+    return this.windAnimationNeedsFrame(entry);
+  }
+
+  private updateExtractorAnimationQueue(entry: AnimatedBuildingEntry): void {
+    const activeIndex = this.activeExtractorBuildingIndexById.get(entry.id);
+    if (!this.extractorAnimationNeedsFrame(entry)) {
+      if (activeIndex !== undefined) {
+        this.removeAnimatedBuilding(
+          this.activeExtractorBuildings,
+          this.activeExtractorBuildingIndexById,
+          entry.id,
+        );
+      }
+      return;
+    }
+    if (activeIndex !== undefined) {
+      this.activeExtractorBuildings[activeIndex] = entry;
+      return;
+    }
+    this.activeExtractorBuildingIndexById.set(entry.id, this.activeExtractorBuildings.length);
+    this.activeExtractorBuildings.push(entry);
+  }
+
+  private updateActiveExtractorAnimations(spinDt: number): void {
+    if (this.activeExtractorBuildings.length === 0) return;
+    const rotorSpeedAlpha = visualAnimBlend(getRotationVelEmaMode(), spinDt);
+    for (let i = 0; i < this.activeExtractorBuildings.length;) {
+      const entry = this.activeExtractorBuildings[i];
+      if (this.updateExtractorAnimationEntry(entry, spinDt, rotorSpeedAlpha)) {
+        i++;
+      } else {
+        this.removeAnimatedBuilding(
+          this.activeExtractorBuildings,
+          this.activeExtractorBuildingIndexById,
+          entry.id,
+        );
+      }
+    }
+  }
+
+  private extractorAnimationNeedsFrame(entry: AnimatedBuildingEntry): boolean {
+    if (!entry.mesh.extractorRig) return false;
+    const open = entry.entity.building?.activeState?.open !== false;
+    const closeTarget = open ? 0 : 1;
+    const appliedClose = this.extractorAppliedCloseAmounts.get(entry.id) ?? 0;
+    const speed = Math.abs(this.extractorRotorSpeeds.get(entry.id) ?? 0);
+    const rate = open ? (entry.entity.metalExtractionRate ?? 0) : 0;
+    return Math.abs(closeTarget - appliedClose) >= BUILDING_RIG_IDLE_EPSILON ||
+      speed > BUILDING_RIG_IDLE_EPSILON ||
+      rate > BUILDING_RIG_IDLE_EPSILON;
+  }
+
+  private updateExtractorAnimationEntry(
+    entry: AnimatedBuildingEntry,
+    spinDt: number,
+    rotorSpeedAlpha: number,
+  ): boolean {
+    const { id, entity, mesh } = entry;
+    const open = entity.building?.activeState?.open !== false;
+    const closeTarget = open ? 0 : 1;
+    let close = this.extractorCloseAmounts.get(id) ?? closeTarget;
+    close = Math.abs(closeTarget - close) < 0.002
+      ? closeTarget
+      : close + (closeTarget - close) * BUILDING_FORTIFY_ANIM_ALPHA;
+    this.extractorCloseAmounts.set(id, close);
+
+    const rate = open ? (entity.metalExtractionRate ?? 0) : 0;
+    const normalizedRate = rate * INV_EXTRACTOR_BASE_PRODUCTION;
+    let phase = this.extractorRotorPhases.get(id);
+    if (phase === undefined) phase = id * 0.173;
+    const targetSpeed = EXTRACTOR_ROTOR_RAD_PER_SEC * normalizedRate * (1 - close);
+    let speed = this.extractorRotorSpeeds.get(id) ?? 0;
+    speed = lerp(speed, targetSpeed, rotorSpeedAlpha);
+    if (targetSpeed === 0 && speed < BUILDING_RIG_IDLE_EPSILON) speed = 0;
+    phase += spinDt * speed;
+
+    const rig = mesh.extractorRig;
+    const detailsReady = mesh.buildingCachedDetailsReady === true;
+    if (rig && detailsReady) {
+      const alignedPhase = getNextExtractorAlignedPhase(phase, Math.PI * 2);
+      const openYaw = -phase;
+      const closedYaw = -alignedPhase;
+      let yaw: number;
+      if (open) {
+        yaw = openYaw;
+      } else {
+        yaw = close >= 0.999
+          ? closedYaw
+          : openYaw + (closedYaw - openYaw) * close;
+        if (close >= 0.999) phase = alignedPhase;
+      }
+      const previousYaw = this.extractorRotorYaws.get(id);
+      if (previousYaw !== undefined && yaw > previousYaw) yaw = previousYaw;
+      this.extractorRotorYaws.set(id, yaw);
+      const rotors = rig.rotors;
+      for (let r = 0; r < rotors.length; r++) {
+        const rotor = rotors[r];
+        rotor.rotation.y = yaw;
+        for (const child of rotor.children) {
+          const anim = child.userData.extractorBlade as ExtractorBladeAnim | undefined;
+          if (!anim) continue;
+          _extractorBladeQuat.copy(anim.openQuat).slerp(anim.closedQuat, close);
+          child.quaternion.copy(_extractorBladeQuat);
+          _extractorBladePos.copy(anim.openPos).lerp(anim.closedPos, close);
+          child.position.copy(_extractorBladePos);
+          _extractorBladeScale.copy(anim.openScale).lerp(anim.closedScale, close);
+          child.scale.copy(_extractorBladeScale);
+        }
+      }
+      this.extractorAppliedCloseAmounts.set(id, close);
+    }
+    this.extractorRotorPhases.set(id, phase);
+    this.extractorRotorSpeeds.set(id, speed);
+    return this.extractorAnimationNeedsFrame(entry);
   }
 
   private updateConverterAnimationQueue(entry: AnimatedBuildingEntry): void {
@@ -694,6 +767,80 @@ export class BuildingAnimationController3D {
       + 0.06 * Math.max(energyMag, metalMag);
     rig.coreHalo.scale.setScalar(rig.coreHaloBaseRadius * haloPulse);
     return this.converterAnimationNeedsFrame(entry);
+  }
+
+  private updateRadarAnimationQueue(entry: AnimatedBuildingEntry): void {
+    const activeIndex = this.activeRadarBuildingIndexById.get(entry.id);
+    if (!this.radarAnimationNeedsFrame(entry)) {
+      if (activeIndex !== undefined) {
+        this.removeAnimatedBuilding(this.activeRadarBuildings, this.activeRadarBuildingIndexById, entry.id);
+      }
+      return;
+    }
+    if (activeIndex !== undefined) {
+      this.activeRadarBuildings[activeIndex] = entry;
+      return;
+    }
+    this.activeRadarBuildingIndexById.set(entry.id, this.activeRadarBuildings.length);
+    this.activeRadarBuildings.push(entry);
+  }
+
+  private updateActiveRadarAnimations(spinDt: number): void {
+    if (this.activeRadarBuildings.length === 0) return;
+    const radarSpeedAlpha = visualAnimBlend(getRotationVelEmaMode(), spinDt);
+    for (let i = 0; i < this.activeRadarBuildings.length;) {
+      const entry = this.activeRadarBuildings[i];
+      if (this.updateRadarAnimationEntry(entry, radarSpeedAlpha, spinDt)) {
+        i++;
+      } else {
+        this.removeAnimatedBuilding(this.activeRadarBuildings, this.activeRadarBuildingIndexById, entry.id);
+      }
+    }
+  }
+
+  private radarAnimationNeedsFrame(entry: AnimatedBuildingEntry): boolean {
+    if (!entry.mesh.radarRig) return false;
+    if (entry.entity.building?.activeState?.open !== false) return true;
+    return Math.abs(this.radarHeadSpeeds.get(entry.id) ?? 0) > BUILDING_RIG_IDLE_EPSILON ||
+      Math.abs(this.radarSweepSpeeds.get(entry.id) ?? 0) > BUILDING_RIG_IDLE_EPSILON;
+  }
+
+  private updateRadarAnimationEntry(
+    entry: AnimatedBuildingEntry,
+    radarSpeedAlpha: number,
+    spinDt: number,
+  ): boolean {
+    const { id, entity, mesh } = entry;
+    const rig = mesh.radarRig;
+    if (!rig) return false;
+    if (mesh.buildingCachedDetailsReady !== true) return this.radarAnimationNeedsFrame(entry);
+    const open = entity.building?.activeState?.open !== false;
+    const seed = id * 0.137;
+    let headSpeed = lerp(
+      this.radarHeadSpeeds.get(id) ?? 0,
+      open ? RADAR_HEAD_RAD_PER_SEC : 0,
+      radarSpeedAlpha,
+    );
+    let sweepSpeed = lerp(
+      this.radarSweepSpeeds.get(id) ?? 0,
+      open ? -RADAR_SWEEP_RAD_PER_SEC : 0,
+      radarSpeedAlpha,
+    );
+    if (!open) {
+      if (Math.abs(headSpeed) < BUILDING_RIG_IDLE_EPSILON) headSpeed = 0;
+      if (Math.abs(sweepSpeed) < BUILDING_RIG_IDLE_EPSILON) sweepSpeed = 0;
+    }
+    let headPhase = this.radarHeadPhases.get(id) ?? seed;
+    let sweepPhase = this.radarSweepPhases.get(id) ?? seed * 2.7;
+    headPhase += spinDt * headSpeed;
+    sweepPhase += spinDt * sweepSpeed;
+    this.radarHeadSpeeds.set(id, headSpeed);
+    this.radarSweepSpeeds.set(id, sweepSpeed);
+    this.radarHeadPhases.set(id, headPhase);
+    this.radarSweepPhases.set(id, sweepPhase);
+    rig.head.rotation.y = headPhase;
+    rig.sweep.rotation.y = sweepPhase;
+    return this.radarAnimationNeedsFrame(entry);
   }
 
   private addResourcePylonBuilding(
