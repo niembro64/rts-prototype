@@ -2,6 +2,10 @@ import type { FootprintBounds } from '../ViewportFootprint';
 import type { Entity, EntityId } from '../sim/types';
 
 const CLIENT_PROJECTILE_RENDER_CELL_SIZE = 512;
+const CLIENT_PROJECTILE_RENDER_CELL_KEY_OFFSET = 1 << 20;
+const CLIENT_PROJECTILE_RENDER_CELL_KEY_STRIDE = CLIENT_PROJECTILE_RENDER_CELL_KEY_OFFSET * 2 + 1;
+
+type ClientProjectileRenderCellKey = number | string;
 
 type ClientProjectileRenderSpatialEntry = {
   entity: Entity;
@@ -9,14 +13,19 @@ type ClientProjectileRenderSpatialEntry = {
   maxCellX: number;
   minCellY: number;
   maxCellY: number;
-  cellKeys: string[];
+  cellKeys: ClientProjectileRenderCellKey[];
   bucketIndices: number[];
 };
 
-export type ClientProjectileRenderPredicate = (entity: Entity) => boolean;
+export type ClientProjectileRenderLists = {
+  traveling: Entity[];
+  smokeTrail: Entity[];
+  line: Entity[];
+  burnMark: Entity[];
+};
 
 export class ClientProjectileRenderSpatialIndex {
-  private readonly buckets = new Map<string, Entity[]>();
+  private readonly buckets = new Map<ClientProjectileRenderCellKey, Entity[]>();
   private readonly entries = new Map<EntityId, ClientProjectileRenderSpatialEntry>();
   private readonly querySeenIds = new Set<EntityId>();
 
@@ -55,7 +64,7 @@ export class ClientProjectileRenderSpatialIndex {
 
     if (existing !== undefined) this.remove(entity.id);
 
-    const cellKeys: string[] = [];
+    const cellKeys: ClientProjectileRenderCellKey[] = [];
     const bucketIndices: number[] = [];
     for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
       for (let cellY = minCellY; cellY <= maxCellY; cellY++) {
@@ -97,12 +106,15 @@ export class ClientProjectileRenderSpatialIndex {
     this.entries.delete(id);
   }
 
-  query(
+  queryRenderLists(
     bounds: FootprintBounds,
-    out: Entity[],
-    predicate: ClientProjectileRenderPredicate,
-  ): Entity[] {
-    out.length = 0;
+    out: ClientProjectileRenderLists,
+  ): ClientProjectileRenderLists {
+    out.traveling.length = 0;
+    out.smokeTrail.length = 0;
+    out.line.length = 0;
+    out.burnMark.length = 0;
+
     const seen = this.querySeenIds;
     seen.clear();
 
@@ -116,16 +128,36 @@ export class ClientProjectileRenderSpatialIndex {
         if (bucket === undefined) continue;
         for (let i = 0; i < bucket.length; i++) {
           const entity = bucket[i];
-          if (seen.has(entity.id)) continue;
-          seen.add(entity.id);
-          if (predicate(entity)) out.push(entity);
+          const projectile = entity.projectile;
+          if (projectile === null) continue;
+          const points = projectile.points;
+          if (points !== undefined && points.length > 0) {
+            if (seen.has(entity.id)) continue;
+            seen.add(entity.id);
+          }
+          if (projectile.projectileType === 'projectile') {
+            out.traveling.push(entity);
+            if (projectile.config.shotProfile.visual.smokeTrail !== undefined) {
+              out.smokeTrail.push(entity);
+            }
+            if (entity.dgunProjectile?.isDGun === true) {
+              out.burnMark.push(entity);
+            }
+          } else {
+            out.line.push(entity);
+            out.burnMark.push(entity);
+          }
         }
       }
     }
     return out;
   }
 
-  private repointBucketIndex(id: EntityId, cellKey: string, nextIndex: number): void {
+  private repointBucketIndex(
+    id: EntityId,
+    cellKey: ClientProjectileRenderCellKey,
+    nextIndex: number,
+  ): void {
     const movedEntry = this.entries.get(id);
     if (movedEntry === undefined) return;
     for (let i = 0; i < movedEntry.cellKeys.length; i++) {
@@ -160,7 +192,7 @@ export class ClientProjectileRenderSpatialIndex {
     };
   }
 
-  private getOrCreateBucket(cellKey: string): Entity[] {
+  private getOrCreateBucket(cellKey: ClientProjectileRenderCellKey): Entity[] {
     let bucket = this.buckets.get(cellKey);
     if (bucket === undefined) {
       bucket = [];
@@ -173,7 +205,18 @@ export class ClientProjectileRenderSpatialIndex {
     return Math.floor(value / CLIENT_PROJECTILE_RENDER_CELL_SIZE);
   }
 
-  private cellKey(cellX: number, cellY: number): string {
-    return `${cellX},${cellY}`;
+  private cellKey(cellX: number, cellY: number): ClientProjectileRenderCellKey {
+    if (
+      cellX < -CLIENT_PROJECTILE_RENDER_CELL_KEY_OFFSET ||
+      cellX > CLIENT_PROJECTILE_RENDER_CELL_KEY_OFFSET ||
+      cellY < -CLIENT_PROJECTILE_RENDER_CELL_KEY_OFFSET ||
+      cellY > CLIENT_PROJECTILE_RENDER_CELL_KEY_OFFSET
+    ) {
+      return `${cellX},${cellY}`;
+    }
+    return (
+      (cellX + CLIENT_PROJECTILE_RENDER_CELL_KEY_OFFSET) *
+      CLIENT_PROJECTILE_RENDER_CELL_KEY_STRIDE
+    ) + cellY + CLIENT_PROJECTILE_RENDER_CELL_KEY_OFFSET;
   }
 }

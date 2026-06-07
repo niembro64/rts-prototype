@@ -31,7 +31,12 @@ import {
   dequantizeRotation as deqRot,
   dequantizeVelocity as deqVel,
 } from './snapshotQuantization';
-import { ClientProjectileRenderSpatialIndex } from './ClientProjectileRenderSpatialIndex';
+import {
+  ClientProjectileRenderSpatialIndex,
+  type ClientProjectileRenderLists,
+} from './ClientProjectileRenderSpatialIndex';
+
+export type { ClientProjectileRenderLists } from './ClientProjectileRenderSpatialIndex';
 
 type ClientProjectileStoreOptions = {
   entities: Map<EntityId, Entity>;
@@ -40,35 +45,6 @@ type ClientProjectileStoreOptions = {
 };
 
 const PROJECTILE_RENDER_SCOPE_PADDING = 250;
-
-function isTravelingProjectileRenderEntity(entity: Entity): boolean {
-  const projectile = entity.projectile;
-  return projectile !== null && projectile.projectileType === 'projectile';
-}
-
-function isSmokeTrailProjectileRenderEntity(entity: Entity): boolean {
-  const projectile = entity.projectile;
-  return (
-    projectile !== null &&
-    projectile.projectileType === 'projectile' &&
-    projectile.config.shotProfile.visual.smokeTrail !== undefined
-  );
-}
-
-function isLineProjectileRenderEntity(entity: Entity): boolean {
-  return isLineProjectileEntity(entity);
-}
-
-function isBurnMarkProjectileRenderEntity(entity: Entity): boolean {
-  if (isLineProjectileEntity(entity)) return true;
-  const projectile = entity.projectile;
-  return (
-    projectile !== null &&
-    projectile.projectileType === 'projectile' &&
-    entity.dgunProjectile !== null &&
-    entity.dgunProjectile.isDGun === true
-  );
-}
 
 export class ClientProjectileStore {
   readonly beamPathTargets = new Map<EntityId, BeamPathTarget>();
@@ -82,6 +58,12 @@ export class ClientProjectileStore {
   private cachedSmokeTrailProjectiles: Entity[] = [];
   private cachedLineProjectiles: Entity[] = [];
   private cachedBurnMarkProjectiles: Entity[] = [];
+  private cachedRenderLists: ClientProjectileRenderLists = {
+    traveling: this.cachedTravelingProjectiles,
+    smokeTrail: this.cachedSmokeTrailProjectiles,
+    line: this.cachedLineProjectiles,
+    burnMark: this.cachedBurnMarkProjectiles,
+  };
   private renderSpatialIndex = new ClientProjectileRenderSpatialIndex();
 
   constructor(private readonly options: ClientProjectileStoreOptions) {}
@@ -276,40 +258,15 @@ export class ClientProjectileStore {
     }
   }
 
-  collectTraveling(_out: Entity[]): Entity[] {
-    this.rebuildRenderListsIfNeeded();
-    return this.cachedTravelingProjectiles;
-  }
-
-  collectSmokeTrail(_out: Entity[]): Entity[] {
-    this.rebuildRenderListsIfNeeded();
-    return this.cachedSmokeTrailProjectiles;
-  }
-
-  collectLine(_out: Entity[]): Entity[] {
-    this.rebuildRenderListsIfNeeded();
-    return this.cachedLineProjectiles;
-  }
-
-  collectBurnMark(_out: Entity[]): Entity[] {
-    this.rebuildRenderListsIfNeeded();
-    return this.cachedBurnMarkProjectiles;
-  }
-
-  collectScopedTraveling(bounds: FootprintBounds, out: Entity[]): Entity[] {
-    return this.renderSpatialIndex.query(bounds, out, isTravelingProjectileRenderEntity);
-  }
-
-  collectScopedSmokeTrail(bounds: FootprintBounds, out: Entity[]): Entity[] {
-    return this.renderSpatialIndex.query(bounds, out, isSmokeTrailProjectileRenderEntity);
-  }
-
-  collectScopedLine(bounds: FootprintBounds, out: Entity[]): Entity[] {
-    return this.renderSpatialIndex.query(bounds, out, isLineProjectileRenderEntity);
-  }
-
-  collectScopedBurnMark(bounds: FootprintBounds, out: Entity[]): Entity[] {
-    return this.renderSpatialIndex.query(bounds, out, isBurnMarkProjectileRenderEntity);
+  collectRenderLists(
+    bounds: FootprintBounds | null,
+    out: ClientProjectileRenderLists,
+  ): ClientProjectileRenderLists {
+    if (bounds === null) {
+      this.rebuildRenderListsIfNeeded();
+      return this.cachedRenderLists;
+    }
+    return this.renderSpatialIndex.queryRenderLists(bounds, out);
   }
 
   clear(): void {

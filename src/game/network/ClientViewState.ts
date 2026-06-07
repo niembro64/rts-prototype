@@ -63,7 +63,10 @@ import type {
   ClientPredictionCorrectionStats,
   ClientPredictionTargetAgeStats,
 } from './ClientPredictionDiagnostics';
-import { ClientProjectileStore } from './ClientProjectileStore';
+import {
+  ClientProjectileStore,
+  type ClientProjectileRenderLists,
+} from './ClientProjectileStore';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
 import { applyNetworkUnitDriftFieldsToTarget } from './unitSnapshotFields';
 import { ClientRenderSpatialIndex } from './ClientRenderSpatialIndex';
@@ -1465,36 +1468,11 @@ export class ClientViewState {
     return this.cache.getLineProjectiles();
   }
 
-  collectTravelingProjectiles(out: Entity[]): Entity[] {
-    return this.projectileStore.collectTraveling(out);
-  }
-
-  collectScopedTravelingProjectiles(bounds: FootprintBounds, out: Entity[]): Entity[] {
-    return this.projectileStore.collectScopedTraveling(bounds, out);
-  }
-
-  collectSmokeTrailProjectiles(out: Entity[]): Entity[] {
-    return this.projectileStore.collectSmokeTrail(out);
-  }
-
-  collectScopedSmokeTrailProjectiles(bounds: FootprintBounds, out: Entity[]): Entity[] {
-    return this.projectileStore.collectScopedSmokeTrail(bounds, out);
-  }
-
-  collectLineProjectiles(out: Entity[]): Entity[] {
-    return this.projectileStore.collectLine(out);
-  }
-
-  collectScopedLineProjectiles(bounds: FootprintBounds, out: Entity[]): Entity[] {
-    return this.projectileStore.collectScopedLine(bounds, out);
-  }
-
-  collectBurnMarkProjectiles(out: Entity[]): Entity[] {
-    return this.projectileStore.collectBurnMark(out);
-  }
-
-  collectScopedBurnMarkProjectiles(bounds: FootprintBounds, out: Entity[]): Entity[] {
-    return this.projectileStore.collectScopedBurnMark(bounds, out);
+  collectProjectileRenderLists(
+    bounds: FootprintBounds | null,
+    out: ClientProjectileRenderLists,
+  ): ClientProjectileRenderLists {
+    return this.projectileStore.collectRenderLists(bounds, out);
   }
 
   getLineProjectileRenderVersion(): number {

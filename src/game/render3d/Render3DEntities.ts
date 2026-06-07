@@ -110,6 +110,7 @@ const AIRBORNE_BANK_MAX = Math.PI * 0.25;
 // travels on the wire.
 const AIRBORNE_BANK_TAU_SEC = 0.18;
 const EMPTY_TURRETS: readonly Turret[] = [];
+const EMPTY_PROJECTILES: readonly Entity[] = [];
 
 const DEATH_SCATTER_SPEED_MIN = 26;
 const DEATH_SCATTER_SPEED_RANGE = 70;
@@ -145,6 +146,7 @@ export type RenderEntityUpdatePacket3D = {
   unitRows: UnitRenderPacket3D;
   buildingRows: BuildingRenderPacket3D;
   beamAimProjectiles?: readonly Entity[];
+  projectileRenderProjectiles?: readonly Entity[];
   scoped: boolean;
 };
 
@@ -305,7 +307,6 @@ export class Render3DEntities {
   // unit + building turret-pose passes to aim beam-directed barrels.
   // Persists across frames (freezes on the last direction).
   private turretBeamAimCache = new TurretBeamAimCache3D();
-  private _beamAimScratch: Entity[] = [];
 
   /** Per-unit cached prefix matrix `T(liftedPos) · R(parentQuat) · S(1)`
    *  — i.e. the scenegraph chain `group · yawGroup · liftGroup` evaluated
@@ -496,7 +497,7 @@ export class Render3DEntities {
     this.selectionOverlays.beginFrame();
     // Populate beam-directed turret aim from the live beams BEFORE the
     // unit + building turret-pose passes read it this frame.
-    this.collectBeamTurretAim(entityPacket?.beamAimProjectiles);
+    this.collectBeamTurretAim(entityPacket?.beamAimProjectiles ?? EMPTY_PROJECTILES);
     this.updateUnits(entityPacket?.unitRows, entityPacket?.scoped === true);
     this.buildingRenderer.update(
       entityPacket?.buildingRows,
@@ -508,7 +509,10 @@ export class Render3DEntities {
       entityPacket?.scoped === true,
     );
     this.projectileRangeEnvelope.update();
-    this.projectileRenderer.update(this.frameState);
+    this.projectileRenderer.update(
+      this.frameState,
+      entityPacket?.projectileRenderProjectiles ?? EMPTY_PROJECTILES,
+    );
     // One flush per frame uploads the per-instance leg cylinder
     // buffers (start / end / thickness) to the GPU. Every leg in
     // every unit wrote into the same shared pool above; the GPU
@@ -1343,9 +1347,8 @@ export class Render3DEntities {
    *  (sourceEntityId, plus the authoritative sourceHostEntityId /
    *  sourceRootEntityId), because composite / parented hosts can key the
    *  rendered turret by a different id than the legacy sourceEntityId. */
-  private collectBeamTurretAim(beamProjectiles?: readonly Entity[]): void {
-    const beams = beamProjectiles ?? this.clientViewState.collectLineProjectiles(this._beamAimScratch);
-    for (const e of beams) {
+  private collectBeamTurretAim(beamProjectiles: readonly Entity[]): void {
+    for (const e of beamProjectiles) {
       const proj = e.projectile;
       if (proj === null) continue;
       const pts = proj.points;

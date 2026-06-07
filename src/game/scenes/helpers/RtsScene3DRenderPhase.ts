@@ -10,6 +10,7 @@ import type { SelectionHudMode } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { SprayTarget } from '@/types/ui';
 import type { ClientViewState } from '../../network/ClientViewState';
+import type { ClientProjectileRenderLists } from '../../network/ClientProjectileStore';
 import type { Entity, EntityId, PlayerId } from '../../sim/types';
 import type { ThreeApp } from '../../render3d/ThreeApp';
 import type { Render3DEntities } from '../../render3d/Render3DEntities';
@@ -140,10 +141,12 @@ export class RtsScene3DRenderPhase {
   private smokeTrailAccumMs = 0;
   private sprayAccumMs = 0;
   private readonly combinedSprayTargets: SprayTarget[] = [];
-  private readonly lineProjectilesScratch: Entity[] = [];
-  private readonly burnMarkProjectilesScratch: Entity[] = [];
-  private readonly smokeTrailProjectilesScratch: Entity[] = [];
-  private readonly shotNameProjectilesScratch: Entity[] = [];
+  private readonly projectileRenderLists: ClientProjectileRenderLists = {
+    traveling: [],
+    smokeTrail: [],
+    line: [],
+    burnMark: [],
+  };
   private readonly scopedUnitsScratch: Entity[] = [];
   private readonly scopedBuildingsScratch: Entity[] = [];
   private readonly bodyHudPacket = new BodyHudRenderPacket3D();
@@ -283,6 +286,7 @@ export class RtsScene3DRenderPhase {
       cameraFootprint.bounds,
     );
     const projectileQueryBounds = this.getProjectileQueryBounds();
+    const projectileLists = this.collectRenderProjectiles(projectileQueryBounds);
     environmentPropRenderer?.update();
     this.getCameraQuadUpdate()?.(cameraQuad, this.threeApp.orbit.yaw);
 
@@ -314,7 +318,7 @@ export class RtsScene3DRenderPhase {
       includeGroundPrints: updateEffectsThisFrame,
       hoveredEntity,
     }, selectionHudMode);
-    const lineProjectiles = this.collectRenderLineProjectiles(projectileQueryBounds);
+    const lineProjectiles = projectileLists.line;
     entityRenderer.update(
       renderFrameState,
       serverMeta?.turretShieldPanelsEnabled ?? true,
@@ -322,13 +326,14 @@ export class RtsScene3DRenderPhase {
         unitRows: entityLists.unitRows,
         buildingRows: entityLists.buildingRows,
         beamAimProjectiles: lineProjectiles,
+        projectileRenderProjectiles: projectileLists.traveling,
         scoped: this.renderScope.getMode() !== 'all',
       },
     );
     this.clientViewState.consumeRenderDirties();
     if (shotNamesEnabled) {
       this.populateShotNamePacket(
-        this.collectRenderShotNameProjectiles(projectileQueryBounds),
+        projectileLists.traveling,
         selectionHudMode,
       );
     }
@@ -348,9 +353,6 @@ export class RtsScene3DRenderPhase {
       renderFrameState,
     );
 
-    const smokeTrailProjectiles = updateEffectsThisFrame
-      ? this.collectRenderSmokeTrailProjectiles(projectileQueryBounds)
-      : this.smokeTrailProjectilesScratch;
     beamRenderer.update(
       lineProjectiles,
       graphicsConfig,
@@ -375,8 +377,7 @@ export class RtsScene3DRenderPhase {
     waterSplashRenderer.update(effectDtMs);
     this.burnMarkAccumMs += effectDtMs;
     if (updateEffectsThisFrame) {
-      const burnMarkProjectiles = this.collectRenderBurnMarkProjectiles(projectileQueryBounds);
-      burnMarkRenderer.update(burnMarkProjectiles, this.burnMarkAccumMs);
+      burnMarkRenderer.update(projectileLists.burnMark, this.burnMarkAccumMs);
       this.burnMarkAccumMs = 0;
     }
 
@@ -426,7 +427,7 @@ export class RtsScene3DRenderPhase {
     this.smokeTrailAccumMs += effectDtMs;
     if (updateEffectsThisFrame) {
       smokeTrailRenderer.update(
-        smokeTrailProjectiles,
+        projectileLists.smokeTrail,
         this.smokeTrailAccumMs,
         this.renderFrameIndex,
         this.renderScope,
@@ -510,28 +511,8 @@ export class RtsScene3DRenderPhase {
     );
   }
 
-  private collectRenderLineProjectiles(bounds: FootprintBounds | null): Entity[] {
-    return bounds === null
-      ? this.clientViewState.collectLineProjectiles(this.lineProjectilesScratch)
-      : this.clientViewState.collectScopedLineProjectiles(bounds, this.lineProjectilesScratch);
-  }
-
-  private collectRenderSmokeTrailProjectiles(bounds: FootprintBounds | null): Entity[] {
-    return bounds === null
-      ? this.clientViewState.collectSmokeTrailProjectiles(this.smokeTrailProjectilesScratch)
-      : this.clientViewState.collectScopedSmokeTrailProjectiles(bounds, this.smokeTrailProjectilesScratch);
-  }
-
-  private collectRenderBurnMarkProjectiles(bounds: FootprintBounds | null): Entity[] {
-    return bounds === null
-      ? this.clientViewState.collectBurnMarkProjectiles(this.burnMarkProjectilesScratch)
-      : this.clientViewState.collectScopedBurnMarkProjectiles(bounds, this.burnMarkProjectilesScratch);
-  }
-
-  private collectRenderShotNameProjectiles(bounds: FootprintBounds | null): Entity[] {
-    return bounds === null
-      ? this.clientViewState.collectTravelingProjectiles(this.shotNameProjectilesScratch)
-      : this.clientViewState.collectScopedTravelingProjectiles(bounds, this.shotNameProjectilesScratch);
+  private collectRenderProjectiles(bounds: FootprintBounds | null): ClientProjectileRenderLists {
+    return this.clientViewState.collectProjectileRenderLists(bounds, this.projectileRenderLists);
   }
 
   private populateTurretNamePacket(hosts: readonly Entity[], mode: SelectionHudMode): void {

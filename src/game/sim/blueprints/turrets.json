@@ -10,7 +10,7 @@
     },
     "launchForce": 1000,
     "turretTurnAccel": 200,
-    "turretDrag": 0.15,
+    "turretDrag": 1,
     "barrel": {
       "type": "singleCylinderBarrel",
       "barrelLength": 2
@@ -65,7 +65,7 @@
     },
     "launchForce": 5000,
     "turretTurnAccel": 200,
-    "turretDrag": 0.15,
+    "turretDrag": 1,
     "barrel": {
       "type": "simpleMultiBarrel",
       "barrelCount": 2,
@@ -131,7 +131,7 @@
     },
     "launchForce": 10000,
     "turretTurnAccel": 200,
-    "turretDrag": 0.15,
+    "turretDrag": 10,
     "barrel": {
       "type": "singleCylinderBarrel",
       "barrelLength": 1.4
@@ -189,7 +189,7 @@
     },
     "launchForce": 50000,
     "turretTurnAccel": 200,
-    "turretDrag": 0.15,
+    "turretDrag": 20,
     "barrel": {
       "type": "singleCylinderBarrel",
       "barrelLength": 0.75
@@ -247,7 +247,7 @@
     },
     "launchForce": 3500,
     "turretTurnAccel": 140,
-    "turretDrag": 0.15,
+    "turretDrag": 0,
     "barrel": {
       "type": "singleCylinderBarrel",
       "barrelLength": 0.55
@@ -302,7 +302,7 @@
     },
     "launchForce": 9000,
     "turretTurnAccel": 20,
-    "turretDrag": 0.15,
+    "turretDrag": 20,
     "barrel": {
       "type": "simpleMultiBarrel",
       "barrelCount": 3,
@@ -311,8 +311,8 @@
       "spin": {
         "idle": 2,
         "max": 10,
-        "accel": 30,
-        "decel": 10
+        "accel": 5,
+        "decel": 5
       }
     },
     "isManualFire": false,
@@ -368,7 +368,7 @@
     },
     "launchForce": 8000,
     "turretTurnAccel": 200,
-    "turretDrag": 0.15,
+    "turretDrag": 1,
     "barrel": {
       "type": "simpleMultiBarrel",
       "barrelCount": 5,
@@ -431,7 +431,7 @@
     "cooldown": null,
     "launchForce": 8400,
     "turretTurnAccel": 200,
-    "turretDrag": 0.15,
+    "turretDrag": 0,
     "barrel": {
       "type": "singleCylinderBarrel",
       "barrelLength": 1
@@ -480,7 +480,7 @@
     "cooldown": null,
     "launchForce": 0,
     "turretTurnAccel": 200,
-    "turretDrag": 0.15,
+    "turretDrag": 0,
     "barrel": {
       "type": "shieldPanelEmitter"
     },
@@ -680,7 +680,7 @@
     "cooldown": null,
     "launchForce": 0,
     "turretTurnAccel": 200,
-    "turretDrag": 0.15,
+    "turretDrag": 0,
     "barrel": {
       "type": "complexSingleEmitter",
       "grate": {
@@ -739,7 +739,7 @@
     "cooldown": null,
     "launchForce": 0,
     "turretTurnAccel": 200,
-    "turretDrag": 0.15,
+    "turretDrag": 0,
     "barrel": {
       "type": "complexSingleEmitter",
       "grate": {
@@ -857,7 +857,7 @@
     "cooldown": null,
     "launchForce": 0,
     "turretTurnAccel": 200,
-    "turretDrag": 10,
+    "turretDrag": 20,
     "barrel": {
       "type": "complexSingleEmitter",
       "grate": {
@@ -928,7 +928,7 @@
     "cooldown": null,
     "launchForce": 0,
     "turretTurnAccel": 200,
-    "turretDrag": 0.15,
+    "turretDrag": 0,
     "barrel": {
       "type": "singleCylinderBarrel",
       "barrelLength": 0
@@ -1047,7 +1047,7 @@
     },
     "launchForce": 30000,
     "turretTurnAccel": 180,
-    "turretDrag": 0.15,
+    "turretDrag": 20,
     "barrel": {
       "type": "singleCylinderBarrel",
       "barrelLength": 2
@@ -1105,7 +1105,7 @@
     },
     "launchForce": 500,
     "turretTurnAccel": 200,
-    "turretDrag": 0.15,
+    "turretDrag": 0,
     "barrel": {
       "type": "simpleMultiBarrel",
       "barrelCount": 3,
@@ -1171,7 +1171,7 @@
     },
     "launchForce": 4000,
     "turretTurnAccel": 1200,
-    "turretDrag": 0.15,
+    "turretDrag": 0,
     "barrel": {
       "type": "simpleMultiBarrel",
       "barrelCount": 3,
@@ -1234,7 +1234,7 @@
     },
     "launchForce": 9000,
     "turretTurnAccel": 650,
-    "turretDrag": 0.15,
+    "turretDrag": 0,
     "barrel": {
       "type": "simpleMultiBarrel",
       "barrelCount": 3,

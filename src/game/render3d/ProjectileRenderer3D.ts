@@ -168,7 +168,6 @@ export class ProjectileRenderer3D {
   private readonly finColors = new Float32Array(PROJECTILE_INSTANCED_CAP * 3);
   private readonly finColorAttr = new THREE.InstancedBufferAttribute(this.finColors, 3);
   private readonly seenProjectileIds = new Set<number>();
-  private readonly projectileRenderScratch: Entity[] = [];
   private readonly projectileRadiusMeshes = new Map<number, ProjectileRadiusMeshes>();
   private readonly projectileRadiusMeshPool: THREE.LineSegments[] = [];
   private readonly trailStamps = new Map<EntityId, TrailStampBuffer>();
@@ -240,13 +239,7 @@ export class ProjectileRenderer3D {
     this.world.add(this.finInstanced);
   }
 
-  update(frameState: RenderFrameState3D): void {
-    const projectiles = this.scope.getMode() === 'all'
-      ? this.clientViewState.collectTravelingProjectiles(this.projectileRenderScratch)
-      : this.clientViewState.collectScopedTravelingProjectiles(
-        this.scope.getCullingBounds(this.clientViewState.getProjectileRenderScopePadding()),
-        this.projectileRenderScratch,
-      );
+  update(frameState: RenderFrameState3D, projectiles: readonly Entity[]): void {
     const seen = this.seenProjectileIds;
     const entitySetVersion = this.clientViewState.getEntitySetVersion();
     const scopeVersion = this.scope.getVersion();
