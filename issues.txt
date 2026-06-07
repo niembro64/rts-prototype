@@ -45,13 +45,13 @@ Several high-count render paths still execute TypeScript object loops and
 Three.js scenegraph mutations per visible unit/building. The remaining hot work
 includes locomotion visual updates, live building turret spin,
 construction-emitter pylon transform writes, and animated producer-building rig
-transform writes such as solar petals, wind/extractor rotors and folds,
-converter rings, and radar spins. Ambient producer resource pylon rate/spray
-updates should stay on the active-source/drain queue rather than returning to
-broad per-producer frame loops. These paths are likely to dominate at the
-"thousands of units" target. Reuse or extend the existing batched packet,
-explicit active/drain queues, explicit lifecycle queue, and WASM kernel
-contracts; do not add new broad per-entity scenegraph scans.
+transform writes such as wind/extractor rotors and folds and radar spins.
+Ambient producer resource pylon rate/spray updates, solar petal poses, and
+converter ring poses should stay on their active-source/drain queues rather
+than returning to broad per-producer frame loops. These paths are likely to
+dominate at the "thousands of units" target. Reuse or extend the existing
+batched packet, explicit active/drain queues, explicit lifecycle queue, and
+WASM kernel contracts; do not add new broad per-entity scenegraph scans.
 
 Required fix:
 Move the remaining locomotion, live building turret spin/construction emitter,

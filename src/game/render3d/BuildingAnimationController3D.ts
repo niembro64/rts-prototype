@@ -109,6 +109,7 @@ type ResourcePylonBuildingEntry = AnimatedBuildingEntry & {
 };
 
 const FACTORY_ANIMATION_IDLE_EPSILON = 0.001;
+const BUILDING_RIG_IDLE_EPSILON = 0.001;
 const RESOURCE_PYLON_IDLE_EPSILON = 0.001;
 
 export class BuildingAnimationController3D {
@@ -117,12 +118,16 @@ export class BuildingAnimationController3D {
   private readonly metalDeposits: readonly MetalDeposit[];
   private solarBuildings: AnimatedBuildingEntry[] = [];
   private solarBuildingIndexById = new Map<EntityId, number>();
+  private activeSolarBuildings: AnimatedBuildingEntry[] = [];
+  private activeSolarBuildingIndexById = new Map<EntityId, number>();
   private windBuildings: AnimatedBuildingEntry[] = [];
   private windBuildingIndexById = new Map<EntityId, number>();
   private extractorBuildings: AnimatedBuildingEntry[] = [];
   private extractorBuildingIndexById = new Map<EntityId, number>();
   private converterBuildings: AnimatedBuildingEntry[] = [];
   private converterBuildingIndexById = new Map<EntityId, number>();
+  private activeConverterBuildings: AnimatedBuildingEntry[] = [];
+  private activeConverterBuildingIndexById = new Map<EntityId, number>();
   private resourcePylonBuildings: ResourcePylonBuildingEntry[] = [];
   private resourcePylonBuildingIndexById = new Map<EntityId, number>();
   private activeResourcePylonBuildings: ResourcePylonBuildingEntry[] = [];
@@ -188,7 +193,8 @@ export class BuildingAnimationController3D {
 
   register(entity: Entity, mesh: EntityMesh): void {
     if (entity.buildingBlueprintId === 'buildingSolar' && mesh.buildingDetails) {
-      this.addAnimatedBuilding(this.solarBuildings, this.solarBuildingIndexById, entity, mesh);
+      const entry = this.addAnimatedBuilding(this.solarBuildings, this.solarBuildingIndexById, entity, mesh);
+      this.updateSolarAnimationQueue(entry);
     }
     if (mesh.windRig) {
       this.addAnimatedBuilding(this.windBuildings, this.windBuildingIndexById, entity, mesh);
@@ -197,7 +203,8 @@ export class BuildingAnimationController3D {
       this.addAnimatedBuilding(this.extractorBuildings, this.extractorBuildingIndexById, entity, mesh);
     }
     if (mesh.converterRig) {
-      this.addAnimatedBuilding(this.converterBuildings, this.converterBuildingIndexById, entity, mesh);
+      const entry = this.addAnimatedBuilding(this.converterBuildings, this.converterBuildingIndexById, entity, mesh);
+      this.updateConverterAnimationQueue(entry);
     }
     if (mesh.solarRig) {
       this.addResourcePylonBuilding('solar', entity, mesh);
@@ -223,21 +230,32 @@ export class BuildingAnimationController3D {
   }
 
   sync(entity: Entity, mesh: EntityMesh): void {
-    if (!mesh.factoryBuildSpotRig) return;
-    const entry = this.addAnimatedBuilding(
-      this.factoryBuildings,
-      this.factoryBuildingIndexById,
-      entity,
-      mesh,
-    );
-    this.updateFactoryAnimationQueue(entry);
+    if (entity.buildingBlueprintId === 'buildingSolar' && mesh.buildingDetails) {
+      const entry = this.addAnimatedBuilding(this.solarBuildings, this.solarBuildingIndexById, entity, mesh);
+      this.updateSolarAnimationQueue(entry);
+    }
+    if (mesh.converterRig) {
+      const entry = this.addAnimatedBuilding(this.converterBuildings, this.converterBuildingIndexById, entity, mesh);
+      this.updateConverterAnimationQueue(entry);
+    }
+    if (mesh.factoryBuildSpotRig) {
+      const entry = this.addAnimatedBuilding(
+        this.factoryBuildings,
+        this.factoryBuildingIndexById,
+        entity,
+        mesh,
+      );
+      this.updateFactoryAnimationQueue(entry);
+    }
   }
 
   unregister(id: EntityId): void {
     this.removeAnimatedBuilding(this.solarBuildings, this.solarBuildingIndexById, id);
+    this.removeAnimatedBuilding(this.activeSolarBuildings, this.activeSolarBuildingIndexById, id);
     this.removeAnimatedBuilding(this.windBuildings, this.windBuildingIndexById, id);
     this.removeAnimatedBuilding(this.extractorBuildings, this.extractorBuildingIndexById, id);
     this.removeAnimatedBuilding(this.converterBuildings, this.converterBuildingIndexById, id);
+    this.removeAnimatedBuilding(this.activeConverterBuildings, this.activeConverterBuildingIndexById, id);
     this.removeResourcePylonBuilding(id);
     this.removeActiveResourcePylonBuilding(id);
     this.extractorRotorPhases.delete(id);
@@ -267,13 +285,7 @@ export class BuildingAnimationController3D {
     timeMs: number,
   ): void {
     this.refreshActiveResourcePylonQueue();
-
-    if (this.solarBuildings.length > 0) {
-      for (const entry of this.solarBuildings) {
-        const { entity, mesh } = entry;
-        this.updateSolarCollectorAnimation(mesh, entity, mesh.buildingCachedDetailsReady === true);
-      }
-    }
+    this.updateActiveSolarAnimations();
 
     if (this.windBuildings.length > 0) {
       this.updateWindAnimationGlobals();
@@ -377,81 +389,7 @@ export class BuildingAnimationController3D {
       }
     }
 
-    if (this.converterBuildings.length > 0) {
-      const ringSpeedAlpha = visualAnimBlend(getRotationVelEmaMode(), spinDt);
-      const invBase = INV_CONVERTER_BASE_RATE;
-      for (const entry of this.converterBuildings) {
-        const { id, entity, mesh } = entry;
-        const rig = mesh?.converterRig;
-        if (!rig) continue;
-        const energyRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_ENERGY);
-        const metalRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_METAL);
-
-        // Ring spin: signed by flow direction so the player can read
-        // which way the converter is running from the orbiter motion.
-        // Speeds EMA toward target via ROT VEL mode so spin-up matches
-        // every other decorative rotation in the game. A closed (OFF)
-        // converter parks the rings (target 0) so the renderer's
-        // open/closed pose tracks the same state that gates the
-        // energy↔metal swap.
-        const open = entity.building?.activeState?.open !== false;
-        const energyMag = open ? resourcePylonRateFraction(energyRate, invBase) : 0;
-        const metalMag = open ? resourcePylonRateFraction(metalRate, invBase) : 0;
-        const energyDir = energyRate >= 0 ? 1 : -1;
-        const metalDir = metalRate >= 0 ? 1 : -1;
-        const energyTarget = open
-          ? energyDir * (CONVERTER_RING_IDLE_RAD_PER_SEC + CONVERTER_RING_FULL_RAD_PER_SEC * energyMag)
-          : 0;
-        const metalTarget = open
-          ? -metalDir * (CONVERTER_RING_IDLE_RAD_PER_SEC + CONVERTER_RING_FULL_RAD_PER_SEC * metalMag)
-          : 0;
-        const accentTarget = open
-          ? (CONVERTER_RING_IDLE_RAD_PER_SEC * 0.6 + CONVERTER_RING_FULL_RAD_PER_SEC * 0.7 * Math.max(energyMag, metalMag))
-          : 0;
-
-        const energySpeed = lerp(
-          this.converterEnergyRingSpeeds.get(id) ?? 0,
-          energyTarget,
-          ringSpeedAlpha,
-        );
-        const metalSpeed = lerp(
-          this.converterMetalRingSpeeds.get(id) ?? 0,
-          metalTarget,
-          ringSpeedAlpha,
-        );
-        const accentSpeed = lerp(
-          this.converterAccentRingSpeeds.get(id) ?? 0,
-          accentTarget,
-          ringSpeedAlpha,
-        );
-        this.converterEnergyRingSpeeds.set(id, energySpeed);
-        this.converterMetalRingSpeeds.set(id, metalSpeed);
-        this.converterAccentRingSpeeds.set(id, accentSpeed);
-
-        const seed = id * 0.137;
-        const energyPhase = (this.converterEnergyRingPhases.get(id) ?? seed) + spinDt * energySpeed;
-        const metalPhase = (this.converterMetalRingPhases.get(id) ?? seed * 1.7) + spinDt * metalSpeed;
-        const accentPhase = (this.converterAccentRingPhases.get(id) ?? seed * 0.6) + spinDt * accentSpeed;
-        this.converterEnergyRingPhases.set(id, energyPhase);
-        this.converterMetalRingPhases.set(id, metalPhase);
-        this.converterAccentRingPhases.set(id, accentPhase);
-
-        // After the static rotation.x (energy: π/2; accent: π/3), Euler
-        // XYZ intrinsic order puts rotation.z spinning around the ring's
-        // donut hole axis — exactly what we want for orbiters on the rim.
-        rig.energyRing.rotation.z = energyPhase;
-        rig.metalRing.rotation.z = metalPhase;
-        rig.accentRing.rotation.z = accentPhase;
-
-        // Soft halo pulse keyed to overall activity. Stays below ±10%
-        // of the base radius so the silhouette doesn't visibly breathe.
-        const haloPulse = 1
-          + 0.04 * Math.sin(timeMs * 0.0035 + seed)
-          + 0.06 * Math.max(energyMag, metalMag);
-        rig.coreHalo.scale.setScalar(rig.coreHaloBaseRadius * haloPulse);
-      }
-    }
-
+    this.updateActiveConverterAnimations(spinDt, timeMs);
     this.updateActiveResourcePylons(spinDt);
 
     for (let i = 0; i < this.activeFactoryBuildings.length;) {
@@ -520,12 +458,16 @@ export class BuildingAnimationController3D {
   destroy(): void {
     this.solarBuildings.length = 0;
     this.solarBuildingIndexById.clear();
+    this.activeSolarBuildings.length = 0;
+    this.activeSolarBuildingIndexById.clear();
     this.windBuildings.length = 0;
     this.windBuildingIndexById.clear();
     this.extractorBuildings.length = 0;
     this.extractorBuildingIndexById.clear();
     this.converterBuildings.length = 0;
     this.converterBuildingIndexById.clear();
+    this.activeConverterBuildings.length = 0;
+    this.activeConverterBuildingIndexById.clear();
     this.resourcePylonBuildings.length = 0;
     this.resourcePylonBuildingIndexById.clear();
     this.activeResourcePylonBuildings.length = 0;
@@ -592,6 +534,166 @@ export class BuildingAnimationController3D {
       indexById.set(last.id, index);
     }
     list.pop();
+  }
+
+  private updateSolarAnimationQueue(entry: AnimatedBuildingEntry): void {
+    const activeIndex = this.activeSolarBuildingIndexById.get(entry.id);
+    if (!this.solarAnimationNeedsFrame(entry)) {
+      if (activeIndex !== undefined) {
+        this.removeAnimatedBuilding(this.activeSolarBuildings, this.activeSolarBuildingIndexById, entry.id);
+      }
+      return;
+    }
+    if (activeIndex !== undefined) {
+      this.activeSolarBuildings[activeIndex] = entry;
+      return;
+    }
+    this.activeSolarBuildingIndexById.set(entry.id, this.activeSolarBuildings.length);
+    this.activeSolarBuildings.push(entry);
+  }
+
+  private updateActiveSolarAnimations(): void {
+    for (let i = 0; i < this.activeSolarBuildings.length;) {
+      const entry = this.activeSolarBuildings[i];
+      const detailsReady = entry.mesh.buildingCachedDetailsReady === true;
+      if (this.updateSolarCollectorAnimation(entry.mesh, entry.entity, detailsReady)) {
+        i++;
+      } else {
+        this.removeAnimatedBuilding(this.activeSolarBuildings, this.activeSolarBuildingIndexById, entry.id);
+      }
+    }
+  }
+
+  private solarAnimationNeedsFrame(entry: AnimatedBuildingEntry): boolean {
+    if (entry.entity.buildingBlueprintId !== 'buildingSolar' || !entry.mesh.buildingDetails) return false;
+    const target = this.solarTargetAmount(entry.entity);
+    const current = entry.mesh.solarOpenAmount ?? target;
+    const appliedPose = entry.mesh.solarPetalPoseAmount ?? 1;
+    return Math.abs(target - current) >= BUILDING_RIG_IDLE_EPSILON ||
+      Math.abs(target - appliedPose) >= BUILDING_RIG_IDLE_EPSILON;
+  }
+
+  private solarTargetAmount(entity: Entity): number {
+    return entity.building?.activeState?.open === false ? 0 : 1;
+  }
+
+  private updateConverterAnimationQueue(entry: AnimatedBuildingEntry): void {
+    const activeIndex = this.activeConverterBuildingIndexById.get(entry.id);
+    if (!this.converterAnimationNeedsFrame(entry)) {
+      if (activeIndex !== undefined) {
+        this.removeAnimatedBuilding(
+          this.activeConverterBuildings,
+          this.activeConverterBuildingIndexById,
+          entry.id,
+        );
+      }
+      return;
+    }
+    if (activeIndex !== undefined) {
+      this.activeConverterBuildings[activeIndex] = entry;
+      return;
+    }
+    this.activeConverterBuildingIndexById.set(entry.id, this.activeConverterBuildings.length);
+    this.activeConverterBuildings.push(entry);
+  }
+
+  private updateActiveConverterAnimations(spinDt: number, timeMs: number): void {
+    if (this.activeConverterBuildings.length === 0) return;
+    const ringSpeedAlpha = visualAnimBlend(getRotationVelEmaMode(), spinDt);
+    for (let i = 0; i < this.activeConverterBuildings.length;) {
+      const entry = this.activeConverterBuildings[i];
+      if (this.updateConverterRingAnimation(entry, ringSpeedAlpha, spinDt, timeMs)) {
+        i++;
+      } else {
+        this.removeAnimatedBuilding(
+          this.activeConverterBuildings,
+          this.activeConverterBuildingIndexById,
+          entry.id,
+        );
+      }
+    }
+  }
+
+  private converterAnimationNeedsFrame(entry: AnimatedBuildingEntry): boolean {
+    if (!entry.mesh.converterRig) return false;
+    if (entry.entity.building?.activeState?.open !== false) return true;
+    return Math.abs(this.converterEnergyRingSpeeds.get(entry.id) ?? 0) > BUILDING_RIG_IDLE_EPSILON ||
+      Math.abs(this.converterMetalRingSpeeds.get(entry.id) ?? 0) > BUILDING_RIG_IDLE_EPSILON ||
+      Math.abs(this.converterAccentRingSpeeds.get(entry.id) ?? 0) > BUILDING_RIG_IDLE_EPSILON;
+  }
+
+  private updateConverterRingAnimation(
+    entry: AnimatedBuildingEntry,
+    ringSpeedAlpha: number,
+    spinDt: number,
+    timeMs: number,
+  ): boolean {
+    const { id, entity, mesh } = entry;
+    const rig = mesh.converterRig;
+    if (!rig) return false;
+    const invBase = INV_CONVERTER_BASE_RATE;
+    const energyRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_ENERGY);
+    const metalRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_METAL);
+
+    // Ring spin is signed by flow direction. Open converters keep a slow
+    // idle drift; closed converters drain their local speeds to zero and
+    // then leave the active queue.
+    const open = entity.building?.activeState?.open !== false;
+    const energyMag = open ? resourcePylonRateFraction(energyRate, invBase) : 0;
+    const metalMag = open ? resourcePylonRateFraction(metalRate, invBase) : 0;
+    const energyDir = energyRate >= 0 ? 1 : -1;
+    const metalDir = metalRate >= 0 ? 1 : -1;
+    const energyTarget = open
+      ? energyDir * (CONVERTER_RING_IDLE_RAD_PER_SEC + CONVERTER_RING_FULL_RAD_PER_SEC * energyMag)
+      : 0;
+    const metalTarget = open
+      ? -metalDir * (CONVERTER_RING_IDLE_RAD_PER_SEC + CONVERTER_RING_FULL_RAD_PER_SEC * metalMag)
+      : 0;
+    const accentTarget = open
+      ? (CONVERTER_RING_IDLE_RAD_PER_SEC * 0.6 + CONVERTER_RING_FULL_RAD_PER_SEC * 0.7 * Math.max(energyMag, metalMag))
+      : 0;
+
+    let energySpeed = lerp(
+      this.converterEnergyRingSpeeds.get(id) ?? 0,
+      energyTarget,
+      ringSpeedAlpha,
+    );
+    let metalSpeed = lerp(
+      this.converterMetalRingSpeeds.get(id) ?? 0,
+      metalTarget,
+      ringSpeedAlpha,
+    );
+    let accentSpeed = lerp(
+      this.converterAccentRingSpeeds.get(id) ?? 0,
+      accentTarget,
+      ringSpeedAlpha,
+    );
+    if (!open) {
+      if (Math.abs(energySpeed) < BUILDING_RIG_IDLE_EPSILON) energySpeed = 0;
+      if (Math.abs(metalSpeed) < BUILDING_RIG_IDLE_EPSILON) metalSpeed = 0;
+      if (Math.abs(accentSpeed) < BUILDING_RIG_IDLE_EPSILON) accentSpeed = 0;
+    }
+    this.converterEnergyRingSpeeds.set(id, energySpeed);
+    this.converterMetalRingSpeeds.set(id, metalSpeed);
+    this.converterAccentRingSpeeds.set(id, accentSpeed);
+
+    const seed = id * 0.137;
+    const energyPhase = (this.converterEnergyRingPhases.get(id) ?? seed) + spinDt * energySpeed;
+    const metalPhase = (this.converterMetalRingPhases.get(id) ?? seed * 1.7) + spinDt * metalSpeed;
+    const accentPhase = (this.converterAccentRingPhases.get(id) ?? seed * 0.6) + spinDt * accentSpeed;
+    this.converterEnergyRingPhases.set(id, energyPhase);
+    this.converterMetalRingPhases.set(id, metalPhase);
+    this.converterAccentRingPhases.set(id, accentPhase);
+
+    rig.energyRing.rotation.z = energyPhase;
+    rig.metalRing.rotation.z = metalPhase;
+    rig.accentRing.rotation.z = accentPhase;
+
+    const haloPulse = 1
+      + 0.04 * Math.sin(timeMs * 0.0035 + seed)
+      + 0.06 * Math.max(energyMag, metalMag);
+    rig.coreHalo.scale.setScalar(rig.coreHaloBaseRadius * haloPulse);
+    return this.converterAnimationNeedsFrame(entry);
   }
 
   private addResourcePylonBuilding(
@@ -873,9 +975,10 @@ export class BuildingAnimationController3D {
     m: EntityMesh,
     e: Entity,
     detailsReady: boolean,
-  ): void {
-    if (e.buildingBlueprintId !== 'buildingSolar' || !m.buildingDetails || !detailsReady) return;
-    const target = e.building?.activeState?.open === false ? 0 : 1;
+  ): boolean {
+    if (e.buildingBlueprintId !== 'buildingSolar' || !m.buildingDetails) return false;
+    if (!detailsReady) return this.solarAnimationNeedsFrame({ id: e.id, entity: e, mesh: m });
+    const target = this.solarTargetAmount(e);
     const current = m.solarOpenAmount ?? target;
     const next = Math.abs(target - current) < 0.002
       ? target
@@ -909,6 +1012,8 @@ export class BuildingAnimationController3D {
       );
       detail.mesh.matrixWorldNeedsUpdate = true;
     }
+    m.solarPetalPoseAmount = next;
+    return Math.abs(target - next) >= BUILDING_RIG_IDLE_EPSILON;
   }
 
   private updateWindAnimationGlobals(): void {

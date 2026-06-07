@@ -131,6 +131,7 @@ export type EntityMesh = {
    *  is kept for bookkeeping but stays hidden and unscaled. */
   buildingBodyless?: boolean;
   solarOpenAmount?: number;
+  solarPetalPoseAmount?: number;
   buildingCachedOwnerId?: PlayerId;
   buildingCachedProgress?: number;
   buildingCachedSelected?: boolean;
