@@ -15,3 +15,167 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 
 Please always commit and push before and after any code changes we make.
 ================================================================================
+
+[BA-MEM-001] NetworkSnapshotTransport.reset() leaves the pooled pending snapshot graph retained
+
+Severity: High
+
+Evidence:
+- src/game/network/NetworkSnapshotTransport.ts:53-60 owns pendingReceivedStateCloner.
+- src/game/network/NetworkSnapshotTransport.ts:164-180 and 184-188 clone full/pending snapshots into that reusable graph.
+- src/game/network/NetworkSnapshotTransport.ts:206-213 reset() clears pendingReceivedState and counters, but does not call pendingReceivedStateCloner.clear().
+- src/game/network/snapshotClone.ts:247-251 says the cloner can hold a 10k-entity graph, and src/game/network/snapshotClone.ts:331-368 provides the clear() method that drops entity arrays, terrain, buildability, projectile arrays, minimap arrays, and metadata references.
+- src/game/network/NetworkManager.ts:257-280 calls snapshotTransport.reset() from beginNetworkSetup(), and networkManager is a long-lived singleton.
+
+Risk:
+Remote clients can retain the largest received full snapshot across disconnect/rejoin or failed setup. That graph can include thousands of entity DTOs plus terrain/buildability references, so memory may not fall after leaving a match. This conflicts with budget_design_philosophy.html's rule that retained pools need explicit lifecycle release.
+
+Required fix:
+Call pendingReceivedStateCloner.clear() from NetworkSnapshotTransport.reset(). Add a targeted regression test or debug stat that stores a large full snapshot, calls reset(), and verifies the retained clone graph is released.
+
+[BA-MEM-002] RemoteGameConnection.disconnect() releases the pending snapshot reference but not the retained clone pool
+
+Severity: High
+
+Evidence:
+- src/game/server/RemoteGameConnection.ts:13-16 owns pendingSnapshot, pendingSnapshotRelease, and pendingSnapshotCloner.
+- src/game/server/RemoteGameConnection.ts:45-50 clones snapshots into pendingSnapshotCloner when no renderer callback is attached.
+- src/game/server/RemoteGameConnection.ts:99-109 disconnect() clears callbacks and releasePendingSnapshot(), but never calls pendingSnapshotCloner.clear().
+- src/game/server/LocalGameConnection.ts:199-211 is the equivalent local lifecycle and does call pendingSnapshotCloner.clear().
+
+Risk:
+A remote connection object that remains reachable after disconnect can keep the largest cloned snapshot graph alive. The local and remote connection lifecycles are inconsistent, which makes this easy to regress during renderer swaps or remote reconnect flows.
+
+Required fix:
+Mirror LocalGameConnection by calling pendingSnapshotCloner.clear() during RemoteGameConnection.disconnect(). Cover this with a small lifecycle test if the connection classes are testable in isolation.
+
+[BA-MEM-003] Snapshot intake has no detach path when a scene shuts down with keepConnection=true
+
+Severity: Medium
+
+Evidence:
+- src/game/scenes/helpers/RtsScene3DSnapshotIntake.ts:63-68 attaches SnapshotBuffer to gameConnection.
+- src/game/scenes/helpers/SnapshotBuffer.ts:109-199 installs a closure through gameConnection.onSnapshot().
+- src/game/server/LocalGameConnection.ts:180-189 and src/game/server/RemoteGameConnection.ts:75-88 expose only a setter-style onSnapshot(callback); there is no unsubscribe or clear callback API.
+- src/game/scenes/RtsScene3D.ts:1584-1631 skips gameConnection.disconnect() when keepConnection=true, then only calls snapshotIntake.clear().
+- src/game/createGame.ts:84-88 uses shutdown({ keepConnection: true }) in the createGame error path.
+
+Risk:
+Clearing the SnapshotBuffer does not detach the old callback. If a connection is kept alive and a replacement scene fails to attach immediately, snapshots can continue to call into the old intake/buffer closure, retaining the previous ClientViewState path and refilling buffers after shutdown.
+
+Required fix:
+Add an explicit unsubscribe/clearSnapshotCallback path to GameConnection. RtsScene3DSnapshotIntake should detach before clear() during shutdown, including keepConnection=true paths. Ensure a replacement scene can attach cleanly after the old scene detaches.
+
+[BA-MEM-004] SnapshotBuffer accumulates projectile despawns without a cap or coalescing
+
+Severity: Medium
+
+Evidence:
+- src/game/scenes/helpers/SnapshotBuffer.ts:1-6 explicitly says cleanup streams stay unbounded.
+- src/game/scenes/helpers/SnapshotBuffer.ts:29-30 caps projectile spawns and sim/audio events.
+- src/game/scenes/helpers/SnapshotBuffer.ts:119-126 appends every projectile despawn into bufferedDespawns with no cap, dedupe, or backpressure.
+- src/game/scenes/helpers/SnapshotBuffer.ts:224-229 only drains despawns when consume() runs on a render frame.
+
+Risk:
+When snapshots arrive while frames are stalled, hidden, or slower than intake, despawns can grow without bound and produce both memory pressure and a long catch-up hitch. Despawns are cleanup-critical, but repeated ids can be coalesced without keeping every event object.
+
+Required fix:
+Represent despawns as a coalesced id set/map or a bounded typed id buffer with an overflow/keyframe-resync path. Track coalesced or dropped despawn counts in diagnostics so stalls are visible.
+
+[BA-NET-001] Non-snapshot PeerJS sends bypass data-channel backpressure
+
+Severity: High
+
+Evidence:
+- src/game/network/NetworkSnapshotTransport.ts:341-364 checks RTCDataChannel.bufferedAmount and drops snapshots above SNAPSHOT_BACKPRESSURE_DROP_BYTES.
+- src/game/network/NetworkManager.ts:94-117 routes command and heartbeat sends through safeSend().
+- src/game/network/NetworkManager.ts:928-951 safeSend() only checks conn.open and try/catches conn.send(message); it does not inspect bufferedAmount or coalesce/drop noncritical messages.
+- src/game/network/NetworkManager.ts:586-617, 665, 738, 833, 868, 877, 904, 910, 982, 990, and 1031 send roster/lobby/heartbeat/command/state messages through this path.
+
+Risk:
+Snapshot traffic is bounded, but roster updates, lobby messages, heartbeat traffic, resync requests, and command messages can still pile up behind a saturated RTCDataChannel. budget_design_philosophy.html requires backpressure to drop or coarsen before queues grow without bound. Commands are authoritative input, so blindly dropping them would be wrong; they need a separate bounded/rate-limited policy.
+
+Required fix:
+Centralize send budgeting for all PeerJS messages. Coalesce or drop stale noncritical messages such as heartbeat, playerInfo, and lobbySettings. Rate-limit or reject commands explicitly instead of letting the browser send queue grow. Add bufferedAmount telemetry by message class.
+
+[BA-PERF-001] LocalGameConnection encodes local snapshots into wire bytes even when no network send occurs
+
+Severity: High
+
+Evidence:
+- src/game/server/LocalGameConnection.ts:102-109 registers the local in-memory snapshot listener.
+- src/game/server/LocalGameConnection.ts:130-134 calls encodeNetworkSnapshot(state), measures elapsed time, and writes the byte count on every local snapshot.
+- src/game/server/LocalGameConnection.ts:135 only checks SNAPSHOT_CADENCE_REGRESSION.enabled and SNAPSHOT_ENCODE_INSTRUMENTATION.enabled after the encode has already allocated the Uint8Array.
+- src/game/scenes/helpers/RtsScene3DSnapshotIntake.ts:187-192 only uses the wire byte metadata for payload-size telemetry.
+
+Risk:
+Offline/local host play pays the binary encoder cost and allocation pressure even though snapshots are delivered in memory. This violates the philosophy doc's "avoid per-unit/per-frame allocations" budget, and it can hide real local render/sim costs behind measurement overhead.
+
+Required fix:
+Gate local encode measurement behind diagnostics or an explicit payload-size setting. If the HUD needs approximate local payload sizes, add a cheap estimator or sample at a much lower cadence. Do not encode every in-memory snapshot by default.
+
+[BA-PERF-002] Snapshot publishing still builds JS DTO object graphs before binary packing
+
+Severity: High
+
+Evidence:
+- src/game/server/ServerSnapshotPublisher.ts:216-303 serializes a NetworkServerSnapshot object per listener via serializeGameState().
+- src/game/network/stateSerializer.ts:265-380 walks WorldState and fills JS DTO arrays/maps before the transport encodes them.
+- src/game/network/NetworkSnapshotTransport.ts:74-76 then calls encodeNetworkSnapshot(state) to convert that JS graph into a wire buffer.
+
+Risk:
+The snapshot path still pays JS object graph construction plus binary packing. Existing pooling helps, but the hot path remains TypeScript-owned and listener-oriented. budget_design_philosophy.html says snapshots should move toward compact binary/typed-buffer output and that TypeScript should orchestrate while Rust/WASM computes hot loops.
+
+Required fix:
+Continue migrating snapshot deltas/keyframes toward a Rust/WASM or typed-buffer writer that emits binary rows directly from SoA/baseline state. Keep the existing serializer only as a parity fallback until the direct writer covers full snapshots, deltas, visibility filtering, projectile events, minimap, and metadata.
+
+[BA-PERF-003] Scoped rendering disposes off-scope meshes and rebuilds them when the camera pans back
+
+Severity: Medium
+
+Evidence:
+- src/game/render3d/Render3DEntities.ts:829-839 enables pruneUnits whenever scopedRender is true.
+- src/game/render3d/Render3DEntities.ts:905-920 builds a unit mesh when no mesh is present.
+- src/game/render3d/Render3DEntities.ts:1293-1303 destroys unseen unit meshes in scopedRender mode.
+- src/game/render3d/BuildingEntityRenderer3D.ts:470-482 destroys unseen building meshes in scopedRender mode.
+- src/game/render3d/BuildingEntityRenderer3D.ts:545-560 rebuilds a building mesh when it re-enters scope.
+
+Risk:
+The renderer correctly avoids updating off-screen units, but it does so by tearing down and later recreating Three.js object graphs as the camera moves. Large pan/zoom movements across a battlefield can create GC churn and GPU resource churn. The philosophy doc asks for renderer-owned buffers, instancing, and work scaling with visible units; it does not require disposal/reallocation for every scoped visibility transition.
+
+Required fix:
+Replace immediate scoped dispose/rebuild with dormant mesh pools, hidden/deactivated records, or an LRU retention budget. Dispose on entity death, actual view removal, style/geometry invalidation, session teardown, or when an explicit memory budget is exceeded. Add telemetry for scoped mesh destroys/rebuilds per second.
+
+[BA-PERF-004] Hot render paths allocate string keys for spatial/contact state
+
+Severity: Medium
+
+Evidence:
+- src/game/render3d/GroundPrint3D.ts:431-487 builds template-string keys like wheel:${unitId}:${i}, tread:${unitId}:${i}, and leg:${unitId}:${i} for visible locomotion contacts every frame, then stores them in Set/Map instances.
+- src/game/network/ClientRenderSpatialIndex.ts:36, 90-93, and 130-140 builds string cell keys such as `${cellX},${cellY}` during render spatial updates and queries.
+
+Risk:
+These paths run in the render loop and scale with visible units/contacts or queried cells. Per-frame string allocation and hashing create GC pressure exactly where budget_design_philosophy.html calls for counted loops, typed arrays, and pooled state.
+
+Required fix:
+Replace string keys with packed numeric keys or stable integer slots. GroundPrint3D can use numeric contact ids, per-unit contact arrays, or a small typed table keyed by entity id plus contact index/type. ClientRenderSpatialIndex can pack cell coordinates into a numeric key or use nested numeric maps while reusing scratch arrays.
+
+[BA-ARCH-001] Large hot-path files make lifecycle, pooling, and Rust/WASM migration hard to audit
+
+Severity: Medium
+
+Evidence:
+- src/game/sim/Simulation.ts is 2535 lines.
+- src/game/render3d/Input3DManager.ts is 2073 lines.
+- src/game/scenes/RtsScene3D.ts is 1644 lines.
+- src/game/render3d/Render3DEntities.ts is 1431 lines.
+- src/game/render3d/BuildingAnimationController3D.ts is 1356 lines.
+- src/game/sim/WorldState.ts is 1344 lines.
+- src/game/server/GameServer.ts is 1081 lines.
+- budget_design_philosophy.html explicitly says large files should be split into coherent helpers when touched.
+
+Risk:
+Cleanup ownership, retained pools, hot loops, and authoritative/client boundaries are spread across large files. That raises the chance of missed teardown, duplicate runtime paths, accidental per-frame allocation, and stalled migration of TypeScript hot loops into Rust/WASM.
+
+Required fix:
+When any of these files are touched for the issues above, split along existing ownership boundaries instead of adding more logic in place. Prioritize lifecycle/teardown helpers, snapshot intake/publisher modules, unit mesh lifecycle vs pose/locomotion updates, input command builders, and simulation subsystems that are candidates for Rust/WASM.

@@ -438,15 +438,15 @@ export class Render3DEntities {
     return elapsed / VISION_FADE_IN_MS;
   }
 
-  /** Flag a unit as DESTROYED so its mesh plays the scatter + death-fade
-   *  when it leaves the live set, instead of the quiet vision fade-out.
-   *  Driven by 'death' SimEvents (see RtsScene3D); units that merely leave
-   *  vision are never flagged and so fade away without exploding. Runs
-   *  before the render removal queue consumes the entity id, while the mesh
-   *  is still live. */
+  /** Flag an entity as DESTROYED so its mesh plays the death fade when it
+   *  leaves the live set, instead of the quiet vision fade-out. Driven by
+   *  'death' SimEvents (see RtsScene3D); entities that merely leave vision
+   *  are never flagged. Runs before the render removal queue consumes the
+   *  entity id, while the mesh is still live. */
   markEntityKilled(id: EntityId): void {
     const m = this.unitMeshes.get(id);
     if (m) m.killed = true;
+    this.buildingRenderer.markEntityKilled(id);
   }
 
   private getMirrorShinyMat(): THREE.Material {

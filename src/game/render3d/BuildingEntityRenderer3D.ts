@@ -11,6 +11,7 @@ import {
   DyingMeshFade,
   ENTITY_DEATH_FADE_MS,
 } from './EntityFade3D';
+import { VISION_FADE_IN_MS, VISION_FADE_OUT_MS } from '@/visionConfig';
 import {
   buildBuildingShape,
   type BuildingShapeType,
@@ -204,6 +205,12 @@ export class BuildingEntityRenderer3D {
   // dead building/tower is kept and its whole group dissolved 1 → 0 before
   // teardown, while the blast + debris play out. Assigned in the constructor.
   private readonly dyingBuildings: DyingMeshFade<EntityMesh>;
+  // Buildings/towers that left the local player's vision. Same as unit
+  // vision fade-out: quiet alpha dissolve in place, distinct from death.
+  private readonly vanishingBuildings: DyingMeshFade<EntityMesh>;
+  /** Per-entity vision fade-IN clock. Kept outside row updates because
+   *  buildings are usually submitted only when dirty, unlike units. */
+  private readonly spawnFadeElapsed = new Map<EntityId, number>();
   /** Gatling spin for tower-mounted multi-barrel turrets (e.g. the
    *  Anti-Air rocket gatling). Towers render per-Mesh, so they keep
    *  their own spin state separate from the unit renderer's. */
@@ -250,6 +257,16 @@ export class BuildingEntityRenderer3D {
       (mesh, fade) => applyEntityGroupFade(mesh.group, fade),
       (_id, mesh) => this.disposeBuildingMesh(mesh),
     );
+    this.vanishingBuildings = new DyingMeshFade<EntityMesh>(
+      VISION_FADE_OUT_MS,
+      (mesh, fade) => applyEntityGroupFade(mesh.group, fade),
+      (_id, mesh) => this.disposeBuildingMesh(mesh),
+    );
+  }
+
+  markEntityKilled(id: EntityId): void {
+    const mesh = this.meshes.get(id);
+    if (mesh) mesh.killed = true;
   }
 
   update(
@@ -345,9 +362,11 @@ export class BuildingEntityRenderer3D {
     if (pruneBuildings) this.pruneUnseenBuildingMeshes(pruneToken, scopedRender, beamAimCache);
     this.updateBuildingTurretSpinQueue(spinDt);
     this.animations.update(spinDt, currentDtMs, timeMs);
+    this.updateBuildingSpawnFades(currentDtMs);
     // Advance any in-progress death-out fades every frame (independent of
     // the entity-set prune cadence below).
     this.dyingBuildings.update(currentDtMs);
+    this.vanishingBuildings.update(currentDtMs);
 
     this.lastEntitySetVersion = entitySetVersion;
     this.lastFrameStateKey = frameState.key;
@@ -383,6 +402,43 @@ export class BuildingEntityRenderer3D {
     this.disposeWorldParentedOverlays(mesh);
   }
 
+  private currentSpawnFadeIn(id: EntityId): number {
+    if (VISION_FADE_IN_MS <= 0) return 1;
+    const elapsed = this.spawnFadeElapsed.get(id);
+    if (elapsed === undefined) return 1;
+    return Math.min(elapsed, VISION_FADE_IN_MS) / VISION_FADE_IN_MS;
+  }
+
+  private applyBuildingEntityFade(mesh: EntityMesh, fade: number): void {
+    if (fade < 1 || mesh.buildingGroupFadeActive === true) {
+      applyEntityGroupFade(mesh.group, fade);
+      mesh.buildingGroupFadeActive = fade < 1;
+    }
+  }
+
+  private updateBuildingSpawnFades(dtMs: number): void {
+    if (this.spawnFadeElapsed.size === 0) return;
+    if (VISION_FADE_IN_MS <= 0) {
+      for (const id of this.spawnFadeElapsed.keys()) {
+        const mesh = this.meshes.get(id);
+        if (mesh === undefined) continue;
+        this.spawnFadeElapsed.set(id, VISION_FADE_IN_MS);
+        this.applyBuildingEntityFade(mesh, mesh.buildingMaterializationOpacity ?? 1);
+      }
+      return;
+    }
+
+    for (const [id, prev] of this.spawnFadeElapsed) {
+      if (prev === VISION_FADE_IN_MS) continue;
+      const mesh = this.meshes.get(id);
+      if (mesh === undefined) continue;
+      const elapsed = Math.min(prev + dtMs, VISION_FADE_IN_MS);
+      this.spawnFadeElapsed.set(id, elapsed);
+      const fadeIn = elapsed / VISION_FADE_IN_MS;
+      this.applyBuildingEntityFade(mesh, (mesh.buildingMaterializationOpacity ?? 1) * fadeIn);
+    }
+  }
+
   private removeBuildingMeshesFromPacket(
     rows: BuildingRenderPacket3D,
     beamAimCache: TurretBeamAimCache3D,
@@ -398,6 +454,7 @@ export class BuildingEntityRenderer3D {
   ): void {
     this.unregisterBuildingSpinTurrets(id);
     beamAimCache.delete(id);
+    this.spawnFadeElapsed.delete(id);
 
     const mesh = this.meshes.get(id);
     if (!mesh) return;
@@ -406,7 +463,8 @@ export class BuildingEntityRenderer3D {
     if (mesh.ring) mesh.ring.visible = false;
     this.animations.unregister(id);
     this.meshes.delete(id);
-    this.dyingBuildings.markDying(id, mesh);
+    if (mesh.killed) this.dyingBuildings.markDying(id, mesh);
+    else this.vanishingBuildings.markDying(id, mesh);
   }
 
   private pruneUnseenBuildingMeshes(
@@ -434,6 +492,8 @@ export class BuildingEntityRenderer3D {
     }
     this.meshes.clear();
     this.dyingBuildings.destroyAll();
+    this.vanishingBuildings.destroyAll();
+    this.spawnFadeElapsed.clear();
     this.renderScopeToken = 0;
     this.lastEntitySetVersion = -1;
     this.animations.destroy();
@@ -456,6 +516,9 @@ export class BuildingEntityRenderer3D {
     // finalize the dying mesh so we don't draw it under the rebuilt one.
     if (this.dyingBuildings.size > 0 && this.dyingBuildings.has(entity.id)) {
       this.dyingBuildings.finalize(entity.id);
+    }
+    if (this.vanishingBuildings.size > 0 && this.vanishingBuildings.has(entity.id)) {
+      this.vanishingBuildings.finalize(entity.id);
     }
     const ownerId = rows.ownerIdAt(row);
     const width = rows.width[row];
@@ -496,6 +559,9 @@ export class BuildingEntityRenderer3D {
       this.meshes.set(entity.id, mesh);
       this.animations.register(entity, mesh);
       this.registerBuildingSpinTurrets(entity, mesh);
+      if (!this.spawnFadeElapsed.has(entity.id)) {
+        this.spawnFadeElapsed.set(entity.id, 0);
+      }
     }
 
     const progress = rows.progress[row];
@@ -547,10 +613,8 @@ export class BuildingEntityRenderer3D {
     // Finished buildings sit at opacity 1, where applyEntityGroupFade
     // restores the real materials and costs nothing.
     const bodyOpacity = rows.bodyOpacity[row];
-    if (bodyOpacity < 1 || mesh.buildingGroupFadeActive === true) {
-      applyEntityGroupFade(mesh.group, bodyOpacity);
-      mesh.buildingGroupFadeActive = bodyOpacity < 1;
-    }
+    mesh.buildingMaterializationOpacity = bodyOpacity;
+    this.applyBuildingEntityFade(mesh, bodyOpacity * this.currentSpawnFadeIn(entity.id));
     this.animations.sync(entity, mesh);
   }
 

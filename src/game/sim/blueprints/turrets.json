@@ -300,8 +300,8 @@
       "duration": 900,
       "durationRandomness": 0.2
     },
-    "launchForce": 9000,
-    "turretTurnAccel": 20,
+    "launchForce": 100000,
+    "turretTurnAccel": 200,
     "turretDrag": 20,
     "barrel": {
       "type": "simpleMultiBarrel",
@@ -355,7 +355,7 @@
     },
     "kind": "attack",
     "emissionKind": "shot",
-    "emissionBlueprintId": "shotMortarHeavy"
+    "emissionBlueprintId": "shotMortarMedium"
   },
   "turretGatling": {
     "turretBlueprintId": "turretGatling",

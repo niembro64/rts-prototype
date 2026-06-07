@@ -143,6 +143,10 @@ export type EntityMesh = {
   buildingCachedRotation?: number;
   buildingCachedDetailsReady?: boolean;
   buildingRangeOverlayVersion?: number;
+  /** Last construction/body opacity received from a building render row.
+   *  Building rows are dirty-driven, so the vision fade queue reuses this
+   *  value on frames where the entity itself did not need a row. */
+  buildingMaterializationOpacity?: number;
   buildingGroupFadeActive?: boolean;
   buildingHasPerFrameTurretWork?: boolean;
   buildingRenderFrameKey?: string;
@@ -172,11 +176,11 @@ export type EntityMesh = {
    *  instanceColor instead. */
   unitDynamicTurretHeadColorHex?: number[];
   unitOverlayVersion?: number;
-  /** Set when the sim reports this unit was DESTROYED (a 'death' SimEvent),
+  /** Set when the sim reports this entity was DESTROYED (a 'death' SimEvent),
    *  as opposed to merely leaving the local player's vision. Read when the
    *  render removal queue drops the mesh from the live set: killed units play
-   *  the scatter + death-fade; units that just lost vision fade out quietly
-   *  in place. */
+   *  the scatter + death-fade, killed buildings/towers use the death fade,
+   *  and entities that just lost vision fade out quietly in place. */
   killed?: boolean;
   /** Whether a per-Mesh group fade clone is currently installed on
    *  this unit. Used to restore real materials exactly once when
