@@ -857,7 +857,7 @@
     "cooldown": null,
     "launchForce": 0,
     "turretTurnAccel": 200,
-    "turretDrag": 0.15,
+    "turretDrag": 10,
     "barrel": {
       "type": "complexSingleEmitter",
       "grate": {
@@ -890,7 +890,7 @@
       "shotBlueprintId": "shotPlasmaOther",
       "launchForce": 1000,
       "cooldown": {
-        "duration": 30,
+        "duration": 100,
         "durationRandomness": 0.2
       },
       "spread": {

@@ -198,7 +198,7 @@
         "requiredEngagedForFightStop": true
       },
       {
-        "turretBlueprintId": "turretShieldSphere",
+        "turretBlueprintId": "turretShieldSphereSmall",
         "mount": {
           "x": 0,
           "y": 0,
@@ -857,7 +857,7 @@
         "requiredEngagedForFightStop": true
       },
       {
-        "turretBlueprintId": "turretShieldSphereSmall",
+        "turretBlueprintId": "turretShieldSphere",
         "mount": {
           "x": 0.3,
           "y": 0,
