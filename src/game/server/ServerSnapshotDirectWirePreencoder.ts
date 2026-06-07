@@ -126,11 +126,11 @@ export class ServerSnapshotDirectWirePreencoder {
     scanPulses: undefined,
     shroud: undefined,
     projectiles: undefined,
-    gameState: _directGameState,
     grid: undefined,
     serverMeta: undefined,
     terrain: undefined,
     buildability: undefined,
+    gameState: _directGameState,
     isDelta: false,
     removedEntityIds: undefined,
     visibilityFiltered: undefined,
@@ -254,11 +254,11 @@ export class ServerSnapshotDirectWirePreencoder {
     state.scanPulses = netScanPulses;
     state.shroud = undefined;
     state.projectiles = netProjectiles;
-    state.gameState = _directGameState;
     state.grid = netGrid;
     state.serverMeta = input.serverMeta;
     state.terrain = input.terrain;
     state.buildability = input.buildability;
+    state.gameState = _directGameState;
     state.isDelta = input.isDelta && SNAPSHOT_CONFIG.deltaEnabled;
     state.removedEntityIds = this.removedEntityIds.length > 0
       ? this.removedEntityIds
