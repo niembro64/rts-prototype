@@ -23,6 +23,7 @@ import {
   ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_TURRETS,
   ENTITY_CHANGED_VEL,
+  actionTypeToCode,
   buildingBlueprintIdToCode,
   turretBlueprintIdToCode,
   turretStateToCode,
@@ -67,6 +68,10 @@ const INITIAL_ENTITY_POOL = 200;
 const MAX_WEAPONS_PER_ENTITY = 8;
 const MAX_ACTIONS_PER_ENTITY = 16;
 const _snapshotTurretFsm: CombatTargetingTurretFsmOut = {
+  stateCode: 0,
+  targetId: -1,
+};
+const _directTurretFsm: CombatTargetingTurretFsmOut = {
   stateCode: 0,
   targetId: -1,
 };
@@ -632,6 +637,412 @@ function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void 
   }
 
   appendRawEntityWireRow();
+}
+
+function canReferenceSnapshotEntityId(
+  world: WorldState,
+  visibility: SnapshotVisibility | undefined,
+  id: number | undefined,
+): boolean {
+  return id === undefined || visibility === undefined || visibility.canReferenceEntityId(world, id);
+}
+
+function directEntityHasInactiveTurret(entity: Entity): boolean {
+  const combat = entity.combat;
+  const turrets = combat !== null ? combat.turrets : undefined;
+  if (turrets === undefined) return false;
+  for (let i = 0; i < turrets.length; i++) {
+    if (turrets[i].id === NO_ENTITY_ID) return true;
+  }
+  return false;
+}
+
+function directEntityHasFactoryRoute(entity: Entity): boolean {
+  const defaultWaypoints = entity.factory?.defaultWaypoints;
+  return defaultWaypoints !== null && defaultWaypoints !== undefined && defaultWaypoints.length > 1;
+}
+
+export function canAppendEntitySnapshotWireRowDirect(entity: Entity): boolean {
+  if (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower') {
+    return false;
+  }
+  if (entity.buildable?.isInterrupted === true) return false;
+  if (directEntityHasInactiveTurret(entity)) return false;
+  if (directEntityHasFactoryRoute(entity)) return false;
+  return true;
+}
+
+function appendDirectBasicEntityWireRow(
+  entity: Entity,
+  changedFields: number | undefined,
+): void {
+  const rows = entityWireSource.basicRows;
+  const rowIndex = reserveFloat64WireRows(rows, 1, ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE);
+  const values = rows.values;
+  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE;
+  const isFull = changedFields === undefined;
+  const changedMask = changedFields ?? 0;
+  const ownership = entity.ownership;
+  values[base + 0] = entity.id;
+  values[base + 1] = entity.type === 'unit'
+    ? ENTITY_SNAPSHOT_WIRE_TYPE_UNIT
+    : ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING;
+  values[base + 2] = isFull || (changedMask & ENTITY_CHANGED_POS) ? qPos(entity.transform.x) : 0;
+  values[base + 3] = isFull || (changedMask & ENTITY_CHANGED_POS) ? qPos(entity.transform.y) : 0;
+  values[base + 4] = isFull || (changedMask & ENTITY_CHANGED_POS) ? qPos(entity.transform.z) : 0;
+  values[base + 5] = isFull || (changedMask & ENTITY_CHANGED_ROT) ? qRot(entity.transform.rotation) : 0;
+  values[base + 6] = ownership !== null ? ownership.playerId : 1;
+  values[base + 7] = isFull ? 0 : 1;
+  values[base + 8] = changedFields ?? 0;
+  entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_BASIC);
+  entityWireSource.rowIndices.push(rowIndex);
+}
+
+function appendDirectActionWireRows(
+  entity: Entity,
+  world: WorldState,
+  visibility: SnapshotVisibility | undefined,
+): { offset: number; count: number } {
+  const actions = entity.unit?.actions ?? [];
+  const count = actions.length;
+  if (count === 0) return { offset: -1, count: 0 };
+  const rows = entityWireSource.actionRows;
+  const offset = reserveFloat64WireRows(rows, count, ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE);
+  const values = rows.values;
+  const strings = entityWireSource.actionStrings;
+  for (let i = 0; i < count; i++) {
+    const action = actions[i];
+    const base = (offset + i) * ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE;
+    values[base + 0] = actionTypeToCode(action.type);
+    values[base + 1] = action.x !== undefined ? 1 : 0;
+    values[base + 2] = action.x ?? 0;
+    values[base + 3] = action.y ?? 0;
+    values[base + 4] = action.z !== undefined ? 1 : 0;
+    values[base + 5] = action.z ?? 0;
+    values[base + 6] = action.isPathExpansion === true ? 1 : 0;
+    const targetId = canReferenceSnapshotEntityId(world, visibility, action.targetId)
+      ? action.targetId
+      : undefined;
+    values[base + 7] = targetId !== undefined ? 1 : 0;
+    values[base + 8] = targetId ?? 0;
+    values[base + 9] = action.buildingBlueprintId !== undefined ? 1 : 0;
+    values[base + 10] = action.buildingBlueprintId !== undefined ? strings.length : 0;
+    if (action.buildingBlueprintId !== undefined) strings.push(action.buildingBlueprintId);
+    values[base + 11] = action.gridX !== undefined ? 1 : 0;
+    values[base + 12] = action.gridX ?? 0;
+    values[base + 13] = action.gridY ?? 0;
+    const buildingId = canReferenceSnapshotEntityId(world, visibility, action.buildingId)
+      ? action.buildingId
+      : undefined;
+    values[base + 14] = buildingId !== undefined ? 1 : 0;
+    values[base + 15] = buildingId ?? 0;
+  }
+  return { offset, count };
+}
+
+function appendDirectTurretWireRows(
+  entity: Entity,
+  world: WorldState,
+  visibility: SnapshotVisibility | undefined,
+  canSeePrivateDetails: boolean,
+): { offset: number; count: number } {
+  const combat = entity.combat;
+  const turrets = combat !== null ? combat.turrets : undefined;
+  const count = turrets !== undefined ? turrets.length : 0;
+  if (count === 0) return { offset: -1, count: 0 };
+  const rows = entityWireSource.turretRows;
+  const offset = reserveFloat64WireRows(rows, count, ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE);
+  const values = rows.values;
+  for (let i = 0; i < count; i++) {
+    const src = turrets![i];
+    const base = (offset + i) * ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE;
+    if (!turretAimMotionIsSnapshotVisible(src)) {
+      values[base + 0] = 0;
+      values[base + 1] = 0;
+      values[base + 2] = 0;
+      values[base + 3] = 0;
+    } else {
+      values[base + 0] = qRot(src.rotation);
+      values[base + 1] = qRot(src.angularVelocity);
+      values[base + 2] = qRot(src.pitch);
+      values[base + 3] = qRot(src.pitchVelocity);
+    }
+    const hasTargetingFsm = readCombatTargetingTurretFsmInto(entity, i, _directTurretFsm);
+    const targetId = hasTargetingFsm ? _directTurretFsm.targetId : (src.target ?? -1);
+    const wireTargetId = targetId === -1 ? undefined : targetId;
+    const canSendTarget = canSeePrivateDetails &&
+      canReferenceSnapshotEntityId(world, visibility, wireTargetId);
+    values[base + 4] = turretBlueprintIdToCode(src.config.turretBlueprintId);
+    values[base + 5] = hasTargetingFsm ? _directTurretFsm.stateCode : turretStateToCode(src.state);
+    values[base + 6] = canSendTarget && wireTargetId !== undefined ? 1 : 0;
+    values[base + 7] = canSendTarget ? wireTargetId ?? 0 : 0;
+    values[base + 8] = src.shield !== undefined ? 1 : 0;
+    values[base + 9] = src.shield !== undefined ? src.shield.range : 0;
+  }
+  return { offset, count };
+}
+
+function appendDirectFactorySelectedUnitWireRow(entity: Entity): { offset: number; hasValue: number } {
+  const selectedUnitBlueprintId = entity.factory?.selectedUnitBlueprintId;
+  if (selectedUnitBlueprintId === null || selectedUnitBlueprintId === undefined) {
+    return { offset: -1, hasValue: 0 };
+  }
+  const rows = entityWireSource.factorySelectedUnitRows;
+  const offset = reserveUint32WireRows(rows, 1, 1);
+  rows.values[offset] = unitBlueprintIdToCode(selectedUnitBlueprintId);
+  return { offset, hasValue: 1 };
+}
+
+function appendDirectFactoryRallyWireRow(entity: Entity): number {
+  const factory = entity.factory;
+  if (factory === null) return -1;
+  const rows = entityWireSource.waypointRows;
+  const offset = reserveFloat64WireRows(rows, 1, ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE);
+  const values = rows.values;
+  const strings = entityWireSource.waypointStrings;
+  const base = offset * ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE;
+  values[base + 0] = factory.rallyX;
+  values[base + 1] = factory.rallyY;
+  values[base + 2] = factory.rallyZ !== null && factory.rallyZ !== undefined ? 1 : 0;
+  values[base + 3] = factory.rallyZ ?? 0;
+  values[base + 4] = strings.length;
+  strings.push(factory.rallyType);
+  return offset;
+}
+
+function appendDirectUnitEntityWireRow(
+  entity: Entity,
+  changedFields: number | undefined,
+  world: WorldState,
+  visibility: SnapshotVisibility | undefined,
+): void {
+  const unit = entity.unit!;
+  const rows = entityWireSource.unitRows;
+  const rowIndex = reserveFloat64WireRows(rows, 1, ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE);
+  const values = rows.values;
+  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+  const isFull = changedFields === undefined;
+  const changedMask = changedFields ?? 0;
+  const ownership = entity.ownership;
+  const canSeePrivateDetails = visibility !== undefined
+    ? visibility.canSeePrivateEntityDetails(entity)
+    : true;
+  const shouldEmitActions = canSeePrivateDetails &&
+    (isFull || (changedMask & ENTITY_CHANGED_ACTIONS) !== 0);
+  const shouldEmitTurrets = entity.combat !== null &&
+    entity.combat.turrets.length > 0 &&
+    (isFull || (changedMask & ENTITY_CHANGED_TURRETS) !== 0);
+  const actionRows = shouldEmitActions
+    ? appendDirectActionWireRows(entity, world, visibility)
+    : { offset: -1, count: 0 };
+  const turretRows = shouldEmitTurrets
+    ? appendDirectTurretWireRows(entity, world, visibility, canSeePrivateDetails)
+    : { offset: -1, count: 0 };
+  const hasPos = isFull || (changedMask & ENTITY_CHANGED_POS) !== 0;
+  const hasRot = isFull || (changedMask & ENTITY_CHANGED_ROT) !== 0;
+  const hasHp = isFull || (changedMask & ENTITY_CHANGED_HP) !== 0;
+  const hasVel = isFull || (changedMask & ENTITY_CHANGED_VEL) !== 0;
+  const hasNormal = isFull || (changedMask & ENTITY_CHANGED_NORMAL) !== 0;
+  const hasBuild = (isFull || (changedMask & ENTITY_CHANGED_BUILDING) !== 0) && entity.buildable !== null;
+  const hasBuildTarget = canSeePrivateDetails &&
+    entity.builder !== null &&
+    (isFull || (changedMask & ENTITY_CHANGED_ACTIONS) !== 0);
+  const buildTargetId = hasBuildTarget ? entity.builder!.currentBuildTarget : NO_ENTITY_ID;
+  const canSendBuildTarget = hasBuildTarget &&
+    buildTargetId !== NO_ENTITY_ID &&
+    canReferenceSnapshotEntityId(world, visibility, buildTargetId);
+  const surfaceNormal = unit.surfaceNormal;
+  const orientation = unit.orientation;
+  const angularVelocity = unit.angularVelocity3;
+  const buildable = entity.buildable;
+
+  values[base + 0] = entity.id;
+  values[base + 1] = hasPos ? qPos(entity.transform.x) : 0;
+  values[base + 2] = hasPos ? qPos(entity.transform.y) : 0;
+  values[base + 3] = hasPos ? qPos(entity.transform.z) : 0;
+  values[base + 4] = hasRot ? qRot(entity.transform.rotation) : 0;
+  values[base + 5] = ownership !== null ? ownership.playerId : 1;
+  values[base + 6] = isFull ? 0 : 1;
+  values[base + 7] = changedFields ?? 0;
+  values[base + 8] = hasHp ? unit.hp : 0;
+  values[base + 9] = hasHp ? unit.maxHp : 0;
+  values[base + 10] = hasVel ? qVel(unit.velocityX ?? 0) : 0;
+  values[base + 11] = hasVel ? qVel(unit.velocityY ?? 0) : 0;
+  values[base + 12] = hasVel ? qVel(unit.velocityZ ?? 0) : 0;
+  values[base + 13] = isFull ? 1 : 0;
+  values[base + 14] = isFull ? unitBlueprintIdToCode(unit.unitBlueprintId) : 0;
+  values[base + 15] = 0;
+  values[base + 16] = 0;
+  values[base + 17] = 0;
+  values[base + 18] = 0;
+  values[base + 19] = 0;
+  values[base + 20] = 0;
+  values[base + 21] = 0;
+  values[base + 22] = 0;
+  values[base + 23] = hasNormal ? 1 : 0;
+  values[base + 24] = hasNormal ? qNormal(surfaceNormal.nx) : 0;
+  values[base + 25] = hasNormal ? qNormal(surfaceNormal.ny) : 0;
+  values[base + 26] = hasNormal ? qNormal(surfaceNormal.nz) : 0;
+  values[base + 27] = orientation !== null && hasRot ? 1 : 0;
+  values[base + 28] = orientation !== null && hasRot ? orientation.x : 0;
+  values[base + 29] = orientation !== null && hasRot ? orientation.y : 0;
+  values[base + 30] = orientation !== null && hasRot ? orientation.z : 0;
+  values[base + 31] = orientation !== null && hasRot ? orientation.w : 0;
+  values[base + 32] = orientation !== null && hasVel && angularVelocity !== null && angularVelocity !== undefined ? 1 : 0;
+  values[base + 33] = orientation !== null && hasVel && angularVelocity !== null && angularVelocity !== undefined ? angularVelocity.x : 0;
+  values[base + 34] = orientation !== null && hasVel && angularVelocity !== null && angularVelocity !== undefined ? angularVelocity.y : 0;
+  values[base + 35] = orientation !== null && hasVel && angularVelocity !== null && angularVelocity !== undefined ? angularVelocity.z : 0;
+  values[base + 36] = (isFull || (changedMask & ENTITY_CHANGED_COMBAT_MODE) !== 0) &&
+    entity.combat !== null &&
+    entity.combat.fireEnabled === false
+    ? 1
+    : 0;
+  values[base + 37] = isFull && isCommander(entity) ? 1 : 0;
+  values[base + 38] = hasBuildTarget ? 1 : 0;
+  values[base + 39] = hasBuildTarget && !canSendBuildTarget ? 1 : 0;
+  values[base + 40] = canSendBuildTarget ? buildTargetId : 0;
+  values[base + 41] = shouldEmitActions ? 1 : 0;
+  values[base + 42] = shouldEmitActions ? actionRows.count : 0;
+  values[base + 43] = shouldEmitTurrets ? 1 : 0;
+  values[base + 44] = shouldEmitTurrets ? turretRows.count : 0;
+  values[base + 45] = hasBuild ? 1 : 0;
+  values[base + 46] = hasBuild && buildable!.isComplete === true ? 1 : 0;
+  values[base + 47] = hasBuild ? buildable!.paid.energy : 0;
+  values[base + 48] = hasBuild ? buildable!.paid.metal : 0;
+  values[base + 49] = turretRows.offset;
+  values[base + 50] = actionRows.offset;
+  entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_UNIT);
+  entityWireSource.rowIndices.push(rowIndex);
+}
+
+function appendDirectBuildingEntityWireRow(
+  entity: Entity,
+  changedFields: number | undefined,
+  world: WorldState,
+  visibility: SnapshotVisibility | undefined,
+): void {
+  const building = entity.building!;
+  const rows = entityWireSource.buildingRows;
+  const rowIndex = reserveFloat64WireRows(rows, 1, ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE);
+  const values = rows.values;
+  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
+  const isFull = changedFields === undefined;
+  const changedMask = changedFields ?? 0;
+  const ownership = entity.ownership;
+  const canSeePrivateDetails = visibility !== undefined
+    ? visibility.canSeePrivateEntityDetails(entity)
+    : true;
+  const shouldEmitTurrets = entity.combat !== null &&
+    entity.combat.turrets.length > 0 &&
+    (isFull || (changedMask & ENTITY_CHANGED_TURRETS) !== 0);
+  const shouldEmitFactory = canSeePrivateDetails &&
+    entity.factory !== null &&
+    (isFull || (changedMask & ENTITY_CHANGED_FACTORY) !== 0);
+  const turretRows = shouldEmitTurrets
+    ? appendDirectTurretWireRows(entity, world, visibility, canSeePrivateDetails)
+    : { offset: -1, count: 0 };
+  const factorySelectedUnit = shouldEmitFactory
+    ? appendDirectFactorySelectedUnitWireRow(entity)
+    : { offset: -1, hasValue: 0 };
+  const factoryRallyOffset = shouldEmitFactory ? appendDirectFactoryRallyWireRow(entity) : -1;
+  const hasPos = isFull || (changedMask & ENTITY_CHANGED_POS) !== 0;
+  const hasRot = isFull || (changedMask & ENTITY_CHANGED_ROT) !== 0;
+  const hasHp = isFull || (changedMask & ENTITY_CHANGED_HP) !== 0;
+  const hasBuild = isFull || (changedMask & ENTITY_CHANGED_BUILDING) !== 0;
+  const buildable = entity.buildable;
+  const activeState = building.activeState;
+  const factory = entity.factory;
+  let factoryProgress = 0;
+  if (shouldEmitFactory && factory !== null) {
+    if (factory.currentShellId != null) {
+      const shell = world.getEntity(factory.currentShellId);
+      factoryProgress = shell !== undefined && shell.buildable !== null
+        ? getBuildFraction(shell.buildable)
+        : factory.currentBuildProgress;
+    } else {
+      factoryProgress = 0;
+    }
+  }
+
+  values[base + 0] = entity.id;
+  values[base + 1] = hasPos ? qPos(entity.transform.x) : 0;
+  values[base + 2] = hasPos ? qPos(entity.transform.y) : 0;
+  values[base + 3] = hasPos ? qPos(entity.transform.z) : 0;
+  values[base + 4] = hasRot ? qRot(entity.transform.rotation) : 0;
+  values[base + 5] = ownership !== null ? ownership.playerId : 1;
+  values[base + 6] = isFull ? 0 : 1;
+  values[base + 7] = changedFields ?? 0;
+  values[base + 8] = isFull && entity.buildingBlueprintId !== null ? 1 : 0;
+  values[base + 9] = isFull && entity.buildingBlueprintId !== null
+    ? buildingBlueprintIdToCode(entity.buildingBlueprintId)
+    : 0;
+  values[base + 10] = isFull ? 1 : 0;
+  values[base + 11] = isFull ? building.width : 0;
+  values[base + 12] = isFull ? building.height : 0;
+  values[base + 13] = hasHp ? building.hp : 0;
+  values[base + 14] = hasHp ? building.maxHp : 0;
+  values[base + 15] = hasBuild && (buildable === null || buildable.isComplete) ? 1 : 0;
+  values[base + 16] = hasBuild && buildable !== null ? buildable.paid.energy : 0;
+  values[base + 17] = hasBuild && buildable !== null ? buildable.paid.metal : 0;
+  values[base + 18] = (
+    (isFull || (changedMask & ENTITY_CHANGED_BUILDING) !== 0) &&
+    entity.buildingBlueprintId === 'buildingExtractor'
+  ) ? 1 : 0;
+  values[base + 19] = values[base + 18] !== 0 ? entity.metalExtractionRate ?? 0 : 0;
+  values[base + 20] = hasBuild && activeState !== null ? 1 : 0;
+  values[base + 21] = hasBuild && activeState !== null && activeState.open === true ? 1 : 0;
+  values[base + 22] = shouldEmitTurrets ? 1 : 0;
+  values[base + 23] = shouldEmitTurrets ? turretRows.count : 0;
+  values[base + 24] = shouldEmitFactory ? 1 : 0;
+  values[base + 25] = shouldEmitFactory ? factorySelectedUnit.hasValue : 0;
+  values[base + 26] = shouldEmitFactory ? factoryProgress : 0;
+  values[base + 27] = shouldEmitFactory && factory!.isProducing === true ? 1 : 0;
+  values[base + 28] = shouldEmitFactory ? factory!.energyRateFraction : 0;
+  values[base + 29] = shouldEmitFactory ? factory!.metalRateFraction : 0;
+  values[base + 30] = shouldEmitFactory ? 1 : 0;
+  values[base + 31] = turretRows.offset;
+  values[base + 32] = factorySelectedUnit.offset;
+  values[base + 33] = factoryRallyOffset;
+  entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_BUILDING);
+  entityWireSource.rowIndices.push(rowIndex);
+}
+
+export function appendEntitySnapshotWireRowDirect(
+  entity: Entity,
+  changedFields: number | undefined,
+  world: WorldState,
+  visibility: SnapshotVisibility | undefined = undefined,
+): void {
+  const isFull = changedFields === undefined;
+  const changedMask = changedFields ?? 0;
+  if (entity.type === 'unit' && entity.unit !== null) {
+    const unitFieldMask = ENTITY_CHANGED_VEL | ENTITY_CHANGED_HP |
+      ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_TURRETS |
+      ENTITY_CHANGED_BUILDING;
+    const hasSurfaceNormalFields = isFull || (changedMask & ENTITY_CHANGED_NORMAL) !== 0;
+    const hasOrientationFields = entity.unit.orientation !== null &&
+      (isFull || (changedMask & ENTITY_CHANGED_ROT) !== 0);
+    const hasAngularVelocityFields = entity.unit.orientation !== null &&
+      (isFull || (changedMask & ENTITY_CHANGED_VEL) !== 0);
+    const hasUnitFields = isFull ||
+      (changedMask & unitFieldMask) !== 0 ||
+      hasSurfaceNormalFields ||
+      hasOrientationFields ||
+      hasAngularVelocityFields;
+    if (hasUnitFields) {
+      appendDirectUnitEntityWireRow(entity, changedFields, world, visibility);
+      return;
+    }
+  } else if ((entity.type === 'building' || entity.type === 'tower') && entity.building !== null) {
+    const buildingFieldMask = ENTITY_CHANGED_HP | ENTITY_CHANGED_BUILDING |
+      ENTITY_CHANGED_FACTORY | ENTITY_CHANGED_TURRETS;
+    if (isFull || (changedMask & buildingFieldMask) !== 0) {
+      appendDirectBuildingEntityWireRow(entity, changedFields, world, visibility);
+      return;
+    }
+  }
+
+  appendDirectBasicEntityWireRow(entity, changedFields);
 }
 
 export function serializeEntitySnapshot(

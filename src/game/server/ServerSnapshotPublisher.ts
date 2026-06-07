@@ -29,6 +29,7 @@ import {
   ServerSnapshotWirePreencoder,
   type SerializedListenerSnapshot,
 } from './ServerSnapshotWirePayload';
+import { ServerSnapshotDirectWirePreencoder } from './ServerSnapshotDirectWirePreencoder';
 
 const NO_MINIMAP_OVERRIDE: SerializerMinimapOverride = { value: undefined };
 
@@ -75,6 +76,7 @@ export type ServerSnapshotPublisherInput = {
 export class ServerSnapshotPublisher {
   private readonly metaBuilder = new ServerSnapshotMetaBuilder();
   private readonly wirePreencoder = new ServerSnapshotWirePreencoder();
+  private readonly directWirePreencoder = new ServerSnapshotDirectWirePreencoder();
   private readonly dirtyIdsBuf: EntityId[] = [];
   private readonly dirtyFieldsBuf: number[] = [];
   private readonly removedEntitiesBuf: RemovedSnapshotEntity[] = [];
@@ -224,6 +226,7 @@ export class ServerSnapshotPublisher {
       const listenerIsDelta = isDelta && !listenerNeedsStaticMap;
       const shouldEmitMinimap = !listenerIsDelta || emitMinimapOnDelta;
       const shouldEmitEntityDetails = !listenerIsDelta || emitEntityDetailsOnDelta;
+      const shouldSendStaticTerrain = !listenerIsDelta && listenerNeedsStaticMap;
       // FOW-OPT-20: look up (or fill) the team-shared audio / spray /
       // minimap payloads. The first teammate to hit each cache slot
       // triggers the underlying serializer using THIS listener's
@@ -279,6 +282,43 @@ export class ServerSnapshotPublisher {
         sprayOverride,
         minimapOverride,
       };
+      if (listener.preencodeWire) {
+        const directSnapshot = this.directWirePreencoder.tryEncode({
+          world: input.world,
+          trackingKey: listener.deltaTrackingKey,
+          snapshotBaselineHandle: listener.snapshotBaselineHandle,
+          dirtyEntityIds: this.dirtyIdsBuf,
+          dirtyEntityFields: this.dirtyFieldsBuf,
+          removedEntities: this.removedEntitiesBuf,
+          recipientPlayerId: listener.playerId,
+          visibility,
+          isDelta: listenerIsDelta,
+          gamePhase,
+          winnerId,
+          sprayTargets,
+          audioEvents,
+          projectileSpawns,
+          projectileDespawns,
+          projectileVelocityUpdates,
+          gridCells,
+          gridSearchCells,
+          gridCellSize,
+          emitEntityDetailFields: shouldEmitEntityDetails,
+          emitProjectileDetailFields: !listenerIsDelta || emitProjectileDetailsOnDelta,
+          audioOverride,
+          sprayOverride,
+          minimapOverride,
+          terrain: shouldSendStaticTerrain ? input.terrainTileMap : undefined,
+          buildability: shouldSendStaticTerrain ? input.terrainBuildabilityGrid : undefined,
+          serverMeta,
+        });
+        if (directSnapshot !== undefined) {
+          if (shouldSendStaticTerrain) {
+            this.markListenerStaticMapSent(listener, input);
+          }
+          return directSnapshot;
+        }
+      }
       const state = serializeGameState(
         input.world,
         listenerIsDelta,
@@ -295,7 +335,6 @@ export class ServerSnapshotPublisher {
         serializeOptions,
       );
 
-      const shouldSendStaticTerrain = !listenerIsDelta && listenerNeedsStaticMap;
       state.terrain = shouldSendStaticTerrain ? input.terrainTileMap : undefined;
       state.buildability = shouldSendStaticTerrain
         ? input.terrainBuildabilityGrid

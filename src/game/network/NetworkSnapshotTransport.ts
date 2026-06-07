@@ -100,7 +100,15 @@ export class NetworkSnapshotTransport {
     }
 
     if (this.shouldDropForBackpressure(playerId, conn, buf.byteLength)) return null;
-    this.recordSentSnapshot(playerId, conn, telemetry, encoded, buf.byteLength, encodeMs, state);
+    this.recordSentSnapshot(
+      playerId,
+      conn,
+      telemetry,
+      encoded,
+      buf.byteLength,
+      encodeMs,
+      encoded.materializationKind === 'direct' ? undefined : state,
+    );
     return {
       type: 'state',
       gameId,
