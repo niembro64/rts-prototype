@@ -16,7 +16,7 @@ import {
 } from './snapshotTransportCompression';
 import {
   decodeNetworkSnapshot,
-  encodeNetworkSnapshot,
+  encodeNetworkSnapshotDetailed,
   measureNetworkSnapshotWireBreakdown,
 } from './snapshotWireCodec';
 import { ReusableNetworkSnapshotCloner } from './snapshotClone';
@@ -92,7 +92,7 @@ export class NetworkSnapshotTransport {
           gameId,
           telemetry,
           buf,
-          encodeMs,
+          encoded,
           compressionOptions.format,
         );
       }
@@ -100,7 +100,7 @@ export class NetworkSnapshotTransport {
     }
 
     if (this.shouldDropForBackpressure(playerId, conn, buf.byteLength)) return null;
-    this.recordSentSnapshot(playerId, conn, telemetry, buf.byteLength, encodeMs, state);
+    this.recordSentSnapshot(playerId, conn, telemetry, encoded, buf.byteLength, encodeMs, state);
     return {
       type: 'state',
       gameId,
@@ -111,9 +111,9 @@ export class NetworkSnapshotTransport {
 
   private encodeSnapshot(state: NetworkServerSnapshot): SnapshotWirePayload {
     const encodeStart = performance.now();
-    const bytes = encodeNetworkSnapshot(state);
+    const encoded = encodeNetworkSnapshotDetailed(state);
     const encodeMs = performance.now() - encodeStart;
-    return { bytes, encodeMs };
+    return { ...encoded, encodeMs };
   }
 
   async decodeReceivedState(
@@ -232,7 +232,7 @@ export class NetworkSnapshotTransport {
     gameId: string,
     telemetry: SnapshotSendTelemetry,
     raw: Uint8Array,
-    rawEncodeMs: number,
+    rawPayload: SnapshotWirePayload,
     format: SnapshotCompressionFormat,
   ): Promise<NetworkStateMessage | null> {
     const compressStart = performance.now();
@@ -246,8 +246,9 @@ export class NetworkSnapshotTransport {
           playerId,
           conn,
           telemetry,
+          rawPayload,
           raw.byteLength,
-          rawEncodeMs + compressMs,
+          rawPayload.encodeMs + compressMs,
         );
         return {
           type: 'state',
@@ -266,8 +267,9 @@ export class NetworkSnapshotTransport {
         playerId,
         conn,
         telemetry,
+        rawPayload,
         compressed.byteLength,
-        rawEncodeMs + compressMs,
+        rawPayload.encodeMs + compressMs,
       );
       return {
         type: 'state',
@@ -291,8 +293,9 @@ export class NetworkSnapshotTransport {
         playerId,
         conn,
         telemetry,
+        rawPayload,
         raw.byteLength,
-        rawEncodeMs + compressMs,
+        rawPayload.encodeMs + compressMs,
       );
       return {
         type: 'state',
@@ -309,6 +312,7 @@ export class NetworkSnapshotTransport {
     playerId: PlayerId,
     conn: DataConnection,
     telemetry: SnapshotSendTelemetry,
+    payload: SnapshotWirePayload,
     wireBytes: number,
     encodeMs: number,
     breakdownState: NetworkServerSnapshot | undefined = undefined,
@@ -327,6 +331,10 @@ export class NetworkSnapshotTransport {
       bytes: wireBytes,
       encodeMs,
       isDelta: telemetry.isDelta,
+      encoderKind: payload.encoderKind,
+      rustEntityCount: payload.rustEntityCount,
+      rawEntityCount: payload.rawEntityCount,
+      rawTopLevelKeys: payload.rawTopLevelKeys,
       breakdown: breakdownState !== undefined && SNAPSHOT_ENCODE_INSTRUMENTATION.enabled
         ? measureNetworkSnapshotWireBreakdown(breakdownState, wireBytes)
         : undefined,
@@ -338,7 +346,7 @@ export class NetworkSnapshotTransport {
       const dcState = dc ? dc.readyState : 'no-dc';
       debugLog(
         true,
-        `[NET] Host snapshot #${this.snapshotsSent} -> player ${playerId}: open=${conn.open} dc=${dcState} buffered=${buffered} size=${wireBytes} dropped=${this.snapshotDropCounts.get(playerId) ?? 0}`,
+        `[NET] Host snapshot #${this.snapshotsSent} -> player ${playerId}: open=${conn.open} dc=${dcState} buffered=${buffered} size=${wireBytes} encoder=${payload.encoderKind ?? 'unknown'} rawEntities=${payload.rawEntityCount ?? 'n/a'} rawKeys=${payload.rawTopLevelKeys?.join(',') ?? ''} dropped=${this.snapshotDropCounts.get(playerId) ?? 0}`,
       );
     }
   }

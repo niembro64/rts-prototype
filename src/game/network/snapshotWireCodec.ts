@@ -5,6 +5,7 @@ import type {
   NetworkServerSnapshotEntity,
   NetworkServerSnapshotProjectileSpawn,
 } from './NetworkTypes';
+import type { SnapshotWirePayload } from './SnapshotWirePayload';
 import {
   encodeNetworkSnapshotWithRustFallback,
   encodeEntitiesV6Bytes,
@@ -85,6 +86,8 @@ const ENTITY_MAJOR_KEYS = [
 
 export type { NetworkServerSnapshotWire } from './snapshotWireTypes';
 
+export type EncodedNetworkSnapshot = Omit<SnapshotWirePayload, 'encodeMs'>;
+
 export type SnapshotWireBreakdownEntry = {
   section: string;
   bytes: number;
@@ -139,6 +142,10 @@ declare global {
 }
 
 export function encodeNetworkSnapshot(state: NetworkServerSnapshot): Uint8Array {
+  return encodeNetworkSnapshotDetailed(state).bytes;
+}
+
+export function encodeNetworkSnapshotDetailed(state: NetworkServerSnapshot): EncodedNetworkSnapshot {
   if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED) {
     compareV6Entities(state);
   }
@@ -160,7 +167,15 @@ export function encodeNetworkSnapshot(state: NetworkServerSnapshot): Uint8Array 
         compareRustSnapshotWireResult(wireState, jsBytes, rustResult);
       }
       rustSnapshotWireStats.rustSends++;
-      return rustResult.bytes;
+      return {
+        bytes: rustResult.bytes,
+        encoderKind: 'rust',
+        rustEntityCount: rustResult.rustEntityCount,
+        rawEntityCount: rustResult.rawEntityCount,
+        rawTopLevelKeys: rustResult.rawTopLevelKeys.length > 0
+          ? [...rustResult.rawTopLevelKeys]
+          : undefined,
+      };
     }
     noteRustSnapshotWireUnavailable();
   }
@@ -171,7 +186,13 @@ export function encodeNetworkSnapshot(state: NetworkServerSnapshot): Uint8Array 
   if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED && FORCE_JS_SNAPSHOT_WIRE) {
     compareRustSnapshotWire(wireState, bytes);
   }
-  return bytes;
+  return {
+    bytes,
+    encoderKind: 'js',
+    rustEntityCount: 0,
+    rawEntityCount: state.entities.length,
+    rawTopLevelKeys: undefined,
+  };
 }
 
 export function decodeNetworkSnapshot(raw: Uint8Array | ArrayBuffer): NetworkServerSnapshot {

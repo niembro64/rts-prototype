@@ -7,6 +7,7 @@ import {
   type RunningStats,
 } from './diagnosticStats';
 import type { SnapshotWireBreakdown } from './network/snapshotWireCodec';
+import type { SnapshotWireEncoderKind } from './network/SnapshotWirePayload';
 import type { SnapshotRate } from '../types/server';
 
 const REPORT_INTERVAL_MS = 10_000;
@@ -23,10 +24,15 @@ type EncodeBucket = {
   samples: number;
   fullSnapshots: number;
   deltaSnapshots: number;
+  rustSamples: number;
+  jsSamples: number;
+  rawTopLevelKeys: Record<string, number>;
   stats: {
     units: RunningStats;
     bytes: RunningStats;
     encodeMs: RunningStats;
+    rustEntities: RunningStats;
+    rawEntities: RunningStats;
   };
   latestFullBreakdown?: SnapshotWireBreakdown;
   latestDeltaBreakdown?: SnapshotWireBreakdown;
@@ -42,12 +48,16 @@ export type SnapshotEncodeInstrumentationReportRow = {
   encodedSps: number;
   full: number;
   delta: number;
+  encoder: string;
   unitsAvg: number | string;
   unitsMax: number | string;
   bytesAvg: number | string;
   bytesMax: number | string;
   encodeMs: number | string;
   encodeMsMax: number | string;
+  rustEntitiesAvg: number | string;
+  rawEntitiesAvg: number | string;
+  rawKeys: string;
 };
 
 export type SnapshotEncodeInstrumentationBreakdownRow = {
@@ -78,6 +88,10 @@ export type SnapshotEncodeInstrumentationSample = {
   bytes: number;
   encodeMs: number;
   isDelta: boolean;
+  encoderKind?: SnapshotWireEncoderKind;
+  rustEntityCount?: number;
+  rawEntityCount?: number;
+  rawTopLevelKeys?: readonly string[];
   breakdown?: SnapshotWireBreakdown;
   now?: number;
 };
@@ -131,10 +145,15 @@ function createBucket(
     samples: 0,
     fullSnapshots: 0,
     deltaSnapshots: 0,
+    rustSamples: 0,
+    jsSamples: 0,
+    rawTopLevelKeys: {},
     stats: {
       units: createRunningStats(),
       bytes: createRunningStats(),
       encodeMs: createRunningStats(),
+      rustEntities: createRunningStats(),
+      rawEntities: createRunningStats(),
     },
   };
 }
@@ -161,9 +180,22 @@ export class SnapshotEncodeInstrumentation {
     bucket.samples++;
     if (sample.isDelta) bucket.deltaSnapshots++;
     else bucket.fullSnapshots++;
+    if (sample.encoderKind === 'rust') bucket.rustSamples++;
+    else if (sample.encoderKind === 'js') bucket.jsSamples++;
     if (sample.unitCount !== undefined) addRunningStat(bucket.stats.units, sample.unitCount);
     addRunningStat(bucket.stats.bytes, sample.bytes);
     addRunningStat(bucket.stats.encodeMs, sample.encodeMs);
+    if (sample.rustEntityCount !== undefined) {
+      addRunningStat(bucket.stats.rustEntities, sample.rustEntityCount);
+    }
+    if (sample.rawEntityCount !== undefined) {
+      addRunningStat(bucket.stats.rawEntities, sample.rawEntityCount);
+    }
+    if (sample.rawTopLevelKeys !== undefined) {
+      for (const key of sample.rawTopLevelKeys) {
+        bucket.rawTopLevelKeys[key] = (bucket.rawTopLevelKeys[key] ?? 0) + 1;
+      }
+    }
     if (sample.breakdown !== undefined) {
       if (sample.isDelta) bucket.latestDeltaBreakdown = sample.breakdown;
       else bucket.latestFullBreakdown = sample.breakdown;
@@ -228,12 +260,16 @@ export class SnapshotEncodeInstrumentation {
         encodedSps: Number((bucket.samples / durationSec).toFixed(2)),
         full: bucket.fullSnapshots,
         delta: bucket.deltaSnapshots,
+        encoder: formatEncoderMix(bucket),
         unitsAvg: formatRunningAverage(bucket.stats.units, 0),
         unitsMax: formatRunningMax(bucket.stats.units, 0),
         bytesAvg: formatRunningAverage(bucket.stats.bytes, 0),
         bytesMax: formatRunningMax(bucket.stats.bytes, 0),
         encodeMs: formatRunningAverage(bucket.stats.encodeMs),
         encodeMsMax: formatRunningMax(bucket.stats.encodeMs),
+        rustEntitiesAvg: formatRunningAverage(bucket.stats.rustEntities, 0),
+        rawEntitiesAvg: formatRunningAverage(bucket.stats.rawEntities, 0),
+        rawKeys: formatRawTopLevelKeys(bucket.rawTopLevelKeys),
       });
     }
     rows.sort((a, b) =>
@@ -312,6 +348,22 @@ function formatDetailTop(entries: SnapshotWireBreakdown['entityTop']): string {
     parts.push(`${entry.section} ${entry.bytes}B/${entry.pct}%`);
   }
   return parts.join(', ');
+}
+
+function formatEncoderMix(bucket: EncodeBucket): string {
+  if (bucket.rustSamples > 0 && bucket.jsSamples > 0) {
+    return `mixed r${bucket.rustSamples}/j${bucket.jsSamples}`;
+  }
+  if (bucket.rustSamples > 0) return 'rust';
+  if (bucket.jsSamples > 0) return 'js';
+  return 'unknown';
+}
+
+function formatRawTopLevelKeys(keys: Record<string, number>): string {
+  const entries = Object.entries(keys);
+  if (entries.length === 0) return '';
+  entries.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  return entries.slice(0, 4).map(([key, count]) => `${key}:${count}`).join(', ');
 }
 
 export const SNAPSHOT_ENCODE_INSTRUMENTATION = new SnapshotEncodeInstrumentation();

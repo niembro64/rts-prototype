@@ -16,20 +16,21 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 Please always commit and push before and after any code changes we make.
 ================================================================================
 
-[BA-PERF-002] Snapshot publishing still builds JS DTO object graphs before binary packing
+[BA-PERF-002] Remote snapshot publishing still materializes DTO snapshots before wire-first output
 
 Severity: High
 
 Evidence:
-- src/game/server/ServerSnapshotPublisher.ts:216-303 serializes a NetworkServerSnapshot object per listener via serializeGameState().
-- src/game/network/stateSerializer.ts:265-380 walks WorldState and fills JS DTO arrays/maps before the transport encodes them.
-- Remote host listeners can request a pre-encoded wire payload, but that payload is still produced after serializeGameState() has materialized the JS DTO graph.
+- src/game/server/ServerSnapshotPublisher.ts still serializes a NetworkServerSnapshot object per player listener via serializeGameState() before building a pre-encoded wire payload.
+- src/game/network/stateSerializer.ts still walks WorldState and fills DTO arrays/maps for entities, projectiles, minimap, economy, audio, spray, metadata, removals, and visibility flags.
+- The current preencoded payload can report whether the Rust snapshot encoder was used and how many entities/top-level sections fell back to raw handling, but the server path still reaches that encoder only after DTO materialization.
+- Entity, projectile, minimap, and economy serializers already maintain typed row sources consumed by snapshotRustWireEncoder; the remaining gap is bypassing the DTO arrays for remote wire-first listeners.
 
 Risk:
-The snapshot path still pays JS object graph construction plus binary packing. Existing pooling helps, but the hot path remains TypeScript-owned and listener-oriented. budget_design_philosophy.html says snapshots should move toward compact binary/typed-buffer output and that TypeScript should orchestrate while Rust/WASM computes hot loops.
+Remote snapshot publishing still pays DTO graph population before the Rust/WASM or typed-row encoder can emit bytes. Existing pooling and row sources reduce allocation and packing cost, but the hot path remains listener-oriented TypeScript orchestration instead of a true wire-first writer. budget_design_philosophy.html says snapshots should move toward compact binary/typed-buffer output and that TypeScript should orchestrate while Rust/WASM computes hot loops.
 
 Required fix:
-Continue migrating snapshot deltas/keyframes toward a Rust/WASM or typed-buffer writer that emits binary rows directly from SoA/baseline state before DTO materialization. Keep the existing serializer only as a parity/local-client fallback until the direct writer covers full snapshots, deltas, visibility filtering, projectile events, minimap, and metadata.
+Implement a remote preencode path that emits snapshot rows and metadata directly from WorldState/visibility/baseline decisions into Rust/WASM or owned typed buffers before NetworkServerSnapshot DTO arrays are populated. Keep serializeGameState() as the local/in-memory and parity fallback until the direct writer covers full snapshots, deltas, visibility filtering, projectile events, minimap, economy, audio/spray events, static terrain/buildability, removals, game state, and server metadata. Use the payload encoderKind/rawEntityCount/rawTopLevelKeys diagnostics to retire raw fallback sections before deleting the DTO path.
 
 [BA-ARCH-001] Large hot-path files make lifecycle, pooling, and Rust/WASM migration hard to audit
 

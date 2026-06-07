@@ -8,7 +8,7 @@ import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import type { SnapshotWirePayload } from '../network/SnapshotWirePayload';
 import { ReusableNetworkSnapshotCloner } from '../network/snapshotClone';
 import {
-  encodeNetworkSnapshot,
+  encodeNetworkSnapshotDetailed,
   measureNetworkSnapshotWireBreakdown,
 } from '../network/snapshotWireCodec';
 import { setSnapshotWireBytes } from '../network/snapshotWireMetadata';
@@ -153,6 +153,10 @@ export class LocalGameConnection implements GameConnection {
       bytes: payload.byteLength,
       encodeMs,
       isDelta: state.isDelta,
+      encoderKind: encoded.encoderKind,
+      rustEntityCount: encoded.rustEntityCount,
+      rawEntityCount: encoded.rawEntityCount,
+      rawTopLevelKeys: encoded.rawTopLevelKeys,
       breakdown: SNAPSHOT_ENCODE_INSTRUMENTATION.enabled
         ? measureNetworkSnapshotWireBreakdown(state, payload.byteLength)
         : undefined,
@@ -161,9 +165,9 @@ export class LocalGameConnection implements GameConnection {
 
   private encodeSnapshotForDiagnostics(state: NetworkServerSnapshot): SnapshotWirePayload {
     const start = performance.now();
-    const bytes = encodeNetworkSnapshot(state);
+    const encoded = encodeNetworkSnapshotDetailed(state);
     return {
-      bytes,
+      ...encoded,
       encodeMs: performance.now() - start,
     };
   }
