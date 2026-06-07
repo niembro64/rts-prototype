@@ -5,6 +5,7 @@
 
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { isMobileLikeBrowser } from '../../browserRuntime';
 import { OrbitCamera } from './OrbitCamera';
 import { GpuTimerQuery } from '../scenes/helpers/GpuTimerQuery';
 import { installSunLighting } from './SunLighting';
@@ -29,7 +30,7 @@ import {
   CAMERA_FAR_REFERENCE_DISTANCE_FACTOR,
 } from '../../config';
 
-const MOBILE_PIXEL_RATIO_CAP = 2;
+const MOBILE_PIXEL_RATIO_CAP = 1;
 const RENDER_DISABLED_UPDATE_INTERVAL_MS = 200;
 // CAMERA_NEAR_PLANE bumped 5 → 50: depth-buffer precision is dominated
 // by 1/near, so 10× near gives 10× better precision everywhere. The
@@ -66,16 +67,6 @@ function makeSkyGradientTexture(): THREE.CanvasTexture {
   texture.colorSpace = THREE.SRGBColorSpace;
   configureSpriteTexture(texture);
   return texture;
-}
-
-function isMobileLikeBrowser(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  const uaMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i
-    .test(navigator.userAgent);
-  const coarsePointer = typeof window !== 'undefined'
-    && typeof window.matchMedia === 'function'
-    && window.matchMedia('(pointer: coarse)').matches;
-  return uaMobile || (coarsePointer && (navigator.maxTouchPoints ?? 0) > 0);
 }
 
 export class ThreeApp {
@@ -120,6 +111,7 @@ export class ThreeApp {
     this.scene = new THREE.Scene();
     this._skyTexture = makeSkyGradientTexture();
     this.scene.background = this._skyTexture;
+    const mobileLike = isMobileLikeBrowser();
 
     // `logarithmicDepthBuffer` was enabled here briefly but had to come
     // off: every custom THREE.ShaderMaterial in this codebase (beams,
@@ -133,9 +125,9 @@ export class ThreeApp {
     // plane (5 → 50 below, ~10× precision win at distance) and the
     // pure-units water polygon offset.
     this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: !mobileLike,
       precision: 'highp',
-      powerPreference: 'high-performance',
+      powerPreference: mobileLike ? 'default' : 'high-performance',
     });
     this._rendererContextToken = acquireMainRendererContext('ThreeApp', this);
     // Three.js checks program/shader info logs on first use by default.
@@ -145,7 +137,6 @@ export class ThreeApp {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
-    const mobileLike = isMobileLikeBrowser();
     this._nativePixelRatio = Math.max(1, window.devicePixelRatio || 1);
     this._dynamicPixelRatioEnabled = !mobileLike;
     this._activePixelRatio = mobileLike
@@ -169,23 +160,27 @@ export class ThreeApp {
     // with three.js and gives a varied lights-and-walls IBL cube; PMREM
     // preprocesses it for the renderer. One-shot cost at scene init; zero
     // per-frame overhead.
-    const pmrem = new THREE.PMREMGenerator(this.renderer);
-    const roomEnv = new RoomEnvironment();
-    this._environmentTexture = pmrem.fromScene(roomEnv, 0.04).texture;
-    this.scene.environment = this._environmentTexture;
-    roomEnv.traverse((obj) => {
-      if ((obj as THREE.Mesh).isMesh) {
-        const m = obj as THREE.Mesh;
-        if ('dispose' in (m.geometry ?? {})) m.geometry.dispose();
-        const material = m.material;
-        if (Array.isArray(material)) {
-          for (const mat of material) mat.dispose();
-        } else {
-          material?.dispose();
+    // Mobile WebKit has limited GPU-process headroom during startup, so
+    // avoid the PMREM render-target burst on mobile-like browsers.
+    if (!mobileLike) {
+      const pmrem = new THREE.PMREMGenerator(this.renderer);
+      const roomEnv = new RoomEnvironment();
+      this._environmentTexture = pmrem.fromScene(roomEnv, 0.04).texture;
+      this.scene.environment = this._environmentTexture;
+      roomEnv.traverse((obj) => {
+        if ((obj as THREE.Mesh).isMesh) {
+          const m = obj as THREE.Mesh;
+          if ('dispose' in (m.geometry ?? {})) m.geometry.dispose();
+          const material = m.material;
+          if (Array.isArray(material)) {
+            for (const mat of material) mat.dispose();
+          } else {
+            material?.dispose();
+          }
         }
-      }
-    });
-    pmrem.dispose();
+      });
+      pmrem.dispose();
+    }
 
     // The 3D equivalent of "zoom=1" is a distance that shows roughly the same
     // region of the map as the 2D camera at its default zoom. The zoom-IN rail

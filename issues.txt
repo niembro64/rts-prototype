@@ -15,20 +15,3 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 
 Please always commit and push before and after any code changes we make.
 ================================================================================
-
-ISSUE: iOS WebKit crashes during startup after showing the loading screen twice.
-
-Observed on iPhone Safari and iPhone Edge. Because all iOS browsers use WebKit,
-the repeated loading screen likely means the WebKit page/GPU process crashes,
-Safari auto-reloads the page, and then crashes again. Work through these
-repo-side fixes one by one:
-
-- Disable the 3D loading-unit preview on iOS/mobile so the loading overlay does
-  not create an extra Three/WebGL renderer while the main battle renderer is
-  starting.
-- Skip or defer `renderer.compileAsync()` shader warmup on iOS/mobile; do not
-  block startup readiness on mobile shader precompilation.
-- Reduce mobile main-renderer pressure in `ThreeApp`: cap mobile pixel ratio at
-  1 and disable antialiasing for mobile-like browsers.
-- Reduce or bypass mobile PMREM/environment-map setup during startup if the
-  crash remains after the loading preview and shader-warmup changes.

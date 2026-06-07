@@ -7,6 +7,7 @@ import type { SceneCameraState } from '@/types/game';
 import { isShotBlueprintId, isTurretBlueprintId, isUnitBlueprintId } from '@/types/blueprintIds';
 import type { TerrainMapShape } from '@/types/terrain';
 import { COLORS } from '@/colorsConfig';
+import { isMobileLikeBrowser } from '@/browserRuntime';
 import { RtsScene3DSnapshotIntake } from './helpers/RtsScene3DSnapshotIntake';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
 import { buildEconomyInfo } from './helpers';
@@ -758,6 +759,11 @@ export class RtsScene3D {
     if (this.rendererWarmupStarted) return;
     this.rendererWarmupStarted = true;
     this.setRendererWarmupActive(true);
+    if (isMobileLikeBrowser()) {
+      this.markClientReadyForStartupIfPossible();
+      this.setRendererWarmupActive(false);
+      return;
+    }
     this.threeApp.setDrawSuspended(true);
     const token = ++this.rendererWarmupToken;
     this.explosionRenderer.prepareWarmup();

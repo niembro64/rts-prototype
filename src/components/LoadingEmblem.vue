@@ -5,6 +5,7 @@ import {
   pickRandomLoadingEntity,
   type LoadingUnitPreviewRuntime,
 } from './loadingUnitPreview3d';
+import { isMobileLikeBrowser } from '@/browserRuntime';
 import { buildLoadingEntityInfo } from './loadingUnitInfo';
 import LoadingInfoColumn from './LoadingInfoColumn.vue';
 
@@ -34,10 +35,15 @@ const nextLabelText = computed(() => props.nextLabel.trim());
 const previewHost = ref<HTMLElement | null>(null);
 const previewEntity = pickRandomLoadingEntity();
 const entityInfo = buildLoadingEntityInfo(previewEntity.kind, previewEntity.id);
+const previewEnabled = !isMobileLikeBrowser();
 const previewReady = ref(false);
 let previewRuntime: LoadingUnitPreviewRuntime | null = null;
 
 onMounted(() => {
+  if (!previewEnabled) {
+    previewReady.value = true;
+    return;
+  }
   if (!previewHost.value) return;
   previewRuntime = mountLoadingUnitPreview(
     previewHost.value,
@@ -71,6 +77,7 @@ onBeforeUnmount(() => {
         <div class="loader-unit-name">{{ previewEntity.name }}</div>
         <div class="loader-stage">
           <div
+            v-if="previewEnabled"
             ref="previewHost"
             class="loader-unit-preview"
             :class="{ ready: previewReady }"
