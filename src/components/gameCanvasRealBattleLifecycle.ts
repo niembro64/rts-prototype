@@ -1,11 +1,16 @@
 import type { NetworkServerSnapshot } from '../game/network/NetworkTypes';
+import type { SnapshotWirePayload } from '../game/network/SnapshotWirePayload';
 import type { Command } from '../game/sim/commands';
 import type { PlayerId } from '../game/sim/types';
 import type { GameServer } from '../game/server/GameServer';
 
 type RealBattleNetworkBridge = {
   getConnectedPlayerIds(): PlayerId[];
-  sendStateTo(playerId: PlayerId, state: NetworkServerSnapshot): boolean;
+  sendStateTo(
+    playerId: PlayerId,
+    state: NetworkServerSnapshot,
+    wirePayload?: SnapshotWirePayload,
+  ): boolean;
   onCommandReceived?: (command: Command, fromPlayerId: PlayerId) => void;
   onSnapshotDropped?: (playerId: PlayerId) => void;
 };
@@ -76,12 +81,12 @@ export function useGameCanvasRealBattleLifecycle(): GameCanvasRealBattleLifecycl
   ): void {
     clearSnapshotListeners(server);
     for (const playerId of network.getConnectedPlayerIds()) {
-      const trackingKey = server.addSnapshotListener((state) => {
-        const sent = network.sendStateTo(playerId, state);
+      const trackingKey = server.addSnapshotListener((state, _releaseSnapshot, wirePayload) => {
+        const sent = network.sendStateTo(playerId, state, wirePayload);
         if (!sent && getCurrentServer() === server) {
           server.forceNextSnapshotKeyframe(true);
         }
-      }, playerId);
+      }, playerId, { preencodeWire: true });
       snapshotListenerKeys.set(playerId, trackingKey);
     }
 

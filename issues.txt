@@ -23,13 +23,13 @@ Severity: High
 Evidence:
 - src/game/server/ServerSnapshotPublisher.ts:216-303 serializes a NetworkServerSnapshot object per listener via serializeGameState().
 - src/game/network/stateSerializer.ts:265-380 walks WorldState and fills JS DTO arrays/maps before the transport encodes them.
-- src/game/network/NetworkSnapshotTransport.ts:74-76 then calls encodeNetworkSnapshot(state) to convert that JS graph into a wire buffer.
+- Remote host listeners can request a pre-encoded wire payload, but that payload is still produced after serializeGameState() has materialized the JS DTO graph.
 
 Risk:
 The snapshot path still pays JS object graph construction plus binary packing. Existing pooling helps, but the hot path remains TypeScript-owned and listener-oriented. budget_design_philosophy.html says snapshots should move toward compact binary/typed-buffer output and that TypeScript should orchestrate while Rust/WASM computes hot loops.
 
 Required fix:
-Continue migrating snapshot deltas/keyframes toward a Rust/WASM or typed-buffer writer that emits binary rows directly from SoA/baseline state. Keep the existing serializer only as a parity fallback until the direct writer covers full snapshots, deltas, visibility filtering, projectile events, minimap, and metadata.
+Continue migrating snapshot deltas/keyframes toward a Rust/WASM or typed-buffer writer that emits binary rows directly from SoA/baseline state before DTO materialization. Keep the existing serializer only as a parity/local-client fallback until the direct writer covers full snapshots, deltas, visibility filtering, projectile events, minimap, and metadata.
 
 [BA-ARCH-001] Large hot-path files make lifecycle, pooling, and Rust/WASM migration hard to audit
 

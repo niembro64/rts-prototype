@@ -44,6 +44,7 @@ import type {
   NetworkMessage,
   NetworkRole,
 } from './NetworkTypes';
+import type { SnapshotWirePayload } from './SnapshotWirePayload';
 import {
   buildBattleHandoff,
   normalizeBattleHandoffMessage,
@@ -998,7 +999,11 @@ export class NetworkManager {
   // tree (expensive to pack/unpack). MessagePack typically halves wire
   // size vs JSON because numbers go on as 1-9 bytes instead of 6-12
   // ASCII chars and field names use a length-prefixed compact form.
-  sendStateTo(playerId: PlayerId, state: NetworkServerSnapshot): boolean {
+  sendStateTo(
+    playerId: PlayerId,
+    state: NetworkServerSnapshot,
+    wirePayload: SnapshotWirePayload | undefined = undefined,
+  ): boolean {
     if (this.role !== 'host') return false;
     const conn = this.connections.get(playerId);
     if (!conn) return false;
@@ -1009,6 +1014,7 @@ export class NetworkManager {
       conn,
       gameId,
       state,
+      wirePayload,
     );
     if (message === null) return false;
     if (message instanceof Promise) {

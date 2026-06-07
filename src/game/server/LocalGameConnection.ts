@@ -5,6 +5,7 @@ import type { GameServer } from './GameServer';
 import type { Command } from '../sim/commands';
 import type { PlayerId } from '../sim/types';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
+import type { SnapshotWirePayload } from '../network/SnapshotWirePayload';
 import { ReusableNetworkSnapshotCloner } from '../network/snapshotClone';
 import {
   encodeNetworkSnapshot,
@@ -100,8 +101,8 @@ export class LocalGameConnection implements GameConnection {
   }
 
   private subscribeSnapshots(server: GameServer, playerId: PlayerId | undefined): string {
-    return server.addSnapshotListener((state) => {
-      this.recordLocalSnapshotWireCost(state);
+    return server.addSnapshotListener((state, _releaseSnapshot, wirePayload) => {
+      this.recordLocalSnapshotWireCost(state, wirePayload);
       this.snapshotImpairment.schedule(
         state,
         (deliveredState, releaseSnapshot) => this.receiveSnapshot(deliveredState, releaseSnapshot),
@@ -127,11 +128,14 @@ export class LocalGameConnection implements GameConnection {
     }
   }
 
-  private recordLocalSnapshotWireCost(state: NetworkServerSnapshot): void {
+  private recordLocalSnapshotWireCost(
+    state: NetworkServerSnapshot,
+    wirePayload: SnapshotWirePayload | undefined = undefined,
+  ): void {
     if (!SNAPSHOT_CADENCE_REGRESSION.enabled && !SNAPSHOT_ENCODE_INSTRUMENTATION.enabled) return;
-    const start = performance.now();
-    const payload = encodeNetworkSnapshot(state);
-    const encodeMs = performance.now() - start;
+    const encoded = wirePayload ?? this.encodeSnapshotForDiagnostics(state);
+    const payload = encoded.bytes;
+    const encodeMs = encoded.encodeMs;
     setSnapshotWireBytes(state, payload.byteLength);
     const serverMeta = state.serverMeta;
     const snapshotRate = serverMeta !== undefined ? serverMeta.snaps.rate : undefined;
@@ -153,6 +157,15 @@ export class LocalGameConnection implements GameConnection {
         ? measureNetworkSnapshotWireBreakdown(state, payload.byteLength)
         : undefined,
     });
+  }
+
+  private encodeSnapshotForDiagnostics(state: NetworkServerSnapshot): SnapshotWirePayload {
+    const start = performance.now();
+    const bytes = encodeNetworkSnapshot(state);
+    return {
+      bytes,
+      encodeMs: performance.now() - start,
+    };
   }
 
   sendCommand(command: Command): void {

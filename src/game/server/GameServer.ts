@@ -22,13 +22,7 @@ import type {
   StopCommand,
   WaitCommand,
 } from '../sim/commands';
-import {
-  resetDeltaTracking,
-  resetDeltaTrackingForKey,
-} from '../network/stateSerializer';
-import { resetAudioPoolForKey } from '../network/stateSerializerAudio';
-import { resetSprayPoolForKey } from '../network/stateSerializerSpray';
-import { resetMinimapPoolForKey } from '../network/stateSerializerMinimap';
+import { resetDeltaTracking } from '../network/stateSerializer';
 import { trimEntitySnapshotPool } from '../network/stateSerializerEntities';
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
@@ -61,10 +55,11 @@ import { initSimWasm } from '../sim-wasm/init';
 import { ServerBootstrap } from './ServerBootstrap';
 import { ServerDebugGridPublisher } from './ServerDebugGridPublisher';
 import { ServerTickLoop } from './ServerTickLoop';
+import { ServerSnapshotPublisher } from './ServerSnapshotPublisher';
 import {
-  ServerSnapshotPublisher,
-  type SnapshotListenerEntry,
-} from './ServerSnapshotPublisher';
+  ServerSnapshotListenerRegistry,
+  type SnapshotListenerOptions,
+} from './ServerSnapshotListenerRegistry';
 import type { BootstrappedServerWorld } from './ServerBootstrap';
 import { UnitForceSystem } from './UnitForceSystem';
 import { FactoryConstructionTurretSystem } from './FactoryConstructionTurretSystem';
@@ -123,8 +118,7 @@ export class GameServer {
   private backgroundAllowedUnitBlueprintIds: Set<string>;
 
   // Snapshot listeners
-  private snapshotListeners: SnapshotListenerEntry[] = [];
-  private snapshotListenerId: number = 0;
+  private snapshotListeners = new ServerSnapshotListenerRegistry();
   private gameOverListeners: GameOverCallback[] = [];
   private physicsSyncUnitIdsBuf: EntityId[] = [];
   private unitForceSystem: UnitForceSystem;
@@ -154,7 +148,6 @@ export class GameServer {
 
   // Delta snapshot keyframe ratio tracking
   private keyframeRatio: number = typeof DEFAULT_KEYFRAME_RATIO === 'number' ? DEFAULT_KEYFRAME_RATIO : DEFAULT_KEYFRAME_RATIO === 'ALL' ? 1 : 0;
-  private startupReadyListenerKeys = new Set<string>();
   private startupGateOpen = false;
 
   private debugGridPublisher = new ServerDebugGridPublisher();
@@ -337,7 +330,7 @@ export class GameServer {
     acquireSimSlot(this);
     const now = performance.now();
     this.lastSnapshotTime = 0; // Ensure first tick always emits a snapshot
-    this.startupGateOpen = this.snapshotListeners.length === 0;
+    this.startupGateOpen = this.snapshotListeners.count === 0;
     if (!this.startupGateOpen) {
       this.emitStartupSnapshot(now);
     }
@@ -389,11 +382,7 @@ export class GameServer {
 
   private areStartupClientsReady(): boolean {
     if (this.startupGateOpen) return true;
-    if (this.snapshotListeners.length === 0) return true;
-    for (const listener of this.snapshotListeners) {
-      if (!this.startupReadyListenerKeys.has(listener.trackingKey)) return false;
-    }
-    return true;
+    return this.snapshotListeners.areStartupListenersReady();
   }
 
   private recordTickCadence(elapsedMs: number, stepsRun: number): void {
@@ -462,7 +451,7 @@ export class GameServer {
 
     // Reset keyframe state for next session
     this.snapshotPublisher.clear();
-    this.startupReadyListenerKeys.clear();
+    this.snapshotListeners.clearStartupReady();
     this.startupGateOpen = false;
     this.detachSimulationCallbacks();
 
@@ -475,9 +464,7 @@ export class GameServer {
   }
 
   private releaseSnapshotListeners(): void {
-    while (this.snapshotListeners.length > 0) {
-      this.removeSnapshotListener(this.snapshotListeners[0].trackingKey);
-    }
+    this.snapshotListeners.releaseAll();
   }
 
   private detachSimulationCallbacks(): void {
@@ -545,7 +532,7 @@ export class GameServer {
       world: this.world,
       simulation: this.simulation,
       debugGridPublisher: this.debugGridPublisher,
-      listeners: this.snapshotListeners,
+      listeners: this.snapshotListeners.entries,
       terrainTileMap: this.terrainTileMap,
       terrainBuildabilityGrid: this.terrainBuildabilityGrid,
       tpsAvg: this.tpsAvg,
@@ -909,62 +896,24 @@ export class GameServer {
   // later removeSnapshotListener — without that, listeners (and the
   // closures they capture) accumulate forever as clients connect /
   // disconnect or as connections are re-created across restarts.
-  addSnapshotListener(callback: SnapshotCallback, playerId: PlayerId | undefined = undefined): string {
-    const trackingScope = playerId === undefined ? 'global' : `player-${playerId}`;
-    const trackingKey = `${trackingScope}-${this.snapshotListenerId++}`;
-    const deltaTrackingKey = playerId === undefined ? 'global-shared' : trackingKey;
-    // Phase 10 D.3e — allocate a Rust-side snapshot baseline handle
-    // for this listener. Undefined if WASM hasn't booted yet (the
-    // serialize path skips baseline ops when undefined).
-    const simWasm = getSimWasm();
-    const snapshotBaselineHandle = simWasm === undefined
-      ? undefined
-      : simWasm.snapshotBaseline.create();
-    this.snapshotListeners.push({
-      callback,
-      playerId,
-      trackingKey,
-      deltaTrackingKey,
-      lastStaticTerrainTileMap: undefined,
-      lastStaticBuildabilityGrid: undefined,
-      lastStaticResyncToken: undefined,
-      snapshotBaselineHandle,
-    });
-    return trackingKey;
+  addSnapshotListener(
+    callback: SnapshotCallback,
+    playerId: PlayerId | undefined = undefined,
+    options: SnapshotListenerOptions = {},
+  ): string {
+    return this.snapshotListeners.add(callback, playerId, options);
   }
 
   markSnapshotListenerReady(trackingKey: string): void {
-    this.startupReadyListenerKeys.add(trackingKey);
+    this.snapshotListeners.markReady(trackingKey);
   }
 
   markPlayerReady(playerId: PlayerId): void {
-    for (const listener of this.snapshotListeners) {
-      if (listener.playerId === playerId) {
-        this.startupReadyListenerKeys.add(listener.trackingKey);
-      }
-    }
+    this.snapshotListeners.markPlayerReady(playerId);
   }
 
   removeSnapshotListener(trackingKey: string): void {
-    const idx = this.snapshotListeners.findIndex((l) => l.trackingKey === trackingKey);
-    if (idx < 0) return;
-    const [removed] = this.snapshotListeners.splice(idx, 1);
-    this.startupReadyListenerKeys.delete(removed.trackingKey);
-    if (removed.snapshotBaselineHandle !== undefined) {
-      const simWasm = getSimWasm();
-      if (simWasm !== undefined) {
-        simWasm.snapshotBaseline.destroy(removed.snapshotBaselineHandle);
-      }
-    }
-    if (!this.snapshotListeners.some((l) => l.deltaTrackingKey === removed.deltaTrackingKey)) {
-      resetDeltaTrackingForKey(removed.deltaTrackingKey);
-    }
-    // FOW-OPT-07 / FOW-OPT-20: drop the per-listener pools for every
-    // snapshot serializer so disconnects / lobby seat swaps don't
-    // accumulate stale pool entries across sessions.
-    resetAudioPoolForKey(removed.deltaTrackingKey);
-    resetSprayPoolForKey(removed.deltaTrackingKey);
-    resetMinimapPoolForKey(removed.deltaTrackingKey);
+    this.snapshotListeners.remove(trackingKey);
   }
 
   // Add a game over listener. Returns the callback reference so callers

@@ -5,6 +5,9 @@ import type { Command } from './commands';
 import type { NetworkServerSnapshot } from './network';
 import type { SimEvent } from './combat';
 import type { TerrainMapShape } from './terrain';
+import type { SnapshotWirePayload } from '../game/network/SnapshotWirePayload';
+
+export type { SnapshotWirePayload } from '../game/network/SnapshotWirePayload';
 
 export type GameConfig = {
   parent: HTMLElement;
@@ -74,6 +77,7 @@ export type SnapshotRelease = () => void;
 export type SnapshotCallback = (
   state: NetworkServerSnapshot,
   releaseSnapshot?: SnapshotRelease,
+  wirePayload?: SnapshotWirePayload,
 ) => void;
 export type SnapshotUnsubscribe = () => void;
 export type SimEventCallback = (event: SimEvent) => void;

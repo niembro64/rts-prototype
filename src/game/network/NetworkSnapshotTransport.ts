@@ -3,6 +3,7 @@ import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
 import { SNAPSHOT_ENCODE_INSTRUMENTATION } from '../SnapshotEncodeInstrumentation';
 import type { NetworkMessage, NetworkServerSnapshot } from './NetworkTypes';
+import type { SnapshotWirePayload } from './SnapshotWirePayload';
 import type { PlayerId } from '../sim/types';
 import type { SnapshotCompressionFormat } from '../../types/config';
 import type { SnapshotRate } from '../../types/server';
@@ -67,13 +68,14 @@ export class NetworkSnapshotTransport {
     conn: DataConnection,
     gameId: string,
     state: NetworkServerSnapshot,
+    wirePayload: SnapshotWirePayload | undefined = undefined,
   ): StateMessageBuild {
     if (this.shouldDropForBackpressure(playerId, conn)) return null;
     if (this.shouldDropForPendingFullCompression(playerId)) return null;
 
-    const encodeStart = performance.now();
-    const buf = encodeNetworkSnapshot(state);
-    const encodeMs = performance.now() - encodeStart;
+    const encoded = wirePayload ?? this.encodeSnapshot(state);
+    const buf = encoded.bytes;
+    const encodeMs = encoded.encodeMs;
     const telemetry = this.captureSendTelemetry(state);
 
     const compressionOptions = getFullSnapshotCompressionOptions();
@@ -105,6 +107,13 @@ export class NetworkSnapshotTransport {
       data: buf,
       isDelta: state.isDelta,
     };
+  }
+
+  private encodeSnapshot(state: NetworkServerSnapshot): SnapshotWirePayload {
+    const encodeStart = performance.now();
+    const bytes = encodeNetworkSnapshot(state);
+    const encodeMs = performance.now() - encodeStart;
+    return { bytes, encodeMs };
   }
 
   async decodeReceivedState(

@@ -26,6 +26,8 @@ import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import type { SnapshotCallback } from './GameConnection';
 import type { ServerDebugGridPublisher } from './ServerDebugGridPublisher';
 import { ServerSnapshotMetaBuilder } from './ServerSnapshotMetaBuilder';
+import { buildServerSnapshotWirePayload } from './ServerSnapshotWirePayload';
+import type { SnapshotWirePayload } from '../network/SnapshotWirePayload';
 
 const NO_MINIMAP_OVERRIDE: SerializerMinimapOverride = { value: undefined };
 
@@ -34,6 +36,7 @@ export type SnapshotListenerEntry = {
   playerId: PlayerId | undefined;
   trackingKey: string;
   deltaTrackingKey: string;
+  preencodeWire: boolean;
   lastStaticTerrainTileMap: TerrainTileMap | undefined;
   lastStaticBuildabilityGrid: TerrainBuildabilityGrid | undefined;
   lastStaticResyncToken: number | undefined;
@@ -45,6 +48,11 @@ export type SnapshotListenerEntry = {
    *  populated per-tick by the serializer's baseline pass. Undefined
    *  if the listener was registered before initSimWasm resolved. */
   snapshotBaselineHandle: number | undefined;
+};
+
+type SerializedListenerSnapshot = {
+  state: NetworkServerSnapshot;
+  wirePayload: SnapshotWirePayload | undefined;
 };
 
 export type ServerSnapshotPublisherInput = {
@@ -213,7 +221,7 @@ export class ServerSnapshotPublisher {
     teamSprayCache.clear();
     teamMinimapCache.clear();
 
-    const serializeForListener = (listener: SnapshotListenerEntry): NetworkServerSnapshot => {
+    const serializeForListener = (listener: SnapshotListenerEntry): SerializedListenerSnapshot => {
       const visibility = getOrBuildVisibility(input.world, listener.playerId, visibilityCache);
       const listenerNeedsStaticMap = this.listenerNeedsStaticMap(listener, input);
       const listenerIsDelta = isDelta && !listenerNeedsStaticMap;
@@ -299,32 +307,55 @@ export class ServerSnapshotPublisher {
         this.markListenerStaticMapSent(listener, input);
       }
       state.serverMeta = serverMeta;
-      return state;
+      const wirePayload = listener.preencodeWire
+        ? buildServerSnapshotWirePayload(state)
+        : undefined;
+      return { state, wirePayload };
     };
 
-    let sharedGlobalDynamicState: NetworkServerSnapshot | undefined;
-    let sharedGlobalStaticState: NetworkServerSnapshot | undefined;
+    let sharedGlobalDynamicSnapshot: SerializedListenerSnapshot | undefined;
+    let sharedGlobalStaticSnapshot: SerializedListenerSnapshot | undefined;
     for (const listener of input.listeners) {
       if (listener.playerId !== undefined) continue;
       if (this.listenerNeedsStaticMap(listener, input)) {
-        if (!sharedGlobalStaticState) {
-          sharedGlobalStaticState = serializeForListener(listener);
+        if (!sharedGlobalStaticSnapshot) {
+          sharedGlobalStaticSnapshot = serializeForListener(listener);
         } else {
           this.markListenerStaticMapSent(listener, input);
         }
-        listener.callback(sharedGlobalStaticState);
+        listener.callback(
+          sharedGlobalStaticSnapshot.state,
+          undefined,
+          this.resolveWirePayloadForListener(sharedGlobalStaticSnapshot, listener),
+        );
       } else {
-        if (!sharedGlobalDynamicState) {
-          sharedGlobalDynamicState = serializeForListener(listener);
+        if (!sharedGlobalDynamicSnapshot) {
+          sharedGlobalDynamicSnapshot = serializeForListener(listener);
         }
-        listener.callback(sharedGlobalDynamicState);
+        listener.callback(
+          sharedGlobalDynamicSnapshot.state,
+          undefined,
+          this.resolveWirePayloadForListener(sharedGlobalDynamicSnapshot, listener),
+        );
       }
     }
 
     for (const listener of input.listeners) {
       if (listener.playerId === undefined) continue;
-      listener.callback(serializeForListener(listener));
+      const snapshot = serializeForListener(listener);
+      listener.callback(snapshot.state, undefined, snapshot.wirePayload);
     }
+  }
+
+  private resolveWirePayloadForListener(
+    snapshot: SerializedListenerSnapshot,
+    listener: SnapshotListenerEntry,
+  ): SnapshotWirePayload | undefined {
+    if (!listener.preencodeWire) return undefined;
+    if (snapshot.wirePayload === undefined) {
+      snapshot.wirePayload = buildServerSnapshotWirePayload(snapshot.state);
+    }
+    return snapshot.wirePayload;
   }
 
   private resolveSnapshotDelta(keyframeRatio: number): boolean {
