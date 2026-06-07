@@ -97,9 +97,11 @@ import {
 import {
   LOCOMOTION_FORCE_SCALE,
 } from './locomotion';
+import {
+  SimulationEventQueues,
+  safeVelocityUpdates,
+} from './SimulationEventQueues';
 
-// Shared empty array constant (avoids per-call allocation for empty returns)
-const EMPTY_VEL_UPDATES: ProjectileVelocityUpdateEvent[] = [];
 const EMPTY_DEATH_EXPLOSION_EXCLUDES = new Set<EntityId>();
 type DeathExplosionBlast = {
   radius: number;
@@ -113,10 +115,6 @@ type DeathExplosionBlast = {
 type ActiveMovementTarget = UnitPathPoint & {
   isFinalActionPoint: boolean;
 };
-
-function safeVelocityUpdates(value: unknown): ProjectileVelocityUpdateEvent[] {
-  return Array.isArray(value) ? value as ProjectileVelocityUpdateEvent[] : EMPTY_VEL_UPDATES;
-}
 
 // ── Stuck-detection / replanning constants ────────────────────────
 //
@@ -211,24 +209,9 @@ export class Simulation {
   // Game phase FSM
   private gamePhase: GamePhase = 'init';
 
-  // Pending audio events for network broadcast (double-buffered to avoid per-snapshot allocation)
-  private _audioA: SimEvent[] = [];
-  private _audioB: SimEvent[] = [];
-  private pendingSimEvents: SimEvent[] = this._audioA;
-
-  // Pending projectile spawn/despawn/velocity-update events (double-buffered)
-  private _spawnsA: ProjectileSpawnEvent[] = [];
-  private _spawnsB: ProjectileSpawnEvent[] = [];
-  private pendingProjectileSpawns: ProjectileSpawnEvent[] = this._spawnsA;
-
-  private _despawnsA: ProjectileDespawnEvent[] = [];
-  private _despawnsB: ProjectileDespawnEvent[] = [];
-  private pendingProjectileDespawns: ProjectileDespawnEvent[] = this._despawnsA;
-
-  private pendingProjectileVelocityUpdates = new Map<number, ProjectileVelocityUpdateEvent>();
-  private _velUpdateBufA: ProjectileVelocityUpdateEvent[] = [];
-  private _velUpdateBufB: ProjectileVelocityUpdateEvent[] = [];
-  private _velUpdateToggle = false;
+  // Pending audio/projectile events for network broadcast. The helper
+  // owns double-buffer swaps so snapshot drains don't allocate.
+  private eventQueues = new SimulationEventQueues();
 
   // Reusable buffers for cleanupDeadEntities (avoid per-tick allocations)
   private _deadUnitIdsBuf: EntityId[] = [];
@@ -406,38 +389,22 @@ export class Simulation {
 
   // Get and clear pending audio events (double-buffer swap, zero allocation)
   getAndClearEvents(): SimEvent[] {
-    const events = this.pendingSimEvents;
-    this.pendingSimEvents = (events === this._audioA) ? this._audioB : this._audioA;
-    this.pendingSimEvents.length = 0;
-    return events;
+    return this.eventQueues.getAndClearEvents();
   }
 
   // Get and clear pending projectile spawn events (double-buffer swap)
   getAndClearProjectileSpawns(): ProjectileSpawnEvent[] {
-    const events = this.pendingProjectileSpawns;
-    this.pendingProjectileSpawns = (events === this._spawnsA) ? this._spawnsB : this._spawnsA;
-    this.pendingProjectileSpawns.length = 0;
-    return events;
+    return this.eventQueues.getAndClearProjectileSpawns();
   }
 
   // Get and clear pending projectile despawn events (double-buffer swap)
   getAndClearProjectileDespawns(): ProjectileDespawnEvent[] {
-    const events = this.pendingProjectileDespawns;
-    this.pendingProjectileDespawns = (events === this._despawnsA) ? this._despawnsB : this._despawnsA;
-    this.pendingProjectileDespawns.length = 0;
-    return events;
+    return this.eventQueues.getAndClearProjectileDespawns();
   }
 
   // Get and clear pending projectile velocity update events (double-buffered)
   getAndClearProjectileVelocityUpdates(): ProjectileVelocityUpdateEvent[] {
-    const map = this.pendingProjectileVelocityUpdates;
-    if (map.size === 0) return EMPTY_VEL_UPDATES;
-    const buf = this._velUpdateToggle ? this._velUpdateBufB : this._velUpdateBufA;
-    this._velUpdateToggle = !this._velUpdateToggle;
-    buf.length = 0;
-    for (const v of map.values()) buf.push(v);
-    map.clear();
-    return buf;
+    return this.eventQueues.getAndClearProjectileVelocityUpdates();
   }
 
   getWindState(): WindState {
@@ -464,8 +431,8 @@ export class Simulation {
     const cmdCtx: CommandContext = {
       world: this.world,
       constructionSystem: this.constructionSystem,
-      pendingProjectileSpawns: this.pendingProjectileSpawns,
-      pendingSimEvents: this.pendingSimEvents,
+      pendingProjectileSpawns: this.eventQueues.projectileSpawns,
+      pendingSimEvents: this.eventQueues.simEvents,
       onSimEvent: this.onSimEvent,
     };
     const commands = this.commandQueue.getCommandsForTick(tick);
@@ -646,7 +613,7 @@ export class Simulation {
       for (const event of laserSimEvents) {
         const onSimEvent = this.onSimEvent;
         if (onSimEvent !== null) onSimEvent(event);
-        this.pendingSimEvents.push(event);
+        this.eventQueues.simEvents.push(event);
       }
     }
 
@@ -671,7 +638,7 @@ export class Simulation {
       for (const event of shieldSimEvents) {
         const onSimEvent = this.onSimEvent;
         if (onSimEvent !== null) onSimEvent(event);
-        this.pendingSimEvents.push(event);
+        this.eventQueues.simEvents.push(event);
       }
     }
 
@@ -684,14 +651,14 @@ export class Simulation {
 
     // Collect projectile spawn events
     for (const event of fireResult.spawnEvents) {
-      this.pendingProjectileSpawns.push(event);
+      this.eventQueues.projectileSpawns.push(event);
     }
 
     // Emit fire audio events
     for (const event of fireResult.events) {
       const onSimEvent = this.onSimEvent;
       if (onSimEvent !== null) onSimEvent(event);
-      this.pendingSimEvents.push(event);
+      this.eventQueues.simEvents.push(event);
     }
 
     for (const unit of activeCombatUnits) {
@@ -709,11 +676,11 @@ export class Simulation {
       for (const event of updateResult.despawnEvents) {
         unregisterPackedProjectile(event.id);
         spatialGrid.removeProjectile(event.id);
-        this.pendingProjectileDespawns.push(event);
+        this.eventQueues.projectileDespawns.push(event);
       }
       // Collect homing projectile velocity updates
       for (const event of safeVelocityUpdates(updateResult.velocityUpdates)) {
-        this.pendingProjectileVelocityUpdates.set(event.id, event);
+        this.eventQueues.projectileVelocityUpdates.set(event.id, event);
       }
 
       // Refresh projectile broadphase after integration. The frame-level
@@ -737,17 +704,17 @@ export class Simulation {
         registerPackedProjectile(proj);
       }
       for (const event of collisionResult.spawnEvents) {
-        this.pendingProjectileSpawns.push(event);
+        this.eventQueues.projectileSpawns.push(event);
       }
 
       // Collect projectile despawn events from collisions
       for (const event of collisionResult.despawnEvents) {
         unregisterPackedProjectile(event.id);
         spatialGrid.removeProjectile(event.id);
-        this.pendingProjectileDespawns.push(event);
+        this.eventQueues.projectileDespawns.push(event);
       }
       for (const event of safeVelocityUpdates(collisionResult.velocityUpdates)) {
-        this.pendingProjectileVelocityUpdates.set(event.id, event);
+        this.eventQueues.projectileVelocityUpdates.set(event.id, event);
       }
 
       this.detonateEntityDeathExplosions(
@@ -762,7 +729,7 @@ export class Simulation {
       for (const event of collisionResult.events) {
         const onSimEvent = this.onSimEvent;
         if (onSimEvent !== null) onSimEvent(event);
-        this.pendingSimEvents.push(event);
+        this.eventQueues.simEvents.push(event);
       }
 
       // Remove dead entities from spatial grid and notify callbacks
@@ -774,15 +741,15 @@ export class Simulation {
           if (entity) {
             // Emit laserStop for the dying entity's own beam weapons
             for (const evt of emitLaserStopsForEntity(entity)) {
-              this.pendingSimEvents.push(evt);
+              this.eventQueues.simEvents.push(evt);
             }
             // Emit laserStop for any beam weapons across the world targeting this entity
             for (const evt of emitLaserStopsForTarget(this.world, id)) {
-              this.pendingSimEvents.push(evt);
+              this.eventQueues.simEvents.push(evt);
             }
             // Emit shieldStop for the dying entity's shield weapons
             for (const evt of emitShieldStopsForEntity(entity)) {
-              this.pendingSimEvents.push(evt);
+              this.eventQueues.simEvents.push(evt);
             }
           }
           spatialGrid.removeUnit(id);
@@ -918,7 +885,7 @@ export class Simulation {
         deadUnitSet,
         deadBuildingSet,
         deadTurretSet,
-        this.pendingSimEvents,
+        this.eventQueues.simEvents,
         deathContexts,
       );
       deadUnitIds.length = 0;
@@ -934,15 +901,15 @@ export class Simulation {
         if (entity) {
           // Emit laserStop for the dying entity's own beam weapons
           for (const evt of emitLaserStopsForEntity(entity)) {
-            this.pendingSimEvents.push(evt);
+            this.eventQueues.simEvents.push(evt);
           }
           // Emit laserStop for any beam weapons across the world targeting this entity
           for (const evt of emitLaserStopsForTarget(this.world, id)) {
-            this.pendingSimEvents.push(evt);
+            this.eventQueues.simEvents.push(evt);
           }
           // Emit shieldStop for the dying entity's shield weapons
           for (const evt of emitShieldStopsForEntity(entity)) {
-            this.pendingSimEvents.push(evt);
+            this.eventQueues.simEvents.push(evt);
           }
           // Synthesize a death SimEvent so the renderer still fires a
           // material explosion for units killed outside the normal
@@ -999,11 +966,11 @@ export class Simulation {
   // in sourceType/sourceKey and turretBlueprintId remains a weapon/audio key.
   private emitSyntheticDeathEvent(entity: Entity): void {
     if (entity.unit) {
-      this.pendingSimEvents.push(
+      this.eventQueues.simEvents.push(
         buildUnitDeathEvent(entity, entity.id, entity.unit.unitBlueprintId ?? '', undefined, 'unit'),
       );
     } else if (entity.building) {
-      this.pendingSimEvents.push(
+      this.eventQueues.simEvents.push(
         buildBuildingDeathEvent(entity, entity.id, entity.buildingBlueprintId ?? '', 'building'),
       );
     }
@@ -2501,18 +2468,7 @@ export class Simulation {
   // Reset all session state (call between game sessions to free stale references)
   resetSessionState(): void {
     this.forceAccumulator.reset();
-    this._audioA.length = 0;
-    this._audioB.length = 0;
-    this.pendingSimEvents = this._audioA;
-    this._spawnsA.length = 0;
-    this._spawnsB.length = 0;
-    this.pendingProjectileSpawns = this._spawnsA;
-    this._despawnsA.length = 0;
-    this._despawnsB.length = 0;
-    this.pendingProjectileDespawns = this._despawnsA;
-    this.pendingProjectileVelocityUpdates.clear();
-    this._velUpdateBufA.length = 0;
-    this._velUpdateBufB.length = 0;
+    this.eventQueues.reset();
     this._deadUnitIdsBuf.length = 0;
     this._deadBuildingIdsBuf.length = 0;
     this._deathCheckIdsBuf.length = 0;
