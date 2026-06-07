@@ -45,7 +45,6 @@ function entityHasPerFrameBuildingTurretWork(entity: Entity): boolean {
   if (!turrets || turrets.length === 0) return false;
   for (let i = 0; i < turrets.length; i++) {
     const turret = turrets[i];
-    if (turret.config.constructionEmitter) return true;
     const barrel = turret.config.barrel;
     if (
       barrel !== undefined &&
