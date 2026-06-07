@@ -22,7 +22,7 @@ Severity: Medium
 
 Evidence:
 - src/game/sim/Simulation.ts is 2535 lines.
-- src/game/render3d/Input3DManager.ts is 2038 lines.
+- src/game/render3d/Input3DManager.ts is 1915 lines.
 - src/game/scenes/RtsScene3D.ts is 1649 lines.
 - src/game/render3d/Render3DEntities.ts is 1463 lines.
 - src/game/render3d/BuildingAnimationController3D.ts is 1356 lines.

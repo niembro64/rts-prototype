@@ -29,6 +29,8 @@ export {
   controlGroupIndexForKey,
 } from './InputControlGroups';
 
+export { InputSelectedCommands } from './InputSelectedCommands';
+
 export {
   buildAttackAreaCommand,
   buildAttackCommandForTarget,

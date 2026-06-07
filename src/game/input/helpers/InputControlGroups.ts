@@ -17,7 +17,7 @@ export function controlGroupIndexForKey(e: KeyboardEvent): number {
 }
 
 export class InputControlGroups {
-  private readonly source: ControlGroupEntitySource;
+  private source: ControlGroupEntitySource;
   private readonly isSelectable: (entity: Entity | null) => boolean;
   private readonly enqueueSelection: SelectionEnqueue;
   private readonly groups: EntityId[][] = Array.from({ length: CONTROL_GROUP_COUNT }, () => []);
@@ -31,6 +31,10 @@ export class InputControlGroups {
     this.source = source;
     this.isSelectable = isSelectable;
     this.enqueueSelection = enqueueSelection;
+  }
+
+  setSource(source: ControlGroupEntitySource): void {
+    this.source = source;
   }
 
   storeSlot(index: number): void {

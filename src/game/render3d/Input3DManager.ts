@@ -53,6 +53,7 @@ import {
   getOccupiedBuildingCells,
   getSnappedBuildPosition,
   InputControlGroups,
+  InputSelectedCommands,
   controlGroupIndexForKey,
 } from '../input/helpers';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
@@ -62,7 +63,6 @@ import { isBuildInProgress } from '../sim/buildableHelpers';
 import { generateMetalDeposits, type MetalDeposit } from '../../metalDepositConfig';
 import { getBuildingVisualCenterZ } from '../sim/buildingAnchors';
 import { isCommander } from '../sim/combat/combatUtils';
-import { buildingBlueprintHasActiveState } from '../sim/buildingActiveState';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 
 const HOVER_RAYCAST_INTERVAL_MS = 50;
@@ -199,6 +199,7 @@ export class Input3DManager {
   // don't accidentally inherit 'fight'/'patrol' from a prior group.
   private selectionChangeTracker = new SelectionChangeTracker();
   private controlGroups: InputControlGroups;
+  private selectedCommands: InputSelectedCommands;
 
   // DOM handlers bound once for add/remove
   private onMouseDown: (e: MouseEvent) => void;
@@ -232,6 +233,11 @@ export class Input3DManager {
       },
     );
     this.controlGroups.onChange = (groups) => this.onControlGroupsChange?.(groups);
+    this.selectedCommands = new InputSelectedCommands(
+      entitySource,
+      localCommandQueue,
+      () => this.context.getTick(),
+    );
 
     // Selection marquee overlay
     this.marquee = document.createElement('div');
@@ -381,19 +387,19 @@ export class Input3DManager {
   }
 
   stopSelectedUnits(): void {
-    this.enqueueStopCommand();
+    this.selectedCommands.stop();
   }
 
   clearQueuedOrders(): void {
-    this.enqueueClearQueuedOrdersCommand();
+    this.selectedCommands.clearQueuedOrders();
   }
 
   removeLastQueuedOrder(): void {
-    this.enqueueRemoveLastQueuedOrderCommand();
+    this.selectedCommands.removeLastQueuedOrder();
   }
 
   toggleSelectedWait(queue = false): void {
-    this.enqueueWaitCommand(queue);
+    this.selectedCommands.wait(queue);
   }
 
   togglePingMode(): void {
@@ -415,15 +421,15 @@ export class Input3DManager {
   }
 
   toggleSelectedFire(): void {
-    this.enqueueSetFireEnabledCommand();
+    this.selectedCommands.setFireEnabled();
   }
 
   toggleBuildingActive(): void {
-    this.enqueueSetBuildingActiveCommand();
+    this.selectedCommands.setBuildingActive();
   }
 
   selfDestructSelected(): void {
-    this.enqueueSelfDestructCommand();
+    this.selectedCommands.selfDestruct();
   }
 
   selectOnlyEntityType(entityType: 'unit' | 'tower' | 'building'): void {
@@ -655,7 +661,7 @@ export class Input3DManager {
   }
 
   clearTowerTarget(): void {
-    this.enqueueSetTowerTargetCommand(null);
+    this.selectedCommands.setTowerTarget(null);
   }
 
   isInTowerTargetMode(): boolean {
@@ -663,12 +669,7 @@ export class Input3DManager {
   }
 
   private getSelectedTowers(): Entity[] {
-    const selectedStatic = this.entitySource.getSelectedBuildings();
-    const out: Entity[] = [];
-    for (let i = 0; i < selectedStatic.length; i++) {
-      if (selectedStatic[i].type === 'tower') out.push(selectedStatic[i]);
-    }
-    return out;
+    return this.selectedCommands.selectedTowers();
   }
 
   private handleTowerTargetClick(e: MouseEvent): void {
@@ -677,21 +678,8 @@ export class Input3DManager {
     // Lock-on selection: anything with an ID is a candidate (per
     // design_philosophy.html). The turret's exclusion mask decides
     // whether the lock is honored — JS just routes the click.
-    this.enqueueSetTowerTargetCommand(entityHitId);
+    this.selectedCommands.setTowerTarget(entityHitId);
     if (!e.shiftKey) this.exitTowerTargetMode();
-  }
-
-  private enqueueSetTowerTargetCommand(targetId: EntityId | null): void {
-    const towers = this.getSelectedTowers();
-    if (towers.length === 0) return;
-    const entityIds: EntityId[] = [];
-    for (let i = 0; i < towers.length; i++) entityIds.push(towers[i].id);
-    this.localCommandQueue.enqueue({
-      type: 'setTowerTarget',
-      tick: this.context.getTick(),
-      entityIds,
-      targetId,
-    });
   }
 
   private hasSelectedCommander(): boolean {
@@ -880,25 +868,25 @@ export class Input3DManager {
       case 'f': this.setWaypointMode('fight'); break;
       case 'h': this.setWaypointMode('patrol'); break;
       case 's':
-        this.enqueueStopCommand();
+        this.selectedCommands.stop();
         break;
       case 'u':
-        this.enqueueRemoveLastQueuedOrderCommand();
+        this.selectedCommands.removeLastQueuedOrder();
         break;
       case 'x':
-        this.enqueueClearQueuedOrdersCommand();
+        this.selectedCommands.clearQueuedOrders();
         break;
       case 'w':
-        this.enqueueWaitCommand(e.shiftKey);
+        this.selectedCommands.wait(e.shiftKey);
         break;
       case 'e':
-        this.enqueueSetFireEnabledCommand();
+        this.selectedCommands.setFireEnabled();
         break;
       case 'o':
-        this.enqueueSetBuildingActiveCommand();
+        this.selectedCommands.setBuildingActive();
         break;
       case 'k':
-        this.enqueueSelfDestructCommand();
+        this.selectedCommands.selfDestruct();
         break;
       case 'l':
         this.toggleTowerTargetMode();
@@ -980,55 +968,6 @@ export class Input3DManager {
     }
   }
 
-  private enqueueStopCommand(): void {
-    const selectedUnits = this.entitySource.getSelectedUnits();
-    if (selectedUnits.length === 0) return;
-    const entityIds: EntityId[] = [];
-    for (let i = 0; i < selectedUnits.length; i++) entityIds.push(selectedUnits[i].id);
-    this.localCommandQueue.enqueue({
-      type: 'stop',
-      tick: this.context.getTick(),
-      entityIds,
-    });
-  }
-
-  private enqueueClearQueuedOrdersCommand(): void {
-    const selectedUnits = this.entitySource.getSelectedUnits();
-    if (selectedUnits.length === 0) return;
-    const entityIds: EntityId[] = [];
-    for (let i = 0; i < selectedUnits.length; i++) entityIds.push(selectedUnits[i].id);
-    this.localCommandQueue.enqueue({
-      type: 'clearQueuedOrders',
-      tick: this.context.getTick(),
-      entityIds,
-    });
-  }
-
-  private enqueueRemoveLastQueuedOrderCommand(): void {
-    const selectedUnits = this.entitySource.getSelectedUnits();
-    if (selectedUnits.length === 0) return;
-    const entityIds: EntityId[] = [];
-    for (let i = 0; i < selectedUnits.length; i++) entityIds.push(selectedUnits[i].id);
-    this.localCommandQueue.enqueue({
-      type: 'removeLastQueuedOrder',
-      tick: this.context.getTick(),
-      entityIds,
-    });
-  }
-
-  private enqueueWaitCommand(queue: boolean): void {
-    const selectedUnits = this.entitySource.getSelectedUnits();
-    if (selectedUnits.length === 0) return;
-    const entityIds: EntityId[] = [];
-    for (let i = 0; i < selectedUnits.length; i++) entityIds.push(selectedUnits[i].id);
-    this.localCommandQueue.enqueue({
-      type: 'wait',
-      tick: this.context.getTick(),
-      entityIds,
-      queue,
-    });
-  }
-
   private enqueuePingCommand(world: SimGroundPoint): void {
     this.localCommandQueue.enqueue({
       type: 'ping',
@@ -1056,72 +995,10 @@ export class Input3DManager {
     });
   }
 
-  private enqueueSetFireEnabledCommand(): void {
-    const selectedUnits = this.entitySource.getSelectedUnits();
-    const selectedStatic = this.entitySource.getSelectedBuildings();
-    const entityIds: EntityId[] = [];
-    let allEnabled = true;
-    for (let i = 0; i < selectedUnits.length; i++) {
-      const unit = selectedUnits[i];
-      if (!unit.combat || unit.combat.turrets.length === 0) continue;
-      entityIds.push(unit.id);
-      if (unit.combat.fireEnabled === false) allEnabled = false;
-    }
-    // Towers carry the same host-fire contract as units; include any
-    // tower in the selection whose combat has at least one turret.
-    for (let i = 0; i < selectedStatic.length; i++) {
-      const t = selectedStatic[i];
-      if (t.type !== 'tower') continue;
-      if (!t.combat || t.combat.turrets.length === 0) continue;
-      entityIds.push(t.id);
-      if (t.combat.fireEnabled === false) allEnabled = false;
-    }
-    if (entityIds.length === 0) return;
-    this.localCommandQueue.enqueue({
-      type: 'setFireEnabled',
-      tick: this.context.getTick(),
-      entityIds,
-      enabled: !allEnabled,
-    });
-  }
-
-  private enqueueSetBuildingActiveCommand(): void {
-    const selectedStatic = this.entitySource.getSelectedBuildings();
-    const entityIds: EntityId[] = [];
-    let allOpen = true;
-    for (let i = 0; i < selectedStatic.length; i++) {
-      const b = selectedStatic[i];
-      if (b.type !== 'building') continue;
-      if (!buildingBlueprintHasActiveState(b.buildingBlueprintId)) continue;
-      entityIds.push(b.id);
-      const state = b.building !== null ? b.building.activeState : null;
-      if (state === null || state.open === false) allOpen = false;
-    }
-    if (entityIds.length === 0) return;
-    this.localCommandQueue.enqueue({
-      type: 'setBuildingActive',
-      tick: this.context.getTick(),
-      entityIds,
-      open: !allOpen,
-    });
-  }
-
-  private enqueueSelfDestructCommand(): void {
-    const selectedUnits = this.entitySource.getSelectedUnits();
-    const selectedStatic = this.entitySource.getSelectedBuildings();
-    const entityIds: EntityId[] = [];
-    for (let i = 0; i < selectedUnits.length; i++) entityIds.push(selectedUnits[i].id);
-    for (let i = 0; i < selectedStatic.length; i++) entityIds.push(selectedStatic[i].id);
-    if (entityIds.length === 0) return;
-    this.localCommandQueue.enqueue({
-      type: 'selfDestruct',
-      tick: this.context.getTick(),
-      entityIds,
-    });
-  }
-
   setEntitySource(source: EntitySource): void {
     this.entitySource = source;
+    this.controlGroups.setSource(source);
+    this.selectedCommands.setSource(source);
   }
 
   private canvasRect(): DOMRect {
