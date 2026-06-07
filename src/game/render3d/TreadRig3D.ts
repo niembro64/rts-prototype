@@ -29,6 +29,7 @@ import {
   type RollingContactState,
   emaAlpha,
   rollingContact,
+  rollingLocomotionBodyActive,
   sampleRollingContactDistance,
   transformChassisToWorld,
   wrappedRollingPhase,
@@ -61,6 +62,8 @@ const TREAD_LIFT_TAU_SEC = 0.12;
 // a sudden velocity change doesn't manifest as an instantaneous cleat
 // scroll rate change.
 const TREAD_BELT_TAU_SEC = 0.04;
+const TREAD_LIFT_SETTLED_EPSILON = 0.02;
+const TREAD_BELT_SETTLED_EPSILON = 0.02;
 
 const treadBoxGeom = new THREE.BoxGeometry(1, 1, 1);
 const treadEndGeom = new THREE.CylinderGeometry(1, 1, 1, 16);
@@ -99,6 +102,9 @@ export type TreadSide = {
    *  baseline 0. EMA-converges toward whatever lift the floor clamp
    *  requires every frame. */
   lift: number;
+  /** Last sampled lift target. Lets the render-side active queue stop
+   *  updating a stationary tread side once the lift EMA has settled. */
+  targetLift: number;
   /** Rotation-position channel: cleat phase distance along the belt
    *  loop. Integrated from `beltVelocity * dt` every frame; wraps to
    *  `cleatLoopLength` when laying out cleats. */
@@ -191,6 +197,7 @@ export function buildTreads(
       lateralOffset: side * offset,
       group: sideGroup,
       lift: 0,
+      targetLift: 0,
       beltPhase: 0,
       beltVelocity: 0,
     });
@@ -282,7 +289,7 @@ export function updateTreads(
   dtMs: number,
   mapWidth: number,
   mapHeight: number,
-): void {
+): boolean {
   const dtSec = Math.max(0.001, dtMs / 1000);
   const bodyCenterHeight = entity.unit ? getUnitBodyCenterHeight(entity.unit) : 0;
   // Convert a world-Y lift back into a chassis-local Y delta. Tilt
@@ -329,6 +336,7 @@ export function updateTreads(
         if (localLift > maxRequiredLocalLift) maxRequiredLocalLift = localLift;
       }
     }
+    sideEntry.targetLift = maxRequiredLocalLift;
     sideEntry.lift += (maxRequiredLocalLift - sideEntry.lift) * liftAlpha;
     sideEntry.group.position.y = sideEntry.lift;
 
@@ -380,6 +388,19 @@ export function updateTreads(
       }
     }
   }
+  return treadsNeedFrame(mesh, entity);
+}
+
+function treadsNeedFrame(mesh: TreadMesh, entity: Entity): boolean {
+  if (rollingLocomotionBodyActive(entity)) return true;
+  for (let s = 0; s < mesh.sides.length; s++) {
+    const contact = mesh.treadContacts[s];
+    if (contact === undefined || !contact.initialized) return true;
+    const side = mesh.sides[s];
+    if (Math.abs(side.targetLift - side.lift) > TREAD_LIFT_SETTLED_EPSILON) return true;
+    if (Math.abs(side.beltVelocity) > TREAD_BELT_SETTLED_EPSILON) return true;
+  }
+  return false;
 }
 
 /** Lay one cleat mesh on the belt loop given its phase distance.

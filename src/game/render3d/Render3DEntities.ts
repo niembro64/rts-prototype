@@ -186,6 +186,7 @@ export class Render3DEntities {
   // its own VISION_FADE_OUT_MS clock. Assigned in the constructor.
   private vanishingUnits!: DyingMeshFade<EntityMesh>;
   private readonly dyingUnitScatter = new WeakMap<EntityMesh, DyingUnitScatter>();
+  private readonly activeLocomotionUnitIds = new Set<EntityId>();
   /** Per-entity vision fade-IN clock (ms elapsed, 0..VISION_FADE_IN_MS) for
    *  units that have newly entered vision. Keyed by entity id so it survives
    *  mesh rebuilds (LOD / owner recolor) and only resets when the unit truly
@@ -398,6 +399,7 @@ export class Render3DEntities {
     this.world.remove(mesh.group);
     this.disposeWorldParentedOverlays(mesh);
     this.unitDetailInstances.freeMeshSlots(id, mesh);
+    this.activeLocomotionUnitIds.delete(id);
   }
 
   /** Advance and return a unit's vision fade-IN factor (0..1). A unit that
@@ -513,6 +515,7 @@ export class Render3DEntities {
     this.disposeWorldParentedOverlays(m);
     this.unitDetailInstances.freeMeshSlots(id, m);
     this.unitMeshes.delete(id);
+    this.activeLocomotionUnitIds.delete(id);
   }
 
   /** Per-frame color sync for instanced render paths. This uses ordinary
@@ -886,6 +889,7 @@ export class Render3DEntities {
         });
         if (legSnap !== undefined) this.legStateCache.delete(entityId);
         this.unitMeshes.set(entityId, m);
+        if (m.locomotion) this.activeLocomotionUnitIds.add(entityId);
       }
       if (pruneUnits) m.renderSeenToken = pruneToken;
       applyUnitLiftGroupPose3D(m, e);
@@ -1109,20 +1113,32 @@ export class Render3DEntities {
 
       // Locomotion: spin tread wheels per velocity; legs write per-
       // instance buffers in the shared cylinder pool.
-      if (m.locomotion) {
-        m.locomotion.group.visible = bodyMaterialized;
-      }
-      if (m.locomotion && m.locomotion.group.visible) {
-        const locomotionSmokeEmitters = unitRows.buildInProgressAt(row)
-          ? undefined
-          : this.hoverSmokeEmitters;
-        updateLocomotion(
-          m.locomotion, e, this._currentDtMs,
-          mapWidth,
-          mapHeight,
-          this.legRenderer,
-          locomotionSmokeEmitters,
-        );
+      const locomotion = m.locomotion;
+      if (locomotion) {
+        const locomotionVisibilityDirty = locomotion.group.visible !== bodyMaterialized;
+        locomotion.group.visible = bodyMaterialized;
+        if (!bodyMaterialized) {
+          this.activeLocomotionUnitIds.delete(e.id);
+        } else if (
+          locomotionVisibilityDirty ||
+          this.activeLocomotionUnitIds.has(e.id) ||
+          unitRows.activePredictionAt(row) ||
+          unitRows.renderDirtyAt(row) ||
+          unitRows.lifecycleDirtyAt(row)
+        ) {
+          const locomotionSmokeEmitters = unitRows.buildInProgressAt(row)
+            ? undefined
+            : this.hoverSmokeEmitters;
+          const keepLocomotionActive = updateLocomotion(
+            locomotion, e, this._currentDtMs,
+            mapWidth,
+            mapHeight,
+            this.legRenderer,
+            locomotionSmokeEmitters,
+          );
+          if (keepLocomotionActive) this.activeLocomotionUnitIds.add(e.id);
+          else this.activeLocomotionUnitIds.delete(e.id);
+        }
       }
 
       // Materialization fade — mounted turrets share the host body's
@@ -1171,6 +1187,7 @@ export class Render3DEntities {
     this.turretMountCache.delete(id);
     this.legStateCache.delete(id);
     this.spawnFadeElapsed.delete(id);
+    this.activeLocomotionUnitIds.delete(id);
 
     const m = this.unitMeshes.get(id);
     if (!m) return;
@@ -1305,6 +1322,7 @@ export class Render3DEntities {
     this.unitMeshes.clear();
     this.barrelSpinState.clear();
     this.turretBeamAimCache.clear();
+    this.activeLocomotionUnitIds.clear();
     this.unitRenderScopeToken = 0;
     this.lastUnitEntitySetVersion = -1;
     this.constructionVisuals.destroy();

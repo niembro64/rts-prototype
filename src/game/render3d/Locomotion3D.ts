@@ -185,7 +185,9 @@ export function buildLocomotion(
 }
 
 /** Per-frame update — drives wheels/treads from per-contact ground
- *  motion, and advances each leg's snap-lerp physics + IK. */
+ *  motion, and advances each leg's snap-lerp physics + IK. Returns
+ *  true while this rig needs another visual frame without an external
+ *  render dirty waking it. */
 export function updateLocomotion(
   mesh: Locomotion3DMesh,
   entity: Entity,
@@ -194,24 +196,22 @@ export function updateLocomotion(
   mapHeight: number,
   legRenderer: LegInstancedRenderer,
   hoverSmokeEmitters?: SmokePuffEmitter[],
-): void {
-  if (!mesh) return;
+): boolean {
+  if (!mesh) return false;
   switch (mesh.type) {
     case 'wheels':
-      updateWheels(mesh, entity, dtMs, mapWidth, mapHeight);
-      return;
+      return updateWheels(mesh, entity, dtMs, mapWidth, mapHeight);
     case 'treads':
-      updateTreads(mesh, entity, dtMs, mapWidth, mapHeight);
-      return;
+      return updateTreads(mesh, entity, dtMs, mapWidth, mapHeight);
     case 'legs':
       updateLegs(mesh, entity, dtMs, mapWidth, mapHeight, legRenderer);
-      return;
+      return true;
     case 'hover':
       updateHoverFans(mesh, entity, dtMs, mapWidth, mapHeight, hoverSmokeEmitters);
-      return;
+      return true;
     case 'flying':
       updateFlyingRig(mesh, entity, dtMs, hoverSmokeEmitters);
-      return;
+      return true;
   }
 }
 

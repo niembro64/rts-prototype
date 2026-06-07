@@ -18,6 +18,29 @@ export type LocomotionBase = {
   geometryKey: string;
 };
 
+const ROLLING_LOCOMOTION_LINEAR_SPEED_EPSILON_SQ = 1e-4;
+const ROLLING_LOCOMOTION_YAW_RATE_EPSILON = 1e-4;
+const ROLLING_LOCOMOTION_SUSPENSION_EPSILON = 1e-3;
+
+export function rollingLocomotionBodyActive(entity: Entity): boolean {
+  const unit = entity.unit;
+  if (!unit) return false;
+  const vx = unit.velocityX ?? 0;
+  const vy = unit.velocityY ?? 0;
+  if (vx * vx + vy * vy > ROLLING_LOCOMOTION_LINEAR_SPEED_EPSILON_SQ) return true;
+  if (Math.abs(unit.angularVelocity3?.z ?? 0) > ROLLING_LOCOMOTION_YAW_RATE_EPSILON) return true;
+  const suspension = unit.suspension;
+  if (!suspension) return false;
+  return (
+    Math.abs(suspension.offsetX) > ROLLING_LOCOMOTION_SUSPENSION_EPSILON ||
+    Math.abs(suspension.offsetY) > ROLLING_LOCOMOTION_SUSPENSION_EPSILON ||
+    Math.abs(suspension.offsetZ) > ROLLING_LOCOMOTION_SUSPENSION_EPSILON ||
+    Math.abs(suspension.velocityX) > ROLLING_LOCOMOTION_SUSPENSION_EPSILON ||
+    Math.abs(suspension.velocityY) > ROLLING_LOCOMOTION_SUSPENSION_EPSILON ||
+    Math.abs(suspension.velocityZ) > ROLLING_LOCOMOTION_SUSPENSION_EPSILON
+  );
+}
+
 /** Per-wheel/tread contact state. Tracks the rolling contact point in
  *  chassis-local AND world XZ so `sampleRollingContactDistance` can
  *  compute signed ground motion (forward/reverse) without ever
