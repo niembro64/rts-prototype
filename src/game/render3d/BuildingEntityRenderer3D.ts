@@ -67,6 +67,12 @@ function positionBuildingTurretRoot(turretMesh: TurretMesh, turret: Turret): voi
   turretMesh.cachedRootVisible = false;
 }
 
+type BuildingTurretSpinEntry = {
+  turretIndex: number;
+  turretMesh: TurretMesh;
+  active: boolean;
+};
+
 export type BuildingEntityMeshFactoryOptions = {
   entity: Entity;
   width: number;
@@ -216,6 +222,10 @@ export class BuildingEntityRenderer3D {
   private buildingPoseCount = 0;
   private readonly buildingPoseMeshes: EntityMesh[] = [];
   private readonly buildingPoseRotations: number[] = [];
+  private readonly buildingSpinEntries: BuildingTurretSpinEntry[] = [];
+  private readonly buildingSpinEntriesByEntity = new Map<EntityId, BuildingTurretSpinEntry[]>();
+  private buildingSpinDeadEntries = 0;
+  private buildingSpinResetPending = false;
   private lastFrameStateKey: string | null = null;
   private lastRangeOverlayStateVersion = -1;
 
@@ -269,7 +279,11 @@ export class BuildingEntityRenderer3D {
       : 0;
     this.constructionVisuals.beginFrame();
     this.beamAimCache = beamAimCache;
-    this.barrelSpinEnabled = getGraphicsConfig().barrelSpin;
+    const nextBarrelSpinEnabled = getGraphicsConfig().barrelSpin;
+    if (nextBarrelSpinEnabled !== this.barrelSpinEnabled) {
+      this.buildingSpinResetPending = !nextBarrelSpinEnabled;
+      this.barrelSpinEnabled = nextBarrelSpinEnabled;
+    }
     this.beginTurretAimFrame();
     this.beginBuildingPoseFrame();
     if (buildingRows !== undefined) {
@@ -288,15 +302,7 @@ export class BuildingEntityRenderer3D {
       const mesh = this.meshes.get(entityId);
       const rowDirty = rows.renderDirtyAt(row) || rows.lifecycleDirtyAt(row);
       const activePrediction = rows.activePredictionAt(row);
-      const needsTurretFrame =
-        activePrediction ||
-        (
-          this.barrelSpinEnabled &&
-          (
-            mesh?.buildingHasPerFrameTurretWork === true ||
-            (mesh === undefined && entityHasPerFrameBuildingTurretWork(entity))
-          )
-        );
+      const needsTurretFrame = activePrediction;
       const bodyFadeActive =
         rows.bodyOpacity[row] < 1 || mesh?.buildingGroupFadeActive === true;
       const rangeOverlayVersionDirty =
@@ -320,7 +326,6 @@ export class BuildingEntityRenderer3D {
         continue;
       }
 
-      if (needsTurretFrame && this.barrelSpinEnabled) this.barrelSpin.advance(entity, spinDt);
       this.updateBuilding(
         entity,
         rows,
@@ -338,6 +343,7 @@ export class BuildingEntityRenderer3D {
     this.flushBuildingPoseRecords();
     this.flushTurretAimRecords();
     if (pruneBuildings) this.pruneUnseenBuildingMeshes(pruneToken, scopedRender, beamAimCache);
+    this.updateBuildingTurretSpinQueue(spinDt);
     this.animations.update(spinDt, currentDtMs, timeMs);
     // Advance any in-progress death-out fades every frame (independent of
     // the entity-set prune cadence below).
@@ -390,7 +396,7 @@ export class BuildingEntityRenderer3D {
     id: EntityId,
     beamAimCache: TurretBeamAimCache3D,
   ): void {
-    this.barrelSpin.delete(id);
+    this.unregisterBuildingSpinTurrets(id);
     beamAimCache.delete(id);
 
     const mesh = this.meshes.get(id);
@@ -413,7 +419,7 @@ export class BuildingEntityRenderer3D {
       if (scopedRender) {
         this.animations.unregister(id);
         this.meshes.delete(id);
-        this.barrelSpin.delete(id);
+        this.unregisterBuildingSpinTurrets(id);
         beamAimCache.delete(id);
         this.disposeBuildingMesh(mesh);
       } else {
@@ -432,6 +438,10 @@ export class BuildingEntityRenderer3D {
     this.lastEntitySetVersion = -1;
     this.animations.destroy();
     this.barrelSpin.clear();
+    this.buildingSpinEntries.length = 0;
+    this.buildingSpinEntriesByEntity.clear();
+    this.buildingSpinDeadEntries = 0;
+    this.buildingSpinResetPending = false;
   }
 
   private updateBuilding(
@@ -465,6 +475,7 @@ export class BuildingEntityRenderer3D {
       this.animations.unregister(entity.id);
       this.meshes.delete(entity.id);
       this.beamAimCache?.delete(entity.id);
+      this.unregisterBuildingSpinTurrets(entity.id);
       this.disposeBuildingMesh(mesh);
       mesh = undefined;
     }
@@ -484,6 +495,7 @@ export class BuildingEntityRenderer3D {
       });
       this.meshes.set(entity.id, mesh);
       this.animations.register(entity, mesh);
+      this.registerBuildingSpinTurrets(entity, mesh);
     }
 
     const progress = rows.progress[row];
@@ -732,6 +744,101 @@ export class BuildingEntityRenderer3D {
         );
       }
     }
+  }
+
+  private registerBuildingSpinTurrets(entity: Entity, mesh: EntityMesh): void {
+    this.unregisterBuildingSpinTurrets(entity.id);
+    const turrets = entity.combat?.turrets;
+    if (!turrets || turrets.length === 0) return;
+    const entries: BuildingTurretSpinEntry[] = [];
+    for (
+      let turretIndex = 0;
+      turretIndex < turrets.length && turretIndex < mesh.turrets.length;
+      turretIndex++
+    ) {
+      const turretMesh = mesh.turrets[turretIndex];
+      if (!turretMesh.spinGroup) continue;
+      const barrel = turrets[turretIndex].config.barrel;
+      if (
+        barrel === undefined ||
+        (barrel.type !== 'simpleMultiBarrel' && barrel.type !== 'coneMultiBarrel')
+      ) {
+        continue;
+      }
+      const entry: BuildingTurretSpinEntry = {
+        turretIndex,
+        turretMesh,
+        active: true,
+      };
+      entries.push(entry);
+      this.buildingSpinEntries.push(entry);
+    }
+    if (entries.length > 0) this.buildingSpinEntriesByEntity.set(entity.id, entries);
+  }
+
+  private unregisterBuildingSpinTurrets(entityId: EntityId): void {
+    const entries = this.buildingSpinEntriesByEntity.get(entityId);
+    if (entries !== undefined) {
+      for (const entry of entries) {
+        if (!entry.active) continue;
+        entry.active = false;
+        this.buildingSpinDeadEntries++;
+      }
+      this.buildingSpinEntriesByEntity.delete(entityId);
+    }
+    this.barrelSpin.delete(entityId);
+  }
+
+  private updateBuildingTurretSpinQueue(spinDt: number): void {
+    if (this.buildingSpinEntries.length === 0) return;
+
+    if (!this.barrelSpinEnabled) {
+      if (!this.buildingSpinResetPending) {
+        this.compactBuildingSpinEntriesIfNeeded();
+        return;
+      }
+      for (const entry of this.buildingSpinEntries) {
+        if (entry.active) this.setTurretSpinRotation(entry.turretMesh, 0);
+      }
+      this.buildingSpinResetPending = false;
+      this.compactBuildingSpinEntriesIfNeeded();
+      return;
+    }
+
+    for (const [entityId, entries] of this.buildingSpinEntriesByEntity) {
+      const entity = this.clientViewState.getEntity(entityId);
+      if (entity === undefined || entity.combat === null) {
+        this.unregisterBuildingSpinTurrets(entityId);
+        continue;
+      }
+      this.barrelSpin.advance(entity, spinDt);
+      for (const entry of entries) {
+        if (!entry.active) continue;
+        this.setTurretSpinRotation(
+          entry.turretMesh,
+          this.barrelSpin.angleFor(entityId, entry.turretIndex) ?? 0,
+        );
+      }
+    }
+    this.compactBuildingSpinEntriesIfNeeded();
+  }
+
+  private compactBuildingSpinEntriesIfNeeded(): void {
+    if (
+      this.buildingSpinDeadEntries <= 0 ||
+      this.buildingSpinDeadEntries * 2 < this.buildingSpinEntries.length
+    ) {
+      return;
+    }
+    let write = 0;
+    for (let read = 0; read < this.buildingSpinEntries.length; read++) {
+      const entry = this.buildingSpinEntries[read];
+      if (!entry.active) continue;
+      this.buildingSpinEntries[write] = entry;
+      write++;
+    }
+    this.buildingSpinEntries.length = write;
+    this.buildingSpinDeadEntries = 0;
   }
 
   private setTurretRootVisible(turretMesh: TurretMesh, visible: boolean): void {
