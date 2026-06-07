@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { Entity, EntityId, PlayerId } from '../sim/types';
+import type { Entity, EntityId, PlayerId, Turret } from '../sim/types';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { getGraphicsConfig } from '@/clientBarConfig';
@@ -55,6 +55,17 @@ function entityHasPerFrameBuildingTurretWork(entity: Entity): boolean {
     }
   }
   return false;
+}
+
+function positionBuildingTurretRoot(turretMesh: TurretMesh, turret: Turret): void {
+  const headRadius = turretMesh.headRadius ?? getTurretHeadRadius(turret.config);
+  turretMesh.root.position.set(
+    turret.mount.x,
+    turret.mount.z - headRadius,
+    turret.mount.y,
+  );
+  turretMesh.root.visible = false;
+  turretMesh.cachedRootVisible = false;
 }
 
 export type BuildingEntityMeshFactoryOptions = {
@@ -119,6 +130,7 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
         primaryMat: getPrimaryMat(ownerId),
         turretAccentMat: getTurretAccentMat(ownerId),
       });
+      positionBuildingTurretRoot(turretMesh, turret);
       if (turretMesh.head) turretMesh.head.userData.entityId = entity.id;
       for (const barrel of turretMesh.barrels) barrel.userData.entityId = entity.id;
       buildingTurretMeshes.push(turretMesh);
@@ -620,14 +632,8 @@ export class BuildingEntityRenderer3D {
       const turret = combatTurrets[turretIndex];
       const turretMesh = mesh.turrets[turretIndex];
       const visible = bodyMaterialized;
-      turretMesh.root.visible = visible;
+      this.setTurretRootVisible(turretMesh, visible);
       if (!visible) continue;
-      const headRadius = turretMesh.headRadius ?? getTurretHeadRadius(turret.config);
-      turretMesh.root.position.set(
-        turret.mount.x,
-        turret.mount.z - headRadius,
-        turret.mount.y,
-      );
       // Construction emitters have no head sphere, no barrels, and
       // don't pitch barrels. The root still consumes the authoritative
       // turret yaw/velocity stream so the whole fabricator construction
@@ -653,20 +659,22 @@ export class BuildingEntityRenderer3D {
       // from player primary to the half-white lock-on cue.
       if (turret.config.headOnly && !followsBeam) {
         if (turretMesh.head && !underConstruction) {
-          turretMesh.head.material = turret.state === 'engaged'
-            ? this.getTurretAccentMat(ownerId)
-            : this.getPrimaryMat(ownerId);
+          this.setTurretHeadMaterial(
+            turretMesh,
+            turret.state === 'engaged'
+              ? this.getTurretAccentMat(ownerId)
+              : this.getPrimaryMat(ownerId),
+          );
         }
         continue;
       }
       // Beam turrets colour like any other turret: a plain team-color head
       // (no engage flip) while their barrel tracks the beam below.
       if (followsBeam && turretMesh.head && !underConstruction) {
-        turretMesh.head.material = this.getPrimaryMat(ownerId);
+        this.setTurretHeadMaterial(turretMesh, this.getPrimaryMat(ownerId));
       }
       if (!underConstruction) {
-        const turretAccentMat = this.getTurretAccentMat(ownerId);
-        for (const barrel of turretMesh.barrels) barrel.material = turretAccentMat;
+        this.setTurretBarrelMaterial(turretMesh, this.getTurretAccentMat(ownerId));
       }
       if (followsBeam) {
         // Aim the barrel along the last beam fired (frozen there when
@@ -711,11 +719,38 @@ export class BuildingEntityRenderer3D {
       // rocket cluster). Single-barrel turrets have no spin state, so
       // angleFor returns undefined and the cluster stays still.
       if (turretMesh.spinGroup) {
-        turretMesh.spinGroup.rotation.x = this.barrelSpinEnabled
-          ? this.barrelSpin.angleFor(entity.id, turretIndex) ?? 0
-          : 0;
+        this.setTurretSpinRotation(
+          turretMesh,
+          this.barrelSpinEnabled
+            ? this.barrelSpin.angleFor(entity.id, turretIndex) ?? 0
+            : 0,
+        );
       }
     }
+  }
+
+  private setTurretRootVisible(turretMesh: TurretMesh, visible: boolean): void {
+    if (turretMesh.cachedRootVisible === visible) return;
+    turretMesh.root.visible = visible;
+    turretMesh.cachedRootVisible = visible;
+  }
+
+  private setTurretHeadMaterial(turretMesh: TurretMesh, material: THREE.Material): void {
+    if (!turretMesh.head || turretMesh.cachedHeadMaterial === material) return;
+    turretMesh.head.material = material;
+    turretMesh.cachedHeadMaterial = material;
+  }
+
+  private setTurretBarrelMaterial(turretMesh: TurretMesh, material: THREE.Material): void {
+    if (turretMesh.cachedBarrelMaterial === material) return;
+    for (const barrel of turretMesh.barrels) barrel.material = material;
+    turretMesh.cachedBarrelMaterial = material;
+  }
+
+  private setTurretSpinRotation(turretMesh: TurretMesh, rotationX: number): void {
+    if (!turretMesh.spinGroup || turretMesh.cachedSpinRotationX === rotationX) return;
+    turretMesh.spinGroup.rotation.x = rotationX;
+    turretMesh.cachedSpinRotationX = rotationX;
   }
 
   private beginTurretAimFrame(): void {

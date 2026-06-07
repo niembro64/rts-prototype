@@ -95,6 +95,12 @@ export type TurretMesh = {
   /** Visual-only construction turret rig. Built from the turret
    *  blueprint instead of bespoke commander/factory art. */
   constructionEmitter?: ConstructionEmitterRig;
+  /** Per-mesh render caches used by the building/tower renderer to avoid
+   *  repeating static scenegraph/material writes on active turret hosts. */
+  cachedRootVisible?: boolean;
+  cachedHeadMaterial?: THREE.Material;
+  cachedBarrelMaterial?: THREE.Material;
+  cachedSpinRotationX?: number;
   /** Per-turret TURR CIR overlay circles (filled in by the range-ring
    *  update path; nothing built here). */
   rangeRings?: {

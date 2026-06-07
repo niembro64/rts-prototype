@@ -43,14 +43,14 @@ src/game/render3d/UnitDetailInstanceRenderer3D.ts
 Current remaining issue:
 Several high-count render paths still execute TypeScript object loops and
 Three.js scenegraph mutations per visible unit/building. The remaining hot work
-includes locomotion visual updates, active building turret attachment, material,
-and spin writes, and animated building rig/pylon transform writes. These paths are likely
-to dominate at the "thousands of units" target. Reuse or extend the existing
-batched packet, explicit lifecycle queue, and WASM kernel contracts; do not add
-new broad per-entity scenegraph scans.
+includes locomotion visual updates, active building turret spin/construction
+emitter writes, and animated building rig/pylon transform writes. These paths
+are likely to dominate at the "thousands of units" target. Reuse or extend the
+existing batched packet, explicit lifecycle queue, and WASM kernel contracts; do
+not add new broad per-entity scenegraph scans.
 
 Required fix:
-Move the remaining locomotion, active building turret attachment/material/spin,
+Move the remaining locomotion, active building turret spin/construction emitter,
 and animated building rig/pylon transform writes into WASM-owned slabs,
 GPU-updated buffers, or explicit dirty/removal queues as practical. Keep
 Three.js work limited to buffer uploads and true lifecycle changes.
