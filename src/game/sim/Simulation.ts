@@ -101,6 +101,7 @@ import {
   SimulationEventQueues,
   safeVelocityUpdates,
 } from './SimulationEventQueues';
+import { resolveCommanderGameOverWinner } from './SimulationGameOver';
 
 const EMPTY_DEATH_EXPLOSION_EXCLUDES = new Set<EntityId>();
 type DeathExplosionBlast = {
@@ -553,33 +554,13 @@ export class Simulation {
   // Check for game over - last commander standing wins
   private checkGameOver(): void {
     if (this.gameOverWinnerId !== null) return; // Already over
-    if (this.playerIds.length < 2) return;
+    const winnerId = resolveCommanderGameOverWinner(this.world, this.playerIds);
+    if (winnerId === null) return;
 
-    // Count alive commanders without allocating a filtered array
-    let aliveCount = 0;
-    let lastAliveId = 0;
-    for (let i = 0; i < this.playerIds.length; i++) {
-      if (this.world.isCommanderAlive(this.playerIds[i])) {
-        aliveCount++;
-        lastAliveId = this.playerIds[i];
-      }
-    }
-
-    // If only one player remains, they win
-    if (aliveCount === 1) {
-      this.gameOverWinnerId = lastAliveId;
-      this.gamePhase = transitionPhase(this.gamePhase, 'gameOver');
-      const onGameOver = this.onGameOver;
-      if (onGameOver !== null) onGameOver(this.gameOverWinnerId);
-    }
-    // If no players remain (somehow), no winner
-    else if (aliveCount === 0 && this.playerIds.length > 0) {
-      // Draw or error state - just pick first player
-      this.gameOverWinnerId = this.playerIds[0];
-      this.gamePhase = transitionPhase(this.gamePhase, 'gameOver');
-      const onGameOver = this.onGameOver;
-      if (onGameOver !== null) onGameOver(this.gameOverWinnerId);
-    }
+    this.gameOverWinnerId = winnerId;
+    this.gamePhase = transitionPhase(this.gamePhase, 'gameOver');
+    const onGameOver = this.onGameOver;
+    if (onGameOver !== null) onGameOver(winnerId);
   }
 
   // Update combat systems
