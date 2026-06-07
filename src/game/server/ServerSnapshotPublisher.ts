@@ -6,7 +6,6 @@ import type { WorldState } from '../sim/WorldState';
 import type { RemovedSnapshotEntity } from '../sim/WorldState';
 import type { Simulation } from '../sim/Simulation';
 import type { PlayerId, EntityId } from '../sim/types';
-import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { captureSnapshotEntityStates, serializeGameState } from '../network/stateSerializer';
 import type { SerializeGameStateOptions } from '../network/stateSerializer';
 import {
@@ -26,8 +25,10 @@ import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import type { SnapshotCallback } from './GameConnection';
 import type { ServerDebugGridPublisher } from './ServerDebugGridPublisher';
 import { ServerSnapshotMetaBuilder } from './ServerSnapshotMetaBuilder';
-import { buildServerSnapshotWirePayload } from './ServerSnapshotWirePayload';
-import type { SnapshotWirePayload } from '../network/SnapshotWirePayload';
+import {
+  ServerSnapshotWirePreencoder,
+  type SerializedListenerSnapshot,
+} from './ServerSnapshotWirePayload';
 
 const NO_MINIMAP_OVERRIDE: SerializerMinimapOverride = { value: undefined };
 
@@ -48,11 +49,6 @@ export type SnapshotListenerEntry = {
    *  populated per-tick by the serializer's baseline pass. Undefined
    *  if the listener was registered before initSimWasm resolved. */
   snapshotBaselineHandle: number | undefined;
-};
-
-type SerializedListenerSnapshot = {
-  state: NetworkServerSnapshot;
-  wirePayload: SnapshotWirePayload | undefined;
 };
 
 export type ServerSnapshotPublisherInput = {
@@ -78,6 +74,7 @@ export type ServerSnapshotPublisherInput = {
 
 export class ServerSnapshotPublisher {
   private readonly metaBuilder = new ServerSnapshotMetaBuilder();
+  private readonly wirePreencoder = new ServerSnapshotWirePreencoder();
   private readonly dirtyIdsBuf: EntityId[] = [];
   private readonly dirtyFieldsBuf: number[] = [];
   private readonly removedEntitiesBuf: RemovedSnapshotEntity[] = [];
@@ -307,10 +304,7 @@ export class ServerSnapshotPublisher {
         this.markListenerStaticMapSent(listener, input);
       }
       state.serverMeta = serverMeta;
-      const wirePayload = listener.preencodeWire
-        ? buildServerSnapshotWirePayload(state)
-        : undefined;
-      return { state, wirePayload };
+      return this.wirePreencoder.encodeIfRequested(state, listener.preencodeWire);
     };
 
     let sharedGlobalDynamicSnapshot: SerializedListenerSnapshot | undefined;
@@ -326,7 +320,7 @@ export class ServerSnapshotPublisher {
         listener.callback(
           sharedGlobalStaticSnapshot.state,
           undefined,
-          this.resolveWirePayloadForListener(sharedGlobalStaticSnapshot, listener),
+          this.wirePreencoder.resolve(sharedGlobalStaticSnapshot, listener.preencodeWire),
         );
       } else {
         if (!sharedGlobalDynamicSnapshot) {
@@ -335,7 +329,7 @@ export class ServerSnapshotPublisher {
         listener.callback(
           sharedGlobalDynamicSnapshot.state,
           undefined,
-          this.resolveWirePayloadForListener(sharedGlobalDynamicSnapshot, listener),
+          this.wirePreencoder.resolve(sharedGlobalDynamicSnapshot, listener.preencodeWire),
         );
       }
     }
@@ -345,17 +339,6 @@ export class ServerSnapshotPublisher {
       const snapshot = serializeForListener(listener);
       listener.callback(snapshot.state, undefined, snapshot.wirePayload);
     }
-  }
-
-  private resolveWirePayloadForListener(
-    snapshot: SerializedListenerSnapshot,
-    listener: SnapshotListenerEntry,
-  ): SnapshotWirePayload | undefined {
-    if (!listener.preencodeWire) return undefined;
-    if (snapshot.wirePayload === undefined) {
-      snapshot.wirePayload = buildServerSnapshotWirePayload(snapshot.state);
-    }
-    return snapshot.wirePayload;
   }
 
   private resolveSnapshotDelta(keyframeRatio: number): boolean {

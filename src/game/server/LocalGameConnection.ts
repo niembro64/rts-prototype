@@ -154,6 +154,7 @@ export class LocalGameConnection implements GameConnection {
       encodeMs,
       isDelta: state.isDelta,
       encoderKind: encoded.encoderKind,
+      materializationKind: encoded.materializationKind,
       rustEntityCount: encoded.rustEntityCount,
       rawEntityCount: encoded.rawEntityCount,
       rawTopLevelKeys: encoded.rawTopLevelKeys,
@@ -169,6 +170,7 @@ export class LocalGameConnection implements GameConnection {
     return {
       ...encoded,
       encodeMs: performance.now() - start,
+      materializationKind: 'dto',
     };
   }
 

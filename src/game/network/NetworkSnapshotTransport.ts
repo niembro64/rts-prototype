@@ -113,7 +113,7 @@ export class NetworkSnapshotTransport {
     const encodeStart = performance.now();
     const encoded = encodeNetworkSnapshotDetailed(state);
     const encodeMs = performance.now() - encodeStart;
-    return { ...encoded, encodeMs };
+    return { ...encoded, encodeMs, materializationKind: 'dto' };
   }
 
   async decodeReceivedState(
@@ -332,6 +332,7 @@ export class NetworkSnapshotTransport {
       encodeMs,
       isDelta: telemetry.isDelta,
       encoderKind: payload.encoderKind,
+      materializationKind: payload.materializationKind,
       rustEntityCount: payload.rustEntityCount,
       rawEntityCount: payload.rawEntityCount,
       rawTopLevelKeys: payload.rawTopLevelKeys,
