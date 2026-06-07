@@ -64,20 +64,6 @@ The renderer correctly avoids updating off-screen units, but it does so by teari
 Required fix:
 Replace immediate scoped dispose/rebuild with dormant mesh pools, hidden/deactivated records, or an LRU retention budget. Dispose on entity death, actual view removal, style/geometry invalidation, session teardown, or when an explicit memory budget is exceeded. Add telemetry for scoped mesh destroys/rebuilds per second.
 
-[BA-PERF-004] Hot render paths allocate string keys for spatial/contact state
-
-Severity: Medium
-
-Evidence:
-- src/game/render3d/GroundPrint3D.ts:431-487 builds template-string keys like wheel:${unitId}:${i}, tread:${unitId}:${i}, and leg:${unitId}:${i} for visible locomotion contacts every frame, then stores them in Set/Map instances.
-- src/game/network/ClientRenderSpatialIndex.ts:36, 90-93, and 130-140 builds string cell keys such as `${cellX},${cellY}` during render spatial updates and queries.
-
-Risk:
-These paths run in the render loop and scale with visible units/contacts or queried cells. Per-frame string allocation and hashing create GC pressure exactly where budget_design_philosophy.html calls for counted loops, typed arrays, and pooled state.
-
-Required fix:
-Replace string keys with packed numeric keys or stable integer slots. GroundPrint3D can use numeric contact ids, per-unit contact arrays, or a small typed table keyed by entity id plus contact index/type. ClientRenderSpatialIndex can pack cell coordinates into a numeric key or use nested numeric maps while reusing scratch arrays.
-
 [BA-ARCH-001] Large hot-path files make lifecycle, pooling, and Rust/WASM migration hard to audit
 
 Severity: Medium

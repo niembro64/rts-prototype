@@ -115,6 +115,11 @@ const DENSITY_EMA_TAU_MS = 300;
 // the buffer drains. Without this floor, density = 0 would still
 // emit at SPACING_AT_ZERO_DENSITY intervals.
 const EMIT_DENSITY_FLOOR = 0.02;
+const CONTACT_KEY_INDEX_STRIDE = 1 << 16;
+const CONTACT_KEY_UNIT_STRIDE = CONTACT_KEY_INDEX_STRIDE * 4;
+const CONTACT_TYPE_WHEEL = 0;
+const CONTACT_TYPE_TREAD = 1;
+const CONTACT_TYPE_LEG = 2;
 
 export class GroundPrintRenderPacket3D {
   ids = new Float64Array(UNIT_PACKET_INITIAL_CAP);
@@ -241,15 +246,23 @@ if (vMarkShape > 0.5) {
 // most recent live Mark so we can rewrite its end vertices when a
 // successor joins.
 
-type TrailKey = string;
+type TrailKey = number;
 
 function unitEntityIdFromTrailKey(key: TrailKey): EntityId | undefined {
-  const firstColon = key.indexOf(':');
-  if (firstColon < 0) return undefined;
-  const secondColon = key.indexOf(':', firstColon + 1);
-  if (secondColon < 0) return undefined;
-  const id = Number(key.slice(firstColon + 1, secondColon));
+  const id = Math.floor(key / CONTACT_KEY_UNIT_STRIDE);
   return Number.isFinite(id) ? id as EntityId : undefined;
+}
+
+function contactTrailKey(
+  unitId: EntityId,
+  contactType: number,
+  contactIndex: number,
+): TrailKey {
+  return (
+    unitId * CONTACT_KEY_UNIT_STRIDE +
+    contactType * CONTACT_KEY_INDEX_STRIDE +
+    contactIndex
+  );
 }
 
 type TrailState = {
@@ -449,7 +462,7 @@ export class GroundPrint3D {
           for (let i = 0; i < loc.wheelContacts.length; i++) {
             const c = loc.wheelContacts[i];
             if (!c.initialized) continue;
-            const key = `wheel:${unitId}:${i}`;
+            const key = contactTrailKey(unitId, CONTACT_TYPE_WHEEL, i);
             this._seenTrailKeys.add(key);
             this.sampleTrail(key, c.worldX, c.worldZ, loc.printWidth, spacingSq);
           }
@@ -459,7 +472,7 @@ export class GroundPrint3D {
           for (let i = 0; i < loc.treadContacts.length; i++) {
             const c = loc.treadContacts[i];
             if (!c.initialized) continue;
-            const key = `tread:${unitId}:${i}`;
+            const key = contactTrailKey(unitId, CONTACT_TYPE_TREAD, i);
             this._seenTrailKeys.add(key);
             this.sampleTrail(key, c.worldX, c.worldZ, loc.printWidth, spacingSq);
           }
@@ -469,7 +482,7 @@ export class GroundPrint3D {
           for (let i = 0; i < loc.legs.length; i++) {
             const leg = loc.legs[i];
             if (!leg.initialized) continue;
-            const key = `leg:${unitId}:${i}`;
+            const key = contactTrailKey(unitId, CONTACT_TYPE_LEG, i);
             this._seenStampKeys.add(key);
             this.sampleStamp(key, leg);
           }

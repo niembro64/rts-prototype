@@ -3,17 +3,21 @@ import { getEntityRenderScopePadding } from '../entityRenderScope';
 import type { Entity, EntityId } from '../sim/types';
 
 const CLIENT_RENDER_CELL_SIZE = 512;
+const CLIENT_RENDER_CELL_KEY_OFFSET = 1 << 20;
+const CLIENT_RENDER_CELL_KEY_STRIDE = CLIENT_RENDER_CELL_KEY_OFFSET * 2 + 1;
 const DEFAULT_MAX_ENTITY_PADDING = 350;
+
+type ClientRenderCellKey = number;
 
 type ClientRenderSpatialEntry = {
   entity: Entity;
-  cellKey: string;
+  cellKey: ClientRenderCellKey;
   bucketIndex: number;
   padding: number;
 };
 
 export class ClientRenderSpatialIndex {
-  private readonly buckets = new Map<string, Entity[]>();
+  private readonly buckets = new Map<ClientRenderCellKey, Entity[]>();
   private readonly entries = new Map<EntityId, ClientRenderSpatialEntry>();
   private maxEntityPadding = DEFAULT_MAX_ENTITY_PADDING;
 
@@ -100,7 +104,7 @@ export class ClientRenderSpatialIndex {
     }
   }
 
-  private getOrCreateBucket(cellKey: string): Entity[] {
+  private getOrCreateBucket(cellKey: ClientRenderCellKey): Entity[] {
     let bucket = this.buckets.get(cellKey);
     if (bucket === undefined) {
       bucket = [];
@@ -127,7 +131,7 @@ export class ClientRenderSpatialIndex {
     this.maxEntityPadding = next;
   }
 
-  private cellKeyFor(x: number, y: number): string {
+  private cellKeyFor(x: number, y: number): ClientRenderCellKey {
     return this.cellKey(this.cellCoord(x), this.cellCoord(y));
   }
 
@@ -135,7 +139,10 @@ export class ClientRenderSpatialIndex {
     return Math.floor(value / CLIENT_RENDER_CELL_SIZE);
   }
 
-  private cellKey(cellX: number, cellY: number): string {
-    return `${cellX},${cellY}`;
+  private cellKey(cellX: number, cellY: number): ClientRenderCellKey {
+    return (
+      (cellX + CLIENT_RENDER_CELL_KEY_OFFSET) *
+      CLIENT_RENDER_CELL_KEY_STRIDE
+    ) + cellY + CLIENT_RENDER_CELL_KEY_OFFSET;
   }
 }
