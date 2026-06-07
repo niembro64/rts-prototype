@@ -3,25 +3,7 @@
 
 import type { WorldState } from '../sim/WorldState';
 import type { Simulation } from '../sim/Simulation';
-import type {
-  AttackCommand,
-  AttackAreaCommand,
-  AttackGroundCommand,
-  ClearQueuedOrdersCommand,
-  CommandQueue,
-  Command,
-  GuardCommand,
-  MoveCommand,
-  PingCommand,
-  ScanCommand,
-  RemoveLastQueuedOrderCommand,
-  SetFireEnabledCommand,
-  SetBuildingActiveCommand,
-  SelfDestructCommand,
-  SetTowerTargetCommand,
-  StopCommand,
-  WaitCommand,
-} from '../sim/commands';
+import type { CommandQueue, Command } from '../sim/commands';
 import { resetDeltaTracking } from '../network/stateSerializer';
 import { trimEntitySnapshotPool } from '../network/stateSerializerEntities';
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
@@ -69,12 +51,13 @@ import {
   type ShieldReflectionMode,
 } from '../../types/shotTypes';
 import {
-  canApplyServerControlCommand,
-  canBypassGameplayOwnership,
-  commandAuthorityPlayerId,
   type CommandAuthority,
 } from './commandAuthority';
 import { sanitizeCommand } from './commandSanitizer';
+import {
+  authorizeGameServerGameplayCommand,
+  canApplyGameServerControlCommand,
+} from './ServerCommandAuthorizer';
 import {
   acquireSimSlot,
   releaseSimSlot,
@@ -556,21 +539,22 @@ export class GameServer {
     if (!sanitizedCommand) return;
 
     // Intercept server config commands (don't need tick synchronization)
+    const canApplyServerControl = canApplyGameServerControlCommand(authority, this.playerIds[0]);
     switch (sanitizedCommand.type) {
       case 'setSnapshotRate':
-        if (!this.canApplyServerControlCommand(authority)) return;
+        if (!canApplyServerControl) return;
         this.setSnapshotRate(sanitizedCommand.rate);
         return;
       case 'setKeyframeRatio':
-        if (!this.canApplyServerControlCommand(authority)) return;
+        if (!canApplyServerControl) return;
         this.setKeyframeRatio(sanitizedCommand.ratio);
         return;
       case 'setTickRate':
-        if (!this.canApplyServerControlCommand(authority)) return;
+        if (!canApplyServerControl) return;
         this.setTickRate(sanitizedCommand.rate);
         return;
       case 'setUnitGroundNormalEmaMode':
-        if (!this.canApplyServerControlCommand(authority)) return;
+        if (!canApplyServerControl) return;
         // updateUnitGroundNormal reads its mode from the unitGroundNormal module's
         // private state; flipping it from a command keeps host +
         // every client running with the same effective EMA the
@@ -578,255 +562,48 @@ export class GameServer {
         setUnitGroundNormalEmaMode(sanitizedCommand.mode);
         return;
       case 'setSendGridInfo':
-        if (!this.canApplyServerControlCommand(authority)) return;
+        if (!canApplyServerControl) return;
         this.setSendGridInfo(sanitizedCommand.enabled);
         return;
       case 'setBackgroundUnitBlueprintEnabled':
-        if (!this.canApplyServerControlCommand(authority)) return;
+        if (!canApplyServerControl) return;
         this.setBackgroundUnitBlueprintEnabled(sanitizedCommand.unitBlueprintId, sanitizedCommand.enabled);
         return;
       case 'setMaxTotalUnits':
-        if (!this.canApplyServerControlCommand(authority)) return;
+        if (!canApplyServerControl) return;
         this.world.maxTotalUnits = sanitizedCommand.maxTotalUnits;
         return;
       case 'setTurretShieldPanelsEnabled':
-        if (!this.canApplyServerControlCommand(authority)) return;
+        if (!canApplyServerControl) return;
         this.setTurretShieldPanelsEnabled(sanitizedCommand.enabled);
         return;
       case 'setTurretShieldSpheresEnabled':
-        if (!this.canApplyServerControlCommand(authority)) return;
+        if (!canApplyServerControl) return;
         this.setTurretShieldSpheresEnabled(sanitizedCommand.enabled);
         return;
       case 'setShieldsObstructSight':
-        if (!this.canApplyServerControlCommand(authority)) return;
+        if (!canApplyServerControl) return;
         this.setShieldsObstructSight(sanitizedCommand.enabled);
         return;
       case 'setShieldReflectionMode':
-        if (!this.canApplyServerControlCommand(authority)) return;
+        if (!canApplyServerControl) return;
         this.setShieldReflectionMode(sanitizedCommand.mode);
         return;
       case 'setFogOfWarEnabled':
-        if (!this.canApplyServerControlCommand(authority)) return;
+        if (!canApplyServerControl) return;
         this.setFogOfWarEnabled(sanitizedCommand.enabled);
         return;
       case 'setConverterTax':
-        if (!this.canApplyServerControlCommand(authority)) return;
+        if (!canApplyServerControl) return;
         this.setConverterTax(sanitizedCommand.tax);
         return;
     }
-    const authorizedCommand = this.authorizeGameplayCommand(sanitizedCommand, authority);
-    if (authorizedCommand) this.commandQueue.enqueue(authorizedCommand);
-  }
-
-  private canApplyServerControlCommand(authority: CommandAuthority): boolean {
-    return canApplyServerControlCommand(authority, this.playerIds[0]);
-  }
-
-  private authorizeGameplayCommand(command: Command, authority: CommandAuthority): Command | null {
-    if (canBypassGameplayOwnership(authority)) return command;
-    const playerId = commandAuthorityPlayerId(authority);
-    if (playerId === undefined) return null;
-
-    switch (command.type) {
-      case 'select':
-      case 'clearSelection':
-        // Selection is client-local. Never let a network command mutate
-        // authoritative world selection state for other players.
-        return null;
-
-      case 'ping':
-        return this.authorizePingCommand(command, playerId);
-
-      case 'scan':
-        return this.authorizeScanCommand(command, playerId);
-
-      case 'move':
-        return this.authorizeMoveCommand(command, playerId);
-
-      case 'stop':
-      case 'clearQueuedOrders':
-      case 'removeLastQueuedOrder':
-        return this.authorizeUnitListCommand(command, playerId);
-
-      case 'wait':
-        return this.authorizeUnitListCommand(command, playerId);
-
-      case 'setFireEnabled':
-        // Fire control applies to any owned entity with combat
-        // (units + towers). Towers carry the same host-fire contract
-        // per design_philosophy.html "Selection Menus Are Uniform Per
-        // Entity Type".
-        return this.authorizeAnyEntityListCommand(command, playerId);
-
-      case 'setBuildingActive':
-      case 'selfDestruct':
-        return this.authorizeAnyEntityListCommand(command, playerId);
-
-      case 'setTowerTarget':
-        return this.authorizeSetTowerTargetCommand(command, playerId);
-
-      case 'attack':
-      case 'attackGround':
-      case 'attackArea':
-        return this.authorizeUnitListCommand(command, playerId);
-
-      case 'guard':
-        if (!this.isOwnedEntity(command.targetId, playerId)) return null;
-        return this.authorizeUnitListCommand(command, playerId);
-
-      case 'startBuild':
-        return this.isOwnedEntity(command.builderId, playerId) ? command : null;
-
-      case 'queueUnit':
-      case 'setRallyPoint':
-        return this.isOwnedFactory(command.factoryId, playerId) ? command : null;
-
-      case 'fireDGun':
-        return this.isOwnedEntity(command.commanderId, playerId) ? command : null;
-
-      case 'repair':
-        if (!this.isOwnedEntity(command.commanderId, playerId)) return null;
-        return this.isOwnedEntity(command.targetId, playerId) ? command : null;
-
-      case 'repairArea':
-        return this.isOwnedEntity(command.commanderId, playerId) ? command : null;
-
-      case 'reclaim':
-        return this.isOwnedEntity(command.commanderId, playerId) ? command : null;
-
-      default:
-        return null;
-    }
-  }
-
-  private authorizePingCommand(command: PingCommand, playerId: PlayerId): PingCommand | null {
-    if (!Number.isFinite(command.targetX) || !Number.isFinite(command.targetY)) return null;
-    if (command.targetZ !== undefined && !Number.isFinite(command.targetZ)) return null;
-    return { ...command, playerId };
-  }
-
-  private authorizeScanCommand(command: ScanCommand, playerId: PlayerId): ScanCommand | null {
-    if (!Number.isFinite(command.targetX) || !Number.isFinite(command.targetY)) return null;
-    return { ...command, playerId };
-  }
-
-  private authorizeMoveCommand(command: MoveCommand, playerId: PlayerId): MoveCommand | null {
-    const sourceIds = command.entityIds;
-    if (sourceIds.length === 0) return null;
-
-    const hasPerUnitTargets =
-      command.individualTargets !== undefined &&
-      command.individualTargets.length === sourceIds.length;
-
-    const entityIds: EntityId[] = [];
-
-    if (hasPerUnitTargets) {
-      const individualTargets: MoveCommand['individualTargets'] = [];
-      for (let i = 0; i < sourceIds.length; i++) {
-        const id = sourceIds[i];
-        if (!this.isOwnedUnit(id, playerId)) continue;
-        entityIds.push(id);
-        individualTargets.push(command.individualTargets![i]);
-      }
-      if (entityIds.length === 0) return null;
-      return { ...command, entityIds, individualTargets };
-    }
-
-    for (let i = 0; i < sourceIds.length; i++) {
-      const id = sourceIds[i];
-      if (this.isOwnedUnit(id, playerId)) entityIds.push(id);
-    }
-    if (entityIds.length === 0) return null;
-    return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
-  }
-
-  private authorizeUnitListCommand(
-    command: AttackCommand | AttackGroundCommand | AttackAreaCommand | GuardCommand | StopCommand | WaitCommand | ClearQueuedOrdersCommand | RemoveLastQueuedOrderCommand,
-    playerId: PlayerId,
-  ): AttackCommand | AttackGroundCommand | AttackAreaCommand | GuardCommand | StopCommand | WaitCommand | ClearQueuedOrdersCommand | RemoveLastQueuedOrderCommand | null {
-    const sourceIds = command.entityIds;
-    if (sourceIds.length === 0) return null;
-
-    const entityIds: EntityId[] = [];
-    for (let i = 0; i < sourceIds.length; i++) {
-      const id = sourceIds[i];
-      if (this.isOwnedUnit(id, playerId)) entityIds.push(id);
-    }
-    if (entityIds.length === 0) return null;
-    return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
-  }
-
-  /** Authorize a tower-target command: every entityId must be an
-   *  owned tower. The lock-on `targetId` itself may name any entity
-   *  in the world that has an ID (friendly or enemy); the
-   *  receiving turret's exclusion policy decides whether to honor it
-   *  (see design_philosophy.html "Lock-on selection: anything with an
-   *  ID is a candidate"). */
-  private authorizeSetTowerTargetCommand(
-    command: SetTowerTargetCommand,
-    playerId: PlayerId,
-  ): SetTowerTargetCommand | null {
-    const sourceIds = command.entityIds;
-    if (sourceIds.length === 0) return null;
-    const entityIds: EntityId[] = [];
-    for (let i = 0; i < sourceIds.length; i++) {
-      const id = sourceIds[i];
-      const entity = this.world.getEntity(id);
-      if (
-        entity !== undefined
-        && entity.type === 'tower'
-        && entity.ownership !== null
-        && entity.ownership.playerId === playerId
-      ) {
-        entityIds.push(id);
-      }
-    }
-    if (entityIds.length === 0) return null;
-    return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
-  }
-
-  /** Authorize a command whose entityIds may reference any owned entity
-   *  (unit, tower, or building). Used by setFireEnabled (units +
-   *  towers), setBuildingActive (buildings), and selfDestruct (any). */
-  private authorizeAnyEntityListCommand(
-    command: SetFireEnabledCommand | SetBuildingActiveCommand | SelfDestructCommand,
-    playerId: PlayerId,
-  ): SetFireEnabledCommand | SetBuildingActiveCommand | SelfDestructCommand | null {
-    const sourceIds = command.entityIds;
-    if (sourceIds.length === 0) return null;
-
-    const entityIds: EntityId[] = [];
-    for (let i = 0; i < sourceIds.length; i++) {
-      const id = sourceIds[i];
-      if (this.isOwnedEntity(id, playerId)) entityIds.push(id);
-    }
-    if (entityIds.length === 0) return null;
-    return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
-  }
-
-  private isOwnedEntity(entityId: EntityId, playerId: PlayerId): boolean {
-    const entity = this.world.getEntity(entityId);
-    if (entity === undefined || entity.ownership === null) return false;
-    return entity.ownership.playerId === playerId;
-  }
-
-  private isOwnedUnit(entityId: EntityId, playerId: PlayerId): boolean {
-    const entity = this.world.getEntity(entityId);
-    if (entity === undefined) return false;
-    return (
-      entity.type === 'unit' &&
-      entity.unit !== null &&
-      entity.ownership !== null &&
-      entity.ownership.playerId === playerId
+    const authorizedCommand = authorizeGameServerGameplayCommand(
+      this.world,
+      sanitizedCommand,
+      authority,
     );
-  }
-
-  private isOwnedFactory(entityId: EntityId, playerId: PlayerId): boolean {
-    const entity = this.world.getEntity(entityId);
-    return entity !== undefined &&
-      entity.factory !== null &&
-      entity.ownership !== null &&
-      entity.ownership.playerId === playerId;
+    if (authorizedCommand) this.commandQueue.enqueue(authorizedCommand);
   }
 
   private setTurretShieldPanelsEnabled(enabled: boolean): void {
