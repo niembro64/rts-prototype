@@ -76,6 +76,14 @@ import {
 import {
   isPackedAudioEventsWire,
 } from './snapshotAudioWirePack';
+import {
+  AUDIO_DEATH_CONTEXT_WIRE_STRIDE,
+  AUDIO_EVENT_WIRE_STRIDE,
+  AUDIO_IMPACT_CONTEXT_WIRE_STRIDE,
+  AUDIO_TURRET_POSE_WIRE_STRIDE,
+  getAudioEventWireSource,
+  type AudioEventWireSource,
+} from './stateSerializerAudio';
 import { isPackedEntitySnapshotWire } from './snapshotEntityWirePack';
 import { isPackedMinimapEntitiesWire } from './snapshotMinimapWirePack';
 import { isPackedProjectileSnapshotWire } from './snapshotProjectileWirePack';
@@ -1616,10 +1624,75 @@ function packPackedAudioEventsIntoScratch(
   }
 }
 
+function packAudioWireSourceIntoScratch(
+  sim: SimWasm,
+  source: AudioEventWireSource,
+): void {
+  const api = sim.snapshotEncode;
+  packOrderedStringsIntoScratch(sim, source.strings);
+
+  const eventRows = source.eventRows;
+  if (eventRows.count > 0) {
+    api.audioEventScratchEnsure(eventRows.count);
+    copyFloatWireRowsIntoScratch(
+      sim,
+      api.audioEventScratchPtr(),
+      eventRows,
+      AUDIO_EVENT_WIRE_STRIDE,
+    );
+  }
+
+  const deathRows = source.deathContextRows;
+  if (deathRows.count > 0) {
+    api.deathContextScratchEnsure(deathRows.count);
+    copyFloatWireRowsIntoScratch(
+      sim,
+      api.deathContextScratchPtr(),
+      deathRows,
+      AUDIO_DEATH_CONTEXT_WIRE_STRIDE,
+    );
+  }
+
+  const turretPoseRows = source.turretPoseRows;
+  if (turretPoseRows.count > 0) {
+    api.turretPoseScratchEnsure(turretPoseRows.count);
+    copyFloatWireRowsIntoScratch(
+      sim,
+      api.turretPoseScratchPtr(),
+      turretPoseRows,
+      AUDIO_TURRET_POSE_WIRE_STRIDE,
+    );
+  }
+
+  const impactRows = source.impactContextRows;
+  if (impactRows.count > 0) {
+    api.impactContextScratchEnsure(impactRows.count);
+    copyFloatWireRowsIntoScratch(
+      sim,
+      api.impactContextScratchPtr(),
+      impactRows,
+      AUDIO_IMPACT_CONTEXT_WIRE_STRIDE,
+    );
+  }
+}
+
 function emitPackedAudioEvents(
   sim: SimWasm,
   events: readonly NetworkServerSnapshotSimEvent[],
 ): void {
+  const wireSource = getAudioEventWireSource(events);
+  if (wireSource !== undefined && wireSource.eventRows.count === events.length) {
+    packAudioWireSourceIntoScratch(sim, wireSource);
+    sim.snapshotEncode.emitPackedAudioEvents(
+      events.length,
+      wireSource.strings.length,
+      wireSource.deathContextRows.count,
+      wireSource.impactContextRows.count,
+      wireSource.turretPoseRows.count,
+    );
+    return;
+  }
+
   const strings: string[] = [];
   for (let i = 0; i < events.length; i++) {
     const event = events[i];

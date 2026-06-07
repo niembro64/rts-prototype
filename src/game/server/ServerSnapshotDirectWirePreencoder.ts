@@ -7,7 +7,7 @@ import type {
   NetworkServerSnapshotMeta,
 } from '../network/NetworkTypes';
 import type { SnapshotWirePayload } from '../network/SnapshotWirePayload';
-import { serializeAudioEvents } from '../network/stateSerializerAudio';
+import { writeAudioEventWireRowsDirect } from '../network/stateSerializerAudio';
 import { writeEconomySnapshotWireRowsDirect } from '../network/stateSerializerEconomy';
 import {
   appendEntitySnapshotWireRowDirect,
@@ -112,6 +112,7 @@ export class ServerSnapshotDirectWirePreencoder {
   private readonly sprayPlaceholders: NonNullable<NetworkServerSnapshot['sprayTargets']> = [];
   private readonly scanPulsePlaceholders: NonNullable<NetworkServerSnapshot['scanPulses']> = [];
   private readonly resourceMovementPlaceholders: NonNullable<NetworkServerSnapshot['resourceMovements']> = [];
+  private readonly audioEventPlaceholders: NonNullable<NetworkServerSnapshot['audioEvents']> = [];
   private readonly economyPlaceholder = {} as NetworkServerSnapshot['economy'];
   private readonly removedEntityIds: number[] = [];
   private readonly visibilityHiddenIds: EntityId[] = [];
@@ -224,7 +225,11 @@ export class ServerSnapshotDirectWirePreencoder {
         );
     const netAudioEvents = input.audioOverride !== undefined
       ? input.audioOverride.value
-      : serializeAudioEvents(input.audioEvents, input.visibility, input.trackingKey);
+      : writeAudioEventWireRowsDirect(
+          input.audioEvents,
+          input.visibility,
+          this.audioEventPlaceholders,
+        );
     const netScanPulses = writeScanPulseWireRowsDirect(
       input.world,
       input.visibility,

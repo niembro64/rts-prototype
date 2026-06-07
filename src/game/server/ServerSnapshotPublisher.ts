@@ -227,29 +227,15 @@ export class ServerSnapshotPublisher {
       const shouldEmitMinimap = !listenerIsDelta || emitMinimapOnDelta;
       const shouldEmitEntityDetails = !listenerIsDelta || emitEntityDetailsOnDelta;
       const shouldSendStaticTerrain = !listenerIsDelta && listenerNeedsStaticMap;
-      // FOW-OPT-20: look up (or fill) the team-shared audio
-      // payload. The first teammate to hit this cache slot
-      // triggers the underlying serializer using THIS listener's
-      // pool; subsequent teammates pass the cached wrapper into
-      // serializeGameState which short-circuits to the same value.
-      // Spray/minimap caching is deferred until after the direct-wire
-      // attempt so successful remote preencodes can write those rows
-      // without materializing DTOs.
+      // FOW-OPT-20: team-uniform payload caches are deferred until
+      // after the direct-wire attempt so successful remote preencodes
+      // can write typed rows without materializing DTO arrays.
       const teamKey = visibility.teamMaskKey;
       let audioOverride: SerializerAudioOverride | undefined;
       let sprayOverride: SerializerSprayOverride | undefined;
       let minimapOverride: SerializerMinimapOverride | undefined = shouldEmitMinimap
         ? undefined
         : NO_MINIMAP_OVERRIDE;
-      if (teamKey !== undefined) {
-        audioOverride = teamAudioCache.get(teamKey);
-        if (!audioOverride) {
-          audioOverride = {
-            value: serializeAudioEvents(audioEvents, visibility, listener.deltaTrackingKey),
-          };
-          teamAudioCache.set(teamKey, audioOverride);
-        }
-      }
       if (listener.preencodeWire) {
         const directSnapshot = this.directWirePreencoder.tryEncode({
           world: input.world,
@@ -288,6 +274,13 @@ export class ServerSnapshotPublisher {
         }
       }
       if (teamKey !== undefined) {
+        audioOverride = teamAudioCache.get(teamKey);
+        if (!audioOverride) {
+          audioOverride = {
+            value: serializeAudioEvents(audioEvents, visibility, listener.deltaTrackingKey),
+          };
+          teamAudioCache.set(teamKey, audioOverride);
+        }
         sprayOverride = teamSprayCache.get(teamKey);
         if (!sprayOverride) {
           sprayOverride = {
