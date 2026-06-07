@@ -24,6 +24,12 @@ export { SelectionChangeTracker } from './SelectionChangeTracker';
 export { LinePathAccumulator } from './LinePathAccumulator';
 
 export {
+  CONTROL_GROUP_COUNT,
+  InputControlGroups,
+  controlGroupIndexForKey,
+} from './InputControlGroups';
+
+export {
   buildAttackAreaCommand,
   buildAttackCommandForTarget,
   buildAttackCommandAt,

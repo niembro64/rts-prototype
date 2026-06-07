@@ -52,6 +52,8 @@ import {
   getBuildingPlacementDiagnostics,
   getOccupiedBuildingCells,
   getSnappedBuildPosition,
+  InputControlGroups,
+  controlGroupIndexForKey,
 } from '../input/helpers';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
 import { getCommandCursorStyle, type CommandCursorKind } from '../input/CommandCursors';
@@ -65,15 +67,8 @@ import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 
 const HOVER_RAYCAST_INTERVAL_MS = 50;
 const SELECTABLE_GROUND_MIN_UNIT_RADIUS = 8;
-const CONTROL_GROUP_COUNT = 9;
 const REPAIR_AREA_RADIUS = 220;
 const ATTACK_AREA_RADIUS = 300;
-
-function controlGroupIndexForKey(e: KeyboardEvent): number {
-  const codeMatch = /^Digit([1-9])$/.exec(e.code);
-  if (codeMatch) return Number(codeMatch[1]) - 1;
-  return /^[1-9]$/.test(e.key) ? Number(e.key) - 1 : -1;
-}
 
 /** Approximate world-space vertical center for box-select projection,
  *  picked per entity kind so the screen-projected point lands near
@@ -203,7 +198,7 @@ export class Input3DManager {
   // changes — matches the 2D SelectionController's rule so squads
   // don't accidentally inherit 'fight'/'patrol' from a prior group.
   private selectionChangeTracker = new SelectionChangeTracker();
-  private controlGroups: EntityId[][] = Array.from({ length: CONTROL_GROUP_COUNT }, () => []);
+  private controlGroups: InputControlGroups;
 
   // DOM handlers bound once for add/remove
   private onMouseDown: (e: MouseEvent) => void;
@@ -224,6 +219,19 @@ export class Input3DManager {
     this.entitySource = entitySource;
     this.localCommandQueue = localCommandQueue;
     this.cursorGround = cursorGround;
+    this.controlGroups = new InputControlGroups(
+      entitySource,
+      (entity) => this.isSelectableByActivePlayer(entity),
+      (entityIds, additive) => {
+        this.localCommandQueue.enqueue({
+          type: 'select',
+          tick: this.context.getTick(),
+          entityIds,
+          additive,
+        });
+      },
+    );
+    this.controlGroups.onChange = (groups) => this.onControlGroupsChange?.(groups);
 
     // Selection marquee overlay
     this.marquee = document.createElement('div');
@@ -536,41 +544,11 @@ export class Input3DManager {
   }
 
   storeControlGroupSlot(index: number): void {
-    if (index < 0 || index >= CONTROL_GROUP_COUNT) return;
-    const ids = this.getSelectedGroupEntityIds();
-    if (ids.length === 0) return;
-    this.controlGroups[index] = ids;
-    this.emitControlGroupsChange();
+    this.controlGroups.storeSlot(index);
   }
 
   recallControlGroupSlot(index: number, additive: boolean): boolean {
-    if (index < 0 || index >= CONTROL_GROUP_COUNT) return false;
-    const group = this.controlGroups[index];
-    if (group.length === 0) return false;
-
-    const entityIds: EntityId[] = [];
-    for (let i = 0; i < group.length; i++) {
-      const entity = this.entitySource.getEntity(group[i]) ?? null;
-      if (this.isSelectableByActivePlayer(entity)) entityIds.push(group[i]);
-    }
-
-    if (entityIds.length === 0) {
-      group.length = 0;
-      this.emitControlGroupsChange();
-      return true;
-    }
-
-    if (entityIds.length !== group.length) {
-      this.controlGroups[index] = entityIds.slice();
-      this.emitControlGroupsChange();
-    }
-    this.localCommandQueue.enqueue({
-      type: 'select',
-      tick: this.context.getTick(),
-      entityIds,
-      additive,
-    });
-    return true;
+    return this.controlGroups.recallSlot(index, additive);
   }
 
   /** True if D-gun mode is currently active. */
@@ -1000,19 +978,6 @@ export class Input3DManager {
         );
         break;
     }
-  }
-
-  private getSelectedGroupEntityIds(): EntityId[] {
-    const entityIds: EntityId[] = [];
-    const selectedUnits = this.entitySource.getSelectedUnits();
-    for (let i = 0; i < selectedUnits.length; i++) entityIds.push(selectedUnits[i].id);
-    const selectedBuildings = this.entitySource.getSelectedBuildings();
-    for (let i = 0; i < selectedBuildings.length; i++) entityIds.push(selectedBuildings[i].id);
-    return entityIds;
-  }
-
-  private emitControlGroupsChange(): void {
-    this.onControlGroupsChange?.(this.controlGroups.map((group) => group.slice()));
   }
 
   private enqueueStopCommand(): void {
