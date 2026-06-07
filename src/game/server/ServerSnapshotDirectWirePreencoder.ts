@@ -8,7 +8,7 @@ import type {
 } from '../network/NetworkTypes';
 import type { SnapshotWirePayload } from '../network/SnapshotWirePayload';
 import { serializeAudioEvents } from '../network/stateSerializerAudio';
-import { serializeEconomySnapshot } from '../network/stateSerializerEconomy';
+import { writeEconomySnapshotWireRowsDirect } from '../network/stateSerializerEconomy';
 import {
   appendEntitySnapshotWireRowDirect,
   canAppendEntitySnapshotWireRowDirect,
@@ -29,10 +29,10 @@ import {
   type PrevEntityState,
 } from '../network/stateSerializerEntityDelta';
 import { serializeGridSnapshot } from '../network/stateSerializerGrid';
-import { serializeMinimapSnapshotEntities } from '../network/stateSerializerMinimap';
+import { writeMinimapSnapshotWireRowsDirect } from '../network/stateSerializerMinimap';
 import { serializeProjectileSnapshot } from '../network/stateSerializerProjectiles';
 import { serializeResourceMovements } from '../network/stateSerializerResourceMovements';
-import { serializeSprayTargets } from '../network/stateSerializerSpray';
+import { writeSprayTargetWireRowsDirect } from '../network/stateSerializerSpray';
 import {
   serializeScanPulses,
   type SnapshotVisibility,
@@ -108,6 +108,9 @@ function acceptsSerializedEntity(
 
 export class ServerSnapshotDirectWirePreencoder {
   private readonly entityPlaceholders: NetworkServerSnapshot['entities'] = [];
+  private readonly minimapPlaceholders: NonNullable<NetworkServerSnapshot['minimapEntities']> = [];
+  private readonly sprayPlaceholders: NonNullable<NetworkServerSnapshot['sprayTargets']> = [];
+  private readonly economyPlaceholder = {} as NetworkServerSnapshot['economy'];
   private readonly removedEntityIds: number[] = [];
   private readonly visibilityHiddenIds: EntityId[] = [];
   private readonly deferredDetailEntityIds: EntityId[] = [];
@@ -195,15 +198,24 @@ export class ServerSnapshotDirectWirePreencoder {
 
     const netMinimapEntities = input.minimapOverride !== undefined
       ? input.minimapOverride.value
-      : serializeMinimapSnapshotEntities(input.world, input.visibility, input.trackingKey);
-    const netEconomy = serializeEconomySnapshot(
+      : writeMinimapSnapshotWireRowsDirect(
+          input.world,
+          input.visibility,
+          this.minimapPlaceholders,
+        );
+    const netEconomy = writeEconomySnapshotWireRowsDirect(
       input.world.playerCount,
       input.recipientPlayerId,
+      this.economyPlaceholder,
     );
     const netResourceMovements = serializeResourceMovements(input.world, input.visibility);
     const netSprayTargets = input.sprayOverride !== undefined
       ? input.sprayOverride.value
-      : serializeSprayTargets(input.sprayTargets, input.visibility, input.trackingKey);
+      : writeSprayTargetWireRowsDirect(
+          input.sprayTargets,
+          input.visibility,
+          this.sprayPlaceholders,
+        );
     const netAudioEvents = input.audioOverride !== undefined
       ? input.audioOverride.value
       : serializeAudioEvents(input.audioEvents, input.visibility, input.trackingKey);

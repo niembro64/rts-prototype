@@ -55,6 +55,10 @@ import {
   getMinimapSnapshotWireSource,
 } from './stateSerializerMinimap';
 import {
+  SPRAY_TARGET_WIRE_STRIDE,
+  getSprayTargetWireSource,
+} from './stateSerializerSpray';
+import {
   activeFloat64WireValues,
   activeUint32WireValues,
   type Float64WireRows,
@@ -1262,6 +1266,20 @@ function packSprayTargetsIntoScratch(
   if (sprays.length === 0) return;
   const api = sim.snapshotEncode;
   api.sprayScratchEnsure(sprays.length);
+  const source = getSprayTargetWireSource(sprays);
+  if (
+    source !== undefined &&
+    source.count === sprays.length &&
+    api.sprayScratchStride === SPRAY_TARGET_WIRE_STRIDE
+  ) {
+    const view = new Float64Array(
+      sim.memory.buffer,
+      api.sprayScratchPtr(),
+      sprays.length * api.sprayScratchStride,
+    );
+    view.set(activeFloat64WireValues(source, SPRAY_TARGET_WIRE_STRIDE));
+    return;
+  }
   const view = new Float64Array(
     sim.memory.buffer,
     api.sprayScratchPtr(),

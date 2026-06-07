@@ -36,6 +36,7 @@ export type MinimapSnapshotWireSource = Float64WireRows;
 const minimapPools = new Map<string, SnapshotPool<NetworkServerSnapshotMinimapEntity>>();
 const minimapWireSourcesByKey = new Map<string, MinimapSnapshotWireSource>();
 const minimapWireSources = new WeakMap<object, MinimapSnapshotWireSource>();
+const directMinimapWireSource = createFloat64WireRows();
 
 export function resetMinimapPoolForKey(key: string | number | undefined): void {
   deleteSnapshotPoolForKey(minimapPools, key);
@@ -105,6 +106,47 @@ export function getMinimapSnapshotWireSource(
   entries: readonly NetworkServerSnapshotMinimapEntity[],
 ): MinimapSnapshotWireSource | undefined {
   return minimapWireSources.get(entries);
+}
+
+export function writeMinimapSnapshotWireRowsDirect(
+  world: WorldState,
+  visibility: SnapshotVisibility | undefined,
+  entries: NetworkServerSnapshotMinimapEntity[],
+): NetworkServerSnapshotMinimapEntity[] | undefined {
+  directMinimapWireSource.count = 0;
+  minimapWireSources.set(entries, directMinimapWireSource);
+  entries.length = 0;
+
+  const radarEntityIds = visibility?.getRadarEntityIds();
+  if (radarEntityIds !== undefined) {
+    for (let i = 0; i < radarEntityIds.length; i++) {
+      const entity = world.getEntity(radarEntityIds[i]);
+      if (!entity) continue;
+      const radarOnly = !visibility!.isEntityVisible(entity);
+      appendMinimapWireRow(directMinimapWireSource, entity, radarOnly);
+    }
+  } else {
+    const minimapSources: ReadonlyArray<readonly Entity[]> = [
+      world.getUnits(),
+      world.getBuildings(),
+    ];
+    for (let s = 0; s < minimapSources.length; s++) {
+      const source = minimapSources[s];
+      for (let i = 0; i < source.length; i++) {
+        const entity = source[i];
+        if (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower') {
+          continue;
+        }
+        if (visibility && !visibility.isEntityOnRadar(entity)) continue;
+        const radarOnly = visibility !== undefined && !visibility.isEntityVisible(entity);
+        appendMinimapWireRow(directMinimapWireSource, entity, radarOnly);
+      }
+    }
+  }
+
+  if (directMinimapWireSource.count === 0) return undefined;
+  entries.length = directMinimapWireSource.count;
+  return entries;
 }
 
 export function serializeMinimapSnapshotEntities(

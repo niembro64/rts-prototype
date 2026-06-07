@@ -72,6 +72,41 @@ export function getEconomySnapshotWireSource(
   return economyWireSources.get(economy);
 }
 
+export function writeEconomySnapshotWireRowsDirect(
+  playerCount: number,
+  recipientPlayerId: PlayerId | undefined,
+  economy: Record<PlayerId, NetworkServerSnapshotEconomy>,
+): Record<PlayerId, NetworkServerSnapshotEconomy> {
+  economyWireSources.set(economy, economyWireSource);
+  economyWireSource.count = 0;
+
+  const economyPlayerCount = Math.max(0, Math.floor(playerCount));
+  for (let playerId = 1; playerId <= economyPlayerCount; playerId++) {
+    if (recipientPlayerId !== undefined && playerId !== recipientPlayerId) continue;
+    const eco = economyManager.getEconomy(playerId as PlayerId);
+    if (!eco) continue;
+    const base = reserveFloat64WireRows(
+      economyWireSource,
+      1,
+      ECONOMY_SNAPSHOT_WIRE_STRIDE,
+    ) * ECONOMY_SNAPSHOT_WIRE_STRIDE;
+    const values = economyWireSource.values;
+    values[base + 0] = playerId;
+    values[base + 1] = eco.stockpile.curr;
+    values[base + 2] = eco.stockpile.max;
+    values[base + 3] = eco.income.base;
+    values[base + 4] = eco.income.production;
+    values[base + 5] = eco.expenditure;
+    values[base + 6] = eco.metal.stockpile.curr;
+    values[base + 7] = eco.metal.stockpile.max;
+    values[base + 8] = eco.metal.income.base;
+    values[base + 9] = eco.metal.income.extraction;
+    values[base + 10] = eco.metal.expenditure;
+  }
+
+  return economy;
+}
+
 export function serializeEconomySnapshot(
   playerCount: number,
   recipientPlayerId: PlayerId | undefined,

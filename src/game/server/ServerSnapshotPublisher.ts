@@ -227,11 +227,14 @@ export class ServerSnapshotPublisher {
       const shouldEmitMinimap = !listenerIsDelta || emitMinimapOnDelta;
       const shouldEmitEntityDetails = !listenerIsDelta || emitEntityDetailsOnDelta;
       const shouldSendStaticTerrain = !listenerIsDelta && listenerNeedsStaticMap;
-      // FOW-OPT-20: look up (or fill) the team-shared audio / spray /
-      // minimap payloads. The first teammate to hit each cache slot
+      // FOW-OPT-20: look up (or fill) the team-shared audio
+      // payload. The first teammate to hit this cache slot
       // triggers the underlying serializer using THIS listener's
       // pool; subsequent teammates pass the cached wrapper into
       // serializeGameState which short-circuits to the same value.
+      // Spray/minimap caching is deferred until after the direct-wire
+      // attempt so successful remote preencodes can write those rows
+      // without materializing DTOs.
       const teamKey = visibility.teamMaskKey;
       let audioOverride: SerializerAudioOverride | undefined;
       let sprayOverride: SerializerSprayOverride | undefined;
@@ -246,42 +249,7 @@ export class ServerSnapshotPublisher {
           };
           teamAudioCache.set(teamKey, audioOverride);
         }
-        sprayOverride = teamSprayCache.get(teamKey);
-        if (!sprayOverride) {
-          sprayOverride = {
-            value: serializeSprayTargets(sprayTargets, visibility, listener.deltaTrackingKey),
-          };
-          teamSprayCache.set(teamKey, sprayOverride);
-        }
-        if (shouldEmitMinimap) {
-          minimapOverride = teamMinimapCache.get(teamKey);
-          if (!minimapOverride) {
-            minimapOverride = {
-              value: serializeMinimapSnapshotEntities(
-                input.world,
-                visibility,
-                listener.deltaTrackingKey,
-              ),
-            };
-            teamMinimapCache.set(teamKey, minimapOverride);
-          }
-        }
       }
-      const serializeOptions: SerializeGameStateOptions = {
-        trackingKey: listener.deltaTrackingKey,
-        snapshotBaselineHandle: listener.snapshotBaselineHandle,
-        dirtyEntityIds: this.dirtyIdsBuf,
-        dirtyEntityFields: this.dirtyFieldsBuf,
-        removedEntityIds: undefined,
-        removedEntities: this.removedEntitiesBuf,
-        recipientPlayerId: listener.playerId,
-        visibility,
-        emitEntityDetailFields: shouldEmitEntityDetails,
-        emitProjectileDetailFields: !listenerIsDelta || emitProjectileDetailsOnDelta,
-        audioOverride,
-        sprayOverride,
-        minimapOverride,
-      };
       if (listener.preencodeWire) {
         const directSnapshot = this.directWirePreencoder.tryEncode({
           world: input.world,
@@ -319,6 +287,43 @@ export class ServerSnapshotPublisher {
           return directSnapshot;
         }
       }
+      if (teamKey !== undefined) {
+        sprayOverride = teamSprayCache.get(teamKey);
+        if (!sprayOverride) {
+          sprayOverride = {
+            value: serializeSprayTargets(sprayTargets, visibility, listener.deltaTrackingKey),
+          };
+          teamSprayCache.set(teamKey, sprayOverride);
+        }
+        if (shouldEmitMinimap) {
+          minimapOverride = teamMinimapCache.get(teamKey);
+          if (!minimapOverride) {
+            minimapOverride = {
+              value: serializeMinimapSnapshotEntities(
+                input.world,
+                visibility,
+                listener.deltaTrackingKey,
+              ),
+            };
+            teamMinimapCache.set(teamKey, minimapOverride);
+          }
+        }
+      }
+      const serializeOptions: SerializeGameStateOptions = {
+        trackingKey: listener.deltaTrackingKey,
+        snapshotBaselineHandle: listener.snapshotBaselineHandle,
+        dirtyEntityIds: this.dirtyIdsBuf,
+        dirtyEntityFields: this.dirtyFieldsBuf,
+        removedEntityIds: undefined,
+        removedEntities: this.removedEntitiesBuf,
+        recipientPlayerId: listener.playerId,
+        visibility,
+        emitEntityDetailFields: shouldEmitEntityDetails,
+        emitProjectileDetailFields: !listenerIsDelta || emitProjectileDetailsOnDelta,
+        audioOverride,
+        sprayOverride,
+        minimapOverride,
+      };
       const state = serializeGameState(
         input.world,
         listenerIsDelta,

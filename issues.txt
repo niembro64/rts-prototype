@@ -21,7 +21,7 @@ Please always commit and push before and after any code changes we make.
 Severity: High
 
 Evidence:
-- src/game/server/ServerSnapshotDirectWirePreencoder.ts now lets preencode-wire listeners emit entity rows directly into the Rust/WASM snapshot encoder without first populating NetworkServerSnapshot entity DTOs, but it still delegates minimap, economy, resource movement, spray, audio, projectile, scan-pulse, and grid sections to existing DTO serializers.
+- src/game/server/ServerSnapshotDirectWirePreencoder.ts now lets preencode-wire listeners emit entity, minimap, economy, and spray rows directly into the Rust/WASM snapshot encoder without first populating their NetworkServerSnapshot DTO arrays/maps, but it still delegates resource movement, audio, projectile, scan-pulse, and grid sections to existing DTO serializers.
 - src/game/server/ServerSnapshotPublisher.ts still falls back to serializeGameState() when the direct path is unavailable, when WASM is not initialized, or when the entity rows require raw fallback cases such as inactive turrets, interrupted build DTOs, or factory routes.
 - The direct payload reports materializationKind='direct' plus encoderKind/rawEntityCount/rawTopLevelKeys diagnostics, but rawTopLevelKeys still records DTO-backed sections that the Rust writer cannot yet own directly.
 
@@ -29,7 +29,7 @@ Risk:
 Remote snapshot publishing no longer has to materialize entity DTO arrays on the successful direct path, but non-entity sections can still allocate DTO graphs before the Rust/WASM or typed-row encoder emits bytes. Existing pooling and row sources reduce allocation and packing cost, but the hot path remains partially listener-oriented TypeScript orchestration instead of a complete wire-first writer. budget_design_philosophy.html says snapshots should move toward compact binary/typed-buffer output and that TypeScript should orchestrate while Rust/WASM computes hot loops.
 
 Required fix:
-Extend the remote direct preencode writer so projectile events, minimap, economy, resource movements, audio/spray events, scan pulses, static terrain/buildability, removals, game state, and server metadata are emitted from WorldState/visibility/baseline decisions into Rust/WASM or owned typed buffers without DTO arrays. Keep serializeGameState() as the local/in-memory and parity fallback until the direct writer covers all full snapshot and delta cases. Use the payload materializationKind/encoderKind/rawEntityCount/rawTopLevelKeys diagnostics to retire raw fallback sections before deleting the DTO path.
+Extend the remote direct preencode writer so projectile events, resource movements, audio events, scan pulses, static terrain/buildability, removals, game state, and server metadata are emitted from WorldState/visibility/baseline decisions into Rust/WASM or owned typed buffers without DTO arrays. Keep serializeGameState() as the local/in-memory and parity fallback until the direct writer covers all full snapshot and delta cases. Use the payload materializationKind/encoderKind/rawEntityCount/rawTopLevelKeys diagnostics to retire raw fallback sections before deleting the DTO path.
 
 [BA-ARCH-001] Large hot-path files make lifecycle, pooling, and Rust/WASM migration hard to audit
 
