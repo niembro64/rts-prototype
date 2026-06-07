@@ -28,7 +28,7 @@ import {
   type DeltaTrackingState,
   type PrevEntityState,
 } from '../network/stateSerializerEntityDelta';
-import { serializeGridSnapshot } from '../network/stateSerializerGrid';
+import { writeGridSnapshotWireRowsDirect } from '../network/stateSerializerGrid';
 import { writeMinimapSnapshotWireRowsDirect } from '../network/stateSerializerMinimap';
 import { writeProjectileSnapshotWireRowsDirect } from '../network/stateSerializerProjectiles';
 import { writeResourceMovementWireRowsDirect } from '../network/stateSerializerResourceMovements';
@@ -113,6 +113,8 @@ export class ServerSnapshotDirectWirePreencoder {
   private readonly scanPulsePlaceholders: NonNullable<NetworkServerSnapshot['scanPulses']> = [];
   private readonly resourceMovementPlaceholders: NonNullable<NetworkServerSnapshot['resourceMovements']> = [];
   private readonly audioEventPlaceholders: NonNullable<NetworkServerSnapshot['audioEvents']> = [];
+  private readonly gridCellPlaceholders: NetworkServerSnapshotGridCell[] = [];
+  private readonly gridSearchCellPlaceholders: NetworkServerSnapshotGridCell[] = [];
   private readonly economyPlaceholder = {} as NetworkServerSnapshot['economy'];
   private readonly removedEntityIds: number[] = [];
   private readonly visibilityHiddenIds: EntityId[] = [];
@@ -244,10 +246,12 @@ export class ServerSnapshotDirectWirePreencoder {
       projectileDespawns: input.projectileDespawns,
       projectileVelocityUpdates: input.projectileVelocityUpdates,
     });
-    const netGrid = serializeGridSnapshot(
+    const netGrid = writeGridSnapshotWireRowsDirect(
       input.gridCells,
       input.gridSearchCells,
       input.gridCellSize,
+      this.gridCellPlaceholders,
+      this.gridSearchCellPlaceholders,
     );
 
     _directGameState.phase = input.gamePhase;

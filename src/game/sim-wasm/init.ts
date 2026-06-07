@@ -393,6 +393,11 @@ import __wbg_init, {
   snapshot_encode_envelope_emit_scan_pulses,
   snapshot_encode_scan_pulse_scratch_ptr,
   snapshot_encode_scan_pulse_scratch_ensure,
+  snapshot_encode_envelope_emit_grid,
+  snapshot_encode_grid_cell_scratch_ptr,
+  snapshot_encode_grid_cell_scratch_ensure,
+  snapshot_encode_grid_search_cell_scratch_ptr,
+  snapshot_encode_grid_search_cell_scratch_ensure,
   snapshot_encode_envelope_emit_shroud,
   snapshot_encode_shroud_scratch_ptr,
   snapshot_encode_shroud_scratch_ensure,
@@ -3213,6 +3218,19 @@ export interface SnapshotEncodeApi {
   scanPulseScratchEnsure: (count: number) => void;
   /** Stride per scan-pulse entry (f64 count). */
   readonly scanPulseScratchStride: number;
+  /** Emit `grid: { cells, searchCells, cellSize }` from compact row
+   *  scratches. Each cell row stores x/y/z plus a player-id bitmask. */
+  emitGrid: (cellCount: number, searchCellCount: number, cellSize: number) => number;
+  /** Raw pointer to the debug-grid cells scratch. */
+  gridCellScratchPtr: () => number;
+  /** Pre-grow the debug-grid cells scratch to hold `count` rows. */
+  gridCellScratchEnsure: (count: number) => void;
+  /** Raw pointer to the debug-grid searchCells scratch. */
+  gridSearchCellScratchPtr: () => number;
+  /** Pre-grow the debug-grid searchCells scratch to hold `count` rows. */
+  gridSearchCellScratchEnsure: (count: number) => void;
+  /** Stride per debug-grid cell row (f64 count). */
+  readonly gridCellScratchStride: number;
   /** Emit `shroud: { gridW, gridH, cellSize, bitmap }`. The bitmap
    *  bytes come from the shroud scratch (caller pre-fills `bytes`
    *  bytes); the wrapper map is emitted with the gridW/gridH/cellSize
@@ -4176,6 +4194,12 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           scanPulseScratchPtr: snapshot_encode_scan_pulse_scratch_ptr,
           scanPulseScratchEnsure: snapshot_encode_scan_pulse_scratch_ensure,
           scanPulseScratchStride: 6,
+          emitGrid: snapshot_encode_envelope_emit_grid,
+          gridCellScratchPtr: snapshot_encode_grid_cell_scratch_ptr,
+          gridCellScratchEnsure: snapshot_encode_grid_cell_scratch_ensure,
+          gridSearchCellScratchPtr: snapshot_encode_grid_search_cell_scratch_ptr,
+          gridSearchCellScratchEnsure: snapshot_encode_grid_search_cell_scratch_ensure,
+          gridCellScratchStride: 4,
           emitShroud: snapshot_encode_envelope_emit_shroud,
           shroudScratchPtr: snapshot_encode_shroud_scratch_ptr,
           shroudScratchEnsure: snapshot_encode_shroud_scratch_ensure,
