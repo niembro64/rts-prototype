@@ -28,6 +28,8 @@ import {
   getEntityVelocity3d,
   getProjectileLaunchSpeed,
   isLiveHomingTarget,
+  isShieldSubmunitionTurret,
+  isWeaponAimedForFire,
   turretMaskIncludes,
   updateProjectileArming,
   updateWeaponWorldKinematics,
@@ -222,22 +224,10 @@ const _homingTargetAcceleration = { x: 0, y: 0, z: 0 };
 const _homingAimPoint = { x: 0, y: 0, z: 0 };
 const _homingOriginVelocity = { x: 0, y: 0, z: 0 };
 const _homingOriginAcceleration = { x: 0, y: 0, z: 0 };
-const FIRE_YAW_TOLERANCE = 0.16;
-const FIRE_PITCH_TOLERANCE = 0.16;
-const FIRE_BALLISTIC_PITCH_TOLERANCE = 0.025;
 
 function getHomingMaxThrustAccel(shot: ProjectileShot): number {
   const mass = shot.mass > 1e-6 ? shot.mass : 1e-6;
   return (shot.homingThrust ?? 0) / mass;
-}
-
-function isBallisticArcWeapon(weapon: Turret): boolean {
-  const angleType = weapon.config.aimStyle.angleType;
-  return (
-    angleType === 'ballisticArcLow' ||
-    angleType === 'ballisticArcLowOnlyUnder' ||
-    angleType === 'ballisticArcHigh'
-  );
 }
 
 function clearBeamReflectorMetadata(point: BeamPoint): void {
@@ -276,21 +266,6 @@ function copyBeamReflectorMetadata(
   point.normalX = reflector.normalX;
   point.normalY = reflector.normalY;
   point.normalZ = reflector.normalZ;
-}
-
-function isWeaponAimedForFire(weapon: Turret): boolean {
-  if (weapon.config.verticalLauncher) return true;
-  const pitchTolerance = isBallisticArcWeapon(weapon)
-    ? FIRE_BALLISTIC_PITCH_TOLERANCE
-    : FIRE_PITCH_TOLERANCE;
-  // aimErrorYaw/Pitch default to 0, which is trivially within
-  // tolerance — preserves the previous "no aim computed yet means
-  // trivially aimed" semantic that the optional-undefined check used
-  // to encode.
-  return (
-    Math.abs(weapon.aimErrorYaw) <= FIRE_YAW_TOLERANCE &&
-    Math.abs(weapon.aimErrorPitch) <= pitchTolerance
-  );
 }
 
 function ensurePackedProjectileCapacity(needed: number): void {
@@ -473,7 +448,7 @@ export function fireTurrets(
       if (config.visualOnly) continue;
       const shot = config.shot;
       if (!shot) continue;
-      const shieldSubmunitions = shot.type === 'shield' ? config.submunitions : undefined;
+      const shieldSubmunitions = isShieldSubmunitionTurret(weapon) ? config.submunitions : undefined;
       const mask = shieldSubmunitions !== undefined ? activeMask : firingMask;
       if (!turretMaskIncludes(mask, weaponIndex)) continue;
       if (config.passive) continue; // Passive turrets track/engage but never fire

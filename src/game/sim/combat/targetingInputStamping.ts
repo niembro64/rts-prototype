@@ -25,6 +25,7 @@ import { encodeShieldBarrierShape, encodeShieldReflectionMode, getActiveShields 
 import { REFLECTIVE_SHIELD_MATERIAL } from '../blueprints/shieldMaterials';
 import {
   MIRROR_SIGHT_QUERY_PAD,
+  turretIgnoresForceMaterialSightObstruction,
   weaponRequiresNonObstructedLineOfSight,
 } from './lineOfSight';
 import {
@@ -59,6 +60,7 @@ import {
   CT_TURRET_CFG_RANGE_TOP_UNBOUNDED,
   CT_TURRET_CFG_RANGE_SPHERE,
   CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP,
+  CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION,
   CT_TURRET_STATE_IDLE,
   CT_TURRET_STATE_TRACKING,
   CT_TURRET_STATE_ENGAGED,
@@ -471,6 +473,9 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   if (turret.config.shot && turret.config.shot.type === 'shield') {
     f |= CT_TURRET_CFG_SHOT_IS_FORCE;
   }
+  if (turretIgnoresForceMaterialSightObstruction(turret)) {
+    f |= CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION;
+  }
   if (ranges.tracking) f |= CT_TURRET_CFG_HAS_TRACKING_RANGE;
   if (turret.config.hostDirected) f |= CT_TURRET_CFG_HOST_DIRECTED;
   if (turret.config.requiredEngagedForFightStop) {
@@ -805,11 +810,12 @@ const _mirrorStampPivot = { x: 0, y: 0, z: 0 };
  *  projectile-reflection batch read current-tick surface data.
  *
  *  Materials Are Independent Of Shape: one pool holds both shapes.
- *   - Field surfaces come from getActiveShields(). When
- *     world.shieldsObstructSight is false the field group is rebuilt at
- *     count=0 (kernels short-circuit on empty and return "clear"). Projectile
- *     collision can opt into stamping the physical shields even when sight
- *     obstruction is disabled via `includeWhenSightDisabled`.
+ *   - Field surfaces come from getActiveShields(). When sphere shields are
+ *     disabled, or when world.shieldsObstructSight is false for a
+ *     targeting-only stamp, the field group is rebuilt at count=0 (kernels
+ *     short-circuit on empty and return "clear"). Projectile collision can
+ *     opt into stamping the physical shields even when sight obstruction is
+ *     disabled via `includeWhenSightDisabled`.
  *   - Flat-panel surfaces come from world.getShieldPanelUnits(), gated by
  *     world.turretShieldPanelsEnabled. Inactive / dead mirror turrets are
  *     skipped; panel rows pack contiguously by unit. The slope-aware turret
@@ -825,7 +831,10 @@ export function stampShieldSurfacePool(
   const pool = sim.shieldSurfacePool;
 
   // ── Spherical / infinite-cylinder field surfaces ──
-  if (!options.includeWhenSightDisabled && !world.shieldsObstructSight) {
+  if (
+    !world.turretShieldSpheresEnabled ||
+    (!options.includeWhenSightDisabled && !world.shieldsObstructSight)
+  ) {
     pool.setFieldCount(0);
   } else {
     const active = getActiveShields();

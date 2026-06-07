@@ -171,7 +171,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
   // no force material is active.
   const forceMaterialSightObstructionActive = world.shieldsObstructSight
     && (
-      getActiveShields().length > 0 ||
+      (world.turretShieldSpheresEnabled && getActiveShields().length > 0) ||
       (world.turretShieldPanelsEnabled && world.getShieldPanelUnits().length > 0)
     );
   const forceMaterialSightObstructionActiveFlag =

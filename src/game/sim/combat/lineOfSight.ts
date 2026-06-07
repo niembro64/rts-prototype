@@ -1,10 +1,10 @@
 // Terrain/entity line-of-sight gating for direct-fire turrets.
 //
-// High-arc shells lob over hills, shield emitters are area effects,
-// and shield panels rotate toward unseen threats — none of those care
-// about world occlusion. Everything else (cannons, beams, lasers,
-// gatlings) needs a clear sightline from its turret head to the target
-// aim point before it can lock on or keep firing. Cross-shield
+// High-arc shells lob over hills, and shield-only emitters maintain
+// area effects through their own force material. Everything else
+// (cannons, beams, lasers, gatlings, and shield emitters with offensive
+// submunitions) needs a clear sightline from its turret head to the
+// target aim point before it can lock on or keep firing. Cross-shield
 // sight obstruction is a separate targeting gate.
 
 import { LAND_CELL_SIZE } from '../../../config';
@@ -49,6 +49,16 @@ export function weaponRequiresNonObstructedLineOfSight(weapon: Turret): boolean 
   return weapon.config.requiresNonObstructedLineOfSight;
 }
 
+/** Whether this turret may keep its targeting ray through force material
+ *  when OBSTRUCT SIGHT is enabled. This is deliberately narrower than
+ *  "is a shield emission": shield-only emitters need the exemption to
+ *  maintain their own barrier, but shield emitters with offensive
+ *  submunitions must obey the same obstruction rule as every other
+ *  attacking turret. */
+export function turretIgnoresForceMaterialSightObstruction(weapon: Turret): boolean {
+  return weapon.config.shot?.type === 'shield' && weapon.config.submunitions === undefined;
+}
+
 export type ShieldClearanceOptions = {
   /** Number of shields a turret may "see through." 0 = any
    *  intervening field blocks lock-on (default). Future targeting
@@ -79,8 +89,7 @@ const NO_EXCLUDED_OWNER = -1;
 /** Which shield shapes a clearance query considers. Materials Are
  *  Independent Of Shape: spheres and flat panels are one material, so a
  *  single query answers both — the flags only exist so a caller can
- *  restrict to one shape (e.g. a battle-bar toggle disabling a turret type,
- *  or a passive panel turret that must not block its own sightline class). */
+ *  restrict to shapes currently enabled by battle-bar toggles. */
 export type ShieldShapeMask = {
   includeSpheres: boolean;
   includePanels: boolean;

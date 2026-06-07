@@ -56,6 +56,37 @@ export function getProjectileLaunchSpeed(shot: Pick<ProjectileShot, 'launchForce
   return shot.launchForce / shot.mass;
 }
 
+const FIRE_YAW_TOLERANCE = 0.16;
+const FIRE_PITCH_TOLERANCE = 0.16;
+const FIRE_BALLISTIC_PITCH_TOLERANCE = 0.025;
+
+function isBallisticArcWeapon(weapon: Turret): boolean {
+  const angleType = weapon.config.aimStyle.angleType;
+  return (
+    angleType === 'ballisticArcLow' ||
+    angleType === 'ballisticArcLowOnlyUnder' ||
+    angleType === 'ballisticArcHigh'
+  );
+}
+
+export function isWeaponAimedForFire(weapon: Turret): boolean {
+  if (weapon.config.verticalLauncher) return true;
+  const pitchTolerance = isBallisticArcWeapon(weapon)
+    ? FIRE_BALLISTIC_PITCH_TOLERANCE
+    : FIRE_PITCH_TOLERANCE;
+  // aimErrorYaw/Pitch default to 0, which is trivially within
+  // tolerance. This preserves the previous "no aim computed yet means
+  // trivially aimed" semantic.
+  return (
+    Math.abs(weapon.aimErrorYaw) <= FIRE_YAW_TOLERANCE &&
+    Math.abs(weapon.aimErrorPitch) <= pitchTolerance
+  );
+}
+
+export function isShieldSubmunitionTurret(weapon: Turret): boolean {
+  return weapon.config.shot?.type === 'shield' && weapon.config.submunitions !== undefined;
+}
+
 export function isLiveHomingTarget(entity: Entity): boolean {
   if (entity.unit !== null) return entity.unit.hp > 0;
   if (entity.building !== null) return entity.building.hp > 0;

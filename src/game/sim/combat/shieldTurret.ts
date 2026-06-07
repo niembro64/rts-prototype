@@ -5,7 +5,11 @@ import type { ShieldConfig } from '../types';
 import type { ShieldBarrierShape, ShieldReflectionMode } from '../../../types/shotTypes';
 import { getTransformCosSin } from '../../math';
 import { CT_TURRET_STATE_ENGAGED } from '../../sim-wasm/init';
-import { updateWeaponWorldKinematics } from './combatUtils';
+import {
+  isShieldSubmunitionTurret,
+  isWeaponAimedForFire,
+  updateWeaponWorldKinematics,
+} from './combatUtils';
 import {
   readCombatTargetingTurretFsmInto,
   type CombatTargetingTurretFsmOut,
@@ -18,15 +22,6 @@ const _shieldFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_ENGAGED,
   targetId: -1,
 };
-const SHIELD_FIRE_YAW_TOLERANCE = 0.16;
-const SHIELD_FIRE_PITCH_TOLERANCE = 0.16;
-
-function isAimedCylinderReadyForEmission(weapon: { aimErrorYaw: number; aimErrorPitch: number }): boolean {
-  return (
-    Math.abs(weapon.aimErrorYaw) <= SHIELD_FIRE_YAW_TOLERANCE &&
-    Math.abs(weapon.aimErrorPitch) <= SHIELD_FIRE_PITCH_TOLERANCE
-  );
-}
 
 // Compact list of shield weapons with progress > 0, built by
 // updateShieldState() and consumed by projectile collision and the
@@ -110,16 +105,21 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
         ? _shieldFsm.stateCode === CT_TURRET_STATE_ENGAGED
         : weapon.state === 'engaged';
       const targetId = hasTargetingFsm ? _shieldFsm.targetId : (weapon.target ?? -1);
-      const aimedCylinderReady = fieldShot.barrier?.shape === 'aimedCylinder'
-        ? isAimedCylinderReadyForEmission(weapon)
+      const hasAimedCylinderBarrier = fieldShot.barrier?.shape === 'aimedCylinder';
+      const aimedCylinderReady = hasAimedCylinderBarrier
+        ? isWeaponAimedForFire(weapon)
         : true;
-      const targetProgress = engaged && aimedCylinderReady ? 1 : 0;
-      const progressDelta = dtMs / transitionTime;
-
-      if (weapon.shield.transition < targetProgress) {
-        weapon.shield.transition = Math.min(weapon.shield.transition + progressDelta, 1);
-      } else if (weapon.shield.transition > targetProgress) {
-        weapon.shield.transition = Math.max(weapon.shield.transition - progressDelta, 0);
+      const aimedCylinderHasTarget = !hasAimedCylinderBarrier || targetId !== -1;
+      const targetProgress = engaged && aimedCylinderReady && aimedCylinderHasTarget ? 1 : 0;
+      if (isShieldSubmunitionTurret(weapon)) {
+        weapon.shield.transition = targetProgress;
+      } else {
+        const progressDelta = transitionTime > 0 ? dtMs / transitionTime : Number.POSITIVE_INFINITY;
+        if (weapon.shield.transition < targetProgress) {
+          weapon.shield.transition = Math.min(weapon.shield.transition + progressDelta, 1);
+        } else if (weapon.shield.transition > targetProgress) {
+          weapon.shield.transition = Math.max(weapon.shield.transition - progressDelta, 0);
+        }
       }
 
       // Serialize authoritative barrier activation progress as

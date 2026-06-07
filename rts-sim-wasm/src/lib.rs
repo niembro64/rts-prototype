@@ -16924,6 +16924,10 @@ pub const CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED: u16 = 1 << 9;
 pub const CT_TURRET_CFG_RANGE_TOP_UNBOUNDED: u16 = 1 << 10;
 pub const CT_TURRET_CFG_RANGE_SPHERE: u16 = 1 << 11;
 pub const CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP: u16 = 1 << 12;
+/// Shield-only emitters maintain force material and may keep targeting
+/// through that material. Offensive shield emitters with submunitions do
+/// not set this; their damaging fire uses the normal OBSTRUCT SIGHT gate.
+pub const CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION: u16 = 1 << 13;
 
 // FSM state encodings (CT_TURRET_STATE_*) are generated from
 // src/wireEnums.json — see the include! near the top of this file.
@@ -20089,6 +20093,11 @@ fn combat_targeting_weapon_system_disabled(
 }
 
 #[inline]
+fn combat_targeting_turret_ignores_force_material_sight_obstruction(flags: u16) -> bool {
+    (flags & CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION) != 0
+}
+
+#[inline]
 fn combat_targeting_entity_has_enabled_weapon(
     pool: &CombatTargetingPool,
     entity_slot: u32,
@@ -20809,9 +20818,12 @@ fn combat_targeting_slab_gate_config(
 ///     mirroring the TS `weaponUsesNormalAim`/`weaponNeedsBallisticSolution`
 ///     short-circuit.
 ///   - `shield_clear`: segment-checks the FF pool from mount to
-///     raw aim point and ANDs with the JS-precomputed shield-panel
-///     mask. Skipped (returns `1`) when the feature is off or for
-///     force-shot weapons that maintain the material themselves.
+///     raw aim point. Panel and sphere shapes use the same material
+///     policy and differ only in their intersection math. Skipped
+///     (returns `1`) when the feature is off, the shape toggles leave
+///     no active shield material, or for shield-only emitters that
+///     maintain the material themselves. Shield emitters with offensive
+///     submunitions do not get the exemption.
 ///
 /// The helper short-circuits in cost-increasing order to match the TS
 /// gate evaluation: LOS → ballistic → FF. Ground-aim fraction applies
@@ -20836,6 +20848,8 @@ fn compute_turret_gates_for_aim_point(
     source_entity_id: i32,
     terrain_step_len: f64,
     entity_line_width: f64,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
     shield_obstruction_active: u8,
     projectile_speed: f64,
     arc_preference: u8,
@@ -20924,33 +20938,39 @@ fn compute_turret_gates_for_aim_point(
     let mut shield_clear: u8 = 1;
     if ballistic_clear != 0
         && shield_obstruction_active != 0
-        && (flags & CT_TURRET_CFG_SHOT_IS_FORCE) == 0
+        && !combat_targeting_turret_ignores_force_material_sight_obstruction(flags)
     {
-        // Passive shield-panel weapons skip the panel walk by contract: a
-        // shield-panel turret cannot block its own sightline class.
-        // Matches the JS-side `weapon.config.passive !== true` gate in
-        // fillCandidateMirrorPanelMask / fillExistingLockGateInputs. Spheres
-        // and panels are one material, so a single clearance call with a shared
-        // crossing budget of 0 answers both shapes at once.
-        let include_panels: u8 = if (flags & CT_TURRET_CFG_PASSIVE) != 0 {
-            0
-        } else {
+        // Spheres and panels are one material, so a single clearance call
+        // with a shared crossing budget answers both shapes at once. The
+        // battle toggles decide which shapes are present; no turret-family
+        // branch may make panel material transparent while sphere material
+        // is opaque.
+        let include_spheres: u8 = if turret_shield_spheres_enabled != 0 {
             1
+        } else {
+            0
         };
-        if shield_clearance_segment(
-            mount_x,
-            mount_y,
-            mount_z,
-            raw_aim_x,
-            raw_aim_y,
-            raw_aim_z,
-            -1,
-            0,
-            1,
-            include_panels,
-        ) == 0
-        {
-            shield_clear = 0;
+        let include_panels: u8 = if turret_shield_panels_enabled != 0 {
+            1
+        } else {
+            0
+        };
+        if include_spheres != 0 || include_panels != 0 {
+            if shield_clearance_segment(
+                mount_x,
+                mount_y,
+                mount_z,
+                raw_aim_x,
+                raw_aim_y,
+                raw_aim_z,
+                -1,
+                0,
+                include_spheres,
+                include_panels,
+            ) == 0
+            {
+                shield_clear = 0;
+            }
         }
     }
 
@@ -21053,6 +21073,8 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
             source_entity_id,
             terrain_step_len,
             entity_line_width,
+            turret_shield_panels_enabled,
+            turret_shield_spheres_enabled,
             shield_obstruction_active,
             projectile_speed,
             arc_preference,
@@ -21435,6 +21457,8 @@ fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner(
                     source_entity_id,
                     terrain_step_len,
                     entity_line_width,
+                    turret_shield_panels_enabled,
+                    turret_shield_spheres_enabled,
                     shield_obstruction_active,
                     projectile_speed,
                     arc_preference,
@@ -21650,6 +21674,8 @@ fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
                 source_entity_id,
                 terrain_step_len,
                 entity_line_width,
+                turret_shield_panels_enabled,
+                turret_shield_spheres_enabled,
                 shield_obstruction_active,
                 projectile_speed,
                 arc_preference,
@@ -23346,6 +23372,8 @@ fn combat_targeting_candidate_slot_gate_passes(
     source_entity_id: i32,
     terrain_step_len: f64,
     entity_line_width: f64,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
     shield_obstruction_active: u8,
     gravity: f64,
     projectile_speed: f64,
@@ -23406,6 +23434,8 @@ fn combat_targeting_candidate_slot_gate_passes(
         source_entity_id,
         terrain_step_len,
         entity_line_width,
+        turret_shield_panels_enabled,
+        turret_shield_spheres_enabled,
         shield_obstruction_active,
         projectile_speed,
         arc_preference,
@@ -23719,6 +23749,8 @@ fn combat_targeting_compute_and_choose_best_candidates_batch_inner(
             source_entity_id,
             terrain_step_len,
             entity_line_width,
+            turret_shield_panels_enabled,
+            turret_shield_spheres_enabled,
             shield_obstruction_active,
             gravity,
             projectile_speed,
@@ -23778,6 +23810,8 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
     source_entity_id: i32,
     terrain_step_len: f64,
     entity_line_width: f64,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
     shield_obstruction_active: u8,
     gravity: f64,
     projectile_speed: f64,
@@ -23964,6 +23998,8 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             source_entity_id,
             terrain_step_len,
             entity_line_width,
+            turret_shield_panels_enabled,
+            turret_shield_spheres_enabled,
             shield_obstruction_active,
             gravity,
             projectile_speed,
@@ -24069,6 +24105,8 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             source_entity_id,
             terrain_step_len,
             entity_line_width,
+            turret_shield_panels_enabled,
+            turret_shield_spheres_enabled,
             shield_obstruction_active,
             gravity,
             projectile_speed,
@@ -25567,8 +25605,7 @@ fn shield_projectile_intersection(
 /// shield shapes against a single crossing budget. Spheres and flat
 /// panels are the same material, so a crossing of either counts the same.
 /// `include_spheres` / `include_panels` let a caller restrict the query to
-/// one shape — used by the targeting gate, where a passive panel turret must
-/// not block its own sightline class (it skips the panel walk).
+/// shapes currently enabled by battle toggles.
 #[wasm_bindgen]
 pub fn shield_clearance_segment(
     sx: f64,
@@ -36744,6 +36781,220 @@ mod lock_on_inclusion_tests {
         let pool = combat_targeting_pool();
         let idx = combat_targeting_turret_global_idx(SOURCE_SLOT, turret_idx);
         (pool.turret_target_id[idx], pool.turret_state[idx])
+    }
+
+    #[test]
+    fn obstruct_sight_blocks_non_exempt_turrets() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                flags: CT_TURRET_CFG_HOST_DIRECTED | CT_TURRET_CFG_PASSIVE,
+                ..TurretSpec::default()
+            },
+        );
+
+        shield_panel_pool_set_unit_count(1);
+        shield_panel_pool_set_panel_count(1);
+        shield_panel_pool_set_unit(
+            0, 900, 10.0, 0.0, 0.0, 0.0, 100.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0, 1,
+        );
+        shield_panel_pool_set_panel(0, 0.0, 0.0, 0.0, -10.0, 10.0, 10.0);
+
+        let idx = combat_targeting_turret_global_idx(SOURCE_SLOT, 0);
+        let flags = combat_targeting_pool().turret_config_flags[idx];
+        let (_, ballistic_clear, panel_clear) = compute_turret_gates_for_aim_point(
+            combat_targeting_pool(),
+            SOURCE_SLOT,
+            0,
+            idx,
+            flags,
+            0.0,
+            0.0,
+            0.0,
+            20.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -1,
+            SOURCE_ID,
+            10.0,
+            0.0,
+            1,
+            0,
+            1,
+            0.0,
+            0,
+            0.0,
+            0.0,
+            false,
+            9.81,
+        );
+        assert_eq!(ballistic_clear, 1);
+        assert_eq!(
+            panel_clear, 0,
+            "OBSTRUCT SIGHT should not make passive non-force turrets see through shield panels",
+        );
+
+        let (_, _, disabled_panel_clear) = compute_turret_gates_for_aim_point(
+            combat_targeting_pool(),
+            SOURCE_SLOT,
+            0,
+            idx,
+            flags,
+            0.0,
+            0.0,
+            0.0,
+            20.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -1,
+            SOURCE_ID,
+            10.0,
+            0.0,
+            0,
+            0,
+            1,
+            0.0,
+            0,
+            0.0,
+            0.0,
+            false,
+            9.81,
+        );
+        assert_eq!(disabled_panel_clear, 1);
+
+        let offensive_shield_flags = (flags & !CT_TURRET_CFG_PASSIVE) | CT_TURRET_CFG_SHOT_IS_FORCE;
+        let (_, _, shield_submunition_clear) = compute_turret_gates_for_aim_point(
+            combat_targeting_pool(),
+            SOURCE_SLOT,
+            0,
+            idx,
+            offensive_shield_flags,
+            0.0,
+            0.0,
+            0.0,
+            20.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -1,
+            SOURCE_ID,
+            10.0,
+            0.0,
+            1,
+            0,
+            1,
+            0.0,
+            0,
+            0.0,
+            0.0,
+            false,
+            9.81,
+        );
+        assert_eq!(
+            shield_submunition_clear, 0,
+            "shield-emission turrets with offensive submunitions must obey OBSTRUCT SIGHT",
+        );
+
+        let (_, _, shield_only_clear) = compute_turret_gates_for_aim_point(
+            combat_targeting_pool(),
+            SOURCE_SLOT,
+            0,
+            idx,
+            offensive_shield_flags | CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION,
+            0.0,
+            0.0,
+            0.0,
+            20.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -1,
+            SOURCE_ID,
+            10.0,
+            0.0,
+            1,
+            0,
+            1,
+            0.0,
+            0,
+            0.0,
+            0.0,
+            false,
+            9.81,
+        );
+        assert_eq!(
+            shield_only_clear, 1,
+            "shield-only emitters keep their maintenance exemption",
+        );
+
+        shield_pool_set_count(1);
+        shield_pool_set_field(
+            0,
+            901,
+            901,
+            10.0,
+            0.0,
+            0.0,
+            10.0,
+            0.0,
+            1.0,
+            10.0,
+            0.0,
+            0.0,
+            10.0,
+            0.0,
+            1.0,
+            5.0,
+            SHIELD_FIELD_SHAPE_SPHERE,
+            SHIELD_REFLECTION_MODE_BOTH,
+        );
+        let (_, _, active_field_clear) = compute_turret_gates_for_aim_point(
+            combat_targeting_pool(),
+            SOURCE_SLOT,
+            0,
+            idx,
+            offensive_shield_flags,
+            0.0,
+            0.0,
+            0.0,
+            10.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -1,
+            SOURCE_ID,
+            10.0,
+            0.0,
+            0,
+            1,
+            1,
+            0.0,
+            0,
+            0.0,
+            0.0,
+            false,
+            9.81,
+        );
+        assert_eq!(
+            active_field_clear, 0,
+            "active shield fields around targets must block shield submunition turrets",
+        );
     }
 
     fn stamp_body_target(slot: u32, entity_id: i32, owner: u8, x: f64, family: u8, code: u8) {
