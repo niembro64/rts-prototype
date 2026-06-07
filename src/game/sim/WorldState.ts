@@ -2,13 +2,9 @@ import type {
   Entity,
   EntityId,
   EntityMeta,
-  EntityMetaBlueprintKind,
-  EntityMetaKind,
   EntityType,
   PlayerId,
-  ShotSource,
   TurretConfig,
-  Projectile,
   ProjectileConfig,
   ProjectileType,
   UnitLocomotion,
@@ -18,14 +14,17 @@ import {
   createCombatComponent,
   createEmptyEntityComponentSlots,
   createTransform,
-  getEmissionBlueprintId,
-  isProjectileShot,
   NO_ENTITY_ID,
-  PROJECTILE_ABSENCE_SLOTS,
 } from './types';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ResourceMovement } from './resourceMovement';
 import { EntityCacheManager } from './EntityCacheManager';
+import { WorldEntityMetadata } from './WorldEntityMetadata';
+import { SeededRNG } from './SeededRNG';
+import {
+  WorldProjectileFactory,
+  type CreateProjectileProvenance,
+} from './WorldProjectileFactory';
 import { getUnitBlueprint, getUnitLocomotion } from './blueprints';
 import { cloneUnitLocomotion } from './locomotion';
 import { createUnitRuntimeTurrets } from './runtimeTurrets';
@@ -38,7 +37,6 @@ import {
   UNIT_HP_MULTIPLIER,
   UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
   LAND_CELL_SIZE,
-  DGUN_TERRAIN_FOLLOW_HEIGHT,
 } from '../../config';
 import type { ShieldReflectionMode } from '../../types/shotTypes';
 import {
@@ -48,9 +46,7 @@ import {
   isWaterAt,
 } from './Terrain';
 import { buildShieldPanelCache } from './shieldPanelCache';
-import { createProjectileConfigFromTurret } from './projectileConfigs';
 import { ENTITY_CHANGED_HP } from '../../types/network';
-import { isConstructionPieceMaterialized } from './buildableHelpers';
 import { createCollisionTopBuildingSupportSurface } from './buildingSupportSurface';
 import { cloneUnitSupportSurface } from './unitSupportSurface';
 import {
@@ -62,6 +58,9 @@ import {
   SupportSurfaceIndex,
   type SupportSurfaceIndexQueryOptions,
 } from './supportSurfaceIndex';
+
+export { SeededRNG } from './SeededRNG';
+export type { CreateProjectileProvenance } from './WorldProjectileFactory';
 
 const TERRAIN_NORMAL_CACHE_CELL_SIZE = 25;
 const EMPTY_PLAYER_SET: ReadonlySet<PlayerId> = new Set();
@@ -90,49 +89,11 @@ export type RemovedSnapshotEntity = {
   type: 'unit' | 'building' | 'tower';
 };
 
-export type CreateProjectileProvenance = {
-  /** Runtime emission blueprint for this projectile body. Submunitions use child shot blueprint ids here. */
-  shotBlueprintId?: string | null;
-  /** Immutable source record. Submunitions pass a copy of their parent's source record. */
-  shotSource?: ShotSource | null;
-};
-
-// Seeded random number generator for determinism
-export class SeededRNG {
-  private seed: number;
-
-  constructor(seed: number) {
-    this.seed = seed;
-  }
-
-  // Simple mulberry32 PRNG
-  next(): number {
-    let t = (this.seed += 0x6d2b79f5);
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  }
-
-  // Random in range [min, max)
-  range(min: number, max: number): number {
-    return min + this.next() * (max - min);
-  }
-
-  // Get current seed for state saving
-  getSeed(): number {
-    return this.seed;
-  }
-
-  // Set seed for state restoration
-  setSeed(seed: number): void {
-    this.seed = seed;
-  }
-}
-
 // World state holds all entities and game state
 export class WorldState {
   private entities: Map<EntityId, Entity> = new Map();
-  private entityMetaById: Map<EntityId, EntityMeta> = new Map();
+  private readonly entityMetadata: WorldEntityMetadata;
+  private readonly projectileFactory: WorldProjectileFactory;
   private nextEntityId: EntityId = 1;
   private tick: number = 0;
   private buildingVersion: number = 0;
@@ -243,6 +204,12 @@ export class WorldState {
   private supportSurfaceIndex = new SupportSurfaceIndex();
 
   constructor(seed: number = 12345, mapWidth: number = 2000, mapHeight: number = 2000) {
+    this.entityMetadata = new WorldEntityMetadata(this.entities, (playerId) => this.getTeamId(playerId));
+    this.projectileFactory = new WorldProjectileFactory({
+      generateEntityId: () => this.generateEntityId(),
+      getTeamId: (playerId) => this.getTeamId(playerId),
+      getTick: () => this.tick,
+    });
     this.rng = new SeededRNG(seed);
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
@@ -358,168 +325,35 @@ export class WorldState {
   }
 
   getEntityMeta(id: EntityId): EntityMeta | undefined {
-    return this.entityMetaById.get(id);
+    return this.entityMetadata.get(id);
   }
 
   resolveMountedTurret(id: EntityId): { host: Entity; turret: NonNullable<Entity['combat']>['turrets'][number] } | undefined {
-    const meta = this.entityMetaById.get(id);
-    if (meta === undefined || !meta.alive || meta.kind !== 'turret' || meta.parentId === null) {
-      return undefined;
-    }
-    const host = this.entities.get(meta.parentId);
-    if (host === undefined) return undefined;
-    const combat = host.combat;
-    if (combat === null) return undefined;
-    const turret = combat.turrets[meta.mountIndex ?? -1];
-    if (turret === undefined || turret.id !== id || !this.isHostBodyLive(host)) return undefined;
-    return { host, turret };
-  }
-
-  private upsertEntityMeta(meta: EntityMeta): void {
-    const previous = this.entityMetaById.get(meta.id);
-    const generation = previous !== undefined && previous.alive
-      ? previous.generation
-      : (previous?.generation ?? 0) + 1;
-    this.entityMetaById.set(meta.id, {
-      ...meta,
-      generation,
-      alive: true,
-    });
+    return this.entityMetadata.resolveMountedTurret(id);
   }
 
   resolveEntityMeta(id: EntityId, generation: number): EntityMeta | undefined {
-    const meta = this.entityMetaById.get(id);
-    if (meta === undefined || !meta.alive || meta.generation !== generation) return undefined;
-    return meta;
-  }
-
-  private entityBlueprintKind(entity: Entity): EntityMetaBlueprintKind {
-    if (entity.type === 'unit') return 'unit';
-    if (entity.type === 'tower') return 'tower';
-    if (entity.type === 'building') return 'building';
-    if (entity.type === 'shot') return 'shot';
-    return 'none';
-  }
-
-  private entityBlueprintId(entity: Entity): string | null {
-    if (entity.unit !== null) return entity.unit.unitBlueprintId;
-    if (entity.buildingBlueprintId !== null) return entity.buildingBlueprintId;
-    if (entity.projectile !== null) return entity.projectile.shotBlueprintId;
-    return null;
-  }
-
-  private isHostBodyLive(entity: Entity): boolean {
-    if (entity.unit !== null) return entity.unit.hp > 0 && isConstructionPieceMaterialized(entity, 'body');
-    if (entity.building !== null) return entity.building.hp > 0 && isConstructionPieceMaterialized(entity, 'body');
-    return false;
+    return this.entityMetadata.resolve(id, generation);
   }
 
   private registerEntityMetadata(entity: Entity): void {
-    const ownerPlayerId = entity.ownership !== null ? entity.ownership.playerId : null;
-    const teamId = ownerPlayerId !== null ? this.getTeamId(ownerPlayerId) : null;
-    const entityKind: EntityMetaKind = entity.type;
-    const rootHostId = entity.projectile !== null
-      ? entity.projectile.shotSource.sourceRootEntityId
-      : entity.id;
-    const bodyTargetable =
-      entity.unit !== null
-        ? entity.unit.hp > 0 && isConstructionPieceMaterialized(entity, 'body')
-        : (entity.building !== null
-          ? entity.building.hp > 0 && isConstructionPieceMaterialized(entity, 'body')
-          : (entity.projectile !== null ? entity.projectile.hp > 0 : false));
-    this.upsertEntityMeta({
-      id: entity.id,
-      kind: entityKind,
-      blueprintKind: this.entityBlueprintKind(entity),
-      blueprintId: this.entityBlueprintId(entity),
-      ownerPlayerId,
-      teamId,
-      parentId: null,
-      rootHostId,
-      mountIndex: null,
-      storagePool: 'entities',
-      storageSlot: entity.id,
-      generation: 0,
-      alive: true,
-      targetable: bodyTargetable,
-    });
-
-    const combat = entity.combat;
-    if (combat !== null) {
-      for (let i = 0; i < combat.turrets.length; i++) {
-        const turret = combat.turrets[i];
-        if (turret.id === NO_ENTITY_ID) continue;
-        if (!isConstructionPieceMaterialized(entity, 'body')) {
-          this.markMetaDead(turret.id);
-          continue;
-        }
-        if (!bodyTargetable) {
-          this.markMetaDead(turret.id);
-          continue;
-        }
-        this.upsertEntityMeta({
-          id: turret.id,
-          kind: 'turret',
-          blueprintKind: 'turret',
-          blueprintId: turret.config.turretBlueprintId,
-          ownerPlayerId,
-          teamId,
-          parentId: turret.parentId,
-          rootHostId: turret.rootHostId,
-          mountIndex: turret.mountIndex,
-          storagePool: 'combat.turrets',
-          storageSlot: i,
-          generation: 0,
-          alive: true,
-          targetable: !turret.config.visualOnly && bodyTargetable,
-        });
-      }
-    }
-
-  }
-
-  private markMetaDead(id: EntityId): void {
-    const previous = this.entityMetaById.get(id);
-    if (previous === undefined || !previous.alive) return;
-    this.entityMetaById.set(id, {
-      ...previous,
-      alive: false,
-      targetable: false,
-    });
+    this.entityMetadata.register(entity);
   }
 
   markSubEntityMetadataDead(id: EntityId): void {
-    this.markMetaDead(id);
+    this.entityMetadata.markSubEntityDead(id);
   }
 
   refreshEntityMetadata(entity: Entity): void {
-    this.registerEntityMetadata(entity);
+    this.entityMetadata.refresh(entity);
   }
 
   setSubEntityMetadataTargetable(id: EntityId, targetable: boolean): void {
-    const previous = this.entityMetaById.get(id);
-    if (previous === undefined || !previous.alive || previous.storagePool === 'entities') return;
-    const mountedTurret = previous.kind === 'turret' ? this.resolveMountedTurret(id) : undefined;
-    const canEverTarget =
-      mountedTurret !== undefined &&
-      this.isHostBodyLive(mountedTurret.host) &&
-      !mountedTurret.turret.config.visualOnly;
-    const nextTargetable = targetable && canEverTarget;
-    if (previous.targetable === nextTargetable) return;
-    this.entityMetaById.set(id, {
-      ...previous,
-      targetable: nextTargetable,
-    });
+    this.entityMetadata.setSubEntityTargetable(id, targetable);
   }
 
   private markEntityMetadataDead(entity: Entity): void {
-    this.markMetaDead(entity.id);
-    const combat = entity.combat;
-    if (combat !== null) {
-      for (let i = 0; i < combat.turrets.length; i++) {
-        this.markMetaDead(combat.turrets[i].id);
-      }
-    }
+    this.entityMetadata.markEntityDead(entity);
   }
 
   // Get current tick
@@ -1155,30 +989,16 @@ export class WorldState {
     config: TurretConfig,
     provenance: CreateProjectileProvenance | null = null,
   ): Entity {
-    const entity = this.createProjectile(
-      x, y, velocityX, velocityY, ownerId, sourceEntityId,
-      createProjectileConfigFromTurret(config),
-      'projectile',
+    return this.projectileFactory.createDGunProjectile(
+      x,
+      y,
+      velocityX,
+      velocityY,
+      ownerId,
+      sourceEntityId,
+      config,
       provenance,
     );
-
-    // Mark as D-gun wave; projectile integration applies gravity plus
-    // bounded vertical thrust to ride terrain at this offset.
-    entity.dgunProjectile = {
-      isDGun: true,
-      groundOffset: DGUN_TERRAIN_FOLLOW_HEIGHT,
-    };
-
-    // D-gun hits everything (infinite hits)
-    if (entity.projectile) {
-      entity.projectile.maxHits = Infinity;
-      const speed = Math.hypot(velocityX, velocityY);
-      if (speed > 1e-6 && Number.isFinite(config.range) && config.range > 0) {
-        entity.projectile.maxLifespan = (config.range / speed) * 1000;
-      }
-    }
-
-    return entity;
   }
 
   // Create a building entity
@@ -1232,76 +1052,17 @@ export class WorldState {
     projectileType: ProjectileType = 'projectile',
     provenance: CreateProjectileProvenance | null = null,
   ): Entity {
-    const id = this.generateEntityId();
-
-    // Calculate rotation from velocity
-    const rotation = Math.atan2(velocityY, velocityX);
-
-    // Traveling projectile shots do not carry authored time-to-live values; they
-    // terminate through collision/ground physics. Line shots still use
-    // this runtime timeout for laser pulse duration.
-    const maxLifespan = config.shotProfile.runtime.maxLifespan;
-    const shotHealth = isProjectileShot(config.shot) ? config.shot.health : 0;
-
-    // Always single hit (DGun overrides maxHits to Infinity after creation)
-    const maxHits = 1;
-    const shotBlueprintId = provenance !== null && provenance.shotBlueprintId !== undefined && provenance.shotBlueprintId !== null
-      ? provenance.shotBlueprintId
-      : getEmissionBlueprintId(config.shot);
-    const shotSource: ShotSource = provenance !== null && provenance.shotSource !== undefined && provenance.shotSource !== null
-      ? { ...provenance.shotSource }
-      : {
-        sourceTurretEntityId: null,
-        sourceHostEntityId: sourceEntityId,
-        sourceRootEntityId: sourceEntityId,
-        sourcePlayerId: ownerId,
-        sourceTeamId: this.getTeamId(ownerId),
-        sourceTurretBlueprintId: config.sourceTurretBlueprintId,
-        sourceShotBlueprintId: shotBlueprintId,
-        spawnTick: this.tick,
-        parentShotEntityId: null,
-      };
-
-    // createProjectile's z/vz defaults to "fired horizontally at
-    // source turret height" — M6 (projectile ballistics) will override
-    // these with per-turret pitch and ballistic solutions. The point
-    // of this commit is just that the fields exist and get serialized.
-    const projectile: Projectile = {
+    return this.projectileFactory.createProjectile(
+      x,
+      y,
+      velocityX,
+      velocityY,
       ownerId,
       sourceEntityId,
       config,
-      shotBlueprintId,
-      shotSource,
-      sourceTurretBlueprintId: shotSource.sourceTurretBlueprintId ?? config.sourceTurretBlueprintId,
-      ...PROJECTILE_ABSENCE_SLOTS,
       projectileType,
-      hp: shotHealth,
-      maxHp: shotHealth,
-      velocityX,
-      velocityY,
-      velocityZ: 0,
-      timeAlive: 0,
-      maxLifespan,
-      hitEntities: new Set<EntityId>(),
-      maxHits,
-      isArmed: projectileType !== 'projectile' || config.shotProfile.runtime.armingDelayMs <= 0,
-      hasLeftSource: false,
-      homingTargetId: NO_ENTITY_ID,
-      lastSentVelX: velocityX,
-      lastSentVelY: velocityY,
-      lastSentVelZ: 0,
-    };
-
-    const entity: Entity = {
-      ...createEmptyEntityComponentSlots(),
-      id,
-      type: 'shot',
-      transform: createTransform(x, y, 0, rotation),
-      ownership: { playerId: ownerId },
-      projectile,
-    };
-
-    return entity;
+      provenance,
+    );
   }
 
   // Create a beam / laser projectile. Beams are instantaneous line
@@ -1322,23 +1083,17 @@ export class WorldState {
     projectileType: 'beam' | 'laser' = 'beam',
     provenance: CreateProjectileProvenance | null = null,
   ): Entity {
-    const entity = this.createProjectile(startX, startY, 0, 0, ownerId, sourceEntityId, config, projectileType, provenance);
-    entity.transform.z = beamZ;
-
-    if (entity.projectile) {
-      // Seed a 2-point open-ended polyline (start, authored range end).
-      // The per-tick beam handler will overwrite positions and
-      // append/remove reflection vertices each re-trace; we own these
-      // objects in place so the array reference is stable across the
-      // projectile's lifetime.
-      entity.projectile.points = [
-        { x: startX, y: startY, z: beamZ, vx: 0, vy: 0, vz: 0 },
-        { x: endX, y: endY, z: beamZ, vx: 0, vy: 0, vz: 0 },
-      ];
-      entity.projectile.endpointDamageable = false;
-      entity.projectile.segmentLimitReached = false;
-    }
-
-    return entity;
+    return this.projectileFactory.createBeam(
+      startX,
+      startY,
+      beamZ,
+      endX,
+      endY,
+      ownerId,
+      sourceEntityId,
+      config,
+      projectileType,
+      provenance,
+    );
   }
 }
