@@ -11,6 +11,11 @@ import {
   getEntityVisibilityPadding,
 } from '../sim/sensorCoverage';
 import { getSimWasm } from '../sim-wasm/init';
+import {
+  createFloat64WireRows,
+  reserveFloat64WireRows,
+  type Float64WireRows,
+} from './snapshotWireRows';
 
 export {
   BUILDING_VISION_RADIUS,
@@ -63,6 +68,46 @@ export const VISIBILITY_CLASS_OUT_OF_RANGE = 0;
 export const VISIBILITY_CLASS_IN_EARSHOT = 1;
 export const VISIBILITY_CLASS_IN_VISION = 2;
 export type VisibilityClass = 0 | 1 | 2;
+export const SCAN_PULSE_WIRE_STRIDE = 6;
+
+export type ScanPulseWireSource = Float64WireRows;
+
+type MutableScanPulseWireRow = Float64Array | number[];
+
+const scanPulseWireSources = new WeakMap<object, ScanPulseWireSource>();
+const directScanPulseWireSource = createFloat64WireRows();
+const _scanPulseWireSource = createFloat64WireRows();
+
+export function getScanPulseWireSource(
+  pulses: readonly NetworkServerSnapshotScanPulse[],
+): ScanPulseWireSource | undefined {
+  return scanPulseWireSources.get(pulses);
+}
+
+export function writeScanPulseWireRow(
+  values: MutableScanPulseWireRow,
+  base: number,
+  pulse: NetworkServerSnapshotScanPulse,
+): void {
+  values[base + 0] = pulse.playerId;
+  values[base + 1] = pulse.x;
+  values[base + 2] = pulse.y;
+  values[base + 3] = pulse.z;
+  values[base + 4] = pulse.radius;
+  values[base + 5] = pulse.expiresAtTick;
+}
+
+function appendScanPulseWireRow(
+  source: ScanPulseWireSource,
+  pulse: NetworkServerSnapshotScanPulse,
+): void {
+  const rowIndex = reserveFloat64WireRows(source, 1, SCAN_PULSE_WIRE_STRIDE);
+  writeScanPulseWireRow(
+    source.values,
+    rowIndex * SCAN_PULSE_WIRE_STRIDE,
+    pulse,
+  );
+}
 
 /** Per-recipient visibility filter.
  *
@@ -539,22 +584,26 @@ export class SnapshotVisibility {
     }
   }
 
-  /** Wire DTOs for the recipient's team-owned scan pulses, built in
+  /** Wire rows for the recipient's team-owned scan pulses, built in
    *  the same pass that seeds the spatial-hash sources
    *  (FOW-OPT-16). Shared across teammates via the
    *  per-emit visibility cache so two teammates' snapshots ship the
-   *  same array reference instead of each walking world.scanPulses
+   *  same row source instead of each walking world.scanPulses
    *  independently to produce identical content. */
+  private readonly cachedScanPulseWireSource: ScanPulseWireSource = createFloat64WireRows();
   private readonly cachedScanPulseDtos: NetworkServerSnapshotScanPulse[] = [];
+  private cachedScanPulseDtoCount = -1;
 
   /** Merge active scan pulses into the full-vision source pool for any
    *  pulse owned by the recipient or one of their allies (FOW-14 +
    *  FOW-06). Pulses don't currently grant radar vision —
    *  treat them as a brief floodlight only. Also populates the
-   *  cached wire-DTO array for serializeScanPulses (FOW-OPT-16) so
-   *  the wire serialization is a lookup, not a second filter walk. */
+   *  cached wire-row source for scan-pulse serialization (FOW-OPT-16)
+   *  so direct wire serialization is a lookup, not a second filter walk. */
   private addScanPulseSources(world: WorldState): void {
+    this.cachedScanPulseWireSource.count = 0;
     this.cachedScanPulseDtos.length = 0;
+    this.cachedScanPulseDtoCount = -1;
     const pulses = world.scanPulses;
     if (pulses.length === 0) return;
     for (let i = 0; i < pulses.length; i++) {
@@ -577,24 +626,51 @@ export class SnapshotVisibility {
           pulse.radius + EARSHOT_PAD,
         );
       }
-      this.cachedScanPulseDtos.push({
-        playerId: pulse.playerId,
-        x: pulse.x,
-        y: pulse.y,
-        z: pulse.z,
-        radius: pulse.radius,
-        expiresAtTick: pulse.expiresAtTick,
-      });
+      appendScanPulseWireRow(this.cachedScanPulseWireSource, pulse);
     }
   }
 
-  /** Per-team scan-pulse DTO array built alongside the spatial hash
-   *  (FOW-OPT-16). Filtered visibilities only — admin /
-   *  spectator paths fall back to a full re-walk in
-   *  serializeScanPulses. Callers must not mutate the returned
-   *  array; it's shared across teammates via the visibility cache. */
+  /** Per-team scan-pulse DTO array materialized lazily from the
+   *  row cache. Filtered visibilities only — admin / spectator paths
+   *  fall back to a full re-walk in serializeScanPulses. Callers must
+   *  not mutate the returned array; it's shared across teammates via
+   *  the visibility cache. */
   getCachedScanPulseDtos(): NetworkServerSnapshotScanPulse[] {
-    return this.cachedScanPulseDtos;
+    const source = this.cachedScanPulseWireSource;
+    if (this.cachedScanPulseDtoCount === source.count) {
+      return this.cachedScanPulseDtos;
+    }
+
+    const dtos = this.cachedScanPulseDtos;
+    dtos.length = source.count;
+    const values = source.values;
+    for (let i = 0; i < source.count; i++) {
+      let dto = dtos[i];
+      if (dto === undefined) {
+        dto = {
+          playerId: 1,
+          x: 0,
+          y: 0,
+          z: 0,
+          radius: 0,
+          expiresAtTick: 0,
+        };
+        dtos[i] = dto;
+      }
+      const base = i * SCAN_PULSE_WIRE_STRIDE;
+      dto.playerId = values[base + 0] as PlayerId;
+      dto.x = values[base + 1];
+      dto.y = values[base + 2];
+      dto.z = values[base + 3];
+      dto.radius = values[base + 4];
+      dto.expiresAtTick = values[base + 5];
+    }
+    this.cachedScanPulseDtoCount = source.count;
+    return dtos;
+  }
+
+  getCachedScanPulseWireSource(): ScanPulseWireSource {
+    return this.cachedScanPulseWireSource;
   }
 
   private addSource(
@@ -709,10 +785,32 @@ export function getOrBuildVisibility(
 }
 
 /** Reusable buffer for the admin / spectator path only — filtered
- *  visibilities read from SnapshotVisibility.cachedScanPulseDtos
+ *  visibilities read from SnapshotVisibility's scan-pulse row cache
  *  (FOW-OPT-16) which is built once per team during
  *  forRecipient's source-merge pass. */
 const _scanPulseBuf: NetworkServerSnapshotScanPulse[] = [];
+
+export function writeScanPulseWireRowsDirect(
+  world: WorldState,
+  visibility: SnapshotVisibility,
+  pulsesOut: NetworkServerSnapshotScanPulse[],
+): NetworkServerSnapshotScanPulse[] | undefined {
+  pulsesOut.length = 0;
+  const source = visibility.isFiltered
+    ? visibility.getCachedScanPulseWireSource()
+    : directScanPulseWireSource;
+  if (!visibility.isFiltered) {
+    source.count = 0;
+    const pulses = world.scanPulses;
+    for (let i = 0; i < pulses.length; i++) {
+      appendScanPulseWireRow(source, pulses[i]);
+    }
+  }
+  if (source.count === 0) return undefined;
+  scanPulseWireSources.set(pulsesOut, source);
+  pulsesOut.length = source.count;
+  return pulsesOut;
+}
 
 /** Filter the world's active scan pulses down to the ones the
  *  recipient's team owns (FOW-14 + FOW-06). When no team owns any
@@ -730,21 +828,28 @@ export function serializeScanPulses(
 ): NetworkServerSnapshotScanPulse[] | undefined {
   if (visibility.isFiltered) {
     const cached = visibility.getCachedScanPulseDtos();
+    if (cached.length > 0) {
+      scanPulseWireSources.set(cached, visibility.getCachedScanPulseWireSource());
+    }
     return cached.length > 0 ? cached : undefined;
   }
   const pulses = world.scanPulses;
   if (pulses.length === 0) return undefined;
   _scanPulseBuf.length = 0;
+  _scanPulseWireSource.count = 0;
+  scanPulseWireSources.set(_scanPulseBuf, _scanPulseWireSource);
   for (let i = 0; i < pulses.length; i++) {
     const pulse = pulses[i];
-    _scanPulseBuf.push({
+    const out = {
       playerId: pulse.playerId,
       x: pulse.x,
       y: pulse.y,
       z: pulse.z,
       radius: pulse.radius,
       expiresAtTick: pulse.expiresAtTick,
-    });
+    };
+    _scanPulseBuf.push(out);
+    appendScanPulseWireRow(_scanPulseWireSource, out);
   }
   return _scanPulseBuf.length > 0 ? _scanPulseBuf : undefined;
 }

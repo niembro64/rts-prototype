@@ -34,7 +34,7 @@ import { writeProjectileSnapshotWireRowsDirect } from '../network/stateSerialize
 import { serializeResourceMovements } from '../network/stateSerializerResourceMovements';
 import { writeSprayTargetWireRowsDirect } from '../network/stateSerializerSpray';
 import {
-  serializeScanPulses,
+  writeScanPulseWireRowsDirect,
   type SnapshotVisibility,
 } from '../network/stateSerializerVisibility';
 import type {
@@ -110,6 +110,7 @@ export class ServerSnapshotDirectWirePreencoder {
   private readonly entityPlaceholders: NetworkServerSnapshot['entities'] = [];
   private readonly minimapPlaceholders: NonNullable<NetworkServerSnapshot['minimapEntities']> = [];
   private readonly sprayPlaceholders: NonNullable<NetworkServerSnapshot['sprayTargets']> = [];
+  private readonly scanPulsePlaceholders: NonNullable<NetworkServerSnapshot['scanPulses']> = [];
   private readonly economyPlaceholder = {} as NetworkServerSnapshot['economy'];
   private readonly removedEntityIds: number[] = [];
   private readonly visibilityHiddenIds: EntityId[] = [];
@@ -219,7 +220,11 @@ export class ServerSnapshotDirectWirePreencoder {
     const netAudioEvents = input.audioOverride !== undefined
       ? input.audioOverride.value
       : serializeAudioEvents(input.audioEvents, input.visibility, input.trackingKey);
-    const netScanPulses = serializeScanPulses(input.world, input.visibility);
+    const netScanPulses = writeScanPulseWireRowsDirect(
+      input.world,
+      input.visibility,
+      this.scanPulsePlaceholders,
+    );
     const netProjectiles = writeProjectileSnapshotWireRowsDirect({
       world: input.world,
       deltaEnabled: input.isDelta && SNAPSHOT_CONFIG.deltaEnabled,

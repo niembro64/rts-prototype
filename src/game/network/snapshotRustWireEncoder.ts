@@ -59,6 +59,10 @@ import {
   getSprayTargetWireSource,
 } from './stateSerializerSpray';
 import {
+  SCAN_PULSE_WIRE_STRIDE,
+  getScanPulseWireSource,
+} from './stateSerializerVisibility';
+import {
   activeFloat64WireValues,
   activeUint32WireValues,
   type Float64WireRows,
@@ -1829,6 +1833,17 @@ function packScanPulsesIntoScratch(
 ): void {
   if (pulses.length === 0) return;
   const api = sim.snapshotEncode;
+  const wireSource = getScanPulseWireSource(pulses);
+  if (wireSource !== undefined && wireSource.count === pulses.length) {
+    api.scanPulseScratchEnsure(wireSource.count);
+    copyFloatWireRowsIntoScratch(
+      sim,
+      api.scanPulseScratchPtr(),
+      wireSource,
+      SCAN_PULSE_WIRE_STRIDE,
+    );
+    return;
+  }
   api.scanPulseScratchEnsure(pulses.length);
   const view = new Float64Array(
     sim.memory.buffer,
