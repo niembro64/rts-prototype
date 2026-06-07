@@ -162,6 +162,7 @@ export class ClientViewState {
   private sprayTargetStore = new ClientSprayTargetStore();
   private resourcePylonSignedRates = new Map<EntityId, ClientResourcePylonSignedRates>();
   private resourcePylonFlowsBySource = new Map<EntityId, ClientResourcePylonFlow[]>();
+  private readonly resourcePylonSourceIds: EntityId[] = [];
 
   // Audio events from last state update
   private pendingAudioEvents: NetworkServerSnapshot['audioEvents'] = [];
@@ -471,6 +472,7 @@ export class ClientViewState {
   ): void {
     this.resourcePylonSignedRates.clear();
     this.resourcePylonFlowsBySource.clear();
+    this.resourcePylonSourceIds.length = 0;
     if (movements === undefined) return;
     for (let i = 0; i < movements.length; i++) {
       const movement = movements[i];
@@ -482,6 +484,7 @@ export class ClientViewState {
       if (rates === undefined) {
         rates = { energy: 0, metal: 0 };
         this.resourcePylonSignedRates.set(movement.sourceEntityId, rates);
+        this.resourcePylonSourceIds.push(movement.sourceEntityId);
       }
       if (movement.resource === RESOURCE_KIND_ENERGY) {
         rates.energy += amount;
@@ -948,6 +951,10 @@ export class ClientViewState {
 
   getResourcePylonFlows(entityId: EntityId): readonly ClientResourcePylonFlow[] {
     return this.resourcePylonFlowsBySource.get(entityId) ?? EMPTY_RESOURCE_PYLON_FLOWS;
+  }
+
+  getResourcePylonSourceIds(): readonly EntityId[] {
+    return this.resourcePylonSourceIds;
   }
 
   getAllEntities(): Entity[] {
@@ -1617,6 +1624,7 @@ export class ClientViewState {
     this.sprayTargetStore.reset();
     this.resourcePylonSignedRates.clear();
     this.resourcePylonFlowsBySource.clear();
+    this.resourcePylonSourceIds.length = 0;
     this.pendingAudioEvents = EMPTY_AUDIO;
     this.scanPulses.length = 0;
     this.visionPlayerMask = 0;

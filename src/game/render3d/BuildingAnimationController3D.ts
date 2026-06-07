@@ -102,7 +102,14 @@ type AnimatedBuildingEntry = {
   mesh: EntityMesh;
 };
 
+type ResourcePylonBuildingKind = 'solar' | 'wind' | 'extractor' | 'converter';
+
+type ResourcePylonBuildingEntry = AnimatedBuildingEntry & {
+  kind: ResourcePylonBuildingKind;
+};
+
 const FACTORY_ANIMATION_IDLE_EPSILON = 0.001;
+const RESOURCE_PYLON_IDLE_EPSILON = 0.001;
 
 export class BuildingAnimationController3D {
   private readonly clientViewState: ClientViewState;
@@ -116,6 +123,10 @@ export class BuildingAnimationController3D {
   private extractorBuildingIndexById = new Map<EntityId, number>();
   private converterBuildings: AnimatedBuildingEntry[] = [];
   private converterBuildingIndexById = new Map<EntityId, number>();
+  private resourcePylonBuildings: ResourcePylonBuildingEntry[] = [];
+  private resourcePylonBuildingIndexById = new Map<EntityId, number>();
+  private activeResourcePylonBuildings: ResourcePylonBuildingEntry[] = [];
+  private activeResourcePylonBuildingIndexById = new Map<EntityId, number>();
   private factoryBuildings: AnimatedBuildingEntry[] = [];
   private factoryBuildingIndexById = new Map<EntityId, number>();
   private activeFactoryBuildings: AnimatedBuildingEntry[] = [];
@@ -188,6 +199,15 @@ export class BuildingAnimationController3D {
     if (mesh.converterRig) {
       this.addAnimatedBuilding(this.converterBuildings, this.converterBuildingIndexById, entity, mesh);
     }
+    if (mesh.solarRig) {
+      this.addResourcePylonBuilding('solar', entity, mesh);
+    } else if (mesh.windRig) {
+      this.addResourcePylonBuilding('wind', entity, mesh);
+    } else if (mesh.extractorRig) {
+      this.addResourcePylonBuilding('extractor', entity, mesh);
+    } else if (mesh.converterRig) {
+      this.addResourcePylonBuilding('converter', entity, mesh);
+    }
     if (mesh.factoryBuildSpotRig) {
       const entry = this.addAnimatedBuilding(
         this.factoryBuildings,
@@ -218,6 +238,8 @@ export class BuildingAnimationController3D {
     this.removeAnimatedBuilding(this.windBuildings, this.windBuildingIndexById, id);
     this.removeAnimatedBuilding(this.extractorBuildings, this.extractorBuildingIndexById, id);
     this.removeAnimatedBuilding(this.converterBuildings, this.converterBuildingIndexById, id);
+    this.removeResourcePylonBuilding(id);
+    this.removeActiveResourcePylonBuilding(id);
     this.extractorRotorPhases.delete(id);
     this.extractorRotorSpeeds.delete(id);
     this.extractorCloseAmounts.delete(id);
@@ -244,36 +266,17 @@ export class BuildingAnimationController3D {
     currentDtMs: number,
     timeMs: number,
   ): void {
+    this.refreshActiveResourcePylonQueue();
+
     if (this.solarBuildings.length > 0) {
-      const rateAlpha = halfLifeBlend(spinDt, BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE]);
       for (const entry of this.solarBuildings) {
-        const { id, entity, mesh } = entry;
+        const { entity, mesh } = entry;
         this.updateSolarCollectorAnimation(mesh, entity, mesh.buildingCachedDetailsReady === true);
-        const open = entity.building?.activeState?.open !== false;
-        const signedRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_ENERGY);
-        const pylon = mesh.solarRig?.pylon;
-        applyResourcePylonDirection(pylon, signedRate);
-        // Solar pylon aims its ray straight down to the ground beneath the
-        // tip (a wide π/4 cone), matching the metal extractor's treatment.
-        const sourceWorld = pylon
-          ? this.writeGroundBelowPylonSourceWorld(pylon, mesh.group, entity)
-          : null;
-        this.constructionVisuals.updateAmbientResourcePylon(
-          pylon,
-          entity,
-          mesh.group,
-          open ? resourcePylonRateFraction(signedRate, INV_SOLAR_BASE_PRODUCTION) : 0,
-          rateAlpha,
-          mesh.buildingCachedDetailsReady === true,
-          mesh.buildingCachedDetailsReady === true,
-          sourceWorld,
-        );
       }
     }
 
     if (this.windBuildings.length > 0) {
       this.updateWindAnimationGlobals();
-      const rateAlpha = halfLifeBlend(spinDt, BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE]);
       const closeAmounts = this.windCloseAmounts;
       for (const entry of this.windBuildings) {
         const { id, entity, mesh } = entry;
@@ -286,22 +289,6 @@ export class BuildingAnimationController3D {
         closeAmounts.set(id, close);
 
         this.updateWindTurbineRig(mesh, mesh.buildingCachedDetailsReady === true, close);
-        const signedRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_ENERGY);
-        const pylon = mesh.windRig?.pylon;
-        applyResourcePylonDirection(pylon, signedRate);
-        const windSourceWorld = pylon
-          ? this.writeWindPylonSourceWorld(pylon, mesh.group)
-          : null;
-        this.constructionVisuals.updateAmbientResourcePylon(
-          pylon,
-          entity,
-          mesh.group,
-          resourcePylonRateFraction(signedRate, INV_WIND_MAX_PRODUCTION) * (1 - close),
-          rateAlpha,
-          mesh.buildingCachedDetailsReady === true,
-          mesh.buildingCachedDetailsReady === true,
-          windSourceWorld,
-        );
       }
     }
 
@@ -320,7 +307,6 @@ export class BuildingAnimationController3D {
       const speeds = this.extractorRotorSpeeds;
       const closeAmounts = this.extractorCloseAmounts;
       const rotorYaws = this.extractorRotorYaws;
-      const rateAlpha = halfLifeBlend(spinDt, BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE]);
       const rotorSpeedAlpha = visualAnimBlend(getRotationVelEmaMode(), spinDt);
       for (const entry of this.extractorBuildings) {
         const { id, entity, mesh } = entry;
@@ -388,65 +374,18 @@ export class BuildingAnimationController3D {
         }
         phases.set(id, phase);
         speeds.set(id, speed);
-        const signedRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_METAL);
-        applyResourcePylonDirection(rig?.pylon, signedRate);
-        const depositSourceWorld = rig?.pylon
-          ? this.writeExtractorDepositSourceWorld(rig.pylon, mesh.group, entity)
-          : null;
-        this.constructionVisuals.updateAmbientResourcePylon(
-          rig?.pylon,
-          entity,
-          mesh.group,
-          resourcePylonRateFraction(signedRate, invBase) * (1 - close),
-          rateAlpha,
-          mesh.buildingCachedDetailsReady === true,
-          mesh.buildingCachedDetailsReady === true,
-          depositSourceWorld,
-        );
       }
     }
 
     if (this.converterBuildings.length > 0) {
-      const rateAlpha = halfLifeBlend(spinDt, BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE]);
       const ringSpeedAlpha = visualAnimBlend(getRotationVelEmaMode(), spinDt);
       const invBase = INV_CONVERTER_BASE_RATE;
       for (const entry of this.converterBuildings) {
         const { id, entity, mesh } = entry;
         const rig = mesh?.converterRig;
         if (!rig) continue;
-        const detailsReady = mesh.buildingCachedDetailsReady === true;
         const energyRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_ENERGY);
         const metalRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_METAL);
-        applyResourcePylonDirection(rig.energyPylon, energyRate);
-        applyResourcePylonDirection(rig.metalPylon, metalRate);
-        this.constructionVisuals.updateAmbientResourcePylon(
-          rig.energyPylon,
-          entity,
-          mesh.group,
-          resourcePylonRateFraction(energyRate, invBase),
-          rateAlpha,
-          detailsReady,
-          false,
-        );
-        this.constructionVisuals.updateAmbientResourcePylon(
-          rig.metalPylon,
-          entity,
-          mesh.group,
-          resourcePylonRateFraction(metalRate, invBase),
-          rateAlpha,
-          detailsReady,
-          false,
-        );
-        this.constructionVisuals.emitConverterResourceTransfer(
-          rig.energyPylon,
-          rig.metalPylon,
-          entity,
-          mesh.group,
-          energyRate,
-          metalRate,
-          detailsReady,
-          detailsReady,
-        );
 
         // Ring spin: signed by flow direction so the player can read
         // which way the converter is running from the orbiter motion.
@@ -512,6 +451,8 @@ export class BuildingAnimationController3D {
         rig.coreHalo.scale.setScalar(rig.coreHaloBaseRadius * haloPulse);
       }
     }
+
+    this.updateActiveResourcePylons(spinDt);
 
     for (let i = 0; i < this.activeFactoryBuildings.length;) {
       const entry = this.activeFactoryBuildings[i];
@@ -585,6 +526,10 @@ export class BuildingAnimationController3D {
     this.extractorBuildingIndexById.clear();
     this.converterBuildings.length = 0;
     this.converterBuildingIndexById.clear();
+    this.resourcePylonBuildings.length = 0;
+    this.resourcePylonBuildingIndexById.clear();
+    this.activeResourcePylonBuildings.length = 0;
+    this.activeResourcePylonBuildingIndexById.clear();
     this.factoryBuildings.length = 0;
     this.factoryBuildingIndexById.clear();
     this.activeFactoryBuildings.length = 0;
@@ -647,6 +592,238 @@ export class BuildingAnimationController3D {
       indexById.set(last.id, index);
     }
     list.pop();
+  }
+
+  private addResourcePylonBuilding(
+    kind: ResourcePylonBuildingKind,
+    entity: Entity,
+    mesh: EntityMesh,
+  ): ResourcePylonBuildingEntry {
+    const id = entity.id;
+    const existingIndex = this.resourcePylonBuildingIndexById.get(id);
+    if (existingIndex !== undefined) {
+      const entry = this.resourcePylonBuildings[existingIndex];
+      entry.entity = entity;
+      entry.mesh = mesh;
+      entry.kind = kind;
+      return entry;
+    }
+    const entry: ResourcePylonBuildingEntry = { id, entity, mesh, kind };
+    this.resourcePylonBuildingIndexById.set(id, this.resourcePylonBuildings.length);
+    this.resourcePylonBuildings.push(entry);
+    return entry;
+  }
+
+  private removeResourcePylonBuilding(id: EntityId): void {
+    const index = this.resourcePylonBuildingIndexById.get(id);
+    if (index === undefined) return;
+    this.resourcePylonBuildingIndexById.delete(id);
+    const lastIndex = this.resourcePylonBuildings.length - 1;
+    if (index !== lastIndex) {
+      const last = this.resourcePylonBuildings[lastIndex];
+      this.resourcePylonBuildings[index] = last;
+      this.resourcePylonBuildingIndexById.set(last.id, index);
+    }
+    this.resourcePylonBuildings.pop();
+  }
+
+  private refreshActiveResourcePylonQueue(): void {
+    const activeSourceIds = this.clientViewState.getResourcePylonSourceIds();
+    for (let i = 0; i < activeSourceIds.length; i++) {
+      const entryIndex = this.resourcePylonBuildingIndexById.get(activeSourceIds[i]);
+      if (entryIndex === undefined) continue;
+      this.addActiveResourcePylonBuilding(this.resourcePylonBuildings[entryIndex]);
+    }
+  }
+
+  private addActiveResourcePylonBuilding(entry: ResourcePylonBuildingEntry): void {
+    const activeIndex = this.activeResourcePylonBuildingIndexById.get(entry.id);
+    if (activeIndex !== undefined) {
+      this.activeResourcePylonBuildings[activeIndex] = entry;
+      return;
+    }
+    this.activeResourcePylonBuildingIndexById.set(entry.id, this.activeResourcePylonBuildings.length);
+    this.activeResourcePylonBuildings.push(entry);
+  }
+
+  private removeActiveResourcePylonBuilding(id: EntityId): void {
+    const index = this.activeResourcePylonBuildingIndexById.get(id);
+    if (index === undefined) return;
+    this.activeResourcePylonBuildingIndexById.delete(id);
+    const lastIndex = this.activeResourcePylonBuildings.length - 1;
+    if (index !== lastIndex) {
+      const last = this.activeResourcePylonBuildings[lastIndex];
+      this.activeResourcePylonBuildings[index] = last;
+      this.activeResourcePylonBuildingIndexById.set(last.id, index);
+    }
+    this.activeResourcePylonBuildings.pop();
+  }
+
+  private updateActiveResourcePylons(spinDt: number): void {
+    if (this.activeResourcePylonBuildings.length === 0) return;
+    const rateAlpha = halfLifeBlend(spinDt, BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE]);
+    for (let i = 0; i < this.activeResourcePylonBuildings.length;) {
+      const entry = this.activeResourcePylonBuildings[i];
+      if (this.updateResourcePylonBuilding(entry, rateAlpha)) {
+        i++;
+      } else {
+        this.removeActiveResourcePylonBuilding(entry.id);
+      }
+    }
+  }
+
+  private updateResourcePylonBuilding(
+    entry: ResourcePylonBuildingEntry,
+    rateAlpha: number,
+  ): boolean {
+    switch (entry.kind) {
+      case 'solar':
+        return this.updateSolarResourcePylon(entry, rateAlpha);
+      case 'wind':
+        return this.updateWindResourcePylon(entry, rateAlpha);
+      case 'extractor':
+        return this.updateExtractorResourcePylon(entry, rateAlpha);
+      case 'converter':
+        return this.updateConverterResourcePylons(entry, rateAlpha);
+    }
+  }
+
+  private updateSolarResourcePylon(
+    entry: ResourcePylonBuildingEntry,
+    rateAlpha: number,
+  ): boolean {
+    const { id, entity, mesh } = entry;
+    const pylon = mesh.solarRig?.pylon;
+    if (!pylon) return false;
+    const detailsReady = mesh.buildingCachedDetailsReady === true;
+    const open = entity.building?.activeState?.open !== false;
+    const signedRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_ENERGY);
+    const targetRate = open ? resourcePylonRateFraction(signedRate, INV_SOLAR_BASE_PRODUCTION) : 0;
+    applyResourcePylonDirection(pylon, signedRate);
+    const sourceWorld = this.writeGroundBelowPylonSourceWorld(pylon, mesh.group, entity);
+    this.constructionVisuals.updateAmbientResourcePylon(
+      pylon,
+      entity,
+      mesh.group,
+      targetRate,
+      rateAlpha,
+      detailsReady,
+      detailsReady,
+      sourceWorld,
+    );
+    return targetRate > RESOURCE_PYLON_IDLE_EPSILON || this.resourcePylonNeedsFrame(pylon);
+  }
+
+  private updateWindResourcePylon(
+    entry: ResourcePylonBuildingEntry,
+    rateAlpha: number,
+  ): boolean {
+    const { id, entity, mesh } = entry;
+    const pylon = mesh.windRig?.pylon;
+    if (!pylon) return false;
+    const detailsReady = mesh.buildingCachedDetailsReady === true;
+    const open = entity.building?.activeState?.open !== false;
+    const close = this.windCloseAmounts.get(id) ?? (open ? 0 : 1);
+    const signedRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_ENERGY);
+    const targetRate = resourcePylonRateFraction(signedRate, INV_WIND_MAX_PRODUCTION) * (1 - close);
+    applyResourcePylonDirection(pylon, signedRate);
+    this.constructionVisuals.updateAmbientResourcePylon(
+      pylon,
+      entity,
+      mesh.group,
+      targetRate,
+      rateAlpha,
+      detailsReady,
+      detailsReady,
+      this.writeWindPylonSourceWorld(pylon, mesh.group),
+    );
+    return targetRate > RESOURCE_PYLON_IDLE_EPSILON || this.resourcePylonNeedsFrame(pylon);
+  }
+
+  private updateExtractorResourcePylon(
+    entry: ResourcePylonBuildingEntry,
+    rateAlpha: number,
+  ): boolean {
+    const { id, entity, mesh } = entry;
+    const pylon = mesh.extractorRig?.pylon;
+    if (!pylon) return false;
+    const detailsReady = mesh.buildingCachedDetailsReady === true;
+    const open = entity.building?.activeState?.open !== false;
+    const close = this.extractorCloseAmounts.get(id) ?? (open ? 0 : 1);
+    const signedRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_METAL);
+    const targetRate = resourcePylonRateFraction(signedRate, INV_EXTRACTOR_BASE_PRODUCTION) * (1 - close);
+    applyResourcePylonDirection(pylon, signedRate);
+    this.constructionVisuals.updateAmbientResourcePylon(
+      pylon,
+      entity,
+      mesh.group,
+      targetRate,
+      rateAlpha,
+      detailsReady,
+      detailsReady,
+      this.writeExtractorDepositSourceWorld(pylon, mesh.group, entity),
+    );
+    return targetRate > RESOURCE_PYLON_IDLE_EPSILON || this.resourcePylonNeedsFrame(pylon);
+  }
+
+  private updateConverterResourcePylons(
+    entry: ResourcePylonBuildingEntry,
+    rateAlpha: number,
+  ): boolean {
+    const { id, entity, mesh } = entry;
+    const rig = mesh.converterRig;
+    if (!rig) return false;
+    const detailsReady = mesh.buildingCachedDetailsReady === true;
+    const energyRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_ENERGY);
+    const metalRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_METAL);
+    const energyTarget = resourcePylonRateFraction(energyRate, INV_CONVERTER_BASE_RATE);
+    const metalTarget = resourcePylonRateFraction(metalRate, INV_CONVERTER_BASE_RATE);
+    applyResourcePylonDirection(rig.energyPylon, energyRate);
+    applyResourcePylonDirection(rig.metalPylon, metalRate);
+    this.constructionVisuals.updateAmbientResourcePylon(
+      rig.energyPylon,
+      entity,
+      mesh.group,
+      energyTarget,
+      rateAlpha,
+      detailsReady,
+      false,
+    );
+    this.constructionVisuals.updateAmbientResourcePylon(
+      rig.metalPylon,
+      entity,
+      mesh.group,
+      metalTarget,
+      rateAlpha,
+      detailsReady,
+      false,
+    );
+    this.constructionVisuals.emitConverterResourceTransfer(
+      rig.energyPylon,
+      rig.metalPylon,
+      entity,
+      mesh.group,
+      energyRate,
+      metalRate,
+      detailsReady,
+      detailsReady,
+    );
+    return energyTarget > RESOURCE_PYLON_IDLE_EPSILON ||
+      metalTarget > RESOURCE_PYLON_IDLE_EPSILON ||
+      this.resourcePylonNeedsFrame(rig.energyPylon) ||
+      this.resourcePylonNeedsFrame(rig.metalPylon);
+  }
+
+  private resourcePylonNeedsFrame(pylon: ResourcePylonRig): boolean {
+    if (
+      pylon.smoothedRate > RESOURCE_PYLON_IDLE_EPSILON ||
+      pylon.displaySmoothedRate > RESOURCE_PYLON_IDLE_EPSILON
+    ) {
+      return true;
+    }
+    pylon.smoothedRate = 0;
+    pylon.displaySmoothedRate = 0;
+    return false;
   }
 
   private updateFactoryAnimationQueue(entry: AnimatedBuildingEntry): void {
