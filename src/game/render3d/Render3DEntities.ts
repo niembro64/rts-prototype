@@ -60,6 +60,7 @@ import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
 import { TurretMountCache3D, type TurretMountEntry } from './TurretMountCache3D';
 import { TurretBeamAimCache3D } from './TurretBeamAimCache3D';
 import { ShieldPanelPose3D } from './ShieldPanelPose3D';
+import type { ShieldPanelMesh } from './ShieldPanelMesh3D';
 import { UnitChassisInstancePose3D } from './UnitChassisInstancePose3D';
 import { UnitTurretPose3D } from './UnitTurretPose3D';
 import { applyUnitLiftGroupPose3D, UnitMeshBuilder3D } from './UnitMeshBuilder3D';
@@ -291,7 +292,6 @@ export class Render3DEntities {
    *  multiplies (which used to rebuild this chain from m.group every
    *  turret) collapse to a single `Matrix4.copy()`. */
   private _unitChainMat = new THREE.Matrix4();
-  private _mirrorPivotLocal = new THREE.Vector3();
   private _deathScatterObjPos = new THREE.Vector3();
   private _deathScatterLocalDelta = new THREE.Vector3();
   private _deathScatterParentQuat = new THREE.Quaternion();
@@ -1092,27 +1092,18 @@ export class Render3DEntities {
         const shieldPanelTurretIndex = unitRows.passiveTurretIndex[row];
         const shieldPanelTurret = shieldPanelTurretIndex >= 0 ? turrets[shieldPanelTurretIndex] : undefined;
         const shieldPanelMaterialized = shieldPanelTurret !== undefined && bodyMaterialized;
-        this._mirrorPivotLocal.set(
-          shieldPanelTurret?.mount.x ?? 0,
-          (shieldPanelTurret?.mount.z ?? unitRows.bodyCenterHeight[row]) - (m.chassisLift ?? 0),
-          shieldPanelTurret?.mount.y ?? 0,
-        );
         if (shieldPanelMaterialized) {
           this.shieldPanelPose.update(
             e,
             m.mirrors,
             shieldPanelTurret,
-            this._mirrorPivotLocal,
             this._smoothLiftedPos,
             this._smoothParentQuat,
             chassisTilted ? _invTiltQuat : undefined,
             this.turretShieldPanelsEnabled,
           );
         } else {
-          m.mirrors.root.visible = false;
-          if (m.mirrors.panelSlots) {
-            this.unitDetailInstances.clearShieldPanelSlots(m.mirrors.panelSlots);
-          }
+          this.deactivateShieldPanelMesh(m.mirrors);
         }
       }
 
@@ -1154,6 +1145,18 @@ export class Render3DEntities {
     this.dyingUnits.update(this._currentDtMs);
     this.vanishingUnits.update(this._currentDtMs);
     this.unitDetailInstances.flush(this.turretShieldPanelsEnabled);
+  }
+
+  private deactivateShieldPanelMesh(mirrors: ShieldPanelMesh): void {
+    if (mirrors.supportVisible) {
+      mirrors.root.visible = false;
+      mirrors.supportVisible = false;
+    }
+    if (!mirrors.panelSlotsActive) return;
+    mirrors.panelSlotsActive = false;
+    if (mirrors.panelSlots) {
+      this.unitDetailInstances.clearShieldPanelSlots(mirrors.panelSlots);
+    }
   }
 
   private removeUnitMeshesFromPacket(unitRows: UnitRenderPacket3D): void {

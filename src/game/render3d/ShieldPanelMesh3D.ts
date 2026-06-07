@@ -37,6 +37,14 @@ export type ShieldPanelMesh = {
    *  per-Mesh because they are low-count structural pieces, while the
    *  white mirror plates can still use the shared instance pool. */
   frames: THREE.Mesh[];
+  /** Cached support-root visibility. The root/arms/frames are per-mesh
+   *  structural pieces, so visibility changes should be transition-based
+   *  instead of rewritten from the unit loop every frame. */
+  supportVisible: boolean;
+  /** Whether this mirror has live panel matrices in the shared instance
+   *  pool. Used to clear stale panel slots once when the host becomes
+   *  unmaterialized while other panels are still drawing. */
+  panelSlotsActive: boolean;
 };
 
 export type ShieldPanelMount = {
@@ -86,6 +94,7 @@ export function buildShieldPanelMesh3D(
   // combined yaw + pitch.
   const root = new THREE.Group();
   root.position.set(pivotLocalX, pivotLocalY, pivotLocalZ);
+  root.visible = false;
   parent.add(root);
   const panelMeshes: THREE.Mesh[] = [];
   const armMeshes: THREE.Mesh[] = [];
@@ -169,5 +178,7 @@ export function buildShieldPanelMesh3D(
     panels: panelMeshes,
     arms: armMeshes,
     frames: frameMeshes,
+    supportVisible: false,
+    panelSlotsActive: false,
   };
 }

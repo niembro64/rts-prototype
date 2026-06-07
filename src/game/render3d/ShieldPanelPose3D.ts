@@ -41,15 +41,17 @@ export class ShieldPanelPose3D {
     entity: Entity,
     mirrors: ShieldPanelMesh,
     shieldPanelTurret: Turret | undefined,
-    pivotLocal: THREE.Vector3,
     parentPosition: THREE.Vector3,
     parentQuaternion: THREE.Quaternion,
     chassisTiltInverse: THREE.Quaternion | undefined,
     turretShieldPanelsEnabled: boolean,
   ): void {
-    mirrors.root.position.copy(pivotLocal);
-    mirrors.root.visible = turretShieldPanelsEnabled;
+    if (mirrors.supportVisible !== turretShieldPanelsEnabled) {
+      mirrors.root.visible = turretShieldPanelsEnabled;
+      mirrors.supportVisible = turretShieldPanelsEnabled;
+    }
     if (!turretShieldPanelsEnabled) return;
+    mirrors.panelSlotsActive = true;
 
     const shieldPanelRot = shieldPanelTurret?.rotation ?? entity.transform.rotation;
     const shieldPanelPitch = shieldPanelTurret?.pitch ?? 0;
