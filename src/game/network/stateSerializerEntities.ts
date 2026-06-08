@@ -63,6 +63,7 @@ import {
   quantizeRotation as qRot,
   quantizeVelocity as qVel,
 } from './snapshotQuantization';
+import { encodeFactoryProductionQueue } from './factoryProductionQueueWire';
 
 const INITIAL_ENTITY_POOL = 200;
 const MAX_WEAPONS_PER_ENTITY = 8;
@@ -255,6 +256,7 @@ function createPooledEntry(): PooledEntry {
     factorySub: {
       selectedUnitBlueprintCode: null, progress: 0, producing: false,
       repeat: true,
+      queue: null,
       energyRate: 0, metalRate: 0,
       guardTargetId: null,
       rally,
@@ -1328,6 +1330,7 @@ export function serializeEntitySnapshot(
           }
           f.producing = entity.factory.isProducing;
           f.repeat = entity.factory.repeatProduction;
+          f.queue = encodeFactoryProductionQueue(entity.factory.productionQueue);
           f.energyRate = entity.factory.energyRateFraction;
           f.metalRate = entity.factory.metalRateFraction;
           f.guardTargetId = canReferenceEntityId(entity.factory.guardTargetId ?? undefined)

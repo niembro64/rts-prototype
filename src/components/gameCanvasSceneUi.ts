@@ -129,6 +129,7 @@ export function useGameCanvasSceneUi({
     factoryProgress: 0,
     factoryIsProducing: false,
     factoryRepeatsProduction: true,
+    factoryProductionQueue: [],
     factoryGuardTargetId: null,
     controlGroups: [],
     details: [],
@@ -336,8 +337,8 @@ export function useGameCanvasSceneUi({
     toggleFormationMove: () => {
       getActiveBattleScene()?.toggleFormationMoveMode();
     },
-    queueUnit: (factoryId, unitBlueprintId, repeat) => {
-      getActiveBattleScene()?.queueFactoryUnit(factoryId, unitBlueprintId, repeat);
+    queueUnit: (factoryId, unitBlueprintId, repeat = true, count = 1) => {
+      getActiveBattleScene()?.queueFactoryUnit(factoryId, unitBlueprintId, repeat, count);
     },
     stopFactoryProduction: (factoryId) => {
       getActiveBattleScene()?.stopFactoryProduction(factoryId);

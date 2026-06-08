@@ -179,7 +179,7 @@ function rentDecodedQuat(x: number, y: number, z: number, w: number): DecodedQua
   return q;
 }
 
-const PACKED_ENTITIES_VERSION = 10;
+const PACKED_ENTITIES_VERSION = 11;
 
 // Bit flags for the packed unit row's optional-presence header.
 // One bit per optional sub-field so the decoder can tell "missing"
@@ -273,7 +273,7 @@ const WAYPOINT_FLAG_POS_Z = 1 << 0;
 // one. V7 adds a detail-row unit repeat command-state bit pair. V8 adds
 // the unit hold-position command-state bit pair. V9 adds unit trajectory
 // mode. V10 adds factory guard target ids to the detail-row factory
-// sub-object.
+// sub-object. V11 adds finite factory production queues.
 export type PackedEntityRow = unknown[];
 export type PackedMovementUnitBytes = Uint8Array;
 export type PackedUnitTurretBytes = Uint8Array;
@@ -1428,6 +1428,7 @@ function packFactory(factory: FactorySub): unknown[] {
     factory.route !== null ? packWaypointRoute(factory.route) : null,
     factory.guardTargetId,
     factory.repeat === false ? 0 : 1,
+    factory.queue ?? null,
   ];
 }
 
@@ -1443,7 +1444,8 @@ function unpackFactory(row: unknown[], producing: boolean): FactorySub {
     : null;
   const guardTargetId = row.length > 6 ? row[6] as number | null : null;
   const repeat = row.length > 7 ? row[7] !== 0 : true;
-  return { selectedUnitBlueprintCode, progress, producing, repeat, energyRate, metalRate, guardTargetId, rally, route };
+  const queue = row.length > 8 ? row[8] as number[] | null : null;
+  return { selectedUnitBlueprintCode, progress, producing, repeat, queue, energyRate, metalRate, guardTargetId, rally, route };
 }
 
 function packWaypointRoute(route: NonNullable<FactorySub['route']>): unknown[] {

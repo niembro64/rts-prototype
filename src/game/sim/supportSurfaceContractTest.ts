@@ -279,6 +279,7 @@ function assertFactoryShellContract(): void {
   factory.factory = {
     selectedUnitBlueprintId: 'unitJackal',
     repeatProduction: true,
+    productionQueue: [],
     currentShellId: null,
     currentBuildProgress: 0,
     defaultWaypoints: [
@@ -326,6 +327,7 @@ function assertFactoryShellContract(): void {
   );
 
   factory.factory.repeatProduction = false;
+  factory.factory.productionQueue.push('unitWolverine');
   const oneShotSpawned = factoryProductionSystem.update(world, 16, buildingGrid).spawnedUnits;
   assertContract(oneShotSpawned.length === 1, 'one-shot factory must spawn one selected shell');
   const oneShotShell = oneShotSpawned[0];
@@ -336,7 +338,22 @@ function assertFactoryShellContract(): void {
     oneShotCompleted.length === 1 && oneShotCompleted[0] === oneShotShell,
     'one-shot factory must complete its selected shell',
   );
-  assertContract(factory.factory.selectedUnitBlueprintId === null, 'one-shot factory must clear selected unit');
+  const advancedUnitBlueprintId: string | null = factory.factory.selectedUnitBlueprintId;
+  assertContract(advancedUnitBlueprintId === 'unitWolverine', 'one-shot factory must advance to queued unit');
+  assertContract(factory.factory.productionQueue.length === 0, 'one-shot factory must consume the queued unit');
+  assertContract(factory.factory.repeatProduction === false, 'queued one-shot factory must remain in finite mode');
+
+  const queuedSpawned = factoryProductionSystem.update(world, 16, buildingGrid).spawnedUnits;
+  assertContract(queuedSpawned.length === 1, 'queued factory must spawn the advanced shell');
+  const queuedShell = queuedSpawned[0];
+  assertContract(queuedShell.buildable !== null, 'queued shell must be buildable');
+  queuedShell.buildable.isComplete = true;
+  const queuedCompleted = factoryProductionSystem.update(world, 16, buildingGrid).completedUnits;
+  assertContract(
+    queuedCompleted.length === 1 && queuedCompleted[0] === queuedShell,
+    'queued factory must complete the advanced shell',
+  );
+  assertContract(factory.factory.selectedUnitBlueprintId === null, 'one-shot factory must clear selected unit when queue is empty');
   assertContract(Boolean(factory.factory.repeatProduction), 'one-shot factory must reset to repeat mode when empty');
 }
 

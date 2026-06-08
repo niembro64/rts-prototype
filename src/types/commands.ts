@@ -164,6 +164,7 @@ export type QueueUnitCommand = BaseCommand & {
   factoryId: EntityId;
   unitBlueprintId: string;
   repeat?: boolean;
+  count?: number;
 };
 
 export type StopFactoryProductionCommand = BaseCommand & {

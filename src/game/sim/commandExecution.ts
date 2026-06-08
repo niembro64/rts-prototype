@@ -817,6 +817,7 @@ function executeQueueUnitCommand(ctx: CommandContext, command: QueueUnitCommand)
     command.unitBlueprintId,
     ctx.world,
     command.repeat !== false,
+    command.count ?? 1,
   )) {
     ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
   }

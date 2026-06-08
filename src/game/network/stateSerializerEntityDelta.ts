@@ -101,6 +101,7 @@ export type PrevEntityState = {
   isProducing: number;
   factoryRepeats: number;
   factorySelectedUnitCode: number;
+  factoryQueueHash: number;
 };
 
 export type DeltaTrackingState = {
@@ -165,8 +166,19 @@ function createPrevEntityState(): PrevEntityState {
     turretPitchVels, turretTargetIds,
     shieldRanges,
     normalX: 0, normalY: 0, normalZ: 1,
-    buildProgress: 0, solarOpen: 0, factoryProgress: 0, isProducing: 0, factoryRepeats: 1, factorySelectedUnitCode: -1,
+    buildProgress: 0, solarOpen: 0, factoryProgress: 0, isProducing: 0, factoryRepeats: 1, factorySelectedUnitCode: -1, factoryQueueHash: 0,
   };
+}
+
+function hashFactoryProductionQueue(factory: Entity['factory']): number {
+  if (factory === null || factory.productionQueue.length === 0) return 0;
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < factory.productionQueue.length; i++) {
+    hash ^= unitBlueprintIdToCode(factory.productionQueue[i]);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  hash ^= factory.productionQueue.length;
+  return hash | 0;
 }
 
 function createDeltaTrackingState(): DeltaTrackingState {
@@ -339,7 +351,8 @@ export function getEntityDeltaChangedFields(
       if (next.factoryProgress !== prev.factoryProgress ||
           next.isProducing !== prev.isProducing ||
           next.factoryRepeats !== prev.factoryRepeats ||
-          next.factorySelectedUnitCode !== prev.factorySelectedUnitCode) {
+          next.factorySelectedUnitCode !== prev.factorySelectedUnitCode ||
+          next.factoryQueueHash !== prev.factoryQueueHash) {
         mask |= ENTITY_CHANGED_FACTORY;
       }
     }
@@ -414,6 +427,7 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
   prev.factorySelectedUnitCode = factory !== null && factory.selectedUnitBlueprintId !== null
     ? unitBlueprintIdToCode(factory.selectedUnitBlueprintId)
     : -1;
+  prev.factoryQueueHash = hashFactoryProductionQueue(factory);
   const sn = unit !== null ? unit.surfaceNormal : null;
   prev.normalX = sn !== null ? sn.nx : 0;
   prev.normalY = sn !== null ? sn.ny : 0;
@@ -528,6 +542,7 @@ export function copyPrevState(from: PrevEntityState, to: PrevEntityState): void 
   to.isProducing = from.isProducing;
   to.factoryRepeats = from.factoryRepeats;
   to.factorySelectedUnitCode = from.factorySelectedUnitCode;
+  to.factoryQueueHash = from.factoryQueueHash;
   to.normalX = from.normalX;
   to.normalY = from.normalY;
   to.normalZ = from.normalZ;
@@ -601,6 +616,7 @@ export function copySentPrevState(
     to.isProducing = from.isProducing;
     to.factoryRepeats = from.factoryRepeats;
     to.factorySelectedUnitCode = from.factorySelectedUnitCode;
+    to.factoryQueueHash = from.factoryQueueHash;
   }
   if (changedFields & ENTITY_CHANGED_NORMAL) {
     to.normalX = from.normalX;

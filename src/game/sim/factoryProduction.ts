@@ -36,6 +36,7 @@ const FACTORY_ACTION_CLEAR_INVALID_SELECTION = 3;
 const FACTORY_ACTION_STOP_PRODUCING = 4;
 const FACTORY_ACTION_SPAWN_SHELL = 5;
 const FACTORY_SHELL_AIR_SPAWN_HEIGHT = 160;
+const MAX_FACTORY_PRODUCTION_QUEUE_LENGTH = 64;
 
 let factoryRows: Entity[] = [];
 let factoryRowShells: Array<Entity | null> = [];
@@ -231,13 +232,15 @@ export class FactoryProductionSystem {
         factoryComp.isProducing = false;
         factoryComp.currentBuildProgress = 0;
         if (!factoryComp.repeatProduction) {
-          factoryComp.selectedUnitBlueprintId = null;
-          factoryComp.repeatProduction = true;
+          const nextQueuedUnitBlueprintId = factoryComp.productionQueue.shift() ?? null;
+          factoryComp.selectedUnitBlueprintId = nextQueuedUnitBlueprintId;
+          factoryComp.repeatProduction = nextQueuedUnitBlueprintId === null;
         }
         world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
       } else if (action === FACTORY_ACTION_CLEAR_INVALID_SELECTION) {
         factoryComp.selectedUnitBlueprintId = null;
         factoryComp.repeatProduction = true;
+        factoryComp.productionQueue.length = 0;
         world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
       } else if (action === FACTORY_ACTION_STOP_PRODUCING) {
         factoryComp.isProducing = false;
@@ -343,10 +346,16 @@ export class FactoryProductionSystem {
     world.markSnapshotDirty(unit.id, ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_TURRETS);
   }
 
-  // Toggle the factory's production selection. Repeat mode keeps the
-  // selected blueprint after completion; one-shot mode clears it after
-  // the active shell completes.
-  selectUnit(factory: Entity, unitBlueprintId: string, world: WorldState, repeat = true): boolean {
+  // Toggle or queue factory production. Repeat mode keeps a single
+  // infinite selection; finite mode appends one or more jobs behind the
+  // active shell/selection without canceling already-paid work.
+  selectUnit(
+    factory: Entity,
+    unitBlueprintId: string,
+    world: WorldState,
+    repeat = true,
+    count = 1,
+  ): boolean {
     if (!factory.factory || !isEntityActive(factory)) {
       return false;
     }
@@ -356,20 +365,46 @@ export class FactoryProductionSystem {
       return false;
     }
     const factoryComp = factory.factory;
+    const requestedCount = Math.max(1, Math.min(MAX_FACTORY_PRODUCTION_QUEUE_LENGTH, Math.floor(count)));
+    if (!repeat) {
+      let changed = false;
+      if (factoryComp.selectedUnitBlueprintId === null && factoryComp.currentShellId === null) {
+        factoryComp.selectedUnitBlueprintId = unitBlueprintId;
+        factoryComp.repeatProduction = false;
+        changed = true;
+      } else {
+        factoryComp.repeatProduction = false;
+      }
+      while (
+        factoryComp.productionQueue.length < MAX_FACTORY_PRODUCTION_QUEUE_LENGTH &&
+        factoryComp.productionQueue.length + (changed ? 1 : 0) < requestedCount
+      ) {
+        factoryComp.productionQueue.push(unitBlueprintId);
+        changed = true;
+      }
+      return changed;
+    }
+
     const current = factoryComp.selectedUnitBlueprintId;
-    if (current === unitBlueprintId && factoryComp.repeatProduction === repeat) {
+    if (
+      current === unitBlueprintId &&
+      factoryComp.repeatProduction &&
+      factoryComp.productionQueue.length === 0
+    ) {
       // Toggle off — cancel active shell, clear selection.
       this.cancelActiveShell(world, factory);
       factoryComp.selectedUnitBlueprintId = null;
       factoryComp.isProducing = false;
       factoryComp.repeatProduction = true;
+      factoryComp.productionQueue.length = 0;
     } else {
       // Replace — cancel any active shell of the previous type, then
       // swap the selection. The production loop spawns a fresh shell
       // of the new type next tick.
       this.cancelActiveShell(world, factory);
       factoryComp.selectedUnitBlueprintId = unitBlueprintId;
-      factoryComp.repeatProduction = repeat;
+      factoryComp.repeatProduction = true;
+      factoryComp.productionQueue.length = 0;
     }
     return true;
   }
@@ -382,10 +417,12 @@ export class FactoryProductionSystem {
     const changed = factoryComp.selectedUnitBlueprintId !== null
       || factoryComp.currentShellId !== null
       || factoryComp.isProducing
-      || factoryComp.currentBuildProgress !== 0;
+      || factoryComp.currentBuildProgress !== 0
+      || factoryComp.productionQueue.length > 0;
     this.cancelActiveShell(world, factory);
     factoryComp.selectedUnitBlueprintId = null;
     factoryComp.repeatProduction = true;
+    factoryComp.productionQueue.length = 0;
     factoryComp.isProducing = false;
     factoryComp.currentBuildProgress = 0;
     return changed;

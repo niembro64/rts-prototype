@@ -33,6 +33,7 @@ import {
   getUnitBuildRequired,
 } from './ClientBuildStateApplier';
 import { getBuildingConfig } from '../sim/buildConfigs';
+import { decodeFactoryProductionQueue } from './factoryProductionQueueWire';
 import { cloneBuildingSupportSurface } from '../sim/buildingSupportSurface';
 
 /**
@@ -170,6 +171,7 @@ export function snapClientNonVisualState(
       : codeToUnitBlueprintId(sf.selectedUnitBlueprintCode);
     entity.factory.selectedUnitBlueprintId = selectedUnitBlueprintId ?? null;
     entity.factory.repeatProduction = sf.repeat !== false;
+    entity.factory.productionQueue = decodeFactoryProductionQueue(sf.queue);
     entity.factory.currentShellId = null;
     entity.factory.currentBuildProgress = sf.progress;
     entity.factory.isProducing = sf.producing;

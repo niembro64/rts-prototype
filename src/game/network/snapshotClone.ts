@@ -125,6 +125,7 @@ function copyFactoryInto(src: ReusableFactory, dst: ReusableFactory): ReusableFa
   dst.progress = src.progress;
   dst.producing = src.producing;
   dst.repeat = src.repeat !== false;
+  dst.queue = src.queue !== null && src.queue !== undefined ? src.queue.slice() : null;
   dst.energyRate = src.energyRate;
   dst.metalRate = src.metalRate;
   dst.guardTargetId = src.guardTargetId ?? null;
@@ -196,6 +197,7 @@ function copyBuildingInto(
         progress: 0,
         producing: false,
         repeat: true,
+        queue: null,
         energyRate: 0,
         metalRate: 0,
         guardTargetId: null,

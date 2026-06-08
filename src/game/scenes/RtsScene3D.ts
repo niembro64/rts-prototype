@@ -986,7 +986,7 @@ export class RtsScene3D {
     this.inputManager?.toggleFormationAssumeMode();
   }
 
-  public queueFactoryUnit(factoryId: number, unitBlueprintId: string, repeat = true): void {
+  public queueFactoryUnit(factoryId: number, unitBlueprintId: string, repeat = true, count = 1): void {
     // Factory build queue is server-authoritative, so this command
     // goes straight through gameConnection (same path the 2D scene's
     // processLocalCommands forwards it to).
@@ -996,6 +996,7 @@ export class RtsScene3D {
       factoryId,
       unitBlueprintId,
       repeat,
+      count,
     });
   }
 

@@ -55,9 +55,9 @@ unit-specific special buttons beyond commander DGun only after the underlying
 authoritative simulation, snapshots, client feedback, and physical
 presentation exist.
 
-Issue: factory and production UI are incomplete. Implement BAR-equivalent
-multi-unit factory queue mode/quotas, production queue editing, and related
-state indicators as authoritative-server commands.
+Issue: factory production queue editing is incomplete. Add authoritative
+commands and selection-panel controls for removing, reordering, and changing
+quantities of individual finite factory queue items.
 
 Issue: BAR gameplay functionality tied to missing commands is absent. Implement
 the systems needed by the missing command surface: transports, capture,

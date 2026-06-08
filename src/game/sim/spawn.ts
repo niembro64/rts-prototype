@@ -264,6 +264,7 @@ function placeCompleteBuilding(
     entity.factory = {
       selectedUnitBlueprintId: null,
       repeatProduction: true,
+      productionQueue: [],
       currentShellId: null,
       currentBuildProgress: 0,
       defaultWaypoints,
@@ -364,6 +365,8 @@ function getAvailableDemoFactoryUnitBlueprintIds(
 function seedFactoryRepeatBuild(factory: Entity, unitBlueprintId: string): void {
   if (!factory.factory) return;
   factory.factory.selectedUnitBlueprintId = unitBlueprintId;
+  factory.factory.productionQueue.length = 0;
+  factory.factory.repeatProduction = true;
 }
 
 function placeFactoryArcRowForUnitBlueprintIds(

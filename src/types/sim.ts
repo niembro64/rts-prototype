@@ -900,9 +900,10 @@ export type UnitBuildConfig = {
 
 // Factory component. The host (today: the fabricator platform) produces
 // **units** from a fixed launch spot at the center of its footprint. The factory
-// carries one build selection: `selectedUnitBlueprintId` is either the
-// unit blueprint to produce or null for off. `repeatProduction` decides
-// whether that selection repeats forever or clears after one completed unit.
+// carries one active build selection: `selectedUnitBlueprintId` is either
+// the unit blueprint to produce next/currently or null for off.
+// `repeatProduction` decides whether that selection repeats forever or
+// advances through `productionQueue` / clears after one completed unit.
 // The factory
 // spawns that selected unit as an airborne shell above its center bay; the
 // shell then falls through normal physics and absorbs resources from the
@@ -923,6 +924,7 @@ export type UnitBuildConfig = {
 export type Factory = {
   selectedUnitBlueprintId: string | null;
   repeatProduction: boolean;
+  productionQueue: string[];
   currentShellId: EntityId | null;
   currentBuildProgress: number;
   /** Server-owned default route for units this factory produces.

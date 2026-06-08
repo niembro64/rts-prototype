@@ -477,13 +477,19 @@ function sanitizeStartBuildCommand(command: StartBuildCommand, tick: number): St
 }
 
 function sanitizeQueueUnitCommand(command: QueueUnitCommand, tick: number): QueueUnitCommand | null {
-  return isEntityId(command.factoryId) && isBuildableUnitBlueprintId(command.unitBlueprintId)
+  const count = command.count === undefined
+    ? 1
+    : Number.isInteger(command.count) && command.count >= 1 && command.count <= 64
+      ? command.count
+      : null;
+  return isEntityId(command.factoryId) && isBuildableUnitBlueprintId(command.unitBlueprintId) && count !== null
     ? {
         type: 'queueUnit',
         tick,
         factoryId: command.factoryId,
         unitBlueprintId: command.unitBlueprintId,
         repeat: command.repeat !== false,
+        count,
       }
     : null;
 }

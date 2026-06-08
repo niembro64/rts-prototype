@@ -489,6 +489,7 @@ export function buildSelectionInfo(
   let factoryProgress: number | undefined;
   let factoryIsProducing: boolean | undefined;
   let factoryRepeatsProduction: boolean | undefined;
+  let factoryProductionQueue: { unitBlueprintId: string; label: string }[] | undefined;
   let factoryGuardTargetId: number | null | undefined;
 
   if (factory?.factory) {
@@ -502,6 +503,10 @@ export function buildSelectionInfo(
     factoryProgress = f.currentBuildProgress;
     factoryIsProducing = f.isProducing;
     factoryRepeatsProduction = f.repeatProduction;
+    factoryProductionQueue = f.productionQueue.map((unitBlueprintId) => ({
+      unitBlueprintId,
+      label: unitLabel(unitBlueprintId),
+    }));
     factoryGuardTargetId = f.guardTargetId;
   }
 
@@ -557,6 +562,7 @@ export function buildSelectionInfo(
     factoryProgress,
     factoryIsProducing,
     factoryRepeatsProduction,
+    factoryProductionQueue,
     factoryGuardTargetId,
     controlGroups: inputState?.controlGroups ?? [],
     details: buildSelectionDetails(selectedUnits, selectedTowers, selectedBuildings),

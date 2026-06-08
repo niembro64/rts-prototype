@@ -801,6 +801,18 @@ export class GameServer {
           factoryComp.repeatProduction = true;
           touched = true;
         }
+        const queueLengthBefore = factoryComp.productionQueue.length;
+        if (queueLengthBefore > 0) {
+          factoryComp.productionQueue = factoryComp.productionQueue.filter(id => id !== unitBlueprintId);
+          if (factoryComp.productionQueue.length !== queueLengthBefore) {
+            touched = true;
+          }
+        }
+        if (factoryComp.selectedUnitBlueprintId === null && factoryComp.productionQueue.length > 0) {
+          factoryComp.selectedUnitBlueprintId = factoryComp.productionQueue.shift() ?? null;
+          factoryComp.repeatProduction = factoryComp.selectedUnitBlueprintId === null;
+          touched = true;
+        }
         if (!touched) continue;
         factoryComp.isProducing = false;
         factoryComp.currentBuildProgress = 0;

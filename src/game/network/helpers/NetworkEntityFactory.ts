@@ -32,6 +32,7 @@ import { initializeConstructionPieceHealth } from '../../sim/constructionLifecyc
 import { isFiniteNumber } from '../../math';
 import { createUnitSuspension } from '../../sim/unitSuspension';
 import { computeUnitActionHash } from '../../sim/unitActions';
+import { decodeFactoryProductionQueue } from '../factoryProductionQueueWire';
 import {
   dequantizeEntityPosition as deqEntityPos,
   dequantizeRotation as deqRot,
@@ -504,6 +505,7 @@ function createBuildingFromNetwork(
     entity.factory = {
       selectedUnitBlueprintId: selectedUnitBlueprintId ?? null,
       repeatProduction: f.repeat !== false,
+      productionQueue: decodeFactoryProductionQueue(f.queue),
       // Client-side currentShellId stays null — the actual shell entity
       // is in the world separately. currentBuildProgress mirrors the
       // wire's avg-fill so the UI can draw the production progress

@@ -32,6 +32,7 @@ export function runSnapshotEntityWirePackContractTest(): void {
         progress: 0.25,
         producing: true,
         repeat: false,
+        queue: [1, 2, 1],
         energyRate: 0.75,
         metalRate: 0.5,
         guardTargetId: null,
@@ -80,5 +81,9 @@ export function runSnapshotEntityWirePackContractTest(): void {
   assertContract(
     decoded?.building?.factory?.repeat === false,
     'factory one-shot repeat flag must survive compact entity wire round trip',
+  );
+  assertContract(
+    decoded?.building?.factory?.queue?.join(',') === '1,2,1',
+    'factory finite queue must survive compact entity wire round trip',
   );
 }

@@ -596,6 +596,7 @@ function buildingNeedsRawFallback(building: SnapshotBuilding): boolean {
     hasInactiveTurret(building.turrets) ||
     (factory !== null && factory.guardTargetId !== null) ||
     (factory !== null && factory.repeat === false) ||
+    (factory !== null && factory.queue !== null && factory.queue !== undefined && factory.queue.length > 0) ||
     (factory !== null &&
       factory.selectedUnitBlueprintCode !== null &&
       !isUint(factory.selectedUnitBlueprintCode, 0xFFFF_FFFF))

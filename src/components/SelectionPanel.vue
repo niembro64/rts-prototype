@@ -131,8 +131,12 @@ const selectionPanelStyle = {
 const selectedBuildUnitBlueprintId = computed(() =>
   props.selection.factorySelectedUnit?.unitBlueprintId ?? null,
 );
+const factoryQueuedUnits = computed(() => props.selection.factoryProductionQueue ?? []);
+const factoryQueueCount = computed(() => factoryQueuedUnits.value.length);
 const hasFactoryProduction = computed(() =>
-  selectedBuildUnitBlueprintId.value !== null || props.selection.factoryIsProducing === true,
+  selectedBuildUnitBlueprintId.value !== null ||
+    props.selection.factoryIsProducing === true ||
+    factoryQueueCount.value > 0,
 );
 const hasFactoryPresetToSave = computed(() => selectedBuildUnitBlueprintId.value !== null);
 const factoryProgressPercent = computed(() =>
@@ -145,12 +149,23 @@ const factoryStatusLabel = computed(() => {
   const unitLabel = props.selection.factorySelectedUnit?.label ?? 'No unit';
   if (unitLabel === 'No unit') return `${unitLabel} idle`;
   const modeLabel = props.selection.factoryRepeatsProduction === false ? 'Queue' : 'Repeat';
+  const queuedLabel = factoryQueueCount.value > 0 ? ` +${factoryQueueCount.value}` : '';
   return props.selection.factoryIsProducing === true
-    ? `${modeLabel} ${unitLabel} producing`
-    : `${modeLabel} ${unitLabel} idle`;
+    ? `${modeLabel} ${unitLabel} producing${queuedLabel}`
+    : `${modeLabel} ${unitLabel} idle${queuedLabel}`;
+});
+const factoryQueueSummary = computed(() => {
+  if (factoryQueuedUnits.value.length === 0) return '';
+  const counts = new Map<string, number>();
+  for (const unit of factoryQueuedUnits.value) {
+    counts.set(unit.label, (counts.get(unit.label) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([label, count]) => count > 1 ? `${label} x${count}` : label)
+    .join(' -> ');
 });
 const factoryStatusTitle = computed(() =>
-  `Factory production: ${factoryStatusLabel.value} - ${factoryProgressPercent.value}%`,
+  `Factory production: ${factoryStatusLabel.value} - ${factoryProgressPercent.value}%${factoryQueueSummary.value ? ` - queued: ${factoryQueueSummary.value}` : ''}`,
 );
 const showCancelHint = computed(() =>
   props.selection.isBuildMode
@@ -350,7 +365,9 @@ function toggleWaitFromClick(event: MouseEvent): void {
 }
 
 function queueFactoryUnitFromClick(factoryId: number, unitBlueprintId: string, event: MouseEvent): void {
-  props.actions.queueUnit(factoryId, unitBlueprintId, !event.shiftKey);
+  const repeat = !event.shiftKey;
+  const count = !repeat && event.altKey ? 5 : 1;
+  props.actions.queueUnit(factoryId, unitBlueprintId, repeat, count);
 }
 
 </script>
@@ -918,6 +935,7 @@ function queueFactoryUnitFromClick(factoryId: number, unitBlueprintId: string, e
         <div class="factory-progress-track">
           <div class="factory-progress-fill" :style="factoryProgressStyle"></div>
         </div>
+        <div v-if="factoryQueueSummary" class="factory-queue-row">{{ factoryQueueSummary }}</div>
       </div>
       <div class="buttons">
         <button
@@ -988,7 +1006,7 @@ function queueFactoryUnitFromClick(factoryId: number, unitBlueprintId: string, e
           type="button"
           class="action-btn produce-btn vehicle-btn"
           :class="{ active: selectedBuildUnitBlueprintId === uo.unitBlueprintId }"
-          :title="costTitle(`Repeat ${uo.label}; Shift-click one-shot`, uo.cost)"
+          :title="costTitle(`Repeat ${uo.label}; Shift-click queue; Shift+Alt queues five`, uo.cost)"
           @click="(event) => queueFactoryUnitFromClick(selection.factoryId!, uo.unitBlueprintId, event)"
         >
           <span class="btn-label">{{ uo.shortName }}</span>
@@ -1007,7 +1025,7 @@ function queueFactoryUnitFromClick(factoryId: number, unitBlueprintId: string, e
           type="button"
           class="action-btn produce-btn bot-btn"
           :class="{ active: selectedBuildUnitBlueprintId === uo.unitBlueprintId }"
-          :title="costTitle(`Repeat ${uo.label}; Shift-click one-shot`, uo.cost)"
+          :title="costTitle(`Repeat ${uo.label}; Shift-click queue; Shift+Alt queues five`, uo.cost)"
           @click="(event) => queueFactoryUnitFromClick(selection.factoryId!, uo.unitBlueprintId, event)"
         >
           <span class="btn-label">{{ uo.shortName }}</span>
@@ -1369,6 +1387,17 @@ kbd {
 .factory-status-progress {
   color: var(--selection-panel-key);
   font-weight: bold;
+}
+
+.factory-queue-row {
+  margin-top: 3px;
+  color: var(--selection-panel-text-muted);
+  font-family: monospace;
+  font-size: 8px;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .factory-progress-track {

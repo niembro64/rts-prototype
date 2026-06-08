@@ -87,6 +87,7 @@ export type SelectionInfo = {
   isReclaimMode: boolean;
   isPingMode: boolean;
   factorySelectedUnit?: FactorySelectionItem | null;
+  factoryProductionQueue?: FactorySelectionItem[];
   factoryProgress?: number;
   factoryIsProducing?: boolean;
   factoryRepeatsProduction?: boolean;
@@ -147,7 +148,7 @@ export type SelectionActions = {
   toggleRepairArea: () => void;
   toggleFormationAssume: () => void;
   toggleFormationMove: () => void;
-  queueUnit: (factoryId: number, unitBlueprintId: string, repeat?: boolean) => void;
+  queueUnit: (factoryId: number, unitBlueprintId: string, repeat?: boolean, count?: number) => void;
   stopFactoryProduction: (factoryId: number) => void;
   clearFactoryGuard: (factoryId: number) => void;
 };

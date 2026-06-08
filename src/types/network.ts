@@ -939,6 +939,8 @@ export type NetworkServerSnapshotEntity = {
       /** False means the selected unit is a one-shot queue item; omitted/true
        *  means the selected unit repeats after each completed shell. */
       repeat?: boolean;
+      /** Finite production queue after the selected/current item. */
+      queue?: number[] | null;
       /** Per-resource transfer rate this tick (0..1 fraction of the
        *  factory's max rate cap). Drives the resource-ball flow at the
        *  factory's pylons. */
