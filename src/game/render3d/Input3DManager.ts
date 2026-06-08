@@ -190,7 +190,10 @@ export class Input3DManager {
       getTick: () => this.context.getTick(),
       setWaypointMode: (mode) => this.setWaypointMode(mode),
       storeControlGroupSlot: (index) => this.storeControlGroupSlot(index),
+      addToControlGroupSlot: (index) => this.addToControlGroupSlot(index),
       recallControlGroupSlot: (index, additive) => this.recallControlGroupSlot(index, additive),
+      toggleControlGroupSlot: (index) => this.toggleControlGroupSlot(index),
+      unsetSelectedFromControlGroups: () => this.unsetSelectedFromControlGroups(),
       hasSelectedBuilder: () => this.hasSelectedBuilder(),
       getSelectedBuilderAllowedBuildBlueprintIds: () => this.getSelectedBuilderAllowedBuildBlueprintIds(),
       exitSpecialModes: (includeTowerTarget) => this.exitSpecialModes(includeTowerTarget),
@@ -499,8 +502,20 @@ export class Input3DManager {
     this.controlGroups.storeSlot(index);
   }
 
+  addToControlGroupSlot(index: number): void {
+    this.controlGroups.addToSlot(index);
+  }
+
   recallControlGroupSlot(index: number, additive: boolean): boolean {
     return this.controlGroups.recallSlot(index, additive);
+  }
+
+  toggleControlGroupSlot(index: number): boolean {
+    return this.controlGroups.toggleSlotSelection(index);
+  }
+
+  unsetSelectedFromControlGroups(): void {
+    this.controlGroups.unsetSelectedFromGroups();
   }
 
   /** True if D-gun mode is currently active. */

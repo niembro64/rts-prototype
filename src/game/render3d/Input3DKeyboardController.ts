@@ -7,6 +7,7 @@ import {
   handleEscape,
   type CommanderModeController,
 } from '../input/helpers';
+import { resolveCommandHotkey, type CommandHotkeyId } from '../input/commandHotkeys';
 
 type Input3DKeyboardControllerConfig = {
   mode: CommanderModeController;
@@ -14,7 +15,10 @@ type Input3DKeyboardControllerConfig = {
   getTick: () => number;
   setWaypointMode: (mode: WaypointType) => void;
   storeControlGroupSlot: (index: number) => void;
+  addToControlGroupSlot: (index: number) => void;
   recallControlGroupSlot: (index: number, additive: boolean) => boolean;
+  toggleControlGroupSlot: (index: number) => boolean;
+  unsetSelectedFromControlGroups: () => void;
   hasSelectedBuilder: () => boolean;
   getSelectedBuilderAllowedBuildBlueprintIds: () => readonly StructureBlueprintId[];
   exitSpecialModes: (includeTowerTarget?: boolean) => void;
@@ -58,6 +62,13 @@ function isTextEntryTarget(target: EventTarget | null): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || Boolean(element?.isContentEditable);
 }
 
+function isControlGroupUnsetKey(e: KeyboardEvent): boolean {
+  return (e.ctrlKey || e.metaKey)
+    && !e.shiftKey
+    && !e.altKey
+    && (e.code === 'Backquote' || e.key === '`');
+}
+
 export class Input3DKeyboardController {
   private readonly config: Input3DKeyboardControllerConfig;
 
@@ -69,13 +80,26 @@ export class Input3DKeyboardController {
     if (e.repeat) return;
     if (isTextEntryTarget(e.target)) return;
 
+    if (isControlGroupUnsetKey(e)) {
+      e.preventDefault();
+      this.config.unsetSelectedFromControlGroups();
+      return;
+    }
+
     const controlGroupIndex = controlGroupIndexForKey(e);
     if (controlGroupIndex >= 0) {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
-        this.config.storeControlGroupSlot(controlGroupIndex);
+        if (e.altKey) {
+          this.config.toggleControlGroupSlot(controlGroupIndex);
+        } else if (e.shiftKey) {
+          this.config.addToControlGroupSlot(controlGroupIndex);
+        } else {
+          this.config.storeControlGroupSlot(controlGroupIndex);
+        }
         return;
       }
+      if (e.altKey) return;
       if (this.config.recallControlGroupSlot(controlGroupIndex, e.shiftKey)) {
         e.preventDefault();
         return;
@@ -95,65 +119,78 @@ export class Input3DKeyboardController {
       return;
     }
 
-    switch (e.key.toLowerCase()) {
-      case 'm':
+    const commandId = resolveCommandHotkey(e);
+    if (commandId !== null) {
+      e.preventDefault();
+      this.runCommandHotkey(commandId, e);
+      return;
+    }
+
+    if (e.key.toLowerCase() === 'escape') {
+      this.handleEscape();
+    }
+  }
+
+  private runCommandHotkey(commandId: CommandHotkeyId, e: KeyboardEvent): void {
+    switch (commandId) {
+      case 'waypoint.move':
         this.config.setWaypointMode('move');
         break;
-      case 'f':
+      case 'waypoint.fight':
         this.config.setWaypointMode('fight');
         break;
-      case 'h':
+      case 'waypoint.patrol':
         this.config.setWaypointMode('patrol');
         break;
-      case 's':
+      case 'command.stop':
         this.config.stopSelectedUnits();
         break;
-      case 'u':
+      case 'command.undoQueue':
         this.config.removeLastQueuedOrder();
         break;
-      case 'x':
+      case 'command.clearQueue':
         this.config.clearQueuedOrders();
         break;
-      case 'w':
+      case 'command.wait':
         this.config.toggleSelectedWait(e.shiftKey);
         break;
-      case 'e':
+      case 'command.fireToggle':
         this.config.toggleSelectedFire();
         break;
-      case 'o':
+      case 'command.buildingActive':
         this.config.toggleBuildingActive();
         break;
-      case 'k':
+      case 'command.selfDestruct':
         this.config.selfDestructSelected();
         break;
-      case 'l':
+      case 'combat.towerTargetSet':
         this.config.toggleTowerTargetMode();
         break;
-      case 'j':
+      case 'combat.towerTargetClear':
         this.config.clearTowerTarget();
         break;
-      case 'a':
+      case 'combat.attackArea':
         this.config.toggleAttackAreaMode();
         break;
-      case 't':
+      case 'combat.attackGround':
         this.config.toggleAttackGroundMode();
         break;
-      case 'g':
+      case 'combat.guard':
         this.config.toggleGuardMode();
         break;
-      case 'c':
+      case 'combat.reclaim':
         this.config.toggleReclaimMode();
         break;
-      case 'r':
+      case 'combat.repairArea':
         this.config.toggleRepairAreaMode();
         break;
-      case 'p':
+      case 'combat.ping':
         this.config.togglePingMode();
         break;
-      case 'y':
+      case 'command.scan':
         this.config.enqueueScanAtCursor();
         break;
-      case 'b':
+      case 'command.buildCycle':
         if (!this.config.hasSelectedBuilder()) break;
         this.config.exitSpecialModes(false);
         if (!this.config.mode.isInBuildMode) {
@@ -162,15 +199,11 @@ export class Input3DKeyboardController {
           this.config.mode.cycleBuildingBlueprintId();
         }
         break;
-      case 'd':
+      case 'command.dgun':
         this.config.toggleDGunMode();
         break;
-      case 'tab':
-        e.preventDefault();
+      case 'command.selectCommander':
         this.config.selectActiveCommander(e.shiftKey);
-        break;
-      case 'escape':
-        this.handleEscape();
         break;
     }
   }

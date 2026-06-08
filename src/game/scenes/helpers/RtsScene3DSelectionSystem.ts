@@ -9,9 +9,9 @@ import type {
   WaypointType,
 } from '../../sim/types';
 import type { ControlGroupInfo, SelectionInfo, UIEntitySource, UIInputState } from '@/types/ui';
+import { CONTROL_GROUP_COUNT } from '../../input/helpers';
 
 export type SelectionChangeHandler = ((info: SelectionInfo) => void) | undefined;
-const CONTROL_GROUP_COUNT = 9;
 
 export class RtsScene3DSelectionSystem {
   private selectedUnits: Entity[] = [];

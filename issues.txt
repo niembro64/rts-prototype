@@ -23,15 +23,13 @@ Beyond-All-Reason unless explicitly overridden. BAR references for this backlog:
 https://www.beyondallreason.info/commands-20 and
 https://github.com/beyond-all-reason/Beyond-All-Reason/tree/master/luaui/configs/hotkeys.
 
-Issue: rts-prototype does not have a BAR-compatible keymap and command UI layer.
-The current 3D input path hard-codes a small set of single-key commands
-(move/fight/patrol, stop, queue undo/clear, wait, fire toggle, building on/off,
-self-destruct, tower target, attack area/ground, guard, reclaim, repair area,
-ping, scan, build cycle, DGun, select commander, 1-9 control/build keys).
-Implement BAR-style keyboard command coverage, including grid and legacy key
-presets, configurable key bindings, multi-key binds, modifier-aware commands,
-hotkey conflict handling, and on-screen command buttons whose visible hotkeys
-match the active keymap.
+Issue: the shared command-hotkey registry only covers commands that already
+exist in rts-prototype, with prototype, BAR-grid, and BAR-legacy presets for
+that subset. Finish the BAR-compatible keymap and command UI layer by importing
+the complete BAR grid/legacy bindings, adding runtime multi-key sequence
+dispatch, exposing an in-game preset/custom binding editor, surfacing conflict
+handling to the player, and adding command buttons for missing BAR commands so
+visible hotkeys match the active keymap across the whole command surface.
 
 Issue: the selection command surface is far short of BAR. Add selection
 commands and visual affordances for select all units, select all matching units,
@@ -42,11 +40,12 @@ type, deselect-from-box, invert/loop selection, and the BAR select-box modifier
 semantics for Shift/Ctrl/Alt/Space/Z. Current click, box select, Shift-add, and
 mixed-selection narrowing are not enough.
 
-Issue: control groups only cover 1-9 set/recall/additive recall. Implement BAR
-group slot 0, double-tap group focus, Ctrl+Shift group add, Ctrl+Alt group
-select-toggle, Ctrl+` group unset, auto-group creation/removal, auto-group
-preset save/load, and any required spectator/team selection behavior that maps
-to rts-prototype's lobby and player-switching model.
+Issue: control groups still lack several BAR behaviors. Group slots 0-9,
+Ctrl/Cmd+Shift group add, Ctrl/Cmd+Alt group select-toggle, and Ctrl/Cmd+`
+remove-selected-from-groups exist. Implement double-tap group focus, auto-group
+creation/removal, auto-group preset save/load/show, factory preset integration,
+and any required spectator/team selection behavior that maps to rts-prototype's
+lobby and player-switching model.
 
 Issue: movement and formation commands are incomplete. Keep the existing
 right-click move/fight/patrol and line-drag behavior, but add BAR's explicit

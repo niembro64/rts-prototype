@@ -4322,6 +4322,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runSnapshotLifecycleContractTest();
         const { runSnapshotBufferContractTest } = await import('../scenes/helpers/SnapshotBufferContractTest');
         runSnapshotBufferContractTest();
+        const { runCommandHotkeysContractTest } = await import('../input/commandHotkeysContractTest');
+        runCommandHotkeysContractTest();
         const { runTurretHostIntegrationContractTest } = await import('../sim/turretHostIntegrationTest');
         runTurretHostIntegrationContractTest();
         const { runSupportSurfaceContractTest } = await import('../sim/supportSurfaceContractTest');

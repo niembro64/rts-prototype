@@ -6,6 +6,10 @@ import {
   structureRosterDisplay,
   unitRosterDisplay,
 } from '../game/sim/blueprints/displayRosters';
+import {
+  commandHotkeyLabel,
+  type CommandHotkeyId,
+} from '../game/input/commandHotkeys';
 
 export type { FactorySelectionItem, SelectionInfo, SelectionActions } from '@/types/ui';
 import type {
@@ -126,10 +130,10 @@ const showCancelHint = computed(() =>
   || props.selection.isTowerTargetMode,
 );
 
-const waypointModes: { mode: WaypointType; label: string; key: string; color: string }[] = [
-  { mode: 'move', label: 'Move', key: 'M', color: WAYPOINT_COLOR_CSS.move },
-  { mode: 'fight', label: 'Fight', key: 'F', color: WAYPOINT_COLOR_CSS.fight },
-  { mode: 'patrol', label: 'Patrol', key: 'H', color: WAYPOINT_COLOR_CSS.patrol },
+const waypointModes: { mode: WaypointType; label: string; commandId: CommandHotkeyId; key: string; color: string }[] = [
+  { mode: 'move', label: 'Move', commandId: 'waypoint.move', key: commandHotkeyLabel('waypoint.move'), color: WAYPOINT_COLOR_CSS.move },
+  { mode: 'fight', label: 'Fight', commandId: 'waypoint.fight', key: commandHotkeyLabel('waypoint.fight'), color: WAYPOINT_COLOR_CSS.fight },
+  { mode: 'patrol', label: 'Patrol', commandId: 'waypoint.patrol', key: commandHotkeyLabel('waypoint.patrol'), color: WAYPOINT_COLOR_CSS.patrol },
 ];
 
 const COMPACT_BUILDING_LABELS: Record<string, string> = {
@@ -145,8 +149,10 @@ function compactBuildingLabel(label: string): string {
   return COMPACT_BUILDING_LABELS[label] ?? label.slice(0, 5);
 }
 
-function actionTitle(label: string, key: string, detail?: string): string {
-  return `${label} - Hotkey ${key}${detail === undefined ? '' : ` - ${detail}`}`;
+function actionTitle(label: string, commandId: CommandHotkeyId, detail?: string): string {
+  const key = commandHotkeyLabel(commandId);
+  const hotkey = key === '' ? '' : ` - Hotkey ${key}`;
+  return `${label}${hotkey}${detail === undefined ? '' : ` - ${detail}`}`;
 }
 
 function costTitle(label: string, cost: number, key?: string): string {
@@ -202,9 +208,12 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         </button>
         <div id="selection-hotkey-help" class="hotkey-popover" role="tooltip">
           <div class="hotkey-title">Control Groups</div>
-          <div><kbd>Ctrl/Cmd</kbd> + <kbd>1-9</kbd> stores the selection.</div>
-          <div><kbd>1-9</kbd> recalls a stored group.</div>
-          <div><kbd>Shift</kbd> + <kbd>1-9</kbd> adds a group to the selection.</div>
+          <div><kbd>Ctrl/Cmd</kbd> + <kbd>0-9</kbd> stores the selection.</div>
+          <div><kbd>0-9</kbd> recalls a stored group.</div>
+          <div><kbd>Shift</kbd> + <kbd>0-9</kbd> adds a group to the selection.</div>
+          <div><kbd>Ctrl/Cmd</kbd> + <kbd>Shift</kbd> + <kbd>0-9</kbd> adds selection to a group.</div>
+          <div><kbd>Ctrl/Cmd</kbd> + <kbd>Alt</kbd> + <kbd>0-9</kbd> toggles a group in the selection.</div>
+          <div><kbd>Ctrl/Cmd</kbd> + <kbd>`</kbd> removes selected units from all groups.</div>
           <div class="hotkey-footnote">Button hotkeys appear on hover.</div>
         </div>
       </div>
@@ -238,7 +247,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           class="action-btn"
           :class="{ active: selection.waypointMode === wm.mode }"
           :style="{ '--btn-color': wm.color }"
-          :title="actionTitle(wm.label, wm.key)"
+          :title="actionTitle(wm.label, wm.commandId)"
           @click="actions.setWaypointMode(wm.mode)"
         >
           <span class="btn-label">{{ wm.label }}</span>
@@ -249,87 +258,87 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           class="action-btn"
           :class="{ active: selection.isAttackAreaMode }"
           :style="{ '--btn-color': BUTTON_COLORS.attackArea }"
-          :title="actionTitle('Area attack', 'A', 'Toggle targeting for selected units')"
+          :title="actionTitle('Area attack', 'combat.attackArea', 'Toggle targeting for selected units')"
           @click="actions.toggleAttackArea()"
         >
           <span class="btn-label">Attack</span>
-          <span class="btn-key">A</span>
+          <span class="btn-key">{{ commandHotkeyLabel('combat.attackArea') }}</span>
         </button>
         <button
           type="button"
           class="action-btn"
           :class="{ active: selection.isAttackGroundMode }"
           :style="{ '--btn-color': BUTTON_COLORS.attackGround }"
-          :title="actionTitle('Attack ground', 'T', 'Toggle ground targeting')"
+          :title="actionTitle('Attack ground', 'combat.attackGround', 'Toggle ground targeting')"
           @click="actions.toggleAttackGround()"
         >
           <span class="btn-label">Ground</span>
-          <span class="btn-key">T</span>
+          <span class="btn-key">{{ commandHotkeyLabel('combat.attackGround') }}</span>
         </button>
         <button
           type="button"
           class="action-btn"
           :class="{ active: selection.isPingMode }"
           :style="{ '--btn-color': BUTTON_COLORS.ping }"
-          :title="actionTitle('Ping', 'P')"
+          :title="actionTitle('Ping', 'combat.ping')"
           @click="actions.togglePing()"
         >
           <span class="btn-label">Ping</span>
-          <span class="btn-key">P</span>
+          <span class="btn-key">{{ commandHotkeyLabel('combat.ping') }}</span>
         </button>
         <button
           type="button"
           class="action-btn"
           :class="{ active: selection.isGuardMode }"
           :style="{ '--btn-color': BUTTON_COLORS.guard }"
-          :title="actionTitle('Guard', 'G')"
+          :title="actionTitle('Guard', 'combat.guard')"
           @click="actions.toggleGuard()"
         >
           <span class="btn-label">Guard</span>
-          <span class="btn-key">G</span>
+          <span class="btn-key">{{ commandHotkeyLabel('combat.guard') }}</span>
         </button>
         <button
           type="button"
           class="action-btn"
           :style="{ '--btn-color': BUTTON_COLORS.stop }"
-          :title="actionTitle('Stop', 'S')"
+          :title="actionTitle('Stop', 'command.stop')"
           @click="actions.stopSelectedUnits()"
         >
           <span class="btn-label">Stop</span>
-          <span class="btn-key">S</span>
+          <span class="btn-key">{{ commandHotkeyLabel('command.stop') }}</span>
         </button>
         <button
           type="button"
           class="action-btn"
           :class="{ active: selection.isWaiting }"
           :style="{ '--btn-color': BUTTON_COLORS.wait }"
-          :title="actionTitle('Wait', 'W')"
+          :title="actionTitle('Wait', 'command.wait')"
           @click="actions.toggleSelectedWait()"
         >
           <span class="btn-label">Wait</span>
-          <span class="btn-key">W</span>
+          <span class="btn-key">{{ commandHotkeyLabel('command.wait') }}</span>
         </button>
         <button
           type="button"
           class="action-btn"
           :disabled="!selection.hasQueuedOrders"
           :style="{ '--btn-color': BUTTON_COLORS.undoQueue }"
-          :title="actionTitle('Undo queued order', 'U')"
+          :title="actionTitle('Undo queued order', 'command.undoQueue')"
           @click="actions.removeLastQueuedOrder()"
         >
           <span class="btn-label">Undo Q</span>
-          <span class="btn-key">U</span>
+          <span class="btn-key">{{ commandHotkeyLabel('command.undoQueue') }}</span>
         </button>
         <button
           type="button"
           class="action-btn"
           :disabled="!selection.hasQueuedOrders"
           :style="{ '--btn-color': BUTTON_COLORS.clearQueue }"
-          :title="actionTitle('Clear queued orders', 'X')"
+          :title="actionTitle('Clear queued orders', 'command.clearQueue')"
           @click="actions.clearQueuedOrders()"
         >
           <span class="btn-label">Clear Q</span>
-          <span class="btn-key">X</span>
+          <span class="btn-key">{{ commandHotkeyLabel('command.clearQueue') }}</span>
         </button>
       </div>
     </div>
@@ -347,11 +356,11 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           class="action-btn"
           :class="{ active: selection.fireEnabled }"
           :style="{ '--btn-color': BUTTON_COLORS.fireControl }"
-          :title="actionTitle(selection.fireEnabled ? 'Hold fire' : 'Fire at will', 'E')"
+          :title="actionTitle(selection.fireEnabled ? 'Hold fire' : 'Fire at will', 'command.fireToggle')"
           @click="actions.toggleSelectedFire()"
         >
           <span class="btn-label">{{ selection.fireEnabled ? 'Fire' : 'Hold' }}</span>
-          <span class="btn-key">E</span>
+          <span class="btn-key">{{ commandHotkeyLabel('command.fireToggle') }}</span>
         </button>
       </div>
     </div>
@@ -385,12 +394,12 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           type="button"
           class="action-btn dgun-btn"
           :class="{ active: selection.isDGunMode }"
-          :title="actionTitle('D-Gun', 'D', 'Cost 200E')"
+          :title="actionTitle('D-Gun', 'command.dgun', 'Cost 200E')"
           @click="actions.toggleDGun()"
         >
           <span class="btn-label">D-Gun</span>
           <span class="btn-cost"><span class="cost-energy">200E</span></span>
-          <span class="btn-key">D</span>
+          <span class="btn-key">{{ commandHotkeyLabel('command.dgun') }}</span>
         </button>
         <button
           v-if="selection.hasCommander"
@@ -398,11 +407,11 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           class="action-btn"
           :class="{ active: selection.isRepairAreaMode }"
           :style="{ '--btn-color': BUTTON_COLORS.repair }"
-          :title="actionTitle('Repair area', 'R')"
+          :title="actionTitle('Repair area', 'combat.repairArea')"
           @click="actions.toggleRepairArea()"
         >
           <span class="btn-label">Repair</span>
-          <span class="btn-key">R</span>
+          <span class="btn-key">{{ commandHotkeyLabel('combat.repairArea') }}</span>
         </button>
         <button
           v-if="selection.hasCommander"
@@ -410,11 +419,11 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           class="action-btn"
           :class="{ active: selection.isReclaimMode }"
           :style="{ '--btn-color': BUTTON_COLORS.reclaim }"
-          :title="actionTitle('Reclaim', 'C')"
+          :title="actionTitle('Reclaim', 'combat.reclaim')"
           @click="actions.toggleReclaim()"
         >
           <span class="btn-label">Reclaim</span>
-          <span class="btn-key">C</span>
+          <span class="btn-key">{{ commandHotkeyLabel('combat.reclaim') }}</span>
         </button>
       </div>
     </div>
@@ -470,22 +479,22 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           class="action-btn"
           :class="{ active: selection.isTowerTargetMode }"
           :style="{ '--btn-color': BUTTON_COLORS.attackArea }"
-          :title="actionTitle('Set target', 'L', 'Click an entity to lock on')"
+          :title="actionTitle('Set target', 'combat.towerTargetSet', 'Click an entity to lock on')"
           @click="actions.setTowerTargetMode()"
         >
           <span class="btn-label">Set</span>
-          <span class="btn-key">L</span>
+          <span class="btn-key">{{ commandHotkeyLabel('combat.towerTargetSet') }}</span>
         </button>
         <button
           type="button"
           class="action-btn"
           :disabled="!selection.hasTowerTargetActive"
           :style="{ '--btn-color': BUTTON_COLORS.stop }"
-          :title="actionTitle('Clear target', 'J')"
+          :title="actionTitle('Clear target', 'combat.towerTargetClear')"
           @click="actions.clearTowerTarget()"
         >
           <span class="btn-label">Clear</span>
-          <span class="btn-key">J</span>
+          <span class="btn-key">{{ commandHotkeyLabel('combat.towerTargetClear') }}</span>
         </button>
       </div>
     </div>
@@ -502,11 +511,11 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           class="action-btn"
           :class="{ active: selection.buildingsActive }"
           :style="{ '--btn-color': BUTTON_COLORS.buildingActive }"
-          :title="actionTitle(selection.buildingsActive ? 'Turn off' : 'Turn on', 'O')"
+          :title="actionTitle(selection.buildingsActive ? 'Turn off' : 'Turn on', 'command.buildingActive')"
           @click="actions.toggleBuildingActive()"
         >
           <span class="btn-label">{{ selection.buildingsActive ? 'On' : 'Off' }}</span>
-          <span class="btn-key">O</span>
+          <span class="btn-key">{{ commandHotkeyLabel('command.buildingActive') }}</span>
         </button>
       </div>
     </div>
@@ -521,11 +530,11 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           type="button"
           class="action-btn"
           :style="{ '--btn-color': BUTTON_COLORS.selfDestruct }"
-          :title="actionTitle('Destroy selection', 'K')"
+          :title="actionTitle('Destroy selection', 'command.selfDestruct')"
           @click="actions.selfDestructSelected()"
         >
           <span class="btn-label">Destroy</span>
-          <span class="btn-key">K</span>
+          <span class="btn-key">{{ commandHotkeyLabel('command.selfDestruct') }}</span>
         </button>
       </div>
     </div>
