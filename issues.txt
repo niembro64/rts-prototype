@@ -21,7 +21,7 @@ Please always commit and push before and after any code changes we make.
 Severity: Medium
 
 Evidence:
-- src/game/sim/Simulation.ts is 2062 lines.
+- src/game/sim/Simulation.ts is 1899 lines.
 - budget_design_philosophy.html explicitly says large files should be split into coherent helpers when touched.
 
 Risk:

@@ -93,6 +93,10 @@ import {
 import { resolveCommanderGameOverWinner } from './SimulationGameOver';
 import { SimulationDeathExplosionPlanner } from './SimulationDeathExplosionPlanner';
 import { SimulationDeadEntityCleanup } from './SimulationDeadEntityCleanup';
+import {
+  SIMULATION_INVALID_BODY_SLOT,
+  SimulationFlyingLoiterController,
+} from './SimulationFlyingLoiterController';
 
 type ActiveMovementTarget = UnitPathPoint & {
   isFinalActionPoint: boolean;
@@ -148,10 +152,6 @@ const ARRIVAL_RESPONSE_TIME_SEC = 0.22;
 const ARRIVAL_MIN_ACCEL = 0.001;
 const ARRIVAL_BATCH_FLAG_LAST_ACTION = 1 << 1;
 const ARRIVAL_COMPLETION_BATCH_FLAG_FLYING = 1 << 2;
-const FLYING_LOITER_INVALID_BODY_SLOT = 0xffffffff;
-const FLYING_LOITER_RADIUS_MULT = 8;
-const FLYING_LOITER_MIN_RADIUS = 80;
-const FLYING_LOITER_RADIAL_GAIN = 0.65;
 
 export class Simulation {
   private world: WorldState;
@@ -160,6 +160,7 @@ export class Simulation {
   private damageSystem: DamageSystem;
   private deathExplosionPlanner: SimulationDeathExplosionPlanner;
   private deadEntityCleanup: SimulationDeadEntityCleanup;
+  private flyingLoiter: SimulationFlyingLoiterController;
   private forceAccumulator: ForceAccumulator = new ForceAccumulator();
   private windState: WindState = sampleWindState(0);
   private windPowerTracker = new WindPowerTracker();
@@ -222,21 +223,6 @@ export class Simulation {
   private _arrivalCompletionDistanceBuf = new Float64Array(0);
   private _arrivalCompletionArrivedBuf = new Uint8Array(0);
   private _arrivalCompletionCount = 0;
-  private _loiterEntitiesBuf: Entity[] = [];
-  private _loiterSlotsBuf = new Uint32Array(0);
-  private _loiterDxBuf = new Float64Array(0);
-  private _loiterDyBuf = new Float64Array(0);
-  private _loiterDistanceBuf = new Float64Array(0);
-  private _loiterRotationBuf = new Float64Array(0);
-  private _loiterRadiusBuf = new Float64Array(0);
-  private _loiterTurnSignBuf = new Float64Array(0);
-  private _loiterFallbackVxBuf = new Float64Array(0);
-  private _loiterFallbackVyBuf = new Float64Array(0);
-  private _loiterOutXBuf = new Float64Array(0);
-  private _loiterOutYBuf = new Float64Array(0);
-  private _loiterOutTurnSignBuf = new Float64Array(0);
-  private _loiterActiveBuf = new Uint8Array(0);
-  private _loiterCount = 0;
   private _stuckEntitiesBuf: Entity[] = [];
   private _stuckSlotsBuf = new Uint32Array(0);
   private _stuckTicksBuf = new Int32Array(0);
@@ -296,6 +282,7 @@ export class Simulation {
       this.eventQueues,
       this.deathExplosionPlanner,
     );
+    this.flyingLoiter = new SimulationFlyingLoiterController(this.world);
   }
 
   // AI player IDs (for auto-production)
@@ -886,7 +873,7 @@ export class Simulation {
       if (unit.actions.length === 0) {
         unit.activePath = null;
         unit.stuckTicks = 0;
-        this.queueFlyingLoiterThrust(entity);
+        this.flyingLoiter.queue(entity);
         continue;
       }
 
@@ -894,12 +881,12 @@ export class Simulation {
 
       // Get current action
       const currentAction = unit.actions[0];
-      this.rememberFlyingLoiterTarget(unit, currentAction);
+      this.flyingLoiter.rememberTarget(unit, currentAction);
 
       if (currentAction.type === 'wait') {
         unit.activePath = null;
         unit.stuckTicks = 0;
-        this.queueFlyingLoiterThrust(entity);
+        this.flyingLoiter.queue(entity);
         continue;
       }
 
@@ -1071,7 +1058,7 @@ export class Simulation {
     }
 
     this.flushArrivalCompletion();
-    this.flushFlyingLoiterThrust(movingUnits);
+    this.flyingLoiter.flush(movingUnits);
     this.flushArrivalThrust(movingUnits, dtSec);
 
     // Stuck-detection / replan pass — runs after every unit has had
@@ -1209,155 +1196,6 @@ export class Simulation {
     }
   }
 
-  /** Record the latest actionable point for flying units so they have
-   *  a bounded loiter center after their queue empties. */
-  private rememberFlyingLoiterTarget(unit: Unit, action: UnitAction): void {
-    if (unit.locomotion.type !== 'flying') return;
-    const x = this.clampMapX(action.x);
-    const y = this.clampMapY(action.y);
-    unit.flyingLoiterTargetX = x;
-    unit.flyingLoiterTargetY = y;
-    unit.flyingLoiterTargetZ = action.z ?? this.world.getGroundZ(x, y);
-  }
-
-  private queueFlyingLoiterThrust(entity: Entity): void {
-    const unit = entity.unit;
-    if (!unit || unit.locomotion.type !== 'flying') return;
-
-    const { transform } = entity;
-    const storedCenterX = unit.flyingLoiterTargetX;
-    const storedCenterY = unit.flyingLoiterTargetY;
-    let centerX: number;
-    let centerY: number;
-    if (
-      typeof storedCenterX !== 'number' ||
-      typeof storedCenterY !== 'number' ||
-      !Number.isFinite(storedCenterX) ||
-      !Number.isFinite(storedCenterY)
-    ) {
-      centerX = this.clampMapX(transform.x);
-      centerY = this.clampMapY(transform.y);
-      unit.flyingLoiterTargetX = centerX;
-      unit.flyingLoiterTargetY = centerY;
-      unit.flyingLoiterTargetZ = Number.isFinite(transform.z)
-        ? transform.z
-        : this.world.getGroundZ(centerX, centerY);
-    } else {
-      centerX = this.clampMapX(storedCenterX);
-      centerY = this.clampMapY(storedCenterY);
-      unit.flyingLoiterTargetX = centerX;
-      unit.flyingLoiterTargetY = centerY;
-    }
-
-    const dx = centerX - transform.x;
-    const dy = centerY - transform.y;
-    const distance = magnitude(dx, dy);
-    const index = this._loiterCount++;
-    this.ensureLoiterCapacity(this._loiterCount);
-    this._loiterEntitiesBuf[index] = entity;
-    const body = entity.body;
-    this._loiterSlotsBuf[index] = body === null
-      ? FLYING_LOITER_INVALID_BODY_SLOT
-      : body.physicsBody.slot;
-    this._loiterDxBuf[index] = dx;
-    this._loiterDyBuf[index] = dy;
-    this._loiterDistanceBuf[index] = distance;
-    this._loiterRotationBuf[index] = transform.rotation;
-    this._loiterRadiusBuf[index] = unit.radius.collision;
-    this._loiterTurnSignBuf[index] =
-      unit.flyingLoiterTurnSign === 1 || unit.flyingLoiterTurnSign === -1
-        ? unit.flyingLoiterTurnSign
-        : 0;
-    this._loiterFallbackVxBuf[index] = unit.velocityX;
-    this._loiterFallbackVyBuf[index] = unit.velocityY;
-  }
-
-  private ensureLoiterCapacity(required: number): void {
-    if (this._loiterSlotsBuf.length >= required) return;
-    const next = Math.max(required, this._loiterSlotsBuf.length * 2, 128);
-    const slots = new Uint32Array(next);
-    slots.set(this._loiterSlotsBuf);
-    this._loiterSlotsBuf = slots;
-    const dx = new Float64Array(next);
-    dx.set(this._loiterDxBuf);
-    this._loiterDxBuf = dx;
-    const dy = new Float64Array(next);
-    dy.set(this._loiterDyBuf);
-    this._loiterDyBuf = dy;
-    const distance = new Float64Array(next);
-    distance.set(this._loiterDistanceBuf);
-    this._loiterDistanceBuf = distance;
-    const rotation = new Float64Array(next);
-    rotation.set(this._loiterRotationBuf);
-    this._loiterRotationBuf = rotation;
-    const radius = new Float64Array(next);
-    radius.set(this._loiterRadiusBuf);
-    this._loiterRadiusBuf = radius;
-    const turnSign = new Float64Array(next);
-    turnSign.set(this._loiterTurnSignBuf);
-    this._loiterTurnSignBuf = turnSign;
-    const fallbackVx = new Float64Array(next);
-    fallbackVx.set(this._loiterFallbackVxBuf);
-    this._loiterFallbackVxBuf = fallbackVx;
-    const fallbackVy = new Float64Array(next);
-    fallbackVy.set(this._loiterFallbackVyBuf);
-    this._loiterFallbackVyBuf = fallbackVy;
-    this._loiterOutXBuf = new Float64Array(next);
-    this._loiterOutYBuf = new Float64Array(next);
-    this._loiterOutTurnSignBuf = new Float64Array(next);
-    this._loiterActiveBuf = new Uint8Array(next);
-  }
-
-  private flushFlyingLoiterThrust(movingUnits: Entity[]): void {
-    const count = this._loiterCount;
-    if (count === 0) return;
-
-    const sim = getSimWasm();
-    if (sim === undefined) {
-      throw new Error('Simulation.flushFlyingLoiterThrust: sim-wasm is not initialized');
-    }
-    sim.flyingLoiterStepBatch(
-      this._loiterSlotsBuf.subarray(0, count),
-      this._loiterDxBuf.subarray(0, count),
-      this._loiterDyBuf.subarray(0, count),
-      this._loiterDistanceBuf.subarray(0, count),
-      this._loiterRotationBuf.subarray(0, count),
-      this._loiterRadiusBuf.subarray(0, count),
-      this._loiterTurnSignBuf.subarray(0, count),
-      this._loiterFallbackVxBuf.subarray(0, count),
-      this._loiterFallbackVyBuf.subarray(0, count),
-      this._loiterOutXBuf.subarray(0, count),
-      this._loiterOutYBuf.subarray(0, count),
-      this._loiterOutTurnSignBuf.subarray(0, count),
-      this._loiterActiveBuf.subarray(0, count),
-      FLYING_LOITER_MIN_RADIUS,
-      FLYING_LOITER_RADIUS_MULT,
-      FLYING_LOITER_RADIAL_GAIN,
-    );
-
-    for (let i = 0; i < count; i++) {
-      const entity = this._loiterEntitiesBuf[i];
-      const unit = entity.unit;
-      if (unit) {
-        unit.thrustDirX = this._loiterOutXBuf[i];
-        unit.thrustDirY = this._loiterOutYBuf[i];
-        const turnSign = this._loiterOutTurnSignBuf[i];
-        unit.flyingLoiterTurnSign = turnSign === 1 || turnSign === -1 ? turnSign : null;
-        if (this._loiterActiveBuf[i] !== 0) movingUnits.push(entity);
-      }
-      this._loiterEntitiesBuf[i] = undefined as unknown as Entity;
-    }
-    this._loiterCount = 0;
-  }
-
-  private clampMapX(x: number): number {
-    return Math.max(0, Math.min(this.world.mapWidth, x));
-  }
-
-  private clampMapY(y: number): number {
-    return Math.max(0, Math.min(this.world.mapHeight, y));
-  }
-
   private ensureArrivalCapacity(required: number): void {
     if (this._arrivalSlotsBuf.length >= required) return;
     const next = Math.max(required, this._arrivalSlotsBuf.length * 2, 128);
@@ -1439,7 +1277,7 @@ export class Simulation {
     this._arrivalCompletionEntitiesBuf[index] = entity;
     this._arrivalCompletionActionsBuf[index] = action;
     this._arrivalCompletionSlotsBuf[index] =
-      entity.body !== null ? entity.body.physicsBody.slot : FLYING_LOITER_INVALID_BODY_SLOT;
+      entity.body !== null ? entity.body.physicsBody.slot : SIMULATION_INVALID_BODY_SLOT;
     this._arrivalCompletionDxBuf[index] = dx;
     this._arrivalCompletionDyBuf[index] = dy;
     this._arrivalCompletionFallbackVxBuf[index] = unit.velocityX;
@@ -1487,7 +1325,7 @@ export class Simulation {
             this.advanceActivePathPoint(entity);
           }
           unit.stuckTicks = 0;
-          if (unit.actions.length === 0) this.queueFlyingLoiterThrust(entity);
+          if (unit.actions.length === 0) this.flyingLoiter.queue(entity);
         } else {
           this.queueArrivalThrust(
             entity,
@@ -2048,8 +1886,7 @@ export class Simulation {
     this._arrivalCompletionCount = 0;
     this._arrivalCompletionEntitiesBuf.length = 0;
     this._arrivalCompletionActionsBuf.length = 0;
-    this._loiterCount = 0;
-    this._loiterEntitiesBuf.length = 0;
+    this.flyingLoiter.reset();
     this._stuckEntitiesBuf.length = 0;
     this.clearCombatHaltDecisionCache();
     this.world.clearPendingDeathCheckIds();
