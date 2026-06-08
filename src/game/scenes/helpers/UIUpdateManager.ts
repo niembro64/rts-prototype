@@ -198,6 +198,7 @@ export function buildSelectionInfo(
     selectedBuildingBlueprintId: inputState?.selectedBuildingBlueprintId ?? null,
     isDGunMode: inputState?.isDGunMode ?? false,
     isRepairAreaMode: inputState?.isRepairAreaMode ?? false,
+    isAttackMode: inputState?.isAttackMode ?? false,
     isAttackAreaMode: inputState?.isAttackAreaMode ?? false,
     isAttackGroundMode: inputState?.isAttackGroundMode ?? false,
     isGuardMode: inputState?.isGuardMode ?? false,

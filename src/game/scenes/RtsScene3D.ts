@@ -466,6 +466,9 @@ export class RtsScene3D {
     this.inputManager.onRepairAreaModeChange = (active) => {
       this.selectionSystem.setRepairAreaMode(active);
     };
+    this.inputManager.onAttackModeChange = (active) => {
+      this.selectionSystem.setAttackMode(active);
+    };
     this.inputManager.onAttackAreaModeChange = (active) => {
       this.selectionSystem.setAttackAreaMode(active);
     };
@@ -831,6 +834,10 @@ export class RtsScene3D {
 
   public clearTowerTarget(): void {
     this.inputManager?.clearTowerTarget();
+  }
+
+  public toggleAttackMode(): void {
+    this.inputManager?.toggleAttackMode();
   }
 
   public toggleAttackAreaMode(): void {

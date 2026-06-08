@@ -122,6 +122,7 @@ const showCancelHint = computed(() =>
   props.selection.isBuildMode
   || props.selection.isDGunMode
   || props.selection.isRepairAreaMode
+  || props.selection.isAttackMode
   || props.selection.isAttackAreaMode
   || props.selection.isAttackGroundMode
   || props.selection.isGuardMode
@@ -306,12 +307,23 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         <button
           type="button"
           class="action-btn"
+          :class="{ active: selection.isAttackMode }"
+          :style="{ '--btn-color': BUTTON_COLORS.attackArea }"
+          :title="actionTitle('Attack', 'combat.attack', 'Click an enemy target')"
+          @click="actions.toggleAttack()"
+        >
+          <span class="btn-label">Attack</span>
+          <span class="btn-key">{{ commandHotkeyLabel('combat.attack') }}</span>
+        </button>
+        <button
+          type="button"
+          class="action-btn"
           :class="{ active: selection.isAttackAreaMode }"
           :style="{ '--btn-color': BUTTON_COLORS.attackArea }"
           :title="actionTitle('Area attack', 'combat.attackArea', 'Toggle targeting for selected units')"
           @click="actions.toggleAttackArea()"
         >
-          <span class="btn-label">Attack</span>
+          <span class="btn-label">Area</span>
           <span class="btn-key">{{ commandHotkeyLabel('combat.attackArea') }}</span>
         </button>
         <button

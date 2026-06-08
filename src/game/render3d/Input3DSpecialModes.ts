@@ -1,5 +1,6 @@
 export type Input3DSpecialMode =
   | 'repairArea'
+  | 'attack'
   | 'attackArea'
   | 'attackGround'
   | 'guard'
@@ -9,6 +10,7 @@ export type Input3DSpecialMode =
 
 type Input3DSpecialModeCallbacks = {
   onRepairAreaModeChange: (active: boolean) => void;
+  onAttackModeChange: (active: boolean) => void;
   onAttackAreaModeChange: (active: boolean) => void;
   onAttackGroundModeChange: (active: boolean) => void;
   onGuardModeChange: (active: boolean) => void;
@@ -23,6 +25,7 @@ type Input3DSpecialModesOptions = Input3DSpecialModeCallbacks & {
 
 const SPECIAL_MODE_ORDER: readonly Input3DSpecialMode[] = [
   'repairArea',
+  'attack',
   'attackArea',
   'attackGround',
   'guard',
@@ -34,6 +37,7 @@ const SPECIAL_MODE_ORDER: readonly Input3DSpecialMode[] = [
 export class Input3DSpecialModes {
   private active: Record<Input3DSpecialMode, boolean> = {
     repairArea: false,
+    attack: false,
     attackArea: false,
     attackGround: false,
     guard: false,
@@ -73,6 +77,9 @@ export class Input3DSpecialModes {
     switch (mode) {
       case 'repairArea':
         this.options.onRepairAreaModeChange(active);
+        break;
+      case 'attack':
+        this.options.onAttackModeChange(active);
         break;
       case 'attackArea':
         this.options.onAttackAreaModeChange(active);

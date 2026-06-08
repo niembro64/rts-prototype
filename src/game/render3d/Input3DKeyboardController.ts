@@ -31,6 +31,7 @@ type Input3DKeyboardControllerConfig = {
   selfDestructSelected: () => void;
   toggleTowerTargetMode: () => void;
   clearTowerTarget: () => void;
+  toggleAttackMode: () => void;
   toggleAttackAreaMode: () => void;
   toggleAttackGroundMode: () => void;
   toggleGuardMode: () => void;
@@ -46,6 +47,7 @@ type Input3DKeyboardControllerConfig = {
   selectWaitingUnits: () => void;
   selectSameTypeOnly: () => void;
   isRepairAreaMode: () => boolean;
+  isAttackMode: () => boolean;
   isAttackAreaMode: () => boolean;
   isAttackGroundMode: () => boolean;
   isGuardMode: () => boolean;
@@ -53,6 +55,7 @@ type Input3DKeyboardControllerConfig = {
   isPingMode: () => boolean;
   isTowerTargetMode: () => boolean;
   exitRepairAreaMode: () => void;
+  exitAttackMode: () => void;
   exitAttackAreaMode: () => void;
   exitAttackGroundMode: () => void;
   exitGuardMode: () => void;
@@ -174,6 +177,9 @@ export class Input3DKeyboardController {
       case 'combat.towerTargetClear':
         this.config.clearTowerTarget();
         break;
+      case 'combat.attack':
+        this.config.toggleAttackMode();
+        break;
       case 'combat.attackArea':
         this.config.toggleAttackAreaMode();
         break;
@@ -234,6 +240,7 @@ export class Input3DKeyboardController {
         { isActive: () => this.config.mode.isInBuildMode, cancel: () => this.config.mode.exitBuildMode() },
         { isActive: () => this.config.mode.isInDGunMode, cancel: () => this.config.mode.exitDGunMode() },
         { isActive: this.config.isRepairAreaMode, cancel: this.config.exitRepairAreaMode },
+        { isActive: this.config.isAttackMode, cancel: this.config.exitAttackMode },
         { isActive: this.config.isAttackAreaMode, cancel: this.config.exitAttackAreaMode },
         { isActive: this.config.isAttackGroundMode, cancel: this.config.exitAttackGroundMode },
         { isActive: this.config.isGuardMode, cancel: this.config.exitGuardMode },

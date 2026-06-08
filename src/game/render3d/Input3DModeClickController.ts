@@ -2,6 +2,8 @@ import type { CommandQueue } from '../sim/commands';
 import type { Entity, EntityId, PlayerId, BuildingBlueprintId } from '../sim/types';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import {
+  buildAttackCommandAt,
+  buildAttackCommandForTarget,
   buildAttackAreaCommand,
   buildAttackGroundCommand,
   buildGuardCommandAt,
@@ -43,6 +45,7 @@ type Input3DModeClickControllerConfig = {
   getSelectedBuilder: () => Entity | null;
   applyCursor: (kind: CommandCursorKind) => void;
   isRepairAreaMode: () => boolean;
+  isAttackMode: () => boolean;
   isAttackAreaMode: () => boolean;
   isAttackGroundMode: () => boolean;
   isGuardMode: () => boolean;
@@ -50,6 +53,7 @@ type Input3DModeClickControllerConfig = {
   isPingMode: () => boolean;
   isTowerTargetMode: () => boolean;
   exitRepairAreaMode: () => void;
+  exitAttackMode: () => void;
   exitAttackAreaMode: () => void;
   exitAttackGroundMode: () => void;
   exitGuardMode: () => void;
@@ -68,6 +72,7 @@ export class Input3DModeClickController {
     return this.config.mode.isInBuildMode ||
       this.config.mode.isInDGunMode ||
       this.config.isRepairAreaMode() ||
+      this.config.isAttackMode() ||
       this.config.isAttackAreaMode() ||
       this.config.isAttackGroundMode() ||
       this.config.isGuardMode() ||
@@ -110,6 +115,7 @@ export class Input3DModeClickController {
     }
     if (this.config.mode.isInDGunMode) return 'dgun';
     if (this.config.isRepairAreaMode()) return 'repair';
+    if (this.config.isAttackMode()) return 'attack';
     if (this.config.isAttackAreaMode()) return 'attack';
     if (this.config.isAttackGroundMode()) return 'attack';
     if (this.config.isGuardMode()) return 'guard';
@@ -148,6 +154,7 @@ export class Input3DModeClickController {
     if (this.config.mode.isInBuildMode) this.handleBuildClick(e);
     else if (this.config.mode.isInDGunMode) this.handleDGunClick(e);
     else if (this.config.isRepairAreaMode()) this.handleRepairAreaClick(e);
+    else if (this.config.isAttackMode()) this.handleAttackClick(e);
     else if (this.config.isAttackAreaMode()) this.handleAttackAreaClick(e);
     else if (this.config.isAttackGroundMode()) this.handleAttackGroundClick(e);
     else if (this.config.isGuardMode()) this.handleGuardClick(e);
@@ -160,6 +167,7 @@ export class Input3DModeClickController {
     if (this.config.mode.isInBuildMode) this.config.mode.exitBuildMode();
     else if (this.config.mode.isInDGunMode) this.config.mode.exitDGunMode();
     else if (this.config.isRepairAreaMode()) this.config.exitRepairAreaMode();
+    else if (this.config.isAttackMode()) this.config.exitAttackMode();
     else if (this.config.isAttackAreaMode()) this.config.exitAttackAreaMode();
     else if (this.config.isAttackGroundMode()) this.config.exitAttackGroundMode();
     else if (this.config.isGuardMode()) this.config.exitGuardMode();
@@ -303,6 +311,48 @@ export class Input3DModeClickController {
     this.config.commandQueue.enqueue(cmd);
     this.config.applyCursor('attack');
     if (!e.shiftKey) this.config.exitAttackAreaMode();
+  }
+
+  private handleAttackClick(e: MouseEvent): void {
+    const selectedUnits = this.config.getEntitySource().getSelectedUnits();
+    if (selectedUnits.length === 0) {
+      this.config.exitAttackMode();
+      return;
+    }
+    const tick = this.config.getTick();
+    const entityHitId = this.config.picker.raycastEntity(e.clientX, e.clientY);
+    const entityHit = entityHitId !== null
+      ? this.config.getEntitySource().getEntity(entityHitId)
+      : null;
+    const meshAttackCmd = buildAttackCommandForTarget(
+      entityHit,
+      selectedUnits,
+      this.config.getActivePlayerId(),
+      tick,
+      e.shiftKey,
+    );
+    if (meshAttackCmd) {
+      this.config.commandQueue.enqueue(meshAttackCmd);
+      this.config.applyCursor('attack');
+      if (!e.shiftKey) this.config.exitAttackMode();
+      return;
+    }
+
+    const world = this.config.picker.raycastGround(e.clientX, e.clientY);
+    if (!world) return;
+    const attackCmd = buildAttackCommandAt(
+      this.config.getEntitySource(),
+      world.x,
+      world.y,
+      selectedUnits,
+      this.config.getActivePlayerId(),
+      tick,
+      e.shiftKey,
+    );
+    if (!attackCmd) return;
+    this.config.commandQueue.enqueue(attackCmd);
+    this.config.applyCursor('attack');
+    if (!e.shiftKey) this.config.exitAttackMode();
   }
 
   private handleAttackGroundClick(e: MouseEvent): void {

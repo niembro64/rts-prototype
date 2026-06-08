@@ -83,6 +83,7 @@ export class Input3DManager {
   public onBuildModeChange?: (buildingBlueprintId: BuildingBlueprintId | null) => void;
   public onDGunModeChange?: (active: boolean) => void;
   public onRepairAreaModeChange?: (active: boolean) => void;
+  public onAttackModeChange?: (active: boolean) => void;
   public onAttackAreaModeChange?: (active: boolean) => void;
   public onAttackGroundModeChange?: (active: boolean) => void;
   public onGuardModeChange?: (active: boolean) => void;
@@ -158,6 +159,7 @@ export class Input3DManager {
       getSelectedBuilder: () => this.getSelectedBuilder(),
       applyCursor: (kind) => this.applyCursor(kind),
       isRepairAreaMode: () => this.repairAreaMode,
+      isAttackMode: () => this.attackMode,
       isAttackAreaMode: () => this.attackAreaMode,
       isAttackGroundMode: () => this.attackGroundMode,
       isGuardMode: () => this.guardMode,
@@ -165,6 +167,7 @@ export class Input3DManager {
       isPingMode: () => this.pingMode,
       isTowerTargetMode: () => this.towerTargetMode,
       exitRepairAreaMode: () => this.exitRepairAreaMode(),
+      exitAttackMode: () => this.exitAttackMode(),
       exitAttackAreaMode: () => this.exitAttackAreaMode(),
       exitAttackGroundMode: () => this.exitAttackGroundMode(),
       exitGuardMode: () => this.exitGuardMode(),
@@ -206,6 +209,7 @@ export class Input3DManager {
       selfDestructSelected: () => this.selfDestructSelected(),
       toggleTowerTargetMode: () => this.toggleTowerTargetMode(),
       clearTowerTarget: () => this.clearTowerTarget(),
+      toggleAttackMode: () => this.toggleAttackMode(),
       toggleAttackAreaMode: () => this.toggleAttackAreaMode(),
       toggleAttackGroundMode: () => this.toggleAttackGroundMode(),
       toggleGuardMode: () => this.toggleGuardMode(),
@@ -221,6 +225,7 @@ export class Input3DManager {
       selectWaitingUnits: () => this.selectWaitingUnits(),
       selectSameTypeOnly: () => this.selectSameTypeOnly(),
       isRepairAreaMode: () => this.repairAreaMode,
+      isAttackMode: () => this.attackMode,
       isAttackAreaMode: () => this.attackAreaMode,
       isAttackGroundMode: () => this.attackGroundMode,
       isGuardMode: () => this.guardMode,
@@ -228,6 +233,7 @@ export class Input3DManager {
       isPingMode: () => this.pingMode,
       isTowerTargetMode: () => this.towerTargetMode,
       exitRepairAreaMode: () => this.exitRepairAreaMode(),
+      exitAttackMode: () => this.exitAttackMode(),
       exitAttackAreaMode: () => this.exitAttackAreaMode(),
       exitAttackGroundMode: () => this.exitAttackGroundMode(),
       exitGuardMode: () => this.exitGuardMode(),
@@ -238,6 +244,7 @@ export class Input3DManager {
     this.specialModes = new Input3DSpecialModes({
       refreshCursor: () => this.refreshCursor(),
       onRepairAreaModeChange: (active) => this.onRepairAreaModeChange?.(active),
+      onAttackModeChange: (active) => this.onAttackModeChange?.(active),
       onAttackAreaModeChange: (active) => this.onAttackAreaModeChange?.(active),
       onAttackGroundModeChange: (active) => this.onAttackGroundModeChange?.(active),
       onGuardModeChange: (active) => this.onGuardModeChange?.(active),
@@ -305,6 +312,10 @@ export class Input3DManager {
 
   private get attackAreaMode(): boolean {
     return this.specialModes.isActive('attackArea');
+  }
+
+  private get attackMode(): boolean {
+    return this.specialModes.isActive('attack');
   }
 
   private get attackGroundMode(): boolean {
@@ -541,6 +552,18 @@ export class Input3DManager {
     this.enterSpecialMode('attackArea');
   }
 
+  toggleAttackMode(): void {
+    if (this.attackMode) {
+      this.exitAttackMode();
+      return;
+    }
+    if (this.entitySource.getSelectedUnits().length === 0) return;
+    this.mode.exitBuildMode();
+    this.mode.exitDGunMode();
+    this.exitSpecialModes();
+    this.enterSpecialMode('attack');
+  }
+
   toggleAttackGroundMode(): void {
     if (this.attackGroundMode) {
       this.exitAttackGroundMode();
@@ -624,6 +647,10 @@ export class Input3DManager {
     return this.attackAreaMode;
   }
 
+  isInAttackMode(): boolean {
+    return this.attackMode;
+  }
+
   /** True while the next left-click will issue an attack-ground command. */
   isInAttackGroundMode(): boolean {
     return this.attackGroundMode;
@@ -650,6 +677,10 @@ export class Input3DManager {
 
   private exitAttackAreaMode(): void {
     this.specialModes.exit('attackArea');
+  }
+
+  private exitAttackMode(): void {
+    this.specialModes.exit('attack');
   }
 
   private exitAttackGroundMode(): void {
@@ -809,6 +840,9 @@ export class Input3DManager {
     }
     if (this.repairAreaMode && !this.hasSelectedCommander()) {
       this.exitRepairAreaMode();
+    }
+    if (this.attackMode && this.entitySource.getSelectedUnits().length === 0) {
+      this.exitAttackMode();
     }
     if (this.attackAreaMode && this.entitySource.getSelectedUnits().length === 0) {
       this.exitAttackAreaMode();

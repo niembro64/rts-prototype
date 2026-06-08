@@ -64,6 +64,7 @@ export type SelectionInfo = {
   selectedBuildingBlueprintId: string | null;
   isDGunMode: boolean;
   isRepairAreaMode: boolean;
+  isAttackMode: boolean;
   isAttackAreaMode: boolean;
   isAttackGroundMode: boolean;
   isGuardMode: boolean;
@@ -99,6 +100,7 @@ export type SelectionActions = {
   /** Clear the host lock-on target on the selected towers. */
   clearTowerTarget: () => void;
   toggleAttackArea: () => void;
+  toggleAttack: () => void;
   toggleAttackGround: () => void;
   toggleGuard: () => void;
   toggleReclaim: () => void;
@@ -190,6 +192,7 @@ export type UIInputState = {
   selectedBuildingBlueprintId: string | null;
   isDGunMode: boolean;
   isRepairAreaMode: boolean;
+  isAttackMode: boolean;
   isAttackAreaMode: boolean;
   isAttackGroundMode: boolean;
   isGuardMode: boolean;

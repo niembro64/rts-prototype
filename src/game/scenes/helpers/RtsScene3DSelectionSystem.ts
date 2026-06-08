@@ -27,6 +27,7 @@ export class RtsScene3DSelectionSystem {
   private activeBuildingBlueprintId: BuildingBlueprintId | null = null;
   private dgunActive = false;
   private repairAreaActive = false;
+  private attackActive = false;
   private attackAreaActive = false;
   private attackGroundActive = false;
   private guardActive = false;
@@ -71,6 +72,11 @@ export class RtsScene3DSelectionSystem {
 
   setRepairAreaMode(active: boolean): void {
     this.repairAreaActive = active;
+    this.selectionInfoDirty = true;
+  }
+
+  setAttackMode(active: boolean): void {
+    this.attackActive = active;
     this.selectionInfoDirty = true;
   }
 
@@ -181,6 +187,7 @@ export class RtsScene3DSelectionSystem {
       selectedBuildingBlueprintId: this.activeBuildingBlueprintId,
       isDGunMode: this.dgunActive,
       isRepairAreaMode: this.repairAreaActive,
+      isAttackMode: this.attackActive,
       isAttackAreaMode: this.attackAreaActive,
       isAttackGroundMode: this.attackGroundActive,
       isGuardMode: this.guardActive,

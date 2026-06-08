@@ -110,6 +110,7 @@ export function useGameCanvasSceneUi({
     selectedBuildingBlueprintId: null,
     isDGunMode: false,
     isRepairAreaMode: false,
+    isAttackMode: false,
     isAttackAreaMode: false,
     isAttackGroundMode: false,
     isGuardMode: false,
@@ -238,6 +239,9 @@ export function useGameCanvasSceneUi({
     },
     toggleAttackArea: () => {
       getActiveBattleScene()?.toggleAttackAreaMode();
+    },
+    toggleAttack: () => {
+      getActiveBattleScene()?.toggleAttackMode();
     },
     toggleAttackGround: () => {
       getActiveBattleScene()?.toggleAttackGroundMode();

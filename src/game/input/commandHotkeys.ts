@@ -18,6 +18,7 @@ export type CommandHotkeyId =
   | 'select.idleBuilders'
   | 'select.waitingUnits'
   | 'select.sameTypeOnly'
+  | 'combat.attack'
   | 'combat.attackArea'
   | 'combat.attackGround'
   | 'combat.guard'
@@ -68,6 +69,7 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'select.idleBuilders',
   'select.waitingUnits',
   'select.sameTypeOnly',
+  'combat.attack',
   'combat.attackArea',
   'combat.attackGround',
   'combat.guard',
@@ -123,6 +125,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<CommandHotkeyPresetId, Comm
     'select.idleBuilders': [key('Ctrl+B', 'b', { ctrl: true })],
     'select.waitingUnits': [key('Ctrl+Y', 'y', { ctrl: true })],
     'select.sameTypeOnly': [key('Alt+Z', 'z', { alt: true })],
+    'combat.attack': [key('V', 'v', { shift: 'any' })],
     'combat.attackArea': [key('A', 'a', { shift: 'any' })],
     'combat.attackGround': [key('T', 't', { shift: 'any' })],
     'combat.guard': [key('G', 'g', { shift: 'any' })],
@@ -167,8 +170,9 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<CommandHotkeyPresetId, Comm
     'select.idleBuilders': [key('Ctrl+Tab', 'tab', { ctrl: true })],
     'select.waitingUnits': [code('Ctrl+Y', 'KeyY', { ctrl: true })],
     'select.sameTypeOnly': [code('Q', 'KeyQ', { shift: 'any' })],
+    'combat.attack': [code('A', 'KeyA', { shift: 'any' })],
     'combat.attackArea': [code('Ctrl+A', 'KeyA', { ctrl: true, shift: 'any' })],
-    'combat.attackGround': [code('A', 'KeyA', { shift: 'any' })],
+    'combat.attackGround': [code('Alt+T', 'KeyT', { alt: true, shift: 'any' })],
     'combat.guard': [code('O', 'KeyO', { shift: 'any' })],
     'combat.reclaim': [code('E', 'KeyE', { shift: 'any' })],
     'combat.repairArea': [code('R', 'KeyR', { shift: 'any' })],
@@ -199,8 +203,9 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<CommandHotkeyPresetId, Comm
     'select.idleBuilders': [code('Ctrl+B', 'KeyB', { ctrl: true })],
     'select.waitingUnits': [code('Ctrl+Y', 'KeyY', { ctrl: true })],
     'select.sameTypeOnly': [code('Ctrl+X', 'KeyX', { ctrl: true })],
+    'combat.attack': [code('A', 'KeyA', { shift: 'any' })],
     'combat.attackArea': [code('Alt+A', 'KeyA', { alt: true, shift: 'any' })],
-    'combat.attackGround': [code('A', 'KeyA', { shift: 'any' })],
+    'combat.attackGround': [code('T', 'KeyT', { shift: 'any' })],
     'combat.guard': [code('G', 'KeyG', { shift: 'any' })],
     'combat.reclaim': [code('E', 'KeyE', { shift: 'any' })],
     'combat.repairArea': [code('R', 'KeyR', { shift: 'any' })],
