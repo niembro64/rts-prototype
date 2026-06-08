@@ -169,6 +169,7 @@ export function buildLinePathMoveCommand(
   tick: number,
   queue: boolean,
   queueFront = false,
+  preserveFormation = false,
 ): MoveCommand | null {
   const points = accumulator.points;
   if (selectedUnits.length === 0 || points.length === 0) return null;
@@ -177,6 +178,18 @@ export function buildLinePathMoveCommand(
   const pathLength = getPathLength(points);
 
   if (pathLength < LINE_PATH_MIN_LENGTH) {
+    if (preserveFormation) {
+      return buildFormationPreservingMoveCommand(
+        selectedUnits,
+        finalPoint.x,
+        finalPoint.y,
+        mode,
+        tick,
+        queue,
+        finalPoint.z,
+        queueFront,
+      );
+    }
     return {
       type: 'move',
       tick,
@@ -202,6 +215,62 @@ export function buildLinePathMoveCommand(
       entityIds.push(unit.id);
       individualTargets.push({ x: target.x, y: target.y, z: target.z });
     }
+  }
+
+  return {
+    type: 'move',
+    tick,
+    entityIds,
+    individualTargets,
+    waypointType: mode,
+    queue,
+    queueFront,
+  };
+}
+
+export function buildFormationPreservingMoveCommand(
+  selectedUnits: readonly Entity[],
+  targetX: number,
+  targetY: number,
+  mode: WaypointType,
+  tick: number,
+  queue: boolean,
+  targetZ?: number,
+  queueFront = false,
+): MoveCommand | null {
+  if (selectedUnits.length === 0) return null;
+  if (selectedUnits.length === 1) {
+    return {
+      type: 'move',
+      tick,
+      entityIds: [selectedUnits[0].id],
+      targetX,
+      targetY,
+      targetZ,
+      waypointType: mode,
+      queue,
+      queueFront,
+    };
+  }
+
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0; i < selectedUnits.length; i++) {
+    cx += selectedUnits[i].transform.x;
+    cy += selectedUnits[i].transform.y;
+  }
+  cx /= selectedUnits.length;
+  cy /= selectedUnits.length;
+
+  const entityIds: EntityId[] = [];
+  const individualTargets: WaypointTarget[] = [];
+  for (let i = 0; i < selectedUnits.length; i++) {
+    const unit = selectedUnits[i];
+    entityIds.push(unit.id);
+    individualTargets.push({
+      x: targetX + (unit.transform.x - cx),
+      y: targetY + (unit.transform.y - cy),
+    });
   }
 
   return {

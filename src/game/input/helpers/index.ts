@@ -40,6 +40,7 @@ export {
   buildAttackCommandForTarget,
   buildAttackCommandAt,
   buildAttackGroundCommand,
+  buildFormationPreservingMoveCommand,
   buildGuardCommandAt,
   buildGuardCommandForTarget,
   buildLinePathMoveCommand,

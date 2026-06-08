@@ -196,10 +196,16 @@ export class Input3DRightDragController {
         return;
       }
       const moveCmd = buildLinePathMoveCommand(
-        this.linePath, selectedUnits, this.config.getWaypointMode(), tick, shiftHeld, queueFront,
+        this.linePath,
+        selectedUnits,
+        this.config.getWaypointMode(),
+        tick,
+        shiftHeld,
+        queueFront,
+        e.altKey,
       );
       if (moveCmd) {
-        this.logMoveCommand(selectedUnits, points.length, finalPoint, moveCmd);
+        this.logMoveCommand(selectedUnits, points.length, finalPoint, moveCmd, e.altKey);
         this.config.commandQueue.enqueue(moveCmd);
       }
       this.linePath.reset();
@@ -271,6 +277,7 @@ export class Input3DRightDragController {
     pointCount: number,
     finalPoint: { x: number; y: number; z?: number },
     moveCmd: NonNullable<ReturnType<typeof buildLinePathMoveCommand>>,
+    preserveFormation: boolean,
   ): void {
     if (!GAME_DIAGNOSTICS.commandPlans) return;
     const { width, height } = this.config.getMapSampleBounds();
@@ -280,11 +287,11 @@ export class Input3DRightDragController {
       : null;
     debugLog(
       true,
-      '[click] move: released at (%d, %d, %d) wet=%s, %d unit(s), %d drag sample(s), waypointType=%s',
+      '[click] move: released at (%d, %d, %d) wet=%s, %d unit(s), %d drag sample(s), waypointType=%s, preserveFormation=%s',
       Math.round(finalPoint.x), Math.round(finalPoint.y),
       finalPoint.z !== undefined ? Math.round(finalPoint.z) : -1,
       finalWet,
-      selectedUnits.length, pointCount, moveCmd.waypointType,
+      selectedUnits.length, pointCount, moveCmd.waypointType, preserveFormation,
     );
     for (let i = 0; i < selectedUnits.length; i++) {
       const unit = selectedUnits[i];
