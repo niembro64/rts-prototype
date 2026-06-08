@@ -15,3 +15,175 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 
 Please always commit and push before and after any code changes we make.
 ================================================================================
+
+AUDIT FINDINGS FROM budget_design_philosophy.html
+
+1. Stale design-file references and prediction comments contradict the current
+   contract.
+
+   Examples:
+   - src/game/lifecycle/sessionSingleton.ts points runtime errors at
+     design_philosophy.html, but the repository only has
+     budget_design_philosophy.html.
+   - Many comments still cite design_philosophy.html instead of the real file.
+   - src/game/network/ClientViewState.ts still says frame prediction uses
+     velocity/acceleration.
+   - src/types/sim.ts still describes Unit.movementAccelX/Y/Z as client visual
+     prediction input and Turret.angularAcceleration as "PREDICT ACC" state.
+
+   This conflicts with the design rule that acceleration is not shipped on the
+   wire and that clients predict from last-seen position/velocity plus EMA
+   channels. Fix by updating all design-doc references, deleting or rewriting
+   the ACC-mode comments, and explicitly documenting movementAccel and turret
+   acceleration as server-side/sim-only state.
+
+2. Core sim/network state still uses undefined/optional absence markers in hot
+   structs.
+
+   Examples:
+   - src/types/sim.ts: TurretConfig, ProjectileConfig, ShotSource, Projectile,
+     BeamPoint, and PROJECTILE_ABSENCE_SLOTS use many `| undefined` fields.
+   - src/game/network/helpers/NetworkEntityFactory.ts resets turret/projectile
+     fields to undefined in client entity state.
+   - src/game/network/ClientPredictionTargets.ts and
+     src/game/sim/damage/DamageSystem.ts use undefined as pooled DTO absence.
+
+   The design says sim/server/prediction/network/entity state should use
+   explicit nulls or sentinels, not optional props or optional chaining. Migrate
+   hot structs to stable shapes using null, NO_ENTITY_ID, -1 indexes/ticks, and
+   explicit boolean flags as appropriate. Update serializers, deserializers, and
+   pooled object reset paths in the same change so absence semantics stay
+   consistent.
+
+3. Sensor capabilities are hardcoded instead of blueprint-authored.
+
+   src/game/sim/sensorCoverage.ts hardcodes BUILDING_VISION_RADIUS = 1000 and
+   RADAR_VISION_RADIUS = 4200, grants full vision to every non-radar building,
+   and special-cases buildingRadar as the only radar source. This conflicts with
+   the design requirement that sight, radar, detector, tracking, and weapon
+   ranges are separate authored envelopes and that category membership must not
+   create free sensor powers.
+
+   Move full-sight/radar/detector/scan capabilities into the blueprint schema
+   and JSON data. SensorCoverage should read authored capabilities from the
+   entity/runtime blueprint, and buildings/towers should provide no full sight
+   or radar unless their blueprint explicitly says so.
+
+4. Tower blueprint identity is still merged into the building blueprint API.
+
+   Examples:
+   - src/types/blueprintIds.ts includes towerFabricator, towerBeamMega,
+     towerCannon, and towerAntiAir in BUILDING_BLUEPRINT_IDS.
+   - src/game/sim/blueprints/buildings.ts exports BUILDING_BLUEPRINTS as a
+     merge of pure buildings and TOWER_BLUEPRINTS.
+   - src/game/sim/buildConfigs.ts exposes getAllBuildings() over the merged
+     surface.
+
+   Runtime entities correctly use type === 'tower', but the public blueprint
+   and config API still treats towers as building IDs. This violates the design
+   rule that towers are peer atomic pieces, not a building subtype, and it keeps
+   an old path alive after the towers.json split. Introduce TOWER_BLUEPRINT_IDS,
+   TowerBlueprintId, TOWER_CONFIGS/getAllTowers(), and update UI/input/network
+   helpers to use the peer surface. Keep any compatibility shim narrow,
+   documented, and scheduled for deletion.
+
+5. Builders can request every building/tower because build rosters are not
+   filtered by builder capability.
+
+   Examples:
+   - src/game/sim/blueprints/displayRosters.ts builds buildingRosterDisplay from
+     every key in BUILDING_BLUEPRINTS.
+   - src/game/input/helpers/CommanderModeController.ts builds hotkey cycling
+     from getAllBuildings().
+   - src/components/SelectionPanel.vue renders every building option whenever
+     selection.hasBuilder is true.
+   - src/game/server/commandSanitizer.ts only validates that startBuild uses a
+     known building blueprint id.
+   - src/game/server/ServerCommandAuthorizer.ts only checks that the builder is
+     owned.
+   - src/game/sim/construction.ts starts whatever blueprint id the command
+     names if placement succeeds.
+
+   The design says a builder's build menu is filtered to what that builder may
+   construct. Add an authored allowed-build roster/capability to builder
+   blueprints, use it for UI/hotkeys/default build mode, and enforce the same
+   roster in command sanitization/authorization or construction startup. Client
+   filtering alone is not enough.
+
+6. Snapshot baseline sync still broad-scans all units/buildings on every emit.
+
+   src/game/network/stateSerializerEntityDelta.ts runs
+   syncEntityMetaPools(world, e, sim) over world.getUnits() and
+   world.getBuildings() every snapshot emit so the Rust-side baseline pool is
+   current even for non-dirty entities. The design target is data-oriented,
+   indexed hot paths with no full-world scans except rare/debug paths.
+
+   Replace the per-emit full scan with an event-driven mirror update or a
+   dirty-plus-visibility-enter path. Entities that re-enter vision still need
+   fresh baseline rows, but that should be served from an already-maintained
+   authoritative mirror rather than rebuilding it by walking every entity for
+   every recipient snapshot.
+
+7. Several sim hot paths still walk broad TypeScript entity sets each tick.
+
+   Examples:
+   - src/game/sim/energyDistribution.ts scans factory buildings, builder units,
+     all buildings, and commander units every tick to discover consumers.
+   - src/game/sim/economy.ts scans converter buildings every tick.
+   - src/game/sim/combat/targetingInputStamping.ts packs units, buildings, and
+     projectiles from broad WorldState lists.
+   - src/game/server/FactoryConstructionTurretSystem.ts scans all factory
+     buildings.
+
+   These are cached arrays rather than fresh allocations, but they are still
+   broad JS loops in regular gameplay. Move each system toward active producer,
+   consumer, armed, and sensor sets that are maintained on component/state
+   changes, and push stable numeric batch work into WASM where practical.
+
+8. Module-level scratch buffers retain high-water memory across sessions.
+
+   Examples:
+   - src/game/sim/combat/projectileSystem.ts resetProjectileBuffers() clears
+     entity references but does not shrink _travelingProjectile* arrays,
+     _homingGuidanceRows, _homingGuidanceProjectileIndex, or the packed id
+     mirror.
+   - src/game/sim/damage/DamageSystem.ts resetDamageBuffers() clears entity
+     references but does not shrink high-water batch arrays.
+   - src/game/sim/buildingActiveState.ts, src/game/sim/energyDistribution.ts,
+     and src/game/sim/economy.ts use module-level typed arrays that grow but do
+     not have a session reset/shrink policy.
+
+   This is not a confirmed event-listener or WebGL leak, but a long browser
+   process can retain memory after stress sessions. Add explicit trim-to-default
+   reset functions for session teardown, or document intentional high-water
+   retention and cap maximum growth. Snapshot pools already have
+   trimEntitySnapshotPool(); use the same pattern for the sim batch pools.
+
+9. Projectile stepping still has split TypeScript-owned pipelines.
+
+   src/game/sim/combat/projectileSystem.ts has a packed WASM projectile pool for
+   eligible ballistic shots, then a separate traveling-projectile path for
+   guided/D-gun/non-packed shots that loops through JS entity objects to pack
+   policy rows, resolve homing targets, sample terrain, scatter results, and
+   emit velocity updates. The comments note that Rust owns numeric integration,
+   but TypeScript still owns much of the hot per-projectile loop.
+
+   Consolidate projectile lifecycle/state into a single data-oriented projectile
+   pool where possible. At minimum, move gravity-multiplier, homing policy,
+   D-gun terrain-follow input, and velocity-update classification toward typed
+   batch data so the old packed-vs-traveling split can be deleted rather than
+   kept as a permanent hot path.
+
+10. Pylon tube handoff births are not capped before the spawn loop.
+
+   src/game/render3d/PylonTubeFlowRenderer.ts enqueueTipHandoff() increments an
+   unbounded pending.count per flow key, and spawnPendingTubeBirths() loops
+   pending.count times even after spawnBead() starts returning because MAX_BEADS
+   is reached. The pending map is cleared each frame, so this is not persistent
+   memory retention, but it is unbounded per-frame work from visual-only
+   particles.
+
+   Coalesce or cap pending tube handoffs before the spawn loop, similar to
+   MAX_BEAD_SPAWNS_PER_FLOW_FRAME for rate-gated births. Preserve intensity by
+   averaging or accumulating a bounded budget, and record dropped/coalesced
+   handoffs in renderer telemetry if useful.
