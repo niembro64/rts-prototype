@@ -69,8 +69,6 @@ weapons, factory queue management, mex upgrade workflows, replays where
 applicable, and complete faction/unit/factory/building rosters.
 
 Issue: BAR parity must be extended through the 3D/physics-first design, not
-implemented as flat 2D shortcuts. Formations need dynamic collision spacing;
-transport/load/unload,
-resurrection, capture, and manual launch/special-fire abilities beyond
-commander DGun need physical presentation and authoritative physics
-interactions.
+implemented as flat 2D shortcuts. Transport/load/unload, resurrection,
+capture, and manual launch/special-fire abilities beyond commander DGun need
+physical presentation and authoritative physics interactions.
