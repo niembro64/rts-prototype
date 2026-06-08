@@ -49,8 +49,8 @@ allowed-building strip, number keys, single-placement ghost, and Shift queueing
 do not satisfy BAR fallback behavior.
 
 Issue: queue editing and command insertion are incomplete. BAR supports queue to
-next, commandinsert/prepend-between, cancel last command, factory guard, and
-queued variants of several orders. rts-prototype exposes Shift append-queue,
+next, commandinsert/prepend-between, factory guard, and queued variants of
+several orders. rts-prototype exposes Shift append-queue,
 Shift+Ctrl/Cmd add-in-front queueing for queueable orders,
 skip-current-order, remove-last-queued-order, clear-queued-orders,
 stop-production, wait queueing, and basic factory rally. Implement the missing
@@ -74,10 +74,10 @@ manual launch weapons, or unit-specific ability command-card support.
 Issue: factory and production UI are incomplete. BAR has factory production
 controls beyond selecting one repeat-build unit: repeat/queue state, factory
 queue mode/quotas, factory presets save/load/show, production queue editing,
-rally/route display, factory guard, and complete unit build menus. rts-prototype
-now has an authoritative stop-production command and factory panel button, but
-still needs the remaining BAR-equivalent factory panel and hotkeys, translated to
-authoritative-server commands and 3D rally/path previews.
+factory guard, and related state indicators. rts-prototype now has an
+authoritative stop-production command and factory panel button, but still needs
+the remaining BAR-equivalent factory panel and hotkeys, translated to
+authoritative-server commands.
 
 Issue: map, communication, and game UI commands are missing. Implement BAR
 commands and buttons for chat, draw on map, draw label, erase drawings, options
