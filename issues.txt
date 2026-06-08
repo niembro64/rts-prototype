@@ -53,10 +53,10 @@ and mex-area builds, have 3D rectangle previews, and split multi-placement
 orders across selected eligible builders. These do not satisfy BAR fallback
 behavior.
 
-Issue: queue editing and command insertion are incomplete. BAR supports queue to
-next, commandinsert/prepend-between, and queued variants of several orders.
+Issue: queue editing and command insertion are incomplete. BAR supports
+commandinsert/prepend-between and queued variants of several orders.
 rts-prototype exposes Shift append-queue,
-Shift+Ctrl/Cmd add-in-front queueing for queueable orders,
+Shift+Ctrl/Cmd queue-to-next insertion for queueable orders,
 skip-current-order, remove-last-queued-order, clear-queued-orders,
 stop-production, wait queueing, basic factory rally, basic factory guard, and
 selected-unit current-order/queue-depth feedback. Implement the missing queue
