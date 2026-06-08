@@ -93,9 +93,10 @@ indicators. rts-prototype now has an authoritative stop-production command,
 factory panel button, and local factory preset slots with shared hotkeys that
 load through authoritative production commands, plus selected repeat-build,
 production-progress, and factory-guard state indicators, basic factory rally,
-basic factory guard, and an authoritative clear-guard command-card button and
-hotkey. It still needs the remaining BAR-equivalent factory panel and hotkeys,
-translated to authoritative-server commands.
+basic factory guard, an authoritative clear-guard command-card button and
+hotkey, and BAR-grid/legacy scoped stop-production hotkeys. It still needs the
+remaining BAR-equivalent factory panel and hotkeys, translated to
+authoritative-server commands.
 
 Issue: BAR gameplay functionality tied to missing commands is absent. Implement
 or explicitly redesign the systems needed by the missing command surface:

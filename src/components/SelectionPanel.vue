@@ -902,10 +902,11 @@ function loadFactoryPreset(index: number): void {
           class="action-btn"
           :disabled="!hasFactoryProduction"
           :style="{ '--btn-color': BUTTON_COLORS.stop }"
-          title="Stop production"
+          :title="actionTitle('Stop production', 'factory.stopProduction')"
           @click="actions.stopFactoryProduction(selection.factoryId!)"
         >
           <span class="btn-label">Stop</span>
+          <span class="btn-key">{{ hotkey('factory.stopProduction') }}</span>
         </button>
         <button
           type="button"

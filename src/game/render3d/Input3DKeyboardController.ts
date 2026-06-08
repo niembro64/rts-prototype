@@ -27,6 +27,8 @@ type Input3DKeyboardControllerConfig = {
   unsetSelectedFromControlGroups: () => void;
   focusControlGroupSlot: (index: number) => boolean;
   panCameraByKeyboard: (screenX: number, screenY: number, fine: boolean) => void;
+  hasSelectedUnits: () => boolean;
+  hasSelectedFactory: () => boolean;
   hasSelectedBuilder: () => boolean;
   getSelectedBuilderAllowedBuildBlueprintIds: () => readonly StructureBlueprintId[];
   exitSpecialModes: (includeTowerTarget?: boolean) => void;
@@ -41,6 +43,7 @@ type Input3DKeyboardControllerConfig = {
   toggleSelectedWait: (queue: boolean, queueFront?: boolean) => void;
   toggleRepeatQueue: () => void;
   clearSelectedFactoryGuard: () => void;
+  stopSelectedFactoryProduction: () => void;
   toggleUnitMoveState: () => void;
   toggleTrajectoryMode: () => void;
   toggleSelectedFire: () => void;
@@ -281,6 +284,17 @@ export class Input3DKeyboardController {
       return;
     }
 
+    const factoryCommandId =
+      !this.config.hasSelectedUnits() && this.config.hasSelectedFactory()
+        ? resolveCommandHotkey(e, undefined, 'factory')
+        : null;
+    if (factoryCommandId !== null) {
+      e.preventDefault();
+      this.commandHotkeys.reset();
+      this.runCommandHotkey(factoryCommandId, e);
+      return;
+    }
+
     const hotkey = this.commandHotkeys.resolve(e);
     if (hotkey.pending) {
       e.preventDefault();
@@ -416,6 +430,9 @@ export class Input3DKeyboardController {
         break;
       case 'factoryPreset.save4':
         this.config.saveFactoryProductionPreset(3);
+        break;
+      case 'factory.stopProduction':
+        this.config.stopSelectedFactoryProduction();
         break;
       case 'build.slot1':
         this.enterBuildSlot(0);

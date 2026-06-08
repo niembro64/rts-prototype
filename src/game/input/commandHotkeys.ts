@@ -26,6 +26,7 @@ export type CommandHotkeyId =
   | 'factoryPreset.save2'
   | 'factoryPreset.save3'
   | 'factoryPreset.save4'
+  | 'factory.stopProduction'
   | 'build.slot1'
   | 'build.slot2'
   | 'build.slot3'
@@ -71,7 +72,7 @@ export type CommandHotkeyId =
 
 export type BuiltInCommandHotkeyPresetId = 'prototype' | 'bar-grid' | 'bar-legacy';
 export type CommandHotkeyPresetId = BuiltInCommandHotkeyPresetId | 'custom';
-export type CommandHotkeyScope = 'global' | 'buildMenu';
+export type CommandHotkeyScope = 'global' | 'buildMenu' | 'factory';
 
 type ModifierMatch = boolean | 'any';
 
@@ -122,6 +123,7 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'factoryPreset.save2',
   'factoryPreset.save3',
   'factoryPreset.save4',
+  'factory.stopProduction',
   'build.slot1',
   'build.slot2',
   'build.slot3',
@@ -201,6 +203,7 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'factoryPreset.save2': 'Save Factory Preset 2',
   'factoryPreset.save3': 'Save Factory Preset 3',
   'factoryPreset.save4': 'Save Factory Preset 4',
+  'factory.stopProduction': 'Stop Factory Production',
   'build.slot1': 'Build Slot 1',
   'build.slot2': 'Build Slot 2',
   'build.slot3': 'Build Slot 3',
@@ -246,6 +249,7 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
 };
 
 export function commandHotkeyScope(commandId: CommandHotkeyId): CommandHotkeyScope {
+  if (commandId === 'factory.stopProduction') return 'factory';
   return commandId.startsWith('build.slot') ? 'buildMenu' : 'global';
 }
 
@@ -299,6 +303,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'factoryPreset.save2': [code('Ctrl+Alt+Shift+X', 'KeyX', { ctrl: true, alt: true, shift: true })],
     'factoryPreset.save3': [code('Ctrl+Alt+Shift+C', 'KeyC', { ctrl: true, alt: true, shift: true })],
     'factoryPreset.save4': [code('Ctrl+Alt+Shift+V', 'KeyV', { ctrl: true, alt: true, shift: true })],
+    'factory.stopProduction': [key('S', 's', { shift: 'any' })],
     'build.slot1': [code('1', 'Digit1', { shift: 'any' })],
     'build.slot2': [code('2', 'Digit2', { shift: 'any' })],
     'build.slot3': [code('3', 'Digit3', { shift: 'any' })],
@@ -388,6 +393,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'factoryPreset.save2': [code('Ctrl+Alt+Shift+X', 'KeyX', { ctrl: true, alt: true, shift: true })],
     'factoryPreset.save3': [code('Ctrl+Alt+Shift+C', 'KeyC', { ctrl: true, alt: true, shift: true })],
     'factoryPreset.save4': [code('Ctrl+Alt+Shift+V', 'KeyV', { ctrl: true, alt: true, shift: true })],
+    'factory.stopProduction': [code('G', 'KeyG', { shift: 'any' })],
     'build.slot1': [code('Z', 'KeyZ', { shift: 'any' })],
     'build.slot2': [code('X', 'KeyX', { shift: 'any' })],
     'build.slot3': [code('C', 'KeyC', { shift: 'any' })],
@@ -465,6 +471,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'factoryPreset.save2': [code('Ctrl+Alt+Shift+X', 'KeyX', { ctrl: true, alt: true, shift: true })],
     'factoryPreset.save3': [code('Ctrl+Alt+Shift+C', 'KeyC', { ctrl: true, alt: true, shift: true })],
     'factoryPreset.save4': [code('Ctrl+Alt+Shift+V', 'KeyV', { ctrl: true, alt: true, shift: true })],
+    'factory.stopProduction': [code('Ctrl+S', 'KeyS', { ctrl: true, shift: 'any' })],
     'build.slot1': [code('Z', 'KeyZ', { shift: 'any' })],
     'build.slot2': [code('X', 'KeyX', { shift: 'any' })],
     'build.slot3': [code('C', 'KeyC', { shift: 'any' })],

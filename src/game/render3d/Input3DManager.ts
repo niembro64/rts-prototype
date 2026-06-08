@@ -235,6 +235,8 @@ export class Input3DManager {
         screenY,
         fine,
       ),
+      hasSelectedUnits: () => this.entitySource.getSelectedUnits().length > 0,
+      hasSelectedFactory: () => this.getSelectedFactory() !== null,
       hasSelectedBuilder: () => this.hasSelectedBuilder(),
       getSelectedBuilderAllowedBuildBlueprintIds: () => this.getSelectedBuilderAllowedBuildBlueprintIds(),
       exitSpecialModes: (includeTowerTarget) => this.exitSpecialModes(includeTowerTarget),
@@ -249,6 +251,7 @@ export class Input3DManager {
       toggleSelectedWait: (queue, queueFront) => this.toggleSelectedWait(queue, queueFront),
       toggleRepeatQueue: () => this.toggleRepeatQueue(),
       clearSelectedFactoryGuard: () => this.clearSelectedFactoryGuard(),
+      stopSelectedFactoryProduction: () => this.stopSelectedFactoryProduction(),
       toggleUnitMoveState: () => this.toggleUnitMoveState(),
       toggleTrajectoryMode: () => this.toggleTrajectoryMode(),
       toggleSelectedFire: () => this.toggleSelectedFire(),
@@ -1134,6 +1137,16 @@ export class Input3DManager {
       tick,
       factoryId: factory.id,
       unitBlueprintId,
+    });
+  }
+
+  private stopSelectedFactoryProduction(): void {
+    const factory = this.getSelectedFactory();
+    if (factory === null) return;
+    this.localCommandQueue.enqueue({
+      type: 'stopFactoryProduction',
+      tick: this.context.getTick(),
+      factoryId: factory.id,
     });
   }
 

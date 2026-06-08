@@ -97,4 +97,12 @@ export function runCommandHotkeysContractTest(): void {
     resolveCommandHotkey(keyEvent('g', 'KeyG', { ctrlKey: true }), 'bar-grid') === 'command.factoryGuard',
     'bar-grid Ctrl+G should resolve factory guard',
   );
+  assertContract(
+    resolveCommandHotkey(keyEvent('g', 'KeyG'), 'bar-grid', 'factory') === 'factory.stopProduction',
+    'factory-scoped bar-grid G should resolve stop production',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('g', 'KeyG'), 'bar-grid') === 'command.stop',
+    'global bar-grid G should still resolve unit stop',
+  );
 }
