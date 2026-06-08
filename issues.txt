@@ -30,8 +30,6 @@ Finish the BAR-compatible keymap and command UI layer by importing the complete
 BAR grid/legacy bindings and adding command buttons for missing BAR commands so
 visible hotkeys match the active keymap across the whole command surface.
 
-Issue: control groups still lack BAR factory preset integration.
-
 Issue: movement and formation commands are incomplete. Add BAR's Move and
 assume formation, Move in formation, formation-preserving movement semantics,
 slow/fast movement modifiers where applicable, and complete visual formation

@@ -223,6 +223,11 @@ export class InputControlGroups {
     }
     const selectedBuildings = this.source.getSelectedBuildings();
     for (let i = 0; i < selectedBuildings.length; i++) {
+      const factoryUnitBlueprintId = selectedBuildings[i].factory?.selectedUnitBlueprintId;
+      if (factoryUnitBlueprintId) {
+        rule.unitBlueprintIds.add(factoryUnitBlueprintId);
+        continue;
+      }
       const buildingBlueprintId = selectedBuildings[i].buildingBlueprintId;
       if (buildingBlueprintId) rule.buildingBlueprintIds.add(buildingBlueprintId);
     }
