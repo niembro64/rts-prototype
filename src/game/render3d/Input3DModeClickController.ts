@@ -210,6 +210,7 @@ export class Input3DModeClickController {
         ? this.areaHoverPreview
         : EMPTY_AREA_DRAG_STATE;
     }
+    if (drag.kind === 'buildLine') return EMPTY_AREA_DRAG_STATE;
     return {
       active: true,
       kind: drag.kind,
@@ -261,7 +262,7 @@ export class Input3DModeClickController {
 
   private updateAreaHoverPreview(e: MouseEvent): boolean {
     const kind = this.activeAreaDragKind();
-    if (kind === null || kind === 'buildMexArea') return false;
+    if (kind === null || kind === 'buildMexArea' || kind === 'buildLine') return false;
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return false;
     this.areaHoverPreview = {
@@ -276,7 +277,9 @@ export class Input3DModeClickController {
   }
 
   private activeAreaDragKind(): Input3DAreaDragKind | null {
-    if (this.config.mode.buildingBlueprintId === AREA_MEX_BLUEPRINT_ID) return 'buildMexArea';
+    const buildingBlueprintId = this.config.mode.buildingBlueprintId;
+    if (buildingBlueprintId === AREA_MEX_BLUEPRINT_ID) return 'buildMexArea';
+    if (buildingBlueprintId !== null) return 'buildLine';
     if (this.config.isRepairAreaMode()) return 'repairArea';
     if (this.config.isAttackAreaMode()) return 'attackArea';
     if (this.config.isReclaimMode()) return 'reclaimArea';
@@ -287,6 +290,10 @@ export class Input3DModeClickController {
     const radius = Math.max(1, areaDragRadius(drag));
     if (drag.kind === 'buildMexArea') {
       this.commitBuildMexAreaDrag(drag, radius);
+      return;
+    }
+    if (drag.kind === 'buildLine') {
+      this.commitBuildLineDrag(drag);
       return;
     }
     if (drag.kind === 'repairArea') {
@@ -361,6 +368,49 @@ export class Input3DModeClickController {
         tick,
         builderId: builder.id,
         buildingBlueprintId: AREA_MEX_BLUEPRINT_ID,
+        gridX: placement.gridX,
+        gridY: placement.gridY,
+        queue: i === 0 ? drag.queue : true,
+        queueFront: i === 0 ? drag.queueFront : false,
+      });
+    }
+    this.config.applyCursor('build');
+    if (!drag.queue) this.config.mode.exitBuildMode();
+  }
+
+  private commitBuildLineDrag(drag: AreaDrag): void {
+    const builder = this.config.getSelectedBuilder();
+    const buildingBlueprintId = this.config.mode.buildingBlueprintId;
+    if (
+      builder === null ||
+      buildingBlueprintId === null ||
+      !entityCanBuild(builder, buildingBlueprintId)
+    ) {
+      this.config.applyCursor('blocked');
+      return;
+    }
+
+    const placements = this.buildPlacement.planBuildLinePlacements(
+      buildingBlueprintId,
+      drag.start.x,
+      drag.start.y,
+      drag.current.x,
+      drag.current.y,
+      this.config.getEntitySource(),
+    );
+    if (placements.length === 0) {
+      this.config.applyCursor('blocked');
+      return;
+    }
+
+    const tick = this.config.getTick();
+    for (let i = 0; i < placements.length; i++) {
+      const placement = placements[i];
+      this.config.commandQueue.enqueue({
+        type: 'startBuild',
+        tick,
+        builderId: builder.id,
+        buildingBlueprintId,
         gridX: placement.gridX,
         gridY: placement.gridY,
         queue: i === 0 ? drag.queue : true,

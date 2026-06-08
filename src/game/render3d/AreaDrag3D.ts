@@ -11,6 +11,7 @@ const AREA_COLORS: Record<Input3DAreaDragKind, number> = {
   reclaimArea: ACTION_COLORS.reclaim,
   attackArea: ACTION_COLORS.attack,
   buildMexArea: ACTION_COLORS.build,
+  buildLine: ACTION_COLORS.build,
 };
 
 export class AreaDrag3D {

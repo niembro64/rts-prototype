@@ -5,6 +5,7 @@ import {
   type MetalDeposit,
 } from '../../metalDepositConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
+import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import {
   getBuildingPlacementDiagnostics,
   getOccupiedBuildingCells,
@@ -161,6 +162,70 @@ export class Input3DBuildPlacementState {
         }
       }
     }
+    return placements;
+  }
+
+  planBuildLinePlacements(
+    buildingBlueprintId: BuildingBlueprintId,
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    entitySource: BuildPlacementEntitySource,
+  ): BuildAreaPlacementPlan[] {
+    const config = getBuildingConfig(buildingBlueprintId);
+    const buildings = entitySource.getBuildings();
+    const entitySetVersion = entitySource.getEntitySetVersion?.() ?? buildings.length;
+    const terrainBuildabilityGrid = entitySource.getTerrainBuildabilityGrid?.() ?? null;
+    const occupancyVersion = `${entitySetVersion}`;
+    if (occupancyVersion !== this.occupancyVersion || !this.occupiedCells) {
+      this.occupancyVersion = occupancyVersion;
+      this.occupiedCells = getOccupiedBuildingCells(buildings);
+    }
+    const plannedOccupiedCells = new Set(this.occupiedCells);
+    const planned = new Set<string>();
+    const placements: BuildAreaPlacementPlan[] = [];
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const distance = Math.hypot(dx, dy);
+    const spacing = Math.max(config.gridWidth, config.gridHeight, 1) * BUILD_GRID_CELL_SIZE;
+    const placementCount = Math.max(1, Math.floor(distance / Math.max(1, spacing)) + 1);
+
+    for (let i = 0; i < placementCount; i++) {
+      const t = placementCount === 1 ? 0 : i / (placementCount - 1);
+      const worldX = startX + dx * t;
+      const worldY = startY + dy * t;
+      const snapped = getSnappedBuildPosition(worldX, worldY, buildingBlueprintId);
+      const key = cellKey(snapped.gridX, snapped.gridY);
+      if (planned.has(key)) continue;
+
+      const diagnostics = getBuildingPlacementDiagnostics(
+        buildingBlueprintId,
+        snapped.x,
+        snapped.y,
+        this.mapWidth,
+        this.mapHeight,
+        buildings,
+        this.metalDeposits,
+        plannedOccupiedCells,
+        terrainBuildabilityGrid,
+      );
+      if (!diagnostics.canPlace) continue;
+
+      planned.add(key);
+      placements.push({
+        gridX: diagnostics.gridX,
+        gridY: diagnostics.gridY,
+        x: diagnostics.x,
+        y: diagnostics.y,
+      });
+      for (let y = 0; y < config.gridHeight; y++) {
+        for (let x = 0; x < config.gridWidth; x++) {
+          plannedOccupiedCells.add(cellKey(diagnostics.gridX + x, diagnostics.gridY + y));
+        }
+      }
+    }
+
     return placements;
   }
 }
