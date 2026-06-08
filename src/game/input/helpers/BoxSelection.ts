@@ -27,41 +27,111 @@ export type ProjectToScreen = (
   out: { x: number; y: number; behind: boolean },
 ) => void;
 
+export type ScreenRectSelectionOptions = {
+  readonly includeBuildingsWithUnits?: boolean;
+  readonly mobileOnly?: boolean;
+  readonly idleOnly?: boolean;
+  readonly sameTypeOnly?: boolean;
+  readonly previousSelection?: readonly Entity[];
+};
+
+function isIdleUnit(entity: Entity): boolean {
+  return entity.unit?.actions.length === 0;
+}
+
+function buildSameTypeFilters(
+  selection: readonly Entity[] | undefined,
+): { unitBlueprintIds: Set<string>; buildingBlueprintIds: Set<string> } {
+  const unitBlueprintIds = new Set<string>();
+  const buildingBlueprintIds = new Set<string>();
+  if (selection === undefined) return { unitBlueprintIds, buildingBlueprintIds };
+  for (let i = 0; i < selection.length; i++) {
+    const entity = selection[i];
+    const unitBlueprintId = entity.unit?.unitBlueprintId;
+    if (unitBlueprintId) unitBlueprintIds.add(unitBlueprintId);
+    const buildingBlueprintId = entity.buildingBlueprintId;
+    if (buildingBlueprintId) buildingBlueprintIds.add(buildingBlueprintId);
+  }
+  return { unitBlueprintIds, buildingBlueprintIds };
+}
+
+function canIncludeUnit(
+  entity: Entity,
+  sameTypeFilters: { unitBlueprintIds: Set<string>; buildingBlueprintIds: Set<string> },
+  options: ScreenRectSelectionOptions,
+): boolean {
+  if (options.idleOnly && !isIdleUnit(entity)) return false;
+  if (!options.sameTypeOnly) return true;
+  const unitBlueprintId = entity.unit?.unitBlueprintId;
+  return unitBlueprintId !== undefined && sameTypeFilters.unitBlueprintIds.has(unitBlueprintId);
+}
+
+function canIncludeBuilding(
+  entity: Entity,
+  sameTypeFilters: { unitBlueprintIds: Set<string>; buildingBlueprintIds: Set<string> },
+  options: ScreenRectSelectionOptions,
+): boolean {
+  if (options.mobileOnly || options.idleOnly) return false;
+  if (!options.sameTypeOnly) return true;
+  const buildingBlueprintId = entity.buildingBlueprintId;
+  return buildingBlueprintId != null && sameTypeFilters.buildingBlueprintIds.has(buildingBlueprintId);
+}
+
+export function entityMatchesScreenRectSelectionOptions(
+  entity: Entity,
+  options: ScreenRectSelectionOptions = {},
+): boolean {
+  const sameTypeFilters = buildSameTypeFilters(options.previousSelection);
+  const sameTypeHasAnyFilter =
+    sameTypeFilters.unitBlueprintIds.size > 0 ||
+    sameTypeFilters.buildingBlueprintIds.size > 0;
+  if (options.sameTypeOnly && !sameTypeHasAnyFilter) return false;
+  if (entity.unit) return canIncludeUnit(entity, sameTypeFilters, options);
+  if (entity.building) return canIncludeBuilding(entity, sameTypeFilters, options);
+  return false;
+}
+
 /** Find owned entities whose screen-projected position falls inside
- *  the rect. Units take precedence: if any units hit, buildings
- *  aren't considered at all. This matches how the old world-rect
- *  performSelection worked, so drag semantics are unchanged. */
+ *  the rect. Units take precedence unless the caller requests
+ *  includeBuildingsWithUnits, which maps BAR's Shift/selectbox_any
+ *  modifier onto this 3D selection path. */
 export function selectEntitiesInScreenRect(
   source: SelectionEntitySource,
   rect: ScreenRect,
   playerId: PlayerId,
   project: ProjectToScreen,
+  options: ScreenRectSelectionOptions = {},
 ): EntityId[] {
-  const ids: EntityId[] = [];
+  const unitIds: EntityId[] = [];
+  const buildingIds: EntityId[] = [];
+  const sameTypeFilters = buildSameTypeFilters(options.previousSelection);
+  const sameTypeHasAnyFilter =
+    sameTypeFilters.unitBlueprintIds.size > 0 ||
+    sameTypeFilters.buildingBlueprintIds.size > 0;
+  if (options.sameTypeOnly && !sameTypeHasAnyFilter) return [];
+
   // Reuse one out object to avoid per-entity allocations on a hot path.
   const out = { x: 0, y: 0, behind: false };
 
-  const tryPush = (entity: Entity): void => {
+  const isInsideRect = (entity: Entity): boolean => {
     out.behind = false;
     project(entity, out);
-    if (out.behind) return;
-    if (
+    return !out.behind &&
       out.x >= rect.minX && out.x <= rect.maxX &&
-      out.y >= rect.minY && out.y <= rect.maxY
-    ) {
-      ids.push(entity.id);
-    }
+      out.y >= rect.minY && out.y <= rect.maxY;
   };
 
   for (const u of source.getUnits()) {
     if (u.ownership?.playerId !== playerId) continue;
-    tryPush(u);
+    if (!canIncludeUnit(u, sameTypeFilters, options)) continue;
+    if (isInsideRect(u)) unitIds.push(u.id);
   }
-  if (ids.length > 0) return ids;
+  if (unitIds.length > 0 && !options.includeBuildingsWithUnits) return unitIds;
 
   for (const b of source.getBuildings()) {
     if (b.ownership?.playerId !== playerId) continue;
-    tryPush(b);
+    if (!canIncludeBuilding(b, sameTypeFilters, options)) continue;
+    if (isInsideRect(b)) buildingIds.push(b.id);
   }
-  return ids;
+  return unitIds.length > 0 ? [...unitIds, ...buildingIds] : buildingIds;
 }

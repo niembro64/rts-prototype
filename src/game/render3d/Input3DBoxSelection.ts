@@ -3,6 +3,7 @@ import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { getBuildingVisualCenterZ } from '../sim/buildingAnchors';
 import {
   selectEntitiesInScreenRect,
+  type ScreenRectSelectionOptions,
   type SelectionEntitySource,
 } from '../input/helpers';
 
@@ -32,6 +33,7 @@ export class Input3DBoxSelection {
     playerId: PlayerId,
     a: { x: number; y: number },
     b: { x: number; y: number },
+    options: ScreenRectSelectionOptions = {},
   ): EntityId[] {
     const v = this.selectV;
     return selectEntitiesInScreenRect(
@@ -48,6 +50,7 @@ export class Input3DBoxSelection {
         out.y = (-v.y * 0.5 + 0.5) * viewportRect.height + viewportRect.top;
         out.behind = v.z >= 1;
       },
+      options,
     );
   }
 }

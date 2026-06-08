@@ -16,6 +16,8 @@ export {
 export {
   type ScreenRect,
   type ProjectToScreen,
+  type ScreenRectSelectionOptions,
+  entityMatchesScreenRectSelectionOptions,
   selectEntitiesInScreenRect,
 } from './BoxSelection';
 

@@ -26,11 +26,13 @@ import type { InputContext } from '@/types/input';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { PlayerId, Entity, EntityId, WaypointType, BuildingBlueprintId, StructureBlueprintId } from '../sim/types';
 import {
+  entityMatchesScreenRectSelectionOptions,
   findClosestSelectableEntityToPoint,
   SelectionChangeTracker,
   CommanderModeController,
   InputControlGroups,
   InputSelectedCommands,
+  type ScreenRectSelectionOptions,
 } from '../input/helpers';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
 import { getCommandCursorStyle, type CommandCursorKind } from '../input/CommandCursors';
@@ -46,6 +48,12 @@ import { Input3DRightDragController, type Input3DLineDragState } from './Input3D
 import { Input3DModeClickController } from './Input3DModeClickController';
 
 const SELECTABLE_GROUND_MIN_UNIT_RADIUS = 8;
+
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  const element = target as HTMLElement | null;
+  const tag = element?.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || Boolean(element?.isContentEditable);
+}
 
 type EntitySource = {
   getUnits: () => Entity[];
@@ -120,6 +128,10 @@ export class Input3DManager {
   private onMouseMove: (e: MouseEvent) => void;
   private onMouseUp: (e: MouseEvent) => void;
   private onKeyDown: (e: KeyboardEvent) => void;
+  private onKeyUp: (e: KeyboardEvent) => void;
+  private onWindowBlur: () => void;
+  private selectBoxSameTypeHeld = false;
+  private selectBoxIdleHeld = false;
 
   constructor(
     threeApp: ThreeApp,
@@ -268,11 +280,15 @@ export class Input3DManager {
     this.onMouseMove = (e) => this.handleMouseMove(e);
     this.onMouseUp = (e) => this.handleMouseUp(e);
     this.onKeyDown = (e) => this.handleKeyDown(e);
+    this.onKeyUp = (e) => this.handleKeyUp(e);
+    this.onWindowBlur = () => this.clearHeldSelectBoxModifiers();
 
     this.canvas.addEventListener('mousedown', this.onMouseDown);
     window.addEventListener('mousemove', this.onMouseMove);
     window.addEventListener('mouseup', this.onMouseUp);
     window.addEventListener('keydown', this.onKeyDown);
+    window.addEventListener('keyup', this.onKeyUp);
+    window.addEventListener('blur', this.onWindowBlur);
 
     // Forward shared mode events to the scene's UI callbacks; also
     // hide the build ghost whenever build mode exits.
@@ -1015,7 +1031,46 @@ export class Input3DManager {
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
+    this.updateHeldSelectBoxModifier(e, true);
     this.keyboard.handleKeyDown(e);
+  }
+
+  private handleKeyUp(e: KeyboardEvent): void {
+    this.updateHeldSelectBoxModifier(e, false);
+  }
+
+  private updateHeldSelectBoxModifier(e: KeyboardEvent, held: boolean): void {
+    if (isTextEntryTarget(e.target)) return;
+    if (e.code === 'KeyZ') {
+      this.selectBoxSameTypeHeld = held;
+    } else if (e.code === 'Space') {
+      this.selectBoxIdleHeld = held;
+      e.preventDefault();
+    }
+  }
+
+  private clearHeldSelectBoxModifiers(): void {
+    this.selectBoxSameTypeHeld = false;
+    this.selectBoxIdleHeld = false;
+  }
+
+  private resolveSelectionModifiers(e: MouseEvent): {
+    additive: boolean;
+    subtractive: boolean;
+    options: ScreenRectSelectionOptions;
+  } {
+    const subtractive = e.ctrlKey || e.metaKey;
+    return {
+      additive: e.shiftKey && !subtractive,
+      subtractive,
+      options: {
+        includeBuildingsWithUnits: e.shiftKey,
+        mobileOnly: e.altKey,
+        idleOnly: this.selectBoxIdleHeld,
+        sameTypeOnly: this.selectBoxSameTypeHeld,
+        previousSelection: this.getCurrentSelectedEntities(),
+      },
+    };
   }
 
   /** Fire a one-shot scan sweep at the last-known hover position
@@ -1097,6 +1152,19 @@ export class Input3DManager {
       if (this.isSelectableByActivePlayer(selectedStatic[i])) entityIds.push(selectedStatic[i].id);
     }
     return entityIds;
+  }
+
+  private getCurrentSelectedEntities(): Entity[] {
+    const entities: Entity[] = [];
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      if (this.isSelectableByActivePlayer(selectedUnits[i])) entities.push(selectedUnits[i]);
+    }
+    const selectedStatic = this.entitySource.getSelectedBuildings();
+    for (let i = 0; i < selectedStatic.length; i++) {
+      if (this.isSelectableByActivePlayer(selectedStatic[i])) entities.push(selectedStatic[i]);
+    }
+    return entities;
   }
 
   private getLiveEntityIds(entityIds: readonly EntityId[]): EntityId[] {
@@ -1193,8 +1261,7 @@ export class Input3DManager {
     }
     if (e.button !== 0 || !this.leftDown) return;
     const isClick = this.selectionDrag.isClick(e.clientX, e.clientY, CLICK_DRAG_THRESHOLD_PX);
-    const subtractive = e.altKey;
-    const additive = e.shiftKey && !subtractive;
+    const { additive, subtractive, options } = this.resolveSelectionModifiers(e);
     this.selectionDrag.finish();
 
     if (isClick) {
@@ -1203,7 +1270,11 @@ export class Input3DManager {
       const hit = this.picker.raycastEntity(e.clientX, e.clientY);
       if (hit !== null) {
         const ent = this.entitySource.getEntity(hit) ?? null;
-        if (this.isSelectableByActivePlayer(ent)) {
+        if (
+          ent !== null &&
+          this.isSelectableByActivePlayer(ent) &&
+          entityMatchesScreenRectSelectionOptions(ent, options)
+        ) {
           if (subtractive) this.deselectEntityIds([hit]);
           else this.enqueueSelection([hit], additive);
           this.refreshCursor();
@@ -1224,10 +1295,17 @@ export class Input3DManager {
           },
         );
         if (closest) {
-          if (subtractive) this.deselectEntityIds([closest.id]);
-          else this.enqueueSelection([closest.id], additive);
-          this.refreshCursor();
-          return;
+          const ent = this.entitySource.getEntity(closest.id) ?? null;
+          if (
+            ent !== null &&
+            this.isSelectableByActivePlayer(ent) &&
+            entityMatchesScreenRectSelectionOptions(ent, options)
+          ) {
+            if (subtractive) this.deselectEntityIds([closest.id]);
+            else this.enqueueSelection([closest.id], additive);
+            this.refreshCursor();
+            return;
+          }
         }
       }
       if (!additive && !subtractive) {
@@ -1246,6 +1324,7 @@ export class Input3DManager {
       this.context.activePlayerId,
       this.selectionDrag.start,
       this.selectionDrag.end,
+      options,
     );
     if (ids.length > 0) {
       if (subtractive) this.deselectEntityIds(ids);
@@ -1268,6 +1347,8 @@ export class Input3DManager {
     window.removeEventListener('mousemove', this.onMouseMove);
     window.removeEventListener('mouseup', this.onMouseUp);
     window.removeEventListener('keydown', this.onKeyDown);
+    window.removeEventListener('keyup', this.onKeyUp);
+    window.removeEventListener('blur', this.onWindowBlur);
     this.canvas.style.cursor = '';
     this.onWaypointModeChange = undefined;
     this.onControlGroupFocus = undefined;

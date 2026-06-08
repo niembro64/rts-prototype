@@ -36,11 +36,12 @@ units, select all matching owned entities, select idle builders, select waiting
 units, select same type only, select commander focus/add, and mixed-selection
 narrowing, select all matching units in view, select all units from previous
 selection, select only mobile units, and invert selection have command-card or
-hotkey affordances. Alt-drag box selection can remove selectable entities from
-the current selection. Split army and loop selection have command-card and
-hotkey affordances. Add select idle transports and the BAR select-box modifier
-semantics for
-Shift/Ctrl/Alt/Space/Z.
+hotkey affordances. Ctrl-click and Ctrl-drag box selection can remove selectable
+entities from the current selection. Split army and loop selection have
+command-card and hotkey affordances. Select boxes support BAR-style Shift
+append/all-kinds, Ctrl remove, Alt mobile-only, Space idle-only, and Z same-type
+modifiers. Add select idle transports once transport units and load/unload state
+exist.
 
 Issue: control groups still lack several BAR behaviors. Group slots 0-9,
 Ctrl/Cmd+Shift group add, Ctrl/Cmd+Alt group select-toggle, and Ctrl/Cmd+`

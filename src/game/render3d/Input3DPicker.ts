@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { EntityId, PlayerId } from '../sim/types';
+import type { ScreenRectSelectionOptions } from '../input/helpers';
 import type { SelectionEntitySource } from '@/types/input';
 import type { ThreeApp } from './ThreeApp';
 import type { CursorGround, SimGroundPoint } from './CursorGround';
@@ -53,6 +54,7 @@ export class Input3DPicker {
     playerId: PlayerId,
     a: { x: number; y: number },
     b: { x: number; y: number },
+    options: ScreenRectSelectionOptions = {},
   ): EntityId[] {
     return this.boxSelection.select(
       source,
@@ -61,6 +63,7 @@ export class Input3DPicker {
       playerId,
       a,
       b,
+      options,
     );
   }
 
