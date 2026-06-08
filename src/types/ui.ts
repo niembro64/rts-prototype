@@ -87,6 +87,7 @@ export type SelectionInfo = {
   factorySelectedUnit?: FactorySelectionItem | null;
   factoryProgress?: number;
   factoryIsProducing?: boolean;
+  factoryGuardTargetId?: number | null;
   controlGroups: ControlGroupInfo[];
   details: SelectionDetailItem[];
 };
@@ -143,6 +144,7 @@ export type SelectionActions = {
   toggleRepairArea: () => void;
   queueUnit: (factoryId: number, unitBlueprintId: string) => void;
   stopFactoryProduction: (factoryId: number) => void;
+  clearFactoryGuard: (factoryId: number) => void;
 };
 
 // Economy info

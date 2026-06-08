@@ -93,4 +93,8 @@ export function runCommandHotkeysContractTest(): void {
     resolveCommandHotkey(keyEvent(']', 'BracketRight'), 'bar-grid') === 'build.rotateClockwise',
     'bar-grid ] should resolve build rotate clockwise',
   );
+  assertContract(
+    resolveCommandHotkey(keyEvent('g', 'KeyG', { ctrlKey: true }), 'bar-grid') === 'command.factoryGuard',
+    'bar-grid Ctrl+G should resolve factory guard',
+  );
 }

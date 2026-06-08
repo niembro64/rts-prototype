@@ -992,6 +992,15 @@ export class RtsScene3D {
     });
   }
 
+  public clearFactoryGuard(factoryId: number): void {
+    this.sendAuthoritativeCommand({
+      type: 'setFactoryGuard',
+      tick: this.clientViewState.getTick(),
+      factoryId,
+      targetId: null,
+    });
+  }
+
   public centerCameraOn(x: number, y: number): void {
     this.cameraControl.centerOn(x, y);
   }

@@ -504,14 +504,14 @@ function sanitizeSetFactoryGuardCommand(
   command: SetFactoryGuardCommand,
   tick: number,
 ): SetFactoryGuardCommand | null {
-  return !isEntityId(command.factoryId) || !isEntityId(command.targetId)
-    ? null
-    : {
-        type: 'setFactoryGuard',
-        tick,
-        factoryId: command.factoryId,
-        targetId: command.targetId,
-      };
+  if (!isEntityId(command.factoryId)) return null;
+  if (command.targetId !== null && !isEntityId(command.targetId)) return null;
+  return {
+    type: 'setFactoryGuard',
+    tick,
+    factoryId: command.factoryId,
+    targetId: command.targetId,
+  };
 }
 
 function sanitizeFireDgunCommand(

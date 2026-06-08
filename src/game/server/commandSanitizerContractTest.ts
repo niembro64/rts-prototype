@@ -1,6 +1,7 @@
 import type {
   Command,
   MoveCommand,
+  SetFactoryGuardCommand,
   SkipCurrentOrderCommand,
   StartBuildCommand,
   StopFactoryProductionCommand,
@@ -54,6 +55,19 @@ export function runCommandSanitizerContractTest(): void {
   assertContract(
     stopFactoryProduction.tick === 9001 && stopFactoryProduction.factoryId === 42,
     'stopFactoryProduction must preserve a valid factory id and normalize tick',
+  );
+
+  const clearFactoryGuard = sanitizeRequired<SetFactoryGuardCommand>(world, {
+    type: 'setFactoryGuard',
+    tick: 5,
+    factoryId: 42,
+    targetId: null,
+  });
+  assertContract(
+    clearFactoryGuard.tick === 9001 &&
+    clearFactoryGuard.factoryId === 42 &&
+    clearFactoryGuard.targetId === null,
+    'setFactoryGuard must preserve null target for factory guard clear',
   );
 
   const queueFrontMove = sanitizeRequired<MoveCommand>(world, {

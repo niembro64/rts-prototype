@@ -610,11 +610,16 @@ function executeSetRallyPointCommand(ctx: CommandContext, command: SetRallyPoint
 
 function executeSetFactoryGuardCommand(ctx: CommandContext, command: SetFactoryGuardCommand): void {
   const factory = ctx.world.getEntity(command.factoryId);
+  if (factory === undefined || factory.factory === null || factory.ownership === null) return;
+
+  if (command.targetId === null) {
+    factory.factory.guardTargetId = null;
+    ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+    return;
+  }
+
   const target = ctx.world.getEntity(command.targetId);
   if (
-    factory === undefined ||
-    factory.factory === null ||
-    factory.ownership === null ||
     target === undefined ||
     target.ownership === null ||
     factory.ownership.playerId !== target.ownership.playerId

@@ -896,6 +896,17 @@ function loadFactoryPreset(index: number): void {
         >
           <span class="btn-label">Stop</span>
         </button>
+        <button
+          type="button"
+          class="action-btn"
+          :disabled="selection.factoryGuardTargetId === null || selection.factoryGuardTargetId === undefined"
+          :style="{ '--btn-color': BUTTON_COLORS.guard }"
+          :title="actionTitle('Clear factory guard', 'command.factoryGuard')"
+          @click="actions.clearFactoryGuard(selection.factoryId!)"
+        >
+          <span class="btn-label">Clr Guard</span>
+          <span class="btn-key">{{ hotkey('command.factoryGuard') }}</span>
+        </button>
       </div>
     </div>
 

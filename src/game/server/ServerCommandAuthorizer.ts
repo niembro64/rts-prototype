@@ -278,10 +278,9 @@ function authorizeSetFactoryGuardCommand(
   command: SetFactoryGuardCommand,
   playerId: PlayerId,
 ): SetFactoryGuardCommand | null {
-  return isOwnedFactory(world, command.factoryId, playerId) &&
-    isOwnedEntity(world, command.targetId, playerId)
-    ? command
-    : null;
+  if (!isOwnedFactory(world, command.factoryId, playerId)) return null;
+  if (command.targetId === null) return command;
+  return isOwnedEntity(world, command.targetId, playerId) ? command : null;
 }
 
 function isOwnedEntity(world: WorldState, entityId: EntityId, playerId: PlayerId): boolean {

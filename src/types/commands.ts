@@ -181,7 +181,7 @@ export type SetRallyPointCommand = BaseCommand & {
 export type SetFactoryGuardCommand = BaseCommand & {
   type: 'setFactoryGuard';
   factoryId: EntityId;
-  targetId: EntityId;
+  targetId: EntityId | null;
 };
 
 export type FireDGunCommand = BaseCommand & {

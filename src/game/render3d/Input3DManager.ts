@@ -245,6 +245,7 @@ export class Input3DManager {
       clearQueuedOrders: () => this.clearQueuedOrders(),
       toggleSelectedWait: (queue, queueFront) => this.toggleSelectedWait(queue, queueFront),
       toggleRepeatQueue: () => this.toggleRepeatQueue(),
+      clearSelectedFactoryGuard: () => this.clearSelectedFactoryGuard(),
       toggleUnitMoveState: () => this.toggleUnitMoveState(),
       toggleTrajectoryMode: () => this.toggleTrajectoryMode(),
       toggleSelectedFire: () => this.toggleSelectedFire(),
@@ -514,6 +515,25 @@ export class Input3DManager {
 
   toggleRepeatQueue(): void {
     this.selectedCommands.setRepeatQueue();
+  }
+
+  clearSelectedFactoryGuard(): void {
+    const selectedStatic = this.entitySource.getSelectedBuildings();
+    const tick = this.context.getTick();
+    for (let i = 0; i < selectedStatic.length; i++) {
+      const factory = selectedStatic[i];
+      if (
+        factory.factory === null ||
+        factory.ownership?.playerId !== this.context.activePlayerId ||
+        factory.factory.guardTargetId === null
+      ) continue;
+      this.localCommandQueue.enqueue({
+        type: 'setFactoryGuard',
+        tick,
+        factoryId: factory.id,
+        targetId: null,
+      });
+    }
   }
 
   toggleUnitMoveState(): void {

@@ -126,6 +126,7 @@ export function useGameCanvasSceneUi({
     factorySelectedUnit: null,
     factoryProgress: 0,
     factoryIsProducing: false,
+    factoryGuardTargetId: null,
     controlGroups: [],
     details: [],
   });
@@ -331,6 +332,9 @@ export function useGameCanvasSceneUi({
     },
     stopFactoryProduction: (factoryId) => {
       getActiveBattleScene()?.stopFactoryProduction(factoryId);
+    },
+    clearFactoryGuard: (factoryId) => {
+      getActiveBattleScene()?.clearFactoryGuard(factoryId);
     },
   };
 

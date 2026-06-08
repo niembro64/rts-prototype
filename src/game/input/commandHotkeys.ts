@@ -5,6 +5,7 @@ export type CommandHotkeyId =
   | 'command.stop'
   | 'command.wait'
   | 'command.repeat'
+  | 'command.factoryGuard'
   | 'command.moveState'
   | 'command.trajectoryToggle'
   | 'command.skipCurrent'
@@ -100,6 +101,7 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'command.stop',
   'command.wait',
   'command.repeat',
+  'command.factoryGuard',
   'command.moveState',
   'command.trajectoryToggle',
   'command.skipCurrent',
@@ -178,6 +180,7 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'command.stop': 'Stop',
   'command.wait': 'Wait',
   'command.repeat': 'Repeat Orders',
+  'command.factoryGuard': 'Factory Guard',
   'command.moveState': 'Hold Position',
   'command.trajectoryToggle': 'Trajectory Mode',
   'command.skipCurrent': 'Skip Current Order',
@@ -275,6 +278,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
       key('Ctrl+Shift+W', 'w', { ctrl: true, shift: true }),
     ],
     'command.repeat': [key('Alt+R', 'r', { alt: true })],
+    'command.factoryGuard': [code('Ctrl+G', 'KeyG', { ctrl: true })],
     'command.moveState': [key('Alt+H', 'h', { alt: true })],
     'command.trajectoryToggle': [key('Alt+J', 'j', { alt: true })],
     'command.skipCurrent': [key('N', 'n', { shift: 'any' })],
@@ -348,6 +352,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
       code('Ctrl+Shift+Y', 'KeyY', { ctrl: true, shift: true }),
     ],
     'command.repeat': [code('T', 'KeyT', { shift: 'any' })],
+    'command.factoryGuard': [code('Ctrl+G', 'KeyG', { ctrl: true })],
     'command.moveState': [code(';', 'Semicolon', { shift: 'any' })],
     'command.trajectoryToggle': [code('Alt+J', 'KeyJ', { alt: true })],
     'command.skipCurrent': [code('N', 'KeyN', { shift: 'any' })],
@@ -436,6 +441,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
       code('Ctrl+Shift+W', 'KeyW', { ctrl: true, shift: true }),
     ],
     'command.repeat': [code('Alt+R', 'KeyR', { alt: true })],
+    'command.factoryGuard': [code('Ctrl+G', 'KeyG', { ctrl: true })],
     'command.moveState': [code('Alt+H', 'KeyH', { alt: true })],
     'command.trajectoryToggle': [code('Alt+J', 'KeyJ', { alt: true })],
     'command.skipCurrent': [code('N', 'KeyN', { shift: 'any' })],

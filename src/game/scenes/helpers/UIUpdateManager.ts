@@ -488,6 +488,7 @@ export function buildSelectionInfo(
   let factorySelectedUnit: { unitBlueprintId: string; label: string } | null | undefined;
   let factoryProgress: number | undefined;
   let factoryIsProducing: boolean | undefined;
+  let factoryGuardTargetId: number | null | undefined;
 
   if (factory?.factory) {
     const f = factory.factory;
@@ -496,9 +497,10 @@ export function buildSelectionInfo(
       : {
           unitBlueprintId: f.selectedUnitBlueprintId,
           label: unitLabel(f.selectedUnitBlueprintId),
-        };
+    };
     factoryProgress = f.currentBuildProgress;
     factoryIsProducing = f.isProducing;
+    factoryGuardTargetId = f.guardTargetId;
   }
 
   return {
@@ -550,6 +552,7 @@ export function buildSelectionInfo(
     factorySelectedUnit,
     factoryProgress,
     factoryIsProducing,
+    factoryGuardTargetId,
     controlGroups: inputState?.controlGroups ?? [],
     details: buildSelectionDetails(selectedUnits, selectedTowers, selectedBuildings),
   };
