@@ -19,7 +19,6 @@
 // all input flows.
 
 import * as THREE from 'three';
-import { COLORS } from '@/colorsConfig';
 import type { ThreeApp } from './ThreeApp';
 import type { BuildGhost3D } from './BuildGhost3D';
 import type { CursorGround, SimGroundPoint } from './CursorGround';
@@ -62,6 +61,7 @@ import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { Input3DSpecialModes, type Input3DSpecialMode } from './Input3DSpecialModes';
 import { Input3DBuildPlacementState } from './Input3DBuildPlacementState';
 import { Input3DHoverState, resolveInput3DHoverTargets } from './Input3DHoverState';
+import { Input3DSelectionDragState } from './Input3DSelectionDragState';
 
 const SELECTABLE_GROUND_MIN_UNIT_RADIUS = 8;
 const REPAIR_AREA_RADIUS = 220;
@@ -137,18 +137,13 @@ export class Input3DManager {
   private buildGhost: BuildGhost3D | null = null;
 
   // Drag state (screen coords only — box select is screen-space)
-  private leftDown = false;
-  private dragStartScreen = { x: 0, y: 0 };
-  private dragEndScreen = { x: 0, y: 0 };
+  private selectionDrag: Input3DSelectionDragState;
 
   // Right-drag line-path state. The accumulator owns the points +
   // per-unit target list; both 2D and 3D share the same append /
   // recompute logic via LinePathAccumulator.
   private rightDown = false;
   private linePath = new LinePathAccumulator();
-
-  // Visual selection rectangle overlay (CSS div over the canvas)
-  private marquee: HTMLDivElement;
 
   /** Shared cursor → 3D ground picker. Single canonical source of
    *  truth for every command-point in this manager — passed in by
@@ -219,24 +214,7 @@ export class Input3DManager {
       onPingModeChange: (active) => this.onPingModeChange?.(active),
       onTowerTargetModeChange: (active) => this.onTowerTargetModeChange?.(active),
     });
-
-    // Selection marquee overlay
-    this.marquee = document.createElement('div');
-    Object.assign(this.marquee.style, {
-      position: 'absolute',
-      border: COLORS.effects.inputSelectionMarquee.border,
-      background: COLORS.effects.inputSelectionMarquee.background,
-      pointerEvents: 'none',
-      display: 'none',
-      zIndex: '5',
-    });
-    const parent = this.canvas.parentElement;
-    if (parent) {
-      if (getComputedStyle(parent).position === 'static') {
-        parent.style.position = 'relative';
-      }
-      parent.appendChild(this.marquee);
-    }
+    this.selectionDrag = new Input3DSelectionDragState(this.canvas);
 
     this.onMouseDown = (e) => this.handleMouseDown(e);
     this.onMouseMove = (e) => this.handleMouseMove(e);
@@ -292,6 +270,10 @@ export class Input3DManager {
     return hoveredEntityId !== null
       ? this.entitySource.getEntity(hoveredEntityId) ?? null
       : null;
+  }
+
+  private get leftDown(): boolean {
+    return this.selectionDrag.active;
   }
 
   private get repairAreaMode(): boolean {
@@ -1037,9 +1019,7 @@ export class Input3DManager {
 
     if (e.button === 0) {
       e.preventDefault();
-      this.leftDown = true;
-      this.dragStartScreen = { x: e.clientX, y: e.clientY };
-      this.dragEndScreen = { x: e.clientX, y: e.clientY };
+      this.selectionDrag.begin(e.clientX, e.clientY);
       this.applyCursor('select');
     } else if (e.button === 2) {
       e.preventDefault();
@@ -1348,13 +1328,7 @@ export class Input3DManager {
 
     if (this.leftDown) {
       this.applyCursor('select');
-      this.dragEndScreen = { x: e.clientX, y: e.clientY };
-      const dx = e.clientX - this.dragStartScreen.x;
-      const dy = e.clientY - this.dragStartScreen.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist >= CLICK_DRAG_THRESHOLD_PX) {
-        this.showMarquee();
-      }
+      this.selectionDrag.update(e.clientX, e.clientY, CLICK_DRAG_THRESHOLD_PX, this.canvasRect());
       return;
     }
 
@@ -1381,13 +1355,9 @@ export class Input3DManager {
       return;
     }
     if (e.button !== 0 || !this.leftDown) return;
-    this.leftDown = false;
-    this.hideMarquee();
-
-    const dx = e.clientX - this.dragStartScreen.x;
-    const dy = e.clientY - this.dragStartScreen.y;
-    const isClick = Math.hypot(dx, dy) < CLICK_DRAG_THRESHOLD_PX;
+    const isClick = this.selectionDrag.isClick(e.clientX, e.clientY, CLICK_DRAG_THRESHOLD_PX);
     const additive = e.shiftKey;
+    this.selectionDrag.finish();
 
     if (isClick) {
       // Try exact mesh pick first (cleaner for overlapping units than the
@@ -1445,8 +1415,8 @@ export class Input3DManager {
     // the user *sees* (even though the corresponding ground-plane region
     // is a trapezoid under a tilted camera).
     const ids = this.selectEntitiesInScreenRect(
-      this.dragStartScreen,
-      this.dragEndScreen,
+      this.selectionDrag.start,
+      this.selectionDrag.end,
     );
     this.localCommandQueue.enqueue({
       type: 'select',
@@ -1731,23 +1701,6 @@ export class Input3DManager {
     this.refreshCursor();
   }
 
-  private showMarquee(): void {
-    const rect = this.canvasRect();
-    const x = Math.min(this.dragStartScreen.x, this.dragEndScreen.x) - rect.left;
-    const y = Math.min(this.dragStartScreen.y, this.dragEndScreen.y) - rect.top;
-    const w = Math.abs(this.dragStartScreen.x - this.dragEndScreen.x);
-    const h = Math.abs(this.dragStartScreen.y - this.dragEndScreen.y);
-    this.marquee.style.left = `${x}px`;
-    this.marquee.style.top = `${y}px`;
-    this.marquee.style.width = `${w}px`;
-    this.marquee.style.height = `${h}px`;
-    this.marquee.style.display = 'block';
-  }
-
-  private hideMarquee(): void {
-    this.marquee.style.display = 'none';
-  }
-
   destroy(): void {
     this.canvas.removeEventListener('mousedown', this.onMouseDown);
     window.removeEventListener('mousemove', this.onMouseMove);
@@ -1763,6 +1716,6 @@ export class Input3DManager {
     this.onGuardModeChange = undefined;
     this.onReclaimModeChange = undefined;
     this.onPingModeChange = undefined;
-    this.marquee.remove();
+    this.selectionDrag.destroy();
   }
 }
