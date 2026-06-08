@@ -2,6 +2,8 @@ export type CommandHotkeyId =
   | 'waypoint.move'
   | 'waypoint.fight'
   | 'waypoint.patrol'
+  | 'formation.assume'
+  | 'formation.move'
   | 'command.stop'
   | 'command.wait'
   | 'command.repeat'
@@ -99,6 +101,8 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'waypoint.move',
   'waypoint.fight',
   'waypoint.patrol',
+  'formation.assume',
+  'formation.move',
   'command.stop',
   'command.wait',
   'command.repeat',
@@ -179,6 +183,8 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'waypoint.move': 'Waypoint: Move',
   'waypoint.fight': 'Waypoint: Fight',
   'waypoint.patrol': 'Waypoint: Patrol',
+  'formation.assume': 'Assume Formation',
+  'formation.move': 'Move In Formation',
   'command.stop': 'Stop',
   'command.wait': 'Wait',
   'command.repeat': 'Repeat Orders',
@@ -276,6 +282,8 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'waypoint.move': [key('M', 'm', { shift: 'any' })],
     'waypoint.fight': [key('F', 'f', { shift: 'any' })],
     'waypoint.patrol': [key('H', 'h', { shift: 'any' })],
+    'formation.assume': [code('Ctrl+Alt+M', 'KeyM', { ctrl: true, alt: true })],
+    'formation.move': [code('Ctrl+Alt+F', 'KeyF', { ctrl: true, alt: true })],
     'command.stop': [key('S', 's', { shift: 'any' })],
     'command.wait': [
       key('W', 'w', { shift: 'any' }),
@@ -351,6 +359,8 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'waypoint.move': [code('M', 'KeyM', { shift: 'any' })],
     'waypoint.fight': [code('F', 'KeyF', { shift: 'any' })],
     'waypoint.patrol': [code('H', 'KeyH', { shift: 'any' })],
+    'formation.assume': [code('Ctrl+Alt+M', 'KeyM', { ctrl: true, alt: true })],
+    'formation.move': [code('Ctrl+Alt+F', 'KeyF', { ctrl: true, alt: true })],
     'command.stop': [code('G', 'KeyG', { shift: 'any' })],
     'command.wait': [
       code('Y', 'KeyY', { shift: 'any' }),
@@ -441,6 +451,8 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'waypoint.move': [code('M', 'KeyM', { shift: 'any' })],
     'waypoint.fight': [code('F', 'KeyF', { shift: 'any' })],
     'waypoint.patrol': [code('P', 'KeyP', { shift: 'any' })],
+    'formation.assume': [code('Ctrl+Alt+M', 'KeyM', { ctrl: true, alt: true })],
+    'formation.move': [code('Ctrl+Alt+F', 'KeyF', { ctrl: true, alt: true })],
     'command.stop': [code('S', 'KeyS', { shift: 'any' })],
     'command.wait': [
       code('W', 'KeyW', { shift: 'any' }),

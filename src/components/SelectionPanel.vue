@@ -569,22 +569,22 @@ function loadFactoryPreset(index: number): void {
           class="action-btn"
           :class="{ active: selection.isFormationAssumeMode }"
           :style="{ '--btn-color': WAYPOINT_COLOR_CSS.move }"
-          title="Assume formation - Alt+Right click"
+          :title="actionTitle('Assume formation', 'formation.assume', 'Alt+Right click also works')"
           @click="actions.toggleFormationAssume()"
         >
           <span class="btn-label">Assume</span>
-          <span class="btn-key">Alt+RMB</span>
+          <span class="btn-key">{{ hotkey('formation.assume') }}</span>
         </button>
         <button
           type="button"
           class="action-btn"
           :class="{ active: selection.isFormationMoveMode }"
           :style="{ '--btn-color': WAYPOINT_COLOR_CSS.move }"
-          title="Move in formation - Ctrl+Right click"
+          :title="actionTitle('Move in formation', 'formation.move', 'Ctrl+Right click also works')"
           @click="actions.toggleFormationMove()"
         >
           <span class="btn-label">Form</span>
-          <span class="btn-key">Ctrl+RMB</span>
+          <span class="btn-key">{{ hotkey('formation.move') }}</span>
         </button>
         <button
           type="button"

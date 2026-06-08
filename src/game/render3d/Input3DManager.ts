@@ -223,6 +223,8 @@ export class Input3DManager {
       commandQueue: this.localCommandQueue,
       getTick: () => this.context.getTick(),
       setWaypointMode: (mode) => this.setWaypointMode(mode),
+      toggleFormationAssumeMode: () => this.toggleFormationAssumeMode(),
+      toggleFormationMoveMode: () => this.toggleFormationMoveMode(),
       storeControlGroupSlot: (index) => this.storeControlGroupSlot(index),
       addToControlGroupSlot: (index) => this.addToControlGroupSlot(index),
       setAutoControlGroupSlot: (index) => this.setAutoControlGroupSlot(index),

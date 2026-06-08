@@ -18,6 +18,8 @@ type Input3DKeyboardControllerConfig = {
   commandQueue: CommandQueue;
   getTick: () => number;
   setWaypointMode: (mode: WaypointType) => void;
+  toggleFormationAssumeMode: () => void;
+  toggleFormationMoveMode: () => void;
   storeControlGroupSlot: (index: number) => void;
   addToControlGroupSlot: (index: number) => void;
   setAutoControlGroupSlot: (index: number) => void;
@@ -322,6 +324,12 @@ export class Input3DKeyboardController {
         break;
       case 'waypoint.patrol':
         this.config.setWaypointMode('patrol');
+        break;
+      case 'formation.assume':
+        this.config.toggleFormationAssumeMode();
+        break;
+      case 'formation.move':
+        this.config.toggleFormationMoveMode();
         break;
       case 'command.stop':
         this.config.stopSelectedUnits();

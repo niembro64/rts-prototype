@@ -86,6 +86,14 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid semicolon should resolve move state',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('m', 'KeyM', { ctrlKey: true, altKey: true }), 'bar-grid') === 'formation.assume',
+    'bar-grid Ctrl+Alt+M should resolve assume formation',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('f', 'KeyF', { ctrlKey: true, altKey: true }), 'bar-grid') === 'formation.move',
+    'bar-grid Ctrl+Alt+F should resolve move in formation',
+  );
+  assertContract(
     resolveCommandHotkey(keyEvent('z', 'KeyZ', { altKey: true }), 'bar-grid') === 'build.spacingIncrease',
     'bar-grid Alt+Z should resolve build spacing increase',
   );
