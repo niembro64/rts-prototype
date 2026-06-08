@@ -8,28 +8,6 @@ import { executeCommand, type CommandContext } from './commandExecution';
 import { distributeEnergy, createEnergyBuffers, resetEnergyBuffers, type EnergyBuffers } from './energyDistribution';
 import { resourceMovementSystem } from './resourceMovement';
 import {
-  updateTargetingAndFiringState,
-  updateTurretRotation,
-  updateLaserSounds,
-  emitLaserStopsForEntity,
-  emitLaserStopsForTarget,
-  resetLaserSoundState,
-  updateShieldSounds,
-  emitShieldStopsForEntity,
-  resetShieldSoundState,
-  fireTurrets,
-  updateShieldState,
-  resetShieldBuffers,
-  registerPackedProjectile,
-  unregisterPackedProjectile,
-} from './combat';
-import {
-  stampCombatTargetingPool,
-  stampShieldSurfacePool,
-} from './combat/targetingInputStamping';
-import {
-  updateProjectiles,
-  checkProjectileCollisions,
   type SimEvent,
   type DeathContext,
   type ProjectileSpawnEvent,
@@ -50,10 +28,7 @@ import { updateUnitGroundNormal } from './unitGroundNormal';
 import { ForceAccumulator } from './ForceAccumulator';
 import { spatialGrid } from './SpatialGrid';
 import { transitionPhase } from '@/gamePhase';
-import {
-  ENTITY_CHANGED_ACTIONS,
-  ENTITY_CHANGED_TURRETS,
-} from '@/types/network';
+import { ENTITY_CHANGED_ACTIONS } from '@/types/network';
 import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
 import {
@@ -70,20 +45,17 @@ import { isBuildTargetInRange } from './builderRange';
 import { isReclaimableTarget } from './reclaim';
 import { setUnitMovementAcceleration } from './unitMovementAcceleration';
 import { getActionIntentStart, getUnitActionTargetId } from './unitActionIntents';
-import { getSimWasm } from '../sim-wasm/init';
 import {
   rotateFirstUnitActionToEnd,
   refreshUnitActionHash,
   shiftUnitAction,
   spliceUnitActions,
 } from './unitActions';
-import {
-  SimulationEventQueues,
-  safeVelocityUpdates,
-} from './SimulationEventQueues';
+import { SimulationEventQueues } from './SimulationEventQueues';
 import { resolveCommanderGameOverWinner } from './SimulationGameOver';
 import { SimulationDeathExplosionPlanner } from './SimulationDeathExplosionPlanner';
 import { SimulationDeadEntityCleanup } from './SimulationDeadEntityCleanup';
+import { SimulationCombatController } from './SimulationCombatController';
 import {
   ARRIVAL_RADIUS,
   SimulationArrivalController,
@@ -122,6 +94,7 @@ export class Simulation {
   private constructionSystem: ConstructionSystem;
   private damageSystem: DamageSystem;
   private deathExplosionPlanner: SimulationDeathExplosionPlanner;
+  private combatController: SimulationCombatController;
   private deadEntityCleanup: SimulationDeadEntityCleanup;
   private arrivalController: SimulationArrivalController;
   private combatHaltController: SimulationCombatHaltController;
@@ -156,8 +129,6 @@ export class Simulation {
   // owns double-buffer swaps so snapshot drains don't allocate.
   private eventQueues = new SimulationEventQueues();
 
-  private _deadUnitIdsBuf: EntityId[] = [];
-  private _deadBuildingIdsBuf: EntityId[] = [];
   private _movingUnitsBuf: Entity[] = [];
 
   // Reusable buffers for shared energy distribution (avoid per-tick allocations)
@@ -199,6 +170,13 @@ export class Simulation {
     );
     this.deadEntityCleanup = new SimulationDeadEntityCleanup(
       this.world,
+      this.eventQueues,
+      this.deathExplosionPlanner,
+    );
+    this.combatController = new SimulationCombatController(
+      this.world,
+      this.damageSystem,
+      this.forceAccumulator,
       this.eventQueues,
       this.deathExplosionPlanner,
     );
@@ -386,7 +364,16 @@ export class Simulation {
     this.updateSpatialGrid();
 
     // Update combat systems (targeting, firing, projectile collisions)
-    this.updateCombat(dtMs);
+    this.combatController.update(
+      dtMs,
+      this.onSimEvent,
+      this.onUnitDeath,
+      this.onBuildingDeath,
+    );
+    // Safety cleanup - remove any dead entities that slipped through.
+    // WorldState records ids whose HP changed, so this drains only
+    // those candidates instead of walking every unit/building.
+    this.deadEntityCleanup.run(this.onUnitDeath, this.onBuildingDeath);
 
     // Finalize force accumulator (sums all contributions)
     this.forceAccumulator.finalize();
@@ -425,202 +412,6 @@ export class Simulation {
     this.gamePhase = transitionPhase(this.gamePhase, 'gameOver');
     const onGameOver = this.onGameOver;
     if (onGameOver !== null) onGameOver(winnerId);
-  }
-
-  // Update combat systems
-  private updateCombat(dtMs: number): void {
-    const sim = getSimWasm();
-    if (sim === undefined) {
-      throw new Error('Simulation.updateCombat: sim-wasm is not initialized');
-    }
-    sim.deathExplosionPlannerReset();
-
-    // AIM-08.2 — stamp the FF pool BEFORE the FSM so the shield
-    // clearance kernels read the latest sphere list. The list is
-    // produced by the previous tick's updateShieldState, so shield
-    // sphere targeting has the same one-tick-stale envelope as
-    // projectile collision.
-    // One material, two shapes: a single pool holds both the sphere and the
-    // flat-panel shield surfaces, both stamped here before the FSM/gate.
-    stampShieldSurfacePool(this.world);
-    // AIM-08.5 — rebuild targeting slabs before the FSM. The targeting
-    // pass mutates the slab through Rust transition kernels and writes
-    // those results back to JS turrets for the remaining consumers.
-    stampCombatTargetingPool(this.world);
-    // Update targeting and firing state. Cooldown timers now step inside
-    // the scheduled Rust targeting batch and write back through the
-    // transitional slab -> JS turret copy.
-    const activeCombatUnits = updateTargetingAndFiringState(this.world, dtMs);
-
-    // Update laser sounds based on targeting state (every frame)
-    if (this.world.getBeamUnits().length > 0) {
-      const laserSimEvents = updateLaserSounds(this.world);
-      for (const event of laserSimEvents) {
-        const onSimEvent = this.onSimEvent;
-        if (onSimEvent !== null) onSimEvent(event);
-        this.eventQueues.simEvents.push(event);
-      }
-    }
-
-    // Update turret rotation (before firing, so weapons fire in turret direction)
-    updateTurretRotation(this.world, dtMs, activeCombatUnits);
-
-    // Update shield state before projectile emission. Aimed tube shields
-    // are one turret with two emissions: the physical tube and the
-    // sprayed payload both derive from the same engaged lock this tick.
-    const shieldUnits = this.world.turretShieldSpheresEnabled
-      ? this.world.getShieldUnits()
-      : undefined;
-    if (shieldUnits && shieldUnits.length > 0) {
-      updateShieldState(this.world, dtMs);
-    } else {
-      resetShieldBuffers();
-    }
-
-    // Update shield sounds based on the just-written transition progress.
-    if (shieldUnits && shieldUnits.length > 0) {
-      const shieldSimEvents = updateShieldSounds(shieldUnits);
-      for (const event of shieldSimEvents) {
-        const onSimEvent = this.onSimEvent;
-        if (onSimEvent !== null) onSimEvent(event);
-        this.eventQueues.simEvents.push(event);
-      }
-    }
-
-    // Fire weapons and create projectiles (with recoil force for projectiles)
-    const fireResult = fireTurrets(this.world, dtMs, this.forceAccumulator, activeCombatUnits);
-    for (const proj of fireResult.projectiles) {
-      this.world.addEntity(proj);
-      registerPackedProjectile(proj);
-    }
-
-    // Collect projectile spawn events
-    for (const event of fireResult.spawnEvents) {
-      this.eventQueues.projectileSpawns.push(event);
-    }
-
-    // Emit fire audio events
-    for (const event of fireResult.events) {
-      const onSimEvent = this.onSimEvent;
-      if (onSimEvent !== null) onSimEvent(event);
-      this.eventQueues.simEvents.push(event);
-    }
-
-    for (const unit of activeCombatUnits) {
-      this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
-    }
-
-    // Update projectile positions and remove orphaned beams (from dead units)
-    if (this.world.getProjectiles().length > 0) {
-      const updateResult = updateProjectiles(this.world, dtMs, this.damageSystem);
-      for (const id of updateResult.orphanedIds) {
-        unregisterPackedProjectile(id);
-        spatialGrid.removeProjectile(id);
-        this.world.removeEntity(id);
-      }
-      for (const event of updateResult.despawnEvents) {
-        unregisterPackedProjectile(event.id);
-        spatialGrid.removeProjectile(event.id);
-        this.eventQueues.projectileDespawns.push(event);
-      }
-      // Collect homing projectile velocity updates
-      for (const event of safeVelocityUpdates(updateResult.velocityUpdates)) {
-        this.eventQueues.projectileVelocityUpdates.set(event.id, event);
-      }
-
-      // Refresh projectile broadphase after integration. The frame-level
-      // spatial update ran before combat, so projectile-vs-projectile
-      // hitbox checks need the post-move positions here.
-      spatialGrid.updateProjectiles(this.world.getTravelingProjectiles());
-
-      // Projectile reflection queries use the same reflector slabs as
-      // targeting, but need the post-rotation, post-shield-update
-      // pose for this collision tick.
-      stampShieldSurfacePool(this.world, { includeWhenSightDisabled: true });
-
-      // Check projectile collisions and get dead units
-      const collisionResult = checkProjectileCollisions(this.world, dtMs, this.damageSystem, this.forceAccumulator);
-
-      // Add submunition / cluster projectiles spawned at explosion points,
-      // and mirror their spawn events to the network queue so clients see
-      // them the same way they see any freshly-fired round.
-      for (const proj of collisionResult.newProjectiles) {
-        this.world.addEntity(proj);
-        registerPackedProjectile(proj);
-      }
-      for (const event of collisionResult.spawnEvents) {
-        this.eventQueues.projectileSpawns.push(event);
-      }
-
-      // Collect projectile despawn events from collisions
-      for (const event of collisionResult.despawnEvents) {
-        unregisterPackedProjectile(event.id);
-        spatialGrid.removeProjectile(event.id);
-        this.eventQueues.projectileDespawns.push(event);
-      }
-      for (const event of safeVelocityUpdates(collisionResult.velocityUpdates)) {
-        this.eventQueues.projectileVelocityUpdates.set(event.id, event);
-      }
-
-      this.deathExplosionPlanner.detonate(
-        collisionResult.deadUnitIds,
-        collisionResult.deadBuildingIds,
-        collisionResult.deadTurretIds,
-        collisionResult.events,
-        collisionResult.deathContexts,
-      );
-
-      // Emit hit/death audio events
-      for (const event of collisionResult.events) {
-        const onSimEvent = this.onSimEvent;
-        if (onSimEvent !== null) onSimEvent(event);
-        this.eventQueues.simEvents.push(event);
-      }
-
-      // Remove dead entities from spatial grid and notify callbacks
-      if (collisionResult.deadUnitIds.size > 0) {
-        const buf = this._deadUnitIdsBuf;
-        buf.length = 0;
-        for (const id of collisionResult.deadUnitIds) {
-          const entity = this.world.getEntity(id);
-          if (entity) {
-            // Emit laserStop for the dying entity's own beam weapons
-            for (const evt of emitLaserStopsForEntity(entity)) {
-              this.eventQueues.simEvents.push(evt);
-            }
-            // Emit laserStop for any beam weapons across the world targeting this entity
-            for (const evt of emitLaserStopsForTarget(this.world, id)) {
-              this.eventQueues.simEvents.push(evt);
-            }
-            // Emit shieldStop for the dying entity's shield weapons
-            for (const evt of emitShieldStopsForEntity(entity)) {
-              this.eventQueues.simEvents.push(evt);
-            }
-          }
-          spatialGrid.removeUnit(id);
-          buf.push(id);
-        }
-        const onUnitDeath = this.onUnitDeath;
-        if (onUnitDeath !== null) onUnitDeath(buf, collisionResult.deathContexts);
-      }
-
-      if (collisionResult.deadBuildingIds.size > 0) {
-        const buf = this._deadBuildingIdsBuf;
-        buf.length = 0;
-        for (const id of collisionResult.deadBuildingIds) {
-          spatialGrid.removeBuilding(id);
-          buf.push(id);
-        }
-        const onBuildingDeath = this.onBuildingDeath;
-        if (onBuildingDeath !== null) onBuildingDeath(buf);
-      }
-
-    }
-
-    // Safety cleanup - remove any dead entities that slipped through.
-    // WorldState records ids whose HP changed, so this drains only
-    // those candidates instead of walking every unit/building.
-    this.deadEntityCleanup.run(this.onUnitDeath, this.onBuildingDeath);
   }
 
   private isActivePathValid(
@@ -1270,8 +1061,7 @@ export class Simulation {
   resetSessionState(): void {
     this.forceAccumulator.reset();
     this.eventQueues.reset();
-    this._deadUnitIdsBuf.length = 0;
-    this._deadBuildingIdsBuf.length = 0;
+    this.combatController.reset();
     this.deadEntityCleanup.reset();
     this.arrivalController.reset();
     this.flyingLoiter.reset();
@@ -1279,9 +1069,6 @@ export class Simulation {
     this.combatHaltController.reset();
     this.world.clearPendingDeathCheckIds();
     resetEnergyBuffers(this.energyBuffers);
-    resetShieldBuffers();
-    resetLaserSoundState();
-    resetShieldSoundState();
     this.spatialGridBuildingVersion = -1;
   }
 }
