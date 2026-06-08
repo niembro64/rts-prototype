@@ -357,6 +357,7 @@ const mapLengthLandCells = ref<number>(initialMapDimensions.lengthLandCells);
 const {
   renderMode,
   audioScope,
+  masterVolume,
   audioSmoothing,
   burnMarks,
   locomotionMarks,
@@ -401,6 +402,7 @@ const {
   resetClientDefaults,
   changeRenderMode,
   changeAudioScope,
+  changeMasterVolume,
   toggleRange,
   toggleProjRange,
   toggleUnitRadius,
@@ -1042,6 +1044,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   radarBoundary: radarBoundary.value,
   renderMode: renderMode.value,
   audioScope: audioScope.value,
+  masterVolume: masterVolume.value,
   allSoundsActive: allSoundsActive.value,
   soundToggles,
   sfxCategories: SFX_CATEGORIES,
@@ -1087,6 +1090,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleRadarBoundary,
   changeRenderMode,
   changeAudioScope,
+  changeMasterVolume,
   toggleAllSounds,
   toggleSoundCategory,
   toggleAllRanges,
@@ -1183,6 +1187,7 @@ watchEffect(() => {
   m.radarBoundary = radarBoundary.value;
   m.renderMode = renderMode.value;
   m.audioScope = audioScope.value;
+  m.masterVolume = masterVolume.value;
   m.allSoundsActive = allSoundsActive.value;
   m.allRangesActive = allRangesActive.value;
   m.allProjRangesActive = allProjRangesActive.value;

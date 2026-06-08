@@ -751,6 +751,19 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
+        <BarLabel>VOL:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in CLIENT_CONFIG.masterVolume.options"
+            :key="opt.value"
+            :active="model.masterVolume === opt.value"
+            :title="`Set master volume to ${opt.value}%`"
+            @click="model.changeMasterVolume(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
         <BarLabel>SOUNDS:</BarLabel>
         <BarButton
           :active="model.allSoundsActive"

@@ -7,6 +7,7 @@ import type {
 import type { RenderMode } from './graphics';
 
 export type AudioScope = 'off' | 'window' | 'padded' | 'all';
+export type MasterVolumePercent = 0 | 25 | 50 | 75 | 100;
 /** Legacy four-mode smoothing space (snap / fast / mid / slow) still
  *  used by the unit ground normal EMA and the camera-smoothing knob.
  *  Per-channel snapshot drift uses PositionDriftChannelMode /
@@ -108,6 +109,7 @@ export type EntityHudToggles = Record<
 export type ClientBarConfig = {
   readonly render: LabeledOptionsConfig<RenderMode>;
   readonly audio: LabeledOptionsConfig<Exclude<AudioScope, 'off'>>;
+  readonly masterVolume: LabeledOptionsConfig<MasterVolumePercent>;
   readonly audioSmoothing: BooleanSetting;
   /** Beam, laser, and dgun scorch trails drawn by BurnMark3D.
    *  Default off — scorches accumulate fast in long fights and the

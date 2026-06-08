@@ -11,6 +11,7 @@ import type {
   EntityHudElement,
   EntityHudToggles,
   EntityHudType,
+  MasterVolumePercent,
   PositionDriftChannelMode,
   PredictionMode,
   ProjRangeType,
@@ -168,6 +169,7 @@ export type GameCanvasClientControlBarModel = {
   readonly radarBoundary: boolean;
   readonly renderMode: RenderMode;
   readonly audioScope: AudioScope;
+  readonly masterVolume: MasterVolumePercent;
   readonly allSoundsActive: boolean;
   readonly soundToggles: Readonly<Record<SoundCategory, boolean>>;
   readonly sfxCategories: readonly SoundCategory[];
@@ -213,6 +215,7 @@ export type GameCanvasClientControlBarModel = {
   toggleRadarBoundary(): void;
   changeRenderMode(mode: RenderMode): void;
   changeAudioScope(scope: AudioScope): void;
+  changeMasterVolume(volume: MasterVolumePercent): void;
   toggleAllSounds(): void;
   toggleSoundCategory(category: SoundCategory): void;
   toggleAllRanges(): void;

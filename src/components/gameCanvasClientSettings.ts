@@ -25,6 +25,7 @@ import {
   getBurnMarks,
   getLegsRadiusToggle,
   getLocomotionMarks,
+  getMasterVolume,
   getRadarBoundary,
   getSmokeTrails,
   getSmokeSoftEdges,
@@ -58,6 +59,7 @@ import {
   setBurnMarks,
   setLegsRadiusToggle,
   setLocomotionMarks,
+  setMasterVolume,
   setRadarBoundary,
   setSmokeTrails,
   setSmokeSoftEdges,
@@ -93,6 +95,7 @@ import type {
   EntityHudElement,
   EntityHudToggles,
   EntityHudType,
+  MasterVolumePercent,
   PositionDriftChannelMode,
   PredictionMode,
   ProjRangeType,
@@ -116,6 +119,7 @@ export function useGameCanvasClientSettings({
   setClientMode(currentClientMode.value);
   const renderMode = ref<RenderMode>(getRenderMode());
   const audioScope = ref<AudioScope>(getAudioScope());
+  const masterVolume = ref<MasterVolumePercent>(getMasterVolume());
   const audioSmoothing = ref<boolean>(getAudioSmoothing());
   const burnMarks = ref<boolean>(getBurnMarks());
   const locomotionMarks = ref<boolean>(getLocomotionMarks());
@@ -181,6 +185,7 @@ export function useGameCanvasClientSettings({
   const cameraFovDegrees = ref<CameraFovDegrees>(getCameraFovDegrees());
 
   function applyAudioRuntimeState(): void {
+    audioManager.setMasterVolume(masterVolume.value / 100);
     audioManager.setMuted(audioScope.value === 'off');
     // OTHER-1: push the persisted per-category state into AudioManager
     // so the SOUNDS: buttons gate actual playback. Music goes through
@@ -194,6 +199,7 @@ export function useGameCanvasClientSettings({
   function syncRefsFromClientConfig(): void {
     renderMode.value = getRenderMode();
     audioScope.value = getAudioScope();
+    masterVolume.value = getMasterVolume();
     audioSmoothing.value = getAudioSmoothing();
     burnMarks.value = getBurnMarks();
     locomotionMarks.value = getLocomotionMarks();
@@ -249,6 +255,12 @@ export function useGameCanvasClientSettings({
     setAudioScope(scope);
     audioScope.value = scope;
     audioManager.setMuted(scope === 'off');
+  }
+
+  function changeMasterVolume(volume: MasterVolumePercent): void {
+    setMasterVolume(volume);
+    masterVolume.value = volume;
+    audioManager.setMasterVolume(volume / 100);
   }
 
   function toggleRange(type: RangeType): void {
@@ -495,6 +507,7 @@ export function useGameCanvasClientSettings({
     const cd = getClientConfig(currentClientMode.value);
     changeRenderMode(cd.render.default);
     changeAudioScope(cd.audio.default);
+    changeMasterVolume(cd.masterVolume.default);
     setAudioSmoothing(cd.audioSmoothing.default);
     audioSmoothing.value = cd.audioSmoothing.default;
     setBurnMarks(cd.burnMarks.default);
@@ -585,6 +598,7 @@ export function useGameCanvasClientSettings({
   return {
     renderMode,
     audioScope,
+    masterVolume,
     audioSmoothing,
     burnMarks,
     locomotionMarks,
@@ -629,6 +643,7 @@ export function useGameCanvasClientSettings({
     resetClientDefaults,
     changeRenderMode,
     changeAudioScope,
+    changeMasterVolume,
     toggleRange,
     toggleProjRange,
     toggleUnitRadius,

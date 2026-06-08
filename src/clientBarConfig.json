@@ -17,6 +17,17 @@
       { "value": "all", "label": "ALL" }
     ]
   },
+  "masterVolume": {
+    "demoDefault": 100,
+    "realDefault": 100,
+    "options": [
+      { "value": 0, "label": "0" },
+      { "value": 25, "label": "25" },
+      { "value": 50, "label": "50" },
+      { "value": 75, "label": "75" },
+      { "value": 100, "label": "100" }
+    ]
+  },
   "audioSmoothing": { "demoDefault": true, "realDefault": true },
   "burnMarks": { "demoDefault": false, "realDefault": false },
   "locomotionMarks": { "demoDefault": true, "realDefault": true },
@@ -192,6 +203,7 @@
   "storageKeySuffixes": {
     "renderMode": "render-mode",
     "audioScope": "audio-scope",
+    "masterVolume": "master-volume",
     "audioSmoothing": "audio-smoothing",
     "burnMarks": "burn-marks-v2",
     "locomotionMarks": "locomotion-marks",

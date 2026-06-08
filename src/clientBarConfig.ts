@@ -13,6 +13,7 @@ import type {
   EntityHudElement,
   EntityHudToggles,
   EntityHudType,
+  MasterVolumePercent,
   PositionDriftChannelMode,
   PredictionMode,
   SelectionHudMode,
@@ -53,6 +54,7 @@ const PLAYER_CLIENT_MAX_GRAPHICS_CONFIG = rawPlayerClientGraphicsConfig as Graph
 type ClientDefaults = {
   readonly render: RenderMode;
   readonly audio: Exclude<AudioScope, 'off'>;
+  readonly masterVolume: MasterVolumePercent;
   readonly audioSmoothing: boolean;
   readonly burnMarks: boolean;
   readonly locomotionMarks: boolean;
@@ -118,6 +120,7 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
   return {
     render: pickDefault(clientBarConfig.render, mode) as RenderMode,
     audio: pickDefault(clientBarConfig.audio, mode) as Exclude<AudioScope, 'off'>,
+    masterVolume: pickDefault(clientBarConfig.masterVolume, mode) as MasterVolumePercent,
     audioSmoothing: pickDefault(clientBarConfig.audioSmoothing, mode),
     burnMarks: pickDefault(clientBarConfig.burnMarks, mode),
     locomotionMarks: pickDefault(clientBarConfig.locomotionMarks, mode),
@@ -184,6 +187,10 @@ export const CLIENT_CONFIG = {
   audio: {
     default: DEMO_CLIENT_DEFAULTS.audio,
     options: clientBarConfig.audio.options as OptionList<Exclude<AudioScope, 'off'>>,
+  },
+  masterVolume: {
+    default: DEMO_CLIENT_DEFAULTS.masterVolume,
+    options: clientBarConfig.masterVolume.options as OptionList<MasterVolumePercent>,
   },
   audioSmoothing: { default: DEMO_CLIENT_DEFAULTS.audioSmoothing },
   burnMarks: { default: DEMO_CLIENT_DEFAULTS.burnMarks },
@@ -279,6 +286,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     ...CLIENT_CONFIG,
     render: { ...CLIENT_CONFIG.render, default: defaults.render },
     audio: { ...CLIENT_CONFIG.audio, default: defaults.audio },
+    masterVolume: { ...CLIENT_CONFIG.masterVolume, default: defaults.masterVolume },
     audioSmoothing: { default: defaults.audioSmoothing },
     burnMarks: { default: defaults.burnMarks },
     locomotionMarks: { default: defaults.locomotionMarks },
@@ -329,6 +337,7 @@ const CLIENT_MODE_CONFIGS: Record<ClientMode, ClientBarConfig> = {
 type ClientStorageKeyName =
   | 'renderMode'
   | 'audioScope'
+  | 'masterVolume'
   | 'audioSmoothing'
   | 'burnMarks'
   | 'locomotionMarks'
@@ -366,6 +375,7 @@ type ClientStorageKeys = Record<ClientStorageKeyName, string>;
 const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'renderMode',
   'audioScope',
+  'masterVolume',
   'audioSmoothing',
   'burnMarks',
   'locomotionMarks',
@@ -455,6 +465,7 @@ let currentCameraSmoothMode: CameraSmoothMode = _cd.cameraSmooth.default;
 let currentCameraFollowMode: CameraFollowMode = _cd.cameraFollow.default;
 let currentCameraFovDegrees: CameraFovDegrees = _cd.cameraFov.default;
 let currentAudioScope: AudioScope = _cd.audio.default;
+let currentMasterVolume: MasterVolumePercent = _cd.masterVolume.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
 let currentBurnMarks: boolean = _cd.burnMarks.default;
 let currentLocomotionMarks: boolean = _cd.locomotionMarks.default;
@@ -492,6 +503,10 @@ function isSelectionHudMode(value: unknown): value is SelectionHudMode {
 
 function isCameraFovDegrees(value: number): value is CameraFovDegrees {
   return _cd.cameraFov.options.some((opt) => opt.value === value);
+}
+
+function isMasterVolumePercent(value: number): value is MasterVolumePercent {
+  return _cd.masterVolume.options.some((opt) => opt.value === value);
 }
 
 function isCameraFollowMode(value: unknown): value is CameraFollowMode {
@@ -542,6 +557,7 @@ function applyClientDefaults(mode: ClientMode): void {
   currentCameraFollowMode = cd.cameraFollow.default;
   currentCameraFovDegrees = cd.cameraFov.default;
   currentAudioScope = cd.audio.default;
+  currentMasterVolume = cd.masterVolume.default;
   currentAudioSmoothing = cd.audioSmoothing.default;
   currentBurnMarks = cd.burnMarks.default;
   currentLocomotionMarks = cd.locomotionMarks.default;
@@ -604,6 +620,13 @@ function loadFromStorage(mode: ClientMode): void {
   const storedAudioSmoothing = readPersisted(keys.audioSmoothing);
   if (storedAudioSmoothing !== null) {
     currentAudioSmoothing = storedAudioSmoothing === 'true';
+  }
+  const storedMasterVolume = readPersisted(keys.masterVolume);
+  if (storedMasterVolume !== null) {
+    const parsed = Number(storedMasterVolume);
+    if (Number.isFinite(parsed) && isMasterVolumePercent(parsed)) {
+      currentMasterVolume = parsed;
+    }
   }
   const storedBurnMarks = readPersisted(keys.burnMarks);
   if (storedBurnMarks !== null) {
@@ -904,6 +927,15 @@ export function getAudioScope(): AudioScope {
 export function setAudioScope(scope: AudioScope): void {
   currentAudioScope = scope;
   persist(activeStorageKeys().audioScope, scope);
+}
+
+export function getMasterVolume(): MasterVolumePercent {
+  return currentMasterVolume;
+}
+
+export function setMasterVolume(volume: MasterVolumePercent): void {
+  currentMasterVolume = volume;
+  persist(activeStorageKeys().masterVolume, String(volume));
 }
 
 export function getAudioSmoothing(): boolean {

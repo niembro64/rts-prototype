@@ -279,7 +279,7 @@ export class AudioManager {
 
   setMasterVolume(volume: number): void {
     this.masterVolume = Math.max(0, Math.min(1, volume));
-    if (this.masterGain) this.masterGain.gain.value = this.masterVolume;
+    if (this.masterGain) this.masterGain.gain.value = this.muted ? 0 : this.masterVolume;
   }
 
   setSfxVolume(volume: number): void {
