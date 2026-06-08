@@ -15,23 +15,31 @@ const AREA_COLORS: Record<Input3DAreaDragKind, number> = {
 };
 
 export class AreaDrag3D {
+  private static readonly _UNIT_X = new THREE.Vector3(1, 0, 0);
+  private static readonly _scratchDir = new THREE.Vector3();
+  private static readonly _scratchQuat = new THREE.Quaternion();
+
   private readonly root = new THREE.Group();
   private readonly ringGeom = new THREE.RingGeometry(0.975, 1, 96);
   private readonly discGeom = new THREE.CircleGeometry(1, 96);
+  private readonly lineGeom = new THREE.BoxGeometry(1, 0.5, 1);
   private readonly ringMats = new Map<Input3DAreaDragKind, THREE.MeshBasicMaterial>();
   private readonly discMats = new Map<Input3DAreaDragKind, THREE.MeshBasicMaterial>();
   private readonly ring: THREE.Mesh;
   private readonly disc: THREE.Mesh;
+  private readonly line: THREE.Mesh;
 
   constructor(parentWorld: THREE.Group) {
     this.ring = new THREE.Mesh(this.ringGeom);
     this.disc = new THREE.Mesh(this.discGeom);
+    this.line = new THREE.Mesh(this.lineGeom);
     this.ring.rotation.x = -Math.PI / 2;
     this.disc.rotation.x = -Math.PI / 2;
     this.ring.renderOrder = 19;
     this.disc.renderOrder = 18;
+    this.line.renderOrder = 19;
     this.root.visible = false;
-    this.root.add(this.disc, this.ring);
+    this.root.add(this.disc, this.ring, this.line);
     parentWorld.add(this.root);
   }
 
@@ -41,6 +49,13 @@ export class AreaDrag3D {
       return;
     }
     this.root.visible = true;
+    if (state.kind === 'buildLine') {
+      this.updateBuildLine(state);
+      return;
+    }
+    this.line.visible = false;
+    this.ring.visible = true;
+    this.disc.visible = true;
     this.ring.material = this.getRingMat(state.kind);
     this.disc.material = this.getDiscMat(state.kind);
     const y = state.z !== undefined ? state.z + RING_LIFT : LEGACY_Y;
@@ -53,10 +68,43 @@ export class AreaDrag3D {
     this.root.parent?.remove(this.root);
     this.ringGeom.dispose();
     this.discGeom.dispose();
+    this.lineGeom.dispose();
     for (const mat of this.ringMats.values()) mat.dispose();
     for (const mat of this.discMats.values()) mat.dispose();
     this.ringMats.clear();
     this.discMats.clear();
+  }
+
+  private updateBuildLine(state: Input3DAreaDragState): void {
+    this.ring.visible = false;
+    this.disc.visible = false;
+    this.line.visible = true;
+    this.line.material = this.getRingMat(state.kind);
+    this.root.position.set(0, 0, 0);
+
+    const endX = state.endX ?? state.x;
+    const endY = state.endY ?? state.y;
+    const startZ = state.z !== undefined ? state.z + RING_LIFT : LEGACY_Y;
+    const endZ = state.endZ !== undefined ? state.endZ + RING_LIFT : startZ;
+    const dx = endX - state.x;
+    const dy = endZ - startZ;
+    const dz = endY - state.y;
+    const length3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (length3D < 1e-3) {
+      this.line.visible = false;
+      return;
+    }
+    const dirVec = AreaDrag3D._scratchDir;
+    const quat = AreaDrag3D._scratchQuat;
+    dirVec.set(dx / length3D, dy / length3D, dz / length3D);
+    quat.setFromUnitVectors(AreaDrag3D._UNIT_X, dirVec);
+    this.line.quaternion.copy(quat);
+    this.line.position.set(
+      (state.x + endX) / 2,
+      (startZ + endZ) / 2,
+      (state.y + endY) / 2,
+    );
+    this.line.scale.set(length3D, 1, 4);
   }
 
   private getRingMat(kind: Input3DAreaDragKind): THREE.MeshBasicMaterial {

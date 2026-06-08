@@ -44,8 +44,8 @@ shortcuts, build grid, build border, build split, build spacing
 increase/decrease, build facing/rotation controls, upgrade T1 mex area,
 upgrade T1 -> T2, and visual previews for every build shape. rts-prototype has
 an allowed-building strip, number keys, single-placement ghost, Shift queueing,
-and left-drag build line placement through existing build validation; these do
-not satisfy BAR fallback behavior.
+and left-drag build line placement with a 3D line preview through existing
+build validation; these do not satisfy BAR fallback behavior.
 
 Issue: queue editing and command insertion are incomplete. BAR supports queue to
 next, commandinsert/prepend-between, factory guard, and queued variants of

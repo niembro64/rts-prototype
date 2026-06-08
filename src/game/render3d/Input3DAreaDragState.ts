@@ -11,6 +11,9 @@ export type Input3DAreaDragState = {
   x: number;
   y: number;
   z?: number;
+  endX?: number;
+  endY?: number;
+  endZ?: number;
   radius: number;
 };
 

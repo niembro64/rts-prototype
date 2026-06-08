@@ -210,13 +210,15 @@ export class Input3DModeClickController {
         ? this.areaHoverPreview
         : EMPTY_AREA_DRAG_STATE;
     }
-    if (drag.kind === 'buildLine') return EMPTY_AREA_DRAG_STATE;
     return {
       active: true,
       kind: drag.kind,
       x: drag.start.x,
       y: drag.start.y,
       z: drag.start.z,
+      endX: drag.current.x,
+      endY: drag.current.y,
+      endZ: drag.current.z,
       radius: Math.max(1, areaDragRadius(drag)),
     };
   }
