@@ -37,10 +37,9 @@ behavior, construction lifecycle, replacement rules, render profile, command
 authorization, hotkeys, and visible previews before exposing commands or
 buttons.
 
-Issue: queued-order insertion needs client-facing controls and visual feedback.
-The server accepts authorized insertion positions for queued commands; add the
-BAR-style commandinsert/prepend-between UI affordance and waypoint feedback so
-players can choose and see exact insertion points.
+Issue: queued-order insertion needs a client-facing commandinsert affordance
+for choosing a specific `queueInsertIndex` instead of only append or
+queue-front.
 
 Issue: behavior/state toggles are incomplete. Implement missing BAR-equivalent
 states such as cloak/want-cloak, gather wait, richer stance/fire states beyond

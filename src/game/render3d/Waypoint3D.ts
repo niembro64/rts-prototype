@@ -36,6 +36,8 @@ import { DynamicLineBuffer3D } from './DynamicLineBuffer3D';
 
 const WAYPOINT_FLAG_MAX_RETAINED_SPRITES = 64;
 const WAYPOINT_FLAG_SHRINK_COOLDOWN_FRAMES = 120;
+const WAYPOINT_LABEL_MAX_RETAINED_SPRITES = 128;
+const WAYPOINT_LABEL_SHRINK_COOLDOWN_FRAMES = 120;
 
 const STYLE = {
   /** Vertical lift above the terrain so lines / dots / flags clear
@@ -61,6 +63,8 @@ const STYLE = {
   rectWorldSize: 18,
   /** Flag sprite size in world units. */
   flagWorldSize: 14,
+  /** Queue-order label sprite size in world units. */
+  labelWorldSize: 12,
 };
 
 type FlagState = {
@@ -69,6 +73,13 @@ type FlagState = {
 };
 
 type FlagSlot = CanvasSpriteSlot<FlagState>;
+
+type LabelState = {
+  lastColor: number;
+  lastText: string;
+};
+
+type LabelSlot = CanvasSpriteSlot<LabelState>;
 
 function configureFlagSprite(slot: FlagSlot): void {
   slot.sprite.scale.set(STYLE.flagWorldSize, STYLE.flagWorldSize, 1);
@@ -93,6 +104,31 @@ function repaintFlag(slot: FlagSlot, color: number): boolean {
   return true;
 }
 
+function configureLabelSprite(slot: LabelSlot): void {
+  slot.sprite.scale.set(STYLE.labelWorldSize, STYLE.labelWorldSize, 1);
+}
+
+function repaintLabel(slot: LabelSlot, text: string, color: number): boolean {
+  if (slot.state.lastText === text && slot.state.lastColor === color) return false;
+  slot.state.lastText = text;
+  slot.state.lastColor = color;
+  const ctx = slot.ctx;
+  ctx.clearRect(0, 0, 32, 32);
+  ctx.fillStyle = 'rgba(7, 10, 14, 0.74)';
+  ctx.beginPath();
+  ctx.arc(16, 16, 12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = `#${color.toString(16).padStart(6, '0')}`;
+  ctx.stroke();
+  ctx.fillStyle = COLORS.ui.selectionPanel.surface.text;
+  ctx.font = text.length > 1 ? 'bold 13px monospace' : 'bold 15px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 16, 16);
+  return true;
+}
+
 export class Waypoint3D {
   private parent: THREE.Group;
   private mapWidth: number;
@@ -112,6 +148,7 @@ export class Waypoint3D {
 
   // Pooled flag sprites.
   private flagPool: CanvasSpritePool<FlagState, [number]>;
+  private labelPool: CanvasSpritePool<LabelState, [string, number]>;
   private hadVisible = false;
 
   constructor(
@@ -136,6 +173,20 @@ export class Waypoint3D {
       makeState: () => ({ lastColor: -1 }),
       configureSprite: configureFlagSprite,
       repaint: repaintFlag,
+    });
+    this.labelPool = new CanvasSpritePool<LabelState, [string, number]>({
+      parent,
+      canvasWidth: 32,
+      canvasHeight: 32,
+      debugName: 'WaypointLabels3D',
+      maxRetainedSlots: WAYPOINT_LABEL_MAX_RETAINED_SPRITES,
+      emptyRetainedSlots: 0,
+      shrinkCooldownFrames: WAYPOINT_LABEL_SHRINK_COOLDOWN_FRAMES,
+      shrinkBatchSize: 24,
+      makeState: () => ({ lastColor: -1, lastText: '' }),
+      configureSprite: configureLabelSprite,
+      repaint: repaintLabel,
+      material: { depthTest: true },
     });
 
     // Lines.
@@ -318,6 +369,13 @@ export class Waypoint3D {
     slot.sprite.position.set(x, z + STYLE.flagWorldSize / 2, y);
   }
 
+  private acquireLabel(i: number, text: string, color: number, x: number, y: number, zHint?: number): void {
+    const slot = this.labelPool.acquire(i);
+    this.labelPool.repaintIfChanged(slot, text, color);
+    const z = this.resolveY(x, y, zHint);
+    slot.sprite.position.set(x, z + STYLE.labelWorldSize, y);
+  }
+
   // ── update ───────────────────────────────────────────────────────
 
   update(
@@ -329,6 +387,7 @@ export class Waypoint3D {
         this.lineBuffer.resetDrawRange();
         this.dotGeom.setDrawRange(0, 0);
         this.flagPool.hideAll();
+        this.labelPool.hideAll();
         this.hadVisible = false;
       }
       return;
@@ -337,6 +396,7 @@ export class Waypoint3D {
     const state = { dotCount: 0 };
     this.lineBuffer.resetDrawRange();
     let flagCount = 0;
+    let labelCount = 0;
 
     // Per-unit action chains. Action `z` (when present) is the
     // click-derived altitude carried through from CursorGround.pickSim
@@ -377,6 +437,7 @@ export class Waypoint3D {
           } else {
             this.pushDot(state, p.x, p.y, color, p.z);
           }
+          this.acquireLabel(labelCount++, String(i + 1), color, p.x, p.y, p.z);
         }
         prevX = p.x;
         prevY = p.y;
@@ -479,7 +540,8 @@ export class Waypoint3D {
     (this.dotGeom.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
     (this.dotGeom.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
     this.flagPool.hideUnused(flagCount);
-    this.hadVisible = lineSeg > 0 || state.dotCount > 0 || flagCount > 0;
+    this.labelPool.hideUnused(labelCount);
+    this.hadVisible = lineSeg > 0 || state.dotCount > 0 || flagCount > 0 || labelCount > 0;
   }
 
   destroy(): void {
@@ -490,6 +552,7 @@ export class Waypoint3D {
     (this.lineMesh.material as THREE.Material).dispose();
     (this.dotMesh.material as THREE.Material).dispose();
     this.flagPool.destroy();
+    this.labelPool.destroy();
   }
 
   getSpritePoolTelemetry(): CanvasSpritePoolTelemetry {
