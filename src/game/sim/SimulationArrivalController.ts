@@ -28,6 +28,7 @@ export class SimulationArrivalController {
   private driveForce = new Float64Array(0);
   private traction = new Float64Array(0);
   private mass = new Float64Array(0);
+  private speedLimitFactor = new Float64Array(0);
   private flags = new Uint8Array(0);
   private outX = new Float64Array(0);
   private outY = new Float64Array(0);
@@ -166,6 +167,7 @@ export class SimulationArrivalController {
     }
 
     const isLastAction = isFinalActionPoint && unit.actions.length <= 1 && action.type !== 'patrol';
+    const speedLimitFactor = normalizeActionSpeedLimitFactor(action.speedLimitFactor);
     const index = this.count++;
     this.ensureCapacity(this.count);
     this.entities[index] = entity;
@@ -174,9 +176,10 @@ export class SimulationArrivalController {
     this.dy[index] = dy;
     this.distance[index] = distance;
     this.radiusPush[index] = unit.radius.collision;
-    this.driveForce[index] = unit.locomotion.driveForce;
+    this.driveForce[index] = unit.locomotion.driveForce * speedLimitFactor;
     this.traction[index] = unit.locomotion.traction;
     this.mass[index] = unit.mass;
+    this.speedLimitFactor[index] = speedLimitFactor;
     this.flags[index] = isLastAction ? ARRIVAL_BATCH_FLAG_LAST_ACTION : 0;
   }
 
@@ -214,8 +217,9 @@ export class SimulationArrivalController {
       const entity = this.entities[i];
       const unit = entity.unit;
       if (unit) {
-        unit.thrustDirX = this.outX[i];
-        unit.thrustDirY = this.outY[i];
+        const speedLimitFactor = this.speedLimitFactor[i];
+        unit.thrustDirX = this.outX[i] * speedLimitFactor;
+        unit.thrustDirY = this.outY[i] * speedLimitFactor;
         if (this.active[i] !== 0) movingUnits.push(entity);
       }
       this.entities[i] = undefined as unknown as Entity;
@@ -258,6 +262,9 @@ export class SimulationArrivalController {
     const mass = new Float64Array(next);
     mass.set(this.mass);
     this.mass = mass;
+    const speedLimitFactor = new Float64Array(next);
+    speedLimitFactor.set(this.speedLimitFactor);
+    this.speedLimitFactor = speedLimitFactor;
     const flags = new Uint8Array(next);
     flags.set(this.flags);
     this.flags = flags;
@@ -293,4 +300,9 @@ export class SimulationArrivalController {
     this.completionDistance = new Float64Array(next);
     this.completionArrived = new Uint8Array(next);
   }
+}
+
+function normalizeActionSpeedLimitFactor(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value)) return 1;
+  return Math.max(0, Math.min(1, value));
 }

@@ -278,6 +278,7 @@ export function buildFormationPreservingMoveCommand(
     tick,
     entityIds,
     individualTargets,
+    formationSpeed: 'slowest',
     waypointType: mode,
     queue,
     queueFront,

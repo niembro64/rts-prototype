@@ -80,6 +80,7 @@ export type MoveCommand = BaseCommand & {
   targetY?: number;
   targetZ?: number;
   individualTargets?: WaypointTarget[];
+  formationSpeed?: 'slowest';
   waypointType: WaypointType;
   queue: boolean;
   queueFront?: boolean;

@@ -100,9 +100,23 @@ export function runCommandSanitizerContractTest(): void {
     'move queueFront must normalize to false when queue=false',
   );
 
+  const formationSpeedMove = sanitizeRequired<MoveCommand>(world, {
+    type: 'move',
+    tick: 8,
+    entityIds: [7, 8],
+    individualTargets: [{ x: 14, y: 15 }, { x: 24, y: 25 }],
+    formationSpeed: 'slowest',
+    waypointType: 'move',
+    queue: false,
+  });
+  assertContract(
+    formationSpeedMove.formationSpeed === 'slowest',
+    'move formationSpeed=slowest must survive sanitizer',
+  );
+
   const rotatedBuild = sanitizeRequired<StartBuildCommand>(world, {
     type: 'startBuild',
-    tick: 8,
+    tick: 9,
     builderId: 9,
     buildingBlueprintId: 'buildingSolar',
     gridX: 4.8,

@@ -227,6 +227,11 @@ function sanitizeQueueFront(queue: boolean, queueFront: unknown): boolean | null
   return queue && queueFront;
 }
 
+function sanitizeFormationSpeed(value: unknown): MoveCommand['formationSpeed'] | null {
+  if (value === undefined) return undefined;
+  return value === 'slowest' ? 'slowest' : null;
+}
+
 function sanitizePingCommand(command: PingCommand, world: WorldState, tick: number): PingCommand | null {
   const point = sanitizeGroundPoint(world, command.targetX, command.targetY, command.targetZ);
   return point === null
@@ -247,6 +252,8 @@ function sanitizeMoveCommand(command: MoveCommand, world: WorldState, tick: numb
   if (entityIds === null || waypointType === null || typeof command.queue !== 'boolean') return null;
   const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
   if (queueFront === null) return null;
+  const formationSpeed = sanitizeFormationSpeed(command.formationSpeed);
+  if (formationSpeed === null) return null;
 
   if (command.individualTargets !== undefined) {
     if (!Array.isArray(command.individualTargets) || command.individualTargets.length !== command.entityIds.length) {
@@ -263,6 +270,7 @@ function sanitizeMoveCommand(command: MoveCommand, world: WorldState, tick: numb
       tick,
       entityIds,
       individualTargets,
+      formationSpeed,
       waypointType,
       queue: command.queue,
       queueFront,
@@ -279,6 +287,7 @@ function sanitizeMoveCommand(command: MoveCommand, world: WorldState, tick: numb
         targetX: point.x,
         targetY: point.y,
         targetZ: point.z,
+        formationSpeed,
         waypointType,
         queue: command.queue,
         queueFront,

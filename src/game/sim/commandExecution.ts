@@ -34,7 +34,7 @@ import type {
   StopCommand,
   WaitCommand,
 } from './commands';
-import type { Entity, PlayerId, ShotSource, Unit, UnitAction } from './types';
+import type { Entity, EntityId, PlayerId, ShotSource, Unit, UnitAction } from './types';
 import { NO_ENTITY_ID } from './types';
 import { isProjectileShot } from './types';
 import type { WorldState } from './WorldState';
@@ -283,6 +283,9 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
   }
 
   if (unitCount === 0) return;
+  const speedLimitFactors = command.formationSpeed === 'slowest' && unitCount > 1
+    ? computeSlowestFormationSpeedFactors(ctx.world, entityIds)
+    : null;
 
   // Handle individual targets (line move)
   if (command.individualTargets && command.individualTargets.length === entityIds.length) {
@@ -300,6 +303,7 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
         ctx,
         target.z ?? null,
         queueFront,
+        speedLimitFactors?.get(unit.id),
       );
     }
   } else if (command.targetX !== undefined && command.targetY !== undefined) {
@@ -333,10 +337,44 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
         ctx,
         command.targetZ ?? null,
         queueFront,
+        speedLimitFactors?.get(unit.id),
       );
       index++;
     }
   }
+}
+
+function unitFormationSpeed(entity: Entity): number {
+  const locomotion = entity.unit?.locomotion;
+  if (locomotion === undefined) return 0;
+  return locomotion.driveForce * locomotion.traction;
+}
+
+function computeSlowestFormationSpeedFactors(
+  world: WorldState,
+  entityIds: readonly EntityId[],
+): Map<EntityId, number> | null {
+  let slowest = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < entityIds.length; i++) {
+    const entity = world.getEntity(entityIds[i]);
+    if (entity === undefined || entity.type !== 'unit' || entity.unit === null) continue;
+    const speed = unitFormationSpeed(entity);
+    if (Number.isFinite(speed) && speed > 0 && speed < slowest) slowest = speed;
+  }
+  if (!Number.isFinite(slowest) || slowest <= 0) return null;
+
+  let factors: Map<EntityId, number> | null = null;
+  for (let i = 0; i < entityIds.length; i++) {
+    const entity = world.getEntity(entityIds[i]);
+    if (entity === undefined || entity.type !== 'unit' || entity.unit === null) continue;
+    const speed = unitFormationSpeed(entity);
+    if (!Number.isFinite(speed) || speed <= slowest) continue;
+    const factor = slowest / speed;
+    if (factor >= 0.999) continue;
+    if (factors === null) factors = new Map<EntityId, number>();
+    factors.set(entity.id, factor);
+  }
+  return factors;
 }
 
 function executeStopCommand(ctx: CommandContext, command: StopCommand): void {
@@ -1351,9 +1389,11 @@ function addPathActions(
   ctx: CommandContext,
   goalZ: number | null,
   queueFront = false,
+  speedLimitFactor?: number,
 ): void {
   const action: UnitAction = { type, x: goalX, y: goalY };
   if (goalZ !== null) action.z = goalZ;
+  if (speedLimitFactor !== undefined) action.speedLimitFactor = speedLimitFactor;
   if (GAME_DIAGNOSTICS.commandPlans) {
     const unitComponent = unit.unit;
     const beforeLen = unitComponent !== null ? unitComponent.actions.length : 0;

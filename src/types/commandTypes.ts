@@ -30,6 +30,9 @@ export type UnitAction = {
   x: number;
   y: number;
   z?: number;
+  /** Per-action force scalar in (0, 1], used by preserved-formation
+   *  moves to keep faster units at the slowest selected unit's pace. */
+  speedLimitFactor?: number;
   buildingBlueprintId?: BuildingBlueprintId;
   gridX?: number;
   gridY?: number;

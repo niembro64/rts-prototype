@@ -31,14 +31,11 @@ Finish the BAR-compatible keymap and command UI layer by importing the complete
 BAR grid/legacy bindings and adding command buttons for missing BAR commands so
 visible hotkeys match the active keymap across the whole command surface.
 
-Issue: movement and formation commands are incomplete. rts-prototype has
-standard group-spread move, right-drag line formation targets with 3D preview,
-Alt+right-click and BAR-style Ctrl+right-click preserve-current-offset moves,
-and a one-shot command-card button for move-in-formation. Add remaining
-slow/fast movement modifiers where applicable, make move-in-formation respect
-slowest-unit speed, and complete visual formation previews. Translate these to
-the 3D physics model so formation targets respect mass, collision, terrain
-height, slopes, water, and pathability.
+Issue: movement and formation commands are incomplete. Add remaining slow/fast
+movement modifiers where applicable and complete visual formation previews.
+Translate remaining formation behavior to the 3D physics model so formation
+targets respect mass, collision, terrain height, slopes, water, and
+pathability.
 
 Issue: construction commands are missing several BAR build ergonomics. Implement
 remaining construction shortcuts, upgrade T1 mex area, upgrade T1 -> T2,
