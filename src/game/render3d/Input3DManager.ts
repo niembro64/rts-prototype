@@ -229,6 +229,7 @@ export class Input3DManager {
       selectWaitingUnits: () => this.selectWaitingUnits(),
       selectSameTypeOnly: () => this.selectSameTypeOnly(),
       selectMobileOnly: () => this.selectMobileOnly(),
+      invertSelection: () => this.invertSelection(),
       isRepairAreaMode: () => this.repairAreaMode,
       isAttackMode: () => this.attackMode,
       isAttackAreaMode: () => this.attackAreaMode,
@@ -554,6 +555,30 @@ export class Input3DManager {
     if (selectedUnits.length === 0) return;
     const entityIds: EntityId[] = [];
     for (let i = 0; i < selectedUnits.length; i++) entityIds.push(selectedUnits[i].id);
+    this.enqueueSelection(entityIds, false);
+  }
+
+  invertSelection(): void {
+    const selectedEntityIds = new Set(this.getCurrentSelectedEntityIds());
+    const entityIds: EntityId[] = [];
+    const units = this.entitySource.getUnitsByPlayer(this.context.activePlayerId);
+    for (let i = 0; i < units.length; i++) {
+      const unit = units[i];
+      if (!this.isSelectableByActivePlayer(unit) || selectedEntityIds.has(unit.id)) continue;
+      entityIds.push(unit.id);
+    }
+
+    const buildings = this.entitySource.getBuildingsByPlayer(this.context.activePlayerId);
+    for (let i = 0; i < buildings.length; i++) {
+      const building = buildings[i];
+      if (!this.isSelectableByActivePlayer(building) || selectedEntityIds.has(building.id)) continue;
+      entityIds.push(building.id);
+    }
+
+    if (entityIds.length === 0) {
+      this.enqueueClearSelection();
+      return;
+    }
     this.enqueueSelection(entityIds, false);
   }
 

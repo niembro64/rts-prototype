@@ -852,6 +852,10 @@ export class RtsScene3D {
     this.inputManager?.selectMobileOnly();
   }
 
+  public invertSelection(): void {
+    this.inputManager?.invertSelection();
+  }
+
   public toggleTowerTargetMode(): void {
     this.inputManager?.toggleTowerTargetMode();
   }

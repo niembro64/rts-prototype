@@ -240,6 +240,9 @@ export function useGameCanvasSceneUi({
     selectMobileOnly: () => {
       getActiveBattleScene()?.selectMobileOnly();
     },
+    invertSelection: () => {
+      getActiveBattleScene()?.invertSelection();
+    },
     setTowerTargetMode: () => {
       getActiveBattleScene()?.toggleTowerTargetMode();
     },

@@ -302,6 +302,16 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           type="button"
           class="action-btn"
           :style="{ '--btn-color': BUTTON_COLORS.groupAccent }"
+          :title="actionTitle('Invert selection', 'select.invert')"
+          @click="actions.invertSelection()"
+        >
+          <span class="btn-label">Invert</span>
+          <span class="btn-key">{{ hotkey('select.invert') }}</span>
+        </button>
+        <button
+          type="button"
+          class="action-btn"
+          :style="{ '--btn-color': BUTTON_COLORS.groupAccent }"
           :title="actionTitle('Select idle builders', 'select.idleBuilders')"
           @click="actions.selectIdleBuilders()"
         >
