@@ -1,4 +1,5 @@
 import type { BuildingSupportSurface, Entity } from './types';
+import { isOddQuarterTurnGridRotation } from './buildGrid';
 import {
   SUPPORT_SURFACE_CONTACT_EPSILON,
   SUPPORT_SURFACE_FOOTPRINT_EPSILON,
@@ -12,15 +13,17 @@ export type BuildingSupportQueryOptions = {
 
 export function cloneBuildingSupportSurface(
   surface: BuildingSupportSurface,
+  rotation = 0,
 ): BuildingSupportSurface {
   if (surface.kind === 'none') {
     return { kind: 'none' };
   }
+  const swap = isOddQuarterTurnGridRotation(rotation);
   return {
     kind: 'boxTop',
     topZ: surface.topZ,
-    width: surface.width,
-    height: surface.height,
+    width: swap ? surface.height : surface.width,
+    height: swap ? surface.width : surface.height,
   };
 }
 

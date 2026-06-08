@@ -29,6 +29,29 @@ export function getBuildingCenterFromGrid(
   };
 }
 
+export type BuildingGridFootprint = {
+  gridWidth: number;
+  gridHeight: number;
+};
+
+export function isOddQuarterTurnGridRotation(rotation: number): boolean {
+  if (!Number.isFinite(rotation)) return false;
+  const quarterTurns = Math.round(rotation / (Math.PI / 2));
+  return Math.abs(quarterTurns % 2) === 1;
+}
+
+export function getRotatedGridFootprint(
+  gridWidth: number,
+  gridHeight: number,
+  rotation = 0,
+): BuildingGridFootprint {
+  const safeWidth = Math.max(1, Math.floor(gridWidth));
+  const safeHeight = Math.max(1, Math.floor(gridHeight));
+  return isOddQuarterTurnGridRotation(rotation)
+    ? { gridWidth: safeHeight, gridHeight: safeWidth }
+    : { gridWidth: safeWidth, gridHeight: safeHeight };
+}
+
 export function snapBuildingToGrid(
   worldX: number,
   worldY: number,

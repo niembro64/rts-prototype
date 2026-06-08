@@ -2,7 +2,12 @@ import type { MetalDeposit } from '../../metalDepositConfig';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { Entity, BuildingBlueprintId } from './types';
 import { getBuildingConfig } from './buildConfigs';
-import { BUILD_GRID_CELL_SIZE, getBuildingCenterFromGrid, snapBuildingToGrid } from './buildGrid';
+import {
+  BUILD_GRID_CELL_SIZE,
+  getBuildingCenterFromGrid,
+  getRotatedGridFootprint,
+  snapBuildingToGrid,
+} from './buildGrid';
 import {
   findDepositContainingPoint,
   getMetalDepositGridCells,
@@ -65,8 +70,15 @@ export function getOccupiedBuildingCells(buildings: Entity[]): ReadonlySet<strin
   for (const b of buildings) {
     if (!b.building) continue;
     const existingConfig = b.buildingBlueprintId ? getBuildingConfig(b.buildingBlueprintId) : undefined;
-    const bw = existingConfig ? existingConfig.gridWidth : Math.max(1, Math.ceil(b.building.width / BUILD_GRID_CELL_SIZE));
-    const bh = existingConfig ? existingConfig.gridHeight : Math.max(1, Math.ceil(b.building.height / BUILD_GRID_CELL_SIZE));
+    const footprint = existingConfig
+      ? getRotatedGridFootprint(existingConfig.gridWidth, existingConfig.gridHeight, b.transform.rotation)
+      : getRotatedGridFootprint(
+        Math.max(1, Math.ceil(b.building.width / BUILD_GRID_CELL_SIZE)),
+        Math.max(1, Math.ceil(b.building.height / BUILD_GRID_CELL_SIZE)),
+        0,
+      );
+    const bw = footprint.gridWidth;
+    const bh = footprint.gridHeight;
     const left = Math.floor((b.transform.x - (bw * BUILD_GRID_CELL_SIZE) / 2) / BUILD_GRID_CELL_SIZE + 1e-6);
     const top = Math.floor((b.transform.y - (bh * BUILD_GRID_CELL_SIZE) / 2) / BUILD_GRID_CELL_SIZE + 1e-6);
     for (let dx = 0; dx < bw; dx++) {
@@ -87,11 +99,13 @@ function getBuildingPlacementDiagnosticsAtGrid(
   metalDeposits: ReadonlyArray<MetalDeposit>,
   isCellOccupied: BuildPlacementOccupiedLookup,
   terrainBuildabilityGrid: TerrainBuildabilityGrid | null,
+  rotation = 0,
 ): BuildPlacementDiagnostics {
   const config = getBuildingConfig(candidateType);
-  const center = getBuildingCenterFromGrid(gridX, gridY, config.gridWidth, config.gridHeight);
-  const halfWidth = (config.gridWidth * BUILD_GRID_CELL_SIZE) / 2;
-  const halfHeight = (config.gridHeight * BUILD_GRID_CELL_SIZE) / 2;
+  const footprint = getRotatedGridFootprint(config.gridWidth, config.gridHeight, rotation);
+  const center = getBuildingCenterFromGrid(gridX, gridY, footprint.gridWidth, footprint.gridHeight);
+  const halfWidth = (footprint.gridWidth * BUILD_GRID_CELL_SIZE) / 2;
+  const halfHeight = (footprint.gridHeight * BUILD_GRID_CELL_SIZE) / 2;
   const mapCellsX = Math.ceil(mapWidth / BUILD_GRID_CELL_SIZE);
   const mapCellsY = Math.ceil(mapHeight / BUILD_GRID_CELL_SIZE);
   const cells: BuildPlacementCellDiagnostic[] = [];
@@ -121,8 +135,8 @@ function getBuildingPlacementDiagnosticsAtGrid(
       mapHeight,
     ).buildable;
 
-  for (let dy = 0; dy < config.gridHeight; dy++) {
-    for (let dx = 0; dx < config.gridWidth; dx++) {
+  for (let dy = 0; dy < footprint.gridHeight; dy++) {
+    for (let dx = 0; dx < footprint.gridWidth; dx++) {
       const gx = gridX + dx;
       const gy = gridY + dy;
       const x = gx * BUILD_GRID_CELL_SIZE + BUILD_GRID_CELL_SIZE / 2;
@@ -270,6 +284,7 @@ export function getBuildingPlacementDiagnosticsForGrid(
   metalDeposits: ReadonlyArray<MetalDeposit> = [],
   isCellOccupied: BuildPlacementOccupiedLookup = emptyOccupiedLookup,
   terrainBuildabilityGrid: TerrainBuildabilityGrid | null = null,
+  rotation = 0,
 ): BuildPlacementDiagnostics {
   return getBuildingPlacementDiagnosticsAtGrid(
     candidateType,
@@ -280,6 +295,7 @@ export function getBuildingPlacementDiagnosticsForGrid(
     metalDeposits,
     isCellOccupied,
     terrainBuildabilityGrid,
+    rotation,
   );
 }
 
@@ -293,9 +309,11 @@ export function getBuildingPlacementDiagnostics(
   metalDeposits: ReadonlyArray<MetalDeposit> = [],
   occupiedCells: ReadonlySet<string> = getOccupiedBuildingCells(buildings),
   terrainBuildabilityGrid: TerrainBuildabilityGrid | null = null,
+  rotation = 0,
 ): BuildPlacementDiagnostics {
   const config = getBuildingConfig(candidateType);
-  const snapped = snapBuildingToGrid(centerX, centerY, config.gridWidth, config.gridHeight);
+  const footprint = getRotatedGridFootprint(config.gridWidth, config.gridHeight, rotation);
+  const snapped = snapBuildingToGrid(centerX, centerY, footprint.gridWidth, footprint.gridHeight);
   return getBuildingPlacementDiagnosticsAtGrid(
     candidateType,
     snapped.gridX,
@@ -305,6 +323,7 @@ export function getBuildingPlacementDiagnostics(
     metalDeposits,
     occupiedSetLookup(occupiedCells),
     terrainBuildabilityGrid,
+    rotation,
   );
 }
 
@@ -332,7 +351,9 @@ export function getSnappedBuildPosition(
   worldX: number,
   worldY: number,
   buildingBlueprintId: BuildingBlueprintId,
+  rotation = 0,
 ): { x: number; y: number; gridX: number; gridY: number } {
   const config = getBuildingConfig(buildingBlueprintId);
-  return snapBuildingToGrid(worldX, worldY, config.gridWidth, config.gridHeight);
+  const footprint = getRotatedGridFootprint(config.gridWidth, config.gridHeight, rotation);
+  return snapBuildingToGrid(worldX, worldY, footprint.gridWidth, footprint.gridHeight);
 }

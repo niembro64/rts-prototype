@@ -1,4 +1,6 @@
 import type { Entity, EntityId, PlayerId, Turret } from '../sim/types';
+import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
+import { getBuildingConfig } from '../sim/buildConfigs';
 import {
   getConstructionPieceOpacity,
   getConstructionPieceRenderFraction,
@@ -300,6 +302,9 @@ export class BuildingRenderPacket3D {
   ): void {
     const building = entity.building;
     if (building === null) return;
+    const visualConfig = entity.buildingBlueprintId !== null
+      ? getBuildingConfig(entity.buildingBlueprintId)
+      : null;
     const cursor = this.count;
     this.ensureCapacity(cursor + 1);
     const combatTurrets = entity.combat?.turrets;
@@ -314,8 +319,12 @@ export class BuildingRenderPacket3D {
     this.z[cursor] = entity.transform.z;
     this.rotation[cursor] = entity.transform.rotation;
     this.baseY[cursor] = entity.transform.z - building.depth / 2;
-    this.width[cursor] = building.width;
-    this.footprintDepth[cursor] = building.height;
+    this.width[cursor] = visualConfig !== null
+      ? visualConfig.gridWidth * BUILD_GRID_CELL_SIZE
+      : building.width;
+    this.footprintDepth[cursor] = visualConfig !== null
+      ? visualConfig.gridHeight * BUILD_GRID_CELL_SIZE
+      : building.height;
     this.progress[cursor] = getConstructionPieceRenderFraction(entity, 'body');
     this.bodyOpacity[cursor] = getConstructionPieceOpacity(entity, 'body');
     this.turretCount[cursor] = turretRows.length;

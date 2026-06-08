@@ -2,7 +2,7 @@ import type { WorldState } from './WorldState';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { Entity, EntityId, PlayerId, BuildingBlueprintId } from './types';
 import { getBuildingConfig } from './buildConfigs';
-import { BuildingGrid, BUILD_GRID_CELL_SIZE } from './buildGrid';
+import { BuildingGrid, BUILD_GRID_CELL_SIZE, getRotatedGridFootprint } from './buildGrid';
 import { computeFactoryWaypoint } from './spawn';
 import { getBuildingPlacementDiagnosticsForGrid } from './buildPlacementValidation';
 import {
@@ -59,6 +59,7 @@ export class ConstructionSystem {
     const builderEntity = world.getEntity(builderId);
     if (!entityCanBuild(builderEntity, buildingBlueprintId)) return null;
     const config = getBuildingConfig(buildingBlueprintId);
+    const footprint = getRotatedGridFootprint(config.gridWidth, config.gridHeight, rotation);
 
     const diagnostics = getBuildingPlacementDiagnosticsForGrid(
       buildingBlueprintId,
@@ -69,6 +70,7 @@ export class ConstructionSystem {
       world.metalDeposits,
       (gx, gy) => this.isCellOccupied(gx, gy),
       this.terrainBuildabilityGrid,
+      rotation,
     );
     if (!diagnostics.canPlace) {
       return null;
@@ -86,8 +88,8 @@ export class ConstructionSystem {
     // zero / empty until completion.
 
     const physicalSize = {
-      width: config.gridWidth * BUILD_GRID_CELL_SIZE,
-      height: config.gridHeight * BUILD_GRID_CELL_SIZE,
+      width: footprint.gridWidth * BUILD_GRID_CELL_SIZE,
+      height: footprint.gridHeight * BUILD_GRID_CELL_SIZE,
       depth: config.gridDepth * BUILD_GRID_CELL_SIZE,
     };
 
@@ -156,7 +158,7 @@ export class ConstructionSystem {
 
     // Register the real blocking footprint. Factories no longer reserve
     // an invisible yard; only the tower cells are occupied.
-    this.buildingGrid.place(gridX, gridY, config.gridWidth, config.gridHeight, entity.id, playerId);
+    this.buildingGrid.place(gridX, gridY, footprint.gridWidth, footprint.gridHeight, entity.id, playerId);
 
     // Add to world
     world.addEntity(entity);

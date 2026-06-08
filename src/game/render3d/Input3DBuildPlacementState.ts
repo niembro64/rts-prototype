@@ -5,7 +5,7 @@ import {
   type MetalDeposit,
 } from '../../metalDepositConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
-import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
+import { BUILD_GRID_CELL_SIZE, getRotatedGridFootprint } from '../sim/buildGrid';
 import { normalizeAngle } from '../math';
 import {
   getBuildingPlacementDiagnostics,
@@ -130,7 +130,7 @@ export class Input3DBuildPlacementState {
     worldY: number,
     entitySource: BuildPlacementEntitySource,
   ): BuildPlacementDiagnostics {
-    const snapped = getSnappedBuildPosition(worldX, worldY, buildingBlueprintId);
+    const snapped = getSnappedBuildPosition(worldX, worldY, buildingBlueprintId, this.buildFacingRotation);
     const buildings = entitySource.getBuildings();
     const entitySetVersion = entitySource.getEntitySetVersion?.() ?? buildings.length;
     const terrainBuildabilityGrid = entitySource.getTerrainBuildabilityGrid?.() ?? null;
@@ -149,6 +149,7 @@ export class Input3DBuildPlacementState {
       entitySetVersion,
       terrainBuildabilityGrid?.version ?? 0,
       terrainBuildabilityGrid?.configKey ?? '',
+      this.buildFacingRotation,
     ].join(':');
     if (validationKey !== this.validationKey || !this.diagnostics) {
       this.validationKey = validationKey;
@@ -159,6 +160,7 @@ export class Input3DBuildPlacementState {
         this.metalDeposits,
         this.occupiedCells,
         terrainBuildabilityGrid,
+        this.buildFacingRotation,
       );
       this.canPlace = this.diagnostics.canPlace;
     }
@@ -191,7 +193,7 @@ export class Input3DBuildPlacementState {
       const dy = deposit.y - worldY;
       if (Math.sqrt(dx * dx + dy * dy) > safeRadius + deposit.resourceRadius) continue;
 
-      const snapped = getSnappedBuildPosition(deposit.x, deposit.y, buildingBlueprintId);
+      const snapped = getSnappedBuildPosition(deposit.x, deposit.y, buildingBlueprintId, this.buildFacingRotation);
       const key = cellKey(snapped.gridX, snapped.gridY);
       if (planned.has(key)) continue;
 
@@ -205,6 +207,7 @@ export class Input3DBuildPlacementState {
         this.metalDeposits,
         plannedOccupiedCells,
         terrainBuildabilityGrid,
+        this.buildFacingRotation,
       );
       if (!diagnostics.canPlace || (diagnostics.metalCoveredCells ?? 0) <= 0) continue;
 
@@ -215,8 +218,9 @@ export class Input3DBuildPlacementState {
         x: diagnostics.x,
         y: diagnostics.y,
       });
-      for (let y = 0; y < config.gridHeight; y++) {
-        for (let x = 0; x < config.gridWidth; x++) {
+      const footprint = getRotatedGridFootprint(config.gridWidth, config.gridHeight, this.buildFacingRotation);
+      for (let y = 0; y < footprint.gridHeight; y++) {
+        for (let x = 0; x < footprint.gridWidth; x++) {
           plannedOccupiedCells.add(cellKey(diagnostics.gridX + x, diagnostics.gridY + y));
         }
       }
@@ -247,7 +251,8 @@ export class Input3DBuildPlacementState {
     const dx = endX - startX;
     const dy = endY - startY;
     const distance = Math.hypot(dx, dy);
-    const spacing = Math.max(config.gridWidth, config.gridHeight, 1)
+    const footprint = getRotatedGridFootprint(config.gridWidth, config.gridHeight, this.buildFacingRotation);
+    const spacing = Math.max(footprint.gridWidth, footprint.gridHeight, 1)
       * BUILD_GRID_CELL_SIZE
       * this.buildLineSpacingMultiplier;
     const placementCount = Math.max(1, Math.floor(distance / Math.max(1, spacing)) + 1);
@@ -256,7 +261,7 @@ export class Input3DBuildPlacementState {
       const t = placementCount === 1 ? 0 : i / (placementCount - 1);
       const worldX = startX + dx * t;
       const worldY = startY + dy * t;
-      const snapped = getSnappedBuildPosition(worldX, worldY, buildingBlueprintId);
+      const snapped = getSnappedBuildPosition(worldX, worldY, buildingBlueprintId, this.buildFacingRotation);
       const key = cellKey(snapped.gridX, snapped.gridY);
       if (planned.has(key)) continue;
 
@@ -270,6 +275,7 @@ export class Input3DBuildPlacementState {
         this.metalDeposits,
         plannedOccupiedCells,
         terrainBuildabilityGrid,
+        this.buildFacingRotation,
       );
       if (!diagnostics.canPlace) continue;
 
@@ -280,8 +286,8 @@ export class Input3DBuildPlacementState {
         x: diagnostics.x,
         y: diagnostics.y,
       });
-      for (let y = 0; y < config.gridHeight; y++) {
-        for (let x = 0; x < config.gridWidth; x++) {
+      for (let y = 0; y < footprint.gridHeight; y++) {
+        for (let x = 0; x < footprint.gridWidth; x++) {
           plannedOccupiedCells.add(cellKey(diagnostics.gridX + x, diagnostics.gridY + y));
         }
       }

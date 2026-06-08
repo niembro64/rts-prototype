@@ -24,6 +24,7 @@ export function applyBuildingBlueprintRuntime(
   if (entity.building !== null) {
     entity.building.supportSurface = cloneBuildingSupportSurface(
       getBuildingConfig(buildingBlueprintId).supportSurface,
+      entity.transform.rotation,
     );
   }
 

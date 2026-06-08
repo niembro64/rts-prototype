@@ -298,7 +298,7 @@ export class BuildGhost3D {
     diagnostics?: BuildPlacementDiagnostics,
     rotation = 0,
   ): void {
-    const snapped = getSnappedBuildPosition(worldX, worldY, buildingBlueprintId);
+    const snapped = getSnappedBuildPosition(worldX, worldY, buildingBlueprintId, rotation);
     const config = getBuildingConfig(buildingBlueprintId);
     const width = config.gridWidth * BUILD_GRID_CELL_SIZE;
     const depth = config.gridHeight * BUILD_GRID_CELL_SIZE;
