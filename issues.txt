@@ -32,10 +32,9 @@ BAR grid/legacy bindings and adding command buttons for missing BAR commands so
 visible hotkeys match the active keymap across the whole command surface.
 
 Issue: movement and formation commands are incomplete. Add remaining slow/fast
-movement modifiers where applicable and complete visual formation previews.
-Translate remaining formation behavior to the 3D physics model so formation
-targets respect mass, collision, terrain height, slopes, water, and
-pathability.
+movement modifiers where applicable. Translate remaining formation behavior to
+the 3D physics model so formation targets respect mass, collision, terrain
+height, slopes, water, and pathability.
 
 Issue: construction commands are missing several BAR build ergonomics. Implement
 remaining construction shortcuts, upgrade T1 mex area, upgrade T1 -> T2,

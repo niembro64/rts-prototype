@@ -3,11 +3,13 @@ import type { Entity, EntityId, PlayerId, WaypointType } from '../sim/types';
 import {
   buildAttackCommandAt,
   buildAttackCommandForTarget,
+  buildFormationPreservingMoveTargets,
   buildFactoryGuardCommands,
   buildFactoryRallyCommands,
   buildLinePathMoveCommand,
   buildRepairCommandAt,
   LinePathAccumulator,
+  shouldCollapseLinePathToSingleMove,
 } from '../input/helpers';
 import type { CommandCursorKind } from '../input/CommandCursors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
@@ -48,6 +50,8 @@ export class Input3DRightDragController {
   private rightDown = false;
   private readonly linePath = new LinePathAccumulator();
   private readonly selectedFactoriesScratch: Entity[] = [];
+  private preserveFormationDrag = false;
+  private readonly formationPreviewTargets: { x: number; y: number; z?: number }[] = [];
 
   constructor(private readonly config: Input3DRightDragControllerConfig) {}
 
@@ -63,9 +67,10 @@ export class Input3DRightDragController {
     this.config.applyCursor(this.waypointCursorKind());
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
-    const unitCount = this.source().getSelectedUnits().length;
-    this.linePath.append(world.x, world.y, unitCount, world.z);
-    this.linePath.recomputeTargets(unitCount);
+    const selectedUnits = this.source().getSelectedUnits();
+    this.linePath.append(world.x, world.y, selectedUnits.length, world.z);
+    this.linePath.recomputeTargets(selectedUnits.length);
+    this.updateFormationPreviewTargets(selectedUnits);
   }
 
   handleMouseDown(e: MouseEvent): void {
@@ -175,8 +180,10 @@ export class Input3DRightDragController {
         selectedUnits.length,
       );
       this.rightDown = true;
+      this.preserveFormationDrag = preserveFormationMove;
       this.config.applyCursor(this.waypointCursorKind());
       this.linePath.start(world.x, world.y, selectedUnits.length, world.z);
+      this.updateFormationPreviewTargets(selectedUnits);
       return;
     }
 
@@ -189,6 +196,7 @@ export class Input3DRightDragController {
         factories.length,
       );
       this.rightDown = true;
+      this.preserveFormationDrag = false;
       this.config.applyCursor('factoryWaypoint');
       this.linePath.startWithFixedTarget(world.x, world.y, world.z);
     }
@@ -220,7 +228,7 @@ export class Input3DRightDragController {
           repairCmd.targetId,
         );
         this.config.commandQueue.enqueue(repairCmd);
-        this.linePath.reset();
+        this.resetLineDrag();
         this.config.refreshCursor();
         return;
       }
@@ -239,7 +247,7 @@ export class Input3DRightDragController {
         this.config.commandQueue.enqueue(moveCmd);
         if (this.config.isFormationMoveMode() && !shiftHeld) this.config.exitFormationMoveMode();
       }
-      this.linePath.reset();
+      this.resetLineDrag();
       this.config.refreshCursor();
       return;
     }
@@ -260,15 +268,16 @@ export class Input3DRightDragController {
       );
       for (const cmd of cmds) this.config.commandQueue.enqueue(cmd);
     }
-    this.linePath.reset();
+    this.resetLineDrag();
     this.config.refreshCursor();
   }
 
   getLineDragState(): Input3DLineDragState {
+    const useFormationTargets = this.shouldUseFormationPreviewTargets();
     return {
       active: this.rightDown,
       points: this.linePath.points,
-      targets: this.linePath.targets,
+      targets: useFormationTargets ? this.formationPreviewTargets : this.linePath.targets,
       mode: this.config.getWaypointMode(),
     };
   }
@@ -288,6 +297,34 @@ export class Input3DRightDragController {
 
   private shouldPreserveFormation(e: MouseEvent): boolean {
     return e.altKey || e.ctrlKey || e.metaKey || this.config.isFormationMoveMode();
+  }
+
+  private updateFormationPreviewTargets(selectedUnits: readonly Entity[]): void {
+    const out = this.formationPreviewTargets;
+    out.length = 0;
+    if (!this.preserveFormationDrag || !this.shouldUseFormationPreviewTargets()) return;
+    const points = this.linePath.points;
+    const finalPoint = points[points.length - 1];
+    if (finalPoint === undefined) return;
+    const targets = buildFormationPreservingMoveTargets(
+      selectedUnits,
+      finalPoint.x,
+      finalPoint.y,
+      finalPoint.z,
+    );
+    for (let i = 0; i < targets.individualTargets.length; i++) {
+      out.push(targets.individualTargets[i]);
+    }
+  }
+
+  private shouldUseFormationPreviewTargets(): boolean {
+    return this.preserveFormationDrag && shouldCollapseLinePathToSingleMove(this.linePath.points);
+  }
+
+  private resetLineDrag(): void {
+    this.linePath.reset();
+    this.preserveFormationDrag = false;
+    this.formationPreviewTargets.length = 0;
   }
 
   private getSelectedFactories(): Entity[] {

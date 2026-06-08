@@ -31,6 +31,12 @@ import type { LinePathAccumulator } from './LinePathAccumulator';
  *  spreading units across a 5-world-unit line feels wrong. */
 const LINE_PATH_MIN_LENGTH = 20;
 
+export function shouldCollapseLinePathToSingleMove(
+  points: ReadonlyArray<{ x: number; y: number; z?: number }>,
+): boolean {
+  return getPathLength(points) < LINE_PATH_MIN_LENGTH;
+}
+
 /** Build an attack command against a concrete entity already resolved
  *  by the caller. This is the canonical path for 3D mesh hits; the
  *  ground-point helper below delegates here after resolving by
@@ -175,9 +181,8 @@ export function buildLinePathMoveCommand(
   if (selectedUnits.length === 0 || points.length === 0) return null;
 
   const finalPoint = points[points.length - 1];
-  const pathLength = getPathLength(points);
 
-  if (pathLength < LINE_PATH_MIN_LENGTH) {
+  if (shouldCollapseLinePathToSingleMove(points)) {
     if (preserveFormation) {
       return buildFormationPreservingMoveCommand(
         selectedUnits,
@@ -253,6 +258,30 @@ export function buildFormationPreservingMoveCommand(
     };
   }
 
+  const targets = buildFormationPreservingMoveTargets(selectedUnits, targetX, targetY, targetZ);
+
+  return {
+    type: 'move',
+    tick,
+    entityIds: targets.entityIds,
+    individualTargets: targets.individualTargets,
+    formationSpeed: 'slowest',
+    waypointType: mode,
+    queue,
+    queueFront,
+  };
+}
+
+export function buildFormationPreservingMoveTargets(
+  selectedUnits: readonly Entity[],
+  targetX: number,
+  targetY: number,
+  targetZ?: number,
+): { entityIds: EntityId[]; individualTargets: WaypointTarget[] } {
+  if (selectedUnits.length === 0) {
+    return { entityIds: [], individualTargets: [] };
+  }
+
   let cx = 0;
   let cy = 0;
   for (let i = 0; i < selectedUnits.length; i++) {
@@ -267,20 +296,16 @@ export function buildFormationPreservingMoveCommand(
   for (let i = 0; i < selectedUnits.length; i++) {
     const unit = selectedUnits[i];
     entityIds.push(unit.id);
-    individualTargets.push({
+    const target: WaypointTarget = {
       x: targetX + (unit.transform.x - cx),
       y: targetY + (unit.transform.y - cy),
-    });
+    };
+    if (targetZ !== undefined) target.z = targetZ;
+    individualTargets.push(target);
   }
 
   return {
-    type: 'move',
-    tick,
     entityIds,
     individualTargets,
-    formationSpeed: 'slowest',
-    waypointType: mode,
-    queue,
-    queueFront,
   };
 }

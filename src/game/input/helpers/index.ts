@@ -41,9 +41,11 @@ export {
   buildAttackCommandAt,
   buildAttackGroundCommand,
   buildFormationPreservingMoveCommand,
+  buildFormationPreservingMoveTargets,
   buildGuardCommandAt,
   buildGuardCommandForTarget,
   buildLinePathMoveCommand,
+  shouldCollapseLinePathToSingleMove,
 } from './RightClickCommands';
 
 export { type ModeCancel, handleEscape } from './EscapeHandler';
