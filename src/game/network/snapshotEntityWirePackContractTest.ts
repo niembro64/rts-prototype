@@ -33,6 +33,7 @@ export function runSnapshotEntityWirePackContractTest(): void {
         producing: true,
         energyRate: 0.75,
         metalRate: 0.5,
+        guardTargetId: null,
         rally: { pos: { x: 100, y: 120 }, posZ: null, type: 'fight' },
         route: [
           { pos: { x: 100, y: 120 }, posZ: null, type: 'fight' },

@@ -306,6 +306,9 @@ function buildSingleSelectionDetails(entity: Entity): SelectionInfo['details'] {
       if (trajectory !== null) details.push({ label: 'Trajectory', value: trajectory });
       if (bp.sensors.radarRadius > 0) details.push({ label: 'Radar', value: fmtStat(bp.sensors.radarRadius) });
       if (entity.factory !== null) details.push({ label: 'Factory', value: entity.factory.isProducing ? 'Producing' : 'Idle' });
+      if (entity.factory?.guardTargetId !== null && entity.factory?.guardTargetId !== undefined) {
+        details.push({ label: 'Factory Guard', value: `#${entity.factory.guardTargetId}` });
+      }
       return details;
     } catch {
       return [

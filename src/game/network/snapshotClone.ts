@@ -126,6 +126,7 @@ function copyFactoryInto(src: ReusableFactory, dst: ReusableFactory): ReusableFa
   dst.producing = src.producing;
   dst.energyRate = src.energyRate;
   dst.metalRate = src.metalRate;
+  dst.guardTargetId = src.guardTargetId ?? null;
   copyWaypointInto(src.rally, dst.rally);
   // Guard against `undefined` too so cloning remains tolerant of older
   // decode paths that omitted the route field.
@@ -195,6 +196,7 @@ function copyBuildingInto(
         producing: false,
         energyRate: 0,
         metalRate: 0,
+        guardTargetId: null,
         rally: createWaypointDto(),
         route: null,
       };

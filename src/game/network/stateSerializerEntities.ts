@@ -255,6 +255,7 @@ function createPooledEntry(): PooledEntry {
     factorySub: {
       selectedUnitBlueprintCode: null, progress: 0, producing: false,
       energyRate: 0, metalRate: 0,
+      guardTargetId: null,
       rally,
       route: null,
     },
@@ -662,6 +663,10 @@ function directEntityHasFactoryRoute(entity: Entity): boolean {
   return defaultWaypoints !== null && defaultWaypoints !== undefined && defaultWaypoints.length > 1;
 }
 
+function directEntityHasFactoryGuard(entity: Entity): boolean {
+  return entity.factory?.guardTargetId !== null && entity.factory?.guardTargetId !== undefined;
+}
+
 export function canAppendEntitySnapshotWireRowDirect(entity: Entity): boolean {
   if (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower') {
     return false;
@@ -669,6 +674,7 @@ export function canAppendEntitySnapshotWireRowDirect(entity: Entity): boolean {
   if (entity.buildable?.isInterrupted === true) return false;
   if (directEntityHasInactiveTurret(entity)) return false;
   if (directEntityHasFactoryRoute(entity)) return false;
+  if (directEntityHasFactoryGuard(entity)) return false;
   return true;
 }
 
@@ -1322,6 +1328,9 @@ export function serializeEntitySnapshot(
           f.producing = entity.factory.isProducing;
           f.energyRate = entity.factory.energyRateFraction;
           f.metalRate = entity.factory.metalRateFraction;
+          f.guardTargetId = canReferenceEntityId(entity.factory.guardTargetId ?? undefined)
+            ? entity.factory.guardTargetId
+            : null;
 
           poolEntry.rally.pos.x = entity.factory.rallyX;
           poolEntry.rally.pos.y = entity.factory.rallyY;

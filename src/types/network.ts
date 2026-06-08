@@ -941,6 +941,8 @@ export type NetworkServerSnapshotEntity = {
        *  factory's pylons. */
       energyRate: number;
       metalRate: number;
+      /** Friendly entity this factory will assign produced units to guard. */
+      guardTargetId: number | null;
       /** Static rally point. `posZ` carries the click-altitude of the
        *  player-issued rally; null falls back to terrain sample. */
       rally: { pos: Vec2; posZ: number | null; type: string };

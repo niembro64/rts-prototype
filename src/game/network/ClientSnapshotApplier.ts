@@ -174,6 +174,7 @@ export function snapClientNonVisualState(
     entity.factory.isProducing = sf.producing;
     entity.factory.energyRateFraction = sf.energyRate ?? 0;
     entity.factory.metalRateFraction = sf.metalRate ?? 0;
+    entity.factory.guardTargetId = sf.guardTargetId ?? null;
     entity.factory.rallyX = sf.rally.pos.x;
     entity.factory.rallyY = sf.rally.pos.y;
     entity.factory.rallyZ = sf.rally.posZ;

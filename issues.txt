@@ -66,7 +66,7 @@ fire enabled toggle, producer-building on/off, authoritative unit
 repeat-queue, basic hold-position/maneuver move state, wait, stop,
 self-destruct, a trajectory mode toggle for existing ballistic weapons, and
 basic factory guard, with selection-detail indicators for fire, trajectory,
-repeat, move state, wait, and producer on/off state.
+repeat, move state, wait, producer on/off, and factory guard state.
 Implement the missing states in simulation, snapshots, command authorization,
 selection UI, hotkeys, and visible state indicators.
 
@@ -82,10 +82,10 @@ controls beyond selecting one repeat-build unit: repeat/queue state, factory
 queue mode/quotas, production queue editing, and related state
 indicators. rts-prototype now has an authoritative stop-production command,
 factory panel button, and local factory preset slots with shared hotkeys that
-load through authoritative production commands, plus selected repeat-build and
-production-progress state indicators, basic factory rally, and basic factory
-guard. It still needs the remaining BAR-equivalent factory panel and hotkeys,
-translated to authoritative-server commands.
+load through authoritative production commands, plus selected repeat-build,
+production-progress, and factory-guard state indicators, basic factory rally,
+and basic factory guard. It still needs the remaining BAR-equivalent factory
+panel and hotkeys, translated to authoritative-server commands.
 
 Issue: BAR gameplay functionality tied to missing commands is absent. Implement
 or explicitly redesign the systems needed by the missing command surface:
