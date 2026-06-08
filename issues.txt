@@ -114,13 +114,13 @@ and any equivalent lobby/spectator-safe variants. rts-prototype has a minimap,
 resource bar, debug/control bars, and ping/scan commands, but not the BAR game
 UI command surface.
 
-Issue: camera controls are missing BAR parity. Add camera mode switching
-(overhead/TA/Spring-style equivalents as appropriate for this 3D prototype),
-camera flip, camera anchors set/focus, selected-unit tracking, keyboard/numpad
-camera movement, FOV controls, overview/minimap camera switching, and picture-
-in-picture behavior or a documented 3D-focused replacement. Existing wheel
-zoom, middle-drag pan/orbit, touch controls, minimap click-to-move camera, and
-world-direction HUD are not enough.
+Issue: camera controls are missing BAR parity. FOV controls, selected-unit
+follow tracking, and arrow/numpad camera movement exist. Add camera mode
+switching (overhead/TA/Spring-style equivalents as appropriate for this 3D
+prototype), camera flip, camera anchors set/focus, overview/minimap camera
+switching, and picture-in-picture behavior or a documented 3D-focused
+replacement. Existing wheel zoom, middle-drag pan/orbit, touch controls,
+minimap click-to-move camera, and world-direction HUD are not enough.
 
 Issue: BAR gameplay functionality tied to missing commands is absent. Implement
 or explicitly redesign the systems needed by the missing command surface:

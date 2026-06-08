@@ -11,7 +11,8 @@ type ControlGroupEntitySource = {
 type SelectionEnqueue = (entityIds: EntityId[], additive: boolean) => void;
 
 export function controlGroupIndexForKey(e: KeyboardEvent): number {
-  const codeMatch = /^(?:Digit|Numpad)([0-9])$/.exec(e.code);
+  if (/^Numpad[0-9]$/.test(e.code)) return -1;
+  const codeMatch = /^Digit([0-9])$/.exec(e.code);
   if (codeMatch) return Number(codeMatch[1]);
   return /^[0-9]$/.test(e.key) ? Number(e.key) : -1;
 }

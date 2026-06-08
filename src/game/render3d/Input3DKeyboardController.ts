@@ -20,6 +20,7 @@ type Input3DKeyboardControllerConfig = {
   toggleControlGroupSlot: (index: number) => boolean;
   unsetSelectedFromControlGroups: () => void;
   focusControlGroupSlot: (index: number) => boolean;
+  panCameraByKeyboard: (screenX: number, screenY: number, fine: boolean) => void;
   hasSelectedBuilder: () => boolean;
   getSelectedBuilderAllowedBuildBlueprintIds: () => readonly StructureBlueprintId[];
   exitSpecialModes: (includeTowerTarget?: boolean) => void;
@@ -81,6 +82,39 @@ function isControlGroupUnsetKey(e: KeyboardEvent): boolean {
     && (e.code === 'Backquote' || e.key === '`');
 }
 
+type CameraPanDirection = {
+  x: number;
+  y: number;
+};
+
+function cameraPanDirectionForKey(e: KeyboardEvent): CameraPanDirection | null {
+  if (e.ctrlKey || e.metaKey || e.altKey) return null;
+  switch (e.code) {
+    case 'ArrowUp':
+    case 'Numpad8':
+      return { x: 0, y: 1 };
+    case 'ArrowDown':
+    case 'Numpad2':
+      return { x: 0, y: -1 };
+    case 'ArrowLeft':
+    case 'Numpad4':
+      return { x: -1, y: 0 };
+    case 'ArrowRight':
+    case 'Numpad6':
+      return { x: 1, y: 0 };
+    case 'Numpad7':
+      return { x: -Math.SQRT1_2, y: Math.SQRT1_2 };
+    case 'Numpad9':
+      return { x: Math.SQRT1_2, y: Math.SQRT1_2 };
+    case 'Numpad1':
+      return { x: -Math.SQRT1_2, y: -Math.SQRT1_2 };
+    case 'Numpad3':
+      return { x: Math.SQRT1_2, y: -Math.SQRT1_2 };
+    default:
+      return null;
+  }
+}
+
 export const CONTROL_GROUP_FOCUS_DOUBLE_TAP_MS = 500;
 
 export type ControlGroupRecallTapState = {
@@ -120,8 +154,20 @@ export class Input3DKeyboardController {
   }
 
   handleKeyDown(e: KeyboardEvent): void {
-    if (e.repeat) return;
     if (isTextEntryTarget(e.target)) return;
+
+    const cameraPanDirection = cameraPanDirectionForKey(e);
+    if (cameraPanDirection !== null) {
+      e.preventDefault();
+      this.config.panCameraByKeyboard(
+        cameraPanDirection.x,
+        cameraPanDirection.y,
+        e.shiftKey,
+      );
+      return;
+    }
+
+    if (e.repeat) return;
 
     if (isControlGroupUnsetKey(e)) {
       e.preventDefault();

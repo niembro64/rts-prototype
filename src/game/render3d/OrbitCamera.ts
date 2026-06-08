@@ -985,6 +985,17 @@ export class OrbitCamera {
     this.applyDestinationIfSnap();
   }
 
+  /** Keyboard and UI camera nudges ride the same smooth destination
+   *  target as mouse pan, so repeated keydown events ease instead of
+   *  fighting the orbit camera's EMA state. */
+  panByWorldDelta(dx: number, dz: number): void {
+    if (!Number.isFinite(dx) || !Number.isFinite(dz)) return;
+    if (dx === 0 && dz === 0) return;
+    this.toTargetX += dx;
+    this.toTargetZ += dz;
+    this.applyDestinationIfSnap();
+  }
+
   /** Pin the eased-yaw destination to the current yaw. Outside
    *  follow-behind this keeps the yaw EMA inert; the follow controller
    *  calls it whenever it is NOT driving yaw so a just-ended

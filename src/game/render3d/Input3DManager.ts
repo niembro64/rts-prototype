@@ -193,6 +193,12 @@ export class Input3DManager {
       toggleControlGroupSlot: (index) => this.toggleControlGroupSlot(index),
       unsetSelectedFromControlGroups: () => this.unsetSelectedFromControlGroups(),
       focusControlGroupSlot: (index) => this.focusControlGroupSlot(index),
+      panCameraByKeyboard: (screenX, screenY, fine) => this.panCameraByKeyboard(
+        threeApp.orbit,
+        screenX,
+        screenY,
+        fine,
+      ),
       hasSelectedBuilder: () => this.hasSelectedBuilder(),
       getSelectedBuilderAllowedBuildBlueprintIds: () => this.getSelectedBuilderAllowedBuildBlueprintIds(),
       exitSpecialModes: (includeTowerTarget) => this.exitSpecialModes(includeTowerTarget),
@@ -689,6 +695,27 @@ export class Input3DManager {
     }
     if (count === 0) return null;
     return { x: totalX / count, y: totalY / count };
+  }
+
+  private panCameraByKeyboard(
+    orbit: ThreeApp['orbit'],
+    screenX: number,
+    screenY: number,
+    fine: boolean,
+  ): void {
+    const magnitude = Math.hypot(screenX, screenY);
+    if (magnitude <= 0) return;
+    const x = screenX / magnitude;
+    const y = screenY / magnitude;
+    const step = Math.max(32, Math.min(360, orbit.distance * 0.12)) * (fine ? 0.1 : 1);
+    const rightX = Math.cos(orbit.yaw);
+    const rightZ = Math.sin(orbit.yaw);
+    const forwardX = Math.sin(orbit.yaw);
+    const forwardZ = -Math.cos(orbit.yaw);
+    orbit.panByWorldDelta(
+      (rightX * x + forwardX * y) * step,
+      (rightZ * x + forwardZ * y) * step,
+    );
   }
 
   /** True if D-gun mode is currently active. */
