@@ -28,7 +28,6 @@ import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { PlayerId, Entity, EntityId, WaypointType, BuildingBlueprintId } from '../sim/types';
 import {
   findClosestSelectableEntityToPoint,
-  selectEntitiesInScreenRect,
   SelectionChangeTracker,
   LinePathAccumulator,
   buildAttackAreaCommand,
@@ -55,33 +54,17 @@ import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
 import { getCommandCursorStyle, type CommandCursorKind } from '../input/CommandCursors';
 import { isWaterAt } from '../sim/Terrain';
 import { isBuildInProgress } from '../sim/buildableHelpers';
-import { getBuildingVisualCenterZ } from '../sim/buildingAnchors';
 import { isCommander } from '../sim/combat/combatUtils';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { Input3DSpecialModes, type Input3DSpecialMode } from './Input3DSpecialModes';
 import { Input3DBuildPlacementState } from './Input3DBuildPlacementState';
 import { Input3DHoverState, resolveInput3DHoverTargets } from './Input3DHoverState';
 import { Input3DSelectionDragState } from './Input3DSelectionDragState';
+import { Input3DBoxSelection } from './Input3DBoxSelection';
 
 const SELECTABLE_GROUND_MIN_UNIT_RADIUS = 8;
 const REPAIR_AREA_RADIUS = 220;
 const ATTACK_AREA_RADIUS = 300;
-
-/** Approximate world-space vertical center for box-select projection,
- *  picked per entity kind so the screen-projected point lands near
- *  the visible body. Keep these in rough lockstep with Render3DEntities
- *  chassis/turret heights — exact values don't matter, but "ground
- *  plane" (0) for a unit would project far below the visible sprite.
- *  Tune with the 3D renderer, not guess-and-commit. */
-function selectionCenterY(entity: Entity): number {
-  // Visual center in three.js Y. The entity's transform.z is its
-  // current sim altitude (sphere center for units, vertical center
-  // for buildings) — already terrain-aware, so for box selection
-  // we just project at that altitude. Constants like the old
-  // hand-tuned 8/14/3 assumed flat ground at z=0 and silently
-  // missed any unit standing on a raised cube.
-  return entity.building ? getBuildingVisualCenterZ(entity) : entity.transform.z;
-}
 
 type EntitySource = {
   getUnits: () => Entity[];
@@ -155,15 +138,13 @@ export class Input3DManager {
    *  meshes. The CursorGround service is exclusively for terrain
    *  hits; this raycaster handles "which entity did I click on?". */
   private raycaster = new THREE.Raycaster();
-  // Reusable scratch vector for projecting entities in selectEntitiesInScreenRect.
-  // One allocation for the lifetime of the manager keeps the hot loop alloc-free.
-  private _selectV = new THREE.Vector3();
   private _ndc = new THREE.Vector2();
   private _selectedFactoriesScratch: Entity[] = [];
   // Resets waypoint mode back to 'move' when the owned-selected set
   // changes — matches the 2D SelectionController's rule so squads
   // don't accidentally inherit 'fight'/'patrol' from a prior group.
   private selectionChangeTracker = new SelectionChangeTracker();
+  private boxSelection = new Input3DBoxSelection();
   private controlGroups: InputControlGroups;
   private selectedCommands: InputSelectedCommands;
 
@@ -1427,35 +1408,17 @@ export class Input3DManager {
     this.refreshCursor();
   }
 
-  /** Delegates to the shared box-select helper. The renderer-specific
-   *  bit is just the projector: take a world (x, y=10, z) point,
-   *  run it through THREE's Vector3.project to get NDC, then convert
-   *  NDC → viewport pixels. `behind` is set when NDC z ≥ 1 so the
-   *  shared helper skips entities behind the camera. */
   private selectEntitiesInScreenRect(
     a: { x: number; y: number },
     b: { x: number; y: number },
   ): EntityId[] {
-    const rect = this.canvasRect();
-    const cam = this.threeApp.camera;
-    const v = this._selectV; // reused scratch Vec3 (see field init)
-    return selectEntitiesInScreenRect(
+    return this.boxSelection.select(
       this.entitySource,
-      {
-        minX: Math.min(a.x, b.x), maxX: Math.max(a.x, b.x),
-        minY: Math.min(a.y, b.y), maxY: Math.max(a.y, b.y),
-      },
+      this.canvasRect(),
+      this.threeApp.camera,
       this.context.activePlayerId,
-      (entity, out) => {
-        // Pick a vertical center per entity kind so screen projection
-        // lands on the visible body, not a magic constant.
-        // (If aerial units ever exist, add a case here.)
-        const centerY = selectionCenterY(entity);
-        v.set(entity.transform.x, centerY, entity.transform.y).project(cam);
-        out.x = (v.x * 0.5 + 0.5) * rect.width + rect.left;
-        out.y = (-v.y * 0.5 + 0.5) * rect.height + rect.top;
-        out.behind = v.z >= 1;
-      },
+      a,
+      b,
     );
   }
 
