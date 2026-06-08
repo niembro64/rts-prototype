@@ -29,6 +29,16 @@ export function hasQueuedActionIntents(actions: readonly UnitAction[]): boolean 
   return activeIntentEnd >= 0 && getLastActionIntentFinalIndex(actions) > activeIntentEnd;
 }
 
+export function getQueuedActionIntentCount(actions: readonly UnitAction[]): number {
+  const activeIntentEnd = getFirstActionIntentEnd(actions);
+  if (activeIntentEnd < 0) return 0;
+  let count = 0;
+  for (let i = activeIntentEnd + 1; i < actions.length; i++) {
+    if (!actions[i].isPathExpansion) count++;
+  }
+  return count;
+}
+
 export function getUnitActionTargetId(action: UnitAction): EntityId | undefined {
   if (action.type === 'build') return action.buildingId;
   if (

@@ -49,9 +49,9 @@ next, commandinsert/prepend-between, factory guard, and queued variants of
 several orders. rts-prototype exposes Shift append-queue,
 Shift+Ctrl/Cmd add-in-front queueing for queueable orders,
 skip-current-order, remove-last-queued-order, clear-queued-orders,
-stop-production, wait queueing, and basic factory rally. Implement the missing
-queue semantics with server authorization and clear visual queue editing
-feedback.
+stop-production, wait queueing, basic factory rally, and selected-unit
+current-order/queue-depth feedback. Implement the missing queue semantics with
+server authorization and matching visual feedback.
 
 Issue: behavior/state toggles are incomplete. BAR exposes cloak/want-cloak,
 gather wait, on/off, stateful on/off, repeat, stateful repeat, stance/fire

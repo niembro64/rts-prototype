@@ -1,13 +1,17 @@
 // UI Update Manager - handles selection, economy, and minimap data updates
 
 import { COST_MULTIPLIER } from '../../../config';
-import type { Entity, PlayerId, WaypointType } from '../../sim/types';
+import type { Entity, PlayerId, UnitAction, WaypointType } from '../../sim/types';
 import { getPlayerPrimaryColor } from '../../sim/types';
 import { economyManager } from '../../sim/economy';
 import { getUnitBlueprint } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { isCommander } from '../../sim/combat/combatUtils';
-import { hasQueuedActionIntents } from '../../sim/unitActionIntents';
+import {
+  getFirstActionIntentEnd,
+  getQueuedActionIntentCount,
+  hasQueuedActionIntents,
+} from '../../sim/unitActionIntents';
 import { buildingBlueprintHasActiveState } from '../../sim/buildingActiveState';
 import { getSelectedBuilderAllowedBuildBlueprintIds } from '../../sim/builderBuildRoster';
 import { isReclaimableTarget } from '../../sim/reclaim';
@@ -49,6 +53,46 @@ function maxWeaponRange(entity: Entity): number | null {
   return range > 0 ? range : null;
 }
 
+function unitActionLabel(action: UnitAction): string {
+  switch (action.type) {
+    case 'move': return 'Move';
+    case 'fight': return 'Fight';
+    case 'patrol': return 'Patrol';
+    case 'build': return 'Build';
+    case 'repair': return 'Repair';
+    case 'reclaim': return 'Reclaim';
+    case 'wait': return 'Wait';
+    case 'attack': return 'Attack';
+    case 'attackGround': return 'Attack Ground';
+    case 'guard': return 'Guard';
+    default: return action.type;
+  }
+}
+
+function getActiveUnitAction(actions: readonly UnitAction[]): UnitAction | null {
+  const activeIntentEnd = getFirstActionIntentEnd(actions);
+  return activeIntentEnd >= 0 ? actions[activeIntentEnd] : null;
+}
+
+function addMultiSelectionQueueDetails(
+  details: SelectionInfo['details'],
+  selectedUnits: readonly Entity[],
+): void {
+  let activeOrderCount = 0;
+  let queuedIntentCount = 0;
+  for (let i = 0; i < selectedUnits.length; i++) {
+    const actions = selectedUnits[i].unit?.actions ?? [];
+    if (getActiveUnitAction(actions) !== null) activeOrderCount++;
+    queuedIntentCount += getQueuedActionIntentCount(actions);
+  }
+  if (activeOrderCount > 0) {
+    details.push({ label: 'Orders', value: `${activeOrderCount}/${selectedUnits.length}` });
+  }
+  if (queuedIntentCount > 0) {
+    details.push({ label: 'Queued', value: `${queuedIntentCount}` });
+  }
+}
+
 function buildSelectionDetails(
   selectedUnits: readonly Entity[],
   selectedTowers: readonly Entity[],
@@ -74,6 +118,7 @@ function buildSelectionDetails(
     details.push({ label: 'HP', value: `${fmtStat(hp)}/${fmtStat(maxHp)}` });
     details.push({ label: 'HP Avg', value: `${Math.round((hp / maxHp) * 100)}%` });
   }
+  addMultiSelectionQueueDetails(details, selectedUnits);
   return details;
 }
 
@@ -87,6 +132,10 @@ function buildSingleSelectionDetails(entity: Entity): SelectionInfo['details'] {
         { label: 'Cost', value: fmtTotalCost(bp.cost) },
         { label: 'Mass', value: fmtStat(bp.mass) },
       ];
+      const activeAction = getActiveUnitAction(entity.unit.actions);
+      if (activeAction !== null) details.push({ label: 'Order', value: unitActionLabel(activeAction) });
+      const queuedIntentCount = getQueuedActionIntentCount(entity.unit.actions);
+      if (queuedIntentCount > 0) details.push({ label: 'Queued', value: `${queuedIntentCount}` });
       details.push({ label: 'Move', value: bp.locomotion.type });
       const range = maxWeaponRange(entity);
       if (range !== null) details.push({ label: 'Range', value: fmtStat(range) });
