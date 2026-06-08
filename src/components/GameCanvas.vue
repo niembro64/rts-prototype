@@ -70,6 +70,7 @@ import { useGameCanvasSceneUi } from './gameCanvasSceneUi';
 import { useGameCanvasSessionLifecycle } from './gameCanvasSessionLifecycle';
 import { useGameCanvasShellDisplay } from './gameCanvasShellDisplay';
 import { useGameCanvasLobbyRoster } from './gameCanvasLobbyRoster';
+import { LAND_CELL_SIZE } from '../mapSizeConfig';
 
 const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -86,6 +87,7 @@ const gameAreaRef = ref<HTMLDivElement | null>(null);
 const activePlayer = ref<PlayerId>(1);
 const fullscreenActive = ref(false);
 const uiChromeVisible = ref(true);
+const mapDetailsVisible = ref(false);
 const gameOverWinner = ref<PlayerId | null>(null);
 const battleLoading = ref(false);
 const rendererWarmupLoading = ref(true);
@@ -148,6 +150,10 @@ const {
 
 function toggleUiChrome(): void {
   uiChromeVisible.value = !uiChromeVisible.value;
+}
+
+function toggleMapDetails(): void {
+  mapDetailsVisible.value = !mapDetailsVisible.value;
 }
 
 function getActiveOrbitCamera(): import('../game/render3d/OrbitCamera').OrbitCamera | null {
@@ -370,6 +376,21 @@ const terrainDetail = ref<number>(loadStoredTerrainDetail('demo'));
 const initialMapDimensions = loadStoredMapLandDimensions('demo');
 const mapWidthLandCells = ref<number>(initialMapDimensions.widthLandCells);
 const mapLengthLandCells = ref<number>(initialMapDimensions.lengthLandCells);
+const mapDetailsRows = computed(() => [
+  { label: 'MODE', value: currentBattleMode.value.toUpperCase() },
+  { label: 'SIZE', value: `${mapWidthLandCells.value} x ${mapLengthLandCells.value} cells` },
+  {
+    label: 'WORLD',
+    value: `${mapWidthLandCells.value * LAND_CELL_SIZE} x ${mapLengthLandCells.value * LAND_CELL_SIZE}`,
+  },
+  { label: 'SHAPE', value: terrainMapShape.value.toUpperCase() },
+  { label: 'CENTER', value: String(centerMagnitude.value) },
+  { label: 'DIVIDERS', value: String(dividersMagnitude.value) },
+  { label: 'D-TERRAIN', value: terrainDTerrain.value === 0 ? 'NONE' : String(terrainDTerrain.value) },
+  { label: 'METAL STEP', value: metalDepositStep.value === 0 ? 'NONE' : String(metalDepositStep.value) },
+  { label: 'DETAIL', value: String(terrainDetail.value) },
+  { label: 'PLAYERS', value: String(lobbyPlayerCount.value) },
+]);
 const {
   renderMode,
   audioScope,
@@ -1078,6 +1099,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   cameraFollowMode: cameraFollowMode.value,
   fullscreenActive: fullscreenActive.value,
   uiChromeVisible: uiChromeVisible.value,
+  mapDetailsVisible: mapDetailsVisible.value,
   resetClientDefaults,
   togglePlayerClientEnabled,
   changeWaypointDetail,
@@ -1129,6 +1151,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   captureScreenshot,
   goToLastPing,
   toggleUiChrome,
+  toggleMapDetails,
 });
 watchEffect(() => {
   const m = clientControlBarModel as {
@@ -1219,6 +1242,7 @@ watchEffect(() => {
   m.cameraFollowMode = cameraFollowMode.value;
   m.fullscreenActive = fullscreenActive.value;
   m.uiChromeVisible = uiChromeVisible.value;
+  m.mapDetailsVisible = mapDetailsVisible.value;
 });
 
 </script>
@@ -1325,6 +1349,31 @@ watchEffect(() => {
         <div class="minimap-stack">
           <Minimap :data="minimapData" @click="handleMinimapClick" />
         </div>
+
+        <section
+          v-if="mapDetailsVisible"
+          class="map-details-panel"
+          aria-label="Map details"
+        >
+          <div class="map-details-header">
+            <span>MAP INFO</span>
+            <button
+              class="map-details-close"
+              title="Close map details"
+              aria-label="Close map details"
+              @click="mapDetailsVisible = false"
+            >X</button>
+          </div>
+          <dl class="map-details-list">
+            <template
+              v-for="row in mapDetailsRows"
+              :key="row.label"
+            >
+              <dt>{{ row.label }}</dt>
+              <dd>{{ row.value }}</dd>
+            </template>
+          </dl>
+        </section>
       </template>
     </div>
 
@@ -1588,6 +1637,73 @@ watchEffect(() => {
 
 .minimap-stack :deep(.minimap-container) {
   pointer-events: auto;
+}
+
+.map-details-panel {
+  position: absolute;
+  top: 10px;
+  left: 330px;
+  z-index: 1001;
+  width: min(300px, calc(100vw - 350px));
+  max-width: 300px;
+  border: 1px solid rgba(120, 140, 165, 0.62);
+  border-radius: 6px;
+  background: rgba(10, 14, 20, 0.88);
+  color: #edf3ff;
+  font: 11px/1.25 system-ui, sans-serif;
+  letter-spacing: 0;
+  pointer-events: auto;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+}
+
+.map-details-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+  padding: 0 8px 0 10px;
+  border-bottom: 1px solid rgba(120, 140, 165, 0.32);
+  font-weight: 700;
+}
+
+.map-details-close {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(150, 165, 190, 0.5);
+  border-radius: 4px;
+  background: rgba(25, 31, 42, 0.86);
+  color: #dce7fb;
+  cursor: pointer;
+}
+
+.map-details-list {
+  display: grid;
+  grid-template-columns: minmax(88px, auto) 1fr;
+  gap: 6px 12px;
+  margin: 0;
+  padding: 10px;
+}
+
+.map-details-list dt {
+  color: #9fb1c9;
+  font-weight: 700;
+}
+
+.map-details-list dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #f5f8ff;
+  text-align: right;
+}
+
+@media (max-width: 760px) {
+  .map-details-panel {
+    top: 248px;
+    left: 10px;
+    width: min(300px, calc(100vw - 20px));
+  }
 }
 
 .ui-chrome-restore {

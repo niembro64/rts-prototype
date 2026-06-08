@@ -1010,6 +1010,11 @@ defineProps<{
           @click="model.showMapOverview"
         >OVR</BarButton>
         <BarButton
+          :active="model.mapDetailsVisible"
+          title="Show map details"
+          @click="model.toggleMapDetails"
+        >INFO</BarButton>
+        <BarButton
           :active="false"
           title="Move the camera to the latest ping or scanner marker"
           @click="model.goToLastPing"
