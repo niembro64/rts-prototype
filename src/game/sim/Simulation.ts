@@ -62,7 +62,6 @@ import {
   type PathTerrainFilter,
 } from './Pathfinder';
 import { getTerrainVersion } from './Terrain';
-import { getUnitBlueprint } from './blueprints';
 import { updateBuildingActiveStates } from './buildingActiveState';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { getGuardFollowRadius, isFriendlyGuardTarget } from './guard';
@@ -71,11 +70,7 @@ import { isBuildTargetInRange } from './builderRange';
 import { isReclaimableTarget } from './reclaim';
 import { setUnitMovementAcceleration } from './unitMovementAcceleration';
 import { getActionIntentStart, getUnitActionTargetId } from './unitActionIntents';
-import {
-  CT_COMBAT_HALT_MODE_ANY_ENGAGED,
-  CT_COMBAT_HALT_MODE_FIGHT_REQUIRED,
-  getSimWasm,
-} from '../sim-wasm/init';
+import { getSimWasm } from '../sim-wasm/init';
 import {
   rotateFirstUnitActionToEnd,
   refreshUnitActionHash,
@@ -96,6 +91,7 @@ import {
 import {
   SimulationFlyingLoiterController,
 } from './SimulationFlyingLoiterController';
+import { SimulationCombatHaltController } from './SimulationCombatHaltController';
 
 type ActiveMovementTarget = UnitPathPoint & {
   isFinalActionPoint: boolean;
@@ -151,6 +147,7 @@ export class Simulation {
   private deathExplosionPlanner: SimulationDeathExplosionPlanner;
   private deadEntityCleanup: SimulationDeadEntityCleanup;
   private arrivalController: SimulationArrivalController;
+  private combatHaltController: SimulationCombatHaltController;
   private flyingLoiter: SimulationFlyingLoiterController;
   private forceAccumulator: ForceAccumulator = new ForceAccumulator();
   private windState: WindState = sampleWindState(0);
@@ -196,14 +193,6 @@ export class Simulation {
   private _stuckSettlingFlagsBuf = new Uint8Array(0);
   private _stuckOutTicksBuf = new Int32Array(0);
   private _stuckOutReplanBuf = new Uint8Array(0);
-  private _combatHaltTouchedSlotsBuf: number[] = [];
-  private _combatHaltSlotsBuf = new Uint32Array(0);
-  private _combatHaltModesBuf = new Uint8Array(0);
-  private _combatHaltPriorityPointBuf = new Uint8Array(0);
-  private _combatHaltOutBuf = new Uint8Array(0);
-  private _combatHaltModeBySlot = new Uint8Array(0);
-  private _combatHaltPriorityPointBySlot = new Uint8Array(0);
-  private _combatHaltStopBySlot = new Uint8Array(0);
 
   // Reusable buffers for shared energy distribution (avoid per-tick allocations)
   private energyBuffers: EnergyBuffers = createEnergyBuffers();
@@ -252,6 +241,7 @@ export class Simulation {
       advanceActivePathPoint: (entity) => this.advanceActivePathPoint(entity),
       queueFlyingLoiter: (entity) => this.flyingLoiter.queue(entity),
     });
+    this.combatHaltController = new SimulationCombatHaltController(this.world);
     this.flyingLoiter = new SimulationFlyingLoiterController(this.world);
   }
 
@@ -782,7 +772,7 @@ export class Simulation {
     const movingUnits = this._movingUnitsBuf;
     movingUnits.length = 0;
     this.arrivalController.beginFrame();
-    this.prepareCombatHaltDecisions();
+    this.combatHaltController.prepare();
 
     for (const entity of this.world.getUnits()) {
       spatialGrid.updateUnit(entity);
@@ -898,7 +888,7 @@ export class Simulation {
         if (entity.combat) entity.combat.priorityTargetId = currentAction.targetId;
 
         // Stop if any turret is engaged.
-        if (this.shouldStopForEngagedCombat(entity)) {
+        if (this.combatHaltController.shouldStopForEngagedCombat(entity)) {
           unit.stuckTicks = 0;
           continue;
         }
@@ -940,7 +930,7 @@ export class Simulation {
           targetPoint.z = currentAction.z ?? this.world.getGroundZ(currentAction.x, currentAction.y);
         }
 
-        if (this.shouldStopForEngagedCombat(entity)) {
+        if (this.combatHaltController.shouldStopForEngagedCombat(entity)) {
           unit.stuckTicks = 0;
           continue;
         }
@@ -968,7 +958,7 @@ export class Simulation {
           continue;
         }
 
-        if (this.shouldStopForEngagedCombat(entity)) {
+        if (this.combatHaltController.shouldStopForEngagedCombat(entity)) {
           unit.stuckTicks = 0;
           continue;
         }
@@ -1004,7 +994,7 @@ export class Simulation {
       // brawls. If no mount is marked, the unit keeps moving while
       // weapons engage opportunistically.
       if (currentAction.type === 'fight' || currentAction.type === 'patrol') {
-        if (this.shouldStopForFightCombat(entity)) {
+        if (this.combatHaltController.shouldStopForFightCombat(entity)) {
           unit.stuckTicks = 0;
           continue;
         }
@@ -1164,196 +1154,6 @@ export class Simulation {
         }
       }
     }
-  }
-
-  private ensureCombatHaltRowCapacity(required: number): void {
-    if (this._combatHaltSlotsBuf.length >= required) return;
-    const next = Math.max(required, this._combatHaltSlotsBuf.length * 2, 128);
-    const slots = new Uint32Array(next);
-    slots.set(this._combatHaltSlotsBuf);
-    this._combatHaltSlotsBuf = slots;
-    const modes = new Uint8Array(next);
-    modes.set(this._combatHaltModesBuf);
-    this._combatHaltModesBuf = modes;
-    const priorityPoint = new Uint8Array(next);
-    priorityPoint.set(this._combatHaltPriorityPointBuf);
-    this._combatHaltPriorityPointBuf = priorityPoint;
-    this._combatHaltOutBuf = new Uint8Array(next);
-  }
-
-  private ensureCombatHaltSlotCapacity(required: number): void {
-    if (this._combatHaltModeBySlot.length >= required) return;
-    const next = Math.max(required, this._combatHaltModeBySlot.length * 2, 128);
-    const modes = new Uint8Array(next);
-    modes.set(this._combatHaltModeBySlot);
-    this._combatHaltModeBySlot = modes;
-    const priorityPoint = new Uint8Array(next);
-    priorityPoint.set(this._combatHaltPriorityPointBySlot);
-    this._combatHaltPriorityPointBySlot = priorityPoint;
-    const stop = new Uint8Array(next);
-    stop.set(this._combatHaltStopBySlot);
-    this._combatHaltStopBySlot = stop;
-  }
-
-  private clearCombatHaltDecisionCache(): void {
-    const touched = this._combatHaltTouchedSlotsBuf;
-    for (let i = 0; i < touched.length; i++) {
-      const slot = touched[i];
-      this._combatHaltModeBySlot[slot] = 0;
-      this._combatHaltPriorityPointBySlot[slot] = 0;
-      this._combatHaltStopBySlot[slot] = 0;
-    }
-    touched.length = 0;
-  }
-
-  private queueCombatHaltDecision(
-    index: number,
-    slot: number,
-    mode: number,
-    priorityPointPresent: boolean,
-  ): void {
-    this._combatHaltSlotsBuf[index] = slot;
-    this._combatHaltModesBuf[index] = mode;
-    this._combatHaltPriorityPointBuf[index] = priorityPointPresent ? 1 : 0;
-  }
-
-  private cacheCombatHaltDecision(
-    slot: number,
-    mode: number,
-    priorityPointPresent: number,
-    shouldStop: number,
-  ): void {
-    this.ensureCombatHaltSlotCapacity(slot + 1);
-    this._combatHaltModeBySlot[slot] = mode + 1;
-    this._combatHaltPriorityPointBySlot[slot] = priorityPointPresent;
-    this._combatHaltStopBySlot[slot] = shouldStop;
-    this._combatHaltTouchedSlotsBuf.push(slot);
-  }
-
-  private prepareCombatHaltDecisions(): void {
-    this.clearCombatHaltDecisionCache();
-    const sim = getSimWasm();
-    if (sim === undefined) return;
-    const units = this.world.getUnits();
-    this.ensureCombatHaltRowCapacity(units.length);
-
-    let count = 0;
-    for (let i = 0; i < units.length; i++) {
-      const entity = units[i];
-      const unit = entity.unit;
-      if (!unit || !entity.combat || unit.actions.length === 0) continue;
-      const action = unit.actions[0];
-      let mode = -1;
-      let priorityPointPresent = false;
-      if (
-        (action.type === 'attack' && action.targetId !== undefined) ||
-        action.type === 'guard'
-      ) {
-        mode = CT_COMBAT_HALT_MODE_ANY_ENGAGED;
-      } else if (action.type === 'attackGround') {
-        mode = CT_COMBAT_HALT_MODE_ANY_ENGAGED;
-        priorityPointPresent = true;
-      } else if (action.type === 'fight' || action.type === 'patrol') {
-        if (!this.unitHasFightStopRequiredMount(unit.unitBlueprintId)) continue;
-        mode = CT_COMBAT_HALT_MODE_FIGHT_REQUIRED;
-      } else {
-        continue;
-      }
-      const slot = spatialGrid.getSlot(entity.id);
-      if (slot < 0) continue;
-      this.queueCombatHaltDecision(count, slot, mode, priorityPointPresent);
-      count++;
-    }
-    if (count === 0) return;
-
-    sim.combatTargeting.haltDecisionBatch(
-      this._combatHaltSlotsBuf.subarray(0, count),
-      this._combatHaltModesBuf.subarray(0, count),
-      this._combatHaltPriorityPointBuf.subarray(0, count),
-      this._combatHaltOutBuf.subarray(0, count),
-    );
-
-    for (let i = 0; i < count; i++) {
-      this.cacheCombatHaltDecision(
-        this._combatHaltSlotsBuf[i],
-        this._combatHaltModesBuf[i],
-        this._combatHaltPriorityPointBuf[i],
-        this._combatHaltOutBuf[i],
-      );
-    }
-  }
-
-  private readCombatHaltDecision(
-    entity: Entity,
-    mode: number,
-    priorityPointPresent: boolean,
-  ): boolean {
-    const slot = spatialGrid.getSlot(entity.id);
-    if (slot < 0) return false;
-    this.ensureCombatHaltSlotCapacity(slot + 1);
-    const modeKey = mode + 1;
-    const priorityPointFlag = priorityPointPresent ? 1 : 0;
-    if (
-      this._combatHaltModeBySlot[slot] === modeKey &&
-      this._combatHaltPriorityPointBySlot[slot] === priorityPointFlag
-    ) {
-      return this._combatHaltStopBySlot[slot] !== 0;
-    }
-
-    const sim = getSimWasm();
-    if (sim === undefined) return false;
-    this.ensureCombatHaltRowCapacity(1);
-    this.queueCombatHaltDecision(0, slot, mode, priorityPointPresent);
-    sim.combatTargeting.haltDecisionBatch(
-      this._combatHaltSlotsBuf.subarray(0, 1),
-      this._combatHaltModesBuf.subarray(0, 1),
-      this._combatHaltPriorityPointBuf.subarray(0, 1),
-      this._combatHaltOutBuf.subarray(0, 1),
-    );
-    this.cacheCombatHaltDecision(
-      slot,
-      mode,
-      priorityPointFlag,
-      this._combatHaltOutBuf[0],
-    );
-    return this._combatHaltOutBuf[0] !== 0;
-  }
-
-  /** True when any non-visual turret is engaged with a target, so the
-   *  unit should hold position rather than keep chasing. This uses the
-   *  turret FSM directly instead of firingTurretMask so passive combat
-   *  systems like shield panels can stop during fight/patrol orders. */
-  private shouldStopForEngagedCombat(entity: Entity): boolean {
-    const combat = entity.combat;
-    if (!combat || combat.turrets.length === 0) return false;
-    return this.readCombatHaltDecision(
-      entity,
-      CT_COMBAT_HALT_MODE_ANY_ENGAGED,
-      combat.priorityTargetPoint !== null,
-    );
-  }
-
-  private unitHasFightStopRequiredMount(unitBlueprintId: string): boolean {
-    return getUnitBlueprint(unitBlueprintId).turrets.some(
-      (mount) => mount.requiredEngagedForFightStop === true,
-    );
-  }
-
-  /** Fight/patrol variant of the engagement halt check. Halts only when
-   *  every unit mount marked `requiredEngagedForFightStop` has an engaged,
-   *  non-visual turret. Units with no required mounts never halt for
-   *  fight/patrol combat. Host-directed targeting is independent: a turret
-   *  may inherit host orders without participating in fight-stop gating. */
-  private shouldStopForFightCombat(entity: Entity): boolean {
-    if (!entity.unit) return false;
-    if (!this.unitHasFightStopRequiredMount(entity.unit.unitBlueprintId)) return false;
-    const combat = entity.combat;
-    if (!combat || combat.turrets.length === 0) return false;
-    return this.readCombatHaltDecision(
-      entity,
-      CT_COMBAT_HALT_MODE_FIGHT_REQUIRED,
-      combat.priorityTargetPoint !== null,
-    );
   }
 
   private ensureStuckCapacity(required: number): void {
@@ -1622,7 +1422,7 @@ export class Simulation {
     this.arrivalController.reset();
     this.flyingLoiter.reset();
     this._stuckEntitiesBuf.length = 0;
-    this.clearCombatHaltDecisionCache();
+    this.combatHaltController.reset();
     this.world.clearPendingDeathCheckIds();
     resetEnergyBuffers(this.energyBuffers);
     resetShieldBuffers();
