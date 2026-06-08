@@ -3,7 +3,8 @@ export type Input3DAreaDragKind =
   | 'reclaimArea'
   | 'attackArea'
   | 'buildMexArea'
-  | 'buildLine';
+  | 'buildLine'
+  | 'buildBorder';
 
 export type Input3DAreaDragState = {
   active: boolean;

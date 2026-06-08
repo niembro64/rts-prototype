@@ -31,6 +31,16 @@ export type BuildFacingInfo = {
   degrees: number;
 };
 
+type PlannedBuildPlacementContext = {
+  buildingBlueprintId: BuildingBlueprintId;
+  buildings: Entity[];
+  terrainBuildabilityGrid: TerrainBuildabilityGrid | null;
+  plannedOccupiedCells: Set<string>;
+  planned: Set<string>;
+  footprint: { gridWidth: number; gridHeight: number };
+  placements: BuildAreaPlacementPlan[];
+};
+
 type BuildPlacementEntitySource = {
   getBuildings: () => Entity[];
   getEntitySetVersion?: () => number;
@@ -174,18 +184,7 @@ export class Input3DBuildPlacementState {
     entitySource: BuildPlacementEntitySource,
   ): BuildAreaPlacementPlan[] {
     const buildingBlueprintId: BuildingBlueprintId = 'buildingExtractor';
-    const config = getBuildingConfig(buildingBlueprintId);
-    const buildings = entitySource.getBuildings();
-    const entitySetVersion = entitySource.getEntitySetVersion?.() ?? buildings.length;
-    const terrainBuildabilityGrid = entitySource.getTerrainBuildabilityGrid?.() ?? null;
-    const occupancyVersion = `${entitySetVersion}`;
-    if (occupancyVersion !== this.occupancyVersion || !this.occupiedCells) {
-      this.occupancyVersion = occupancyVersion;
-      this.occupiedCells = getOccupiedBuildingCells(buildings);
-    }
-    const plannedOccupiedCells = new Set(this.occupiedCells);
-    const planned = new Set<string>();
-    const placements: BuildAreaPlacementPlan[] = [];
+    const context = this.createPlannedBuildPlacementContext(buildingBlueprintId, entitySource);
     const safeRadius = Math.max(1, radius);
 
     for (const deposit of this.metalDeposits) {
@@ -193,39 +192,9 @@ export class Input3DBuildPlacementState {
       const dy = deposit.y - worldY;
       if (Math.sqrt(dx * dx + dy * dy) > safeRadius + deposit.resourceRadius) continue;
 
-      const snapped = getSnappedBuildPosition(deposit.x, deposit.y, buildingBlueprintId, this.buildFacingRotation);
-      const key = cellKey(snapped.gridX, snapped.gridY);
-      if (planned.has(key)) continue;
-
-      const diagnostics = getBuildingPlacementDiagnostics(
-        buildingBlueprintId,
-        snapped.x,
-        snapped.y,
-        this.mapWidth,
-        this.mapHeight,
-        buildings,
-        this.metalDeposits,
-        plannedOccupiedCells,
-        terrainBuildabilityGrid,
-        this.buildFacingRotation,
-      );
-      if (!diagnostics.canPlace || (diagnostics.metalCoveredCells ?? 0) <= 0) continue;
-
-      planned.add(key);
-      placements.push({
-        gridX: diagnostics.gridX,
-        gridY: diagnostics.gridY,
-        x: diagnostics.x,
-        y: diagnostics.y,
-      });
-      const footprint = getRotatedGridFootprint(config.gridWidth, config.gridHeight, this.buildFacingRotation);
-      for (let y = 0; y < footprint.gridHeight; y++) {
-        for (let x = 0; x < footprint.gridWidth; x++) {
-          plannedOccupiedCells.add(cellKey(diagnostics.gridX + x, diagnostics.gridY + y));
-        }
-      }
+      this.tryAddPlannedBuildPlacement(context, deposit.x, deposit.y, true);
     }
-    return placements;
+    return context.placements;
   }
 
   planBuildLinePlacements(
@@ -236,6 +205,56 @@ export class Input3DBuildPlacementState {
     endY: number,
     entitySource: BuildPlacementEntitySource,
   ): BuildAreaPlacementPlan[] {
+    const context = this.createPlannedBuildPlacementContext(buildingBlueprintId, entitySource);
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const distance = Math.hypot(dx, dy);
+    const spacing = Math.max(context.footprint.gridWidth, context.footprint.gridHeight, 1)
+      * BUILD_GRID_CELL_SIZE
+      * this.buildLineSpacingMultiplier;
+    const placementCount = Math.max(1, Math.floor(distance / Math.max(1, spacing)) + 1);
+
+    for (let i = 0; i < placementCount; i++) {
+      const t = placementCount === 1 ? 0 : i / (placementCount - 1);
+      const worldX = startX + dx * t;
+      const worldY = startY + dy * t;
+      this.tryAddPlannedBuildPlacement(context, worldX, worldY);
+    }
+
+    return context.placements;
+  }
+
+  planBuildBorderPlacements(
+    buildingBlueprintId: BuildingBlueprintId,
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    entitySource: BuildPlacementEntitySource,
+  ): BuildAreaPlacementPlan[] {
+    const context = this.createPlannedBuildPlacementContext(buildingBlueprintId, entitySource);
+    const minX = Math.min(startX, endX);
+    const maxX = Math.max(startX, endX);
+    const minY = Math.min(startY, endY);
+    const maxY = Math.max(startY, endY);
+    const spacing = Math.max(context.footprint.gridWidth, context.footprint.gridHeight, 1)
+      * BUILD_GRID_CELL_SIZE
+      * this.buildLineSpacingMultiplier;
+    this.planBuildSegmentPlacements(context, minX, minY, maxX, minY, spacing);
+    this.planBuildSegmentPlacements(context, maxX, minY, maxX, maxY, spacing);
+    this.planBuildSegmentPlacements(context, maxX, maxY, minX, maxY, spacing);
+    this.planBuildSegmentPlacements(context, minX, maxY, minX, minY, spacing);
+    return context.placements;
+  }
+
+  private get buildLineSpacingMultiplier(): number {
+    return 1 + this.buildLineSpacingSteps * BUILD_LINE_SPACING_STEP;
+  }
+
+  private createPlannedBuildPlacementContext(
+    buildingBlueprintId: BuildingBlueprintId,
+    entitySource: BuildPlacementEntitySource,
+  ): PlannedBuildPlacementContext {
     const config = getBuildingConfig(buildingBlueprintId);
     const buildings = entitySource.getBuildings();
     const entitySetVersion = entitySource.getEntitySetVersion?.() ?? buildings.length;
@@ -245,59 +264,77 @@ export class Input3DBuildPlacementState {
       this.occupancyVersion = occupancyVersion;
       this.occupiedCells = getOccupiedBuildingCells(buildings);
     }
-    const plannedOccupiedCells = new Set(this.occupiedCells);
-    const planned = new Set<string>();
-    const placements: BuildAreaPlacementPlan[] = [];
+    return {
+      buildingBlueprintId,
+      buildings,
+      terrainBuildabilityGrid,
+      plannedOccupiedCells: new Set(this.occupiedCells),
+      planned: new Set<string>(),
+      footprint: getRotatedGridFootprint(config.gridWidth, config.gridHeight, this.buildFacingRotation),
+      placements: [],
+    };
+  }
+
+  private tryAddPlannedBuildPlacement(
+    context: PlannedBuildPlacementContext,
+    worldX: number,
+    worldY: number,
+    requireMetal = false,
+  ): void {
+    const snapped = getSnappedBuildPosition(
+      worldX,
+      worldY,
+      context.buildingBlueprintId,
+      this.buildFacingRotation,
+    );
+    const key = cellKey(snapped.gridX, snapped.gridY);
+    if (context.planned.has(key)) return;
+
+    const diagnostics = getBuildingPlacementDiagnostics(
+      context.buildingBlueprintId,
+      snapped.x,
+      snapped.y,
+      this.mapWidth,
+      this.mapHeight,
+      context.buildings,
+      this.metalDeposits,
+      context.plannedOccupiedCells,
+      context.terrainBuildabilityGrid,
+      this.buildFacingRotation,
+    );
+    if (!diagnostics.canPlace) return;
+    if (requireMetal && (diagnostics.metalCoveredCells ?? 0) <= 0) return;
+
+    context.planned.add(key);
+    context.placements.push({
+      gridX: diagnostics.gridX,
+      gridY: diagnostics.gridY,
+      x: diagnostics.x,
+      y: diagnostics.y,
+    });
+    for (let y = 0; y < context.footprint.gridHeight; y++) {
+      for (let x = 0; x < context.footprint.gridWidth; x++) {
+        context.plannedOccupiedCells.add(cellKey(diagnostics.gridX + x, diagnostics.gridY + y));
+      }
+    }
+  }
+
+  private planBuildSegmentPlacements(
+    context: PlannedBuildPlacementContext,
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    spacing: number,
+  ): void {
     const dx = endX - startX;
     const dy = endY - startY;
     const distance = Math.hypot(dx, dy);
-    const footprint = getRotatedGridFootprint(config.gridWidth, config.gridHeight, this.buildFacingRotation);
-    const spacing = Math.max(footprint.gridWidth, footprint.gridHeight, 1)
-      * BUILD_GRID_CELL_SIZE
-      * this.buildLineSpacingMultiplier;
     const placementCount = Math.max(1, Math.floor(distance / Math.max(1, spacing)) + 1);
-
     for (let i = 0; i < placementCount; i++) {
       const t = placementCount === 1 ? 0 : i / (placementCount - 1);
-      const worldX = startX + dx * t;
-      const worldY = startY + dy * t;
-      const snapped = getSnappedBuildPosition(worldX, worldY, buildingBlueprintId, this.buildFacingRotation);
-      const key = cellKey(snapped.gridX, snapped.gridY);
-      if (planned.has(key)) continue;
-
-      const diagnostics = getBuildingPlacementDiagnostics(
-        buildingBlueprintId,
-        snapped.x,
-        snapped.y,
-        this.mapWidth,
-        this.mapHeight,
-        buildings,
-        this.metalDeposits,
-        plannedOccupiedCells,
-        terrainBuildabilityGrid,
-        this.buildFacingRotation,
-      );
-      if (!diagnostics.canPlace) continue;
-
-      planned.add(key);
-      placements.push({
-        gridX: diagnostics.gridX,
-        gridY: diagnostics.gridY,
-        x: diagnostics.x,
-        y: diagnostics.y,
-      });
-      for (let y = 0; y < footprint.gridHeight; y++) {
-        for (let x = 0; x < footprint.gridWidth; x++) {
-          plannedOccupiedCells.add(cellKey(diagnostics.gridX + x, diagnostics.gridY + y));
-        }
-      }
+      this.tryAddPlannedBuildPlacement(context, startX + dx * t, startY + dy * t);
     }
-
-    return placements;
-  }
-
-  private get buildLineSpacingMultiplier(): number {
-    return 1 + this.buildLineSpacingSteps * BUILD_LINE_SPACING_STEP;
   }
 }
 

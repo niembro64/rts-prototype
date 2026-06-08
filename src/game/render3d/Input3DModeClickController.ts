@@ -281,8 +281,9 @@ export class Input3DModeClickController {
   ): boolean {
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return false;
+    const resolvedKind = kind === 'buildLine' && e.altKey ? 'buildBorder' : kind;
     this.areaDrag = {
-      kind,
+      kind: resolvedKind,
       button,
       start: { x: world.x, y: world.y, z: world.z },
       current: { x: world.x, y: world.y, z: world.z },
@@ -336,6 +337,10 @@ export class Input3DModeClickController {
     }
     if (drag.kind === 'buildLine') {
       this.commitBuildLineDrag(drag);
+      return;
+    }
+    if (drag.kind === 'buildBorder') {
+      this.commitBuildBorderDrag(drag);
       return;
     }
     if (drag.kind === 'repairArea') {
@@ -434,6 +439,50 @@ export class Input3DModeClickController {
     }
 
     const placements = this.buildPlacement.planBuildLinePlacements(
+      buildingBlueprintId,
+      drag.start.x,
+      drag.start.y,
+      drag.current.x,
+      drag.current.y,
+      this.config.getEntitySource(),
+    );
+    if (placements.length === 0) {
+      this.config.applyCursor('blocked');
+      return;
+    }
+
+    const tick = this.config.getTick();
+    for (let i = 0; i < placements.length; i++) {
+      const placement = placements[i];
+      this.config.commandQueue.enqueue({
+        type: 'startBuild',
+        tick,
+        builderId: builder.id,
+        buildingBlueprintId,
+        gridX: placement.gridX,
+        gridY: placement.gridY,
+        rotation: this.buildPlacement.facingInfo.rotation,
+        queue: i === 0 ? drag.queue : true,
+        queueFront: i === 0 ? drag.queueFront : false,
+      });
+    }
+    this.config.applyCursor('build');
+    if (!drag.queue) this.config.mode.exitBuildMode();
+  }
+
+  private commitBuildBorderDrag(drag: AreaDrag): void {
+    const builder = this.config.getSelectedBuilder();
+    const buildingBlueprintId = this.config.mode.buildingBlueprintId;
+    if (
+      builder === null ||
+      buildingBlueprintId === null ||
+      !entityCanBuild(builder, buildingBlueprintId)
+    ) {
+      this.config.applyCursor('blocked');
+      return;
+    }
+
+    const placements = this.buildPlacement.planBuildBorderPlacements(
       buildingBlueprintId,
       drag.start.x,
       drag.start.y,

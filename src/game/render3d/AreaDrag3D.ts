@@ -12,6 +12,7 @@ const AREA_COLORS: Record<Input3DAreaDragKind, number> = {
   attackArea: ACTION_COLORS.attack,
   buildMexArea: ACTION_COLORS.build,
   buildLine: ACTION_COLORS.build,
+  buildBorder: ACTION_COLORS.build,
 };
 
 export class AreaDrag3D {
@@ -23,23 +24,28 @@ export class AreaDrag3D {
   private readonly ringGeom = new THREE.RingGeometry(0.975, 1, 96);
   private readonly discGeom = new THREE.CircleGeometry(1, 96);
   private readonly lineGeom = new THREE.BoxGeometry(1, 0.5, 1);
+  private readonly borderGeom = new THREE.BufferGeometry();
   private readonly ringMats = new Map<Input3DAreaDragKind, THREE.MeshBasicMaterial>();
   private readonly discMats = new Map<Input3DAreaDragKind, THREE.MeshBasicMaterial>();
+  private readonly borderMats = new Map<Input3DAreaDragKind, THREE.LineBasicMaterial>();
   private readonly ring: THREE.Mesh;
   private readonly disc: THREE.Mesh;
   private readonly line: THREE.Mesh;
+  private readonly border: THREE.LineSegments;
 
   constructor(parentWorld: THREE.Group) {
     this.ring = new THREE.Mesh(this.ringGeom);
     this.disc = new THREE.Mesh(this.discGeom);
     this.line = new THREE.Mesh(this.lineGeom);
+    this.border = new THREE.LineSegments(this.borderGeom);
     this.ring.rotation.x = -Math.PI / 2;
     this.disc.rotation.x = -Math.PI / 2;
     this.ring.renderOrder = 19;
     this.disc.renderOrder = 18;
     this.line.renderOrder = 19;
+    this.border.renderOrder = 19;
     this.root.visible = false;
-    this.root.add(this.disc, this.ring, this.line);
+    this.root.add(this.disc, this.ring, this.line, this.border);
     parentWorld.add(this.root);
   }
 
@@ -53,7 +59,12 @@ export class AreaDrag3D {
       this.updateBuildLine(state);
       return;
     }
+    if (state.kind === 'buildBorder') {
+      this.updateBuildBorder(state);
+      return;
+    }
     this.line.visible = false;
+    this.border.visible = false;
     this.ring.visible = true;
     this.disc.visible = true;
     this.ring.material = this.getRingMat(state.kind);
@@ -69,15 +80,19 @@ export class AreaDrag3D {
     this.ringGeom.dispose();
     this.discGeom.dispose();
     this.lineGeom.dispose();
+    this.borderGeom.dispose();
     for (const mat of this.ringMats.values()) mat.dispose();
     for (const mat of this.discMats.values()) mat.dispose();
+    for (const mat of this.borderMats.values()) mat.dispose();
     this.ringMats.clear();
     this.discMats.clear();
+    this.borderMats.clear();
   }
 
   private updateBuildLine(state: Input3DAreaDragState): void {
     this.ring.visible = false;
     this.disc.visible = false;
+    this.border.visible = false;
     this.line.visible = true;
     this.line.material = this.getRingMat(state.kind);
     this.root.position.set(0, 0, 0);
@@ -107,6 +122,40 @@ export class AreaDrag3D {
     this.line.scale.set(length3D, 1, 4);
   }
 
+  private updateBuildBorder(state: Input3DAreaDragState): void {
+    this.ring.visible = false;
+    this.disc.visible = false;
+    this.line.visible = false;
+    this.border.visible = true;
+    this.border.material = this.getBorderMat(state.kind);
+    this.root.position.set(0, 0, 0);
+
+    const endX = state.endX ?? state.x;
+    const endY = state.endY ?? state.y;
+    const minX = Math.min(state.x, endX);
+    const maxX = Math.max(state.x, endX);
+    const minY = Math.min(state.y, endY);
+    const maxY = Math.max(state.y, endY);
+    const startZ = state.z !== undefined ? state.z + RING_LIFT : LEGACY_Y;
+    const endZ = state.endZ !== undefined ? state.endZ + RING_LIFT : startZ;
+    const y = (startZ + endZ) / 2;
+    const width = maxX - minX;
+    const depth = maxY - minY;
+    if (width < 1e-3 || depth < 1e-3) {
+      this.border.visible = false;
+      return;
+    }
+
+    const positions = new Float32Array([
+      minX, y, minY, maxX, y, minY,
+      maxX, y, minY, maxX, y, maxY,
+      maxX, y, maxY, minX, y, maxY,
+      minX, y, maxY, minX, y, minY,
+    ]);
+    this.borderGeom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    this.borderGeom.computeBoundingSphere();
+  }
+
   private getRingMat(kind: Input3DAreaDragKind): THREE.MeshBasicMaterial {
     const cached = this.ringMats.get(kind);
     if (cached) return cached;
@@ -132,6 +181,19 @@ export class AreaDrag3D {
       side: THREE.DoubleSide,
     });
     this.discMats.set(kind, mat);
+    return mat;
+  }
+
+  private getBorderMat(kind: Input3DAreaDragKind): THREE.LineBasicMaterial {
+    const cached = this.borderMats.get(kind);
+    if (cached) return cached;
+    const mat = new THREE.LineBasicMaterial({
+      color: AREA_COLORS[kind],
+      transparent: true,
+      opacity: 0.88,
+      depthWrite: false,
+    });
+    this.borderMats.set(kind, mat);
     return mat;
   }
 }

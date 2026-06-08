@@ -47,7 +47,9 @@ number keys, single-placement ghost, Shift queueing, left-drag build line
 placement with adjustable spacing controls and a 3D line preview through
 existing build validation, plus 90-degree build-facing controls whose preview,
 snapping, occupancy, collision footprint, and support surface all use the
-rotated grid footprint; these do not satisfy BAR fallback behavior.
+rotated grid footprint; Alt+left-drag build border placement uses the same
+validation path as single, line, and mex-area builds and has a 3D rectangle
+preview. These do not satisfy BAR fallback behavior.
 
 Issue: queue editing and command insertion are incomplete. BAR supports queue to
 next, commandinsert/prepend-between, and queued variants of several orders.
