@@ -2,9 +2,7 @@
 // Render3DEntities with focused input/view state pushed into helpers.
 
 import type { ClientViewState } from '../network/ClientViewState';
-import { audioManager } from '../audio/AudioManager';
 import type { SceneCameraState } from '@/types/game';
-import { isShotBlueprintId, isTurretBlueprintId, isUnitBlueprintId } from '@/types/blueprintIds';
 import type { TerrainMapShape } from '@/types/terrain';
 import { isMobileLikeBrowser } from '@/browserRuntime';
 import { RtsScene3DSnapshotIntake } from './helpers/RtsScene3DSnapshotIntake';
@@ -21,6 +19,7 @@ import { RtsScene3DMinimapSystem } from './helpers/RtsScene3DMinimapSystem';
 import { RtsScene3DRenderPhase } from './helpers/RtsScene3DRenderPhase';
 import { teardownRtsScene3DRenderers } from './helpers/RtsScene3DRendererLifecycle';
 import { RtsScene3DSelectionSystem } from './helpers/RtsScene3DSelectionSystem';
+import { playSimEventAudio3D } from './helpers/RtsScene3DSimEventAudio';
 import {
   WATER_SURFACE_NORMAL_SIM,
   finiteAtLeast,
@@ -917,7 +916,7 @@ export class RtsScene3D {
     // any visual branch returns early. Audio stays on even when the
     // camera/effect-cell gating drops the visual — that's what makes
     // off-screen gunfire audible, the whole point of an RTS soundscape.
-    this.playSimEventAudio(event);
+    playSimEventAudio3D(event);
     // FOW-09 main: events forwarded by the audio earshot pad arrive
     // with audioOnly=true. The sound has already played above; skip
     // every visual branch so the explosion sprite / debris / ping
@@ -931,7 +930,7 @@ export class RtsScene3D {
       // Visual rings removed; sim events still flow (manual ping
       // command, scan pulse emission, attack alert) so
       // the plumbing can wire a new visual without re-deriving the
-      // events. Audio handled above by playSimEventAudio.
+      // events. Audio handled above by playSimEventAudio3D.
       return;
     }
 
@@ -1080,57 +1079,6 @@ export class RtsScene3D {
         effectGfx.fireExplosionStyle,
       );
       this.debrisRenderer.spawn(event.pos.x, event.pos.y, event.pos.z, ctx, effectGfx);
-    }
-  }
-
-  /** Play the audio side of a SimEvent (FOW-09 prereq). Called once
-   *  per event by handleSimEvent3D ahead of the visual branches so
-   *  off-screen action stays audible even when the visual gating
-   *  trims the explosion sprite. Continuous laser / shield
-   *  sounds are looped state, not one-shots, so they start/stop on
-   *  the matching SimEvent pair. */
-  private playSimEventAudio(event: NetworkServerSnapshotSimEvent): void {
-    switch (event.type) {
-      case 'fire':
-        // turretBlueprintId on a 'fire' event is the firing turret blueprint id.
-        // Narrow before passing so we don't accidentally feed a shot
-        // or unit blueprint id when the event was authored unexpectedly.
-        if (event.turretBlueprintId && isTurretBlueprintId(event.turretBlueprintId)) {
-          audioManager.playWeaponFire(event.turretBlueprintId);
-        }
-        return;
-      case 'hit':
-      case 'projectileExpire':
-        // hit / expire audio is keyed by the shot blueprint id. Beam
-        // and laser hits carry a turret blueprint id in this same field; the
-        // blueprintId helper distinguishes shot vs turret so we route
-        // it through the right AudioManager method.
-        if (event.turretBlueprintId) {
-          if (isShotBlueprintId(event.turretBlueprintId)) audioManager.playWeaponHit(event.turretBlueprintId);
-          else if (isTurretBlueprintId(event.turretBlueprintId)) audioManager.playWeaponFire(event.turretBlueprintId);
-        }
-        return;
-      case 'death': {
-        const unitBlueprintId = event.deathContext?.unitBlueprintId;
-        if (unitBlueprintId && isUnitBlueprintId(unitBlueprintId)) audioManager.playUnitDeath(unitBlueprintId);
-        return;
-      }
-      case 'laserStart':
-        if (event.entityId !== null) {
-          audioManager.startLaserSound(event.entityId, undefined);
-        }
-        return;
-      case 'laserStop':
-        if (event.entityId !== null) audioManager.stopLaserSound(event.entityId);
-        return;
-      case 'shieldStart':
-        if (event.entityId !== null) audioManager.startShieldSound(event.entityId);
-        return;
-      case 'shieldStop':
-        if (event.entityId !== null) audioManager.stopShieldSound(event.entityId);
-        return;
-      // ping / attackAlert / shieldImpact have no one-shot sound
-      // wired yet; the visual is the whole UX. Drop through.
     }
   }
 

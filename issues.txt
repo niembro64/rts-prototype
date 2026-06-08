@@ -23,7 +23,7 @@ Severity: Medium
 Evidence:
 - src/game/sim/Simulation.ts is 2472 lines.
 - src/game/render3d/Input3DManager.ts is 1721 lines.
-- src/game/scenes/RtsScene3D.ts is 1499 lines.
+- src/game/scenes/RtsScene3D.ts is 1447 lines.
 - src/game/render3d/Render3DEntities.ts is 1463 lines.
 - src/game/render3d/BuildingAnimationController3D.ts is 1216 lines.
 - budget_design_philosophy.html explicitly says large files should be split into coherent helpers when touched.
