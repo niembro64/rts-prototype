@@ -7,7 +7,11 @@ import {
   handleEscape,
   type CommanderModeController,
 } from '../input/helpers';
-import { CommandHotkeySequenceResolver, type CommandHotkeyId } from '../input/commandHotkeys';
+import {
+  CommandHotkeySequenceResolver,
+  resolveCommandHotkey,
+  type CommandHotkeyId,
+} from '../input/commandHotkeys';
 
 type Input3DKeyboardControllerConfig = {
   mode: CommanderModeController;
@@ -138,6 +142,24 @@ function cameraPanDirectionForKey(e: KeyboardEvent): CameraPanDirection | null {
   }
 }
 
+function buildSlotIndexForCommandId(commandId: CommandHotkeyId): number {
+  switch (commandId) {
+    case 'build.slot1': return 0;
+    case 'build.slot2': return 1;
+    case 'build.slot3': return 2;
+    case 'build.slot4': return 3;
+    case 'build.slot5': return 4;
+    case 'build.slot6': return 5;
+    case 'build.slot7': return 6;
+    case 'build.slot8': return 7;
+    case 'build.slot9': return 8;
+    case 'build.slot10': return 9;
+    case 'build.slot11': return 10;
+    case 'build.slot12': return 11;
+    default: return -1;
+  }
+}
+
 export const CONTROL_GROUP_FOCUS_DOUBLE_TAP_MS = 500;
 
 export type ControlGroupRecallTapState = {
@@ -248,12 +270,14 @@ export class Input3DKeyboardController {
       }
     }
 
-    const numericBuildHotkey = /^[1-9]$/.test(e.key) ? Number(e.key) - 1 : -1;
-    if (numericBuildHotkey >= 0) {
-      if (this.enterBuildSlot(numericBuildHotkey)) {
-        this.commandHotkeys.reset();
-        return;
-      }
+    const buildMenuCommandId = this.config.hasSelectedBuilder()
+      ? resolveCommandHotkey(e, undefined, 'buildMenu')
+      : null;
+    const buildSlotIndex = buildMenuCommandId === null ? -1 : buildSlotIndexForCommandId(buildMenuCommandId);
+    if (buildSlotIndex >= 0 && this.enterBuildSlot(buildSlotIndex)) {
+      e.preventDefault();
+      this.commandHotkeys.reset();
+      return;
     }
 
     const hotkey = this.commandHotkeys.resolve(e);
@@ -415,6 +439,11 @@ export class Input3DKeyboardController {
         break;
       case 'build.slot9':
         this.enterBuildSlot(8);
+        break;
+      case 'build.slot10':
+      case 'build.slot11':
+      case 'build.slot12':
+        this.enterBuildSlot(buildSlotIndexForCommandId(commandId));
         break;
       case 'build.spacingIncrease':
         this.config.increaseBuildLineSpacing();

@@ -34,6 +34,9 @@ export type CommandHotkeyId =
   | 'build.slot7'
   | 'build.slot8'
   | 'build.slot9'
+  | 'build.slot10'
+  | 'build.slot11'
+  | 'build.slot12'
   | 'build.spacingIncrease'
   | 'build.spacingDecrease'
   | 'build.rotateClockwise'
@@ -67,6 +70,7 @@ export type CommandHotkeyId =
 
 export type BuiltInCommandHotkeyPresetId = 'prototype' | 'bar-grid' | 'bar-legacy';
 export type CommandHotkeyPresetId = BuiltInCommandHotkeyPresetId | 'custom';
+export type CommandHotkeyScope = 'global' | 'buildMenu';
 
 type ModifierMatch = boolean | 'any';
 
@@ -125,6 +129,9 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'build.slot7',
   'build.slot8',
   'build.slot9',
+  'build.slot10',
+  'build.slot11',
+  'build.slot12',
   'build.spacingIncrease',
   'build.spacingDecrease',
   'build.rotateClockwise',
@@ -200,6 +207,9 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'build.slot7': 'Build Slot 7',
   'build.slot8': 'Build Slot 8',
   'build.slot9': 'Build Slot 9',
+  'build.slot10': 'Build Slot 10',
+  'build.slot11': 'Build Slot 11',
+  'build.slot12': 'Build Slot 12',
   'build.spacingIncrease': 'Build Spacing Increase',
   'build.spacingDecrease': 'Build Spacing Decrease',
   'build.rotateClockwise': 'Build Rotate Clockwise',
@@ -231,6 +241,10 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'ui.mapLabel': 'Draw Map Label',
   'ui.mapErase': 'Erase Map Drawings',
 };
+
+export function commandHotkeyScope(commandId: CommandHotkeyId): CommandHotkeyScope {
+  return commandId.startsWith('build.slot') ? 'buildMenu' : 'global';
+}
 
 function key(label: string, keyValue: string, options: ChordOptions = {}): CommandHotkeyBinding {
   return [{ key: keyValue.toLowerCase(), label, ...options }];
@@ -290,6 +304,9 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'build.slot7': [code('7', 'Digit7', { shift: 'any' })],
     'build.slot8': [code('8', 'Digit8', { shift: 'any' })],
     'build.slot9': [code('9', 'Digit9', { shift: 'any' })],
+    'build.slot10': [code('0', 'Digit0', { shift: 'any' })],
+    'build.slot11': [code('-', 'Minus', { shift: 'any' })],
+    'build.slot12': [code('=', 'Equal', { shift: 'any' })],
     'build.spacingIncrease': [code(']', 'BracketRight', { shift: 'any' })],
     'build.spacingDecrease': [code('[', 'BracketLeft', { shift: 'any' })],
     'build.rotateClockwise': [code('.', 'Period', { shift: 'any' })],
@@ -370,11 +387,14 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'build.slot2': [code('X', 'KeyX', { shift: 'any' })],
     'build.slot3': [code('C', 'KeyC', { shift: 'any' })],
     'build.slot4': [code('V', 'KeyV', { shift: 'any' })],
-    'build.slot5': [code('5', 'Digit5', { shift: 'any' })],
-    'build.slot6': [code('6', 'Digit6', { shift: 'any' })],
-    'build.slot7': [code('7', 'Digit7', { shift: 'any' })],
-    'build.slot8': [code('8', 'Digit8', { shift: 'any' })],
-    'build.slot9': [code('9', 'Digit9', { shift: 'any' })],
+    'build.slot5': [code('A', 'KeyA', { shift: 'any' })],
+    'build.slot6': [code('S', 'KeyS', { shift: 'any' })],
+    'build.slot7': [code('D', 'KeyD', { shift: 'any' })],
+    'build.slot8': [code('F', 'KeyF', { shift: 'any' })],
+    'build.slot9': [code('Q', 'KeyQ', { shift: 'any' })],
+    'build.slot10': [code('W', 'KeyW', { shift: 'any' })],
+    'build.slot11': [code('E', 'KeyE', { shift: 'any' })],
+    'build.slot12': [code('R', 'KeyR', { shift: 'any' })],
     'build.spacingIncrease': [code(']', 'BracketRight', { shift: 'any' })],
     'build.spacingDecrease': [code('[', 'BracketLeft', { shift: 'any' })],
     'build.rotateClockwise': [code('.', 'Period', { shift: 'any' })],
@@ -448,6 +468,9 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'build.slot7': [code('7', 'Digit7', { shift: 'any' })],
     'build.slot8': [code('8', 'Digit8', { shift: 'any' })],
     'build.slot9': [code('9', 'Digit9', { shift: 'any' })],
+    'build.slot10': [code('0', 'Digit0', { shift: 'any' })],
+    'build.slot11': [code('-', 'Minus', { shift: 'any' })],
+    'build.slot12': [code('=', 'Equal', { shift: 'any' })],
     'build.spacingIncrease': [code(']', 'BracketRight', { shift: 'any' })],
     'build.spacingDecrease': [code('[', 'BracketLeft', { shift: 'any' })],
     'build.rotateClockwise': [code('.', 'Period', { shift: 'any' })],
@@ -496,6 +519,7 @@ const COMMAND_HOTKEY_SEQUENCE_TIMEOUT_MS = 900;
 
 type PendingCommandHotkeySequence = {
   presetId: CommandHotkeyPresetId;
+  scope: CommandHotkeyScope;
   commandId: CommandHotkeyId;
   binding: CommandHotkeyBinding;
   nextChordIndex: number;
@@ -586,8 +610,9 @@ export function commandHotkeyLabels(
 export function resolveCommandHotkey(
   event: KeyboardEvent,
   presetId: CommandHotkeyPresetId = getActiveCommandHotkeyPresetId(),
+  scope: CommandHotkeyScope = 'global',
 ): CommandHotkeyId | null {
-  return resolveSingleChordCommandHotkey(event, presetId);
+  return resolveSingleChordCommandHotkey(event, presetId, scope);
 }
 
 export class CommandHotkeySequenceResolver {
@@ -597,12 +622,14 @@ export class CommandHotkeySequenceResolver {
     event: KeyboardEvent,
     presetId: CommandHotkeyPresetId = getActiveCommandHotkeyPresetId(),
     timeMs: number = event.timeStamp,
+    scope: CommandHotkeyScope = 'global',
   ): CommandHotkeyResolution {
     const nowMs = Number.isFinite(timeMs) ? timeMs : 0;
     if (
       this.pendingSequence !== null &&
       (
         this.pendingSequence.presetId !== presetId ||
+        this.pendingSequence.scope !== scope ||
         nowMs > this.pendingSequence.expiresAtMs
       )
     ) {
@@ -628,7 +655,7 @@ export class CommandHotkeySequenceResolver {
       this.pendingSequence = null;
     }
 
-    const sequence = findMatchingSequenceStart(event, presetId);
+    const sequence = findMatchingSequenceStart(event, presetId, scope);
     if (sequence !== null) {
       this.pendingSequence = {
         ...sequence,
@@ -639,7 +666,7 @@ export class CommandHotkeySequenceResolver {
     }
 
     return {
-      commandId: resolveSingleChordCommandHotkey(event, presetId),
+      commandId: resolveSingleChordCommandHotkey(event, presetId, scope),
       pending: false,
     };
   }
@@ -652,9 +679,11 @@ export class CommandHotkeySequenceResolver {
 function resolveSingleChordCommandHotkey(
   event: KeyboardEvent,
   presetId: CommandHotkeyPresetId,
+  scope: CommandHotkeyScope,
 ): CommandHotkeyId | null {
   const preset = getCommandHotkeyPreset(presetId);
   for (const commandId of COMMAND_HOTKEY_IDS) {
+    if (commandHotkeyScope(commandId) !== scope) continue;
     const bindings = preset[commandId];
     for (const binding of bindings) {
       if (binding.length === 1 && keyChordMatchesEvent(binding[0], event)) return commandId;
@@ -666,13 +695,15 @@ function resolveSingleChordCommandHotkey(
 function findMatchingSequenceStart(
   event: KeyboardEvent,
   presetId: CommandHotkeyPresetId,
+  scope: CommandHotkeyScope,
 ): Omit<PendingCommandHotkeySequence, 'nextChordIndex' | 'expiresAtMs'> | null {
   const preset = getCommandHotkeyPreset(presetId);
   for (const commandId of COMMAND_HOTKEY_IDS) {
+    if (commandHotkeyScope(commandId) !== scope) continue;
     const bindings = preset[commandId];
     for (const binding of bindings) {
       if (binding.length > 1 && keyChordMatchesEvent(binding[0], event)) {
-        return { presetId, commandId, binding };
+        return { presetId, scope, commandId, binding };
       }
     }
   }
@@ -682,19 +713,21 @@ function findMatchingSequenceStart(
 export function getCommandHotkeyConflicts(
   presetId: CommandHotkeyPresetId,
 ): CommandHotkeyConflict[] {
-  const ownersBySignature = new Map<string, CommandHotkeyId[]>();
+  const ownersBySignature = new Map<string, { signature: string; commandIds: CommandHotkeyId[] }>();
   const preset = getCommandHotkeyPreset(presetId);
   for (const commandId of COMMAND_HOTKEY_IDS) {
     for (const binding of preset[commandId]) {
       const signature = bindingSignature(binding);
-      const owners = ownersBySignature.get(signature);
-      if (owners) owners.push(commandId);
-      else ownersBySignature.set(signature, [commandId]);
+      const scope = commandHotkeyScope(commandId);
+      const scopedSignature = `${scope}:${signature}`;
+      const owners = ownersBySignature.get(scopedSignature);
+      if (owners) owners.commandIds.push(commandId);
+      else ownersBySignature.set(scopedSignature, { signature, commandIds: [commandId] });
     }
   }
 
   const conflicts: CommandHotkeyConflict[] = [];
-  for (const [signature, commandIds] of ownersBySignature) {
+  for (const { signature, commandIds } of ownersBySignature.values()) {
     const uniqueCommandIds = Array.from(new Set(commandIds));
     if (uniqueCommandIds.length > 1) {
       conflicts.push({ presetId, signature, commandIds: uniqueCommandIds });

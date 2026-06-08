@@ -11,6 +11,7 @@ import {
   type CommandHotkeyId,
   type CommandHotkeyPresetId,
 } from '../game/input/commandHotkeys';
+import { buildStructureMenuLayout } from '../game/input/buildMenuLayout';
 import {
   FACTORY_PRODUCTION_PRESET_COUNT,
   FACTORY_PRODUCTION_PRESET_STORAGE_KEY,
@@ -188,18 +189,6 @@ const COMPACT_BUILDING_LABELS: Record<string, string> = {
   Converter: 'Conv',
   'Anti-Air Tower': 'AA',
 };
-const BUILD_SLOT_COMMAND_IDS = [
-  'build.slot1',
-  'build.slot2',
-  'build.slot3',
-  'build.slot4',
-  'build.slot5',
-  'build.slot6',
-  'build.slot7',
-  'build.slot8',
-  'build.slot9',
-] as const satisfies readonly CommandHotkeyId[];
-
 function compactBuildingLabel(label: string): string {
   return COMPACT_BUILDING_LABELS[label] ?? label.slice(0, 5);
 }
@@ -219,14 +208,24 @@ function costTitle(label: string, cost: number, key?: string): string {
   return `${label}${hotkey} - Cost ${cost}`;
 }
 
+const buildingMenuLayout = computed(() =>
+  buildStructureMenuLayout(props.selection.allowedBuildBlueprintIds),
+);
+
 const buildingOptions = computed(() => {
-  return props.selection.allowedBuildBlueprintIds
-    .map((buildingBlueprintId, index) => {
+  return buildingMenuLayout.value.items
+    .map((item) => {
+      const { buildingBlueprintId, commandId } = item;
       const option = structureRosterDisplay.find((entry) => entry.buildingBlueprintId === buildingBlueprintId);
-      const slotCommandId = BUILD_SLOT_COMMAND_IDS[index];
       return option === undefined
         ? null
-        : { ...option, key: slotCommandId === undefined ? `${index + 1}` : hotkey(slotCommandId) };
+        : {
+          ...option,
+          key: hotkey(commandId),
+          commandId,
+          gridRow: item.gridRow,
+          gridColumn: item.gridColumn,
+        };
     })
     .filter((option) => option !== null);
 });

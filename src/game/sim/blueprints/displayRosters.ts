@@ -18,8 +18,17 @@ export type BuildingRosterDisplay = {
   label: string;
   key: string;
   cost: number;
-  category: 'Economy' | 'Intel' | 'Production' | 'Defense';
+  category: BuildMenuCategory;
 };
+
+export type BuildMenuCategory = 'Economy' | 'Intel' | 'Production' | 'Defense';
+
+export const BUILD_MENU_CATEGORY_ORDER: readonly BuildMenuCategory[] = [
+  'Economy',
+  'Intel',
+  'Production',
+  'Defense',
+];
 
 function scaledTotalCost(cost: ResourceCost): number {
   return (cost.energy + cost.metal) * COST_MULTIPLIER;
@@ -73,7 +82,7 @@ function buildStructureRosterDisplay(
   });
 }
 
-function structureBuildCategory(buildingBlueprintId: BuildingBlueprintId): BuildingRosterDisplay['category'] {
+export function structureBuildCategory(buildingBlueprintId: BuildingBlueprintId): BuildMenuCategory {
   switch (buildingBlueprintId) {
     case 'buildingRadar':
       return 'Intel';

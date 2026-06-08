@@ -12,6 +12,7 @@
 import type { Entity, BuildingBlueprintId, StructureBlueprintId } from '../../sim/types';
 import type { StartBuildCommand, FireDGunCommand } from '../../sim/commands';
 import { getAllStructures } from '../../sim/buildConfigs';
+import { getBuildMenuStructureBlueprintIdBySlotIndex } from '../buildMenuLayout';
 import { getSnappedBuildPosition } from './BuildPlacementValidator';
 
 const BUILD_MODE_BUILDING_BLUEPRINT_IDS = getAllStructures().map(
@@ -34,7 +35,7 @@ export function getBuildModeBuildingBlueprintIdByIndex(
   const ids = allowedBuildBlueprintIds !== undefined
     ? allowedBuildBlueprintIds
     : BUILD_MODE_BUILDING_BLUEPRINT_IDS;
-  return ids[index] ?? null;
+  return getBuildMenuStructureBlueprintIdBySlotIndex(index, ids);
 }
 
 export class CommanderModeController {

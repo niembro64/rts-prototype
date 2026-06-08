@@ -65,4 +65,12 @@ export function runCommandHotkeysContractTest(): void {
     resolveCommandHotkey(keyEvent('a', 'KeyA'), 'bar-grid') === 'combat.attack',
     'single-chord hotkey resolution should still resolve bar-grid A attack',
   );
+  assertContract(
+    resolveCommandHotkey(keyEvent('a', 'KeyA'), 'bar-grid', 'buildMenu') === 'build.slot5',
+    'build-menu hotkey resolution should resolve bar-grid A as build slot 5',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('q', 'KeyQ'), 'bar-grid', 'buildMenu') === 'build.slot9',
+    'build-menu hotkey resolution should resolve bar-grid Q as build slot 9',
+  );
 }

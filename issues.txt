@@ -39,21 +39,20 @@ modifiers where applicable, and complete visual formation previews. Translate
 these to the 3D physics model so formation targets respect mass, collision,
 terrain height, slopes, water, and pathability.
 
-Issue: construction commands are missing most BAR build ergonomics. Implement
-the BAR grid build menu categories, grid-menu cell hotkeys, construction
-shortcuts, build grid, build border, build split, upgrade T1 mex area,
-upgrade T1 -> T2, and visual
-previews for every build shape. rts-prototype has categorized build buttons for
-the current structure roster, active-preset build-slot hotkeys,
-single-placement ghost, Shift queueing, left-drag build line
+Issue: construction commands are missing several BAR build ergonomics. Implement
+construction shortcuts, build split, upgrade T1 mex area, upgrade T1 -> T2,
+remaining BAR fallback behavior, and visual previews for every build shape.
+rts-prototype has category-ordered build buttons for the current structure
+roster, contextual BAR-grid build-cell hotkeys over a shared 12-cell build menu
+layout, active-preset build-slot hotkeys, single-placement ghost, Shift
+queueing, left-drag build line
 placement with adjustable spacing controls and a 3D line preview through
 existing build validation, plus 90-degree build-facing controls whose preview,
 snapping, occupancy, collision footprint, and support surface all use the
 rotated grid footprint; Alt+left-drag build border placement and Ctrl/Cmd
 left-drag build grid placement use the same validation path as single, line,
 and mex-area builds, have 3D rectangle previews, and split multi-placement
-orders across selected eligible builders. These do not satisfy BAR fallback
-behavior.
+orders across selected eligible builders.
 
 Issue: queue editing and command insertion are incomplete. BAR supports
 commandinsert/prepend-between and queued variants of several orders.
