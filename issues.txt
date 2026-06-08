@@ -63,10 +63,11 @@ Implement the missing states in simulation, snapshots, command authorization,
 selection UI, hotkeys, and visible state indicators.
 
 Issue: special abilities are incomplete. Add BAR Capture, Load Transport,
-Unload Transport, Resurrect, Resurrect Area, manual fire, manual launch, and
-any unit-specific special buttons. rts-prototype has commander DGun and
-self-destruct, but no capture, resurrection, transports, load/unload logic,
-manual launch weapons, or unit-specific ability command-card support.
+Unload Transport, Resurrect, Resurrect Area, manual launch, and any
+unit-specific special buttons beyond commander DGun. rts-prototype has
+commander DGun and self-destruct, but no capture, resurrection, transports,
+load/unload logic, manual launch weapons, or unit-specific ability command-card
+support.
 
 Issue: factory and production UI are incomplete. BAR has factory production
 controls beyond selecting one repeat-build unit: repeat/queue state, factory
@@ -93,6 +94,6 @@ implemented as flat 2D shortcuts. Attack lines/circles still need ballistic
 previews; build lines/grids/borders need slope, support surface, collision, and
 resource-cell validation; formations need mass, acceleration, collision, and
 terrain-aware spacing; transport/load/unload, resurrection, capture, and manual
-fire need physical presentation and authoritative physics
-interactions. Document any intentional departure from BAR in
-budget_design_philosophy.html before omitting a BAR behavior.
+launch/special-fire abilities beyond commander DGun need physical presentation
+and authoritative physics interactions. Document any intentional departure from
+BAR in budget_design_philosophy.html before omitting a BAR behavior.
