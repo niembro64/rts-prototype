@@ -14,6 +14,14 @@ export type CommandHotkeyId =
   | 'command.buildCycle'
   | 'command.dgun'
   | 'command.selectCommander'
+  | 'factoryPreset.load1'
+  | 'factoryPreset.load2'
+  | 'factoryPreset.load3'
+  | 'factoryPreset.load4'
+  | 'factoryPreset.save1'
+  | 'factoryPreset.save2'
+  | 'factoryPreset.save3'
+  | 'factoryPreset.save4'
   | 'build.slot1'
   | 'build.slot2'
   | 'build.slot3'
@@ -85,6 +93,14 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'command.buildCycle',
   'command.dgun',
   'command.selectCommander',
+  'factoryPreset.load1',
+  'factoryPreset.load2',
+  'factoryPreset.load3',
+  'factoryPreset.load4',
+  'factoryPreset.save1',
+  'factoryPreset.save2',
+  'factoryPreset.save3',
+  'factoryPreset.save4',
   'build.slot1',
   'build.slot2',
   'build.slot3',
@@ -140,6 +156,14 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'command.buildCycle': 'Cycle Build',
   'command.dgun': 'Commander DGun',
   'command.selectCommander': 'Select Commander',
+  'factoryPreset.load1': 'Load Factory Preset 1',
+  'factoryPreset.load2': 'Load Factory Preset 2',
+  'factoryPreset.load3': 'Load Factory Preset 3',
+  'factoryPreset.load4': 'Load Factory Preset 4',
+  'factoryPreset.save1': 'Save Factory Preset 1',
+  'factoryPreset.save2': 'Save Factory Preset 2',
+  'factoryPreset.save3': 'Save Factory Preset 3',
+  'factoryPreset.save4': 'Save Factory Preset 4',
   'build.slot1': 'Build Slot 1',
   'build.slot2': 'Build Slot 2',
   'build.slot3': 'Build Slot 3',
@@ -210,6 +234,14 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'command.buildCycle': [key('B', 'b', { shift: 'any' })],
     'command.dgun': [key('D', 'd', { shift: 'any' })],
     'command.selectCommander': [key('Tab', 'tab', { shift: 'any' })],
+    'factoryPreset.load1': [code('Ctrl+Alt+Z', 'KeyZ', { ctrl: true, alt: true })],
+    'factoryPreset.load2': [code('Ctrl+Alt+X', 'KeyX', { ctrl: true, alt: true })],
+    'factoryPreset.load3': [code('Ctrl+Alt+C', 'KeyC', { ctrl: true, alt: true })],
+    'factoryPreset.load4': [code('Ctrl+Alt+V', 'KeyV', { ctrl: true, alt: true })],
+    'factoryPreset.save1': [code('Ctrl+Alt+Shift+Z', 'KeyZ', { ctrl: true, alt: true, shift: true })],
+    'factoryPreset.save2': [code('Ctrl+Alt+Shift+X', 'KeyX', { ctrl: true, alt: true, shift: true })],
+    'factoryPreset.save3': [code('Ctrl+Alt+Shift+C', 'KeyC', { ctrl: true, alt: true, shift: true })],
+    'factoryPreset.save4': [code('Ctrl+Alt+Shift+V', 'KeyV', { ctrl: true, alt: true, shift: true })],
     'build.slot1': [code('1', 'Digit1', { shift: 'any' })],
     'build.slot2': [code('2', 'Digit2', { shift: 'any' })],
     'build.slot3': [code('3', 'Digit3', { shift: 'any' })],
@@ -275,6 +307,14 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
       key('Tab', 'tab'),
       key('Shift+Tab', 'tab', { shift: true }),
     ],
+    'factoryPreset.load1': [code('Ctrl+Alt+Z', 'KeyZ', { ctrl: true, alt: true })],
+    'factoryPreset.load2': [code('Ctrl+Alt+X', 'KeyX', { ctrl: true, alt: true })],
+    'factoryPreset.load3': [code('Ctrl+Alt+C', 'KeyC', { ctrl: true, alt: true })],
+    'factoryPreset.load4': [code('Ctrl+Alt+V', 'KeyV', { ctrl: true, alt: true })],
+    'factoryPreset.save1': [code('Ctrl+Alt+Shift+Z', 'KeyZ', { ctrl: true, alt: true, shift: true })],
+    'factoryPreset.save2': [code('Ctrl+Alt+Shift+X', 'KeyX', { ctrl: true, alt: true, shift: true })],
+    'factoryPreset.save3': [code('Ctrl+Alt+Shift+C', 'KeyC', { ctrl: true, alt: true, shift: true })],
+    'factoryPreset.save4': [code('Ctrl+Alt+Shift+V', 'KeyV', { ctrl: true, alt: true, shift: true })],
     'build.slot1': [code('Z', 'KeyZ', { shift: 'any' })],
     'build.slot2': [code('X', 'KeyX', { shift: 'any' })],
     'build.slot3': [code('C', 'KeyC', { shift: 'any' })],
@@ -328,6 +368,14 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
       code('Ctrl+C', 'KeyC', { ctrl: true, shift: 'any' }),
       key('Tab', 'tab', { shift: 'any' }),
     ],
+    'factoryPreset.load1': [code('Ctrl+Alt+Z', 'KeyZ', { ctrl: true, alt: true })],
+    'factoryPreset.load2': [code('Ctrl+Alt+X', 'KeyX', { ctrl: true, alt: true })],
+    'factoryPreset.load3': [code('Ctrl+Alt+C', 'KeyC', { ctrl: true, alt: true })],
+    'factoryPreset.load4': [code('Ctrl+Alt+V', 'KeyV', { ctrl: true, alt: true })],
+    'factoryPreset.save1': [code('Ctrl+Alt+Shift+Z', 'KeyZ', { ctrl: true, alt: true, shift: true })],
+    'factoryPreset.save2': [code('Ctrl+Alt+Shift+X', 'KeyX', { ctrl: true, alt: true, shift: true })],
+    'factoryPreset.save3': [code('Ctrl+Alt+Shift+C', 'KeyC', { ctrl: true, alt: true, shift: true })],
+    'factoryPreset.save4': [code('Ctrl+Alt+Shift+V', 'KeyV', { ctrl: true, alt: true, shift: true })],
     'build.slot1': [code('Z', 'KeyZ', { shift: 'any' })],
     'build.slot2': [code('X', 'KeyX', { shift: 'any' })],
     'build.slot3': [code('C', 'KeyC', { shift: 'any' })],

@@ -45,6 +45,8 @@ type Input3DKeyboardControllerConfig = {
   togglePingMode: () => void;
   toggleDGunMode: () => void;
   enqueueScanAtCursor: () => void;
+  loadFactoryProductionPreset: (index: number) => void;
+  saveFactoryProductionPreset: (index: number) => void;
   selectActiveCommander: (additive: boolean) => void;
   selectAllOwnedUnits: () => void;
   selectAllMatching: () => void;
@@ -346,6 +348,30 @@ export class Input3DKeyboardController {
         break;
       case 'command.selectCommander':
         this.config.selectActiveCommander(e.shiftKey);
+        break;
+      case 'factoryPreset.load1':
+        this.config.loadFactoryProductionPreset(0);
+        break;
+      case 'factoryPreset.load2':
+        this.config.loadFactoryProductionPreset(1);
+        break;
+      case 'factoryPreset.load3':
+        this.config.loadFactoryProductionPreset(2);
+        break;
+      case 'factoryPreset.load4':
+        this.config.loadFactoryProductionPreset(3);
+        break;
+      case 'factoryPreset.save1':
+        this.config.saveFactoryProductionPreset(0);
+        break;
+      case 'factoryPreset.save2':
+        this.config.saveFactoryProductionPreset(1);
+        break;
+      case 'factoryPreset.save3':
+        this.config.saveFactoryProductionPreset(2);
+        break;
+      case 'factoryPreset.save4':
+        this.config.saveFactoryProductionPreset(3);
         break;
       case 'build.slot1':
         this.enterBuildSlot(0);

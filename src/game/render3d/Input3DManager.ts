@@ -38,6 +38,10 @@ import {
 } from '../input/helpers';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
 import { getCommandCursorStyle, type CommandCursorKind } from '../input/CommandCursors';
+import {
+  getFactoryProductionPresetSlot,
+  setFactoryProductionPresetSlot,
+} from '../input/factoryProductionPresets';
 import { isBuildInProgress } from '../sim/buildableHelpers';
 import { getSelectedBuilderAllowedBuildBlueprintIds } from '../sim/builderBuildRoster';
 import { isCommander } from '../sim/combat/combatUtils';
@@ -247,6 +251,8 @@ export class Input3DManager {
       togglePingMode: () => this.togglePingMode(),
       toggleDGunMode: () => this.toggleDGunMode(),
       enqueueScanAtCursor: () => this.enqueueScanAtCursor(),
+      loadFactoryProductionPreset: (index) => this.loadFactoryProductionPreset(index),
+      saveFactoryProductionPreset: (index) => this.saveFactoryProductionPreset(index),
       selectActiveCommander: (additive) => this.selectActiveCommander(additive),
       selectAllOwnedUnits: () => this.selectAllOwnedUnits(),
       selectAllMatching: () => this.selectAllMatching(),
@@ -984,6 +990,48 @@ export class Input3DManager {
 
   private getSelectedBuilderAllowedBuildBlueprintIds(): readonly StructureBlueprintId[] {
     return getSelectedBuilderAllowedBuildBlueprintIds(this.entitySource.getSelectedUnits());
+  }
+
+  private getSelectedFactory(): Entity | null {
+    const selectedStatic = this.entitySource.getSelectedBuildings();
+    for (let i = 0; i < selectedStatic.length; i++) {
+      const entity = selectedStatic[i];
+      if (
+        entity.factory !== null
+        && entity.ownership?.playerId === this.context.activePlayerId
+      ) {
+        return entity;
+      }
+    }
+    return null;
+  }
+
+  private loadFactoryProductionPreset(index: number): void {
+    const factory = this.getSelectedFactory();
+    if (factory === null) return;
+    const unitBlueprintId = getFactoryProductionPresetSlot(index);
+    const tick = this.context.getTick();
+    if (unitBlueprintId === null) {
+      this.localCommandQueue.enqueue({
+        type: 'stopFactoryProduction',
+        tick,
+        factoryId: factory.id,
+      });
+      return;
+    }
+    this.localCommandQueue.enqueue({
+      type: 'queueUnit',
+      tick,
+      factoryId: factory.id,
+      unitBlueprintId,
+    });
+  }
+
+  private saveFactoryProductionPreset(index: number): void {
+    const factory = this.getSelectedFactory();
+    const unitBlueprintId = factory?.factory?.selectedUnitBlueprintId ?? null;
+    if (unitBlueprintId === null) return;
+    setFactoryProductionPresetSlot(index, unitBlueprintId);
   }
 
   private applyCursor(kind: CommandCursorKind): void {

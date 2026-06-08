@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { COLORS, WAYPOINT_COLOR_CSS } from '@/colorsConfig';
 import type { WaypointType } from '../game/sim/types';
 import {
@@ -11,6 +11,14 @@ import {
   type CommandHotkeyId,
   type CommandHotkeyPresetId,
 } from '../game/input/commandHotkeys';
+import {
+  FACTORY_PRODUCTION_PRESET_COUNT,
+  FACTORY_PRODUCTION_PRESET_STORAGE_KEY,
+  FACTORY_PRODUCTION_PRESETS_CHANGED_EVENT,
+  getFactoryProductionPresetSlot,
+  loadFactoryProductionPresetSlots,
+  setFactoryProductionPresetSlot,
+} from '../game/input/factoryProductionPresets';
 
 export type { FactorySelectionItem, SelectionInfo, SelectionActions } from '@/types/ui';
 import type {
@@ -124,6 +132,7 @@ const selectedBuildUnitBlueprintId = computed(() =>
 const hasFactoryProduction = computed(() =>
   selectedBuildUnitBlueprintId.value !== null || props.selection.factoryIsProducing === true,
 );
+const hasFactoryPresetToSave = computed(() => selectedBuildUnitBlueprintId.value !== null);
 const showCancelHint = computed(() =>
   props.selection.isBuildMode
   || props.selection.isDGunMode
@@ -202,30 +211,47 @@ const unitOptions = unitRosterDisplay;
 const vehicleOptions = unitOptions.filter((unit) => unit.locomotion !== 'legs');
 const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 
-const FACTORY_PRESET_STORAGE_KEY = 'budget-annihilation.factoryPresets.v1';
-const FACTORY_PRESET_COUNT = 4;
+const FACTORY_PRESET_LOAD_COMMAND_IDS = [
+  'factoryPreset.load1',
+  'factoryPreset.load2',
+  'factoryPreset.load3',
+  'factoryPreset.load4',
+] as const satisfies readonly CommandHotkeyId[];
+const FACTORY_PRESET_SAVE_COMMAND_IDS = [
+  'factoryPreset.save1',
+  'factoryPreset.save2',
+  'factoryPreset.save3',
+  'factoryPreset.save4',
+] as const satisfies readonly CommandHotkeyId[];
 
-function loadFactoryPresetSlots(): (string | null)[] {
-  if (typeof window === 'undefined') return Array.from({ length: FACTORY_PRESET_COUNT }, () => null);
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(FACTORY_PRESET_STORAGE_KEY) ?? '[]');
-    return Array.from({ length: FACTORY_PRESET_COUNT }, (_, index) => {
-      const value = Array.isArray(parsed) ? parsed[index] : null;
-      return typeof value === 'string' && value.length > 0 ? value : null;
-    });
-  } catch {
-    return Array.from({ length: FACTORY_PRESET_COUNT }, () => null);
-  }
+const factoryPresetSlots = ref<(string | null)[]>(loadFactoryProductionPresetSlots());
+
+function refreshFactoryPresetSlots(): void {
+  factoryPresetSlots.value = loadFactoryProductionPresetSlots();
 }
 
-const factoryPresetSlots = ref<(string | null)[]>(loadFactoryPresetSlots());
+function onFactoryPresetStorageChanged(event: StorageEvent): void {
+  if (event.key === FACTORY_PRODUCTION_PRESET_STORAGE_KEY) refreshFactoryPresetSlots();
+}
 
-function saveFactoryPresetSlots(): void {
+onMounted(() => {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(
-    FACTORY_PRESET_STORAGE_KEY,
-    JSON.stringify(factoryPresetSlots.value),
-  );
+  window.addEventListener(FACTORY_PRODUCTION_PRESETS_CHANGED_EVENT, refreshFactoryPresetSlots);
+  window.addEventListener('storage', onFactoryPresetStorageChanged);
+});
+
+onUnmounted(() => {
+  if (typeof window === 'undefined') return;
+  window.removeEventListener(FACTORY_PRODUCTION_PRESETS_CHANGED_EVENT, refreshFactoryPresetSlots);
+  window.removeEventListener('storage', onFactoryPresetStorageChanged);
+});
+
+function factoryPresetLoadCommandId(index: number): CommandHotkeyId {
+  return FACTORY_PRESET_LOAD_COMMAND_IDS[index] ?? 'factoryPreset.load1';
+}
+
+function factoryPresetSaveCommandId(index: number): CommandHotkeyId {
+  return FACTORY_PRESET_SAVE_COMMAND_IDS[index] ?? 'factoryPreset.save1';
 }
 
 function factoryPresetShortName(unitBlueprintId: string | null): string {
@@ -242,19 +268,33 @@ function factoryPresetTitle(index: number): string {
   return `Factory preset ${index + 1}: ${label}`;
 }
 
+function factoryPresetActionTitle(index: number, commandId: CommandHotkeyId, action: string): string {
+  const key = hotkey(commandId);
+  const hotkeyText = key === '' ? '' : ` - Hotkey ${key}`;
+  return `${factoryPresetTitle(index)} - ${action}${hotkeyText}`;
+}
+
+function factoryPresetLoadKey(index: number): string {
+  return hotkey(factoryPresetLoadCommandId(index));
+}
+
+function factoryPresetSaveKey(index: number): string {
+  return hotkey(factoryPresetSaveCommandId(index));
+}
+
 function saveFactoryPreset(index: number): void {
-  if (index < 0 || index >= FACTORY_PRESET_COUNT) return;
-  const next = factoryPresetSlots.value.slice();
-  next[index] = selectedBuildUnitBlueprintId.value;
-  factoryPresetSlots.value = next;
-  saveFactoryPresetSlots();
+  if (index < 0 || index >= FACTORY_PRODUCTION_PRESET_COUNT) return;
+  const unitBlueprintId = selectedBuildUnitBlueprintId.value;
+  if (unitBlueprintId === null) return;
+  setFactoryProductionPresetSlot(index, unitBlueprintId);
+  refreshFactoryPresetSlots();
 }
 
 function loadFactoryPreset(index: number): void {
-  if (index < 0 || index >= FACTORY_PRESET_COUNT) return;
+  if (index < 0 || index >= FACTORY_PRODUCTION_PRESET_COUNT) return;
   const factoryId = props.selection.factoryId;
   if (factoryId === undefined) return;
-  const unitBlueprintId = factoryPresetSlots.value[index] ?? null;
+  const unitBlueprintId = getFactoryProductionPresetSlot(index);
   if (unitBlueprintId === null) {
     props.actions.stopFactoryProduction(factoryId);
     return;
@@ -732,23 +772,24 @@ function loadFactoryPreset(index: number): void {
           :class="{ active: factoryPresetSlots[index] === selectedBuildUnitBlueprintId && factoryPresetSlots[index] !== null }"
           :disabled="factoryPresetSlots[index] === null && !hasFactoryProduction"
           :style="{ '--btn-color': BUTTON_COLORS.vehicleProduce }"
-          :title="`${factoryPresetTitle(index)} - Load`"
+          :title="factoryPresetActionTitle(index, factoryPresetLoadCommandId(index), 'Load')"
           @click="loadFactoryPreset(index)"
         >
           <span class="btn-label">P{{ index + 1 }}</span>
-          <span class="btn-key">{{ factoryPresetShortName(factoryPresetSlots[index]) }}</span>
+          <span class="btn-key">{{ factoryPresetLoadKey(index) }} / {{ factoryPresetShortName(factoryPresetSlots[index]) }}</span>
         </button>
         <button
           v-for="(_, index) in factoryPresetSlots"
           :key="`save-${index}`"
           type="button"
           class="action-btn factory-preset-btn save"
-          :disabled="!hasFactoryProduction"
+          :disabled="!hasFactoryPresetToSave"
           :style="{ '--btn-color': BUTTON_COLORS.botProduce }"
-          :title="`${factoryPresetTitle(index)} - Save current`"
+          :title="factoryPresetActionTitle(index, factoryPresetSaveCommandId(index), 'Save current')"
           @click="saveFactoryPreset(index)"
         >
           <span class="btn-label">S{{ index + 1 }}</span>
+          <span class="btn-key">{{ factoryPresetSaveKey(index) }}</span>
         </button>
       </div>
     </div>
