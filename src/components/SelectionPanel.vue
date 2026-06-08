@@ -219,9 +219,59 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
       </div>
     </div>
 
-    <div v-if="selectOnlyOptions.length > 0" class="button-group">
+    <div class="button-group">
       <div class="group-label">Select</div>
       <div class="buttons">
+        <button
+          type="button"
+          class="action-btn"
+          :style="{ '--btn-color': BUTTON_COLORS.groupAccent }"
+          :title="actionTitle('Select all units', 'select.allUnits')"
+          @click="actions.selectAllOwnedUnits()"
+        >
+          <span class="btn-label">All</span>
+          <span class="btn-key">{{ commandHotkeyLabel('select.allUnits') }}</span>
+        </button>
+        <button
+          type="button"
+          class="action-btn"
+          :style="{ '--btn-color': BUTTON_COLORS.groupAccent }"
+          :title="actionTitle('Select all matching', 'select.matching')"
+          @click="actions.selectAllMatching()"
+        >
+          <span class="btn-label">Match</span>
+          <span class="btn-key">{{ commandHotkeyLabel('select.matching') }}</span>
+        </button>
+        <button
+          type="button"
+          class="action-btn"
+          :style="{ '--btn-color': BUTTON_COLORS.groupAccent }"
+          :title="actionTitle('Select same type only', 'select.sameTypeOnly')"
+          @click="actions.selectSameTypeOnly()"
+        >
+          <span class="btn-label">Same</span>
+          <span class="btn-key">{{ commandHotkeyLabel('select.sameTypeOnly') }}</span>
+        </button>
+        <button
+          type="button"
+          class="action-btn"
+          :style="{ '--btn-color': BUTTON_COLORS.groupAccent }"
+          :title="actionTitle('Select idle builders', 'select.idleBuilders')"
+          @click="actions.selectIdleBuilders()"
+        >
+          <span class="btn-label">Idle</span>
+          <span class="btn-key">{{ commandHotkeyLabel('select.idleBuilders') }}</span>
+        </button>
+        <button
+          type="button"
+          class="action-btn"
+          :style="{ '--btn-color': BUTTON_COLORS.groupAccent }"
+          :title="actionTitle('Select waiting units', 'select.waitingUnits')"
+          @click="actions.selectWaitingUnits()"
+        >
+          <span class="btn-label">Waiting</span>
+          <span class="btn-key">{{ commandHotkeyLabel('select.waitingUnits') }}</span>
+        </button>
         <button
           v-for="option in selectOnlyOptions"
           :key="option.entityType"

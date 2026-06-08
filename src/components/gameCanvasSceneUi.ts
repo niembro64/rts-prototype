@@ -215,6 +215,21 @@ export function useGameCanvasSceneUi({
     selectOnlyEntityType: (entityType) => {
       getActiveBattleScene()?.selectOnlyEntityType(entityType);
     },
+    selectAllOwnedUnits: () => {
+      getActiveBattleScene()?.selectAllOwnedUnits();
+    },
+    selectAllMatching: () => {
+      getActiveBattleScene()?.selectAllMatching();
+    },
+    selectIdleBuilders: () => {
+      getActiveBattleScene()?.selectIdleBuilders();
+    },
+    selectWaitingUnits: () => {
+      getActiveBattleScene()?.selectWaitingUnits();
+    },
+    selectSameTypeOnly: () => {
+      getActiveBattleScene()?.selectSameTypeOnly();
+    },
     setTowerTargetMode: () => {
       getActiveBattleScene()?.toggleTowerTargetMode();
     },

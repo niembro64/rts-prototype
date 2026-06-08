@@ -805,6 +805,26 @@ export class RtsScene3D {
     this.inputManager?.selectOnlyEntityType(entityType);
   }
 
+  public selectAllOwnedUnits(): void {
+    this.inputManager?.selectAllOwnedUnits();
+  }
+
+  public selectAllMatching(): void {
+    this.inputManager?.selectAllMatching();
+  }
+
+  public selectIdleBuilders(): void {
+    this.inputManager?.selectIdleBuilders();
+  }
+
+  public selectWaitingUnits(): void {
+    this.inputManager?.selectWaitingUnits();
+  }
+
+  public selectSameTypeOnly(): void {
+    this.inputManager?.selectSameTypeOnly();
+  }
+
   public toggleTowerTargetMode(): void {
     this.inputManager?.toggleTowerTargetMode();
   }

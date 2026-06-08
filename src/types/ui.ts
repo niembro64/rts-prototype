@@ -88,6 +88,11 @@ export type SelectionActions = {
   selfDestructSelected: () => void;
   /** Narrow a mixed selection to one entity type. */
   selectOnlyEntityType: (entityType: SelectionEntityType) => void;
+  selectAllOwnedUnits: () => void;
+  selectAllMatching: () => void;
+  selectIdleBuilders: () => void;
+  selectWaitingUnits: () => void;
+  selectSameTypeOnly: () => void;
   /** Enter click-pick mode for setting the host lock-on target on the
    *  selected towers. Right-click / Esc cancels. */
   setTowerTargetMode: () => void;

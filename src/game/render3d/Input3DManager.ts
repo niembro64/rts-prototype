@@ -215,6 +215,11 @@ export class Input3DManager {
       toggleDGunMode: () => this.toggleDGunMode(),
       enqueueScanAtCursor: () => this.enqueueScanAtCursor(),
       selectActiveCommander: (additive) => this.selectActiveCommander(additive),
+      selectAllOwnedUnits: () => this.selectAllOwnedUnits(),
+      selectAllMatching: () => this.selectAllMatching(),
+      selectIdleBuilders: () => this.selectIdleBuilders(),
+      selectWaitingUnits: () => this.selectWaitingUnits(),
+      selectSameTypeOnly: () => this.selectSameTypeOnly(),
       isRepairAreaMode: () => this.repairAreaMode,
       isAttackAreaMode: () => this.attackAreaMode,
       isAttackGroundMode: () => this.attackGroundMode,
@@ -415,6 +420,97 @@ export class Input3DManager {
     this.selectedCommands.selfDestruct();
   }
 
+  selectAllOwnedUnits(): void {
+    const entityIds: EntityId[] = [];
+    const units = this.entitySource.getUnitsByPlayer(this.context.activePlayerId);
+    for (let i = 0; i < units.length; i++) {
+      if (this.isSelectableByActivePlayer(units[i])) entityIds.push(units[i].id);
+    }
+    this.enqueueSelection(entityIds, false);
+  }
+
+  selectAllMatching(): void {
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    const selectedStatic = this.entitySource.getSelectedBuildings();
+    if (selectedUnits.length === 0 && selectedStatic.length === 0) return;
+
+    const unitBlueprintIds = new Set<string>();
+    const structureBlueprintIds = new Set<string>();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      const unitBlueprintId = selectedUnits[i].unit?.unitBlueprintId;
+      if (unitBlueprintId) unitBlueprintIds.add(unitBlueprintId);
+    }
+    for (let i = 0; i < selectedStatic.length; i++) {
+      const buildingBlueprintId = selectedStatic[i].buildingBlueprintId;
+      if (buildingBlueprintId) structureBlueprintIds.add(buildingBlueprintId);
+    }
+
+    const entityIds: EntityId[] = [];
+    const units = this.entitySource.getUnitsByPlayer(this.context.activePlayerId);
+    for (let i = 0; i < units.length; i++) {
+      const unit = units[i];
+      if (!this.isSelectableByActivePlayer(unit)) continue;
+      const unitBlueprintId = unit.unit?.unitBlueprintId;
+      if (unitBlueprintId && unitBlueprintIds.has(unitBlueprintId)) entityIds.push(unit.id);
+    }
+
+    const buildings = this.entitySource.getBuildingsByPlayer(this.context.activePlayerId);
+    for (let i = 0; i < buildings.length; i++) {
+      const building = buildings[i];
+      if (!this.isSelectableByActivePlayer(building)) continue;
+      const buildingBlueprintId = building.buildingBlueprintId;
+      if (buildingBlueprintId && structureBlueprintIds.has(buildingBlueprintId)) {
+        entityIds.push(building.id);
+      }
+    }
+    this.enqueueSelection(entityIds, false);
+  }
+
+  selectIdleBuilders(): void {
+    const entityIds: EntityId[] = [];
+    const units = this.entitySource.getUnitsByPlayer(this.context.activePlayerId);
+    for (let i = 0; i < units.length; i++) {
+      const unit = units[i];
+      if (!this.isSelectableByActivePlayer(unit)) continue;
+      if (unit.builder === null || unit.unit === null) continue;
+      if (unit.unit.actions.length === 0) entityIds.push(unit.id);
+    }
+    this.enqueueSelection(entityIds, false);
+  }
+
+  selectWaitingUnits(): void {
+    const entityIds: EntityId[] = [];
+    const units = this.entitySource.getUnitsByPlayer(this.context.activePlayerId);
+    for (let i = 0; i < units.length; i++) {
+      const unit = units[i];
+      if (!this.isSelectableByActivePlayer(unit)) continue;
+      if (unit.unit?.actions[0]?.type === 'wait') entityIds.push(unit.id);
+    }
+    this.enqueueSelection(entityIds, false);
+  }
+
+  selectSameTypeOnly(): void {
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    if (selectedUnits.length > 0) {
+      const unitBlueprintId = selectedUnits[0].unit?.unitBlueprintId;
+      if (!unitBlueprintId) return;
+      const entityIds = selectedUnits
+        .filter((unit) => unit.unit?.unitBlueprintId === unitBlueprintId)
+        .map((unit) => unit.id);
+      this.enqueueSelection(entityIds, false);
+      return;
+    }
+
+    const selectedStatic = this.entitySource.getSelectedBuildings();
+    if (selectedStatic.length === 0) return;
+    const buildingBlueprintId = selectedStatic[0].buildingBlueprintId;
+    if (!buildingBlueprintId) return;
+    const entityIds = selectedStatic
+      .filter((building) => building.buildingBlueprintId === buildingBlueprintId)
+      .map((building) => building.id);
+    this.enqueueSelection(entityIds, false);
+  }
+
   selectOnlyEntityType(entityType: 'unit' | 'tower' | 'building'): void {
     const entityIds: EntityId[] = [];
     if (entityType === 'unit') {
@@ -430,12 +526,7 @@ export class Input3DManager {
       }
     }
     if (entityIds.length === 0) return;
-    this.localCommandQueue.enqueue({
-      type: 'select',
-      tick: this.context.getTick(),
-      entityIds,
-      additive: false,
-    });
+    this.enqueueSelection(entityIds, false);
   }
 
   toggleAttackAreaMode(): void {
@@ -767,6 +858,16 @@ export class Input3DManager {
       type: 'select',
       tick: this.context.getTick(),
       entityIds: [commander.id],
+      additive,
+    });
+  }
+
+  private enqueueSelection(entityIds: EntityId[], additive: boolean): void {
+    if (entityIds.length === 0) return;
+    this.localCommandQueue.enqueue({
+      type: 'select',
+      tick: this.context.getTick(),
+      entityIds,
       additive,
     });
   }

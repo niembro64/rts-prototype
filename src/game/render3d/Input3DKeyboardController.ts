@@ -40,6 +40,11 @@ type Input3DKeyboardControllerConfig = {
   toggleDGunMode: () => void;
   enqueueScanAtCursor: () => void;
   selectActiveCommander: (additive: boolean) => void;
+  selectAllOwnedUnits: () => void;
+  selectAllMatching: () => void;
+  selectIdleBuilders: () => void;
+  selectWaitingUnits: () => void;
+  selectSameTypeOnly: () => void;
   isRepairAreaMode: () => boolean;
   isAttackAreaMode: () => boolean;
   isAttackGroundMode: () => boolean;
@@ -204,6 +209,21 @@ export class Input3DKeyboardController {
         break;
       case 'command.selectCommander':
         this.config.selectActiveCommander(e.shiftKey);
+        break;
+      case 'select.allUnits':
+        this.config.selectAllOwnedUnits();
+        break;
+      case 'select.matching':
+        this.config.selectAllMatching();
+        break;
+      case 'select.idleBuilders':
+        this.config.selectIdleBuilders();
+        break;
+      case 'select.waitingUnits':
+        this.config.selectWaitingUnits();
+        break;
+      case 'select.sameTypeOnly':
+        this.config.selectSameTypeOnly();
         break;
     }
   }

@@ -13,6 +13,11 @@ export type CommandHotkeyId =
   | 'command.buildCycle'
   | 'command.dgun'
   | 'command.selectCommander'
+  | 'select.allUnits'
+  | 'select.matching'
+  | 'select.idleBuilders'
+  | 'select.waitingUnits'
+  | 'select.sameTypeOnly'
   | 'combat.attackArea'
   | 'combat.attackGround'
   | 'combat.guard'
@@ -58,6 +63,11 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'command.buildCycle',
   'command.dgun',
   'command.selectCommander',
+  'select.allUnits',
+  'select.matching',
+  'select.idleBuilders',
+  'select.waitingUnits',
+  'select.sameTypeOnly',
   'combat.attackArea',
   'combat.attackGround',
   'combat.guard',
@@ -108,6 +118,11 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<CommandHotkeyPresetId, Comm
     'command.buildCycle': [key('B', 'b', { shift: 'any' })],
     'command.dgun': [key('D', 'd', { shift: 'any' })],
     'command.selectCommander': [key('Tab', 'tab', { shift: 'any' })],
+    'select.allUnits': [key('Ctrl+A', 'a', { ctrl: true })],
+    'select.matching': [key('Ctrl+Z', 'z', { ctrl: true })],
+    'select.idleBuilders': [key('Ctrl+B', 'b', { ctrl: true })],
+    'select.waitingUnits': [key('Ctrl+Y', 'y', { ctrl: true })],
+    'select.sameTypeOnly': [key('Alt+Z', 'z', { alt: true })],
     'combat.attackArea': [key('A', 'a', { shift: 'any' })],
     'combat.attackGround': [key('T', 't', { shift: 'any' })],
     'combat.guard': [key('G', 'g', { shift: 'any' })],
@@ -147,6 +162,11 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<CommandHotkeyPresetId, Comm
       key('Tab', 'tab'),
       key('Shift+Tab', 'tab', { shift: true }),
     ],
+    'select.allUnits': [code('Ctrl+E', 'KeyE', { ctrl: true })],
+    'select.matching': [code('Ctrl+W', 'KeyW', { ctrl: true })],
+    'select.idleBuilders': [key('Ctrl+Tab', 'tab', { ctrl: true })],
+    'select.waitingUnits': [code('Ctrl+Y', 'KeyY', { ctrl: true })],
+    'select.sameTypeOnly': [code('Q', 'KeyQ', { shift: 'any' })],
     'combat.attackArea': [code('Ctrl+A', 'KeyA', { ctrl: true, shift: 'any' })],
     'combat.attackGround': [code('A', 'KeyA', { shift: 'any' })],
     'combat.guard': [code('O', 'KeyO', { shift: 'any' })],
@@ -174,6 +194,11 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<CommandHotkeyPresetId, Comm
       code('Ctrl+C', 'KeyC', { ctrl: true, shift: 'any' }),
       key('Tab', 'tab', { shift: 'any' }),
     ],
+    'select.allUnits': [code('Ctrl+A', 'KeyA', { ctrl: true })],
+    'select.matching': [code('Ctrl+Z', 'KeyZ', { ctrl: true })],
+    'select.idleBuilders': [code('Ctrl+B', 'KeyB', { ctrl: true })],
+    'select.waitingUnits': [code('Ctrl+Y', 'KeyY', { ctrl: true })],
+    'select.sameTypeOnly': [code('Ctrl+X', 'KeyX', { ctrl: true })],
     'combat.attackArea': [code('Alt+A', 'KeyA', { alt: true, shift: 'any' })],
     'combat.attackGround': [code('A', 'KeyA', { shift: 'any' })],
     'combat.guard': [code('G', 'KeyG', { shift: 'any' })],
