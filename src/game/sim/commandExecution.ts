@@ -528,9 +528,11 @@ export function buildMassAwareGroupFormationSlots(units: readonly Entity[]): Gro
   }));
 }
 
-function unitFormationSpeed(entity: Entity): number {
+function unitFormationAcceleration(entity: Entity): number {
   const locomotion = entity.unit?.locomotion;
   if (locomotion === undefined) return 0;
+  // Locomotion driveForce is authored as acceleration-like movement
+  // authority; the force system scales it by mass before integration.
   return locomotion.driveForce * locomotion.traction;
 }
 
@@ -538,22 +540,28 @@ function computeSlowestFormationSpeedFactors(
   world: WorldState,
   entityIds: readonly EntityId[],
 ): Map<EntityId, number> | null {
-  let slowest = Number.POSITIVE_INFINITY;
+  let slowestAcceleration = Number.POSITIVE_INFINITY;
   for (let i = 0; i < entityIds.length; i++) {
     const entity = world.getEntity(entityIds[i]);
     if (entity === undefined || entity.type !== 'unit' || entity.unit === null) continue;
-    const speed = unitFormationSpeed(entity);
-    if (Number.isFinite(speed) && speed > 0 && speed < slowest) slowest = speed;
+    const acceleration = unitFormationAcceleration(entity);
+    if (
+      Number.isFinite(acceleration) &&
+      acceleration > 0 &&
+      acceleration < slowestAcceleration
+    ) {
+      slowestAcceleration = acceleration;
+    }
   }
-  if (!Number.isFinite(slowest) || slowest <= 0) return null;
+  if (!Number.isFinite(slowestAcceleration) || slowestAcceleration <= 0) return null;
 
   let factors: Map<EntityId, number> | null = null;
   for (let i = 0; i < entityIds.length; i++) {
     const entity = world.getEntity(entityIds[i]);
     if (entity === undefined || entity.type !== 'unit' || entity.unit === null) continue;
-    const speed = unitFormationSpeed(entity);
-    if (!Number.isFinite(speed) || speed <= slowest) continue;
-    const factor = slowest / speed;
+    const acceleration = unitFormationAcceleration(entity);
+    if (!Number.isFinite(acceleration) || acceleration <= slowestAcceleration) continue;
+    const factor = slowestAcceleration / acceleration;
     if (factor >= 0.999) continue;
     if (factors === null) factors = new Map<EntityId, number>();
     factors.set(entity.id, factor);

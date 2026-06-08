@@ -32,8 +32,8 @@ BAR grid/legacy bindings and adding command buttons for missing BAR commands so
 visible hotkeys match the active keymap across the whole command surface.
 
 Issue: formation commands are incomplete. Translate remaining formation
-behavior to the 3D physics model so formation targets respect acceleration
-and dynamic collision-aware spacing at scale.
+behavior to the 3D physics model so formation targets respect dynamic
+collision-aware spacing at scale.
 
 Issue: construction commands are missing BAR build ergonomics. Implement
 remaining construction shortcuts, remaining BAR fallback behavior, and visual
@@ -73,8 +73,8 @@ weapons, factory queue management, mex upgrade workflows, replays where
 applicable, and complete faction/unit/factory/building rosters.
 
 Issue: BAR parity must be extended through the 3D/physics-first design, not
-implemented as flat 2D shortcuts. Formations need acceleration and dynamic
-collision spacing; transport/load/unload,
+implemented as flat 2D shortcuts. Formations need dynamic collision spacing;
+transport/load/unload,
 resurrection, capture, and manual launch/special-fire abilities beyond
 commander DGun need physical presentation and authoritative physics
 interactions.
