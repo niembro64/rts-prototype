@@ -1130,14 +1130,19 @@ function executeRepairAreaCommand(ctx: CommandContext, command: RepairAreaComman
   ) return;
 
   const radius = clampRepairAreaRadius(command.radius);
-  const target = findRepairAreaTarget(
+  const targets = findRepairAreaTargets(
     ctx,
     commander,
     command.targetX,
     command.targetY,
     radius,
   );
-  enqueueRepairAction(ctx, commander, target, command.queue, commandQueuesInFront(command));
+  enqueueAreaTargetActionsInOrder(
+    targets,
+    command.queue,
+    commandQueuesInFront(command),
+    (target, queue, queueFront) => enqueueRepairAction(ctx, commander, target, queue, queueFront),
+  );
 }
 
 function executeReclaimCommand(ctx: CommandContext, command: ReclaimCommand): void {
@@ -1156,14 +1161,19 @@ function executeReclaimAreaCommand(ctx: CommandContext, command: ReclaimAreaComm
   ) return;
 
   const radius = clampReclaimAreaRadius(command.radius);
-  const target = findReclaimAreaTarget(
+  const targets = findReclaimAreaTargets(
     ctx,
     commander,
     command.targetX,
     command.targetY,
     radius,
   );
-  enqueueReclaimAction(ctx, commander, target, command.queue, commandQueuesInFront(command));
+  enqueueAreaTargetActionsInOrder(
+    targets,
+    command.queue,
+    commandQueuesInFront(command),
+    (target, queue, queueFront) => enqueueReclaimAction(ctx, commander, target, queue, queueFront),
+  );
 }
 
 function clampRepairAreaRadius(radius: number): number {
@@ -1202,59 +1212,82 @@ function entityAreaDistanceSq(target: Entity, x: number, y: number): number {
   return dx * dx + dy * dy;
 }
 
-function findRepairAreaTarget(
-  ctx: CommandContext,
-  commander: Entity,
-  x: number,
-  y: number,
-  radius: number,
-): Entity | undefined {
-  const radiusSq = radius * radius;
-  let bestTarget: Entity | undefined;
-  let bestDistanceSq = Infinity;
+type AreaTarget = {
+  entity: Entity;
+  distanceSq: number;
+};
 
-  const buildings = ctx.world.getBuildings();
-  for (let i = 0; i < buildings.length; i++) {
-    const target = buildings[i];
-    if (!isRepairableByCommander(commander, target)) continue;
-    const distSq = entityAreaDistanceSq(target, x, y);
-    if (distSq > radiusSq || distSq >= bestDistanceSq) continue;
-    bestDistanceSq = distSq;
-    bestTarget = target;
-  }
-
-  const units = ctx.world.getUnits();
-  for (let i = 0; i < units.length; i++) {
-    const target = units[i];
-    if (!isRepairableByCommander(commander, target)) continue;
-    const distSq = entityAreaDistanceSq(target, x, y);
-    if (distSq > radiusSq || distSq >= bestDistanceSq) continue;
-    bestDistanceSq = distSq;
-    bestTarget = target;
-  }
-
-  return bestTarget;
+function compareAreaTargets(a: AreaTarget, b: AreaTarget): number {
+  return a.distanceSq - b.distanceSq || a.entity.id - b.entity.id;
 }
 
-function findReclaimAreaTarget(
+function enqueueAreaTargetActionsInOrder(
+  targets: readonly Entity[],
+  queue: boolean,
+  queueFront: boolean,
+  enqueue: (target: Entity, queue: boolean, queueFront: boolean) => void,
+): void {
+  if (targets.length === 0) return;
+  if (queueFront) {
+    for (let i = targets.length - 1; i >= 0; i--) {
+      enqueue(targets[i], true, true);
+    }
+    return;
+  }
+  for (let i = 0; i < targets.length; i++) {
+    enqueue(targets[i], queue || i > 0, false);
+  }
+}
+
+function findRepairAreaTargets(
   ctx: CommandContext,
   commander: Entity,
   x: number,
   y: number,
   radius: number,
-): Entity | undefined {
+): Entity[] {
   const radiusSq = radius * radius;
-  let bestTarget: Entity | undefined;
-  let bestDistanceSq = Infinity;
+  const targets: AreaTarget[] = [];
+
+  const buildings = ctx.world.getBuildings();
+  for (let i = 0; i < buildings.length; i++) {
+    const target = buildings[i];
+    if (!isRepairableByCommander(commander, target)) continue;
+    const distSq = entityAreaDistanceSq(target, x, y);
+    if (distSq > radiusSq) continue;
+    targets.push({ entity: target, distanceSq: distSq });
+  }
+
+  const units = ctx.world.getUnits();
+  for (let i = 0; i < units.length; i++) {
+    const target = units[i];
+    if (!isRepairableByCommander(commander, target)) continue;
+    const distSq = entityAreaDistanceSq(target, x, y);
+    if (distSq > radiusSq) continue;
+    targets.push({ entity: target, distanceSq: distSq });
+  }
+
+  targets.sort(compareAreaTargets);
+  return targets.map((target) => target.entity);
+}
+
+function findReclaimAreaTargets(
+  ctx: CommandContext,
+  commander: Entity,
+  x: number,
+  y: number,
+  radius: number,
+): Entity[] {
+  const radiusSq = radius * radius;
+  const targets: AreaTarget[] = [];
 
   const buildings = ctx.world.getBuildings();
   for (let i = 0; i < buildings.length; i++) {
     const target = buildings[i];
     if (target.id === commander.id || !isReclaimableTarget(target)) continue;
     const distSq = entityAreaDistanceSq(target, x, y);
-    if (distSq > radiusSq || distSq >= bestDistanceSq) continue;
-    bestDistanceSq = distSq;
-    bestTarget = target;
+    if (distSq > radiusSq) continue;
+    targets.push({ entity: target, distanceSq: distSq });
   }
 
   const units = ctx.world.getUnits();
@@ -1262,12 +1295,12 @@ function findReclaimAreaTarget(
     const target = units[i];
     if (target.id === commander.id || !isReclaimableTarget(target)) continue;
     const distSq = entityAreaDistanceSq(target, x, y);
-    if (distSq > radiusSq || distSq >= bestDistanceSq) continue;
-    bestDistanceSq = distSq;
-    bestTarget = target;
+    if (distSq > radiusSq) continue;
+    targets.push({ entity: target, distanceSq: distSq });
   }
 
-  return bestTarget;
+  targets.sort(compareAreaTargets);
+  return targets.map((target) => target.entity);
 }
 
 function enqueueRepairAction(

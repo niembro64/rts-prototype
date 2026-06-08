@@ -42,10 +42,11 @@ upgrade require an authored upgraded extractor blueprint, economy behavior,
 construction lifecycle, replacement rules, and render profile before exposing
 commands or buttons.
 
-Issue: queue editing and command insertion are incomplete. BAR supports
-commandinsert/prepend-between and queued variants of several orders. Implement
-the missing queue semantics with server authorization and matching visual
-feedback.
+Issue: queue editing and command insertion are incomplete. Area repair/reclaim
+commands now enqueue every valid target in radius with stable front-insertion
+ordering, but BAR also supports commandinsert/prepend-between and queued
+variants of several orders. Implement the remaining queue semantics with server
+authorization and matching visual feedback.
 
 Issue: behavior/state toggles are incomplete. BAR exposes cloak/want-cloak,
 gather wait, on/off, stateful on/off, stance/fire state, richer

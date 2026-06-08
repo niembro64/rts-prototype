@@ -1,8 +1,12 @@
 import { ConstructionSystem } from './construction';
 import {
   buildMassAwareGroupFormationSlots,
+  executeCommand,
   resolvePathableFormationTarget,
+  type CommandContext,
 } from './commandExecution';
+import type { Entity } from './types';
+import { setUnitActions } from './unitActions';
 import { WorldState } from './WorldState';
 
 function assertContract(condition: unknown, message: string): asserts condition {
@@ -15,6 +19,22 @@ function assertNear(actual: number, expected: number, message: string): void {
   if (Math.abs(actual - expected) > 1e-6) {
     throw new Error(
       `[command execution contract] ${message}: expected ${expected}, got ${actual}`,
+    );
+  }
+}
+
+function damageUnit(entity: Entity, damage = 10): Entity {
+  assertContract(entity.unit !== null, 'test target must be a unit');
+  entity.unit.hp = Math.max(1, entity.unit.maxHp - damage);
+  return entity;
+}
+
+function assertActionTargetIds(actions: readonly { targetId?: number }[], expected: readonly number[], message: string): void {
+  assertContract(actions.length === expected.length, `${message}: expected ${expected.length} action(s), got ${actions.length}`);
+  for (let i = 0; i < expected.length; i++) {
+    assertContract(
+      actions[i].targetId === expected[i],
+      `${message}: action ${i} expected target ${expected[i]}, got ${actions[i].targetId ?? 'none'}`,
     );
   }
 }
@@ -94,5 +114,79 @@ export function runCommandExecutionContractTest(): void {
     snapped.z,
     world.getGroundZ(snapped.x, snapped.y),
     'snapped formation target z should follow snapped terrain',
+  );
+
+  const queueWorld = new WorldState(1, 512, 512);
+  const queueConstruction = new ConstructionSystem(queueWorld.mapWidth, queueWorld.mapHeight);
+  const queueCtx: CommandContext = {
+    world: queueWorld,
+    constructionSystem: queueConstruction,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  };
+  const commander = queueWorld.createUnitFromBlueprint(60, 100, 1, 'unitCommander', {
+    allocateSubEntityIds: false,
+  });
+  const near = damageUnit(queueWorld.createUnitFromBlueprint(104, 100, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  }));
+  const mid = damageUnit(queueWorld.createUnitFromBlueprint(122, 100, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  }));
+  const far = damageUnit(queueWorld.createUnitFromBlueprint(141, 100, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  }));
+  const healthyInside = queueWorld.createUnitFromBlueprint(110, 100, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  const outside = damageUnit(queueWorld.createUnitFromBlueprint(170, 100, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  }));
+  queueWorld.addEntity(commander);
+  queueWorld.addEntity(far);
+  queueWorld.addEntity(healthyInside);
+  queueWorld.addEntity(mid);
+  queueWorld.addEntity(outside);
+  queueWorld.addEntity(near);
+
+  executeCommand(queueCtx, {
+    type: 'repairArea',
+    tick: 1,
+    commanderId: commander.id,
+    targetX: 100,
+    targetY: 100,
+    radius: 50,
+    queue: false,
+  });
+  assertContract(commander.unit !== null, 'commander must have a unit component');
+  assertActionTargetIds(
+    commander.unit.actions,
+    [near.id, mid.id, far.id],
+    'repair-area command should enqueue all damaged targets by distance',
+  );
+
+  setUnitActions(commander.unit, [
+    { type: 'move', x: 80, y: 100 },
+    { type: 'wait', x: 82, y: 100 },
+  ]);
+  executeCommand(queueCtx, {
+    type: 'repairArea',
+    tick: 2,
+    commanderId: commander.id,
+    targetX: 100,
+    targetY: 100,
+    radius: 50,
+    queue: true,
+    queueFront: true,
+  });
+  assertActionTargetIds(
+    commander.unit.actions.slice(1, 4),
+    [near.id, mid.id, far.id],
+    'front-queued repair area should preserve nearest-to-farthest order',
+  );
+  assertContract(
+    commander.unit.actions[4].type === 'wait',
+    'front-queued repair area should preserve existing queued orders behind inserted targets',
   );
 }
