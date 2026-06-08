@@ -54,7 +54,7 @@ import { Input3DPicker } from './Input3DPicker';
 import { Input3DRightDragController, type Input3DLineDragState } from './Input3DRightDragController';
 import { Input3DModeClickController } from './Input3DModeClickController';
 import type { Input3DAreaDragState } from './Input3DAreaDragState';
-import type { BuildLineSpacingInfo } from './Input3DBuildPlacementState';
+import type { BuildFacingInfo, BuildLineSpacingInfo } from './Input3DBuildPlacementState';
 
 const SELECTABLE_GROUND_MIN_UNIT_RADIUS = 8;
 
@@ -102,6 +102,7 @@ export class Input3DManager {
   private mode = new CommanderModeController();
   public onBuildModeChange?: (buildingBlueprintId: BuildingBlueprintId | null) => void;
   public onBuildLineSpacingChange?: (spacing: BuildLineSpacingInfo) => void;
+  public onBuildFacingChange?: (facing: BuildFacingInfo) => void;
   public onDGunModeChange?: (active: boolean) => void;
   public onRepairAreaModeChange?: (active: boolean) => void;
   public onAttackModeChange?: (active: boolean) => void;
@@ -236,6 +237,8 @@ export class Input3DManager {
       exitSpecialModes: (includeTowerTarget) => this.exitSpecialModes(includeTowerTarget),
       increaseBuildLineSpacing: () => this.increaseBuildLineSpacing(),
       decreaseBuildLineSpacing: () => this.decreaseBuildLineSpacing(),
+      rotateBuildFacingClockwise: () => this.rotateBuildFacingClockwise(),
+      rotateBuildFacingCounterClockwise: () => this.rotateBuildFacingCounterClockwise(),
       stopSelectedUnits: () => this.stopSelectedUnits(),
       skipCurrentOrder: () => this.skipCurrentOrder(),
       removeLastQueuedOrder: () => this.removeLastQueuedOrder(),
@@ -322,6 +325,7 @@ export class Input3DManager {
       this.refreshCursor();
       this.onBuildModeChange?.(buildingBlueprintId);
       this.onBuildLineSpacingChange?.(this.modeClicks.getBuildLineSpacingInfo());
+      this.onBuildFacingChange?.(this.modeClicks.getBuildFacingInfo());
     };
     this.mode.onDGunModeChange = (active) => {
       this.refreshCursor();
@@ -447,6 +451,10 @@ export class Input3DManager {
     return this.modeClicks.getBuildLineSpacingInfo();
   }
 
+  getBuildFacingInfo(): BuildFacingInfo {
+    return this.modeClicks.getBuildFacingInfo();
+  }
+
   increaseBuildLineSpacing(): void {
     if (!this.mode.isInBuildMode) return;
     const previousSteps = this.modeClicks.getBuildLineSpacingInfo().steps;
@@ -461,6 +469,18 @@ export class Input3DManager {
     const next = this.modeClicks.decreaseBuildLineSpacing();
     if (next.steps === previousSteps) return;
     this.onBuildLineSpacingChange?.(next);
+  }
+
+  rotateBuildFacingClockwise(): void {
+    if (!this.mode.isInBuildMode) return;
+    const next = this.modeClicks.rotateBuildFacingClockwise();
+    this.onBuildFacingChange?.(next);
+  }
+
+  rotateBuildFacingCounterClockwise(): void {
+    if (!this.mode.isInBuildMode) return;
+    const next = this.modeClicks.rotateBuildFacingCounterClockwise();
+    this.onBuildFacingChange?.(next);
   }
 
   /** Toggle D-gun mode from UI. Only enters if a commander is

@@ -517,7 +517,8 @@ function executeStartBuildCommand(ctx: CommandContext, command: StartBuildComman
     command.gridX,
     command.gridY,
     playerId,
-    command.builderId
+    command.builderId,
+    command.rotation ?? 0,
   );
 
   if (!building) {

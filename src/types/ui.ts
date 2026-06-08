@@ -73,6 +73,7 @@ export type SelectionInfo = {
   isBuildMode: boolean;
   selectedBuildingBlueprintId: string | null;
   buildLineSpacingMultiplier: number;
+  buildFacingDegrees: number;
   isDGunMode: boolean;
   isRepairAreaMode: boolean;
   isAttackMode: boolean;
@@ -133,6 +134,8 @@ export type SelectionActions = {
   cancelBuild: () => void;
   increaseBuildLineSpacing: () => void;
   decreaseBuildLineSpacing: () => void;
+  rotateBuildFacingClockwise: () => void;
+  rotateBuildFacingCounterClockwise: () => void;
   toggleDGun: () => void;
   toggleRepairArea: () => void;
   queueUnit: (factoryId: number, unitBlueprintId: string) => void;
@@ -216,6 +219,7 @@ export type UIInputState = {
   isBuildMode: boolean;
   selectedBuildingBlueprintId: string | null;
   buildLineSpacingMultiplier: number;
+  buildFacingDegrees: number;
   isDGunMode: boolean;
   isRepairAreaMode: boolean;
   isAttackMode: boolean;

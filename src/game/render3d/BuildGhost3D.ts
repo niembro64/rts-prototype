@@ -296,6 +296,7 @@ export class BuildGhost3D {
     builder: Entity | null,
     canPlace: boolean,
     diagnostics?: BuildPlacementDiagnostics,
+    rotation = 0,
   ): void {
     const snapped = getSnappedBuildPosition(worldX, worldY, buildingBlueprintId);
     const config = getBuildingConfig(buildingBlueprintId);
@@ -304,7 +305,7 @@ export class BuildGhost3D {
     const builderKey = builder?.builder
       ? `${builder.id}:${builder.transform.x}:${builder.transform.y}:${builder.transform.z}:${builder.builder.buildRange}`
       : 'none';
-    const targetKey = `${buildingBlueprintId}:${snapped.gridX}:${snapped.gridY}:${canPlace ? 1 : 0}:${builderKey}`;
+    const targetKey = `${buildingBlueprintId}:${snapped.gridX}:${snapped.gridY}:${canPlace ? 1 : 0}:${rotation}:${builderKey}`;
     if (
       this.group.visible &&
       targetKey === this.lastTargetKey &&
@@ -325,6 +326,7 @@ export class BuildGhost3D {
     const okVisually = canPlace;
     const targetGroundY = this.getGroundHeight(snapped.x, snapped.y);
     this.footprint.scale.set(width, depth, 1);
+    this.footprint.rotation.set(-Math.PI / 2, 0, -rotation);
     this.footprint.position.set(snapped.x, targetGroundY + GHOST_Y, snapped.y);
     this.footprint.material = okVisually ? this.footMatOk : this.footMatBad;
     const isExtractor = buildingBlueprintId === 'buildingExtractor';

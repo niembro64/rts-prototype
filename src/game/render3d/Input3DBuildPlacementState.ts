@@ -6,6 +6,7 @@ import {
 } from '../../metalDepositConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
+import { normalizeAngle } from '../math';
 import {
   getBuildingPlacementDiagnostics,
   getOccupiedBuildingCells,
@@ -25,6 +26,11 @@ export type BuildLineSpacingInfo = {
   multiplier: number;
 };
 
+export type BuildFacingInfo = {
+  rotation: number;
+  degrees: number;
+};
+
 type BuildPlacementEntitySource = {
   getBuildings: () => Entity[];
   getEntitySetVersion?: () => number;
@@ -34,6 +40,7 @@ type BuildPlacementEntitySource = {
 const BUILD_LINE_SPACING_STEP = 0.5;
 const BUILD_LINE_SPACING_MIN_STEPS = 0;
 const BUILD_LINE_SPACING_MAX_STEPS = 8;
+const BUILD_FACING_STEP_RAD = Math.PI / 2;
 
 export class Input3DBuildPlacementState {
   private mapWidth = Infinity;
@@ -43,6 +50,7 @@ export class Input3DBuildPlacementState {
   private occupancyVersion = '';
   private occupiedCells: ReadonlySet<string> | undefined;
   private buildLineSpacingSteps = 0;
+  private buildFacingRotation = 0;
 
   canPlace = false;
   diagnostics: BuildPlacementDiagnostics | undefined;
@@ -62,6 +70,14 @@ export class Input3DBuildPlacementState {
     };
   }
 
+  get facingInfo(): BuildFacingInfo {
+    const degrees = Math.round((this.buildFacingRotation * 180) / Math.PI);
+    return {
+      rotation: this.buildFacingRotation,
+      degrees: ((degrees % 360) + 360) % 360,
+    };
+  }
+
   increaseBuildLineSpacing(): BuildLineSpacingInfo {
     this.buildLineSpacingSteps = Math.min(
       BUILD_LINE_SPACING_MAX_STEPS,
@@ -76,6 +92,16 @@ export class Input3DBuildPlacementState {
       this.buildLineSpacingSteps - 1,
     );
     return this.spacingInfo;
+  }
+
+  rotateBuildFacingClockwise(): BuildFacingInfo {
+    this.buildFacingRotation = normalizeAngle(this.buildFacingRotation - BUILD_FACING_STEP_RAD);
+    return this.facingInfo;
+  }
+
+  rotateBuildFacingCounterClockwise(): BuildFacingInfo {
+    this.buildFacingRotation = normalizeAngle(this.buildFacingRotation + BUILD_FACING_STEP_RAD);
+    return this.facingInfo;
   }
 
   setMapBounds(

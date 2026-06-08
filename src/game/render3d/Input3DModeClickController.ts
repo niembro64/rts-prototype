@@ -19,6 +19,7 @@ import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import type { BuildGhost3D } from './BuildGhost3D';
 import {
   Input3DBuildPlacementState,
+  type BuildFacingInfo,
   type BuildLineSpacingInfo,
 } from './Input3DBuildPlacementState';
 import type { Input3DPicker } from './Input3DPicker';
@@ -44,6 +45,12 @@ type AreaDrag = {
   startClientY: number;
   queue: boolean;
   queueFront: boolean;
+};
+
+type BuildPreviewTarget = {
+  buildingBlueprintId: BuildingBlueprintId;
+  worldX: number;
+  worldY: number;
 };
 
 type ModeClickEntitySource = {
@@ -89,6 +96,7 @@ export class Input3DModeClickController {
   private buildGhost: BuildGhost3D | null = null;
   private areaDrag: AreaDrag | null = null;
   private areaHoverPreview: Input3DAreaDragState = EMPTY_AREA_DRAG_STATE;
+  private lastBuildPreviewTarget: BuildPreviewTarget | null = null;
 
   constructor(private readonly config: Input3DModeClickControllerConfig) {}
 
@@ -137,8 +145,25 @@ export class Input3DModeClickController {
     return this.buildPlacement.decreaseBuildLineSpacing();
   }
 
+  getBuildFacingInfo(): BuildFacingInfo {
+    return this.buildPlacement.facingInfo;
+  }
+
+  rotateBuildFacingClockwise(): BuildFacingInfo {
+    const next = this.buildPlacement.rotateBuildFacingClockwise();
+    this.refreshBuildPreviewFacing();
+    return next;
+  }
+
+  rotateBuildFacingCounterClockwise(): BuildFacingInfo {
+    const next = this.buildPlacement.rotateBuildFacingCounterClockwise();
+    this.refreshBuildPreviewFacing();
+    return next;
+  }
+
   handleBuildModeChange(buildingBlueprintId: BuildingBlueprintId | null): void {
     this.buildPlacement.reset();
+    this.lastBuildPreviewTarget = null;
     if (buildingBlueprintId === null) {
       this.buildGhost?.hide();
     }
@@ -387,6 +412,7 @@ export class Input3DModeClickController {
         buildingBlueprintId: AREA_MEX_BLUEPRINT_ID,
         gridX: placement.gridX,
         gridY: placement.gridY,
+        rotation: this.buildPlacement.facingInfo.rotation,
         queue: i === 0 ? drag.queue : true,
         queueFront: i === 0 ? drag.queueFront : false,
       });
@@ -430,6 +456,7 @@ export class Input3DModeClickController {
         buildingBlueprintId,
         gridX: placement.gridX,
         gridY: placement.gridY,
+        rotation: this.buildPlacement.facingInfo.rotation,
         queue: i === 0 ? drag.queue : true,
         queueFront: i === 0 ? drag.queueFront : false,
       });
@@ -470,11 +497,13 @@ export class Input3DModeClickController {
       const builder = this.config.getSelectedBuilder();
       if (!entityCanBuild(builder, buildingBlueprintId)) {
         this.config.applyCursor('blocked');
+        this.lastBuildPreviewTarget = null;
         this.buildGhost?.hide();
         return;
       }
       const diagnostics = this.validateBuildPlacement(buildingBlueprintId, world.x, world.y);
       this.config.applyCursor(diagnostics.canPlace ? 'build' : 'blocked');
+      this.lastBuildPreviewTarget = { buildingBlueprintId, worldX: world.x, worldY: world.y };
       this.buildGhost?.setTarget(
         buildingBlueprintId,
         world.x,
@@ -482,11 +511,39 @@ export class Input3DModeClickController {
         builder,
         this.buildPlacement.canPlace,
         diagnostics,
+        this.buildPlacement.facingInfo.rotation,
       );
     } else {
       this.buildPlacement.clearDiagnostics();
+      this.lastBuildPreviewTarget = null;
       this.config.applyCursor('blocked');
     }
+  }
+
+  private refreshBuildPreviewFacing(): void {
+    const target = this.lastBuildPreviewTarget;
+    if (target === null || !this.config.mode.isInBuildMode) return;
+    if (this.config.mode.buildingBlueprintId !== target.buildingBlueprintId) return;
+    const builder = this.config.getSelectedBuilder();
+    if (!entityCanBuild(builder, target.buildingBlueprintId)) {
+      this.buildGhost?.hide();
+      this.lastBuildPreviewTarget = null;
+      return;
+    }
+    const diagnostics = this.validateBuildPlacement(
+      target.buildingBlueprintId,
+      target.worldX,
+      target.worldY,
+    );
+    this.buildGhost?.setTarget(
+      target.buildingBlueprintId,
+      target.worldX,
+      target.worldY,
+      builder,
+      diagnostics.canPlace,
+      diagnostics,
+      this.buildPlacement.facingInfo.rotation,
+    );
   }
 
   private handleBuildClick(e: MouseEvent): void {
@@ -505,11 +562,13 @@ export class Input3DModeClickController {
     }
     const diagnostics = this.validateBuildPlacement(buildingBlueprintId, world.x, world.y);
     this.config.applyCursor(diagnostics.canPlace ? 'build' : 'blocked');
+    this.lastBuildPreviewTarget = { buildingBlueprintId, worldX: world.x, worldY: world.y };
     this.buildGhost?.setTarget(
       buildingBlueprintId, world.x, world.y,
       builder,
       diagnostics.canPlace,
       diagnostics,
+      this.buildPlacement.facingInfo.rotation,
     );
     if (!diagnostics.canPlace) {
       debugLog(GAME_DIAGNOSTICS.commandPlans, 'Blocked invalid build placement', {
@@ -522,6 +581,7 @@ export class Input3DModeClickController {
     const cmd = this.config.mode.buildStartBuildCommand(
       builder, world.x, world.y,
       this.config.getTick(), e.shiftKey, isQueueFrontModifier(e),
+      this.buildPlacement.facingInfo.rotation,
     );
     if (!cmd) return;
     this.config.commandQueue.enqueue(cmd);

@@ -224,6 +224,7 @@ const buildingOptions = computed(() => {
 const buildLineSpacingLabel = computed(() =>
   `${Math.round(props.selection.buildLineSpacingMultiplier * 100)}%`,
 );
+const buildFacingLabel = computed(() => `${props.selection.buildFacingDegrees}deg`);
 const unitOptions = unitRosterDisplay;
 
 const vehicleOptions = unitOptions.filter((unit) => unit.locomotion !== 'legs');
@@ -749,6 +750,28 @@ function loadFactoryPreset(index: number): void {
         >
           <span class="btn-label">Gap +</span>
           <span class="btn-key">{{ hotkey('build.spacingIncrease') }}</span>
+        </button>
+        <button
+          v-if="selection.isBuildMode"
+          type="button"
+          class="action-btn"
+          :style="{ '--btn-color': BUTTON_COLORS.build }"
+          :title="actionTitle(`Rotate build counterclockwise (${buildFacingLabel})`, 'build.rotateCounterClockwise')"
+          @click="actions.rotateBuildFacingCounterClockwise()"
+        >
+          <span class="btn-label">Rot -</span>
+          <span class="btn-key">{{ hotkey('build.rotateCounterClockwise') }}</span>
+        </button>
+        <button
+          v-if="selection.isBuildMode"
+          type="button"
+          class="action-btn"
+          :style="{ '--btn-color': BUTTON_COLORS.build }"
+          :title="actionTitle(`Rotate build clockwise (${buildFacingLabel})`, 'build.rotateClockwise')"
+          @click="actions.rotateBuildFacingClockwise()"
+        >
+          <span class="btn-label">Rot +</span>
+          <span class="btn-key">{{ hotkey('build.rotateClockwise') }}</span>
         </button>
       </div>
     </div>

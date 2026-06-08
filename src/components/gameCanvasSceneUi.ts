@@ -112,6 +112,7 @@ export function useGameCanvasSceneUi({
     isBuildMode: false,
     selectedBuildingBlueprintId: null,
     buildLineSpacingMultiplier: 1,
+    buildFacingDegrees: 0,
     isDGunMode: false,
     isRepairAreaMode: false,
     isAttackMode: false,
@@ -307,6 +308,12 @@ export function useGameCanvasSceneUi({
     },
     decreaseBuildLineSpacing: () => {
       getActiveBattleScene()?.decreaseBuildLineSpacing();
+    },
+    rotateBuildFacingClockwise: () => {
+      getActiveBattleScene()?.rotateBuildFacingClockwise();
+    },
+    rotateBuildFacingCounterClockwise: () => {
+      getActiveBattleScene()?.rotateBuildFacingCounterClockwise();
     },
     toggleDGun: () => {
       getActiveBattleScene()?.toggleDGunMode();

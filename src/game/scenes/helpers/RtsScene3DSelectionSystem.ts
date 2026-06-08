@@ -10,7 +10,10 @@ import type {
 } from '../../sim/types';
 import type { ControlGroupInfo, SelectionInfo, UIEntitySource, UIInputState } from '@/types/ui';
 import { CONTROL_GROUP_COUNT, type ControlGroupSlotSnapshot } from '../../input/helpers';
-import type { BuildLineSpacingInfo } from '../../render3d/Input3DBuildPlacementState';
+import type {
+  BuildFacingInfo,
+  BuildLineSpacingInfo,
+} from '../../render3d/Input3DBuildPlacementState';
 
 export type SelectionChangeHandler = ((info: SelectionInfo) => void) | undefined;
 
@@ -27,6 +30,7 @@ export class RtsScene3DSelectionSystem {
   private waypointMode: WaypointType = 'move';
   private activeBuildingBlueprintId: BuildingBlueprintId | null = null;
   private buildLineSpacingMultiplier = 1;
+  private buildFacingDegrees = 0;
   private dgunActive = false;
   private repairAreaActive = false;
   private attackActive = false;
@@ -69,6 +73,11 @@ export class RtsScene3DSelectionSystem {
 
   setBuildLineSpacing(spacing: BuildLineSpacingInfo): void {
     this.buildLineSpacingMultiplier = spacing.multiplier;
+    this.selectionInfoDirty = true;
+  }
+
+  setBuildFacing(facing: BuildFacingInfo): void {
+    this.buildFacingDegrees = facing.degrees;
     this.selectionInfoDirty = true;
   }
 
@@ -197,6 +206,7 @@ export class RtsScene3DSelectionSystem {
       isBuildMode: this.activeBuildingBlueprintId !== null,
       selectedBuildingBlueprintId: this.activeBuildingBlueprintId,
       buildLineSpacingMultiplier: this.buildLineSpacingMultiplier,
+      buildFacingDegrees: this.buildFacingDegrees,
       isDGunMode: this.dgunActive,
       isRepairAreaMode: this.repairAreaActive,
       isAttackMode: this.attackActive,

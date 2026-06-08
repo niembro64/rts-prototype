@@ -40,13 +40,14 @@ terrain height, slopes, water, and pathability.
 
 Issue: construction commands are missing most BAR build ergonomics. Implement
 the BAR grid build menu categories, grid-menu cell hotkeys, construction
-shortcuts, build grid, build border, build split, build facing/rotation
-controls, upgrade T1 mex area, upgrade T1 -> T2, and visual previews for every
-build shape. rts-prototype
-has an allowed-building strip, number keys, single-placement ghost, Shift
-queueing, and left-drag build line placement with adjustable spacing controls
-and a 3D line preview through existing build validation; these do not satisfy
-BAR fallback behavior.
+shortcuts, build grid, build border, build split, rotated-footprint/collision
+validation for build facing, upgrade T1 mex area, upgrade T1 -> T2, and visual
+previews for every build shape. rts-prototype has an allowed-building strip,
+number keys, single-placement ghost, Shift queueing, left-drag build line
+placement with adjustable spacing controls and a 3D line preview through
+existing build validation, plus 90-degree build-facing controls that rotate the
+ghost footprint and authoritative constructed entity; these do not satisfy BAR
+fallback behavior.
 
 Issue: queue editing and command insertion are incomplete. BAR supports queue to
 next, commandinsert/prepend-between, and queued variants of several orders.
@@ -98,10 +99,10 @@ render feedback must exist.
 
 Issue: BAR parity must be extended through the 3D/physics-first design, not
 implemented as flat 2D shortcuts. Attack lines/circles still need ballistic
-previews; build grids/borders need slope, support surface, collision, and
-resource-cell validation; formations need mass, acceleration, collision, and
-terrain-aware spacing; transport/load/unload, resurrection, capture, and
-manual launch/special-fire abilities beyond commander DGun need physical
-presentation and authoritative physics interactions. Document any intentional
-departure from BAR in budget_design_philosophy.html before omitting a BAR
-behavior.
+previews; build grids/borders need slope, support surface, collision,
+rotated-footprint, and resource-cell validation; formations need mass,
+acceleration, collision, and terrain-aware spacing; transport/load/unload,
+resurrection, capture, and manual launch/special-fire abilities beyond
+commander DGun need physical presentation and authoritative physics
+interactions. Document any intentional departure from BAR in
+budget_design_philosophy.html before omitting a BAR behavior.

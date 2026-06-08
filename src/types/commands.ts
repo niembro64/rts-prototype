@@ -146,6 +146,7 @@ export type StartBuildCommand = BaseCommand & {
   buildingBlueprintId: BuildingBlueprintId;
   gridX: number;
   gridY: number;
+  rotation?: number;
   queue: boolean;
   queueFront?: boolean;
 };

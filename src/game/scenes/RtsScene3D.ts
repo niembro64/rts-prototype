@@ -474,6 +474,10 @@ export class RtsScene3D {
       this.selectionSystem.setBuildLineSpacing(spacing);
     };
     this.selectionSystem.setBuildLineSpacing(this.inputManager.getBuildLineSpacingInfo());
+    this.inputManager.onBuildFacingChange = (facing) => {
+      this.selectionSystem.setBuildFacing(facing);
+    };
+    this.selectionSystem.setBuildFacing(this.inputManager.getBuildFacingInfo());
     this.inputManager.onDGunModeChange = (active) => {
       this.selectionSystem.setDGunMode(active);
     };
@@ -946,6 +950,14 @@ export class RtsScene3D {
 
   public decreaseBuildLineSpacing(): void {
     this.inputManager?.decreaseBuildLineSpacing();
+  }
+
+  public rotateBuildFacingClockwise(): void {
+    this.inputManager?.rotateBuildFacingClockwise();
+  }
+
+  public rotateBuildFacingCounterClockwise(): void {
+    this.inputManager?.rotateBuildFacingCounterClockwise();
   }
 
   public toggleDGunMode(): void {

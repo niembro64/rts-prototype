@@ -53,7 +53,8 @@ export class ConstructionSystem {
     gridX: number,
     gridY: number,
     playerId: PlayerId,
-    builderId: EntityId
+    builderId: EntityId,
+    rotation = 0,
   ): Entity | null {
     const builderEntity = world.getEntity(builderId);
     if (!entityCanBuild(builderEntity, buildingBlueprintId)) return null;
@@ -96,7 +97,8 @@ export class ConstructionSystem {
       physicalSize.width,
       physicalSize.height,
       physicalSize.depth,
-      playerId
+      playerId,
+      rotation,
     );
 
     // Add buildable component — paid starts at zero on every axis;

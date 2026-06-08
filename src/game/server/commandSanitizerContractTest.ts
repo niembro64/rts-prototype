@@ -2,6 +2,7 @@ import type {
   Command,
   MoveCommand,
   SkipCurrentOrderCommand,
+  StartBuildCommand,
   StopFactoryProductionCommand,
   SetShieldReflectionModeCommand,
   SetTurretShieldPanelsEnabledCommand,
@@ -83,6 +84,23 @@ export function runCommandSanitizerContractTest(): void {
   assertContract(
     replaceMove.queueFront === false,
     'move queueFront must normalize to false when queue=false',
+  );
+
+  const rotatedBuild = sanitizeRequired<StartBuildCommand>(world, {
+    type: 'startBuild',
+    tick: 8,
+    builderId: 9,
+    buildingBlueprintId: 'buildingSolar',
+    gridX: 4.8,
+    gridY: 5.2,
+    rotation: Math.PI * 3,
+    queue: true,
+  });
+  assertContract(
+    rotatedBuild.gridX === 4
+    && rotatedBuild.gridY === 5
+    && Math.abs((rotatedBuild.rotation ?? 0) - Math.PI) < 1e-9,
+    'startBuild must floor grid cells and normalize optional build facing',
   );
 
   const panelsDisabled = sanitizeRequired<SetTurretShieldPanelsEnabledCommand>(world, {

@@ -786,6 +786,7 @@ export class WorldState {
     x: number, y: number,
     width: number, height: number, depth: number,
     playerId: PlayerId | null = null,
+    rotation = 0,
   ): Entity {
     const id = this.generateEntityId();
     // Transform.z is the building's vertical CENTER. Base sits on the
@@ -799,7 +800,7 @@ export class WorldState {
       ...createEmptyEntityComponentSlots(),
       id,
       type: 'building',
-      transform: createTransform(x, y, baseZ + depth / 2, 0),
+      transform: createTransform(x, y, baseZ + depth / 2, rotation),
       building: {
         width,
         height,

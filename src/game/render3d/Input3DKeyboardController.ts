@@ -28,6 +28,8 @@ type Input3DKeyboardControllerConfig = {
   exitSpecialModes: (includeTowerTarget?: boolean) => void;
   increaseBuildLineSpacing: () => void;
   decreaseBuildLineSpacing: () => void;
+  rotateBuildFacingClockwise: () => void;
+  rotateBuildFacingCounterClockwise: () => void;
   stopSelectedUnits: () => void;
   skipCurrentOrder: () => void;
   removeLastQueuedOrder: () => void;
@@ -400,6 +402,12 @@ export class Input3DKeyboardController {
         break;
       case 'build.spacingDecrease':
         this.config.decreaseBuildLineSpacing();
+        break;
+      case 'build.rotateClockwise':
+        this.config.rotateBuildFacingClockwise();
+        break;
+      case 'build.rotateCounterClockwise':
+        this.config.rotateBuildFacingCounterClockwise();
         break;
       case 'select.allUnits':
         this.config.selectAllOwnedUnits();

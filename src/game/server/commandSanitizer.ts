@@ -42,6 +42,7 @@ import { isBuildableUnitBlueprintId } from '../sim/blueprints/unitRoster';
 import { SERVER_CONFIG, normalizeSnapshotRate } from '../../serverBarConfig';
 import { BATTLE_CONFIG } from '../../battleBarConfig';
 import { isShieldReflectionMode } from '../../types/shotTypes';
+import { normalizeAngle } from '../math';
 
 const WAYPOINT_TYPES: readonly WaypointType[] = ['move', 'fight', 'patrol'];
 const UNIT_MOVE_STATES: readonly string[] = ['maneuver', 'holdPosition'];
@@ -433,6 +434,10 @@ function sanitizeStartBuildCommand(command: StartBuildCommand, tick: number): St
   }
   const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
   if (queueFront === null) return null;
+  const rotation = command.rotation === undefined
+    ? 0
+    : Number.isFinite(command.rotation) ? normalizeAngle(command.rotation) : null;
+  if (rotation === null) return null;
   return {
     type: 'startBuild',
     tick,
@@ -440,6 +445,7 @@ function sanitizeStartBuildCommand(command: StartBuildCommand, tick: number): St
     buildingBlueprintId: command.buildingBlueprintId,
     gridX: Math.floor(command.gridX),
     gridY: Math.floor(command.gridY),
+    rotation,
     queue: command.queue,
     queueFront,
   };
