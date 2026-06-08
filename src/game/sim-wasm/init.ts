@@ -4328,6 +4328,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runBoxSelectionContractTest();
         const { runRightClickCommandsContractTest } = await import('../input/helpers/RightClickCommandsContractTest');
         runRightClickCommandsContractTest();
+        const { runCommandExecutionContractTest } = await import('../sim/commandExecutionContractTest');
+        runCommandExecutionContractTest();
         const { runInputControlGroupsContractTest } = await import('../input/helpers/InputControlGroupsContractTest');
         runInputControlGroupsContractTest();
         const { runInput3DKeyboardControllerContractTest } = await import('../render3d/Input3DKeyboardControllerContractTest');

@@ -72,10 +72,18 @@ import {
   getLastActionIntentFinalIndex,
   getUnitActionTargetId,
 } from './unitActionIntents';
+import type { BuildingGrid } from './buildGrid';
+import { expandPathPoints, pathTerrainFilterForLocomotion } from './Pathfinder';
 
 const _dgunMount = { x: 0, y: 0, z: 0 };
 const MIN_GROUP_FORMATION_SPACING = 40;
 const COLLISION_GROUP_FORMATION_SPACING_MULTIPLIER = 2.25;
+
+export type ResolvedFormationTarget = {
+  x: number;
+  y: number;
+  z: number;
+};
 
 function commandQueuesInFront(command: { queue: boolean; queueFront?: boolean }): boolean {
   return command.queue && command.queueFront === true;
@@ -299,18 +307,26 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
   // Handle individual targets (line move)
   if (command.individualTargets && command.individualTargets.length === entityIds.length) {
     const queueFront = commandQueuesInFront(command);
+    const buildingGrid = ctx.constructionSystem.getGrid();
     for (let i = 0; i < entityIds.length; i++) {
       const unit = ctx.world.getEntity(entityIds[i]);
       if (!unit || unit.type !== 'unit' || !unit.unit) continue;
       const target = command.individualTargets[i];
-      addPathActions(
+      const resolvedTarget = resolvePathableFormationTarget(
+        ctx.world,
+        buildingGrid,
         unit,
         target.x,
         target.y,
+      );
+      addPathActions(
+        unit,
+        resolvedTarget.x,
+        resolvedTarget.y,
         command.waypointType,
         command.queue,
         ctx,
-        target.z ?? null,
+        resolvedTarget.z,
         queueFront,
         speedLimitFactors?.get(unit.id),
       );
@@ -320,6 +336,7 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
     const spacing = groupFormationSpacing(maxCollisionRadius);
     const unitsPerRow = Math.ceil(Math.sqrt(unitCount));
     const queueFront = commandQueuesInFront(command);
+    const buildingGrid = ctx.constructionSystem.getGrid();
 
     let index = 0;
     for (let i = 0; i < entityIds.length; i++) {
@@ -331,27 +348,63 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
       const col = index % unitsPerRow;
       const offsetX = (col - (unitsPerRow - 1) / 2) * spacing;
       const offsetY = (row - (unitCount / unitsPerRow - 1) / 2) * spacing;
-      const targetX = command.targetX! + offsetX;
-      const targetY = command.targetY! + offsetY;
-
-      // Server-generated formation offsets get their own ground height
-      // instead of reusing the clicked centre altitude. If the pathfinder
-      // later snaps a blocked final cell, it will terrain-sample the
-      // snapped waypoint in the usual path expansion path.
+      const target = resolvePathableFormationTarget(
+        ctx.world,
+        buildingGrid,
+        unit,
+        command.targetX! + offsetX,
+        command.targetY! + offsetY,
+      );
       addPathActions(
         unit,
-        targetX,
-        targetY,
+        target.x,
+        target.y,
         command.waypointType,
         command.queue,
         ctx,
-        ctx.world.getGroundZ(targetX, targetY),
+        target.z,
         queueFront,
         speedLimitFactors?.get(unit.id),
       );
       index++;
     }
   }
+}
+
+function clampToMap(value: number, max: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(max, value));
+}
+
+export function resolvePathableFormationTarget(
+  world: WorldState,
+  buildingGrid: BuildingGrid,
+  unit: Entity,
+  targetX: number,
+  targetY: number,
+): ResolvedFormationTarget {
+  const unitComponent = unit.unit;
+  const x = clampToMap(targetX, world.mapWidth);
+  const y = clampToMap(targetY, world.mapHeight);
+  if (unitComponent === null) {
+    return { x, y, z: world.getGroundZ(x, y) };
+  }
+
+  const points = expandPathPoints(
+    unit.transform.x,
+    unit.transform.y,
+    x,
+    y,
+    world.mapWidth,
+    world.mapHeight,
+    buildingGrid,
+    world.getGroundZ(x, y),
+    pathTerrainFilterForLocomotion(unitComponent.locomotion),
+  );
+  const final = points[points.length - 1];
+  return final !== undefined
+    ? { x: final.x, y: final.y, z: final.z ?? world.getGroundZ(final.x, final.y) }
+    : { x, y, z: world.getGroundZ(x, y) };
 }
 
 function groupFormationSpacing(maxCollisionRadius: number): number {
