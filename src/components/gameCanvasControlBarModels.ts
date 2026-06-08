@@ -102,6 +102,7 @@ export type GameCanvasClientControlBarModel = {
   readonly entityHud: Readonly<EntityHudToggles>;
   readonly selectionHudMode: SelectionHudMode;
   readonly commandHotkeyPreset: CommandHotkeyPresetId;
+  readonly commandHotkeyRevision: number;
   readonly entityHudTypes: readonly EntityHudType[];
   readonly entityHudElements: readonly EntityHudElement[];
   readonly logicMsAvg: number;
@@ -198,6 +199,7 @@ export type GameCanvasClientControlBarModel = {
   toggleEntityHud(type: EntityHudType, element: EntityHudElement): void;
   changeSelectionHudMode(mode: SelectionHudMode): void;
   changeCommandHotkeyPreset(presetId: CommandHotkeyPresetId): void;
+  refreshCommandHotkeys(): void;
   toggleAudioSmoothing(): void;
   toggleBurnMarks(): void;
   toggleLocomotionMarks(): void;

@@ -36,7 +36,8 @@ export type CommandHotkeyId =
   | 'combat.towerTargetSet'
   | 'combat.towerTargetClear';
 
-export type CommandHotkeyPresetId = 'prototype' | 'bar-grid' | 'bar-legacy';
+export type BuiltInCommandHotkeyPresetId = 'prototype' | 'bar-grid' | 'bar-legacy';
+export type CommandHotkeyPresetId = BuiltInCommandHotkeyPresetId | 'custom';
 
 type ModifierMatch = boolean | 'any';
 
@@ -53,8 +54,10 @@ export type CommandKeyChord = {
 export type CommandHotkeyBinding = readonly CommandKeyChord[];
 export type CommandHotkeyPreset = Readonly<Record<CommandHotkeyId, readonly CommandHotkeyBinding[]>>;
 type ChordOptions = Partial<Omit<CommandKeyChord, 'key' | 'code' | 'label'>>;
+type CustomCommandHotkeyOverrides = Partial<Record<CommandHotkeyId, CommandHotkeyBinding>>;
 
 export const COMMAND_HOTKEY_STORAGE_KEY = 'budget-annihilation.commandHotkeyPreset';
+export const COMMAND_HOTKEY_CUSTOM_STORAGE_KEY = 'budget-annihilation.customCommandHotkeys';
 export const DEFAULT_COMMAND_HOTKEY_PRESET: CommandHotkeyPresetId = 'prototype';
 
 export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
@@ -100,7 +103,47 @@ export const COMMAND_HOTKEY_PRESET_IDS: readonly CommandHotkeyPresetId[] = [
   'prototype',
   'bar-grid',
   'bar-legacy',
+  'custom',
 ];
+
+export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, string>> = {
+  'waypoint.move': 'Waypoint: Move',
+  'waypoint.fight': 'Waypoint: Fight',
+  'waypoint.patrol': 'Waypoint: Patrol',
+  'command.stop': 'Stop',
+  'command.wait': 'Wait',
+  'command.skipCurrent': 'Skip Current Order',
+  'command.undoQueue': 'Cancel Last Order',
+  'command.clearQueue': 'Clear Orders',
+  'command.fireToggle': 'Fire Toggle',
+  'command.buildingActive': 'Building On/Off',
+  'command.selfDestruct': 'Self Destruct',
+  'command.scan': 'Scanner Sweep',
+  'command.buildCycle': 'Cycle Build',
+  'command.dgun': 'Commander DGun',
+  'command.selectCommander': 'Select Commander',
+  'select.allUnits': 'Select All Units',
+  'select.matching': 'Select Matching',
+  'select.matchingInView': 'Select Matching In View',
+  'select.previous': 'Previous Selection',
+  'select.idleBuilders': 'Idle Builders',
+  'select.waitingUnits': 'Waiting Units',
+  'select.sameTypeOnly': 'Keep Same Type',
+  'select.mobileOnly': 'Keep Mobile',
+  'select.invert': 'Invert Selection',
+  'select.split': 'Split Selection',
+  'select.loop': 'Loop Selection',
+  'combat.attack': 'Attack',
+  'combat.attackLine': 'Attack Line',
+  'combat.attackArea': 'Attack Area',
+  'combat.attackGround': 'Attack Ground',
+  'combat.guard': 'Guard',
+  'combat.reclaim': 'Reclaim',
+  'combat.repairArea': 'Repair Area',
+  'combat.ping': 'Ping',
+  'combat.towerTargetSet': 'Tower Target',
+  'combat.towerTargetClear': 'Clear Tower Target',
+};
 
 function key(label: string, keyValue: string, options: ChordOptions = {}): CommandHotkeyBinding {
   return [{ key: keyValue.toLowerCase(), label, ...options }];
@@ -120,7 +163,7 @@ function commandPreset(
   return entries;
 }
 
-export const COMMAND_HOTKEY_PRESETS: Readonly<Record<CommandHotkeyPresetId, CommandHotkeyPreset>> = {
+export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetId, CommandHotkeyPreset>> = {
   prototype: commandPreset({
     'waypoint.move': [key('M', 'm', { shift: 'any' })],
     'waypoint.fight': [key('F', 'f', { shift: 'any' })],
@@ -300,11 +343,62 @@ export function isCommandHotkeyPresetId(value: unknown): value is CommandHotkeyP
   return COMMAND_HOTKEY_PRESET_IDS.includes(value as CommandHotkeyPresetId);
 }
 
+export function getCommandHotkeyPreset(presetId: CommandHotkeyPresetId): CommandHotkeyPreset {
+  if (presetId !== 'custom') return COMMAND_HOTKEY_PRESETS[presetId];
+  const overrides = loadCustomCommandHotkeyOverrides();
+  const entries = {} as Record<CommandHotkeyId, readonly CommandHotkeyBinding[]>;
+  for (const commandId of COMMAND_HOTKEY_IDS) {
+    const override = overrides[commandId];
+    entries[commandId] = override === undefined
+      ? COMMAND_HOTKEY_PRESETS.prototype[commandId]
+      : [override];
+  }
+  return commandPreset(entries);
+}
+
+export function createCommandHotkeyChordFromEvent(event: KeyboardEvent): CommandKeyChord | null {
+  if (isModifierOnlyKey(event.key) || event.key === 'Escape') return null;
+  const label = keyboardEventLabel(event);
+  if (label === '') return null;
+  const chord: CommandKeyChord = {
+    code: event.code !== '' ? event.code : undefined,
+    key: event.code === '' ? event.key.toLowerCase() : undefined,
+    label,
+  };
+  if (event.ctrlKey) chord.ctrl = true;
+  if (event.shiftKey) chord.shift = true;
+  if (event.altKey) chord.alt = true;
+  if (event.metaKey) chord.meta = true;
+  return chord;
+}
+
+export function setCustomCommandHotkeyBinding(
+  commandId: CommandHotkeyId,
+  binding: CommandHotkeyBinding,
+): void {
+  if (typeof window === 'undefined') return;
+  const overrides = loadCustomCommandHotkeyOverrides();
+  overrides[commandId] = binding;
+  saveCustomCommandHotkeyOverrides(overrides);
+}
+
+export function resetCustomCommandHotkeyBinding(commandId: CommandHotkeyId): void {
+  if (typeof window === 'undefined') return;
+  const overrides = loadCustomCommandHotkeyOverrides();
+  delete overrides[commandId];
+  saveCustomCommandHotkeyOverrides(overrides);
+}
+
+export function resetAllCustomCommandHotkeys(): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(COMMAND_HOTKEY_CUSTOM_STORAGE_KEY);
+}
+
 export function commandHotkeyLabel(
   commandId: CommandHotkeyId,
   presetId: CommandHotkeyPresetId = getActiveCommandHotkeyPresetId(),
 ): string {
-  const firstBinding = COMMAND_HOTKEY_PRESETS[presetId][commandId][0];
+  const firstBinding = getCommandHotkeyPreset(presetId)[commandId][0];
   return bindingLabel(firstBinding);
 }
 
@@ -312,7 +406,7 @@ export function commandHotkeyLabels(
   commandId: CommandHotkeyId,
   presetId: CommandHotkeyPresetId = getActiveCommandHotkeyPresetId(),
 ): string[] {
-  return COMMAND_HOTKEY_PRESETS[presetId][commandId].map(bindingLabel);
+  return getCommandHotkeyPreset(presetId)[commandId].map(bindingLabel);
 }
 
 export function resolveCommandHotkey(
@@ -385,7 +479,7 @@ function resolveSingleChordCommandHotkey(
   event: KeyboardEvent,
   presetId: CommandHotkeyPresetId,
 ): CommandHotkeyId | null {
-  const preset = COMMAND_HOTKEY_PRESETS[presetId];
+  const preset = getCommandHotkeyPreset(presetId);
   for (const commandId of COMMAND_HOTKEY_IDS) {
     const bindings = preset[commandId];
     for (const binding of bindings) {
@@ -399,7 +493,7 @@ function findMatchingSequenceStart(
   event: KeyboardEvent,
   presetId: CommandHotkeyPresetId,
 ): Omit<PendingCommandHotkeySequence, 'nextChordIndex' | 'expiresAtMs'> | null {
-  const preset = COMMAND_HOTKEY_PRESETS[presetId];
+  const preset = getCommandHotkeyPreset(presetId);
   for (const commandId of COMMAND_HOTKEY_IDS) {
     const bindings = preset[commandId];
     for (const binding of bindings) {
@@ -415,7 +509,7 @@ export function getCommandHotkeyConflicts(
   presetId: CommandHotkeyPresetId,
 ): CommandHotkeyConflict[] {
   const ownersBySignature = new Map<string, CommandHotkeyId[]>();
-  const preset = COMMAND_HOTKEY_PRESETS[presetId];
+  const preset = getCommandHotkeyPreset(presetId);
   for (const commandId of COMMAND_HOTKEY_IDS) {
     for (const binding of preset[commandId]) {
       const signature = bindingSignature(binding);
@@ -433,6 +527,113 @@ export function getCommandHotkeyConflicts(
     }
   }
   return conflicts;
+}
+
+function loadCustomCommandHotkeyOverrides(): CustomCommandHotkeyOverrides {
+  if (typeof window === 'undefined') return {};
+  let parsed: unknown;
+  try {
+    const raw = window.localStorage.getItem(COMMAND_HOTKEY_CUSTOM_STORAGE_KEY);
+    if (raw === null) return {};
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+  const out: CustomCommandHotkeyOverrides = {};
+  for (const commandId of COMMAND_HOTKEY_IDS) {
+    const rawBinding = (parsed as Record<string, unknown>)[commandId];
+    const binding = sanitizeCommandHotkeyBinding(rawBinding);
+    if (binding !== null) out[commandId] = binding;
+  }
+  return out;
+}
+
+function saveCustomCommandHotkeyOverrides(overrides: CustomCommandHotkeyOverrides): void {
+  const serializable: Record<string, CommandHotkeyBinding> = {};
+  for (const commandId of COMMAND_HOTKEY_IDS) {
+    const binding = overrides[commandId];
+    if (binding !== undefined) serializable[commandId] = binding;
+  }
+  window.localStorage.setItem(COMMAND_HOTKEY_CUSTOM_STORAGE_KEY, JSON.stringify(serializable));
+}
+
+function sanitizeCommandHotkeyBinding(value: unknown): CommandHotkeyBinding | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const chords: CommandKeyChord[] = [];
+  for (const rawChord of value) {
+    const chord = sanitizeCommandKeyChord(rawChord);
+    if (chord === null) return null;
+    chords.push(chord);
+  }
+  return chords;
+}
+
+function sanitizeCommandKeyChord(value: unknown): CommandKeyChord | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const keyValue = typeof raw.key === 'string' && raw.key !== '' ? raw.key : undefined;
+  const codeValue = typeof raw.code === 'string' && raw.code !== '' ? raw.code : undefined;
+  const label = typeof raw.label === 'string' ? raw.label.trim() : '';
+  if ((keyValue === undefined && codeValue === undefined) || label === '') return null;
+  const chord: CommandKeyChord = { label };
+  if (keyValue !== undefined) chord.key = keyValue.toLowerCase();
+  if (codeValue !== undefined) chord.code = codeValue;
+  const ctrl = sanitizeModifierMatch(raw.ctrl);
+  const shift = sanitizeModifierMatch(raw.shift);
+  const alt = sanitizeModifierMatch(raw.alt);
+  const meta = sanitizeModifierMatch(raw.meta);
+  if (ctrl !== undefined) chord.ctrl = ctrl;
+  if (shift !== undefined) chord.shift = shift;
+  if (alt !== undefined) chord.alt = alt;
+  if (meta !== undefined) chord.meta = meta;
+  return chord;
+}
+
+function sanitizeModifierMatch(value: unknown): ModifierMatch | undefined {
+  return value === true || value === false || value === 'any' ? value : undefined;
+}
+
+function keyboardEventLabel(event: KeyboardEvent): string {
+  const keyLabel = displayKeyLabel(event.key, event.code);
+  if (keyLabel === '') return '';
+  const parts: string[] = [];
+  if (event.ctrlKey) parts.push('Ctrl');
+  if (event.metaKey) parts.push('Cmd');
+  if (event.altKey) parts.push('Alt');
+  if (event.shiftKey) parts.push('Shift');
+  parts.push(keyLabel);
+  return parts.join('+');
+}
+
+function displayKeyLabel(keyValue: string, codeValue: string): string {
+  switch (keyValue) {
+    case ' ':
+      return 'Space';
+    case 'ArrowUp':
+      return 'Up';
+    case 'ArrowDown':
+      return 'Down';
+    case 'ArrowLeft':
+      return 'Left';
+    case 'ArrowRight':
+      return 'Right';
+    case 'Dead':
+    case 'Unidentified':
+      return codeValue;
+    default:
+      break;
+  }
+  if (keyValue.length === 1) return keyValue.toUpperCase();
+  if (/^F\d{1,2}$/.test(keyValue)) return keyValue;
+  return keyValue;
+}
+
+function isModifierOnlyKey(keyValue: string): boolean {
+  return keyValue === 'Control'
+    || keyValue === 'Shift'
+    || keyValue === 'Alt'
+    || keyValue === 'Meta';
 }
 
 function bindingLabel(binding: CommandHotkeyBinding): string {

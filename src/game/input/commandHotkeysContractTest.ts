@@ -1,9 +1,9 @@
 import {
   COMMAND_HOTKEY_IDS,
   COMMAND_HOTKEY_PRESET_IDS,
-  COMMAND_HOTKEY_PRESETS,
   CommandHotkeySequenceResolver,
   commandHotkeyLabel,
+  getCommandHotkeyPreset,
   getCommandHotkeyConflicts,
   resolveCommandHotkey,
 } from './commandHotkeys';
@@ -28,7 +28,7 @@ function keyEvent(key: string, code: string): KeyboardEvent {
 
 export function runCommandHotkeysContractTest(): void {
   for (const presetId of COMMAND_HOTKEY_PRESET_IDS) {
-    const preset = COMMAND_HOTKEY_PRESETS[presetId];
+    const preset = getCommandHotkeyPreset(presetId);
     for (const commandId of COMMAND_HOTKEY_IDS) {
       const bindings = preset[commandId];
       assertContract(

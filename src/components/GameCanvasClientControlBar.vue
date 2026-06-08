@@ -1,10 +1,18 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { CLIENT_CONFIG, isEntityHudElementSupported } from '../clientBarConfig';
 import { GOOD_TPS } from '../config';
 import {
+  COMMAND_HOTKEY_DISPLAY_LABELS,
+  COMMAND_HOTKEY_IDS,
   COMMAND_HOTKEY_PRESET_IDS,
+  commandHotkeyLabel,
+  createCommandHotkeyChordFromEvent,
   getCommandHotkeyConflicts,
+  resetAllCustomCommandHotkeys,
+  resetCustomCommandHotkeyBinding,
+  setCustomCommandHotkeyBinding,
+  type CommandHotkeyId,
   type CommandHotkeyPresetId,
 } from '../game/input/commandHotkeys';
 import { RESOURCE_BALL_DENSITY_OPTIONS } from '../resourceConfig';
@@ -42,12 +50,14 @@ const COMMAND_HOTKEY_PRESET_LABELS: Record<CommandHotkeyPresetId, string> = {
   prototype: 'PROTO',
   'bar-grid': 'GRID',
   'bar-legacy': 'LEGACY',
+  custom: 'CUSTOM',
 };
 
 const COMMAND_HOTKEY_PRESET_DESCRIPTIONS: Record<CommandHotkeyPresetId, string> = {
   prototype: 'prototype defaults',
   'bar-grid': 'BAR grid subset',
   'bar-legacy': 'BAR legacy subset',
+  custom: 'local custom bindings',
 };
 
 const CAMERA_ANCHOR_SLOTS = [0, 1, 2, 3] as const;
@@ -94,7 +104,14 @@ const props = defineProps<{
   model: GameCanvasClientControlBarModel;
 }>();
 
-const currentHotkeyConflicts = computed(() => getCommandHotkeyConflicts(props.model.commandHotkeyPreset));
+const hotkeyEditorOpen = ref(false);
+const captureCommandId = ref<CommandHotkeyId | null>(null);
+const hotkeyEditorRevision = ref(0);
+
+const currentHotkeyConflicts = computed(() => {
+  void props.model.commandHotkeyRevision;
+  return getCommandHotkeyConflicts(props.model.commandHotkeyPreset);
+});
 const hotkeyConflictLabel = computed(() => {
   const count = currentHotkeyConflicts.value.length;
   return count === 0 ? 'OK' : `${count} CONFLICT${count === 1 ? '' : 'S'}`;
@@ -107,6 +124,66 @@ const hotkeyConflictTitle = computed(() => {
     .map((conflict) => `${conflict.signature}: ${conflict.commandIds.join(' / ')}`)
     .join('\n');
 });
+
+const hotkeyEditorRows = computed(() => {
+  void props.model.commandHotkeyRevision;
+  void hotkeyEditorRevision.value;
+  return COMMAND_HOTKEY_IDS.map((commandId) => ({
+    commandId,
+    label: COMMAND_HOTKEY_DISPLAY_LABELS[commandId],
+    customKey: commandHotkeyLabel(commandId, 'custom'),
+    activeKey: commandHotkeyLabel(commandId, props.model.commandHotkeyPreset),
+    capturing: captureCommandId.value === commandId,
+  }));
+});
+
+function toggleHotkeyEditor(): void {
+  hotkeyEditorOpen.value = !hotkeyEditorOpen.value;
+  if (!hotkeyEditorOpen.value) captureCommandId.value = null;
+}
+
+function beginHotkeyCapture(commandId: CommandHotkeyId): void {
+  props.model.changeCommandHotkeyPreset('custom');
+  hotkeyEditorOpen.value = true;
+  captureCommandId.value = commandId;
+}
+
+function cancelHotkeyCapture(): void {
+  captureCommandId.value = null;
+}
+
+function handleHotkeyCapture(commandId: CommandHotkeyId, event: KeyboardEvent): void {
+  if (captureCommandId.value !== commandId) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.key === 'Escape') {
+    cancelHotkeyCapture();
+    return;
+  }
+  const chord = createCommandHotkeyChordFromEvent(event);
+  if (chord === null) return;
+  setCustomCommandHotkeyBinding(commandId, [chord]);
+  props.model.changeCommandHotkeyPreset('custom');
+  props.model.refreshCommandHotkeys();
+  hotkeyEditorRevision.value += 1;
+  captureCommandId.value = null;
+}
+
+function resetCustomHotkey(commandId: CommandHotkeyId): void {
+  resetCustomCommandHotkeyBinding(commandId);
+  props.model.changeCommandHotkeyPreset('custom');
+  props.model.refreshCommandHotkeys();
+  hotkeyEditorRevision.value += 1;
+  if (captureCommandId.value === commandId) captureCommandId.value = null;
+}
+
+function resetEveryCustomHotkey(): void {
+  resetAllCustomCommandHotkeys();
+  props.model.changeCommandHotkeyPreset('custom');
+  props.model.refreshCommandHotkeys();
+  hotkeyEditorRevision.value += 1;
+  captureCommandId.value = null;
+}
 </script>
 
 <template>
@@ -170,11 +247,60 @@ const hotkeyConflictTitle = computed(() => {
             @click="model.changeCommandHotkeyPreset(presetId)"
           >{{ COMMAND_HOTKEY_PRESET_LABELS[presetId] }}</BarButton>
         </BarButtonGroup>
+        <BarButton
+          :active="hotkeyEditorOpen"
+          title="Edit local custom command hotkeys"
+          @click="toggleHotkeyEditor"
+        >EDIT</BarButton>
         <BarLabel :title="hotkeyConflictTitle">CONFLICTS:</BarLabel>
         <span
           class="fps-value"
           :style="{ color: currentHotkeyConflicts.length > 0 ? '#ffb84d' : undefined }"
         >{{ hotkeyConflictLabel }}</span>
+        <div
+          v-if="hotkeyEditorOpen"
+          class="hotkey-editor"
+          @keydown.stop
+        >
+          <div class="hotkey-editor-header">
+            <BarLabel title="Click BIND on a command, then press the desired key chord. Escape cancels capture.">CUSTOM KEYS:</BarLabel>
+            <BarButton
+              title="Reset every custom command binding to the prototype fallback"
+              @click="resetEveryCustomHotkey"
+            >RESET ALL</BarButton>
+            <BarButton
+              title="Close custom hotkey editor"
+              @click="toggleHotkeyEditor"
+            >CLOSE</BarButton>
+          </div>
+          <div class="hotkey-editor-grid">
+            <div
+              v-for="row in hotkeyEditorRows"
+              :key="row.commandId"
+              class="hotkey-editor-row"
+              :class="{ capturing: row.capturing }"
+            >
+              <span class="hotkey-command">{{ row.label }}</span>
+              <span
+                class="hotkey-key"
+                :title="`Active key: ${row.activeKey}`"
+              >{{ row.capturing ? 'PRESS KEY' : row.customKey }}</span>
+              <button
+                type="button"
+                class="hotkey-row-btn"
+                :title="row.capturing ? 'Press a new key chord, or Escape to cancel' : `Bind ${row.label}`"
+                @click="beginHotkeyCapture(row.commandId)"
+                @keydown="handleHotkeyCapture(row.commandId, $event)"
+              >BIND</button>
+              <button
+                type="button"
+                class="hotkey-row-btn"
+                :title="`Reset ${row.label} to prototype fallback`"
+                @click="resetCustomHotkey(row.commandId)"
+              >RESET</button>
+            </div>
+          </div>
+        </div>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
@@ -1113,5 +1239,93 @@ const hotkeyConflictTitle = computed(() => {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.hotkey-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px;
+  max-width: min(780px, calc(100vw - 36px));
+  max-height: 260px;
+  overflow: auto;
+  background: rgba(18, 20, 24, 0.96);
+  border: 1px solid rgba(150, 160, 172, 0.35);
+}
+
+.hotkey-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-bottom: 3px;
+  background: rgba(18, 20, 24, 0.96);
+}
+
+.hotkey-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(250px, 1fr));
+  gap: 4px;
+}
+
+.hotkey-editor-row {
+  display: grid;
+  grid-template-columns: minmax(116px, 1fr) 72px 44px 52px;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 2px 4px;
+  background: rgba(44, 48, 54, 0.86);
+  border: 1px solid rgba(120, 128, 138, 0.25);
+  color: #cfd6df;
+}
+
+.hotkey-editor-row.capturing {
+  border-color: var(--bar-active-border);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.hotkey-command {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.hotkey-key {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #fff;
+  font-size: 11px;
+  text-align: center;
+}
+
+.hotkey-row-btn {
+  min-width: 0;
+  height: 20px;
+  padding: 2px 5px;
+  border: 1px solid rgba(130, 140, 152, 0.45);
+  border-radius: 2px;
+  background: rgba(58, 62, 70, 0.95);
+  color: #d8dde5;
+  font: inherit;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.hotkey-row-btn:hover,
+.hotkey-row-btn:focus-visible {
+  border-color: var(--bar-active-border);
+  color: #fff;
+}
+
+@media (max-width: 720px) {
+  .hotkey-editor-grid {
+    grid-template-columns: minmax(250px, 1fr);
+  }
 }
 </style>

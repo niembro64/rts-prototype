@@ -23,6 +23,7 @@ const props = defineProps<{
   selection: SelectionInfo;
   actions: SelectionActions;
   hotkeyPreset: CommandHotkeyPresetId;
+  hotkeyRevision: number;
 }>();
 
 // Per budget_design_philosophy.html "Selection Menus Are Uniform Per Entity Type"
@@ -145,6 +146,7 @@ type WaypointModeOption = {
 };
 
 function hotkey(commandId: CommandHotkeyId): string {
+  void props.hotkeyRevision;
   return commandHotkeyLabel(commandId, props.hotkeyPreset);
 }
 

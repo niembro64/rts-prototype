@@ -188,6 +188,7 @@ export function useGameCanvasClientSettings({
   const entityHud = reactive<EntityHudToggles>(seedEntityHud());
   const selectionHudMode = ref<SelectionHudMode>(getSelectionHudMode());
   const commandHotkeyPreset = ref<CommandHotkeyPresetId>(getActiveCommandHotkeyPresetId());
+  const commandHotkeyRevision = ref(0);
   const legsRadiusToggle = ref(getLegsRadiusToggle());
   const cameraSmoothMode = ref<CameraSmoothMode>(getCameraSmoothMode());
   const cameraFollowMode = ref<CameraFollowMode>(getCameraFollowMode());
@@ -481,6 +482,11 @@ export function useGameCanvasClientSettings({
   function changeCommandHotkeyPreset(presetId: CommandHotkeyPresetId): void {
     setActiveCommandHotkeyPresetId(presetId);
     commandHotkeyPreset.value = presetId;
+    commandHotkeyRevision.value += 1;
+  }
+
+  function refreshCommandHotkeys(): void {
+    commandHotkeyRevision.value += 1;
   }
 
   function toggleEdgeScroll(): void {
@@ -661,6 +667,7 @@ export function useGameCanvasClientSettings({
     entityHud,
     selectionHudMode,
     commandHotkeyPreset,
+    commandHotkeyRevision,
     entityHudTypes: ENTITY_HUD_TYPES,
     entityHudElements: ENTITY_HUD_ELEMENTS,
     soundToggles,
@@ -717,6 +724,7 @@ export function useGameCanvasClientSettings({
     toggleEntityHud,
     changeSelectionHudMode,
     changeCommandHotkeyPreset,
+    refreshCommandHotkeys,
     toggleEdgeScroll,
     toggleDragPan,
     toggleAllPan,
