@@ -102,6 +102,7 @@ export class Input3DRightDragController {
         tick,
         queueMode.queue,
         queueMode.queueFront,
+        queueMode.queueInsertIndex,
       );
       if (meshAttackCmd) {
         debugLog(
@@ -145,6 +146,7 @@ export class Input3DRightDragController {
         tick,
         queueMode.queue,
         queueMode.queueFront,
+        queueMode.queueInsertIndex,
       );
       if (repairCmd) {
         debugLog(
@@ -169,6 +171,7 @@ export class Input3DRightDragController {
           tick,
           queueMode.queue,
           queueMode.queueFront,
+          queueMode.queueInsertIndex,
         );
         if (attackCmd) {
           debugLog(
@@ -227,7 +230,7 @@ export class Input3DRightDragController {
           source,
           finalPoint.x, finalPoint.y,
           this.config.getSelectedCommander(),
-          tick, queueMode.queue, queueMode.queueFront,
+          tick, queueMode.queue, queueMode.queueFront, queueMode.queueInsertIndex,
         );
         if (repairCmd) {
           debugLog(
@@ -250,6 +253,7 @@ export class Input3DRightDragController {
         tick,
         queueMode.queue,
         queueMode.queueFront,
+        queueMode.queueInsertIndex,
         preserveFormation,
         this.resolveFormationSpeed(e),
       );

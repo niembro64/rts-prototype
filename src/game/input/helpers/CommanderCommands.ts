@@ -33,6 +33,7 @@ export function buildRepairCommandAt(
   tick: number,
   queue: boolean,
   queueFront = false,
+  queueInsertIndex?: number,
 ): RepairCommand | null {
   if (!commander?.ownership) return null;
   const target = findRepairTargetAt(
@@ -46,6 +47,7 @@ export function buildRepairCommandAt(
     targetId: target.id,
     queue,
     queueFront,
+    queueInsertIndex,
   };
 }
 
@@ -58,6 +60,7 @@ export function buildRepairAreaCommand(
   queue: boolean,
   worldZ?: number,
   queueFront = false,
+  queueInsertIndex?: number,
 ): RepairAreaCommand | null {
   if (!commander?.ownership) return null;
   return {
@@ -70,6 +73,7 @@ export function buildRepairAreaCommand(
     radius,
     queue,
     queueFront,
+    queueInsertIndex,
   };
 }
 
@@ -79,6 +83,7 @@ export function buildReclaimCommandForTarget(
   tick: number,
   queue: boolean,
   queueFront = false,
+  queueInsertIndex?: number,
 ): ReclaimCommand | null {
   if (!commander?.ownership) return null;
   if (commander.id === target?.id || !isReclaimableTarget(target)) return null;
@@ -89,6 +94,7 @@ export function buildReclaimCommandForTarget(
     targetId: target.id,
     queue,
     queueFront,
+    queueInsertIndex,
   };
 }
 
@@ -100,9 +106,10 @@ export function buildReclaimCommandAt(
   tick: number,
   queue: boolean,
   queueFront = false,
+  queueInsertIndex?: number,
 ): ReclaimCommand | null {
   const target = findReclaimTargetAt(source, worldX, worldY);
-  return buildReclaimCommandForTarget(target, commander, tick, queue, queueFront);
+  return buildReclaimCommandForTarget(target, commander, tick, queue, queueFront, queueInsertIndex);
 }
 
 export function buildReclaimAreaCommand(
@@ -114,6 +121,7 @@ export function buildReclaimAreaCommand(
   queue: boolean,
   worldZ?: number,
   queueFront = false,
+  queueInsertIndex?: number,
 ): ReclaimAreaCommand | null {
   if (!commander?.ownership) return null;
   return {
@@ -126,6 +134,7 @@ export function buildReclaimAreaCommand(
     radius,
     queue,
     queueFront,
+    queueInsertIndex,
   };
 }
 

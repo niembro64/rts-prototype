@@ -124,7 +124,12 @@ export function runCommandHotkeysContractTest(): void {
   );
   const frontQueue = queueModeFromEvent(keyEvent('w', 'KeyW', { ctrlKey: true, shiftKey: true }));
   assertContract(
-    frontQueue.queue === true && frontQueue.queueFront === true,
+    frontQueue.queue === true && frontQueue.queueFront === true && frontQueue.queueInsertIndex === undefined,
     'ctrl/cmd+shift command event must insert after the active order',
+  );
+  const indexedQueue = queueModeFromEvent(keyEvent('w', 'KeyW', { altKey: true, shiftKey: true }));
+  assertContract(
+    indexedQueue.queue === true && indexedQueue.queueFront === false && indexedQueue.queueInsertIndex === 1,
+    'alt+shift command event must insert at the first queued order slot',
   );
 }

@@ -57,6 +57,7 @@ export function buildAttackCommandForTarget(
   tick: number,
   queue: boolean,
   queueFront = false,
+  queueInsertIndex?: number,
 ): AttackCommand | null {
   if (selectedUnits.length === 0) return null;
   if (!isAttackableEnemyTarget(target, playerId)) return null;
@@ -67,6 +68,7 @@ export function buildAttackCommandForTarget(
     targetId: target.id,
     queue,
     queueFront,
+    queueInsertIndex,
   };
 }
 
@@ -84,9 +86,10 @@ export function buildAttackCommandAt(
   tick: number,
   queue: boolean,
   queueFront = false,
+  queueInsertIndex?: number,
 ): AttackCommand | null {
   const target = findAttackTargetAt(source, worldX, worldY, playerId);
-  return buildAttackCommandForTarget(target, selectedUnits, playerId, tick, queue, queueFront);
+  return buildAttackCommandForTarget(target, selectedUnits, playerId, tick, queue, queueFront, queueInsertIndex);
 }
 
 export function buildAttackAreaCommand(
@@ -98,6 +101,7 @@ export function buildAttackAreaCommand(
   queue: boolean,
   worldZ?: number,
   queueFront = false,
+  queueInsertIndex?: number,
 ): AttackAreaCommand | null {
   if (selectedUnits.length === 0) return null;
   return {
@@ -110,6 +114,7 @@ export function buildAttackAreaCommand(
     radius,
     queue,
     queueFront,
+    queueInsertIndex,
   };
 }
 
@@ -121,6 +126,7 @@ export function buildAttackGroundCommand(
   queue: boolean,
   worldZ?: number,
   queueFront = false,
+  queueInsertIndex?: number,
 ): AttackGroundCommand | null {
   if (selectedUnits.length === 0) return null;
   return {
@@ -132,6 +138,7 @@ export function buildAttackGroundCommand(
     targetZ: worldZ,
     queue,
     queueFront,
+    queueInsertIndex,
   };
 }
 
@@ -142,6 +149,7 @@ export function buildGuardCommandForTarget(
   tick: number,
   queue: boolean,
   queueFront = false,
+  queueInsertIndex?: number,
 ): GuardCommand | null {
   if (!isGuardableFriendlyTarget(target, playerId)) return null;
   const entityIds: EntityId[] = [];
@@ -156,6 +164,7 @@ export function buildGuardCommandForTarget(
     targetId: target.id,
     queue,
     queueFront,
+    queueInsertIndex,
   };
 }
 
@@ -168,9 +177,10 @@ export function buildGuardCommandAt(
   tick: number,
   queue: boolean,
   queueFront = false,
+  queueInsertIndex?: number,
 ): GuardCommand | null {
   const target = findGuardTargetAt(source, worldX, worldY, playerId);
-  return buildGuardCommandForTarget(target, selectedUnits, playerId, tick, queue, queueFront);
+  return buildGuardCommandForTarget(target, selectedUnits, playerId, tick, queue, queueFront, queueInsertIndex);
 }
 
 /** Turn a finished line path into a MoveCommand. Short paths
@@ -184,6 +194,7 @@ export function buildLinePathMoveCommand(
   tick: number,
   queue: boolean,
   queueFront = false,
+  queueInsertIndex?: number,
   preserveFormation = false,
   formationSpeed?: MoveCommand['formationSpeed'],
 ): MoveCommand | null {
@@ -203,6 +214,7 @@ export function buildLinePathMoveCommand(
         queue,
         finalPoint.z,
         queueFront,
+        queueInsertIndex,
         formationSpeed,
       );
     }
@@ -216,6 +228,7 @@ export function buildLinePathMoveCommand(
       waypointType: mode,
       queue,
       queueFront,
+      queueInsertIndex,
     };
   }
 
@@ -241,6 +254,7 @@ export function buildLinePathMoveCommand(
     waypointType: mode,
     queue,
     queueFront,
+    queueInsertIndex,
   };
   if (formationSpeed !== undefined) command.formationSpeed = formationSpeed;
   return command;
@@ -255,6 +269,7 @@ export function buildFormationPreservingMoveCommand(
   queue: boolean,
   targetZ?: number,
   queueFront = false,
+  queueInsertIndex?: number,
   formationSpeed?: MoveCommand['formationSpeed'],
 ): MoveCommand | null {
   if (selectedUnits.length === 0) return null;
@@ -269,6 +284,7 @@ export function buildFormationPreservingMoveCommand(
       waypointType: mode,
       queue,
       queueFront,
+      queueInsertIndex,
     };
   }
 
@@ -282,6 +298,7 @@ export function buildFormationPreservingMoveCommand(
     waypointType: mode,
     queue,
     queueFront,
+    queueInsertIndex,
   };
   if (formationSpeed !== undefined) command.formationSpeed = formationSpeed;
   return command;

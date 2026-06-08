@@ -47,6 +47,7 @@ type AreaDrag = {
   startClientY: number;
   queue: boolean;
   queueFront: boolean;
+  queueInsertIndex?: number;
 };
 
 type BuildPreviewTarget = {
@@ -302,6 +303,7 @@ export class Input3DModeClickController {
       startClientY: e.clientY,
       queue: queueMode.queue,
       queueFront: queueMode.queueFront,
+      queueInsertIndex: queueMode.queueInsertIndex,
     };
     return true;
   }
@@ -369,6 +371,7 @@ export class Input3DModeClickController {
         drag.queue,
         drag.start.z,
         drag.queueFront,
+        drag.queueInsertIndex,
       );
       if (cmd) this.config.commandQueue.enqueue(cmd);
       this.config.applyCursor('repair');
@@ -385,6 +388,7 @@ export class Input3DModeClickController {
         drag.queue,
         drag.start.z,
         drag.queueFront,
+        drag.queueInsertIndex,
       );
       if (cmd) this.config.commandQueue.enqueue(cmd);
       this.config.applyCursor('attack');
@@ -400,6 +404,7 @@ export class Input3DModeClickController {
       drag.queue,
       drag.start.z,
       drag.queueFront,
+      drag.queueInsertIndex,
     );
     if (cmd) this.config.commandQueue.enqueue(cmd);
     this.config.applyCursor('reclaim');
@@ -505,6 +510,7 @@ export class Input3DModeClickController {
         rotation: this.buildPlacement.facingInfo.rotation,
         queue: assignedCount === 0 ? drag.queue : true,
         queueFront: assignedCount === 0 ? drag.queueFront : false,
+        queueInsertIndex: assignedCount === 0 ? drag.queueInsertIndex : undefined,
       });
     }
     this.config.applyCursor('build');
@@ -640,6 +646,7 @@ export class Input3DModeClickController {
     const cmd = this.config.mode.buildStartBuildCommand(
       builder, world.x, world.y,
       this.config.getTick(), queueMode.queue, queueMode.queueFront,
+      queueMode.queueInsertIndex,
       this.buildPlacement.facingInfo.rotation,
     );
     if (!cmd) return;
@@ -692,6 +699,7 @@ export class Input3DModeClickController {
       queueMode.queue,
       world.z,
       queueMode.queueFront,
+      queueMode.queueInsertIndex,
     );
     if (!cmd) return;
     this.config.commandQueue.enqueue(cmd);
@@ -717,6 +725,7 @@ export class Input3DModeClickController {
       queueMode.queue,
       world.z,
       queueMode.queueFront,
+      queueMode.queueInsertIndex,
     );
     if (!cmd) return;
     this.config.commandQueue.enqueue(cmd);
@@ -743,6 +752,7 @@ export class Input3DModeClickController {
       tick,
       queueMode.queue,
       queueMode.queueFront,
+      queueMode.queueInsertIndex,
     );
     if (meshAttackCmd) {
       this.config.commandQueue.enqueue(meshAttackCmd);
@@ -762,6 +772,7 @@ export class Input3DModeClickController {
       tick,
       queueMode.queue,
       queueMode.queueFront,
+      queueMode.queueInsertIndex,
     );
     if (!attackCmd) return;
     this.config.commandQueue.enqueue(attackCmd);
@@ -786,6 +797,7 @@ export class Input3DModeClickController {
       queueMode.queue,
       world.z,
       queueMode.queueFront,
+      queueMode.queueInsertIndex,
     );
     if (!cmd) return;
     this.config.commandQueue.enqueue(cmd);
@@ -844,6 +856,7 @@ export class Input3DModeClickController {
       tick,
       queueMode.queue,
       queueMode.queueFront,
+      queueMode.queueInsertIndex,
     );
     if (meshGuardCmd) {
       this.config.commandQueue.enqueue(meshGuardCmd);
@@ -863,6 +876,7 @@ export class Input3DModeClickController {
       tick,
       queueMode.queue,
       queueMode.queueFront,
+      queueMode.queueInsertIndex,
     );
     if (!guardCmd) return;
     this.config.commandQueue.enqueue(guardCmd);
@@ -889,6 +903,7 @@ export class Input3DModeClickController {
       tick,
       queueMode.queue,
       queueMode.queueFront,
+      queueMode.queueInsertIndex,
     );
     if (meshReclaimCmd) {
       this.config.commandQueue.enqueue(meshReclaimCmd);
@@ -908,6 +923,7 @@ export class Input3DModeClickController {
       queueMode.queue,
       world.z,
       queueMode.queueFront,
+      queueMode.queueInsertIndex,
     );
     if (!reclaimCmd) return;
     this.config.commandQueue.enqueue(reclaimCmd);

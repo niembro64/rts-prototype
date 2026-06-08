@@ -114,6 +114,7 @@ export class CommanderModeController {
     tick: number,
     queue: boolean,
     queueFront = false,
+    queueInsertIndex?: number,
     rotation = 0,
   ): StartBuildCommand | null {
     if (this._buildBuildingBlueprintId === null) return null;
@@ -128,6 +129,7 @@ export class CommanderModeController {
       rotation,
       queue,
       queueFront,
+      queueInsertIndex,
     };
   }
 

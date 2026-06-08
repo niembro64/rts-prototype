@@ -42,6 +42,7 @@ export function runRightClickCommandsContractTest(): void {
     1,
     false,
     false,
+    undefined,
     true,
     undefined,
   );
@@ -64,6 +65,7 @@ export function runRightClickCommandsContractTest(): void {
     2,
     false,
     false,
+    undefined,
     true,
     'slowest',
   );

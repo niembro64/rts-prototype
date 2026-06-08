@@ -36,9 +36,8 @@ upgrade and single T1 -> T2 upgrade replacement workflows with construction
 lifecycle, replacement rules, command authorization, hotkeys, and visible
 previews/buttons.
 
-Issue: queued-order insertion needs a client-facing commandinsert affordance
-for choosing a specific `queueInsertIndex` instead of only append or
-queue-front.
+Issue: queued-order insertion needs a full BAR-style commandinsert picker for
+arbitrary queue positions.
 
 Issue: behavior/state toggles are incomplete. Implement missing BAR-equivalent
 states such as cloak/want-cloak, gather wait, richer stance/fire states beyond
