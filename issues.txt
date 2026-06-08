@@ -22,7 +22,7 @@ Severity: Medium
 
 Evidence:
 - src/game/sim/Simulation.ts is 2184 lines.
-- src/game/render3d/Input3DManager.ts is 1285 lines and still large after keyboard dispatch, picking/selection, and right-drag command handling were split out.
+- src/game/render3d/Input3DManager.ts has been reduced to 930 lines; continue applying the same split pattern if it is touched again.
 - src/game/scenes/RtsScene3D.ts is 1447 lines.
 - src/game/render3d/Render3DEntities.ts is 1280 lines.
 - src/game/render3d/BuildingAnimationController3D.ts is 1115 lines.
