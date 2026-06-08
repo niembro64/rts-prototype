@@ -54,7 +54,6 @@ import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_TURRETS,
 } from '@/types/network';
-import { UNIT_MASS_MULTIPLIER } from '../../config';
 import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
 import {
@@ -84,9 +83,6 @@ import {
   spliceUnitActions,
 } from './unitActions';
 import {
-  LOCOMOTION_FORCE_SCALE,
-} from './locomotion';
-import {
   SimulationEventQueues,
   safeVelocityUpdates,
 } from './SimulationEventQueues';
@@ -94,7 +90,10 @@ import { resolveCommanderGameOverWinner } from './SimulationGameOver';
 import { SimulationDeathExplosionPlanner } from './SimulationDeathExplosionPlanner';
 import { SimulationDeadEntityCleanup } from './SimulationDeadEntityCleanup';
 import {
-  SIMULATION_INVALID_BODY_SLOT,
+  ARRIVAL_RADIUS,
+  SimulationArrivalController,
+} from './SimulationArrivalController';
+import {
   SimulationFlyingLoiterController,
 } from './SimulationFlyingLoiterController';
 
@@ -144,15 +143,6 @@ const MAX_REPLANS_PER_TICK = 5;
 const REPLAN_FAILURE_COOLDOWN = -60;
 const STUCK_REPLAN_BATCH_FLAG_SETTLING_CHECK = 1 << 0;
 
-const ARRIVAL_RADIUS = 50;
-const ARRIVAL_FINAL_RADIUS = 15;
-const ARRIVAL_FINAL_STOP_SPEED = 100;
-const ARRIVAL_CONTROL_RADIUS = 20;
-const ARRIVAL_RESPONSE_TIME_SEC = 0.22;
-const ARRIVAL_MIN_ACCEL = 0.001;
-const ARRIVAL_BATCH_FLAG_LAST_ACTION = 1 << 1;
-const ARRIVAL_COMPLETION_BATCH_FLAG_FLYING = 1 << 2;
-
 export class Simulation {
   private world: WorldState;
   private commandQueue: CommandQueue;
@@ -160,6 +150,7 @@ export class Simulation {
   private damageSystem: DamageSystem;
   private deathExplosionPlanner: SimulationDeathExplosionPlanner;
   private deadEntityCleanup: SimulationDeadEntityCleanup;
+  private arrivalController: SimulationArrivalController;
   private flyingLoiter: SimulationFlyingLoiterController;
   private forceAccumulator: ForceAccumulator = new ForceAccumulator();
   private windState: WindState = sampleWindState(0);
@@ -197,32 +188,6 @@ export class Simulation {
   private _deadUnitIdsBuf: EntityId[] = [];
   private _deadBuildingIdsBuf: EntityId[] = [];
   private _movingUnitsBuf: Entity[] = [];
-  private _arrivalEntitiesBuf: Entity[] = [];
-  private _arrivalSlotsBuf = new Uint32Array(0);
-  private _arrivalDxBuf = new Float64Array(0);
-  private _arrivalDyBuf = new Float64Array(0);
-  private _arrivalDistanceBuf = new Float64Array(0);
-  private _arrivalRadiusPushBuf = new Float64Array(0);
-  private _arrivalDriveForceBuf = new Float64Array(0);
-  private _arrivalTractionBuf = new Float64Array(0);
-  private _arrivalMassBuf = new Float64Array(0);
-  private _arrivalFlagsBuf = new Uint8Array(0);
-  private _arrivalOutXBuf = new Float64Array(0);
-  private _arrivalOutYBuf = new Float64Array(0);
-  private _arrivalActiveBuf = new Uint8Array(0);
-  private _arrivalCount = 0;
-  private _arrivalCompletionEntitiesBuf: Entity[] = [];
-  private _arrivalCompletionActionsBuf: UnitAction[] = [];
-  private _arrivalCompletionSlotsBuf = new Uint32Array(0);
-  private _arrivalCompletionDxBuf = new Float64Array(0);
-  private _arrivalCompletionDyBuf = new Float64Array(0);
-  private _arrivalCompletionFallbackVxBuf = new Float64Array(0);
-  private _arrivalCompletionFallbackVyBuf = new Float64Array(0);
-  private _arrivalCompletionFlagsBuf = new Uint8Array(0);
-  private _arrivalCompletionFinalPointBuf = new Uint8Array(0);
-  private _arrivalCompletionDistanceBuf = new Float64Array(0);
-  private _arrivalCompletionArrivedBuf = new Uint8Array(0);
-  private _arrivalCompletionCount = 0;
   private _stuckEntitiesBuf: Entity[] = [];
   private _stuckSlotsBuf = new Uint32Array(0);
   private _stuckTicksBuf = new Int32Array(0);
@@ -282,6 +247,11 @@ export class Simulation {
       this.eventQueues,
       this.deathExplosionPlanner,
     );
+    this.arrivalController = new SimulationArrivalController(this.world, {
+      advanceAction: (entity) => this.advanceAction(entity),
+      advanceActivePathPoint: (entity) => this.advanceActivePathPoint(entity),
+      queueFlyingLoiter: (entity) => this.flyingLoiter.queue(entity),
+    });
     this.flyingLoiter = new SimulationFlyingLoiterController(this.world);
   }
 
@@ -811,7 +781,7 @@ export class Simulation {
   private updateUnits(dtSec: number): void {
     const movingUnits = this._movingUnitsBuf;
     movingUnits.length = 0;
-    this._arrivalCount = 0;
+    this.arrivalController.beginFrame();
     this.prepareCombatHaltDecisions();
 
     for (const entity of this.world.getUnits()) {
@@ -915,7 +885,7 @@ export class Simulation {
           continue;
         }
 
-        this.queueArrivalThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
+        this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
         continue;
       }
 
@@ -942,7 +912,7 @@ export class Simulation {
         const dy = movementTarget.y - transform.y;
         const distance = magnitude(dx, dy);
         if (distance > 15) {
-          this.queueArrivalThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
+          this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
         } else if (!movementTarget.isFinalActionPoint) {
           this.advanceActivePathPoint(entity);
           unit.stuckTicks = 0;
@@ -980,7 +950,7 @@ export class Simulation {
         const dy = movementTarget.y - transform.y;
         const distance = magnitude(dx, dy);
         if (distance > 15) {
-          this.queueArrivalThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
+          this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
         } else if (!movementTarget.isFinalActionPoint) {
           this.advanceActivePathPoint(entity);
           unit.stuckTicks = 0;
@@ -1017,14 +987,14 @@ export class Simulation {
         const dy = movementTarget.y - transform.y;
         const distance = magnitude(dx, dy);
         if (distance > 15) {
-          this.queueArrivalThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
+          this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
         } else if (!movementTarget.isFinalActionPoint) {
           this.advanceActivePathPoint(entity);
           unit.stuckTicks = 0;
         } else if (this.tryRefreshGuardApproach(entity, currentAction, targetPoint)) {
           unit.stuckTicks = 0;
         } else {
-          this.queueArrivalThrust(entity, currentAction, targetDx, targetDy, targetDistance);
+          this.arrivalController.queueThrust(entity, currentAction, targetDx, targetDy, targetDistance);
         }
         continue;
       }
@@ -1048,7 +1018,7 @@ export class Simulation {
 
       // Completion classification is batched below so Rust reads the
       // current body velocity and applies the final-waypoint brake gate.
-      this.queueArrivalCompletion(
+      this.arrivalController.queueCompletion(
         entity,
         currentAction,
         dx,
@@ -1057,9 +1027,9 @@ export class Simulation {
       );
     }
 
-    this.flushArrivalCompletion();
+    this.arrivalController.flushCompletion();
     this.flyingLoiter.flush(movingUnits);
-    this.flushArrivalThrust(movingUnits, dtSec);
+    this.arrivalController.flushThrust(movingUnits, dtSec);
 
     // Stuck-detection / replan pass — runs after every unit has had
     // its thrust set this tick. Looking at thrust + actual physics
@@ -1194,238 +1164,6 @@ export class Simulation {
         }
       }
     }
-  }
-
-  private ensureArrivalCapacity(required: number): void {
-    if (this._arrivalSlotsBuf.length >= required) return;
-    const next = Math.max(required, this._arrivalSlotsBuf.length * 2, 128);
-    const slots = new Uint32Array(next);
-    slots.set(this._arrivalSlotsBuf);
-    this._arrivalSlotsBuf = slots;
-    const dx = new Float64Array(next);
-    dx.set(this._arrivalDxBuf);
-    this._arrivalDxBuf = dx;
-    const dy = new Float64Array(next);
-    dy.set(this._arrivalDyBuf);
-    this._arrivalDyBuf = dy;
-    const distance = new Float64Array(next);
-    distance.set(this._arrivalDistanceBuf);
-    this._arrivalDistanceBuf = distance;
-    const radiusCollision = new Float64Array(next);
-    radiusCollision.set(this._arrivalRadiusPushBuf);
-    this._arrivalRadiusPushBuf = radiusCollision;
-    const driveForce = new Float64Array(next);
-    driveForce.set(this._arrivalDriveForceBuf);
-    this._arrivalDriveForceBuf = driveForce;
-    const traction = new Float64Array(next);
-    traction.set(this._arrivalTractionBuf);
-    this._arrivalTractionBuf = traction;
-    const mass = new Float64Array(next);
-    mass.set(this._arrivalMassBuf);
-    this._arrivalMassBuf = mass;
-    const flags = new Uint8Array(next);
-    flags.set(this._arrivalFlagsBuf);
-    this._arrivalFlagsBuf = flags;
-    this._arrivalOutXBuf = new Float64Array(next);
-    this._arrivalOutYBuf = new Float64Array(next);
-    this._arrivalActiveBuf = new Uint8Array(next);
-  }
-
-  private ensureArrivalCompletionCapacity(required: number): void {
-    if (this._arrivalCompletionSlotsBuf.length >= required) return;
-    const next = Math.max(required, this._arrivalCompletionSlotsBuf.length * 2, 128);
-    const slots = new Uint32Array(next);
-    slots.set(this._arrivalCompletionSlotsBuf);
-    this._arrivalCompletionSlotsBuf = slots;
-    const dx = new Float64Array(next);
-    dx.set(this._arrivalCompletionDxBuf);
-    this._arrivalCompletionDxBuf = dx;
-    const dy = new Float64Array(next);
-    dy.set(this._arrivalCompletionDyBuf);
-    this._arrivalCompletionDyBuf = dy;
-    const fallbackVx = new Float64Array(next);
-    fallbackVx.set(this._arrivalCompletionFallbackVxBuf);
-    this._arrivalCompletionFallbackVxBuf = fallbackVx;
-    const fallbackVy = new Float64Array(next);
-    fallbackVy.set(this._arrivalCompletionFallbackVyBuf);
-    this._arrivalCompletionFallbackVyBuf = fallbackVy;
-    const flags = new Uint8Array(next);
-    flags.set(this._arrivalCompletionFlagsBuf);
-    this._arrivalCompletionFlagsBuf = flags;
-    const finalPoint = new Uint8Array(next);
-    finalPoint.set(this._arrivalCompletionFinalPointBuf);
-    this._arrivalCompletionFinalPointBuf = finalPoint;
-    this._arrivalCompletionDistanceBuf = new Float64Array(next);
-    this._arrivalCompletionArrivedBuf = new Uint8Array(next);
-  }
-
-  /** Pack one generic waypoint action for Rust-side completion
-   *  classification. TypeScript still mutates action queues after the
-   *  batch returns; Rust owns the distance/radius/stop-speed decision. */
-  private queueArrivalCompletion(
-    entity: Entity,
-    action: UnitAction,
-    dx: number,
-    dy: number,
-    isFinalActionPoint: boolean,
-  ): void {
-    const unit = entity.unit;
-    if (!unit) return;
-
-    const index = this._arrivalCompletionCount++;
-    this.ensureArrivalCompletionCapacity(this._arrivalCompletionCount);
-    this._arrivalCompletionEntitiesBuf[index] = entity;
-    this._arrivalCompletionActionsBuf[index] = action;
-    this._arrivalCompletionSlotsBuf[index] =
-      entity.body !== null ? entity.body.physicsBody.slot : SIMULATION_INVALID_BODY_SLOT;
-    this._arrivalCompletionDxBuf[index] = dx;
-    this._arrivalCompletionDyBuf[index] = dy;
-    this._arrivalCompletionFallbackVxBuf[index] = unit.velocityX;
-    this._arrivalCompletionFallbackVyBuf[index] = unit.velocityY;
-    let flags = unit.actions.length <= 1 && action.type !== 'patrol'
-      && isFinalActionPoint
-      ? ARRIVAL_BATCH_FLAG_LAST_ACTION
-      : 0;
-    if (unit.locomotion.type === 'flying') flags |= ARRIVAL_COMPLETION_BATCH_FLAG_FLYING;
-    this._arrivalCompletionFlagsBuf[index] = flags;
-    this._arrivalCompletionFinalPointBuf[index] = isFinalActionPoint ? 1 : 0;
-  }
-
-  private flushArrivalCompletion(): void {
-    const count = this._arrivalCompletionCount;
-    if (count === 0) return;
-
-    const sim = getSimWasm();
-    if (sim === undefined) {
-      throw new Error('Simulation.flushArrivalCompletion: sim-wasm is not initialized');
-    }
-    sim.arrivalCompletionStepBatch(
-      this._arrivalCompletionSlotsBuf.subarray(0, count),
-      this._arrivalCompletionDxBuf.subarray(0, count),
-      this._arrivalCompletionDyBuf.subarray(0, count),
-      this._arrivalCompletionFallbackVxBuf.subarray(0, count),
-      this._arrivalCompletionFallbackVyBuf.subarray(0, count),
-      this._arrivalCompletionFlagsBuf.subarray(0, count),
-      this._arrivalCompletionDistanceBuf.subarray(0, count),
-      this._arrivalCompletionArrivedBuf.subarray(0, count),
-      ARRIVAL_RADIUS,
-      ARRIVAL_FINAL_RADIUS,
-      ARRIVAL_FINAL_STOP_SPEED,
-    );
-
-    for (let i = 0; i < count; i++) {
-      const entity = this._arrivalCompletionEntitiesBuf[i];
-      const action = this._arrivalCompletionActionsBuf[i];
-      const unit = entity.unit;
-      if (unit) {
-        if (this._arrivalCompletionArrivedBuf[i] !== 0) {
-          if (this._arrivalCompletionFinalPointBuf[i] !== 0) {
-            this.advanceAction(entity);
-          } else {
-            this.advanceActivePathPoint(entity);
-          }
-          unit.stuckTicks = 0;
-          if (unit.actions.length === 0) this.flyingLoiter.queue(entity);
-        } else {
-          this.queueArrivalThrust(
-            entity,
-            action,
-            this._arrivalCompletionDxBuf[i],
-            this._arrivalCompletionDyBuf[i],
-            this._arrivalCompletionDistanceBuf[i],
-            this._arrivalCompletionFinalPointBuf[i] !== 0,
-          );
-        }
-      }
-      this._arrivalCompletionEntitiesBuf[i] = undefined as unknown as Entity;
-      this._arrivalCompletionActionsBuf[i] = undefined as unknown as UnitAction;
-      this._arrivalCompletionFinalPointBuf[i] = 0;
-    }
-    this._arrivalCompletionCount = 0;
-  }
-
-  /** Pack one action-system arrival request for the WASM batch. The
-   *  TypeScript side still owns action queue semantics; Rust owns the
-   *  velocity-aware PD controller over the packed candidates. */
-  private queueArrivalThrust(
-    entity: Entity,
-    action: UnitAction,
-    dx: number,
-    dy: number,
-    distance: number,
-    isFinalActionPoint = true,
-  ): void {
-    const unit = entity.unit;
-    const body = entity.body;
-    const bodySlot = body !== null ? body.physicsBody.slot : -1;
-    if (!unit || bodySlot < 0 || !Number.isFinite(distance) || distance <= 0.0001) {
-      if (unit) {
-        unit.thrustDirX = 0;
-        unit.thrustDirY = 0;
-      }
-      return;
-    }
-
-    // Intermediate path points and queued waypoints steer full-power
-    // through the point. The PD braking math only fires when the unit
-    // needs to stop at a precise point: the final path point for the
-    // last durable action in the queue.
-    const isLastAction = isFinalActionPoint && unit.actions.length <= 1 && action.type !== 'patrol';
-    const index = this._arrivalCount++;
-    this.ensureArrivalCapacity(this._arrivalCount);
-    this._arrivalEntitiesBuf[index] = entity;
-    this._arrivalSlotsBuf[index] = bodySlot;
-    this._arrivalDxBuf[index] = dx;
-    this._arrivalDyBuf[index] = dy;
-    this._arrivalDistanceBuf[index] = distance;
-    this._arrivalRadiusPushBuf[index] = unit.radius.collision;
-    this._arrivalDriveForceBuf[index] = unit.locomotion.driveForce;
-    this._arrivalTractionBuf[index] = unit.locomotion.traction;
-    this._arrivalMassBuf[index] = unit.mass;
-    this._arrivalFlagsBuf[index] = isLastAction ? ARRIVAL_BATCH_FLAG_LAST_ACTION : 0;
-  }
-
-  private flushArrivalThrust(movingUnits: Entity[], dtSec: number): void {
-    const count = this._arrivalCount;
-    if (count === 0) return;
-
-    const sim = getSimWasm();
-    if (sim === undefined) {
-      throw new Error('Simulation.flushArrivalThrust: sim-wasm is not initialized');
-    }
-    sim.arrivalControlStepBatch(
-      this._arrivalSlotsBuf.subarray(0, count),
-      this._arrivalDxBuf.subarray(0, count),
-      this._arrivalDyBuf.subarray(0, count),
-      this._arrivalDistanceBuf.subarray(0, count),
-      this._arrivalRadiusPushBuf.subarray(0, count),
-      this._arrivalDriveForceBuf.subarray(0, count),
-      this._arrivalTractionBuf.subarray(0, count),
-      this._arrivalMassBuf.subarray(0, count),
-      this._arrivalFlagsBuf.subarray(0, count),
-      this._arrivalOutXBuf.subarray(0, count),
-      this._arrivalOutYBuf.subarray(0, count),
-      this._arrivalActiveBuf.subarray(0, count),
-      dtSec,
-      this.world.thrustMultiplier,
-      LOCOMOTION_FORCE_SCALE,
-      UNIT_MASS_MULTIPLIER,
-      ARRIVAL_CONTROL_RADIUS,
-      ARRIVAL_RESPONSE_TIME_SEC,
-      ARRIVAL_MIN_ACCEL,
-    );
-
-    for (let i = 0; i < count; i++) {
-      const entity = this._arrivalEntitiesBuf[i];
-      const unit = entity.unit;
-      if (unit) {
-        unit.thrustDirX = this._arrivalOutXBuf[i];
-        unit.thrustDirY = this._arrivalOutYBuf[i];
-        if (this._arrivalActiveBuf[i] !== 0) movingUnits.push(entity);
-      }
-      this._arrivalEntitiesBuf[i] = undefined as unknown as Entity;
-    }
-    this._arrivalCount = 0;
   }
 
   private ensureCombatHaltRowCapacity(required: number): void {
@@ -1881,11 +1619,7 @@ export class Simulation {
     this._deadUnitIdsBuf.length = 0;
     this._deadBuildingIdsBuf.length = 0;
     this.deadEntityCleanup.reset();
-    this._arrivalCount = 0;
-    this._arrivalEntitiesBuf.length = 0;
-    this._arrivalCompletionCount = 0;
-    this._arrivalCompletionEntitiesBuf.length = 0;
-    this._arrivalCompletionActionsBuf.length = 0;
+    this.arrivalController.reset();
     this.flyingLoiter.reset();
     this._stuckEntitiesBuf.length = 0;
     this.clearCombatHaltDecisionCache();
