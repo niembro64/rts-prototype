@@ -53,11 +53,6 @@ slow/fast movement modifiers where applicable, and complete visual formation
 previews. Translate these to the 3D physics model so formation targets respect
 mass, collision, terrain height, slopes, water, and pathability.
 
-Issue: battle and targeting commands are incomplete. Add any remaining
-BAR-equivalent targeting commands that become supported by simulation, including
-clear no-ground target affordances where the current Set Target UI is
-insufficient.
-
 Issue: construction commands are missing most BAR build ergonomics. Implement
 the BAR grid build menu categories, grid-menu cell hotkeys, legacy quick-build
 Z/X/C/V cycling, construction shortcuts, build line, build grid, build border,

@@ -676,9 +676,9 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
       </div>
     </div>
 
-    <!-- Combat lock-on. Set Target enters a click-pick mode (the next
-         left-click on any entity with an ID sets the host-level
-         priorityTargetId; right-click / Esc cancels); Clear Target
+    <!-- Combat lock-on. Set Target enters a no-ground click-pick mode
+         (the next left-click on any entity with an ID sets the host-level
+         priorityTargetId; ground clicks are ignored); Clear Target
          drops the lock and reverts to autonomous acquisition.
          Applies to selected combat units and towers with turrets. -->
     <div v-if="selection.hasTowerTargetControl && showCombatActions" class="button-group">
@@ -689,10 +689,10 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           class="action-btn"
           :class="{ active: selection.isTowerTargetMode }"
           :style="{ '--btn-color': BUTTON_COLORS.attackArea }"
-          :title="actionTitle('Set target', 'combat.towerTargetSet', 'Click an entity to lock on')"
+          :title="actionTitle('Set target no ground', 'combat.towerTargetSet', 'Click an entity to lock on; ground clicks are ignored')"
           @click="actions.setTowerTargetMode()"
         >
-          <span class="btn-label">Set</span>
+          <span class="btn-label">No Ground</span>
           <span class="btn-key">{{ hotkey('combat.towerTargetSet') }}</span>
         </button>
         <button
