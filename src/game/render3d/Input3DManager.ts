@@ -156,9 +156,9 @@ export class Input3DManager {
       (entity) => this.isSelectableByActivePlayer(entity),
       (entityIds, additive) => this.enqueueSelection(entityIds, additive),
     );
-    this.controlGroups.onChange = (groups) => {
+    this.controlGroups.onChange = () => {
       saveAutoGroupPreset(this.controlGroups.getAutoGroupPresetSnapshot());
-      this.onControlGroupsChange?.(groups);
+      this.emitControlGroupSnapshots();
     };
     this.controlGroups.loadAutoGroupPreset(loadAutoGroupPreset());
     this.selectedCommands = new InputSelectedCommands(
@@ -403,7 +403,13 @@ export class Input3DManager {
     this.exitSpecialModes();
     this.setWaypointMode('move');
     this.clearHoveredEntities();
+    this.refreshControlGroupsForActivePlayer();
     this.refreshCursor();
+  }
+
+  private refreshControlGroupsForActivePlayer(): void {
+    const autoGroupsChanged = this.controlGroups.refreshAutoGroups();
+    if (!autoGroupsChanged) this.emitControlGroupSnapshots();
   }
 
   /** Enter build mode with a building blueprint. Called from the UI
@@ -770,6 +776,10 @@ export class Input3DManager {
 
   getControlGroupSlotSnapshots(): readonly ControlGroupSlotSnapshot[] {
     return this.controlGroups.getSlotSnapshots();
+  }
+
+  private emitControlGroupSnapshots(): void {
+    this.onControlGroupsChange?.(this.controlGroups.getSlotSnapshots());
   }
 
   recallControlGroupSlot(index: number, additive: boolean): boolean {

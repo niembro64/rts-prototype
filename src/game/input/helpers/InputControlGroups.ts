@@ -149,7 +149,7 @@ export class InputControlGroups {
     }));
   }
 
-  refreshAutoGroups(): void {
+  refreshAutoGroups(): boolean {
     let changed = false;
     for (let i = 0; i < CONTROL_GROUP_COUNT; i++) {
       const rule = this.autoGroupRules[i];
@@ -160,6 +160,7 @@ export class InputControlGroups {
       changed = true;
     }
     if (changed) this.emitChange();
+    return changed;
   }
 
   recallSlot(index: number, additive: boolean): boolean {
