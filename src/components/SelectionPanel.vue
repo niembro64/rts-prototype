@@ -229,6 +229,8 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           <div><kbd>Shift</kbd> + <kbd>0-9</kbd> adds a group to the selection.</div>
           <div><kbd>Ctrl/Cmd</kbd> + <kbd>Shift</kbd> + <kbd>0-9</kbd> adds selection to a group.</div>
           <div><kbd>Ctrl/Cmd</kbd> + <kbd>Alt</kbd> + <kbd>0-9</kbd> toggles a group in the selection.</div>
+          <div><kbd>Alt</kbd> + <kbd>0-9</kbd> auto-groups matching unit and building types.</div>
+          <div><kbd>Alt</kbd> + <kbd>`</kbd> or <kbd>Alt</kbd> + <kbd>Q</kbd> removes selected types from auto-groups.</div>
           <div><kbd>Ctrl/Cmd</kbd> + <kbd>`</kbd> removes selected units from all groups.</div>
           <div class="hotkey-footnote">Button hotkeys appear on hover.</div>
         </div>

@@ -203,6 +203,8 @@ export class Input3DManager {
       setWaypointMode: (mode) => this.setWaypointMode(mode),
       storeControlGroupSlot: (index) => this.storeControlGroupSlot(index),
       addToControlGroupSlot: (index) => this.addToControlGroupSlot(index),
+      setAutoControlGroupSlot: (index) => this.setAutoControlGroupSlot(index),
+      removeSelectedFromAutoControlGroups: () => this.removeSelectedFromAutoControlGroups(),
       recallControlGroupSlot: (index, additive) => this.recallControlGroupSlot(index, additive),
       toggleControlGroupSlot: (index) => this.toggleControlGroupSlot(index),
       unsetSelectedFromControlGroups: () => this.unsetSelectedFromControlGroups(),
@@ -743,6 +745,14 @@ export class Input3DManager {
     this.controlGroups.addToSlot(index);
   }
 
+  setAutoControlGroupSlot(index: number): void {
+    this.controlGroups.setAutoGroupSlot(index);
+  }
+
+  removeSelectedFromAutoControlGroups(): void {
+    this.controlGroups.removeSelectedFromAutoGroups();
+  }
+
   recallControlGroupSlot(index: number, additive: boolean): boolean {
     return this.controlGroups.recallSlot(index, additive);
   }
@@ -998,6 +1008,7 @@ export class Input3DManager {
    *  "once-per-frame" input bookkeeping should live here so the
    *  scene has one call site. Mirrors InputManager.update() on 2D. */
   tick(): void {
+    this.controlGroups.refreshAutoGroups();
     const changed = this.selectionChangeTracker.poll(
       this.entitySource,
       this.context.activePlayerId,

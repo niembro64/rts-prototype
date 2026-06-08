@@ -3,12 +3,18 @@ import type { Entity, EntityId } from '../../sim/types';
 export const CONTROL_GROUP_COUNT = 10;
 
 type ControlGroupEntitySource = {
+  getUnits: () => Entity[];
+  getBuildings: () => Entity[];
   getSelectedUnits: () => Entity[];
   getSelectedBuildings: () => Entity[];
   getEntity: (id: EntityId) => Entity | undefined;
 };
 
 type SelectionEnqueue = (entityIds: EntityId[], additive: boolean) => void;
+type AutoGroupRule = {
+  unitBlueprintIds: Set<string>;
+  buildingBlueprintIds: Set<string>;
+};
 
 export function controlGroupIndexForKey(e: KeyboardEvent): number {
   if (/^Numpad[0-9]$/.test(e.code)) return -1;
@@ -22,6 +28,8 @@ export class InputControlGroups {
   private readonly isSelectable: (entity: Entity | null) => boolean;
   private readonly enqueueSelection: SelectionEnqueue;
   private readonly groups: EntityId[][] = Array.from({ length: CONTROL_GROUP_COUNT }, () => []);
+  private readonly autoGroupRules: (AutoGroupRule | null)[] =
+    Array.from({ length: CONTROL_GROUP_COUNT }, () => null);
   onChange?: (groups: readonly (readonly EntityId[])[]) => void;
 
   constructor(
@@ -42,6 +50,7 @@ export class InputControlGroups {
     if (index < 0 || index >= CONTROL_GROUP_COUNT) return;
     const ids = this.getSelectedGroupEntityIds();
     if (ids.length === 0) return;
+    this.autoGroupRules[index] = null;
     this.groups[index] = ids;
     this.emitChange();
   }
@@ -50,6 +59,8 @@ export class InputControlGroups {
     if (index < 0 || index >= CONTROL_GROUP_COUNT) return;
     const selectedIds = this.getSelectedGroupEntityIds();
     if (selectedIds.length === 0) return;
+    const hadAutoRule = this.autoGroupRules[index] !== null;
+    this.autoGroupRules[index] = null;
 
     const merged = this.groups[index].slice();
     const seen = new Set<EntityId>(merged);
@@ -59,7 +70,10 @@ export class InputControlGroups {
       seen.add(id);
       merged.push(id);
     }
-    if (merged.length === this.groups[index].length) return;
+    if (merged.length === this.groups[index].length) {
+      if (hadAutoRule) this.emitChange();
+      return;
+    }
     this.groups[index] = merged;
     this.emitChange();
   }
@@ -67,13 +81,51 @@ export class InputControlGroups {
   unsetSelectedFromGroups(): void {
     const selectedIds = this.getSelectedGroupEntityIds();
     if (selectedIds.length === 0) return;
+    const removedAutoRuleTypes = this.removeSelectedTypesFromAutoGroupRules();
     const selectedSet = new Set<EntityId>(selectedIds);
-    let changed = false;
+    let changed = removedAutoRuleTypes;
     for (let i = 0; i < this.groups.length; i++) {
       const group = this.groups[i];
       const filtered = group.filter((id) => !selectedSet.has(id));
       if (filtered.length === group.length) continue;
       this.groups[i] = filtered;
+      changed = true;
+    }
+    if (changed) this.emitChange();
+  }
+
+  setAutoGroupSlot(index: number): void {
+    if (index < 0 || index >= CONTROL_GROUP_COUNT) return;
+    const rule = this.buildAutoGroupRuleFromSelection();
+    if (rule === null) return;
+    this.autoGroupRules[index] = rule;
+    this.groups[index] = this.collectAutoGroupEntityIds(rule);
+    this.emitChange();
+  }
+
+  removeSelectedFromAutoGroups(): void {
+    const selectedIds = this.getSelectedGroupEntityIds();
+    if (selectedIds.length === 0) return;
+    const selectedSet = new Set<EntityId>(selectedIds);
+    let changed = this.removeSelectedTypesFromAutoGroupRules();
+    for (let i = 0; i < this.groups.length; i++) {
+      if (this.autoGroupRules[i] === null) continue;
+      const filtered = this.groups[i].filter((id) => !selectedSet.has(id));
+      if (filtered.length === this.groups[i].length) continue;
+      this.groups[i] = filtered;
+      changed = true;
+    }
+    if (changed) this.emitChange();
+  }
+
+  refreshAutoGroups(): void {
+    let changed = false;
+    for (let i = 0; i < CONTROL_GROUP_COUNT; i++) {
+      const rule = this.autoGroupRules[i];
+      if (rule === null) continue;
+      const entityIds = this.collectAutoGroupEntityIds(rule);
+      if (arraysEqual(this.groups[i], entityIds)) continue;
+      this.groups[i] = entityIds;
       changed = true;
     }
     if (changed) this.emitChange();
@@ -124,6 +176,68 @@ export class InputControlGroups {
     for (let i = 0; i < selectedUnits.length; i++) entityIds.push(selectedUnits[i].id);
     const selectedBuildings = this.source.getSelectedBuildings();
     for (let i = 0; i < selectedBuildings.length; i++) entityIds.push(selectedBuildings[i].id);
+    return entityIds;
+  }
+
+  private buildAutoGroupRuleFromSelection(): AutoGroupRule | null {
+    const rule: AutoGroupRule = {
+      unitBlueprintIds: new Set<string>(),
+      buildingBlueprintIds: new Set<string>(),
+    };
+    const selectedUnits = this.source.getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      const unitBlueprintId = selectedUnits[i].unit?.unitBlueprintId;
+      if (unitBlueprintId) rule.unitBlueprintIds.add(unitBlueprintId);
+    }
+    const selectedBuildings = this.source.getSelectedBuildings();
+    for (let i = 0; i < selectedBuildings.length; i++) {
+      const buildingBlueprintId = selectedBuildings[i].buildingBlueprintId;
+      if (buildingBlueprintId) rule.buildingBlueprintIds.add(buildingBlueprintId);
+    }
+    return rule.unitBlueprintIds.size > 0 || rule.buildingBlueprintIds.size > 0
+      ? rule
+      : null;
+  }
+
+  private removeSelectedTypesFromAutoGroupRules(): boolean {
+    const selectedRule = this.buildAutoGroupRuleFromSelection();
+    if (selectedRule === null) return false;
+    let changed = false;
+    for (let i = 0; i < this.autoGroupRules.length; i++) {
+      const rule = this.autoGroupRules[i];
+      if (rule === null) continue;
+      for (const unitBlueprintId of selectedRule.unitBlueprintIds) {
+        if (rule.unitBlueprintIds.delete(unitBlueprintId)) changed = true;
+      }
+      for (const buildingBlueprintId of selectedRule.buildingBlueprintIds) {
+        if (rule.buildingBlueprintIds.delete(buildingBlueprintId)) changed = true;
+      }
+      if (rule.unitBlueprintIds.size === 0 && rule.buildingBlueprintIds.size === 0) {
+        this.autoGroupRules[i] = null;
+        this.groups[i] = [];
+      } else {
+        this.groups[i] = this.collectAutoGroupEntityIds(rule);
+      }
+    }
+    return changed;
+  }
+
+  private collectAutoGroupEntityIds(rule: AutoGroupRule): EntityId[] {
+    const entityIds: EntityId[] = [];
+    const units = this.source.getUnits();
+    for (let i = 0; i < units.length; i++) {
+      const entity = units[i];
+      const unitBlueprintId = entity.unit?.unitBlueprintId;
+      if (!unitBlueprintId || !rule.unitBlueprintIds.has(unitBlueprintId)) continue;
+      if (this.isSelectable(entity)) entityIds.push(entity.id);
+    }
+    const buildings = this.source.getBuildings();
+    for (let i = 0; i < buildings.length; i++) {
+      const entity = buildings[i];
+      const buildingBlueprintId = entity.buildingBlueprintId;
+      if (!buildingBlueprintId || !rule.buildingBlueprintIds.has(buildingBlueprintId)) continue;
+      if (this.isSelectable(entity)) entityIds.push(entity.id);
+    }
     return entityIds;
   }
 

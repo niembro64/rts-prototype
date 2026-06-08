@@ -16,6 +16,8 @@ type Input3DKeyboardControllerConfig = {
   setWaypointMode: (mode: WaypointType) => void;
   storeControlGroupSlot: (index: number) => void;
   addToControlGroupSlot: (index: number) => void;
+  setAutoControlGroupSlot: (index: number) => void;
+  removeSelectedFromAutoControlGroups: () => void;
   recallControlGroupSlot: (index: number, additive: boolean) => boolean;
   toggleControlGroupSlot: (index: number) => boolean;
   unsetSelectedFromControlGroups: () => void;
@@ -83,6 +85,14 @@ function isControlGroupUnsetKey(e: KeyboardEvent): boolean {
     && !e.shiftKey
     && !e.altKey
     && (e.code === 'Backquote' || e.key === '`');
+}
+
+function isAutoGroupRemoveKey(e: KeyboardEvent): boolean {
+  return e.altKey
+    && !e.ctrlKey
+    && !e.metaKey
+    && !e.shiftKey
+    && (e.code === 'Backquote' || e.key === '`' || e.code === 'KeyQ');
 }
 
 type CameraPanDirection = {
@@ -181,8 +191,23 @@ export class Input3DKeyboardController {
       return;
     }
 
+    if (isAutoGroupRemoveKey(e)) {
+      e.preventDefault();
+      this.commandHotkeys.reset();
+      resetControlGroupRecallTap(this.controlGroupRecallTap);
+      this.config.removeSelectedFromAutoControlGroups();
+      return;
+    }
+
     const controlGroupIndex = controlGroupIndexForKey(e);
     if (controlGroupIndex >= 0) {
+      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        e.preventDefault();
+        this.commandHotkeys.reset();
+        resetControlGroupRecallTap(this.controlGroupRecallTap);
+        this.config.setAutoControlGroupSlot(controlGroupIndex);
+        return;
+      }
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         this.commandHotkeys.reset();
