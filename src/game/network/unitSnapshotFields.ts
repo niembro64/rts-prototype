@@ -48,6 +48,7 @@ export function createNetworkUnitSnapshot(): NetworkUnitSnapshot {
     orientation: null,
     angularVelocity3: null,
     fireEnabled: null,
+    trajectoryMode: null,
     repeatQueue: null,
     holdPosition: null,
     isCommander: null,
@@ -129,9 +130,15 @@ export function applyNetworkUnitStaticFields(unit: Unit, src: NetworkUnitSnapsho
 export function applyNetworkUnitCombatMode(
   entity: Entity,
   src: NetworkUnitSnapshot,
+  isFull: boolean,
 ): void {
   if (!entity.combat) return;
   entity.combat.fireEnabled = src.fireEnabled !== false;
+  if (src.trajectoryMode !== null && src.trajectoryMode !== undefined) {
+    entity.combat.trajectoryMode = src.trajectoryMode;
+  } else if (isFull) {
+    entity.combat.trajectoryMode = 'auto';
+  }
 }
 
 export function applyNetworkUnitCommandState(
@@ -273,10 +280,14 @@ export function writeNetworkUnitCombatMode(
 ): void {
   const combat = entity.combat;
   dst.fireEnabled = combat !== null && combat.fireEnabled === false ? false : null;
+  dst.trajectoryMode = combat !== null && combat.trajectoryMode !== 'auto'
+    ? combat.trajectoryMode
+    : null;
 }
 
 export function clearNetworkUnitCombatMode(dst: NetworkUnitSnapshot): void {
   dst.fireEnabled = null;
+  dst.trajectoryMode = null;
 }
 
 export function writeNetworkUnitActions(
@@ -404,6 +415,7 @@ export function copyNetworkUnitSnapshotInto(
   }
   dst.angularVelocity3 = copyVec3OptionalInto(src.angularVelocity3, dst.angularVelocity3);
   dst.fireEnabled = src.fireEnabled;
+  dst.trajectoryMode = src.trajectoryMode ?? null;
   dst.repeatQueue = src.repeatQueue ?? null;
   dst.holdPosition = src.holdPosition ?? null;
   dst.isCommander = src.isCommander;

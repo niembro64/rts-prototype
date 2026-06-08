@@ -830,6 +830,10 @@ export class RtsScene3D {
     this.inputManager?.toggleUnitMoveState();
   }
 
+  public toggleTrajectoryMode(): void {
+    this.inputManager?.toggleTrajectoryMode();
+  }
+
   public toggleSelectedFire(): void {
     this.inputManager?.toggleSelectedFire();
   }

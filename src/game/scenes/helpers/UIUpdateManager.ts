@@ -6,7 +6,7 @@ import { getPlayerPrimaryColor } from '../../sim/types';
 import { economyManager } from '../../sim/economy';
 import { getUnitBlueprint } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
-import { isCommander } from '../../sim/combat/combatUtils';
+import { isBallisticArcWeapon, isCommander } from '../../sim/combat/combatUtils';
 import {
   getFirstActionIntentEnd,
   getQueuedActionIntentCount,
@@ -98,9 +98,24 @@ function isFireControllable(entity: Entity): boolean {
   return combat !== null && combat.turrets.length > 0;
 }
 
+function isTrajectoryControllable(entity: Entity): boolean {
+  const combat = entity.combat;
+  if (combat === null) return false;
+  for (let i = 0; i < combat.turrets.length; i++) {
+    if (isBallisticArcWeapon(combat.turrets[i])) return true;
+  }
+  return false;
+}
+
 function fireStateLabel(entity: Entity): string | null {
   if (!isFireControllable(entity)) return null;
   return entity.combat?.fireEnabled === false ? 'Hold' : 'Fire';
+}
+
+function trajectoryStateLabel(entity: Entity): string | null {
+  if (!isTrajectoryControllable(entity)) return null;
+  const mode = entity.combat?.trajectoryMode ?? 'auto';
+  return mode === 'high' ? 'High' : mode === 'low' ? 'Low' : 'Auto';
 }
 
 function buildingActiveStateLabel(entity: Entity): string | null {
@@ -134,6 +149,32 @@ function addMultiSelectionStateDetails(
         ? 'Hold'
         : `${fireEnabledCount}/${fireControlCount} Fire`;
     details.push({ label: 'Fire', value });
+  }
+
+  let trajectoryControlCount = 0;
+  let highTrajectoryCount = 0;
+  let lowTrajectoryCount = 0;
+  for (const entity of selectedUnits) {
+    if (!isTrajectoryControllable(entity)) continue;
+    trajectoryControlCount++;
+    if (entity.combat?.trajectoryMode === 'high') highTrajectoryCount++;
+    if (entity.combat?.trajectoryMode === 'low') lowTrajectoryCount++;
+  }
+  for (const entity of selectedTowers) {
+    if (!isTrajectoryControllable(entity)) continue;
+    trajectoryControlCount++;
+    if (entity.combat?.trajectoryMode === 'high') highTrajectoryCount++;
+    if (entity.combat?.trajectoryMode === 'low') lowTrajectoryCount++;
+  }
+  if (trajectoryControlCount > 0) {
+    const value = highTrajectoryCount === trajectoryControlCount
+      ? 'High'
+      : lowTrajectoryCount === trajectoryControlCount
+        ? 'Low'
+        : highTrajectoryCount === 0 && lowTrajectoryCount === 0
+          ? 'Auto'
+          : 'Mixed';
+    details.push({ label: 'Trajectory', value });
   }
 
   let waitingCount = 0;
@@ -227,6 +268,8 @@ function buildSingleSelectionDetails(entity: Entity): SelectionInfo['details'] {
       if (activeAction !== null) details.push({ label: 'Order', value: unitActionLabel(activeAction) });
       const fire = fireStateLabel(entity);
       if (fire !== null) details.push({ label: 'Fire', value: fire });
+      const trajectory = trajectoryStateLabel(entity);
+      if (trajectory !== null) details.push({ label: 'Trajectory', value: trajectory });
       if (entity.unit.actions[0]?.type === 'wait') details.push({ label: 'Wait', value: 'On' });
       if (entity.unit.repeatQueue === true) details.push({ label: 'Repeat', value: 'On' });
       if (entity.unit.moveState === 'holdPosition') details.push({ label: 'Move State', value: 'Hold' });
@@ -259,6 +302,8 @@ function buildSingleSelectionDetails(entity: Entity): SelectionInfo['details'] {
       if (activeState !== null) details.push({ label: 'Power', value: activeState });
       const fire = fireStateLabel(entity);
       if (fire !== null) details.push({ label: 'Fire', value: fire });
+      const trajectory = trajectoryStateLabel(entity);
+      if (trajectory !== null) details.push({ label: 'Trajectory', value: trajectory });
       if (bp.sensors.radarRadius > 0) details.push({ label: 'Radar', value: fmtStat(bp.sensors.radarRadius) });
       if (entity.factory !== null) details.push({ label: 'Factory', value: entity.factory.isProducing ? 'Producing' : 'Idle' });
       return details;
@@ -343,6 +388,9 @@ export function buildSelectionInfo(
   const allowedBuildBlueprintIds = getSelectedBuilderAllowedBuildBlueprintIds(selectedUnits);
   const dgunner = commander;
   let fireControlCount = 0;
+  let trajectoryControlCount = 0;
+  let highTrajectoryCount = 0;
+  let lowTrajectoryCount = 0;
   let targetControlCount = 0;
   let allFireEnabled = true;
   let hasPriorityTarget = false;
@@ -363,6 +411,11 @@ export function buildSelectionInfo(
       targetControlCount++;
       if (combat.fireEnabled === false) allFireEnabled = false;
       if (combat.priorityTargetId !== null) hasPriorityTarget = true;
+      if (isTrajectoryControllable(selectedUnit)) {
+        trajectoryControlCount++;
+        if (combat.trajectoryMode === 'high') highTrajectoryCount++;
+        if (combat.trajectoryMode === 'low') lowTrajectoryCount++;
+      }
     }
   }
   // Towers carry the same combat/fire-control contract as units.
@@ -376,6 +429,11 @@ export function buildSelectionInfo(
       targetControlCount++;
       if (combat.fireEnabled === false) allFireEnabled = false;
       if (combat.priorityTargetId !== null) hasPriorityTarget = true;
+      if (isTrajectoryControllable(selectedTowers[i])) {
+        trajectoryControlCount++;
+        if (combat.trajectoryMode === 'high') highTrajectoryCount++;
+        if (combat.trajectoryMode === 'low') lowTrajectoryCount++;
+      }
     }
   }
 
@@ -453,6 +511,12 @@ export function buildSelectionInfo(
       && fireControlCount === selectedUnits.length + selectedTowers.length
       && selectedBuildings.length === 0,
     fireEnabled: fireControlCount > 0 && allFireEnabled,
+    hasTrajectoryControl: trajectoryControlCount > 0,
+    trajectoryMode: highTrajectoryCount === trajectoryControlCount
+      ? 'high'
+      : lowTrajectoryCount === trajectoryControlCount
+        ? 'low'
+        : 'auto',
     hasBuildingActiveControl: activeBuildingCount > 0,
     buildingsActive: activeBuildingCount > 0 && allBuildingsOpen,
     hasSelfDestructable,

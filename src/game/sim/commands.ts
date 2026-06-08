@@ -10,6 +10,7 @@ export type {
   SkipCurrentOrderCommand,
   SetRepeatQueueCommand,
   SetUnitMoveStateCommand,
+  SetTrajectoryModeCommand,
   ClearSelectionCommand,
   PingCommand,
   ScanCommand,

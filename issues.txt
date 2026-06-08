@@ -64,8 +64,9 @@ positioning/move states, trajectory toggle, stop, wait, factory guard, and
 related stateful command buttons. rts-prototype currently has only a simple
 fire enabled toggle, producer-building on/off, authoritative unit
 repeat-queue, basic hold-position/maneuver move state, wait, stop,
-self-destruct, and basic factory guard, with selection-detail indicators for
-fire, repeat, move state, wait, and producer on/off state.
+self-destruct, a trajectory mode toggle for existing ballistic weapons, and
+basic factory guard, with selection-detail indicators for fire, trajectory,
+repeat, move state, wait, and producer on/off state.
 Implement the missing states in simulation, snapshots, command authorization,
 selection UI, hotkeys, and visible state indicators.
 
@@ -89,7 +90,6 @@ translated to authoritative-server commands.
 Issue: BAR gameplay functionality tied to missing commands is absent. Implement
 or explicitly redesign the systems needed by the missing command surface:
 transports, capture, resurrection/wreck fields, cloak/detection, unit stances,
-trajectory-toggle/manual arc-selection state for existing ballistic weapons,
 manual-launch weapons, factory queue management, build-shape placement, mex
 upgrade workflows, replays where applicable, and complete
 faction/unit/factory/building rosters. rts-prototype already has spectator

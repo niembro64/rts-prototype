@@ -6,6 +6,7 @@ export type CommandHotkeyId =
   | 'command.wait'
   | 'command.repeat'
   | 'command.moveState'
+  | 'command.trajectoryToggle'
   | 'command.skipCurrent'
   | 'command.undoQueue'
   | 'command.clearQueue'
@@ -91,6 +92,7 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'command.wait',
   'command.repeat',
   'command.moveState',
+  'command.trajectoryToggle',
   'command.skipCurrent',
   'command.undoQueue',
   'command.clearQueue',
@@ -160,6 +162,7 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'command.wait': 'Wait',
   'command.repeat': 'Repeat Orders',
   'command.moveState': 'Hold Position',
+  'command.trajectoryToggle': 'Trajectory Mode',
   'command.skipCurrent': 'Skip Current Order',
   'command.undoQueue': 'Cancel Last Order',
   'command.clearQueue': 'Clear Orders',
@@ -244,6 +247,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     ],
     'command.repeat': [key('Alt+R', 'r', { alt: true })],
     'command.moveState': [key('Alt+H', 'h', { alt: true })],
+    'command.trajectoryToggle': [key('Alt+J', 'j', { alt: true })],
     'command.skipCurrent': [key('N', 'n', { shift: 'any' })],
     'command.undoQueue': [key('U', 'u', { shift: 'any' })],
     'command.clearQueue': [key('X', 'x', { shift: 'any' })],
@@ -308,6 +312,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     ],
     'command.repeat': [code('Alt+R', 'KeyR', { alt: true })],
     'command.moveState': [code('Alt+H', 'KeyH', { alt: true })],
+    'command.trajectoryToggle': [code('Alt+J', 'KeyJ', { alt: true })],
     'command.skipCurrent': [code('N', 'KeyN', { shift: 'any' })],
     'command.undoQueue': [code('Ctrl+N', 'KeyN', { ctrl: true })],
     'command.clearQueue': [code('Ctrl+Shift+N', 'KeyN', { ctrl: true, shift: true })],
@@ -387,6 +392,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     ],
     'command.repeat': [code('Alt+R', 'KeyR', { alt: true })],
     'command.moveState': [code('Alt+H', 'KeyH', { alt: true })],
+    'command.trajectoryToggle': [code('Alt+J', 'KeyJ', { alt: true })],
     'command.skipCurrent': [code('N', 'KeyN', { shift: 'any' })],
     'command.undoQueue': [code('Ctrl+N', 'KeyN', { ctrl: true })],
     'command.clearQueue': [code('Ctrl+Shift+N', 'KeyN', { ctrl: true, shift: true })],

@@ -505,6 +505,7 @@ function unitNeedsRawFallback(unit: SnapshotUnit): boolean {
     (unit.mass !== null && !Number.isFinite(unit.mass)) ||
     hasInactiveTurret(unit.turrets) ||
     unit.fireEnabled === true ||
+    (unit.trajectoryMode !== null && unit.trajectoryMode !== undefined) ||
     (unit.repeatQueue !== null && unit.repeatQueue !== undefined) ||
     (unit.holdPosition !== null && unit.holdPosition !== undefined) ||
     unit.isCommander === false ||

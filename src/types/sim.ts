@@ -152,6 +152,7 @@ export type EntityRadii = {
 };
 
 export type UnitMoveState = 'maneuver' | 'holdPosition';
+export type CombatTrajectoryMode = 'auto' | 'low' | 'high';
 
 // Cached shield panel geometry (pre-computed from blueprint at entity creation).
 // halfWidth — half the panel's edge length (square panel, so the same
@@ -322,6 +323,10 @@ export type CombatComponent = {
    *  targets. Always present so command, targeting, and snapshot code
    *  all make an explicit fire/hold decision. */
   fireEnabled: boolean;
+  /** Ballistic arc override for hosts with ballistic weapons. `auto`
+   *  uses each turret blueprint's authored low/high arc; player
+   *  commands can force all ballistic turrets on the host low or high. */
+  trajectoryMode: CombatTrajectoryMode;
   /** Player attack-command target. `null` is the canonical "no
    *  priority target" value; setting an EntityId forces every turret
    *  on this entity toward it and fires as soon as it enters fire
@@ -342,6 +347,7 @@ export function createCombatComponent(turrets: Turret[]): CombatComponent {
   return {
     turrets,
     fireEnabled: true,
+    trajectoryMode: 'auto',
     priorityTargetId: null,
     priorityTargetPoint: null,
     nextCombatProbeTick: -1,

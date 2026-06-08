@@ -352,6 +352,7 @@ function createUnitFromNetwork(
   if (turrets) {
     const combat = createCombatComponent(turrets);
     combat.fireEnabled = u === null || u.fireEnabled !== false;
+    combat.trajectoryMode = u?.trajectoryMode ?? 'auto';
     entity.combat = combat;
   }
   // Cache shield panels for fast beam collision checks. Same helper

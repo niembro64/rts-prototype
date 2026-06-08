@@ -1,6 +1,6 @@
 // UI component types extracted from Vue components and helpers
 
-import type { PlayerId, EntityId, WaypointType, Entity, BuildingBlueprintId, EntityType, StructureBlueprintId } from './sim';
+import type { PlayerId, EntityId, WaypointType, Entity, BuildingBlueprintId, EntityType, StructureBlueprintId, CombatTrajectoryMode } from './sim';
 import type { Vec2 } from './vec2';
 
 // Selection panel types
@@ -41,6 +41,8 @@ export type SelectionInfo = {
   hasDGun: boolean;
   hasFireControl: boolean;
   fireEnabled: boolean;
+  hasTrajectoryControl: boolean;
+  trajectoryMode: CombatTrajectoryMode;
   /** True iff the selection contains at least one building whose
    *  BuildingBlueprintId uses the ON/OFF active-state mechanic
    *  (solar/wind/extractor/radar/resourceConverter). Gates the ON/OFF button. */
@@ -97,6 +99,7 @@ export type SelectionActions = {
   removeLastQueuedOrder: () => void;
   toggleRepeatQueue: () => void;
   toggleUnitMoveState: () => void;
+  toggleTrajectoryMode: () => void;
   toggleSelectedWait: () => void;
   toggleSelectedFire: () => void;
   /** ON/OFF for producer buildings in the selection. */

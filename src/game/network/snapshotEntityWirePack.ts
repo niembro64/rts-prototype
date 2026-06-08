@@ -38,6 +38,9 @@ function createEmptyUnitSub(): UnitSub {
     orientation: null,
     angularVelocity3: null,
     fireEnabled: null,
+    trajectoryMode: null,
+    repeatQueue: null,
+    holdPosition: null,
     isCommander: null,
     buildTargetId: null,
     buildTargetIdPresent: false,
@@ -133,6 +136,7 @@ function rentDecodedUnitSub(): UnitSub {
     u.orientation = null;
     u.angularVelocity3 = null;
     u.fireEnabled = null;
+    u.trajectoryMode = null;
     u.repeatQueue = null;
     u.holdPosition = null;
     u.isCommander = null;
@@ -175,7 +179,7 @@ function rentDecodedQuat(x: number, y: number, z: number, w: number): DecodedQua
   return q;
 }
 
-const PACKED_ENTITIES_VERSION = 8;
+const PACKED_ENTITIES_VERSION = 9;
 
 // Bit flags for the packed unit row's optional-presence header.
 // One bit per optional sub-field so the decoder can tell "missing"
@@ -203,6 +207,9 @@ const UNIT_FLAG_REPEAT_PRESENT = 1 << 20;
 const UNIT_FLAG_REPEAT_ENABLED = 1 << 21;
 const UNIT_FLAG_HOLD_POSITION_PRESENT = 1 << 22;
 const UNIT_FLAG_HOLD_POSITION_ENABLED = 1 << 23;
+const UNIT_FLAG_TRAJECTORY_PRESENT = 1 << 24;
+const UNIT_FLAG_TRAJECTORY_HIGH = 1 << 25;
+const UNIT_FLAG_TRAJECTORY_AUTO = 1 << 26;
 
 const BUILDING_FLAG_BLUEPRINT_CODE = 1 << 0;
 const BUILDING_FLAG_DIM = 1 << 1;
@@ -550,6 +557,7 @@ function isMovementOnlyUnitDelta(entity: NetworkServerSnapshotEntity): boolean {
   if (unit.fireEnabled !== null) return false;
   if (unit.repeatQueue !== null && unit.repeatQueue !== undefined) return false;
   if (unit.holdPosition !== null && unit.holdPosition !== undefined) return false;
+  if (unit.trajectoryMode !== null && unit.trajectoryMode !== undefined) return false;
   if (unit.isCommander !== null) return false;
   if (unit.buildTargetIdPresent) return false;
   if (unit.actions !== null) return false;
@@ -586,6 +594,7 @@ function isSplitUnitTurretDelta(entity: NetworkServerSnapshotEntity): boolean {
   if (unit.fireEnabled !== null) return false;
   if (unit.repeatQueue !== null && unit.repeatQueue !== undefined) return false;
   if (unit.holdPosition !== null && unit.holdPosition !== undefined) return false;
+  if (unit.trajectoryMode !== null && unit.trajectoryMode !== undefined) return false;
   if (unit.isCommander !== null) return false;
   if (unit.buildTargetIdPresent) return false;
   if (unit.actions !== null) return false;
@@ -1016,6 +1025,11 @@ function packUnit(unit: UnitSub): unknown[] {
   if (unit.orientation !== null) flags |= UNIT_FLAG_ORIENTATION;
   if (unit.angularVelocity3 !== null) flags |= UNIT_FLAG_ANGULAR_VELOCITY;
   if (unit.fireEnabled === false) flags |= UNIT_FLAG_FIRE_DISABLED;
+  if (unit.trajectoryMode !== null && unit.trajectoryMode !== undefined) {
+    flags |= UNIT_FLAG_TRAJECTORY_PRESENT;
+    if (unit.trajectoryMode === 'high') flags |= UNIT_FLAG_TRAJECTORY_HIGH;
+    if (unit.trajectoryMode === 'auto') flags |= UNIT_FLAG_TRAJECTORY_AUTO;
+  }
   if (unit.repeatQueue !== null && unit.repeatQueue !== undefined) {
     flags |= UNIT_FLAG_REPEAT_PRESENT;
     if (unit.repeatQueue === true) flags |= UNIT_FLAG_REPEAT_ENABLED;
@@ -1135,6 +1149,11 @@ function unpackUnit(row: unknown[]): UnitSub {
   }
   if ((flags & UNIT_FLAG_FIRE_DISABLED) !== 0) {
     unit.fireEnabled = false;
+  }
+  if ((flags & UNIT_FLAG_TRAJECTORY_PRESENT) !== 0) {
+    unit.trajectoryMode = (flags & UNIT_FLAG_TRAJECTORY_AUTO) !== 0
+      ? 'auto'
+      : (flags & UNIT_FLAG_TRAJECTORY_HIGH) !== 0 ? 'high' : 'low';
   }
   if ((flags & UNIT_FLAG_REPEAT_PRESENT) !== 0) {
     unit.repeatQueue = (flags & UNIT_FLAG_REPEAT_ENABLED) !== 0;

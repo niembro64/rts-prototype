@@ -20,6 +20,7 @@ import type {
   SetFireEnabledCommand,
   SetBuildingActiveCommand,
   SetRepeatQueueCommand,
+  SetTrajectoryModeCommand,
   SetUnitMoveStateCommand,
   SelfDestructCommand,
   SetTowerTargetCommand,
@@ -46,6 +47,7 @@ import { normalizeAngle } from '../math';
 
 const WAYPOINT_TYPES: readonly WaypointType[] = ['move', 'fight', 'patrol'];
 const UNIT_MOVE_STATES: readonly string[] = ['maneuver', 'holdPosition'];
+const TRAJECTORY_MODES: readonly string[] = ['auto', 'low', 'high'];
 
 type GroundPoint = { x: number; y: number; z: number | undefined };
 
@@ -74,6 +76,8 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       return sanitizeSetRepeatQueueCommand(command, tick);
     case 'setUnitMoveState':
       return sanitizeSetUnitMoveStateCommand(command, tick);
+    case 'setTrajectoryMode':
+      return sanitizeSetTrajectoryModeCommand(command, tick);
     case 'wait':
       return sanitizeWaitCommand(command, tick);
     case 'setFireEnabled':
@@ -333,6 +337,16 @@ function sanitizeSetUnitMoveStateCommand(
   return entityIds === null || !UNIT_MOVE_STATES.includes(command.moveState)
     ? null
     : { type: 'setUnitMoveState', tick, entityIds, moveState: command.moveState };
+}
+
+function sanitizeSetTrajectoryModeCommand(
+  command: SetTrajectoryModeCommand,
+  tick: number,
+): SetTrajectoryModeCommand | null {
+  const entityIds = sanitizeEntityIdArray(command.entityIds);
+  return entityIds === null || !TRAJECTORY_MODES.includes(command.trajectoryMode)
+    ? null
+    : { type: 'setTrajectoryMode', tick, entityIds, trajectoryMode: command.trajectoryMode };
 }
 
 function sanitizeSelfDestructCommand(

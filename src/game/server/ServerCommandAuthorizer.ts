@@ -16,6 +16,7 @@ import type {
   SetFireEnabledCommand,
   SetFactoryGuardCommand,
   SetRepeatQueueCommand,
+  SetTrajectoryModeCommand,
   SetUnitMoveStateCommand,
   SetTowerTargetCommand,
   StartBuildCommand,
@@ -46,6 +47,7 @@ type UnitListCommand =
 
 type AnyEntityListCommand =
   | SetFireEnabledCommand
+  | SetTrajectoryModeCommand
   | SetBuildingActiveCommand
   | SelfDestructCommand;
 
@@ -93,7 +95,8 @@ export function authorizeGameServerGameplayCommand(
       return authorizeUnitListCommand(world, command, playerId);
 
     case 'setFireEnabled':
-      // Fire control applies to any owned entity with combat
+    case 'setTrajectoryMode':
+      // Combat state controls apply to any owned entity with combat
       // (units + towers). Towers carry the same host-fire contract
       // per budget_design_philosophy.html "Selection Menus Are Uniform Per
       // Entity Type".

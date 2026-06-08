@@ -1,6 +1,7 @@
 import type { CommandQueue } from '../../sim/commands';
-import type { Entity, EntityId } from '../../sim/types';
+import type { CombatTrajectoryMode, Entity, EntityId } from '../../sim/types';
 import { buildingBlueprintHasActiveState } from '../../sim/buildingActiveState';
+import { isBallisticArcWeapon } from '../../sim/combat/combatUtils';
 
 type SelectedCommandEntitySource = {
   getSelectedUnits: () => Entity[];
@@ -169,6 +170,36 @@ export class InputSelectedCommands {
     });
   }
 
+  setTrajectoryMode(): void {
+    const selectedUnits = this.source.getSelectedUnits();
+    const selectedStatic = this.source.getSelectedBuildings();
+    const entityIds: EntityId[] = [];
+    let allHigh = true;
+    let allLow = true;
+    for (let i = 0; i < selectedUnits.length; i++) {
+      const entity = selectedUnits[i];
+      if (!entityHasBallisticCombat(entity)) continue;
+      entityIds.push(entity.id);
+      if (entity.combat!.trajectoryMode !== 'high') allHigh = false;
+      if (entity.combat!.trajectoryMode !== 'low') allLow = false;
+    }
+    for (let i = 0; i < selectedStatic.length; i++) {
+      const entity = selectedStatic[i];
+      if (!entityHasBallisticCombat(entity)) continue;
+      entityIds.push(entity.id);
+      if (entity.combat!.trajectoryMode !== 'high') allHigh = false;
+      if (entity.combat!.trajectoryMode !== 'low') allLow = false;
+    }
+    if (entityIds.length === 0) return;
+    const trajectoryMode: CombatTrajectoryMode = allHigh ? 'low' : allLow ? 'auto' : 'high';
+    this.commandQueue.enqueue({
+      type: 'setTrajectoryMode',
+      tick: this.getTick(),
+      entityIds,
+      trajectoryMode,
+    });
+  }
+
   setBuildingActive(): void {
     const selectedStatic = this.source.getSelectedBuildings();
     const entityIds: EntityId[] = [];
@@ -223,4 +254,13 @@ export class InputSelectedCommands {
     for (let i = 0; i < selectedUnits.length; i++) entityIds.push(selectedUnits[i].id);
     return entityIds;
   }
+}
+
+function entityHasBallisticCombat(entity: Entity): boolean {
+  const combat = entity.combat;
+  if (combat === null || combat.turrets.length === 0) return false;
+  for (let i = 0; i < combat.turrets.length; i++) {
+    if (isBallisticArcWeapon(combat.turrets[i])) return true;
+  }
+  return false;
 }

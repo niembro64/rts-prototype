@@ -94,6 +94,8 @@ export function useGameCanvasSceneUi({
     hasDGun: false,
     hasFireControl: false,
     fireEnabled: false,
+    hasTrajectoryControl: false,
+    trajectoryMode: 'auto',
     hasBuildingActiveControl: false,
     buildingsActive: false,
     hasSelfDestructable: false,
@@ -215,6 +217,9 @@ export function useGameCanvasSceneUi({
     },
     toggleUnitMoveState: () => {
       getActiveBattleScene()?.toggleUnitMoveState();
+    },
+    toggleTrajectoryMode: () => {
+      getActiveBattleScene()?.toggleTrajectoryMode();
     },
     toggleSelectedWait: () => {
       getActiveBattleScene()?.toggleSelectedWait();

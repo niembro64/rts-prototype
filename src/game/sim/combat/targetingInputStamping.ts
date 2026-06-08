@@ -686,6 +686,12 @@ function stampCombatTargetingEntityInto(
     const projectileShot: ProjectileShot | undefined =
       shot !== null && isProjectileShot(shot) ? shot : undefined;
     const angleType = t.config.aimStyle.angleType;
+    const trajectoryMode = entity.combat?.trajectoryMode ?? 'auto';
+    const ballisticArcPreference = trajectoryMode === 'high'
+      ? BALLISTIC_ARC_HIGH
+      : trajectoryMode === 'low'
+        ? BALLISTIC_ARC_LOW
+        : angleType === 'ballisticArcHigh' ? BALLISTIC_ARC_HIGH : BALLISTIC_ARC_LOW;
     const projectileSpeed = projectileShot ? getProjectileLaunchSpeed(projectileShot) : 0;
     let maxTimeSec = 0;
     if (projectileShot) {
@@ -731,7 +737,7 @@ function stampCombatTargetingEntityInto(
       encodeTurretConfigFlags(t, ranges),
       t.sustainedDps,
       projectileSpeed,
-      angleType === 'ballisticArcHigh' ? BALLISTIC_ARC_HIGH : BALLISTIC_ARC_LOW,
+      ballisticArcPreference,
       maxTimeSec,
       t.config.groundAimFraction ?? 0,
       angleType === 'ballisticArcLowOnlyUnder' ? 1 : 0,

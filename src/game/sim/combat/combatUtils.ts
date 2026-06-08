@@ -60,7 +60,7 @@ const FIRE_YAW_TOLERANCE = 0.16;
 const FIRE_PITCH_TOLERANCE = 0.16;
 const FIRE_BALLISTIC_PITCH_TOLERANCE = 0.025;
 
-function isBallisticArcWeapon(weapon: Turret): boolean {
+export function isBallisticArcWeapon(weapon: Turret): boolean {
   const angleType = weapon.config.aimStyle.angleType;
   return (
     angleType === 'ballisticArcLow' ||

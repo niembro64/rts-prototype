@@ -205,6 +205,10 @@ function actionTitle(label: string, commandId: CommandHotkeyId, detail?: string)
   return `${label}${hotkeyText}${detail === undefined ? '' : ` - ${detail}`}`;
 }
 
+function trajectoryModeLabel(mode: SelectionInfo['trajectoryMode']): string {
+  return mode === 'high' ? 'Arc Hi' : mode === 'low' ? 'Arc Lo' : 'Arc Auto';
+}
+
 function costTitle(label: string, cost: number, key?: string): string {
   const hotkey = key === undefined ? '' : ` - Hotkey ${key}`;
   return `${label}${hotkey} - Cost ${cost}`;
@@ -707,6 +711,18 @@ function loadFactoryPreset(index: number): void {
         >
           <span class="btn-label">{{ selection.fireEnabled ? 'Fire' : 'Hold' }}</span>
           <span class="btn-key">{{ hotkey('command.fireToggle') }}</span>
+        </button>
+        <button
+          v-if="selection.hasTrajectoryControl"
+          type="button"
+          class="action-btn"
+          :class="{ active: selection.trajectoryMode !== 'auto' }"
+          :style="{ '--btn-color': BUTTON_COLORS.fireControl }"
+          :title="actionTitle(`Trajectory ${selection.trajectoryMode}`, 'command.trajectoryToggle')"
+          @click="actions.toggleTrajectoryMode()"
+        >
+          <span class="btn-label">{{ trajectoryModeLabel(selection.trajectoryMode) }}</span>
+          <span class="btn-key">{{ hotkey('command.trajectoryToggle') }}</span>
         </button>
       </div>
     </div>

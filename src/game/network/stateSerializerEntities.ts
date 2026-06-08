@@ -1102,6 +1102,7 @@ export function serializeEntitySnapshot(
       ne.unit = u;
       u.hp = null;
       u.velocity = null;
+      u.trajectoryMode = null;
       u.repeatQueue = null;
       u.holdPosition = null;
 
@@ -1160,6 +1161,9 @@ export function serializeEntitySnapshot(
 
       if (isFull || (changedFields! & ENTITY_CHANGED_COMBAT_MODE)) {
         writeNetworkUnitCombatMode(u, entity);
+        if (!isFull && entity.combat?.trajectoryMode === 'auto') {
+          u.trajectoryMode = 'auto';
+        }
       } else {
         clearNetworkUnitCombatMode(u);
       }

@@ -534,7 +534,10 @@ function getProjectileMaxTimeSec(shot: ProjectileShot): number {
   return Number.isFinite(lifeMs) ? lifeMs / 1000 : 0;
 }
 
-function getBallisticArcPreference(config: TurretConfig): number {
+function getBallisticArcPreference(source: Entity, config: TurretConfig): number {
+  const trajectoryMode = source.combat?.trajectoryMode ?? 'auto';
+  if (trajectoryMode === 'high') return BALLISTIC_ARC_HIGH;
+  if (trajectoryMode === 'low') return BALLISTIC_ARC_LOW;
   return config.aimStyle.angleType === 'ballisticArcHigh'
     ? BALLISTIC_ARC_HIGH
     : BALLISTIC_ARC_LOW;
@@ -658,7 +661,7 @@ function solveProjectileBallisticAim(
     out.originAcceleration.z,
     getProjectileLaunchSpeed(shot),
     GRAVITY * shot.gravityForceMultiplier,
-    getBallisticArcPreference(weapon.config),
+    getBallisticArcPreference(source, weapon.config),
     getProjectileMaxTimeSec(shot),
     weapon.rotation,
     currentPitch,

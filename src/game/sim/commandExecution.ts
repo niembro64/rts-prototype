@@ -23,6 +23,7 @@ import type {
   SetFireEnabledCommand,
   SetBuildingActiveCommand,
   SetRepeatQueueCommand,
+  SetTrajectoryModeCommand,
   SetUnitMoveStateCommand,
   SelfDestructCommand,
   SetTowerTargetCommand,
@@ -39,7 +40,7 @@ import { isProjectileShot } from './types';
 import type { WorldState } from './WorldState';
 import type { SimEvent } from './combat';
 import { magnitude, getTransformCosSin } from '../math';
-import { getProjectileLaunchSpeed, updateWeaponWorldKinematics } from './combat/combatUtils';
+import { getProjectileLaunchSpeed, isBallisticArcWeapon, updateWeaponWorldKinematics } from './combat/combatUtils';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_COMBAT_MODE, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../types/network';
@@ -135,6 +136,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'setUnitMoveState':
       executeSetUnitMoveStateCommand(ctx, command);
+      break;
+    case 'setTrajectoryMode':
+      executeSetTrajectoryModeCommand(ctx, command);
       break;
     case 'wait':
       executeWaitCommand(ctx, command);
@@ -446,6 +450,26 @@ function executeSetUnitMoveStateCommand(ctx: CommandContext, command: SetUnitMov
     if (unit.moveState === moveState) continue;
     unit.moveState = moveState;
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+  }
+}
+
+function executeSetTrajectoryModeCommand(ctx: CommandContext, command: SetTrajectoryModeCommand): void {
+  const trajectoryMode = command.trajectoryMode;
+  for (let i = 0; i < command.entityIds.length; i++) {
+    const entity = ctx.world.getEntity(command.entityIds[i]);
+    const combat = entity !== undefined ? entity.combat : null;
+    if (entity === undefined || combat === null) continue;
+    let hasBallisticWeapon = false;
+    for (let wi = 0; wi < combat.turrets.length; wi++) {
+      if (isBallisticArcWeapon(combat.turrets[wi])) {
+        hasBallisticWeapon = true;
+        break;
+      }
+    }
+    if (!hasBallisticWeapon || combat.trajectoryMode === trajectoryMode) continue;
+    combat.trajectoryMode = trajectoryMode;
+    combat.nextCombatProbeTick = -1;
+    ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_COMBAT_MODE | ENTITY_CHANGED_TURRETS);
   }
 }
 

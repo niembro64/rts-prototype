@@ -63,7 +63,7 @@ export function snapClientNonVisualState(
     }
     applyNetworkUnitStaticFields(entity.unit, su);
     if (isFull || cf! & ENTITY_CHANGED_COMBAT_MODE) {
-      applyNetworkUnitCombatMode(entity, su);
+      applyNetworkUnitCombatMode(entity, su, isFull);
     }
 
     if (isFull && Array.isArray(su.turrets)) {
