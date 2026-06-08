@@ -902,6 +902,10 @@ export class RtsScene3D {
     this.inputManager?.toggleReclaimMode();
   }
 
+  public reclaimSelected(): void {
+    this.inputManager?.reclaimSelected();
+  }
+
   public togglePingMode(): void {
     this.inputManager?.togglePingMode();
   }

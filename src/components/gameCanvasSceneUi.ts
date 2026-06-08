@@ -97,6 +97,7 @@ export function useGameCanvasSceneUi({
     hasBuildingActiveControl: false,
     buildingsActive: false,
     hasSelfDestructable: false,
+    hasReclaimableSelection: false,
     hasTowerTargetControl: false,
     hasTowerTargetActive: false,
     isTowerTargetMode: false,
@@ -272,6 +273,9 @@ export function useGameCanvasSceneUi({
     },
     toggleReclaim: () => {
       getActiveBattleScene()?.toggleReclaimMode();
+    },
+    reclaimSelected: () => {
+      getActiveBattleScene()?.reclaimSelected();
     },
     togglePing: () => {
       getActiveBattleScene()?.togglePingMode();

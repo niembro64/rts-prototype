@@ -607,6 +607,17 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           <span class="btn-label">Reclaim</span>
           <span class="btn-key">{{ hotkey('combat.reclaim') }}</span>
         </button>
+        <button
+          v-if="selection.hasCommander"
+          type="button"
+          class="action-btn"
+          :disabled="!selection.hasReclaimableSelection"
+          :style="{ '--btn-color': BUTTON_COLORS.reclaim }"
+          title="Reclaim selected targets"
+          @click="actions.reclaimSelected()"
+        >
+          <span class="btn-label">Reclaim Sel</span>
+        </button>
       </div>
     </div>
 

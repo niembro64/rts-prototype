@@ -8,6 +8,7 @@ import { isCommander } from '../../sim/combat/combatUtils';
 import { hasQueuedActionIntents } from '../../sim/unitActionIntents';
 import { buildingBlueprintHasActiveState } from '../../sim/buildingActiveState';
 import { getSelectedBuilderAllowedBuildBlueprintIds } from '../../sim/builderBuildRoster';
+import { isReclaimableTarget } from '../../sim/reclaim';
 
 function unitLabel(unitBlueprintId: string): string {
   try {
@@ -147,6 +148,22 @@ export function buildSelectionInfo(
     selectedUnits.length > 0
     || selectedTowers.length > 0
     || selectedBuildings.length > 0;
+  let hasReclaimableSelection = false;
+  for (let i = 0; i < selectedUnits.length; i++) {
+    const unit = selectedUnits[i];
+    if (!isCommander(unit) && isReclaimableTarget(unit)) {
+      hasReclaimableSelection = true;
+      break;
+    }
+  }
+  if (!hasReclaimableSelection) {
+    for (let i = 0; i < selectedStatic.length; i++) {
+      if (isReclaimableTarget(selectedStatic[i])) {
+        hasReclaimableSelection = true;
+        break;
+      }
+    }
+  }
 
   // Get factory repeat-build selection if a factory is selected.
   let factorySelectedUnit: { unitBlueprintId: string; label: string } | null | undefined;
@@ -181,6 +198,7 @@ export function buildSelectionInfo(
     hasBuildingActiveControl: activeBuildingCount > 0,
     buildingsActive: activeBuildingCount > 0 && allBuildingsOpen,
     hasSelfDestructable,
+    hasReclaimableSelection: commander !== undefined && hasReclaimableSelection,
     hasTowerTargetControl: targetControlCount > 0,
     hasTowerTargetActive: hasPriorityTarget,
     isTowerTargetMode: inputState?.isTowerTargetMode ?? false,

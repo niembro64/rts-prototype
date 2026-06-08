@@ -41,6 +41,7 @@ import { getCommandCursorStyle, type CommandCursorKind } from '../input/CommandC
 import { isBuildInProgress } from '../sim/buildableHelpers';
 import { getSelectedBuilderAllowedBuildBlueprintIds } from '../sim/builderBuildRoster';
 import { isCommander } from '../sim/combat/combatUtils';
+import { isReclaimableTarget } from '../sim/reclaim';
 import { Input3DSpecialModes, type Input3DSpecialMode } from './Input3DSpecialModes';
 import { Input3DHoverState, resolveInput3DHoverTargets } from './Input3DHoverState';
 import { Input3DSelectionDragState } from './Input3DSelectionDragState';
@@ -913,6 +914,34 @@ export class Input3DManager {
 
   clearTowerTarget(): void {
     this.selectedCommands.setTowerTarget(null);
+  }
+
+  reclaimSelected(): void {
+    const commander = this.getSelectedCommander();
+    if (commander === null) return;
+    const targets: Entity[] = [];
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      const target = selectedUnits[i];
+      if (target.id !== commander.id && isReclaimableTarget(target)) targets.push(target);
+    }
+    const selectedStatic = this.entitySource.getSelectedBuildings();
+    for (let i = 0; i < selectedStatic.length; i++) {
+      const target = selectedStatic[i];
+      if (isReclaimableTarget(target)) targets.push(target);
+    }
+    if (targets.length === 0) return;
+    const tick = this.context.getTick();
+    for (let i = 0; i < targets.length; i++) {
+      this.localCommandQueue.enqueue({
+        type: 'reclaim',
+        tick,
+        commanderId: commander.id,
+        targetId: targets[i].id,
+        queue: i > 0,
+        queueFront: false,
+      });
+    }
   }
 
   isInTowerTargetMode(): boolean {

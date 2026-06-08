@@ -76,9 +76,6 @@ stop-production, wait queueing, and basic factory rally. Implement the missing
 queue semantics with server authorization and clear visual queue editing
 feedback.
 
-Issue: repair and reclaim are incomplete. Add reclaim-selected behavior where
-appropriate.
-
 Issue: behavior/state toggles are incomplete. BAR exposes cloak/want-cloak,
 gather wait, on/off, stateful on/off, repeat, stateful repeat, stance/fire
 state, positioning/move state, trajectory toggle, stop, wait, factory guard,

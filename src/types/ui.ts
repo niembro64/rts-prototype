@@ -46,6 +46,9 @@ export type SelectionInfo = {
   /** True when any selected entity belongs to the local player and can
    *  be removed by a self-destruct command. */
   hasSelfDestructable: boolean;
+  /** True when a commander is selected alongside at least one reclaimable
+   *  selected target. Enables the direct reclaim-selected command. */
+  hasReclaimableSelection: boolean;
   /** True when selected combat units/towers expose Set Target / Clear Target. */
   hasTowerTargetControl: boolean;
   /** True when at least one selected combat entity has a host-level
@@ -111,6 +114,7 @@ export type SelectionActions = {
   toggleAttackGround: () => void;
   toggleGuard: () => void;
   toggleReclaim: () => void;
+  reclaimSelected: () => void;
   togglePing: () => void;
   storeControlGroup: (index: number) => void;
   recallControlGroup: (index: number, additive: boolean) => void;
