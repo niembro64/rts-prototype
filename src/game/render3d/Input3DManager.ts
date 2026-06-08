@@ -28,26 +28,19 @@ import type { PlayerId, Entity, EntityId, WaypointType, BuildingBlueprintId } fr
 import {
   findClosestSelectableEntityToPoint,
   SelectionChangeTracker,
-  LinePathAccumulator,
   buildAttackAreaCommand,
-  buildAttackCommandForTarget,
-  buildAttackCommandAt,
   buildAttackGroundCommand,
   buildRepairAreaCommand,
   buildGuardCommandAt,
   buildGuardCommandForTarget,
   buildReclaimCommandAt,
   buildReclaimCommandForTarget,
-  buildLinePathMoveCommand,
-  buildRepairCommandAt,
-  buildFactoryRallyCommands,
   CommanderModeController,
   InputControlGroups,
   InputSelectedCommands,
 } from '../input/helpers';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
 import { getCommandCursorStyle, type CommandCursorKind } from '../input/CommandCursors';
-import { isWaterAt } from '../sim/Terrain';
 import { isBuildInProgress } from '../sim/buildableHelpers';
 import { isCommander } from '../sim/combat/combatUtils';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
@@ -57,6 +50,7 @@ import { Input3DHoverState, resolveInput3DHoverTargets } from './Input3DHoverSta
 import { Input3DSelectionDragState } from './Input3DSelectionDragState';
 import { Input3DKeyboardController } from './Input3DKeyboardController';
 import { Input3DPicker } from './Input3DPicker';
+import { Input3DRightDragController, type Input3DLineDragState } from './Input3DRightDragController';
 
 const SELECTABLE_GROUND_MIN_UNIT_RADIUS = 8;
 const REPAIR_AREA_RADIUS = 220;
@@ -117,17 +111,10 @@ export class Input3DManager {
   // Drag state (screen coords only — box select is screen-space)
   private selectionDrag: Input3DSelectionDragState;
 
-  // Right-drag line-path state. The accumulator owns the points +
-  // per-unit target list; both 2D and 3D share the same append /
-  // recompute logic via LinePathAccumulator.
-  private rightDown = false;
-  private linePath = new LinePathAccumulator();
-
   /** Shared cursor/entity picker. Single canonical source of truth
    *  for every command point in this manager, with entity raycasts
    *  and screen-rectangle selection kept out of command dispatch. */
   private picker: Input3DPicker;
-  private _selectedFactoriesScratch: Entity[] = [];
   // Resets waypoint mode back to 'move' when the owned-selected set
   // changes — matches the 2D SelectionController's rule so squads
   // don't accidentally inherit 'fight'/'patrol' from a prior group.
@@ -135,6 +122,7 @@ export class Input3DManager {
   private controlGroups: InputControlGroups;
   private selectedCommands: InputSelectedCommands;
   private keyboard: Input3DKeyboardController;
+  private rightDrag: Input3DRightDragController;
 
   // DOM handlers bound once for add/remove
   private onMouseDown: (e: MouseEvent) => void;
@@ -154,6 +142,21 @@ export class Input3DManager {
     this.entitySource = entitySource;
     this.localCommandQueue = localCommandQueue;
     this.picker = new Input3DPicker(threeApp, cursorGround);
+    this.rightDrag = new Input3DRightDragController({
+      getEntitySource: () => this.entitySource,
+      commandQueue: this.localCommandQueue,
+      picker: this.picker,
+      getTick: () => this.context.getTick(),
+      getActivePlayerId: () => this.context.activePlayerId,
+      getWaypointMode: () => this.waypointMode,
+      getSelectedCommander: () => this.getSelectedCommander(),
+      getMapSampleBounds: () => ({
+        width: this.buildPlacement.width,
+        height: this.buildPlacement.height,
+      }),
+      applyCursor: (kind) => this.applyCursor(kind),
+      refreshCursor: () => this.refreshCursor(),
+    });
     this.controlGroups = new InputControlGroups(
       entitySource,
       (entity) => this.isSelectableByActivePlayer(entity),
@@ -678,7 +681,7 @@ export class Input3DManager {
     if (this.pingMode) return 'ping';
     if (this.towerTargetMode) return 'attack';
     if (this.leftDown) return 'select';
-    if (this.rightDown) return this.waypointCursorKind();
+    if (this.rightDrag.active) return this.waypointCursorKind();
 
     const hoveredEntityId = this.hoverState.hoveredEntityId;
     const hovered = hoveredEntityId !== null
@@ -692,7 +695,7 @@ export class Input3DManager {
       : null;
     if (this.isSelectableByActivePlayer(selectableHovered)) return 'select';
     if (this.entitySource.getSelectedUnits().length > 0) return this.waypointCursorKind();
-    if (this.getSelectedFactories().length > 0) return 'factoryWaypoint';
+    if (this.rightDrag.hasSelectedFactories()) return 'factoryWaypoint';
     return 'game';
   }
 
@@ -856,7 +859,7 @@ export class Input3DManager {
       this.applyCursor('select');
     } else if (e.button === 2) {
       e.preventDefault();
-      this.handleRightMouseDown(e);
+      this.rightDrag.handleMouseDown(e);
     }
   }
 
@@ -1091,7 +1094,7 @@ export class Input3DManager {
   private handleMouseMove(e: MouseEvent): void {
     if (
       this.leftDown ||
-      this.rightDown ||
+      this.rightDrag.active ||
       this.mode.isInBuildMode ||
       this.mode.isInDGunMode ||
       this.repairAreaMode ||
@@ -1165,17 +1168,8 @@ export class Input3DManager {
       return;
     }
 
-    if (this.rightDown) {
-      this.applyCursor(this.waypointCursorKind());
-      // Record points along the right-drag path so units can spread
-      // along a line. The accumulator drops near-duplicate samples
-      // and recomputes per-unit targets on append; we also force a
-      // recompute here so the preview stays live between appends.
-      const world = this.picker.raycastGround(e.clientX, e.clientY);
-      if (!world) return;
-      const unitCount = this.entitySource.getSelectedUnits().length;
-      this.linePath.append(world.x, world.y, unitCount, world.z);
-      this.linePath.recomputeTargets(unitCount);
+    if (this.rightDrag.active) {
+      this.rightDrag.handleMouseMove(e);
       return;
     }
 
@@ -1183,8 +1177,8 @@ export class Input3DManager {
   }
 
   private handleMouseUp(e: MouseEvent): void {
-    if (e.button === 2 && this.rightDown) {
-      this.handleRightMouseUp(e);
+    if (e.button === 2 && this.rightDrag.active) {
+      this.rightDrag.handleMouseUp(e);
       return;
     }
     if (e.button !== 0 || !this.leftDown) return;
@@ -1262,246 +1256,13 @@ export class Input3DManager {
     this.refreshCursor();
   }
 
-  private handleRightMouseDown(e: MouseEvent): void {
-    // Right-click dispatcher, matching the 2D CommandController:
-    //   1. selected commander + repair target under cursor → repair
-    //   2. selected units + attack target under cursor → attack
-    //   3. units selected → start line-path for group move
-    //   4. no units, factories selected → start factory-waypoint drag
-    const selectedUnits = this.entitySource.getSelectedUnits();
-    const tick = this.context.getTick();
-    const entityHitId = this.picker.raycastEntity(e.clientX, e.clientY);
-    const entityHit = entityHitId !== null
-      ? this.entitySource.getEntity(entityHitId)
-      : null;
-
-    // Prefer exact 3D mesh hits for direct attack. Buildings are tall
-    // meshes, so the terrain point under the cursor can land outside
-    // their footprint even though the player clearly clicked the
-    // building itself.
-    const meshAttackCmd = buildAttackCommandForTarget(
-      entityHit,
-      selectedUnits,
-      this.context.activePlayerId,
-      tick,
-      e.shiftKey,
-    );
-    if (meshAttackCmd) {
-      debugLog(
-        GAME_DIAGNOSTICS.commandPlans,
-        '[click] attack-mesh: hit target #%d, %d unit(s)',
-        meshAttackCmd.targetId, selectedUnits.length,
-      );
-      this.applyCursor('attack');
-      this.localCommandQueue.enqueue(meshAttackCmd);
-      return;
-    }
-
-    const world = this.picker.raycastGround(e.clientX, e.clientY);
-    if (!world) return;
-
-    const repairCmd = buildRepairCommandAt(
-      this.entitySource,
-      world.x, world.y,
-      this.getSelectedCommander(),
-      tick,
-      e.shiftKey,
-    );
-    if (repairCmd) {
-      debugLog(
-        GAME_DIAGNOSTICS.commandPlans,
-        '[click] repair: clicked at (%d, %d, %d) → target #%d',
-        Math.round(world.x), Math.round(world.y), Math.round(world.z),
-        repairCmd.targetId,
-      );
-      this.applyCursor('repair');
-      this.localCommandQueue.enqueue(repairCmd);
-      return;
-    }
-
-    if (selectedUnits.length > 0) {
-      // Attack target under cursor → attack command (skips line-path drawing).
-      const attackCmd = buildAttackCommandAt(
-        this.entitySource,
-        world.x, world.y,
-        selectedUnits,
-        this.context.activePlayerId,
-        tick,
-        e.shiftKey,
-      );
-      if (attackCmd) {
-        debugLog(
-          GAME_DIAGNOSTICS.commandPlans,
-          '[click] attack: clicked at (%d, %d, %d) → target #%d, %d unit(s)',
-          Math.round(world.x), Math.round(world.y), Math.round(world.z),
-          attackCmd.targetId, selectedUnits.length,
-        );
-        this.applyCursor('attack');
-        this.localCommandQueue.enqueue(attackCmd);
-        return;
-      }
-      // Start drawing a line path of waypoints. The single-click case
-      // (mouse goes up before any drag motion) finalises this as a
-      // group-move to the click point — so log the click here so we
-      // see both endpoints of any drag the user does.
-      debugLog(
-        GAME_DIAGNOSTICS.commandPlans,
-        '[click] move-start: clicked at (%d, %d, %d), %d unit(s) selected',
-        Math.round(world.x), Math.round(world.y), Math.round(world.z),
-        selectedUnits.length,
-      );
-      this.rightDown = true;
-      this.applyCursor(this.waypointCursorKind());
-      this.linePath.start(world.x, world.y, selectedUnits.length, world.z);
-      return;
-    }
-
-    // No units — fall through to factory waypoint mode if the user
-    // has a factory selected. The single placed point IS the target
-    // (no distribution), so seed the accumulator with a fixed target.
-    const factories = this.getSelectedFactories();
-    if (factories.length > 0) {
-      debugLog(
-        GAME_DIAGNOSTICS.commandPlans,
-        '[click] factory-waypoint-start: clicked at (%d, %d, %d), %d factory(s) selected',
-        Math.round(world.x), Math.round(world.y), Math.round(world.z),
-        factories.length,
-      );
-      this.rightDown = true;
-      this.applyCursor('factoryWaypoint');
-      this.linePath.startWithFixedTarget(world.x, world.y, world.z);
-    }
-  }
-
-  private getSelectedFactories(): Entity[] {
-    const out = this._selectedFactoriesScratch;
-    out.length = 0;
-    const selectedBuildings = this.entitySource.getSelectedBuildings();
-    for (let i = 0; i < selectedBuildings.length; i++) {
-      const b = selectedBuildings[i];
-      if (
-        b.factory !== null &&
-        b.ownership?.playerId === this.context.activePlayerId
-      ) {
-        out.push(b);
-      }
-    }
-    return out;
-  }
-
   /** State shape consumed by the 3D line-drag overlay. Populated
    *  while the user is actively right-dragging; reset when the drag
    *  ends. Points/targets come from the shared accumulator and carry
    *  the click-altitude `z` so the preview lays on the rendered
    *  ground instead of a fixed-height plane. */
-  getLineDragState(): {
-    active: boolean;
-    points: ReadonlyArray<{ x: number; y: number; z?: number }>;
-    targets: ReadonlyArray<{ x: number; y: number; z?: number }>;
-    mode: WaypointType;
-  } {
-    return {
-      active: this.rightDown,
-      points: this.linePath.points,
-      targets: this.linePath.targets,
-      mode: this.waypointMode,
-    };
-  }
-
-  private handleRightMouseUp(e: MouseEvent): void {
-    this.rightDown = false;
-    const selectedUnits = this.entitySource.getSelectedUnits();
-    const points = this.linePath.points;
-    const shiftHeld = e.shiftKey;
-    const tick = this.context.getTick();
-
-    if (selectedUnits.length > 0 && points.length > 0) {
-      const finalPoint = points[points.length - 1];
-      // Commander ending the path on a repairable target → repair.
-      const repairCmd = buildRepairCommandAt(
-        this.entitySource,
-        finalPoint.x, finalPoint.y,
-        this.getSelectedCommander(),
-        tick, shiftHeld,
-      );
-      if (repairCmd) {
-        debugLog(
-          GAME_DIAGNOSTICS.commandPlans,
-          '[click] repair-on-release: released at (%d, %d, %d) → target #%d',
-          Math.round(finalPoint.x), Math.round(finalPoint.y),
-          finalPoint.z !== undefined ? Math.round(finalPoint.z) : -1,
-          repairCmd.targetId,
-        );
-        this.localCommandQueue.enqueue(repairCmd);
-        this.linePath.reset();
-        this.refreshCursor();
-        return;
-      }
-      const moveCmd = buildLinePathMoveCommand(
-        this.linePath, selectedUnits, this.waypointMode, tick, shiftHeld,
-      );
-      if (moveCmd) {
-        if (GAME_DIAGNOSTICS.commandPlans) {
-          const mw = this.buildPlacement.width, mh = this.buildPlacement.height;
-          const canSampleWet = isFinite(mw) && isFinite(mh);
-          const finalWet = canSampleWet
-            ? isWaterAt(finalPoint.x, finalPoint.y, mw, mh)
-            : null;
-          debugLog(
-            true,
-            '[click] move: released at (%d, %d, %d) wet=%s, %d unit(s), %d drag sample(s), waypointType=%s',
-            Math.round(finalPoint.x), Math.round(finalPoint.y),
-            finalPoint.z !== undefined ? Math.round(finalPoint.z) : -1,
-            finalWet,
-            selectedUnits.length, points.length, moveCmd.waypointType,
-          );
-          // Each unit's CURRENT position + wet flag, so we can replay the
-          // exact pathfinder query offline.
-          for (let i = 0; i < selectedUnits.length; i++) {
-            const u = selectedUnits[i];
-            const ux = u.transform.x;
-            const uy = u.transform.y;
-            const uz = u.transform.z;
-            const uWet = canSampleWet ? isWaterAt(ux, uy, mw, mh) : null;
-            const tgt = moveCmd.individualTargets?.[i];
-            debugLog(
-              true,
-              '  [click]   unit #%d at (%d, %d, %d) wet=%s%s',
-              u.id,
-              Math.round(ux), Math.round(uy), Math.round(uz),
-              uWet,
-              tgt
-                ? ` → (${Math.round(tgt.x)}, ${Math.round(tgt.y)}, ${tgt.z !== undefined ? Math.round(tgt.z) : -1})`
-                : ` → (${Math.round(finalPoint.x)}, ${Math.round(finalPoint.y)}, ${finalPoint.z !== undefined ? Math.round(finalPoint.z) : -1})`,
-            );
-          }
-        }
-        this.localCommandQueue.enqueue(moveCmd);
-      }
-      this.linePath.reset();
-      this.refreshCursor();
-      return;
-    }
-
-    // No units: set a factory rally point if factories are selected.
-    const factories = this.getSelectedFactories();
-    if (factories.length > 0 && points.length > 0) {
-      const finalPoint = points[points.length - 1];
-      debugLog(
-        GAME_DIAGNOSTICS.commandPlans,
-        '[click] factory-waypoint: released at (%d, %d, %d), %d factory(s)',
-        Math.round(finalPoint.x), Math.round(finalPoint.y),
-        finalPoint.z !== undefined ? Math.round(finalPoint.z) : -1,
-        factories.length,
-      );
-      const cmds = buildFactoryRallyCommands(
-        factories, finalPoint.x, finalPoint.y,
-        this.waypointMode, tick, finalPoint.z,
-      );
-      for (const cmd of cmds) this.localCommandQueue.enqueue(cmd);
-    }
-    this.linePath.reset();
-    this.refreshCursor();
+  getLineDragState(): Input3DLineDragState {
+    return this.rightDrag.getLineDragState();
   }
 
   destroy(): void {
