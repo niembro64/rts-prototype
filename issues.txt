@@ -31,12 +31,11 @@ Finish the BAR-compatible keymap and command UI layer by importing the complete
 BAR grid/legacy bindings and adding command buttons for missing BAR commands so
 visible hotkeys match the active keymap across the whole command surface.
 
-Issue: construction commands are missing BAR build ergonomics. Implement
-remaining construction shortcuts, remaining BAR fallback behavior, and visual
-previews for remaining build/upgrade shapes. T1 mex area upgrade and T1 -> T2
-upgrade require an authored upgraded extractor blueprint, economy behavior,
-construction lifecycle, replacement rules, and render profile before exposing
-commands or buttons.
+Issue: metal-extractor upgrade workflows are missing. T1 mex area upgrade and
+T1 -> T2 upgrade require an authored upgraded extractor blueprint, economy
+behavior, construction lifecycle, replacement rules, render profile, command
+authorization, hotkeys, and visible previews before exposing commands or
+buttons.
 
 Issue: queue editing and command insertion are incomplete. BAR supports
 commandinsert/prepend-between and queued variants of several orders. Implement
