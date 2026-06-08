@@ -79,16 +79,16 @@ authoritative stop-production command and factory panel button, but still needs
 the remaining BAR-equivalent factory panel and hotkeys, translated to
 authoritative-server commands.
 
-Issue: map, communication, and game UI commands are missing. Implement BAR
-commands and buttons for chat, draw on map, draw label, erase drawings, options
-menu, and any equivalent lobby/spectator-safe
-variants. rts-prototype has a minimap, resource bar, debug/control bars, map
-details info, sight/radar boundary toggles, metal and elevation map overlays,
-unit pathing map overlay, map overview camera switch, fullscreen toggle,
-screenshot capture, audio mute/sound category toggles, master volume controls,
-pause/resume controls, game-speed controls, ping/scan commands, a
-go-to-last-ping camera control, and a show/hide UI chrome toggle, but not the
-BAR game UI command surface.
+Issue: map and game UI commands remain incomplete. Implement BAR command-card
+buttons and keymap entries for the options menu and any required
+lobby/spectator-safe variants. rts-prototype has a minimap, resource bar,
+debug/control bars, map details info, sight/radar boundary toggles, metal and
+elevation map overlays, unit pathing map overlay, map overview camera switch,
+fullscreen toggle, screenshot capture, audio mute/sound category toggles,
+master volume controls, pause/resume controls, game-speed controls, ping/scan
+commands, a go-to-last-ping camera control, a show/hide UI chrome toggle, and
+network-relayed chat plus minimap drawing/label/erase controls, but not the
+full BAR game UI command surface.
 
 Issue: BAR gameplay functionality tied to missing commands is absent. Implement
 or explicitly redesign the systems needed by the missing command surface:

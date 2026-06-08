@@ -12,6 +12,14 @@ import { minimapPointerToWorld } from './minimapHelpers';
 export type { MinimapEntity, MinimapData } from '@/types/ui';
 import type { MinimapData } from '@/types/ui';
 
+export type MinimapMapDrawing = {
+  id: string;
+  kind: 'line' | 'label';
+  points: ReadonlyArray<{ x: number; y: number }>;
+  label?: string;
+  color: string;
+};
+
 // Neutral land baseline lifted from MAP_BG_COLOR so the minimap
 // background matches the scene's untextured map floor.
 const NEUTRAL_R = (MAP_BG_COLOR >> 16) & 0xff;
@@ -23,9 +31,14 @@ const MINIMAP_CAMERA_STROKE = COLORS.ui.minimap.cameraStroke;
 const MINIMAP_FRAME_STROKE = COLORS.ui.minimap.frameStroke;
 const MINIMAP_PANEL = COLORS.ui.minimap.panel;
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   data: MinimapData;
-}>();
+  drawings?: ReadonlyArray<MinimapMapDrawing>;
+  dragPan?: boolean;
+}>(), {
+  drawings: () => [],
+  dragPan: true,
+});
 
 const emit = defineEmits<{
   (e: 'click', x: number, y: number): void;
@@ -289,6 +302,66 @@ function drawEntityLayer(): void {
   }
 }
 
+function drawCommunicationLayer(
+  ctx: CanvasRenderingContext2D,
+  scaleX: number,
+  scaleY: number,
+): void {
+  const drawings = props.drawings;
+  if (drawings.length === 0) return;
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.font = '700 10px system-ui, sans-serif';
+  ctx.textBaseline = 'middle';
+  ctx.shadowBlur = 5;
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+
+  for (const drawing of drawings) {
+    const points = drawing.points;
+    if (drawing.kind === 'line') {
+      if (points.length < 2) continue;
+      ctx.strokeStyle = drawing.color;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(points[0].x * scaleX, points[0].y * scaleY);
+      for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x * scaleX, points[i].y * scaleY);
+      }
+      ctx.stroke();
+      continue;
+    }
+
+    const point = points[0];
+    if (!point) continue;
+    const x = point.x * scaleX;
+    const y = point.y * scaleY;
+    const label = drawing.label ?? '';
+    ctx.fillStyle = drawing.color;
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+    if (label.length > 0) {
+      const metrics = ctx.measureText(label);
+      const padX = 4;
+      const boxX = x + 6;
+      const boxY = y - 8;
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(4, 8, 14, 0.78)';
+      ctx.fillRect(boxX, boxY, metrics.width + padX * 2, 16);
+      ctx.strokeStyle = drawing.color;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(boxX, boxY, metrics.width + padX * 2, 16);
+      ctx.fillStyle = '#f6fbff';
+      ctx.fillText(label, boxX + padX, boxY + 8);
+      ctx.shadowBlur = 5;
+    }
+  }
+
+  ctx.restore();
+}
+
 /** Composite the cached entity layer + stroke the camera quad + the
  *  frame border. Called on every cameraQuad change — cheap. */
 function compose(): void {
@@ -305,6 +378,7 @@ function compose(): void {
 
   ctx.clearRect(0, 0, w, h);
   ctx.drawImage(offscreen, 0, 0);
+  drawCommunicationLayer(ctx, scaleX, scaleY);
 
   // Camera footprint polygon — axis-aligned rect for an unrotated
   // 2D camera, rotated rect for 2D with rotation, trapezoid for the
@@ -351,6 +425,7 @@ function handlePointerDown(event: PointerEvent): void {
 
 function handlePointerMove(event: PointerEvent): void {
   if (draggingPointerId.value !== event.pointerId) return;
+  if (!props.dragPan) return;
   if ((event.buttons & 1) === 0) {
     draggingPointerId.value = null;
     return;
@@ -390,6 +465,12 @@ watch(
 watch(
   () => props.data.cameraQuad,
   compose,
+);
+
+watch(
+  () => props.drawings,
+  compose,
+  { deep: true },
 );
 
 onMounted(() => {

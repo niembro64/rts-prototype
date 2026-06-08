@@ -16,6 +16,8 @@ export type NetworkSendMessageClass =
   | 'playerInfo'
   | 'playerInfoUpdate'
   | 'lobbySettings'
+  | 'communication'
+  | 'communicationEvent'
   | 'control';
 
 export type NetworkSendBudgetClassTelemetry = {
@@ -114,6 +116,10 @@ function classifyMessage(message: NetworkMessage): NetworkSendClassification {
       };
     case 'lobbySettings':
       return { messageClass: 'lobbySettings', policy: 'coalesce', coalesceKey: 'lobbySettings' };
+    case 'communication':
+      return { messageClass: 'communication', policy: 'command', coalesceKey: null };
+    case 'communicationEvent':
+      return { messageClass: 'communicationEvent', policy: 'critical', coalesceKey: null };
     default:
       return { messageClass: 'control', policy: 'critical', coalesceKey: null };
   }

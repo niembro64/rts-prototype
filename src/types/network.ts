@@ -231,9 +231,72 @@ export type LobbyPlayerInfoPayload = {
   name: string | undefined;
 };
 
+export type NetworkCommunicationPoint = {
+  x: number;
+  y: number;
+  z?: number;
+};
+
+export type NetworkCommunicationDraft =
+  | {
+      kind: 'chat';
+      clientEventId: string;
+      text: string;
+    }
+  | {
+      kind: 'mapDrawing';
+      clientEventId: string;
+      drawingId: string;
+      drawingKind: 'line' | 'label';
+      points: NetworkCommunicationPoint[];
+      label?: string;
+    }
+  | {
+      kind: 'mapErase';
+      clientEventId: string;
+      scope: 'all' | 'radius';
+      center?: NetworkCommunicationPoint;
+      radius?: number;
+    };
+
+export type NetworkCommunicationChatEvent = {
+  kind: 'chat';
+  id: string;
+  senderPlayerId: PlayerId;
+  createdAtMs: number;
+  text: string;
+};
+
+export type NetworkCommunicationMapDrawingEvent = {
+  kind: 'mapDrawing';
+  id: string;
+  senderPlayerId: PlayerId;
+  createdAtMs: number;
+  drawingId: string;
+  drawingKind: 'line' | 'label';
+  points: NetworkCommunicationPoint[];
+  label?: string;
+};
+
+export type NetworkCommunicationMapEraseEvent = {
+  kind: 'mapErase';
+  id: string;
+  senderPlayerId: PlayerId;
+  createdAtMs: number;
+  scope: 'all' | 'radius';
+  center?: NetworkCommunicationPoint;
+  radius?: number;
+};
+
+export type NetworkCommunicationEvent =
+  | NetworkCommunicationChatEvent
+  | NetworkCommunicationMapDrawingEvent
+  | NetworkCommunicationMapEraseEvent;
+
 // Client → Server
 export type NetworkPlayerActionMessage =
   | { type: 'command'; gameId: string | undefined; data: Command }
+  | { type: 'communication'; gameId: string | undefined; data: NetworkCommunicationDraft }
   | { type: 'clientReady'; gameId: string | undefined }
   | { type: 'snapshotResync'; gameId: string | undefined }
   // Client reports its own IP / location / timezone to the host.
@@ -307,6 +370,7 @@ export type NetworkServerSnapshotMessage =
         rawBytes: number;
       } | null;
     }
+  | { type: 'communicationEvent'; gameId: string | undefined; data: NetworkCommunicationEvent }
   | { type: 'playerAssignment'; playerId: PlayerId; gameId: string | undefined }
   | {
       type: 'gameStart';

@@ -10,6 +10,7 @@ import type { GameConnection } from '../game/server/GameConnection';
 import type { GameServer } from '../game/server/GameServer';
 import type { PlayerId } from '../game/sim/types';
 import type { CameraFovDegrees } from '../types/client';
+import type { NetworkCommunicationEvent } from '../types/network';
 import { bindGameCanvasNetworkCallbacks } from './gameCanvasNetworkCallbacks';
 import type { GameCanvasForegroundGame } from './gameCanvasForegroundGame';
 import type { GameCanvasForegroundSceneBinding } from './gameCanvasForegroundSceneBinding';
@@ -55,6 +56,7 @@ type UseGameCanvasRealBattleHandoffOptions = {
     options?: { restartPreview?: boolean },
   ) => void;
   currentLobbySettings: () => LobbySettings;
+  onCommunication: (event: NetworkCommunicationEvent) => void;
   onLoadingProgress: (progress: number, phase?: string) => void;
   bindSceneUi: (scene: GameScene) => void;
 };
@@ -90,6 +92,7 @@ export function useGameCanvasRealBattleHandoff({
   upsertLobbyPlayer,
   applyLobbySettingsFromHost,
   currentLobbySettings,
+  onCommunication,
   onLoadingProgress,
   bindSceneUi,
 }: UseGameCanvasRealBattleHandoffOptions) {
@@ -142,6 +145,7 @@ export function useGameCanvasRealBattleHandoff({
       upsertLobbyPlayer,
       applyLobbySettingsFromHost,
       currentLobbySettings,
+      onCommunication,
       startGameWithPlayers,
     });
   }

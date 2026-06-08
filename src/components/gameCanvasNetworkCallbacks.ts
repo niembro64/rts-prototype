@@ -5,6 +5,7 @@ import type {
   LobbySettings,
   NetworkManager,
 } from '../game/network/NetworkManager';
+import type { NetworkCommunicationEvent } from '../types/network';
 import type { GameServer } from '../game/server/GameServer';
 import type { PlayerId } from '../game/sim/types';
 import type { GameCanvasRealBattleLifecycle } from './gameCanvasRealBattleLifecycle';
@@ -28,6 +29,7 @@ export type GameCanvasNetworkCallbackOptions = {
     options?: { restartPreview?: boolean },
   ) => void;
   currentLobbySettings: () => LobbySettings;
+  onCommunication: (event: NetworkCommunicationEvent) => void;
   startGameWithPlayers: (playerIds: PlayerId[]) => void | Promise<void>;
 };
 
@@ -47,6 +49,7 @@ export function bindGameCanvasNetworkCallbacks({
   upsertLobbyPlayer,
   applyLobbySettingsFromHost,
   currentLobbySettings,
+  onCommunication,
   startGameWithPlayers,
 }: GameCanvasNetworkCallbackOptions): void {
   network.onPlayerJoined = (player: LobbyPlayer) => {
@@ -100,5 +103,9 @@ export function bindGameCanvasNetworkCallbacks({
   network.getLobbySettings = currentLobbySettings;
   network.onLobbySettings = (settings) => {
     applyLobbySettingsFromHost(settings);
+  };
+
+  network.onCommunication = (event) => {
+    onCommunication(event);
   };
 }

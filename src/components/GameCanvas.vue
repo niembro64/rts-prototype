@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, reactive, watch, watchEffect, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, reactive, watch, watchEffect, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import type { GameInstance } from '../game/createGame';
 import type { PlayerId } from '../game/sim/types';
 import type { BackgroundBattleState } from '../game/lobby/LobbyManager';
@@ -37,6 +37,13 @@ import {
   type BattleMode,
 } from '../battleBarConfig';
 import type { TerrainMapShape } from '../types/terrain';
+import type {
+  NetworkCommunicationDraft,
+  NetworkCommunicationEvent,
+  NetworkCommunicationMapDrawingEvent,
+  NetworkCommunicationMapEraseEvent,
+  NetworkCommunicationPoint,
+} from '../types/network';
 import {
   SERVER_CONFIG,
   loadStoredUnitGroundNormalEmaMode,
@@ -348,13 +355,235 @@ function focusCameraAnchor(index: number): void {
   getActiveGameScene()?.focusCameraAnchor(index);
 }
 
+type CommunicationMode = 'none' | 'chat' | 'draw' | 'label' | 'erase';
+type CommunicationChatEvent = Extract<NetworkCommunicationEvent, { kind: 'chat' }>;
+
+const communicationPanelOpen = ref(false);
+const communicationMode = ref<CommunicationMode>('none');
+const communicationMessages = ref<CommunicationChatEvent[]>([]);
+const communicationDrawings = ref<NetworkCommunicationMapDrawingEvent[]>([]);
+const communicationDraftText = ref('');
+const communicationLabelText = ref('');
+const pendingDrawStart = ref<NetworkCommunicationPoint | null>(null);
+const chatInputRef = ref<HTMLInputElement | null>(null);
+let communicationDraftSequence = 0;
+
+const minimapCommunicationDrawings = computed(() => communicationDrawings.value.map((drawing) => ({
+  id: drawing.drawingId,
+  kind: drawing.drawingKind,
+  points: drawing.points,
+  label: drawing.label,
+  color: getPlayerColor(drawing.senderPlayerId),
+})));
+
+const minimapDragPanEnabled = computed(() => communicationMode.value === 'none');
+
+function nextCommunicationDraftId(prefix: string): string {
+  communicationDraftSequence++;
+  return `${prefix}-${Date.now().toString(36)}-${communicationDraftSequence.toString(36)}`;
+}
+
+function createLocalCommunicationEvent(
+  draft: NetworkCommunicationDraft,
+  senderPlayerId: PlayerId,
+): NetworkCommunicationEvent {
+  const id = nextCommunicationDraftId(`local-${draft.kind}`);
+  const createdAtMs = Date.now();
+  switch (draft.kind) {
+    case 'chat':
+      return {
+        kind: 'chat',
+        id,
+        senderPlayerId,
+        createdAtMs,
+        text: draft.text.trim().slice(0, 220),
+      };
+    case 'mapDrawing':
+      return {
+        kind: 'mapDrawing',
+        id,
+        senderPlayerId,
+        createdAtMs,
+        drawingId: draft.drawingId,
+        drawingKind: draft.drawingKind,
+        points: draft.points,
+        ...(draft.label ? { label: draft.label.trim().slice(0, 48) } : {}),
+      };
+    case 'mapErase':
+      return {
+        kind: 'mapErase',
+        id,
+        senderPlayerId,
+        createdAtMs,
+        scope: draft.scope,
+        ...(draft.center ? { center: draft.center } : {}),
+        ...(draft.radius !== undefined ? { radius: draft.radius } : {}),
+      };
+  }
+}
+
+function drawingTouchesErase(
+  drawing: NetworkCommunicationMapDrawingEvent,
+  erase: NetworkCommunicationMapEraseEvent,
+): boolean {
+  if (erase.scope === 'all') return true;
+  const center = erase.center;
+  const radius = erase.radius;
+  if (!center || radius === undefined) return false;
+  const radiusSq = radius * radius;
+  return drawing.points.some((point) => {
+    const dx = point.x - center.x;
+    const dy = point.y - center.y;
+    return dx * dx + dy * dy <= radiusSq;
+  });
+}
+
+function applyCommunicationEvent(event: NetworkCommunicationEvent): void {
+  if (event.kind === 'chat') {
+    communicationMessages.value = [...communicationMessages.value.slice(-39), event];
+    communicationPanelOpen.value = true;
+    return;
+  }
+  if (event.kind === 'mapDrawing') {
+    communicationDrawings.value = [
+      ...communicationDrawings.value.filter((drawing) => drawing.drawingId !== event.drawingId),
+      event,
+    ].slice(-80);
+    return;
+  }
+  communicationDrawings.value = communicationDrawings.value.filter(
+    (drawing) => !drawingTouchesErase(drawing, event),
+  );
+}
+
+function sendCommunicationDraft(draft: NetworkCommunicationDraft): void {
+  const role = networkManager.getRole();
+  if (role === 'host' || role === 'client') {
+    networkManager.sendCommunication(draft);
+    return;
+  }
+  applyCommunicationEvent(createLocalCommunicationEvent(draft, activePlayer.value));
+}
+
+function setCommunicationMode(mode: CommunicationMode): void {
+  communicationPanelOpen.value = true;
+  communicationMode.value = mode;
+  pendingDrawStart.value = null;
+  if (mode === 'chat') {
+    void nextTick(() => chatInputRef.value?.focus());
+  }
+}
+
+function submitCommunicationChat(): void {
+  const text = communicationDraftText.value.trim();
+  if (text.length === 0) return;
+  sendCommunicationDraft({
+    kind: 'chat',
+    clientEventId: nextCommunicationDraftId('chat'),
+    text,
+  });
+  communicationDraftText.value = '';
+  setCommunicationMode('chat');
+}
+
+function eraseAllCommunicationDrawings(): void {
+  sendCommunicationDraft({
+    kind: 'mapErase',
+    clientEventId: nextCommunicationDraftId('erase-all'),
+    scope: 'all',
+  });
+}
+
+function handleCommunicationMapClick(x: number, y: number): boolean {
+  const point = { x, y };
+  if (communicationMode.value === 'none' || communicationMode.value === 'chat') return false;
+  communicationPanelOpen.value = true;
+  if (communicationMode.value === 'draw') {
+    if (pendingDrawStart.value === null) {
+      pendingDrawStart.value = point;
+      return true;
+    }
+    const start = pendingDrawStart.value;
+    pendingDrawStart.value = null;
+    sendCommunicationDraft({
+      kind: 'mapDrawing',
+      clientEventId: nextCommunicationDraftId('draw'),
+      drawingId: nextCommunicationDraftId('line'),
+      drawingKind: 'line',
+      points: [start, point],
+    });
+    return true;
+  }
+  if (communicationMode.value === 'label') {
+    const label = communicationLabelText.value.trim();
+    if (label.length === 0) return true;
+    sendCommunicationDraft({
+      kind: 'mapDrawing',
+      clientEventId: nextCommunicationDraftId('label'),
+      drawingId: nextCommunicationDraftId('map-label'),
+      drawingKind: 'label',
+      points: [point],
+      label,
+    });
+    communicationLabelText.value = '';
+    return true;
+  }
+  sendCommunicationDraft({
+    kind: 'mapErase',
+    clientEventId: nextCommunicationDraftId('erase-radius'),
+    scope: 'radius',
+    center: point,
+    radius: 120,
+  });
+  return true;
+}
+
+function handleMinimapInteraction(x: number, y: number): void {
+  if (handleCommunicationMapClick(x, y)) return;
+  centerMinimapCamera(x, y);
+}
+
+function communicationSenderName(playerId: PlayerId): string {
+  return resolvePlayerName(playerId);
+}
+
+function formatCommunicationTime(createdAtMs: number): string {
+  const date = new Date(createdAtMs);
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+function handleCommunicationKeydown(event: KeyboardEvent): void {
+  const target = event.target;
+  if (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement
+  ) {
+    return;
+  }
+  if (event.key === 'Enter' && gameChromeVisible.value) {
+    event.preventDefault();
+    setCommunicationMode('chat');
+    return;
+  }
+  if (event.key === 'Escape' && communicationMode.value !== 'none') {
+    event.preventDefault();
+    communicationMode.value = 'none';
+    pendingDrawStart.value = null;
+  }
+}
+
 onMounted(() => {
   syncFullscreenActive();
   document.addEventListener('fullscreenchange', syncFullscreenActive);
+  window.addEventListener('keydown', handleCommunicationKeydown);
 });
 
 onBeforeUnmount(() => {
   document.removeEventListener('fullscreenchange', syncFullscreenActive);
+  window.removeEventListener('keydown', handleCommunicationKeydown);
 });
 
 // Demo battle unit blueprint list (state read from snapshots)
@@ -501,7 +730,7 @@ const {
   minimapData,
   bindGameSceneUi,
   togglePlayer,
-  handleMinimapClick,
+  handleMinimapClick: centerMinimapCamera,
   selectionActions,
 } = useGameCanvasSceneUi({
   activePlayer,
@@ -814,6 +1043,7 @@ const {
   upsertLobbyPlayer,
   applyLobbySettingsFromHost,
   currentLobbySettings,
+  onCommunication: applyCommunicationEvent,
   onLoadingProgress: setLoadingProgress,
   bindSceneUi: (scene) => {
     bindGameSceneUi(scene, true);
@@ -1373,7 +1603,115 @@ watchEffect(() => {
 
         <!-- Minimap -->
         <div class="minimap-stack">
-          <Minimap :data="minimapData" @click="handleMinimapClick" />
+          <Minimap
+            :data="minimapData"
+            :drawings="minimapCommunicationDrawings"
+            :drag-pan="minimapDragPanEnabled"
+            @click="handleMinimapInteraction"
+          />
+          <section
+            class="communication-panel"
+            :class="{
+              open: communicationPanelOpen,
+              drawing: communicationMode !== 'none' && communicationMode !== 'chat',
+            }"
+            aria-label="Team communication"
+          >
+            <div class="communication-toolbar">
+              <button
+                type="button"
+                class="communication-toggle"
+                :aria-pressed="communicationPanelOpen"
+                title="Chat"
+                @click="setCommunicationMode('chat')"
+              >CHAT</button>
+              <button
+                type="button"
+                :class="{ active: communicationMode === 'draw' }"
+                title="Draw on map"
+                @click="setCommunicationMode(communicationMode === 'draw' ? 'none' : 'draw')"
+              >DRAW</button>
+              <button
+                type="button"
+                :class="{ active: communicationMode === 'label' }"
+                title="Draw label"
+                @click="setCommunicationMode(communicationMode === 'label' ? 'none' : 'label')"
+              >LABEL</button>
+              <button
+                type="button"
+                :class="{ active: communicationMode === 'erase' }"
+                title="Erase drawings"
+                @click="setCommunicationMode(communicationMode === 'erase' ? 'none' : 'erase')"
+              >ERASE</button>
+              <button
+                type="button"
+                title="Erase all drawings"
+                @click="eraseAllCommunicationDrawings"
+              >CLEAR</button>
+            </div>
+
+            <div
+              v-if="communicationPanelOpen"
+              class="communication-body"
+            >
+              <div class="communication-log" aria-live="polite">
+                <div
+                  v-for="message in communicationMessages"
+                  :key="message.id"
+                  class="communication-message"
+                >
+                  <span class="communication-time">{{ formatCommunicationTime(message.createdAtMs) }}</span>
+                  <span
+                    class="communication-sender"
+                    :style="{ color: getPlayerColor(message.senderPlayerId) }"
+                  >{{ communicationSenderName(message.senderPlayerId) }}</span>
+                  <span class="communication-text">{{ message.text }}</span>
+                </div>
+              </div>
+
+              <form
+                v-if="communicationMode === 'chat'"
+                class="communication-input-row"
+                @submit.prevent="submitCommunicationChat"
+              >
+                <input
+                  ref="chatInputRef"
+                  v-model="communicationDraftText"
+                  class="communication-input"
+                  type="text"
+                  maxlength="220"
+                  autocomplete="off"
+                  aria-label="Chat message"
+                  @keydown.stop
+                />
+                <button type="submit">SEND</button>
+              </form>
+
+              <div
+                v-if="communicationMode === 'label'"
+                class="communication-input-row"
+              >
+                <input
+                  v-model="communicationLabelText"
+                  class="communication-input"
+                  type="text"
+                  maxlength="48"
+                  autocomplete="off"
+                  aria-label="Map label"
+                  @keydown.stop
+                />
+              </div>
+
+              <div
+                v-if="communicationMode === 'draw'"
+                class="communication-status"
+              >DRAW {{ pendingDrawStart === null ? '1/2' : '2/2' }}</div>
+              <div
+                v-if="communicationMode === 'erase'"
+                class="communication-status"
+              >ERASE</div>
+            </div>
+          </section>
         </div>
 
         <section
@@ -1663,6 +2001,129 @@ watchEffect(() => {
 
 .minimap-stack :deep(.minimap-container) {
   pointer-events: auto;
+}
+
+.communication-panel {
+  width: 236px;
+  margin-top: 8px;
+  border: 1px solid rgba(120, 140, 165, 0.58);
+  border-radius: 6px;
+  background: rgba(8, 12, 18, 0.88);
+  color: #edf3ff;
+  font: 11px/1.25 system-ui, sans-serif;
+  letter-spacing: 0;
+  pointer-events: auto;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.34);
+}
+
+.communication-panel.drawing {
+  border-color: rgba(130, 210, 255, 0.76);
+}
+
+.communication-toolbar {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  padding: 6px;
+}
+
+.communication-toolbar button,
+.communication-input-row button {
+  min-width: 0;
+  height: 24px;
+  padding: 0 5px;
+  border: 1px solid rgba(150, 165, 190, 0.5);
+  border-radius: 4px;
+  background: rgba(25, 31, 42, 0.86);
+  color: #dce7fb;
+  font: 700 9px/1 system-ui, sans-serif;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.communication-toolbar button:hover,
+.communication-input-row button:hover {
+  border-color: rgba(180, 205, 235, 0.78);
+  background: rgba(38, 49, 66, 0.94);
+}
+
+.communication-toolbar button.active,
+.communication-toggle[aria-pressed="true"] {
+  border-color: rgba(130, 210, 255, 0.82);
+  color: #f8fcff;
+  background: rgba(38, 82, 112, 0.86);
+}
+
+.communication-body {
+  border-top: 1px solid rgba(120, 140, 165, 0.28);
+  padding: 6px;
+}
+
+.communication-log {
+  display: grid;
+  gap: 3px;
+  max-height: 104px;
+  min-height: 24px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.communication-message {
+  display: grid;
+  grid-template-columns: 34px 58px minmax(0, 1fr);
+  gap: 5px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.communication-time {
+  color: #8998ad;
+  font-family: monospace;
+  font-size: 10px;
+}
+
+.communication-sender {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 800;
+}
+
+.communication-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #f5f8ff;
+}
+
+.communication-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.communication-input {
+  min-width: 0;
+  height: 24px;
+  box-sizing: border-box;
+  border: 1px solid rgba(150, 165, 190, 0.48);
+  border-radius: 4px;
+  background: rgba(4, 8, 14, 0.9);
+  color: #edf3ff;
+  padding: 0 7px;
+  font: 11px/1 system-ui, sans-serif;
+  outline: none;
+}
+
+.communication-input:focus {
+  border-color: rgba(130, 210, 255, 0.82);
+}
+
+.communication-status {
+  margin-top: 7px;
+  color: #a9bdd6;
+  font: 700 10px/1.2 system-ui, sans-serif;
 }
 
 .map-details-panel {

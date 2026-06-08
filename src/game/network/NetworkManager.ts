@@ -12,6 +12,12 @@ export type {
   NetworkMessage,
   NetworkPlayerActionMessage,
   NetworkServerSnapshotMessage,
+  NetworkCommunicationDraft,
+  NetworkCommunicationEvent,
+  NetworkCommunicationChatEvent,
+  NetworkCommunicationMapDrawingEvent,
+  NetworkCommunicationMapEraseEvent,
+  NetworkCommunicationPoint,
   NetworkServerSnapshotSimEvent,
   NetworkServerSnapshot,
   NetworkServerSnapshotSprayTarget,
@@ -36,6 +42,9 @@ export type {
 
 import {
   type BattleHandoff,
+  type NetworkCommunicationDraft,
+  type NetworkCommunicationEvent,
+  type NetworkCommunicationPoint,
   type LobbySettings,
 } from '@/types/network';
 import type {
@@ -85,7 +94,29 @@ const PEER_OPTIONS: PeerOptions = {
 
 const SIGNALING_RECONNECT_INITIAL_DELAY_MS = 1000;
 const SIGNALING_RECONNECT_MAX_DELAY_MS = 10000;
+const COMMUNICATION_CHAT_MAX_LENGTH = 220;
+const COMMUNICATION_LABEL_MAX_LENGTH = 48;
+const COMMUNICATION_POINTS_MAX = 12;
+const COMMUNICATION_ERASE_RADIUS_MIN = 24;
+const COMMUNICATION_ERASE_RADIUS_MAX = 500;
 type NetworkStateMessage = Extract<NetworkMessage, { type: 'state' }>;
+
+function sanitizeCommunicationText(value: string, maxLength: number): string | null {
+  if (typeof value !== 'string') return null;
+  const compact = value.replace(/\s+/g, ' ').trim();
+  if (compact.length === 0) return null;
+  return compact.slice(0, maxLength);
+}
+
+function sanitizeCommunicationPoint(value: NetworkCommunicationPoint | undefined): NetworkCommunicationPoint | null {
+  if (value === undefined) return null;
+  const x = Number(value.x);
+  const y = Number(value.y);
+  const z = value.z === undefined ? undefined : Number(value.z);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (z !== undefined && !Number.isFinite(z)) return null;
+  return z === undefined ? { x, y } : { x, y, z };
+}
 
 export class NetworkManager {
   private peer: Peer | null = null;
@@ -135,6 +166,7 @@ export class NetworkManager {
   private stateDecodeNeedsKeyframeAfterSeq = 0;
   private stateDecodeDraining = false;
   private stateDecodeGeneration = 0;
+  private communicationSequence = 0;
   private sessionGeneration = 0;
   /** 10s connection-setup deadline created by hostGame/joinGame. Held
    *  here so disconnect() can cancel it — otherwise a stale timeout
@@ -171,6 +203,7 @@ export class NetworkManager {
   public onPlayerInfoUpdate: ((player: LobbyPlayer) => void) | undefined = undefined;
   public onClientReady: ((playerId: PlayerId) => void) | undefined = undefined;
   public onSnapshotDropped: ((playerId: PlayerId) => void) | undefined = undefined;
+  public onCommunication: ((event: NetworkCommunicationEvent) => void) | undefined = undefined;
 
   private emitPlayerJoined(player: LobbyPlayer): void {
     const callback = this.onPlayerJoined;
@@ -232,6 +265,11 @@ export class NetworkManager {
   private emitSnapshotDropped(playerId: PlayerId): void {
     const callback = this.onSnapshotDropped;
     if (callback !== undefined) callback(playerId);
+  }
+
+  private emitCommunication(event: NetworkCommunicationEvent): void {
+    const callback = this.onCommunication;
+    if (callback !== undefined) callback(event);
   }
 
   private readLobbySettings(): LobbySettings | undefined {
@@ -701,6 +739,106 @@ export class NetworkManager {
     return gameId === undefined || gameId === this.getUniversalGameId();
   }
 
+  private nextCommunicationEventId(playerId: PlayerId, clientEventId: string): string {
+    this.communicationSequence++;
+    return `${this.getUniversalGameId()}:${playerId}:${this.communicationSequence}:${clientEventId}`;
+  }
+
+  private sanitizeCommunicationDraft(
+    data: NetworkCommunicationDraft,
+    fromPlayerId: PlayerId,
+  ): NetworkCommunicationEvent | null {
+    const createdAtMs = Date.now();
+    const clientEventId = typeof data.clientEventId === 'string'
+      ? data.clientEventId.slice(0, 64)
+      : 'event';
+    const id = this.nextCommunicationEventId(fromPlayerId, clientEventId);
+
+    switch (data.kind) {
+      case 'chat': {
+        const text = sanitizeCommunicationText(data.text, COMMUNICATION_CHAT_MAX_LENGTH);
+        if (text === null) return null;
+        return {
+          kind: 'chat',
+          id,
+          senderPlayerId: fromPlayerId,
+          createdAtMs,
+          text,
+        };
+      }
+
+      case 'mapDrawing': {
+        const drawingKind = data.drawingKind === 'label' ? 'label' : 'line';
+        const points = Array.isArray(data.points)
+          ? data.points
+            .slice(0, COMMUNICATION_POINTS_MAX)
+            .map((point) => sanitizeCommunicationPoint(point))
+            .filter((point): point is NetworkCommunicationPoint => point !== null)
+          : [];
+        const minPoints = drawingKind === 'label' ? 1 : 2;
+        if (points.length < minPoints) return null;
+        const label = drawingKind === 'label'
+          ? sanitizeCommunicationText(data.label ?? '', COMMUNICATION_LABEL_MAX_LENGTH)
+          : undefined;
+        if (drawingKind === 'label' && label === null) return null;
+        return {
+          kind: 'mapDrawing',
+          id,
+          senderPlayerId: fromPlayerId,
+          createdAtMs,
+          drawingId: typeof data.drawingId === 'string' && data.drawingId.length > 0
+            ? data.drawingId.slice(0, 80)
+            : id,
+          drawingKind,
+          points,
+          ...(label !== undefined && label !== null ? { label } : {}),
+        };
+      }
+
+      case 'mapErase': {
+        if (data.scope === 'all') {
+          return {
+            kind: 'mapErase',
+            id,
+            senderPlayerId: fromPlayerId,
+            createdAtMs,
+            scope: 'all',
+          };
+        }
+        const center = sanitizeCommunicationPoint(data.center);
+        if (center === null) return null;
+        const radius = Number(data.radius);
+        if (!Number.isFinite(radius)) return null;
+        return {
+          kind: 'mapErase',
+          id,
+          senderPlayerId: fromPlayerId,
+          createdAtMs,
+          scope: 'radius',
+          center,
+          radius: Math.max(
+            COMMUNICATION_ERASE_RADIUS_MIN,
+            Math.min(COMMUNICATION_ERASE_RADIUS_MAX, radius),
+          ),
+        };
+      }
+
+      default:
+        return null;
+    }
+  }
+
+  private relayCommunicationDraft(data: NetworkCommunicationDraft, fromPlayerId: PlayerId): void {
+    const event = this.sanitizeCommunicationDraft(data, fromPlayerId);
+    if (event === null) return;
+    this.emitCommunication(event);
+    this.broadcast({
+      type: 'communicationEvent',
+      gameId: this.getUniversalGameId(),
+      data: event,
+    });
+  }
+
   // Handle incoming message
   private handleMessage(message: NetworkMessage, fromPlayerId: PlayerId): void {
     // Any inbound message is also a sign of life — refresh the
@@ -739,6 +877,18 @@ export class NetworkManager {
       case 'clientReady':
       case 'snapshotResync':
         this.commandTransport.handleMessage(message, fromPlayerId);
+        break;
+
+      case 'communication':
+        if (this.role !== 'host') return;
+        if (!this.isMessageForCurrentGame(message.gameId)) return;
+        this.relayCommunicationDraft(message.data, fromPlayerId);
+        break;
+
+      case 'communicationEvent':
+        if (this.role !== 'client') return;
+        if (!this.isMessageForCurrentGame(message.gameId)) return;
+        this.emitCommunication(message.data);
         break;
 
       case 'playerInfo':
@@ -1043,6 +1193,21 @@ export class NetworkManager {
     this.commandTransport.sendCommand(command);
   }
 
+  sendCommunication(data: NetworkCommunicationDraft): void {
+    if (this.role === 'host') {
+      this.relayCommunicationDraft(data, this.localPlayerId);
+      return;
+    }
+    if (this.role !== 'client') return;
+    const hostConn = this.connections.get(1);
+    if (!hostConn) return;
+    this.safeSend(hostConn, {
+      type: 'communication',
+      gameId: this.getUniversalGameId(),
+      data,
+    });
+  }
+
   sendClientReady(): void {
     this.commandTransport.sendClientReady();
   }
@@ -1156,6 +1321,7 @@ export class NetworkManager {
     this.getLobbySettings = undefined;
     this.onPlayerInfoUpdate = undefined;
     this.onSnapshotDropped = undefined;
+    this.onCommunication = undefined;
   }
 
   private queueStateMessage(message: NetworkStateMessage): void {
