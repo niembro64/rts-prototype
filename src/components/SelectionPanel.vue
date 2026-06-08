@@ -416,6 +416,17 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         <button
           type="button"
           class="action-btn"
+          :class="{ active: selection.waypointMode === 'fight' }"
+          :style="{ '--btn-color': WAYPOINT_COLOR_CSS.fight }"
+          :title="actionTitle('Attack line', 'combat.attackLine', 'Right-drag to draw a fight line')"
+          @click="actions.setWaypointMode('fight')"
+        >
+          <span class="btn-label">Atk Line</span>
+          <span class="btn-key">{{ hotkey('combat.attackLine') }}</span>
+        </button>
+        <button
+          type="button"
+          class="action-btn"
           :class="{ active: selection.isAttackAreaMode }"
           :style="{ '--btn-color': BUTTON_COLORS.attackArea }"
           :title="actionTitle('Area attack', 'combat.attackArea', 'Toggle targeting for selected units')"

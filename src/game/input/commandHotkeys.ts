@@ -26,6 +26,7 @@ export type CommandHotkeyId =
   | 'select.split'
   | 'select.loop'
   | 'combat.attack'
+  | 'combat.attackLine'
   | 'combat.attackArea'
   | 'combat.attackGround'
   | 'combat.guard'
@@ -84,6 +85,7 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'select.split',
   'select.loop',
   'combat.attack',
+  'combat.attackLine',
   'combat.attackArea',
   'combat.attackGround',
   'combat.guard',
@@ -150,6 +152,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<CommandHotkeyPresetId, Comm
     'select.split': [key('Alt+S', 's', { alt: true })],
     'select.loop': [key('Alt+L', 'l', { alt: true })],
     'combat.attack': [key('V', 'v', { shift: 'any' })],
+    'combat.attackLine': [key('Alt+V', 'v', { alt: true })],
     'combat.attackArea': [key('A', 'a', { shift: 'any' })],
     'combat.attackGround': [key('T', 't', { shift: 'any' })],
     'combat.guard': [key('G', 'g', { shift: 'any' })],
@@ -205,6 +208,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<CommandHotkeyPresetId, Comm
     'select.split': [code('Alt+S', 'KeyS', { alt: true })],
     'select.loop': [code('Alt+L', 'KeyL', { alt: true })],
     'combat.attack': [code('A', 'KeyA', { shift: 'any' })],
+    'combat.attackLine': [code('Ctrl+Alt+A', 'KeyA', { ctrl: true, alt: true, shift: 'any' })],
     'combat.attackArea': [code('Ctrl+A', 'KeyA', { ctrl: true, shift: 'any' })],
     'combat.attackGround': [code('Alt+T', 'KeyT', { alt: true, shift: 'any' })],
     'combat.guard': [code('O', 'KeyO', { shift: 'any' })],
@@ -248,6 +252,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<CommandHotkeyPresetId, Comm
     'select.split': [code('Alt+S', 'KeyS', { alt: true })],
     'select.loop': [code('Alt+L', 'KeyL', { alt: true })],
     'combat.attack': [code('A', 'KeyA', { shift: 'any' })],
+    'combat.attackLine': [code('Ctrl+Alt+A', 'KeyA', { ctrl: true, alt: true, shift: 'any' })],
     'combat.attackArea': [code('Alt+A', 'KeyA', { alt: true, shift: 'any' })],
     'combat.attackGround': [code('T', 'KeyT', { shift: 'any' })],
     'combat.guard': [code('G', 'KeyG', { shift: 'any' })],

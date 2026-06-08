@@ -314,6 +314,9 @@ export class Input3DKeyboardController {
       case 'combat.attack':
         this.config.toggleAttackMode();
         break;
+      case 'combat.attackLine':
+        this.config.setWaypointMode('fight');
+        break;
       case 'combat.attackArea':
         this.config.toggleAttackAreaMode();
         break;
