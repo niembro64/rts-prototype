@@ -22,6 +22,15 @@ import { RtsScene3DMinimapSystem } from './helpers/RtsScene3DMinimapSystem';
 import { RtsScene3DRenderPhase } from './helpers/RtsScene3DRenderPhase';
 import { teardownRtsScene3DRenderers } from './helpers/RtsScene3DRendererLifecycle';
 import { RtsScene3DSelectionSystem } from './helpers/RtsScene3DSelectionSystem';
+import {
+  WATER_SURFACE_NORMAL_SIM,
+  finiteAtLeast,
+  finiteOr,
+  hasFiniteEventPosition,
+  maxFiniteNonNegativeOr,
+  sanitizeDeathContext,
+  warnNonFiniteVisualEvent,
+} from './helpers/RtsScene3DVisualEventSanitizer';
 import { ThreeApp } from '../render3d/ThreeApp';
 import { Render3DEntities } from '../render3d/Render3DEntities';
 import { Input3DManager } from '../render3d/Input3DManager';
@@ -44,11 +53,6 @@ import { Explosion3D } from '../render3d/Explosion3D';
 import { ShieldImpactRenderer3D } from '../render3d/ShieldImpactRenderer3D';
 import { WaterSplash3D } from '../render3d/WaterSplash3D';
 import type { ScopedRenderMeshRetentionTelemetry } from '../render3d/ScopedRenderMeshRetention3D';
-
-// Sim z-up surface normal for a flat water plane. Reused for every
-// water-splash event so the shield impact ring spawns at the
-// right orientation without allocating a literal per event.
-const WATER_SURFACE_NORMAL_SIM = { x: 0, y: 0, z: 1 } as const;
 import { Debris3D } from '../render3d/Debris3D';
 import { BurnMark3D } from '../render3d/BurnMark3D';
 import { GroundPrint3D } from '../render3d/GroundPrint3D';
@@ -97,8 +101,6 @@ import {
   LAND_CELL_SIZE,
 } from '../../config';
 
-type SimDeathContext3D = NonNullable<NetworkServerSnapshotSimEvent['deathContext']>;
-
 export type HudSpriteTelemetry = {
   activeSlots: number;
   retainedSlots: number;
@@ -108,79 +110,6 @@ export type HudSpriteTelemetry = {
   maxRetainedSlots: number;
   poolCount: number;
 };
-
-let warnedNonFiniteVisualEvent = false;
-
-function finiteOr(value: number, fallback: number): number {
-  return Number.isFinite(value) ? value : fallback;
-}
-
-function finiteAtLeast(value: number | undefined, min: number, fallback: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
-  return Math.max(value, min);
-}
-
-function maxFiniteNonNegativeOr(fallback: number, a: number, b: number): number {
-  let best = -Infinity;
-  if (Number.isFinite(a)) best = Math.max(best, Math.max(0, a));
-  if (Number.isFinite(b)) best = Math.max(best, Math.max(0, b));
-  return best === -Infinity ? fallback : best;
-}
-
-function hasFiniteEventPosition(event: NetworkServerSnapshotSimEvent): boolean {
-  return (
-    Number.isFinite(event.pos.x) &&
-    Number.isFinite(event.pos.y) &&
-    Number.isFinite(event.pos.z)
-  );
-}
-
-function warnNonFiniteVisualEvent(event: NetworkServerSnapshotSimEvent): void {
-  if (warnedNonFiniteVisualEvent) return;
-  warnedNonFiniteVisualEvent = true;
-  console.warn('RtsScene3D dropped visual SimEvent with non-finite position', {
-    type: event.type,
-    pos: event.pos,
-    entityId: event.entityId,
-    turretBlueprintId: event.turretBlueprintId,
-  });
-}
-
-function sanitizeDeathContext(ctx: SimDeathContext3D): SimDeathContext3D {
-  const radius = finiteAtLeast(ctx.radius, 0, 15);
-  return {
-    ...ctx,
-    unitVel: {
-      x: finiteOr(ctx.unitVel.x, 0),
-      y: finiteOr(ctx.unitVel.y, 0),
-    },
-    hitDir: {
-      x: finiteOr(ctx.hitDir.x, 0),
-      y: finiteOr(ctx.hitDir.y, 0),
-    },
-    projectileVel: {
-      x: finiteOr(ctx.projectileVel.x, 0),
-      y: finiteOr(ctx.projectileVel.y, 0),
-    },
-    attackMagnitude: finiteAtLeast(ctx.attackMagnitude, 0, 25),
-    radius,
-    visualRadius: ctx.visualRadius === undefined
-      ? undefined
-      : finiteAtLeast(ctx.visualRadius, 0, radius),
-    collisionRadius: ctx.collisionRadius === undefined
-      ? undefined
-      : finiteAtLeast(ctx.collisionRadius, 0, radius),
-    baseZ: ctx.baseZ === undefined ? undefined : finiteOr(ctx.baseZ, 0),
-    color: Number.isFinite(ctx.color)
-      ? ctx.color
-      : COLORS.units.locomotion.hover.smoke.colorHex,
-    rotation: ctx.rotation === undefined ? undefined : finiteOr(ctx.rotation, 0),
-    turretPoses: ctx.turretPoses?.map((pose) => ({
-      rotation: finiteOr(pose.rotation, 0),
-      pitch: finiteOr(pose.pitch, 0),
-    })),
-  };
-}
 
 export type RtsScene3DConfig = {
   playerIds: PlayerId[];
