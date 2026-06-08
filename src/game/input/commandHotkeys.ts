@@ -251,6 +251,21 @@ export type CommandHotkeyConflict = {
   commandIds: CommandHotkeyId[];
 };
 
+export type CommandHotkeyResolution = {
+  commandId: CommandHotkeyId | null;
+  pending: boolean;
+};
+
+const COMMAND_HOTKEY_SEQUENCE_TIMEOUT_MS = 900;
+
+type PendingCommandHotkeySequence = {
+  presetId: CommandHotkeyPresetId;
+  commandId: CommandHotkeyId;
+  binding: CommandHotkeyBinding;
+  nextChordIndex: number;
+  expiresAtMs: number;
+};
+
 export function getActiveCommandHotkeyPresetId(): CommandHotkeyPresetId {
   if (typeof window === 'undefined') return DEFAULT_COMMAND_HOTKEY_PRESET;
   const stored = window.localStorage.getItem(COMMAND_HOTKEY_STORAGE_KEY);
@@ -285,11 +300,93 @@ export function resolveCommandHotkey(
   event: KeyboardEvent,
   presetId: CommandHotkeyPresetId = getActiveCommandHotkeyPresetId(),
 ): CommandHotkeyId | null {
+  return resolveSingleChordCommandHotkey(event, presetId);
+}
+
+export class CommandHotkeySequenceResolver {
+  private pendingSequence: PendingCommandHotkeySequence | null = null;
+
+  resolve(
+    event: KeyboardEvent,
+    presetId: CommandHotkeyPresetId = getActiveCommandHotkeyPresetId(),
+    timeMs: number = event.timeStamp,
+  ): CommandHotkeyResolution {
+    const nowMs = Number.isFinite(timeMs) ? timeMs : 0;
+    if (
+      this.pendingSequence !== null &&
+      (
+        this.pendingSequence.presetId !== presetId ||
+        nowMs > this.pendingSequence.expiresAtMs
+      )
+    ) {
+      this.pendingSequence = null;
+    }
+
+    if (this.pendingSequence !== null) {
+      const sequence = this.pendingSequence;
+      if (keyChordMatchesEvent(sequence.binding[sequence.nextChordIndex], event)) {
+        const nextChordIndex = sequence.nextChordIndex + 1;
+        if (nextChordIndex >= sequence.binding.length) {
+          const commandId = sequence.commandId;
+          this.pendingSequence = null;
+          return { commandId, pending: false };
+        }
+        this.pendingSequence = {
+          ...sequence,
+          nextChordIndex,
+          expiresAtMs: nowMs + COMMAND_HOTKEY_SEQUENCE_TIMEOUT_MS,
+        };
+        return { commandId: null, pending: true };
+      }
+      this.pendingSequence = null;
+    }
+
+    const sequence = findMatchingSequenceStart(event, presetId);
+    if (sequence !== null) {
+      this.pendingSequence = {
+        ...sequence,
+        nextChordIndex: 1,
+        expiresAtMs: nowMs + COMMAND_HOTKEY_SEQUENCE_TIMEOUT_MS,
+      };
+      return { commandId: null, pending: true };
+    }
+
+    return {
+      commandId: resolveSingleChordCommandHotkey(event, presetId),
+      pending: false,
+    };
+  }
+
+  reset(): void {
+    this.pendingSequence = null;
+  }
+}
+
+function resolveSingleChordCommandHotkey(
+  event: KeyboardEvent,
+  presetId: CommandHotkeyPresetId,
+): CommandHotkeyId | null {
   const preset = COMMAND_HOTKEY_PRESETS[presetId];
   for (const commandId of COMMAND_HOTKEY_IDS) {
     const bindings = preset[commandId];
     for (const binding of bindings) {
       if (binding.length === 1 && keyChordMatchesEvent(binding[0], event)) return commandId;
+    }
+  }
+  return null;
+}
+
+function findMatchingSequenceStart(
+  event: KeyboardEvent,
+  presetId: CommandHotkeyPresetId,
+): Omit<PendingCommandHotkeySequence, 'nextChordIndex' | 'expiresAtMs'> | null {
+  const preset = COMMAND_HOTKEY_PRESETS[presetId];
+  for (const commandId of COMMAND_HOTKEY_IDS) {
+    const bindings = preset[commandId];
+    for (const binding of bindings) {
+      if (binding.length > 1 && keyChordMatchesEvent(binding[0], event)) {
+        return { presetId, commandId, binding };
+      }
     }
   }
   return null;

@@ -2,14 +2,28 @@ import {
   COMMAND_HOTKEY_IDS,
   COMMAND_HOTKEY_PRESET_IDS,
   COMMAND_HOTKEY_PRESETS,
+  CommandHotkeySequenceResolver,
   commandHotkeyLabel,
   getCommandHotkeyConflicts,
+  resolveCommandHotkey,
 } from './commandHotkeys';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
     throw new Error(`[command hotkeys contract] ${message}`);
   }
+}
+
+function keyEvent(key: string, code: string): KeyboardEvent {
+  return {
+    key,
+    code,
+    ctrlKey: false,
+    shiftKey: false,
+    altKey: false,
+    metaKey: false,
+    timeStamp: 0,
+  } as KeyboardEvent;
 }
 
 export function runCommandHotkeysContractTest(): void {
@@ -35,4 +49,20 @@ export function runCommandHotkeysContractTest(): void {
       }`,
     );
   }
+
+  const sequenceResolver = new CommandHotkeySequenceResolver();
+  const firstFireToggleChord = sequenceResolver.resolve(keyEvent('l', 'KeyL'), 'bar-grid', 0);
+  assertContract(
+    firstFireToggleChord.commandId === null && firstFireToggleChord.pending,
+    'bar-grid command.fireToggle first L should start a pending L L sequence',
+  );
+  const secondFireToggleChord = sequenceResolver.resolve(keyEvent('l', 'KeyL'), 'bar-grid', 100);
+  assertContract(
+    secondFireToggleChord.commandId === 'command.fireToggle' && !secondFireToggleChord.pending,
+    'bar-grid command.fireToggle L L sequence should resolve on the second L',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('a', 'KeyA'), 'bar-grid') === 'combat.attack',
+    'single-chord hotkey resolution should still resolve bar-grid A attack',
+  );
 }

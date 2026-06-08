@@ -25,12 +25,11 @@ https://github.com/beyond-all-reason/Beyond-All-Reason/tree/master/luaui/configs
 
 Issue: the shared command-hotkey registry and in-game preset switcher only cover
 commands that already exist in rts-prototype, with prototype, BAR-grid, and
-BAR-legacy presets for that subset. Finish the BAR-compatible keymap and command
-UI layer by importing the complete BAR grid/legacy bindings, adding runtime
-multi-key sequence dispatch, exposing a custom binding editor, surfacing
-conflict handling to the player, and adding command buttons for missing BAR
-commands so visible hotkeys match the active keymap across the whole command
-surface.
+BAR-legacy presets for that subset, plus runtime multi-key sequence dispatch.
+Finish the BAR-compatible keymap and command UI layer by importing the complete
+BAR grid/legacy bindings, exposing a custom binding editor, surfacing conflict
+handling to the player, and adding command buttons for missing BAR commands so
+visible hotkeys match the active keymap across the whole command surface.
 
 Issue: the selection command surface is still short of BAR. Select all owned
 units, select all matching owned entities, select idle builders, select waiting

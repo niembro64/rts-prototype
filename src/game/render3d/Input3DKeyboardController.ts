@@ -7,7 +7,7 @@ import {
   handleEscape,
   type CommanderModeController,
 } from '../input/helpers';
-import { resolveCommandHotkey, type CommandHotkeyId } from '../input/commandHotkeys';
+import { CommandHotkeySequenceResolver, type CommandHotkeyId } from '../input/commandHotkeys';
 
 type Input3DKeyboardControllerConfig = {
   mode: CommanderModeController;
@@ -147,6 +147,7 @@ export function recordControlGroupRecallTap(
 
 export class Input3DKeyboardController {
   private readonly config: Input3DKeyboardControllerConfig;
+  private readonly commandHotkeys = new CommandHotkeySequenceResolver();
   private readonly controlGroupRecallTap: ControlGroupRecallTapState = {
     index: -1,
     timeMs: Number.NEGATIVE_INFINITY,
@@ -162,6 +163,7 @@ export class Input3DKeyboardController {
     const cameraPanDirection = cameraPanDirectionForKey(e);
     if (cameraPanDirection !== null) {
       e.preventDefault();
+      this.commandHotkeys.reset();
       this.config.panCameraByKeyboard(
         cameraPanDirection.x,
         cameraPanDirection.y,
@@ -174,6 +176,7 @@ export class Input3DKeyboardController {
 
     if (isControlGroupUnsetKey(e)) {
       e.preventDefault();
+      this.commandHotkeys.reset();
       this.config.unsetSelectedFromControlGroups();
       return;
     }
@@ -182,6 +185,7 @@ export class Input3DKeyboardController {
     if (controlGroupIndex >= 0) {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
+        this.commandHotkeys.reset();
         resetControlGroupRecallTap(this.controlGroupRecallTap);
         if (e.altKey) {
           this.config.toggleControlGroupSlot(controlGroupIndex);
@@ -195,6 +199,7 @@ export class Input3DKeyboardController {
       if (e.altKey) return;
       if (this.config.recallControlGroupSlot(controlGroupIndex, e.shiftKey)) {
         e.preventDefault();
+        this.commandHotkeys.reset();
         if (e.shiftKey) {
           resetControlGroupRecallTap(this.controlGroupRecallTap);
         } else if (recordControlGroupRecallTap(
@@ -218,17 +223,23 @@ export class Input3DKeyboardController {
         this.config.exitSpecialModes(false);
         this.config.mode.enterBuildMode(buildingBlueprintId);
       }
+      this.commandHotkeys.reset();
       return;
     }
 
-    const commandId = resolveCommandHotkey(e);
-    if (commandId !== null) {
+    const hotkey = this.commandHotkeys.resolve(e);
+    if (hotkey.pending) {
       e.preventDefault();
-      this.runCommandHotkey(commandId, e);
+      return;
+    }
+    if (hotkey.commandId !== null) {
+      e.preventDefault();
+      this.runCommandHotkey(hotkey.commandId, e);
       return;
     }
 
     if (e.key.toLowerCase() === 'escape') {
+      this.commandHotkeys.reset();
       this.handleEscape();
     }
   }
