@@ -4,10 +4,8 @@ import type { Entity, EntityId, PlayerId, Unit, UnitAction, UnitPathPoint } from
 import { NO_ENTITY_ID } from './types';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import {
-  applyKnockbackForces,
   buildUnitDeathEvent,
   buildBuildingDeathEvent,
-  collectKillsAndDeathContexts,
 } from './combat/damageHelpers';
 import { magnitude } from '../math';
 import { executeCommand, type CommandContext } from './commandExecution';
@@ -42,7 +40,7 @@ import {
   type ProjectileDespawnEvent,
   type ProjectileVelocityUpdateEvent,
 } from './combat';
-import { DamageSystem, type AreaDamageSource } from './damage';
+import { DamageSystem } from './damage';
 import { economyManager } from './economy';
 import { ConstructionSystem } from './construction';
 import { factoryProductionSystem } from './factoryProduction';
@@ -70,10 +68,7 @@ import {
   type PathTerrainFilter,
 } from './Pathfinder';
 import { getTerrainVersion } from './Terrain';
-import {
-  getBuildingBlueprint,
-  getUnitBlueprint,
-} from './blueprints';
+import { getUnitBlueprint } from './blueprints';
 import { updateBuildingActiveStates } from './buildingActiveState';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { getGuardFollowRadius, isFriendlyGuardTarget } from './guard';
@@ -86,7 +81,6 @@ import {
   CT_COMBAT_HALT_MODE_ANY_ENGAGED,
   CT_COMBAT_HALT_MODE_FIGHT_REQUIRED,
   getSimWasm,
-  type SimWasm,
 } from '../sim-wasm/init';
 import {
   rotateFirstUnitActionToEnd,
@@ -102,17 +96,8 @@ import {
   safeVelocityUpdates,
 } from './SimulationEventQueues';
 import { resolveCommanderGameOverWinner } from './SimulationGameOver';
+import { SimulationDeathExplosionPlanner } from './SimulationDeathExplosionPlanner';
 
-const EMPTY_DEATH_EXPLOSION_EXCLUDES = new Set<EntityId>();
-type DeathExplosionBlast = {
-  radius: number;
-  force: number;
-  damage: number;
-  sourceKey: string;
-  sourceType: 'turret' | 'unit' | 'building' | 'system';
-  sourceEntityId: EntityId;
-  center: { x: number; y: number; z: number };
-};
 type ActiveMovementTarget = UnitPathPoint & {
   isFinalActionPoint: boolean;
 };
@@ -171,8 +156,6 @@ const FLYING_LOITER_INVALID_BODY_SLOT = 0xffffffff;
 const FLYING_LOITER_RADIUS_MULT = 8;
 const FLYING_LOITER_MIN_RADIUS = 80;
 const FLYING_LOITER_RADIAL_GAIN = 0.65;
-const DEATH_EXPLOSION_WORK_KIND_UNIT = 1;
-const DEATH_EXPLOSION_WORK_KIND_BUILDING = 2;
 const DEATH_CLEANUP_KIND_UNIT = 1;
 const DEATH_CLEANUP_KIND_BUILDING = 2;
 
@@ -181,6 +164,7 @@ export class Simulation {
   private commandQueue: CommandQueue;
   private constructionSystem: ConstructionSystem;
   private damageSystem: DamageSystem;
+  private deathExplosionPlanner: SimulationDeathExplosionPlanner;
   private forceAccumulator: ForceAccumulator = new ForceAccumulator();
   private windState: WindState = sampleWindState(0);
   private windPowerTracker = new WindPowerTracker();
@@ -220,31 +204,6 @@ export class Simulation {
   private _deathCheckIdsBuf: EntityId[] = [];
   private _movingUnitsBuf: Entity[] = [];
   private _arrivalEntitiesBuf: Entity[] = [];
-  private _deathExplosionUnitIdsBuf = new Int32Array(0);
-  private _deathExplosionBuildingIdsBuf = new Int32Array(0);
-  private _deathExplosionWorkEntityIdBuf = new Int32Array(1);
-  private _deathExplosionWorkKindBuf = new Uint8Array(1);
-  private _deathExplosionBlastScratch: DeathExplosionBlast = {
-    radius: 0,
-    force: 0,
-    damage: 0,
-    sourceKey: '',
-    sourceType: 'system',
-    sourceEntityId: NO_ENTITY_ID,
-    center: { x: 0, y: 0, z: 0 },
-  };
-  private _deathExplosionAreaDamageScratch: AreaDamageSource = {
-    type: 'area',
-    sourceEntityId: NO_ENTITY_ID,
-    // Death blasts are neutral for broadphase filtering: they hit
-    // friend and foe. Kill credit still resolves through sourceEntityId.
-    ownerId: 0,
-    damage: 0,
-    excludeEntities: EMPTY_DEATH_EXPLOSION_EXCLUDES,
-    center: this._deathExplosionBlastScratch.center,
-    radius: 0,
-    knockbackForce: 0,
-  };
   private _cleanupDeadUnitIdSet = new Set<EntityId>();
   private _cleanupDeadBuildingIdSet = new Set<EntityId>();
   private _cleanupDeadTurretIdSet = new Set<EntityId>();
@@ -347,6 +306,11 @@ export class Simulation {
       terrainBuildabilityGrid,
     );
     this.damageSystem = new DamageSystem(world);
+    this.deathExplosionPlanner = new SimulationDeathExplosionPlanner(
+      this.world,
+      this.damageSystem,
+      this.forceAccumulator,
+    );
   }
 
   // AI player IDs (for auto-production)
@@ -698,7 +662,7 @@ export class Simulation {
         this.eventQueues.projectileVelocityUpdates.set(event.id, event);
       }
 
-      this.detonateEntityDeathExplosions(
+      this.deathExplosionPlanner.detonate(
         collisionResult.deadUnitIds,
         collisionResult.deadBuildingIds,
         collisionResult.deadTurretIds,
@@ -862,7 +826,7 @@ export class Simulation {
         deadBuildingSet.add(id);
         syntheticDeathEventIds.add(id);
       }
-      this.detonateEntityDeathExplosions(
+      this.deathExplosionPlanner.detonate(
         deadUnitSet,
         deadBuildingSet,
         deadTurretSet,
@@ -955,167 +919,6 @@ export class Simulation {
         buildBuildingDeathEvent(entity, entity.id, entity.buildingBlueprintId ?? '', 'building'),
       );
     }
-  }
-
-  private ensureDeathExplosionPlannerIdCapacity(unitCount: number, buildingCount: number): void {
-    if (unitCount > this._deathExplosionUnitIdsBuf.length) {
-      let next = Math.max(16, this._deathExplosionUnitIdsBuf.length);
-      while (next < unitCount) next *= 2;
-      this._deathExplosionUnitIdsBuf = new Int32Array(next);
-    }
-    if (buildingCount > this._deathExplosionBuildingIdsBuf.length) {
-      let next = Math.max(16, this._deathExplosionBuildingIdsBuf.length);
-      while (next < buildingCount) next *= 2;
-      this._deathExplosionBuildingIdsBuf = new Int32Array(next);
-    }
-  }
-
-  private packDeathExplosionIds(
-    ids: Set<EntityId>,
-    out: Int32Array,
-  ): number {
-    let count = 0;
-    for (const id of ids) {
-      out[count++] = id;
-    }
-    return count;
-  }
-
-  private seedDeathExplosionPlanner(
-    sim: SimWasm,
-    deadUnitIds: Set<EntityId>,
-    deadBuildingIds: Set<EntityId>,
-  ): void {
-    this.ensureDeathExplosionPlannerIdCapacity(deadUnitIds.size, deadBuildingIds.size);
-    const unitCount = this.packDeathExplosionIds(deadUnitIds, this._deathExplosionUnitIdsBuf);
-    const buildingCount = this.packDeathExplosionIds(deadBuildingIds, this._deathExplosionBuildingIdsBuf);
-    sim.deathExplosionPlannerSeed(
-      this._deathExplosionUnitIdsBuf.subarray(0, unitCount),
-      this._deathExplosionBuildingIdsBuf.subarray(0, buildingCount),
-    );
-  }
-
-  private appendDeathExplosionPlannerKills(
-    sim: SimWasm,
-    killedUnitIds: Set<EntityId>,
-    killedBuildingIds: Set<EntityId>,
-  ): void {
-    this.ensureDeathExplosionPlannerIdCapacity(killedUnitIds.size, killedBuildingIds.size);
-    const unitCount = this.packDeathExplosionIds(killedUnitIds, this._deathExplosionUnitIdsBuf);
-    const buildingCount = this.packDeathExplosionIds(killedBuildingIds, this._deathExplosionBuildingIdsBuf);
-    sim.deathExplosionPlannerAppendKills(
-      this._deathExplosionUnitIdsBuf.subarray(0, unitCount),
-      this._deathExplosionBuildingIdsBuf.subarray(0, buildingCount),
-    );
-  }
-
-  private detonateEntityDeathExplosions(
-    deadUnitIds: Set<EntityId>,
-    deadBuildingIds: Set<EntityId>,
-    deadTurretIds: Set<EntityId>,
-    audioEvents: SimEvent[],
-    deathContexts: Map<EntityId, DeathContext>,
-  ): void {
-    const sim = getSimWasm();
-    if (sim === undefined) {
-      throw new Error('Simulation.detonateEntityDeathExplosions: sim-wasm is not initialized');
-    }
-
-    this.seedDeathExplosionPlanner(sim, deadUnitIds, deadBuildingIds);
-
-    for (;;) {
-      const next = sim.deathExplosionPlannerNext(
-        this._deathExplosionWorkEntityIdBuf,
-        this._deathExplosionWorkKindBuf,
-      );
-      if (next === 0) break;
-      if (next !== 1) {
-        throw new Error(`Simulation.detonateEntityDeathExplosions: invalid planner result ${next}`);
-      }
-
-      const id = this._deathExplosionWorkEntityIdBuf[0];
-      const workKind = this._deathExplosionWorkKindBuf[0];
-      if (
-        workKind !== DEATH_EXPLOSION_WORK_KIND_UNIT &&
-        workKind !== DEATH_EXPLOSION_WORK_KIND_BUILDING
-      ) {
-        throw new Error(`Simulation.detonateEntityDeathExplosions: invalid planner work kind ${workKind}`);
-      }
-
-      const blast = this._deathExplosionBlastScratch;
-      if (
-        !this.writeEntityDeathExplosion(id, blast) ||
-        blast.radius <= 0 ||
-        (blast.damage <= 0 && blast.force <= 0)
-      ) {
-        continue;
-      }
-
-      const areaDamage = this._deathExplosionAreaDamageScratch;
-      areaDamage.sourceEntityId = blast.sourceEntityId;
-      areaDamage.damage = blast.damage;
-      areaDamage.radius = blast.radius;
-      areaDamage.knockbackForce = blast.force;
-
-      const result = this.damageSystem.applyDeathExplosionDamage(areaDamage);
-      applyKnockbackForces(result.knockbacks, this.forceAccumulator);
-      collectKillsAndDeathContexts(
-        result,
-        this.world,
-        blast.sourceKey,
-        blast.sourceType,
-        deadUnitIds,
-        deadBuildingIds,
-        audioEvents,
-        deathContexts,
-        blast.sourceEntityId,
-        deadTurretIds,
-      );
-      this.appendDeathExplosionPlannerKills(
-        sim,
-        result.killedUnitIds,
-        result.killedBuildingIds,
-      );
-    }
-  }
-
-  private writeEntityDeathExplosion(
-    id: EntityId,
-    out: DeathExplosionBlast,
-  ): boolean {
-    const entity = this.world.getEntity(id);
-    if (entity === undefined) {
-      return false;
-    }
-    if (entity.unit !== null) {
-      const unitBlueprintId = entity.unit.unitBlueprintId;
-      const blast = getUnitBlueprint(unitBlueprintId).base.deathExplosion;
-      out.radius = blast.radius;
-      out.force = blast.force;
-      out.damage = blast.damage;
-      out.sourceKey = unitBlueprintId;
-      out.sourceType = 'unit';
-      out.sourceEntityId = entity.id;
-      out.center.x = entity.transform.x;
-      out.center.y = entity.transform.y;
-      out.center.z = entity.transform.z;
-      return true;
-    }
-    if (entity.building !== null && entity.buildingBlueprintId !== null) {
-      const buildingBlueprintId = entity.buildingBlueprintId;
-      const blast = getBuildingBlueprint(buildingBlueprintId).base.deathExplosion;
-      out.radius = blast.radius;
-      out.force = blast.force;
-      out.damage = blast.damage;
-      out.sourceKey = buildingBlueprintId;
-      out.sourceType = 'building';
-      out.sourceEntityId = entity.id;
-      out.center.x = entity.transform.x;
-      out.center.y = entity.transform.y;
-      out.center.z = entity.transform.z;
-      return true;
-    }
-    return false;
   }
 
   private isActivePathValid(

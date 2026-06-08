@@ -21,7 +21,7 @@ Please always commit and push before and after any code changes we make.
 Severity: Medium
 
 Evidence:
-- src/game/sim/Simulation.ts is 2472 lines.
+- src/game/sim/Simulation.ts is 2275 lines.
 - src/game/render3d/Input3DManager.ts is 1721 lines.
 - src/game/scenes/RtsScene3D.ts is 1447 lines.
 - src/game/render3d/Render3DEntities.ts is 1280 lines.
