@@ -1103,6 +1103,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   changeRenderMode,
   changeAudioScope,
   changeMasterVolume,
+  changeGameSpeed: setTickRateValue,
   toggleAllSounds,
   toggleSoundCategory,
   toggleAllRanges,

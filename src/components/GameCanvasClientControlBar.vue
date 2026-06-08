@@ -6,7 +6,7 @@ import {
   type CommandHotkeyPresetId,
 } from '../game/input/commandHotkeys';
 import { RESOURCE_BALL_DENSITY_OPTIONS } from '../resourceConfig';
-import { snapshotRateHz } from '../serverBarConfig';
+import { SERVER_CONFIG, snapshotRateHz } from '../serverBarConfig';
 import BarButton from './BarButton.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
 import BarControlGroup from './BarControlGroup.vue';
@@ -977,6 +977,19 @@ defineProps<{
           :title="model.uiChromeVisible ? 'Hide game UI chrome' : 'Show game UI chrome'"
           @click="model.toggleUiChrome"
         >UI</BarButton>
+        <BarDivider />
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarLabel>SPEED:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="rate in SERVER_CONFIG.tickRate.options"
+            :key="rate"
+            :active="model.displayTickRate === rate"
+            :title="`Request ${rate} simulation ticks per second`"
+            @click="model.changeGameSpeed(rate)"
+          >{{ rate }}</BarButton>
+        </BarButtonGroup>
         <BarDivider />
       </BarControlGroup>
       <BarControlGroup>

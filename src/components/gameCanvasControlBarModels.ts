@@ -216,6 +216,7 @@ export type GameCanvasClientControlBarModel = {
   changeRenderMode(mode: RenderMode): void;
   changeAudioScope(scope: AudioScope): void;
   changeMasterVolume(volume: MasterVolumePercent): void;
+  changeGameSpeed(rate: TickRate): void;
   toggleAllSounds(): void;
   toggleSoundCategory(category: SoundCategory): void;
   toggleAllRanges(): void;
