@@ -47,12 +47,12 @@ commandinsert/prepend-between and queued variants of several orders. Implement
 the remaining insertion-position semantics with server authorization and
 matching queued-order visual feedback.
 
-Issue: behavior/state toggles are incomplete. BAR exposes cloak/want-cloak,
-gather wait, on/off, stateful on/off, stance/fire state, richer
-positioning/move states, trajectory toggle, stop, wait, factory guard, and
-related stateful command buttons. Implement the missing states in simulation,
-snapshots, command authorization, selection UI, hotkeys, and visible state
-indicators.
+Issue: behavior/state toggles are incomplete. Implement missing BAR-equivalent
+states such as cloak/want-cloak, gather wait, richer stance/fire states beyond
+the current fire/hold-fire toggle, richer positioning/move states beyond the
+current maneuver/hold-position toggle, and any related stateful command buttons
+in simulation, snapshots, command authorization, selection UI, hotkeys, and
+visible state indicators.
 
 Issue: special abilities are incomplete. Add BAR Capture, Load Transport,
 Unload Transport, Resurrect, Resurrect Area, manual launch, and any
