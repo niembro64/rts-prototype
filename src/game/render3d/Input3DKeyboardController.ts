@@ -30,7 +30,7 @@ type Input3DKeyboardControllerConfig = {
   skipCurrentOrder: () => void;
   removeLastQueuedOrder: () => void;
   clearQueuedOrders: () => void;
-  toggleSelectedWait: (queue: boolean) => void;
+  toggleSelectedWait: (queue: boolean, queueFront?: boolean) => void;
   toggleSelectedFire: () => void;
   toggleBuildingActive: () => void;
   selfDestructSelected: () => void;
@@ -294,7 +294,7 @@ export class Input3DKeyboardController {
         this.config.clearQueuedOrders();
         break;
       case 'command.wait':
-        this.config.toggleSelectedWait(e.shiftKey);
+        this.config.toggleSelectedWait(e.shiftKey, isQueueFrontModifier(e));
         break;
       case 'command.fireToggle':
         this.config.toggleSelectedFire();
@@ -404,4 +404,8 @@ export class Input3DKeyboardController {
       this.config.getTick(),
     );
   }
+}
+
+function isQueueFrontModifier(e: KeyboardEvent): boolean {
+  return e.shiftKey && (e.ctrlKey || e.metaKey);
 }

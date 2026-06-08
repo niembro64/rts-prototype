@@ -29,6 +29,7 @@ export function buildRepairCommandAt(
   commander: Entity | null,
   tick: number,
   queue: boolean,
+  queueFront = false,
 ): RepairCommand | null {
   if (!commander?.ownership) return null;
   const target = findRepairTargetAt(
@@ -41,6 +42,7 @@ export function buildRepairCommandAt(
     commanderId: commander.id,
     targetId: target.id,
     queue,
+    queueFront,
   };
 }
 
@@ -52,6 +54,7 @@ export function buildRepairAreaCommand(
   tick: number,
   queue: boolean,
   worldZ?: number,
+  queueFront = false,
 ): RepairAreaCommand | null {
   if (!commander?.ownership) return null;
   return {
@@ -63,6 +66,7 @@ export function buildRepairAreaCommand(
     targetZ: worldZ,
     radius,
     queue,
+    queueFront,
   };
 }
 
@@ -71,6 +75,7 @@ export function buildReclaimCommandForTarget(
   commander: Entity | null,
   tick: number,
   queue: boolean,
+  queueFront = false,
 ): ReclaimCommand | null {
   if (!commander?.ownership) return null;
   if (commander.id === target?.id || !isReclaimableTarget(target)) return null;
@@ -80,6 +85,7 @@ export function buildReclaimCommandForTarget(
     commanderId: commander.id,
     targetId: target.id,
     queue,
+    queueFront,
   };
 }
 
@@ -90,9 +96,10 @@ export function buildReclaimCommandAt(
   commander: Entity | null,
   tick: number,
   queue: boolean,
+  queueFront = false,
 ): ReclaimCommand | null {
   const target = findReclaimTargetAt(source, worldX, worldY);
-  return buildReclaimCommandForTarget(target, commander, tick, queue);
+  return buildReclaimCommandForTarget(target, commander, tick, queue, queueFront);
 }
 
 export function buildReclaimAreaCommand(
@@ -103,6 +110,7 @@ export function buildReclaimAreaCommand(
   tick: number,
   queue: boolean,
   worldZ?: number,
+  queueFront = false,
 ): ReclaimAreaCommand | null {
   if (!commander?.ownership) return null;
   return {
@@ -114,6 +122,7 @@ export function buildReclaimAreaCommand(
     targetZ: worldZ,
     radius,
     queue,
+    queueFront,
   };
 }
 

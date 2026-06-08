@@ -68,6 +68,12 @@ export function unshiftUnitAction(unit: Unit, action: UnitAction): void {
   refreshUnitActionHash(unit);
 }
 
+export function insertUnitAction(unit: Unit, index: number, action: UnitAction): void {
+  const safeIndex = Math.max(0, Math.min(index | 0, unit.actions.length));
+  unit.actions.splice(safeIndex, 0, action);
+  refreshUnitActionHash(unit);
+}
+
 export function spliceUnitActions(
   unit: Unit,
   start: number,

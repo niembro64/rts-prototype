@@ -41,6 +41,7 @@ export function buildAttackCommandForTarget(
   playerId: PlayerId,
   tick: number,
   queue: boolean,
+  queueFront = false,
 ): AttackCommand | null {
   if (selectedUnits.length === 0) return null;
   if (!isAttackableEnemyTarget(target, playerId)) return null;
@@ -50,6 +51,7 @@ export function buildAttackCommandForTarget(
     entityIds: selectedUnits.map((u) => u.id),
     targetId: target.id,
     queue,
+    queueFront,
   };
 }
 
@@ -66,9 +68,10 @@ export function buildAttackCommandAt(
   playerId: PlayerId,
   tick: number,
   queue: boolean,
+  queueFront = false,
 ): AttackCommand | null {
   const target = findAttackTargetAt(source, worldX, worldY, playerId);
-  return buildAttackCommandForTarget(target, selectedUnits, playerId, tick, queue);
+  return buildAttackCommandForTarget(target, selectedUnits, playerId, tick, queue, queueFront);
 }
 
 export function buildAttackAreaCommand(
@@ -79,6 +82,7 @@ export function buildAttackAreaCommand(
   tick: number,
   queue: boolean,
   worldZ?: number,
+  queueFront = false,
 ): AttackAreaCommand | null {
   if (selectedUnits.length === 0) return null;
   return {
@@ -90,6 +94,7 @@ export function buildAttackAreaCommand(
     targetZ: worldZ,
     radius,
     queue,
+    queueFront,
   };
 }
 
@@ -100,6 +105,7 @@ export function buildAttackGroundCommand(
   tick: number,
   queue: boolean,
   worldZ?: number,
+  queueFront = false,
 ): AttackGroundCommand | null {
   if (selectedUnits.length === 0) return null;
   return {
@@ -110,6 +116,7 @@ export function buildAttackGroundCommand(
     targetY: worldY,
     targetZ: worldZ,
     queue,
+    queueFront,
   };
 }
 
@@ -119,6 +126,7 @@ export function buildGuardCommandForTarget(
   playerId: PlayerId,
   tick: number,
   queue: boolean,
+  queueFront = false,
 ): GuardCommand | null {
   if (!isGuardableFriendlyTarget(target, playerId)) return null;
   const entityIds: EntityId[] = [];
@@ -132,6 +140,7 @@ export function buildGuardCommandForTarget(
     entityIds,
     targetId: target.id,
     queue,
+    queueFront,
   };
 }
 
@@ -143,9 +152,10 @@ export function buildGuardCommandAt(
   playerId: PlayerId,
   tick: number,
   queue: boolean,
+  queueFront = false,
 ): GuardCommand | null {
   const target = findGuardTargetAt(source, worldX, worldY, playerId);
-  return buildGuardCommandForTarget(target, selectedUnits, playerId, tick, queue);
+  return buildGuardCommandForTarget(target, selectedUnits, playerId, tick, queue, queueFront);
 }
 
 /** Turn a finished line path into a MoveCommand. Short paths
@@ -158,6 +168,7 @@ export function buildLinePathMoveCommand(
   mode: WaypointType,
   tick: number,
   queue: boolean,
+  queueFront = false,
 ): MoveCommand | null {
   const points = accumulator.points;
   if (selectedUnits.length === 0 || points.length === 0) return null;
@@ -175,6 +186,7 @@ export function buildLinePathMoveCommand(
       targetZ: finalPoint.z,
       waypointType: mode,
       queue,
+      queueFront,
     };
   }
 
@@ -199,5 +211,6 @@ export function buildLinePathMoveCommand(
     individualTargets,
     waypointType: mode,
     queue,
+    queueFront,
   };
 }

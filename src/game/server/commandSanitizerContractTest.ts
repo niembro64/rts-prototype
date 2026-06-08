@@ -1,5 +1,6 @@
 import type {
   Command,
+  MoveCommand,
   SkipCurrentOrderCommand,
   StopFactoryProductionCommand,
   SetShieldReflectionModeCommand,
@@ -52,6 +53,36 @@ export function runCommandSanitizerContractTest(): void {
   assertContract(
     stopFactoryProduction.tick === 9001 && stopFactoryProduction.factoryId === 42,
     'stopFactoryProduction must preserve a valid factory id and normalize tick',
+  );
+
+  const queueFrontMove = sanitizeRequired<MoveCommand>(world, {
+    type: 'move',
+    tick: 6,
+    entityIds: [7],
+    targetX: 12,
+    targetY: 13,
+    waypointType: 'move',
+    queue: true,
+    queueFront: true,
+  });
+  assertContract(
+    queueFrontMove.tick === 9001 && queueFrontMove.queueFront === true,
+    'move queueFront must survive sanitizer when queue=true',
+  );
+
+  const replaceMove = sanitizeRequired<MoveCommand>(world, {
+    type: 'move',
+    tick: 7,
+    entityIds: [7],
+    targetX: 14,
+    targetY: 15,
+    waypointType: 'fight',
+    queue: false,
+    queueFront: true,
+  });
+  assertContract(
+    replaceMove.queueFront === false,
+    'move queueFront must normalize to false when queue=false',
   );
 
   const panelsDisabled = sanitizeRequired<SetTurretShieldPanelsEnabledCommand>(world, {

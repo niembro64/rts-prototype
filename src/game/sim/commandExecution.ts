@@ -45,7 +45,14 @@ import { getEntityTargetPoint } from './buildingAnchors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getUnitBlueprint } from './blueprints';
 import { DGUN_TERRAIN_FOLLOW_HEIGHT } from '../../config';
-import { pushUnitAction, setUnitActions, shiftUnitAction, spliceUnitActions, unshiftUnitAction } from './unitActions';
+import {
+  insertUnitAction,
+  pushUnitAction,
+  setUnitActions,
+  shiftUnitAction,
+  spliceUnitActions,
+  unshiftUnitAction,
+} from './unitActions';
 import { dropTurretLockMidTick } from './combat/combatActivitySlab';
 import { isAliveGuardTarget } from './guard';
 import { isReclaimableTarget } from './reclaim';
@@ -63,6 +70,10 @@ import {
 } from './unitActionIntents';
 
 const _dgunMount = { x: 0, y: 0, z: 0 };
+
+function commandQueuesInFront(command: { queue: boolean; queueFront?: boolean }): boolean {
+  return command.queue && command.queueFront === true;
+}
 
 function refreshPatrolStartIndex(unit: Unit): void {
   const index = unit.actions.findIndex((action) => action.type === 'patrol');
@@ -259,16 +270,27 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
 
   // Handle individual targets (line move)
   if (command.individualTargets && command.individualTargets.length === entityIds.length) {
+    const queueFront = commandQueuesInFront(command);
     for (let i = 0; i < entityIds.length; i++) {
       const unit = ctx.world.getEntity(entityIds[i]);
       if (!unit || unit.type !== 'unit' || !unit.unit) continue;
       const target = command.individualTargets[i];
-      addPathActions(unit, target.x, target.y, command.waypointType, command.queue, ctx, target.z ?? null);
+      addPathActions(
+        unit,
+        target.x,
+        target.y,
+        command.waypointType,
+        command.queue,
+        ctx,
+        target.z ?? null,
+        queueFront,
+      );
     }
   } else if (command.targetX !== undefined && command.targetY !== undefined) {
     // Group move with formation spreading
     const spacing = 40;
     const unitsPerRow = Math.ceil(Math.sqrt(unitCount));
+    const queueFront = commandQueuesInFront(command);
 
     let index = 0;
     for (let i = 0; i < entityIds.length; i++) {
@@ -294,6 +316,7 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
         command.queue,
         ctx,
         command.targetZ ?? null,
+        queueFront,
       );
       index++;
     }
@@ -404,6 +427,7 @@ function executeWaitCommand(ctx: CommandContext, command: WaitCommand): void {
   if (units.length === 0) return;
 
   const releaseCurrentWait = !command.queue && allWaiting;
+  const queueFront = commandQueuesInFront(command);
   for (let i = 0; i < units.length; i++) {
     const entity = units[i];
     const unit = entity.unit!;
@@ -430,7 +454,7 @@ function executeWaitCommand(ctx: CommandContext, command: WaitCommand): void {
     };
 
     if (command.queue) {
-      pushUnitAction(unit, action);
+      addQueuedActionToUnit(unit, action, queueFront);
     } else {
       unshiftUnitAction(unit, action);
     }
@@ -486,7 +510,7 @@ function executeStartBuildCommand(ctx: CommandContext, command: StartBuildComman
     buildingId: building.id,
   };
 
-  addPathActionsWithFinal(builder, action, command.queue, ctx);
+  addPathActionsWithFinal(builder, action, command.queue, ctx, commandQueuesInFront(command));
 }
 
 function executeQueueUnitCommand(ctx: CommandContext, command: QueueUnitCommand): void {
@@ -774,7 +798,7 @@ function executeSelfDestructCommand(ctx: CommandContext, command: SelfDestructCo
 function executeRepairCommand(ctx: CommandContext, command: RepairCommand): void {
   const commander = ctx.world.getEntity(command.commanderId);
   const target = ctx.world.getEntity(command.targetId);
-  enqueueRepairAction(ctx, commander, target, command.queue);
+  enqueueRepairAction(ctx, commander, target, command.queue, commandQueuesInFront(command));
 }
 
 function executeRepairAreaCommand(ctx: CommandContext, command: RepairAreaCommand): void {
@@ -794,13 +818,13 @@ function executeRepairAreaCommand(ctx: CommandContext, command: RepairAreaComman
     command.targetY,
     radius,
   );
-  enqueueRepairAction(ctx, commander, target, command.queue);
+  enqueueRepairAction(ctx, commander, target, command.queue, commandQueuesInFront(command));
 }
 
 function executeReclaimCommand(ctx: CommandContext, command: ReclaimCommand): void {
   const commander = ctx.world.getEntity(command.commanderId);
   const target = ctx.world.getEntity(command.targetId);
-  enqueueReclaimAction(ctx, commander, target, command.queue);
+  enqueueReclaimAction(ctx, commander, target, command.queue, commandQueuesInFront(command));
 }
 
 function executeReclaimAreaCommand(ctx: CommandContext, command: ReclaimAreaCommand): void {
@@ -820,7 +844,7 @@ function executeReclaimAreaCommand(ctx: CommandContext, command: ReclaimAreaComm
     command.targetY,
     radius,
   );
-  enqueueReclaimAction(ctx, commander, target, command.queue);
+  enqueueReclaimAction(ctx, commander, target, command.queue, commandQueuesInFront(command));
 }
 
 function clampRepairAreaRadius(radius: number): number {
@@ -932,6 +956,7 @@ function enqueueRepairAction(
   commander: Entity | undefined,
   target: Entity | undefined,
   queue: boolean,
+  queueFront: boolean,
 ): void {
   if (
     commander === undefined ||
@@ -958,7 +983,7 @@ function enqueueRepairAction(
     targetId: target.id,
   };
 
-  addPathActionsWithFinal(commander, action, queue, ctx);
+  addPathActionsWithFinal(commander, action, queue, ctx, queueFront);
 }
 
 function enqueueReclaimAction(
@@ -966,6 +991,7 @@ function enqueueReclaimAction(
   commander: Entity | undefined,
   target: Entity | undefined,
   queue: boolean,
+  queueFront: boolean,
 ): void {
   if (
     commander === undefined ||
@@ -985,14 +1011,15 @@ function enqueueReclaimAction(
     targetId: target.id,
   };
 
-  addPathActionsWithFinal(commander, action, queue, ctx);
+  addPathActionsWithFinal(commander, action, queue, ctx, queueFront);
 }
 
 function executeAttackCommand(ctx: CommandContext, command: AttackCommand): void {
   const target = ctx.world.getEntity(command.targetId);
+  const queueFront = commandQueuesInFront(command);
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
-    enqueueAttackAction(ctx, entity, target, command.queue);
+    enqueueAttackAction(ctx, entity, target, command.queue, queueFront);
   }
 }
 
@@ -1006,6 +1033,7 @@ function executeAttackGroundCommand(ctx: CommandContext, command: AttackGroundCo
       command.targetY,
       command.targetZ,
       command.queue,
+      commandQueuesInFront(command),
     );
   }
 }
@@ -1033,13 +1061,15 @@ function executeAttackAreaCommand(ctx: CommandContext, command: AttackAreaComman
       targetZ: command.targetZ,
       waypointType: 'fight',
       queue: command.queue,
+      queueFront: command.queueFront,
     });
     return;
   }
 
+  const queueFront = commandQueuesInFront(command);
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
-    enqueueAttackAction(ctx, entity, target, command.queue);
+    enqueueAttackAction(ctx, entity, target, command.queue, queueFront);
   }
 }
 
@@ -1053,12 +1083,13 @@ function executeGuardCommand(ctx: CommandContext, command: GuardCommand): void {
     if (entity.id === target.id) continue;
     if (entity.ownership.playerId !== target.ownership.playerId) continue;
 
+    const queueFront = commandQueuesInFront(command);
     if (entity.commander && isRepairableByCommander(entity, target)) {
-      enqueueRepairAction(ctx, entity, target, command.queue);
+      enqueueRepairAction(ctx, entity, target, command.queue, queueFront);
       continue;
     }
 
-    enqueueGuardAction(ctx, entity, target, command.queue);
+    enqueueGuardAction(ctx, entity, target, command.queue, queueFront);
   }
 }
 
@@ -1129,6 +1160,7 @@ function enqueueAttackAction(
   entity: Entity | undefined,
   target: Entity | undefined,
   queue: boolean,
+  queueFront: boolean,
 ): void {
   if (!entity || entity.type !== 'unit' || !entity.unit) return;
   if (!entity.ownership || !isAttackableEnemyTargetForPlayer(target, entity.ownership.playerId)) return;
@@ -1144,7 +1176,7 @@ function enqueueAttackAction(
     z: targetPoint.z,
     targetId: target.id,
   };
-  addPathActionsWithFinal(entity, action, queue, ctx);
+  addPathActionsWithFinal(entity, action, queue, ctx, queueFront);
 }
 
 function enqueueAttackGroundAction(
@@ -1154,6 +1186,7 @@ function enqueueAttackGroundAction(
   targetY: number,
   targetZ: number | undefined,
   queue: boolean,
+  queueFront: boolean,
 ): void {
   if (!entity || entity.type !== 'unit' || !entity.unit || !entity.combat) return;
   const action: UnitAction = {
@@ -1162,7 +1195,7 @@ function enqueueAttackGroundAction(
     y: targetY,
     z: targetZ,
   };
-  addPathActionsWithFinal(entity, action, queue, ctx);
+  addPathActionsWithFinal(entity, action, queue, ctx, queueFront);
 }
 
 function enqueueGuardAction(
@@ -1170,6 +1203,7 @@ function enqueueGuardAction(
   entity: Entity,
   target: Entity,
   queue: boolean,
+  queueFront: boolean,
 ): void {
   if (!isAliveGuardTarget(target)) return;
   const targetPoint = getEntityTargetPoint(target);
@@ -1180,7 +1214,16 @@ function enqueueGuardAction(
     z: targetPoint.z,
     targetId: target.id,
   };
-  addPathActionsWithFinal(entity, action, queue, ctx);
+  addPathActionsWithFinal(entity, action, queue, ctx, queueFront);
+}
+
+function addQueuedActionToUnit(unit: Unit, action: UnitAction, queueFront: boolean): void {
+  if (queueFront) {
+    const activeIntentEnd = getFirstActionIntentEnd(unit.actions);
+    insertUnitAction(unit, activeIntentEnd >= 0 ? activeIntentEnd + 1 : 0, action);
+  } else {
+    pushUnitAction(unit, action);
+  }
 }
 
 // Add an action to a unit (respecting queue flag)
@@ -1189,23 +1232,18 @@ export function addActionToUnit(
   action: UnitAction,
   queue: boolean,
   world: WorldState | undefined = undefined,
+  queueFront = false,
 ): void {
   if (!entity.unit) return;
 
   if (!queue) {
     // Replace all actions
     setUnitActions(entity.unit, [action]);
-    entity.unit.patrolStartIndex = null;
   } else {
-    // Add to existing actions
-    pushUnitAction(entity.unit, action);
+    addQueuedActionToUnit(entity.unit, action, queueFront);
   }
 
-  // Update patrol start index if this is a patrol action
-  if (action.type === 'patrol' && entity.unit.patrolStartIndex === null) {
-    // Mark the start of patrol loop
-    entity.unit.patrolStartIndex = entity.unit.actions.length - 1;
-  }
+  refreshPatrolStartIndex(entity.unit);
 
   if (world !== undefined) {
     world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
@@ -1223,6 +1261,7 @@ function addPathActions(
   queue: boolean,
   ctx: CommandContext,
   goalZ: number | null,
+  queueFront = false,
 ): void {
   const action: UnitAction = { type, x: goalX, y: goalY };
   if (goalZ !== null) action.z = goalZ;
@@ -1240,7 +1279,7 @@ function addPathActions(
       beforeLen,
     );
   }
-  addActionToUnit(unit, action, queue, ctx.world);
+  addActionToUnit(unit, action, queue, ctx.world, queueFront);
   if (GAME_DIAGNOSTICS.commandPlans) {
     const unitComponent = unit.unit;
     const afterLen = unitComponent !== null ? unitComponent.actions.length : 0;
@@ -1256,8 +1295,9 @@ function addPathActionsWithFinal(
   finalAction: UnitAction,
   queue: boolean,
   ctx: CommandContext,
+  queueFront = false,
 ): void {
   const action: UnitAction = { ...finalAction };
   delete action.isPathExpansion;
-  addActionToUnit(unit, action, queue, ctx.world);
+  addActionToUnit(unit, action, queue, ctx.world, queueFront);
 }

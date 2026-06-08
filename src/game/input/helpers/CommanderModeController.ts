@@ -112,6 +112,7 @@ export class CommanderModeController {
     worldY: number,
     tick: number,
     queue: boolean,
+    queueFront = false,
   ): StartBuildCommand | null {
     if (this._buildBuildingBlueprintId === null) return null;
     const snapped = getSnappedBuildPosition(worldX, worldY, this._buildBuildingBlueprintId);
@@ -123,6 +124,7 @@ export class CommanderModeController {
       gridX: snapped.gridX,
       gridY: snapped.gridY,
       queue,
+      queueFront,
     };
   }
 

@@ -70,6 +70,7 @@ export class Input3DRightDragController {
     const selectedUnits = source.getSelectedUnits();
     const tick = this.config.getTick();
     const activePlayerId = this.config.getActivePlayerId();
+    const queueFront = isQueueFrontModifier(e);
     const entityHitId = this.config.picker.raycastEntity(e.clientX, e.clientY);
     const entityHit = entityHitId !== null
       ? source.getEntity(entityHitId)
@@ -81,6 +82,7 @@ export class Input3DRightDragController {
       activePlayerId,
       tick,
       e.shiftKey,
+      queueFront,
     );
     if (meshAttackCmd) {
       debugLog(
@@ -102,6 +104,7 @@ export class Input3DRightDragController {
       this.config.getSelectedCommander(),
       tick,
       e.shiftKey,
+      queueFront,
     );
     if (repairCmd) {
       debugLog(
@@ -123,6 +126,7 @@ export class Input3DRightDragController {
         activePlayerId,
         tick,
         e.shiftKey,
+        queueFront,
       );
       if (attackCmd) {
         debugLog(
@@ -167,6 +171,7 @@ export class Input3DRightDragController {
     const selectedUnits = source.getSelectedUnits();
     const points = this.linePath.points;
     const shiftHeld = e.shiftKey;
+    const queueFront = isQueueFrontModifier(e);
     const tick = this.config.getTick();
 
     if (selectedUnits.length > 0 && points.length > 0) {
@@ -175,7 +180,7 @@ export class Input3DRightDragController {
         source,
         finalPoint.x, finalPoint.y,
         this.config.getSelectedCommander(),
-        tick, shiftHeld,
+        tick, shiftHeld, queueFront,
       );
       if (repairCmd) {
         debugLog(
@@ -191,7 +196,7 @@ export class Input3DRightDragController {
         return;
       }
       const moveCmd = buildLinePathMoveCommand(
-        this.linePath, selectedUnits, this.config.getWaypointMode(), tick, shiftHeld,
+        this.linePath, selectedUnits, this.config.getWaypointMode(), tick, shiftHeld, queueFront,
       );
       if (moveCmd) {
         this.logMoveCommand(selectedUnits, points.length, finalPoint, moveCmd);
@@ -300,4 +305,8 @@ export class Input3DRightDragController {
       );
     }
   }
+}
+
+function isQueueFrontModifier(e: MouseEvent): boolean {
+  return e.shiftKey && (e.ctrlKey || e.metaKey);
 }

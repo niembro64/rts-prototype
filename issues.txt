@@ -74,13 +74,14 @@ visual previews for every build shape. The current allowed-building strip,
 number keys, single-placement ghost, and Shift queueing do not satisfy BAR
 fallback behavior.
 
-Issue: queue editing and command insertion are incomplete. BAR supports normal
-queueing, queue add in front, queue to next, commandinsert/prepend-between,
-cancel last command, factory guard, and queued variants of several orders.
-rts-prototype exposes Shift queue, skip-current-order, remove-last-queued-order,
-clear-queued-orders, stop-production, wait queueing, and basic factory rally.
-Implement the missing queue semantics with server authorization and clear visual
-queue editing feedback.
+Issue: queue editing and command insertion are incomplete. BAR supports queue to
+next, commandinsert/prepend-between, cancel last command, factory guard, and
+queued variants of several orders. rts-prototype exposes Shift append-queue,
+Shift+Ctrl/Cmd add-in-front queueing for queueable orders,
+skip-current-order, remove-last-queued-order, clear-queued-orders,
+stop-production, wait queueing, and basic factory rally. Implement the missing
+queue semantics with server authorization and clear visual queue editing
+feedback.
 
 Issue: repair and reclaim are incomplete. Fixed-radius repair area and
 fixed-radius reclaim area via the Reclaim command exist. Add BAR-style area

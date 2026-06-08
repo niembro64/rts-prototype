@@ -78,6 +78,7 @@ export type MoveCommand = BaseCommand & {
   individualTargets?: WaypointTarget[];
   waypointType: WaypointType;
   queue: boolean;
+  queueFront?: boolean;
 };
 
 export type StopCommand = BaseCommand & {
@@ -131,6 +132,7 @@ export type StartBuildCommand = BaseCommand & {
   gridX: number;
   gridY: number;
   queue: boolean;
+  queueFront?: boolean;
 };
 
 export type QueueUnitCommand = BaseCommand & {
@@ -201,6 +203,7 @@ export type RepairCommand = BaseCommand & {
   commanderId: EntityId;
   targetId: EntityId;
   queue: boolean;
+  queueFront?: boolean;
 };
 
 export type RepairAreaCommand = BaseCommand & {
@@ -211,6 +214,7 @@ export type RepairAreaCommand = BaseCommand & {
   targetZ?: number;
   radius: number;
   queue: boolean;
+  queueFront?: boolean;
 };
 
 export type ReclaimCommand = BaseCommand & {
@@ -218,6 +222,7 @@ export type ReclaimCommand = BaseCommand & {
   commanderId: EntityId;
   targetId: EntityId;
   queue: boolean;
+  queueFront?: boolean;
 };
 
 export type ReclaimAreaCommand = BaseCommand & {
@@ -228,12 +233,14 @@ export type ReclaimAreaCommand = BaseCommand & {
   targetZ?: number;
   radius: number;
   queue: boolean;
+  queueFront?: boolean;
 };
 
 export type WaitCommand = BaseCommand & {
   type: 'wait';
   entityIds: EntityId[];
   queue: boolean;
+  queueFront?: boolean;
 };
 
 export type AttackCommand = BaseCommand & {
@@ -241,6 +248,7 @@ export type AttackCommand = BaseCommand & {
   entityIds: EntityId[];
   targetId: EntityId;
   queue: boolean;
+  queueFront?: boolean;
 };
 
 export type AttackGroundCommand = BaseCommand & {
@@ -250,6 +258,7 @@ export type AttackGroundCommand = BaseCommand & {
   targetY: number;
   targetZ?: number;
   queue: boolean;
+  queueFront?: boolean;
 };
 
 export type AttackAreaCommand = BaseCommand & {
@@ -260,6 +269,7 @@ export type AttackAreaCommand = BaseCommand & {
   targetZ?: number;
   radius: number;
   queue: boolean;
+  queueFront?: boolean;
 };
 
 export type GuardCommand = BaseCommand & {
@@ -267,6 +277,7 @@ export type GuardCommand = BaseCommand & {
   entityIds: EntityId[];
   targetId: EntityId;
   queue: boolean;
+  queueFront?: boolean;
 };
 
 export type SetSnapshotRateCommand = BaseCommand & {

@@ -90,7 +90,7 @@ export class InputSelectedCommands {
     });
   }
 
-  wait(queue: boolean): void {
+  wait(queue: boolean, queueFront = false): void {
     const entityIds = this.selectedUnitIds();
     if (entityIds.length === 0) return;
     this.commandQueue.enqueue({
@@ -98,6 +98,7 @@ export class InputSelectedCommands {
       tick: this.getTick(),
       entityIds,
       queue,
+      queueFront,
     });
   }
 

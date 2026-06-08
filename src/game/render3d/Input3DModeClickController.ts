@@ -234,7 +234,7 @@ export class Input3DModeClickController {
     }
     const cmd = this.config.mode.buildStartBuildCommand(
       builder, world.x, world.y,
-      this.config.getTick(), e.shiftKey,
+      this.config.getTick(), e.shiftKey, isQueueFrontModifier(e),
     );
     if (!cmd) return;
     this.config.commandQueue.enqueue(cmd);
@@ -284,6 +284,7 @@ export class Input3DModeClickController {
       this.config.getTick(),
       e.shiftKey,
       world.z,
+      isQueueFrontModifier(e),
     );
     if (!cmd) return;
     this.config.commandQueue.enqueue(cmd);
@@ -307,6 +308,7 @@ export class Input3DModeClickController {
       this.config.getTick(),
       e.shiftKey,
       world.z,
+      isQueueFrontModifier(e),
     );
     if (!cmd) return;
     this.config.commandQueue.enqueue(cmd);
@@ -331,6 +333,7 @@ export class Input3DModeClickController {
       this.config.getActivePlayerId(),
       tick,
       e.shiftKey,
+      isQueueFrontModifier(e),
     );
     if (meshAttackCmd) {
       this.config.commandQueue.enqueue(meshAttackCmd);
@@ -349,6 +352,7 @@ export class Input3DModeClickController {
       this.config.getActivePlayerId(),
       tick,
       e.shiftKey,
+      isQueueFrontModifier(e),
     );
     if (!attackCmd) return;
     this.config.commandQueue.enqueue(attackCmd);
@@ -371,6 +375,7 @@ export class Input3DModeClickController {
       this.config.getTick(),
       e.shiftKey,
       world.z,
+      isQueueFrontModifier(e),
     );
     if (!cmd) return;
     this.config.commandQueue.enqueue(cmd);
@@ -410,6 +415,7 @@ export class Input3DModeClickController {
       this.config.getActivePlayerId(),
       tick,
       e.shiftKey,
+      isQueueFrontModifier(e),
     );
     if (meshGuardCmd) {
       this.config.commandQueue.enqueue(meshGuardCmd);
@@ -428,6 +434,7 @@ export class Input3DModeClickController {
       this.config.getActivePlayerId(),
       tick,
       e.shiftKey,
+      isQueueFrontModifier(e),
     );
     if (!guardCmd) return;
     this.config.commandQueue.enqueue(guardCmd);
@@ -452,6 +459,7 @@ export class Input3DModeClickController {
       commander,
       tick,
       e.shiftKey,
+      isQueueFrontModifier(e),
     );
     if (meshReclaimCmd) {
       this.config.commandQueue.enqueue(meshReclaimCmd);
@@ -470,6 +478,7 @@ export class Input3DModeClickController {
       tick,
       e.shiftKey,
       world.z,
+      isQueueFrontModifier(e),
     );
     if (!reclaimCmd) return;
     this.config.commandQueue.enqueue(reclaimCmd);
@@ -483,4 +492,8 @@ export class Input3DModeClickController {
     this.config.selectedCommands.setTowerTarget(entityHitId);
     if (!e.shiftKey) this.config.exitTowerTargetMode();
   }
+}
+
+function isQueueFrontModifier(e: MouseEvent): boolean {
+  return e.shiftKey && (e.ctrlKey || e.metaKey);
 }
