@@ -46,7 +46,7 @@ import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import { getPlayerColor } from './uiUtils';
 import type { GameServer } from '../game/server/GameServer';
 import type { GameConnection } from '../game/server/GameConnection';
-import type { CameraFovDegrees } from '../types/client';
+import type { CameraFovDegrees, CameraViewMode } from '../types/client';
 import {
   setPlayerClientRenderEnabled,
   useGameCanvasChromeState,
@@ -334,6 +334,10 @@ function flipCameraYaw(): void {
 
 function showMapOverview(): void {
   getActiveGameScene()?.showMapOverview();
+}
+
+function setCameraViewMode(mode: CameraViewMode): void {
+  getActiveGameScene()?.setCameraViewMode(mode);
 }
 
 function setCameraAnchor(index: number): void {
@@ -1142,6 +1146,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleLegsRadius,
   changeCameraFovDegrees,
   setCameraMode,
+  setCameraViewMode,
   setCameraFollowMode: setCameraFollow,
   showMapOverview,
   flipCameraYaw,

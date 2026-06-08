@@ -1,6 +1,13 @@
 import type { SceneCameraState } from '@/types/game';
+import type { CameraViewMode } from '@/types/client';
 import type { OrbitCamera } from '../../render3d/OrbitCamera';
 import type { ThreeApp } from '../../render3d/ThreeApp';
+
+const CAMERA_VIEW_MODE_PITCH: Record<CameraViewMode, number> = {
+  overhead: Math.PI * 0.06,
+  ta: Math.PI * 0.25,
+  spring: Math.PI * 0.36,
+};
 
 // Mini "camera" accessor read by GameCanvas.vue for the zoom display.
 // Derives a scalar zoom number from the 3D orbit distance so UI sliders
@@ -87,6 +94,18 @@ export class RtsScene3DCameraControl {
       distance: Math.max(this.baseDistance, fitHeight, fitWidth) * 1.12,
       yaw: orbit.yaw,
       pitch: Math.PI * 0.04,
+    });
+  }
+
+  setViewMode(mode: CameraViewMode): void {
+    const orbit = this.threeApp.orbit;
+    orbit.setState({
+      targetX: orbit.target.x,
+      targetY: orbit.target.y,
+      targetZ: orbit.target.z,
+      distance: orbit.distance,
+      yaw: orbit.yaw,
+      pitch: CAMERA_VIEW_MODE_PITCH[mode],
     });
   }
 

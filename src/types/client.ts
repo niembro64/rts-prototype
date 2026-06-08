@@ -43,6 +43,7 @@ export type DriftChannelMode = 'ignore' | PositionDriftChannelMode;
  *          integrated velocity), so there is no ACC mode. */
 export type PredictionMode = 'pos' | 'vel';
 export type CameraSmoothMode = 'snap' | 'fast' | 'mid' | 'slow';
+export type CameraViewMode = 'overhead' | 'ta' | 'spring';
 /** Camera follow behavior for a single selected unit.
  *    free          — camera is driven purely by mouse input (default).
  *    follow        — camera glides to keep the selected unit centered,

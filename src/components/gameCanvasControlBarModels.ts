@@ -6,6 +6,7 @@ import type {
   CameraFollowMode,
   CameraFovDegrees,
   CameraSmoothMode,
+  CameraViewMode,
   DriftChannelMode,
   DriftMode,
   EntityHudElement,
@@ -230,6 +231,7 @@ export type GameCanvasClientControlBarModel = {
   toggleLegsRadius(): void;
   changeCameraFovDegrees(fov: CameraFovDegrees): void;
   setCameraMode(mode: CameraSmoothMode): void;
+  setCameraViewMode(mode: CameraViewMode): void;
   setCameraFollowMode(mode: CameraFollowMode): void;
   showMapOverview(): void;
   flipCameraYaw(): void;

@@ -931,6 +931,23 @@ defineProps<{
             @click="model.setCameraMode('slow')"
           >SLOW</BarButton>
         </BarButtonGroup>
+        <BarButtonGroup>
+          <BarButton
+            :active="false"
+            title="Switch to a steep overhead camera angle without changing the current target or zoom"
+            @click="model.setCameraViewMode('overhead')"
+          >TOP</BarButton>
+          <BarButton
+            :active="false"
+            title="Switch to the default Total Annihilation-style RTS camera angle"
+            @click="model.setCameraViewMode('ta')"
+          >TA</BarButton>
+          <BarButton
+            :active="false"
+            title="Switch to a shallower Spring-style 3D camera angle"
+            @click="model.setCameraViewMode('spring')"
+          >SPR</BarButton>
+        </BarButtonGroup>
         <BarButton
           :active="false"
           title="Rotate the camera view 180 degrees around the current target"

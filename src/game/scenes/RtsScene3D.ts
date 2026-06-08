@@ -3,6 +3,7 @@
 
 import type { ClientViewState } from '../network/ClientViewState';
 import type { SceneCameraState } from '@/types/game';
+import type { CameraViewMode } from '@/types/client';
 import type { TerrainMapShape } from '@/types/terrain';
 import { RtsScene3DSnapshotIntake } from './helpers/RtsScene3DSnapshotIntake';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
@@ -954,6 +955,10 @@ export class RtsScene3D {
       this.mapHeight,
       getSurfaceHeight(centerX, centerY, this.mapWidth, this.mapHeight, LAND_CELL_SIZE),
     );
+  }
+
+  public setCameraViewMode(mode: CameraViewMode): void {
+    this.cameraControl.setViewMode(mode);
   }
 
   public setCameraAnchor(index: number): void {
