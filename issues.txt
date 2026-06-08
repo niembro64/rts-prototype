@@ -112,14 +112,6 @@ pause/resume controls, game-speed controls, ping/scan commands, a
 go-to-last-ping camera control, and a show/hide UI chrome toggle, but not the
 BAR game UI command surface.
 
-Issue: camera controls are missing BAR parity. FOV controls, selected-unit
-follow tracking, arrow/numpad camera movement, camera flip, camera angle mode
-switching (overhead/TA/Spring-style equivalents), and a map overview switch
-exist. Add minimap camera switching and picture-in-picture behavior or a
-documented 3D-focused replacement. Existing wheel zoom, middle-drag pan/orbit,
-touch controls, minimap click-to-move camera, camera anchors set/focus, and
-world-direction HUD are not enough.
-
 Issue: BAR gameplay functionality tied to missing commands is absent. Implement
 or explicitly redesign the systems needed by the missing command surface:
 transports, capture, resurrection/wreck fields, cloak/detection, radar/LOS UI

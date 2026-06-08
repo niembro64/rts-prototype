@@ -1131,6 +1131,18 @@
         from a dolly.
       </p>
 
+      <h3>Minimap camera and PIP are replaced by 3D overview controls</h3>
+      <p>
+        BAR-style minimap camera switching and picture-in-picture are not the canonical Budget
+        Annihilation camera model. The supported 3D-first replacement is: minimap click-to-center
+        for fast relocation, camera anchors for saved tactical views, selected-unit follow for
+        unit-centric tracking, and the map overview switch for whole-map inspection. Those controls
+        preserve one primary 3D camera and avoid a second live viewport that would duplicate
+        terrain, fog, water, and high-count entity rendering work. If a later spectator or replay
+        surface needs secondary views, it should be designed as a mode-specific tool, not as the
+        default battle camera contract.
+      </p>
+
       <h3>Passing through terrain is its own config, not an always-on law</h3>
       <p>
         Whether the camera may move through the terrain is a separate boolean, independent of where
