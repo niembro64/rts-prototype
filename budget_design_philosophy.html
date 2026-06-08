@@ -1438,6 +1438,24 @@
         boundary even though our pathfinder is owned by our Rust/WASM sim rather than by BAR's
         engine.
       </p>
+      <h3>Commands require real systems</h3>
+      <p>
+        BAR command vocabulary is the fallback only when the command has an
+        authoritative Budget Annihilation system behind it. A command-card
+        button, hotkey, cursor, or preview is not allowed to exist as dead UI:
+        the simulation, server authorization, snapshots, client feedback, and
+        physical presentation must all have a coherent contract first.
+      </p>
+      <p>
+        This means transports, capture, resurrection, cloak/detection, manual
+        launch, and unit-specific special-fire commands stay absent until their
+        authoritative mechanics exist. Metal-extractor upgrades follow the same
+        rule: a T1-to-T2 or area-upgrade command requires an authored upgraded
+        extractor blueprint, resource/economy behavior, construction lifecycle,
+        replacement rules, and render profile before the command is exposed.
+        The prototype should prefer no button over a button that appears to
+        promise unsupported BAR behavior.
+      </p>
     </section>
 
     <section>

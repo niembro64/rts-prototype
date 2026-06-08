@@ -35,80 +35,46 @@ Issue: formation commands are incomplete. Translate remaining formation
 behavior to the 3D physics model so formation targets respect mass, collision,
 terrain height, slopes, water, and pathability.
 
-Issue: construction commands are missing several BAR build ergonomics. Implement
-remaining construction shortcuts, upgrade T1 mex area, upgrade T1 -> T2,
-remaining BAR fallback behavior, and visual previews for remaining
-build/upgrade shapes.
-rts-prototype has category-ordered build buttons for the current structure
-roster, contextual BAR-grid build-cell hotkeys over a shared 12-cell build menu
-layout, BAR-grid/legacy build-facing and build-spacing shortcuts,
-active-preset build-slot hotkeys, single-placement ghost, Shift
-queueing, left-drag build line
-placement with adjustable spacing controls and a 3D line preview through
-existing build validation, plus 90-degree build-facing controls whose preview,
-snapping, occupancy, collision footprint, and support surface all use the
-rotated grid footprint; Alt+left-drag build border placement and Ctrl/Cmd
-left-drag build grid placement use the same validation path as single, line,
-and mex-area builds, have 3D rectangle previews, and split multi-placement
-orders across selected eligible builders. Buildability overlays share one
-shader path across terrain and metal deposit crowns, so metal build cells stay
-visible on top of deposits.
+Issue: construction commands are missing BAR build ergonomics. Implement
+remaining construction shortcuts, remaining BAR fallback behavior, and visual
+previews for remaining build/upgrade shapes. T1 mex area upgrade and T1 -> T2
+upgrade require an authored upgraded extractor blueprint, economy behavior,
+construction lifecycle, replacement rules, and render profile before exposing
+commands or buttons.
 
 Issue: queue editing and command insertion are incomplete. BAR supports
-commandinsert/prepend-between and queued variants of several orders.
-rts-prototype exposes Shift append-queue,
-Shift+Ctrl/Cmd queue-to-next insertion for queueable orders,
-skip-current-order, remove-last-queued-order, clear-queued-orders,
-stop-production, wait queueing, basic factory rally, basic factory guard, and
-selected-unit current-order/queue-depth feedback. Implement the missing queue
-semantics with server authorization and matching visual feedback.
+commandinsert/prepend-between and queued variants of several orders. Implement
+the missing queue semantics with server authorization and matching visual
+feedback.
 
 Issue: behavior/state toggles are incomplete. BAR exposes cloak/want-cloak,
 gather wait, on/off, stateful on/off, stance/fire state, richer
 positioning/move states, trajectory toggle, stop, wait, factory guard, and
-related stateful command buttons. rts-prototype currently has only a simple
-fire enabled toggle, producer-building on/off, authoritative unit
-repeat-queue, basic hold-position/maneuver move state, wait, stop,
-self-destruct, a trajectory mode toggle for existing ballistic weapons, and
-basic factory guard, with selection-detail indicators for fire, trajectory,
-repeat, move state, wait, producer on/off, and factory guard state plus an
-authoritative clear-guard command-card button and hotkey.
-Implement the missing states in simulation, snapshots, command authorization,
-selection UI, hotkeys, and visible state indicators.
+related stateful command buttons. Implement the missing states in simulation,
+snapshots, command authorization, selection UI, hotkeys, and visible state
+indicators.
 
 Issue: special abilities are incomplete. Add BAR Capture, Load Transport,
 Unload Transport, Resurrect, Resurrect Area, manual launch, and any
-unit-specific special buttons beyond commander DGun. rts-prototype has
-commander DGun and self-destruct, but no capture, resurrection, transports,
-load/unload logic, manual launch weapons, or unit-specific ability command-card
-support.
+unit-specific special buttons beyond commander DGun only after the underlying
+authoritative simulation, snapshots, client feedback, and physical
+presentation exist.
 
 Issue: factory and production UI are incomplete. BAR has factory production
 controls beyond selecting one repeat-build unit: repeat/queue state, factory
 queue mode/quotas, production queue editing, and related state
-indicators. rts-prototype now has an authoritative stop-production command,
-factory panel button, and local factory preset slots with shared hotkeys that
-load through authoritative production commands, plus selected repeat-build,
-production-progress, and factory-guard state indicators, basic factory rally,
-basic factory guard, an authoritative clear-guard command-card button and
-hotkey, and BAR-grid/legacy scoped stop-production hotkeys. It still needs the
-remaining BAR-equivalent factory panel and hotkeys, translated to
+indicators. Implement the remaining BAR-equivalent factory panel and hotkeys as
 authoritative-server commands.
 
 Issue: BAR gameplay functionality tied to missing commands is absent. Implement
-or explicitly redesign the systems needed by the missing command surface:
-transports, capture, resurrection/wreck fields, cloak/detection, unit stances,
-manual-launch weapons, factory queue management, mex upgrade workflows, replays
-where applicable, and complete faction/unit/factory/building rosters.
-rts-prototype already has spectator UI/authority/snapshot paths and
-authoritative build-shape placement for the current build roster. Missing
-commands should not be added as dead UI; their underlying authoritative
-simulation, client prediction, snapshots, and render feedback must exist.
+the systems needed by the missing command surface: transports, capture,
+resurrection/wreck fields, cloak/detection, unit stances, manual-launch
+weapons, factory queue management, mex upgrade workflows, replays where
+applicable, and complete faction/unit/factory/building rosters.
 
 Issue: BAR parity must be extended through the 3D/physics-first design, not
 implemented as flat 2D shortcuts. Formations need mass, acceleration,
 collision, and terrain-aware spacing; transport/load/unload,
 resurrection, capture, and manual launch/special-fire abilities beyond
 commander DGun need physical presentation and authoritative physics
-interactions. Document any intentional departure from BAR in
-budget_design_philosophy.html before omitting a BAR behavior.
+interactions.
