@@ -1,4 +1,4 @@
-import type { EntityId } from '../sim/types';
+import type { Entity, EntityId } from '../sim/types';
 
 /** Last firing direction of a beam, in SIM world coordinates
  *  (x/y horizontal, z up). Unit length. */
@@ -13,9 +13,8 @@ function packKey(entityId: number, turretIdx: number): number {
  * channel by which a beam tells its turret where to point.
  *
  * The entity renderer records the live firing direction of every active
- * beam each frame from its first segment (see
- * `Render3DEntities.collectBeamTurretAim`); the turret-pose pass reads it
- * back to aim beam-directed barrels (`turretBarrelFollowsBeam`). Unlike
+ * beam each frame from its first segment; the turret-pose pass reads it back
+ * to aim beam-directed barrels (`turretBarrelFollowsBeam`). Unlike
  * `TurretMountCache3D`, entries are NOT cleared per frame: when a beam
  * stops, the last direction persists so the barrel freezes pointing
  * wherever it last fired instead of snapping back to forward. Entries
@@ -34,6 +33,34 @@ export class TurretBeamAimCache3D {
       entry.z = z;
     } else {
       this.dirs.set(key, { x, y, z });
+    }
+  }
+
+  /** Populate from active beam line-projectiles before unit/building turret
+   *  pose passes read this frame's directed barrel aim. */
+  collectFromBeamProjectiles(beamProjectiles: readonly Entity[]): void {
+    for (const e of beamProjectiles) {
+      const proj = e.projectile;
+      if (proj === null) continue;
+      const pts = proj.points;
+      if (!pts || pts.length < 2) continue;
+      const dx = pts[1].x - pts[0].x;
+      const dy = pts[1].y - pts[0].y;
+      const dz = pts[1].z - pts[0].z;
+      const len = Math.hypot(dx, dy, dz);
+      if (len < 1e-5) continue;
+      const inv = 1 / len;
+      const ux = dx * inv;
+      const uy = dy * inv;
+      const uz = dz * inv;
+      const ti = proj.config.turretIndex ?? 0;
+      const ss = proj.shotSource;
+      const id0 = proj.sourceEntityId;
+      const id1 = ss?.sourceHostEntityId;
+      const id2 = ss?.sourceRootEntityId;
+      if (id0) this.record(id0, ti, ux, uy, uz);
+      if (id1 && id1 !== id0) this.record(id1, ti, ux, uy, uz);
+      if (id2 && id2 !== id0 && id2 !== id1) this.record(id2, ti, ux, uy, uz);
     }
   }
 

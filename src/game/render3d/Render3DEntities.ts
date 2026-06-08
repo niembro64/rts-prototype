@@ -10,19 +10,15 @@
 // Coordinate mapping: sim (x, y) → three (x, z). Y is up. Ground at y=0.
 
 import * as THREE from 'three';
-import type { Entity, EntityId, PlayerId, Turret } from '../sim/types';
+import type { Entity, EntityId } from '../sim/types';
 import type { PylonTubeFlow, SprayTarget } from '@/types/ui';
 import type { MetalDeposit } from '../../metalDepositConfig';
-import { COLORS } from '@/colorsConfig';
-import { getPlayerColors } from '../sim/types';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
   updateLocomotion,
   destroyLocomotion,
-  fadeLocomotion,
   captureLegState,
   setHoverFanAnimationTime,
-  type AirborneEmitterUpdate3D,
   type LegStateSnapshot,
 } from './Locomotion3D';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
@@ -42,20 +38,14 @@ import { ConstructionVisualController3D } from './ConstructionVisualController3D
 import { CommanderVisualKit3D } from './CommanderVisualKit3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { BuildingEntityRenderer3D } from './BuildingEntityRenderer3D';
-import {
-  entityShieldSphereTurretHeadColorHex,
-  turretAccentColorHexForPlayer,
-} from './EntityInstanceColor3D';
 import { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import {
-  applyEntityGroupFade,
   disposeEntityGroupFade,
   DyingMeshFade,
   ENTITY_DEATH_FADE_MS,
 } from './EntityFade3D';
 import { DyingUnitScatter3D } from './DyingUnitScatter3D';
-import { VISION_FADE_IN_MS, VISION_FADE_OUT_MS } from '@/visionConfig';
-import { createShieldFallbackPanelMaterial } from './ShieldReflectorVisual3D';
+import { VISION_FADE_OUT_MS } from '@/visionConfig';
 import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
 import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
 import { TurretMountCache3D, type TurretMountEntry } from './TurretMountCache3D';
@@ -78,41 +68,20 @@ import {
   type BuildingRenderPacket3D,
 } from './EntityRenderPackets3D';
 import { AirborneEmitterBatch3D } from './AirborneEmitterBatch3D';
+import {
+  applyAirborneBankRoll3D,
+  applyAirborneBankToParentQuat3D,
+} from './UnitAirborneBank3D';
+import { EntityMaterialPalette3D } from './EntityMaterialPalette3D';
+import { syncUnitDynamicMaterials3D } from './UnitDynamicMaterialSync3D';
+import { advanceUnitVisionFadeIn, applyUnitEntityFade3D } from './UnitEntityFade3D';
+import { AirborneEmitterUpdateScratch3D } from './AirborneEmitterUpdateScratch3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
 // The sim's projectile-spawn point is the turret world mount center;
 // barrel endpoint geometry is visual-only.
 
-const BARREL_COLOR = COLORS.units.turret.barrel.colorHex;
-
-// Visual-only bank for hover/flying chassis. The sim writes yaw-only
-// into the orientation quat (see UnitForceSystem hover branch); the
-// renderer composes a body-frame roll on top from the body-lateral
-// acceleration the chassis is experiencing. None of this state
-// crosses the wire or feeds sim math — the y=z=0 mount invariant on
-// airborne turrets keeps the rolled chassis agreeing with the sim's
-// yaw-only mount math.
-//
-// We bank on centripetal acceleration (forward speed × yaw rate)
-// rather than lateral velocity: the yaw spring continuously aligns
-// body forward with the thrust direction, so in a sustained turn the
-// body-lateral velocity collapses to ~0 and a velocity-derived bank
-// would decay to flat right when the visible turn is at its strongest.
-// `v_forward · ω_z` stays high for as long as the unit is actually
-// turning, so the bank persists through the turn.
-//
-// AIRBORNE_BANK_PER_LATERAL_A is dimensionless (radians of roll per
-// (world-unit/sec) · (rad/sec) of body-lateral acceleration);
-// AIRBORNE_BANK_MAX clamps to 45° so collision spikes can't turn
-// into barrel rolls.
-const AIRBORNE_BANK_PER_LATERAL_A = 0.003;
-const AIRBORNE_BANK_MAX = Math.PI * 0.25;
-// EMA time constant in seconds. Intentionally independent from ROT POS:
-// banking is a local acceleration-derived embellishment that never
-// travels on the wire.
-const AIRBORNE_BANK_TAU_SEC = 0.18;
-const EMPTY_TURRETS: readonly Turret[] = [];
 const EMPTY_PROJECTILES: readonly Entity[] = [];
 
 export type RenderEntityUpdatePacket3D = {
@@ -187,6 +156,7 @@ export class Render3DEntities {
   private projectileRangeEnvelope: ProjectileRangeEnvelope3D;
   private readonly hoverSmokeEmitters: SmokePuffEmitter[] = [];
   private readonly airborneEmitterBatch = new AirborneEmitterBatch3D();
+  private readonly airborneEmitterUpdate = new AirborneEmitterUpdateScratch3D(this.airborneEmitterBatch);
 
   private barrelSpinState = new UnitBarrelSpinState3D();
   private shieldPanelPose = new ShieldPanelPose3D();
@@ -217,7 +187,7 @@ export class Render3DEntities {
   private barrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
   // Beam-turret barrels taper to a point at the muzzle (+Y = tip).
   private coneBarrelGeom = new THREE.CylinderGeometry(0, 1, 1, 10);
-  private barrelMat = new THREE.MeshLambertMaterial({ color: BARREL_COLOR });
+  private readonly materialPalette = new EntityMaterialPalette3D();
   // Force-field panel = flat unit square plane. Default orientation: face
   // in XY plane with normal +Z; we rotate it into the panel-local frame
   // (edge → +Z, normal → +X) per panel below. The mesh is a thin BoxGeometry
@@ -238,13 +208,6 @@ export class Render3DEntities {
     new THREE.SphereGeometry(1, 16, 10),
   );
 
-  private primaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
-  private turretAccentMats = new Map<number, THREE.MeshLambertMaterial>();
-  private neutralMat = new THREE.MeshLambertMaterial({ color: COLORS.units.neutral.colorHex });
-  // Force-field panels keep their existing shape and mount, but use the
-  // shield shield treatment so they read as reflector surfaces
-  // instead of chrome slabs.
-  private mirrorShinyNeutralMat = createShieldFallbackPanelMaterial();
   /** Per-frame scratch populated from UnitRenderPoseBatch3D's
    *  `tilt · Ry(yaw)` output before chassis/turret writers consume it. */
   private _smoothParentQuat = new THREE.Quaternion();
@@ -259,24 +222,9 @@ export class Render3DEntities {
   private _smoothLiftedPos = new THREE.Vector3();
   private _locomotionParentQuat = new THREE.Quaternion();
   private _airborneBankQuat = new THREE.Quaternion();
-  private readonly _airborneEmitterUpdate: AirborneEmitterUpdate3D = {
-    batch: this.airborneEmitterBatch,
-    pose: {
-      parentX: 0,
-      parentY: 0,
-      parentZ: 0,
-      parentQX: 0,
-      parentQY: 0,
-      parentQZ: 0,
-      parentQW: 1,
-    },
-  };
-
   private turretMountCache = new TurretMountCache3D();
-  // Last beam-firing direction per turret, collected from the live beam
-  // line-projectiles each frame (collectBeamTurretAim) and read by the
-  // unit + building turret-pose passes to aim beam-directed barrels.
-  // Persists across frames (freezes on the last direction).
+  // Last beam-firing direction per turret. Persists across frames so
+  // beam-directed barrels freeze on their last live firing direction.
   private turretBeamAimCache = new TurretBeamAimCache3D();
 
   /** Per-unit cached prefix matrix `T(liftedPos) · R(parentQuat) · S(1)`
@@ -320,8 +268,8 @@ export class Render3DEntities {
       turretHeadGeom: this.turretHeadGeom,
       barrelGeom: this.barrelGeom,
       coneBarrelGeom: this.coneBarrelGeom,
-      getPrimaryMat: (playerId) => this.getPrimaryMat(playerId),
-      getTurretAccentMat: (playerId) => this.getTurretAccentMat(playerId),
+      getPrimaryMat: (playerId) => this.materialPalette.getPrimaryMat(playerId),
+      getTurretAccentMat: (playerId) => this.materialPalette.getTurretAccentMat(playerId),
       disposeWorldParentedOverlays: (mesh) => this.disposeWorldParentedOverlays(mesh),
       metalDeposits: this.metalDeposits,
       scopedMeshRetention: this.scopedMeshRetention,
@@ -342,7 +290,7 @@ export class Render3DEntities {
       turretHeadGeom: this.turretHeadGeom,
       barrelGeom: this.barrelGeom,
       coneBarrelGeom: this.coneBarrelGeom,
-      barrelMat: this.barrelMat,
+      barrelMat: this.materialPalette.getBarrelMat(),
       mirrorGeom: this.mirrorGeom,
     });
     this.dyingUnitScatter = new DyingUnitScatter3D(this.legRenderer, this.unitDetailInstances);
@@ -357,9 +305,9 @@ export class Render3DEntities {
       mirrorGeom: this.mirrorGeom,
       mirrorArmGeom: this.mirrorArmGeom,
       mirrorSupportGeom: this.mirrorSupportGeom,
-      getPrimaryMat: (playerId) => this.getPrimaryMat(playerId),
-      getTurretAccentMat: (playerId) => this.getTurretAccentMat(playerId),
-      getMirrorShinyMat: () => this.getMirrorShinyMat(),
+      getPrimaryMat: (playerId) => this.materialPalette.getPrimaryMat(playerId),
+      getTurretAccentMat: (playerId) => this.materialPalette.getTurretAccentMat(playerId),
+      getMirrorShinyMat: () => this.materialPalette.getMirrorShinyMat(),
       getMapWidth: () => this.clientViewState.getMapWidth(),
       getMapHeight: () => this.clientViewState.getMapHeight(),
     });
@@ -394,18 +342,8 @@ export class Render3DEntities {
     this.activeLocomotionUnitIds.delete(id);
   }
 
-  /** Advance and return a unit's vision fade-IN factor (0..1). A unit that
-   *  has just entered the local player's vision ramps from 0 → 1 over
-   *  VISION_FADE_IN_MS; once complete it pins at 1 for no further cost. The
-   *  caller multiplies this into the body opacity so it composes with the
-   *  construction materialization fade. */
   private advanceSpawnFadeIn(id: EntityId): number {
-    if (VISION_FADE_IN_MS <= 0) return 1;
-    const prev = this.spawnFadeElapsed.get(id);
-    if (prev === VISION_FADE_IN_MS) return 1; // already fully faded in
-    const elapsed = Math.min((prev ?? 0) + this._currentDtMs, VISION_FADE_IN_MS);
-    this.spawnFadeElapsed.set(id, elapsed);
-    return elapsed / VISION_FADE_IN_MS;
+    return advanceUnitVisionFadeIn(this.spawnFadeElapsed, id, this._currentDtMs);
   }
 
   /** Flag an entity as DESTROYED so its mesh plays the death fade when it
@@ -417,31 +355,6 @@ export class Render3DEntities {
     const m = this.unitMeshes.get(id);
     if (m) m.killed = true;
     this.buildingRenderer.markEntityKilled(id);
-  }
-
-  private getMirrorShinyMat(): THREE.Material {
-    return this.mirrorShinyNeutralMat;
-  }
-
-
-  private getPrimaryMat(pid: PlayerId | undefined): THREE.MeshLambertMaterial {
-    if (pid === undefined) return this.neutralMat;
-    let mat = this.primaryMats.get(pid);
-    if (!mat) {
-      mat = new THREE.MeshLambertMaterial({ color: getPlayerColors(pid).primary });
-      this.primaryMats.set(pid, mat);
-    }
-    return mat;
-  }
-
-  private getTurretAccentMat(pid: PlayerId | undefined): THREE.MeshLambertMaterial {
-    const color = turretAccentColorHexForPlayer(pid);
-    let mat = this.turretAccentMats.get(color);
-    if (!mat) {
-      mat = new THREE.MeshLambertMaterial({ color });
-      this.turretAccentMats.set(color, mat);
-    }
-    return mat;
   }
 
   update(
@@ -467,7 +380,9 @@ export class Render3DEntities {
     this.selectionOverlays.beginFrame();
     // Populate beam-directed turret aim from the live beams BEFORE the
     // unit + building turret-pose passes read it this frame.
-    this.collectBeamTurretAim(entityPacket?.beamAimProjectiles ?? EMPTY_PROJECTILES);
+    this.turretBeamAimCache.collectFromBeamProjectiles(
+      entityPacket?.beamAimProjectiles ?? EMPTY_PROJECTILES,
+    );
     this.updateUnits(entityPacket?.unitRows, entityPacket?.scoped === true);
     this.buildingRenderer.update(
       entityPacket?.buildingRows,
@@ -517,121 +432,12 @@ export class Render3DEntities {
     this.activeLocomotionUnitIds.delete(id);
   }
 
-  /** Per-frame color sync for instanced render paths. This uses ordinary
-   *  instanceColor only; construction opacity lives in the shared
-   *  EntityFade3D path below. */
-  private updateUnitInstanceColors(
-    e: Entity,
-    m: EntityMesh,
-    turrets: readonly Turret[] = EMPTY_TURRETS,
-  ): void {
-    this.unitDetailInstances.syncEntityColors(e, m, turrets);
-  }
-
-  /** Per-Mesh fallback materials are mostly static after build/rebuild.
-   *  The exceptions are head-only turrets, whose visible head flips
-   *  between player primary and turret accent when the turret engages,
-   *  and shield-sphere emitter cores, which pulse while active. Keep
-   *  those dynamic paths cached instead of rewriting every chassis,
-   *  barrel, and mirror material for every unit every frame. */
-  private updateUnitFallbackDynamicMaterials(
-    e: Entity,
-    m: EntityMesh,
-    turrets: readonly Turret[],
-  ): void {
-    const ownerId = e.ownership?.playerId;
-    let headOnlyStates = m.unitHeadOnlyTurretEngaged;
-    let dynamicHeadColors = m.unitDynamicTurretHeadColorHex;
-    for (let i = 0; i < m.turrets.length; i++) {
-      const turretMesh = m.turrets[i];
-      if (!turretMesh.head) continue;
-      if (turretMesh.shieldEmitterCore === true) {
-        const colorHex = entityShieldSphereTurretHeadColorHex(
-          e,
-          turrets[i],
-          this._currentTimeMs,
-        );
-        if (dynamicHeadColors !== undefined && dynamicHeadColors[i] === colorHex) continue;
-        if (dynamicHeadColors === undefined) {
-          dynamicHeadColors = [];
-          m.unitDynamicTurretHeadColorHex = dynamicHeadColors;
-        }
-        dynamicHeadColors[i] = colorHex;
-        const mat = turretMesh.shieldEmitterPulseMat ?? turretMesh.head.material;
-        if (Array.isArray(mat)) continue;
-        const colorMat = mat as THREE.Material & { color?: THREE.Color };
-        if (colorMat.color instanceof THREE.Color) colorMat.color.set(colorHex);
-        continue;
-      }
-      if (turretMesh.headOnly === true && turretMesh.barrelFollowsBeam !== true) {
-        const engaged = turrets[i]?.state === 'engaged';
-        if (headOnlyStates !== undefined && headOnlyStates[i] === engaged) continue;
-        if (headOnlyStates === undefined) {
-          headOnlyStates = [];
-          m.unitHeadOnlyTurretEngaged = headOnlyStates;
-        }
-        headOnlyStates[i] = engaged;
-        turretMesh.head.material = engaged
-          ? this.getTurretAccentMat(ownerId)
-          : this.getPrimaryMat(ownerId);
-      }
-    }
-  }
-
-  /** Apply the same alpha materialization function buildings use to all
-   *  per-Mesh unit parts, while feeding the instanced unit pools via
-   *  their per-instance fade attributes. The group traversals are gated
-   *  so completed units do not pay this cost every frame. */
   private applyUnitEntityFade(
     m: EntityMesh,
     bodyFade: number,
     turretFades: readonly number[] | null,
   ): void {
-    const bodyFadeActive = bodyFade < 1;
-    const specificTurretFadeActive = this.hasSpecificUnitTurretFade(
-      m,
-      bodyFade,
-      turretFades,
-    );
-    if (bodyFadeActive || specificTurretFadeActive || m.unitFadeActive === true) {
-      this.unitDetailInstances.writeEntityFade(m, bodyFade, turretFades);
-      fadeLocomotion(m.locomotion, bodyFade, this.legRenderer);
-      m.unitFadeActive = bodyFadeActive || specificTurretFadeActive;
-    }
-
-    if (bodyFadeActive || m.unitGroupFadeActive === true) {
-      applyEntityGroupFade(m.group, bodyFade);
-      m.unitGroupFadeActive = bodyFadeActive;
-    }
-
-    if (turretFades === null) return;
-    const previousTurretStates = m.unitTurretGroupFadeActive;
-    if (!specificTurretFadeActive && previousTurretStates === undefined) return;
-    const turretStates = previousTurretStates ?? [];
-    let anyTurretFadeActive = false;
-    for (let i = 0; i < m.turrets.length; i++) {
-      const fade = turretFades[i] ?? bodyFade;
-      const hasSpecificFade = fade < 1 && fade !== bodyFade;
-      if (hasSpecificFade || turretStates[i] === true) {
-        applyEntityGroupFade(m.turrets[i].root, fade);
-        turretStates[i] = hasSpecificFade;
-      }
-      if (hasSpecificFade) anyTurretFadeActive = true;
-    }
-    m.unitTurretGroupFadeActive = anyTurretFadeActive ? turretStates : undefined;
-  }
-
-  private hasSpecificUnitTurretFade(
-    m: EntityMesh,
-    bodyFade: number,
-    turretFades: readonly number[] | null,
-  ): boolean {
-    if (turretFades === null) return false;
-    for (let i = 0; i < m.turrets.length; i++) {
-      const fade = turretFades[i] ?? bodyFade;
-      if (fade < 1 && fade !== bodyFade) return true;
-    }
-    return false;
+    applyUnitEntityFade3D(m, bodyFade, turretFades, this.unitDetailInstances, this.legRenderer);
   }
 
   private updateUnits(unitRows: UnitRenderPacket3D | undefined, scopedRender: boolean): void {
@@ -747,9 +553,15 @@ export class Render3DEntities {
       this.reactivateUnitMeshForScope(entityId, m);
       if (pruneUnits) m.renderSeenToken = pruneToken;
       applyUnitLiftGroupPose3D(m, e);
-      this.updateUnitInstanceColors(e, m, turrets);
       if (unitGfx.barrelSpin) this.barrelSpinState.advance(e, spinDt);
-      this.updateUnitFallbackDynamicMaterials(e, m, turrets);
+      syncUnitDynamicMaterials3D({
+        entity: e,
+        mesh: m,
+        turrets,
+        currentTimeMs: this._currentTimeMs,
+        materialPalette: this.materialPalette,
+        unitDetailInstances: this.unitDetailInstances,
+      });
 
       // Build-in materialization: the body reveals via per-instance
       // alpha, not by growing the chassis from a point.
@@ -829,50 +641,14 @@ export class Render3DEntities {
       }
       if (m.yawGroup) m.yawGroup.rotation.set(0, yaw, 0);
 
-      // Airborne visual bank — composed on top of the canonical yaw
-      // write above so the chassis rolls into turns from body-frame
-      // lateral acceleration. Sim has no pitch/roll for hover/flying
-      // (see "Airborne Banking Is Visual" in design_philosophy.html);
-      // the y=z=0 mount invariant on airborne turrets keeps the
-      // rolled chassis agreeing with the sim's yaw-only mount math.
       if (airborne && m.yawGroup) {
-        // Body-lateral acceleration in the sim frame, computed as the
-        // centripetal term v_forward · ω_z:
-        //   v_forward = vx · cos(yaw_sim) + vy · sin(yaw_sim)
-        //   ω_z       = angularVelocity3.z  (yaw rate, world frame —
-        //               equivalent to body frame for yaw-only quats)
-        //   a_lateral = -v_forward · ω_z   (sign: bank INTO the turn;
-        //               CCW = +ω_z → left wing down via rotateX(-…)
-        //               below)
-        // All three inputs (transform.rotation, velocityX/Y,
-        // angularVelocity3) ride the ROT POS / MOVE POS / ROT VEL
-        // prediction channels respectively, so the bank lags exactly
-        // as much as the rest of the unit's rotation/movement
-        // visuals — a slower channel (MED/SLOW) yields a more
-        // sluggish bank by design.
-        const vx = unitRows.velocityX[row];
-        const vy = unitRows.velocityY[row];
-        const cosY = Math.cos(tRot);
-        const sinY = Math.sin(tRot);
-        const vForward = vx * cosY + vy * sinY;
-        const yawRate = unitRows.yawRate[row];
-        const aLateral = -vForward * yawRate;
-        let target = AIRBORNE_BANK_PER_LATERAL_A * aLateral;
-        if (target > AIRBORNE_BANK_MAX) target = AIRBORNE_BANK_MAX;
-        else if (target < -AIRBORNE_BANK_MAX) target = -AIRBORNE_BANK_MAX;
-        const prev = m.visualBankRoll ?? 0;
-        // Frame-rate independent EMA: smoothed = α·prev + (1−α)·target
-        // where α = exp(−dt/τ).
-        const alpha = spinDt > 0
-          ? Math.exp(-spinDt / AIRBORNE_BANK_TAU_SEC)
-          : 1;
-        const smoothed = alpha * prev + (1 - alpha) * target;
-        m.visualBankRoll = smoothed;
-        // Roll about the sim's body-forward axis (sim +X) maps to a
-        // negative rotation about three.js local +X under the world→
-        // three.js quat mapping. rotateX uses the LOCAL axis, which
-        // after the yaw Euler above is the chassis's forward axis.
-        m.yawGroup.rotateX(-smoothed);
+        m.visualBankRoll = applyAirborneBankRoll3D(m.yawGroup, m.visualBankRoll, {
+          velocityX: unitRows.velocityX[row],
+          velocityY: unitRows.velocityY[row],
+          yawRadians: tRot,
+          yawRate: unitRows.yawRate[row],
+          spinDtSec: spinDt,
+        });
       }
 
       // Chassis body lives entirely in unit-radius-1 space (see
@@ -905,15 +681,12 @@ export class Render3DEntities {
         poseOutput[poseBase + 10],
         poseOutput[poseBase + 11],
       );
-      if (airborne && m.visualBankRoll !== undefined && m.visualBankRoll !== 0) {
-        const bankHalfAngle = -m.visualBankRoll * 0.5;
-        this._airborneBankQuat.set(
-          Math.sin(bankHalfAngle),
-          0,
-          0,
-          Math.cos(bankHalfAngle),
+      if (airborne) {
+        applyAirborneBankToParentQuat3D(
+          this._locomotionParentQuat,
+          this._airborneBankQuat,
+          m.visualBankRoll,
         );
-        this._locomotionParentQuat.multiply(this._airborneBankQuat);
       }
       this.chassisInstancePose.update(
         e,
@@ -1005,7 +778,7 @@ export class Render3DEntities {
             mapHeight,
             this.legRenderer,
             locomotionSmokeEmitters,
-            this.prepareAirborneEmitterUpdate(tx, groundZ, ty, this._locomotionParentQuat),
+            this.airborneEmitterUpdate.prepare(tx, groundZ, ty, this._locomotionParentQuat),
           );
           if (keepLocomotionActive) this.activeLocomotionUnitIds.add(e.id);
           else this.activeLocomotionUnitIds.delete(e.id);
@@ -1033,24 +806,6 @@ export class Render3DEntities {
     this.dyingUnits.update(this._currentDtMs);
     this.vanishingUnits.update(this._currentDtMs);
     this.unitDetailInstances.flush(this.turretShieldPanelsEnabled);
-  }
-
-  private prepareAirborneEmitterUpdate(
-    parentX: number,
-    parentY: number,
-    parentZ: number,
-    parentQuat: THREE.Quaternion,
-  ): AirborneEmitterUpdate3D {
-    const update = this._airborneEmitterUpdate;
-    const pose = update.pose;
-    pose.parentX = parentX;
-    pose.parentY = parentY;
-    pose.parentZ = parentZ;
-    pose.parentQX = parentQuat.x;
-    pose.parentQY = parentQuat.y;
-    pose.parentQZ = parentQuat.z;
-    pose.parentQW = parentQuat.w;
-    return update;
   }
 
   private syncLegsRadiusToggleQueue(): void {
@@ -1180,43 +935,6 @@ export class Render3DEntities {
     return this.turretMountCache.get(entityId, turretIdx);
   }
 
-  /** Populate the beam-aim cache from the active beam line-projectiles,
-   *  BEFORE the unit + building turret-pose passes read it this frame.
-   *  A beam's first segment — points[0] (the turret mount center) →
-   *  points[1] — is exactly the direction the barrel of its emitting
-   *  beam turret should point; the pose pass reads it back and aims the
-   *  barrel along it (freezing on the last value when the beam stops).
-   *
-   *  Recorded under every candidate host id the beam carries
-   *  (sourceEntityId, plus the authoritative sourceHostEntityId /
-   *  sourceRootEntityId), because composite / parented hosts can key the
-   *  rendered turret by a different id than the legacy sourceEntityId. */
-  private collectBeamTurretAim(beamProjectiles: readonly Entity[]): void {
-    for (const e of beamProjectiles) {
-      const proj = e.projectile;
-      if (proj === null) continue;
-      const pts = proj.points;
-      if (!pts || pts.length < 2) continue;
-      const dx = pts[1].x - pts[0].x;
-      const dy = pts[1].y - pts[0].y;
-      const dz = pts[1].z - pts[0].z;
-      const len = Math.hypot(dx, dy, dz);
-      if (len < 1e-5) continue;
-      const inv = 1 / len;
-      const ux = dx * inv;
-      const uy = dy * inv;
-      const uz = dz * inv;
-      const ti = proj.config.turretIndex ?? 0;
-      const ss = proj.shotSource;
-      const id0 = proj.sourceEntityId;
-      const id1 = ss?.sourceHostEntityId;
-      const id2 = ss?.sourceRootEntityId;
-      if (id0) this.turretBeamAimCache.record(id0, ti, ux, uy, uz);
-      if (id1 && id1 !== id0) this.turretBeamAimCache.record(id1, ti, ux, uy, uz);
-      if (id2 && id2 !== id0 && id2 !== id1) this.turretBeamAimCache.record(id2, ti, ux, uy, uz);
-    }
-  }
-
   /** Look up an entity's currently built locomotion mesh — undefined
    *  if the unit has no rendered mesh yet, has been torn down, or
    *  its blueprint has no locomotion (statics, buildings). Used by
@@ -1271,10 +989,6 @@ export class Render3DEntities {
     this.mirrorGeom.dispose();
     this.mirrorArmGeom.dispose();
     this.mirrorSupportGeom.dispose();
-    this.mirrorShinyNeutralMat.dispose();
-    this.barrelMat.dispose();
-    for (const m of this.primaryMats.values()) m.dispose();
-    for (const m of this.turretAccentMats.values()) m.dispose();
-    this.neutralMat.dispose();
+    this.materialPalette.dispose();
   }
 }
