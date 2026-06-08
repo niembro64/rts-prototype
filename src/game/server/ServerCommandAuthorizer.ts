@@ -15,6 +15,7 @@ import type {
   SetBuildingActiveCommand,
   SetFireEnabledCommand,
   SetFactoryGuardCommand,
+  SetRepeatQueueCommand,
   SetTowerTargetCommand,
   StartBuildCommand,
   StopCommand,
@@ -38,7 +39,8 @@ type UnitListCommand =
   | WaitCommand
   | ClearQueuedOrdersCommand
   | RemoveLastQueuedOrderCommand
-  | SkipCurrentOrderCommand;
+  | SkipCurrentOrderCommand
+  | SetRepeatQueueCommand;
 
 type AnyEntityListCommand =
   | SetFireEnabledCommand
@@ -81,6 +83,7 @@ export function authorizeGameServerGameplayCommand(
     case 'clearQueuedOrders':
     case 'removeLastQueuedOrder':
     case 'skipCurrentOrder':
+    case 'setRepeatQueue':
       return authorizeUnitListCommand(world, command, playerId);
 
     case 'wait':

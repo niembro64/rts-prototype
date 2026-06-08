@@ -44,6 +44,10 @@ import {
   refreshUnitActionHash,
   shiftUnitAction,
 } from './unitActions';
+import {
+  getFirstActionIntentEnd,
+  hasQueuedActionIntents,
+} from './unitActionIntents';
 import { SimulationEventQueues } from './SimulationEventQueues';
 import { resolveCommanderGameOverWinner } from './SimulationGameOver';
 import { SimulationDeathExplosionPlanner } from './SimulationDeathExplosionPlanner';
@@ -931,6 +935,13 @@ export class Simulation {
     if (completedAction.type === 'patrol' && unit.patrolStartIndex !== null) {
       // Move completed patrol action to end of queue (after all patrol actions)
       rotateFirstUnitActionToEnd(unit);
+    } else if (unit.repeatQueue && hasQueuedActionIntents(unit.actions)) {
+      const activeIntentEnd = getFirstActionIntentEnd(unit.actions);
+      const repeatActions = unit.actions.splice(0, activeIntentEnd + 1);
+      for (let i = 0; i < repeatActions.length; i++) {
+        unit.actions.push(repeatActions[i]);
+      }
+      refreshUnitActionHash(unit);
     } else {
       // Remove completed action
       shiftUnitAction(unit);
@@ -944,6 +955,9 @@ export class Simulation {
     // Clear patrol start index if no more actions
     if (unit.actions.length === 0) {
       unit.patrolStartIndex = null;
+    } else if (completedAction.type !== 'patrol') {
+      const patrolStartIndex = unit.actions.findIndex((action) => action.type === 'patrol');
+      unit.patrolStartIndex = patrolStartIndex >= 0 ? patrolStartIndex : null;
     }
 
     this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);

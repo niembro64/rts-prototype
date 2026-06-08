@@ -630,6 +630,17 @@ function loadFactoryPreset(index: number): void {
         <button
           type="button"
           class="action-btn"
+          :class="{ active: selection.isRepeatQueue }"
+          :style="{ '--btn-color': BUTTON_COLORS.wait }"
+          :title="actionTitle(selection.isRepeatQueue ? 'Repeat orders off' : 'Repeat orders', 'command.repeat')"
+          @click="actions.toggleRepeatQueue()"
+        >
+          <span class="btn-label">Repeat</span>
+          <span class="btn-key">{{ hotkey('command.repeat') }}</span>
+        </button>
+        <button
+          type="button"
+          class="action-btn"
           :disabled="!selection.hasQueuedOrders"
           :style="{ '--btn-color': BUTTON_COLORS.skipQueue }"
           :title="actionTitle('Skip current order', 'command.skipCurrent')"

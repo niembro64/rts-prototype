@@ -102,6 +102,7 @@ function createUnitBaseEntity({
       maxHp: hp,
       actions: [],
       actionHash: 0,
+      repeatQueue: false,
       patrolStartIndex: null,
       activePath: null,
       flyingLoiterTargetX: null,

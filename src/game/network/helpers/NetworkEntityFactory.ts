@@ -303,6 +303,7 @@ function createUnitFromNetwork(
       mass: readNetworkUnitMass(u, blueprintMass),
       actions,
       actionHash: computeUnitActionHash(actions),
+      repeatQueue: u !== null && u.repeatQueue === true,
       patrolStartIndex: null,
       activePath: null,
       flyingLoiterTargetX: null,

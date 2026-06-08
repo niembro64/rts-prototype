@@ -48,6 +48,7 @@ export function createNetworkUnitSnapshot(): NetworkUnitSnapshot {
     orientation: null,
     angularVelocity3: null,
     fireEnabled: null,
+    repeatQueue: null,
     isCommander: null,
     buildTargetId: null,
     buildTargetIdPresent: false,
@@ -130,6 +131,18 @@ export function applyNetworkUnitCombatMode(
 ): void {
   if (!entity.combat) return;
   entity.combat.fireEnabled = src.fireEnabled !== false;
+}
+
+export function applyNetworkUnitCommandState(
+  unit: Unit,
+  src: NetworkUnitSnapshot,
+  isFull: boolean,
+): void {
+  if (src.repeatQueue !== null && src.repeatQueue !== undefined) {
+    unit.repeatQueue = src.repeatQueue === true;
+  } else if (isFull) {
+    unit.repeatQueue = false;
+  }
 }
 
 function finiteOr(value: unknown, fallback: number): number {
@@ -385,6 +398,7 @@ export function copyNetworkUnitSnapshotInto(
   }
   dst.angularVelocity3 = copyVec3OptionalInto(src.angularVelocity3, dst.angularVelocity3);
   dst.fireEnabled = src.fireEnabled;
+  dst.repeatQueue = src.repeatQueue ?? null;
   dst.isCommander = src.isCommander;
   dst.buildTargetId = src.buildTargetId;
   dst.buildTargetIdPresent = src.buildTargetIdPresent;

@@ -102,6 +102,25 @@ export class InputSelectedCommands {
     });
   }
 
+  setRepeatQueue(): void {
+    const selectedUnits = this.source.getSelectedUnits();
+    const entityIds: EntityId[] = [];
+    let allEnabled = true;
+    for (let i = 0; i < selectedUnits.length; i++) {
+      const unit = selectedUnits[i].unit;
+      if (unit === null) continue;
+      entityIds.push(selectedUnits[i].id);
+      if (unit.repeatQueue !== true) allEnabled = false;
+    }
+    if (entityIds.length === 0) return;
+    this.commandQueue.enqueue({
+      type: 'setRepeatQueue',
+      tick: this.getTick(),
+      entityIds,
+      enabled: !allEnabled,
+    });
+  }
+
   setFireEnabled(): void {
     const selectedUnits = this.source.getSelectedUnits();
     const selectedStatic = this.source.getSelectedBuildings();

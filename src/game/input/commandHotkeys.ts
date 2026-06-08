@@ -4,6 +4,7 @@ export type CommandHotkeyId =
   | 'waypoint.patrol'
   | 'command.stop'
   | 'command.wait'
+  | 'command.repeat'
   | 'command.skipCurrent'
   | 'command.undoQueue'
   | 'command.clearQueue'
@@ -83,6 +84,7 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'waypoint.patrol',
   'command.stop',
   'command.wait',
+  'command.repeat',
   'command.skipCurrent',
   'command.undoQueue',
   'command.clearQueue',
@@ -146,6 +148,7 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'waypoint.patrol': 'Waypoint: Patrol',
   'command.stop': 'Stop',
   'command.wait': 'Wait',
+  'command.repeat': 'Repeat Orders',
   'command.skipCurrent': 'Skip Current Order',
   'command.undoQueue': 'Cancel Last Order',
   'command.clearQueue': 'Clear Orders',
@@ -224,6 +227,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
       key('W', 'w', { shift: 'any' }),
       key('Ctrl+Shift+W', 'w', { ctrl: true, shift: true }),
     ],
+    'command.repeat': [key('Alt+R', 'r', { alt: true })],
     'command.skipCurrent': [key('N', 'n', { shift: 'any' })],
     'command.undoQueue': [key('U', 'u', { shift: 'any' })],
     'command.clearQueue': [key('X', 'x', { shift: 'any' })],
@@ -282,6 +286,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
       code('Y', 'KeyY', { shift: 'any' }),
       code('Ctrl+Shift+Y', 'KeyY', { ctrl: true, shift: true }),
     ],
+    'command.repeat': [code('Alt+R', 'KeyR', { alt: true })],
     'command.skipCurrent': [code('N', 'KeyN', { shift: 'any' })],
     'command.undoQueue': [code('Ctrl+N', 'KeyN', { ctrl: true })],
     'command.clearQueue': [code('Ctrl+Shift+N', 'KeyN', { ctrl: true, shift: true })],
@@ -355,6 +360,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
       code('W', 'KeyW', { shift: 'any' }),
       code('Ctrl+Shift+W', 'KeyW', { ctrl: true, shift: true }),
     ],
+    'command.repeat': [code('Alt+R', 'KeyR', { alt: true })],
     'command.skipCurrent': [code('N', 'KeyN', { shift: 'any' })],
     'command.undoQueue': [code('Ctrl+N', 'KeyN', { ctrl: true })],
     'command.clearQueue': [code('Ctrl+Shift+N', 'KeyN', { ctrl: true, shift: true })],

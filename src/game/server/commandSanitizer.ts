@@ -19,6 +19,7 @@ import type {
   StopFactoryProductionCommand,
   SetFireEnabledCommand,
   SetBuildingActiveCommand,
+  SetRepeatQueueCommand,
   SelfDestructCommand,
   SetTowerTargetCommand,
   SetFactoryGuardCommand,
@@ -66,6 +67,8 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
     case 'removeLastQueuedOrder':
     case 'skipCurrentOrder':
       return sanitizeUnitListCommand(command, tick);
+    case 'setRepeatQueue':
+      return sanitizeSetRepeatQueueCommand(command, tick);
     case 'wait':
       return sanitizeWaitCommand(command, tick);
     case 'setFireEnabled':
@@ -305,6 +308,16 @@ function sanitizeSetBuildingActiveCommand(
   return entityIds === null || typeof command.open !== 'boolean'
     ? null
     : { ...command, tick, entityIds, open: command.open };
+}
+
+function sanitizeSetRepeatQueueCommand(
+  command: SetRepeatQueueCommand,
+  tick: number,
+): SetRepeatQueueCommand | null {
+  const entityIds = sanitizeEntityIdArray(command.entityIds);
+  return entityIds === null || typeof command.enabled !== 'boolean'
+    ? null
+    : { type: 'setRepeatQueue', tick, entityIds, enabled: command.enabled };
 }
 
 function sanitizeSelfDestructCommand(

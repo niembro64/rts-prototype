@@ -19,6 +19,7 @@ import {
 } from './helpers';
 import {
   applyNetworkUnitCombatMode,
+  applyNetworkUnitCommandState,
   applyNetworkUnitActions,
   applyNetworkUnitStaticFields,
 } from './unitSnapshotFields';
@@ -76,6 +77,7 @@ export function snapClientNonVisualState(
 
     if (isFull || cf! & ENTITY_CHANGED_ACTIONS) {
       applyNetworkUnitActions(entity.unit, su.actions);
+      applyNetworkUnitCommandState(entity.unit, su, isFull);
     }
 
     applyNetworkTurretNonVisualState(entity, su.turrets);

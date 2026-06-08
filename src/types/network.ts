@@ -869,6 +869,11 @@ export type NetworkServerSnapshotEntity = {
      *  velocity, never re-derives server-side forces). */
     angularVelocity3: Vec3 | null;
     fireEnabled: boolean | null;
+    /** Unit repeat-queue state. Present with action/private-command
+     *  detail rows when enabled, and on deltas that explicitly turn it
+     *  off. Omitted/null means "unchanged" for deltas and false for full
+     *  records. */
+    repeatQueue?: boolean | null;
     isCommander: boolean | null;
     buildTargetId: number | null;
     buildTargetIdPresent: boolean;

@@ -213,6 +213,10 @@ export type Unit = {
   maxHp: number;
   actions: UnitAction[];
   actionHash: number;
+  /** BAR-style repeat command state. When enabled, completed queued
+   *  player intents rotate to the back of the action queue so a multi-order
+   *  chain loops until the player stops or clears it. */
+  repeatQueue: boolean;
   patrolStartIndex: number | null;
   /** Current route resolution for actions[0]. This is sim-only state:
    *  actions are durable player/factory waypoints, while activePath

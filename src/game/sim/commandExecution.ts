@@ -22,6 +22,7 @@ import type {
   SkipCurrentOrderCommand,
   SetFireEnabledCommand,
   SetBuildingActiveCommand,
+  SetRepeatQueueCommand,
   SelfDestructCommand,
   SetTowerTargetCommand,
   SetFactoryGuardCommand,
@@ -127,6 +128,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'skipCurrentOrder':
       executeSkipCurrentOrderCommand(ctx, command);
+      break;
+    case 'setRepeatQueue':
+      executeSetRepeatQueueCommand(ctx, command);
       break;
     case 'wait':
       executeWaitCommand(ctx, command);
@@ -413,6 +417,18 @@ function executeSkipCurrentOrderCommand(ctx: CommandContext, command: SkipCurren
     const removedActions = spliceUnitActions(unit, 0, activeIntentEnd + 1);
     clearBuilderTargetIfRemoved(entity, removedActions);
     refreshPatrolStartIndex(unit);
+    ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+  }
+}
+
+function executeSetRepeatQueueCommand(ctx: CommandContext, command: SetRepeatQueueCommand): void {
+  const enabled = command.enabled === true;
+  for (let i = 0; i < command.entityIds.length; i++) {
+    const entity = ctx.world.getEntity(command.entityIds[i]);
+    const unit = entity !== undefined ? entity.unit : null;
+    if (entity === undefined || unit === null) continue;
+    if (unit.repeatQueue === enabled) continue;
+    unit.repeatQueue = enabled;
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
   }
 }

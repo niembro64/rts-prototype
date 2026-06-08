@@ -63,6 +63,7 @@ export type SelectionInfo = {
    *  tower's lock-on target. Highlights the Set Target button. */
   isTowerTargetMode: boolean;
   isWaiting: boolean;
+  isRepeatQueue: boolean;
   hasQueuedOrders: boolean;
   hasFactory: boolean;
   factoryId?: number;
@@ -91,6 +92,7 @@ export type SelectionActions = {
   skipCurrentOrder: () => void;
   clearQueuedOrders: () => void;
   removeLastQueuedOrder: () => void;
+  toggleRepeatQueue: () => void;
   toggleSelectedWait: () => void;
   toggleSelectedFire: () => void;
   /** ON/OFF for producer buildings in the selection. */

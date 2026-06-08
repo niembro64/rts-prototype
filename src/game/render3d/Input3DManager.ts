@@ -237,6 +237,7 @@ export class Input3DManager {
       removeLastQueuedOrder: () => this.removeLastQueuedOrder(),
       clearQueuedOrders: () => this.clearQueuedOrders(),
       toggleSelectedWait: (queue, queueFront) => this.toggleSelectedWait(queue, queueFront),
+      toggleRepeatQueue: () => this.toggleRepeatQueue(),
       toggleSelectedFire: () => this.toggleSelectedFire(),
       toggleBuildingActive: () => this.toggleBuildingActive(),
       selfDestructSelected: () => this.selfDestructSelected(),
@@ -462,6 +463,10 @@ export class Input3DManager {
 
   toggleSelectedWait(queue = false, queueFront = false): void {
     this.selectedCommands.wait(queue, queueFront);
+  }
+
+  toggleRepeatQueue(): void {
+    this.selectedCommands.setRepeatQueue();
   }
 
   togglePingMode(): void {

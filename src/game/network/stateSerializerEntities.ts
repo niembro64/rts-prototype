@@ -1102,6 +1102,7 @@ export function serializeEntitySnapshot(
       ne.unit = u;
       u.hp = null;
       u.velocity = null;
+      u.repeatQueue = null;
 
       if (isFull) {
         writeNetworkUnitStaticFields(
@@ -1182,6 +1183,11 @@ export function serializeEntitySnapshot(
       clearNetworkUnitActions(u);
       if (canSeePrivateDetails && (isFull || (changedFields! & ENTITY_CHANGED_ACTIONS))) {
         writeNetworkUnitActions(u, entity.unit, poolEntry.actions, canReferenceEntityId);
+        u.repeatQueue = entity.unit.repeatQueue === true
+          ? true
+          : isFull
+            ? null
+            : false;
       }
 
       u.turrets = null;

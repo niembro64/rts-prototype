@@ -57,12 +57,12 @@ selected-unit current-order/queue-depth feedback. Implement the missing queue
 semantics with server authorization and matching visual feedback.
 
 Issue: behavior/state toggles are incomplete. BAR exposes cloak/want-cloak,
-gather wait, on/off, stateful on/off, repeat, stateful repeat, stance/fire
-state, positioning/move state, trajectory toggle, stop, wait, factory guard,
-and related stateful command buttons. rts-prototype currently has only a simple
-fire enabled toggle, producer-building on/off, wait, stop, self-destruct, and
-basic factory guard, with selection-detail indicators for fire, wait, and
-producer on/off state.
+gather wait, on/off, stateful on/off, stance/fire state, positioning/move
+state, trajectory toggle, stop, wait, factory guard, and related stateful
+command buttons. rts-prototype currently has only a simple fire enabled
+toggle, producer-building on/off, authoritative unit repeat-queue, wait,
+stop, self-destruct, and basic factory guard, with selection-detail indicators
+for fire, repeat, wait, and producer on/off state.
 Implement the missing states in simulation, snapshots, command authorization,
 selection UI, hotkeys, and visible state indicators.
 

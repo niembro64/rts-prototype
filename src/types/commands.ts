@@ -12,6 +12,7 @@ export type CommandType =
   | 'clearQueuedOrders'
   | 'removeLastQueuedOrder'
   | 'skipCurrentOrder'
+  | 'setRepeatQueue'
   | 'clearSelection'
   | 'ping'
   | 'scan'
@@ -100,6 +101,12 @@ export type RemoveLastQueuedOrderCommand = BaseCommand & {
 export type SkipCurrentOrderCommand = BaseCommand & {
   type: 'skipCurrentOrder';
   entityIds: EntityId[];
+};
+
+export type SetRepeatQueueCommand = BaseCommand & {
+  type: 'setRepeatQueue';
+  entityIds: EntityId[];
+  enabled: boolean;
 };
 
 export type ClearSelectionCommand = BaseCommand & {
@@ -370,6 +377,7 @@ export type Command =
   | ClearQueuedOrdersCommand
   | RemoveLastQueuedOrderCommand
   | SkipCurrentOrderCommand
+  | SetRepeatQueueCommand
   | ClearSelectionCommand
   | PingCommand
   | ScanCommand

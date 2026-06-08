@@ -102,6 +102,7 @@ export function useGameCanvasSceneUi({
     hasTowerTargetActive: false,
     isTowerTargetMode: false,
     isWaiting: false,
+    isRepeatQueue: false,
     hasQueuedOrders: false,
     hasFactory: false,
     factoryId: undefined,
@@ -205,6 +206,9 @@ export function useGameCanvasSceneUi({
     },
     removeLastQueuedOrder: () => {
       getActiveBattleScene()?.removeLastQueuedOrder();
+    },
+    toggleRepeatQueue: () => {
+      getActiveBattleScene()?.toggleRepeatQueue();
     },
     toggleSelectedWait: () => {
       getActiveBattleScene()?.toggleSelectedWait();
