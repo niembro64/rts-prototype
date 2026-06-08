@@ -30,7 +30,7 @@ import {
   type Input3DAreaDragKind,
   type Input3DAreaDragState,
 } from './Input3DAreaDragState';
-import { projectileWeaponCanReachGroundPoint } from './ProjectileBallisticPreview';
+import { resolveProjectileSelectionGroundReach } from './ProjectileBallisticPreview';
 
 const REPAIR_AREA_RADIUS = 220;
 const RECLAIM_AREA_RADIUS = 220;
@@ -792,29 +792,15 @@ export class Input3DModeClickController {
   ): Input3DAreaDragState['ballisticReach'] {
     if (kind !== 'attackArea' && kind !== 'attackGround') return null;
     const selectedUnits = this.config.getEntitySource().getSelectedUnits();
-    if (selectedUnits.length === 0) return null;
     const { width, height } = this.getMapSampleBounds();
-    const targetZ = target.z ?? 0;
-    let sawProjectileWeapon = false;
-    for (let unitIndex = 0; unitIndex < selectedUnits.length; unitIndex++) {
-      const entity = selectedUnits[unitIndex];
-      const turrets = entity.combat?.turrets ?? [];
-      for (let turretIndex = 0; turretIndex < turrets.length; turretIndex++) {
-        const canReach = projectileWeaponCanReachGroundPoint(
-          entity,
-          turrets[turretIndex],
-          target.x,
-          target.y,
-          targetZ,
-          width,
-          height,
-        );
-        if (canReach === null) continue;
-        sawProjectileWeapon = true;
-        if (canReach) return 'reachable';
-      }
-    }
-    return sawProjectileWeapon ? 'blocked' : null;
+    return resolveProjectileSelectionGroundReach(
+      selectedUnits,
+      target.x,
+      target.y,
+      target.z ?? 0,
+      width,
+      height,
+    );
   }
 
   private handlePingClick(e: MouseEvent): void {

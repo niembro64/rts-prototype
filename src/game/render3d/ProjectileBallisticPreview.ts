@@ -33,6 +33,48 @@ const _intercept: KinematicInterceptSolution = {
 };
 const _entityPosition = { x: 0, y: 0, z: 0 };
 
+export type ProjectileGroundReach = 'reachable' | 'blocked' | null;
+
+export function resolveProjectileSelectionGroundReach(
+  entities: readonly Entity[],
+  targetX: number,
+  targetY: number,
+  targetZ: number,
+  mapWidth: number,
+  mapHeight: number,
+): ProjectileGroundReach {
+  if (entities.length === 0) return null;
+  if (
+    !Number.isFinite(mapWidth) ||
+    !Number.isFinite(mapHeight) ||
+    mapWidth <= 0 ||
+    mapHeight <= 0
+  ) {
+    return null;
+  }
+
+  let sawProjectileWeapon = false;
+  for (let entityIndex = 0; entityIndex < entities.length; entityIndex++) {
+    const entity = entities[entityIndex];
+    const turrets = entity.combat?.turrets ?? [];
+    for (let turretIndex = 0; turretIndex < turrets.length; turretIndex++) {
+      const canReach = projectileWeaponCanReachGroundPoint(
+        entity,
+        turrets[turretIndex],
+        targetX,
+        targetY,
+        targetZ,
+        mapWidth,
+        mapHeight,
+      );
+      if (canReach === null) continue;
+      sawProjectileWeapon = true;
+      if (canReach) return 'reachable';
+    }
+  }
+  return sawProjectileWeapon ? 'blocked' : null;
+}
+
 export function resolveProjectileWeaponMount(
   entity: Entity,
   weapon: Turret,

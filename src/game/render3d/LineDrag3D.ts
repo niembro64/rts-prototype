@@ -37,6 +37,7 @@ const LINE_LIFT = WAYPOINT_GROUND_LIFT;
 const DOT_LIFT = WAYPOINT_GROUND_LIFT;
 const LEGACY_LINE_Y = WAYPOINT_GROUND_LIFT;
 const LEGACY_DOT_Y = WAYPOINT_GROUND_LIFT;
+const BALLISTIC_BLOCKED_COLOR = 0xff3434;
 
 // Visual sizing. Ribbon width is constant in world units (it's a 3D scene —
 // dividing by camera zoom the way the 2D overlay does would fight the
@@ -49,6 +50,7 @@ type DragState = {
   active: boolean;
   points: ReadonlyArray<{ x: number; y: number; z?: number }>;
   targets: ReadonlyArray<{ x: number; y: number; z?: number }>;
+  targetBallisticReach?: ReadonlyArray<'reachable' | 'blocked' | null>;
   mode: WaypointType;
 };
 
@@ -78,6 +80,7 @@ export class LineDrag3D {
 
   // One fill + one line material per mode; lazily built, disposed on destroy.
   private fillMats = new Map<WaypointType, THREE.MeshBasicMaterial>();
+  private blockedMat: THREE.MeshBasicMaterial;
   private ringMat: THREE.MeshBasicMaterial;
 
   constructor(parentWorld: THREE.Group) {
@@ -92,6 +95,12 @@ export class LineDrag3D {
       transparent: true,
       opacity: COLORS.effects.lineDrag.ring.opacity,
       side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    this.blockedMat = new THREE.MeshBasicMaterial({
+      color: BALLISTIC_BLOCKED_COLOR,
+      transparent: true,
+      opacity: COLORS.effects.lineDrag.fillOpacity,
       depthWrite: false,
     });
   }
@@ -144,11 +153,13 @@ export class LineDrag3D {
 
     // --- Target dots + white outline ring ---
     const targets = state.targets;
+    const targetReach = state.targetBallisticReach ?? [];
     for (let i = 0; i < targets.length; i++) {
       const t = targets[i];
+      const blocked = targetReach[i] === 'blocked';
       const dotY = t.z !== undefined ? t.z + DOT_LIFT : LEGACY_DOT_Y;
       const dot = this.acquireDot(i);
-      dot.material = fill;
+      dot.material = blocked ? this.blockedMat : fill;
       dot.position.set(t.x, dotY, t.y);
       dot.scale.setScalar(DOT_RADIUS);
 
@@ -237,6 +248,7 @@ export class LineDrag3D {
     this.ringGeom.dispose();
     for (const mat of this.fillMats.values()) mat.dispose();
     this.fillMats.clear();
+    this.blockedMat.dispose();
     this.ringMat.dispose();
     this.root.parent?.remove(this.root);
   }

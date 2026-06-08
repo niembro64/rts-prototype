@@ -15,6 +15,10 @@ import type { CommandCursorKind } from '../input/CommandCursors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { isWaterAt } from '../sim/Terrain';
 import type { Input3DPicker } from './Input3DPicker';
+import {
+  resolveProjectileSelectionGroundReach,
+  type ProjectileGroundReach,
+} from './ProjectileBallisticPreview';
 
 type RightDragEntitySource = {
   getUnits: () => Entity[];
@@ -43,6 +47,7 @@ export type Input3DLineDragState = {
   active: boolean;
   points: ReadonlyArray<{ x: number; y: number; z?: number }>;
   targets: ReadonlyArray<{ x: number; y: number; z?: number }>;
+  targetBallisticReach: ReadonlyArray<ProjectileGroundReach>;
   mode: WaypointType;
 };
 
@@ -52,6 +57,7 @@ export class Input3DRightDragController {
   private readonly selectedFactoriesScratch: Entity[] = [];
   private preserveFormationDrag = false;
   private readonly formationPreviewTargets: { x: number; y: number; z?: number }[] = [];
+  private readonly targetBallisticReach: ProjectileGroundReach[] = [];
 
   constructor(private readonly config: Input3DRightDragControllerConfig) {}
 
@@ -274,10 +280,13 @@ export class Input3DRightDragController {
 
   getLineDragState(): Input3DLineDragState {
     const useFormationTargets = this.shouldUseFormationPreviewTargets();
+    const targets = useFormationTargets ? this.formationPreviewTargets : this.linePath.targets;
+    this.updateTargetBallisticReach(targets);
     return {
       active: this.rightDown,
       points: this.linePath.points,
-      targets: useFormationTargets ? this.formationPreviewTargets : this.linePath.targets,
+      targets,
+      targetBallisticReach: this.targetBallisticReach,
       mode: this.config.getWaypointMode(),
     };
   }
@@ -317,6 +326,30 @@ export class Input3DRightDragController {
     }
   }
 
+  private updateTargetBallisticReach(
+    targets: ReadonlyArray<{ x: number; y: number; z?: number }>,
+  ): void {
+    const out = this.targetBallisticReach;
+    out.length = 0;
+    if (!this.rightDown || this.config.getWaypointMode() !== 'fight' || targets.length === 0) {
+      return;
+    }
+    const selectedUnits = this.source().getSelectedUnits();
+    if (selectedUnits.length === 0) return;
+    const { width, height } = this.config.getMapSampleBounds();
+    for (let i = 0; i < targets.length; i++) {
+      const target = targets[i];
+      out.push(resolveProjectileSelectionGroundReach(
+        selectedUnits,
+        target.x,
+        target.y,
+        target.z ?? 0,
+        width,
+        height,
+      ));
+    }
+  }
+
   private shouldUseFormationPreviewTargets(): boolean {
     return this.preserveFormationDrag && shouldCollapseLinePathToSingleMove(this.linePath.points);
   }
@@ -325,6 +358,7 @@ export class Input3DRightDragController {
     this.linePath.reset();
     this.preserveFormationDrag = false;
     this.formationPreviewTargets.length = 0;
+    this.targetBallisticReach.length = 0;
   }
 
   private getSelectedFactories(): Entity[] {

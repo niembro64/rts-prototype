@@ -107,9 +107,8 @@ commands should not be added as dead UI; their underlying authoritative
 simulation, client prediction, snapshots, and render feedback must exist.
 
 Issue: BAR parity must be extended through the 3D/physics-first design, not
-implemented as flat 2D shortcuts. Attack line previews still need ballistic
-trajectory coverage; formations need mass, acceleration, collision, and
-terrain-aware spacing; transport/load/unload,
+implemented as flat 2D shortcuts. Formations need mass, acceleration,
+collision, and terrain-aware spacing; transport/load/unload,
 resurrection, capture, and manual launch/special-fire abilities beyond
 commander DGun need physical presentation and authoritative physics
 interactions. Document any intentional departure from BAR in
