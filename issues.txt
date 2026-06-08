@@ -55,7 +55,9 @@ snapping, occupancy, collision footprint, and support surface all use the
 rotated grid footprint; Alt+left-drag build border placement and Ctrl/Cmd
 left-drag build grid placement use the same validation path as single, line,
 and mex-area builds, have 3D rectangle previews, and split multi-placement
-orders across selected eligible builders.
+orders across selected eligible builders. Buildability overlays share one
+shader path across terrain and metal deposit crowns, so metal build cells stay
+visible on top of deposits.
 
 Issue: queue editing and command insertion are incomplete. BAR supports
 commandinsert/prepend-between and queued variants of several orders.

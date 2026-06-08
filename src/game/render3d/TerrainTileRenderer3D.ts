@@ -71,6 +71,11 @@ import {
 import { WATER_SURFACE_LINEAR_COLOR } from './WaterColor3D';
 import { getSimWasm } from '../sim-wasm/init';
 import { clamp01 } from '../math';
+import {
+  assignBuildGridOverlayUniforms,
+  buildGridOverlayFragment,
+  type BuildGridOverlayUniforms,
+} from './BuildGridOverlayShader';
 
 const CUBE_FLOOR_Y = TILE_FLOOR_Y;
 const TERRAIN_GEOMETRY_REBUILD_SETTLE_FRAMES = 3;
@@ -386,11 +391,7 @@ export class TerrainTileRenderer3D {
       shader.uniforms.uTerrainHorizonWaterColor = this.terrainHorizonWaterColorUniform;
       shader.uniforms.uTerrainHorizonShade = this.terrainHorizonShadeUniform;
       shader.uniforms.uElevationMapEnabled = this.elevationMapEnabledUniform;
-      shader.uniforms.uBuildGridMap = this.buildGridMapUniform;
-      shader.uniforms.uBuildGridMapSize = this.buildGridMapSizeUniform;
-      shader.uniforms.uBuildGridWorldSize = this.buildGridWorldSizeUniform;
-      shader.uniforms.uBuildGridCellSize = this.buildGridCellSizeUniform;
-      shader.uniforms.uBuildGridEnabled = this.buildGridEnabledUniform;
+      assignBuildGridOverlayUniforms(shader, this.getBuildGridOverlayUniforms());
       shader.uniforms.uGroundDetailTexture = this.groundDetailTextureUniform;
       shader.uniforms.uGroundDetailTileWorldSize = this.groundDetailTileWorldSizeUniform;
       shader.uniforms.uGroundDetailEnabled = this.groundDetailEnabledUniform;
@@ -588,21 +589,7 @@ export class TerrainTileRenderer3D {
             '  elevationRgb = mix(elevationRgb * 0.72, elevationRgb, contour);',
             '  diffuseColor.rgb = mix(diffuseColor.rgb, elevationRgb, 0.68);',
             '}',
-            'if (uBuildGridEnabled > 0.0 &&',
-            '    vTerrainWorldPos.x >= 0.0 && vTerrainWorldPos.z >= 0.0 &&',
-            '    vTerrainWorldPos.x < uBuildGridWorldSize.x &&',
-            '    vTerrainWorldPos.z < uBuildGridWorldSize.y) {',
-            '  vec2 buildGridCoord = vTerrainWorldPos.xz / uBuildGridCellSize;',
-            '  vec2 buildGridCell = floor(buildGridCoord);',
-            '  vec2 buildUv = (buildGridCell + vec2(0.5)) / uBuildGridMapSize;',
-            '  vec4 buildColor = texture2D(uBuildGridMap, clamp(buildUv, vec2(0.0), vec2(1.0)));',
-            '  vec2 buildCellFrac = abs(fract(buildGridCoord) - vec2(0.5));',
-            '  float buildBorder = step(0.455, max(buildCellFrac.x, buildCellFrac.y));',
-            '  vec3 buildBorderColor = min(buildColor.rgb * 3.25 + vec3(0.02), vec3(1.0));',
-            '  vec3 buildRgb = mix(buildColor.rgb, buildBorderColor, buildBorder);',
-            '  float buildAlpha = buildColor.a * mix(0.42, 0.95, buildBorder);',
-            '  diffuseColor.rgb = mix(diffuseColor.rgb, buildRgb, buildAlpha);',
-            '}',
+            buildGridOverlayFragment('vTerrainWorldPos'),
           ].join('\n'),
         )
         .replace(
@@ -1459,6 +1446,16 @@ export class TerrainTileRenderer3D {
 
   getMesh(): THREE.Mesh {
     return this.terrainMesh;
+  }
+
+  getBuildGridOverlayUniforms(): BuildGridOverlayUniforms {
+    return {
+      map: this.buildGridMapUniform,
+      mapSize: this.buildGridMapSizeUniform,
+      worldSize: this.buildGridWorldSizeUniform,
+      cellSize: this.buildGridCellSizeUniform,
+      enabled: this.buildGridEnabledUniform,
+    };
   }
 
   destroy(): void {

@@ -112,6 +112,7 @@ export function bootstrapRtsScene3DRenderers(
   const metalDepositRenderer = new MetalDepositRenderer3D(
     threeApp.world,
     metalDeposits,
+    terrainTileRenderer.getBuildGridOverlayUniforms(),
   );
   const environmentPropRenderer = new EnvironmentPropRenderer3D(
     threeApp.world,

@@ -15,6 +15,11 @@ import {
   METAL_DEPOSIT_ROCK_TEXTURE_TILE_WORLD_SIZE,
 } from '../../config';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
+import {
+  assignBuildGridOverlayUniforms,
+  buildGridOverlayFragment,
+  type BuildGridOverlayUniforms,
+} from './BuildGridOverlayShader';
 import { getRockDetailTexture } from './RockDetailTexture';
 
 const DEPOSIT_MESH_DETAIL = {
@@ -37,6 +42,7 @@ export class MetalDepositRenderer3D {
   constructor(
     parentWorld: THREE.Group,
     deposits: ReadonlyArray<MetalDeposit>,
+    private readonly buildGridOverlayUniforms: BuildGridOverlayUniforms,
   ) {
     this.clusters = makeMetalDepositVisualClusters(deposits);
     this.group = new THREE.Group();
@@ -82,7 +88,7 @@ export class MetalDepositRenderer3D {
   private getMaterial(kind: 'lambert' | 'standard'): THREE.Material {
     let material = this.materials.get(kind);
     if (!material) {
-      material = makeDepositMaterial(kind);
+      material = makeDepositMaterial(kind, this.buildGridOverlayUniforms);
       this.materials.set(kind, material);
     }
     return material;
@@ -111,7 +117,10 @@ function seededNoise(seed: number): number {
   return x - Math.floor(x);
 }
 
-function makeDepositMaterial(kind: 'lambert' | 'standard'): THREE.Material {
+function makeDepositMaterial(
+  kind: 'lambert' | 'standard',
+  buildGridOverlayUniforms: BuildGridOverlayUniforms,
+): THREE.Material {
   const rockMap = METAL_DEPOSIT_ROCK_TEXTURE_BLEND > 0 ? getRockDetailTexture() : null;
   if (kind === 'standard') {
     const material = new THREE.MeshStandardMaterial({
@@ -122,7 +131,7 @@ function makeDepositMaterial(kind: 'lambert' | 'standard'): THREE.Material {
       metalness: COLORS.environment.metalDeposit.standardMaterial.metalness,
       roughness: COLORS.environment.metalDeposit.standardMaterial.roughness,
     });
-    installDepositTextureBlendShader(material);
+    installDepositTextureBlendShader(material, buildGridOverlayUniforms);
     return material;
   }
   const material = new THREE.MeshLambertMaterial({
@@ -131,20 +140,46 @@ function makeDepositMaterial(kind: 'lambert' | 'standard'): THREE.Material {
     vertexColors: true,
     flatShading: COLORS.environment.metalDeposit.lambertMaterial.flatShading,
   });
-  installDepositTextureBlendShader(material);
+  installDepositTextureBlendShader(material, buildGridOverlayUniforms);
   return material;
 }
 
 function installDepositTextureBlendShader(
   material: THREE.MeshLambertMaterial | THREE.MeshStandardMaterial,
+  buildGridOverlayUniforms: BuildGridOverlayUniforms,
 ): void {
   material.onBeforeCompile = (shader) => {
+    assignBuildGridOverlayUniforms(shader, buildGridOverlayUniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        [
+          'varying vec3 vBuildGridOverlayWorldPos;',
+          '#include <common>',
+        ].join('\n'),
+      )
+      .replace(
+        '#include <worldpos_vertex>',
+        [
+          '#include <worldpos_vertex>',
+          'vec4 buildGridOverlayWorldPosition = vec4(transformed, 1.0);',
+          '#ifdef USE_BATCHING',
+          '  buildGridOverlayWorldPosition = batchingMatrix * buildGridOverlayWorldPosition;',
+          '#endif',
+          '#ifdef USE_INSTANCING',
+          '  buildGridOverlayWorldPosition = instanceMatrix * buildGridOverlayWorldPosition;',
+          '#endif',
+          'buildGridOverlayWorldPosition = modelMatrix * buildGridOverlayWorldPosition;',
+          'vBuildGridOverlayWorldPos = buildGridOverlayWorldPosition.xyz;',
+        ].join('\n'),
+      );
     shader.uniforms.uMetalDepositTextureBlend = { value: METAL_DEPOSIT_ROCK_TEXTURE_BLEND };
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
         [
           'uniform float uMetalDepositTextureBlend;',
+          'varying vec3 vBuildGridOverlayWorldPos;',
           '#include <common>',
         ].join('\n'),
       )
@@ -160,10 +195,11 @@ function installDepositTextureBlendShader(
           '  diffuseColor.rgb *= mix(vec3(1.0), sampledDiffuseColor.rgb, textureBlend);',
           '  diffuseColor.a *= sampledDiffuseColor.a;',
           '#endif',
+          buildGridOverlayFragment('vBuildGridOverlayWorldPos'),
         ].join('\n'),
       );
   };
-  material.customProgramCacheKey = () => 'metalDepositTextureBlend';
+  material.customProgramCacheKey = () => 'metalDepositTextureBlend-buildGridOverlay';
 }
 
 type DepositOutlinePoint = { x: number; z: number };
