@@ -22,11 +22,6 @@ import { halfLifeBlend } from '../network/driftEma';
 import { lerp, lerpAngle } from '../math';
 import type { Entity, EntityId } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
-import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
-import {
-  getMetalDepositFootprintCoverage,
-  type MetalDepositFootprintCell,
-} from '../sim/metalDeposits';
 import {
   writeSolarPetalMatrix,
   type SolarPetalAnimation,
@@ -50,6 +45,7 @@ import {
   type ResourcePylonBuildingEntry,
   type ResourcePylonBuildingKind,
 } from './BuildingAnimationLists3D';
+import { BuildingResourcePylonSources3D } from './BuildingResourcePylonSources3D';
 
 // Open/close pose transitions are discrete local state changes, not
 // snapshot rotation fields. They intentionally keep fixed controller
@@ -114,7 +110,7 @@ const RESOURCE_PYLON_IDLE_EPSILON = 0.001;
 export class BuildingAnimationController3D {
   private readonly clientViewState: ClientViewState;
   private readonly constructionVisuals: ConstructionVisualController3D;
-  private readonly metalDeposits: readonly MetalDeposit[];
+  private readonly pylonSources: BuildingResourcePylonSources3D;
   private solarBuildings: AnimatedBuildingEntry[] = [];
   private solarBuildingIndexById = new Map<EntityId, number>();
   private activeSolarBuildings: AnimatedBuildingEntry[] = [];
@@ -183,10 +179,6 @@ export class BuildingAnimationController3D {
   private converterMetalRingSpeeds = new Map<EntityId, number>();
   private converterAccentRingSpeeds = new Map<EntityId, number>();
   private extractorAppliedCloseAmounts = new Map<EntityId, number>();
-  private extractorDepositSourceCache = new Map<EntityId, THREE.Vector3>();
-  private extractorCoverageCells: MetalDepositFootprintCell[] = [];
-  private _pylonSourceWorld = new THREE.Vector3();
-  private _pylonSourceDirection = new THREE.Vector3();
 
   constructor(
     clientViewState: ClientViewState,
@@ -195,7 +187,7 @@ export class BuildingAnimationController3D {
   ) {
     this.clientViewState = clientViewState;
     this.constructionVisuals = constructionVisuals;
-    this.metalDeposits = metalDeposits;
+    this.pylonSources = new BuildingResourcePylonSources3D(clientViewState, metalDeposits);
   }
 
   register(entity: Entity, mesh: EntityMesh): void {
@@ -286,7 +278,7 @@ export class BuildingAnimationController3D {
     this.extractorRotorSpeeds.delete(id);
     this.extractorCloseAmounts.delete(id);
     this.extractorRotorYaws.delete(id);
-    this.extractorDepositSourceCache.delete(id);
+    this.pylonSources.deleteExtractorDepositSource(id);
     this.extractorAppliedCloseAmounts.delete(id);
     this.windCloseAmounts.delete(id);
     this.windAppliedCloseAmounts.delete(id);
@@ -391,6 +383,7 @@ export class BuildingAnimationController3D {
     this.windVisualSpeed = null;
     this.windRotorPhase = 0;
     this.windAnimLastMs = 0;
+    this.pylonSources.clear();
   }
 
   private updateSolarAnimationQueue(entry: AnimatedBuildingEntry): void {
@@ -820,7 +813,7 @@ export class BuildingAnimationController3D {
     const signedRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_ENERGY);
     const targetRate = open ? resourcePylonRateFraction(signedRate, INV_SOLAR_BASE_PRODUCTION) : 0;
     applyResourcePylonDirection(pylon, signedRate);
-    const sourceWorld = this.writeGroundBelowPylonSourceWorld(pylon, mesh.group, entity);
+    const sourceWorld = this.pylonSources.writeGroundBelowPylonSourceWorld(pylon, mesh.group, entity);
     this.constructionVisuals.updateAmbientResourcePylon(
       pylon,
       entity,
@@ -855,7 +848,7 @@ export class BuildingAnimationController3D {
       rateAlpha,
       detailsReady,
       detailsReady,
-      this.writeWindPylonSourceWorld(pylon, mesh.group),
+      this.pylonSources.writeWindPylonSourceWorld(pylon, mesh.group),
     );
     return targetRate > RESOURCE_PYLON_IDLE_EPSILON || this.resourcePylonNeedsFrame(pylon);
   }
@@ -881,7 +874,7 @@ export class BuildingAnimationController3D {
       rateAlpha,
       detailsReady,
       detailsReady,
-      this.writeExtractorDepositSourceWorld(pylon, mesh.group, entity),
+      this.pylonSources.writeExtractorDepositSourceWorld(pylon, mesh.group, entity),
     );
     return targetRate > RESOURCE_PYLON_IDLE_EPSILON || this.resourcePylonNeedsFrame(pylon);
   }
@@ -1067,100 +1060,6 @@ export class BuildingAnimationController3D {
   private scaledWindTurbineHalfLife(baseHalfLife: number, multiplier: number): number {
     if (baseHalfLife <= 0 || multiplier <= 0) return 0;
     return baseHalfLife * multiplier;
-  }
-
-  private writeDirectionalPylonSourceWorld(
-    pylon: ResourcePylonRig,
-    group: THREE.Group,
-    direction: THREE.Vector3,
-  ): THREE.Vector3 {
-    group.updateWorldMatrix(true, false);
-    this._pylonSourceWorld
-      .copy(pylon.topLocal)
-      .applyMatrix4(group.matrixWorld)
-      .addScaledVector(direction, Math.max(1, pylon.flowRadius));
-    return this._pylonSourceWorld;
-  }
-
-  /** Lock-on spot directly beneath the pylon tip at ground level — a ray
-   *  pointing straight down. Used by the solar collector (and any pylon
-   *  that taps the ground under itself). */
-  private writeGroundBelowPylonSourceWorld(
-    pylon: ResourcePylonRig,
-    group: THREE.Group,
-    entity: Entity,
-  ): THREE.Vector3 {
-    group.updateWorldMatrix(true, false);
-    this._pylonSourceWorld
-      .copy(pylon.topLocal)
-      .applyMatrix4(group.matrixWorld);
-    this._pylonSourceWorld.y = entity.transform.z + 1;
-    return this._pylonSourceWorld;
-  }
-
-  private writeWindPylonSourceWorld(
-    pylon: ResourcePylonRig,
-    group: THREE.Group,
-  ): THREE.Vector3 | null {
-    const wind = this.clientViewState.getServerMeta()?.wind;
-    if (!wind) return null;
-    const len = Math.hypot(wind.x, wind.y);
-    if (len < 1e-6) return null;
-    // Aim the ray FORWARD (downwind, the way the turbine faces) rather
-    // than back upwind, so the energy cone streams off the front face.
-    this._pylonSourceDirection.set(wind.x / len, 0, wind.y / len);
-    return this.writeDirectionalPylonSourceWorld(pylon, group, this._pylonSourceDirection);
-  }
-
-  private writeExtractorDepositSourceWorld(
-    pylon: ResourcePylonRig,
-    group: THREE.Group,
-    entity: Entity,
-  ): THREE.Vector3 {
-    const source = this.getExtractorDepositSource(entity);
-    if (source) {
-      this._pylonSourceWorld.set(source.x, 0, source.z);
-    } else {
-      group.updateWorldMatrix(true, false);
-      this._pylonSourceWorld
-        .copy(pylon.topLocal)
-        .applyMatrix4(group.matrixWorld);
-    }
-    this._pylonSourceWorld.y = entity.transform.z + 1;
-    return this._pylonSourceWorld;
-  }
-
-  private getExtractorDepositSource(entity: Entity): THREE.Vector3 | null {
-    if (entity.buildingBlueprintId !== 'buildingExtractor') return null;
-    const cached = this.extractorDepositSourceCache.get(entity.id);
-    if (cached) return cached;
-    const cfg = getBuildingConfig('buildingExtractor');
-    const halfWidth = (cfg.gridWidth * BUILD_GRID_CELL_SIZE) / 2;
-    const halfHeight = (cfg.gridHeight * BUILD_GRID_CELL_SIZE) / 2;
-    const cells = this.extractorCoverageCells;
-    getMetalDepositFootprintCoverage(
-      this.metalDeposits,
-      entity.transform.x,
-      entity.transform.y,
-      halfWidth,
-      halfHeight,
-      BUILD_GRID_CELL_SIZE,
-      cells,
-    );
-    let x = 0;
-    let y = 0;
-    let count = 0;
-    for (let i = 0; i < cells.length; i++) {
-      const cell = cells[i];
-      if (!cell.covered) continue;
-      x += cell.x;
-      y += cell.y;
-      count++;
-    }
-    if (count === 0) return null;
-    const source = new THREE.Vector3(x / count, 0, y / count);
-    this.extractorDepositSourceCache.set(entity.id, source);
-    return source;
   }
 
   private updateWindTurbineRig(
