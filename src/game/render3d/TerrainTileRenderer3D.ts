@@ -11,6 +11,7 @@ import {
   getBuildGridDebug,
   getElevationMap,
   getMetalMap,
+  getPathingMap,
   getTriangleDebug,
 } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
@@ -90,6 +91,7 @@ const BUILD_GRID_COLOR_METAL = readRgbaTuple(
   'colorsConfig.world.terrain.buildGrid.metalRgba',
 );
 const BUILD_GRID_COLOR_TRANSPARENT = [0, 0, 0, 0] as const;
+const PATHING_SLOPE_BLOCK_NZ = 0.34;
 
 
 const NEUTRAL_COLOR = new THREE.Color(MAP_BG_COLOR);
@@ -790,9 +792,19 @@ export class TerrainTileRenderer3D {
     this.buildGridPixels[offset + 3] = color[3];
   }
 
-  private refreshBuildGridTexture(buildGridEnabled: boolean, metalMapEnabled: boolean): void {
-    const enabled = buildGridEnabled || metalMapEnabled;
-    const overlayMode = buildGridEnabled ? 'build' : metalMapEnabled ? 'metal' : 'off';
+  private refreshBuildGridTexture(
+    buildGridEnabled: boolean,
+    metalMapEnabled: boolean,
+    pathingMapEnabled: boolean,
+  ): void {
+    const enabled = buildGridEnabled || metalMapEnabled || pathingMapEnabled;
+    const overlayMode = buildGridEnabled
+      ? 'build'
+      : pathingMapEnabled
+        ? 'path'
+        : metalMapEnabled
+          ? 'metal'
+          : 'off';
     this.buildGridEnabledUniform.value = enabled ? 1 : 0;
     const buildabilityGrid = this.clientViewState.getTerrainBuildabilityGrid();
     const buildCellSize = buildabilityGrid?.cellSize ?? BUILD_GRID_CELL_SIZE;
@@ -839,12 +851,25 @@ export class TerrainTileRenderer3D {
         const y = gy * buildCellSize + buildCellSize / 2;
         const cellIndex = rowOffset + gx;
         const offset = cellIndex * 4;
-        if (!buildGridEnabled) {
+        if (overlayMode === 'metal') {
           this.writeBuildGridPixel(
             offset,
             this.buildGridMetalMask[cellIndex] !== 0
               ? BUILD_GRID_COLOR_METAL
               : BUILD_GRID_COLOR_TRANSPARENT,
+          );
+          continue;
+        }
+        if (overlayMode === 'path') {
+          const sample = getTerrainMeshSample(x, y, this.mapWidth, this.mapHeight);
+          const height = terrainMeshHeightFromSample(sample);
+          const normal = terrainMeshNormalFromSample(sample);
+          const terrainBlocked = height <= WATER_LEVEL || normal.nz < PATHING_SLOPE_BLOCK_NZ;
+          this.writeBuildGridPixel(
+            offset,
+            terrainBlocked || this.buildGridOccupiedMask[cellIndex] !== 0
+              ? BUILD_GRID_COLOR_BLOCKED
+              : BUILD_GRID_COLOR_OK,
           );
           continue;
         }
@@ -1420,11 +1445,12 @@ export class TerrainTileRenderer3D {
     this.terrainMesh.visible = this.terrainGeometryReady;
 
     // Whole-map cell overlays are driven only by explicit DEBUG toggles:
-    // BUILD paints buildability + occupancy + metal, while METAL paints only
-    // metal-producing cells. Entering build mode shows the hover footprint
-    // (BuildGhost3D), so these map-wide paints stay intentional overlays
-    // instead of appearing every time the player tries to place a building.
-    this.refreshBuildGridTexture(getBuildGridDebug(), getMetalMap());
+    // BUILD paints buildability + occupancy + metal, PATH paints ground-unit
+    // path blockers, and METAL paints only metal-producing cells. Entering
+    // build mode shows the hover footprint (BuildGhost3D), so these map-wide
+    // paints stay intentional overlays instead of appearing every time the
+    // player tries to place a building.
+    this.refreshBuildGridTexture(getBuildGridDebug(), getMetalMap(), getPathingMap());
   }
 
   isReady(): boolean {

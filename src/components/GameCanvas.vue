@@ -410,6 +410,7 @@ const {
   buildGridDebug,
   metalMap,
   elevationMap,
+  pathingMap,
   sightBoundary,
   radarBoundary,
   movementPosEma,
@@ -467,6 +468,7 @@ const {
   toggleBuildGridDebug,
   toggleMetalMap,
   toggleElevationMap,
+  togglePathingMap,
   toggleSightBoundary,
   toggleRadarBoundary,
   changeMovementPosEma,
@@ -1087,6 +1089,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   buildGridDebug: buildGridDebug.value,
   metalMap: metalMap.value,
   elevationMap: elevationMap.value,
+  pathingMap: pathingMap.value,
   sightBoundary: sightBoundary.value,
   radarBoundary: radarBoundary.value,
   renderMode: renderMode.value,
@@ -1136,6 +1139,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleBuildGridDebug,
   toggleMetalMap,
   toggleElevationMap,
+  togglePathingMap,
   toggleSightBoundary,
   toggleRadarBoundary,
   changeRenderMode,
@@ -1242,6 +1246,7 @@ watchEffect(() => {
   m.buildGridDebug = buildGridDebug.value;
   m.metalMap = metalMap.value;
   m.elevationMap = elevationMap.value;
+  m.pathingMap = pathingMap.value;
   m.sightBoundary = sightBoundary.value;
   m.radarBoundary = radarBoundary.value;
   m.renderMode = renderMode.value;

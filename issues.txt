@@ -108,13 +108,14 @@ to authoritative-server commands and 3D rally/path previews.
 
 Issue: map, communication, and game UI commands are missing. Implement BAR
 commands and buttons for chat, draw on map, draw label, erase drawings, ping to
-map, show unit pathing, options menu, and any equivalent lobby/spectator-safe
+map, options menu, and any equivalent lobby/spectator-safe
 variants. rts-prototype has a minimap, resource bar, debug/control bars, map
 details info, sight/radar boundary toggles, metal and elevation map overlays,
-map overview camera switch, fullscreen toggle, screenshot capture, audio
-mute/sound category toggles, master volume controls, pause/resume controls,
-game-speed controls, ping/scan commands, a go-to-last-ping camera control, and
-a show/hide UI chrome toggle, but not the BAR game UI command surface.
+unit pathing map overlay, map overview camera switch, fullscreen toggle,
+screenshot capture, audio mute/sound category toggles, master volume controls,
+pause/resume controls, game-speed controls, ping/scan commands, a
+go-to-last-ping camera control, and a show/hide UI chrome toggle, but not the
+BAR game UI command surface.
 
 Issue: camera controls are missing BAR parity. FOV controls, selected-unit
 follow tracking, arrow/numpad camera movement, camera flip, camera angle mode

@@ -19,6 +19,7 @@ import {
   getElevationMap,
   getMovementPosEmaMode,
   getMovementVelEmaMode,
+  getPathingMap,
   getPredictionMode,
   getRotationPosEmaMode,
   getRotationVelEmaMode,
@@ -55,6 +56,7 @@ import {
   setElevationMap,
   setMovementPosEmaMode,
   setMovementVelEmaMode,
+  setPathingMap,
   setPredictionMode,
   setRotationPosEmaMode,
   setRotationVelEmaMode,
@@ -135,6 +137,7 @@ export function useGameCanvasClientSettings({
   const buildGridDebug = ref<boolean>(getBuildGridDebug());
   const metalMap = ref<boolean>(getMetalMap());
   const elevationMap = ref<boolean>(getElevationMap());
+  const pathingMap = ref<boolean>(getPathingMap());
   const sightBoundary = ref<boolean>(getSightBoundary());
   const radarBoundary = ref<boolean>(getRadarBoundary());
   const movementPosEma = ref<PositionDriftChannelMode>(getMovementPosEmaMode());
@@ -217,6 +220,7 @@ export function useGameCanvasClientSettings({
     buildGridDebug.value = getBuildGridDebug();
     metalMap.value = getMetalMap();
     elevationMap.value = getElevationMap();
+    pathingMap.value = getPathingMap();
     sightBoundary.value = getSightBoundary();
     radarBoundary.value = getRadarBoundary();
     movementPosEma.value = getMovementPosEmaMode();
@@ -410,6 +414,12 @@ export function useGameCanvasClientSettings({
     elevationMap.value = newValue;
   }
 
+  function togglePathingMap(): void {
+    const newValue = !pathingMap.value;
+    setPathingMap(newValue);
+    pathingMap.value = newValue;
+  }
+
   function toggleSightBoundary(): void {
     const newValue = !sightBoundary.value;
     setSightBoundary(newValue);
@@ -549,6 +559,8 @@ export function useGameCanvasClientSettings({
     metalMap.value = cd.metalMap.default;
     setElevationMap(cd.elevationMap.default);
     elevationMap.value = cd.elevationMap.default;
+    setPathingMap(cd.pathingMap.default);
+    pathingMap.value = cd.pathingMap.default;
     setSightBoundary(cd.sightBoundary.default);
     sightBoundary.value = cd.sightBoundary.default;
     setRadarBoundary(cd.radarBoundary.default);
@@ -634,6 +646,7 @@ export function useGameCanvasClientSettings({
     buildGridDebug,
     metalMap,
     elevationMap,
+    pathingMap,
     sightBoundary,
     radarBoundary,
     movementPosEma,
@@ -691,6 +704,7 @@ export function useGameCanvasClientSettings({
     toggleBuildGridDebug,
     toggleMetalMap,
     toggleElevationMap,
+    togglePathingMap,
     toggleSightBoundary,
     toggleRadarBoundary,
     changeMovementPosEma,

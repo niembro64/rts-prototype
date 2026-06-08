@@ -713,6 +713,11 @@ defineProps<{
           @click="model.toggleElevationMap"
         >ELEV</BarButton>
         <BarButton
+          :active="model.pathingMap"
+          title="PATH - show ground-unit pathable cells using terrain and occupied-cell blockers"
+          @click="model.togglePathingMap"
+        >PATH</BarButton>
+        <BarButton
           :active="model.sightBoundary"
           title="SIGHT - draw the local player's total full-sight boundary"
           @click="model.toggleSightBoundary"

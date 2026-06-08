@@ -38,6 +38,7 @@
   "buildGridDebug": { "demoDefault": false, "realDefault": false },
   "metalMap": { "demoDefault": false, "realDefault": false },
   "elevationMap": { "demoDefault": false, "realDefault": false },
+  "pathingMap": { "demoDefault": false, "realDefault": false },
   "sightBoundary": { "demoDefault": false, "realDefault": false },
   "radarBoundary": { "demoDefault": false, "realDefault": false },
   "predictionMode": {
@@ -217,6 +218,7 @@
     "buildGridDebug": "build-grid-debug",
     "metalMap": "metal-map",
     "elevationMap": "elevation-map",
+    "pathingMap": "pathing-map",
     "sightBoundary": "sight-boundary",
     "radarBoundary": "radar-boundary",
     "movementPosEma": "movement-pos-ema",

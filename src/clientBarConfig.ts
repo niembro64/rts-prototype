@@ -65,6 +65,7 @@ type ClientDefaults = {
   readonly buildGridDebug: boolean;
   readonly metalMap: boolean;
   readonly elevationMap: boolean;
+  readonly pathingMap: boolean;
   readonly sightBoundary: boolean;
   readonly radarBoundary: boolean;
   readonly predictionMode: PredictionMode;
@@ -133,6 +134,7 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     buildGridDebug: pickDefault(clientBarConfig.buildGridDebug, mode),
     metalMap: pickDefault(clientBarConfig.metalMap, mode),
     elevationMap: pickDefault(clientBarConfig.elevationMap, mode),
+    pathingMap: pickDefault(clientBarConfig.pathingMap, mode),
     sightBoundary: pickDefault(clientBarConfig.sightBoundary, mode),
     radarBoundary: pickDefault(clientBarConfig.radarBoundary, mode),
     predictionMode: pickDefault(clientBarConfig.predictionMode, mode) as PredictionMode,
@@ -206,6 +208,7 @@ export const CLIENT_CONFIG = {
   buildGridDebug: { default: DEMO_CLIENT_DEFAULTS.buildGridDebug },
   metalMap: { default: DEMO_CLIENT_DEFAULTS.metalMap },
   elevationMap: { default: DEMO_CLIENT_DEFAULTS.elevationMap },
+  pathingMap: { default: DEMO_CLIENT_DEFAULTS.pathingMap },
   sightBoundary: { default: DEMO_CLIENT_DEFAULTS.sightBoundary },
   radarBoundary: { default: DEMO_CLIENT_DEFAULTS.radarBoundary },
   /** Prediction physics order: POS / VEL. Default 'vel' (integrate
@@ -303,6 +306,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     buildGridDebug: { default: defaults.buildGridDebug },
     metalMap: { default: defaults.metalMap },
     elevationMap: { default: defaults.elevationMap },
+    pathingMap: { default: defaults.pathingMap },
     sightBoundary: { default: defaults.sightBoundary },
     radarBoundary: { default: defaults.radarBoundary },
     predictionMode: { ...CLIENT_CONFIG.predictionMode, default: defaults.predictionMode },
@@ -357,6 +361,7 @@ type ClientStorageKeyName =
   | 'buildGridDebug'
   | 'metalMap'
   | 'elevationMap'
+  | 'pathingMap'
   | 'sightBoundary'
   | 'radarBoundary'
   | 'movementPosEma'
@@ -397,6 +402,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'buildGridDebug',
   'metalMap',
   'elevationMap',
+  'pathingMap',
   'sightBoundary',
   'radarBoundary',
   'movementPosEma',
@@ -489,6 +495,7 @@ let currentTriangleDebug: boolean = _cd.triangleDebug.default;
 let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
 let currentMetalMap: boolean = _cd.metalMap.default;
 let currentElevationMap: boolean = _cd.elevationMap.default;
+let currentPathingMap: boolean = _cd.pathingMap.default;
 let currentSightBoundary: boolean = _cd.sightBoundary.default;
 let currentRadarBoundary: boolean = _cd.radarBoundary.default;
 let currentMovementPosEma: PositionDriftChannelMode = _cd.movementPosEma.default;
@@ -583,6 +590,7 @@ function applyClientDefaults(mode: ClientMode): void {
   currentBuildGridDebug = cd.buildGridDebug.default;
   currentMetalMap = cd.metalMap.default;
   currentElevationMap = cd.elevationMap.default;
+  currentPathingMap = cd.pathingMap.default;
   currentSightBoundary = cd.sightBoundary.default;
   currentRadarBoundary = cd.radarBoundary.default;
   currentMovementPosEma = cd.movementPosEma.default;
@@ -686,6 +694,10 @@ function loadFromStorage(mode: ClientMode): void {
   const storedElevationMap = readPersisted(keys.elevationMap);
   if (storedElevationMap !== null) {
     currentElevationMap = storedElevationMap === 'true';
+  }
+  const storedPathingMap = readPersisted(keys.pathingMap);
+  if (storedPathingMap !== null) {
+    currentPathingMap = storedPathingMap === 'true';
   }
   const storedSightBoundary = readPersisted(keys.sightBoundary);
   if (storedSightBoundary !== null) {
@@ -1073,6 +1085,15 @@ export function getElevationMap(): boolean {
 export function setElevationMap(enabled: boolean): void {
   currentElevationMap = enabled;
   persist(activeStorageKeys().elevationMap, String(enabled));
+}
+
+export function getPathingMap(): boolean {
+  return currentPathingMap;
+}
+
+export function setPathingMap(enabled: boolean): void {
+  currentPathingMap = enabled;
+  persist(activeStorageKeys().pathingMap, String(enabled));
 }
 
 export function getSightBoundary(): boolean {
