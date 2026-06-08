@@ -39,6 +39,11 @@ import type { EntityMesh } from './EntityMesh3D';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import type { ExtractorBladeAnim } from './MetalExtractorMesh3D';
 import { visualAnimBlend, visualAnimHalfLife } from './visualAnimationEma';
+import {
+  addAnimatedBuildingEntry,
+  removeAnimatedBuildingEntry,
+  type AnimatedBuildingEntry,
+} from './BuildingAnimationLists3D';
 
 // Open/close pose transitions are discrete local state changes, not
 // snapshot rotation fields. They intentionally keep fixed controller
@@ -95,12 +100,6 @@ function applyResourcePylonDirection(pylon: ResourcePylonRig | undefined, signed
   if (!pylon || signedRate === 0) return;
   pylon.direction = signedRate > 0 ? 'outbound' : 'inbound';
 }
-
-type AnimatedBuildingEntry = {
-  id: EntityId;
-  entity: Entity;
-  mesh: EntityMesh;
-};
 
 type ResourcePylonBuildingKind = 'solar' | 'wind' | 'extractor' | 'converter';
 
@@ -201,19 +200,19 @@ export class BuildingAnimationController3D {
 
   register(entity: Entity, mesh: EntityMesh): void {
     if (entity.buildingBlueprintId === 'buildingSolar' && mesh.buildingDetails) {
-      const entry = this.addAnimatedBuilding(this.solarBuildings, this.solarBuildingIndexById, entity, mesh);
+      const entry = addAnimatedBuildingEntry(this.solarBuildings, this.solarBuildingIndexById, entity, mesh);
       this.updateSolarAnimationQueue(entry);
     }
     if (mesh.windRig) {
-      const entry = this.addAnimatedBuilding(this.windBuildings, this.windBuildingIndexById, entity, mesh);
+      const entry = addAnimatedBuildingEntry(this.windBuildings, this.windBuildingIndexById, entity, mesh);
       this.updateWindAnimationQueue(entry);
     }
     if (mesh.extractorRig) {
-      const entry = this.addAnimatedBuilding(this.extractorBuildings, this.extractorBuildingIndexById, entity, mesh);
+      const entry = addAnimatedBuildingEntry(this.extractorBuildings, this.extractorBuildingIndexById, entity, mesh);
       this.updateExtractorAnimationQueue(entry);
     }
     if (mesh.converterRig) {
-      const entry = this.addAnimatedBuilding(this.converterBuildings, this.converterBuildingIndexById, entity, mesh);
+      const entry = addAnimatedBuildingEntry(this.converterBuildings, this.converterBuildingIndexById, entity, mesh);
       this.updateConverterAnimationQueue(entry);
     }
     if (mesh.solarRig) {
@@ -226,7 +225,7 @@ export class BuildingAnimationController3D {
       this.addResourcePylonBuilding('converter', entity, mesh);
     }
     if (mesh.factoryBuildSpotRig) {
-      const entry = this.addAnimatedBuilding(
+      const entry = addAnimatedBuildingEntry(
         this.factoryBuildings,
         this.factoryBuildingIndexById,
         entity,
@@ -235,34 +234,34 @@ export class BuildingAnimationController3D {
       this.updateFactoryAnimationQueue(entry);
     }
     if (mesh.radarRig) {
-      const entry = this.addAnimatedBuilding(this.radarBuildings, this.radarBuildingIndexById, entity, mesh);
+      const entry = addAnimatedBuildingEntry(this.radarBuildings, this.radarBuildingIndexById, entity, mesh);
       this.updateRadarAnimationQueue(entry);
     }
   }
 
   sync(entity: Entity, mesh: EntityMesh): void {
     if (entity.buildingBlueprintId === 'buildingSolar' && mesh.buildingDetails) {
-      const entry = this.addAnimatedBuilding(this.solarBuildings, this.solarBuildingIndexById, entity, mesh);
+      const entry = addAnimatedBuildingEntry(this.solarBuildings, this.solarBuildingIndexById, entity, mesh);
       this.updateSolarAnimationQueue(entry);
     }
     if (mesh.converterRig) {
-      const entry = this.addAnimatedBuilding(this.converterBuildings, this.converterBuildingIndexById, entity, mesh);
+      const entry = addAnimatedBuildingEntry(this.converterBuildings, this.converterBuildingIndexById, entity, mesh);
       this.updateConverterAnimationQueue(entry);
     }
     if (mesh.windRig) {
-      const entry = this.addAnimatedBuilding(this.windBuildings, this.windBuildingIndexById, entity, mesh);
+      const entry = addAnimatedBuildingEntry(this.windBuildings, this.windBuildingIndexById, entity, mesh);
       this.updateWindAnimationQueue(entry);
     }
     if (mesh.extractorRig) {
-      const entry = this.addAnimatedBuilding(this.extractorBuildings, this.extractorBuildingIndexById, entity, mesh);
+      const entry = addAnimatedBuildingEntry(this.extractorBuildings, this.extractorBuildingIndexById, entity, mesh);
       this.updateExtractorAnimationQueue(entry);
     }
     if (mesh.radarRig) {
-      const entry = this.addAnimatedBuilding(this.radarBuildings, this.radarBuildingIndexById, entity, mesh);
+      const entry = addAnimatedBuildingEntry(this.radarBuildings, this.radarBuildingIndexById, entity, mesh);
       this.updateRadarAnimationQueue(entry);
     }
     if (mesh.factoryBuildSpotRig) {
-      const entry = this.addAnimatedBuilding(
+      const entry = addAnimatedBuildingEntry(
         this.factoryBuildings,
         this.factoryBuildingIndexById,
         entity,
@@ -273,14 +272,14 @@ export class BuildingAnimationController3D {
   }
 
   unregister(id: EntityId): void {
-    this.removeAnimatedBuilding(this.solarBuildings, this.solarBuildingIndexById, id);
-    this.removeAnimatedBuilding(this.activeSolarBuildings, this.activeSolarBuildingIndexById, id);
-    this.removeAnimatedBuilding(this.windBuildings, this.windBuildingIndexById, id);
-    this.removeAnimatedBuilding(this.activeWindBuildings, this.activeWindBuildingIndexById, id);
-    this.removeAnimatedBuilding(this.extractorBuildings, this.extractorBuildingIndexById, id);
-    this.removeAnimatedBuilding(this.activeExtractorBuildings, this.activeExtractorBuildingIndexById, id);
-    this.removeAnimatedBuilding(this.converterBuildings, this.converterBuildingIndexById, id);
-    this.removeAnimatedBuilding(this.activeConverterBuildings, this.activeConverterBuildingIndexById, id);
+    removeAnimatedBuildingEntry(this.solarBuildings, this.solarBuildingIndexById, id);
+    removeAnimatedBuildingEntry(this.activeSolarBuildings, this.activeSolarBuildingIndexById, id);
+    removeAnimatedBuildingEntry(this.windBuildings, this.windBuildingIndexById, id);
+    removeAnimatedBuildingEntry(this.activeWindBuildings, this.activeWindBuildingIndexById, id);
+    removeAnimatedBuildingEntry(this.extractorBuildings, this.extractorBuildingIndexById, id);
+    removeAnimatedBuildingEntry(this.activeExtractorBuildings, this.activeExtractorBuildingIndexById, id);
+    removeAnimatedBuildingEntry(this.converterBuildings, this.converterBuildingIndexById, id);
+    removeAnimatedBuildingEntry(this.activeConverterBuildings, this.activeConverterBuildingIndexById, id);
     this.removeResourcePylonBuilding(id);
     this.removeActiveResourcePylonBuilding(id);
     this.extractorRotorPhases.delete(id);
@@ -291,10 +290,10 @@ export class BuildingAnimationController3D {
     this.extractorAppliedCloseAmounts.delete(id);
     this.windCloseAmounts.delete(id);
     this.windAppliedCloseAmounts.delete(id);
-    this.removeAnimatedBuilding(this.factoryBuildings, this.factoryBuildingIndexById, id);
-    this.removeAnimatedBuilding(this.activeFactoryBuildings, this.activeFactoryBuildingIndexById, id);
-    this.removeAnimatedBuilding(this.radarBuildings, this.radarBuildingIndexById, id);
-    this.removeAnimatedBuilding(this.activeRadarBuildings, this.activeRadarBuildingIndexById, id);
+    removeAnimatedBuildingEntry(this.factoryBuildings, this.factoryBuildingIndexById, id);
+    removeAnimatedBuildingEntry(this.activeFactoryBuildings, this.activeFactoryBuildingIndexById, id);
+    removeAnimatedBuildingEntry(this.radarBuildings, this.radarBuildingIndexById, id);
+    removeAnimatedBuildingEntry(this.activeRadarBuildings, this.activeRadarBuildingIndexById, id);
     this.radarHeadPhases.delete(id);
     this.radarSweepPhases.delete(id);
     this.radarHeadSpeeds.delete(id);
@@ -345,7 +344,7 @@ export class BuildingAnimationController3D {
       if (this.factoryBuildSpotActive(entry) || emitterVisualActive) {
         i++;
       } else {
-        this.removeAnimatedBuilding(
+        removeAnimatedBuildingEntry(
           this.activeFactoryBuildings,
           this.activeFactoryBuildingIndexById,
           entry.id,
@@ -408,48 +407,11 @@ export class BuildingAnimationController3D {
     this.windAnimLastMs = 0;
   }
 
-  private addAnimatedBuilding(
-    list: AnimatedBuildingEntry[],
-    indexById: Map<EntityId, number>,
-    entity: Entity,
-    mesh: EntityMesh,
-  ): AnimatedBuildingEntry {
-    const id = entity.id;
-    const existingIndex = indexById.get(id);
-    if (existingIndex !== undefined) {
-      const entry = list[existingIndex];
-      entry.entity = entity;
-      entry.mesh = mesh;
-      return entry;
-    }
-    const entry = { id, entity, mesh };
-    indexById.set(id, list.length);
-    list.push(entry);
-    return entry;
-  }
-
-  private removeAnimatedBuilding(
-    list: AnimatedBuildingEntry[],
-    indexById: Map<EntityId, number>,
-    id: EntityId,
-  ): void {
-    const index = indexById.get(id);
-    if (index === undefined) return;
-    indexById.delete(id);
-    const lastIndex = list.length - 1;
-    if (index !== lastIndex) {
-      const last = list[lastIndex];
-      list[index] = last;
-      indexById.set(last.id, index);
-    }
-    list.pop();
-  }
-
   private updateSolarAnimationQueue(entry: AnimatedBuildingEntry): void {
     const activeIndex = this.activeSolarBuildingIndexById.get(entry.id);
     if (!this.solarAnimationNeedsFrame(entry)) {
       if (activeIndex !== undefined) {
-        this.removeAnimatedBuilding(this.activeSolarBuildings, this.activeSolarBuildingIndexById, entry.id);
+        removeAnimatedBuildingEntry(this.activeSolarBuildings, this.activeSolarBuildingIndexById, entry.id);
       }
       return;
     }
@@ -468,7 +430,7 @@ export class BuildingAnimationController3D {
       if (this.updateSolarCollectorAnimation(entry.mesh, entry.entity, detailsReady)) {
         i++;
       } else {
-        this.removeAnimatedBuilding(this.activeSolarBuildings, this.activeSolarBuildingIndexById, entry.id);
+        removeAnimatedBuildingEntry(this.activeSolarBuildings, this.activeSolarBuildingIndexById, entry.id);
       }
     }
   }
@@ -490,7 +452,7 @@ export class BuildingAnimationController3D {
     const activeIndex = this.activeWindBuildingIndexById.get(entry.id);
     if (!this.windAnimationNeedsFrame(entry)) {
       if (activeIndex !== undefined) {
-        this.removeAnimatedBuilding(this.activeWindBuildings, this.activeWindBuildingIndexById, entry.id);
+        removeAnimatedBuildingEntry(this.activeWindBuildings, this.activeWindBuildingIndexById, entry.id);
       }
       return;
     }
@@ -510,7 +472,7 @@ export class BuildingAnimationController3D {
       if (this.updateWindAnimationEntry(entry)) {
         i++;
       } else {
-        this.removeAnimatedBuilding(this.activeWindBuildings, this.activeWindBuildingIndexById, entry.id);
+        removeAnimatedBuildingEntry(this.activeWindBuildings, this.activeWindBuildingIndexById, entry.id);
       }
     }
   }
@@ -541,7 +503,7 @@ export class BuildingAnimationController3D {
     const activeIndex = this.activeExtractorBuildingIndexById.get(entry.id);
     if (!this.extractorAnimationNeedsFrame(entry)) {
       if (activeIndex !== undefined) {
-        this.removeAnimatedBuilding(
+        removeAnimatedBuildingEntry(
           this.activeExtractorBuildings,
           this.activeExtractorBuildingIndexById,
           entry.id,
@@ -565,7 +527,7 @@ export class BuildingAnimationController3D {
       if (this.updateExtractorAnimationEntry(entry, spinDt, rotorSpeedAlpha)) {
         i++;
       } else {
-        this.removeAnimatedBuilding(
+        removeAnimatedBuildingEntry(
           this.activeExtractorBuildings,
           this.activeExtractorBuildingIndexById,
           entry.id,
@@ -654,7 +616,7 @@ export class BuildingAnimationController3D {
     const activeIndex = this.activeConverterBuildingIndexById.get(entry.id);
     if (!this.converterAnimationNeedsFrame(entry)) {
       if (activeIndex !== undefined) {
-        this.removeAnimatedBuilding(
+        removeAnimatedBuildingEntry(
           this.activeConverterBuildings,
           this.activeConverterBuildingIndexById,
           entry.id,
@@ -678,7 +640,7 @@ export class BuildingAnimationController3D {
       if (this.updateConverterRingAnimation(entry, ringSpeedAlpha, spinDt, timeMs)) {
         i++;
       } else {
-        this.removeAnimatedBuilding(
+        removeAnimatedBuildingEntry(
           this.activeConverterBuildings,
           this.activeConverterBuildingIndexById,
           entry.id,
@@ -773,7 +735,7 @@ export class BuildingAnimationController3D {
     const activeIndex = this.activeRadarBuildingIndexById.get(entry.id);
     if (!this.radarAnimationNeedsFrame(entry)) {
       if (activeIndex !== undefined) {
-        this.removeAnimatedBuilding(this.activeRadarBuildings, this.activeRadarBuildingIndexById, entry.id);
+        removeAnimatedBuildingEntry(this.activeRadarBuildings, this.activeRadarBuildingIndexById, entry.id);
       }
       return;
     }
@@ -793,7 +755,7 @@ export class BuildingAnimationController3D {
       if (this.updateRadarAnimationEntry(entry, radarSpeedAlpha, spinDt)) {
         i++;
       } else {
-        this.removeAnimatedBuilding(this.activeRadarBuildings, this.activeRadarBuildingIndexById, entry.id);
+        removeAnimatedBuildingEntry(this.activeRadarBuildings, this.activeRadarBuildingIndexById, entry.id);
       }
     }
   }
@@ -1079,7 +1041,7 @@ export class BuildingAnimationController3D {
     const activeIndex = this.activeFactoryBuildingIndexById.get(entry.id);
     if (!this.factoryAnimationNeedsFrame(entry)) {
       if (activeIndex !== undefined) {
-        this.removeAnimatedBuilding(
+        removeAnimatedBuildingEntry(
           this.activeFactoryBuildings,
           this.activeFactoryBuildingIndexById,
           entry.id,
