@@ -16,6 +16,7 @@ import {
   getClientConfig,
   getClientUnitGroundNormalEmaMode,
   getDragPanEnabled,
+  getElevationMap,
   getMovementPosEmaMode,
   getMovementVelEmaMode,
   getPredictionMode,
@@ -51,6 +52,7 @@ import {
   setClientMode,
   setClientUnitGroundNormalEmaMode,
   setDragPanEnabled,
+  setElevationMap,
   setMovementPosEmaMode,
   setMovementVelEmaMode,
   setPredictionMode,
@@ -132,6 +134,7 @@ export function useGameCanvasClientSettings({
   const triangleDebug = ref<boolean>(getTriangleDebug());
   const buildGridDebug = ref<boolean>(getBuildGridDebug());
   const metalMap = ref<boolean>(getMetalMap());
+  const elevationMap = ref<boolean>(getElevationMap());
   const sightBoundary = ref<boolean>(getSightBoundary());
   const radarBoundary = ref<boolean>(getRadarBoundary());
   const movementPosEma = ref<PositionDriftChannelMode>(getMovementPosEmaMode());
@@ -213,6 +216,7 @@ export function useGameCanvasClientSettings({
     triangleDebug.value = getTriangleDebug();
     buildGridDebug.value = getBuildGridDebug();
     metalMap.value = getMetalMap();
+    elevationMap.value = getElevationMap();
     sightBoundary.value = getSightBoundary();
     radarBoundary.value = getRadarBoundary();
     movementPosEma.value = getMovementPosEmaMode();
@@ -400,6 +404,12 @@ export function useGameCanvasClientSettings({
     metalMap.value = newValue;
   }
 
+  function toggleElevationMap(): void {
+    const newValue = !elevationMap.value;
+    setElevationMap(newValue);
+    elevationMap.value = newValue;
+  }
+
   function toggleSightBoundary(): void {
     const newValue = !sightBoundary.value;
     setSightBoundary(newValue);
@@ -537,6 +547,8 @@ export function useGameCanvasClientSettings({
     buildGridDebug.value = cd.buildGridDebug.default;
     setMetalMap(cd.metalMap.default);
     metalMap.value = cd.metalMap.default;
+    setElevationMap(cd.elevationMap.default);
+    elevationMap.value = cd.elevationMap.default;
     setSightBoundary(cd.sightBoundary.default);
     sightBoundary.value = cd.sightBoundary.default;
     setRadarBoundary(cd.radarBoundary.default);
@@ -621,6 +633,7 @@ export function useGameCanvasClientSettings({
     triangleDebug,
     buildGridDebug,
     metalMap,
+    elevationMap,
     sightBoundary,
     radarBoundary,
     movementPosEma,
@@ -677,6 +690,7 @@ export function useGameCanvasClientSettings({
     toggleTriangleDebug,
     toggleBuildGridDebug,
     toggleMetalMap,
+    toggleElevationMap,
     toggleSightBoundary,
     toggleRadarBoundary,
     changeMovementPosEma,

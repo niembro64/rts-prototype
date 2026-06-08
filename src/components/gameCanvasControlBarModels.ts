@@ -167,6 +167,7 @@ export type GameCanvasClientControlBarModel = {
   readonly triangleDebug: boolean;
   readonly buildGridDebug: boolean;
   readonly metalMap: boolean;
+  readonly elevationMap: boolean;
   readonly sightBoundary: boolean;
   readonly radarBoundary: boolean;
   readonly renderMode: RenderMode;
@@ -215,6 +216,7 @@ export type GameCanvasClientControlBarModel = {
   toggleTriangleDebug(): void;
   toggleBuildGridDebug(): void;
   toggleMetalMap(): void;
+  toggleElevationMap(): void;
   toggleSightBoundary(): void;
   toggleRadarBoundary(): void;
   changeRenderMode(mode: RenderMode): void;

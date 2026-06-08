@@ -9,6 +9,7 @@ import type { ClientViewState } from '../network/ClientViewState';
 import { COLORS, readRgbaTuple } from '@/colorsConfig';
 import {
   getBuildGridDebug,
+  getElevationMap,
   getMetalMap,
   getTriangleDebug,
 } from '@/clientBarConfig';
@@ -277,6 +278,7 @@ export class TerrainTileRenderer3D {
   private terrainHorizonColorUniform = { value: TERRAIN_HORIZON_COLOR };
   private terrainHorizonWaterColorUniform = { value: TERRAIN_HORIZON_WATER_COLOR };
   private terrainHorizonShadeUniform = { value: TERRAIN_HORIZON_BLEND_CONFIG.shade };
+  private elevationMapEnabledUniform = { value: 0 };
   private buildGridTexture: THREE.DataTexture;
   private buildGridPixels = new Uint8Array(4);
   private buildGridMapUniform!: { value: THREE.DataTexture };
@@ -381,6 +383,7 @@ export class TerrainTileRenderer3D {
       shader.uniforms.uTerrainHorizonColor = this.terrainHorizonColorUniform;
       shader.uniforms.uTerrainHorizonWaterColor = this.terrainHorizonWaterColorUniform;
       shader.uniforms.uTerrainHorizonShade = this.terrainHorizonShadeUniform;
+      shader.uniforms.uElevationMapEnabled = this.elevationMapEnabledUniform;
       shader.uniforms.uBuildGridMap = this.buildGridMapUniform;
       shader.uniforms.uBuildGridMapSize = this.buildGridMapSizeUniform;
       shader.uniforms.uBuildGridWorldSize = this.buildGridWorldSizeUniform;
@@ -440,6 +443,7 @@ export class TerrainTileRenderer3D {
             'uniform vec3 uTerrainHorizonColor;',
             'uniform vec3 uTerrainHorizonWaterColor;',
             'uniform float uTerrainHorizonShade;',
+            'uniform float uElevationMapEnabled;',
             'uniform sampler2D uBuildGridMap;',
             'uniform vec2 uBuildGridMapSize;',
             'uniform vec2 uBuildGridWorldSize;',
@@ -570,6 +574,18 @@ export class TerrainTileRenderer3D {
             'terrainRgb = mix(terrainRgb, uTerrainHorizonColor, horizonBlend);',
             'float terrainFinalShade = mix(vTerrainShade, uTerrainHorizonShade, horizonBlend);',
             'diffuseColor.rgb = clamp(terrainRgb, vec3(0.02), vec3(1.0)) * terrainFinalShade;',
+            'if (uElevationMapEnabled > 0.0) {',
+            '  vec3 elevationLow = vec3(0.10, 0.25, 0.56);',
+            '  vec3 elevationMid = vec3(0.22, 0.54, 0.30);',
+            '  vec3 elevationHigh = vec3(0.86, 0.76, 0.42);',
+            '  vec3 elevationPeak = vec3(0.96, 0.96, 0.88);',
+            '  vec3 elevationRgb = mix(elevationLow, elevationMid, smoothstep(0.00, 0.42, terrainHeightT));',
+            '  elevationRgb = mix(elevationRgb, elevationHigh, smoothstep(0.34, 0.74, terrainHeightT));',
+            '  elevationRgb = mix(elevationRgb, elevationPeak, smoothstep(0.70, 1.00, terrainHeightT));',
+            '  float contour = smoothstep(0.475, 0.50, abs(fract(terrainHeightT * 18.0) - 0.5));',
+            '  elevationRgb = mix(elevationRgb * 0.72, elevationRgb, contour);',
+            '  diffuseColor.rgb = mix(diffuseColor.rgb, elevationRgb, 0.68);',
+            '}',
             'if (uBuildGridEnabled > 0.0 &&',
             '    vTerrainWorldPos.x >= 0.0 && vTerrainWorldPos.z >= 0.0 &&',
             '    vTerrainWorldPos.x < uBuildGridWorldSize.x &&',
@@ -604,7 +620,7 @@ export class TerrainTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v31';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v32';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
@@ -1395,6 +1411,7 @@ export class TerrainTileRenderer3D {
 
     const triangleDebug = getTriangleDebug();
     this.triangleDebugEnabledUniform.value = triangleDebug ? 1 : 0;
+    this.elevationMapEnabledUniform.value = getElevationMap() ? 1 : 0;
     this.rebuildGeometryIfNeeded(
       cellSize,
       graphicsConfig,
