@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, reactive, watch, watchEffect } from 'vue';
+import { ref, computed, reactive, watch, watchEffect, onMounted, onBeforeUnmount } from 'vue';
 import type { GameInstance } from '../game/createGame';
 import type { PlayerId } from '../game/sim/types';
 import type { BackgroundBattleState } from '../game/lobby/LobbyManager';
@@ -84,6 +84,7 @@ const backgroundContainerRef = ref<HTMLDivElement | null>(null);
 // ref so the watcher doesn't depend on selector lookups.
 const gameAreaRef = ref<HTMLDivElement | null>(null);
 const activePlayer = ref<PlayerId>(1);
+const fullscreenActive = ref(false);
 const gameOverWinner = ref<PlayerId | null>(null);
 const battleLoading = ref(false);
 const rendererWarmupLoading = ref(true);
@@ -257,6 +258,33 @@ function applyCameraFovDegrees(fov: CameraFovDegrees): void {
 
 // Active connection for sending commands (set when server/connection is created)
 let activeConnection: GameConnection | null = null;
+
+function syncFullscreenActive(): void {
+  fullscreenActive.value = document.fullscreenElement !== null;
+}
+
+async function toggleFullscreen(): Promise<void> {
+  try {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+    } else {
+      await document.documentElement.requestFullscreen();
+    }
+  } catch (err) {
+    console.warn('Fullscreen request failed', err);
+  } finally {
+    syncFullscreenActive();
+  }
+}
+
+onMounted(() => {
+  syncFullscreenActive();
+  document.addEventListener('fullscreenchange', syncFullscreenActive);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('fullscreenchange', syncFullscreenActive);
+});
 
 // Demo battle unit blueprint list (state read from snapshots)
 const demoUnitBlueprintIds = BACKGROUND_UNIT_BLUEPRINT_IDS;
@@ -984,6 +1012,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   cameraFovDegrees: cameraFovDegrees.value,
   cameraSmoothMode: cameraSmoothMode.value,
   cameraFollowMode: cameraFollowMode.value,
+  fullscreenActive: fullscreenActive.value,
   resetClientDefaults,
   togglePlayerClientEnabled,
   changeWaypointDetail,
@@ -1024,6 +1053,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   changeCameraFovDegrees,
   setCameraMode,
   setCameraFollowMode: setCameraFollow,
+  toggleFullscreen,
 });
 watchEffect(() => {
   const m = clientControlBarModel as {
@@ -1111,6 +1141,7 @@ watchEffect(() => {
   m.cameraFovDegrees = cameraFovDegrees.value;
   m.cameraSmoothMode = cameraSmoothMode.value;
   m.cameraFollowMode = cameraFollowMode.value;
+  m.fullscreenActive = fullscreenActive.value;
 });
 
 </script>

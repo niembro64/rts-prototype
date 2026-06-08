@@ -919,6 +919,15 @@ defineProps<{
         <BarDivider />
       </BarControlGroup>
       <BarControlGroup>
+        <BarLabel>SCREEN:</BarLabel>
+        <BarButton
+          :active="model.fullscreenActive"
+          :title="model.fullscreenActive ? 'Exit fullscreen' : 'Enter fullscreen'"
+          @click="model.toggleFullscreen"
+        >FULL</BarButton>
+        <BarDivider />
+      </BarControlGroup>
+      <BarControlGroup>
         <BarLabel title="Camera follow for a single selected unit. Only active when exactly one unit is selected; eases through the CAMERA smoothing above, so switching modes transitions smoothly.">FOLLOW:</BarLabel>
         <BarButtonGroup>
           <BarButton

@@ -183,6 +183,7 @@ export type GameCanvasClientControlBarModel = {
   readonly cameraFovDegrees: CameraFovDegrees;
   readonly cameraSmoothMode: CameraSmoothMode;
   readonly cameraFollowMode: CameraFollowMode;
+  readonly fullscreenActive: boolean;
   resetClientDefaults(): void;
   togglePlayerClientEnabled(): void;
   changeWaypointDetail(mode: WaypointDetail): void;
@@ -223,4 +224,5 @@ export type GameCanvasClientControlBarModel = {
   changeCameraFovDegrees(fov: CameraFovDegrees): void;
   setCameraMode(mode: CameraSmoothMode): void;
   setCameraFollowMode(mode: CameraFollowMode): void;
+  toggleFullscreen(): void;
 };
