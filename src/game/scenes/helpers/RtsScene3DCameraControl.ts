@@ -68,6 +68,11 @@ export class RtsScene3DCameraControl {
     this.threeApp.orbit.setTarget(x, 0, y);
   }
 
+  flipYaw(): void {
+    const orbit = this.threeApp.orbit;
+    orbit.setOrbitAngles(orbit.yaw + Math.PI, orbit.pitch);
+  }
+
   captureState(): SceneCameraState {
     const orbit = this.threeApp.orbit;
     return {

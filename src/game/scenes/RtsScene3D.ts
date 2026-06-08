@@ -929,6 +929,10 @@ export class RtsScene3D {
     this.cameraControl.centerOn(this.lastPingPoint.x, this.lastPingPoint.y);
   }
 
+  public flipCameraYaw(): void {
+    this.cameraControl.flipYaw();
+  }
+
   /** Capture the orbit camera's current framing in the portable
    *  `SceneCameraState` shape — 2D-equivalent zoom + the (x, y)
    *  world-space target point. */

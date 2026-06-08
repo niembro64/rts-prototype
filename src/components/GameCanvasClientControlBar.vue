@@ -916,6 +916,11 @@ defineProps<{
             @click="model.setCameraMode('slow')"
           >SLOW</BarButton>
         </BarButtonGroup>
+        <BarButton
+          :active="false"
+          title="Rotate the camera view 180 degrees around the current target"
+          @click="model.flipCameraYaw"
+        >FLIP</BarButton>
         <BarDivider />
       </BarControlGroup>
       <BarControlGroup>

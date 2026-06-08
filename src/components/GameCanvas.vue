@@ -310,9 +310,16 @@ function captureScreenshot(): void {
   }, 'image/png');
 }
 
+function getActiveGameScene() {
+  return foregroundGame.getScene() ?? getBackgroundBattle()?.gameInstance?.getScene() ?? null;
+}
+
 function goToLastPing(): void {
-  const scene = foregroundGame.getScene() ?? getBackgroundBattle()?.gameInstance?.getScene() ?? null;
-  scene?.goToLastPing();
+  getActiveGameScene()?.goToLastPing();
+}
+
+function flipCameraYaw(): void {
+  getActiveGameScene()?.flipCameraYaw();
 }
 
 onMounted(() => {
@@ -1092,6 +1099,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   changeCameraFovDegrees,
   setCameraMode,
   setCameraFollowMode: setCameraFollow,
+  flipCameraYaw,
   toggleFullscreen,
   captureScreenshot,
   goToLastPing,

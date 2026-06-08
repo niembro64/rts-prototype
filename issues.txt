@@ -116,9 +116,9 @@ ping/scan commands, a go-to-last-ping camera control, and a show/hide UI chrome
 toggle, but not the BAR game UI command surface.
 
 Issue: camera controls are missing BAR parity. FOV controls, selected-unit
-follow tracking, and arrow/numpad camera movement exist. Add camera mode
-switching (overhead/TA/Spring-style equivalents as appropriate for this 3D
-prototype), camera flip, camera anchors set/focus, overview/minimap camera
+follow tracking, arrow/numpad camera movement, and camera flip exist. Add
+camera mode switching (overhead/TA/Spring-style equivalents as appropriate for
+this 3D prototype), camera anchors set/focus, overview/minimap camera
 switching, and picture-in-picture behavior or a documented 3D-focused
 replacement. Existing wheel zoom, middle-drag pan/orbit, touch controls,
 minimap click-to-move camera, and world-direction HUD are not enough.
