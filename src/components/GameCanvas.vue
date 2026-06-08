@@ -273,6 +273,10 @@ function applyCameraFovDegrees(fov: CameraFovDegrees): void {
 // Active connection for sending commands (set when server/connection is created)
 let activeConnection: GameConnection | null = null;
 
+function setGamePaused(paused: boolean): void {
+  activeConnection?.sendCommand({ type: 'setPaused', tick: 0, paused });
+}
+
 function syncFullscreenActive(): void {
   fullscreenActive.value = document.fullscreenElement !== null;
 }
@@ -1104,6 +1108,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   changeAudioScope,
   changeMasterVolume,
   changeGameSpeed: setTickRateValue,
+  setGamePaused,
   toggleAllSounds,
   toggleSoundCategory,
   toggleAllRanges,

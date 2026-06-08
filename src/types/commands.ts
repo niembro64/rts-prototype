@@ -34,6 +34,7 @@ export type CommandType =
   | 'setSnapshotRate'
   | 'setKeyframeRatio'
   | 'setTickRate'
+  | 'setPaused'
   | 'setUnitGroundNormalEmaMode'
   | 'setSendGridInfo'
   | 'setBackgroundUnitBlueprintEnabled'
@@ -271,6 +272,11 @@ export type SetTickRateCommand = BaseCommand & {
   rate: TickRate;
 };
 
+export type SetPausedCommand = BaseCommand & {
+  type: 'setPaused';
+  paused: boolean;
+};
+
 /** Pick the smoothing strength for the per-unit ground normal EMA
  *  (see updateUnitGroundNormal). SNAP = no smoothing (raw triangle-edge);
  *  FAST/MID/SLOW = increasing half-life. Goes through the regular
@@ -356,6 +362,7 @@ export type Command =
   | SetSnapshotRateCommand
   | SetKeyframeRatioCommand
   | SetTickRateCommand
+  | SetPausedCommand
   | SetUnitGroundNormalEmaModeCommand
   | SetSendGridInfoCommand
   | SetBackgroundUnitBlueprintEnabledCommand

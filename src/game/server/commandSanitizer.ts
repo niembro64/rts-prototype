@@ -108,6 +108,8 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       return SERVER_CONFIG.tickRate.options.includes(command.rate)
         ? { ...command, tick }
         : null;
+    case 'setPaused':
+      return typeof command.paused === 'boolean' ? { ...command, tick } : null;
     case 'setUnitGroundNormalEmaMode':
       return SERVER_CONFIG.unitGroundNormalEma.options.includes(command.mode)
         ? { ...command, tick }

@@ -116,6 +116,7 @@ function isGameplayResponseCommand(command: Command): boolean {
     case 'setSnapshotRate':
     case 'setKeyframeRatio':
     case 'setTickRate':
+    case 'setPaused':
     case 'setUnitGroundNormalEmaMode':
     case 'setSendGridInfo':
     case 'setBackgroundUnitBlueprintEnabled':

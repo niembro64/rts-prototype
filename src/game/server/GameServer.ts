@@ -341,7 +341,9 @@ export class GameServer {
         return false;
       }
       this.startupGateOpen = true;
-      this.tick(delta);
+      if (this.simulation.getGamePhase() !== 'paused') {
+        this.tick(delta);
+      }
 
       const elapsed = tickNow - this.lastSnapshotTime;
       const interval = this.maxSnapshotIntervalMs;
@@ -557,6 +559,10 @@ export class GameServer {
         if (!canApplyServerControl) return;
         this.setTickRate(sanitizedCommand.rate);
         return;
+      case 'setPaused':
+        if (!canApplyServerControl) return;
+        this.setPaused(sanitizedCommand.paused);
+        return;
       case 'setUnitGroundNormalEmaMode':
         if (!canApplyServerControl) return;
         // updateUnitGroundNormal reads its mode from the unitGroundNormal module's
@@ -742,6 +748,11 @@ export class GameServer {
     if (this.tickLoop.isRunning()) {
       this.startGameLoop();
     }
+  }
+
+  setPaused(paused: boolean): void {
+    this.simulation.setPaused(paused);
+    this.forceNextSnapshotKeyframe();
   }
 
   // Get map dimensions (for scene configuration)

@@ -220,6 +220,20 @@ export class Simulation {
     return this.gamePhase;
   }
 
+  setPaused(paused: boolean): void {
+    if (this.gamePhase === 'gameOver') return;
+    if (paused) {
+      if (this.gamePhase === 'init') {
+        this.gamePhase = transitionPhase('init', 'battle');
+      }
+      if (this.gamePhase === 'battle') {
+        this.gamePhase = transitionPhase('battle', 'paused');
+      }
+    } else if (this.gamePhase === 'paused') {
+      this.gamePhase = transitionPhase('paused', 'battle');
+    }
+  }
+
   // Get construction system (for placement validation)
   getConstructionSystem(): ConstructionSystem {
     return this.constructionSystem;

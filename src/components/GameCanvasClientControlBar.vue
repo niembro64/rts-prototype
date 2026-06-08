@@ -981,6 +981,16 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarLabel>SPEED:</BarLabel>
+        <BarButton
+          :active="false"
+          title="Pause the authoritative simulation"
+          @click="model.setGamePaused(true)"
+        >PAUSE</BarButton>
+        <BarButton
+          :active="false"
+          title="Resume the authoritative simulation"
+          @click="model.setGamePaused(false)"
+        >PLAY</BarButton>
         <BarButtonGroup>
           <BarButton
             v-for="rate in SERVER_CONFIG.tickRate.options"
