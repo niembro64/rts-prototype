@@ -326,6 +326,14 @@ function showMapOverview(): void {
   getActiveGameScene()?.showMapOverview();
 }
 
+function setCameraAnchor(index: number): void {
+  getActiveGameScene()?.setCameraAnchor(index);
+}
+
+function focusCameraAnchor(index: number): void {
+  getActiveGameScene()?.focusCameraAnchor(index);
+}
+
 onMounted(() => {
   syncFullscreenActive();
   document.addEventListener('fullscreenchange', syncFullscreenActive);
@@ -1109,6 +1117,8 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   setCameraFollowMode: setCameraFollow,
   showMapOverview,
   flipCameraYaw,
+  setCameraAnchor,
+  focusCameraAnchor,
   toggleFullscreen,
   captureScreenshot,
   goToLastPing,

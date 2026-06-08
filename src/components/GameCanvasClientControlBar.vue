@@ -48,6 +48,8 @@ const COMMAND_HOTKEY_PRESET_DESCRIPTIONS: Record<CommandHotkeyPresetId, string> 
   'bar-legacy': 'BAR legacy subset',
 };
 
+const CAMERA_ANCHOR_SLOTS = [0, 1, 2, 3] as const;
+
 const DIFFSNAP_REASONABLE_BYTES = 64 * 1024;
 const FULLSNAP_REASONABLE_BYTES = 1024 * 1024;
 const SNAPSHOT_SIZE_TARGET_RATIO_BUDGET = 1;
@@ -934,6 +936,28 @@ defineProps<{
           title="Rotate the camera view 180 degrees around the current target"
           @click="model.flipCameraYaw"
         >FLIP</BarButton>
+        <BarDivider />
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarLabel>ANCHOR:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="slot in CAMERA_ANCHOR_SLOTS"
+            :key="`save-${slot}`"
+            :active="false"
+            :title="`Save camera anchor ${slot + 1}`"
+            @click="model.setCameraAnchor(slot)"
+          >S{{ slot + 1 }}</BarButton>
+        </BarButtonGroup>
+        <BarButtonGroup>
+          <BarButton
+            v-for="slot in CAMERA_ANCHOR_SLOTS"
+            :key="`focus-${slot}`"
+            :active="false"
+            :title="`Focus camera anchor ${slot + 1}`"
+            @click="model.focusCameraAnchor(slot)"
+          >{{ slot + 1 }}</BarButton>
+        </BarButtonGroup>
         <BarDivider />
       </BarControlGroup>
       <BarControlGroup>

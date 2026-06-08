@@ -232,6 +232,7 @@ export class RtsScene3D {
   private rendererWarmup: RtsScene3DRendererWarmup | null = null;
   private destroyed = false;
   private lastPingPoint: { x: number; y: number } | null = null;
+  private readonly cameraAnchors: Array<SceneCameraState | null> = [null, null, null, null];
   private readonly handleSimEvent3DCallback = (event: NetworkServerSnapshotSimEvent): void => {
     this.handleSimEvent3D(event);
   };
@@ -941,6 +942,18 @@ export class RtsScene3D {
       this.mapHeight,
       getSurfaceHeight(centerX, centerY, this.mapWidth, this.mapHeight, LAND_CELL_SIZE),
     );
+  }
+
+  public setCameraAnchor(index: number): void {
+    if (!Number.isInteger(index) || index < 0 || index >= this.cameraAnchors.length) return;
+    this.cameraAnchors[index] = this.captureCameraState();
+  }
+
+  public focusCameraAnchor(index: number): void {
+    if (!Number.isInteger(index) || index < 0 || index >= this.cameraAnchors.length) return;
+    const anchor = this.cameraAnchors[index];
+    if (anchor === null) return;
+    this.applyCameraState(anchor);
   }
 
   /** Capture the orbit camera's current framing in the portable

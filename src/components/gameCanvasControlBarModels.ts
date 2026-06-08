@@ -230,6 +230,8 @@ export type GameCanvasClientControlBarModel = {
   setCameraFollowMode(mode: CameraFollowMode): void;
   showMapOverview(): void;
   flipCameraYaw(): void;
+  setCameraAnchor(index: number): void;
+  focusCameraAnchor(index: number): void;
   toggleFullscreen(): void;
   captureScreenshot(): void;
   goToLastPing(): void;
