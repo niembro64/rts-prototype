@@ -21,6 +21,7 @@ import type {
   SetBuildingActiveCommand,
   SelfDestructCommand,
   SetTowerTargetCommand,
+  SetFactoryGuardCommand,
   SetRallyPointCommand,
   StartBuildCommand,
   StopCommand,
@@ -91,6 +92,8 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       return sanitizeStopFactoryProductionCommand(command, tick);
     case 'setRallyPoint':
       return sanitizeSetRallyPointCommand(command, world, tick);
+    case 'setFactoryGuard':
+      return sanitizeSetFactoryGuardCommand(command, tick);
     case 'fireDGun':
       return sanitizeFireDgunCommand(command, world, tick);
     case 'repair':
@@ -447,6 +450,20 @@ function sanitizeSetRallyPointCommand(
         rallyY: point.y,
         rallyZ: point.z,
         waypointType,
+      };
+}
+
+function sanitizeSetFactoryGuardCommand(
+  command: SetFactoryGuardCommand,
+  tick: number,
+): SetFactoryGuardCommand | null {
+  return !isEntityId(command.factoryId) || !isEntityId(command.targetId)
+    ? null
+    : {
+        type: 'setFactoryGuard',
+        tick,
+        factoryId: command.factoryId,
+        targetId: command.targetId,
       };
 }
 

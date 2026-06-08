@@ -19,6 +19,7 @@ import {
   initializeConstructionPieceHealth,
   interruptConstructionPreservingBuiltPieces,
 } from './constructionLifecycle';
+import { getEntityTargetPoint } from './buildingAnchors';
 import { getSimWasm } from '../sim-wasm/init';
 
 export type { FactoryProductionResult } from '@/types/ui';
@@ -299,18 +300,38 @@ export class FactoryProductionSystem {
     if (!factory.factory) return;
     const factoryComp = factory.factory;
     if (unit.unit) {
-      const route = factoryComp.defaultWaypoints !== null
-        ? factoryComp.defaultWaypoints
-        : [{
-            x: factoryComp.rallyX,
-            y: factoryComp.rallyY,
-            z: factoryComp.rallyZ,
-            type: factoryComp.rallyType,
-          }];
-      const { actions, patrolStartIndex } = directFactoryRallyActions(world, route);
-      setUnitActions(unit.unit, actions);
-      if (patrolStartIndex !== null) {
-        unit.unit.patrolStartIndex = patrolStartIndex;
+      const guardTarget = factoryComp.guardTargetId !== null
+        ? world.getEntity(factoryComp.guardTargetId)
+        : undefined;
+      if (
+        guardTarget !== undefined &&
+        factory.ownership !== null &&
+        guardTarget.ownership !== null &&
+        guardTarget.ownership.playerId === factory.ownership.playerId
+      ) {
+        const targetPoint = getEntityTargetPoint(guardTarget);
+        setUnitActions(unit.unit, [{
+          type: 'guard',
+          x: targetPoint.x,
+          y: targetPoint.y,
+          z: targetPoint.z,
+          targetId: guardTarget.id,
+        }]);
+        unit.unit.patrolStartIndex = null;
+      } else {
+        const route = factoryComp.defaultWaypoints !== null
+          ? factoryComp.defaultWaypoints
+          : [{
+              x: factoryComp.rallyX,
+              y: factoryComp.rallyY,
+              z: factoryComp.rallyZ,
+              type: factoryComp.rallyType,
+            }];
+        const { actions, patrolStartIndex } = directFactoryRallyActions(world, route);
+        setUnitActions(unit.unit, actions);
+        if (patrolStartIndex !== null) {
+          unit.unit.patrolStartIndex = patrolStartIndex;
+        }
       }
     }
     aimTurretsToward(unit, world.mapWidth / 2, world.mapHeight / 2);

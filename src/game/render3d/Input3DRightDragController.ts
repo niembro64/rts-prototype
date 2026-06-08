@@ -3,6 +3,7 @@ import type { Entity, EntityId, PlayerId, WaypointType } from '../sim/types';
 import {
   buildAttackCommandAt,
   buildAttackCommandForTarget,
+  buildFactoryGuardCommands,
   buildFactoryRallyCommands,
   buildLinePathMoveCommand,
   buildRepairCommandAt,
@@ -93,6 +94,25 @@ export class Input3DRightDragController {
       this.config.applyCursor('attack');
       this.config.commandQueue.enqueue(meshAttackCmd);
       return;
+    }
+
+    if (selectedUnits.length === 0) {
+      const factoryGuardCmds = buildFactoryGuardCommands(
+        this.getSelectedFactories(),
+        entityHit,
+        activePlayerId,
+        tick,
+      );
+      if (factoryGuardCmds.length > 0) {
+        debugLog(
+          GAME_DIAGNOSTICS.commandPlans,
+          '[click] factory-guard: hit target #%d, %d factory(s)',
+          factoryGuardCmds[0].targetId, factoryGuardCmds.length,
+        );
+        this.config.applyCursor('guard');
+        for (const cmd of factoryGuardCmds) this.config.commandQueue.enqueue(cmd);
+        return;
+      }
     }
 
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);

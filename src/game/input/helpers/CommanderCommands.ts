@@ -10,12 +10,15 @@ import type {
   ReclaimAreaCommand,
   RepairAreaCommand,
   RepairCommand,
+  SetFactoryGuardCommand,
   SetRallyPointCommand,
 } from '../../sim/commands';
+import type { PlayerId } from '../../sim/types';
 import { findRepairTargetAt } from './RepairTargetHelper';
 import type { RepairEntitySource } from './RepairTargetHelper';
 import { findReclaimTargetAt } from './ReclaimTargetHelper';
 import type { ReclaimEntitySource } from './ReclaimTargetHelper';
+import { isGuardableFriendlyTarget } from './GuardTargetHelper';
 import { isReclaimableTarget } from '../../sim/reclaim';
 
 /** Build a RepairCommand if the commander (if any) is right-clicking
@@ -154,6 +157,26 @@ export function buildFactoryRallyCommands(
       rallyY: worldY,
       rallyZ: worldZ,
       waypointType: mode,
+    });
+  }
+  return cmds;
+}
+
+export function buildFactoryGuardCommands(
+  factories: readonly Entity[],
+  target: Entity | null | undefined,
+  playerId: PlayerId,
+  tick: number,
+): SetFactoryGuardCommand[] {
+  if (!isGuardableFriendlyTarget(target, playerId)) return [];
+  const cmds: SetFactoryGuardCommand[] = [];
+  for (const f of factories) {
+    if (!f.factory) continue;
+    cmds.push({
+      type: 'setFactoryGuard',
+      tick,
+      factoryId: f.id,
+      targetId: target.id,
     });
   }
   return cmds;

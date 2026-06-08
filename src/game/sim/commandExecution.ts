@@ -24,6 +24,7 @@ import type {
   SetBuildingActiveCommand,
   SelfDestructCommand,
   SetTowerTargetCommand,
+  SetFactoryGuardCommand,
   SetRallyPointCommand,
   StartBuildCommand,
   StopFactoryProductionCommand,
@@ -150,6 +151,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'setRallyPoint':
       executeSetRallyPointCommand(ctx, command);
+      break;
+    case 'setFactoryGuard':
+      executeSetFactoryGuardCommand(ctx, command);
       break;
     case 'fireDGun':
       executeFireDGunCommand(ctx, command);
@@ -538,11 +542,34 @@ function executeSetRallyPointCommand(ctx: CommandContext, command: SetRallyPoint
   const factory = ctx.world.getEntity(command.factoryId);
   if (factory === undefined || factory.factory === null) return;
 
+  factory.factory.guardTargetId = null;
   factory.factory.rallyX = command.rallyX;
   factory.factory.rallyY = command.rallyY;
   factory.factory.rallyZ = command.rallyZ ?? null;
   factory.factory.rallyType = command.waypointType;
   factory.factory.defaultWaypoints = null;
+  ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+}
+
+function executeSetFactoryGuardCommand(ctx: CommandContext, command: SetFactoryGuardCommand): void {
+  const factory = ctx.world.getEntity(command.factoryId);
+  const target = ctx.world.getEntity(command.targetId);
+  if (
+    factory === undefined ||
+    factory.factory === null ||
+    factory.ownership === null ||
+    target === undefined ||
+    target.ownership === null ||
+    factory.ownership.playerId !== target.ownership.playerId
+  ) return;
+
+  const targetPoint = getEntityTargetPoint(target);
+  factory.factory.guardTargetId = target.id;
+  factory.factory.defaultWaypoints = null;
+  factory.factory.rallyX = targetPoint.x;
+  factory.factory.rallyY = targetPoint.y;
+  factory.factory.rallyZ = targetPoint.z;
+  factory.factory.rallyType = 'move';
   ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
 }
 

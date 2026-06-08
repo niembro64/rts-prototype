@@ -14,6 +14,7 @@ import type {
   SelfDestructCommand,
   SetBuildingActiveCommand,
   SetFireEnabledCommand,
+  SetFactoryGuardCommand,
   SetTowerTargetCommand,
   StartBuildCommand,
   StopCommand,
@@ -115,6 +116,9 @@ export function authorizeGameServerGameplayCommand(
     case 'stopFactoryProduction':
     case 'setRallyPoint':
       return isOwnedFactory(world, command.factoryId, playerId) ? command : null;
+
+    case 'setFactoryGuard':
+      return authorizeSetFactoryGuardCommand(world, command, playerId);
 
     case 'fireDGun':
       return isOwnedEntity(world, command.commanderId, playerId) ? command : null;
@@ -258,6 +262,17 @@ function authorizeAnyEntityListCommand(
   }
   if (entityIds.length === 0) return null;
   return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+}
+
+function authorizeSetFactoryGuardCommand(
+  world: WorldState,
+  command: SetFactoryGuardCommand,
+  playerId: PlayerId,
+): SetFactoryGuardCommand | null {
+  return isOwnedFactory(world, command.factoryId, playerId) &&
+    isOwnedEntity(world, command.targetId, playerId)
+    ? command
+    : null;
 }
 
 function isOwnedEntity(world: WorldState, entityId: EntityId, playerId: PlayerId): boolean {

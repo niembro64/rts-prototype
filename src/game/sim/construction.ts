@@ -145,6 +145,7 @@ export class ConstructionSystem {
         rallyY: wp.y,
         rallyZ: null,
         rallyType: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
+        guardTargetId: null,
         isProducing: false,
         energyRateFraction: 0,
         metalRateFraction: 0,

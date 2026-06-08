@@ -288,6 +288,7 @@ function assertFactoryShellContract(): void {
     rallyY: dry.y,
     rallyZ: null,
     rallyType: 'move',
+    guardTargetId: null,
     isProducing: false,
     energyRateFraction: 0,
     metalRateFraction: 0,

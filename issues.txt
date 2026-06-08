@@ -48,20 +48,21 @@ and left-drag build line placement with a 3D line preview through existing
 build validation; these do not satisfy BAR fallback behavior.
 
 Issue: queue editing and command insertion are incomplete. BAR supports queue to
-next, commandinsert/prepend-between, factory guard, and queued variants of
-several orders. rts-prototype exposes Shift append-queue,
+next, commandinsert/prepend-between, and queued variants of several orders.
+rts-prototype exposes Shift append-queue,
 Shift+Ctrl/Cmd add-in-front queueing for queueable orders,
 skip-current-order, remove-last-queued-order, clear-queued-orders,
-stop-production, wait queueing, basic factory rally, and selected-unit
-current-order/queue-depth feedback. Implement the missing queue semantics with
-server authorization and matching visual feedback.
+stop-production, wait queueing, basic factory rally, basic factory guard, and
+selected-unit current-order/queue-depth feedback. Implement the missing queue
+semantics with server authorization and matching visual feedback.
 
 Issue: behavior/state toggles are incomplete. BAR exposes cloak/want-cloak,
 gather wait, on/off, stateful on/off, repeat, stateful repeat, stance/fire
 state, positioning/move state, trajectory toggle, stop, wait, factory guard,
 and related stateful command buttons. rts-prototype currently has only a simple
-fire enabled toggle, producer-building on/off, wait, stop, and self-destruct,
-with selection-detail indicators for fire, wait, and producer on/off state.
+fire enabled toggle, producer-building on/off, wait, stop, self-destruct, and
+basic factory guard, with selection-detail indicators for fire, wait, and
+producer on/off state.
 Implement the missing states in simulation, snapshots, command authorization,
 selection UI, hotkeys, and visible state indicators.
 
@@ -74,13 +75,13 @@ support.
 
 Issue: factory and production UI are incomplete. BAR has factory production
 controls beyond selecting one repeat-build unit: repeat/queue state, factory
-queue mode/quotas, production queue editing, factory guard, and related state
+queue mode/quotas, production queue editing, and related state
 indicators. rts-prototype now has an authoritative stop-production command,
 factory panel button, and local factory preset slots with shared hotkeys that
 load through authoritative production commands, plus selected repeat-build and
-production-progress state indicators. It still needs the remaining
-BAR-equivalent factory panel and hotkeys, translated to authoritative-server
-commands.
+production-progress state indicators, basic factory rally, and basic factory
+guard. It still needs the remaining BAR-equivalent factory panel and hotkeys,
+translated to authoritative-server commands.
 
 Issue: BAR gameplay functionality tied to missing commands is absent. Implement
 or explicitly redesign the systems needed by the missing command surface:

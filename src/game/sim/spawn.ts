@@ -270,6 +270,7 @@ function placeCompleteBuilding(
       rallyY: rally.y,
       rallyZ: null,
       rallyType: rally.type,
+      guardTargetId: null,
       isProducing: false,
       energyRateFraction: 0,
       metalRateFraction: 0,

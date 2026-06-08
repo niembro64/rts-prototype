@@ -917,6 +917,7 @@ export type Factory = {
   rallyY: number;
   rallyZ: number | null;
   rallyType: WaypointType;
+  guardTargetId: EntityId | null;
   isProducing: boolean;
   /** Per-resource transfer rate this tick, expressed as a fraction
    *  (0..1) of the factory's `maxResourcePerTick` cap for the active

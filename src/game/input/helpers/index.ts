@@ -61,6 +61,7 @@ export {
   buildReclaimAreaCommand,
   buildReclaimCommandAt,
   buildReclaimCommandForTarget,
+  buildFactoryGuardCommands,
   buildFactoryRallyCommands,
 } from './CommanderCommands';
 

@@ -15,6 +15,7 @@ export type {
   QueueUnitCommand,
   StopFactoryProductionCommand,
   SetRallyPointCommand,
+  SetFactoryGuardCommand,
   FireDGunCommand,
   SetFireEnabledCommand,
   SetBuildingActiveCommand,

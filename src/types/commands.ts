@@ -19,6 +19,7 @@ export type CommandType =
   | 'queueUnit'
   | 'stopFactoryProduction'
   | 'setRallyPoint'
+  | 'setFactoryGuard'
   | 'fireDGun'
   | 'setFireEnabled'
   | 'setBuildingActive'
@@ -153,6 +154,12 @@ export type SetRallyPointCommand = BaseCommand & {
   rallyY: number;
   rallyZ?: number;
   waypointType: WaypointType;
+};
+
+export type SetFactoryGuardCommand = BaseCommand & {
+  type: 'setFactoryGuard';
+  factoryId: EntityId;
+  targetId: EntityId;
 };
 
 export type FireDGunCommand = BaseCommand & {
@@ -370,6 +377,7 @@ export type Command =
   | QueueUnitCommand
   | StopFactoryProductionCommand
   | SetRallyPointCommand
+  | SetFactoryGuardCommand
   | FireDGunCommand
   | SetFireEnabledCommand
   | SetBuildingActiveCommand

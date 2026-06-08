@@ -521,6 +521,7 @@ function createBuildingFromNetwork(
       rallyY: f.rally.pos.y,
       rallyZ: f.rally.posZ,
       rallyType: f.rally.type as 'move' | 'fight' | 'patrol',
+      guardTargetId: null,
       isProducing: f.producing ?? false,
       energyRateFraction: f.energyRate ?? 0,
       metalRateFraction: f.metalRate ?? 0,
