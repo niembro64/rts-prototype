@@ -32,6 +32,7 @@ type Input3DKeyboardControllerConfig = {
   clearQueuedOrders: () => void;
   toggleSelectedWait: (queue: boolean, queueFront?: boolean) => void;
   toggleRepeatQueue: () => void;
+  toggleUnitMoveState: () => void;
   toggleSelectedFire: () => void;
   toggleBuildingActive: () => void;
   selfDestructSelected: () => void;
@@ -295,6 +296,9 @@ export class Input3DKeyboardController {
         break;
       case 'command.repeat':
         this.config.toggleRepeatQueue();
+        break;
+      case 'command.moveState':
+        this.config.toggleUnitMoveState();
         break;
       case 'command.fireToggle':
         this.config.toggleSelectedFire();

@@ -304,6 +304,7 @@ function createUnitFromNetwork(
       actions,
       actionHash: computeUnitActionHash(actions),
       repeatQueue: u !== null && u.repeatQueue === true,
+      moveState: u !== null && u.holdPosition === true ? 'holdPosition' : 'maneuver',
       patrolStartIndex: null,
       activePath: null,
       flyingLoiterTargetX: null,

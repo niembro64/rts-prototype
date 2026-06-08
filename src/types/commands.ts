@@ -1,6 +1,6 @@
 // Command types extracted from game/sim/commands.ts
 
-import type { EntityId, WaypointType, BuildingBlueprintId, PlayerId } from './sim';
+import type { EntityId, WaypointType, BuildingBlueprintId, PlayerId, UnitMoveState } from './sim';
 import type { KeyframeRatio, SnapshotRate, TickRate } from './server';
 import type { ShieldReflectionMode } from './shotTypes';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
@@ -13,6 +13,7 @@ export type CommandType =
   | 'removeLastQueuedOrder'
   | 'skipCurrentOrder'
   | 'setRepeatQueue'
+  | 'setUnitMoveState'
   | 'clearSelection'
   | 'ping'
   | 'scan'
@@ -107,6 +108,12 @@ export type SetRepeatQueueCommand = BaseCommand & {
   type: 'setRepeatQueue';
   entityIds: EntityId[];
   enabled: boolean;
+};
+
+export type SetUnitMoveStateCommand = BaseCommand & {
+  type: 'setUnitMoveState';
+  entityIds: EntityId[];
+  moveState: UnitMoveState;
 };
 
 export type ClearSelectionCommand = BaseCommand & {
@@ -378,6 +385,7 @@ export type Command =
   | RemoveLastQueuedOrderCommand
   | SkipCurrentOrderCommand
   | SetRepeatQueueCommand
+  | SetUnitMoveStateCommand
   | ClearSelectionCommand
   | PingCommand
   | ScanCommand

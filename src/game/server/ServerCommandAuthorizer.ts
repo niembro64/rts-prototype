@@ -16,6 +16,7 @@ import type {
   SetFireEnabledCommand,
   SetFactoryGuardCommand,
   SetRepeatQueueCommand,
+  SetUnitMoveStateCommand,
   SetTowerTargetCommand,
   StartBuildCommand,
   StopCommand,
@@ -40,7 +41,8 @@ type UnitListCommand =
   | ClearQueuedOrdersCommand
   | RemoveLastQueuedOrderCommand
   | SkipCurrentOrderCommand
-  | SetRepeatQueueCommand;
+  | SetRepeatQueueCommand
+  | SetUnitMoveStateCommand;
 
 type AnyEntityListCommand =
   | SetFireEnabledCommand
@@ -84,6 +86,7 @@ export function authorizeGameServerGameplayCommand(
     case 'removeLastQueuedOrder':
     case 'skipCurrentOrder':
     case 'setRepeatQueue':
+    case 'setUnitMoveState':
       return authorizeUnitListCommand(world, command, playerId);
 
     case 'wait':

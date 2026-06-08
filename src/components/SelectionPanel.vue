@@ -641,6 +641,17 @@ function loadFactoryPreset(index: number): void {
         <button
           type="button"
           class="action-btn"
+          :class="{ active: selection.isHoldPosition }"
+          :style="{ '--btn-color': BUTTON_COLORS.wait }"
+          :title="actionTitle(selection.isHoldPosition ? 'Maneuver' : 'Hold position', 'command.moveState')"
+          @click="actions.toggleUnitMoveState()"
+        >
+          <span class="btn-label">{{ selection.isHoldPosition ? 'Hold' : 'Move' }}</span>
+          <span class="btn-key">{{ hotkey('command.moveState') }}</span>
+        </button>
+        <button
+          type="button"
+          class="action-btn"
           :disabled="!selection.hasQueuedOrders"
           :style="{ '--btn-color': BUTTON_COLORS.skipQueue }"
           :title="actionTitle('Skip current order', 'command.skipCurrent')"

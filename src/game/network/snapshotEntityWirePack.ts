@@ -134,6 +134,7 @@ function rentDecodedUnitSub(): UnitSub {
     u.angularVelocity3 = null;
     u.fireEnabled = null;
     u.repeatQueue = null;
+    u.holdPosition = null;
     u.isCommander = null;
     u.buildTargetId = null;
     u.buildTargetIdPresent = false;
@@ -174,7 +175,7 @@ function rentDecodedQuat(x: number, y: number, z: number, w: number): DecodedQua
   return q;
 }
 
-const PACKED_ENTITIES_VERSION = 7;
+const PACKED_ENTITIES_VERSION = 8;
 
 // Bit flags for the packed unit row's optional-presence header.
 // One bit per optional sub-field so the decoder can tell "missing"
@@ -200,6 +201,8 @@ const UNIT_FLAG_BUILD_COMPLETE = 1 << 18;
 const UNIT_FLAG_BUILD_INTERRUPTED = 1 << 19;
 const UNIT_FLAG_REPEAT_PRESENT = 1 << 20;
 const UNIT_FLAG_REPEAT_ENABLED = 1 << 21;
+const UNIT_FLAG_HOLD_POSITION_PRESENT = 1 << 22;
+const UNIT_FLAG_HOLD_POSITION_ENABLED = 1 << 23;
 
 const BUILDING_FLAG_BLUEPRINT_CODE = 1 << 0;
 const BUILDING_FLAG_DIM = 1 << 1;
@@ -260,7 +263,8 @@ const WAYPOINT_FLAG_POS_Z = 1 << 0;
 // counts are paid once per group instead of once per row. V6 also
 // compacts yaw-only airborne orientation from the already-shipped
 // rotation channel and yaw-only angular velocity from three floats to
-// one. V7 adds a detail-row unit repeat command-state bit pair.
+// one. V7 adds a detail-row unit repeat command-state bit pair. V8 adds
+// the unit hold-position command-state bit pair.
 export type PackedEntityRow = unknown[];
 export type PackedMovementUnitBytes = Uint8Array;
 export type PackedUnitTurretBytes = Uint8Array;
@@ -545,6 +549,7 @@ function isMovementOnlyUnitDelta(entity: NetworkServerSnapshotEntity): boolean {
   if (unit.surfaceNormal !== null) return false;
   if (unit.fireEnabled !== null) return false;
   if (unit.repeatQueue !== null && unit.repeatQueue !== undefined) return false;
+  if (unit.holdPosition !== null && unit.holdPosition !== undefined) return false;
   if (unit.isCommander !== null) return false;
   if (unit.buildTargetIdPresent) return false;
   if (unit.actions !== null) return false;
@@ -580,6 +585,7 @@ function isSplitUnitTurretDelta(entity: NetworkServerSnapshotEntity): boolean {
   if (unit.surfaceNormal !== null) return false;
   if (unit.fireEnabled !== null) return false;
   if (unit.repeatQueue !== null && unit.repeatQueue !== undefined) return false;
+  if (unit.holdPosition !== null && unit.holdPosition !== undefined) return false;
   if (unit.isCommander !== null) return false;
   if (unit.buildTargetIdPresent) return false;
   if (unit.actions !== null) return false;
@@ -1014,6 +1020,10 @@ function packUnit(unit: UnitSub): unknown[] {
     flags |= UNIT_FLAG_REPEAT_PRESENT;
     if (unit.repeatQueue === true) flags |= UNIT_FLAG_REPEAT_ENABLED;
   }
+  if (unit.holdPosition !== null && unit.holdPosition !== undefined) {
+    flags |= UNIT_FLAG_HOLD_POSITION_PRESENT;
+    if (unit.holdPosition === true) flags |= UNIT_FLAG_HOLD_POSITION_ENABLED;
+  }
   if (unit.isCommander === true) flags |= UNIT_FLAG_IS_COMMANDER;
   if (unit.buildTargetIdPresent) {
     flags |= UNIT_FLAG_BUILD_TARGET_ID;
@@ -1128,6 +1138,9 @@ function unpackUnit(row: unknown[]): UnitSub {
   }
   if ((flags & UNIT_FLAG_REPEAT_PRESENT) !== 0) {
     unit.repeatQueue = (flags & UNIT_FLAG_REPEAT_ENABLED) !== 0;
+  }
+  if ((flags & UNIT_FLAG_HOLD_POSITION_PRESENT) !== 0) {
+    unit.holdPosition = (flags & UNIT_FLAG_HOLD_POSITION_ENABLED) !== 0;
   }
   if ((flags & UNIT_FLAG_IS_COMMANDER) !== 0) {
     unit.isCommander = true;

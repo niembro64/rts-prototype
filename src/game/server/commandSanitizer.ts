@@ -20,6 +20,7 @@ import type {
   SetFireEnabledCommand,
   SetBuildingActiveCommand,
   SetRepeatQueueCommand,
+  SetUnitMoveStateCommand,
   SelfDestructCommand,
   SetTowerTargetCommand,
   SetFactoryGuardCommand,
@@ -43,6 +44,7 @@ import { BATTLE_CONFIG } from '../../battleBarConfig';
 import { isShieldReflectionMode } from '../../types/shotTypes';
 
 const WAYPOINT_TYPES: readonly WaypointType[] = ['move', 'fight', 'patrol'];
+const UNIT_MOVE_STATES: readonly string[] = ['maneuver', 'holdPosition'];
 
 type GroundPoint = { x: number; y: number; z: number | undefined };
 
@@ -69,6 +71,8 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       return sanitizeUnitListCommand(command, tick);
     case 'setRepeatQueue':
       return sanitizeSetRepeatQueueCommand(command, tick);
+    case 'setUnitMoveState':
+      return sanitizeSetUnitMoveStateCommand(command, tick);
     case 'wait':
       return sanitizeWaitCommand(command, tick);
     case 'setFireEnabled':
@@ -318,6 +322,16 @@ function sanitizeSetRepeatQueueCommand(
   return entityIds === null || typeof command.enabled !== 'boolean'
     ? null
     : { type: 'setRepeatQueue', tick, entityIds, enabled: command.enabled };
+}
+
+function sanitizeSetUnitMoveStateCommand(
+  command: SetUnitMoveStateCommand,
+  tick: number,
+): SetUnitMoveStateCommand | null {
+  const entityIds = sanitizeEntityIdArray(command.entityIds);
+  return entityIds === null || !UNIT_MOVE_STATES.includes(command.moveState)
+    ? null
+    : { type: 'setUnitMoveState', tick, entityIds, moveState: command.moveState };
 }
 
 function sanitizeSelfDestructCommand(

@@ -49,6 +49,7 @@ export function createNetworkUnitSnapshot(): NetworkUnitSnapshot {
     angularVelocity3: null,
     fireEnabled: null,
     repeatQueue: null,
+    holdPosition: null,
     isCommander: null,
     buildTargetId: null,
     buildTargetIdPresent: false,
@@ -142,6 +143,11 @@ export function applyNetworkUnitCommandState(
     unit.repeatQueue = src.repeatQueue === true;
   } else if (isFull) {
     unit.repeatQueue = false;
+  }
+  if (src.holdPosition !== null && src.holdPosition !== undefined) {
+    unit.moveState = src.holdPosition === true ? 'holdPosition' : 'maneuver';
+  } else if (isFull) {
+    unit.moveState = 'maneuver';
   }
 }
 
@@ -399,6 +405,7 @@ export function copyNetworkUnitSnapshotInto(
   dst.angularVelocity3 = copyVec3OptionalInto(src.angularVelocity3, dst.angularVelocity3);
   dst.fireEnabled = src.fireEnabled;
   dst.repeatQueue = src.repeatQueue ?? null;
+  dst.holdPosition = src.holdPosition ?? null;
   dst.isCommander = src.isCommander;
   dst.buildTargetId = src.buildTargetId;
   dst.buildTargetIdPresent = src.buildTargetIdPresent;

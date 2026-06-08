@@ -23,6 +23,7 @@ import type {
   SetFireEnabledCommand,
   SetBuildingActiveCommand,
   SetRepeatQueueCommand,
+  SetUnitMoveStateCommand,
   SelfDestructCommand,
   SetTowerTargetCommand,
   SetFactoryGuardCommand,
@@ -131,6 +132,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'setRepeatQueue':
       executeSetRepeatQueueCommand(ctx, command);
+      break;
+    case 'setUnitMoveState':
+      executeSetUnitMoveStateCommand(ctx, command);
       break;
     case 'wait':
       executeWaitCommand(ctx, command);
@@ -429,6 +433,18 @@ function executeSetRepeatQueueCommand(ctx: CommandContext, command: SetRepeatQue
     if (entity === undefined || unit === null) continue;
     if (unit.repeatQueue === enabled) continue;
     unit.repeatQueue = enabled;
+    ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+  }
+}
+
+function executeSetUnitMoveStateCommand(ctx: CommandContext, command: SetUnitMoveStateCommand): void {
+  const moveState = command.moveState;
+  for (let i = 0; i < command.entityIds.length; i++) {
+    const entity = ctx.world.getEntity(command.entityIds[i]);
+    const unit = entity !== undefined ? entity.unit : null;
+    if (entity === undefined || unit === null) continue;
+    if (unit.moveState === moveState) continue;
+    unit.moveState = moveState;
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
   }
 }

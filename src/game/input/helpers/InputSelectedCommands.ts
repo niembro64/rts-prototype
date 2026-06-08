@@ -121,6 +121,25 @@ export class InputSelectedCommands {
     });
   }
 
+  setUnitMoveState(): void {
+    const selectedUnits = this.source.getSelectedUnits();
+    const entityIds: EntityId[] = [];
+    let allHoldPosition = true;
+    for (let i = 0; i < selectedUnits.length; i++) {
+      const unit = selectedUnits[i].unit;
+      if (unit === null) continue;
+      entityIds.push(selectedUnits[i].id);
+      if (unit.moveState !== 'holdPosition') allHoldPosition = false;
+    }
+    if (entityIds.length === 0) return;
+    this.commandQueue.enqueue({
+      type: 'setUnitMoveState',
+      tick: this.getTick(),
+      entityIds,
+      moveState: allHoldPosition ? 'maneuver' : 'holdPosition',
+    });
+  }
+
   setFireEnabled(): void {
     const selectedUnits = this.source.getSelectedUnits();
     const selectedStatic = this.source.getSelectedBuildings();

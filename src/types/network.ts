@@ -874,6 +874,11 @@ export type NetworkServerSnapshotEntity = {
      *  off. Omitted/null means "unchanged" for deltas and false for full
      *  records. */
     repeatQueue?: boolean | null;
+    /** Unit positioning/move-state bit. Present with private action
+     *  detail rows when the unit is in hold-position, and on deltas
+     *  that explicitly return it to maneuver. Omitted/null means
+     *  "unchanged" for deltas and maneuver for full records. */
+    holdPosition?: boolean | null;
     isCommander: boolean | null;
     buildTargetId: number | null;
     buildTargetIdPresent: boolean;

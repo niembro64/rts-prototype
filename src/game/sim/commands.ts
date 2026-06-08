@@ -9,6 +9,7 @@ export type {
   RemoveLastQueuedOrderCommand,
   SkipCurrentOrderCommand,
   SetRepeatQueueCommand,
+  SetUnitMoveStateCommand,
   ClearSelectionCommand,
   PingCommand,
   ScanCommand,

@@ -31,6 +31,7 @@ export type {
   UnitPathPlan,
   UnitPathPoint,
   UnitLocomotion,
+  UnitMoveState,
   BuildingActiveState,
   Unit,
   Building,

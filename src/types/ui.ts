@@ -64,6 +64,7 @@ export type SelectionInfo = {
   isTowerTargetMode: boolean;
   isWaiting: boolean;
   isRepeatQueue: boolean;
+  isHoldPosition: boolean;
   hasQueuedOrders: boolean;
   hasFactory: boolean;
   factoryId?: number;
@@ -93,6 +94,7 @@ export type SelectionActions = {
   clearQueuedOrders: () => void;
   removeLastQueuedOrder: () => void;
   toggleRepeatQueue: () => void;
+  toggleUnitMoveState: () => void;
   toggleSelectedWait: () => void;
   toggleSelectedFire: () => void;
   /** ON/OFF for producer buildings in the selection. */

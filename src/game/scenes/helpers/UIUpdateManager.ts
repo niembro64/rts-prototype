@@ -138,9 +138,11 @@ function addMultiSelectionStateDetails(
 
   let waitingCount = 0;
   let repeatCount = 0;
+  let holdPositionCount = 0;
   for (let i = 0; i < selectedUnits.length; i++) {
     if (selectedUnits[i].unit?.actions[0]?.type === 'wait') waitingCount++;
     if (selectedUnits[i].unit?.repeatQueue === true) repeatCount++;
+    if (selectedUnits[i].unit?.moveState === 'holdPosition') holdPositionCount++;
   }
   if (waitingCount > 0) {
     details.push({
@@ -152,6 +154,14 @@ function addMultiSelectionStateDetails(
     details.push({
       label: 'Repeat',
       value: repeatCount === selectedUnits.length ? 'On' : `${repeatCount}/${selectedUnits.length}`,
+    });
+  }
+  if (holdPositionCount > 0) {
+    details.push({
+      label: 'Move State',
+      value: holdPositionCount === selectedUnits.length
+        ? 'Hold'
+        : `${holdPositionCount}/${selectedUnits.length} Hold`,
     });
   }
 
@@ -219,6 +229,7 @@ function buildSingleSelectionDetails(entity: Entity): SelectionInfo['details'] {
       if (fire !== null) details.push({ label: 'Fire', value: fire });
       if (entity.unit.actions[0]?.type === 'wait') details.push({ label: 'Wait', value: 'On' });
       if (entity.unit.repeatQueue === true) details.push({ label: 'Repeat', value: 'On' });
+      if (entity.unit.moveState === 'holdPosition') details.push({ label: 'Move State', value: 'Hold' });
       const queuedIntentCount = getQueuedActionIntentCount(entity.unit.actions);
       if (queuedIntentCount > 0) details.push({ label: 'Queued', value: `${queuedIntentCount}` });
       details.push({ label: 'Move', value: bp.locomotion.type });
@@ -337,12 +348,14 @@ export function buildSelectionInfo(
   let hasPriorityTarget = false;
   let waitingCount = 0;
   let repeatCount = 0;
+  let holdPositionCount = 0;
   let hasQueuedOrders = false;
   for (let i = 0; i < selectedUnits.length; i++) {
     const selectedUnit = selectedUnits[i];
     const actions = selectedUnit.unit?.actions;
     if (actions?.[0]?.type === 'wait') waitingCount++;
     if (selectedUnit.unit?.repeatQueue === true) repeatCount++;
+    if (selectedUnit.unit?.moveState === 'holdPosition') holdPositionCount++;
     if (actions && hasQueuedActionIntents(actions)) hasQueuedOrders = true;
     const combat = selectedUnit.combat;
     if (combat && combat.turrets.length > 0) {
@@ -449,6 +462,7 @@ export function buildSelectionInfo(
     isTowerTargetMode: inputState?.isTowerTargetMode ?? false,
     isWaiting: selectedUnits.length > 0 && waitingCount === selectedUnits.length,
     isRepeatQueue: selectedUnits.length > 0 && repeatCount === selectedUnits.length,
+    isHoldPosition: selectedUnits.length > 0 && holdPositionCount === selectedUnits.length,
     hasQueuedOrders,
     hasFactory: factory !== undefined,
     factoryId: factory?.id,

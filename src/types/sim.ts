@@ -151,6 +151,8 @@ export type EntityRadii = {
   collision: number;
 };
 
+export type UnitMoveState = 'maneuver' | 'holdPosition';
+
 // Cached shield panel geometry (pre-computed from blueprint at entity creation).
 // halfWidth — half the panel's edge length (square panel, so the same
 //             value is used for both the horizontal-edge half and the
@@ -217,6 +219,11 @@ export type Unit = {
    *  player intents rotate to the back of the action queue so a multi-order
    *  chain loops until the player stops or clears it. */
   repeatQueue: boolean;
+  /** Basic BAR-style positioning state. `maneuver` allows attack and
+   *  guard actions to chase their targets; `holdPosition` keeps the unit
+   *  planted unless the current target is already in weapon engagement.
+   *  Explicit move/fight/patrol waypoints still move. */
+  moveState: UnitMoveState;
   patrolStartIndex: number | null;
   /** Current route resolution for actions[0]. This is sim-only state:
    *  actions are durable player/factory waypoints, while activePath

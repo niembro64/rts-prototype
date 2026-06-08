@@ -670,6 +670,10 @@ export class Simulation {
           unit.stuckTicks = 0;
           continue;
         }
+        if (unit.moveState === 'holdPosition') {
+          unit.stuckTicks = 0;
+          continue;
+        }
 
         // Move toward the pathfinder-approved approach point, not the
         // target's raw position. If the target moved and this approach
@@ -712,6 +716,10 @@ export class Simulation {
           unit.stuckTicks = 0;
           continue;
         }
+        if (unit.moveState === 'holdPosition') {
+          unit.stuckTicks = 0;
+          continue;
+        }
 
         const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
         const dx = movementTarget.x - transform.x;
@@ -737,6 +745,10 @@ export class Simulation {
         }
 
         if (this.combatHaltController.shouldStopForEngagedCombat(entity)) {
+          unit.stuckTicks = 0;
+          continue;
+        }
+        if (unit.moveState === 'holdPosition') {
           unit.stuckTicks = 0;
           continue;
         }

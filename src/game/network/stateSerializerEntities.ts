@@ -1103,6 +1103,7 @@ export function serializeEntitySnapshot(
       u.hp = null;
       u.velocity = null;
       u.repeatQueue = null;
+      u.holdPosition = null;
 
       if (isFull) {
         writeNetworkUnitStaticFields(
@@ -1184,6 +1185,11 @@ export function serializeEntitySnapshot(
       if (canSeePrivateDetails && (isFull || (changedFields! & ENTITY_CHANGED_ACTIONS))) {
         writeNetworkUnitActions(u, entity.unit, poolEntry.actions, canReferenceEntityId);
         u.repeatQueue = entity.unit.repeatQueue === true
+          ? true
+          : isFull
+            ? null
+            : false;
+        u.holdPosition = entity.unit.moveState === 'holdPosition'
           ? true
           : isFull
             ? null
