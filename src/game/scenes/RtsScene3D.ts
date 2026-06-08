@@ -19,16 +19,7 @@ import { RtsScene3DMinimapSystem } from './helpers/RtsScene3DMinimapSystem';
 import { RtsScene3DRenderPhase } from './helpers/RtsScene3DRenderPhase';
 import { teardownRtsScene3DRenderers } from './helpers/RtsScene3DRendererLifecycle';
 import { RtsScene3DSelectionSystem } from './helpers/RtsScene3DSelectionSystem';
-import { playSimEventAudio3D } from './helpers/RtsScene3DSimEventAudio';
-import {
-  WATER_SURFACE_NORMAL_SIM,
-  finiteAtLeast,
-  finiteOr,
-  hasFiniteEventPosition,
-  maxFiniteNonNegativeOr,
-  resolveDeathContext3D,
-  warnNonFiniteVisualEvent,
-} from './helpers/RtsScene3DVisualEventSanitizer';
+import { dispatchSimEvent3DVisual } from './helpers/RtsScene3DVisualEventDispatcher';
 import { ThreeApp } from '../render3d/ThreeApp';
 import { Render3DEntities } from '../render3d/Render3DEntities';
 import { Input3DManager } from '../render3d/Input3DManager';
@@ -60,7 +51,6 @@ import { ContactShadowRenderer3D } from '../render3d/ContactShadowRenderer3D';
 import { RtsScene3DAudioSystem } from './helpers/RtsScene3DAudioSystem';
 import { RtsScene3DPredictionPhase } from './helpers/RtsScene3DPredictionPhase';
 import type { NetworkServerSnapshotSimEvent } from '../network/NetworkTypes';
-import { getGraphicsConfig } from '@/clientBarConfig';
 import { CommandQueue, type Command } from '../sim/commands';
 import { getTerrainDividerTeamCount } from '../sim/playerLayout';
 import {
@@ -77,7 +67,6 @@ import { Waypoint3D } from '../render3d/Waypoint3D';
 import type { CanvasSpritePoolTelemetry } from '../render3d/CanvasSpritePool';
 
 import type { GameConnection } from '../server/GameConnection';
-import type { GraphicsConfig } from '@/types/graphics';
 import type {
   NetworkServerSnapshotMeta,
 } from '../network/NetworkTypes';
@@ -887,199 +876,15 @@ export class RtsScene3D {
     this.gameConnection.sendCommand(command);
   }
 
-  private graphicsConfigForEffectCell(
-    _simX: number,
-    _simY: number,
-    _simZ: number,
-  ): GraphicsConfig | null {
-    return getGraphicsConfig();
-  }
-
-  /**
-   * Dispatch a SimEvent to the 3D effect renderers. Mirrors the subset of
-   * DeathEffectsHandler that is visual (audio is handled separately, or not
-   * yet — the 3D view currently leaves audio to the 2D path via shared state).
-   *
-   * Event types handled:
-   *   - 'hit'              → fire explosion at event.pos
-   *   - 'projectileExpire' → smaller fire explosion (projectile reached max
-   *                          range or hit the ground)
-   *   - 'shieldImpact' → tangent-plane shield shield flash
-   *   - 'death'            → fire explosion + material debris cluster
-   *
-   * laserStart/Stop and shieldStart/Stop need no visual reaction here —
-   * beams are drawn continuously while live projectiles exist, and shield
-   * visuals come from FLAG toggles on their turret state.
-   */
   private handleSimEvent3D(event: NetworkServerSnapshotSimEvent): void {
-    // FOW-09 prereq: play the audio side of every SimEvent before
-    // any visual branch returns early. Audio stays on even when the
-    // camera/effect-cell gating drops the visual — that's what makes
-    // off-screen gunfire audible, the whole point of an RTS soundscape.
-    playSimEventAudio3D(event);
-    // FOW-09 main: events forwarded by the audio earshot pad arrive
-    // with audioOnly=true. The sound has already played above; skip
-    // every visual branch so the explosion sprite / debris / ping
-    // marker don't leak the still-fog-hidden source's position.
-    if (event.audioOnly) return;
-    if (!hasFiniteEventPosition(event)) {
-      warnNonFiniteVisualEvent(event);
-      return;
-    }
-    if (event.type === 'ping' || event.type === 'attackAlert') {
-      // Visual rings removed; sim events still flow (manual ping
-      // command, scan pulse emission, attack alert) so
-      // the plumbing can wire a new visual without re-deriving the
-      // events. Audio handled above by playSimEventAudio3D.
-      return;
-    }
-
-    const effectGfx = this.graphicsConfigForEffectCell(
-      event.pos.x,
-      event.pos.y,
-      event.pos.z,
-    );
-    if (!effectGfx) return;
-
-    if (event.type === 'hit') {
-      const ctx = event.impactContext;
-      // Size the explosion by the biggest radius the shot genuinely
-      // has: the projectile body collision radius or its separate
-      // death-explosion radius; lines keep their narrow local spark.
-      // No artificial floor here: line-weapon hits should read as
-      // localized sparks the size of the beam, not as a 8-unit
-      // pop that looks like a bullet impact.
-      const r = ctx
-        ? maxFiniteNonNegativeOr(2, ctx.radiusCollision, ctx.deathExplosionRadius)
-        : 2;
-      // Combined impulse vector (sim X/Y → world X/Z): penetration direction
-      // dominates because that's the intended "away from attacker" push, with
-      // smaller contributions from the projectile's ballistic momentum and
-      // the target's own velocity (so a moving target's debris trails).
-      // Same three components the 2D DeathEffectsHandler feeds into
-      // addExplosion(..., penetrationX, penetrationY, attackerX, attackerY,
-      // velocityX, velocityY, ...).
-      let mx = 0, mz = 0;
-      if (ctx) {
-        mx =
-          finiteOr(ctx.penetrationDir.x, 0) * 120 +
-          finiteOr(ctx.projectile.vel.x, 0) * 0.3 +
-          finiteOr(ctx.entity.vel.x, 0) * 0.3;
-        mz =
-          finiteOr(ctx.penetrationDir.y, 0) * 120 +
-          finiteOr(ctx.projectile.vel.y, 0) * 0.3 +
-          finiteOr(ctx.entity.vel.y, 0) * 0.3;
-      }
-      this.explosionRenderer.spawnImpact(
-        event.pos.x,
-        event.pos.y,
-        event.pos.z,
-        r,
-        mx,
-        mz,
-        undefined,
-        effectGfx.fireExplosionStyle,
-      );
-    } else if (event.type === 'waterSplash') {
-      const splash = event.waterSplash;
-      const ctx = event.impactContext;
-      const fallbackVelocity = {
-        x: ctx ? finiteOr(ctx.projectile.vel.x, 0) : 0,
-        y: ctx ? finiteOr(ctx.projectile.vel.y, 0) : 0,
-        z: 0,
-      };
-      const mass = splash
-        ? finiteAtLeast(splash.mass, 0.001, 1)
-        : ctx
-          ? finiteAtLeast(ctx.radiusCollision, 1, 1)
-          : 2;
-      this.waterSplashRenderer.createSplash(
-        event.pos,
-        splash ? splash.velocity : fallbackVelocity,
-        mass,
-      );
-      // Surface ripple — reuse the shield impact ring as
-      // the spreading surface-reflection flash. Same material
-      // contract (Materials Are Independent Of Shape): a circular
-      // reflective surface flashing under impact reads identically
-      // whether the surface is a shield panel, a shield
-      // sphere, or a body of water. The water plane is flat so the
-      // surface normal is straight up; sim is z-up so +Z is the right
-      // normal value.
-      this.shieldImpactRenderer.spawn(
-        event.pos.x,
-        event.pos.y,
-        event.pos.z,
-        WATER_SURFACE_NORMAL_SIM,
-        event.playerId ?? undefined,
-      );
-    } else if (event.type === 'projectileExpire') {
-      // Ground / expired-projectile fire — always a small pop, no meaningful
-      // momentum (the projectile stopped). event.pos.z carries the exact
-      // altitude the sim computed — ground-impact events have z=0, aerial
-      // splash-on-expiry have whatever altitude the shot reached.
-      this.explosionRenderer.spawnImpact(
-        event.pos.x,
-        event.pos.y,
-        event.pos.z,
-        8,
-        0,
-        0,
-        undefined,
-        effectGfx.fireExplosionStyle,
-      );
-    } else if (event.type === 'shieldImpact') {
-      const ctx = event.shieldImpact;
-      if (ctx) {
-        this.shieldImpactRenderer.spawn(
-          event.pos.x,
-          event.pos.y,
-          event.pos.z,
-          ctx.normal,
-          ctx.playerId,
-        );
-      }
-    } else if (event.type === 'death') {
-      if (event.entityId !== null) {
-        // Mark the unit as DESTROYED so its render mesh plays the scatter +
-        // death-fade instead of the quiet out-of-vision fade-out. SimEvents
-        // are drained during snapshot intake, ahead of the entity-render
-        // removal queue that clears the mesh this frame, so the flag is set
-        // while the mesh is still live.
-        this.entityRenderer.markEntityKilled(event.entityId);
-      }
-      // The entity may already be gone from view state if the death
-      // event is processed after the snapshot that removed it. We
-      // look it up either to synthesize a missing context (legacy
-      // path) OR — when the server-supplied context is missing
-      // turret poses — to enrich it with the live per-turret yaw /
-      // pitch so debris cylinders spawn where the actual barrels
-      // were pointing at death.
-      const ent = event.entityId !== null
-        ? this.clientViewState.getEntity(event.entityId)
-        : undefined;
-      const ctx = resolveDeathContext3D(event, ent);
-
-      // Scale the hit-direction push by the damaging attack's magnitude so
-      // a glancing railgun hit kicks debris further than a DoT tick. Clamp
-      // to prevent absurd throws at very-high-damage edge cases.
-      const attackPush = Math.min(ctx.attackMagnitude * 2, 200);
-      const mx =
-        ctx.hitDir.x * attackPush +
-        ctx.projectileVel.x * 0.3 +
-        ctx.unitVel.x * 0.5;
-      const mz =
-        ctx.hitDir.y * attackPush +
-        ctx.projectileVel.y * 0.3 +
-        ctx.unitVel.y * 0.5;
-      this.explosionRenderer.spawnDeath(
-        event.pos.x, event.pos.y, event.pos.z,
-        Math.max(ctx.radius, 6),
-        mx, mz,
-        effectGfx.fireExplosionStyle,
-      );
-      this.debrisRenderer.spawn(event.pos.x, event.pos.y, event.pos.z, ctx, effectGfx);
-    }
+    dispatchSimEvent3DVisual(event, {
+      clientViewState: this.clientViewState,
+      entityRenderer: this.entityRenderer,
+      explosionRenderer: this.explosionRenderer,
+      shieldImpactRenderer: this.shieldImpactRenderer,
+      waterSplashRenderer: this.waterSplashRenderer,
+      debrisRenderer: this.debrisRenderer,
+    });
   }
 
   private handleGameOver(winnerId: PlayerId): void {
