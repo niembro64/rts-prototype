@@ -232,6 +232,16 @@ function sanitizeQueueFront(queue: boolean, queueFront: unknown): boolean | null
   return queue && queueFront;
 }
 
+function sanitizeQueueInsertIndex(queue: boolean, queueFront: boolean, queueInsertIndex: unknown): number | undefined | null {
+  if (queueInsertIndex === undefined || !queue || queueFront) return undefined;
+  return typeof queueInsertIndex === 'number' &&
+    Number.isInteger(queueInsertIndex) &&
+    queueInsertIndex >= 0 &&
+    queueInsertIndex <= 255
+    ? queueInsertIndex
+    : null;
+}
+
 function sanitizeFormationSpeed(value: unknown): MoveCommand['formationSpeed'] | null {
   if (value === undefined) return undefined;
   return value === 'slowest' ? 'slowest' : null;
@@ -257,6 +267,8 @@ function sanitizeMoveCommand(command: MoveCommand, world: WorldState, tick: numb
   if (entityIds === null || waypointType === null || typeof command.queue !== 'boolean') return null;
   const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
   if (queueFront === null) return null;
+  const queueInsertIndex = sanitizeQueueInsertIndex(command.queue, queueFront, command.queueInsertIndex);
+  if (queueInsertIndex === null) return null;
   const formationSpeed = sanitizeFormationSpeed(command.formationSpeed);
   if (formationSpeed === null) return null;
 
@@ -279,6 +291,7 @@ function sanitizeMoveCommand(command: MoveCommand, world: WorldState, tick: numb
       waypointType,
       queue: command.queue,
       queueFront,
+      queueInsertIndex,
     };
   }
 
@@ -296,6 +309,7 @@ function sanitizeMoveCommand(command: MoveCommand, world: WorldState, tick: numb
         waypointType,
         queue: command.queue,
         queueFront,
+        queueInsertIndex,
       };
 }
 
@@ -311,9 +325,12 @@ function sanitizeWaitCommand(command: WaitCommand, tick: number): WaitCommand | 
   const entityIds = sanitizeEntityIdArray(command.entityIds);
   if (entityIds === null || typeof command.queue !== 'boolean') return null;
   const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
-  return queueFront === null
+  const queueInsertIndex = queueFront !== null
+    ? sanitizeQueueInsertIndex(command.queue, queueFront, command.queueInsertIndex)
+    : null;
+  return queueFront === null || queueInsertIndex === null
     ? null
-    : { ...command, tick, entityIds, queue: command.queue, queueFront };
+    : { ...command, tick, entityIds, queue: command.queue, queueFront, queueInsertIndex };
 }
 
 function sanitizeSetFireEnabledCommand(command: SetFireEnabledCommand, tick: number): SetFireEnabledCommand | null {
@@ -387,9 +404,12 @@ function sanitizeAttackCommand(command: AttackCommand, tick: number): AttackComm
   const entityIds = sanitizeEntityIdArray(command.entityIds);
   if (entityIds === null || !isEntityId(command.targetId) || typeof command.queue !== 'boolean') return null;
   const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
-  return queueFront === null
+  const queueInsertIndex = queueFront !== null
+    ? sanitizeQueueInsertIndex(command.queue, queueFront, command.queueInsertIndex)
+    : null;
+  return queueFront === null || queueInsertIndex === null
     ? null
-    : { ...command, tick, entityIds, targetId: command.targetId, queue: command.queue, queueFront };
+    : { ...command, tick, entityIds, targetId: command.targetId, queue: command.queue, queueFront, queueInsertIndex };
 }
 
 function sanitizeAttackGroundCommand(
@@ -401,7 +421,10 @@ function sanitizeAttackGroundCommand(
   const point = sanitizeGroundPoint(world, command.targetX, command.targetY, command.targetZ);
   if (entityIds === null || point === null || typeof command.queue !== 'boolean') return null;
   const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
-  return queueFront === null
+  const queueInsertIndex = queueFront !== null
+    ? sanitizeQueueInsertIndex(command.queue, queueFront, command.queueInsertIndex)
+    : null;
+  return queueFront === null || queueInsertIndex === null
     ? null
     : {
         type: 'attackGround',
@@ -412,6 +435,7 @@ function sanitizeAttackGroundCommand(
         targetZ: point.z,
         queue: command.queue,
         queueFront,
+        queueInsertIndex,
       };
 }
 
@@ -425,6 +449,8 @@ function sanitizeAttackAreaCommand(
   if (entityIds === null || point === null || typeof command.queue !== 'boolean') return null;
   const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
   if (queueFront === null) return null;
+  const queueInsertIndex = sanitizeQueueInsertIndex(command.queue, queueFront, command.queueInsertIndex);
+  if (queueInsertIndex === null) return null;
   const radius = Number.isFinite(command.radius)
     ? clamp(command.radius, 1, ATTACK_AREA_MAX_RADIUS)
     : ATTACK_AREA_MAX_RADIUS;
@@ -438,6 +464,7 @@ function sanitizeAttackAreaCommand(
     radius,
     queue: command.queue,
     queueFront,
+    queueInsertIndex,
   };
 }
 
@@ -445,9 +472,12 @@ function sanitizeGuardCommand(command: GuardCommand, tick: number): GuardCommand
   const entityIds = sanitizeEntityIdArray(command.entityIds);
   if (entityIds === null || !isEntityId(command.targetId) || typeof command.queue !== 'boolean') return null;
   const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
-  return queueFront === null
+  const queueInsertIndex = queueFront !== null
+    ? sanitizeQueueInsertIndex(command.queue, queueFront, command.queueInsertIndex)
+    : null;
+  return queueFront === null || queueInsertIndex === null
     ? null
-    : { ...command, tick, entityIds, targetId: command.targetId, queue: command.queue, queueFront };
+    : { ...command, tick, entityIds, targetId: command.targetId, queue: command.queue, queueFront, queueInsertIndex };
 }
 
 function sanitizeStartBuildCommand(command: StartBuildCommand, tick: number): StartBuildCommand | null {
@@ -462,6 +492,8 @@ function sanitizeStartBuildCommand(command: StartBuildCommand, tick: number): St
   }
   const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
   if (queueFront === null) return null;
+  const queueInsertIndex = sanitizeQueueInsertIndex(command.queue, queueFront, command.queueInsertIndex);
+  if (queueInsertIndex === null) return null;
   const rotation = command.rotation === undefined
     ? 0
     : Number.isFinite(command.rotation) ? normalizeAngle(command.rotation) : null;
@@ -476,6 +508,7 @@ function sanitizeStartBuildCommand(command: StartBuildCommand, tick: number): St
     rotation,
     queue: command.queue,
     queueFront,
+    queueInsertIndex,
   };
 }
 
@@ -607,7 +640,10 @@ function sanitizeRepairCommand(command: RepairCommand, tick: number): RepairComm
     return null;
   }
   const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
-  return queueFront === null
+  const queueInsertIndex = queueFront !== null
+    ? sanitizeQueueInsertIndex(command.queue, queueFront, command.queueInsertIndex)
+    : null;
+  return queueFront === null || queueInsertIndex === null
     ? null
     : {
         ...command,
@@ -616,6 +652,7 @@ function sanitizeRepairCommand(command: RepairCommand, tick: number): RepairComm
         targetId: command.targetId,
         queue: command.queue,
         queueFront,
+        queueInsertIndex,
       };
 }
 
@@ -628,6 +665,8 @@ function sanitizeRepairAreaCommand(
   if (!isEntityId(command.commanderId) || point === null || typeof command.queue !== 'boolean') return null;
   const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
   if (queueFront === null) return null;
+  const queueInsertIndex = sanitizeQueueInsertIndex(command.queue, queueFront, command.queueInsertIndex);
+  if (queueInsertIndex === null) return null;
   const radius = Number.isFinite(command.radius)
     ? clamp(command.radius, 1, REPAIR_AREA_MAX_RADIUS)
     : REPAIR_AREA_MAX_RADIUS;
@@ -641,6 +680,7 @@ function sanitizeRepairAreaCommand(
     radius,
     queue: command.queue,
     queueFront,
+    queueInsertIndex,
   };
 }
 
@@ -653,7 +693,10 @@ function sanitizeReclaimCommand(command: ReclaimCommand, tick: number): ReclaimC
     return null;
   }
   const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
-  return queueFront === null
+  const queueInsertIndex = queueFront !== null
+    ? sanitizeQueueInsertIndex(command.queue, queueFront, command.queueInsertIndex)
+    : null;
+  return queueFront === null || queueInsertIndex === null
     ? null
     : {
         ...command,
@@ -662,6 +705,7 @@ function sanitizeReclaimCommand(command: ReclaimCommand, tick: number): ReclaimC
         targetId: command.targetId,
         queue: command.queue,
         queueFront,
+        queueInsertIndex,
       };
 }
 
@@ -674,6 +718,8 @@ function sanitizeReclaimAreaCommand(
   if (!isEntityId(command.commanderId) || point === null || typeof command.queue !== 'boolean') return null;
   const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
   if (queueFront === null) return null;
+  const queueInsertIndex = sanitizeQueueInsertIndex(command.queue, queueFront, command.queueInsertIndex);
+  if (queueInsertIndex === null) return null;
   const radius = Number.isFinite(command.radius)
     ? clamp(command.radius, 1, RECLAIM_AREA_MAX_RADIUS)
     : RECLAIM_AREA_MAX_RADIUS;
@@ -687,6 +733,7 @@ function sanitizeReclaimAreaCommand(
     radius,
     queue: command.queue,
     queueFront,
+    queueInsertIndex,
   };
 }
 

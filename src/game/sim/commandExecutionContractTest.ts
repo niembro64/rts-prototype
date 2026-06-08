@@ -189,4 +189,28 @@ export function runCommandExecutionContractTest(): void {
     commander.unit.actions[4].type === 'wait',
     'front-queued repair area should preserve existing queued orders behind inserted targets',
   );
+
+  setUnitActions(commander.unit, [
+    { type: 'move', x: 70, y: 100 },
+    { type: 'wait', x: 72, y: 100 },
+  ]);
+  executeCommand(queueCtx, {
+    type: 'repairArea',
+    tick: 3,
+    commanderId: commander.id,
+    targetX: 100,
+    targetY: 100,
+    radius: 50,
+    queue: true,
+    queueInsertIndex: 1,
+  });
+  assertActionTargetIds(
+    commander.unit.actions.slice(1, 4),
+    [near.id, mid.id, far.id],
+    'inserted repair area should preserve nearest-to-farthest order at the requested index',
+  );
+  assertContract(
+    commander.unit.actions[4].type === 'wait',
+    'inserted repair area should preserve existing orders after the requested index',
+  );
 }

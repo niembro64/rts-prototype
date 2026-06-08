@@ -96,6 +96,11 @@ function commandQueuesInFront(command: { queue: boolean; queueFront?: boolean })
   return command.queue && command.queueFront === true;
 }
 
+function commandQueueInsertIndex(command: { queue: boolean; queueFront?: boolean; queueInsertIndex?: number }): number | undefined {
+  if (!command.queue || command.queueFront === true) return undefined;
+  return command.queueInsertIndex;
+}
+
 function refreshPatrolStartIndex(unit: Unit): void {
   const index = unit.actions.findIndex((action) => action.type === 'patrol');
   unit.patrolStartIndex = index >= 0 ? index : null;
@@ -335,6 +340,7 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
         ctx,
         resolvedTarget.z,
         queueFront,
+        commandQueueInsertIndex(command),
         speedLimitFactors?.get(unit.id),
       );
     }
@@ -363,6 +369,7 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
         ctx,
         target.z,
         queueFront,
+        commandQueueInsertIndex(command),
         speedLimitFactors?.get(unit.id),
       );
     }
@@ -722,6 +729,7 @@ function executeWaitCommand(ctx: CommandContext, command: WaitCommand): void {
 
   const releaseCurrentWait = !command.queue && allWaiting;
   const queueFront = commandQueuesInFront(command);
+  const queueInsertIndex = commandQueueInsertIndex(command);
   for (let i = 0; i < units.length; i++) {
     const entity = units[i];
     const unit = entity.unit!;
@@ -748,7 +756,7 @@ function executeWaitCommand(ctx: CommandContext, command: WaitCommand): void {
     };
 
     if (command.queue) {
-      addQueuedActionToUnit(unit, action, queueFront);
+      addQueuedActionToUnit(unit, action, queueFront, queueInsertIndex);
     } else {
       unshiftUnitAction(unit, action);
     }
@@ -805,7 +813,14 @@ function executeStartBuildCommand(ctx: CommandContext, command: StartBuildComman
     buildingId: building.id,
   };
 
-  addPathActionsWithFinal(builder, action, command.queue, ctx, commandQueuesInFront(command));
+  addPathActionsWithFinal(
+    builder,
+    action,
+    command.queue,
+    ctx,
+    commandQueuesInFront(command),
+    commandQueueInsertIndex(command),
+  );
 }
 
 function executeQueueUnitCommand(ctx: CommandContext, command: QueueUnitCommand): void {
@@ -1144,7 +1159,7 @@ function executeSelfDestructCommand(ctx: CommandContext, command: SelfDestructCo
 function executeRepairCommand(ctx: CommandContext, command: RepairCommand): void {
   const commander = ctx.world.getEntity(command.commanderId);
   const target = ctx.world.getEntity(command.targetId);
-  enqueueRepairAction(ctx, commander, target, command.queue, commandQueuesInFront(command));
+  enqueueRepairAction(ctx, commander, target, command.queue, commandQueuesInFront(command), commandQueueInsertIndex(command));
 }
 
 function executeRepairAreaCommand(ctx: CommandContext, command: RepairAreaCommand): void {
@@ -1168,14 +1183,15 @@ function executeRepairAreaCommand(ctx: CommandContext, command: RepairAreaComman
     targets,
     command.queue,
     commandQueuesInFront(command),
-    (target, queue, queueFront) => enqueueRepairAction(ctx, commander, target, queue, queueFront),
+    commandQueueInsertIndex(command),
+    (target, queue, queueFront, queueInsertIndex) => enqueueRepairAction(ctx, commander, target, queue, queueFront, queueInsertIndex),
   );
 }
 
 function executeReclaimCommand(ctx: CommandContext, command: ReclaimCommand): void {
   const commander = ctx.world.getEntity(command.commanderId);
   const target = ctx.world.getEntity(command.targetId);
-  enqueueReclaimAction(ctx, commander, target, command.queue, commandQueuesInFront(command));
+  enqueueReclaimAction(ctx, commander, target, command.queue, commandQueuesInFront(command), commandQueueInsertIndex(command));
 }
 
 function executeReclaimAreaCommand(ctx: CommandContext, command: ReclaimAreaCommand): void {
@@ -1199,7 +1215,8 @@ function executeReclaimAreaCommand(ctx: CommandContext, command: ReclaimAreaComm
     targets,
     command.queue,
     commandQueuesInFront(command),
-    (target, queue, queueFront) => enqueueReclaimAction(ctx, commander, target, queue, queueFront),
+    commandQueueInsertIndex(command),
+    (target, queue, queueFront, queueInsertIndex) => enqueueReclaimAction(ctx, commander, target, queue, queueFront, queueInsertIndex),
   );
 }
 
@@ -1252,7 +1269,8 @@ function enqueueAreaTargetActionsInOrder(
   targets: readonly Entity[],
   queue: boolean,
   queueFront: boolean,
-  enqueue: (target: Entity, queue: boolean, queueFront: boolean) => void,
+  queueInsertIndex: number | undefined,
+  enqueue: (target: Entity, queue: boolean, queueFront: boolean, queueInsertIndex?: number) => void,
 ): void {
   if (targets.length === 0) return;
   if (queueFront) {
@@ -1262,7 +1280,12 @@ function enqueueAreaTargetActionsInOrder(
     return;
   }
   for (let i = 0; i < targets.length; i++) {
-    enqueue(targets[i], queue || i > 0, false);
+    enqueue(
+      targets[i],
+      queue || i > 0,
+      false,
+      queueInsertIndex !== undefined ? queueInsertIndex + i : undefined,
+    );
   }
 }
 
@@ -1336,6 +1359,7 @@ function enqueueRepairAction(
   target: Entity | undefined,
   queue: boolean,
   queueFront: boolean,
+  queueInsertIndex?: number,
 ): void {
   if (
     commander === undefined ||
@@ -1362,7 +1386,7 @@ function enqueueRepairAction(
     targetId: target.id,
   };
 
-  addPathActionsWithFinal(commander, action, queue, ctx, queueFront);
+  addPathActionsWithFinal(commander, action, queue, ctx, queueFront, queueInsertIndex);
 }
 
 function enqueueReclaimAction(
@@ -1371,6 +1395,7 @@ function enqueueReclaimAction(
   target: Entity | undefined,
   queue: boolean,
   queueFront: boolean,
+  queueInsertIndex?: number,
 ): void {
   if (
     commander === undefined ||
@@ -1390,15 +1415,16 @@ function enqueueReclaimAction(
     targetId: target.id,
   };
 
-  addPathActionsWithFinal(commander, action, queue, ctx, queueFront);
+  addPathActionsWithFinal(commander, action, queue, ctx, queueFront, queueInsertIndex);
 }
 
 function executeAttackCommand(ctx: CommandContext, command: AttackCommand): void {
   const target = ctx.world.getEntity(command.targetId);
   const queueFront = commandQueuesInFront(command);
+  const queueInsertIndex = commandQueueInsertIndex(command);
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
-    enqueueAttackAction(ctx, entity, target, command.queue, queueFront);
+    enqueueAttackAction(ctx, entity, target, command.queue, queueFront, queueInsertIndex);
   }
 }
 
@@ -1413,6 +1439,7 @@ function executeAttackGroundCommand(ctx: CommandContext, command: AttackGroundCo
       command.targetZ,
       command.queue,
       commandQueuesInFront(command),
+      commandQueueInsertIndex(command),
     );
   }
 }
@@ -1441,14 +1468,16 @@ function executeAttackAreaCommand(ctx: CommandContext, command: AttackAreaComman
       waypointType: 'fight',
       queue: command.queue,
       queueFront: command.queueFront,
+      queueInsertIndex: command.queueInsertIndex,
     });
     return;
   }
 
   const queueFront = commandQueuesInFront(command);
+  const queueInsertIndex = commandQueueInsertIndex(command);
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
-    enqueueAttackAction(ctx, entity, target, command.queue, queueFront);
+    enqueueAttackAction(ctx, entity, target, command.queue, queueFront, queueInsertIndex);
   }
 }
 
@@ -1463,12 +1492,13 @@ function executeGuardCommand(ctx: CommandContext, command: GuardCommand): void {
     if (entity.ownership.playerId !== target.ownership.playerId) continue;
 
     const queueFront = commandQueuesInFront(command);
+    const queueInsertIndex = commandQueueInsertIndex(command);
     if (entity.commander && isRepairableByCommander(entity, target)) {
-      enqueueRepairAction(ctx, entity, target, command.queue, queueFront);
+      enqueueRepairAction(ctx, entity, target, command.queue, queueFront, queueInsertIndex);
       continue;
     }
 
-    enqueueGuardAction(ctx, entity, target, command.queue, queueFront);
+    enqueueGuardAction(ctx, entity, target, command.queue, queueFront, queueInsertIndex);
   }
 }
 
@@ -1540,6 +1570,7 @@ function enqueueAttackAction(
   target: Entity | undefined,
   queue: boolean,
   queueFront: boolean,
+  queueInsertIndex?: number,
 ): void {
   if (!entity || entity.type !== 'unit' || !entity.unit) return;
   if (!entity.ownership || !isAttackableEnemyTargetForPlayer(target, entity.ownership.playerId)) return;
@@ -1555,7 +1586,7 @@ function enqueueAttackAction(
     z: targetPoint.z,
     targetId: target.id,
   };
-  addPathActionsWithFinal(entity, action, queue, ctx, queueFront);
+  addPathActionsWithFinal(entity, action, queue, ctx, queueFront, queueInsertIndex);
 }
 
 function enqueueAttackGroundAction(
@@ -1566,6 +1597,7 @@ function enqueueAttackGroundAction(
   targetZ: number | undefined,
   queue: boolean,
   queueFront: boolean,
+  queueInsertIndex?: number,
 ): void {
   if (!entity || entity.type !== 'unit' || !entity.unit || !entity.combat) return;
   const action: UnitAction = {
@@ -1574,7 +1606,7 @@ function enqueueAttackGroundAction(
     y: targetY,
     z: targetZ,
   };
-  addPathActionsWithFinal(entity, action, queue, ctx, queueFront);
+  addPathActionsWithFinal(entity, action, queue, ctx, queueFront, queueInsertIndex);
 }
 
 function enqueueGuardAction(
@@ -1583,6 +1615,7 @@ function enqueueGuardAction(
   target: Entity,
   queue: boolean,
   queueFront: boolean,
+  queueInsertIndex?: number,
 ): void {
   if (!isAliveGuardTarget(target)) return;
   const targetPoint = getEntityTargetPoint(target);
@@ -1593,13 +1626,21 @@ function enqueueGuardAction(
     z: targetPoint.z,
     targetId: target.id,
   };
-  addPathActionsWithFinal(entity, action, queue, ctx, queueFront);
+  addPathActionsWithFinal(entity, action, queue, ctx, queueFront, queueInsertIndex);
 }
 
-function addQueuedActionToUnit(unit: Unit, action: UnitAction, queueFront: boolean): void {
+function addQueuedActionToUnit(
+  unit: Unit,
+  action: UnitAction,
+  queueFront: boolean,
+  queueInsertIndex?: number,
+): void {
   if (queueFront) {
     const activeIntentEnd = getFirstActionIntentEnd(unit.actions);
     insertUnitAction(unit, activeIntentEnd >= 0 ? activeIntentEnd + 1 : 0, action);
+  } else if (queueInsertIndex !== undefined) {
+    const index = Math.max(0, Math.min(Math.floor(queueInsertIndex), unit.actions.length));
+    insertUnitAction(unit, index, action);
   } else {
     pushUnitAction(unit, action);
   }
@@ -1612,6 +1653,7 @@ export function addActionToUnit(
   queue: boolean,
   world: WorldState | undefined = undefined,
   queueFront = false,
+  queueInsertIndex?: number,
 ): void {
   if (!entity.unit) return;
 
@@ -1619,7 +1661,7 @@ export function addActionToUnit(
     // Replace all actions
     setUnitActions(entity.unit, [action]);
   } else {
-    addQueuedActionToUnit(entity.unit, action, queueFront);
+    addQueuedActionToUnit(entity.unit, action, queueFront, queueInsertIndex);
   }
 
   refreshPatrolStartIndex(entity.unit);
@@ -1641,6 +1683,7 @@ function addPathActions(
   ctx: CommandContext,
   goalZ: number | null,
   queueFront = false,
+  queueInsertIndex?: number,
   speedLimitFactor?: number,
 ): void {
   const action: UnitAction = { type, x: goalX, y: goalY };
@@ -1660,7 +1703,7 @@ function addPathActions(
       beforeLen,
     );
   }
-  addActionToUnit(unit, action, queue, ctx.world, queueFront);
+  addActionToUnit(unit, action, queue, ctx.world, queueFront, queueInsertIndex);
   if (GAME_DIAGNOSTICS.commandPlans) {
     const unitComponent = unit.unit;
     const afterLen = unitComponent !== null ? unitComponent.actions.length : 0;
@@ -1677,8 +1720,9 @@ function addPathActionsWithFinal(
   queue: boolean,
   ctx: CommandContext,
   queueFront = false,
+  queueInsertIndex?: number,
 ): void {
   const action: UnitAction = { ...finalAction };
   delete action.isPathExpansion;
-  addActionToUnit(unit, action, queue, ctx.world, queueFront);
+  addActionToUnit(unit, action, queue, ctx.world, queueFront, queueInsertIndex);
 }

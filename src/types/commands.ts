@@ -85,6 +85,7 @@ export type MoveCommand = BaseCommand & {
   waypointType: WaypointType;
   queue: boolean;
   queueFront?: boolean;
+  queueInsertIndex?: number;
 };
 
 export type StopCommand = BaseCommand & {
@@ -158,6 +159,7 @@ export type StartBuildCommand = BaseCommand & {
   rotation?: number;
   queue: boolean;
   queueFront?: boolean;
+  queueInsertIndex?: number;
 };
 
 export type QueueUnitCommand = BaseCommand & {
@@ -247,6 +249,7 @@ export type RepairCommand = BaseCommand & {
   targetId: EntityId;
   queue: boolean;
   queueFront?: boolean;
+  queueInsertIndex?: number;
 };
 
 export type RepairAreaCommand = BaseCommand & {
@@ -258,6 +261,7 @@ export type RepairAreaCommand = BaseCommand & {
   radius: number;
   queue: boolean;
   queueFront?: boolean;
+  queueInsertIndex?: number;
 };
 
 export type ReclaimCommand = BaseCommand & {
@@ -266,6 +270,7 @@ export type ReclaimCommand = BaseCommand & {
   targetId: EntityId;
   queue: boolean;
   queueFront?: boolean;
+  queueInsertIndex?: number;
 };
 
 export type ReclaimAreaCommand = BaseCommand & {
@@ -277,6 +282,7 @@ export type ReclaimAreaCommand = BaseCommand & {
   radius: number;
   queue: boolean;
   queueFront?: boolean;
+  queueInsertIndex?: number;
 };
 
 export type WaitCommand = BaseCommand & {
@@ -284,6 +290,7 @@ export type WaitCommand = BaseCommand & {
   entityIds: EntityId[];
   queue: boolean;
   queueFront?: boolean;
+  queueInsertIndex?: number;
 };
 
 export type AttackCommand = BaseCommand & {
@@ -292,6 +299,7 @@ export type AttackCommand = BaseCommand & {
   targetId: EntityId;
   queue: boolean;
   queueFront?: boolean;
+  queueInsertIndex?: number;
 };
 
 export type AttackGroundCommand = BaseCommand & {
@@ -302,6 +310,7 @@ export type AttackGroundCommand = BaseCommand & {
   targetZ?: number;
   queue: boolean;
   queueFront?: boolean;
+  queueInsertIndex?: number;
 };
 
 export type AttackAreaCommand = BaseCommand & {
@@ -313,6 +322,7 @@ export type AttackAreaCommand = BaseCommand & {
   radius: number;
   queue: boolean;
   queueFront?: boolean;
+  queueInsertIndex?: number;
 };
 
 export type GuardCommand = BaseCommand & {
@@ -321,6 +331,7 @@ export type GuardCommand = BaseCommand & {
   targetId: EntityId;
   queue: boolean;
   queueFront?: boolean;
+  queueInsertIndex?: number;
 };
 
 export type SetSnapshotRateCommand = BaseCommand & {
