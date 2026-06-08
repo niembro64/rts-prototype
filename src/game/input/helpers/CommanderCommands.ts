@@ -7,6 +7,7 @@
 import type { Entity, WaypointType } from '../../sim/types';
 import type {
   ReclaimCommand,
+  ReclaimAreaCommand,
   RepairAreaCommand,
   RepairCommand,
   SetRallyPointCommand,
@@ -92,6 +93,28 @@ export function buildReclaimCommandAt(
 ): ReclaimCommand | null {
   const target = findReclaimTargetAt(source, worldX, worldY);
   return buildReclaimCommandForTarget(target, commander, tick, queue);
+}
+
+export function buildReclaimAreaCommand(
+  commander: Entity | null,
+  worldX: number,
+  worldY: number,
+  radius: number,
+  tick: number,
+  queue: boolean,
+  worldZ?: number,
+): ReclaimAreaCommand | null {
+  if (!commander?.ownership) return null;
+  return {
+    type: 'reclaimArea',
+    tick,
+    commanderId: commander.id,
+    targetX: worldX,
+    targetY: worldY,
+    targetZ: worldZ,
+    radius,
+    queue,
+  };
 }
 
 /** Build one SetRallyPointCommand per selected factory at the

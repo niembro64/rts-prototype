@@ -14,6 +14,7 @@ import type {
   ScanCommand,
   QueueUnitCommand,
   ReclaimCommand,
+  ReclaimAreaCommand,
   RepairAreaCommand,
   RepairCommand,
   RemoveLastQueuedOrderCommand,
@@ -49,6 +50,7 @@ import { isReclaimableTarget } from './reclaim';
 import { isBuildInProgress } from './buildableHelpers';
 import {
   ATTACK_AREA_MAX_RADIUS,
+  RECLAIM_AREA_MAX_RADIUS,
   REPAIR_AREA_MAX_RADIUS,
 } from './commandLimits';
 import {
@@ -153,6 +155,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'reclaim':
       executeReclaimCommand(ctx, command);
+      break;
+    case 'reclaimArea':
+      executeReclaimAreaCommand(ctx, command);
       break;
     case 'attack':
       executeAttackCommand(ctx, command);
@@ -765,9 +770,34 @@ function executeReclaimCommand(ctx: CommandContext, command: ReclaimCommand): vo
   enqueueReclaimAction(ctx, commander, target, command.queue);
 }
 
+function executeReclaimAreaCommand(ctx: CommandContext, command: ReclaimAreaCommand): void {
+  const commander = ctx.world.getEntity(command.commanderId);
+  if (
+    commander === undefined ||
+    commander.commander === null ||
+    commander.unit === null ||
+    commander.builder === null
+  ) return;
+
+  const radius = clampReclaimAreaRadius(command.radius);
+  const target = findReclaimAreaTarget(
+    ctx,
+    commander,
+    command.targetX,
+    command.targetY,
+    radius,
+  );
+  enqueueReclaimAction(ctx, commander, target, command.queue);
+}
+
 function clampRepairAreaRadius(radius: number): number {
   if (!Number.isFinite(radius)) return REPAIR_AREA_MAX_RADIUS;
   return Math.max(1, Math.min(radius, REPAIR_AREA_MAX_RADIUS));
+}
+
+function clampReclaimAreaRadius(radius: number): number {
+  if (!Number.isFinite(radius)) return RECLAIM_AREA_MAX_RADIUS;
+  return Math.max(1, Math.min(radius, RECLAIM_AREA_MAX_RADIUS));
 }
 
 function isRepairableByCommander(commander: Entity, target: Entity | undefined): target is Entity {
@@ -821,6 +851,40 @@ function findRepairAreaTarget(
   for (let i = 0; i < units.length; i++) {
     const target = units[i];
     if (!isRepairableByCommander(commander, target)) continue;
+    const distSq = entityAreaDistanceSq(target, x, y);
+    if (distSq > radiusSq || distSq >= bestDistanceSq) continue;
+    bestDistanceSq = distSq;
+    bestTarget = target;
+  }
+
+  return bestTarget;
+}
+
+function findReclaimAreaTarget(
+  ctx: CommandContext,
+  commander: Entity,
+  x: number,
+  y: number,
+  radius: number,
+): Entity | undefined {
+  const radiusSq = radius * radius;
+  let bestTarget: Entity | undefined;
+  let bestDistanceSq = Infinity;
+
+  const buildings = ctx.world.getBuildings();
+  for (let i = 0; i < buildings.length; i++) {
+    const target = buildings[i];
+    if (target.id === commander.id || !isReclaimableTarget(target)) continue;
+    const distSq = entityAreaDistanceSq(target, x, y);
+    if (distSq > radiusSq || distSq >= bestDistanceSq) continue;
+    bestDistanceSq = distSq;
+    bestTarget = target;
+  }
+
+  const units = ctx.world.getUnits();
+  for (let i = 0; i < units.length; i++) {
+    const target = units[i];
+    if (target.id === commander.id || !isReclaimableTarget(target)) continue;
     const distSq = entityAreaDistanceSq(target, x, y);
     if (distSq > radiusSq || distSq >= bestDistanceSq) continue;
     bestDistanceSq = distSq;

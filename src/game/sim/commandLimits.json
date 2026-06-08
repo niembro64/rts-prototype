@@ -1,4 +1,5 @@
 {
   "repairAreaMaxRadius": 500,
+  "reclaimAreaMaxRadius": 500,
   "attackAreaMaxRadius": 700
 }

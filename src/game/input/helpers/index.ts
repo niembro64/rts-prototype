@@ -53,6 +53,7 @@ export {
 export {
   buildRepairAreaCommand,
   buildRepairCommandAt,
+  buildReclaimAreaCommand,
   buildReclaimCommandAt,
   buildReclaimCommandForTarget,
   buildFactoryRallyCommands,

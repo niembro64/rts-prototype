@@ -125,6 +125,9 @@ export function authorizeGameServerGameplayCommand(
     case 'reclaim':
       return isOwnedEntity(world, command.commanderId, playerId) ? command : null;
 
+    case 'reclaimArea':
+      return isOwnedEntity(world, command.commanderId, playerId) ? command : null;
+
     default:
       return null;
   }

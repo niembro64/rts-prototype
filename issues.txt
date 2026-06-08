@@ -79,11 +79,10 @@ remove-last-queued-order, clear-queued-orders, wait queueing, and basic factory
 rally. Implement the missing queue semantics with server authorization and
 clear visual queue editing feedback.
 
-Issue: repair and reclaim are incomplete. Add BAR-style area reclaim by
-right-drag/circle, explicit reclaim area buttons/hotkeys, user-sized repair and
-reclaim areas, reclaim-selected behavior where appropriate, and reclaim field
-highlighting. Current reclaim is commander-targeted or point-resolved only, and
-repair area uses a fixed radius.
+Issue: repair and reclaim are incomplete. Fixed-radius repair area and
+fixed-radius reclaim area via the Reclaim command exist. Add BAR-style area
+reclaim by right-drag/circle, user-sized repair and reclaim areas,
+reclaim-selected behavior where appropriate, and reclaim field highlighting.
 
 Issue: behavior/state toggles are incomplete. BAR exposes cloak/want-cloak,
 gather wait, on/off, stateful on/off, repeat, stateful repeat, stance/fire

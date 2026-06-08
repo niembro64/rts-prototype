@@ -8,7 +8,7 @@ import {
   buildAttackGroundCommand,
   buildGuardCommandAt,
   buildGuardCommandForTarget,
-  buildReclaimCommandAt,
+  buildReclaimAreaCommand,
   buildReclaimCommandForTarget,
   buildRepairAreaCommand,
   type CommanderModeController,
@@ -22,6 +22,7 @@ import type { Input3DPicker } from './Input3DPicker';
 import { entityCanBuild } from '../sim/builderBuildRoster';
 
 const REPAIR_AREA_RADIUS = 220;
+const RECLAIM_AREA_RADIUS = 220;
 const ATTACK_AREA_RADIUS = 300;
 
 type ModeClickEntitySource = {
@@ -461,13 +462,14 @@ export class Input3DModeClickController {
 
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
-    const reclaimCmd = buildReclaimCommandAt(
-      this.config.getEntitySource(),
+    const reclaimCmd = buildReclaimAreaCommand(
+      commander,
       world.x,
       world.y,
-      commander,
+      RECLAIM_AREA_RADIUS,
       tick,
       e.shiftKey,
+      world.z,
     );
     if (!reclaimCmd) return;
     this.config.commandQueue.enqueue(reclaimCmd);

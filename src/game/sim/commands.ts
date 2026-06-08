@@ -21,6 +21,7 @@ export type {
   RepairCommand,
   RepairAreaCommand,
   ReclaimCommand,
+  ReclaimAreaCommand,
   WaitCommand,
   AttackCommand,
   AttackGroundCommand,

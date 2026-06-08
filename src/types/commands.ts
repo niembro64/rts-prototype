@@ -25,6 +25,7 @@ export type CommandType =
   | 'repair'
   | 'repairArea'
   | 'reclaim'
+  | 'reclaimArea'
   | 'wait'
   | 'attack'
   | 'attackGround'
@@ -206,6 +207,16 @@ export type ReclaimCommand = BaseCommand & {
   queue: boolean;
 };
 
+export type ReclaimAreaCommand = BaseCommand & {
+  type: 'reclaimArea';
+  commanderId: EntityId;
+  targetX: number;
+  targetY: number;
+  targetZ?: number;
+  radius: number;
+  queue: boolean;
+};
+
 export type WaitCommand = BaseCommand & {
   type: 'wait';
   entityIds: EntityId[];
@@ -336,6 +347,7 @@ export type Command =
   | RepairCommand
   | RepairAreaCommand
   | ReclaimCommand
+  | ReclaimAreaCommand
   | WaitCommand
   | AttackCommand
   | AttackGroundCommand

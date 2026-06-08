@@ -10,6 +10,7 @@ import type {
   PingCommand,
   QueueUnitCommand,
   ReclaimCommand,
+  ReclaimAreaCommand,
   RepairAreaCommand,
   RepairCommand,
   RemoveLastQueuedOrderCommand,
@@ -26,6 +27,7 @@ import type {
 } from '../sim/commands';
 import {
   ATTACK_AREA_MAX_RADIUS,
+  RECLAIM_AREA_MAX_RADIUS,
   REPAIR_AREA_MAX_RADIUS,
 } from '../sim/commandLimits';
 import type { WorldState } from '../sim/WorldState';
@@ -92,6 +94,8 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       return sanitizeRepairAreaCommand(command, world, tick);
     case 'reclaim':
       return sanitizeReclaimCommand(command, tick);
+    case 'reclaimArea':
+      return sanitizeReclaimAreaCommand(command, world, tick);
     case 'setSnapshotRate':
       return SERVER_CONFIG.snapshot.options.includes(command.rate)
         ? { ...command, tick, rate: normalizeSnapshotRate(command.rate) }
@@ -452,6 +456,28 @@ function sanitizeReclaimCommand(command: ReclaimCommand, tick: number): ReclaimC
     typeof command.queue === 'boolean'
     ? { ...command, tick, commanderId: command.commanderId, targetId: command.targetId, queue: command.queue }
     : null;
+}
+
+function sanitizeReclaimAreaCommand(
+  command: ReclaimAreaCommand,
+  world: WorldState,
+  tick: number,
+): ReclaimAreaCommand | null {
+  const point = sanitizeGroundPoint(world, command.targetX, command.targetY, command.targetZ);
+  if (!isEntityId(command.commanderId) || point === null || typeof command.queue !== 'boolean') return null;
+  const radius = Number.isFinite(command.radius)
+    ? clamp(command.radius, 1, RECLAIM_AREA_MAX_RADIUS)
+    : RECLAIM_AREA_MAX_RADIUS;
+  return {
+    type: 'reclaimArea',
+    tick,
+    commanderId: command.commanderId,
+    targetX: point.x,
+    targetY: point.y,
+    targetZ: point.z,
+    radius,
+    queue: command.queue,
+  };
 }
 
 function sanitizeMaxTotalUnitsCommand(command: Command, tick: number): Command | null {
