@@ -164,6 +164,12 @@ const COMPACT_BUILDING_LABELS: Record<string, string> = {
   Converter: 'Conv',
   'Anti-Air Tower': 'AA',
 };
+const BUILD_SLOT_COMMAND_IDS = [
+  'build.slot1',
+  'build.slot2',
+  'build.slot3',
+  'build.slot4',
+] as const satisfies readonly CommandHotkeyId[];
 
 function compactBuildingLabel(label: string): string {
   return COMPACT_BUILDING_LABELS[label] ?? label.slice(0, 5);
@@ -184,9 +190,10 @@ const buildingOptions = computed(() => {
   return props.selection.allowedBuildBlueprintIds
     .map((buildingBlueprintId, index) => {
       const option = structureRosterDisplay.find((entry) => entry.buildingBlueprintId === buildingBlueprintId);
+      const slotCommandId = BUILD_SLOT_COMMAND_IDS[index];
       return option === undefined
         ? null
-        : { ...option, key: `${index + 1}` };
+        : { ...option, key: slotCommandId === undefined ? `${index + 1}` : hotkey(slotCommandId) };
     })
     .filter((option) => option !== null);
 });

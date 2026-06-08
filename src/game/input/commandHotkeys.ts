@@ -14,6 +14,10 @@ export type CommandHotkeyId =
   | 'command.buildCycle'
   | 'command.dgun'
   | 'command.selectCommander'
+  | 'build.slot1'
+  | 'build.slot2'
+  | 'build.slot3'
+  | 'build.slot4'
   | 'select.allUnits'
   | 'select.matching'
   | 'select.matchingInView'
@@ -76,6 +80,10 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'command.buildCycle',
   'command.dgun',
   'command.selectCommander',
+  'build.slot1',
+  'build.slot2',
+  'build.slot3',
+  'build.slot4',
   'select.allUnits',
   'select.matching',
   'select.matchingInView',
@@ -122,6 +130,10 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'command.buildCycle': 'Cycle Build',
   'command.dgun': 'Commander DGun',
   'command.selectCommander': 'Select Commander',
+  'build.slot1': 'Build Slot 1',
+  'build.slot2': 'Build Slot 2',
+  'build.slot3': 'Build Slot 3',
+  'build.slot4': 'Build Slot 4',
   'select.allUnits': 'Select All Units',
   'select.matching': 'Select Matching',
   'select.matchingInView': 'Select Matching In View',
@@ -183,6 +195,10 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'command.buildCycle': [key('B', 'b', { shift: 'any' })],
     'command.dgun': [key('D', 'd', { shift: 'any' })],
     'command.selectCommander': [key('Tab', 'tab', { shift: 'any' })],
+    'build.slot1': [code('1', 'Digit1', { shift: 'any' })],
+    'build.slot2': [code('2', 'Digit2', { shift: 'any' })],
+    'build.slot3': [code('3', 'Digit3', { shift: 'any' })],
+    'build.slot4': [code('4', 'Digit4', { shift: 'any' })],
     'select.allUnits': [key('Ctrl+A', 'a', { ctrl: true })],
     'select.matching': [key('Ctrl+Z', 'z', { ctrl: true })],
     'select.matchingInView': [key('Alt+W', 'w', { alt: true })],
@@ -239,6 +255,10 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
       key('Tab', 'tab'),
       key('Shift+Tab', 'tab', { shift: true }),
     ],
+    'build.slot1': [code('Z', 'KeyZ', { shift: 'any' })],
+    'build.slot2': [code('X', 'KeyX', { shift: 'any' })],
+    'build.slot3': [code('C', 'KeyC', { shift: 'any' })],
+    'build.slot4': [code('V', 'KeyV', { shift: 'any' })],
     'select.allUnits': [code('Ctrl+E', 'KeyE', { ctrl: true })],
     'select.matching': [code('Ctrl+W', 'KeyW', { ctrl: true })],
     'select.matchingInView': [code('Alt+W', 'KeyW', { alt: true })],
@@ -274,7 +294,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'command.undoQueue': [code('Ctrl+N', 'KeyN', { ctrl: true })],
     'command.clearQueue': [code('Ctrl+Shift+N', 'KeyN', { ctrl: true, shift: true })],
     'command.fireToggle': [code('L', 'KeyL', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
-    'command.buildingActive': [code('X', 'KeyX', { shift: 'any' })],
+    'command.buildingActive': [code('O', 'KeyO', { shift: 'any' })],
     'command.selfDestruct': [code('Ctrl+D', 'KeyD', { ctrl: true, shift: 'any' })],
     'command.scan': [code('F4', 'F4', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'command.buildCycle': [code('B', 'KeyB', { shift: 'any' })],
@@ -283,6 +303,10 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
       code('Ctrl+C', 'KeyC', { ctrl: true, shift: 'any' }),
       key('Tab', 'tab', { shift: 'any' }),
     ],
+    'build.slot1': [code('Z', 'KeyZ', { shift: 'any' })],
+    'build.slot2': [code('X', 'KeyX', { shift: 'any' })],
+    'build.slot3': [code('C', 'KeyC', { shift: 'any' })],
+    'build.slot4': [code('V', 'KeyV', { shift: 'any' })],
     'select.allUnits': [code('Ctrl+A', 'KeyA', { ctrl: true })],
     'select.matching': [code('Ctrl+Z', 'KeyZ', { ctrl: true })],
     'select.matchingInView': [code('Alt+W', 'KeyW', { alt: true })],

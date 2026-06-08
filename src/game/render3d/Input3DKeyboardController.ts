@@ -241,16 +241,10 @@ export class Input3DKeyboardController {
 
     const numericBuildHotkey = /^[1-9]$/.test(e.key) ? Number(e.key) - 1 : -1;
     if (numericBuildHotkey >= 0) {
-      const buildingBlueprintId = getBuildModeBuildingBlueprintIdByIndex(
-        numericBuildHotkey,
-        this.config.getSelectedBuilderAllowedBuildBlueprintIds(),
-      );
-      if (buildingBlueprintId && (this.config.mode.isInBuildMode || this.config.hasSelectedBuilder())) {
-        this.config.exitSpecialModes(false);
-        this.config.mode.enterBuildMode(buildingBlueprintId);
+      if (this.enterBuildSlot(numericBuildHotkey)) {
+        this.commandHotkeys.reset();
+        return;
       }
-      this.commandHotkeys.reset();
-      return;
     }
 
     const hotkey = this.commandHotkeys.resolve(e);
@@ -353,6 +347,18 @@ export class Input3DKeyboardController {
       case 'command.selectCommander':
         this.config.selectActiveCommander(e.shiftKey);
         break;
+      case 'build.slot1':
+        this.enterBuildSlot(0);
+        break;
+      case 'build.slot2':
+        this.enterBuildSlot(1);
+        break;
+      case 'build.slot3':
+        this.enterBuildSlot(2);
+        break;
+      case 'build.slot4':
+        this.enterBuildSlot(3);
+        break;
       case 'select.allUnits':
         this.config.selectAllOwnedUnits();
         break;
@@ -387,6 +393,19 @@ export class Input3DKeyboardController {
         this.config.loopSelection();
         break;
     }
+  }
+
+  private enterBuildSlot(index: number): boolean {
+    const buildingBlueprintId = getBuildModeBuildingBlueprintIdByIndex(
+      index,
+      this.config.getSelectedBuilderAllowedBuildBlueprintIds(),
+    );
+    if (!buildingBlueprintId || !(this.config.mode.isInBuildMode || this.config.hasSelectedBuilder())) {
+      return false;
+    }
+    this.config.exitSpecialModes(false);
+    this.config.mode.enterBuildMode(buildingBlueprintId);
+    return true;
   }
 
   private handleEscape(): void {
