@@ -133,6 +133,21 @@ const hasFactoryProduction = computed(() =>
   selectedBuildUnitBlueprintId.value !== null || props.selection.factoryIsProducing === true,
 );
 const hasFactoryPresetToSave = computed(() => selectedBuildUnitBlueprintId.value !== null);
+const factoryProgressPercent = computed(() =>
+  Math.max(0, Math.min(100, Math.round((props.selection.factoryProgress ?? 0) * 100))),
+);
+const factoryProgressStyle = computed(() => ({
+  width: `${factoryProgressPercent.value}%`,
+}));
+const factoryStatusLabel = computed(() => {
+  const unitLabel = props.selection.factorySelectedUnit?.label ?? 'No unit';
+  return props.selection.factoryIsProducing === true
+    ? `${unitLabel} producing`
+    : `${unitLabel} idle`;
+});
+const factoryStatusTitle = computed(() =>
+  `Factory repeat-build: ${factoryStatusLabel.value} - ${factoryProgressPercent.value}%`,
+);
 const showCancelHint = computed(() =>
   props.selection.isBuildMode
   || props.selection.isDGunMode
@@ -747,6 +762,19 @@ function loadFactoryPreset(index: number): void {
     <!-- Factory production control -->
     <div v-if="selection.hasFactory && selection.factoryId && showTowerActions" class="button-group">
       <div class="group-label">Factory</div>
+      <div
+        class="factory-status"
+        :class="{ producing: selection.factoryIsProducing }"
+        :title="factoryStatusTitle"
+      >
+        <div class="factory-status-row">
+          <span class="factory-status-name">{{ factoryStatusLabel }}</span>
+          <span class="factory-status-progress">{{ factoryProgressPercent }}%</span>
+        </div>
+        <div class="factory-progress-track">
+          <div class="factory-progress-fill" :style="factoryProgressStyle"></div>
+        </div>
+      </div>
       <div class="buttons">
         <button
           type="button"
@@ -1149,6 +1177,55 @@ kbd {
 
 .factory-preset-btn.save {
   opacity: 0.88;
+}
+
+.factory-status {
+  flex: 0 1 150px;
+  min-width: 120px;
+  padding: 3px 5px;
+  background: rgba(20, 22, 26, 0.66);
+  border: 1px solid var(--selection-panel-button-border);
+  border-radius: 3px;
+}
+
+.factory-status.producing {
+  border-color: var(--selection-panel-vehicle-produce);
+}
+
+.factory-status-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 3px;
+  font-family: monospace;
+  font-size: 8px;
+  line-height: 1;
+}
+
+.factory-status-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.factory-status-progress {
+  color: var(--selection-panel-key);
+  font-weight: bold;
+}
+
+.factory-progress-track {
+  height: 4px;
+  overflow: hidden;
+  background: rgba(237, 243, 255, 0.12);
+  border-radius: 2px;
+}
+
+.factory-progress-fill {
+  height: 100%;
+  background: var(--selection-panel-vehicle-produce);
+  transition: width 0.12s ease;
 }
 
 .detail-item {

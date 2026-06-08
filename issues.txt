@@ -72,7 +72,8 @@ controls beyond selecting one repeat-build unit: repeat/queue state, factory
 queue mode/quotas, production queue editing, factory guard, and related state
 indicators. rts-prototype now has an authoritative stop-production command,
 factory panel button, and local factory preset slots with shared hotkeys that
-load through authoritative production commands, but still needs the remaining
+load through authoritative production commands, plus selected repeat-build and
+production-progress state indicators. It still needs the remaining
 BAR-equivalent factory panel and hotkeys, translated to authoritative-server
 commands.
 
