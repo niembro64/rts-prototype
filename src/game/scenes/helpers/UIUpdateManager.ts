@@ -93,6 +93,78 @@ function addMultiSelectionQueueDetails(
   }
 }
 
+function isFireControllable(entity: Entity): boolean {
+  const combat = entity.combat;
+  return combat !== null && combat.turrets.length > 0;
+}
+
+function fireStateLabel(entity: Entity): string | null {
+  if (!isFireControllable(entity)) return null;
+  return entity.combat?.fireEnabled === false ? 'Hold' : 'Fire';
+}
+
+function buildingActiveStateLabel(entity: Entity): string | null {
+  if (!buildingBlueprintHasActiveState(entity.buildingBlueprintId)) return null;
+  const state = entity.building !== null ? entity.building.activeState : null;
+  return state?.open === false ? 'Off' : 'On';
+}
+
+function addMultiSelectionStateDetails(
+  details: SelectionInfo['details'],
+  selectedUnits: readonly Entity[],
+  selectedTowers: readonly Entity[],
+  selectedBuildings: readonly Entity[],
+): void {
+  let fireControlCount = 0;
+  let fireEnabledCount = 0;
+  for (const entity of selectedUnits) {
+    if (!isFireControllable(entity)) continue;
+    fireControlCount++;
+    if (entity.combat?.fireEnabled !== false) fireEnabledCount++;
+  }
+  for (const entity of selectedTowers) {
+    if (!isFireControllable(entity)) continue;
+    fireControlCount++;
+    if (entity.combat?.fireEnabled !== false) fireEnabledCount++;
+  }
+  if (fireControlCount > 0) {
+    const value = fireEnabledCount === fireControlCount
+      ? 'Fire'
+      : fireEnabledCount === 0
+        ? 'Hold'
+        : `${fireEnabledCount}/${fireControlCount} Fire`;
+    details.push({ label: 'Fire', value });
+  }
+
+  let waitingCount = 0;
+  for (let i = 0; i < selectedUnits.length; i++) {
+    if (selectedUnits[i].unit?.actions[0]?.type === 'wait') waitingCount++;
+  }
+  if (waitingCount > 0) {
+    details.push({
+      label: 'Wait',
+      value: waitingCount === selectedUnits.length ? 'On' : `${waitingCount}/${selectedUnits.length}`,
+    });
+  }
+
+  let activeBuildingCount = 0;
+  let openBuildingCount = 0;
+  for (const entity of selectedBuildings) {
+    const state = buildingActiveStateLabel(entity);
+    if (state === null) continue;
+    activeBuildingCount++;
+    if (state === 'On') openBuildingCount++;
+  }
+  if (activeBuildingCount > 0) {
+    const value = openBuildingCount === activeBuildingCount
+      ? 'On'
+      : openBuildingCount === 0
+        ? 'Off'
+        : `${openBuildingCount}/${activeBuildingCount} On`;
+    details.push({ label: 'Power', value });
+  }
+}
+
 function buildSelectionDetails(
   selectedUnits: readonly Entity[],
   selectedTowers: readonly Entity[],
@@ -118,6 +190,7 @@ function buildSelectionDetails(
     details.push({ label: 'HP', value: `${fmtStat(hp)}/${fmtStat(maxHp)}` });
     details.push({ label: 'HP Avg', value: `${Math.round((hp / maxHp) * 100)}%` });
   }
+  addMultiSelectionStateDetails(details, selectedUnits, selectedTowers, selectedBuildings);
   addMultiSelectionQueueDetails(details, selectedUnits);
   return details;
 }
@@ -134,6 +207,9 @@ function buildSingleSelectionDetails(entity: Entity): SelectionInfo['details'] {
       ];
       const activeAction = getActiveUnitAction(entity.unit.actions);
       if (activeAction !== null) details.push({ label: 'Order', value: unitActionLabel(activeAction) });
+      const fire = fireStateLabel(entity);
+      if (fire !== null) details.push({ label: 'Fire', value: fire });
+      if (entity.unit.actions[0]?.type === 'wait') details.push({ label: 'Wait', value: 'On' });
       const queuedIntentCount = getQueuedActionIntentCount(entity.unit.actions);
       if (queuedIntentCount > 0) details.push({ label: 'Queued', value: `${queuedIntentCount}` });
       details.push({ label: 'Move', value: bp.locomotion.type });
@@ -159,6 +235,10 @@ function buildSingleSelectionDetails(entity: Entity): SelectionInfo['details'] {
       if (bp.metalProduction !== null) {
         details.push({ label: 'Metal', value: `+${fmtStat(entity.metalExtractionRate ?? 0)}/s` });
       }
+      const activeState = buildingActiveStateLabel(entity);
+      if (activeState !== null) details.push({ label: 'Power', value: activeState });
+      const fire = fireStateLabel(entity);
+      if (fire !== null) details.push({ label: 'Fire', value: fire });
       if (bp.sensors.radarRadius > 0) details.push({ label: 'Radar', value: fmtStat(bp.sensors.radarRadius) });
       if (entity.factory !== null) details.push({ label: 'Factory', value: entity.factory.isProducing ? 'Producing' : 'Idle' });
       return details;
