@@ -143,45 +143,12 @@ export class BuildGhost3D {
       depthWrite: false,
       side: THREE.DoubleSide,
     });
-    this.cellMatOk = new THREE.MeshBasicMaterial({
-      color: COLORS.effects.buildGhost.cellOk.colorHex,
-      transparent: false,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      toneMapped: false,
-    });
-    this.cellMatBad = new THREE.MeshBasicMaterial({
-      color: COLORS.effects.buildGhost.cellBad.colorHex,
-      transparent: false,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      toneMapped: false,
-    });
-    this.cellMatWarn = new THREE.MeshBasicMaterial({
-      color: COLORS.effects.buildGhost.cellWarn.colorHex,
-      transparent: false,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      toneMapped: false,
-    });
-    this.cellBorderMatOk = new THREE.LineBasicMaterial({
-      color: COLORS.effects.buildGhost.cellBorderOk.colorHex,
-      transparent: false,
-      depthWrite: false,
-      toneMapped: false,
-    });
-    this.cellBorderMatBad = new THREE.LineBasicMaterial({
-      color: COLORS.effects.buildGhost.cellBorderBad.colorHex,
-      transparent: false,
-      depthWrite: false,
-      toneMapped: false,
-    });
-    this.cellBorderMatWarn = new THREE.LineBasicMaterial({
-      color: COLORS.effects.buildGhost.cellBorderWarn.colorHex,
-      transparent: false,
-      depthWrite: false,
-      toneMapped: false,
-    });
+    this.cellMatOk = makeBuildAbilityFillMaterial(COLORS.effects.buildGhost.cellOk.colorHex);
+    this.cellMatBad = makeBuildAbilityFillMaterial(COLORS.effects.buildGhost.cellBad.colorHex);
+    this.cellMatWarn = makeBuildAbilityFillMaterial(COLORS.effects.buildGhost.cellWarn.colorHex);
+    this.cellBorderMatOk = makeBuildAbilityBorderMaterial(COLORS.effects.buildGhost.cellBorderOk.colorHex);
+    this.cellBorderMatBad = makeBuildAbilityBorderMaterial(COLORS.effects.buildGhost.cellBorderBad.colorHex);
+    this.cellBorderMatWarn = makeBuildAbilityBorderMaterial(COLORS.effects.buildGhost.cellBorderWarn.colorHex);
 
     // Plane geometry of unit size, scaled per-building on setTarget.
     const footGeom = new THREE.PlaneGeometry(1, 1);
@@ -296,14 +263,7 @@ export class BuildGhost3D {
       const fillGeom = new THREE.BufferGeometry();
       fillGeom.setAttribute('position', new THREE.Float32BufferAttribute(fillPositions, 3));
       fillGeom.setIndex(fillIndices);
-      const fillMat = new THREE.MeshBasicMaterial({
-        color: COLORS.effects.buildGhost.cellMetal.colorHex,
-        transparent: true,
-        opacity: 0.5,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-        toneMapped: false,
-      });
+      const fillMat = makeBuildAbilityFillMaterial(COLORS.effects.buildGhost.cellMetal.colorHex, 0.5);
       const fillMesh = new THREE.Mesh(fillGeom, fillMat);
       fillMesh.renderOrder = 32;
       this.depositOverlayGroup.add(fillMesh);
@@ -313,12 +273,7 @@ export class BuildGhost3D {
     if (borderPositions.length > 0) {
       const borderGeom = new THREE.BufferGeometry();
       borderGeom.setAttribute('position', new THREE.Float32BufferAttribute(borderPositions, 3));
-      const borderMat = new THREE.LineBasicMaterial({
-        color: COLORS.effects.buildGhost.cellBorderMetal.colorHex,
-        transparent: false,
-        depthWrite: false,
-        toneMapped: false,
-      });
+      const borderMat = makeBuildAbilityBorderMaterial(COLORS.effects.buildGhost.cellBorderMetal.colorHex);
       const borderMesh = new THREE.LineSegments(borderGeom, borderMat);
       borderMesh.renderOrder = 33;
       this.depositOverlayGroup.add(borderMesh);
@@ -566,4 +521,26 @@ export class BuildGhost3D {
     this.radarRingMat.dispose();
     this.lineMat.dispose();
   }
+}
+
+function makeBuildAbilityFillMaterial(color: number, opacity = 1): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({
+    color,
+    transparent: opacity < 1,
+    opacity,
+    depthTest: false,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    toneMapped: false,
+  });
+}
+
+function makeBuildAbilityBorderMaterial(color: number): THREE.LineBasicMaterial {
+  return new THREE.LineBasicMaterial({
+    color,
+    transparent: false,
+    depthTest: false,
+    depthWrite: false,
+    toneMapped: false,
+  });
 }
