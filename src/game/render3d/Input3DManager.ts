@@ -32,6 +32,8 @@ import {
   CommanderModeController,
   InputControlGroups,
   InputSelectedCommands,
+  type AutoGroupRuleSnapshot,
+  type ControlGroupSlotSnapshot,
   type ScreenRectSelectionOptions,
 } from '../input/helpers';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
@@ -69,6 +71,8 @@ type EntitySource = {
   getTerrainBuildabilityGrid?: () => TerrainBuildabilityGrid | null;
 };
 
+const AUTO_GROUP_PRESET_STORAGE_KEY = 'budget-annihilation.autoControlGroups.v1';
+
 export class Input3DManager {
   private canvas: HTMLCanvasElement;
   private context: InputContext;
@@ -80,7 +84,7 @@ export class Input3DManager {
   // Fires when the mode changes (from hotkey or setter). RtsScene3D hooks this
   // to refresh the selection panel so the active mode chip stays in sync.
   public onWaypointModeChange?: (mode: WaypointType) => void;
-  public onControlGroupsChange?: (groups: readonly (readonly EntityId[])[]) => void;
+  public onControlGroupsChange?: (groups: readonly ControlGroupSlotSnapshot[]) => void;
   public onControlGroupFocus?: (x: number, y: number) => void;
 
   // Shared build / commander-special state machine. The 2D
@@ -150,7 +154,11 @@ export class Input3DManager {
       (entity) => this.isSelectableByActivePlayer(entity),
       (entityIds, additive) => this.enqueueSelection(entityIds, additive),
     );
-    this.controlGroups.onChange = (groups) => this.onControlGroupsChange?.(groups);
+    this.controlGroups.onChange = (groups) => {
+      saveAutoGroupPreset(this.controlGroups.getAutoGroupPresetSnapshot());
+      this.onControlGroupsChange?.(groups);
+    };
+    this.controlGroups.loadAutoGroupPreset(loadAutoGroupPreset());
     this.selectedCommands = new InputSelectedCommands(
       entitySource,
       localCommandQueue,
@@ -756,6 +764,10 @@ export class Input3DManager {
 
   removeSelectedFromAutoControlGroups(): void {
     this.controlGroups.removeSelectedFromAutoGroups();
+  }
+
+  getControlGroupSlotSnapshots(): readonly ControlGroupSlotSnapshot[] {
+    return this.controlGroups.getSlotSnapshots();
   }
 
   recallControlGroupSlot(index: number, additive: boolean): boolean {
@@ -1387,4 +1399,25 @@ function sameEntityIdSet(a: readonly EntityId[], b: readonly EntityId[]): boolea
     if (!ids.has(b[i])) return false;
   }
   return true;
+}
+
+function loadAutoGroupPreset(): (AutoGroupRuleSnapshot | null)[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(AUTO_GROUP_PRESET_STORAGE_KEY);
+    if (raw === null) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed as (AutoGroupRuleSnapshot | null)[] : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveAutoGroupPreset(rules: readonly (AutoGroupRuleSnapshot | null)[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(AUTO_GROUP_PRESET_STORAGE_KEY, JSON.stringify(rules));
+  } catch {
+    // localStorage may be unavailable or over quota; auto-groups still work in-memory.
+  }
 }

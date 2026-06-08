@@ -13,6 +13,7 @@ export type ControlGroupInfo = {
   index: number;
   count: number;
   active: boolean;
+  auto: boolean;
 };
 
 export type SelectionEntityType = 'unit' | 'tower' | 'building';

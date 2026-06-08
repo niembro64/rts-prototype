@@ -29,6 +29,8 @@ export {
   CONTROL_GROUP_COUNT,
   InputControlGroups,
   controlGroupIndexForKey,
+  type AutoGroupRuleSnapshot,
+  type ControlGroupSlotSnapshot,
 } from './InputControlGroups';
 
 export { InputSelectedCommands } from './InputSelectedCommands';

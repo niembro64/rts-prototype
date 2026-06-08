@@ -1,5 +1,5 @@
 import type { Entity, EntityId, PlayerId } from '../../sim/types';
-import { InputControlGroups } from './InputControlGroups';
+import { InputControlGroups, type ControlGroupSlotSnapshot } from './InputControlGroups';
 
 const LOCAL_PLAYER: PlayerId = 1;
 
@@ -28,7 +28,7 @@ export function runInputControlGroupsContractTest(): void {
   const scoutB = unit(4, 'scout');
   const units = [tankA, tankB, scoutA];
   let selectedUnits: Entity[] = [tankA];
-  let lastGroups: readonly (readonly EntityId[])[] = [];
+  let lastGroups: readonly ControlGroupSlotSnapshot[] = [];
   const groups = new InputControlGroups(
     {
       getUnits: () => units,
@@ -57,7 +57,7 @@ export function runInputControlGroupsContractTest(): void {
     'auto-group refresh must add newly visible matching units',
   );
   assertContract(
-    lastGroups[1]?.join(',') === '1,2,5',
+    lastGroups[1]?.entityIds.join(',') === '1,2,5' && lastGroups[1]?.auto === true,
     'auto-group refresh must emit updated group ids',
   );
 
@@ -75,5 +75,33 @@ export function runInputControlGroupsContractTest(): void {
   assertContract(
     groups.getLiveSlotEntityIds(1).join(',') === '3',
     'manual Ctrl+number store must clear the auto-group rule for that slot',
+  );
+
+  groups.setAutoGroupSlot(2);
+  const preset = groups.getAutoGroupPresetSnapshot();
+  assertContract(
+    preset[2]?.unitBlueprintIds.join(',') === 'scout',
+    'auto-group preset snapshot must persist selected unit types by blueprint id',
+  );
+
+  const restored = new InputControlGroups(
+    {
+      getUnits: () => units,
+      getBuildings: () => [],
+      getSelectedUnits: () => selectedUnits,
+      getSelectedBuildings: () => [],
+      getEntity: (id) => units.find((entity) => entity.id === id),
+    },
+    (entity) => entity?.ownership?.playerId === LOCAL_PLAYER,
+    () => undefined,
+  );
+  restored.loadAutoGroupPreset(preset);
+  assertContract(
+    restored.getLiveSlotEntityIds(2).join(',') === '3,4',
+    'auto-group preset load must rebuild matching live units from saved blueprint rules',
+  );
+  assertContract(
+    restored.getSlotSnapshots()[2]?.auto === true,
+    'auto-group slot snapshots must mark saved auto-group slots',
   );
 }

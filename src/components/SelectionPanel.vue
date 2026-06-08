@@ -233,11 +233,29 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           <div><kbd>Ctrl/Cmd</kbd> + <kbd>Shift</kbd> + <kbd>0-9</kbd> adds selection to a group.</div>
           <div><kbd>Ctrl/Cmd</kbd> + <kbd>Alt</kbd> + <kbd>0-9</kbd> toggles a group in the selection.</div>
           <div><kbd>Alt</kbd> + <kbd>0-9</kbd> auto-groups matching unit and building types.</div>
+          <div>Auto groups are saved locally and marked <kbd>A</kbd> in the group strip.</div>
           <div><kbd>Alt</kbd> + <kbd>`</kbd> or <kbd>Alt</kbd> + <kbd>Q</kbd> removes selected types from auto-groups.</div>
           <div><kbd>Ctrl/Cmd</kbd> + <kbd>`</kbd> removes selected units from all groups.</div>
           <div class="hotkey-footnote">Button hotkeys appear on hover.</div>
         </div>
       </div>
+    </div>
+
+    <div v-if="selection.controlGroups.length > 0" class="control-group-strip" aria-label="Control groups">
+      <button
+        v-for="group in selection.controlGroups"
+        :key="group.index"
+        type="button"
+        class="control-group-chip"
+        :class="{ active: group.active, auto: group.auto }"
+        :disabled="group.count === 0"
+        :title="group.auto ? `Auto group ${group.index}` : `Control group ${group.index}`"
+        @click="actions.recallControlGroup(group.index, false)"
+      >
+        <span class="control-group-index">{{ group.index }}</span>
+        <span class="control-group-count">{{ group.count }}</span>
+        <span v-if="group.auto" class="control-group-auto">A</span>
+      </button>
     </div>
 
     <div class="button-group">
@@ -838,6 +856,73 @@ kbd {
   color: var(--selection-panel-text);
   font-family: monospace;
   font-size: 9px;
+}
+
+.control-group-strip {
+  display: grid;
+  grid-template-columns: repeat(10, 30px);
+  gap: 3px;
+  margin-bottom: 5px;
+}
+
+.control-group-chip {
+  position: relative;
+  display: grid;
+  grid-template-columns: 10px 1fr;
+  align-items: center;
+  width: 30px;
+  height: 22px;
+  padding: 0 3px;
+  background: var(--selection-panel-button-bg);
+  border: 1px solid var(--selection-panel-button-border);
+  border-radius: 3px;
+  color: var(--selection-panel-key);
+  font-family: monospace;
+  font-size: 8px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.control-group-chip:disabled {
+  opacity: var(--selection-panel-button-disabled-opacity);
+  cursor: default;
+}
+
+.control-group-chip.active {
+  border-color: var(--selection-panel-button-group-accent);
+  color: var(--selection-panel-text);
+  box-shadow: 0 0 5px var(--selection-panel-group-active-shadow);
+}
+
+.control-group-chip.auto {
+  border-color: var(--selection-panel-vehicle-produce);
+}
+
+.control-group-index {
+  font-weight: bold;
+}
+
+.control-group-count {
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: clip;
+}
+
+.control-group-auto {
+  position: absolute;
+  top: -4px;
+  right: -3px;
+  display: grid;
+  place-items: center;
+  width: 9px;
+  height: 9px;
+  background: var(--selection-panel-bg);
+  border: 1px solid var(--selection-panel-vehicle-produce);
+  border-radius: 50%;
+  color: var(--selection-panel-text);
+  font-size: 7px;
+  font-weight: bold;
 }
 
 .button-group {

@@ -15,6 +15,14 @@ type AutoGroupRule = {
   unitBlueprintIds: Set<string>;
   buildingBlueprintIds: Set<string>;
 };
+export type AutoGroupRuleSnapshot = {
+  unitBlueprintIds: string[];
+  buildingBlueprintIds: string[];
+};
+export type ControlGroupSlotSnapshot = {
+  entityIds: EntityId[];
+  auto: boolean;
+};
 
 export function controlGroupIndexForKey(e: KeyboardEvent): number {
   if (/^Numpad[0-9]$/.test(e.code)) return -1;
@@ -30,7 +38,7 @@ export class InputControlGroups {
   private readonly groups: EntityId[][] = Array.from({ length: CONTROL_GROUP_COUNT }, () => []);
   private readonly autoGroupRules: (AutoGroupRule | null)[] =
     Array.from({ length: CONTROL_GROUP_COUNT }, () => null);
-  onChange?: (groups: readonly (readonly EntityId[])[]) => void;
+  onChange?: (groups: readonly ControlGroupSlotSnapshot[]) => void;
 
   constructor(
     source: ControlGroupEntitySource,
@@ -116,6 +124,29 @@ export class InputControlGroups {
       changed = true;
     }
     if (changed) this.emitChange();
+  }
+
+  loadAutoGroupPreset(rules: readonly (AutoGroupRuleSnapshot | null)[]): void {
+    let changed = false;
+    for (let i = 0; i < CONTROL_GROUP_COUNT; i++) {
+      const rule = hydrateAutoGroupRule(rules[i] ?? null);
+      if (autoGroupRulesEqual(this.autoGroupRules[i], rule)) continue;
+      this.autoGroupRules[i] = rule;
+      this.groups[i] = rule === null ? [] : this.collectAutoGroupEntityIds(rule);
+      changed = true;
+    }
+    if (changed) this.emitChange();
+  }
+
+  getAutoGroupPresetSnapshot(): (AutoGroupRuleSnapshot | null)[] {
+    return this.autoGroupRules.map(snapshotAutoGroupRule);
+  }
+
+  getSlotSnapshots(): ControlGroupSlotSnapshot[] {
+    return this.groups.map((group, index) => ({
+      entityIds: group.slice(),
+      auto: this.autoGroupRules[index] !== null,
+    }));
   }
 
   refreshAutoGroups(): void {
@@ -259,8 +290,45 @@ export class InputControlGroups {
   }
 
   private emitChange(): void {
-    this.onChange?.(this.groups.map((group) => group.slice()));
+    this.onChange?.(this.getSlotSnapshots());
   }
+}
+
+function hydrateAutoGroupRule(snapshot: AutoGroupRuleSnapshot | null): AutoGroupRule | null {
+  if (snapshot === null) return null;
+  const unitBlueprintIds = Array.isArray(snapshot.unitBlueprintIds)
+    ? snapshot.unitBlueprintIds.filter((id): id is string => typeof id === 'string')
+    : [];
+  const buildingBlueprintIds = Array.isArray(snapshot.buildingBlueprintIds)
+    ? snapshot.buildingBlueprintIds.filter((id): id is string => typeof id === 'string')
+    : [];
+  if (unitBlueprintIds.length === 0 && buildingBlueprintIds.length === 0) return null;
+  return {
+    unitBlueprintIds: new Set(unitBlueprintIds),
+    buildingBlueprintIds: new Set(buildingBlueprintIds),
+  };
+}
+
+function snapshotAutoGroupRule(rule: AutoGroupRule | null): AutoGroupRuleSnapshot | null {
+  if (rule === null) return null;
+  return {
+    unitBlueprintIds: Array.from(rule.unitBlueprintIds).sort(),
+    buildingBlueprintIds: Array.from(rule.buildingBlueprintIds).sort(),
+  };
+}
+
+function autoGroupRulesEqual(a: AutoGroupRule | null, b: AutoGroupRule | null): boolean {
+  if (a === null || b === null) return a === b;
+  return setsEqual(a.unitBlueprintIds, b.unitBlueprintIds)
+    && setsEqual(a.buildingBlueprintIds, b.buildingBlueprintIds);
+}
+
+function setsEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const value of a) {
+    if (!b.has(value)) return false;
+  }
+  return true;
 }
 
 function mergeEntityIds(first: readonly EntityId[], second: readonly EntityId[]): EntityId[] {

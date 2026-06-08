@@ -9,7 +9,7 @@ import type {
   WaypointType,
 } from '../../sim/types';
 import type { ControlGroupInfo, SelectionInfo, UIEntitySource, UIInputState } from '@/types/ui';
-import { CONTROL_GROUP_COUNT } from '../../input/helpers';
+import { CONTROL_GROUP_COUNT, type ControlGroupSlotSnapshot } from '../../input/helpers';
 
 export type SelectionChangeHandler = ((info: SelectionInfo) => void) | undefined;
 
@@ -17,9 +17,9 @@ export class RtsScene3DSelectionSystem {
   private selectedUnits: Entity[] = [];
   private selectedBuildings: Entity[] = [];
   private scratchSelectedBuildingIds: EntityId[] = [];
-  private controlGroupEntityIds: EntityId[][] = Array.from(
+  private controlGroupSlots: ControlGroupSlotSnapshot[] = Array.from(
     { length: CONTROL_GROUP_COUNT },
-    () => [],
+    () => ({ entityIds: [], auto: false }),
   );
   private selectedEntityCacheDirty = true;
   private selectionInfoDirty = true;
@@ -110,9 +110,13 @@ export class RtsScene3DSelectionSystem {
     this.selectionInfoDirty = true;
   }
 
-  setControlGroups(groups: readonly (readonly EntityId[])[]): void {
+  setControlGroups(groups: readonly ControlGroupSlotSnapshot[]): void {
     for (let i = 0; i < CONTROL_GROUP_COUNT; i++) {
-      this.controlGroupEntityIds[i] = [...(groups[i] ?? [])];
+      const group = groups[i];
+      this.controlGroupSlots[i] = {
+        entityIds: [...(group?.entityIds ?? [])],
+        auto: group?.auto === true,
+      };
     }
     this.selectionInfoDirty = true;
   }
@@ -204,12 +208,12 @@ export class RtsScene3DSelectionSystem {
     const groups: ControlGroupInfo[] = [];
 
     for (let i = 0; i < CONTROL_GROUP_COUNT; i++) {
-      const group = this.controlGroupEntityIds[i];
+      const group = this.controlGroupSlots[i];
       let count = 0;
       let allSelected = selectedIds.size > 0;
 
-      for (let j = 0; j < group.length; j++) {
-        const entity = this.clientViewState.getEntity(group[j]);
+      for (let j = 0; j < group.entityIds.length; j++) {
+        const entity = this.clientViewState.getEntity(group.entityIds[j]);
         if (!entity?.selectable || entity.ownership?.playerId !== playerId) continue;
         if (entity.unit && entity.unit.hp <= 0) continue;
         if (entity.building && entity.building.hp <= 0) continue;
@@ -221,6 +225,7 @@ export class RtsScene3DSelectionSystem {
         index: i,
         count,
         active: count > 0 && selectedIds.size === count && allSelected,
+        auto: group.auto,
       });
     }
 

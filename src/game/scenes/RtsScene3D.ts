@@ -458,6 +458,7 @@ export class RtsScene3D {
     this.inputManager.onControlGroupsChange = (groups) => {
       this.selectionSystem.setControlGroups(groups);
     };
+    this.selectionSystem.setControlGroups(this.inputManager.getControlGroupSlotSnapshots());
     this.inputManager.onControlGroupFocus = (x, y) => {
       this.cameraControl.centerOn(x, y);
     };

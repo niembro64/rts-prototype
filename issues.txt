@@ -43,20 +43,15 @@ append/all-kinds, Ctrl remove, Alt mobile-only, Space idle-only, and Z same-type
 modifiers. Add select idle transports once transport units and load/unload state
 exist.
 
-Issue: control groups still lack several BAR behaviors. Group slots 0-9,
-Ctrl/Cmd+Shift group add, Ctrl/Cmd+Alt group select-toggle, and Ctrl/Cmd+`
-remove-selected-from-groups, double-tap group focus, and auto-group
-creation/removal for selected unit/building types exist. Implement auto-group
-preset save/load/show, factory preset integration, and any required
-spectator/team selection behavior that maps to rts-prototype's lobby and
-player-switching model.
+Issue: control groups still lack BAR factory preset integration and any
+required spectator/team selection behavior that maps to rts-prototype's lobby
+and player-switching model.
 
-Issue: movement and formation commands are incomplete. Keep the existing
-right-click move/fight/patrol and line-drag behavior, but add BAR's explicit
-Move command, Move and assume formation, Move in formation, formation-preserving
-movement semantics, slow/fast movement modifiers where applicable, and visual
-formation previews. Translate these to the 3D physics model so formation targets
-respect mass, collision, terrain height, slopes, water, and pathability.
+Issue: movement and formation commands are incomplete. Add BAR's Move and
+assume formation, Move in formation, formation-preserving movement semantics,
+slow/fast movement modifiers where applicable, and complete visual formation
+previews. Translate these to the 3D physics model so formation targets respect
+mass, collision, terrain height, slopes, water, and pathability.
 
 Issue: battle and targeting commands are incomplete. rts-prototype has visual
 buttons/hotkeys for Attack, fixed-radius Attack Area, Attack Ground, Fight,
