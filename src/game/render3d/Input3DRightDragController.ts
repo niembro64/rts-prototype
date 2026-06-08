@@ -1,5 +1,6 @@
 import type { CommandQueue, MoveCommand } from '../sim/commands';
 import type { Entity, EntityId, PlayerId, WaypointType } from '../sim/types';
+import { LAND_CELL_SIZE } from '../../config';
 import {
   buildAttackCommandAt,
   buildAttackCommandForTarget,
@@ -13,7 +14,7 @@ import {
 } from '../input/helpers';
 import type { CommandCursorKind } from '../input/CommandCursors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
-import { isWaterAt } from '../sim/Terrain';
+import { getSurfaceHeight, isWaterAt } from '../sim/Terrain';
 import type { Input3DPicker } from './Input3DPicker';
 import {
   resolveProjectileSelectionGroundReach,
@@ -334,6 +335,7 @@ export class Input3DRightDragController {
       finalPoint.x,
       finalPoint.y,
       finalPoint.z,
+      (x, y) => this.resolveFormationPreviewTargetZ(x, y),
     );
     for (let i = 0; i < targets.individualTargets.length; i++) {
       out.push(targets.individualTargets[i]);
@@ -366,6 +368,19 @@ export class Input3DRightDragController {
 
   private shouldUseFormationPreviewTargets(): boolean {
     return this.preserveFormationDrag && shouldCollapseLinePathToSingleMove(this.linePath.points);
+  }
+
+  private resolveFormationPreviewTargetZ(x: number, y: number): number | undefined {
+    const { width, height } = this.config.getMapSampleBounds();
+    if (
+      !Number.isFinite(width) ||
+      !Number.isFinite(height) ||
+      width <= 0 ||
+      height <= 0
+    ) {
+      return undefined;
+    }
+    return getSurfaceHeight(x, y, width, height, LAND_CELL_SIZE);
   }
 
   private resetLineDrag(): void {

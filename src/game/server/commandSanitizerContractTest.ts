@@ -104,7 +104,7 @@ export function runCommandSanitizerContractTest(): void {
     type: 'move',
     tick: 8,
     entityIds: [7, 8],
-    individualTargets: [{ x: 14, y: 15 }, { x: 24, y: 25 }],
+    individualTargets: [{ x: 14, y: 15, z: 999 }, { x: 24, y: 25, z: -999 }],
     formationSpeed: 'slowest',
     waypointType: 'move',
     queue: false,
@@ -112,6 +112,11 @@ export function runCommandSanitizerContractTest(): void {
   assertContract(
     formationSpeedMove.formationSpeed === 'slowest',
     'move formationSpeed=slowest must survive sanitizer',
+  );
+  assertContract(
+    formationSpeedMove.individualTargets?.[0]?.z === world.getGroundZ(14, 15) &&
+    formationSpeedMove.individualTargets?.[1]?.z === world.getGroundZ(24, 25),
+    'move individualTargets must derive z from authoritative terrain',
   );
 
   const rotatedBuild = sanitizeRequired<StartBuildCommand>(world, {

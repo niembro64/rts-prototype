@@ -322,20 +322,21 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
       const col = index % unitsPerRow;
       const offsetX = (col - (unitsPerRow - 1) / 2) * spacing;
       const offsetY = (row - (unitCount / unitsPerRow - 1) / 2) * spacing;
+      const targetX = command.targetX! + offsetX;
+      const targetY = command.targetY! + offsetY;
 
-      // Click altitude is shared by the formation centre — every
-      // unit's per-cell offset stays at the same z plane. The
-      // pathfinder only consults `goalZ` when the goal cell wasn't
-      // snapped, so an offset that happens to land on a blocked cell
-      // still gets a terrain-sampled altitude for its final waypoint.
+      // Server-generated formation offsets get their own ground height
+      // instead of reusing the clicked centre altitude. If the pathfinder
+      // later snaps a blocked final cell, it will terrain-sample the
+      // snapped waypoint in the usual path expansion path.
       addPathActions(
         unit,
-        command.targetX! + offsetX,
-        command.targetY! + offsetY,
+        targetX,
+        targetY,
         command.waypointType,
         command.queue,
         ctx,
-        command.targetZ ?? null,
+        ctx.world.getGroundZ(targetX, targetY),
         queueFront,
         speedLimitFactors?.get(unit.id),
       );

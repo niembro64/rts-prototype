@@ -213,8 +213,10 @@ function sanitizeGroundPoint(
 function sanitizeWaypointTarget(world: WorldState, target: unknown): WaypointTarget | null {
   if (!target || typeof target !== 'object') return null;
   const record = target as Record<string, unknown>;
-  const point = sanitizeGroundPoint(world, record.x, record.y, record.z);
-  return point === null ? null : point;
+  const point = sanitizeGroundPoint(world, record.x, record.y);
+  return point === null
+    ? null
+    : { x: point.x, y: point.y, z: world.getGroundZ(point.x, point.y) };
 }
 
 function clamp(value: number, min: number, max: number): number {

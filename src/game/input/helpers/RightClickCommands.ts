@@ -283,6 +283,7 @@ export function buildFormationPreservingMoveTargets(
   targetX: number,
   targetY: number,
   targetZ?: number,
+  resolveTargetZ?: (x: number, y: number) => number | undefined,
 ): { entityIds: EntityId[]; individualTargets: WaypointTarget[] } {
   if (selectedUnits.length === 0) {
     return { entityIds: [], individualTargets: [] };
@@ -302,11 +303,14 @@ export function buildFormationPreservingMoveTargets(
   for (let i = 0; i < selectedUnits.length; i++) {
     const unit = selectedUnits[i];
     entityIds.push(unit.id);
+    const x = targetX + (unit.transform.x - cx);
+    const y = targetY + (unit.transform.y - cy);
     const target: WaypointTarget = {
-      x: targetX + (unit.transform.x - cx),
-      y: targetY + (unit.transform.y - cy),
+      x,
+      y,
     };
-    if (targetZ !== undefined) target.z = targetZ;
+    const z = resolveTargetZ?.(x, y) ?? targetZ;
+    if (z !== undefined) target.z = z;
     individualTargets.push(target);
   }
 
