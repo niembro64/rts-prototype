@@ -933,6 +933,15 @@ defineProps<{
         <BarDivider />
       </BarControlGroup>
       <BarControlGroup>
+        <BarLabel>MAP:</BarLabel>
+        <BarButton
+          :active="false"
+          title="Move the camera to the latest ping or scanner marker"
+          @click="model.goToLastPing"
+        >PING</BarButton>
+        <BarDivider />
+      </BarControlGroup>
+      <BarControlGroup>
         <BarLabel title="Camera follow for a single selected unit. Only active when exactly one unit is selected; eases through the CAMERA smoothing above, so switching modes transitions smoothly.">FOLLOW:</BarLabel>
         <BarButtonGroup>
           <BarButton

@@ -296,6 +296,11 @@ function captureScreenshot(): void {
   }, 'image/png');
 }
 
+function goToLastPing(): void {
+  const scene = foregroundGame.getScene() ?? getBackgroundBattle()?.gameInstance?.getScene() ?? null;
+  scene?.goToLastPing();
+}
+
 onMounted(() => {
   syncFullscreenActive();
   document.addEventListener('fullscreenchange', syncFullscreenActive);
@@ -1074,6 +1079,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   setCameraFollowMode: setCameraFollow,
   toggleFullscreen,
   captureScreenshot,
+  goToLastPing,
 });
 watchEffect(() => {
   const m = clientControlBarModel as {

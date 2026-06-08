@@ -231,6 +231,7 @@ export class RtsScene3D {
   public onRendererWarmupChange?: (warming: boolean) => void;
   private rendererWarmup: RtsScene3DRendererWarmup | null = null;
   private destroyed = false;
+  private lastPingPoint: { x: number; y: number } | null = null;
   private readonly handleSimEvent3DCallback = (event: NetworkServerSnapshotSimEvent): void => {
     this.handleSimEvent3D(event);
   };
@@ -685,6 +686,13 @@ export class RtsScene3D {
   }
 
   private handleSimEvent3D(event: NetworkServerSnapshotSimEvent): void {
+    if (
+      event.type === 'ping' &&
+      Number.isFinite(event.pos.x) &&
+      Number.isFinite(event.pos.y)
+    ) {
+      this.lastPingPoint = { x: event.pos.x, y: event.pos.y };
+    }
     dispatchSimEvent3DVisual(event, {
       clientViewState: this.clientViewState,
       entityRenderer: this.entityRenderer,
@@ -914,6 +922,11 @@ export class RtsScene3D {
 
   public centerCameraOn(x: number, y: number): void {
     this.cameraControl.centerOn(x, y);
+  }
+
+  public goToLastPing(): void {
+    if (this.lastPingPoint === null) return;
+    this.cameraControl.centerOn(this.lastPingPoint.x, this.lastPingPoint.y);
   }
 
   /** Capture the orbit camera's current framing in the portable
