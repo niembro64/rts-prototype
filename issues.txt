@@ -40,8 +40,8 @@ these to the 3D physics model so formation targets respect mass, collision,
 terrain height, slopes, water, and pathability.
 
 Issue: construction commands are missing several BAR build ergonomics. Implement
-construction shortcuts, build split, upgrade T1 mex area, upgrade T1 -> T2,
-remaining BAR fallback behavior, and visual previews for every build shape.
+construction shortcuts, upgrade T1 mex area, upgrade T1 -> T2, remaining BAR
+fallback behavior, and visual previews for remaining build/upgrade shapes.
 rts-prototype has category-ordered build buttons for the current structure
 roster, contextual BAR-grid build-cell hotkeys over a shared 12-cell build menu
 layout, active-preset build-slot hotkeys, single-placement ghost, Shift
@@ -95,18 +95,17 @@ panel and hotkeys, translated to authoritative-server commands.
 Issue: BAR gameplay functionality tied to missing commands is absent. Implement
 or explicitly redesign the systems needed by the missing command surface:
 transports, capture, resurrection/wreck fields, cloak/detection, unit stances,
-manual-launch weapons, factory queue management, build-shape placement, mex
-upgrade workflows, replays where applicable, and complete
-faction/unit/factory/building rosters. rts-prototype already has spectator
-UI/authority/snapshot paths. Missing commands should not be added as dead UI;
-their underlying authoritative simulation, client prediction, snapshots, and
-render feedback must exist.
+manual-launch weapons, factory queue management, mex upgrade workflows, replays
+where applicable, and complete faction/unit/factory/building rosters.
+rts-prototype already has spectator UI/authority/snapshot paths and
+authoritative build-shape placement for the current build roster. Missing
+commands should not be added as dead UI; their underlying authoritative
+simulation, client prediction, snapshots, and render feedback must exist.
 
 Issue: BAR parity must be extended through the 3D/physics-first design, not
 implemented as flat 2D shortcuts. Attack lines/circles still need ballistic
-previews; build grids/borders need slope, support surface, collision,
-rotated-footprint, and resource-cell validation; formations need mass,
-acceleration, collision, and terrain-aware spacing; transport/load/unload,
+previews; formations need mass, acceleration, collision, and terrain-aware
+spacing; transport/load/unload,
 resurrection, capture, and manual launch/special-fire abilities beyond
 commander DGun need physical presentation and authoritative physics
 interactions. Document any intentional departure from BAR in
