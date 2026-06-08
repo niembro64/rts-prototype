@@ -573,12 +573,12 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
       </div>
     </div>
 
-    <!-- Tower lock-on. Set Target enters a click-pick mode (the next
+    <!-- Combat lock-on. Set Target enters a click-pick mode (the next
          left-click on any entity with an ID sets the host-level
          priorityTargetId; right-click / Esc cancels); Clear Target
          drops the lock and reverts to autonomous acquisition.
-         Per budget_design_philosophy.html "Tower selection panel". -->
-    <div v-if="selection.hasTowerTargetControl && showTowerActions" class="button-group">
+         Applies to selected combat units and towers with turrets. -->
+    <div v-if="selection.hasTowerTargetControl && showCombatActions" class="button-group">
       <div class="group-label">Target</div>
       <div class="buttons">
         <button

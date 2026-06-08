@@ -794,7 +794,7 @@ export class Input3DManager {
       this.exitTowerTargetMode();
       return;
     }
-    if (this.getSelectedTowers().length === 0) return;
+    if (!this.hasSelectedTargetableCombatEntities()) return;
     this.mode.exitBuildMode();
     this.mode.exitDGunMode();
     this.exitSpecialModes(false);
@@ -809,8 +809,8 @@ export class Input3DManager {
     return this.towerTargetMode;
   }
 
-  private getSelectedTowers(): Entity[] {
-    return this.selectedCommands.selectedTowers();
+  private hasSelectedTargetableCombatEntities(): boolean {
+    return this.selectedCommands.selectedTargetableCombatEntities().length > 0;
   }
 
   private hasSelectedCommander(): boolean {
@@ -942,7 +942,7 @@ export class Input3DManager {
     if (this.reclaimMode && !this.hasSelectedCommander()) {
       this.exitReclaimMode();
     }
-    if (this.towerTargetMode && this.getSelectedTowers().length === 0) {
+    if (this.towerTargetMode && !this.hasSelectedTargetableCombatEntities()) {
       this.exitTowerTargetMode();
     }
     this.refreshCursor();

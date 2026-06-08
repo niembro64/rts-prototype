@@ -205,9 +205,9 @@ function authorizeUnitListCommand(
   return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
 }
 
-/** Authorize a tower-target command: every entityId must be an
- *  owned tower. The lock-on `targetId` itself may name any entity
- *  in the world that has an ID (friendly or enemy); the
+/** Authorize a target-lock command: every entityId must be an owned combat
+ *  entity with at least one turret. The lock-on `targetId` itself may name
+ *  any entity in the world that has an ID (friendly or enemy); the
  *  receiving turret's exclusion policy decides whether to honor it
  *  (see budget_design_philosophy.html "Lock-on selection: anything with an
  *  ID is a candidate"). */
@@ -224,7 +224,8 @@ function authorizeSetTowerTargetCommand(
     const entity = world.getEntity(id);
     if (
       entity !== undefined
-      && entity.type === 'tower'
+      && entity.combat !== null
+      && entity.combat.turrets.length > 0
       && entity.ownership !== null
       && entity.ownership.playerId === playerId
     ) {

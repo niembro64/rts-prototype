@@ -88,7 +88,9 @@ export function buildSelectionInfo(
   const allowedBuildBlueprintIds = getSelectedBuilderAllowedBuildBlueprintIds(selectedUnits);
   const dgunner = commander;
   let fireControlCount = 0;
+  let targetControlCount = 0;
   let allFireEnabled = true;
+  let hasPriorityTarget = false;
   let waitingCount = 0;
   let hasQueuedOrders = false;
   for (let i = 0; i < selectedUnits.length; i++) {
@@ -99,7 +101,9 @@ export function buildSelectionInfo(
     const combat = selectedUnit.combat;
     if (combat && combat.turrets.length > 0) {
       fireControlCount++;
+      targetControlCount++;
       if (combat.fireEnabled === false) allFireEnabled = false;
+      if (combat.priorityTargetId !== null) hasPriorityTarget = true;
     }
   }
   // Towers carry the same combat/fire-control contract as units.
@@ -110,7 +114,9 @@ export function buildSelectionInfo(
     const combat = selectedTowers[i].combat;
     if (combat && combat.turrets.length > 0) {
       fireControlCount++;
+      targetControlCount++;
       if (combat.fireEnabled === false) allFireEnabled = false;
+      if (combat.priorityTargetId !== null) hasPriorityTarget = true;
     }
   }
 
@@ -141,16 +147,6 @@ export function buildSelectionInfo(
     selectedUnits.length > 0
     || selectedTowers.length > 0
     || selectedBuildings.length > 0;
-
-  // Tower host lock-on. Set Target / Clear Target are gated on towerCount.
-  let towerWithTarget = false;
-  for (let i = 0; i < selectedTowers.length; i++) {
-    const combat = selectedTowers[i].combat;
-    if (combat && combat.priorityTargetId !== null) {
-      towerWithTarget = true;
-      break;
-    }
-  }
 
   // Get factory repeat-build selection if a factory is selected.
   let factorySelectedUnit: { unitBlueprintId: string; label: string } | null | undefined;
@@ -185,8 +181,8 @@ export function buildSelectionInfo(
     hasBuildingActiveControl: activeBuildingCount > 0,
     buildingsActive: activeBuildingCount > 0 && allBuildingsOpen,
     hasSelfDestructable,
-    hasTowerTargetControl: selectedTowers.length > 0,
-    hasTowerTargetActive: towerWithTarget,
+    hasTowerTargetControl: targetControlCount > 0,
+    hasTowerTargetActive: hasPriorityTarget,
     isTowerTargetMode: inputState?.isTowerTargetMode ?? false,
     isWaiting: selectedUnits.length > 0 && waitingCount === selectedUnits.length,
     hasQueuedOrders,

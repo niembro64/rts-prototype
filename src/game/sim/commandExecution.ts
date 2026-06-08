@@ -691,7 +691,7 @@ function executeSetTowerTargetCommand(
   command: SetTowerTargetCommand,
 ): void {
   // Resolve the target entity once; null/-1 means "clear the lock".
-  // The lock-on is only honored by host-directed turrets whose
+  // The lock-on is honored by host-directed turrets whose
   // exclusion policy accepts the candidate (see budget_design_philosophy.html
   // "Host-directed turrets carry the host lock-on...").
   const target = command.targetId === null
@@ -710,9 +710,9 @@ function executeSetTowerTargetCommand(
   }
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
-    if (entity === undefined || entity.type !== 'tower') continue;
+    if (entity === undefined) continue;
     const combat = entity.combat;
-    if (combat === null) continue;
+    if (combat === null || combat.turrets.length === 0) continue;
     combat.priorityTargetId = resolvedTargetId;
     combat.priorityTargetPoint = null;
     combat.nextCombatProbeTick = -1;

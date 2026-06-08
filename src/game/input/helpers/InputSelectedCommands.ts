@@ -35,6 +35,21 @@ export class InputSelectedCommands {
     return out;
   }
 
+  selectedTargetableCombatEntities(): Entity[] {
+    const out: Entity[] = [];
+    const selectedUnits = this.source.getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      const unit = selectedUnits[i];
+      if (unit.combat && unit.combat.turrets.length > 0) out.push(unit);
+    }
+    const towers = this.selectedTowers();
+    for (let i = 0; i < towers.length; i++) {
+      const tower = towers[i];
+      if (tower.combat && tower.combat.turrets.length > 0) out.push(tower);
+    }
+    return out;
+  }
+
   stop(): void {
     const entityIds = this.selectedUnitIds();
     if (entityIds.length === 0) return;
@@ -141,10 +156,10 @@ export class InputSelectedCommands {
   }
 
   setTowerTarget(targetId: EntityId | null): void {
-    const towers = this.selectedTowers();
-    if (towers.length === 0) return;
+    const targetableEntities = this.selectedTargetableCombatEntities();
+    if (targetableEntities.length === 0) return;
     const entityIds: EntityId[] = [];
-    for (let i = 0; i < towers.length; i++) entityIds.push(towers[i].id);
+    for (let i = 0; i < targetableEntities.length; i++) entityIds.push(targetableEntities[i].id);
     this.commandQueue.enqueue({
       type: 'setTowerTarget',
       tick: this.getTick(),

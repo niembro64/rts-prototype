@@ -57,10 +57,10 @@ respect mass, collision, terrain height, slopes, water, and pathability.
 
 Issue: battle and targeting commands are incomplete. rts-prototype has visual
 buttons/hotkeys for Attack, fixed-radius Attack Area, Attack Ground, Fight,
-Guard, Patrol, and tower-only target set/cancel. Add BAR Attack Circle, Attack
-Line, mobile-unit Target Set, Target Set No Ground, Target Cancel, user-shaped
-attack areas/lines/circles, and command-card access for any remaining battle
-commands that become supported by simulation.
+Guard, Patrol, and target set/cancel for combat units and towers. Add BAR
+Attack Circle, Attack Line, Target Set No Ground, user-shaped attack
+areas/lines/circles, and command-card access for any remaining battle commands
+that become supported by simulation.
 
 Issue: construction commands are missing most BAR build ergonomics. Implement
 the BAR grid build menu categories, grid-menu cell hotkeys, legacy quick-build

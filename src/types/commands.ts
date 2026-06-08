@@ -172,11 +172,11 @@ export type SelfDestructCommand = BaseCommand & {
   entityIds: EntityId[];
 };
 
-/** Set (or clear) a tower's host-level lock-on target. Writes
+/** Set (or clear) a combat entity's host-level lock-on target. Writes
  *  CombatComponent.priorityTargetId directly; host-directed turrets
  *  inherit the target through the normal acquisition flow, gated by
  *  their own exclusion masks. `targetId === null` clears the lock-on
- *  and the tower reverts to autonomous acquisition. */
+ *  and the entity reverts to autonomous acquisition. */
 export type SetTowerTargetCommand = BaseCommand & {
   type: 'setTowerTarget';
   entityIds: EntityId[];

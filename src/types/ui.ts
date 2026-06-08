@@ -45,11 +45,10 @@ export type SelectionInfo = {
   /** True when any selected entity belongs to the local player and can
    *  be removed by a self-destruct command. */
   hasSelfDestructable: boolean;
-  /** True when the tower section's Set Target / Clear Target buttons
-   *  should appear. Mirrors `towerCount > 0`. */
+  /** True when selected combat units/towers expose Set Target / Clear Target. */
   hasTowerTargetControl: boolean;
-  /** True when at least one selected tower has a host-level lock-on
-   *  target set. Enables the Clear Target button. */
+  /** True when at least one selected combat entity has a host-level
+   *  lock-on target set. Enables the Clear Target button. */
   hasTowerTargetActive: boolean;
   /** True while the user is in the click-to-pick mode for setting a
    *  tower's lock-on target. Highlights the Set Target button. */
