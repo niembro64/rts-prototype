@@ -53,6 +53,11 @@ type BuildPreviewTarget = {
   worldY: number;
 };
 
+type BuildShapePlacementPlanner = (
+  buildingBlueprintId: BuildingBlueprintId,
+  entitySource: ModeClickEntitySource,
+) => ReadonlyArray<{ gridX: number; gridY: number }>;
+
 type ModeClickEntitySource = {
   getUnits: () => Entity[];
   getBuildings: () => Entity[];
@@ -397,113 +402,94 @@ export class Input3DModeClickController {
   }
 
   private commitBuildMexAreaDrag(drag: AreaDrag, radius: number): void {
-    const builder = this.config.getSelectedBuilder();
-    if (builder === null || !entityCanBuild(builder, AREA_MEX_BLUEPRINT_ID)) {
-      this.config.applyCursor('blocked');
-      return;
-    }
-    const placements = this.buildPlacement.planMetalExtractorPlacementsInArea(
-      drag.start.x,
-      drag.start.y,
-      radius,
-      this.config.getEntitySource(),
+    this.commitBuildShapePlacements(
+      drag,
+      AREA_MEX_BLUEPRINT_ID,
+      (_buildingBlueprintId, entitySource) => this.buildPlacement.planMetalExtractorPlacementsInArea(
+        drag.start.x,
+        drag.start.y,
+        radius,
+        entitySource,
+      ),
     );
-    if (placements.length === 0) {
-      this.config.applyCursor('blocked');
-      return;
-    }
-
-    const tick = this.config.getTick();
-    for (let i = 0; i < placements.length; i++) {
-      const placement = placements[i];
-      this.config.commandQueue.enqueue({
-        type: 'startBuild',
-        tick,
-        builderId: builder.id,
-        buildingBlueprintId: AREA_MEX_BLUEPRINT_ID,
-        gridX: placement.gridX,
-        gridY: placement.gridY,
-        rotation: this.buildPlacement.facingInfo.rotation,
-        queue: i === 0 ? drag.queue : true,
-        queueFront: i === 0 ? drag.queueFront : false,
-      });
-    }
-    this.config.applyCursor('build');
-    if (!drag.queue) this.config.mode.exitBuildMode();
   }
 
   private commitBuildLineDrag(drag: AreaDrag): void {
-    const builder = this.config.getSelectedBuilder();
     const buildingBlueprintId = this.config.mode.buildingBlueprintId;
-    if (
-      builder === null ||
-      buildingBlueprintId === null ||
-      !entityCanBuild(builder, buildingBlueprintId)
-    ) {
-      this.config.applyCursor('blocked');
-      return;
-    }
-
-    const placements = this.buildPlacement.planBuildLinePlacements(
+    if (buildingBlueprintId === null) return;
+    this.commitBuildShapePlacements(
+      drag,
       buildingBlueprintId,
-      drag.start.x,
-      drag.start.y,
-      drag.current.x,
-      drag.current.y,
-      this.config.getEntitySource(),
+      (blueprintId, entitySource) => this.buildPlacement.planBuildLinePlacements(
+        blueprintId,
+        drag.start.x,
+        drag.start.y,
+        drag.current.x,
+        drag.current.y,
+        entitySource,
+      ),
     );
-    if (placements.length === 0) {
-      this.config.applyCursor('blocked');
-      return;
-    }
-
-    const tick = this.config.getTick();
-    for (let i = 0; i < placements.length; i++) {
-      const placement = placements[i];
-      this.config.commandQueue.enqueue({
-        type: 'startBuild',
-        tick,
-        builderId: builder.id,
-        buildingBlueprintId,
-        gridX: placement.gridX,
-        gridY: placement.gridY,
-        rotation: this.buildPlacement.facingInfo.rotation,
-        queue: i === 0 ? drag.queue : true,
-        queueFront: i === 0 ? drag.queueFront : false,
-      });
-    }
-    this.config.applyCursor('build');
-    if (!drag.queue) this.config.mode.exitBuildMode();
   }
 
   private commitBuildBorderDrag(drag: AreaDrag): void {
-    const builder = this.config.getSelectedBuilder();
     const buildingBlueprintId = this.config.mode.buildingBlueprintId;
-    if (
-      builder === null ||
-      buildingBlueprintId === null ||
-      !entityCanBuild(builder, buildingBlueprintId)
-    ) {
+    if (buildingBlueprintId === null) return;
+    this.commitBuildShapePlacements(
+      drag,
+      buildingBlueprintId,
+      (blueprintId, entitySource) => this.buildPlacement.planBuildBorderPlacements(
+        blueprintId,
+        drag.start.x,
+        drag.start.y,
+        drag.current.x,
+        drag.current.y,
+        entitySource,
+      ),
+    );
+  }
+
+  private commitBuildGridDrag(drag: AreaDrag): void {
+    const buildingBlueprintId = this.config.mode.buildingBlueprintId;
+    if (buildingBlueprintId === null) return;
+    this.commitBuildShapePlacements(
+      drag,
+      buildingBlueprintId,
+      (blueprintId, entitySource) => this.buildPlacement.planBuildGridPlacements(
+        blueprintId,
+        drag.start.x,
+        drag.start.y,
+        drag.current.x,
+        drag.current.y,
+        entitySource,
+      ),
+    );
+  }
+
+  private commitBuildShapePlacements(
+    drag: AreaDrag,
+    buildingBlueprintId: BuildingBlueprintId,
+    planner: BuildShapePlacementPlanner,
+  ): void {
+    const builders = this.getSelectedBuildersForBlueprint(buildingBlueprintId);
+    if (builders.length === 0) {
       this.config.applyCursor('blocked');
       return;
     }
 
-    const placements = this.buildPlacement.planBuildBorderPlacements(
-      buildingBlueprintId,
-      drag.start.x,
-      drag.start.y,
-      drag.current.x,
-      drag.current.y,
-      this.config.getEntitySource(),
-    );
+    const entitySource = this.config.getEntitySource();
+    const placements = planner(buildingBlueprintId, entitySource);
     if (placements.length === 0) {
       this.config.applyCursor('blocked');
       return;
     }
 
     const tick = this.config.getTick();
+    const perBuilderCounts = new Map<number, number>();
     for (let i = 0; i < placements.length; i++) {
       const placement = placements[i];
+      const builder = builders[i % builders.length];
+      const assignedCount = perBuilderCounts.get(builder.id) ?? 0;
+      perBuilderCounts.set(builder.id, assignedCount + 1);
       this.config.commandQueue.enqueue({
         type: 'startBuild',
         tick,
@@ -512,56 +498,24 @@ export class Input3DModeClickController {
         gridX: placement.gridX,
         gridY: placement.gridY,
         rotation: this.buildPlacement.facingInfo.rotation,
-        queue: i === 0 ? drag.queue : true,
-        queueFront: i === 0 ? drag.queueFront : false,
+        queue: assignedCount === 0 ? drag.queue : true,
+        queueFront: assignedCount === 0 ? drag.queueFront : false,
       });
     }
     this.config.applyCursor('build');
     if (!drag.queue) this.config.mode.exitBuildMode();
   }
 
-  private commitBuildGridDrag(drag: AreaDrag): void {
+  private getSelectedBuildersForBlueprint(buildingBlueprintId: BuildingBlueprintId): Entity[] {
+    const builders: Entity[] = [];
+    const selectedUnits = this.config.getEntitySource().getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      const unit = selectedUnits[i];
+      if (entityCanBuild(unit, buildingBlueprintId)) builders.push(unit);
+    }
+    if (builders.length > 0) return builders;
     const builder = this.config.getSelectedBuilder();
-    const buildingBlueprintId = this.config.mode.buildingBlueprintId;
-    if (
-      builder === null ||
-      buildingBlueprintId === null ||
-      !entityCanBuild(builder, buildingBlueprintId)
-    ) {
-      this.config.applyCursor('blocked');
-      return;
-    }
-
-    const placements = this.buildPlacement.planBuildGridPlacements(
-      buildingBlueprintId,
-      drag.start.x,
-      drag.start.y,
-      drag.current.x,
-      drag.current.y,
-      this.config.getEntitySource(),
-    );
-    if (placements.length === 0) {
-      this.config.applyCursor('blocked');
-      return;
-    }
-
-    const tick = this.config.getTick();
-    for (let i = 0; i < placements.length; i++) {
-      const placement = placements[i];
-      this.config.commandQueue.enqueue({
-        type: 'startBuild',
-        tick,
-        builderId: builder.id,
-        buildingBlueprintId,
-        gridX: placement.gridX,
-        gridY: placement.gridY,
-        rotation: this.buildPlacement.facingInfo.rotation,
-        queue: i === 0 ? drag.queue : true,
-        queueFront: i === 0 ? drag.queueFront : false,
-      });
-    }
-    this.config.applyCursor('build');
-    if (!drag.queue) this.config.mode.exitBuildMode();
+    return entityCanBuild(builder, buildingBlueprintId) && builder !== null ? [builder] : [];
   }
 
   private handleLeftClick(e: MouseEvent): void {
