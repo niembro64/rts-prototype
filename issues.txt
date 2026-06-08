@@ -40,11 +40,13 @@ these to the 3D physics model so formation targets respect mass, collision,
 terrain height, slopes, water, and pathability.
 
 Issue: construction commands are missing several BAR build ergonomics. Implement
-construction shortcuts, upgrade T1 mex area, upgrade T1 -> T2, remaining BAR
-fallback behavior, and visual previews for remaining build/upgrade shapes.
+remaining construction shortcuts, upgrade T1 mex area, upgrade T1 -> T2,
+remaining BAR fallback behavior, and visual previews for remaining
+build/upgrade shapes.
 rts-prototype has category-ordered build buttons for the current structure
 roster, contextual BAR-grid build-cell hotkeys over a shared 12-cell build menu
-layout, active-preset build-slot hotkeys, single-placement ghost, Shift
+layout, BAR-grid/legacy build-facing and build-spacing shortcuts,
+active-preset build-slot hotkeys, single-placement ghost, Shift
 queueing, left-drag build line
 placement with adjustable spacing controls and a 3D line preview through
 existing build validation, plus 90-degree build-facing controls whose preview,

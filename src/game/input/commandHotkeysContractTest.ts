@@ -14,14 +14,18 @@ function assertContract(condition: boolean, message: string): void {
   }
 }
 
-function keyEvent(key: string, code: string): KeyboardEvent {
+function keyEvent(
+  key: string,
+  code: string,
+  modifiers: Partial<Pick<KeyboardEvent, 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey'>> = {},
+): KeyboardEvent {
   return {
     key,
     code,
-    ctrlKey: false,
-    shiftKey: false,
-    altKey: false,
-    metaKey: false,
+    ctrlKey: modifiers.ctrlKey ?? false,
+    shiftKey: modifiers.shiftKey ?? false,
+    altKey: modifiers.altKey ?? false,
+    metaKey: modifiers.metaKey ?? false,
     timeStamp: 0,
   } as KeyboardEvent;
 }
@@ -72,5 +76,21 @@ export function runCommandHotkeysContractTest(): void {
   assertContract(
     resolveCommandHotkey(keyEvent('q', 'KeyQ'), 'bar-grid', 'buildMenu') === 'build.slot9',
     'build-menu hotkey resolution should resolve bar-grid Q as build slot 9',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('t', 'KeyT'), 'bar-grid') === 'command.repeat',
+    'bar-grid T should resolve repeat orders',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent(';', 'Semicolon'), 'bar-grid') === 'command.moveState',
+    'bar-grid semicolon should resolve move state',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('z', 'KeyZ', { altKey: true }), 'bar-grid') === 'build.spacingIncrease',
+    'bar-grid Alt+Z should resolve build spacing increase',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent(']', 'BracketRight'), 'bar-grid') === 'build.rotateClockwise',
+    'bar-grid ] should resolve build rotate clockwise',
   );
 }
