@@ -11,6 +11,7 @@ defineProps<{
   isMobile: boolean;
   showLobby: boolean;
   spectateMode: boolean;
+  uiChromeVisible: boolean;
   mobileBarsVisible: boolean;
   showSoundTest: boolean;
   gameStarted: boolean;
@@ -40,13 +41,13 @@ function handleCameraTutorialDone(): void {
 
 <template>
   <CameraTutorial
-    v-if="gameStarted && currentBattleMode === 'real' && !cameraTutorialDone"
+    v-if="uiChromeVisible && gameStarted && currentBattleMode === 'real' && !cameraTutorialDone"
     :get-orbit="getOrbit"
     @done="handleCameraTutorialDone"
   />
 
   <button
-    v-if="!isMobile && showLobby && spectateMode"
+    v-if="uiChromeVisible && !isMobile && showLobby && spectateMode"
     class="spectate-toggle-btn"
     title="Show Menu"
     @click="emit('toggleSpectateMode')"
@@ -55,7 +56,7 @@ function handleCameraTutorialDone(): void {
   </button>
 
   <button
-    v-if="isMobile"
+    v-if="uiChromeVisible && isMobile"
     class="mobile-bars-toggle"
     :class="{ active: mobileBarsVisible }"
     :title="mobileBarsVisible ? 'Hide Controls' : 'Show Controls'"

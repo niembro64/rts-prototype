@@ -85,6 +85,7 @@ const backgroundContainerRef = ref<HTMLDivElement | null>(null);
 const gameAreaRef = ref<HTMLDivElement | null>(null);
 const activePlayer = ref<PlayerId>(1);
 const fullscreenActive = ref(false);
+const uiChromeVisible = ref(true);
 const gameOverWinner = ref<PlayerId | null>(null);
 const battleLoading = ref(false);
 const rendererWarmupLoading = ref(true);
@@ -145,6 +146,10 @@ const {
   toggleSpectateMode,
 } = useGameCanvasChromeState(currentBattleMode, applyPlayerClientEnabled);
 
+function toggleUiChrome(): void {
+  uiChromeVisible.value = !uiChromeVisible.value;
+}
+
 function getActiveOrbitCamera(): import('../game/render3d/OrbitCamera').OrbitCamera | null {
   return foregroundGame.getScene()?.getOrbitCamera() ?? null;
 }
@@ -183,6 +188,13 @@ const {
   serverMetaFromSnapshot,
 });
 
+const gameChromeVisible = computed(
+  () => uiChromeVisible.value && (isMobile ? mobileBarsVisible.value : !lobbyModalVisible.value),
+);
+const bottomChromeVisible = computed(
+  () => uiChromeVisible.value && !showLoadingOverlay.value && (isMobile ? mobileBarsVisible.value : !lobbyModalVisible.value),
+);
+
 const loadingInLobbyPreview = computed(
   () =>
     !gameStarted.value &&
@@ -202,7 +214,9 @@ const loadingNextLabel = computed(() => {
   return 'LOADING DEMO BATTLE';
 });
 const lobbyControlsSidebarOpen = ref(false);
-const showLobbyControlsSidebar = computed(() => !isMobile && lobbyModalVisible.value);
+const showLobbyControlsSidebar = computed(
+  () => uiChromeVisible.value && !isMobile && lobbyModalVisible.value,
+);
 watch(showLobbyControlsSidebar, (visible) => {
   if (!visible) lobbyControlsSidebarOpen.value = false;
 });
@@ -1037,6 +1051,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   cameraSmoothMode: cameraSmoothMode.value,
   cameraFollowMode: cameraFollowMode.value,
   fullscreenActive: fullscreenActive.value,
+  uiChromeVisible: uiChromeVisible.value,
   resetClientDefaults,
   togglePlayerClientEnabled,
   changeWaypointDetail,
@@ -1080,6 +1095,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleFullscreen,
   captureScreenshot,
   goToLastPing,
+  toggleUiChrome,
 });
 watchEffect(() => {
   const m = clientControlBarModel as {
@@ -1168,6 +1184,7 @@ watchEffect(() => {
   m.cameraSmoothMode = cameraSmoothMode.value;
   m.cameraFollowMode = cameraFollowMode.value;
   m.fullscreenActive = fullscreenActive.value;
+  m.uiChromeVisible = uiChromeVisible.value;
 });
 
 </script>
@@ -1176,7 +1193,7 @@ watchEffect(() => {
   <div class="game-wrapper">
     <!-- Top status bar lives outside the 3D game area, like the bottom controls. -->
     <div
-      v-if="isMobile ? mobileBarsVisible : !lobbyModalVisible"
+      v-if="gameChromeVisible"
       class="top-controls-shell"
     >
       <TopBar
@@ -1262,7 +1279,7 @@ watchEffect(() => {
       </div>
 
       <!-- Game UI (desktop: hidden when lobby modal visible; mobile: follows hamburger toggle) -->
-      <template v-if="playerClientEnabled && (isMobile ? mobileBarsVisible : !lobbyModalVisible)">
+      <template v-if="playerClientEnabled && gameChromeVisible">
         <!-- Selection panel (bottom-left) -->
         <SelectionPanel
           :selection="selectionInfo"
@@ -1279,7 +1296,7 @@ watchEffect(() => {
 
     <!-- Bottom control bars (desktop: hidden when lobby modal visible; mobile: toggled) -->
     <div
-      v-if="!showLoadingOverlay && (isMobile ? mobileBarsVisible : !lobbyModalVisible)"
+      v-if="bottomChromeVisible"
       class="bottom-controls-shell"
       :class="{ collapsed: !isMobile && bottomBarsCollapsed }"
     >
@@ -1310,6 +1327,16 @@ watchEffect(() => {
       </div>
 
     </div>
+
+    <button
+      v-if="!uiChromeVisible"
+      class="ui-chrome-restore"
+      title="Show UI"
+      aria-label="Show UI"
+      @click="toggleUiChrome"
+    >
+      UI
+    </button>
 
     <div
       v-if="showLobbyControlsSidebar"
@@ -1403,6 +1430,7 @@ watchEffect(() => {
       :is-mobile="isMobile"
       :show-lobby="showLobby"
       :spectate-mode="spectateMode"
+      :ui-chrome-visible="uiChromeVisible"
       :mobile-bars-visible="mobileBarsVisible"
       :show-sound-test="showSoundTest"
       :game-started="gameStarted"
@@ -1526,6 +1554,33 @@ watchEffect(() => {
 
 .minimap-stack :deep(.minimap-container) {
   pointer-events: auto;
+}
+
+.ui-chrome-restore {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 4200;
+  min-width: 38px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid #5d6b82;
+  border-radius: 4px;
+  background: rgba(17, 22, 30, 0.9);
+  color: #e8f0ff;
+  font: 700 11px/1 system-ui, sans-serif;
+  letter-spacing: 0;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.ui-chrome-restore:hover {
+  border-color: #8da1c0;
+  background: rgba(28, 36, 48, 0.94);
+}
+
+.ui-chrome-restore:active {
+  background: rgba(9, 12, 18, 0.96);
 }
 
 

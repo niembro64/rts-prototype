@@ -930,6 +930,11 @@ defineProps<{
           title="Save the current game canvas as a PNG screenshot"
           @click="model.captureScreenshot"
         >SHOT</BarButton>
+        <BarButton
+          :active="model.uiChromeVisible"
+          :title="model.uiChromeVisible ? 'Hide game UI chrome' : 'Show game UI chrome'"
+          @click="model.toggleUiChrome"
+        >UI</BarButton>
         <BarDivider />
       </BarControlGroup>
       <BarControlGroup>

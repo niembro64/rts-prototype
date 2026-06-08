@@ -184,6 +184,7 @@ export type GameCanvasClientControlBarModel = {
   readonly cameraSmoothMode: CameraSmoothMode;
   readonly cameraFollowMode: CameraFollowMode;
   readonly fullscreenActive: boolean;
+  readonly uiChromeVisible: boolean;
   resetClientDefaults(): void;
   togglePlayerClientEnabled(): void;
   changeWaypointDetail(mode: WaypointDetail): void;
@@ -227,4 +228,5 @@ export type GameCanvasClientControlBarModel = {
   toggleFullscreen(): void;
   captureScreenshot(): void;
   goToLastPing(): void;
+  toggleUiChrome(): void;
 };
