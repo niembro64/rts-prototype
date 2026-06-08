@@ -247,6 +247,40 @@ export class Input3DBuildPlacementState {
     return context.placements;
   }
 
+  planBuildGridPlacements(
+    buildingBlueprintId: BuildingBlueprintId,
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    entitySource: BuildPlacementEntitySource,
+  ): BuildAreaPlacementPlan[] {
+    const context = this.createPlannedBuildPlacementContext(buildingBlueprintId, entitySource);
+    const minX = Math.min(startX, endX);
+    const maxX = Math.max(startX, endX);
+    const minY = Math.min(startY, endY);
+    const maxY = Math.max(startY, endY);
+    const spacingX = Math.max(1, context.footprint.gridWidth)
+      * BUILD_GRID_CELL_SIZE
+      * this.buildLineSpacingMultiplier;
+    const spacingY = Math.max(1, context.footprint.gridHeight)
+      * BUILD_GRID_CELL_SIZE
+      * this.buildLineSpacingMultiplier;
+    const xCount = Math.max(1, Math.floor((maxX - minX) / Math.max(1, spacingX)) + 1);
+    const yCount = Math.max(1, Math.floor((maxY - minY) / Math.max(1, spacingY)) + 1);
+
+    for (let yi = 0; yi < yCount; yi++) {
+      const ty = yCount === 1 ? 0 : yi / (yCount - 1);
+      const y = minY + (maxY - minY) * ty;
+      for (let xi = 0; xi < xCount; xi++) {
+        const tx = xCount === 1 ? 0 : xi / (xCount - 1);
+        const x = minX + (maxX - minX) * tx;
+        this.tryAddPlannedBuildPlacement(context, x, y);
+      }
+    }
+    return context.placements;
+  }
+
   private get buildLineSpacingMultiplier(): number {
     return 1 + this.buildLineSpacingSteps * BUILD_LINE_SPACING_STEP;
   }
