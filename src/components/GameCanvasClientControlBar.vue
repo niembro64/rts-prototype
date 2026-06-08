@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { CLIENT_CONFIG, isEntityHudElementSupported } from '../clientBarConfig';
 import { GOOD_TPS } from '../config';
+import {
+  COMMAND_HOTKEY_PRESET_IDS,
+  type CommandHotkeyPresetId,
+} from '../game/input/commandHotkeys';
 import { RESOURCE_BALL_DENSITY_OPTIONS } from '../resourceConfig';
 import { snapshotRateHz } from '../serverBarConfig';
 import BarButton from './BarButton.vue';
@@ -30,6 +34,18 @@ const ENTITY_HUD_ELEMENT_DESCRIPTIONS: Record<EntityHudElement, string> = {
   name: 'name',
   healthBar: 'health bar',
   buildBars: 'construction progress bars',
+};
+
+const COMMAND_HOTKEY_PRESET_LABELS: Record<CommandHotkeyPresetId, string> = {
+  prototype: 'PROTO',
+  'bar-grid': 'GRID',
+  'bar-legacy': 'LEGACY',
+};
+
+const COMMAND_HOTKEY_PRESET_DESCRIPTIONS: Record<CommandHotkeyPresetId, string> = {
+  prototype: 'prototype defaults',
+  'bar-grid': 'BAR grid subset',
+  'bar-legacy': 'BAR legacy subset',
 };
 
 const DIFFSNAP_REASONABLE_BYTES = 64 * 1024;
@@ -122,6 +138,19 @@ defineProps<{
             title="Waypoint visualization - SIMPLE shows only your click points; DETAILED shows the planner's intermediates too"
             @click="model.changeWaypointDetail(opt.value)"
           >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel title="Command hotkey preset used by keyboard dispatch and command-card labels.">KEYS:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="presetId in COMMAND_HOTKEY_PRESET_IDS"
+            :key="presetId"
+            :active="model.commandHotkeyPreset === presetId"
+            :title="`Use ${COMMAND_HOTKEY_PRESET_DESCRIPTIONS[presetId]} command hotkeys`"
+            @click="model.changeCommandHotkeyPreset(presetId)"
+          >{{ COMMAND_HOTKEY_PRESET_LABELS[presetId] }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup>

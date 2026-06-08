@@ -23,6 +23,7 @@ import type {
 import type { KeyframeRatio, SnapshotRate, TickRate } from '../types/server';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import type { RenderMode } from '../types/graphics';
+import type { CommandHotkeyPresetId } from '../game/input/commandHotkeys';
 
 export type ControlBarStyle = Record<string, string>;
 
@@ -98,6 +99,7 @@ export type GameCanvasClientControlBarModel = {
   readonly waypointDetail: WaypointDetail;
   readonly entityHud: Readonly<EntityHudToggles>;
   readonly selectionHudMode: SelectionHudMode;
+  readonly commandHotkeyPreset: CommandHotkeyPresetId;
   readonly entityHudTypes: readonly EntityHudType[];
   readonly entityHudElements: readonly EntityHudElement[];
   readonly logicMsAvg: number;
@@ -186,6 +188,7 @@ export type GameCanvasClientControlBarModel = {
   changeWaypointDetail(mode: WaypointDetail): void;
   toggleEntityHud(type: EntityHudType, element: EntityHudElement): void;
   changeSelectionHudMode(mode: SelectionHudMode): void;
+  changeCommandHotkeyPreset(presetId: CommandHotkeyPresetId): void;
   toggleAudioSmoothing(): void;
   toggleBurnMarks(): void;
   toggleLocomotionMarks(): void;

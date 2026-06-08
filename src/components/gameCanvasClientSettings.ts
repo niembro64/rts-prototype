@@ -78,6 +78,12 @@ import {
 } from '../clientBarConfig';
 import { audioManager } from '../game/audio/AudioManager';
 import { musicPlayer } from '../game/audio/MusicPlayer';
+import {
+  DEFAULT_COMMAND_HOTKEY_PRESET,
+  getActiveCommandHotkeyPresetId,
+  setActiveCommandHotkeyPresetId,
+  type CommandHotkeyPresetId,
+} from '../game/input/commandHotkeys';
 import { DEFAULT_BALLS_PER_RESOURCE_PER_SECOND } from '../resourceConfig';
 import type {
   AudioScope,
@@ -168,6 +174,7 @@ export function useGameCanvasClientSettings({
   }
   const entityHud = reactive<EntityHudToggles>(seedEntityHud());
   const selectionHudMode = ref<SelectionHudMode>(getSelectionHudMode());
+  const commandHotkeyPreset = ref<CommandHotkeyPresetId>(getActiveCommandHotkeyPresetId());
   const legsRadiusToggle = ref(getLegsRadiusToggle());
   const cameraSmoothMode = ref<CameraSmoothMode>(getCameraSmoothMode());
   const cameraFollowMode = ref<CameraFollowMode>(getCameraFollowMode());
@@ -213,6 +220,7 @@ export function useGameCanvasClientSettings({
       }
     }
     selectionHudMode.value = getSelectionHudMode();
+    commandHotkeyPreset.value = getActiveCommandHotkeyPresetId();
     for (const cat of SOUND_CATEGORIES) soundToggles[cat] = getSoundToggle(cat);
     for (const rt of RANGE_TYPES) rangeToggles[rt] = getRangeToggle(rt);
     for (const prt of PROJ_RANGE_TYPES) projRangeToggles[prt] = getProjRangeToggle(prt);
@@ -428,6 +436,11 @@ export function useGameCanvasClientSettings({
     selectionHudMode.value = mode;
   }
 
+  function changeCommandHotkeyPreset(presetId: CommandHotkeyPresetId): void {
+    setActiveCommandHotkeyPresetId(presetId);
+    commandHotkeyPreset.value = presetId;
+  }
+
   function toggleEdgeScroll(): void {
     const newValue = !edgeScrollEnabled.value;
     setEdgeScrollEnabled(newValue);
@@ -544,6 +557,7 @@ export function useGameCanvasClientSettings({
       }
     }
     changeSelectionHudMode(cd.selectionHudMode.default);
+    changeCommandHotkeyPreset(DEFAULT_COMMAND_HOTKEY_PRESET);
     if (legsRadiusToggle.value !== cd.legsRadius.default) toggleLegsRadius();
     setCameraMode(cd.cameraSmooth.default);
     setCameraFollow(cd.cameraFollow.default);
@@ -593,6 +607,7 @@ export function useGameCanvasClientSettings({
     waypointDetail,
     entityHud,
     selectionHudMode,
+    commandHotkeyPreset,
     entityHudTypes: ENTITY_HUD_TYPES,
     entityHudElements: ENTITY_HUD_ELEMENTS,
     soundToggles,
@@ -644,6 +659,7 @@ export function useGameCanvasClientSettings({
     changeWaypointDetail,
     toggleEntityHud,
     changeSelectionHudMode,
+    changeCommandHotkeyPreset,
     toggleEdgeScroll,
     toggleDragPan,
     toggleAllPan,

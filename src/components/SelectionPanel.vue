@@ -9,6 +9,7 @@ import {
 import {
   commandHotkeyLabel,
   type CommandHotkeyId,
+  type CommandHotkeyPresetId,
 } from '../game/input/commandHotkeys';
 
 export type { FactorySelectionItem, SelectionInfo, SelectionActions } from '@/types/ui';
@@ -21,6 +22,7 @@ import type {
 const props = defineProps<{
   selection: SelectionInfo;
   actions: SelectionActions;
+  hotkeyPreset: CommandHotkeyPresetId;
 }>();
 
 // Per budget_design_philosophy.html "Selection Menus Are Uniform Per Entity Type"
@@ -131,11 +133,23 @@ const showCancelHint = computed(() =>
   || props.selection.isTowerTargetMode,
 );
 
-const waypointModes: { mode: WaypointType; label: string; commandId: CommandHotkeyId; key: string; color: string }[] = [
-  { mode: 'move', label: 'Move', commandId: 'waypoint.move', key: commandHotkeyLabel('waypoint.move'), color: WAYPOINT_COLOR_CSS.move },
-  { mode: 'fight', label: 'Fight', commandId: 'waypoint.fight', key: commandHotkeyLabel('waypoint.fight'), color: WAYPOINT_COLOR_CSS.fight },
-  { mode: 'patrol', label: 'Patrol', commandId: 'waypoint.patrol', key: commandHotkeyLabel('waypoint.patrol'), color: WAYPOINT_COLOR_CSS.patrol },
-];
+type WaypointModeOption = {
+  mode: WaypointType;
+  label: string;
+  commandId: CommandHotkeyId;
+  key: string;
+  color: string;
+};
+
+function hotkey(commandId: CommandHotkeyId): string {
+  return commandHotkeyLabel(commandId, props.hotkeyPreset);
+}
+
+const waypointModes = computed<WaypointModeOption[]>(() => [
+  { mode: 'move', label: 'Move', commandId: 'waypoint.move', key: hotkey('waypoint.move'), color: WAYPOINT_COLOR_CSS.move },
+  { mode: 'fight', label: 'Fight', commandId: 'waypoint.fight', key: hotkey('waypoint.fight'), color: WAYPOINT_COLOR_CSS.fight },
+  { mode: 'patrol', label: 'Patrol', commandId: 'waypoint.patrol', key: hotkey('waypoint.patrol'), color: WAYPOINT_COLOR_CSS.patrol },
+]);
 
 const COMPACT_BUILDING_LABELS: Record<string, string> = {
   Solar: 'Sol',
@@ -151,9 +165,9 @@ function compactBuildingLabel(label: string): string {
 }
 
 function actionTitle(label: string, commandId: CommandHotkeyId, detail?: string): string {
-  const key = commandHotkeyLabel(commandId);
-  const hotkey = key === '' ? '' : ` - Hotkey ${key}`;
-  return `${label}${hotkey}${detail === undefined ? '' : ` - ${detail}`}`;
+  const key = hotkey(commandId);
+  const hotkeyText = key === '' ? '' : ` - Hotkey ${key}`;
+  return `${label}${hotkeyText}${detail === undefined ? '' : ` - ${detail}`}`;
 }
 
 function costTitle(label: string, cost: number, key?: string): string {
@@ -231,7 +245,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           @click="actions.selectAllOwnedUnits()"
         >
           <span class="btn-label">All</span>
-          <span class="btn-key">{{ commandHotkeyLabel('select.allUnits') }}</span>
+          <span class="btn-key">{{ hotkey('select.allUnits') }}</span>
         </button>
         <button
           type="button"
@@ -241,7 +255,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           @click="actions.selectAllMatching()"
         >
           <span class="btn-label">Match</span>
-          <span class="btn-key">{{ commandHotkeyLabel('select.matching') }}</span>
+          <span class="btn-key">{{ hotkey('select.matching') }}</span>
         </button>
         <button
           type="button"
@@ -251,7 +265,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           @click="actions.selectSameTypeOnly()"
         >
           <span class="btn-label">Same</span>
-          <span class="btn-key">{{ commandHotkeyLabel('select.sameTypeOnly') }}</span>
+          <span class="btn-key">{{ hotkey('select.sameTypeOnly') }}</span>
         </button>
         <button
           type="button"
@@ -261,7 +275,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           @click="actions.selectIdleBuilders()"
         >
           <span class="btn-label">Idle</span>
-          <span class="btn-key">{{ commandHotkeyLabel('select.idleBuilders') }}</span>
+          <span class="btn-key">{{ hotkey('select.idleBuilders') }}</span>
         </button>
         <button
           type="button"
@@ -271,7 +285,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           @click="actions.selectWaitingUnits()"
         >
           <span class="btn-label">Waiting</span>
-          <span class="btn-key">{{ commandHotkeyLabel('select.waitingUnits') }}</span>
+          <span class="btn-key">{{ hotkey('select.waitingUnits') }}</span>
         </button>
         <button
           v-for="option in selectOnlyOptions"
@@ -313,7 +327,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           @click="actions.toggleAttack()"
         >
           <span class="btn-label">Attack</span>
-          <span class="btn-key">{{ commandHotkeyLabel('combat.attack') }}</span>
+          <span class="btn-key">{{ hotkey('combat.attack') }}</span>
         </button>
         <button
           type="button"
@@ -324,7 +338,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           @click="actions.toggleAttackArea()"
         >
           <span class="btn-label">Area</span>
-          <span class="btn-key">{{ commandHotkeyLabel('combat.attackArea') }}</span>
+          <span class="btn-key">{{ hotkey('combat.attackArea') }}</span>
         </button>
         <button
           type="button"
@@ -335,7 +349,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           @click="actions.toggleAttackGround()"
         >
           <span class="btn-label">Ground</span>
-          <span class="btn-key">{{ commandHotkeyLabel('combat.attackGround') }}</span>
+          <span class="btn-key">{{ hotkey('combat.attackGround') }}</span>
         </button>
         <button
           type="button"
@@ -346,7 +360,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           @click="actions.togglePing()"
         >
           <span class="btn-label">Ping</span>
-          <span class="btn-key">{{ commandHotkeyLabel('combat.ping') }}</span>
+          <span class="btn-key">{{ hotkey('combat.ping') }}</span>
         </button>
         <button
           type="button"
@@ -357,7 +371,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           @click="actions.toggleGuard()"
         >
           <span class="btn-label">Guard</span>
-          <span class="btn-key">{{ commandHotkeyLabel('combat.guard') }}</span>
+          <span class="btn-key">{{ hotkey('combat.guard') }}</span>
         </button>
         <button
           type="button"
@@ -367,7 +381,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           @click="actions.stopSelectedUnits()"
         >
           <span class="btn-label">Stop</span>
-          <span class="btn-key">{{ commandHotkeyLabel('command.stop') }}</span>
+          <span class="btn-key">{{ hotkey('command.stop') }}</span>
         </button>
         <button
           type="button"
@@ -378,7 +392,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           @click="actions.toggleSelectedWait()"
         >
           <span class="btn-label">Wait</span>
-          <span class="btn-key">{{ commandHotkeyLabel('command.wait') }}</span>
+          <span class="btn-key">{{ hotkey('command.wait') }}</span>
         </button>
         <button
           type="button"
@@ -389,7 +403,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           @click="actions.removeLastQueuedOrder()"
         >
           <span class="btn-label">Undo Q</span>
-          <span class="btn-key">{{ commandHotkeyLabel('command.undoQueue') }}</span>
+          <span class="btn-key">{{ hotkey('command.undoQueue') }}</span>
         </button>
         <button
           type="button"
@@ -400,7 +414,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           @click="actions.clearQueuedOrders()"
         >
           <span class="btn-label">Clear Q</span>
-          <span class="btn-key">{{ commandHotkeyLabel('command.clearQueue') }}</span>
+          <span class="btn-key">{{ hotkey('command.clearQueue') }}</span>
         </button>
       </div>
     </div>
@@ -422,7 +436,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           @click="actions.toggleSelectedFire()"
         >
           <span class="btn-label">{{ selection.fireEnabled ? 'Fire' : 'Hold' }}</span>
-          <span class="btn-key">{{ commandHotkeyLabel('command.fireToggle') }}</span>
+          <span class="btn-key">{{ hotkey('command.fireToggle') }}</span>
         </button>
       </div>
     </div>
@@ -461,7 +475,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         >
           <span class="btn-label">D-Gun</span>
           <span class="btn-cost"><span class="cost-energy">200E</span></span>
-          <span class="btn-key">{{ commandHotkeyLabel('command.dgun') }}</span>
+          <span class="btn-key">{{ hotkey('command.dgun') }}</span>
         </button>
         <button
           v-if="selection.hasCommander"
@@ -473,7 +487,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           @click="actions.toggleRepairArea()"
         >
           <span class="btn-label">Repair</span>
-          <span class="btn-key">{{ commandHotkeyLabel('combat.repairArea') }}</span>
+          <span class="btn-key">{{ hotkey('combat.repairArea') }}</span>
         </button>
         <button
           v-if="selection.hasCommander"
@@ -485,7 +499,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           @click="actions.toggleReclaim()"
         >
           <span class="btn-label">Reclaim</span>
-          <span class="btn-key">{{ commandHotkeyLabel('combat.reclaim') }}</span>
+          <span class="btn-key">{{ hotkey('combat.reclaim') }}</span>
         </button>
       </div>
     </div>
@@ -545,7 +559,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           @click="actions.setTowerTargetMode()"
         >
           <span class="btn-label">Set</span>
-          <span class="btn-key">{{ commandHotkeyLabel('combat.towerTargetSet') }}</span>
+          <span class="btn-key">{{ hotkey('combat.towerTargetSet') }}</span>
         </button>
         <button
           type="button"
@@ -556,7 +570,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           @click="actions.clearTowerTarget()"
         >
           <span class="btn-label">Clear</span>
-          <span class="btn-key">{{ commandHotkeyLabel('combat.towerTargetClear') }}</span>
+          <span class="btn-key">{{ hotkey('combat.towerTargetClear') }}</span>
         </button>
       </div>
     </div>
@@ -577,7 +591,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           @click="actions.toggleBuildingActive()"
         >
           <span class="btn-label">{{ selection.buildingsActive ? 'On' : 'Off' }}</span>
-          <span class="btn-key">{{ commandHotkeyLabel('command.buildingActive') }}</span>
+          <span class="btn-key">{{ hotkey('command.buildingActive') }}</span>
         </button>
       </div>
     </div>
@@ -596,7 +610,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           @click="actions.selfDestructSelected()"
         >
           <span class="btn-label">Destroy</span>
-          <span class="btn-key">{{ commandHotkeyLabel('command.selfDestruct') }}</span>
+          <span class="btn-key">{{ hotkey('command.selfDestruct') }}</span>
         </button>
       </div>
     </div>

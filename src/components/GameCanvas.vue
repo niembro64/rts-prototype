@@ -306,6 +306,7 @@ const {
   waypointDetail,
   entityHud,
   selectionHudMode,
+  commandHotkeyPreset,
   soundToggles,
   rangeToggles,
   projRangeToggles,
@@ -357,6 +358,7 @@ const {
   changeWaypointDetail,
   toggleEntityHud,
   changeSelectionHudMode,
+  changeCommandHotkeyPreset,
   toggleEdgeScroll,
   toggleDragPan,
   toggleAllPan,
@@ -898,6 +900,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   waypointDetail: waypointDetail.value,
   entityHud,
   selectionHudMode: selectionHudMode.value,
+  commandHotkeyPreset: commandHotkeyPreset.value,
   entityHudTypes,
   entityHudElements,
   logicMsAvg: logicMsAvg.value,
@@ -986,6 +989,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   changeWaypointDetail,
   toggleEntityHud,
   changeSelectionHudMode,
+  changeCommandHotkeyPreset,
   toggleAudioSmoothing,
   toggleBurnMarks,
   toggleLocomotionMarks,
@@ -1032,6 +1036,7 @@ watchEffect(() => {
   m.displayedClientIp = displayedClientIp.value;
   m.waypointDetail = waypointDetail.value;
   m.selectionHudMode = selectionHudMode.value;
+  m.commandHotkeyPreset = commandHotkeyPreset.value;
   m.logicMsAvg = logicMsAvg.value;
   m.logicMsHi = logicMsHi.value;
   m.renderMsAvg = renderMsAvg.value;
@@ -1205,6 +1210,7 @@ watchEffect(() => {
         <SelectionPanel
           :selection="selectionInfo"
           :actions="selectionActions"
+          :hotkey-preset="commandHotkeyPreset"
         />
 
         <!-- Minimap -->
