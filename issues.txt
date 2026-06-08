@@ -107,18 +107,18 @@ to authoritative-server commands and 3D rally/path previews.
 
 Issue: map, communication, and game UI commands are missing. Implement BAR
 commands and buttons for chat, draw on map, draw label, erase drawings, ping to
-map, map overview switch, map details info, show map elevation, show map metal,
-show unit pathing, LOS/radar toggles, options menu, pause, game-speed adjust,
-and any equivalent lobby/spectator-safe variants. rts-prototype has a minimap,
-resource bar, debug/control bars, fullscreen toggle, screenshot capture, audio
-mute/sound category toggles, master volume controls, ping/scan commands, a
-go-to-last-ping camera control, and a show/hide UI chrome toggle, but not the
-BAR game UI command surface.
+map, map details info, show map elevation, show map metal, show unit pathing,
+LOS/radar toggles, options menu, pause, game-speed adjust, and any equivalent
+lobby/spectator-safe variants. rts-prototype has a minimap, resource bar,
+debug/control bars, map overview camera switch, fullscreen toggle, screenshot
+capture, audio mute/sound category toggles, master volume controls, ping/scan
+commands, a go-to-last-ping camera control, and a show/hide UI chrome toggle,
+but not the BAR game UI command surface.
 
 Issue: camera controls are missing BAR parity. FOV controls, selected-unit
-follow tracking, arrow/numpad camera movement, and camera flip exist. Add
-camera mode switching (overhead/TA/Spring-style equivalents as appropriate for
-this 3D prototype), camera anchors set/focus, overview/minimap camera
+follow tracking, arrow/numpad camera movement, camera flip, and a map overview
+switch exist. Add camera mode switching (overhead/TA/Spring-style equivalents
+as appropriate for this 3D prototype), camera anchors set/focus, minimap camera
 switching, and picture-in-picture behavior or a documented 3D-focused
 replacement. Existing wheel zoom, middle-drag pan/orbit, touch controls,
 minimap click-to-move camera, and world-direction HUD are not enough.

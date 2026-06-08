@@ -228,6 +228,7 @@ export type GameCanvasClientControlBarModel = {
   changeCameraFovDegrees(fov: CameraFovDegrees): void;
   setCameraMode(mode: CameraSmoothMode): void;
   setCameraFollowMode(mode: CameraFollowMode): void;
+  showMapOverview(): void;
   flipCameraYaw(): void;
   toggleFullscreen(): void;
   captureScreenshot(): void;

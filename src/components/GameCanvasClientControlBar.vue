@@ -959,6 +959,11 @@ defineProps<{
         <BarLabel>MAP:</BarLabel>
         <BarButton
           :active="false"
+          title="Switch to an overhead map overview"
+          @click="model.showMapOverview"
+        >OVR</BarButton>
+        <BarButton
+          :active="false"
           title="Move the camera to the latest ping or scanner marker"
           @click="model.goToLastPing"
         >PING</BarButton>

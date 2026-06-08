@@ -322,6 +322,10 @@ function flipCameraYaw(): void {
   getActiveGameScene()?.flipCameraYaw();
 }
 
+function showMapOverview(): void {
+  getActiveGameScene()?.showMapOverview();
+}
+
 onMounted(() => {
   syncFullscreenActive();
   document.addEventListener('fullscreenchange', syncFullscreenActive);
@@ -1103,6 +1107,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   changeCameraFovDegrees,
   setCameraMode,
   setCameraFollowMode: setCameraFollow,
+  showMapOverview,
   flipCameraYaw,
   toggleFullscreen,
   captureScreenshot,

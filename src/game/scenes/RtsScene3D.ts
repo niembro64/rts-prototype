@@ -933,6 +933,16 @@ export class RtsScene3D {
     this.cameraControl.flipYaw();
   }
 
+  public showMapOverview(): void {
+    const centerX = this.mapWidth / 2;
+    const centerY = this.mapHeight / 2;
+    this.cameraControl.showMapOverview(
+      this.mapWidth,
+      this.mapHeight,
+      getSurfaceHeight(centerX, centerY, this.mapWidth, this.mapHeight, LAND_CELL_SIZE),
+    );
+  }
+
   /** Capture the orbit camera's current framing in the portable
    *  `SceneCameraState` shape — 2D-equivalent zoom + the (x, y)
    *  world-space target point. */
