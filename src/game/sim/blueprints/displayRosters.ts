@@ -1,7 +1,7 @@
 import { COST_MULTIPLIER } from '../../../config';
 import type { ResourceCost } from '@/types/economyTypes';
 import type { BuildingBlueprintId } from '../types';
-import { BUILDING_BLUEPRINTS } from './buildings';
+import { getAllBuildings, getAllTowers } from '../buildConfigs';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
 import { UNIT_BLUEPRINTS } from './units';
 
@@ -57,14 +57,33 @@ export function getUnitDisplayShortName(unitBlueprintId: string): string {
   return display !== undefined ? display.shortName : fallbackShortName(unitBlueprintId);
 }
 
-export const buildingRosterDisplay: BuildingRosterDisplay[] = (
-  Object.keys(BUILDING_BLUEPRINTS) as BuildingBlueprintId[]
-).map((buildingBlueprintId, index) => {
-    const bp = BUILDING_BLUEPRINTS[buildingBlueprintId];
+function buildStructureRosterDisplay(
+  configs: readonly { buildingBlueprintId: BuildingBlueprintId; name: string; cost: ResourceCost }[],
+  keyOffset: number,
+): BuildingRosterDisplay[] {
+  return configs.map((bp, index) => {
     return {
-      buildingBlueprintId,
+      buildingBlueprintId: bp.buildingBlueprintId,
       label: bp.name,
-      key: `${index + 1}`,
+      key: `${keyOffset + index + 1}`,
       cost: scaledTotalCost(bp.cost),
     };
   });
+}
+
+export const buildingRosterDisplay: BuildingRosterDisplay[] = buildStructureRosterDisplay(
+  getAllBuildings(),
+  0,
+);
+
+export const towerRosterDisplay: BuildingRosterDisplay[] = buildStructureRosterDisplay(
+  getAllTowers(),
+  buildingRosterDisplay.length,
+);
+
+// Compatibility roster for the current build menu. Builder-authored
+// allowed rosters filter this combined surface before display.
+export const structureRosterDisplay: BuildingRosterDisplay[] = [
+  ...buildingRosterDisplay,
+  ...towerRosterDisplay,
+];

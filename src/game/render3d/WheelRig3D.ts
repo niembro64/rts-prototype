@@ -7,7 +7,7 @@
 // wheels travel farther than inside wheels and can rotate opposite
 // directions during a pivot because each tire has its own signed
 // chassis-local distance. See the "Locomotion Visuals Are Frontend"
-// section of design_philosophy.html.
+// section of budget_design_philosophy.html.
 
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';

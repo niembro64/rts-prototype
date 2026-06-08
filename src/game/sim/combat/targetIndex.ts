@@ -66,7 +66,7 @@ export function getBeamWeaponsTargeting(
       const weapon = entity.combat.turrets[i];
       if (!weapon) continue;
       const shot = weapon.config.shot;
-      if (shot === undefined || shot.type !== 'beam') continue;
+      if (shot === null || shot.type !== 'beam') continue;
       _outRefs.push({ unit: entity, weaponIndex: i });
     }
   }

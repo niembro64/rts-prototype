@@ -197,6 +197,6 @@ export type EntityMesh = {
    *  (v_forward · ω_z); never crosses the wire, never read by sim
    *  code. Undefined for ground units.
    *  See the "Airborne Banking Is Visual" section of
-   *  design_philosophy.html. */
+   *  budget_design_philosophy.html. */
   visualBankRoll?: number;
 };

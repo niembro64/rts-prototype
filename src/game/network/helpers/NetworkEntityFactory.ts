@@ -60,7 +60,7 @@ function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret
   if (nw.active === false) {
     turret.target = null;
     turret.state = 'idle';
-    turret.shield = undefined;
+    turret.shield = null;
     return;
   }
   turret.target = nw.targetId ?? null;
@@ -76,8 +76,8 @@ function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret
   // runtimeTurrets default of 0.
   const shield = turret.shield;
   turret.shield = nw.currentShieldRange !== undefined && nw.currentShieldRange !== null
-    ? { range: nw.currentShieldRange, transition: shield !== undefined ? shield.transition : 0 }
-    : undefined;
+    ? { range: nw.currentShieldRange, transition: shield !== null ? shield.transition : 0 }
+    : null;
 }
 
 function preserveClientTurretVisualState(next: Turret, prev: Turret): void {
@@ -100,7 +100,7 @@ function preserveClientTurretVisualState(next: Turret, prev: Turret): void {
   next.worldVelocity.z = prev.worldVelocity.z;
   next.worldPosTick = prev.worldPosTick;
 
-  if (prev.shield !== undefined) {
+  if (prev.shield !== null) {
     next.shield = {
       range: prev.shield.range,
       transition: prev.shield.transition,
@@ -118,7 +118,7 @@ export function applyNetworkTurretNonVisualState(
     if (netTurrets[i].active === false) {
       turrets[i].target = null;
       turrets[i].state = 'idle';
-      turrets[i].shield = undefined;
+      turrets[i].shield = null;
       continue;
     }
     turrets[i].target = netTurrets[i].targetId ?? null;
@@ -271,6 +271,15 @@ function createUnitFromNetwork(
     unitBlueprint.fullVisionRadius !== undefined
     ? unitBlueprint.fullVisionRadius
     : 1200;
+  const sensors = unitBlueprint !== undefined && unitBlueprint.sensors !== undefined
+    ? unitBlueprint.sensors
+    : {
+      fullSightRadius: fullVisionRadius,
+      radarRadius: 0,
+      detectorRadius: 0,
+      trackingRadius: 0,
+      scanRadius: 0,
+    };
   const entity: Entity = {
     ...createEmptyEntityComponentSlots(),
     id,
@@ -289,6 +298,7 @@ function createUnitFromNetwork(
       ),
       supportSurface: cloneUnitSupportSurface(unitBlueprint?.supportSurface),
       fullVisionRadius,
+      sensors: { ...sensors },
       locomotion: getUnitLocomotion(unitBlueprintId),
       mass: readNetworkUnitMass(u, blueprintMass),
       actions,
@@ -366,6 +376,7 @@ function createUnitFromNetwork(
     entity.builder = {
       buildRange: builder.buildRange,
       constructionRate: builder.constructionRate,
+      allowedBuildBlueprintIds: [...builder.allowedBuildBlueprintIds],
       currentBuildTarget: u !== null && u.buildTargetId !== null ? u.buildTargetId : NO_ENTITY_ID,
     };
   }

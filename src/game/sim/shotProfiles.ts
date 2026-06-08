@@ -35,8 +35,8 @@ const BEAM_EMISSION_OFFSET_BY_SHOT: Readonly<Record<string, number>> =
  *  "generates" — the position of the start-point orb. 0 for non-beam
  *  emissions. Shared so the beam-turret cone barrel can extend its tip out
  *  to that same orb (so the beam looks like it leaves the barrel tip). */
-export function getBeamEmissionOffset(shot: EmissionConfig | undefined): number {
-  if (shot === undefined || !isRayConfig(shot) || shot.type !== 'beam') return 0;
+export function getBeamEmissionOffset(shot: EmissionConfig | null | undefined): number {
+  if (shot === null || shot === undefined || !isRayConfig(shot) || shot.type !== 'beam') return 0;
   return BEAM_EMISSION_OFFSET_BY_SHOT[shot.rayBlueprintId] ?? 0;
 }
 

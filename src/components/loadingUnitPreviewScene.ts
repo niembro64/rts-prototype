@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { BuildableUnitBlueprintId } from '@/game/sim/blueprints';
 import { getBuildingBlueprint, getUnitBlueprint } from '@/game/sim/blueprints';
-import type { BuildingBlueprintId } from '@/types/blueprintIds';
+import type { StructureBlueprintId } from '@/types/blueprintIds';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { UnitBlueprint } from '@/types/blueprints';
 import type { CachedShieldPanel } from '@/types/sim';
@@ -37,7 +37,7 @@ type PreviewCanvas = HTMLCanvasElement | OffscreenCanvas;
  *  buildings render through the same building-shape path; the distinction
  *  only matters for the stats panel (towers carry turrets). */
 export type LoadingPreviewKind = 'unit' | 'tower' | 'building';
-export type LoadingEntityBlueprintId = BuildableUnitBlueprintId | BuildingBlueprintId;
+export type LoadingEntityBlueprintId = BuildableUnitBlueprintId | StructureBlueprintId;
 
 export type LoadingUnitPreviewSceneOptions = {
   canvas: PreviewCanvas;
@@ -300,7 +300,7 @@ function buildPreviewModel(
 ): THREE.Group {
   return kind === 'unit'
     ? buildPreviewUnitModel(blueprintId as BuildableUnitBlueprintId, materials)
-    : buildPreviewBuildingModel(blueprintId as BuildingBlueprintId, materials);
+    : buildPreviewBuildingModel(blueprintId as StructureBlueprintId, materials);
 }
 
 /** Build a static preview of a building/tower, mirroring the in-game
@@ -310,7 +310,7 @@ function buildPreviewModel(
  *  Animation rigs (spinning rotors, scanning radar, etc.) are left static
  *  — the whole model already spins on the loading stage. */
 function buildPreviewBuildingModel(
-  buildingBlueprintId: BuildingBlueprintId,
+  buildingBlueprintId: StructureBlueprintId,
   materials: PreviewUnitMaterials,
 ): THREE.Group {
   const blueprint = getBuildingBlueprint(buildingBlueprintId);
@@ -334,7 +334,7 @@ function buildPreviewBuildingModel(
 
 function buildPreviewBuildingTurrets(
   root: THREE.Group,
-  buildingBlueprintId: BuildingBlueprintId,
+  buildingBlueprintId: StructureBlueprintId,
   materials: PreviewUnitMaterials,
 ): void {
   const turrets = createBuildingRuntimeTurrets(buildingBlueprintId);

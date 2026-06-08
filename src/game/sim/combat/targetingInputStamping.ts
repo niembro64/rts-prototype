@@ -684,7 +684,7 @@ function stampCombatTargetingEntityInto(
     const ranges = t.ranges;
     const shot = t.config.shot;
     const projectileShot: ProjectileShot | undefined =
-      shot !== undefined && isProjectileShot(shot) ? shot : undefined;
+      shot !== null && isProjectileShot(shot) ? shot : undefined;
     const angleType = t.config.aimStyle.angleType;
     const projectileSpeed = projectileShot ? getProjectileLaunchSpeed(projectileShot) : 0;
     let maxTimeSec = 0;
@@ -749,12 +749,6 @@ function stampCombatTargetingEntityInto(
   return true;
 }
 
-function reserveCombatTargetingSpatialSlots(entities: readonly Entity[]): void {
-  for (let i = 0; i < entities.length; i++) {
-    reserveCombatTargetingSlot(spatialGrid.getSlot(entities[i].id));
-  }
-}
-
 /** Rebuild every targetable entity row before the FSM runs. Turret rows
  *  are written for combat entities, but target lookup also needs
  *  unarmed buildings and traveling shots. The
@@ -774,25 +768,11 @@ export function stampCombatTargetingPool(world: WorldState): void {
   // two and treat unmarked slots as empty.
   targeting.clear();
 
-  const units = world.getUnits();
-  const buildings = world.getBuildings();
-  const projectiles = world.getTravelingProjectiles();
-  reserveCombatTargetingSpatialSlots(units);
-  reserveCombatTargetingSpatialSlots(buildings);
-  reserveCombatTargetingSpatialSlots(projectiles);
-
-  for (const entity of units) {
+  const targets = world.getCombatTargetEntities();
+  for (const entity of targets) {
     if (stampCombatTargetingEntityInto(sim, targeting, world, entity)) {
       queueCombatTargetingSource(entity);
     }
-  }
-  for (const entity of buildings) {
-    if (stampCombatTargetingEntityInto(sim, targeting, world, entity)) {
-      queueCombatTargetingSource(entity);
-    }
-  }
-  for (const entity of projectiles) {
-    stampCombatTargetingEntityInto(sim, targeting, world, entity);
   }
 
   targeting.rebuildObservationMasksForSources(getCombatTargetingSensorSourceSlots());
@@ -885,7 +865,7 @@ export function stampShieldSurfacePool(
       + MIRROR_SIGHT_QUERY_PAD;
     const { turret: shieldPanelTurret, turretIndex: shieldPanelTurretIndex } = activeShieldPanel;
     const panelShot = shieldPanelTurret.config.shot;
-    if (panelShot !== undefined && panelShot.type === 'shield') {
+    if (panelShot !== null && panelShot.type === 'shield') {
       panelReflectionMode = encodeShieldReflectionMode(panelShot.material.reflection.mode);
     }
     const shieldPanelRot = shieldPanelTurret.rotation;

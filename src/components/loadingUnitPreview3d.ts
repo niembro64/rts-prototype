@@ -4,8 +4,11 @@ import {
   getBuildingBlueprint,
   getUnitBlueprint,
 } from '@/game/sim/blueprints';
-import { BUILDING_BLUEPRINT_IDS, type BuildingBlueprintId } from '@/types/blueprintIds';
-import { isTowerBuildingBlueprintId } from '@/types/buildingTypes';
+import {
+  BUILDING_BLUEPRINT_IDS,
+  TOWER_BLUEPRINT_IDS,
+  type StructureBlueprintId,
+} from '@/types/blueprintIds';
 import type { LoadingEntityBlueprintId, LoadingPreviewKind } from './loadingUnitPreviewScene';
 import {
   acquireAuxiliaryRendererContext,
@@ -71,12 +74,10 @@ const DPR_CAP = 1.75;
  *  so towers and buildings get fair screen time despite there being far
  *  more unit blueprints than structures. */
 export function pickRandomLoadingEntity(): LoadingUnitPreviewSelection {
-  const towers = BUILDING_BLUEPRINT_IDS.filter((id) => isTowerBuildingBlueprintId(id));
-  const buildings = BUILDING_BLUEPRINT_IDS.filter((id) => !isTowerBuildingBlueprintId(id));
   const pools = ([
     { kind: 'unit', ids: BUILDABLE_UNIT_BLUEPRINT_IDS },
-    { kind: 'tower', ids: towers },
-    { kind: 'building', ids: buildings },
+    { kind: 'tower', ids: TOWER_BLUEPRINT_IDS },
+    { kind: 'building', ids: BUILDING_BLUEPRINT_IDS },
   ] as { kind: LoadingPreviewKind; ids: readonly LoadingEntityBlueprintId[] }[])
     .filter((pool) => pool.ids.length > 0);
   const pool = pools[Math.floor(Math.random() * pools.length)] ?? pools[0];
@@ -87,7 +88,7 @@ export function pickRandomLoadingEntity(): LoadingUnitPreviewSelection {
 function loadingEntityName(kind: LoadingPreviewKind, id: LoadingEntityBlueprintId): string {
   return kind === 'unit'
     ? getUnitBlueprint(id as BuildableUnitBlueprintId).name
-    : getBuildingBlueprint(id as BuildingBlueprintId).name;
+    : getBuildingBlueprint(id as StructureBlueprintId).name;
 }
 
 export function mountLoadingUnitPreview(

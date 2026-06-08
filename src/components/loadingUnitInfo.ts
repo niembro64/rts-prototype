@@ -23,7 +23,7 @@ import type {
 } from '@/game/sim/types';
 import { getEmissionBlueprintId, isProjectileShot, isRayConfig, isShieldConfig } from '@/game/sim/types';
 import type { BuildableUnitBlueprintId } from '@/game/sim/blueprints';
-import type { BuildingBlueprintId } from '@/types/blueprintIds';
+import type { StructureBlueprintId } from '@/types/blueprintIds';
 import type { LoadingEntityBlueprintId, LoadingPreviewKind } from './loadingUnitPreviewScene';
 
 export type LoadingUnitInfoNode = {
@@ -56,7 +56,7 @@ export function buildLoadingEntityInfo(
 ): LoadingUnitInfo {
   return kind === 'unit'
     ? buildUnitInfo(blueprintId as BuildableUnitBlueprintId)
-    : buildBuildingInfo(blueprintId as BuildingBlueprintId, kind === 'tower');
+    : buildBuildingInfo(blueprintId as StructureBlueprintId, kind === 'tower');
 }
 
 function buildUnitInfo(unitBlueprintId: BuildableUnitBlueprintId): LoadingUnitInfo {
@@ -103,7 +103,7 @@ function buildUnitInfo(unitBlueprintId: BuildableUnitBlueprintId): LoadingUnitIn
   };
 }
 
-function buildBuildingInfo(buildingBlueprintId: BuildingBlueprintId, isTower: boolean): LoadingUnitInfo {
+function buildBuildingInfo(buildingBlueprintId: StructureBlueprintId, isTower: boolean): LoadingUnitInfo {
   const blueprint = getBuildingBlueprint(buildingBlueprintId);
   const turrets = isTower ? createBuildingRuntimeTurrets(buildingBlueprintId) : [];
   const damagingTurrets = turrets.filter((turret) => turret.config.shot && !turret.config.visualOnly);
@@ -328,7 +328,7 @@ function describeTurret(turret: Turret, index: number): LoadingUnitInfoNode {
     children.push(stat('Burst', `${config.burst.count} shots, ${ms(config.burst.delay)} spacing`));
   }
   if (config.verticalLauncher) children.push(stat('Launcher', 'vertical'));
-  if (config.groundAimFraction !== undefined) {
+  if (config.groundAimFraction !== null) {
     children.push(stat('Ground aim', `${fmt(config.groundAimFraction * 100)}% range`));
   }
   if (config.shot) children.push(describeEmission(config.shot, blueprint.emissionBlueprintId));

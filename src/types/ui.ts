@@ -1,6 +1,6 @@
 // UI component types extracted from Vue components and helpers
 
-import type { PlayerId, EntityId, WaypointType, Entity, BuildingBlueprintId, EntityType } from './sim';
+import type { PlayerId, EntityId, WaypointType, Entity, BuildingBlueprintId, EntityType, StructureBlueprintId } from './sim';
 import type { Vec2 } from './vec2';
 
 // Selection panel types
@@ -20,7 +20,7 @@ export type SelectionEntityType = 'unit' | 'tower' | 'building';
 export type SelectionInfo = {
   // Per-type selection counts. The action panel branches on these so
   // each entity type gets its own uniform action set
-  // (see design_philosophy.html "Selection Menus Are Uniform Per
+  // (see budget_design_philosophy.html "Selection Menus Are Uniform Per
   // Entity Type"). towerCount counts selected entities whose
   // entity.type === 'tower' (fabricators + shooting towers);
   // buildingCount counts selected entities whose
@@ -31,6 +31,7 @@ export type SelectionInfo = {
   buildingCount: number;
   hasCommander: boolean;
   hasBuilder: boolean;
+  allowedBuildBlueprintIds: readonly StructureBlueprintId[];
   hasDGun: boolean;
   hasFireControl: boolean;
   fireEnabled: boolean;

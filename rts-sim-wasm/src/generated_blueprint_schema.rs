@@ -18,6 +18,8 @@ pub enum BlueprintJsonValue {
 
 pub type UnitBlueprintId = String;
 
+pub type StructureBlueprintId = String;
+
 pub type TurretBlueprintId = String;
 
 pub type ShotBlueprintId = String;
@@ -49,6 +51,15 @@ pub type UnitSuspensionConfig = BlueprintJsonValue;
 pub type EntityId = i32;
 
 pub type PlayerId = i32;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SensorCapabilityConfig {
+    pub fullSightRadius: f64,
+    pub radarRadius: f64,
+    pub detectorRadius: f64,
+    pub trackingRadius: f64,
+    pub scanRadius: f64,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ProjectileShotKind {
@@ -785,6 +796,7 @@ pub type UnitRadiusConfig = EntityRadiusConfig;
 pub struct UnitBuilderConfig {
     pub buildRange: f64,
     pub constructionRate: f64,
+    pub allowedBuildBlueprintIds: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -822,6 +834,7 @@ pub struct UnitBlueprint {
     pub bodyCenterHeight: f64,
     pub supportSurface: UnitSupportSurface,
     pub fullVisionRadius: f64,
+    pub sensors: SensorCapabilityConfig,
     pub mass: f64,
     pub cost: BlueprintJsonValue,
     pub turrets: Vec<TurretMount>,

@@ -716,11 +716,11 @@ export function serializeProjectileSnapshot({
         out.maxLifespan = Number.isFinite(proj.maxLifespan)
           ? proj.maxLifespan
           : null;
-        out.turretBlueprintCode = proj.sourceTurretBlueprintId !== undefined
+        out.turretBlueprintCode = proj.sourceTurretBlueprintId !== null
           ? turretBlueprintIdToCode(proj.sourceTurretBlueprintId)
           : TURRET_BLUEPRINT_CODE_UNKNOWN;
         out.shotBlueprintCode = shotBlueprintIdToCode(proj.shotBlueprintId);
-        out.sourceTurretBlueprintCode = proj.sourceTurretBlueprintId !== undefined
+        out.sourceTurretBlueprintCode = proj.sourceTurretBlueprintId !== null
           ? turretBlueprintIdToCode(proj.sourceTurretBlueprintId)
           : null;
         out.playerId = proj.ownerId;
@@ -829,7 +829,7 @@ export function serializeProjectileSnapshot({
 
       const update = getPooledBeamUpdate();
       update.id = entity.id;
-      update.obstructionT = proj.obstructionT === undefined ? null : qRot(proj.obstructionT);
+      update.obstructionT = proj.obstructionT === null ? null : qRot(proj.obstructionT);
       update.endpointDamageable = proj.endpointDamageable === false ? false : null;
       const dstPts = update.points;
       const wirePointCount = getBeamWirePointCount(srcPts.length);
@@ -849,13 +849,14 @@ export function serializeProjectileSnapshot({
           out.vy = qVel(sp.vy);
           out.vz = qVel(sp.vz);
         }
-        const canReferenceReflector = canReferenceEntityId(world, visibility, sp.reflectorEntityId);
-        out.reflectorEntityId = canReferenceReflector ? sp.reflectorEntityId ?? null : null;
+        const canReferenceReflector = sp.reflectorEntityId !== null
+          && canReferenceEntityId(world, visibility, sp.reflectorEntityId);
+        out.reflectorEntityId = canReferenceReflector ? sp.reflectorEntityId : null;
         out.reflectorKind = canReferenceReflector ? sp.reflectorKind ?? null : null;
         out.reflectorPlayerId = canReferenceReflector ? sp.reflectorPlayerId ?? null : null;
-        out.normalX = canReferenceReflector && sp.normalX !== undefined ? qNormal(sp.normalX) : null;
-        out.normalY = canReferenceReflector && sp.normalY !== undefined ? qNormal(sp.normalY) : null;
-        out.normalZ = canReferenceReflector && sp.normalZ !== undefined ? qNormal(sp.normalZ) : null;
+        out.normalX = canReferenceReflector && sp.normalX !== null ? qNormal(sp.normalX) : null;
+        out.normalY = canReferenceReflector && sp.normalY !== null ? qNormal(sp.normalY) : null;
+        out.normalZ = canReferenceReflector && sp.normalZ !== null ? qNormal(sp.normalZ) : null;
         dstPts[p] = out;
         copyBeamPointIntoWireRow(out);
       }
@@ -980,11 +981,11 @@ export function writeProjectileSnapshotWireRowsDirect({
         out.maxLifespan = Number.isFinite(proj.maxLifespan)
           ? proj.maxLifespan
           : null;
-        out.turretBlueprintCode = proj.sourceTurretBlueprintId !== undefined
+        out.turretBlueprintCode = proj.sourceTurretBlueprintId !== null
           ? turretBlueprintIdToCode(proj.sourceTurretBlueprintId)
           : TURRET_BLUEPRINT_CODE_UNKNOWN;
         out.shotBlueprintCode = shotBlueprintIdToCode(proj.shotBlueprintId);
-        out.sourceTurretBlueprintCode = proj.sourceTurretBlueprintId !== undefined
+        out.sourceTurretBlueprintCode = proj.sourceTurretBlueprintId !== null
           ? turretBlueprintIdToCode(proj.sourceTurretBlueprintId)
           : null;
         out.playerId = proj.ownerId;
@@ -1079,7 +1080,7 @@ export function writeProjectileSnapshotWireRowsDirect({
 
       const update = _directBeamUpdateScratch;
       update.id = entity.id;
-      update.obstructionT = proj.obstructionT === undefined ? null : qRot(proj.obstructionT);
+      update.obstructionT = proj.obstructionT === null ? null : qRot(proj.obstructionT);
       update.endpointDamageable = proj.endpointDamageable === false ? false : null;
       const wirePointCount = getBeamWirePointCount(srcPts.length);
       update.points.length = wirePointCount;
@@ -1098,13 +1099,14 @@ export function writeProjectileSnapshotWireRowsDirect({
           out.vy = qVel(sp.vy);
           out.vz = qVel(sp.vz);
         }
-        const canReferenceReflector = canReferenceEntityId(world, visibility, sp.reflectorEntityId);
-        out.reflectorEntityId = canReferenceReflector ? sp.reflectorEntityId ?? null : null;
+        const canReferenceReflector = sp.reflectorEntityId !== null
+          && canReferenceEntityId(world, visibility, sp.reflectorEntityId);
+        out.reflectorEntityId = canReferenceReflector ? sp.reflectorEntityId : null;
         out.reflectorKind = canReferenceReflector ? sp.reflectorKind ?? null : null;
         out.reflectorPlayerId = canReferenceReflector ? sp.reflectorPlayerId ?? null : null;
-        out.normalX = canReferenceReflector && sp.normalX !== undefined ? qNormal(sp.normalX) : null;
-        out.normalY = canReferenceReflector && sp.normalY !== undefined ? qNormal(sp.normalY) : null;
-        out.normalZ = canReferenceReflector && sp.normalZ !== undefined ? qNormal(sp.normalZ) : null;
+        out.normalX = canReferenceReflector && sp.normalX !== null ? qNormal(sp.normalX) : null;
+        out.normalY = canReferenceReflector && sp.normalY !== null ? qNormal(sp.normalY) : null;
+        out.normalZ = canReferenceReflector && sp.normalZ !== null ? qNormal(sp.normalZ) : null;
         copyBeamPointIntoWireRow(out);
       }
 

@@ -9,12 +9,12 @@
 // builder selected" for build or "is a commander selected" for D-gun)
 // before calling `enter*`.
 
-import type { Entity, BuildingBlueprintId } from '../../sim/types';
+import type { Entity, BuildingBlueprintId, StructureBlueprintId } from '../../sim/types';
 import type { StartBuildCommand, FireDGunCommand } from '../../sim/commands';
-import { getAllBuildings } from '../../sim/buildConfigs';
+import { getAllStructures } from '../../sim/buildConfigs';
 import { getSnappedBuildPosition } from './BuildPlacementValidator';
 
-const BUILD_MODE_BUILDING_BLUEPRINT_IDS = getAllBuildings().map(
+const BUILD_MODE_BUILDING_BLUEPRINT_IDS = getAllStructures().map(
   (building) => building.buildingBlueprintId,
 );
 const DEFAULT_BUILDING_BLUEPRINT_ID: BuildingBlueprintId = BUILD_MODE_BUILDING_BLUEPRINT_IDS[0] ?? 'buildingSolar';
@@ -27,8 +27,14 @@ export function getDefaultBuildModeBuildingBlueprintId(): BuildingBlueprintId {
   return DEFAULT_BUILDING_BLUEPRINT_ID;
 }
 
-export function getBuildModeBuildingBlueprintIdByIndex(index: number): BuildingBlueprintId | null {
-  return BUILD_MODE_BUILDING_BLUEPRINT_IDS[index] ?? null;
+export function getBuildModeBuildingBlueprintIdByIndex(
+  index: number,
+  allowedBuildBlueprintIds?: readonly StructureBlueprintId[],
+): BuildingBlueprintId | null {
+  const ids = allowedBuildBlueprintIds !== undefined
+    ? allowedBuildBlueprintIds
+    : BUILD_MODE_BUILDING_BLUEPRINT_IDS;
+  return ids[index] ?? null;
 }
 
 export class CommanderModeController {

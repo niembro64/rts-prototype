@@ -29,7 +29,7 @@ export function emitShieldStopsForEntity(entity: Entity): SimEvent[] {
   for (let i = 0; i < turrets.length; i++) {
     const config = turrets[i].config;
     const shot = config.shot;
-    if (shot === undefined || shot.type !== 'shield' || shot.barrier === undefined) continue;
+    if (shot === null || shot.type !== 'shield' || shot.barrier === undefined) continue;
 
     const soundEntityId = turretSoundEntityId(entity, i);
     if (!activeShieldSoundIds.delete(soundEntityId)) continue;
@@ -60,10 +60,10 @@ export function updateShieldSounds(units: Entity[]): SimEvent[] {
       const weapon = turrets[i];
       const config = weapon.config;
       const shot = config.shot;
-      if (shot === undefined || shot.type !== 'shield' || shot.barrier === undefined) continue;
+      if (shot === null || shot.type !== 'shield' || shot.barrier === undefined) continue;
 
       const soundEntityId = turretSoundEntityId(unit, i);
-      const progress = weapon.shield !== undefined ? weapon.shield.transition : 0;
+      const progress = weapon.shield !== null ? weapon.shield.transition : 0;
       const wasActive = activeShieldSoundIds.has(soundEntityId);
 
       if (isDead || progress <= 0) {

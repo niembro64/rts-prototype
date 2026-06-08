@@ -288,12 +288,12 @@ export class ShieldImpactRenderer3D {
       for (let i = 1; i < points.length; i++) {
         if (written >= ShieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP) break;
         const point = points[i];
-        if (point.reflectorEntityId === undefined) continue;
+        if (point.reflectorEntityId === null) continue;
         const nx = point.normalX;
         const ny = point.normalY;
         const nz = point.normalZ;
         if (
-          nx === undefined || ny === undefined || nz === undefined ||
+          nx === null || ny === null || nz === null ||
           !Number.isFinite(nx) || !Number.isFinite(ny) || !Number.isFinite(nz)
         ) {
           continue;
@@ -313,7 +313,7 @@ export class ShieldImpactRenderer3D {
         this.scratchNormal.set(snx, snz, sny).normalize();
         this.scratchQuat.setFromUnitVectors(ShieldImpactRenderer3D.Z_AXIS, this.scratchNormal);
 
-        const color = this.resolveColor(point.reflectorPlayerId);
+        const color = this.resolveColor(point.reflectorPlayerId ?? undefined);
         const sizeMul = 1;
         const alphaMul = 0.8;
         const phaseSeed = entity.id * 0.173 + i * 0.417;

@@ -766,7 +766,7 @@ function spawnSubmunitions(
       // client which child projectile blueprint to hydrate.
       turretBlueprintId: sourceTurretBlueprintId ?? '',
       shotBlueprintId: spec.shotBlueprintId,
-      sourceTurretBlueprintId: sourceTurretBlueprintId,
+      sourceTurretBlueprintId: sourceTurretBlueprintId ?? undefined,
       sourceTurretEntityId: parentShotSource.sourceTurretEntityId ?? undefined,
       sourceHostEntityId: parentShotSource.sourceHostEntityId,
       sourceRootEntityId: parentShotSource.sourceRootEntityId,
@@ -1314,7 +1314,7 @@ export function checkProjectileCollisions(
       if (points) {
         for (let i = points.length - 1; i >= 1; i--) {
           const mid = points[i].reflectorEntityId;
-          if (mid !== undefined) { lastMirrorEntityId = mid; break; }
+          if (mid !== null) { lastMirrorEntityId = mid; break; }
         }
       }
       const damageSourceId = lastMirrorEntityId ?? proj.sourceEntityId;
@@ -1341,7 +1341,7 @@ export function checkProjectileCollisions(
       if (points && points.length > 1 && forceAccumulator) {
         for (let i = 1; i < points.length; i++) {
           const refl = points[i];
-          if (refl.reflectorEntityId === undefined) continue;
+          if (refl.reflectorEntityId === null) continue;
           const prev = points[i - 1];
           const segDx = refl.x - prev.x;
           const segDy = refl.y - prev.y;

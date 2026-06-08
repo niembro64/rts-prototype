@@ -455,7 +455,7 @@ export class ProjectileRenderer3D {
     const bounceX = proj.pendingReflectionX;
     const bounceY = proj.pendingReflectionY;
     const bounceZ = proj.pendingReflectionZ;
-    if (bounceX !== undefined && bounceY !== undefined && bounceZ !== undefined) {
+    if (bounceX !== null && bounceY !== null && bounceZ !== null) {
       const newCount = Math.min(TRAIL_STAMP_CAP, stamps.count + 1);
       for (let i = newCount - 1; i >= 1; i--) {
         const dst = i * 3;
@@ -468,9 +468,9 @@ export class ProjectileRenderer3D {
       pts[1] = bounceY;
       pts[2] = bounceZ;
       stamps.count = newCount;
-      proj.pendingReflectionX = undefined;
-      proj.pendingReflectionY = undefined;
-      proj.pendingReflectionZ = undefined;
+      proj.pendingReflectionX = null;
+      proj.pendingReflectionY = null;
+      proj.pendingReflectionZ = null;
     }
 
     // Step size determines how far the head travels between stamps. We

@@ -8,7 +8,7 @@
 // LegInstancedRenderer; the IK that places the knee lives here.
 //
 // In the language of "Locomotion Visuals Are Frontend"
-// (design_philosophy.html): the per-leg primitive is the foot, the
+// (budget_design_philosophy.html): the per-leg primitive is the foot, the
 // floor clamp is `Math.max(footY, footSurface.visualFootY)` baked
 // into the step / placement code below, and the per-leg contact bit
 // is `!leg.isSliding` — true while the foot is planted, false while

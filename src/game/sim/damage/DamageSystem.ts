@@ -50,7 +50,9 @@ const _reusableResult: DamageResult = {
   killedBuildingIds: new Set(),
   killedProjectileIds: new Set(),
   killedTurretIds: new Set(),
+  truncationT: null,
   knockbacks: [],
+  recoil: null,
   deathContexts: new Map(),
   killerPlayerIds: new Map(),
 };
@@ -85,11 +87,11 @@ function resetResult(): DamageResult {
   _reusableResult.killedBuildingIds.clear();
   _reusableResult.killedProjectileIds.clear();
   _reusableResult.killedTurretIds.clear();
-  _reusableResult.truncationT = undefined;
+  _reusableResult.truncationT = null;
   // Recycle prior tick's knockback entries before clearing the array.
   for (const k of _reusableResult.knockbacks) _knockbackPool.push(k);
   _reusableResult.knockbacks.length = 0;
-  _reusableResult.recoil = undefined;
+  _reusableResult.recoil = null;
   _reusableResult.deathContexts.clear();
   _reusableResult.killerPlayerIds.clear();
   return _reusableResult;
@@ -120,6 +122,7 @@ export function resetDamageBuffers(): void {
   for (let i = 0; i < _areaDamageEntities.length; i++) {
     _areaDamageEntities[i] = undefined;
   }
+  trimDamageBuffers();
 }
 
 type BeamReflectorPoint = {
@@ -245,6 +248,83 @@ let _segmentDamageOutFlags = new Uint8Array(0);
 let _segmentDamageOutT = new Float64Array(0);
 let _segmentDamageRefFlags = new Uint8Array(0);
 let _segmentDamageRefT = new Float64Array(0);
+
+function trimDamageBuffers(): void {
+  _damageBatchCapacity = 0;
+  _damageBatchCount = 0;
+  _damageBatchEntities = [];
+  _damageBatchDeathContexts = [];
+  _damageBatchEnabled = new Uint8Array(0);
+  _damageBatchTargetKind = new Uint8Array(0);
+  _damageBatchHp = new Float64Array(0);
+  _damageBatchDamage = new Float64Array(0);
+  _damageBatchBuildingFortified = new Uint8Array(0);
+  _damageBatchOutHp = new Float64Array(0);
+  _damageBatchOutEffectiveDamage = new Float64Array(0);
+  _damageBatchOutFlags = new Uint8Array(0);
+
+  _areaDamageCapacity = 0;
+  _areaDamageEntities = [];
+  _areaDamageEnabled = new Uint8Array(0);
+  _areaDamageTargetKind = new Uint8Array(0);
+  _areaDamageTargetX = new Float64Array(0);
+  _areaDamageTargetY = new Float64Array(0);
+  _areaDamageTargetZ = new Float64Array(0);
+  _areaDamageTargetRadius = new Float64Array(0);
+  _areaDamageBoxHalfX = new Float64Array(0);
+  _areaDamageBoxHalfY = new Float64Array(0);
+  _areaDamageBoxHalfZ = new Float64Array(0);
+  _areaDamageOutFlags = new Uint8Array(0);
+  _areaDamageOutDirX = new Float64Array(0);
+  _areaDamageOutDirY = new Float64Array(0);
+  _areaDamageOutDirZ = new Float64Array(0);
+  _areaDamageOutDistance = new Float64Array(0);
+  _areaDamageSlots = new Uint32Array(0);
+  _areaDamageRefFlags = new Uint8Array(0);
+  _areaDamageRefDirX = new Float64Array(0);
+  _areaDamageRefDirY = new Float64Array(0);
+  _areaDamageRefDirZ = new Float64Array(0);
+  _areaDamageRefDistance = new Float64Array(0);
+  _areaDamageTurretStart = new Int32Array(0);
+  _areaDamageTurretEnd = new Int32Array(0);
+
+  _areaTurretDamageCapacity = 0;
+  _areaTurretDamageSlots = new Uint32Array(0);
+  _areaTurretDamageTurretIndices = new Int32Array(0);
+  _areaTurretDamageOutFlags = new Uint8Array(0);
+  _areaTurretDamageRefFlags = new Uint8Array(0);
+
+  _deathExplosionDamageCapacity = 0;
+  _deathExplosionDamageSlots = new Uint32Array(0);
+  _deathExplosionDamageTargetKind = new Uint8Array(0);
+  _deathExplosionDamageOutFlags = new Uint8Array(0);
+  _deathExplosionDamageOutDirX = new Float64Array(0);
+  _deathExplosionDamageOutDirY = new Float64Array(0);
+  _deathExplosionDamageOutDirZ = new Float64Array(0);
+  _deathExplosionDamageOutDistance = new Float64Array(0);
+
+  _segmentDamageCapacity = 0;
+  _segmentDamageEntityIds = [];
+  _segmentDamageHostEntityIds = [];
+  _segmentDamageIsUnit = new Uint8Array(0);
+  _segmentDamageIsBuilding = new Uint8Array(0);
+  _segmentDamageIsProjectile = new Uint8Array(0);
+  _segmentDamageEnabled = new Uint8Array(0);
+  _segmentDamageTargetKind = new Uint8Array(0);
+  _segmentDamageTargetX = new Float64Array(0);
+  _segmentDamageTargetY = new Float64Array(0);
+  _segmentDamageTargetZ = new Float64Array(0);
+  _segmentDamageTargetRadius = new Float64Array(0);
+  _segmentDamageBoxHalfX = new Float64Array(0);
+  _segmentDamageBoxHalfY = new Float64Array(0);
+  _segmentDamageBoxHalfZ = new Float64Array(0);
+  _segmentDamageSlots = new Uint32Array(0);
+  _segmentDamageTurretIndices = new Int32Array(0);
+  _segmentDamageOutFlags = new Uint8Array(0);
+  _segmentDamageOutT = new Float64Array(0);
+  _segmentDamageRefFlags = new Uint8Array(0);
+  _segmentDamageRefT = new Float64Array(0);
+}
 
 function isTurretDamageable(turret: Turret): boolean {
   return turret.id !== NO_ENTITY_ID && !turret.config.visualOnly;
@@ -1943,7 +2023,7 @@ export class DamageSystem {
         attackerVel: { x: attackerVelX, y: attackerVelY },
         attackMagnitude: source.damage,
       });
-      if (result.truncationT === undefined) {
+      if (result.truncationT === null) {
         result.truncationT = hit.t;
       }
       result.hitEntityIds.push(entity.id);
@@ -2486,7 +2566,7 @@ export class DamageSystem {
     const ownership = killer !== undefined ? killer.ownership : null;
     result.killerPlayerIds.set(
       deadEntityId,
-      ownership !== null ? ownership.playerId : undefined,
+      ownership !== null ? ownership.playerId : null,
     );
   }
 }

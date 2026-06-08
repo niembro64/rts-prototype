@@ -31,6 +31,7 @@ const BEAD_SPACING_MULT = RESOURCE_CONFIG.tube.beadSpacingMult;
 const END_FADE_FRAC = RESOURCE_CONFIG.tube.endFadeFrac;
 const BASE_ALPHA = RESOURCE_CONFIG.tube.baseAlpha;
 const MAX_BEAD_SPAWNS_PER_FLOW_FRAME = RESOURCE_CONFIG.tube.maxSpawnsPerFlowFrame;
+const MAX_PENDING_TUBE_BIRTHS_PER_FLOW_FRAME = MAX_BEAD_SPAWNS_PER_FLOW_FRAME;
 const FLOW_RUNTIME_PRUNE_AFTER_FRAMES = RESOURCE_CONFIG.tube.runtimePruneAfterFrames;
 
 type PylonTubeFlowRuntime = {
@@ -51,6 +52,7 @@ type PylonTubeFlowRuntime = {
 
 type PendingTubeBirths = {
   count: number;
+  sampleCount: number;
   intensitySum: number;
 };
 
@@ -129,10 +131,11 @@ export class PylonTubeFlowRenderer {
     const clamped = Number.isFinite(intensity) ? Math.max(0, Math.min(1, intensity)) : 1;
     const pending = this.pendingTubeBirths.get(flowKey);
     if (pending) {
-      pending.count++;
+      if (pending.count < MAX_PENDING_TUBE_BIRTHS_PER_FLOW_FRAME) pending.count++;
+      pending.sampleCount++;
       pending.intensitySum += clamped;
     } else {
-      this.pendingTubeBirths.set(flowKey, { count: 1, intensitySum: clamped });
+      this.pendingTubeBirths.set(flowKey, { count: 1, sampleCount: 1, intensitySum: clamped });
     }
   }
 
@@ -275,10 +278,11 @@ export class PylonTubeFlowRenderer {
     for (const [key, pending] of this.pendingTubeBirths) {
       const runtime = this.flowRuntimes.get(key);
       if (!runtime) continue;
-      const alphaScale = pending.count > 0
-        ? Math.max(0, Math.min(1, pending.intensitySum / pending.count))
+      const alphaScale = pending.sampleCount > 0
+        ? Math.max(0, Math.min(1, pending.intensitySum / pending.sampleCount))
         : 1;
-      for (let i = 0; i < pending.count; i++) {
+      const spawnCount = Math.min(pending.count, MAX_PENDING_TUBE_BIRTHS_PER_FLOW_FRAME);
+      for (let i = 0; i < spawnCount; i++) {
         this.spawnBead(runtime, -1, 1, alphaScale);
       }
     }

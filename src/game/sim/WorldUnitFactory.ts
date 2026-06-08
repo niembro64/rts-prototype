@@ -12,6 +12,7 @@ import type {
   Entity,
   EntityId,
   PlayerId,
+  SensorCapabilityConfig,
   UnitLocomotion,
   UnitSupportSurface,
 } from './types';
@@ -47,6 +48,7 @@ type CreateUnitBaseArgs = {
   bodyCenterHeight: number;
   supportSurface: UnitSupportSurface;
   fullVisionRadius: number;
+  sensors: SensorCapabilityConfig;
   locomotion: UnitLocomotion;
   mass: number;
   hp: number;
@@ -63,6 +65,7 @@ function createUnitBaseEntity({
   bodyCenterHeight,
   supportSurface,
   fullVisionRadius,
+  sensors,
   locomotion,
   mass,
   hp,
@@ -93,6 +96,7 @@ function createUnitBaseEntity({
       bodyCenterHeight,
       supportSurface: cloneUnitSupportSurface(supportSurface),
       fullVisionRadius,
+      sensors: { ...sensors },
       mass,
       hp,
       maxHp: hp,
@@ -155,6 +159,7 @@ export function createUnitFromBlueprintEntity(
     bodyCenterHeight: bp.bodyCenterHeight,
     supportSurface: cloneUnitSupportSurface(bp.supportSurface),
     fullVisionRadius: bp.fullVisionRadius,
+    sensors: { ...bp.sensors },
     locomotion: getUnitLocomotion(unitBlueprintId),
     mass: bp.mass,
     hp: bp.hp * UNIT_HP_MULTIPLIER,
@@ -178,6 +183,7 @@ export function createUnitFromBlueprintEntity(
     entity.builder = {
       buildRange: bp.builder.buildRange,
       constructionRate: bp.builder.constructionRate,
+      allowedBuildBlueprintIds: [...bp.builder.allowedBuildBlueprintIds],
       currentBuildTarget: NO_ENTITY_ID,
     };
   }

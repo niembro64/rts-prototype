@@ -14,6 +14,7 @@ import type {
   SetBuildingActiveCommand,
   SetFireEnabledCommand,
   SetTowerTargetCommand,
+  StartBuildCommand,
   StopCommand,
   WaitCommand,
 } from '../sim/commands';
@@ -24,6 +25,7 @@ import {
   commandAuthorityPlayerId,
   type CommandAuthority,
 } from './commandAuthority';
+import { entityCanBuild } from '../sim/builderBuildRoster';
 
 type UnitListCommand =
   | AttackCommand
@@ -83,7 +85,7 @@ export function authorizeGameServerGameplayCommand(
     case 'setFireEnabled':
       // Fire control applies to any owned entity with combat
       // (units + towers). Towers carry the same host-fire contract
-      // per design_philosophy.html "Selection Menus Are Uniform Per
+      // per budget_design_philosophy.html "Selection Menus Are Uniform Per
       // Entity Type".
       return authorizeAnyEntityListCommand(world, command, playerId);
 
@@ -104,7 +106,7 @@ export function authorizeGameServerGameplayCommand(
       return authorizeUnitListCommand(world, command, playerId);
 
     case 'startBuild':
-      return isOwnedEntity(world, command.builderId, playerId) ? command : null;
+      return authorizeStartBuildCommand(world, command, playerId);
 
     case 'queueUnit':
     case 'setRallyPoint':
@@ -126,6 +128,16 @@ export function authorizeGameServerGameplayCommand(
     default:
       return null;
   }
+}
+
+function authorizeStartBuildCommand(
+  world: WorldState,
+  command: StartBuildCommand,
+  playerId: PlayerId,
+): StartBuildCommand | null {
+  const builder = world.getEntity(command.builderId);
+  if (builder === undefined || builder.ownership?.playerId !== playerId) return null;
+  return entityCanBuild(builder, command.buildingBlueprintId) ? command : null;
 }
 
 function authorizePingCommand(command: PingCommand, playerId: PlayerId): PingCommand | null {
@@ -194,7 +206,7 @@ function authorizeUnitListCommand(
  *  owned tower. The lock-on `targetId` itself may name any entity
  *  in the world that has an ID (friendly or enemy); the
  *  receiving turret's exclusion policy decides whether to honor it
- *  (see design_philosophy.html "Lock-on selection: anything with an
+ *  (see budget_design_philosophy.html "Lock-on selection: anything with an
  *  ID is a candidate"). */
 function authorizeSetTowerTargetCommand(
   world: WorldState,

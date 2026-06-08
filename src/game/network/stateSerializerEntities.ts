@@ -197,7 +197,7 @@ function writeTurretsToPool(
     dst.state = hasTargetingFsm ? _snapshotTurretFsm.stateCode : turretStateToCode(src.state);
     dst.active = src.id === NO_ENTITY_ID ? false : null;
     const shield = src.shield;
-    dst.currentShieldRange = shield !== undefined ? shield.range : null;
+    dst.currentShieldRange = shield !== null ? shield.range : null;
   }
   return pool.turrets;
 }
@@ -776,8 +776,8 @@ function appendDirectTurretWireRows(
     values[base + 5] = hasTargetingFsm ? _directTurretFsm.stateCode : turretStateToCode(src.state);
     values[base + 6] = canSendTarget && wireTargetId !== undefined ? 1 : 0;
     values[base + 7] = canSendTarget ? wireTargetId ?? 0 : 0;
-    values[base + 8] = src.shield !== undefined ? 1 : 0;
-    values[base + 9] = src.shield !== undefined ? src.shield.range : 0;
+    values[base + 8] = src.shield !== null ? 1 : 0;
+    values[base + 9] = src.shield !== null ? src.shield.range : 0;
   }
   return { offset, count };
 }

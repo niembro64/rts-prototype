@@ -480,6 +480,11 @@ export class WorldState {
     return this.cache.getUnitsAndBuildings();
   }
 
+  getCombatTargetEntities(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getCombatTargetEntities();
+  }
+
   // Get all projectiles (cached - DO NOT MODIFY returned array)
   getProjectiles(): Entity[] {
     this.rebuildCachesIfNeeded();
@@ -555,6 +560,12 @@ export class WorldState {
   getConverterBuildings(): Entity[] {
     this.rebuildCachesIfNeeded();
     return this.cache.getConverterBuildings();
+  }
+
+  // Get static entities that need body/build HUD bars (cached - DO NOT MODIFY returned array).
+  getHealthBarBuildings(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getHealthBarBuildings();
   }
 
   // Get every building that uses the shared BuildingActiveState fortify

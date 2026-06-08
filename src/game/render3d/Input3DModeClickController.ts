@@ -17,6 +17,7 @@ import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import type { BuildGhost3D } from './BuildGhost3D';
 import { Input3DBuildPlacementState } from './Input3DBuildPlacementState';
 import type { Input3DPicker } from './Input3DPicker';
+import { entityCanBuild } from '../sim/builderBuildRoster';
 
 const REPAIR_AREA_RADIUS = 220;
 const ATTACK_AREA_RADIUS = 300;
@@ -170,13 +171,19 @@ export class Input3DModeClickController {
   private updateBuildPreview(e: MouseEvent, buildingBlueprintId: BuildingBlueprintId): void {
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (world) {
+      const builder = this.config.getSelectedBuilder();
+      if (!entityCanBuild(builder, buildingBlueprintId)) {
+        this.config.applyCursor('blocked');
+        this.buildGhost?.hide();
+        return;
+      }
       const diagnostics = this.validateBuildPlacement(buildingBlueprintId, world.x, world.y);
       this.config.applyCursor(diagnostics.canPlace ? 'build' : 'blocked');
       this.buildGhost?.setTarget(
         buildingBlueprintId,
         world.x,
         world.y,
-        this.config.getSelectedBuilder(),
+        builder,
         this.buildPlacement.canPlace,
         diagnostics,
       );
@@ -196,6 +203,10 @@ export class Input3DModeClickController {
     if (!world) return;
     const buildingBlueprintId = this.config.mode.buildingBlueprintId;
     if (buildingBlueprintId === null) return;
+    if (!entityCanBuild(builder, buildingBlueprintId)) {
+      this.config.applyCursor('blocked');
+      return;
+    }
     const diagnostics = this.validateBuildPlacement(buildingBlueprintId, world.x, world.y);
     this.config.applyCursor(diagnostics.canPlace ? 'build' : 'blocked');
     this.buildGhost?.setTarget(

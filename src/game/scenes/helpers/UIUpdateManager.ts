@@ -7,6 +7,7 @@ import { getUnitBlueprint } from '../../sim/blueprints';
 import { isCommander } from '../../sim/combat/combatUtils';
 import { hasQueuedActionIntents } from '../../sim/unitActionIntents';
 import { buildingBlueprintHasActiveState } from '../../sim/buildingActiveState';
+import { getSelectedBuilderAllowedBuildBlueprintIds } from '../../sim/builderBuildRoster';
 
 function unitLabel(unitBlueprintId: string): string {
   try {
@@ -69,7 +70,7 @@ export function buildSelectionInfo(
   // getSelectedBuildings returns selected entities whose type is
   // 'building' OR 'tower' (both are cached together). Split them here
   // so the panel can render the uniform per-type action set required
-  // by design_philosophy.html "Selection Menus Are Uniform Per Entity
+  // by budget_design_philosophy.html "Selection Menus Are Uniform Per Entity
   // Type".
   const selectedStatic = entitySource.getSelectedBuildings();
   const selectedTowers: typeof selectedStatic = [];
@@ -84,6 +85,7 @@ export function buildSelectionInfo(
   // commander unit IS the dgunner — no second find call needed.
   const commander = selectedUnits.find(isCommander);
   const builder = selectedUnits.find(u => u.builder !== null);
+  const allowedBuildBlueprintIds = getSelectedBuilderAllowedBuildBlueprintIds(selectedUnits);
   const dgunner = commander;
   let fireControlCount = 0;
   let allFireEnabled = true;
@@ -117,7 +119,7 @@ export function buildSelectionInfo(
   // therefore lives on the tower selection, not the building one.
   const factory = selectedTowers.find(b => b.factory !== null);
 
-  // Building ON/OFF (Producer Buildings Are ON/OFF in design_philosophy.html).
+  // Building ON/OFF (Producer Buildings Are ON/OFF in budget_design_philosophy.html).
   // Only solar/wind/extractor expose a player-toggleable active state;
   // radar/converter do not. The button is gated to selections that
   // contain at least one of those buildings.
@@ -173,6 +175,7 @@ export function buildSelectionInfo(
     buildingCount: selectedBuildings.length,
     hasCommander: commander !== undefined,
     hasBuilder: builder !== undefined,
+    allowedBuildBlueprintIds,
     hasDGun: dgunner !== undefined,
     hasFireControl:
       fireControlCount > 0

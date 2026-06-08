@@ -11,9 +11,9 @@ export function setUnitMovementAcceleration(
   const nextX = Number.isFinite(ax) ? ax : 0;
   const nextY = Number.isFinite(ay) ? ay : 0;
   const nextZ = Number.isFinite(az) ? az : 0;
-  const prevX = unit.movementAccelX ?? 0;
-  const prevY = unit.movementAccelY ?? 0;
-  const prevZ = unit.movementAccelZ ?? 0;
+  const prevX = unit.movementAccelX;
+  const prevY = unit.movementAccelY;
+  const prevZ = unit.movementAccelZ;
   const changed =
     Math.abs(nextX - prevX) > UNIT_MOVEMENT_ACCEL_EPSILON ||
     Math.abs(nextY - prevY) > UNIT_MOVEMENT_ACCEL_EPSILON ||

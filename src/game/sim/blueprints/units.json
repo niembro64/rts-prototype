@@ -14,6 +14,13 @@
       "kind": "none"
     },
     "fullVisionRadius": 1200,
+    "sensors": {
+      "fullSightRadius": 1200,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "mass": 42,
     "cost": {
       "energy": 50,
@@ -98,6 +105,13 @@
       "kind": "none"
     },
     "fullVisionRadius": 1200,
+    "sensors": {
+      "fullSightRadius": 1200,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "mass": 63.5,
     "cost": {
       "energy": 90,
@@ -181,6 +195,13 @@
       "kind": "none"
     },
     "fullVisionRadius": 1200,
+    "sensors": {
+      "fullSightRadius": 1200,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "mass": 64.5,
     "cost": {
       "energy": 350,
@@ -294,6 +315,13 @@
       "kind": "none"
     },
     "fullVisionRadius": 1200,
+    "sensors": {
+      "fullSightRadius": 1200,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "mass": 387,
     "cost": {
       "energy": 300,
@@ -377,6 +405,13 @@
       "kind": "none"
     },
     "fullVisionRadius": 1200,
+    "sensors": {
+      "fullSightRadius": 1200,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "mass": 268,
     "cost": {
       "energy": 220,
@@ -461,6 +496,13 @@
       "kind": "none"
     },
     "fullVisionRadius": 1200,
+    "sensors": {
+      "fullSightRadius": 1200,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "mass": 29.5,
     "cost": {
       "energy": 35,
@@ -564,6 +606,13 @@
       "kind": "none"
     },
     "fullVisionRadius": 1200,
+    "sensors": {
+      "fullSightRadius": 1200,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "mass": 1265,
     "cost": {
       "energy": 1200,
@@ -647,6 +696,13 @@
       "kind": "none"
     },
     "fullVisionRadius": 1200,
+    "sensors": {
+      "fullSightRadius": 1200,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "mass": 3173,
     "cost": {
       "energy": 4000,
@@ -780,6 +836,13 @@
       "kind": "none"
     },
     "fullVisionRadius": 1200,
+    "sensors": {
+      "fullSightRadius": 1200,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "mass": 1308.5,
     "cost": {
       "energy": 3000,
@@ -969,6 +1032,13 @@
       "kind": "none"
     },
     "fullVisionRadius": 1200,
+    "sensors": {
+      "fullSightRadius": 1200,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "mass": 1899,
     "cost": {
       "energy": 2500,
@@ -1051,6 +1121,13 @@
       "kind": "none"
     },
     "fullVisionRadius": 1200,
+    "sensors": {
+      "fullSightRadius": 1200,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "mass": 46.5,
     "cost": {
       "energy": 300,
@@ -1167,6 +1244,13 @@
       "kind": "none"
     },
     "fullVisionRadius": 1200,
+    "sensors": {
+      "fullSightRadius": 1200,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "mass": 124.5,
     "cost": {
       "energy": 400,
@@ -1255,6 +1339,13 @@
       "kind": "none"
     },
     "fullVisionRadius": 1200,
+    "sensors": {
+      "fullSightRadius": 1200,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "mass": 35.75,
     "cost": {
       "energy": 120,
@@ -1342,6 +1433,13 @@
       "kind": "none"
     },
     "fullVisionRadius": 1200,
+    "sensors": {
+      "fullSightRadius": 1200,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "mass": 135,
     "cost": {
       "energy": 360,
@@ -1454,6 +1552,13 @@
       "kind": "none"
     },
     "fullVisionRadius": 1200,
+    "sensors": {
+      "fullSightRadius": 1200,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "mass": 68.25,
     "cost": {
       "energy": 180,
@@ -1499,7 +1604,18 @@
     "suspension": null,
     "builder": {
       "buildRange": 170,
-      "constructionRate": 35
+      "constructionRate": 35,
+      "allowedBuildBlueprintIds": [
+        "buildingSolar",
+        "buildingWind",
+        "buildingExtractor",
+        "buildingRadar",
+        "buildingResourceConverter",
+        "towerFabricator",
+        "towerBeamMega",
+        "towerCannon",
+        "towerAntiAir"
+      ]
     },
     "dgun": null,
     "deathSound": {
@@ -1560,6 +1676,13 @@
       "kind": "none"
     },
     "fullVisionRadius": 1200,
+    "sensors": {
+      "fullSightRadius": 1200,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "mass": 124.75,
     "cost": {
       "energy": 520,
@@ -1662,6 +1785,13 @@
       "kind": "none"
     },
     "fullVisionRadius": 1400,
+    "sensors": {
+      "fullSightRadius": 1400,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "mass": 10000,
     "cost": {
       "energy": 1200,
@@ -1748,6 +1878,13 @@
       "kind": "none"
     },
     "fullVisionRadius": 1600,
+    "sensors": {
+      "fullSightRadius": 1600,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "mass": 408,
     "cost": {
       "energy": 400,
@@ -1818,7 +1955,18 @@
     "suspension": null,
     "builder": {
       "buildRange": 150,
-      "constructionRate": 50
+      "constructionRate": 50,
+      "allowedBuildBlueprintIds": [
+        "buildingSolar",
+        "buildingWind",
+        "buildingExtractor",
+        "buildingRadar",
+        "buildingResourceConverter",
+        "towerFabricator",
+        "towerBeamMega",
+        "towerCannon",
+        "towerAntiAir"
+      ]
     },
     "dgun": {
       "turretBlueprintId": "turretDisruptor",

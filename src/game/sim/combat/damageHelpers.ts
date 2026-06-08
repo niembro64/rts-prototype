@@ -383,7 +383,7 @@ export function collectKillsAndDeathContexts(
       const target = world.getEntity(id);
       const ctx = result.deathContexts.get(id);
       const killerPlayerId = result.killerPlayerIds.get(id);
-      audioEvents.push(buildUnitDeathEvent(target, id, sourceKey, ctx, sourceType, killerPlayerId));
+      audioEvents.push(buildUnitDeathEvent(target, id, sourceKey, ctx, sourceType, killerPlayerId ?? undefined));
       unitsToRemove.add(id);
     }
   }
@@ -391,7 +391,7 @@ export function collectKillsAndDeathContexts(
     if (!buildingsToRemove.has(id)) {
       const building = world.getEntity(id);
       const killerPlayerId = result.killerPlayerIds.get(id);
-      audioEvents.push(buildBuildingDeathEvent(building, id, sourceKey, sourceType, killerPlayerId));
+      audioEvents.push(buildBuildingDeathEvent(building, id, sourceKey, sourceType, killerPlayerId ?? undefined));
       buildingsToRemove.add(id);
     }
   }
@@ -403,7 +403,7 @@ export function collectKillsAndDeathContexts(
       sourceKey,
       sourceType,
       result.deathContexts.get(id),
-      result.killerPlayerIds.get(id),
+      result.killerPlayerIds.get(id) ?? undefined,
     );
     if (event !== undefined) audioEvents.push(event);
   }

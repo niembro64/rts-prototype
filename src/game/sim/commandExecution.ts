@@ -687,7 +687,7 @@ function executeSetTowerTargetCommand(
 ): void {
   // Resolve the target entity once; null/-1 means "clear the lock".
   // The lock-on is only honored by host-directed turrets whose
-  // exclusion policy accepts the candidate (see design_philosophy.html
+  // exclusion policy accepts the candidate (see budget_design_philosophy.html
   // "Host-directed turrets carry the host lock-on...").
   const target = command.targetId === null
     ? undefined

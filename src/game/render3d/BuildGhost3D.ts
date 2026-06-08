@@ -24,7 +24,7 @@ import {
   METAL_DEPOSIT_CONFIG,
   type MetalDeposit,
 } from '@/metalDepositConfig';
-import { RADAR_VISION_RADIUS } from '../network/stateSerializerVisibility';
+import { getBuildingAuthoredRadarRadius } from '../sim/sensorCoverage';
 import {
   type BuildPlacementCellDiagnostic,
   type BuildPlacementDiagnostics,
@@ -358,10 +358,11 @@ export class BuildGhost3D {
     const isExtractor = buildingBlueprintId === 'buildingExtractor';
     this.footprint.visible = !this.updateDiagnosticCells(diagnostics, isExtractor);
 
-    if (buildingBlueprintId === 'buildingRadar') {
+    const radarRadius = getBuildingAuthoredRadarRadius(buildingBlueprintId);
+    if (radarRadius > 0) {
       this.radarRangeRing.visible = true;
       this.radarRangeRing.position.set(snapped.x, targetGroundY + RANGE_Y, snapped.y);
-      this.radarRangeRing.scale.set(RADAR_VISION_RADIUS, RADAR_VISION_RADIUS, 1);
+      this.radarRangeRing.scale.set(radarRadius, radarRadius, 1);
     } else {
       this.radarRangeRing.visible = false;
     }

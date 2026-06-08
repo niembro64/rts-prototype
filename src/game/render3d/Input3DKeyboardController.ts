@@ -1,5 +1,5 @@
 import type { CommandQueue } from '../sim/commands';
-import type { WaypointType } from '../sim/types';
+import type { StructureBlueprintId, WaypointType } from '../sim/types';
 import {
   controlGroupIndexForKey,
   getBuildModeBuildingBlueprintIdByIndex,
@@ -16,6 +16,7 @@ type Input3DKeyboardControllerConfig = {
   storeControlGroupSlot: (index: number) => void;
   recallControlGroupSlot: (index: number, additive: boolean) => boolean;
   hasSelectedBuilder: () => boolean;
+  getSelectedBuilderAllowedBuildBlueprintIds: () => readonly StructureBlueprintId[];
   exitSpecialModes: (includeTowerTarget?: boolean) => void;
   stopSelectedUnits: () => void;
   removeLastQueuedOrder: () => void;
@@ -83,7 +84,10 @@ export class Input3DKeyboardController {
 
     const numericBuildHotkey = /^[1-9]$/.test(e.key) ? Number(e.key) - 1 : -1;
     if (numericBuildHotkey >= 0) {
-      const buildingBlueprintId = getBuildModeBuildingBlueprintIdByIndex(numericBuildHotkey);
+      const buildingBlueprintId = getBuildModeBuildingBlueprintIdByIndex(
+        numericBuildHotkey,
+        this.config.getSelectedBuilderAllowedBuildBlueprintIds(),
+      );
       if (buildingBlueprintId && (this.config.mode.isInBuildMode || this.config.hasSelectedBuilder())) {
         this.config.exitSpecialModes(false);
         this.config.mode.enterBuildMode(buildingBlueprintId);

@@ -24,7 +24,7 @@ export function acquireSimSlot(owner: object): void {
     throw new Error(
       `sessionSingleton: a backend simulation is already running ` +
         `(${describe(activeSim)}); stop it before starting another ` +
-        `(${describe(owner)}). See design_philosophy.html — one ` +
+        `(${describe(owner)}). See budget_design_philosophy.html — one ` +
         `authoritative simulation per window.`,
     );
   }
@@ -50,7 +50,7 @@ export function acquireRendererSlot(owner: object): void {
     throw new Error(
       `sessionSingleton: a frontend renderer is already alive ` +
         `(${describe(activeRenderer)}); destroy it before creating ` +
-        `another (${describe(owner)}). See design_philosophy.html — ` +
+        `another (${describe(owner)}). See budget_design_philosophy.html — ` +
         `one renderer per window.`,
     );
   }

@@ -156,7 +156,7 @@ function applyBeamPathPrediction(
     pp.normalY = tp.normalY;
     pp.normalZ = tp.normalZ;
   }
-  proj.obstructionT = target.obstructionT === null ? undefined : target.obstructionT;
+  proj.obstructionT = target.obstructionT;
   proj.endpointDamageable = target.endpointDamageable !== false;
 
   const start = projPts[0];

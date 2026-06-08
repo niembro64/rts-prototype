@@ -20,7 +20,7 @@ import {
   createWorldSupportSurface,
 } from '../sim/supportSurface';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
-import { RADAR_VISION_RADIUS } from '../network/stateSerializerVisibility';
+import { getEntityRadarRadius } from '../sim/sensorCoverage';
 import type { TurretMesh } from './TurretMesh3D';
 import type { EntityMesh, RangeRingMesh, RadiusRingMeshes } from './EntityMesh3D';
 import { sampleLocomotionSupportSurface } from './LocomotionTerrainSampler';
@@ -226,7 +226,7 @@ export class SelectionOverlayRenderer3D {
     return (
       m.rangeRingsVisible === true ||
       this.showAnyRange ||
-      (entity.buildingBlueprintId === 'buildingRadar' && selected)
+      (selected && getEntityRadarRadius(entity) > 0)
     );
   }
 
@@ -296,7 +296,8 @@ export class SelectionOverlayRenderer3D {
     const showEngageMinAcquire = this.showEngageMinAcquire;
     const showEngageMinRelease = this.showEngageMinRelease;
     const showBuild = this.showBuild;
-    const showRadar = entity.buildingBlueprintId === 'buildingRadar' && entity.selectable?.selected === true;
+    const radarRadius = getEntityRadarRadius(entity);
+    const showRadar = radarRadius > 0 && entity.selectable?.selected === true;
     const showAnyTurretRange =
       showTrackAcquire || showTrackRelease
       || showEngageAcquire || showEngageRelease
@@ -396,7 +397,7 @@ export class SelectionOverlayRenderer3D {
       }
       m.radarRing.visible = true;
       m.radarRing.position.set(ux, unitGroundZ, uy);
-      this.writeRangeCircle(m.radarRing, RADAR_VISION_RADIUS);
+      this.writeRangeCircle(m.radarRing, radarRadius);
     } else if (m.radarRing) {
       m.radarRing.visible = false;
     }

@@ -49,28 +49,51 @@ export function resetEnergyBuffers(buffers: EnergyBuffers): void {
   buffers.buildingConsumerIds.clear();
 }
 
-let consumerEnergyRemaining = new Float64Array(32);
-let consumerMetalRemaining = new Float64Array(32);
-let consumerCaps = new Float64Array(32);
-let consumerEnergySpent = new Float64Array(32);
-let consumerMetalSpent = new Float64Array(32);
-let consumerTypeCodes = new Uint8Array(32);
-let consumerPaidEnergy = new Float64Array(32);
-let consumerPaidMetal = new Float64Array(32);
-let consumerRequiredEnergy = new Float64Array(32);
-let consumerRequiredMetal = new Float64Array(32);
-let consumerHp = new Float64Array(32);
-let consumerMaxHp = new Float64Array(32);
-let consumerBuildProgress = new Float64Array(32);
-let consumerEnergyRateFraction = new Float64Array(32);
-let consumerMetalRateFraction = new Float64Array(32);
-let consumerChangedMask = new Uint8Array(32);
+const DEFAULT_CONSUMER_DEBIT_CAPACITY = 32;
+let consumerEnergyRemaining = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
+let consumerMetalRemaining = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
+let consumerCaps = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
+let consumerEnergySpent = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
+let consumerMetalSpent = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
+let consumerTypeCodes = new Uint8Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
+let consumerPaidEnergy = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
+let consumerPaidMetal = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
+let consumerRequiredEnergy = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
+let consumerRequiredMetal = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
+let consumerHp = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
+let consumerMaxHp = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
+let consumerBuildProgress = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
+let consumerEnergyRateFraction = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
+let consumerMetalRateFraction = new Float64Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
+let consumerChangedMask = new Uint8Array(DEFAULT_CONSUMER_DEBIT_CAPACITY);
 const consumerDebitTotals = new Float64Array(2);
 const CONSTRUCTION_CONSUMER_BUILD_CODE = 1;
 const CONSTRUCTION_CONSUMER_HEAL_CODE = 2;
 const CONSTRUCTION_CONSUMER_CHANGED_BUILD_CODE = 1;
 const CONSTRUCTION_CONSUMER_CHANGED_HP_CODE = 2;
 const HEAL_COST_PER_HP = 0.5;
+
+export function trimEnergyDistributionBuffers(
+  maxRetained = DEFAULT_CONSUMER_DEBIT_CAPACITY,
+): void {
+  if (consumerEnergyRemaining.length <= maxRetained) return;
+  consumerEnergyRemaining = new Float64Array(maxRetained);
+  consumerMetalRemaining = new Float64Array(maxRetained);
+  consumerCaps = new Float64Array(maxRetained);
+  consumerEnergySpent = new Float64Array(maxRetained);
+  consumerMetalSpent = new Float64Array(maxRetained);
+  consumerTypeCodes = new Uint8Array(maxRetained);
+  consumerPaidEnergy = new Float64Array(maxRetained);
+  consumerPaidMetal = new Float64Array(maxRetained);
+  consumerRequiredEnergy = new Float64Array(maxRetained);
+  consumerRequiredMetal = new Float64Array(maxRetained);
+  consumerHp = new Float64Array(maxRetained);
+  consumerMaxHp = new Float64Array(maxRetained);
+  consumerBuildProgress = new Float64Array(maxRetained);
+  consumerEnergyRateFraction = new Float64Array(maxRetained);
+  consumerMetalRateFraction = new Float64Array(maxRetained);
+  consumerChangedMask = new Uint8Array(maxRetained);
+}
 
 function ensureConsumerDebitCapacity(count: number): void {
   if (count <= consumerEnergyRemaining.length) return;
@@ -324,11 +347,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     addConstructionSource(buffers, targetId, entity.id, rate * dtSec);
   }
 
-  // 2) Walk buildings:
-  //    • Building shells under construction (funded by builders).
-  //    • Factory unit shells (currentShellId points at a unit entity).
-  for (const entity of world.getBuildings()) {
-    // 2a) Factory currently funding a unit shell?
+  // 2a) Factories currently funding unit shells.
+  for (const entity of world.getFactoryBuildings()) {
     const factory = entity.factory;
     const ownership = entity.ownership;
     if (factory !== null && factory.isProducing && factory.currentShellId !== null
@@ -362,8 +382,12 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         }
       }
     }
+  }
 
-    // 2b) Building under construction, funded by builder units?
+  // 2b) Building shells under construction, funded by builder units.
+  // Use the health/build HUD cache instead of scanning every static
+  // entity; construction shells are already included there.
+  for (const entity of world.getHealthBarBuildings()) {
     if (
       isBuildInProgress(entity.buildable)
       && entity.ownership

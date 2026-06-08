@@ -28,7 +28,7 @@ export type ServerTarget = {
     angularVelocity: number;
     pitch: number;
     pitchVelocity: number;
-    shieldRange: number | undefined;
+    shieldRange: number | null;
   }[];
 };
 
@@ -98,18 +98,31 @@ export function resetClientPredictionTargetPools(
 function clearBeamPoint(p: BeamPoint): void {
   p.x = 0; p.y = 0; p.z = 0;
   p.vx = 0; p.vy = 0; p.vz = 0;
-  p.reflectorEntityId = undefined;
-  p.reflectorKind = undefined;
-  p.reflectorPlayerId = undefined;
-  p.normalX = undefined;
-  p.normalY = undefined;
-  p.normalZ = undefined;
+  p.reflectorEntityId = null;
+  p.reflectorKind = null;
+  p.reflectorPlayerId = null;
+  p.normalX = null;
+  p.normalY = null;
+  p.normalZ = null;
 }
 
 function acquireBeamPoint(): BeamPoint {
   const pooled = _beamPointFreeList.pop();
   if (pooled) return pooled;
-  return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
+  return {
+    x: 0,
+    y: 0,
+    z: 0,
+    vx: 0,
+    vy: 0,
+    vz: 0,
+    reflectorEntityId: null,
+    reflectorKind: null,
+    reflectorPlayerId: null,
+    normalX: null,
+    normalY: null,
+    normalZ: null,
+  };
 }
 
 /** Truncate `arr` to `newLength`, returning the trailing point objects

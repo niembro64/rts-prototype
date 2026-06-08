@@ -3,7 +3,7 @@
  *
  * Uses EMA (Exponential Moving Average) + DEAD RECKONING for smooth rendering:
  * - On snapshot: store server's authoritative state as "targets"
- * - Every frame: predict using velocity/acceleration, then drift toward server targets
+ * - Every frame: predict from last-seen velocity, then drift toward server targets
  * - Smooth at any snapshot rate, from 1/sec to 60/sec
  */
 
@@ -358,7 +358,7 @@ export class ClientViewState {
           angularVelocity: 0,
           pitch: 0,
           pitchVelocity: 0,
-          shieldRange: undefined,
+          shieldRange: null,
         });
       }
       target.turrets.length = turrets.length;
@@ -368,7 +368,7 @@ export class ClientViewState {
         target.turrets[i].angularVelocity = deqRot(wireAng.vel);
         target.turrets[i].pitch = deqRot(wireAng.pitch);
         target.turrets[i].pitchVelocity = deqRot(wireAng.pitchVel);
-        target.turrets[i].shieldRange = turrets[i].currentShieldRange ?? undefined;
+        target.turrets[i].shieldRange = turrets[i].currentShieldRange ?? null;
       }
       return true;
     }
@@ -923,7 +923,7 @@ export class ClientViewState {
 
   /**
    * Called every frame. Two steps:
-   * 1. Predict: advance positions using velocity/acceleration
+   * 1. Predict: advance positions from last-seen velocity
    * 2. Drift: EMA blend position/velocity/rotation toward server targets
    */
   applyPrediction(deltaMs: number): ClientPredictionTargetAgeStats {

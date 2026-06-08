@@ -89,9 +89,9 @@ export type DamageResult = {
   killedBuildingIds: Set<EntityId>;
   killedProjectileIds: Set<EntityId>;
   killedTurretIds: Set<EntityId>;
-  truncationT?: number;
+  truncationT: number | null;
   knockbacks: KnockbackInfo[];
-  recoil?: RecoilInfo;
+  recoil: RecoilInfo | null;
   deathContexts: Map<EntityId, DeathContext>;
   /** Per-kill, the playerId of the entity that dealt the killing blow.
    *  Drives the kill-credit channel (FOW-17): the death
@@ -99,7 +99,7 @@ export type DamageResult = {
    *  vision of the corpse, so the killer learns "I got it" rather
    *  than the target silently vanishing. Undefined when the killer's
    *  ownership couldn't be resolved (e.g. neutral / world damage). */
-  killerPlayerIds: Map<EntityId, PlayerId | undefined>;
+  killerPlayerIds: Map<EntityId, PlayerId | null>;
 };
 
 export type HitInfo = {

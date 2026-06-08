@@ -24,7 +24,7 @@ import type { CursorGround } from './CursorGround';
 import type { CommandQueue } from '../sim/commands';
 import type { InputContext } from '@/types/input';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
-import type { PlayerId, Entity, EntityId, WaypointType, BuildingBlueprintId } from '../sim/types';
+import type { PlayerId, Entity, EntityId, WaypointType, BuildingBlueprintId, StructureBlueprintId } from '../sim/types';
 import {
   findClosestSelectableEntityToPoint,
   SelectionChangeTracker,
@@ -35,6 +35,7 @@ import {
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
 import { getCommandCursorStyle, type CommandCursorKind } from '../input/CommandCursors';
 import { isBuildInProgress } from '../sim/buildableHelpers';
+import { getSelectedBuilderAllowedBuildBlueprintIds } from '../sim/builderBuildRoster';
 import { isCommander } from '../sim/combat/combatUtils';
 import { Input3DSpecialModes, type Input3DSpecialMode } from './Input3DSpecialModes';
 import { Input3DHoverState, resolveInput3DHoverTargets } from './Input3DHoverState';
@@ -191,6 +192,7 @@ export class Input3DManager {
       storeControlGroupSlot: (index) => this.storeControlGroupSlot(index),
       recallControlGroupSlot: (index, additive) => this.recallControlGroupSlot(index, additive),
       hasSelectedBuilder: () => this.hasSelectedBuilder(),
+      getSelectedBuilderAllowedBuildBlueprintIds: () => this.getSelectedBuilderAllowedBuildBlueprintIds(),
       exitSpecialModes: (includeTowerTarget) => this.exitSpecialModes(includeTowerTarget),
       stopSelectedUnits: () => this.stopSelectedUnits(),
       removeLastQueuedOrder: () => this.removeLastQueuedOrder(),
@@ -606,6 +608,10 @@ export class Input3DManager {
     return (
       this.entitySource.getSelectedUnits().find((unit) => unit.builder !== null) ?? null
     );
+  }
+
+  private getSelectedBuilderAllowedBuildBlueprintIds(): readonly StructureBlueprintId[] {
+    return getSelectedBuilderAllowedBuildBlueprintIds(this.entitySource.getSelectedUnits());
   }
 
   private applyCursor(kind: CommandCursorKind): void {

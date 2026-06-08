@@ -55,7 +55,7 @@ export function emitLaserStopsForEntity(entity: Entity): SimEvent[] {
   for (let i = 0; i < turrets.length; i++) {
     const config = turrets[i].config;
     const shot = config.shot;
-    if (shot !== undefined && shot.type === 'beam') {
+    if (shot !== null && shot.type === 'beam') {
       const soundEntityId = turretSoundEntityId(entity, i);
       if (!activeLaserSoundIds.delete(soundEntityId)) continue;
       _laserStopOwner.push({
@@ -120,7 +120,7 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
       const weapon = turrets[i];
       const config = weapon.config;
       const shot = config.shot;
-      const isBeamWeapon = shot !== undefined && shot.type === 'beam';
+      const isBeamWeapon = shot !== null && shot.type === 'beam';
 
       if (!isBeamWeapon) continue;
 

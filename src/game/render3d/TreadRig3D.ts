@@ -17,7 +17,7 @@
 // target every frame. Internal wheels read their angular velocity
 // from the parent side's beltVelocity / wheelR so the whole side
 // moves as one mechanism. See the "Locomotion Visuals Are Frontend"
-// section of design_philosophy.html.
+// section of budget_design_philosophy.html.
 
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';

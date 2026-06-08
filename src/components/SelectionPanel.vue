@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { COLORS, WAYPOINT_COLOR_CSS } from '@/colorsConfig';
 import type { WaypointType } from '../game/sim/types';
 import {
-  buildingRosterDisplay,
+  structureRosterDisplay,
   unitRosterDisplay,
 } from '../game/sim/blueprints/displayRosters';
 
@@ -19,7 +19,7 @@ const props = defineProps<{
   actions: SelectionActions;
 }>();
 
-// Per design_philosophy.html "Selection Menus Are Uniform Per Entity Type"
+// Per budget_design_philosophy.html "Selection Menus Are Uniform Per Entity Type"
 // every entity type carries its own uniform action set. Pure-
 // infrastructure buildings expose ON/OFF + Self-Destruct; the panel
 // opens whenever any owned entity is selected.
@@ -154,7 +154,16 @@ function costTitle(label: string, cost: number, key?: string): string {
   return `${label}${hotkey} - Cost ${cost}`;
 }
 
-const buildingOptions = buildingRosterDisplay;
+const buildingOptions = computed(() => {
+  return props.selection.allowedBuildBlueprintIds
+    .map((buildingBlueprintId, index) => {
+      const option = structureRosterDisplay.find((entry) => entry.buildingBlueprintId === buildingBlueprintId);
+      return option === undefined
+        ? null
+        : { ...option, key: `${index + 1}` };
+    })
+    .filter((option) => option !== null);
+});
 const unitOptions = unitRosterDisplay;
 
 const vehicleOptions = unitOptions.filter((unit) => unit.locomotion !== 'legs');
@@ -165,7 +174,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 <template>
   <!-- OPTIONS PANEL (left side) -->
   <div v-if="showPanel" class="options-panel" :style="selectionPanelStyle">
-    <!-- Selection header. Per design_philosophy.html "Selection Menus
+    <!-- Selection header. Per budget_design_philosophy.html "Selection Menus
          Are Uniform Per Entity Type": the header reflects the
          selection's entity type. Commanders read as Commander,
          fabricator-class towers as Fabricator, other towers as Tower,
@@ -327,7 +336,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 
     <!-- Fire control (units + towers). Lives outside the Movement
          group because towers also expose fire-at-will / hold-fire.
-         See design_philosophy.html "Selection Menus Are Uniform Per
+         See budget_design_philosophy.html "Selection Menus Are Uniform Per
          Entity Type": both unit and tower selection panels list a
          fire-control toggle. -->
     <div v-if="showCombatActions" class="button-group">
@@ -452,7 +461,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
          left-click on any entity with an ID sets the host-level
          priorityTargetId; right-click / Esc cancels); Clear Target
          drops the lock and reverts to autonomous acquisition.
-         Per design_philosophy.html "Tower selection panel". -->
+         Per budget_design_philosophy.html "Tower selection panel". -->
     <div v-if="selection.hasTowerTargetControl && showTowerActions" class="button-group">
       <div class="group-label">Target</div>
       <div class="buttons">
@@ -482,7 +491,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
     </div>
 
     <!-- Building ON/OFF. Producer Buildings Are ON/OFF in
-         design_philosophy.html: solar/wind/extractor selections expose
+         budget_design_philosophy.html: solar/wind/extractor selections expose
          this toggle. ON = producing + normal damage; OFF = not
          producing + 10x damage resistance. -->
     <div v-if="selection.hasBuildingActiveControl && showBuildingActions" class="button-group">

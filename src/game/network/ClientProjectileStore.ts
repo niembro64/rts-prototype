@@ -141,12 +141,12 @@ export class ClientProjectileStore {
       const dp = ensureBeamPoint(dstTarget, i);
       dp.x = deqProjPos(sp.x); dp.y = deqProjPos(sp.y); dp.z = deqProjPos(sp.z);
       dp.vx = deqVel(sp.vx); dp.vy = deqVel(sp.vy); dp.vz = deqVel(sp.vz);
-      dp.reflectorEntityId = sp.reflectorEntityId ?? undefined;
-      dp.reflectorKind = sp.reflectorKind ?? undefined;
-      dp.reflectorPlayerId = sp.reflectorPlayerId ?? undefined;
-      dp.normalX = sp.normalX === null ? undefined : deqNormal(sp.normalX);
-      dp.normalY = sp.normalY === null ? undefined : deqNormal(sp.normalY);
-      dp.normalZ = sp.normalZ === null ? undefined : deqNormal(sp.normalZ);
+      dp.reflectorEntityId = sp.reflectorEntityId;
+      dp.reflectorKind = sp.reflectorKind;
+      dp.reflectorPlayerId = sp.reflectorPlayerId;
+      dp.normalX = sp.normalX === null ? null : deqNormal(sp.normalX);
+      dp.normalY = sp.normalY === null ? null : deqNormal(sp.normalY);
+      dp.normalZ = sp.normalZ === null ? null : deqNormal(sp.normalZ);
     }
 
     const projPts = proj.points ?? (proj.points = []);
@@ -190,7 +190,7 @@ export class ClientProjectileStore {
         pp.normalZ = sp.normalZ;
       }
     }
-    proj.obstructionT = target.obstructionT === null ? undefined : target.obstructionT;
+    proj.obstructionT = target.obstructionT;
     proj.endpointDamageable = update.endpointDamageable !== false;
     if (!this.activeBeamPathIds.has(update.id)) {
       this.activeBeamPathIds.add(update.id);
@@ -347,14 +347,26 @@ export class ClientProjectileStore {
             y: deqProjPos(spawn.beam.start.y),
             z: deqProjPos(spawn.beam.start.z),
             vx: 0, vy: 0, vz: 0,
+            reflectorEntityId: null,
+            reflectorKind: null,
+            reflectorPlayerId: null,
+            normalX: null,
+            normalY: null,
+            normalZ: null,
           },
           {
             x: deqProjPos(spawn.beam.end.x),
             y: deqProjPos(spawn.beam.end.y),
             z: deqProjPos(spawn.beam.end.z),
             vx: 0, vy: 0, vz: 0,
+            reflectorEntityId: null,
+            reflectorKind: null,
+            reflectorPlayerId: null,
+            normalX: null,
+            normalY: null,
+            normalZ: null,
           },
-        ] : undefined,
+        ] : null,
       },
     };
     if (spawn.isDGun) {

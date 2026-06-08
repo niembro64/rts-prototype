@@ -1,14 +1,14 @@
 // Network types extracted from game/network/NetworkTypes.ts
 
 import {
-  BUILDING_BLUEPRINT_IDS,
+  STRUCTURE_BLUEPRINT_IDS,
   SHOT_BLUEPRINT_IDS,
   TURRET_BLUEPRINT_IDS,
   UNIT_BLUEPRINT_IDS,
 } from './blueprintIds';
 import type {
-  BuildingBlueprintId,
   ShotBlueprintId,
+  StructureBlueprintId,
   TurretBlueprintId,
   UnitBlueprintId,
 } from './blueprintIds';
@@ -113,8 +113,11 @@ export function codeToUnitBlueprintId(c: number): UnitBlueprintId | null {
   return _UNIT_BLUEPRINT_IDS[c] ?? null;
 }
 
-// ── Building blueprint codes ───────────────────────────────────────
-const _BUILDING_BLUEPRINT_IDS = BUILDING_BLUEPRINT_IDS;
+// ── Static-structure blueprint codes ───────────────────────────────
+// Compatibility name: the historical wire field is
+// buildingBlueprintCode, but the code table covers pure buildings and
+// peer tower blueprints.
+const _BUILDING_BLUEPRINT_IDS = STRUCTURE_BLUEPRINT_IDS;
 export type BuildingBlueprintCode = number;
 export function getNetworkBuildingBlueprintIds(): readonly string[] {
   return _BUILDING_BLUEPRINT_IDS;
@@ -128,7 +131,7 @@ export function buildingBlueprintIdToCode(s: string): BuildingBlueprintCode {
   const code = _BUILDING_BLUEPRINT_ID_TO_CODE[s];
   return code === undefined ? BUILDING_BLUEPRINT_CODE_UNKNOWN : code;
 }
-export function codeToBuildingBlueprintId(c: number): BuildingBlueprintId | null {
+export function codeToBuildingBlueprintId(c: number): StructureBlueprintId | null {
   return _BUILDING_BLUEPRINT_IDS[c] ?? null;
 }
 

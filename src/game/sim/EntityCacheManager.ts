@@ -67,6 +67,11 @@ export class EntityCacheManager {
    *  (minimap, name labels) want both kinds with one iteration; without
    *  this they were back-to-back walking getUnits() then getBuildings(). */
   private cachedUnitsAndBuildings: Entity[] = [];
+  /** Every entity addressable by the combat targeting slab. Units,
+   *  buildings, towers, and traveling shots all occupy target rows, so
+   *  the per-tick stamp walks this maintained set instead of stitching
+   *  broad category lists together each frame. */
+  private cachedCombatTargetEntities: Entity[] = [];
   private cachedUnitsByPlayer: Map<PlayerId, Entity[]> = new Map();
   private cachedBuildingsByPlayer: Map<PlayerId, Entity[]> = new Map();
   private dirty: boolean = true;
@@ -101,6 +106,7 @@ export class EntityCacheManager {
     this.cachedShieldPanelUnits.length = 0;
     this.cachedAll.length = 0;
     this.cachedUnitsAndBuildings.length = 0;
+    this.cachedCombatTargetEntities.length = 0;
     for (const list of this.cachedUnitsByPlayer.values()) list.length = 0;
     for (const list of this.cachedBuildingsByPlayer.values()) list.length = 0;
     for (const list of this.cachedFactoriesByPlayer.values()) list.length = 0;
@@ -120,7 +126,7 @@ export class EntityCacheManager {
           if (turrets[i].config.visualOnly) continue;
           hasCombatTurret = true;
           const shot = turrets[i].config.shot;
-          if (shot === undefined) continue;
+          if (shot === null) continue;
           const t = shot.type;
           if (t === 'shield' && shot.barrier !== undefined) hasShield = true;
           else if (t === 'beam') hasBeam = true;
@@ -134,6 +140,7 @@ export class EntityCacheManager {
         case 'unit':
           this.cachedUnits.push(entity);
           this.cachedUnitsAndBuildings.push(entity);
+          this.cachedCombatTargetEntities.push(entity);
           if (ownership !== null) {
             this.getOrCreateUnitsByPlayer(ownership.playerId).push(entity);
           }
@@ -182,6 +189,7 @@ export class EntityCacheManager {
           // queue lives on the entity.factory component.
           this.cachedBuildings.push(entity);
           this.cachedUnitsAndBuildings.push(entity);
+          this.cachedCombatTargetEntities.push(entity);
           if (ownership !== null) {
             this.getOrCreateBuildingsByPlayer(ownership.playerId).push(entity);
           }
@@ -231,6 +239,7 @@ export class EntityCacheManager {
           this.cachedProjectiles.push(entity);
           if (entity.projectile !== null && entity.projectile.projectileType === 'projectile') {
             this.cachedTravelingProjectiles.push(entity);
+            this.cachedCombatTargetEntities.push(entity);
             if (entity.projectile.config.shotProfile.visual.smokeTrail) {
               this.cachedSmokeTrailProjectiles.push(entity);
             }
@@ -282,6 +291,10 @@ export class EntityCacheManager {
 
   getUnitsAndBuildings(): Entity[] {
     return this.cachedUnitsAndBuildings;
+  }
+
+  getCombatTargetEntities(): Entity[] {
+    return this.cachedCombatTargetEntities;
   }
 
   getUnitsByPlayer(playerId: PlayerId): Entity[] {

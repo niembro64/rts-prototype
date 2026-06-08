@@ -24,6 +24,8 @@ export type {
   BuildingRenderProfile,
   BuildingAnchorProfile,
   BuildingSupportSurface,
+  StructureBlueprintId,
+  SensorCapabilityConfig,
   UnitSupportSurface,
   UnitAction,
   UnitPathPlan,

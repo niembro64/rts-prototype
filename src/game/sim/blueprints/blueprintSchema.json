@@ -14,6 +14,16 @@
         "rustType": "String"
       }
     },
+    "StructureBlueprintId": {
+      "type": "string",
+      "x-codegen": {
+        "tsImport": {
+          "module": "./blueprintIds",
+          "name": "StructureBlueprintId"
+        },
+        "rustType": "String"
+      }
+    },
     "TurretBlueprintId": {
       "type": "string",
       "x-codegen": {
@@ -141,6 +151,34 @@
         },
         "rustType": "i32"
       }
+    },
+    "SensorCapabilityConfig": {
+      "type": "object",
+      "required": [
+        "fullSightRadius",
+        "radarRadius",
+        "detectorRadius",
+        "trackingRadius",
+        "scanRadius"
+      ],
+      "properties": {
+        "fullSightRadius": {
+          "type": "number"
+        },
+        "radarRadius": {
+          "type": "number"
+        },
+        "detectorRadius": {
+          "type": "number"
+        },
+        "trackingRadius": {
+          "type": "number"
+        },
+        "scanRadius": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
     },
     "ProjectileShotKind": {
       "enum": [
@@ -737,7 +775,13 @@
         "z",
         "vx",
         "vy",
-        "vz"
+        "vz",
+        "reflectorEntityId",
+        "reflectorKind",
+        "reflectorPlayerId",
+        "normalX",
+        "normalY",
+        "normalZ"
       ],
       "properties": {
         "x": {
@@ -759,22 +803,52 @@
           "type": "number"
         },
         "reflectorEntityId": {
-          "$ref": "#/$defs/EntityId"
+          "oneOf": [
+            {
+              "$ref": "#/$defs/EntityId"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "reflectorKind": {
-          "$ref": "#/$defs/BeamReflectorKind"
+          "oneOf": [
+            {
+              "$ref": "#/$defs/BeamReflectorKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "reflectorPlayerId": {
-          "$ref": "#/$defs/PlayerId"
+          "oneOf": [
+            {
+              "$ref": "#/$defs/PlayerId"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "normalX": {
-          "type": "number"
+          "type": [
+            "number",
+            "null"
+          ]
         },
         "normalY": {
-          "type": "number"
+          "type": [
+            "number",
+            "null"
+          ]
         },
         "normalZ": {
-          "type": "number"
+          "type": [
+            "number",
+            "null"
+          ]
         }
       },
       "additionalProperties": false
@@ -2342,7 +2416,8 @@
       "type": "object",
       "required": [
         "buildRange",
-        "constructionRate"
+        "constructionRate",
+        "allowedBuildBlueprintIds"
       ],
       "properties": {
         "buildRange": {
@@ -2350,6 +2425,12 @@
         },
         "constructionRate": {
           "type": "number"
+        },
+        "allowedBuildBlueprintIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StructureBlueprintId"
+          }
         }
       },
       "additionalProperties": false
@@ -2424,6 +2505,7 @@
         "bodyCenterHeight",
         "supportSurface",
         "fullVisionRadius",
+        "sensors",
         "mass",
         "cost",
         "turrets",
@@ -2471,6 +2553,9 @@
         },
         "fullVisionRadius": {
           "type": "number"
+        },
+        "sensors": {
+          "$ref": "#/$defs/SensorCapabilityConfig"
         },
         "mass": {
           "type": "number"

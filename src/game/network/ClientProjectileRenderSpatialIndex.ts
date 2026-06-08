@@ -131,7 +131,7 @@ export class ClientProjectileRenderSpatialIndex {
           const projectile = entity.projectile;
           if (projectile === null) continue;
           const points = projectile.points;
-          if (points !== undefined && points.length > 0) {
+          if (points !== null && points.length > 0) {
             if (seen.has(entity.id)) continue;
             seen.add(entity.id);
           }

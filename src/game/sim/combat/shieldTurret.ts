@@ -89,13 +89,13 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
       const weapon = turrets[weaponIndex];
       const config = weapon.config;
       const shot = config.shot;
-      if (shot === undefined || shot.type !== 'shield') continue;
+      if (shot === null || shot.type !== 'shield') continue;
       const fieldShot = shot as ShieldConfig;
 
       const transitionTime = fieldShot.transitionTime;
 
       // Initialize
-      if (weapon.shield === undefined) {
+      if (weapon.shield === null) {
         weapon.shield = { transition: 0, range: 0 };
       }
 

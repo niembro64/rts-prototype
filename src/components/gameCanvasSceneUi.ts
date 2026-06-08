@@ -90,6 +90,7 @@ export function useGameCanvasSceneUi({
     buildingCount: 0,
     hasCommander: false,
     hasBuilder: false,
+    allowedBuildBlueprintIds: [],
     hasDGun: false,
     hasFireControl: false,
     fireEnabled: false,

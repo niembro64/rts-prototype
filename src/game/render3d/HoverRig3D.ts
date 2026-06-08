@@ -1,6 +1,6 @@
 // HoverRig3D — ducted fan ring + downward smoke columns for hover
 // locomotion. Hover never contacts ground, so the visuals contract
-// (see "Locomotion Visuals Are Frontend" in design_philosophy.html)
+// (see "Locomotion Visuals Are Frontend" in budget_design_philosophy.html)
 // inverts: the rig tracks per-frame `clearance` (chassis world Y −
 // terrain Y) instead of a contact boolean, and the floor clamp is a
 // soft safety — the rendered rig group is lifted at minimum

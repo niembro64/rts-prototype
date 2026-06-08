@@ -20,6 +20,7 @@ import type {
   EntityBaseLedger,
   EntityHudBlueprint,
   LockOnInclusionObject,
+  SensorCapabilityConfig,
 } from '../../../types/blueprints';
 import rawBuildingBlueprints from './buildings.json';
 import rawTowerBlueprints from './towers.json';
@@ -33,7 +34,7 @@ import {
   assertTowerLockOnInclusionConfigIds,
   getTowerLockOnInclusions,
 } from './lockOnConfig';
-import { BUILDING_BLUEPRINT_IDS } from '../../../types/blueprintIds';
+import { STRUCTURE_BLUEPRINT_IDS } from '../../../types/blueprintIds';
 import { TURRET_BLUEPRINTS } from './turrets';
 import {
   normalizeEntityBaseLedgerFromAliases,
@@ -67,6 +68,7 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   /** Authored walkable/support proxy, independent from the collision cuboid. */
   supportSurface: BuildingSupportSurface;
   hud: EntityHudBlueprint;
+  sensors: SensorCapabilityConfig;
   /** Optional reusable turret hardpoints mounted on this building.
    *  Building mount coordinates are absolute world units relative to
    *  the building center/base, not body-radius fractions like units. */
@@ -98,13 +100,15 @@ const STATIC_BLUEPRINTS_BY_ID = {
   ...PURE_BUILDING_BLUEPRINTS,
   ...TOWER_BLUEPRINTS,
 } as Partial<Record<BuildingBlueprintId, BuildingBlueprint>>;
-for (const id of BUILDING_BLUEPRINT_IDS) {
+for (const id of STRUCTURE_BLUEPRINT_IDS) {
   if (STATIC_BLUEPRINTS_BY_ID[id as BuildingBlueprintId] === undefined) {
     throw new Error(`Missing static blueprint for stable building blueprint id ${id}`);
   }
 }
+// Compatibility table for runtime/network fields that still use the
+// historical `buildingBlueprintId` name for every static structure.
 export const BUILDING_BLUEPRINTS = Object.fromEntries(
-  BUILDING_BLUEPRINT_IDS.map((id) => [id, STATIC_BLUEPRINTS_BY_ID[id as BuildingBlueprintId]]),
+  STRUCTURE_BLUEPRINT_IDS.map((id) => [id, STATIC_BLUEPRINTS_BY_ID[id as BuildingBlueprintId]]),
 ) as Record<BuildingBlueprintId, BuildingBlueprint>;
 
 for (const id of Object.keys(rawTowerBlueprints)) {
@@ -122,6 +126,7 @@ const BUILDING_EXPLICIT_FIELDS = [
   'constructionRate',
   'conversionRate',
   'supportSurface',
+  'sensors',
   'turrets',
 ] as const;
 
@@ -238,6 +243,28 @@ function validateBuildingSupportSurface(
   }
 }
 
+function validateSensorCapabilityConfig(
+  context: string,
+  sensors: SensorCapabilityConfig,
+): void {
+  if (!sensors || typeof sensors !== 'object') {
+    throw new Error(`Invalid ${context}: sensors must be an object`);
+  }
+  const fields = [
+    'fullSightRadius',
+    'radarRadius',
+    'detectorRadius',
+    'trackingRadius',
+    'scanRadius',
+  ] as const;
+  for (const field of fields) {
+    const value = sensors[field];
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error(`Invalid ${context}: sensors.${field} must be a finite non-negative number`);
+    }
+  }
+}
+
 for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   assertExplicitFields(`building blueprint ${id}`, blueprint, BUILDING_EXPLICIT_FIELDS);
   const towerBlueprint = isTowerBuildingBlueprintId(id as BuildingBlueprintId);
@@ -290,6 +317,7 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
     throw new Error(`Invalid building blueprint ${id}: visualHeight must be positive`);
   }
   validateBuildingSupportSurface(id, blueprint.supportSurface);
+  validateSensorCapabilityConfig(`building blueprint ${id}`, blueprint.sensors);
   if (
     !blueprint.hud ||
     !Number.isFinite(blueprint.hud.barsOffsetAboveTop)

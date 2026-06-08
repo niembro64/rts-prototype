@@ -231,12 +231,12 @@ function getHomingMaxThrustAccel(shot: ProjectileShot): number {
 }
 
 function clearBeamReflectorMetadata(point: BeamPoint): void {
-  point.reflectorEntityId = undefined;
-  point.reflectorKind = undefined;
-  point.reflectorPlayerId = undefined;
-  point.normalX = undefined;
-  point.normalY = undefined;
-  point.normalZ = undefined;
+  point.reflectorEntityId = null;
+  point.reflectorKind = null;
+  point.reflectorPlayerId = null;
+  point.normalX = null;
+  point.normalY = null;
+  point.normalZ = null;
 }
 
 function writeZeroBeamMotion(point: BeamPoint): void {
@@ -246,7 +246,20 @@ function writeZeroBeamMotion(point: BeamPoint): void {
 }
 
 function createBeamPoint(x: number, y: number, z: number): BeamPoint {
-  return { x, y, z, vx: 0, vy: 0, vz: 0 };
+  return {
+    x,
+    y,
+    z,
+    vx: 0,
+    vy: 0,
+    vz: 0,
+    reflectorEntityId: null,
+    reflectorKind: null,
+    reflectorPlayerId: null,
+    normalX: null,
+    normalY: null,
+    normalZ: null,
+  };
 }
 
 function copyBeamReflectorMetadata(
@@ -262,7 +275,7 @@ function copyBeamReflectorMetadata(
 ): void {
   point.reflectorEntityId = reflector.reflectorEntityId;
   point.reflectorKind = reflector.reflectorKind;
-  point.reflectorPlayerId = reflector.reflectorPlayerId;
+  point.reflectorPlayerId = reflector.reflectorPlayerId ?? null;
   point.normalX = reflector.normalX;
   point.normalY = reflector.normalY;
   point.normalZ = reflector.normalZ;
@@ -320,7 +333,7 @@ export function registerPackedProjectile(entity: Entity): void {
   _packedProjectileSourcePlayerId[slot] = proj.shotSource.sourcePlayerId;
   _packedProjectileSourceTeamId[slot] = proj.shotSource.sourceTeamId;
   _packedProjectileSourceTurretBlueprintCode[slot] =
-    proj.shotSource.sourceTurretBlueprintId !== undefined
+    proj.shotSource.sourceTurretBlueprintId !== null
       ? turretBlueprintIdToCode(proj.shotSource.sourceTurretBlueprintId)
       : TURRET_BLUEPRINT_CODE_UNKNOWN;
   _packedProjectileSourceShotBlueprintCode[slot] =
@@ -379,7 +392,12 @@ export function resetProjectileBuffers(): void {
   _packedProjectileCount = 0;
   _packedProjectileSlots.clear();
   _packedProjectileEntities.length = 0;
+  _packedProjectileIds = new Int32Array(0);
+  _packedProjectileViewsBound = false;
+  _packedProjectilePoolCapacity = 0;
   _travelingProjectileBatchEntities.length = 0;
+  trimTravelingProjectileBatchBuffers();
+  trimHomingGuidanceBuffers();
 }
 
 // Check if a specific weapon has an active beam (by weapon index)
@@ -448,8 +466,8 @@ export function fireTurrets(
       if (config.visualOnly) continue;
       const shot = config.shot;
       if (!shot) continue;
-      const shieldSubmunitions = isShieldSubmunitionTurret(weapon) ? config.submunitions : undefined;
-      const mask = shieldSubmunitions !== undefined ? activeMask : firingMask;
+      const shieldSubmunitions = isShieldSubmunitionTurret(weapon) ? config.submunitions : null;
+      const mask = shieldSubmunitions !== null ? activeMask : firingMask;
       if (!turretMaskIncludes(mask, weaponIndex)) continue;
       if (config.passive) continue; // Passive turrets track/engage but never fire
       const isBeamWeapon = isRayConfig(shot);
@@ -519,7 +537,7 @@ export function fireTurrets(
 
       if (shot.type === 'shield') {
         const spec = shieldSubmunitions;
-        if (spec === undefined || lockedTarget === undefined) continue;
+        if (spec === null || lockedTarget === undefined) continue;
         if (readTurretCooldownForFire(unit, weaponIndex) > 0) continue;
 
         const pitchCos = Math.cos(weapon.pitch);
@@ -655,7 +673,7 @@ export function fireTurrets(
       } else {
         canFire = readTurretCooldownForFire(unit, weaponIndex) <= 0;
         const activeBurst = weapon.burst;
-        canBurstFire = activeBurst !== undefined &&
+        canBurstFire = activeBurst !== null &&
           activeBurst.remaining > 0 &&
           readTurretBurstCooldownForFire(unit, weaponIndex) <= 0;
 
@@ -669,13 +687,13 @@ export function fireTurrets(
       // beamDuration + cooldown.
       if (shot.type !== 'beam') {
         const activeBurst = weapon.burst;
-        if (canBurstFire && activeBurst !== undefined) {
+        if (canBurstFire && activeBurst !== null) {
           activeBurst.remaining--;
           const burstConfig = config.burst;
-          const burstDelay = burstConfig !== undefined ? burstConfig.delay : 80;
+          const burstDelay = burstConfig !== null ? burstConfig.delay : 80;
           writeTurretBurstCooldownToSlab(unit, weaponIndex, burstDelay);
           if (activeBurst.remaining <= 0) {
-            weapon.burst = undefined;
+            weapon.burst = null;
           }
         } else if (canFire && shot.type !== 'laser') {
           writeTurretCooldownToSlab(
@@ -684,7 +702,7 @@ export function fireTurrets(
             rollTurretCooldownDuration(config.cooldown, () => world.rng.next()),
           );
           const burstConfig = config.burst;
-          if (burstConfig !== undefined && burstConfig.count > 1) {
+          if (burstConfig !== null && burstConfig.count > 1) {
             // burst.remaining is JS-only state; burst.cooldown lives
             // on the slab and is stamped via writeTurretBurstCooldownToSlab.
             const burstDelay = burstConfig.delay;
@@ -700,8 +718,8 @@ export function fireTurrets(
 
       // Turret mount point in world (full XYZ from the resolver above).
       const spreadConfig = config.spread;
-      const pellets = spreadConfig !== undefined ? spreadConfig.pelletCount : 1;
-      const spreadAngle = spreadConfig !== undefined ? spreadConfig.angle : 0;
+      const pellets = spreadConfig !== null ? spreadConfig.pelletCount : 1;
+      const spreadAngle = spreadConfig !== null ? spreadConfig.angle : 0;
       const barrelCount = countBarrels(config);
       const fireBaseIndex = weapon.barrelFireIndex;
 
@@ -943,6 +961,8 @@ export function fireTurrets(
 // Reusable array for homing velocity updates (avoid per-frame allocation)
 const _homingVelocityUpdates: import('./types').ProjectileVelocityUpdateEvent[] = [];
 const _travelingProjectileBatchEntities: Entity[] = [];
+const DEFAULT_TRAVELING_PROJECTILE_BATCH_CAPACITY = 16;
+const DEFAULT_HOMING_GUIDANCE_BATCH_CAPACITY = 16;
 let _travelingProjectileBatchCapacity = 0;
 let _travelingProjectilePosX = new Float64Array(0);
 let _travelingProjectilePosY = new Float64Array(0);
@@ -953,7 +973,13 @@ let _travelingProjectileVelZ = new Float64Array(0);
 let _travelingProjectileAccelX = new Float64Array(0);
 let _travelingProjectileAccelY = new Float64Array(0);
 let _travelingProjectileAccelZ = new Float64Array(0);
-let _travelingProjectileHomingReporting = new Uint8Array(0);
+let _travelingProjectileGravity = new Float64Array(0);
+let _travelingProjectileTerrainTargetZ = new Float64Array(0);
+let _travelingProjectilePolicyFlags = new Uint8Array(0);
+let _travelingProjectileHomingTargetId = new Int32Array(0);
+
+const TRAVELING_PROJECTILE_FLAG_HOMING_REPORTING = 1;
+const TRAVELING_PROJECTILE_FLAG_DGUN_TERRAIN_FOLLOW = 2;
 
 const HOMING_GUIDANCE_BATCH_STRIDE = 31;
 const HG_ROW_VEL_X = 0;
@@ -990,6 +1016,31 @@ const HG_ROW_OUT_THRUST_Z = 29;
 let _homingGuidanceBatchCapacity = 0;
 let _homingGuidanceRows = new Float64Array(0);
 let _homingGuidanceProjectileIndex = new Int32Array(0);
+
+function trimTravelingProjectileBatchBuffers(maxRetained = DEFAULT_TRAVELING_PROJECTILE_BATCH_CAPACITY): void {
+  if (_travelingProjectileBatchCapacity <= maxRetained) return;
+  _travelingProjectileBatchCapacity = maxRetained;
+  _travelingProjectilePosX = new Float64Array(maxRetained);
+  _travelingProjectilePosY = new Float64Array(maxRetained);
+  _travelingProjectilePosZ = new Float64Array(maxRetained);
+  _travelingProjectileVelX = new Float64Array(maxRetained);
+  _travelingProjectileVelY = new Float64Array(maxRetained);
+  _travelingProjectileVelZ = new Float64Array(maxRetained);
+  _travelingProjectileAccelX = new Float64Array(maxRetained);
+  _travelingProjectileAccelY = new Float64Array(maxRetained);
+  _travelingProjectileAccelZ = new Float64Array(maxRetained);
+  _travelingProjectileGravity = new Float64Array(maxRetained);
+  _travelingProjectileTerrainTargetZ = new Float64Array(maxRetained);
+  _travelingProjectilePolicyFlags = new Uint8Array(maxRetained);
+  _travelingProjectileHomingTargetId = new Int32Array(maxRetained);
+}
+
+function trimHomingGuidanceBuffers(maxRetained = DEFAULT_HOMING_GUIDANCE_BATCH_CAPACITY): void {
+  if (_homingGuidanceBatchCapacity <= maxRetained) return;
+  _homingGuidanceBatchCapacity = maxRetained;
+  _homingGuidanceRows = new Float64Array(maxRetained * HOMING_GUIDANCE_BATCH_STRIDE);
+  _homingGuidanceProjectileIndex = new Int32Array(maxRetained);
+}
 
 function ensureHomingGuidanceBatchCapacity(required: number): void {
   if (required <= _homingGuidanceBatchCapacity) return;
@@ -1042,9 +1093,21 @@ function ensureTravelingProjectileBatchCapacity(required: number): void {
   accelZ.set(_travelingProjectileAccelZ);
   _travelingProjectileAccelZ = accelZ;
 
-  const homingReporting = new Uint8Array(next);
-  homingReporting.set(_travelingProjectileHomingReporting);
-  _travelingProjectileHomingReporting = homingReporting;
+  const gravity = new Float64Array(next);
+  gravity.set(_travelingProjectileGravity);
+  _travelingProjectileGravity = gravity;
+
+  const terrainTargetZ = new Float64Array(next);
+  terrainTargetZ.set(_travelingProjectileTerrainTargetZ);
+  _travelingProjectileTerrainTargetZ = terrainTargetZ;
+
+  const policyFlags = new Uint8Array(next);
+  policyFlags.set(_travelingProjectilePolicyFlags);
+  _travelingProjectilePolicyFlags = policyFlags;
+
+  const homingTargetId = new Int32Array(next);
+  homingTargetId.set(_travelingProjectileHomingTargetId);
+  _travelingProjectileHomingTargetId = homingTargetId;
 }
 
 // 3D projectile integration: exact constant-acceleration advance on
@@ -1085,7 +1148,7 @@ function _updatePackedProjectilesJS(dtMs: number, dtSec: number): void {
     proj.timeAlive += dtMs;
     _packedProjectileTimeAlive[slot] = proj.timeAlive;
 
-    if (proj.collisionStartX === undefined) {
+    if (proj.collisionStartX === null) {
       proj.collisionStartX = position.x;
       proj.collisionStartY = position.y;
       proj.collisionStartZ = position.z;
@@ -1150,7 +1213,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     proj.timeAlive += dtMs;
 
     const position = getEntityPosition3d(entity, _projectilePositionScratch);
-    if (proj.collisionStartX === undefined) {
+    if (proj.collisionStartX === null) {
       proj.collisionStartX = position.x;
       proj.collisionStartY = position.y;
       proj.collisionStartZ = position.z;
@@ -1167,6 +1230,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
       dgunProjectile.isDGun === true;
     const shotConfig = proj.config.shot as ProjectileShot;
     const projectileGravity = GRAVITY * shotConfig.gravityForceMultiplier;
+    let policyFlags = isDGunWave ? TRAVELING_PROJECTILE_FLAG_DGUN_TERRAIN_FOLLOW : 0;
 
     // Per-tick acceleration. Gravity and thrust combine before
     // integration so guided / terrain-follow projectiles spend engine
@@ -1185,7 +1249,13 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     _travelingProjectileVelX[index] = proj.velocityX;
     _travelingProjectileVelY[index] = proj.velocityY;
     _travelingProjectileVelZ[index] = proj.velocityZ;
-    _travelingProjectileHomingReporting[index] = 0;
+    _travelingProjectileAccelX[index] = 0;
+    _travelingProjectileAccelY[index] = 0;
+    _travelingProjectileAccelZ[index] = 0;
+    _travelingProjectileGravity[index] = projectileGravity;
+    _travelingProjectileTerrainTargetZ[index] = 0;
+    _travelingProjectilePolicyFlags[index] = policyFlags;
+    _travelingProjectileHomingTargetId[index] = NO_ENTITY_ID;
 
     if (!isDGunWave && proj.homingTargetId !== NO_ENTITY_ID) {
       let homingTarget = world.getEntity(proj.homingTargetId);
@@ -1198,7 +1268,9 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
         homingTarget = undefined;
       }
       if (homingTarget !== undefined) {
-        _travelingProjectileHomingReporting[index] = 1;
+        _travelingProjectileHomingTargetId[index] = homingTarget.id;
+        policyFlags |= TRAVELING_PROJECTILE_FLAG_HOMING_REPORTING;
+        _travelingProjectilePolicyFlags[index] = policyFlags;
         const aimPoint = resolveTargetAimPoint(
           homingTarget,
           position.x, position.y, position.z,
@@ -1270,7 +1342,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
         _homingGuidanceRows[base + HG_ROW_ORIGIN_ACCEL_Y] = originAccelerationY;
         _homingGuidanceRows[base + HG_ROW_ORIGIN_ACCEL_Z] = originAccelerationZ;
         _homingGuidanceRows[base + HG_ROW_PROJECTILE_SPEED] = projectileSpeed;
-        _homingGuidanceRows[base + HG_ROW_PROJECTILE_GRAVITY] = projectileGravity;
+        _homingGuidanceRows[base + HG_ROW_PROJECTILE_GRAVITY] = _travelingProjectileGravity[index];
         _homingGuidanceRows[base + HG_ROW_MAX_TIME_SEC] = remainingSec;
         _homingGuidanceRows[base + HG_ROW_HOMING_TURN_RATE] = proj.homingTurnRate ?? 0;
         _homingGuidanceRows[base + HG_ROW_MAX_THRUST_ACCEL] = maxThrustAccel;
@@ -1282,20 +1354,21 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     // `pos + v*t + 0.5*a*t²`, `vel + a*t` kernel; TypeScript only packs
     // per-projectile acceleration policy and scatters the returned state.
     const halfDtSq = 0.5 * dtSec * dtSec;
-    if (isDGunWave) {
+    if ((_travelingProjectilePolicyFlags[index] & TRAVELING_PROJECTILE_FLAG_DGUN_TERRAIN_FOLLOW) !== 0) {
       const groundOffset = dgunProjectile !== null
         ? dgunProjectile.groundOffset
         : DGUN_TERRAIN_FOLLOW_HEIGHT;
       const targetX = position.x + proj.velocityX * dtSec + aNetX * halfDtSq;
       const targetY = position.y + proj.velocityY * dtSec + aNetY * halfDtSq;
       const targetZ = world.getGroundZ(targetX, targetY) + groundOffset;
+      _travelingProjectileTerrainTargetZ[index] = targetZ;
       const shot = proj.config.shot as ProjectileShot;
       aNetZ += computeTerrainFollowVerticalThrustAccel({
         positionZ: position.z,
         velocityZ: proj.velocityZ,
         targetZ,
         mass: shot.mass,
-        gravity: projectileGravity,
+        gravity: _travelingProjectileGravity[index],
         springAccelPerWorldUnit: DGUN_TERRAIN_FOLLOW_SPRING_ACCEL_PER_WORLD_UNIT,
         dampingRatio: DGUN_TERRAIN_FOLLOW_DAMPING_RATIO,
         maxThrustForce: DGUN_TERRAIN_FOLLOW_MAX_THRUST_FORCE,
@@ -1382,7 +1455,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     // projectiles need either. Non-homing shots get their rotation
     // baked into the spawn event; visible yaw drift over a ballistic
     // arc is small enough that we don't pay the per-tick atan2 there.
-    if (_travelingProjectileHomingReporting[i] !== 0) {
+    if ((_travelingProjectilePolicyFlags[i] & TRAVELING_PROJECTILE_FLAG_HOMING_REPORTING) !== 0) {
       entity.transform.rotation = Math.atan2(vy, vx);
 
       const lastVx = proj.lastSentVelX ?? vx;
@@ -1528,13 +1601,13 @@ export function updateProjectiles(
         // Start-point velocity = (current start − last tick's start) / dt.
         // Updated every tick because the start follows the turret
         // mount center. On the FIRST tick the prevStart fields are
-        // undefined, so velocity resolves to 0.
+        // null, so velocity resolves to 0.
         const startPoint = points[0];
         if (
           dtSec > 0 &&
-          proj.prevStartX !== undefined &&
-          proj.prevStartY !== undefined &&
-          proj.prevStartZ !== undefined
+          proj.prevStartX !== null &&
+          proj.prevStartY !== null &&
+          proj.prevStartZ !== null
         ) {
           const inv = 1 / dtSec;
           const vx = (beamStartX - proj.prevStartX) * inv;
@@ -1654,10 +1727,10 @@ export function updateProjectiles(
         // / elapsed seconds since the previous trace.
         const endPoint = points[newLen - 1];
         if (
-          proj.prevEndX !== undefined &&
-          proj.prevEndY !== undefined &&
-          proj.prevEndZ !== undefined &&
-          proj.prevEndTick !== undefined
+          proj.prevEndX !== null &&
+          proj.prevEndY !== null &&
+          proj.prevEndZ !== null &&
+          proj.prevEndTick >= 0
         ) {
           const tickDelta = currentTick - proj.prevEndTick;
           if (tickDelta > 0 && dtSec > 0) {
@@ -1686,7 +1759,7 @@ export function updateProjectiles(
         proj.prevEndY = beamPath.endY;
         proj.prevEndZ = beamPath.endZ;
         proj.prevEndTick = currentTick;
-        proj.obstructionT = beamPath.obstructionT;
+        proj.obstructionT = beamPath.obstructionT ?? null;
         proj.obstructionTick = currentTick;
         proj.endpointDamageable = beamPath.endpointDamageable;
         proj.segmentLimitReached = beamPath.segmentLimitReached;

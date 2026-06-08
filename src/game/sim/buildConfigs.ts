@@ -2,6 +2,12 @@ import type { BuildingConfig, BuildingBlueprintId, UnitBuildConfig } from './typ
 import { COST_MULTIPLIER } from '../../config';
 import { BUILDING_BLUEPRINTS, getUnitBlueprint, getUnitLocomotion, BUILDABLE_UNIT_BLUEPRINT_IDS } from './blueprints';
 import { cloneUnitSupportSurface } from './unitSupportSurface';
+import {
+  BUILDING_BLUEPRINT_IDS as PURE_BUILDING_BLUEPRINT_IDS,
+  TOWER_BLUEPRINT_IDS,
+  type BuildingBlueprintId as PureBuildingBlueprintId,
+  type TowerBlueprintId,
+} from '../../types/blueprintIds';
 
 function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): BuildingConfig {
   const bp = BUILDING_BLUEPRINTS[buildingBlueprintId];
@@ -25,11 +31,13 @@ function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): Building
     anchorProfile: bp.anchorProfile,
     supportSurface: bp.supportSurface,
     hud: bp.hud,
+    sensors: { ...bp.sensors },
   };
 }
 
-// Building configurations derived from BUILDING_BLUEPRINTS.
-export const BUILDING_CONFIGS: Record<BuildingBlueprintId, BuildingConfig> =
+// Compatibility table for runtime code that still receives a static
+// structure id via the historical `buildingBlueprintId` field.
+export const STRUCTURE_CONFIGS: Record<BuildingBlueprintId, BuildingConfig> =
   Object.fromEntries(
     Object.keys(BUILDING_BLUEPRINTS).map((buildingBlueprintId) => [
       buildingBlueprintId,
@@ -37,9 +45,30 @@ export const BUILDING_CONFIGS: Record<BuildingBlueprintId, BuildingConfig> =
     ]),
   ) as Record<BuildingBlueprintId, BuildingConfig>;
 
-// Helper to get building config
+export const BUILDING_CONFIGS: Record<PureBuildingBlueprintId, BuildingConfig> =
+  Object.fromEntries(
+    PURE_BUILDING_BLUEPRINT_IDS.map((buildingBlueprintId) => [
+      buildingBlueprintId,
+      STRUCTURE_CONFIGS[buildingBlueprintId as BuildingBlueprintId],
+    ]),
+  ) as Record<PureBuildingBlueprintId, BuildingConfig>;
+
+export const TOWER_CONFIGS: Record<TowerBlueprintId, BuildingConfig> =
+  Object.fromEntries(
+    TOWER_BLUEPRINT_IDS.map((towerBlueprintId) => [
+      towerBlueprintId,
+      STRUCTURE_CONFIGS[towerBlueprintId as BuildingBlueprintId],
+    ]),
+  ) as Record<TowerBlueprintId, BuildingConfig>;
+
+// Compatibility helper. New UI/config code should prefer
+// BUILDING_CONFIGS/getAllBuildings or TOWER_CONFIGS/getAllTowers.
 export function getBuildingConfig(buildingBlueprintId: BuildingBlueprintId): BuildingConfig {
-  return BUILDING_CONFIGS[buildingBlueprintId];
+  return STRUCTURE_CONFIGS[buildingBlueprintId];
+}
+
+export function getTowerConfig(towerBlueprintId: TowerBlueprintId): BuildingConfig {
+  return TOWER_CONFIGS[towerBlueprintId];
 }
 
 // Helper to get unit build config (now backed by blueprints)
@@ -72,4 +101,12 @@ export function getBuildableUnits() {
 // Get list of all buildings
 export function getAllBuildings(): BuildingConfig[] {
   return Object.values(BUILDING_CONFIGS);
+}
+
+export function getAllTowers(): BuildingConfig[] {
+  return Object.values(TOWER_CONFIGS);
+}
+
+export function getAllStructures(): BuildingConfig[] {
+  return Object.values(STRUCTURE_CONFIGS);
 }

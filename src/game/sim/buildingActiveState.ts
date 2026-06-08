@@ -3,7 +3,7 @@
 // damage; OFF (closed) = not producing + 10× damage resistance. A single
 // `open` flag drives both outcomes simultaneously — production gates on
 // it and so does the fortify/pose — so the two can never disagree. See
-// "Producer Buildings Are ON/OFF" in design_philosophy.html.
+// "Producer Buildings Are ON/OFF" in budget_design_philosophy.html.
 //
 // Lifecycle:
 //
@@ -204,11 +204,24 @@ export function isBuildingActiveStateFortified(entity: Entity): boolean {
 }
 
 const activeStateRows: Entity[] = [];
+const DEFAULT_ACTIVE_STATE_STEP_CAPACITY = 32;
 let activeStateOpen = new Uint8Array(32);
 let activeStateActive = new Uint8Array(32);
 let activeStateDamageDelayMs = new Float64Array(32);
 let activeStateReopenDelayMs = new Float64Array(32);
 let activeStateOpenChanged = new Uint8Array(32);
+
+export function trimBuildingActiveStateBuffers(
+  maxRetained = DEFAULT_ACTIVE_STATE_STEP_CAPACITY,
+): void {
+  activeStateRows.length = 0;
+  if (activeStateOpen.length <= maxRetained) return;
+  activeStateOpen = new Uint8Array(maxRetained);
+  activeStateActive = new Uint8Array(maxRetained);
+  activeStateDamageDelayMs = new Float64Array(maxRetained);
+  activeStateReopenDelayMs = new Float64Array(maxRetained);
+  activeStateOpenChanged = new Uint8Array(maxRetained);
+}
 
 function ensureActiveStateStepCapacity(count: number): void {
   if (count <= activeStateOpen.length) return;

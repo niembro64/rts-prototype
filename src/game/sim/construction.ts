@@ -15,6 +15,7 @@ import { isBuildTargetInRange } from './builderRange';
 import { createBuildable, isBuildInProgress } from './buildableHelpers';
 import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
 import { initializeConstructionPieceHealth } from './constructionLifecycle';
+import { entityCanBuild } from './builderBuildRoster';
 
 // Construction system - authoritative building placement and footprint grid.
 // Runtime resource/HP/completion semantics live in constructionLifecycle.ts.
@@ -54,6 +55,8 @@ export class ConstructionSystem {
     playerId: PlayerId,
     builderId: EntityId
   ): Entity | null {
+    const builderEntity = world.getEntity(builderId);
+    if (!entityCanBuild(builderEntity, buildingBlueprintId)) return null;
     const config = getBuildingConfig(buildingBlueprintId);
 
     const diagnostics = getBuildingPlacementDiagnosticsForGrid(
@@ -156,7 +159,7 @@ export class ConstructionSystem {
     world.addEntity(entity);
 
     // Assign builder (only for non-commanders - commanders use their own action queue)
-    const builder = world.getEntity(builderId);
+    const builder = builderEntity;
     if (builder !== undefined && builder.builder !== null && builder.commander === null) {
       builder.builder.currentBuildTarget = entity.id;
       world.markSnapshotDirty(builder.id, ENTITY_CHANGED_ACTIONS);

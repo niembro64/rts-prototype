@@ -377,9 +377,9 @@ export function updateProjectileArming(
     projectileType: string;
     isArmed: boolean;
     config: { shotProfile: { runtime: { armingDelayMs: number } } };
-    collisionStartX: number | undefined;
-    collisionStartY: number | undefined;
-    collisionStartZ: number | undefined;
+    collisionStartX: number | null;
+    collisionStartY: number | null;
+    collisionStartZ: number | null;
   },
   previousTimeAliveMs: number,
   currentTimeAliveMs: number,

@@ -10,12 +10,14 @@ import type {
   TurretRangeVolume,
   TurretSubmunitionEmitterConfig,
   UnitSupportSurface,
+  SensorCapabilityConfig,
 } from './blueprints';
 import type {
   BuildingAnchorProfile,
   BuildingRenderProfile,
   BuildingBlueprintId,
   BuildingSupportSurface,
+  StructureBlueprintId,
 } from './buildingTypes';
 import type {
   UnitAction,
@@ -24,7 +26,7 @@ import type {
 } from './commandTypes';
 import type { TurretRangeOverrides, TurretRanges } from './combatTypes';
 import type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
-import type { EntityId, PlayerId } from './entityTypes';
+import { NO_ENTITY_ID, type EntityId, type PlayerId } from './entityTypes';
 import type { UnitLocomotion, UnitSuspensionState } from './locomotionTypes';
 import type { ResourceCost } from './economyTypes';
 import type {
@@ -40,6 +42,7 @@ export type {
   BuildingRenderProfile,
   BuildingBlueprintId,
   BuildingSupportSurface,
+  StructureBlueprintId,
 } from './buildingTypes';
 export type {
   ActionType,
@@ -61,7 +64,12 @@ export { NO_ENTITY_ID } from './entityTypes';
 export type { UnitLocomotion } from './locomotionTypes';
 export type { ResourceCost } from './economyTypes';
 export type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
-export type { TurretAimStyle, TurretCooldownConfig, UnitSupportSurface } from './blueprints';
+export type {
+  SensorCapabilityConfig,
+  TurretAimStyle,
+  TurretCooldownConfig,
+  UnitSupportSurface,
+} from './blueprints';
 export type {
   ActiveProjectileShot,
   BeamReflectorKind,
@@ -196,6 +204,10 @@ export type Unit = {
   /** Authored full-sight sensor radius for this unit. Separate from
    *  weapon, tracking, radar, and builder action range. */
   fullVisionRadius: number;
+  /** Authored sensor envelopes for sight/radar/detector/tracking/scan.
+   *  `fullVisionRadius` remains a compatibility mirror of
+   *  sensors.fullSightRadius. */
+  sensors: SensorCapabilityConfig;
   mass: number;
   hp: number;
   maxHp: number;
@@ -219,8 +231,9 @@ export type Unit = {
   velocityZ: number;
   /** Authoritative movement/traction acceleration applied this tick,
    *  excluding gravity, terrain spring, air/ground damping, and
-   *  transient external forces. Clients use this as the powered-movement
-   *  input for force-based visual prediction. */
+   *  transient external forces. Sim-only server force state: it is not
+   *  shipped on the wire and client prediction integrates from the
+   *  last-seen velocity instead. */
   movementAccelX: number;
   movementAccelY: number;
   movementAccelZ: number;
@@ -334,7 +347,7 @@ export type BuildingActiveState = {
   /** The single ON/OFF flag. ON (true) = producing + normal damage; OFF
    *  (false) = not producing + fortified. It is the sole authoritative
    *  input for both production accounting and the renderer's open/closed
-   *  pose — see "Producer Buildings Are ON/OFF" in design_philosophy.html.
+   *  pose — see "Producer Buildings Are ON/OFF" in budget_design_philosophy.html.
    *  False once the damage-grace timer expires or the building started
    *  closed. */
   open: boolean;
@@ -376,20 +389,21 @@ export type TurretConfig = {
   rangeOverrides: TurretRangeOverrides;
   /** Smooth this turret's projectile spawn events across snapshot intervals. */
   eventsSmooth: boolean;
-  spread: { pelletCount: number; angle: number } | undefined;
-  burst: { count: number; delay: number } | undefined;
+  spread: { pelletCount: number; angle: number } | null;
+  burst: { count: number; delay: number } | null;
   isManualFire: boolean;
   passive: boolean;
   /** Actual terrain/entity line-of-sight gate for this turret. Cross
    *  shield sight obstruction is a separate battle setting. */
   requiresNonObstructedLineOfSight: boolean;
-  /** Undefined for visual-only construction emitters. Those turrets
+  /** Null for visual-only construction emitters. Those turrets
    *  mount renderer-owned construction hardware but do not represent a
    *  simulated weapon or projectile. */
-  shot: EmissionConfig | undefined;
+  shot: EmissionConfig | null;
   /** Optional secondary projectile spray driven by this turret's own engagement. */
-  submunitions: TurretSubmunitionEmitterConfig | undefined;
-  turretIndex: number | undefined;
+  submunitions: TurretSubmunitionEmitterConfig | null;
+  /** Sentinel -1 when not bound to a host turret slot. */
+  turretIndex: number;
   /** Explicit aiming solver mode. See TurretBlueprint.aimStyle. */
   aimStyle: TurretAimStyle;
   /** VLS: turret stays pitched straight up and fires every pellet
@@ -403,7 +417,7 @@ export type TurretConfig = {
    *  than at the target itself; the round detonates short and its
    *  submunitions (if any) bounce + spread the rest of the way. See
    *  TurretBlueprint.groundAimFraction. */
-  groundAimFraction: number | undefined;
+  groundAimFraction: number | null;
   /** World-space radius of the rendered turret body sphere. */
   radius: TurretRadiusConfig;
   /** See TurretBlueprint.headOnly — turrets with no barrel visual.
@@ -421,8 +435,8 @@ export type TurretConfig = {
   /** Unit-mount authored fight/patrol stop gate. If true, this turret must
    *  be engaged before the host halts for fight/patrol combat. */
   requiredEngagedForFightStop: boolean;
-  constructionEmitter: ConstructionEmitterVisualSpec | undefined;
-  visualVariant: ConstructionEmitterSize | undefined;
+  constructionEmitter: ConstructionEmitterVisualSpec | null;
+  visualVariant: ConstructionEmitterSize | null;
   /** LOCK-ON-03 — Compiled per-turret lock-on inclusion bitmasks. JS
    *  walks each turret blueprint once at config build and packs the
    *  authored inclusion arrays into these bitmasks so the per-tick
@@ -454,17 +468,17 @@ export type ProjectileConfig = {
   shot: ActiveProjectileShot;
   shotProfile: ShotProfile;
   /** Real turret blueprint that authored this projectile, when one exists. */
-  sourceTurretBlueprintId: TurretBlueprintId | undefined;
+  sourceTurretBlueprintId: TurretBlueprintId | null;
   /** Source-turret base range. Active line shots use the live turret's
    *  computed 2D fire circle while retracing; shot-only children keep 0. */
   range: number;
   /** Source-turret cooldown. Used when laser projectiles expire. */
   cooldown: TurretCooldownConfig | null;
   /** Source-turret visual barrel geometry. Present only for turret-fired shots. */
-  barrel: BarrelShape | undefined;
-  radius: TurretRadiusConfig | undefined;
+  barrel: BarrelShape | null;
+  radius: TurretRadiusConfig | null;
   /** Source turret slot on the owning unit. Used by active beam bookkeeping. */
-  turretIndex: number | undefined;
+  turretIndex: number;
 };
 
 export type ShotSource = {
@@ -477,7 +491,7 @@ export type ShotSource = {
   sourcePlayerId: PlayerId;
   /** Canonical team id at launch time. In FFA this equals sourcePlayerId. */
   sourceTeamId: number;
-  sourceTurretBlueprintId: TurretBlueprintId | undefined;
+  sourceTurretBlueprintId: TurretBlueprintId | null;
   sourceShotBlueprintId: string;
   spawnTick: number;
   parentShotEntityId: EntityId | null;
@@ -508,9 +522,9 @@ export type Turret = {
   pitch: number;
   angularVelocity: number;
   /** Yaw angular acceleration (rad/s²) produced by this tick's
-   *  damped-spring step (`α = k·(aim − rot) − c·ω`). Serialized so
-   *  PREDICT ACC clients can integrate `ω += α·dt` between snapshots;
-   *  PREDICT POS / VEL clients ignore it. */
+   *  damped-spring step (`α = k·(aim − rot) − c·ω`). Sim-only turret
+   *  solver state: acceleration is not shipped on the wire and the
+   *  client predicts from angular velocity plus EMA correction. */
   angularAcceleration: number;
   /** Angular velocity of the pitch axis (rad/s). Driven by the
    *  damped-spring integrator in turretSystem — the solver sets a
@@ -519,7 +533,7 @@ export type Turret = {
    *  (e.g. from moving targets) doesn't propagate into visible
    *  barrel oscillation. */
   pitchVelocity: number;
-  /** Pitch angular acceleration (rad/s²); same shape as
+  /** Pitch angular acceleration (rad/s²); same sim-only shape as
    *  angularAcceleration, only for the elevation axis. */
   pitchAcceleration: number;
   turnAccel: number;
@@ -567,8 +581,8 @@ export type Turret = {
    *  the turret does not spend shells on guaranteed-short fallback
    *  shots. Default true. */
   ballisticAimInRange: boolean;
-  burst: { remaining: number; cooldown: number } | undefined;
-  shield: { transition: number; range: number } | undefined;
+  burst: { remaining: number; cooldown: number } | null;
+  shield: { transition: number; range: number } | null;
   /** Round-robin pointer across the physical barrels on this turret.
    *  Each fired pellet picks barrelIndex = (barrelFireIndex + pellet)
    *  % barrelCount, then the pointer advances by the pellet count.
@@ -595,7 +609,7 @@ export type Projectile = {
   shotSource: ShotSource;
   /** Real turret blueprint id that ultimately authored this projectile.
    *  Submunitions inherit this from their parent projectile. */
-  sourceTurretBlueprintId: TurretBlueprintId | undefined;
+  sourceTurretBlueprintId: TurretBlueprintId | null;
   projectileType: ProjectileType;
   /** Travelling shot health. Beams/lasers are sustained emissions and
    *  keep this at 0 so they are not damageable shot bodies. */
@@ -604,12 +618,12 @@ export type Projectile = {
   velocityX: number;
   velocityY: number;
   velocityZ: number;
-  prevX: number | undefined;
-  prevY: number | undefined;
-  prevZ: number | undefined;
-  collisionStartX: number | undefined;
-  collisionStartY: number | undefined;
-  collisionStartZ: number | undefined;
+  prevX: number | null;
+  prevY: number | null;
+  prevZ: number | null;
+  collisionStartX: number | null;
+  collisionStartY: number | null;
+  collisionStartZ: number | null;
   timeAlive: number;
   /** Finite runtime timeout for lasers and special projectile classes;
    *  Infinity for ordinary traveling shot bodies. */
@@ -617,31 +631,31 @@ export type Projectile = {
   /** Beam/laser polyline. Index 0 = start (turret mount center), last = end
    *  (range/hit/ground/terminal reflector), middles = reflections.
    *  Reflection vertices carry reflector metadata via the legacy
-   *  reflectorEntityId field plus reflectorKind/normal*. Undefined on
+   *  reflectorEntityId field plus reflectorKind/normal*. Null on
    *  non-line projectiles. Mutated in place — each re-trace resizes
    *  the array length and overwrites the per-vertex fields, so the
    *  array reference is stable. */
-  points: BeamPoint[] | undefined;
+  points: BeamPoint[] | null;
   /** False when the path has no physical impact endpoint, such as a
    *  no-hit range boundary or BEAM_MAX_SEGMENTS ending on a reflector.
    *  The beam is still rendered, but no endpoint damage sphere applies. */
-  endpointDamageable: boolean | undefined;
-  segmentLimitReached: boolean | undefined;
+  endpointDamageable: boolean | null;
+  segmentLimitReached: boolean;
   /** Source barrel index for visual/audio cadence metadata on turret shots. */
-  sourceBarrelIndex: number | undefined;
+  sourceBarrelIndex: number;
   /** Internal: previous tick's start position. Used to compute
    *  points[0] velocity. Not serialized. */
-  prevStartX: number | undefined;
-  prevStartY: number | undefined;
-  prevStartZ: number | undefined;
+  prevStartX: number | null;
+  prevStartY: number | null;
+  prevStartZ: number | null;
   /** Internal: previous beam-trace tick's end position. Used to compute
    *  the end-point velocity. Not serialized. */
-  prevEndX: number | undefined;
-  prevEndY: number | undefined;
-  prevEndZ: number | undefined;
+  prevEndX: number | null;
+  prevEndY: number | null;
+  prevEndZ: number | null;
   /** Internal: tick at which prevEnd* was captured, used as the dt for
    *  the next end-velocity finite difference. Not serialized. */
-  prevEndTick: number | undefined;
+  prevEndTick: number;
   /** Internal: previous beam-trace tick's reflection points keyed by
    *  reflectorEntityId. Used to finite-diff each reflection point's
    *  velocity. Not serialized. */
@@ -651,13 +665,14 @@ export type Projectile = {
     y: number;
     z: number;
     tick: number;
-  }[] | undefined;
-  targetEntityId: EntityId | undefined;
-  obstructionT: number | undefined;
-  obstructionTick: number | undefined;
+  }[] | null;
+  /** Sentinel NO_ENTITY_ID means no homing/line target. */
+  targetEntityId: EntityId;
+  obstructionT: number | null;
+  obstructionTick: number;
   hitEntities: Set<EntityId>;
   maxHits: number;
-  hasExploded: boolean | undefined;
+  hasExploded: boolean;
   /** Traveling plasma/rocket shots can only collide/explode after their
    *  authored arming delay has elapsed. The projectile system flips
    *  this and resets collisionStart* to the arming point. */
@@ -668,19 +683,19 @@ export type Projectile = {
   hasLeftSource: boolean;
   /** Sentinel `NO_ENTITY_ID` means this projectile is not homing. */
   homingTargetId: EntityId;
-  homingTurnRate: number | undefined;
-  lastSentVelX: number | undefined;
-  lastSentVelY: number | undefined;
-  lastSentVelZ: number | undefined;
+  homingTurnRate: number | null;
+  lastSentVelX: number | null;
+  lastSentVelY: number | null;
+  lastSentVelZ: number | null;
   /** Client-only one-shot: exact shield / shield-panel contact
    *  point from the most recent reflection, sourced from the
    *  unquantized shieldImpact audio event. Consumed by the
    *  curved-cone tail renderer on the next frame as a forced trail
    *  stamp so the tail kinks exactly at the bounce surface instead of
    *  one tick past it. Cleared after consumption. */
-  pendingReflectionX: number | undefined;
-  pendingReflectionY: number | undefined;
-  pendingReflectionZ: number | undefined;
+  pendingReflectionX: number | null;
+  pendingReflectionY: number | null;
+  pendingReflectionZ: number | null;
 };
 
 export type ProjectileAbsenceSlots = Pick<Projectile,
@@ -716,35 +731,35 @@ export type ProjectileAbsenceSlots = Pick<Projectile,
 >;
 
 export const PROJECTILE_ABSENCE_SLOTS: Readonly<ProjectileAbsenceSlots> = {
-  prevX: undefined,
-  prevY: undefined,
-  prevZ: undefined,
-  collisionStartX: undefined,
-  collisionStartY: undefined,
-  collisionStartZ: undefined,
-  points: undefined,
-  endpointDamageable: undefined,
-  segmentLimitReached: undefined,
-  sourceBarrelIndex: undefined,
-  prevStartX: undefined,
-  prevStartY: undefined,
-  prevStartZ: undefined,
-  prevEndX: undefined,
-  prevEndY: undefined,
-  prevEndZ: undefined,
-  prevEndTick: undefined,
-  prevReflectionPoints: undefined,
-  targetEntityId: undefined,
-  obstructionT: undefined,
-  obstructionTick: undefined,
-  hasExploded: undefined,
-  homingTurnRate: undefined,
-  lastSentVelX: undefined,
-  lastSentVelY: undefined,
-  lastSentVelZ: undefined,
-  pendingReflectionX: undefined,
-  pendingReflectionY: undefined,
-  pendingReflectionZ: undefined,
+  prevX: null,
+  prevY: null,
+  prevZ: null,
+  collisionStartX: null,
+  collisionStartY: null,
+  collisionStartZ: null,
+  points: null,
+  endpointDamageable: null,
+  segmentLimitReached: false,
+  sourceBarrelIndex: -1,
+  prevStartX: null,
+  prevStartY: null,
+  prevStartZ: null,
+  prevEndX: null,
+  prevEndY: null,
+  prevEndZ: null,
+  prevEndTick: -1,
+  prevReflectionPoints: null,
+  targetEntityId: NO_ENTITY_ID,
+  obstructionT: null,
+  obstructionTick: -1,
+  hasExploded: false,
+  homingTurnRate: null,
+  lastSentVelX: null,
+  lastSentVelY: null,
+  lastSentVelZ: null,
+  pendingReflectionX: null,
+  pendingReflectionY: null,
+  pendingReflectionZ: null,
 };
 
 // Economy state per player. Each pool (energy / metal) has its
@@ -815,6 +830,7 @@ export type Builder = {
    *  construction resource lane. Repair uses the same work-rate cap
    *  for its energy cost. */
   constructionRate: number;
+  allowedBuildBlueprintIds: readonly StructureBlueprintId[];
   /** Sentinel `NO_ENTITY_ID` means no direct construction target. */
   currentBuildTarget: EntityId;
 };
@@ -848,6 +864,7 @@ export type BuildingConfig = {
   anchorProfile: BuildingAnchorProfile;
   supportSurface: BuildingSupportSurface;
   hud: import('./blueprints').EntityHudBlueprint;
+  sensors: SensorCapabilityConfig;
 };
 
 // Unit build configuration
@@ -931,7 +948,7 @@ export type DGunProjectile = {
 
 // Entity type discriminator. Towers are the immobile peer of units: they
 // mount turrets and carry a host-level lock-on, but have no locomotion.
-// See design_philosophy.html "Towers Are Static Hosts That Lock On And Fire".
+// See budget_design_philosophy.html "Towers Are Static Hosts That Lock On And Fire".
 export type EntityType = 'unit' | 'tower' | 'building' | 'shot';
 
 export type EntityMetaKind = EntityType | 'turret';

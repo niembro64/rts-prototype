@@ -26,6 +26,13 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
+    "sensors": {
+      "fullSightRadius": 0,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "turrets": [],
     "base": {
       "cost": {
@@ -72,6 +79,13 @@
     },
     "hud": {
       "barsOffsetAboveTop": -10
+    },
+    "sensors": {
+      "fullSightRadius": 0,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
     },
     "turrets": [],
     "base": {
@@ -120,6 +134,13 @@
     "hud": {
       "barsOffsetAboveTop": 38
     },
+    "sensors": {
+      "fullSightRadius": 0,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "turrets": [],
     "base": {
       "cost": {
@@ -167,6 +188,13 @@
     "hud": {
       "barsOffsetAboveTop": 16
     },
+    "sensors": {
+      "fullSightRadius": 0,
+      "radarRadius": 4200,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "turrets": [],
     "base": {
       "cost": {
@@ -213,6 +241,13 @@
     },
     "hud": {
       "barsOffsetAboveTop": 12
+    },
+    "sensors": {
+      "fullSightRadius": 0,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
     },
     "turrets": [],
     "base": {

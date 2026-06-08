@@ -561,7 +561,7 @@ function weaponUsesNormalAim(weapon: Turret): boolean {
   // attacker. Its rayBisectTurretAndBody aim style is the discriminator,
   // so don't lump it in with non-aiming shields.
   if (
-    shot !== undefined &&
+    shot !== null &&
     shot.type === 'shield' &&
     config.aimStyle.angleType !== 'rayBisectTurretAndBody' &&
     shot.barrier?.shape !== 'aimedCylinder'
@@ -704,7 +704,7 @@ export function solveProjectileTurretAim(
   getEntityAcceleration3d(source, out.originAcceleration);
 
   const groundAimFraction = weapon.config.groundAimFraction;
-  if (groundAimFraction !== undefined && groundAimFraction > 0) {
+  if (groundAimFraction !== null && groundAimFraction > 0) {
     const f = groundAimFraction;
     out.aim.x = mountX + f * (out.aim.x - mountX);
     out.aim.y = mountY + f * (out.aim.y - mountY);
@@ -756,7 +756,7 @@ export function solveProjectileTurretAimAtPoint(
   writeZeroVec3(out.targetAcceleration);
 
   const groundAimFraction = weapon.config.groundAimFraction;
-  if (groundAimFraction !== undefined && groundAimFraction > 0) {
+  if (groundAimFraction !== null && groundAimFraction > 0) {
     const f = groundAimFraction;
     out.aim.x = mountX + f * (out.aim.x - mountX);
     out.aim.y = mountY + f * (out.aim.y - mountY);

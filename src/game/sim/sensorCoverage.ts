@@ -1,43 +1,53 @@
-import type { Entity } from './types';
+import type { BuildingBlueprintId, Entity } from './types';
 import { isBuildBlockingActivation } from './buildableHelpers';
+import { getBuildingConfig } from './buildConfigs';
 
-export const BUILDING_VISION_RADIUS = 1000;
-export const RADAR_VISION_RADIUS = 4200;
-
-/** True when the entity contributes a normal line-of-sight source
- *  (units, non-radar buildings — alive AND finished). Radar buildings
- *  are intentionally excluded: they are sensors, not eyes. */
-export function canEntityProvideFullVision(entity: Entity): boolean {
-  if (entity.unit) return entity.unit.hp > 0;
-  if (!entity.building || entity.building.hp <= 0) return false;
-  if (entity.buildingBlueprintId === 'buildingRadar') return false;
-  if (isBuildBlockingActivation(entity.buildable)) return false;
-  return true;
+export function getBuildingAuthoredFullSightRadius(buildingBlueprintId: BuildingBlueprintId | null): number {
+  if (buildingBlueprintId === null) return 0;
+  return getBuildingConfig(buildingBlueprintId).sensors.fullSightRadius;
 }
 
-/** True when the entity is a radar-class sensor (alive AND finished
- *  AND in its ON / open active state). Currently only the radar
- *  building qualifies; mobile-radar units can be added by extending
- *  this predicate without touching callers. A closed (OFF) radar
- *  provides no coverage — mirrors the "Producer Buildings Are ON/OFF"
- *  contract in design_philosophy.html. */
-export function canEntityProvideRadarVision(entity: Entity): boolean {
+export function getBuildingAuthoredRadarRadius(buildingBlueprintId: BuildingBlueprintId | null): number {
+  if (buildingBlueprintId === null) return 0;
+  return getBuildingConfig(buildingBlueprintId).sensors.radarRadius;
+}
+
+/** True when the entity contributes a normal line-of-sight source
+ *  (alive, finished, and explicitly authored with full sight). */
+export function canEntityProvideFullVision(entity: Entity): boolean {
+  if (entity.unit) return entity.unit.hp > 0 && entity.unit.sensors.fullSightRadius > 0;
   if (!entity.building || entity.building.hp <= 0) return false;
-  if (entity.buildingBlueprintId !== 'buildingRadar') return false;
   if (isBuildBlockingActivation(entity.buildable)) return false;
   const activeState = entity.building.activeState;
   if (activeState !== null && activeState.open === false) return false;
-  return true;
+  return getBuildingAuthoredFullSightRadius(entity.buildingBlueprintId) > 0;
+}
+
+/** True when the entity is a radar-class sensor (alive AND finished
+ *  AND in its ON / open active state). A closed (OFF) sensor
+ *  provides no coverage — mirrors the "Producer Buildings Are ON/OFF"
+ *  contract in budget_design_philosophy.html. */
+export function canEntityProvideRadarVision(entity: Entity): boolean {
+  if (entity.unit) return entity.unit.hp > 0 && entity.unit.sensors.radarRadius > 0;
+  if (!entity.building || entity.building.hp <= 0) return false;
+  if (isBuildBlockingActivation(entity.buildable)) return false;
+  const activeState = entity.building.activeState;
+  if (activeState !== null && activeState.open === false) return false;
+  return getBuildingAuthoredRadarRadius(entity.buildingBlueprintId) > 0;
 }
 
 export function getEntityFullVisionRadius(entity: Entity): number {
   if (!canEntityProvideFullVision(entity)) return 0;
-  return entity.unit ? entity.unit.fullVisionRadius : BUILDING_VISION_RADIUS;
+  return entity.unit
+    ? entity.unit.sensors.fullSightRadius
+    : getBuildingAuthoredFullSightRadius(entity.buildingBlueprintId);
 }
 
 export function getEntityRadarRadius(entity: Entity): number {
   if (!canEntityProvideRadarVision(entity)) return 0;
-  return RADAR_VISION_RADIUS;
+  return entity.unit
+    ? entity.unit.sensors.radarRadius
+    : getBuildingAuthoredRadarRadius(entity.buildingBlueprintId);
 }
 
 /** Entity-size padding used by coverage queries so a target counts as

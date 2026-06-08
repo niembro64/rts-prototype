@@ -30,6 +30,8 @@ import { setUnitGroundNormalEmaMode } from '../sim/unitGroundNormal';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDisabledTurretJsOnlyFields } from '../sim/combat/combatActivity';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
+import { trimBuildingActiveStateBuffers } from '../sim/buildingActiveState';
+import { trimEnergyDistributionBuffers } from '../sim/energyDistribution';
 import { factoryProductionSystem } from '../sim/factoryProduction';
 import { isBuildInProgress } from '../sim/buildableHelpers';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
@@ -422,6 +424,8 @@ export class GameServer {
     // Reset module-level reusable buffers that hold stale entity references
     resetProjectileBuffers();
     resetDamageBuffers();
+    trimBuildingActiveStateBuffers();
+    trimEnergyDistributionBuffers();
     trimEntitySnapshotPool();
     const sim = getSimWasm();
     if (sim !== undefined) {
@@ -635,7 +639,7 @@ export class GameServer {
       const turrets = combat.turrets;
       for (const turret of turrets) {
         const shot = turret.config.shot;
-        if (shot === undefined || shot.type !== 'shield') continue;
+        if (shot === null || shot.type !== 'shield') continue;
         turret.target = null;
         turret.state = 'idle';
         resetDisabledTurretJsOnlyFields(turret);

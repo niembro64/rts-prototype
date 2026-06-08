@@ -549,7 +549,7 @@ export class RtsScene3DRenderPhase {
     for (let i = 0; i < turrets.length; i++) {
       const turret = turrets[i];
       if (turret.config.visualOnly) continue;
-      if (turret.config.shot === undefined) continue;
+      if (turret.config.shot === null) continue;
       if (turret.config.shot.type === 'shield') continue;
       const mount = entityRenderer.getTurretMountWorldState(host.id, i);
       if (mount === null) continue;

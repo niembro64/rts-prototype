@@ -40,6 +40,10 @@ const ECONOMY_RESOURCE_ENERGY_CODE = 1;
 const ECONOMY_RESOURCE_METAL_CODE = 2;
 const ECONOMY_INCOME_REASON_BASE_CODE = 1;
 const ECONOMY_INCOME_REASON_PRODUCTION_CODE = 2;
+const DEFAULT_ECONOMY_INCOME_CAPACITY = 32;
+const DEFAULT_ECONOMY_INCOME_PLAYER_CAPACITY = 8;
+const DEFAULT_ECONOMY_CONVERTER_CAPACITY = 16;
+const DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY = 8;
 
 function economyResourceKindFromCode(code: number): ResourceKind | null {
   if (code === ECONOMY_RESOURCE_ENERGY_CODE) return 'energy';
@@ -70,32 +74,32 @@ export function createEconomyState(): EconomyState {
 // Economy manager - handles all player economies
 export class EconomyManager {
   private economies: Map<PlayerId, EconomyState> = new Map();
-  private incomePlayerIds = new Uint32Array(32);
-  private incomeResourceCodes = new Uint32Array(32);
-  private incomeRates = new Float64Array(32);
-  private incomeSourceEntityIds = new Float64Array(32);
-  private incomeReasonCodes = new Uint32Array(32);
-  private incomeEnergyCurrByPlayer = new Float64Array(8);
-  private incomeEnergyMaxByPlayer = new Float64Array(8);
-  private incomeMetalCurrByPlayer = new Float64Array(8);
-  private incomeMetalMaxByPlayer = new Float64Array(8);
-  private incomeAccepted = new Float64Array(32);
-  private converterPlayerIds = new Uint32Array(16);
-  private converterEntityIds = new Float64Array(16);
-  private converterRates = new Float64Array(16);
-  private converterEnergyCurrByPlayer = new Float64Array(8);
-  private converterEnergyMaxByPlayer = new Float64Array(8);
-  private converterMetalCurrByPlayer = new Float64Array(8);
-  private converterMetalMaxByPlayer = new Float64Array(8);
-  private converterRatesByPlayer = new Float64Array(8);
-  private converterConsumedByPlayer = new Float64Array(8);
-  private converterOutputByPlayer = new Float64Array(8);
-  private converterConsumedResourceByPlayer = new Uint32Array(8);
-  private converterOutputResourceByPlayer = new Uint32Array(8);
-  private converterConsumedOut = new Float64Array(16);
-  private converterOutputOut = new Float64Array(16);
-  private converterConsumedResourceOut = new Uint32Array(16);
-  private converterOutputResourceOut = new Uint32Array(16);
+  private incomePlayerIds = new Uint32Array(DEFAULT_ECONOMY_INCOME_CAPACITY);
+  private incomeResourceCodes = new Uint32Array(DEFAULT_ECONOMY_INCOME_CAPACITY);
+  private incomeRates = new Float64Array(DEFAULT_ECONOMY_INCOME_CAPACITY);
+  private incomeSourceEntityIds = new Float64Array(DEFAULT_ECONOMY_INCOME_CAPACITY);
+  private incomeReasonCodes = new Uint32Array(DEFAULT_ECONOMY_INCOME_CAPACITY);
+  private incomeEnergyCurrByPlayer = new Float64Array(DEFAULT_ECONOMY_INCOME_PLAYER_CAPACITY);
+  private incomeEnergyMaxByPlayer = new Float64Array(DEFAULT_ECONOMY_INCOME_PLAYER_CAPACITY);
+  private incomeMetalCurrByPlayer = new Float64Array(DEFAULT_ECONOMY_INCOME_PLAYER_CAPACITY);
+  private incomeMetalMaxByPlayer = new Float64Array(DEFAULT_ECONOMY_INCOME_PLAYER_CAPACITY);
+  private incomeAccepted = new Float64Array(DEFAULT_ECONOMY_INCOME_CAPACITY);
+  private converterPlayerIds = new Uint32Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
+  private converterEntityIds = new Float64Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
+  private converterRates = new Float64Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
+  private converterEnergyCurrByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+  private converterEnergyMaxByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+  private converterMetalCurrByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+  private converterMetalMaxByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+  private converterRatesByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+  private converterConsumedByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+  private converterOutputByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+  private converterConsumedResourceByPlayer = new Uint32Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+  private converterOutputResourceByPlayer = new Uint32Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+  private converterConsumedOut = new Float64Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
+  private converterOutputOut = new Float64Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
+  private converterConsumedResourceOut = new Uint32Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
+  private converterOutputResourceOut = new Uint32Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
 
   // Initialize economy for a player
   initPlayer(playerId: PlayerId): void {
@@ -500,7 +504,7 @@ export class EconomyManager {
       if (!isEntityActive(entity)) continue;
       // ON/OFF gate. A closed (OFF) converter pays no energy and
       // produces no metal, mirroring solar/wind/extractor behavior
-      // (see design_philosophy.html "Producer Buildings Are ON/OFF").
+      // (see budget_design_philosophy.html "Producer Buildings Are ON/OFF").
       const activeState = building.activeState;
       if (activeState !== null && activeState.open === false) continue;
       const pid = ownership.playerId;
@@ -693,9 +697,39 @@ export class EconomyManager {
     this.converterOutputResourceByPlayer = new Uint32Array(nextCapacity);
   }
 
+  private trimBatchBuffers(): void {
+    this.incomePlayerIds = new Uint32Array(DEFAULT_ECONOMY_INCOME_CAPACITY);
+    this.incomeResourceCodes = new Uint32Array(DEFAULT_ECONOMY_INCOME_CAPACITY);
+    this.incomeRates = new Float64Array(DEFAULT_ECONOMY_INCOME_CAPACITY);
+    this.incomeSourceEntityIds = new Float64Array(DEFAULT_ECONOMY_INCOME_CAPACITY);
+    this.incomeReasonCodes = new Uint32Array(DEFAULT_ECONOMY_INCOME_CAPACITY);
+    this.incomeEnergyCurrByPlayer = new Float64Array(DEFAULT_ECONOMY_INCOME_PLAYER_CAPACITY);
+    this.incomeEnergyMaxByPlayer = new Float64Array(DEFAULT_ECONOMY_INCOME_PLAYER_CAPACITY);
+    this.incomeMetalCurrByPlayer = new Float64Array(DEFAULT_ECONOMY_INCOME_PLAYER_CAPACITY);
+    this.incomeMetalMaxByPlayer = new Float64Array(DEFAULT_ECONOMY_INCOME_PLAYER_CAPACITY);
+    this.incomeAccepted = new Float64Array(DEFAULT_ECONOMY_INCOME_CAPACITY);
+    this.converterPlayerIds = new Uint32Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
+    this.converterEntityIds = new Float64Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
+    this.converterRates = new Float64Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
+    this.converterEnergyCurrByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+    this.converterEnergyMaxByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+    this.converterMetalCurrByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+    this.converterMetalMaxByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+    this.converterRatesByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+    this.converterConsumedByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+    this.converterOutputByPlayer = new Float64Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+    this.converterConsumedResourceByPlayer = new Uint32Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+    this.converterOutputResourceByPlayer = new Uint32Array(DEFAULT_ECONOMY_CONVERTER_PLAYER_CAPACITY);
+    this.converterConsumedOut = new Float64Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
+    this.converterOutputOut = new Float64Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
+    this.converterConsumedResourceOut = new Uint32Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
+    this.converterOutputResourceOut = new Uint32Array(DEFAULT_ECONOMY_CONVERTER_CAPACITY);
+  }
+
   // Reset all state (call between game sessions)
   reset(): void {
     this.economies.clear();
+    this.trimBatchBuffers();
   }
 }
 

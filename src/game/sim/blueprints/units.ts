@@ -7,6 +7,7 @@
  */
 
 import type { TurretBlueprintId } from '../../../types/blueprintIds';
+import { isStructureBlueprintId } from '../../../types/blueprintIds';
 import type { UnitBlueprint } from './types';
 import type { UnitLocomotion } from '../types';
 import { createUnitLocomotion } from '../locomotion';
@@ -37,6 +38,7 @@ type JsonUnitBlueprint = Omit<UnitBlueprint, 'locomotion' | keyof LockOnInclusio
 const UNIT_EXPLICIT_FIELDS = [
   'base',
   'supportSurface',
+  'sensors',
   'legAttachHeightFrac',
   'suspension',
   'builder',
@@ -150,8 +152,33 @@ function validateUnitSupportSurface(
   }
 }
 
+function validateSensorCapabilityConfig(
+  unitBlueprintId: string,
+  sensors: UnitBlueprint['sensors'],
+): void {
+  if (!sensors || typeof sensors !== 'object') {
+    throw new Error(`Invalid sensor config for ${unitBlueprintId}: sensors must be an object`);
+  }
+  const fields = [
+    'fullSightRadius',
+    'radarRadius',
+    'detectorRadius',
+    'trackingRadius',
+    'scanRadius',
+  ] as const;
+  for (const field of fields) {
+    const value = sensors[field];
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error(
+        `Invalid sensor config for ${unitBlueprintId}: sensors.${field} must be a finite non-negative number`,
+      );
+    }
+  }
+}
+
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   validateUnitSupportSurface(bp.unitBlueprintId, bp.supportSurface);
+  validateSensorCapabilityConfig(bp.unitBlueprintId, bp.sensors);
 
   if (!Number.isFinite(bp.bodyCenterHeight) || bp.bodyCenterHeight < 0) {
     throw new Error(
@@ -163,6 +190,25 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
     throw new Error(
       `Invalid fullVisionRadius for ${bp.unitBlueprintId}: fullVisionRadius must be a finite positive number`,
     );
+  }
+  if (bp.fullVisionRadius !== bp.sensors.fullSightRadius) {
+    throw new Error(
+      `Invalid sensor config for ${bp.unitBlueprintId}: fullVisionRadius must mirror sensors.fullSightRadius`,
+    );
+  }
+  if (bp.builder !== null) {
+    if (!Array.isArray(bp.builder.allowedBuildBlueprintIds) || bp.builder.allowedBuildBlueprintIds.length === 0) {
+      throw new Error(
+        `Invalid builder config for ${bp.unitBlueprintId}: allowedBuildBlueprintIds must not be empty`,
+      );
+    }
+    for (const id of bp.builder.allowedBuildBlueprintIds) {
+      if (!isStructureBlueprintId(id)) {
+        throw new Error(
+          `Invalid builder config for ${bp.unitBlueprintId}: unknown allowedBuildBlueprintId "${id}"`,
+        );
+      }
+    }
   }
 
   if (!bp.hud || !Number.isFinite(bp.hud.barsOffsetAboveTop)) {
@@ -231,7 +277,7 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
     // body-forward axis is the roll axis. Any mount off that axis
     // would visibly drift away from the sim's yaw-only mount math
     // every time the renderer composes a bank. See the
-    // "Airborne Banking Is Visual" section of design_philosophy.html.
+    // "Airborne Banking Is Visual" section of budget_design_philosophy.html.
     if (isAirborne) {
       if (mount.y !== 0 || mount.z !== 0) {
         throw new Error(

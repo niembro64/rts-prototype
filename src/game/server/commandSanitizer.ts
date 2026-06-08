@@ -30,7 +30,7 @@ import {
 } from '../sim/commandLimits';
 import type { WorldState } from '../sim/WorldState';
 import type { BuildingBlueprintId, EntityId, WaypointType } from '../sim/types';
-import { BUILDING_CONFIGS } from '../sim/buildConfigs';
+import { STRUCTURE_CONFIGS } from '../sim/buildConfigs';
 import { isBuildableUnitBlueprintId } from '../sim/blueprints/unitRoster';
 import { SERVER_CONFIG, normalizeSnapshotRate } from '../../serverBarConfig';
 import { BATTLE_CONFIG } from '../../battleBarConfig';
@@ -158,9 +158,9 @@ function sanitizeEntityIdArray(value: unknown): EntityId[] | null {
   return ids.length > 0 ? ids : null;
 }
 
-function isBuildingBlueprintId(value: unknown): value is BuildingBlueprintId {
+function isStructureBlueprintId(value: unknown): value is BuildingBlueprintId {
   return typeof value === 'string' &&
-    Object.prototype.hasOwnProperty.call(BUILDING_CONFIGS, value);
+    Object.prototype.hasOwnProperty.call(STRUCTURE_CONFIGS, value);
 }
 
 function sanitizeWaypointType(value: unknown): WaypointType | null {
@@ -354,7 +354,7 @@ function sanitizeGuardCommand(command: GuardCommand, tick: number): GuardCommand
 function sanitizeStartBuildCommand(command: StartBuildCommand, tick: number): StartBuildCommand | null {
   if (
     !isEntityId(command.builderId) ||
-    !isBuildingBlueprintId(command.buildingBlueprintId) ||
+    !isStructureBlueprintId(command.buildingBlueprintId) ||
     !Number.isFinite(command.gridX) ||
     !Number.isFinite(command.gridY) ||
     typeof command.queue !== 'boolean'

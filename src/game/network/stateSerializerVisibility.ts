@@ -18,10 +18,10 @@ import {
 } from './snapshotWireRows';
 
 export {
-  BUILDING_VISION_RADIUS,
-  RADAR_VISION_RADIUS,
   canEntityProvideFullVision,
   canEntityProvideRadarVision,
+  getBuildingAuthoredFullSightRadius,
+  getBuildingAuthoredRadarRadius,
   getEntityFullVisionRadius,
   getEntityRadarRadius,
   getEntityVisibilityPadding,
@@ -112,12 +112,13 @@ function appendScanPulseWireRow(
 /** Per-recipient visibility filter.
  *
  *  Two parallel source pools (FOW-03):
- *    - fullSources: units and non-radar buildings. Grant FULL info
- *      (entity present in the main snapshot with all fields).
- *    - radarSources: radar buildings. Grant ONLY positional intel —
- *      the entity appears on the minimap as a blip but is omitted
- *      from the main snapshot, so the player learns where without
- *      learning what / HP / orders.
+   *    - fullSources: entities explicitly authored with full-sight
+   *      sensors. Grant FULL info (entity present in the main snapshot
+   *      with all fields).
+   *    - radarSources: entities explicitly authored with radar sensors.
+   *      Grant ONLY positional intel — the entity appears on the
+   *      minimap as a blip but is omitted from the main snapshot, so
+   *      the player learns where without learning what / HP / orders.
  *
  *  The owner of an entity always sees their own stuff in full; the
  *  owner-aware short-circuit lives in isEntityVisible() and

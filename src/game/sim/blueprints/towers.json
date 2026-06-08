@@ -26,6 +26,13 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
+    "sensors": {
+      "fullSightRadius": 0,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "turrets": [
       {
         "turretBlueprintId": "turretConstruction",
@@ -84,6 +91,13 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
+    "sensors": {
+      "fullSightRadius": 0,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "turrets": [
       {
         "turretBlueprintId": "turretBeamLong",
@@ -141,6 +155,13 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
+    "sensors": {
+      "fullSightRadius": 0,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
     "turrets": [
       {
         "turretBlueprintId": "turretCannonLong",
@@ -197,6 +218,13 @@
     },
     "hud": {
       "barsOffsetAboveTop": 12
+    },
+    "sensors": {
+      "fullSightRadius": 0,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
     },
     "turrets": [
       {

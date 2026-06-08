@@ -833,10 +833,10 @@ export function applyClientCombatExpensivePrediction(options: {
     }
 
     const shot = weapon.config.shot;
-    if (shot === undefined || shot.type !== 'shield') continue;
+    if (shot === null || shot.type !== 'shield') continue;
     if (!turretShieldSpheresEnabled) {
       const shield = weapon.shield;
-      if (shield !== undefined) {
+      if (shield !== null) {
         shield.range = 0;
         shield.transition = 0;
       }
@@ -844,7 +844,7 @@ export function applyClientCombatExpensivePrediction(options: {
     }
     const fieldShot = shot;
     const shield = weapon.shield;
-    const cur = shield !== undefined ? shield.range : 0;
+    const cur = shield !== null ? shield.range : 0;
     const targetProgress = isTurretEngaged(entity, i, weapon.state) ? 1 : 0;
     const progressDelta = dt / (fieldShot.transitionTime / 1000);
     let next = cur;
@@ -857,11 +857,11 @@ export function applyClientCombatExpensivePrediction(options: {
     // The shield range is a slow visual transition, not a
     // snapshot-drift channel. It rides along with rotation-position
     // correction.
-    const serverRange = tw !== undefined ? tw.shieldRange : undefined;
-    if (serverRange !== undefined && rotPosBlend >= 0) {
+    const serverRange = tw !== undefined ? tw.shieldRange : null;
+    if (serverRange !== null && rotPosBlend >= 0) {
       next = lerp(next, serverRange, rotPosBlend);
     }
-    if (shield === undefined) {
+    if (shield === null) {
       weapon.shield = { range: next, transition: 0 };
     } else {
       shield.range = next;
@@ -912,7 +912,7 @@ export function clientUnitPredictionIsSettled(
       if (angleDeltaAbs(weapon.pitch, tw.pitch) > PREDICTION_TURRET_EPSILON) return false;
       if (turretShieldSpheresEnabled) {
         const shield = weapon.shield;
-        const localRange = shield !== undefined ? shield.range : 0;
+        const localRange = shield !== null ? shield.range : 0;
         const targetRange = tw.shieldRange ?? 0;
         if (Math.abs(localRange - targetRange) > PREDICTION_TURRET_EPSILON) return false;
       }
@@ -921,12 +921,12 @@ export function clientUnitPredictionIsSettled(
     const shot = weapon.config.shot;
     if (
       turretShieldSpheresEnabled &&
-      shot !== undefined &&
+      shot !== null &&
       shot.type === 'shield' &&
       shot.barrier !== undefined
     ) {
       const shield = weapon.shield;
-      const range = shield !== undefined ? shield.range : 0;
+      const range = shield !== null ? shield.range : 0;
       if (range > PREDICTION_TURRET_EPSILON) return false;
       if (isTurretEngaged(entity, i, weapon.state)) return false;
     }

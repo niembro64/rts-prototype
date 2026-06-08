@@ -157,7 +157,7 @@ function flushTurretRotationBatch(dtSec: number): void {
 
 function isInstantLockBeamWeapon(weapon: Turret): boolean {
   const shot = weapon.config.shot;
-  return shot !== undefined && shot.type === 'beam';
+  return shot !== null && shot.type === 'beam';
 }
 
 function snapTurretAimToTarget(weapon: Turret, aimTargetYaw: number, aimTargetPitch: number): void {

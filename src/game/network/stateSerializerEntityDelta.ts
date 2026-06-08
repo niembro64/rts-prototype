@@ -136,6 +136,8 @@ const trackingStates = new Map<string, DeltaTrackingState>();
 const capturedNextStates = new Map<EntityId, PrevEntityState>();
 const capturedNextStatePool: PrevEntityState[] = [];
 let capturedNextStatePoolIndex = 0;
+let capturedWorld: WorldState | null = null;
+let capturedSim: SimWasm | undefined;
 
 function createPrevEntityState(): PrevEntityState {
   const turretRots: number[] = [];
@@ -396,7 +398,7 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
       prev.turretPitches[i] = snapshotAimMotion ? w.pitch : 0;
       prev.turretPitchVels[i] = snapshotAimMotion ? w.pitchVelocity : 0;
       prev.turretTargetIds[i] = targetId;
-      prev.shieldRanges[i] = w.shield !== undefined ? w.shield.range : 0;
+      prev.shieldRanges[i] = w.shield !== null ? w.shield.range : 0;
     }
   }
 
@@ -613,6 +615,9 @@ export function getNextEntityState(entity: Entity): PrevEntityState {
     next = acquireCapturedNextState();
     captureEntityState(entity, next);
     capturedNextStates.set(entity.id, next);
+    if (capturedWorld !== null && capturedSim !== undefined) {
+      syncEntityMetaPools(capturedWorld, entity, capturedSim);
+    }
   }
   return next;
 }
@@ -738,7 +743,7 @@ function syncEntityMetaPools(world: WorldState, e: Entity, sim: SimWasm): void {
       snapshotAimMotion ? w.pitch : 0,
       snapshotAimMotion ? w.pitchVelocity : 0,
       snapshotAimMotion ? w.pitchAcceleration : 0,
-      w.shield !== undefined ? w.shield.range : 0,
+      w.shield !== null ? w.shield.range : 0,
       targetId,
     );
   }
@@ -751,38 +756,20 @@ export function captureSnapshotEntityStates(
 ): void {
   capturedNextStates.clear();
   capturedNextStatePoolIndex = 0;
+  capturedWorld = world;
 
   const accepts = (e: Entity): boolean =>
     e.type === 'unit' || e.type === 'building' || e.type === 'tower';
 
   const sim = getSimWasm();
-
-  // Phase 10 D.3f — Pool sync runs over ALL entities every emit so
-  // the Rust-side snapshot baseline (per-recipient) can read fresh
-  // hp / build / factory / solar / turret state even for entities
-  // that aren't in this tick's dirty set (e.g. a non-dirty entity
-  // re-entering a recipient's vision still needs an up-to-date
-  // pool view). Map population below stays dirty-only on delta.
-  const allSources: ReadonlyArray<readonly Entity[]> = [
-    world.getUnits(),
-    world.getBuildings(),
-  ];
-  if (sim !== undefined) {
-    for (let s = 0; s < allSources.length; s++) {
-      const src = allSources[s];
-      for (let i = 0; i < src.length; i++) {
-        const e = src[i];
-        if (!accepts(e)) continue;
-        syncEntityMetaPools(world, e, sim);
-      }
-    }
-  }
+  capturedSim = sim;
 
   if (isDelta && SNAPSHOT_CONFIG.deltaEnabled) {
     if (!dirtyEntityIds) return;
     for (let i = 0; i < dirtyEntityIds.length; i++) {
       const e = world.getEntity(dirtyEntityIds[i]);
       if (!e || !accepts(e)) continue;
+      if (sim !== undefined) syncEntityMetaPools(world, e, sim);
       const captured = acquireCapturedNextState();
       captureEntityState(e, captured);
       capturedNextStates.set(e.id, captured);
@@ -790,11 +777,16 @@ export function captureSnapshotEntityStates(
     return;
   }
 
+  const allSources: ReadonlyArray<readonly Entity[]> = [
+    world.getUnits(),
+    world.getBuildings(),
+  ];
   for (let s = 0; s < allSources.length; s++) {
     const src = allSources[s];
     for (let i = 0; i < src.length; i++) {
       const e = src[i];
       if (!accepts(e)) continue;
+      if (sim !== undefined) syncEntityMetaPools(world, e, sim);
       const captured = acquireCapturedNextState();
       captureEntityState(e, captured);
       capturedNextStates.set(e.id, captured);

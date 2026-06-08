@@ -164,10 +164,10 @@ export function buildTurretMesh3D(
   // barrel — posed from the last beam fired, not from turret aim.
   const followsBeam = turretBarrelFollowsBeam(turret.config);
 
-  if (turret.config.constructionEmitter) {
+  if (turret.config.constructionEmitter !== null) {
     const constructionEmitter = buildConstructionEmitterRigFromTurretConfig(
       turret.config,
-      turret.config.visualVariant,
+      turret.config.visualVariant ?? undefined,
       deps.primaryMat,
     );
     root.add(constructionEmitter.group);

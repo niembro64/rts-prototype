@@ -76,8 +76,8 @@ function makeRuntimeTurret(
     aimErrorYaw: 0,
     aimErrorPitch: 0,
     ballisticAimInRange: true,
-    burst: undefined,
-    shield: undefined,
+    burst: null,
+    shield: null,
     barrelFireIndex: 0,
   };
 }
@@ -95,7 +95,7 @@ function computeTurretSustainedDps(config: TurretConfig): number {
     const damage = shot.explosion !== undefined ? shot.explosion.damage : 0;
     return cooldownDuration > 0 ? (damage * 1000) / cooldownDuration : 0;
   }
-  if (config.submunitions !== undefined) {
+  if (config.submunitions !== null) {
     const spec = config.submunitions;
     const child = SHOT_BLUEPRINTS[spec.shotBlueprintId];
     const damage = child?.base.deathExplosion.damage ?? 0;

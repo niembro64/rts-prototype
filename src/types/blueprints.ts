@@ -46,6 +46,7 @@ export type {
   PathfindingTerrainMode,
   ProjectileShotBlueprint,
   ProjectileShotKind,
+  SensorCapabilityConfig,
   ShotBlueprint,
   ShotCollision,
   ShotExplosion,
