@@ -36,17 +36,35 @@ const CELL_Y = 1.25;
 const CELL_BORDER_Y = 1.38;
 const RANGE_Y = 0.6;
 // The deposit coin top face sits at terrain + 0.04 + coinHeight * 0.5 (see
-// MetalDepositRenderer3D.buildDepositNode + makeDepositCoinGeometry). Raise
-// ghost cells that live on a deposit above that height so the borders/fills
-// aren't eaten by the rim of the coin.
-const METAL_DEPOSIT_COIN_TOP_Y = METAL_DEPOSIT_CONFIG.coinHeight * 0.5 + 0.04;
-const METAL_DEPOSIT_CELL_Y = METAL_DEPOSIT_COIN_TOP_Y + 0.45;
-const METAL_DEPOSIT_CELL_BORDER_Y = METAL_DEPOSIT_COIN_TOP_Y + 0.6;
+// MetalDepositRenderer3D.buildDepositNode + makeDepositCoinGeometry). Build
+// ability squares then use the same clearance above that visible surface that
+// normal terrain squares use above raw terrain.
+const METAL_DEPOSIT_COIN_TOP_LIFT = METAL_DEPOSIT_CONFIG.coinHeight * 0.5 + 0.04;
 type GroundHeightLookup = (x: number, y: number) => number;
 
 type CellMaterialPair = {
   fill: THREE.MeshBasicMaterial;
   border: THREE.LineBasicMaterial;
+};
+
+type BuildAbilitySquareCell = {
+  x: number;
+  y: number;
+  gx?: number;
+  gy?: number;
+  metalCovered?: boolean;
+  depositId?: number | null;
+};
+
+type BuildAbilitySquarePose = {
+  x: number;
+  z: number;
+  xMin: number;
+  xMax: number;
+  zMin: number;
+  zMax: number;
+  fillY: number;
+  borderY: number;
 };
 
 export class BuildGhost3D {
@@ -66,6 +84,8 @@ export class BuildGhost3D {
   private depositOverlayFillMat: THREE.MeshBasicMaterial | null = null;
   private depositOverlayBorderGeom: THREE.BufferGeometry | null = null;
   private depositOverlayBorderMat: THREE.LineBasicMaterial | null = null;
+  private metalDepositSurfaceYByCell = new Map<string, number>();
+  private metalDepositSurfaceYById = new Map<number, number>();
 
   /** Flat footprint rectangle (scaled to the current building blueprint). */
   private footprint: THREE.Mesh;
@@ -220,6 +240,7 @@ export class BuildGhost3D {
     this.group.visible = false;
     this.world.add(this.group);
 
+    this.indexMetalDepositSurfaces(deposits);
     this.buildDepositOverlay(deposits);
     this.depositOverlayGroup.visible = false;
     this.world.add(this.depositOverlayGroup);
@@ -236,31 +257,27 @@ export class BuildGhost3D {
   /** Build one merged filled mesh + one merged border LineSegments
    *  covering every metal-deposit cell. Together they reproduce the
    *  red/green "darker fill, brighter border" look the terrain shader
-   *  paints, but lifted above the deposit coin's top face so the marker
-   *  isn't eaten by the coin rim. Heights are baked from the terrain
-   *  lookup at construction; deposit terrain is pre-flattened, so these
-   *  heights never change at runtime. */
+   *  paints. Positions are resolved through the same square helper used
+   *  by live placement diagnostics, so deposit markers and red/yellow/
+   *  green buildability cells share the same clearance rules. */
   private buildDepositOverlay(deposits: ReadonlyArray<MetalDeposit>): void {
     if (deposits.length === 0) return;
-    const half = BUILD_GRID_CELL_SIZE / 2;
     const fillPositions: number[] = [];
     const fillIndices: number[] = [];
     const borderPositions: number[] = [];
     let vertexBase = 0;
     for (const deposit of deposits) {
       for (const cell of deposit.cells) {
-        const ground = this.getGroundHeight(cell.x, cell.y);
-        const fillY = ground + METAL_DEPOSIT_CELL_Y;
-        const borderY = ground + METAL_DEPOSIT_CELL_BORDER_Y;
-        const xMin = cell.x - half;
-        const xMax = cell.x + half;
-        const zMin = cell.y - half;
-        const zMax = cell.y + half;
+        const square = this.getBuildAbilitySquarePose({
+          ...cell,
+          metalCovered: true,
+          depositId: deposit.id,
+        });
         fillPositions.push(
-          xMin, fillY, zMin,
-          xMax, fillY, zMin,
-          xMax, fillY, zMax,
-          xMin, fillY, zMax,
+          square.xMin, square.fillY, square.zMin,
+          square.xMax, square.fillY, square.zMin,
+          square.xMax, square.fillY, square.zMax,
+          square.xMin, square.fillY, square.zMax,
         );
         fillIndices.push(
           vertexBase, vertexBase + 1, vertexBase + 2,
@@ -268,10 +285,10 @@ export class BuildGhost3D {
         );
         vertexBase += 4;
         borderPositions.push(
-          xMin, borderY, zMin, xMax, borderY, zMin,
-          xMax, borderY, zMin, xMax, borderY, zMax,
-          xMax, borderY, zMax, xMin, borderY, zMax,
-          xMin, borderY, zMax, xMin, borderY, zMin,
+          square.xMin, square.borderY, square.zMin, square.xMax, square.borderY, square.zMin,
+          square.xMax, square.borderY, square.zMin, square.xMax, square.borderY, square.zMax,
+          square.xMax, square.borderY, square.zMax, square.xMin, square.borderY, square.zMax,
+          square.xMin, square.borderY, square.zMax, square.xMin, square.borderY, square.zMin,
         );
       }
     }
@@ -427,6 +444,61 @@ export class BuildGhost3D {
     return { fill: this.cellMatOk, border: this.cellBorderMatOk };
   }
 
+  private indexMetalDepositSurfaces(deposits: ReadonlyArray<MetalDeposit>): void {
+    this.metalDepositSurfaceYByCell.clear();
+    this.metalDepositSurfaceYById.clear();
+    for (const deposit of deposits) {
+      const surfaceY = deposit.height + METAL_DEPOSIT_COIN_TOP_LIFT;
+      const currentById = this.metalDepositSurfaceYById.get(deposit.id);
+      if (currentById === undefined || surfaceY > currentById) {
+        this.metalDepositSurfaceYById.set(deposit.id, surfaceY);
+      }
+      for (const cell of deposit.cells) {
+        const key = BuildGhost3D.cellKey(cell.gx, cell.gy);
+        const currentByCell = this.metalDepositSurfaceYByCell.get(key);
+        if (currentByCell === undefined || surfaceY > currentByCell) {
+          this.metalDepositSurfaceYByCell.set(key, surfaceY);
+        }
+      }
+    }
+  }
+
+  private static cellKey(gx: number, gy: number): string {
+    return `${gx},${gy}`;
+  }
+
+  private getBuildAbilitySquarePose(cell: BuildAbilitySquareCell): BuildAbilitySquarePose {
+    const half = BUILD_GRID_CELL_SIZE / 2;
+    const surfaceY = this.getBuildAbilitySquareSurfaceY(cell);
+    return {
+      x: cell.x,
+      z: cell.y,
+      xMin: cell.x - half,
+      xMax: cell.x + half,
+      zMin: cell.y - half,
+      zMax: cell.y + half,
+      fillY: surfaceY + CELL_Y,
+      borderY: surfaceY + CELL_BORDER_Y,
+    };
+  }
+
+  private getBuildAbilitySquareSurfaceY(cell: BuildAbilitySquareCell): number {
+    const terrainY = this.getGroundHeight(cell.x, cell.y);
+    if (!cell.metalCovered) return terrainY;
+
+    let depositSurfaceY: number | undefined;
+    if (cell.gx !== undefined && cell.gy !== undefined) {
+      depositSurfaceY = this.metalDepositSurfaceYByCell.get(BuildGhost3D.cellKey(cell.gx, cell.gy));
+    }
+    if (depositSurfaceY === undefined && cell.depositId !== undefined && cell.depositId !== null) {
+      depositSurfaceY = this.metalDepositSurfaceYById.get(cell.depositId);
+    }
+    if (depositSurfaceY === undefined) {
+      depositSurfaceY = terrainY + METAL_DEPOSIT_COIN_TOP_LIFT;
+    }
+    return Math.max(terrainY, depositSurfaceY);
+  }
+
   private updateDiagnosticCells(
     diagnostics: BuildPlacementDiagnostics | undefined,
     isExtractor: boolean,
@@ -455,18 +527,13 @@ export class BuildGhost3D {
         if (border) border.visible = false;
         continue;
       }
-      const y = this.getGroundHeight(cell.x, cell.y);
-      // Metal-covered cells sit on top of the raised deposit coin, so
-      // place the ghost above the coin's top face instead of just above
-      // raw terrain. Non-deposit cells keep the original tight offsets.
-      const fillY = cell.metalCovered ? METAL_DEPOSIT_CELL_Y : CELL_Y;
-      const borderY = cell.metalCovered ? METAL_DEPOSIT_CELL_BORDER_Y : CELL_BORDER_Y;
-      mesh.position.set(cell.x, y + fillY, cell.y);
+      const square = this.getBuildAbilitySquarePose(cell);
+      mesh.position.set(square.x, square.fillY, square.z);
       const materials = this.materialForCell(cell, isExtractor);
       mesh.material = materials.fill;
       mesh.visible = true;
       if (border) {
-        border.position.set(cell.x, y + borderY, cell.y);
+        border.position.set(square.x, square.borderY, square.z);
         border.material = materials.border;
         border.visible = true;
       }

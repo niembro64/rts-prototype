@@ -16,6 +16,129 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 Please always commit and push before and after any code changes we make.
 ================================================================================
 
-AUDIT FINDINGS FROM budget_design_philosophy.html
+BAR COMMAND AND UI PARITY GAPS
 
-No open audit findings.
+Baseline: budget_design_philosophy.html says player-facing behavior defaults to
+Beyond-All-Reason unless explicitly overridden. BAR references for this backlog:
+https://www.beyondallreason.info/commands-20 and
+https://github.com/beyond-all-reason/Beyond-All-Reason/tree/master/luaui/configs/hotkeys.
+
+Issue: rts-prototype does not have a BAR-compatible keymap and command UI layer.
+The current 3D input path hard-codes a small set of single-key commands
+(move/fight/patrol, stop, queue undo/clear, wait, fire toggle, building on/off,
+self-destruct, tower target, attack area/ground, guard, reclaim, repair area,
+ping, scan, build cycle, DGun, select commander, 1-9 control/build keys).
+Implement BAR-style keyboard command coverage, including grid and legacy key
+presets, configurable key bindings, multi-key binds, modifier-aware commands,
+hotkey conflict handling, and on-screen command buttons whose visible hotkeys
+match the active keymap.
+
+Issue: the selection command surface is far short of BAR. Add selection
+commands and visual affordances for select all units, select all matching units,
+select all matching units in view, select all units from previous selection,
+select commander focus/add, select idle builders, select idle transports,
+select waiting units, split army, select only mobile units, select only same
+type, deselect-from-box, invert/loop selection, and the BAR select-box modifier
+semantics for Shift/Ctrl/Alt/Space/Z. Current click, box select, Shift-add, and
+mixed-selection narrowing are not enough.
+
+Issue: control groups only cover 1-9 set/recall/additive recall. Implement BAR
+group slot 0, double-tap group focus, Ctrl+Shift group add, Ctrl+Alt group
+select-toggle, Ctrl+` group unset, auto-group creation/removal, auto-group
+preset save/load, and any required spectator/team selection behavior that maps
+to rts-prototype's lobby and player-switching model.
+
+Issue: movement and formation commands are incomplete. Keep the existing
+right-click move/fight/patrol and line-drag behavior, but add BAR's explicit
+Move command, Move and assume formation, Move in formation, formation-preserving
+movement semantics, slow/fast movement modifiers where applicable, and visual
+formation previews. Translate these to the 3D physics model so formation targets
+respect mass, collision, terrain height, slopes, water, and pathability.
+
+Issue: battle and targeting commands are incomplete. Add visual buttons and
+hotkeys for BAR Attack, Attack Area, Attack Circle, Attack Line, Fight, Guard,
+Patrol, Target Set, Target Set No Ground, and Target Cancel. rts-prototype has
+attack-on-right-click, fixed-radius area attack, attack-ground, guard, patrol,
+and tower-only target lock, but it lacks BAR's mobile-unit target-set/cancel
+language, attack-line/circle shapes, target no-ground behavior, and command-card
+access for the full battle command set.
+
+Issue: construction commands are missing most BAR build ergonomics. Implement
+the BAR grid build menu categories, grid-menu cell hotkeys, legacy quick-build
+Z/X/C/V cycling, construction shortcuts, build line, build grid, build border,
+build split, build spacing increase/decrease, build facing/rotation controls,
+area metal extractor placement, upgrade T1 mex area, upgrade T1 -> T2, and
+visual previews for every build shape. The current allowed-building strip,
+number keys, single-placement ghost, and Shift queueing do not satisfy BAR
+fallback behavior.
+
+Issue: queue editing and command insertion are incomplete. BAR supports normal
+queueing, queue add in front, queue to next, commandinsert/prepend-between,
+skip current command, cancel last command, factory guard, stop production, and
+queued variants of several orders. rts-prototype only exposes Shift queue,
+remove-last-queued-order, clear-queued-orders, wait queueing, and basic factory
+rally. Implement the missing queue semantics with server authorization and
+clear visual queue editing feedback.
+
+Issue: repair and reclaim are incomplete. Add BAR-style area reclaim by
+right-drag/circle, explicit reclaim area buttons/hotkeys, user-sized repair and
+reclaim areas, reclaim-selected behavior where appropriate, and reclaim field
+highlighting. Current reclaim is commander-targeted or point-resolved only, and
+repair area uses a fixed radius.
+
+Issue: behavior/state toggles are incomplete. BAR exposes cloak/want-cloak,
+gather wait, on/off, stateful on/off, repeat, stateful repeat, stance/fire
+state, positioning/move state, trajectory toggle, stop, wait, factory guard,
+and related stateful command buttons. rts-prototype currently has only a simple
+fire enabled toggle, producer-building on/off, wait, stop, and self-destruct.
+Implement the missing states in simulation, snapshots, command authorization,
+selection UI, hotkeys, and visible state indicators.
+
+Issue: special abilities are incomplete. Add BAR Capture, DGUN, Load Transport,
+Unload Transport, Resurrect, Resurrect Area, Self Destruct, manual fire, manual
+launch, and any unit-specific special buttons. rts-prototype has commander
+DGun and self-destruct, but no capture, resurrection, transports, load/unload
+logic, manual launch weapons, or unit-specific ability command-card support.
+
+Issue: factory and production UI are incomplete. BAR has factory production
+controls beyond selecting one repeat-build unit: stop production, repeat/queue
+state, factory queue mode/quotas, factory presets save/load/show, production
+queue editing, rally/route display, factory guard, and complete unit build
+menus. rts-prototype needs a BAR-equivalent factory panel and hotkeys, translated
+to authoritative-server commands and 3D rally/path previews.
+
+Issue: map, communication, and game UI commands are missing. Implement BAR
+commands and buttons for chat, draw on map, draw label, erase drawings, ping to
+map, go to last ping, map overview switch, map details info, show/hide UI, show
+map elevation, show map metal, show unit pathing, LOS/radar toggles, options
+menu, pause, game-speed adjust, screenshot, mute/volume controls, fullscreen,
+and any equivalent lobby/spectator-safe variants. rts-prototype has a minimap,
+resource bar, debug/control bars, and ping/scan commands, but not the BAR game
+UI command surface.
+
+Issue: camera controls are missing BAR parity. Add camera mode switching
+(overhead/TA/Spring-style equivalents as appropriate for this 3D prototype),
+camera flip, camera anchors set/focus, selected-unit tracking, keyboard/numpad
+camera movement, FOV controls, overview/minimap camera switching, and picture-
+in-picture behavior or a documented 3D-focused replacement. Existing wheel
+zoom, middle-drag pan/orbit, touch controls, minimap click-to-move camera, and
+world-direction HUD are not enough.
+
+Issue: BAR gameplay functionality tied to missing commands is absent. Implement
+or explicitly redesign the systems needed by the missing command surface:
+transports, capture, resurrection/wreck fields, cloak/detection, radar/LOS UI
+states, unit stances, trajectory weapons, manual-launch weapons, factory queue
+management, build-shape placement, mex upgrade workflows, unit stats/details,
+chat/map drawing, pause/speed controls, spectators/replays where applicable,
+and complete faction/unit/factory/building rosters. Missing commands should not
+be added as dead UI; their underlying authoritative simulation, client
+prediction, snapshots, and render feedback must exist.
+
+Issue: BAR parity must be extended through the 3D/physics-first design, not
+implemented as flat 2D shortcuts. Attack areas/lines/circles need 3D ground
+height and ballistic previews; build lines/grids/borders need slope, support
+surface, collision, and resource-cell validation; formations need mass,
+acceleration, collision, and terrain-aware spacing; transport/load/unload,
+reclaim, resurrection, capture, and manual fire need physical presentation and
+authoritative physics interactions. Document any intentional departure from BAR
+in budget_design_philosophy.html before omitting a BAR behavior.
