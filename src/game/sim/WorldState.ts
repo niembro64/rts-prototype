@@ -48,6 +48,11 @@ import {
   type SurfaceNormal,
   type SupportSurfaceQueryOptions,
 } from './WorldSupportSurfaceSampler';
+import {
+  clearOwnedSelection,
+  collectSelectedOwnedEntities,
+  selectOwnedEntities,
+} from './WorldSelection';
 
 export { SeededRNG } from './SeededRNG';
 export type { CreateProjectileProvenance } from './WorldProjectileFactory';
@@ -679,50 +684,31 @@ export class WorldState {
 
   // Get selected entities for active player
   getSelectedEntities(): Entity[] {
-    const out = this._selectedEntitiesBuf;
-    out.length = 0;
-    const playerId = this.activePlayerId;
-    for (const e of this.getAllEntities()) {
-      if (
-        e.selectable !== null &&
-        e.selectable.selected &&
-        e.ownership !== null &&
-        e.ownership.playerId === playerId
-      ) {
-        out.push(e);
-      }
-    }
-    return out;
+    return collectSelectedOwnedEntities(
+      this.getAllEntities(),
+      this.activePlayerId,
+      this._selectedEntitiesBuf,
+    );
   }
 
   // Get selected units for active player
   getSelectedUnits(): Entity[] {
-    const out = this._selectedUnitsBuf;
-    out.length = 0;
-    const playerId = this.activePlayerId;
-    for (const e of this.getUnits()) {
-      if (
-        e.selectable !== null &&
-        e.selectable.selected &&
-        e.ownership !== null &&
-        e.ownership.playerId === playerId
-      ) {
-        out.push(e);
-      }
-    }
-    return out;
+    return collectSelectedOwnedEntities(
+      this.getUnits(),
+      this.activePlayerId,
+      this._selectedUnitsBuf,
+    );
   }
 
   // Get selected factories for active player
   getSelectedFactories(): Entity[] {
-    const out = this._selectedFactoriesBuf;
-    out.length = 0;
     const playerId = this.activePlayerId;
     this.rebuildCachesIfNeeded();
-    for (const e of this.cache.getFactoriesByPlayer(playerId)) {
-      if (e.selectable !== null && e.selectable.selected) out.push(e);
-    }
-    return out;
+    return collectSelectedOwnedEntities(
+      this.cache.getFactoriesByPlayer(playerId),
+      playerId,
+      this._selectedFactoriesBuf,
+    );
   }
 
   // Entity count
@@ -732,26 +718,12 @@ export class WorldState {
 
   // Clear all selections (only for active player's units)
   clearSelection(): void {
-    for (const entity of this.entities.values()) {
-      if (entity.selectable !== null && entity.ownership !== null && entity.ownership.playerId === this.activePlayerId) {
-        entity.selectable.selected = false;
-      }
-    }
+    clearOwnedSelection(this.entities.values(), this.activePlayerId);
   }
 
   // Select entities by IDs (only if owned by active player)
   selectEntities(ids: EntityId[]): void {
-    for (const id of ids) {
-      const entity = this.entities.get(id);
-      if (
-        entity !== undefined &&
-        entity.selectable !== null &&
-        entity.ownership !== null &&
-        entity.ownership.playerId === this.activePlayerId
-      ) {
-        entity.selectable.selected = true;
-      }
-    }
+    selectOwnedEntities(ids, this.entities, this.activePlayerId);
   }
 
   // Switch active player
