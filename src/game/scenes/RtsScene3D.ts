@@ -18,6 +18,7 @@ import { RtsScene3DCameraFramingSystem } from './helpers/RtsScene3DCameraFraming
 import { RtsScene3DMinimapSystem } from './helpers/RtsScene3DMinimapSystem';
 import { RtsScene3DRenderPhase } from './helpers/RtsScene3DRenderPhase';
 import { teardownRtsScene3DRenderers } from './helpers/RtsScene3DRendererLifecycle';
+import { bootstrapRtsScene3DRenderers } from './helpers/RtsScene3DRendererBootstrap';
 import { RtsScene3DSelectionSystem } from './helpers/RtsScene3DSelectionSystem';
 import { dispatchSimEvent3DVisual } from './helpers/RtsScene3DVisualEventDispatcher';
 import { ThreeApp } from '../render3d/ThreeApp';
@@ -31,7 +32,6 @@ import { EnvironmentPropRenderer3D } from '../render3d/EnvironmentPropRenderer3D
 import { generateMetalDeposits, type MetalDeposit } from '../../metalDepositConfig';
 import { WaterRenderer3D } from '../render3d/WaterRenderer3D';
 import { CursorGround } from '../render3d/CursorGround';
-import { LegInstancedRenderer } from '../render3d/LegInstancedRenderer';
 import { ViewportFootprint } from '../ViewportFootprint';
 import { SprayRenderer3D } from '../render3d/SprayRenderer3D';
 import { PylonTubeFlowRenderer } from '../render3d/PylonTubeFlowRenderer';
@@ -54,7 +54,6 @@ import type { NetworkServerSnapshotSimEvent } from '../network/NetworkTypes';
 import { CommandQueue, type Command } from '../sim/commands';
 import { getTerrainDividerTeamCount } from '../sim/playerLayout';
 import {
-  getTerrainMeshHeight,
   getSurfaceHeight,
   setTerrainTeamCount,
   setTerrainCenterMagnitude,
@@ -137,10 +136,6 @@ export class RtsScene3D {
 
   private clientViewState!: ClientViewState;
   private entityRenderer!: Render3DEntities;
-  /** Shared instanced cylinder pool driving every leg in the scene.
-   *  Owned at the scene level so its lifetime brackets the entity
-   *  renderer's; passed in by reference. */
-  private legInstancedRenderer!: LegInstancedRenderer;
   private beamRenderer!: BeamRenderer3D;
   private shieldRenderer!: ShieldRenderer3D;
   private terrainTileRenderer!: TerrainTileRenderer3D;
@@ -392,150 +387,39 @@ export class RtsScene3D {
       if (!this.isGameOver) this.handleGameOver(winnerId);
     });
 
-    // Single shared cylinder pool for every leg in the scene. Every
-    // unit's locomotion writes into this each frame; the GPU then
-    // draws every leg cylinder in 2 instanced draw calls (upper,
-    // lower). Replaces the old per-leg THREE.Mesh pattern that
-    // produced 2 draw calls per leg → 16 per arachnid → 8000+ at
-    // 500 units. Construct BEFORE the entity renderer because the
-    // renderer takes the leg pool as a constructor dependency and
-    // forwards it through every locomotion build/update/destroy.
-    this.legInstancedRenderer = new LegInstancedRenderer(this.threeApp.world);
-    this.entityRenderer = new Render3DEntities(
-      this.threeApp.world,
-      this.clientViewState,
-      this.renderScope,
-      this.legInstancedRenderer,
-      this.threeApp.camera,
-      () => this.threeApp.renderer.domElement.clientHeight,
-      this.metalDeposits,
-    );
-    this.beamRenderer = new BeamRenderer3D(this.threeApp.world, this.renderScope);
-    // ShieldRenderer3D parents each unit's shield meshes onto
-    // that unit's yaw subgroup (like a regular turret root) so the
-    // bubble inherits position + tilt + yaw from the scenegraph
-    // chain. The lookup is via Render3DEntities since that's where
-    // the per-unit mesh hierarchy lives; entityRenderer was just
-    // constructed above so the callback resolves immediately.
-    this.shieldRenderer = new ShieldRenderer3D(
-      this.threeApp.world,
-      this.renderScope,
-      this.threeApp.camera,
-      (eid) => this.entityRenderer.getUnitYawGroup(eid),
-    );
-    this.terrainTileRenderer = new TerrainTileRenderer3D(
-      this.threeApp.world,
-      this.clientViewState,
-      this.mapWidth,
-      this.mapHeight,
-      this.metalDeposits,
-    );
-    this.metalDepositRenderer = new MetalDepositRenderer3D(
-      this.threeApp.world,
-      this.metalDeposits,
-    );
-    this.environmentPropRenderer = new EnvironmentPropRenderer3D(
-      this.threeApp.world,
-      {
-        mapWidth: this.mapWidth,
-        mapHeight: this.mapHeight,
-        playerCount: this.playerIds.length,
-        metalDeposits: this.metalDeposits,
-        renderScope: this.renderScope,
-        sampleTerrainHeight: (x, z) =>
-          getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight),
-      },
-    );
-    this.contactShadowRenderer = new ContactShadowRenderer3D(
-      this.threeApp.world,
-      this.mapWidth,
-      this.mapHeight,
-    );
-    // Transparent horizon water sits at WATER_LEVEL. The submerged
-    // off-map continuation is part of the terrain mesh itself, so the
-    // map edge and infinity shelf share the same material/color path.
-    // Terrain above the plane hides it via depth testing; terrain
-    // below the plane reads as submerged. Physics treats the water
-    // surface as the walkable ground (Terrain.getSurfaceHeight clamps
-    // UP to WATER_LEVEL), so units never enter the water.
-    this.waterRenderer = new WaterRenderer3D(
-      this.threeApp.world,
-      this.mapWidth,
-      this.mapHeight,
-    );
-    // Build the canonical cursor → 3D ground picker now that the
-    // terrain mesh exists. ONE raycaster, ONE terrain mesh, two
-    // lenses (three.js coords for the orbit camera, sim coords for
-    // commands). Used by EVERY input flow that needs to know "where
-    // on the actual ground is the cursor": camera zoom + pan, every
-    // command builder via Input3DManager (move waypoints, attack-
-    // moves, build clicks, dgun targets, rally points, factory
-    // waypoints…). Stops anyone in the input pipeline from
-    // approximating with a y=0 plane projection.
-    this.cursorGround = new CursorGround(
-      this.threeApp.camera,
-      this.threeApp.renderer.domElement,
-      this.mapWidth,
-      this.mapHeight,
-      this.terrainTileRenderer.getMesh(),
-    );
-    this.threeApp.orbit.setCursorPicker((cx, cy, terrainMode) =>
-      this.cursorGround.pickWorld(cx, cy, terrainMode)
-    );
-    // Camera-clearance sampler — sample the RAW rendered terrain mesh
-    // (`getTerrainMeshHeight`) instead of `getSurfaceHeight`. The
-    // surface variant clamps up to WATER_LEVEL because that's what
-    // UNITS walk on; using it for the camera made the water plane
-    // an artificial floor for zoom-in (camera couldn't dip below
-    // water + clearance, even though the real basin extends down
-    // to TILE_FLOOR_Y). Raw mesh terrain lets the player zoom toward
-    // the actual valley bed; the heightmap's own TILE_FLOOR_Y clamp
-    // is the true world floor.
-    this.threeApp.orbit.setTerrainSampler((x, z) =>
-      getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight)
-    );
-    // Camera target.y rides the local surface height so the orbit's
-    // derived camera position clears mountains under the initial
-    // framing. Deferred to here (rather than the constructor) so the
-    // ground generator is already configured by `setTerrainMapShape`
-    // & friends above and the orbit's clearance sampler is live.
-    this.cameraFramingSystem.seedInitialCamera();
-    this.explosionRenderer = new Explosion3D(this.threeApp.world);
-    this.shieldImpactRenderer = new ShieldImpactRenderer3D(this.threeApp.world);
-    this.waterSplashRenderer = new WaterSplash3D(this.threeApp.world);
-    this.debrisRenderer = new Debris3D(
-      this.threeApp.world,
-      (x, z) => getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight),
-    );
-    this.burnMarkRenderer = new BurnMark3D(
-      this.threeApp.world,
-      this.renderScope,
-      (x, y) => getSurfaceHeight(x, y, this.mapWidth, this.mapHeight, LAND_CELL_SIZE),
-    );
-    this.groundPrintRenderer = new GroundPrint3D(this.threeApp.world, this.renderScope);
-    this.lineDragRenderer = new LineDrag3D(this.threeApp.world);
-    this.buildGhostRenderer = new BuildGhost3D(
-      this.threeApp.world,
-      (x, y) => getTerrainMeshHeight(x, y, this.mapWidth, this.mapHeight),
-      this.metalDeposits,
-    );
-    this.sprayRenderer = new SprayRenderer3D(this.threeApp.world);
-    this.pylonTubeFlowRenderer = new PylonTubeFlowRenderer(this.threeApp.world);
-    this.smokeTrailRenderer = new SmokeTrail3D(this.threeApp.world);
-    this.fogOfWarFogRenderer = new FogOfWarFog3D(
-      this.threeApp.world,
-      this.mapWidth,
-      this.mapHeight,
-    );
-    this.sightBoundaryRenderer = new SightBoundaryRenderer3D(
-      this.threeApp.world,
-      (x, y) => getTerrainMeshHeight(x, y, this.mapWidth, this.mapHeight),
-    );
-    this.radarBoundaryRenderer = new SightBoundaryRenderer3D(
-      this.threeApp.world,
-      (x, y) => getTerrainMeshHeight(x, y, this.mapWidth, this.mapHeight),
-      { mode: 'radar' },
-    );
+    const renderers = bootstrapRtsScene3DRenderers({
+      threeApp: this.threeApp,
+      clientViewState: this.clientViewState,
+      renderScope: this.renderScope,
+      cameraFramingSystem: this.cameraFramingSystem,
+      mapWidth: this.mapWidth,
+      mapHeight: this.mapHeight,
+      playerCount: this.playerIds.length,
+      metalDeposits: this.metalDeposits,
+    });
+    this.entityRenderer = renderers.entityRenderer;
+    this.beamRenderer = renderers.beamRenderer;
+    this.shieldRenderer = renderers.shieldRenderer;
+    this.terrainTileRenderer = renderers.terrainTileRenderer;
+    this.metalDepositRenderer = renderers.metalDepositRenderer;
+    this.environmentPropRenderer = renderers.environmentPropRenderer;
+    this.contactShadowRenderer = renderers.contactShadowRenderer;
+    this.waterRenderer = renderers.waterRenderer;
+    this.cursorGround = renderers.cursorGround;
+    this.explosionRenderer = renderers.explosionRenderer;
+    this.shieldImpactRenderer = renderers.shieldImpactRenderer;
+    this.waterSplashRenderer = renderers.waterSplashRenderer;
+    this.debrisRenderer = renderers.debrisRenderer;
+    this.burnMarkRenderer = renderers.burnMarkRenderer;
+    this.groundPrintRenderer = renderers.groundPrintRenderer;
+    this.lineDragRenderer = renderers.lineDragRenderer;
+    this.buildGhostRenderer = renderers.buildGhostRenderer;
+    this.sprayRenderer = renderers.sprayRenderer;
+    this.pylonTubeFlowRenderer = renderers.pylonTubeFlowRenderer;
+    this.smokeTrailRenderer = renderers.smokeTrailRenderer;
+    this.fogOfWarFogRenderer = renderers.fogOfWarFogRenderer;
+    this.sightBoundaryRenderer = renderers.sightBoundaryRenderer;
+    this.radarBoundaryRenderer = renderers.radarBoundaryRenderer;
 
     const canvasParent = this.threeApp.canvas.parentElement;
     if (canvasParent) {
