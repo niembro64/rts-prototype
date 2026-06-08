@@ -230,6 +230,18 @@ const buildingOptions = computed(() => {
     })
     .filter((option) => option !== null);
 });
+const buildingOptionGroups = computed(() => {
+  const groups: { label: string; options: typeof buildingOptions.value }[] = [];
+  for (const option of buildingOptions.value) {
+    let group = groups.find((entry) => entry.label === option.category);
+    if (group === undefined) {
+      group = { label: option.category, options: [] };
+      groups.push(group);
+    }
+    group.options.push(option);
+  }
+  return groups;
+});
 const buildLineSpacingLabel = computed(() =>
   `${Math.round(props.selection.buildLineSpacingMultiplier * 100)}%`,
 );
@@ -736,19 +748,26 @@ function loadFactoryPreset(index: number): void {
     <div v-if="selection.hasBuilder && showUnitActions" class="button-group">
       <div class="group-label">Build</div>
       <div class="buttons">
-        <button
-          v-for="bo in buildingOptions"
-          :key="bo.buildingBlueprintId"
-          type="button"
-          class="action-btn build-btn"
-          :class="{ active: selection.isBuildMode && selection.selectedBuildingBlueprintId === bo.buildingBlueprintId }"
-          :title="costTitle(`Build ${bo.label}`, bo.cost, bo.key)"
-          @click="selection.isBuildMode && selection.selectedBuildingBlueprintId === bo.buildingBlueprintId ? actions.cancelBuild() : actions.startBuild(bo.buildingBlueprintId)"
+        <div
+          v-for="group in buildingOptionGroups"
+          :key="group.label"
+          class="build-category-group"
         >
-          <span class="btn-label">{{ compactBuildingLabel(bo.label) }}</span>
-          <span class="btn-cost"><span class="cost-resource">{{ bo.cost }}</span></span>
-          <span class="btn-key">{{ bo.key }}</span>
-        </button>
+          <span class="build-category-label">{{ group.label }}</span>
+          <button
+            v-for="bo in group.options"
+            :key="bo.buildingBlueprintId"
+            type="button"
+            class="action-btn build-btn"
+            :class="{ active: selection.isBuildMode && selection.selectedBuildingBlueprintId === bo.buildingBlueprintId }"
+            :title="costTitle(`Build ${bo.label}`, bo.cost, bo.key)"
+            @click="selection.isBuildMode && selection.selectedBuildingBlueprintId === bo.buildingBlueprintId ? actions.cancelBuild() : actions.startBuild(bo.buildingBlueprintId)"
+          >
+            <span class="btn-label">{{ compactBuildingLabel(bo.label) }}</span>
+            <span class="btn-cost"><span class="cost-resource">{{ bo.cost }}</span></span>
+            <span class="btn-key">{{ bo.key }}</span>
+          </button>
+        </div>
         <button
           v-if="selection.isBuildMode"
           type="button"
@@ -1452,6 +1471,20 @@ kbd {
 
 .build-btn {
   --btn-color: var(--selection-panel-build);
+}
+
+.build-category-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.build-category-label {
+  color: var(--selection-panel-label);
+  font-size: 7px;
+  font-weight: bold;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .dgun-btn {

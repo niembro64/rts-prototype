@@ -18,6 +18,7 @@ export type BuildingRosterDisplay = {
   label: string;
   key: string;
   cost: number;
+  category: 'Economy' | 'Intel' | 'Production' | 'Defense';
 };
 
 function scaledTotalCost(cost: ResourceCost): number {
@@ -67,8 +68,24 @@ function buildStructureRosterDisplay(
       label: bp.name,
       key: `${keyOffset + index + 1}`,
       cost: scaledTotalCost(bp.cost),
+      category: structureBuildCategory(bp.buildingBlueprintId),
     };
   });
+}
+
+function structureBuildCategory(buildingBlueprintId: BuildingBlueprintId): BuildingRosterDisplay['category'] {
+  switch (buildingBlueprintId) {
+    case 'buildingRadar':
+      return 'Intel';
+    case 'towerFabricator':
+      return 'Production';
+    case 'towerBeamMega':
+    case 'towerCannon':
+    case 'towerAntiAir':
+      return 'Defense';
+    default:
+      return 'Economy';
+  }
 }
 
 export const buildingRosterDisplay: BuildingRosterDisplay[] = buildStructureRosterDisplay(
