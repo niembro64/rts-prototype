@@ -1,49 +1,26 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
-import { GRAVITY, LAND_CELL_SIZE } from '../../config';
-import {
-  getTransformCosSin,
-  solveKinematicIntercept,
-  type KinematicInterceptSolution,
-  type KinematicState3,
-} from '../math';
-import { getTurretWorldMount } from '../math/MountGeometry';
+import { LAND_CELL_SIZE } from '../../config';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { Entity, EntityId, ProjectileShot, Turret } from '../sim/types';
-import { getShotMaxLifespan, isProjectileShot, isRocketLikeShot } from '../sim/types';
-import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
-import { getRuntimeTurretMount } from '../sim/turretMounts';
-import { getUnitGroundZ } from '../sim/unitGeometry';
-import { getEntityPosition3d, getProjectileLaunchSpeed } from '../sim/combat/combatUtils';
+import { isProjectileShot, isRocketLikeShot } from '../sim/types';
+import { getSurfaceHeight } from '../sim/Terrain';
+import { getProjectileLaunchSpeed } from '../sim/combat/combatUtils';
 import { isBuildBlockingActivation } from '../sim/buildableHelpers';
 import {
   createClosedRibbonGeometry,
   writeClosedRibbonGeometry,
   type ClosedRibbonGeometry,
 } from './GroundCircleLine3D';
+import {
+  findProjectileShotReachDistance,
+  resolveProjectileWeaponMount,
+} from './ProjectileBallisticPreview';
 
 const ENVELOPE_SLICES = 64;
 const RECOMPUTE_FRAMES = 6;
-const SEARCH_ITERATIONS = 14;
 const GROUND_LIFT = 9;
 const RENDER_ORDER = 22;
-const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
-const _rangeOriginState: KinematicState3 = {
-  position: { x: 0, y: 0, z: 0 },
-  velocity: { x: 0, y: 0, z: 0 },
-  acceleration: { x: 0, y: 0, z: 0 },
-};
-const _rangeTargetState: KinematicState3 = {
-  position: { x: 0, y: 0, z: 0 },
-  velocity: { x: 0, y: 0, z: 0 },
-  acceleration: { x: 0, y: 0, z: 0 },
-};
-const _rangeEntityPosition = { x: 0, y: 0, z: 0 };
-const _rangeIntercept: KinematicInterceptSolution = {
-  time: 0,
-  aimPoint: { x: 0, y: 0, z: 0 },
-  launchVelocity: { x: 0, y: 0, z: 0 },
-};
 
 type EnvelopeRing = {
   mesh: THREE.Mesh;
@@ -111,7 +88,7 @@ export class ProjectileRangeEnvelope3D {
       const speed = getProjectileLaunchSpeed(shot);
       if (speed <= 1e-6) continue;
 
-      const mount = this.resolveTurretMount(entity, weapon, mapWidth, mapHeight);
+      const mount = resolveProjectileWeaponMount(entity, weapon, mapWidth, mapHeight);
       const baseY = getSurfaceHeight(mount.x, mount.y, mapWidth, mapHeight, LAND_CELL_SIZE)
         + GROUND_LIFT;
       const ring = this.ensureRing(ringIndex);
@@ -166,37 +143,6 @@ export class ProjectileRangeEnvelope3D {
       && !weapon.config.verticalLauncher;
   }
 
-  private resolveTurretMount(
-    entity: Entity,
-    weapon: Turret,
-    mapWidth: number,
-    mapHeight: number,
-  ): { x: number; y: number; z: number } {
-    const entityPosition = getEntityPosition3d(entity, _rangeEntityPosition);
-    const { cos, sin } = getTransformCosSin(entity.transform);
-    const surfaceN = entity.unit
-      ? entity.unit.surfaceNormal ?? getSurfaceNormal(
-          entityPosition.x,
-          entityPosition.y,
-          mapWidth,
-          mapHeight,
-          LAND_CELL_SIZE,
-        )
-      : FLAT_SURFACE_NORMAL;
-    const mount = getRuntimeTurretMount(weapon);
-    return getTurretWorldMount(
-      entityPosition.x,
-      entityPosition.y,
-      getUnitGroundZ(entity),
-      cos,
-      sin,
-      mount.x,
-      mount.y,
-      mount.z,
-      surfaceN,
-    );
-  }
-
   private ensureRing(index: number): EnvelopeRing {
     let ring = this.rings[index];
     if (ring) return ring;
@@ -232,7 +178,7 @@ export class ProjectileRangeEnvelope3D {
       const a = (i / ENVELOPE_SLICES) * Math.PI * 2;
       const dirX = Math.cos(a);
       const dirY = Math.sin(a);
-      const dist = this.findReachDistance(
+      const dist = findProjectileShotReachDistance(
         originX,
         originY,
         launchZ,
@@ -252,110 +198,6 @@ export class ProjectileRangeEnvelope3D {
       centers[o + 2] = dirY * dist;
     }
     writeClosedRibbonGeometry(ring.ribbon);
-  }
-
-  private findReachDistance(
-    originX: number,
-    originY: number,
-    launchZ: number,
-    dirX: number,
-    dirY: number,
-    shot: ProjectileShot,
-    speed: number,
-    mapWidth: number,
-    mapHeight: number,
-  ): number {
-    const mapLimit = this.rayDistanceToMapEdge(originX, originY, dirX, dirY, mapWidth, mapHeight);
-    if (mapLimit <= 0) return 0;
-
-    if (isRocketLikeShot(shot)) {
-      const lifeMs = getShotMaxLifespan(shot);
-      if (!Number.isFinite(lifeMs)) return mapLimit;
-      return Math.min(mapLimit, speed * lifeMs / 1000);
-    }
-
-    if (this.canReachAtDistance(originX, originY, launchZ, dirX, dirY, mapLimit, shot, speed, mapWidth, mapHeight)) {
-      return mapLimit;
-    }
-
-    let lo = 0;
-    let hi = mapLimit;
-    for (let i = 0; i < SEARCH_ITERATIONS; i++) {
-      const mid = (lo + hi) * 0.5;
-      if (this.canReachAtDistance(originX, originY, launchZ, dirX, dirY, mid, shot, speed, mapWidth, mapHeight)) {
-        lo = mid;
-      } else {
-        hi = mid;
-      }
-    }
-    return lo;
-  }
-
-  private canReachAtDistance(
-    originX: number,
-    originY: number,
-    launchZ: number,
-    dirX: number,
-    dirY: number,
-    dist: number,
-    shot: ProjectileShot,
-    speed: number,
-    mapWidth: number,
-    mapHeight: number,
-  ): boolean {
-    if (dist <= 1e-3) return true;
-    const x = originX + dirX * dist;
-    const y = originY + dirY * dist;
-    const lifeMs = getShotMaxLifespan(shot);
-    _rangeOriginState.position.x = originX;
-    _rangeOriginState.position.y = originY;
-    _rangeOriginState.position.z = launchZ;
-    _rangeOriginState.velocity.x = 0;
-    _rangeOriginState.velocity.y = 0;
-    _rangeOriginState.velocity.z = 0;
-    _rangeOriginState.acceleration.x = 0;
-    _rangeOriginState.acceleration.y = 0;
-    _rangeOriginState.acceleration.z = 0;
-    _rangeTargetState.position.x = x;
-    _rangeTargetState.position.y = y;
-    _rangeTargetState.position.z = getSurfaceHeight(x, y, mapWidth, mapHeight, LAND_CELL_SIZE);
-    _rangeTargetState.velocity.x = 0;
-    _rangeTargetState.velocity.y = 0;
-    _rangeTargetState.velocity.z = 0;
-    _rangeTargetState.acceleration.x = 0;
-    _rangeTargetState.acceleration.y = 0;
-    _rangeTargetState.acceleration.z = 0;
-    const intercept = solveKinematicIntercept({
-      myPosition: _rangeOriginState.position,
-      myVelocity: _rangeOriginState.velocity,
-      myAcceleration: _rangeOriginState.acceleration,
-      targetPosition: _rangeTargetState.position,
-      targetVelocity: _rangeTargetState.velocity,
-      targetAcceleration: _rangeTargetState.acceleration,
-      projectileSpeed: speed,
-      gravity: GRAVITY * shot.gravityForceMultiplier,
-      preferLateSolution: false,
-      maxTimeSec: Number.isFinite(lifeMs) ? lifeMs / 1000 : 0,
-    }, _rangeIntercept);
-    return intercept !== null;
-  }
-
-  private rayDistanceToMapEdge(
-    x: number,
-    y: number,
-    dirX: number,
-    dirY: number,
-    mapWidth: number,
-    mapHeight: number,
-  ): number {
-    let t = Infinity;
-    if (dirX > 1e-6) t = Math.min(t, (mapWidth - x) / dirX);
-    else if (dirX < -1e-6) t = Math.min(t, -x / dirX);
-
-    if (dirY > 1e-6) t = Math.min(t, (mapHeight - y) / dirY);
-    else if (dirY < -1e-6) t = Math.min(t, -y / dirY);
-
-    return Number.isFinite(t) ? Math.max(0, t) : 0;
   }
 
   private hideAll(): void {

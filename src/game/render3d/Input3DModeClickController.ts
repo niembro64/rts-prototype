@@ -30,6 +30,7 @@ import {
   type Input3DAreaDragKind,
   type Input3DAreaDragState,
 } from './Input3DAreaDragState';
+import { projectileWeaponCanReachGroundPoint } from './ProjectileBallisticPreview';
 
 const REPAIR_AREA_RADIUS = 220;
 const RECLAIM_AREA_RADIUS = 220;
@@ -250,7 +251,7 @@ export class Input3DModeClickController {
   getAreaDragState(): Input3DAreaDragState {
     const drag = this.areaDrag;
     if (drag === null) {
-      const previewKind = this.activeAreaDragKind();
+      const previewKind = this.config.isAttackGroundMode() ? 'attackGround' : this.activeAreaDragKind();
       return previewKind !== null && previewKind === this.areaHoverPreview.kind
         ? this.areaHoverPreview
         : EMPTY_AREA_DRAG_STATE;
@@ -265,6 +266,7 @@ export class Input3DModeClickController {
       endY: drag.current.y,
       endZ: drag.current.z,
       radius: Math.max(1, areaDragRadius(drag)),
+      ballisticReach: this.resolveAttackBallisticReach(drag.kind, drag.start),
     };
   }
 
@@ -311,7 +313,7 @@ export class Input3DModeClickController {
   }
 
   private updateAreaHoverPreview(e: MouseEvent): boolean {
-    const kind = this.activeAreaDragKind();
+    const kind = this.config.isAttackGroundMode() ? 'attackGround' : this.activeAreaDragKind();
     if (kind === null || kind === 'buildMexArea' || kind === 'buildLine') return false;
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return false;
@@ -322,6 +324,7 @@ export class Input3DModeClickController {
       y: world.y,
       z: world.z,
       radius: defaultAreaRadius(kind),
+      ballisticReach: this.resolveAttackBallisticReach(kind, world),
     };
     return true;
   }
@@ -783,6 +786,37 @@ export class Input3DModeClickController {
     if (!e.shiftKey) this.config.exitAttackGroundMode();
   }
 
+  private resolveAttackBallisticReach(
+    kind: Input3DAreaDragKind,
+    target: { x: number; y: number; z?: number },
+  ): Input3DAreaDragState['ballisticReach'] {
+    if (kind !== 'attackArea' && kind !== 'attackGround') return null;
+    const selectedUnits = this.config.getEntitySource().getSelectedUnits();
+    if (selectedUnits.length === 0) return null;
+    const { width, height } = this.getMapSampleBounds();
+    const targetZ = target.z ?? 0;
+    let sawProjectileWeapon = false;
+    for (let unitIndex = 0; unitIndex < selectedUnits.length; unitIndex++) {
+      const entity = selectedUnits[unitIndex];
+      const turrets = entity.combat?.turrets ?? [];
+      for (let turretIndex = 0; turretIndex < turrets.length; turretIndex++) {
+        const canReach = projectileWeaponCanReachGroundPoint(
+          entity,
+          turrets[turretIndex],
+          target.x,
+          target.y,
+          targetZ,
+          width,
+          height,
+        );
+        if (canReach === null) continue;
+        sawProjectileWeapon = true;
+        if (canReach) return 'reachable';
+      }
+    }
+    return sawProjectileWeapon ? 'blocked' : null;
+  }
+
   private handlePingClick(e: MouseEvent): void {
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
@@ -915,6 +949,7 @@ function defaultAreaRadius(kind: Input3DAreaDragKind): number {
     case 'repairArea': return REPAIR_AREA_RADIUS;
     case 'reclaimArea': return RECLAIM_AREA_RADIUS;
     case 'attackArea': return ATTACK_AREA_RADIUS;
+    case 'attackGround': return 48;
     case 'buildMexArea': return 1;
     default: return 1;
   }

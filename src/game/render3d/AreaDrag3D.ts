@@ -10,11 +10,13 @@ const AREA_COLORS: Record<Input3DAreaDragKind, number> = {
   repairArea: ACTION_COLORS.repair,
   reclaimArea: ACTION_COLORS.reclaim,
   attackArea: ACTION_COLORS.attack,
+  attackGround: ACTION_COLORS.attackGround,
   buildMexArea: ACTION_COLORS.build,
   buildLine: ACTION_COLORS.build,
   buildBorder: ACTION_COLORS.build,
   buildGrid: ACTION_COLORS.build,
 };
+const BALLISTIC_BLOCKED_COLOR = 0xff3434;
 
 export class AreaDrag3D {
   private static readonly _UNIT_X = new THREE.Vector3(1, 0, 0);
@@ -27,8 +29,8 @@ export class AreaDrag3D {
   private readonly lineGeom = new THREE.BoxGeometry(1, 0.5, 1);
   private readonly rectFillGeom = new THREE.BoxGeometry(1, 0.2, 1);
   private readonly borderGeom = new THREE.BufferGeometry();
-  private readonly ringMats = new Map<Input3DAreaDragKind, THREE.MeshBasicMaterial>();
-  private readonly discMats = new Map<Input3DAreaDragKind, THREE.MeshBasicMaterial>();
+  private readonly ringMats = new Map<string, THREE.MeshBasicMaterial>();
+  private readonly discMats = new Map<string, THREE.MeshBasicMaterial>();
   private readonly borderMats = new Map<Input3DAreaDragKind, THREE.LineBasicMaterial>();
   private readonly rectFillMats = new Map<Input3DAreaDragKind, THREE.MeshBasicMaterial>();
   private readonly ring: THREE.Mesh;
@@ -78,8 +80,8 @@ export class AreaDrag3D {
     this.border.visible = false;
     this.ring.visible = true;
     this.disc.visible = true;
-    this.ring.material = this.getRingMat(state.kind);
-    this.disc.material = this.getDiscMat(state.kind);
+    this.ring.material = this.getRingMat(state.kind, state.ballisticReach);
+    this.disc.material = this.getDiscMat(state.kind, state.ballisticReach);
     const y = state.z !== undefined ? state.z + RING_LIFT : LEGACY_Y;
     this.root.position.set(state.x, y, state.y);
     this.ring.scale.setScalar(state.radius);
@@ -179,31 +181,39 @@ export class AreaDrag3D {
     this.borderGeom.computeBoundingSphere();
   }
 
-  private getRingMat(kind: Input3DAreaDragKind): THREE.MeshBasicMaterial {
-    const cached = this.ringMats.get(kind);
+  private getRingMat(
+    kind: Input3DAreaDragKind,
+    ballisticReach: Input3DAreaDragState['ballisticReach'] = null,
+  ): THREE.MeshBasicMaterial {
+    const key = materialKey(kind, ballisticReach);
+    const cached = this.ringMats.get(key);
     if (cached) return cached;
     const mat = new THREE.MeshBasicMaterial({
-      color: AREA_COLORS[kind],
+      color: colorForState(kind, ballisticReach),
       transparent: true,
       opacity: 0.88,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
-    this.ringMats.set(kind, mat);
+    this.ringMats.set(key, mat);
     return mat;
   }
 
-  private getDiscMat(kind: Input3DAreaDragKind): THREE.MeshBasicMaterial {
-    const cached = this.discMats.get(kind);
+  private getDiscMat(
+    kind: Input3DAreaDragKind,
+    ballisticReach: Input3DAreaDragState['ballisticReach'] = null,
+  ): THREE.MeshBasicMaterial {
+    const key = materialKey(kind, ballisticReach);
+    const cached = this.discMats.get(key);
     if (cached) return cached;
     const mat = new THREE.MeshBasicMaterial({
-      color: AREA_COLORS[kind],
+      color: colorForState(kind, ballisticReach),
       transparent: true,
-      opacity: 0.12,
+      opacity: ballisticReach === 'blocked' ? 0.22 : 0.12,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
-    this.discMats.set(kind, mat);
+    this.discMats.set(key, mat);
     return mat;
   }
 
@@ -232,4 +242,18 @@ export class AreaDrag3D {
     this.rectFillMats.set(kind, mat);
     return mat;
   }
+}
+
+function materialKey(
+  kind: Input3DAreaDragKind,
+  ballisticReach: Input3DAreaDragState['ballisticReach'],
+): Input3DAreaDragKind | `${Input3DAreaDragKind}:blocked` {
+  return ballisticReach === 'blocked' ? `${kind}:blocked` : kind;
+}
+
+function colorForState(
+  kind: Input3DAreaDragKind,
+  ballisticReach: Input3DAreaDragState['ballisticReach'],
+): number {
+  return ballisticReach === 'blocked' ? BALLISTIC_BLOCKED_COLOR : AREA_COLORS[kind];
 }

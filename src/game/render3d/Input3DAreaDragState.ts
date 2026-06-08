@@ -2,6 +2,7 @@ export type Input3DAreaDragKind =
   | 'repairArea'
   | 'reclaimArea'
   | 'attackArea'
+  | 'attackGround'
   | 'buildMexArea'
   | 'buildLine'
   | 'buildBorder'
@@ -17,6 +18,7 @@ export type Input3DAreaDragState = {
   endY?: number;
   endZ?: number;
   radius: number;
+  ballisticReach?: 'reachable' | 'blocked' | null;
 };
 
 export const EMPTY_AREA_DRAG_STATE: Input3DAreaDragState = {
