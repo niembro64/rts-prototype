@@ -7,14 +7,10 @@ import type {
   TurretConfig,
   ProjectileConfig,
   ProjectileType,
-  UnitLocomotion,
-  UnitSupportSurface,
 } from './types';
 import {
-  createCombatComponent,
   createEmptyEntityComponentSlots,
   createTransform,
-  NO_ENTITY_ID,
 } from './types';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ResourceMovement } from './resourceMovement';
@@ -25,23 +21,16 @@ import {
   WorldProjectileFactory,
   type CreateProjectileProvenance,
 } from './WorldProjectileFactory';
-import { getUnitBlueprint, getUnitLocomotion } from './blueprints';
-import { cloneUnitLocomotion } from './locomotion';
-import { createUnitRuntimeTurrets } from './runtimeTurrets';
 import {
   MAX_TOTAL_UNITS,
   DEFAULT_TURRET_SHIELD_PANELS_ENABLED,
   DEFAULT_TURRET_SHIELD_SPHERES_ENABLED,
   DEFAULT_SHIELDS_OBSTRUCT_SIGHT,
   DEFAULT_SHIELD_REFLECTION_MODE,
-  UNIT_HP_MULTIPLIER,
-  UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
 } from '../../config';
 import type { ShieldReflectionMode } from '../../types/shotTypes';
-import { buildShieldPanelCache } from './shieldPanelCache';
 import { ENTITY_CHANGED_HP } from '../../types/network';
 import { createCollisionTopBuildingSupportSurface } from './buildingSupportSurface';
-import { cloneUnitSupportSurface } from './unitSupportSurface';
 import type { WorldSupportSurface } from './supportSurface';
 import {
   WorldSupportSurfaceSampler,
@@ -53,6 +42,10 @@ import {
   collectSelectedOwnedEntities,
   selectOwnedEntities,
 } from './WorldSelection';
+import {
+  createUnitFromBlueprintEntity,
+  type CreateUnitFromBlueprintOptions,
+} from './WorldUnitFactory';
 
 export { SeededRNG } from './SeededRNG';
 export type { CreateProjectileProvenance } from './WorldProjectileFactory';
@@ -733,173 +726,25 @@ export class WorldState {
     this.activePlayerId = playerId;
   }
 
-  // Internal shell used only by createUnitFromBlueprint. Public callers
-  // must go through blueprints so stats, mounts, locomotion, and body
-  // heights cannot drift from the authored unit data.
-  private createUnitBase(
-    x: number,
-    y: number,
-    playerId: PlayerId,
-    unitBlueprintId: string,
-    radius: { visual: number; hitbox: number; collision: number } = { visual: 15, hitbox: 15, collision: 15 },
-    bodyCenterHeight: number = radius.collision,
-    supportSurface: UnitSupportSurface = cloneUnitSupportSurface(undefined),
-    fullVisionRadius: number = 1200,
-    locomotion: UnitLocomotion = getUnitLocomotion(unitBlueprintId),
-    mass: number = 25,
-    hp: number = 100,
-  ): Entity {
-    const id = this.generateEntityId();
-
-    // Initial altitude = local terrain + the unit's stable spawn
-    // center height. Ground units start just above their authored
-    // body-center height so gravity/terrain spring settle them through
-    // the same physics path. Airborne units start at the equilibrium
-    // implied by their constant counter-gravity and inverse-distance
-    // ground-effect lift; dropping them at ground height makes the
-    // inverse-distance lift kick violently on the first tick.
-    const spawnSupport = this.sampleSupportSurface(x, y);
-    const isAirborneLocomotion =
-      locomotion.type === 'hover' || locomotion.type === 'flying';
-    const spawnCenterHeight = isAirborneLocomotion &&
-      locomotion.gravityCounterUpwardForceRatio !== undefined &&
-      Number.isFinite(locomotion.gravityCounterUpwardForceRatio) &&
-      locomotion.gravityCounterUpwardForceRatio < 1 &&
-      locomotion.hoverHeightUpwardForce !== undefined &&
-      Number.isFinite(locomotion.hoverHeightUpwardForce)
-      ? locomotion.hoverHeightUpwardForce / (1 - locomotion.gravityCounterUpwardForceRatio)
-      : bodyCenterHeight + UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND;
-    // Seed the per-unit smoothed normal with the support normal at the
-    // spawn position so the first tick after spawn doesn't snap from
-    // the flat default to a tilted slope or platform.
-    const entity: Entity = {
-      ...createEmptyEntityComponentSlots(),
-      id,
-      type: 'unit',
-      transform: createTransform(x, y, spawnSupport.groundZ + spawnCenterHeight, 0),
-      selectable: { selected: false },
-      ownership: { playerId },
-      unit: {
-        unitBlueprintId,
-        locomotion: cloneUnitLocomotion(locomotion),
-        radius: { ...radius },
-        bodyCenterHeight,
-        supportSurface: cloneUnitSupportSurface(supportSurface),
-        fullVisionRadius,
-        mass,
-        hp,
-        maxHp: hp,
-        actions: [],
-        actionHash: 0,
-        patrolStartIndex: null,
-        activePath: null,
-        flyingLoiterTargetX: null,
-        flyingLoiterTargetY: null,
-        flyingLoiterTargetZ: null,
-        flyingLoiterTurnSign: null,
-        velocityX: 0,
-        velocityY: 0,
-        velocityZ: 0,
-        movementAccelX: 0,
-        movementAccelY: 0,
-        movementAccelZ: 0,
-        thrustDirX: 0,
-        thrustDirY: 0,
-        suspension: null,
-        shieldPanels: [],
-        shieldBoundRadius: 0,
-        surfaceNormal: {
-          nx: spawnSupport.normalX,
-          ny: spawnSupport.normalY,
-          nz: spawnSupport.normalZ,
-        },
-        // Airborne units carry a full quaternion + ω-vector + α-vector
-        // orientation triad so they can express roll (banking into a
-        // turn). Ground units stay yaw-scalar-only (transform.rotation).
-        // The identity quat matches transform.rotation = 0 with zero
-        // pitch/roll, so spawning an airborne unit looks the same as
-        // spawning a ground unit until forces start acting on it.
-        orientation: isAirborneLocomotion
-          ? { x: 0, y: 0, z: 0, w: 1 }
-          : null,
-        angularVelocity3: isAirborneLocomotion
-          ? { x: 0, y: 0, z: 0 }
-          : null,
-        angularAcceleration3: isAirborneLocomotion
-          ? { x: 0, y: 0, z: 0 }
-          : null,
-        hoverHeightUpwardForceSmoothed: null,
-        stuckTicks: 0,
-      },
-      // combat is attached by the caller (createUnitFromBlueprint) once
-      // it knows the runtime turret list. The base entity has no combat
-      // component yet because not every caller wants one.
-    };
-    return entity;
-  }
-
   // Create a unit from blueprint — unified factory for ALL unit blueprints including commander
   createUnitFromBlueprint(
     x: number,
     y: number,
     playerId: PlayerId,
     unitBlueprintId: string,
-    options: { allocateSubEntityIds?: boolean } = {},
+    options: CreateUnitFromBlueprintOptions = {},
   ): Entity {
-    const bp = getUnitBlueprint(unitBlueprintId);
-    const allocateSubEntityIds = options.allocateSubEntityIds !== false;
-
-    const entity = this.createUnitBase(
-      x, y, playerId, unitBlueprintId,
-      bp.radius,
-      bp.bodyCenterHeight,
-      cloneUnitSupportSurface(bp.supportSurface),
-      bp.fullVisionRadius,
-      getUnitLocomotion(unitBlueprintId),
-      bp.mass,
-      bp.hp * UNIT_HP_MULTIPLIER,
-    );
-    // Chassis suspension is renderer-owned visual state. The
-    // authoritative host keeps it absent so turret mounts, targeting,
-    // snapshots, and physics all read the rigid body anchor only.
-    entity.unit!.suspension = null;
-
-    // Create combat component (turrets + per-host bookkeeping) from
-    // blueprint. Every unit blueprint declares at least one turret, so
-    // every unit gets a combat component at spawn.
-    entity.combat = createCombatComponent(createUnitRuntimeTurrets(
+    return createUnitFromBlueprintEntity(
+      {
+        generateEntityId: () => this.generateEntityId(),
+        sampleSupportSurface: (sx, sy) => this.sampleSupportSurface(sx, sy),
+      },
+      x,
+      y,
+      playerId,
       unitBlueprintId,
-      bp.radius.visual,
-      entity.id,
-      entity.id,
-      allocateSubEntityIds ? () => this.generateEntityId() : null,
-    ));
-
-    // Cache shield panels for fast beam collision checks. Same helper
-    // runs on the client (NetworkEntityFactory) so authoritative and
-    // hydrated entities share one canonical rectangle.
-    entity.unit!.shieldBoundRadius = buildShieldPanelCache(
-      bp, entity.unit!.shieldPanels,
+      options,
     );
-
-    // Attach builder component if blueprint specifies it
-    if (bp.builder) {
-      entity.builder = {
-        buildRange: bp.builder.buildRange,
-        constructionRate: bp.builder.constructionRate,
-        currentBuildTarget: NO_ENTITY_ID,
-      };
-    }
-
-    // Attach commander component if blueprint specifies dgun capability
-    if (bp.dgun) {
-      entity.commander = {
-        isDGunActive: false,
-        dgunEnergyCost: bp.dgun.energyCost,
-      };
-    }
-
-    return entity;
   }
 
   // Create a D-gun projectile
