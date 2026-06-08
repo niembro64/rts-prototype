@@ -48,10 +48,6 @@ import {
   CommanderModeController,
   getBuildModeBuildingBlueprintIdByIndex,
   getDefaultBuildModeBuildingBlueprintId,
-  type BuildPlacementDiagnostics,
-  getBuildingPlacementDiagnostics,
-  getOccupiedBuildingCells,
-  getSnappedBuildPosition,
   InputControlGroups,
   InputSelectedCommands,
   controlGroupIndexForKey,
@@ -60,11 +56,11 @@ import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
 import { getCommandCursorStyle, type CommandCursorKind } from '../input/CommandCursors';
 import { isWaterAt } from '../sim/Terrain';
 import { isBuildInProgress } from '../sim/buildableHelpers';
-import { generateMetalDeposits, type MetalDeposit } from '../../metalDepositConfig';
 import { getBuildingVisualCenterZ } from '../sim/buildingAnchors';
 import { isCommander } from '../sim/combat/combatUtils';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { Input3DSpecialModes, type Input3DSpecialMode } from './Input3DSpecialModes';
+import { Input3DBuildPlacementState } from './Input3DBuildPlacementState';
 
 const HOVER_RAYCAST_INTERVAL_MS = 50;
 const SELECTABLE_GROUND_MIN_UNIT_RADIUS = 8;
@@ -136,29 +132,13 @@ export class Input3DManager {
   private lastHoverRaycastMs = 0;
   private lastHoverClientX = Number.NaN;
   private lastHoverClientY = Number.NaN;
-  private buildGhostValidationKey = '';
-  private buildGhostCanPlace = false;
-  private buildGhostDiagnostics: BuildPlacementDiagnostics | undefined;
-  private buildOccupancyVersion = '';
-  private buildOccupiedCells: ReadonlySet<string> | undefined;
+  private buildPlacement = new Input3DBuildPlacementState();
   private appliedCursor: CommandCursorKind = 'default';
 
   // Optional preview renderer driven on mouse-move-in-build-mode;
   // scene injects one via setBuildGhost. Stays null in the demo /
   // headless case, where no in-world preview is shown.
   private buildGhost: BuildGhost3D | null = null;
-
-  // Map bounds feed the client-side placement validator (same pattern
-  // as 2D BuildingPlacementController). Infinity until setMapBounds
-  // is called, so an un-wired scene shows green ghosts everywhere.
-  private mapWidth = Infinity;
-  private mapHeight = Infinity;
-
-  // Cached deposit list — derived deterministically from map size, so
-  // the client can re-generate it locally without a network round-trip.
-  // Used by the build ghost validator to highlight metal resource cells
-  // and preview extractor coverage/yield.
-  private metalDeposits: ReadonlyArray<MetalDeposit> = [];
 
   // Drag state (screen coords only — box select is screen-space)
   private leftDown = false;
@@ -275,9 +255,7 @@ export class Input3DManager {
     // Forward shared mode events to the scene's UI callbacks; also
     // hide the build ghost whenever build mode exits.
     this.mode.onBuildModeChange = (buildingBlueprintId) => {
-      this.buildGhostValidationKey = '';
-      this.buildGhostCanPlace = false;
-      this.buildGhostDiagnostics = undefined;
+      this.buildPlacement.reset();
       if (buildingBlueprintId === null) {
         this.buildGhost?.hide();
       }
@@ -310,9 +288,7 @@ export class Input3DManager {
     height: number,
     playerCount: number,
   ): void {
-    this.mapWidth = width;
-    this.mapHeight = height;
-    this.metalDeposits = generateMetalDeposits(width, height, playerCount);
+    this.buildPlacement.setMapBounds(width, height, playerCount);
   }
 
   getHoveredEntity(): Entity | null {
@@ -700,8 +676,8 @@ export class Input3DManager {
 
   private inferCursorKind(): CommandCursorKind {
     if (this.mode.isInBuildMode) {
-      return this.buildGhostDiagnostics
-        ? (this.buildGhostDiagnostics.canPlace ? 'build' : 'blocked')
+      return this.buildPlacement.diagnostics
+        ? (this.buildPlacement.diagnostics.canPlace ? 'build' : 'blocked')
         : 'build';
     }
     if (this.mode.isInDGunMode) return 'dgun';
@@ -1148,39 +1124,8 @@ export class Input3DManager {
     buildingBlueprintId: BuildingBlueprintId,
     worldX: number,
     worldY: number,
-  ): BuildPlacementDiagnostics {
-    const snapped = getSnappedBuildPosition(worldX, worldY, buildingBlueprintId);
-    const buildings = this.entitySource.getBuildings();
-    const entitySetVersion = this.entitySource.getEntitySetVersion?.() ?? buildings.length;
-    const terrainBuildabilityGrid = this.entitySource.getTerrainBuildabilityGrid?.() ?? null;
-    const occupancyVersion = `${entitySetVersion}`;
-    if (occupancyVersion !== this.buildOccupancyVersion || !this.buildOccupiedCells) {
-      this.buildOccupancyVersion = occupancyVersion;
-      this.buildOccupiedCells = getOccupiedBuildingCells(buildings);
-    }
-    const validationKey = [
-      buildingBlueprintId,
-      snapped.gridX,
-      snapped.gridY,
-      this.mapWidth,
-      this.mapHeight,
-      entitySetVersion,
-      terrainBuildabilityGrid?.version ?? 0,
-      terrainBuildabilityGrid?.configKey ?? '',
-    ].join(':');
-    if (validationKey !== this.buildGhostValidationKey || !this.buildGhostDiagnostics) {
-      this.buildGhostValidationKey = validationKey;
-      this.buildGhostDiagnostics = getBuildingPlacementDiagnostics(
-        buildingBlueprintId, snapped.x, snapped.y,
-        this.mapWidth, this.mapHeight,
-        buildings,
-        this.metalDeposits,
-        this.buildOccupiedCells,
-        terrainBuildabilityGrid,
-      );
-      this.buildGhostCanPlace = this.buildGhostDiagnostics.canPlace;
-    }
-    return this.buildGhostDiagnostics;
+  ) {
+    return this.buildPlacement.validate(buildingBlueprintId, worldX, worldY, this.entitySource);
   }
 
   /** Fire the D-gun at the clicked ground point. Stays in D-gun
@@ -1390,12 +1335,12 @@ export class Input3DManager {
           this.buildGhost.setTarget(
             buildingBlueprintId, world.x, world.y,
             this.getSelectedBuilder(),
-            this.buildGhostCanPlace,
+            this.buildPlacement.canPlace,
             diagnostics,
           );
         }
       } else {
-        this.buildGhostDiagnostics = undefined;
+        this.buildPlacement.clearDiagnostics();
         this.applyCursor('blocked');
       }
       return;
@@ -1754,7 +1699,7 @@ export class Input3DManager {
       );
       if (moveCmd) {
         if (GAME_DIAGNOSTICS.commandPlans) {
-          const mw = this.mapWidth, mh = this.mapHeight;
+          const mw = this.buildPlacement.width, mh = this.buildPlacement.height;
           const canSampleWet = isFinite(mw) && isFinite(mh);
           const finalWet = canSampleWet
             ? isWaterAt(finalPoint.x, finalPoint.y, mw, mh)
