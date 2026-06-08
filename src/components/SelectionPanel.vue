@@ -267,6 +267,20 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
       </button>
     </div>
 
+    <div v-if="selection.details.length > 0" class="button-group details-group">
+      <div class="group-label">Details</div>
+      <div class="details-grid">
+        <div
+          v-for="detail in selection.details"
+          :key="detail.label"
+          class="detail-item"
+        >
+          <span class="detail-label">{{ detail.label }}</span>
+          <span class="detail-value">{{ detail.value }}</span>
+        </div>
+      </div>
+    </div>
+
     <div class="button-group">
       <div class="group-label">Select</div>
       <div class="buttons">
@@ -970,6 +984,46 @@ kbd {
   margin-bottom: 0;
   text-align: right;
   text-transform: uppercase;
+}
+
+.details-group {
+  align-items: stretch;
+}
+
+.details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 3px;
+  min-width: 0;
+}
+
+.detail-item {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  min-height: 20px;
+  padding: 2px 5px;
+  background: rgba(20, 22, 26, 0.66);
+  border: 1px solid var(--selection-panel-button-border);
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 1.1;
+}
+
+.detail-label {
+  color: var(--selection-panel-label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-value {
+  color: var(--selection-panel-text);
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .modifier-hint {

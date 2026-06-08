@@ -1,9 +1,11 @@
 // UI Update Manager - handles selection, economy, and minimap data updates
 
-import type { PlayerId, WaypointType } from '../../sim/types';
+import { COST_MULTIPLIER } from '../../../config';
+import type { Entity, PlayerId, WaypointType } from '../../sim/types';
 import { getPlayerPrimaryColor } from '../../sim/types';
 import { economyManager } from '../../sim/economy';
 import { getUnitBlueprint } from '../../sim/blueprints';
+import { getBuildingConfig } from '../../sim/buildConfigs';
 import { isCommander } from '../../sim/combat/combatUtils';
 import { hasQueuedActionIntents } from '../../sim/unitActionIntents';
 import { buildingBlueprintHasActiveState } from '../../sim/buildingActiveState';
@@ -16,6 +18,109 @@ function unitLabel(unitBlueprintId: string): string {
   } catch {
     return unitBlueprintId;
   }
+}
+
+function fmtStat(value: number): string {
+  if (!Number.isFinite(value)) return '0';
+  if (Math.abs(value) >= 100) return `${Math.round(value)}`;
+  if (Math.abs(value) >= 10) return value.toFixed(1).replace(/\.0$/, '');
+  return value.toFixed(2).replace(/\.?0+$/, '');
+}
+
+function fmtTotalCost(cost: { energy: number; metal: number }): string {
+  return fmtStat((cost.energy + cost.metal) * COST_MULTIPLIER);
+}
+
+function hpPair(entity: Entity): { hp: number; maxHp: number } | null {
+  if (entity.unit !== null) return { hp: entity.unit.hp, maxHp: entity.unit.maxHp };
+  if (entity.building !== null) return { hp: entity.building.hp, maxHp: entity.building.maxHp };
+  return null;
+}
+
+function maxWeaponRange(entity: Entity): number | null {
+  const turrets = entity.combat?.turrets;
+  if (turrets === undefined || turrets.length === 0) return null;
+  let range = 0;
+  for (let i = 0; i < turrets.length; i++) {
+    const turret = turrets[i];
+    if (turret.config.visualOnly || turret.config.shot === null) continue;
+    range = Math.max(range, turret.config.range);
+  }
+  return range > 0 ? range : null;
+}
+
+function buildSelectionDetails(
+  selectedUnits: readonly Entity[],
+  selectedTowers: readonly Entity[],
+  selectedBuildings: readonly Entity[],
+): SelectionInfo['details'] {
+  const all = [...selectedUnits, ...selectedTowers, ...selectedBuildings];
+  if (all.length === 0) return [];
+  if (all.length === 1) return buildSingleSelectionDetails(all[0]);
+
+  let hp = 0;
+  let maxHp = 0;
+  for (let i = 0; i < all.length; i++) {
+    const pair = hpPair(all[i]);
+    if (pair === null) continue;
+    hp += pair.hp;
+    maxHp += pair.maxHp;
+  }
+  const details: SelectionInfo['details'] = [
+    { label: 'Selected', value: `${all.length}` },
+    { label: 'Types', value: `${selectedUnits.length}U ${selectedTowers.length}T ${selectedBuildings.length}B` },
+  ];
+  if (maxHp > 0) {
+    details.push({ label: 'HP', value: `${fmtStat(hp)}/${fmtStat(maxHp)}` });
+    details.push({ label: 'HP Avg', value: `${Math.round((hp / maxHp) * 100)}%` });
+  }
+  return details;
+}
+
+function buildSingleSelectionDetails(entity: Entity): SelectionInfo['details'] {
+  if (entity.unit !== null) {
+    try {
+      const bp = getUnitBlueprint(entity.unit.unitBlueprintId);
+      const details: SelectionInfo['details'] = [
+        { label: 'Name', value: bp.name },
+        { label: 'HP', value: `${fmtStat(entity.unit.hp)}/${fmtStat(entity.unit.maxHp)}` },
+        { label: 'Cost', value: fmtTotalCost(bp.cost) },
+        { label: 'Mass', value: fmtStat(bp.mass) },
+      ];
+      details.push({ label: 'Move', value: bp.locomotion.type });
+      const range = maxWeaponRange(entity);
+      if (range !== null) details.push({ label: 'Range', value: fmtStat(range) });
+      return details;
+    } catch {
+      return [
+        { label: 'Name', value: entity.unit.unitBlueprintId },
+        { label: 'HP', value: `${fmtStat(entity.unit.hp)}/${fmtStat(entity.unit.maxHp)}` },
+      ];
+    }
+  }
+  if (entity.building !== null && entity.buildingBlueprintId !== null) {
+    try {
+      const bp = getBuildingConfig(entity.buildingBlueprintId);
+      const details: SelectionInfo['details'] = [
+        { label: 'Name', value: bp.name },
+        { label: 'HP', value: `${fmtStat(entity.building.hp)}/${fmtStat(entity.building.maxHp)}` },
+        { label: 'Cost', value: fmtTotalCost(bp.cost) },
+      ];
+      if (bp.energyProduction !== null) details.push({ label: 'Energy', value: `+${fmtStat(bp.energyProduction)}/s` });
+      if (bp.metalProduction !== null) {
+        details.push({ label: 'Metal', value: `+${fmtStat(entity.metalExtractionRate ?? 0)}/s` });
+      }
+      if (bp.sensors.radarRadius > 0) details.push({ label: 'Radar', value: fmtStat(bp.sensors.radarRadius) });
+      if (entity.factory !== null) details.push({ label: 'Factory', value: entity.factory.isProducing ? 'Producing' : 'Idle' });
+      return details;
+    } catch {
+      return [
+        { label: 'Name', value: entity.buildingBlueprintId },
+        { label: 'HP', value: `${fmtStat(entity.building.hp)}/${fmtStat(entity.building.maxHp)}` },
+      ];
+    }
+  }
+  return [];
 }
 
 const _minimapColorCache = new Map<number, string>();
@@ -222,6 +327,7 @@ export function buildSelectionInfo(
     factoryProgress,
     factoryIsProducing,
     controlGroups: inputState?.controlGroups ?? [],
+    details: buildSelectionDetails(selectedUnits, selectedTowers, selectedBuildings),
   };
 }
 

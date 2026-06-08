@@ -16,6 +16,11 @@ export type ControlGroupInfo = {
   auto: boolean;
 };
 
+export type SelectionDetailItem = {
+  label: string;
+  value: string;
+};
+
 export type SelectionEntityType = 'unit' | 'tower' | 'building';
 
 export type SelectionInfo = {
@@ -77,6 +82,7 @@ export type SelectionInfo = {
   factoryProgress?: number;
   factoryIsProducing?: boolean;
   controlGroups: ControlGroupInfo[];
+  details: SelectionDetailItem[];
 };
 
 export type SelectionActions = {

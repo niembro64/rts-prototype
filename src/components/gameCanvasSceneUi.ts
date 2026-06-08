@@ -121,6 +121,7 @@ export function useGameCanvasSceneUi({
     factoryProgress: 0,
     factoryIsProducing: false,
     controlGroups: [],
+    details: [],
   });
 
   const economyInfo = reactive<EconomyInfo>({
