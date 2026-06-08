@@ -33,6 +33,7 @@ const ATTACK_AREA_RADIUS = 300;
 
 type AreaDrag = {
   kind: Input3DAreaDragKind;
+  button: 0 | 2;
   start: { x: number; y: number; z?: number };
   current: { x: number; y: number; z?: number };
   startClientX: number;
@@ -151,6 +152,7 @@ export class Input3DModeClickController {
       if (this.beginAreaDrag(e)) return true;
       this.handleLeftClick(e);
     } else if (e.button === 2) {
+      if (this.beginRightButtonAreaDrag(e)) return true;
       this.areaDrag = null;
       this.handleRightCancel();
     }
@@ -177,7 +179,7 @@ export class Input3DModeClickController {
   }
 
   handleMouseUp(e: MouseEvent): boolean {
-    if (e.button !== 0 || this.areaDrag === null) return false;
+    if (this.areaDrag === null || e.button !== this.areaDrag.button) return false;
     e.preventDefault();
     this.updateAreaDrag(e);
     const drag = this.areaDrag;
@@ -185,7 +187,8 @@ export class Input3DModeClickController {
     const dx = e.clientX - drag.startClientX;
     const dy = e.clientY - drag.startClientY;
     if (Math.sqrt(dx * dx + dy * dy) < CLICK_DRAG_THRESHOLD_PX) {
-      this.handleLeftClick(e);
+      if (drag.button === 0) this.handleLeftClick(e);
+      else this.handleRightCancel();
       return true;
     }
     this.commitAreaDrag(drag);
@@ -208,10 +211,24 @@ export class Input3DModeClickController {
   private beginAreaDrag(e: MouseEvent): boolean {
     const kind = this.activeAreaDragKind();
     if (kind === null) return false;
+    return this.beginAreaDragWithKind(e, kind, 0);
+  }
+
+  private beginRightButtonAreaDrag(e: MouseEvent): boolean {
+    if (!this.config.isReclaimMode()) return false;
+    return this.beginAreaDragWithKind(e, 'reclaimArea', 2);
+  }
+
+  private beginAreaDragWithKind(
+    e: MouseEvent,
+    kind: Input3DAreaDragKind,
+    button: 0 | 2,
+  ): boolean {
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return false;
     this.areaDrag = {
       kind,
+      button,
       start: { x: world.x, y: world.y, z: world.z },
       current: { x: world.x, y: world.y, z: world.z },
       startClientX: e.clientX,
