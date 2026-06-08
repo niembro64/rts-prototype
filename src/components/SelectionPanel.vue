@@ -122,6 +122,7 @@ const selectionPanelStyle = {
   '--selection-panel-cost-resource': SELECTION_PANEL.cost.resource,
   '--selection-panel-build': BUTTON_COLORS.build,
   '--selection-panel-dgun': BUTTON_COLORS.dgun,
+  '--selection-panel-stop': BUTTON_COLORS.stop,
   '--selection-panel-vehicle-produce': BUTTON_COLORS.vehicleProduce,
   '--selection-panel-bot-produce': BUTTON_COLORS.botProduce,
 } as const;
@@ -133,6 +134,31 @@ const selectedBuildUnitBlueprintId = computed(() =>
 );
 const factoryQueuedUnits = computed(() => props.selection.factoryProductionQueue ?? []);
 const factoryQueueCount = computed(() => factoryQueuedUnits.value.length);
+type FactoryQueueRun = {
+  unitBlueprintId: string;
+  label: string;
+  startIndex: number;
+  count: number;
+};
+const factoryQueueRuns = computed<FactoryQueueRun[]>(() => {
+  const units = factoryQueuedUnits.value;
+  const runs: FactoryQueueRun[] = [];
+  for (let i = 0; i < units.length; i++) {
+    const unit = units[i];
+    const previous = runs[runs.length - 1];
+    if (previous !== undefined && previous.unitBlueprintId === unit.unitBlueprintId) {
+      previous.count++;
+    } else {
+      runs.push({
+        unitBlueprintId: unit.unitBlueprintId,
+        label: unit.label,
+        startIndex: i,
+        count: 1,
+      });
+    }
+  }
+  return runs;
+});
 const hasFactoryProduction = computed(() =>
   selectedBuildUnitBlueprintId.value !== null ||
     props.selection.factoryIsProducing === true ||
@@ -155,13 +181,9 @@ const factoryStatusLabel = computed(() => {
     : `${modeLabel} ${unitLabel} idle${queuedLabel}`;
 });
 const factoryQueueSummary = computed(() => {
-  if (factoryQueuedUnits.value.length === 0) return '';
-  const counts = new Map<string, number>();
-  for (const unit of factoryQueuedUnits.value) {
-    counts.set(unit.label, (counts.get(unit.label) ?? 0) + 1);
-  }
-  return Array.from(counts.entries())
-    .map(([label, count]) => count > 1 ? `${label} x${count}` : label)
+  if (factoryQueueRuns.value.length === 0) return '';
+  return factoryQueueRuns.value
+    .map((run) => run.count > 1 ? `${run.label} x${run.count}` : run.label)
     .join(' -> ');
 });
 const factoryStatusTitle = computed(() =>
@@ -368,6 +390,34 @@ function queueFactoryUnitFromClick(factoryId: number, unitBlueprintId: string, e
   const repeat = !event.shiftKey;
   const count = !repeat && event.altKey ? 5 : 1;
   props.actions.queueUnit(factoryId, unitBlueprintId, repeat, count);
+}
+
+function editFactoryQueueRun(
+  run: FactoryQueueRun,
+  operation: 'remove' | 'move' | 'setCount',
+  toIndex?: number,
+  count?: number,
+): void {
+  const factoryId = props.selection.factoryId;
+  if (factoryId === undefined) return;
+  props.actions.editFactoryQueue(factoryId, operation, run.startIndex, run.count, toIndex, count);
+}
+
+function moveFactoryQueueRun(runIndex: number, direction: -1 | 1): void {
+  const run = factoryQueueRuns.value[runIndex];
+  if (run === undefined) return;
+  const target = direction < 0
+    ? factoryQueueRuns.value[runIndex - 1]
+    : factoryQueueRuns.value[runIndex + 1];
+  if (target === undefined) return;
+  const toIndex = direction < 0
+    ? target.startIndex
+    : target.startIndex + target.count;
+  editFactoryQueueRun(run, 'move', toIndex);
+}
+
+function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
+  editFactoryQueueRun(run, 'setCount', undefined, Math.max(0, count));
 }
 
 </script>
@@ -937,6 +987,48 @@ function queueFactoryUnitFromClick(factoryId: number, unitBlueprintId: string, e
         </div>
         <div v-if="factoryQueueSummary" class="factory-queue-row">{{ factoryQueueSummary }}</div>
       </div>
+      <div v-if="factoryQueueRuns.length > 0" class="factory-queue-controls">
+        <div
+          v-for="(run, runIndex) in factoryQueueRuns"
+          :key="`${run.startIndex}-${run.unitBlueprintId}`"
+          class="factory-queue-control-row"
+        >
+          <span class="factory-queue-control-name">{{ run.label }} x{{ run.count }}</span>
+          <button
+            type="button"
+            class="factory-queue-control-btn"
+            :disabled="runIndex === 0"
+            :title="`Move ${run.label} earlier`"
+            @click="moveFactoryQueueRun(runIndex, -1)"
+          >Up</button>
+          <button
+            type="button"
+            class="factory-queue-control-btn"
+            :disabled="runIndex >= factoryQueueRuns.length - 1"
+            :title="`Move ${run.label} later`"
+            @click="moveFactoryQueueRun(runIndex, 1)"
+          >Down</button>
+          <button
+            type="button"
+            class="factory-queue-control-btn"
+            :disabled="run.count <= 1"
+            :title="`Decrease ${run.label} quantity`"
+            @click="setFactoryQueueRunCount(run, run.count - 1)"
+          >-</button>
+          <button
+            type="button"
+            class="factory-queue-control-btn"
+            :title="`Increase ${run.label} quantity`"
+            @click="setFactoryQueueRunCount(run, run.count + 1)"
+          >+</button>
+          <button
+            type="button"
+            class="factory-queue-control-btn remove"
+            :title="`Remove ${run.label}`"
+            @click="editFactoryQueueRun(run, 'remove')"
+          >Del</button>
+        </div>
+      </div>
       <div class="buttons">
         <button
           type="button"
@@ -1398,6 +1490,55 @@ kbd {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.factory-queue-controls {
+  flex: 1 1 100%;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.factory-queue-control-row {
+  display: grid;
+  grid-template-columns: minmax(54px, 1fr) repeat(5, minmax(28px, auto));
+  gap: 3px;
+  align-items: center;
+  min-width: 0;
+  padding: 2px 3px;
+  background: rgba(20, 22, 26, 0.46);
+  border: 1px solid rgba(237, 243, 255, 0.1);
+  border-radius: 3px;
+}
+
+.factory-queue-control-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+}
+
+.factory-queue-control-btn {
+  min-width: 28px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 3px;
+  border: 1px solid var(--selection-panel-button-border);
+  background: rgba(40, 44, 54, 0.86);
+  color: var(--selection-panel-text);
+  font-size: 8px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.factory-queue-control-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.factory-queue-control-btn.remove {
+  color: var(--selection-panel-stop);
 }
 
 .factory-progress-track {

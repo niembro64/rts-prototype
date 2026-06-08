@@ -16,6 +16,7 @@ export type {
   ScanCommand,
   StartBuildCommand,
   QueueUnitCommand,
+  EditFactoryQueueCommand,
   StopFactoryProductionCommand,
   SetRallyPointCommand,
   SetFactoryGuardCommand,

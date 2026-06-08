@@ -7,6 +7,7 @@ import type {
   AttackGroundCommand,
   ClearQueuedOrdersCommand,
   Command,
+  EditFactoryQueueCommand,
   FireDGunCommand,
   GuardCommand,
   MoveCommand,
@@ -173,6 +174,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'queueUnit':
       executeQueueUnitCommand(ctx, command);
+      break;
+    case 'editFactoryQueue':
+      executeEditFactoryQueueCommand(ctx, command);
       break;
     case 'stopFactoryProduction':
       executeStopFactoryProductionCommand(ctx, command);
@@ -818,6 +822,22 @@ function executeQueueUnitCommand(ctx: CommandContext, command: QueueUnitCommand)
     ctx.world,
     command.repeat !== false,
     command.count ?? 1,
+  )) {
+    ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+  }
+}
+
+function executeEditFactoryQueueCommand(ctx: CommandContext, command: EditFactoryQueueCommand): void {
+  const factory = ctx.world.getEntity(command.factoryId);
+  if (factory === undefined || factory.factory === null || factory.ownership === null) return;
+
+  if (factoryProductionSystem.editQueue(
+    factory,
+    command.operation,
+    command.index,
+    command.length ?? 1,
+    command.toIndex,
+    command.count,
   )) {
     ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
   }

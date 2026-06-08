@@ -1000,6 +1000,26 @@ export class RtsScene3D {
     });
   }
 
+  public editFactoryQueue(
+    factoryId: number,
+    operation: 'remove' | 'move' | 'setCount',
+    index: number,
+    length = 1,
+    toIndex?: number,
+    count?: number,
+  ): void {
+    this.sendAuthoritativeCommand({
+      type: 'editFactoryQueue',
+      tick: this.clientViewState.getTick(),
+      factoryId,
+      operation,
+      index,
+      length,
+      toIndex,
+      count,
+    });
+  }
+
   public stopFactoryProduction(factoryId: number): void {
     this.sendAuthoritativeCommand({
       type: 'stopFactoryProduction',

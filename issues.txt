@@ -55,15 +55,11 @@ unit-specific special buttons beyond commander DGun only after the underlying
 authoritative simulation, snapshots, client feedback, and physical
 presentation exist.
 
-Issue: factory production queue editing is incomplete. Add authoritative
-commands and selection-panel controls for removing, reordering, and changing
-quantities of individual finite factory queue items.
-
 Issue: BAR gameplay functionality tied to missing commands is absent. Implement
 the systems needed by the missing command surface: transports, capture,
 resurrection/wreck fields, cloak/detection, unit stances, manual-launch
-weapons, factory queue management, mex upgrade workflows, replays where
-applicable, and complete faction/unit/factory/building rosters.
+weapons, mex upgrade workflows, replays where applicable, and complete
+faction/unit/factory/building rosters.
 
 Issue: BAR parity must be extended through the 3D/physics-first design, not
 implemented as flat 2D shortcuts. Transport/load/unload, resurrection,

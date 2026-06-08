@@ -4,6 +4,7 @@ import type {
   AttackGroundCommand,
   ClearQueuedOrdersCommand,
   Command,
+  EditFactoryQueueCommand,
   FireDGunCommand,
   GuardCommand,
   MoveCommand,
@@ -100,6 +101,8 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       return sanitizeStartBuildCommand(command, tick);
     case 'queueUnit':
       return sanitizeQueueUnitCommand(command, tick);
+    case 'editFactoryQueue':
+      return sanitizeEditFactoryQueueCommand(command, tick);
     case 'stopFactoryProduction':
       return sanitizeStopFactoryProductionCommand(command, tick);
     case 'setRallyPoint':
@@ -492,6 +495,46 @@ function sanitizeQueueUnitCommand(command: QueueUnitCommand, tick: number): Queu
         count,
       }
     : null;
+}
+
+function sanitizeQueueEditIndex(value: number | undefined): number | null {
+  return Number.isInteger(value) && value !== undefined && value >= 0 && value <= 63
+    ? value
+    : null;
+}
+
+function sanitizeQueueEditLength(value: number | undefined): number | null {
+  return value === undefined
+    ? 1
+    : Number.isInteger(value) && value >= 1 && value <= 64
+      ? value
+      : null;
+}
+
+function sanitizeEditFactoryQueueCommand(
+  command: EditFactoryQueueCommand,
+  tick: number,
+): EditFactoryQueueCommand | null {
+  if (!isEntityId(command.factoryId)) return null;
+  const index = sanitizeQueueEditIndex(command.index);
+  const length = sanitizeQueueEditLength(command.length);
+  if (index === null || length === null) return null;
+  if (command.operation === 'remove') {
+    return { type: 'editFactoryQueue', tick, factoryId: command.factoryId, operation: 'remove', index, length };
+  }
+  if (command.operation === 'move') {
+    const toIndex = sanitizeQueueEditIndex(command.toIndex);
+    return toIndex === null
+      ? null
+      : { type: 'editFactoryQueue', tick, factoryId: command.factoryId, operation: 'move', index, length, toIndex };
+  }
+  if (command.operation === 'setCount') {
+    const count = command.count;
+    return Number.isInteger(count) && count !== undefined && count >= 0 && count <= 64
+      ? { type: 'editFactoryQueue', tick, factoryId: command.factoryId, operation: 'setCount', index, length, count }
+      : null;
+  }
+  return null;
 }
 
 function sanitizeStopFactoryProductionCommand(

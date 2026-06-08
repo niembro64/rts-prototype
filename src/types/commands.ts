@@ -20,6 +20,7 @@ export type CommandType =
   | 'scan'
   | 'startBuild'
   | 'queueUnit'
+  | 'editFactoryQueue'
   | 'stopFactoryProduction'
   | 'setRallyPoint'
   | 'setFactoryGuard'
@@ -164,6 +165,16 @@ export type QueueUnitCommand = BaseCommand & {
   factoryId: EntityId;
   unitBlueprintId: string;
   repeat?: boolean;
+  count?: number;
+};
+
+export type EditFactoryQueueCommand = BaseCommand & {
+  type: 'editFactoryQueue';
+  factoryId: EntityId;
+  operation: 'remove' | 'move' | 'setCount';
+  index: number;
+  length?: number;
+  toIndex?: number;
   count?: number;
 };
 
@@ -403,6 +414,7 @@ export type Command =
   | ScanCommand
   | StartBuildCommand
   | QueueUnitCommand
+  | EditFactoryQueueCommand
   | StopFactoryProductionCommand
   | SetRallyPointCommand
   | SetFactoryGuardCommand

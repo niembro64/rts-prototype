@@ -355,6 +355,32 @@ function assertFactoryShellContract(): void {
   );
   assertContract(factory.factory.selectedUnitBlueprintId === null, 'one-shot factory must clear selected unit when queue is empty');
   assertContract(Boolean(factory.factory.repeatProduction), 'one-shot factory must reset to repeat mode when empty');
+
+  factory.factory.productionQueue.push('unitJackal', 'unitWolverine', 'unitWolverine');
+  assertContract(
+    factoryProductionSystem.editQueue(factory, 'setCount', 1, 2, undefined, 1),
+    'factory queue setCount edit must apply',
+  );
+  assertContract(
+    factory.factory.productionQueue.join(',') === 'unitJackal,unitWolverine',
+    'factory queue setCount edit must replace the selected run',
+  );
+  assertContract(
+    factoryProductionSystem.editQueue(factory, 'move', 1, 1, 0),
+    'factory queue move edit must apply',
+  );
+  assertContract(
+    factory.factory.productionQueue.join(',') === 'unitWolverine,unitJackal',
+    'factory queue move edit must reorder the selected run',
+  );
+  assertContract(
+    factoryProductionSystem.editQueue(factory, 'remove', 1, 1),
+    'factory queue remove edit must apply',
+  );
+  assertContract(
+    factory.factory.productionQueue.join(',') === 'unitWolverine',
+    'factory queue remove edit must delete the selected run',
+  );
 }
 
 export function runSupportSurfaceContractTest(): void {

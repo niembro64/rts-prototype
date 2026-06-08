@@ -428,6 +428,60 @@ export class FactoryProductionSystem {
     return changed;
   }
 
+  editQueue(
+    factory: Entity,
+    operation: 'remove' | 'move' | 'setCount',
+    index: number,
+    length = 1,
+    toIndex?: number,
+    count?: number,
+  ): boolean {
+    if (!factory.factory || !isEntityActive(factory)) {
+      return false;
+    }
+    const queue = factory.factory.productionQueue;
+    if (queue.length === 0 || index < 0 || index >= queue.length) return false;
+    const editLength = Math.max(1, Math.min(Math.floor(length), queue.length - index));
+
+    if (operation === 'remove') {
+      queue.splice(index, editLength);
+      return true;
+    }
+
+    if (operation === 'move') {
+      if (toIndex === undefined || toIndex < 0 || toIndex > queue.length) return false;
+      const removed = queue.splice(index, editLength);
+      let targetIndex = Math.min(Math.floor(toIndex), queue.length + removed.length);
+      if (targetIndex > index) {
+        targetIndex -= removed.length;
+      }
+      if (targetIndex < 0) targetIndex = 0;
+      if (targetIndex > queue.length) targetIndex = queue.length;
+      if (targetIndex === index) {
+        queue.splice(index, 0, ...removed);
+        return false;
+      }
+      queue.splice(targetIndex, 0, ...removed);
+      return true;
+    }
+
+    if (operation === 'setCount') {
+      if (count === undefined || count < 0) return false;
+      const unitBlueprintId = queue[index];
+      const nextCount = Math.max(0, Math.min(
+        Math.floor(count),
+        MAX_FACTORY_PRODUCTION_QUEUE_LENGTH - (queue.length - editLength),
+      ));
+      if (nextCount === editLength) return false;
+      const replacements = new Array<string>(nextCount);
+      for (let i = 0; i < nextCount; i++) replacements[i] = unitBlueprintId;
+      queue.splice(index, editLength, ...replacements);
+      return true;
+    }
+
+    return false;
+  }
+
   // Interrupt the in-progress shell. If construction has not produced
   // a paid live piece yet, remove it and refund the paid counters. Once
   // any piece is live, the shell stays in the world with exactly those

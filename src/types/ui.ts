@@ -149,6 +149,14 @@ export type SelectionActions = {
   toggleFormationAssume: () => void;
   toggleFormationMove: () => void;
   queueUnit: (factoryId: number, unitBlueprintId: string, repeat?: boolean, count?: number) => void;
+  editFactoryQueue: (
+    factoryId: number,
+    operation: 'remove' | 'move' | 'setCount',
+    index: number,
+    length?: number,
+    toIndex?: number,
+    count?: number,
+  ) => void;
   stopFactoryProduction: (factoryId: number) => void;
   clearFactoryGuard: (factoryId: number) => void;
 };

@@ -340,6 +340,9 @@ export function useGameCanvasSceneUi({
     queueUnit: (factoryId, unitBlueprintId, repeat = true, count = 1) => {
       getActiveBattleScene()?.queueFactoryUnit(factoryId, unitBlueprintId, repeat, count);
     },
+    editFactoryQueue: (factoryId, operation, index, length, toIndex, count) => {
+      getActiveBattleScene()?.editFactoryQueue(factoryId, operation, index, length, toIndex, count);
+    },
     stopFactoryProduction: (factoryId) => {
       getActiveBattleScene()?.stopFactoryProduction(factoryId);
     },
