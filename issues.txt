@@ -53,12 +53,9 @@ slow/fast movement modifiers where applicable, and complete visual formation
 previews. Translate these to the 3D physics model so formation targets respect
 mass, collision, terrain height, slopes, water, and pathability.
 
-Issue: battle and targeting commands are incomplete. rts-prototype has visual
-buttons/hotkeys for Attack, fixed-radius Attack Area, Attack Ground, Fight,
-Guard, Patrol, and target set/cancel for combat units and towers. Add BAR
-Attack Circle, Attack Line, Target Set No Ground, user-shaped attack
-areas/lines/circles, and command-card access for any remaining battle commands
-that become supported by simulation.
+Issue: battle and targeting commands are incomplete. Add BAR Attack Line,
+Target Set No Ground, attack-line shaping, and command-card access for any
+remaining battle commands that become supported by simulation.
 
 Issue: construction commands are missing most BAR build ergonomics. Implement
 the BAR grid build menu categories, grid-menu cell hotkeys, legacy quick-build
@@ -78,10 +75,9 @@ stop-production, wait queueing, and basic factory rally. Implement the missing
 queue semantics with server authorization and clear visual queue editing
 feedback.
 
-Issue: repair and reclaim are incomplete. Fixed-radius repair area and
-fixed-radius reclaim area via the Reclaim command exist. Add BAR-style area
-reclaim by right-drag/circle, user-sized repair and reclaim areas,
-reclaim-selected behavior where appropriate, and reclaim field highlighting.
+Issue: repair and reclaim are incomplete. Add BAR-style area reclaim by
+right-drag, reclaim-selected behavior where appropriate, and reclaim field
+highlighting.
 
 Issue: behavior/state toggles are incomplete. BAR exposes cloak/want-cloak,
 gather wait, on/off, stateful on/off, repeat, stateful repeat, stance/fire

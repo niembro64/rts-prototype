@@ -38,6 +38,7 @@ import {
   BuildingRenderPacket3D,
   UnitRenderPacket3D,
 } from '../../render3d/EntityRenderPackets3D';
+import type { AreaDrag3D } from '../../render3d/AreaDrag3D';
 import type { LineDrag3D } from '../../render3d/LineDrag3D';
 import type { SprayRenderer3D } from '../../render3d/SprayRenderer3D';
 import type { PylonTubeFlowRenderer } from '../../render3d/PylonTubeFlowRenderer';
@@ -95,6 +96,7 @@ export type RtsScene3DRenderPhaseResources = {
   debrisRenderer: Debris3D;
   burnMarkRenderer: BurnMark3D;
   groundPrintRenderer: GroundPrint3D;
+  areaDragRenderer: AreaDrag3D;
   lineDragRenderer: LineDrag3D;
   sprayRenderer: SprayRenderer3D;
   pylonTubeFlowRenderer: PylonTubeFlowRenderer;
@@ -243,6 +245,7 @@ export class RtsScene3DRenderPhase {
       debrisRenderer,
       burnMarkRenderer,
       groundPrintRenderer,
+      areaDragRenderer,
       lineDragRenderer,
       sprayRenderer,
       pylonTubeFlowRenderer,
@@ -443,6 +446,7 @@ export class RtsScene3DRenderPhase {
     }
 
     if (inputManager) {
+      areaDragRenderer.update(inputManager.getAreaDragState());
       lineDragRenderer.update(inputManager.getLineDragState());
     }
 

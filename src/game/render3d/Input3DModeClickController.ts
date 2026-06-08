@@ -20,10 +20,26 @@ import type { BuildGhost3D } from './BuildGhost3D';
 import { Input3DBuildPlacementState } from './Input3DBuildPlacementState';
 import type { Input3DPicker } from './Input3DPicker';
 import { entityCanBuild } from '../sim/builderBuildRoster';
+import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
+import {
+  EMPTY_AREA_DRAG_STATE,
+  type Input3DAreaDragKind,
+  type Input3DAreaDragState,
+} from './Input3DAreaDragState';
 
 const REPAIR_AREA_RADIUS = 220;
 const RECLAIM_AREA_RADIUS = 220;
 const ATTACK_AREA_RADIUS = 300;
+
+type AreaDrag = {
+  kind: Input3DAreaDragKind;
+  start: { x: number; y: number; z?: number };
+  current: { x: number; y: number; z?: number };
+  startClientX: number;
+  startClientY: number;
+  queue: boolean;
+  queueFront: boolean;
+};
 
 type ModeClickEntitySource = {
   getUnits: () => Entity[];
@@ -66,11 +82,13 @@ type Input3DModeClickControllerConfig = {
 export class Input3DModeClickController {
   private readonly buildPlacement = new Input3DBuildPlacementState();
   private buildGhost: BuildGhost3D | null = null;
+  private areaDrag: AreaDrag | null = null;
 
   constructor(private readonly config: Input3DModeClickControllerConfig) {}
 
   get active(): boolean {
-    return this.config.mode.isInBuildMode ||
+    return this.areaDrag !== null ||
+      this.config.mode.isInBuildMode ||
       this.config.mode.isInDGunMode ||
       this.config.isRepairAreaMode() ||
       this.config.isAttackMode() ||
@@ -130,14 +148,21 @@ export class Input3DModeClickController {
     if (!this.active) return false;
     e.preventDefault();
     if (e.button === 0) {
+      if (this.beginAreaDrag(e)) return true;
       this.handleLeftClick(e);
     } else if (e.button === 2) {
+      this.areaDrag = null;
       this.handleRightCancel();
     }
     return true;
   }
 
   handleMouseMove(e: MouseEvent): boolean {
+    if (this.areaDrag !== null) {
+      this.updateAreaDrag(e);
+      this.config.applyCursor(this.cursorKindForActiveMode() ?? 'game');
+      return true;
+    }
     const buildingBlueprintId = this.config.mode.buildingBlueprintId;
     if (buildingBlueprintId !== null) {
       this.updateBuildPreview(e, buildingBlueprintId);
@@ -149,6 +174,116 @@ export class Input3DModeClickController {
       return true;
     }
     return false;
+  }
+
+  handleMouseUp(e: MouseEvent): boolean {
+    if (e.button !== 0 || this.areaDrag === null) return false;
+    e.preventDefault();
+    this.updateAreaDrag(e);
+    const drag = this.areaDrag;
+    this.areaDrag = null;
+    const dx = e.clientX - drag.startClientX;
+    const dy = e.clientY - drag.startClientY;
+    if (Math.sqrt(dx * dx + dy * dy) < CLICK_DRAG_THRESHOLD_PX) {
+      this.handleLeftClick(e);
+      return true;
+    }
+    this.commitAreaDrag(drag);
+    return true;
+  }
+
+  getAreaDragState(): Input3DAreaDragState {
+    const drag = this.areaDrag;
+    if (drag === null) return EMPTY_AREA_DRAG_STATE;
+    return {
+      active: true,
+      kind: drag.kind,
+      x: drag.start.x,
+      y: drag.start.y,
+      z: drag.start.z,
+      radius: Math.max(1, areaDragRadius(drag)),
+    };
+  }
+
+  private beginAreaDrag(e: MouseEvent): boolean {
+    const kind = this.activeAreaDragKind();
+    if (kind === null) return false;
+    const world = this.config.picker.raycastGround(e.clientX, e.clientY);
+    if (!world) return false;
+    this.areaDrag = {
+      kind,
+      start: { x: world.x, y: world.y, z: world.z },
+      current: { x: world.x, y: world.y, z: world.z },
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      queue: e.shiftKey,
+      queueFront: isQueueFrontModifier(e),
+    };
+    return true;
+  }
+
+  private updateAreaDrag(e: MouseEvent): void {
+    const drag = this.areaDrag;
+    if (drag === null) return;
+    const world = this.config.picker.raycastGround(e.clientX, e.clientY);
+    if (!world) return;
+    drag.current = { x: world.x, y: world.y, z: world.z };
+  }
+
+  private activeAreaDragKind(): Input3DAreaDragKind | null {
+    if (this.config.isRepairAreaMode()) return 'repairArea';
+    if (this.config.isAttackAreaMode()) return 'attackArea';
+    if (this.config.isReclaimMode()) return 'reclaimArea';
+    return null;
+  }
+
+  private commitAreaDrag(drag: AreaDrag): void {
+    const radius = Math.max(1, areaDragRadius(drag));
+    if (drag.kind === 'repairArea') {
+      const cmd = buildRepairAreaCommand(
+        this.config.getSelectedCommander(),
+        drag.start.x,
+        drag.start.y,
+        radius,
+        this.config.getTick(),
+        drag.queue,
+        drag.start.z,
+        drag.queueFront,
+      );
+      if (cmd) this.config.commandQueue.enqueue(cmd);
+      this.config.applyCursor('repair');
+      if (!drag.queue) this.config.exitRepairAreaMode();
+      return;
+    }
+    if (drag.kind === 'attackArea') {
+      const cmd = buildAttackAreaCommand(
+        this.config.getEntitySource().getSelectedUnits(),
+        drag.start.x,
+        drag.start.y,
+        radius,
+        this.config.getTick(),
+        drag.queue,
+        drag.start.z,
+        drag.queueFront,
+      );
+      if (cmd) this.config.commandQueue.enqueue(cmd);
+      this.config.applyCursor('attack');
+      if (!drag.queue) this.config.exitAttackAreaMode();
+      return;
+    }
+    const cmd = buildReclaimAreaCommand(
+      this.config.getSelectedCommander(),
+      drag.start.x,
+      drag.start.y,
+      radius,
+      this.config.getTick(),
+      drag.queue,
+      drag.start.z,
+      drag.queueFront,
+    );
+    if (cmd) this.config.commandQueue.enqueue(cmd);
+    this.config.applyCursor('reclaim');
+    if (!drag.queue) this.config.exitReclaimMode();
   }
 
   private handleLeftClick(e: MouseEvent): void {
@@ -496,4 +631,10 @@ export class Input3DModeClickController {
 
 function isQueueFrontModifier(e: MouseEvent): boolean {
   return e.shiftKey && (e.ctrlKey || e.metaKey);
+}
+
+function areaDragRadius(drag: AreaDrag): number {
+  const dx = drag.current.x - drag.start.x;
+  const dy = drag.current.y - drag.start.y;
+  return Math.sqrt(dx * dx + dy * dy);
 }

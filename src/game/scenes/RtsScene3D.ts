@@ -45,6 +45,7 @@ import type { ScopedRenderMeshRetentionTelemetry } from '../render3d/ScopedRende
 import { Debris3D } from '../render3d/Debris3D';
 import { BurnMark3D } from '../render3d/BurnMark3D';
 import { GroundPrint3D } from '../render3d/GroundPrint3D';
+import { AreaDrag3D } from '../render3d/AreaDrag3D';
 import { LineDrag3D } from '../render3d/LineDrag3D';
 import { BuildGhost3D } from '../render3d/BuildGhost3D';
 import { ContactShadowRenderer3D } from '../render3d/ContactShadowRenderer3D';
@@ -142,6 +143,7 @@ export class RtsScene3D {
   private renderScope = new ViewportFootprint();
   private burnMarkRenderer!: BurnMark3D;
   private groundPrintRenderer!: GroundPrint3D;
+  private areaDragRenderer!: AreaDrag3D;
   private lineDragRenderer!: LineDrag3D;
   private buildGhostRenderer!: BuildGhost3D;
   private sprayRenderer!: SprayRenderer3D;
@@ -392,6 +394,7 @@ export class RtsScene3D {
     this.debrisRenderer = renderers.debrisRenderer;
     this.burnMarkRenderer = renderers.burnMarkRenderer;
     this.groundPrintRenderer = renderers.groundPrintRenderer;
+    this.areaDragRenderer = renderers.areaDragRenderer;
     this.lineDragRenderer = renderers.lineDragRenderer;
     this.buildGhostRenderer = renderers.buildGhostRenderer;
     this.sprayRenderer = renderers.sprayRenderer;
@@ -517,6 +520,7 @@ export class RtsScene3D {
         debrisRenderer: this.debrisRenderer,
         burnMarkRenderer: this.burnMarkRenderer,
         groundPrintRenderer: this.groundPrintRenderer,
+        areaDragRenderer: this.areaDragRenderer,
         lineDragRenderer: this.lineDragRenderer,
         sprayRenderer: this.sprayRenderer,
         pylonTubeFlowRenderer: this.pylonTubeFlowRenderer,
@@ -1072,6 +1076,7 @@ export class RtsScene3D {
       debrisRenderer: this.debrisRenderer,
       burnMarkRenderer: this.burnMarkRenderer,
       groundPrintRenderer: this.groundPrintRenderer,
+      areaDragRenderer: this.areaDragRenderer,
       lineDragRenderer: this.lineDragRenderer,
       buildGhostRenderer: this.buildGhostRenderer,
       sprayRenderer: this.sprayRenderer,

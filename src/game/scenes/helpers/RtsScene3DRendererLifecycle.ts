@@ -29,6 +29,7 @@ export type RtsScene3DRendererResources = {
   debrisRenderer?: Destroyable | null;
   burnMarkRenderer?: Destroyable | null;
   groundPrintRenderer?: Destroyable | null;
+  areaDragRenderer?: Destroyable | null;
   lineDragRenderer?: Destroyable | null;
   buildGhostRenderer?: Destroyable | null;
   sprayRenderer?: Destroyable | null;
@@ -62,6 +63,7 @@ export function teardownRtsScene3DRenderers(
   resources.debrisRenderer?.destroy();
   resources.burnMarkRenderer?.destroy();
   resources.groundPrintRenderer?.destroy();
+  resources.areaDragRenderer?.destroy();
   resources.lineDragRenderer?.destroy();
   resources.buildGhostRenderer?.destroy();
   resources.sprayRenderer?.destroy();

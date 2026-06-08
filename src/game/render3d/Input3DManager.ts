@@ -48,6 +48,7 @@ import { Input3DKeyboardController } from './Input3DKeyboardController';
 import { Input3DPicker } from './Input3DPicker';
 import { Input3DRightDragController, type Input3DLineDragState } from './Input3DRightDragController';
 import { Input3DModeClickController } from './Input3DModeClickController';
+import type { Input3DAreaDragState } from './Input3DAreaDragState';
 
 const SELECTABLE_GROUND_MIN_UNIT_RADIUS = 8;
 
@@ -1283,6 +1284,7 @@ export class Input3DManager {
   }
 
   private handleMouseUp(e: MouseEvent): void {
+    if (this.modeClicks.handleMouseUp(e)) return;
     if (e.button === 2 && this.rightDrag.active) {
       this.rightDrag.handleMouseUp(e);
       return;
@@ -1368,6 +1370,10 @@ export class Input3DManager {
    *  ground instead of a fixed-height plane. */
   getLineDragState(): Input3DLineDragState {
     return this.rightDrag.getLineDragState();
+  }
+
+  getAreaDragState(): Input3DAreaDragState {
+    return this.modeClicks.getAreaDragState();
   }
 
   destroy(): void {

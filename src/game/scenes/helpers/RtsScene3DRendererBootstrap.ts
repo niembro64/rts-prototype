@@ -1,4 +1,5 @@
 import type { ClientViewState } from '../../network/ClientViewState';
+import { AreaDrag3D } from '../../render3d/AreaDrag3D';
 import { BeamRenderer3D } from '../../render3d/BeamRenderer3D';
 import { BuildGhost3D } from '../../render3d/BuildGhost3D';
 import { BurnMark3D } from '../../render3d/BurnMark3D';
@@ -59,6 +60,7 @@ export type RtsScene3DRendererBootstrapResult = {
   debrisRenderer: Debris3D;
   burnMarkRenderer: BurnMark3D;
   groundPrintRenderer: GroundPrint3D;
+  areaDragRenderer: AreaDrag3D;
   lineDragRenderer: LineDrag3D;
   buildGhostRenderer: BuildGhost3D;
   sprayRenderer: SprayRenderer3D;
@@ -160,6 +162,7 @@ export function bootstrapRtsScene3DRenderers(
     (x, y) => getSurfaceHeight(x, y, mapWidth, mapHeight, LAND_CELL_SIZE),
   );
   const groundPrintRenderer = new GroundPrint3D(threeApp.world, renderScope);
+  const areaDragRenderer = new AreaDrag3D(threeApp.world);
   const lineDragRenderer = new LineDrag3D(threeApp.world);
   const buildGhostRenderer = new BuildGhost3D(
     threeApp.world,
@@ -200,6 +203,7 @@ export function bootstrapRtsScene3DRenderers(
     debrisRenderer,
     burnMarkRenderer,
     groundPrintRenderer,
+    areaDragRenderer,
     lineDragRenderer,
     buildGhostRenderer,
     sprayRenderer,
