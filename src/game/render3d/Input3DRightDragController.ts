@@ -1,4 +1,4 @@
-import type { CommandQueue } from '../sim/commands';
+import type { CommandQueue, MoveCommand } from '../sim/commands';
 import type { Entity, EntityId, PlayerId, WaypointType } from '../sim/types';
 import {
   buildAttackCommandAt,
@@ -35,8 +35,9 @@ type Input3DRightDragControllerConfig = {
   getTick: () => number;
   getActivePlayerId: () => PlayerId;
   getWaypointMode: () => WaypointType;
+  isFormationAssumeMode: () => boolean;
   isFormationMoveMode: () => boolean;
-  exitFormationMoveMode: () => void;
+  exitFormationModes: () => void;
   getSelectedCommander: () => Entity | null;
   getMapSampleBounds: () => { width: number; height: number };
   applyCursor: (kind: CommandCursorKind) => void;
@@ -89,7 +90,7 @@ export class Input3DRightDragController {
     const entityHit = entityHitId !== null
       ? source.getEntity(entityHitId)
       : null;
-    const preserveFormationMove = selectedUnits.length > 0 && this.shouldPreserveFormation(e);
+    const preserveFormationMove = selectedUnits.length > 0 && this.shouldUseFormationOffsets(e);
 
     if (!preserveFormationMove) {
       const meshAttackCmd = buildAttackCommandForTarget(
@@ -219,24 +220,27 @@ export class Input3DRightDragController {
 
     if (selectedUnits.length > 0 && points.length > 0) {
       const finalPoint = points[points.length - 1];
-      const repairCmd = buildRepairCommandAt(
-        source,
-        finalPoint.x, finalPoint.y,
-        this.config.getSelectedCommander(),
-        tick, shiftHeld, queueFront,
-      );
-      if (repairCmd) {
-        debugLog(
-          GAME_DIAGNOSTICS.commandPlans,
-          '[click] repair-on-release: released at (%d, %d, %d) -> target #%d',
-          Math.round(finalPoint.x), Math.round(finalPoint.y),
-          finalPoint.z !== undefined ? Math.round(finalPoint.z) : -1,
-          repairCmd.targetId,
+      const preserveFormation = this.shouldUseFormationOffsets(e);
+      if (!preserveFormation) {
+        const repairCmd = buildRepairCommandAt(
+          source,
+          finalPoint.x, finalPoint.y,
+          this.config.getSelectedCommander(),
+          tick, shiftHeld, queueFront,
         );
-        this.config.commandQueue.enqueue(repairCmd);
-        this.resetLineDrag();
-        this.config.refreshCursor();
-        return;
+        if (repairCmd) {
+          debugLog(
+            GAME_DIAGNOSTICS.commandPlans,
+            '[click] repair-on-release: released at (%d, %d, %d) -> target #%d',
+            Math.round(finalPoint.x), Math.round(finalPoint.y),
+            finalPoint.z !== undefined ? Math.round(finalPoint.z) : -1,
+            repairCmd.targetId,
+          );
+          this.config.commandQueue.enqueue(repairCmd);
+          this.resetLineDrag();
+          this.config.refreshCursor();
+          return;
+        }
       }
       const moveCmd = buildLinePathMoveCommand(
         this.linePath,
@@ -245,13 +249,13 @@ export class Input3DRightDragController {
         tick,
         shiftHeld,
         queueFront,
-        this.shouldPreserveFormation(e),
+        preserveFormation,
+        this.resolveFormationSpeed(e),
       );
       if (moveCmd) {
-        const preserveFormation = this.shouldPreserveFormation(e);
         this.logMoveCommand(selectedUnits, points.length, finalPoint, moveCmd, preserveFormation);
         this.config.commandQueue.enqueue(moveCmd);
-        if (this.config.isFormationMoveMode() && !shiftHeld) this.config.exitFormationMoveMode();
+        if (this.isFormationModeActive() && !shiftHeld) this.config.exitFormationModes();
       }
       this.resetLineDrag();
       this.config.refreshCursor();
@@ -304,8 +308,18 @@ export class Input3DRightDragController {
     }
   }
 
-  private shouldPreserveFormation(e: MouseEvent): boolean {
-    return e.altKey || e.ctrlKey || e.metaKey || this.config.isFormationMoveMode();
+  private shouldUseFormationOffsets(e: MouseEvent): boolean {
+    return e.altKey || e.ctrlKey || e.metaKey || this.isFormationModeActive();
+  }
+
+  private resolveFormationSpeed(e: MouseEvent): MoveCommand['formationSpeed'] | undefined {
+    if (this.config.isFormationMoveMode()) return 'slowest';
+    if (this.config.isFormationAssumeMode()) return undefined;
+    return (e.ctrlKey || e.metaKey) ? 'slowest' : undefined;
+  }
+
+  private isFormationModeActive(): boolean {
+    return this.config.isFormationAssumeMode() || this.config.isFormationMoveMode();
   }
 
   private updateFormationPreviewTargets(selectedUnits: readonly Entity[]): void {

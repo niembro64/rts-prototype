@@ -567,6 +567,17 @@ function loadFactoryPreset(index: number): void {
         <button
           type="button"
           class="action-btn"
+          :class="{ active: selection.isFormationAssumeMode }"
+          :style="{ '--btn-color': WAYPOINT_COLOR_CSS.move }"
+          title="Assume formation - Alt+Right click"
+          @click="actions.toggleFormationAssume()"
+        >
+          <span class="btn-label">Assume</span>
+          <span class="btn-key">Alt+RMB</span>
+        </button>
+        <button
+          type="button"
+          class="action-btn"
           :class="{ active: selection.isFormationMoveMode }"
           :style="{ '--btn-color': WAYPOINT_COLOR_CSS.move }"
           title="Move in formation - Ctrl+Right click"

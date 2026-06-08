@@ -117,6 +117,7 @@ export function useGameCanvasSceneUi({
     buildFacingDegrees: 0,
     isDGunMode: false,
     isRepairAreaMode: false,
+    isFormationAssumeMode: false,
     isFormationMoveMode: false,
     isAttackMode: false,
     isAttackAreaMode: false,
@@ -327,6 +328,9 @@ export function useGameCanvasSceneUi({
     },
     toggleRepairArea: () => {
       getActiveBattleScene()?.toggleRepairAreaMode();
+    },
+    toggleFormationAssume: () => {
+      getActiveBattleScene()?.toggleFormationAssumeMode();
     },
     toggleFormationMove: () => {
       getActiveBattleScene()?.toggleFormationMoveMode();

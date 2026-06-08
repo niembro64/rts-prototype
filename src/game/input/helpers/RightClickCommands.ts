@@ -176,6 +176,7 @@ export function buildLinePathMoveCommand(
   queue: boolean,
   queueFront = false,
   preserveFormation = false,
+  formationSpeed?: MoveCommand['formationSpeed'],
 ): MoveCommand | null {
   const points = accumulator.points;
   if (selectedUnits.length === 0 || points.length === 0) return null;
@@ -193,6 +194,7 @@ export function buildLinePathMoveCommand(
         queue,
         finalPoint.z,
         queueFront,
+        formationSpeed,
       );
     }
     return {
@@ -222,7 +224,7 @@ export function buildLinePathMoveCommand(
     }
   }
 
-  return {
+  const command: MoveCommand = {
     type: 'move',
     tick,
     entityIds,
@@ -231,6 +233,8 @@ export function buildLinePathMoveCommand(
     queue,
     queueFront,
   };
+  if (formationSpeed !== undefined) command.formationSpeed = formationSpeed;
+  return command;
 }
 
 export function buildFormationPreservingMoveCommand(
@@ -242,6 +246,7 @@ export function buildFormationPreservingMoveCommand(
   queue: boolean,
   targetZ?: number,
   queueFront = false,
+  formationSpeed?: MoveCommand['formationSpeed'],
 ): MoveCommand | null {
   if (selectedUnits.length === 0) return null;
   if (selectedUnits.length === 1) {
@@ -260,16 +265,17 @@ export function buildFormationPreservingMoveCommand(
 
   const targets = buildFormationPreservingMoveTargets(selectedUnits, targetX, targetY, targetZ);
 
-  return {
+  const command: MoveCommand = {
     type: 'move',
     tick,
     entityIds: targets.entityIds,
     individualTargets: targets.individualTargets,
-    formationSpeed: 'slowest',
     waypointType: mode,
     queue,
     queueFront,
   };
+  if (formationSpeed !== undefined) command.formationSpeed = formationSpeed;
+  return command;
 }
 
 export function buildFormationPreservingMoveTargets(

@@ -543,6 +543,7 @@ export function buildSelectionInfo(
     buildFacingDegrees: inputState?.buildFacingDegrees ?? 0,
     isDGunMode: inputState?.isDGunMode ?? false,
     isRepairAreaMode: inputState?.isRepairAreaMode ?? false,
+    isFormationAssumeMode: inputState?.isFormationAssumeMode ?? false,
     isFormationMoveMode: inputState?.isFormationMoveMode ?? false,
     isAttackMode: inputState?.isAttackMode ?? false,
     isAttackAreaMode: inputState?.isAttackAreaMode ?? false,

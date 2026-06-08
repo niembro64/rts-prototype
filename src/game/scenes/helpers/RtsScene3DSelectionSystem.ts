@@ -33,6 +33,7 @@ export class RtsScene3DSelectionSystem {
   private buildFacingDegrees = 0;
   private dgunActive = false;
   private repairAreaActive = false;
+  private formationAssumeActive = false;
   private formationMoveActive = false;
   private attackActive = false;
   private attackAreaActive = false;
@@ -89,6 +90,11 @@ export class RtsScene3DSelectionSystem {
 
   setRepairAreaMode(active: boolean): void {
     this.repairAreaActive = active;
+    this.selectionInfoDirty = true;
+  }
+
+  setFormationAssumeMode(active: boolean): void {
+    this.formationAssumeActive = active;
     this.selectionInfoDirty = true;
   }
 
@@ -215,6 +221,7 @@ export class RtsScene3DSelectionSystem {
       buildFacingDegrees: this.buildFacingDegrees,
       isDGunMode: this.dgunActive,
       isRepairAreaMode: this.repairAreaActive,
+      isFormationAssumeMode: this.formationAssumeActive,
       isFormationMoveMode: this.formationMoveActive,
       isAttackMode: this.attackActive,
       isAttackAreaMode: this.attackAreaActive,
