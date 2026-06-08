@@ -78,8 +78,8 @@ commands.
 
 Issue: BAR gameplay functionality tied to missing commands is absent. Implement
 or explicitly redesign the systems needed by the missing command surface:
-transports, capture, resurrection/wreck fields, cloak/detection, radar/LOS UI
-states, unit stances, trajectory weapons, manual-launch weapons, factory queue
+transports, capture, resurrection/wreck fields, cloak/detection, unit stances,
+trajectory weapons, manual-launch weapons, factory queue
 management, build-shape placement, mex upgrade workflows, spectators/replays
 where applicable, and complete faction/unit/factory/building rosters. Missing
 commands should not be added as dead UI; their underlying
