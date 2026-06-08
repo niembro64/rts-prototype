@@ -109,10 +109,11 @@ Issue: map, communication, and game UI commands are missing. Implement BAR
 commands and buttons for chat, draw on map, draw label, erase drawings, ping to
 map, go to last ping, map overview switch, map details info, show/hide UI, show
 map elevation, show map metal, show unit pathing, LOS/radar toggles, options
-menu, pause, game-speed adjust, mute/volume controls, and any equivalent
+menu, pause, game-speed adjust, volume controls, and any equivalent
 lobby/spectator-safe variants. rts-prototype has a minimap, resource bar,
-debug/control bars, fullscreen toggle, screenshot capture, and ping/scan
-commands, but not the BAR game UI command surface.
+debug/control bars, fullscreen toggle, screenshot capture, audio mute/sound
+category toggles, and ping/scan commands, but not the BAR game UI command
+surface.
 
 Issue: camera controls are missing BAR parity. FOV controls, selected-unit
 follow tracking, and arrow/numpad camera movement exist. Add camera mode
