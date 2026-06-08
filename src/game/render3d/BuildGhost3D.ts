@@ -20,26 +20,23 @@ import type { Entity, BuildingBlueprintId } from '../sim/types';
 import { COLORS } from '@/colorsConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
-import {
-  METAL_DEPOSIT_CONFIG,
-  type MetalDeposit,
-} from '@/metalDepositConfig';
+import type { MetalDeposit } from '@/metalDepositConfig';
 import { getBuildingAuthoredRadarRadius } from '../sim/sensorCoverage';
 import {
   type BuildPlacementCellDiagnostic,
   type BuildPlacementDiagnostics,
   getSnappedBuildPosition,
 } from '../input/helpers';
+import {
+  createMetalDepositSurfaceIndex,
+  METAL_DEPOSIT_COIN_TOP_LIFT,
+  metalDepositCellKey,
+} from './MetalDepositVisualClusters';
 
 const GHOST_Y = 1; // hover a hair above the ground so it doesn't z-fight tiles
 const CELL_Y = 1.25;
 const CELL_BORDER_Y = 1.38;
 const RANGE_Y = 0.6;
-// The deposit coin top face sits at terrain + 0.04 + coinHeight * 0.5 (see
-// MetalDepositRenderer3D.buildDepositNode + makeDepositCoinGeometry). Build
-// ability squares then use the same clearance above that visible surface that
-// normal terrain squares use above raw terrain.
-const METAL_DEPOSIT_COIN_TOP_LIFT = METAL_DEPOSIT_CONFIG.coinHeight * 0.5 + 0.04;
 type GroundHeightLookup = (x: number, y: number) => number;
 
 type CellMaterialPair = {
@@ -402,26 +399,9 @@ export class BuildGhost3D {
   }
 
   private indexMetalDepositSurfaces(deposits: ReadonlyArray<MetalDeposit>): void {
-    this.metalDepositSurfaceYByCell.clear();
-    this.metalDepositSurfaceYById.clear();
-    for (const deposit of deposits) {
-      const surfaceY = deposit.height + METAL_DEPOSIT_COIN_TOP_LIFT;
-      const currentById = this.metalDepositSurfaceYById.get(deposit.id);
-      if (currentById === undefined || surfaceY > currentById) {
-        this.metalDepositSurfaceYById.set(deposit.id, surfaceY);
-      }
-      for (const cell of deposit.cells) {
-        const key = BuildGhost3D.cellKey(cell.gx, cell.gy);
-        const currentByCell = this.metalDepositSurfaceYByCell.get(key);
-        if (currentByCell === undefined || surfaceY > currentByCell) {
-          this.metalDepositSurfaceYByCell.set(key, surfaceY);
-        }
-      }
-    }
-  }
-
-  private static cellKey(gx: number, gy: number): string {
-    return `${gx},${gy}`;
+    const surfaceIndex = createMetalDepositSurfaceIndex(deposits);
+    this.metalDepositSurfaceYByCell = surfaceIndex.surfaceYByCell;
+    this.metalDepositSurfaceYById = surfaceIndex.surfaceYById;
   }
 
   private getBuildAbilitySquarePose(cell: BuildAbilitySquareCell): BuildAbilitySquarePose {
@@ -445,7 +425,7 @@ export class BuildGhost3D {
 
     let depositSurfaceY: number | undefined;
     if (cell.gx !== undefined && cell.gy !== undefined) {
-      depositSurfaceY = this.metalDepositSurfaceYByCell.get(BuildGhost3D.cellKey(cell.gx, cell.gy));
+      depositSurfaceY = this.metalDepositSurfaceYByCell.get(metalDepositCellKey(cell.gx, cell.gy));
     }
     if (depositSurfaceY === undefined && cell.depositId !== undefined && cell.depositId !== null) {
       depositSurfaceY = this.metalDepositSurfaceYById.get(cell.depositId);

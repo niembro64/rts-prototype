@@ -4334,6 +4334,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runInputControlGroupsContractTest();
         const { runInput3DKeyboardControllerContractTest } = await import('../render3d/Input3DKeyboardControllerContractTest');
         runInput3DKeyboardControllerContractTest();
+        const { runMetalDepositVisualClustersContractTest } = await import('../render3d/MetalDepositVisualClustersContractTest');
+        runMetalDepositVisualClustersContractTest();
         const { runTurretHostIntegrationContractTest } = await import('../sim/turretHostIntegrationTest');
         runTurretHostIntegrationContractTest();
         const { runSupportSurfaceContractTest } = await import('../sim/supportSurfaceContractTest');
