@@ -18,7 +18,6 @@
 // drives every command, so cursor anchoring is consistent across
 // all input flows.
 
-import * as THREE from 'three';
 import type { ThreeApp } from './ThreeApp';
 import type { BuildGhost3D } from './BuildGhost3D';
 import type { CursorGround, SimGroundPoint } from './CursorGround';
@@ -42,13 +41,9 @@ import {
   buildLinePathMoveCommand,
   buildRepairCommandAt,
   buildFactoryRallyCommands,
-  handleEscape,
   CommanderModeController,
-  getBuildModeBuildingBlueprintIdByIndex,
-  getDefaultBuildModeBuildingBlueprintId,
   InputControlGroups,
   InputSelectedCommands,
-  controlGroupIndexForKey,
 } from '../input/helpers';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
 import { getCommandCursorStyle, type CommandCursorKind } from '../input/CommandCursors';
@@ -60,7 +55,8 @@ import { Input3DSpecialModes, type Input3DSpecialMode } from './Input3DSpecialMo
 import { Input3DBuildPlacementState } from './Input3DBuildPlacementState';
 import { Input3DHoverState, resolveInput3DHoverTargets } from './Input3DHoverState';
 import { Input3DSelectionDragState } from './Input3DSelectionDragState';
-import { Input3DBoxSelection } from './Input3DBoxSelection';
+import { Input3DKeyboardController } from './Input3DKeyboardController';
+import { Input3DPicker } from './Input3DPicker';
 
 const SELECTABLE_GROUND_MIN_UNIT_RADIUS = 8;
 const REPAIR_AREA_RADIUS = 220;
@@ -81,7 +77,6 @@ type EntitySource = {
 };
 
 export class Input3DManager {
-  private threeApp: ThreeApp;
   private canvas: HTMLCanvasElement;
   private context: InputContext;
   private entitySource: EntitySource;
@@ -128,25 +123,18 @@ export class Input3DManager {
   private rightDown = false;
   private linePath = new LinePathAccumulator();
 
-  /** Shared cursor → 3D ground picker. Single canonical source of
-   *  truth for every command-point in this manager — passed in by
-   *  the scene so the camera and the input manager hit the same
-   *  rendered terrain mesh through the same raycaster. */
-  private cursorGround: CursorGround;
-  /** Local raycaster for ENTITY picking (not ground picking) — runs
-   *  against the world group recursively to find unit / building
-   *  meshes. The CursorGround service is exclusively for terrain
-   *  hits; this raycaster handles "which entity did I click on?". */
-  private raycaster = new THREE.Raycaster();
-  private _ndc = new THREE.Vector2();
+  /** Shared cursor/entity picker. Single canonical source of truth
+   *  for every command point in this manager, with entity raycasts
+   *  and screen-rectangle selection kept out of command dispatch. */
+  private picker: Input3DPicker;
   private _selectedFactoriesScratch: Entity[] = [];
   // Resets waypoint mode back to 'move' when the owned-selected set
   // changes — matches the 2D SelectionController's rule so squads
   // don't accidentally inherit 'fight'/'patrol' from a prior group.
   private selectionChangeTracker = new SelectionChangeTracker();
-  private boxSelection = new Input3DBoxSelection();
   private controlGroups: InputControlGroups;
   private selectedCommands: InputSelectedCommands;
+  private keyboard: Input3DKeyboardController;
 
   // DOM handlers bound once for add/remove
   private onMouseDown: (e: MouseEvent) => void;
@@ -161,12 +149,11 @@ export class Input3DManager {
     localCommandQueue: CommandQueue,
     cursorGround: CursorGround,
   ) {
-    this.threeApp = threeApp;
     this.canvas = threeApp.renderer.domElement;
     this.context = context;
     this.entitySource = entitySource;
     this.localCommandQueue = localCommandQueue;
-    this.cursorGround = cursorGround;
+    this.picker = new Input3DPicker(threeApp, cursorGround);
     this.controlGroups = new InputControlGroups(
       entitySource,
       (entity) => this.isSelectableByActivePlayer(entity),
@@ -185,6 +172,48 @@ export class Input3DManager {
       localCommandQueue,
       () => this.context.getTick(),
     );
+    this.keyboard = new Input3DKeyboardController({
+      mode: this.mode,
+      commandQueue: this.localCommandQueue,
+      getTick: () => this.context.getTick(),
+      setWaypointMode: (mode) => this.setWaypointMode(mode),
+      storeControlGroupSlot: (index) => this.storeControlGroupSlot(index),
+      recallControlGroupSlot: (index, additive) => this.recallControlGroupSlot(index, additive),
+      hasSelectedBuilder: () => this.hasSelectedBuilder(),
+      exitSpecialModes: (includeTowerTarget) => this.exitSpecialModes(includeTowerTarget),
+      stopSelectedUnits: () => this.stopSelectedUnits(),
+      removeLastQueuedOrder: () => this.removeLastQueuedOrder(),
+      clearQueuedOrders: () => this.clearQueuedOrders(),
+      toggleSelectedWait: (queue) => this.toggleSelectedWait(queue),
+      toggleSelectedFire: () => this.toggleSelectedFire(),
+      toggleBuildingActive: () => this.toggleBuildingActive(),
+      selfDestructSelected: () => this.selfDestructSelected(),
+      toggleTowerTargetMode: () => this.toggleTowerTargetMode(),
+      clearTowerTarget: () => this.clearTowerTarget(),
+      toggleAttackAreaMode: () => this.toggleAttackAreaMode(),
+      toggleAttackGroundMode: () => this.toggleAttackGroundMode(),
+      toggleGuardMode: () => this.toggleGuardMode(),
+      toggleReclaimMode: () => this.toggleReclaimMode(),
+      toggleRepairAreaMode: () => this.toggleRepairAreaMode(),
+      togglePingMode: () => this.togglePingMode(),
+      toggleDGunMode: () => this.toggleDGunMode(),
+      enqueueScanAtCursor: () => this.enqueueScanAtCursor(),
+      selectActiveCommander: (additive) => this.selectActiveCommander(additive),
+      isRepairAreaMode: () => this.repairAreaMode,
+      isAttackAreaMode: () => this.attackAreaMode,
+      isAttackGroundMode: () => this.attackGroundMode,
+      isGuardMode: () => this.guardMode,
+      isReclaimMode: () => this.reclaimMode,
+      isPingMode: () => this.pingMode,
+      isTowerTargetMode: () => this.towerTargetMode,
+      exitRepairAreaMode: () => this.exitRepairAreaMode(),
+      exitAttackAreaMode: () => this.exitAttackAreaMode(),
+      exitAttackGroundMode: () => this.exitAttackGroundMode(),
+      exitGuardMode: () => this.exitGuardMode(),
+      exitReclaimMode: () => this.exitReclaimMode(),
+      exitPingMode: () => this.exitPingMode(),
+      exitTowerTargetMode: () => this.exitTowerTargetMode(),
+    });
     this.specialModes = new Input3DSpecialModes({
       refreshCursor: () => this.refreshCursor(),
       onRepairAreaModeChange: (active) => this.onRepairAreaModeChange?.(active),
@@ -557,7 +586,7 @@ export class Input3DManager {
   }
 
   private handleTowerTargetClick(e: MouseEvent): void {
-    const entityHitId = this.raycastEntity(e.clientX, e.clientY);
+    const entityHitId = this.picker.raycastEntity(e.clientX, e.clientY);
     if (entityHitId === null) return;
     // Lock-on selection: anything with an ID is a candidate (per
     // design_philosophy.html). The turret's exclusion mask decides
@@ -706,142 +735,7 @@ export class Input3DManager {
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
-    if (e.repeat) return;
-    // Don't hijack keys when the user is typing in a text input (lobby code, etc.).
-    const target = e.target as HTMLElement | null;
-    const tag = target?.tagName;
-    if (
-      tag === 'INPUT' || tag === 'TEXTAREA' ||
-      (target && target.isContentEditable)
-    ) return;
-
-    const controlGroupIndex = controlGroupIndexForKey(e);
-    if (controlGroupIndex >= 0) {
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        this.storeControlGroupSlot(controlGroupIndex);
-        return;
-      }
-      if (this.recallControlGroupSlot(controlGroupIndex, e.shiftKey)) {
-        e.preventDefault();
-        return;
-      }
-    }
-
-    // Mirror the command hotkeys one-for-one. M/F/H switch waypoint mode;
-    // S stops selected units; U removes the last queued order; X clears queued orders; W toggles wait;
-    // E toggles fire permission;
-    // A toggles area attack; T toggles attack-ground; G toggles guard; R toggles area repair; C toggles reclaim; P toggles ping;
-    // B/number/D drive the commander mode state machine;
-    // Escape runs the shared cancel-mode-or-clear-selection convention.
-    const numericBuildHotkey = /^[1-9]$/.test(e.key) ? Number(e.key) - 1 : -1;
-    if (numericBuildHotkey >= 0) {
-      const buildingBlueprintId = getBuildModeBuildingBlueprintIdByIndex(numericBuildHotkey);
-      if (buildingBlueprintId && (this.mode.isInBuildMode || this.hasSelectedBuilder())) {
-        this.exitSpecialModes(false);
-        this.mode.enterBuildMode(buildingBlueprintId);
-      }
-      return;
-    }
-
-    switch (e.key.toLowerCase()) {
-      case 'm': this.setWaypointMode('move'); break;
-      case 'f': this.setWaypointMode('fight'); break;
-      case 'h': this.setWaypointMode('patrol'); break;
-      case 's':
-        this.selectedCommands.stop();
-        break;
-      case 'u':
-        this.selectedCommands.removeLastQueuedOrder();
-        break;
-      case 'x':
-        this.selectedCommands.clearQueuedOrders();
-        break;
-      case 'w':
-        this.selectedCommands.wait(e.shiftKey);
-        break;
-      case 'e':
-        this.selectedCommands.setFireEnabled();
-        break;
-      case 'o':
-        this.selectedCommands.setBuildingActive();
-        break;
-      case 'k':
-        this.selectedCommands.selfDestruct();
-        break;
-      case 'l':
-        this.toggleTowerTargetMode();
-        break;
-      case 'j':
-        this.clearTowerTarget();
-        break;
-      case 'a':
-        this.toggleAttackAreaMode();
-        break;
-      case 't':
-        this.toggleAttackGroundMode();
-        break;
-      case 'g':
-        this.toggleGuardMode();
-        break;
-      case 'c':
-        this.toggleReclaimMode();
-        break;
-      case 'r':
-        this.toggleRepairAreaMode();
-        break;
-      case 'p':
-        this.togglePingMode();
-        break;
-      case 'y':
-        // FOW-14: one-shot scan sweep at the current cursor position.
-        // Reveals an area for a few seconds. Bound to keypress (not a
-        // toggle-mode) so it stays out of the way of build/attack
-        // flows — just point and press.
-        this.enqueueScanAtCursor();
-        break;
-      case 'b':
-        if (!this.hasSelectedBuilder()) break;
-        this.exitSpecialModes(false);
-        if (!this.mode.isInBuildMode) this.mode.enterBuildMode(getDefaultBuildModeBuildingBlueprintId());
-        else this.mode.cycleBuildingBlueprintId();
-        break;
-      case 'd':
-        this.toggleDGunMode();
-        break;
-      case 'tab': {
-        e.preventDefault();
-        const commander = this.entitySource
-          .getUnitsByPlayer(this.context.activePlayerId)
-          .find(isCommander);
-        if (commander) {
-          this.localCommandQueue.enqueue({
-            type: 'select',
-            tick: this.context.getTick(),
-            entityIds: [commander.id],
-            additive: e.shiftKey,
-          });
-        }
-        break;
-      }
-      case 'escape':
-        handleEscape(
-          [
-            { isActive: () => this.mode.isInBuildMode, cancel: () => this.mode.exitBuildMode() },
-            { isActive: () => this.mode.isInDGunMode, cancel: () => this.mode.exitDGunMode() },
-            { isActive: () => this.repairAreaMode, cancel: () => this.exitRepairAreaMode() },
-            { isActive: () => this.attackAreaMode, cancel: () => this.exitAttackAreaMode() },
-            { isActive: () => this.attackGroundMode, cancel: () => this.exitAttackGroundMode() },
-            { isActive: () => this.guardMode, cancel: () => this.exitGuardMode() },
-            { isActive: () => this.reclaimMode, cancel: () => this.exitReclaimMode() },
-            { isActive: () => this.pingMode, cancel: () => this.exitPingMode() },
-            { isActive: () => this.towerTargetMode, cancel: () => this.exitTowerTargetMode() },
-          ],
-          this.localCommandQueue,
-          this.context.getTick(),
-        );
-        break;
-    }
+    this.keyboard.handleKeyDown(e);
   }
 
   private enqueuePingCommand(world: SimGroundPoint): void {
@@ -861,7 +755,7 @@ export class Input3DManager {
    *  sweep happens, no further state to manage. */
   private enqueueScanAtCursor(): void {
     if (!this.hoverState.hasFiniteClientPoint()) return;
-    const world = this.raycastGround(this.hoverState.lastClientX, this.hoverState.lastClientY);
+    const world = this.picker.raycastGround(this.hoverState.lastClientX, this.hoverState.lastClientY);
     if (!world) return;
     this.localCommandQueue.enqueue({
       type: 'scan',
@@ -871,65 +765,23 @@ export class Input3DManager {
     });
   }
 
+  private selectActiveCommander(additive: boolean): void {
+    const commander = this.entitySource
+      .getUnitsByPlayer(this.context.activePlayerId)
+      .find(isCommander);
+    if (!commander) return;
+    this.localCommandQueue.enqueue({
+      type: 'select',
+      tick: this.context.getTick(),
+      entityIds: [commander.id],
+      additive,
+    });
+  }
+
   setEntitySource(source: EntitySource): void {
     this.entitySource = source;
     this.controlGroups.setSource(source);
     this.selectedCommands.setSource(source);
-  }
-
-  private canvasRect(): DOMRect {
-    return this.canvas.getBoundingClientRect();
-  }
-
-  /** Convert client mouse coords to Normalized Device Coords ((-1,1) centered) */
-  private toNDC(clientX: number, clientY: number): THREE.Vector2 {
-    const rect = this.canvasRect();
-    return this._ndc.set(
-      ((clientX - rect.left) / rect.width) * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1,
-    );
-  }
-
-  /** Cast a ray from the camera through the mouse position. */
-  private castRay(clientX: number, clientY: number): void {
-    const ndc = this.toNDC(clientX, clientY);
-    this.raycaster.setFromCamera(ndc, this.threeApp.camera);
-  }
-
-  /** Cursor → 3D ground point on the actual rendered terrain.
-   *  Returns sim coords {x, y, z} where (x, y) is the horizontal
-   *  XY of the hit and z is the terrain altitude there. Goes
-   *  through the shared CursorGround service so this manager and
-   *  the orbit camera use the SAME raycast against the SAME mesh.
-   *  Returns null if the cursor's ray misses the terrain (cursor
-   *  over the sky / past the map edge / terrain not yet built);
-   *  every command call site that uses this guards on null and
-   *  drops the command in that case. */
-  private raycastGround(clientX: number, clientY: number): SimGroundPoint | null {
-    return this.cursorGround.pickSim(clientX, clientY);
-  }
-
-  /** Raycast against entity meshes in the world group. Returns closest hit's entityId. */
-  private raycastEntity(clientX: number, clientY: number): EntityId | null {
-    const rect = this.canvasRect();
-    if (
-      clientX < rect.left ||
-      clientX > rect.right ||
-      clientY < rect.top ||
-      clientY > rect.bottom
-    ) {
-      return null;
-    }
-    this.castRay(clientX, clientY);
-    const hits = this.raycaster.intersectObject(this.threeApp.world, true);
-    for (const hit of hits) {
-      let obj: THREE.Object3D | null = hit.object;
-      while (obj && obj.userData.entityId === undefined) obj = obj.parent;
-      if (obj && obj.userData.entityId !== undefined) {
-        return obj.userData.entityId as EntityId;
-      }
-    }
-    return null;
   }
 
   private clearHoveredEntities(): void {
@@ -941,7 +793,7 @@ export class Input3DManager {
       clientX,
       clientY,
       (targetX, targetY) => {
-        const world = this.raycastGround(targetX, targetY);
+        const world = this.picker.raycastGround(targetX, targetY);
         return world
           ? resolveInput3DHoverTargets(
             this.entitySource,
@@ -1018,7 +870,7 @@ export class Input3DManager {
       this.mode.exitBuildMode();
       return;
     }
-    const world = this.raycastGround(e.clientX, e.clientY);
+    const world = this.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
     const buildingBlueprintId = this.mode.buildingBlueprintId;
     if (buildingBlueprintId === null) return;
@@ -1068,7 +920,7 @@ export class Input3DManager {
       this.mode.exitDGunMode();
       return;
     }
-    const world = this.raycastGround(e.clientX, e.clientY);
+    const world = this.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
     const cmd = this.mode.buildFireDGunCommand(
       commander, world.x, world.y, this.context.getTick(), world.z,
@@ -1082,7 +934,7 @@ export class Input3DManager {
       this.exitRepairAreaMode();
       return;
     }
-    const world = this.raycastGround(e.clientX, e.clientY);
+    const world = this.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
     const cmd = buildRepairAreaCommand(
       commander,
@@ -1105,7 +957,7 @@ export class Input3DManager {
       this.exitAttackAreaMode();
       return;
     }
-    const world = this.raycastGround(e.clientX, e.clientY);
+    const world = this.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
     const cmd = buildAttackAreaCommand(
       selectedUnits,
@@ -1128,7 +980,7 @@ export class Input3DManager {
       this.exitAttackGroundMode();
       return;
     }
-    const world = this.raycastGround(e.clientX, e.clientY);
+    const world = this.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
     const cmd = buildAttackGroundCommand(
       selectedUnits,
@@ -1145,7 +997,7 @@ export class Input3DManager {
   }
 
   private handlePingClick(e: MouseEvent): void {
-    const world = this.raycastGround(e.clientX, e.clientY);
+    const world = this.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
     this.enqueuePingCommand(world);
     this.applyCursor('ping');
@@ -1159,7 +1011,7 @@ export class Input3DManager {
       return;
     }
     const tick = this.context.getTick();
-    const entityHitId = this.raycastEntity(e.clientX, e.clientY);
+    const entityHitId = this.picker.raycastEntity(e.clientX, e.clientY);
     const entityHit = entityHitId !== null
       ? this.entitySource.getEntity(entityHitId)
       : null;
@@ -1178,7 +1030,7 @@ export class Input3DManager {
       return;
     }
 
-    const world = this.raycastGround(e.clientX, e.clientY);
+    const world = this.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
     const guardCmd = buildGuardCommandAt(
       this.entitySource,
@@ -1202,7 +1054,7 @@ export class Input3DManager {
       return;
     }
     const tick = this.context.getTick();
-    const entityHitId = this.raycastEntity(e.clientX, e.clientY);
+    const entityHitId = this.picker.raycastEntity(e.clientX, e.clientY);
     const entityHit = entityHitId !== null
       ? this.entitySource.getEntity(entityHitId)
       : null;
@@ -1220,7 +1072,7 @@ export class Input3DManager {
       return;
     }
 
-    const world = this.raycastGround(e.clientX, e.clientY);
+    const world = this.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
     const reclaimCmd = buildReclaimCommandAt(
       this.entitySource,
@@ -1258,7 +1110,7 @@ export class Input3DManager {
     // feedback still works in headless/no-ghost cases.
     const buildingBlueprintId = this.mode.buildingBlueprintId;
     if (buildingBlueprintId !== null) {
-      const world = this.raycastGround(e.clientX, e.clientY);
+      const world = this.picker.raycastGround(e.clientX, e.clientY);
       if (world) {
         const diagnostics = this.validateBuildPlacement(buildingBlueprintId, world.x, world.y);
         this.applyCursor(diagnostics.canPlace ? 'build' : 'blocked');
@@ -1309,7 +1161,7 @@ export class Input3DManager {
 
     if (this.leftDown) {
       this.applyCursor('select');
-      this.selectionDrag.update(e.clientX, e.clientY, CLICK_DRAG_THRESHOLD_PX, this.canvasRect());
+      this.selectionDrag.update(e.clientX, e.clientY, CLICK_DRAG_THRESHOLD_PX, this.picker.canvasRect());
       return;
     }
 
@@ -1319,7 +1171,7 @@ export class Input3DManager {
       // along a line. The accumulator drops near-duplicate samples
       // and recomputes per-unit targets on append; we also force a
       // recompute here so the preview stays live between appends.
-      const world = this.raycastGround(e.clientX, e.clientY);
+      const world = this.picker.raycastGround(e.clientX, e.clientY);
       if (!world) return;
       const unitCount = this.entitySource.getSelectedUnits().length;
       this.linePath.append(world.x, world.y, unitCount, world.z);
@@ -1343,7 +1195,7 @@ export class Input3DManager {
     if (isClick) {
       // Try exact mesh pick first (cleaner for overlapping units than the
       // distance-based closest-entity fallback).
-      const hit = this.raycastEntity(e.clientX, e.clientY);
+      const hit = this.picker.raycastEntity(e.clientX, e.clientY);
       if (hit !== null) {
         const ent = this.entitySource.getEntity(hit) ?? null;
         if (this.isSelectableByActivePlayer(ent)) {
@@ -1359,7 +1211,7 @@ export class Input3DManager {
       }
       // Fallback: closest-entity-to-ground-click (e.g., user clicked near
       // a unit but missed the mesh). Matches 2D behavior.
-      const world = this.raycastGround(e.clientX, e.clientY);
+      const world = this.picker.raycastGround(e.clientX, e.clientY);
       if (world) {
         const closest = findClosestSelectableEntityToPoint(
           this.entitySource,
@@ -1395,7 +1247,9 @@ export class Input3DManager {
     // position to screen space and test against the rect. This matches what
     // the user *sees* (even though the corresponding ground-plane region
     // is a trapezoid under a tilted camera).
-    const ids = this.selectEntitiesInScreenRect(
+    const ids = this.picker.selectEntitiesInScreenRect(
+      this.entitySource,
+      this.context.activePlayerId,
       this.selectionDrag.start,
       this.selectionDrag.end,
     );
@@ -1408,20 +1262,6 @@ export class Input3DManager {
     this.refreshCursor();
   }
 
-  private selectEntitiesInScreenRect(
-    a: { x: number; y: number },
-    b: { x: number; y: number },
-  ): EntityId[] {
-    return this.boxSelection.select(
-      this.entitySource,
-      this.canvasRect(),
-      this.threeApp.camera,
-      this.context.activePlayerId,
-      a,
-      b,
-    );
-  }
-
   private handleRightMouseDown(e: MouseEvent): void {
     // Right-click dispatcher, matching the 2D CommandController:
     //   1. selected commander + repair target under cursor → repair
@@ -1430,7 +1270,7 @@ export class Input3DManager {
     //   4. no units, factories selected → start factory-waypoint drag
     const selectedUnits = this.entitySource.getSelectedUnits();
     const tick = this.context.getTick();
-    const entityHitId = this.raycastEntity(e.clientX, e.clientY);
+    const entityHitId = this.picker.raycastEntity(e.clientX, e.clientY);
     const entityHit = entityHitId !== null
       ? this.entitySource.getEntity(entityHitId)
       : null;
@@ -1457,7 +1297,7 @@ export class Input3DManager {
       return;
     }
 
-    const world = this.raycastGround(e.clientX, e.clientY);
+    const world = this.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
 
     const repairCmd = buildRepairCommandAt(

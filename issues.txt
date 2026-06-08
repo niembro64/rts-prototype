@@ -22,7 +22,7 @@ Severity: Medium
 
 Evidence:
 - src/game/sim/Simulation.ts is 2184 lines.
-- src/game/render3d/Input3DManager.ts is 1684 lines.
+- src/game/render3d/Input3DManager.ts is 1524 lines and still large after keyboard dispatch and picking/selection were split out.
 - src/game/scenes/RtsScene3D.ts is 1447 lines.
 - src/game/render3d/Render3DEntities.ts is 1280 lines.
 - src/game/render3d/BuildingAnimationController3D.ts is 1115 lines.
@@ -32,4 +32,4 @@ Risk:
 Cleanup ownership, retained pools, hot loops, and authoritative/client boundaries are spread across large files. That raises the chance of missed teardown, duplicate runtime paths, accidental per-frame allocation, and stalled migration of TypeScript hot loops into Rust/WASM.
 
 Required fix:
-When any of these files are touched for the issues above, split along existing ownership boundaries instead of adding more logic in place. Prioritize lifecycle/teardown helpers, snapshot intake/publisher modules, unit mesh lifecycle vs pose/locomotion updates, input command builders, and simulation subsystems that are candidates for Rust/WASM.
+When any of these files are touched, continue splitting along existing ownership boundaries instead of adding more logic in place. Prioritize lifecycle/teardown helpers, snapshot intake/publisher modules, unit mesh lifecycle vs pose/locomotion updates, remaining input command builders, and simulation subsystems that are candidates for Rust/WASM.
