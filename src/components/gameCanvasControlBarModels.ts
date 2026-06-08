@@ -193,6 +193,7 @@ export type GameCanvasClientControlBarModel = {
   readonly fullscreenActive: boolean;
   readonly uiChromeVisible: boolean;
   readonly mapDetailsVisible: boolean;
+  readonly optionsMenuOpen: boolean;
   resetClientDefaults(): void;
   togglePlayerClientEnabled(): void;
   changeWaypointDetail(mode: WaypointDetail): void;
@@ -250,4 +251,5 @@ export type GameCanvasClientControlBarModel = {
   goToLastPing(): void;
   toggleUiChrome(): void;
   toggleMapDetails(): void;
+  toggleOptionsMenu(): void;
 };

@@ -392,6 +392,12 @@ export class Input3DKeyboardController {
       case 'select.loop':
         this.config.loopSelection();
         break;
+      case 'ui.optionsMenu':
+      case 'ui.chat':
+      case 'ui.mapDraw':
+      case 'ui.mapLabel':
+      case 'ui.mapErase':
+        break;
     }
   }
 

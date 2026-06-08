@@ -22,6 +22,7 @@ import {
   networkManager,
   type NetworkRole,
 } from '../game/network/NetworkManager';
+import { CommandHotkeySequenceResolver, type CommandHotkeyId } from '../game/input/commandHotkeys';
 import { BACKGROUND_UNIT_BLUEPRINT_IDS } from '../game/server/BackgroundBattleStandalone';
 import {
   BATTLE_CONFIG,
@@ -95,6 +96,7 @@ const activePlayer = ref<PlayerId>(1);
 const fullscreenActive = ref(false);
 const uiChromeVisible = ref(true);
 const mapDetailsVisible = ref(false);
+const optionsMenuOpen = ref(false);
 const gameOverWinner = ref<PlayerId | null>(null);
 const battleLoading = ref(false);
 const rendererWarmupLoading = ref(true);
@@ -161,6 +163,10 @@ function toggleUiChrome(): void {
 
 function toggleMapDetails(): void {
   mapDetailsVisible.value = !mapDetailsVisible.value;
+}
+
+function toggleOptionsMenu(): void {
+  optionsMenuOpen.value = !optionsMenuOpen.value;
 }
 
 function getActiveOrbitCamera(): import('../game/render3d/OrbitCamera').OrbitCamera | null {
@@ -366,6 +372,7 @@ const communicationDraftText = ref('');
 const communicationLabelText = ref('');
 const pendingDrawStart = ref<NetworkCommunicationPoint | null>(null);
 const chatInputRef = ref<HTMLInputElement | null>(null);
+const gameUiHotkeys = new CommandHotkeySequenceResolver();
 let communicationDraftSequence = 0;
 
 const minimapCommunicationDrawings = computed(() => communicationDrawings.value.map((drawing) => ({
@@ -554,7 +561,29 @@ function formatCommunicationTime(createdAtMs: number): string {
   return `${hours}:${minutes}`;
 }
 
-function handleCommunicationKeydown(event: KeyboardEvent): void {
+function handleGameUiCommandHotkey(commandId: CommandHotkeyId): boolean {
+  switch (commandId) {
+    case 'ui.optionsMenu':
+      toggleOptionsMenu();
+      return true;
+    case 'ui.chat':
+      setCommunicationMode('chat');
+      return true;
+    case 'ui.mapDraw':
+      setCommunicationMode(communicationMode.value === 'draw' ? 'none' : 'draw');
+      return true;
+    case 'ui.mapLabel':
+      setCommunicationMode(communicationMode.value === 'label' ? 'none' : 'label');
+      return true;
+    case 'ui.mapErase':
+      setCommunicationMode(communicationMode.value === 'erase' ? 'none' : 'erase');
+      return true;
+    default:
+      return false;
+  }
+}
+
+function handleGameUiKeydown(event: KeyboardEvent): void {
   const target = event.target;
   if (
     target instanceof HTMLInputElement ||
@@ -563,27 +592,33 @@ function handleCommunicationKeydown(event: KeyboardEvent): void {
   ) {
     return;
   }
-  if (event.key === 'Enter' && gameChromeVisible.value) {
+  const hotkey = gameUiHotkeys.resolve(event);
+  if (hotkey.pending) {
     event.preventDefault();
-    setCommunicationMode('chat');
     return;
   }
-  if (event.key === 'Escape' && communicationMode.value !== 'none') {
+  if (hotkey.commandId !== null && handleGameUiCommandHotkey(hotkey.commandId)) {
     event.preventDefault();
+    return;
+  }
+  if (event.key === 'Escape' && (communicationMode.value !== 'none' || optionsMenuOpen.value)) {
+    event.preventDefault();
+    gameUiHotkeys.reset();
     communicationMode.value = 'none';
     pendingDrawStart.value = null;
+    optionsMenuOpen.value = false;
   }
 }
 
 onMounted(() => {
   syncFullscreenActive();
   document.addEventListener('fullscreenchange', syncFullscreenActive);
-  window.addEventListener('keydown', handleCommunicationKeydown);
+  window.addEventListener('keydown', handleGameUiKeydown);
 });
 
 onBeforeUnmount(() => {
   document.removeEventListener('fullscreenchange', syncFullscreenActive);
-  window.removeEventListener('keydown', handleCommunicationKeydown);
+  window.removeEventListener('keydown', handleGameUiKeydown);
 });
 
 // Demo battle unit blueprint list (state read from snapshots)
@@ -1346,6 +1381,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   fullscreenActive: fullscreenActive.value,
   uiChromeVisible: uiChromeVisible.value,
   mapDetailsVisible: mapDetailsVisible.value,
+  optionsMenuOpen: optionsMenuOpen.value,
   resetClientDefaults,
   togglePlayerClientEnabled,
   changeWaypointDetail,
@@ -1403,6 +1439,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   goToLastPing,
   toggleUiChrome,
   toggleMapDetails,
+  toggleOptionsMenu,
 });
 watchEffect(() => {
   const m = clientControlBarModel as {
@@ -1498,6 +1535,7 @@ watchEffect(() => {
   m.fullscreenActive = fullscreenActive.value;
   m.uiChromeVisible = uiChromeVisible.value;
   m.mapDetailsVisible = mapDetailsVisible.value;
+  m.optionsMenuOpen = optionsMenuOpen.value;
 });
 
 </script>
@@ -1737,6 +1775,59 @@ watchEffect(() => {
               <dd>{{ row.value }}</dd>
             </template>
           </dl>
+        </section>
+
+        <section
+          v-if="optionsMenuOpen"
+          class="options-menu-panel"
+          aria-label="Options menu"
+        >
+          <div class="options-menu-header">
+            <span>OPTIONS</span>
+            <button
+              class="options-menu-close"
+              title="Close options menu"
+              aria-label="Close options menu"
+              @click="optionsMenuOpen = false"
+            >X</button>
+          </div>
+          <div class="options-menu-grid">
+            <button
+              type="button"
+              :class="{ active: fullscreenActive }"
+              @click="toggleFullscreen"
+            >FULL</button>
+            <button
+              type="button"
+              @click="captureScreenshot"
+            >SHOT</button>
+            <button
+              type="button"
+              :class="{ active: mapDetailsVisible }"
+              @click="toggleMapDetails"
+            >INFO</button>
+            <button
+              type="button"
+              @click="showMapOverview"
+            >OVR</button>
+            <button
+              type="button"
+              @click="goToLastPing"
+            >PING</button>
+            <button
+              type="button"
+              :class="{ active: uiChromeVisible }"
+              @click="toggleUiChrome"
+            >UI</button>
+            <button
+              type="button"
+              @click="setGamePaused(true)"
+            >PAUSE</button>
+            <button
+              type="button"
+              @click="setGamePaused(false)"
+            >PLAY</button>
+          </div>
         </section>
       </template>
     </div>
@@ -2185,11 +2276,87 @@ watchEffect(() => {
   text-align: right;
 }
 
+.options-menu-panel {
+  position: absolute;
+  top: 10px;
+  left: 650px;
+  z-index: 1001;
+  width: min(244px, calc(100vw - 670px));
+  max-width: 244px;
+  border: 1px solid rgba(120, 140, 165, 0.62);
+  border-radius: 6px;
+  background: rgba(10, 14, 20, 0.9);
+  color: #edf3ff;
+  font: 11px/1.25 system-ui, sans-serif;
+  letter-spacing: 0;
+  pointer-events: auto;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+}
+
+.options-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+  padding: 0 8px 0 10px;
+  border-bottom: 1px solid rgba(120, 140, 165, 0.32);
+  font-weight: 700;
+}
+
+.options-menu-close {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(150, 165, 190, 0.5);
+  border-radius: 4px;
+  background: rgba(25, 31, 42, 0.86);
+  color: #dce7fb;
+  cursor: pointer;
+}
+
+.options-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 10px;
+}
+
+.options-menu-grid button {
+  min-width: 0;
+  height: 28px;
+  padding: 0 5px;
+  border: 1px solid rgba(150, 165, 190, 0.5);
+  border-radius: 4px;
+  background: rgba(25, 31, 42, 0.86);
+  color: #dce7fb;
+  font: 700 10px/1 system-ui, sans-serif;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.options-menu-grid button:hover,
+.options-menu-close:hover {
+  border-color: rgba(180, 205, 235, 0.78);
+  background: rgba(38, 49, 66, 0.94);
+}
+
+.options-menu-grid button.active {
+  border-color: rgba(130, 210, 255, 0.82);
+  color: #f8fcff;
+  background: rgba(38, 82, 112, 0.86);
+}
+
 @media (max-width: 760px) {
   .map-details-panel {
     top: 248px;
     left: 10px;
     width: min(300px, calc(100vw - 20px));
+  }
+
+  .options-menu-panel {
+    top: 248px;
+    left: 10px;
+    width: min(244px, calc(100vw - 20px));
   }
 }
 

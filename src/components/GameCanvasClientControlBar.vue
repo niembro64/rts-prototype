@@ -1142,6 +1142,11 @@ function resetEveryCustomHotkey(): void {
       <BarControlGroup>
         <BarLabel>SCREEN:</BarLabel>
         <BarButton
+          :active="model.optionsMenuOpen"
+          :title="`Open options menu (${commandHotkeyLabel('ui.optionsMenu', model.commandHotkeyPreset)})`"
+          @click="model.toggleOptionsMenu"
+        >OPTS</BarButton>
+        <BarButton
           :active="model.fullscreenActive"
           :title="model.fullscreenActive ? 'Exit fullscreen' : 'Enter fullscreen'"
           @click="model.toggleFullscreen"

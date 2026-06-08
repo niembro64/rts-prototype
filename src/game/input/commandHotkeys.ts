@@ -38,7 +38,12 @@ export type CommandHotkeyId =
   | 'combat.repairArea'
   | 'combat.ping'
   | 'combat.towerTargetSet'
-  | 'combat.towerTargetClear';
+  | 'combat.towerTargetClear'
+  | 'ui.optionsMenu'
+  | 'ui.chat'
+  | 'ui.mapDraw'
+  | 'ui.mapLabel'
+  | 'ui.mapErase';
 
 export type BuiltInCommandHotkeyPresetId = 'prototype' | 'bar-grid' | 'bar-legacy';
 export type CommandHotkeyPresetId = BuiltInCommandHotkeyPresetId | 'custom';
@@ -105,6 +110,11 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'combat.ping',
   'combat.towerTargetSet',
   'combat.towerTargetClear',
+  'ui.optionsMenu',
+  'ui.chat',
+  'ui.mapDraw',
+  'ui.mapLabel',
+  'ui.mapErase',
 ];
 
 export const COMMAND_HOTKEY_PRESET_IDS: readonly CommandHotkeyPresetId[] = [
@@ -155,6 +165,11 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'combat.ping': 'Ping',
   'combat.towerTargetSet': 'Tower Target',
   'combat.towerTargetClear': 'Clear Tower Target',
+  'ui.optionsMenu': 'Options Menu',
+  'ui.chat': 'Chat',
+  'ui.mapDraw': 'Draw On Map',
+  'ui.mapLabel': 'Draw Map Label',
+  'ui.mapErase': 'Erase Map Drawings',
 };
 
 function key(label: string, keyValue: string, options: ChordOptions = {}): CommandHotkeyBinding {
@@ -220,6 +235,11 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'combat.ping': [key('P', 'p', { shift: 'any' })],
     'combat.towerTargetSet': [key('L', 'l', { shift: 'any' })],
     'combat.towerTargetClear': [key('J', 'j', { shift: 'any' })],
+    'ui.optionsMenu': [code('F10', 'F10', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.chat': [key('Enter', 'enter', { shift: 'any' })],
+    'ui.mapDraw': [code('Ctrl+Shift+D', 'KeyD', { ctrl: true, shift: true })],
+    'ui.mapLabel': [code('Ctrl+Shift+L', 'KeyL', { ctrl: true, shift: true })],
+    'ui.mapErase': [code('Ctrl+Shift+E', 'KeyE', { ctrl: true, shift: true })],
   }),
   'bar-grid': commandPreset({
     'waypoint.move': [code('M', 'KeyM', { shift: 'any' })],
@@ -280,6 +300,11 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'combat.ping': [code('`', 'Backquote', { shift: 'any' })],
     'combat.towerTargetSet': [code('S', 'KeyS', { shift: 'any' })],
     'combat.towerTargetClear': [code('Ctrl+S', 'KeyS', { ctrl: true, shift: 'any' })],
+    'ui.optionsMenu': [code('F10', 'F10', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.chat': [key('Enter', 'enter', { shift: 'any' })],
+    'ui.mapDraw': [code('Ctrl+Alt+D', 'KeyD', { ctrl: true, alt: true, shift: 'any' })],
+    'ui.mapLabel': [code('Ctrl+Alt+L', 'KeyL', { ctrl: true, alt: true, shift: 'any' })],
+    'ui.mapErase': [code('Ctrl+Alt+E', 'KeyE', { ctrl: true, alt: true, shift: 'any' })],
   }),
   'bar-legacy': commandPreset({
     'waypoint.move': [code('M', 'KeyM', { shift: 'any' })],
@@ -328,6 +353,11 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'combat.ping': [code('`', 'Backquote', { shift: 'any' })],
     'combat.towerTargetSet': [code('Alt+Y', 'KeyY', { alt: true, shift: 'any' })],
     'combat.towerTargetClear': [code('J', 'KeyJ', { shift: 'any' })],
+    'ui.optionsMenu': [code('F10', 'F10', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.chat': [key('Enter', 'enter', { shift: 'any' })],
+    'ui.mapDraw': [code('Ctrl+Alt+D', 'KeyD', { ctrl: true, alt: true, shift: 'any' })],
+    'ui.mapLabel': [code('Ctrl+Alt+L', 'KeyL', { ctrl: true, alt: true, shift: 'any' })],
+    'ui.mapErase': [code('Ctrl+Alt+E', 'KeyE', { ctrl: true, alt: true, shift: 'any' })],
   }),
 };
 
