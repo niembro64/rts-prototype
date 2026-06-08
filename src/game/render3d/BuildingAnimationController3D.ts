@@ -42,6 +42,7 @@ import { visualAnimBlend, visualAnimHalfLife } from './visualAnimationEma';
 import {
   addAnimatedBuildingEntry,
   removeAnimatedBuildingEntry,
+  updateAnimatedBuildingQueue,
   type AnimatedBuildingEntry,
 } from './BuildingAnimationLists3D';
 
@@ -408,19 +409,12 @@ export class BuildingAnimationController3D {
   }
 
   private updateSolarAnimationQueue(entry: AnimatedBuildingEntry): void {
-    const activeIndex = this.activeSolarBuildingIndexById.get(entry.id);
-    if (!this.solarAnimationNeedsFrame(entry)) {
-      if (activeIndex !== undefined) {
-        removeAnimatedBuildingEntry(this.activeSolarBuildings, this.activeSolarBuildingIndexById, entry.id);
-      }
-      return;
-    }
-    if (activeIndex !== undefined) {
-      this.activeSolarBuildings[activeIndex] = entry;
-      return;
-    }
-    this.activeSolarBuildingIndexById.set(entry.id, this.activeSolarBuildings.length);
-    this.activeSolarBuildings.push(entry);
+    updateAnimatedBuildingQueue(
+      this.activeSolarBuildings,
+      this.activeSolarBuildingIndexById,
+      entry,
+      this.solarAnimationNeedsFrame(entry),
+    );
   }
 
   private updateActiveSolarAnimations(): void {
@@ -449,19 +443,12 @@ export class BuildingAnimationController3D {
   }
 
   private updateWindAnimationQueue(entry: AnimatedBuildingEntry): void {
-    const activeIndex = this.activeWindBuildingIndexById.get(entry.id);
-    if (!this.windAnimationNeedsFrame(entry)) {
-      if (activeIndex !== undefined) {
-        removeAnimatedBuildingEntry(this.activeWindBuildings, this.activeWindBuildingIndexById, entry.id);
-      }
-      return;
-    }
-    if (activeIndex !== undefined) {
-      this.activeWindBuildings[activeIndex] = entry;
-      return;
-    }
-    this.activeWindBuildingIndexById.set(entry.id, this.activeWindBuildings.length);
-    this.activeWindBuildings.push(entry);
+    updateAnimatedBuildingQueue(
+      this.activeWindBuildings,
+      this.activeWindBuildingIndexById,
+      entry,
+      this.windAnimationNeedsFrame(entry),
+    );
   }
 
   private updateActiveWindAnimations(): void {
@@ -500,23 +487,12 @@ export class BuildingAnimationController3D {
   }
 
   private updateExtractorAnimationQueue(entry: AnimatedBuildingEntry): void {
-    const activeIndex = this.activeExtractorBuildingIndexById.get(entry.id);
-    if (!this.extractorAnimationNeedsFrame(entry)) {
-      if (activeIndex !== undefined) {
-        removeAnimatedBuildingEntry(
-          this.activeExtractorBuildings,
-          this.activeExtractorBuildingIndexById,
-          entry.id,
-        );
-      }
-      return;
-    }
-    if (activeIndex !== undefined) {
-      this.activeExtractorBuildings[activeIndex] = entry;
-      return;
-    }
-    this.activeExtractorBuildingIndexById.set(entry.id, this.activeExtractorBuildings.length);
-    this.activeExtractorBuildings.push(entry);
+    updateAnimatedBuildingQueue(
+      this.activeExtractorBuildings,
+      this.activeExtractorBuildingIndexById,
+      entry,
+      this.extractorAnimationNeedsFrame(entry),
+    );
   }
 
   private updateActiveExtractorAnimations(spinDt: number): void {
@@ -613,23 +589,12 @@ export class BuildingAnimationController3D {
   }
 
   private updateConverterAnimationQueue(entry: AnimatedBuildingEntry): void {
-    const activeIndex = this.activeConverterBuildingIndexById.get(entry.id);
-    if (!this.converterAnimationNeedsFrame(entry)) {
-      if (activeIndex !== undefined) {
-        removeAnimatedBuildingEntry(
-          this.activeConverterBuildings,
-          this.activeConverterBuildingIndexById,
-          entry.id,
-        );
-      }
-      return;
-    }
-    if (activeIndex !== undefined) {
-      this.activeConverterBuildings[activeIndex] = entry;
-      return;
-    }
-    this.activeConverterBuildingIndexById.set(entry.id, this.activeConverterBuildings.length);
-    this.activeConverterBuildings.push(entry);
+    updateAnimatedBuildingQueue(
+      this.activeConverterBuildings,
+      this.activeConverterBuildingIndexById,
+      entry,
+      this.converterAnimationNeedsFrame(entry),
+    );
   }
 
   private updateActiveConverterAnimations(spinDt: number, timeMs: number): void {
@@ -732,19 +697,12 @@ export class BuildingAnimationController3D {
   }
 
   private updateRadarAnimationQueue(entry: AnimatedBuildingEntry): void {
-    const activeIndex = this.activeRadarBuildingIndexById.get(entry.id);
-    if (!this.radarAnimationNeedsFrame(entry)) {
-      if (activeIndex !== undefined) {
-        removeAnimatedBuildingEntry(this.activeRadarBuildings, this.activeRadarBuildingIndexById, entry.id);
-      }
-      return;
-    }
-    if (activeIndex !== undefined) {
-      this.activeRadarBuildings[activeIndex] = entry;
-      return;
-    }
-    this.activeRadarBuildingIndexById.set(entry.id, this.activeRadarBuildings.length);
-    this.activeRadarBuildings.push(entry);
+    updateAnimatedBuildingQueue(
+      this.activeRadarBuildings,
+      this.activeRadarBuildingIndexById,
+      entry,
+      this.radarAnimationNeedsFrame(entry),
+    );
   }
 
   private updateActiveRadarAnimations(spinDt: number): void {
@@ -1038,23 +996,12 @@ export class BuildingAnimationController3D {
   }
 
   private updateFactoryAnimationQueue(entry: AnimatedBuildingEntry): void {
-    const activeIndex = this.activeFactoryBuildingIndexById.get(entry.id);
-    if (!this.factoryAnimationNeedsFrame(entry)) {
-      if (activeIndex !== undefined) {
-        removeAnimatedBuildingEntry(
-          this.activeFactoryBuildings,
-          this.activeFactoryBuildingIndexById,
-          entry.id,
-        );
-      }
-      return;
-    }
-    if (activeIndex !== undefined) {
-      this.activeFactoryBuildings[activeIndex] = entry;
-      return;
-    }
-    this.activeFactoryBuildingIndexById.set(entry.id, this.activeFactoryBuildings.length);
-    this.activeFactoryBuildings.push(entry);
+    updateAnimatedBuildingQueue(
+      this.activeFactoryBuildings,
+      this.activeFactoryBuildingIndexById,
+      entry,
+      this.factoryAnimationNeedsFrame(entry),
+    );
   }
 
   private factoryAnimationNeedsFrame(entry: AnimatedBuildingEntry): boolean {

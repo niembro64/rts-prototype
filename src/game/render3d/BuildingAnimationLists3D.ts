@@ -43,3 +43,24 @@ export function removeAnimatedBuildingEntry(
   }
   list.pop();
 }
+
+export function updateAnimatedBuildingQueue(
+  activeList: AnimatedBuildingEntry[],
+  activeIndexById: Map<EntityId, number>,
+  entry: AnimatedBuildingEntry,
+  needsFrame: boolean,
+): void {
+  const activeIndex = activeIndexById.get(entry.id);
+  if (!needsFrame) {
+    if (activeIndex !== undefined) {
+      removeAnimatedBuildingEntry(activeList, activeIndexById, entry.id);
+    }
+    return;
+  }
+  if (activeIndex !== undefined) {
+    activeList[activeIndex] = entry;
+    return;
+  }
+  activeIndexById.set(entry.id, activeList.length);
+  activeList.push(entry);
+}
