@@ -118,6 +118,7 @@ export type SelectionActions = {
   toggleDGun: () => void;
   toggleRepairArea: () => void;
   queueUnit: (factoryId: number, unitBlueprintId: string) => void;
+  stopFactoryProduction: (factoryId: number) => void;
 };
 
 // Economy info

@@ -16,6 +16,7 @@ import type {
   RemoveLastQueuedOrderCommand,
   ScanCommand,
   SkipCurrentOrderCommand,
+  StopFactoryProductionCommand,
   SetFireEnabledCommand,
   SetBuildingActiveCommand,
   SelfDestructCommand,
@@ -86,6 +87,8 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       return sanitizeStartBuildCommand(command, tick);
     case 'queueUnit':
       return sanitizeQueueUnitCommand(command, tick);
+    case 'stopFactoryProduction':
+      return sanitizeStopFactoryProductionCommand(command, tick);
     case 'setRallyPoint':
       return sanitizeSetRallyPointCommand(command, world, tick);
     case 'fireDGun':
@@ -383,6 +386,15 @@ function sanitizeStartBuildCommand(command: StartBuildCommand, tick: number): St
 function sanitizeQueueUnitCommand(command: QueueUnitCommand, tick: number): QueueUnitCommand | null {
   return isEntityId(command.factoryId) && isBuildableUnitBlueprintId(command.unitBlueprintId)
     ? { ...command, tick, factoryId: command.factoryId, unitBlueprintId: command.unitBlueprintId }
+    : null;
+}
+
+function sanitizeStopFactoryProductionCommand(
+  command: StopFactoryProductionCommand,
+  tick: number,
+): StopFactoryProductionCommand | null {
+  return isEntityId(command.factoryId)
+    ? { type: 'stopFactoryProduction', tick, factoryId: command.factoryId }
     : null;
 }
 

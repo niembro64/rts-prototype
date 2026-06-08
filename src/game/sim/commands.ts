@@ -13,6 +13,7 @@ export type {
   ScanCommand,
   StartBuildCommand,
   QueueUnitCommand,
+  StopFactoryProductionCommand,
   SetRallyPointCommand,
   FireDGunCommand,
   SetFireEnabledCommand,

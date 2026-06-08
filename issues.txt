@@ -76,11 +76,11 @@ fallback behavior.
 
 Issue: queue editing and command insertion are incomplete. BAR supports normal
 queueing, queue add in front, queue to next, commandinsert/prepend-between,
-cancel last command, factory guard, stop production, and queued variants of
-several orders. rts-prototype exposes Shift queue, skip-current-order,
-remove-last-queued-order, clear-queued-orders, wait queueing, and basic factory
-rally. Implement the missing queue semantics with server authorization and clear
-visual queue editing feedback.
+cancel last command, factory guard, and queued variants of several orders.
+rts-prototype exposes Shift queue, skip-current-order, remove-last-queued-order,
+clear-queued-orders, stop-production, wait queueing, and basic factory rally.
+Implement the missing queue semantics with server authorization and clear visual
+queue editing feedback.
 
 Issue: repair and reclaim are incomplete. Fixed-radius repair area and
 fixed-radius reclaim area via the Reclaim command exist. Add BAR-style area
@@ -102,11 +102,12 @@ DGun and self-destruct, but no capture, resurrection, transports, load/unload
 logic, manual launch weapons, or unit-specific ability command-card support.
 
 Issue: factory and production UI are incomplete. BAR has factory production
-controls beyond selecting one repeat-build unit: stop production, repeat/queue
-state, factory queue mode/quotas, factory presets save/load/show, production
-queue editing, rally/route display, factory guard, and complete unit build
-menus. rts-prototype needs a BAR-equivalent factory panel and hotkeys, translated
-to authoritative-server commands and 3D rally/path previews.
+controls beyond selecting one repeat-build unit: repeat/queue state, factory
+queue mode/quotas, factory presets save/load/show, production queue editing,
+rally/route display, factory guard, and complete unit build menus. rts-prototype
+now has an authoritative stop-production command and factory panel button, but
+still needs the remaining BAR-equivalent factory panel and hotkeys, translated to
+authoritative-server commands and 3D rally/path previews.
 
 Issue: map, communication, and game UI commands are missing. Implement BAR
 commands and buttons for chat, draw on map, draw label, erase drawings, ping to

@@ -938,6 +938,14 @@ export class RtsScene3D {
     });
   }
 
+  public stopFactoryProduction(factoryId: number): void {
+    this.sendAuthoritativeCommand({
+      type: 'stopFactoryProduction',
+      tick: this.clientViewState.getTick(),
+      factoryId,
+    });
+  }
+
   public centerCameraOn(x: number, y: number): void {
     this.cameraControl.centerOn(x, y);
   }

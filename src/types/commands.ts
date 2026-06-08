@@ -17,6 +17,7 @@ export type CommandType =
   | 'scan'
   | 'startBuild'
   | 'queueUnit'
+  | 'stopFactoryProduction'
   | 'setRallyPoint'
   | 'fireDGun'
   | 'setFireEnabled'
@@ -136,6 +137,11 @@ export type QueueUnitCommand = BaseCommand & {
   type: 'queueUnit';
   factoryId: EntityId;
   unitBlueprintId: string;
+};
+
+export type StopFactoryProductionCommand = BaseCommand & {
+  type: 'stopFactoryProduction';
+  factoryId: EntityId;
 };
 
 export type SetRallyPointCommand = BaseCommand & {
@@ -351,6 +357,7 @@ export type Command =
   | ScanCommand
   | StartBuildCommand
   | QueueUnitCommand
+  | StopFactoryProductionCommand
   | SetRallyPointCommand
   | FireDGunCommand
   | SetFireEnabledCommand

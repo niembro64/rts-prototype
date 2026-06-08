@@ -112,6 +112,7 @@ export function authorizeGameServerGameplayCommand(
       return authorizeStartBuildCommand(world, command, playerId);
 
     case 'queueUnit':
+    case 'stopFactoryProduction':
     case 'setRallyPoint':
       return isOwnedFactory(world, command.factoryId, playerId) ? command : null;
 

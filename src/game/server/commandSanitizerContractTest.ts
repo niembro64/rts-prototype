@@ -1,6 +1,7 @@
 import type {
   Command,
   SkipCurrentOrderCommand,
+  StopFactoryProductionCommand,
   SetShieldReflectionModeCommand,
   SetTurretShieldPanelsEnabledCommand,
   SetTurretShieldSpheresEnabledCommand,
@@ -41,6 +42,16 @@ export function runCommandSanitizerContractTest(): void {
   assertContract(
     skipCurrent.tick === 9001 && skipCurrent.entityIds.join(',') === '1,2,2',
     'skipCurrentOrder must sanitize through the unit-list path and normalize tick',
+  );
+
+  const stopFactoryProduction = sanitizeRequired<StopFactoryProductionCommand>(world, {
+    type: 'stopFactoryProduction',
+    tick: 5,
+    factoryId: 42,
+  });
+  assertContract(
+    stopFactoryProduction.tick === 9001 && stopFactoryProduction.factoryId === 42,
+    'stopFactoryProduction must preserve a valid factory id and normalize tick',
   );
 
   const panelsDisabled = sanitizeRequired<SetTurretShieldPanelsEnabledCommand>(world, {

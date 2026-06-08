@@ -26,6 +26,7 @@ import type {
   SetTowerTargetCommand,
   SetRallyPointCommand,
   StartBuildCommand,
+  StopFactoryProductionCommand,
   StopCommand,
   WaitCommand,
 } from './commands';
@@ -132,6 +133,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'queueUnit':
       executeQueueUnitCommand(ctx, command);
+      break;
+    case 'stopFactoryProduction':
+      executeStopFactoryProductionCommand(ctx, command);
       break;
     case 'setRallyPoint':
       executeSetRallyPointCommand(ctx, command);
@@ -493,6 +497,15 @@ function executeQueueUnitCommand(ctx: CommandContext, command: QueueUnitCommand)
   // resumes automatically when an existing unit dies. Cap is enforced
   // at shell-spawn time inside the production loop.
   if (factoryProductionSystem.selectUnit(factory, command.unitBlueprintId, ctx.world)) {
+    ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+  }
+}
+
+function executeStopFactoryProductionCommand(ctx: CommandContext, command: StopFactoryProductionCommand): void {
+  const factory = ctx.world.getEntity(command.factoryId);
+  if (factory === undefined || factory.factory === null || factory.ownership === null) return;
+
+  if (factoryProductionSystem.stopProduction(factory, ctx.world)) {
     ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
   }
 }

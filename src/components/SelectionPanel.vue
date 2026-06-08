@@ -120,6 +120,9 @@ const selectionPanelStyle = {
 const selectedBuildUnitBlueprintId = computed(() =>
   props.selection.factorySelectedUnit?.unitBlueprintId ?? null,
 );
+const hasFactoryProduction = computed(() =>
+  selectedBuildUnitBlueprintId.value !== null || props.selection.factoryIsProducing === true,
+);
 const showCancelHint = computed(() =>
   props.selection.isBuildMode
   || props.selection.isDGunMode
@@ -574,6 +577,23 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         >
           <span class="btn-label">Reclaim</span>
           <span class="btn-key">{{ hotkey('combat.reclaim') }}</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Factory production control -->
+    <div v-if="selection.hasFactory && selection.factoryId && showTowerActions" class="button-group">
+      <div class="group-label">Factory</div>
+      <div class="buttons">
+        <button
+          type="button"
+          class="action-btn"
+          :disabled="!hasFactoryProduction"
+          :style="{ '--btn-color': BUTTON_COLORS.stop }"
+          title="Stop production"
+          @click="actions.stopFactoryProduction(selection.factoryId!)"
+        >
+          <span class="btn-label">Stop</span>
         </button>
       </div>
     </div>

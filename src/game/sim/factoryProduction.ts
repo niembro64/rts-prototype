@@ -349,6 +349,22 @@ export class FactoryProductionSystem {
     return true;
   }
 
+  stopProduction(factory: Entity, world: WorldState): boolean {
+    if (!factory.factory || !isEntityActive(factory)) {
+      return false;
+    }
+    const factoryComp = factory.factory;
+    const changed = factoryComp.selectedUnitBlueprintId !== null
+      || factoryComp.currentShellId !== null
+      || factoryComp.isProducing
+      || factoryComp.currentBuildProgress !== 0;
+    this.cancelActiveShell(world, factory);
+    factoryComp.selectedUnitBlueprintId = null;
+    factoryComp.isProducing = false;
+    factoryComp.currentBuildProgress = 0;
+    return changed;
+  }
+
   // Interrupt the in-progress shell. If construction has not produced
   // a paid live piece yet, remove it and refund the paid counters. Once
   // any piece is live, the shell stays in the world with exactly those

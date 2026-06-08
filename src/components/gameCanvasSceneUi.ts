@@ -297,6 +297,9 @@ export function useGameCanvasSceneUi({
     queueUnit: (factoryId, unitBlueprintId) => {
       getActiveBattleScene()?.queueFactoryUnit(factoryId, unitBlueprintId);
     },
+    stopFactoryProduction: (factoryId) => {
+      getActiveBattleScene()?.stopFactoryProduction(factoryId);
+    },
   };
 
   return {
