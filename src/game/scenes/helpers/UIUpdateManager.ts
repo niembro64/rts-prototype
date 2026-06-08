@@ -6,6 +6,7 @@ import { getPlayerPrimaryColor } from '../../sim/types';
 import { economyManager } from '../../sim/economy';
 import { getUnitBlueprint } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
+import { isMetalExtractorBlueprintId } from '../../../types/buildingTypes';
 import { isBallisticArcWeapon, isCommander } from '../../sim/combat/combatUtils';
 import {
   getFirstActionIntentEnd,
@@ -585,11 +586,15 @@ export function buildEconomyInfo(
   let factoryCount = 0;
   let extractorCount = 0;
   for (let i = 0; i < playerBuildings.length; i++) {
-    switch (playerBuildings[i].buildingBlueprintId) {
+    const buildingBlueprintId = playerBuildings[i].buildingBlueprintId;
+    if (isMetalExtractorBlueprintId(buildingBlueprintId)) {
+      extractorCount++;
+      continue;
+    }
+    switch (buildingBlueprintId) {
       case 'buildingSolar': solarCount++; break;
       case 'buildingWind': windCount++; break;
       case 'towerFabricator': factoryCount++; break;
-      case 'buildingExtractor': extractorCount++; break;
     }
   }
 

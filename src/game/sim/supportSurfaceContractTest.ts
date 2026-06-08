@@ -4,21 +4,26 @@ import {
   refreshLocomotionSupportSurfaces,
   sampleLocomotionSupportSurface,
 } from '../render3d/LocomotionTerrainSampler';
-import { BuildingGrid } from './buildGrid';
+import { BUILD_GRID_CELL_SIZE, BuildingGrid } from './buildGrid';
 import { getAllUnitBlueprints } from './blueprints';
+import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
+import { getBuildingConfig } from './buildConfigs';
 import { factoryProductionSystem } from './factoryProduction';
+import { computeExtractorMetalCoverage } from './metalDepositOwnership';
 import {
   createWorldSupportSurface,
   type SupportSurfaceMaterialKind,
   type WorldSupportSurface,
 } from './supportSurface';
 import type {
+  BuildingBlueprintId,
   Entity,
   PlayerId,
   Unit,
   UnitLocomotion,
 } from './types';
 import { WorldState } from './WorldState';
+import type { MetalDeposit } from '../../metalDepositConfig';
 
 const TEST_PLAYER_ID = 1 as PlayerId;
 const CONTRACT_EPSILON = 1e-6;
@@ -383,10 +388,81 @@ function assertFactoryShellContract(): void {
   );
 }
 
+function createSingleCellDeposit(gx: number, gy: number): MetalDeposit {
+  const x = (gx + 0.5) * BUILD_GRID_CELL_SIZE;
+  const y = (gy + 0.5) * BUILD_GRID_CELL_SIZE;
+  return {
+    id: 1,
+    x,
+    y,
+    gridX: gx,
+    gridY: gy,
+    originGx: gx,
+    originGy: gy,
+    resourceCells: 1,
+    cells: [{ gx, gy, x, y }],
+    resourceCellCount: 1,
+    resourceRadiusCells: 1,
+    boundsGridX: gx,
+    boundsGridY: gy,
+    boundsGridW: 1,
+    boundsGridH: 1,
+    resourceHalfSize: BUILD_GRID_CELL_SIZE / 2,
+    resourceRadius: BUILD_GRID_CELL_SIZE / 2,
+    flatPadRadius: BUILD_GRID_CELL_SIZE,
+    dTerrainLevels: 0,
+    height: 0,
+    blendRadius: BUILD_GRID_CELL_SIZE,
+  };
+}
+
+function createExtractorForCoverageTest(
+  world: WorldState,
+  buildingBlueprintId: BuildingBlueprintId,
+  gridX: number,
+  gridY: number,
+): Entity {
+  const cfg = getBuildingConfig(buildingBlueprintId);
+  const x = (gridX + cfg.gridWidth / 2) * BUILD_GRID_CELL_SIZE;
+  const y = (gridY + cfg.gridHeight / 2) * BUILD_GRID_CELL_SIZE;
+  const entity = world.createBuilding(
+    x,
+    y,
+    cfg.gridWidth * BUILD_GRID_CELL_SIZE,
+    cfg.gridHeight * BUILD_GRID_CELL_SIZE,
+    cfg.gridDepth * BUILD_GRID_CELL_SIZE,
+    TEST_PLAYER_ID,
+  );
+  applyBuildingBlueprintRuntime(entity, buildingBlueprintId);
+  return entity;
+}
+
+function assertExtractorTierCoverageContract(): void {
+  const t1World = new WorldState(1, 512, 512);
+  const t2World = new WorldState(1, 512, 512);
+  t1World.metalDeposits.push(createSingleCellDeposit(12, 12));
+  t2World.metalDeposits.push(createSingleCellDeposit(12, 12));
+
+  const t1 = createExtractorForCoverageTest(t1World, 'buildingExtractor', 10, 10);
+  const t2 = createExtractorForCoverageTest(t2World, 'buildingExtractorT2', 10, 10);
+  const t1Rate = computeExtractorMetalCoverage(t1World, t1);
+  const t2Rate = computeExtractorMetalCoverage(t2World, t2);
+  const t1Base = getBuildingConfig('buildingExtractor').metalProduction ?? 0;
+  const t2Base = getBuildingConfig('buildingExtractorT2').metalProduction ?? 0;
+
+  assertContract(t1Rate > 0, 'T1 extractor must produce from the covered deposit cell');
+  assertNear(
+    t2Rate / t1Rate,
+    t2Base / t1Base,
+    'T2 extractor coverage must scale by the authored production ratio',
+  );
+}
+
 export function runSupportSurfaceContractTest(): void {
   assertTerrainAndWaterContract();
   assertBuildingSupportContract();
   assertUnitSupportContract();
   assertRenderLocomotionContract();
   assertFactoryShellContract();
+  assertExtractorTierCoverageContract();
 }

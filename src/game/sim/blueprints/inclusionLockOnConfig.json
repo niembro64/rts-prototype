@@ -15,7 +15,8 @@
         "buildingWind",
         "buildingExtractor",
         "buildingRadar",
-        "buildingResourceConverter"
+        "buildingResourceConverter",
+        "buildingExtractorT2"
       ],
       "towers": [
         "towerFabricator",

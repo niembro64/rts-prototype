@@ -161,6 +161,60 @@
       }
     }
   },
+  "buildingExtractorT2": {
+    "buildingBlueprintId": "buildingExtractorT2",
+    "name": "Advanced Extractor",
+    "gridWidth": 5,
+    "gridHeight": 5,
+    "gridDepth": 2,
+    "hp": 600,
+    "cost": {
+      "energy": 420,
+      "metal": 280
+    },
+    "energyProduction": null,
+    "metalProduction": 150,
+    "constructionRate": null,
+    "conversionRate": null,
+    "renderProfile": "buildingExtractor",
+    "visualHeight": 58,
+    "anchorProfile": "constantVisualTop",
+    "supportSurface": {
+      "kind": "boxTop",
+      "topZ": 46,
+      "width": 100,
+      "height": 100
+    },
+    "hud": {
+      "barsOffsetAboveTop": 42
+    },
+    "sensors": {
+      "fullSightRadius": 0,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
+    "turrets": [],
+    "base": {
+      "cost": {
+        "energy": 420,
+        "metal": 280
+      },
+      "mass": 600,
+      "health": 600,
+      "deathExplosion": {
+        "radius": 60,
+        "force": 9000,
+        "damage": 140
+      },
+      "radius": {
+        "visual": 35.355,
+        "hitbox": 35.355,
+        "collision": 35.355
+      }
+    }
+  },
   "buildingRadar": {
     "buildingBlueprintId": "buildingRadar",
     "name": "Radar",

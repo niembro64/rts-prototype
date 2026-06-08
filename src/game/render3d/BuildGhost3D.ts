@@ -20,6 +20,7 @@ import type { Entity, BuildingBlueprintId } from '../sim/types';
 import { COLORS } from '@/colorsConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
+import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 import type { MetalDeposit } from '@/metalDepositConfig';
 import { getBuildingAuthoredRadarRadius } from '../sim/sensorCoverage';
 import {
@@ -326,7 +327,7 @@ export class BuildGhost3D {
     this.footprint.rotation.set(-Math.PI / 2, 0, -rotation);
     this.footprint.position.set(snapped.x, targetGroundY + GHOST_Y, snapped.y);
     this.footprint.material = okVisually ? this.footMatOk : this.footMatBad;
-    const isExtractor = buildingBlueprintId === 'buildingExtractor';
+    const isExtractor = isMetalExtractorBlueprintId(buildingBlueprintId);
     this.footprint.visible = !this.updateDiagnosticCells(diagnostics, isExtractor);
 
     const radarRadius = getBuildingAuthoredRadarRadius(buildingBlueprintId);

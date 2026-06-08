@@ -16,6 +16,7 @@ import { createBuildable, isBuildInProgress } from './buildableHelpers';
 import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
 import { initializeConstructionPieceHealth } from './constructionLifecycle';
 import { entityCanBuild } from './builderBuildRoster';
+import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 
 // Construction system - authoritative building placement and footprint grid.
 // Runtime resource/HP/completion semantics live in constructionLifecycle.ts.
@@ -117,7 +118,7 @@ export class ConstructionSystem {
     applyBuildingBlueprintRuntime(entity, buildingBlueprintId, {
       allocateEntityId: () => world.generateEntityId(),
     });
-    if (buildingBlueprintId === 'buildingExtractor') {
+    if (isMetalExtractorBlueprintId(buildingBlueprintId)) {
       // Inactive at construction start. The completion handler runs
       // computeExtractorMetalCoverage fills `coveredDepositIds` and sets
       // `metalExtractionRate` from the number of metal cells under this

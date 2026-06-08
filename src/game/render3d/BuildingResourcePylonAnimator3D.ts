@@ -12,6 +12,7 @@ import { halfLifeBlend } from '../network/driftEma';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { Entity, EntityId } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
+import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import type { ResourcePylonRig } from './ConstructionEmitterMesh3D';
 import type { EntityMesh } from './EntityMesh3D';
@@ -25,10 +26,11 @@ import {
 } from './BuildingAnimationLists3D';
 import { BuildingResourcePylonSources3D } from './BuildingResourcePylonSources3D';
 
-const INV_EXTRACTOR_BASE_PRODUCTION = (() => {
-  const base = getBuildingConfig('buildingExtractor').metalProduction ?? 0;
+function extractorInverseBaseProduction(entity: Entity): number {
+  if (!isMetalExtractorBlueprintId(entity.buildingBlueprintId)) return 0;
+  const base = getBuildingConfig(entity.buildingBlueprintId).metalProduction ?? 0;
   return base > 0 ? 1 / base : 0;
-})();
+}
 const INV_SOLAR_BASE_PRODUCTION = (() => {
   const base = getBuildingConfig('buildingSolar').energyProduction ?? 0;
   return base > 0 ? 1 / base : 0;
@@ -227,7 +229,7 @@ export class BuildingResourcePylonAnimator3D {
     const open = entity.building?.activeState?.open !== false;
     const close = this.getExtractorCloseAmount(id, open);
     const signedRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_METAL);
-    const targetRate = resourcePylonRateFraction(signedRate, INV_EXTRACTOR_BASE_PRODUCTION) * (1 - close);
+    const targetRate = resourcePylonRateFraction(signedRate, extractorInverseBaseProduction(entity)) * (1 - close);
     applyResourcePylonDirection(pylon, signedRate);
     this.constructionVisuals.updateAmbientResourcePylon(
       pylon,

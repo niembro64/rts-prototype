@@ -31,11 +31,10 @@ Finish the BAR-compatible keymap and command UI layer by importing the complete
 BAR grid/legacy bindings and adding command buttons for missing BAR commands so
 visible hotkeys match the active keymap across the whole command surface.
 
-Issue: metal-extractor upgrade workflows are missing. T1 mex area upgrade and
-T1 -> T2 upgrade require an authored upgraded extractor blueprint, economy
-behavior, construction lifecycle, replacement rules, render profile, command
-authorization, hotkeys, and visible previews before exposing commands or
-buttons.
+Issue: metal-extractor upgrade workflows are missing. Implement T1 mex area
+upgrade and single T1 -> T2 upgrade replacement workflows with construction
+lifecycle, replacement rules, command authorization, hotkeys, and visible
+previews/buttons.
 
 Issue: queued-order insertion needs a client-facing commandinsert affordance
 for choosing a specific `queueInsertIndex` instead of only append or

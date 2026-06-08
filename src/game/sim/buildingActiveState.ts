@@ -24,6 +24,7 @@
 //   - Any hit while OFF RESETS the reopen timer to the full 5 s.
 
 import { ENTITY_CHANGED_BUILDING } from '../../types/network';
+import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 import { getBuildingConfig } from './buildConfigs';
 import { isEntityActive } from './buildableHelpers';
 import { economyManager } from './economy';
@@ -48,7 +49,7 @@ export function buildingBlueprintHasActiveState(
 ): boolean {
   return buildingBlueprintId === 'buildingSolar'
     || buildingBlueprintId === 'buildingWind'
-    || buildingBlueprintId === 'buildingExtractor'
+    || isMetalExtractorBlueprintId(buildingBlueprintId)
     || buildingBlueprintId === 'buildingRadar'
     || buildingBlueprintId === 'buildingResourceConverter';
 }
@@ -99,7 +100,7 @@ function applyProducerRateDelta(entity: Entity, open: boolean): void {
     if (amount <= 0) return;
     if (open) economyManager.addProduction(playerId, amount);
     else economyManager.removeProduction(playerId, amount);
-  } else if (entity.buildingBlueprintId === 'buildingExtractor') {
+  } else if (isMetalExtractorBlueprintId(entity.buildingBlueprintId)) {
     const rate = getExtractorMetalRate(entity);
     if (rate <= 0) return;
     if (open) economyManager.addMetalExtraction(playerId, rate);

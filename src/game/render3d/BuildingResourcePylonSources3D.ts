@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { getBuildingConfig } from '../sim/buildConfigs';
+import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 import {
   getMetalDepositFootprintCoverage,
   type MetalDepositFootprintCell,
@@ -89,10 +90,10 @@ export class BuildingResourcePylonSources3D {
   }
 
   private getExtractorDepositSource(entity: Entity): THREE.Vector3 | null {
-    if (entity.buildingBlueprintId !== 'buildingExtractor') return null;
+    if (!isMetalExtractorBlueprintId(entity.buildingBlueprintId)) return null;
     const cached = this.extractorDepositSourceCache.get(entity.id);
     if (cached) return cached;
-    const cfg = getBuildingConfig('buildingExtractor');
+    const cfg = getBuildingConfig(entity.buildingBlueprintId);
     const halfWidth = (cfg.gridWidth * BUILD_GRID_CELL_SIZE) / 2;
     const halfHeight = (cfg.gridHeight * BUILD_GRID_CELL_SIZE) / 2;
     const cells = this.extractorCoverageCells;

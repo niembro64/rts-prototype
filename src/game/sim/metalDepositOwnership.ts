@@ -19,6 +19,7 @@ import type { Entity } from './types';
 import { getBuildingConfig } from './buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import { METAL_DEPOSIT_CONFIG } from '../../metalDepositConfig';
+import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 import {
   getMetalDepositCoveredCellCount,
   getMetalDepositsOverlappingBuildingFootprint,
@@ -34,8 +35,8 @@ function getExtractorFootprintGrid(entity: Entity): {
   gridW: number;
   gridH: number;
 } | null {
-  if (entity.buildingBlueprintId !== 'buildingExtractor' || !entity.building) return null;
-  const cfg = getBuildingConfig('buildingExtractor');
+  if (!isMetalExtractorBlueprintId(entity.buildingBlueprintId) || !entity.building) return null;
+  const cfg = getBuildingConfig(entity.buildingBlueprintId);
   const halfW = (cfg.gridWidth * BUILD_GRID_CELL_SIZE) / 2;
   const halfH = (cfg.gridHeight * BUILD_GRID_CELL_SIZE) / 2;
   const gridX = Math.floor((entity.transform.x - halfW) / BUILD_GRID_CELL_SIZE + 1e-6);
@@ -43,16 +44,18 @@ function getExtractorFootprintGrid(entity: Entity): {
   return { gridX, gridY, gridW: cfg.gridWidth, gridH: cfg.gridHeight };
 }
 
-function baseProduction(): number {
-  return getBuildingConfig('buildingExtractor').metalProduction ?? 0;
+function baseProduction(extractor: Entity): number {
+  return isMetalExtractorBlueprintId(extractor.buildingBlueprintId)
+    ? getBuildingConfig(extractor.buildingBlueprintId).metalProduction ?? 0
+    : 0;
 }
 
-function perMetalCellProduction(): number {
+function perMetalCellProduction(extractor: Entity): number {
   const nominalCellCount = Math.max(
     1,
     METAL_DEPOSIT_CONFIG.resourceCells * METAL_DEPOSIT_CONFIG.resourceCells,
   );
-  return baseProduction() / nominalCellCount;
+  return baseProduction(extractor) / nominalCellCount;
 }
 
 /** Set the extractor's stored fields to match the metal cells covered
@@ -87,7 +90,7 @@ function syncExtractorRateFromCoveredCells(world: WorldState, extractor: Entity)
     coveredCellCount += coveredCells;
   }
   extractor.coveredDepositIds = touchedDepositIds;
-  extractor.metalExtractionRate = coveredCellCount * perMetalCellProduction();
+  extractor.metalExtractionRate = coveredCellCount * perMetalCellProduction(extractor);
 }
 
 /** First-time coverage calculation, called from applyCompletedBuildingEffects.
@@ -97,7 +100,7 @@ export function computeExtractorMetalCoverage(
   world: WorldState,
   extractor: Entity,
 ): number {
-  if (extractor.buildingBlueprintId !== 'buildingExtractor' || !extractor.ownership) return 0;
+  if (!isMetalExtractorBlueprintId(extractor.buildingBlueprintId) || !extractor.ownership) return 0;
   syncExtractorRateFromCoveredCells(world, extractor);
   return extractor.metalExtractionRate ?? 0;
 }
@@ -110,7 +113,7 @@ export function clearExtractorMetalCoverage(
   extractor: Entity,
 ): number {
   void world;
-  if (extractor.buildingBlueprintId !== 'buildingExtractor' || !extractor.ownership) return 0;
+  if (!isMetalExtractorBlueprintId(extractor.buildingBlueprintId) || !extractor.ownership) return 0;
   const lostIncome = extractor.metalExtractionRate ?? 0;
   extractor.coveredDepositIds = [];
   extractor.metalExtractionRate = 0;

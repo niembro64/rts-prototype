@@ -4,6 +4,7 @@
 import type { Entity, EntityId, PlayerId } from './types';
 import { isRayType } from './types';
 import { isBuildInProgress } from './buildableHelpers';
+import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 
 const EMPTY_ENTITIES: Entity[] = [];
 
@@ -219,7 +220,7 @@ export class EntityCacheManager {
           } else if (entity.buildingBlueprintId === 'buildingSolar') {
             this.cachedSolarBuildings.push(entity);
             this.cachedActiveStateBuildings.push(entity);
-          } else if (entity.buildingBlueprintId === 'buildingExtractor') {
+          } else if (isMetalExtractorBlueprintId(entity.buildingBlueprintId)) {
             this.cachedExtractorBuildings.push(entity);
             this.cachedActiveStateBuildings.push(entity);
           } else if (entity.buildingBlueprintId === 'buildingResourceConverter') {

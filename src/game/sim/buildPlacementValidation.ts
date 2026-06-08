@@ -2,6 +2,7 @@ import type { MetalDeposit } from '../../metalDepositConfig';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { Entity, BuildingBlueprintId } from './types';
 import { getBuildingConfig } from './buildConfigs';
+import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 import {
   BUILD_GRID_CELL_SIZE,
   getBuildingCenterFromGrid,
@@ -177,7 +178,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
         const deposit = findDepositContainingPoint(metalDeposits, x, y);
         metalCovered = deposit !== null;
         depositId = deposit === null ? null : deposit.id;
-        if (candidateType === 'buildingExtractor') {
+        if (isMetalExtractorBlueprintId(candidateType)) {
           if (metalCovered) {
             reason = 'metal';
             metalCoveredCells++;
@@ -246,7 +247,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
     }));
   let metalFraction: number | null = null;
   let metalTotalCells: number | null = null;
-  if (candidateType === 'buildingExtractor') {
+  if (isMetalExtractorBlueprintId(candidateType)) {
     const coverage = getMetalDepositFootprintCoverage(
       metalDeposits,
       center.x,
@@ -269,7 +270,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
     cells,
     failureReason,
     metalFraction,
-    metalCoveredCells: candidateType === 'buildingExtractor' ? metalCoveredCells : null,
+    metalCoveredCells: isMetalExtractorBlueprintId(candidateType) ? metalCoveredCells : null,
     metalTotalCells,
     metalDepositCells,
   };

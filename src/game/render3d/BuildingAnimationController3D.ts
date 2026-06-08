@@ -17,6 +17,7 @@ import { halfLifeBlend } from '../network/driftEma';
 import { lerp, lerpAngle } from '../math';
 import type { Entity, EntityId } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
+import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 import {
   writeSolarPetalMatrix,
   type SolarPetalAnimation,
@@ -64,14 +65,11 @@ const _extractorBladePos = new THREE.Vector3();
 const _extractorBladeScale = new THREE.Vector3();
 const _windBladeQuat = new THREE.Quaternion();
 
-/** Reciprocal of the extractor's configured ceiling rate, computed
- *  once at module load. The per-frame rotor loop multiplies by this
- *  instead of dividing each entity's `metalExtractionRate` by the
- *  base rate every frame. */
-const INV_EXTRACTOR_BASE_PRODUCTION = (() => {
-  const base = getBuildingConfig('buildingExtractor').metalProduction ?? 0;
+function extractorInverseBaseProduction(entity: Entity): number {
+  if (!isMetalExtractorBlueprintId(entity.buildingBlueprintId)) return 0;
+  const base = getBuildingConfig(entity.buildingBlueprintId).metalProduction ?? 0;
   return base > 0 ? 1 / base : 0;
-})();
+}
 const INV_CONVERTER_BASE_RATE = (() => {
   const base = getBuildingConfig('buildingResourceConverter').conversionRate ?? 0;
   return base > 0 ? 1 / base : 0;
@@ -480,7 +478,7 @@ export class BuildingAnimationController3D {
     this.extractorCloseAmounts.set(id, close);
 
     const rate = open ? (entity.metalExtractionRate ?? 0) : 0;
-    const normalizedRate = rate * INV_EXTRACTOR_BASE_PRODUCTION;
+    const normalizedRate = rate * extractorInverseBaseProduction(entity);
     let phase = this.extractorRotorPhases.get(id);
     if (phase === undefined) phase = id * 0.173;
     const targetSpeed = EXTRACTOR_ROTOR_RAD_PER_SEC * normalizedRate * (1 - close);

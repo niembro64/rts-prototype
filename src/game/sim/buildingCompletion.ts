@@ -7,18 +7,19 @@ import {
   buildingBlueprintHasActiveState,
 } from './buildingActiveState';
 import { isEntityActive } from './buildableHelpers';
+import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 import {
   clearExtractorMetalCoverage,
   computeExtractorMetalCoverage,
 } from './metalDepositOwnership';
 
 export function getExtractorMetalRate(entity: Entity): number {
-  if (entity.buildingBlueprintId !== 'buildingExtractor') return 0;
+  if (!isMetalExtractorBlueprintId(entity.buildingBlueprintId)) return 0;
   return entity.metalExtractionRate ?? 0;
 }
 
 export function applyCompletedBuildingEffects(world: WorldState, entity: Entity): void {
-  if (entity.buildingBlueprintId === 'buildingExtractor' && entity.ownership) {
+  if (isMetalExtractorBlueprintId(entity.buildingBlueprintId) && entity.ownership) {
     // Covered-cell extraction. Walk every deposit the extractor
     // footprint overlaps and store metal/sec as a direct function of
     // how many generated metal cells are under this built footprint.
@@ -55,7 +56,7 @@ export function removeCompletedBuildingEffects(world: WorldState, entity: Entity
     deactivateBuildingActiveState(entity);
   }
 
-  if (entity.buildingBlueprintId === 'buildingExtractor' && entity.ownership && isEntityActive(entity)) {
+  if (isMetalExtractorBlueprintId(entity.buildingBlueprintId) && entity.ownership && isEntityActive(entity)) {
     // Clear covered-cell bookkeeping. The destroyed extractor's own
     // income was already removed by deactivateBuildingActiveState above,
     // so we ignore the helper's lostIncome return.

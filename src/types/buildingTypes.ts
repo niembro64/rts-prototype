@@ -56,3 +56,9 @@ for (const id of Object.keys(rawTowerBlueprints)) {
 export function isTowerBuildingBlueprintId(t: StructureBlueprintId): t is TowerBlueprintId {
   return TOWER_BUILDING_TYPES.has(t);
 }
+
+export function isMetalExtractorBlueprintId(
+  t: string | null | undefined,
+): t is Extract<StructureBlueprintId, 'buildingExtractor' | 'buildingExtractorT2'> {
+  return t === 'buildingExtractor' || t === 'buildingExtractorT2';
+}

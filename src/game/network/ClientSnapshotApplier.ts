@@ -33,6 +33,7 @@ import {
   getUnitBuildRequired,
 } from './ClientBuildStateApplier';
 import { getBuildingConfig } from '../sim/buildConfigs';
+import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 import { decodeFactoryProductionQueue } from './factoryProductionQueueWire';
 import { cloneBuildingSupportSurface } from '../sim/buildingSupportSurface';
 
@@ -154,7 +155,7 @@ export function snapClientNonVisualState(
       isFull
       && (entity.buildingBlueprintId === 'buildingSolar'
         || entity.buildingBlueprintId === 'buildingWind'
-        || entity.buildingBlueprintId === 'buildingExtractor')
+        || isMetalExtractorBlueprintId(entity.buildingBlueprintId))
     ) {
       entity.building.activeState = {
         open: entity.buildingBlueprintId !== 'buildingSolar',

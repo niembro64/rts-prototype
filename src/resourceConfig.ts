@@ -25,6 +25,7 @@ export type ResourceBallDensityOption = {
 
 export type EconomyConeHalfAnglesByBuilding = {
   readonly buildingExtractor: number;
+  readonly buildingExtractorT2: number;
   readonly buildingSolar: number;
   readonly buildingWind: number;
   readonly buildingResourceConverter: number;
@@ -101,6 +102,7 @@ function economyConeHalfAnglesByBuilding(
 ): EconomyConeHalfAnglesByBuilding {
   return {
     buildingExtractor: posNum(`${label}.buildingExtractor`, value.buildingExtractor),
+    buildingExtractorT2: posNum(`${label}.buildingExtractorT2`, value.buildingExtractorT2),
     buildingSolar: posNum(`${label}.buildingSolar`, value.buildingSolar),
     buildingWind: posNum(`${label}.buildingWind`, value.buildingWind),
     buildingResourceConverter: posNum(
@@ -176,6 +178,8 @@ export const PYLON_ECONOMY_CONE_HALF_ANGLE_RAD_BY_BUILDING =
  *  metal deposit source. */
 export const PYLON_BUILDING_EXTRACTOR_CONE_HALF_ANGLE_RAD =
   PYLON_ECONOMY_CONE_HALF_ANGLE_RAD_BY_BUILDING.buildingExtractor;
+export const PYLON_BUILDING_EXTRACTOR_T2_CONE_HALF_ANGLE_RAD =
+  PYLON_ECONOMY_CONE_HALF_ANGLE_RAD_BY_BUILDING.buildingExtractorT2;
 
 /** Spray-cone half-angle (radians) for a solar pylon aimed at its sky
  *  source. */

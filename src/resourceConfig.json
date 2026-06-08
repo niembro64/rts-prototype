@@ -4,6 +4,7 @@
     "constructionHalfAngleRad": 0.4,
     "economyHalfAngleRad": {
       "buildingExtractor": 1.0,
+      "buildingExtractorT2": 1.0,
       "buildingSolar": 1.0,
       "buildingWind": 0.8,
       "buildingResourceConverter": 0.8

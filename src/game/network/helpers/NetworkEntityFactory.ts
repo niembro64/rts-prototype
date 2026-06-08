@@ -1,7 +1,10 @@
 // Network entity creation helpers
 
 import type { Entity, BuildingBlueprintId, Turret } from '../../sim/types';
-import { isTowerBuildingBlueprintId } from '../../../types/buildingTypes';
+import {
+  isMetalExtractorBlueprintId,
+  isTowerBuildingBlueprintId,
+} from '../../../types/buildingTypes';
 import {
   createCombatComponent,
   createEmptyEntityComponentSlots,
@@ -458,7 +461,7 @@ function createBuildingFromNetwork(
       // ships as soon as the first snapshot for this entity arrives.
       activeState: (buildingBlueprintId === 'buildingSolar'
         || buildingBlueprintId === 'buildingWind'
-        || buildingBlueprintId === 'buildingExtractor'
+        || isMetalExtractorBlueprintId(buildingBlueprintId)
         || buildingBlueprintId === 'buildingRadar'
         || buildingBlueprintId === 'buildingResourceConverter')
         ? {
@@ -469,7 +472,7 @@ function createBuildingFromNetwork(
         : null,
     },
     buildingBlueprintId,
-    metalExtractionRate: buildingBlueprintId === 'buildingExtractor'
+    metalExtractionRate: isMetalExtractorBlueprintId(buildingBlueprintId)
       ? b.metalExtractionRate ?? 0
       : null,
   };

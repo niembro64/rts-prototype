@@ -64,6 +64,7 @@ import {
   quantizeVelocity as qVel,
 } from './snapshotQuantization';
 import { encodeFactoryProductionQueue } from './factoryProductionQueueWire';
+import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 
 const INITIAL_ENTITY_POOL = 200;
 const MAX_WEAPONS_PER_ENTITY = 8;
@@ -995,7 +996,7 @@ function appendDirectBuildingEntityWireRow(
   values[base + 17] = hasBuild && buildable !== null ? buildable.paid.metal : 0;
   values[base + 18] = (
     (isFull || (changedMask & ENTITY_CHANGED_BUILDING) !== 0) &&
-    entity.buildingBlueprintId === 'buildingExtractor'
+    isMetalExtractorBlueprintId(entity.buildingBlueprintId)
   ) ? 1 : 0;
   values[base + 19] = values[base + 18] !== 0 ? entity.metalExtractionRate ?? 0 : 0;
   values[base + 20] = hasBuild && activeState !== null ? 1 : 0;
@@ -1254,14 +1255,14 @@ export function serializeEntitySnapshot(
         b.buildingBlueprintCode = entity.buildingBlueprintId !== null
           ? buildingBlueprintIdToCode(entity.buildingBlueprintId)
           : null;
-        b.metalExtractionRate = entity.buildingBlueprintId === 'buildingExtractor'
+        b.metalExtractionRate = isMetalExtractorBlueprintId(entity.buildingBlueprintId)
           ? entity.metalExtractionRate ?? 0
           : null;
       } else {
         b.dim = null;
         b.buildingBlueprintCode = null;
         b.metalExtractionRate = (changedFields! & ENTITY_CHANGED_BUILDING) !== 0 &&
-          entity.buildingBlueprintId === 'buildingExtractor'
+          isMetalExtractorBlueprintId(entity.buildingBlueprintId)
           ? entity.metalExtractionRate ?? 0
           : null;
       }
