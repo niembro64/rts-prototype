@@ -1,5 +1,8 @@
 import { COLORS } from '@/colorsConfig';
+import { isUnitBlueprintId } from '@/types/blueprintIds';
 import type { NetworkServerSnapshotSimEvent } from '../../network/NetworkTypes';
+import { getUnitBodyCenterHeight, getUnitGroundZ } from '../../sim/unitGeometry';
+import { getPlayerPrimaryColor, type Entity } from '../../sim/types';
 
 export const WATER_SURFACE_NORMAL_SIM = { x: 0, y: 0, z: 1 } as const;
 
@@ -76,4 +79,88 @@ export function sanitizeDeathContext(ctx: SimDeathContext3D): SimDeathContext3D 
       pitch: finiteOr(pose.pitch, 0),
     })),
   };
+}
+
+export function resolveDeathContext3D(
+  event: NetworkServerSnapshotSimEvent,
+  ent: Entity | undefined,
+): SimDeathContext3D {
+  // Some kill paths (splash, bleed-out, shield zone damage) emit
+  // a death event with no deathContext. Rather than skipping the
+  // material explosion entirely, try to reconstruct a minimal context
+  // from the entity if it's still in view state; otherwise synthesize
+  // a generic fallback so debris still fires.
+  let ctx = event.deathContext;
+  if (!ctx && ent) {
+    const pid = ent.ownership?.playerId;
+    const tcol = getPlayerPrimaryColor(pid);
+    const visualRadius = ent.unit?.radius.visual
+      ?? ent.unit?.radius.hitbox
+      ?? 15;
+    const collisionRadius = ent.unit ? getUnitBodyCenterHeight(ent.unit) : visualRadius;
+    ctx = {
+      unitVel: {
+        x: ent.unit?.velocityX ?? 0,
+        y: ent.unit?.velocityY ?? 0,
+      },
+      hitDir: { x: 0, y: 0 },
+      projectileVel: { x: 0, y: 0 },
+      attackMagnitude: 25,
+      radius: ent.unit?.radius.hitbox ?? 15,
+      visualRadius,
+      collisionRadius,
+      baseZ: ent.unit ? getUnitGroundZ(ent) : ent.transform.z - collisionRadius,
+      color: tcol,
+      unitBlueprintId: ent.unit?.unitBlueprintId && isUnitBlueprintId(ent.unit.unitBlueprintId)
+        ? ent.unit.unitBlueprintId
+        : undefined,
+      rotation: ent.transform.rotation,
+    };
+  }
+  if (ctx && ent?.unit) {
+    const visualRadius = ent.unit.radius.visual
+      ?? ent.unit.radius.hitbox
+      ?? ctx.visualRadius
+      ?? ctx.radius;
+    const collisionRadius = getUnitBodyCenterHeight(ent.unit);
+    if (
+      ctx.visualRadius === undefined ||
+      ctx.collisionRadius === undefined ||
+      ctx.baseZ === undefined
+    ) {
+      ctx = {
+        ...ctx,
+        visualRadius: ctx.visualRadius ?? visualRadius,
+        collisionRadius: ctx.collisionRadius ?? collisionRadius,
+        baseZ: ctx.baseZ ?? getUnitGroundZ(ent),
+      };
+    }
+  }
+  if (ctx && ent && !ctx.turretPoses && ent.combat && ent.combat.turrets.length > 0) {
+    ctx = {
+      ...ctx,
+      turretPoses: ent.combat.turrets.map((t) => ({
+        rotation: t.rotation,
+        pitch: t.pitch,
+      })),
+    };
+  }
+  if (!ctx) {
+    // Entity already gone and no server-supplied context: synthesize a
+    // bare-minimum neutral context so Debris3D's generic-chunks fallback
+    // still produces something visible. Worse than a real debris
+    // burst but better than silence.
+    ctx = {
+      unitVel: { x: 0, y: 0 },
+      hitDir: { x: 0, y: 0 },
+      projectileVel: { x: 0, y: 0 },
+      attackMagnitude: 25,
+      radius: 15,
+      visualRadius: 15,
+      collisionRadius: 15,
+      baseZ: event.pos.z - 15,
+      color: COLORS.units.locomotion.hover.smoke.colorHex,
+    };
+  }
+  return sanitizeDeathContext(ctx);
 }

@@ -6,7 +6,6 @@ import { audioManager } from '../audio/AudioManager';
 import type { SceneCameraState } from '@/types/game';
 import { isShotBlueprintId, isTurretBlueprintId, isUnitBlueprintId } from '@/types/blueprintIds';
 import type { TerrainMapShape } from '@/types/terrain';
-import { COLORS } from '@/colorsConfig';
 import { isMobileLikeBrowser } from '@/browserRuntime';
 import { RtsScene3DSnapshotIntake } from './helpers/RtsScene3DSnapshotIntake';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
@@ -28,7 +27,7 @@ import {
   finiteOr,
   hasFiniteEventPosition,
   maxFiniteNonNegativeOr,
-  sanitizeDeathContext,
+  resolveDeathContext3D,
   warnNonFiniteVisualEvent,
 } from './helpers/RtsScene3DVisualEventSanitizer';
 import { ThreeApp } from '../render3d/ThreeApp';
@@ -77,14 +76,13 @@ import { HealthBar3D } from '../render3d/HealthBar3D';
 import { NameLabel3D } from '../render3d/NameLabel3D';
 import { Waypoint3D } from '../render3d/Waypoint3D';
 import type { CanvasSpritePoolTelemetry } from '../render3d/CanvasSpritePool';
-import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
 
 import type { GameConnection } from '../server/GameConnection';
 import type { GraphicsConfig } from '@/types/graphics';
 import type {
   NetworkServerSnapshotMeta,
 } from '../network/NetworkTypes';
-import { getPlayerPrimaryColor, setPlayerCountForColors } from '../sim/types';
+import { setPlayerCountForColors } from '../sim/types';
 import type {
   Entity,
   EntityId,
@@ -1051,12 +1049,6 @@ export class RtsScene3D {
         // while the mesh is still live.
         this.entityRenderer.markEntityKilled(event.entityId);
       }
-      // Some kill paths (splash, bleed-out, shield zone damage) emit
-      // a death event with no deathContext. Rather than skipping the
-      // material explosion entirely, try to reconstruct a minimal context
-      // from the entity if it's still in view state; otherwise synthesize
-      // a generic fallback so debris still fires.
-      let ctx = event.deathContext;
       // The entity may already be gone from view state if the death
       // event is processed after the snapshot that removed it. We
       // look it up either to synthesize a missing context (legacy
@@ -1067,78 +1059,7 @@ export class RtsScene3D {
       const ent = event.entityId !== null
         ? this.clientViewState.getEntity(event.entityId)
         : undefined;
-      if (!ctx && ent) {
-        const pid = ent.ownership?.playerId;
-        const tcol = getPlayerPrimaryColor(pid);
-        const visualRadius = ent.unit?.radius.visual
-          ?? ent.unit?.radius.hitbox
-          ?? 15;
-        const collisionRadius = ent.unit ? getUnitBodyCenterHeight(ent.unit) : visualRadius;
-        ctx = {
-          unitVel: {
-            x: ent.unit?.velocityX ?? 0,
-            y: ent.unit?.velocityY ?? 0,
-          },
-          hitDir: { x: 0, y: 0 },
-          projectileVel: { x: 0, y: 0 },
-          attackMagnitude: 25,
-          radius: ent.unit?.radius.hitbox ?? 15,
-          visualRadius,
-          collisionRadius,
-          baseZ: ent.unit ? getUnitGroundZ(ent) : ent.transform.z - collisionRadius,
-          color: tcol,
-          unitBlueprintId: ent.unit?.unitBlueprintId && isUnitBlueprintId(ent.unit.unitBlueprintId)
-            ? ent.unit.unitBlueprintId
-            : undefined,
-          rotation: ent.transform.rotation,
-        };
-      }
-      if (ctx && ent?.unit) {
-        const visualRadius = ent.unit.radius.visual
-          ?? ent.unit.radius.hitbox
-          ?? ctx.visualRadius
-          ?? ctx.radius;
-        const collisionRadius = getUnitBodyCenterHeight(ent.unit);
-        if (
-          ctx.visualRadius === undefined ||
-          ctx.collisionRadius === undefined ||
-          ctx.baseZ === undefined
-        ) {
-          ctx = {
-            ...ctx,
-            visualRadius: ctx.visualRadius ?? visualRadius,
-            collisionRadius: ctx.collisionRadius ?? collisionRadius,
-            baseZ: ctx.baseZ ?? getUnitGroundZ(ent),
-          };
-        }
-      }
-      if (ctx && ent && !ctx.turretPoses && ent.combat && ent.combat.turrets.length > 0) {
-        ctx = {
-          ...ctx,
-          turretPoses: ent.combat.turrets.map((t) => ({
-            rotation: t.rotation,
-            pitch: t.pitch,
-          })),
-        };
-      }
-      if (!ctx) {
-        // Entity already gone and no server-supplied context — synthesize a
-        // bare-minimum neutral context so Debris3D's generic-chunks fallback
-        // still produces *something* visible. Worse than a real debris
-        // burst but better than silence.
-        ctx = {
-          unitVel: { x: 0, y: 0 },
-          hitDir: { x: 0, y: 0 },
-          projectileVel: { x: 0, y: 0 },
-          attackMagnitude: 25,
-          radius: 15,
-          visualRadius: 15,
-          collisionRadius: 15,
-          baseZ: event.pos.z - 15,
-          color: COLORS.units.locomotion.hover.smoke.colorHex,
-        };
-      }
-      ctx = sanitizeDeathContext(ctx);
+      const ctx = resolveDeathContext3D(event, ent);
 
       // Scale the hit-direction push by the damaging attack's magnitude so
       // a glancing railgun hit kicks debris further than a DoT tick. Clamp
