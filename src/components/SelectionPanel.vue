@@ -312,6 +312,26 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           type="button"
           class="action-btn"
           :style="{ '--btn-color': BUTTON_COLORS.groupAccent }"
+          :title="actionTitle('Split selected army', 'select.split')"
+          @click="actions.splitArmySelection()"
+        >
+          <span class="btn-label">Split</span>
+          <span class="btn-key">{{ hotkey('select.split') }}</span>
+        </button>
+        <button
+          type="button"
+          class="action-btn"
+          :style="{ '--btn-color': BUTTON_COLORS.groupAccent }"
+          :title="actionTitle('Loop selection', 'select.loop')"
+          @click="actions.loopSelection()"
+        >
+          <span class="btn-label">Loop</span>
+          <span class="btn-key">{{ hotkey('select.loop') }}</span>
+        </button>
+        <button
+          type="button"
+          class="action-btn"
+          :style="{ '--btn-color': BUTTON_COLORS.groupAccent }"
           :title="actionTitle('Select idle builders', 'select.idleBuilders')"
           @click="actions.selectIdleBuilders()"
         >

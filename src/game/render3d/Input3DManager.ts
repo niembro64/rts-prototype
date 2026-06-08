@@ -108,6 +108,8 @@ export class Input3DManager {
   private selectionChangeTracker = new SelectionChangeTracker();
   private controlGroups: InputControlGroups;
   private previousSelectionIds: EntityId[] = [];
+  private loopSelectionIds: EntityId[] = [];
+  private loopSelectionCursor = -1;
   private selectedCommands: InputSelectedCommands;
   private keyboard: Input3DKeyboardController;
   private rightDrag: Input3DRightDragController;
@@ -230,6 +232,8 @@ export class Input3DManager {
       selectSameTypeOnly: () => this.selectSameTypeOnly(),
       selectMobileOnly: () => this.selectMobileOnly(),
       invertSelection: () => this.invertSelection(),
+      splitArmySelection: () => this.splitArmySelection(),
+      loopSelection: () => this.loopSelection(),
       isRepairAreaMode: () => this.repairAreaMode,
       isAttackMode: () => this.attackMode,
       isAttackAreaMode: () => this.attackAreaMode,
@@ -580,6 +584,43 @@ export class Input3DManager {
       return;
     }
     this.enqueueSelection(entityIds, false);
+  }
+
+  splitArmySelection(): void {
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    if (selectedUnits.length < 2) return;
+    const entityIds: EntityId[] = [];
+    for (let i = 0; i < selectedUnits.length; i += 2) {
+      if (this.isSelectableByActivePlayer(selectedUnits[i])) entityIds.push(selectedUnits[i].id);
+    }
+    if (entityIds.length === 0 || entityIds.length === selectedUnits.length) return;
+    this.enqueueSelection(entityIds, false);
+  }
+
+  loopSelection(): void {
+    const currentIds = this.getCurrentSelectedEntityIds();
+    if (currentIds.length === 0) return;
+
+    const liveLoopIds = this.getLiveEntityIds(this.loopSelectionIds);
+    const currentIdSet = new Set(currentIds);
+    const canContinueLoop = currentIds.length === 1
+      && liveLoopIds.length > 1
+      && liveLoopIds.some((id) => currentIdSet.has(id));
+
+    if (!canContinueLoop) {
+      this.loopSelectionIds = currentIds;
+      this.loopSelectionCursor = -1;
+    } else {
+      this.loopSelectionIds = liveLoopIds;
+    }
+
+    if (this.loopSelectionIds.length === 0) return;
+    if (currentIds.length === 1) {
+      const currentIndex = this.loopSelectionIds.indexOf(currentIds[0]);
+      if (currentIndex >= 0) this.loopSelectionCursor = currentIndex;
+    }
+    this.loopSelectionCursor = (this.loopSelectionCursor + 1) % this.loopSelectionIds.length;
+    this.enqueueSelection([this.loopSelectionIds[this.loopSelectionCursor]], false);
   }
 
   selectPreviousSelection(): void {
@@ -1074,6 +1115,8 @@ export class Input3DManager {
   setEntitySource(source: EntitySource): void {
     this.entitySource = source;
     this.previousSelectionIds = [];
+    this.loopSelectionIds = [];
+    this.loopSelectionCursor = -1;
     this.controlGroups.setSource(source);
     this.selectedCommands.setSource(source);
   }

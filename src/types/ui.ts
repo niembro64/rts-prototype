@@ -97,6 +97,8 @@ export type SelectionActions = {
   selectSameTypeOnly: () => void;
   selectMobileOnly: () => void;
   invertSelection: () => void;
+  splitArmySelection: () => void;
+  loopSelection: () => void;
   /** Enter click-pick mode for setting the host lock-on target on the
    *  selected towers. Right-click / Esc cancels. */
   setTowerTargetMode: () => void;

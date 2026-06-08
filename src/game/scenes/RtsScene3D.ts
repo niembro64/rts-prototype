@@ -856,6 +856,14 @@ export class RtsScene3D {
     this.inputManager?.invertSelection();
   }
 
+  public splitArmySelection(): void {
+    this.inputManager?.splitArmySelection();
+  }
+
+  public loopSelection(): void {
+    this.inputManager?.loopSelection();
+  }
+
   public toggleTowerTargetMode(): void {
     this.inputManager?.toggleTowerTargetMode();
   }

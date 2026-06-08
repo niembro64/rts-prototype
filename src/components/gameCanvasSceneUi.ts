@@ -243,6 +243,12 @@ export function useGameCanvasSceneUi({
     invertSelection: () => {
       getActiveBattleScene()?.invertSelection();
     },
+    splitArmySelection: () => {
+      getActiveBattleScene()?.splitArmySelection();
+    },
+    loopSelection: () => {
+      getActiveBattleScene()?.loopSelection();
+    },
     setTowerTargetMode: () => {
       getActiveBattleScene()?.toggleTowerTargetMode();
     },

@@ -22,6 +22,8 @@ export type CommandHotkeyId =
   | 'select.sameTypeOnly'
   | 'select.mobileOnly'
   | 'select.invert'
+  | 'select.split'
+  | 'select.loop'
   | 'combat.attack'
   | 'combat.attackArea'
   | 'combat.attackGround'
@@ -77,6 +79,8 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'select.sameTypeOnly',
   'select.mobileOnly',
   'select.invert',
+  'select.split',
+  'select.loop',
   'combat.attack',
   'combat.attackArea',
   'combat.attackGround',
@@ -137,6 +141,8 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<CommandHotkeyPresetId, Comm
     'select.sameTypeOnly': [key('Alt+Z', 'z', { alt: true })],
     'select.mobileOnly': [key('Alt+M', 'm', { alt: true })],
     'select.invert': [key('Alt+I', 'i', { alt: true })],
+    'select.split': [key('Alt+S', 's', { alt: true })],
+    'select.loop': [key('Alt+L', 'l', { alt: true })],
     'combat.attack': [key('V', 'v', { shift: 'any' })],
     'combat.attackArea': [key('A', 'a', { shift: 'any' })],
     'combat.attackGround': [key('T', 't', { shift: 'any' })],
@@ -186,6 +192,8 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<CommandHotkeyPresetId, Comm
     'select.sameTypeOnly': [code('Q', 'KeyQ', { shift: 'any' })],
     'select.mobileOnly': [code('Alt+M', 'KeyM', { alt: true })],
     'select.invert': [code('Alt+I', 'KeyI', { alt: true })],
+    'select.split': [code('Alt+S', 'KeyS', { alt: true })],
+    'select.loop': [code('Alt+L', 'KeyL', { alt: true })],
     'combat.attack': [code('A', 'KeyA', { shift: 'any' })],
     'combat.attackArea': [code('Ctrl+A', 'KeyA', { ctrl: true, shift: 'any' })],
     'combat.attackGround': [code('Alt+T', 'KeyT', { alt: true, shift: 'any' })],
@@ -223,6 +231,8 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<CommandHotkeyPresetId, Comm
     'select.sameTypeOnly': [code('Ctrl+X', 'KeyX', { ctrl: true })],
     'select.mobileOnly': [code('Alt+M', 'KeyM', { alt: true })],
     'select.invert': [code('Alt+I', 'KeyI', { alt: true })],
+    'select.split': [code('Alt+S', 'KeyS', { alt: true })],
+    'select.loop': [code('Alt+L', 'KeyL', { alt: true })],
     'combat.attack': [code('A', 'KeyA', { shift: 'any' })],
     'combat.attackArea': [code('Alt+A', 'KeyA', { alt: true, shift: 'any' })],
     'combat.attackGround': [code('T', 'KeyT', { shift: 'any' })],

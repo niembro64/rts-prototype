@@ -52,6 +52,8 @@ type Input3DKeyboardControllerConfig = {
   selectSameTypeOnly: () => void;
   selectMobileOnly: () => void;
   invertSelection: () => void;
+  splitArmySelection: () => void;
+  loopSelection: () => void;
   isRepairAreaMode: () => boolean;
   isAttackMode: () => boolean;
   isAttackAreaMode: () => boolean;
@@ -334,6 +336,12 @@ export class Input3DKeyboardController {
         break;
       case 'select.invert':
         this.config.invertSelection();
+        break;
+      case 'select.split':
+        this.config.splitArmySelection();
+        break;
+      case 'select.loop':
+        this.config.loopSelection();
         break;
     }
   }
