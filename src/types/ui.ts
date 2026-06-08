@@ -78,6 +78,7 @@ export type SelectionInfo = {
   buildFacingDegrees: number;
   isDGunMode: boolean;
   isRepairAreaMode: boolean;
+  isFormationMoveMode: boolean;
   isAttackMode: boolean;
   isAttackAreaMode: boolean;
   isAttackGroundMode: boolean;
@@ -142,6 +143,7 @@ export type SelectionActions = {
   rotateBuildFacingCounterClockwise: () => void;
   toggleDGun: () => void;
   toggleRepairArea: () => void;
+  toggleFormationMove: () => void;
   queueUnit: (factoryId: number, unitBlueprintId: string) => void;
   stopFactoryProduction: (factoryId: number) => void;
   clearFactoryGuard: (factoryId: number) => void;
@@ -227,6 +229,7 @@ export type UIInputState = {
   buildFacingDegrees: number;
   isDGunMode: boolean;
   isRepairAreaMode: boolean;
+  isFormationMoveMode: boolean;
   isAttackMode: boolean;
   isAttackAreaMode: boolean;
   isAttackGroundMode: boolean;

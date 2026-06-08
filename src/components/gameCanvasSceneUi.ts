@@ -117,6 +117,7 @@ export function useGameCanvasSceneUi({
     buildFacingDegrees: 0,
     isDGunMode: false,
     isRepairAreaMode: false,
+    isFormationMoveMode: false,
     isAttackMode: false,
     isAttackAreaMode: false,
     isAttackGroundMode: false,
@@ -326,6 +327,9 @@ export function useGameCanvasSceneUi({
     },
     toggleRepairArea: () => {
       getActiveBattleScene()?.toggleRepairAreaMode();
+    },
+    toggleFormationMove: () => {
+      getActiveBattleScene()?.toggleFormationMoveMode();
     },
     queueUnit: (factoryId, unitBlueprintId) => {
       getActiveBattleScene()?.queueFactoryUnit(factoryId, unitBlueprintId);

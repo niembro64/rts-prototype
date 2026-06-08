@@ -484,6 +484,9 @@ export class RtsScene3D {
     this.inputManager.onRepairAreaModeChange = (active) => {
       this.selectionSystem.setRepairAreaMode(active);
     };
+    this.inputManager.onFormationMoveModeChange = (active) => {
+      this.selectionSystem.setFormationMoveMode(active);
+    };
     this.inputManager.onAttackModeChange = (active) => {
       this.selectionSystem.setAttackMode(active);
     };
@@ -970,6 +973,10 @@ export class RtsScene3D {
 
   public toggleRepairAreaMode(): void {
     this.inputManager?.toggleRepairAreaMode();
+  }
+
+  public toggleFormationMoveMode(): void {
+    this.inputManager?.toggleFormationMoveMode();
   }
 
   public queueFactoryUnit(factoryId: number, unitBlueprintId: string): void {

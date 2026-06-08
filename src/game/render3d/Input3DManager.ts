@@ -105,6 +105,7 @@ export class Input3DManager {
   public onBuildFacingChange?: (facing: BuildFacingInfo) => void;
   public onDGunModeChange?: (active: boolean) => void;
   public onRepairAreaModeChange?: (active: boolean) => void;
+  public onFormationMoveModeChange?: (active: boolean) => void;
   public onAttackModeChange?: (active: boolean) => void;
   public onAttackAreaModeChange?: (active: boolean) => void;
   public onAttackGroundModeChange?: (active: boolean) => void;
@@ -208,6 +209,8 @@ export class Input3DManager {
       getTick: () => this.context.getTick(),
       getActivePlayerId: () => this.context.activePlayerId,
       getWaypointMode: () => this.waypointMode,
+      isFormationMoveMode: () => this.formationMoveMode,
+      exitFormationMoveMode: () => this.exitFormationMoveMode(),
       getSelectedCommander: () => this.getSelectedCommander(),
       getMapSampleBounds: () => this.modeClicks.getMapSampleBounds(),
       applyCursor: (kind) => this.applyCursor(kind),
@@ -296,6 +299,7 @@ export class Input3DManager {
     this.specialModes = new Input3DSpecialModes({
       refreshCursor: () => this.refreshCursor(),
       onRepairAreaModeChange: (active) => this.onRepairAreaModeChange?.(active),
+      onFormationMoveModeChange: (active) => this.onFormationMoveModeChange?.(active),
       onAttackModeChange: (active) => this.onAttackModeChange?.(active),
       onAttackAreaModeChange: (active) => this.onAttackAreaModeChange?.(active),
       onAttackGroundModeChange: (active) => this.onAttackGroundModeChange?.(active),
@@ -374,6 +378,10 @@ export class Input3DManager {
 
   private get attackMode(): boolean {
     return this.specialModes.isActive('attack');
+  }
+
+  private get formationMoveMode(): boolean {
+    return this.specialModes.isActive('formationMove');
   }
 
   private get attackGroundMode(): boolean {
@@ -784,6 +792,19 @@ export class Input3DManager {
     this.enterSpecialMode('attackArea');
   }
 
+  toggleFormationMoveMode(): void {
+    if (this.formationMoveMode) {
+      this.exitFormationMoveMode();
+      return;
+    }
+    if (this.entitySource.getSelectedUnits().length === 0) return;
+    this.mode.exitBuildMode();
+    this.mode.exitDGunMode();
+    this.setWaypointMode('move');
+    this.exitSpecialModes();
+    this.enterSpecialMode('formationMove');
+  }
+
   toggleAttackMode(): void {
     if (this.attackMode) {
       this.exitAttackMode();
@@ -935,6 +956,11 @@ export class Input3DManager {
     return this.repairAreaMode;
   }
 
+  /** True while the next right-click move preserves the selected formation. */
+  isInFormationMoveMode(): boolean {
+    return this.formationMoveMode;
+  }
+
   /** True while the next left-click will issue an area-attack command. */
   isInAttackAreaMode(): boolean {
     return this.attackAreaMode;
@@ -966,6 +992,10 @@ export class Input3DManager {
 
   private exitRepairAreaMode(): void {
     this.specialModes.exit('repairArea');
+  }
+
+  private exitFormationMoveMode(): void {
+    this.specialModes.exit('formationMove');
   }
 
   private exitAttackAreaMode(): void {
@@ -1556,6 +1586,7 @@ export class Input3DManager {
     this.onBuildModeChange = undefined;
     this.onDGunModeChange = undefined;
     this.onRepairAreaModeChange = undefined;
+    this.onFormationMoveModeChange = undefined;
     this.onAttackAreaModeChange = undefined;
     this.onAttackGroundModeChange = undefined;
     this.onGuardModeChange = undefined;

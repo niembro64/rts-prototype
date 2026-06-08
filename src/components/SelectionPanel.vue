@@ -567,6 +567,17 @@ function loadFactoryPreset(index: number): void {
         <button
           type="button"
           class="action-btn"
+          :class="{ active: selection.isFormationMoveMode }"
+          :style="{ '--btn-color': WAYPOINT_COLOR_CSS.move }"
+          title="Move in formation - Ctrl+Right click"
+          @click="actions.toggleFormationMove()"
+        >
+          <span class="btn-label">Form</span>
+          <span class="btn-key">Ctrl+RMB</span>
+        </button>
+        <button
+          type="button"
+          class="action-btn"
           :class="{ active: selection.isAttackMode }"
           :style="{ '--btn-color': BUTTON_COLORS.attackArea }"
           :title="actionTitle('Attack', 'combat.attack', 'Click an enemy target')"

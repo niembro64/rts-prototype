@@ -29,6 +29,8 @@ type Input3DRightDragControllerConfig = {
   getTick: () => number;
   getActivePlayerId: () => PlayerId;
   getWaypointMode: () => WaypointType;
+  isFormationMoveMode: () => boolean;
+  exitFormationMoveMode: () => void;
   getSelectedCommander: () => Entity | null;
   getMapSampleBounds: () => { width: number; height: number };
   applyCursor: (kind: CommandCursorKind) => void;
@@ -76,24 +78,27 @@ export class Input3DRightDragController {
     const entityHit = entityHitId !== null
       ? source.getEntity(entityHitId)
       : null;
+    const preserveFormationMove = selectedUnits.length > 0 && this.shouldPreserveFormation(e);
 
-    const meshAttackCmd = buildAttackCommandForTarget(
-      entityHit,
-      selectedUnits,
-      activePlayerId,
-      tick,
-      e.shiftKey,
-      queueFront,
-    );
-    if (meshAttackCmd) {
-      debugLog(
-        GAME_DIAGNOSTICS.commandPlans,
-        '[click] attack-mesh: hit target #%d, %d unit(s)',
-        meshAttackCmd.targetId, selectedUnits.length,
+    if (!preserveFormationMove) {
+      const meshAttackCmd = buildAttackCommandForTarget(
+        entityHit,
+        selectedUnits,
+        activePlayerId,
+        tick,
+        e.shiftKey,
+        queueFront,
       );
-      this.config.applyCursor('attack');
-      this.config.commandQueue.enqueue(meshAttackCmd);
-      return;
+      if (meshAttackCmd) {
+        debugLog(
+          GAME_DIAGNOSTICS.commandPlans,
+          '[click] attack-mesh: hit target #%d, %d unit(s)',
+          meshAttackCmd.targetId, selectedUnits.length,
+        );
+        this.config.applyCursor('attack');
+        this.config.commandQueue.enqueue(meshAttackCmd);
+        return;
+      }
     }
 
     if (selectedUnits.length === 0) {
@@ -118,46 +123,50 @@ export class Input3DRightDragController {
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
 
-    const repairCmd = buildRepairCommandAt(
-      source,
-      world.x, world.y,
-      this.config.getSelectedCommander(),
-      tick,
-      e.shiftKey,
-      queueFront,
-    );
-    if (repairCmd) {
-      debugLog(
-        GAME_DIAGNOSTICS.commandPlans,
-        '[click] repair: clicked at (%d, %d, %d) -> target #%d',
-        Math.round(world.x), Math.round(world.y), Math.round(world.z),
-        repairCmd.targetId,
-      );
-      this.config.applyCursor('repair');
-      this.config.commandQueue.enqueue(repairCmd);
-      return;
-    }
-
-    if (selectedUnits.length > 0) {
-      const attackCmd = buildAttackCommandAt(
+    if (!preserveFormationMove) {
+      const repairCmd = buildRepairCommandAt(
         source,
         world.x, world.y,
-        selectedUnits,
-        activePlayerId,
+        this.config.getSelectedCommander(),
         tick,
         e.shiftKey,
         queueFront,
       );
-      if (attackCmd) {
+      if (repairCmd) {
         debugLog(
           GAME_DIAGNOSTICS.commandPlans,
-          '[click] attack: clicked at (%d, %d, %d) -> target #%d, %d unit(s)',
+          '[click] repair: clicked at (%d, %d, %d) -> target #%d',
           Math.round(world.x), Math.round(world.y), Math.round(world.z),
-          attackCmd.targetId, selectedUnits.length,
+          repairCmd.targetId,
         );
-        this.config.applyCursor('attack');
-        this.config.commandQueue.enqueue(attackCmd);
+        this.config.applyCursor('repair');
+        this.config.commandQueue.enqueue(repairCmd);
         return;
+      }
+    }
+
+    if (selectedUnits.length > 0) {
+      if (!preserveFormationMove) {
+        const attackCmd = buildAttackCommandAt(
+          source,
+          world.x, world.y,
+          selectedUnits,
+          activePlayerId,
+          tick,
+          e.shiftKey,
+          queueFront,
+        );
+        if (attackCmd) {
+          debugLog(
+            GAME_DIAGNOSTICS.commandPlans,
+            '[click] attack: clicked at (%d, %d, %d) -> target #%d, %d unit(s)',
+            Math.round(world.x), Math.round(world.y), Math.round(world.z),
+            attackCmd.targetId, selectedUnits.length,
+          );
+          this.config.applyCursor('attack');
+          this.config.commandQueue.enqueue(attackCmd);
+          return;
+        }
       }
       debugLog(
         GAME_DIAGNOSTICS.commandPlans,
@@ -222,11 +231,13 @@ export class Input3DRightDragController {
         tick,
         shiftHeld,
         queueFront,
-        e.altKey,
+        this.shouldPreserveFormation(e),
       );
       if (moveCmd) {
-        this.logMoveCommand(selectedUnits, points.length, finalPoint, moveCmd, e.altKey);
+        const preserveFormation = this.shouldPreserveFormation(e);
+        this.logMoveCommand(selectedUnits, points.length, finalPoint, moveCmd, preserveFormation);
         this.config.commandQueue.enqueue(moveCmd);
+        if (this.config.isFormationMoveMode() && !shiftHeld) this.config.exitFormationMoveMode();
       }
       this.linePath.reset();
       this.config.refreshCursor();
@@ -273,6 +284,10 @@ export class Input3DRightDragController {
       case 'move':
       default: return 'move';
     }
+  }
+
+  private shouldPreserveFormation(e: MouseEvent): boolean {
+    return e.altKey || e.ctrlKey || e.metaKey || this.config.isFormationMoveMode();
   }
 
   private getSelectedFactories(): Entity[] {
