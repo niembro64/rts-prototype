@@ -43,6 +43,7 @@ import {
   addActiveAnimatedBuildingEntry,
   addAnimatedBuildingEntry,
   addResourcePylonBuildingEntry,
+  clearAnimatedBuildingEntries,
   removeAnimatedBuildingEntry,
   updateAnimatedBuildingQueue,
   type AnimatedBuildingEntry,
@@ -355,34 +356,20 @@ export class BuildingAnimationController3D {
   }
 
   destroy(): void {
-    this.solarBuildings.length = 0;
-    this.solarBuildingIndexById.clear();
-    this.activeSolarBuildings.length = 0;
-    this.activeSolarBuildingIndexById.clear();
-    this.windBuildings.length = 0;
-    this.windBuildingIndexById.clear();
-    this.activeWindBuildings.length = 0;
-    this.activeWindBuildingIndexById.clear();
-    this.extractorBuildings.length = 0;
-    this.extractorBuildingIndexById.clear();
-    this.activeExtractorBuildings.length = 0;
-    this.activeExtractorBuildingIndexById.clear();
-    this.converterBuildings.length = 0;
-    this.converterBuildingIndexById.clear();
-    this.activeConverterBuildings.length = 0;
-    this.activeConverterBuildingIndexById.clear();
-    this.resourcePylonBuildings.length = 0;
-    this.resourcePylonBuildingIndexById.clear();
-    this.activeResourcePylonBuildings.length = 0;
-    this.activeResourcePylonBuildingIndexById.clear();
-    this.factoryBuildings.length = 0;
-    this.factoryBuildingIndexById.clear();
-    this.activeFactoryBuildings.length = 0;
-    this.activeFactoryBuildingIndexById.clear();
-    this.radarBuildings.length = 0;
-    this.radarBuildingIndexById.clear();
-    this.activeRadarBuildings.length = 0;
-    this.activeRadarBuildingIndexById.clear();
+    clearAnimatedBuildingEntries(this.solarBuildings, this.solarBuildingIndexById);
+    clearAnimatedBuildingEntries(this.activeSolarBuildings, this.activeSolarBuildingIndexById);
+    clearAnimatedBuildingEntries(this.windBuildings, this.windBuildingIndexById);
+    clearAnimatedBuildingEntries(this.activeWindBuildings, this.activeWindBuildingIndexById);
+    clearAnimatedBuildingEntries(this.extractorBuildings, this.extractorBuildingIndexById);
+    clearAnimatedBuildingEntries(this.activeExtractorBuildings, this.activeExtractorBuildingIndexById);
+    clearAnimatedBuildingEntries(this.converterBuildings, this.converterBuildingIndexById);
+    clearAnimatedBuildingEntries(this.activeConverterBuildings, this.activeConverterBuildingIndexById);
+    clearAnimatedBuildingEntries(this.resourcePylonBuildings, this.resourcePylonBuildingIndexById);
+    clearAnimatedBuildingEntries(this.activeResourcePylonBuildings, this.activeResourcePylonBuildingIndexById);
+    clearAnimatedBuildingEntries(this.factoryBuildings, this.factoryBuildingIndexById);
+    clearAnimatedBuildingEntries(this.activeFactoryBuildings, this.activeFactoryBuildingIndexById);
+    clearAnimatedBuildingEntries(this.radarBuildings, this.radarBuildingIndexById);
+    clearAnimatedBuildingEntries(this.activeRadarBuildings, this.activeRadarBuildingIndexById);
     this.extractorRotorPhases.clear();
     this.extractorRotorSpeeds.clear();
     this.extractorCloseAmounts.clear();

@@ -72,6 +72,14 @@ export function removeAnimatedBuildingEntry<TEntry extends AnimatedBuildingEntry
   list.pop();
 }
 
+export function clearAnimatedBuildingEntries<TEntry extends AnimatedBuildingEntry>(
+  list: TEntry[],
+  indexById: Map<EntityId, number>,
+): void {
+  list.length = 0;
+  indexById.clear();
+}
+
 export function addActiveAnimatedBuildingEntry<TEntry extends AnimatedBuildingEntry>(
   activeList: TEntry[],
   activeIndexById: Map<EntityId, number>,
