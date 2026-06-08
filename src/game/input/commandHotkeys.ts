@@ -29,6 +29,11 @@ export type CommandHotkeyId =
   | 'build.slot2'
   | 'build.slot3'
   | 'build.slot4'
+  | 'build.slot5'
+  | 'build.slot6'
+  | 'build.slot7'
+  | 'build.slot8'
+  | 'build.slot9'
   | 'build.spacingIncrease'
   | 'build.spacingDecrease'
   | 'build.rotateClockwise'
@@ -115,6 +120,11 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'build.slot2',
   'build.slot3',
   'build.slot4',
+  'build.slot5',
+  'build.slot6',
+  'build.slot7',
+  'build.slot8',
+  'build.slot9',
   'build.spacingIncrease',
   'build.spacingDecrease',
   'build.rotateClockwise',
@@ -185,6 +195,11 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'build.slot2': 'Build Slot 2',
   'build.slot3': 'Build Slot 3',
   'build.slot4': 'Build Slot 4',
+  'build.slot5': 'Build Slot 5',
+  'build.slot6': 'Build Slot 6',
+  'build.slot7': 'Build Slot 7',
+  'build.slot8': 'Build Slot 8',
+  'build.slot9': 'Build Slot 9',
   'build.spacingIncrease': 'Build Spacing Increase',
   'build.spacingDecrease': 'Build Spacing Decrease',
   'build.rotateClockwise': 'Build Rotate Clockwise',
@@ -270,6 +285,11 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'build.slot2': [code('2', 'Digit2', { shift: 'any' })],
     'build.slot3': [code('3', 'Digit3', { shift: 'any' })],
     'build.slot4': [code('4', 'Digit4', { shift: 'any' })],
+    'build.slot5': [code('5', 'Digit5', { shift: 'any' })],
+    'build.slot6': [code('6', 'Digit6', { shift: 'any' })],
+    'build.slot7': [code('7', 'Digit7', { shift: 'any' })],
+    'build.slot8': [code('8', 'Digit8', { shift: 'any' })],
+    'build.slot9': [code('9', 'Digit9', { shift: 'any' })],
     'build.spacingIncrease': [code(']', 'BracketRight', { shift: 'any' })],
     'build.spacingDecrease': [code('[', 'BracketLeft', { shift: 'any' })],
     'build.rotateClockwise': [code('.', 'Period', { shift: 'any' })],
@@ -350,6 +370,11 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'build.slot2': [code('X', 'KeyX', { shift: 'any' })],
     'build.slot3': [code('C', 'KeyC', { shift: 'any' })],
     'build.slot4': [code('V', 'KeyV', { shift: 'any' })],
+    'build.slot5': [code('5', 'Digit5', { shift: 'any' })],
+    'build.slot6': [code('6', 'Digit6', { shift: 'any' })],
+    'build.slot7': [code('7', 'Digit7', { shift: 'any' })],
+    'build.slot8': [code('8', 'Digit8', { shift: 'any' })],
+    'build.slot9': [code('9', 'Digit9', { shift: 'any' })],
     'build.spacingIncrease': [code(']', 'BracketRight', { shift: 'any' })],
     'build.spacingDecrease': [code('[', 'BracketLeft', { shift: 'any' })],
     'build.rotateClockwise': [code('.', 'Period', { shift: 'any' })],
@@ -418,6 +443,11 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'build.slot2': [code('X', 'KeyX', { shift: 'any' })],
     'build.slot3': [code('C', 'KeyC', { shift: 'any' })],
     'build.slot4': [code('V', 'KeyV', { shift: 'any' })],
+    'build.slot5': [code('5', 'Digit5', { shift: 'any' })],
+    'build.slot6': [code('6', 'Digit6', { shift: 'any' })],
+    'build.slot7': [code('7', 'Digit7', { shift: 'any' })],
+    'build.slot8': [code('8', 'Digit8', { shift: 'any' })],
+    'build.slot9': [code('9', 'Digit9', { shift: 'any' })],
     'build.spacingIncrease': [code(']', 'BracketRight', { shift: 'any' })],
     'build.spacingDecrease': [code('[', 'BracketLeft', { shift: 'any' })],
     'build.rotateClockwise': [code('.', 'Period', { shift: 'any' })],

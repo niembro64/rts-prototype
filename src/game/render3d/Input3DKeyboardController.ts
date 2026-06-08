@@ -401,6 +401,21 @@ export class Input3DKeyboardController {
       case 'build.slot4':
         this.enterBuildSlot(3);
         break;
+      case 'build.slot5':
+        this.enterBuildSlot(4);
+        break;
+      case 'build.slot6':
+        this.enterBuildSlot(5);
+        break;
+      case 'build.slot7':
+        this.enterBuildSlot(6);
+        break;
+      case 'build.slot8':
+        this.enterBuildSlot(7);
+        break;
+      case 'build.slot9':
+        this.enterBuildSlot(8);
+        break;
       case 'build.spacingIncrease':
         this.config.increaseBuildLineSpacing();
         break;

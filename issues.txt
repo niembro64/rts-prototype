@@ -25,7 +25,8 @@ https://github.com/beyond-all-reason/Beyond-All-Reason/tree/master/luaui/configs
 
 Issue: the shared command-hotkey registry and in-game preset switcher only cover
 commands that already exist in rts-prototype, with prototype, BAR-grid, and
-BAR-legacy presets for that subset, plus runtime multi-key sequence dispatch.
+BAR-legacy presets for that subset, runtime multi-key sequence dispatch, and
+build-slot hotkeys covering the current nine-structure build roster.
 Finish the BAR-compatible keymap and command UI layer by importing the complete
 BAR grid/legacy bindings and adding command buttons for missing BAR commands so
 visible hotkeys match the active keymap across the whole command surface.
@@ -43,7 +44,8 @@ the BAR grid build menu categories, grid-menu cell hotkeys, construction
 shortcuts, build grid, build border, build split, upgrade T1 mex area,
 upgrade T1 -> T2, and visual
 previews for every build shape. rts-prototype has an allowed-building strip,
-number keys, single-placement ghost, Shift queueing, left-drag build line
+active-preset build-slot hotkeys, single-placement ghost, Shift queueing,
+left-drag build line
 placement with adjustable spacing controls and a 3D line preview through
 existing build validation, plus 90-degree build-facing controls whose preview,
 snapping, occupancy, collision footprint, and support surface all use the

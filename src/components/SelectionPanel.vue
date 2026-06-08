@@ -193,6 +193,11 @@ const BUILD_SLOT_COMMAND_IDS = [
   'build.slot2',
   'build.slot3',
   'build.slot4',
+  'build.slot5',
+  'build.slot6',
+  'build.slot7',
+  'build.slot8',
+  'build.slot9',
 ] as const satisfies readonly CommandHotkeyId[];
 
 function compactBuildingLabel(label: string): string {
