@@ -61,8 +61,8 @@ import { isCommander } from '../sim/combat/combatUtils';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { Input3DSpecialModes, type Input3DSpecialMode } from './Input3DSpecialModes';
 import { Input3DBuildPlacementState } from './Input3DBuildPlacementState';
+import { Input3DHoverState, resolveInput3DHoverTargets } from './Input3DHoverState';
 
-const HOVER_RAYCAST_INTERVAL_MS = 50;
 const SELECTABLE_GROUND_MIN_UNIT_RADIUS = 8;
 const REPAIR_AREA_RADIUS = 220;
 const ATTACK_AREA_RADIUS = 300;
@@ -127,11 +127,7 @@ export class Input3DManager {
   public onPingModeChange?: (active: boolean) => void;
   public onTowerTargetModeChange?: (active: boolean) => void;
   private specialModes: Input3DSpecialModes;
-  private hoveredEntityId: EntityId | null = null;
-  private hoveredSelectableEntityId: EntityId | null = null;
-  private lastHoverRaycastMs = 0;
-  private lastHoverClientX = Number.NaN;
-  private lastHoverClientY = Number.NaN;
+  private hoverState = new Input3DHoverState();
   private buildPlacement = new Input3DBuildPlacementState();
   private appliedCursor: CommandCursorKind = 'default';
 
@@ -292,8 +288,9 @@ export class Input3DManager {
   }
 
   getHoveredEntity(): Entity | null {
-    return this.hoveredEntityId !== null
-      ? this.entitySource.getEntity(this.hoveredEntityId) ?? null
+    const hoveredEntityId = this.hoverState.hoveredEntityId;
+    return hoveredEntityId !== null
+      ? this.entitySource.getEntity(hoveredEntityId) ?? null
       : null;
   }
 
@@ -691,13 +688,15 @@ export class Input3DManager {
     if (this.leftDown) return 'select';
     if (this.rightDown) return this.waypointCursorKind();
 
-    const hovered = this.hoveredEntityId !== null
-      ? this.entitySource.getEntity(this.hoveredEntityId) ?? null
+    const hoveredEntityId = this.hoverState.hoveredEntityId;
+    const hovered = hoveredEntityId !== null
+      ? this.entitySource.getEntity(hoveredEntityId) ?? null
       : null;
     if (this.isRepairableBySelectedCommander(hovered)) return 'repair';
     if (this.isAttackableBySelectedUnits(hovered)) return 'attack';
-    const selectableHovered = this.hoveredSelectableEntityId !== null
-      ? this.entitySource.getEntity(this.hoveredSelectableEntityId) ?? null
+    const selectableHoveredId = this.hoverState.hoveredSelectableEntityId;
+    const selectableHovered = selectableHoveredId !== null
+      ? this.entitySource.getEntity(selectableHoveredId) ?? null
       : null;
     if (this.isSelectableByActivePlayer(selectableHovered)) return 'select';
     if (this.entitySource.getSelectedUnits().length > 0) return this.waypointCursorKind();
@@ -893,13 +892,13 @@ export class Input3DManager {
   }
 
   /** Fire a one-shot scan sweep at the last-known hover position
-   *  (FOW-14). Reads lastHoverClientX/Y, raycasts to the ground, then
+   *  (FOW-14). Reads the last-known hover client point, raycasts to the ground, then
    *  enqueues a 'scan' command — the authoritative side spawns a
    *  short-lived vision pulse there. No mode toggle: press once, the
    *  sweep happens, no further state to manage. */
   private enqueueScanAtCursor(): void {
-    if (!Number.isFinite(this.lastHoverClientX) || !Number.isFinite(this.lastHoverClientY)) return;
-    const world = this.raycastGround(this.lastHoverClientX, this.lastHoverClientY);
+    if (!this.hoverState.hasFiniteClientPoint()) return;
+    const world = this.raycastGround(this.hoverState.lastClientX, this.hoverState.lastClientY);
     if (!world) return;
     this.localCommandQueue.enqueue({
       type: 'scan',
@@ -970,56 +969,27 @@ export class Input3DManager {
     return null;
   }
 
-  /** Cursor hover serves two purposes: command affordances can target
-   *  any live enemy/friendly entity, but the select cursor must match
-   *  the actual left-click selection rules for owned entities. */
-  private resolveHoverTargets(
-    clientX: number,
-    clientY: number,
-  ): { hovered: EntityId | null; selectable: EntityId | null } {
-    let hovered: EntityId | null = null;
-    let selectable: EntityId | null = null;
-
-    const world = this.raycastGround(clientX, clientY);
-    if (!world) return { hovered, selectable };
-
-    const options = { minUnitRadius: SELECTABLE_GROUND_MIN_UNIT_RADIUS };
-    if (hovered === null) {
-      hovered = findClosestSelectableEntityToPoint(
-        this.entitySource,
-        world.x,
-        world.y,
-        options,
-      )?.id ?? null;
-    }
-    if (selectable === null) {
-      selectable = findClosestSelectableEntityToPoint(
-        this.entitySource,
-        world.x,
-        world.y,
-        {
-          ...options,
-          playerId: this.context.activePlayerId,
-        },
-      )?.id ?? null;
-    }
-    return { hovered, selectable };
-  }
-
   private clearHoveredEntities(): void {
-    this.hoveredEntityId = null;
-    this.hoveredSelectableEntityId = null;
+    this.hoverState.clearTargets();
   }
 
   private updateHoveredEntity(clientX: number, clientY: number): void {
-    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    if (now - this.lastHoverRaycastMs < HOVER_RAYCAST_INTERVAL_MS) return;
-    this.lastHoverRaycastMs = now;
-    this.lastHoverClientX = clientX;
-    this.lastHoverClientY = clientY;
-    const targets = this.resolveHoverTargets(clientX, clientY);
-    this.hoveredEntityId = targets.hovered;
-    this.hoveredSelectableEntityId = targets.selectable;
+    this.hoverState.update(
+      clientX,
+      clientY,
+      (targetX, targetY) => {
+        const world = this.raycastGround(targetX, targetY);
+        return world
+          ? resolveInput3DHoverTargets(
+            this.entitySource,
+            this.context.activePlayerId,
+            world.x,
+            world.y,
+            SELECTABLE_GROUND_MIN_UNIT_RADIUS,
+          )
+          : { hovered: null, selectable: null };
+      },
+    );
   }
 
   private handleMouseDown(e: MouseEvent): void {
@@ -1319,7 +1289,7 @@ export class Input3DManager {
       this.pingMode
     ) {
       this.clearHoveredEntities();
-    } else if (this.lastHoverClientX !== e.clientX || this.lastHoverClientY !== e.clientY) {
+    } else if (!this.hoverState.hasClientPoint(e.clientX, e.clientY)) {
       this.updateHoveredEntity(e.clientX, e.clientY);
     }
 
