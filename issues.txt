@@ -31,18 +31,6 @@ BAR grid/legacy bindings, exposing a custom binding editor, and adding command
 buttons for missing BAR commands so visible hotkeys match the active keymap
 across the whole command surface.
 
-Issue: the selection command surface is still short of BAR. Select all owned
-units, select all matching owned entities, select idle builders, select waiting
-units, select same type only, select commander focus/add, and mixed-selection
-narrowing, select all matching units in view, select all units from previous
-selection, select only mobile units, and invert selection have command-card or
-hotkey affordances. Ctrl-click and Ctrl-drag box selection can remove selectable
-entities from the current selection. Split army and loop selection have
-command-card and hotkey affordances. Select boxes support BAR-style Shift
-append/all-kinds, Ctrl remove, Alt mobile-only, Space idle-only, and Z same-type
-modifiers. Add select idle transports once transport units and load/unload state
-exist.
-
 Issue: control groups still lack BAR factory preset integration and any
 required spectator/team selection behavior that maps to rts-prototype's lobby
 and player-switching model.
