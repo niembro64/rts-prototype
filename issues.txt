@@ -44,10 +44,9 @@ Issue: construction commands are missing most BAR build ergonomics. Implement
 the BAR grid build menu categories, grid-menu cell hotkeys, legacy quick-build
 Z/X/C/V cycling, construction shortcuts, build line, build grid, build border,
 build split, build spacing increase/decrease, build facing/rotation controls,
-area metal extractor placement, upgrade T1 mex area, upgrade T1 -> T2, and
-visual previews for every build shape. The current allowed-building strip,
-number keys, single-placement ghost, and Shift queueing do not satisfy BAR
-fallback behavior.
+upgrade T1 mex area, upgrade T1 -> T2, and visual previews for every build
+shape. The current allowed-building strip, number keys, single-placement ghost,
+and Shift queueing do not satisfy BAR fallback behavior.
 
 Issue: queue editing and command insertion are incomplete. BAR supports queue to
 next, commandinsert/prepend-between, cancel last command, factory guard, and

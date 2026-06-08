@@ -30,6 +30,7 @@ import {
 const REPAIR_AREA_RADIUS = 220;
 const RECLAIM_AREA_RADIUS = 220;
 const ATTACK_AREA_RADIUS = 300;
+const AREA_MEX_BLUEPRINT_ID: BuildingBlueprintId = 'buildingExtractor';
 
 type AreaDrag = {
   kind: Input3DAreaDragKind;
@@ -248,6 +249,7 @@ export class Input3DModeClickController {
   }
 
   private activeAreaDragKind(): Input3DAreaDragKind | null {
+    if (this.config.mode.buildingBlueprintId === AREA_MEX_BLUEPRINT_ID) return 'buildMexArea';
     if (this.config.isRepairAreaMode()) return 'repairArea';
     if (this.config.isAttackAreaMode()) return 'attackArea';
     if (this.config.isReclaimMode()) return 'reclaimArea';
@@ -256,6 +258,10 @@ export class Input3DModeClickController {
 
   private commitAreaDrag(drag: AreaDrag): void {
     const radius = Math.max(1, areaDragRadius(drag));
+    if (drag.kind === 'buildMexArea') {
+      this.commitBuildMexAreaDrag(drag, radius);
+      return;
+    }
     if (drag.kind === 'repairArea') {
       const cmd = buildRepairAreaCommand(
         this.config.getSelectedCommander(),
@@ -301,6 +307,41 @@ export class Input3DModeClickController {
     if (cmd) this.config.commandQueue.enqueue(cmd);
     this.config.applyCursor('reclaim');
     if (!drag.queue) this.config.exitReclaimMode();
+  }
+
+  private commitBuildMexAreaDrag(drag: AreaDrag, radius: number): void {
+    const builder = this.config.getSelectedBuilder();
+    if (builder === null || !entityCanBuild(builder, AREA_MEX_BLUEPRINT_ID)) {
+      this.config.applyCursor('blocked');
+      return;
+    }
+    const placements = this.buildPlacement.planMetalExtractorPlacementsInArea(
+      drag.start.x,
+      drag.start.y,
+      radius,
+      this.config.getEntitySource(),
+    );
+    if (placements.length === 0) {
+      this.config.applyCursor('blocked');
+      return;
+    }
+
+    const tick = this.config.getTick();
+    for (let i = 0; i < placements.length; i++) {
+      const placement = placements[i];
+      this.config.commandQueue.enqueue({
+        type: 'startBuild',
+        tick,
+        builderId: builder.id,
+        buildingBlueprintId: AREA_MEX_BLUEPRINT_ID,
+        gridX: placement.gridX,
+        gridY: placement.gridY,
+        queue: i === 0 ? drag.queue : true,
+        queueFront: i === 0 ? drag.queueFront : false,
+      });
+    }
+    this.config.applyCursor('build');
+    if (!drag.queue) this.config.mode.exitBuildMode();
   }
 
   private handleLeftClick(e: MouseEvent): void {

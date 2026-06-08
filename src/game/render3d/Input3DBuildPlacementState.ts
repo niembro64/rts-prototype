@@ -4,12 +4,20 @@ import {
   generateMetalDeposits,
   type MetalDeposit,
 } from '../../metalDepositConfig';
+import { getBuildingConfig } from '../sim/buildConfigs';
 import {
   getBuildingPlacementDiagnostics,
   getOccupiedBuildingCells,
   getSnappedBuildPosition,
   type BuildPlacementDiagnostics,
 } from '../input/helpers';
+
+export type BuildAreaPlacementPlan = {
+  gridX: number;
+  gridY: number;
+  x: number;
+  y: number;
+};
 
 type BuildPlacementEntitySource = {
   getBuildings: () => Entity[];
@@ -96,4 +104,67 @@ export class Input3DBuildPlacementState {
     }
     return this.diagnostics;
   }
+
+  planMetalExtractorPlacementsInArea(
+    worldX: number,
+    worldY: number,
+    radius: number,
+    entitySource: BuildPlacementEntitySource,
+  ): BuildAreaPlacementPlan[] {
+    const buildingBlueprintId: BuildingBlueprintId = 'buildingExtractor';
+    const config = getBuildingConfig(buildingBlueprintId);
+    const buildings = entitySource.getBuildings();
+    const entitySetVersion = entitySource.getEntitySetVersion?.() ?? buildings.length;
+    const terrainBuildabilityGrid = entitySource.getTerrainBuildabilityGrid?.() ?? null;
+    const occupancyVersion = `${entitySetVersion}`;
+    if (occupancyVersion !== this.occupancyVersion || !this.occupiedCells) {
+      this.occupancyVersion = occupancyVersion;
+      this.occupiedCells = getOccupiedBuildingCells(buildings);
+    }
+    const plannedOccupiedCells = new Set(this.occupiedCells);
+    const planned = new Set<string>();
+    const placements: BuildAreaPlacementPlan[] = [];
+    const safeRadius = Math.max(1, radius);
+
+    for (const deposit of this.metalDeposits) {
+      const dx = deposit.x - worldX;
+      const dy = deposit.y - worldY;
+      if (Math.sqrt(dx * dx + dy * dy) > safeRadius + deposit.resourceRadius) continue;
+
+      const snapped = getSnappedBuildPosition(deposit.x, deposit.y, buildingBlueprintId);
+      const key = cellKey(snapped.gridX, snapped.gridY);
+      if (planned.has(key)) continue;
+
+      const diagnostics = getBuildingPlacementDiagnostics(
+        buildingBlueprintId,
+        snapped.x,
+        snapped.y,
+        this.mapWidth,
+        this.mapHeight,
+        buildings,
+        this.metalDeposits,
+        plannedOccupiedCells,
+        terrainBuildabilityGrid,
+      );
+      if (!diagnostics.canPlace || (diagnostics.metalCoveredCells ?? 0) <= 0) continue;
+
+      planned.add(key);
+      placements.push({
+        gridX: diagnostics.gridX,
+        gridY: diagnostics.gridY,
+        x: diagnostics.x,
+        y: diagnostics.y,
+      });
+      for (let y = 0; y < config.gridHeight; y++) {
+        for (let x = 0; x < config.gridWidth; x++) {
+          plannedOccupiedCells.add(cellKey(diagnostics.gridX + x, diagnostics.gridY + y));
+        }
+      }
+    }
+    return placements;
+  }
+}
+
+function cellKey(gx: number, gy: number): string {
+  return `${gx},${gy}`;
 }
