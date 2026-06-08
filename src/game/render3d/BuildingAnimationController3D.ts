@@ -40,10 +40,14 @@ import type { ConstructionVisualController3D } from './ConstructionVisualControl
 import type { ExtractorBladeAnim } from './MetalExtractorMesh3D';
 import { visualAnimBlend, visualAnimHalfLife } from './visualAnimationEma';
 import {
+  addActiveAnimatedBuildingEntry,
   addAnimatedBuildingEntry,
+  addResourcePylonBuildingEntry,
   removeAnimatedBuildingEntry,
   updateAnimatedBuildingQueue,
   type AnimatedBuildingEntry,
+  type ResourcePylonBuildingEntry,
+  type ResourcePylonBuildingKind,
 } from './BuildingAnimationLists3D';
 
 // Open/close pose transitions are discrete local state changes, not
@@ -101,12 +105,6 @@ function applyResourcePylonDirection(pylon: ResourcePylonRig | undefined, signed
   if (!pylon || signedRate === 0) return;
   pylon.direction = signedRate > 0 ? 'outbound' : 'inbound';
 }
-
-type ResourcePylonBuildingKind = 'solar' | 'wind' | 'extractor' | 'converter';
-
-type ResourcePylonBuildingEntry = AnimatedBuildingEntry & {
-  kind: ResourcePylonBuildingKind;
-};
 
 const FACTORY_ANIMATION_IDLE_EPSILON = 0.001;
 const BUILDING_RIG_IDLE_EPSILON = 0.001;
@@ -281,8 +279,8 @@ export class BuildingAnimationController3D {
     removeAnimatedBuildingEntry(this.activeExtractorBuildings, this.activeExtractorBuildingIndexById, id);
     removeAnimatedBuildingEntry(this.converterBuildings, this.converterBuildingIndexById, id);
     removeAnimatedBuildingEntry(this.activeConverterBuildings, this.activeConverterBuildingIndexById, id);
-    this.removeResourcePylonBuilding(id);
-    this.removeActiveResourcePylonBuilding(id);
+    removeAnimatedBuildingEntry(this.resourcePylonBuildings, this.resourcePylonBuildingIndexById, id);
+    removeAnimatedBuildingEntry(this.activeResourcePylonBuildings, this.activeResourcePylonBuildingIndexById, id);
     this.extractorRotorPhases.delete(id);
     this.extractorRotorSpeeds.delete(id);
     this.extractorCloseAmounts.delete(id);
@@ -768,32 +766,13 @@ export class BuildingAnimationController3D {
     entity: Entity,
     mesh: EntityMesh,
   ): ResourcePylonBuildingEntry {
-    const id = entity.id;
-    const existingIndex = this.resourcePylonBuildingIndexById.get(id);
-    if (existingIndex !== undefined) {
-      const entry = this.resourcePylonBuildings[existingIndex];
-      entry.entity = entity;
-      entry.mesh = mesh;
-      entry.kind = kind;
-      return entry;
-    }
-    const entry: ResourcePylonBuildingEntry = { id, entity, mesh, kind };
-    this.resourcePylonBuildingIndexById.set(id, this.resourcePylonBuildings.length);
-    this.resourcePylonBuildings.push(entry);
-    return entry;
-  }
-
-  private removeResourcePylonBuilding(id: EntityId): void {
-    const index = this.resourcePylonBuildingIndexById.get(id);
-    if (index === undefined) return;
-    this.resourcePylonBuildingIndexById.delete(id);
-    const lastIndex = this.resourcePylonBuildings.length - 1;
-    if (index !== lastIndex) {
-      const last = this.resourcePylonBuildings[lastIndex];
-      this.resourcePylonBuildings[index] = last;
-      this.resourcePylonBuildingIndexById.set(last.id, index);
-    }
-    this.resourcePylonBuildings.pop();
+    return addResourcePylonBuildingEntry(
+      this.resourcePylonBuildings,
+      this.resourcePylonBuildingIndexById,
+      kind,
+      entity,
+      mesh,
+    );
   }
 
   private refreshActiveResourcePylonQueue(): void {
@@ -801,31 +780,12 @@ export class BuildingAnimationController3D {
     for (let i = 0; i < activeSourceIds.length; i++) {
       const entryIndex = this.resourcePylonBuildingIndexById.get(activeSourceIds[i]);
       if (entryIndex === undefined) continue;
-      this.addActiveResourcePylonBuilding(this.resourcePylonBuildings[entryIndex]);
+      addActiveAnimatedBuildingEntry(
+        this.activeResourcePylonBuildings,
+        this.activeResourcePylonBuildingIndexById,
+        this.resourcePylonBuildings[entryIndex],
+      );
     }
-  }
-
-  private addActiveResourcePylonBuilding(entry: ResourcePylonBuildingEntry): void {
-    const activeIndex = this.activeResourcePylonBuildingIndexById.get(entry.id);
-    if (activeIndex !== undefined) {
-      this.activeResourcePylonBuildings[activeIndex] = entry;
-      return;
-    }
-    this.activeResourcePylonBuildingIndexById.set(entry.id, this.activeResourcePylonBuildings.length);
-    this.activeResourcePylonBuildings.push(entry);
-  }
-
-  private removeActiveResourcePylonBuilding(id: EntityId): void {
-    const index = this.activeResourcePylonBuildingIndexById.get(id);
-    if (index === undefined) return;
-    this.activeResourcePylonBuildingIndexById.delete(id);
-    const lastIndex = this.activeResourcePylonBuildings.length - 1;
-    if (index !== lastIndex) {
-      const last = this.activeResourcePylonBuildings[lastIndex];
-      this.activeResourcePylonBuildings[index] = last;
-      this.activeResourcePylonBuildingIndexById.set(last.id, index);
-    }
-    this.activeResourcePylonBuildings.pop();
   }
 
   private updateActiveResourcePylons(spinDt: number): void {
@@ -836,7 +796,11 @@ export class BuildingAnimationController3D {
       if (this.updateResourcePylonBuilding(entry, rateAlpha)) {
         i++;
       } else {
-        this.removeActiveResourcePylonBuilding(entry.id);
+        removeAnimatedBuildingEntry(
+          this.activeResourcePylonBuildings,
+          this.activeResourcePylonBuildingIndexById,
+          entry.id,
+        );
       }
     }
   }

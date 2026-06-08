@@ -7,6 +7,12 @@ export type AnimatedBuildingEntry = {
   mesh: EntityMesh;
 };
 
+export type ResourcePylonBuildingKind = 'solar' | 'wind' | 'extractor' | 'converter';
+
+export type ResourcePylonBuildingEntry = AnimatedBuildingEntry & {
+  kind: ResourcePylonBuildingKind;
+};
+
 export function addAnimatedBuildingEntry(
   list: AnimatedBuildingEntry[],
   indexById: Map<EntityId, number>,
@@ -27,8 +33,30 @@ export function addAnimatedBuildingEntry(
   return entry;
 }
 
-export function removeAnimatedBuildingEntry(
-  list: AnimatedBuildingEntry[],
+export function addResourcePylonBuildingEntry(
+  list: ResourcePylonBuildingEntry[],
+  indexById: Map<EntityId, number>,
+  kind: ResourcePylonBuildingKind,
+  entity: Entity,
+  mesh: EntityMesh,
+): ResourcePylonBuildingEntry {
+  const id = entity.id;
+  const existingIndex = indexById.get(id);
+  if (existingIndex !== undefined) {
+    const entry = list[existingIndex];
+    entry.entity = entity;
+    entry.mesh = mesh;
+    entry.kind = kind;
+    return entry;
+  }
+  const entry: ResourcePylonBuildingEntry = { id, entity, mesh, kind };
+  indexById.set(id, list.length);
+  list.push(entry);
+  return entry;
+}
+
+export function removeAnimatedBuildingEntry<TEntry extends AnimatedBuildingEntry>(
+  list: TEntry[],
   indexById: Map<EntityId, number>,
   id: EntityId,
 ): void {
@@ -44,10 +72,24 @@ export function removeAnimatedBuildingEntry(
   list.pop();
 }
 
-export function updateAnimatedBuildingQueue(
-  activeList: AnimatedBuildingEntry[],
+export function addActiveAnimatedBuildingEntry<TEntry extends AnimatedBuildingEntry>(
+  activeList: TEntry[],
   activeIndexById: Map<EntityId, number>,
-  entry: AnimatedBuildingEntry,
+  entry: TEntry,
+): void {
+  const activeIndex = activeIndexById.get(entry.id);
+  if (activeIndex !== undefined) {
+    activeList[activeIndex] = entry;
+    return;
+  }
+  activeIndexById.set(entry.id, activeList.length);
+  activeList.push(entry);
+}
+
+export function updateAnimatedBuildingQueue<TEntry extends AnimatedBuildingEntry>(
+  activeList: TEntry[],
+  activeIndexById: Map<EntityId, number>,
+  entry: TEntry,
   needsFrame: boolean,
 ): void {
   const activeIndex = activeIndexById.get(entry.id);
