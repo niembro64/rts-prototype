@@ -26,6 +26,8 @@ type Input3DKeyboardControllerConfig = {
   hasSelectedBuilder: () => boolean;
   getSelectedBuilderAllowedBuildBlueprintIds: () => readonly StructureBlueprintId[];
   exitSpecialModes: (includeTowerTarget?: boolean) => void;
+  increaseBuildLineSpacing: () => void;
+  decreaseBuildLineSpacing: () => void;
   stopSelectedUnits: () => void;
   skipCurrentOrder: () => void;
   removeLastQueuedOrder: () => void;
@@ -392,6 +394,12 @@ export class Input3DKeyboardController {
         break;
       case 'build.slot4':
         this.enterBuildSlot(3);
+        break;
+      case 'build.spacingIncrease':
+        this.config.increaseBuildLineSpacing();
+        break;
+      case 'build.spacingDecrease':
+        this.config.decreaseBuildLineSpacing();
         break;
       case 'select.allUnits':
         this.config.selectAllOwnedUnits();

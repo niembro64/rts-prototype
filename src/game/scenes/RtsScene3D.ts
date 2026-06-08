@@ -470,6 +470,10 @@ export class RtsScene3D {
     this.inputManager.onBuildModeChange = (buildingBlueprintId) => {
       this.selectionSystem.setBuildMode(buildingBlueprintId);
     };
+    this.inputManager.onBuildLineSpacingChange = (spacing) => {
+      this.selectionSystem.setBuildLineSpacing(spacing);
+    };
+    this.selectionSystem.setBuildLineSpacing(this.inputManager.getBuildLineSpacingInfo());
     this.inputManager.onDGunModeChange = (active) => {
       this.selectionSystem.setDGunMode(active);
     };
@@ -935,6 +939,15 @@ export class RtsScene3D {
   public cancelBuildMode(): void {
     this.inputManager?.cancelBuildMode();
   }
+
+  public increaseBuildLineSpacing(): void {
+    this.inputManager?.increaseBuildLineSpacing();
+  }
+
+  public decreaseBuildLineSpacing(): void {
+    this.inputManager?.decreaseBuildLineSpacing();
+  }
+
   public toggleDGunMode(): void {
     this.inputManager?.toggleDGunMode();
   }

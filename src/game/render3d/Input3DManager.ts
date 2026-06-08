@@ -54,6 +54,7 @@ import { Input3DPicker } from './Input3DPicker';
 import { Input3DRightDragController, type Input3DLineDragState } from './Input3DRightDragController';
 import { Input3DModeClickController } from './Input3DModeClickController';
 import type { Input3DAreaDragState } from './Input3DAreaDragState';
+import type { BuildLineSpacingInfo } from './Input3DBuildPlacementState';
 
 const SELECTABLE_GROUND_MIN_UNIT_RADIUS = 8;
 
@@ -100,6 +101,7 @@ export class Input3DManager {
   // handleLeftMouseDown.
   private mode = new CommanderModeController();
   public onBuildModeChange?: (buildingBlueprintId: BuildingBlueprintId | null) => void;
+  public onBuildLineSpacingChange?: (spacing: BuildLineSpacingInfo) => void;
   public onDGunModeChange?: (active: boolean) => void;
   public onRepairAreaModeChange?: (active: boolean) => void;
   public onAttackModeChange?: (active: boolean) => void;
@@ -232,6 +234,8 @@ export class Input3DManager {
       hasSelectedBuilder: () => this.hasSelectedBuilder(),
       getSelectedBuilderAllowedBuildBlueprintIds: () => this.getSelectedBuilderAllowedBuildBlueprintIds(),
       exitSpecialModes: (includeTowerTarget) => this.exitSpecialModes(includeTowerTarget),
+      increaseBuildLineSpacing: () => this.increaseBuildLineSpacing(),
+      decreaseBuildLineSpacing: () => this.decreaseBuildLineSpacing(),
       stopSelectedUnits: () => this.stopSelectedUnits(),
       skipCurrentOrder: () => this.skipCurrentOrder(),
       removeLastQueuedOrder: () => this.removeLastQueuedOrder(),
@@ -317,6 +321,7 @@ export class Input3DManager {
       this.modeClicks.handleBuildModeChange(buildingBlueprintId);
       this.refreshCursor();
       this.onBuildModeChange?.(buildingBlueprintId);
+      this.onBuildLineSpacingChange?.(this.modeClicks.getBuildLineSpacingInfo());
     };
     this.mode.onDGunModeChange = (active) => {
       this.refreshCursor();
@@ -436,6 +441,26 @@ export class Input3DManager {
   /** True if build mode is currently active. */
   isInBuildMode(): boolean {
     return this.mode.isInBuildMode;
+  }
+
+  getBuildLineSpacingInfo(): BuildLineSpacingInfo {
+    return this.modeClicks.getBuildLineSpacingInfo();
+  }
+
+  increaseBuildLineSpacing(): void {
+    if (!this.mode.isInBuildMode) return;
+    const previousSteps = this.modeClicks.getBuildLineSpacingInfo().steps;
+    const next = this.modeClicks.increaseBuildLineSpacing();
+    if (next.steps === previousSteps) return;
+    this.onBuildLineSpacingChange?.(next);
+  }
+
+  decreaseBuildLineSpacing(): void {
+    if (!this.mode.isInBuildMode) return;
+    const previousSteps = this.modeClicks.getBuildLineSpacingInfo().steps;
+    const next = this.modeClicks.decreaseBuildLineSpacing();
+    if (next.steps === previousSteps) return;
+    this.onBuildLineSpacingChange?.(next);
   }
 
   /** Toggle D-gun mode from UI. Only enters if a commander is

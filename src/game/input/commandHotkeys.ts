@@ -28,6 +28,8 @@ export type CommandHotkeyId =
   | 'build.slot2'
   | 'build.slot3'
   | 'build.slot4'
+  | 'build.spacingIncrease'
+  | 'build.spacingDecrease'
   | 'select.allUnits'
   | 'select.matching'
   | 'select.matchingInView'
@@ -109,6 +111,8 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'build.slot2',
   'build.slot3',
   'build.slot4',
+  'build.spacingIncrease',
+  'build.spacingDecrease',
   'select.allUnits',
   'select.matching',
   'select.matchingInView',
@@ -174,6 +178,8 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'build.slot2': 'Build Slot 2',
   'build.slot3': 'Build Slot 3',
   'build.slot4': 'Build Slot 4',
+  'build.spacingIncrease': 'Build Spacing Increase',
+  'build.spacingDecrease': 'Build Spacing Decrease',
   'select.allUnits': 'Select All Units',
   'select.matching': 'Select Matching',
   'select.matchingInView': 'Select Matching In View',
@@ -254,6 +260,8 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'build.slot2': [code('2', 'Digit2', { shift: 'any' })],
     'build.slot3': [code('3', 'Digit3', { shift: 'any' })],
     'build.slot4': [code('4', 'Digit4', { shift: 'any' })],
+    'build.spacingIncrease': [code(']', 'BracketRight', { shift: 'any' })],
+    'build.spacingDecrease': [code('[', 'BracketLeft', { shift: 'any' })],
     'select.allUnits': [key('Ctrl+A', 'a', { ctrl: true })],
     'select.matching': [key('Ctrl+Z', 'z', { ctrl: true })],
     'select.matchingInView': [key('Alt+W', 'w', { alt: true })],
@@ -329,6 +337,8 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'build.slot2': [code('X', 'KeyX', { shift: 'any' })],
     'build.slot3': [code('C', 'KeyC', { shift: 'any' })],
     'build.slot4': [code('V', 'KeyV', { shift: 'any' })],
+    'build.spacingIncrease': [code(']', 'BracketRight', { shift: 'any' })],
+    'build.spacingDecrease': [code('[', 'BracketLeft', { shift: 'any' })],
     'select.allUnits': [code('Ctrl+E', 'KeyE', { ctrl: true })],
     'select.matching': [code('Ctrl+W', 'KeyW', { ctrl: true })],
     'select.matchingInView': [code('Alt+W', 'KeyW', { alt: true })],
@@ -392,6 +402,8 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'build.slot2': [code('X', 'KeyX', { shift: 'any' })],
     'build.slot3': [code('C', 'KeyC', { shift: 'any' })],
     'build.slot4': [code('V', 'KeyV', { shift: 'any' })],
+    'build.spacingIncrease': [code(']', 'BracketRight', { shift: 'any' })],
+    'build.spacingDecrease': [code('[', 'BracketLeft', { shift: 'any' })],
     'select.allUnits': [code('Ctrl+A', 'KeyA', { ctrl: true })],
     'select.matching': [code('Ctrl+Z', 'KeyZ', { ctrl: true })],
     'select.matchingInView': [code('Alt+W', 'KeyW', { alt: true })],

@@ -72,6 +72,7 @@ export type SelectionInfo = {
   waypointMode: WaypointType;
   isBuildMode: boolean;
   selectedBuildingBlueprintId: string | null;
+  buildLineSpacingMultiplier: number;
   isDGunMode: boolean;
   isRepairAreaMode: boolean;
   isAttackMode: boolean;
@@ -130,6 +131,8 @@ export type SelectionActions = {
   recallControlGroup: (index: number, additive: boolean) => void;
   startBuild: (buildingBlueprintId: BuildingBlueprintId) => void;
   cancelBuild: () => void;
+  increaseBuildLineSpacing: () => void;
+  decreaseBuildLineSpacing: () => void;
   toggleDGun: () => void;
   toggleRepairArea: () => void;
   queueUnit: (factoryId: number, unitBlueprintId: string) => void;
@@ -212,6 +215,7 @@ export type UIInputState = {
   waypointMode: WaypointType;
   isBuildMode: boolean;
   selectedBuildingBlueprintId: string | null;
+  buildLineSpacingMultiplier: number;
   isDGunMode: boolean;
   isRepairAreaMode: boolean;
   isAttackMode: boolean;

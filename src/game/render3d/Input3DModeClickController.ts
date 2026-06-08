@@ -17,7 +17,10 @@ import {
 import type { CommandCursorKind } from '../input/CommandCursors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import type { BuildGhost3D } from './BuildGhost3D';
-import { Input3DBuildPlacementState } from './Input3DBuildPlacementState';
+import {
+  Input3DBuildPlacementState,
+  type BuildLineSpacingInfo,
+} from './Input3DBuildPlacementState';
 import type { Input3DPicker } from './Input3DPicker';
 import { entityCanBuild } from '../sim/builderBuildRoster';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
@@ -120,6 +123,18 @@ export class Input3DModeClickController {
       width: this.buildPlacement.width,
       height: this.buildPlacement.height,
     };
+  }
+
+  getBuildLineSpacingInfo(): BuildLineSpacingInfo {
+    return this.buildPlacement.spacingInfo;
+  }
+
+  increaseBuildLineSpacing(): BuildLineSpacingInfo {
+    return this.buildPlacement.increaseBuildLineSpacing();
+  }
+
+  decreaseBuildLineSpacing(): BuildLineSpacingInfo {
+    return this.buildPlacement.decreaseBuildLineSpacing();
   }
 
   handleBuildModeChange(buildingBlueprintId: BuildingBlueprintId | null): void {

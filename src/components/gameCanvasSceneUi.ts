@@ -111,6 +111,7 @@ export function useGameCanvasSceneUi({
     waypointMode: 'move',
     isBuildMode: false,
     selectedBuildingBlueprintId: null,
+    buildLineSpacingMultiplier: 1,
     isDGunMode: false,
     isRepairAreaMode: false,
     isAttackMode: false,
@@ -300,6 +301,12 @@ export function useGameCanvasSceneUi({
     },
     cancelBuild: () => {
       getActiveBattleScene()?.cancelBuildMode();
+    },
+    increaseBuildLineSpacing: () => {
+      getActiveBattleScene()?.increaseBuildLineSpacing();
+    },
+    decreaseBuildLineSpacing: () => {
+      getActiveBattleScene()?.decreaseBuildLineSpacing();
     },
     toggleDGun: () => {
       getActiveBattleScene()?.toggleDGunMode();

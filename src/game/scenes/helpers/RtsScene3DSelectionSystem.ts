@@ -10,6 +10,7 @@ import type {
 } from '../../sim/types';
 import type { ControlGroupInfo, SelectionInfo, UIEntitySource, UIInputState } from '@/types/ui';
 import { CONTROL_GROUP_COUNT, type ControlGroupSlotSnapshot } from '../../input/helpers';
+import type { BuildLineSpacingInfo } from '../../render3d/Input3DBuildPlacementState';
 
 export type SelectionChangeHandler = ((info: SelectionInfo) => void) | undefined;
 
@@ -25,6 +26,7 @@ export class RtsScene3DSelectionSystem {
   private selectionInfoDirty = true;
   private waypointMode: WaypointType = 'move';
   private activeBuildingBlueprintId: BuildingBlueprintId | null = null;
+  private buildLineSpacingMultiplier = 1;
   private dgunActive = false;
   private repairAreaActive = false;
   private attackActive = false;
@@ -62,6 +64,11 @@ export class RtsScene3DSelectionSystem {
 
   setBuildMode(buildingBlueprintId: BuildingBlueprintId | null): void {
     this.activeBuildingBlueprintId = buildingBlueprintId;
+    this.selectionInfoDirty = true;
+  }
+
+  setBuildLineSpacing(spacing: BuildLineSpacingInfo): void {
+    this.buildLineSpacingMultiplier = spacing.multiplier;
     this.selectionInfoDirty = true;
   }
 
@@ -189,6 +196,7 @@ export class RtsScene3DSelectionSystem {
       waypointMode: this.waypointMode,
       isBuildMode: this.activeBuildingBlueprintId !== null,
       selectedBuildingBlueprintId: this.activeBuildingBlueprintId,
+      buildLineSpacingMultiplier: this.buildLineSpacingMultiplier,
       isDGunMode: this.dgunActive,
       isRepairAreaMode: this.repairAreaActive,
       isAttackMode: this.attackActive,

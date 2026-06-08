@@ -20,11 +20,20 @@ export type BuildAreaPlacementPlan = {
   y: number;
 };
 
+export type BuildLineSpacingInfo = {
+  steps: number;
+  multiplier: number;
+};
+
 type BuildPlacementEntitySource = {
   getBuildings: () => Entity[];
   getEntitySetVersion?: () => number;
   getTerrainBuildabilityGrid?: () => TerrainBuildabilityGrid | null;
 };
+
+const BUILD_LINE_SPACING_STEP = 0.5;
+const BUILD_LINE_SPACING_MIN_STEPS = 0;
+const BUILD_LINE_SPACING_MAX_STEPS = 8;
 
 export class Input3DBuildPlacementState {
   private mapWidth = Infinity;
@@ -33,6 +42,7 @@ export class Input3DBuildPlacementState {
   private validationKey = '';
   private occupancyVersion = '';
   private occupiedCells: ReadonlySet<string> | undefined;
+  private buildLineSpacingSteps = 0;
 
   canPlace = false;
   diagnostics: BuildPlacementDiagnostics | undefined;
@@ -43,6 +53,29 @@ export class Input3DBuildPlacementState {
 
   get height(): number {
     return this.mapHeight;
+  }
+
+  get spacingInfo(): BuildLineSpacingInfo {
+    return {
+      steps: this.buildLineSpacingSteps,
+      multiplier: this.buildLineSpacingMultiplier,
+    };
+  }
+
+  increaseBuildLineSpacing(): BuildLineSpacingInfo {
+    this.buildLineSpacingSteps = Math.min(
+      BUILD_LINE_SPACING_MAX_STEPS,
+      this.buildLineSpacingSteps + 1,
+    );
+    return this.spacingInfo;
+  }
+
+  decreaseBuildLineSpacing(): BuildLineSpacingInfo {
+    this.buildLineSpacingSteps = Math.max(
+      BUILD_LINE_SPACING_MIN_STEPS,
+      this.buildLineSpacingSteps - 1,
+    );
+    return this.spacingInfo;
   }
 
   setMapBounds(
@@ -188,7 +221,9 @@ export class Input3DBuildPlacementState {
     const dx = endX - startX;
     const dy = endY - startY;
     const distance = Math.hypot(dx, dy);
-    const spacing = Math.max(config.gridWidth, config.gridHeight, 1) * BUILD_GRID_CELL_SIZE;
+    const spacing = Math.max(config.gridWidth, config.gridHeight, 1)
+      * BUILD_GRID_CELL_SIZE
+      * this.buildLineSpacingMultiplier;
     const placementCount = Math.max(1, Math.floor(distance / Math.max(1, spacing)) + 1);
 
     for (let i = 0; i < placementCount; i++) {
@@ -227,6 +262,10 @@ export class Input3DBuildPlacementState {
     }
 
     return placements;
+  }
+
+  private get buildLineSpacingMultiplier(): number {
+    return 1 + this.buildLineSpacingSteps * BUILD_LINE_SPACING_STEP;
   }
 }
 

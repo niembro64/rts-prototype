@@ -470,6 +470,7 @@ export function buildSelectionInfo(
     waypointMode: inputState?.waypointMode ?? 'move' as WaypointType,
     isBuildMode: inputState?.isBuildMode ?? false,
     selectedBuildingBlueprintId: inputState?.selectedBuildingBlueprintId ?? null,
+    buildLineSpacingMultiplier: inputState?.buildLineSpacingMultiplier ?? 1,
     isDGunMode: inputState?.isDGunMode ?? false,
     isRepairAreaMode: inputState?.isRepairAreaMode ?? false,
     isAttackMode: inputState?.isAttackMode ?? false,

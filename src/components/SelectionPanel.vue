@@ -221,6 +221,9 @@ const buildingOptions = computed(() => {
     })
     .filter((option) => option !== null);
 });
+const buildLineSpacingLabel = computed(() =>
+  `${Math.round(props.selection.buildLineSpacingMultiplier * 100)}%`,
+);
 const unitOptions = unitRosterDisplay;
 
 const vehicleOptions = unitOptions.filter((unit) => unit.locomotion !== 'legs');
@@ -723,6 +726,29 @@ function loadFactoryPreset(index: number): void {
           <span class="btn-label">{{ compactBuildingLabel(bo.label) }}</span>
           <span class="btn-cost"><span class="cost-resource">{{ bo.cost }}</span></span>
           <span class="btn-key">{{ bo.key }}</span>
+        </button>
+        <button
+          v-if="selection.isBuildMode"
+          type="button"
+          class="action-btn"
+          :disabled="selection.buildLineSpacingMultiplier <= 1"
+          :style="{ '--btn-color': BUTTON_COLORS.build }"
+          :title="actionTitle(`Tighten build-line spacing (${buildLineSpacingLabel})`, 'build.spacingDecrease')"
+          @click="actions.decreaseBuildLineSpacing()"
+        >
+          <span class="btn-label">Gap -</span>
+          <span class="btn-key">{{ hotkey('build.spacingDecrease') }}</span>
+        </button>
+        <button
+          v-if="selection.isBuildMode"
+          type="button"
+          class="action-btn"
+          :style="{ '--btn-color': BUTTON_COLORS.build }"
+          :title="actionTitle(`Widen build-line spacing (${buildLineSpacingLabel})`, 'build.spacingIncrease')"
+          @click="actions.increaseBuildLineSpacing()"
+        >
+          <span class="btn-label">Gap +</span>
+          <span class="btn-key">{{ hotkey('build.spacingIncrease') }}</span>
         </button>
       </div>
     </div>
