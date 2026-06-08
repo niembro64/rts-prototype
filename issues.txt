@@ -15,17 +15,3 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 
 Please always commit and push before and after any code changes we make.
 ================================================================================
-
-[BA-ARCH-001] Large hot-path files make lifecycle, pooling, and Rust/WASM migration hard to audit
-
-Severity: Medium
-
-Evidence:
-- src/game/sim/Simulation.ts is 1287 lines.
-- budget_design_philosophy.html explicitly says large files should be split into coherent helpers when touched.
-
-Risk:
-Cleanup ownership, retained pools, hot loops, and authoritative/client boundaries are spread across large files. That raises the chance of missed teardown, duplicate runtime paths, accidental per-frame allocation, and stalled migration of TypeScript hot loops into Rust/WASM.
-
-Required fix:
-When any of these files are touched, continue splitting along existing ownership boundaries instead of adding more logic in place. Prioritize lifecycle/teardown helpers, snapshot intake/publisher modules, unit mesh lifecycle vs pose/locomotion updates, remaining input command builders, and simulation subsystems that are candidates for Rust/WASM.

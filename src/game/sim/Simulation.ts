@@ -1,7 +1,6 @@
 import { WorldState } from './WorldState';
 import { CommandQueue } from './commands';
 import type { Entity, EntityId, PlayerId, Unit, UnitAction, UnitPathPoint } from './types';
-import { NO_ENTITY_ID } from './types';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { magnitude } from '../math';
 import { executeCommand, type CommandContext } from './commandExecution';
@@ -19,10 +18,7 @@ import { economyManager } from './economy';
 import { ConstructionSystem } from './construction';
 import { factoryProductionSystem } from './factoryProduction';
 import { updateConstructionLifecycle } from './constructionLifecycle';
-import {
-  isBuildBlockingActivation,
-  isBuildInProgress,
-} from './buildableHelpers';
+import { isBuildBlockingActivation } from './buildableHelpers';
 import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities';
 import { updateUnitGroundNormal } from './unitGroundNormal';
 import { ForceAccumulator } from './ForceAccumulator';
@@ -42,20 +38,18 @@ import { getEntityTargetPoint } from './buildingAnchors';
 import { getGuardFollowRadius, isFriendlyGuardTarget } from './guard';
 import { WindPowerTracker, sampleWindState, sampleWindStateInto, type WindState } from './wind';
 import { isBuildTargetInRange } from './builderRange';
-import { isReclaimableTarget } from './reclaim';
 import { setUnitMovementAcceleration } from './unitMovementAcceleration';
-import { getActionIntentStart, getUnitActionTargetId } from './unitActionIntents';
 import {
   rotateFirstUnitActionToEnd,
   refreshUnitActionHash,
   shiftUnitAction,
-  spliceUnitActions,
 } from './unitActions';
 import { SimulationEventQueues } from './SimulationEventQueues';
 import { resolveCommanderGameOverWinner } from './SimulationGameOver';
 import { SimulationDeathExplosionPlanner } from './SimulationDeathExplosionPlanner';
 import { SimulationDeadEntityCleanup } from './SimulationDeadEntityCleanup';
 import { SimulationCombatController } from './SimulationCombatController';
+import { SimulationActionQueueMaintenance } from './SimulationActionQueueMaintenance';
 import {
   ARRIVAL_RADIUS,
   SimulationArrivalController,
@@ -95,6 +89,7 @@ export class Simulation {
   private damageSystem: DamageSystem;
   private deathExplosionPlanner: SimulationDeathExplosionPlanner;
   private combatController: SimulationCombatController;
+  private actionQueueMaintenance: SimulationActionQueueMaintenance;
   private deadEntityCleanup: SimulationDeadEntityCleanup;
   private arrivalController: SimulationArrivalController;
   private combatHaltController: SimulationCombatHaltController;
@@ -179,6 +174,10 @@ export class Simulation {
       this.forceAccumulator,
       this.eventQueues,
       this.deathExplosionPlanner,
+    );
+    this.actionQueueMaintenance = new SimulationActionQueueMaintenance(
+      this.world,
+      (entity) => this.advanceAction(entity),
     );
     this.arrivalController = new SimulationArrivalController(this.world, {
       advanceAction: (entity) => this.advanceAction(entity),
@@ -313,7 +312,9 @@ export class Simulation {
     // factory unit shells: HP growth, paid-full completion, building
     // completion effects, and dirty flags all flow through one pass.
     const constructionResult = updateConstructionLifecycle(this.world);
-    this.advanceCompletedConstructionActions(constructionResult.completedBuildings);
+    this.actionQueueMaintenance.advanceCompletedConstructionActions(
+      constructionResult.completedBuildings,
+    );
 
     // AI auto-queues units at idle factories
     updateAiProduction(this.world, this.aiPlayerIds, this.aiAllowedUnitBlueprintIds);
@@ -584,7 +585,7 @@ export class Simulation {
       // needs work. The action queue holds durable command waypoints;
       // transient pathfinding points live in unit.activePath and are
       // discarded automatically when the queue changes.
-      if (this.sweepInvalidTargetActions(entity)) {
+      if (this.actionQueueMaintenance.sweepInvalidTargetActions(entity)) {
         this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
       }
 
@@ -596,7 +597,7 @@ export class Simulation {
         continue;
       }
 
-      this.promoteReachableBuildAction(entity);
+      this.actionQueueMaintenance.promoteReachableBuildAction(entity);
 
       // Get current action
       const currentAction = unit.actions[0];
@@ -790,129 +791,6 @@ export class Simulation {
     // tick budget on planning — units that don't get a slot this
     // tick stay at the threshold and try again next tick.
     this.stuckReplanController.evaluate(movingUnits);
-  }
-
-  private sweepInvalidTargetActions(entity: Entity): boolean {
-    const unit = entity.unit;
-    if (!unit) return false;
-
-    let changed = false;
-    const actions = unit.actions;
-    for (let i = 0; i < actions.length; i++) {
-      const action = actions[i];
-      if (!this.isTargetedActionInvalid(action)) continue;
-
-      const targetId = getUnitActionTargetId(action);
-      const removeStart = getActionIntentStart(actions, i);
-      spliceUnitActions(unit, removeStart, i - removeStart + 1);
-      const builder = entity.builder;
-      if (targetId !== undefined && builder !== null && builder.currentBuildTarget === targetId) {
-        builder.currentBuildTarget = NO_ENTITY_ID;
-      }
-      changed = true;
-      i = removeStart - 1;
-    }
-
-    if (changed) {
-      const patrolStartIndex = actions.findIndex((action) => action.type === 'patrol');
-      unit.patrolStartIndex = patrolStartIndex >= 0 ? patrolStartIndex : null;
-    }
-    return changed;
-  }
-
-  private isTargetedActionInvalid(action: UnitAction): boolean {
-    if (
-      action.type !== 'attack' &&
-      action.type !== 'build' &&
-      action.type !== 'repair' &&
-      action.type !== 'reclaim' &&
-      action.type !== 'guard'
-    ) {
-      return false;
-    }
-
-    const targetId = getUnitActionTargetId(action);
-    const target = targetId !== undefined ? this.world.getEntity(targetId) : undefined;
-    if (!target) return true;
-
-    if (action.type === 'attack') {
-      return !this.isAliveAttackTarget(target);
-    }
-
-    if (action.type === 'build') {
-      return !this.isIncompleteBuildableTarget(target);
-    }
-
-    if (action.type === 'guard') {
-      return !this.isAliveAttackTarget(target);
-    }
-
-    if (action.type === 'reclaim') {
-      return !isReclaimableTarget(target);
-    }
-
-    return !this.isIncompleteBuildableTarget(target) && !this.isDamagedRepairUnit(target);
-  }
-
-  private isAliveAttackTarget(target: Entity): boolean {
-    return !!(
-      (target.unit && target.unit.hp > 0) ||
-      (target.building && target.building.hp > 0)
-    );
-  }
-
-  private isIncompleteBuildableTarget(target: Entity): boolean {
-    return !!(isBuildInProgress(target.buildable) &&
-      ((target.building && target.building.hp > 0) ||
-        (target.unit && target.unit.hp > 0)));
-  }
-
-  private isDamagedRepairUnit(target: Entity): boolean {
-    return !!(target.unit && target.unit.hp > 0 && target.unit.hp < target.unit.maxHp);
-  }
-
-  private promoteReachableBuildAction(entity: Entity): void {
-    const unit = entity.unit;
-    if (!unit || !entity.builder || unit.actions.length === 0) return;
-
-    const actions = unit.actions;
-    for (let i = 0; i < actions.length; i++) {
-      const action = actions[i];
-      if (action.type !== 'build' && action.type !== 'repair' && action.type !== 'reclaim') {
-        if (!action.isPathExpansion) return;
-        continue;
-      }
-
-      const targetId = action.type === 'build' ? action.buildingId : action.targetId;
-      const target = targetId !== undefined ? this.world.getEntity(targetId) : undefined;
-      if (!target || !isBuildTargetInRange(entity, target)) return;
-
-      if (i > 0) {
-        spliceUnitActions(unit, 0, i);
-        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
-      }
-      return;
-    }
-  }
-
-  private advanceCompletedConstructionActions(completedBuildings: readonly Entity[]): void {
-    if (completedBuildings.length === 0) return;
-    for (const completed of completedBuildings) {
-      const completedId = completed.id;
-      for (const entity of this.world.getBuilderUnits()) {
-        const unit = entity.unit;
-        if (!unit || unit.actions.length === 0) continue;
-        const action = unit.actions[0];
-        const targetId = action.type === 'build'
-          ? action.buildingId
-          : action.type === 'repair'
-            ? action.targetId
-            : undefined;
-        if (targetId === completedId) {
-          this.advanceAction(entity);
-        }
-      }
-    }
   }
 
   /** Replan the given unit's active route from its current position to
