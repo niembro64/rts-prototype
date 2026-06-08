@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { CLIENT_CONFIG, isEntityHudElementSupported } from '../clientBarConfig';
 import { GOOD_TPS } from '../config';
 import {
   COMMAND_HOTKEY_PRESET_IDS,
+  getCommandHotkeyConflicts,
   type CommandHotkeyPresetId,
 } from '../game/input/commandHotkeys';
 import { RESOURCE_BALL_DENSITY_OPTIONS } from '../resourceConfig';
@@ -88,9 +90,23 @@ function snapshotHostMbpsBudget(remoteClientCount: number): number {
   );
 }
 
-defineProps<{
+const props = defineProps<{
   model: GameCanvasClientControlBarModel;
 }>();
+
+const currentHotkeyConflicts = computed(() => getCommandHotkeyConflicts(props.model.commandHotkeyPreset));
+const hotkeyConflictLabel = computed(() => {
+  const count = currentHotkeyConflicts.value.length;
+  return count === 0 ? 'OK' : `${count} CONFLICT${count === 1 ? '' : 'S'}`;
+});
+const hotkeyConflictTitle = computed(() => {
+  if (currentHotkeyConflicts.value.length === 0) {
+    return 'The active command hotkey preset has no conflicting bindings.';
+  }
+  return currentHotkeyConflicts.value
+    .map((conflict) => `${conflict.signature}: ${conflict.commandIds.join(' / ')}`)
+    .join('\n');
+});
 </script>
 
 <template>
@@ -154,6 +170,11 @@ defineProps<{
             @click="model.changeCommandHotkeyPreset(presetId)"
           >{{ COMMAND_HOTKEY_PRESET_LABELS[presetId] }}</BarButton>
         </BarButtonGroup>
+        <BarLabel :title="hotkeyConflictTitle">CONFLICTS:</BarLabel>
+        <span
+          class="fps-value"
+          :style="{ color: currentHotkeyConflicts.length > 0 ? '#ffb84d' : undefined }"
+        >{{ hotkeyConflictLabel }}</span>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
