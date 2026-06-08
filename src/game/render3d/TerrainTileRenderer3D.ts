@@ -9,6 +9,7 @@ import type { ClientViewState } from '../network/ClientViewState';
 import { COLORS, readRgbaTuple } from '@/colorsConfig';
 import {
   getBuildGridDebug,
+  getMetalMap,
   getTriangleDebug,
 } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
@@ -87,6 +88,7 @@ const BUILD_GRID_COLOR_METAL = readRgbaTuple(
   COLORS.world.terrain.buildGrid.metalRgba,
   'colorsConfig.world.terrain.buildGrid.metalRgba',
 );
+const BUILD_GRID_COLOR_TRANSPARENT = [0, 0, 0, 0] as const;
 
 
 const NEUTRAL_COLOR = new THREE.Color(MAP_BG_COLOR);
@@ -292,6 +294,7 @@ export class TerrainTileRenderer3D {
   private buildGridKeyBuildabilityConfigKey = '';
   private buildGridKeyEntityVersion = 0;
   private buildGridKeyDepositSignature = 0;
+  private buildGridKeyOverlayMode = '';
   private buildGridOccupiedMask = new Uint8Array(1);
   private buildGridMetalMask = new Uint8Array(1);
   private groundDetailTextureUniform: { value: THREE.Texture | null } = { value: null };
@@ -672,6 +675,7 @@ export class TerrainTileRenderer3D {
     buildabilityConfigKey: string,
     entityVersion: number,
     depositSignature: number,
+    overlayMode: string,
   ): boolean {
     return this.buildGridKeyValid &&
       this.buildGridKeyCellsX === cellsX &&
@@ -682,7 +686,8 @@ export class TerrainTileRenderer3D {
       this.buildGridKeyTerrainVersion === terrainVersion &&
       this.buildGridKeyBuildabilityConfigKey === buildabilityConfigKey &&
       this.buildGridKeyEntityVersion === entityVersion &&
-      this.buildGridKeyDepositSignature === depositSignature;
+      this.buildGridKeyDepositSignature === depositSignature &&
+      this.buildGridKeyOverlayMode === overlayMode;
   }
 
   private storeBuildGridCacheKey(
@@ -693,6 +698,7 @@ export class TerrainTileRenderer3D {
     buildabilityConfigKey: string,
     entityVersion: number,
     depositSignature: number,
+    overlayMode: string,
   ): void {
     this.buildGridKeyValid = true;
     this.buildGridKeyCellsX = cellsX;
@@ -704,6 +710,7 @@ export class TerrainTileRenderer3D {
     this.buildGridKeyBuildabilityConfigKey = buildabilityConfigKey;
     this.buildGridKeyEntityVersion = entityVersion;
     this.buildGridKeyDepositSignature = depositSignature;
+    this.buildGridKeyOverlayMode = overlayMode;
   }
 
   private refreshBuildGridOccupiedMask(cellsX: number, cellsY: number): void {
@@ -767,7 +774,9 @@ export class TerrainTileRenderer3D {
     this.buildGridPixels[offset + 3] = color[3];
   }
 
-  private refreshBuildGridTexture(enabled: boolean): void {
+  private refreshBuildGridTexture(buildGridEnabled: boolean, metalMapEnabled: boolean): void {
+    const enabled = buildGridEnabled || metalMapEnabled;
+    const overlayMode = buildGridEnabled ? 'build' : metalMapEnabled ? 'metal' : 'off';
     this.buildGridEnabledUniform.value = enabled ? 1 : 0;
     const buildabilityGrid = this.clientViewState.getTerrainBuildabilityGrid();
     const buildCellSize = buildabilityGrid?.cellSize ?? BUILD_GRID_CELL_SIZE;
@@ -796,6 +805,7 @@ export class TerrainTileRenderer3D {
         buildabilityConfigKey,
         entityVersion,
         depositSignature,
+        overlayMode,
       )
     ) {
       return;
@@ -813,6 +823,15 @@ export class TerrainTileRenderer3D {
         const y = gy * buildCellSize + buildCellSize / 2;
         const cellIndex = rowOffset + gx;
         const offset = cellIndex * 4;
+        if (!buildGridEnabled) {
+          this.writeBuildGridPixel(
+            offset,
+            this.buildGridMetalMask[cellIndex] !== 0
+              ? BUILD_GRID_COLOR_METAL
+              : BUILD_GRID_COLOR_TRANSPARENT,
+          );
+          continue;
+        }
         if (this.buildGridOccupiedMask[cellIndex] !== 0) {
           this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_BLOCKED);
           continue;
@@ -849,6 +868,7 @@ export class TerrainTileRenderer3D {
       buildabilityConfigKey,
       entityVersion,
       depositSignature,
+      overlayMode,
     );
   }
 
@@ -1382,13 +1402,12 @@ export class TerrainTileRenderer3D {
     );
     this.terrainMesh.visible = this.terrainGeometryReady;
 
-    // Build-grid overlay is driven only by the explicit DEBUG: BUILD
-    // toggle. Entering build mode shows the hover footprint (BuildGhost3D)
-    // and the always-built deposit overlay is also intentionally gated to
-    // the DEBUG toggle, so the whole-map per-cell paint stays a debug
-    // affordance rather than something that splashes every time the
-    // player tries to place a building.
-    this.refreshBuildGridTexture(getBuildGridDebug());
+    // Whole-map cell overlays are driven only by explicit DEBUG toggles:
+    // BUILD paints buildability + occupancy + metal, while METAL paints only
+    // metal-producing cells. Entering build mode shows the hover footprint
+    // (BuildGhost3D), so these map-wide paints stay intentional overlays
+    // instead of appearing every time the player tries to place a building.
+    this.refreshBuildGridTexture(getBuildGridDebug(), getMetalMap());
   }
 
   isReady(): boolean {

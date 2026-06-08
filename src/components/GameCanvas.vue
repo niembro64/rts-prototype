@@ -408,6 +408,7 @@ const {
   resourceBallDensity,
   triangleDebug,
   buildGridDebug,
+  metalMap,
   sightBoundary,
   radarBoundary,
   movementPosEma,
@@ -463,6 +464,7 @@ const {
   changeResourceBallDensity,
   toggleTriangleDebug,
   toggleBuildGridDebug,
+  toggleMetalMap,
   toggleSightBoundary,
   toggleRadarBoundary,
   changeMovementPosEma,
@@ -1081,6 +1083,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   showServerControls: showServerControls.value,
   triangleDebug: triangleDebug.value,
   buildGridDebug: buildGridDebug.value,
+  metalMap: metalMap.value,
   sightBoundary: sightBoundary.value,
   radarBoundary: radarBoundary.value,
   renderMode: renderMode.value,
@@ -1128,6 +1131,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleEdgeScroll,
   toggleTriangleDebug,
   toggleBuildGridDebug,
+  toggleMetalMap,
   toggleSightBoundary,
   toggleRadarBoundary,
   changeRenderMode,
@@ -1232,6 +1236,7 @@ watchEffect(() => {
   m.showServerControls = showServerControls.value;
   m.triangleDebug = triangleDebug.value;
   m.buildGridDebug = buildGridDebug.value;
+  m.metalMap = metalMap.value;
   m.sightBoundary = sightBoundary.value;
   m.radarBoundary = radarBoundary.value;
   m.renderMode = renderMode.value;

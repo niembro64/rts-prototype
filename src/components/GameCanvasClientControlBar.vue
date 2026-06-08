@@ -703,6 +703,11 @@ defineProps<{
           @click="model.toggleBuildGridDebug"
         >BUILD</BarButton>
         <BarButton
+          :active="model.metalMap"
+          title="METAL - show metal-producing build cells without the rest of the buildability grid"
+          @click="model.toggleMetalMap"
+        >METAL</BarButton>
+        <BarButton
           :active="model.sightBoundary"
           title="SIGHT - draw the local player's total full-sight boundary"
           @click="model.toggleSightBoundary"

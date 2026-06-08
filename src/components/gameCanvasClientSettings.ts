@@ -26,6 +26,7 @@ import {
   getLegsRadiusToggle,
   getLocomotionMarks,
   getMasterVolume,
+  getMetalMap,
   getRadarBoundary,
   getSmokeTrails,
   getSmokeSoftEdges,
@@ -60,6 +61,7 @@ import {
   setLegsRadiusToggle,
   setLocomotionMarks,
   setMasterVolume,
+  setMetalMap,
   setRadarBoundary,
   setSmokeTrails,
   setSmokeSoftEdges,
@@ -129,6 +131,7 @@ export function useGameCanvasClientSettings({
   const resourceBallDensity = ref<number>(getResourceBallDensity());
   const triangleDebug = ref<boolean>(getTriangleDebug());
   const buildGridDebug = ref<boolean>(getBuildGridDebug());
+  const metalMap = ref<boolean>(getMetalMap());
   const sightBoundary = ref<boolean>(getSightBoundary());
   const radarBoundary = ref<boolean>(getRadarBoundary());
   const movementPosEma = ref<PositionDriftChannelMode>(getMovementPosEmaMode());
@@ -209,6 +212,7 @@ export function useGameCanvasClientSettings({
     resourceBallDensity.value = getResourceBallDensity();
     triangleDebug.value = getTriangleDebug();
     buildGridDebug.value = getBuildGridDebug();
+    metalMap.value = getMetalMap();
     sightBoundary.value = getSightBoundary();
     radarBoundary.value = getRadarBoundary();
     movementPosEma.value = getMovementPosEmaMode();
@@ -390,6 +394,12 @@ export function useGameCanvasClientSettings({
     buildGridDebug.value = newValue;
   }
 
+  function toggleMetalMap(): void {
+    const newValue = !metalMap.value;
+    setMetalMap(newValue);
+    metalMap.value = newValue;
+  }
+
   function toggleSightBoundary(): void {
     const newValue = !sightBoundary.value;
     setSightBoundary(newValue);
@@ -525,6 +535,8 @@ export function useGameCanvasClientSettings({
     triangleDebug.value = cd.triangleDebug.default;
     setBuildGridDebug(cd.buildGridDebug.default);
     buildGridDebug.value = cd.buildGridDebug.default;
+    setMetalMap(cd.metalMap.default);
+    metalMap.value = cd.metalMap.default;
     setSightBoundary(cd.sightBoundary.default);
     sightBoundary.value = cd.sightBoundary.default;
     setRadarBoundary(cd.radarBoundary.default);
@@ -608,6 +620,7 @@ export function useGameCanvasClientSettings({
     resourceBallDensity,
     triangleDebug,
     buildGridDebug,
+    metalMap,
     sightBoundary,
     radarBoundary,
     movementPosEma,
@@ -663,6 +676,7 @@ export function useGameCanvasClientSettings({
     changeResourceBallDensity,
     toggleTriangleDebug,
     toggleBuildGridDebug,
+    toggleMetalMap,
     toggleSightBoundary,
     toggleRadarBoundary,
     changeMovementPosEma,

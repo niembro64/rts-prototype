@@ -63,6 +63,7 @@ type ClientDefaults = {
   readonly beamSnapToTurret: boolean;
   readonly triangleDebug: boolean;
   readonly buildGridDebug: boolean;
+  readonly metalMap: boolean;
   readonly sightBoundary: boolean;
   readonly radarBoundary: boolean;
   readonly predictionMode: PredictionMode;
@@ -129,6 +130,7 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     beamSnapToTurret: pickDefault(clientBarConfig.beamSnapToTurret, mode),
     triangleDebug: pickDefault(clientBarConfig.triangleDebug, mode),
     buildGridDebug: pickDefault(clientBarConfig.buildGridDebug, mode),
+    metalMap: pickDefault(clientBarConfig.metalMap, mode),
     sightBoundary: pickDefault(clientBarConfig.sightBoundary, mode),
     radarBoundary: pickDefault(clientBarConfig.radarBoundary, mode),
     predictionMode: pickDefault(clientBarConfig.predictionMode, mode) as PredictionMode,
@@ -200,6 +202,7 @@ export const CLIENT_CONFIG = {
   beamSnapToTurret: { default: DEMO_CLIENT_DEFAULTS.beamSnapToTurret },
   triangleDebug: { default: DEMO_CLIENT_DEFAULTS.triangleDebug },
   buildGridDebug: { default: DEMO_CLIENT_DEFAULTS.buildGridDebug },
+  metalMap: { default: DEMO_CLIENT_DEFAULTS.metalMap },
   sightBoundary: { default: DEMO_CLIENT_DEFAULTS.sightBoundary },
   radarBoundary: { default: DEMO_CLIENT_DEFAULTS.radarBoundary },
   /** Prediction physics order: POS / VEL. Default 'vel' (integrate
@@ -295,6 +298,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     beamSnapToTurret: { default: defaults.beamSnapToTurret },
     triangleDebug: { default: defaults.triangleDebug },
     buildGridDebug: { default: defaults.buildGridDebug },
+    metalMap: { default: defaults.metalMap },
     sightBoundary: { default: defaults.sightBoundary },
     radarBoundary: { default: defaults.radarBoundary },
     predictionMode: { ...CLIENT_CONFIG.predictionMode, default: defaults.predictionMode },
@@ -347,6 +351,7 @@ type ClientStorageKeyName =
   | 'resourceBallDensity'
   | 'triangleDebug'
   | 'buildGridDebug'
+  | 'metalMap'
   | 'sightBoundary'
   | 'radarBoundary'
   | 'movementPosEma'
@@ -385,6 +390,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'resourceBallDensity',
   'triangleDebug',
   'buildGridDebug',
+  'metalMap',
   'sightBoundary',
   'radarBoundary',
   'movementPosEma',
@@ -475,6 +481,7 @@ let currentBeamSnapToTurret: boolean = _cd.beamSnapToTurret.default;
 let currentResourceBallDensity: number = DEFAULT_BALLS_PER_RESOURCE_PER_SECOND;
 let currentTriangleDebug: boolean = _cd.triangleDebug.default;
 let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
+let currentMetalMap: boolean = _cd.metalMap.default;
 let currentSightBoundary: boolean = _cd.sightBoundary.default;
 let currentRadarBoundary: boolean = _cd.radarBoundary.default;
 let currentMovementPosEma: PositionDriftChannelMode = _cd.movementPosEma.default;
@@ -567,6 +574,7 @@ function applyClientDefaults(mode: ClientMode): void {
   applyResourceBallDensity(DEFAULT_BALLS_PER_RESOURCE_PER_SECOND);
   currentTriangleDebug = cd.triangleDebug.default;
   currentBuildGridDebug = cd.buildGridDebug.default;
+  currentMetalMap = cd.metalMap.default;
   currentSightBoundary = cd.sightBoundary.default;
   currentRadarBoundary = cd.radarBoundary.default;
   currentMovementPosEma = cd.movementPosEma.default;
@@ -662,6 +670,10 @@ function loadFromStorage(mode: ClientMode): void {
   const storedBuildGridDebug = readPersisted(keys.buildGridDebug);
   if (storedBuildGridDebug !== null) {
     currentBuildGridDebug = storedBuildGridDebug === 'true';
+  }
+  const storedMetalMap = readPersisted(keys.metalMap);
+  if (storedMetalMap !== null) {
+    currentMetalMap = storedMetalMap === 'true';
   }
   const storedSightBoundary = readPersisted(keys.sightBoundary);
   if (storedSightBoundary !== null) {
@@ -1031,6 +1043,15 @@ export function getBuildGridDebug(): boolean {
 export function setBuildGridDebug(enabled: boolean): void {
   currentBuildGridDebug = enabled;
   persist(activeStorageKeys().buildGridDebug, String(enabled));
+}
+
+export function getMetalMap(): boolean {
+  return currentMetalMap;
+}
+
+export function setMetalMap(enabled: boolean): void {
+  currentMetalMap = enabled;
+  persist(activeStorageKeys().metalMap, String(enabled));
 }
 
 export function getSightBoundary(): boolean {

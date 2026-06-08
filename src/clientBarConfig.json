@@ -36,6 +36,7 @@
   "beamSnapToTurret": { "demoDefault": true, "realDefault": true },
   "triangleDebug": { "demoDefault": false, "realDefault": false },
   "buildGridDebug": { "demoDefault": false, "realDefault": false },
+  "metalMap": { "demoDefault": false, "realDefault": false },
   "sightBoundary": { "demoDefault": false, "realDefault": false },
   "radarBoundary": { "demoDefault": false, "realDefault": false },
   "predictionMode": {
@@ -213,6 +214,7 @@
     "resourceBallDensity": "resource-ball-density",
     "triangleDebug": "triangle-debug",
     "buildGridDebug": "build-grid-debug",
+    "metalMap": "metal-map",
     "sightBoundary": "sight-boundary",
     "radarBoundary": "radar-boundary",
     "movementPosEma": "movement-pos-ema",

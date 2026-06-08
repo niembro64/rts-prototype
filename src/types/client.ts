@@ -132,6 +132,7 @@ export type ClientBarConfig = {
   readonly beamSnapToTurret: BooleanSetting;
   readonly triangleDebug: BooleanSetting;
   readonly buildGridDebug: BooleanSetting;
+  readonly metalMap: BooleanSetting;
   /** Draws the local player's current sight/sensor boundary on the
    *  terrain. This is a presentation/debug overlay only; authoritative
    *  fog filtering still lives on the host. */
