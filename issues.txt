@@ -67,11 +67,11 @@ fire enabled toggle, producer-building on/off, wait, stop, and self-destruct.
 Implement the missing states in simulation, snapshots, command authorization,
 selection UI, hotkeys, and visible state indicators.
 
-Issue: special abilities are incomplete. Add BAR Capture, DGUN, Load Transport,
-Unload Transport, Resurrect, Resurrect Area, Self Destruct, manual fire, manual
-launch, and any unit-specific special buttons. rts-prototype has commander
-DGun and self-destruct, but no capture, resurrection, transports, load/unload
-logic, manual launch weapons, or unit-specific ability command-card support.
+Issue: special abilities are incomplete. Add BAR Capture, Load Transport,
+Unload Transport, Resurrect, Resurrect Area, manual fire, manual launch, and
+any unit-specific special buttons. rts-prototype has commander DGun and
+self-destruct, but no capture, resurrection, transports, load/unload logic,
+manual launch weapons, or unit-specific ability command-card support.
 
 Issue: factory and production UI are incomplete. BAR has factory production
 controls beyond selecting one repeat-build unit: repeat/queue state, factory
@@ -82,8 +82,8 @@ still needs the remaining BAR-equivalent factory panel and hotkeys, translated t
 authoritative-server commands and 3D rally/path previews.
 
 Issue: map, communication, and game UI commands are missing. Implement BAR
-commands and buttons for chat, draw on map, draw label, erase drawings, ping to
-map, options menu, and any equivalent lobby/spectator-safe
+commands and buttons for chat, draw on map, draw label, erase drawings, options
+menu, and any equivalent lobby/spectator-safe
 variants. rts-prototype has a minimap, resource bar, debug/control bars, map
 details info, sight/radar boundary toggles, metal and elevation map overlays,
 unit pathing map overlay, map overview camera switch, fullscreen toggle,
