@@ -20,6 +20,7 @@ import {
   loadFactoryProductionPresetSlots,
   setFactoryProductionPresetSlot,
 } from '../game/input/factoryProductionPresets';
+import { queueModeFromEvent } from '../game/input/queueModifiers';
 
 export type { FactorySelectionItem, SelectionInfo, SelectionActions } from '@/types/ui';
 import type {
@@ -339,6 +340,11 @@ function loadFactoryPreset(index: number): void {
     return;
   }
   props.actions.queueUnit(factoryId, unitBlueprintId);
+}
+
+function toggleWaitFromClick(event: MouseEvent): void {
+  const queueMode = queueModeFromEvent(event);
+  props.actions.toggleSelectedWait(queueMode.queue, queueMode.queueFront);
 }
 
 </script>
@@ -667,8 +673,8 @@ function loadFactoryPreset(index: number): void {
           class="action-btn"
           :class="{ active: selection.isWaiting }"
           :style="{ '--btn-color': BUTTON_COLORS.wait }"
-          :title="actionTitle('Wait', 'command.wait')"
-          @click="actions.toggleSelectedWait()"
+          :title="actionTitle('Wait', 'command.wait', 'Shift-click queues; Ctrl/Cmd+Shift-click inserts next')"
+          @click="toggleWaitFromClick"
         >
           <span class="btn-label">Wait</span>
           <span class="btn-key">{{ hotkey('command.wait') }}</span>

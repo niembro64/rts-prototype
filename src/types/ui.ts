@@ -103,7 +103,7 @@ export type SelectionActions = {
   toggleRepeatQueue: () => void;
   toggleUnitMoveState: () => void;
   toggleTrajectoryMode: () => void;
-  toggleSelectedWait: () => void;
+  toggleSelectedWait: (queue?: boolean, queueFront?: boolean) => void;
   toggleSelectedFire: () => void;
   /** ON/OFF for producer buildings in the selection. */
   toggleBuildingActive: () => void;

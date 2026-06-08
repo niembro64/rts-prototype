@@ -31,6 +31,7 @@ import {
   type Input3DAreaDragState,
 } from './Input3DAreaDragState';
 import { resolveProjectileSelectionGroundReach } from './ProjectileBallisticPreview';
+import { queueModeFromEvent } from '../input/queueModifiers';
 
 const REPAIR_AREA_RADIUS = 220;
 const RECLAIM_AREA_RADIUS = 220;
@@ -291,6 +292,7 @@ export class Input3DModeClickController {
     const resolvedKind = kind === 'buildLine'
       ? resolveBuildDragKind(e)
       : kind;
+    const queueMode = queueModeFromEvent(e);
     this.areaDrag = {
       kind: resolvedKind,
       button,
@@ -298,8 +300,8 @@ export class Input3DModeClickController {
       current: { x: world.x, y: world.y, z: world.z },
       startClientX: e.clientX,
       startClientY: e.clientY,
-      queue: e.shiftKey,
-      queueFront: isQueueFrontModifier(e),
+      queue: queueMode.queue,
+      queueFront: queueMode.queueFront,
     };
     return true;
   }
@@ -634,14 +636,15 @@ export class Input3DModeClickController {
       });
       return;
     }
+    const queueMode = queueModeFromEvent(e);
     const cmd = this.config.mode.buildStartBuildCommand(
       builder, world.x, world.y,
-      this.config.getTick(), e.shiftKey, isQueueFrontModifier(e),
+      this.config.getTick(), queueMode.queue, queueMode.queueFront,
       this.buildPlacement.facingInfo.rotation,
     );
     if (!cmd) return;
     this.config.commandQueue.enqueue(cmd);
-    if (!e.shiftKey) this.config.mode.exitBuildMode();
+    if (!queueMode.queue) this.config.mode.exitBuildMode();
   }
 
   private validateBuildPlacement(
@@ -679,20 +682,21 @@ export class Input3DModeClickController {
     }
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
+    const queueMode = queueModeFromEvent(e);
     const cmd = buildRepairAreaCommand(
       commander,
       world.x,
       world.y,
       REPAIR_AREA_RADIUS,
       this.config.getTick(),
-      e.shiftKey,
+      queueMode.queue,
       world.z,
-      isQueueFrontModifier(e),
+      queueMode.queueFront,
     );
     if (!cmd) return;
     this.config.commandQueue.enqueue(cmd);
     this.config.applyCursor('repair');
-    if (!e.shiftKey) this.config.exitRepairAreaMode();
+    if (!queueMode.queue) this.config.exitRepairAreaMode();
   }
 
   private handleAttackAreaClick(e: MouseEvent): void {
@@ -703,20 +707,21 @@ export class Input3DModeClickController {
     }
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
+    const queueMode = queueModeFromEvent(e);
     const cmd = buildAttackAreaCommand(
       selectedUnits,
       world.x,
       world.y,
       ATTACK_AREA_RADIUS,
       this.config.getTick(),
-      e.shiftKey,
+      queueMode.queue,
       world.z,
-      isQueueFrontModifier(e),
+      queueMode.queueFront,
     );
     if (!cmd) return;
     this.config.commandQueue.enqueue(cmd);
     this.config.applyCursor('attack');
-    if (!e.shiftKey) this.config.exitAttackAreaMode();
+    if (!queueMode.queue) this.config.exitAttackAreaMode();
   }
 
   private handleAttackClick(e: MouseEvent): void {
@@ -730,18 +735,19 @@ export class Input3DModeClickController {
     const entityHit = entityHitId !== null
       ? this.config.getEntitySource().getEntity(entityHitId)
       : null;
+    const queueMode = queueModeFromEvent(e);
     const meshAttackCmd = buildAttackCommandForTarget(
       entityHit,
       selectedUnits,
       this.config.getActivePlayerId(),
       tick,
-      e.shiftKey,
-      isQueueFrontModifier(e),
+      queueMode.queue,
+      queueMode.queueFront,
     );
     if (meshAttackCmd) {
       this.config.commandQueue.enqueue(meshAttackCmd);
       this.config.applyCursor('attack');
-      if (!e.shiftKey) this.config.exitAttackMode();
+      if (!queueMode.queue) this.config.exitAttackMode();
       return;
     }
 
@@ -754,13 +760,13 @@ export class Input3DModeClickController {
       selectedUnits,
       this.config.getActivePlayerId(),
       tick,
-      e.shiftKey,
-      isQueueFrontModifier(e),
+      queueMode.queue,
+      queueMode.queueFront,
     );
     if (!attackCmd) return;
     this.config.commandQueue.enqueue(attackCmd);
     this.config.applyCursor('attack');
-    if (!e.shiftKey) this.config.exitAttackMode();
+    if (!queueMode.queue) this.config.exitAttackMode();
   }
 
   private handleAttackGroundClick(e: MouseEvent): void {
@@ -771,19 +777,20 @@ export class Input3DModeClickController {
     }
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
+    const queueMode = queueModeFromEvent(e);
     const cmd = buildAttackGroundCommand(
       selectedUnits,
       world.x,
       world.y,
       this.config.getTick(),
-      e.shiftKey,
+      queueMode.queue,
       world.z,
-      isQueueFrontModifier(e),
+      queueMode.queueFront,
     );
     if (!cmd) return;
     this.config.commandQueue.enqueue(cmd);
     this.config.applyCursor('attack');
-    if (!e.shiftKey) this.config.exitAttackGroundMode();
+    if (!queueMode.queue) this.config.exitAttackGroundMode();
   }
 
   private resolveAttackBallisticReach(
@@ -828,19 +835,20 @@ export class Input3DModeClickController {
     const entityHit = entityHitId !== null
       ? this.config.getEntitySource().getEntity(entityHitId)
       : null;
+    const queueMode = queueModeFromEvent(e);
 
     const meshGuardCmd = buildGuardCommandForTarget(
       entityHit,
       selectedUnits,
       this.config.getActivePlayerId(),
       tick,
-      e.shiftKey,
-      isQueueFrontModifier(e),
+      queueMode.queue,
+      queueMode.queueFront,
     );
     if (meshGuardCmd) {
       this.config.commandQueue.enqueue(meshGuardCmd);
       this.config.applyCursor('guard');
-      if (!e.shiftKey) this.config.exitGuardMode();
+      if (!queueMode.queue) this.config.exitGuardMode();
       return;
     }
 
@@ -853,13 +861,13 @@ export class Input3DModeClickController {
       selectedUnits,
       this.config.getActivePlayerId(),
       tick,
-      e.shiftKey,
-      isQueueFrontModifier(e),
+      queueMode.queue,
+      queueMode.queueFront,
     );
     if (!guardCmd) return;
     this.config.commandQueue.enqueue(guardCmd);
     this.config.applyCursor('guard');
-    if (!e.shiftKey) this.config.exitGuardMode();
+    if (!queueMode.queue) this.config.exitGuardMode();
   }
 
   private handleReclaimClick(e: MouseEvent): void {
@@ -873,18 +881,19 @@ export class Input3DModeClickController {
     const entityHit = entityHitId !== null
       ? this.config.getEntitySource().getEntity(entityHitId)
       : null;
+    const queueMode = queueModeFromEvent(e);
 
     const meshReclaimCmd = buildReclaimCommandForTarget(
       entityHit,
       commander,
       tick,
-      e.shiftKey,
-      isQueueFrontModifier(e),
+      queueMode.queue,
+      queueMode.queueFront,
     );
     if (meshReclaimCmd) {
       this.config.commandQueue.enqueue(meshReclaimCmd);
       this.config.applyCursor('reclaim');
-      if (!e.shiftKey) this.config.exitReclaimMode();
+      if (!queueMode.queue) this.config.exitReclaimMode();
       return;
     }
 
@@ -896,14 +905,14 @@ export class Input3DModeClickController {
       world.y,
       RECLAIM_AREA_RADIUS,
       tick,
-      e.shiftKey,
+      queueMode.queue,
       world.z,
-      isQueueFrontModifier(e),
+      queueMode.queueFront,
     );
     if (!reclaimCmd) return;
     this.config.commandQueue.enqueue(reclaimCmd);
     this.config.applyCursor('reclaim');
-    if (!e.shiftKey) this.config.exitReclaimMode();
+    if (!queueMode.queue) this.config.exitReclaimMode();
   }
 
   private handleTowerTargetClick(e: MouseEvent): void {
@@ -912,10 +921,6 @@ export class Input3DModeClickController {
     this.config.selectedCommands.setTowerTarget(entityHitId);
     if (!e.shiftKey) this.config.exitTowerTargetMode();
   }
-}
-
-function isQueueFrontModifier(e: MouseEvent): boolean {
-  return e.shiftKey && (e.ctrlKey || e.metaKey);
 }
 
 function resolveBuildDragKind(e: MouseEvent): Input3DAreaDragKind {

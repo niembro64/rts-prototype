@@ -12,6 +12,7 @@ import {
   LinePathAccumulator,
   shouldCollapseLinePathToSingleMove,
 } from '../input/helpers';
+import { queueModeFromEvent } from '../input/queueModifiers';
 import type { CommandCursorKind } from '../input/CommandCursors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getSurfaceHeight, isWaterAt } from '../sim/Terrain';
@@ -86,7 +87,7 @@ export class Input3DRightDragController {
     const selectedUnits = source.getSelectedUnits();
     const tick = this.config.getTick();
     const activePlayerId = this.config.getActivePlayerId();
-    const queueFront = isQueueFrontModifier(e);
+    const queueMode = queueModeFromEvent(e);
     const entityHitId = this.config.picker.raycastEntity(e.clientX, e.clientY);
     const entityHit = entityHitId !== null
       ? source.getEntity(entityHitId)
@@ -99,8 +100,8 @@ export class Input3DRightDragController {
         selectedUnits,
         activePlayerId,
         tick,
-        e.shiftKey,
-        queueFront,
+        queueMode.queue,
+        queueMode.queueFront,
       );
       if (meshAttackCmd) {
         debugLog(
@@ -142,8 +143,8 @@ export class Input3DRightDragController {
         world.x, world.y,
         this.config.getSelectedCommander(),
         tick,
-        e.shiftKey,
-        queueFront,
+        queueMode.queue,
+        queueMode.queueFront,
       );
       if (repairCmd) {
         debugLog(
@@ -166,8 +167,8 @@ export class Input3DRightDragController {
           selectedUnits,
           activePlayerId,
           tick,
-          e.shiftKey,
-          queueFront,
+          queueMode.queue,
+          queueMode.queueFront,
         );
         if (attackCmd) {
           debugLog(
@@ -215,8 +216,7 @@ export class Input3DRightDragController {
     const source = this.source();
     const selectedUnits = source.getSelectedUnits();
     const points = this.linePath.points;
-    const shiftHeld = e.shiftKey;
-    const queueFront = isQueueFrontModifier(e);
+    const queueMode = queueModeFromEvent(e);
     const tick = this.config.getTick();
 
     if (selectedUnits.length > 0 && points.length > 0) {
@@ -227,7 +227,7 @@ export class Input3DRightDragController {
           source,
           finalPoint.x, finalPoint.y,
           this.config.getSelectedCommander(),
-          tick, shiftHeld, queueFront,
+          tick, queueMode.queue, queueMode.queueFront,
         );
         if (repairCmd) {
           debugLog(
@@ -248,15 +248,15 @@ export class Input3DRightDragController {
         selectedUnits,
         this.config.getWaypointMode(),
         tick,
-        shiftHeld,
-        queueFront,
+        queueMode.queue,
+        queueMode.queueFront,
         preserveFormation,
         this.resolveFormationSpeed(e),
       );
       if (moveCmd) {
         this.logMoveCommand(selectedUnits, points.length, finalPoint, moveCmd, preserveFormation);
         this.config.commandQueue.enqueue(moveCmd);
-        if (this.isFormationModeActive() && !shiftHeld) this.config.exitFormationModes();
+        if (this.isFormationModeActive() && !queueMode.queue) this.config.exitFormationModes();
       }
       this.resetLineDrag();
       this.config.refreshCursor();
@@ -447,8 +447,4 @@ export class Input3DRightDragController {
       );
     }
   }
-}
-
-function isQueueFrontModifier(e: MouseEvent): boolean {
-  return e.shiftKey && (e.ctrlKey || e.metaKey);
 }

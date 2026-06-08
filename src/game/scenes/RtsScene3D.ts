@@ -824,8 +824,8 @@ export class RtsScene3D {
     this.inputManager?.removeLastQueuedOrder();
   }
 
-  public toggleSelectedWait(): void {
-    this.inputManager?.toggleSelectedWait();
+  public toggleSelectedWait(queue = false, queueFront = false): void {
+    this.inputManager?.toggleSelectedWait(queue, queueFront);
   }
 
   public toggleRepeatQueue(): void {

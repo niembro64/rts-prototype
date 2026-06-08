@@ -7,6 +7,7 @@ import {
   getCommandHotkeyConflicts,
   resolveCommandHotkey,
 } from './commandHotkeys';
+import { queueModeFromEvent } from './queueModifiers';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -112,5 +113,18 @@ export function runCommandHotkeysContractTest(): void {
   assertContract(
     resolveCommandHotkey(keyEvent('g', 'KeyG'), 'bar-grid') === 'command.stop',
     'global bar-grid G should still resolve unit stop',
+  );
+  assertContract(
+    queueModeFromEvent(keyEvent('w', 'KeyW')).queue === false,
+    'plain command event must replace the active order',
+  );
+  assertContract(
+    queueModeFromEvent(keyEvent('w', 'KeyW', { shiftKey: true })).queue === true,
+    'shift command event must append to the queue',
+  );
+  const frontQueue = queueModeFromEvent(keyEvent('w', 'KeyW', { ctrlKey: true, shiftKey: true }));
+  assertContract(
+    frontQueue.queue === true && frontQueue.queueFront === true,
+    'ctrl/cmd+shift command event must insert after the active order',
   );
 }

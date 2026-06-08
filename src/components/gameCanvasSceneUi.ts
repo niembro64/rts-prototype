@@ -224,8 +224,8 @@ export function useGameCanvasSceneUi({
     toggleTrajectoryMode: () => {
       getActiveBattleScene()?.toggleTrajectoryMode();
     },
-    toggleSelectedWait: () => {
-      getActiveBattleScene()?.toggleSelectedWait();
+    toggleSelectedWait: (queue, queueFront) => {
+      getActiveBattleScene()?.toggleSelectedWait(queue, queueFront);
     },
     toggleSelectedFire: () => {
       getActiveBattleScene()?.toggleSelectedFire();

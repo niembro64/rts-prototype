@@ -12,6 +12,7 @@ import {
   resolveCommandHotkey,
   type CommandHotkeyId,
 } from '../input/commandHotkeys';
+import { queueModeFromEvent } from '../input/queueModifiers';
 
 type Input3DKeyboardControllerConfig = {
   mode: CommanderModeController;
@@ -344,7 +345,10 @@ export class Input3DKeyboardController {
         this.config.clearQueuedOrders();
         break;
       case 'command.wait':
-        this.config.toggleSelectedWait(e.shiftKey, isQueueFrontModifier(e));
+        {
+          const queueMode = queueModeFromEvent(e);
+          this.config.toggleSelectedWait(queueMode.queue, queueMode.queueFront);
+        }
         break;
       case 'command.repeat':
         this.config.toggleRepeatQueue();
@@ -559,8 +563,4 @@ export class Input3DKeyboardController {
       this.config.getTick(),
     );
   }
-}
-
-function isQueueFrontModifier(e: KeyboardEvent): boolean {
-  return e.shiftKey && (e.ctrlKey || e.metaKey);
 }
