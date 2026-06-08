@@ -44,9 +44,12 @@ type Input3DKeyboardControllerConfig = {
   selectActiveCommander: (additive: boolean) => void;
   selectAllOwnedUnits: () => void;
   selectAllMatching: () => void;
+  selectAllMatchingInView: () => void;
+  selectPreviousSelection: () => void;
   selectIdleBuilders: () => void;
   selectWaitingUnits: () => void;
   selectSameTypeOnly: () => void;
+  selectMobileOnly: () => void;
   isRepairAreaMode: () => boolean;
   isAttackMode: () => boolean;
   isAttackAreaMode: () => boolean;
@@ -264,6 +267,12 @@ export class Input3DKeyboardController {
       case 'select.matching':
         this.config.selectAllMatching();
         break;
+      case 'select.matchingInView':
+        this.config.selectAllMatchingInView();
+        break;
+      case 'select.previous':
+        this.config.selectPreviousSelection();
+        break;
       case 'select.idleBuilders':
         this.config.selectIdleBuilders();
         break;
@@ -272,6 +281,9 @@ export class Input3DKeyboardController {
         break;
       case 'select.sameTypeOnly':
         this.config.selectSameTypeOnly();
+        break;
+      case 'select.mobileOnly':
+        this.config.selectMobileOnly();
         break;
     }
   }

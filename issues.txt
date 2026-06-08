@@ -35,10 +35,11 @@ surface.
 Issue: the selection command surface is still short of BAR. Select all owned
 units, select all matching owned entities, select idle builders, select waiting
 units, select same type only, select commander focus/add, and mixed-selection
-narrowing have command-card or hotkey affordances. Add select all matching units
-in view, select all units from previous selection, select idle transports,
-split army, select only mobile units, deselect-from-box, invert/loop selection,
-and the BAR select-box modifier semantics for Shift/Ctrl/Alt/Space/Z.
+narrowing, select all matching units in view, select all units from previous
+selection, and select only mobile units have command-card or hotkey affordances.
+Add select idle transports, split army, deselect-from-box, invert/loop
+selection, and the BAR select-box modifier semantics for
+Shift/Ctrl/Alt/Space/Z.
 
 Issue: control groups still lack several BAR behaviors. Group slots 0-9,
 Ctrl/Cmd+Shift group add, Ctrl/Cmd+Alt group select-toggle, and Ctrl/Cmd+`

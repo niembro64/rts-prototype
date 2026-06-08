@@ -107,6 +107,7 @@ export class Input3DManager {
   // don't accidentally inherit 'fight'/'patrol' from a prior group.
   private selectionChangeTracker = new SelectionChangeTracker();
   private controlGroups: InputControlGroups;
+  private previousSelectionIds: EntityId[] = [];
   private selectedCommands: InputSelectedCommands;
   private keyboard: Input3DKeyboardController;
   private rightDrag: Input3DRightDragController;
@@ -133,14 +134,7 @@ export class Input3DManager {
     this.controlGroups = new InputControlGroups(
       entitySource,
       (entity) => this.isSelectableByActivePlayer(entity),
-      (entityIds, additive) => {
-        this.localCommandQueue.enqueue({
-          type: 'select',
-          tick: this.context.getTick(),
-          entityIds,
-          additive,
-        });
-      },
+      (entityIds, additive) => this.enqueueSelection(entityIds, additive),
     );
     this.controlGroups.onChange = (groups) => this.onControlGroupsChange?.(groups);
     this.selectedCommands = new InputSelectedCommands(
@@ -223,9 +217,12 @@ export class Input3DManager {
       selectActiveCommander: (additive) => this.selectActiveCommander(additive),
       selectAllOwnedUnits: () => this.selectAllOwnedUnits(),
       selectAllMatching: () => this.selectAllMatching(),
+      selectAllMatchingInView: () => this.selectAllMatchingInView(),
+      selectPreviousSelection: () => this.selectPreviousSelection(),
       selectIdleBuilders: () => this.selectIdleBuilders(),
       selectWaitingUnits: () => this.selectWaitingUnits(),
       selectSameTypeOnly: () => this.selectSameTypeOnly(),
+      selectMobileOnly: () => this.selectMobileOnly(),
       isRepairAreaMode: () => this.repairAreaMode,
       isAttackMode: () => this.attackMode,
       isAttackAreaMode: () => this.attackAreaMode,
@@ -359,6 +356,7 @@ export class Input3DManager {
   setActivePlayerId(playerId: PlayerId): void {
     if (this.context.activePlayerId === playerId) return;
     this.context.activePlayerId = playerId;
+    this.previousSelectionIds = [];
     this.selectionChangeTracker.reset();
     this.mode.exitBuildMode();
     this.mode.exitDGunMode();
@@ -443,6 +441,14 @@ export class Input3DManager {
   }
 
   selectAllMatching(): void {
+    this.selectMatching(false);
+  }
+
+  selectAllMatchingInView(): void {
+    this.selectMatching(true);
+  }
+
+  private selectMatching(inView: boolean): void {
     const selectedUnits = this.entitySource.getSelectedUnits();
     const selectedStatic = this.entitySource.getSelectedBuildings();
     if (selectedUnits.length === 0 && selectedStatic.length === 0) return;
@@ -458,11 +464,13 @@ export class Input3DManager {
       if (buildingBlueprintId) structureBlueprintIds.add(buildingBlueprintId);
     }
 
+    const visibleEntityIds = inView ? this.getViewportSelectableEntityIds() : null;
     const entityIds: EntityId[] = [];
     const units = this.entitySource.getUnitsByPlayer(this.context.activePlayerId);
     for (let i = 0; i < units.length; i++) {
       const unit = units[i];
       if (!this.isSelectableByActivePlayer(unit)) continue;
+      if (visibleEntityIds !== null && !visibleEntityIds.has(unit.id)) continue;
       const unitBlueprintId = unit.unit?.unitBlueprintId;
       if (unitBlueprintId && unitBlueprintIds.has(unitBlueprintId)) entityIds.push(unit.id);
     }
@@ -471,12 +479,23 @@ export class Input3DManager {
     for (let i = 0; i < buildings.length; i++) {
       const building = buildings[i];
       if (!this.isSelectableByActivePlayer(building)) continue;
+      if (visibleEntityIds !== null && !visibleEntityIds.has(building.id)) continue;
       const buildingBlueprintId = building.buildingBlueprintId;
       if (buildingBlueprintId && structureBlueprintIds.has(buildingBlueprintId)) {
         entityIds.push(building.id);
       }
     }
     this.enqueueSelection(entityIds, false);
+  }
+
+  private getViewportSelectableEntityIds(): Set<EntityId> {
+    const rect = this.picker.canvasRect();
+    return new Set(this.picker.selectEntitiesInScreenRect(
+      this.entitySource,
+      this.context.activePlayerId,
+      { x: rect.left, y: rect.top },
+      { x: rect.right, y: rect.bottom },
+    ));
   }
 
   selectIdleBuilders(): void {
@@ -521,6 +540,20 @@ export class Input3DManager {
     const entityIds = selectedStatic
       .filter((building) => building.buildingBlueprintId === buildingBlueprintId)
       .map((building) => building.id);
+    this.enqueueSelection(entityIds, false);
+  }
+
+  selectMobileOnly(): void {
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    if (selectedUnits.length === 0) return;
+    const entityIds: EntityId[] = [];
+    for (let i = 0; i < selectedUnits.length; i++) entityIds.push(selectedUnits[i].id);
+    this.enqueueSelection(entityIds, false);
+  }
+
+  selectPreviousSelection(): void {
+    const entityIds = this.getLiveEntityIds(this.previousSelectionIds);
+    if (entityIds.length === 0) return;
     this.enqueueSelection(entityIds, false);
   }
 
@@ -914,16 +947,12 @@ export class Input3DManager {
       .getUnitsByPlayer(this.context.activePlayerId)
       .find(isCommander);
     if (!commander) return;
-    this.localCommandQueue.enqueue({
-      type: 'select',
-      tick: this.context.getTick(),
-      entityIds: [commander.id],
-      additive,
-    });
+    this.enqueueSelection([commander.id], additive);
   }
 
   private enqueueSelection(entityIds: EntityId[], additive: boolean): void {
     if (entityIds.length === 0) return;
+    this.rememberPreviousSelection(entityIds, additive);
     this.localCommandQueue.enqueue({
       type: 'select',
       tick: this.context.getTick(),
@@ -932,8 +961,50 @@ export class Input3DManager {
     });
   }
 
+  private enqueueClearSelection(): void {
+    this.rememberPreviousSelection([], false);
+    this.localCommandQueue.enqueue({
+      type: 'clearSelection',
+      tick: this.context.getTick(),
+    });
+  }
+
+  private rememberPreviousSelection(nextEntityIds: readonly EntityId[], additive: boolean): void {
+    const currentIds = this.getCurrentSelectedEntityIds();
+    if (currentIds.length === 0) return;
+    if (!additive && sameEntityIdSet(currentIds, nextEntityIds)) return;
+    this.previousSelectionIds = currentIds;
+  }
+
+  private getCurrentSelectedEntityIds(): EntityId[] {
+    const entityIds: EntityId[] = [];
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      if (this.isSelectableByActivePlayer(selectedUnits[i])) entityIds.push(selectedUnits[i].id);
+    }
+    const selectedStatic = this.entitySource.getSelectedBuildings();
+    for (let i = 0; i < selectedStatic.length; i++) {
+      if (this.isSelectableByActivePlayer(selectedStatic[i])) entityIds.push(selectedStatic[i].id);
+    }
+    return entityIds;
+  }
+
+  private getLiveEntityIds(entityIds: readonly EntityId[]): EntityId[] {
+    const out: EntityId[] = [];
+    const seen = new Set<EntityId>();
+    for (let i = 0; i < entityIds.length; i++) {
+      const id = entityIds[i];
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const entity = this.entitySource.getEntity(id);
+      if (entity && this.isSelectableByActivePlayer(entity)) out.push(id);
+    }
+    return out;
+  }
+
   setEntitySource(source: EntitySource): void {
     this.entitySource = source;
+    this.previousSelectionIds = [];
     this.controlGroups.setSource(source);
     this.selectedCommands.setSource(source);
   }
@@ -1020,12 +1091,7 @@ export class Input3DManager {
       if (hit !== null) {
         const ent = this.entitySource.getEntity(hit) ?? null;
         if (this.isSelectableByActivePlayer(ent)) {
-          this.localCommandQueue.enqueue({
-            type: 'select',
-            tick: this.context.getTick(),
-            entityIds: [hit],
-            additive,
-          });
+          this.enqueueSelection([hit], additive);
           this.refreshCursor();
           return;
         }
@@ -1044,21 +1110,13 @@ export class Input3DManager {
           },
         );
         if (closest) {
-          this.localCommandQueue.enqueue({
-            type: 'select',
-            tick: this.context.getTick(),
-            entityIds: [closest.id],
-            additive,
-          });
+          this.enqueueSelection([closest.id], additive);
           this.refreshCursor();
           return;
         }
       }
       if (!additive) {
-        this.localCommandQueue.enqueue({
-          type: 'clearSelection',
-          tick: this.context.getTick(),
-        });
+        this.enqueueClearSelection();
       }
       this.refreshCursor();
       return;
@@ -1074,12 +1132,8 @@ export class Input3DManager {
       this.selectionDrag.start,
       this.selectionDrag.end,
     );
-    this.localCommandQueue.enqueue({
-      type: 'select',
-      tick: this.context.getTick(),
-      entityIds: ids,
-      additive,
-    });
+    if (ids.length > 0) this.enqueueSelection(ids, additive);
+    else if (!additive) this.enqueueClearSelection();
     this.refreshCursor();
   }
 
@@ -1099,6 +1153,7 @@ export class Input3DManager {
     window.removeEventListener('keydown', this.onKeyDown);
     this.canvas.style.cursor = '';
     this.onWaypointModeChange = undefined;
+    this.onControlGroupFocus = undefined;
     this.onBuildModeChange = undefined;
     this.onDGunModeChange = undefined;
     this.onRepairAreaModeChange = undefined;
@@ -1109,4 +1164,13 @@ export class Input3DManager {
     this.onPingModeChange = undefined;
     this.selectionDrag.destroy();
   }
+}
+
+function sameEntityIdSet(a: readonly EntityId[], b: readonly EntityId[]): boolean {
+  if (a.length !== b.length) return false;
+  const ids = new Set<EntityId>(a);
+  for (let i = 0; i < b.length; i++) {
+    if (!ids.has(b[i])) return false;
+  }
+  return true;
 }

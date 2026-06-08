@@ -222,6 +222,12 @@ export function useGameCanvasSceneUi({
     selectAllMatching: () => {
       getActiveBattleScene()?.selectAllMatching();
     },
+    selectAllMatchingInView: () => {
+      getActiveBattleScene()?.selectAllMatchingInView();
+    },
+    selectPreviousSelection: () => {
+      getActiveBattleScene()?.selectPreviousSelection();
+    },
     selectIdleBuilders: () => {
       getActiveBattleScene()?.selectIdleBuilders();
     },
@@ -230,6 +236,9 @@ export function useGameCanvasSceneUi({
     },
     selectSameTypeOnly: () => {
       getActiveBattleScene()?.selectSameTypeOnly();
+    },
+    selectMobileOnly: () => {
+      getActiveBattleScene()?.selectMobileOnly();
     },
     setTowerTargetMode: () => {
       getActiveBattleScene()?.toggleTowerTargetMode();

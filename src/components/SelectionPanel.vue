@@ -262,11 +262,41 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           type="button"
           class="action-btn"
           :style="{ '--btn-color': BUTTON_COLORS.groupAccent }"
+          :title="actionTitle('Select matching in view', 'select.matchingInView')"
+          @click="actions.selectAllMatchingInView()"
+        >
+          <span class="btn-label">In View</span>
+          <span class="btn-key">{{ hotkey('select.matchingInView') }}</span>
+        </button>
+        <button
+          type="button"
+          class="action-btn"
+          :style="{ '--btn-color': BUTTON_COLORS.groupAccent }"
+          :title="actionTitle('Select previous selection', 'select.previous')"
+          @click="actions.selectPreviousSelection()"
+        >
+          <span class="btn-label">Prev</span>
+          <span class="btn-key">{{ hotkey('select.previous') }}</span>
+        </button>
+        <button
+          type="button"
+          class="action-btn"
+          :style="{ '--btn-color': BUTTON_COLORS.groupAccent }"
           :title="actionTitle('Select same type only', 'select.sameTypeOnly')"
           @click="actions.selectSameTypeOnly()"
         >
           <span class="btn-label">Same</span>
           <span class="btn-key">{{ hotkey('select.sameTypeOnly') }}</span>
+        </button>
+        <button
+          type="button"
+          class="action-btn"
+          :style="{ '--btn-color': BUTTON_COLORS.groupAccent }"
+          :title="actionTitle('Select only mobile units', 'select.mobileOnly')"
+          @click="actions.selectMobileOnly()"
+        >
+          <span class="btn-label">Mobile</span>
+          <span class="btn-key">{{ hotkey('select.mobileOnly') }}</span>
         </button>
         <button
           type="button"

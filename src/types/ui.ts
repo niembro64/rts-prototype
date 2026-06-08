@@ -91,9 +91,12 @@ export type SelectionActions = {
   selectOnlyEntityType: (entityType: SelectionEntityType) => void;
   selectAllOwnedUnits: () => void;
   selectAllMatching: () => void;
+  selectAllMatchingInView: () => void;
+  selectPreviousSelection: () => void;
   selectIdleBuilders: () => void;
   selectWaitingUnits: () => void;
   selectSameTypeOnly: () => void;
+  selectMobileOnly: () => void;
   /** Enter click-pick mode for setting the host lock-on target on the
    *  selected towers. Right-click / Esc cancels. */
   setTowerTargetMode: () => void;

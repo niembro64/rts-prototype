@@ -819,6 +819,14 @@ export class RtsScene3D {
     this.inputManager?.selectAllMatching();
   }
 
+  public selectAllMatchingInView(): void {
+    this.inputManager?.selectAllMatchingInView();
+  }
+
+  public selectPreviousSelection(): void {
+    this.inputManager?.selectPreviousSelection();
+  }
+
   public selectIdleBuilders(): void {
     this.inputManager?.selectIdleBuilders();
   }
@@ -829,6 +837,10 @@ export class RtsScene3D {
 
   public selectSameTypeOnly(): void {
     this.inputManager?.selectSameTypeOnly();
+  }
+
+  public selectMobileOnly(): void {
+    this.inputManager?.selectMobileOnly();
   }
 
   public toggleTowerTargetMode(): void {
