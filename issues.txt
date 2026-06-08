@@ -31,10 +31,6 @@ Finish the BAR-compatible keymap and command UI layer by importing the complete
 BAR grid/legacy bindings and adding command buttons for missing BAR commands so
 visible hotkeys match the active keymap across the whole command surface.
 
-Issue: formation commands are incomplete. Translate remaining formation
-behavior to the 3D physics model so formation targets respect dynamic
-collision-aware spacing at scale.
-
 Issue: construction commands are missing BAR build ergonomics. Implement
 remaining construction shortcuts, remaining BAR fallback behavior, and visual
 previews for remaining build/upgrade shapes. T1 mex area upgrade and T1 -> T2

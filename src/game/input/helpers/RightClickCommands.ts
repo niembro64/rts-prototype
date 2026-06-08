@@ -30,6 +30,15 @@ import type { LinePathAccumulator } from './LinePathAccumulator';
  *  user probably meant "click here" rather than a micro-drag, so
  *  spreading units across a 5-world-unit line feels wrong. */
 const LINE_PATH_MIN_LENGTH = 20;
+const PRESERVED_FORMATION_COLLISION_SPACING_MULTIPLIER = 1.25;
+const PRESERVED_FORMATION_MIN_SPACING = 20;
+const PRESERVED_FORMATION_RELAXATION_PASSES = 12;
+
+type PreservedFormationOffset = {
+  x: number;
+  y: number;
+  radius: number;
+};
 
 export function shouldCollapseLinePathToSingleMove(
   points: ReadonlyArray<{ x: number; y: number; z?: number }>,
@@ -298,13 +307,25 @@ export function buildFormationPreservingMoveTargets(
   cx /= selectedUnits.length;
   cy /= selectedUnits.length;
 
+  const offsets: PreservedFormationOffset[] = [];
+  for (let i = 0; i < selectedUnits.length; i++) {
+    const unit = selectedUnits[i];
+    offsets.push({
+      x: unit.transform.x - cx,
+      y: unit.transform.y - cy,
+      radius: preservedFormationRadius(unit),
+    });
+  }
+  relaxPreservedFormationOffsets(offsets);
+
   const entityIds: EntityId[] = [];
   const individualTargets: WaypointTarget[] = [];
   for (let i = 0; i < selectedUnits.length; i++) {
     const unit = selectedUnits[i];
+    const offset = offsets[i];
     entityIds.push(unit.id);
-    const x = targetX + (unit.transform.x - cx);
-    const y = targetY + (unit.transform.y - cy);
+    const x = targetX + offset.x;
+    const y = targetY + offset.y;
     const target: WaypointTarget = {
       x,
       y,
@@ -318,4 +339,54 @@ export function buildFormationPreservingMoveTargets(
     entityIds,
     individualTargets,
   };
+}
+
+function preservedFormationRadius(unit: Entity): number {
+  const radius = unit.unit?.radius?.collision;
+  return Number.isFinite(radius) && radius !== undefined && radius > 0
+    ? radius
+    : PRESERVED_FORMATION_MIN_SPACING / 2;
+}
+
+function preservedFormationPairSpacing(a: PreservedFormationOffset, b: PreservedFormationOffset): number {
+  return Math.max(
+    PRESERVED_FORMATION_MIN_SPACING,
+    (a.radius + b.radius) * PRESERVED_FORMATION_COLLISION_SPACING_MULTIPLIER,
+  );
+}
+
+function relaxPreservedFormationOffsets(offsets: PreservedFormationOffset[]): void {
+  if (offsets.length < 2) return;
+
+  for (let pass = 0; pass < PRESERVED_FORMATION_RELAXATION_PASSES; pass++) {
+    let moved = false;
+    for (let i = 0; i < offsets.length - 1; i++) {
+      const a = offsets[i];
+      for (let j = i + 1; j < offsets.length; j++) {
+        const b = offsets[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let distance = Math.hypot(dx, dy);
+        const minDistance = preservedFormationPairSpacing(a, b);
+        if (distance >= minDistance) continue;
+
+        if (distance < 1e-6) {
+          const angle = ((i * 97 + j * 53) % 360) * (Math.PI / 180);
+          dx = Math.cos(angle);
+          dy = Math.sin(angle);
+          distance = 1;
+        }
+
+        const push = (minDistance - distance) * 0.5;
+        const nx = dx / distance;
+        const ny = dy / distance;
+        a.x -= nx * push;
+        a.y -= ny * push;
+        b.x += nx * push;
+        b.y += ny * push;
+        moved = true;
+      }
+    }
+    if (!moved) return;
+  }
 }

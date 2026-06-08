@@ -1,6 +1,9 @@
 import type { Entity } from '../../sim/types';
 import { LinePathAccumulator } from './LinePathAccumulator';
-import { buildLinePathMoveCommand } from './RightClickCommands';
+import {
+  buildFormationPreservingMoveTargets,
+  buildLinePathMoveCommand,
+} from './RightClickCommands';
 
 function assertContract(condition: boolean, message: string): asserts condition {
   if (!condition) {
@@ -8,13 +11,23 @@ function assertContract(condition: boolean, message: string): asserts condition 
   }
 }
 
-function unit(id: number, x: number, y: number): Entity {
+function unit(id: number, x: number, y: number, collisionRadius = 10): Entity {
   return {
     id,
     type: 'unit',
     transform: { x, y, z: 0, rotation: 0 },
-    unit: {},
+    unit: { radius: { collision: collisionRadius } },
   } as Entity;
+}
+
+function targetDistance(
+  targets: ReturnType<typeof buildFormationPreservingMoveTargets>,
+  a: number,
+  b: number,
+): number {
+  const first = targets.individualTargets[a];
+  const second = targets.individualTargets[b];
+  return Math.hypot(first.x - second.x, first.y - second.y);
 }
 
 export function runRightClickCommandsContractTest(): void {
@@ -58,5 +71,29 @@ export function runRightClickCommandsContractTest(): void {
   assertContract(
     slowMove.formationSpeed === 'slowest',
     'slow formation move must carry formationSpeed=slowest',
+  );
+
+  const tightTargets = buildFormationPreservingMoveTargets(
+    [unit(10, -5, 0, 20), unit(11, 5, 0, 20)],
+    200,
+    200,
+  );
+  assertContract(
+    targetDistance(tightTargets, 0, 1) >= 49,
+    'preserved formation targets must expand tight collision-radius spacing',
+  );
+  assertContract(
+    Math.abs((tightTargets.individualTargets[0].x + tightTargets.individualTargets[1].x) / 2 - 200) < 1e-6,
+    'expanded preserved formation targets must stay centered on the command target',
+  );
+
+  const wideTargets = buildFormationPreservingMoveTargets(
+    [unit(20, -80, 0, 20), unit(21, 80, 0, 20)],
+    200,
+    200,
+  );
+  assertContract(
+    Math.abs(targetDistance(wideTargets, 0, 1) - 160) < 1e-6,
+    'preserved formation targets must leave already-wide spacing unchanged',
   );
 }
