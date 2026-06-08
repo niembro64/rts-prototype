@@ -74,6 +74,8 @@ import {
 } from './unitActionIntents';
 
 const _dgunMount = { x: 0, y: 0, z: 0 };
+const MIN_GROUP_FORMATION_SPACING = 40;
+const COLLISION_GROUP_FORMATION_SPACING_MULTIPLIER = 2.25;
 
 function commandQueuesInFront(command: { queue: boolean; queueFront?: boolean }): boolean {
   return command.queue && command.queueFront === true;
@@ -275,11 +277,18 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
   // Collect valid units without .map/.filter allocation
   const entityIds = command.entityIds;
   let unitCount = 0;
+  let maxCollisionRadius = 0;
 
   // First pass: count valid units to size the iteration
   for (let i = 0; i < entityIds.length; i++) {
     const e = ctx.world.getEntity(entityIds[i]);
-    if (e !== undefined && e.type === 'unit') unitCount++;
+    if (e !== undefined && e.type === 'unit' && e.unit !== null) {
+      unitCount++;
+      const radius = e.unit.radius.collision;
+      if (Number.isFinite(radius) && radius > maxCollisionRadius) {
+        maxCollisionRadius = radius;
+      }
+    }
   }
 
   if (unitCount === 0) return;
@@ -308,7 +317,7 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
     }
   } else if (command.targetX !== undefined && command.targetY !== undefined) {
     // Group move with formation spreading
-    const spacing = 40;
+    const spacing = groupFormationSpacing(maxCollisionRadius);
     const unitsPerRow = Math.ceil(Math.sqrt(unitCount));
     const queueFront = commandQueuesInFront(command);
 
@@ -343,6 +352,16 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
       index++;
     }
   }
+}
+
+function groupFormationSpacing(maxCollisionRadius: number): number {
+  if (!Number.isFinite(maxCollisionRadius) || maxCollisionRadius <= 0) {
+    return MIN_GROUP_FORMATION_SPACING;
+  }
+  return Math.max(
+    MIN_GROUP_FORMATION_SPACING,
+    maxCollisionRadius * COLLISION_GROUP_FORMATION_SPACING_MULTIPLIER,
+  );
 }
 
 function unitFormationSpeed(entity: Entity): number {
