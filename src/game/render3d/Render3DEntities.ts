@@ -361,6 +361,7 @@ export class Render3DEntities {
     frameStateOverride?: RenderFrameState3D,
     turretShieldPanelsEnabled: boolean = true,
     entityPacket?: RenderEntityUpdatePacket3D,
+    overlayModes: { reclaimTargets?: boolean } = {},
   ): void {
     // Refresh the single render-detail snapshot once per frame.
     const newFrameState = frameStateOverride
@@ -377,7 +378,7 @@ export class Render3DEntities {
     refreshLocomotionSupportSurfaces(this.clientViewState.getPredictionSupportSurfaceEntities());
     this.syncSmokeTrailsQueue();
     this.syncLegsRadiusToggleQueue();
-    this.selectionOverlays.beginFrame();
+    this.selectionOverlays.beginFrame({ reclaimTargets: overlayModes.reclaimTargets === true });
     // Populate beam-directed turret aim from the live beams BEFORE the
     // unit + building turret-pose passes read it this frame.
     this.turretBeamAimCache.collectFromBeamProjectiles(

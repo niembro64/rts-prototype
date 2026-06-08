@@ -111,6 +111,9 @@ export type EntityMesh = {
   /** Radar-building ground-plane circle. This previews the visual fog
    *  clearing radius without changing snapshot semantics. */
   radarRing?: RangeRingMesh;
+  /** Reclaim-mode ground highlight for reclaimable entities. It is
+   *  world-parented like range rings so it follows terrain height. */
+  reclaimRing?: RangeRingMesh;
   rangeRingsVisible?: boolean;
   /** Per-building accent meshes (chimney, solar cells, etc.). Tracked
    *  so rebuilds / destroy() know what to clean up alongside the primary

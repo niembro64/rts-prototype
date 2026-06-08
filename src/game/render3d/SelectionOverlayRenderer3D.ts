@@ -21,6 +21,7 @@ import {
 } from '../sim/supportSurface';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getEntityRadarRadius } from '../sim/sensorCoverage';
+import { isReclaimableTarget } from '../sim/reclaim';
 import type { TurretMesh } from './TurretMesh3D';
 import type { EntityMesh, RangeRingMesh, RadiusRingMeshes } from './EntityMesh3D';
 import { sampleLocomotionSupportSurface } from './LocomotionTerrainSampler';
@@ -45,6 +46,7 @@ export type OverlayEntityMesh = Pick<
   | 'radiusRingsVisible'
   | 'buildRing'
   | 'radarRing'
+  | 'reclaimRing'
   | 'rangeRingsVisible'
 >;
 
@@ -72,6 +74,7 @@ export class SelectionOverlayRenderer3D {
   private showEngageMinAcquire = false;
   private showEngageMinRelease = false;
   private showBuild = false;
+  private showReclaimTargets = false;
   private showVisualRadius = false;
   private showHitboxRadius = false;
   private showCollisionRadius = false;
@@ -134,6 +137,10 @@ export class SelectionOverlayRenderer3D {
     COLORS.effects.selectionOverlay.radar.colorHex,
     COLORS.effects.selectionOverlay.radar.opacity,
   );
+  private readonly ringMatReclaim = makeRangeCircleMaterial(
+    COLORS.ui.actionColors.reclaim.colorHex,
+    0.6,
+  );
   private readonly selectionRingMat = new THREE.MeshLambertMaterial({
     color: COLORS.effects.selectionOverlay.selectionRing.colorHex,
     emissive: COLORS.effects.selectionOverlay.selectionRing.emissiveHex,
@@ -153,7 +160,7 @@ export class SelectionOverlayRenderer3D {
     this.beginFrame();
   }
 
-  beginFrame(): void {
+  beginFrame(options: { reclaimTargets?: boolean } = {}): void {
     this.showTrackAcquire = getRangeToggle('trackAcquire');
     this.showTrackRelease = getRangeToggle('trackRelease');
     this.showEngageAcquire = getRangeToggle('engageAcquire');
@@ -161,6 +168,7 @@ export class SelectionOverlayRenderer3D {
     this.showEngageMinAcquire = getRangeToggle('engageMinAcquire');
     this.showEngageMinRelease = getRangeToggle('engageMinRelease');
     this.showBuild = getRangeToggle('build');
+    this.showReclaimTargets = options.reclaimTargets === true;
     this.showVisualRadius = getUnitRadiusToggle('visual');
     this.showHitboxRadius = getUnitRadiusToggle('hitbox');
     this.showCollisionRadius = getUnitRadiusToggle('collision');
@@ -175,6 +183,7 @@ export class SelectionOverlayRenderer3D {
       this.showEngageMinAcquire,
       this.showEngageMinRelease,
       this.showBuild,
+      this.showReclaimTargets,
     ].join('|');
     if (nextRangeStateKey !== this.rangeStateKey) {
       this.rangeStateKey = nextRangeStateKey;
@@ -213,6 +222,7 @@ export class SelectionOverlayRenderer3D {
   unitRangeOverlaysNeedUpdate(m: OverlayEntityMesh, selected: boolean): boolean {
     return (
       this.showAnyRange ||
+      this.showReclaimTargets ||
       m.rangeRingsVisible === true ||
       (selected && this.selectedCount === 1)
     );
@@ -225,6 +235,7 @@ export class SelectionOverlayRenderer3D {
   ): boolean {
     return (
       m.rangeRingsVisible === true ||
+      this.showReclaimTargets ||
       this.showAnyRange ||
       (selected && getEntityRadarRadius(entity) > 0)
     );
@@ -298,11 +309,12 @@ export class SelectionOverlayRenderer3D {
     const showBuild = this.showBuild;
     const radarRadius = getEntityRadarRadius(entity);
     const showRadar = radarRadius > 0 && entity.selectable?.selected === true;
+    const showReclaim = this.showReclaimTargets && isReclaimableTarget(entity);
     const showAnyTurretRange =
       showTrackAcquire || showTrackRelease
       || showEngageAcquire || showEngageRelease
       || showEngageMinAcquire || showEngageMinRelease;
-    if (!showAnyTurretRange && !showBuild && !showRadar) {
+    if (!showAnyTurretRange && !showBuild && !showRadar && !showReclaim) {
       if (m.rangeRingsVisible) this.hideRangeRings(m);
       m.rangeRingsVisible = false;
       return;
@@ -401,7 +413,21 @@ export class SelectionOverlayRenderer3D {
     } else if (m.radarRing) {
       m.radarRing.visible = false;
     }
-    m.rangeRingsVisible = showAnyTurretRange || (showBuild && builder !== undefined) || showRadar;
+
+    if (showReclaim) {
+      if (!m.reclaimRing) {
+        m.reclaimRing = this.createRangeCircle(this.ringMatReclaim);
+        m.reclaimRing.renderOrder = RANGE_CIRCLE_RENDER_ORDER + 1;
+        this.world.add(m.reclaimRing);
+      }
+      m.reclaimRing.visible = true;
+      m.reclaimRing.position.set(ux, unitGroundZ, uy);
+      this.writeRangeCircle(m.reclaimRing, reclaimHighlightRadius(entity));
+    } else if (m.reclaimRing) {
+      m.reclaimRing.visible = false;
+    }
+
+    m.rangeRingsVisible = showAnyTurretRange || (showBuild && builder !== undefined) || showRadar || showReclaim;
   }
 
   removeWorldParentedOverlays(m: OverlayEntityMesh): void {
@@ -412,6 +438,10 @@ export class SelectionOverlayRenderer3D {
     if (m.radarRing) {
       this.removeRangeCircle(m.radarRing);
       m.radarRing = undefined;
+    }
+    if (m.reclaimRing) {
+      this.removeRangeCircle(m.reclaimRing);
+      m.reclaimRing = undefined;
     }
     for (const tm of m.turrets) {
       if (!tm.rangeRings) continue;
@@ -439,6 +469,7 @@ export class SelectionOverlayRenderer3D {
     this.ringMatEngageMinRelease.dispose();
     this.ringMatBuild.dispose();
     this.ringMatRadar.dispose();
+    this.ringMatReclaim.dispose();
     this.selectionRingMat.dispose();
   }
 
@@ -475,6 +506,7 @@ export class SelectionOverlayRenderer3D {
     this.hideTurretRangeRings(m);
     if (m.buildRing) m.buildRing.visible = false;
     if (m.radarRing) m.radarRing.visible = false;
+    if (m.reclaimRing) m.reclaimRing.visible = false;
   }
 
   private hideTurretRangeRings(m: OverlayEntityMesh): void {
@@ -599,4 +631,10 @@ export class SelectionOverlayRenderer3D {
 
 function roundSupportDiagnostic(value: number): number {
   return Math.round(value * 1000) / 1000;
+}
+
+function reclaimHighlightRadius(entity: Entity): number {
+  if (entity.unit?.radius) return Math.max(12, entity.unit.radius.visual * 1.45);
+  if (entity.building) return Math.max(18, Math.hypot(entity.building.width, entity.building.height) * 0.58);
+  return 16;
 }
