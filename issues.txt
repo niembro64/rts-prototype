@@ -87,10 +87,10 @@ authoritative simulation, client prediction, snapshots, and render feedback
 must exist.
 
 Issue: BAR parity must be extended through the 3D/physics-first design, not
-implemented as flat 2D shortcuts. Attack areas/lines/circles need 3D ground
-height and ballistic previews; build lines/grids/borders need slope, support
-surface, collision, and resource-cell validation; formations need mass,
-acceleration, collision, and terrain-aware spacing; transport/load/unload,
-reclaim, resurrection, capture, and manual fire need physical presentation and
-authoritative physics interactions. Document any intentional departure from BAR
-in budget_design_philosophy.html before omitting a BAR behavior.
+implemented as flat 2D shortcuts. Attack lines/circles still need ballistic
+previews; build lines/grids/borders need slope, support surface, collision, and
+resource-cell validation; formations need mass, acceleration, collision, and
+terrain-aware spacing; transport/load/unload, reclaim, resurrection, capture,
+and manual fire need physical presentation and authoritative physics
+interactions. Document any intentional departure from BAR in
+budget_design_philosophy.html before omitting a BAR behavior.

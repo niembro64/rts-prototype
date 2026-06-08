@@ -85,6 +85,7 @@ export class Input3DModeClickController {
   private readonly buildPlacement = new Input3DBuildPlacementState();
   private buildGhost: BuildGhost3D | null = null;
   private areaDrag: AreaDrag | null = null;
+  private areaHoverPreview: Input3DAreaDragState = EMPTY_AREA_DRAG_STATE;
 
   constructor(private readonly config: Input3DModeClickControllerConfig) {}
 
@@ -171,6 +172,11 @@ export class Input3DModeClickController {
       this.updateBuildPreview(e, buildingBlueprintId);
       return true;
     }
+    if (this.updateAreaHoverPreview(e)) {
+      this.config.applyCursor(this.cursorKindForActiveMode() ?? 'game');
+      return true;
+    }
+    this.areaHoverPreview = EMPTY_AREA_DRAG_STATE;
     const cursor = this.cursorKindForActiveMode();
     if (cursor !== null) {
       this.config.applyCursor(cursor);
@@ -198,7 +204,12 @@ export class Input3DModeClickController {
 
   getAreaDragState(): Input3DAreaDragState {
     const drag = this.areaDrag;
-    if (drag === null) return EMPTY_AREA_DRAG_STATE;
+    if (drag === null) {
+      const previewKind = this.activeAreaDragKind();
+      return previewKind !== null && previewKind === this.areaHoverPreview.kind
+        ? this.areaHoverPreview
+        : EMPTY_AREA_DRAG_STATE;
+    }
     return {
       active: true,
       kind: drag.kind,
@@ -246,6 +257,22 @@ export class Input3DModeClickController {
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
     drag.current = { x: world.x, y: world.y, z: world.z };
+  }
+
+  private updateAreaHoverPreview(e: MouseEvent): boolean {
+    const kind = this.activeAreaDragKind();
+    if (kind === null || kind === 'buildMexArea') return false;
+    const world = this.config.picker.raycastGround(e.clientX, e.clientY);
+    if (!world) return false;
+    this.areaHoverPreview = {
+      active: true,
+      kind,
+      x: world.x,
+      y: world.y,
+      z: world.z,
+      radius: defaultAreaRadius(kind),
+    };
+    return true;
   }
 
   private activeAreaDragKind(): Input3DAreaDragKind | null {
@@ -695,4 +722,14 @@ function areaDragRadius(drag: AreaDrag): number {
   const dx = drag.current.x - drag.start.x;
   const dy = drag.current.y - drag.start.y;
   return Math.sqrt(dx * dx + dy * dy);
+}
+
+function defaultAreaRadius(kind: Input3DAreaDragKind): number {
+  switch (kind) {
+    case 'repairArea': return REPAIR_AREA_RADIUS;
+    case 'reclaimArea': return RECLAIM_AREA_RADIUS;
+    case 'attackArea': return ATTACK_AREA_RADIUS;
+    case 'buildMexArea': return 1;
+    default: return 1;
+  }
 }
