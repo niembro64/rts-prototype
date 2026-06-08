@@ -86,12 +86,13 @@ translated to authoritative-server commands.
 Issue: BAR gameplay functionality tied to missing commands is absent. Implement
 or explicitly redesign the systems needed by the missing command surface:
 transports, capture, resurrection/wreck fields, cloak/detection, unit stances,
-trajectory weapons, manual-launch weapons, factory queue
-management, build-shape placement, mex upgrade workflows, replays where
-applicable, and complete faction/unit/factory/building rosters. rts-prototype
-already has spectator UI/authority/snapshot paths. Missing commands should not
-be added as dead UI; their underlying authoritative simulation, client
-prediction, snapshots, and render feedback must exist.
+trajectory-toggle/manual arc-selection state for existing ballistic weapons,
+manual-launch weapons, factory queue management, build-shape placement, mex
+upgrade workflows, replays where applicable, and complete
+faction/unit/factory/building rosters. rts-prototype already has spectator
+UI/authority/snapshot paths. Missing commands should not be added as dead UI;
+their underlying authoritative simulation, client prediction, snapshots, and
+render feedback must exist.
 
 Issue: BAR parity must be extended through the 3D/physics-first design, not
 implemented as flat 2D shortcuts. Attack lines/circles still need ballistic
