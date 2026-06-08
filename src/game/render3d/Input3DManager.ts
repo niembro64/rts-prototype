@@ -1021,6 +1021,23 @@ export class Input3DManager {
     });
   }
 
+  private deselectEntityIds(entityIds: readonly EntityId[]): void {
+    if (entityIds.length === 0) return;
+    const idsToRemove = new Set(entityIds);
+    const currentIds = this.getCurrentSelectedEntityIds();
+    const remainingIds: EntityId[] = [];
+    for (let i = 0; i < currentIds.length; i++) {
+      const id = currentIds[i];
+      if (!idsToRemove.has(id)) remainingIds.push(id);
+    }
+    if (remainingIds.length === currentIds.length) return;
+    if (remainingIds.length === 0) {
+      this.enqueueClearSelection();
+      return;
+    }
+    this.enqueueSelection(remainingIds, false);
+  }
+
   private rememberPreviousSelection(nextEntityIds: readonly EntityId[], additive: boolean): void {
     const currentIds = this.getCurrentSelectedEntityIds();
     if (currentIds.length === 0) return;
@@ -1133,7 +1150,8 @@ export class Input3DManager {
     }
     if (e.button !== 0 || !this.leftDown) return;
     const isClick = this.selectionDrag.isClick(e.clientX, e.clientY, CLICK_DRAG_THRESHOLD_PX);
-    const additive = e.shiftKey;
+    const subtractive = e.altKey;
+    const additive = e.shiftKey && !subtractive;
     this.selectionDrag.finish();
 
     if (isClick) {
@@ -1143,7 +1161,8 @@ export class Input3DManager {
       if (hit !== null) {
         const ent = this.entitySource.getEntity(hit) ?? null;
         if (this.isSelectableByActivePlayer(ent)) {
-          this.enqueueSelection([hit], additive);
+          if (subtractive) this.deselectEntityIds([hit]);
+          else this.enqueueSelection([hit], additive);
           this.refreshCursor();
           return;
         }
@@ -1162,12 +1181,13 @@ export class Input3DManager {
           },
         );
         if (closest) {
-          this.enqueueSelection([closest.id], additive);
+          if (subtractive) this.deselectEntityIds([closest.id]);
+          else this.enqueueSelection([closest.id], additive);
           this.refreshCursor();
           return;
         }
       }
-      if (!additive) {
+      if (!additive && !subtractive) {
         this.enqueueClearSelection();
       }
       this.refreshCursor();
@@ -1184,8 +1204,10 @@ export class Input3DManager {
       this.selectionDrag.start,
       this.selectionDrag.end,
     );
-    if (ids.length > 0) this.enqueueSelection(ids, additive);
-    else if (!additive) this.enqueueClearSelection();
+    if (ids.length > 0) {
+      if (subtractive) this.deselectEntityIds(ids);
+      else this.enqueueSelection(ids, additive);
+    } else if (!additive && !subtractive) this.enqueueClearSelection();
     this.refreshCursor();
   }
 
