@@ -46,6 +46,10 @@ import { isBuildInProgress } from '../sim/buildableHelpers';
 import { getSelectedBuilderAllowedBuildBlueprintIds } from '../sim/builderBuildRoster';
 import { isCommander } from '../sim/combat/combatUtils';
 import { isReclaimableTarget } from '../sim/reclaim';
+import {
+  canBuilderUpgradeMetalExtractor,
+  isUpgradeableMetalExtractorTarget,
+} from '../sim/metalExtractorUpgrade';
 import { Input3DSpecialModes, type Input3DSpecialMode } from './Input3DSpecialModes';
 import { Input3DHoverState, resolveInput3DHoverTargets } from './Input3DHoverState';
 import { Input3DSelectionDragState } from './Input3DSelectionDragState';
@@ -112,6 +116,7 @@ export class Input3DManager {
   public onAttackGroundModeChange?: (active: boolean) => void;
   public onGuardModeChange?: (active: boolean) => void;
   public onReclaimModeChange?: (active: boolean) => void;
+  public onMexUpgradeModeChange?: (active: boolean) => void;
   public onPingModeChange?: (active: boolean) => void;
   public onTowerTargetModeChange?: (active: boolean) => void;
   private specialModes: Input3DSpecialModes;
@@ -192,6 +197,7 @@ export class Input3DManager {
       isAttackGroundMode: () => this.attackGroundMode,
       isGuardMode: () => this.guardMode,
       isReclaimMode: () => this.reclaimMode,
+      isMexUpgradeMode: () => this.mexUpgradeMode,
       isPingMode: () => this.pingMode,
       isTowerTargetMode: () => this.towerTargetMode,
       exitRepairAreaMode: () => this.exitRepairAreaMode(),
@@ -200,6 +206,7 @@ export class Input3DManager {
       exitAttackGroundMode: () => this.exitAttackGroundMode(),
       exitGuardMode: () => this.exitGuardMode(),
       exitReclaimMode: () => this.exitReclaimMode(),
+      exitMexUpgradeMode: () => this.exitMexUpgradeMode(),
       exitPingMode: () => this.exitPingMode(),
       exitTowerTargetMode: () => this.exitTowerTargetMode(),
     });
@@ -268,6 +275,8 @@ export class Input3DManager {
       toggleAttackGroundMode: () => this.toggleAttackGroundMode(),
       toggleGuardMode: () => this.toggleGuardMode(),
       toggleReclaimMode: () => this.toggleReclaimMode(),
+      toggleMexUpgradeMode: () => this.toggleMexUpgradeMode(),
+      upgradeSelectedMetalExtractors: () => this.upgradeSelectedMetalExtractors(),
       toggleRepairAreaMode: () => this.toggleRepairAreaMode(),
       togglePingMode: () => this.togglePingMode(),
       toggleDGunMode: () => this.toggleDGunMode(),
@@ -292,6 +301,7 @@ export class Input3DManager {
       isAttackGroundMode: () => this.attackGroundMode,
       isGuardMode: () => this.guardMode,
       isReclaimMode: () => this.reclaimMode,
+      isMexUpgradeMode: () => this.mexUpgradeMode,
       isPingMode: () => this.pingMode,
       isTowerTargetMode: () => this.towerTargetMode,
       exitRepairAreaMode: () => this.exitRepairAreaMode(),
@@ -300,6 +310,7 @@ export class Input3DManager {
       exitAttackGroundMode: () => this.exitAttackGroundMode(),
       exitGuardMode: () => this.exitGuardMode(),
       exitReclaimMode: () => this.exitReclaimMode(),
+      exitMexUpgradeMode: () => this.exitMexUpgradeMode(),
       exitPingMode: () => this.exitPingMode(),
       exitTowerTargetMode: () => this.exitTowerTargetMode(),
     });
@@ -313,6 +324,7 @@ export class Input3DManager {
       onAttackGroundModeChange: (active) => this.onAttackGroundModeChange?.(active),
       onGuardModeChange: (active) => this.onGuardModeChange?.(active),
       onReclaimModeChange: (active) => this.onReclaimModeChange?.(active),
+      onMexUpgradeModeChange: (active) => this.onMexUpgradeModeChange?.(active),
       onPingModeChange: (active) => this.onPingModeChange?.(active),
       onTowerTargetModeChange: (active) => this.onTowerTargetModeChange?.(active),
     });
@@ -406,6 +418,10 @@ export class Input3DManager {
 
   private get reclaimMode(): boolean {
     return this.specialModes.isActive('reclaim');
+  }
+
+  private get mexUpgradeMode(): boolean {
+    return this.specialModes.isActive('mexUpgrade');
   }
 
   private get pingMode(): boolean {
@@ -890,6 +906,18 @@ export class Input3DManager {
     this.enterSpecialMode('reclaim');
   }
 
+  toggleMexUpgradeMode(): void {
+    if (this.mexUpgradeMode) {
+      this.exitMexUpgradeMode();
+      return;
+    }
+    if (!this.hasSelectedMetalExtractorUpgradeBuilder()) return;
+    this.mode.exitBuildMode();
+    this.mode.exitDGunMode();
+    this.exitSpecialModes();
+    this.enterSpecialMode('mexUpgrade');
+  }
+
   storeControlGroupSlot(index: number): void {
     this.controlGroups.storeSlot(index);
   }
@@ -1015,6 +1043,11 @@ export class Input3DManager {
     return this.reclaimMode;
   }
 
+  /** True while the next left-click/drag will issue a metal extractor upgrade command. */
+  isInMexUpgradeMode(): boolean {
+    return this.mexUpgradeMode;
+  }
+
   /** True while the next left-click will issue a map ping. */
   isInPingMode(): boolean {
     return this.pingMode;
@@ -1055,6 +1088,10 @@ export class Input3DManager {
 
   private exitReclaimMode(): void {
     this.specialModes.exit('reclaim');
+  }
+
+  private exitMexUpgradeMode(): void {
+    this.specialModes.exit('mexUpgrade');
   }
 
   private exitPingMode(): void {
@@ -1109,6 +1146,33 @@ export class Input3DManager {
     }
   }
 
+  upgradeSelectedMetalExtractors(): void {
+    const selectedStatic = this.entitySource.getSelectedBuildings();
+    const targets: Entity[] = [];
+    for (let i = 0; i < selectedStatic.length; i++) {
+      const target = selectedStatic[i];
+      if (isUpgradeableMetalExtractorTarget(target, this.context.activePlayerId)) targets.push(target);
+    }
+    if (targets.length === 0) return;
+    const selectedBuilders = this.getSelectedMetalExtractorUpgradeBuilders();
+    const tick = this.context.getTick();
+    for (let i = 0; i < targets.length; i++) {
+      const target = targets[i];
+      const builder = selectedBuilders.length > 0
+        ? selectedBuilders[i % selectedBuilders.length]
+        : this.getClosestMetalExtractorUpgradeBuilder(target.transform.x, target.transform.y);
+      if (builder === null) continue;
+      this.localCommandQueue.enqueue({
+        type: 'upgradeMetalExtractor',
+        tick,
+        builderId: builder.id,
+        targetId: target.id,
+        queue: i > 0,
+        queueFront: false,
+      });
+    }
+  }
+
   isInTowerTargetMode(): boolean {
     return this.towerTargetMode;
   }
@@ -1125,6 +1189,10 @@ export class Input3DManager {
     return this.entitySource.getSelectedUnits().some((unit) => unit.builder !== null);
   }
 
+  private hasSelectedMetalExtractorUpgradeBuilder(): boolean {
+    return this.getSelectedMetalExtractorUpgradeBuilders().length > 0;
+  }
+
   private getSelectedCommander(): Entity | null {
     return (
       this.entitySource.getSelectedUnits().find(isCommander) ?? null
@@ -1135,6 +1203,27 @@ export class Input3DManager {
     return (
       this.entitySource.getSelectedUnits().find((unit) => unit.builder !== null) ?? null
     );
+  }
+
+  private getSelectedMetalExtractorUpgradeBuilders(): Entity[] {
+    return this.entitySource.getSelectedUnits().filter(canBuilderUpgradeMetalExtractor);
+  }
+
+  private getClosestMetalExtractorUpgradeBuilder(x: number, y: number): Entity | null {
+    const units = this.entitySource.getUnitsByPlayer(this.context.activePlayerId);
+    let best: Entity | null = null;
+    let bestDistanceSq = Infinity;
+    for (let i = 0; i < units.length; i++) {
+      const unit = units[i];
+      if (!canBuilderUpgradeMetalExtractor(unit)) continue;
+      const dx = unit.transform.x - x;
+      const dy = unit.transform.y - y;
+      const distanceSq = dx * dx + dy * dy;
+      if (distanceSq >= bestDistanceSq) continue;
+      best = unit;
+      bestDistanceSq = distanceSq;
+    }
+    return best;
   }
 
   private getSelectedBuilderAllowedBuildBlueprintIds(): readonly StructureBlueprintId[] {
@@ -1299,6 +1388,9 @@ export class Input3DManager {
     }
     if (this.reclaimMode && !this.hasSelectedCommander()) {
       this.exitReclaimMode();
+    }
+    if (this.mexUpgradeMode && !this.hasSelectedMetalExtractorUpgradeBuilder()) {
+      this.exitMexUpgradeMode();
     }
     if (this.towerTargetMode && !this.hasSelectedTargetableCombatEntities()) {
       this.exitTowerTargetMode();
@@ -1642,6 +1734,7 @@ export class Input3DManager {
     this.onAttackGroundModeChange = undefined;
     this.onGuardModeChange = undefined;
     this.onReclaimModeChange = undefined;
+    this.onMexUpgradeModeChange = undefined;
     this.onPingModeChange = undefined;
     this.selectionDrag.destroy();
   }

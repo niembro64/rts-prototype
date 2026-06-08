@@ -59,6 +59,8 @@ type Input3DKeyboardControllerConfig = {
   toggleAttackGroundMode: () => void;
   toggleGuardMode: () => void;
   toggleReclaimMode: () => void;
+  toggleMexUpgradeMode: () => void;
+  upgradeSelectedMetalExtractors: () => void;
   toggleRepairAreaMode: () => void;
   togglePingMode: () => void;
   toggleDGunMode: () => void;
@@ -83,6 +85,7 @@ type Input3DKeyboardControllerConfig = {
   isAttackGroundMode: () => boolean;
   isGuardMode: () => boolean;
   isReclaimMode: () => boolean;
+  isMexUpgradeMode: () => boolean;
   isPingMode: () => boolean;
   isTowerTargetMode: () => boolean;
   exitRepairAreaMode: () => void;
@@ -91,6 +94,7 @@ type Input3DKeyboardControllerConfig = {
   exitAttackGroundMode: () => void;
   exitGuardMode: () => void;
   exitReclaimMode: () => void;
+  exitMexUpgradeMode: () => void;
   exitPingMode: () => void;
   exitTowerTargetMode: () => void;
 };
@@ -395,6 +399,12 @@ export class Input3DKeyboardController {
       case 'combat.reclaim':
         this.config.toggleReclaimMode();
         break;
+      case 'command.upgradeMexSelected':
+        this.config.upgradeSelectedMetalExtractors();
+        break;
+      case 'command.upgradeMexArea':
+        this.config.toggleMexUpgradeMode();
+        break;
       case 'combat.repairArea':
         this.config.toggleRepairAreaMode();
         break;
@@ -556,6 +566,7 @@ export class Input3DKeyboardController {
         { isActive: this.config.isAttackGroundMode, cancel: this.config.exitAttackGroundMode },
         { isActive: this.config.isGuardMode, cancel: this.config.exitGuardMode },
         { isActive: this.config.isReclaimMode, cancel: this.config.exitReclaimMode },
+        { isActive: this.config.isMexUpgradeMode, cancel: this.config.exitMexUpgradeMode },
         { isActive: this.config.isPingMode, cancel: this.config.exitPingMode },
         { isActive: this.config.isTowerTargetMode, cancel: this.config.exitTowerTargetMode },
       ],

@@ -38,6 +38,8 @@ export type SelectionInfo = {
   hasCommander: boolean;
   hasBuilder: boolean;
   allowedBuildBlueprintIds: readonly StructureBlueprintId[];
+  canUpgradeMetalExtractors: boolean;
+  hasUpgradeableMetalExtractor: boolean;
   hasDGun: boolean;
   hasFireControl: boolean;
   fireEnabled: boolean;
@@ -85,6 +87,7 @@ export type SelectionInfo = {
   isAttackGroundMode: boolean;
   isGuardMode: boolean;
   isReclaimMode: boolean;
+  isMexUpgradeMode: boolean;
   isPingMode: boolean;
   factorySelectedUnit?: FactorySelectionItem | null;
   factoryProductionQueue?: FactorySelectionItem[];
@@ -135,6 +138,8 @@ export type SelectionActions = {
   toggleGuard: () => void;
   toggleReclaim: () => void;
   reclaimSelected: () => void;
+  toggleMexUpgrade: () => void;
+  upgradeSelectedMetalExtractors: () => void;
   togglePing: () => void;
   storeControlGroup: (index: number) => void;
   recallControlGroup: (index: number, additive: boolean) => void;
@@ -248,6 +253,7 @@ export type UIInputState = {
   isAttackGroundMode: boolean;
   isGuardMode: boolean;
   isReclaimMode: boolean;
+  isMexUpgradeMode: boolean;
   isPingMode: boolean;
   /** True while in the click-to-pick mode for setting a tower's host
    *  lock-on target. Mirrors the attack-area / guard mode pattern. */

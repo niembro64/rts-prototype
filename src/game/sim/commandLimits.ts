@@ -8,3 +8,5 @@ import commandLimits from './commandLimits.json';
 export const REPAIR_AREA_MAX_RADIUS = commandLimits.repairAreaMaxRadius;
 export const RECLAIM_AREA_MAX_RADIUS = commandLimits.reclaimAreaMaxRadius;
 export const ATTACK_AREA_MAX_RADIUS = commandLimits.attackAreaMaxRadius;
+export const METAL_EXTRACTOR_UPGRADE_AREA_MAX_RADIUS =
+  commandLimits.metalExtractorUpgradeAreaMaxRadius;

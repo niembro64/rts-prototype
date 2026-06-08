@@ -25,6 +25,11 @@ import {
 import type { Input3DPicker } from './Input3DPicker';
 import { entityCanBuild } from '../sim/builderBuildRoster';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
+import { METAL_EXTRACTOR_UPGRADE_AREA_MAX_RADIUS } from '../sim/commandLimits';
+import {
+  canBuilderUpgradeMetalExtractor,
+  isUpgradeableMetalExtractorTarget,
+} from '../sim/metalExtractorUpgrade';
 import {
   EMPTY_AREA_DRAG_STATE,
   type Input3DAreaDragKind,
@@ -36,6 +41,7 @@ import { queueModeFromEvent } from '../input/queueModifiers';
 const REPAIR_AREA_RADIUS = 220;
 const RECLAIM_AREA_RADIUS = 220;
 const ATTACK_AREA_RADIUS = 300;
+const MEX_UPGRADE_AREA_RADIUS = 220;
 const AREA_MEX_BLUEPRINT_ID: BuildingBlueprintId = 'buildingExtractor';
 
 type AreaDrag = {
@@ -87,6 +93,7 @@ type Input3DModeClickControllerConfig = {
   isAttackGroundMode: () => boolean;
   isGuardMode: () => boolean;
   isReclaimMode: () => boolean;
+  isMexUpgradeMode: () => boolean;
   isPingMode: () => boolean;
   isTowerTargetMode: () => boolean;
   exitRepairAreaMode: () => void;
@@ -95,6 +102,7 @@ type Input3DModeClickControllerConfig = {
   exitAttackGroundMode: () => void;
   exitGuardMode: () => void;
   exitReclaimMode: () => void;
+  exitMexUpgradeMode: () => void;
   exitPingMode: () => void;
   exitTowerTargetMode: () => void;
 };
@@ -118,6 +126,7 @@ export class Input3DModeClickController {
       this.config.isAttackGroundMode() ||
       this.config.isGuardMode() ||
       this.config.isReclaimMode() ||
+      this.config.isMexUpgradeMode() ||
       this.config.isPingMode() ||
       this.config.isTowerTargetMode();
   }
@@ -190,6 +199,7 @@ export class Input3DModeClickController {
     if (this.config.isAttackGroundMode()) return 'attack';
     if (this.config.isGuardMode()) return 'guard';
     if (this.config.isReclaimMode()) return 'reclaim';
+    if (this.config.isMexUpgradeMode()) return 'build';
     if (this.config.isPingMode()) return 'ping';
     if (this.config.isTowerTargetMode()) return 'attack';
     return null;
@@ -340,6 +350,7 @@ export class Input3DModeClickController {
     if (this.config.isRepairAreaMode()) return 'repairArea';
     if (this.config.isAttackAreaMode()) return 'attackArea';
     if (this.config.isReclaimMode()) return 'reclaimArea';
+    if (this.config.isMexUpgradeMode()) return 'upgradeMexArea';
     return null;
   }
 
@@ -393,6 +404,28 @@ export class Input3DModeClickController {
       if (cmd) this.config.commandQueue.enqueue(cmd);
       this.config.applyCursor('attack');
       if (!drag.queue) this.config.exitAttackAreaMode();
+      return;
+    }
+    if (drag.kind === 'upgradeMexArea') {
+      const builderIds = this.getSelectedMetalExtractorUpgradeBuilderIds();
+      if (builderIds.length === 0) {
+        this.config.applyCursor('blocked');
+        return;
+      }
+      this.config.commandQueue.enqueue({
+        type: 'upgradeMetalExtractorArea',
+        tick: this.config.getTick(),
+        builderIds,
+        targetX: drag.start.x,
+        targetY: drag.start.y,
+        targetZ: drag.start.z,
+        radius: Math.min(radius, METAL_EXTRACTOR_UPGRADE_AREA_MAX_RADIUS),
+        queue: drag.queue,
+        queueFront: drag.queueFront,
+        queueInsertIndex: drag.queueInsertIndex,
+      });
+      this.config.applyCursor('build');
+      if (!drag.queue) this.config.exitMexUpgradeMode();
       return;
     }
     const cmd = buildReclaimAreaCommand(
@@ -529,6 +562,16 @@ export class Input3DModeClickController {
     return entityCanBuild(builder, buildingBlueprintId) && builder !== null ? [builder] : [];
   }
 
+  private getSelectedMetalExtractorUpgradeBuilderIds(): EntityId[] {
+    const builderIds: EntityId[] = [];
+    const selectedUnits = this.config.getEntitySource().getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      const unit = selectedUnits[i];
+      if (canBuilderUpgradeMetalExtractor(unit)) builderIds.push(unit.id);
+    }
+    return builderIds;
+  }
+
   private handleLeftClick(e: MouseEvent): void {
     if (this.config.mode.isInBuildMode) this.handleBuildClick(e);
     else if (this.config.mode.isInDGunMode) this.handleDGunClick(e);
@@ -538,6 +581,7 @@ export class Input3DModeClickController {
     else if (this.config.isAttackGroundMode()) this.handleAttackGroundClick(e);
     else if (this.config.isGuardMode()) this.handleGuardClick(e);
     else if (this.config.isReclaimMode()) this.handleReclaimClick(e);
+    else if (this.config.isMexUpgradeMode()) this.handleMexUpgradeClick(e);
     else if (this.config.isTowerTargetMode()) this.handleTowerTargetClick(e);
     else this.handlePingClick(e);
   }
@@ -551,6 +595,7 @@ export class Input3DModeClickController {
     else if (this.config.isAttackGroundMode()) this.config.exitAttackGroundMode();
     else if (this.config.isGuardMode()) this.config.exitGuardMode();
     else if (this.config.isReclaimMode()) this.config.exitReclaimMode();
+    else if (this.config.isMexUpgradeMode()) this.config.exitMexUpgradeMode();
     else if (this.config.isTowerTargetMode()) this.config.exitTowerTargetMode();
     else this.config.exitPingMode();
   }
@@ -931,6 +976,34 @@ export class Input3DModeClickController {
     if (!queueMode.queue) this.config.exitReclaimMode();
   }
 
+  private handleMexUpgradeClick(e: MouseEvent): void {
+    const builderIds = this.getSelectedMetalExtractorUpgradeBuilderIds();
+    if (builderIds.length === 0) {
+      this.config.exitMexUpgradeMode();
+      return;
+    }
+    const entityHitId = this.config.picker.raycastEntity(e.clientX, e.clientY);
+    const target = entityHitId !== null
+      ? this.config.getEntitySource().getEntity(entityHitId)
+      : null;
+    if (!isUpgradeableMetalExtractorTarget(target, this.config.getActivePlayerId())) {
+      this.config.applyCursor('blocked');
+      return;
+    }
+    const queueMode = queueModeFromEvent(e);
+    this.config.commandQueue.enqueue({
+      type: 'upgradeMetalExtractor',
+      tick: this.config.getTick(),
+      builderId: builderIds[0],
+      targetId: target.id,
+      queue: queueMode.queue,
+      queueFront: queueMode.queueFront,
+      queueInsertIndex: queueMode.queueInsertIndex,
+    });
+    this.config.applyCursor('build');
+    if (!queueMode.queue) this.config.exitMexUpgradeMode();
+  }
+
   private handleTowerTargetClick(e: MouseEvent): void {
     const entityHitId = this.config.picker.raycastEntity(e.clientX, e.clientY);
     if (entityHitId === null) return;
@@ -958,6 +1031,7 @@ function defaultAreaRadius(kind: Input3DAreaDragKind): number {
     case 'attackArea': return ATTACK_AREA_RADIUS;
     case 'attackGround': return 48;
     case 'buildMexArea': return 1;
+    case 'upgradeMexArea': return MEX_UPGRADE_AREA_RADIUS;
     default: return 1;
   }
 }

@@ -1,5 +1,6 @@
 {
   "repairAreaMaxRadius": 500,
   "reclaimAreaMaxRadius": 500,
-  "attackAreaMaxRadius": 700
+  "attackAreaMaxRadius": 700,
+  "metalExtractorUpgradeAreaMaxRadius": 500
 }

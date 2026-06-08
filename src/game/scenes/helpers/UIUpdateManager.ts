@@ -16,6 +16,10 @@ import {
 import { buildingBlueprintHasActiveState } from '../../sim/buildingActiveState';
 import { getSelectedBuilderAllowedBuildBlueprintIds } from '../../sim/builderBuildRoster';
 import { isReclaimableTarget } from '../../sim/reclaim';
+import {
+  canBuilderUpgradeMetalExtractor,
+  isUpgradeableMetalExtractorTarget,
+} from '../../sim/metalExtractorUpgrade';
 
 function unitLabel(unitBlueprintId: string): string {
   try {
@@ -390,6 +394,14 @@ export function buildSelectionInfo(
   const commander = selectedUnits.find(isCommander);
   const builder = selectedUnits.find(u => u.builder !== null);
   const allowedBuildBlueprintIds = getSelectedBuilderAllowedBuildBlueprintIds(selectedUnits);
+  const canUpgradeMetalExtractors = selectedUnits.some(canBuilderUpgradeMetalExtractor);
+  const selectedPlayerId = selectedUnits[0]?.ownership?.playerId ?? selectedStatic[0]?.ownership?.playerId;
+  const hasOwnedMetalExtractorUpgradeBuilder = selectedPlayerId !== undefined &&
+    entitySource.getUnitsByPlayer(selectedPlayerId).some(canBuilderUpgradeMetalExtractor);
+  const hasUpgradeableMetalExtractor = selectedBuildings.some((entity) =>
+    hasOwnedMetalExtractorUpgradeBuilder &&
+    isUpgradeableMetalExtractorTarget(entity, entity.ownership?.playerId),
+  );
   const dgunner = commander;
   let fireControlCount = 0;
   let trajectoryControlCount = 0;
@@ -518,6 +530,8 @@ export function buildSelectionInfo(
     hasCommander: commander !== undefined,
     hasBuilder: builder !== undefined,
     allowedBuildBlueprintIds,
+    canUpgradeMetalExtractors,
+    hasUpgradeableMetalExtractor,
     hasDGun: dgunner !== undefined,
     hasFireControl:
       fireControlCount > 0
@@ -558,6 +572,7 @@ export function buildSelectionInfo(
     isAttackGroundMode: inputState?.isAttackGroundMode ?? false,
     isGuardMode: inputState?.isGuardMode ?? false,
     isReclaimMode: inputState?.isReclaimMode ?? false,
+    isMexUpgradeMode: inputState?.isMexUpgradeMode ?? false,
     isPingMode: inputState?.isPingMode ?? false,
     factorySelectedUnit,
     factoryProgress,

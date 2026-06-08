@@ -4,6 +4,7 @@ export type Input3DAreaDragKind =
   | 'attackArea'
   | 'attackGround'
   | 'buildMexArea'
+  | 'upgradeMexArea'
   | 'buildLine'
   | 'buildBorder'
   | 'buildGrid';

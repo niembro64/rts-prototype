@@ -91,6 +91,8 @@ export function useGameCanvasSceneUi({
     hasCommander: false,
     hasBuilder: false,
     allowedBuildBlueprintIds: [],
+    canUpgradeMetalExtractors: false,
+    hasUpgradeableMetalExtractor: false,
     hasDGun: false,
     hasFireControl: false,
     fireEnabled: false,
@@ -124,6 +126,7 @@ export function useGameCanvasSceneUi({
     isAttackGroundMode: false,
     isGuardMode: false,
     isReclaimMode: false,
+    isMexUpgradeMode: false,
     isPingMode: false,
     factorySelectedUnit: null,
     factoryProgress: 0,
@@ -297,6 +300,12 @@ export function useGameCanvasSceneUi({
     },
     reclaimSelected: () => {
       getActiveBattleScene()?.reclaimSelected();
+    },
+    toggleMexUpgrade: () => {
+      getActiveBattleScene()?.toggleMexUpgradeMode();
+    },
+    upgradeSelectedMetalExtractors: () => {
+      getActiveBattleScene()?.upgradeSelectedMetalExtractors();
     },
     togglePing: () => {
       getActiveBattleScene()?.togglePingMode();

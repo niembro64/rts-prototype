@@ -19,6 +19,8 @@ export type CommandType =
   | 'ping'
   | 'scan'
   | 'startBuild'
+  | 'upgradeMetalExtractor'
+  | 'upgradeMetalExtractorArea'
   | 'queueUnit'
   | 'editFactoryQueue'
   | 'stopFactoryProduction'
@@ -157,6 +159,27 @@ export type StartBuildCommand = BaseCommand & {
   gridX: number;
   gridY: number;
   rotation?: number;
+  queue: boolean;
+  queueFront?: boolean;
+  queueInsertIndex?: number;
+};
+
+export type UpgradeMetalExtractorCommand = BaseCommand & {
+  type: 'upgradeMetalExtractor';
+  builderId: EntityId;
+  targetId: EntityId;
+  queue: boolean;
+  queueFront?: boolean;
+  queueInsertIndex?: number;
+};
+
+export type UpgradeMetalExtractorAreaCommand = BaseCommand & {
+  type: 'upgradeMetalExtractorArea';
+  builderIds: EntityId[];
+  targetX: number;
+  targetY: number;
+  targetZ?: number;
+  radius: number;
   queue: boolean;
   queueFront?: boolean;
   queueInsertIndex?: number;
@@ -424,6 +447,8 @@ export type Command =
   | PingCommand
   | ScanCommand
   | StartBuildCommand
+  | UpgradeMetalExtractorCommand
+  | UpgradeMetalExtractorAreaCommand
   | QueueUnitCommand
   | EditFactoryQueueCommand
   | StopFactoryProductionCommand

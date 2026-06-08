@@ -7,6 +7,7 @@ export type Input3DSpecialMode =
   | 'attackGround'
   | 'guard'
   | 'reclaim'
+  | 'mexUpgrade'
   | 'ping'
   | 'towerTarget';
 
@@ -19,6 +20,7 @@ type Input3DSpecialModeCallbacks = {
   onAttackGroundModeChange: (active: boolean) => void;
   onGuardModeChange: (active: boolean) => void;
   onReclaimModeChange: (active: boolean) => void;
+  onMexUpgradeModeChange: (active: boolean) => void;
   onPingModeChange: (active: boolean) => void;
   onTowerTargetModeChange: (active: boolean) => void;
 };
@@ -36,6 +38,7 @@ const SPECIAL_MODE_ORDER: readonly Input3DSpecialMode[] = [
   'attackGround',
   'guard',
   'reclaim',
+  'mexUpgrade',
   'ping',
   'towerTarget',
 ];
@@ -50,6 +53,7 @@ export class Input3DSpecialModes {
     attackGround: false,
     guard: false,
     reclaim: false,
+    mexUpgrade: false,
     ping: false,
     towerTarget: false,
   };
@@ -106,6 +110,9 @@ export class Input3DSpecialModes {
         break;
       case 'reclaim':
         this.options.onReclaimModeChange(active);
+        break;
+      case 'mexUpgrade':
+        this.options.onMexUpgradeModeChange(active);
         break;
       case 'ping':
         this.options.onPingModeChange(active);

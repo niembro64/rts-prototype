@@ -5,6 +5,7 @@ import {
   resolvePathableFormationTarget,
   type CommandContext,
 } from './commandExecution';
+import { applyCompletedBuildingEffects } from './buildingCompletion';
 import type { Entity } from './types';
 import { setUnitActions } from './unitActions';
 import { WorldState } from './WorldState';
@@ -37,6 +38,19 @@ function assertActionTargetIds(actions: readonly { targetId?: number }[], expect
       `${message}: action ${i} expected target ${expected[i]}, got ${actions[i].targetId ?? 'none'}`,
     );
   }
+}
+
+function completeTestBuilding(world: WorldState, entity: Entity): void {
+  assertContract(entity.buildable !== null, 'test building must start under construction');
+  if (entity.buildable !== null) {
+    entity.buildable.paid = { ...entity.buildable.required };
+    entity.buildable.isComplete = true;
+  }
+  if (entity.building !== null) {
+    entity.building.hp = entity.building.maxHp;
+  }
+  applyCompletedBuildingEffects(world, entity);
+  entity.buildable = null;
 }
 
 export function runCommandExecutionContractTest(): void {
@@ -213,4 +227,77 @@ export function runCommandExecutionContractTest(): void {
     commander.unit.actions[4].type === 'wait',
     'inserted repair area should preserve existing orders after the requested index',
   );
+
+  const upgradeWorld = new WorldState(1, 512, 512);
+  const upgradeConstruction = new ConstructionSystem(upgradeWorld.mapWidth, upgradeWorld.mapHeight);
+  const upgradeCtx: CommandContext = {
+    world: upgradeWorld,
+    constructionSystem: upgradeConstruction,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  };
+  const upgradeBuilder = upgradeWorld.createUnitFromBlueprint(80, 80, 1, 'unitCommander', {
+    allocateSubEntityIds: false,
+  });
+  upgradeWorld.addEntity(upgradeBuilder);
+  const firstExtractor = upgradeConstruction.startBuilding(
+    upgradeWorld,
+    'buildingExtractor',
+    8,
+    8,
+    1,
+    upgradeBuilder.id,
+  );
+  const secondExtractor = upgradeConstruction.startBuilding(
+    upgradeWorld,
+    'buildingExtractor',
+    15,
+    8,
+    1,
+    upgradeBuilder.id,
+  );
+  assertContract(firstExtractor !== null && secondExtractor !== null, 'test T1 extractors must place');
+  completeTestBuilding(upgradeWorld, firstExtractor);
+  completeTestBuilding(upgradeWorld, secondExtractor);
+
+  executeCommand(upgradeCtx, {
+    type: 'upgradeMetalExtractor',
+    tick: 4,
+    builderId: upgradeBuilder.id,
+    targetId: firstExtractor.id,
+    queue: false,
+  });
+  assertContract(
+    upgradeWorld.getEntity(firstExtractor.id) === undefined,
+    'single mex upgrade must remove the replaced T1 extractor',
+  );
+  let upgradedExtractors = upgradeWorld.getBuildingsByPlayer(1).filter(
+    (entity) => entity.buildingBlueprintId === 'buildingExtractorT2',
+  );
+  assertContract(upgradedExtractors.length === 1, 'single mex upgrade must create one T2 shell');
+  assertContract(
+    upgradeBuilder.unit?.actions.some((action) =>
+      action.type === 'build' && action.buildingId === upgradedExtractors[0].id,
+    ) === true,
+    'single mex upgrade must queue builder construction on the T2 shell',
+  );
+
+  executeCommand(upgradeCtx, {
+    type: 'upgradeMetalExtractorArea',
+    tick: 5,
+    builderIds: [upgradeBuilder.id],
+    targetX: secondExtractor.transform.x,
+    targetY: secondExtractor.transform.y,
+    radius: 180,
+    queue: true,
+  });
+  assertContract(
+    upgradeWorld.getEntity(secondExtractor.id) === undefined,
+    'area mex upgrade must remove the covered T1 extractor',
+  );
+  upgradedExtractors = upgradeWorld.getBuildingsByPlayer(1).filter(
+    (entity) => entity.buildingBlueprintId === 'buildingExtractorT2',
+  );
+  assertContract(upgradedExtractors.length === 2, 'area mex upgrade must create another T2 shell');
 }

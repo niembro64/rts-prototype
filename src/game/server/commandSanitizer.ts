@@ -29,11 +29,14 @@ import type {
   SetRallyPointCommand,
   StartBuildCommand,
   StopCommand,
+  UpgradeMetalExtractorAreaCommand,
+  UpgradeMetalExtractorCommand,
   WaitCommand,
   WaypointTarget,
 } from '../sim/commands';
 import {
   ATTACK_AREA_MAX_RADIUS,
+  METAL_EXTRACTOR_UPGRADE_AREA_MAX_RADIUS,
   RECLAIM_AREA_MAX_RADIUS,
   REPAIR_AREA_MAX_RADIUS,
 } from '../sim/commandLimits';
@@ -99,6 +102,10 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       return sanitizeGuardCommand(command, tick);
     case 'startBuild':
       return sanitizeStartBuildCommand(command, tick);
+    case 'upgradeMetalExtractor':
+      return sanitizeUpgradeMetalExtractorCommand(command, tick);
+    case 'upgradeMetalExtractorArea':
+      return sanitizeUpgradeMetalExtractorAreaCommand(command, world, tick);
     case 'queueUnit':
       return sanitizeQueueUnitCommand(command, tick);
     case 'editFactoryQueue':
@@ -506,6 +513,61 @@ function sanitizeStartBuildCommand(command: StartBuildCommand, tick: number): St
     gridX: Math.floor(command.gridX),
     gridY: Math.floor(command.gridY),
     rotation,
+    queue: command.queue,
+    queueFront,
+    queueInsertIndex,
+  };
+}
+
+function sanitizeUpgradeMetalExtractorCommand(
+  command: UpgradeMetalExtractorCommand,
+  tick: number,
+): UpgradeMetalExtractorCommand | null {
+  if (
+    !isEntityId(command.builderId) ||
+    !isEntityId(command.targetId) ||
+    typeof command.queue !== 'boolean'
+  ) {
+    return null;
+  }
+  const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
+  if (queueFront === null) return null;
+  const queueInsertIndex = sanitizeQueueInsertIndex(command.queue, queueFront, command.queueInsertIndex);
+  if (queueInsertIndex === null) return null;
+  return {
+    type: 'upgradeMetalExtractor',
+    tick,
+    builderId: command.builderId,
+    targetId: command.targetId,
+    queue: command.queue,
+    queueFront,
+    queueInsertIndex,
+  };
+}
+
+function sanitizeUpgradeMetalExtractorAreaCommand(
+  command: UpgradeMetalExtractorAreaCommand,
+  world: WorldState,
+  tick: number,
+): UpgradeMetalExtractorAreaCommand | null {
+  const builderIds = sanitizeEntityIdArray(command.builderIds);
+  const point = sanitizeGroundPoint(world, command.targetX, command.targetY, command.targetZ);
+  if (builderIds === null || point === null || typeof command.queue !== 'boolean') return null;
+  const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
+  if (queueFront === null) return null;
+  const queueInsertIndex = sanitizeQueueInsertIndex(command.queue, queueFront, command.queueInsertIndex);
+  if (queueInsertIndex === null) return null;
+  const radius = Number.isFinite(command.radius)
+    ? clamp(command.radius, 1, METAL_EXTRACTOR_UPGRADE_AREA_MAX_RADIUS)
+    : METAL_EXTRACTOR_UPGRADE_AREA_MAX_RADIUS;
+  return {
+    type: 'upgradeMetalExtractorArea',
+    tick,
+    builderIds,
+    targetX: point.x,
+    targetY: point.y,
+    targetZ: point.z,
+    radius,
     queue: command.queue,
     queueFront,
     queueInsertIndex,

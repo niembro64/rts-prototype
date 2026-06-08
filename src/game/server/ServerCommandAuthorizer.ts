@@ -21,6 +21,8 @@ import type {
   SetTowerTargetCommand,
   StartBuildCommand,
   StopCommand,
+  UpgradeMetalExtractorAreaCommand,
+  UpgradeMetalExtractorCommand,
   WaitCommand,
 } from '../sim/commands';
 import type { EntityId, PlayerId } from '../sim/types';
@@ -31,6 +33,10 @@ import {
   type CommandAuthority,
 } from './commandAuthority';
 import { entityCanBuild } from '../sim/builderBuildRoster';
+import {
+  canBuilderUpgradeMetalExtractor,
+  isUpgradeableMetalExtractorTarget,
+} from '../sim/metalExtractorUpgrade';
 
 type UnitListCommand =
   | AttackCommand
@@ -121,6 +127,12 @@ export function authorizeGameServerGameplayCommand(
     case 'startBuild':
       return authorizeStartBuildCommand(world, command, playerId);
 
+    case 'upgradeMetalExtractor':
+      return authorizeUpgradeMetalExtractorCommand(world, command, playerId);
+
+    case 'upgradeMetalExtractorArea':
+      return authorizeUpgradeMetalExtractorAreaCommand(world, command, playerId);
+
     case 'queueUnit':
     case 'stopFactoryProduction':
     case 'setRallyPoint':
@@ -158,6 +170,37 @@ function authorizeStartBuildCommand(
   const builder = world.getEntity(command.builderId);
   if (builder === undefined || builder.ownership?.playerId !== playerId) return null;
   return entityCanBuild(builder, command.buildingBlueprintId) ? command : null;
+}
+
+function authorizeUpgradeMetalExtractorCommand(
+  world: WorldState,
+  command: UpgradeMetalExtractorCommand,
+  playerId: PlayerId,
+): UpgradeMetalExtractorCommand | null {
+  const builder = world.getEntity(command.builderId);
+  if (builder === undefined || builder.ownership?.playerId !== playerId) return null;
+  if (!canBuilderUpgradeMetalExtractor(builder)) return null;
+  const target = world.getEntity(command.targetId);
+  return isUpgradeableMetalExtractorTarget(target, playerId) ? command : null;
+}
+
+function authorizeUpgradeMetalExtractorAreaCommand(
+  world: WorldState,
+  command: UpgradeMetalExtractorAreaCommand,
+  playerId: PlayerId,
+): UpgradeMetalExtractorAreaCommand | null {
+  const builderIds: EntityId[] = [];
+  const seen = new Set<EntityId>();
+  for (let i = 0; i < command.builderIds.length; i++) {
+    const builderId = command.builderIds[i];
+    if (seen.has(builderId)) continue;
+    seen.add(builderId);
+    const builder = world.getEntity(builderId);
+    if (builder === undefined || builder.ownership?.playerId !== playerId) continue;
+    if (!canBuilderUpgradeMetalExtractor(builder)) continue;
+    builderIds.push(builderId);
+  }
+  return builderIds.length > 0 ? { ...command, builderIds } : null;
 }
 
 function authorizePingCommand(command: PingCommand, playerId: PlayerId): PingCommand | null {

@@ -12,6 +12,7 @@ const AREA_COLORS: Record<Input3DAreaDragKind, number> = {
   attackArea: ACTION_COLORS.attack,
   attackGround: ACTION_COLORS.attackGround,
   buildMexArea: ACTION_COLORS.build,
+  upgradeMexArea: ACTION_COLORS.build,
   buildLine: ACTION_COLORS.build,
   buildBorder: ACTION_COLORS.build,
   buildGrid: ACTION_COLORS.build,

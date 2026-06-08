@@ -17,6 +17,8 @@ export type CommandHotkeyId =
   | 'command.buildingActive'
   | 'command.selfDestruct'
   | 'command.scan'
+  | 'command.upgradeMexSelected'
+  | 'command.upgradeMexArea'
   | 'command.buildCycle'
   | 'command.dgun'
   | 'command.selectCommander'
@@ -116,6 +118,8 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'command.buildingActive',
   'command.selfDestruct',
   'command.scan',
+  'command.upgradeMexSelected',
+  'command.upgradeMexArea',
   'command.buildCycle',
   'command.dgun',
   'command.selectCommander',
@@ -198,6 +202,8 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'command.buildingActive': 'Building On/Off',
   'command.selfDestruct': 'Self Destruct',
   'command.scan': 'Scanner Sweep',
+  'command.upgradeMexSelected': 'Upgrade Metal Extractor',
+  'command.upgradeMexArea': 'Upgrade Metal Extractor Area',
   'command.buildCycle': 'Cycle Build',
   'command.dgun': 'Commander DGun',
   'command.selectCommander': 'Select Commander',
@@ -300,6 +306,8 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'command.buildingActive': [key('O', 'o', { shift: 'any' })],
     'command.selfDestruct': [key('K', 'k', { shift: 'any' })],
     'command.scan': [key('Y', 'y', { shift: 'any' })],
+    'command.upgradeMexSelected': [code('Alt+U', 'KeyU', { alt: true })],
+    'command.upgradeMexArea': [code('Ctrl+Alt+U', 'KeyU', { ctrl: true, alt: true })],
     'command.buildCycle': [key('B', 'b', { shift: 'any' })],
     'command.dgun': [key('D', 'd', { shift: 'any' })],
     'command.selectCommander': [key('Tab', 'tab', { shift: 'any' })],
@@ -389,6 +397,8 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     ],
     'command.selfDestruct': [code('Ctrl+B', 'KeyB', { ctrl: true, shift: 'any' })],
     'command.scan': [code('F7', 'F7', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'command.upgradeMexSelected': [code('Alt+U', 'KeyU', { alt: true, shift: 'any' })],
+    'command.upgradeMexArea': [code('Ctrl+Alt+U', 'KeyU', { ctrl: true, alt: true, shift: 'any' })],
     'command.buildCycle': [code('Alt+B', 'KeyB', { alt: true, shift: 'any' })],
     'command.dgun': [code('D', 'KeyD', { shift: 'any' })],
     'command.selectCommander': [
@@ -469,6 +479,8 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'command.buildingActive': [code('O', 'KeyO', { shift: 'any' })],
     'command.selfDestruct': [code('Ctrl+D', 'KeyD', { ctrl: true, shift: 'any' })],
     'command.scan': [code('F4', 'F4', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'command.upgradeMexSelected': [code('Alt+U', 'KeyU', { alt: true, shift: 'any' })],
+    'command.upgradeMexArea': [code('Ctrl+Alt+U', 'KeyU', { ctrl: true, alt: true, shift: 'any' })],
     'command.buildCycle': [code('B', 'KeyB', { shift: 'any' })],
     'command.dgun': [code('D', 'KeyD', { shift: 'any' })],
     'command.selectCommander': [

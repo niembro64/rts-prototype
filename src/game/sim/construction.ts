@@ -17,6 +17,16 @@ import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
 import { initializeConstructionPieceHealth } from './constructionLifecycle';
 import { entityCanBuild } from './builderBuildRoster';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
+import {
+  canBuilderUpgradeMetalExtractor,
+  isUpgradeableMetalExtractorTarget,
+  METAL_EXTRACTOR_T1_BLUEPRINT_ID,
+  METAL_EXTRACTOR_T2_BLUEPRINT_ID,
+} from './metalExtractorUpgrade';
+
+type StartBuildingOptions = {
+  skipBuilderAuthorization?: boolean;
+};
 
 // Construction system - authoritative building placement and footprint grid.
 // Runtime resource/HP/completion semantics live in constructionLifecycle.ts.
@@ -56,9 +66,10 @@ export class ConstructionSystem {
     playerId: PlayerId,
     builderId: EntityId,
     rotation = 0,
+    options: StartBuildingOptions = {},
   ): Entity | null {
     const builderEntity = world.getEntity(builderId);
-    if (!entityCanBuild(builderEntity, buildingBlueprintId)) return null;
+    if (!options.skipBuilderAuthorization && !entityCanBuild(builderEntity, buildingBlueprintId)) return null;
     const config = getBuildingConfig(buildingBlueprintId);
     const footprint = getRotatedGridFootprint(config.gridWidth, config.gridHeight, rotation);
 
@@ -174,6 +185,81 @@ export class ConstructionSystem {
     }
 
     return entity;
+  }
+
+  startMetalExtractorUpgrade(
+    world: WorldState,
+    targetId: EntityId,
+    playerId: PlayerId,
+    builderId: EntityId,
+  ): Entity | null {
+    const builderEntity = world.getEntity(builderId);
+    if (builderEntity?.ownership?.playerId !== playerId) return null;
+    if (!canBuilderUpgradeMetalExtractor(builderEntity)) return null;
+    const target = world.getEntity(targetId);
+    if (!isUpgradeableMetalExtractorTarget(target, playerId)) return null;
+    const targetGrid = this.getEntityBuildingGrid(target);
+    if (targetGrid === null) return null;
+
+    const t1Config = getBuildingConfig(METAL_EXTRACTOR_T1_BLUEPRINT_ID);
+    const t2Config = getBuildingConfig(METAL_EXTRACTOR_T2_BLUEPRINT_ID);
+    const rotation = target.transform.rotation;
+    const t1Footprint = getRotatedGridFootprint(t1Config.gridWidth, t1Config.gridHeight, rotation);
+    const t2Footprint = getRotatedGridFootprint(t2Config.gridWidth, t2Config.gridHeight, rotation);
+    if (
+      t1Footprint.gridWidth !== t2Footprint.gridWidth ||
+      t1Footprint.gridHeight !== t2Footprint.gridHeight
+    ) {
+      return null;
+    }
+
+    const diagnostics = getBuildingPlacementDiagnosticsForGrid(
+      METAL_EXTRACTOR_T2_BLUEPRINT_ID,
+      targetGrid.gridX,
+      targetGrid.gridY,
+      world.mapWidth,
+      world.mapHeight,
+      world.metalDeposits,
+      (gx, gy) => this.isCellOccupiedByOtherEntity(gx, gy, target.id),
+      this.terrainBuildabilityGrid,
+      rotation,
+    );
+    if (!diagnostics.canPlace) return null;
+
+    this.onBuildingDestroyed(world, target);
+    world.removeEntity(target.id);
+
+    return this.startBuilding(
+      world,
+      METAL_EXTRACTOR_T2_BLUEPRINT_ID,
+      targetGrid.gridX,
+      targetGrid.gridY,
+      playerId,
+      builderId,
+      rotation,
+      { skipBuilderAuthorization: true },
+    );
+  }
+
+  private isCellOccupiedByOtherEntity(gridX: number, gridY: number, ignoredEntityId: EntityId): boolean {
+    const cell = this.buildingGrid.getCell(gridX, gridY);
+    return cell !== undefined && cell.occupied === true && cell.entityId !== ignoredEntityId;
+  }
+
+  private getEntityBuildingGrid(entity: Entity): { gridX: number; gridY: number } | null {
+    if (entity.building === null || entity.buildingBlueprintId === null) return null;
+    const config = getBuildingConfig(entity.buildingBlueprintId);
+    const footprint = getRotatedGridFootprint(config.gridWidth, config.gridHeight, entity.transform.rotation);
+    const halfW = (footprint.gridWidth * BUILD_GRID_CELL_SIZE) / 2;
+    const halfH = (footprint.gridHeight * BUILD_GRID_CELL_SIZE) / 2;
+    return {
+      gridX: Math.floor((entity.transform.x - halfW) / BUILD_GRID_CELL_SIZE + 1e-6),
+      gridY: Math.floor((entity.transform.y - halfH) / BUILD_GRID_CELL_SIZE + 1e-6),
+    };
+  }
+
+  getBuildingGridPosition(entity: Entity): { gridX: number; gridY: number } | null {
+    return this.getEntityBuildingGrid(entity);
   }
 
   // Create a ghost preview for building placement

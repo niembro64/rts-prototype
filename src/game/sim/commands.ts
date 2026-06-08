@@ -15,6 +15,8 @@ export type {
   PingCommand,
   ScanCommand,
   StartBuildCommand,
+  UpgradeMetalExtractorCommand,
+  UpgradeMetalExtractorAreaCommand,
   QueueUnitCommand,
   EditFactoryQueueCommand,
   StopFactoryProductionCommand,

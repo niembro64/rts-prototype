@@ -115,6 +115,14 @@ export function runCommandHotkeysContractTest(): void {
     'global bar-grid G should still resolve unit stop',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('u', 'KeyU', { altKey: true }), 'bar-grid') === 'command.upgradeMexSelected',
+    'bar-grid Alt+U should resolve selected metal extractor upgrade',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('u', 'KeyU', { ctrlKey: true, altKey: true }), 'bar-grid') === 'command.upgradeMexArea',
+    'bar-grid Ctrl+Alt+U should resolve area metal extractor upgrade',
+  );
+  assertContract(
     queueModeFromEvent(keyEvent('w', 'KeyW')).queue === false,
     'plain command event must replace the active order',
   );

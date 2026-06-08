@@ -33,6 +33,8 @@ import type {
   StartBuildCommand,
   StopFactoryProductionCommand,
   StopCommand,
+  UpgradeMetalExtractorAreaCommand,
+  UpgradeMetalExtractorCommand,
   WaitCommand,
 } from './commands';
 import type { Entity, EntityId, PlayerId, ShotSource, Unit, UnitAction } from './types';
@@ -75,6 +77,7 @@ import {
 } from './unitActionIntents';
 import type { BuildingGrid } from './buildGrid';
 import { expandPathPoints, pathTerrainFilterForLocomotion } from './Pathfinder';
+import { canBuilderUpgradeMetalExtractor, isUpgradeableMetalExtractorTarget } from './metalExtractorUpgrade';
 
 const _dgunMount = { x: 0, y: 0, z: 0 };
 const MIN_GROUP_FORMATION_SPACING = 40;
@@ -176,6 +179,12 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'startBuild':
       executeStartBuildCommand(ctx, command);
+      break;
+    case 'upgradeMetalExtractor':
+      executeUpgradeMetalExtractorCommand(ctx, command);
+      break;
+    case 'upgradeMetalExtractorArea':
+      executeUpgradeMetalExtractorAreaCommand(ctx, command);
       break;
     case 'queueUnit':
       executeQueueUnitCommand(ctx, command);
@@ -792,6 +801,130 @@ function executeStartBuildCommand(ctx: CommandContext, command: StartBuildComman
     return;
   }
 
+  enqueueBuildActionForBuilding(
+    ctx,
+    builder,
+    building,
+    command.buildingBlueprintId,
+    command.gridX,
+    command.gridY,
+    command.queue,
+    commandQueuesInFront(command),
+    commandQueueInsertIndex(command),
+  );
+}
+
+function executeUpgradeMetalExtractorCommand(
+  ctx: CommandContext,
+  command: UpgradeMetalExtractorCommand,
+): void {
+  const builder = ctx.world.getEntity(command.builderId);
+  if (
+    builder === undefined ||
+    builder.builder === null ||
+    builder.ownership === null ||
+    builder.unit === null ||
+    !canBuilderUpgradeMetalExtractor(builder)
+  ) return;
+  const playerId = builder.ownership.playerId;
+  if (!isUpgradeableMetalExtractorTarget(ctx.world.getEntity(command.targetId), playerId)) return;
+
+  const building = ctx.constructionSystem.startMetalExtractorUpgrade(
+    ctx.world,
+    command.targetId,
+    playerId,
+    command.builderId,
+  );
+  if (!building || building.buildingBlueprintId === null) return;
+  const grid = ctx.constructionSystem.getBuildingGridPosition(building);
+  if (grid === null) return;
+  enqueueBuildActionForBuilding(
+    ctx,
+    builder,
+    building,
+    building.buildingBlueprintId,
+    grid.gridX,
+    grid.gridY,
+    command.queue,
+    commandQueuesInFront(command),
+    commandQueueInsertIndex(command),
+  );
+}
+
+function executeUpgradeMetalExtractorAreaCommand(
+  ctx: CommandContext,
+  command: UpgradeMetalExtractorAreaCommand,
+): void {
+  const builders: Entity[] = [];
+  const playerIdByBuilderId = new Map<EntityId, PlayerId>();
+  for (let i = 0; i < command.builderIds.length; i++) {
+    const builder = ctx.world.getEntity(command.builderIds[i]);
+    if (
+      builder === undefined ||
+      builder.builder === null ||
+      builder.ownership === null ||
+      builder.unit === null ||
+      !canBuilderUpgradeMetalExtractor(builder)
+    ) continue;
+    builders.push(builder);
+    playerIdByBuilderId.set(builder.id, builder.ownership.playerId);
+  }
+  if (builders.length === 0) return;
+  const playerId = builders[0].ownership?.playerId;
+  if (playerId === undefined) return;
+  const targets = findMetalExtractorUpgradeTargetsInArea(
+    ctx,
+    playerId,
+    command.targetX,
+    command.targetY,
+    command.radius,
+  );
+  if (targets.length === 0) return;
+
+  const perBuilderCounts = new Map<EntityId, number>();
+  for (let i = 0; i < targets.length; i++) {
+    const builder = builders[i % builders.length];
+    if (playerIdByBuilderId.get(builder.id) !== playerId) continue;
+    const assignedCount = perBuilderCounts.get(builder.id) ?? 0;
+    perBuilderCounts.set(builder.id, assignedCount + 1);
+    const queue = assignedCount === 0 ? command.queue : true;
+    const queueFront = assignedCount === 0 ? commandQueuesInFront(command) : false;
+    const queueInsertIndex = commandQueueInsertIndex(command);
+    const building = ctx.constructionSystem.startMetalExtractorUpgrade(
+      ctx.world,
+      targets[i].id,
+      playerId,
+      builder.id,
+    );
+    if (!building || building.buildingBlueprintId === null) continue;
+    const grid = ctx.constructionSystem.getBuildingGridPosition(building);
+    if (grid === null) continue;
+    enqueueBuildActionForBuilding(
+      ctx,
+      builder,
+      building,
+      building.buildingBlueprintId,
+      grid.gridX,
+      grid.gridY,
+      queue,
+      queueFront,
+      queueInsertIndex !== undefined ? queueInsertIndex + assignedCount : undefined,
+    );
+  }
+}
+
+function enqueueBuildActionForBuilding(
+  ctx: CommandContext,
+  builder: Entity,
+  building: Entity,
+  buildingBlueprintId: Entity['buildingBlueprintId'],
+  gridX: number,
+  gridY: number,
+  queue: boolean,
+  queueFront: boolean,
+  queueInsertIndex: number | undefined,
+): void {
+  if (buildingBlueprintId === null) return;
   // Create build action with building info. The building's transform.z
   // already reflects the actual ground altitude under its footprint
   // (set during construction-system placement), so the action's z
@@ -807,20 +940,48 @@ function executeStartBuildCommand(ctx: CommandContext, command: StartBuildComman
     x: building.transform.x,
     y: building.transform.y,
     z: building.transform.z,
-    buildingBlueprintId: command.buildingBlueprintId,
-    gridX: command.gridX,
-    gridY: command.gridY,
+    buildingBlueprintId,
+    gridX,
+    gridY,
     buildingId: building.id,
   };
-
   addPathActionsWithFinal(
     builder,
     action,
-    command.queue,
+    queue,
     ctx,
-    commandQueuesInFront(command),
-    commandQueueInsertIndex(command),
+    queueFront,
+    queueInsertIndex,
   );
+}
+
+function findMetalExtractorUpgradeTargetsInArea(
+  ctx: CommandContext,
+  playerId: PlayerId,
+  x: number,
+  y: number,
+  radius: number,
+): Entity[] {
+  const radiusSq = Math.max(1, radius) * Math.max(1, radius);
+  const targets: Entity[] = [];
+  const buildings = ctx.world.getBuildingsByPlayer(playerId);
+  for (let i = 0; i < buildings.length; i++) {
+    const building = buildings[i];
+    if (!isUpgradeableMetalExtractorTarget(building, playerId)) continue;
+    const dx = building.transform.x - x;
+    const dy = building.transform.y - y;
+    if (dx * dx + dy * dy > radiusSq) continue;
+    targets.push(building);
+  }
+  targets.sort((a, b) => {
+    const adx = a.transform.x - x;
+    const ady = a.transform.y - y;
+    const bdx = b.transform.x - x;
+    const bdy = b.transform.y - y;
+    const distanceDelta = (adx * adx + ady * ady) - (bdx * bdx + bdy * bdy);
+    return distanceDelta !== 0 ? distanceDelta : a.id - b.id;
+  });
+  return targets;
 }
 
 function executeQueueUnitCommand(ctx: CommandContext, command: QueueUnitCommand): void {

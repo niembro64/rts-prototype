@@ -505,6 +505,9 @@ export class RtsScene3D {
     this.inputManager.onReclaimModeChange = (active) => {
       this.selectionSystem.setReclaimMode(active);
     };
+    this.inputManager.onMexUpgradeModeChange = (active) => {
+      this.selectionSystem.setMexUpgradeMode(active);
+    };
     this.inputManager.onPingModeChange = (active) => {
       this.selectionSystem.setPingMode(active);
     };
@@ -930,6 +933,14 @@ export class RtsScene3D {
 
   public reclaimSelected(): void {
     this.inputManager?.reclaimSelected();
+  }
+
+  public toggleMexUpgradeMode(): void {
+    this.inputManager?.toggleMexUpgradeMode();
+  }
+
+  public upgradeSelectedMetalExtractors(): void {
+    this.inputManager?.upgradeSelectedMetalExtractors();
   }
 
   public togglePingMode(): void {

@@ -198,6 +198,7 @@ const showCancelHint = computed(() =>
   || props.selection.isAttackGroundMode
   || props.selection.isGuardMode
   || props.selection.isReclaimMode
+  || props.selection.isMexUpgradeMode
   || props.selection.isPingMode
   || props.selection.isTowerTargetMode,
 );
@@ -869,6 +870,18 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           </button>
         </div>
         <button
+          v-if="selection.canUpgradeMetalExtractors"
+          type="button"
+          class="action-btn"
+          :class="{ active: selection.isMexUpgradeMode }"
+          :style="{ '--btn-color': BUTTON_COLORS.build }"
+          :title="actionTitle('Upgrade metal extractor area', 'command.upgradeMexArea', 'Click or drag over owned T1 extractors')"
+          @click="actions.toggleMexUpgrade()"
+        >
+          <span class="btn-label">Mex Up</span>
+          <span class="btn-key">{{ hotkey('command.upgradeMexArea') }}</span>
+        </button>
+        <button
           v-if="selection.isBuildMode"
           type="button"
           class="action-btn"
@@ -1155,6 +1168,24 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
         >
           <span class="btn-label">Clear</span>
           <span class="btn-key">{{ hotkey('combat.towerTargetClear') }}</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Metal extractor upgrade. Selected T1 extractors can be replaced
+         by T2 construction shells; the command chooses an owned builder. -->
+    <div v-if="selection.hasUpgradeableMetalExtractor && showBuildingActions" class="button-group">
+      <div class="group-label">Upgrade</div>
+      <div class="buttons">
+        <button
+          type="button"
+          class="action-btn"
+          :style="{ '--btn-color': BUTTON_COLORS.build }"
+          :title="actionTitle('Upgrade selected metal extractor', 'command.upgradeMexSelected')"
+          @click="actions.upgradeSelectedMetalExtractors()"
+        >
+          <span class="btn-label">T2 Mex</span>
+          <span class="btn-key">{{ hotkey('command.upgradeMexSelected') }}</span>
         </button>
       </div>
     </div>
