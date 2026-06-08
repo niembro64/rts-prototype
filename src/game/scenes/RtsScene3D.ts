@@ -4,21 +4,20 @@
 import type { ClientViewState } from '../network/ClientViewState';
 import type { SceneCameraState } from '@/types/game';
 import type { TerrainMapShape } from '@/types/terrain';
-import { isMobileLikeBrowser } from '@/browserRuntime';
 import { RtsScene3DSnapshotIntake } from './helpers/RtsScene3DSnapshotIntake';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
 import { buildEconomyInfo } from './helpers';
 import type { EconomyInfo, MinimapData, SelectionInfo } from './helpers';
-import { EmaTracker } from './helpers/EmaTracker';
-import { EmaMsTracker } from './helpers/EmaMsTracker';
-import { LongtaskTracker } from './helpers/LongtaskTracker';
 import { RtsScene3DCameraControl, type CameraShim } from './helpers/RtsScene3DCameraControl';
 import { RtsScene3DCameraFootprintSystem } from './helpers/RtsScene3DCameraFootprintSystem';
 import { RtsScene3DCameraFramingSystem } from './helpers/RtsScene3DCameraFramingSystem';
+import { RtsScene3DFrameTelemetry, type RtsScene3DFrameTiming } from './helpers/RtsScene3DFrameTelemetry';
+import { buildHudSpriteTelemetry, type HudSpriteTelemetry } from './helpers/RtsScene3DHudSpriteTelemetry';
 import { RtsScene3DMinimapSystem } from './helpers/RtsScene3DMinimapSystem';
 import { RtsScene3DRenderPhase } from './helpers/RtsScene3DRenderPhase';
 import { teardownRtsScene3DRenderers } from './helpers/RtsScene3DRendererLifecycle';
 import { bootstrapRtsScene3DRenderers } from './helpers/RtsScene3DRendererBootstrap';
+import { RtsScene3DRendererWarmup } from './helpers/RtsScene3DRendererWarmup';
 import { RtsScene3DSelectionSystem } from './helpers/RtsScene3DSelectionSystem';
 import { dispatchSimEvent3DVisual } from './helpers/RtsScene3DVisualEventDispatcher';
 import { ThreeApp } from '../render3d/ThreeApp';
@@ -63,7 +62,6 @@ import {
 import { HealthBar3D } from '../render3d/HealthBar3D';
 import { NameLabel3D } from '../render3d/NameLabel3D';
 import { Waypoint3D } from '../render3d/Waypoint3D';
-import type { CanvasSpritePoolTelemetry } from '../render3d/CanvasSpritePool';
 
 import type { GameConnection } from '../server/GameConnection';
 import type {
@@ -79,22 +77,9 @@ import type {
 } from '../sim/types';
 
 import {
-  EMA_CONFIG,
-  FRAME_TIMING_EMA,
-  EMA_INITIAL_VALUES,
   WORLD_PADDING_PERCENT,
   LAND_CELL_SIZE,
 } from '../../config';
-
-export type HudSpriteTelemetry = {
-  activeSlots: number;
-  retainedSlots: number;
-  peakRetainedSlots: number;
-  createdSlots: number;
-  disposedSlots: number;
-  maxRetainedSlots: number;
-  poolCount: number;
-};
 
 export type RtsScene3DConfig = {
   playerIds: PlayerId[];
@@ -205,13 +190,7 @@ export class RtsScene3D {
 
   private isGameOver = false;
 
-  // Performance trackers (mirror RtsScene)
-  private renderTpsTracker = new EmaTracker(EMA_CONFIG.tps, EMA_INITIAL_VALUES.tps);
-  private frameMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs, EMA_INITIAL_VALUES.frameMs);
-  private renderMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.renderMs, EMA_INITIAL_VALUES.renderMs);
-  private logicMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.logicMs, EMA_INITIAL_VALUES.logicMs);
-  private predMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.predMs, EMA_INITIAL_VALUES.predMs);
-  private longtaskTracker = new LongtaskTracker();
+  private frameTelemetry = new RtsScene3DFrameTelemetry();
 
   // UI update throttling (mirror RtsScene)
   private economyUpdateTimer = 0;
@@ -250,9 +229,7 @@ export class RtsScene3D {
   public onServerMetaUpdate?: (meta: NetworkServerSnapshotMeta) => void;
   public onStartupReady?: () => void;
   public onRendererWarmupChange?: (warming: boolean) => void;
-  private rendererWarmupStarted = false;
-  private rendererWarmupActive = false;
-  private rendererWarmupToken = 0;
+  private rendererWarmup: RtsScene3DRendererWarmup | null = null;
   private destroyed = false;
   private readonly handleSimEvent3DCallback = (event: NetworkServerSnapshotSimEvent): void => {
     this.handleSimEvent3D(event);
@@ -420,6 +397,15 @@ export class RtsScene3D {
     this.fogOfWarFogRenderer = renderers.fogOfWarFogRenderer;
     this.sightBoundaryRenderer = renderers.sightBoundaryRenderer;
     this.radarBoundaryRenderer = renderers.radarBoundaryRenderer;
+    this.rendererWarmup = new RtsScene3DRendererWarmup({
+      threeApp: this.threeApp,
+      explosionRenderer: this.explosionRenderer,
+      snapshotIntake: this.snapshotIntake,
+      getRenderPhase: () => this.renderPhase,
+      isClientRenderEnabled: () => this.clientRenderEnabled,
+      isDestroyed: () => this.destroyed,
+      notifyWarmupChange: (active) => this.onRendererWarmupChange?.(active),
+    });
 
     const canvasParent = this.threeApp.canvas.parentElement;
     if (canvasParent) {
@@ -549,49 +535,10 @@ export class RtsScene3D {
     );
   }
 
-  private setRendererWarmupActive(active: boolean): void {
-    if (this.rendererWarmupActive === active) return;
-    this.rendererWarmupActive = active;
-    this.onRendererWarmupChange?.(active);
-  }
-
-  private startRendererWarmup(): void {
-    if (this.rendererWarmupStarted) return;
-    this.rendererWarmupStarted = true;
-    this.setRendererWarmupActive(true);
-    if (isMobileLikeBrowser()) {
-      this.markClientReadyForStartupIfPossible();
-      this.setRendererWarmupActive(false);
-      return;
-    }
-    this.threeApp.setDrawSuspended(true);
-    const token = ++this.rendererWarmupToken;
-    this.explosionRenderer.prepareWarmup();
-    void this.threeApp.precompileShadersAsync().catch((error) => {
-      console.warn('3D renderer shader warmup failed', error);
-    }).finally(() => {
-      if (token !== this.rendererWarmupToken) return;
-      this.explosionRenderer.finishWarmup();
-      this.threeApp.setDrawSuspended(false);
-      if (this.destroyed) return;
-      this.markClientReadyForStartupIfPossible();
-      this.setRendererWarmupActive(false);
-    });
-  }
-
-  private markClientReadyForStartupIfPossible(): void {
-    if (this.clientRenderEnabled && !this.renderPhase?.isStartupReady()) return;
-    this.snapshotIntake.markClientReadyAfterRender();
-  }
-
   update(_time: number, delta: number): void {
     const frameStart = performance.now();
 
-    // PLAYER CLIENT scene/update loop cadence used by telemetry.
-    if (delta > 0) {
-      const rate = 1000 / delta;
-      this.renderTpsTracker.update(rate);
-    }
+    this.frameTelemetry.recordRenderDelta(delta);
     if (this.clientRenderEnabled) {
       this.renderPhase?.beginEnabledFrame();
     }
@@ -651,16 +598,8 @@ export class RtsScene3D {
         this.updateEconomyInfo();
       }
 
-      const frameEnd = performance.now();
-      const frameMs = frameEnd - frameStart;
-      this.frameMsTracker.update(frameMs);
-      this.renderMsTracker.update(0);
-      this.logicMsTracker.update(frameMs);
-      // Render-disabled branch never runs prediction, so PRED ms is 0.
-      this.predMsTracker.update(0);
-      this.markClientReadyForStartupIfPossible();
-      SNAPSHOT_CADENCE_REGRESSION.recordFrame({ frameMs, now: frameEnd });
-      this.longtaskTracker.tick();
+      this.rendererWarmup?.markClientReadyForStartupIfPossible();
+      this.frameTelemetry.recordRenderDisabledFrame(frameStart);
       return;
     }
 
@@ -692,15 +631,7 @@ export class RtsScene3D {
       graphicsConfig,
       renderFrameState,
     });
-    if (
-      !this.rendererWarmupStarted &&
-      renderPhase.isStartupReady() &&
-      this.snapshotIntake.hasStartupFullSnapshotApplied()
-    ) {
-      this.startRendererWarmup();
-    } else if (this.rendererWarmupStarted && !this.rendererWarmupActive) {
-      this.markClientReadyForStartupIfPossible();
-    }
+    this.rendererWarmup?.tickStartupGate();
 
     // UI updates -- throttled like RtsScene. Producing-factory progress
     // invalidation lives with the rest of the 3D selection state.
@@ -724,20 +655,7 @@ export class RtsScene3D {
       this.onMinimapUpdate,
     );
 
-    // Track frame timing. logicMs = frameMs - renderMs - predMs so
-    // the three buckets sum to frameMs and a long applyPrediction
-    // pass can no longer hide behind the LOGIC bar. Clamp at 0 to
-    // protect against `performance.now()` reordering jitter (in
-    // practice negligible but defensive).
-    const frameEnd = performance.now();
-    const frameMs = frameEnd - frameStart;
-    const logicMs = Math.max(0, frameMs - renderMs - predMs);
-    this.frameMsTracker.update(frameMs);
-    this.renderMsTracker.update(renderMs);
-    this.logicMsTracker.update(logicMs);
-    this.predMsTracker.update(predMs);
-    SNAPSHOT_CADENCE_REGRESSION.recordFrame({ frameMs, now: frameEnd });
-    this.longtaskTracker.tick();
+    this.frameTelemetry.recordRenderFrame({ frameStart, renderMs, predMs });
   }
 
   private processLocalCommands(): void {
@@ -970,81 +888,27 @@ export class RtsScene3D {
     this.cameraControl.applyState(state);
   }
 
-  public getFrameTiming(): {
-    frameMsAvg: number; frameMsHi: number;
-    renderMsAvg: number; renderMsHi: number;
-    logicMsAvg: number; logicMsHi: number;
-    /** Pure ClientViewState.applyPrediction wall-clock per frame
-     *  (avg/hi). Pulled out of logicMs so the PLAYER CLIENT bar can
-     *  isolate prediction cost — long prediction passes used to hide
-     *  in the LOGIC bar. */
-    predMsAvg: number; predMsHi: number;
-    /** Actual GPU execution time (ms) from EXT_disjoint_timer_query_webgl2,
-     *  or 0 when the extension isn't available (Safari). Callers should
-     *  check `gpuTimerSupported` and fall back to renderMs if false. */
-    gpuTimerMs: number;
-    gpuTimerSupported: boolean;
-    /** Longtask signal — blocked ms per second of wall-clock time. */
-    longtaskMsPerSec: number;
-    longtaskCountPerSec: number;
-    longtaskSupported: boolean;
-  } {
-    return {
-      frameMsAvg: this.frameMsTracker.getAvg(),
-      frameMsHi: this.frameMsTracker.getHi(),
-      renderMsAvg: this.renderMsTracker.getAvg(),
-      renderMsHi: this.renderMsTracker.getHi(),
-      logicMsAvg: this.logicMsTracker.getAvg(),
-      logicMsHi: this.logicMsTracker.getHi(),
-      predMsAvg: this.predMsTracker.getAvg(),
-      predMsHi: this.predMsTracker.getHi(),
+  public getFrameTiming(): RtsScene3DFrameTiming {
+    return this.frameTelemetry.getFrameTiming({
       gpuTimerMs: this.clientRenderEnabled ? this.threeApp.gpuTimer.getGpuMs() : 0,
       gpuTimerSupported: this.threeApp.gpuTimer.isSupported(),
-      longtaskMsPerSec: this.longtaskTracker.getBlockedMsPerSec(),
-      longtaskCountPerSec: this.longtaskTracker.getCountPerSec(),
-      longtaskSupported: this.longtaskTracker.isSupported(),
-    };
+    });
   }
 
   public getRenderTpsStats(): { avgRate: number; worstRate: number } {
-    return {
-      avgRate: this.renderTpsTracker.getAvg(),
-      worstRate: this.renderTpsTracker.getLow(),
-    };
+    return this.frameTelemetry.getRenderTpsStats();
   }
 
   public getHudSpriteTelemetry(): HudSpriteTelemetry {
-    const out: HudSpriteTelemetry = {
-      activeSlots: 0,
-      retainedSlots: 0,
-      peakRetainedSlots: 0,
-      createdSlots: 0,
-      disposedSlots: 0,
-      maxRetainedSlots: 0,
-      poolCount: 0,
-    };
-    this.addHudSpritePoolTelemetry(out, this.healthBar3D?.getSpritePoolTelemetry());
-    this.addHudSpritePoolTelemetry(out, this.nameLabel3D?.getSpritePoolTelemetry());
-    this.addHudSpritePoolTelemetry(out, this.waypoint3D?.getSpritePoolTelemetry());
-    return out;
+    return buildHudSpriteTelemetry([
+      this.healthBar3D?.getSpritePoolTelemetry(),
+      this.nameLabel3D?.getSpritePoolTelemetry(),
+      this.waypoint3D?.getSpritePoolTelemetry(),
+    ]);
   }
 
   public getScopedMeshRetentionTelemetry(): ScopedRenderMeshRetentionTelemetry {
     return this.entityRenderer.getScopedMeshRetentionTelemetry();
-  }
-
-  private addHudSpritePoolTelemetry(
-    out: HudSpriteTelemetry,
-    pool: CanvasSpritePoolTelemetry | undefined,
-  ): void {
-    if (!pool) return;
-    out.activeSlots += pool.activeSlots;
-    out.retainedSlots += pool.retainedSlots;
-    out.peakRetainedSlots += pool.peakRetainedSlots;
-    out.createdSlots += pool.createdSlots;
-    out.disposedSlots += pool.disposedSlots;
-    out.maxRetainedSlots += pool.maxRetainedSlots ?? 0;
-    out.poolCount++;
   }
 
   public getSnapshotStats(): { avgRate: number; worstRate: number } {
@@ -1076,9 +940,7 @@ export class RtsScene3D {
   public shutdown(opts: { keepConnection?: boolean } = {}): void {
     if (this.destroyed) return;
     this.destroyed = true;
-    this.rendererWarmupToken++;
-    this.threeApp.setDrawSuspended(false);
-    this.setRendererWarmupActive(false);
+    this.rendererWarmup?.shutdown();
     teardownRtsScene3DRenderers({
       inputManager: this.inputManager,
       healthBar3D: this.healthBar3D,
@@ -1106,7 +968,7 @@ export class RtsScene3D {
       fogOfWarFogRenderer: this.fogOfWarFogRenderer,
       sightBoundaryRenderer: this.sightBoundaryRenderer,
       radarBoundaryRenderer: this.radarBoundaryRenderer,
-      longtaskTracker: this.longtaskTracker,
+      longtaskTracker: this.frameTelemetry,
       audioSystem: this.audioSystem,
     });
     this.inputManager = null;
@@ -1117,6 +979,7 @@ export class RtsScene3D {
     this.environmentPropRenderer = null;
     this.contactShadowRenderer = null;
     this.renderPhase = null;
+    this.rendererWarmup = null;
     if (!opts.keepConnection) {
       this.gameConnection?.disconnect();
     }
