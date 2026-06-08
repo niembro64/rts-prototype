@@ -126,7 +126,8 @@ export class InputControlGroups {
     return entityIds;
   }
 
-  private getLiveSlotEntityIds(index: number): EntityId[] {
+  getLiveSlotEntityIds(index: number): EntityId[] {
+    if (index < 0 || index >= CONTROL_GROUP_COUNT) return [];
     const group = this.groups[index];
     const entityIds: EntityId[] = [];
     for (let i = 0; i < group.length; i++) {

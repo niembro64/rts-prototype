@@ -19,6 +19,7 @@ type Input3DKeyboardControllerConfig = {
   recallControlGroupSlot: (index: number, additive: boolean) => boolean;
   toggleControlGroupSlot: (index: number) => boolean;
   unsetSelectedFromControlGroups: () => void;
+  focusControlGroupSlot: (index: number) => boolean;
   hasSelectedBuilder: () => boolean;
   getSelectedBuilderAllowedBuildBlueprintIds: () => readonly StructureBlueprintId[];
   exitSpecialModes: (includeTowerTarget?: boolean) => void;
@@ -77,8 +78,39 @@ function isControlGroupUnsetKey(e: KeyboardEvent): boolean {
     && (e.code === 'Backquote' || e.key === '`');
 }
 
+export const CONTROL_GROUP_FOCUS_DOUBLE_TAP_MS = 500;
+
+export type ControlGroupRecallTapState = {
+  index: number;
+  timeMs: number;
+};
+
+export function resetControlGroupRecallTap(state: ControlGroupRecallTapState): void {
+  state.index = -1;
+  state.timeMs = Number.NEGATIVE_INFINITY;
+}
+
+export function recordControlGroupRecallTap(
+  state: ControlGroupRecallTapState,
+  index: number,
+  timeMs: number,
+): boolean {
+  const elapsedMs = timeMs - state.timeMs;
+  const shouldFocus =
+    state.index === index
+    && elapsedMs >= 0
+    && elapsedMs <= CONTROL_GROUP_FOCUS_DOUBLE_TAP_MS;
+  state.index = index;
+  state.timeMs = timeMs;
+  return shouldFocus;
+}
+
 export class Input3DKeyboardController {
   private readonly config: Input3DKeyboardControllerConfig;
+  private readonly controlGroupRecallTap: ControlGroupRecallTapState = {
+    index: -1,
+    timeMs: Number.NEGATIVE_INFINITY,
+  };
 
   constructor(config: Input3DKeyboardControllerConfig) {
     this.config = config;
@@ -98,6 +130,7 @@ export class Input3DKeyboardController {
     if (controlGroupIndex >= 0) {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
+        resetControlGroupRecallTap(this.controlGroupRecallTap);
         if (e.altKey) {
           this.config.toggleControlGroupSlot(controlGroupIndex);
         } else if (e.shiftKey) {
@@ -110,6 +143,15 @@ export class Input3DKeyboardController {
       if (e.altKey) return;
       if (this.config.recallControlGroupSlot(controlGroupIndex, e.shiftKey)) {
         e.preventDefault();
+        if (e.shiftKey) {
+          resetControlGroupRecallTap(this.controlGroupRecallTap);
+        } else if (recordControlGroupRecallTap(
+          this.controlGroupRecallTap,
+          controlGroupIndex,
+          e.timeStamp,
+        )) {
+          this.config.focusControlGroupSlot(controlGroupIndex);
+        }
         return;
       }
     }

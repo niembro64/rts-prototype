@@ -73,6 +73,7 @@ export class Input3DManager {
   // to refresh the selection panel so the active mode chip stays in sync.
   public onWaypointModeChange?: (mode: WaypointType) => void;
   public onControlGroupsChange?: (groups: readonly (readonly EntityId[])[]) => void;
+  public onControlGroupFocus?: (x: number, y: number) => void;
 
   // Shared build / commander-special state machine. The 2D
   // BuildingPlacementController owns one of these too so the two
@@ -197,6 +198,7 @@ export class Input3DManager {
       recallControlGroupSlot: (index, additive) => this.recallControlGroupSlot(index, additive),
       toggleControlGroupSlot: (index) => this.toggleControlGroupSlot(index),
       unsetSelectedFromControlGroups: () => this.unsetSelectedFromControlGroups(),
+      focusControlGroupSlot: (index) => this.focusControlGroupSlot(index),
       hasSelectedBuilder: () => this.hasSelectedBuilder(),
       getSelectedBuilderAllowedBuildBlueprintIds: () => this.getSelectedBuilderAllowedBuildBlueprintIds(),
       exitSpecialModes: (includeTowerTarget) => this.exitSpecialModes(includeTowerTarget),
@@ -624,12 +626,36 @@ export class Input3DManager {
     return this.controlGroups.recallSlot(index, additive);
   }
 
+  focusControlGroupSlot(index: number): boolean {
+    const center = this.getControlGroupCenter(index);
+    if (!center) return false;
+    this.onControlGroupFocus?.(center.x, center.y);
+    return true;
+  }
+
   toggleControlGroupSlot(index: number): boolean {
     return this.controlGroups.toggleSlotSelection(index);
   }
 
   unsetSelectedFromControlGroups(): void {
     this.controlGroups.unsetSelectedFromGroups();
+  }
+
+  private getControlGroupCenter(index: number): { x: number; y: number } | null {
+    const entityIds = this.controlGroups.getLiveSlotEntityIds(index);
+    if (entityIds.length === 0) return null;
+    let totalX = 0;
+    let totalY = 0;
+    let count = 0;
+    for (let i = 0; i < entityIds.length; i++) {
+      const entity = this.entitySource.getEntity(entityIds[i]);
+      if (!entity || !this.isSelectableByActivePlayer(entity)) continue;
+      totalX += entity.transform.x;
+      totalY += entity.transform.y;
+      count++;
+    }
+    if (count === 0) return null;
+    return { x: totalX / count, y: totalY / count };
   }
 
   /** True if D-gun mode is currently active. */

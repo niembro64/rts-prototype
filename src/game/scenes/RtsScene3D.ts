@@ -455,6 +455,9 @@ export class RtsScene3D {
     this.inputManager.onControlGroupsChange = (groups) => {
       this.selectionSystem.setControlGroups(groups);
     };
+    this.inputManager.onControlGroupFocus = (x, y) => {
+      this.cameraControl.centerOn(x, y);
+    };
     // Keep the SelectionPanel's mode chips (build / D-gun) in sync
     // with the shared CommanderModeController inside Input3DManager.
     this.inputManager.onBuildModeChange = (buildingBlueprintId) => {

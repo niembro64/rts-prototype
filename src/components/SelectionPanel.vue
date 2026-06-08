@@ -225,6 +225,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           <div class="hotkey-title">Control Groups</div>
           <div><kbd>Ctrl/Cmd</kbd> + <kbd>0-9</kbd> stores the selection.</div>
           <div><kbd>0-9</kbd> recalls a stored group.</div>
+          <div>Double-tap <kbd>0-9</kbd> focuses the camera on that group.</div>
           <div><kbd>Shift</kbd> + <kbd>0-9</kbd> adds a group to the selection.</div>
           <div><kbd>Ctrl/Cmd</kbd> + <kbd>Shift</kbd> + <kbd>0-9</kbd> adds selection to a group.</div>
           <div><kbd>Ctrl/Cmd</kbd> + <kbd>Alt</kbd> + <kbd>0-9</kbd> toggles a group in the selection.</div>

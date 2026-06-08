@@ -42,10 +42,10 @@ and the BAR select-box modifier semantics for Shift/Ctrl/Alt/Space/Z.
 
 Issue: control groups still lack several BAR behaviors. Group slots 0-9,
 Ctrl/Cmd+Shift group add, Ctrl/Cmd+Alt group select-toggle, and Ctrl/Cmd+`
-remove-selected-from-groups exist. Implement double-tap group focus, auto-group
-creation/removal, auto-group preset save/load/show, factory preset integration,
-and any required spectator/team selection behavior that maps to rts-prototype's
-lobby and player-switching model.
+remove-selected-from-groups, and double-tap group focus exist. Implement
+auto-group creation/removal, auto-group preset save/load/show, factory preset
+integration, and any required spectator/team selection behavior that maps to
+rts-prototype's lobby and player-switching model.
 
 Issue: movement and formation commands are incomplete. Keep the existing
 right-click move/fight/patrol and line-drag behavior, but add BAR's explicit
