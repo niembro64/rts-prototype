@@ -36,33 +36,22 @@ import {
   DEFAULT_SHIELD_REFLECTION_MODE,
   UNIT_HP_MULTIPLIER,
   UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
-  LAND_CELL_SIZE,
 } from '../../config';
 import type { ShieldReflectionMode } from '../../types/shotTypes';
-import {
-  getSurfaceHeight,
-  getSurfaceNormal,
-  getTerrainVersion,
-  isWaterAt,
-} from './Terrain';
 import { buildShieldPanelCache } from './shieldPanelCache';
 import { ENTITY_CHANGED_HP } from '../../types/network';
 import { createCollisionTopBuildingSupportSurface } from './buildingSupportSurface';
 import { cloneUnitSupportSurface } from './unitSupportSurface';
+import type { WorldSupportSurface } from './supportSurface';
 import {
-  createWorldSupportSurface,
-  writeTerrainSupportSurface,
-  type WorldSupportSurface,
-} from './supportSurface';
-import {
-  SupportSurfaceIndex,
-  type SupportSurfaceIndexQueryOptions,
-} from './supportSurfaceIndex';
+  WorldSupportSurfaceSampler,
+  type SurfaceNormal,
+  type SupportSurfaceQueryOptions,
+} from './WorldSupportSurfaceSampler';
 
 export { SeededRNG } from './SeededRNG';
 export type { CreateProjectileProvenance } from './WorldProjectileFactory';
 
-const TERRAIN_NORMAL_CACHE_CELL_SIZE = 25;
 const EMPTY_PLAYER_SET: ReadonlySet<PlayerId> = new Set();
 
 /** Temporary vision pulse owned by a single player, contributing a
@@ -76,9 +65,6 @@ export type ScanPulse = {
   radius: number;
   expiresAtTick: number;
 };
-type SurfaceNormal = { nx: number; ny: number; nz: number };
-type SupportSurfaceQueryOptions = SupportSurfaceIndexQueryOptions;
-
 export type RemovedSnapshotEntity = {
   id: EntityId;
   playerId: PlayerId | null;
@@ -102,7 +88,7 @@ export class WorldState {
   private snapshotDirtyIds = new Set<EntityId>();
   private snapshotDirtyFields = new Map<EntityId, number>();
   private pendingDeathCheckIds = new Set<EntityId>();
-  private surfaceNormalCache = new Map<number, SurfaceNormal>();
+  private readonly supportSurfaceSampler: WorldSupportSurfaceSampler;
   // Monotonically-growing upper bound on `getTargetRadius(e)` across all
   // unit/building entities ever added to this world. Used by the
   // targeting broadphase to expand its 2D circle query so large targets
@@ -201,7 +187,6 @@ export class WorldState {
   private _selectedEntitiesBuf: Entity[] = [];
   private _selectedUnitsBuf: Entity[] = [];
   private _selectedFactoriesBuf: Entity[] = [];
-  private supportSurfaceIndex = new SupportSurfaceIndex();
 
   constructor(seed: number = 12345, mapWidth: number = 2000, mapHeight: number = 2000) {
     this.entityMetadata = new WorldEntityMetadata(this.entities, (playerId) => this.getTeamId(playerId));
@@ -213,13 +198,14 @@ export class WorldState {
     this.rng = new SeededRNG(seed);
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
+    this.supportSurfaceSampler = new WorldSupportSurfaceSampler(mapWidth, mapHeight);
   }
 
   /** Terrain/water elevation at world point (x, y). Use
    *  sampleSupportSurface() when the caller needs the complete support
    *  contract including authored building/unit supports. */
   getGroundZ(x: number, y: number): number {
-    return getSurfaceHeight(x, y, this.mapWidth, this.mapHeight, LAND_CELL_SIZE);
+    return this.supportSurfaceSampler.getGroundZ(x, y);
   }
 
   writeTerrainSupportSurfaceAt(
@@ -227,69 +213,35 @@ export class WorldState {
     y: number,
     terrainGroundZ: number,
     normal: SurfaceNormal,
-    out: WorldSupportSurface = createWorldSupportSurface(),
+    out?: WorldSupportSurface,
   ): WorldSupportSurface {
-    return writeTerrainSupportSurface(
-      out,
-      terrainGroundZ,
-      normal,
-      isWaterAt(x, y, this.mapWidth, this.mapHeight),
-      getTerrainVersion(),
-    );
+    return this.supportSurfaceSampler.writeTerrainSupportSurfaceAt(x, y, terrainGroundZ, normal, out);
   }
 
   refreshSupportSurfaceIndex(): void {
-    this.supportSurfaceIndex.rebuild(this.getUnitsAndBuildings());
+    this.supportSurfaceSampler.refreshSupportSurfaceIndex(this.getUnitsAndBuildings());
   }
 
   sampleSupportSurface(
     x: number,
     y: number,
     options: SupportSurfaceQueryOptions = {},
-    out: WorldSupportSurface = createWorldSupportSurface(),
+    out?: WorldSupportSurface,
   ): WorldSupportSurface {
-    this.refreshSupportSurfaceIndex();
-    return this.sampleSupportSurfaceFromIndex(x, y, options, out);
+    return this.supportSurfaceSampler.sampleSupportSurface(x, y, this.getUnitsAndBuildings(), options, out);
   }
 
   sampleSupportSurfaceFromIndex(
     x: number,
     y: number,
     options: SupportSurfaceQueryOptions = {},
-    out: WorldSupportSurface = createWorldSupportSurface(),
+    out?: WorldSupportSurface,
   ): WorldSupportSurface {
-    const terrainGroundZ = this.getGroundZ(x, y);
-    this.writeTerrainSupportSurfaceAt(
-      x,
-      y,
-      terrainGroundZ,
-      this.getCachedSurfaceNormal(x, y),
-      out,
-    );
-
-    this.supportSurfaceIndex.sampleSupportSurface(x, y, terrainGroundZ, options, out);
-
-    return out;
-  }
-
-  private surfaceNormalCacheKey(x: number, y: number): number {
-    const cx = Math.floor(x / TERRAIN_NORMAL_CACHE_CELL_SIZE) + 32768;
-    const cy = Math.floor(y / TERRAIN_NORMAL_CACHE_CELL_SIZE) + 32768;
-    return cx * 0x10000 + cy;
+    return this.supportSurfaceSampler.sampleSupportSurfaceFromIndex(x, y, options, out);
   }
 
   getCachedSurfaceNormal(x: number, y: number): SurfaceNormal {
-    const key = this.surfaceNormalCacheKey(x, y);
-    let normal = this.surfaceNormalCache.get(key);
-    if (!normal) {
-      normal = getSurfaceNormal(
-        x, y,
-        this.mapWidth, this.mapHeight,
-        LAND_CELL_SIZE,
-      );
-      this.surfaceNormalCache.set(key, normal);
-    }
-    return normal;
+    return this.supportSurfaceSampler.getCachedSurfaceNormal(x, y);
   }
 
   private rebuildCachesIfNeeded(): void {
