@@ -1,5 +1,8 @@
 import { ConstructionSystem } from './construction';
-import { resolvePathableFormationTarget } from './commandExecution';
+import {
+  buildMassAwareGroupFormationSlots,
+  resolvePathableFormationTarget,
+} from './commandExecution';
 import { WorldState } from './WorldState';
 
 function assertContract(condition: unknown, message: string): asserts condition {
@@ -17,6 +20,39 @@ function assertNear(actual: number, expected: number, message: string): void {
 }
 
 export function runCommandExecutionContractTest(): void {
+  const layoutWorld = new WorldState(1, 512, 512);
+  const sameRadiusUnits = [
+    layoutWorld.createUnitFromBlueprint(0, 0, 1, 'unitJackal', { allocateSubEntityIds: false }),
+    layoutWorld.createUnitFromBlueprint(0, 0, 1, 'unitJackal', { allocateSubEntityIds: false }),
+    layoutWorld.createUnitFromBlueprint(0, 0, 1, 'unitJackal', { allocateSubEntityIds: false }),
+    layoutWorld.createUnitFromBlueprint(0, 0, 1, 'unitJackal', { allocateSubEntityIds: false }),
+    layoutWorld.createUnitFromBlueprint(0, 0, 1, 'unitJackal', { allocateSubEntityIds: false }),
+  ];
+  const heaviest = sameRadiusUnits[3];
+  heaviest.unit!.mass = 10000;
+  const massSlots = buildMassAwareGroupFormationSlots(sameRadiusUnits);
+  const heaviestSlot = massSlots.find((slot) => slot.unit.id === heaviest.id);
+  assertContract(heaviestSlot !== undefined, 'mass-aware formation slots must include every unit');
+  assertNear(heaviestSlot.offsetX, 0, 'heaviest same-radius unit should receive a central column');
+
+  const bigUnit = layoutWorld.createUnitFromBlueprint(0, 0, 1, 'unitFormik', {
+    allocateSubEntityIds: false,
+  });
+  const mixedSlots = buildMassAwareGroupFormationSlots([
+    layoutWorld.createUnitFromBlueprint(0, 0, 1, 'unitJackal', { allocateSubEntityIds: false }),
+    layoutWorld.createUnitFromBlueprint(0, 0, 1, 'unitJackal', { allocateSubEntityIds: false }),
+    bigUnit,
+    layoutWorld.createUnitFromBlueprint(0, 0, 1, 'unitJackal', { allocateSubEntityIds: false }),
+    layoutWorld.createUnitFromBlueprint(0, 0, 1, 'unitJackal', { allocateSubEntityIds: false }),
+  ]);
+  const bigSlot = mixedSlots.find((slot) => slot.unit.id === bigUnit.id);
+  assertContract(bigSlot !== undefined, 'collision-aware formation slots must include the large unit');
+  assertNear(bigSlot.offsetX, 0, 'large collision unit should receive a central column');
+  assertContract(
+    Math.max(...mixedSlots.map((slot) => Math.abs(slot.offsetX))) > 80,
+    'large collision unit must widen neighboring formation columns',
+  );
+
   const world = new WorldState(1, 512, 512);
   const construction = new ConstructionSystem(world.mapWidth, world.mapHeight);
   const grid = construction.getGrid();

@@ -85,6 +85,12 @@ export type ResolvedFormationTarget = {
   z: number;
 };
 
+export type GroupFormationSlot = {
+  unit: Entity;
+  offsetX: number;
+  offsetY: number;
+};
+
 function commandQueuesInFront(command: { queue: boolean; queueFront?: boolean }): boolean {
   return command.queue && command.queueFront === true;
 }
@@ -284,18 +290,15 @@ function executeScanCommand(ctx: CommandContext, command: ScanCommand): void {
 function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
   // Collect valid units without .map/.filter allocation
   const entityIds = command.entityIds;
+  const validUnits: Entity[] = [];
   let unitCount = 0;
-  let maxCollisionRadius = 0;
 
   // First pass: count valid units to size the iteration
   for (let i = 0; i < entityIds.length; i++) {
     const e = ctx.world.getEntity(entityIds[i]);
     if (e !== undefined && e.type === 'unit' && e.unit !== null) {
+      validUnits.push(e);
       unitCount++;
-      const radius = e.unit.radius.collision;
-      if (Number.isFinite(radius) && radius > maxCollisionRadius) {
-        maxCollisionRadius = radius;
-      }
     }
   }
 
@@ -333,27 +336,19 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
     }
   } else if (command.targetX !== undefined && command.targetY !== undefined) {
     // Group move with formation spreading
-    const spacing = groupFormationSpacing(maxCollisionRadius);
-    const unitsPerRow = Math.ceil(Math.sqrt(unitCount));
     const queueFront = commandQueuesInFront(command);
     const buildingGrid = ctx.constructionSystem.getGrid();
+    const slots = buildMassAwareGroupFormationSlots(validUnits);
 
-    let index = 0;
-    for (let i = 0; i < entityIds.length; i++) {
-      const unit = ctx.world.getEntity(entityIds[i]);
-      if (!unit || unit.type !== 'unit' || !unit.unit) continue;
-
-      // Grid formation offset
-      const row = Math.floor(index / unitsPerRow);
-      const col = index % unitsPerRow;
-      const offsetX = (col - (unitsPerRow - 1) / 2) * spacing;
-      const offsetY = (row - (unitCount / unitsPerRow - 1) / 2) * spacing;
+    for (let i = 0; i < slots.length; i++) {
+      const slot = slots[i];
+      const unit = slot.unit;
       const target = resolvePathableFormationTarget(
         ctx.world,
         buildingGrid,
         unit,
-        command.targetX! + offsetX,
-        command.targetY! + offsetY,
+        command.targetX! + slot.offsetX,
+        command.targetY! + slot.offsetY,
       );
       addPathActions(
         unit,
@@ -366,7 +361,6 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
         queueFront,
         speedLimitFactors?.get(unit.id),
       );
-      index++;
     }
   }
 }
@@ -415,6 +409,123 @@ function groupFormationSpacing(maxCollisionRadius: number): number {
     MIN_GROUP_FORMATION_SPACING,
     maxCollisionRadius * COLLISION_GROUP_FORMATION_SPACING_MULTIPLIER,
   );
+}
+
+type FormationLayoutUnit = {
+  unit: Entity;
+  originalIndex: number;
+  radius: number;
+  mass: number;
+  placementWeight: number;
+};
+
+type FormationGridCoord = {
+  row: number;
+  col: number;
+  centerDistanceSq: number;
+};
+
+type FormationGridAssignment = FormationGridCoord & {
+  layoutUnit: FormationLayoutUnit;
+};
+
+function formationUnitRadius(unit: Entity): number {
+  const radius = unit.unit?.radius.collision;
+  return Number.isFinite(radius) && radius !== undefined && radius > 0
+    ? radius
+    : MIN_GROUP_FORMATION_SPACING / COLLISION_GROUP_FORMATION_SPACING_MULTIPLIER;
+}
+
+function formationUnitMass(unit: Entity): number {
+  const mass = unit.unit?.mass;
+  return Number.isFinite(mass) && mass !== undefined && mass > 0 ? mass : 1;
+}
+
+function formationPlacementWeight(radius: number, mass: number): number {
+  return radius * 4 + Math.log2(Math.max(1, mass) + 1);
+}
+
+function compareFormationUnits(a: FormationLayoutUnit, b: FormationLayoutUnit): number {
+  if (b.placementWeight !== a.placementWeight) return b.placementWeight - a.placementWeight;
+  if (b.radius !== a.radius) return b.radius - a.radius;
+  if (b.mass !== a.mass) return b.mass - a.mass;
+  return a.originalIndex - b.originalIndex;
+}
+
+function compareGridCoordsByCenter(a: FormationGridCoord, b: FormationGridCoord): number {
+  if (a.centerDistanceSq !== b.centerDistanceSq) return a.centerDistanceSq - b.centerDistanceSq;
+  if (a.row !== b.row) return a.row - b.row;
+  return a.col - b.col;
+}
+
+function slotPositionsFromSpans(spans: readonly number[]): number[] {
+  let total = 0;
+  for (let i = 0; i < spans.length; i++) total += spans[i];
+  const positions: number[] = new Array(spans.length);
+  let cursor = -total / 2;
+  for (let i = 0; i < spans.length; i++) {
+    positions[i] = cursor + spans[i] / 2;
+    cursor += spans[i];
+  }
+  return positions;
+}
+
+export function buildMassAwareGroupFormationSlots(units: readonly Entity[]): GroupFormationSlot[] {
+  const unitCount = units.length;
+  if (unitCount === 0) return [];
+
+  const colCount = Math.ceil(Math.sqrt(unitCount));
+  const rowCount = Math.ceil(unitCount / colCount);
+  const rowCenter = (rowCount - 1) / 2;
+  const colCenter = (colCount - 1) / 2;
+
+  const coords: FormationGridCoord[] = [];
+  for (let index = 0; index < unitCount; index++) {
+    const row = Math.floor(index / colCount);
+    const col = index % colCount;
+    const rowDelta = row - rowCenter;
+    const colDelta = col - colCenter;
+    coords.push({
+      row,
+      col,
+      centerDistanceSq: rowDelta * rowDelta + colDelta * colDelta,
+    });
+  }
+  coords.sort(compareGridCoordsByCenter);
+
+  const layoutUnits: FormationLayoutUnit[] = units.map((unit, originalIndex) => {
+    const radius = formationUnitRadius(unit);
+    const mass = formationUnitMass(unit);
+    return {
+      unit,
+      originalIndex,
+      radius,
+      mass,
+      placementWeight: formationPlacementWeight(radius, mass),
+    };
+  });
+  layoutUnits.sort(compareFormationUnits);
+
+  const assignments: FormationGridAssignment[] = [];
+  const colSpans = new Array<number>(colCount).fill(MIN_GROUP_FORMATION_SPACING);
+  const rowSpans = new Array<number>(rowCount).fill(MIN_GROUP_FORMATION_SPACING);
+  for (let i = 0; i < layoutUnits.length; i++) {
+    const coord = coords[i];
+    if (coord === undefined) continue;
+    const layoutUnit = layoutUnits[i];
+    const spacing = groupFormationSpacing(layoutUnit.radius);
+    colSpans[coord.col] = Math.max(colSpans[coord.col], spacing);
+    rowSpans[coord.row] = Math.max(rowSpans[coord.row], spacing);
+    assignments.push({ ...coord, layoutUnit });
+  }
+
+  const colPositions = slotPositionsFromSpans(colSpans);
+  const rowPositions = slotPositionsFromSpans(rowSpans);
+  return assignments.map((assignment) => ({
+    unit: assignment.layoutUnit.unit,
+    offsetX: colPositions[assignment.col],
+    offsetY: rowPositions[assignment.row],
+  }));
 }
 
 function unitFormationSpeed(entity: Entity): number {
