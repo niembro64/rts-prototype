@@ -73,11 +73,11 @@ manual launch weapons, or unit-specific ability command-card support.
 
 Issue: factory and production UI are incomplete. BAR has factory production
 controls beyond selecting one repeat-build unit: repeat/queue state, factory
-queue mode/quotas, factory presets save/load/show, production queue editing,
-factory guard, and related state indicators. rts-prototype now has an
-authoritative stop-production command and factory panel button, but still needs
-the remaining BAR-equivalent factory panel and hotkeys, translated to
-authoritative-server commands.
+queue mode/quotas, production queue editing, factory guard, and related state
+indicators. rts-prototype now has an authoritative stop-production command,
+factory panel button, and local factory preset slots that load through
+authoritative production commands, but still needs the remaining BAR-equivalent
+factory panel and hotkeys, translated to authoritative-server commands.
 
 Issue: BAR gameplay functionality tied to missing commands is absent. Implement
 or explicitly redesign the systems needed by the missing command surface:

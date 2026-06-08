@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { COLORS, WAYPOINT_COLOR_CSS } from '@/colorsConfig';
 import type { WaypointType } from '../game/sim/types';
 import {
@@ -201,6 +201,66 @@ const unitOptions = unitRosterDisplay;
 
 const vehicleOptions = unitOptions.filter((unit) => unit.locomotion !== 'legs');
 const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
+
+const FACTORY_PRESET_STORAGE_KEY = 'budget-annihilation.factoryPresets.v1';
+const FACTORY_PRESET_COUNT = 4;
+
+function loadFactoryPresetSlots(): (string | null)[] {
+  if (typeof window === 'undefined') return Array.from({ length: FACTORY_PRESET_COUNT }, () => null);
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(FACTORY_PRESET_STORAGE_KEY) ?? '[]');
+    return Array.from({ length: FACTORY_PRESET_COUNT }, (_, index) => {
+      const value = Array.isArray(parsed) ? parsed[index] : null;
+      return typeof value === 'string' && value.length > 0 ? value : null;
+    });
+  } catch {
+    return Array.from({ length: FACTORY_PRESET_COUNT }, () => null);
+  }
+}
+
+const factoryPresetSlots = ref<(string | null)[]>(loadFactoryPresetSlots());
+
+function saveFactoryPresetSlots(): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(
+    FACTORY_PRESET_STORAGE_KEY,
+    JSON.stringify(factoryPresetSlots.value),
+  );
+}
+
+function factoryPresetShortName(unitBlueprintId: string | null): string {
+  if (unitBlueprintId === null) return '-';
+  return unitOptions.find((unit) => unit.unitBlueprintId === unitBlueprintId)?.shortName
+    ?? unitBlueprintId.slice(0, 3).toUpperCase();
+}
+
+function factoryPresetTitle(index: number): string {
+  const unitBlueprintId = factoryPresetSlots.value[index] ?? null;
+  const label = unitBlueprintId === null
+    ? 'empty'
+    : (unitOptions.find((unit) => unit.unitBlueprintId === unitBlueprintId)?.label ?? unitBlueprintId);
+  return `Factory preset ${index + 1}: ${label}`;
+}
+
+function saveFactoryPreset(index: number): void {
+  if (index < 0 || index >= FACTORY_PRESET_COUNT) return;
+  const next = factoryPresetSlots.value.slice();
+  next[index] = selectedBuildUnitBlueprintId.value;
+  factoryPresetSlots.value = next;
+  saveFactoryPresetSlots();
+}
+
+function loadFactoryPreset(index: number): void {
+  if (index < 0 || index >= FACTORY_PRESET_COUNT) return;
+  const factoryId = props.selection.factoryId;
+  if (factoryId === undefined) return;
+  const unitBlueprintId = factoryPresetSlots.value[index] ?? null;
+  if (unitBlueprintId === null) {
+    props.actions.stopFactoryProduction(factoryId);
+    return;
+  }
+  props.actions.queueUnit(factoryId, unitBlueprintId);
+}
 
 </script>
 
@@ -661,6 +721,38 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
       </div>
     </div>
 
+    <div v-if="selection.hasFactory && selection.factoryId && showTowerActions" class="button-group factory-preset-group">
+      <div class="group-label">Presets</div>
+      <div class="factory-preset-grid">
+        <button
+          v-for="(_, index) in factoryPresetSlots"
+          :key="`load-${index}`"
+          type="button"
+          class="action-btn factory-preset-btn"
+          :class="{ active: factoryPresetSlots[index] === selectedBuildUnitBlueprintId && factoryPresetSlots[index] !== null }"
+          :disabled="factoryPresetSlots[index] === null && !hasFactoryProduction"
+          :style="{ '--btn-color': BUTTON_COLORS.vehicleProduce }"
+          :title="`${factoryPresetTitle(index)} - Load`"
+          @click="loadFactoryPreset(index)"
+        >
+          <span class="btn-label">P{{ index + 1 }}</span>
+          <span class="btn-key">{{ factoryPresetShortName(factoryPresetSlots[index]) }}</span>
+        </button>
+        <button
+          v-for="(_, index) in factoryPresetSlots"
+          :key="`save-${index}`"
+          type="button"
+          class="action-btn factory-preset-btn save"
+          :disabled="!hasFactoryProduction"
+          :style="{ '--btn-color': BUTTON_COLORS.botProduce }"
+          :title="`${factoryPresetTitle(index)} - Save current`"
+          @click="saveFactoryPreset(index)"
+        >
+          <span class="btn-label">S{{ index + 1 }}</span>
+        </button>
+      </div>
+    </div>
+
     <!-- Vehicle production (for factory) -->
     <div v-if="selection.hasFactory && selection.factoryId && showTowerActions" class="button-group">
       <div class="group-label">Vehicles</div>
@@ -995,6 +1087,27 @@ kbd {
   grid-template-columns: repeat(2, minmax(120px, 1fr));
   gap: 3px;
   min-width: 0;
+}
+
+.factory-preset-group {
+  align-items: flex-start;
+}
+
+.factory-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 30px);
+  grid-auto-rows: 30px;
+  gap: 3px;
+  min-width: 0;
+}
+
+.factory-preset-btn {
+  width: 30px;
+  height: 30px;
+}
+
+.factory-preset-btn.save {
+  opacity: 0.88;
 }
 
 .detail-item {
