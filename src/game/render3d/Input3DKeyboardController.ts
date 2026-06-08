@@ -27,6 +27,7 @@ type Input3DKeyboardControllerConfig = {
   getSelectedBuilderAllowedBuildBlueprintIds: () => readonly StructureBlueprintId[];
   exitSpecialModes: (includeTowerTarget?: boolean) => void;
   stopSelectedUnits: () => void;
+  skipCurrentOrder: () => void;
   removeLastQueuedOrder: () => void;
   clearQueuedOrders: () => void;
   toggleSelectedWait: (queue: boolean) => void;
@@ -282,6 +283,9 @@ export class Input3DKeyboardController {
         break;
       case 'command.stop':
         this.config.stopSelectedUnits();
+        break;
+      case 'command.skipCurrent':
+        this.config.skipCurrentOrder();
         break;
       case 'command.undoQueue':
         this.config.removeLastQueuedOrder();

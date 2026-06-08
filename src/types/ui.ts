@@ -78,6 +78,7 @@ export type SelectionInfo = {
 export type SelectionActions = {
   setWaypointMode: (mode: WaypointType) => void;
   stopSelectedUnits: () => void;
+  skipCurrentOrder: () => void;
   clearQueuedOrders: () => void;
   removeLastQueuedOrder: () => void;
   toggleSelectedWait: () => void;

@@ -4,6 +4,7 @@ export type CommandHotkeyId =
   | 'waypoint.patrol'
   | 'command.stop'
   | 'command.wait'
+  | 'command.skipCurrent'
   | 'command.undoQueue'
   | 'command.clearQueue'
   | 'command.fireToggle'
@@ -61,6 +62,7 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'waypoint.patrol',
   'command.stop',
   'command.wait',
+  'command.skipCurrent',
   'command.undoQueue',
   'command.clearQueue',
   'command.fireToggle',
@@ -123,6 +125,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<CommandHotkeyPresetId, Comm
     'waypoint.patrol': [key('H', 'h', { shift: 'any' })],
     'command.stop': [key('S', 's', { shift: 'any' })],
     'command.wait': [key('W', 'w', { shift: 'any' })],
+    'command.skipCurrent': [key('N', 'n', { shift: 'any' })],
     'command.undoQueue': [key('U', 'u', { shift: 'any' })],
     'command.clearQueue': [key('X', 'x', { shift: 'any' })],
     'command.fireToggle': [key('E', 'e', { shift: 'any' })],
@@ -159,6 +162,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<CommandHotkeyPresetId, Comm
     'waypoint.patrol': [code('H', 'KeyH', { shift: 'any' })],
     'command.stop': [code('G', 'KeyG', { shift: 'any' })],
     'command.wait': [code('Y', 'KeyY', { shift: 'any' })],
+    'command.skipCurrent': [code('N', 'KeyN', { shift: 'any' })],
     'command.undoQueue': [code('Ctrl+N', 'KeyN', { ctrl: true })],
     'command.clearQueue': [code('Ctrl+Shift+N', 'KeyN', { ctrl: true, shift: true })],
     'command.fireToggle': [
@@ -210,6 +214,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<CommandHotkeyPresetId, Comm
     'waypoint.patrol': [code('P', 'KeyP', { shift: 'any' })],
     'command.stop': [code('S', 'KeyS', { shift: 'any' })],
     'command.wait': [code('W', 'KeyW', { shift: 'any' })],
+    'command.skipCurrent': [code('N', 'KeyN', { shift: 'any' })],
     'command.undoQueue': [code('Ctrl+N', 'KeyN', { ctrl: true })],
     'command.clearQueue': [code('Ctrl+Shift+N', 'KeyN', { ctrl: true, shift: true })],
     'command.fireToggle': [code('L', 'KeyL', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],

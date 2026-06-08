@@ -7,6 +7,7 @@ export type {
   StopCommand,
   ClearQueuedOrdersCommand,
   RemoveLastQueuedOrderCommand,
+  SkipCurrentOrderCommand,
   ClearSelectionCommand,
   PingCommand,
   ScanCommand,

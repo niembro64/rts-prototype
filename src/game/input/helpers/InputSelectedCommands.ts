@@ -80,6 +80,16 @@ export class InputSelectedCommands {
     });
   }
 
+  skipCurrentOrder(): void {
+    const entityIds = this.selectedUnitIds();
+    if (entityIds.length === 0) return;
+    this.commandQueue.enqueue({
+      type: 'skipCurrentOrder',
+      tick: this.getTick(),
+      entityIds,
+    });
+  }
+
   wait(queue: boolean): void {
     const entityIds = this.selectedUnitIds();
     if (entityIds.length === 0) return;

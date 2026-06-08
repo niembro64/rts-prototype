@@ -15,6 +15,7 @@ import type {
   RepairCommand,
   RemoveLastQueuedOrderCommand,
   ScanCommand,
+  SkipCurrentOrderCommand,
   SetFireEnabledCommand,
   SetBuildingActiveCommand,
   SelfDestructCommand,
@@ -61,6 +62,7 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
     case 'stop':
     case 'clearQueuedOrders':
     case 'removeLastQueuedOrder':
+    case 'skipCurrentOrder':
       return sanitizeUnitListCommand(command, tick);
     case 'wait':
       return sanitizeWaitCommand(command, tick);
@@ -249,9 +251,9 @@ function sanitizeMoveCommand(command: MoveCommand, world: WorldState, tick: numb
 }
 
 function sanitizeUnitListCommand(
-  command: StopCommand | ClearQueuedOrdersCommand | RemoveLastQueuedOrderCommand,
+  command: StopCommand | ClearQueuedOrdersCommand | RemoveLastQueuedOrderCommand | SkipCurrentOrderCommand,
   tick: number,
-): StopCommand | ClearQueuedOrdersCommand | RemoveLastQueuedOrderCommand | null {
+): StopCommand | ClearQueuedOrdersCommand | RemoveLastQueuedOrderCommand | SkipCurrentOrderCommand | null {
   const entityIds = sanitizeEntityIdArray(command.entityIds);
   return entityIds === null ? null : { ...command, tick, entityIds };
 }

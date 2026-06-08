@@ -195,6 +195,9 @@ export function useGameCanvasSceneUi({
     stopSelectedUnits: () => {
       getActiveBattleScene()?.stopSelectedUnits();
     },
+    skipCurrentOrder: () => {
+      getActiveBattleScene()?.skipCurrentOrder();
+    },
     clearQueuedOrders: () => {
       getActiveBattleScene()?.clearQueuedOrders();
     },

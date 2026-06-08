@@ -461,6 +461,17 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           type="button"
           class="action-btn"
           :disabled="!selection.hasQueuedOrders"
+          :style="{ '--btn-color': BUTTON_COLORS.skipQueue }"
+          :title="actionTitle('Skip current order', 'command.skipCurrent')"
+          @click="actions.skipCurrentOrder()"
+        >
+          <span class="btn-label">Skip Q</span>
+          <span class="btn-key">{{ hotkey('command.skipCurrent') }}</span>
+        </button>
+        <button
+          type="button"
+          class="action-btn"
+          :disabled="!selection.hasQueuedOrders"
           :style="{ '--btn-color': BUTTON_COLORS.undoQueue }"
           :title="actionTitle('Undo queued order', 'command.undoQueue')"
           @click="actions.removeLastQueuedOrder()"

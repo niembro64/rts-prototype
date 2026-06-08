@@ -691,6 +691,7 @@
         "guard": "#9ef28d",
         "stop": "#d6d6d6",
         "wait": "#e8e8e8",
+        "skipQueue": "#9fe8d4",
         "undoQueue": "#b9f1ff",
         "clearQueue": "#c7d0ff",
         "fireControl": "#ff9f5a",

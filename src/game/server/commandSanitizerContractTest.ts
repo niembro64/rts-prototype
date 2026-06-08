@@ -1,5 +1,6 @@
 import type {
   Command,
+  SkipCurrentOrderCommand,
   SetShieldReflectionModeCommand,
   SetTurretShieldPanelsEnabledCommand,
   SetTurretShieldSpheresEnabledCommand,
@@ -31,6 +32,16 @@ function sanitizeRequired<T extends Command>(world: WorldState, command: T): T {
 
 export function runCommandSanitizerContractTest(): void {
   const world = new WorldState(9001, 128, 128);
+
+  const skipCurrent = sanitizeRequired<SkipCurrentOrderCommand>(world, {
+    type: 'skipCurrentOrder',
+    tick: 4,
+    entityIds: [1, 2, 2],
+  });
+  assertContract(
+    skipCurrent.tick === 9001 && skipCurrent.entityIds.join(',') === '1,2,2',
+    'skipCurrentOrder must sanitize through the unit-list path and normalize tick',
+  );
 
   const panelsDisabled = sanitizeRequired<SetTurretShieldPanelsEnabledCommand>(world, {
     type: 'setTurretShieldPanelsEnabled',

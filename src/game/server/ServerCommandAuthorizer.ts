@@ -10,6 +10,7 @@ import type {
   PingCommand,
   RemoveLastQueuedOrderCommand,
   ScanCommand,
+  SkipCurrentOrderCommand,
   SelfDestructCommand,
   SetBuildingActiveCommand,
   SetFireEnabledCommand,
@@ -35,7 +36,8 @@ type UnitListCommand =
   | StopCommand
   | WaitCommand
   | ClearQueuedOrdersCommand
-  | RemoveLastQueuedOrderCommand;
+  | RemoveLastQueuedOrderCommand
+  | SkipCurrentOrderCommand;
 
 type AnyEntityListCommand =
   | SetFireEnabledCommand
@@ -77,6 +79,7 @@ export function authorizeGameServerGameplayCommand(
     case 'stop':
     case 'clearQueuedOrders':
     case 'removeLastQueuedOrder':
+    case 'skipCurrentOrder':
       return authorizeUnitListCommand(world, command, playerId);
 
     case 'wait':

@@ -11,6 +11,7 @@ export type CommandType =
   | 'stop'
   | 'clearQueuedOrders'
   | 'removeLastQueuedOrder'
+  | 'skipCurrentOrder'
   | 'clearSelection'
   | 'ping'
   | 'scan'
@@ -90,6 +91,11 @@ export type ClearQueuedOrdersCommand = BaseCommand & {
 
 export type RemoveLastQueuedOrderCommand = BaseCommand & {
   type: 'removeLastQueuedOrder';
+  entityIds: EntityId[];
+};
+
+export type SkipCurrentOrderCommand = BaseCommand & {
+  type: 'skipCurrentOrder';
   entityIds: EntityId[];
 };
 
@@ -339,6 +345,7 @@ export type Command =
   | StopCommand
   | ClearQueuedOrdersCommand
   | RemoveLastQueuedOrderCommand
+  | SkipCurrentOrderCommand
   | ClearSelectionCommand
   | PingCommand
   | ScanCommand

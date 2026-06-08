@@ -19,6 +19,7 @@ import type {
   RepairCommand,
   RemoveLastQueuedOrderCommand,
   SelectCommand,
+  SkipCurrentOrderCommand,
   SetFireEnabledCommand,
   SetBuildingActiveCommand,
   SelfDestructCommand,
@@ -110,6 +111,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'removeLastQueuedOrder':
       executeRemoveLastQueuedOrderCommand(ctx, command);
+      break;
+    case 'skipCurrentOrder':
+      executeSkipCurrentOrderCommand(ctx, command);
       break;
     case 'wait':
       executeWaitCommand(ctx, command);
@@ -360,6 +364,22 @@ function executeRemoveLastQueuedOrderCommand(ctx: CommandContext, command: Remov
       lastIntentStart,
       unit.actions.length - lastIntentStart,
     );
+    clearBuilderTargetIfRemoved(entity, removedActions);
+    refreshPatrolStartIndex(unit);
+    ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+  }
+}
+
+function executeSkipCurrentOrderCommand(ctx: CommandContext, command: SkipCurrentOrderCommand): void {
+  for (let i = 0; i < command.entityIds.length; i++) {
+    const entity = ctx.world.getEntity(command.entityIds[i]);
+    const unit = entity !== undefined ? entity.unit : null;
+    if (entity === undefined || unit === null) continue;
+
+    const activeIntentEnd = getFirstActionIntentEnd(unit.actions);
+    if (activeIntentEnd < 0) continue;
+
+    const removedActions = spliceUnitActions(unit, 0, activeIntentEnd + 1);
     clearBuilderTargetIfRemoved(entity, removedActions);
     refreshPatrolStartIndex(unit);
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);

@@ -793,6 +793,10 @@ export class RtsScene3D {
     this.inputManager?.stopSelectedUnits();
   }
 
+  public skipCurrentOrder(): void {
+    this.inputManager?.skipCurrentOrder();
+  }
+
   public clearQueuedOrders(): void {
     this.inputManager?.clearQueuedOrders();
   }

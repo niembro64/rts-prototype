@@ -219,6 +219,7 @@ export class Input3DManager {
       getSelectedBuilderAllowedBuildBlueprintIds: () => this.getSelectedBuilderAllowedBuildBlueprintIds(),
       exitSpecialModes: (includeTowerTarget) => this.exitSpecialModes(includeTowerTarget),
       stopSelectedUnits: () => this.stopSelectedUnits(),
+      skipCurrentOrder: () => this.skipCurrentOrder(),
       removeLastQueuedOrder: () => this.removeLastQueuedOrder(),
       clearQueuedOrders: () => this.clearQueuedOrders(),
       toggleSelectedWait: (queue) => this.toggleSelectedWait(queue),
@@ -423,6 +424,10 @@ export class Input3DManager {
 
   stopSelectedUnits(): void {
     this.selectedCommands.stop();
+  }
+
+  skipCurrentOrder(): void {
+    this.selectedCommands.skipCurrentOrder();
   }
 
   clearQueuedOrders(): void {
