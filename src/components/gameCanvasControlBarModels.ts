@@ -225,4 +225,5 @@ export type GameCanvasClientControlBarModel = {
   setCameraMode(mode: CameraSmoothMode): void;
   setCameraFollowMode(mode: CameraFollowMode): void;
   toggleFullscreen(): void;
+  captureScreenshot(): void;
 };

@@ -277,6 +277,25 @@ async function toggleFullscreen(): Promise<void> {
   }
 }
 
+function captureScreenshot(): void {
+  const canvas =
+    containerRef.value?.querySelector('canvas') ??
+    backgroundContainerRef.value?.querySelector('canvas');
+  if (!(canvas instanceof HTMLCanvasElement)) return;
+
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `budget-annihilation-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, 'image/png');
+}
+
 onMounted(() => {
   syncFullscreenActive();
   document.addEventListener('fullscreenchange', syncFullscreenActive);
@@ -1054,6 +1073,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   setCameraMode,
   setCameraFollowMode: setCameraFollow,
   toggleFullscreen,
+  captureScreenshot,
 });
 watchEffect(() => {
   const m = clientControlBarModel as {
