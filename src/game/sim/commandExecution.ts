@@ -37,7 +37,7 @@ import type {
   UpgradeMetalExtractorCommand,
   WaitCommand,
 } from './commands';
-import type { Entity, EntityId, PlayerId, ShotSource, Unit, UnitAction } from './types';
+import type { CombatFireState, Entity, EntityId, PlayerId, ShotSource, Unit, UnitAction } from './types';
 import { NO_ENTITY_ID } from './types';
 import { isProjectileShot } from './types';
 import type { WorldState } from './WorldState';
@@ -1228,15 +1228,18 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
 }
 
 function executeSetFireEnabledCommand(ctx: CommandContext, command: SetFireEnabledCommand): void {
+  const fireState: CombatFireState = command.fireState ??
+    (command.enabled === false ? 'holdFire' : 'fireAtWill');
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
     const combat = entity !== undefined ? entity.combat : null;
     if (entity === undefined || combat === null) continue;
 
-    const enabled = command.enabled === true;
-    if (combat.fireEnabled === enabled) continue;
+    const enabled = fireState !== 'holdFire';
+    if (combat.fireState === fireState && combat.fireEnabled === enabled) continue;
+    combat.fireState = fireState;
     combat.fireEnabled = enabled;
-    if (!enabled) {
+    if (fireState === 'holdFire') {
       combat.priorityTargetId = null;
       combat.priorityTargetPoint = null;
       combat.nextCombatProbeTick = -1;
@@ -1248,6 +1251,8 @@ function executeSetFireEnabledCommand(ctx: CommandContext, command: SetFireEnabl
       for (let wi = 0; wi < combat.turrets.length; wi++) {
         dropTurretLockMidTick(entity, wi);
       }
+    } else {
+      combat.nextCombatProbeTick = -1;
     }
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_COMBAT_MODE | ENTITY_CHANGED_TURRETS);
   }

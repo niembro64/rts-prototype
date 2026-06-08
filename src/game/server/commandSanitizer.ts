@@ -41,7 +41,7 @@ import {
   REPAIR_AREA_MAX_RADIUS,
 } from '../sim/commandLimits';
 import type { WorldState } from '../sim/WorldState';
-import type { BuildingBlueprintId, EntityId, WaypointType } from '../sim/types';
+import type { BuildingBlueprintId, CombatFireState, EntityId, WaypointType } from '../sim/types';
 import { STRUCTURE_CONFIGS } from '../sim/buildConfigs';
 import { isBuildableUnitBlueprintId } from '../sim/blueprints/unitRoster';
 import { SERVER_CONFIG, normalizeSnapshotRate } from '../../serverBarConfig';
@@ -52,6 +52,7 @@ import { normalizeAngle } from '../math';
 const WAYPOINT_TYPES: readonly WaypointType[] = ['move', 'fight', 'patrol'];
 const UNIT_MOVE_STATES: readonly string[] = ['maneuver', 'holdPosition', 'roam'];
 const TRAJECTORY_MODES: readonly string[] = ['auto', 'low', 'high'];
+const COMBAT_FIRE_STATES: readonly string[] = ['fireAtWill', 'returnFire', 'holdFire'];
 
 type GroundPoint = { x: number; y: number; z: number | undefined };
 
@@ -342,9 +343,21 @@ function sanitizeWaitCommand(command: WaitCommand, tick: number): WaitCommand | 
 
 function sanitizeSetFireEnabledCommand(command: SetFireEnabledCommand, tick: number): SetFireEnabledCommand | null {
   const entityIds = sanitizeEntityIdArray(command.entityIds);
-  return entityIds === null || typeof command.enabled !== 'boolean'
+  if (entityIds === null) return null;
+  const fireState = COMBAT_FIRE_STATES.includes(command.fireState ?? '')
+    ? command.fireState as CombatFireState
+    : typeof command.enabled === 'boolean'
+      ? command.enabled ? 'fireAtWill' : 'holdFire'
+      : null;
+  return fireState === null
     ? null
-    : { ...command, tick, entityIds, enabled: command.enabled };
+    : {
+        type: 'setFireEnabled',
+        tick,
+        entityIds,
+        enabled: fireState !== 'holdFire',
+        fireState,
+      };
 }
 
 function sanitizeSetBuildingActiveCommand(

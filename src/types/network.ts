@@ -13,7 +13,7 @@ import type {
   UnitBlueprintId,
 } from './blueprintIds';
 import type { KeyframeRatio, SnapshotRate, TickRate } from './server';
-import type { BeamReflectorKind, CombatTrajectoryMode, EntityType, PlayerId, TurretState, UnitMoveState } from './sim';
+import type { BeamReflectorKind, CombatFireState, CombatTrajectoryMode, EntityType, PlayerId, TurretState, UnitMoveState } from './sim';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 // Single source of truth for the wire codes TS and Rust must agree on.
 // Rust generates its constants from this same file via build.rs.
@@ -868,7 +868,12 @@ export type NetworkServerSnapshotEntity = {
      *  not shipped (see design philosophy: client extrapolates from
      *  velocity, never re-derives server-side forces). */
     angularVelocity3: Vec3 | null;
+    /** Legacy two-state fire permission mirror. New code reads
+     *  fireState first and falls back to this bit if absent. */
     fireEnabled: boolean | null;
+    /** Player-controlled fire state. Omitted/null means unchanged for
+     *  deltas and fire-at-will for full records. */
+    fireState?: CombatFireState | null;
     /** Host ballistic trajectory override. Null/omitted means unchanged
      *  for deltas and authored turret defaults ("auto") for full records. */
     trajectoryMode?: CombatTrajectoryMode | null;

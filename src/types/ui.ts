@@ -1,6 +1,6 @@
 // UI component types extracted from Vue components and helpers
 
-import type { PlayerId, EntityId, WaypointType, Entity, BuildingBlueprintId, EntityType, StructureBlueprintId, CombatTrajectoryMode, UnitMoveState } from './sim';
+import type { PlayerId, EntityId, WaypointType, Entity, BuildingBlueprintId, EntityType, StructureBlueprintId, CombatFireState, CombatTrajectoryMode, UnitMoveState } from './sim';
 import type { Vec2 } from './vec2';
 
 // Selection panel types
@@ -48,6 +48,7 @@ export type SelectionInfo = {
   hasDGun: boolean;
   hasFireControl: boolean;
   fireEnabled: boolean;
+  fireState: CombatFireState | 'mixed';
   hasTrajectoryControl: boolean;
   trajectoryMode: CombatTrajectoryMode;
   /** True iff the selection contains at least one building whose

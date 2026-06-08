@@ -696,7 +696,10 @@ function syncEntityMetaPools(world: WorldState, e: Entity, sim: SimWasm): void {
       slot,
       playerId,
       u.hp, u.maxHp,
-      combat !== null && combat.fireEnabled === false ? 0 : 1,
+      combat !== null &&
+        ((combat.fireState ?? (combat.fireEnabled === false ? 'holdFire' : 'fireAtWill')) === 'holdFire')
+        ? 0
+        : 1,
       e.commander ? 1 : 0,
       isEntityActive(e) ? 1 : 0,
       buildable !== null ? buildable.paid.energy : 0,

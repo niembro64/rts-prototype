@@ -32,6 +32,7 @@ export type {
   UnitPathPoint,
   UnitLocomotion,
   UnitMoveState,
+  CombatFireState,
   CombatTrajectoryMode,
   BuildingActiveState,
   Unit,

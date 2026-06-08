@@ -266,6 +266,24 @@ function nextMoveStateLabel(moveState: SelectionInfo['unitMoveState']): string {
   }
 }
 
+function fireStateLabel(fireState: SelectionInfo['fireState']): string {
+  switch (fireState) {
+    case 'fireAtWill': return 'Fire';
+    case 'returnFire': return 'Return';
+    case 'holdFire': return 'Hold';
+    case 'mixed': return 'Mixed';
+  }
+}
+
+function nextFireStateLabel(fireState: SelectionInfo['fireState']): string {
+  switch (fireState) {
+    case 'fireAtWill': return 'Return';
+    case 'returnFire': return 'Hold';
+    case 'holdFire': return 'Fire';
+    case 'mixed': return 'Fire';
+  }
+}
+
 function queueInsertOptionTitle(option: QueueInsertOption): string {
   return option.label === 'End'
     ? 'Insert queued commands at the end'
@@ -878,12 +896,12 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
         <button
           type="button"
           class="action-btn"
-          :class="{ active: selection.fireEnabled }"
+          :class="{ active: selection.fireState !== 'holdFire' }"
           :style="{ '--btn-color': BUTTON_COLORS.fireControl }"
-          :title="actionTitle(selection.fireEnabled ? 'Hold fire' : 'Fire at will', 'command.fireToggle')"
+          :title="actionTitle(`Fire state: ${fireStateLabel(selection.fireState)}; next ${nextFireStateLabel(selection.fireState)}`, 'command.fireToggle')"
           @click="actions.toggleSelectedFire()"
         >
-          <span class="btn-label">{{ selection.fireEnabled ? 'Fire' : 'Hold' }}</span>
+          <span class="btn-label">{{ fireStateLabel(selection.fireState) }}</span>
           <span class="btn-key">{{ hotkey('command.fireToggle') }}</span>
         </button>
         <button

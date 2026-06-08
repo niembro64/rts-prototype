@@ -279,6 +279,7 @@ type UnitFixture = BasicEntityFixture & {
     orientation?: { x: number; y: number; z: number; w: number };
     angularVelocity3?: { x: number; y: number; z: number };
     fireEnabled?: false;
+    fireState?: 'fireAtWill' | 'returnFire' | 'holdFire';
     isCommander?: true;
     buildTargetId?: number | null;
     actions?: ActionFixture[];
@@ -525,6 +526,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         hp: { curr: 100, max: 100 },
         velocity: { x: 0, y: 0, z: 0 },
         fireEnabled: false,
+        fireState: 'holdFire',
       },
     },
     // isCommander flag (commander shell)
@@ -562,6 +564,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         velocity: { x: 0, y: 0, z: 0 },
         isCommander: true,
         fireEnabled: false,
+        fireState: 'holdFire',
         buildTargetId: 99999,
       },
     },

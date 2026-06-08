@@ -2,6 +2,7 @@ import type {
   Command,
   MoveCommand,
   SetFactoryGuardCommand,
+  SetFireEnabledCommand,
   SetUnitMoveStateCommand,
   SkipCurrentOrderCommand,
   StartBuildCommand,
@@ -110,6 +111,17 @@ export function runCommandSanitizerContractTest(): void {
   assertContract(
     roamMoveState.moveState === 'roam',
     'setUnitMoveState must accept the roam positioning state',
+  );
+
+  const returnFireState = sanitizeRequired<SetFireEnabledCommand>(world, {
+    type: 'setFireEnabled',
+    tick: 7,
+    entityIds: [7],
+    fireState: 'returnFire',
+  });
+  assertContract(
+    returnFireState.fireState === 'returnFire' && returnFireState.enabled === true,
+    'setFireEnabled must accept and normalize the return-fire state',
   );
 
   const formationSpeedMove = sanitizeRequired<MoveCommand>(world, {

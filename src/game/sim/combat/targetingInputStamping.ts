@@ -255,6 +255,16 @@ function queueCombatTargetingSource(entity: Entity): void {
   _combatTargetingSourceCount++;
 }
 
+function combatCanFire(combat: Entity['combat']): boolean {
+  if (combat === null) return false;
+  const fireState = combat.fireState ?? (combat.fireEnabled === false ? 'holdFire' : 'fireAtWill');
+  if (fireState === 'fireAtWill') return true;
+  if (fireState === 'returnFire') {
+    return combat.priorityTargetId !== null || combat.priorityTargetPoint !== null;
+  }
+  return false;
+}
+
 function ensureCombatTargetingSensorSourceCapacity(count: number): void {
   if (count <= _combatTargetingSensorSourceSlots.length) return;
   let next = Math.max(8, _combatTargetingSensorSourceSlots.length);
@@ -562,7 +572,7 @@ function stampCombatTargetingEntityInto(
   let entityFlags = 0;
   if (combat) entityFlags |= CT_ENTITY_FLAG_HAS_COMBAT;
   if (hp > 0) entityFlags |= CT_ENTITY_FLAG_ALIVE;
-  if (combat && combat.fireEnabled !== false) entityFlags |= CT_ENTITY_FLAG_FIRE_ENABLED;
+  if (combatCanFire(combat)) entityFlags |= CT_ENTITY_FLAG_FIRE_ENABLED;
   if (isEntityActive(entity)) {
     entityFlags |= CT_ENTITY_FLAG_BUILDABLE_COMPLETE;
   }

@@ -38,6 +38,7 @@ function createEmptyUnitSub(): UnitSub {
     orientation: null,
     angularVelocity3: null,
     fireEnabled: null,
+    fireState: null,
     trajectoryMode: null,
     repeatQueue: null,
     moveState: null,
@@ -137,6 +138,7 @@ function rentDecodedUnitSub(): UnitSub {
     u.orientation = null;
     u.angularVelocity3 = null;
     u.fireEnabled = null;
+    u.fireState = null;
     u.trajectoryMode = null;
     u.repeatQueue = null;
     u.moveState = null;
@@ -215,6 +217,7 @@ const UNIT_FLAG_TRAJECTORY_AUTO = 1 << 26;
 const UNIT_FLAG_MOVE_STATE_PRESENT = 1 << 27;
 const UNIT_FLAG_MOVE_STATE_HOLD = 1 << 28;
 const UNIT_FLAG_MOVE_STATE_ROAM = 1 << 29;
+const UNIT_FLAG_FIRE_STATE_PRESENT = 1 << 30;
 
 const BUILDING_FLAG_BLUEPRINT_CODE = 1 << 0;
 const BUILDING_FLAG_DIM = 1 << 1;
@@ -562,6 +565,7 @@ function isMovementOnlyUnitDelta(entity: NetworkServerSnapshotEntity): boolean {
   if (unit.mass !== null) return false;
   if (unit.surfaceNormal !== null) return false;
   if (unit.fireEnabled !== null) return false;
+  if (unit.fireState !== null && unit.fireState !== undefined) return false;
   if (unit.repeatQueue !== null && unit.repeatQueue !== undefined) return false;
   if (unit.moveState !== null && unit.moveState !== undefined) return false;
   if (unit.holdPosition !== null && unit.holdPosition !== undefined) return false;
@@ -600,6 +604,7 @@ function isSplitUnitTurretDelta(entity: NetworkServerSnapshotEntity): boolean {
   if (unit.mass !== null) return false;
   if (unit.surfaceNormal !== null) return false;
   if (unit.fireEnabled !== null) return false;
+  if (unit.fireState !== null && unit.fireState !== undefined) return false;
   if (unit.repeatQueue !== null && unit.repeatQueue !== undefined) return false;
   if (unit.moveState !== null && unit.moveState !== undefined) return false;
   if (unit.holdPosition !== null && unit.holdPosition !== undefined) return false;
@@ -1034,6 +1039,9 @@ function packUnit(unit: UnitSub): unknown[] {
   if (unit.orientation !== null) flags |= UNIT_FLAG_ORIENTATION;
   if (unit.angularVelocity3 !== null) flags |= UNIT_FLAG_ANGULAR_VELOCITY;
   if (unit.fireEnabled === false) flags |= UNIT_FLAG_FIRE_DISABLED;
+  if (unit.fireState !== null && unit.fireState !== undefined) {
+    flags |= UNIT_FLAG_FIRE_STATE_PRESENT;
+  }
   if (unit.trajectoryMode !== null && unit.trajectoryMode !== undefined) {
     flags |= UNIT_FLAG_TRAJECTORY_PRESENT;
     if (unit.trajectoryMode === 'high') flags |= UNIT_FLAG_TRAJECTORY_HIGH;
@@ -1092,6 +1100,9 @@ function packUnit(unit: UnitSub): unknown[] {
   if ((flags & UNIT_FLAG_ANGULAR_VELOCITY) !== 0) {
     const av = unit.angularVelocity3!;
     row.push(av.x, av.y, av.z);
+  }
+  if ((flags & UNIT_FLAG_FIRE_STATE_PRESENT) !== 0) {
+    row.push(unit.fireState === 'holdFire' ? 2 : unit.fireState === 'returnFire' ? 1 : 0);
   }
   if ((flags & UNIT_FLAG_BUILD_TARGET_ID) !== 0) {
     if ((flags & UNIT_FLAG_BUILD_TARGET_NULL) === 0) {
@@ -1163,6 +1174,10 @@ function unpackUnit(row: unknown[]): UnitSub {
   }
   if ((flags & UNIT_FLAG_FIRE_DISABLED) !== 0) {
     unit.fireEnabled = false;
+  }
+  if ((flags & UNIT_FLAG_FIRE_STATE_PRESENT) !== 0) {
+    const code = row[i++] as number;
+    unit.fireState = code === 2 ? 'holdFire' : code === 1 ? 'returnFire' : 'fireAtWill';
   }
   if ((flags & UNIT_FLAG_TRAJECTORY_PRESENT) !== 0) {
     unit.trajectoryMode = (flags & UNIT_FLAG_TRAJECTORY_AUTO) !== 0

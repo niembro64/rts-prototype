@@ -43,6 +43,7 @@ import {
 import {
   decodeNetworkUnitActions,
   decodeNetworkUnitBlueprintId,
+  readNetworkCombatFireState,
   readNetworkUnitBodyCenterHeight,
   readNetworkUnitMass,
   readNetworkUnitMoveState,
@@ -356,7 +357,8 @@ function createUnitFromNetwork(
   const turrets = createTurretsFromNetwork(unitBlueprintId, entity.unit!.radius.visual, unitTurrets);
   if (turrets) {
     const combat = createCombatComponent(turrets);
-    combat.fireEnabled = u === null || u.fireEnabled !== false;
+    combat.fireState = readNetworkCombatFireState(u);
+    combat.fireEnabled = combat.fireState !== 'holdFire';
     combat.trajectoryMode = u?.trajectoryMode ?? 'auto';
     entity.combat = combat;
   }

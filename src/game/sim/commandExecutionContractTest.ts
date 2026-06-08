@@ -110,6 +110,22 @@ export function runCommandExecutionContractTest(): void {
     unit.unit?.moveState === 'roam',
     'setUnitMoveState command should apply roam movement state',
   );
+  executeCommand({
+    world,
+    constructionSystem: construction,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  }, {
+    type: 'setFireEnabled',
+    tick: 1,
+    entityIds: [unit.id],
+    fireState: 'returnFire',
+  });
+  assertContract(
+    unit.combat?.fireState === 'returnFire' && unit.combat.fireEnabled === true,
+    'setFireEnabled command should apply return-fire combat state',
+  );
 
   const open = resolvePathableFormationTarget(world, grid, unit, 180, 240);
   assertNear(open.x, 180, 'open formation target x should remain exact');

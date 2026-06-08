@@ -1,7 +1,7 @@
 // UI Update Manager - handles selection, economy, and minimap data updates
 
 import { COST_MULTIPLIER } from '../../../config';
-import type { Entity, PlayerId, UnitAction, UnitMoveState, WaypointType } from '../../sim/types';
+import type { CombatFireState, Entity, PlayerId, UnitAction, UnitMoveState, WaypointType } from '../../sim/types';
 import { getPlayerPrimaryColor } from '../../sim/types';
 import { economyManager } from '../../sim/economy';
 import { getUnitBlueprint } from '../../sim/blueprints';
@@ -149,7 +149,17 @@ function isTrajectoryControllable(entity: Entity): boolean {
 
 function fireStateLabel(entity: Entity): string | null {
   if (!isFireControllable(entity)) return null;
-  return entity.combat?.fireEnabled === false ? 'Hold' : 'Fire';
+  const fireState = entity.combat?.fireState ??
+    (entity.combat?.fireEnabled === false ? 'holdFire' : 'fireAtWill');
+  return combatFireStateLabel(fireState);
+}
+
+function combatFireStateLabel(fireState: CombatFireState): string {
+  switch (fireState) {
+    case 'fireAtWill': return 'Fire';
+    case 'returnFire': return 'Return';
+    case 'holdFire': return 'Hold';
+  }
 }
 
 function trajectoryStateLabel(entity: Entity): string | null {
@@ -179,23 +189,35 @@ function addMultiSelectionStateDetails(
   selectedBuildings: readonly Entity[],
 ): void {
   let fireControlCount = 0;
-  let fireEnabledCount = 0;
+  let fireAtWillCount = 0;
+  let returnFireCount = 0;
+  let holdFireCount = 0;
   for (const entity of selectedUnits) {
     if (!isFireControllable(entity)) continue;
     fireControlCount++;
-    if (entity.combat?.fireEnabled !== false) fireEnabledCount++;
+    const fireState = entity.combat?.fireState ??
+      (entity.combat?.fireEnabled === false ? 'holdFire' : 'fireAtWill');
+    if (fireState === 'fireAtWill') fireAtWillCount++;
+    if (fireState === 'returnFire') returnFireCount++;
+    if (fireState === 'holdFire') holdFireCount++;
   }
   for (const entity of selectedTowers) {
     if (!isFireControllable(entity)) continue;
     fireControlCount++;
-    if (entity.combat?.fireEnabled !== false) fireEnabledCount++;
+    const fireState = entity.combat?.fireState ??
+      (entity.combat?.fireEnabled === false ? 'holdFire' : 'fireAtWill');
+    if (fireState === 'fireAtWill') fireAtWillCount++;
+    if (fireState === 'returnFire') returnFireCount++;
+    if (fireState === 'holdFire') holdFireCount++;
   }
   if (fireControlCount > 0) {
-    const value = fireEnabledCount === fireControlCount
+    const value = fireAtWillCount === fireControlCount
       ? 'Fire'
-      : fireEnabledCount === 0
+      : returnFireCount === fireControlCount
+        ? 'Return'
+        : holdFireCount === fireControlCount
         ? 'Hold'
-        : `${fireEnabledCount}/${fireControlCount} Fire`;
+        : 'Mixed';
     details.push({ label: 'Fire', value });
   }
 
@@ -462,7 +484,9 @@ export function buildSelectionInfo(
   let highTrajectoryCount = 0;
   let lowTrajectoryCount = 0;
   let targetControlCount = 0;
-  let allFireEnabled = true;
+  let fireAtWillCount = 0;
+  let returnFireCount = 0;
+  let holdFireCount = 0;
   let hasPriorityTarget = false;
   let waitingCount = 0;
   let repeatCount = 0;
@@ -483,7 +507,10 @@ export function buildSelectionInfo(
     if (combat && combat.turrets.length > 0) {
       fireControlCount++;
       targetControlCount++;
-      if (combat.fireEnabled === false) allFireEnabled = false;
+      const fireState = combat.fireState ?? (combat.fireEnabled === false ? 'holdFire' : 'fireAtWill');
+      if (fireState === 'fireAtWill') fireAtWillCount++;
+      if (fireState === 'returnFire') returnFireCount++;
+      if (fireState === 'holdFire') holdFireCount++;
       if (combat.priorityTargetId !== null) hasPriorityTarget = true;
       if (isTrajectoryControllable(selectedUnit)) {
         trajectoryControlCount++;
@@ -501,7 +528,10 @@ export function buildSelectionInfo(
     if (combat && combat.turrets.length > 0) {
       fireControlCount++;
       targetControlCount++;
-      if (combat.fireEnabled === false) allFireEnabled = false;
+      const fireState = combat.fireState ?? (combat.fireEnabled === false ? 'holdFire' : 'fireAtWill');
+      if (fireState === 'fireAtWill') fireAtWillCount++;
+      if (fireState === 'returnFire') returnFireCount++;
+      if (fireState === 'holdFire') holdFireCount++;
       if (combat.priorityTargetId !== null) hasPriorityTarget = true;
       if (isTrajectoryControllable(selectedTowers[i])) {
         trajectoryControlCount++;
@@ -595,7 +625,16 @@ export function buildSelectionInfo(
       fireControlCount > 0
       && fireControlCount === selectedUnits.length + selectedTowers.length
       && selectedBuildings.length === 0,
-    fireEnabled: fireControlCount > 0 && allFireEnabled,
+    fireEnabled: fireControlCount > 0 && fireAtWillCount === fireControlCount,
+    fireState: fireControlCount === 0
+      ? 'fireAtWill'
+      : fireAtWillCount === fireControlCount
+        ? 'fireAtWill'
+        : returnFireCount === fireControlCount
+          ? 'returnFire'
+          : holdFireCount === fireControlCount
+            ? 'holdFire'
+            : 'mixed',
     hasTrajectoryControl: trajectoryControlCount > 0,
     trajectoryMode: highTrajectoryCount === trajectoryControlCount
       ? 'high'

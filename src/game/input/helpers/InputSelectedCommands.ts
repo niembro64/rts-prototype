@@ -1,5 +1,5 @@
 import type { CommandQueue } from '../../sim/commands';
-import type { CombatTrajectoryMode, Entity, EntityId, UnitMoveState } from '../../sim/types';
+import type { CombatFireState, CombatTrajectoryMode, Entity, EntityId, UnitMoveState } from '../../sim/types';
 import { buildingBlueprintHasActiveState } from '../../sim/buildingActiveState';
 import { isBallisticArcWeapon } from '../../sim/combat/combatUtils';
 
@@ -13,6 +13,19 @@ function nextUnitMoveState(state: UnitMoveState): UnitMoveState {
     case 'maneuver': return 'holdPosition';
     case 'holdPosition': return 'roam';
     case 'roam': return 'maneuver';
+  }
+}
+
+function combatFireState(combat: Entity['combat']): CombatFireState {
+  if (combat === null) return 'holdFire';
+  return combat.fireState ?? (combat.fireEnabled === false ? 'holdFire' : 'fireAtWill');
+}
+
+function nextCombatFireState(state: CombatFireState): CombatFireState {
+  switch (state) {
+    case 'fireAtWill': return 'returnFire';
+    case 'returnFire': return 'holdFire';
+    case 'holdFire': return 'fireAtWill';
   }
 }
 
@@ -159,12 +172,15 @@ export class InputSelectedCommands {
     const selectedUnits = this.source.getSelectedUnits();
     const selectedStatic = this.source.getSelectedBuildings();
     const entityIds: EntityId[] = [];
-    let allEnabled = true;
+    let firstFireState: CombatFireState | null = null;
+    let allSameFireState = true;
     for (let i = 0; i < selectedUnits.length; i++) {
       const unit = selectedUnits[i];
       if (!unit.combat || unit.combat.turrets.length === 0) continue;
       entityIds.push(unit.id);
-      if (unit.combat.fireEnabled === false) allEnabled = false;
+      const state = combatFireState(unit.combat);
+      if (firstFireState === null) firstFireState = state;
+      else if (state !== firstFireState) allSameFireState = false;
     }
     // Towers carry the same host-fire contract as units; include any
     // tower in the selection whose combat has at least one turret.
@@ -173,14 +189,20 @@ export class InputSelectedCommands {
       if (tower.type !== 'tower') continue;
       if (!tower.combat || tower.combat.turrets.length === 0) continue;
       entityIds.push(tower.id);
-      if (tower.combat.fireEnabled === false) allEnabled = false;
+      const state = combatFireState(tower.combat);
+      if (firstFireState === null) firstFireState = state;
+      else if (state !== firstFireState) allSameFireState = false;
     }
     if (entityIds.length === 0) return;
+    const fireState = firstFireState !== null && allSameFireState
+      ? nextCombatFireState(firstFireState)
+      : 'fireAtWill';
     this.commandQueue.enqueue({
       type: 'setFireEnabled',
       tick: this.getTick(),
       entityIds,
-      enabled: !allEnabled,
+      enabled: fireState !== 'holdFire',
+      fireState,
     });
   }
 

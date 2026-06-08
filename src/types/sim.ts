@@ -153,6 +153,7 @@ export type EntityRadii = {
 
 export type UnitMoveState = 'maneuver' | 'holdPosition' | 'roam';
 export type CombatTrajectoryMode = 'auto' | 'low' | 'high';
+export type CombatFireState = 'fireAtWill' | 'returnFire' | 'holdFire';
 
 // Cached shield panel geometry (pre-computed from blueprint at entity creation).
 // halfWidth — half the panel's edge length (square panel, so the same
@@ -319,11 +320,13 @@ export type CombatComponent = {
    *  spawn from the host blueprint's `turrets[]` and persisted across
    *  the entity's lifetime. */
   turrets: Turret[];
-  /** Player-controlled fire permission. False is hold-fire: weapons
-   *  keep cooldown state but do not acquire, track, or fire at
-   *  targets. Always present so command, targeting, and snapshot code
-   *  all make an explicit fire/hold decision. */
+  /** Legacy player-controlled fire permission mirror. False is hard
+   *  hold-fire for older snapshot consumers. */
   fireEnabled: boolean;
+  /** Player-controlled fire state. `fireAtWill` acquires autonomously,
+   *  `returnFire` only fires at explicit priority targets, and
+   *  `holdFire` drops every lock and refuses to fire. */
+  fireState: CombatFireState;
   /** Ballistic arc override for hosts with ballistic weapons. `auto`
    *  uses each turret blueprint's authored low/high arc; player
    *  commands can force all ballistic turrets on the host low or high. */
@@ -348,6 +351,7 @@ export function createCombatComponent(turrets: Turret[]): CombatComponent {
   return {
     turrets,
     fireEnabled: true,
+    fireState: 'fireAtWill',
     trajectoryMode: 'auto',
     priorityTargetId: null,
     priorityTargetPoint: null,

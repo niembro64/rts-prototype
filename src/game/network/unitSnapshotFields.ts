@@ -1,4 +1,4 @@
-import type { BuildingBlueprintId, Entity, Unit, UnitAction, UnitMoveState } from '../sim/types';
+import type { BuildingBlueprintId, CombatFireState, Entity, Unit, UnitAction, UnitMoveState } from '../sim/types';
 import type {
   NetworkServerSnapshotAction,
   NetworkServerSnapshotEntity,
@@ -40,6 +40,15 @@ function isNetworkUnitMoveState(value: unknown): value is UnitMoveState {
   return value === 'maneuver' || value === 'holdPosition' || value === 'roam';
 }
 
+function isNetworkCombatFireState(value: unknown): value is CombatFireState {
+  return value === 'fireAtWill' || value === 'returnFire' || value === 'holdFire';
+}
+
+export function readNetworkCombatFireState(src: NetworkUnitSnapshot | undefined | null): CombatFireState {
+  if (isNetworkCombatFireState(src?.fireState)) return src.fireState;
+  return src?.fireEnabled === false ? 'holdFire' : 'fireAtWill';
+}
+
 export function readNetworkUnitMoveState(src: NetworkUnitSnapshot | undefined | null): UnitMoveState {
   if (isNetworkUnitMoveState(src?.moveState)) return src.moveState;
   return src?.holdPosition === true ? 'holdPosition' : 'maneuver';
@@ -57,6 +66,7 @@ export function createNetworkUnitSnapshot(): NetworkUnitSnapshot {
     orientation: null,
     angularVelocity3: null,
     fireEnabled: null,
+    fireState: null,
     trajectoryMode: null,
     repeatQueue: null,
     moveState: null,
@@ -143,7 +153,8 @@ export function applyNetworkUnitCombatMode(
   isFull: boolean,
 ): void {
   if (!entity.combat) return;
-  entity.combat.fireEnabled = src.fireEnabled !== false;
+  entity.combat.fireState = readNetworkCombatFireState(src);
+  entity.combat.fireEnabled = entity.combat.fireState !== 'holdFire';
   if (src.trajectoryMode !== null && src.trajectoryMode !== undefined) {
     entity.combat.trajectoryMode = src.trajectoryMode;
   } else if (isFull) {
@@ -291,7 +302,9 @@ export function writeNetworkUnitCombatMode(
   entity: Entity,
 ): void {
   const combat = entity.combat;
-  dst.fireEnabled = combat !== null && combat.fireEnabled === false ? false : null;
+  const fireState = combat?.fireState ?? (combat?.fireEnabled === false ? 'holdFire' : 'fireAtWill');
+  dst.fireState = combat !== null && fireState !== 'fireAtWill' ? fireState : null;
+  dst.fireEnabled = combat !== null && fireState === 'holdFire' ? false : null;
   dst.trajectoryMode = combat !== null && combat.trajectoryMode !== 'auto'
     ? combat.trajectoryMode
     : null;
@@ -299,6 +312,7 @@ export function writeNetworkUnitCombatMode(
 
 export function clearNetworkUnitCombatMode(dst: NetworkUnitSnapshot): void {
   dst.fireEnabled = null;
+  dst.fireState = null;
   dst.trajectoryMode = null;
 }
 
@@ -427,6 +441,7 @@ export function copyNetworkUnitSnapshotInto(
   }
   dst.angularVelocity3 = copyVec3OptionalInto(src.angularVelocity3, dst.angularVelocity3);
   dst.fireEnabled = src.fireEnabled;
+  dst.fireState = src.fireState ?? null;
   dst.trajectoryMode = src.trajectoryMode ?? null;
   dst.repeatQueue = src.repeatQueue ?? null;
   dst.moveState = src.moveState ?? null;

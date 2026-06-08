@@ -1,6 +1,6 @@
 // Command types extracted from game/sim/commands.ts
 
-import type { EntityId, WaypointType, BuildingBlueprintId, PlayerId, UnitMoveState, CombatTrajectoryMode } from './sim';
+import type { EntityId, WaypointType, BuildingBlueprintId, PlayerId, UnitMoveState, CombatTrajectoryMode, CombatFireState } from './sim';
 import type { KeyframeRatio, SnapshotRate, TickRate } from './server';
 import type { ShieldReflectionMode } from './shotTypes';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
@@ -234,7 +234,8 @@ export type FireDGunCommand = BaseCommand & {
 export type SetFireEnabledCommand = BaseCommand & {
   type: 'setFireEnabled';
   entityIds: EntityId[];
-  enabled: boolean;
+  enabled?: boolean;
+  fireState?: CombatFireState;
 };
 
 /** Producer-building ON/OFF toggle. ON = producing + normal damage;

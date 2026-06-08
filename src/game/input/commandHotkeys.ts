@@ -198,7 +198,7 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'command.skipCurrent': 'Skip Current Order',
   'command.undoQueue': 'Cancel Last Order',
   'command.clearQueue': 'Clear Orders',
-  'command.fireToggle': 'Fire Toggle',
+  'command.fireToggle': 'Fire State',
   'command.buildingActive': 'Building On/Off',
   'command.selfDestruct': 'Self Destruct',
   'command.scan': 'Scanner Sweep',

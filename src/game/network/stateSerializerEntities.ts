@@ -505,7 +505,8 @@ function appendUnitEntityWireRow(
   values[base + 33] = angularVelocity !== null ? angularVelocity.x : 0;
   values[base + 34] = angularVelocity !== null ? angularVelocity.y : 0;
   values[base + 35] = angularVelocity !== null ? angularVelocity.z : 0;
-  values[base + 36] = unit.fireEnabled === false ? 1 : 0;
+  const fireState = unit.fireState ?? (unit.fireEnabled === false ? 'holdFire' : 'fireAtWill');
+  values[base + 36] = fireState === 'holdFire' ? 1 : 0;
   values[base + 37] = unit.isCommander === true ? 1 : 0;
   values[base + 38] = unit.buildTargetIdPresent ? 1 : 0;
   values[base + 39] = buildTargetId === null ? 1 : 0;
@@ -603,6 +604,7 @@ function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void 
     if (
       entity.unit.build?.interrupted === true ||
       hasInactiveTurretWire(entity.unit.turrets) ||
+      (entity.unit.fireState !== null && entity.unit.fireState !== undefined) ||
       (entity.unit.trajectoryMode !== null && entity.unit.trajectoryMode !== undefined) ||
       (entity.unit.repeatQueue !== null && entity.unit.repeatQueue !== undefined) ||
       (entity.unit.moveState !== null && entity.unit.moveState !== undefined) ||
@@ -906,9 +908,10 @@ function appendDirectUnitEntityWireRow(
   values[base + 33] = orientation !== null && hasVel && angularVelocity !== null && angularVelocity !== undefined ? angularVelocity.x : 0;
   values[base + 34] = orientation !== null && hasVel && angularVelocity !== null && angularVelocity !== undefined ? angularVelocity.y : 0;
   values[base + 35] = orientation !== null && hasVel && angularVelocity !== null && angularVelocity !== undefined ? angularVelocity.z : 0;
+  const fireState = entity.combat?.fireState ??
+    (entity.combat?.fireEnabled === false ? 'holdFire' : 'fireAtWill');
   values[base + 36] = (isFull || (changedMask & ENTITY_CHANGED_COMBAT_MODE) !== 0) &&
-    entity.combat !== null &&
-    entity.combat.fireEnabled === false
+    fireState === 'holdFire'
     ? 1
     : 0;
   values[base + 37] = isFull && isCommander(entity) ? 1 : 0;
@@ -1116,6 +1119,7 @@ export function serializeEntitySnapshot(
       ne.unit = u;
       u.hp = null;
       u.velocity = null;
+      u.fireState = null;
       u.trajectoryMode = null;
       u.repeatQueue = null;
       u.moveState = null;

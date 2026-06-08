@@ -67,6 +67,7 @@ export function runSnapshotEntityWirePackContractTest(): void {
           orientation: null,
           angularVelocity3: null,
           fireEnabled: null,
+          fireState: 'returnFire',
           trajectoryMode: null,
           repeatQueue: null,
           moveState: 'roam',
@@ -124,5 +125,9 @@ export function runSnapshotEntityWirePackContractTest(): void {
   assertContract(
     decodedRoamUnit?.unit?.moveState === 'roam',
     'unit roam move state must survive compact entity wire round trip',
+  );
+  assertContract(
+    decodedRoamUnit?.unit?.fireState === 'returnFire',
+    'unit return-fire state must survive compact entity wire round trip',
   );
 }

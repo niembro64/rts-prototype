@@ -96,6 +96,7 @@ export function useGameCanvasSceneUi({
     hasDGun: false,
     hasFireControl: false,
     fireEnabled: false,
+    fireState: 'fireAtWill',
     hasTrajectoryControl: false,
     trajectoryMode: 'auto',
     hasBuildingActiveControl: false,
