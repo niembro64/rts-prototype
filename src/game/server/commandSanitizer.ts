@@ -50,7 +50,7 @@ import { isShieldReflectionMode } from '../../types/shotTypes';
 import { normalizeAngle } from '../math';
 
 const WAYPOINT_TYPES: readonly WaypointType[] = ['move', 'fight', 'patrol'];
-const UNIT_MOVE_STATES: readonly string[] = ['maneuver', 'holdPosition'];
+const UNIT_MOVE_STATES: readonly string[] = ['maneuver', 'holdPosition', 'roam'];
 const TRAJECTORY_MODES: readonly string[] = ['auto', 'low', 'high'];
 
 type GroundPoint = { x: number; y: number; z: number | undefined };

@@ -507,6 +507,7 @@ function unitNeedsRawFallback(unit: SnapshotUnit): boolean {
     unit.fireEnabled === true ||
     (unit.trajectoryMode !== null && unit.trajectoryMode !== undefined) ||
     (unit.repeatQueue !== null && unit.repeatQueue !== undefined) ||
+    (unit.moveState !== null && unit.moveState !== undefined) ||
     (unit.holdPosition !== null && unit.holdPosition !== undefined) ||
     unit.isCommander === false ||
     unit.build?.interrupted === true

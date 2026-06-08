@@ -1,7 +1,7 @@
 // UI Update Manager - handles selection, economy, and minimap data updates
 
 import { COST_MULTIPLIER } from '../../../config';
-import type { Entity, PlayerId, UnitAction, WaypointType } from '../../sim/types';
+import type { Entity, PlayerId, UnitAction, UnitMoveState, WaypointType } from '../../sim/types';
 import { getPlayerPrimaryColor } from '../../sim/types';
 import { economyManager } from '../../sim/economy';
 import { getUnitBlueprint } from '../../sim/blueprints';
@@ -158,6 +158,14 @@ function trajectoryStateLabel(entity: Entity): string | null {
   return mode === 'high' ? 'High' : mode === 'low' ? 'Low' : 'Auto';
 }
 
+function unitMoveStateLabel(moveState: UnitMoveState): string {
+  switch (moveState) {
+    case 'holdPosition': return 'Hold';
+    case 'roam': return 'Roam';
+    case 'maneuver': return 'Maneuver';
+  }
+}
+
 function buildingActiveStateLabel(entity: Entity): string | null {
   if (!buildingBlueprintHasActiveState(entity.buildingBlueprintId)) return null;
   const state = entity.building !== null ? entity.building.activeState : null;
@@ -220,10 +228,12 @@ function addMultiSelectionStateDetails(
   let waitingCount = 0;
   let repeatCount = 0;
   let holdPositionCount = 0;
+  let roamCount = 0;
   for (let i = 0; i < selectedUnits.length; i++) {
     if (selectedUnits[i].unit?.actions[0]?.type === 'wait') waitingCount++;
     if (selectedUnits[i].unit?.repeatQueue === true) repeatCount++;
     if (selectedUnits[i].unit?.moveState === 'holdPosition') holdPositionCount++;
+    if (selectedUnits[i].unit?.moveState === 'roam') roamCount++;
   }
   if (waitingCount > 0) {
     details.push({
@@ -243,6 +253,13 @@ function addMultiSelectionStateDetails(
       value: holdPositionCount === selectedUnits.length
         ? 'Hold'
         : `${holdPositionCount}/${selectedUnits.length} Hold`,
+    });
+  } else if (roamCount > 0) {
+    details.push({
+      label: 'Move State',
+      value: roamCount === selectedUnits.length
+        ? 'Roam'
+        : `${roamCount}/${selectedUnits.length} Roam`,
     });
   }
 
@@ -312,7 +329,9 @@ function buildSingleSelectionDetails(entity: Entity): SelectionInfo['details'] {
       if (trajectory !== null) details.push({ label: 'Trajectory', value: trajectory });
       if (entity.unit.actions[0]?.type === 'wait') details.push({ label: 'Wait', value: 'On' });
       if (entity.unit.repeatQueue === true) details.push({ label: 'Repeat', value: 'On' });
-      if (entity.unit.moveState === 'holdPosition') details.push({ label: 'Move State', value: 'Hold' });
+      if (entity.unit.moveState !== 'maneuver') {
+        details.push({ label: 'Move State', value: unitMoveStateLabel(entity.unit.moveState) });
+      }
       const queuedIntentCount = getQueuedActionIntentCount(entity.unit.actions);
       if (queuedIntentCount > 0) details.push({ label: 'Queued', value: `${queuedIntentCount}` });
       details.push({ label: 'Move', value: bp.locomotion.type });
@@ -448,6 +467,8 @@ export function buildSelectionInfo(
   let waitingCount = 0;
   let repeatCount = 0;
   let holdPositionCount = 0;
+  let maneuverCount = 0;
+  let roamCount = 0;
   let hasQueuedOrders = false;
   for (let i = 0; i < selectedUnits.length; i++) {
     const selectedUnit = selectedUnits[i];
@@ -455,6 +476,8 @@ export function buildSelectionInfo(
     if (actions?.[0]?.type === 'wait') waitingCount++;
     if (selectedUnit.unit?.repeatQueue === true) repeatCount++;
     if (selectedUnit.unit?.moveState === 'holdPosition') holdPositionCount++;
+    if (selectedUnit.unit?.moveState === 'roam') roamCount++;
+    if (selectedUnit.unit?.moveState === 'maneuver') maneuverCount++;
     if (actions && hasQueuedActionIntents(actions)) hasQueuedOrders = true;
     const combat = selectedUnit.combat;
     if (combat && combat.turrets.length > 0) {
@@ -589,6 +612,15 @@ export function buildSelectionInfo(
     isWaiting: selectedUnits.length > 0 && waitingCount === selectedUnits.length,
     isRepeatQueue: selectedUnits.length > 0 && repeatCount === selectedUnits.length,
     isHoldPosition: selectedUnits.length > 0 && holdPositionCount === selectedUnits.length,
+    unitMoveState: selectedUnits.length === 0
+      ? 'maneuver'
+      : holdPositionCount === selectedUnits.length
+        ? 'holdPosition'
+        : roamCount === selectedUnits.length
+          ? 'roam'
+          : maneuverCount === selectedUnits.length
+            ? 'maneuver'
+            : 'mixed',
     hasQueuedOrders,
     queueInsertIndex: inputState?.queueInsertIndex ?? null,
     queueInsertOptions: buildQueueInsertOptions(selectedUnits),

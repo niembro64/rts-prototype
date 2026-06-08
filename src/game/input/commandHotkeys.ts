@@ -193,7 +193,7 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'command.wait': 'Wait',
   'command.repeat': 'Repeat Orders',
   'command.factoryGuard': 'Factory Guard',
-  'command.moveState': 'Hold Position',
+  'command.moveState': 'Move State',
   'command.trajectoryToggle': 'Trajectory Mode',
   'command.skipCurrent': 'Skip Current Order',
   'command.undoQueue': 'Cancel Last Order',

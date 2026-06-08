@@ -108,6 +108,7 @@ export function useGameCanvasSceneUi({
     isWaiting: false,
     isRepeatQueue: false,
     isHoldPosition: false,
+    unitMoveState: 'maneuver',
     hasQueuedOrders: false,
     queueInsertIndex: null,
     queueInsertOptions: [],

@@ -1,4 +1,4 @@
-import type { BuildingBlueprintId, Entity, Unit, UnitAction } from '../sim/types';
+import type { BuildingBlueprintId, Entity, Unit, UnitAction, UnitMoveState } from '../sim/types';
 import type {
   NetworkServerSnapshotAction,
   NetworkServerSnapshotEntity,
@@ -36,6 +36,15 @@ export type NetworkUnitRadius = NonNullable<NetworkUnitSnapshot['radius']>;
 type Vec3 = { x: number; y: number; z: number };
 type Quantize = (n: number) => number;
 
+function isNetworkUnitMoveState(value: unknown): value is UnitMoveState {
+  return value === 'maneuver' || value === 'holdPosition' || value === 'roam';
+}
+
+export function readNetworkUnitMoveState(src: NetworkUnitSnapshot | undefined | null): UnitMoveState {
+  if (isNetworkUnitMoveState(src?.moveState)) return src.moveState;
+  return src?.holdPosition === true ? 'holdPosition' : 'maneuver';
+}
+
 export function createNetworkUnitSnapshot(): NetworkUnitSnapshot {
   return {
     unitBlueprintCode: null,
@@ -50,6 +59,7 @@ export function createNetworkUnitSnapshot(): NetworkUnitSnapshot {
     fireEnabled: null,
     trajectoryMode: null,
     repeatQueue: null,
+    moveState: null,
     holdPosition: null,
     isCommander: null,
     buildTargetId: null,
@@ -151,7 +161,9 @@ export function applyNetworkUnitCommandState(
   } else if (isFull) {
     unit.repeatQueue = false;
   }
-  if (src.holdPosition !== null && src.holdPosition !== undefined) {
+  if (src.moveState !== null && src.moveState !== undefined) {
+    unit.moveState = readNetworkUnitMoveState(src);
+  } else if (src.holdPosition !== null && src.holdPosition !== undefined) {
     unit.moveState = src.holdPosition === true ? 'holdPosition' : 'maneuver';
   } else if (isFull) {
     unit.moveState = 'maneuver';
@@ -417,6 +429,7 @@ export function copyNetworkUnitSnapshotInto(
   dst.fireEnabled = src.fireEnabled;
   dst.trajectoryMode = src.trajectoryMode ?? null;
   dst.repeatQueue = src.repeatQueue ?? null;
+  dst.moveState = src.moveState ?? null;
   dst.holdPosition = src.holdPosition ?? null;
   dst.isCommander = src.isCommander;
   dst.buildTargetId = src.buildTargetId;

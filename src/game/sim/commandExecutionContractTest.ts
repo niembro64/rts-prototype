@@ -94,6 +94,22 @@ export function runCommandExecutionContractTest(): void {
     allocateSubEntityIds: false,
   });
   world.addEntity(unit);
+  executeCommand({
+    world,
+    constructionSystem: construction,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  }, {
+    type: 'setUnitMoveState',
+    tick: 1,
+    entityIds: [unit.id],
+    moveState: 'roam',
+  });
+  assertContract(
+    unit.unit?.moveState === 'roam',
+    'setUnitMoveState command should apply roam movement state',
+  );
 
   const open = resolvePathableFormationTarget(world, grid, unit, 180, 240);
   assertNear(open.x, 180, 'open formation target x should remain exact');

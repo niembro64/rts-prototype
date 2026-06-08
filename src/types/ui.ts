@@ -1,6 +1,6 @@
 // UI component types extracted from Vue components and helpers
 
-import type { PlayerId, EntityId, WaypointType, Entity, BuildingBlueprintId, EntityType, StructureBlueprintId, CombatTrajectoryMode } from './sim';
+import type { PlayerId, EntityId, WaypointType, Entity, BuildingBlueprintId, EntityType, StructureBlueprintId, CombatTrajectoryMode, UnitMoveState } from './sim';
 import type { Vec2 } from './vec2';
 
 // Selection panel types
@@ -74,6 +74,7 @@ export type SelectionInfo = {
   isWaiting: boolean;
   isRepeatQueue: boolean;
   isHoldPosition: boolean;
+  unitMoveState: UnitMoveState | 'mixed';
   hasQueuedOrders: boolean;
   queueInsertIndex: number | null;
   queueInsertOptions: QueueInsertOption[];

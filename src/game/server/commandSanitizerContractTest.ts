@@ -2,6 +2,7 @@ import type {
   Command,
   MoveCommand,
   SetFactoryGuardCommand,
+  SetUnitMoveStateCommand,
   SkipCurrentOrderCommand,
   StartBuildCommand,
   StopFactoryProductionCommand,
@@ -98,6 +99,17 @@ export function runCommandSanitizerContractTest(): void {
   assertContract(
     replaceMove.queueFront === false,
     'move queueFront must normalize to false when queue=false',
+  );
+
+  const roamMoveState = sanitizeRequired<SetUnitMoveStateCommand>(world, {
+    type: 'setUnitMoveState',
+    tick: 7,
+    entityIds: [7],
+    moveState: 'roam',
+  });
+  assertContract(
+    roamMoveState.moveState === 'roam',
+    'setUnitMoveState must accept the roam positioning state',
   );
 
   const formationSpeedMove = sanitizeRequired<MoveCommand>(world, {

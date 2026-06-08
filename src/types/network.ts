@@ -13,7 +13,7 @@ import type {
   UnitBlueprintId,
 } from './blueprintIds';
 import type { KeyframeRatio, SnapshotRate, TickRate } from './server';
-import type { BeamReflectorKind, CombatTrajectoryMode, EntityType, PlayerId, TurretState } from './sim';
+import type { BeamReflectorKind, CombatTrajectoryMode, EntityType, PlayerId, TurretState, UnitMoveState } from './sim';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 // Single source of truth for the wire codes TS and Rust must agree on.
 // Rust generates its constants from this same file via build.rs.
@@ -877,10 +877,13 @@ export type NetworkServerSnapshotEntity = {
      *  off. Omitted/null means "unchanged" for deltas and false for full
      *  records. */
     repeatQueue?: boolean | null;
-    /** Unit positioning/move-state bit. Present with private action
-     *  detail rows when the unit is in hold-position, and on deltas
-     *  that explicitly return it to maneuver. Omitted/null means
-     *  "unchanged" for deltas and maneuver for full records. */
+    /** Unit positioning/move-state enum. Present with private
+     *  action-command detail rows when the unit is not in maneuver, and
+     *  on deltas that explicitly return it to maneuver. Omitted/null
+     *  means "unchanged" for deltas and maneuver for full records. */
+    moveState?: UnitMoveState | null;
+    /** Legacy two-state mirror kept for older decoders. New code reads
+     *  moveState first and falls back to this bit if absent. */
     holdPosition?: boolean | null;
     isCommander: boolean | null;
     buildTargetId: number | null;

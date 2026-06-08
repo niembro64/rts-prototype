@@ -1,5 +1,5 @@
 import type { CommandQueue } from '../../sim/commands';
-import type { CombatTrajectoryMode, Entity, EntityId } from '../../sim/types';
+import type { CombatTrajectoryMode, Entity, EntityId, UnitMoveState } from '../../sim/types';
 import { buildingBlueprintHasActiveState } from '../../sim/buildingActiveState';
 import { isBallisticArcWeapon } from '../../sim/combat/combatUtils';
 
@@ -7,6 +7,14 @@ type SelectedCommandEntitySource = {
   getSelectedUnits: () => Entity[];
   getSelectedBuildings: () => Entity[];
 };
+
+function nextUnitMoveState(state: UnitMoveState): UnitMoveState {
+  switch (state) {
+    case 'maneuver': return 'holdPosition';
+    case 'holdPosition': return 'roam';
+    case 'roam': return 'maneuver';
+  }
+}
 
 export class InputSelectedCommands {
   private source: SelectedCommandEntitySource;
@@ -126,19 +134,24 @@ export class InputSelectedCommands {
   setUnitMoveState(): void {
     const selectedUnits = this.source.getSelectedUnits();
     const entityIds: EntityId[] = [];
-    let allHoldPosition = true;
+    let firstMoveState: UnitMoveState | null = null;
+    let allSameMoveState = true;
     for (let i = 0; i < selectedUnits.length; i++) {
       const unit = selectedUnits[i].unit;
       if (unit === null) continue;
       entityIds.push(selectedUnits[i].id);
-      if (unit.moveState !== 'holdPosition') allHoldPosition = false;
+      if (firstMoveState === null) firstMoveState = unit.moveState;
+      else if (unit.moveState !== firstMoveState) allSameMoveState = false;
     }
     if (entityIds.length === 0) return;
+    const moveState = firstMoveState !== null && allSameMoveState
+      ? nextUnitMoveState(firstMoveState)
+      : 'holdPosition';
     this.commandQueue.enqueue({
       type: 'setUnitMoveState',
       tick: this.getTick(),
       entityIds,
-      moveState: allHoldPosition ? 'maneuver' : 'holdPosition',
+      moveState,
     });
   }
 

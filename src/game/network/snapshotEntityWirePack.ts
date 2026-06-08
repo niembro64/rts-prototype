@@ -40,6 +40,7 @@ function createEmptyUnitSub(): UnitSub {
     fireEnabled: null,
     trajectoryMode: null,
     repeatQueue: null,
+    moveState: null,
     holdPosition: null,
     isCommander: null,
     buildTargetId: null,
@@ -138,6 +139,7 @@ function rentDecodedUnitSub(): UnitSub {
     u.fireEnabled = null;
     u.trajectoryMode = null;
     u.repeatQueue = null;
+    u.moveState = null;
     u.holdPosition = null;
     u.isCommander = null;
     u.buildTargetId = null;
@@ -210,6 +212,9 @@ const UNIT_FLAG_HOLD_POSITION_ENABLED = 1 << 23;
 const UNIT_FLAG_TRAJECTORY_PRESENT = 1 << 24;
 const UNIT_FLAG_TRAJECTORY_HIGH = 1 << 25;
 const UNIT_FLAG_TRAJECTORY_AUTO = 1 << 26;
+const UNIT_FLAG_MOVE_STATE_PRESENT = 1 << 27;
+const UNIT_FLAG_MOVE_STATE_HOLD = 1 << 28;
+const UNIT_FLAG_MOVE_STATE_ROAM = 1 << 29;
 
 const BUILDING_FLAG_BLUEPRINT_CODE = 1 << 0;
 const BUILDING_FLAG_DIM = 1 << 1;
@@ -558,6 +563,7 @@ function isMovementOnlyUnitDelta(entity: NetworkServerSnapshotEntity): boolean {
   if (unit.surfaceNormal !== null) return false;
   if (unit.fireEnabled !== null) return false;
   if (unit.repeatQueue !== null && unit.repeatQueue !== undefined) return false;
+  if (unit.moveState !== null && unit.moveState !== undefined) return false;
   if (unit.holdPosition !== null && unit.holdPosition !== undefined) return false;
   if (unit.trajectoryMode !== null && unit.trajectoryMode !== undefined) return false;
   if (unit.isCommander !== null) return false;
@@ -595,6 +601,7 @@ function isSplitUnitTurretDelta(entity: NetworkServerSnapshotEntity): boolean {
   if (unit.surfaceNormal !== null) return false;
   if (unit.fireEnabled !== null) return false;
   if (unit.repeatQueue !== null && unit.repeatQueue !== undefined) return false;
+  if (unit.moveState !== null && unit.moveState !== undefined) return false;
   if (unit.holdPosition !== null && unit.holdPosition !== undefined) return false;
   if (unit.trajectoryMode !== null && unit.trajectoryMode !== undefined) return false;
   if (unit.isCommander !== null) return false;
@@ -1040,6 +1047,11 @@ function packUnit(unit: UnitSub): unknown[] {
     flags |= UNIT_FLAG_HOLD_POSITION_PRESENT;
     if (unit.holdPosition === true) flags |= UNIT_FLAG_HOLD_POSITION_ENABLED;
   }
+  if (unit.moveState !== null && unit.moveState !== undefined) {
+    flags |= UNIT_FLAG_MOVE_STATE_PRESENT;
+    if (unit.moveState === 'holdPosition') flags |= UNIT_FLAG_MOVE_STATE_HOLD;
+    if (unit.moveState === 'roam') flags |= UNIT_FLAG_MOVE_STATE_ROAM;
+  }
   if (unit.isCommander === true) flags |= UNIT_FLAG_IS_COMMANDER;
   if (unit.buildTargetIdPresent) {
     flags |= UNIT_FLAG_BUILD_TARGET_ID;
@@ -1162,6 +1174,11 @@ function unpackUnit(row: unknown[]): UnitSub {
   }
   if ((flags & UNIT_FLAG_HOLD_POSITION_PRESENT) !== 0) {
     unit.holdPosition = (flags & UNIT_FLAG_HOLD_POSITION_ENABLED) !== 0;
+  }
+  if ((flags & UNIT_FLAG_MOVE_STATE_PRESENT) !== 0) {
+    unit.moveState = (flags & UNIT_FLAG_MOVE_STATE_HOLD) !== 0
+      ? 'holdPosition'
+      : (flags & UNIT_FLAG_MOVE_STATE_ROAM) !== 0 ? 'roam' : 'maneuver';
   }
   if ((flags & UNIT_FLAG_IS_COMMANDER) !== 0) {
     unit.isCommander = true;

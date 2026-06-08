@@ -666,7 +666,7 @@ export class Simulation {
         if (entity.combat) entity.combat.priorityTargetId = currentAction.targetId;
 
         // Stop if any turret is engaged.
-        if (this.combatHaltController.shouldStopForEngagedCombat(entity)) {
+        if (unit.moveState !== 'roam' && this.combatHaltController.shouldStopForEngagedCombat(entity)) {
           unit.stuckTicks = 0;
           continue;
         }
@@ -712,7 +712,7 @@ export class Simulation {
           targetPoint.z = currentAction.z ?? this.world.getGroundZ(currentAction.x, currentAction.y);
         }
 
-        if (this.combatHaltController.shouldStopForEngagedCombat(entity)) {
+        if (unit.moveState !== 'roam' && this.combatHaltController.shouldStopForEngagedCombat(entity)) {
           unit.stuckTicks = 0;
           continue;
         }
@@ -744,7 +744,7 @@ export class Simulation {
           continue;
         }
 
-        if (this.combatHaltController.shouldStopForEngagedCombat(entity)) {
+        if (unit.moveState !== 'roam' && this.combatHaltController.shouldStopForEngagedCombat(entity)) {
           unit.stuckTicks = 0;
           continue;
         }
@@ -784,7 +784,7 @@ export class Simulation {
       // brawls. If no mount is marked, the unit keeps moving while
       // weapons engage opportunistically.
       if (currentAction.type === 'fight' || currentAction.type === 'patrol') {
-        if (this.combatHaltController.shouldStopForFightCombat(entity)) {
+        if (unit.moveState !== 'roam' && this.combatHaltController.shouldStopForFightCombat(entity)) {
           unit.stuckTicks = 0;
           continue;
         }

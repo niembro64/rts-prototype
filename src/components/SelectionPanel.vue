@@ -248,6 +248,24 @@ function trajectoryModeLabel(mode: SelectionInfo['trajectoryMode']): string {
   return mode === 'high' ? 'Arc Hi' : mode === 'low' ? 'Arc Lo' : 'Arc Auto';
 }
 
+function moveStateLabel(moveState: SelectionInfo['unitMoveState']): string {
+  switch (moveState) {
+    case 'holdPosition': return 'Hold';
+    case 'roam': return 'Roam';
+    case 'mixed': return 'Mixed';
+    case 'maneuver': return 'Move';
+  }
+}
+
+function nextMoveStateLabel(moveState: SelectionInfo['unitMoveState']): string {
+  switch (moveState) {
+    case 'holdPosition': return 'Roam';
+    case 'roam': return 'Maneuver';
+    case 'maneuver': return 'Hold';
+    case 'mixed': return 'Hold';
+  }
+}
+
 function queueInsertOptionTitle(option: QueueInsertOption): string {
   return option.label === 'End'
     ? 'Insert queued commands at the end'
@@ -777,12 +795,12 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
         <button
           type="button"
           class="action-btn"
-          :class="{ active: selection.isHoldPosition }"
+          :class="{ active: selection.unitMoveState !== 'maneuver' }"
           :style="{ '--btn-color': BUTTON_COLORS.wait }"
-          :title="actionTitle(selection.isHoldPosition ? 'Maneuver' : 'Hold position', 'command.moveState')"
+          :title="actionTitle(`Move state: ${moveStateLabel(selection.unitMoveState)}; next ${nextMoveStateLabel(selection.unitMoveState)}`, 'command.moveState')"
           @click="actions.toggleUnitMoveState()"
         >
-          <span class="btn-label">{{ selection.isHoldPosition ? 'Hold' : 'Move' }}</span>
+          <span class="btn-label">{{ moveStateLabel(selection.unitMoveState) }}</span>
           <span class="btn-key">{{ hotkey('command.moveState') }}</span>
         </button>
         <button

@@ -46,7 +46,40 @@ export function runSnapshotEntityWirePackContractTest(): void {
   };
   const snapshot: NetworkServerSnapshot = {
     tick: 1,
-    entities: [factoryEntity],
+    entities: [
+      factoryEntity,
+      {
+        id: 202,
+        type: 'unit',
+        pos: { x: 30, y: 40, z: 0 },
+        rotation: 0,
+        playerId: 1,
+        changedFields: null,
+        building: null,
+        unit: {
+          unitBlueprintCode: null,
+          hp: null,
+          radius: null,
+          bodyCenterHeight: null,
+          mass: null,
+          velocity: null,
+          surfaceNormal: null,
+          orientation: null,
+          angularVelocity3: null,
+          fireEnabled: null,
+          trajectoryMode: null,
+          repeatQueue: null,
+          moveState: 'roam',
+          holdPosition: false,
+          isCommander: null,
+          buildTargetId: null,
+          buildTargetIdPresent: false,
+          actions: null,
+          turrets: null,
+          build: null,
+        },
+      },
+    ],
     minimapEntities: undefined,
     economy: {},
     resourceMovements: undefined,
@@ -66,7 +99,8 @@ export function runSnapshotEntityWirePackContractTest(): void {
     removedEntityIds: undefined,
   };
 
-  const [decoded] = roundTripEntitiesThroughWire(snapshot);
+  const decodedEntities = roundTripEntitiesThroughWire(snapshot);
+  const decoded = decodedEntities[0];
   const decodedRoute = decoded?.building?.factory?.route ?? null;
   if (decodedRoute === null) {
     throw new Error(
@@ -85,5 +119,10 @@ export function runSnapshotEntityWirePackContractTest(): void {
   assertContract(
     decoded?.building?.factory?.queue?.join(',') === '1,2,1',
     'factory finite queue must survive compact entity wire round trip',
+  );
+  const decodedRoamUnit = decodedEntities.find((entity) => entity.id === 202);
+  assertContract(
+    decodedRoamUnit?.unit?.moveState === 'roam',
+    'unit roam move state must survive compact entity wire round trip',
   );
 }

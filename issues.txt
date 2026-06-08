@@ -33,9 +33,8 @@ visible hotkeys match the active keymap across the whole command surface.
 
 Issue: behavior/state toggles are incomplete. Implement missing BAR-equivalent
 states such as cloak/want-cloak, gather wait, richer stance/fire states beyond
-the current fire/hold-fire toggle, richer positioning/move states beyond the
-current maneuver/hold-position toggle, and any related stateful command buttons
-in simulation, snapshots, command authorization, selection UI, hotkeys, and
+the current fire/hold-fire toggle, and any related stateful command buttons in
+simulation, snapshots, command authorization, selection UI, hotkeys, and
 visible state indicators.
 
 Issue: special abilities are incomplete. Add BAR Capture, Load Transport,

@@ -602,7 +602,11 @@ function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void 
   ) {
     if (
       entity.unit.build?.interrupted === true ||
-      hasInactiveTurretWire(entity.unit.turrets)
+      hasInactiveTurretWire(entity.unit.turrets) ||
+      (entity.unit.trajectoryMode !== null && entity.unit.trajectoryMode !== undefined) ||
+      (entity.unit.repeatQueue !== null && entity.unit.repeatQueue !== undefined) ||
+      (entity.unit.moveState !== null && entity.unit.moveState !== undefined) ||
+      (entity.unit.holdPosition !== null && entity.unit.holdPosition !== undefined)
     ) {
       appendRawEntityWireRow();
       return;
@@ -1114,6 +1118,7 @@ export function serializeEntitySnapshot(
       u.velocity = null;
       u.trajectoryMode = null;
       u.repeatQueue = null;
+      u.moveState = null;
       u.holdPosition = null;
 
       if (isFull) {
@@ -1203,6 +1208,11 @@ export function serializeEntitySnapshot(
           : isFull
             ? null
             : false;
+        u.moveState = entity.unit.moveState !== 'maneuver'
+          ? entity.unit.moveState
+          : isFull
+            ? null
+            : 'maneuver';
         u.holdPosition = entity.unit.moveState === 'holdPosition'
           ? true
           : isFull
