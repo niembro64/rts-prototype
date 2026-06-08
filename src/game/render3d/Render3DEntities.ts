@@ -15,13 +15,11 @@ import type { PylonTubeFlow, SprayTarget } from '@/types/ui';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { COLORS } from '@/colorsConfig';
 import { getPlayerColors } from '../sim/types';
-import { GRAVITY } from '../../config';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
   updateLocomotion,
   destroyLocomotion,
   fadeLocomotion,
-  translateLocomotion,
   captureLegState,
   setHoverFanAnimationTime,
   type AirborneEmitterUpdate3D,
@@ -48,13 +46,14 @@ import {
   entityShieldSphereTurretHeadColorHex,
   turretAccentColorHexForPlayer,
 } from './EntityInstanceColor3D';
-import { UnitDetailInstanceRenderer3D, type DyingUnitPartDelta } from './UnitDetailInstanceRenderer3D';
+import { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import {
   applyEntityGroupFade,
   disposeEntityGroupFade,
   DyingMeshFade,
   ENTITY_DEATH_FADE_MS,
 } from './EntityFade3D';
+import { DyingUnitScatter3D } from './DyingUnitScatter3D';
 import { VISION_FADE_IN_MS, VISION_FADE_OUT_MS } from '@/visionConfig';
 import { createShieldFallbackPanelMaterial } from './ShieldReflectorVisual3D';
 import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
@@ -116,36 +115,6 @@ const AIRBORNE_BANK_TAU_SEC = 0.18;
 const EMPTY_TURRETS: readonly Turret[] = [];
 const EMPTY_PROJECTILES: readonly Entity[] = [];
 
-const DEATH_SCATTER_SPEED_MIN = 26;
-const DEATH_SCATTER_SPEED_RANGE = 70;
-const DEATH_SCATTER_UP_MIN = 24;
-const DEATH_SCATTER_UP_RANGE = 64;
-const DEATH_SCATTER_BODY_SPEED_SCALE = 0.5;
-const DEATH_SCATTER_LOCOMOTION_SPEED_SCALE = 0.85;
-const DEATH_SCATTER_ANGULAR_INIT = 5.5;
-const DEATH_SCATTER_LINEAR_DRAG = 0.965;
-const DEATH_SCATTER_ANGULAR_DRAG = 0.92;
-const DEATH_SCATTER_GRAVITY_SCALE = 0.45;
-
-type DyingUnitPartMotion = {
-  vx: number;
-  vy: number;
-  vz: number;
-  avx: number;
-  avy: number;
-  avz: number;
-};
-
-type DyingUnitScatter = {
-  body: DyingUnitPartMotion;
-  locomotion?: DyingUnitPartMotion;
-  turrets: DyingUnitPartMotion[];
-};
-
-function createDyingUnitPartDelta(): DyingUnitPartDelta {
-  return { dx: 0, dy: 0, dz: 0, drx: 0, dry: 0, drz: 0 };
-}
-
 export type RenderEntityUpdatePacket3D = {
   unitRows: UnitRenderPacket3D;
   buildingRows: BuildingRenderPacket3D;
@@ -195,7 +164,7 @@ export class Render3DEntities {
   // controller, but a plain alpha fade-out with no scatter/explosion and
   // its own VISION_FADE_OUT_MS clock. Assigned in the constructor.
   private vanishingUnits!: DyingMeshFade<EntityMesh>;
-  private readonly dyingUnitScatter = new WeakMap<EntityMesh, DyingUnitScatter>();
+  private dyingUnitScatter!: DyingUnitScatter3D;
   private readonly activeLocomotionUnitIds = new Set<EntityId>();
   private legsRadiusToggle = getLegsRadiusToggle();
   private smokeTrailsEnabled = getSmokeTrails();
@@ -205,9 +174,6 @@ export class Render3DEntities {
    *  mesh rebuilds (LOD / owner recolor) and only resets when the unit truly
    *  leaves the live set, so re-entering vision fades in afresh. */
   private readonly spawnFadeElapsed = new Map<EntityId, number>();
-  private readonly _turretScatterScratch: DyingUnitPartDelta[] = [];
-  private readonly _deathScatterBodyDelta = createDyingUnitPartDelta();
-  private readonly _deathScatterLocomotionDelta = createDyingUnitPartDelta();
   // Scoped render pruning stamps visible meshes with this token instead
   // of building a JS Set of all visible unit ids every frame.
   private unitRenderScopeToken = 0;
@@ -320,9 +286,6 @@ export class Render3DEntities {
    *  multiplies (which used to rebuild this chain from m.group every
    *  turret) collapse to a single `Matrix4.copy()`. */
   private _unitChainMat = new THREE.Matrix4();
-  private _deathScatterObjPos = new THREE.Vector3();
-  private _deathScatterLocalDelta = new THREE.Vector3();
-  private _deathScatterParentQuat = new THREE.Quaternion();
 
   private turretShieldPanelsEnabled = true;
 
@@ -382,6 +345,7 @@ export class Render3DEntities {
       barrelMat: this.barrelMat,
       mirrorGeom: this.mirrorGeom,
     });
+    this.dyingUnitScatter = new DyingUnitScatter3D(this.legRenderer, this.unitDetailInstances);
     this.unitMeshBuilder = new UnitMeshBuilder3D({
       world: this.world,
       unitDetailInstances: this.unitDetailInstances,
@@ -404,7 +368,7 @@ export class Render3DEntities {
     this.dyingUnits = new DyingMeshFade<EntityMesh>(
       ENTITY_DEATH_FADE_MS,
       (mesh, fade, dtMs) => {
-        this.advanceDyingUnitScatter(mesh, dtMs);
+        this.dyingUnitScatter.advance(mesh, dtMs);
         this.applyUnitEntityFade(mesh, fade, null);
       },
       (id, mesh) => this.disposeDeadUnitMesh(id, mesh),
@@ -668,153 +632,6 @@ export class Render3DEntities {
       if (fade < 1 && fade !== bodyFade) return true;
     }
     return false;
-  }
-
-  private prepareDyingUnitScatter(m: EntityMesh): void {
-    if (this.dyingUnitScatter.has(m)) return;
-    const turrets: DyingUnitPartMotion[] = [];
-    for (const turret of m.turrets) {
-      turrets.push(this.makeDyingPartMotionFromObject(
-        m,
-        turret.root,
-        1,
-      ));
-    }
-    const scatter: DyingUnitScatter = {
-      body: this.makeDyingPartMotion(0, 0, DEATH_SCATTER_BODY_SPEED_SCALE),
-      turrets,
-    };
-    if (m.locomotion) {
-      scatter.locomotion = this.makeDyingPartMotionFromObject(
-        m,
-        m.locomotion.group,
-        DEATH_SCATTER_LOCOMOTION_SPEED_SCALE,
-      );
-    }
-    this.dyingUnitScatter.set(m, scatter);
-  }
-
-  private makeDyingPartMotionFromObject(
-    m: EntityMesh,
-    obj: THREE.Object3D,
-    speedScale: number,
-  ): DyingUnitPartMotion {
-    obj.getWorldPosition(this._deathScatterObjPos);
-    return this.makeDyingPartMotion(
-      this._deathScatterObjPos.x - m.group.position.x,
-      this._deathScatterObjPos.z - m.group.position.z,
-      speedScale,
-    );
-  }
-
-  private makeDyingPartMotion(
-    offsetX: number,
-    offsetZ: number,
-    speedScale: number,
-  ): DyingUnitPartMotion {
-    let dirX = offsetX;
-    let dirZ = offsetZ;
-    const len = Math.hypot(dirX, dirZ);
-    if (len > 1e-3) {
-      dirX /= len;
-      dirZ /= len;
-      const jitter = (Math.random() - 0.5) * 0.9;
-      const c = Math.cos(jitter);
-      const s = Math.sin(jitter);
-      const jx = dirX * c - dirZ * s;
-      dirZ = dirX * s + dirZ * c;
-      dirX = jx;
-    } else {
-      const angle = Math.random() * Math.PI * 2;
-      dirX = Math.cos(angle);
-      dirZ = Math.sin(angle);
-    }
-    const speed = (DEATH_SCATTER_SPEED_MIN + Math.random() * DEATH_SCATTER_SPEED_RANGE) * speedScale;
-    return {
-      vx: dirX * speed,
-      vy: DEATH_SCATTER_UP_MIN + Math.random() * DEATH_SCATTER_UP_RANGE,
-      vz: dirZ * speed,
-      avx: (Math.random() - 0.5) * DEATH_SCATTER_ANGULAR_INIT * 2,
-      avy: (Math.random() - 0.5) * DEATH_SCATTER_ANGULAR_INIT * 2,
-      avz: (Math.random() - 0.5) * DEATH_SCATTER_ANGULAR_INIT * 2,
-    };
-  }
-
-  private advanceDyingUnitScatter(m: EntityMesh, dtMs: number): void {
-    const scatter = this.dyingUnitScatter.get(m);
-    if (!scatter || dtMs <= 0) return;
-    const dtSec = Math.min(dtMs, 80) / 1000;
-    const bodyDelta = this.stepDyingPartMotion(
-      scatter.body,
-      dtSec,
-      this._deathScatterBodyDelta,
-    );
-    this.applyObjectLocalDelta(m.chassis, bodyDelta);
-    if (m.mirrors) this.applyObjectLocalDelta(m.mirrors.root, bodyDelta);
-
-    const turretDeltas = this._turretScatterScratch;
-    turretDeltas.length = m.turrets.length;
-    for (let i = 0; i < m.turrets.length; i++) {
-      const motion = scatter.turrets[i] ?? scatter.body;
-      const delta = turretDeltas[i] ?? (turretDeltas[i] = createDyingUnitPartDelta());
-      this.stepDyingPartMotion(motion, dtSec, delta);
-      turretDeltas[i] = delta;
-      this.applyObjectLocalDelta(m.turrets[i].root, delta);
-    }
-
-    if (scatter.locomotion && m.locomotion) {
-      const delta = this.stepDyingPartMotion(
-        scatter.locomotion,
-        dtSec,
-        this._deathScatterLocomotionDelta,
-      );
-      this.applyObjectLocalDelta(m.locomotion.group, delta);
-      translateLocomotion(
-        m.locomotion,
-        delta.dx,
-        delta.dy,
-        delta.dz,
-        this.legRenderer,
-      );
-    }
-
-    this.unitDetailInstances.applyDyingUnitScatter(m, bodyDelta, turretDeltas);
-  }
-
-  private stepDyingPartMotion(
-    motion: DyingUnitPartMotion,
-    dtSec: number,
-    out: DyingUnitPartDelta,
-  ): DyingUnitPartDelta {
-    out.dx = motion.vx * dtSec;
-    out.dy = motion.vy * dtSec;
-    out.dz = motion.vz * dtSec;
-    out.drx = motion.avx * dtSec;
-    out.dry = motion.avy * dtSec;
-    out.drz = motion.avz * dtSec;
-    motion.vy -= GRAVITY * DEATH_SCATTER_GRAVITY_SCALE * dtSec;
-    const linearDrag = Math.pow(DEATH_SCATTER_LINEAR_DRAG, dtSec * 60);
-    motion.vx *= linearDrag;
-    motion.vy *= linearDrag;
-    motion.vz *= linearDrag;
-    const angularDrag = Math.pow(DEATH_SCATTER_ANGULAR_DRAG, dtSec * 60);
-    motion.avx *= angularDrag;
-    motion.avy *= angularDrag;
-    motion.avz *= angularDrag;
-    return out;
-  }
-
-  private applyObjectLocalDelta(obj: THREE.Object3D, delta: DyingUnitPartDelta): void {
-    this._deathScatterLocalDelta.set(delta.dx, delta.dy, delta.dz);
-    if (obj.parent) {
-      obj.parent.getWorldQuaternion(this._deathScatterParentQuat);
-      this._deathScatterParentQuat.invert();
-      this._deathScatterLocalDelta.applyQuaternion(this._deathScatterParentQuat);
-    }
-    obj.position.add(this._deathScatterLocalDelta);
-    obj.rotation.x += delta.drx;
-    obj.rotation.y += delta.dry;
-    obj.rotation.z += delta.drz;
   }
 
   private updateUnits(unitRows: UnitRenderPacket3D | undefined, scopedRender: boolean): void {
@@ -1295,7 +1112,7 @@ export class Render3DEntities {
     this.disposeWorldParentedOverlays(m);
     if (m.ring) m.ring.visible = false;
     if (m.killed) {
-      this.prepareDyingUnitScatter(m);
+      this.dyingUnitScatter.prepare(m);
       this.dyingUnits.markDying(id, m);
     } else {
       this.vanishingUnits.markDying(id, m);
