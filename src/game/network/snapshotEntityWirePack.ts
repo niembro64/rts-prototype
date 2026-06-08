@@ -1427,6 +1427,7 @@ function packFactory(factory: FactorySub): unknown[] {
     packWaypoint(factory.rally),
     factory.route !== null ? packWaypointRoute(factory.route) : null,
     factory.guardTargetId,
+    factory.repeat === false ? 0 : 1,
   ];
 }
 
@@ -1441,7 +1442,8 @@ function unpackFactory(row: unknown[], producing: boolean): FactorySub {
     ? unpackWaypointRoute(routeRow)
     : null;
   const guardTargetId = row.length > 6 ? row[6] as number | null : null;
-  return { selectedUnitBlueprintCode, progress, producing, energyRate, metalRate, guardTargetId, rally, route };
+  const repeat = row.length > 7 ? row[7] !== 0 : true;
+  return { selectedUnitBlueprintCode, progress, producing, repeat, energyRate, metalRate, guardTargetId, rally, route };
 }
 
 function packWaypointRoute(route: NonNullable<FactorySub['route']>): unknown[] {

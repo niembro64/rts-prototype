@@ -254,6 +254,7 @@ function createPooledEntry(): PooledEntry {
     buildingBuild,
     factorySub: {
       selectedUnitBlueprintCode: null, progress: 0, producing: false,
+      repeat: true,
       energyRate: 0, metalRate: 0,
       guardTargetId: null,
       rally,
@@ -1326,6 +1327,7 @@ export function serializeEntitySnapshot(
             f.progress = 0;
           }
           f.producing = entity.factory.isProducing;
+          f.repeat = entity.factory.repeatProduction;
           f.energyRate = entity.factory.energyRateFraction;
           f.metalRate = entity.factory.metalRateFraction;
           f.guardTargetId = canReferenceEntityId(entity.factory.guardTargetId ?? undefined)

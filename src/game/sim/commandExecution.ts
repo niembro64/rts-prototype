@@ -808,10 +808,16 @@ function executeQueueUnitCommand(ctx: CommandContext, command: QueueUnitCommand)
   const factory = ctx.world.getEntity(command.factoryId);
   if (factory === undefined || factory.factory === null || factory.ownership === null) return;
 
-  // Repeat-build: the selection persists even at unit cap so production
-  // resumes automatically when an existing unit dies. Cap is enforced
-  // at shell-spawn time inside the production loop.
-  if (factoryProductionSystem.selectUnit(factory, command.unitBlueprintId, ctx.world)) {
+  // Repeat-build selections persist even at unit cap so production resumes
+  // automatically when an existing unit dies. One-shot selections clear after
+  // the active shell completes. Cap is enforced at shell-spawn time inside the
+  // production loop.
+  if (factoryProductionSystem.selectUnit(
+    factory,
+    command.unitBlueprintId,
+    ctx.world,
+    command.repeat !== false,
+  )) {
     ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
   }
 }

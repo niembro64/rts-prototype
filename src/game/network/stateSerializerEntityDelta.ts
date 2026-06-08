@@ -99,6 +99,7 @@ export type PrevEntityState = {
   solarOpen: number;
   factoryProgress: number;
   isProducing: number;
+  factoryRepeats: number;
   factorySelectedUnitCode: number;
 };
 
@@ -164,7 +165,7 @@ function createPrevEntityState(): PrevEntityState {
     turretPitchVels, turretTargetIds,
     shieldRanges,
     normalX: 0, normalY: 0, normalZ: 1,
-    buildProgress: 0, solarOpen: 0, factoryProgress: 0, isProducing: 0, factorySelectedUnitCode: -1,
+    buildProgress: 0, solarOpen: 0, factoryProgress: 0, isProducing: 0, factoryRepeats: 1, factorySelectedUnitCode: -1,
   };
 }
 
@@ -337,6 +338,7 @@ export function getEntityDeltaChangedFields(
     if (entity.factory) {
       if (next.factoryProgress !== prev.factoryProgress ||
           next.isProducing !== prev.isProducing ||
+          next.factoryRepeats !== prev.factoryRepeats ||
           next.factorySelectedUnitCode !== prev.factorySelectedUnitCode) {
         mask |= ENTITY_CHANGED_FACTORY;
       }
@@ -408,6 +410,7 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
   const factory = entity.factory;
   prev.factoryProgress = factory !== null ? factory.currentBuildProgress : 0;
   prev.isProducing = factory !== null && factory.isProducing ? 1 : 0;
+  prev.factoryRepeats = factory !== null && factory.repeatProduction === false ? 0 : 1;
   prev.factorySelectedUnitCode = factory !== null && factory.selectedUnitBlueprintId !== null
     ? unitBlueprintIdToCode(factory.selectedUnitBlueprintId)
     : -1;
@@ -523,6 +526,7 @@ export function copyPrevState(from: PrevEntityState, to: PrevEntityState): void 
   to.solarOpen = from.solarOpen;
   to.factoryProgress = from.factoryProgress;
   to.isProducing = from.isProducing;
+  to.factoryRepeats = from.factoryRepeats;
   to.factorySelectedUnitCode = from.factorySelectedUnitCode;
   to.normalX = from.normalX;
   to.normalY = from.normalY;
@@ -595,6 +599,7 @@ export function copySentPrevState(
   if (changedFields & ENTITY_CHANGED_FACTORY) {
     to.factoryProgress = from.factoryProgress;
     to.isProducing = from.isProducing;
+    to.factoryRepeats = from.factoryRepeats;
     to.factorySelectedUnitCode = from.factorySelectedUnitCode;
   }
   if (changedFields & ENTITY_CHANGED_NORMAL) {

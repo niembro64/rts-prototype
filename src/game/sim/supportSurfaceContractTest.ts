@@ -278,6 +278,7 @@ function assertFactoryShellContract(): void {
   const factory = world.createBuilding(dry.x, dry.y, 180, 180, 60, TEST_PLAYER_ID);
   factory.factory = {
     selectedUnitBlueprintId: 'unitJackal',
+    repeatProduction: true,
     currentShellId: null,
     currentBuildProgress: 0,
     defaultWaypoints: [
@@ -312,6 +313,8 @@ function assertFactoryShellContract(): void {
   const completed = factoryProductionSystem.update(world, 16, buildingGrid).completedUnits;
   assertContract(completed.length === 1 && completed[0] === shell, 'factory must complete the funded shell');
   assertContract(factory.factory.currentShellId === null, 'factory must clear current shell after activation');
+  assertContract(factory.factory.selectedUnitBlueprintId === 'unitJackal', 'repeat factory must keep its selected unit');
+  assertContract(factory.factory.repeatProduction === true, 'repeat factory must keep repeat mode after activation');
   const completedUnit = assertUnitActionCount(shell, 2, 'completed shell must receive high-level rally actions');
   assertContract(completedUnit.activePath === null, 'completed shell must not receive a baked exit path');
   assertContract(completedUnit.actions[0].type === 'move', 'first factory action must be the default move waypoint');
@@ -321,6 +324,20 @@ function assertFactoryShellContract(): void {
     world.sampleSupportSurface(dry.x + 120, dry.y).groundZ,
     'factory action z must be sampled from shared support',
   );
+
+  factory.factory.repeatProduction = false;
+  const oneShotSpawned = factoryProductionSystem.update(world, 16, buildingGrid).spawnedUnits;
+  assertContract(oneShotSpawned.length === 1, 'one-shot factory must spawn one selected shell');
+  const oneShotShell = oneShotSpawned[0];
+  assertContract(oneShotShell.buildable !== null, 'one-shot shell must be buildable');
+  oneShotShell.buildable.isComplete = true;
+  const oneShotCompleted = factoryProductionSystem.update(world, 16, buildingGrid).completedUnits;
+  assertContract(
+    oneShotCompleted.length === 1 && oneShotCompleted[0] === oneShotShell,
+    'one-shot factory must complete its selected shell',
+  );
+  assertContract(factory.factory.selectedUnitBlueprintId === null, 'one-shot factory must clear selected unit');
+  assertContract(Boolean(factory.factory.repeatProduction), 'one-shot factory must reset to repeat mode when empty');
 }
 
 export function runSupportSurfaceContractTest(): void {

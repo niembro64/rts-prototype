@@ -478,7 +478,13 @@ function sanitizeStartBuildCommand(command: StartBuildCommand, tick: number): St
 
 function sanitizeQueueUnitCommand(command: QueueUnitCommand, tick: number): QueueUnitCommand | null {
   return isEntityId(command.factoryId) && isBuildableUnitBlueprintId(command.unitBlueprintId)
-    ? { ...command, tick, factoryId: command.factoryId, unitBlueprintId: command.unitBlueprintId }
+    ? {
+        type: 'queueUnit',
+        tick,
+        factoryId: command.factoryId,
+        unitBlueprintId: command.unitBlueprintId,
+        repeat: command.repeat !== false,
+      }
     : null;
 }
 

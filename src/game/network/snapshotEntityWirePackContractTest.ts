@@ -31,6 +31,7 @@ export function runSnapshotEntityWirePackContractTest(): void {
         selectedUnitBlueprintCode: null,
         progress: 0.25,
         producing: true,
+        repeat: false,
         energyRate: 0.75,
         metalRate: 0.5,
         guardTargetId: null,
@@ -76,4 +77,8 @@ export function runSnapshotEntityWirePackContractTest(): void {
   assertContract(decodedRoute[1].type === 'patrol', 'factory route second waypoint type must survive');
   assertContract(decodedRoute[1].pos.x === 160, 'factory route waypoint x must survive');
   assertContract(decodedRoute[1].posZ === 32, 'factory route waypoint z must survive');
+  assertContract(
+    decoded?.building?.factory?.repeat === false,
+    'factory one-shot repeat flag must survive compact entity wire round trip',
+  );
 }

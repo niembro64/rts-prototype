@@ -263,6 +263,7 @@ function placeCompleteBuilding(
     const rally = defaultWaypoints[0];
     entity.factory = {
       selectedUnitBlueprintId: null,
+      repeatProduction: true,
       currentShellId: null,
       currentBuildProgress: 0,
       defaultWaypoints,

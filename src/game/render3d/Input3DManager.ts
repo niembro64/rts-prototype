@@ -1173,6 +1173,7 @@ export class Input3DManager {
       tick,
       factoryId: factory.id,
       unitBlueprintId,
+      repeat: true,
     });
   }
 

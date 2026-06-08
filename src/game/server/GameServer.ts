@@ -798,6 +798,7 @@ export class GameServer {
         }
         if (factoryComp.selectedUnitBlueprintId === unitBlueprintId) {
           factoryComp.selectedUnitBlueprintId = null;
+          factoryComp.repeatProduction = true;
           touched = true;
         }
         if (!touched) continue;

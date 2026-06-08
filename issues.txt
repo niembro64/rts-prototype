@@ -55,11 +55,9 @@ unit-specific special buttons beyond commander DGun only after the underlying
 authoritative simulation, snapshots, client feedback, and physical
 presentation exist.
 
-Issue: factory and production UI are incomplete. BAR has factory production
-controls beyond selecting one repeat-build unit: repeat/queue state, factory
-queue mode/quotas, production queue editing, and related state
-indicators. Implement the remaining BAR-equivalent factory panel and hotkeys as
-authoritative-server commands.
+Issue: factory and production UI are incomplete. Implement BAR-equivalent
+multi-unit factory queue mode/quotas, production queue editing, and related
+state indicators as authoritative-server commands.
 
 Issue: BAR gameplay functionality tied to missing commands is absent. Implement
 the systems needed by the missing command surface: transports, capture,

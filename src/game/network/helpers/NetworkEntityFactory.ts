@@ -503,6 +503,7 @@ function createBuildingFromNetwork(
       : codeToUnitBlueprintId(f.selectedUnitBlueprintCode);
     entity.factory = {
       selectedUnitBlueprintId: selectedUnitBlueprintId ?? null,
+      repeatProduction: f.repeat !== false,
       // Client-side currentShellId stays null — the actual shell entity
       // is in the world separately. currentBuildProgress mirrors the
       // wire's avg-fill so the UI can draw the production progress

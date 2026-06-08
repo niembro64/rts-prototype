@@ -143,12 +143,14 @@ const factoryProgressStyle = computed(() => ({
 }));
 const factoryStatusLabel = computed(() => {
   const unitLabel = props.selection.factorySelectedUnit?.label ?? 'No unit';
+  if (unitLabel === 'No unit') return `${unitLabel} idle`;
+  const modeLabel = props.selection.factoryRepeatsProduction === false ? 'Queue' : 'Repeat';
   return props.selection.factoryIsProducing === true
-    ? `${unitLabel} producing`
-    : `${unitLabel} idle`;
+    ? `${modeLabel} ${unitLabel} producing`
+    : `${modeLabel} ${unitLabel} idle`;
 });
 const factoryStatusTitle = computed(() =>
-  `Factory repeat-build: ${factoryStatusLabel.value} - ${factoryProgressPercent.value}%`,
+  `Factory production: ${factoryStatusLabel.value} - ${factoryProgressPercent.value}%`,
 );
 const showCancelHint = computed(() =>
   props.selection.isBuildMode
@@ -339,12 +341,16 @@ function loadFactoryPreset(index: number): void {
     props.actions.stopFactoryProduction(factoryId);
     return;
   }
-  props.actions.queueUnit(factoryId, unitBlueprintId);
+  props.actions.queueUnit(factoryId, unitBlueprintId, true);
 }
 
 function toggleWaitFromClick(event: MouseEvent): void {
   const queueMode = queueModeFromEvent(event);
   props.actions.toggleSelectedWait(queueMode.queue, queueMode.queueFront);
+}
+
+function queueFactoryUnitFromClick(factoryId: number, unitBlueprintId: string, event: MouseEvent): void {
+  props.actions.queueUnit(factoryId, unitBlueprintId, !event.shiftKey);
 }
 
 </script>
@@ -982,8 +988,8 @@ function toggleWaitFromClick(event: MouseEvent): void {
           type="button"
           class="action-btn produce-btn vehicle-btn"
           :class="{ active: selectedBuildUnitBlueprintId === uo.unitBlueprintId }"
-          :title="costTitle(`Queue ${uo.label}`, uo.cost)"
-          @click="actions.queueUnit(selection.factoryId!, uo.unitBlueprintId)"
+          :title="costTitle(`Repeat ${uo.label}; Shift-click one-shot`, uo.cost)"
+          @click="(event) => queueFactoryUnitFromClick(selection.factoryId!, uo.unitBlueprintId, event)"
         >
           <span class="btn-label">{{ uo.shortName }}</span>
           <span class="btn-cost"><span class="cost-resource">{{ uo.cost }}</span></span>
@@ -1001,8 +1007,8 @@ function toggleWaitFromClick(event: MouseEvent): void {
           type="button"
           class="action-btn produce-btn bot-btn"
           :class="{ active: selectedBuildUnitBlueprintId === uo.unitBlueprintId }"
-          :title="costTitle(`Queue ${uo.label}`, uo.cost)"
-          @click="actions.queueUnit(selection.factoryId!, uo.unitBlueprintId)"
+          :title="costTitle(`Repeat ${uo.label}; Shift-click one-shot`, uo.cost)"
+          @click="(event) => queueFactoryUnitFromClick(selection.factoryId!, uo.unitBlueprintId, event)"
         >
           <span class="btn-label">{{ uo.shortName }}</span>
           <span class="btn-cost"><span class="cost-resource">{{ uo.cost }}</span></span>

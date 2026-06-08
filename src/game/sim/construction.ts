@@ -142,6 +142,7 @@ export class ConstructionSystem {
       );
       entity.factory = {
         selectedUnitBlueprintId: null,
+        repeatProduction: true,
         currentShellId: null,
         currentBuildProgress: 0,
         defaultWaypoints: null,

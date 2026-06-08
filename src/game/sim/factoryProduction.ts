@@ -230,9 +230,14 @@ export class FactoryProductionSystem {
         factoryComp.currentShellId = null;
         factoryComp.isProducing = false;
         factoryComp.currentBuildProgress = 0;
+        if (!factoryComp.repeatProduction) {
+          factoryComp.selectedUnitBlueprintId = null;
+          factoryComp.repeatProduction = true;
+        }
         world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
       } else if (action === FACTORY_ACTION_CLEAR_INVALID_SELECTION) {
         factoryComp.selectedUnitBlueprintId = null;
+        factoryComp.repeatProduction = true;
         world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
       } else if (action === FACTORY_ACTION_STOP_PRODUCING) {
         factoryComp.isProducing = false;
@@ -338,13 +343,10 @@ export class FactoryProductionSystem {
     world.markSnapshotDirty(unit.id, ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_TURRETS);
   }
 
-  // Toggle the factory's repeat-build selection. Selecting the
-  // currently-building blueprint clears the selection and cancels the
-  // in-progress shell; selecting a different type cancels the current
-  // shell (refunding paid resources) and replaces the selection. The
-  // production loop keeps selectedUnitBlueprintId until the player toggles
-  // it off, so the selected type repeats forever.
-  selectUnit(factory: Entity, unitBlueprintId: string, world: WorldState): boolean {
+  // Toggle the factory's production selection. Repeat mode keeps the
+  // selected blueprint after completion; one-shot mode clears it after
+  // the active shell completes.
+  selectUnit(factory: Entity, unitBlueprintId: string, world: WorldState, repeat = true): boolean {
     if (!factory.factory || !isEntityActive(factory)) {
       return false;
     }
@@ -355,17 +357,19 @@ export class FactoryProductionSystem {
     }
     const factoryComp = factory.factory;
     const current = factoryComp.selectedUnitBlueprintId;
-    if (current === unitBlueprintId) {
+    if (current === unitBlueprintId && factoryComp.repeatProduction === repeat) {
       // Toggle off — cancel active shell, clear selection.
       this.cancelActiveShell(world, factory);
       factoryComp.selectedUnitBlueprintId = null;
       factoryComp.isProducing = false;
+      factoryComp.repeatProduction = true;
     } else {
       // Replace — cancel any active shell of the previous type, then
       // swap the selection. The production loop spawns a fresh shell
       // of the new type next tick.
       this.cancelActiveShell(world, factory);
       factoryComp.selectedUnitBlueprintId = unitBlueprintId;
+      factoryComp.repeatProduction = repeat;
     }
     return true;
   }
@@ -381,6 +385,7 @@ export class FactoryProductionSystem {
       || factoryComp.currentBuildProgress !== 0;
     this.cancelActiveShell(world, factory);
     factoryComp.selectedUnitBlueprintId = null;
+    factoryComp.repeatProduction = true;
     factoryComp.isProducing = false;
     factoryComp.currentBuildProgress = 0;
     return changed;

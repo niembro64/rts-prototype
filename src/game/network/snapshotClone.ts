@@ -124,6 +124,7 @@ function copyFactoryInto(src: ReusableFactory, dst: ReusableFactory): ReusableFa
   dst.selectedUnitBlueprintCode = src.selectedUnitBlueprintCode;
   dst.progress = src.progress;
   dst.producing = src.producing;
+  dst.repeat = src.repeat !== false;
   dst.energyRate = src.energyRate;
   dst.metalRate = src.metalRate;
   dst.guardTargetId = src.guardTargetId ?? null;
@@ -194,6 +195,7 @@ function copyBuildingInto(
         selectedUnitBlueprintCode: null,
         progress: 0,
         producing: false,
+        repeat: true,
         energyRate: 0,
         metalRate: 0,
         guardTargetId: null,

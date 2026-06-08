@@ -169,6 +169,7 @@ export function snapClientNonVisualState(
       ? null
       : codeToUnitBlueprintId(sf.selectedUnitBlueprintCode);
     entity.factory.selectedUnitBlueprintId = selectedUnitBlueprintId ?? null;
+    entity.factory.repeatProduction = sf.repeat !== false;
     entity.factory.currentShellId = null;
     entity.factory.currentBuildProgress = sf.progress;
     entity.factory.isProducing = sf.producing;

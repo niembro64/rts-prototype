@@ -900,8 +900,10 @@ export type UnitBuildConfig = {
 
 // Factory component. The host (today: the fabricator platform) produces
 // **units** from a fixed launch spot at the center of its footprint. The factory
-// carries one repeat-build selection: `selectedUnitBlueprintId` is either
-// the unit blueprint to produce forever or null for off. The factory
+// carries one build selection: `selectedUnitBlueprintId` is either the
+// unit blueprint to produce or null for off. `repeatProduction` decides
+// whether that selection repeats forever or clears after one completed unit.
+// The factory
 // spawns that selected unit as an airborne shell above its center bay; the
 // shell then falls through normal physics and absorbs resources from the
 // player's stockpiles via energyDistribution regardless of where it settles.
@@ -920,6 +922,7 @@ export type UnitBuildConfig = {
 // client it is populated from the wire's f.progress field.
 export type Factory = {
   selectedUnitBlueprintId: string | null;
+  repeatProduction: boolean;
   currentShellId: EntityId | null;
   currentBuildProgress: number;
   /** Server-owned default route for units this factory produces.
