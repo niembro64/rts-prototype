@@ -24,6 +24,7 @@ import { queueModeFromEvent } from '../game/input/queueModifiers';
 
 export type { FactorySelectionItem, SelectionInfo, SelectionActions } from '@/types/ui';
 import type {
+  QueueInsertOption,
   SelectionEntityType,
   SelectionInfo,
   SelectionActions,
@@ -72,6 +73,9 @@ const showTowerActions = computed(() => isPureTowerSelection.value);
 const showBuildingActions = computed(() => isPureBuildingSelection.value);
 const showCombatActions = computed(() =>
   props.selection.hasFireControl && props.selection.buildingCount === 0,
+);
+const showQueueInsertPicker = computed(() =>
+  showUnitActions.value && props.selection.queueInsertOptions.length > 0,
 );
 const selectOnlyOptions = computed<
   { entityType: SelectionEntityType; label: string; count: number }[]
@@ -244,6 +248,12 @@ function trajectoryModeLabel(mode: SelectionInfo['trajectoryMode']): string {
   return mode === 'high' ? 'Arc Hi' : mode === 'low' ? 'Arc Lo' : 'Arc Auto';
 }
 
+function queueInsertOptionTitle(option: QueueInsertOption): string {
+  return option.label === 'End'
+    ? 'Insert queued commands at the end'
+    : `Insert queued commands after order ${option.label.replace('+', '')}`;
+}
+
 function costTitle(label: string, cost: number, key?: string): string {
   const hotkey = key === undefined ? '' : ` - Hotkey ${key}`;
   return `${label}${hotkey} - Cost ${cost}`;
@@ -383,8 +393,8 @@ function loadFactoryPreset(index: number): void {
 }
 
 function toggleWaitFromClick(event: MouseEvent): void {
-  const queueMode = queueModeFromEvent(event);
-  props.actions.toggleSelectedWait(queueMode.queue, queueMode.queueFront);
+  const queueMode = queueModeFromEvent(event, props.selection.queueInsertIndex);
+  props.actions.toggleSelectedWait(queueMode.queue, queueMode.queueFront, queueMode.queueInsertIndex);
 }
 
 function queueFactoryUnitFromClick(factoryId: number, unitBlueprintId: string, event: MouseEvent): void {
@@ -807,6 +817,34 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
         >
           <span class="btn-label">Clear Q</span>
           <span class="btn-key">{{ hotkey('command.clearQueue') }}</span>
+        </button>
+      </div>
+    </div>
+
+    <div v-if="showQueueInsertPicker" class="button-group">
+      <div class="group-label">Insert</div>
+      <div class="buttons">
+        <button
+          type="button"
+          class="action-btn"
+          :class="{ active: selection.queueInsertIndex === null }"
+          :style="{ '--btn-color': BUTTON_COLORS.wait }"
+          title="Append queued commands"
+          @click="actions.setQueueInsertIndex(null)"
+        >
+          <span class="btn-label">Append</span>
+        </button>
+        <button
+          v-for="option in selection.queueInsertOptions"
+          :key="option.index"
+          type="button"
+          class="action-btn"
+          :class="{ active: selection.queueInsertIndex === option.index }"
+          :style="{ '--btn-color': BUTTON_COLORS.wait }"
+          :title="queueInsertOptionTitle(option)"
+          @click="actions.setQueueInsertIndex(option.index)"
+        >
+          <span class="btn-label">{{ option.label }}</span>
         </button>
       </div>
     </div>

@@ -109,6 +109,8 @@ export function useGameCanvasSceneUi({
     isRepeatQueue: false,
     isHoldPosition: false,
     hasQueuedOrders: false,
+    queueInsertIndex: null,
+    queueInsertOptions: [],
     hasFactory: false,
     factoryId: undefined,
     commanderId: undefined,
@@ -223,14 +225,17 @@ export function useGameCanvasSceneUi({
     toggleRepeatQueue: () => {
       getActiveBattleScene()?.toggleRepeatQueue();
     },
+    setQueueInsertIndex: (index) => {
+      getActiveBattleScene()?.setQueueInsertIndex(index);
+    },
     toggleUnitMoveState: () => {
       getActiveBattleScene()?.toggleUnitMoveState();
     },
     toggleTrajectoryMode: () => {
       getActiveBattleScene()?.toggleTrajectoryMode();
     },
-    toggleSelectedWait: (queue, queueFront) => {
-      getActiveBattleScene()?.toggleSelectedWait(queue, queueFront);
+    toggleSelectedWait: (queue, queueFront, queueInsertIndex) => {
+      getActiveBattleScene()?.toggleSelectedWait(queue, queueFront, queueInsertIndex);
     },
     toggleSelectedFire: () => {
       getActiveBattleScene()?.toggleSelectedFire();

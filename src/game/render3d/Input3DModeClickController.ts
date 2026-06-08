@@ -84,6 +84,7 @@ type Input3DModeClickControllerConfig = {
   selectedCommands: InputSelectedCommands;
   getTick: () => number;
   getActivePlayerId: () => PlayerId;
+  getQueueInsertIndex: () => number | null;
   getSelectedCommander: () => Entity | null;
   getSelectedBuilder: () => Entity | null;
   applyCursor: (kind: CommandCursorKind) => void;
@@ -303,7 +304,7 @@ export class Input3DModeClickController {
     const resolvedKind = kind === 'buildLine'
       ? resolveBuildDragKind(e)
       : kind;
-    const queueMode = queueModeFromEvent(e);
+    const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
     this.areaDrag = {
       kind: resolvedKind,
       button,
@@ -687,7 +688,7 @@ export class Input3DModeClickController {
       });
       return;
     }
-    const queueMode = queueModeFromEvent(e);
+    const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
     const cmd = this.config.mode.buildStartBuildCommand(
       builder, world.x, world.y,
       this.config.getTick(), queueMode.queue, queueMode.queueFront,
@@ -734,7 +735,7 @@ export class Input3DModeClickController {
     }
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
-    const queueMode = queueModeFromEvent(e);
+    const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
     const cmd = buildRepairAreaCommand(
       commander,
       world.x,
@@ -760,7 +761,7 @@ export class Input3DModeClickController {
     }
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
-    const queueMode = queueModeFromEvent(e);
+    const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
     const cmd = buildAttackAreaCommand(
       selectedUnits,
       world.x,
@@ -789,7 +790,7 @@ export class Input3DModeClickController {
     const entityHit = entityHitId !== null
       ? this.config.getEntitySource().getEntity(entityHitId)
       : null;
-    const queueMode = queueModeFromEvent(e);
+    const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
     const meshAttackCmd = buildAttackCommandForTarget(
       entityHit,
       selectedUnits,
@@ -833,7 +834,7 @@ export class Input3DModeClickController {
     }
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
-    const queueMode = queueModeFromEvent(e);
+    const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
     const cmd = buildAttackGroundCommand(
       selectedUnits,
       world.x,
@@ -892,7 +893,7 @@ export class Input3DModeClickController {
     const entityHit = entityHitId !== null
       ? this.config.getEntitySource().getEntity(entityHitId)
       : null;
-    const queueMode = queueModeFromEvent(e);
+    const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
 
     const meshGuardCmd = buildGuardCommandForTarget(
       entityHit,
@@ -940,7 +941,7 @@ export class Input3DModeClickController {
     const entityHit = entityHitId !== null
       ? this.config.getEntitySource().getEntity(entityHitId)
       : null;
-    const queueMode = queueModeFromEvent(e);
+    const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
 
     const meshReclaimCmd = buildReclaimCommandForTarget(
       entityHit,
@@ -990,7 +991,7 @@ export class Input3DModeClickController {
       this.config.applyCursor('blocked');
       return;
     }
-    const queueMode = queueModeFromEvent(e);
+    const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
     this.config.commandQueue.enqueue({
       type: 'upgradeMetalExtractor',
       tick: this.config.getTick(),

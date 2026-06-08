@@ -31,9 +31,6 @@ Finish the BAR-compatible keymap and command UI layer by importing the complete
 BAR grid/legacy bindings and adding command buttons for missing BAR commands so
 visible hotkeys match the active keymap across the whole command surface.
 
-Issue: queued-order insertion needs a full BAR-style commandinsert picker for
-arbitrary queue positions.
-
 Issue: behavior/state toggles are incomplete. Implement missing BAR-equivalent
 states such as cloak/want-cloak, gather wait, richer stance/fire states beyond
 the current fire/hold-fire toggle, richer positioning/move states beyond the

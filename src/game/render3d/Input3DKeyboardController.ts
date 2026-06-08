@@ -18,6 +18,7 @@ type Input3DKeyboardControllerConfig = {
   mode: CommanderModeController;
   commandQueue: CommandQueue;
   getTick: () => number;
+  getQueueInsertIndex: () => number | null;
   setWaypointMode: (mode: WaypointType) => void;
   toggleFormationAssumeMode: () => void;
   toggleFormationMoveMode: () => void;
@@ -43,7 +44,7 @@ type Input3DKeyboardControllerConfig = {
   skipCurrentOrder: () => void;
   removeLastQueuedOrder: () => void;
   clearQueuedOrders: () => void;
-  toggleSelectedWait: (queue: boolean, queueFront?: boolean) => void;
+  toggleSelectedWait: (queue: boolean, queueFront?: boolean, queueInsertIndex?: number) => void;
   toggleRepeatQueue: () => void;
   clearSelectedFactoryGuard: () => void;
   stopSelectedFactoryProduction: () => void;
@@ -350,8 +351,8 @@ export class Input3DKeyboardController {
         break;
       case 'command.wait':
         {
-          const queueMode = queueModeFromEvent(e);
-          this.config.toggleSelectedWait(queueMode.queue, queueMode.queueFront);
+          const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
+          this.config.toggleSelectedWait(queueMode.queue, queueMode.queueFront, queueMode.queueInsertIndex);
         }
         break;
       case 'command.repeat':

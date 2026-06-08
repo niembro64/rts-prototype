@@ -37,6 +37,7 @@ type Input3DRightDragControllerConfig = {
   getTick: () => number;
   getActivePlayerId: () => PlayerId;
   getWaypointMode: () => WaypointType;
+  getQueueInsertIndex: () => number | null;
   isFormationAssumeMode: () => boolean;
   isFormationMoveMode: () => boolean;
   exitFormationModes: () => void;
@@ -87,7 +88,7 @@ export class Input3DRightDragController {
     const selectedUnits = source.getSelectedUnits();
     const tick = this.config.getTick();
     const activePlayerId = this.config.getActivePlayerId();
-    const queueMode = queueModeFromEvent(e);
+    const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
     const entityHitId = this.config.picker.raycastEntity(e.clientX, e.clientY);
     const entityHit = entityHitId !== null
       ? source.getEntity(entityHitId)
@@ -219,7 +220,7 @@ export class Input3DRightDragController {
     const source = this.source();
     const selectedUnits = source.getSelectedUnits();
     const points = this.linePath.points;
-    const queueMode = queueModeFromEvent(e);
+    const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
     const tick = this.config.getTick();
 
     if (selectedUnits.length > 0 && points.length > 0) {

@@ -140,4 +140,16 @@ export function runCommandHotkeysContractTest(): void {
     indexedQueue.queue === true && indexedQueue.queueFront === false && indexedQueue.queueInsertIndex === 1,
     'alt+shift command event must insert at the first queued order slot',
   );
+  const pickedQueue = queueModeFromEvent(keyEvent('w', 'KeyW', { shiftKey: true }), 3);
+  assertContract(
+    pickedQueue.queue === true && pickedQueue.queueFront === false && pickedQueue.queueInsertIndex === 3,
+    'shift command event must use the selected queue insertion slot',
+  );
+  const pickedFrontQueue = queueModeFromEvent(keyEvent('w', 'KeyW', { ctrlKey: true, shiftKey: true }), 3);
+  assertContract(
+    pickedFrontQueue.queue === true &&
+      pickedFrontQueue.queueFront === true &&
+      pickedFrontQueue.queueInsertIndex === undefined,
+    'ctrl/cmd+shift command event must override the selected queue insertion slot',
+  );
 }

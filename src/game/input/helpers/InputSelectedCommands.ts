@@ -91,7 +91,7 @@ export class InputSelectedCommands {
     });
   }
 
-  wait(queue: boolean, queueFront = false): void {
+  wait(queue: boolean, queueFront = false, queueInsertIndex?: number): void {
     const entityIds = this.selectedUnitIds();
     if (entityIds.length === 0) return;
     this.commandQueue.enqueue({
@@ -100,6 +100,7 @@ export class InputSelectedCommands {
       entityIds,
       queue,
       queueFront,
+      queueInsertIndex,
     });
   }
 

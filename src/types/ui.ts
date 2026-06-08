@@ -21,6 +21,11 @@ export type SelectionDetailItem = {
   value: string;
 };
 
+export type QueueInsertOption = {
+  index: number;
+  label: string;
+};
+
 export type SelectionEntityType = 'unit' | 'tower' | 'building';
 
 export type SelectionInfo = {
@@ -70,6 +75,8 @@ export type SelectionInfo = {
   isRepeatQueue: boolean;
   isHoldPosition: boolean;
   hasQueuedOrders: boolean;
+  queueInsertIndex: number | null;
+  queueInsertOptions: QueueInsertOption[];
   hasFactory: boolean;
   factoryId?: number;
   commanderId?: number;
@@ -106,9 +113,10 @@ export type SelectionActions = {
   clearQueuedOrders: () => void;
   removeLastQueuedOrder: () => void;
   toggleRepeatQueue: () => void;
+  setQueueInsertIndex: (index: number | null) => void;
   toggleUnitMoveState: () => void;
   toggleTrajectoryMode: () => void;
-  toggleSelectedWait: (queue?: boolean, queueFront?: boolean) => void;
+  toggleSelectedWait: (queue?: boolean, queueFront?: boolean, queueInsertIndex?: number) => void;
   toggleSelectedFire: () => void;
   /** ON/OFF for producer buildings in the selection. */
   toggleBuildingActive: () => void;
@@ -259,6 +267,7 @@ export type UIInputState = {
    *  lock-on target. Mirrors the attack-area / guard mode pattern. */
   isTowerTargetMode: boolean;
   controlGroups: ControlGroupInfo[];
+  queueInsertIndex: number | null;
 };
 
 // Unit valuation

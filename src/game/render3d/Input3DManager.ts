@@ -107,6 +107,7 @@ export class Input3DManager {
   public onBuildModeChange?: (buildingBlueprintId: BuildingBlueprintId | null) => void;
   public onBuildLineSpacingChange?: (spacing: BuildLineSpacingInfo) => void;
   public onBuildFacingChange?: (facing: BuildFacingInfo) => void;
+  public onQueueInsertIndexChange?: (index: number | null) => void;
   public onDGunModeChange?: (active: boolean) => void;
   public onRepairAreaModeChange?: (active: boolean) => void;
   public onFormationAssumeModeChange?: (active: boolean) => void;
@@ -142,6 +143,7 @@ export class Input3DManager {
   private keyboard: Input3DKeyboardController;
   private rightDrag: Input3DRightDragController;
   private modeClicks: Input3DModeClickController;
+  private queueInsertIndex: number | null = null;
 
   // DOM handlers bound once for add/remove
   private onMouseDown: (e: MouseEvent) => void;
@@ -188,6 +190,7 @@ export class Input3DManager {
       selectedCommands: this.selectedCommands,
       getTick: () => this.context.getTick(),
       getActivePlayerId: () => this.context.activePlayerId,
+      getQueueInsertIndex: () => this.queueInsertIndex,
       getSelectedCommander: () => this.getSelectedCommander(),
       getSelectedBuilder: () => this.getSelectedBuilder(),
       applyCursor: (kind) => this.applyCursor(kind),
@@ -217,6 +220,7 @@ export class Input3DManager {
       getTick: () => this.context.getTick(),
       getActivePlayerId: () => this.context.activePlayerId,
       getWaypointMode: () => this.waypointMode,
+      getQueueInsertIndex: () => this.queueInsertIndex,
       isFormationAssumeMode: () => this.formationAssumeMode,
       isFormationMoveMode: () => this.formationMoveMode,
       exitFormationModes: () => this.exitFormationModes(),
@@ -229,6 +233,7 @@ export class Input3DManager {
       mode: this.mode,
       commandQueue: this.localCommandQueue,
       getTick: () => this.context.getTick(),
+      getQueueInsertIndex: () => this.queueInsertIndex,
       setWaypointMode: (mode) => this.setWaypointMode(mode),
       toggleFormationAssumeMode: () => this.toggleFormationAssumeMode(),
       toggleFormationMoveMode: () => this.toggleFormationMoveMode(),
@@ -259,7 +264,8 @@ export class Input3DManager {
       skipCurrentOrder: () => this.skipCurrentOrder(),
       removeLastQueuedOrder: () => this.removeLastQueuedOrder(),
       clearQueuedOrders: () => this.clearQueuedOrders(),
-      toggleSelectedWait: (queue, queueFront) => this.toggleSelectedWait(queue, queueFront),
+      toggleSelectedWait: (queue, queueFront, queueInsertIndex) =>
+        this.toggleSelectedWait(queue, queueFront, queueInsertIndex),
       toggleRepeatQueue: () => this.toggleRepeatQueue(),
       clearSelectedFactoryGuard: () => this.clearSelectedFactoryGuard(),
       stopSelectedFactoryProduction: () => this.stopSelectedFactoryProduction(),
@@ -545,8 +551,17 @@ export class Input3DManager {
     this.selectedCommands.removeLastQueuedOrder();
   }
 
-  toggleSelectedWait(queue = false, queueFront = false): void {
-    this.selectedCommands.wait(queue, queueFront);
+  setQueueInsertIndex(index: number | null): void {
+    const normalized = index === null
+      ? null
+      : Math.max(0, Math.min(255, Math.floor(index)));
+    if (this.queueInsertIndex === normalized) return;
+    this.queueInsertIndex = normalized;
+    this.onQueueInsertIndexChange?.(normalized);
+  }
+
+  toggleSelectedWait(queue = false, queueFront = false, queueInsertIndex?: number): void {
+    this.selectedCommands.wait(queue, queueFront, queueInsertIndex);
   }
 
   toggleRepeatQueue(): void {
@@ -1726,6 +1741,7 @@ export class Input3DManager {
     this.onWaypointModeChange = undefined;
     this.onControlGroupFocus = undefined;
     this.onBuildModeChange = undefined;
+    this.onQueueInsertIndexChange = undefined;
     this.onDGunModeChange = undefined;
     this.onRepairAreaModeChange = undefined;
     this.onFormationAssumeModeChange = undefined;

@@ -478,6 +478,9 @@ export class RtsScene3D {
       this.selectionSystem.setBuildFacing(facing);
     };
     this.selectionSystem.setBuildFacing(this.inputManager.getBuildFacingInfo());
+    this.inputManager.onQueueInsertIndexChange = (index) => {
+      this.selectionSystem.setQueueInsertIndex(index);
+    };
     this.inputManager.onDGunModeChange = (active) => {
       this.selectionSystem.setDGunMode(active);
     };
@@ -827,8 +830,12 @@ export class RtsScene3D {
     this.inputManager?.removeLastQueuedOrder();
   }
 
-  public toggleSelectedWait(queue = false, queueFront = false): void {
-    this.inputManager?.toggleSelectedWait(queue, queueFront);
+  public setQueueInsertIndex(index: number | null): void {
+    this.inputManager?.setQueueInsertIndex(index);
+  }
+
+  public toggleSelectedWait(queue = false, queueFront = false, queueInsertIndex?: number): void {
+    this.inputManager?.toggleSelectedWait(queue, queueFront, queueInsertIndex);
   }
 
   public toggleRepeatQueue(): void {

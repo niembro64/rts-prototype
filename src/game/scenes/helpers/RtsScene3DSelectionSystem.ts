@@ -31,6 +31,7 @@ export class RtsScene3DSelectionSystem {
   private activeBuildingBlueprintId: BuildingBlueprintId | null = null;
   private buildLineSpacingMultiplier = 1;
   private buildFacingDegrees = 0;
+  private queueInsertIndex: number | null = null;
   private dgunActive = false;
   private repairAreaActive = false;
   private formationAssumeActive = false;
@@ -81,6 +82,11 @@ export class RtsScene3DSelectionSystem {
 
   setBuildFacing(facing: BuildFacingInfo): void {
     this.buildFacingDegrees = facing.degrees;
+    this.selectionInfoDirty = true;
+  }
+
+  setQueueInsertIndex(index: number | null): void {
+    this.queueInsertIndex = index;
     this.selectionInfoDirty = true;
   }
 
@@ -225,6 +231,7 @@ export class RtsScene3DSelectionSystem {
       selectedBuildingBlueprintId: this.activeBuildingBlueprintId,
       buildLineSpacingMultiplier: this.buildLineSpacingMultiplier,
       buildFacingDegrees: this.buildFacingDegrees,
+      queueInsertIndex: this.queueInsertIndex,
       isDGunMode: this.dgunActive,
       isRepairAreaMode: this.repairAreaActive,
       isFormationAssumeMode: this.formationAssumeActive,

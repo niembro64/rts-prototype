@@ -21,6 +21,8 @@ import {
   isUpgradeableMetalExtractorTarget,
 } from '../../sim/metalExtractorUpgrade';
 
+const MAX_QUEUE_INSERT_OPTIONS = 24;
+
 function unitLabel(unitBlueprintId: string): string {
   try {
     return getUnitBlueprint(unitBlueprintId).name;
@@ -77,6 +79,39 @@ function unitActionLabel(action: UnitAction): string {
 function getActiveUnitAction(actions: readonly UnitAction[]): UnitAction | null {
   const activeIntentEnd = getFirstActionIntentEnd(actions);
   return activeIntentEnd >= 0 ? actions[activeIntentEnd] : null;
+}
+
+function buildQueueInsertOptions(selectedUnits: readonly Entity[]): SelectionInfo['queueInsertOptions'] {
+  let actions: readonly UnitAction[] | null = null;
+  for (let i = 0; i < selectedUnits.length; i++) {
+    const candidateActions = selectedUnits[i].unit?.actions;
+    if (candidateActions !== undefined && hasQueuedActionIntents(candidateActions)) {
+      actions = candidateActions;
+      break;
+    }
+  }
+  if (actions === null) return [];
+
+  const options: SelectionInfo['queueInsertOptions'] = [];
+  for (let i = 0; i < actions.length && options.length < MAX_QUEUE_INSERT_OPTIONS; i++) {
+    if (actions[i].isPathExpansion) continue;
+    options.push({
+      index: i + 1,
+      label: `#${i + 1}+`,
+    });
+  }
+  const lastOption = options[options.length - 1];
+  if (
+    lastOption !== undefined &&
+    lastOption.index !== actions.length &&
+    options.length < MAX_QUEUE_INSERT_OPTIONS
+  ) {
+    options.push({
+      index: actions.length,
+      label: 'End',
+    });
+  }
+  return options;
 }
 
 function addMultiSelectionQueueDetails(
@@ -555,6 +590,8 @@ export function buildSelectionInfo(
     isRepeatQueue: selectedUnits.length > 0 && repeatCount === selectedUnits.length,
     isHoldPosition: selectedUnits.length > 0 && holdPositionCount === selectedUnits.length,
     hasQueuedOrders,
+    queueInsertIndex: inputState?.queueInsertIndex ?? null,
+    queueInsertOptions: buildQueueInsertOptions(selectedUnits),
     hasFactory: factory !== undefined,
     factoryId: factory?.id,
     commanderId: commander?.id,
