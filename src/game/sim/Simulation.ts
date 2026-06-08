@@ -92,6 +92,10 @@ import {
   SimulationFlyingLoiterController,
 } from './SimulationFlyingLoiterController';
 import { SimulationCombatHaltController } from './SimulationCombatHaltController';
+import {
+  REPLAN_FAILURE_COOLDOWN,
+  SimulationStuckReplanController,
+} from './SimulationStuckReplanController';
 
 type ActiveMovementTarget = UnitPathPoint & {
   isFinalActionPoint: boolean;
@@ -112,33 +116,6 @@ type ActiveMovementTarget = UnitPathPoint & {
 // units that don't get a replan slot this tick keep their counter
 // at the threshold and try again next tick.
 
-/** Body speed (wu/sec) below which a unit counts as "not moving". */
-const STUCK_VEL_THRESHOLD = 5;
-
-/** Consecutive stuck ticks before we force a replan. At a 30 Hz
- *  tick rate that's ~1 second — long enough to filter out brief
- *  collision rebounds, short enough that the user notices the
- *  recovery before they manually re-issue the order. */
-const STUCK_TICK_THRESHOLD = 30;
-
-/** Hard cap on replans per tick. Each replan is one bounded A*
- *  run plus path smoothing — typically well under 1 ms, but a
- *  cap keeps a chokepoint-pileup from spiking the tick budget. */
-const MAX_REPLANS_PER_TICK = 5;
-
-/** When a replan attempt fails (planner bailed, or eligibility
- *  check rejected the action type), set the unit's stuckTicks
- *  to this NEGATIVE cooldown value instead of leaving it at the
- *  threshold. The stuckTicks counter ticks UP each frame the
- *  unit's still wedged, so a value of −60 introduces a 60-tick
- *  (~2-second) gap before the unit is eligible for another
- *  replan attempt. Without this, a unit whose replans
- *  consistently bail (planner can't find a route) hammers the
- *  planner once every 30 ticks indefinitely — burning CPU on
- *  a problem that won't improve from one tick to the next. */
-const REPLAN_FAILURE_COOLDOWN = -60;
-const STUCK_REPLAN_BATCH_FLAG_SETTLING_CHECK = 1 << 0;
-
 export class Simulation {
   private world: WorldState;
   private commandQueue: CommandQueue;
@@ -149,6 +126,7 @@ export class Simulation {
   private arrivalController: SimulationArrivalController;
   private combatHaltController: SimulationCombatHaltController;
   private flyingLoiter: SimulationFlyingLoiterController;
+  private stuckReplanController: SimulationStuckReplanController;
   private forceAccumulator: ForceAccumulator = new ForceAccumulator();
   private windState: WindState = sampleWindState(0);
   private windPowerTracker = new WindPowerTracker();
@@ -163,10 +141,6 @@ export class Simulation {
 
   // Player IDs participating in this game
   private playerIds: PlayerId[] = [1, 2];
-  /** How many path replans we've spent this tick (capped at
-   *  MAX_REPLANS_PER_TICK so a chokepoint pile-up can't burn the
-   *  tick budget on planning). Reset at the top of `update()`. */
-  private replansThisTick = 0;
   /** Last WorldState building-version reflected into the spatial
    *  grid. Buildings are static, so we only need to rescan them when
    *  one is added or removed instead of every simulation tick. */
@@ -185,14 +159,6 @@ export class Simulation {
   private _deadUnitIdsBuf: EntityId[] = [];
   private _deadBuildingIdsBuf: EntityId[] = [];
   private _movingUnitsBuf: Entity[] = [];
-  private _stuckEntitiesBuf: Entity[] = [];
-  private _stuckSlotsBuf = new Uint32Array(0);
-  private _stuckTicksBuf = new Int32Array(0);
-  private _stuckSettlingDxBuf = new Float64Array(0);
-  private _stuckSettlingDyBuf = new Float64Array(0);
-  private _stuckSettlingFlagsBuf = new Uint8Array(0);
-  private _stuckOutTicksBuf = new Int32Array(0);
-  private _stuckOutReplanBuf = new Uint8Array(0);
 
   // Reusable buffers for shared energy distribution (avoid per-tick allocations)
   private energyBuffers: EnergyBuffers = createEnergyBuffers();
@@ -243,6 +209,9 @@ export class Simulation {
     });
     this.combatHaltController = new SimulationCombatHaltController(this.world);
     this.flyingLoiter = new SimulationFlyingLoiterController(this.world);
+    this.stuckReplanController = new SimulationStuckReplanController(
+      (entity) => this.tryReplan(entity),
+    );
   }
 
   // AI player IDs (for auto-production)
@@ -312,8 +281,7 @@ export class Simulation {
   update(dtMs: number): void {
     if (this.gamePhase === 'init') this.gamePhase = transitionPhase('init', 'battle');
 
-    // Replan budget resets each tick — see updateUnits / stuck detection.
-    this.replansThisTick = 0;
+    this.stuckReplanController.beginFrame();
     resourceMovementSystem.beginTick(this.world);
 
     this.simElapsedMs += dtMs;
@@ -1030,7 +998,7 @@ export class Simulation {
     // MAX_REPLANS_PER_TICK so a 100-unit pile-up doesn't burn the
     // tick budget on planning — units that don't get a slot this
     // tick stay at the threshold and try again next tick.
-    this.evaluateStuckAndReplan(movingUnits);
+    this.stuckReplanController.evaluate(movingUnits);
   }
 
   private sweepInvalidTargetActions(entity: Entity): boolean {
@@ -1153,120 +1121,6 @@ export class Simulation {
           this.advanceAction(entity);
         }
       }
-    }
-  }
-
-  private ensureStuckCapacity(required: number): void {
-    if (this._stuckSlotsBuf.length >= required) return;
-    const next = Math.max(required, this._stuckSlotsBuf.length * 2, 128);
-    const slots = new Uint32Array(next);
-    slots.set(this._stuckSlotsBuf);
-    this._stuckSlotsBuf = slots;
-    const ticks = new Int32Array(next);
-    ticks.set(this._stuckTicksBuf);
-    this._stuckTicksBuf = ticks;
-    const settlingDx = new Float64Array(next);
-    settlingDx.set(this._stuckSettlingDxBuf);
-    this._stuckSettlingDxBuf = settlingDx;
-    const settlingDy = new Float64Array(next);
-    settlingDy.set(this._stuckSettlingDyBuf);
-    this._stuckSettlingDyBuf = settlingDy;
-    const settlingFlags = new Uint8Array(next);
-    settlingFlags.set(this._stuckSettlingFlagsBuf);
-    this._stuckSettlingFlagsBuf = settlingFlags;
-    this._stuckOutTicksBuf = new Int32Array(next);
-    this._stuckOutReplanBuf = new Uint8Array(next);
-  }
-
-  /** Per-tick stuck check. For each unit that wanted to move this
-   *  tick but is barely moving, increment its stuck counter; once
-   *  past the threshold and within the per-tick replan budget, run
-   *  a fresh A* from the unit's current position to the active
-   *  waypoint without rewriting the authored action queue. */
-  private evaluateStuckAndReplan(movingUnits: readonly Entity[]): void {
-    const maxRows = movingUnits.length;
-    if (maxRows === 0) return;
-
-    this.ensureStuckCapacity(maxRows);
-    let count = 0;
-    for (let i = 0; i < maxRows; i++) {
-      const entity = movingUnits[i];
-      if (!entity.unit || !entity.body) continue;
-      const unit = entity.unit;
-      const action = unit.actions[0];
-      let settlingDx = 0;
-      let settlingDy = 0;
-      let settlingFlags = 0;
-      if (
-        action !== undefined &&
-        action.type !== 'patrol' &&
-        (action.type === 'move' || action.type === 'fight')
-      ) {
-        settlingDx = action.x - entity.transform.x;
-        settlingDy = action.y - entity.transform.y;
-        settlingFlags = STUCK_REPLAN_BATCH_FLAG_SETTLING_CHECK;
-      }
-
-      this._stuckEntitiesBuf[count] = entity;
-      this._stuckSlotsBuf[count] = entity.body.physicsBody.slot;
-      this._stuckTicksBuf[count] = unit.stuckTicks ?? 0;
-      this._stuckSettlingDxBuf[count] = settlingDx;
-      this._stuckSettlingDyBuf[count] = settlingDy;
-      this._stuckSettlingFlagsBuf[count] = settlingFlags;
-      count++;
-    }
-    if (count === 0) return;
-
-    const sim = getSimWasm();
-    if (sim === undefined) {
-      throw new Error('Simulation.evaluateStuckAndReplan: sim-wasm is not initialized');
-    }
-    sim.stuckReplanStepBatch(
-      this._stuckSlotsBuf.subarray(0, count),
-      this._stuckTicksBuf.subarray(0, count),
-      this._stuckSettlingDxBuf.subarray(0, count),
-      this._stuckSettlingDyBuf.subarray(0, count),
-      this._stuckSettlingFlagsBuf.subarray(0, count),
-      this._stuckOutTicksBuf.subarray(0, count),
-      this._stuckOutReplanBuf.subarray(0, count),
-      STUCK_VEL_THRESHOLD,
-      STUCK_TICK_THRESHOLD,
-      ARRIVAL_RADIUS,
-    );
-
-    for (let i = 0; i < count; i++) {
-      const entity = this._stuckEntitiesBuf[i];
-      const unit = entity.unit;
-      if (!unit) {
-        this._stuckEntitiesBuf[i] = undefined as unknown as Entity;
-        continue;
-      }
-
-      unit.stuckTicks = this._stuckOutTicksBuf[i];
-      if (this._stuckOutReplanBuf[i] === 0) {
-        this._stuckEntitiesBuf[i] = undefined as unknown as Entity;
-        continue;
-      }
-      if (this.replansThisTick >= MAX_REPLANS_PER_TICK) {
-        this._stuckEntitiesBuf[i] = undefined as unknown as Entity;
-        continue;
-      }
-      if (this.tryReplan(entity)) {
-        unit.stuckTicks = 0;
-        this.replansThisTick++;
-      } else {
-        // Replan didn't improve the unit's active path — most often the
-        // planner bailed (target unreachable from current position
-        // under the JP-expansion budget) or the action type isn't
-        // replan-eligible (patrol / build / repair). Either way,
-        // hammering the planner again next tick won't help. Set
-        // stuckTicks to a negative cooldown so the unit waits a
-        // few seconds before its next eligibility window. The
-        // active path stays untouched (tryReplan didn't replace it)
-        // so the unit keeps trying its existing route.
-        unit.stuckTicks = REPLAN_FAILURE_COOLDOWN;
-      }
-      this._stuckEntitiesBuf[i] = undefined as unknown as Entity;
     }
   }
 
@@ -1421,7 +1275,7 @@ export class Simulation {
     this.deadEntityCleanup.reset();
     this.arrivalController.reset();
     this.flyingLoiter.reset();
-    this._stuckEntitiesBuf.length = 0;
+    this.stuckReplanController.reset();
     this.combatHaltController.reset();
     this.world.clearPendingDeathCheckIds();
     resetEnergyBuffers(this.energyBuffers);
