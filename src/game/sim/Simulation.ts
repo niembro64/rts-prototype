@@ -3,10 +3,6 @@ import { CommandQueue } from './commands';
 import type { Entity, EntityId, PlayerId, Unit, UnitAction, UnitPathPoint } from './types';
 import { NO_ENTITY_ID } from './types';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
-import {
-  buildUnitDeathEvent,
-  buildBuildingDeathEvent,
-} from './combat/damageHelpers';
 import { magnitude } from '../math';
 import { executeCommand, type CommandContext } from './commandExecution';
 import { distributeEnergy, createEnergyBuffers, resetEnergyBuffers, type EnergyBuffers } from './energyDistribution';
@@ -96,7 +92,7 @@ import {
 } from './SimulationEventQueues';
 import { resolveCommanderGameOverWinner } from './SimulationGameOver';
 import { SimulationDeathExplosionPlanner } from './SimulationDeathExplosionPlanner';
-import { SimulationDeathCleanupClassifier } from './SimulationDeathCleanupClassifier';
+import { SimulationDeadEntityCleanup } from './SimulationDeadEntityCleanup';
 
 type ActiveMovementTarget = UnitPathPoint & {
   isFinalActionPoint: boolean;
@@ -163,7 +159,7 @@ export class Simulation {
   private constructionSystem: ConstructionSystem;
   private damageSystem: DamageSystem;
   private deathExplosionPlanner: SimulationDeathExplosionPlanner;
-  private deathCleanupClassifier: SimulationDeathCleanupClassifier;
+  private deadEntityCleanup: SimulationDeadEntityCleanup;
   private forceAccumulator: ForceAccumulator = new ForceAccumulator();
   private windState: WindState = sampleWindState(0);
   private windPowerTracker = new WindPowerTracker();
@@ -197,17 +193,10 @@ export class Simulation {
   // owns double-buffer swaps so snapshot drains don't allocate.
   private eventQueues = new SimulationEventQueues();
 
-  // Reusable buffers for cleanupDeadEntities (avoid per-tick allocations)
   private _deadUnitIdsBuf: EntityId[] = [];
   private _deadBuildingIdsBuf: EntityId[] = [];
-  private _deathCheckIdsBuf: EntityId[] = [];
   private _movingUnitsBuf: Entity[] = [];
   private _arrivalEntitiesBuf: Entity[] = [];
-  private _cleanupDeadUnitIdSet = new Set<EntityId>();
-  private _cleanupDeadBuildingIdSet = new Set<EntityId>();
-  private _cleanupDeadTurretIdSet = new Set<EntityId>();
-  private _cleanupSyntheticDeathEventIds = new Set<EntityId>();
-  private _cleanupDeathContexts = new Map<EntityId, DeathContext>();
   private _arrivalSlotsBuf = new Uint32Array(0);
   private _arrivalDxBuf = new Float64Array(0);
   private _arrivalDyBuf = new Float64Array(0);
@@ -302,7 +291,11 @@ export class Simulation {
       this.damageSystem,
       this.forceAccumulator,
     );
-    this.deathCleanupClassifier = new SimulationDeathCleanupClassifier(this.world);
+    this.deadEntityCleanup = new SimulationDeadEntityCleanup(
+      this.world,
+      this.eventQueues,
+      this.deathExplosionPlanner,
+    );
   }
 
   // AI player IDs (for auto-production)
@@ -712,122 +705,7 @@ export class Simulation {
     // Safety cleanup - remove any dead entities that slipped through.
     // WorldState records ids whose HP changed, so this drains only
     // those candidates instead of walking every unit/building.
-    this.cleanupDeadEntities();
-  }
-
-  // Cleanup pass - removes any entities with HP <= 0 that weren't caught by normal death handling
-  // This is a safety net to ensure dead entities don't persist in the world
-  private cleanupDeadEntities(): void {
-    const deathCheckIds = this._deathCheckIdsBuf;
-    const deadUnitIds = this._deadUnitIdsBuf;
-    const deadBuildingIds = this._deadBuildingIdsBuf;
-    deadUnitIds.length = 0;
-    deadBuildingIds.length = 0;
-    this.world.drainPendingDeathCheckIds(deathCheckIds);
-    if (deathCheckIds.length === 0) return;
-
-    this.deathCleanupClassifier.classify(deathCheckIds, deadUnitIds, deadBuildingIds);
-    deathCheckIds.length = 0;
-
-    if (deadUnitIds.length > 0 || deadBuildingIds.length > 0) {
-      const deadUnitSet = this._cleanupDeadUnitIdSet;
-      const deadBuildingSet = this._cleanupDeadBuildingIdSet;
-      const deadTurretSet = this._cleanupDeadTurretIdSet;
-      const syntheticDeathEventIds = this._cleanupSyntheticDeathEventIds;
-      const deathContexts = this._cleanupDeathContexts;
-      deadUnitSet.clear();
-      deadBuildingSet.clear();
-      deadTurretSet.clear();
-      syntheticDeathEventIds.clear();
-      deathContexts.clear();
-      for (const id of deadUnitIds) {
-        deadUnitSet.add(id);
-        syntheticDeathEventIds.add(id);
-      }
-      for (const id of deadBuildingIds) {
-        deadBuildingSet.add(id);
-        syntheticDeathEventIds.add(id);
-      }
-      this.deathExplosionPlanner.detonate(
-        deadUnitSet,
-        deadBuildingSet,
-        deadTurretSet,
-        this.eventQueues.simEvents,
-        deathContexts,
-      );
-      deadUnitIds.length = 0;
-      deadBuildingIds.length = 0;
-      for (const id of deadUnitSet) deadUnitIds.push(id);
-      for (const id of deadBuildingSet) deadBuildingIds.push(id);
-    }
-
-    // Remove dead entities from spatial grid, notify callbacks, and remove from world
-    if (deadUnitIds.length > 0) {
-      for (const id of deadUnitIds) {
-        const entity = this.world.getEntity(id);
-        if (entity) {
-          // Emit laserStop for the dying entity's own beam weapons
-          for (const evt of emitLaserStopsForEntity(entity)) {
-            this.eventQueues.simEvents.push(evt);
-          }
-          // Emit laserStop for any beam weapons across the world targeting this entity
-          for (const evt of emitLaserStopsForTarget(this.world, id)) {
-            this.eventQueues.simEvents.push(evt);
-          }
-          // Emit shieldStop for the dying entity's shield weapons
-          for (const evt of emitShieldStopsForEntity(entity)) {
-            this.eventQueues.simEvents.push(evt);
-          }
-          // Synthesize a death SimEvent so the renderer still fires a
-          // material explosion for units killed outside the normal
-          // damage-pass path (e.g. bleed-out, anything
-          // that sets hp<=0 without going through collectKills*).
-          // Without this, the unit just vanishes silently.
-          if (this._cleanupSyntheticDeathEventIds.has(id)) {
-            this.emitSyntheticDeathEvent(entity);
-          }
-        }
-        spatialGrid.removeUnit(id);
-      }
-      const onUnitDeath = this.onUnitDeath;
-      if (onUnitDeath !== null) onUnitDeath(deadUnitIds, null);
-      for (const id of deadUnitIds) {
-        this.world.removeEntity(id);
-      }
-    }
-
-    if (deadBuildingIds.length > 0) {
-      for (const id of deadBuildingIds) {
-        const building = this.world.getEntity(id);
-        if (building && this._cleanupSyntheticDeathEventIds.has(id)) {
-          this.emitSyntheticDeathEvent(building);
-        }
-        spatialGrid.removeBuilding(id);
-      }
-      const onBuildingDeath = this.onBuildingDeath;
-      if (onBuildingDeath !== null) onBuildingDeath(deadBuildingIds);
-      for (const id of deadBuildingIds) {
-        this.world.removeEntity(id);
-      }
-    }
-  }
-
-  // Build a death SimEvent for entities dying outside the normal
-  // collision-handler path (anything that mutates hp
-  // directly). Delegates to the shared buildUnitDeathEvent /
-  // buildBuildingDeathEvent so the shape can't drift from the damage-
-  // path kills. There is no turret to credit here, so provenance lives
-  // in sourceType/sourceKey and turretBlueprintId remains a weapon/audio key.
-  private emitSyntheticDeathEvent(entity: Entity): void {
-    if (entity.unit) {
-      this.eventQueues.simEvents.push(
-        buildUnitDeathEvent(entity, entity.id, entity.unit.unitBlueprintId ?? '', undefined, 'unit'),
-      );
-    } else if (entity.building) {
-      this.eventQueues.simEvents.push(
-        buildBuildingDeathEvent(entity, entity.id, entity.buildingBlueprintId ?? '', 'building'),
-      );
-    }
+    this.deadEntityCleanup.run(this.onUnitDeath, this.onBuildingDeath);
   }
 
   private isActivePathValid(
@@ -2164,7 +2042,7 @@ export class Simulation {
     this.eventQueues.reset();
     this._deadUnitIdsBuf.length = 0;
     this._deadBuildingIdsBuf.length = 0;
-    this._deathCheckIdsBuf.length = 0;
+    this.deadEntityCleanup.reset();
     this._arrivalCount = 0;
     this._arrivalEntitiesBuf.length = 0;
     this._arrivalCompletionCount = 0;
