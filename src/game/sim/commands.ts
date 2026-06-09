@@ -11,6 +11,7 @@ export type {
   SetRepeatQueueCommand,
   SetUnitMoveStateCommand,
   SetTrajectoryModeCommand,
+  SetCloakStateCommand,
   ClearSelectionCommand,
   PingCommand,
   ScanCommand,

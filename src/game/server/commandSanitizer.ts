@@ -20,6 +20,7 @@ import type {
   StopFactoryProductionCommand,
   SetFireEnabledCommand,
   SetBuildingActiveCommand,
+  SetCloakStateCommand,
   SetRepeatQueueCommand,
   SetTrajectoryModeCommand,
   SetUnitMoveStateCommand,
@@ -83,6 +84,8 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       return sanitizeSetUnitMoveStateCommand(command, tick);
     case 'setTrajectoryMode':
       return sanitizeSetTrajectoryModeCommand(command, tick);
+    case 'setCloakState':
+      return sanitizeSetCloakStateCommand(command, tick);
     case 'wait':
       return sanitizeWaitCommand(command, tick);
     case 'setFireEnabled':
@@ -398,6 +401,16 @@ function sanitizeSetTrajectoryModeCommand(
   return entityIds === null || !TRAJECTORY_MODES.includes(command.trajectoryMode)
     ? null
     : { type: 'setTrajectoryMode', tick, entityIds, trajectoryMode: command.trajectoryMode };
+}
+
+function sanitizeSetCloakStateCommand(
+  command: SetCloakStateCommand,
+  tick: number,
+): SetCloakStateCommand | null {
+  const entityIds = sanitizeEntityIdArray(command.entityIds);
+  return entityIds === null || typeof command.enabled !== 'boolean'
+    ? null
+    : { type: 'setCloakState', tick, entityIds, enabled: command.enabled };
 }
 
 function sanitizeSelfDestructCommand(

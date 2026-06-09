@@ -1881,7 +1881,7 @@
     "sensors": {
       "fullSightRadius": 1600,
       "radarRadius": 0,
-      "detectorRadius": 0,
+      "detectorRadius": 600,
       "trackingRadius": 0,
       "scanRadius": 0
     },

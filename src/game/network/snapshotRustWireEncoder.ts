@@ -510,6 +510,8 @@ function unitNeedsRawFallback(unit: SnapshotUnit): boolean {
     (unit.repeatQueue !== null && unit.repeatQueue !== undefined) ||
     (unit.moveState !== null && unit.moveState !== undefined) ||
     (unit.holdPosition !== null && unit.holdPosition !== undefined) ||
+    (unit.wantCloak !== null && unit.wantCloak !== undefined) ||
+    (unit.cloaked !== null && unit.cloaked !== undefined) ||
     unit.isCommander === false ||
     unit.build?.interrupted === true
   );

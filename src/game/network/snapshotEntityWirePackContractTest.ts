@@ -72,6 +72,8 @@ export function runSnapshotEntityWirePackContractTest(): void {
           repeatQueue: null,
           moveState: 'roam',
           holdPosition: false,
+          wantCloak: true,
+          cloaked: true,
           isCommander: null,
           buildTargetId: null,
           buildTargetIdPresent: false,
@@ -129,5 +131,9 @@ export function runSnapshotEntityWirePackContractTest(): void {
   assertContract(
     decodedRoamUnit?.unit?.fireState === 'returnFire',
     'unit return-fire state must survive compact entity wire round trip',
+  );
+  assertContract(
+    decodedRoamUnit?.unit?.wantCloak === true && decodedRoamUnit?.unit?.cloaked === true,
+    'unit cloak state must survive compact entity wire round trip',
   );
 }

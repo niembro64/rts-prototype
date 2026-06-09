@@ -3,6 +3,7 @@ import type {
   MoveCommand,
   SetFactoryGuardCommand,
   SetFireEnabledCommand,
+  SetCloakStateCommand,
   SetUnitMoveStateCommand,
   SkipCurrentOrderCommand,
   StartBuildCommand,
@@ -122,6 +123,17 @@ export function runCommandSanitizerContractTest(): void {
   assertContract(
     returnFireState.fireState === 'returnFire' && returnFireState.enabled === true,
     'setFireEnabled must accept and normalize the return-fire state',
+  );
+
+  const cloakState = sanitizeRequired<SetCloakStateCommand>(world, {
+    type: 'setCloakState',
+    tick: 7,
+    entityIds: [7],
+    enabled: true,
+  });
+  assertContract(
+    cloakState.enabled === true,
+    'setCloakState must accept enabled=true',
   );
 
   const formationSpeedMove = sanitizeRequired<MoveCommand>(world, {

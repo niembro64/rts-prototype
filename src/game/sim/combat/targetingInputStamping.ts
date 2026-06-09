@@ -47,6 +47,7 @@ import {
   CT_ENTITY_FLAG_HAS_COMBAT,
   CT_ENTITY_FLAG_FIRE_ENABLED,
   CT_ENTITY_FLAG_BUILDABLE_COMPLETE,
+  CT_ENTITY_FLAG_CLOAKED,
   CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS,
   CT_TURRET_CFG_NEEDS_BALLISTIC,
   CT_TURRET_CFG_VERTICAL_LAUNCHER,
@@ -82,8 +83,10 @@ import {
 } from '../blueprints';
 import {
   getEntityFullVisionRadius,
+  getEntityCloakDetectionRadius,
   getEntityRadarRadius,
   getEntityVisibilityPadding,
+  isEntityCloaked,
 } from '../sensorCoverage';
 import { isEntityActive } from '../buildableHelpers';
 import {
@@ -576,6 +579,9 @@ function stampCombatTargetingEntityInto(
   if (isEntityActive(entity)) {
     entityFlags |= CT_ENTITY_FLAG_BUILDABLE_COMPLETE;
   }
+  if (isEntityCloaked(entity)) {
+    entityFlags |= CT_ENTITY_FLAG_CLOAKED;
+  }
 
   // LOCK-ON-03 — Stamp the entity's family + blueprint id so the Rust
   // exclusion gate can reject candidates by family/name without
@@ -606,12 +612,13 @@ function stampCombatTargetingEntityInto(
   // (not just its center) falls inside a vision/radar circle.
   const fullVisionRadius = getEntityFullVisionRadius(entity);
   const radarRadius = getEntityRadarRadius(entity);
+  const detectorRadius = getEntityCloakDetectionRadius(entity);
   const visibilityPadding = getEntityVisibilityPadding(entity);
   if (
     playerMaskBit(playerId) !== 0 &&
     hp > 0 &&
     (entityFlags & CT_ENTITY_FLAG_BUILDABLE_COMPLETE) !== 0 &&
-    (fullVisionRadius > 0 || radarRadius > 0)
+    (fullVisionRadius > 0 || radarRadius > 0 || detectorRadius > 0)
   ) {
     queueCombatTargetingSensorSourceSlot(slot);
   }
@@ -674,7 +681,7 @@ function stampCombatTargetingEntityInto(
     hostLockOn.building, hostLockOn.tower,
     hostLockOn.unit, hostLockOn.turret,
     hostLockOn.shot,
-    fullVisionRadius, radarRadius, visibilityPadding,
+    fullVisionRadius, radarRadius, detectorRadius, visibilityPadding,
     priorityTargetId === null ? -1 : priorityTargetId,
     priorityPointPresent,
     priorityPointX, priorityPointY, priorityPointZ,

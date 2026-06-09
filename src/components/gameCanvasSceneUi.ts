@@ -99,6 +99,9 @@ export function useGameCanvasSceneUi({
     fireState: 'fireAtWill',
     hasTrajectoryControl: false,
     trajectoryMode: 'auto',
+    hasCloakControl: false,
+    wantsCloak: false,
+    isCloaked: false,
     hasBuildingActiveControl: false,
     buildingsActive: false,
     hasSelfDestructable: false,
@@ -235,6 +238,9 @@ export function useGameCanvasSceneUi({
     },
     toggleTrajectoryMode: () => {
       getActiveBattleScene()?.toggleTrajectoryMode();
+    },
+    toggleCloakState: () => {
+      getActiveBattleScene()?.toggleCloakState();
     },
     toggleSelectedWait: (queue, queueFront, queueInsertIndex) => {
       getActiveBattleScene()?.toggleSelectedWait(queue, queueFront, queueInsertIndex);

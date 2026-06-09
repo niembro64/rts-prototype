@@ -12,6 +12,11 @@ export function getBuildingAuthoredRadarRadius(buildingBlueprintId: BuildingBlue
   return getBuildingConfig(buildingBlueprintId).sensors.radarRadius;
 }
 
+export function getBuildingAuthoredDetectorRadius(buildingBlueprintId: BuildingBlueprintId | null): number {
+  if (buildingBlueprintId === null) return 0;
+  return getBuildingConfig(buildingBlueprintId).sensors.detectorRadius;
+}
+
 /** True when the entity contributes a normal line-of-sight source
  *  (alive, finished, and explicitly authored with full sight). */
 export function canEntityProvideFullVision(entity: Entity): boolean {
@@ -36,6 +41,15 @@ export function canEntityProvideRadarVision(entity: Entity): boolean {
   return getBuildingAuthoredRadarRadius(entity.buildingBlueprintId) > 0;
 }
 
+export function canEntityProvideCloakDetection(entity: Entity): boolean {
+  if (entity.unit) return entity.unit.hp > 0 && entity.unit.sensors.detectorRadius > 0;
+  if (!entity.building || entity.building.hp <= 0) return false;
+  if (isBuildBlockingActivation(entity.buildable)) return false;
+  const activeState = entity.building.activeState;
+  if (activeState !== null && activeState.open === false) return false;
+  return getBuildingAuthoredDetectorRadius(entity.buildingBlueprintId) > 0;
+}
+
 export function getEntityFullVisionRadius(entity: Entity): number {
   if (!canEntityProvideFullVision(entity)) return 0;
   return entity.unit
@@ -48,6 +62,17 @@ export function getEntityRadarRadius(entity: Entity): number {
   return entity.unit
     ? entity.unit.sensors.radarRadius
     : getBuildingAuthoredRadarRadius(entity.buildingBlueprintId);
+}
+
+export function getEntityCloakDetectionRadius(entity: Entity): number {
+  if (!canEntityProvideCloakDetection(entity)) return 0;
+  return entity.unit
+    ? entity.unit.sensors.detectorRadius
+    : getBuildingAuthoredDetectorRadius(entity.buildingBlueprintId);
+}
+
+export function isEntityCloaked(entity: Entity): boolean {
+  return entity.unit?.cloaked === true;
 }
 
 /** Entity-size padding used by coverage queries so a target counts as

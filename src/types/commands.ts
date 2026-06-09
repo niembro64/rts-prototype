@@ -15,6 +15,7 @@ export type CommandType =
   | 'setRepeatQueue'
   | 'setUnitMoveState'
   | 'setTrajectoryMode'
+  | 'setCloakState'
   | 'clearSelection'
   | 'ping'
   | 'scan'
@@ -126,6 +127,12 @@ export type SetTrajectoryModeCommand = BaseCommand & {
   type: 'setTrajectoryMode';
   entityIds: EntityId[];
   trajectoryMode: CombatTrajectoryMode;
+};
+
+export type SetCloakStateCommand = BaseCommand & {
+  type: 'setCloakState';
+  entityIds: EntityId[];
+  enabled: boolean;
 };
 
 export type ClearSelectionCommand = BaseCommand & {
@@ -444,6 +451,7 @@ export type Command =
   | SetRepeatQueueCommand
   | SetUnitMoveStateCommand
   | SetTrajectoryModeCommand
+  | SetCloakStateCommand
   | ClearSelectionCommand
   | PingCommand
   | ScanCommand

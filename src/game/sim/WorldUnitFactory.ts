@@ -104,6 +104,8 @@ function createUnitBaseEntity({
       actionHash: 0,
       repeatQueue: false,
       moveState: 'maneuver',
+      wantCloak: false,
+      cloaked: false,
       patrolStartIndex: null,
       activePath: null,
       flyingLoiterTargetX: null,

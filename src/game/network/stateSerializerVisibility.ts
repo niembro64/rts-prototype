@@ -5,10 +5,13 @@ import { hasFogOfWarLineOfSight } from '../sim/combat/lineOfSight';
 import { spatialGrid } from '../sim/SpatialGrid';
 import {
   canEntityProvideFullVision,
+  canEntityProvideCloakDetection,
   canEntityProvideRadarVision,
+  getEntityCloakDetectionRadius,
   getEntityFullVisionRadius,
   getEntityRadarRadius,
   getEntityVisibilityPadding,
+  isEntityCloaked,
 } from '../sim/sensorCoverage';
 import { getSimWasm } from '../sim-wasm/init';
 import {
@@ -19,12 +22,16 @@ import {
 
 export {
   canEntityProvideFullVision,
+  canEntityProvideCloakDetection,
   canEntityProvideRadarVision,
+  getBuildingAuthoredDetectorRadius,
   getBuildingAuthoredFullSightRadius,
   getBuildingAuthoredRadarRadius,
+  getEntityCloakDetectionRadius,
   getEntityFullVisionRadius,
   getEntityRadarRadius,
   getEntityVisibilityPadding,
+  isEntityCloaked,
 } from '../sim/sensorCoverage';
 
 export const VISION_CELL_SIZE = 512;
@@ -129,6 +136,8 @@ export class SnapshotVisibility {
   private readonly earshotSourceCells = new Map<number, number[]>();
   private readonly radarSources: VisionSource[] = [];
   private readonly radarSourceCells = new Map<number, number[]>();
+  private readonly detectorSources: VisionSource[] = [];
+  private readonly detectorSourceCells = new Map<number, number[]>();
   private readonly visibleEntityIds: EntityId[] = [];
   private readonly radarEntityIds: EntityId[] = [];
   private readonly visibleEntityIdSet = new Set<EntityId>();
@@ -281,12 +290,14 @@ export class SnapshotVisibility {
     const cached = this.entityVisibilityMemo.get(entity.id);
     if (cached !== undefined) return cached;
     const padding = getEntityVisibilityPadding(entity);
-    const result = this.isEntityVisibleWithLos(
-      entity.transform.x,
-      entity.transform.y,
-      entity.transform.z,
-      padding,
-    );
+    const result = isEntityCloaked(entity)
+      ? this.isEntityDetected(entity.transform.x, entity.transform.y, padding)
+      : this.isEntityVisibleWithLos(
+          entity.transform.x,
+          entity.transform.y,
+          entity.transform.z,
+          padding,
+        );
     this.entityVisibilityMemo.set(entity.id, result);
     return result;
   }
@@ -325,6 +336,10 @@ export class SnapshotVisibility {
     return false;
   }
 
+  private isEntityDetected(x: number, y: number, padding: number): boolean {
+    return this.isPointVisibleIn(this.detectorSources, this.detectorSourceCells, x, y, padding);
+  }
+
   /** Minimap-tier check: full vision OR radar coverage. Used by the
    *  minimap serializer so radar buildings reveal enemy positions
    *  without leaking the rest of the snapshot. */
@@ -333,6 +348,9 @@ export class SnapshotVisibility {
     const ownership = entity.ownership;
     if (this.isOwnedByRecipientOrAlly(ownership !== null ? ownership.playerId : null)) return true;
     const padding = getEntityVisibilityPadding(entity);
+    if (isEntityCloaked(entity)) {
+      return this.isEntityDetected(entity.transform.x, entity.transform.y, padding);
+    }
     if (this.isPointVisibleIn(this.fullSources, this.fullSourceCells, entity.transform.x, entity.transform.y, padding)) {
       return true;
     }
@@ -381,6 +399,7 @@ export class SnapshotVisibility {
 
     this.addSourceEntityCandidates(this.fullSources, true);
     this.addSourceEntityCandidates(this.radarSources, false);
+    this.addSourceEntityCandidates(this.detectorSources, true);
   }
 
   private addOwnedEntityIds(playerId: PlayerId): void {
@@ -581,6 +600,16 @@ export class SnapshotVisibility {
             getEntityRadarRadius(entity),
           );
         }
+        if (canEntityProvideCloakDetection(entity)) {
+          this.addSource(
+            this.detectorSources,
+            this.detectorSourceCells,
+            entity.transform.x,
+            entity.transform.y,
+            eyeZ,
+            getEntityCloakDetectionRadius(entity),
+          );
+        }
       }
     }
   }
@@ -613,6 +642,14 @@ export class SnapshotVisibility {
       const sourceIndex = this.addSource(
         this.fullSources,
         this.fullSourceCells,
+        pulse.x,
+        pulse.y,
+        pulse.z + VISION_SOURCE_EYE_HEIGHT,
+        pulse.radius,
+      );
+      this.addSource(
+        this.detectorSources,
+        this.detectorSourceCells,
         pulse.x,
         pulse.y,
         pulse.z + VISION_SOURCE_EYE_HEIGHT,

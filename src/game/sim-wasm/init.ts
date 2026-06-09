@@ -2035,6 +2035,7 @@ export const CT_ENTITY_FLAG_ALIVE = 1 << 0;
 export const CT_ENTITY_FLAG_HAS_COMBAT = 1 << 1;
 export const CT_ENTITY_FLAG_FIRE_ENABLED = 1 << 2;
 export const CT_ENTITY_FLAG_BUILDABLE_COMPLETE = 1 << 3;
+export const CT_ENTITY_FLAG_CLOAKED = 1 << 4;
 
 /** AIM-08.1 — Turret-config-flag bits packed into the combat-targeting
  *  turret slab's `configFlags` field. Mirrors `CT_TURRET_CFG_*`. */
@@ -2165,6 +2166,7 @@ export interface CombatTargetingApi {
     lockOnShotIncludeMask: number,
     fullVisionRadius: number,
     radarRadius: number,
+    detectorRadius: number,
     detectionPadding: number,
     priorityTargetId: number,
     priorityPointPresent: number,

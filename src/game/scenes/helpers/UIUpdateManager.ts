@@ -176,6 +176,13 @@ function unitMoveStateLabel(moveState: UnitMoveState): string {
   }
 }
 
+function cloakStateLabel(entity: Entity): string | null {
+  const unit = entity.unit;
+  if (unit === null) return null;
+  if (unit.cloaked === true) return 'Cloaked';
+  return unit.wantCloak === true ? 'Cloaking' : null;
+}
+
 function buildingActiveStateLabel(entity: Entity): string | null {
   if (!buildingBlueprintHasActiveState(entity.buildingBlueprintId)) return null;
   const state = entity.building !== null ? entity.building.activeState : null;
@@ -251,11 +258,15 @@ function addMultiSelectionStateDetails(
   let repeatCount = 0;
   let holdPositionCount = 0;
   let roamCount = 0;
+  let wantCloakCount = 0;
+  let cloakedCount = 0;
   for (let i = 0; i < selectedUnits.length; i++) {
     if (selectedUnits[i].unit?.actions[0]?.type === 'wait') waitingCount++;
     if (selectedUnits[i].unit?.repeatQueue === true) repeatCount++;
     if (selectedUnits[i].unit?.moveState === 'holdPosition') holdPositionCount++;
     if (selectedUnits[i].unit?.moveState === 'roam') roamCount++;
+    if (selectedUnits[i].unit?.wantCloak === true) wantCloakCount++;
+    if (selectedUnits[i].unit?.cloaked === true) cloakedCount++;
   }
   if (waitingCount > 0) {
     details.push({
@@ -282,6 +293,21 @@ function addMultiSelectionStateDetails(
       value: roamCount === selectedUnits.length
         ? 'Roam'
         : `${roamCount}/${selectedUnits.length} Roam`,
+    });
+  }
+  if (cloakedCount > 0) {
+    details.push({
+      label: 'Cloak',
+      value: cloakedCount === selectedUnits.length
+        ? 'Cloaked'
+        : `${cloakedCount}/${selectedUnits.length} Cloaked`,
+    });
+  } else if (wantCloakCount > 0) {
+    details.push({
+      label: 'Cloak',
+      value: wantCloakCount === selectedUnits.length
+        ? 'Cloaking'
+        : `${wantCloakCount}/${selectedUnits.length} Cloaking`,
     });
   }
 
@@ -349,6 +375,8 @@ function buildSingleSelectionDetails(entity: Entity): SelectionInfo['details'] {
       if (fire !== null) details.push({ label: 'Fire', value: fire });
       const trajectory = trajectoryStateLabel(entity);
       if (trajectory !== null) details.push({ label: 'Trajectory', value: trajectory });
+      const cloak = cloakStateLabel(entity);
+      if (cloak !== null) details.push({ label: 'Cloak', value: cloak });
       if (entity.unit.actions[0]?.type === 'wait') details.push({ label: 'Wait', value: 'On' });
       if (entity.unit.repeatQueue === true) details.push({ label: 'Repeat', value: 'On' });
       if (entity.unit.moveState !== 'maneuver') {
@@ -493,6 +521,8 @@ export function buildSelectionInfo(
   let holdPositionCount = 0;
   let maneuverCount = 0;
   let roamCount = 0;
+  let wantCloakCount = 0;
+  let cloakedCount = 0;
   let hasQueuedOrders = false;
   for (let i = 0; i < selectedUnits.length; i++) {
     const selectedUnit = selectedUnits[i];
@@ -502,6 +532,8 @@ export function buildSelectionInfo(
     if (selectedUnit.unit?.moveState === 'holdPosition') holdPositionCount++;
     if (selectedUnit.unit?.moveState === 'roam') roamCount++;
     if (selectedUnit.unit?.moveState === 'maneuver') maneuverCount++;
+    if (selectedUnit.unit?.wantCloak === true) wantCloakCount++;
+    if (selectedUnit.unit?.cloaked === true) cloakedCount++;
     if (actions && hasQueuedActionIntents(actions)) hasQueuedOrders = true;
     const combat = selectedUnit.combat;
     if (combat && combat.turrets.length > 0) {
@@ -641,6 +673,9 @@ export function buildSelectionInfo(
       : lowTrajectoryCount === trajectoryControlCount
         ? 'low'
         : 'auto',
+    hasCloakControl: selectedUnits.length > 0 && selectedTowers.length === 0 && selectedBuildings.length === 0,
+    wantsCloak: selectedUnits.length > 0 && wantCloakCount === selectedUnits.length,
+    isCloaked: selectedUnits.length > 0 && cloakedCount === selectedUnits.length,
     hasBuildingActiveControl: activeBuildingCount > 0,
     buildingsActive: activeBuildingCount > 0 && allBuildingsOpen,
     hasSelfDestructable,

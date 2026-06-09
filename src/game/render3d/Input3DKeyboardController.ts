@@ -50,6 +50,7 @@ type Input3DKeyboardControllerConfig = {
   stopSelectedFactoryProduction: () => void;
   toggleUnitMoveState: () => void;
   toggleTrajectoryMode: () => void;
+  toggleCloakState: () => void;
   toggleSelectedFire: () => void;
   toggleBuildingActive: () => void;
   selfDestructSelected: () => void;
@@ -366,6 +367,9 @@ export class Input3DKeyboardController {
         break;
       case 'command.trajectoryToggle':
         this.config.toggleTrajectoryMode();
+        break;
+      case 'command.cloak':
+        this.config.toggleCloakState();
         break;
       case 'command.fireToggle':
         this.config.toggleSelectedFire();

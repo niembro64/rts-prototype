@@ -126,6 +126,22 @@ export function runCommandExecutionContractTest(): void {
     unit.combat?.fireState === 'returnFire' && unit.combat.fireEnabled === true,
     'setFireEnabled command should apply return-fire combat state',
   );
+  executeCommand({
+    world,
+    constructionSystem: construction,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  }, {
+    type: 'setCloakState',
+    tick: 1,
+    entityIds: [unit.id],
+    enabled: true,
+  });
+  assertContract(
+    unit.unit?.wantCloak === true && unit.unit.cloaked === true,
+    'setCloakState command should apply desired and active cloak state',
+  );
 
   const open = resolvePathableFormationTarget(world, grid, unit, 180, 240);
   assertNear(open.x, 180, 'open formation target x should remain exact');

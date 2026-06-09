@@ -284,6 +284,11 @@ function nextFireStateLabel(fireState: SelectionInfo['fireState']): string {
   }
 }
 
+function cloakStateLabel(selection: SelectionInfo): string {
+  if (selection.isCloaked) return 'Cloaked';
+  return selection.wantsCloak ? 'Cloaking' : 'Cloak';
+}
+
 function queueInsertOptionTitle(option: QueueInsertOption): string {
   return option.label === 'End'
     ? 'Insert queued commands at the end'
@@ -820,6 +825,18 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
         >
           <span class="btn-label">{{ moveStateLabel(selection.unitMoveState) }}</span>
           <span class="btn-key">{{ hotkey('command.moveState') }}</span>
+        </button>
+        <button
+          v-if="selection.hasCloakControl"
+          type="button"
+          class="action-btn"
+          :class="{ active: selection.wantsCloak || selection.isCloaked }"
+          :style="{ '--btn-color': BUTTON_COLORS.wait }"
+          :title="actionTitle(selection.wantsCloak ? 'Disable cloak' : 'Enable cloak', 'command.cloak')"
+          @click="actions.toggleCloakState()"
+        >
+          <span class="btn-label">{{ cloakStateLabel(selection) }}</span>
+          <span class="btn-key">{{ hotkey('command.cloak') }}</span>
         </button>
         <button
           type="button"

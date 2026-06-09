@@ -271,6 +271,7 @@ export class Input3DManager {
       stopSelectedFactoryProduction: () => this.stopSelectedFactoryProduction(),
       toggleUnitMoveState: () => this.toggleUnitMoveState(),
       toggleTrajectoryMode: () => this.toggleTrajectoryMode(),
+      toggleCloakState: () => this.toggleCloakState(),
       toggleSelectedFire: () => this.toggleSelectedFire(),
       toggleBuildingActive: () => this.toggleBuildingActive(),
       selfDestructSelected: () => this.selfDestructSelected(),
@@ -593,6 +594,10 @@ export class Input3DManager {
 
   toggleTrajectoryMode(): void {
     this.selectedCommands.setTrajectoryMode();
+  }
+
+  toggleCloakState(): void {
+    this.selectedCommands.setCloakState();
   }
 
   togglePingMode(): void {

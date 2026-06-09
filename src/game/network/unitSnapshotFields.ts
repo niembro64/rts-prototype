@@ -71,6 +71,8 @@ export function createNetworkUnitSnapshot(): NetworkUnitSnapshot {
     repeatQueue: null,
     moveState: null,
     holdPosition: null,
+    wantCloak: null,
+    cloaked: null,
     isCommander: null,
     buildTargetId: null,
     buildTargetIdPresent: false,
@@ -178,6 +180,16 @@ export function applyNetworkUnitCommandState(
     unit.moveState = src.holdPosition === true ? 'holdPosition' : 'maneuver';
   } else if (isFull) {
     unit.moveState = 'maneuver';
+  }
+  if (src.wantCloak !== null && src.wantCloak !== undefined) {
+    unit.wantCloak = src.wantCloak === true;
+  } else if (isFull) {
+    unit.wantCloak = false;
+  }
+  if (src.cloaked !== null && src.cloaked !== undefined) {
+    unit.cloaked = src.cloaked === true;
+  } else if (isFull) {
+    unit.cloaked = false;
   }
 }
 
@@ -446,6 +458,8 @@ export function copyNetworkUnitSnapshotInto(
   dst.repeatQueue = src.repeatQueue ?? null;
   dst.moveState = src.moveState ?? null;
   dst.holdPosition = src.holdPosition ?? null;
+  dst.wantCloak = src.wantCloak ?? null;
+  dst.cloaked = src.cloaked ?? null;
   dst.isCommander = src.isCommander;
   dst.buildTargetId = src.buildTargetId;
   dst.buildTargetIdPresent = src.buildTargetIdPresent;

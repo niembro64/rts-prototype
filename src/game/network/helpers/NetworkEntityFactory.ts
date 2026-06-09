@@ -311,6 +311,8 @@ function createUnitFromNetwork(
       actionHash: computeUnitActionHash(actions),
       repeatQueue: u !== null && u.repeatQueue === true,
       moveState: readNetworkUnitMoveState(u),
+      wantCloak: u !== null && u.wantCloak === true,
+      cloaked: u !== null && u.cloaked === true,
       patrolStartIndex: null,
       activePath: null,
       flyingLoiterTargetX: null,

@@ -51,6 +51,9 @@ export type SelectionInfo = {
   fireState: CombatFireState | 'mixed';
   hasTrajectoryControl: boolean;
   trajectoryMode: CombatTrajectoryMode;
+  hasCloakControl: boolean;
+  wantsCloak: boolean;
+  isCloaked: boolean;
   /** True iff the selection contains at least one building whose
    *  BuildingBlueprintId uses the ON/OFF active-state mechanic
    *  (solar/wind/extractor/radar/resourceConverter). Gates the ON/OFF button. */
@@ -118,6 +121,7 @@ export type SelectionActions = {
   setQueueInsertIndex: (index: number | null) => void;
   toggleUnitMoveState: () => void;
   toggleTrajectoryMode: () => void;
+  toggleCloakState: () => void;
   toggleSelectedWait: (queue?: boolean, queueFront?: boolean, queueInsertIndex?: number) => void;
   toggleSelectedFire: () => void;
   /** ON/OFF for producer buildings in the selection. */

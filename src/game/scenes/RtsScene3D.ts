@@ -850,6 +850,10 @@ export class RtsScene3D {
     this.inputManager?.toggleTrajectoryMode();
   }
 
+  public toggleCloakState(): void {
+    this.inputManager?.toggleCloakState();
+  }
+
   public toggleSelectedFire(): void {
     this.inputManager?.toggleSelectedFire();
   }

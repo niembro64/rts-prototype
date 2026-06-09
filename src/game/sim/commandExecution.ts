@@ -23,6 +23,7 @@ import type {
   SkipCurrentOrderCommand,
   SetFireEnabledCommand,
   SetBuildingActiveCommand,
+  SetCloakStateCommand,
   SetRepeatQueueCommand,
   SetTrajectoryModeCommand,
   SetUnitMoveStateCommand,
@@ -164,6 +165,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'setTrajectoryMode':
       executeSetTrajectoryModeCommand(ctx, command);
+      break;
+    case 'setCloakState':
+      executeSetCloakStateCommand(ctx, command);
       break;
     case 'wait':
       executeWaitCommand(ctx, command);
@@ -720,6 +724,19 @@ function executeSetTrajectoryModeCommand(ctx: CommandContext, command: SetTrajec
     combat.trajectoryMode = trajectoryMode;
     combat.nextCombatProbeTick = -1;
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_COMBAT_MODE | ENTITY_CHANGED_TURRETS);
+  }
+}
+
+function executeSetCloakStateCommand(ctx: CommandContext, command: SetCloakStateCommand): void {
+  const enabled = command.enabled === true;
+  for (let i = 0; i < command.entityIds.length; i++) {
+    const entity = ctx.world.getEntity(command.entityIds[i]);
+    const unit = entity !== undefined ? entity.unit : null;
+    if (entity === undefined || unit === null) continue;
+    if (unit.wantCloak === enabled && unit.cloaked === enabled) continue;
+    unit.wantCloak = enabled;
+    unit.cloaked = enabled;
+    ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_COMBAT_MODE | ENTITY_CHANGED_ACTIONS);
   }
 }
 

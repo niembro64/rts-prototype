@@ -608,7 +608,9 @@ function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void 
       (entity.unit.trajectoryMode !== null && entity.unit.trajectoryMode !== undefined) ||
       (entity.unit.repeatQueue !== null && entity.unit.repeatQueue !== undefined) ||
       (entity.unit.moveState !== null && entity.unit.moveState !== undefined) ||
-      (entity.unit.holdPosition !== null && entity.unit.holdPosition !== undefined)
+      (entity.unit.holdPosition !== null && entity.unit.holdPosition !== undefined) ||
+      (entity.unit.wantCloak !== null && entity.unit.wantCloak !== undefined) ||
+      (entity.unit.cloaked !== null && entity.unit.cloaked !== undefined)
     ) {
       appendRawEntityWireRow();
       return;
@@ -675,6 +677,19 @@ function directEntityHasFactoryRoute(entity: Entity): boolean {
 
 function directEntityHasFactoryGuard(entity: Entity): boolean {
   return entity.factory?.guardTargetId !== null && entity.factory?.guardTargetId !== undefined;
+}
+
+function unitHasNonDefaultCommandState(entity: Entity): boolean {
+  const unit = entity.unit;
+  if (unit === null) return false;
+  const combat = entity.combat;
+  const fireState = combat?.fireState ?? (combat?.fireEnabled === false ? 'holdFire' : 'fireAtWill');
+  return unit.repeatQueue === true ||
+    unit.moveState !== 'maneuver' ||
+    unit.wantCloak === true ||
+    unit.cloaked === true ||
+    fireState !== 'fireAtWill' ||
+    (combat !== null && combat.trajectoryMode !== 'auto');
 }
 
 export function canAppendEntitySnapshotWireRowDirect(entity: Entity): boolean {
@@ -1047,6 +1062,13 @@ export function appendEntitySnapshotWireRowDirect(
       hasOrientationFields ||
       hasAngularVelocityFields;
     if (hasUnitFields) {
+      const hasCommandStateDelta = !isFull &&
+        (changedMask & (ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_COMBAT_MODE)) !== 0;
+      if (hasCommandStateDelta || (isFull && unitHasNonDefaultCommandState(entity))) {
+        const dto = serializeEntitySnapshot(entity, changedFields, world, visibility);
+        if (dto !== null) appendEntitySnapshotWireRow(dto);
+        return;
+      }
       appendDirectUnitEntityWireRow(entity, changedFields, world, visibility);
       return;
     }
@@ -1124,6 +1146,8 @@ export function serializeEntitySnapshot(
       u.repeatQueue = null;
       u.moveState = null;
       u.holdPosition = null;
+      u.wantCloak = null;
+      u.cloaked = null;
 
       if (isFull) {
         writeNetworkUnitStaticFields(
@@ -1180,11 +1204,17 @@ export function serializeEntitySnapshot(
 
       if (isFull || (changedFields! & ENTITY_CHANGED_COMBAT_MODE)) {
         writeNetworkUnitCombatMode(u, entity);
+        u.cloaked = entity.unit.cloaked === true
+          ? true
+          : isFull
+            ? null
+            : false;
         if (!isFull && entity.combat?.trajectoryMode === 'auto') {
           u.trajectoryMode = 'auto';
         }
       } else {
         clearNetworkUnitCombatMode(u);
+        u.cloaked = null;
       }
 
       if (isFull || (changedFields! & ENTITY_CHANGED_HP)) {
@@ -1218,6 +1248,11 @@ export function serializeEntitySnapshot(
             ? null
             : 'maneuver';
         u.holdPosition = entity.unit.moveState === 'holdPosition'
+          ? true
+          : isFull
+            ? null
+            : false;
+        u.wantCloak = entity.unit.wantCloak === true
           ? true
           : isFull
             ? null

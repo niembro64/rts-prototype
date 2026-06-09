@@ -10,6 +10,7 @@ export type CommandHotkeyId =
   | 'command.factoryGuard'
   | 'command.moveState'
   | 'command.trajectoryToggle'
+  | 'command.cloak'
   | 'command.skipCurrent'
   | 'command.undoQueue'
   | 'command.clearQueue'
@@ -111,6 +112,7 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'command.factoryGuard',
   'command.moveState',
   'command.trajectoryToggle',
+  'command.cloak',
   'command.skipCurrent',
   'command.undoQueue',
   'command.clearQueue',
@@ -195,6 +197,7 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'command.factoryGuard': 'Factory Guard',
   'command.moveState': 'Move State',
   'command.trajectoryToggle': 'Trajectory Mode',
+  'command.cloak': 'Cloak',
   'command.skipCurrent': 'Skip Current Order',
   'command.undoQueue': 'Cancel Last Order',
   'command.clearQueue': 'Clear Orders',
@@ -299,6 +302,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'command.factoryGuard': [code('Ctrl+G', 'KeyG', { ctrl: true })],
     'command.moveState': [key('Alt+H', 'h', { alt: true })],
     'command.trajectoryToggle': [key('Alt+J', 'j', { alt: true })],
+    'command.cloak': [key('Alt+C', 'c', { alt: true })],
     'command.skipCurrent': [key('N', 'n', { shift: 'any' })],
     'command.undoQueue': [key('U', 'u', { shift: 'any' })],
     'command.clearQueue': [key('X', 'x', { shift: 'any' })],
@@ -378,6 +382,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'command.factoryGuard': [code('Ctrl+G', 'KeyG', { ctrl: true })],
     'command.moveState': [code(';', 'Semicolon', { shift: 'any' })],
     'command.trajectoryToggle': [code('Alt+J', 'KeyJ', { alt: true })],
+    'command.cloak': [code('K', 'KeyK', { shift: 'any' })],
     'command.skipCurrent': [code('N', 'KeyN', { shift: 'any' })],
     'command.undoQueue': [code('Ctrl+N', 'KeyN', { ctrl: true })],
     'command.clearQueue': [code('Ctrl+Shift+N', 'KeyN', { ctrl: true, shift: true })],
@@ -472,6 +477,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'command.factoryGuard': [code('Ctrl+G', 'KeyG', { ctrl: true })],
     'command.moveState': [code('Alt+H', 'KeyH', { alt: true })],
     'command.trajectoryToggle': [code('Alt+J', 'KeyJ', { alt: true })],
+    'command.cloak': [code('K', 'KeyK', { shift: 'any' })],
     'command.skipCurrent': [code('N', 'KeyN', { shift: 'any' })],
     'command.undoQueue': [code('Ctrl+N', 'KeyN', { ctrl: true })],
     'command.clearQueue': [code('Ctrl+Shift+N', 'KeyN', { ctrl: true, shift: true })],

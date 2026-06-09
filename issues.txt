@@ -32,9 +32,9 @@ BAR grid/legacy bindings and adding command buttons for missing BAR commands so
 visible hotkeys match the active keymap across the whole command surface.
 
 Issue: behavior/state toggles are incomplete. Implement missing BAR-equivalent
-states such as cloak/want-cloak, gather wait, and any related stateful command
-buttons in simulation, snapshots, command authorization, selection UI, hotkeys,
-and visible state indicators.
+states such as gather wait and any related stateful command buttons in
+simulation, snapshots, command authorization, selection UI, hotkeys, and visible
+state indicators.
 
 Issue: special abilities are incomplete. Add BAR Capture, Load Transport,
 Unload Transport, Resurrect, Resurrect Area, manual launch, and any
@@ -44,9 +44,8 @@ presentation exist.
 
 Issue: BAR gameplay functionality tied to missing commands is absent. Implement
 the systems needed by the missing command surface: transports, capture,
-resurrection/wreck fields, cloak/detection, unit stances, manual-launch
-weapons, replays where applicable, and complete faction/unit/factory/building
-rosters.
+resurrection/wreck fields, manual-launch weapons, replays where applicable,
+and complete faction/unit/factory/building rosters.
 
 Issue: BAR parity must be extended through the 3D/physics-first design, not
 implemented as flat 2D shortcuts. Transport/load/unload, resurrection,

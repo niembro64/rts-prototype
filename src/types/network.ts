@@ -890,6 +890,13 @@ export type NetworkServerSnapshotEntity = {
     /** Legacy two-state mirror kept for older decoders. New code reads
      *  moveState first and falls back to this bit if absent. */
     holdPosition?: boolean | null;
+    /** Private owner command intent for cloak. Present on full private
+     *  records when enabled and on deltas that explicitly toggle it. */
+    wantCloak?: boolean | null;
+    /** Public active cloak state. Present when active and on deltas that
+     *  explicitly clear it; filtered snapshots hide foreign cloaked units
+     *  unless detector coverage reveals them. */
+    cloaked?: boolean | null;
     isCommander: boolean | null;
     buildTargetId: number | null;
     buildTargetIdPresent: boolean;

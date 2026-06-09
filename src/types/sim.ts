@@ -227,6 +227,13 @@ export type Unit = {
    *  `roam` keeps moving/chasing through engagements. Explicit
    *  move/fight/patrol waypoints still move. */
   moveState: UnitMoveState;
+  /** BAR-style cloak intent. With the current prototype economy there
+   *  is no cloak energy drain/delay yet, so authoritative `cloaked`
+   *  follows this desired state immediately. */
+  wantCloak: boolean;
+  /** Authoritative visibility state. Filtered snapshots suppress
+   *  foreign cloaked units unless the recipient has detector coverage. */
+  cloaked: boolean;
   patrolStartIndex: number | null;
   /** Current route resolution for actions[0]. This is sim-only state:
    *  actions are durable player/factory waypoints, while activePath

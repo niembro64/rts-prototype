@@ -236,6 +236,25 @@ export class InputSelectedCommands {
     });
   }
 
+  setCloakState(): void {
+    const selectedUnits = this.source.getSelectedUnits();
+    const entityIds: EntityId[] = [];
+    let allWantCloak = true;
+    for (let i = 0; i < selectedUnits.length; i++) {
+      const unit = selectedUnits[i].unit;
+      if (unit === null) continue;
+      entityIds.push(selectedUnits[i].id);
+      if (unit.wantCloak !== true) allWantCloak = false;
+    }
+    if (entityIds.length === 0) return;
+    this.commandQueue.enqueue({
+      type: 'setCloakState',
+      tick: this.getTick(),
+      entityIds,
+      enabled: !allWantCloak,
+    });
+  }
+
   setBuildingActive(): void {
     const selectedStatic = this.source.getSelectedBuildings();
     const entityIds: EntityId[] = [];
