@@ -1,4 +1,5 @@
-import type { CommandQueue, MoveCommand } from '../sim/commands';
+import type { MoveCommand } from '../sim/commands';
+import type { ClientCommandSink } from '../input/ClientCommandSink';
 import type { Entity, EntityId, PlayerId, WaypointType } from '../sim/types';
 import { LAND_CELL_SIZE } from '../../config';
 import {
@@ -12,7 +13,11 @@ import {
   LinePathAccumulator,
   shouldCollapseLinePathToSingleMove,
 } from '../input/helpers';
-import { queueModeFromEvent } from '../input/queueModifiers';
+import {
+  queueModeForDragRelease,
+  queueModeFromEvent,
+  type QueueCommandMode,
+} from '../input/queueModifiers';
 import type { CommandCursorKind } from '../input/CommandCursors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getSurfaceHeight, isWaterAt } from '../sim/Terrain';
@@ -32,7 +37,7 @@ type RightDragEntitySource = {
 
 type Input3DRightDragControllerConfig = {
   getEntitySource: () => RightDragEntitySource;
-  commandQueue: CommandQueue;
+  commandQueue: ClientCommandSink;
   picker: Input3DPicker;
   getTick: () => number;
   getActivePlayerId: () => PlayerId;
@@ -60,6 +65,7 @@ export class Input3DRightDragController {
   private readonly linePath = new LinePathAccumulator();
   private readonly selectedFactoriesScratch: Entity[] = [];
   private preserveFormationDrag = false;
+  private dragStartQueueMode: QueueCommandMode | null = null;
   private readonly formationPreviewTargets: { x: number; y: number; z?: number }[] = [];
   private readonly targetBallisticReach: ProjectileGroundReach[] = [];
 
@@ -192,7 +198,7 @@ export class Input3DRightDragController {
         Math.round(world.x), Math.round(world.y), Math.round(world.z),
         selectedUnits.length,
       );
-      this.rightDown = true;
+      this.beginLineDrag(queueMode);
       this.preserveFormationDrag = preserveFormationMove;
       this.config.applyCursor(this.waypointCursorKind());
       this.linePath.start(world.x, world.y, selectedUnits.length, world.z);
@@ -208,7 +214,7 @@ export class Input3DRightDragController {
         Math.round(world.x), Math.round(world.y), Math.round(world.z),
         factories.length,
       );
-      this.rightDown = true;
+      this.beginLineDrag(queueMode);
       this.preserveFormationDrag = false;
       this.config.applyCursor('factoryWaypoint');
       this.linePath.startWithFixedTarget(world.x, world.y, world.z);
@@ -220,7 +226,7 @@ export class Input3DRightDragController {
     const source = this.source();
     const selectedUnits = source.getSelectedUnits();
     const points = this.linePath.points;
-    const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
+    const queueMode = this.resolveReleaseQueueMode(e);
     const tick = this.config.getTick();
 
     if (selectedUnits.length > 0 && points.length > 0) {
@@ -328,6 +334,16 @@ export class Input3DRightDragController {
     return this.config.isFormationAssumeMode() || this.config.isFormationMoveMode();
   }
 
+  private beginLineDrag(queueMode: QueueCommandMode): void {
+    this.rightDown = true;
+    this.dragStartQueueMode = queueMode;
+  }
+
+  private resolveReleaseQueueMode(e: MouseEvent): QueueCommandMode {
+    const releaseQueueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
+    return queueModeForDragRelease(this.dragStartQueueMode, releaseQueueMode);
+  }
+
   private updateFormationPreviewTargets(selectedUnits: readonly Entity[]): void {
     const out = this.formationPreviewTargets;
     out.length = 0;
@@ -391,6 +407,7 @@ export class Input3DRightDragController {
   private resetLineDrag(): void {
     this.linePath.reset();
     this.preserveFormationDrag = false;
+    this.dragStartQueueMode = null;
     this.formationPreviewTargets.length = 0;
     this.targetBallisticReach.length = 0;
   }

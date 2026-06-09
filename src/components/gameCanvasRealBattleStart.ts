@@ -189,10 +189,17 @@ export async function startRealBattleWithPlayers(
         );
       }
 
+      const onlineHost = options.networkRole.value === 'host';
       const localConnection = realBattleStartup.createLocalRealBattleConnection(
         createdServer,
         options.localPlayerId.value,
         options.networkRole.value === null ? 'local-offline' : 'player',
+        {
+          commandDoorway: onlineHost
+            ? (command) => options.network.sendCommand(command)
+            : undefined,
+          loopbackSnapshotsThroughWire: onlineHost,
+        },
       );
       ownedConnection = localConnection;
       options.setActiveConnection(localConnection);

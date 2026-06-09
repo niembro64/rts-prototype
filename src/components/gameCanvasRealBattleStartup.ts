@@ -17,6 +17,7 @@ import { GameServer } from '../game/server/GameServer';
 import {
   LocalGameConnection,
   type LocalCommandAuthorityMode,
+  type LocalGameConnectionOptions,
 } from '../game/server/LocalGameConnection';
 import { RemoteGameConnection } from '../game/server/RemoteGameConnection';
 import { applyStoredBattleServerSettings } from '../game/server/battleServerSettings';
@@ -72,8 +73,9 @@ export function createLocalRealBattleConnection(
   server: GameServer,
   localPlayerId: PlayerId | undefined,
   commandAuthorityMode: LocalCommandAuthorityMode = 'player',
+  options: LocalGameConnectionOptions = {},
 ): GameConnection {
-  return new LocalGameConnection(server, localPlayerId, commandAuthorityMode);
+  return new LocalGameConnection(server, localPlayerId, commandAuthorityMode, options);
 }
 
 export async function createRealBattleServer({

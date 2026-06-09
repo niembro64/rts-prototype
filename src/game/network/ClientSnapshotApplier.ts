@@ -82,7 +82,9 @@ export function snapClientNonVisualState(
     }
 
     if (isFull || cf! & ENTITY_CHANGED_ACTIONS) {
-      applyNetworkUnitActions(entity.unit, su.actions);
+      if (su.actions !== null && su.actions !== undefined) {
+        applyNetworkUnitActions(entity.unit, su.actions);
+      }
       applyNetworkUnitCommandState(entity.unit, su, isFull);
     }
 

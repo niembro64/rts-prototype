@@ -21,6 +21,7 @@ import { bootstrapRtsScene3DRenderers } from './helpers/RtsScene3DRendererBootst
 import { RtsScene3DRendererWarmup } from './helpers/RtsScene3DRendererWarmup';
 import { RtsScene3DSelectionSystem } from './helpers/RtsScene3DSelectionSystem';
 import { dispatchSimEvent3DVisual } from './helpers/RtsScene3DVisualEventDispatcher';
+import type { ClientCommandSink } from '../input/ClientCommandSink';
 import { ThreeApp } from '../render3d/ThreeApp';
 import { Render3DEntities } from '../render3d/Render3DEntities';
 import { Input3DManager } from '../render3d/Input3DManager';
@@ -157,6 +158,9 @@ export class RtsScene3D {
   private gameConnection!: GameConnection;
   private snapshotIntake!: RtsScene3DSnapshotIntake;
   private localCommandQueue = new CommandQueue();
+  private readonly clientCommandSink: ClientCommandSink = {
+    enqueue: (command) => this.submitClientCommand(command),
+  };
   private cameraFootprintSystem!: RtsScene3DCameraFootprintSystem;
   private minimapSystem!: RtsScene3DMinimapSystem;
   private selectionSystem!: RtsScene3DSelectionSystem;
@@ -441,7 +445,7 @@ export class RtsScene3D {
         activePlayerId: this.localPlayerId,
       },
       this.entitySourceAdapter,
-      this.localCommandQueue,
+      this.clientCommandSink,
       this.cursorGround,
     );
     // Hand the build-ghost renderer to the input manager so it can
@@ -720,6 +724,10 @@ export class RtsScene3D {
       );
       if (!handledSelectionCommand) this.sendAuthoritativeCommand(command);
     }
+  }
+
+  private submitClientCommand(command: Command): void {
+    this.localCommandQueue.enqueue(command);
   }
 
   private sendAuthoritativeCommand(command: Command): void {
@@ -1059,10 +1067,7 @@ export class RtsScene3D {
   }
 
   public queueFactoryUnit(factoryId: number, unitBlueprintId: string, repeat = true, count = 1): void {
-    // Factory build queue is server-authoritative, so this command
-    // goes straight through gameConnection (same path the 2D scene's
-    // processLocalCommands forwards it to).
-    this.sendAuthoritativeCommand({
+    this.submitClientCommand({
       type: 'queueUnit',
       tick: this.clientViewState.getTick(),
       factoryId,
@@ -1080,7 +1085,7 @@ export class RtsScene3D {
     toIndex?: number,
     count?: number,
   ): void {
-    this.sendAuthoritativeCommand({
+    this.submitClientCommand({
       type: 'editFactoryQueue',
       tick: this.clientViewState.getTick(),
       factoryId,
@@ -1093,7 +1098,7 @@ export class RtsScene3D {
   }
 
   public stopFactoryProduction(factoryId: number): void {
-    this.sendAuthoritativeCommand({
+    this.submitClientCommand({
       type: 'stopFactoryProduction',
       tick: this.clientViewState.getTick(),
       factoryId,
@@ -1101,7 +1106,7 @@ export class RtsScene3D {
   }
 
   public clearFactoryGuard(factoryId: number): void {
-    this.sendAuthoritativeCommand({
+    this.submitClientCommand({
       type: 'setFactoryGuard',
       tick: this.clientViewState.getTick(),
       factoryId,

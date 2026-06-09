@@ -8,6 +8,7 @@ import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import type { SnapshotWirePayload } from '../network/SnapshotWirePayload';
 import { ReusableNetworkSnapshotCloner } from '../network/snapshotClone';
 import {
+  decodeNetworkSnapshot,
   encodeNetworkSnapshotDetailed,
   measureNetworkSnapshotWireBreakdown,
 } from '../network/snapshotWireCodec';
@@ -18,9 +19,13 @@ import { SNAPSHOT_ENCODE_INSTRUMENTATION } from '../SnapshotEncodeInstrumentatio
 import type { CommandAuthority } from './commandAuthority';
 
 export type LocalCommandAuthorityMode = 'player' | 'local-offline';
+export type LocalGameConnectionOptions = {
+  commandDoorway?: (command: Command, fromPlayerId: PlayerId) => boolean;
+  loopbackSnapshotsThroughWire?: boolean;
+};
 
 export class LocalGameConnection implements GameConnection {
-  readonly sharesAuthoritativeState = true;
+  readonly sharesAuthoritativeState: boolean;
 
   private server: GameServer | null;
   private snapshotCallback: SnapshotCallback | null = null;
@@ -36,6 +41,8 @@ export class LocalGameConnection implements GameConnection {
    *  command but rejects gameplay and server-control mutations. */
   private commandPlayerId: PlayerId | undefined = undefined;
   private commandAuthorityMode: LocalCommandAuthorityMode;
+  private readonly commandDoorway: ((command: Command, fromPlayerId: PlayerId) => boolean) | undefined;
+  private readonly loopbackSnapshotsThroughWire: boolean;
   /** Whose snapshot view this client receives. `undefined` = global
    *  observer (no fog filter; sees every entity). Decoupled from
    *  commandPlayerId so a true spectator can view-as-N without being
@@ -46,11 +53,15 @@ export class LocalGameConnection implements GameConnection {
     server: GameServer,
     playerId: PlayerId | undefined = undefined,
     commandAuthorityMode: LocalCommandAuthorityMode = 'player',
+    options: LocalGameConnectionOptions = {},
   ) {
     this.server = server;
     this.commandPlayerId = playerId;
     this.filterPlayerId = playerId;
     this.commandAuthorityMode = commandAuthorityMode;
+    this.commandDoorway = options.commandDoorway;
+    this.loopbackSnapshotsThroughWire = options.loopbackSnapshotsThroughWire === true;
+    this.sharesAuthoritativeState = !this.loopbackSnapshotsThroughWire;
     this.snapshotListenerKey = this.subscribeSnapshots(server, playerId);
 
     this.gameOverListenerRef = server.addGameOverListener((winnerId) => {
@@ -102,12 +113,27 @@ export class LocalGameConnection implements GameConnection {
 
   private subscribeSnapshots(server: GameServer, playerId: PlayerId | undefined): string {
     return server.addSnapshotListener((state, _releaseSnapshot, wirePayload) => {
-      this.recordLocalSnapshotWireCost(state, wirePayload);
+      const deliveredState = this.materializeLocalSnapshot(state, wirePayload);
       this.snapshotImpairment.schedule(
-        state,
+        deliveredState,
         (deliveredState, releaseSnapshot) => this.receiveSnapshot(deliveredState, releaseSnapshot),
       );
-    }, playerId);
+    }, playerId, { preencodeWire: this.loopbackSnapshotsThroughWire });
+  }
+
+  private materializeLocalSnapshot(
+    state: NetworkServerSnapshot,
+    wirePayload: SnapshotWirePayload | undefined = undefined,
+  ): NetworkServerSnapshot {
+    if (!this.loopbackSnapshotsThroughWire) {
+      this.recordLocalSnapshotWireCost(state, wirePayload);
+      return state;
+    }
+    const encoded = wirePayload ?? this.encodeSnapshotForDiagnostics(state);
+    this.recordLocalSnapshotWireCost(state, encoded);
+    const decoded = decodeNetworkSnapshot(encoded.bytes);
+    setSnapshotWireBytes(decoded, encoded.bytes.byteLength);
+    return decoded;
   }
 
   private receiveSnapshot(
@@ -177,6 +203,9 @@ export class LocalGameConnection implements GameConnection {
   sendCommand(command: Command): void {
     const server = this.server;
     if (server === null) return;
+    if (this.commandDoorway !== undefined && this.commandPlayerId !== undefined) {
+      if (this.commandDoorway(command, this.commandPlayerId)) return;
+    }
     server.receiveCommand(command, this.commandAuthority());
   }
 

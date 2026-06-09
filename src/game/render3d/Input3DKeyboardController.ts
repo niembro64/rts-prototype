@@ -1,4 +1,4 @@
-import type { CommandQueue } from '../sim/commands';
+import type { ClientCommandSink } from '../input/ClientCommandSink';
 import type { StructureBlueprintId, WaypointType } from '../sim/types';
 import {
   controlGroupIndexForKey,
@@ -16,7 +16,7 @@ import { queueModeFromEvent } from '../input/queueModifiers';
 
 type Input3DKeyboardControllerConfig = {
   mode: CommanderModeController;
-  commandQueue: CommandQueue;
+  commandQueue: ClientCommandSink;
   getTick: () => number;
   getQueueInsertIndex: () => number | null;
   setWaypointMode: (mode: WaypointType) => void;

@@ -9,6 +9,7 @@ import type {
 type NetworkCommandTransportOptions = {
   getGameId: () => string;
   getHostConnection: () => DataConnection | undefined;
+  getLocalPlayerId: () => PlayerId;
   getRole: () => NetworkRole | null;
   isMessageForCurrentGame: (message: { gameId: string | undefined }) => boolean;
   onClientReady: (playerId: PlayerId) => void;
@@ -20,11 +21,16 @@ type NetworkCommandTransportOptions = {
 export class NetworkCommandTransport {
   constructor(private readonly options: NetworkCommandTransportOptions) {}
 
-  sendCommand(command: Command): void {
-    if (this.options.getRole() !== 'client') return;
+  sendCommand(command: Command): boolean {
+    const role = this.options.getRole();
+    if (role === 'host') {
+      this.options.onCommandReceived(command, this.options.getLocalPlayerId());
+      return true;
+    }
+    if (role !== 'client') return false;
     const hostConn = this.options.getHostConnection();
-    if (!hostConn) return;
-    this.options.send(hostConn, {
+    if (!hostConn) return false;
+    return this.options.send(hostConn, {
       type: 'command',
       gameId: this.options.getGameId(),
       data: command,

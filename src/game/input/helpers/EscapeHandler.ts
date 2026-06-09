@@ -5,7 +5,7 @@
 // 2D has two modes (build + D-gun), 3D currently has only build,
 // but the call site passes any number of cancel callbacks.
 
-import type { CommandQueue } from '../../sim/commands';
+import type { ClientCommandSink } from '../ClientCommandSink';
 
 export type ModeCancel = {
   /** Is this mode currently active? */
@@ -21,7 +21,7 @@ export type ModeCancel = {
  *  enqueue a `clearSelection` command. */
 export function handleEscape(
   modes: readonly ModeCancel[],
-  commandQueue: CommandQueue,
+  commandQueue: ClientCommandSink,
   tick: number,
 ): 'mode-cancelled' | 'selection-cleared' {
   for (const mode of modes) {

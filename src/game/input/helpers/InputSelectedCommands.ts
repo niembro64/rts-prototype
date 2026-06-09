@@ -1,4 +1,4 @@
-import type { CommandQueue } from '../../sim/commands';
+import type { ClientCommandSink } from '../ClientCommandSink';
 import type { CombatFireState, CombatTrajectoryMode, Entity, EntityId, UnitMoveState } from '../../sim/types';
 import { buildingBlueprintHasActiveState } from '../../sim/buildingActiveState';
 import { isBallisticArcWeapon } from '../../sim/combat/combatUtils';
@@ -31,13 +31,13 @@ function nextCombatFireState(state: CombatFireState): CombatFireState {
 
 export class InputSelectedCommands {
   private source: SelectedCommandEntitySource;
-  private readonly commandQueue: CommandQueue;
+  private readonly commandQueue: ClientCommandSink;
   private readonly getTick: () => number;
   private gatherWaitSerial = 0;
 
   constructor(
     source: SelectedCommandEntitySource,
-    commandQueue: CommandQueue,
+    commandQueue: ClientCommandSink,
     getTick: () => number,
   ) {
     this.source = source;

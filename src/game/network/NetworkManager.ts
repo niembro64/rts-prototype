@@ -165,6 +165,7 @@ export class NetworkManager {
   private commandTransport = new NetworkCommandTransport({
     getGameId: () => this.getUniversalGameId(),
     getHostConnection: () => this.connections.get(1),
+    getLocalPlayerId: () => this.localPlayerId,
     getRole: () => this.role,
     isMessageForCurrentGame: (message) => this.isMessageForCurrentGame(message.gameId),
     onClientReady: (playerId) => this.emitClientReady(playerId),
@@ -1219,9 +1220,10 @@ export class NetworkManager {
     return this.safeSend(conn, message);
   }
 
-  // Send command to host (client only)
-  sendCommand(command: Command): void {
-    this.commandTransport.sendCommand(command);
+  // Send the local player's command through the single network command doorway.
+  // Hosts loop back into the host receive callback; clients send to host.
+  sendCommand(command: Command): boolean {
+    return this.commandTransport.sendCommand(command);
   }
 
   sendCommunication(data: NetworkCommunicationDraft): void {

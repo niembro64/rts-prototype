@@ -21,7 +21,7 @@
 import type { ThreeApp } from './ThreeApp';
 import type { BuildGhost3D } from './BuildGhost3D';
 import type { CursorGround } from './CursorGround';
-import type { CommandQueue } from '../sim/commands';
+import type { ClientCommandSink } from '../input/ClientCommandSink';
 import type { InputContext } from '@/types/input';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { PlayerId, Entity, EntityId, WaypointType, BuildingBlueprintId, StructureBlueprintId } from '../sim/types';
@@ -43,6 +43,11 @@ import {
   getFactoryProductionPresetSlot,
   setFactoryProductionPresetSlot,
 } from '../input/factoryProductionPresets';
+import {
+  clearQueueModifierState,
+  effectiveQueueModifierEvent,
+  setQueueModifierKeyState,
+} from '../input/queueModifiers';
 import { isBuildInProgress } from '../sim/buildableHelpers';
 import { getSelectedBuilderAllowedBuildBlueprintIds } from '../sim/builderBuildRoster';
 import { isCommander } from '../sim/combat/combatUtils';
@@ -90,7 +95,7 @@ export class Input3DManager {
   private canvas: HTMLCanvasElement;
   private context: InputContext;
   private entitySource: EntitySource;
-  private localCommandQueue: CommandQueue;
+  private commandSink: ClientCommandSink;
 
   // Current waypoint mode (move/fight/patrol) — driven by UI or M/F/H hotkeys.
   private waypointMode: WaypointType = 'move';
@@ -157,6 +162,8 @@ export class Input3DManager {
   private onMouseDown: (e: MouseEvent) => void;
   private onMouseMove: (e: MouseEvent) => void;
   private onMouseUp: (e: MouseEvent) => void;
+  private onModifierKeyDown: (e: KeyboardEvent) => void;
+  private onModifierKeyUp: (e: KeyboardEvent) => void;
   private onKeyDown: (e: KeyboardEvent) => void;
   private onKeyUp: (e: KeyboardEvent) => void;
   private onWindowBlur: () => void;
@@ -167,13 +174,13 @@ export class Input3DManager {
     threeApp: ThreeApp,
     context: InputContext,
     entitySource: EntitySource,
-    localCommandQueue: CommandQueue,
+    commandSink: ClientCommandSink,
     cursorGround: CursorGround,
   ) {
     this.canvas = threeApp.renderer.domElement;
     this.context = context;
     this.entitySource = entitySource;
-    this.localCommandQueue = localCommandQueue;
+    this.commandSink = commandSink;
     this.picker = new Input3DPicker(threeApp, cursorGround);
     this.controlGroups = new InputControlGroups(
       entitySource,
@@ -187,12 +194,12 @@ export class Input3DManager {
     this.controlGroups.loadAutoGroupPreset(loadAutoGroupPreset());
     this.selectedCommands = new InputSelectedCommands(
       entitySource,
-      localCommandQueue,
+      commandSink,
       () => this.context.getTick(),
     );
     this.modeClicks = new Input3DModeClickController({
       getEntitySource: () => this.entitySource,
-      commandQueue: this.localCommandQueue,
+      commandQueue: this.commandSink,
       picker: this.picker,
       mode: this.mode,
       selectedCommands: this.selectedCommands,
@@ -235,7 +242,7 @@ export class Input3DManager {
     });
     this.rightDrag = new Input3DRightDragController({
       getEntitySource: () => this.entitySource,
-      commandQueue: this.localCommandQueue,
+      commandQueue: this.commandSink,
       picker: this.picker,
       getTick: () => this.context.getTick(),
       getActivePlayerId: () => this.context.activePlayerId,
@@ -251,7 +258,7 @@ export class Input3DManager {
     });
     this.keyboard = new Input3DKeyboardController({
       mode: this.mode,
-      commandQueue: this.localCommandQueue,
+      commandQueue: this.commandSink,
       getTick: () => this.context.getTick(),
       getQueueInsertIndex: () => this.queueInsertIndex,
       setWaypointMode: (mode) => this.setWaypointMode(mode),
@@ -387,13 +394,20 @@ export class Input3DManager {
     this.onMouseDown = (e) => this.handleMouseDown(e);
     this.onMouseMove = (e) => this.handleMouseMove(e);
     this.onMouseUp = (e) => this.handleMouseUp(e);
+    this.onModifierKeyDown = (e) => setQueueModifierKeyState(e, true);
+    this.onModifierKeyUp = (e) => setQueueModifierKeyState(e, false);
     this.onKeyDown = (e) => this.handleKeyDown(e);
     this.onKeyUp = (e) => this.handleKeyUp(e);
-    this.onWindowBlur = () => this.clearHeldSelectBoxModifiers();
+    this.onWindowBlur = () => {
+      this.clearHeldSelectBoxModifiers();
+      clearQueueModifierState();
+    };
 
     this.canvas.addEventListener('mousedown', this.onMouseDown);
     window.addEventListener('mousemove', this.onMouseMove);
     window.addEventListener('mouseup', this.onMouseUp);
+    window.addEventListener('keydown', this.onModifierKeyDown, { capture: true });
+    window.addEventListener('keyup', this.onModifierKeyUp, { capture: true });
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', this.onWindowBlur);
@@ -654,7 +668,7 @@ export class Input3DManager {
         factory.ownership?.playerId !== this.context.activePlayerId ||
         factory.factory.guardTargetId === null
       ) continue;
-      this.localCommandQueue.enqueue({
+      this.commandSink.enqueue({
         type: 'setFactoryGuard',
         tick,
         factoryId: factory.id,
@@ -1368,7 +1382,7 @@ export class Input3DManager {
     if (targets.length === 0) return;
     const tick = this.context.getTick();
     for (let i = 0; i < targets.length; i++) {
-      this.localCommandQueue.enqueue({
+      this.commandSink.enqueue({
         type: 'reclaim',
         tick,
         commanderId: commander.id,
@@ -1395,7 +1409,7 @@ export class Input3DManager {
         ? selectedBuilders[i % selectedBuilders.length]
         : this.getClosestMetalExtractorUpgradeBuilder(target.transform.x, target.transform.y);
       if (builder === null) continue;
-      this.localCommandQueue.enqueue({
+      this.commandSink.enqueue({
         type: 'upgradeMetalExtractor',
         tick,
         builderId: builder.id,
@@ -1499,14 +1513,14 @@ export class Input3DManager {
     const unitBlueprintId = getFactoryProductionPresetSlot(index);
     const tick = this.context.getTick();
     if (unitBlueprintId === null) {
-      this.localCommandQueue.enqueue({
+      this.commandSink.enqueue({
         type: 'stopFactoryProduction',
         tick,
         factoryId: factory.id,
       });
       return;
     }
-    this.localCommandQueue.enqueue({
+    this.commandSink.enqueue({
       type: 'queueUnit',
       tick,
       factoryId: factory.id,
@@ -1518,7 +1532,7 @@ export class Input3DManager {
   private stopSelectedFactoryProduction(): void {
     const factory = this.getSelectedFactory();
     if (factory === null) return;
-    this.localCommandQueue.enqueue({
+    this.commandSink.enqueue({
       type: 'stopFactoryProduction',
       tick: this.context.getTick(),
       factoryId: factory.id,
@@ -1694,13 +1708,14 @@ export class Input3DManager {
     subtractive: boolean;
     options: ScreenRectSelectionOptions;
   } {
-    const subtractive = e.ctrlKey || e.metaKey;
+    const modifiers = effectiveQueueModifierEvent(e);
+    const subtractive = modifiers.ctrlKey || modifiers.metaKey;
     return {
-      additive: e.shiftKey && !subtractive,
+      additive: modifiers.shiftKey && !subtractive,
       subtractive,
       options: {
-        includeBuildingsWithUnits: e.shiftKey,
-        mobileOnly: e.altKey,
+        includeBuildingsWithUnits: modifiers.shiftKey,
+        mobileOnly: modifiers.altKey,
         idleOnly: this.selectBoxIdleHeld,
         sameTypeOnly: this.selectBoxSameTypeHeld,
         previousSelection: this.getCurrentSelectedEntities(),
@@ -1717,7 +1732,7 @@ export class Input3DManager {
     if (!this.hoverState.hasFiniteClientPoint()) return;
     const world = this.picker.raycastGround(this.hoverState.lastClientX, this.hoverState.lastClientY);
     if (!world) return;
-    this.localCommandQueue.enqueue({
+    this.commandSink.enqueue({
       type: 'scan',
       tick: this.context.getTick(),
       targetX: world.x,
@@ -1736,7 +1751,7 @@ export class Input3DManager {
   private enqueueSelection(entityIds: EntityId[], additive: boolean): void {
     if (entityIds.length === 0) return;
     this.rememberPreviousSelection(entityIds, additive);
-    this.localCommandQueue.enqueue({
+    this.commandSink.enqueue({
       type: 'select',
       tick: this.context.getTick(),
       entityIds,
@@ -1746,7 +1761,7 @@ export class Input3DManager {
 
   private enqueueClearSelection(): void {
     this.rememberPreviousSelection([], false);
-    this.localCommandQueue.enqueue({
+    this.commandSink.enqueue({
       type: 'clearSelection',
       tick: this.context.getTick(),
     });
@@ -1986,6 +2001,8 @@ export class Input3DManager {
     this.canvas.removeEventListener('mousedown', this.onMouseDown);
     window.removeEventListener('mousemove', this.onMouseMove);
     window.removeEventListener('mouseup', this.onMouseUp);
+    window.removeEventListener('keydown', this.onModifierKeyDown, { capture: true });
+    window.removeEventListener('keyup', this.onModifierKeyUp, { capture: true });
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('blur', this.onWindowBlur);

@@ -7,7 +7,12 @@ import {
   getCommandHotkeyConflicts,
   resolveCommandHotkey,
 } from './commandHotkeys';
-import { queueModeFromEvent } from './queueModifiers';
+import {
+  clearQueueModifierState,
+  queueModeForDragRelease,
+  queueModeFromEvent,
+  setQueueModifierKeyState,
+} from './queueModifiers';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -32,6 +37,7 @@ function keyEvent(
 }
 
 export function runCommandHotkeysContractTest(): void {
+  clearQueueModifierState();
   for (const presetId of COMMAND_HOTKEY_PRESET_IDS) {
     const preset = getCommandHotkeyPreset(presetId);
     for (const commandId of COMMAND_HOTKEY_IDS) {
@@ -212,4 +218,45 @@ export function runCommandHotkeysContractTest(): void {
       pickedFrontQueue.queueInsertIndex === undefined,
     'ctrl/cmd+shift command event must override the selected queue insertion slot',
   );
+  const queuedDragStart = queueModeFromEvent(keyEvent('w', 'KeyW', { shiftKey: true }), 4);
+  const plainDragRelease = queueModeFromEvent(keyEvent('w', 'KeyW'));
+  const preservedDragQueue = queueModeForDragRelease(queuedDragStart, plainDragRelease);
+  assertContract(
+    preservedDragQueue.queue === true &&
+      preservedDragQueue.queueFront === false &&
+      preservedDragQueue.queueInsertIndex === 4,
+    'right-drag release must preserve queue mode captured at drag start',
+  );
+  const lateQueuedDragRelease = queueModeForDragRelease(
+    plainDragRelease,
+    queueModeFromEvent(keyEvent('w', 'KeyW', { ctrlKey: true, shiftKey: true }), 4),
+  );
+  assertContract(
+    lateQueuedDragRelease.queue === true &&
+      lateQueuedDragRelease.queueFront === true &&
+      lateQueuedDragRelease.queueInsertIndex === undefined,
+    'right-drag release must still allow shift queueing pressed before release',
+  );
+  setQueueModifierKeyState(keyEvent('Shift', 'ShiftLeft'), true);
+  const trackedShiftQueue = queueModeFromEvent(keyEvent('w', 'KeyW'), 2);
+  assertContract(
+    trackedShiftQueue.queue === true &&
+      trackedShiftQueue.queueFront === false &&
+      trackedShiftQueue.queueInsertIndex === 2,
+    'tracked shift key state must queue commands when pointer events omit shiftKey',
+  );
+  setQueueModifierKeyState(keyEvent('Shift', 'ShiftLeft'), false);
+  assertContract(
+    queueModeFromEvent(keyEvent('w', 'KeyW')).queue === false,
+    'tracked shift keyup must stop queueing commands',
+  );
+  const modifierStateQueue = queueModeFromEvent({
+    ...keyEvent('w', 'KeyW'),
+    getModifierState: (keyArg: string) => keyArg === 'Shift',
+  });
+  assertContract(
+    modifierStateQueue.queue === true,
+    'browser modifier state must queue commands when shiftKey is false',
+  );
+  clearQueueModifierState();
 }
