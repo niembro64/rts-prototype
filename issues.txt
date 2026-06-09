@@ -15,30 +15,3 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 
 Please always commit and push before and after any code changes we make.
 ================================================================================
-
-BAR COMMAND AND UI PARITY GAPS
-
-Baseline: budget_design_philosophy.html says player-facing behavior defaults to
-Beyond-All-Reason unless explicitly overridden. BAR references for this backlog:
-https://www.beyondallreason.info/commands-20 and
-https://github.com/beyond-all-reason/Beyond-All-Reason/tree/master/luaui/configs/hotkeys.
-
-Issue: the shared command-hotkey registry and in-game preset switcher only cover
-commands that already exist in rts-prototype, with prototype, BAR-grid, and
-BAR-legacy presets for that subset, runtime multi-key sequence dispatch, and
-build-slot hotkeys covering the current nine-structure build roster.
-Finish the BAR-compatible keymap and command UI layer by importing the complete
-BAR grid/legacy bindings and adding command buttons for missing BAR commands so
-visible hotkeys match the active keymap across the whole command surface.
-
-Issue: special abilities are incomplete. Add any unit-specific special buttons
-beyond commander DGun only after the underlying authoritative simulation,
-snapshots, client feedback, and physical presentation exist.
-
-Issue: BAR gameplay functionality tied to missing commands is absent. Implement
-the systems needed by the missing command surface: complete
-faction/unit/factory/building rosters.
-
-Issue: BAR parity must be extended through the 3D/physics-first design, not
-implemented as flat 2D shortcuts. Special-fire abilities beyond commander DGun
-need physical presentation and authoritative physics interactions.
