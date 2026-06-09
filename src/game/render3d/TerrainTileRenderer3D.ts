@@ -74,6 +74,7 @@ import { clamp01 } from '../math';
 import {
   assignBuildGridOverlayUniforms,
   buildGridOverlayFragment,
+  buildGridOverlayUniformDeclarations,
   type BuildGridOverlayUniforms,
 } from './BuildGridOverlayShader';
 
@@ -447,11 +448,7 @@ export class TerrainTileRenderer3D {
             'uniform vec3 uTerrainHorizonWaterColor;',
             'uniform float uTerrainHorizonShade;',
             'uniform float uElevationMapEnabled;',
-            'uniform sampler2D uBuildGridMap;',
-            'uniform vec2 uBuildGridMapSize;',
-            'uniform vec2 uBuildGridWorldSize;',
-            'uniform float uBuildGridCellSize;',
-            'uniform float uBuildGridEnabled;',
+            buildGridOverlayUniformDeclarations(),
             'uniform sampler2D uGroundDetailTexture;',
             'uniform float uGroundDetailTileWorldSize;',
             'uniform float uGroundDetailEnabled;',

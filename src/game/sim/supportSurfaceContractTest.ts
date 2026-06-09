@@ -4,6 +4,15 @@ import {
   refreshLocomotionSupportSurfaces,
   sampleLocomotionSupportSurface,
 } from '../render3d/LocomotionTerrainSampler';
+import {
+  getTerrainMapShape,
+  getTerrainRuntimeConfig,
+  getTerrainTeamCount,
+  setTerrainMapShape,
+  setTerrainRuntimeConfig,
+  setTerrainTeamCount,
+  type TerrainRuntimeConfig,
+} from './Terrain';
 import { BUILD_GRID_CELL_SIZE, BuildingGrid } from './buildGrid';
 import { getAllUnitBlueprints } from './blueprints';
 import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
@@ -28,6 +37,13 @@ import type { MetalDeposit } from '../../metalDepositConfig';
 const TEST_PLAYER_ID = 1 as PlayerId;
 const CONTRACT_EPSILON = 1e-6;
 const FACTORY_SHELL_AIR_SPAWN_HEIGHT = 160;
+const SUPPORT_SURFACE_CONTRACT_TERRAIN: TerrainRuntimeConfig = {
+  centerMagnitude: 0,
+  dividersMagnitude: 0,
+  terrainDTerrain: 0,
+  metalDepositStep: 0,
+  terrainDetail: 1,
+};
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -72,12 +88,17 @@ function findSurfacePoint(
     }
   }
 
-  const step = Math.max(16, Math.min(world.mapWidth, world.mapHeight) / 24);
-  for (let y = margin; y <= world.mapHeight - margin; y += step) {
-    for (let x = margin; x <= world.mapWidth - margin; x += step) {
-      const surface = world.sampleSupportSurface(x, y, {}, scratch);
-      if (surface.materialKind === materialKind) {
-        return { x, y, surface: { ...surface } };
+  const searchSteps = [
+    Math.max(16, Math.min(world.mapWidth, world.mapHeight) / 24),
+    Math.max(4, Math.min(world.mapWidth, world.mapHeight) / 96),
+  ];
+  for (const step of searchSteps) {
+    for (let y = margin; y <= world.mapHeight - margin; y += step) {
+      for (let x = margin; x <= world.mapWidth - margin; x += step) {
+        const surface = world.sampleSupportSurface(x, y, {}, scratch);
+        if (surface.materialKind === materialKind) {
+          return { x, y, surface: { ...surface } };
+        }
       }
     }
   }
@@ -85,6 +106,22 @@ function findSurfacePoint(
   throw new Error(
     `[support surface contract] could not find ${materialKind} terrain sample`,
   );
+}
+
+function withKnownSupportSurfaceTerrain(test: () => void): void {
+  const previousRuntimeConfig = getTerrainRuntimeConfig();
+  const previousMapShape = getTerrainMapShape();
+  const previousTeamCount = getTerrainTeamCount();
+  setTerrainTeamCount(0);
+  setTerrainRuntimeConfig(SUPPORT_SURFACE_CONTRACT_TERRAIN);
+  setTerrainMapShape('circle');
+  try {
+    test();
+  } finally {
+    setTerrainRuntimeConfig(previousRuntimeConfig);
+    setTerrainTeamCount(previousTeamCount);
+    setTerrainMapShape(previousMapShape);
+  }
 }
 
 function getBuildingSupportTopZ(entity: Entity): number {
@@ -459,10 +496,12 @@ function assertExtractorTierCoverageContract(): void {
 }
 
 export function runSupportSurfaceContractTest(): void {
-  assertTerrainAndWaterContract();
-  assertBuildingSupportContract();
-  assertUnitSupportContract();
-  assertRenderLocomotionContract();
-  assertFactoryShellContract();
-  assertExtractorTierCoverageContract();
+  withKnownSupportSurfaceTerrain(() => {
+    assertTerrainAndWaterContract();
+    assertBuildingSupportContract();
+    assertUnitSupportContract();
+    assertRenderLocomotionContract();
+    assertFactoryShellContract();
+    assertExtractorTierCoverageContract();
+  });
 }

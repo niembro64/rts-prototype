@@ -18,6 +18,7 @@ import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import {
   assignBuildGridOverlayUniforms,
   buildGridOverlayFragment,
+  buildGridOverlayUniformDeclarations,
   type BuildGridOverlayUniforms,
 } from './BuildGridOverlayShader';
 import { getRockDetailTexture } from './RockDetailTexture';
@@ -184,6 +185,7 @@ function installDepositTextureBlendShader(
         '#include <common>',
         [
           'uniform float uMetalDepositTextureBlend;',
+          buildGridOverlayUniformDeclarations(),
           'varying vec3 vBuildGridOverlayWorldPos;',
           '#include <common>',
         ].join('\n'),

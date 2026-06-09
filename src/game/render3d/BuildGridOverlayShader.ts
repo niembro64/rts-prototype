@@ -23,6 +23,16 @@ export function assignBuildGridOverlayUniforms(
   shader.uniforms.uBuildGridEnabled = uniforms.enabled;
 }
 
+export function buildGridOverlayUniformDeclarations(): string {
+  return [
+    'uniform sampler2D uBuildGridMap;',
+    'uniform vec2 uBuildGridMapSize;',
+    'uniform vec2 uBuildGridWorldSize;',
+    'uniform float uBuildGridCellSize;',
+    'uniform float uBuildGridEnabled;',
+  ].join('\n');
+}
+
 export function buildGridOverlayFragment(worldPositionExpr: string): string {
   return [
     `if (uBuildGridEnabled > 0.0 &&`,
