@@ -268,13 +268,13 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 function sanitizeQueueFront(queue: boolean, queueFront: unknown): boolean | null {
-  if (queueFront === undefined) return false;
+  if (queueFront === undefined || queueFront === null) return false;
   if (typeof queueFront !== 'boolean') return null;
   return queue && queueFront;
 }
 
 function sanitizeQueueInsertIndex(queue: boolean, queueFront: boolean, queueInsertIndex: unknown): number | undefined | null {
-  if (queueInsertIndex === undefined || !queue || queueFront) return undefined;
+  if (queueInsertIndex === undefined || queueInsertIndex === null || !queue || queueFront) return undefined;
   return typeof queueInsertIndex === 'number' &&
     Number.isInteger(queueInsertIndex) &&
     queueInsertIndex >= 0 &&

@@ -96,6 +96,24 @@ export function runCommandSanitizerContractTest(): void {
     'move queueFront must survive sanitizer when queue=true',
   );
 
+  const wireNullQueueMove = sanitizeRequired<MoveCommand>(world, {
+    type: 'move',
+    tick: 6,
+    entityIds: [7],
+    targetX: 12,
+    targetY: 13,
+    waypointType: 'move',
+    queue: true,
+    queueFront: null as unknown as boolean,
+    queueInsertIndex: null as unknown as number,
+  });
+  assertContract(
+    wireNullQueueMove.queue === true &&
+      wireNullQueueMove.queueFront === false &&
+      wireNullQueueMove.queueInsertIndex === undefined,
+    'wire-decoded null queue metadata must normalize as omitted for queued move commands',
+  );
+
   const replaceMove = sanitizeRequired<MoveCommand>(world, {
     type: 'move',
     tick: 7,
@@ -287,6 +305,25 @@ export function runCommandSanitizerContractTest(): void {
     && rotatedBuild.gridY === 5
     && Math.abs((rotatedBuild.rotation ?? 0) - Math.PI) < 1e-9,
     'startBuild must floor grid cells and normalize optional build facing',
+  );
+
+  const wireNullQueueBuild = sanitizeRequired<StartBuildCommand>(world, {
+    type: 'startBuild',
+    tick: 12,
+    builderId: 9,
+    buildingBlueprintId: 'buildingSolar',
+    gridX: 12,
+    gridY: 13,
+    rotation: 0,
+    queue: true,
+    queueFront: null as unknown as boolean,
+    queueInsertIndex: null as unknown as number,
+  });
+  assertContract(
+    wireNullQueueBuild.queue === true &&
+      wireNullQueueBuild.queueFront === false &&
+      wireNullQueueBuild.queueInsertIndex === undefined,
+    'wire-decoded null queue metadata must normalize as omitted for queued startBuild commands',
   );
 
   const panelsDisabled = sanitizeRequired<SetTurretShieldPanelsEnabledCommand>(world, {
