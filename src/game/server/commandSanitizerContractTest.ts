@@ -46,6 +46,7 @@ function sanitizeRequired<T extends Command>(world: WorldState, command: T): T {
 
 export function runCommandSanitizerContractTest(): void {
   const world = new WorldState(9001, 128, 128);
+  while (world.getTick() < 9001) world.incrementTick();
 
   const skipCurrent = sanitizeRequired<SkipCurrentOrderCommand>(world, {
     type: 'skipCurrentOrder',

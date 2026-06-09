@@ -590,7 +590,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'ui.optionsMenu': [code('F10', 'F10', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.chat': [key('Enter', 'enter', { shift: 'any' })],
     'ui.mapDraw': [code('Ctrl+Alt+D', 'KeyD', { ctrl: true, alt: true, shift: 'any' })],
-    'ui.mapLabel': [code('Ctrl+Alt+L', 'KeyL', { ctrl: true, alt: true, shift: 'any' })],
+    'ui.mapLabel': [code('Ctrl+Shift+L', 'KeyL', { ctrl: true, shift: true })],
     'ui.mapErase': [code('Ctrl+Alt+E', 'KeyE', { ctrl: true, alt: true, shift: 'any' })],
   }),
 };

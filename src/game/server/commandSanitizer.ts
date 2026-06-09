@@ -65,7 +65,7 @@ type GroundPoint = { x: number; y: number; z: number | undefined };
 
 export function sanitizeCommand(command: Command, world: WorldState): Command | null {
   if (!command || typeof command.type !== 'string') return null;
-  const tick = sanitizeTick(command.tick);
+  const tick = sanitizeTick(command.tick, world);
   if (tick === null) return null;
 
   switch (command.type) {
@@ -196,9 +196,9 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
   }
 }
 
-function sanitizeTick(value: unknown): number | null {
+function sanitizeTick(value: unknown, world: WorldState): number | null {
   if (!Number.isFinite(value)) return null;
-  return Math.max(0, Math.floor(value as number));
+  return world.getTick();
 }
 
 function isEntityId(value: unknown): value is EntityId {
@@ -240,6 +240,18 @@ function sanitizeGroundPoint(
     y: clamp(y as number, 0, world.mapHeight),
     z: z === undefined ? undefined : z as number,
   };
+}
+
+function sanitizeTerrainGroundPoint(
+  world: WorldState,
+  x: unknown,
+  y: unknown,
+  z: unknown = undefined,
+): GroundPoint | null {
+  const point = sanitizeGroundPoint(world, x, y, z);
+  return point === null
+    ? null
+    : { x: point.x, y: point.y, z: world.getGroundZ(point.x, point.y) };
 }
 
 function sanitizeWaypointTarget(world: WorldState, target: unknown): WaypointTarget | null {
@@ -512,7 +524,7 @@ function sanitizeManualLaunchCommand(
   tick: number,
 ): ManualLaunchCommand | null {
   const entityIds = sanitizeEntityIdArray(command.entityIds);
-  const point = sanitizeGroundPoint(world, command.targetX, command.targetY, command.targetZ);
+  const point = sanitizeTerrainGroundPoint(world, command.targetX, command.targetY, command.targetZ);
   return entityIds === null || point === null
     ? null
     : {
@@ -531,7 +543,7 @@ function sanitizeAttackAreaCommand(
   tick: number,
 ): AttackAreaCommand | null {
   const entityIds = sanitizeEntityIdArray(command.entityIds);
-  const point = sanitizeGroundPoint(world, command.targetX, command.targetY, command.targetZ);
+  const point = sanitizeTerrainGroundPoint(world, command.targetX, command.targetY, command.targetZ);
   if (entityIds === null || point === null || typeof command.queue !== 'boolean') return null;
   const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
   if (queueFront === null) return null;
@@ -630,7 +642,7 @@ function sanitizeUpgradeMetalExtractorAreaCommand(
   tick: number,
 ): UpgradeMetalExtractorAreaCommand | null {
   const builderIds = sanitizeEntityIdArray(command.builderIds);
-  const point = sanitizeGroundPoint(world, command.targetX, command.targetY, command.targetZ);
+  const point = sanitizeTerrainGroundPoint(world, command.targetX, command.targetY, command.targetZ);
   if (builderIds === null || point === null || typeof command.queue !== 'boolean') return null;
   const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
   if (queueFront === null) return null;
@@ -802,7 +814,7 @@ function sanitizeRepairAreaCommand(
   world: WorldState,
   tick: number,
 ): RepairAreaCommand | null {
-  const point = sanitizeGroundPoint(world, command.targetX, command.targetY, command.targetZ);
+  const point = sanitizeTerrainGroundPoint(world, command.targetX, command.targetY, command.targetZ);
   if (!isEntityId(command.commanderId) || point === null || typeof command.queue !== 'boolean') return null;
   const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
   if (queueFront === null) return null;
@@ -905,7 +917,7 @@ function sanitizeResurrectAreaCommand(
   world: WorldState,
   tick: number,
 ): ResurrectAreaCommand | null {
-  const point = sanitizeGroundPoint(world, command.targetX, command.targetY, command.targetZ);
+  const point = sanitizeTerrainGroundPoint(world, command.targetX, command.targetY, command.targetZ);
   if (!isEntityId(command.commanderId) || point === null || typeof command.queue !== 'boolean') return null;
   const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
   if (queueFront === null) return null;
@@ -959,7 +971,7 @@ function sanitizeUnloadTransportCommand(
   tick: number,
 ): UnloadTransportCommand | null {
   const transportIds = sanitizeEntityIdArray(command.transportIds);
-  const point = sanitizeGroundPoint(world, command.targetX, command.targetY, command.targetZ);
+  const point = sanitizeTerrainGroundPoint(world, command.targetX, command.targetY, command.targetZ);
   if (transportIds === null || point === null || typeof command.queue !== 'boolean') return null;
   const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
   if (queueFront === null) return null;
@@ -983,7 +995,7 @@ function sanitizeReclaimAreaCommand(
   world: WorldState,
   tick: number,
 ): ReclaimAreaCommand | null {
-  const point = sanitizeGroundPoint(world, command.targetX, command.targetY, command.targetZ);
+  const point = sanitizeTerrainGroundPoint(world, command.targetX, command.targetY, command.targetZ);
   if (!isEntityId(command.commanderId) || point === null || typeof command.queue !== 'boolean') return null;
   const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
   if (queueFront === null) return null;

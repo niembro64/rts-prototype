@@ -332,7 +332,7 @@ function assertFactoryShellContract(): void {
   );
 
   factory.factory.repeatProduction = false;
-  factory.factory.productionQueue.push('unitWolverine');
+  factory.factory.productionQueue.push('unitLynx');
   const oneShotSpawned = factoryProductionSystem.update(world, 16, buildingGrid).spawnedUnits;
   assertContract(oneShotSpawned.length === 1, 'one-shot factory must spawn one selected shell');
   const oneShotShell = oneShotSpawned[0];
@@ -344,7 +344,7 @@ function assertFactoryShellContract(): void {
     'one-shot factory must complete its selected shell',
   );
   const advancedUnitBlueprintId: string | null = factory.factory.selectedUnitBlueprintId;
-  assertContract(advancedUnitBlueprintId === 'unitWolverine', 'one-shot factory must advance to queued unit');
+  assertContract(advancedUnitBlueprintId === 'unitLynx', 'one-shot factory must advance to queued unit');
   assertContract(factory.factory.productionQueue.length === 0, 'one-shot factory must consume the queued unit');
   assertContract(factory.factory.repeatProduction === false, 'queued one-shot factory must remain in finite mode');
 
@@ -361,13 +361,13 @@ function assertFactoryShellContract(): void {
   assertContract(factory.factory.selectedUnitBlueprintId === null, 'one-shot factory must clear selected unit when queue is empty');
   assertContract(Boolean(factory.factory.repeatProduction), 'one-shot factory must reset to repeat mode when empty');
 
-  factory.factory.productionQueue.push('unitJackal', 'unitWolverine', 'unitWolverine');
+  factory.factory.productionQueue.push('unitJackal', 'unitLynx', 'unitLynx');
   assertContract(
     factoryProductionSystem.editQueue(factory, 'setCount', 1, 2, undefined, 1),
     'factory queue setCount edit must apply',
   );
   assertContract(
-    factory.factory.productionQueue.join(',') === 'unitJackal,unitWolverine',
+    factory.factory.productionQueue.join(',') === 'unitJackal,unitLynx',
     'factory queue setCount edit must replace the selected run',
   );
   assertContract(
@@ -375,7 +375,7 @@ function assertFactoryShellContract(): void {
     'factory queue move edit must apply',
   );
   assertContract(
-    factory.factory.productionQueue.join(',') === 'unitWolverine,unitJackal',
+    factory.factory.productionQueue.join(',') === 'unitLynx,unitJackal',
     'factory queue move edit must reorder the selected run',
   );
   assertContract(
@@ -383,7 +383,7 @@ function assertFactoryShellContract(): void {
     'factory queue remove edit must apply',
   );
   assertContract(
-    factory.factory.productionQueue.join(',') === 'unitWolverine',
+    factory.factory.productionQueue.join(',') === 'unitLynx',
     'factory queue remove edit must delete the selected run',
   );
 }

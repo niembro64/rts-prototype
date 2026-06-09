@@ -135,6 +135,10 @@ export function runCommandHotkeysContractTest(): void {
     'bar-legacy Ctrl+Alt+L should resolve fire state without swallowing load transport',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('l', 'KeyL', { ctrlKey: true, shiftKey: true }), 'bar-legacy') === 'ui.mapLabel',
+    'bar-legacy Ctrl+Shift+L should resolve map label without colliding with fire state',
+  );
+  assertContract(
     resolveCommandHotkey(keyEvent('e', 'KeyE', { altKey: true }), 'prototype') === 'combat.capture',
     'prototype Alt+E should resolve capture without colliding with reclaim',
   );

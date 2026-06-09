@@ -28405,7 +28405,7 @@ pub fn snapshot_encode_entity_unit(
         unit_field_count += 1;
     }
     if has_fire_enabled != 0 {
-        unit_field_count += 1;
+        unit_field_count += 2; // fireEnabled + fireState
     }
     if has_build != 0 {
         unit_field_count += 1;
@@ -28515,6 +28515,8 @@ pub fn snapshot_encode_entity_unit(
     if has_fire_enabled != 0 {
         w.write_str("fireEnabled");
         w.write_bool(false);
+        w.write_str("fireState");
+        w.write_str("holdFire");
     }
 
     if has_build != 0 {

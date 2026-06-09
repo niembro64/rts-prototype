@@ -1,4 +1,10 @@
-import Peer, { DataConnection, util, type PeerOptions } from 'peerjs';
+import PeerDefault, * as PeerJsModule from 'peerjs';
+import type {
+  DataConnection,
+  Peer as PeerInstance,
+  PeerOptions,
+  Util,
+} from 'peerjs';
 import type { PlayerId } from '../sim/types';
 import type { Command } from '../sim/commands';
 import {
@@ -78,15 +84,40 @@ import { NetworkSnapshotTransport } from './NetworkSnapshotTransport';
 // LOCAL player's persisted username (saved to localStorage on every
 // edit, restored on next page load).
 
+type PeerRuntimePackage = {
+  default?: unknown;
+  Peer?: unknown;
+  util?: Util;
+};
+
+const PEER_MODULE = PeerJsModule as unknown as PeerRuntimePackage;
+const PEER_DEFAULT = PeerDefault as unknown as PeerRuntimePackage;
+const Peer = (
+  typeof PEER_MODULE.Peer === 'function'
+    ? PEER_MODULE.Peer
+    : typeof PEER_DEFAULT.Peer === 'function'
+      ? PEER_DEFAULT.Peer
+      : typeof PEER_MODULE.default === 'function'
+        ? PEER_MODULE.default
+        : typeof PEER_DEFAULT.default === 'function'
+          ? PEER_DEFAULT.default
+          : PeerDefault
+) as typeof PeerDefault;
+type Peer = PeerInstance;
+const peerUtil = PEER_MODULE.util ?? PEER_DEFAULT.util;
+if (peerUtil === undefined) {
+  throw new Error('PeerJS util.defaultConfig is unavailable');
+}
+
 const PEER_OPTIONS: PeerOptions = {
   debug: 0,
   // Keep PeerJS's default TURN fallback. The previous STUN-only
   // override worked on easy local networks but could fail for real
   // internet peers behind stricter NATs.
   config: {
-    ...util.defaultConfig,
+    ...peerUtil.defaultConfig,
     iceServers: [
-      ...util.defaultConfig.iceServers,
+      ...peerUtil.defaultConfig.iceServers,
       { urls: 'stun:stun1.l.google.com:19302' },
     ],
   },

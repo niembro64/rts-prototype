@@ -1,5 +1,6 @@
 import { ConstructionSystem } from './construction';
 import { CommandQueue } from './commands';
+import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import {
   buildMassAwareGroupFormationSlots,
   executeCommand,
@@ -12,6 +13,7 @@ import type { Entity } from './types';
 import { setUnitActions, shiftUnitAction } from './unitActions';
 import { WorldState } from './WorldState';
 import { createWreckFromDeadUnit, isResurrectableWreck } from './wrecks';
+import type { TerrainBuildabilityGrid } from '@/types/terrain';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -62,6 +64,23 @@ function completeTestBuilding(world: WorldState, entity: Entity): void {
   }
   applyCompletedBuildingEffects(world, entity);
   entity.buildable = null;
+}
+
+function createAllBuildableTerrainGrid(mapWidth: number, mapHeight: number): TerrainBuildabilityGrid {
+  const cellsX = Math.ceil(mapWidth / BUILD_GRID_CELL_SIZE);
+  const cellsY = Math.ceil(mapHeight / BUILD_GRID_CELL_SIZE);
+  const cellCount = cellsX * cellsY;
+  return {
+    mapWidth,
+    mapHeight,
+    cellSize: BUILD_GRID_CELL_SIZE,
+    cellsX,
+    cellsY,
+    version: 1,
+    configKey: 'command-execution-contract:all-buildable',
+    flags: new Array(cellCount).fill(1),
+    levels: new Array(cellCount).fill(0),
+  };
 }
 
 export function runCommandExecutionContractTest(): void {
@@ -457,7 +476,7 @@ export function runCommandExecutionContractTest(): void {
       targetId: enemy.id,
     },
   ]);
-  captureSim.update(3000);
+  captureSim.update(4000);
   assertContract(
     enemy.ownership?.playerId === 1,
     'capture ability should transfer ownership once progress completes',
@@ -495,7 +514,7 @@ export function runCommandExecutionContractTest(): void {
       targetId: resurrectable.id,
     },
   ]);
-  resurrectSim.update(8000);
+  resurrectSim.update(10000);
   const restored = resurrectWorld.getUnits().find((entity) =>
     entity.id !== resurrector.id &&
     entity.unit?.unitBlueprintId === 'unitJackal' &&
@@ -589,7 +608,11 @@ export function runCommandExecutionContractTest(): void {
   );
 
   const upgradeWorld = new WorldState(1, 512, 512);
-  const upgradeConstruction = new ConstructionSystem(upgradeWorld.mapWidth, upgradeWorld.mapHeight);
+  const upgradeConstruction = new ConstructionSystem(
+    upgradeWorld.mapWidth,
+    upgradeWorld.mapHeight,
+    createAllBuildableTerrainGrid(upgradeWorld.mapWidth, upgradeWorld.mapHeight),
+  );
   const upgradeCtx: CommandContext = {
     world: upgradeWorld,
     constructionSystem: upgradeConstruction,
