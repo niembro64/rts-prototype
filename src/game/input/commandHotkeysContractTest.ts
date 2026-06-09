@@ -83,8 +83,16 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid T should resolve repeat orders',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('y', 'KeyY', { ctrlKey: true, altKey: true }), 'bar-grid') === 'command.gatherWait',
-    'bar-grid Ctrl+Alt+Y should resolve gather wait',
+    resolveCommandHotkey(keyEvent('p', 'KeyP'), 'bar-grid') === 'command.gatherWait',
+    'bar-grid P should resolve gather wait',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('q', 'KeyQ', { ctrlKey: true }), 'bar-grid') === 'select.previous',
+    'bar-grid Ctrl+Q should resolve previous selection',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('q', 'KeyQ', { altKey: true }), 'bar-grid') === 'select.mobileOnly',
+    'bar-grid Alt+Q should resolve mobile-only selection',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('c', 'KeyC'), 'bar-grid') === 'combat.capture',
@@ -103,12 +111,28 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid Ctrl+Alt+Shift+R should resolve resurrect area',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('q', 'KeyQ', { ctrlKey: true, altKey: true }), 'bar-grid') === 'combat.loadTransport',
-    'bar-grid Ctrl+Alt+Q should resolve load transport',
+    resolveCommandHotkey(keyEvent('j', 'KeyJ'), 'bar-grid') === 'combat.loadTransport',
+    'bar-grid J should resolve load transport',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('q', 'KeyQ', { ctrlKey: true, shiftKey: true, altKey: true }), 'bar-grid') === 'combat.unloadTransport',
-    'bar-grid Ctrl+Alt+Shift+Q should resolve unload transport',
+    resolveCommandHotkey(keyEvent('u', 'KeyU'), 'bar-grid') === 'combat.unloadTransport',
+    'bar-grid U should resolve unload transport',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('r', 'KeyR', { ctrlKey: true }), 'bar-grid') === 'select.idleTransports',
+    'bar-grid Ctrl+R should resolve idle transports',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('l', 'KeyL'), 'bar-legacy') === 'combat.loadTransport',
+    'bar-legacy L should resolve load transport',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('u', 'KeyU'), 'bar-legacy') === 'combat.unloadTransport',
+    'bar-legacy U should resolve unload transport',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('l', 'KeyL', { ctrlKey: true, altKey: true }), 'bar-legacy') === 'command.fireToggle',
+    'bar-legacy Ctrl+Alt+L should resolve fire state without swallowing load transport',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('e', 'KeyE', { altKey: true }), 'prototype') === 'combat.capture',

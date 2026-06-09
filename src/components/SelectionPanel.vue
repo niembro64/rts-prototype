@@ -669,6 +669,16 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           type="button"
           class="action-btn"
           :style="{ '--btn-color': BUTTON_COLORS.groupAccent }"
+          :title="actionTitle('Select idle transports', 'select.idleTransports')"
+          @click="actions.selectIdleTransports()"
+        >
+          <span class="btn-label">Trn Idle</span>
+          <span class="btn-key">{{ hotkey('select.idleTransports') }}</span>
+        </button>
+        <button
+          type="button"
+          class="action-btn"
+          :style="{ '--btn-color': BUTTON_COLORS.groupAccent }"
           :title="actionTitle('Select waiting units', 'select.waitingUnits')"
           @click="actions.selectWaitingUnits()"
         >

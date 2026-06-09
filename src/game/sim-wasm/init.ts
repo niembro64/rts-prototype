@@ -4318,6 +4318,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runServerBarConfigContractTest();
         const { runCommandSanitizerContractTest } = await import('../server/commandSanitizerContractTest');
         runCommandSanitizerContractTest();
+        const { runReplayRecorderContractTest } = await import('../server/ReplayRecorderContractTest');
+        runReplayRecorderContractTest();
         const { runSnapshotEntityWirePackContractTest } = await import('../network/snapshotEntityWirePackContractTest');
         runSnapshotEntityWirePackContractTest();
         const { runSnapshotLifecycleContractTest } = await import('../server/snapshotLifecycleContractTest');
@@ -4336,6 +4338,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runInputControlGroupsContractTest();
         const { runInput3DKeyboardControllerContractTest } = await import('../render3d/Input3DKeyboardControllerContractTest');
         runInput3DKeyboardControllerContractTest();
+        const { runBuildGhost3DContractTest } = await import('../render3d/BuildGhost3DContractTest');
+        runBuildGhost3DContractTest();
         const { runMetalDepositVisualClustersContractTest } = await import('../render3d/MetalDepositVisualClustersContractTest');
         runMetalDepositVisualClustersContractTest();
         const { runTurretHostIntegrationContractTest } = await import('../sim/turretHostIntegrationTest');

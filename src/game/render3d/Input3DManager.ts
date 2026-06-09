@@ -51,6 +51,7 @@ import {
   canBuilderUpgradeMetalExtractor,
   isUpgradeableMetalExtractorTarget,
 } from '../sim/metalExtractorUpgrade';
+import { isClientTransportUnit } from '../sim/transports';
 import { Input3DSpecialModes, type Input3DSpecialMode } from './Input3DSpecialModes';
 import { Input3DHoverState, resolveInput3DHoverTargets } from './Input3DHoverState';
 import { Input3DSelectionDragState } from './Input3DSelectionDragState';
@@ -323,6 +324,7 @@ export class Input3DManager {
       selectAllMatchingInView: () => this.selectAllMatchingInView(),
       selectPreviousSelection: () => this.selectPreviousSelection(),
       selectIdleBuilders: () => this.selectIdleBuilders(),
+      selectIdleTransports: () => this.selectIdleTransports(),
       selectWaitingUnits: () => this.selectWaitingUnits(),
       selectSameTypeOnly: () => this.selectSameTypeOnly(),
       selectMobileOnly: () => this.selectMobileOnly(),
@@ -770,6 +772,18 @@ export class Input3DManager {
       const unit = units[i];
       if (!this.isSelectableByActivePlayer(unit)) continue;
       if (unit.builder === null || unit.unit === null) continue;
+      if (unit.unit.actions.length === 0) entityIds.push(unit.id);
+    }
+    this.enqueueSelection(entityIds, false);
+  }
+
+  selectIdleTransports(): void {
+    const entityIds: EntityId[] = [];
+    const units = this.entitySource.getUnitsByPlayer(this.context.activePlayerId);
+    for (let i = 0; i < units.length; i++) {
+      const unit = units[i];
+      if (!this.isSelectableByActivePlayer(unit)) continue;
+      if (!isClientTransportUnit(unit) || unit.unit === null) continue;
       if (unit.unit.actions.length === 0) entityIds.push(unit.id);
     }
     this.enqueueSelection(entityIds, false);

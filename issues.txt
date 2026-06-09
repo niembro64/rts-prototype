@@ -36,8 +36,8 @@ beyond commander DGun only after the underlying authoritative simulation,
 snapshots, client feedback, and physical presentation exist.
 
 Issue: BAR gameplay functionality tied to missing commands is absent. Implement
-the systems needed by the missing command surface: replays where applicable, and
-complete faction/unit/factory/building rosters.
+the systems needed by the missing command surface: complete
+faction/unit/factory/building rosters.
 
 Issue: BAR parity must be extended through the 3D/physics-first design, not
 implemented as flat 2D shortcuts. Special-fire abilities beyond commander DGun

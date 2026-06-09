@@ -144,6 +144,7 @@ export type SelectionActions = {
   selectAllMatchingInView: () => void;
   selectPreviousSelection: () => void;
   selectIdleBuilders: () => void;
+  selectIdleTransports: () => void;
   selectWaitingUnits: () => void;
   selectSameTypeOnly: () => void;
   selectMobileOnly: () => void;

@@ -35,8 +35,10 @@ import {
 } from './MetalDepositVisualClusters';
 
 const GHOST_Y = 1; // hover a hair above the ground so it doesn't z-fight tiles
-const CELL_Y = 1.25;
-const CELL_BORDER_Y = 1.38;
+const TERRAIN_CELL_FILL_LIFT = 1.25;
+const TERRAIN_CELL_BORDER_LIFT = 1.38;
+const METAL_DEPOSIT_CELL_FILL_LIFT = 7.5;
+const METAL_DEPOSIT_CELL_BORDER_LIFT = 7.82;
 const RANGE_Y = 0.6;
 type GroundHeightLookup = (x: number, y: number) => number;
 
@@ -45,7 +47,7 @@ type CellMaterialPair = {
   border: THREE.LineBasicMaterial;
 };
 
-type BuildAbilitySquareCell = {
+export type BuildAbilitySquareCell = {
   x: number;
   y: number;
   gx?: number;
@@ -54,7 +56,7 @@ type BuildAbilitySquareCell = {
   depositId?: number | null;
 };
 
-type BuildAbilitySquarePose = {
+export type BuildAbilitySquarePose = {
   x: number;
   z: number;
   xMin: number;
@@ -64,6 +66,25 @@ type BuildAbilitySquarePose = {
   fillY: number;
   borderY: number;
 };
+
+export function resolveBuildAbilitySquarePose(
+  cell: BuildAbilitySquareCell,
+  surfaceY: number,
+): BuildAbilitySquarePose {
+  const half = BUILD_GRID_CELL_SIZE / 2;
+  const fillLift = cell.metalCovered ? METAL_DEPOSIT_CELL_FILL_LIFT : TERRAIN_CELL_FILL_LIFT;
+  const borderLift = cell.metalCovered ? METAL_DEPOSIT_CELL_BORDER_LIFT : TERRAIN_CELL_BORDER_LIFT;
+  return {
+    x: cell.x,
+    z: cell.y,
+    xMin: cell.x - half,
+    xMax: cell.x + half,
+    zMin: cell.y - half,
+    zMax: cell.y + half,
+    fillY: surfaceY + fillLift,
+    borderY: surfaceY + borderLift,
+  };
+}
 
 export class BuildGhost3D {
   private world: THREE.Group;
@@ -406,18 +427,8 @@ export class BuildGhost3D {
   }
 
   private getBuildAbilitySquarePose(cell: BuildAbilitySquareCell): BuildAbilitySquarePose {
-    const half = BUILD_GRID_CELL_SIZE / 2;
     const surfaceY = this.getBuildAbilitySquareSurfaceY(cell);
-    return {
-      x: cell.x,
-      z: cell.y,
-      xMin: cell.x - half,
-      xMax: cell.x + half,
-      zMin: cell.y - half,
-      zMax: cell.y + half,
-      fillY: surfaceY + CELL_Y,
-      borderY: surfaceY + CELL_BORDER_Y,
-    };
+    return resolveBuildAbilitySquarePose(cell, surfaceY);
   }
 
   private getBuildAbilitySquareSurfaceY(cell: BuildAbilitySquareCell): number {

@@ -82,6 +82,7 @@ type Input3DKeyboardControllerConfig = {
   selectAllMatchingInView: () => void;
   selectPreviousSelection: () => void;
   selectIdleBuilders: () => void;
+  selectIdleTransports: () => void;
   selectWaitingUnits: () => void;
   selectSameTypeOnly: () => void;
   selectMobileOnly: () => void;
@@ -562,6 +563,9 @@ export class Input3DKeyboardController {
         break;
       case 'select.idleBuilders':
         this.config.selectIdleBuilders();
+        break;
+      case 'select.idleTransports':
+        this.config.selectIdleTransports();
         break;
       case 'select.waitingUnits':
         this.config.selectWaitingUnits();

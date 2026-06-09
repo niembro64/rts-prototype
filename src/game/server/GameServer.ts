@@ -65,6 +65,7 @@ import {
   releaseSimSlot,
   transferSimSlot,
 } from '../lifecycle/sessionSingleton';
+import { ReplayRecorder, type BudgetReplayFile } from './ReplayRecorder';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
@@ -137,6 +138,7 @@ export class GameServer {
 
   private debugGridPublisher = new ServerDebugGridPublisher();
   private snapshotPublisher = new ServerSnapshotPublisher();
+  private replayRecorder!: ReplayRecorder;
 
   // Public IP address (set by host component)
   private ipAddress: string = 'N/A';
@@ -229,6 +231,7 @@ export class GameServer {
       this.backgroundAllowedUnitBlueprintIds = boot.backgroundAllowedUnitBlueprintIds;
       this.terrainTileMap = boot.terrainTileMap;
       this.terrainBuildabilityGrid = boot.terrainBuildabilityGrid;
+      this.replayRecorder = new ReplayRecorder(config, this.playerIds);
 
       this.unitForceSystem = new UnitForceSystem(this.world, this.simulation, this.physics);
       this.factoryConstructionTurretSystem = new FactoryConstructionTurretSystem(this.world);
@@ -563,28 +566,41 @@ export class GameServer {
   receiveCommand(command: Command, authority: CommandAuthority): void {
     const sanitizedCommand = sanitizeCommand(command, this.world);
     if (!sanitizedCommand) return;
+    const recordAcceptedCommand = (acceptedCommand: Command): void => {
+      this.replayRecorder.recordAcceptedCommand(
+        acceptedCommand,
+        authority,
+        this.world.getTick(),
+        performance.now(),
+      );
+    };
 
     // Intercept server config commands (don't need tick synchronization)
     const canApplyServerControl = canApplyGameServerControlCommand(authority, this.playerIds[0]);
     switch (sanitizedCommand.type) {
       case 'setSnapshotRate':
         if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
         this.setSnapshotRate(sanitizedCommand.rate);
         return;
       case 'setKeyframeRatio':
         if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
         this.setKeyframeRatio(sanitizedCommand.ratio);
         return;
       case 'setTickRate':
         if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
         this.setTickRate(sanitizedCommand.rate);
         return;
       case 'setPaused':
         if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
         this.setPaused(sanitizedCommand.paused);
         return;
       case 'setUnitGroundNormalEmaMode':
         if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
         // updateUnitGroundNormal reads its mode from the unitGroundNormal module's
         // private state; flipping it from a command keeps host +
         // every client running with the same effective EMA the
@@ -593,38 +609,47 @@ export class GameServer {
         return;
       case 'setSendGridInfo':
         if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
         this.setSendGridInfo(sanitizedCommand.enabled);
         return;
       case 'setBackgroundUnitBlueprintEnabled':
         if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
         this.setBackgroundUnitBlueprintEnabled(sanitizedCommand.unitBlueprintId, sanitizedCommand.enabled);
         return;
       case 'setMaxTotalUnits':
         if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
         this.world.maxTotalUnits = sanitizedCommand.maxTotalUnits;
         return;
       case 'setTurretShieldPanelsEnabled':
         if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
         this.setTurretShieldPanelsEnabled(sanitizedCommand.enabled);
         return;
       case 'setTurretShieldSpheresEnabled':
         if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
         this.setTurretShieldSpheresEnabled(sanitizedCommand.enabled);
         return;
       case 'setShieldsObstructSight':
         if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
         this.setShieldsObstructSight(sanitizedCommand.enabled);
         return;
       case 'setShieldReflectionMode':
         if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
         this.setShieldReflectionMode(sanitizedCommand.mode);
         return;
       case 'setFogOfWarEnabled':
         if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
         this.setFogOfWarEnabled(sanitizedCommand.enabled);
         return;
       case 'setConverterTax':
         if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
         this.setConverterTax(sanitizedCommand.tax);
         return;
     }
@@ -633,7 +658,18 @@ export class GameServer {
       sanitizedCommand,
       authority,
     );
-    if (authorizedCommand) this.commandQueue.enqueue(authorizedCommand);
+    if (authorizedCommand) {
+      recordAcceptedCommand(authorizedCommand);
+      this.commandQueue.enqueue(authorizedCommand);
+    }
+  }
+
+  exportReplay(): BudgetReplayFile {
+    return this.replayRecorder.export(this.world.getTick());
+  }
+
+  getReplayCommandCount(): number {
+    return this.replayRecorder.getCommandCount();
   }
 
   private setTurretShieldPanelsEnabled(enabled: boolean): void {

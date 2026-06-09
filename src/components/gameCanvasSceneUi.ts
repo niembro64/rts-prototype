@@ -283,6 +283,9 @@ export function useGameCanvasSceneUi({
     selectIdleBuilders: () => {
       getActiveBattleScene()?.selectIdleBuilders();
     },
+    selectIdleTransports: () => {
+      getActiveBattleScene()?.selectIdleTransports();
+    },
     selectWaitingUnits: () => {
       getActiveBattleScene()?.selectWaitingUnits();
     },

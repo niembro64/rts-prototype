@@ -912,6 +912,10 @@ export class RtsScene3D {
     this.inputManager?.selectIdleBuilders();
   }
 
+  public selectIdleTransports(): void {
+    this.inputManager?.selectIdleTransports();
+  }
+
   public selectWaitingUnits(): void {
     this.inputManager?.selectWaitingUnits();
   }

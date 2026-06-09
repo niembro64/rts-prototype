@@ -333,6 +333,23 @@ function captureScreenshot(): void {
   }, 'image/png');
 }
 
+function downloadReplay(): void {
+  const server = currentServer ?? getBackgroundBattle()?.server ?? null;
+  if (server === null) return;
+  const replay = server.exportReplay();
+  const blob = new Blob([`${JSON.stringify(replay, null, 2)}\n`], {
+    type: 'application/json',
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `budget-annihilation-replay-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function getActiveGameScene() {
   return foregroundGame.getScene() ?? getBackgroundBattle()?.gameInstance?.getScene() ?? null;
 }
@@ -1801,6 +1818,10 @@ watchEffect(() => {
               type="button"
               @click="captureScreenshot"
             >SHOT</button>
+            <button
+              type="button"
+              @click="downloadReplay"
+            >RPLY</button>
             <button
               type="button"
               :class="{ active: mapDetailsVisible }"
