@@ -119,6 +119,8 @@ export class Input3DManager {
   public onGuardModeChange?: (active: boolean) => void;
   public onReclaimModeChange?: (active: boolean) => void;
   public onCaptureModeChange?: (active: boolean) => void;
+  public onResurrectModeChange?: (active: boolean) => void;
+  public onResurrectAreaModeChange?: (active: boolean) => void;
   public onMexUpgradeModeChange?: (active: boolean) => void;
   public onPingModeChange?: (active: boolean) => void;
   public onTowerTargetModeChange?: (active: boolean) => void;
@@ -204,6 +206,8 @@ export class Input3DManager {
       isGuardMode: () => this.guardMode,
       isReclaimMode: () => this.reclaimMode,
       isCaptureMode: () => this.captureMode,
+      isResurrectMode: () => this.resurrectMode,
+      isResurrectAreaMode: () => this.resurrectAreaMode,
       isMexUpgradeMode: () => this.mexUpgradeMode,
       isPingMode: () => this.pingMode,
       isTowerTargetMode: () => this.towerTargetMode,
@@ -215,6 +219,8 @@ export class Input3DManager {
       exitGuardMode: () => this.exitGuardMode(),
       exitReclaimMode: () => this.exitReclaimMode(),
       exitCaptureMode: () => this.exitCaptureMode(),
+      exitResurrectMode: () => this.exitResurrectMode(),
+      exitResurrectAreaMode: () => this.exitResurrectAreaMode(),
       exitMexUpgradeMode: () => this.exitMexUpgradeMode(),
       exitPingMode: () => this.exitPingMode(),
       exitTowerTargetMode: () => this.exitTowerTargetMode(),
@@ -292,6 +298,8 @@ export class Input3DManager {
       toggleGuardMode: () => this.toggleGuardMode(),
       toggleReclaimMode: () => this.toggleReclaimMode(),
       toggleCaptureMode: () => this.toggleCaptureMode(),
+      toggleResurrectMode: () => this.toggleResurrectMode(),
+      toggleResurrectAreaMode: () => this.toggleResurrectAreaMode(),
       toggleMexUpgradeMode: () => this.toggleMexUpgradeMode(),
       upgradeSelectedMetalExtractors: () => this.upgradeSelectedMetalExtractors(),
       toggleRepairAreaMode: () => this.toggleRepairAreaMode(),
@@ -320,6 +328,8 @@ export class Input3DManager {
       isGuardMode: () => this.guardMode,
       isReclaimMode: () => this.reclaimMode,
       isCaptureMode: () => this.captureMode,
+      isResurrectMode: () => this.resurrectMode,
+      isResurrectAreaMode: () => this.resurrectAreaMode,
       isMexUpgradeMode: () => this.mexUpgradeMode,
       isPingMode: () => this.pingMode,
       isTowerTargetMode: () => this.towerTargetMode,
@@ -331,6 +341,8 @@ export class Input3DManager {
       exitGuardMode: () => this.exitGuardMode(),
       exitReclaimMode: () => this.exitReclaimMode(),
       exitCaptureMode: () => this.exitCaptureMode(),
+      exitResurrectMode: () => this.exitResurrectMode(),
+      exitResurrectAreaMode: () => this.exitResurrectAreaMode(),
       exitMexUpgradeMode: () => this.exitMexUpgradeMode(),
       exitPingMode: () => this.exitPingMode(),
       exitTowerTargetMode: () => this.exitTowerTargetMode(),
@@ -347,6 +359,8 @@ export class Input3DManager {
       onGuardModeChange: (active) => this.onGuardModeChange?.(active),
       onReclaimModeChange: (active) => this.onReclaimModeChange?.(active),
       onCaptureModeChange: (active) => this.onCaptureModeChange?.(active),
+      onResurrectModeChange: (active) => this.onResurrectModeChange?.(active),
+      onResurrectAreaModeChange: (active) => this.onResurrectAreaModeChange?.(active),
       onMexUpgradeModeChange: (active) => this.onMexUpgradeModeChange?.(active),
       onPingModeChange: (active) => this.onPingModeChange?.(active),
       onTowerTargetModeChange: (active) => this.onTowerTargetModeChange?.(active),
@@ -449,6 +463,14 @@ export class Input3DManager {
 
   private get captureMode(): boolean {
     return this.specialModes.isActive('capture');
+  }
+
+  private get resurrectMode(): boolean {
+    return this.specialModes.isActive('resurrect');
+  }
+
+  private get resurrectAreaMode(): boolean {
+    return this.specialModes.isActive('resurrectArea');
   }
 
   private get mexUpgradeMode(): boolean {
@@ -978,6 +1000,30 @@ export class Input3DManager {
     this.enterSpecialMode('capture');
   }
 
+  toggleResurrectMode(): void {
+    if (this.resurrectMode) {
+      this.exitResurrectMode();
+      return;
+    }
+    if (!this.hasSelectedCommander()) return;
+    this.mode.exitBuildMode();
+    this.mode.exitDGunMode();
+    this.exitSpecialModes(false);
+    this.enterSpecialMode('resurrect');
+  }
+
+  toggleResurrectAreaMode(): void {
+    if (this.resurrectAreaMode) {
+      this.exitResurrectAreaMode();
+      return;
+    }
+    if (!this.hasSelectedCommander()) return;
+    this.mode.exitBuildMode();
+    this.mode.exitDGunMode();
+    this.exitSpecialModes(false);
+    this.enterSpecialMode('resurrectArea');
+  }
+
   toggleMexUpgradeMode(): void {
     if (this.mexUpgradeMode) {
       this.exitMexUpgradeMode();
@@ -1125,6 +1171,16 @@ export class Input3DManager {
     return this.captureMode;
   }
 
+  /** True while the next left-click will issue a resurrect command. */
+  isInResurrectMode(): boolean {
+    return this.resurrectMode;
+  }
+
+  /** True while the next left-click/drag will issue a resurrect-area command. */
+  isInResurrectAreaMode(): boolean {
+    return this.resurrectAreaMode;
+  }
+
   /** True while the next left-click/drag will issue a metal extractor upgrade command. */
   isInMexUpgradeMode(): boolean {
     return this.mexUpgradeMode;
@@ -1178,6 +1234,14 @@ export class Input3DManager {
 
   private exitCaptureMode(): void {
     this.specialModes.exit('capture');
+  }
+
+  private exitResurrectMode(): void {
+    this.specialModes.exit('resurrect');
+  }
+
+  private exitResurrectAreaMode(): void {
+    this.specialModes.exit('resurrectArea');
   }
 
   private exitMexUpgradeMode(): void {
@@ -1496,6 +1560,12 @@ export class Input3DManager {
     }
     if (this.captureMode && !this.hasSelectedCommander()) {
       this.exitCaptureMode();
+    }
+    if (this.resurrectMode && !this.hasSelectedCommander()) {
+      this.exitResurrectMode();
+    }
+    if (this.resurrectAreaMode && !this.hasSelectedCommander()) {
+      this.exitResurrectAreaMode();
     }
     if (this.mexUpgradeMode && !this.hasSelectedMetalExtractorUpgradeBuilder()) {
       this.exitMexUpgradeMode();
@@ -1839,12 +1909,18 @@ export class Input3DManager {
     this.onRepairAreaModeChange = undefined;
     this.onFormationAssumeModeChange = undefined;
     this.onFormationMoveModeChange = undefined;
+    this.onAttackModeChange = undefined;
     this.onAttackAreaModeChange = undefined;
     this.onAttackGroundModeChange = undefined;
+    this.onManualLaunchModeChange = undefined;
     this.onGuardModeChange = undefined;
     this.onReclaimModeChange = undefined;
+    this.onCaptureModeChange = undefined;
+    this.onResurrectModeChange = undefined;
+    this.onResurrectAreaModeChange = undefined;
     this.onMexUpgradeModeChange = undefined;
     this.onPingModeChange = undefined;
+    this.onTowerTargetModeChange = undefined;
     this.selectionDrag.destroy();
   }
 }

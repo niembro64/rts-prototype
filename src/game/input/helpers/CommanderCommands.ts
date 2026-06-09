@@ -4,13 +4,15 @@
 // Keeping these renderer-agnostic (no dispatch channel, no event
 // object) — callers enqueue the returned command themselves.
 
-import type { Entity, WaypointType } from '../../sim/types';
+import type { BuildingBlueprintId, Entity, WaypointType } from '../../sim/types';
 import type {
   CaptureCommand,
   ReclaimCommand,
   ReclaimAreaCommand,
   RepairAreaCommand,
   RepairCommand,
+  ResurrectAreaCommand,
+  ResurrectCommand,
   SetFactoryGuardCommand,
   SetRallyPointCommand,
 } from '../../sim/commands';
@@ -22,6 +24,8 @@ import type { ReclaimEntitySource } from './ReclaimTargetHelper';
 import { isGuardableFriendlyTarget } from './GuardTargetHelper';
 import { isCapturableTarget } from '../../sim/capture';
 import { isReclaimableTarget } from '../../sim/reclaim';
+
+const WRECK_BUILDING_BLUEPRINT_ID: BuildingBlueprintId = 'buildingWreck';
 
 /** Build a RepairCommand if the commander (if any) is right-clicking
  *  on a repairable target — an incomplete friendly building or a
@@ -156,6 +160,59 @@ export function buildCaptureCommandForTarget(
     tick,
     commanderId: commander.id,
     targetId: target.id,
+    queue,
+    queueFront,
+    queueInsertIndex,
+  };
+}
+
+export function isClientResurrectableWreck(target: Entity | null | undefined): target is Entity {
+  if (target === null || target === undefined || target.building === null) return false;
+  return target.buildingBlueprintId === WRECK_BUILDING_BLUEPRINT_ID && target.building.hp > 0;
+}
+
+export function buildResurrectCommandForTarget(
+  target: Entity | null | undefined,
+  commander: Entity | null,
+  tick: number,
+  queue: boolean,
+  queueFront = false,
+  queueInsertIndex?: number,
+): ResurrectCommand | null {
+  const playerId = commander?.ownership?.playerId;
+  if (commander === null || commander === undefined || playerId === undefined || commander.builder === null) return null;
+  if (commander.id === target?.id || !isClientResurrectableWreck(target)) return null;
+  return {
+    type: 'resurrect',
+    tick,
+    commanderId: commander.id,
+    targetId: target.id,
+    queue,
+    queueFront,
+    queueInsertIndex,
+  };
+}
+
+export function buildResurrectAreaCommand(
+  commander: Entity | null,
+  worldX: number,
+  worldY: number,
+  radius: number,
+  tick: number,
+  queue: boolean,
+  worldZ?: number,
+  queueFront = false,
+  queueInsertIndex?: number,
+): ResurrectAreaCommand | null {
+  if (!commander?.ownership || commander.builder === null) return null;
+  return {
+    type: 'resurrectArea',
+    tick,
+    commanderId: commander.id,
+    targetX: worldX,
+    targetY: worldY,
+    targetZ: worldZ,
+    radius,
     queue,
     queueFront,
     queueInsertIndex,

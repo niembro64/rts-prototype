@@ -203,6 +203,8 @@ const showCancelHint = computed(() =>
   || props.selection.isGuardMode
   || props.selection.isReclaimMode
   || props.selection.isCaptureMode
+  || props.selection.isResurrectMode
+  || props.selection.isResurrectAreaMode
   || props.selection.isManualLaunchMode
   || props.selection.isMexUpgradeMode
   || props.selection.isPingMode
@@ -1089,6 +1091,30 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
         >
           <span class="btn-label">Capture</span>
           <span class="btn-key">{{ hotkey('combat.capture') }}</span>
+        </button>
+        <button
+          v-if="selection.hasCommander"
+          type="button"
+          class="action-btn"
+          :class="{ active: selection.isResurrectMode }"
+          :style="{ '--btn-color': BUTTON_COLORS.repair }"
+          :title="actionTitle('Resurrect', 'combat.resurrect')"
+          @click="actions.toggleResurrect()"
+        >
+          <span class="btn-label">Resurrect</span>
+          <span class="btn-key">{{ hotkey('combat.resurrect') }}</span>
+        </button>
+        <button
+          v-if="selection.hasCommander"
+          type="button"
+          class="action-btn"
+          :class="{ active: selection.isResurrectAreaMode }"
+          :style="{ '--btn-color': BUTTON_COLORS.repair }"
+          :title="actionTitle('Resurrect area', 'combat.resurrectArea')"
+          @click="actions.toggleResurrectArea()"
+        >
+          <span class="btn-label">Res Area</span>
+          <span class="btn-key">{{ hotkey('combat.resurrectArea') }}</span>
         </button>
         <button
           v-if="selection.hasCommander"

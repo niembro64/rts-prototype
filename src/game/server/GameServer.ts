@@ -293,6 +293,25 @@ export class GameServer {
       }
     };
 
+    this.simulation.onBuildingSpawn = (newBuildings: Entity[]) => {
+      for (const entity of newBuildings) {
+        if (entity.building === null || entity.body !== null) continue;
+        const baseZ = entity.transform.z - entity.building.depth / 2;
+        const body = this.physics.createBuildingBody(
+          entity.transform.x,
+          entity.transform.y,
+          entity.building.width,
+          entity.building.height,
+          entity.building.depth,
+          baseZ,
+          entity.building.supportSurface,
+          `building_${entity.id}`,
+          entity.id,
+        );
+        entity.body = { physicsBody: body };
+      }
+    };
+
     // Audio events are collected by simulation and included in snapshots
     // No need for per-event callback on server side
 
@@ -461,6 +480,7 @@ export class GameServer {
     this.world.onHostMassChanged = null;
     this.simulation.onUnitDeath = null;
     this.simulation.onUnitSpawn = null;
+    this.simulation.onBuildingSpawn = null;
     this.simulation.onBuildingDeath = null;
     this.simulation.onSimEvent = null;
     this.simulation.onGameOver = null;

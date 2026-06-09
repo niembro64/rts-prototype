@@ -3,6 +3,8 @@ import type {
   CaptureCommand,
   ManualLaunchCommand,
   MoveCommand,
+  ResurrectAreaCommand,
+  ResurrectCommand,
   SetFactoryGuardCommand,
   SetFireEnabledCommand,
   SetCloakStateCommand,
@@ -163,6 +165,38 @@ export function runCommandSanitizerContractTest(): void {
   assertContract(
     capture.tick === 9001 && capture.queueFront === true && capture.targetId === 8,
     'capture command must preserve target and queue-front insertion',
+  );
+
+  const resurrect = sanitizeRequired<ResurrectCommand>(world, {
+    type: 'resurrect',
+    tick: 7,
+    commanderId: 7,
+    targetId: 9,
+    queue: true,
+    queueFront: true,
+  });
+  assertContract(
+    resurrect.tick === 9001 && resurrect.queueFront === true && resurrect.targetId === 9,
+    'resurrect command must preserve target and queue-front insertion',
+  );
+
+  const resurrectArea = sanitizeRequired<ResurrectAreaCommand>(world, {
+    type: 'resurrectArea',
+    tick: 7,
+    commanderId: 7,
+    targetX: 24.5,
+    targetY: 32.25,
+    targetZ: 999,
+    radius: 999999,
+    queue: true,
+    queueInsertIndex: 4,
+  });
+  assertContract(
+      resurrectArea.tick === 9001 &&
+      resurrectArea.targetZ === world.getGroundZ(24.5, 32.25) &&
+      resurrectArea.radius === 500 &&
+      resurrectArea.queueInsertIndex === 4,
+    'resurrect-area command must normalize terrain z, radius, and queue insertion',
   );
 
   const manualLaunch = sanitizeRequired<ManualLaunchCommand>(world, {

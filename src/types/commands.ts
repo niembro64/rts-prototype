@@ -37,6 +37,8 @@ export type CommandType =
   | 'reclaim'
   | 'reclaimArea'
   | 'capture'
+  | 'resurrect'
+  | 'resurrectArea'
   | 'wait'
   | 'attack'
   | 'attackGround'
@@ -327,6 +329,27 @@ export type CaptureCommand = BaseCommand & {
   queueInsertIndex?: number;
 };
 
+export type ResurrectCommand = BaseCommand & {
+  type: 'resurrect';
+  commanderId: EntityId;
+  targetId: EntityId;
+  queue: boolean;
+  queueFront?: boolean;
+  queueInsertIndex?: number;
+};
+
+export type ResurrectAreaCommand = BaseCommand & {
+  type: 'resurrectArea';
+  commanderId: EntityId;
+  targetX: number;
+  targetY: number;
+  targetZ?: number;
+  radius: number;
+  queue: boolean;
+  queueFront?: boolean;
+  queueInsertIndex?: number;
+};
+
 export type WaitCommand = BaseCommand & {
   type: 'wait';
   entityIds: EntityId[];
@@ -494,6 +517,8 @@ export type Command =
   | ReclaimCommand
   | ReclaimAreaCommand
   | CaptureCommand
+  | ResurrectCommand
+  | ResurrectAreaCommand
   | WaitCommand
   | AttackCommand
   | AttackGroundCommand

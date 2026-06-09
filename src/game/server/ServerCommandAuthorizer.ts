@@ -11,6 +11,8 @@ import type {
   MoveCommand,
   PingCommand,
   RemoveLastQueuedOrderCommand,
+  ResurrectAreaCommand,
+  ResurrectCommand,
   ScanCommand,
   SkipCurrentOrderCommand,
   SelfDestructCommand,
@@ -39,6 +41,7 @@ import {
   canBuilderUpgradeMetalExtractor,
   isUpgradeableMetalExtractorTarget,
 } from '../sim/metalExtractorUpgrade';
+import { isResurrectableWreck } from '../sim/wrecks';
 
 type UnitListCommand =
   | AttackCommand
@@ -164,6 +167,12 @@ export function authorizeGameServerGameplayCommand(
     case 'capture':
       return authorizeCaptureCommand(world, command, playerId);
 
+    case 'resurrect':
+      return authorizeResurrectCommand(world, command, playerId);
+
+    case 'resurrectArea':
+      return authorizeResurrectAreaCommand(world, command, playerId);
+
     default:
       return null;
   }
@@ -178,6 +187,23 @@ function authorizeCaptureCommand(
   const target = world.getEntity(command.targetId);
   if (target === undefined || target.ownership === null || target.ownership.playerId === playerId) return null;
   return command;
+}
+
+function authorizeResurrectCommand(
+  world: WorldState,
+  command: ResurrectCommand,
+  playerId: PlayerId,
+): ResurrectCommand | null {
+  if (!isOwnedEntity(world, command.commanderId, playerId)) return null;
+  return isResurrectableWreck(world.getEntity(command.targetId)) ? command : null;
+}
+
+function authorizeResurrectAreaCommand(
+  world: WorldState,
+  command: ResurrectAreaCommand,
+  playerId: PlayerId,
+): ResurrectAreaCommand | null {
+  return isOwnedEntity(world, command.commanderId, playerId) ? command : null;
 }
 
 function authorizeStartBuildCommand(

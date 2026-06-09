@@ -335,7 +335,9 @@ export class RtsScene3DRenderPhase {
       {
         reclaimTargets:
           (inputManager?.isInReclaimMode() ?? false) ||
-          (inputManager?.isInCaptureMode() ?? false),
+          (inputManager?.isInCaptureMode() ?? false) ||
+          (inputManager?.isInResurrectMode() ?? false) ||
+          (inputManager?.isInResurrectAreaMode() ?? false),
       },
     );
     this.clientViewState.consumeRenderDirties();

@@ -11,6 +11,7 @@ import type { WorldState } from './WorldState';
 import { SimulationDeathCleanupClassifier } from './SimulationDeathCleanupClassifier';
 import type { SimulationDeathExplosionPlanner } from './SimulationDeathExplosionPlanner';
 import type { SimulationEventQueues } from './SimulationEventQueues';
+import { createWreckFromDeadUnit } from './wrecks';
 
 export class SimulationDeadEntityCleanup {
   private readonly world: WorldState;
@@ -25,6 +26,7 @@ export class SimulationDeadEntityCleanup {
   private readonly deadTurretIdSet = new Set<EntityId>();
   private readonly syntheticDeathEventIds = new Set<EntityId>();
   private readonly deathContexts = new Map<EntityId, DeathContext>();
+  private readonly spawnedWrecks: Entity[] = [];
 
   constructor(
     world: WorldState,
@@ -40,6 +42,7 @@ export class SimulationDeadEntityCleanup {
   run(
     onUnitDeath: ((deadUnitIds: EntityId[], deathContexts: Map<EntityId, DeathContext> | null) => void) | null,
     onBuildingDeath: ((deadBuildingIds: EntityId[]) => void) | null,
+    onBuildingSpawn: ((newBuildings: Entity[]) => void) | null,
   ): void {
     const deathCheckIds = this.deathCheckIds;
     const deadUnitIds = this.deadUnitIds;
@@ -52,7 +55,7 @@ export class SimulationDeadEntityCleanup {
     this.deathCleanupClassifier.classify(deathCheckIds, deadUnitIds, deadBuildingIds);
     deathCheckIds.length = 0;
     this.planSyntheticDeaths(deadUnitIds, deadBuildingIds);
-    this.removeDeadUnits(deadUnitIds, onUnitDeath);
+    this.removeDeadUnits(deadUnitIds, onUnitDeath, onBuildingSpawn);
     this.removeDeadBuildings(deadBuildingIds, onBuildingDeath);
   }
 
@@ -103,17 +106,24 @@ export class SimulationDeadEntityCleanup {
   private removeDeadUnits(
     deadUnitIds: EntityId[],
     onUnitDeath: ((deadUnitIds: EntityId[], deathContexts: Map<EntityId, DeathContext> | null) => void) | null,
+    onBuildingSpawn: ((newBuildings: Entity[]) => void) | null,
   ): void {
     if (deadUnitIds.length === 0) return;
+    const spawnedWrecks = this.spawnedWrecks;
+    spawnedWrecks.length = 0;
     for (const id of deadUnitIds) {
       const entity = this.world.getEntity(id);
       if (entity) {
         this.emitStopsForDeadUnit(entity, id);
         if (this.syntheticDeathEventIds.has(id)) this.emitSyntheticDeathEvent(entity);
+        const wreck = createWreckFromDeadUnit(this.world, entity);
+        if (wreck !== null) spawnedWrecks.push(wreck);
       }
       spatialGrid.removeUnit(id);
     }
     if (onUnitDeath !== null) onUnitDeath(deadUnitIds, null);
+    if (spawnedWrecks.length > 0 && onBuildingSpawn !== null) onBuildingSpawn(spawnedWrecks);
+    spawnedWrecks.length = 0;
     for (const id of deadUnitIds) this.world.removeEntity(id);
   }
 

@@ -3,6 +3,7 @@ import { isBuildInProgress } from './buildableHelpers';
 import { isBuildTargetInRange } from './builderRange';
 import { isCapturableTarget } from './capture';
 import { isReclaimableTarget } from './reclaim';
+import { isResurrectableWreck } from './wrecks';
 import { getActionIntentStart, getUnitActionTargetId } from './unitActionIntents';
 import { spliceUnitActions } from './unitActions';
 import { NO_ENTITY_ID } from './types';
@@ -57,7 +58,8 @@ export class SimulationActionQueueMaintenance {
         action.type !== 'build' &&
         action.type !== 'repair' &&
         action.type !== 'reclaim' &&
-        action.type !== 'capture'
+        action.type !== 'capture' &&
+        action.type !== 'resurrect'
       ) {
         if (!action.isPathExpansion) return;
         continue;
@@ -102,6 +104,7 @@ export class SimulationActionQueueMaintenance {
       action.type !== 'repair' &&
       action.type !== 'reclaim' &&
       action.type !== 'capture' &&
+      action.type !== 'resurrect' &&
       action.type !== 'guard'
     ) {
       return false;
@@ -130,6 +133,10 @@ export class SimulationActionQueueMaintenance {
     if (action.type === 'capture') {
       const playerId = entity.ownership?.playerId;
       return playerId === undefined || !isCapturableTarget(target, playerId);
+    }
+
+    if (action.type === 'resurrect') {
+      return !isResurrectableWreck(target);
     }
 
     return !this.isIncompleteBuildableTarget(target) && !this.isDamagedRepairUnit(target);

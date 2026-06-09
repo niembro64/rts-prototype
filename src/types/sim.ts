@@ -869,6 +869,26 @@ export type Builder = {
   currentBuildTarget: EntityId;
 };
 
+export type WreckSource =
+  | {
+      kind: 'unit';
+      unitBlueprintId: string;
+    }
+  | {
+      kind: 'building' | 'tower';
+      buildingBlueprintId: BuildingBlueprintId;
+      width: number;
+      height: number;
+      depth: number;
+    };
+
+export type Wreck = {
+  source: WreckSource;
+  originalOwnerId: PlayerId | null;
+  resurrectProgressMs: number;
+  resurrectRequiredMs: number;
+};
+
 // Building configuration. gridWidth/gridHeight are the footprint on
 // the ground plane (measured in build-grid cells); gridDepth is the
 // vertical extent measured in build-grid cell heights.
@@ -1037,6 +1057,7 @@ export type EntityComponentSlots = {
   factory: Factory | null;
   commander: Commander | null;
   dgunProjectile: DGunProjectile | null;
+  wreck: Wreck | null;
   buildingBlueprintId: BuildingBlueprintId | null;
   /** For extractors only — every deposit with at least one generated
    *  metal cell under this extractor's fixed build footprint. Output is
@@ -1070,6 +1091,7 @@ export function createEmptyEntityComponentSlots(): EntityComponentSlots {
     factory: null,
     commander: null,
     dgunProjectile: null,
+    wreck: null,
     buildingBlueprintId: null,
     coveredDepositIds: null,
     metalExtractionRate: null,

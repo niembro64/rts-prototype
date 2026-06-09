@@ -514,6 +514,12 @@ export class RtsScene3D {
     this.inputManager.onCaptureModeChange = (active) => {
       this.selectionSystem.setCaptureMode(active);
     };
+    this.inputManager.onResurrectModeChange = (active) => {
+      this.selectionSystem.setResurrectMode(active);
+    };
+    this.inputManager.onResurrectAreaModeChange = (active) => {
+      this.selectionSystem.setResurrectAreaMode(active);
+    };
     this.inputManager.onMexUpgradeModeChange = (active) => {
       this.selectionSystem.setMexUpgradeMode(active);
     };
@@ -958,6 +964,14 @@ export class RtsScene3D {
 
   public toggleCaptureMode(): void {
     this.inputManager?.toggleCaptureMode();
+  }
+
+  public toggleResurrectMode(): void {
+    this.inputManager?.toggleResurrectMode();
+  }
+
+  public toggleResurrectAreaMode(): void {
+    this.inputManager?.toggleResurrectAreaMode();
   }
 
   public reclaimSelected(): void {

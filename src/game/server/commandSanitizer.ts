@@ -17,6 +17,8 @@ import type {
   RepairAreaCommand,
   RepairCommand,
   RemoveLastQueuedOrderCommand,
+  ResurrectAreaCommand,
+  ResurrectCommand,
   ScanCommand,
   SkipCurrentOrderCommand,
   StopFactoryProductionCommand,
@@ -136,6 +138,10 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       return sanitizeReclaimAreaCommand(command, world, tick);
     case 'capture':
       return sanitizeCaptureCommand(command, tick);
+    case 'resurrect':
+      return sanitizeResurrectCommand(command, tick);
+    case 'resurrectArea':
+      return sanitizeResurrectAreaCommand(command, world, tick);
     case 'setSnapshotRate':
       return SERVER_CONFIG.snapshot.options.includes(command.rate)
         ? { ...command, tick, rate: normalizeSnapshotRate(command.rate) }
@@ -861,6 +867,59 @@ function sanitizeCaptureCommand(command: CaptureCommand, tick: number): CaptureC
         queueFront,
         queueInsertIndex,
       };
+}
+
+function sanitizeResurrectCommand(command: ResurrectCommand, tick: number): ResurrectCommand | null {
+  if (
+    !isEntityId(command.commanderId) ||
+    !isEntityId(command.targetId) ||
+    typeof command.queue !== 'boolean'
+  ) {
+    return null;
+  }
+  const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
+  const queueInsertIndex = queueFront !== null
+    ? sanitizeQueueInsertIndex(command.queue, queueFront, command.queueInsertIndex)
+    : null;
+  return queueFront === null || queueInsertIndex === null
+    ? null
+    : {
+        ...command,
+        tick,
+        commanderId: command.commanderId,
+        targetId: command.targetId,
+        queue: command.queue,
+        queueFront,
+        queueInsertIndex,
+      };
+}
+
+function sanitizeResurrectAreaCommand(
+  command: ResurrectAreaCommand,
+  world: WorldState,
+  tick: number,
+): ResurrectAreaCommand | null {
+  const point = sanitizeGroundPoint(world, command.targetX, command.targetY, command.targetZ);
+  if (!isEntityId(command.commanderId) || point === null || typeof command.queue !== 'boolean') return null;
+  const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
+  if (queueFront === null) return null;
+  const queueInsertIndex = sanitizeQueueInsertIndex(command.queue, queueFront, command.queueInsertIndex);
+  if (queueInsertIndex === null) return null;
+  const radius = Number.isFinite(command.radius)
+    ? clamp(command.radius, 1, REPAIR_AREA_MAX_RADIUS)
+    : REPAIR_AREA_MAX_RADIUS;
+  return {
+    type: 'resurrectArea',
+    tick,
+    commanderId: command.commanderId,
+    targetX: point.x,
+    targetY: point.y,
+    targetZ: point.z,
+    radius,
+    queue: command.queue,
+    queueFront,
+    queueInsertIndex,
+  };
 }
 
 function sanitizeReclaimAreaCommand(

@@ -64,8 +64,11 @@ export {
   buildReclaimCommandAt,
   buildReclaimCommandForTarget,
   buildCaptureCommandForTarget,
+  buildResurrectAreaCommand,
+  buildResurrectCommandForTarget,
   buildFactoryGuardCommands,
   buildFactoryRallyCommands,
+  isClientResurrectableWreck,
 } from './CommanderCommands';
 
 export {

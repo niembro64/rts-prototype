@@ -9,6 +9,7 @@ const LEGACY_Y = RING_LIFT;
 const AREA_COLORS: Record<Input3DAreaDragKind, number> = {
   repairArea: ACTION_COLORS.repair,
   reclaimArea: ACTION_COLORS.reclaim,
+  resurrectArea: ACTION_COLORS.resurrect,
   attackArea: ACTION_COLORS.attack,
   attackGround: ACTION_COLORS.attackGround,
   buildMexArea: ACTION_COLORS.build,

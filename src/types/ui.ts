@@ -102,6 +102,8 @@ export type SelectionInfo = {
   isGuardMode: boolean;
   isReclaimMode: boolean;
   isCaptureMode: boolean;
+  isResurrectMode: boolean;
+  isResurrectAreaMode: boolean;
   isMexUpgradeMode: boolean;
   isPingMode: boolean;
   factorySelectedUnit?: FactorySelectionItem | null;
@@ -157,6 +159,8 @@ export type SelectionActions = {
   toggleGuard: () => void;
   toggleReclaim: () => void;
   toggleCapture: () => void;
+  toggleResurrect: () => void;
+  toggleResurrectArea: () => void;
   reclaimSelected: () => void;
   toggleMexUpgrade: () => void;
   upgradeSelectedMetalExtractors: () => void;
@@ -275,6 +279,8 @@ export type UIInputState = {
   isGuardMode: boolean;
   isReclaimMode: boolean;
   isCaptureMode: boolean;
+  isResurrectMode: boolean;
+  isResurrectAreaMode: boolean;
   isMexUpgradeMode: boolean;
   isPingMode: boolean;
   /** True while in the click-to-pick mode for setting a tower's host
@@ -436,6 +442,8 @@ export type PylonTubeFlow = {
 export type CommanderAbilitiesResult = {
   sprayTargets: SprayTarget[];
   completedBuildings: { commanderId: EntityId; buildingId: EntityId }[];
+  resurrectedUnits: Entity[];
+  resurrectedBuildings: Entity[];
 };
 
 // Factory production result

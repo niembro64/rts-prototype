@@ -95,6 +95,14 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid Alt+D should resolve manual launch',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('r', 'KeyR', { ctrlKey: true, altKey: true }), 'bar-grid') === 'combat.resurrect',
+    'bar-grid Ctrl+Alt+R should resolve resurrect',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('r', 'KeyR', { ctrlKey: true, shiftKey: true, altKey: true }), 'bar-grid') === 'combat.resurrectArea',
+    'bar-grid Ctrl+Alt+Shift+R should resolve resurrect area',
+  );
+  assertContract(
     resolveCommandHotkey(keyEvent('e', 'KeyE', { altKey: true }), 'prototype') === 'combat.capture',
     'prototype Alt+E should resolve capture without colliding with reclaim',
   );

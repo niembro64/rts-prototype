@@ -68,6 +68,8 @@ export type {
   ResourceCost,
   Buildable,
   Builder,
+  Wreck,
+  WreckSource,
   BuildingConfig,
   UnitBuildConfig,
   Factory,

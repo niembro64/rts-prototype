@@ -33,6 +33,8 @@ export type {
   ReclaimCommand,
   ReclaimAreaCommand,
   CaptureCommand,
+  ResurrectCommand,
+  ResurrectAreaCommand,
   WaitCommand,
   AttackCommand,
   AttackGroundCommand,

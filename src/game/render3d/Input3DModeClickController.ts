@@ -12,6 +12,8 @@ import {
   buildReclaimAreaCommand,
   buildReclaimCommandForTarget,
   buildRepairAreaCommand,
+  buildResurrectAreaCommand,
+  buildResurrectCommandForTarget,
   type CommanderModeController,
   type InputSelectedCommands,
 } from '../input/helpers';
@@ -41,6 +43,7 @@ import { queueModeFromEvent } from '../input/queueModifiers';
 
 const REPAIR_AREA_RADIUS = 220;
 const RECLAIM_AREA_RADIUS = 220;
+const RESURRECT_AREA_RADIUS = 220;
 const ATTACK_AREA_RADIUS = 300;
 const MEX_UPGRADE_AREA_RADIUS = 220;
 const AREA_MEX_BLUEPRINT_ID: BuildingBlueprintId = 'buildingExtractor';
@@ -97,6 +100,8 @@ type Input3DModeClickControllerConfig = {
   isGuardMode: () => boolean;
   isReclaimMode: () => boolean;
   isCaptureMode: () => boolean;
+  isResurrectMode: () => boolean;
+  isResurrectAreaMode: () => boolean;
   isMexUpgradeMode: () => boolean;
   isPingMode: () => boolean;
   isTowerTargetMode: () => boolean;
@@ -108,6 +113,8 @@ type Input3DModeClickControllerConfig = {
   exitGuardMode: () => void;
   exitReclaimMode: () => void;
   exitCaptureMode: () => void;
+  exitResurrectMode: () => void;
+  exitResurrectAreaMode: () => void;
   exitMexUpgradeMode: () => void;
   exitPingMode: () => void;
   exitTowerTargetMode: () => void;
@@ -134,6 +141,8 @@ export class Input3DModeClickController {
       this.config.isGuardMode() ||
       this.config.isReclaimMode() ||
       this.config.isCaptureMode() ||
+      this.config.isResurrectMode() ||
+      this.config.isResurrectAreaMode() ||
       this.config.isMexUpgradeMode() ||
       this.config.isPingMode() ||
       this.config.isTowerTargetMode();
@@ -209,6 +218,8 @@ export class Input3DModeClickController {
     if (this.config.isGuardMode()) return 'guard';
     if (this.config.isReclaimMode()) return 'reclaim';
     if (this.config.isCaptureMode()) return 'reclaim';
+    if (this.config.isResurrectMode()) return 'repair';
+    if (this.config.isResurrectAreaMode()) return 'repair';
     if (this.config.isMexUpgradeMode()) return 'build';
     if (this.config.isPingMode()) return 'ping';
     if (this.config.isTowerTargetMode()) return 'attack';
@@ -360,6 +371,7 @@ export class Input3DModeClickController {
     if (this.config.isRepairAreaMode()) return 'repairArea';
     if (this.config.isAttackAreaMode()) return 'attackArea';
     if (this.config.isReclaimMode()) return 'reclaimArea';
+    if (this.config.isResurrectAreaMode()) return 'resurrectArea';
     if (this.config.isMexUpgradeMode()) return 'upgradeMexArea';
     return null;
   }
@@ -414,6 +426,23 @@ export class Input3DModeClickController {
       if (cmd) this.config.commandQueue.enqueue(cmd);
       this.config.applyCursor('attack');
       if (!drag.queue) this.config.exitAttackAreaMode();
+      return;
+    }
+    if (drag.kind === 'resurrectArea') {
+      const cmd = buildResurrectAreaCommand(
+        this.config.getSelectedCommander(),
+        drag.start.x,
+        drag.start.y,
+        radius,
+        this.config.getTick(),
+        drag.queue,
+        drag.start.z,
+        drag.queueFront,
+        drag.queueInsertIndex,
+      );
+      if (cmd) this.config.commandQueue.enqueue(cmd);
+      this.config.applyCursor('repair');
+      if (!drag.queue) this.config.exitResurrectAreaMode();
       return;
     }
     if (drag.kind === 'upgradeMexArea') {
@@ -593,6 +622,8 @@ export class Input3DModeClickController {
     else if (this.config.isGuardMode()) this.handleGuardClick(e);
     else if (this.config.isReclaimMode()) this.handleReclaimClick(e);
     else if (this.config.isCaptureMode()) this.handleCaptureClick(e);
+    else if (this.config.isResurrectMode()) this.handleResurrectClick(e);
+    else if (this.config.isResurrectAreaMode()) this.handleResurrectAreaClick(e);
     else if (this.config.isMexUpgradeMode()) this.handleMexUpgradeClick(e);
     else if (this.config.isTowerTargetMode()) this.handleTowerTargetClick(e);
     else this.handlePingClick(e);
@@ -609,6 +640,8 @@ export class Input3DModeClickController {
     else if (this.config.isGuardMode()) this.config.exitGuardMode();
     else if (this.config.isReclaimMode()) this.config.exitReclaimMode();
     else if (this.config.isCaptureMode()) this.config.exitCaptureMode();
+    else if (this.config.isResurrectMode()) this.config.exitResurrectMode();
+    else if (this.config.isResurrectAreaMode()) this.config.exitResurrectAreaMode();
     else if (this.config.isMexUpgradeMode()) this.config.exitMexUpgradeMode();
     else if (this.config.isTowerTargetMode()) this.config.exitTowerTargetMode();
     else this.config.exitPingMode();
@@ -1050,6 +1083,62 @@ export class Input3DModeClickController {
     if (!queueMode.queue) this.config.exitCaptureMode();
   }
 
+  private handleResurrectClick(e: MouseEvent): void {
+    const commander = this.config.getSelectedCommander();
+    if (!commander) {
+      this.config.exitResurrectMode();
+      return;
+    }
+    const tick = this.config.getTick();
+    const entityHitId = this.config.picker.raycastEntity(e.clientX, e.clientY);
+    const entityHit = entityHitId !== null
+      ? this.config.getEntitySource().getEntity(entityHitId)
+      : null;
+    const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
+
+    const resurrectCmd = buildResurrectCommandForTarget(
+      entityHit,
+      commander,
+      tick,
+      queueMode.queue,
+      queueMode.queueFront,
+      queueMode.queueInsertIndex,
+    );
+    if (!resurrectCmd) {
+      this.config.applyCursor('blocked');
+      return;
+    }
+    this.config.commandQueue.enqueue(resurrectCmd);
+    this.config.applyCursor('repair');
+    if (!queueMode.queue) this.config.exitResurrectMode();
+  }
+
+  private handleResurrectAreaClick(e: MouseEvent): void {
+    const commander = this.config.getSelectedCommander();
+    if (!commander) {
+      this.config.exitResurrectAreaMode();
+      return;
+    }
+    const world = this.config.picker.raycastGround(e.clientX, e.clientY);
+    if (!world) return;
+    const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
+    const cmd = buildResurrectAreaCommand(
+      commander,
+      world.x,
+      world.y,
+      RESURRECT_AREA_RADIUS,
+      this.config.getTick(),
+      queueMode.queue,
+      world.z,
+      queueMode.queueFront,
+      queueMode.queueInsertIndex,
+    );
+    if (!cmd) return;
+    this.config.commandQueue.enqueue(cmd);
+    this.config.applyCursor('repair');
+    if (!queueMode.queue) this.config.exitResurrectAreaMode();
+  }
+
   private handleMexUpgradeClick(e: MouseEvent): void {
     const builderIds = this.getSelectedMetalExtractorUpgradeBuilderIds();
     if (builderIds.length === 0) {
@@ -1102,6 +1191,7 @@ function defaultAreaRadius(kind: Input3DAreaDragKind): number {
   switch (kind) {
     case 'repairArea': return REPAIR_AREA_RADIUS;
     case 'reclaimArea': return RECLAIM_AREA_RADIUS;
+    case 'resurrectArea': return RESURRECT_AREA_RADIUS;
     case 'attackArea': return ATTACK_AREA_RADIUS;
     case 'attackGround': return 48;
     case 'buildMexArea': return 1;

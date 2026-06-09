@@ -322,5 +322,56 @@
         "collision": 42.426
       }
     }
+  },
+  "buildingWreck": {
+    "buildingBlueprintId": "buildingWreck",
+    "name": "Wreck",
+    "gridWidth": 2,
+    "gridHeight": 2,
+    "gridDepth": 1,
+    "hp": 120,
+    "cost": {
+      "energy": 0,
+      "metal": 0
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "constructionRate": null,
+    "conversionRate": null,
+    "renderProfile": "buildingWreck",
+    "visualHeight": 18,
+    "anchorProfile": "collisionDepth",
+    "supportSurface": {
+      "kind": "none"
+    },
+    "hud": {
+      "barsOffsetAboveTop": 10
+    },
+    "sensors": {
+      "fullSightRadius": 0,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
+    "turrets": [],
+    "base": {
+      "cost": {
+        "energy": 0,
+        "metal": 0
+      },
+      "mass": 120,
+      "health": 120,
+      "deathExplosion": {
+        "radius": 12,
+        "force": 800,
+        "damage": 10
+      },
+      "radius": {
+        "visual": 28.284,
+        "hitbox": 28.284,
+        "collision": 28.284
+      }
+    }
   }
 }

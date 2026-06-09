@@ -141,6 +141,9 @@ export class Simulation {
   // Callback for when units are spawned (to create physics bodies)
   public onUnitSpawn: ((newUnits: Entity[]) => void) | null = null;
 
+  // Callback for when runtime static entities are spawned (to create physics bodies)
+  public onBuildingSpawn: ((newBuildings: Entity[]) => void) | null = null;
+
   // Callback for when buildings are destroyed
   public onBuildingDeath: ((deadBuildingIds: EntityId[]) => void) | null = null;
 
@@ -359,6 +362,10 @@ export class Simulation {
     // Update commander auto-build and auto-heal
     const commanderResult = commanderAbilitiesSystem.update(this.world, dtMs);
     this.currentSprayTargets = commanderResult.sprayTargets;
+    if (commanderResult.resurrectedUnits.length > 0) {
+      const onUnitSpawn = this.onUnitSpawn;
+      if (onUnitSpawn !== null) onUnitSpawn(commanderResult.resurrectedUnits);
+    }
 
     // Handle completed build/repair actions - advance commander action queues
     for (const completed of commanderResult.completedBuildings) {
@@ -393,7 +400,7 @@ export class Simulation {
     // Safety cleanup - remove any dead entities that slipped through.
     // WorldState records ids whose HP changed, so this drains only
     // those candidates instead of walking every unit/building.
-    this.deadEntityCleanup.run(this.onUnitDeath, this.onBuildingDeath);
+    this.deadEntityCleanup.run(this.onUnitDeath, this.onBuildingDeath, this.onBuildingSpawn);
 
     // Finalize force accumulator (sums all contributions)
     this.forceAccumulator.finalize();
@@ -698,7 +705,8 @@ export class Simulation {
         currentAction.type === 'build' ||
         currentAction.type === 'repair' ||
         currentAction.type === 'reclaim' ||
-        currentAction.type === 'capture'
+        currentAction.type === 'capture' ||
+        currentAction.type === 'resurrect'
       ) {
         const targetId = currentAction.type === 'build'
           ? currentAction.buildingId

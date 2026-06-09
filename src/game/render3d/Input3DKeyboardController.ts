@@ -64,6 +64,8 @@ type Input3DKeyboardControllerConfig = {
   toggleGuardMode: () => void;
   toggleReclaimMode: () => void;
   toggleCaptureMode: () => void;
+  toggleResurrectMode: () => void;
+  toggleResurrectAreaMode: () => void;
   toggleMexUpgradeMode: () => void;
   upgradeSelectedMetalExtractors: () => void;
   toggleRepairAreaMode: () => void;
@@ -92,6 +94,8 @@ type Input3DKeyboardControllerConfig = {
   isGuardMode: () => boolean;
   isReclaimMode: () => boolean;
   isCaptureMode: () => boolean;
+  isResurrectMode: () => boolean;
+  isResurrectAreaMode: () => boolean;
   isMexUpgradeMode: () => boolean;
   isPingMode: () => boolean;
   isTowerTargetMode: () => boolean;
@@ -103,6 +107,8 @@ type Input3DKeyboardControllerConfig = {
   exitGuardMode: () => void;
   exitReclaimMode: () => void;
   exitCaptureMode: () => void;
+  exitResurrectMode: () => void;
+  exitResurrectAreaMode: () => void;
   exitMexUpgradeMode: () => void;
   exitPingMode: () => void;
   exitTowerTargetMode: () => void;
@@ -423,6 +429,12 @@ export class Input3DKeyboardController {
       case 'combat.capture':
         this.config.toggleCaptureMode();
         break;
+      case 'combat.resurrect':
+        this.config.toggleResurrectMode();
+        break;
+      case 'combat.resurrectArea':
+        this.config.toggleResurrectAreaMode();
+        break;
       case 'command.upgradeMexSelected':
         this.config.upgradeSelectedMetalExtractors();
         break;
@@ -592,6 +604,8 @@ export class Input3DKeyboardController {
         { isActive: this.config.isGuardMode, cancel: this.config.exitGuardMode },
         { isActive: this.config.isReclaimMode, cancel: this.config.exitReclaimMode },
         { isActive: this.config.isCaptureMode, cancel: this.config.exitCaptureMode },
+        { isActive: this.config.isResurrectMode, cancel: this.config.exitResurrectMode },
+        { isActive: this.config.isResurrectAreaMode, cancel: this.config.exitResurrectAreaMode },
         { isActive: this.config.isMexUpgradeMode, cancel: this.config.exitMexUpgradeMode },
         { isActive: this.config.isPingMode, cancel: this.config.exitPingMode },
         { isActive: this.config.isTowerTargetMode, cancel: this.config.exitTowerTargetMode },

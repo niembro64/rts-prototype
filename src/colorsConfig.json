@@ -851,6 +851,10 @@
         "colorHex": "#b28cff",
         "cssColor": "#b28cff"
       },
+      "resurrect": {
+        "colorHex": "#68f0b8",
+        "cssColor": "#68f0b8"
+      },
       "wait": {
         "colorHex": "#e8e8e8",
         "cssColor": "#e8e8e8"

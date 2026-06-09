@@ -32,16 +32,15 @@ BAR grid/legacy bindings and adding command buttons for missing BAR commands so
 visible hotkeys match the active keymap across the whole command surface.
 
 Issue: special abilities are incomplete. Add BAR Load Transport,
-Unload Transport, Resurrect, Resurrect Area, and any unit-specific special
-buttons beyond commander DGun only after the underlying authoritative
-simulation, snapshots, client feedback, and physical presentation exist.
+Unload Transport, and any unit-specific special buttons beyond commander DGun
+only after the underlying authoritative simulation, snapshots, client
+feedback, and physical presentation exist.
 
 Issue: BAR gameplay functionality tied to missing commands is absent. Implement
-the systems needed by the missing command surface: transports,
-resurrection/wreck fields, replays where applicable, and complete
-faction/unit/factory/building rosters.
+the systems needed by the missing command surface: transports, replays where
+applicable, and complete faction/unit/factory/building rosters.
 
 Issue: BAR parity must be extended through the 3D/physics-first design, not
-implemented as flat 2D shortcuts. Transport/load/unload, resurrection, and
-special-fire abilities beyond commander DGun need physical presentation and
-authoritative physics interactions.
+implemented as flat 2D shortcuts. Transport/load/unload and special-fire
+abilities beyond commander DGun need physical presentation and authoritative
+physics interactions.

@@ -136,6 +136,8 @@ export function useGameCanvasSceneUi({
     isGuardMode: false,
     isReclaimMode: false,
     isCaptureMode: false,
+    isResurrectMode: false,
+    isResurrectAreaMode: false,
     isMexUpgradeMode: false,
     isPingMode: false,
     factorySelectedUnit: null,
@@ -322,6 +324,12 @@ export function useGameCanvasSceneUi({
     },
     toggleCapture: () => {
       getActiveBattleScene()?.toggleCaptureMode();
+    },
+    toggleResurrect: () => {
+      getActiveBattleScene()?.toggleResurrectMode();
+    },
+    toggleResurrectArea: () => {
+      getActiveBattleScene()?.toggleResurrectAreaMode();
     },
     reclaimSelected: () => {
       getActiveBattleScene()?.reclaimSelected();

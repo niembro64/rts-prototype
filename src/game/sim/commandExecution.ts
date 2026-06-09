@@ -21,6 +21,8 @@ import type {
   RepairAreaCommand,
   RepairCommand,
   RemoveLastQueuedOrderCommand,
+  ResurrectAreaCommand,
+  ResurrectCommand,
   SelectCommand,
   SkipCurrentOrderCommand,
   SetFireEnabledCommand,
@@ -67,6 +69,7 @@ import { dropTurretLockMidTick } from './combat/combatActivitySlab';
 import { isAliveGuardTarget } from './guard';
 import { isReclaimableTarget } from './reclaim';
 import { isCapturableTarget } from './capture';
+import { isResurrectableWreck } from './wrecks';
 import { isBuildInProgress } from './buildableHelpers';
 import {
   ATTACK_AREA_MAX_RADIUS,
@@ -237,6 +240,12 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'capture':
       executeCaptureCommand(ctx, command);
+      break;
+    case 'resurrect':
+      executeResurrectCommand(ctx, command);
+      break;
+    case 'resurrectArea':
+      executeResurrectAreaCommand(ctx, command);
       break;
     case 'attack':
       executeAttackCommand(ctx, command);
@@ -1441,6 +1450,37 @@ function executeReclaimAreaCommand(ctx: CommandContext, command: ReclaimAreaComm
   );
 }
 
+function executeResurrectCommand(ctx: CommandContext, command: ResurrectCommand): void {
+  const commander = ctx.world.getEntity(command.commanderId);
+  const target = ctx.world.getEntity(command.targetId);
+  enqueueResurrectAction(ctx, commander, target, command.queue, commandQueuesInFront(command), commandQueueInsertIndex(command));
+}
+
+function executeResurrectAreaCommand(ctx: CommandContext, command: ResurrectAreaCommand): void {
+  const commander = ctx.world.getEntity(command.commanderId);
+  if (
+    commander === undefined ||
+    commander.commander === null ||
+    commander.unit === null ||
+    commander.builder === null
+  ) return;
+
+  const radius = clampRepairAreaRadius(command.radius);
+  const targets = findResurrectAreaTargets(
+    ctx,
+    command.targetX,
+    command.targetY,
+    radius,
+  );
+  enqueueAreaTargetActionsInOrder(
+    targets,
+    command.queue,
+    commandQueuesInFront(command),
+    commandQueueInsertIndex(command),
+    (target, queue, queueFront, queueInsertIndex) => enqueueResurrectAction(ctx, commander, target, queue, queueFront, queueInsertIndex),
+  );
+}
+
 function clampRepairAreaRadius(radius: number): number {
   if (!Number.isFinite(radius)) return REPAIR_AREA_MAX_RADIUS;
   return Math.max(1, Math.min(radius, REPAIR_AREA_MAX_RADIUS));
@@ -1574,6 +1614,28 @@ function findReclaimAreaTargets(
   return targets.map((target) => target.entity);
 }
 
+function findResurrectAreaTargets(
+  ctx: CommandContext,
+  x: number,
+  y: number,
+  radius: number,
+): Entity[] {
+  const radiusSq = radius * radius;
+  const targets: AreaTarget[] = [];
+
+  const buildings = ctx.world.getBuildings();
+  for (let i = 0; i < buildings.length; i++) {
+    const target = buildings[i];
+    if (!isResurrectableWreck(target)) continue;
+    const distSq = entityAreaDistanceSq(target, x, y);
+    if (distSq > radiusSq) continue;
+    targets.push({ entity: target, distanceSq: distSq });
+  }
+
+  targets.sort(compareAreaTargets);
+  return targets.map((target) => target.entity);
+}
+
 function enqueueRepairAction(
   ctx: CommandContext,
   commander: Entity | undefined,
@@ -1630,6 +1692,34 @@ function enqueueReclaimAction(
   const targetPoint = getEntityTargetPoint(target);
   const action: UnitAction = {
     type: 'reclaim',
+    x: targetPoint.x,
+    y: targetPoint.y,
+    z: targetPoint.z,
+    targetId: target.id,
+  };
+
+  addPathActionsWithFinal(commander, action, queue, ctx, queueFront, queueInsertIndex);
+}
+
+function enqueueResurrectAction(
+  ctx: CommandContext,
+  commander: Entity | undefined,
+  target: Entity | undefined,
+  queue: boolean,
+  queueFront: boolean,
+  queueInsertIndex?: number,
+): void {
+  if (
+    commander === undefined ||
+    commander.commander === null ||
+    commander.unit === null ||
+    commander.builder === null
+  ) return;
+  if (!isResurrectableWreck(target)) return;
+
+  const targetPoint = getEntityTargetPoint(target);
+  const action: UnitAction = {
+    type: 'resurrect',
     x: targetPoint.x,
     y: targetPoint.y,
     z: targetPoint.z,

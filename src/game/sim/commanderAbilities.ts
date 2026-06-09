@@ -12,6 +12,7 @@ import { isBuildInProgress } from './buildableHelpers';
 import { setUnitActions } from './unitActions';
 import { ballSpawnRateForResourceRate } from '@/resourceConfig';
 import { getSimWasm } from '../sim-wasm/init';
+import { isResurrectableWreck, restoreUnitFromWreck } from './wrecks';
 
 export type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
@@ -32,9 +33,13 @@ export class CommanderAbilitiesSystem {
   private readonly sprayTargetPool: SprayTarget[] = [];
   private readonly completedBuildings: CompletedBuilding[] = [];
   private readonly completedBuildingPool: CompletedBuilding[] = [];
+  private readonly resurrectedUnits: Entity[] = [];
+  private readonly resurrectedBuildings: Entity[] = [];
   private readonly result: CommanderAbilitiesResult = {
     sprayTargets: this.sprayTargets,
     completedBuildings: this.completedBuildings,
+    resurrectedUnits: this.resurrectedUnits,
+    resurrectedBuildings: this.resurrectedBuildings,
   };
   private readonly repairEnergyRates = new Map<number, number>();
   private readonly captureProgressByPair = new Map<number, { playerId: PlayerId; progress: number }>();
@@ -44,6 +49,8 @@ export class CommanderAbilitiesSystem {
   update(world: WorldState, dtMs: number): CommanderAbilitiesResult {
     this.sprayTargets.length = 0;
     this.completedBuildings.length = 0;
+    this.resurrectedUnits.length = 0;
+    this.resurrectedBuildings.length = 0;
     this.activeCaptureKeys.clear();
     this.rebuildRepairEnergyRateIndex(world);
 
@@ -111,6 +118,24 @@ export class CommanderAbilitiesSystem {
       if (currentAction !== undefined && currentAction.type === 'capture') {
         if (
           this.captureTarget(
+            world,
+            playerId,
+            commander,
+            currentTarget,
+            dtMs,
+            commanderSprayX,
+            commanderSprayY,
+            commanderSprayZ,
+          )
+        ) {
+          this.pushCompletedBuilding(commander.id, currentTarget.id);
+        }
+        continue;
+      }
+
+      if (currentAction !== undefined && currentAction.type === 'resurrect') {
+        if (
+          this.resurrectTarget(
             world,
             playerId,
             commander,
@@ -255,12 +280,13 @@ export class CommanderAbilitiesSystem {
     // Get the first action
     const currentAction = actions[0];
 
-    // Only process build/repair/reclaim actions
+    // Only process build/repair/reclaim/resurrection actions
     if (
       currentAction.type !== 'build' &&
       currentAction.type !== 'repair' &&
       currentAction.type !== 'reclaim' &&
-      currentAction.type !== 'capture'
+      currentAction.type !== 'capture' &&
+      currentAction.type !== 'resurrect'
     ) {
       return null;
     }
@@ -281,6 +307,12 @@ export class CommanderAbilitiesSystem {
     if (currentAction.type === 'capture') {
       const playerId = commander.ownership?.playerId;
       return playerId !== undefined && isCapturableTarget(target, playerId) && isBuildTargetInRange(commander, target)
+        ? target
+        : null;
+    }
+
+    if (currentAction.type === 'resurrect') {
+      return isResurrectableWreck(target) && isBuildTargetInRange(commander, target)
         ? target
         : null;
     }
@@ -423,6 +455,51 @@ export class CommanderAbilitiesSystem {
       target.factory.guardTargetId = null;
     }
     return true;
+  }
+
+  private resurrectTarget(
+    world: WorldState,
+    playerId: PlayerId,
+    commander: Entity,
+    target: Entity,
+    dtMs: number,
+    sourceX: number,
+    sourceY: number,
+    sourceZ: number,
+  ): boolean {
+    if (!commander.builder || !isResurrectableWreck(target)) return false;
+    const wreck = target.wreck;
+    if (wreck === null || wreck.resurrectRequiredMs <= 0) return false;
+
+    wreck.resurrectProgressMs = Math.min(
+      wreck.resurrectRequiredMs,
+      wreck.resurrectProgressMs + dtMs * Math.max(0.1, commander.builder.constructionRate / 100),
+    );
+    const progress = wreck.resurrectProgressMs / wreck.resurrectRequiredMs;
+
+    const spray = this.acquireSprayTarget();
+    spray.source.id = commander.id;
+    spray.source.pos.x = sourceX;
+    spray.source.pos.y = sourceY;
+    spray.source.z = sourceZ;
+    spray.source.playerId = playerId;
+    spray.target.id = target.id;
+    spray.target.pos.x = target.transform.x;
+    spray.target.pos.y = target.transform.y;
+    spray.target.z = target.transform.z;
+    spray.target.radius = target.building?.targetRadius ?? 20;
+    spray.type = 'heal';
+    spray.intensity = Math.max(0.2, progress);
+    spray.channel = 2;
+    spray.flow = 'direct';
+    spray.flowRadius = 0;
+    spray.ballSpawnRate = 10;
+
+    if (wreck.resurrectProgressMs < wreck.resurrectRequiredMs) return false;
+
+    const restored = restoreUnitFromWreck(world, target, playerId);
+    if (restored !== null) this.resurrectedUnits.push(restored);
+    return restored !== null;
   }
 }
 

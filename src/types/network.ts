@@ -53,7 +53,8 @@ export const ACTION_TYPE_RECLAIM = 7;
 export const ACTION_TYPE_ATTACK_GROUND = 8;
 export const ACTION_TYPE_WAIT = 9;
 export const ACTION_TYPE_CAPTURE = 10;
-export type ActionTypeCode = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+export const ACTION_TYPE_RESURRECT = 11;
+export type ActionTypeCode = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
 
 const _ACTION_TO_CODE: Record<string, ActionTypeCode> = {
   move: ACTION_TYPE_MOVE,
@@ -63,6 +64,7 @@ const _ACTION_TO_CODE: Record<string, ActionTypeCode> = {
   repair: ACTION_TYPE_REPAIR,
   reclaim: ACTION_TYPE_RECLAIM,
   capture: ACTION_TYPE_CAPTURE,
+  resurrect: ACTION_TYPE_RESURRECT,
   wait: ACTION_TYPE_WAIT,
   attack: ACTION_TYPE_ATTACK,
   attackGround: ACTION_TYPE_ATTACK_GROUND,
@@ -80,6 +82,7 @@ const _CODE_TO_ACTION: string[] = [
   'attackGround',
   'wait',
   'capture',
+  'resurrect',
 ];
 
 export function actionTypeToCode(s: string): ActionTypeCode {
