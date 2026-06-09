@@ -394,6 +394,10 @@ export class GameServer {
     return this.snapshotListeners.areStartupListenersReady();
   }
 
+  isStartupGateOpen(): boolean {
+    return this.startupGateOpen;
+  }
+
   private recordTickCadence(elapsedMs: number, stepsRun: number): void {
     if (stepsRun <= 0 || elapsedMs <= 0) return;
 

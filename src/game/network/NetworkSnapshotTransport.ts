@@ -79,9 +79,11 @@ export class NetworkSnapshotTransport {
     const telemetry = this.captureSendTelemetry(state);
 
     const compressionOptions = getFullSnapshotCompressionOptions();
+    const hasStaticBootstrapPayload =
+      state.terrain !== undefined || state.buildability !== undefined;
     if (
       !state.isDelta &&
-      compressionOptions.enabled &&
+      (compressionOptions.enabled || hasStaticBootstrapPayload) &&
       buf.byteLength >= compressionOptions.minBytes
     ) {
       if (canUseSnapshotCompression(compressionOptions.format)) {
@@ -262,6 +264,7 @@ export class NetworkSnapshotTransport {
           type: 'state',
           gameId,
           data: raw,
+          isDelta: telemetry.isDelta,
         };
       }
 

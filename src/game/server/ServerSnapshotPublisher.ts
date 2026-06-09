@@ -42,6 +42,7 @@ export type SnapshotListenerEntry = {
   lastStaticTerrainTileMap: TerrainTileMap | undefined;
   lastStaticBuildabilityGrid: TerrainBuildabilityGrid | undefined;
   lastStaticResyncToken: number | undefined;
+  startupReady: boolean;
   /** Phase 10 D.3e — Rust-side snapshot baseline handle for this
    *  listener (u32 index into the WASM SnapshotBaselineRegistry).
    *  Allocated via sim.snapshotBaseline.create() on add, released
@@ -456,7 +457,8 @@ export class ServerSnapshotPublisher {
     listener: SnapshotListenerEntry,
     input: ServerSnapshotPublisherInput,
   ): boolean {
-    return listener.lastStaticTerrainTileMap !== input.terrainTileMap ||
+    return !listener.startupReady ||
+      listener.lastStaticTerrainTileMap !== input.terrainTileMap ||
       listener.lastStaticBuildabilityGrid !== input.terrainBuildabilityGrid ||
       listener.lastStaticResyncToken !== this.staticResyncToken;
   }

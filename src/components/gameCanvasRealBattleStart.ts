@@ -55,6 +55,7 @@ const REAL_BATTLE_LOAD_PROGRESS = {
   sceneCreated: 0.78,
   firstSnapshot: 0.88,
   shaderWarmup: 0.95,
+  waitingPlayers: 0.97,
   done: 1,
 } as const;
 
@@ -84,8 +85,16 @@ export async function startRealBattleWithPlayers(
   let ownedConnection: GameConnection | null = null;
   let registeredConnection: GameConnection | null = null;
   let foregroundCreated = false;
+  let startupGatePoll: ReturnType<typeof setInterval> | null = null;
+
+  function clearStartupGatePoll(): void {
+    if (startupGatePoll === null) return;
+    clearInterval(startupGatePoll);
+    startupGatePoll = null;
+  }
 
   function cleanupOwnedStartResources(clearRegisteredRefs: boolean): void {
+    clearStartupGatePoll();
     if (clearRegisteredRefs) {
       options.foregroundSceneBinding.clear();
       if (foregroundCreated) {
@@ -221,16 +230,41 @@ export async function startRealBattleWithPlayers(
 
     let startupReady = false;
     let rendererWarmupDone = !options.playerClientEnabled.value;
+    let startupGateReady = options.networkRole.value !== 'host';
+    let waitingForPlayersReported = false;
     const maybeFinishLoading = () => {
       if (
         options.lifecycle.isCurrentStart(startGen) &&
         options.gameStarted.value &&
         startupReady &&
-        rendererWarmupDone
+        rendererWarmupDone &&
+        startupGateReady
       ) {
+        clearStartupGatePoll();
         options.onLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.done, 'Ready');
         options.battleLoading.value = false;
+      } else if (
+        options.lifecycle.isCurrentStart(startGen) &&
+        options.gameStarted.value &&
+        startupReady &&
+        rendererWarmupDone &&
+        !startupGateReady &&
+        !waitingForPlayersReported
+      ) {
+        waitingForPlayersReported = true;
+        options.onLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.waitingPlayers, 'Waiting for players');
       }
+    };
+    const pollStartupGate = () => {
+      if (startupGateReady) return;
+      if (!options.lifecycle.isCurrentStart(startGen) || !options.gameStarted.value) {
+        clearStartupGatePoll();
+        return;
+      }
+      const server = options.getCurrentServer();
+      if (server === null || !server.isStartupGateOpen()) return;
+      startupGateReady = true;
+      maybeFinishLoading();
     };
 
     const gameInstance = await options.foregroundGame.create({
@@ -260,11 +294,12 @@ export async function startRealBattleWithPlayers(
       onStartupReady: () => {
         if (!options.lifecycle.isCurrentStart(startGen) || !options.gameStarted.value) return;
         startupReady = true;
+        pollStartupGate();
         options.onLoadingProgress(
-          rendererWarmupDone
+          rendererWarmupDone && startupGateReady
             ? REAL_BATTLE_LOAD_PROGRESS.done
             : REAL_BATTLE_LOAD_PROGRESS.firstSnapshot,
-          rendererWarmupDone ? 'Ready' : 'Applying first snapshot',
+          rendererWarmupDone && startupGateReady ? 'Ready' : 'Applying first snapshot',
         );
         maybeFinishLoading();
       },
@@ -272,8 +307,14 @@ export async function startRealBattleWithPlayers(
     foregroundCreated = true;
     setPlayerClientRenderEnabled(gameInstance, options.playerClientEnabled.value);
     gameInstance.app.setCameraFovDegrees(options.cameraFovDegrees.value);
-    await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.sceneCreated, 'Creating 3D scene');
+    if (options.battleLoading.value) {
+      await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.sceneCreated, 'Creating 3D scene');
+    }
     if (shouldAbortStart()) return;
+    if (!startupGateReady && startupGatePoll === null) {
+      startupGatePoll = setInterval(pollStartupGate, 100);
+      pollStartupGate();
+    }
 
     options.foregroundSceneBinding.bind(
       () => options.foregroundGame.getScene(),

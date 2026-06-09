@@ -50,6 +50,10 @@ import type { NetworkServerSnapshotWire } from './snapshotWireTypes';
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
 const RUST_SNAPSHOT_WIRE_COMPARE_ENABLED = import.meta.env.DEV && isRustSnapshotWireCompareEnabled();
 const FORCE_JS_SNAPSHOT_WIRE = isForceJsSnapshotWireEnabled();
+// Rust snapshot envelope encoding is still behind the TypeScript entity
+// wire schema (Rust emits packed entities V6; TS decodes V11). Keep it
+// opt-in until the WASM encoder is upgraded to the active wire version.
+const ENABLE_RUST_SNAPSHOT_WIRE = isRustSnapshotWireEnabled();
 
 const TOP_LEVEL_SNAPSHOT_KEYS = [
   'tick',
@@ -146,10 +150,12 @@ export function encodeNetworkSnapshot(state: NetworkServerSnapshot): Uint8Array 
 }
 
 export function encodeNetworkSnapshotDetailed(state: NetworkServerSnapshot): EncodedNetworkSnapshot {
-  if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED) {
+  const requiresJsPackedStaticBootstrap =
+    state.terrain !== undefined || state.buildability !== undefined;
+  if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED && !requiresJsPackedStaticBootstrap) {
     compareV6Entities(state);
   }
-  if (!FORCE_JS_SNAPSHOT_WIRE) {
+  if (ENABLE_RUST_SNAPSHOT_WIRE && !FORCE_JS_SNAPSHOT_WIRE && !requiresJsPackedStaticBootstrap) {
     const rustWireState = packNetworkSnapshotForWire(state, {
       audioEvents: 'raw',
       buildability: 'raw',
@@ -183,7 +189,7 @@ export function encodeNetworkSnapshotDetailed(state: NetworkServerSnapshot): Enc
   const wireState = packNetworkSnapshotForWire(state);
   const bytes = msgpackEncode(wireState, SNAPSHOT_ENCODE_OPTIONS);
   rustSnapshotWireStats.jsSends++;
-  if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED && FORCE_JS_SNAPSHOT_WIRE) {
+  if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED && FORCE_JS_SNAPSHOT_WIRE && !requiresJsPackedStaticBootstrap) {
     compareRustSnapshotWire(wireState, bytes);
   }
   return {
@@ -350,6 +356,23 @@ function isForceJsSnapshotWireEnabled(): boolean {
   if (typeof window === 'undefined') return false;
   const params = new URLSearchParams(window.location.search);
   const value = params.get('dp02js');
+  if (value === null) return false;
+  if (value === '' || value === '1') return true;
+  const normalized = value.toLowerCase();
+  return normalized === 'true' || normalized === 'yes' || normalized === 'on';
+}
+
+function isRustSnapshotWireEnabled(): boolean {
+  const env = import.meta.env.VITE_BA_ENABLE_RUST_SNAPSHOT_WIRE;
+  if (typeof env === 'string') {
+    const normalized = env.toLowerCase();
+    if (env === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') {
+      return true;
+    }
+  }
+  if (typeof window === 'undefined') return false;
+  const params = new URLSearchParams(window.location.search);
+  const value = params.get('rustSnapshotWire');
   if (value === null) return false;
   if (value === '' || value === '1') return true;
   const normalized = value.toLowerCase();

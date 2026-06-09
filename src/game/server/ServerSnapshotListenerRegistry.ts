@@ -45,6 +45,7 @@ export class ServerSnapshotListenerRegistry {
       lastStaticTerrainTileMap: undefined,
       lastStaticBuildabilityGrid: undefined,
       lastStaticResyncToken: undefined,
+      startupReady: false,
       snapshotBaselineHandle,
     });
     return trackingKey;
@@ -52,12 +53,15 @@ export class ServerSnapshotListenerRegistry {
 
   markReady(trackingKey: string): void {
     this.startupReadyListenerKeys.add(trackingKey);
+    const listener = this.listeners.find((entry) => entry.trackingKey === trackingKey);
+    if (listener !== undefined) listener.startupReady = true;
   }
 
   markPlayerReady(playerId: PlayerId): void {
     for (const listener of this.listeners) {
       if (listener.playerId === playerId) {
         this.startupReadyListenerKeys.add(listener.trackingKey);
+        listener.startupReady = true;
       }
     }
   }
@@ -72,6 +76,7 @@ export class ServerSnapshotListenerRegistry {
 
   clearStartupReady(): void {
     this.startupReadyListenerKeys.clear();
+    for (const listener of this.listeners) listener.startupReady = false;
   }
 
   remove(trackingKey: string): void {

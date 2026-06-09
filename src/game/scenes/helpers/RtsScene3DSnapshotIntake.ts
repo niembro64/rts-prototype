@@ -91,7 +91,12 @@ export class RtsScene3DSnapshotIntake {
       this.startupFullSnapshotApplied = true;
     }
 
-    const startupReleased = !this.startupReleased && state.tick > 0;
+    // The server intentionally pauses simulation ticks behind the startup
+    // ready barrier, so a tick > 0 snapshot can only arrive after clients
+    // acknowledge their first full bootstrap. Treat that full snapshot as
+    // scene-startup-ready; otherwise the UI waits on the same gate it needs
+    // to release.
+    const startupReleased = !this.startupReleased && this.startupFullSnapshotApplied;
     if (startupReleased) this.startupReleased = true;
 
     const now = nowOverride ?? performance.now();
