@@ -42,6 +42,7 @@
         "unitConstructionDrone",
         "unitEagle",
         "unitAlbatros",
+        "unitTransport",
         "unitCommander"
       ],
       "turrets": [
@@ -486,6 +487,9 @@
           "units": "all"
         }
       }
+    },
+    "unitTransport": {
+      "targets": "none"
     },
     "unitCommander": {
       "targets": {

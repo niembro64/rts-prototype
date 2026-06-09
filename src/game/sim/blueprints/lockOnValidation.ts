@@ -59,7 +59,7 @@ type LockOnTargetRelationshipPolicy = Partial<
   Record<LockOnTargetFamily, LockOnTargetFamilyPolicy>
 >;
 type LockOnTargetPolicyObject = {
-  targets: Partial<Record<LockOnTargetRelationship, LockOnTargetRelationshipPolicy>>;
+  targets: 'none' | Partial<Record<LockOnTargetRelationship, LockOnTargetRelationshipPolicy>>;
   lockOnRequiresTargetLockedOntoSelf?: LockOnRequiresTargetLockedOntoSelf;
 };
 
@@ -280,11 +280,28 @@ export function normalizeLockOnTargetPolicy(
   assertExplicitFields(label, value, LOCK_ON_TARGET_POLICY_REQUIRED_FIELDS);
   assertKnownFields(label, value, new Set(LOCK_ON_TARGET_POLICY_FIELDS));
   const targetPolicy = value as LockOnTargetPolicyObject;
-  assertKnownFields(`${label}.targets`, targetPolicy.targets, LOCK_ON_TARGET_RELATIONSHIP_SET);
   const reciprocalMode = normalizeReciprocalMode(
     label,
     targetPolicy.lockOnRequiresTargetLockedOntoSelf,
   );
+  if (targetPolicy.targets === 'none') {
+    if (reciprocalMode !== 'ignore') {
+      throw new Error(
+        `Invalid ${label}: lockOnRequiresTargetLockedOntoSelf "${reciprocalMode}" requires targetable enemy entities`,
+      );
+    }
+    return {
+      includeLockOnLevel0FriendsAndEnemies: [],
+      includeLockOnLevel0Entities: [],
+      includeLockOnLevel1Buildings: [],
+      includeLockOnLevel1Towers: [],
+      includeLockOnLevel1Units: [],
+      includeLockOnLevel1Turrets: [],
+      includeLockOnLevel1Shots: [],
+      lockOnRequiresTargetLockedOntoSelf: 'ignore',
+    };
+  }
+  assertKnownFields(`${label}.targets`, targetPolicy.targets, LOCK_ON_TARGET_RELATIONSHIP_SET);
 
   const relationshipPolicies: Record<
     LockOnTargetRelationship,
