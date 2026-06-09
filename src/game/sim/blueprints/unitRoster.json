@@ -16,6 +16,7 @@
     "unitDragonfly",
     "unitEagle",
     "unitAlbatros",
+    "unitTransport",
     "unitConstructionDrone"
   ],
   "defaultDisabledDemoUnitIds": []

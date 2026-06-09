@@ -9,11 +9,14 @@ import {
   buildCaptureCommandForTarget,
   buildGuardCommandAt,
   buildGuardCommandForTarget,
+  buildLoadTransportCommandForTarget,
   buildReclaimAreaCommand,
   buildReclaimCommandForTarget,
   buildRepairAreaCommand,
   buildResurrectAreaCommand,
   buildResurrectCommandForTarget,
+  buildUnloadTransportCommand,
+  getSelectedClientTransports,
   type CommanderModeController,
   type InputSelectedCommands,
 } from '../input/helpers';
@@ -102,6 +105,8 @@ type Input3DModeClickControllerConfig = {
   isCaptureMode: () => boolean;
   isResurrectMode: () => boolean;
   isResurrectAreaMode: () => boolean;
+  isLoadTransportMode: () => boolean;
+  isUnloadTransportMode: () => boolean;
   isMexUpgradeMode: () => boolean;
   isPingMode: () => boolean;
   isTowerTargetMode: () => boolean;
@@ -115,6 +120,8 @@ type Input3DModeClickControllerConfig = {
   exitCaptureMode: () => void;
   exitResurrectMode: () => void;
   exitResurrectAreaMode: () => void;
+  exitLoadTransportMode: () => void;
+  exitUnloadTransportMode: () => void;
   exitMexUpgradeMode: () => void;
   exitPingMode: () => void;
   exitTowerTargetMode: () => void;
@@ -143,6 +150,8 @@ export class Input3DModeClickController {
       this.config.isCaptureMode() ||
       this.config.isResurrectMode() ||
       this.config.isResurrectAreaMode() ||
+      this.config.isLoadTransportMode() ||
+      this.config.isUnloadTransportMode() ||
       this.config.isMexUpgradeMode() ||
       this.config.isPingMode() ||
       this.config.isTowerTargetMode();
@@ -220,6 +229,8 @@ export class Input3DModeClickController {
     if (this.config.isCaptureMode()) return 'reclaim';
     if (this.config.isResurrectMode()) return 'repair';
     if (this.config.isResurrectAreaMode()) return 'repair';
+    if (this.config.isLoadTransportMode()) return 'guard';
+    if (this.config.isUnloadTransportMode()) return 'move';
     if (this.config.isMexUpgradeMode()) return 'build';
     if (this.config.isPingMode()) return 'ping';
     if (this.config.isTowerTargetMode()) return 'attack';
@@ -624,6 +635,8 @@ export class Input3DModeClickController {
     else if (this.config.isCaptureMode()) this.handleCaptureClick(e);
     else if (this.config.isResurrectMode()) this.handleResurrectClick(e);
     else if (this.config.isResurrectAreaMode()) this.handleResurrectAreaClick(e);
+    else if (this.config.isLoadTransportMode()) this.handleLoadTransportClick(e);
+    else if (this.config.isUnloadTransportMode()) this.handleUnloadTransportClick(e);
     else if (this.config.isMexUpgradeMode()) this.handleMexUpgradeClick(e);
     else if (this.config.isTowerTargetMode()) this.handleTowerTargetClick(e);
     else this.handlePingClick(e);
@@ -642,6 +655,8 @@ export class Input3DModeClickController {
     else if (this.config.isCaptureMode()) this.config.exitCaptureMode();
     else if (this.config.isResurrectMode()) this.config.exitResurrectMode();
     else if (this.config.isResurrectAreaMode()) this.config.exitResurrectAreaMode();
+    else if (this.config.isLoadTransportMode()) this.config.exitLoadTransportMode();
+    else if (this.config.isUnloadTransportMode()) this.config.exitUnloadTransportMode();
     else if (this.config.isMexUpgradeMode()) this.config.exitMexUpgradeMode();
     else if (this.config.isTowerTargetMode()) this.config.exitTowerTargetMode();
     else this.config.exitPingMode();
@@ -1137,6 +1152,59 @@ export class Input3DModeClickController {
     this.config.commandQueue.enqueue(cmd);
     this.config.applyCursor('repair');
     if (!queueMode.queue) this.config.exitResurrectAreaMode();
+  }
+
+  private handleLoadTransportClick(e: MouseEvent): void {
+    const transports = getSelectedClientTransports(this.config.getEntitySource().getSelectedUnits());
+    if (transports.length === 0) {
+      this.config.exitLoadTransportMode();
+      return;
+    }
+    const entityHitId = this.config.picker.raycastEntity(e.clientX, e.clientY);
+    const entityHit = entityHitId !== null
+      ? this.config.getEntitySource().getEntity(entityHitId)
+      : null;
+    const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
+    const cmd = buildLoadTransportCommandForTarget(
+      entityHit,
+      transports[0],
+      this.config.getTick(),
+      queueMode.queue,
+      queueMode.queueFront,
+      queueMode.queueInsertIndex,
+    );
+    if (!cmd) {
+      this.config.applyCursor('blocked');
+      return;
+    }
+    this.config.commandQueue.enqueue(cmd);
+    this.config.applyCursor('guard');
+    if (!queueMode.queue) this.config.exitLoadTransportMode();
+  }
+
+  private handleUnloadTransportClick(e: MouseEvent): void {
+    const transports = getSelectedClientTransports(this.config.getEntitySource().getSelectedUnits());
+    if (transports.length === 0) {
+      this.config.exitUnloadTransportMode();
+      return;
+    }
+    const world = this.config.picker.raycastGround(e.clientX, e.clientY);
+    if (!world) return;
+    const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
+    const cmd = buildUnloadTransportCommand(
+      transports,
+      world.x,
+      world.y,
+      this.config.getTick(),
+      queueMode.queue,
+      world.z,
+      queueMode.queueFront,
+      queueMode.queueInsertIndex,
+    );
+    if (!cmd) return;
+    this.config.commandQueue.enqueue(cmd);
+    this.config.applyCursor('move');
+    if (!queueMode.queue) this.config.exitUnloadTransportMode();
   }
 
   private handleMexUpgradeClick(e: MouseEvent): void {

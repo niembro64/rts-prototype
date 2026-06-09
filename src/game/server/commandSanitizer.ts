@@ -8,6 +8,7 @@ import type {
   EditFactoryQueueCommand,
   FireDGunCommand,
   GuardCommand,
+  LoadTransportCommand,
   ManualLaunchCommand,
   MoveCommand,
   PingCommand,
@@ -36,6 +37,7 @@ import type {
   StopCommand,
   UpgradeMetalExtractorAreaCommand,
   UpgradeMetalExtractorCommand,
+  UnloadTransportCommand,
   WaitCommand,
   WaypointTarget,
 } from '../sim/commands';
@@ -142,6 +144,10 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       return sanitizeResurrectCommand(command, tick);
     case 'resurrectArea':
       return sanitizeResurrectAreaCommand(command, world, tick);
+    case 'loadTransport':
+      return sanitizeLoadTransportCommand(command, tick);
+    case 'unloadTransport':
+      return sanitizeUnloadTransportCommand(command, world, tick);
     case 'setSnapshotRate':
       return SERVER_CONFIG.snapshot.options.includes(command.rate)
         ? { ...command, tick, rate: normalizeSnapshotRate(command.rate) }
@@ -916,6 +922,56 @@ function sanitizeResurrectAreaCommand(
     targetY: point.y,
     targetZ: point.z,
     radius,
+    queue: command.queue,
+    queueFront,
+    queueInsertIndex,
+  };
+}
+
+function sanitizeLoadTransportCommand(command: LoadTransportCommand, tick: number): LoadTransportCommand | null {
+  if (
+    !isEntityId(command.transportId) ||
+    !isEntityId(command.targetId) ||
+    typeof command.queue !== 'boolean'
+  ) {
+    return null;
+  }
+  const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
+  const queueInsertIndex = queueFront !== null
+    ? sanitizeQueueInsertIndex(command.queue, queueFront, command.queueInsertIndex)
+    : null;
+  return queueFront === null || queueInsertIndex === null
+    ? null
+    : {
+        type: 'loadTransport',
+        tick,
+        transportId: command.transportId,
+        targetId: command.targetId,
+        queue: command.queue,
+        queueFront,
+        queueInsertIndex,
+      };
+}
+
+function sanitizeUnloadTransportCommand(
+  command: UnloadTransportCommand,
+  world: WorldState,
+  tick: number,
+): UnloadTransportCommand | null {
+  const transportIds = sanitizeEntityIdArray(command.transportIds);
+  const point = sanitizeGroundPoint(world, command.targetX, command.targetY, command.targetZ);
+  if (transportIds === null || point === null || typeof command.queue !== 'boolean') return null;
+  const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
+  if (queueFront === null) return null;
+  const queueInsertIndex = sanitizeQueueInsertIndex(command.queue, queueFront, command.queueInsertIndex);
+  if (queueInsertIndex === null) return null;
+  return {
+    type: 'unloadTransport',
+    tick,
+    transportIds,
+    targetX: point.x,
+    targetY: point.y,
+    targetZ: point.z,
     queue: command.queue,
     queueFront,
     queueInsertIndex,

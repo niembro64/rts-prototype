@@ -7,6 +7,7 @@
 import type { BuildingBlueprintId, Entity, WaypointType } from '../../sim/types';
 import type {
   CaptureCommand,
+  LoadTransportCommand,
   ReclaimCommand,
   ReclaimAreaCommand,
   RepairAreaCommand,
@@ -15,6 +16,7 @@ import type {
   ResurrectCommand,
   SetFactoryGuardCommand,
   SetRallyPointCommand,
+  UnloadTransportCommand,
 } from '../../sim/commands';
 import type { PlayerId } from '../../sim/types';
 import { findRepairTargetAt } from './RepairTargetHelper';
@@ -24,6 +26,7 @@ import type { ReclaimEntitySource } from './ReclaimTargetHelper';
 import { isGuardableFriendlyTarget } from './GuardTargetHelper';
 import { isCapturableTarget } from '../../sim/capture';
 import { isReclaimableTarget } from '../../sim/reclaim';
+import { canLoadTransport, isClientTransportUnit } from '../../sim/transports';
 
 const WRECK_BUILDING_BLUEPRINT_ID: BuildingBlueprintId = 'buildingWreck';
 
@@ -213,6 +216,65 @@ export function buildResurrectAreaCommand(
     targetY: worldY,
     targetZ: worldZ,
     radius,
+    queue,
+    queueFront,
+    queueInsertIndex,
+  };
+}
+
+export function getSelectedClientTransports(selectedUnits: readonly Entity[]): Entity[] {
+  const transports: Entity[] = [];
+  for (let i = 0; i < selectedUnits.length; i++) {
+    const unit = selectedUnits[i];
+    if (isClientTransportUnit(unit)) transports.push(unit);
+  }
+  return transports;
+}
+
+export function buildLoadTransportCommandForTarget(
+  target: Entity | null | undefined,
+  transport: Entity | null,
+  tick: number,
+  queue: boolean,
+  queueFront = false,
+  queueInsertIndex?: number,
+): LoadTransportCommand | null {
+  if (!canLoadTransport(transport, target)) return null;
+  if (transport === null || target === null || target === undefined) return null;
+  return {
+    type: 'loadTransport',
+    tick,
+    transportId: transport.id,
+    targetId: target.id,
+    queue,
+    queueFront,
+    queueInsertIndex,
+  };
+}
+
+export function buildUnloadTransportCommand(
+  transports: readonly Entity[],
+  worldX: number,
+  worldY: number,
+  tick: number,
+  queue: boolean,
+  worldZ?: number,
+  queueFront = false,
+  queueInsertIndex?: number,
+): UnloadTransportCommand | null {
+  const transportIds: number[] = [];
+  for (let i = 0; i < transports.length; i++) {
+    const transport = transports[i];
+    if (isClientTransportUnit(transport)) transportIds.push(transport.id);
+  }
+  if (transportIds.length === 0) return null;
+  return {
+    type: 'unloadTransport',
+    tick,
+    transportIds,
+    targetX: worldX,
+    targetY: worldY,
+    targetZ: worldZ,
     queue,
     queueFront,
     queueInsertIndex,

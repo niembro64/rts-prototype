@@ -66,8 +66,11 @@ export {
   buildCaptureCommandForTarget,
   buildResurrectAreaCommand,
   buildResurrectCommandForTarget,
+  buildLoadTransportCommandForTarget,
+  buildUnloadTransportCommand,
   buildFactoryGuardCommands,
   buildFactoryRallyCommands,
+  getSelectedClientTransports,
   isClientResurrectableWreck,
 } from './CommanderCommands';
 

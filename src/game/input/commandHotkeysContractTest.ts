@@ -103,6 +103,14 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid Ctrl+Alt+Shift+R should resolve resurrect area',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('q', 'KeyQ', { ctrlKey: true, altKey: true }), 'bar-grid') === 'combat.loadTransport',
+    'bar-grid Ctrl+Alt+Q should resolve load transport',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('q', 'KeyQ', { ctrlKey: true, shiftKey: true, altKey: true }), 'bar-grid') === 'combat.unloadTransport',
+    'bar-grid Ctrl+Alt+Shift+Q should resolve unload transport',
+  );
+  assertContract(
     resolveCommandHotkey(keyEvent('e', 'KeyE', { altKey: true }), 'prototype') === 'combat.capture',
     'prototype Alt+E should resolve capture without colliding with reclaim',
   );

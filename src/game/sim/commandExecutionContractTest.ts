@@ -47,6 +47,10 @@ function firstActionType(entity: Entity): string | undefined {
   return entity.unit?.actions[0]?.type;
 }
 
+function transportCargoLength(entity: Entity): number {
+  return entity.transport?.loadedUnits.length ?? 0;
+}
+
 function completeTestBuilding(world: WorldState, entity: Entity): void {
   assertContract(entity.buildable !== null, 'test building must start under construction');
   if (entity.buildable !== null) {
@@ -509,6 +513,79 @@ export function runCommandExecutionContractTest(): void {
   assertContract(
     resurrector.unit.actions.length === 0,
     'completed resurrection should advance the commander action queue',
+  );
+
+  const transportWorld = new WorldState(1, 512, 512);
+  const transportConstruction = new ConstructionSystem(transportWorld.mapWidth, transportWorld.mapHeight);
+  const transportCtx: CommandContext = {
+    world: transportWorld,
+    constructionSystem: transportConstruction,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  };
+  const transport = transportWorld.createUnitFromBlueprint(80, 80, 1, 'unitTransport', {
+    allocateSubEntityIds: false,
+  });
+  const passenger = transportWorld.createUnitFromBlueprint(92, 80, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  transportWorld.addEntity(transport);
+  transportWorld.addEntity(passenger);
+  executeCommand(transportCtx, {
+    type: 'loadTransport',
+    tick: 6,
+    transportId: transport.id,
+    targetId: passenger.id,
+    queue: false,
+  });
+  assertContract(
+    transport.unit?.actions[0]?.type === 'loadTransport' &&
+      transport.unit.actions[0].targetId === passenger.id,
+    'loadTransport command should enqueue a targeted transport action',
+  );
+
+  const transportSim = new Simulation(transportWorld, new CommandQueue());
+  transportSim.update(16);
+  assertContract(
+    transportWorld.getEntity(passenger.id) === undefined,
+    'transport load action should remove the passenger entity from the world',
+  );
+  assertContract(
+    transport.transport?.loadedUnits.length === 1 &&
+      transport.transport.loadedUnits[0].id === passenger.id,
+    'transport load action should store the passenger in cargo',
+  );
+
+  const spawnedByUnload: Entity[] = [];
+  transportSim.onUnitSpawn = (newUnits) => {
+    spawnedByUnload.push(...newUnits);
+  };
+  executeCommand(transportCtx, {
+    type: 'unloadTransport',
+    tick: 7,
+    transportIds: [transport.id],
+    targetX: transport.transform.x,
+    targetY: transport.transform.y,
+    targetZ: transport.transform.z,
+    queue: false,
+  });
+  assertContract(
+    firstActionType(transport) === 'unloadTransport',
+    'unloadTransport command should enqueue an unload action',
+  );
+  transportSim.update(16);
+  assertContract(
+    transportWorld.getEntity(passenger.id) === passenger,
+    'transport unload action should re-add the passenger entity to the world',
+  );
+  assertContract(
+    transportCargoLength(transport) === 0,
+    'transport unload action should empty cargo',
+  );
+  assertContract(
+    spawnedByUnload.some((entity) => entity.id === passenger.id),
+    'transport unload action should notify the server unit-spawn hook',
   );
 
   const upgradeWorld = new WorldState(1, 512, 512);

@@ -66,6 +66,8 @@ type Input3DKeyboardControllerConfig = {
   toggleCaptureMode: () => void;
   toggleResurrectMode: () => void;
   toggleResurrectAreaMode: () => void;
+  toggleLoadTransportMode: () => void;
+  toggleUnloadTransportMode: () => void;
   toggleMexUpgradeMode: () => void;
   upgradeSelectedMetalExtractors: () => void;
   toggleRepairAreaMode: () => void;
@@ -96,6 +98,8 @@ type Input3DKeyboardControllerConfig = {
   isCaptureMode: () => boolean;
   isResurrectMode: () => boolean;
   isResurrectAreaMode: () => boolean;
+  isLoadTransportMode: () => boolean;
+  isUnloadTransportMode: () => boolean;
   isMexUpgradeMode: () => boolean;
   isPingMode: () => boolean;
   isTowerTargetMode: () => boolean;
@@ -109,6 +113,8 @@ type Input3DKeyboardControllerConfig = {
   exitCaptureMode: () => void;
   exitResurrectMode: () => void;
   exitResurrectAreaMode: () => void;
+  exitLoadTransportMode: () => void;
+  exitUnloadTransportMode: () => void;
   exitMexUpgradeMode: () => void;
   exitPingMode: () => void;
   exitTowerTargetMode: () => void;
@@ -435,6 +441,12 @@ export class Input3DKeyboardController {
       case 'combat.resurrectArea':
         this.config.toggleResurrectAreaMode();
         break;
+      case 'combat.loadTransport':
+        this.config.toggleLoadTransportMode();
+        break;
+      case 'combat.unloadTransport':
+        this.config.toggleUnloadTransportMode();
+        break;
       case 'command.upgradeMexSelected':
         this.config.upgradeSelectedMetalExtractors();
         break;
@@ -606,6 +618,8 @@ export class Input3DKeyboardController {
         { isActive: this.config.isCaptureMode, cancel: this.config.exitCaptureMode },
         { isActive: this.config.isResurrectMode, cancel: this.config.exitResurrectMode },
         { isActive: this.config.isResurrectAreaMode, cancel: this.config.exitResurrectAreaMode },
+        { isActive: this.config.isLoadTransportMode, cancel: this.config.exitLoadTransportMode },
+        { isActive: this.config.isUnloadTransportMode, cancel: this.config.exitUnloadTransportMode },
         { isActive: this.config.isMexUpgradeMode, cancel: this.config.exitMexUpgradeMode },
         { isActive: this.config.isPingMode, cancel: this.config.exitPingMode },
         { isActive: this.config.isTowerTargetMode, cancel: this.config.exitTowerTargetMode },

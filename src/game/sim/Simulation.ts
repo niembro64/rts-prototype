@@ -36,6 +36,7 @@ import { getTerrainVersion } from './Terrain';
 import { updateBuildingActiveStates } from './buildingActiveState';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { getGuardFollowRadius, isFriendlyGuardTarget } from './guard';
+import { isTransportLoadInRange, updateTransportActions } from './transports';
 import { WindPowerTracker, sampleWindState, sampleWindStateInto, type WindState } from './wind';
 import { isBuildTargetInRange } from './builderRange';
 import { setUnitMovementAcceleration } from './unitMovementAcceleration';
@@ -365,6 +366,12 @@ export class Simulation {
     if (commanderResult.resurrectedUnits.length > 0) {
       const onUnitSpawn = this.onUnitSpawn;
       if (onUnitSpawn !== null) onUnitSpawn(commanderResult.resurrectedUnits);
+    }
+
+    const transportResult = updateTransportActions(this.world);
+    if (transportResult.unloadedUnits.length > 0) {
+      const onUnitSpawn = this.onUnitSpawn;
+      if (onUnitSpawn !== null) onUnitSpawn(transportResult.unloadedUnits);
     }
 
     // Handle completed build/repair actions - advance commander action queues
@@ -700,6 +707,51 @@ export class Simulation {
         continue;
       }
 
+      if (currentAction.type === 'loadTransport') {
+        const target = currentAction.targetId !== undefined
+          ? this.world.getEntity(currentAction.targetId)
+          : undefined;
+        if (target !== undefined && isTransportLoadInRange(entity, target)) {
+          unit.stuckTicks = 0;
+          continue;
+        }
+
+        const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
+        const dx = movementTarget.x - transform.x;
+        const dy = movementTarget.y - transform.y;
+        const distance = magnitude(dx, dy);
+        if (distance <= 1) {
+          if (!movementTarget.isFinalActionPoint) this.advanceActivePathPoint(entity);
+          unit.stuckTicks = 0;
+          continue;
+        }
+
+        this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
+        continue;
+      }
+
+      if (currentAction.type === 'unloadTransport') {
+        if (entity.transport?.loadedUnits.length === 0) {
+          this.advanceAction(entity);
+          unit.stuckTicks = 0;
+          continue;
+        }
+
+        const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
+        const dx = movementTarget.x - transform.x;
+        const dy = movementTarget.y - transform.y;
+        const distance = magnitude(dx, dy);
+        if (distance > 15) {
+          this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
+        } else if (!movementTarget.isFinalActionPoint) {
+          this.advanceActivePathPoint(entity);
+          unit.stuckTicks = 0;
+        } else {
+          unit.stuckTicks = 0;
+        }
+        continue;
+      }
+
       // For build/repair/reclaim actions, check if we're in range
       if (
         currentAction.type === 'build' ||
@@ -914,7 +966,9 @@ export class Simulation {
       action.type !== 'fight' &&
       action.type !== 'attack' &&
       action.type !== 'attackGround' &&
-      action.type !== 'guard'
+      action.type !== 'guard' &&
+      action.type !== 'loadTransport' &&
+      action.type !== 'unloadTransport'
     ) {
       return false;
     }

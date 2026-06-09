@@ -90,6 +90,7 @@ export function useGameCanvasSceneUi({
     buildingCount: 0,
     hasCommander: false,
     hasBuilder: false,
+    hasTransport: false,
     allowedBuildBlueprintIds: [],
     canUpgradeMetalExtractors: false,
     hasUpgradeableMetalExtractor: false,
@@ -138,6 +139,8 @@ export function useGameCanvasSceneUi({
     isCaptureMode: false,
     isResurrectMode: false,
     isResurrectAreaMode: false,
+    isLoadTransportMode: false,
+    isUnloadTransportMode: false,
     isMexUpgradeMode: false,
     isPingMode: false,
     factorySelectedUnit: null,
@@ -330,6 +333,12 @@ export function useGameCanvasSceneUi({
     },
     toggleResurrectArea: () => {
       getActiveBattleScene()?.toggleResurrectAreaMode();
+    },
+    toggleLoadTransport: () => {
+      getActiveBattleScene()?.toggleLoadTransportMode();
+    },
+    toggleUnloadTransport: () => {
+      getActiveBattleScene()?.toggleUnloadTransportMode();
     },
     reclaimSelected: () => {
       getActiveBattleScene()?.reclaimSelected();

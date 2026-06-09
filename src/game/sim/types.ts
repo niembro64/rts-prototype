@@ -70,6 +70,8 @@ export type {
   Builder,
   Wreck,
   WreckSource,
+  Transport,
+  Transported,
   BuildingConfig,
   UnitBuildConfig,
   Factory,

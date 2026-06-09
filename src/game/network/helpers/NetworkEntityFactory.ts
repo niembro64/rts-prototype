@@ -35,6 +35,7 @@ import { initializeConstructionPieceHealth } from '../../sim/constructionLifecyc
 import { isFiniteNumber } from '../../math';
 import { createUnitSuspension } from '../../sim/unitSuspension';
 import { computeUnitActionHash } from '../../sim/unitActions';
+import { createTransportComponentForUnitBlueprint } from '../../sim/transports';
 import { decodeFactoryProductionQueue } from '../factoryProductionQueueWire';
 import {
   dequantizeEntityPosition as deqEntityPos,
@@ -392,6 +393,7 @@ function createUnitFromNetwork(
       currentBuildTarget: u !== null && u.buildTargetId !== null ? u.buildTargetId : NO_ENTITY_ID,
     };
   }
+  entity.transport = createTransportComponentForUnitBlueprint(unitBlueprintId);
 
   // Shell construction state — `required` is re-derived from the
   // blueprint COST_MULTIPLIER product. Host and client content versions

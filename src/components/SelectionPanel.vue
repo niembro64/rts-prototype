@@ -205,6 +205,8 @@ const showCancelHint = computed(() =>
   || props.selection.isCaptureMode
   || props.selection.isResurrectMode
   || props.selection.isResurrectAreaMode
+  || props.selection.isLoadTransportMode
+  || props.selection.isUnloadTransportMode
   || props.selection.isManualLaunchMode
   || props.selection.isMexUpgradeMode
   || props.selection.isPingMode
@@ -1040,8 +1042,8 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
       </div>
     </div>
 
-    <!-- Commander specials -->
-    <div v-if="(selection.hasDGun || selection.hasCommander) && showUnitActions" class="button-group">
+    <!-- Unit specials -->
+    <div v-if="(selection.hasDGun || selection.hasCommander || selection.hasTransport) && showUnitActions" class="button-group">
       <div class="group-label">Special</div>
       <div class="buttons">
         <button
@@ -1126,6 +1128,30 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           @click="actions.reclaimSelected()"
         >
           <span class="btn-label">Reclaim Sel</span>
+        </button>
+        <button
+          v-if="selection.hasTransport"
+          type="button"
+          class="action-btn"
+          :class="{ active: selection.isLoadTransportMode }"
+          :style="{ '--btn-color': BUTTON_COLORS.guard }"
+          :title="actionTitle('Load transport', 'combat.loadTransport', 'Click a friendly unit')"
+          @click="actions.toggleLoadTransport()"
+        >
+          <span class="btn-label">Load</span>
+          <span class="btn-key">{{ hotkey('combat.loadTransport') }}</span>
+        </button>
+        <button
+          v-if="selection.hasTransport"
+          type="button"
+          class="action-btn"
+          :class="{ active: selection.isUnloadTransportMode }"
+          :style="{ '--btn-color': BUTTON_COLORS.move }"
+          :title="actionTitle('Unload transport', 'combat.unloadTransport', 'Click ground')"
+          @click="actions.toggleUnloadTransport()"
+        >
+          <span class="btn-label">Unload</span>
+          <span class="btn-key">{{ hotkey('combat.unloadTransport') }}</span>
         </button>
       </div>
     </div>

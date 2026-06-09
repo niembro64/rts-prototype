@@ -54,7 +54,9 @@ export const ACTION_TYPE_ATTACK_GROUND = 8;
 export const ACTION_TYPE_WAIT = 9;
 export const ACTION_TYPE_CAPTURE = 10;
 export const ACTION_TYPE_RESURRECT = 11;
-export type ActionTypeCode = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
+export const ACTION_TYPE_LOAD_TRANSPORT = 12;
+export const ACTION_TYPE_UNLOAD_TRANSPORT = 13;
+export type ActionTypeCode = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
 
 const _ACTION_TO_CODE: Record<string, ActionTypeCode> = {
   move: ACTION_TYPE_MOVE,
@@ -69,6 +71,8 @@ const _ACTION_TO_CODE: Record<string, ActionTypeCode> = {
   attack: ACTION_TYPE_ATTACK,
   attackGround: ACTION_TYPE_ATTACK_GROUND,
   guard: ACTION_TYPE_GUARD,
+  loadTransport: ACTION_TYPE_LOAD_TRANSPORT,
+  unloadTransport: ACTION_TYPE_UNLOAD_TRANSPORT,
 };
 const _CODE_TO_ACTION: string[] = [
   'move',
@@ -83,6 +87,8 @@ const _CODE_TO_ACTION: string[] = [
   'wait',
   'capture',
   'resurrect',
+  'loadTransport',
+  'unloadTransport',
 ];
 
 export function actionTypeToCode(s: string): ActionTypeCode {

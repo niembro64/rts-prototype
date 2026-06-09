@@ -22,6 +22,7 @@ import { cloneUnitLocomotion } from './locomotion';
 import { createUnitRuntimeTurrets } from './runtimeTurrets';
 import { buildShieldPanelCache } from './shieldPanelCache';
 import { cloneUnitSupportSurface } from './unitSupportSurface';
+import { createTransportComponentForUnitBlueprint } from './transports';
 
 export type CreateUnitFromBlueprintOptions = {
   allocateSubEntityIds?: boolean;
@@ -198,6 +199,8 @@ export function createUnitFromBlueprintEntity(
       dgunEnergyCost: bp.dgun.energyCost,
     };
   }
+
+  entity.transport = createTransportComponentForUnitBlueprint(unitBlueprintId);
 
   return entity;
 }

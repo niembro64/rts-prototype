@@ -1,6 +1,7 @@
 import type {
   Command,
   CaptureCommand,
+  LoadTransportCommand,
   ManualLaunchCommand,
   MoveCommand,
   ResurrectAreaCommand,
@@ -15,6 +16,7 @@ import type {
   SetShieldReflectionModeCommand,
   SetTurretShieldPanelsEnabledCommand,
   SetTurretShieldSpheresEnabledCommand,
+  UnloadTransportCommand,
   WaitCommand,
 } from '../sim/commands';
 import { WorldState } from '../sim/WorldState';
@@ -197,6 +199,42 @@ export function runCommandSanitizerContractTest(): void {
       resurrectArea.radius === 500 &&
       resurrectArea.queueInsertIndex === 4,
     'resurrect-area command must normalize terrain z, radius, and queue insertion',
+  );
+
+  const loadTransport = sanitizeRequired<LoadTransportCommand>(world, {
+    type: 'loadTransport',
+    tick: 7,
+    transportId: 12,
+    targetId: 13,
+    queue: true,
+    queueFront: true,
+  });
+  assertContract(
+    loadTransport.tick === 9001 &&
+      loadTransport.transportId === 12 &&
+      loadTransport.targetId === 13 &&
+      loadTransport.queueFront === true,
+    'loadTransport command must preserve transport, target, and queue-front insertion',
+  );
+
+  const unloadTransport = sanitizeRequired<UnloadTransportCommand>(world, {
+    type: 'unloadTransport',
+    tick: 7,
+    transportIds: [12, 14],
+    targetX: 500,
+    targetY: -25,
+    targetZ: 999,
+    queue: true,
+    queueInsertIndex: 3,
+  });
+  assertContract(
+    unloadTransport.tick === 9001 &&
+      unloadTransport.transportIds.join(',') === '12,14' &&
+      unloadTransport.targetX === world.mapWidth &&
+      unloadTransport.targetY === 0 &&
+      unloadTransport.targetZ === world.getGroundZ(world.mapWidth, 0) &&
+      unloadTransport.queueInsertIndex === 3,
+    'unloadTransport command must clamp target point and preserve queue insertion',
   );
 
   const manualLaunch = sanitizeRequired<ManualLaunchCommand>(world, {

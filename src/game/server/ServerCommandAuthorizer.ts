@@ -7,6 +7,7 @@ import type {
   ClearQueuedOrdersCommand,
   Command,
   GuardCommand,
+  LoadTransportCommand,
   ManualLaunchCommand,
   MoveCommand,
   PingCommand,
@@ -27,6 +28,7 @@ import type {
   StopCommand,
   UpgradeMetalExtractorAreaCommand,
   UpgradeMetalExtractorCommand,
+  UnloadTransportCommand,
   WaitCommand,
 } from '../sim/commands';
 import type { EntityId, PlayerId } from '../sim/types';
@@ -42,6 +44,7 @@ import {
   isUpgradeableMetalExtractorTarget,
 } from '../sim/metalExtractorUpgrade';
 import { isResurrectableWreck } from '../sim/wrecks';
+import { canLoadTransport, isTransportUnit } from '../sim/transports';
 
 type UnitListCommand =
   | AttackCommand
@@ -173,9 +176,44 @@ export function authorizeGameServerGameplayCommand(
     case 'resurrectArea':
       return authorizeResurrectAreaCommand(world, command, playerId);
 
+    case 'loadTransport':
+      return authorizeLoadTransportCommand(world, command, playerId);
+
+    case 'unloadTransport':
+      return authorizeUnloadTransportCommand(world, command, playerId);
+
     default:
       return null;
   }
+}
+
+function authorizeLoadTransportCommand(
+  world: WorldState,
+  command: LoadTransportCommand,
+  playerId: PlayerId,
+): LoadTransportCommand | null {
+  const transport = world.getEntity(command.transportId);
+  if (!isTransportUnit(transport) || transport.ownership?.playerId !== playerId) return null;
+  const target = world.getEntity(command.targetId);
+  return canLoadTransport(transport, target) ? command : null;
+}
+
+function authorizeUnloadTransportCommand(
+  world: WorldState,
+  command: UnloadTransportCommand,
+  playerId: PlayerId,
+): UnloadTransportCommand | null {
+  const transportIds: EntityId[] = [];
+  const seen = new Set<EntityId>();
+  for (let i = 0; i < command.transportIds.length; i++) {
+    const id = command.transportIds[i];
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const transport = world.getEntity(id);
+    if (!isTransportUnit(transport) || transport.ownership?.playerId !== playerId) continue;
+    transportIds.push(id);
+  }
+  return transportIds.length > 0 ? { ...command, transportIds } : null;
 }
 
 function authorizeCaptureCommand(

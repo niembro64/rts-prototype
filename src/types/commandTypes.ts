@@ -25,7 +25,9 @@ export type ActionType =
   | 'wait'
   | 'attack'
   | 'attackGround'
-  | 'guard';
+  | 'guard'
+  | 'loadTransport'
+  | 'unloadTransport';
 
 export type UnitAction = {
   type: ActionType;

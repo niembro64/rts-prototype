@@ -32,6 +32,7 @@ import {
   CommanderModeController,
   InputControlGroups,
   InputSelectedCommands,
+  getSelectedClientTransports,
   type AutoGroupRuleSnapshot,
   type ControlGroupSlotSnapshot,
   type ScreenRectSelectionOptions,
@@ -121,6 +122,8 @@ export class Input3DManager {
   public onCaptureModeChange?: (active: boolean) => void;
   public onResurrectModeChange?: (active: boolean) => void;
   public onResurrectAreaModeChange?: (active: boolean) => void;
+  public onLoadTransportModeChange?: (active: boolean) => void;
+  public onUnloadTransportModeChange?: (active: boolean) => void;
   public onMexUpgradeModeChange?: (active: boolean) => void;
   public onPingModeChange?: (active: boolean) => void;
   public onTowerTargetModeChange?: (active: boolean) => void;
@@ -208,6 +211,8 @@ export class Input3DManager {
       isCaptureMode: () => this.captureMode,
       isResurrectMode: () => this.resurrectMode,
       isResurrectAreaMode: () => this.resurrectAreaMode,
+      isLoadTransportMode: () => this.loadTransportMode,
+      isUnloadTransportMode: () => this.unloadTransportMode,
       isMexUpgradeMode: () => this.mexUpgradeMode,
       isPingMode: () => this.pingMode,
       isTowerTargetMode: () => this.towerTargetMode,
@@ -221,6 +226,8 @@ export class Input3DManager {
       exitCaptureMode: () => this.exitCaptureMode(),
       exitResurrectMode: () => this.exitResurrectMode(),
       exitResurrectAreaMode: () => this.exitResurrectAreaMode(),
+      exitLoadTransportMode: () => this.exitLoadTransportMode(),
+      exitUnloadTransportMode: () => this.exitUnloadTransportMode(),
       exitMexUpgradeMode: () => this.exitMexUpgradeMode(),
       exitPingMode: () => this.exitPingMode(),
       exitTowerTargetMode: () => this.exitTowerTargetMode(),
@@ -300,6 +307,8 @@ export class Input3DManager {
       toggleCaptureMode: () => this.toggleCaptureMode(),
       toggleResurrectMode: () => this.toggleResurrectMode(),
       toggleResurrectAreaMode: () => this.toggleResurrectAreaMode(),
+      toggleLoadTransportMode: () => this.toggleLoadTransportMode(),
+      toggleUnloadTransportMode: () => this.toggleUnloadTransportMode(),
       toggleMexUpgradeMode: () => this.toggleMexUpgradeMode(),
       upgradeSelectedMetalExtractors: () => this.upgradeSelectedMetalExtractors(),
       toggleRepairAreaMode: () => this.toggleRepairAreaMode(),
@@ -330,6 +339,8 @@ export class Input3DManager {
       isCaptureMode: () => this.captureMode,
       isResurrectMode: () => this.resurrectMode,
       isResurrectAreaMode: () => this.resurrectAreaMode,
+      isLoadTransportMode: () => this.loadTransportMode,
+      isUnloadTransportMode: () => this.unloadTransportMode,
       isMexUpgradeMode: () => this.mexUpgradeMode,
       isPingMode: () => this.pingMode,
       isTowerTargetMode: () => this.towerTargetMode,
@@ -343,6 +354,8 @@ export class Input3DManager {
       exitCaptureMode: () => this.exitCaptureMode(),
       exitResurrectMode: () => this.exitResurrectMode(),
       exitResurrectAreaMode: () => this.exitResurrectAreaMode(),
+      exitLoadTransportMode: () => this.exitLoadTransportMode(),
+      exitUnloadTransportMode: () => this.exitUnloadTransportMode(),
       exitMexUpgradeMode: () => this.exitMexUpgradeMode(),
       exitPingMode: () => this.exitPingMode(),
       exitTowerTargetMode: () => this.exitTowerTargetMode(),
@@ -361,6 +374,8 @@ export class Input3DManager {
       onCaptureModeChange: (active) => this.onCaptureModeChange?.(active),
       onResurrectModeChange: (active) => this.onResurrectModeChange?.(active),
       onResurrectAreaModeChange: (active) => this.onResurrectAreaModeChange?.(active),
+      onLoadTransportModeChange: (active) => this.onLoadTransportModeChange?.(active),
+      onUnloadTransportModeChange: (active) => this.onUnloadTransportModeChange?.(active),
       onMexUpgradeModeChange: (active) => this.onMexUpgradeModeChange?.(active),
       onPingModeChange: (active) => this.onPingModeChange?.(active),
       onTowerTargetModeChange: (active) => this.onTowerTargetModeChange?.(active),
@@ -471,6 +486,14 @@ export class Input3DManager {
 
   private get resurrectAreaMode(): boolean {
     return this.specialModes.isActive('resurrectArea');
+  }
+
+  private get loadTransportMode(): boolean {
+    return this.specialModes.isActive('loadTransport');
+  }
+
+  private get unloadTransportMode(): boolean {
+    return this.specialModes.isActive('unloadTransport');
   }
 
   private get mexUpgradeMode(): boolean {
@@ -1024,6 +1047,30 @@ export class Input3DManager {
     this.enterSpecialMode('resurrectArea');
   }
 
+  toggleLoadTransportMode(): void {
+    if (this.loadTransportMode) {
+      this.exitLoadTransportMode();
+      return;
+    }
+    if (!this.hasSelectedTransports()) return;
+    this.mode.exitBuildMode();
+    this.mode.exitDGunMode();
+    this.exitSpecialModes(false);
+    this.enterSpecialMode('loadTransport');
+  }
+
+  toggleUnloadTransportMode(): void {
+    if (this.unloadTransportMode) {
+      this.exitUnloadTransportMode();
+      return;
+    }
+    if (!this.hasSelectedTransports()) return;
+    this.mode.exitBuildMode();
+    this.mode.exitDGunMode();
+    this.exitSpecialModes(false);
+    this.enterSpecialMode('unloadTransport');
+  }
+
   toggleMexUpgradeMode(): void {
     if (this.mexUpgradeMode) {
       this.exitMexUpgradeMode();
@@ -1181,6 +1228,16 @@ export class Input3DManager {
     return this.resurrectAreaMode;
   }
 
+  /** True while the next left-click will load a friendly unit into a transport. */
+  isInLoadTransportMode(): boolean {
+    return this.loadTransportMode;
+  }
+
+  /** True while the next left-click will unload selected transport cargo. */
+  isInUnloadTransportMode(): boolean {
+    return this.unloadTransportMode;
+  }
+
   /** True while the next left-click/drag will issue a metal extractor upgrade command. */
   isInMexUpgradeMode(): boolean {
     return this.mexUpgradeMode;
@@ -1242,6 +1299,14 @@ export class Input3DManager {
 
   private exitResurrectAreaMode(): void {
     this.specialModes.exit('resurrectArea');
+  }
+
+  private exitLoadTransportMode(): void {
+    this.specialModes.exit('loadTransport');
+  }
+
+  private exitUnloadTransportMode(): void {
+    this.specialModes.exit('unloadTransport');
   }
 
   private exitMexUpgradeMode(): void {
@@ -1353,6 +1418,10 @@ export class Input3DManager {
 
   private hasSelectedBuilder(): boolean {
     return this.entitySource.getSelectedUnits().some((unit) => unit.builder !== null);
+  }
+
+  private hasSelectedTransports(): boolean {
+    return getSelectedClientTransports(this.entitySource.getSelectedUnits()).length > 0;
   }
 
   private hasSelectedMetalExtractorUpgradeBuilder(): boolean {
@@ -1566,6 +1635,12 @@ export class Input3DManager {
     }
     if (this.resurrectAreaMode && !this.hasSelectedCommander()) {
       this.exitResurrectAreaMode();
+    }
+    if (this.loadTransportMode && !this.hasSelectedTransports()) {
+      this.exitLoadTransportMode();
+    }
+    if (this.unloadTransportMode && !this.hasSelectedTransports()) {
+      this.exitUnloadTransportMode();
     }
     if (this.mexUpgradeMode && !this.hasSelectedMetalExtractorUpgradeBuilder()) {
       this.exitMexUpgradeMode();

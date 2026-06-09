@@ -889,6 +889,16 @@ export type Wreck = {
   resurrectRequiredMs: number;
 };
 
+export type Transport = {
+  capacity: number;
+  loadedUnits: Entity[];
+};
+
+export type Transported = {
+  transportId: EntityId;
+  slotIndex: number;
+};
+
 // Building configuration. gridWidth/gridHeight are the footprint on
 // the ground plane (measured in build-grid cells); gridDepth is the
 // vertical extent measured in build-grid cell heights.
@@ -1058,6 +1068,8 @@ export type EntityComponentSlots = {
   commander: Commander | null;
   dgunProjectile: DGunProjectile | null;
   wreck: Wreck | null;
+  transport: Transport | null;
+  transported: Transported | null;
   buildingBlueprintId: BuildingBlueprintId | null;
   /** For extractors only — every deposit with at least one generated
    *  metal cell under this extractor's fixed build footprint. Output is
@@ -1092,6 +1104,8 @@ export function createEmptyEntityComponentSlots(): EntityComponentSlots {
     commander: null,
     dgunProjectile: null,
     wreck: null,
+    transport: null,
+    transported: null,
     buildingBlueprintId: null,
     coveredDepositIds: null,
     metalExtractionRate: null,

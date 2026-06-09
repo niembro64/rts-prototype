@@ -11,6 +11,7 @@ import type {
   EditFactoryQueueCommand,
   FireDGunCommand,
   GuardCommand,
+  LoadTransportCommand,
   ManualLaunchCommand,
   MoveCommand,
   PingCommand,
@@ -40,6 +41,7 @@ import type {
   StopCommand,
   UpgradeMetalExtractorAreaCommand,
   UpgradeMetalExtractorCommand,
+  UnloadTransportCommand,
   WaitCommand,
 } from './commands';
 import type { CombatFireState, Entity, EntityId, PlayerId, ShotSource, Unit, UnitAction } from './types';
@@ -70,6 +72,7 @@ import { isAliveGuardTarget } from './guard';
 import { isReclaimableTarget } from './reclaim';
 import { isCapturableTarget } from './capture';
 import { isResurrectableWreck } from './wrecks';
+import { canLoadTransport, isTransportUnit } from './transports';
 import { isBuildInProgress } from './buildableHelpers';
 import {
   ATTACK_AREA_MAX_RADIUS,
@@ -246,6 +249,12 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'resurrectArea':
       executeResurrectAreaCommand(ctx, command);
+      break;
+    case 'loadTransport':
+      executeLoadTransportCommand(ctx, command);
+      break;
+    case 'unloadTransport':
+      executeUnloadTransportCommand(ctx, command);
       break;
     case 'attack':
       executeAttackCommand(ctx, command);
@@ -1479,6 +1488,54 @@ function executeResurrectAreaCommand(ctx: CommandContext, command: ResurrectArea
     commandQueueInsertIndex(command),
     (target, queue, queueFront, queueInsertIndex) => enqueueResurrectAction(ctx, commander, target, queue, queueFront, queueInsertIndex),
   );
+}
+
+function executeLoadTransportCommand(ctx: CommandContext, command: LoadTransportCommand): void {
+  const transport = ctx.world.getEntity(command.transportId);
+  const target = ctx.world.getEntity(command.targetId);
+  if (transport === undefined || target === undefined || !canLoadTransport(transport, target)) return;
+  const targetPoint = getEntityTargetPoint(target);
+  const action: UnitAction = {
+    type: 'loadTransport',
+    x: targetPoint.x,
+    y: targetPoint.y,
+    z: targetPoint.z,
+    targetId: target.id,
+  };
+  addPathActionsWithFinal(
+    transport,
+    action,
+    command.queue,
+    ctx,
+    commandQueuesInFront(command),
+    commandQueueInsertIndex(command),
+  );
+}
+
+function executeUnloadTransportCommand(ctx: CommandContext, command: UnloadTransportCommand): void {
+  const queueFront = commandQueuesInFront(command);
+  const queueInsertIndex = commandQueueInsertIndex(command);
+  const targetX = clampToMap(command.targetX, ctx.world.mapWidth);
+  const targetY = clampToMap(command.targetY, ctx.world.mapHeight);
+  const action: UnitAction = {
+    type: 'unloadTransport',
+    x: targetX,
+    y: targetY,
+    z: command.targetZ ?? ctx.world.getGroundZ(targetX, targetY),
+  };
+
+  for (let i = 0; i < command.transportIds.length; i++) {
+    const transport = ctx.world.getEntity(command.transportIds[i]);
+    if (!isTransportUnit(transport)) continue;
+    addPathActionsWithFinal(
+      transport,
+      action,
+      command.queue,
+      ctx,
+      queueFront,
+      queueInsertIndex,
+    );
+  }
 }
 
 function clampRepairAreaRadius(radius: number): number {

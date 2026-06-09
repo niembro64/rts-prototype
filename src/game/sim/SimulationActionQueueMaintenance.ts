@@ -4,6 +4,7 @@ import { isBuildTargetInRange } from './builderRange';
 import { isCapturableTarget } from './capture';
 import { isReclaimableTarget } from './reclaim';
 import { isResurrectableWreck } from './wrecks';
+import { canLoadTransport } from './transports';
 import { getActionIntentStart, getUnitActionTargetId } from './unitActionIntents';
 import { spliceUnitActions } from './unitActions';
 import { NO_ENTITY_ID } from './types';
@@ -105,6 +106,7 @@ export class SimulationActionQueueMaintenance {
       action.type !== 'reclaim' &&
       action.type !== 'capture' &&
       action.type !== 'resurrect' &&
+      action.type !== 'loadTransport' &&
       action.type !== 'guard'
     ) {
       return false;
@@ -137,6 +139,10 @@ export class SimulationActionQueueMaintenance {
 
     if (action.type === 'resurrect') {
       return !isResurrectableWreck(target);
+    }
+
+    if (action.type === 'loadTransport') {
+      return !canLoadTransport(entity, target);
     }
 
     return !this.isIncompleteBuildableTarget(target) && !this.isDamagedRepairUnit(target);

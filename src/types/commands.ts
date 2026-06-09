@@ -39,6 +39,8 @@ export type CommandType =
   | 'capture'
   | 'resurrect'
   | 'resurrectArea'
+  | 'loadTransport'
+  | 'unloadTransport'
   | 'wait'
   | 'attack'
   | 'attackGround'
@@ -350,6 +352,26 @@ export type ResurrectAreaCommand = BaseCommand & {
   queueInsertIndex?: number;
 };
 
+export type LoadTransportCommand = BaseCommand & {
+  type: 'loadTransport';
+  transportId: EntityId;
+  targetId: EntityId;
+  queue: boolean;
+  queueFront?: boolean;
+  queueInsertIndex?: number;
+};
+
+export type UnloadTransportCommand = BaseCommand & {
+  type: 'unloadTransport';
+  transportIds: EntityId[];
+  targetX: number;
+  targetY: number;
+  targetZ?: number;
+  queue: boolean;
+  queueFront?: boolean;
+  queueInsertIndex?: number;
+};
+
 export type WaitCommand = BaseCommand & {
   type: 'wait';
   entityIds: EntityId[];
@@ -519,6 +541,8 @@ export type Command =
   | CaptureCommand
   | ResurrectCommand
   | ResurrectAreaCommand
+  | LoadTransportCommand
+  | UnloadTransportCommand
   | WaitCommand
   | AttackCommand
   | AttackGroundCommand

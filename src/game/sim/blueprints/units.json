@@ -1863,6 +1863,111 @@
       }
     }
   },
+  "unitTransport": {
+    "unitBlueprintId": "unitTransport",
+    "name": "Transport",
+    "shortName": "TRN",
+    "hp": 520,
+    "radius": {
+      "visual": 22,
+      "hitbox": 20,
+      "collision": 28
+    },
+    "bodyCenterHeight": 3.8,
+    "supportSurface": {
+      "kind": "none"
+    },
+    "fullVisionRadius": 1200,
+    "sensors": {
+      "fullSightRadius": 1200,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
+    "mass": 180,
+    "cost": {
+      "energy": 300,
+      "metal": 300
+    },
+    "turrets": [],
+    "bodyShape": {
+      "kind": "composite",
+      "parts": [
+        {
+          "kind": "oval",
+          "offsetForward": -0.2,
+          "xFrac": 0.72,
+          "yFrac": 0.32,
+          "zFrac": 0.42
+        },
+        {
+          "kind": "oval",
+          "offsetForward": 0.64,
+          "xFrac": 0.42,
+          "yFrac": 0.26,
+          "zFrac": 0.36
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": -0.95,
+          "lengthFrac": 0.9,
+          "radiusFrac": 0.12,
+          "centerYFrac": 0.3,
+          "pitchRad": 0
+        }
+      ]
+    },
+    "hud": {
+      "barsOffsetAboveTop": 13
+    },
+    "legAttachHeightFrac": null,
+    "suspension": null,
+    "builder": null,
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitDragonfly"
+    },
+    "locomotion": {
+      "type": "hover",
+      "pathfindingBlueprintId": "airborneAnywhere",
+      "physics": {
+        "driveForce": 20,
+        "traction": 1
+      },
+      "config": {
+        "gravityCounterUpwardForceRatio": 0.8,
+        "hoverHeightUpwardForce": 72,
+        "hoverHeightUpwardForceRandomizationAmount": 0.45,
+        "hoverHeightUpwardForceEMA": 0.98,
+        "fanDistX": 0.72,
+        "fanDistY": 0.8,
+        "fanLayout": "quad",
+        "fanRadius": 0.34,
+        "fanRingTubeRadius": 0.04,
+        "fanOutwardAngleDeg": 12,
+        "fanSpinRadPerSec": -9
+      }
+    },
+    "base": {
+      "cost": {
+        "energy": 300,
+        "metal": 300
+      },
+      "mass": 180,
+      "health": 520,
+      "deathExplosion": {
+        "radius": 24,
+        "force": 7200,
+        "damage": 130
+      },
+      "radius": {
+        "visual": 22,
+        "hitbox": 20,
+        "collision": 28
+      }
+    }
+  },
   "unitCommander": {
     "unitBlueprintId": "unitCommander",
     "name": "Commander",

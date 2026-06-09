@@ -520,6 +520,12 @@ export class RtsScene3D {
     this.inputManager.onResurrectAreaModeChange = (active) => {
       this.selectionSystem.setResurrectAreaMode(active);
     };
+    this.inputManager.onLoadTransportModeChange = (active) => {
+      this.selectionSystem.setLoadTransportMode(active);
+    };
+    this.inputManager.onUnloadTransportModeChange = (active) => {
+      this.selectionSystem.setUnloadTransportMode(active);
+    };
     this.inputManager.onMexUpgradeModeChange = (active) => {
       this.selectionSystem.setMexUpgradeMode(active);
     };
@@ -972,6 +978,14 @@ export class RtsScene3D {
 
   public toggleResurrectAreaMode(): void {
     this.inputManager?.toggleResurrectAreaMode();
+  }
+
+  public toggleLoadTransportMode(): void {
+    this.inputManager?.toggleLoadTransportMode();
+  }
+
+  public toggleUnloadTransportMode(): void {
+    this.inputManager?.toggleUnloadTransportMode();
   }
 
   public reclaimSelected(): void {

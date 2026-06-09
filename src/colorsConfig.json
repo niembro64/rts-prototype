@@ -855,6 +855,14 @@
         "colorHex": "#68f0b8",
         "cssColor": "#68f0b8"
       },
+      "loadTransport": {
+        "colorHex": "#60d8ff",
+        "cssColor": "#60d8ff"
+      },
+      "unloadTransport": {
+        "colorHex": "#8fb6ff",
+        "cssColor": "#8fb6ff"
+      },
       "wait": {
         "colorHex": "#e8e8e8",
         "cssColor": "#e8e8e8"

@@ -42,6 +42,7 @@ export type SelectionInfo = {
   buildingCount: number;
   hasCommander: boolean;
   hasBuilder: boolean;
+  hasTransport: boolean;
   allowedBuildBlueprintIds: readonly StructureBlueprintId[];
   canUpgradeMetalExtractors: boolean;
   hasUpgradeableMetalExtractor: boolean;
@@ -104,6 +105,8 @@ export type SelectionInfo = {
   isCaptureMode: boolean;
   isResurrectMode: boolean;
   isResurrectAreaMode: boolean;
+  isLoadTransportMode: boolean;
+  isUnloadTransportMode: boolean;
   isMexUpgradeMode: boolean;
   isPingMode: boolean;
   factorySelectedUnit?: FactorySelectionItem | null;
@@ -161,6 +164,8 @@ export type SelectionActions = {
   toggleCapture: () => void;
   toggleResurrect: () => void;
   toggleResurrectArea: () => void;
+  toggleLoadTransport: () => void;
+  toggleUnloadTransport: () => void;
   reclaimSelected: () => void;
   toggleMexUpgrade: () => void;
   upgradeSelectedMetalExtractors: () => void;
@@ -281,6 +286,8 @@ export type UIInputState = {
   isCaptureMode: boolean;
   isResurrectMode: boolean;
   isResurrectAreaMode: boolean;
+  isLoadTransportMode: boolean;
+  isUnloadTransportMode: boolean;
   isMexUpgradeMode: boolean;
   isPingMode: boolean;
   /** True while in the click-to-pick mode for setting a tower's host

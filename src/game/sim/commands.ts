@@ -35,6 +35,8 @@ export type {
   CaptureCommand,
   ResurrectCommand,
   ResurrectAreaCommand,
+  LoadTransportCommand,
+  UnloadTransportCommand,
   WaitCommand,
   AttackCommand,
   AttackGroundCommand,

@@ -20,6 +20,7 @@ import {
   canBuilderUpgradeMetalExtractor,
   isUpgradeableMetalExtractorTarget,
 } from '../../sim/metalExtractorUpgrade';
+import { isClientTransportUnit } from '../../sim/transports';
 
 const MAX_QUEUE_INSERT_OPTIONS = 24;
 
@@ -70,6 +71,8 @@ function unitActionLabel(action: UnitAction): string {
     case 'reclaim': return 'Reclaim';
     case 'capture': return 'Capture';
     case 'resurrect': return 'Resurrect';
+    case 'loadTransport': return 'Load';
+    case 'unloadTransport': return 'Unload';
     case 'wait': return action.waitGather === true ? 'Gather Wait' : 'Wait';
     case 'attack': return 'Attack';
     case 'attackGround': return 'Attack Ground';
@@ -513,6 +516,7 @@ export function buildSelectionInfo(
   // commander unit IS the dgunner — no second find call needed.
   const commander = selectedUnits.find(isCommander);
   const builder = selectedUnits.find(u => u.builder !== null);
+  const hasTransport = selectedUnits.some(isClientTransportUnit);
   const allowedBuildBlueprintIds = getSelectedBuilderAllowedBuildBlueprintIds(selectedUnits);
   const canUpgradeMetalExtractors = selectedUnits.some(canBuilderUpgradeMetalExtractor);
   const selectedPlayerId = selectedUnits[0]?.ownership?.playerId ?? selectedStatic[0]?.ownership?.playerId;
@@ -669,6 +673,7 @@ export function buildSelectionInfo(
     buildingCount: selectedBuildings.length,
     hasCommander: commander !== undefined,
     hasBuilder: builder !== undefined,
+    hasTransport,
     allowedBuildBlueprintIds,
     canUpgradeMetalExtractors,
     hasUpgradeableMetalExtractor,
@@ -740,6 +745,8 @@ export function buildSelectionInfo(
     isCaptureMode: inputState?.isCaptureMode ?? false,
     isResurrectMode: inputState?.isResurrectMode ?? false,
     isResurrectAreaMode: inputState?.isResurrectAreaMode ?? false,
+    isLoadTransportMode: inputState?.isLoadTransportMode ?? false,
+    isUnloadTransportMode: inputState?.isUnloadTransportMode ?? false,
     isMexUpgradeMode: inputState?.isMexUpgradeMode ?? false,
     isPingMode: inputState?.isPingMode ?? false,
     factorySelectedUnit,
