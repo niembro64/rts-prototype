@@ -1,3 +1,4 @@
+import type * as THREE from 'three';
 import {
   BUILD_RATE_EMA_HALF_LIFE_SEC,
   BUILD_RATE_EMA_MODE,
@@ -5,6 +6,7 @@ import {
 import {
   RESOURCE_KIND_ENERGY,
   RESOURCE_KIND_METAL,
+  type ResourceKindCode,
 } from '@/types/network';
 import { WIND_SPEED_MAX } from '../../config';
 import type { MetalDeposit } from '../../metalDepositConfig';
@@ -13,18 +15,17 @@ import type { ClientViewState } from '../network/ClientViewState';
 import type { Entity, EntityId } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
-import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import type { ResourcePylonRig } from './ConstructionEmitterMesh3D';
 import type { EntityMesh } from './EntityMesh3D';
 import {
   addActiveAnimatedBuildingEntry,
-  addResourcePylonBuildingEntry,
+  addAnimatedBuildingEntry,
   clearAnimatedBuildingEntries,
   removeAnimatedBuildingEntry,
-  type ResourcePylonBuildingEntry,
-  type ResourcePylonBuildingKind,
+  type AnimatedBuildingEntry,
 } from './BuildingAnimationLists3D';
 import { BuildingResourcePylonSources3D } from './BuildingResourcePylonSources3D';
+import type { ResourcePylonFlowController3D } from './ResourcePylonFlowController3D';
 
 function extractorInverseBaseProduction(entity: Entity): number {
   if (!isMetalExtractorBlueprintId(entity.buildingBlueprintId)) return 0;
@@ -47,7 +48,7 @@ const INV_CONVERTER_BASE_RATE = (() => {
 
 const RESOURCE_PYLON_IDLE_EPSILON = 0.001;
 
-export function resourcePylonRateFraction(signedRate: number, inverseFullRate: number): number {
+function resourcePylonRateFraction(signedRate: number, inverseFullRate: number): number {
   if (signedRate === 0 || inverseFullRate <= 0) return 0;
   return Math.max(0, Math.min(1, Math.abs(signedRate) * inverseFullRate));
 }
@@ -57,41 +58,56 @@ function applyResourcePylonDirection(pylon: ResourcePylonRig | undefined, signed
   pylon.direction = signedRate > 0 ? 'outbound' : 'inbound';
 }
 
+type ResourcePylonHostDescriptor = {
+  key: string;
+  resource: ResourceKindCode;
+  emitMode: 'world' | 'relationshipOnly';
+  getPylon: (mesh: EntityMesh) => ResourcePylonRig | undefined;
+  getInverseFullRate: (entity: Entity) => number;
+  getAvailability: (entry: AnimatedBuildingEntry, open: boolean) => number;
+  writeWorldEndpoint?: (entry: AnimatedBuildingEntry, pylon: ResourcePylonRig) => THREE.Vector3 | null;
+};
+
+type ResourcePylonTipRelationshipDescriptor = {
+  key: string;
+  resourceA: ResourceKindCode;
+  resourceB: ResourceKindCode;
+  getPylonA: (mesh: EntityMesh) => ResourcePylonRig | undefined;
+  getPylonB: (mesh: EntityMesh) => ResourcePylonRig | undefined;
+};
+
 export class BuildingResourcePylonAnimator3D {
   private readonly clientViewState: ClientViewState;
-  private readonly constructionVisuals: ConstructionVisualController3D;
+  private readonly resourcePylonFlows: ResourcePylonFlowController3D;
   private readonly pylonSources: BuildingResourcePylonSources3D;
   private readonly getWindCloseAmount: (id: EntityId, open: boolean) => number;
   private readonly getExtractorCloseAmount: (id: EntityId, open: boolean) => number;
-  private resourcePylonBuildings: ResourcePylonBuildingEntry[] = [];
+  private readonly pylonDescriptors: readonly ResourcePylonHostDescriptor[];
+  private readonly tipRelationshipDescriptors: readonly ResourcePylonTipRelationshipDescriptor[];
+  private resourcePylonBuildings: AnimatedBuildingEntry[] = [];
   private resourcePylonBuildingIndexById = new Map<EntityId, number>();
-  private activeResourcePylonBuildings: ResourcePylonBuildingEntry[] = [];
+  private activeResourcePylonBuildings: AnimatedBuildingEntry[] = [];
   private activeResourcePylonBuildingIndexById = new Map<EntityId, number>();
 
   constructor(
     clientViewState: ClientViewState,
-    constructionVisuals: ConstructionVisualController3D,
+    resourcePylonFlows: ResourcePylonFlowController3D,
     metalDeposits: readonly MetalDeposit[],
     getWindCloseAmount: (id: EntityId, open: boolean) => number,
     getExtractorCloseAmount: (id: EntityId, open: boolean) => number,
   ) {
     this.clientViewState = clientViewState;
-    this.constructionVisuals = constructionVisuals;
+    this.resourcePylonFlows = resourcePylonFlows;
     this.pylonSources = new BuildingResourcePylonSources3D(clientViewState, metalDeposits);
     this.getWindCloseAmount = getWindCloseAmount;
     this.getExtractorCloseAmount = getExtractorCloseAmount;
+    this.pylonDescriptors = this.createPylonDescriptors();
+    this.tipRelationshipDescriptors = this.createTipRelationshipDescriptors();
   }
 
   register(entity: Entity, mesh: EntityMesh): void {
-    if (mesh.solarRig) {
-      this.add('solar', entity, mesh);
-    } else if (mesh.windRig) {
-      this.add('wind', entity, mesh);
-    } else if (mesh.extractorRig) {
-      this.add('extractor', entity, mesh);
-    } else if (mesh.converterRig) {
-      this.add('converter', entity, mesh);
-    }
+    if (!this.hasResourcePylonHost(mesh)) return;
+    this.add(entity, mesh);
   }
 
   unregister(id: EntityId): void {
@@ -136,160 +152,221 @@ export class BuildingResourcePylonAnimator3D {
     this.pylonSources.clear();
   }
 
-  private add(
-    kind: ResourcePylonBuildingKind,
-    entity: Entity,
-    mesh: EntityMesh,
-  ): ResourcePylonBuildingEntry {
-    return addResourcePylonBuildingEntry(
+  private add(entity: Entity, mesh: EntityMesh): AnimatedBuildingEntry {
+    return addAnimatedBuildingEntry(
       this.resourcePylonBuildings,
       this.resourcePylonBuildingIndexById,
-      kind,
       entity,
       mesh,
     );
   }
 
-  private updateResourcePylonBuilding(
-    entry: ResourcePylonBuildingEntry,
-    rateAlpha: number,
-  ): boolean {
-    switch (entry.kind) {
-      case 'solar':
-        return this.updateSolarResourcePylon(entry, rateAlpha);
-      case 'wind':
-        return this.updateWindResourcePylon(entry, rateAlpha);
-      case 'extractor':
-        return this.updateExtractorResourcePylon(entry, rateAlpha);
-      case 'converter':
-        return this.updateConverterResourcePylons(entry, rateAlpha);
+  private createPylonDescriptors(): readonly ResourcePylonHostDescriptor[] {
+    return [
+      {
+        key: 'solar.energy',
+        resource: RESOURCE_KIND_ENERGY,
+        emitMode: 'world',
+        getPylon: (mesh) => mesh.solarRig?.pylon,
+        getInverseFullRate: () => INV_SOLAR_BASE_PRODUCTION,
+        getAvailability: (_entry, open) => open ? 1 : 0,
+        writeWorldEndpoint: (entry, pylon) =>
+          this.pylonSources.writeGroundBelowPylonSourceWorld(pylon, entry.mesh.group, entry.entity),
+      },
+      {
+        key: 'wind.energy',
+        resource: RESOURCE_KIND_ENERGY,
+        emitMode: 'world',
+        getPylon: (mesh) => mesh.windRig?.pylon,
+        getInverseFullRate: () => INV_WIND_MAX_PRODUCTION,
+        getAvailability: (entry, open) => 1 - this.getWindCloseAmount(entry.id, open),
+        writeWorldEndpoint: (entry, pylon) =>
+          this.pylonSources.writeWindPylonSourceWorld(pylon, entry.mesh.group),
+      },
+      {
+        key: 'extractor.metal',
+        resource: RESOURCE_KIND_METAL,
+        emitMode: 'world',
+        getPylon: (mesh) => mesh.extractorRig?.pylon,
+        getInverseFullRate: (entity) => extractorInverseBaseProduction(entity),
+        getAvailability: (entry, open) => 1 - this.getExtractorCloseAmount(entry.id, open),
+        writeWorldEndpoint: (entry, pylon) =>
+          this.pylonSources.writeExtractorDepositSourceWorld(pylon, entry.mesh.group, entry.entity),
+      },
+      {
+        key: 'converter.energy',
+        resource: RESOURCE_KIND_ENERGY,
+        emitMode: 'relationshipOnly',
+        getPylon: (mesh) => mesh.converterRig?.energyPylon,
+        getInverseFullRate: () => INV_CONVERTER_BASE_RATE,
+        getAvailability: (_entry, open) => open ? 1 : 0,
+      },
+      {
+        key: 'converter.metal',
+        resource: RESOURCE_KIND_METAL,
+        emitMode: 'relationshipOnly',
+        getPylon: (mesh) => mesh.converterRig?.metalPylon,
+        getInverseFullRate: () => INV_CONVERTER_BASE_RATE,
+        getAvailability: (_entry, open) => open ? 1 : 0,
+      },
+    ];
+  }
+
+  private createTipRelationshipDescriptors(): readonly ResourcePylonTipRelationshipDescriptor[] {
+    return [
+      {
+        key: 'converter.taxedArc',
+        resourceA: RESOURCE_KIND_ENERGY,
+        resourceB: RESOURCE_KIND_METAL,
+        getPylonA: (mesh) => mesh.converterRig?.energyPylon,
+        getPylonB: (mesh) => mesh.converterRig?.metalPylon,
+      },
+    ];
+  }
+
+  private hasResourcePylonHost(mesh: EntityMesh): boolean {
+    for (let i = 0; i < this.pylonDescriptors.length; i++) {
+      if (this.pylonDescriptors[i].getPylon(mesh)) return true;
     }
+    return false;
   }
 
-  private updateSolarResourcePylon(
-    entry: ResourcePylonBuildingEntry,
+  private updateResourcePylonBuilding(entry: AnimatedBuildingEntry, rateAlpha: number): boolean {
+    const detailsReady = entry.mesh.buildingCachedDetailsReady === true;
+    const open = entry.entity.building?.activeState?.open !== false;
+    let active = false;
+    for (let i = 0; i < this.pylonDescriptors.length; i++) {
+      active = this.updateDeclaredPylon(entry, this.pylonDescriptors[i], rateAlpha, detailsReady, open) || active;
+    }
+    for (let i = 0; i < this.tipRelationshipDescriptors.length; i++) {
+      active = this.emitTipRelationship(entry, this.tipRelationshipDescriptors[i], detailsReady) || active;
+    }
+    return active;
+  }
+
+  private updateDeclaredPylon(
+    entry: AnimatedBuildingEntry,
+    descriptor: ResourcePylonHostDescriptor,
     rateAlpha: number,
+    detailsReady: boolean,
+    open: boolean,
   ): boolean {
-    const { id, entity, mesh } = entry;
-    const pylon = mesh.solarRig?.pylon;
+    const pylon = descriptor.getPylon(entry.mesh);
     if (!pylon) return false;
-    const detailsReady = mesh.buildingCachedDetailsReady === true;
-    const open = entity.building?.activeState?.open !== false;
-    const signedRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_ENERGY);
-    const targetRate = open ? resourcePylonRateFraction(signedRate, INV_SOLAR_BASE_PRODUCTION) : 0;
+    const signedRate = this.clientViewState.getResourcePylonSignedRate(entry.id, descriptor.resource);
+    const availability = Math.max(0, Math.min(1, descriptor.getAvailability(entry, open)));
+    const targetRate = resourcePylonRateFraction(signedRate, descriptor.getInverseFullRate(entry.entity)) * availability;
     applyResourcePylonDirection(pylon, signedRate);
-    const sourceWorld = this.pylonSources.writeGroundBelowPylonSourceWorld(pylon, mesh.group, entity);
-    this.constructionVisuals.updateAmbientResourcePylon(
-      pylon,
-      entity,
-      mesh.group,
-      targetRate,
-      rateAlpha,
-      detailsReady,
-      detailsReady,
-      sourceWorld,
-    );
+    if (descriptor.emitMode === 'world') {
+      const worldEndpoint = detailsReady && descriptor.writeWorldEndpoint
+        ? descriptor.writeWorldEndpoint(entry, pylon)
+        : null;
+      this.updatePylonFlow(
+        entry,
+        pylon,
+        signedRate,
+        targetRate,
+        rateAlpha,
+        detailsReady,
+        detailsReady,
+        worldEndpoint,
+      );
+    } else {
+      this.smoothPylonRate(pylon, targetRate, rateAlpha, detailsReady);
+    }
     return targetRate > RESOURCE_PYLON_IDLE_EPSILON || this.resourcePylonNeedsFrame(pylon);
   }
 
-  private updateWindResourcePylon(
-    entry: ResourcePylonBuildingEntry,
+  private updatePylonFlow(
+    entry: AnimatedBuildingEntry,
+    pylon: ResourcePylonRig,
+    signedRate: number,
+    targetRate: number,
     rateAlpha: number,
-  ): boolean {
-    const { id, entity, mesh } = entry;
-    const pylon = mesh.windRig?.pylon;
-    if (!pylon) return false;
-    const detailsReady = mesh.buildingCachedDetailsReady === true;
-    const open = entity.building?.activeState?.open !== false;
-    const close = this.getWindCloseAmount(id, open);
-    const signedRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_ENERGY);
-    const targetRate = resourcePylonRateFraction(signedRate, INV_WIND_MAX_PRODUCTION) * (1 - close);
-    applyResourcePylonDirection(pylon, signedRate);
-    this.constructionVisuals.updateAmbientResourcePylon(
+    visible: boolean,
+    emitBalls: boolean,
+    worldEndpoint: THREE.Vector3 | null,
+  ): void {
+    this.smoothPylonRate(pylon, targetRate, rateAlpha, visible);
+    const absRate = Math.abs(signedRate);
+    const ownership = entry.entity.ownership;
+    if (
+      !emitBalls ||
+      !ownership ||
+      (pylon.displaySmoothedRate < RESOURCE_PYLON_IDLE_EPSILON && absRate <= 0)
+    ) {
+      return;
+    }
+
+    entry.mesh.group.updateWorldMatrix(true, false);
+    this.resourcePylonFlows.emitResourcePylonFlow({
       pylon,
-      entity,
-      mesh.group,
-      targetRate,
-      rateAlpha,
-      detailsReady,
-      detailsReady,
-      this.pylonSources.writeWindPylonSourceWorld(pylon, mesh.group),
-    );
-    return targetRate > RESOURCE_PYLON_IDLE_EPSILON || this.resourcePylonNeedsFrame(pylon);
+      group: entry.mesh.group,
+      hostId: entry.id,
+      playerId: ownership.playerId,
+      targetId: entry.id,
+      worldEndpoint,
+      endpointRadius: pylon.flowRadius,
+      direction: pylon.direction,
+      rate: pylon.displaySmoothedRate,
+      absRate,
+      channel: pylon.channel,
+    });
   }
 
-  private updateExtractorResourcePylon(
-    entry: ResourcePylonBuildingEntry,
+  private smoothPylonRate(
+    pylon: ResourcePylonRig,
+    targetRate: number,
     rateAlpha: number,
-  ): boolean {
-    const { id, entity, mesh } = entry;
-    const pylon = mesh.extractorRig?.pylon;
-    if (!pylon) return false;
-    const detailsReady = mesh.buildingCachedDetailsReady === true;
-    const open = entity.building?.activeState?.open !== false;
-    const close = this.getExtractorCloseAmount(id, open);
-    const signedRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_METAL);
-    const targetRate = resourcePylonRateFraction(signedRate, extractorInverseBaseProduction(entity)) * (1 - close);
-    applyResourcePylonDirection(pylon, signedRate);
-    this.constructionVisuals.updateAmbientResourcePylon(
-      pylon,
-      entity,
-      mesh.group,
-      targetRate,
-      rateAlpha,
-      detailsReady,
-      detailsReady,
-      this.pylonSources.writeExtractorDepositSourceWorld(pylon, mesh.group, entity),
-    );
-    return targetRate > RESOURCE_PYLON_IDLE_EPSILON || this.resourcePylonNeedsFrame(pylon);
+    visible: boolean,
+  ): void {
+    const target = visible ? Math.max(0, Math.min(1, targetRate)) : 0;
+    pylon.smoothedRate += (target - pylon.smoothedRate) * rateAlpha;
+    pylon.displaySmoothedRate = pylon.smoothedRate;
   }
 
-  private updateConverterResourcePylons(
-    entry: ResourcePylonBuildingEntry,
-    rateAlpha: number,
+  private emitTipRelationship(
+    entry: AnimatedBuildingEntry,
+    descriptor: ResourcePylonTipRelationshipDescriptor,
+    detailsReady: boolean,
   ): boolean {
-    const { id, entity, mesh } = entry;
-    const rig = mesh.converterRig;
-    if (!rig) return false;
-    const detailsReady = mesh.buildingCachedDetailsReady === true;
-    const energyRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_ENERGY);
-    const metalRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_METAL);
-    const energyTarget = resourcePylonRateFraction(energyRate, INV_CONVERTER_BASE_RATE);
-    const metalTarget = resourcePylonRateFraction(metalRate, INV_CONVERTER_BASE_RATE);
-    applyResourcePylonDirection(rig.energyPylon, energyRate);
-    applyResourcePylonDirection(rig.metalPylon, metalRate);
-    this.constructionVisuals.updateAmbientResourcePylon(
-      rig.energyPylon,
-      entity,
-      mesh.group,
-      energyTarget,
-      rateAlpha,
-      detailsReady,
-      false,
-    );
-    this.constructionVisuals.updateAmbientResourcePylon(
-      rig.metalPylon,
-      entity,
-      mesh.group,
-      metalTarget,
-      rateAlpha,
-      detailsReady,
-      false,
-    );
-    this.constructionVisuals.emitConverterResourceTransfer(
-      rig.energyPylon,
-      rig.metalPylon,
-      entity,
-      mesh.group,
-      energyRate,
-      metalRate,
-      detailsReady,
-      detailsReady,
-    );
-    return energyTarget > RESOURCE_PYLON_IDLE_EPSILON ||
-      metalTarget > RESOURCE_PYLON_IDLE_EPSILON ||
-      this.resourcePylonNeedsFrame(rig.energyPylon) ||
-      this.resourcePylonNeedsFrame(rig.metalPylon);
+    const pylonA = descriptor.getPylonA(entry.mesh);
+    const pylonB = descriptor.getPylonB(entry.mesh);
+    const ownership = entry.entity.ownership;
+    if (!pylonA || !pylonB || !detailsReady || !ownership) return false;
+
+    const rateA = this.clientViewState.getResourcePylonSignedRate(entry.id, descriptor.resourceA);
+    const rateB = this.clientViewState.getResourcePylonSignedRate(entry.id, descriptor.resourceB);
+    let sourcePylon: ResourcePylonRig;
+    let sinkPylon: ResourcePylonRig;
+    let sourceRate: number;
+    let sinkRate: number;
+    if (rateA > 0 && rateB < 0) {
+      sourcePylon = pylonA;
+      sinkPylon = pylonB;
+      sourceRate = rateA;
+      sinkRate = rateB;
+    } else if (rateB > 0 && rateA < 0) {
+      sourcePylon = pylonB;
+      sinkPylon = pylonA;
+      sourceRate = rateB;
+      sinkRate = rateA;
+    } else {
+      return false;
+    }
+
+    this.resourcePylonFlows.emitTaxedArc({
+      hostId: entry.id,
+      playerId: ownership.playerId,
+      sourcePylon,
+      sinkPylon,
+      group: entry.mesh.group,
+      sourceRate: sourcePylon.displaySmoothedRate,
+      sinkRate: sinkPylon.displaySmoothedRate,
+      sourceAbsRate: Math.abs(sourceRate),
+      sinkAbsRate: Math.abs(sinkRate),
+    });
+    return true;
   }
 
   private resourcePylonNeedsFrame(pylon: ResourcePylonRig): boolean {

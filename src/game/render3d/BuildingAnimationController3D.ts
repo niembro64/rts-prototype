@@ -8,10 +8,6 @@ import {
   WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED,
 } from '../../config';
 import type { MetalDeposit } from '../../metalDepositConfig';
-import {
-  RESOURCE_KIND_ENERGY,
-  RESOURCE_KIND_METAL,
-} from '@/types/network';
 import type { ClientViewState } from '../network/ClientViewState';
 import { halfLifeBlend } from '../network/driftEma';
 import { lerp, lerpAngle } from '../math';
@@ -27,6 +23,7 @@ import type {
 } from './ConstructionEmitterMesh3D';
 import type { EntityMesh } from './EntityMesh3D';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
+import type { ResourcePylonFlowController3D } from './ResourcePylonFlowController3D';
 import type { ExtractorBladeAnim } from './MetalExtractorMesh3D';
 import { visualAnimBlend, visualAnimHalfLife } from './visualAnimationEma';
 import {
@@ -38,7 +35,6 @@ import {
 } from './BuildingAnimationLists3D';
 import {
   BuildingResourcePylonAnimator3D,
-  resourcePylonRateFraction,
 } from './BuildingResourcePylonAnimator3D';
 
 // Open/close pose transitions are discrete local state changes, not
@@ -48,13 +44,6 @@ const SOLAR_PETAL_ANIM_ALPHA = 0.16;
 const EXTRACTOR_ROTOR_RAD_PER_SEC = 2.4;
 const RADAR_HEAD_RAD_PER_SEC = 0.55;
 const RADAR_SWEEP_RAD_PER_SEC = 1.8;
-/** Slow idle drift so an inactive converter still reads as "alive". */
-const CONVERTER_RING_IDLE_RAD_PER_SEC = 0.35;
-/** Additional contribution at full conversion rate. The ring's spin
- *  signs the conversion direction; orbiter brightness comes for free
- *  because faster spin distributes the orbiter sphere over more frame
- *  positions. */
-const CONVERTER_RING_FULL_RAD_PER_SEC = 2.1;
 /** Per-frame blend toward the building's target open/closed pose
  *  (wind nacelle pitch + blade fold, extractor blade fold). Matches the
  *  solar petal animator's feel — smooth but not laggy. */
@@ -70,11 +59,6 @@ function extractorInverseBaseProduction(entity: Entity): number {
   const base = getBuildingConfig(entity.buildingBlueprintId).metalProduction ?? 0;
   return base > 0 ? 1 / base : 0;
 }
-const INV_CONVERTER_BASE_RATE = (() => {
-  const base = getBuildingConfig('buildingResourceConverter').conversionRate ?? 0;
-  return base > 0 ? 1 / base : 0;
-})();
-
 const FACTORY_ANIMATION_IDLE_EPSILON = 0.001;
 const BUILDING_RIG_IDLE_EPSILON = 0.001;
 
@@ -94,10 +78,6 @@ export class BuildingAnimationController3D {
   private extractorBuildingIndexById = new Map<EntityId, number>();
   private activeExtractorBuildings: AnimatedBuildingEntry[] = [];
   private activeExtractorBuildingIndexById = new Map<EntityId, number>();
-  private converterBuildings: AnimatedBuildingEntry[] = [];
-  private converterBuildingIndexById = new Map<EntityId, number>();
-  private activeConverterBuildings: AnimatedBuildingEntry[] = [];
-  private activeConverterBuildingIndexById = new Map<EntityId, number>();
   private factoryBuildings: AnimatedBuildingEntry[] = [];
   private factoryBuildingIndexById = new Map<EntityId, number>();
   private activeFactoryBuildings: AnimatedBuildingEntry[] = [];
@@ -136,27 +116,19 @@ export class BuildingAnimationController3D {
   private radarSweepPhases = new Map<EntityId, number>();
   private radarHeadSpeeds = new Map<EntityId, number>();
   private radarSweepSpeeds = new Map<EntityId, number>();
-  /** Per-converter ring phases (energy, metal, accent). Accumulated each
-   *  frame from the matching speed map. */
-  private converterEnergyRingPhases = new Map<EntityId, number>();
-  private converterMetalRingPhases = new Map<EntityId, number>();
-  private converterAccentRingPhases = new Map<EntityId, number>();
-  /** Courtesy ROT VEL binding for converter ring spin-up/spin-down. */
-  private converterEnergyRingSpeeds = new Map<EntityId, number>();
-  private converterMetalRingSpeeds = new Map<EntityId, number>();
-  private converterAccentRingSpeeds = new Map<EntityId, number>();
   private extractorAppliedCloseAmounts = new Map<EntityId, number>();
 
   constructor(
     clientViewState: ClientViewState,
     constructionVisuals: ConstructionVisualController3D,
+    resourcePylonFlows: ResourcePylonFlowController3D,
     metalDeposits: readonly MetalDeposit[],
   ) {
     this.clientViewState = clientViewState;
     this.constructionVisuals = constructionVisuals;
     this.resourcePylonAnimator = new BuildingResourcePylonAnimator3D(
       clientViewState,
-      constructionVisuals,
+      resourcePylonFlows,
       metalDeposits,
       (id, open) => this.windCloseAmounts.get(id) ?? (open ? 0 : 1),
       (id, open) => this.extractorCloseAmounts.get(id) ?? (open ? 0 : 1),
@@ -175,10 +147,6 @@ export class BuildingAnimationController3D {
     if (mesh.extractorRig) {
       const entry = addAnimatedBuildingEntry(this.extractorBuildings, this.extractorBuildingIndexById, entity, mesh);
       this.updateExtractorAnimationQueue(entry);
-    }
-    if (mesh.converterRig) {
-      const entry = addAnimatedBuildingEntry(this.converterBuildings, this.converterBuildingIndexById, entity, mesh);
-      this.updateConverterAnimationQueue(entry);
     }
     this.resourcePylonAnimator.register(entity, mesh);
     if (mesh.factoryBuildSpotRig) {
@@ -200,10 +168,6 @@ export class BuildingAnimationController3D {
     if (entity.buildingBlueprintId === 'buildingSolar' && mesh.buildingDetails) {
       const entry = addAnimatedBuildingEntry(this.solarBuildings, this.solarBuildingIndexById, entity, mesh);
       this.updateSolarAnimationQueue(entry);
-    }
-    if (mesh.converterRig) {
-      const entry = addAnimatedBuildingEntry(this.converterBuildings, this.converterBuildingIndexById, entity, mesh);
-      this.updateConverterAnimationQueue(entry);
     }
     if (mesh.windRig) {
       const entry = addAnimatedBuildingEntry(this.windBuildings, this.windBuildingIndexById, entity, mesh);
@@ -235,8 +199,6 @@ export class BuildingAnimationController3D {
     removeAnimatedBuildingEntry(this.activeWindBuildings, this.activeWindBuildingIndexById, id);
     removeAnimatedBuildingEntry(this.extractorBuildings, this.extractorBuildingIndexById, id);
     removeAnimatedBuildingEntry(this.activeExtractorBuildings, this.activeExtractorBuildingIndexById, id);
-    removeAnimatedBuildingEntry(this.converterBuildings, this.converterBuildingIndexById, id);
-    removeAnimatedBuildingEntry(this.activeConverterBuildings, this.activeConverterBuildingIndexById, id);
     this.resourcePylonAnimator.unregister(id);
     this.extractorRotorPhases.delete(id);
     this.extractorRotorSpeeds.delete(id);
@@ -253,12 +215,6 @@ export class BuildingAnimationController3D {
     this.radarSweepPhases.delete(id);
     this.radarHeadSpeeds.delete(id);
     this.radarSweepSpeeds.delete(id);
-    this.converterEnergyRingPhases.delete(id);
-    this.converterMetalRingPhases.delete(id);
-    this.converterAccentRingPhases.delete(id);
-    this.converterEnergyRingSpeeds.delete(id);
-    this.converterMetalRingSpeeds.delete(id);
-    this.converterAccentRingSpeeds.delete(id);
   }
 
   update(
@@ -271,7 +227,6 @@ export class BuildingAnimationController3D {
 
     this.updateActiveWindAnimations();
     this.updateActiveExtractorAnimations(spinDt);
-    this.updateActiveConverterAnimations(spinDt, timeMs);
     this.resourcePylonAnimator.updateActive(spinDt);
 
     for (let i = 0; i < this.activeFactoryBuildings.length;) {
@@ -317,8 +272,6 @@ export class BuildingAnimationController3D {
     clearAnimatedBuildingEntries(this.activeWindBuildings, this.activeWindBuildingIndexById);
     clearAnimatedBuildingEntries(this.extractorBuildings, this.extractorBuildingIndexById);
     clearAnimatedBuildingEntries(this.activeExtractorBuildings, this.activeExtractorBuildingIndexById);
-    clearAnimatedBuildingEntries(this.converterBuildings, this.converterBuildingIndexById);
-    clearAnimatedBuildingEntries(this.activeConverterBuildings, this.activeConverterBuildingIndexById);
     this.resourcePylonAnimator.destroy();
     clearAnimatedBuildingEntries(this.factoryBuildings, this.factoryBuildingIndexById);
     clearAnimatedBuildingEntries(this.activeFactoryBuildings, this.activeFactoryBuildingIndexById);
@@ -335,12 +288,6 @@ export class BuildingAnimationController3D {
     this.radarSweepPhases.clear();
     this.radarHeadSpeeds.clear();
     this.radarSweepSpeeds.clear();
-    this.converterEnergyRingPhases.clear();
-    this.converterMetalRingPhases.clear();
-    this.converterAccentRingPhases.clear();
-    this.converterEnergyRingSpeeds.clear();
-    this.converterMetalRingSpeeds.clear();
-    this.converterAccentRingSpeeds.clear();
     this.windFanYaw = null;
     this.windVisualSpeed = null;
     this.windRotorPhase = 0;
@@ -525,114 +472,6 @@ export class BuildingAnimationController3D {
     this.extractorRotorPhases.set(id, phase);
     this.extractorRotorSpeeds.set(id, speed);
     return this.extractorAnimationNeedsFrame(entry);
-  }
-
-  private updateConverterAnimationQueue(entry: AnimatedBuildingEntry): void {
-    updateAnimatedBuildingQueue(
-      this.activeConverterBuildings,
-      this.activeConverterBuildingIndexById,
-      entry,
-      this.converterAnimationNeedsFrame(entry),
-    );
-  }
-
-  private updateActiveConverterAnimations(spinDt: number, timeMs: number): void {
-    if (this.activeConverterBuildings.length === 0) return;
-    const ringSpeedAlpha = visualAnimBlend(getRotationVelEmaMode(), spinDt);
-    for (let i = 0; i < this.activeConverterBuildings.length;) {
-      const entry = this.activeConverterBuildings[i];
-      if (this.updateConverterRingAnimation(entry, ringSpeedAlpha, spinDt, timeMs)) {
-        i++;
-      } else {
-        removeAnimatedBuildingEntry(
-          this.activeConverterBuildings,
-          this.activeConverterBuildingIndexById,
-          entry.id,
-        );
-      }
-    }
-  }
-
-  private converterAnimationNeedsFrame(entry: AnimatedBuildingEntry): boolean {
-    if (!entry.mesh.converterRig) return false;
-    if (entry.entity.building?.activeState?.open !== false) return true;
-    return Math.abs(this.converterEnergyRingSpeeds.get(entry.id) ?? 0) > BUILDING_RIG_IDLE_EPSILON ||
-      Math.abs(this.converterMetalRingSpeeds.get(entry.id) ?? 0) > BUILDING_RIG_IDLE_EPSILON ||
-      Math.abs(this.converterAccentRingSpeeds.get(entry.id) ?? 0) > BUILDING_RIG_IDLE_EPSILON;
-  }
-
-  private updateConverterRingAnimation(
-    entry: AnimatedBuildingEntry,
-    ringSpeedAlpha: number,
-    spinDt: number,
-    timeMs: number,
-  ): boolean {
-    const { id, entity, mesh } = entry;
-    const rig = mesh.converterRig;
-    if (!rig) return false;
-    const invBase = INV_CONVERTER_BASE_RATE;
-    const energyRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_ENERGY);
-    const metalRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_METAL);
-
-    // Ring spin is signed by flow direction. Open converters keep a slow
-    // idle drift; closed converters drain their local speeds to zero and
-    // then leave the active queue.
-    const open = entity.building?.activeState?.open !== false;
-    const energyMag = open ? resourcePylonRateFraction(energyRate, invBase) : 0;
-    const metalMag = open ? resourcePylonRateFraction(metalRate, invBase) : 0;
-    const energyDir = energyRate >= 0 ? 1 : -1;
-    const metalDir = metalRate >= 0 ? 1 : -1;
-    const energyTarget = open
-      ? energyDir * (CONVERTER_RING_IDLE_RAD_PER_SEC + CONVERTER_RING_FULL_RAD_PER_SEC * energyMag)
-      : 0;
-    const metalTarget = open
-      ? -metalDir * (CONVERTER_RING_IDLE_RAD_PER_SEC + CONVERTER_RING_FULL_RAD_PER_SEC * metalMag)
-      : 0;
-    const accentTarget = open
-      ? (CONVERTER_RING_IDLE_RAD_PER_SEC * 0.6 + CONVERTER_RING_FULL_RAD_PER_SEC * 0.7 * Math.max(energyMag, metalMag))
-      : 0;
-
-    let energySpeed = lerp(
-      this.converterEnergyRingSpeeds.get(id) ?? 0,
-      energyTarget,
-      ringSpeedAlpha,
-    );
-    let metalSpeed = lerp(
-      this.converterMetalRingSpeeds.get(id) ?? 0,
-      metalTarget,
-      ringSpeedAlpha,
-    );
-    let accentSpeed = lerp(
-      this.converterAccentRingSpeeds.get(id) ?? 0,
-      accentTarget,
-      ringSpeedAlpha,
-    );
-    if (!open) {
-      if (Math.abs(energySpeed) < BUILDING_RIG_IDLE_EPSILON) energySpeed = 0;
-      if (Math.abs(metalSpeed) < BUILDING_RIG_IDLE_EPSILON) metalSpeed = 0;
-      if (Math.abs(accentSpeed) < BUILDING_RIG_IDLE_EPSILON) accentSpeed = 0;
-    }
-    this.converterEnergyRingSpeeds.set(id, energySpeed);
-    this.converterMetalRingSpeeds.set(id, metalSpeed);
-    this.converterAccentRingSpeeds.set(id, accentSpeed);
-
-    const seed = id * 0.137;
-    const energyPhase = (this.converterEnergyRingPhases.get(id) ?? seed) + spinDt * energySpeed;
-    const metalPhase = (this.converterMetalRingPhases.get(id) ?? seed * 1.7) + spinDt * metalSpeed;
-    const accentPhase = (this.converterAccentRingPhases.get(id) ?? seed * 0.6) + spinDt * accentSpeed;
-    this.converterEnergyRingPhases.set(id, energyPhase);
-    this.converterMetalRingPhases.set(id, metalPhase);
-    this.converterAccentRingPhases.set(id, accentPhase);
-
-    rig.energyRing.rotation.z = energyPhase;
-    rig.metalRing.rotation.z = metalPhase;
-    rig.accentRing.rotation.z = accentPhase;
-
-    const haloPulse = 1
-      + 0.04 * Math.sin(timeMs * 0.0035 + seed)
-      + 0.06 * Math.max(energyMag, metalMag);
-    rig.coreHalo.scale.setScalar(rig.coreHaloBaseRadius * haloPulse);
-    return this.converterAnimationNeedsFrame(entry);
   }
 
   private updateRadarAnimationQueue(entry: AnimatedBuildingEntry): void {

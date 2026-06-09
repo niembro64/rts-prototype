@@ -4342,10 +4342,14 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runInput3DKeyboardControllerContractTest();
         const { runBuildGhost3DContractTest } = await import('../render3d/BuildGhost3DContractTest');
         runBuildGhost3DContractTest();
+        const { runResourcePylonFlowController3DContractTest } = await import('../render3d/ResourcePylonFlowController3DContractTest');
+        runResourcePylonFlowController3DContractTest();
         const { runMetalDepositVisualClustersContractTest } = await import('../render3d/MetalDepositVisualClustersContractTest');
         runMetalDepositVisualClustersContractTest();
         const { runTurretHostIntegrationContractTest } = await import('../sim/turretHostIntegrationTest');
         runTurretHostIntegrationContractTest();
+        const { runResourceMovementConformanceContractTest } = await import('../sim/resourceMovementConformanceContractTest');
+        runResourceMovementConformanceContractTest();
         const { runSupportSurfaceContractTest } = await import('../sim/supportSurfaceContractTest');
         runSupportSurfaceContractTest();
       }

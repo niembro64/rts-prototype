@@ -21,7 +21,7 @@
 // new allocation pressure.
 
 import * as THREE from 'three';
-import { COLORS, RESOURCE_COLOR_HEX } from '@/colorsConfig';
+import { COLORS } from '@/colorsConfig';
 import {
   DEFAULT_BUILDING_VISUAL_HEIGHT,
   RADAR_BUILDING_VISUAL_HEIGHT,
@@ -128,19 +128,6 @@ export type RadarRig = {
 export type ResourceConverterRig = {
   energyPylon: ResourcePylonRig;
   metalPylon: ResourcePylonRig;
-  /** Horizontal halo ring (donut hole +Y). Spins around the donut axis;
-   *  set `energyRing.rotation.z = phase` to advance — the static
-   *  `rotation.x = π/2` puts the donut axis in world Y. */
-  energyRing: THREE.Mesh;
-  /** Vertical wheel ring (donut hole +Z). Spins around the donut axis;
-   *  set `metalRing.rotation.z = phase`. */
-  metalRing: THREE.Mesh;
-  /** Tilted decorative ring; spin via `accentRing.rotation.z = phase`. */
-  accentRing: THREE.Mesh;
-  /** Translucent halo around the core glow. Caller may modulate scale. */
-  coreHalo: THREE.Mesh;
-  /** Base scale for the core halo; preserve so animators can pulse around it. */
-  coreHaloBaseRadius: number;
 };
 
 // ── Standard dimensions ────────────────────────────────────────────────
@@ -391,45 +378,21 @@ function createRadarDishGeometry(
 }
 
 // ── Resource converter ───────────────────────────────────────────────
-// Squat hex platform with three torus rings (energy halo, metal wheel,
-// cyan accent) cradling a layered glow core. Each ring carries a small
-// orbiter sphere on its rim so the spin is legible at a glance — the
-// rings themselves are rotationally symmetric and would otherwise look
-// stationary while turning. The orbiters trace the actual conversion
-// rate: brighter orbits when the converter is busy, slow drift when idle.
+// Rooftop pylon machine. The converter has no decorative resource loops:
+// conversion direction and magnitude are carried by the mounted pylons and
+// their resource-ball flows.
 const converterPlatformGeom = createHexFrustumGeometry(0.42, 0.5);
-const converterRingGeom = new THREE.TorusGeometry(1, 0.075, 10, 32);
-const converterAccentRingGeom = new THREE.TorusGeometry(1, 0.045, 8, 28);
-const converterHaloGeom = new THREE.SphereGeometry(1, 16, 12);
 const converterFrameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });
-const converterEnergyRingMat = new THREE.MeshStandardMaterial({
-  color: RESOURCE_COLOR_HEX.energy,
-  metalness: 0.4,
+const converterDarkMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
+const converterTrimMat = new THREE.MeshStandardMaterial({
+  color: BUILDING_PALETTE.structureLight,
+  metalness: 0.55,
   roughness: 0.35,
-  emissive: RESOURCE_COLOR_HEX.energy,
-  emissiveIntensity: 0.5,
 });
-const converterMetalRingMat = new THREE.MeshStandardMaterial({
-  color: RESOURCE_COLOR_HEX.metal,
-  metalness: 0.65,
-  roughness: 0.28,
-  emissive: RESOURCE_COLOR_HEX.metal,
-  emissiveIntensity: 0.28,
-});
-const converterAccentRingMat = new THREE.MeshBasicMaterial({
-  color: BUILDING_PALETTE.cyanGlow,
-  transparent: true,
-  opacity: 0.85,
-  depthWrite: false,
-});
-const converterEnergyOrbMat = new THREE.MeshBasicMaterial({ color: RESOURCE_COLOR_HEX.energy });
-const converterMetalOrbMat = new THREE.MeshBasicMaterial({ color: RESOURCE_COLOR_HEX.metal });
-const converterAccentOrbMat = new THREE.MeshBasicMaterial({ color: BUILDING_PALETTE.cyanGlow });
-const converterCoreMat = new THREE.MeshBasicMaterial({ color: BUILDING_PALETTE.cyanGlow });
-const converterCoreHaloMat = new THREE.MeshBasicMaterial({
+const converterStatusMat = new THREE.MeshBasicMaterial({
   color: BUILDING_PALETTE.cyanGlass,
   transparent: true,
-  opacity: 0.38,
+  opacity: 0.58,
   depthWrite: false,
 });
 
@@ -438,74 +401,70 @@ function buildResourceConverterMesh(
   depth: number,
   primaryMat: THREE.Material,
 ): BuildingShape {
-  const height = 60;
+  const height = 42;
   const minDim = Math.min(width, depth);
   const primary = new THREE.Mesh(converterPlatformGeom, primaryMat);
   const details: BuildingShape['details'] = [];
 
-  const ringRadius = Math.max(14, minDim * 0.32);
-  const ringHeight = height * 0.62;
-  const pylonBaseY = height * 0.18;
-  const pylonHeight = Math.max(18, height * 0.5);
-  const pylonRadius = Math.max(2.8, minDim * 0.045);
-  const pylonOffset = Math.max(ringRadius * 0.68, minDim * 0.2);
+  const deckRadius = Math.max(18, minDim * 0.34);
+  const deckH = Math.max(5, minDim * 0.085);
+  const deckY = height + deckH * 0.42;
+  const serviceH = Math.max(10, minDim * 0.18);
+  const serviceW = Math.max(22, minDim * 0.42);
+  const serviceD = Math.max(12, minDim * 0.22);
+  const pylonBaseY = height + Math.max(13, minDim * 0.22);
+  const pylonHeight = Math.max(28, minDim * 0.5);
+  const pylonRadius = Math.max(3.8, minDim * 0.065);
+  const pylonOffset = Math.max(15, minDim * 0.28);
 
-  // Horizontal halo around the core (donut hole points +Y). After
-  // `rotation.x = π/2`, Euler-XYZ intrinsic order means subsequent
-  // `rotation.z` spins around the ring's own donut axis, so the
-  // controller can advance the spin with a single scalar write.
-  const energyRing = new THREE.Mesh(converterRingGeom, converterEnergyRingMat);
-  energyRing.scale.set(ringRadius, ringRadius, 1);
-  energyRing.position.set(0, ringHeight, 0);
-  energyRing.rotation.x = Math.PI / 2;
-  const energyOrbRadius = Math.max(2.4, ringRadius * 0.09);
-  const energyOrb = makeSphere(converterEnergyOrbMat, energyOrbRadius, 1, 0, 0);
-  energyRing.add(energyOrb);
-  details.push(detail(energyRing, 'low'));
-
-  // Vertical wheel through the core (donut hole points +Z by default).
-  // Spin axis is the world Z, so `rotation.z = phase` does the job.
-  const metalRing = new THREE.Mesh(converterRingGeom, converterMetalRingMat);
-  const metalRingScale = ringRadius * 0.86;
-  metalRing.scale.set(metalRingScale, metalRingScale, 1);
-  metalRing.position.set(0, ringHeight, 0);
-  const metalOrbRadius = Math.max(2.2, ringRadius * 0.085);
-  const metalOrb = makeSphere(converterMetalOrbMat, metalOrbRadius, 1, 0, 0);
-  metalRing.add(metalOrb);
-  details.push(detail(metalRing, 'low'));
-
-  // Tilted accent ring — cyan, smaller, rides at an off-axis angle so
-  // the three orbiters never line up. Adds the "particle-accelerator"
-  // silhouette without competing with the two resource rings.
-  const accentRingScale = ringRadius * 0.7;
-  const accentRing = new THREE.Mesh(converterAccentRingGeom, converterAccentRingMat);
-  accentRing.scale.set(accentRingScale, accentRingScale, 1);
-  accentRing.position.set(0, ringHeight, 0);
-  accentRing.rotation.x = Math.PI / 3;
-  accentRing.rotation.y = Math.PI / 5;
-  const accentOrbRadius = Math.max(1.8, ringRadius * 0.07);
-  const accentOrb = makeSphere(converterAccentOrbMat, accentOrbRadius, 1, 0, 0);
-  accentRing.add(accentOrb);
-  details.push(detail(accentRing, 'low'));
-
-  // Layered core: tight bright sphere wrapped in a translucent halo so
-  // the center reads as "energy condensing into matter" rather than a
-  // flat dot.
-  const coreRadius = Math.max(4.5, minDim * 0.08);
   details.push(detail(
-    makeSphere(converterCoreMat, coreRadius, 0, ringHeight, 0),
-    'min',
+    makeCylinder(converterDarkMat, deckRadius, deckH, 0, deckY, 0, hexCylinderGeom),
+    'low',
   ));
-  const coreHaloBaseRadius = coreRadius * 2.1;
-  const coreHalo = new THREE.Mesh(converterHaloGeom, converterCoreHaloMat);
-  coreHalo.scale.setScalar(coreHaloBaseRadius);
-  coreHalo.position.set(0, ringHeight, 0);
-  details.push(detail(coreHalo, 'low'));
-
-  const collarRadius = Math.max(8, minDim * 0.18);
-  const collarH = Math.max(6, height * 0.12);
   details.push(detail(
-    makeCylinder(converterFrameMat, collarRadius, collarH, 0, height * 0.36, 0, hexCylinderGeom),
+    makeCylinder(converterFrameMat, deckRadius * 0.72, Math.max(4, deckH * 0.72), 0, deckY + deckH * 0.72, 0, hexCylinderGeom),
+    'low',
+  ));
+
+  const serviceY = height + deckH + serviceH * 0.34;
+  details.push(detail(
+    makeBox(converterDarkMat, serviceW, serviceH, serviceD, 0, serviceY, 0),
+    'low',
+  ));
+  details.push(detail(
+    makeBox(converterTrimMat, serviceW * 0.86, Math.max(3, serviceH * 0.24), serviceD * 1.12, 0, serviceY + serviceH * 0.36, 0),
+    'low',
+  ));
+  details.push(detail(
+    makeBox(converterStatusMat, serviceW * 0.72, Math.max(1.6, serviceH * 0.14), serviceD * 1.2, 0, serviceY + serviceH * 0.18, 0),
+    'low',
+  ));
+
+  const heatSinkW = Math.max(4, minDim * 0.07);
+  const heatSinkH = Math.max(10, minDim * 0.18);
+  const heatSinkD = Math.max(18, minDim * 0.34);
+  for (const x of [-deckRadius * 0.74, deckRadius * 0.74]) {
+    details.push(detail(
+      makeBox(converterFrameMat, heatSinkW, heatSinkH, heatSinkD, x, deckY + heatSinkH * 0.32, 0),
+      'low',
+    ));
+  }
+
+  const pylonFootRadius = Math.max(7, pylonRadius * 2.05);
+  const pylonFootH = Math.max(6, pylonRadius * 1.35);
+  const supportH = Math.max(8, pylonBaseY - height - deckH * 0.8);
+  for (const x of [-pylonOffset, pylonOffset]) {
+    details.push(detail(
+      makeBox(converterFrameMat, pylonFootRadius * 1.1, supportH, pylonFootRadius * 0.95, x, pylonBaseY - pylonFootH - supportH * 0.5, 0),
+      'low',
+    ));
+  }
+  details.push(detail(
+    makeCylinder(converterDarkMat, pylonFootRadius, pylonFootH, -pylonOffset, pylonBaseY - pylonFootH * 0.5, 0, hexCylinderGeom),
+    'low',
+  ));
+  details.push(detail(
+    makeCylinder(converterDarkMat, pylonFootRadius, pylonFootH, pylonOffset, pylonBaseY - pylonFootH * 0.5, 0, hexCylinderGeom),
     'low',
   ));
 
@@ -547,11 +506,6 @@ function buildResourceConverterMesh(
     converterRig: {
       energyPylon: energyPylon.rig,
       metalPylon: metalPylon.rig,
-      energyRing,
-      metalRing,
-      accentRing,
-      coreHalo,
-      coreHaloBaseRadius,
     },
   };
 }
@@ -574,16 +528,8 @@ export function disposeBuildingGeoms(): void {
   radarSweepMat.dispose();
   hazardStripeMat.dispose();
   converterPlatformGeom.dispose();
-  converterRingGeom.dispose();
-  converterAccentRingGeom.dispose();
-  converterHaloGeom.dispose();
   converterFrameMat.dispose();
-  converterEnergyRingMat.dispose();
-  converterMetalRingMat.dispose();
-  converterAccentRingMat.dispose();
-  converterEnergyOrbMat.dispose();
-  converterMetalOrbMat.dispose();
-  converterAccentOrbMat.dispose();
-  converterCoreMat.dispose();
-  converterCoreHaloMat.dispose();
+  converterDarkMat.dispose();
+  converterTrimMat.dispose();
+  converterStatusMat.dispose();
 }

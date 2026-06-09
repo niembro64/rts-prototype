@@ -412,11 +412,11 @@ export class RtsScene3DRenderPhase {
         this.sprayAccumMs,
       );
       const commanderSprays = this.clientViewState.getSprayTargets();
-      const factorySprays = entityRenderer.getFactorySprayTargets();
-      if (factorySprays.length > 0) {
+      const resourcePylonSprays = entityRenderer.getResourcePylonSprayTargets();
+      if (resourcePylonSprays.length > 0) {
         this.combinedSprayTargets.length = 0;
         for (const spray of commanderSprays) this.combinedSprayTargets.push(spray);
-        for (const spray of factorySprays) this.combinedSprayTargets.push(spray);
+        for (const spray of resourcePylonSprays) this.combinedSprayTargets.push(spray);
         sprayRenderer.update(
           this.combinedSprayTargets,
           this.sprayAccumMs,

@@ -601,6 +601,8 @@ export function spawnMetalExtractorsOnDeposits(
       gridPos.gy,
       ownerId,
       0,
+      0,
+      { skipBuilderAuthorization: true },
     );
     if (!extractor) continue;
 

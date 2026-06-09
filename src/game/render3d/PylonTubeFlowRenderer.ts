@@ -263,6 +263,8 @@ export class PylonTubeFlowRenderer {
     out.colorRGB.r = source.colorRGB.r;
     out.colorRGB.g = source.colorRGB.g;
     out.colorRGB.b = source.colorRGB.b;
+    out.endpointFade = source.endpointFade;
+    out.pylonTubeHandoffKey = source.pylonTubeHandoffKey;
     if (source.endColorRGB) {
       out.endColorRGB ??= { r: 0, g: 0, b: 0 };
       out.endColorRGB.r = source.endColorRGB.r;
@@ -426,8 +428,8 @@ export class PylonTubeFlowRenderer {
     spray.particleRadius = freeLeg.particleRadius;
     spray.colorRGB = freeLeg.colorRGB;
     spray.endColorRGB = freeLeg.endColorRGB;
-    spray.endpointFade = 'end';
-    spray.pylonTubeHandoffKey = undefined;
+    spray.endpointFade = freeLeg.endpointFade ?? 'end';
+    spray.pylonTubeHandoffKey = freeLeg.pylonTubeHandoffKey;
   }
 
   private acquireHandoffSpray(): SprayTarget {

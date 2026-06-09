@@ -411,6 +411,8 @@ export type PylonTubeFreeLeg = {
   particleRadius: number;
   colorRGB: { r: number; g: number; b: number };
   endColorRGB?: { r: number; g: number; b: number };
+  endpointFade?: SprayEndpointFade;
+  pylonTubeHandoffKey?: string;
 };
 
 // Pylon tube-flow descriptor — a column of beads locked to a resource

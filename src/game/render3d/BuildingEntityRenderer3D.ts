@@ -20,6 +20,7 @@ import type { EntityMesh } from './EntityMesh3D';
 import type { RenderFrameState3D } from './RenderFrameState3D';
 import { BuildingAnimationController3D } from './BuildingAnimationController3D';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
+import type { ResourcePylonFlowController3D } from './ResourcePylonFlowController3D';
 import type { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
 import {
   buildTurretMesh3D,
@@ -178,6 +179,7 @@ export type BuildingEntityRenderer3DOptions = {
   clientViewState: ClientViewState;
   selectionOverlays: SelectionOverlayRenderer3D;
   constructionVisuals: ConstructionVisualController3D;
+  resourcePylonFlows: ResourcePylonFlowController3D;
   turretHeadGeom: THREE.SphereGeometry;
   barrelGeom: THREE.CylinderGeometry;
   coneBarrelGeom: THREE.CylinderGeometry;
@@ -193,6 +195,7 @@ export class BuildingEntityRenderer3D {
   private readonly clientViewState: ClientViewState;
   private readonly selectionOverlays: SelectionOverlayRenderer3D;
   private readonly constructionVisuals: ConstructionVisualController3D;
+  private readonly resourcePylonFlows: ResourcePylonFlowController3D;
   private readonly turretHeadGeom: THREE.SphereGeometry;
   private readonly barrelGeom: THREE.CylinderGeometry;
   private readonly coneBarrelGeom: THREE.CylinderGeometry;
@@ -244,6 +247,7 @@ export class BuildingEntityRenderer3D {
     this.clientViewState = options.clientViewState;
     this.selectionOverlays = options.selectionOverlays;
     this.constructionVisuals = options.constructionVisuals;
+    this.resourcePylonFlows = options.resourcePylonFlows;
     this.turretHeadGeom = options.turretHeadGeom;
     this.barrelGeom = options.barrelGeom;
     this.coneBarrelGeom = options.coneBarrelGeom;
@@ -254,6 +258,7 @@ export class BuildingEntityRenderer3D {
     this.animations = new BuildingAnimationController3D(
       this.clientViewState,
       this.constructionVisuals,
+      this.resourcePylonFlows,
       options.metalDeposits,
     );
     this.dyingBuildings = new DyingMeshFade<EntityMesh>(
@@ -298,7 +303,6 @@ export class BuildingEntityRenderer3D {
     const pruneToken = pruneBuildings
       ? ++this.renderScopeToken
       : 0;
-    this.constructionVisuals.beginFrame();
     this.beamAimCache = beamAimCache;
     const nextBarrelSpinEnabled = getGraphicsConfig().barrelSpin;
     if (nextBarrelSpinEnabled !== this.barrelSpinEnabled) {

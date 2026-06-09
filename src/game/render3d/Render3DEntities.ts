@@ -35,6 +35,7 @@ import type { ViewportFootprint } from '../ViewportFootprint';
 import { ProjectileRenderer3D } from './ProjectileRenderer3D';
 import { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
 import { ConstructionVisualController3D } from './ConstructionVisualController3D';
+import { ResourcePylonFlowController3D } from './ResourcePylonFlowController3D';
 import { CommanderVisualKit3D } from './CommanderVisualKit3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { BuildingEntityRenderer3D } from './BuildingEntityRenderer3D';
@@ -150,6 +151,7 @@ export class Render3DEntities {
   private projectileRenderer: ProjectileRenderer3D;
   private selectionOverlays: SelectionOverlayRenderer3D;
   private constructionVisuals: ConstructionVisualController3D;
+  private resourcePylonFlows: ResourcePylonFlowController3D;
   private buildingRenderer: BuildingEntityRenderer3D;
   private unitDetailInstances: UnitDetailInstanceRenderer3D;
   private unitMeshBuilder!: UnitMeshBuilder3D;
@@ -258,13 +260,18 @@ export class Render3DEntities {
       clientViewState: this.clientViewState,
       radiusSphereGeom: this.radiusSphereGeom,
     });
-    this.constructionVisuals = new ConstructionVisualController3D(this.clientViewState);
+    this.resourcePylonFlows = new ResourcePylonFlowController3D();
+    this.constructionVisuals = new ConstructionVisualController3D(
+      this.clientViewState,
+      this.resourcePylonFlows,
+    );
     this.projectileRangeEnvelope = new ProjectileRangeEnvelope3D(this.world, this.clientViewState);
     this.buildingRenderer = new BuildingEntityRenderer3D({
       world: this.world,
       clientViewState: this.clientViewState,
       selectionOverlays: this.selectionOverlays,
       constructionVisuals: this.constructionVisuals,
+      resourcePylonFlows: this.resourcePylonFlows,
       turretHeadGeom: this.turretHeadGeom,
       barrelGeom: this.barrelGeom,
       coneBarrelGeom: this.coneBarrelGeom,
@@ -375,6 +382,7 @@ export class Render3DEntities {
     this._spinDt = frameSpin.spinDtSec;
     setHoverFanAnimationTime(frameSpin.timeMs / 1000);
     this.turretMountCache.reset(this._currentDtMs);
+    this.resourcePylonFlows.beginFrame();
     refreshLocomotionSupportSurfaces(this.clientViewState.getPredictionSupportSurfaceEntities());
     this.syncSmokeTrailsQueue();
     this.syncLegsRadiusToggleQueue();
@@ -920,12 +928,12 @@ export class Render3DEntities {
     return this.unitMeshes.get(eid)?.liftGroup;
   }
 
-  getFactorySprayTargets(): readonly SprayTarget[] {
-    return this.constructionVisuals.getFactorySprayTargets();
+  getResourcePylonSprayTargets(): readonly SprayTarget[] {
+    return this.resourcePylonFlows.getSprayTargets();
   }
 
   getPylonTubeFlows(): readonly PylonTubeFlow[] {
-    return this.constructionVisuals.getTubeFlows();
+    return this.resourcePylonFlows.getTubeFlows();
   }
 
   getHoverSmokeEmitters(): readonly SmokePuffEmitter[] {
@@ -977,6 +985,7 @@ export class Render3DEntities {
     this.unitRenderScopeToken = 0;
     this.lastUnitEntitySetVersion = -1;
     this.constructionVisuals.destroy();
+    this.resourcePylonFlows.destroy();
     this.unitDetailInstances.destroy();
     this.legRenderer.destroy();
     disposeBodyGeoms();

@@ -2468,6 +2468,38 @@
         renderer, every resource movement.
       </p>
 
+      <h3>Hard invariant: resources are visible only as pylon balls</h3>
+      <p>
+        Every resource flow must be represented as resource balls moving through a host-mounted
+        resource pylon. This is not only a rendering preference; it is the contract that keeps
+        economy accounting, host identity, target identity, and visual language aligned. If a
+        resource is produced, consumed, converted, refunded, reclaimed, repaired, spent as upkeep,
+        paid as construction cost, or spent as a future ammo/ability cost, the player must be able
+        to follow that movement through the correct resource pylon on the host entity.
+      </p>
+      <ul class="rule-list">
+        <li>
+          When a host <strong>uses</strong> a resource, balls are born at the host/root side, travel
+          up the matching pylon tube, leave the pylon tip, and move toward the thing being funded,
+          consumed, charged, repaired, built, fired, or converted.
+        </li>
+        <li>
+          When a host <strong>gets</strong> a resource, balls come from the world/source side, enter
+          the matching pylon tip, travel down the tube, and disappear into the host/root side.
+        </li>
+        <li>
+          A host that touches both energy and metal must expose two independent pylons. A
+          combined "economy effect," shared glow, ring, meter, sparkle, particle cloud, or
+          building-specific animation is not allowed to carry resource-flow meaning unless it is
+          built from those pylon balls.
+        </li>
+        <li>
+          Any code path that changes a stockpile without publishing the corresponding pylon flow is
+          a correctness bug. Any renderer path that visualizes resource movement without consuming
+          the shared pylon-flow data is also a correctness bug, even if the accounting is correct.
+        </li>
+      </ul>
+
       <h3>What a pylon is</h3>
       <ul class="rule-list">
         <li>

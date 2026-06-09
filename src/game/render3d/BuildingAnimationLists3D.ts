@@ -7,12 +7,6 @@ export type AnimatedBuildingEntry = {
   mesh: EntityMesh;
 };
 
-export type ResourcePylonBuildingKind = 'solar' | 'wind' | 'extractor' | 'converter';
-
-export type ResourcePylonBuildingEntry = AnimatedBuildingEntry & {
-  kind: ResourcePylonBuildingKind;
-};
-
 export function addAnimatedBuildingEntry(
   list: AnimatedBuildingEntry[],
   indexById: Map<EntityId, number>,
@@ -28,28 +22,6 @@ export function addAnimatedBuildingEntry(
     return entry;
   }
   const entry = { id, entity, mesh };
-  indexById.set(id, list.length);
-  list.push(entry);
-  return entry;
-}
-
-export function addResourcePylonBuildingEntry(
-  list: ResourcePylonBuildingEntry[],
-  indexById: Map<EntityId, number>,
-  kind: ResourcePylonBuildingKind,
-  entity: Entity,
-  mesh: EntityMesh,
-): ResourcePylonBuildingEntry {
-  const id = entity.id;
-  const existingIndex = indexById.get(id);
-  if (existingIndex !== undefined) {
-    const entry = list[existingIndex];
-    entry.entity = entity;
-    entry.mesh = mesh;
-    entry.kind = kind;
-    return entry;
-  }
-  const entry: ResourcePylonBuildingEntry = { id, entity, mesh, kind };
   indexById.set(id, list.length);
   list.push(entry);
   return entry;
