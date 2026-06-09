@@ -56,6 +56,10 @@ import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { RemovedSnapshotEntity, WorldState } from '../sim/WorldState';
 
+// Direct wire preencoding still emits the Rust V6 packed-entity schema.
+// Keep it opt-in until the Rust encoder is upgraded to the active TS schema.
+const ENABLE_DIRECT_RUST_SNAPSHOT_WIRE = isDirectRustSnapshotWireEnabled();
+
 export type DirectSerializedListenerSnapshot = {
   state: NetworkServerSnapshot;
   wirePayload: SnapshotWirePayload;
@@ -142,6 +146,7 @@ export class ServerSnapshotDirectWirePreencoder {
   };
 
   tryEncode(input: ServerSnapshotDirectWireInput): DirectSerializedListenerSnapshot | undefined {
+    if (!ENABLE_DIRECT_RUST_SNAPSHOT_WIRE) return undefined;
     const sim = getSimWasm();
     if (sim === undefined) return undefined;
     if (!this.canUseDirectEntityRows(input)) return undefined;
@@ -603,4 +608,21 @@ export class ServerSnapshotDirectWirePreencoder {
       );
     }
   }
+}
+
+function isDirectRustSnapshotWireEnabled(): boolean {
+  const env = import.meta.env.VITE_BA_ENABLE_RUST_SNAPSHOT_WIRE;
+  if (typeof env === 'string') {
+    const normalized = env.toLowerCase();
+    if (env === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') {
+      return true;
+    }
+  }
+  if (typeof window === 'undefined') return false;
+  const params = new URLSearchParams(window.location.search);
+  const value = params.get('rustSnapshotWire');
+  if (value === null) return false;
+  if (value === '' || value === '1') return true;
+  const normalized = value.toLowerCase();
+  return normalized === 'true' || normalized === 'yes' || normalized === 'on';
 }
