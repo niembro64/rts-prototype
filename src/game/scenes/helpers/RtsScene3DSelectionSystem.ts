@@ -39,6 +39,7 @@ export class RtsScene3DSelectionSystem {
   private attackActive = false;
   private attackAreaActive = false;
   private attackGroundActive = false;
+  private manualLaunchActive = false;
   private guardActive = false;
   private reclaimActive = false;
   private captureActive = false;
@@ -123,6 +124,11 @@ export class RtsScene3DSelectionSystem {
 
   setAttackGroundMode(active: boolean): void {
     this.attackGroundActive = active;
+    this.selectionInfoDirty = true;
+  }
+
+  setManualLaunchMode(active: boolean): void {
+    this.manualLaunchActive = active;
     this.selectionInfoDirty = true;
   }
 
@@ -245,6 +251,7 @@ export class RtsScene3DSelectionSystem {
       isAttackMode: this.attackActive,
       isAttackAreaMode: this.attackAreaActive,
       isAttackGroundMode: this.attackGroundActive,
+      isManualLaunchMode: this.manualLaunchActive,
       isGuardMode: this.guardActive,
       isReclaimMode: this.reclaimActive,
       isCaptureMode: this.captureActive,

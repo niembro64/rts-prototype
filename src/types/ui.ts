@@ -98,6 +98,7 @@ export type SelectionInfo = {
   isAttackMode: boolean;
   isAttackAreaMode: boolean;
   isAttackGroundMode: boolean;
+  isManualLaunchMode: boolean;
   isGuardMode: boolean;
   isReclaimMode: boolean;
   isCaptureMode: boolean;
@@ -152,6 +153,7 @@ export type SelectionActions = {
   toggleAttackArea: () => void;
   toggleAttack: () => void;
   toggleAttackGround: () => void;
+  toggleManualLaunch: () => void;
   toggleGuard: () => void;
   toggleReclaim: () => void;
   toggleCapture: () => void;
@@ -269,6 +271,7 @@ export type UIInputState = {
   isAttackMode: boolean;
   isAttackAreaMode: boolean;
   isAttackGroundMode: boolean;
+  isManualLaunchMode: boolean;
   isGuardMode: boolean;
   isReclaimMode: boolean;
   isCaptureMode: boolean;

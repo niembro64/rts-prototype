@@ -91,6 +91,10 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid C should resolve capture',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('d', 'KeyD', { altKey: true }), 'bar-grid') === 'combat.manualLaunch',
+    'bar-grid Alt+D should resolve manual launch',
+  );
+  assertContract(
     resolveCommandHotkey(keyEvent('e', 'KeyE', { altKey: true }), 'prototype') === 'combat.capture',
     'prototype Alt+E should resolve capture without colliding with reclaim',
   );

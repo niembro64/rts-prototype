@@ -128,6 +128,7 @@ function flushTargetingBatch(
       // unconditionally, so drop the stale priority commands here.
       combat.priorityTargetId = null;
       combat.priorityTargetPoint = null;
+      combat.manualLaunchActive = false;
     }
     if (_targetingBatchHasActiveWork[i] !== 0) {
       combat.nextCombatProbeTick = -1;

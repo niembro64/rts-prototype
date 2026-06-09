@@ -93,6 +93,7 @@ type Input3DModeClickControllerConfig = {
   isAttackMode: () => boolean;
   isAttackAreaMode: () => boolean;
   isAttackGroundMode: () => boolean;
+  isManualLaunchMode: () => boolean;
   isGuardMode: () => boolean;
   isReclaimMode: () => boolean;
   isCaptureMode: () => boolean;
@@ -103,6 +104,7 @@ type Input3DModeClickControllerConfig = {
   exitAttackMode: () => void;
   exitAttackAreaMode: () => void;
   exitAttackGroundMode: () => void;
+  exitManualLaunchMode: () => void;
   exitGuardMode: () => void;
   exitReclaimMode: () => void;
   exitCaptureMode: () => void;
@@ -128,6 +130,7 @@ export class Input3DModeClickController {
       this.config.isAttackMode() ||
       this.config.isAttackAreaMode() ||
       this.config.isAttackGroundMode() ||
+      this.config.isManualLaunchMode() ||
       this.config.isGuardMode() ||
       this.config.isReclaimMode() ||
       this.config.isCaptureMode() ||
@@ -202,6 +205,7 @@ export class Input3DModeClickController {
     if (this.config.isAttackMode()) return 'attack';
     if (this.config.isAttackAreaMode()) return 'attack';
     if (this.config.isAttackGroundMode()) return 'attack';
+    if (this.config.isManualLaunchMode()) return 'attack';
     if (this.config.isGuardMode()) return 'guard';
     if (this.config.isReclaimMode()) return 'reclaim';
     if (this.config.isCaptureMode()) return 'reclaim';
@@ -585,6 +589,7 @@ export class Input3DModeClickController {
     else if (this.config.isAttackMode()) this.handleAttackClick(e);
     else if (this.config.isAttackAreaMode()) this.handleAttackAreaClick(e);
     else if (this.config.isAttackGroundMode()) this.handleAttackGroundClick(e);
+    else if (this.config.isManualLaunchMode()) this.handleManualLaunchClick(e);
     else if (this.config.isGuardMode()) this.handleGuardClick(e);
     else if (this.config.isReclaimMode()) this.handleReclaimClick(e);
     else if (this.config.isCaptureMode()) this.handleCaptureClick(e);
@@ -600,6 +605,7 @@ export class Input3DModeClickController {
     else if (this.config.isAttackMode()) this.config.exitAttackMode();
     else if (this.config.isAttackAreaMode()) this.config.exitAttackAreaMode();
     else if (this.config.isAttackGroundMode()) this.config.exitAttackGroundMode();
+    else if (this.config.isManualLaunchMode()) this.config.exitManualLaunchMode();
     else if (this.config.isGuardMode()) this.config.exitGuardMode();
     else if (this.config.isReclaimMode()) this.config.exitReclaimMode();
     else if (this.config.isCaptureMode()) this.config.exitCaptureMode();
@@ -856,6 +862,36 @@ export class Input3DModeClickController {
     this.config.commandQueue.enqueue(cmd);
     this.config.applyCursor('attack');
     if (!queueMode.queue) this.config.exitAttackGroundMode();
+  }
+
+  private handleManualLaunchClick(e: MouseEvent): void {
+    const targets = this.config.selectedCommands.selectedTargetableCombatEntities();
+    const entityIds: EntityId[] = [];
+    for (let i = 0; i < targets.length; i++) {
+      const combat = targets[i].combat;
+      if (combat === null) continue;
+      if (combat.turrets.some((turret) =>
+        !turret.config.visualOnly && !turret.config.passive && turret.config.shot !== null
+      )) {
+        entityIds.push(targets[i].id);
+      }
+    }
+    if (entityIds.length === 0) {
+      this.config.exitManualLaunchMode();
+      return;
+    }
+    const world = this.config.picker.raycastGround(e.clientX, e.clientY);
+    if (!world) return;
+    this.config.commandQueue.enqueue({
+      type: 'manualLaunch',
+      tick: this.config.getTick(),
+      entityIds,
+      targetX: world.x,
+      targetY: world.y,
+      targetZ: world.z,
+    });
+    this.config.applyCursor('attack');
+    if (!e.shiftKey) this.config.exitManualLaunchMode();
   }
 
   private resolveAttackBallisticReach(

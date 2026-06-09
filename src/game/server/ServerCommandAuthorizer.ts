@@ -7,6 +7,7 @@ import type {
   ClearQueuedOrdersCommand,
   Command,
   GuardCommand,
+  ManualLaunchCommand,
   MoveCommand,
   PingCommand,
   RemoveLastQueuedOrderCommand,
@@ -53,6 +54,7 @@ type UnitListCommand =
   | SetUnitMoveStateCommand;
 
 type AnyEntityListCommand =
+  | ManualLaunchCommand
   | SetFireEnabledCommand
   | SetTrajectoryModeCommand
   | SetBuildingActiveCommand
@@ -103,6 +105,7 @@ export function authorizeGameServerGameplayCommand(
 
     case 'setFireEnabled':
     case 'setTrajectoryMode':
+    case 'manualLaunch':
       // Combat state controls apply to any owned entity with combat
       // (units + towers). Towers carry the same host-fire contract
       // per budget_design_philosophy.html "Selection Menus Are Uniform Per

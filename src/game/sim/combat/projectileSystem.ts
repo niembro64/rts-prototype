@@ -457,6 +457,7 @@ export function fireTurrets(
     const activeMask = readActiveTurretMaskForUnit(unit);
     const currentTick = world.getTick();
     const unitGroundZ = getUnitGroundZ(unit);
+    let manualLaunchFired = false;
 
     // Fire each weapon independently
     const turrets = combat.turrets;
@@ -655,6 +656,7 @@ export function fireTurrets(
           }
         }
         weapon.barrelFireIndex = (fireBaseIndex + pellets) % barrelCount;
+        manualLaunchFired = true;
         continue;
       }
 
@@ -866,6 +868,7 @@ export function fireTurrets(
             },
           });
           // Note: Beam recoil is applied continuously above while weapon is engaged
+          manualLaunchFired = true;
         } else {
           // Create traveling projectile with 3D launch velocity using
           // the per-pellet firing direction.
@@ -946,11 +949,17 @@ export function fireTurrets(
             const recoilForce = projShot.launchForce * PROJECTILE_MASS_MULTIPLIER;
             forceAccumulator.addForce(unit.id, -dirX * recoilForce, -dirY * recoilForce, 'recoil');
           }
+          manualLaunchFired = true;
         }
       }
       // Advance the round-robin so render/audio metadata continues to
       // cycle through the barrel set (index % N, wraps automatically).
       weapon.barrelFireIndex = (fireBaseIndex + pellets) % barrelCount;
+    }
+    if (combat.manualLaunchActive && manualLaunchFired) {
+      combat.priorityTargetId = null;
+      combat.priorityTargetPoint = null;
+      combat.manualLaunchActive = false;
     }
     refreshSlabActivityMasksForUnit(unit, combat);
   }

@@ -733,6 +733,7 @@ export function buildSelectionInfo(
     isAttackMode: inputState?.isAttackMode ?? false,
     isAttackAreaMode: inputState?.isAttackAreaMode ?? false,
     isAttackGroundMode: inputState?.isAttackGroundMode ?? false,
+    isManualLaunchMode: inputState?.isManualLaunchMode ?? false,
     isGuardMode: inputState?.isGuardMode ?? false,
     isReclaimMode: inputState?.isReclaimMode ?? false,
     isCaptureMode: inputState?.isCaptureMode ?? false,

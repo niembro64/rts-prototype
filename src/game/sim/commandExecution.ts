@@ -11,6 +11,7 @@ import type {
   EditFactoryQueueCommand,
   FireDGunCommand,
   GuardCommand,
+  ManualLaunchCommand,
   MoveCommand,
   PingCommand,
   ScanCommand,
@@ -242,6 +243,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'attackGround':
       executeAttackGroundCommand(ctx, command);
+      break;
+    case 'manualLaunch':
+      executeManualLaunchCommand(ctx, command);
       break;
     case 'attackArea':
       executeAttackAreaCommand(ctx, command);
@@ -613,6 +617,7 @@ function executeStopCommand(ctx: CommandContext, command: StopCommand): void {
     if (entity.combat) {
       entity.combat.priorityTargetId = null;
       entity.combat.priorityTargetPoint = null;
+      entity.combat.manualLaunchActive = false;
       entity.combat.nextCombatProbeTick = -1;
     }
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
@@ -1290,6 +1295,7 @@ function executeSetFireEnabledCommand(ctx: CommandContext, command: SetFireEnabl
     if (fireState === 'holdFire') {
       combat.priorityTargetId = null;
       combat.priorityTargetPoint = null;
+      combat.manualLaunchActive = false;
       combat.nextCombatProbeTick = -1;
       // Drop every turret's lock everywhere in one call per turret:
       // JS Turret target + state, beam inverse index, and the slab
@@ -1347,6 +1353,7 @@ function executeSetTowerTargetCommand(
     if (combat === null || combat.turrets.length === 0) continue;
     combat.priorityTargetId = resolvedTargetId;
     combat.priorityTargetPoint = null;
+    combat.manualLaunchActive = false;
     combat.nextCombatProbeTick = -1;
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_COMBAT_MODE);
   }
@@ -1698,6 +1705,35 @@ function executeAttackGroundCommand(ctx: CommandContext, command: AttackGroundCo
       commandQueueInsertIndex(command),
     );
   }
+}
+
+function executeManualLaunchCommand(ctx: CommandContext, command: ManualLaunchCommand): void {
+  for (let i = 0; i < command.entityIds.length; i++) {
+    const entity = ctx.world.getEntity(command.entityIds[i]);
+    const combat = entity?.combat ?? null;
+    if (entity === undefined || combat === null || !hasManualLaunchWeapon(entity)) continue;
+    const targetPoint = combat.priorityTargetPoint ?? (combat.priorityTargetPoint = { x: 0, y: 0, z: 0 });
+    targetPoint.x = command.targetX;
+    targetPoint.y = command.targetY;
+    targetPoint.z = command.targetZ ?? ctx.world.getGroundZ(command.targetX, command.targetY);
+    combat.priorityTargetId = null;
+    combat.manualLaunchActive = true;
+    combat.nextCombatProbeTick = -1;
+    for (let weaponIndex = 0; weaponIndex < combat.turrets.length; weaponIndex++) {
+      dropTurretLockMidTick(entity, weaponIndex);
+    }
+    ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_COMBAT_MODE | ENTITY_CHANGED_TURRETS);
+  }
+}
+
+function hasManualLaunchWeapon(entity: Entity): boolean {
+  const turrets = entity.combat?.turrets;
+  if (turrets === undefined || turrets.length === 0) return false;
+  for (let i = 0; i < turrets.length; i++) {
+    const config = turrets[i].config;
+    if (!config.visualOnly && !config.passive && config.shot !== null) return true;
+  }
+  return false;
 }
 
 function executeAttackAreaCommand(ctx: CommandContext, command: AttackAreaCommand): void {

@@ -5,6 +5,7 @@ export type Input3DSpecialMode =
   | 'attack'
   | 'attackArea'
   | 'attackGround'
+  | 'manualLaunch'
   | 'guard'
   | 'reclaim'
   | 'capture'
@@ -19,6 +20,7 @@ type Input3DSpecialModeCallbacks = {
   onAttackModeChange: (active: boolean) => void;
   onAttackAreaModeChange: (active: boolean) => void;
   onAttackGroundModeChange: (active: boolean) => void;
+  onManualLaunchModeChange: (active: boolean) => void;
   onGuardModeChange: (active: boolean) => void;
   onReclaimModeChange: (active: boolean) => void;
   onCaptureModeChange: (active: boolean) => void;
@@ -38,6 +40,7 @@ const SPECIAL_MODE_ORDER: readonly Input3DSpecialMode[] = [
   'attack',
   'attackArea',
   'attackGround',
+  'manualLaunch',
   'guard',
   'reclaim',
   'capture',
@@ -54,6 +57,7 @@ export class Input3DSpecialModes {
     attack: false,
     attackArea: false,
     attackGround: false,
+    manualLaunch: false,
     guard: false,
     reclaim: false,
     capture: false,
@@ -108,6 +112,9 @@ export class Input3DSpecialModes {
         break;
       case 'attackGround':
         this.options.onAttackGroundModeChange(active);
+        break;
+      case 'manualLaunch':
+        this.options.onManualLaunchModeChange(active);
         break;
       case 'guard':
         this.options.onGuardModeChange(active);

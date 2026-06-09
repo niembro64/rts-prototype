@@ -67,6 +67,7 @@ export type CommandHotkeyId =
   | 'combat.guard'
   | 'combat.reclaim'
   | 'combat.capture'
+  | 'combat.manualLaunch'
   | 'combat.repairArea'
   | 'combat.ping'
   | 'combat.towerTargetSet'
@@ -171,6 +172,7 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'combat.guard',
   'combat.reclaim',
   'combat.capture',
+  'combat.manualLaunch',
   'combat.repairArea',
   'combat.ping',
   'combat.towerTargetSet',
@@ -258,6 +260,7 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'combat.guard': 'Guard',
   'combat.reclaim': 'Reclaim',
   'combat.capture': 'Capture',
+  'combat.manualLaunch': 'Manual Launch',
   'combat.repairArea': 'Repair Area',
   'combat.ping': 'Ping',
   'combat.towerTargetSet': 'Tower Target',
@@ -365,6 +368,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'combat.guard': [key('G', 'g', { shift: 'any' })],
     'combat.reclaim': [key('C', 'c', { shift: 'any' })],
     'combat.capture': [key('Alt+E', 'e', { alt: true })],
+    'combat.manualLaunch': [code('Alt+D', 'KeyD', { alt: true, shift: 'any' })],
     'combat.repairArea': [key('R', 'r', { shift: 'any' })],
     'combat.ping': [key('P', 'p', { shift: 'any' })],
     'combat.towerTargetSet': [key('L', 'l', { shift: 'any' })],
@@ -462,6 +466,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'combat.guard': [code('O', 'KeyO', { shift: 'any' })],
     'combat.reclaim': [code('E', 'KeyE', { shift: 'any' })],
     'combat.capture': [code('C', 'KeyC', { shift: 'any' })],
+    'combat.manualLaunch': [code('Alt+D', 'KeyD', { alt: true, shift: 'any' })],
     'combat.repairArea': [code('R', 'KeyR', { shift: 'any' })],
     'combat.ping': [code('`', 'Backquote', { shift: 'any' })],
     'combat.towerTargetSet': [code('S', 'KeyS', { shift: 'any' })],
@@ -547,6 +552,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'combat.guard': [code('G', 'KeyG', { shift: 'any' })],
     'combat.reclaim': [code('E', 'KeyE', { shift: 'any' })],
     'combat.capture': [code('C', 'KeyC', { shift: 'any' })],
+    'combat.manualLaunch': [code('Alt+D', 'KeyD', { alt: true, shift: 'any' })],
     'combat.repairArea': [code('R', 'KeyR', { shift: 'any' })],
     'combat.ping': [code('`', 'Backquote', { shift: 'any' })],
     'combat.towerTargetSet': [code('Alt+Y', 'KeyY', { alt: true, shift: 'any' })],

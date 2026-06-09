@@ -41,6 +41,7 @@ export type CommandType =
   | 'attack'
   | 'attackGround'
   | 'attackArea'
+  | 'manualLaunch'
   | 'guard'
   | 'setSnapshotRate'
   | 'setKeyframeRatio'
@@ -356,6 +357,14 @@ export type AttackGroundCommand = BaseCommand & {
   queueInsertIndex?: number;
 };
 
+export type ManualLaunchCommand = BaseCommand & {
+  type: 'manualLaunch';
+  entityIds: EntityId[];
+  targetX: number;
+  targetY: number;
+  targetZ?: number;
+};
+
 export type AttackAreaCommand = BaseCommand & {
   type: 'attackArea';
   entityIds: EntityId[];
@@ -489,6 +498,7 @@ export type Command =
   | AttackCommand
   | AttackGroundCommand
   | AttackAreaCommand
+  | ManualLaunchCommand
   | GuardCommand
   | SetSnapshotRateCommand
   | SetKeyframeRatioCommand

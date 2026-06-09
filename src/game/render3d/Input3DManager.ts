@@ -115,6 +115,7 @@ export class Input3DManager {
   public onAttackModeChange?: (active: boolean) => void;
   public onAttackAreaModeChange?: (active: boolean) => void;
   public onAttackGroundModeChange?: (active: boolean) => void;
+  public onManualLaunchModeChange?: (active: boolean) => void;
   public onGuardModeChange?: (active: boolean) => void;
   public onReclaimModeChange?: (active: boolean) => void;
   public onCaptureModeChange?: (active: boolean) => void;
@@ -199,6 +200,7 @@ export class Input3DManager {
       isAttackMode: () => this.attackMode,
       isAttackAreaMode: () => this.attackAreaMode,
       isAttackGroundMode: () => this.attackGroundMode,
+      isManualLaunchMode: () => this.manualLaunchMode,
       isGuardMode: () => this.guardMode,
       isReclaimMode: () => this.reclaimMode,
       isCaptureMode: () => this.captureMode,
@@ -209,6 +211,7 @@ export class Input3DManager {
       exitAttackMode: () => this.exitAttackMode(),
       exitAttackAreaMode: () => this.exitAttackAreaMode(),
       exitAttackGroundMode: () => this.exitAttackGroundMode(),
+      exitManualLaunchMode: () => this.exitManualLaunchMode(),
       exitGuardMode: () => this.exitGuardMode(),
       exitReclaimMode: () => this.exitReclaimMode(),
       exitCaptureMode: () => this.exitCaptureMode(),
@@ -285,6 +288,7 @@ export class Input3DManager {
       toggleAttackMode: () => this.toggleAttackMode(),
       toggleAttackAreaMode: () => this.toggleAttackAreaMode(),
       toggleAttackGroundMode: () => this.toggleAttackGroundMode(),
+      toggleManualLaunchMode: () => this.toggleManualLaunchMode(),
       toggleGuardMode: () => this.toggleGuardMode(),
       toggleReclaimMode: () => this.toggleReclaimMode(),
       toggleCaptureMode: () => this.toggleCaptureMode(),
@@ -312,6 +316,7 @@ export class Input3DManager {
       isAttackMode: () => this.attackMode,
       isAttackAreaMode: () => this.attackAreaMode,
       isAttackGroundMode: () => this.attackGroundMode,
+      isManualLaunchMode: () => this.manualLaunchMode,
       isGuardMode: () => this.guardMode,
       isReclaimMode: () => this.reclaimMode,
       isCaptureMode: () => this.captureMode,
@@ -322,6 +327,7 @@ export class Input3DManager {
       exitAttackMode: () => this.exitAttackMode(),
       exitAttackAreaMode: () => this.exitAttackAreaMode(),
       exitAttackGroundMode: () => this.exitAttackGroundMode(),
+      exitManualLaunchMode: () => this.exitManualLaunchMode(),
       exitGuardMode: () => this.exitGuardMode(),
       exitReclaimMode: () => this.exitReclaimMode(),
       exitCaptureMode: () => this.exitCaptureMode(),
@@ -337,6 +343,7 @@ export class Input3DManager {
       onAttackModeChange: (active) => this.onAttackModeChange?.(active),
       onAttackAreaModeChange: (active) => this.onAttackAreaModeChange?.(active),
       onAttackGroundModeChange: (active) => this.onAttackGroundModeChange?.(active),
+      onManualLaunchModeChange: (active) => this.onManualLaunchModeChange?.(active),
       onGuardModeChange: (active) => this.onGuardModeChange?.(active),
       onReclaimModeChange: (active) => this.onReclaimModeChange?.(active),
       onCaptureModeChange: (active) => this.onCaptureModeChange?.(active),
@@ -426,6 +433,10 @@ export class Input3DManager {
 
   private get attackGroundMode(): boolean {
     return this.specialModes.isActive('attackGround');
+  }
+
+  private get manualLaunchMode(): boolean {
+    return this.specialModes.isActive('manualLaunch');
   }
 
   private get guardMode(): boolean {
@@ -907,6 +918,18 @@ export class Input3DManager {
     this.enterSpecialMode('attackGround');
   }
 
+  toggleManualLaunchMode(): void {
+    if (this.manualLaunchMode) {
+      this.exitManualLaunchMode();
+      return;
+    }
+    if (!this.hasSelectedManualLaunchEntities()) return;
+    this.mode.exitBuildMode();
+    this.mode.exitDGunMode();
+    this.exitSpecialModes();
+    this.enterSpecialMode('manualLaunch');
+  }
+
   toggleGuardMode(): void {
     if (this.guardMode) {
       this.exitGuardMode();
@@ -1082,6 +1105,11 @@ export class Input3DManager {
     return this.attackGroundMode;
   }
 
+  /** True while the next left-click will issue a one-shot manual launch. */
+  isInManualLaunchMode(): boolean {
+    return this.manualLaunchMode;
+  }
+
   /** True while the next left-click will issue a guard command. */
   isInGuardMode(): boolean {
     return this.guardMode;
@@ -1134,6 +1162,10 @@ export class Input3DManager {
 
   private exitAttackGroundMode(): void {
     this.specialModes.exit('attackGround');
+  }
+
+  private exitManualLaunchMode(): void {
+    this.specialModes.exit('manualLaunch');
   }
 
   private exitGuardMode(): void {
@@ -1237,6 +1269,18 @@ export class Input3DManager {
 
   private hasSelectedTargetableCombatEntities(): boolean {
     return this.selectedCommands.selectedTargetableCombatEntities().length > 0;
+  }
+
+  private hasSelectedManualLaunchEntities(): boolean {
+    const entities = this.selectedCommands.selectedTargetableCombatEntities();
+    for (let i = 0; i < entities.length; i++) {
+      const turrets = entities[i].combat?.turrets ?? [];
+      for (let j = 0; j < turrets.length; j++) {
+        const config = turrets[j].config;
+        if (!config.visualOnly && !config.passive && config.shot !== null) return true;
+      }
+    }
+    return false;
   }
 
   private hasSelectedCommander(): boolean {
@@ -1440,6 +1484,9 @@ export class Input3DManager {
     }
     if (this.attackGroundMode && this.entitySource.getSelectedUnits().length === 0) {
       this.exitAttackGroundMode();
+    }
+    if (this.manualLaunchMode && !this.hasSelectedManualLaunchEntities()) {
+      this.exitManualLaunchMode();
     }
     if (this.guardMode && this.entitySource.getSelectedUnits().length === 0) {
       this.exitGuardMode();

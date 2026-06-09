@@ -8,6 +8,7 @@ import type {
   EditFactoryQueueCommand,
   FireDGunCommand,
   GuardCommand,
+  ManualLaunchCommand,
   MoveCommand,
   PingCommand,
   QueueUnitCommand,
@@ -101,6 +102,8 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       return sanitizeAttackCommand(command, tick);
     case 'attackGround':
       return sanitizeAttackGroundCommand(command, world, tick);
+    case 'manualLaunch':
+      return sanitizeManualLaunchCommand(command, world, tick);
     case 'attackArea':
       return sanitizeAttackAreaCommand(command, world, tick);
     case 'guard':
@@ -488,6 +491,25 @@ function sanitizeAttackGroundCommand(
         queue: command.queue,
         queueFront,
         queueInsertIndex,
+      };
+}
+
+function sanitizeManualLaunchCommand(
+  command: ManualLaunchCommand,
+  world: WorldState,
+  tick: number,
+): ManualLaunchCommand | null {
+  const entityIds = sanitizeEntityIdArray(command.entityIds);
+  const point = sanitizeGroundPoint(world, command.targetX, command.targetY, command.targetZ);
+  return entityIds === null || point === null
+    ? null
+    : {
+        type: 'manualLaunch',
+        tick,
+        entityIds,
+        targetX: point.x,
+        targetY: point.y,
+        targetZ: point.z,
       };
 }
 

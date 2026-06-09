@@ -132,6 +132,7 @@ export function useGameCanvasSceneUi({
     isAttackMode: false,
     isAttackAreaMode: false,
     isAttackGroundMode: false,
+    isManualLaunchMode: false,
     isGuardMode: false,
     isReclaimMode: false,
     isCaptureMode: false,
@@ -309,6 +310,9 @@ export function useGameCanvasSceneUi({
     },
     toggleAttackGround: () => {
       getActiveBattleScene()?.toggleAttackGroundMode();
+    },
+    toggleManualLaunch: () => {
+      getActiveBattleScene()?.toggleManualLaunchMode();
     },
     toggleGuard: () => {
       getActiveBattleScene()?.toggleGuardMode();

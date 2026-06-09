@@ -502,6 +502,9 @@ export class RtsScene3D {
     this.inputManager.onAttackGroundModeChange = (active) => {
       this.selectionSystem.setAttackGroundMode(active);
     };
+    this.inputManager.onManualLaunchModeChange = (active) => {
+      this.selectionSystem.setManualLaunchMode(active);
+    };
     this.inputManager.onGuardModeChange = (active) => {
       this.selectionSystem.setGuardMode(active);
     };
@@ -939,6 +942,10 @@ export class RtsScene3D {
 
   public toggleAttackGroundMode(): void {
     this.inputManager?.toggleAttackGroundMode();
+  }
+
+  public toggleManualLaunchMode(): void {
+    this.inputManager?.toggleManualLaunchMode();
   }
 
   public toggleGuardMode(): void {

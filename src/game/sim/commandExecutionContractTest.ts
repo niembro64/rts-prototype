@@ -148,6 +148,28 @@ export function runCommandExecutionContractTest(): void {
     unit.unit?.wantCloak === true && unit.unit.cloaked === true,
     'setCloakState command should apply desired and active cloak state',
   );
+  executeCommand({
+    world,
+    constructionSystem: construction,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  }, {
+    type: 'manualLaunch',
+    tick: 1,
+    entityIds: [unit.id],
+    targetX: 120,
+    targetY: 240,
+    targetZ: world.getGroundZ(120, 240),
+  });
+  assertContract(
+    unit.combat?.manualLaunchActive === true &&
+      unit.combat.priorityTargetId === null &&
+      unit.combat.priorityTargetPoint?.x === 120 &&
+      unit.combat.priorityTargetPoint?.y === 240 &&
+      unit.combat.priorityTargetPoint?.z === world.getGroundZ(120, 240),
+    'manualLaunch command should force a one-shot ground target on armed combat entities',
+  );
 
   const gatherA = world.createUnitFromBlueprint(100, 240, 1, 'unitJackal', {
     allocateSubEntityIds: false,

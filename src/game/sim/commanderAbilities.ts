@@ -412,6 +412,7 @@ export class CommanderAbilitiesSystem {
     if (target.combat !== null) {
       target.combat.priorityTargetId = null;
       target.combat.priorityTargetPoint = null;
+      target.combat.manualLaunchActive = false;
     }
     if (target.factory !== null) {
       target.factory.selectedUnitBlueprintId = null;

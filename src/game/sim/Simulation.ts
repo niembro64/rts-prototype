@@ -633,6 +633,7 @@ export class Simulation {
         if (entity.combat) {
           entity.combat.priorityTargetId = null;
           entity.combat.priorityTargetPoint = null;
+          entity.combat.manualLaunchActive = false;
         }
         continue;
       }
@@ -645,6 +646,7 @@ export class Simulation {
         if (entity.combat) {
           entity.combat.priorityTargetId = null;
           entity.combat.priorityTargetPoint = null;
+          entity.combat.manualLaunchActive = false;
         }
         continue;
       }
@@ -656,8 +658,10 @@ export class Simulation {
 
       // Clear priority target — re-set below by attack / attack-ground actions.
       if (entity.combat) {
-        entity.combat.priorityTargetId = null;
-        entity.combat.priorityTargetPoint = null;
+        if (!entity.combat.manualLaunchActive) {
+          entity.combat.priorityTargetId = null;
+          entity.combat.priorityTargetPoint = null;
+        }
       }
 
       // Sweep targeted intents whose target disappeared or no longer
@@ -725,7 +729,9 @@ export class Simulation {
         const attackTarget = this.world.getEntity(currentAction.targetId)!;
 
         // Set priority target for turret system
-        if (entity.combat) entity.combat.priorityTargetId = currentAction.targetId;
+        if (entity.combat && !entity.combat.manualLaunchActive) {
+          entity.combat.priorityTargetId = currentAction.targetId;
+        }
 
         // Stop if any turret is engaged.
         if (unit.moveState !== 'roam' && this.combatHaltController.shouldStopForEngagedCombat(entity)) {
@@ -766,7 +772,7 @@ export class Simulation {
       }
 
       if (currentAction.type === 'attackGround') {
-        if (entity.combat) {
+        if (entity.combat && !entity.combat.manualLaunchActive) {
           const targetPoint = entity.combat.priorityTargetPoint ??
             (entity.combat.priorityTargetPoint = { x: 0, y: 0, z: 0 });
           targetPoint.x = currentAction.x;

@@ -392,6 +392,7 @@ export class UnitForceSystem {
         if (entity.combat) {
           entity.combat.priorityTargetId = null;
           entity.combat.priorityTargetPoint = null;
+          entity.combat.manualLaunchActive = false;
         }
         continue;
       }

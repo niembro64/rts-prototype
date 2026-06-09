@@ -37,6 +37,7 @@ export type {
   AttackCommand,
   AttackGroundCommand,
   AttackAreaCommand,
+  ManualLaunchCommand,
   GuardCommand,
   SetSnapshotRateCommand,
   SetKeyframeRatioCommand,

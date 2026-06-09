@@ -347,6 +347,10 @@ export type CombatComponent = {
    *  the visible queued order while targeting/firing reads this per
    *  tick. `null` means no attack-ground point is queued. */
   priorityTargetPoint: Vec3 | null;
+  /** One-shot player special fire. When true, the existing turret
+   *  targeting/fire path uses `priorityTargetPoint` until a weapon
+   *  actually launches, then clears both fields. */
+  manualLaunchActive: boolean;
   /** Tick before which fully-idle armed entities can skip the
    *  targeting pass. Sentinel `-1` means "always run this tick";
    *  attack commands clear back to `-1` implicitly by setting
@@ -362,6 +366,7 @@ export function createCombatComponent(turrets: Turret[]): CombatComponent {
     trajectoryMode: 'auto',
     priorityTargetId: null,
     priorityTargetPoint: null,
+    manualLaunchActive: false,
     nextCombatProbeTick: -1,
   };
 }

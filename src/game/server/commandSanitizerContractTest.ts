@@ -1,6 +1,7 @@
 import type {
   Command,
   CaptureCommand,
+  ManualLaunchCommand,
   MoveCommand,
   SetFactoryGuardCommand,
   SetFireEnabledCommand,
@@ -162,6 +163,21 @@ export function runCommandSanitizerContractTest(): void {
   assertContract(
     capture.tick === 9001 && capture.queueFront === true && capture.targetId === 8,
     'capture command must preserve target and queue-front insertion',
+  );
+
+  const manualLaunch = sanitizeRequired<ManualLaunchCommand>(world, {
+    type: 'manualLaunch',
+    tick: 7,
+    entityIds: [7, 8],
+    targetX: 16.5,
+    targetY: 20.25,
+    targetZ: 999,
+  });
+  assertContract(
+    manualLaunch.tick === 9001 &&
+      manualLaunch.entityIds.join(',') === '7,8' &&
+      manualLaunch.targetZ === world.getGroundZ(16.5, 20.25),
+    'manualLaunch command must preserve selected entities and derive z from authoritative terrain',
   );
 
   const formationSpeedMove = sanitizeRequired<MoveCommand>(world, {

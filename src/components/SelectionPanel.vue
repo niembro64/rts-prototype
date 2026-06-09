@@ -203,6 +203,7 @@ const showCancelHint = computed(() =>
   || props.selection.isGuardMode
   || props.selection.isReclaimMode
   || props.selection.isCaptureMode
+  || props.selection.isManualLaunchMode
   || props.selection.isMexUpgradeMode
   || props.selection.isPingMode
   || props.selection.isTowerTargetMode,
@@ -1277,6 +1278,17 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
         >
           <span class="btn-label">No Ground</span>
           <span class="btn-key">{{ hotkey('combat.towerTargetSet') }}</span>
+        </button>
+        <button
+          type="button"
+          class="action-btn"
+          :class="{ active: selection.isManualLaunchMode }"
+          :style="{ '--btn-color': BUTTON_COLORS.attackArea }"
+          :title="actionTitle('Manual launch', 'combat.manualLaunch', 'Click ground to force one volley')"
+          @click="actions.toggleManualLaunch()"
+        >
+          <span class="btn-label">Launch</span>
+          <span class="btn-key">{{ hotkey('combat.manualLaunch') }}</span>
         </button>
         <button
           type="button"

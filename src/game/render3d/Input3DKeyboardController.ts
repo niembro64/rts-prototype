@@ -60,6 +60,7 @@ type Input3DKeyboardControllerConfig = {
   toggleAttackMode: () => void;
   toggleAttackAreaMode: () => void;
   toggleAttackGroundMode: () => void;
+  toggleManualLaunchMode: () => void;
   toggleGuardMode: () => void;
   toggleReclaimMode: () => void;
   toggleCaptureMode: () => void;
@@ -87,6 +88,7 @@ type Input3DKeyboardControllerConfig = {
   isAttackMode: () => boolean;
   isAttackAreaMode: () => boolean;
   isAttackGroundMode: () => boolean;
+  isManualLaunchMode: () => boolean;
   isGuardMode: () => boolean;
   isReclaimMode: () => boolean;
   isCaptureMode: () => boolean;
@@ -97,6 +99,7 @@ type Input3DKeyboardControllerConfig = {
   exitAttackMode: () => void;
   exitAttackAreaMode: () => void;
   exitAttackGroundMode: () => void;
+  exitManualLaunchMode: () => void;
   exitGuardMode: () => void;
   exitReclaimMode: () => void;
   exitCaptureMode: () => void;
@@ -408,6 +411,9 @@ export class Input3DKeyboardController {
       case 'combat.attackGround':
         this.config.toggleAttackGroundMode();
         break;
+      case 'combat.manualLaunch':
+        this.config.toggleManualLaunchMode();
+        break;
       case 'combat.guard':
         this.config.toggleGuardMode();
         break;
@@ -582,6 +588,7 @@ export class Input3DKeyboardController {
         { isActive: this.config.isAttackMode, cancel: this.config.exitAttackMode },
         { isActive: this.config.isAttackAreaMode, cancel: this.config.exitAttackAreaMode },
         { isActive: this.config.isAttackGroundMode, cancel: this.config.exitAttackGroundMode },
+        { isActive: this.config.isManualLaunchMode, cancel: this.config.exitManualLaunchMode },
         { isActive: this.config.isGuardMode, cancel: this.config.exitGuardMode },
         { isActive: this.config.isReclaimMode, cancel: this.config.exitReclaimMode },
         { isActive: this.config.isCaptureMode, cancel: this.config.exitCaptureMode },
