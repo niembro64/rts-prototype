@@ -1,6 +1,7 @@
 import { ENTITY_CHANGED_ACTIONS } from '@/types/network';
 import { isBuildInProgress } from './buildableHelpers';
 import { isBuildTargetInRange } from './builderRange';
+import { isCapturableTarget } from './capture';
 import { isReclaimableTarget } from './reclaim';
 import { getActionIntentStart, getUnitActionTargetId } from './unitActionIntents';
 import { spliceUnitActions } from './unitActions';
@@ -25,7 +26,7 @@ export class SimulationActionQueueMaintenance {
     const actions = unit.actions;
     for (let i = 0; i < actions.length; i++) {
       const action = actions[i];
-      if (!this.isTargetedActionInvalid(action)) continue;
+      if (!this.isTargetedActionInvalid(entity, action)) continue;
 
       const targetId = getUnitActionTargetId(action);
       const removeStart = getActionIntentStart(actions, i);
@@ -52,7 +53,12 @@ export class SimulationActionQueueMaintenance {
     const actions = unit.actions;
     for (let i = 0; i < actions.length; i++) {
       const action = actions[i];
-      if (action.type !== 'build' && action.type !== 'repair' && action.type !== 'reclaim') {
+      if (
+        action.type !== 'build' &&
+        action.type !== 'repair' &&
+        action.type !== 'reclaim' &&
+        action.type !== 'capture'
+      ) {
         if (!action.isPathExpansion) return;
         continue;
       }
@@ -89,12 +95,13 @@ export class SimulationActionQueueMaintenance {
     }
   }
 
-  private isTargetedActionInvalid(action: UnitAction): boolean {
+  private isTargetedActionInvalid(entity: Entity, action: UnitAction): boolean {
     if (
       action.type !== 'attack' &&
       action.type !== 'build' &&
       action.type !== 'repair' &&
       action.type !== 'reclaim' &&
+      action.type !== 'capture' &&
       action.type !== 'guard'
     ) {
       return false;
@@ -118,6 +125,11 @@ export class SimulationActionQueueMaintenance {
 
     if (action.type === 'reclaim') {
       return !isReclaimableTarget(target);
+    }
+
+    if (action.type === 'capture') {
+      const playerId = entity.ownership?.playerId;
+      return playerId === undefined || !isCapturableTarget(target, playerId);
     }
 
     return !this.isIncompleteBuildableTarget(target) && !this.isDamagedRepairUnit(target);

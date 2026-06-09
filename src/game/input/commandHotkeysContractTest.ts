@@ -87,6 +87,14 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid Ctrl+Alt+Y should resolve gather wait',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('c', 'KeyC'), 'bar-grid') === 'combat.capture',
+    'bar-grid C should resolve capture',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('e', 'KeyE', { altKey: true }), 'prototype') === 'combat.capture',
+    'prototype Alt+E should resolve capture without colliding with reclaim',
+  );
+  assertContract(
     resolveCommandHotkey(keyEvent(';', 'Semicolon'), 'bar-grid') === 'command.moveState',
     'bar-grid semicolon should resolve move state',
   );

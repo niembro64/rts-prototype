@@ -2,6 +2,7 @@ import type {
   AttackAreaCommand,
   AttackCommand,
   AttackGroundCommand,
+  CaptureCommand,
   ClearQueuedOrdersCommand,
   Command,
   EditFactoryQueueCommand,
@@ -130,6 +131,8 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       return sanitizeReclaimCommand(command, tick);
     case 'reclaimArea':
       return sanitizeReclaimAreaCommand(command, world, tick);
+    case 'capture':
+      return sanitizeCaptureCommand(command, tick);
     case 'setSnapshotRate':
       return SERVER_CONFIG.snapshot.options.includes(command.rate)
         ? { ...command, tick, rate: normalizeSnapshotRate(command.rate) }
@@ -789,6 +792,31 @@ function sanitizeRepairAreaCommand(
 }
 
 function sanitizeReclaimCommand(command: ReclaimCommand, tick: number): ReclaimCommand | null {
+  if (
+    !isEntityId(command.commanderId) ||
+    !isEntityId(command.targetId) ||
+    typeof command.queue !== 'boolean'
+  ) {
+    return null;
+  }
+  const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
+  const queueInsertIndex = queueFront !== null
+    ? sanitizeQueueInsertIndex(command.queue, queueFront, command.queueInsertIndex)
+    : null;
+  return queueFront === null || queueInsertIndex === null
+    ? null
+    : {
+        ...command,
+        tick,
+        commanderId: command.commanderId,
+        targetId: command.targetId,
+        queue: command.queue,
+        queueFront,
+        queueInsertIndex,
+      };
+}
+
+function sanitizeCaptureCommand(command: CaptureCommand, tick: number): CaptureCommand | null {
   if (
     !isEntityId(command.commanderId) ||
     !isEntityId(command.targetId) ||

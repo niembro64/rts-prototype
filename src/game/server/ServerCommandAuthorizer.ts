@@ -3,6 +3,7 @@ import type {
   AttackAreaCommand,
   AttackCommand,
   AttackGroundCommand,
+  CaptureCommand,
   ClearQueuedOrdersCommand,
   Command,
   GuardCommand,
@@ -157,9 +158,23 @@ export function authorizeGameServerGameplayCommand(
     case 'reclaimArea':
       return isOwnedEntity(world, command.commanderId, playerId) ? command : null;
 
+    case 'capture':
+      return authorizeCaptureCommand(world, command, playerId);
+
     default:
       return null;
   }
+}
+
+function authorizeCaptureCommand(
+  world: WorldState,
+  command: CaptureCommand,
+  playerId: PlayerId,
+): CaptureCommand | null {
+  if (!isOwnedEntity(world, command.commanderId, playerId)) return null;
+  const target = world.getEntity(command.targetId);
+  if (target === undefined || target.ownership === null || target.ownership.playerId === playerId) return null;
+  return command;
 }
 
 function authorizeStartBuildCommand(

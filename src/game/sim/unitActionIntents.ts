@@ -45,6 +45,7 @@ export function getUnitActionTargetId(action: UnitAction): EntityId | undefined 
     action.type === 'attack' ||
     action.type === 'repair' ||
     action.type === 'reclaim' ||
+    action.type === 'capture' ||
     action.type === 'guard'
   ) {
     return action.targetId;

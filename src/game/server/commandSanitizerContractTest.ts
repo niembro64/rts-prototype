@@ -1,5 +1,6 @@
 import type {
   Command,
+  CaptureCommand,
   MoveCommand,
   SetFactoryGuardCommand,
   SetFireEnabledCommand,
@@ -148,6 +149,19 @@ export function runCommandSanitizerContractTest(): void {
   assertContract(
     gatherWait.gather === true && gatherWait.waitGroupId === 99,
     'wait command must accept gather wait state and group id',
+  );
+
+  const capture = sanitizeRequired<CaptureCommand>(world, {
+    type: 'capture',
+    tick: 7,
+    commanderId: 7,
+    targetId: 8,
+    queue: true,
+    queueFront: true,
+  });
+  assertContract(
+    capture.tick === 9001 && capture.queueFront === true && capture.targetId === 8,
+    'capture command must preserve target and queue-front insertion',
   );
 
   const formationSpeedMove = sanitizeRequired<MoveCommand>(world, {

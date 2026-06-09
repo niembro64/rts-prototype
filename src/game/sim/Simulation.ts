@@ -693,7 +693,8 @@ export class Simulation {
       if (
         currentAction.type === 'build' ||
         currentAction.type === 'repair' ||
-        currentAction.type === 'reclaim'
+        currentAction.type === 'reclaim' ||
+        currentAction.type === 'capture'
       ) {
         const targetId = currentAction.type === 'build'
           ? currentAction.buildingId

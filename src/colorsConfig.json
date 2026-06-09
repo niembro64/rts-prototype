@@ -847,6 +847,10 @@
         "colorHex": "#d6b45f",
         "cssColor": "#d6b45f"
       },
+      "capture": {
+        "colorHex": "#b28cff",
+        "cssColor": "#b28cff"
+      },
       "wait": {
         "colorHex": "#e8e8e8",
         "cssColor": "#e8e8e8"

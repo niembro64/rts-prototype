@@ -6,6 +6,7 @@ import {
   buildAttackCommandForTarget,
   buildAttackAreaCommand,
   buildAttackGroundCommand,
+  buildCaptureCommandForTarget,
   buildGuardCommandAt,
   buildGuardCommandForTarget,
   buildReclaimAreaCommand,
@@ -94,6 +95,7 @@ type Input3DModeClickControllerConfig = {
   isAttackGroundMode: () => boolean;
   isGuardMode: () => boolean;
   isReclaimMode: () => boolean;
+  isCaptureMode: () => boolean;
   isMexUpgradeMode: () => boolean;
   isPingMode: () => boolean;
   isTowerTargetMode: () => boolean;
@@ -103,6 +105,7 @@ type Input3DModeClickControllerConfig = {
   exitAttackGroundMode: () => void;
   exitGuardMode: () => void;
   exitReclaimMode: () => void;
+  exitCaptureMode: () => void;
   exitMexUpgradeMode: () => void;
   exitPingMode: () => void;
   exitTowerTargetMode: () => void;
@@ -127,6 +130,7 @@ export class Input3DModeClickController {
       this.config.isAttackGroundMode() ||
       this.config.isGuardMode() ||
       this.config.isReclaimMode() ||
+      this.config.isCaptureMode() ||
       this.config.isMexUpgradeMode() ||
       this.config.isPingMode() ||
       this.config.isTowerTargetMode();
@@ -200,6 +204,7 @@ export class Input3DModeClickController {
     if (this.config.isAttackGroundMode()) return 'attack';
     if (this.config.isGuardMode()) return 'guard';
     if (this.config.isReclaimMode()) return 'reclaim';
+    if (this.config.isCaptureMode()) return 'reclaim';
     if (this.config.isMexUpgradeMode()) return 'build';
     if (this.config.isPingMode()) return 'ping';
     if (this.config.isTowerTargetMode()) return 'attack';
@@ -582,6 +587,7 @@ export class Input3DModeClickController {
     else if (this.config.isAttackGroundMode()) this.handleAttackGroundClick(e);
     else if (this.config.isGuardMode()) this.handleGuardClick(e);
     else if (this.config.isReclaimMode()) this.handleReclaimClick(e);
+    else if (this.config.isCaptureMode()) this.handleCaptureClick(e);
     else if (this.config.isMexUpgradeMode()) this.handleMexUpgradeClick(e);
     else if (this.config.isTowerTargetMode()) this.handleTowerTargetClick(e);
     else this.handlePingClick(e);
@@ -596,6 +602,7 @@ export class Input3DModeClickController {
     else if (this.config.isAttackGroundMode()) this.config.exitAttackGroundMode();
     else if (this.config.isGuardMode()) this.config.exitGuardMode();
     else if (this.config.isReclaimMode()) this.config.exitReclaimMode();
+    else if (this.config.isCaptureMode()) this.config.exitCaptureMode();
     else if (this.config.isMexUpgradeMode()) this.config.exitMexUpgradeMode();
     else if (this.config.isTowerTargetMode()) this.config.exitTowerTargetMode();
     else this.config.exitPingMode();
@@ -975,6 +982,36 @@ export class Input3DModeClickController {
     this.config.commandQueue.enqueue(reclaimCmd);
     this.config.applyCursor('reclaim');
     if (!queueMode.queue) this.config.exitReclaimMode();
+  }
+
+  private handleCaptureClick(e: MouseEvent): void {
+    const commander = this.config.getSelectedCommander();
+    if (!commander) {
+      this.config.exitCaptureMode();
+      return;
+    }
+    const tick = this.config.getTick();
+    const entityHitId = this.config.picker.raycastEntity(e.clientX, e.clientY);
+    const entityHit = entityHitId !== null
+      ? this.config.getEntitySource().getEntity(entityHitId)
+      : null;
+    const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
+
+    const captureCmd = buildCaptureCommandForTarget(
+      entityHit,
+      commander,
+      tick,
+      queueMode.queue,
+      queueMode.queueFront,
+      queueMode.queueInsertIndex,
+    );
+    if (!captureCmd) {
+      this.config.applyCursor('blocked');
+      return;
+    }
+    this.config.commandQueue.enqueue(captureCmd);
+    this.config.applyCursor('reclaim');
+    if (!queueMode.queue) this.config.exitCaptureMode();
   }
 
   private handleMexUpgradeClick(e: MouseEvent): void {

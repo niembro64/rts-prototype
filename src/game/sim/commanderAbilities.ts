@@ -5,9 +5,11 @@ import { updateWeaponWorldKinematics } from './combat/combatUtils';
 import { getUnitGroundZ } from './unitGeometry';
 import { getTransformCosSin } from '../math';
 import { economyManager } from './economy';
+import { isCapturableTarget } from './capture';
 import { getReclaimResourceValue, isReclaimableTarget, RECLAIM_REFUND_FRACTION } from './reclaim';
-import { ENTITY_CHANGED_HP } from '../../types/network';
+import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_HP } from '../../types/network';
 import { isBuildInProgress } from './buildableHelpers';
+import { setUnitActions } from './unitActions';
 import { ballSpawnRateForResourceRate } from '@/resourceConfig';
 import { getSimWasm } from '../sim-wasm/init';
 
@@ -35,11 +37,14 @@ export class CommanderAbilitiesSystem {
     completedBuildings: this.completedBuildings,
   };
   private readonly repairEnergyRates = new Map<number, number>();
+  private readonly captureProgressByPair = new Map<number, { playerId: PlayerId; progress: number }>();
+  private readonly activeCaptureKeys = new Set<number>();
 
   // Update all commanders' building and healing
   update(world: WorldState, dtMs: number): CommanderAbilitiesResult {
     this.sprayTargets.length = 0;
     this.completedBuildings.length = 0;
+    this.activeCaptureKeys.clear();
     this.rebuildRepairEnergyRateIndex(world);
 
     // Find all commanders
@@ -103,6 +108,24 @@ export class CommanderAbilitiesSystem {
         continue;
       }
 
+      if (currentAction !== undefined && currentAction.type === 'capture') {
+        if (
+          this.captureTarget(
+            world,
+            playerId,
+            commander,
+            currentTarget,
+            dtMs,
+            commanderSprayX,
+            commanderSprayY,
+            commanderSprayZ,
+          )
+        ) {
+          this.pushCompletedBuilding(commander.id, currentTarget.id);
+        }
+        continue;
+      }
+
       // Build sprays for buildables are emitted render-side (per-pylon
       // colored sprays driven by buildable.paid deltas in
       // updateBuilderConstructionEmitter), so the sim only ships heal
@@ -137,6 +160,9 @@ export class CommanderAbilitiesSystem {
       }
     }
 
+    for (const key of this.captureProgressByPair.keys()) {
+      if (!this.activeCaptureKeys.has(key)) this.captureProgressByPair.delete(key);
+    }
     return this.result;
   }
 
@@ -233,7 +259,8 @@ export class CommanderAbilitiesSystem {
     if (
       currentAction.type !== 'build' &&
       currentAction.type !== 'repair' &&
-      currentAction.type !== 'reclaim'
+      currentAction.type !== 'reclaim' &&
+      currentAction.type !== 'capture'
     ) {
       return null;
     }
@@ -247,6 +274,13 @@ export class CommanderAbilitiesSystem {
 
     if (currentAction.type === 'reclaim') {
       return isReclaimableTarget(target) && isBuildTargetInRange(commander, target)
+        ? target
+        : null;
+    }
+
+    if (currentAction.type === 'capture') {
+      const playerId = commander.ownership?.playerId;
+      return playerId !== undefined && isCapturableTarget(target, playerId) && isBuildTargetInRange(commander, target)
         ? target
         : null;
     }
@@ -322,6 +356,72 @@ export class CommanderAbilitiesSystem {
     hpState.hp = _reclaimTickOut[0];
     world.markSnapshotDirty(target.id, ENTITY_CHANGED_HP);
     return _reclaimTickOut[4] !== 0;
+  }
+
+  private captureTarget(
+    world: WorldState,
+    playerId: PlayerId,
+    commander: Entity,
+    target: Entity,
+    dtMs: number,
+    sourceX: number,
+    sourceY: number,
+    sourceZ: number,
+  ): boolean {
+    if (!commander.builder || !isCapturableTarget(target, playerId)) return false;
+    const hpState = target.unit ?? target.building;
+    if (hpState === null || hpState.hp <= 0 || hpState.maxHp <= 0) return false;
+
+    const key = repairRatePairKey(commander.id, target.id);
+    this.activeCaptureKeys.add(key);
+    let state = this.captureProgressByPair.get(key);
+    if (state === undefined || state.playerId !== playerId) {
+      state = { playerId, progress: 0 };
+      this.captureProgressByPair.set(key, state);
+    }
+
+    const dtSec = dtMs / 1000;
+    state.progress = Math.min(1, state.progress + (commander.builder.constructionRate * dtSec) / hpState.maxHp);
+
+    const spray = this.acquireSprayTarget();
+    spray.source.id = commander.id;
+    spray.source.pos.x = sourceX;
+    spray.source.pos.y = sourceY;
+    spray.source.z = sourceZ;
+    spray.source.playerId = playerId;
+    spray.target.id = target.id;
+    spray.target.pos.x = target.transform.x;
+    spray.target.pos.y = target.transform.y;
+    spray.target.z = target.transform.z;
+    spray.target.radius = target.unit !== null ? target.unit.radius.hitbox : target.building?.targetRadius ?? 0;
+    spray.type = 'heal';
+    spray.intensity = Math.max(0.2, state.progress);
+    spray.channel = 1;
+    spray.flow = 'direct';
+    spray.flowRadius = 0;
+    spray.ballSpawnRate = 8;
+
+    if (state.progress < 1) return false;
+
+    this.captureProgressByPair.delete(key);
+    world.setEntityOwner(target, playerId);
+    if (target.unit !== null) {
+      setUnitActions(target.unit, []);
+      world.markSnapshotDirty(target.id, ENTITY_CHANGED_ACTIONS);
+    }
+    if (target.combat !== null) {
+      target.combat.priorityTargetId = null;
+      target.combat.priorityTargetPoint = null;
+    }
+    if (target.factory !== null) {
+      target.factory.selectedUnitBlueprintId = null;
+      target.factory.productionQueue.length = 0;
+      target.factory.currentShellId = null;
+      target.factory.currentBuildProgress = 0;
+      target.factory.isProducing = false;
+      target.factory.guardTargetId = null;
+    }
+    return true;
   }
 }
 

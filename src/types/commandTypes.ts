@@ -20,6 +20,7 @@ export type ActionType =
   | 'build'
   | 'repair'
   | 'reclaim'
+  | 'capture'
   | 'wait'
   | 'attack'
   | 'attackGround'

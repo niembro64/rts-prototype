@@ -134,6 +134,7 @@ export function useGameCanvasSceneUi({
     isAttackGroundMode: false,
     isGuardMode: false,
     isReclaimMode: false,
+    isCaptureMode: false,
     isMexUpgradeMode: false,
     isPingMode: false,
     factorySelectedUnit: null,
@@ -314,6 +315,9 @@ export function useGameCanvasSceneUi({
     },
     toggleReclaim: () => {
       getActiveBattleScene()?.toggleReclaimMode();
+    },
+    toggleCapture: () => {
+      getActiveBattleScene()?.toggleCaptureMode();
     },
     reclaimSelected: () => {
       getActiveBattleScene()?.reclaimSelected();

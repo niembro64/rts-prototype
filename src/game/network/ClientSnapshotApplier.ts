@@ -50,6 +50,10 @@ export function snapClientNonVisualState(
   const isFull = cf == null;
   const su = server.unit;
   let cacheDirty = false;
+  if (entity.ownership?.playerId !== server.playerId) {
+    entity.ownership = { playerId: server.playerId };
+    cacheDirty = true;
+  }
   if (entity.unit && su) {
     if ((isFull || cf! & ENTITY_CHANGED_HP) && su.hp) {
       entity.unit.hp = su.hp.curr;

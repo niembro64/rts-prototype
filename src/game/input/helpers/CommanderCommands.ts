@@ -6,6 +6,7 @@
 
 import type { Entity, WaypointType } from '../../sim/types';
 import type {
+  CaptureCommand,
   ReclaimCommand,
   ReclaimAreaCommand,
   RepairAreaCommand,
@@ -19,6 +20,7 @@ import type { RepairEntitySource } from './RepairTargetHelper';
 import { findReclaimTargetAt } from './ReclaimTargetHelper';
 import type { ReclaimEntitySource } from './ReclaimTargetHelper';
 import { isGuardableFriendlyTarget } from './GuardTargetHelper';
+import { isCapturableTarget } from '../../sim/capture';
 import { isReclaimableTarget } from '../../sim/reclaim';
 
 /** Build a RepairCommand if the commander (if any) is right-clicking
@@ -132,6 +134,28 @@ export function buildReclaimAreaCommand(
     targetY: worldY,
     targetZ: worldZ,
     radius,
+    queue,
+    queueFront,
+    queueInsertIndex,
+  };
+}
+
+export function buildCaptureCommandForTarget(
+  target: Entity | null | undefined,
+  commander: Entity | null,
+  tick: number,
+  queue: boolean,
+  queueFront = false,
+  queueInsertIndex?: number,
+): CaptureCommand | null {
+  const playerId = commander?.ownership?.playerId;
+  if (commander === null || commander === undefined || playerId === undefined) return null;
+  if (commander.id === target?.id || !isCapturableTarget(target, playerId)) return null;
+  return {
+    type: 'capture',
+    tick,
+    commanderId: commander.id,
+    targetId: target.id,
     queue,
     queueFront,
     queueInsertIndex,

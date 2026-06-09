@@ -508,6 +508,9 @@ export class RtsScene3D {
     this.inputManager.onReclaimModeChange = (active) => {
       this.selectionSystem.setReclaimMode(active);
     };
+    this.inputManager.onCaptureModeChange = (active) => {
+      this.selectionSystem.setCaptureMode(active);
+    };
     this.inputManager.onMexUpgradeModeChange = (active) => {
       this.selectionSystem.setMexUpgradeMode(active);
     };
@@ -944,6 +947,10 @@ export class RtsScene3D {
 
   public toggleReclaimMode(): void {
     this.inputManager?.toggleReclaimMode();
+  }
+
+  public toggleCaptureMode(): void {
+    this.inputManager?.toggleCaptureMode();
   }
 
   public reclaimSelected(): void {

@@ -332,7 +332,11 @@ export class RtsScene3DRenderPhase {
         projectileRenderProjectiles: projectileLists.traveling,
         scoped: this.renderScope.getMode() !== 'all',
       },
-      { reclaimTargets: inputManager?.isInReclaimMode() ?? false },
+      {
+        reclaimTargets:
+          (inputManager?.isInReclaimMode() ?? false) ||
+          (inputManager?.isInCaptureMode() ?? false),
+      },
     );
     this.clientViewState.consumeRenderDirties();
     if (shotNamesEnabled) {

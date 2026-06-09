@@ -29,7 +29,14 @@ import {
   DEFAULT_SHIELD_REFLECTION_MODE,
 } from '../../config';
 import type { ShieldReflectionMode } from '../../types/shotTypes';
-import { ENTITY_CHANGED_HP } from '../../types/network';
+import {
+  ENTITY_CHANGED_ACTIONS,
+  ENTITY_CHANGED_BUILDING,
+  ENTITY_CHANGED_COMBAT_MODE,
+  ENTITY_CHANGED_FACTORY,
+  ENTITY_CHANGED_HP,
+  ENTITY_CHANGED_TURRETS,
+} from '../../types/network';
 import { createCollisionTopBuildingSupportSurface } from './buildingSupportSurface';
 import type { WorldSupportSurface } from './supportSurface';
 import {
@@ -376,6 +383,20 @@ export class WorldState {
     if (entity !== undefined) this.markEntityMetadataDead(entity);
     this.entities.delete(id);
     this.cache.invalidate();
+  }
+
+  setEntityOwner(entity: Entity, playerId: PlayerId): void {
+    if (entity.ownership !== null && entity.ownership.playerId === playerId) return;
+    entity.ownership = { playerId };
+    this.cache.invalidate();
+    this.markSnapshotDirty(
+      entity.id,
+      ENTITY_CHANGED_ACTIONS |
+        ENTITY_CHANGED_BUILDING |
+        ENTITY_CHANGED_COMBAT_MODE |
+        ENTITY_CHANGED_FACTORY |
+        ENTITY_CHANGED_TURRETS,
+    );
   }
 
   markSnapshotDirty(id: EntityId, fields: number): void {

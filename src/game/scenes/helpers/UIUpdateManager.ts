@@ -68,6 +68,7 @@ function unitActionLabel(action: UnitAction): string {
     case 'build': return 'Build';
     case 'repair': return 'Repair';
     case 'reclaim': return 'Reclaim';
+    case 'capture': return 'Capture';
     case 'wait': return action.waitGather === true ? 'Gather Wait' : 'Wait';
     case 'attack': return 'Attack';
     case 'attackGround': return 'Attack Ground';
@@ -734,6 +735,7 @@ export function buildSelectionInfo(
     isAttackGroundMode: inputState?.isAttackGroundMode ?? false,
     isGuardMode: inputState?.isGuardMode ?? false,
     isReclaimMode: inputState?.isReclaimMode ?? false,
+    isCaptureMode: inputState?.isCaptureMode ?? false,
     isMexUpgradeMode: inputState?.isMexUpgradeMode ?? false,
     isPingMode: inputState?.isPingMode ?? false,
     factorySelectedUnit,

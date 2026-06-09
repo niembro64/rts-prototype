@@ -5,6 +5,7 @@ import type {
   AttackAreaCommand,
   AttackCommand,
   AttackGroundCommand,
+  CaptureCommand,
   ClearQueuedOrdersCommand,
   Command,
   EditFactoryQueueCommand,
@@ -64,6 +65,7 @@ import {
 import { dropTurretLockMidTick } from './combat/combatActivitySlab';
 import { isAliveGuardTarget } from './guard';
 import { isReclaimableTarget } from './reclaim';
+import { isCapturableTarget } from './capture';
 import { isBuildInProgress } from './buildableHelpers';
 import {
   ATTACK_AREA_MAX_RADIUS,
@@ -231,6 +233,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'reclaimArea':
       executeReclaimAreaCommand(ctx, command);
+      break;
+    case 'capture':
+      executeCaptureCommand(ctx, command);
       break;
     case 'attack':
       executeAttackCommand(ctx, command);
@@ -1625,6 +1630,48 @@ function enqueueReclaimAction(
   };
 
   addPathActionsWithFinal(commander, action, queue, ctx, queueFront, queueInsertIndex);
+}
+
+function enqueueCaptureAction(
+  ctx: CommandContext,
+  commander: Entity | undefined,
+  target: Entity | undefined,
+  queue: boolean,
+  queueFront: boolean,
+  queueInsertIndex?: number,
+): void {
+  if (
+    commander === undefined ||
+    commander.commander === null ||
+    commander.unit === null ||
+    commander.builder === null ||
+    commander.ownership === null
+  ) return;
+  if (!isCapturableTarget(target, commander.ownership.playerId)) return;
+
+  const targetPoint = getEntityTargetPoint(target);
+  const action: UnitAction = {
+    type: 'capture',
+    x: targetPoint.x,
+    y: targetPoint.y,
+    z: targetPoint.z,
+    targetId: target.id,
+  };
+
+  addPathActionsWithFinal(commander, action, queue, ctx, queueFront, queueInsertIndex);
+}
+
+function executeCaptureCommand(ctx: CommandContext, command: CaptureCommand): void {
+  const commander = ctx.world.getEntity(command.commanderId);
+  const target = ctx.world.getEntity(command.targetId);
+  enqueueCaptureAction(
+    ctx,
+    commander,
+    target,
+    command.queue,
+    commandQueuesInFront(command),
+    commandQueueInsertIndex(command),
+  );
 }
 
 function executeAttackCommand(ctx: CommandContext, command: AttackCommand): void {

@@ -117,6 +117,7 @@ export class Input3DManager {
   public onAttackGroundModeChange?: (active: boolean) => void;
   public onGuardModeChange?: (active: boolean) => void;
   public onReclaimModeChange?: (active: boolean) => void;
+  public onCaptureModeChange?: (active: boolean) => void;
   public onMexUpgradeModeChange?: (active: boolean) => void;
   public onPingModeChange?: (active: boolean) => void;
   public onTowerTargetModeChange?: (active: boolean) => void;
@@ -200,6 +201,7 @@ export class Input3DManager {
       isAttackGroundMode: () => this.attackGroundMode,
       isGuardMode: () => this.guardMode,
       isReclaimMode: () => this.reclaimMode,
+      isCaptureMode: () => this.captureMode,
       isMexUpgradeMode: () => this.mexUpgradeMode,
       isPingMode: () => this.pingMode,
       isTowerTargetMode: () => this.towerTargetMode,
@@ -209,6 +211,7 @@ export class Input3DManager {
       exitAttackGroundMode: () => this.exitAttackGroundMode(),
       exitGuardMode: () => this.exitGuardMode(),
       exitReclaimMode: () => this.exitReclaimMode(),
+      exitCaptureMode: () => this.exitCaptureMode(),
       exitMexUpgradeMode: () => this.exitMexUpgradeMode(),
       exitPingMode: () => this.exitPingMode(),
       exitTowerTargetMode: () => this.exitTowerTargetMode(),
@@ -284,6 +287,7 @@ export class Input3DManager {
       toggleAttackGroundMode: () => this.toggleAttackGroundMode(),
       toggleGuardMode: () => this.toggleGuardMode(),
       toggleReclaimMode: () => this.toggleReclaimMode(),
+      toggleCaptureMode: () => this.toggleCaptureMode(),
       toggleMexUpgradeMode: () => this.toggleMexUpgradeMode(),
       upgradeSelectedMetalExtractors: () => this.upgradeSelectedMetalExtractors(),
       toggleRepairAreaMode: () => this.toggleRepairAreaMode(),
@@ -310,6 +314,7 @@ export class Input3DManager {
       isAttackGroundMode: () => this.attackGroundMode,
       isGuardMode: () => this.guardMode,
       isReclaimMode: () => this.reclaimMode,
+      isCaptureMode: () => this.captureMode,
       isMexUpgradeMode: () => this.mexUpgradeMode,
       isPingMode: () => this.pingMode,
       isTowerTargetMode: () => this.towerTargetMode,
@@ -319,6 +324,7 @@ export class Input3DManager {
       exitAttackGroundMode: () => this.exitAttackGroundMode(),
       exitGuardMode: () => this.exitGuardMode(),
       exitReclaimMode: () => this.exitReclaimMode(),
+      exitCaptureMode: () => this.exitCaptureMode(),
       exitMexUpgradeMode: () => this.exitMexUpgradeMode(),
       exitPingMode: () => this.exitPingMode(),
       exitTowerTargetMode: () => this.exitTowerTargetMode(),
@@ -333,6 +339,7 @@ export class Input3DManager {
       onAttackGroundModeChange: (active) => this.onAttackGroundModeChange?.(active),
       onGuardModeChange: (active) => this.onGuardModeChange?.(active),
       onReclaimModeChange: (active) => this.onReclaimModeChange?.(active),
+      onCaptureModeChange: (active) => this.onCaptureModeChange?.(active),
       onMexUpgradeModeChange: (active) => this.onMexUpgradeModeChange?.(active),
       onPingModeChange: (active) => this.onPingModeChange?.(active),
       onTowerTargetModeChange: (active) => this.onTowerTargetModeChange?.(active),
@@ -427,6 +434,10 @@ export class Input3DManager {
 
   private get reclaimMode(): boolean {
     return this.specialModes.isActive('reclaim');
+  }
+
+  private get captureMode(): boolean {
+    return this.specialModes.isActive('capture');
   }
 
   private get mexUpgradeMode(): boolean {
@@ -932,6 +943,18 @@ export class Input3DManager {
     this.enterSpecialMode('reclaim');
   }
 
+  toggleCaptureMode(): void {
+    if (this.captureMode) {
+      this.exitCaptureMode();
+      return;
+    }
+    if (!this.hasSelectedCommander()) return;
+    this.mode.exitBuildMode();
+    this.mode.exitDGunMode();
+    this.exitSpecialModes(false);
+    this.enterSpecialMode('capture');
+  }
+
   toggleMexUpgradeMode(): void {
     if (this.mexUpgradeMode) {
       this.exitMexUpgradeMode();
@@ -1069,6 +1092,11 @@ export class Input3DManager {
     return this.reclaimMode;
   }
 
+  /** True while the next left-click will issue a capture command. */
+  isInCaptureMode(): boolean {
+    return this.captureMode;
+  }
+
   /** True while the next left-click/drag will issue a metal extractor upgrade command. */
   isInMexUpgradeMode(): boolean {
     return this.mexUpgradeMode;
@@ -1114,6 +1142,10 @@ export class Input3DManager {
 
   private exitReclaimMode(): void {
     this.specialModes.exit('reclaim');
+  }
+
+  private exitCaptureMode(): void {
+    this.specialModes.exit('capture');
   }
 
   private exitMexUpgradeMode(): void {
@@ -1414,6 +1446,9 @@ export class Input3DManager {
     }
     if (this.reclaimMode && !this.hasSelectedCommander()) {
       this.exitReclaimMode();
+    }
+    if (this.captureMode && !this.hasSelectedCommander()) {
+      this.exitCaptureMode();
     }
     if (this.mexUpgradeMode && !this.hasSelectedMetalExtractorUpgradeBuilder()) {
       this.exitMexUpgradeMode();

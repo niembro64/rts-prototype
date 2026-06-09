@@ -202,6 +202,7 @@ const showCancelHint = computed(() =>
   || props.selection.isAttackGroundMode
   || props.selection.isGuardMode
   || props.selection.isReclaimMode
+  || props.selection.isCaptureMode
   || props.selection.isMexUpgradeMode
   || props.selection.isPingMode
   || props.selection.isTowerTargetMode,
@@ -1075,6 +1076,18 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
         >
           <span class="btn-label">Reclaim</span>
           <span class="btn-key">{{ hotkey('combat.reclaim') }}</span>
+        </button>
+        <button
+          v-if="selection.hasCommander"
+          type="button"
+          class="action-btn"
+          :class="{ active: selection.isCaptureMode }"
+          :style="{ '--btn-color': BUTTON_COLORS.reclaim }"
+          :title="actionTitle('Capture', 'combat.capture')"
+          @click="actions.toggleCapture()"
+        >
+          <span class="btn-label">Capture</span>
+          <span class="btn-key">{{ hotkey('combat.capture') }}</span>
         </button>
         <button
           v-if="selection.hasCommander"

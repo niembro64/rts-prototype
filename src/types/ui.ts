@@ -100,6 +100,7 @@ export type SelectionInfo = {
   isAttackGroundMode: boolean;
   isGuardMode: boolean;
   isReclaimMode: boolean;
+  isCaptureMode: boolean;
   isMexUpgradeMode: boolean;
   isPingMode: boolean;
   factorySelectedUnit?: FactorySelectionItem | null;
@@ -153,6 +154,7 @@ export type SelectionActions = {
   toggleAttackGround: () => void;
   toggleGuard: () => void;
   toggleReclaim: () => void;
+  toggleCapture: () => void;
   reclaimSelected: () => void;
   toggleMexUpgrade: () => void;
   upgradeSelectedMetalExtractors: () => void;
@@ -269,6 +271,7 @@ export type UIInputState = {
   isAttackGroundMode: boolean;
   isGuardMode: boolean;
   isReclaimMode: boolean;
+  isCaptureMode: boolean;
   isMexUpgradeMode: boolean;
   isPingMode: boolean;
   /** True while in the click-to-pick mode for setting a tower's host

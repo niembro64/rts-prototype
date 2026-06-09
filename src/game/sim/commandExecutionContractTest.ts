@@ -345,6 +345,55 @@ export function runCommandExecutionContractTest(): void {
     'inserted repair area should preserve existing orders after the requested index',
   );
 
+  const capturable = queueWorld.createUnitFromBlueprint(88, 100, 2, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  queueWorld.addEntity(capturable);
+  setUnitActions(commander.unit, []);
+  executeCommand(queueCtx, {
+    type: 'capture',
+    tick: 4,
+    commanderId: commander.id,
+    targetId: capturable.id,
+    queue: false,
+  });
+  assertContract(
+    commander.unit.actions[0]?.type === 'capture' &&
+      commander.unit.actions[0]?.targetId === capturable.id,
+    'capture command should enqueue a target capture action on the commander',
+  );
+
+  const captureWorld = new WorldState(1, 512, 512);
+  const captureQueue = new CommandQueue();
+  const captureSim = new Simulation(captureWorld, captureQueue);
+  const capturer = captureWorld.createUnitFromBlueprint(40, 40, 1, 'unitCommander', {
+    allocateSubEntityIds: false,
+  });
+  const enemy = captureWorld.createUnitFromBlueprint(70, 40, 2, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  captureWorld.addEntity(capturer);
+  captureWorld.addEntity(enemy);
+  assertContract(capturer.unit !== null, 'capture test commander must have a unit component');
+  setUnitActions(capturer.unit, [
+    {
+      type: 'capture',
+      x: enemy.transform.x,
+      y: enemy.transform.y,
+      z: enemy.transform.z,
+      targetId: enemy.id,
+    },
+  ]);
+  captureSim.update(3000);
+  assertContract(
+    enemy.ownership?.playerId === 1,
+    'capture ability should transfer ownership once progress completes',
+  );
+  assertContract(
+    capturer.unit.actions.length === 0,
+    'completed capture should advance the commander action queue',
+  );
+
   const upgradeWorld = new WorldState(1, 512, 512);
   const upgradeConstruction = new ConstructionSystem(upgradeWorld.mapWidth, upgradeWorld.mapHeight);
   const upgradeCtx: CommandContext = {
