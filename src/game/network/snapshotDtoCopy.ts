@@ -277,6 +277,8 @@ export function createActionDto(): NetworkServerSnapshotAction {
     buildingBlueprintId: null,
     grid: null,
     buildingId: null,
+    waitGather: null,
+    waitGroupId: null,
   };
 }
 
@@ -304,6 +306,8 @@ export function copyActionInto(
     dst.grid = null;
   }
   dst.buildingId = src.buildingId;
+  dst.waitGather = src.waitGather;
+  dst.waitGroupId = src.waitGroupId;
   return dst;
 }
 

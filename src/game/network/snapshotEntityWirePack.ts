@@ -264,6 +264,8 @@ const ACTION_FLAG_TARGET_ID = 1 << 3;
 const ACTION_FLAG_BUILDING_BLUEPRINT_ID = 1 << 4;
 const ACTION_FLAG_GRID = 1 << 5;
 const ACTION_FLAG_BUILDING_ID = 1 << 6;
+const ACTION_FLAG_WAIT_GATHER = 1 << 7;
+const ACTION_FLAG_WAIT_GROUP_ID = 1 << 8;
 
 const TURRET_FLAG_TARGET_ID = 1 << 0;
 const TURRET_FLAG_SHIELD_RANGE = 1 << 1;
@@ -1361,6 +1363,8 @@ function packAction(action: NetworkServerSnapshotAction): unknown[] {
   if (action.buildingBlueprintId !== null) flags |= ACTION_FLAG_BUILDING_BLUEPRINT_ID;
   if (action.grid !== null) flags |= ACTION_FLAG_GRID;
   if (action.buildingId !== null) flags |= ACTION_FLAG_BUILDING_ID;
+  if (action.waitGather === true) flags |= ACTION_FLAG_WAIT_GATHER;
+  if (action.waitGroupId !== null && action.waitGroupId !== undefined) flags |= ACTION_FLAG_WAIT_GROUP_ID;
 
   const row: unknown[] = [flags, action.type];
   if ((flags & ACTION_FLAG_POS) !== 0) {
@@ -1375,6 +1379,7 @@ function packAction(action: NetworkServerSnapshotAction): unknown[] {
     row.push(grid.x, grid.y);
   }
   if ((flags & ACTION_FLAG_BUILDING_ID) !== 0) row.push(action.buildingId!);
+  if ((flags & ACTION_FLAG_WAIT_GROUP_ID) !== 0) row.push(action.waitGroupId!);
   return row;
 }
 
@@ -1391,6 +1396,8 @@ function unpackAction(row: unknown[]): NetworkServerSnapshotAction {
     buildingBlueprintId: null,
     grid: null,
     buildingId: null,
+    waitGather: null,
+    waitGroupId: null,
   };
   if ((flags & ACTION_FLAG_POS) !== 0) {
     const x = row[i++] as number;
@@ -1407,6 +1414,8 @@ function unpackAction(row: unknown[]): NetworkServerSnapshotAction {
     action.grid = { x, y };
   }
   if ((flags & ACTION_FLAG_BUILDING_ID) !== 0) action.buildingId = row[i++] as number;
+  if ((flags & ACTION_FLAG_WAIT_GATHER) !== 0) action.waitGather = true;
+  if ((flags & ACTION_FLAG_WAIT_GROUP_ID) !== 0) action.waitGroupId = row[i++] as number;
   return action;
 }
 

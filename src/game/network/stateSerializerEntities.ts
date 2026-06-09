@@ -591,6 +591,19 @@ function hasInactiveTurretWire(turrets: readonly NetworkServerSnapshotTurret[] |
   return false;
 }
 
+function hasGatherWaitActionWire(actions: readonly NetworkServerSnapshotAction[] | null): boolean {
+  if (actions === null) return false;
+  for (let i = 0; i < actions.length; i++) {
+    if (
+      actions[i].waitGather !== null && actions[i].waitGather !== undefined ||
+      actions[i].waitGroupId !== null && actions[i].waitGroupId !== undefined
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function hasFactoryRouteWire(building: BuildingSub): boolean {
   return building.factory?.route !== null && building.factory?.route !== undefined;
 }
@@ -610,7 +623,8 @@ function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void 
       (entity.unit.moveState !== null && entity.unit.moveState !== undefined) ||
       (entity.unit.holdPosition !== null && entity.unit.holdPosition !== undefined) ||
       (entity.unit.wantCloak !== null && entity.unit.wantCloak !== undefined) ||
-      (entity.unit.cloaked !== null && entity.unit.cloaked !== undefined)
+      (entity.unit.cloaked !== null && entity.unit.cloaked !== undefined) ||
+      hasGatherWaitActionWire(entity.unit.actions)
     ) {
       appendRawEntityWireRow();
       return;
@@ -688,6 +702,7 @@ function unitHasNonDefaultCommandState(entity: Entity): boolean {
     unit.moveState !== 'maneuver' ||
     unit.wantCloak === true ||
     unit.cloaked === true ||
+    unit.actions.some((action) => action.waitGather === true || action.waitGroupId !== undefined) ||
     fireState !== 'fireAtWill' ||
     (combat !== null && combat.trajectoryMode !== 'auto');
 }

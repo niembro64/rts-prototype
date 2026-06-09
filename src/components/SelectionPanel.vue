@@ -438,6 +438,11 @@ function toggleWaitFromClick(event: MouseEvent): void {
   props.actions.toggleSelectedWait(queueMode.queue, queueMode.queueFront, queueMode.queueInsertIndex);
 }
 
+function toggleGatherWaitFromClick(event: MouseEvent): void {
+  const queueMode = queueModeFromEvent(event, props.selection.queueInsertIndex);
+  props.actions.toggleSelectedGatherWait(queueMode.queue, queueMode.queueFront, queueMode.queueInsertIndex);
+}
+
 function queueFactoryUnitFromClick(factoryId: number, unitBlueprintId: string, event: MouseEvent): void {
   const repeat = !event.shiftKey;
   const count = !repeat && event.altKey ? 5 : 1;
@@ -803,6 +808,17 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
         >
           <span class="btn-label">Wait</span>
           <span class="btn-key">{{ hotkey('command.wait') }}</span>
+        </button>
+        <button
+          type="button"
+          class="action-btn"
+          :class="{ active: selection.isGatherWaiting }"
+          :style="{ '--btn-color': BUTTON_COLORS.wait }"
+          :title="actionTitle('Gather Wait', 'command.gatherWait', 'Shift-click queues; Ctrl/Cmd+Shift-click inserts next')"
+          @click="toggleGatherWaitFromClick"
+        >
+          <span class="btn-label">Gather</span>
+          <span class="btn-key">{{ hotkey('command.gatherWait') }}</span>
         </button>
         <button
           type="button"

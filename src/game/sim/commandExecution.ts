@@ -740,9 +740,31 @@ function executeSetCloakStateCommand(ctx: CommandContext, command: SetCloakState
   }
 }
 
+function resolveGatherWaitGroupId(command: WaitCommand): number {
+  const provided = command.waitGroupId;
+  if (
+    typeof provided === 'number' &&
+    Number.isInteger(provided) &&
+    provided >= 0 &&
+    provided <= 0x7FFF_FFFF
+  ) {
+    return provided;
+  }
+  let hash = Math.imul(command.tick | 0, 0x45D9F3B) >>> 0;
+  for (let i = 0; i < command.entityIds.length; i++) {
+    hash = Math.imul(hash ^ command.entityIds[i], 0x01000193) >>> 0;
+  }
+  hash = Math.imul(hash ^ (command.queue ? 0x9E3779B1 : 0), 0x01000193) >>> 0;
+  hash = Math.imul(hash ^ (command.queueFront ? 0x85EBCA6B : 0), 0x01000193) >>> 0;
+  hash = Math.imul(hash ^ (command.queueInsertIndex ?? 0), 0x01000193) >>> 0;
+  return hash & 0x7FFF_FFFF;
+}
+
 function executeWaitCommand(ctx: CommandContext, command: WaitCommand): void {
   const units: Entity[] = [];
   let allWaiting = true;
+  const gatherWait = command.gather === true;
+  const waitGroupId = gatherWait ? resolveGatherWaitGroupId(command) : undefined;
 
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
@@ -780,6 +802,10 @@ function executeWaitCommand(ctx: CommandContext, command: WaitCommand): void {
       y,
       z: anchor !== undefined && anchor.z !== undefined ? anchor.z : ctx.world.getGroundZ(x, y),
     };
+    if (gatherWait) {
+      action.waitGather = true;
+      action.waitGroupId = waitGroupId;
+    }
 
     if (command.queue) {
       addQueuedActionToUnit(unit, action, queueFront, queueInsertIndex);

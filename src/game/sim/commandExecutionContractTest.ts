@@ -1,4 +1,5 @@
 import { ConstructionSystem } from './construction';
+import { CommandQueue } from './commands';
 import {
   buildMassAwareGroupFormationSlots,
   executeCommand,
@@ -6,8 +7,9 @@ import {
   type CommandContext,
 } from './commandExecution';
 import { applyCompletedBuildingEffects } from './buildingCompletion';
+import { Simulation } from './Simulation';
 import type { Entity } from './types';
-import { setUnitActions } from './unitActions';
+import { setUnitActions, shiftUnitAction } from './unitActions';
 import { WorldState } from './WorldState';
 
 function assertContract(condition: unknown, message: string): asserts condition {
@@ -38,6 +40,10 @@ function assertActionTargetIds(actions: readonly { targetId?: number }[], expect
       `${message}: action ${i} expected target ${expected[i]}, got ${actions[i].targetId ?? 'none'}`,
     );
   }
+}
+
+function firstActionType(entity: Entity): string | undefined {
+  return entity.unit?.actions[0]?.type;
 }
 
 function completeTestBuilding(world: WorldState, entity: Entity): void {
@@ -141,6 +147,69 @@ export function runCommandExecutionContractTest(): void {
   assertContract(
     unit.unit?.wantCloak === true && unit.unit.cloaked === true,
     'setCloakState command should apply desired and active cloak state',
+  );
+
+  const gatherA = world.createUnitFromBlueprint(100, 240, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  const gatherB = world.createUnitFromBlueprint(110, 240, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  world.addEntity(gatherA);
+  world.addEntity(gatherB);
+  executeCommand({
+    world,
+    constructionSystem: construction,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  }, {
+    type: 'wait',
+    tick: 1,
+    entityIds: [gatherA.id, gatherB.id],
+    queue: false,
+    gather: true,
+    waitGroupId: 1234,
+  });
+  assertContract(
+    gatherA.unit?.actions[0]?.waitGather === true &&
+      gatherB.unit?.actions[0]?.waitGather === true &&
+      gatherA.unit.actions[0].waitGroupId === 1234 &&
+      gatherB.unit.actions[0].waitGroupId === 1234,
+    'gather wait command should stamp selected units with one wait group',
+  );
+
+  const gatherReleaseWorld = new WorldState(1, 512, 512);
+  const gatherReleaseQueue = new CommandQueue();
+  const gatherReleaseSim = new Simulation(gatherReleaseWorld, gatherReleaseQueue);
+  const readyUnit = gatherReleaseWorld.createUnitFromBlueprint(40, 40, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  const delayedUnit = gatherReleaseWorld.createUnitFromBlueprint(60, 40, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  gatherReleaseWorld.addEntity(readyUnit);
+  gatherReleaseWorld.addEntity(delayedUnit);
+  setUnitActions(readyUnit.unit!, [
+    { type: 'wait', x: 40, y: 40, waitGather: true, waitGroupId: 77 },
+    { type: 'move', x: 80, y: 40 },
+  ]);
+  setUnitActions(delayedUnit.unit!, [
+    { type: 'move', x: 50, y: 40 },
+    { type: 'wait', x: 60, y: 40, waitGather: true, waitGroupId: 77 },
+    { type: 'move', x: 90, y: 40 },
+  ]);
+  gatherReleaseSim.update(16);
+  assertContract(
+    firstActionType(readyUnit) === 'wait' && firstActionType(delayedUnit) === 'move',
+    'gather wait should hold ready units while another group member has not reached the wait marker',
+  );
+  shiftUnitAction(delayedUnit.unit!);
+  gatherReleaseSim.update(16);
+  assertContract(
+    firstActionType(readyUnit) === 'move' &&
+      firstActionType(delayedUnit) === 'move',
+    'gather wait should release every ready group member once all remaining markers are active',
   );
 
   const open = resolvePathableFormationTarget(world, grid, unit, 180, 240);

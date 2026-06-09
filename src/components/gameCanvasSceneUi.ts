@@ -110,6 +110,7 @@ export function useGameCanvasSceneUi({
     hasTowerTargetActive: false,
     isTowerTargetMode: false,
     isWaiting: false,
+    isGatherWaiting: false,
     isRepeatQueue: false,
     isHoldPosition: false,
     unitMoveState: 'maneuver',
@@ -244,6 +245,9 @@ export function useGameCanvasSceneUi({
     },
     toggleSelectedWait: (queue, queueFront, queueInsertIndex) => {
       getActiveBattleScene()?.toggleSelectedWait(queue, queueFront, queueInsertIndex);
+    },
+    toggleSelectedGatherWait: (queue, queueFront, queueInsertIndex) => {
+      getActiveBattleScene()?.toggleSelectedGatherWait(queue, queueFront, queueInsertIndex);
     },
     toggleSelectedFire: () => {
       getActiveBattleScene()?.toggleSelectedFire();

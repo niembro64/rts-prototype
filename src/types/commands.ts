@@ -322,6 +322,8 @@ export type WaitCommand = BaseCommand & {
   queue: boolean;
   queueFront?: boolean;
   queueInsertIndex?: number;
+  gather?: boolean;
+  waitGroupId?: number;
 };
 
 export type AttackCommand = BaseCommand & {

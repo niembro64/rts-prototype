@@ -756,6 +756,8 @@ export type NetworkServerSnapshotAction = {
   buildingBlueprintId: string | null;
   grid: Vec2 | null;
   buildingId: number | null;
+  waitGather?: boolean | null;
+  waitGroupId?: number | null;
 };
 
 export type NetworkServerSnapshotTurret = {

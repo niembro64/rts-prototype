@@ -33,6 +33,7 @@ export class InputSelectedCommands {
   private source: SelectedCommandEntitySource;
   private readonly commandQueue: CommandQueue;
   private readonly getTick: () => number;
+  private gatherWaitSerial = 0;
 
   constructor(
     source: SelectedCommandEntitySource,
@@ -115,13 +116,30 @@ export class InputSelectedCommands {
   wait(queue: boolean, queueFront = false, queueInsertIndex?: number): void {
     const entityIds = this.selectedUnitIds();
     if (entityIds.length === 0) return;
+    const tick = this.getTick();
     this.commandQueue.enqueue({
       type: 'wait',
-      tick: this.getTick(),
+      tick,
       entityIds,
       queue,
       queueFront,
       queueInsertIndex,
+    });
+  }
+
+  gatherWait(queue: boolean, queueFront = false, queueInsertIndex?: number): void {
+    const entityIds = this.selectedUnitIds();
+    if (entityIds.length === 0) return;
+    const tick = this.getTick();
+    this.commandQueue.enqueue({
+      type: 'wait',
+      tick,
+      entityIds,
+      queue,
+      queueFront,
+      queueInsertIndex,
+      gather: true,
+      waitGroupId: this.createGatherWaitGroupId(entityIds, tick),
     });
   }
 
@@ -308,6 +326,16 @@ export class InputSelectedCommands {
     const entityIds: EntityId[] = [];
     for (let i = 0; i < selectedUnits.length; i++) entityIds.push(selectedUnits[i].id);
     return entityIds;
+  }
+
+  private createGatherWaitGroupId(entityIds: readonly EntityId[], tick: number): number {
+    this.gatherWaitSerial = (this.gatherWaitSerial + 1) & 0x7FFF_FFFF;
+    let hash = Math.imul(tick | 0, 0x45D9F3B) >>> 0;
+    hash = Math.imul(hash ^ this.gatherWaitSerial, 0x01000193) >>> 0;
+    for (let i = 0; i < entityIds.length; i++) {
+      hash = Math.imul(hash ^ entityIds[i], 0x01000193) >>> 0;
+    }
+    return hash & 0x7FFF_FFFF;
   }
 }
 

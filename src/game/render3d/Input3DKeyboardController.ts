@@ -45,6 +45,7 @@ type Input3DKeyboardControllerConfig = {
   removeLastQueuedOrder: () => void;
   clearQueuedOrders: () => void;
   toggleSelectedWait: (queue: boolean, queueFront?: boolean, queueInsertIndex?: number) => void;
+  toggleSelectedGatherWait: (queue: boolean, queueFront?: boolean, queueInsertIndex?: number) => void;
   toggleRepeatQueue: () => void;
   clearSelectedFactoryGuard: () => void;
   stopSelectedFactoryProduction: () => void;
@@ -354,6 +355,12 @@ export class Input3DKeyboardController {
         {
           const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
           this.config.toggleSelectedWait(queueMode.queue, queueMode.queueFront, queueMode.queueInsertIndex);
+        }
+        break;
+      case 'command.gatherWait':
+        {
+          const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
+          this.config.toggleSelectedGatherWait(queueMode.queue, queueMode.queueFront, queueMode.queueInsertIndex);
         }
         break;
       case 'command.repeat':

@@ -253,6 +253,16 @@ function sanitizeQueueInsertIndex(queue: boolean, queueFront: boolean, queueInse
     : null;
 }
 
+function sanitizeWaitGroupId(value: unknown): number | undefined | null {
+  if (value === undefined) return undefined;
+  return typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= 0x7FFF_FFFF
+    ? value
+    : null;
+}
+
 function sanitizeFormationSpeed(value: unknown): MoveCommand['formationSpeed'] | null {
   if (value === undefined) return undefined;
   return value === 'slowest' ? 'slowest' : null;
@@ -334,14 +344,20 @@ function sanitizeUnitListCommand(
 
 function sanitizeWaitCommand(command: WaitCommand, tick: number): WaitCommand | null {
   const entityIds = sanitizeEntityIdArray(command.entityIds);
-  if (entityIds === null || typeof command.queue !== 'boolean') return null;
+  if (
+    entityIds === null ||
+    typeof command.queue !== 'boolean' ||
+    (command.gather !== undefined && typeof command.gather !== 'boolean')
+  ) return null;
   const queueFront = sanitizeQueueFront(command.queue, command.queueFront);
   const queueInsertIndex = queueFront !== null
     ? sanitizeQueueInsertIndex(command.queue, queueFront, command.queueInsertIndex)
     : null;
-  return queueFront === null || queueInsertIndex === null
+  const gather = command.gather === true;
+  const waitGroupId = gather ? sanitizeWaitGroupId(command.waitGroupId) : undefined;
+  return queueFront === null || queueInsertIndex === null || waitGroupId === null
     ? null
-    : { ...command, tick, entityIds, queue: command.queue, queueFront, queueInsertIndex };
+    : { ...command, tick, entityIds, queue: command.queue, queueFront, queueInsertIndex, gather, waitGroupId };
 }
 
 function sanitizeSetFireEnabledCommand(command: SetFireEnabledCommand, tick: number): SetFireEnabledCommand | null {

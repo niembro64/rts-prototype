@@ -838,6 +838,10 @@ export class RtsScene3D {
     this.inputManager?.toggleSelectedWait(queue, queueFront, queueInsertIndex);
   }
 
+  public toggleSelectedGatherWait(queue = false, queueFront = false, queueInsertIndex?: number): void {
+    this.inputManager?.toggleSelectedGatherWait(queue, queueFront, queueInsertIndex);
+  }
+
   public toggleRepeatQueue(): void {
     this.inputManager?.toggleRepeatQueue();
   }

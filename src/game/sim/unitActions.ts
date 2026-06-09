@@ -10,6 +10,8 @@ export function computeUnitActionHash(actions: readonly UnitAction[]): number {
     hash = (hash * 31 + action.y * 1000) | 0;
     hash = (hash * 31 + (action.z !== undefined ? action.z * 1000 : 0)) | 0;
     hash = (hash * 31 + (action.speedLimitFactor !== undefined ? action.speedLimitFactor * 1000 : 1000)) | 0;
+    hash = (hash * 31 + (action.waitGather === true ? 1 : 0)) | 0;
+    hash = (hash * 31 + (action.waitGroupId !== undefined ? action.waitGroupId : 0)) | 0;
     hash = (hash * 31 + action.type.length) | 0;
     for (let j = 0; j < action.type.length; j++) {
       hash = (hash * 31 + action.type.charCodeAt(j)) | 0;

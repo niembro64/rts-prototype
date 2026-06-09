@@ -11,6 +11,7 @@ import type {
   SetShieldReflectionModeCommand,
   SetTurretShieldPanelsEnabledCommand,
   SetTurretShieldSpheresEnabledCommand,
+  WaitCommand,
 } from '../sim/commands';
 import { WorldState } from '../sim/WorldState';
 import {
@@ -134,6 +135,19 @@ export function runCommandSanitizerContractTest(): void {
   assertContract(
     cloakState.enabled === true,
     'setCloakState must accept enabled=true',
+  );
+
+  const gatherWait = sanitizeRequired<WaitCommand>(world, {
+    type: 'wait',
+    tick: 7,
+    entityIds: [7, 8],
+    queue: true,
+    gather: true,
+    waitGroupId: 99,
+  });
+  assertContract(
+    gatherWait.gather === true && gatherWait.waitGroupId === 99,
+    'wait command must accept gather wait state and group id',
   );
 
   const formationSpeedMove = sanitizeRequired<MoveCommand>(world, {

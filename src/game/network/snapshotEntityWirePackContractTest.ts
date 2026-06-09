@@ -2,6 +2,7 @@ import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotEntity,
 } from './NetworkTypes';
+import { ACTION_TYPE_WAIT } from '../../types/network';
 import { roundTripEntitiesThroughWire } from './snapshotEntityWirePack';
 
 function assertContract(condition: boolean, message: string): void {
@@ -77,7 +78,20 @@ export function runSnapshotEntityWirePackContractTest(): void {
           isCommander: null,
           buildTargetId: null,
           buildTargetIdPresent: false,
-          actions: null,
+          actions: [
+            {
+              type: ACTION_TYPE_WAIT,
+              pos: { x: 30, y: 40 },
+              posZ: null,
+              pathExp: null,
+              targetId: null,
+              buildingBlueprintId: null,
+              grid: null,
+              buildingId: null,
+              waitGather: true,
+              waitGroupId: 456,
+            },
+          ],
           turrets: null,
           build: null,
         },
@@ -135,5 +149,10 @@ export function runSnapshotEntityWirePackContractTest(): void {
   assertContract(
     decodedRoamUnit?.unit?.wantCloak === true && decodedRoamUnit?.unit?.cloaked === true,
     'unit cloak state must survive compact entity wire round trip',
+  );
+  assertContract(
+    decodedRoamUnit?.unit?.actions?.[0]?.waitGather === true &&
+      decodedRoamUnit.unit.actions[0].waitGroupId === 456,
+    'unit gather-wait action metadata must survive compact entity wire round trip',
   );
 }

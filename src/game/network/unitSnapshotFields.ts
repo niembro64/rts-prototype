@@ -101,6 +101,8 @@ function decodeNetworkUnitAction(action: NetworkServerSnapshotAction): UnitActio
     gridX: grid !== null && grid !== undefined ? grid.x : undefined,
     gridY: grid !== null && grid !== undefined ? grid.y : undefined,
     buildingId: action.buildingId ?? undefined,
+    waitGather: action.waitGather === true ? true : undefined,
+    waitGroupId: action.waitGroupId ?? undefined,
   };
 }
 
@@ -365,6 +367,8 @@ export function writeNetworkUnitActions(
     action.buildingId = canReferenceEntityId !== undefined && canReferenceEntityId(src.buildingId) === false
       ? null
       : src.buildingId ?? null;
+    action.waitGather = src.waitGather === true ? true : null;
+    action.waitGroupId = src.waitGroupId ?? null;
   }
   dst.actions = actionPool;
 }

@@ -83,6 +83,10 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid T should resolve repeat orders',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('y', 'KeyY', { ctrlKey: true, altKey: true }), 'bar-grid') === 'command.gatherWait',
+    'bar-grid Ctrl+Alt+Y should resolve gather wait',
+  );
+  assertContract(
     resolveCommandHotkey(keyEvent(';', 'Semicolon'), 'bar-grid') === 'command.moveState',
     'bar-grid semicolon should resolve move state',
   );

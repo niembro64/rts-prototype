@@ -493,6 +493,19 @@ function hasInactiveTurret(turrets: readonly NetworkServerSnapshotTurret[] | nul
   return false;
 }
 
+function hasGatherWaitAction(actions: readonly NetworkServerSnapshotAction[] | null): boolean {
+  if (actions === null) return false;
+  for (let i = 0; i < actions.length; i++) {
+    if (
+      actions[i].waitGather !== null && actions[i].waitGather !== undefined ||
+      actions[i].waitGroupId !== null && actions[i].waitGroupId !== undefined
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function unitNeedsRawFallback(unit: SnapshotUnit): boolean {
   return (
     (unit.unitBlueprintCode !== null && !isUint(unit.unitBlueprintCode, 0xFFFF_FFFF)) ||
@@ -512,6 +525,7 @@ function unitNeedsRawFallback(unit: SnapshotUnit): boolean {
     (unit.holdPosition !== null && unit.holdPosition !== undefined) ||
     (unit.wantCloak !== null && unit.wantCloak !== undefined) ||
     (unit.cloaked !== null && unit.cloaked !== undefined) ||
+    hasGatherWaitAction(unit.actions) ||
     unit.isCommander === false ||
     unit.build?.interrupted === true
   );

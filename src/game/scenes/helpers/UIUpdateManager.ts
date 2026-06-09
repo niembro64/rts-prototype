@@ -68,7 +68,7 @@ function unitActionLabel(action: UnitAction): string {
     case 'build': return 'Build';
     case 'repair': return 'Repair';
     case 'reclaim': return 'Reclaim';
-    case 'wait': return 'Wait';
+    case 'wait': return action.waitGather === true ? 'Gather Wait' : 'Wait';
     case 'attack': return 'Attack';
     case 'attackGround': return 'Attack Ground';
     case 'guard': return 'Guard';
@@ -255,13 +255,18 @@ function addMultiSelectionStateDetails(
   }
 
   let waitingCount = 0;
+  let gatherWaitingCount = 0;
   let repeatCount = 0;
   let holdPositionCount = 0;
   let roamCount = 0;
   let wantCloakCount = 0;
   let cloakedCount = 0;
   for (let i = 0; i < selectedUnits.length; i++) {
-    if (selectedUnits[i].unit?.actions[0]?.type === 'wait') waitingCount++;
+    const firstAction = selectedUnits[i].unit?.actions[0];
+    if (firstAction?.type === 'wait') {
+      waitingCount++;
+      if (firstAction.waitGather === true) gatherWaitingCount++;
+    }
     if (selectedUnits[i].unit?.repeatQueue === true) repeatCount++;
     if (selectedUnits[i].unit?.moveState === 'holdPosition') holdPositionCount++;
     if (selectedUnits[i].unit?.moveState === 'roam') roamCount++;
@@ -272,6 +277,12 @@ function addMultiSelectionStateDetails(
     details.push({
       label: 'Wait',
       value: waitingCount === selectedUnits.length ? 'On' : `${waitingCount}/${selectedUnits.length}`,
+    });
+  }
+  if (gatherWaitingCount > 0) {
+    details.push({
+      label: 'Gather Wait',
+      value: gatherWaitingCount === selectedUnits.length ? 'On' : `${gatherWaitingCount}/${selectedUnits.length}`,
     });
   }
   if (repeatCount > 0) {
@@ -377,7 +388,10 @@ function buildSingleSelectionDetails(entity: Entity): SelectionInfo['details'] {
       if (trajectory !== null) details.push({ label: 'Trajectory', value: trajectory });
       const cloak = cloakStateLabel(entity);
       if (cloak !== null) details.push({ label: 'Cloak', value: cloak });
-      if (entity.unit.actions[0]?.type === 'wait') details.push({ label: 'Wait', value: 'On' });
+      const firstAction = entity.unit.actions[0];
+      if (firstAction?.type === 'wait') {
+        details.push({ label: firstAction.waitGather === true ? 'Gather Wait' : 'Wait', value: 'On' });
+      }
       if (entity.unit.repeatQueue === true) details.push({ label: 'Repeat', value: 'On' });
       if (entity.unit.moveState !== 'maneuver') {
         details.push({ label: 'Move State', value: unitMoveStateLabel(entity.unit.moveState) });
@@ -517,6 +531,7 @@ export function buildSelectionInfo(
   let holdFireCount = 0;
   let hasPriorityTarget = false;
   let waitingCount = 0;
+  let gatherWaitingCount = 0;
   let repeatCount = 0;
   let holdPositionCount = 0;
   let maneuverCount = 0;
@@ -527,7 +542,10 @@ export function buildSelectionInfo(
   for (let i = 0; i < selectedUnits.length; i++) {
     const selectedUnit = selectedUnits[i];
     const actions = selectedUnit.unit?.actions;
-    if (actions?.[0]?.type === 'wait') waitingCount++;
+    if (actions?.[0]?.type === 'wait') {
+      waitingCount++;
+      if (actions[0].waitGather === true) gatherWaitingCount++;
+    }
     if (selectedUnit.unit?.repeatQueue === true) repeatCount++;
     if (selectedUnit.unit?.moveState === 'holdPosition') holdPositionCount++;
     if (selectedUnit.unit?.moveState === 'roam') roamCount++;
@@ -684,6 +702,7 @@ export function buildSelectionInfo(
     hasTowerTargetActive: hasPriorityTarget,
     isTowerTargetMode: inputState?.isTowerTargetMode ?? false,
     isWaiting: selectedUnits.length > 0 && waitingCount === selectedUnits.length,
+    isGatherWaiting: selectedUnits.length > 0 && gatherWaitingCount === selectedUnits.length,
     isRepeatQueue: selectedUnits.length > 0 && repeatCount === selectedUnits.length,
     isHoldPosition: selectedUnits.length > 0 && holdPositionCount === selectedUnits.length,
     unitMoveState: selectedUnits.length === 0

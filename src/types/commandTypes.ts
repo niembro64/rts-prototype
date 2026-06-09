@@ -39,6 +39,8 @@ export type UnitAction = {
   buildingId?: EntityId;
   targetId?: EntityId;
   isPathExpansion?: boolean;
+  waitGather?: boolean;
+  waitGroupId?: number;
 };
 
 export type UnitPathPoint = {

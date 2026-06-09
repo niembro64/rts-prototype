@@ -129,6 +129,7 @@ export class Simulation {
   private eventQueues = new SimulationEventQueues();
 
   private _movingUnitsBuf: Entity[] = [];
+  private _gatherWaitGroups: Map<string, { groupId: number; members: Entity[] }> = new Map();
 
   // Reusable buffers for shared energy distribution (avoid per-tick allocations)
   private energyBuffers: EnergyBuffers = createEnergyBuffers();
@@ -540,6 +541,65 @@ export class Simulation {
     this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
   }
 
+  private gatherWaitGroupIdForAction(action: UnitAction | undefined): number | undefined {
+    if (
+      action === undefined ||
+      action.type !== 'wait' ||
+      action.waitGather !== true ||
+      action.waitGroupId === undefined ||
+      !Number.isInteger(action.waitGroupId)
+    ) return undefined;
+    return action.waitGroupId;
+  }
+
+  private findQueuedGatherWaitGroupId(unit: Unit): number | undefined {
+    for (let i = 0; i < unit.actions.length; i++) {
+      const groupId = this.gatherWaitGroupIdForAction(unit.actions[i]);
+      if (groupId !== undefined) return groupId;
+    }
+    return undefined;
+  }
+
+  private releaseReadyGatherWaits(): void {
+    const groups = this._gatherWaitGroups;
+    groups.clear();
+    for (const entity of this.world.getUnits()) {
+      const unit = entity.unit;
+      if (unit === null || unit.hp <= 0) continue;
+      const groupId = this.findQueuedGatherWaitGroupId(unit);
+      if (groupId === undefined) continue;
+      const ownerId = entity.ownership?.playerId ?? 0;
+      const groupKey = `${ownerId}:${groupId}`;
+      let group = groups.get(groupKey);
+      if (group === undefined) {
+        group = { groupId, members: [] };
+        groups.set(groupKey, group);
+      }
+      group.members.push(entity);
+    }
+
+    for (const { groupId, members } of groups.values()) {
+      let ready = members.length > 0;
+      for (let i = 0; i < members.length; i++) {
+        const unit = members[i].unit;
+        if (unit === null || this.gatherWaitGroupIdForAction(unit.actions[0]) !== groupId) {
+          ready = false;
+          break;
+        }
+      }
+      if (!ready) continue;
+      for (let i = 0; i < members.length; i++) {
+        const entity = members[i];
+        const unit = entity.unit;
+        if (unit === null || this.gatherWaitGroupIdForAction(unit.actions[0]) !== groupId) continue;
+        shiftUnitAction(unit);
+        unit.stuckTicks = 0;
+        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+      }
+    }
+    groups.clear();
+  }
+
   // Update unit movement with action queue processing.
   // unit.thrustDirX/Y is what GameServer.applyForces reads — a (0, 0)
   // means "no powered thrust this tick"; vector magnitude scales drive
@@ -551,6 +611,7 @@ export class Simulation {
     movingUnits.length = 0;
     this.arrivalController.beginFrame();
     this.combatHaltController.prepare();
+    this.releaseReadyGatherWaits();
 
     for (const entity of this.world.getUnits()) {
       spatialGrid.updateUnit(entity);

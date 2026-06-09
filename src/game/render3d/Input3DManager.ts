@@ -266,6 +266,8 @@ export class Input3DManager {
       clearQueuedOrders: () => this.clearQueuedOrders(),
       toggleSelectedWait: (queue, queueFront, queueInsertIndex) =>
         this.toggleSelectedWait(queue, queueFront, queueInsertIndex),
+      toggleSelectedGatherWait: (queue, queueFront, queueInsertIndex) =>
+        this.toggleSelectedGatherWait(queue, queueFront, queueInsertIndex),
       toggleRepeatQueue: () => this.toggleRepeatQueue(),
       clearSelectedFactoryGuard: () => this.clearSelectedFactoryGuard(),
       stopSelectedFactoryProduction: () => this.stopSelectedFactoryProduction(),
@@ -563,6 +565,10 @@ export class Input3DManager {
 
   toggleSelectedWait(queue = false, queueFront = false, queueInsertIndex?: number): void {
     this.selectedCommands.wait(queue, queueFront, queueInsertIndex);
+  }
+
+  toggleSelectedGatherWait(queue = false, queueFront = false, queueInsertIndex?: number): void {
+    this.selectedCommands.gatherWait(queue, queueFront, queueInsertIndex);
   }
 
   toggleRepeatQueue(): void {

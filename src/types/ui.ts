@@ -76,6 +76,7 @@ export type SelectionInfo = {
    *  tower's lock-on target. Highlights the Set Target button. */
   isTowerTargetMode: boolean;
   isWaiting: boolean;
+  isGatherWaiting: boolean;
   isRepeatQueue: boolean;
   isHoldPosition: boolean;
   unitMoveState: UnitMoveState | 'mixed';
@@ -123,6 +124,7 @@ export type SelectionActions = {
   toggleTrajectoryMode: () => void;
   toggleCloakState: () => void;
   toggleSelectedWait: (queue?: boolean, queueFront?: boolean, queueInsertIndex?: number) => void;
+  toggleSelectedGatherWait: (queue?: boolean, queueFront?: boolean, queueInsertIndex?: number) => void;
   toggleSelectedFire: () => void;
   /** ON/OFF for producer buildings in the selection. */
   toggleBuildingActive: () => void;

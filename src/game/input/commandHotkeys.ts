@@ -6,6 +6,7 @@ export type CommandHotkeyId =
   | 'formation.move'
   | 'command.stop'
   | 'command.wait'
+  | 'command.gatherWait'
   | 'command.repeat'
   | 'command.factoryGuard'
   | 'command.moveState'
@@ -108,6 +109,7 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'formation.move',
   'command.stop',
   'command.wait',
+  'command.gatherWait',
   'command.repeat',
   'command.factoryGuard',
   'command.moveState',
@@ -193,6 +195,7 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'formation.move': 'Move In Formation',
   'command.stop': 'Stop',
   'command.wait': 'Wait',
+  'command.gatherWait': 'Gather Wait',
   'command.repeat': 'Repeat Orders',
   'command.factoryGuard': 'Factory Guard',
   'command.moveState': 'Move State',
@@ -298,6 +301,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
       key('W', 'w', { shift: 'any' }),
       key('Ctrl+Shift+W', 'w', { ctrl: true, shift: true }),
     ],
+    'command.gatherWait': [code('Ctrl+Alt+W', 'KeyW', { ctrl: true, alt: true })],
     'command.repeat': [key('Alt+R', 'r', { alt: true })],
     'command.factoryGuard': [code('Ctrl+G', 'KeyG', { ctrl: true })],
     'command.moveState': [key('Alt+H', 'h', { alt: true })],
@@ -378,6 +382,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
       code('Y', 'KeyY', { shift: 'any' }),
       code('Ctrl+Shift+Y', 'KeyY', { ctrl: true, shift: true }),
     ],
+    'command.gatherWait': [code('Ctrl+Alt+Y', 'KeyY', { ctrl: true, alt: true })],
     'command.repeat': [code('T', 'KeyT', { shift: 'any' })],
     'command.factoryGuard': [code('Ctrl+G', 'KeyG', { ctrl: true })],
     'command.moveState': [code(';', 'Semicolon', { shift: 'any' })],
@@ -473,6 +478,7 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
       code('W', 'KeyW', { shift: 'any' }),
       code('Ctrl+Shift+W', 'KeyW', { ctrl: true, shift: true }),
     ],
+    'command.gatherWait': [code('Ctrl+Alt+W', 'KeyW', { ctrl: true, alt: true })],
     'command.repeat': [code('Alt+R', 'KeyR', { alt: true })],
     'command.factoryGuard': [code('Ctrl+G', 'KeyG', { ctrl: true })],
     'command.moveState': [code('Alt+H', 'KeyH', { alt: true })],
