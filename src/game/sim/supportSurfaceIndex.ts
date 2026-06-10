@@ -2,7 +2,6 @@ import type { Entity, EntityId } from './types';
 import {
   SUPPORT_SURFACE_CONTACT_EPSILON,
   SUPPORT_SURFACE_FOOTPRINT_EPSILON,
-  SUPPORT_SURFACE_VERTICAL_PROBE,
   writeBuildingSupportSurface,
   writeUnitSupportSurfaceVelocity,
   type WorldSupportSurface,
@@ -350,8 +349,7 @@ export class SupportSurfaceIndex {
       : 0;
     const groundPointZ = bodyZ - groundOffset;
     if (bodyZ < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) return false;
-    if (groundPointZ < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) return false;
-    return groundPointZ <= topZ + SUPPORT_SURFACE_VERTICAL_PROBE;
+    return groundPointZ >= topZ - SUPPORT_SURFACE_CONTACT_EPSILON;
   }
 
   private cellCoord(value: number): number {

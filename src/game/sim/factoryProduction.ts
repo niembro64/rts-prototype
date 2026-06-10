@@ -35,7 +35,6 @@ const FACTORY_ACTION_COMPLETE_SHELL = 2;
 const FACTORY_ACTION_CLEAR_INVALID_SELECTION = 3;
 const FACTORY_ACTION_STOP_PRODUCING = 4;
 const FACTORY_ACTION_SPAWN_SHELL = 5;
-const FACTORY_SHELL_AIR_SPAWN_HEIGHT = 160;
 const MAX_FACTORY_PRODUCTION_QUEUE_LENGTH = 64;
 
 let factoryRows: Entity[] = [];
@@ -98,15 +97,10 @@ function directFactoryRallyActions(
   return { actions, patrolStartIndex };
 }
 
-function getFactoryShellSpawnZ(world: WorldState, factory: Entity): number {
-  return world.sampleSupportSurface(factory.transform.x, factory.transform.y).groundZ
-    + FACTORY_SHELL_AIR_SPAWN_HEIGHT;
-}
-
 // Factory production system
 export class FactoryProductionSystem {
   // Update all factories. The factory's job is now (a) spawning a
-  // shell of the selected repeat-build unit above its center bay when
+  // shell of the selected repeat-build unit on its center support when
   // work begins, and (b) detecting completion of the shell and finishing the
   // activation (static rally + turret aim). Resource transfer into the
   // shell is handled by energyDistribution, the same path that funds
@@ -264,7 +258,7 @@ export class FactoryProductionSystem {
     return { spawnedUnits, completedUnits };
   }
 
-  // Spawn a construction shell of `unitBlueprintId` above the factory's center bay.
+  // Spawn a construction shell of `unitBlueprintId` on the factory's center support.
   // The shell starts at 0/0/0 paid; energyDistribution fills it. The
   // unit is fully constructed (renderer-ready), but its active build
   // state suppresses combat/orders until each resource bar tops up.
@@ -284,10 +278,6 @@ export class FactoryProductionSystem {
       factory.ownership.playerId,
       unitBlueprintId,
     );
-    // Factory shells are allowed to begin above occupied pads. Physics
-    // owns the fall and final resting place instead of rejecting the job
-    // when a unit or building currently overlaps the authored spot.
-    unit.transform.z = getFactoryShellSpawnZ(world, factory);
     unit.buildable = createBuildable({
       energy: bp.cost.energy * COST_MULTIPLIER,
       metal: bp.cost.metal * COST_MULTIPLIER,

@@ -14553,7 +14553,9 @@ pub fn spatial_slot_kind(slot: u32) -> u8 {
 //  snap-to-component, A*, Bresenham LOS smoothing) runs inside one
 //  WASM call. JS-side Pathfinder.ts becomes a thin wrapper that
 //  forwards (start, goal, mapWidth, mapHeight, buildingGrid.occupiedCells,
-//  terrainFilter) and reads the smoothed waypoint scratch.
+//  terrainFilter) and reads the smoothed waypoint scratch. Building
+//  footprints are valid roof/support cells only for units that already
+//  start on that roof; physics owns the fall from roof to terrain.
 //
 //  Mask + CC are cached internally; JS passes the terrain + building
 //  version pair on each call, the Rust side rebuilds only when the
@@ -14568,7 +14570,6 @@ pub fn spatial_slot_kind(slot: u32) -> u8 {
 // Constants — kept in sync with Pathfinder.ts.
 const PATHFINDER_BUILD_GRID_CELL_SIZE: f64 = 20.0;
 const PATHFINDER_TERRAIN_INFLATION_CELLS: i32 = 2;
-const PATHFINDER_BUILDING_INFLATION_CELLS: i32 = 1;
 const PATHFINDER_SLOPE_BLOCK_NZ: f32 = 0.34;
 const PATHFINDER_SNAP_RADIUS_CELLS: i32 = 32;
 const PATHFINDER_MAX_A_STAR_NODES: u32 = 50_000;
@@ -14584,7 +14585,11 @@ struct PathfinderState {
 
     blocked: Vec<u8>,
     terrain_blocked: Vec<u8>,
-    building_blocked: Vec<u8>,
+    // Exact building footprint cells. A query that starts on one roof
+    // may traverse that roof and fall off it; ordinary terrain starts
+    // cannot enter these cells.
+    building_roof: Vec<u8>,
+    roof_labels: Vec<i16>,
     terrain_normal_z: Vec<f32>,
     cc_labels: Vec<i16>,
 
@@ -14619,7 +14624,8 @@ impl PathfinderState {
             map_height: 0.0,
             blocked: Vec::new(),
             terrain_blocked: Vec::new(),
-            building_blocked: Vec::new(),
+            building_roof: Vec::new(),
+            roof_labels: Vec::new(),
             terrain_normal_z: Vec::new(),
             cc_labels: Vec::new(),
             g_score: Vec::new(),
@@ -14699,8 +14705,10 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
     state.blocked.resize(n, 0);
     state.terrain_blocked.clear();
     state.terrain_blocked.resize(n, 0);
-    state.building_blocked.clear();
-    state.building_blocked.resize(n, 0);
+    state.building_roof.clear();
+    state.building_roof.resize(n, 0);
+    state.roof_labels.clear();
+    state.roof_labels.resize(n, 0);
     state.terrain_normal_z.clear();
     state.terrain_normal_z.resize(n, 1.0);
     state.cc_labels.clear();
@@ -14857,31 +14865,69 @@ pub fn pathfinder_rebuild_mask_and_cc(
     let grid_w = state.grid_w;
     let grid_h = state.grid_h;
     state.blocked.copy_from_slice(&state.terrain_blocked);
-    state.building_blocked.fill(0);
+    state.building_roof.fill(0);
 
-    // Building dilation by BUILDING_INFLATION_CELLS.
-    let bk = PATHFINDER_BUILDING_INFLATION_CELLS;
     let mut i = 0usize;
     while i + 1 < building_cells.len() {
         let gx = building_cells[i] as i32;
         let gy = building_cells[i + 1] as i32;
         i += 2;
-        for dy in -bk..=bk {
-            let ny = gy + dy;
-            if ny < 0 || ny >= grid_h {
-                continue;
-            }
-            let row = ny * grid_w;
-            for dx in -bk..=bk {
-                let nx = gx + dx;
-                if nx < 0 || nx >= grid_w {
+        if gx < 0 || gy < 0 || gx >= grid_w || gy >= grid_h {
+            continue;
+        }
+        let idx = (gy * grid_w + gx) as usize;
+        state.building_roof[idx] = 1;
+        state.blocked[idx] = 0;
+    }
+
+    // Label connected roof regions separately from terrain reachability.
+    // Movement may leave a roof, but it cannot enter any roof from
+    // ordinary terrain; per-query passability uses the label of the
+    // start cell to enforce that one-way cliff rule.
+    state.roof_labels.fill(0);
+    let mut next_roof_label: i16 = 1;
+    for seed in 0..state.n {
+        if state.building_roof[seed] == 0 || state.roof_labels[seed] != 0 {
+            continue;
+        }
+        if next_roof_label > 32_000 {
+            break;
+        }
+        state.roof_labels[seed] = next_roof_label;
+        let mut q_head = 0usize;
+        let mut q_tail = 0usize;
+        state.bfs_queue[q_tail] = seed as u32;
+        q_tail += 1;
+        while q_head < q_tail {
+            let idx = state.bfs_queue[q_head] as i32;
+            q_head += 1;
+            let cgx = idx % grid_w;
+            let cgy = (idx - cgx) / grid_w;
+            for dy in -1..=1 {
+                let ny = cgy + dy;
+                if ny < 0 || ny >= grid_h {
                     continue;
                 }
-                let idx = (row + nx) as usize;
-                state.building_blocked[idx] = 1;
-                state.blocked[idx] = 1;
+                let row = ny * grid_w;
+                for dx in -1..=1 {
+                    if dx == 0 && dy == 0 {
+                        continue;
+                    }
+                    let nx = cgx + dx;
+                    if nx < 0 || nx >= grid_w {
+                        continue;
+                    }
+                    let nidx = (row + nx) as usize;
+                    if state.building_roof[nidx] == 0 || state.roof_labels[nidx] != 0 {
+                        continue;
+                    }
+                    state.roof_labels[nidx] = next_roof_label;
+                    state.bfs_queue[q_tail] = nidx as u32;
+                    q_tail += 1;
+                }
             }
         }
+        next_roof_label += 1;
     }
 
     // CC labelling via BFS over open cells.
@@ -14941,9 +14987,13 @@ fn pathfinder_is_cell_passable(
     idx: usize,
     min_normal_z: f32,
     ignore_terrain_blocking: bool,
+    accessible_roof_label: i16,
 ) -> bool {
+    if state.building_roof[idx] != 0 {
+        return accessible_roof_label > 0 && state.roof_labels[idx] == accessible_roof_label;
+    }
     if ignore_terrain_blocking {
-        return state.building_blocked[idx] == 0;
+        return true;
     }
     if state.blocked[idx] == 1 {
         return false;
@@ -14961,6 +15011,7 @@ fn pathfinder_is_grid_cell_passable(
     gy: i32,
     min_normal_z: f32,
     ignore_terrain_blocking: bool,
+    accessible_roof_label: i16,
 ) -> bool {
     if gx < 0 || gy < 0 || gx >= state.grid_w || gy >= state.grid_h {
         return false;
@@ -14970,7 +15021,31 @@ fn pathfinder_is_grid_cell_passable(
         (gy * state.grid_w + gx) as usize,
         min_normal_z,
         ignore_terrain_blocking,
+        accessible_roof_label,
     )
+}
+
+fn pathfinder_can_step_between(
+    state: &PathfinderState,
+    from_idx: usize,
+    to_idx: usize,
+    min_normal_z: f32,
+    ignore_terrain_blocking: bool,
+    accessible_roof_label: i16,
+) -> bool {
+    if !pathfinder_is_cell_passable(
+        state,
+        to_idx,
+        min_normal_z,
+        ignore_terrain_blocking,
+        accessible_roof_label,
+    ) {
+        return false;
+    }
+    if state.building_roof[to_idx] == 0 {
+        return true;
+    }
+    state.building_roof[from_idx] != 0
 }
 
 fn pathfinder_find_nearest_open(
@@ -14979,6 +15054,7 @@ fn pathfinder_find_nearest_open(
     gy: i32,
     min_normal_z: f32,
     ignore_terrain_blocking: bool,
+    accessible_roof_label: i16,
 ) -> Option<(i32, i32)> {
     for &(dx, dy) in &state.snap_offsets {
         let nx = gx + dx as i32;
@@ -14991,11 +15067,77 @@ fn pathfinder_find_nearest_open(
             (ny * state.grid_w + nx) as usize,
             min_normal_z,
             ignore_terrain_blocking,
+            accessible_roof_label,
         ) {
             return Some((nx, ny));
         }
     }
     None
+}
+
+fn pathfinder_find_nearest_open_toward(
+    state: &PathfinderState,
+    gx: i32,
+    gy: i32,
+    target_gx: i32,
+    target_gy: i32,
+    min_normal_z: f32,
+    ignore_terrain_blocking: bool,
+    accessible_roof_label: i16,
+) -> Option<(i32, i32)> {
+    let vx = target_gx - gx;
+    let vy = target_gy - gy;
+    let v_len_sq = vx * vx + vy * vy;
+    if v_len_sq <= 0 {
+        return pathfinder_find_nearest_open(
+            state,
+            gx,
+            gy,
+            min_normal_z,
+            ignore_terrain_blocking,
+            accessible_roof_label,
+        );
+    }
+
+    let mut best: Option<(i32, i32, i32, f64)> = None;
+    let inv_v_len = 1.0 / (v_len_sq as f64).sqrt();
+    for &(dx, dy) in &state.snap_offsets {
+        let nx = gx + dx as i32;
+        let ny = gy + dy as i32;
+        if nx < 0 || ny < 0 || nx >= state.grid_w || ny >= state.grid_h {
+            continue;
+        }
+        if !pathfinder_is_cell_passable(
+            state,
+            (ny * state.grid_w + nx) as usize,
+            min_normal_z,
+            ignore_terrain_blocking,
+            accessible_roof_label,
+        ) {
+            continue;
+        }
+
+        let dx_i = nx - gx;
+        let dy_i = ny - gy;
+        let dist_sq = dx_i * dx_i + dy_i * dy_i;
+        if dist_sq <= 0 {
+            continue;
+        }
+        let projection = dx_i * vx + dy_i * vy;
+        let dir_score = if projection > 0 {
+            (projection as f64) / (dist_sq as f64).sqrt() * inv_v_len
+        } else {
+            -1.0
+        };
+        match best {
+            Some((_, _, best_dist_sq, best_dir_score))
+                if dir_score < best_dir_score - 1.0e-9
+                    || ((dir_score - best_dir_score).abs() <= 1.0e-9
+                        && dist_sq >= best_dist_sq) => {}
+            _ => best = Some((nx, ny, dist_sq, dir_score)),
+        }
+    }
+    best.map(|(x, y, _, _)| (x, y))
 }
 
 fn pathfinder_find_nearest_in_component(
@@ -15005,6 +15147,7 @@ fn pathfinder_find_nearest_in_component(
     component: i16,
     min_normal_z: f32,
     ignore_terrain_blocking: bool,
+    accessible_roof_label: i16,
 ) -> Option<(i32, i32)> {
     if component <= 0 {
         return None;
@@ -15020,7 +15163,13 @@ fn pathfinder_find_nearest_in_component(
         }
         let idx = (ny * grid_w + nx) as usize;
         if state.cc_labels[idx] == component
-            && pathfinder_is_cell_passable(state, idx, min_normal_z, ignore_terrain_blocking)
+            && pathfinder_is_cell_passable(
+                state,
+                idx,
+                min_normal_z,
+                ignore_terrain_blocking,
+                accessible_roof_label,
+            )
         {
             return Some((nx, ny));
         }
@@ -15035,7 +15184,13 @@ fn pathfinder_find_nearest_in_component(
             if state.cc_labels[idx] != component {
                 continue;
             }
-            if !pathfinder_is_cell_passable(state, idx, min_normal_z, ignore_terrain_blocking) {
+            if !pathfinder_is_cell_passable(
+                state,
+                idx,
+                min_normal_z,
+                ignore_terrain_blocking,
+                accessible_roof_label,
+            ) {
                 continue;
             }
             let dx = nx - gx;
@@ -15129,6 +15284,7 @@ fn pathfinder_a_star(
     goal_gy: i32,
     min_normal_z: f32,
     ignore_terrain_blocking: bool,
+    accessible_roof_label: i16,
 ) -> Option<AStarResult> {
     let grid_w = state.grid_w;
     let grid_h = state.grid_h;
@@ -15185,7 +15341,14 @@ fn pathfinder_a_star(
                 continue;
             }
             let nidx = (ny * grid_w + nx) as usize;
-            if !pathfinder_is_cell_passable(state, nidx, min_normal_z, ignore_terrain_blocking) {
+            if !pathfinder_can_step_between(
+                state,
+                cur_us,
+                nidx,
+                min_normal_z,
+                ignore_terrain_blocking,
+                accessible_roof_label,
+            ) {
                 continue;
             }
             if state.closed[nidx] != 0 {
@@ -15246,6 +15409,7 @@ fn pathfinder_has_los(
     y1: f64,
     min_normal_z: f32,
     ignore_terrain_blocking: bool,
+    accessible_roof_label: i16,
 ) -> bool {
     let mut gx = (x0 / PATHFINDER_BUILD_GRID_CELL_SIZE).floor() as i32;
     let mut gy = (y0 / PATHFINDER_BUILD_GRID_CELL_SIZE).floor() as i32;
@@ -15261,7 +15425,15 @@ fn pathfinder_has_los(
         if gx < 0 || gy < 0 || gx >= state.grid_w || gy >= state.grid_h {
             return false;
         }
-        if !pathfinder_is_grid_cell_passable(state, gx, gy, min_normal_z, ignore_terrain_blocking) {
+        let current_idx = (gy * state.grid_w + gx) as usize;
+        if !pathfinder_is_grid_cell_passable(
+            state,
+            gx,
+            gy,
+            min_normal_z,
+            ignore_terrain_blocking,
+            accessible_roof_label,
+        ) {
             return false;
         }
         if gx == tgx && gy == tgy {
@@ -15277,6 +15449,7 @@ fn pathfinder_has_los(
                 gy,
                 min_normal_z,
                 ignore_terrain_blocking,
+                accessible_roof_label,
             ) {
                 return false;
             }
@@ -15286,18 +15459,37 @@ fn pathfinder_has_los(
                 gy + sy,
                 min_normal_z,
                 ignore_terrain_blocking,
+                accessible_roof_label,
             ) {
                 return false;
             }
         }
+        let mut next_gx = gx;
+        let mut next_gy = gy;
         if a_x {
             err -= dy;
-            gx += sx;
+            next_gx += sx;
         }
         if a_y {
             err += dx;
-            gy += sy;
+            next_gy += sy;
         }
+        if next_gx < 0 || next_gy < 0 || next_gx >= state.grid_w || next_gy >= state.grid_h {
+            return false;
+        }
+        let next_idx = (next_gy * state.grid_w + next_gx) as usize;
+        if !pathfinder_can_step_between(
+            state,
+            current_idx,
+            next_idx,
+            min_normal_z,
+            ignore_terrain_blocking,
+            accessible_roof_label,
+        ) {
+            return false;
+        }
+        gx = next_gx;
+        gy = next_gy;
     }
     false
 }
@@ -15346,6 +15538,12 @@ pub fn pathfinder_find_path(
     let sgy = ((start_y / cs).floor() as i32).max(0).min(grid_h - 1);
     let ggx = ((goal_x / cs).floor() as i32).max(0).min(grid_w - 1);
     let ggy = ((goal_y / cs).floor() as i32).max(0).min(grid_h - 1);
+    let start_idx = (sgy * grid_w + sgx) as usize;
+    let accessible_roof_label = if state.building_roof[start_idx] != 0 {
+        state.roof_labels[start_idx]
+    } else {
+        0
+    };
 
     // Snap blocked start.
     let mut start_cell_gx = sgx;
@@ -15353,11 +15551,21 @@ pub fn pathfinder_find_path(
     let mut start_was_snapped = false;
     if !pathfinder_is_cell_passable(
         state,
-        (sgy * grid_w + sgx) as usize,
+        start_idx,
         min_normal_z,
         ignore_terrain_blocking,
+        accessible_roof_label,
     ) {
-        match pathfinder_find_nearest_open(state, sgx, sgy, min_normal_z, ignore_terrain_blocking) {
+        match pathfinder_find_nearest_open_toward(
+            state,
+            sgx,
+            sgy,
+            ggx,
+            ggy,
+            min_normal_z,
+            ignore_terrain_blocking,
+            accessible_roof_label,
+        ) {
             Some((nx, ny)) => {
                 start_cell_gx = nx;
                 start_cell_gy = ny;
@@ -15377,8 +15585,21 @@ pub fn pathfinder_find_path(
     let mut goal_was_snapped = false;
     let ggy_idx = (ggy * grid_w + ggx) as usize;
     if ignore_terrain_blocking {
-        if !pathfinder_is_cell_passable(state, ggy_idx, min_normal_z, true) {
-            match pathfinder_find_nearest_open(state, ggx, ggy, min_normal_z, true) {
+        if !pathfinder_is_cell_passable(
+            state,
+            ggy_idx,
+            min_normal_z,
+            true,
+            accessible_roof_label,
+        ) {
+            match pathfinder_find_nearest_open(
+                state,
+                ggx,
+                ggy,
+                min_normal_z,
+                true,
+                accessible_roof_label,
+            ) {
                 Some((nx, ny)) => {
                     goal_cell_gx = nx;
                     goal_cell_gy = ny;
@@ -15395,7 +15616,13 @@ pub fn pathfinder_find_path(
         // Snap goal to start's component for terrain-bound locomotion.
         let start_label = state.cc_labels[(start_cell_gy * grid_w + start_cell_gx) as usize];
         if state.cc_labels[ggy_idx] != start_label
-            || !pathfinder_is_cell_passable(state, ggy_idx, min_normal_z, false)
+            || !pathfinder_is_cell_passable(
+                state,
+                ggy_idx,
+                min_normal_z,
+                false,
+                accessible_roof_label,
+            )
         {
             match pathfinder_find_nearest_in_component(
                 state,
@@ -15404,6 +15631,7 @@ pub fn pathfinder_find_path(
                 start_label,
                 min_normal_z,
                 false,
+                accessible_roof_label,
             ) {
                 Some((nx, ny)) => {
                     goal_cell_gx = nx;
@@ -15440,6 +15668,7 @@ pub fn pathfinder_find_path(
         goal_cell_gy,
         min_normal_z,
         ignore_terrain_blocking,
+        accessible_roof_label,
     ) {
         Some(r) => r,
         None => {
@@ -15472,8 +15701,6 @@ pub fn pathfinder_find_path(
     let mut anchor_y: f64;
     if start_was_snapped {
         let (cx, cy) = pathfinder_cell_center(start_cell_gx, start_cell_gy);
-        state.waypoint_scratch.push(cx);
-        state.waypoint_scratch.push(cy);
         anchor_x = cx;
         anchor_y = cy;
     } else {
@@ -15499,6 +15726,7 @@ pub fn pathfinder_find_path(
                 next_y,
                 min_normal_z,
                 ignore_terrain_blocking,
+                accessible_roof_label,
             ) {
                 state.waypoint_scratch.push(cand_x);
                 state.waypoint_scratch.push(cand_y);
@@ -35777,6 +36005,63 @@ mod sim_kernel_tests {
             ),
             2,
         );
+    }
+
+    #[test]
+    fn pathfinder_building_roof_cells_are_walkable() {
+        let _guard = lock_tests();
+        terrain_clear();
+        pathfinder_init(400.0, 400.0);
+
+        // Factory-spawned units can begin on the factory's occupied
+        // footprint. The footprint is a valid roof/support cell, not
+        // a blocker that should force an origin-side escape point.
+        let building_cells = [10_u32, 10_u32];
+        pathfinder_rebuild_mask_and_cc(&building_cells, 10_001, 20_001, 30_001);
+        let count = pathfinder_find_path(210.0, 210.0, 320.0, 210.0, 0.0, false);
+        assert_eq!(count, 1);
+
+        let waypoints =
+            unsafe { std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (count as usize) * 2) };
+        assert!((waypoints[0] - 320.0).abs() < 1.0e-9);
+        assert!((waypoints[1] - 210.0).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn pathfinder_building_roof_overrides_blocked_terrain_below() {
+        let _guard = lock_tests();
+        terrain_clear();
+        pathfinder_init(400.0, 400.0);
+
+        // Terrain inflation blocks edge cells, but a building top at
+        // that XY is still valid terrain for movement: units standing
+        // there can always move/fall down from it.
+        let building_cells = [1_u32, 10_u32];
+        pathfinder_rebuild_mask_and_cc(&building_cells, 10_002, 20_002, 30_002);
+        let count = pathfinder_find_path(30.0, 210.0, 80.0, 210.0, 0.0, false);
+        assert_eq!(count, 1);
+
+        let waypoints =
+            unsafe { std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (count as usize) * 2) };
+        assert!((waypoints[0] - 80.0).abs() < 1.0e-9);
+        assert!((waypoints[1] - 210.0).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn pathfinder_ground_units_do_not_climb_onto_roofs() {
+        let _guard = lock_tests();
+        terrain_clear();
+        pathfinder_init(400.0, 400.0);
+
+        let building_cells = [1_u32, 10_u32];
+        pathfinder_rebuild_mask_and_cc(&building_cells, 10_003, 20_003, 30_003);
+        let count = pathfinder_find_path(80.0, 210.0, 30.0, 210.0, 0.0, false);
+        assert_eq!(count, 1);
+
+        let waypoints =
+            unsafe { std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (count as usize) * 2) };
+        assert!((waypoints[0] - 50.0).abs() < 1.0e-9);
+        assert!((waypoints[1] - 210.0).abs() < 1.0e-9);
     }
 
     #[test]

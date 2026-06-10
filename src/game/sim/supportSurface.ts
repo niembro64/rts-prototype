@@ -20,7 +20,6 @@ export type WorldSupportSurface = {
 };
 
 export const SUPPORT_SURFACE_CONTACT_EPSILON = Math.max(UNIT_GROUND_CONTACT_EPSILON, 1);
-export const SUPPORT_SURFACE_VERTICAL_PROBE = 8;
 export const SUPPORT_SURFACE_FOOTPRINT_EPSILON = 0.5;
 
 export function createWorldSupportSurface(): WorldSupportSurface {

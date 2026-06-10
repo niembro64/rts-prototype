@@ -74,14 +74,7 @@ function createUnitBaseEntity({
 }: CreateUnitBaseArgs): Entity {
   const isAirborneLocomotion =
     locomotion.type === 'hover' || locomotion.type === 'flying';
-  const spawnCenterHeight = isAirborneLocomotion &&
-    locomotion.gravityCounterUpwardForceRatio !== undefined &&
-    Number.isFinite(locomotion.gravityCounterUpwardForceRatio) &&
-    locomotion.gravityCounterUpwardForceRatio < 1 &&
-    locomotion.hoverHeightUpwardForce !== undefined &&
-    Number.isFinite(locomotion.hoverHeightUpwardForce)
-    ? locomotion.hoverHeightUpwardForce / (1 - locomotion.gravityCounterUpwardForceRatio)
-    : bodyCenterHeight + UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND;
+  const spawnCenterHeight = bodyCenterHeight + UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND;
 
   return {
     ...createEmptyEntityComponentSlots(),

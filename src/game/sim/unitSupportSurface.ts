@@ -2,7 +2,6 @@ import type { Entity, EntityId, UnitSupportSurface } from './types';
 import {
   SUPPORT_SURFACE_CONTACT_EPSILON,
   SUPPORT_SURFACE_FOOTPRINT_EPSILON,
-  SUPPORT_SURFACE_VERTICAL_PROBE,
 } from './supportSurface';
 
 export type UnitSupportQueryOptions = {
@@ -57,7 +56,6 @@ export function sampleUnitSupportTopZ(
     const groundPointZ = bodyZ - groundOffset;
     if (bodyZ < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) return null;
     if (groundPointZ < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) return null;
-    if (groundPointZ > topZ + SUPPORT_SURFACE_VERTICAL_PROBE) return null;
   }
 
   return topZ;

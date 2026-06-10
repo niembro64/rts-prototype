@@ -962,7 +962,6 @@ export class PhysicsEngine3D {
     this.clearExitedStaticIgnoreForBody(body);
     const ignoredStatic = this.ignoreStatic.get(body);
     const groundPointZ = body.z - body.groundOffset;
-    const sphereBottomZ = body.z - body.radius;
     let best: StaticSupportSurfaceContact | null = null;
 
     for (let i = 0; i < this.staticBodies.length; i++) {
@@ -973,15 +972,12 @@ export class PhysicsEngine3D {
       const topZ = st.supportTopZ;
       if (topZ < terrainGroundZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
       if (body.z < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
+      if (groundPointZ < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
 
       const dx = body.x - st.x;
       const dy = body.y - st.y;
       if (Math.abs(dx) > st.supportHalfX + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
       if (Math.abs(dy) > st.supportHalfY + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
-
-      const groundPointNearTop = groundPointZ <= topZ + SUPPORT_SURFACE_CONTACT_EPSILON;
-      const sphereBottomNearTop = sphereBottomZ <= topZ + SUPPORT_SURFACE_CONTACT_EPSILON;
-      if (!groundPointNearTop && !sphereBottomNearTop) continue;
 
       if (best === null || topZ > best.groundZ) {
         const candidate = createWorldSupportSurface() as StaticSupportSurfaceContact;

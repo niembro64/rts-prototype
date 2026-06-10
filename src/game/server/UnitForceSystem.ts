@@ -98,10 +98,8 @@ let _forceFlags: Uint32Array = new Uint32Array(0);
 let _forceRows: Float64Array = new Float64Array(0);
 let _forceOutFlags: Uint32Array = new Uint32Array(0);
 let _forceEntities: (Entity | undefined)[] = [];
-const _forceTerrainSurface = createWorldSupportSurface();
 const _forceSupportSurface = createWorldSupportSurface();
 const _forceProbeSupportSurface = createWorldSupportSurface();
-const FLAT_SUPPORT_NORMAL = { nx: 0, ny: 0, nz: 1 };
 
 function ensureForceBatchCapacity(count: number): void {
   if (_forceSlots.length < count) {
@@ -176,27 +174,25 @@ export class UnitForceSystem {
       _forceRows[base + UF_ROW_UNIT_MASS] = unit.mass;
       _forceRows[base + UF_ROW_DRIVE_FORCE] = unit.locomotion.driveForce;
       _forceRows[base + UF_ROW_TRACTION] = unit.locomotion.traction;
-      const terrainGroundZ = this.world.getGroundZ(body.x, body.y);
-      const terrainPenetration = terrainGroundZ - (body.z - body.groundOffset);
-      const terrainContact =
-        terrainPenetration >= -UNIT_GROUND_CONTACT_EPSILON;
-      this.world.writeTerrainSupportSurfaceAt(
+      const supportSurface = this.world.sampleSupportSurfaceFromIndex(
         body.x,
         body.y,
-        terrainGroundZ,
-        terrainContact ? this.world.getCachedSurfaceNormal(body.x, body.y) : FLAT_SUPPORT_NORMAL,
-        _forceTerrainSurface,
-      );
-      const supportSurface = this.physics.sampleSupportSurface(
-        body,
-        _forceTerrainSurface,
+        {
+          bodyZ: body.z,
+          groundOffset: body.groundOffset,
+          ignoreEntityId: entity.id,
+        },
         _forceSupportSurface,
       );
       const supportSurfaceContact =
         supportSurface.supportKind === 'building' || supportSurface.supportKind === 'unit';
-      const surfaceContact = supportSurfaceContact || terrainContact;
+      const supportPenetration = supportSurface.groundZ - (body.z - body.groundOffset);
+      const surfaceContact = supportPenetration >= -UNIT_GROUND_CONTACT_EPSILON;
       const buildInProgress = isBuildInProgress(entity.buildable);
-      const suppressAirborneLift = buildInProgress || supportSurfaceContact;
+      const locomotionType = unit.locomotion.type;
+      const isFlying = locomotionType === 'flying';
+      const isAirborneLocomotion = locomotionType === 'hover' || locomotionType === 'flying';
+      const suppressAirborneLift = buildInProgress;
       _forceRows[base + UF_ROW_GRAVITY_COUNTER_RATIO] =
         suppressAirborneLift ? 0 : unit.locomotion.gravityCounterUpwardForceRatio ?? 0;
       _forceRows[base + UF_ROW_HOVER_HEIGHT_FORCE] =
@@ -246,12 +242,9 @@ export class UnitForceSystem {
       if (hasThrustDir) flags |= UF_FLAG_HAS_THRUST;
       const thrustInputMag = hasThrustDir ? Math.sqrt(dirLenSq) : 0;
 
-      const locomotionType = unit.locomotion.type;
-      const isFlying = locomotionType === 'flying';
-      const isAirborneLocomotion = locomotionType === 'hover' || locomotionType === 'flying';
-      const useAirborneForcePath = isAirborneLocomotion && !buildInProgress && !supportSurfaceContact;
-      if (isFlying && useAirborneForcePath) flags |= UF_FLAG_IS_FLYING;
-      if (useAirborneForcePath) flags |= UF_FLAG_IS_AIRBORNE;
+      const liftLocomotionActive = isAirborneLocomotion && !buildInProgress;
+      if (isFlying && liftLocomotionActive) flags |= UF_FLAG_IS_FLYING;
+      if (liftLocomotionActive) flags |= UF_FLAG_IS_AIRBORNE;
 
       const externalForce = forceAccumulator.getFinalForce(entity.id);
       if (externalForce !== null) {
@@ -263,7 +256,7 @@ export class UnitForceSystem {
 
       _forceRows[base + UF_ROW_GROUND_Z] = supportSurface.groundZ;
 
-      if (useAirborneForcePath) {
+      if (liftLocomotionActive) {
         const orientation = unit.orientation;
         const omega = unit.angularVelocity3;
         if (orientation !== null && omega !== null) {
@@ -328,7 +321,7 @@ export class UnitForceSystem {
             const aheadSurface = this.world.sampleSupportSurfaceFromIndex(
               aheadX,
               aheadY,
-              {},
+              { ignoreEntityId: entity.id },
               _forceProbeSupportSurface,
             );
             if (aheadSurface.materialKind === 'water') {
@@ -340,10 +333,6 @@ export class UnitForceSystem {
               );
             }
           }
-          const n = this.world.getCachedSurfaceNormal(body.x, body.y);
-          _forceRows[base + UF_ROW_NORMAL_X] = n.nx;
-          _forceRows[base + UF_ROW_NORMAL_Y] = n.ny;
-          _forceRows[base + UF_ROW_NORMAL_Z] = n.nz;
         }
       }
 

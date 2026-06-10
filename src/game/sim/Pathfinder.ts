@@ -3,8 +3,8 @@
 // Phase 9: the heavy lifting (mask + CC rebuild, A* + LOS smoothing)
 // runs inside WASM. This file is now a thin wrapper that:
 //   - tracks (terrain × buildings) version pairs and packs the
-//     buildingGrid.occupiedCells() into a Uint32Array for the WASM
-//     rebuild step;
+//     buildingGrid.occupiedCells() into a Uint32Array so WASM can
+//     mark exact building footprints as one-way roof/support cells;
 //   - keeps expandPathActions JS-side because it consults JS-side
 //     blueprint config and constructs UnitAction objects;
 //   - preserves the original public surface (`findPath`,
@@ -17,12 +17,13 @@
 //     shoreline cells get classified correctly even when their
 //     centre is a hair above water level — moved to Rust; falls
 //     back to centre-only sampling when no mesh is installed.
-//   • Two-tier C-space inflation: 2 cells around water (so unit
-//     bodies clear the shore), 1 cell around buildings (so the
-//     demo's tight factory gaps stay passable).
+//   • Terrain C-space inflation: 2 cells around water so unit bodies
+//     clear the shore. Building footprints are not climbable from
+//     terrain, but a unit already on a building top can path across
+//     that roof and fall off it; physics owns the fall.
 //   • Airborne queries (hover + flying) ignore terrain blocking so
 //     water and slope do not force them onto land-only routes; they
-//     still stay inside the map and avoid occupied building cells.
+//     still stay inside the map.
 //   • Connected-component pre-flight. If start and goal are in
 //     different components A* would just thrash; instead we snap
 //     the goal to the nearest cell in start's component.
@@ -297,8 +298,9 @@ function validatePathDoesNotCrossWater(
  *  threshold are treated as blocked for that path query.
  *
  *  `terrainFilter.ignoreTerrainBlocking` is for airborne locomotion:
- *  water, terrain inflation, and slope are ignored, while map bounds
- *  and building-occupied cells remain blockers. */
+ *  water, terrain inflation, and slope are ignored while map bounds
+ *  remain enforced. A building footprint is a valid roof/support
+ *  cell only for a unit whose current path starts on that roof. */
 export function expandPathPoints(
   startX: number, startY: number,
   goalX: number, goalY: number,

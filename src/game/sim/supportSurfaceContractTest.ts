@@ -21,6 +21,7 @@ import { factoryProductionSystem } from './factoryProduction';
 import { computeExtractorMetalCoverage } from './metalDepositOwnership';
 import {
   createWorldSupportSurface,
+  SUPPORT_SURFACE_CONTACT_EPSILON,
   type SupportSurfaceMaterialKind,
   type WorldSupportSurface,
 } from './supportSurface';
@@ -36,7 +37,6 @@ import type { MetalDeposit } from '../../metalDepositConfig';
 
 const TEST_PLAYER_ID = 1 as PlayerId;
 const CONTRACT_EPSILON = 1e-6;
-const FACTORY_SHELL_AIR_SPAWN_HEIGHT = 160;
 const SUPPORT_SURFACE_CONTRACT_TERRAIN: TerrainRuntimeConfig = {
   centerMagnitude: 0,
   dividersMagnitude: 0,
@@ -140,24 +140,6 @@ function getUnitSupportTopZ(entity: Entity): number {
   return entity.transform.z - unit.bodyCenterHeight + support.topZ;
 }
 
-function getExpectedSpawnCenterHeight(unit: Unit): number {
-  const locomotion = unit.locomotion;
-  const isAirborneLocomotion =
-    locomotion.type === 'hover' || locomotion.type === 'flying';
-  if (
-    isAirborneLocomotion &&
-    locomotion.gravityCounterUpwardForceRatio !== undefined &&
-    Number.isFinite(locomotion.gravityCounterUpwardForceRatio) &&
-    locomotion.gravityCounterUpwardForceRatio < 1 &&
-    locomotion.hoverHeightUpwardForce !== undefined &&
-    Number.isFinite(locomotion.hoverHeightUpwardForce)
-  ) {
-    return locomotion.hoverHeightUpwardForce /
-      (1 - locomotion.gravityCounterUpwardForceRatio);
-  }
-  return unit.bodyCenterHeight + UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND;
-}
-
 function assertSpawnedOnSupport(
   unitEntity: Entity,
   supportTopZ: number,
@@ -167,7 +149,7 @@ function assertSpawnedOnSupport(
   assertContract(unit !== null, `${message}: spawned entity must be a unit`);
   assertNear(
     unitEntity.transform.z,
-    supportTopZ + getExpectedSpawnCenterHeight(unit),
+    supportTopZ + unit.bodyCenterHeight + UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
     message,
   );
 }
@@ -224,6 +206,16 @@ function assertBuildingSupportContract(): void {
   assertContract(buildingSurface.supportKind === 'building', 'building top must be sampled as building support');
   assertContract(buildingSurface.supportEntityId === building.id, 'building support must identify its host');
   assertNear(buildingSurface.groundZ, buildingTopZ, 'building support height');
+  const highAboveRoofSurface = world.sampleSupportSurface(dry.x, dry.y, {
+    bodyZ: buildingTopZ + 500,
+    groundOffset: 10,
+  });
+  assertContract(highAboveRoofSurface.supportKind === 'building', 'building top must support units high above it');
+  const belowRoofSurface = world.sampleSupportSurface(dry.x, dry.y, {
+    bodyZ: buildingTopZ - SUPPORT_SURFACE_CONTACT_EPSILON - 0.25,
+    groundOffset: 0,
+  });
+  assertContract(belowRoofSurface.supportKind === 'terrain', 'unit below roof plane must not acquire roof support');
 
   const buildingSpawn = world.createUnitFromBlueprint(
     dry.x,
@@ -317,9 +309,11 @@ function assertFactoryShellContract(): void {
   const world = new WorldState(1238, 1024, 1024);
   world.playerCount = 2;
   const dry = findSurfacePoint(world, 'solid', 220);
+  const hoverUnitBlueprintId = firstBlueprintIdByLocomotionType().get('hover');
+  assertContract(hoverUnitBlueprintId !== undefined, 'missing hover unit blueprint for factory shell contract');
   const factory = world.createBuilding(dry.x, dry.y, 180, 180, 60, TEST_PLAYER_ID);
   factory.factory = {
-    selectedUnitBlueprintId: 'unitJackal',
+    selectedUnitBlueprintId: hoverUnitBlueprintId,
     repeatProduction: true,
     productionQueue: [],
     currentShellId: null,
@@ -344,11 +338,7 @@ function assertFactoryShellContract(): void {
   assertContract(spawned.length === 1, 'factory must spawn exactly one shell');
   const shell = spawned[0];
   const shellSupport = world.sampleSupportSurface(factory.transform.x, factory.transform.y);
-  assertNear(
-    shell.transform.z,
-    shellSupport.groundZ + FACTORY_SHELL_AIR_SPAWN_HEIGHT,
-    'factory shell spawn height must be relative to shared support',
-  );
+  assertSpawnedOnSupport(shell, shellSupport.groundZ, 'factory shell spawn must use shared support');
   assertContract(shell.buildable !== null && !shell.buildable.isComplete, 'spawned shell must be an incomplete buildable');
   assertUnitActionCount(shell, 0, 'incomplete shell must not inherit movement actions');
 
@@ -356,7 +346,7 @@ function assertFactoryShellContract(): void {
   const completed = factoryProductionSystem.update(world, 16, buildingGrid).completedUnits;
   assertContract(completed.length === 1 && completed[0] === shell, 'factory must complete the funded shell');
   assertContract(factory.factory.currentShellId === null, 'factory must clear current shell after activation');
-  assertContract(factory.factory.selectedUnitBlueprintId === 'unitJackal', 'repeat factory must keep its selected unit');
+  assertContract(factory.factory.selectedUnitBlueprintId === hoverUnitBlueprintId, 'repeat factory must keep its selected unit');
   assertContract(factory.factory.repeatProduction === true, 'repeat factory must keep repeat mode after activation');
   const completedUnit = assertUnitActionCount(shell, 2, 'completed shell must receive high-level rally actions');
   assertContract(completedUnit.activePath === null, 'completed shell must not receive a baked exit path');

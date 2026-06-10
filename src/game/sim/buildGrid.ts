@@ -72,10 +72,8 @@ export class BuildingGrid {
   private gridWidth: number;
   private gridHeight: number;
   /** Monotonic version bumped on every mutation (place / remove).
-   *  Caches that key off "the current set of occupied cells" — the
-   *  pathfinder's per-query building-inflation precompute is the
-   *  one consumer today — read this and rebuild only when it
-   *  differs from the recorded value. */
+   *  Caches that key off "the current set of occupied cells" read this
+   *  and rebuild only when it differs from the recorded value. */
   private _version = 1;
 
   constructor(mapWidth: number, mapHeight: number) {
@@ -87,13 +85,13 @@ export class BuildingGrid {
     return this._version;
   }
 
-  /** Iterate every path-blocking occupied cell as `[gx, gy, cell]`
+  /** Iterate every occupied construction cell as `[gx, gy, cell]`
    *  triples. `blocksMovement=false` remains available for future
-   *  reservation-only cells, but normal buildings occupy movement.
+   *  reservation-only cells, but normal buildings occupy placement.
    *
-   *  pathfinder uses this to dilate the building footprint into an
-   *  inflation cache once per query instead of doing 9 `getCell`
-   *  calls per visited cell during JPS expansion. */
+   *  Movement pathfinding treats exact building footprints as one-way
+   *  roof/support cells; this iterator still supplies those cells to
+   *  the WASM planner so a unit already on a roof can leave it. */
   *occupiedCells(): IterableIterator<{ gx: number; gy: number; cell: GridCell }> {
     for (const [key, cell] of this.cells) {
       if (!cell.occupied) continue;
