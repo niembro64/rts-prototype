@@ -60,7 +60,10 @@ import { isClientTransportUnit } from '../sim/transports';
 import { Input3DSpecialModes, type Input3DSpecialMode } from './Input3DSpecialModes';
 import { Input3DHoverState, resolveInput3DHoverTargets } from './Input3DHoverState';
 import { Input3DSelectionDragState } from './Input3DSelectionDragState';
-import { Input3DKeyboardController } from './Input3DKeyboardController';
+import {
+  Input3DKeyboardController,
+  type CameraKeyboardAction,
+} from './Input3DKeyboardController';
 import { Input3DPicker } from './Input3DPicker';
 import { Input3DRightDragController, type Input3DLineDragState } from './Input3DRightDragController';
 import { Input3DModeClickController } from './Input3DModeClickController';
@@ -272,11 +275,9 @@ export class Input3DManager {
       toggleControlGroupSlot: (index) => this.toggleControlGroupSlot(index),
       unsetSelectedFromControlGroups: () => this.unsetSelectedFromControlGroups(),
       focusControlGroupSlot: (index) => this.focusControlGroupSlot(index),
-      panCameraByKeyboard: (screenX, screenY, fine) => this.panCameraByKeyboard(
+      moveCameraByKeyboard: (action) => this.moveCameraByKeyboard(
         threeApp.orbit,
-        screenX,
-        screenY,
-        fine,
+        action,
       ),
       hasSelectedUnits: () => this.entitySource.getSelectedUnits().length > 0,
       hasSelectedFactory: () => this.getSelectedFactory() !== null,
@@ -1171,25 +1172,11 @@ export class Input3DManager {
     return { x: totalX / count, y: totalY / count };
   }
 
-  private panCameraByKeyboard(
+  private moveCameraByKeyboard(
     orbit: ThreeApp['orbit'],
-    screenX: number,
-    screenY: number,
-    fine: boolean,
+    action: CameraKeyboardAction,
   ): void {
-    const magnitude = Math.hypot(screenX, screenY);
-    if (magnitude <= 0) return;
-    const x = screenX / magnitude;
-    const y = screenY / magnitude;
-    const step = Math.max(32, Math.min(360, orbit.distance * 0.12)) * (fine ? 0.1 : 1);
-    const rightX = Math.cos(orbit.yaw);
-    const rightZ = Math.sin(orbit.yaw);
-    const forwardX = Math.sin(orbit.yaw);
-    const forwardZ = -Math.cos(orbit.yaw);
-    orbit.panByWorldDelta(
-      (rightX * x + forwardX * y) * step,
-      (rightZ * x + forwardZ * y) * step,
-    );
+    orbit.moveByKeyboardScreenDirection(action.mode, action.x, action.y, action.fine);
   }
 
   /** True if D-gun mode is currently active. */

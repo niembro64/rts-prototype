@@ -68,6 +68,7 @@ import {
   UnitRenderPacket3D,
   type BuildingRenderPacket3D,
 } from './EntityRenderPackets3D';
+import { isStaticShieldDeploymentReady } from '../sim/combat/staticShield';
 import { AirborneEmitterBatch3D } from './AirborneEmitterBatch3D';
 import {
   applyAirborneBankRoll3D,
@@ -621,8 +622,8 @@ export class Render3DEntities {
       const groundZ = unitRows.groundY[row];
       const radius = unitRows.radiusVisual[row];
       const bodyOpacity = poseBodyOpacity[poseIndex];
-      const bodyMaterialized = unitRows.bodyMaterializedAt(row);
       const bodyVisible = bodyOpacity > 0;
+      const effectsActive = unitRows.bodyMaterializedAt(row);
       const airborne = unitRows.airborneAt(row);
       const yaw = -tRot;
       const poseBase = poseIndex * poseOutputStride;
@@ -730,7 +731,7 @@ export class Render3DEntities {
         e,
         m,
         turrets,
-        bodyMaterialized,
+        bodyVisible,
         unitRows.bodyCenterHeight[row],
         this._smoothLiftedPos,
         this._smoothParentQuat,
@@ -747,8 +748,10 @@ export class Render3DEntities {
       if (m.mirrors) {
         const shieldPanelTurretIndex = unitRows.passiveTurretIndex[row];
         const shieldPanelTurret = shieldPanelTurretIndex >= 0 ? turrets[shieldPanelTurretIndex] : undefined;
-        const shieldPanelMaterialized = shieldPanelTurret !== undefined && bodyMaterialized;
-        if (shieldPanelMaterialized) {
+        const shieldPanelVisible = shieldPanelTurret !== undefined &&
+          bodyVisible &&
+          isStaticShieldDeploymentReady(e, shieldPanelTurret, false);
+        if (shieldPanelVisible) {
           this.shieldPanelPose.update(
             e,
             m.mirrors,
@@ -767,9 +770,9 @@ export class Render3DEntities {
       // instance buffers in the shared cylinder pool.
       const locomotion = m.locomotion;
       if (locomotion) {
-        const locomotionVisibilityDirty = locomotion.group.visible !== bodyMaterialized;
-        locomotion.group.visible = bodyMaterialized;
-        if (!bodyMaterialized) {
+        const locomotionVisibilityDirty = locomotion.group.visible !== bodyVisible;
+        locomotion.group.visible = bodyVisible;
+        if (!bodyVisible) {
           this.activeLocomotionUnitIds.delete(e.id);
         } else if (
           locomotionVisibilityDirty ||
@@ -789,7 +792,7 @@ export class Render3DEntities {
             locomotionSmokeEmitters,
             this.airborneEmitterUpdate.prepare(tx, groundZ, ty, this._locomotionParentQuat),
           );
-          if (keepLocomotionActive) this.activeLocomotionUnitIds.add(e.id);
+          if (keepLocomotionActive && effectsActive) this.activeLocomotionUnitIds.add(e.id);
           else this.activeLocomotionUnitIds.delete(e.id);
         }
       }

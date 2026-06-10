@@ -1,13 +1,12 @@
 // Shield weapon system - projectile shield boundaries
 
 import type { WorldState } from '../WorldState';
-import type { ShieldConfig } from '../types';
+import type { Entity, ShieldConfig, ShieldDeployedPose, Turret } from '../types';
 import type { ShieldBarrierShape, ShieldReflectionMode } from '../../../types/shotTypes';
-import { getTransformCosSin } from '../../math';
+import { angleDeltaAbs, getTransformCosSin } from '../../math';
 import { CT_TURRET_STATE_ENGAGED } from '../../sim-wasm/init';
 import {
   isShieldSubmunitionTurret,
-  isWeaponAimedForFire,
   updateWeaponWorldKinematics,
 } from './combatUtils';
 import {
@@ -15,6 +14,9 @@ import {
   type CombatTargetingTurretFsmOut,
 } from './targetingInputStamping';
 import { getUnitGroundZ } from '../unitGeometry';
+import {
+  isStaticShieldDeploymentReady,
+} from './staticShield';
 
 const _shieldMount = { x: 0, y: 0, z: 0 };
 const _shieldHit = { t: 0, x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, playerId: 0, entityId: 0 };
@@ -22,18 +24,13 @@ const _shieldFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_ENGAGED,
   targetId: -1,
 };
+const STATIC_SHIELD_POSE_ANGLE_EPS = 0.01;
 
 // Compact list of shield weapons with progress > 0, built by
 // updateShieldState() and consumed by projectile collision and the
 // targeting LOS clearance check.
 export type ActiveShieldRef = {
   shape: ShieldBarrierShape;
-  prevCenterX: number;
-  prevCenterY: number;
-  prevCenterZ: number;
-  prevAxisEndX: number;
-  prevAxisEndY: number;
-  prevAxisEndZ: number;
   centerX: number;
   centerY: number;
   centerZ: number;
@@ -46,22 +43,10 @@ export type ActiveShieldRef = {
   entityId: number;
 };
 const _activeShields: ActiveShieldRef[] = [];
-type ShieldPose = {
-  centerX: number;
-  centerY: number;
-  centerZ: number;
-  axisEndX: number;
-  axisEndY: number;
-  axisEndZ: number;
-};
-let _previousShieldPoses = new Map<string, ShieldPose>();
-let _nextShieldPoses = new Map<string, ShieldPose>();
 
 // Reset module-level buffers (call between game sessions)
 export function resetShieldBuffers(): void {
   _activeShields.length = 0;
-  _previousShieldPoses.clear();
-  _nextShieldPoses.clear();
 }
 
 /** Read-only view of the active shield list maintained by
@@ -74,6 +59,87 @@ export function getActiveShields(): readonly ActiveShieldRef[] {
   return _activeShields;
 }
 
+function computeCurrentShieldPose(
+  world: WorldState,
+  unit: Entity,
+  weapon: Turret,
+  weaponIndex: number,
+  barrier: NonNullable<ShieldConfig['barrier']>,
+  targetId: number,
+): ShieldDeployedPose | null {
+  if (unit.unit === null || unit.unit.hp <= 0) return null;
+  const radius = barrier.outerRange;
+  if (radius <= 0) return null;
+  const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
+  const mount = updateWeaponWorldKinematics(
+    unit, weapon, weaponIndex,
+    unitCos, unitSin,
+    {
+      currentTick: world.getTick(),
+      dtMs: 0,
+      unitGroundZ: getUnitGroundZ(unit),
+      surfaceN: unit.unit.surfaceNormal,
+    },
+    _shieldMount,
+  );
+  const centerX = mount.x;
+  const centerY = mount.y;
+  const centerZ = mount.z - barrier.originOffsetZ;
+  let axisEndX = centerX;
+  let axisEndY = centerY;
+  let axisEndZ = centerZ;
+  if (barrier.shape === 'aimedCylinder') {
+    if (targetId === -1) return null;
+    const pitchCos = Math.cos(weapon.pitch);
+    axisEndX = centerX + Math.cos(weapon.rotation) * pitchCos * weapon.config.range;
+    axisEndY = centerY + Math.sin(weapon.rotation) * pitchCos * weapon.config.range;
+    axisEndZ = centerZ + Math.sin(weapon.pitch) * weapon.config.range;
+    if (Math.hypot(axisEndX - centerX, axisEndY - centerY, axisEndZ - centerZ) <= 1e-6) {
+      return null;
+    }
+  }
+  return {
+    centerX,
+    centerY,
+    centerZ,
+    axisEndX,
+    axisEndY,
+    axisEndZ,
+    rotation: weapon.rotation,
+    pitch: weapon.pitch,
+    targetId,
+  };
+}
+
+function deployedShieldPoseDrifted(
+  weapon: Turret,
+  pose: ShieldDeployedPose,
+  targetId: number,
+  requireAimedPose: boolean,
+): boolean {
+  if (pose.targetId !== targetId) return true;
+  if (!requireAimedPose) return false;
+  return (
+    angleDeltaAbs(weapon.rotation, pose.rotation) > STATIC_SHIELD_POSE_ANGLE_EPS ||
+    Math.abs(weapon.pitch - pose.pitch) > STATIC_SHIELD_POSE_ANGLE_EPS ||
+    angleDeltaAbs(weapon.aimTargetYaw, pose.rotation) > STATIC_SHIELD_POSE_ANGLE_EPS ||
+    Math.abs(weapon.aimTargetPitch - pose.pitch) > STATIC_SHIELD_POSE_ANGLE_EPS
+  );
+}
+
+function freezeTurretAtShieldPose(weapon: Turret, pose: ShieldDeployedPose): void {
+  weapon.rotation = pose.rotation;
+  weapon.pitch = pose.pitch;
+  weapon.angularVelocity = 0;
+  weapon.pitchVelocity = 0;
+  weapon.angularAcceleration = 0;
+  weapon.pitchAcceleration = 0;
+  weapon.aimTargetYaw = pose.rotation;
+  weapon.aimTargetPitch = pose.pitch;
+  weapon.aimErrorYaw = 0;
+  weapon.aimErrorPitch = 0;
+}
+
 // Update shield state (transition progress 0→1). The transition is
 // host-owned because progress > 0 gates whether the barrier exists for
 // projectile reflection / obstruction. The snapshot wire ships the same
@@ -81,7 +147,6 @@ export function getActiveShields(): readonly ActiveShieldRef[] {
 // rather than running an independent visual-only timer.
 export function updateShieldState(world: WorldState, dtMs: number): void {
   _activeShields.length = 0;
-  _nextShieldPoses.clear();
 
   for (const unit of world.getShieldUnits()) {
     const turrets = unit.combat!.turrets;
@@ -96,7 +161,7 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
 
       // Initialize
       if (weapon.shield === null) {
-        weapon.shield = { transition: 0, range: 0 };
+        weapon.shield = { transition: 0, range: 0, deployedPose: null };
       }
 
       // Move progress toward target based on engaged state
@@ -106,13 +171,39 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
         : weapon.state === 'engaged';
       const targetId = hasTargetingFsm ? _shieldFsm.targetId : (weapon.target ?? -1);
       const hasAimedCylinderBarrier = fieldShot.barrier?.shape === 'aimedCylinder';
-      const aimedCylinderReady = hasAimedCylinderBarrier
-        ? isWeaponAimedForFire(weapon)
-        : true;
       const aimedCylinderHasTarget = !hasAimedCylinderBarrier || targetId !== -1;
-      const targetProgress = engaged && aimedCylinderReady && aimedCylinderHasTarget ? 1 : 0;
+      const staticDeploymentReady = isStaticShieldDeploymentReady(
+        unit,
+        weapon,
+        hasAimedCylinderBarrier,
+      );
+      const barrier = fieldShot.barrier;
+      let poseDroppedThisTick = false;
+      let deployedPose = weapon.shield.deployedPose;
+      if (!engaged || !staticDeploymentReady || !aimedCylinderHasTarget || barrier === undefined) {
+        if (deployedPose !== null) poseDroppedThisTick = true;
+        deployedPose = null;
+        weapon.shield.deployedPose = null;
+      } else {
+        if (
+          deployedPose !== null &&
+          deployedShieldPoseDrifted(weapon, deployedPose, targetId, hasAimedCylinderBarrier)
+        ) {
+          deployedPose = null;
+          weapon.shield.deployedPose = null;
+          poseDroppedThisTick = true;
+        }
+        if (deployedPose === null && !poseDroppedThisTick) {
+          deployedPose = computeCurrentShieldPose(world, unit, weapon, weaponIndex, barrier, targetId);
+          weapon.shield.deployedPose = deployedPose;
+        }
+      }
+
+      const targetProgress = deployedPose !== null ? 1 : 0;
       if (isShieldSubmunitionTurret(weapon)) {
         weapon.shield.transition = targetProgress;
+      } else if (!staticDeploymentReady || poseDroppedThisTick) {
+        weapon.shield.transition = 0;
       } else {
         const progressDelta = transitionTime > 0 ? dtMs / transitionTime : Number.POSITIVE_INFINITY;
         if (weapon.shield.transition < targetProgress) {
@@ -128,67 +219,23 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
 
       if (
         weapon.shield.transition > 0 &&
+        deployedPose !== null &&
         unit.unit &&
         unit.unit.hp > 0 &&
-        fieldShot.barrier !== undefined
+        barrier !== undefined
       ) {
-        const barrier = fieldShot.barrier;
         const radius = barrier.outerRange;
         if (radius <= 0) continue;
-        const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
-        const mount = updateWeaponWorldKinematics(
-          unit, weapon, weaponIndex,
-          unitCos, unitSin,
-          {
-            currentTick: world.getTick(),
-            dtMs: 0,
-            unitGroundZ: getUnitGroundZ(unit),
-            surfaceN: unit.unit.surfaceNormal,
-          },
-          _shieldMount,
-        );
-        const originOffsetZ = barrier.originOffsetZ;
-        const centerX = mount.x;
-        const centerY = mount.y;
-        const centerZ = mount.z - originOffsetZ;
-        let axisEndX = centerX;
-        let axisEndY = centerY;
-        let axisEndZ = centerZ;
-        if (barrier.shape === 'aimedCylinder') {
-          if (targetId === -1) continue;
-          const pitchCos = Math.cos(weapon.pitch);
-          axisEndX = centerX + Math.cos(weapon.rotation) * pitchCos * config.range;
-          axisEndY = centerY + Math.sin(weapon.rotation) * pitchCos * config.range;
-          axisEndZ = centerZ + Math.sin(weapon.pitch) * config.range;
-          if (Math.hypot(axisEndX - centerX, axisEndY - centerY, axisEndZ - centerZ) <= 1e-6) {
-            continue;
-          }
-        }
-        const poseKey = `${unit.id}:${weapon.id}:${weaponIndex}`;
-        const previousPose = _previousShieldPoses.get(poseKey);
-        _nextShieldPoses.set(poseKey, {
-          centerX,
-          centerY,
-          centerZ,
-          axisEndX,
-          axisEndY,
-          axisEndZ,
-        });
+        freezeTurretAtShieldPose(weapon, deployedPose);
         const playerId = unit.ownership !== null ? unit.ownership.playerId : 0;
         _activeShields.push({
           shape: barrier.shape,
-          prevCenterX: previousPose?.centerX ?? centerX,
-          prevCenterY: previousPose?.centerY ?? centerY,
-          prevCenterZ: previousPose?.centerZ ?? centerZ,
-          prevAxisEndX: previousPose?.axisEndX ?? axisEndX,
-          prevAxisEndY: previousPose?.axisEndY ?? axisEndY,
-          prevAxisEndZ: previousPose?.axisEndZ ?? axisEndZ,
-          centerX,
-          centerY,
-          centerZ,
-          axisEndX,
-          axisEndY,
-          axisEndZ,
+          centerX: deployedPose.centerX,
+          centerY: deployedPose.centerY,
+          centerZ: deployedPose.centerZ,
+          axisEndX: deployedPose.axisEndX,
+          axisEndY: deployedPose.axisEndY,
+          axisEndZ: deployedPose.axisEndZ,
           radius,
           reflectionMode: fieldShot.material.reflection.mode,
           playerId,
@@ -197,10 +244,6 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
       }
     }
   }
-
-  const oldPrevious = _previousShieldPoses;
-  _previousShieldPoses = _nextShieldPoses;
-  _nextShieldPoses = oldPrevious;
 }
 
 export type ShieldProjectileIntersection = {
@@ -454,106 +497,6 @@ type ShieldFieldHit = {
   nz: number;
 };
 
-function shieldFieldSignedDistanceAndNormal(
-  x: number,
-  y: number,
-  z: number,
-  centerX: number,
-  centerY: number,
-  centerZ: number,
-  axisEndX: number,
-  axisEndY: number,
-  axisEndZ: number,
-  radius: number,
-  shape: ShieldBarrierShape,
-): { distance: number; nx: number; ny: number; nz: number } | null {
-  if (radius <= 0) return null;
-  if (shape === 'infiniteVerticalCylinder') {
-    const dx = x - centerX;
-    const dy = y - centerY;
-    const len = Math.hypot(dx, dy);
-    if (len <= 1e-9) return { distance: -radius, nx: 1, ny: 0, nz: 0 };
-    return { distance: len - radius, nx: dx / len, ny: dy / len, nz: 0 };
-  }
-  if (shape === 'aimedCylinder') {
-    const axisX = axisEndX - centerX;
-    const axisY = axisEndY - centerY;
-    const axisZ = axisEndZ - centerZ;
-    const axisLen = Math.hypot(axisX, axisY, axisZ);
-    if (axisLen <= 1e-6) return null;
-    const ux = axisX / axisLen;
-    const uy = axisY / axisLen;
-    const uz = axisZ / axisLen;
-    const relX = x - centerX;
-    const relY = y - centerY;
-    const relZ = z - centerZ;
-    const axial = relX * ux + relY * uy + relZ * uz;
-    const perpX = relX - ux * axial;
-    const perpY = relY - uy * axial;
-    const perpZ = relZ - uz * axial;
-    const len = Math.hypot(perpX, perpY, perpZ);
-    if (len <= 1e-9) {
-      const fallbackX = -uy;
-      const fallbackY = ux;
-      const fallbackLen = Math.hypot(fallbackX, fallbackY);
-      if (fallbackLen > 1e-9) {
-        return { distance: -radius, nx: fallbackX / fallbackLen, ny: fallbackY / fallbackLen, nz: 0 };
-      }
-      return { distance: -radius, nx: 1, ny: 0, nz: 0 };
-    }
-    return { distance: len - radius, nx: perpX / len, ny: perpY / len, nz: perpZ / len };
-  }
-
-  const dx = x - centerX;
-  const dy = y - centerY;
-  const dz = z - centerZ;
-  const len = Math.hypot(dx, dy, dz);
-  if (len <= 1e-9) return { distance: -radius, nx: 1, ny: 0, nz: 0 };
-  return { distance: len - radius, nx: dx / len, ny: dy / len, nz: dz / len };
-}
-
-function movingShieldFieldHit(
-  active: ActiveShieldRef,
-  startX: number,
-  startY: number,
-  startZ: number,
-  endX: number,
-  endY: number,
-  endZ: number,
-): ShieldFieldHit | null {
-  const previous = shieldFieldSignedDistanceAndNormal(
-    startX, startY, startZ,
-    active.prevCenterX, active.prevCenterY, active.prevCenterZ,
-    active.prevAxisEndX, active.prevAxisEndY, active.prevAxisEndZ,
-    active.radius,
-    active.shape,
-  );
-  if (previous === null) return null;
-  const current = shieldFieldSignedDistanceAndNormal(
-    endX, endY, endZ,
-    active.centerX, active.centerY, active.centerZ,
-    active.axisEndX, active.axisEndY, active.axisEndZ,
-    active.radius,
-    active.shape,
-  );
-  if (current === null) return null;
-  const crossedOut = previous.distance <= 1e-6 && current.distance > 1e-6;
-  const crossedIn = previous.distance > 1e-6 && current.distance <= 1e-6;
-  if (!crossedOut && !crossedIn) return null;
-  if (!shieldModeAllowsCrossing(active.reflectionMode, current.distance - previous.distance)) {
-    return null;
-  }
-  return {
-    t: 1,
-    x: endX - current.nx * current.distance,
-    y: endY - current.ny * current.distance,
-    z: endZ - current.nz * current.distance,
-    nx: current.nx,
-    ny: current.ny,
-    nz: current.nz,
-  };
-}
-
 export function findShieldSegmentIntersection(
   _world: WorldState,
   startX: number,
@@ -630,8 +573,6 @@ export function findShieldSegmentIntersection(
       }
       const nLen = Math.hypot(nx, ny, nz) || 1;
       hit = { t, x: hitX, y: hitY, z: hitZ, nx: nx / nLen, ny: ny / nLen, nz: nz / nLen };
-    } else {
-      hit = movingShieldFieldHit(active, startX, startY, startZ, endX, endY, endZ);
     }
     if (hit === null || hit.t >= bestT) continue;
 

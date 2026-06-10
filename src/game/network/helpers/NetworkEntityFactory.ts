@@ -83,7 +83,7 @@ function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret
   // runtimeTurrets default of 0.
   const shield = turret.shield;
   turret.shield = nw.currentShieldRange !== undefined && nw.currentShieldRange !== null
-    ? { range: nw.currentShieldRange, transition: shield !== null ? shield.transition : 0 }
+    ? { range: nw.currentShieldRange, transition: shield !== null ? shield.transition : 0, deployedPose: null }
     : null;
 }
 
@@ -111,6 +111,7 @@ function preserveClientTurretVisualState(next: Turret, prev: Turret): void {
     next.shield = {
       range: prev.shield.range,
       transition: prev.shield.transition,
+      deployedPose: prev.shield.deployedPose,
     };
   }
 }

@@ -4,6 +4,8 @@ import {
   refreshLocomotionSupportSurfaces,
   sampleLocomotionSupportSurface,
 } from '../render3d/LocomotionTerrainSampler';
+import { PhysicsEngine3D } from '../server/PhysicsEngine3D';
+import { createPhysicsBodyForUnit } from '../server/unitPhysicsBody';
 import {
   getTerrainMapShape,
   getTerrainRuntimeConfig,
@@ -17,7 +19,10 @@ import { BUILD_GRID_CELL_SIZE, BuildingGrid } from './buildGrid';
 import { getAllUnitBlueprints } from './blueprints';
 import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
 import { getBuildingConfig } from './buildConfigs';
-import { factoryProductionSystem } from './factoryProduction';
+import {
+  factoryProductionSystem,
+  getFactoryShellSpawnClearanceAboveSurface,
+} from './factoryProduction';
 import { computeExtractorMetalCoverage } from './metalDepositOwnership';
 import {
   createWorldSupportSurface,
@@ -154,6 +159,94 @@ function assertSpawnedOnSupport(
   );
 }
 
+function assertFactoryShellSpawnedAboveSupport(
+  unitEntity: Entity,
+  supportTopZ: number,
+  message: string,
+): void {
+  const unit = unitEntity.unit;
+  assertContract(unit !== null, `${message}: spawned entity must be a unit`);
+  const clearance = getFactoryShellSpawnClearanceAboveSurface(unit);
+  assertContract(
+    clearance > UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
+    `${message}: factory shell must use extra freefall clearance`,
+  );
+  assertNear(
+    unitEntity.transform.z,
+    supportTopZ + unit.bodyCenterHeight + clearance,
+    message,
+  );
+}
+
+function assertFactoryShellPhysicsKeepsRoofSupport(
+  world: WorldState,
+  factory: Entity,
+  shell: Entity,
+  supportTopZ: number,
+): void {
+  assertContract(factory.building !== null, 'factory physics support contract requires a building');
+  const physics = new PhysicsEngine3D(world.mapWidth, world.mapHeight);
+  physics.setGroundLookup(
+    (x, y) => world.getGroundZ(x, y),
+    (x, y) => world.getCachedSurfaceNormal(x, y),
+  );
+  try {
+    const building = factory.building;
+    const baseZ = factory.transform.z - building.depth / 2;
+    factory.body = {
+      physicsBody: physics.createBuildingBody(
+        factory.transform.x,
+        factory.transform.y,
+        building.width,
+        building.height,
+        building.depth,
+        baseZ,
+        building.supportSurface,
+        `contract_factory_${factory.id}`,
+        factory.id,
+      ),
+    };
+    const body = createPhysicsBodyForUnit(world, physics, shell, {
+      ignoreOverlappingBuildings: true,
+      overlapPadding: undefined,
+    });
+    assertContract(body !== undefined, 'factory shell physics body must be created');
+
+    const terrainZ = world.getGroundZ(shell.transform.x, shell.transform.y);
+    const terrainSurface = world.writeTerrainSupportSurfaceAt(
+      shell.transform.x,
+      shell.transform.y,
+      terrainZ,
+      world.getCachedSurfaceNormal(shell.transform.x, shell.transform.y),
+    );
+    const physicsSurface = physics.sampleSupportSurface(body, terrainSurface);
+    assertContract(
+      physicsSurface.supportKind === 'building' &&
+        physicsSurface.supportEntityId === factory.id,
+      'factory shell physics support must keep the fabricator roof as terrain',
+    );
+    assertNear(physicsSurface.groundZ, supportTopZ, 'factory shell physics roof support height');
+
+    const penetration = Math.min(2, Math.max(0.25, body.groundOffset * 0.25));
+    body.z = supportTopZ + body.groundOffset - penetration;
+    const penetratedPhysicsSurface = physics.sampleSupportSurface(body, terrainSurface);
+    assertContract(
+      penetratedPhysicsSurface.supportKind === 'building' &&
+        penetratedPhysicsSurface.supportEntityId === factory.id,
+      'factory shell physics support must keep roof support during contact penetration',
+    );
+    assertNear(
+      penetratedPhysicsSurface.groundZ,
+      supportTopZ,
+      'factory shell penetrated physics roof support height',
+    );
+  } finally {
+    shell.body = null;
+    factory.body = null;
+    physics.dispose();
+  }
+}
+
 function assertUnitActionCount(entity: Entity, count: number, message: string): Unit {
   const unit = entity.unit;
   assertContract(unit !== null, `${message}: entity must be a unit`);
@@ -211,6 +304,14 @@ function assertBuildingSupportContract(): void {
     groundOffset: 10,
   });
   assertContract(highAboveRoofSurface.supportKind === 'building', 'building top must support units high above it');
+  const penetratingRoofSurface = world.sampleSupportSurface(dry.x, dry.y, {
+    bodyZ: buildingTopZ + 9,
+    groundOffset: 10,
+  });
+  assertContract(
+    penetratingRoofSurface.supportKind === 'building',
+    'building top must remain support while locomotion point penetrates the roof',
+  );
   const belowRoofSurface = world.sampleSupportSurface(dry.x, dry.y, {
     bodyZ: buildingTopZ - SUPPORT_SURFACE_CONTACT_EPSILON - 0.25,
     groundOffset: 0,
@@ -266,6 +367,14 @@ function assertUnitSupportContract(): void {
   assertContract(unitSurface.supportKind === 'unit', 'authored unit top must be sampled as unit support');
   assertContract(unitSurface.supportEntityId === carrier.id, 'unit support must identify its host');
   assertNear(unitSurface.groundZ, unitTopZ, 'unit support height');
+  const penetratingUnitSurface = world.sampleSupportSurface(dry.x, dry.y, {
+    bodyZ: unitTopZ + 9,
+    groundOffset: 10,
+  });
+  assertContract(
+    penetratingUnitSurface.supportKind === 'unit',
+    'authored unit top must remain support while locomotion point penetrates it',
+  );
   assertNear(unitSurface.supportVelocityX, carrier.unit.velocityX, 'unit support velocity x');
   assertNear(unitSurface.supportVelocityY, carrier.unit.velocityY, 'unit support velocity y');
   assertNear(unitSurface.supportVelocityZ, carrier.unit.velocityZ, 'unit support velocity z');
@@ -338,7 +447,8 @@ function assertFactoryShellContract(): void {
   assertContract(spawned.length === 1, 'factory must spawn exactly one shell');
   const shell = spawned[0];
   const shellSupport = world.sampleSupportSurface(factory.transform.x, factory.transform.y);
-  assertSpawnedOnSupport(shell, shellSupport.groundZ, 'factory shell spawn must use shared support');
+  assertFactoryShellSpawnedAboveSupport(shell, shellSupport.groundZ, 'factory shell spawn must use shared support');
+  assertFactoryShellPhysicsKeepsRoofSupport(world, factory, shell, shellSupport.groundZ);
   assertContract(shell.buildable !== null && !shell.buildable.isComplete, 'spawned shell must be an incomplete buildable');
   assertUnitActionCount(shell, 0, 'incomplete shell must not inherit movement actions');
 
@@ -363,6 +473,7 @@ function assertFactoryShellContract(): void {
   const oneShotSpawned = factoryProductionSystem.update(world, 16, buildingGrid).spawnedUnits;
   assertContract(oneShotSpawned.length === 1, 'one-shot factory must spawn one selected shell');
   const oneShotShell = oneShotSpawned[0];
+  assertFactoryShellSpawnedAboveSupport(oneShotShell, shellSupport.groundZ, 'one-shot shell spawn must use shared support');
   assertContract(oneShotShell.buildable !== null, 'one-shot shell must be buildable');
   oneShotShell.buildable.isComplete = true;
   const oneShotCompleted = factoryProductionSystem.update(world, 16, buildingGrid).completedUnits;
@@ -378,6 +489,7 @@ function assertFactoryShellContract(): void {
   const queuedSpawned = factoryProductionSystem.update(world, 16, buildingGrid).spawnedUnits;
   assertContract(queuedSpawned.length === 1, 'queued factory must spawn the advanced shell');
   const queuedShell = queuedSpawned[0];
+  assertFactoryShellSpawnedAboveSupport(queuedShell, shellSupport.groundZ, 'queued shell spawn must use shared support');
   assertContract(queuedShell.buildable !== null, 'queued shell must be buildable');
   queuedShell.buildable.isComplete = true;
   const queuedCompleted = factoryProductionSystem.update(world, 16, buildingGrid).completedUnits;

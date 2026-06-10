@@ -50,12 +50,7 @@ export function sampleUnitSupportTopZ(
   const bodyZ = options.bodyZ;
   const hasBodyZ = bodyZ !== undefined && Number.isFinite(bodyZ);
   if (hasBodyZ) {
-    const groundOffset = options.groundOffset !== undefined && Number.isFinite(options.groundOffset)
-      ? options.groundOffset
-      : 0;
-    const groundPointZ = bodyZ - groundOffset;
     if (bodyZ < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) return null;
-    if (groundPointZ < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) return null;
   }
 
   return topZ;

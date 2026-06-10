@@ -221,7 +221,10 @@ export class ConstructionVisualController3D {
       && !!factory
       && !!selectedUnitBlueprintId
       && factory.isProducing;
-    rig.group.visible = detailsReady;
+    // The emitter rig is part of the host turret mesh and should
+    // materialize with the host. Only the spray/resource activity is gated
+    // on the completed factory state.
+    rig.group.visible = true;
 
     const dtSec = dtMs / 1000;
     const halfLife = BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE];

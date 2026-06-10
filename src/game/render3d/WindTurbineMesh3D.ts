@@ -78,7 +78,7 @@ export function buildWindTurbineMesh(
 
   const root = new THREE.Mesh(boxGeom, invisibleMat);
   root.position.set(0, towerH, 0);
-  root.visible = false;
+  root.visible = true;
 
   const nacelleLen = Math.max(32, minDim * 0.86);
   const nacelleRadius = Math.max(5.2, minDim * 0.16);

@@ -215,12 +215,16 @@ export class ShieldRenderPacket3D {
   targetX: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   targetY: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   targetZ: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
+  worldCenterX: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
+  worldCenterY: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
+  worldCenterZ: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   progress: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   outerRange: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   originOffsetZ: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   barrierAlpha: Float32Array = new Float32Array(SHIELD_PACKET_INITIAL_CAP);
   color: Uint32Array = new Uint32Array(SHIELD_PACKET_INITIAL_CAP);
   shape: Uint8Array = new Uint8Array(SHIELD_PACKET_INITIAL_CAP);
+  hasWorldPose: Uint8Array = new Uint8Array(SHIELD_PACKET_INITIAL_CAP);
   private readonly mountLiftCache = new Map<string, { radius: number; liftY: number }>();
   count = 0;
 
@@ -244,10 +248,15 @@ export class ShieldRenderPacket3D {
       const shot = turret.config.shot;
       if (!shot || shot.type !== 'shield' || !shot.barrier) continue;
       const barrier = shot.barrier;
+      const deployedPose = turret.shield?.deployedPose ?? null;
       let targetX = unitEntity.transform.x;
       let targetY = unitEntity.transform.y;
       let targetZ = unitEntity.transform.z;
-      if (barrier.shape === 'aimedCylinder') {
+      if (deployedPose !== null) {
+        targetX = deployedPose.axisEndX;
+        targetY = deployedPose.axisEndY;
+        targetZ = deployedPose.axisEndZ;
+      } else if (barrier.shape === 'aimedCylinder') {
         const { cos, sin } = getTransformCosSin(unitEntity.transform);
         const originX = unitEntity.transform.x + turret.mount.x * cos - turret.mount.y * sin;
         const originY = unitEntity.transform.y + turret.mount.x * sin + turret.mount.y * cos;
@@ -275,11 +284,15 @@ export class ShieldRenderPacket3D {
       this.targetX[cursor] = targetX;
       this.targetY[cursor] = targetY;
       this.targetZ[cursor] = targetZ;
+      this.worldCenterX[cursor] = deployedPose?.centerX ?? 0;
+      this.worldCenterY[cursor] = deployedPose?.centerY ?? 0;
+      this.worldCenterZ[cursor] = deployedPose?.centerZ ?? 0;
       this.progress[cursor] = turret.shield?.range ?? 0;
       this.outerRange[cursor] = barrier.outerRange;
       this.originOffsetZ[cursor] = barrier.originOffsetZ;
       this.barrierAlpha[cursor] = barrier.alpha;
       this.color[cursor] = fieldColor;
+      this.hasWorldPose[cursor] = deployedPose !== null ? 1 : 0;
       this.shape[cursor] = barrier.shape === 'infiniteVerticalCylinder'
         ? SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER
         : barrier.shape === 'aimedCylinder'
@@ -304,6 +317,9 @@ export class ShieldRenderPacket3D {
     targetX: number;
     targetY: number;
     targetZ: number;
+    worldCenterX?: number;
+    worldCenterY?: number;
+    worldCenterZ?: number;
     progress: number;
     outerRange: number;
     originOffsetZ: number;
@@ -327,12 +343,20 @@ export class ShieldRenderPacket3D {
     this.targetX[cursor] = options.targetX;
     this.targetY[cursor] = options.targetY;
     this.targetZ[cursor] = options.targetZ;
+    this.worldCenterX[cursor] = options.worldCenterX ?? 0;
+    this.worldCenterY[cursor] = options.worldCenterY ?? 0;
+    this.worldCenterZ[cursor] = options.worldCenterZ ?? 0;
     this.progress[cursor] = options.progress;
     this.outerRange[cursor] = options.outerRange;
     this.originOffsetZ[cursor] = options.originOffsetZ;
     this.barrierAlpha[cursor] = options.barrierAlpha;
     this.color[cursor] = options.color;
     this.shape[cursor] = options.shape;
+    this.hasWorldPose[cursor] = options.worldCenterX !== undefined &&
+      options.worldCenterY !== undefined &&
+      options.worldCenterZ !== undefined
+      ? 1
+      : 0;
     this.count = cursor + 1;
   }
 
@@ -354,12 +378,16 @@ export class ShieldRenderPacket3D {
     this.targetX = growFloat32(this.targetX, nextCapacity);
     this.targetY = growFloat32(this.targetY, nextCapacity);
     this.targetZ = growFloat32(this.targetZ, nextCapacity);
+    this.worldCenterX = growFloat32(this.worldCenterX, nextCapacity);
+    this.worldCenterY = growFloat32(this.worldCenterY, nextCapacity);
+    this.worldCenterZ = growFloat32(this.worldCenterZ, nextCapacity);
     this.progress = growFloat32(this.progress, nextCapacity);
     this.outerRange = growFloat32(this.outerRange, nextCapacity);
     this.originOffsetZ = growFloat32(this.originOffsetZ, nextCapacity);
     this.barrierAlpha = growFloat32(this.barrierAlpha, nextCapacity);
     this.color = growUint32(this.color, nextCapacity);
     this.shape = growUint8(this.shape, nextCapacity);
+    this.hasWorldPose = growUint8(this.hasWorldPose, nextCapacity);
   }
 
   private resolveMountLiftY(unit: Unit): number {
@@ -728,48 +756,54 @@ export class ShieldRenderer3D {
     const localY = field.localY;
     const localZ = field.localZ;
 
-    // The bubble is written in absolute world coords below, so it
-    // doesn't need a parent. yawGroup is only consulted to read the
-    // unit's parent-chain pose for accurate world-position composition
-    // (chassis tilt + yaw); when it's missing we fall back to the
-    // packet's transform row.
-    const liftGroupNode = this.getYawGroup(hostId); // getYawGroup returns liftGroup
-    const realYawGroup = liftGroupNode?.parent;
-    const groupOuter = realYawGroup?.parent;
-    if (liftGroupNode && realYawGroup && groupOuter) {
-      this._sphereYawQuat.setFromAxisAngle(
-        ShieldRenderer3D._SPHERE_UP,
-        realYawGroup.rotation.y,
-      );
-      this._sphereParentQuat
-        .copy(groupOuter.quaternion)
-        .multiply(this._sphereYawQuat);
-      this._sphereLocalPos.set(localX, liftGroupNode.position.y + localY, localZ);
-      this._sphereLocalPos.applyQuaternion(this._sphereParentQuat);
-      this._sphereScratchPos
-        .copy(groupOuter.position)
-        .add(this._sphereLocalPos);
-    } else {
-      // No liftGroup — use the fallback unit transform from the packet.
-      // Rebuild the same base-Y convention Render3DEntities uses:
-      // group.y = sim altitude − bodyCenterHeight, then add the
-      // cached blueprint chassis lift and this turret's chassis-
-      // local mount Y. Slope tilt lives only on the unit mesh chain;
-      // yaw and vertical body lift still stay coherent.
-      const yaw = packet.rotation[row];
-      const cosYaw = Math.cos(yaw);
-      const sinYaw = Math.sin(yaw);
-      const rx = cosYaw * localX - sinYaw * localZ;
-      const rz = sinYaw * localX + cosYaw * localZ;
+    if (packet.hasWorldPose[row] !== 0) {
       this._sphereScratchPos.set(
-        packet.x[row] + rx,
-        packet.z[row] - packet.bodyCenterHeight[row] + field.mountLiftY + localY,
-        packet.y[row] + rz,
+        packet.worldCenterX[row],
+        packet.worldCenterZ[row],
+        packet.worldCenterY[row],
       );
+    } else {
+      // The bubble is written in absolute world coords below, so it
+      // doesn't need a parent. yawGroup is only consulted to read the
+      // unit's parent-chain pose for accurate world-position composition
+      // (chassis tilt + yaw); when it's missing we fall back to the
+      // packet's transform row.
+      const liftGroupNode = this.getYawGroup(hostId); // getYawGroup returns liftGroup
+      const realYawGroup = liftGroupNode?.parent;
+      const groupOuter = realYawGroup?.parent;
+      if (liftGroupNode && realYawGroup && groupOuter) {
+        this._sphereYawQuat.setFromAxisAngle(
+          ShieldRenderer3D._SPHERE_UP,
+          realYawGroup.rotation.y,
+        );
+        this._sphereParentQuat
+          .copy(groupOuter.quaternion)
+          .multiply(this._sphereYawQuat);
+        this._sphereLocalPos.set(localX, liftGroupNode.position.y + localY, localZ);
+        this._sphereLocalPos.applyQuaternion(this._sphereParentQuat);
+        this._sphereScratchPos
+          .copy(groupOuter.position)
+          .add(this._sphereLocalPos);
+      } else {
+        // No liftGroup — use the fallback unit transform from the packet.
+        // Rebuild the same base-Y convention Render3DEntities uses:
+        // group.y = sim altitude − bodyCenterHeight, then add the
+        // cached blueprint chassis lift and this turret's chassis-
+        // local mount Y. Slope tilt lives only on the unit mesh chain;
+        // yaw and vertical body lift still stay coherent.
+        const yaw = packet.rotation[row];
+        const cosYaw = Math.cos(yaw);
+        const sinYaw = Math.sin(yaw);
+        const rx = cosYaw * localX - sinYaw * localZ;
+        const rz = sinYaw * localX + cosYaw * localZ;
+        this._sphereScratchPos.set(
+          packet.x[row] + rx,
+          packet.z[row] - packet.bodyCenterHeight[row] + field.mountLiftY + localY,
+          packet.y[row] + rz,
+        );
+      }
+      this._sphereScratchPos.y -= packet.originOffsetZ[row];
     }
-
-    const fieldCenterY = this._sphereScratchPos.y - packet.originOffsetZ[row];
-    this._sphereScratchPos.y = fieldCenterY;
     const alpha = packet.barrierAlpha[row] * fadeIn * FIELD_OPACITY_BOOST;
     const shape = packet.shape[row];
     if (

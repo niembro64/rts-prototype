@@ -743,12 +743,12 @@ export class BuildingEntityRenderer3D {
     const combatTurrets = rows.turretsAt(row);
     if (!combatTurrets || mesh.turrets.length !== combatTurrets.length) return;
     const underConstruction = rows.shellAt(row);
-    const bodyMaterialized = rows.bodyMaterializedAt(row);
+    const bodyVisible = rows.bodyOpacity[row] > 0;
     const ownerId = rows.ownerIdAt(row);
     for (let turretIndex = 0; turretIndex < combatTurrets.length; turretIndex++) {
       const turret = combatTurrets[turretIndex];
       const turretMesh = mesh.turrets[turretIndex];
-      const visible = bodyMaterialized;
+      const visible = bodyVisible;
       this.setTurretRootVisible(turretMesh, visible);
       if (!visible) continue;
       // Construction emitters have no head sphere, no barrels, and

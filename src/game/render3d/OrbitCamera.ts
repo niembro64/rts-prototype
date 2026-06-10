@@ -38,6 +38,7 @@ import type {
 const TOUCH_ROTATE_DEADZONE_RAD = 0.006;
 const TOUCH_ROTATE_MAX_DELTA_RAD = 0.35;
 const SHIFT_CAMERA_INPUT_SCALE = 0.1;
+const KEYBOARD_CAMERA_SCREEN_STEP_PX = 48;
 
 export type OrbitCameraOptions = {
   /** Closest-approach zoom-in rail. Terrain clearance is resolved
@@ -676,6 +677,37 @@ export class OrbitCamera {
     // out before going through the shared pan math.
     const multiplier = this.panMultiplier > 0 ? this.panMultiplier : 1;
     this.panByScreenDelta(-dx / multiplier, -dy / multiplier);
+  }
+
+  moveByKeyboardScreenDirection(
+    mode: 'pan' | 'height-pan' | 'orbit',
+    screenX: number,
+    screenY: number,
+    fine: boolean,
+  ): void {
+    const magnitude = Math.hypot(screenX, screenY);
+    if (magnitude <= 0) return;
+    const x = screenX / magnitude;
+    const y = screenY / magnitude;
+    const step = KEYBOARD_CAMERA_SCREEN_STEP_PX * (fine ? SHIFT_CAMERA_INPUT_SCALE : 1);
+    if (mode === 'pan') {
+      this.panByScreenDelta(-x * step, -y * step);
+      return;
+    }
+    if (mode === 'height-pan') {
+      this.panHeightByScreenDelta(-x * step, -y * step);
+      return;
+    }
+    this.orbitByScreenDelta(x * step, -y * step);
+  }
+
+  private orbitByScreenDelta(dx: number, dy: number): void {
+    if (dx === 0 && dy === 0) return;
+    this.yaw -= dx * this.rotateSpeed;
+    this.pitch += dy * this.rotateSpeed;
+    this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, this.pitch));
+    this.toYaw = this.yaw;
+    this.apply();
   }
 
   private rotateYawAroundScreenPoint(clientX: number, clientY: number, yawDelta: number): void {

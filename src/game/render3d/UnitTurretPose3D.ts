@@ -79,7 +79,7 @@ export class UnitTurretPose3D {
     entity: Entity,
     mesh: EntityMesh,
     turrets: readonly Turret[],
-    bodyMaterialized: boolean,
+    bodyVisible: boolean,
     bodyCenterHeight: number,
     parentPosition: THREE.Vector3,
     parentQuaternion: THREE.Quaternion,
@@ -96,7 +96,7 @@ export class UnitTurretPose3D {
       const turretMesh = mesh.turrets[turretIdx];
       const turret = turrets[turretIdx];
       const headRadius = turretMesh.headRadius ?? getTurretHeadRadius(turret.config);
-      const visible = bodyMaterialized;
+      const visible = bodyVisible;
       turretMesh.root.visible = visible;
       if (!visible) {
         unitDetailInstances.clearTurretSlots(turretMesh);

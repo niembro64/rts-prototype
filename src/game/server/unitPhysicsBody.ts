@@ -1,6 +1,7 @@
 import type { Entity } from '../sim/types';
 import type { WorldState } from '../sim/WorldState';
 import type { Body3D, PhysicsEngine3D } from './PhysicsEngine3D';
+import { SUPPORT_SURFACE_CONTACT_EPSILON } from '../sim/supportSurface';
 
 export type UnitPhysicsBodyOptions = {
   ignoreOverlappingBuildings: boolean | undefined;
@@ -14,6 +15,13 @@ export function computeHostEffectiveMass(entity: Entity): number {
   const unit = entity.unit;
   if (unit === null) return 0;
   return unit.mass;
+}
+
+function bodyStartsAboveStaticSupport(dynamicBody: Body3D, staticBody: Body3D): boolean {
+  if (dynamicBody.shape !== 'sphere' || staticBody.shape !== 'cuboid') return false;
+  const topZ = staticBody.supportTopZ;
+  if (topZ === null) return false;
+  return dynamicBody.z - dynamicBody.groundOffset >= topZ - SUPPORT_SURFACE_CONTACT_EPSILON;
 }
 
 export function createPhysicsBodyForUnit(
@@ -54,6 +62,7 @@ export function createPhysicsBodyForUnit(
         Math.abs(spawnX - building.transform.x) < bw &&
         Math.abs(spawnY - building.transform.y) < bh
       ) {
+        if (bodyStartsAboveStaticSupport(body, buildingBody.physicsBody)) continue;
         physics.setIgnoreStatic(body, buildingBody.physicsBody);
         break;
       }

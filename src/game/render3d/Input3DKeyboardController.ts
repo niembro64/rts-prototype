@@ -30,7 +30,7 @@ type Input3DKeyboardControllerConfig = {
   toggleControlGroupSlot: (index: number) => boolean;
   unsetSelectedFromControlGroups: () => void;
   focusControlGroupSlot: (index: number) => boolean;
-  panCameraByKeyboard: (screenX: number, screenY: number, fine: boolean) => void;
+  moveCameraByKeyboard: (action: CameraKeyboardAction) => void;
   hasSelectedUnits: () => boolean;
   hasSelectedFactory: () => boolean;
   hasSelectedBuilder: () => boolean;
@@ -142,37 +142,66 @@ function isAutoGroupRemoveKey(e: KeyboardEvent): boolean {
     && (e.code === 'Backquote' || e.key === '`' || e.code === 'KeyQ');
 }
 
-type CameraPanDirection = {
+export type CameraKeyboardActionMode = 'pan' | 'height-pan' | 'orbit';
+
+export type CameraKeyboardAction = {
+  mode: CameraKeyboardActionMode;
   x: number;
   y: number;
+  fine: boolean;
 };
 
-function cameraPanDirectionForKey(e: KeyboardEvent): CameraPanDirection | null {
-  if (e.ctrlKey || e.metaKey || e.altKey) return null;
+type CameraKeyboardEvent = Pick<
+  KeyboardEvent,
+  'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'
+>;
+
+export function cameraKeyboardActionForKey(e: CameraKeyboardEvent): CameraKeyboardAction | null {
+  if (e.metaKey) return null;
+  let x = 0;
+  let y = 0;
   switch (e.code) {
     case 'ArrowUp':
     case 'Numpad8':
-      return { x: 0, y: 1 };
+      y = 1;
+      break;
     case 'ArrowDown':
     case 'Numpad2':
-      return { x: 0, y: -1 };
+      y = -1;
+      break;
     case 'ArrowLeft':
     case 'Numpad4':
-      return { x: -1, y: 0 };
+      x = -1;
+      break;
     case 'ArrowRight':
     case 'Numpad6':
-      return { x: 1, y: 0 };
+      x = 1;
+      break;
     case 'Numpad7':
-      return { x: -Math.SQRT1_2, y: Math.SQRT1_2 };
+      x = -Math.SQRT1_2;
+      y = Math.SQRT1_2;
+      break;
     case 'Numpad9':
-      return { x: Math.SQRT1_2, y: Math.SQRT1_2 };
+      x = Math.SQRT1_2;
+      y = Math.SQRT1_2;
+      break;
     case 'Numpad1':
-      return { x: -Math.SQRT1_2, y: -Math.SQRT1_2 };
+      x = -Math.SQRT1_2;
+      y = -Math.SQRT1_2;
+      break;
     case 'Numpad3':
-      return { x: Math.SQRT1_2, y: -Math.SQRT1_2 };
+      x = Math.SQRT1_2;
+      y = -Math.SQRT1_2;
+      break;
     default:
       return null;
   }
+  return {
+    mode: e.altKey ? 'orbit' : e.ctrlKey ? 'height-pan' : 'pan',
+    x,
+    y,
+    fine: e.shiftKey,
+  };
 }
 
 function buildSlotIndexForCommandId(commandId: CommandHotkeyId): number {
@@ -235,15 +264,11 @@ export class Input3DKeyboardController {
   handleKeyDown(e: KeyboardEvent): void {
     if (isTextEntryTarget(e.target)) return;
 
-    const cameraPanDirection = cameraPanDirectionForKey(e);
-    if (cameraPanDirection !== null) {
+    const cameraAction = cameraKeyboardActionForKey(e);
+    if (cameraAction !== null) {
       e.preventDefault();
       this.commandHotkeys.reset();
-      this.config.panCameraByKeyboard(
-        cameraPanDirection.x,
-        cameraPanDirection.y,
-        e.shiftKey,
-      );
+      this.config.moveCameraByKeyboard(cameraAction);
       return;
     }
 

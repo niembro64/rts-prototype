@@ -1,5 +1,6 @@
 import { NO_ENTITY_ID, type Entity, type Turret } from './types';
 import { isConstructionPieceMaterialized } from './buildableHelpers';
+import { isStaticShieldDeploymentReady } from './combat/staticShield';
 
 export type ShieldPanelTurretRef = {
   turret: Turret;
@@ -34,5 +35,6 @@ export function getActiveShieldPanelTurret(entity: Entity): ShieldPanelTurretRef
   const { turret } = ref;
   if (turret.id === NO_ENTITY_ID) return null;
   if (!isConstructionPieceMaterialized(entity, 'body')) return null;
+  if (!isStaticShieldDeploymentReady(entity, turret, false)) return null;
   return ref;
 }

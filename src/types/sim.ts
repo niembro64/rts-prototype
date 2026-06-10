@@ -534,6 +534,24 @@ export type ShotSource = {
 // Turret FSM state: idle → tracking → engaged
 export type TurretState = 'idle' | 'tracking' | 'engaged';
 
+export type ShieldDeployedPose = {
+  centerX: number;
+  centerY: number;
+  centerZ: number;
+  axisEndX: number;
+  axisEndY: number;
+  axisEndZ: number;
+  rotation: number;
+  pitch: number;
+  targetId: number;
+};
+
+export type TurretShieldState = {
+  transition: number;
+  range: number;
+  deployedPose: ShieldDeployedPose | null;
+};
+
 // Runtime turret instance (per-weapon state on a unit).
 // Full 3D aiming: `rotation` is yaw (horizontal heading, around z),
 // `pitch` is elevation (vertical aim angle). Together they give a
@@ -616,7 +634,7 @@ export type Turret = {
    *  shots. Default true. */
   ballisticAimInRange: boolean;
   burst: { remaining: number; cooldown: number } | null;
-  shield: { transition: number; range: number } | null;
+  shield: TurretShieldState | null;
   /** Round-robin pointer across the physical barrels on this turret.
    *  Each fired pellet picks barrelIndex = (barrelFireIndex + pellet)
    *  % barrelCount, then the pointer advances by the pellet count.

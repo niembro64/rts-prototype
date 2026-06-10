@@ -344,12 +344,7 @@ export class SupportSurfaceIndex {
     const bodyZ = options.bodyZ;
     if (bodyZ === undefined || !Number.isFinite(bodyZ)) return true;
 
-    const groundOffset = options.groundOffset !== undefined && Number.isFinite(options.groundOffset)
-      ? options.groundOffset
-      : 0;
-    const groundPointZ = bodyZ - groundOffset;
-    if (bodyZ < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) return false;
-    return groundPointZ >= topZ - SUPPORT_SURFACE_CONTACT_EPSILON;
+    return bodyZ >= topZ - SUPPORT_SURFACE_CONTACT_EPSILON;
   }
 
   private cellCoord(value: number): number {

@@ -15,6 +15,3 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 
 Please always commit and push before and after any code changes we make.
 ================================================================================
-
-ISSUE 1:
-We currently have many camera controls that can only be done using mouse (or mobile pointer). Let's also be able to do these camera controls with keyboard keys as well. It looks like the arrow keys currently strafe the camera but let's continue abstracting these arrow keys to act like the mouse center click drag also when we hold "shift", "ctrl", "alt". "shift" slows down whatever camera command we are doing, "alt" changes our camera angle, "ctrl"+"center click" moves our camera up-down-left-right instead of forward-back-left-right. So basically for all of our mouse commands that can move the camera let's make a "keyboard arrows" version of it as well. Regarding mobile, I don't think we can abstract it any further - so just leave those controls as is. 

@@ -85,6 +85,10 @@ const PER_OBJECT_FADE_CACHE_KEY = 'entityFadePerObjectAlpha';
  *  fading one per-Mesh object never bleeds onto others. Used for the
  *  per-Mesh building / tower render path. */
 export function makePerObjectFadeMaterial(base: THREE.Material): PerObjectFade {
+  if ((base as THREE.ShaderMaterial).isShaderMaterial === true) {
+    return makeShaderPerObjectFadeMaterial(base as THREE.ShaderMaterial);
+  }
+
   const baseCacheKey = base.customProgramCacheKey();
   const material = base.clone();
   material.transparent = true;
@@ -107,6 +111,28 @@ export function makePerObjectFadeMaterial(base: THREE.Material): PerObjectFade {
     injectFadeFragment(shader);
   };
   material.customProgramCacheKey = () => cacheKey;
+  material.needsUpdate = true;
+  return { material, setFade: (value: number): void => { uFade.value = value; } };
+}
+
+function makeShaderPerObjectFadeMaterial(base: THREE.ShaderMaterial): PerObjectFade {
+  const baseCacheKey = base.customProgramCacheKey();
+  const material = base.clone();
+  const uFade = { value: 1 };
+  material.transparent = true;
+  material.depthWrite = false;
+  material.uniforms = {
+    ...material.uniforms,
+    uFade,
+  };
+  material.fragmentShader = [
+    'uniform float uFade;',
+    material.fragmentShader.replace(
+      /gl_FragColor\s*=\s*([^;]+);/g,
+      'gl_FragColor = $1;\n  gl_FragColor.a *= clamp(uFade, 0.0, 1.0);',
+    ),
+  ].join('\n');
+  material.customProgramCacheKey = () => `${PER_OBJECT_FADE_CACHE_KEY}:shader:${baseCacheKey}`;
   material.needsUpdate = true;
   return { material, setFade: (value: number): void => { uFade.value = value; } };
 }

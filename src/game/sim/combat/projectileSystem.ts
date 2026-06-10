@@ -56,6 +56,7 @@ import {
   readCombatTargetingTurretFsmInto,
   type CombatTargetingTurretFsmOut,
 } from './targetingInputStamping';
+import { isShieldSurfaceDeployed } from './staticShield';
 import {
   snapshotRotationThresholdRadians,
   snapshotVectorVelocityDeltaExceeded,
@@ -470,6 +471,7 @@ export function fireTurrets(
       const shieldSubmunitions = isShieldSubmunitionTurret(weapon) ? config.submunitions : null;
       const mask = shieldSubmunitions !== null ? activeMask : firingMask;
       if (!turretMaskIncludes(mask, weaponIndex)) continue;
+      if (shieldSubmunitions !== null && !isShieldSurfaceDeployed(weapon)) continue;
       if (config.passive) continue; // Passive turrets track/engage but never fire
       const isBeamWeapon = isRayConfig(shot);
       const hasTargetingFsm = readCombatTargetingTurretFsmInto(unit, weaponIndex, _fireFsm);
@@ -518,33 +520,21 @@ export function fireTurrets(
       }
       if (!isWeaponAimedForFire(weapon)) continue;
 
-      // Use the canonical 3D turret mount cache. Targeting normally
-      // wrote it earlier this tick; this call is an O(1) cache read in
-      // that case, and a full refresh only for first-frame/manual edges.
-      const weaponMount = updateWeaponWorldKinematics(
-        unit, weapon, weaponIndex,
-        unitCos, unitSin,
-        {
-          currentTick,
-          dtMs,
-          unitGroundZ,
-          surfaceN: unit.unit !== null ? unit.unit.surfaceNormal : undefined,
-        },
-        _fireWeaponMount,
-      );
-      const weaponX = weaponMount.x;
-      const weaponY = weaponMount.y;
-      const mountZ = weaponMount.z;
-
       if (shot.type === 'shield') {
         const spec = shieldSubmunitions;
         if (spec === null || lockedTarget === undefined) continue;
+        const deployedPose = weapon.shield?.deployedPose ?? null;
+        if (deployedPose === null) continue;
         if (readTurretCooldownForFire(unit, weaponIndex) > 0) continue;
 
-        const pitchCos = Math.cos(weapon.pitch);
-        const axisX = Math.cos(weapon.rotation) * pitchCos;
-        const axisY = Math.sin(weapon.rotation) * pitchCos;
-        const axisZ = Math.sin(weapon.pitch);
+        const poseAxisX = deployedPose.axisEndX - deployedPose.centerX;
+        const poseAxisY = deployedPose.axisEndY - deployedPose.centerY;
+        const poseAxisZ = deployedPose.axisEndZ - deployedPose.centerZ;
+        const poseAxisLen = Math.hypot(poseAxisX, poseAxisY, poseAxisZ);
+        if (poseAxisLen <= 1e-6) continue;
+        const axisX = poseAxisX / poseAxisLen;
+        const axisY = poseAxisY / poseAxisLen;
+        const axisZ = poseAxisZ / poseAxisLen;
 
         writeTurretCooldownToSlab(
           unit,
@@ -588,9 +578,9 @@ export function fireTurrets(
             dirZ = _spreadConeDir.z;
           }
 
-          const spawnX = weaponX;
-          const spawnY = weaponY;
-          const spawnZ = mountZ;
+          const spawnX = deployedPose.centerX;
+          const spawnY = deployedPose.centerY;
+          const spawnZ = deployedPose.centerZ;
           if (i === 0) {
             audioEvents.push({
               type: 'fire',
@@ -659,6 +649,24 @@ export function fireTurrets(
         manualLaunchFired = true;
         continue;
       }
+
+      // Use the canonical 3D turret mount cache. Targeting normally
+      // wrote it earlier this tick; this call is an O(1) cache read in
+      // that case, and a full refresh only for first-frame/manual edges.
+      const weaponMount = updateWeaponWorldKinematics(
+        unit, weapon, weaponIndex,
+        unitCos, unitSin,
+        {
+          currentTick,
+          dtMs,
+          unitGroundZ,
+          surfaceN: unit.unit !== null ? unit.unit.surfaceNormal : undefined,
+        },
+        _fireWeaponMount,
+      );
+      const weaponX = weaponMount.x;
+      const weaponY = weaponMount.y;
+      const mountZ = weaponMount.z;
 
       // Check cooldown / active beam. Beam weapons gate purely on whether
       // their existing beam is still alive; non-beam weapons gate on

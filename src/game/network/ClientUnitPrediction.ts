@@ -50,6 +50,7 @@ import {
   readCombatTargetingTurretFsmInto,
   type CombatTargetingTurretFsmOut,
 } from '../sim/combat/targetingInputStamping';
+import { isStaticShieldDeploymentReady } from '../sim/combat/staticShield';
 import type { ServerTarget } from './ClientPredictionTargets';
 
 const PREDICTION_POS_EPSILON_SQ = 0.01 * 0.01;
@@ -845,10 +846,20 @@ export function applyClientCombatExpensivePrediction(options: {
     const fieldShot = shot;
     const shield = weapon.shield;
     const cur = shield !== null ? shield.range : 0;
-    const targetProgress = isTurretEngaged(entity, i, weapon.state) ? 1 : 0;
+    const requiresAimedPose = fieldShot.barrier?.shape === 'aimedCylinder';
+    const staticDeploymentReady = isStaticShieldDeploymentReady(
+      entity,
+      weapon,
+      requiresAimedPose,
+    );
+    const targetProgress =
+      isTurretEngaged(entity, i, weapon.state) && staticDeploymentReady ? 1 : 0;
     const progressDelta = dt / (fieldShot.transitionTime / 1000);
     let next = cur;
-    if (cur < targetProgress) {
+    if (!staticDeploymentReady) {
+      next = 0;
+      if (shield !== null) shield.deployedPose = null;
+    } else if (cur < targetProgress) {
       next = Math.min(cur + progressDelta, 1);
     } else if (cur > targetProgress) {
       next = Math.max(cur - progressDelta, 0);
@@ -862,7 +873,7 @@ export function applyClientCombatExpensivePrediction(options: {
       next = lerp(next, serverRange, rotPosBlend);
     }
     if (shield === null) {
-      weapon.shield = { range: next, transition: 0 };
+      weapon.shield = { range: next, transition: 0, deployedPose: null };
     } else {
       shield.range = next;
     }
@@ -928,7 +939,13 @@ export function clientUnitPredictionIsSettled(
       const shield = weapon.shield;
       const range = shield !== null ? shield.range : 0;
       if (range > PREDICTION_TURRET_EPSILON) return false;
-      if (isTurretEngaged(entity, i, weapon.state)) return false;
+      const requiresAimedPose = shot.barrier?.shape === 'aimedCylinder';
+      if (
+        isTurretEngaged(entity, i, weapon.state) &&
+        isStaticShieldDeploymentReady(entity, weapon, requiresAimedPose)
+      ) {
+        return false;
+      }
     }
   }
 

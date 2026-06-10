@@ -3,7 +3,10 @@ import type { Entity } from './types';
 import type { BuildingGrid } from './buildGrid';
 import { getUnitBlueprint } from './blueprints';
 import { aimTurretsToward } from './turretInit';
-import { COST_MULTIPLIER } from '../../config';
+import {
+  COST_MULTIPLIER,
+  UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
+} from '../../config';
 import { setUnitActions } from './unitActions';
 import {
   ENTITY_CHANGED_ACTIONS,
@@ -36,6 +39,18 @@ const FACTORY_ACTION_CLEAR_INVALID_SELECTION = 3;
 const FACTORY_ACTION_STOP_PRODUCING = 4;
 const FACTORY_ACTION_SPAWN_SHELL = 5;
 const MAX_FACTORY_PRODUCTION_QUEUE_LENGTH = 64;
+const FACTORY_SHELL_MIN_FREEFALL_CLEARANCE = 36;
+
+export function getFactoryShellSpawnClearanceAboveSurface(
+  bp: Pick<ReturnType<typeof getUnitBlueprint>, 'bodyCenterHeight' | 'radius'>,
+): number {
+  return Math.max(
+    FACTORY_SHELL_MIN_FREEFALL_CLEARANCE,
+    UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
+    bp.bodyCenterHeight,
+    bp.radius.collision * 0.75,
+  );
+}
 
 let factoryRows: Entity[] = [];
 let factoryRowShells: Array<Entity | null> = [];
@@ -278,6 +293,10 @@ export class FactoryProductionSystem {
       factory.ownership.playerId,
       unitBlueprintId,
     );
+    const spawnSupport = world.sampleSupportSurface(factory.transform.x, factory.transform.y);
+    unit.transform.z = spawnSupport.groundZ
+      + bp.bodyCenterHeight
+      + getFactoryShellSpawnClearanceAboveSurface(bp);
     unit.buildable = createBuildable({
       energy: bp.cost.energy * COST_MULTIPLIER,
       metal: bp.cost.metal * COST_MULTIPLIER,

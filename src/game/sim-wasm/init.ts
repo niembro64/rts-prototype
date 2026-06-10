@@ -2725,12 +2725,6 @@ export interface ShieldSurfacePoolApi {
     idx: number,
     id: number,
     ownerEntityId: number,
-    prevCenterX: number,
-    prevCenterY: number,
-    prevCenterZ: number,
-    prevAxisEndX: number,
-    prevAxisEndY: number,
-    prevAxisEndZ: number,
     centerX: number,
     centerY: number,
     centerZ: number,
@@ -4344,6 +4338,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runInputControlGroupsContractTest();
         const { runInput3DKeyboardControllerContractTest } = await import('../render3d/Input3DKeyboardControllerContractTest');
         runInput3DKeyboardControllerContractTest();
+        const { runStaticShieldContractTest } = await import('../sim/combat/staticShieldContractTest');
+        runStaticShieldContractTest();
         const { runBuildGhost3DContractTest } = await import('../render3d/BuildGhost3DContractTest');
         runBuildGhost3DContractTest();
         const { runResourcePylonFlowController3DContractTest } = await import('../render3d/ResourcePylonFlowController3DContractTest');

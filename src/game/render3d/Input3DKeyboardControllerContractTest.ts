@@ -1,5 +1,6 @@
 import {
   CONTROL_GROUP_FOCUS_DOUBLE_TAP_MS,
+  cameraKeyboardActionForKey,
   recordControlGroupRecallTap,
   resetControlGroupRecallTap,
   type ControlGroupRecallTapState,
@@ -15,6 +16,19 @@ function makeState(): ControlGroupRecallTapState {
   return {
     index: -1,
     timeMs: Number.NEGATIVE_INFINITY,
+  };
+}
+
+type KeyboardActionFixture = Parameters<typeof cameraKeyboardActionForKey>[0];
+
+function makeKey(overrides: Partial<KeyboardActionFixture>): KeyboardActionFixture {
+  return {
+    code: 'ArrowUp',
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    shiftKey: false,
+    ...overrides,
   };
 }
 
@@ -42,5 +56,26 @@ export function runInput3DKeyboardControllerContractTest(): void {
   assertContract(
     !recordControlGroupRecallTap(state, 2, 1300),
     'reset tap state must clear the pending focus sequence',
+  );
+
+  assertContract(
+    cameraKeyboardActionForKey(makeKey({ code: 'ArrowUp' }))?.mode === 'pan',
+    'plain arrows must pan the camera',
+  );
+  assertContract(
+    cameraKeyboardActionForKey(makeKey({ code: 'ArrowLeft', ctrlKey: true }))?.mode === 'height-pan',
+    'Ctrl + arrows must height-pan the camera',
+  );
+  assertContract(
+    cameraKeyboardActionForKey(makeKey({ code: 'ArrowRight', altKey: true }))?.mode === 'orbit',
+    'Alt + arrows must orbit the camera',
+  );
+  assertContract(
+    cameraKeyboardActionForKey(makeKey({ code: 'Numpad9', shiftKey: true }))?.fine === true,
+    'Shift + keyboard camera input must use fine control',
+  );
+  assertContract(
+    cameraKeyboardActionForKey(makeKey({ code: 'ArrowDown', metaKey: true })) === null,
+    'Meta + arrows must stay out of keyboard camera handling',
   );
 }

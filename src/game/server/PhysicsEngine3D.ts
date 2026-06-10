@@ -19,9 +19,9 @@
 // Collision dimension by pair type:
 //   unit ↔ ground    — soft spring along the terrain normal, measured
 //                      from the unit's locomotion ground point.
-//   unit ↔ building  — full 3D (sphere vs cuboid) so tall buildings
-//                      are blockers and short ones can be cleared by
-//                      units whose ground point is above terrain.
+//   unit ↔ building  — authored top supports use the same terrain-style
+//                      ground plane as map terrain; other cuboid faces use
+//                      full 3D sphere-vs-cuboid contact.
 //   unit ↔ unit      — full 3D sphere-vs-sphere push. Two units at
 //                      the same altitude behave exactly like 2D
 //                      horizontal jostle; two at different altitudes
@@ -961,7 +961,6 @@ export class PhysicsEngine3D {
 
     this.clearExitedStaticIgnoreForBody(body);
     const ignoredStatic = this.ignoreStatic.get(body);
-    const groundPointZ = body.z - body.groundOffset;
     let best: StaticSupportSurfaceContact | null = null;
 
     for (let i = 0; i < this.staticBodies.length; i++) {
@@ -972,7 +971,6 @@ export class PhysicsEngine3D {
       const topZ = st.supportTopZ;
       if (topZ < terrainGroundZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
       if (body.z < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
-      if (groundPointZ < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
 
       const dx = body.x - st.x;
       const dy = body.y - st.y;
