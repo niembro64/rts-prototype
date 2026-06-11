@@ -94,14 +94,6 @@ entity.combat?.trajectoryMode per entity per tick. Fix: convert these specific
 fields to `T | null` (initialized) or hoist explicit null guards out of the
 loops; leave third-party boundaries alone.
 
-[019][UX] Right-drag attack-line / formation-line flow is referenced by UI text
-but discoverability is unverified: SelectionPanel "Atk Line" button sets a
-waypoint mode whose right-drag activation is never explained in-UI, and the
-"Assume" button title claims "Alt+Right click also works" (SelectionPanel.vue
-~723-729) — verify Input3DManager actually implements Alt+RightClick; fix the
-binding or fix the title. Also Wait button title promises Ctrl/Cmd+Shift
-"insert next" (~822) — verify queueModeFromEvent distinguishes that; align
-behavior/title.
 
 --------------------------------------------------------------------------------
 P2 — SMALLER FIXES / HARDENING / CLEANUP
@@ -120,26 +112,8 @@ per-entity/per-frame from JS (e.g. wind_sample_state,
 build_target_horizontal_distance). Identify the per-frame offenders and batch
 them (one call over typed arrays) — measure first, then batch the top few.
 
-[037][UX] Minimap UX papercuts batch (SelectionPanel.vue unless noted):
-- select-only buttons read like counts ("Tower 2") — relabel "(2 towers)"
-  (~696).
-- factory unit buttons lack cost on the button face while build buttons show
-  it (~1297) — add cost label.
-- auto-group "A" badge is ~7px and easy to miss (~515-530) — add legend or
-  tooltip.
-- "Ground" (attack-ground) toggle title is ambiguous (~777-783) — clarify.
-- client control bar HUD toggles are single letters (UNIT/TOWER/...) — expand
-  labels where space allows (GameCanvasClientControlBar.vue).
 
 
-[039][ARCH] Factory preset localStorage sync has a cross-tab race
-(SelectionPanel.vue ~364-367). Low stakes: add a version field and
-last-write-wins on the whole slot array.
-
-[040][UX] Verify an explicit attack-move binding exists and is discoverable
-(BAR ships one); commandHotkeys.ts shows fight/attack but no attack-move
-entry. Add binding or document that right-click-on-ground = attack-move for
-fight mode.
 
 [041][PERF] isFarFromWater does 8 radial water samples per call
 (terrainSurface.ts ~132-148). Verify call sites/cadence; precompute a water

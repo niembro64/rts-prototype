@@ -544,7 +544,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
       >
         <span class="control-group-index">{{ group.index }}</span>
         <span class="control-group-count">{{ group.count }}</span>
-        <span v-if="group.auto" class="control-group-auto">A</span>
+        <span v-if="group.auto" class="control-group-auto" title="Auto group (saved locally)">A</span>
       </button>
     </div>
 
@@ -694,7 +694,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           :title="`Select only ${option.label.toLowerCase()}`"
           @click="actions.selectOnlyEntityType(option.entityType)"
         >
-          <span class="btn-label">{{ option.label }} {{ option.count }}</span>
+          <span class="btn-label">{{ option.label }} ×{{ option.count }}</span>
         </button>
       </div>
     </div>
@@ -776,7 +776,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           class="action-btn"
           :class="{ active: selection.isAttackGroundMode }"
           :style="{ '--btn-color': BUTTON_COLORS.attackGround }"
-          :title="actionTitle('Attack ground', 'combat.attackGround', 'Toggle ground targeting')"
+          :title="actionTitle('Attack ground', 'combat.attackGround', 'Click a ground point to force-fire at it')"
           @click="actions.toggleAttackGround()"
         >
           <span class="btn-label">Ground</span>
@@ -1608,17 +1608,18 @@ kbd {
 
 .control-group-auto {
   position: absolute;
-  top: -4px;
-  right: -3px;
+  top: -5px;
+  right: -4px;
   display: grid;
   place-items: center;
-  width: 9px;
-  height: 9px;
+  width: 12px;
+  height: 12px;
   background: var(--selection-panel-bg);
   border: 1px solid var(--selection-panel-vehicle-produce);
   border-radius: 50%;
-  color: var(--selection-panel-text);
-  font-size: 7px;
+  color: var(--selection-panel-vehicle-produce);
+  font-weight: 700;
+  font-size: 9px;
   font-weight: bold;
 }
 
