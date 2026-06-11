@@ -240,11 +240,10 @@ export class ClientPredictionStepper {
       totalTargetAgeMs: 0,
       maxTargetAgeMs: 0,
     };
-    // Beam paths follow the movement-position and movement-velocity
-    // channels for their per-vertex EMAs. Projectiles use the same
-    // channels through applyClientProjectilePrediction.
-    const beamMovPosBlend = getChannelBlend(getMovementPosEmaMode(), deltaMs / 1000);
-    const beamMovVelBlend = getChannelBlend(getMovementVelEmaMode(), deltaMs / 1000);
+    // Beam paths and rocket correction targets follow the movement-position
+    // and movement-velocity channels for their EMAs.
+    const movPosBlend = getChannelBlend(getMovementPosEmaMode(), deltaMs / 1000);
+    const movVelBlend = getChannelBlend(getMovementVelEmaMode(), deltaMs / 1000);
     projectileSpawns.drain(now, applyProjectileSpawn);
 
     const turretShieldSpheresEnabled = getServerShieldsEnabled();
@@ -271,7 +270,7 @@ export class ClientPredictionStepper {
 
       const beamTarget = beamPathTargets.get(id);
       noteTargetAge(targetAgeStats, beamTarget === undefined ? undefined : beamTarget.updatedAtMs, now);
-      if (beamTarget && applyBeamPathPrediction(entity, beamTarget, deltaMs, beamMovPosBlend, beamMovVelBlend)) {
+      if (beamTarget && applyBeamPathPrediction(entity, beamTarget, deltaMs, movPosBlend, movVelBlend)) {
         beamPathsChanged = true;
         updateProjectileRenderSpatialIndex(entity);
       }
@@ -344,13 +343,26 @@ export class ClientPredictionStepper {
         continue;
       }
 
-      // Projectiles snap on velocityUpdate (consumed in ClientViewState)
-      // and dead-reckon between events; no server-target EMA loop.
+      const target = serverTargets.get(id);
+      const projectileTarget = entity.projectile.config.shotProfile.runtime.isRocketLike === true
+        ? target
+        : undefined;
+      if (target !== undefined && projectileTarget === undefined) {
+        serverTargets.delete(id);
+      }
+      noteTargetAge(
+        targetAgeStats,
+        projectileTarget === undefined ? undefined : projectileTarget.updatedAtMs,
+        now,
+      );
       const predictionStep = predictionCadence.consumeDelta(deltaMs);
 
       const projectileResult = applyClientProjectilePrediction({
         entity,
         predictionStep,
+        target: projectileTarget,
+        movPosBlend,
+        movVelBlend,
         mapWidth: getMapWidth(),
         mapHeight: getMapHeight(),
         getEntity: (entityId) => entities.get(entityId),
@@ -358,6 +370,7 @@ export class ClientPredictionStepper {
       if (projectileResult.becameLineProjectile) {
         activeBeamPathIds.add(id);
         activeProjectilePredictionIds.delete(id);
+        serverTargets.delete(id);
         updateProjectileRenderSpatialIndex(entity);
         markLineProjectilesChanged();
         continue;
@@ -365,6 +378,7 @@ export class ClientPredictionStepper {
       if (projectileResult.shouldDelete) {
         deleteEntityLocalState(entity.id);
       } else {
+        if (projectileResult.targetSettled) serverTargets.delete(id);
         updateProjectileRenderSpatialIndex(entity);
       }
     }

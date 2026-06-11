@@ -46,6 +46,4 @@ encode path is the live default and is already pooled/binary-packed.
 ================================================================================
 
 
-[02][USER_REQUESTS] Our rockets don't seem to be using an EMA at all for their positions or velocities - we need to elegantly apply some kind of EMA as they are just currently jumping to new positions when we get snaps from the backend. I'm not exactly sure what the best way to do this is. 
-
 [03][USER_REQUESTS] The base of our wind turbine needs to be big enough to make sure that the blades of the wind turbine don't visually "hit" other things when they are spinning. Let's make the wind turbing blades a bit smaller, and increase the base of the wind turbine to be at least that wide (the width of the spinning blades). You can also make the wind turbing taller. 

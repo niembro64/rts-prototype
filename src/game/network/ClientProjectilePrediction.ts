@@ -20,6 +20,7 @@ import { resolveTargetAimPoint } from '../sim/combat/aimSolver';
 import {
   computeHomingThrust,
   computeTerrainFollowVerticalThrustAccel,
+  lerp,
   magnitude3,
   solveKinematicIntercept,
   type KinematicInterceptSolution,
@@ -27,26 +28,32 @@ import {
 } from '../math';
 import { getSimWasm } from '../sim-wasm/init';
 import type { PredictionStep } from './ClientPredictionCadence';
+import type { ServerTarget } from './ClientPredictionTargets';
 
 export type ClientProjectilePredictionResult = {
   becameLineProjectile: boolean;
   shouldDelete: boolean;
+  targetSettled: boolean;
 };
 
+const PROJECTILE_TARGET_POS_EPSILON_SQ = 0.01 * 0.01;
+const PROJECTILE_TARGET_VEL_EPSILON_SQ = 0.01 * 0.01;
 const _clientHomingAimPoint = { x: 0, y: 0, z: 0 };
 const _clientHomingTargetVelocity = { x: 0, y: 0, z: 0 };
 const _clientHomingTargetAcceleration = { x: 0, y: 0, z: 0 };
 const _clientProjectilePositionScratch = { x: 0, y: 0, z: 0 };
 const _clientProjectileVelocityScratch = { x: 0, y: 0, z: 0 };
-const _clientProjectilePosX = new Float64Array(1);
-const _clientProjectilePosY = new Float64Array(1);
-const _clientProjectilePosZ = new Float64Array(1);
-const _clientProjectileVelX = new Float64Array(1);
-const _clientProjectileVelY = new Float64Array(1);
-const _clientProjectileVelZ = new Float64Array(1);
-const _clientProjectileAccelX = new Float64Array(1);
-const _clientProjectileAccelY = new Float64Array(1);
-const _clientProjectileAccelZ = new Float64Array(1);
+const _clientProjectileTargetPositionScratch = { x: 0, y: 0, z: 0 };
+const _clientProjectileTargetVelocityScratch = { x: 0, y: 0, z: 0 };
+const _clientProjectilePosX = new Float64Array(2);
+const _clientProjectilePosY = new Float64Array(2);
+const _clientProjectilePosZ = new Float64Array(2);
+const _clientProjectileVelX = new Float64Array(2);
+const _clientProjectileVelY = new Float64Array(2);
+const _clientProjectileVelZ = new Float64Array(2);
+const _clientProjectileAccelX = new Float64Array(2);
+const _clientProjectileAccelY = new Float64Array(2);
+const _clientProjectileAccelZ = new Float64Array(2);
 const _clientHomingOriginState: KinematicState3 = {
   position: { x: 0, y: 0, z: 0 },
   velocity: { x: 0, y: 0, z: 0 },
@@ -63,6 +70,14 @@ const _clientHomingIntercept: KinematicInterceptSolution = {
   launchVelocity: { x: 0, y: 0, z: 0 },
 };
 const _clientThrustResult = { x: 0, y: 0, z: 0 };
+type ProjectileAccelScratch = {
+  x: number;
+  y: number;
+  z: number;
+  isHoming: boolean;
+};
+const _clientProjectileEntityAccel = { x: 0, y: 0, z: 0, isHoming: false };
+const _clientProjectileTargetAccel = { x: 0, y: 0, z: 0, isHoming: false };
 
 function getHomingMaxThrustAccel(shot: ProjectileShot): number {
   const mass = shot.mass > 1e-6 ? shot.mass : 1e-6;
@@ -182,9 +197,105 @@ function resolveClientHomingThrust(options: {
   return _clientThrustResult;
 }
 
+function resolveProjectileNetAcceleration(options: {
+  entity: Entity;
+  dt: number;
+  position: { x: number; y: number; z: number };
+  velocity: { x: number; y: number; z: number };
+  mapWidth: number;
+  mapHeight: number;
+  getEntity: (id: EntityId) => Entity | undefined;
+}, out: ProjectileAccelScratch): ProjectileAccelScratch {
+  const { entity, dt, position, velocity, mapWidth, mapHeight, getEntity } = options;
+  const proj = entity.projectile;
+  out.x = 0;
+  out.y = 0;
+  out.z = 0;
+  out.isHoming = false;
+  if (!proj) return out;
+
+  const dgunProjectile = entity.dgunProjectile;
+  const isDGunWave = dgunProjectile !== null && dgunProjectile.isDGun === true;
+  const shot = proj.config.shot as ProjectileShot;
+  const projectileGravity = GRAVITY * shot.gravityForceMultiplier;
+  out.z = -projectileGravity;
+
+  if (!isDGunWave) {
+    const thrust = resolveClientHomingThrust({
+      entity,
+      dt,
+      position,
+      velocity,
+      getEntity,
+    });
+    if (thrust) {
+      out.x += thrust.x;
+      out.y += thrust.y;
+      out.z += thrust.z;
+      out.isHoming = true;
+    }
+    return out;
+  }
+
+  const groundOffset = dgunProjectile !== null
+    ? dgunProjectile.groundOffset
+    : DGUN_TERRAIN_FOLLOW_HEIGHT;
+  const halfDtSq = 0.5 * dt * dt;
+  const targetX = position.x + velocity.x * dt + out.x * halfDtSq;
+  const targetY = position.y + velocity.y * dt + out.y * halfDtSq;
+  const terrainTargetZ =
+    getSurfaceHeight(targetX, targetY, mapWidth, mapHeight, LAND_CELL_SIZE) + groundOffset;
+  out.z += computeTerrainFollowVerticalThrustAccel({
+    positionZ: position.z,
+    velocityZ: velocity.z,
+    targetZ: terrainTargetZ,
+    mass: shot.mass,
+    gravity: projectileGravity,
+    springAccelPerWorldUnit: DGUN_TERRAIN_FOLLOW_SPRING_ACCEL_PER_WORLD_UNIT,
+    dampingRatio: DGUN_TERRAIN_FOLLOW_DAMPING_RATIO,
+    maxThrustForce: DGUN_TERRAIN_FOLLOW_MAX_THRUST_FORCE,
+  });
+  return out;
+}
+
+function applyProjectileTargetDrift(
+  entity: Entity,
+  target: ServerTarget,
+  movPosBlend: number,
+  movVelBlend: number,
+): boolean {
+  const proj = entity.projectile;
+  if (!proj) return true;
+
+  if (movPosBlend >= 0) {
+    entity.transform.x = lerp(entity.transform.x, target.x, movPosBlend);
+    entity.transform.y = lerp(entity.transform.y, target.y, movPosBlend);
+    entity.transform.z = lerp(entity.transform.z, target.z, movPosBlend);
+  }
+  if (movVelBlend >= 0) {
+    proj.velocityX = lerp(proj.velocityX, target.velocityX, movVelBlend);
+    proj.velocityY = lerp(proj.velocityY, target.velocityY, movVelBlend);
+    proj.velocityZ = lerp(proj.velocityZ, target.velocityZ, movVelBlend);
+  }
+
+  const dx = entity.transform.x - target.x;
+  const dy = entity.transform.y - target.y;
+  const dz = entity.transform.z - target.z;
+  const dvx = proj.velocityX - target.velocityX;
+  const dvy = proj.velocityY - target.velocityY;
+  const dvz = proj.velocityZ - target.velocityZ;
+  return (
+    dx * dx + dy * dy + dz * dz <= PROJECTILE_TARGET_POS_EPSILON_SQ &&
+    (movVelBlend < 0 || dvx * dvx + dvy * dvy + dvz * dvz <= PROJECTILE_TARGET_VEL_EPSILON_SQ)
+  );
+}
+
 export function applyClientProjectilePrediction(options: {
   entity: Entity;
   predictionStep: PredictionStep;
+  target?: ServerTarget;
+  movPosBlend: number;
+  movVelBlend: number;
   mapWidth: number;
   mapHeight: number;
   getEntity: (id: EntityId) => Entity | undefined;
@@ -192,79 +303,43 @@ export function applyClientProjectilePrediction(options: {
   const {
     entity,
     predictionStep,
+    target,
+    movPosBlend,
+    movVelBlend,
     mapWidth,
     mapHeight,
     getEntity,
   } = options;
   const proj = entity.projectile;
-  if (!proj) return { becameLineProjectile: false, shouldDelete: true };
+  if (!proj) return { becameLineProjectile: false, shouldDelete: true, targetSettled: true };
   if (isRayType(proj.projectileType)) {
-    return { becameLineProjectile: true, shouldDelete: false };
+    return { becameLineProjectile: true, shouldDelete: false, targetSettled: true };
   }
 
   const entityDeltaMs = predictionStep.entityDeltaMs;
   const dt = entityDeltaMs / 1000;
   proj.timeAlive += entityDeltaMs;
 
-  const dgunProjectile = entity.dgunProjectile;
-  const isDGunWave = dgunProjectile !== null && dgunProjectile.isDGun === true;
-  const shot = proj.config.shot as ProjectileShot;
-  const projectileGravity = GRAVITY * shot.gravityForceMultiplier;
-  const groundOffset = dgunProjectile !== null
-    ? dgunProjectile.groundOffset
-    : DGUN_TERRAIN_FOLLOW_HEIGHT;
-
-  // Projectiles are deterministic between discrete events: spawn,
-  // reflection, homing course correction, despawn. Each event arrives
-  // as a velocityUpdate that has already been *snapped* directly into
-  // entity.transform / proj.velocity by ClientViewState. Between events
-  // the client just dead-reckons under gravity + homing/terrain-follow
-  // thrust — the same vector the server uses — so the client and server
-  // trajectories agree to within quantization. No EMA correction loop:
-  // applying a low-pass filter to a step function would produce a ramp
-  // that doesn't correspond to any real trajectory and visibly wiggles
-  // the tail behind reflected projectiles.
+  // Travelling projectiles dead-reckon every frame. Rocket velocity
+  // updates also install a separate authoritative correction target;
+  // this function advances that target with the same gravity / homing /
+  // terrain-follow math, then applies the movement position + velocity
+  // EMA channels to the rendered projectile. Reflection events still
+  // snap before reaching this path so their tails kink at the exact hit.
   const position = getEntityPosition3d(entity, _clientProjectilePositionScratch);
-  let aNetX = 0;
-  let aNetY = 0;
-  let aNetZ = -projectileGravity;
-  let isHoming = false;
-  if (!isDGunWave) {
-    _clientProjectileVelocityScratch.x = proj.velocityX;
-    _clientProjectileVelocityScratch.y = proj.velocityY;
-    _clientProjectileVelocityScratch.z = proj.velocityZ;
-    const thrust = resolveClientHomingThrust({
-      entity,
-      dt,
-      position,
-      velocity: _clientProjectileVelocityScratch,
-      getEntity,
-    });
-    if (thrust) {
-      aNetX += thrust.x;
-      aNetY += thrust.y;
-      aNetZ += thrust.z;
-      isHoming = true;
-    }
-  }
+  _clientProjectileVelocityScratch.x = proj.velocityX;
+  _clientProjectileVelocityScratch.y = proj.velocityY;
+  _clientProjectileVelocityScratch.z = proj.velocityZ;
+  const entityAccel = resolveProjectileNetAcceleration({
+    entity,
+    dt,
+    position,
+    velocity: _clientProjectileVelocityScratch,
+    mapWidth,
+    mapHeight,
+    getEntity,
+  }, _clientProjectileEntityAccel);
 
-  const halfDtSq = 0.5 * dt * dt;
-  if (isDGunWave) {
-    const targetX = position.x + proj.velocityX * dt + aNetX * halfDtSq;
-    const targetY = position.y + proj.velocityY * dt + aNetY * halfDtSq;
-    const terrainTargetZ =
-      getSurfaceHeight(targetX, targetY, mapWidth, mapHeight, LAND_CELL_SIZE) + groundOffset;
-    aNetZ += computeTerrainFollowVerticalThrustAccel({
-      positionZ: position.z,
-      velocityZ: proj.velocityZ,
-      targetZ: terrainTargetZ,
-      mass: shot.mass,
-      gravity: projectileGravity,
-      springAccelPerWorldUnit: DGUN_TERRAIN_FOLLOW_SPRING_ACCEL_PER_WORLD_UNIT,
-      dampingRatio: DGUN_TERRAIN_FOLLOW_DAMPING_RATIO,
-      maxThrustForce: DGUN_TERRAIN_FOLLOW_MAX_THRUST_FORCE,
-    });
-  }
   const sim = getSimWasm();
   if (sim === undefined) {
     throw new Error('Client projectile prediction requires initialized sim-wasm');
@@ -275,11 +350,41 @@ export function applyClientProjectilePrediction(options: {
   _clientProjectileVelX[0] = proj.velocityX;
   _clientProjectileVelY[0] = proj.velocityY;
   _clientProjectileVelZ[0] = proj.velocityZ;
-  _clientProjectileAccelX[0] = aNetX;
-  _clientProjectileAccelY[0] = aNetY;
-  _clientProjectileAccelZ[0] = aNetZ;
+  _clientProjectileAccelX[0] = entityAccel.x;
+  _clientProjectileAccelY[0] = entityAccel.y;
+  _clientProjectileAccelZ[0] = entityAccel.z;
+
+  const hasTarget = target !== undefined;
+  const batchCount = hasTarget ? 2 : 1;
+  if (hasTarget) {
+    _clientProjectileTargetPositionScratch.x = target.x;
+    _clientProjectileTargetPositionScratch.y = target.y;
+    _clientProjectileTargetPositionScratch.z = target.z;
+    _clientProjectileTargetVelocityScratch.x = target.velocityX;
+    _clientProjectileTargetVelocityScratch.y = target.velocityY;
+    _clientProjectileTargetVelocityScratch.z = target.velocityZ;
+    const targetAccel = resolveProjectileNetAcceleration({
+      entity,
+      dt,
+      position: _clientProjectileTargetPositionScratch,
+      velocity: _clientProjectileTargetVelocityScratch,
+      mapWidth,
+      mapHeight,
+      getEntity,
+    }, _clientProjectileTargetAccel);
+    _clientProjectilePosX[1] = target.x;
+    _clientProjectilePosY[1] = target.y;
+    _clientProjectilePosZ[1] = target.z;
+    _clientProjectileVelX[1] = target.velocityX;
+    _clientProjectileVelY[1] = target.velocityY;
+    _clientProjectileVelZ[1] = target.velocityZ;
+    _clientProjectileAccelX[1] = targetAccel.x;
+    _clientProjectileAccelY[1] = targetAccel.y;
+    _clientProjectileAccelZ[1] = targetAccel.z;
+  }
+
   const integrated = sim.projectileIntegrateStepBatch(
-    1,
+    batchCount,
     _clientProjectilePosX,
     _clientProjectilePosY,
     _clientProjectilePosZ,
@@ -291,7 +396,7 @@ export function applyClientProjectilePrediction(options: {
     _clientProjectileAccelZ,
     dt,
   );
-  if (integrated !== 1) {
+  if (integrated !== batchCount) {
     throw new Error('Client projectile prediction integration failed');
   }
   entity.transform.x = _clientProjectilePosX[0];
@@ -301,21 +406,34 @@ export function applyClientProjectilePrediction(options: {
   proj.velocityY = _clientProjectileVelY[0];
   proj.velocityZ = _clientProjectileVelZ[0];
 
-  if (isHoming) {
+  if (hasTarget) {
+    target.x = _clientProjectilePosX[1];
+    target.y = _clientProjectilePosY[1];
+    target.z = _clientProjectilePosZ[1];
+    target.velocityX = _clientProjectileVelX[1];
+    target.velocityY = _clientProjectileVelY[1];
+    target.velocityZ = _clientProjectileVelZ[1];
+    target.rotation = Math.atan2(target.velocityY, target.velocityX);
+  }
+
+  if (entityAccel.isHoming) {
     entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
   }
+  const targetSettled = hasTarget
+    ? applyProjectileTargetDrift(entity, target, movPosBlend, movVelBlend)
+    : true;
 
   const groundPosition = getEntityPosition3d(entity, _clientProjectilePositionScratch);
   const groundZ = getSurfaceHeight(groundPosition.x, groundPosition.y, mapWidth, mapHeight, LAND_CELL_SIZE);
   if (groundPosition.z <= groundZ && proj.velocityZ <= 0) {
     entity.transform.z = groundZ;
-    return { becameLineProjectile: false, shouldDelete: true };
+    return { becameLineProjectile: false, shouldDelete: true, targetSettled };
   }
 
   // Auto-remove if this projectile has a finite runtime timeout.
   if (Number.isFinite(proj.maxLifespan) && proj.timeAlive > proj.maxLifespan) {
-    return { becameLineProjectile: false, shouldDelete: true };
+    return { becameLineProjectile: false, shouldDelete: true, targetSettled };
   }
 
-  return { becameLineProjectile: false, shouldDelete: false };
+  return { becameLineProjectile: false, shouldDelete: false, targetSettled };
 }

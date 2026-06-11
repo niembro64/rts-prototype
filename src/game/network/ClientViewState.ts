@@ -193,6 +193,7 @@ export class ClientViewState {
 
   // Reusable Set for snapshot diffing (avoids new Set() per snapshot)
   private _serverIds: Set<EntityId> = new Set();
+  private _projectileReflectionIds: Set<EntityId> = new Set();
 
   // Spatial grid debug visualization data
   private gridCells: NetworkServerSnapshotGridCell[] = [];
@@ -346,6 +347,53 @@ export class ClientViewState {
       this.serverTargets.set(id, target);
     }
     return target;
+  }
+
+  private collectProjectileReflectionIds(
+    events: NetworkServerSnapshot['audioEvents'],
+  ): Set<EntityId> {
+    const ids = this._projectileReflectionIds;
+    ids.clear();
+    if (events === undefined || events === null || events.length === 0) return ids;
+    for (let i = 0; i < events.length; i++) {
+      const evt = events[i];
+      if (evt.type === 'shieldImpact' && evt.entityId !== null) {
+        ids.add(evt.entityId);
+      }
+    }
+    return ids;
+  }
+
+  private writeRocketVelocityTarget(
+    id: EntityId,
+    x: number,
+    y: number,
+    z: number,
+    velocityX: number,
+    velocityY: number,
+    velocityZ: number,
+    now: number,
+  ): void {
+    const target = this.getOrCreateServerTarget(id);
+    this.clearTargetPredictionAccum(id);
+    target.x = x;
+    target.y = y;
+    target.z = z;
+    target.rotation = Math.atan2(velocityY, velocityX);
+    target.velocityX = velocityX;
+    target.velocityY = velocityY;
+    target.velocityZ = velocityZ;
+    target.surfaceNormalX = 0;
+    target.surfaceNormalY = 0;
+    target.surfaceNormalZ = 1;
+    target.bodyCenterHeight = 0;
+    target.predictedGroundContact = false;
+    target.orientation = null;
+    target.angularVelocityX = null;
+    target.angularVelocityY = null;
+    target.angularVelocityZ = null;
+    target.turrets.length = 0;
+    target.updatedAtMs = now;
   }
 
   private copyNetworkTurretsToTarget(
@@ -625,6 +673,7 @@ export class ClientViewState {
     this.minimapOverrideStore.applySnapshot(state.minimapEntities, state.isDelta);
     let cacheNeedsInvalidate = false;
     const now = performance.now();
+    const reflectedProjectileIds = this.collectProjectileReflectionIds(state.audioEvents);
     this.projectileStore.projectileSpawns.recordSnapshot(now);
     this.projectileStore.projectileSpawns.drain(
       now,
@@ -802,31 +851,40 @@ export class ClientViewState {
         }
       }
 
-      // Process projectile velocity updates (reflection / homing course
-      // correction / despawn-of-target). Each one is a discrete
-      // authoritative event: the new state is exact truth as of the
-      // emitting server tick. Snap the entity state directly instead of
-      // routing through serverTargets + EMA — EMA-blending toward a step
-      // function produces a smoothing ramp that doesn't correspond to any
-      // real trajectory, which used to manifest as wiggly tails on
-      // reflected plasma. After snapping, the dead-reckon loop advances
-      // from the new state cleanly.
+      // Process projectile velocity updates. Shield reflections are hard
+      // topology events and still snap so the trail kink stays exact. Rocket
+      // course corrections become EMA targets: the render-side projectile
+      // keeps dead-reckoning, while ClientProjectilePrediction advances the
+      // target and drifts position + velocity toward it each frame.
       const velocityUpdates = projectiles.velocityUpdates;
       if (velocityUpdates !== undefined && velocityUpdates !== null) {
         for (const vu of velocityUpdates) {
           const entity = this.entities.get(vu.id);
           if (entity !== undefined && entity.projectile !== null) {
-            entity.transform.x = deqProjPos(vu.pos.x);
-            entity.transform.y = deqProjPos(vu.pos.y);
-            entity.transform.z = deqProjPos(vu.pos.z);
-            entity.projectile.velocityX = deqVel(vu.velocity.x);
-            entity.projectile.velocityY = deqVel(vu.velocity.y);
-            entity.projectile.velocityZ = deqVel(vu.velocity.z);
-            this.serverTargets.delete(vu.id);
+            const x = deqProjPos(vu.pos.x);
+            const y = deqProjPos(vu.pos.y);
+            const z = deqProjPos(vu.pos.z);
+            const velocityX = deqVel(vu.velocity.x);
+            const velocityY = deqVel(vu.velocity.y);
+            const velocityZ = deqVel(vu.velocity.z);
+            const shouldSmoothRocket =
+              entity.projectile.config.shotProfile.runtime.isRocketLike === true &&
+              !reflectedProjectileIds.has(vu.id);
+            if (shouldSmoothRocket) {
+              this.writeRocketVelocityTarget(vu.id, x, y, z, velocityX, velocityY, velocityZ, now);
+            } else {
+              entity.transform.x = x;
+              entity.transform.y = y;
+              entity.transform.z = z;
+              entity.projectile.velocityX = velocityX;
+              entity.projectile.velocityY = velocityY;
+              entity.projectile.velocityZ = velocityZ;
+              this.serverTargets.delete(vu.id);
+              this.clearTargetPredictionAccum(vu.id);
+            }
             if (vu.clearHomingTarget === true) {
               entity.projectile.homingTargetId = NO_ENTITY_ID;
             }
-            this.clearTargetPredictionAccum(vu.id);
             this.projectileStore.markVelocityUpdateActive(entity, vu.id);
           }
         }
@@ -861,8 +919,9 @@ export class ClientViewState {
     // it as a forced trail stamp on the next frame. The velocityUpdate
     // above already snapped the head to one-tick-past-bounce; this puts
     // the actual bounce point on the projectile so the trail kinks
-    // exactly at the shield surface instead of one tick past it. Audio
-    // event pos is unquantized f64.
+    // exactly at the shield surface instead of one tick past it. Reflection
+    // velocity updates still snap above; ordinary rocket corrections use an
+    // EMA target instead. Audio event pos is unquantized f64.
     const audioEventsForReflection = this.pendingAudioEvents;
     if (audioEventsForReflection !== undefined && audioEventsForReflection.length > 0) {
       for (let i = 0; i < audioEventsForReflection.length; i++) {
