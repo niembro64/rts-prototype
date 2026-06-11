@@ -21,9 +21,9 @@ import {
   resolveShieldSurfaceColor,
 } from './ShieldReflectorVisual3D';
 
-// Opacity multiplier on top of barrier.alpha so the bubble reads more
-// solid in 3D than the 2D translucent fill.
-const FIELD_OPACITY_BOOST = 2.0;
+// barrier.alpha (from shieldMaterials.json visual.alpha) is the rendered
+// surface alpha directly — no renderer-side boost, so the authored knob
+// and the on-screen result agree and both shield shapes match.
 export const SHIELD_FIELD_SHAPE_SPHERE = 0;
 export const SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER = 1;
 const FINITE_CYLINDER_INFINITY_VISUAL_MIN_HALF_HEIGHT = 12000;
@@ -763,7 +763,7 @@ export class ShieldRenderer3D {
       }
       this._sphereScratchPos.y -= packet.originOffsetZ[row];
     }
-    const alpha = packet.barrierAlpha[row] * fadeIn * FIELD_OPACITY_BOOST;
+    const alpha = packet.barrierAlpha[row] * fadeIn;
     const shape = packet.shape[row];
     if (
       SHIELD_SURFACE_RENDER_MODE === 'screen-space-analytic-shader'

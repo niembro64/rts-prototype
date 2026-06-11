@@ -10,13 +10,11 @@ import { REFLECTIVE_SHIELD_MATERIAL } from '../sim/blueprints/shieldMaterials';
 // Per-instance `aColor` (team/config color) and `aAlpha` ride on
 // InstancedBufferAttributes; the fragment is just `vec4(vColor, vAlpha)`.
 
-const SHIELD_OPACITY_BOOST = 2;
-
+// The authored material alpha IS the rendered surface alpha. No hidden
+// renderer-side boost: shieldMaterials.json is the single knob, and both
+// shapes (sphere bubble, flat panels) read it identically.
 export const SHIELD_SURFACE_COLOR = REFLECTIVE_SHIELD_MATERIAL.visual.color;
-export const SHIELD_SURFACE_OPACITY = Math.min(
-  1,
-  REFLECTIVE_SHIELD_MATERIAL.visual.alpha * SHIELD_OPACITY_BOOST,
-);
+export const SHIELD_SURFACE_OPACITY = Math.min(1, REFLECTIVE_SHIELD_MATERIAL.visual.alpha);
 
 /** Color of the shield material at this surface — team color when the
  *  visual config is in player mode, else the authored fallback.

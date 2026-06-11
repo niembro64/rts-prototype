@@ -417,11 +417,6 @@
   },
   "effects": {
     "shield": {
-      "barrier": {
-        "colorHex": "#ffffff",
-        "alpha": 0.05,
-        "particleAlpha": 0.2
-      },
       "shield": {
         "fallbackColorHex": "#ffffff"
       },
