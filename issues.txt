@@ -39,29 +39,8 @@ exports stable; rebuild + run contract tests after.
 P1 — LEAKS / PERF / UX
 --------------------------------------------------------------------------------
 
-[010][PERF] Snapshot encode path allocates per entity per snapshot:
-stateSerializerEntities.ts builds nested turret/action/waypoint DTOs fresh each
-snapshot; snapshotEntityWirePack.ts pools on DECODE but encode allocates fresh
-row objects (84-97). At 10 snapshots/s x 1000 entities this is constant churn.
-Fix: mirror the decode-side pooling on the encode side (reusable row/DTO pools,
-length=0 array reuse).
-
-[011][ARCH] Two live entity wire-encode pipelines: Rust V6
-(snapshotRustWireEncoder.ts -> wasm) and the TS fallback
-(stateSerializerEntities/snapshotEntityWirePack + msgpack). Delete-The-Old-Path
-requires one. Fix: once Rust path is default-on and byte-stable (compare mode
-exists for this), delete the TS entity encode path and keep TS decode only if
-still needed; also confirm RUST_SNAPSHOT_WIRE_COMPARE default is OFF so the
-duplicate full JS pack+msgpack at snapshotWireCodec.ts:171-173 never runs
-unless explicitly enabled.
 
 
-[014][ARCH] Terrain height/normal sampling exists in BOTH TS
-(src/game/sim/terrain/terrainTileMap.ts) and Rust (terrain mesh kernels in
-lib.rs). Decide ownership: route sim-side queries through Rust; renderer may
-keep a read-only client sampler but must share the same data, not a parallel
-implementation. Document which is authoritative and delete/reduce the loser
-per Delete The Old Path. (Verify exact duplication before cutting.)
 
 
 
@@ -71,10 +50,6 @@ P2 — SMALLER FIXES / HARDENING / CLEANUP
 --------------------------------------------------------------------------------
 
 
-[035][ARCH] WASM boundary chatter: ~342 exported functions, several called
-per-entity/per-frame from JS (e.g. wind_sample_state,
-build_target_horizontal_distance). Identify the per-frame offenders and batch
-them (one call over typed arrays) — measure first, then batch the top few.
 
 
 
@@ -84,6 +59,14 @@ them (one call over typed arrays) — measure first, then batch the top few.
 --------------------------------------------------------------------------------
 P1-LARGE — RUST MIGRATION DEBT (each is a real project; do after the above)
 --------------------------------------------------------------------------------
+
+[053][ARCH] Finish the Rust snapshot wire encoder (V6 -> current V11 entity
+schema) so ENABLE_RUST_SNAPSHOT_WIRE can default ON, then delete the TS entity
+encode path (stateSerializerEntities encode + snapshotEntityWirePack encode)
+per Delete The Old Path. Today the dual path is the documented single-flag
+parity exception: Rust path opt-in via VITE_BA_ENABLE_RUST_SNAPSHOT_WIRE /
+?rustSnapshotWire, with the byte-compare harness behind ?dp02rust. The TS
+encode path is the live default and is already pooled/binary-packed.
 
 [049][ARCH] projectileSystem.ts (~1793 lines) still owns projectile
 integration, homing guidance, beam stepping and collision orchestration in TS
