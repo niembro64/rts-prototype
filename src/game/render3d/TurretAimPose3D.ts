@@ -51,7 +51,7 @@ export function applyTurretAimWorldDir3D(
   inverseTiltQuat?: THREE.Quaternion,
 ): void {
   // turret.rotation/pitch are stored as ABSOLUTE world angles — the aim
-  // solver writes atan2(target - mount) with no host term (aimSolver.ts),
+  // solver writes atan2(target - mount) with no host term,
   // and applyTurretAimPose3D adds hostRotation back itself to cancel the
   // host yaw the parent scene-graph node already applies. So feed the
   // absolute world yaw/pitch straight through, exactly as the sim-aim

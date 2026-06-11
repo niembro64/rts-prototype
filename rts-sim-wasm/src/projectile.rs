@@ -157,7 +157,7 @@ projectile_pool_ptr_export!(
 //
 //  Used per-tick by:
 //    - server homing projectiles (projectileSystem)
-//    - server turret aim (aimSolver)
+//    - server turret aim (combat targeting scheduler)
 //    - client homing prediction (ClientProjectilePrediction)
 //    - render-time range envelope (ProjectileRangeEnvelope3D)
 //
@@ -746,4 +746,3 @@ pub fn pool_step_packed_projectiles_batch(count: u32, dt_sec: f64) {
         p.vel_z[i] -= GRAVITY * dt_sec;
     }
 }
-

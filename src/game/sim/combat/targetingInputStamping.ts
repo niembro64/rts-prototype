@@ -62,6 +62,7 @@ import {
   CT_TURRET_CFG_RANGE_SPHERE,
   CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP,
   CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION,
+  CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY,
   CT_TURRET_STATE_IDLE,
   CT_TURRET_STATE_TRACKING,
   CT_TURRET_STATE_ENGAGED,
@@ -140,6 +141,9 @@ export type CombatTargetingStateViews = {
   burstCooldown: Float64Array;
   angularVelocity: Float32Array;
   pitchVelocity: Float32Array;
+  aimHasSolution: Uint8Array;
+  aimYaw: Float32Array;
+  aimPitch: Float32Array;
   activeTurretMask: Uint32Array;
   firingTurretMask: Uint32Array;
 };
@@ -161,6 +165,12 @@ export type CombatTargetingTurretMountOut = {
   x: number;
   y: number;
   z: number;
+};
+
+export type CombatTargetingTurretAimOut = {
+  hasSolution: boolean;
+  yaw: number;
+  pitch: number;
 };
 
 export type CombatTargetingTurretKinematicsOut = {
@@ -353,6 +363,9 @@ export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingState
     burstCooldown: new Float64Array(buffer, targeting.turretBurstCooldownPtr(), length),
     angularVelocity: new Float32Array(buffer, targeting.turretAngularVelocityPtr(), length),
     pitchVelocity: new Float32Array(buffer, targeting.turretPitchVelocityPtr(), length),
+    aimHasSolution: new Uint8Array(buffer, targeting.turretBallisticHasSolutionPtr(), length),
+    aimYaw: new Float32Array(buffer, targeting.turretBallisticYawPtr(), length),
+    aimPitch: new Float32Array(buffer, targeting.turretBallisticPitchPtr(), length),
     activeTurretMask: new Uint32Array(
       buffer,
       targeting.entityActiveTurretMaskPtr(),
@@ -406,6 +419,26 @@ export function readCombatTargetingTurretFsmFromSimInto(
   out.stateCode = views.state[idx] as CombatTargetingTurretStateCode;
   const targetId = views.targetId[idx];
   out.targetId = targetId < 0 ? -1 : targetId;
+  return true;
+}
+
+/** Read the Rust-computed aim pose for one turret. The targeting scheduler
+ *  writes this during LOS/ballistic/shield gate evaluation; direct-fire
+ *  weapons use the same slab fields as ballistic weapons, with
+ *  `hasSolution=true` and zero flight time. */
+export function readCombatTargetingTurretAimInto(
+  entity: Entity,
+  turretIndex: number,
+  out: CombatTargetingTurretAimOut,
+): boolean {
+  const sim = getSimWasm();
+  if (sim === undefined) return false;
+  const idx = getCombatTargetingTurretStateIndex(sim, entity, turretIndex);
+  if (idx < 0) return false;
+  const views = getCombatTargetingStateViews(sim);
+  out.hasSolution = views.aimHasSolution[idx] !== 0;
+  out.yaw = views.aimYaw[idx];
+  out.pitch = views.aimPitch[idx];
   return true;
 }
 
@@ -488,6 +521,9 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   }
   if (turretIgnoresForceMaterialSightObstruction(turret)) {
     f |= CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION;
+  }
+  if (turret.config.aimStyle.angleType === 'rayBisectTurretAndBody') {
+    f |= CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY;
   }
   if (ranges.tracking) f |= CT_TURRET_CFG_HAS_TRACKING_RANGE;
   if (turret.config.hostDirected) f |= CT_TURRET_CFG_HOST_DIRECTED;

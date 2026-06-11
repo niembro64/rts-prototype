@@ -24,20 +24,19 @@
 
 import type { WorldState } from '../WorldState';
 import type { CombatComponent, Entity, Turret } from '../types';
-import { resolveWeaponWorldMount, turretMaskIncludes } from './combatUtils';
+import { turretMaskIncludes } from './combatUtils';
 import {
   dropTurretLockMidTick,
   readActiveTurretMaskForUnit,
   refreshSlabActivityMasksForUnit,
 } from './combatActivitySlab';
 import { isBuildBlockingActivation } from '../buildableHelpers';
-import { getTransformCosSin } from '../../math';
-import { createTurretAimScratch, solveTurretAim, solveTurretAimAtGroundPoint } from './aimSolver';
 import {
+  readCombatTargetingTurretAimInto,
   readCombatTargetingTurretFsmInto,
+  type CombatTargetingTurretAimOut,
   type CombatTargetingTurretFsmOut,
 } from './targetingInputStamping';
-import { getUnitGroundZ } from '../unitGeometry';
 import { getSimWasm } from '../../sim-wasm/init';
 
 /** Pitch is clamped to straight-down → straight-up. Matches the
@@ -45,8 +44,11 @@ import { getSimWasm } from '../../sim-wasm/init';
  *  the barrel through the body. */
 const PITCH_MIN = -Math.PI / 2;
 const PITCH_MAX = Math.PI / 2;
-const _turretAim = createTurretAimScratch();
-const _turretMount = { x: 0, y: 0, z: 0 };
+const _turretAimPose: CombatTargetingTurretAimOut = {
+  hasSolution: true,
+  yaw: 0,
+  pitch: 0,
+};
 const _turretRotationFsm: CombatTargetingTurretFsmOut = {
   stateCode: 0,
   targetId: -1,
@@ -160,6 +162,21 @@ function isInstantLockBeamWeapon(weapon: Turret): boolean {
   return shot !== null && shot.type === 'beam';
 }
 
+function weaponUsesRotationAim(weapon: Turret): boolean {
+  const config = weapon.config;
+  if (config.visualOnly || config.verticalLauncher || config.isManualFire) return false;
+  const shot = config.shot;
+  if (
+    shot !== null &&
+    shot.type === 'shield' &&
+    config.aimStyle.angleType !== 'rayBisectTurretAndBody' &&
+    shot.barrier?.shape !== 'aimedCylinder'
+  ) {
+    return false;
+  }
+  return true;
+}
+
 function snapTurretAimToTarget(weapon: Turret, aimTargetYaw: number, aimTargetPitch: number): void {
   const clampedPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, aimTargetPitch));
   weapon.rotation = aimTargetYaw;
@@ -189,17 +206,13 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
       : hostBuilding !== null
         ? hostBuilding.hp
         : 0;
-    const hostSurfaceNormal = hostUnit !== null ? hostUnit.surfaceNormal : undefined;
     if (hostHp <= 0) continue;
     // Inert shells (in-progress buildable) skip combat entirely until
     // every resource bar tops up.
     if (isBuildBlockingActivation(unit.buildable)) continue;
     _turretRotationRefreshUnits.push(unit);
 
-    const { cos, sin } = getTransformCosSin(unit.transform);
     const activeMask = readActiveTurretMaskForUnit(unit);
-    const currentTick = world.getTick();
-    const unitGroundZ = getUnitGroundZ(unit);
 
     const turrets = combat.turrets;
     for (let weaponIndex = 0; weaponIndex < turrets.length; weaponIndex++) {
@@ -243,92 +256,43 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
         : (weapon.target ?? -1);
 
       if (unit.combat.priorityTargetPoint !== null) {
-        const targetPoint = unit.combat.priorityTargetPoint;
-        const mount = resolveWeaponWorldMount(
-          unit, weapon, weaponIndex,
-          cos, sin,
-          { currentTick, unitGroundZ, surfaceN: hostSurfaceNormal },
-          _turretMount,
-        );
-        const solved = solveTurretAimAtGroundPoint(
-          unit,
-          weapon,
-          weaponIndex,
-          targetPoint,
-          mount.x, mount.y, mount.z,
-          weapon.pitch,
-          (x, y) => world.getGroundZ(x, y),
-          _turretAim,
-          currentTick,
-        );
-        weapon.ballisticAimInRange = solved.hasBallisticSolution;
-        if (!solved.hasBallisticSolution) {
-          // Drop the lock everywhere in one call (JS Turret target +
-          // state, beam inverse index, slab FSM). The local
-          // activeMask bit stays set so we still run the damped-spring
-          // integrator below; the firing bit drops on its own when the
-          // end-of-pass refresh re-derives masks.
-          dropTurretLockMidTick(unit, weaponIndex);
-        } else {
-          targetAngle = solved.yaw;
-          targetPitch = solved.pitch;
+        if (!weaponUsesRotationAim(weapon)) {
+          targetAngle = weapon.rotation;
+          targetPitch = weapon.pitch;
           hasActiveTarget = true;
+        } else if (readCombatTargetingTurretAimInto(unit, weaponIndex, _turretAimPose)) {
+          weapon.ballisticAimInRange = _turretAimPose.hasSolution;
+          if (!_turretAimPose.hasSolution) {
+            // Drop the lock everywhere in one call (JS Turret target +
+            // state, beam inverse index, slab FSM). The local
+            // activeMask bit stays set so we still run the damped-spring
+            // integrator below; the firing bit drops on its own when the
+            // end-of-pass refresh re-derives masks.
+            dropTurretLockMidTick(unit, weaponIndex);
+          } else {
+            targetAngle = _turretAimPose.yaw;
+            targetPitch = _turretAimPose.pitch;
+            hasActiveTarget = true;
+          }
         }
       } else if (targetingTargetId !== -1) {
-        const target = world.getEntity(targetingTargetId);
-        if (target) {
-          // Origin (weapon mount) in true 3D world coords. The
-          // targeting system runs earlier in the same tick and
-          // populates `weapon.worldPos.{x,y,z}` through
-          // updateWeaponWorldKinematics, which applies the chassis tilt
-          // to the chassis-local mount
-          // — exactly the same point projectile spawn and beam tracer
-          // use. Reading those three numbers here keeps aim, fire,
-          // and the rendered barrel locked together on slopes; if for
-          // any reason worldPos isn't populated (very first tick on a
-          // newly spawned unit) we fall back to the upright math.
-          const mount = resolveWeaponWorldMount(
-            unit, weapon, weaponIndex,
-            cos, sin,
-            { currentTick, unitGroundZ, surfaceN: hostSurfaceNormal },
-            _turretMount,
-          );
-          const weaponX = mount.x;
-          const weaponY = mount.y;
-          const mountZ = mount.z;
-
-          // One aiming path for every turret:
-          // - direct/line weapons resolve a target body/collider point,
-          // - projectile weapons add lead + gravity,
-          // - mirrors resolve the bisector point between enemy turret
-          //   center and enemy body center.
-          const solved = solveTurretAim(
-            unit,
-            weapon,
-            weaponIndex,
-            target,
-            weaponX, weaponY, mountZ,
-            weapon.pitch,
-            currentTick,
-            (x, y) => world.getGroundZ(x, y),
-            _turretAim,
-          );
-          if (solved) {
-            weapon.ballisticAimInRange = solved.hasBallisticSolution;
-            if (!solved.hasBallisticSolution) {
-              // No real ballistic solution exists — the target is in
-              // horizontal acquire range but beyond the projectile's
-              // gravity-bounded reach. Drop the lock outright so the
-              // turret is free to find a reachable target instead of
-              // silently tracking a fallback "best-guess" pitch
-              // forever. Single helper call clears JS Turret + beam
-              // index + slab FSM in one step.
-              dropTurretLockMidTick(unit, weaponIndex);
-            } else {
-              targetAngle = solved.yaw;
-              targetPitch = solved.pitch;
-              hasActiveTarget = true;
-            }
+        if (!weaponUsesRotationAim(weapon)) {
+          targetAngle = weapon.rotation;
+          targetPitch = weapon.pitch;
+          hasActiveTarget = true;
+        } else if (readCombatTargetingTurretAimInto(unit, weaponIndex, _turretAimPose)) {
+          weapon.ballisticAimInRange = _turretAimPose.hasSolution;
+          if (!_turretAimPose.hasSolution) {
+            // Drop the lock everywhere in one call (JS Turret target +
+            // state, beam inverse index, slab FSM). The local
+            // activeMask bit stays set so we still run the damped-spring
+            // integrator below; the firing bit drops on its own when the
+            // end-of-pass refresh re-derives masks.
+            dropTurretLockMidTick(unit, weaponIndex);
+          } else {
+            targetAngle = _turretAimPose.yaw;
+            targetPitch = _turretAimPose.pitch;
+            hasActiveTarget = true;
           }
         }
       }

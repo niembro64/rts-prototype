@@ -27,13 +27,10 @@ while the projectile pool lives in WASM. Port the per-projectile tick loop to
 Rust; leave TS as spawn/despawn orchestration. Delete the TS loop in the same
 change (Delete The Old Path).
 
-[050][ARCH] aimSolver.ts duplicates ballistic/lead/aim math that also exists in
-the Rust targeting scheduler for legacy/non-scheduler turret paths. Unify: all
-turrets through the Rust solver; delete the TS solver path.
-
 [051][ARCH] targetingInputStamping.ts (~957 lines) is the TS->Rust stamping
-shim for the targeting FSM. Once [050] lands and targeting state lives fully
-in Rust, eliminate the per-tick stamp/readback and the shim.
+shim for the targeting FSM. Eliminate the per-tick stamp/readback by making
+targeting state, snapshots, rendering, and downstream combat consumers read the
+Rust slabs directly, then delete the shim.
 
 [052][ARCH] damageHelpers.ts keeps TS damage-context/knockback math parallel to
 Rust segment/sphere kernels. Unify damage resolution in Rust; TS receives

@@ -56,6 +56,9 @@ pub const CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP: u16 = 1 << 12;
 /// through that material. Offensive shield emitters with submunitions do
 /// not set this; their damaging fire uses the normal OBSTRUCT SIGHT gate.
 pub const CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION: u16 = 1 << 13;
+/// Passive shield panels aim between the incoming enemy turret and the
+/// enemy body so reflections return toward the source of fire.
+pub const CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY: u16 = 1 << 14;
 
 // FSM state encodings (CT_TURRET_STATE_*) are generated from
 // src/wireEnums.json — see the include! near the top of this file.
@@ -693,6 +696,35 @@ pub(crate) fn combat_targeting_write_no_ballistic_solution(
     pool.turret_ballistic_aim_x[idx] = mount_x + yaw.cos() * cos_pitch;
     pool.turret_ballistic_aim_y[idx] = mount_y + yaw.sin() * cos_pitch;
     pool.turret_ballistic_aim_z[idx] = mount_z + pitch.sin();
+}
+
+#[inline]
+pub(crate) fn combat_targeting_write_direct_aim_solution(
+    pool: &mut CombatTargetingPool,
+    idx: usize,
+    mount_x: f64,
+    mount_y: f64,
+    mount_z: f64,
+    aim_x: f64,
+    aim_y: f64,
+    aim_z: f64,
+) {
+    let dx = aim_x - mount_x;
+    let dy = aim_y - mount_y;
+    let dz = aim_z - mount_z;
+    let horizontal = (dx * dx + dy * dy).sqrt();
+    let yaw = dy.atan2(dx);
+    let pitch = dz.atan2(horizontal);
+    pool.turret_ballistic_has_solution[idx] = 1;
+    pool.turret_ballistic_flight_time[idx] = 0.0;
+    pool.turret_ballistic_launch_vx[idx] = 0.0;
+    pool.turret_ballistic_launch_vy[idx] = 0.0;
+    pool.turret_ballistic_launch_vz[idx] = 0.0;
+    pool.turret_ballistic_yaw[idx] = yaw as f32;
+    pool.turret_ballistic_pitch[idx] = pitch as f32;
+    pool.turret_ballistic_aim_x[idx] = aim_x;
+    pool.turret_ballistic_aim_y[idx] = aim_y;
+    pool.turret_ballistic_aim_z[idx] = aim_z;
 }
 
 pub(crate) struct CombatTargetingPoolHolder(UnsafeCell<Option<CombatTargetingPool>>);
@@ -1485,13 +1517,10 @@ combat_targeting_ptr_export!(
 // ─────────────────────────────────────────────────────────────────
 // AIM-08.4 — Ballistic turret aim kernel.
 //
-// JS still resolves object-owned gameplay inputs (target aim point,
-// target velocity/acceleration, origin acceleration, shot config), but
-// the hot intercept and arc solve now reads the turret mount kinematic
-// slab and writes reusable ballistic outputs beside that turret slot.
-// The transitional JS bridge copies these outputs into its existing
-// TurretAimSolution scratch; AIM-08.5 can read the same fields directly
-// when the full targeting FSM moves into Rust.
+// The targeting scheduler resolves slab-owned aim points and kinematics,
+// then writes reusable aim outputs beside each turret slot. Ballistic
+// weapons run the hot intercept and arc solve here; direct-fire weapons
+// reuse the same output fields for yaw/pitch pose.
 // ─────────────────────────────────────────────────────────────────
 
 pub(crate) const CT_BALLISTIC_ARC_HIGH: u8 = 1;
@@ -2906,27 +2935,75 @@ pub(crate) fn combat_targeting_resolve_aim_point_from_slab(
     mount_z: f64,
 ) -> (f64, f64, f64) {
     let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx);
-    if combat_targeting_turret_lockon_includes_turret_family(pool, idx) {
-        if let Some(target_turret_idx) = combat_targeting_pick_target_aim_turret_idx(
+    let target_turret_idx = if combat_targeting_turret_lockon_includes_turret_family(pool, idx) {
+        combat_targeting_pick_target_aim_turret_idx(
             pool,
             target_entity_slot,
             entity_slot as usize,
             source_entity_id,
             Some(idx),
-        ) {
-            return combat_targeting_resolve_turret_mount_from_slab(
-                pool,
-                target_entity_slot,
-                target_turret_idx,
-            );
-        }
-    }
-    combat_targeting_resolve_body_aim_point_from_slot(
+        )
+    } else {
+        None
+    };
+    let body_point = combat_targeting_resolve_body_aim_point_from_slot(
         pool,
         target_entity_slot,
         mount_x,
         mount_y,
         mount_z,
+    );
+    let Some(target_turret_idx) = target_turret_idx else {
+        return body_point;
+    };
+
+    let turret_point = combat_targeting_resolve_turret_mount_from_slab(
+        pool,
+        target_entity_slot,
+        target_turret_idx,
+    );
+    if (pool.turret_config_flags[idx] & CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY) == 0 {
+        return turret_point;
+    }
+
+    const BISECT_EPSILON: f64 = 1e-6;
+    let turret_dx = turret_point.0 - mount_x;
+    let turret_dy = turret_point.1 - mount_y;
+    let turret_dz = turret_point.2 - mount_z;
+    let body_dx = body_point.0 - mount_x;
+    let body_dy = body_point.1 - mount_y;
+    let body_dz = body_point.2 - mount_z;
+    let turret_len = (turret_dx * turret_dx + turret_dy * turret_dy + turret_dz * turret_dz).sqrt();
+    let body_len = (body_dx * body_dx + body_dy * body_dy + body_dz * body_dz).sqrt();
+    if turret_len <= BISECT_EPSILON {
+        return body_point;
+    }
+    if body_len <= BISECT_EPSILON {
+        return turret_point;
+    }
+
+    let turret_inv = 1.0 / turret_len;
+    let body_inv = 1.0 / body_len;
+    let mut dir_x = turret_dx * turret_inv + body_dx * body_inv;
+    let mut dir_y = turret_dy * turret_inv + body_dy * body_inv;
+    let mut dir_z = turret_dz * turret_inv + body_dz * body_inv;
+    let dir_len = (dir_x * dir_x + dir_y * dir_y + dir_z * dir_z).sqrt();
+    if dir_len <= BISECT_EPSILON {
+        dir_x = turret_dx * turret_inv;
+        dir_y = turret_dy * turret_inv;
+        dir_z = turret_dz * turret_inv;
+    } else {
+        let dir_inv = 1.0 / dir_len;
+        dir_x *= dir_inv;
+        dir_y *= dir_inv;
+        dir_z *= dir_inv;
+    }
+
+    let aim_distance = turret_len.min(body_len).max(1.0);
+    (
+        mount_x + dir_x * aim_distance,
+        mount_y + dir_y * aim_distance,
+        mount_z + dir_z * aim_distance,
     )
 }
 
@@ -4049,9 +4126,19 @@ pub(crate) fn compute_turret_gates_for_aim_point(
             if (flags & CT_TURRET_CFG_NEEDS_BALLISTIC) == 0
                 || (flags & CT_TURRET_CFG_VERTICAL_LAUNCHER) != 0
             {
-                // Direct-fire / vertical-launcher: skip the solve. Same
-                // outcome the TS `weaponUsesNormalAim()==false` branch
-                // produces via `solveTurretAimAtPoint`.
+                // Direct-fire / vertical-launcher: skip the ballistic solve.
+                // The same slab fields still carry a reusable yaw/pitch pose
+                // for turret rotation and downstream beam paths.
+                combat_targeting_write_direct_aim_solution(
+                    pool,
+                    idx,
+                    mount_x,
+                    mount_y,
+                    mount_z,
+                    raw_aim_x,
+                    raw_aim_y,
+                    raw_aim_z,
+                );
                 ballistic_clear = 1;
             } else {
                 // Ground-aim fraction blends the aim point toward the
@@ -10082,4 +10169,3 @@ pub fn projectile_terminal_effect_plan_batch(
 
     processed
 }
-
