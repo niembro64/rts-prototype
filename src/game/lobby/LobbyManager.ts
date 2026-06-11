@@ -241,16 +241,29 @@ export async function createBackgroundBattle(
   return { gameInstance, server, connection, clientViewState };
 }
 
-/** Tear down a background battle: stop the server and destroy the game instance. */
+/** Tear down a background battle: stop the server and destroy the game
+ *  instance. Each stage runs independently and logs its own failure —
+ *  one throwing stage must neither skip the later stages nor hide which
+ *  part of the teardown actually broke. */
 export function destroyBackgroundBattle(state: BackgroundBattleState): void {
   try {
     destroyGame(state.gameInstance);
-  } finally {
-    try {
-      state.connection.disconnect();
-      state.clientViewState.clear();
-    } finally {
-      state.server.stop();
-    }
+  } catch (err) {
+    console.error('[Lobby] background battle game teardown failed:', err);
+  }
+  try {
+    state.connection.disconnect();
+  } catch (err) {
+    console.error('[Lobby] background battle disconnect failed:', err);
+  }
+  try {
+    state.clientViewState.clear();
+  } catch (err) {
+    console.error('[Lobby] background battle view-state clear failed:', err);
+  }
+  try {
+    state.server.stop();
+  } catch (err) {
+    console.error('[Lobby] background battle server stop failed:', err);
   }
 }

@@ -131,9 +131,6 @@ them (one call over typed arrays) — measure first, then batch the top few.
 - client control bar HUD toggles are single letters (UNIT/TOWER/...) — expand
   labels where space allows (GameCanvasClientControlBar.vue).
 
-[038][ARCH] gameCanvasSceneUi.ts applyEconomyInfo manual field-by-field copy
-can silently miss newly added EconomyInfo fields (~32-53). Add a compile-time
-exhaustiveness check (satisfies/keyof mapping) or copy via a typed helper.
 
 [039][ARCH] Factory preset localStorage sync has a cross-tab race
 (SelectionPanel.vue ~364-367). Low stakes: add a version field and
@@ -152,16 +149,6 @@ mask if it is on a hot path.
 cell per sample (terrainTileMap.ts ~331). Cache last-hit triangle per querier
 (units rarely change triangle between frames).
 
-[044][ARCH] sessionSingleton transferSimSlot/transferRendererSlot allow
-ownership hand-off without proving the old owner finished destroy (~34, ~60).
-Tighten: assert old owner released, or replace transfers with release+acquire.
-
-[045][ARCH] LobbyManager.destroyBackgroundBattle try/finally can swallow
-server.stop() errors (~245). Log explicitly before continuing teardown.
-
-[048][PERF] WASM load: verify wasm-bindgen init uses
-WebAssembly.instantiateStreaming (no full-buffer compile on main thread);
-if not, switch init to the streaming path.
 
 --------------------------------------------------------------------------------
 P1-LARGE — RUST MIGRATION DEBT (each is a real project; do after the above)
