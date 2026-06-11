@@ -24,10 +24,6 @@ import {
   stampCombatTargetingPool,
   stampShieldSurfacePool,
 } from './combat/targetingInputStamping';
-import {
-  advanceStaticShieldHostReadiness,
-  updateStaticShieldPanelEmissionState,
-} from './combat/staticShield';
 import type { DamageSystem } from './damage';
 import type { ForceAccumulator } from './ForceAccumulator';
 import type { SimulationDeathExplosionPlanner } from './SimulationDeathExplosionPlanner';
@@ -37,7 +33,6 @@ import {
 } from './SimulationEventQueues';
 import { spatialGrid } from './SpatialGrid';
 import type { EntityId } from './types';
-import { findShieldPanelTurret } from './shieldPanelRuntime';
 import type { WorldState } from './WorldState';
 
 type SimEventCallback = ((event: SimEvent) => void) | null;
@@ -54,7 +49,6 @@ export class SimulationCombatController {
   private readonly deathExplosionPlanner: SimulationDeathExplosionPlanner;
   private readonly deadUnitIdsBuf: EntityId[] = [];
   private readonly deadBuildingIdsBuf: EntityId[] = [];
-  private readonly staticShieldReadinessIds = new Set<EntityId>();
 
   constructor(
     world: WorldState,
@@ -81,7 +75,6 @@ export class SimulationCombatController {
       throw new Error('SimulationCombatController.update: sim-wasm is not initialized');
     }
     sim.deathExplosionPlannerReset();
-    this.updateStaticShieldReadiness(dtMs);
 
     // AIM-08.2 — stamp the FF pool BEFORE the FSM so the shield
     // clearance kernels read the latest sphere list. The list is
@@ -153,7 +146,6 @@ export class SimulationCombatController {
   reset(): void {
     this.deadUnitIdsBuf.length = 0;
     this.deadBuildingIdsBuf.length = 0;
-    this.staticShieldReadinessIds.clear();
     resetShieldBuffers();
     resetLaserSoundState();
     resetShieldSoundState();
@@ -238,27 +230,6 @@ export class SimulationCombatController {
       onUnitDeath,
     );
     this.removeCollisionDeadBuildings(collisionResult.deadBuildingIds, onBuildingDeath);
-  }
-
-  private updateStaticShieldReadiness(dtMs: number): void {
-    const seen = this.staticShieldReadinessIds;
-    seen.clear();
-
-    for (const unit of this.world.getShieldUnits()) {
-      seen.add(unit.id);
-      advanceStaticShieldHostReadiness(unit, dtMs);
-    }
-
-    for (const unit of this.world.getShieldPanelUnits()) {
-      if (!seen.has(unit.id)) {
-        seen.add(unit.id);
-        advanceStaticShieldHostReadiness(unit, dtMs);
-      }
-      const panelRef = findShieldPanelTurret(unit);
-      if (panelRef !== null) {
-        updateStaticShieldPanelEmissionState(unit, panelRef.turret);
-      }
-    }
   }
 
   private removeCollisionDeadUnits(

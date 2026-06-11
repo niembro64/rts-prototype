@@ -85,6 +85,7 @@ pub enum ShieldReflectionMode {
 pub enum ShieldBarrierShape {
     Sphere,
     InfiniteVerticalCylinder,
+    AimedCylinder,
 }
 
 #[derive(Clone, Debug, PartialEq)]

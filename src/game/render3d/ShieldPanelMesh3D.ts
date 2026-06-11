@@ -1,7 +1,11 @@
-// Force-field panel mesh builder (3D). The colored support hardware and
-// the square shield emission share the authored turret attachment point,
-// but use separate roots: `root` follows the live turret arms/frames,
-// while `panelRoot` can hold the latched static emission pose.
+// Force-field panel mesh builder (3D). The mirror is a SINGLE RIGID
+// assembly attached to the unit at one ball-joint — the turret's
+// authored attachment point. The joint is the `root` THREE.Group:
+// `root.position` lifts to the attachment height, `root.quaternion`
+// is the only rotation in the entire mirror system (yaw + pitch
+// combined). The side arms, cylindrical grabbers, and panel mesh sit
+// at static positions in `root`'s local frame and sweep through 3D as one body when
+// `root` rotates. No per-mesh, per-frame rotation.
 
 import * as THREE from 'three';
 
@@ -13,13 +17,9 @@ const _supportDir = new THREE.Vector3();
 export type ShieldPanelMesh = {
   /** The ball-joint. Position is the attachment point in liftGroup's
    *  frame; quaternion is the full yaw+pitch orientation written
-   *  per-frame by the EntityRenderer. Children are support arms/frames
-   *  only; square emission panels live under panelRoot. */
+   *  per-frame by the EntityRenderer. Children (arms + panels) sit
+   *  at static local positions and share root's transform. */
   root: THREE.Group;
-  /** Separate ball-joint for the square force-field emission panels.
-   *  It uses the same local pivot as root, but can stay at the latched
-   *  static shield pose while root continues tracking with the turret. */
-  panelRoot: THREE.Group;
   panels: THREE.Mesh[];
   /** Extruded side support arms, two per panel, sharing the same parent as
    *  the panels. The renderer doesn't currently route these through
@@ -41,10 +41,6 @@ export type ShieldPanelMesh = {
    *  structural pieces, so visibility changes should be transition-based
    *  instead of rewritten from the unit loop every frame. */
   supportVisible: boolean;
-  /** Cached visibility for the square force-field emission panels. This is
-   *  separate from the colored arms/frames so panel hardware can stay visible
-   *  while the static barrier is not materialized. */
-  panelMeshesVisible: boolean;
   /** Whether this mirror has live panel matrices in the shared instance
    *  pool. Used to clear stale panel slots once when the host becomes
    *  unmaterialized while other panels are still drawing. */
@@ -91,17 +87,15 @@ export function buildShieldPanelMesh3D(
    *  panels only. */
   skipPerMesh: boolean = false,
 ): ShieldPanelMesh {
-  // Support hardware and emission panels are two ball-joints at the
-  // same authored turret attachment point. Arms/frames follow the live
-  // turret; panels can hold a latched static emission orientation.
+  // The mirror is a ball-joint at the authored turret attachment
+  // point. Arms and panels live at Y = 0 in root's local frame; the
+  // only rotation in the entire mirror assembly is root's own
+  // quaternion, written each frame by the renderer to a single
+  // combined yaw + pitch.
   const root = new THREE.Group();
   root.position.set(pivotLocalX, pivotLocalY, pivotLocalZ);
   root.visible = false;
   parent.add(root);
-  const panelRoot = new THREE.Group();
-  panelRoot.position.set(pivotLocalX, pivotLocalY, pivotLocalZ);
-  panelRoot.visible = false;
-  parent.add(panelRoot);
   const panelMeshes: THREE.Mesh[] = [];
   const armMeshes: THREE.Mesh[] = [];
   const frameMeshes: THREE.Mesh[] = [];
@@ -143,8 +137,7 @@ export function buildShieldPanelMesh3D(
     m.scale.set(side, side, panelThickness);
     // Panel center at the END of the arm, root-local Y = 0.
     m.position.set(panelArmLength, 0, 0);
-    m.visible = false;
-    if (!skipPerMesh) panelRoot.add(m);
+    if (!skipPerMesh) root.add(m);
     panelMeshes.push(m);
 
     const frameZ = frame.frameZ;
@@ -182,12 +175,10 @@ export function buildShieldPanelMesh3D(
   }
   return {
     root,
-    panelRoot,
     panels: panelMeshes,
     arms: armMeshes,
     frames: frameMeshes,
     supportVisible: false,
-    panelMeshesVisible: false,
     panelSlotsActive: false,
   };
 }

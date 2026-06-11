@@ -68,10 +68,6 @@ import {
   UnitRenderPacket3D,
   type BuildingRenderPacket3D,
 } from './EntityRenderPackets3D';
-import {
-  getStaticShieldPanelEmissionPose,
-  isStaticShieldPanelEmissionReady,
-} from '../sim/combat/staticShield';
 import { AirborneEmitterBatch3D } from './AirborneEmitterBatch3D';
 import {
   applyAirborneBankRoll3D,
@@ -625,8 +621,8 @@ export class Render3DEntities {
       const groundZ = unitRows.groundY[row];
       const radius = unitRows.radiusVisual[row];
       const bodyOpacity = poseBodyOpacity[poseIndex];
+      const bodyMaterialized = unitRows.bodyMaterializedAt(row);
       const bodyVisible = bodyOpacity > 0;
-      const effectsActive = unitRows.bodyMaterializedAt(row);
       const airborne = unitRows.airborneAt(row);
       const yaw = -tRot;
       const poseBase = poseIndex * poseOutputStride;
@@ -734,7 +730,7 @@ export class Render3DEntities {
         e,
         m,
         turrets,
-        bodyVisible,
+        bodyMaterialized,
         unitRows.bodyCenterHeight[row],
         this._smoothLiftedPos,
         this._smoothParentQuat,
@@ -751,16 +747,8 @@ export class Render3DEntities {
       if (m.mirrors) {
         const shieldPanelTurretIndex = unitRows.passiveTurretIndex[row];
         const shieldPanelTurret = shieldPanelTurretIndex >= 0 ? turrets[shieldPanelTurretIndex] : undefined;
-        const shieldPanelSupportVisible = shieldPanelTurret !== undefined && bodyVisible;
-        const shieldPanelEmissionVisible =
-          shieldPanelSupportVisible &&
-          this.turretShieldPanelsEnabled &&
-          isStaticShieldPanelEmissionReady(e, shieldPanelTurret);
-        const shieldPanelEmissionPose = shieldPanelEmissionVisible
-          ? getStaticShieldPanelEmissionPose(e, shieldPanelTurret)
-          : undefined;
-        if (shieldPanelSupportVisible) {
-          if (!shieldPanelEmissionVisible) this.deactivateShieldPanelEmission(m.mirrors);
+        const shieldPanelMaterialized = shieldPanelTurret !== undefined && bodyMaterialized;
+        if (shieldPanelMaterialized) {
           this.shieldPanelPose.update(
             e,
             m.mirrors,
@@ -768,9 +756,7 @@ export class Render3DEntities {
             this._smoothLiftedPos,
             this._smoothParentQuat,
             chassisTilted ? _invTiltQuat : undefined,
-            shieldPanelSupportVisible,
-            shieldPanelEmissionVisible,
-            shieldPanelEmissionPose,
+            this.turretShieldPanelsEnabled,
           );
         } else {
           this.deactivateShieldPanelMesh(m.mirrors);
@@ -781,9 +767,9 @@ export class Render3DEntities {
       // instance buffers in the shared cylinder pool.
       const locomotion = m.locomotion;
       if (locomotion) {
-        const locomotionVisibilityDirty = locomotion.group.visible !== bodyVisible;
-        locomotion.group.visible = bodyVisible;
-        if (!bodyVisible) {
+        const locomotionVisibilityDirty = locomotion.group.visible !== bodyMaterialized;
+        locomotion.group.visible = bodyMaterialized;
+        if (!bodyMaterialized) {
           this.activeLocomotionUnitIds.delete(e.id);
         } else if (
           locomotionVisibilityDirty ||
@@ -803,7 +789,7 @@ export class Render3DEntities {
             locomotionSmokeEmitters,
             this.airborneEmitterUpdate.prepare(tx, groundZ, ty, this._locomotionParentQuat),
           );
-          if (keepLocomotionActive && effectsActive) this.activeLocomotionUnitIds.add(e.id);
+          if (keepLocomotionActive) this.activeLocomotionUnitIds.add(e.id);
           else this.activeLocomotionUnitIds.delete(e.id);
         }
       }
@@ -854,15 +840,6 @@ export class Render3DEntities {
     if (mirrors.supportVisible) {
       mirrors.root.visible = false;
       mirrors.supportVisible = false;
-    }
-    this.deactivateShieldPanelEmission(mirrors);
-  }
-
-  private deactivateShieldPanelEmission(mirrors: ShieldPanelMesh): void {
-    if (mirrors.panelRoot.visible) mirrors.panelRoot.visible = false;
-    if (mirrors.panelMeshesVisible) {
-      for (const panel of mirrors.panels) panel.visible = false;
-      mirrors.panelMeshesVisible = false;
     }
     if (!mirrors.panelSlotsActive) return;
     mirrors.panelSlotsActive = false;

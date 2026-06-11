@@ -83,7 +83,7 @@ function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret
   // runtimeTurrets default of 0.
   const shield = turret.shield;
   turret.shield = nw.currentShieldRange !== undefined && nw.currentShieldRange !== null
-    ? { range: nw.currentShieldRange, transition: shield !== null ? shield.transition : 0, deployedPose: null }
+    ? { range: nw.currentShieldRange, transition: shield !== null ? shield.transition : 0 }
     : null;
 }
 
@@ -111,7 +111,6 @@ function preserveClientTurretVisualState(next: Turret, prev: Turret): void {
     next.shield = {
       range: prev.shield.range,
       transition: prev.shield.transition,
-      deployedPose: prev.shield.deployedPose,
     };
   }
 }
@@ -333,12 +332,6 @@ function createUnitFromNetwork(
       thrustDirY: 0,
       shieldPanels: [],
       shieldBoundRadius: 0,
-      staticShieldSettledMs: 0,
-      staticShieldUnsettledMs: 0,
-      staticShieldHostReady: false,
-      staticShieldPanelActive: false,
-      staticShieldPanelRotation: 0,
-      staticShieldPanelPitch: 0,
       // Smoothed surface normal: hydrated from the wire when present
       // (full keyframes always carry it, deltas ship it on
       // ENTITY_CHANGED_NORMAL). Defaults to flat-up so non-keyframe

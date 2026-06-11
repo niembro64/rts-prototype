@@ -849,6 +849,8 @@ export function stampShieldSurfacePool(
         i,
         f.entityId,
         f.entityId,
+        f.prevCenterX, f.prevCenterY, f.prevCenterZ,
+        f.prevAxisEndX, f.prevAxisEndY, f.prevAxisEndZ,
         f.centerX, f.centerY, f.centerZ,
         f.axisEndX, f.axisEndY, f.axisEndZ,
         f.radius,
@@ -885,18 +887,13 @@ export function stampShieldSurfacePool(
 
     const broadRadius = Math.max(unit.unit.shieldBoundRadius, unit.unit.radius.hitbox)
       + MIRROR_SIGHT_QUERY_PAD;
-    const {
-      turret: shieldPanelTurret,
-      turretIndex: shieldPanelTurretIndex,
-      emissionRotation,
-      emissionPitch,
-    } = activeShieldPanel;
+    const { turret: shieldPanelTurret, turretIndex: shieldPanelTurretIndex } = activeShieldPanel;
     const panelShot = shieldPanelTurret.config.shot;
     if (panelShot !== null && panelShot.type === 'shield') {
       panelReflectionMode = encodeShieldReflectionMode(panelShot.material.reflection.mode);
     }
-    const shieldPanelRot = emissionRotation ?? shieldPanelTurret.rotation;
-    const shieldPanelPitch = emissionPitch ?? shieldPanelTurret.pitch;
+    const shieldPanelRot = shieldPanelTurret.rotation;
+    const shieldPanelPitch = shieldPanelTurret.pitch;
     const unitGroundZ = getUnitGroundZ(unit);
     const unitCS = {
       cos: Math.cos(unit.transform.rotation),

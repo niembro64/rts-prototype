@@ -50,11 +50,6 @@ import {
   readCombatTargetingTurretFsmInto,
   type CombatTargetingTurretFsmOut,
 } from '../sim/combat/targetingInputStamping';
-import {
-  advanceStaticShieldHostReadiness,
-  isStaticShieldHostSettled,
-  updateStaticShieldPanelEmissionState,
-} from '../sim/combat/staticShield';
 import type { ServerTarget } from './ClientPredictionTargets';
 
 const PREDICTION_POS_EPSILON_SQ = 0.01 * 0.01;
@@ -797,7 +792,6 @@ export function applyClientCombatExpensivePrediction(options: {
   const integrateRotation = predictionMode !== 'pos';
   const turrets = entity.combat.turrets;
   const targetTurrets = target !== undefined ? target.turrets : undefined;
-  advanceStaticShieldHostReadiness(entity, predictionStep.entityDeltaMs);
   for (let i = 0; i < turrets.length; i++) {
     const weapon = turrets[i];
     if (weapon.config.visualOnly) continue;
@@ -840,11 +834,6 @@ export function applyClientCombatExpensivePrediction(options: {
 
     const shot = weapon.config.shot;
     if (shot === null || shot.type !== 'shield') continue;
-    const fieldShot = shot;
-    if (fieldShot.barrier === undefined) {
-      updateStaticShieldPanelEmissionState(entity, weapon);
-      continue;
-    }
     if (!turretShieldSpheresEnabled) {
       const shield = weapon.shield;
       if (shield !== null) {
@@ -853,21 +842,13 @@ export function applyClientCombatExpensivePrediction(options: {
       }
       continue;
     }
+    const fieldShot = shot;
     const shield = weapon.shield;
     const cur = shield !== null ? shield.range : 0;
-    const staticDeploymentReady = isStaticShieldHostSettled(entity);
-    const requiresEngagement = weapon.config.submunitions !== undefined;
-    const targetProgress =
-      staticDeploymentReady &&
-      (!requiresEngagement || isTurretEngaged(entity, i, weapon.state))
-        ? 1
-        : 0;
+    const targetProgress = isTurretEngaged(entity, i, weapon.state) ? 1 : 0;
     const progressDelta = dt / (fieldShot.transitionTime / 1000);
     let next = cur;
-    if (!staticDeploymentReady) {
-      next = 0;
-      if (shield !== null) shield.deployedPose = null;
-    } else if (cur < targetProgress) {
+    if (cur < targetProgress) {
       next = Math.min(cur + progressDelta, 1);
     } else if (cur > targetProgress) {
       next = Math.max(cur - progressDelta, 0);
@@ -881,7 +862,7 @@ export function applyClientCombatExpensivePrediction(options: {
       next = lerp(next, serverRange, rotPosBlend);
     }
     if (shield === null) {
-      weapon.shield = { range: next, transition: 0, deployedPose: null };
+      weapon.shield = { range: next, transition: 0 };
     } else {
       shield.range = next;
     }
@@ -947,13 +928,7 @@ export function clientUnitPredictionIsSettled(
       const shield = weapon.shield;
       const range = shield !== null ? shield.range : 0;
       if (range > PREDICTION_TURRET_EPSILON) return false;
-      const requiresEngagement = weapon.config.submunitions !== undefined;
-      if (
-        isStaticShieldHostSettled(entity) &&
-        (!requiresEngagement || isTurretEngaged(entity, i, weapon.state))
-      ) {
-        return false;
-      }
+      if (isTurretEngaged(entity, i, weapon.state)) return false;
     }
   }
 

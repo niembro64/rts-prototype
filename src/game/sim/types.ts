@@ -55,8 +55,6 @@ export type {
   TurretConfig,
   ProjectileConfig,
   TurretState,
-  ShieldDeployedPose,
-  TurretShieldState,
   Turret,
   ProjectileType,
   ShotSource,

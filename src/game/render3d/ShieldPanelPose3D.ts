@@ -12,11 +12,6 @@ import {
 } from './UnitTurretAimBatch3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 
-export type ShieldPanelEmissionPose3D = {
-  rotation: number;
-  pitch: number;
-};
-
 export class ShieldPanelPose3D {
   private readonly aimBatch = new UnitTurretAimBatch3D();
   private aimInput = new Float32Array(TURRET_AIM_INPUT_STRIDE * 256);
@@ -24,7 +19,6 @@ export class ShieldPanelPose3D {
   private aimCount = 0;
   private readonly aimEntities: Entity[] = [];
   private readonly aimMirrors: ShieldPanelMesh[] = [];
-  private readonly aimRecordIsPanelEmission: boolean[] = [];
   private readonly parentPositionScratch = new THREE.Vector3();
   private readonly parentQuaternionScratch = new THREE.Quaternion();
 
@@ -38,7 +32,6 @@ export class ShieldPanelPose3D {
     this.aimCount = 0;
     this.aimEntities.length = 0;
     this.aimMirrors.length = 0;
-    this.aimRecordIsPanelEmission.length = 0;
     this.count = 0;
     this.slots.length = 0;
     this.entities.length = 0;
@@ -51,16 +44,14 @@ export class ShieldPanelPose3D {
     parentPosition: THREE.Vector3,
     parentQuaternion: THREE.Quaternion,
     chassisTiltInverse: THREE.Quaternion | undefined,
-    supportVisible: boolean,
-    panelEmissionVisible: boolean,
-    panelEmissionPose?: ShieldPanelEmissionPose3D,
+    turretShieldPanelsEnabled: boolean,
   ): void {
-    if (mirrors.supportVisible !== supportVisible) {
-      mirrors.root.visible = supportVisible;
-      mirrors.supportVisible = supportVisible;
+    if (mirrors.supportVisible !== turretShieldPanelsEnabled) {
+      mirrors.root.visible = turretShieldPanelsEnabled;
+      mirrors.supportVisible = turretShieldPanelsEnabled;
     }
-    this.setPanelMeshesVisible(mirrors, panelEmissionVisible);
-    if (!supportVisible) return;
+    if (!turretShieldPanelsEnabled) return;
+    mirrors.panelSlotsActive = true;
 
     const shieldPanelRot = shieldPanelTurret?.rotation ?? entity.transform.rotation;
     const shieldPanelPitch = shieldPanelTurret?.pitch ?? 0;
@@ -73,20 +64,6 @@ export class ShieldPanelPose3D {
       shieldPanelRot,
       shieldPanelPitch,
       chassisTiltInverse,
-      false,
-    );
-    if (!panelEmissionVisible) return;
-
-    this.enqueueAim(
-      entity,
-      mirrors,
-      parentPosition,
-      parentQuaternion,
-      entity.transform.rotation,
-      panelEmissionPose?.rotation ?? shieldPanelRot,
-      panelEmissionPose?.pitch ?? shieldPanelPitch,
-      chassisTiltInverse,
-      true,
     );
   }
 
@@ -122,9 +99,7 @@ export class ShieldPanelPose3D {
     for (let i = 0; i < count; i++) {
       const mirrors = this.aimMirrors[i];
       const outputBase = i * outputStride;
-      const isPanelEmission = this.aimRecordIsPanelEmission[i];
-      const root = isPanelEmission ? mirrors.panelRoot : mirrors.root;
-      root.rotation.set(0, output[outputBase], output[outputBase + 1], 'YZX');
+      mirrors.root.rotation.set(0, output[outputBase], output[outputBase + 1], 'YZX');
 
       const poseBase = i * 7;
       this.parentPositionScratch.set(
@@ -139,16 +114,12 @@ export class ShieldPanelPose3D {
         this.aimParentPose[poseBase + 6],
       );
 
-      if (isPanelEmission) {
-        this.enqueuePanels(
-          this.aimEntities[i],
-          mirrors,
-          this.parentPositionScratch,
-          this.parentQuaternionScratch,
-          mirrors.panelRoot.position,
-          mirrors.panelRoot.quaternion,
-        );
-      }
+      this.enqueuePanels(
+        this.aimEntities[i],
+        mirrors,
+        this.parentPositionScratch,
+        this.parentQuaternionScratch,
+      );
     }
   }
 
@@ -157,11 +128,8 @@ export class ShieldPanelPose3D {
     mirrors: ShieldPanelMesh,
     parentPosition: THREE.Vector3,
     parentQuaternion: THREE.Quaternion,
-    rootPosition: THREE.Vector3,
-    rootQuaternion: THREE.Quaternion,
   ): void {
     if (!mirrors.panelSlots) return;
-    mirrors.panelSlotsActive = true;
 
     const slotCount = Math.min(
       mirrors.panels.length,
@@ -173,8 +141,7 @@ export class ShieldPanelPose3D {
         mirrors.panelSlots[panelIdx],
         parentPosition,
         parentQuaternion,
-        rootPosition,
-        rootQuaternion,
+        mirrors.root,
         mirrors.panels[panelIdx],
       );
     }
@@ -185,8 +152,7 @@ export class ShieldPanelPose3D {
     slot: number,
     parentPosition: THREE.Vector3,
     parentQuaternion: THREE.Quaternion,
-    rootPosition: THREE.Vector3,
-    rootQuaternion: THREE.Quaternion,
+    root: THREE.Group,
     panel: THREE.Mesh,
   ): void {
     const index = this.count;
@@ -202,13 +168,13 @@ export class ShieldPanelPose3D {
     input[base + 4] = parentQuaternion.y;
     input[base + 5] = parentQuaternion.z;
     input[base + 6] = parentQuaternion.w;
-    input[base + 7] = rootPosition.x;
-    input[base + 8] = rootPosition.y;
-    input[base + 9] = rootPosition.z;
-    input[base + 10] = rootQuaternion.x;
-    input[base + 11] = rootQuaternion.y;
-    input[base + 12] = rootQuaternion.z;
-    input[base + 13] = rootQuaternion.w;
+    input[base + 7] = root.position.x;
+    input[base + 8] = root.position.y;
+    input[base + 9] = root.position.z;
+    input[base + 10] = root.quaternion.x;
+    input[base + 11] = root.quaternion.y;
+    input[base + 12] = root.quaternion.z;
+    input[base + 13] = root.quaternion.w;
     input[base + 14] = panel.position.x;
     input[base + 15] = panel.position.y;
     input[base + 16] = panel.position.z;
@@ -233,7 +199,6 @@ export class ShieldPanelPose3D {
     aimRotation: number,
     aimPitch: number,
     chassisTiltInverse: THREE.Quaternion | undefined,
-    isPanelEmission: boolean,
   ): void {
     const index = this.aimCount;
     this.aimCount++;
@@ -266,14 +231,6 @@ export class ShieldPanelPose3D {
 
     this.aimEntities[index] = entity;
     this.aimMirrors[index] = mirrors;
-    this.aimRecordIsPanelEmission[index] = isPanelEmission;
-  }
-
-  private setPanelMeshesVisible(mirrors: ShieldPanelMesh, visible: boolean): void {
-    if (mirrors.panelRoot.visible !== visible) mirrors.panelRoot.visible = visible;
-    if (mirrors.panelMeshesVisible === visible) return;
-    for (const panel of mirrors.panels) panel.visible = visible;
-    mirrors.panelMeshesVisible = visible;
   }
 
   private ensureInputCapacity(count: number): void {

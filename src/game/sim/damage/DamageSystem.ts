@@ -1362,14 +1362,9 @@ export class DamageSystem {
       if (mirrorsActive) {
         // Mirror unit: 3D ray-vs-tilted-rectangle for each panel
         // (yaw + pitch from the turretShieldPanel rotation/pitch).
-        const {
-          turret: shieldPanelTurret,
-          turretIndex: shieldPanelTurretIndex,
-          emissionRotation,
-          emissionPitch,
-        } = activeShieldPanel;
-        const shieldPanelRot = emissionRotation ?? shieldPanelTurret.rotation;
-        const shieldPanelPitch = emissionPitch ?? shieldPanelTurret.pitch;
+        const { turret: shieldPanelTurret, turretIndex: shieldPanelTurretIndex } = activeShieldPanel;
+        const shieldPanelRot = shieldPanelTurret.rotation;
+        const shieldPanelPitch = shieldPanelTurret.pitch;
         const unitGroundZ = getUnitGroundZ(unit);
         const unitCS = getTransformCosSin(unit.transform);
         const mirrorPivot = resolveWeaponWorldMount(

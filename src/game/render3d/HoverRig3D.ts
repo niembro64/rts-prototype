@@ -16,6 +16,7 @@ import {
 } from '@/smokeConfig';
 import type { HoverConfig } from '@/types/blueprints';
 import type { Entity, PlayerId } from '../sim/types';
+import { ALBATROS_ICOSAHEDRON_VERTEX_DIRECTIONS } from './AlbatrosMesh3D';
 import type {
   AirborneEmitterBatch3D,
   AirborneEmitterParentPose3D,
@@ -42,6 +43,7 @@ const DEFAULT_FAN_OUTWARD_ANGLE_DEG = 14;
 const FAN_BLADE_PITCH_DEG = 24;
 const FAN_BLADE_COUNT = 3;
 const TRI_FRONT_FAN_ANGLES_RAD = [-Math.PI / 3, Math.PI / 3, Math.PI];
+const ALBATROS_FAN_POSITION_RADIUS_FRAC = 0.86;
 
 const ringGeomByTubeRatio = new Map<number, THREE.TorusGeometry>();
 const bladeRotorGeoms = new Map<string, THREE.BufferGeometry>();
@@ -359,6 +361,54 @@ function buildFan(
       color: HOVER_SMOKE_COLOR,
       phase: entityId * 4 + fanIndex,
     },
+  };
+}
+
+export function buildAlbatrosHoverFans(
+  unitGroup: THREE.Group,
+  unitRadius: number,
+  cfg: HoverConfig,
+  smokeUseId: HoverSmokeUseId,
+  entityId: number,
+  ownerId: PlayerId | undefined,
+): HoverMesh {
+  const group = new THREE.Group();
+  const fanPositionRadius = cfg.fanPositionRadius ?? ALBATROS_FAN_POSITION_RADIUS_FRAC;
+  const fanDistance = unitRadius * fanPositionRadius;
+  const fanRadius = Math.max(1, unitRadius * cfg.fanRadius);
+  const ringTubeRadius = Math.max(0.35, unitRadius * cfg.fanRingTubeRadius);
+  const fanSpinRadPerSec = cfg.fanSpinRadPerSec ?? DEFAULT_FAN_SPIN_RAD_PER_SEC;
+  const smokeProfile = getSmokeProfile(smokeUseId);
+  const fans: HoverFan[] = [];
+
+  for (const direction of ALBATROS_ICOSAHEDRON_VERTEX_DIRECTIONS) {
+    fans.push(buildFan(
+      group,
+      {
+        localX: direction.x * fanDistance,
+        localY: direction.y * fanDistance,
+        localZ: direction.z * fanDistance,
+        fanRadius,
+        ringTubeRadius,
+        outwardAngleRad: 0,
+        fanSpinRadPerSec,
+        exhaustDirection: direction,
+        smokeProfile,
+      },
+      entityId,
+      fans.length,
+      ownerId,
+    ));
+  }
+
+  unitGroup.add(group);
+  return {
+    type: 'hover',
+    group,
+    fans,
+    clearance: 0,
+    fanSpinRadPerSec,
+    geometryKey: '',
   };
 }
 

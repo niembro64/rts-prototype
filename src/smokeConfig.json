@@ -47,6 +47,17 @@
     "endRadiusMultiplier": 2,
     "maxAlpha": 0.05
   },
+  "locomotionAlbatrosHoverFans": {
+    "maxPoolSize": 12000,
+    "capPolicy": "evictOldest",
+    "emitFramesSkip": 0,
+    "exhaustSpeed": 130,
+    "fadeInMs": 200,
+    "fadeOutMs": 1000,
+    "startRadius": 10,
+    "endRadiusMultiplier": 2,
+    "maxAlpha": 0.05
+  },
   "locomotionDragonflyHovercraft": {
     "maxPoolSize": 10000,
     "capPolicy": "evictOldest",

@@ -25,7 +25,7 @@ export type ShieldSurfaceResponse = 'reflect' | 'absorb' | 'passThrough';
 
 export type ShieldReflectionMode = 'outside-in' | 'inside-out' | 'both';
 
-export type ShieldBarrierShape = 'sphere' | 'infiniteVerticalCylinder';
+export type ShieldBarrierShape = 'sphere' | 'infiniteVerticalCylinder' | 'aimedCylinder';
 
 export type ShieldBarrierRatioConfig = {
   shape: ShieldBarrierShape;

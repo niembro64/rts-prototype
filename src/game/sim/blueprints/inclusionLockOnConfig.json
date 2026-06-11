@@ -41,6 +41,7 @@
         "unitDragonfly",
         "unitConstructionDrone",
         "unitEagle",
+        "unitAlbatros",
         "unitTransport",
         "unitCommander"
       ],
@@ -60,6 +61,7 @@
         "turretShieldSphere",
         "turretShieldSphereSmall",
         "turretShieldCylinderInfinite",
+        "turretShieldCylinderInfiniteAimed",
         "turretConstruction",
         "turretBeamLong",
         "turretCannonLong",
@@ -471,9 +473,18 @@
               "unitBee",
               "unitDragonfly",
               "unitConstructionDrone",
-              "unitEagle"
+              "unitEagle",
+              "unitAlbatros"
             ]
           }
+        }
+      }
+    },
+    "unitAlbatros": {
+      "targets": {
+        "enemy": {
+          "towers": "all",
+          "units": "all"
         }
       }
     },
@@ -598,7 +609,8 @@
               "unitLoris",
               "unitBee",
               "unitConstructionDrone",
-              "unitCommander"
+              "unitCommander",
+              "unitAlbatros"
             ]
           }
         }
@@ -652,7 +664,8 @@
               "unitLoris",
               "unitBee",
               "unitConstructionDrone",
-              "unitCommander"
+              "unitCommander",
+              "unitAlbatros"
             ]
           }
         }
@@ -851,6 +864,36 @@
         }
       }
     },
+    "turretShieldCylinderInfiniteAimed": {
+      "targets": {
+        "enemy": {
+          "towers": "all",
+          "buildings": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitBee",
+              "unitDragonfly",
+              "unitConstructionDrone",
+              "unitEagle",
+              "unitAlbatros",
+              "unitCommander"
+            ]
+          }
+        }
+      }
+    },
     "turretConstruction": {
       "targets": {
         "friendly": {
@@ -954,7 +997,8 @@
               "unitBee",
               "unitConstructionDrone",
               "unitDragonfly",
-              "unitEagle"
+              "unitEagle",
+              "unitAlbatros"
             ]
           },
           "shots": {
@@ -971,7 +1015,8 @@
               "unitBee",
               "unitConstructionDrone",
               "unitDragonfly",
-              "unitEagle"
+              "unitEagle",
+              "unitAlbatros"
             ]
           }
         }
@@ -1037,7 +1082,8 @@
               "unitBee",
               "unitConstructionDrone",
               "unitDragonfly",
-              "unitEagle"
+              "unitEagle",
+              "unitAlbatros"
             ]
           }
         }

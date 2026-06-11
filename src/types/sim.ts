@@ -268,18 +268,6 @@ export type Unit = {
   suspension: UnitSuspensionState | null;
   shieldPanels: CachedShieldPanel[];
   shieldBoundRadius: number;
-  /** Latched readiness for static shields. Kept on the unit so server,
-   *  client prediction, shield stamping, and rendering share one
-   *  hysteresis contract instead of re-testing instantaneous velocity. */
-  staticShieldSettledMs: number;
-  staticShieldUnsettledMs: number;
-  staticShieldHostReady: boolean;
-  /** Latched flat-panel emission pose. The colored panel turret arms may
-   *  continue tracking, but the square shield surface stays static until
-   *  the host moves and stows it. */
-  staticShieldPanelActive: boolean;
-  staticShieldPanelRotation: number;
-  staticShieldPanelPitch: number;
   /** Per-unit smoothed surface normal at the unit's footprint. The
    *  terrain mesh is piecewise-flat at the triangle level, so the raw
    *  normal SNAPS each time the unit crosses a triangle edge. The sim
@@ -546,24 +534,6 @@ export type ShotSource = {
 // Turret FSM state: idle → tracking → engaged
 export type TurretState = 'idle' | 'tracking' | 'engaged';
 
-export type ShieldDeployedPose = {
-  centerX: number;
-  centerY: number;
-  centerZ: number;
-  axisEndX: number;
-  axisEndY: number;
-  axisEndZ: number;
-  rotation: number;
-  pitch: number;
-  targetId: number;
-};
-
-export type TurretShieldState = {
-  transition: number;
-  range: number;
-  deployedPose: ShieldDeployedPose | null;
-};
-
 // Runtime turret instance (per-weapon state on a unit).
 // Full 3D aiming: `rotation` is yaw (horizontal heading, around z),
 // `pitch` is elevation (vertical aim angle). Together they give a
@@ -646,7 +616,7 @@ export type Turret = {
    *  shots. Default true. */
   ballisticAimInRange: boolean;
   burst: { remaining: number; cooldown: number } | null;
-  shield: TurretShieldState | null;
+  shield: { transition: number; range: number } | null;
   /** Round-robin pointer across the physical barrels on this turret.
    *  Each fired pellet picks barrelIndex = (barrelFireIndex + pellet)
    *  % barrelCount, then the pointer advances by the pellet count.
