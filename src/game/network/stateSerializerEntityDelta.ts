@@ -116,6 +116,11 @@ export type DeltaTrackingState = {
   deferredDetailFields: Map<EntityId, number>;
 };
 
+// INVARIANT: these module-scope scratch buffers assume snapshot
+// serialization is single-threaded and non-re-entrant — one recipient is
+// fully serialized before the next begins. If snapshot emission is ever
+// parallelized (workers, async interleaving), these must move into a
+// per-call serialization context or they will corrupt across recipients.
 export const removedEntityIdsBuf: number[] = [];
 export const dirtyEntityIdsBuf: EntityId[] = [];
 export const dirtyEntityFieldsBuf: number[] = [];

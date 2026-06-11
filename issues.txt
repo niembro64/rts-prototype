@@ -107,23 +107,6 @@ behavior/title.
 P2 — SMALLER FIXES / HARDENING / CLEANUP
 --------------------------------------------------------------------------------
 
-[029][BUG] commandSanitizer: unknown/unhandled command types pass through
-unmodified. Default-deny: reject command types without an explicit sanitizer.
-
-[030][BUG] snapshotDeltaThresholds.ts magnitude-ratio zero-edge: with a
-configured ratio >= 1, nonzero->zero velocity would NOT emit (delta ==
-baseline*1 fails the > test). Add explicit "prev nonzero && next zero -> emit"
-edge so the doc rule holds for any ratio config.
-
-[031][PERF] snapshotWireCodec.measureNetworkSnapshotWireBreakdown re-packs and
-re-encodes the entire snapshot per call (~213-214). Verify call cadence (debug
-HUD?); cache by tick or compute from the already-encoded bytes.
-
-[032][ARCH] GameServer module-scope scratch buffers (_dirtyEntityIdsBuf etc.,
-~99-100) are not re-entrant. Single-threaded today — add a comment stating the
-invariant (or wrap in a per-call context) so a future parallel emit can't
-corrupt them silently.
-
 [033][PERF] Rust micro-allocs: spatial-hash cell item Vec allocates on first
 touch within a tick (lib.rs:~4436) and woke buffer resizes per call (~4452).
 Pre-size at pool init / reuse cells across ticks.

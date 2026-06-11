@@ -54,6 +54,12 @@ export function snapshotVectorMagnitudeRatioDeltaExceeded(
   const nextMagnitude = Math.hypot(nextX, nextY, nextZ);
   const baseline = Math.hypot(prevX, prevY, prevZ);
   const delta = Math.abs(nextMagnitude - baseline);
+  // Zero is a semantic edge: a nonzero↔zero transition always emits no
+  // matter how the ratio is configured — otherwise a ratio >= 1 would let
+  // a stopped body keep integrating its stale last-sent velocity forever.
+  if ((baseline <= RATIO_DELTA_EPSILON) !== (nextMagnitude <= RATIO_DELTA_EPSILON)) {
+    return delta > RATIO_DELTA_EPSILON;
+  }
   return delta > RATIO_DELTA_EPSILON && delta > baseline * finiteNonNegative(ratio);
 }
 

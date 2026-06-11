@@ -193,6 +193,14 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       const matched = options.find((opt) => Math.abs(opt - tax) < 1e-6);
       return matched !== undefined ? { ...command, tick, tax: matched } : null;
     }
+    default: {
+      // Compile-time exhaustiveness over the Command union. At runtime a
+      // peer can still send a type string outside the union; default-deny
+      // it explicitly instead of falling off the switch as undefined.
+      const unknownCommand: never = command;
+      void unknownCommand;
+      return null;
+    }
   }
 }
 
