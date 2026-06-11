@@ -50,9 +50,9 @@ import type { NetworkServerSnapshotWire } from './snapshotWireTypes';
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
 const RUST_SNAPSHOT_WIRE_COMPARE_ENABLED = import.meta.env.DEV && isRustSnapshotWireCompareEnabled();
 const FORCE_JS_SNAPSHOT_WIRE = isForceJsSnapshotWireEnabled();
-// Rust snapshot envelope encoding is still behind the TypeScript entity
-// wire schema for a few V11-only entity shapes. Keep it opt-in until the
-// WASM encoder can own every active entity row without JS raw fallbacks.
+// Rust snapshot envelope encoding is the default hot path. `dp02js` or
+// VITE_BA_ENABLE_RUST_SNAPSHOT_WIRE=0 keeps the TypeScript packer available
+// as a diagnostic fallback while the decoder still accepts both wire shapes.
 const ENABLE_RUST_SNAPSHOT_WIRE = isRustSnapshotWireEnabled();
 
 const TOP_LEVEL_SNAPSHOT_KEYS = [
@@ -369,13 +369,19 @@ function isRustSnapshotWireEnabled(): boolean {
     if (env === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') {
       return true;
     }
+    if (env === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') {
+      return false;
+    }
   }
-  if (typeof window === 'undefined') return false;
+  if (typeof window === 'undefined') return true;
   const params = new URLSearchParams(window.location.search);
   const value = params.get('rustSnapshotWire');
-  if (value === null) return false;
+  if (value === null) return true;
   if (value === '' || value === '1') return true;
   const normalized = value.toLowerCase();
+  if (value === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') {
+    return false;
+  }
   return normalized === 'true' || normalized === 'yes' || normalized === 'on';
 }
 
