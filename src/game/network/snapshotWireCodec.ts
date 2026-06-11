@@ -19,7 +19,7 @@ import {
 } from './snapshotAudioWirePack';
 import {
   isPackedEntitySnapshotWire,
-  packEntitiesForWire,
+  type PackedEntitySnapshotWire,
   unpackEntitiesFromWire,
 } from './snapshotEntityWirePack';
 import {
@@ -51,9 +51,10 @@ const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
 const RUST_SNAPSHOT_WIRE_COMPARE_ENABLED = import.meta.env.DEV && isRustSnapshotWireCompareEnabled();
 const FORCE_JS_SNAPSHOT_WIRE = isForceJsSnapshotWireEnabled();
 // Rust snapshot envelope encoding is the default hot path. `dp02js` or
-// VITE_BA_ENABLE_RUST_SNAPSHOT_WIRE=0 keeps the TypeScript packer available
-// as a diagnostic fallback while the decoder still accepts both wire shapes.
+// VITE_BA_ENABLE_RUST_SNAPSHOT_WIRE=0 keeps a JS MessagePack fallback for
+// diagnostics, but entity packing is still Rust-owned.
 const ENABLE_RUST_SNAPSHOT_WIRE = isRustSnapshotWireEnabled();
+const RUST_ENTITIES_KEY_PREFIX_BYTES = 9;
 
 const TOP_LEVEL_SNAPSHOT_KEYS = [
   'tick',
@@ -152,9 +153,6 @@ export function encodeNetworkSnapshot(state: NetworkServerSnapshot): Uint8Array 
 export function encodeNetworkSnapshotDetailed(state: NetworkServerSnapshot): EncodedNetworkSnapshot {
   const requiresJsPackedStaticBootstrap =
     state.terrain !== undefined || state.buildability !== undefined;
-  if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED && !requiresJsPackedStaticBootstrap) {
-    compareRustPackedEntities(state);
-  }
   if (ENABLE_RUST_SNAPSHOT_WIRE && !FORCE_JS_SNAPSHOT_WIRE && !requiresJsPackedStaticBootstrap) {
     const rustWireState = packNetworkSnapshotForWire(state, {
       audioEvents: 'raw',
@@ -265,7 +263,7 @@ export function packNetworkSnapshotForWire(
     : packProjectilesForWire(state.projectiles);
   const packedEntities = options.entities === 'raw'
     ? undefined
-    : packEntitiesForWire(state.entities);
+    : rustPackEntitiesForWire(state.entities);
   const packedTerrain = options.terrain === 'raw'
     ? undefined
     : packTerrainForWire(state.terrain);
@@ -487,72 +485,24 @@ function topEntries(
   return rows.slice(0, 8);
 }
 
+function rustPackEntitiesForWire(
+  entities: readonly NetworkServerSnapshotEntity[] | undefined,
+): PackedEntitySnapshotWire | undefined {
+  if (entities === undefined) return undefined;
+  const source = getEntitySnapshotWireSource(entities);
+  if (source === undefined) return undefined;
+  const bytes = encodeEntitiesV6Bytes(source);
+  if (bytes === null) return undefined;
+  const packed = msgpackDecode(bytes.subarray(RUST_ENTITIES_KEY_PREFIX_BYTES));
+  return isPackedEntitySnapshotWire(packed) ? packed : undefined;
+}
+
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
     if (a[i] !== b[i]) return false;
   }
   return true;
-}
-
-// A5 parity oracle: compare the Rust entity packer's output against the
-// authoritative TS packEntitiesForWire on real snapshots. Runs only under the
-// dp02rust compare flag. The Rust bytes carry a 9-byte `"entities"`
-// MessagePack key prefix (0xA8 + "entities") ahead of the {v,m,t,e}
-// value that packEntitiesForWire encodes, so the prefix is stripped before
-// comparing.
-const RUST_ENTITIES_KEY_PREFIX_BYTES = 9;
-
-type RustPackedEntitiesCompareStats = {
-  attempts: number;
-  matches: number;
-  mismatches: number;
-  fallbacks: number;
-};
-
-const rustPackedEntitiesCompareStats: RustPackedEntitiesCompareStats = {
-  attempts: 0,
-  matches: 0,
-  mismatches: 0,
-  fallbacks: 0,
-};
-
-function compareRustPackedEntities(state: NetworkServerSnapshot): void {
-  const source = getEntitySnapshotWireSource(state.entities);
-  if (source === undefined) return;
-  const jsPacked = packEntitiesForWire(state.entities);
-  if (jsPacked === undefined) return;
-  const rustBytes = encodeEntitiesV6Bytes(source);
-  if (rustBytes === null) {
-    rustPackedEntitiesCompareStats.fallbacks++;
-    return;
-  }
-  rustPackedEntitiesCompareStats.attempts++;
-  const jsValueBytes = msgpackEncode(jsPacked, SNAPSHOT_ENCODE_OPTIONS);
-  const rustValueBytes = rustBytes.subarray(RUST_ENTITIES_KEY_PREFIX_BYTES);
-  if (bytesEqual(rustValueBytes, jsValueBytes)) {
-    rustPackedEntitiesCompareStats.matches++;
-    if (
-      rustPackedEntitiesCompareStats.matches === 1 ||
-      rustPackedEntitiesCompareStats.matches % 300 === 0
-    ) {
-      console.info('[A5] Rust packed entities parity OK', { ...rustPackedEntitiesCompareStats });
-    }
-    return;
-  }
-  rustPackedEntitiesCompareStats.mismatches++;
-  if (
-    rustPackedEntitiesCompareStats.mismatches <= 10 ||
-    rustPackedEntitiesCompareStats.mismatches % 100 === 0
-  ) {
-    console.error('[A5] Rust packed entities byte mismatch', {
-      tick: state.tick,
-      entityCount: source.kinds.length,
-      rustValueBytes: rustValueBytes.byteLength,
-      jsValueBytes: jsValueBytes.byteLength,
-      stats: { ...rustPackedEntitiesCompareStats },
-    });
-  }
 }
 
 function noteRustSnapshotWireResult(result: RustSnapshotEncodeResult): void {

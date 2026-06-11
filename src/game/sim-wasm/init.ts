@@ -3122,14 +3122,13 @@ export interface SnapshotEncodeApi {
    *  Transitional DP-02 bridge for low-frequency fields such as
    *  debug grids while their dedicated Rust encoders are still pending. */
   emitRawKeyValue: (key: string, value: Uint8Array) => number;
-  /** Emit the `entities` key + compact V6 `{v,m,t,e}` value (issue A5).
+  /** Emit the `entities` key + compact V6 `{v,m,t,e}` value.
    *  Caller must first bulk-fill the V6 input scratches (kinds /
    *  rowIndices / basic / unit / building) + the shared turret / action /
    *  waypoint / factory selected-unit / string scratches from entityWireSource.
    *  `waypointStringBase` is the slot where waypoint-type strings begin in
    *  the (action ++ waypoint) ordered string scratch. Returns the writer
-   *  length, or 0xFFFFFFFF if a RAW entity kind is present (caller falls
-   *  back to the TS packer). */
+   *  length, or 0xFFFFFFFF if a RAW entity kind is present. */
   emitEntitiesV6: (entityCount: number, waypointStringBase: number) => number;
   v6KindsScratchPtr: () => number;
   v6KindsScratchEnsure: (count: number) => void;

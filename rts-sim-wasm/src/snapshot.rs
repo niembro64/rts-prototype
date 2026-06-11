@@ -3486,13 +3486,12 @@ pub fn snapshot_encode_removed_ids_scratch_ensure(count: u32) {
 }
 
 // ===========================================================================
-// Entity wire packer (issue A5). Mirrors snapshotEntityWirePack.ts
-// `packEntitiesForWire` byte-for-byte so the Rust encoder owns entity bytes
-// without the per-snapshot TS object-building loop. Movement-only unit deltas
-// and split unit-turret deltas pack into grouped varint slabs (`m` / `t`);
-// every other entity packs as a flat-array detail row (`e`). Reads the entity
-// SoA the TS serializer already builds (stateSerializerEntities.ts), bulk-copied
-// into scratch by the bridge — no per-entity JS->WASM crossing.
+// Entity wire packer. Rust owns the compact `{v,m,t,e}` entity wire format.
+// Movement-only unit deltas and split unit-turret deltas pack into grouped
+// varint slabs (`m` / `t`); every other entity packs as a flat-array detail row
+// (`e`). Reads the entity SoA the TS serializer already builds
+// (stateSerializerEntities.ts), bulk-copied into scratch by the bridge — no
+// per-entity JS->WASM crossing.
 //
 // SoA row layouts (must match stateSerializerEntities.ts strides/slots):
 //   basic[9], unit[64], building[42], action[19], turret[11], waypoint[5].
@@ -4807,15 +4806,15 @@ pub(crate) fn v6_write_detail_row(
     }
 }
 
-/// Emit the `entities` key + the compact V6 `{v,m,t,e}` value, mirroring
-/// snapshotEntityWirePack.ts byte-for-byte. The caller must have opened the
-/// envelope via snapshot_encode_envelope_begin_packed_entities and bulk-filled
-/// the V6 input scratch + the shared turret/action/waypoint/factory-queue/string
-/// scratches. `entity_count` is the number of kinds/row_indices entries;
-/// `waypoint_string_base` is the slot offset where waypoint-type strings begin
-/// in the (action ++ waypoint) ordered string scratch. Returns the writer
-/// length, or u32::MAX if a RAW (un-encodable) entity kind is present, in which
-/// case the caller falls back to the TS packer.
+/// Emit the `entities` key + the compact V6 `{v,m,t,e}` value. The caller must
+/// have opened the envelope via snapshot_encode_envelope_begin_packed_entities
+/// and bulk-filled the V6 input scratch + the shared
+/// turret/action/waypoint/factory-queue/string scratches. `entity_count` is the
+/// number of kinds/row_indices entries; `waypoint_string_base` is the slot
+/// offset where waypoint-type strings begin in the (action ++ waypoint) ordered
+/// string scratch. Returns the writer length, or u32::MAX if a RAW
+/// (un-encodable) entity kind is present, in which case the caller emits raw
+/// entity DTOs.
 #[wasm_bindgen]
 pub fn snapshot_encode_emit_entities_v6(entity_count: u32, waypoint_string_base: u32) -> u32 {
     let entity_count = entity_count as usize;

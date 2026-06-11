@@ -3,9 +3,10 @@ import type {
   NetworkServerSnapshotEntity,
 } from './NetworkTypes';
 import { ACTION_TYPE_WAIT } from '../../types/network';
-import { roundTripEntitiesThroughWire } from './snapshotEntityWirePack';
+import { encodeNetworkSnapshotWithRustFallback } from './snapshotRustWireEncoder';
+import { decodeNetworkSnapshot } from './snapshotWireCodec';
 
-function assertContract(condition: boolean, message: string): void {
+function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(`[snapshot entity wire pack contract] ${message}`);
   }
@@ -116,7 +117,13 @@ export function runSnapshotEntityWirePackContractTest(): void {
     removedEntityIds: undefined,
   };
 
-  const decodedEntities = roundTripEntitiesThroughWire(snapshot);
+  const encoded = encodeNetworkSnapshotWithRustFallback(snapshot);
+  assertContract(encoded !== null, 'Rust snapshot wire encoder must encode the contract snapshot');
+  assertContract(
+    encoded.rustEntityCount === snapshot.entities.length,
+    'Rust snapshot wire encoder must own all contract entities',
+  );
+  const decodedEntities = decodeNetworkSnapshot(encoded.bytes).entities;
   const decoded = decodedEntities[0];
   const decodedRoute = decoded?.building?.factory?.route ?? null;
   if (decodedRoute === null) {

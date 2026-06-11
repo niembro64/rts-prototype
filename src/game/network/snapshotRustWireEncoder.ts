@@ -229,7 +229,7 @@ function packOrderedStringsIntoScratch(sim: SimWasm, strings: readonly string[])
   writeStringsIntoScratch(sim, utf8Bytes, totalBytes);
 }
 
-// --- V6 entity packer transport (issue A5) ---------------------------------
+// --- V6 entity packer transport --------------------------------------------
 // Bulk-copies the entity SoA (built free by stateSerializerEntities.ts during
 // snapshot construction) into WASM scratch, then calls the Rust V6 packer so
 // WASM owns entity bytes without the per-snapshot TS object-building loop.

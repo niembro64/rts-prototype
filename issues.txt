@@ -39,11 +39,4 @@ entity objects. Move those resolution outputs into Rust-owned event/result
 buffers so TS receives typed events/knockbacks only, then delete the remaining
 TS resolution math/helpers.
 
-[053][ARCH] Delete the remaining TypeScript entity snapshot encode fallback.
-Rust packed entities now emit the active V11 row schema and snapshot wire
-encoding defaults to Rust, but snapshotEntityWirePack.ts still contains the TS
-entity packer for the force-JS/diagnostic path and parity oracle. Replace that
-oracle/fallback with Rust-owned contract coverage, keep only decode support for
-legacy packed entity payloads if needed, then delete the TS entity encode path
-per Delete The Old Path.
 ================================================================================

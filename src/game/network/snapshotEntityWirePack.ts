@@ -8,15 +8,12 @@ import {
 import { setQuatFromYaw } from '../math/Quaternion';
 import { dequantizeRotation as deqRot } from './snapshotQuantization';
 import type {
-  NetworkServerSnapshot,
   NetworkServerSnapshotAction,
   NetworkServerSnapshotEntity,
   NetworkServerSnapshotTurret,
 } from './NetworkTypes';
 import {
-  PACKED_BINARY_ROW_COUNT_BYTES,
   PackedBinaryReader,
-  PackedBinaryWriter,
   readPackedBinaryRowCount,
 } from './snapshotBinaryWire';
 
@@ -251,11 +248,6 @@ const MOVEMENT_UNIT_FLAG_ORIENTATION = 1 << 3;
 const MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY = 1 << 4;
 const MOVEMENT_UNIT_FLAG_YAW_ORIENTATION = 1 << 5;
 const MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY = 1 << 6;
-const MOVEMENT_UNIT_CHANGED_FIELDS =
-  ENTITY_CHANGED_POS |
-  ENTITY_CHANGED_ROT |
-  ENTITY_CHANGED_VEL;
-const PACKED_ENTITY_BINARY_HEADER_BYTES = PACKED_BINARY_ROW_COUNT_BYTES;
 
 const ACTION_FLAG_POS = 1 << 0;
 const ACTION_FLAG_POS_Z = 1 << 1;
@@ -299,50 +291,6 @@ export type PackedEntitySnapshotWire = {
   t: PackedUnitTurretBytes | undefined;
   e: PackedEntityRow[] | undefined;
 };
-
-export function packEntitiesForWire(
-  entities: readonly NetworkServerSnapshotEntity[] | undefined,
-): PackedEntitySnapshotWire | undefined {
-  if (entities === undefined) return undefined;
-  resetEntityPackScratch();
-  let detailRows: PackedEntityRow[] | undefined;
-  try {
-    for (let i = 0; i < entities.length; i++) {
-      const entity = entities[i];
-      if (isMovementOnlyUnitDelta(entity)) {
-        appendMovementUnitDeltaRow(entity, entities.length);
-      } else if (isSplitUnitTurretDelta(entity)) {
-        if (hasMovementUnitDeltaFields(entity)) {
-          appendMovementUnitDeltaRow(entity, entities.length);
-        }
-        appendUnitTurretDeltaRow(entity, entities.length);
-      } else {
-        if (detailRows === undefined) detailRows = [];
-        detailRows.push(packEntityRow(entity));
-      }
-    }
-
-    const packed: PackedEntitySnapshotWire = {
-      v: PACKED_ENTITIES_VERSION,
-      m: undefined,
-      t: undefined,
-      e: undefined,
-    };
-    const movementBytes = finishMovementUnitDeltaRows();
-    const turretBytes = finishUnitTurretDeltaRows();
-    if (movementBytes !== undefined) packed.m = movementBytes;
-    if (turretBytes !== undefined) packed.t = turretBytes;
-    if (
-      detailRows !== undefined ||
-      (movementBytes === undefined && turretBytes === undefined)
-    ) {
-      packed.e = detailRows ?? [];
-    }
-    return packed;
-  } finally {
-    resetEntityPackScratch();
-  }
-}
 
 export function unpackEntitiesFromWire(
   packed: PackedEntitySnapshotWire,
@@ -389,40 +337,6 @@ export function isPackedEntitiesField(value: unknown): value is PackedEntitySnap
   return isPackedEntitySnapshotWire(value);
 }
 
-function packEntityRow(entity: NetworkServerSnapshotEntity): PackedEntityRow {
-  let flags = 0;
-  if (entity.pos !== null) flags |= ENTITY_FLAG_HAS_POS;
-  if (entity.rotation !== null) flags |= ENTITY_FLAG_HAS_ROTATION;
-  if (entity.changedFields !== null) {
-    flags |= ENTITY_FLAG_HAS_CHANGED_FIELDS;
-  }
-  // Towers and buildings share the same wire row flag (static
-  // structural shape). The TOWER vs BUILDING peer discriminator is
-  // reconstructed on the receive side via isTowerBuildingBlueprintId().
-  if (entity.type === 'building' || entity.type === 'tower') flags |= ENTITY_FLAG_TYPE_BUILDING;
-  if (entity.unit !== null) flags |= ENTITY_FLAG_HAS_UNIT;
-  if (entity.building !== null) flags |= ENTITY_FLAG_HAS_BUILDING;
-
-  const row: PackedEntityRow = [flags, entity.id, entity.playerId];
-  if ((flags & ENTITY_FLAG_HAS_POS) !== 0) {
-    const pos = entity.pos!;
-    row.push(pos.x, pos.y, pos.z);
-  }
-  if ((flags & ENTITY_FLAG_HAS_ROTATION) !== 0) {
-    row.push(entity.rotation!);
-  }
-  if ((flags & ENTITY_FLAG_HAS_CHANGED_FIELDS) !== 0) {
-    row.push(entity.changedFields!);
-  }
-  if (entity.unit !== null) {
-    row.push(packUnit(entity.unit));
-  }
-  if (entity.building !== null) {
-    row.push(packBuilding(entity.building));
-  }
-  return row;
-}
-
 function unpackDetailEntityRow(row: PackedEntityRow): NetworkServerSnapshotEntity {
   let i = 0;
   const flags = row[i++] as number;
@@ -452,396 +366,6 @@ function unpackDetailEntityRow(row: PackedEntityRow): NetworkServerSnapshotEntit
     entity.building = unpackBuilding(row[i++] as unknown[]);
   }
   return entity;
-}
-
-type PackedMovementUnitGroup = {
-  flags: number;
-  playerId: PlayerId;
-  writer: PackedBinaryWriter;
-  count: number;
-  lastId: number;
-};
-
-type PackedUnitTurretGroup = {
-  playerId: PlayerId;
-  turretCount: number;
-  writer: PackedBinaryWriter;
-  count: number;
-  lastId: number;
-};
-
-const _movementGroups: PackedMovementUnitGroup[] = [];
-const _movementGroupPool: PackedMovementUnitGroup[] = [];
-const _movementGroupsByKey: (PackedMovementUnitGroup | undefined)[] = [];
-const _movementGroupKeys: number[] = [];
-let _movementRowCount = 0;
-
-const _turretGroups: PackedUnitTurretGroup[] = [];
-const _turretGroupPool: PackedUnitTurretGroup[] = [];
-const _turretGroupsByKey: (PackedUnitTurretGroup | undefined)[] = [];
-const _turretGroupKeys: number[] = [];
-let _turretRowCount = 0;
-
-function rentMovementGroup(
-  flags: number,
-  playerId: PlayerId,
-  estimatedBytes: number,
-): PackedMovementUnitGroup {
-  const group = _movementGroupPool.pop();
-  if (group !== undefined) {
-    group.flags = flags;
-    group.playerId = playerId;
-    group.writer.reset(estimatedBytes);
-    group.count = 0;
-    group.lastId = 0;
-    return group;
-  }
-  return {
-    flags,
-    playerId,
-    writer: new PackedBinaryWriter(estimatedBytes),
-    count: 0,
-    lastId: 0,
-  };
-}
-
-function rentTurretGroup(
-  playerId: PlayerId,
-  turretCount: number,
-  estimatedBytes: number,
-): PackedUnitTurretGroup {
-  const group = _turretGroupPool.pop();
-  if (group !== undefined) {
-    group.playerId = playerId;
-    group.turretCount = turretCount;
-    group.writer.reset(estimatedBytes);
-    group.count = 0;
-    group.lastId = 0;
-    return group;
-  }
-  return {
-    playerId,
-    turretCount,
-    writer: new PackedBinaryWriter(estimatedBytes),
-    count: 0,
-    lastId: 0,
-  };
-}
-
-function resetEntityPackScratch(): void {
-  for (let i = 0; i < _movementGroupKeys.length; i++) {
-    _movementGroupsByKey[_movementGroupKeys[i]] = undefined;
-  }
-  _movementGroupKeys.length = 0;
-  for (let i = 0; i < _movementGroups.length; i++) {
-    _movementGroupPool.push(_movementGroups[i]);
-  }
-  _movementGroups.length = 0;
-  _movementRowCount = 0;
-
-  for (let i = 0; i < _turretGroupKeys.length; i++) {
-    _turretGroupsByKey[_turretGroupKeys[i]] = undefined;
-  }
-  _turretGroupKeys.length = 0;
-  for (let i = 0; i < _turretGroups.length; i++) {
-    _turretGroupPool.push(_turretGroups[i]);
-  }
-  _turretGroups.length = 0;
-  _turretRowCount = 0;
-}
-
-function isMovementOnlyUnitDelta(entity: NetworkServerSnapshotEntity): boolean {
-  if (entity.type !== 'unit' || entity.building !== null) return false;
-  const changedFields = entity.changedFields;
-  if (
-    changedFields === null ||
-    changedFields === 0 ||
-    (changedFields & ~MOVEMENT_UNIT_CHANGED_FIELDS) !== 0
-  ) {
-    return false;
-  }
-  if (((changedFields & ENTITY_CHANGED_POS) !== 0) !== (entity.pos !== null)) return false;
-  if (((changedFields & ENTITY_CHANGED_ROT) !== 0) !== (entity.rotation !== null)) return false;
-
-  const unit = entity.unit;
-  if (unit === null) return true;
-  if (unit.hp !== null) return false;
-  if (unit.unitBlueprintCode !== null) return false;
-  if (unit.radius !== null) return false;
-  if (unit.bodyCenterHeight !== null) return false;
-  if (unit.mass !== null) return false;
-  if (unit.surfaceNormal !== null) return false;
-  if (unit.fireEnabled !== null) return false;
-  if (unit.fireState !== null && unit.fireState !== undefined) return false;
-  if (unit.repeatQueue !== null && unit.repeatQueue !== undefined) return false;
-  if (unit.moveState !== null && unit.moveState !== undefined) return false;
-  if (unit.holdPosition !== null && unit.holdPosition !== undefined) return false;
-  if (unit.wantCloak !== null && unit.wantCloak !== undefined) return false;
-  if (unit.cloaked !== null && unit.cloaked !== undefined) return false;
-  if (unit.trajectoryMode !== null && unit.trajectoryMode !== undefined) return false;
-  if (unit.isCommander !== null) return false;
-  if (unit.buildTargetIdPresent) return false;
-  if (unit.actions !== null) return false;
-  if (unit.turrets !== null) return false;
-  if (unit.build !== null) return false;
-  if (unit.velocity !== null && (changedFields & ENTITY_CHANGED_VEL) === 0) return false;
-  if (unit.orientation !== null && (changedFields & ENTITY_CHANGED_ROT) === 0) return false;
-  if (unit.angularVelocity3 !== null && (changedFields & ENTITY_CHANGED_VEL) === 0) return false;
-  return true;
-}
-
-function isSplitUnitTurretDelta(entity: NetworkServerSnapshotEntity): boolean {
-  if (entity.type !== 'unit' || entity.building !== null) return false;
-  const changedFields = entity.changedFields;
-  if (
-    changedFields === null ||
-    changedFields === 0 ||
-    (changedFields & ENTITY_CHANGED_TURRETS) === 0 ||
-    (changedFields & ~(MOVEMENT_UNIT_CHANGED_FIELDS | ENTITY_CHANGED_TURRETS)) !== 0
-  ) {
-    return false;
-  }
-  if (((changedFields & ENTITY_CHANGED_POS) !== 0) !== (entity.pos !== null)) return false;
-  if (((changedFields & ENTITY_CHANGED_ROT) !== 0) !== (entity.rotation !== null)) return false;
-
-  const unit = entity.unit;
-  if (unit === null || unit.turrets === null) return false;
-  if (unit.hp !== null) return false;
-  if (unit.unitBlueprintCode !== null) return false;
-  if (unit.radius !== null) return false;
-  if (unit.bodyCenterHeight !== null) return false;
-  if (unit.mass !== null) return false;
-  if (unit.surfaceNormal !== null) return false;
-  if (unit.fireEnabled !== null) return false;
-  if (unit.fireState !== null && unit.fireState !== undefined) return false;
-  if (unit.repeatQueue !== null && unit.repeatQueue !== undefined) return false;
-  if (unit.moveState !== null && unit.moveState !== undefined) return false;
-  if (unit.holdPosition !== null && unit.holdPosition !== undefined) return false;
-  if (unit.wantCloak !== null && unit.wantCloak !== undefined) return false;
-  if (unit.cloaked !== null && unit.cloaked !== undefined) return false;
-  if (unit.trajectoryMode !== null && unit.trajectoryMode !== undefined) return false;
-  if (unit.isCommander !== null) return false;
-  if (unit.buildTargetIdPresent) return false;
-  if (unit.actions !== null) return false;
-  if (unit.build !== null) return false;
-  if (unit.velocity !== null && (changedFields & ENTITY_CHANGED_VEL) === 0) return false;
-  if (unit.orientation !== null && (changedFields & ENTITY_CHANGED_ROT) === 0) return false;
-  if (unit.angularVelocity3 !== null && (changedFields & ENTITY_CHANGED_VEL) === 0) return false;
-  return true;
-}
-
-function hasMovementUnitDeltaFields(entity: NetworkServerSnapshotEntity): boolean {
-  const unit = entity.unit;
-  return (
-    entity.pos !== null ||
-    entity.rotation !== null ||
-    (unit !== null && (
-      unit.velocity !== null ||
-      unit.orientation !== null ||
-      unit.angularVelocity3 !== null
-    ))
-  );
-}
-
-function movementUnitDeltaFlags(entity: NetworkServerSnapshotEntity): number {
-  let flags = 0;
-  const pos = entity.pos;
-  const unit = entity.unit;
-  const velocity = unit === null ? null : unit.velocity;
-  const orientation = unit === null ? null : unit.orientation;
-  const angularVelocity = unit === null ? null : unit.angularVelocity3;
-  if (pos !== null) flags |= MOVEMENT_UNIT_FLAG_POS;
-  if (entity.rotation !== null) flags |= MOVEMENT_UNIT_FLAG_ROTATION;
-  if (velocity !== null && velocity !== undefined) flags |= MOVEMENT_UNIT_FLAG_VELOCITY;
-  if (orientation !== null && orientation !== undefined) {
-    flags |= canCompactYawOrientation(entity, orientation)
-      ? MOVEMENT_UNIT_FLAG_YAW_ORIENTATION
-      : MOVEMENT_UNIT_FLAG_ORIENTATION;
-  }
-  if (angularVelocity !== null && angularVelocity !== undefined) {
-    flags |= canCompactYawAngularVelocity(angularVelocity)
-      ? MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY
-      : MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY;
-  }
-  return flags;
-}
-
-function canCompactYawOrientation(
-  entity: NetworkServerSnapshotEntity,
-  orientation: NonNullable<UnitSub['orientation']>,
-): boolean {
-  return entity.rotation !== null &&
-    orientation.x === 0 &&
-    orientation.y === 0 &&
-    Number.isFinite(orientation.z) &&
-    Number.isFinite(orientation.w) &&
-    Math.abs(orientation.z) <= 1.000001 &&
-    Math.abs(orientation.w) <= 1.000001;
-}
-
-function canCompactYawAngularVelocity(
-  angularVelocity: NonNullable<UnitSub['angularVelocity3']>,
-): boolean {
-  return angularVelocity.x === 0 && angularVelocity.y === 0;
-}
-
-function appendMovementUnitDeltaRow(
-  entity: NetworkServerSnapshotEntity,
-  estimatedRows: number,
-): void {
-  const flags = movementUnitDeltaFlags(entity);
-  const playerId = entity.playerId;
-  const key = flags * 0x100 + playerId;
-  let group = _movementGroupsByKey[key];
-  if (group === undefined) {
-    group = rentMovementGroup(
-      flags,
-      playerId,
-      Math.max(32, Math.ceil(estimatedRows / 4) * 18),
-    );
-    _movementGroupsByKey[key] = group;
-    _movementGroupKeys.push(key);
-    _movementGroups.push(group);
-  }
-
-  group.writer.writeVarInt(entity.id - group.lastId);
-  group.lastId = entity.id;
-  writeMovementUnitDeltaPayload(group.writer, flags, entity);
-  group.count++;
-  _movementRowCount++;
-}
-
-function finishMovementUnitDeltaRows(): Uint8Array | undefined {
-  if (_movementRowCount === 0) return undefined;
-
-  let estimatedBytes = PACKED_ENTITY_BINARY_HEADER_BYTES + 4;
-  for (let i = 0; i < _movementGroups.length; i++) {
-    estimatedBytes += _movementGroups[i].writer.byteLength + 8;
-  }
-
-  const out = new PackedBinaryWriter(estimatedBytes, PACKED_ENTITY_BINARY_HEADER_BYTES);
-  out.writeVarUint(_movementGroups.length);
-  for (let i = 0; i < _movementGroups.length; i++) {
-    const group = _movementGroups[i];
-    out.writeVarUint(group.flags);
-    out.writeVarUint(group.playerId);
-    out.writeVarUint(group.count);
-    out.writeBytes(group.writer.finishBytes());
-  }
-  out.setUint32LE(0, _movementRowCount);
-  return out.finishBytes();
-}
-
-function writeMovementUnitDeltaPayload(
-  rows: PackedBinaryWriter,
-  flags: number,
-  entity: NetworkServerSnapshotEntity,
-): void {
-  const pos = entity.pos;
-  const unit = entity.unit;
-  const velocity = unit === null ? null : unit.velocity;
-  const orientation = unit === null ? null : unit.orientation;
-  const angularVelocity = unit === null ? null : unit.angularVelocity3;
-  if ((flags & MOVEMENT_UNIT_FLAG_POS) !== 0) {
-    rows.writeVarInt(pos!.x);
-    rows.writeVarInt(pos!.y);
-    rows.writeVarInt(pos!.z);
-  }
-  if ((flags & MOVEMENT_UNIT_FLAG_ROTATION) !== 0) {
-    rows.writeVarInt(entity.rotation!);
-  }
-  if ((flags & MOVEMENT_UNIT_FLAG_VELOCITY) !== 0) {
-    rows.writeVarInt(velocity!.x);
-    rows.writeVarInt(velocity!.y);
-    rows.writeVarInt(velocity!.z);
-  }
-  if ((flags & MOVEMENT_UNIT_FLAG_ORIENTATION) !== 0) {
-    rows.writeFloat64(orientation!.x);
-    rows.writeFloat64(orientation!.y);
-    rows.writeFloat64(orientation!.z);
-    rows.writeFloat64(orientation!.w);
-  }
-  if ((flags & MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY) !== 0) {
-    rows.writeFloat64(angularVelocity!.x);
-    rows.writeFloat64(angularVelocity!.y);
-    rows.writeFloat64(angularVelocity!.z);
-  }
-  if ((flags & MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY) !== 0) {
-    rows.writeFloat64(angularVelocity!.z);
-  }
-}
-
-function appendUnitTurretDeltaRow(
-  entity: NetworkServerSnapshotEntity,
-  estimatedRows: number,
-): void {
-  const turrets = entity.unit!.turrets!;
-  const playerId = entity.playerId;
-  const turretCount = turrets.length;
-  const key = playerId * 0x100 + turretCount;
-  let group = _turretGroupsByKey[key];
-  if (group === undefined) {
-    group = rentTurretGroup(
-      playerId,
-      turretCount,
-      Math.max(32, Math.ceil(estimatedRows / 4) * 18),
-    );
-    _turretGroupsByKey[key] = group;
-    _turretGroupKeys.push(key);
-    _turretGroups.push(group);
-  }
-
-  group.writer.writeVarInt(entity.id - group.lastId);
-  group.lastId = entity.id;
-  writeUnitTurretDeltaPayload(group.writer, turrets);
-  group.count++;
-  _turretRowCount++;
-}
-
-function finishUnitTurretDeltaRows(): Uint8Array | undefined {
-  if (_turretRowCount === 0) return undefined;
-
-  let estimatedBytes = PACKED_ENTITY_BINARY_HEADER_BYTES + 4;
-  for (let i = 0; i < _turretGroups.length; i++) {
-    estimatedBytes += _turretGroups[i].writer.byteLength + 8;
-  }
-
-  const out = new PackedBinaryWriter(estimatedBytes, PACKED_ENTITY_BINARY_HEADER_BYTES);
-  out.writeVarUint(_turretGroups.length);
-  for (let i = 0; i < _turretGroups.length; i++) {
-    const group = _turretGroups[i];
-    out.writeVarUint(group.playerId);
-    out.writeVarUint(group.turretCount);
-    out.writeVarUint(group.count);
-    out.writeBytes(group.writer.finishBytes());
-  }
-  out.setUint32LE(0, _turretRowCount);
-  return out.finishBytes();
-}
-
-function writeUnitTurretDeltaPayload(
-  rows: PackedBinaryWriter,
-  turrets: readonly NetworkServerSnapshotTurret[],
-): void {
-  for (let i = 0; i < turrets.length; i++) {
-    const turret = turrets[i];
-    const angular = turret.turret.angular;
-    let flags = 0;
-    if (turret.targetId !== null) flags |= TURRET_FLAG_TARGET_ID;
-    if (turret.currentShieldRange !== null) flags |= TURRET_FLAG_SHIELD_RANGE;
-    if (turret.active === false) flags |= TURRET_FLAG_INACTIVE;
-    rows.writeVarUint(flags);
-    rows.writeVarUint(turret.turret.turretBlueprintCode);
-    rows.writeVarUint(turret.state);
-    rows.writeVarInt(angular.rot);
-    rows.writeVarInt(angular.vel);
-    rows.writeVarInt(angular.pitch);
-    rows.writeVarInt(angular.pitchVel);
-    if ((flags & TURRET_FLAG_TARGET_ID) !== 0) rows.writeVarUint(turret.targetId!);
-    if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) {
-      rows.writeFloat64(turret.currentShieldRange!);
-    }
-  }
 }
 
 function movementUnitChangedFields(flags: number): number {
@@ -1038,110 +562,6 @@ function readUnitTurretDeltaByteEntity(
   return entity;
 }
 
-function packUnit(unit: UnitSub): unknown[] {
-  let flags = 0;
-  if (unit.hp !== null) flags |= UNIT_FLAG_HP;
-  if (unit.velocity !== null) flags |= UNIT_FLAG_VELOCITY;
-  if (unit.unitBlueprintCode !== null) flags |= UNIT_FLAG_BLUEPRINT_CODE;
-  if (unit.radius !== null) flags |= UNIT_FLAG_RADIUS;
-  if (unit.bodyCenterHeight !== null) flags |= UNIT_FLAG_BODY_CENTER_HEIGHT;
-  if (unit.mass !== null) flags |= UNIT_FLAG_MASS;
-  if (unit.surfaceNormal !== null) flags |= UNIT_FLAG_SURFACE_NORMAL;
-  if (unit.orientation !== null) flags |= UNIT_FLAG_ORIENTATION;
-  if (unit.angularVelocity3 !== null) flags |= UNIT_FLAG_ANGULAR_VELOCITY;
-  if (unit.fireEnabled === false) flags |= UNIT_FLAG_FIRE_DISABLED;
-  if (unit.fireState !== null && unit.fireState !== undefined) {
-    flags |= UNIT_FLAG_FIRE_STATE_PRESENT;
-  }
-  if (unit.trajectoryMode !== null && unit.trajectoryMode !== undefined) {
-    flags |= UNIT_FLAG_TRAJECTORY_PRESENT;
-    if (unit.trajectoryMode === 'high') flags |= UNIT_FLAG_TRAJECTORY_HIGH;
-    if (unit.trajectoryMode === 'auto') flags |= UNIT_FLAG_TRAJECTORY_AUTO;
-  }
-  if (unit.repeatQueue !== null && unit.repeatQueue !== undefined) {
-    flags |= UNIT_FLAG_REPEAT_PRESENT;
-    if (unit.repeatQueue === true) flags |= UNIT_FLAG_REPEAT_ENABLED;
-  }
-  if (unit.holdPosition !== null && unit.holdPosition !== undefined) {
-    flags |= UNIT_FLAG_HOLD_POSITION_PRESENT;
-    if (unit.holdPosition === true) flags |= UNIT_FLAG_HOLD_POSITION_ENABLED;
-  }
-  if (unit.moveState !== null && unit.moveState !== undefined) {
-    flags |= UNIT_FLAG_MOVE_STATE_PRESENT;
-    if (unit.moveState === 'holdPosition') flags |= UNIT_FLAG_MOVE_STATE_HOLD;
-    if (unit.moveState === 'roam') flags |= UNIT_FLAG_MOVE_STATE_ROAM;
-  }
-  if (
-    (unit.wantCloak !== null && unit.wantCloak !== undefined) ||
-    (unit.cloaked !== null && unit.cloaked !== undefined)
-  ) {
-    flags |= UNIT_FLAG_CLOAK_STATE_PRESENT;
-  }
-  if (unit.isCommander === true) flags |= UNIT_FLAG_IS_COMMANDER;
-  if (unit.buildTargetIdPresent) {
-    flags |= UNIT_FLAG_BUILD_TARGET_ID;
-    if (unit.buildTargetId === null) flags |= UNIT_FLAG_BUILD_TARGET_NULL;
-  }
-  if (unit.actions !== null) flags |= UNIT_FLAG_ACTIONS;
-  if (unit.turrets !== null) flags |= UNIT_FLAG_TURRETS;
-  if (unit.build !== null) {
-    flags |= UNIT_FLAG_BUILD;
-    if (unit.build.complete === true) flags |= UNIT_FLAG_BUILD_COMPLETE;
-    if (unit.build.interrupted === true) flags |= UNIT_FLAG_BUILD_INTERRUPTED;
-  }
-
-  const row: unknown[] = [flags];
-  if ((flags & UNIT_FLAG_HP) !== 0) {
-    const hp = unit.hp!;
-    row.push(hp.curr, hp.max);
-  }
-  if ((flags & UNIT_FLAG_VELOCITY) !== 0) {
-    const v = unit.velocity!;
-    row.push(v.x, v.y, v.z);
-  }
-  if ((flags & UNIT_FLAG_BLUEPRINT_CODE) !== 0) row.push(unit.unitBlueprintCode!);
-  if ((flags & UNIT_FLAG_RADIUS) !== 0) {
-    const r = unit.radius!;
-    row.push(r.visual ?? 0, r.hitbox ?? 0, r.collision ?? 0);
-  }
-  if ((flags & UNIT_FLAG_BODY_CENTER_HEIGHT) !== 0) row.push(unit.bodyCenterHeight!);
-  if ((flags & UNIT_FLAG_MASS) !== 0) row.push(unit.mass!);
-  if ((flags & UNIT_FLAG_SURFACE_NORMAL) !== 0) {
-    const sn = unit.surfaceNormal!;
-    row.push(sn.nx, sn.ny, sn.nz);
-  }
-  if ((flags & UNIT_FLAG_ORIENTATION) !== 0) {
-    const o = unit.orientation!;
-    row.push(o.x, o.y, o.z, o.w);
-  }
-  if ((flags & UNIT_FLAG_ANGULAR_VELOCITY) !== 0) {
-    const av = unit.angularVelocity3!;
-    row.push(av.x, av.y, av.z);
-  }
-  if ((flags & UNIT_FLAG_FIRE_STATE_PRESENT) !== 0) {
-    row.push(unit.fireState === 'holdFire' ? 2 : unit.fireState === 'returnFire' ? 1 : 0);
-  }
-  if ((flags & UNIT_FLAG_CLOAK_STATE_PRESENT) !== 0) {
-    row.push(unit.cloaked === true ? 2 : unit.wantCloak === true ? 1 : 0);
-  }
-  if ((flags & UNIT_FLAG_BUILD_TARGET_ID) !== 0) {
-    if ((flags & UNIT_FLAG_BUILD_TARGET_NULL) === 0) {
-      row.push(unit.buildTargetId as number);
-    }
-  }
-  if ((flags & UNIT_FLAG_ACTIONS) !== 0) {
-    row.push(packActions(unit.actions!));
-  }
-  if ((flags & UNIT_FLAG_TURRETS) !== 0) {
-    row.push(packTurrets(unit.turrets!));
-  }
-  if ((flags & UNIT_FLAG_BUILD) !== 0) {
-    const build = unit.build!;
-    row.push(build.paid.energy, build.paid.metal);
-  }
-  return row;
-}
-
 function unpackUnit(row: unknown[]): UnitSub {
   let i = 0;
   const flags = row[i++] as number;
@@ -1247,53 +667,6 @@ function unpackUnit(row: unknown[]): UnitSub {
   return unit;
 }
 
-function packBuilding(building: BuildingSub): unknown[] {
-  let flags = 0;
-  if (building.buildingBlueprintCode !== null) flags |= BUILDING_FLAG_BLUEPRINT_CODE;
-  if (building.dim !== null) flags |= BUILDING_FLAG_DIM;
-  if (building.hp !== null) flags |= BUILDING_FLAG_HP;
-  if (building.build !== null) {
-    flags |= BUILDING_FLAG_BUILD;
-    if (building.build.complete === true) flags |= BUILDING_FLAG_BUILD_COMPLETE;
-    if (building.build.interrupted === true) flags |= BUILDING_FLAG_BUILD_INTERRUPTED;
-  }
-  if (building.metalExtractionRate !== null) flags |= BUILDING_FLAG_METAL_EXTRACTION_RATE;
-  if (building.solar !== null) {
-    flags |= BUILDING_FLAG_SOLAR;
-    if (building.solar.open === true) flags |= BUILDING_FLAG_SOLAR_OPEN;
-  }
-  if (building.turrets !== null) flags |= BUILDING_FLAG_TURRETS;
-  if (building.factory !== null) {
-    flags |= BUILDING_FLAG_FACTORY;
-    if (building.factory.producing === true) flags |= BUILDING_FLAG_FACTORY_PRODUCING;
-  }
-
-  const row: unknown[] = [flags];
-  if ((flags & BUILDING_FLAG_BLUEPRINT_CODE) !== 0) row.push(building.buildingBlueprintCode!);
-  if ((flags & BUILDING_FLAG_DIM) !== 0) {
-    const dim = building.dim!;
-    row.push(dim.x, dim.y);
-  }
-  if ((flags & BUILDING_FLAG_HP) !== 0) {
-    const hp = building.hp!;
-    row.push(hp.curr, hp.max);
-  }
-  if ((flags & BUILDING_FLAG_BUILD) !== 0) {
-    const build = building.build!;
-    row.push(build.paid.energy, build.paid.metal);
-  }
-  if ((flags & BUILDING_FLAG_METAL_EXTRACTION_RATE) !== 0) {
-    row.push(building.metalExtractionRate!);
-  }
-  if ((flags & BUILDING_FLAG_TURRETS) !== 0) {
-    row.push(packTurrets(building.turrets!));
-  }
-  if ((flags & BUILDING_FLAG_FACTORY) !== 0) {
-    row.push(packFactory(building.factory!));
-  }
-  return row;
-}
-
 function unpackBuilding(row: unknown[]): BuildingSub {
   let i = 0;
   const flags = row[i++] as number;
@@ -1338,49 +711,12 @@ function unpackBuilding(row: unknown[]): BuildingSub {
   return building;
 }
 
-function packActions(actions: readonly NetworkServerSnapshotAction[]): unknown[] {
-  const out: unknown[] = new Array(actions.length);
-  for (let i = 0; i < actions.length; i++) {
-    out[i] = packAction(actions[i]);
-  }
-  return out;
-}
-
 function unpackActions(rows: unknown[]): NetworkServerSnapshotAction[] {
   const out: NetworkServerSnapshotAction[] = new Array(rows.length);
   for (let i = 0; i < rows.length; i++) {
     out[i] = unpackAction(rows[i] as unknown[]);
   }
   return out;
-}
-
-function packAction(action: NetworkServerSnapshotAction): unknown[] {
-  let flags = 0;
-  if (action.pos !== null) flags |= ACTION_FLAG_POS;
-  if (action.posZ !== null) flags |= ACTION_FLAG_POS_Z;
-  if (action.pathExp === true) flags |= ACTION_FLAG_PATH_EXP;
-  if (action.targetId !== null) flags |= ACTION_FLAG_TARGET_ID;
-  if (action.buildingBlueprintId !== null) flags |= ACTION_FLAG_BUILDING_BLUEPRINT_ID;
-  if (action.grid !== null) flags |= ACTION_FLAG_GRID;
-  if (action.buildingId !== null) flags |= ACTION_FLAG_BUILDING_ID;
-  if (action.waitGather === true) flags |= ACTION_FLAG_WAIT_GATHER;
-  if (action.waitGroupId !== null && action.waitGroupId !== undefined) flags |= ACTION_FLAG_WAIT_GROUP_ID;
-
-  const row: unknown[] = [flags, action.type];
-  if ((flags & ACTION_FLAG_POS) !== 0) {
-    const pos = action.pos!;
-    row.push(pos.x, pos.y);
-  }
-  if ((flags & ACTION_FLAG_POS_Z) !== 0) row.push(action.posZ!);
-  if ((flags & ACTION_FLAG_TARGET_ID) !== 0) row.push(action.targetId!);
-  if ((flags & ACTION_FLAG_BUILDING_BLUEPRINT_ID) !== 0) row.push(action.buildingBlueprintId!);
-  if ((flags & ACTION_FLAG_GRID) !== 0) {
-    const grid = action.grid!;
-    row.push(grid.x, grid.y);
-  }
-  if ((flags & ACTION_FLAG_BUILDING_ID) !== 0) row.push(action.buildingId!);
-  if ((flags & ACTION_FLAG_WAIT_GROUP_ID) !== 0) row.push(action.waitGroupId!);
-  return row;
 }
 
 function unpackAction(row: unknown[]): NetworkServerSnapshotAction {
@@ -1419,41 +755,12 @@ function unpackAction(row: unknown[]): NetworkServerSnapshotAction {
   return action;
 }
 
-function packTurrets(turrets: readonly NetworkServerSnapshotTurret[]): unknown[] {
-  const out: unknown[] = new Array(turrets.length);
-  for (let i = 0; i < turrets.length; i++) {
-    out[i] = packTurret(turrets[i]);
-  }
-  return out;
-}
-
 function unpackTurrets(rows: unknown[]): NetworkServerSnapshotTurret[] {
   const out: NetworkServerSnapshotTurret[] = new Array(rows.length);
   for (let i = 0; i < rows.length; i++) {
     out[i] = unpackTurret(rows[i] as unknown[]);
   }
   return out;
-}
-
-function packTurret(t: NetworkServerSnapshotTurret): unknown[] {
-  let flags = 0;
-  if (t.targetId !== null) flags |= TURRET_FLAG_TARGET_ID;
-  if (t.currentShieldRange !== null) flags |= TURRET_FLAG_SHIELD_RANGE;
-  if (t.active === false) flags |= TURRET_FLAG_INACTIVE;
-
-  const angular = t.turret.angular;
-  const row: unknown[] = [
-    flags,
-    t.turret.turretBlueprintCode,
-    t.state,
-    angular.rot,
-    angular.vel,
-    angular.pitch,
-    angular.pitchVel,
-  ];
-  if ((flags & TURRET_FLAG_TARGET_ID) !== 0) row.push(t.targetId!);
-  if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) row.push(t.currentShieldRange!);
-  return row;
 }
 
 function unpackTurret(row: unknown[]): NetworkServerSnapshotTurret {
@@ -1482,20 +789,6 @@ function unpackTurret(row: unknown[]): NetworkServerSnapshotTurret {
   return turret;
 }
 
-function packFactory(factory: FactorySub): unknown[] {
-  return [
-    factory.selectedUnitBlueprintCode,
-    factory.progress,
-    factory.energyRate,
-    factory.metalRate,
-    packWaypoint(factory.rally),
-    factory.route !== null ? packWaypointRoute(factory.route) : null,
-    factory.guardTargetId,
-    factory.repeat === false ? 0 : 1,
-    factory.queue ?? null,
-  ];
-}
-
 function unpackFactory(row: unknown[], producing: boolean): FactorySub {
   const selectedUnitBlueprintCode = row[0] as number | null;
   const progress = row[1] as number;
@@ -1512,28 +805,12 @@ function unpackFactory(row: unknown[], producing: boolean): FactorySub {
   return { selectedUnitBlueprintCode, progress, producing, repeat, queue, energyRate, metalRate, guardTargetId, rally, route };
 }
 
-function packWaypointRoute(route: NonNullable<FactorySub['route']>): unknown[] {
-  const out: unknown[] = new Array(route.length);
-  for (let i = 0; i < route.length; i++) {
-    out[i] = packWaypoint(route[i]);
-  }
-  return out;
-}
-
 function unpackWaypointRoute(rows: unknown[]): WaypointSub[] {
   const out: WaypointSub[] = new Array(rows.length);
   for (let i = 0; i < rows.length; i++) {
     out[i] = unpackWaypoint(rows[i] as unknown[]);
   }
   return out;
-}
-
-function packWaypoint(waypoint: WaypointSub): unknown[] {
-  let flags = 0;
-  if (waypoint.posZ !== null) flags |= WAYPOINT_FLAG_POS_Z;
-  const row: unknown[] = [flags, waypoint.pos.x, waypoint.pos.y, waypoint.type];
-  if ((flags & WAYPOINT_FLAG_POS_Z) !== 0) row.push(waypoint.posZ!);
-  return row;
 }
 
 function unpackWaypoint(row: unknown[]): WaypointSub {
@@ -1545,14 +822,4 @@ function unpackWaypoint(row: unknown[]): WaypointSub {
   };
   if ((flags & WAYPOINT_FLAG_POS_Z) !== 0) waypoint.posZ = row[4] as number;
   return waypoint;
-}
-
-// Re-exported for tests / measurement harnesses that want to round-trip
-// a snapshot's entities through the packed wire form.
-export function roundTripEntitiesThroughWire(
-  state: NetworkServerSnapshot,
-): NetworkServerSnapshotEntity[] {
-  const packed = packEntitiesForWire(state.entities);
-  if (packed === undefined) return [...state.entities];
-  return unpackEntitiesFromWire(packed);
 }
