@@ -122,6 +122,7 @@ import __wbg_init, {
   pool_step_packed_projectiles_batch,
   projectile_integrate_step_batch,
   projectile_homing_guidance_batch,
+  projectile_homing_guidance_apply_batch,
   terrain_follow_vertical_thrust_accel,
   solve_kinematic_intercept,
   compute_homing_thrust,
@@ -1338,6 +1339,17 @@ export interface SimWasm {
    *  writes thrust acceleration outputs into the same row. */
   readonly projectileHomingGuidanceBatch: (
     rows: Float64Array,
+    count: number,
+    dtSec: number,
+  ) => number;
+  /** C1 — batched homing guidance that writes thrust into projectile
+   *  acceleration slabs before the Rust integrator runs. */
+  readonly projectileHomingGuidanceApplyBatch: (
+    rows: Float64Array,
+    projectileIndices: Int32Array,
+    accelX: Float64Array,
+    accelY: Float64Array,
+    accelZ: Float64Array,
     count: number,
     dtSec: number,
   ) => number;
@@ -3915,6 +3927,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         poolStepPackedProjectilesBatch: pool_step_packed_projectiles_batch,
         projectileIntegrateStepBatch: projectile_integrate_step_batch,
         projectileHomingGuidanceBatch: projectile_homing_guidance_batch,
+        projectileHomingGuidanceApplyBatch: projectile_homing_guidance_apply_batch,
         terrainFollowVerticalThrustAccel: terrain_follow_vertical_thrust_accel,
         solveKinematicIntercept: solve_kinematic_intercept,
         computeHomingThrust: compute_homing_thrust,

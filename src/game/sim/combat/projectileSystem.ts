@@ -1018,9 +1018,6 @@ const HG_ROW_MAX_TIME_SEC = 23;
 const HG_ROW_HOMING_TURN_RATE = 24;
 const HG_ROW_MAX_THRUST_ACCEL = 25;
 const HG_ROW_SOLVE_INTERCEPT = 26;
-const HG_ROW_OUT_THRUST_X = 27;
-const HG_ROW_OUT_THRUST_Y = 28;
-const HG_ROW_OUT_THRUST_Z = 29;
 
 let _homingGuidanceBatchCapacity = 0;
 let _homingGuidanceRows = new Float64Array(0);
@@ -1395,20 +1392,17 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     throw new Error('Projectile integration requires initialized sim-wasm');
   }
   if (homingGuidanceCount > 0) {
-    const guided = sim.projectileHomingGuidanceBatch(
+    const guided = sim.projectileHomingGuidanceApplyBatch(
       _homingGuidanceRows.subarray(0, homingGuidanceCount * HOMING_GUIDANCE_BATCH_STRIDE),
+      _homingGuidanceProjectileIndex.subarray(0, homingGuidanceCount),
+      _travelingProjectileAccelX.subarray(0, batchCount),
+      _travelingProjectileAccelY.subarray(0, batchCount),
+      _travelingProjectileAccelZ.subarray(0, batchCount),
       homingGuidanceCount,
       dtSec,
     );
     if (guided !== homingGuidanceCount) {
       throw new Error(`Projectile homing guidance batch failed: ${guided}/${homingGuidanceCount}`);
-    }
-    for (let i = 0; i < homingGuidanceCount; i++) {
-      const projectileIndex = _homingGuidanceProjectileIndex[i];
-      const base = i * HOMING_GUIDANCE_BATCH_STRIDE;
-      _travelingProjectileAccelX[projectileIndex] += _homingGuidanceRows[base + HG_ROW_OUT_THRUST_X];
-      _travelingProjectileAccelY[projectileIndex] += _homingGuidanceRows[base + HG_ROW_OUT_THRUST_Y];
-      _travelingProjectileAccelZ[projectileIndex] += _homingGuidanceRows[base + HG_ROW_OUT_THRUST_Z];
     }
   }
   const integrated = sim.projectileIntegrateStepBatch(

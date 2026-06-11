@@ -564,7 +564,11 @@ pub(crate) const PHG_ROW_OUT_INTERCEPT_FOUND: usize = 30;
 
 #[wasm_bindgen]
 pub fn projectile_homing_guidance_batch(rows: &mut [f64], count: usize, dt_sec: f64) -> u32 {
-    if rows.len() < count * PROJECTILE_HOMING_GUIDANCE_STRIDE {
+    let required = match count.checked_mul(PROJECTILE_HOMING_GUIDANCE_STRIDE) {
+        Some(value) => value,
+        None => return 0,
+    };
+    if rows.len() < required {
         return 0;
     }
 
@@ -639,6 +643,50 @@ pub fn projectile_homing_guidance_batch(rows: &mut [f64], count: usize, dt_sec: 
         rows[base + PHG_ROW_OUT_THRUST_Y] = thrust_y;
         rows[base + PHG_ROW_OUT_THRUST_Z] = thrust_z;
         processed += 1;
+    }
+
+    processed
+}
+
+#[wasm_bindgen]
+pub fn projectile_homing_guidance_apply_batch(
+    rows: &mut [f64],
+    projectile_indices: &[i32],
+    accel_x: &mut [f64],
+    accel_y: &mut [f64],
+    accel_z: &mut [f64],
+    count: usize,
+    dt_sec: f64,
+) -> u32 {
+    let required = match count.checked_mul(PROJECTILE_HOMING_GUIDANCE_STRIDE) {
+        Some(value) => value,
+        None => return 0,
+    };
+    if rows.len() < required || projectile_indices.len() < count {
+        return 0;
+    }
+
+    for &projectile_index in projectile_indices.iter().take(count) {
+        if projectile_index < 0 {
+            return 0;
+        }
+        let i = projectile_index as usize;
+        if i >= accel_x.len() || i >= accel_y.len() || i >= accel_z.len() {
+            return 0;
+        }
+    }
+
+    let processed = projectile_homing_guidance_batch(rows, count, dt_sec);
+    if processed as usize != count {
+        return processed;
+    }
+
+    for (row_index, &projectile_index) in projectile_indices.iter().take(count).enumerate() {
+        let projectile_index = projectile_index as usize;
+        let base = row_index * PROJECTILE_HOMING_GUIDANCE_STRIDE;
+        accel_x[projectile_index] += rows[base + PHG_ROW_OUT_THRUST_X];
+        accel_y[projectile_index] += rows[base + PHG_ROW_OUT_THRUST_Y];
+        accel_z[projectile_index] += rows[base + PHG_ROW_OUT_THRUST_Z];
     }
 
     processed
