@@ -171,13 +171,18 @@ export class ClientProjectileStore {
         entity.transform.z = start.z;
       }
     } else if (projPts.length !== srcPts.length) {
-      const oldLen = projPts.length;
-      if (oldLen > srcPts.length) {
+      // A point-count change is a discrete topology event (a reflection
+      // appeared or ended): surviving indices change meaning, so the
+      // WHOLE rendered path snaps to the authoritative one. Keeping old
+      // vertices and only appending would leave a vertex parked at the
+      // beam's previous endpoint, drawing a phantom segment while the
+      // EMA dragged it toward its re-indexed target.
+      if (projPts.length > srcPts.length) {
         shrinkBeamPoints(projPts, srcPts.length);
       } else {
         projPts.length = srcPts.length;
       }
-      for (let i = oldLen; i < srcPts.length; i++) {
+      for (let i = 0; i < srcPts.length; i++) {
         const sp = dstTarget[i];
         const pp = ensureBeamPoint(projPts, i);
         pp.x = sp.x; pp.y = sp.y; pp.z = sp.z;

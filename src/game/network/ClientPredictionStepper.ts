@@ -74,7 +74,15 @@ function applyBeamPathPrediction(
 
   const projPts = proj.points ?? (proj.points = []);
   const oldLen = projPts.length;
-  if (oldLen !== tgtPts.length) {
+  // A point-count change is a discrete topology event (a reflection
+  // appeared or ended), not continuous mismatch: surviving indices
+  // change MEANING (e.g. vertex 1 was the ground endpoint, now it is
+  // the mirror reflection point). EMA-blending a vertex across that
+  // re-indexing walks it through open space and draws a phantom
+  // segment toward wherever the beam used to end — so on any length
+  // change every vertex snaps to the authoritative path this frame.
+  const snapAll = oldLen !== tgtPts.length;
+  if (snapAll) {
     if (oldLen > tgtPts.length) {
       shrinkBeamPoints(projPts, tgtPts.length);
     } else {
@@ -103,7 +111,15 @@ function applyBeamPathPrediction(
   for (let i = 0; i < tgtPts.length; i++) {
     const tp = tgtPts[i];
     let pp = projPts[i];
-    if (!pp || i >= oldLen) {
+    // Same-length reflector handoff (the bounce moved to a different
+    // mirror, or a reflection appeared at this index) is equally a
+    // step function — snap that vertex instead of sweeping it through
+    // the air between the two mirror positions.
+    const reflectorChanged =
+      pp !== undefined &&
+      (pp.reflectorEntityId !== tp.reflectorEntityId ||
+        pp.reflectorKind !== tp.reflectorKind);
+    if (!pp || i >= oldLen || snapAll || reflectorChanged) {
       pp = ensureBeamPoint(projPts, i);
       pp.x = tp.x; pp.y = tp.y; pp.z = tp.z;
       pp.vx = tp.vx; pp.vy = tp.vy; pp.vz = tp.vz;
