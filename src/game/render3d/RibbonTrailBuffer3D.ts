@@ -1,3 +1,6 @@
+/** Ground height sampler in render space: world (x, z) → surface Y. */
+export type GroundYSampler = (x: number, z: number) => number;
+
 export type RibbonQuadCorners = {
   sLx: number;
   sLz: number;
@@ -85,31 +88,35 @@ export function computeMiteredQuad(
   };
 }
 
-export function writeFlatQuadXZ(
+/** Write a quad draped over the terrain: each vertex's Y is sampled
+ *  under its own (x, z) so the quad follows slopes instead of floating
+ *  at a fixed altitude. `sampleY` must already include any lift the
+ *  caller wants above the surface. */
+export function writeDrapedQuadXZ(
   positions: Float32Array,
   slot: number,
-  y: number,
+  sampleY: GroundYSampler,
   corners: RibbonQuadCorners,
 ): void {
   const base = slot * 12;
   positions[base] = corners.sLx;
-  positions[base + 1] = y;
+  positions[base + 1] = sampleY(corners.sLx, corners.sLz);
   positions[base + 2] = corners.sLz;
   positions[base + 3] = corners.sRx;
-  positions[base + 4] = y;
+  positions[base + 4] = sampleY(corners.sRx, corners.sRz);
   positions[base + 5] = corners.sRz;
   positions[base + 6] = corners.eRx;
-  positions[base + 7] = y;
+  positions[base + 7] = sampleY(corners.eRx, corners.eRz);
   positions[base + 8] = corners.eRz;
   positions[base + 9] = corners.eLx;
-  positions[base + 10] = y;
+  positions[base + 10] = sampleY(corners.eLx, corners.eLz);
   positions[base + 11] = corners.eLz;
 }
 
-export function writeFlatQuadEndXZ(
+export function writeDrapedQuadEndXZ(
   positions: Float32Array,
   slot: number,
-  y: number,
+  sampleY: GroundYSampler,
   eRx: number,
   eRz: number,
   eLx: number,
@@ -117,10 +124,10 @@ export function writeFlatQuadEndXZ(
 ): void {
   const base = slot * 12;
   positions[base + 6] = eRx;
-  positions[base + 7] = y;
+  positions[base + 7] = sampleY(eRx, eRz);
   positions[base + 8] = eRz;
   positions[base + 9] = eLx;
-  positions[base + 10] = y;
+  positions[base + 10] = sampleY(eLx, eLz);
   positions[base + 11] = eLz;
 }
 

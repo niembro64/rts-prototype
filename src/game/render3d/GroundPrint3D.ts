@@ -1,6 +1,8 @@
 // GroundPrint3D — wheel ruts, tread tracks, and footstep stamps drawn
-// onto the ground as fading quads. Leg stamps use a small shader mask
-// so their underlying quads read as circular ground prints.
+// onto the ground as fading quads draped over the terrain (each vertex's
+// Y is sampled from the surface under its own x/z). Leg stamps use a
+// small shader mask so their underlying quads read as circular ground
+// prints.
 //
 // Rewrite goals (vs. the original frame-skip design):
 //
@@ -45,17 +47,18 @@ import {
   computeMiteredQuad,
   copyQuadSlot,
   createQuadIndexBuffer,
-  writeFlatQuadEndXZ,
-  writeFlatQuadXZ,
+  writeDrapedQuadEndXZ,
+  writeDrapedQuadXZ,
   writeQuadRgba,
   type RibbonQuadCorners,
 } from './RibbonTrailBuffer3D';
 import { clamp01 } from '../math';
 
 // ── World Y layout ──
-// Sit slightly above the tile floor; under burn marks (Y=2.5) so a
-// scorch on top of a rut reads correctly.
-const MARK_Y = 2.4;
+// Sit slightly above the terrain surface, sampled per vertex so the
+// quads drape over slopes; under burn marks' lift (2.5) so a scorch
+// on top of a rut reads correctly.
+const MARK_LIFT = 2.4;
 
 // ── Color ──
 // Dark soil compaction. Routed through THREE.Color so the hex (sRGB)
@@ -333,10 +336,24 @@ export class GroundPrint3D {
 
   private scope: ViewportFootprint | null = null;
 
-  constructor(parentWorld: THREE.Group, scope?: ViewportFootprint) {
+  /** Ground height sampler under a contact's world (x, z) — the same
+   *  support surface the locomotion rig floor-clamps its parts to, so
+   *  prints land exactly under wheels/treads/feet. Returns 0 when not
+   *  provided (legacy callers / flat maps). */
+  private getGroundY: (x: number, z: number) => number;
+  /** Per-vertex mark altitude: ground height + MARK_LIFT. */
+  private markY: (x: number, z: number) => number;
+
+  constructor(
+    parentWorld: THREE.Group,
+    scope?: ViewportFootprint,
+    getGroundY?: (x: number, z: number) => number,
+  ) {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
     this.scope = scope ?? null;
+    this.getGroundY = getGroundY ?? (() => 0);
+    this.markY = (x, z) => this.getGroundY(x, z) + MARK_LIFT;
 
     this.positions = new Float32Array(HARD_CAP * 4 * 3);
     this.colors = new Float32Array(HARD_CAP * 4 * 4);
@@ -623,7 +640,7 @@ export class GroundPrint3D {
 
     const mark = this.allocateMark();
     const corners: RibbonQuadCorners = { sLx, sLz, sRx, sRz, eRx, eRz, eLx, eLz };
-    writeFlatQuadXZ(this.positions, mark.slot, MARK_Y, corners);
+    writeDrapedQuadXZ(this.positions, mark.slot, this.markY, corners);
     this.writeCircleMask(mark.slot);
     writeQuadRgba(this.colors, mark.slot, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, PRINT_INITIAL_ALPHA);
     this.posDirty = true;
@@ -671,17 +688,17 @@ export class GroundPrint3D {
     );
 
     if (haveLivePrev) {
-      writeFlatQuadEndXZ(
+      writeDrapedQuadEndXZ(
         this.positions,
         prev!.slot,
-        MARK_Y,
+        this.markY,
         corners.sRx,
         corners.sRz,
         corners.sLx,
         corners.sLz,
       );
     }
-    writeFlatQuadXZ(this.positions, newMark.slot, MARK_Y, corners);
+    writeDrapedQuadXZ(this.positions, newMark.slot, this.markY, corners);
     this.writeQuadMask(newMark.slot);
     writeQuadRgba(this.colors, newMark.slot, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, PRINT_INITIAL_ALPHA);
     this.posDirty = true;

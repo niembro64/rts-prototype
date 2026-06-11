@@ -1,7 +1,8 @@
 // BurnMark3D — ground scorches along laser / beam paths, plus a pulsing
 // glow sphere at each live beam's termination point.
 //
-// Every mark is a 4-vertex quad on the ground plane. When a beam's
+// Every mark is a 4-vertex quad draped over the terrain: each vertex's
+// Y is sampled from the ground under its own (x, z). When a beam's
 // endpoint moves, we append a new quad AND update the previous quad's
 // end vertices to the bisector of the two segments — so consecutive
 // marks share an edge with no overlap or gap. The first/last quads of a
@@ -30,18 +31,20 @@ import {
   computeMiteredQuad,
   copyQuadSlot,
   createQuadIndexBuffer,
-  writeFlatQuadEndXZ,
-  writeFlatQuadXZ,
+  writeDrapedQuadEndXZ,
+  writeDrapedQuadXZ,
   writeQuadRgba,
 } from './RibbonTrailBuffer3D';
 import { clamp01 } from '../math';
 
 // ── World Y layout ──
-// Burn marks sit a couple units above the tile layer (y=0). The tile floor
-// uses a negative polygonOffset to bias its fragments toward the camera,
-// so we apply an even stronger offset to the burn-mark material so marks
-// always draw over tiles regardless of depth precision at far zoom.
-const MARK_Y = 2.5;
+// Burn marks sit a couple units above the terrain surface, sampled per
+// vertex so the quads drape over slopes. The terrain uses a negative
+// polygonOffset to bias its fragments toward the camera, so we apply an
+// even stronger offset to the burn-mark material so marks always draw
+// over the ground regardless of depth precision at far zoom. The lift
+// stays above ground prints' (2.4) so a scorch on a rut reads correctly.
+const MARK_LIFT = 2.5;
 
 // ── Color curve — matches 2D BurnMarkSystem exactly ──
 // Source the color components via THREE.Color so the hex (sRGB) is
@@ -183,9 +186,12 @@ export class BurnMark3D {
 
   /** Sim-authoritative ground height sampler — used to gate marks so
    *  beams that end in mid-air don't paint phantom scorches on the
-   *  dirt below their endpoint. Returns 0 when not provided (legacy
-   *  callers / flat maps). */
+   *  dirt below their endpoint, and to drape each mark vertex onto
+   *  the terrain. Returns 0 when not provided (legacy callers /
+   *  flat maps). */
   private getGroundZ: (x: number, y: number) => number;
+  /** Per-vertex mark altitude: ground height + MARK_LIFT. */
+  private markY: (x: number, z: number) => number;
 
   constructor(
     parentWorld: THREE.Group,
@@ -196,6 +202,7 @@ export class BurnMark3D {
     parentWorld.add(this.root);
     this.scope = scope ?? null;
     this.getGroundZ = getGroundZ ?? (() => 0);
+    this.markY = (x, z) => this.getGroundZ(x, z) + MARK_LIFT;
 
     this.positions = new Float32Array(MAX_MARKS * 4 * 3);
     this.colors = new Float32Array(MAX_MARKS * 4 * 4);
@@ -494,10 +501,10 @@ export class BurnMark3D {
 
     // Rewrite predecessor's end vertices to match the shared miter edge.
     if (haveLivePrev) {
-      writeFlatQuadEndXZ(
+      writeDrapedQuadEndXZ(
         this.positions,
         prev!.slot,
-        MARK_Y,
+        this.markY,
         corners.sRx,
         corners.sRz,
         corners.sLx,
@@ -515,7 +522,7 @@ export class BurnMark3D {
       removed: false,
     };
     this.marks.push(mark);
-    writeFlatQuadXZ(this.positions, slot, MARK_Y, corners);
+    writeDrapedQuadXZ(this.positions, slot, this.markY, corners);
     // Fresh marks render at hot color + full alpha — age sweep will take
     // over from the next frame. Writing once here avoids a 1-frame flicker.
     writeQuadRgba(this.colors, slot, HOT_LIN.r, HOT_LIN.g, HOT_LIN.b, 1);

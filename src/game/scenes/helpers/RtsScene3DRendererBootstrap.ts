@@ -12,6 +12,7 @@ import { FogOfWarFog3D } from '../../render3d/FogOfWarFog3D';
 import { GroundPrint3D } from '../../render3d/GroundPrint3D';
 import { LegInstancedRenderer } from '../../render3d/LegInstancedRenderer';
 import { LineDrag3D } from '../../render3d/LineDrag3D';
+import { getLocomotionSurfaceHeight } from '../../render3d/LocomotionTerrainSampler';
 import { MetalDepositRenderer3D } from '../../render3d/MetalDepositRenderer3D';
 import { PylonTubeFlowRenderer } from '../../render3d/PylonTubeFlowRenderer';
 import { Render3DEntities } from '../../render3d/Render3DEntities';
@@ -162,7 +163,11 @@ export function bootstrapRtsScene3DRenderers(
     renderScope,
     (x, y) => getSurfaceHeight(x, y, mapWidth, mapHeight, LAND_CELL_SIZE),
   );
-  const groundPrintRenderer = new GroundPrint3D(threeApp.world, renderScope);
+  const groundPrintRenderer = new GroundPrint3D(
+    threeApp.world,
+    renderScope,
+    (x, z) => getLocomotionSurfaceHeight(x, z, mapWidth, mapHeight),
+  );
   const areaDragRenderer = new AreaDrag3D(threeApp.world);
   const lineDragRenderer = new LineDrag3D(threeApp.world);
   const buildGhostRenderer = new BuildGhost3D(
