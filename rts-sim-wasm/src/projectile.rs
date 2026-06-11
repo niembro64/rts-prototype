@@ -692,6 +692,200 @@ pub fn projectile_homing_guidance_apply_batch(
     processed
 }
 
+const LINE_SHOT_RANGE_EPSILON: f64 = 1e-9;
+const LINE_SHOT_RANGE_VOLUME_CYLINDER_NORMAL: u32 = 0;
+const LINE_SHOT_RANGE_VOLUME_BOTTOM_UNBOUNDED: u32 = 1;
+const LINE_SHOT_RANGE_VOLUME_TOP_AND_BOTTOM_UNBOUNDED: u32 = 2;
+const LINE_SHOT_RANGE_VOLUME_SPHERE: u32 = 3;
+
+#[inline]
+fn line_shot_distance_to_range_volume_inline(
+    start_x: f64,
+    start_y: f64,
+    start_z: f64,
+    dir_x: f64,
+    dir_y: f64,
+    dir_z: f64,
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    radius: f64,
+    range_volume: u32,
+) -> Option<f64> {
+    let dir_len = (dir_x * dir_x + dir_y * dir_y + dir_z * dir_z).sqrt();
+    if dir_len <= LINE_SHOT_RANGE_EPSILON
+        || !center_x.is_finite()
+        || !center_y.is_finite()
+        || !center_z.is_finite()
+        || !radius.is_finite()
+        || radius < 0.0
+    {
+        return None;
+    }
+
+    let ux = dir_x / dir_len;
+    let uy = dir_y / dir_len;
+    let uz = dir_z / dir_len;
+    let ox = start_x - center_x;
+    let oy = start_y - center_y;
+    let oz = start_z - center_z;
+
+    if range_volume == LINE_SHOT_RANGE_VOLUME_SPHERE {
+        let sphere_b = 2.0 * (ox * ux + oy * uy + oz * uz);
+        let sphere_c = ox * ox + oy * oy + oz * oz - radius * radius;
+        let disc = sphere_b * sphere_b - 4.0 * sphere_c;
+        if disc < 0.0 {
+            return None;
+        }
+        let sqrt_disc = disc.sqrt();
+        let t0 = (-sphere_b - sqrt_disc) * 0.5;
+        let t1 = (-sphere_b + sqrt_disc) * 0.5;
+        let t = if sphere_c <= LINE_SHOT_RANGE_EPSILON {
+            t0.max(t1)
+        } else {
+            let p0 = if t0 >= 0.0 { t0 } else { f64::INFINITY };
+            let p1 = if t1 >= 0.0 { t1 } else { f64::INFINITY };
+            p0.min(p1)
+        };
+        return if t >= 0.0 && t.is_finite() {
+            Some(t)
+        } else {
+            None
+        };
+    }
+
+    let bottom_bounded = match range_volume {
+        LINE_SHOT_RANGE_VOLUME_CYLINDER_NORMAL => true,
+        LINE_SHOT_RANGE_VOLUME_BOTTOM_UNBOUNDED
+        | LINE_SHOT_RANGE_VOLUME_TOP_AND_BOTTOM_UNBOUNDED => false,
+        _ => false,
+    };
+    let mut best = f64::INFINITY;
+    let horizontal_a = ux * ux + uy * uy;
+    let horizontal_c = ox * ox + oy * oy - radius * radius;
+    if horizontal_a > LINE_SHOT_RANGE_EPSILON {
+        let horizontal_b = 2.0 * (ox * ux + oy * uy);
+        let disc = horizontal_b * horizontal_b - 4.0 * horizontal_a * horizontal_c;
+        if disc >= 0.0 {
+            let sqrt_disc = disc.sqrt();
+            let inv_denom = 1.0 / (2.0 * horizontal_a);
+            let t0 = (-horizontal_b - sqrt_disc) * inv_denom;
+            let t1 = (-horizontal_b + sqrt_disc) * inv_denom;
+            let t = if horizontal_c <= LINE_SHOT_RANGE_EPSILON {
+                t0.max(t1)
+            } else {
+                let p0 = if t0 >= 0.0 { t0 } else { f64::INFINITY };
+                let p1 = if t1 >= 0.0 { t1 } else { f64::INFINITY };
+                p0.min(p1)
+            };
+            if t >= 0.0 && t.is_finite() {
+                best = best.min(t);
+            }
+        }
+    }
+
+    if range_volume != LINE_SHOT_RANGE_VOLUME_TOP_AND_BOTTOM_UNBOUNDED
+        && uz > LINE_SHOT_RANGE_EPSILON
+    {
+        let top_z = center_z + radius;
+        let top_distance = (top_z - start_z) / uz;
+        if top_distance >= 0.0 && top_distance.is_finite() {
+            best = best.min(top_distance);
+        }
+    }
+    if bottom_bounded && uz < -LINE_SHOT_RANGE_EPSILON {
+        let bottom_z = center_z - radius;
+        let bottom_distance = (bottom_z - start_z) / uz;
+        if bottom_distance >= 0.0 && bottom_distance.is_finite() {
+            best = best.min(bottom_distance);
+        }
+    }
+
+    if best.is_finite() {
+        Some(best)
+    } else {
+        None
+    }
+}
+
+#[wasm_bindgen]
+pub fn line_shot_distance_to_range_volume(
+    start_x: f64,
+    start_y: f64,
+    start_z: f64,
+    dir_x: f64,
+    dir_y: f64,
+    dir_z: f64,
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    radius: f64,
+    range_volume: u32,
+) -> f64 {
+    line_shot_distance_to_range_volume_inline(
+        start_x,
+        start_y,
+        start_z,
+        dir_x,
+        dir_y,
+        dir_z,
+        center_x,
+        center_y,
+        center_z,
+        radius,
+        range_volume,
+    )
+    .unwrap_or(-1.0)
+}
+
+#[wasm_bindgen]
+pub fn line_shot_range_endpoint(
+    out_buf: &mut [f64],
+    start_x: f64,
+    start_y: f64,
+    start_z: f64,
+    dir_x: f64,
+    dir_y: f64,
+    dir_z: f64,
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    radius: f64,
+    range_volume: u32,
+) -> u32 {
+    if out_buf.len() < 3 {
+        return 0;
+    }
+
+    let dir_len = (dir_x * dir_x + dir_y * dir_y + dir_z * dir_z).sqrt();
+    let distance = line_shot_distance_to_range_volume_inline(
+        start_x,
+        start_y,
+        start_z,
+        dir_x,
+        dir_y,
+        dir_z,
+        center_x,
+        center_y,
+        center_z,
+        radius,
+        range_volume,
+    );
+    if dir_len <= LINE_SHOT_RANGE_EPSILON || distance.is_none() {
+        out_buf[0] = start_x;
+        out_buf[1] = start_y;
+        out_buf[2] = start_z;
+        return 1;
+    }
+
+    let inv_dir_len = 1.0 / dir_len;
+    let distance = distance.unwrap();
+    out_buf[0] = start_x + dir_x * inv_dir_len * distance;
+    out_buf[1] = start_y + dir_y * inv_dir_len * distance;
+    out_buf[2] = start_z + dir_z * inv_dir_len * distance;
+    1
+}
+
 /// Upward engine acceleration for a terrain-following projectile/body.
 ///
 /// Mirrors the former TypeScript TerrainFollowThrust helper. Gravity is
@@ -792,5 +986,174 @@ pub fn pool_step_packed_projectiles_batch(count: u32, dt_sec: f64) {
         p.pos_y[i] += p.vel_y[i] * dt_sec;
         p.pos_z[i] += p.vel_z[i] * dt_sec - GRAVITY * half_dt_sq;
         p.vel_z[i] -= GRAVITY * dt_sec;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_close(actual: f64, expected: f64) {
+        assert!(
+            (actual - expected).abs() <= 1e-9,
+            "expected {expected}, got {actual}"
+        );
+    }
+
+    #[test]
+    fn line_shot_range_cylinder_clips_side_and_caps() {
+        let side = line_shot_distance_to_range_volume_inline(
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            10.0,
+            LINE_SHOT_RANGE_VOLUME_CYLINDER_NORMAL,
+        )
+        .unwrap();
+        assert_close(side, 10.0);
+
+        let top = line_shot_distance_to_range_volume_inline(
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            10.0,
+            LINE_SHOT_RANGE_VOLUME_CYLINDER_NORMAL,
+        )
+        .unwrap();
+        assert_close(top, 10.0);
+
+        let bottom = line_shot_distance_to_range_volume_inline(
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -1.0,
+            0.0,
+            0.0,
+            0.0,
+            10.0,
+            LINE_SHOT_RANGE_VOLUME_CYLINDER_NORMAL,
+        )
+        .unwrap();
+        assert_close(bottom, 10.0);
+    }
+
+    #[test]
+    fn line_shot_range_respects_unbounded_modes() {
+        let bottom_unbounded = line_shot_distance_to_range_volume_inline(
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -1.0,
+            0.0,
+            0.0,
+            0.0,
+            10.0,
+            LINE_SHOT_RANGE_VOLUME_BOTTOM_UNBOUNDED,
+        );
+        assert!(bottom_unbounded.is_none());
+
+        let fully_unbounded = line_shot_distance_to_range_volume_inline(
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            10.0,
+            LINE_SHOT_RANGE_VOLUME_TOP_AND_BOTTOM_UNBOUNDED,
+        );
+        assert!(fully_unbounded.is_none());
+    }
+
+    #[test]
+    fn line_shot_range_sphere_uses_nearest_forward_hit_or_exit() {
+        let exit_from_inside = line_shot_distance_to_range_volume_inline(
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            10.0,
+            LINE_SHOT_RANGE_VOLUME_SPHERE,
+        )
+        .unwrap();
+        assert_close(exit_from_inside, 10.0);
+
+        let entry_from_outside = line_shot_distance_to_range_volume_inline(
+            20.0,
+            0.0,
+            0.0,
+            -1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            10.0,
+            LINE_SHOT_RANGE_VOLUME_SPHERE,
+        )
+        .unwrap();
+        assert_close(entry_from_outside, 10.0);
+
+        let miss = line_shot_distance_to_range_volume_inline(
+            20.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            10.0,
+            LINE_SHOT_RANGE_VOLUME_SPHERE,
+        );
+        assert!(miss.is_none());
+    }
+
+    #[test]
+    fn line_shot_range_endpoint_writes_normalized_exit_point() {
+        let mut out = [0.0_f64; 3];
+        let written = line_shot_range_endpoint(
+            &mut out,
+            0.0,
+            0.0,
+            0.0,
+            2.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            10.0,
+            LINE_SHOT_RANGE_VOLUME_CYLINDER_NORMAL,
+        );
+        assert_eq!(written, 1);
+        assert_close(out[0], 10.0);
+        assert_close(out[1], 0.0);
+        assert_close(out[2], 0.0);
     }
 }

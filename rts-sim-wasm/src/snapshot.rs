@@ -10280,6 +10280,12 @@ mod lock_on_inclusion_tests {
             10.0,
             0.0,
             1.0,
+            10.0,
+            0.0,
+            0.0,
+            10.0,
+            0.0,
+            1.0,
             5.0,
             SHIELD_FIELD_SHAPE_SPHERE,
             SHIELD_REFLECTION_MODE_BOTH,
@@ -11616,4 +11622,3 @@ mod lock_on_inclusion_tests {
         assert_ne!(host_directed.1, CT_TURRET_STATE_IDLE);
     }
 }
-

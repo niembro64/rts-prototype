@@ -123,6 +123,8 @@ import __wbg_init, {
   projectile_integrate_step_batch,
   projectile_homing_guidance_batch,
   projectile_homing_guidance_apply_batch,
+  line_shot_distance_to_range_volume,
+  line_shot_range_endpoint,
   terrain_follow_vertical_thrust_accel,
   solve_kinematic_intercept,
   compute_homing_thrust,
@@ -1352,6 +1354,35 @@ export interface SimWasm {
     accelZ: Float64Array,
     count: number,
     dtSec: number,
+  ) => number;
+  /** Beam/ray range-volume clipping. `rangeVolume` uses
+   *  lineShotRange.ts string-to-code mapping. */
+  readonly lineShotDistanceToRangeVolume: (
+    startX: number,
+    startY: number,
+    startZ: number,
+    dirX: number,
+    dirY: number,
+    dirZ: number,
+    centerX: number,
+    centerY: number,
+    centerZ: number,
+    radius: number,
+    rangeVolume: number,
+  ) => number;
+  readonly lineShotRangeEndpoint: (
+    out: Float64Array,
+    startX: number,
+    startY: number,
+    startZ: number,
+    dirX: number,
+    dirY: number,
+    dirZ: number,
+    centerX: number,
+    centerY: number,
+    centerZ: number,
+    radius: number,
+    rangeVolume: number,
   ) => number;
   /** C1 — terrain-follow vertical thrust acceleration for D-gun waves
    *  and matching client prediction. Gravity remains caller-owned. */
@@ -3928,6 +3959,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         projectileIntegrateStepBatch: projectile_integrate_step_batch,
         projectileHomingGuidanceBatch: projectile_homing_guidance_batch,
         projectileHomingGuidanceApplyBatch: projectile_homing_guidance_apply_batch,
+        lineShotDistanceToRangeVolume: line_shot_distance_to_range_volume,
+        lineShotRangeEndpoint: line_shot_range_endpoint,
         terrainFollowVerticalThrustAccel: terrain_follow_vertical_thrust_accel,
         solveKinematicIntercept: solve_kinematic_intercept,
         computeHomingThrust: compute_homing_thrust,
