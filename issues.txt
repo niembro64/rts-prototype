@@ -152,25 +152,12 @@ mask if it is on a hot path.
 cell per sample (terrainTileMap.ts ~331). Cache last-hit triangle per querier
 (units rarely change triangle between frames).
 
-[043][ARCH] MathHelpers.getTransformCosSin returns a shared module-scope
-scratch object (~118-123) — fine, but undocumented. Add a loud comment (or
-return [cos,sin] tuple) so a nested call can't silently corrupt a held ref.
-
 [044][ARCH] sessionSingleton transferSimSlot/transferRendererSlot allow
 ownership hand-off without proving the old owner finished destroy (~34, ~60).
 Tighten: assert old owner released, or replace transfers with release+acquire.
 
 [045][ARCH] LobbyManager.destroyBackgroundBattle try/finally can swallow
 server.stop() errors (~245). Log explicitly before continuing teardown.
-
-[046][ARCH] Tauri config: csp is null and fullscreen defaults true
-(src-tauri/tauri.conf.json:21,26). Set a minimal CSP (self + wasm-unsafe-eval)
-and fullscreen:false (user toggles in-app).
-
-[047][DEAD] Repo hygiene: tmp/ probe dirs + stray PNGs and
-units_files_list.txt (references a directory that no longer exists) are
-committed. Delete units_files_list.txt; gitignore or delete tmp/. (Leave
-future_factions.txt — design notes — or move to docs/.)
 
 [048][PERF] WASM load: verify wasm-bindgen init uses
 WebAssembly.instantiateStreaming (no full-buffer compile on main thread);

@@ -113,8 +113,13 @@ export function lerpAngle(a: number, b: number, t: number): number {
 }
 
 /** Cached cos/sin from a transform's rotation, preferring the
- *  pre-computed `rotCos`/`rotSin` fields when populated. The output
- *  object is reused — copy the values out before another call. */
+ *  pre-computed `rotCos`/`rotSin` fields when populated.
+ *
+ *  WARNING — SHARED SCRATCH RETURN: every call returns the same module
+ *  object, overwritten in place. Read `.cos`/`.sin` (or copy them into
+ *  locals) immediately; holding the returned reference across another
+ *  getTransformCosSin call — including one buried inside a helper you
+ *  call in between — silently corrupts the first read. */
 const _csOut = { cos: 0, sin: 0 };
 export function getTransformCosSin(t: { rotation: number; rotCos: number | null; rotSin: number | null }): { cos: number; sin: number } {
   _csOut.cos = t.rotCos ?? Math.cos(t.rotation);
