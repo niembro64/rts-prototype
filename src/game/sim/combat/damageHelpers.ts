@@ -26,7 +26,7 @@ function eventAudioKey(
 
 const _subEntityDeathPos = { x: 0, y: 0, z: 0 };
 
-export function resolveKilledTurret(world: WorldState, id: EntityId): { host: Entity; turret: Turret } | undefined {
+function resolveKilledTurret(world: WorldState, id: EntityId): { host: Entity; turret: Turret } | undefined {
   const meta = world.getEntityMeta(id);
   if (meta === undefined || meta.kind !== 'turret' || meta.parentId === null || meta.mountIndex === null) {
     return undefined;
@@ -69,7 +69,7 @@ function buildSubEntityDeathContext(
   };
 }
 
-export function resolveKilledTurretWorldPosition(
+function resolveKilledTurretWorldPosition(
   world: WorldState,
   id: EntityId,
   out: { x: number; y: number; z: number },
@@ -461,20 +461,6 @@ function emitAttackAlerts(
       },
       victimPlayerId,
     });
-  }
-}
-
-// Apply directional knockback to all hit entities (flat force in given direction, already dt-scaled)
-export function applyDirectionalKnockback(
-  hitEntityIds: EntityId[],
-  force: number,
-  dirX: number,
-  dirY: number,
-  forceAccumulator: ForceAccumulator | undefined = undefined,
-): void {
-  if (!forceAccumulator || force <= 0) return;
-  for (const hitId of hitEntityIds) {
-    forceAccumulator.addForce(hitId, dirX * force, dirY * force, 'knockback');
   }
 }
 
