@@ -45,13 +45,6 @@ return) instead of panicking; keep debug_asserts for dev.
 P1 — LEAKS / PERF / UX
 --------------------------------------------------------------------------------
 
-[006][DEAD] @dimforge/rapier3d-compat stub still in package.json (devDependency
--> file:vendor/npm-stubs/rapier3d-compat) with zero imports anywhere in src/.
-Matter.js-era physics was deleted; the stub exists only to satisfy @types/three
-addon typings. Fix: remove the devDependency + vendor/npm-stubs/, run npx tsc
---noEmit; if @types/three examples typings then fail, scope types via
-tsconfig "types"/skipLibCheck instead of keeping a fake dependency.
-
 [007][UX] WASM sim init failure is console-only: src/main.ts:18-21 logs
 console.error and the app mounts anyway; first battle start then awaits a
 rejected/never-ready sim with no user-visible error. Fix: surface a blocking
