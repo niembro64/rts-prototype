@@ -25,10 +25,10 @@ const BARREL_CAP = 32768;
 const CONE_BARREL_CAP = 4096;
 const SHIELD_PANEL_CAP = 1024;
 const ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
-// Unit pools use alpha for construction/death fades, so they must draw after
-// the transparent water plane (renderOrder 3). Otherwise fading shells write
-// depth first and punch unit-shaped holes in lakes rendered later.
-const UNIT_DETAIL_RENDER_ORDER = 4;
+// Unit pools fade via screen-door dither in the opaque pass (EntityFade3D):
+// kept pixels are fully opaque and write depth, discarded pixels write
+// nothing, so default opaque ordering interacts correctly with the
+// transparent water plane and no render-order override is needed.
 
 type DirtySpan = {
   minSlot: number;
@@ -919,7 +919,6 @@ export class UnitDetailInstanceRenderer3D {
     mesh.instanceColor = colorAttr;
     mesh.frustumCulled = false;
     mesh.count = 0;
-    mesh.renderOrder = UNIT_DETAIL_RENDER_ORDER;
     this.fadeState.set(mesh, { arr: fadeArr, attr: fadeAttr, dirty: createDirtySpan() });
     this.world.add(mesh);
     return mesh;

@@ -24,16 +24,6 @@ UX = player-facing experience, DEAD = dead code / undeleted old path.
 P0 — DESIGN-DOC VIOLATIONS / BIGGEST WINS
 --------------------------------------------------------------------------------
 
-[001][ARCH] Death/build fade is alpha blending; design doc mandates screen-door
-dither in the OPAQUE pass. src/game/render3d/EntityFade3D.ts sets
-transparent=true everywhere (47, 94, 122) and the per-object building path even
-sets depthWrite=false (95, 123), producing exactly the see-through-back-faces
-artifact and transparent-queue sort cost the doc bans. The file header comment
-openly documents deviating from the doc. Fix: replace alpha fade with a dithered
-alphaTest-style discard (screen-door pattern from gl_FragCoord + vFade) in the
-opaque pass, transparent=false, depthWrite=true, for both the instanced aFade
-path and the per-object uFade path; update the file comment.
-
 [002][PERF] Audio has no voice limiting and allocates per event.
 - Every one-shot allocates a fresh GainNode + setTimeout (AudioManager.ts
   getToolkit().createGain, ~92-104) and synths allocate a NEW noise AudioBuffer
@@ -210,10 +200,6 @@ Verify generation checks guard every delayed callback; add where missing.
 
 [027][LEAK] GameServer.stop() (~431-477): verify ServerSnapshotListenerRegistry
 clears listener-queued timeouts/callbacks on stop; clear if not.
-
-[028][LEAK] UnitDetailInstanceRenderer3D.ts:256 fadeState Map keyed by
-InstancedMesh — verify entries are removed in every dispose path; add cleanup
-if any path misses it.
 
 [029][BUG] commandSanitizer: unknown/unhandled command types pass through
 unmodified. Default-deny: reject command types without an explicit sanitizer.
