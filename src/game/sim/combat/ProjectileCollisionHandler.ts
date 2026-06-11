@@ -2,6 +2,10 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, ProjectileShot, BeamRay, LaserRay, ShotSource } from '../types';
+import {
+  REFLECTOR_HIT_KIND_NONE,
+  SHIELD_PANEL_PROJECTILE_QUERY_PAD,
+} from './reflectorBatch';
 import { getEmissionBlueprintId, isRayType, isProjectileShot } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
@@ -28,13 +32,13 @@ import { writeTurretCooldownToSlab } from './combatActivitySlab';
 import { getCombatTargetingSourceSlots } from './targetingInputStamping';
 import { rollTurretCooldownDuration } from '../turretCooldown';
 
-const SHIELD_PANEL_PROJECTILE_QUERY_PAD = 96;
+
 const PROJECTILE_HITBOX_SWEEP_QUERY_EXTRA = 32;
 const MAX_PROJECTILE_SWEEP_DISTANCE = LAND_CELL_SIZE * 64;
 const MAX_PROJECTILE_SWEEP_DISTANCE_SQ =
   MAX_PROJECTILE_SWEEP_DISTANCE * MAX_PROJECTILE_SWEEP_DISTANCE;
 const MAX_REFLECTOR_IMPACT_EVENTS_PER_PASS = 96;
-const REFLECTOR_HIT_KIND_NONE = 0;
+
 // Materials Are Independent Of Shape: a projectile reflecting off either the
 // shield sphere or a flat shield panel reports one kind. The shape
 // only decided where the hit was and what the normal looks like; the reflection
@@ -86,8 +90,10 @@ let _reflectorEndY = new Float64Array(0);
 let _reflectorEndZ = new Float64Array(0);
 let _reflectorProjectileRadius = new Float64Array(0);
 let _reflectorExcludeEntityId = new Int32Array(0);
+let _reflectorExcludePanelIndex = new Int32Array(0);
 let _reflectorHitKind = new Uint8Array(0);
 let _reflectorHitEntityId = new Int32Array(0);
+let _reflectorHitPanelIndex = new Int32Array(0);
 let _reflectorHitT = new Float64Array(0);
 let _reflectorHitX = new Float64Array(0);
 let _reflectorHitY = new Float64Array(0);
@@ -95,6 +101,9 @@ let _reflectorHitZ = new Float64Array(0);
 let _reflectorHitNormalX = new Float64Array(0);
 let _reflectorHitNormalY = new Float64Array(0);
 let _reflectorHitNormalZ = new Float64Array(0);
+let _reflectorHitReflectDirX = new Float64Array(0);
+let _reflectorHitReflectDirY = new Float64Array(0);
+let _reflectorHitReflectDirZ = new Float64Array(0);
 let _reflectorHitSurfaceVelocityX = new Float64Array(0);
 let _reflectorHitSurfaceVelocityY = new Float64Array(0);
 let _reflectorHitSurfaceVelocityZ = new Float64Array(0);
@@ -213,8 +222,10 @@ function ensureReflectorBatchCapacity(count: number): void {
   _reflectorEndZ = new Float64Array(next);
   _reflectorProjectileRadius = new Float64Array(next);
   _reflectorExcludeEntityId = new Int32Array(next);
+  _reflectorExcludePanelIndex = new Int32Array(next);
   _reflectorHitKind = new Uint8Array(next);
   _reflectorHitEntityId = new Int32Array(next);
+  _reflectorHitPanelIndex = new Int32Array(next);
   _reflectorHitT = new Float64Array(next);
   _reflectorHitX = new Float64Array(next);
   _reflectorHitY = new Float64Array(next);
@@ -222,6 +233,9 @@ function ensureReflectorBatchCapacity(count: number): void {
   _reflectorHitNormalX = new Float64Array(next);
   _reflectorHitNormalY = new Float64Array(next);
   _reflectorHitNormalZ = new Float64Array(next);
+  _reflectorHitReflectDirX = new Float64Array(next);
+  _reflectorHitReflectDirY = new Float64Array(next);
+  _reflectorHitReflectDirZ = new Float64Array(next);
   _reflectorHitSurfaceVelocityX = new Float64Array(next);
   _reflectorHitSurfaceVelocityY = new Float64Array(next);
   _reflectorHitSurfaceVelocityZ = new Float64Array(next);
@@ -328,6 +342,7 @@ function computeProjectileReflectorHits(
     _reflectorEndZ[i] = curZ;
     _reflectorProjectileRadius[i] = proj.config.shotProfile.runtime.radius.collision;
     _reflectorExcludeEntityId[i] = proj.sourceEntityId;
+    _reflectorExcludePanelIndex[i] = -1;
     enabledCount++;
   }
   if (enabledCount === 0) return;
@@ -347,12 +362,14 @@ function computeProjectileReflectorHits(
     _reflectorEndZ.subarray(0, count),
     _reflectorProjectileRadius.subarray(0, count),
     _reflectorExcludeEntityId.subarray(0, count),
+    _reflectorExcludePanelIndex.subarray(0, count),
     mirrorsActive ? 1 : 0,
     shieldsActive ? 1 : 0,
     SHIELD_PANEL_PROJECTILE_QUERY_PAD,
     dtMs,
     _reflectorHitKind.subarray(0, count),
     _reflectorHitEntityId.subarray(0, count),
+    _reflectorHitPanelIndex.subarray(0, count),
     _reflectorHitT.subarray(0, count),
     _reflectorHitX.subarray(0, count),
     _reflectorHitY.subarray(0, count),
@@ -360,6 +377,9 @@ function computeProjectileReflectorHits(
     _reflectorHitNormalX.subarray(0, count),
     _reflectorHitNormalY.subarray(0, count),
     _reflectorHitNormalZ.subarray(0, count),
+    _reflectorHitReflectDirX.subarray(0, count),
+    _reflectorHitReflectDirY.subarray(0, count),
+    _reflectorHitReflectDirZ.subarray(0, count),
     _reflectorHitSurfaceVelocityX.subarray(0, count),
     _reflectorHitSurfaceVelocityY.subarray(0, count),
     _reflectorHitSurfaceVelocityZ.subarray(0, count),

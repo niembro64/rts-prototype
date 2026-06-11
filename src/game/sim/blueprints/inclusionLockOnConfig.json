@@ -99,23 +99,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitCommander"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -124,24 +108,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitCommander",
-              "unitBee"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -150,23 +117,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitCommander"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -175,24 +126,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitCommander",
-              "unitBee"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -201,23 +135,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitCommander"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -226,24 +144,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitCommander",
-              "unitBee"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -252,26 +153,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitBee",
-              "unitDragonfly",
-              "unitConstructionDrone",
-              "unitCommander"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -280,23 +162,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitCommander"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -305,25 +171,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitBee",
-              "unitConstructionDrone",
-              "unitCommander"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -332,24 +180,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitCommander",
-              "unitBee"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -358,25 +189,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitBee",
-              "unitConstructionDrone",
-              "unitCommander"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -404,24 +217,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitCommander",
-              "unitBee"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -430,24 +226,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitCommander",
-              "unitBee"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -512,25 +291,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitBee",
-              "unitConstructionDrone",
-              "unitCommander"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -539,25 +300,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitBee",
-              "unitConstructionDrone",
-              "unitCommander"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -566,25 +309,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitBee",
-              "unitConstructionDrone",
-              "unitCommander"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -593,26 +318,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitBee",
-              "unitConstructionDrone",
-              "unitCommander",
-              "unitAlbatros"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -621,25 +327,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitBee",
-              "unitConstructionDrone",
-              "unitCommander"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -648,26 +336,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitBee",
-              "unitConstructionDrone",
-              "unitCommander",
-              "unitAlbatros"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -676,25 +345,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitBee",
-              "unitConstructionDrone",
-              "unitCommander"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -703,25 +354,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitBee",
-              "unitConstructionDrone",
-              "unitCommander"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -740,7 +373,6 @@
               "turretBeam",
               "turretBeamMini",
               "turretBeamMega",
-              "turretConstruction",
               "turretBeamLong",
               "turretCannonLong",
               "turretRocketSlow"

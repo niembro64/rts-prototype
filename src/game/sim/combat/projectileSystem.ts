@@ -1667,6 +1667,7 @@ export function updateProjectiles(
           proj.projectileType === 'laser' ? 'laser' : 'beam',
           BEAM_MAX_SEGMENTS,
           rangeCylinder,
+          dtMs,
         );
 
         // Resize the polyline to [start, ...reflections, end] and

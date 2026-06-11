@@ -22,8 +22,10 @@ import {
 } from '../../../config';
 import { spatialGrid } from '../SpatialGrid';
 import { magnitude, lineCircleIntersectionT, lineSphereIntersectionT, lineRectIntersectionT, rayBoxIntersectionT, getTransformCosSin } from '../../math';
-import { findClosestPanelHit } from '../combat/ShieldPanelHit';
-import { findShieldSegmentIntersection } from '../combat/shieldTurret';
+import {
+  REFLECTOR_HIT_KIND_NONE,
+  SHIELD_PANEL_PROJECTILE_QUERY_PAD,
+} from '../combat/reflectorBatch';
 import { REFLECTIVE_SHIELD_MATERIAL } from '../blueprints/shieldMaterials';
 import { getTargetRadius, resolveWeaponWorldMount } from '../combat/combatUtils';
 import {
@@ -40,7 +42,6 @@ import {
 } from '../buildingActiveState';
 import { getUnitGroundZ } from '../unitGeometry';
 import { isConstructionBodyMaterialized } from '../buildableHelpers';
-import { getActiveShieldPanelTurret } from '../shieldPanelRuntime';
 
 
 // Reusable DamageResult to avoid per-call allocations
@@ -151,11 +152,47 @@ const _segHit = {
   normalX: 0,
   normalY: 0,
   normalZ: 0,
+  /** Unit-length reflected segment direction from the Rust kernel —
+   *  the one shared mirror formula beams, plasma, and rockets all use.
+   *  All-zero means the reflection was degenerate (terminal hit). */
+  reflectDirX: 0,
+  reflectDirY: 0,
+  reflectDirZ: 0,
   panelIndex: -1,
   reflectorKind: undefined as BeamReflectorKind | undefined,
   reflectorPlayerId: undefined as PlayerId | undefined,
 };
-const _shieldPanelPivot = { x: 0, y: 0, z: 0 };
+
+// n=1 scratch rows for the shared Rust reflector-intersection batch.
+// The beam tracer queries one segment at a time (each bounce depends on
+// the previous hit), reusing the same kernel + stamped surface pool the
+// plasma/rocket path batches through.
+const _beamReflEnabled = new Uint8Array([1]);
+const _beamReflStartX = new Float64Array(1);
+const _beamReflStartY = new Float64Array(1);
+const _beamReflStartZ = new Float64Array(1);
+const _beamReflEndX = new Float64Array(1);
+const _beamReflEndY = new Float64Array(1);
+const _beamReflEndZ = new Float64Array(1);
+const _beamReflRadius = new Float64Array(1);
+const _beamReflExcludeEntityId = new Int32Array(1);
+const _beamReflExcludePanelIndex = new Int32Array(1);
+const _beamReflOutKind = new Uint8Array(1);
+const _beamReflOutEntityId = new Int32Array(1);
+const _beamReflOutPanelIndex = new Int32Array(1);
+const _beamReflOutT = new Float64Array(1);
+const _beamReflOutX = new Float64Array(1);
+const _beamReflOutY = new Float64Array(1);
+const _beamReflOutZ = new Float64Array(1);
+const _beamReflOutNormalX = new Float64Array(1);
+const _beamReflOutNormalY = new Float64Array(1);
+const _beamReflOutNormalZ = new Float64Array(1);
+const _beamReflOutReflectDirX = new Float64Array(1);
+const _beamReflOutReflectDirY = new Float64Array(1);
+const _beamReflOutReflectDirZ = new Float64Array(1);
+const _beamReflOutSurfVelX = new Float64Array(1);
+const _beamReflOutSurfVelY = new Float64Array(1);
+const _beamReflOutSurfVelZ = new Float64Array(1);
 const _subEntityPoint = { x: 0, y: 0, z: 0 };
 
 const BEAM_GROUND_HIT_STEPS = 12;
@@ -1050,6 +1087,7 @@ export class DamageSystem {
     lineShotType: RayType = 'beam',
     maxSegments: number = 4,
     rangeCylinder: RayConfigRangeCylinder | undefined = undefined,
+    dtMs: number = 0,
   ): {
     endX: number; endY: number; endZ: number;
     obstructionT: number | undefined;
@@ -1098,7 +1136,7 @@ export class DamageSystem {
 
       const hit = this.findBeamSegmentHit(
         curSX, curSY, curSZ, curEX, curEY, curEZ,
-        excludeEntityId, excludePanelIndex, lineWidth
+        excludeEntityId, excludePanelIndex, lineWidth, dtMs,
       );
 
       if (!hit) {
@@ -1187,7 +1225,14 @@ export class DamageSystem {
       const segDy = curEY - curSY;
       const segDz = curEZ - curSZ;
       const segLen = Math.hypot(segDx, segDy, segDz);
-      if (segLen <= 1e-9) {
+      // Reflected direction comes from the Rust kernel (the one shared
+      // mirror formula for beams, plasma, and rockets). All-zero means
+      // the bounce was degenerate — terminal hit on the reflector.
+      const reflDirX = hit.reflectDirX;
+      const reflDirY = hit.reflectDirY;
+      const reflDirZ = hit.reflectDirZ;
+      const reflLenSq = reflDirX * reflDirX + reflDirY * reflDirY + reflDirZ * reflDirZ;
+      if (segLen <= 1e-9 || reflLenSq <= 1e-12) {
         return {
           endX: hit.x,
           endY: hit.y,
@@ -1200,50 +1245,6 @@ export class DamageSystem {
           segmentLimitReached: false,
         };
       }
-      const beamDirX = segDx / segLen;
-      const beamDirY = segDy / segLen;
-      const beamDirZ = segDz / segLen;
-
-      // Reflect around the reflector's full 3D normal. Mirrors provide
-      // a panel normal; shields provide the sphere surface normal.
-      const normalLen = Math.hypot(hit.normalX, hit.normalY, hit.normalZ);
-      if (normalLen <= 1e-9) {
-        return {
-          endX: hit.x,
-          endY: hit.y,
-          endZ: hit.z,
-          obstructionT: undefined,
-          reflections,
-          terminalReflection: reflection,
-          endpointDamageable: false,
-          endEntityId: hit.entityId,
-          segmentLimitReached: false,
-        };
-      }
-      const nx = hit.normalX / normalLen;
-      const ny = hit.normalY / normalLen;
-      const nz = hit.normalZ / normalLen;
-      const dotDN = beamDirX * nx + beamDirY * ny + beamDirZ * nz;
-      let reflDirX = beamDirX - 2 * dotDN * nx;
-      let reflDirY = beamDirY - 2 * dotDN * ny;
-      let reflDirZ = beamDirZ - 2 * dotDN * nz;
-      const reflLen = Math.hypot(reflDirX, reflDirY, reflDirZ);
-      if (reflLen <= 1e-9) {
-        return {
-          endX: hit.x,
-          endY: hit.y,
-          endZ: hit.z,
-          obstructionT: undefined,
-          reflections,
-          terminalReflection: reflection,
-          endpointDamageable: false,
-          endEntityId: hit.entityId,
-          segmentLimitReached: false,
-        };
-      }
-      reflDirX /= reflLen;
-      reflDirY /= reflLen;
-      reflDirZ /= reflLen;
 
       reflections.push(reflection);
       curSX = hit.x;
@@ -1341,7 +1342,8 @@ export class DamageSystem {
     endX: number, endY: number, endZ: number,
     excludeEntityId: EntityId,
     excludePanelIndex: number,
-    lineWidth: number
+    lineWidth: number,
+    dtMs: number,
   ): typeof _segHit | null {
     let bestT = Infinity;
     let found = false;
@@ -1363,63 +1365,12 @@ export class DamageSystem {
 
       // Horizontal-only early-out — the beam may arc vertically past
       // the unit, but we still require its XY projection to come near
-      // the unit's bounding radius.
+      // the unit's bounding radius. Reflector surfaces (panels/fields)
+      // are tested by the shared Rust kernel below, not per unit here.
       const ux = unit.transform.x - startX, uy = unit.transform.y - startY;
       const crossSq = (ux * dy - uy * dx);
-      const panels = unit.unit.shieldPanels;
-      const activeShieldPanel = this.world.turretShieldPanelsEnabled
-        ? getActiveShieldPanelTurret(unit)
-        : null;
-      const mirrorsActive = activeShieldPanel !== null && panels.length > 0;
-      const boundR = mirrorsActive
-        ? Math.max(unit.unit.shieldBoundRadius, unit.unit.radius.hitbox) + lineWidth
-        : unit.unit.radius.hitbox + lineWidth / 2;
+      const boundR = unit.unit.radius.hitbox + lineWidth / 2;
       if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
-
-      if (mirrorsActive) {
-        // Mirror unit: 3D ray-vs-tilted-rectangle for each panel
-        // (yaw + pitch from the turretShieldPanel rotation/pitch).
-        const { turret: shieldPanelTurret, turretIndex: shieldPanelTurretIndex } = activeShieldPanel;
-        const shieldPanelRot = shieldPanelTurret.rotation;
-        const shieldPanelPitch = shieldPanelTurret.pitch;
-        const unitGroundZ = getUnitGroundZ(unit);
-        const unitCS = getTransformCosSin(unit.transform);
-        const mirrorPivot = resolveWeaponWorldMount(
-          unit, shieldPanelTurret, shieldPanelTurretIndex,
-          unitCS.cos, unitCS.sin,
-          {
-            currentTick: this.world.getTick(),
-            unitGroundZ,
-            surfaceN: unit.unit.surfaceNormal,
-          },
-          _shieldPanelPivot,
-        );
-        const panelExclude = isExcludedEntity ? excludePanelIndex : -1;
-        const hit = findClosestPanelHit(
-          panels, shieldPanelRot, shieldPanelPitch,
-          unit.transform.x, unit.transform.y, unitGroundZ,
-          startX, startY, startZ, endX, endY, endZ,
-          panelExclude,
-          mirrorPivot,
-        );
-        if (hit !== null && hit.t < bestT) {
-          bestT = hit.t; found = true;
-          _segHit.t = hit.t;
-          _segHit.x = hit.x;
-          _segHit.y = hit.y;
-          _segHit.z = hit.z;
-          _segHit.entityId = unit.id;
-          _segHit.isMirror = true;
-          _segHit.normalX = hit.normalX;
-          _segHit.normalY = hit.normalY;
-          _segHit.normalZ = hit.normalZ;
-          _segHit.panelIndex = hit.panelIndex;
-          _segHit.reflectorKind = 'shield';
-          _segHit.reflectorPlayerId = unit.ownership !== null
-            ? unit.ownership.playerId
-            : undefined;
-        }
-      }
 
       // Unit body: 3D segment-vs-sphere.
       {
@@ -1438,6 +1389,7 @@ export class DamageSystem {
           _segHit.entityId = unit.id;
           _segHit.isMirror = false;
           _segHit.normalX = 0; _segHit.normalY = 0; _segHit.normalZ = 0;
+          _segHit.reflectDirX = 0; _segHit.reflectDirY = 0; _segHit.reflectDirZ = 0;
           _segHit.panelIndex = -1;
           _segHit.reflectorKind = undefined;
           _segHit.reflectorPlayerId = undefined;
@@ -1445,26 +1397,79 @@ export class DamageSystem {
       }
     }
 
-    if (this.world.turretShieldSpheresEnabled) {
-      const shieldHit = findShieldSegmentIntersection(
-        this.world,
-        startX, startY, startZ,
-        endX, endY, endZ,
+    // Reflector surfaces (mirror panels AND sphere/cylinder fields):
+    // the SAME Rust kernel and stamped surface pool the plasma/rocket
+    // path uses — one pose epoch and one mirror formula for every
+    // emission kind, so a beam and a rocket can never disagree about
+    // where a surface is or how it bounces.
+    const sim = getSimWasm();
+    if (
+      sim !== undefined &&
+      (this.world.turretShieldPanelsEnabled || this.world.turretShieldSpheresEnabled)
+    ) {
+      _beamReflStartX[0] = startX;
+      _beamReflStartY[0] = startY;
+      _beamReflStartZ[0] = startZ;
+      _beamReflEndX[0] = endX;
+      _beamReflEndY[0] = endY;
+      _beamReflEndZ[0] = endZ;
+      _beamReflRadius[0] = 0;
+      _beamReflExcludeEntityId[0] = excludeEntityId;
+      _beamReflExcludePanelIndex[0] = excludePanelIndex;
+      sim.projectileReflectorIntersectionsBatch(
+        1,
+        _beamReflEnabled,
+        _beamReflStartX,
+        _beamReflStartY,
+        _beamReflStartZ,
+        _beamReflEndX,
+        _beamReflEndY,
+        _beamReflEndZ,
+        _beamReflRadius,
+        _beamReflExcludeEntityId,
+        _beamReflExcludePanelIndex,
+        this.world.turretShieldPanelsEnabled ? 1 : 0,
+        this.world.turretShieldSpheresEnabled ? 1 : 0,
+        SHIELD_PANEL_PROJECTILE_QUERY_PAD,
+        dtMs,
+        _beamReflOutKind,
+        _beamReflOutEntityId,
+        _beamReflOutPanelIndex,
+        _beamReflOutT,
+        _beamReflOutX,
+        _beamReflOutY,
+        _beamReflOutZ,
+        _beamReflOutNormalX,
+        _beamReflOutNormalY,
+        _beamReflOutNormalZ,
+        _beamReflOutReflectDirX,
+        _beamReflOutReflectDirY,
+        _beamReflOutReflectDirZ,
+        _beamReflOutSurfVelX,
+        _beamReflOutSurfVelY,
+        _beamReflOutSurfVelZ,
       );
-      if (shieldHit !== null && shieldHit.t < bestT) {
-        bestT = shieldHit.t; found = true;
-        _segHit.t = shieldHit.t;
-        _segHit.x = shieldHit.x;
-        _segHit.y = shieldHit.y;
-        _segHit.z = shieldHit.z;
-        _segHit.entityId = shieldHit.entityId as EntityId;
+      if (_beamReflOutKind[0] !== REFLECTOR_HIT_KIND_NONE && _beamReflOutT[0] < bestT) {
+        bestT = _beamReflOutT[0]; found = true;
+        _segHit.t = _beamReflOutT[0];
+        _segHit.x = _beamReflOutX[0];
+        _segHit.y = _beamReflOutY[0];
+        _segHit.z = _beamReflOutZ[0];
+        _segHit.entityId = _beamReflOutEntityId[0] as EntityId;
         _segHit.isMirror = true;
-        _segHit.normalX = shieldHit.nx;
-        _segHit.normalY = shieldHit.ny;
-        _segHit.normalZ = shieldHit.nz;
-        _segHit.panelIndex = -1;
+        _segHit.normalX = _beamReflOutNormalX[0];
+        _segHit.normalY = _beamReflOutNormalY[0];
+        _segHit.normalZ = _beamReflOutNormalZ[0];
+        _segHit.reflectDirX = _beamReflOutReflectDirX[0];
+        _segHit.reflectDirY = _beamReflOutReflectDirY[0];
+        _segHit.reflectDirZ = _beamReflOutReflectDirZ[0];
+        _segHit.panelIndex = _beamReflOutPanelIndex[0];
         _segHit.reflectorKind = 'shield';
-        _segHit.reflectorPlayerId = shieldHit.playerId;
+        const owner = this.world.getEntity(_segHit.entityId);
+        _segHit.reflectorPlayerId =
+          owner !== undefined && owner !== null && owner.ownership !== null
+            ? owner.ownership.playerId
+            : undefined;
       }
     }
 

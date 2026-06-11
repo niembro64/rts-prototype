@@ -7585,6 +7585,9 @@ pub(crate) const REFLECTOR_HIT_KIND_SHIELD: u8 = 1;
 pub(crate) struct ProjectileReflectorHit {
     kind: u8,
     entity_id: i32,
+    /// Panel index within the mirror unit's panel array; -1 for
+    /// field (sphere/cylinder) surfaces.
+    panel_index: i32,
     t: f64,
     x: f64,
     y: f64,
@@ -7595,6 +7598,33 @@ pub(crate) struct ProjectileReflectorHit {
     surface_velocity_x: f64,
     surface_velocity_y: f64,
     surface_velocity_z: f64,
+}
+
+/// THE one mirror-reflection formula, shared by every emission kind:
+/// beam traces reflect their segment direction through it, and the
+/// plasma/rocket reflection response reflects its surface-relative
+/// velocity through it. Normalizes `n_raw`, mirrors `d` about it, and
+/// returns None when either vector is degenerate.
+#[inline]
+pub(crate) fn reflect_about_normal(
+    dx: f64,
+    dy: f64,
+    dz: f64,
+    nx_raw: f64,
+    ny_raw: f64,
+    nz_raw: f64,
+) -> Option<(f64, f64, f64)> {
+    let normal_len_sq = nx_raw * nx_raw + ny_raw * ny_raw + nz_raw * nz_raw;
+    let d_len_sq = dx * dx + dy * dy + dz * dz;
+    if normal_len_sq <= 1e-18 || d_len_sq <= 1e-18 {
+        return None;
+    }
+    let inv_normal_len = 1.0 / normal_len_sq.sqrt();
+    let nx = nx_raw * inv_normal_len;
+    let ny = ny_raw * inv_normal_len;
+    let nz = nz_raw * inv_normal_len;
+    let dot = dx * nx + dy * ny + dz * nz;
+    Some((dx - 2.0 * dot * nx, dy - 2.0 * dot * ny, dz - 2.0 * dot * nz))
 }
 
 pub(crate) struct ShieldFieldContact {
@@ -8580,6 +8610,7 @@ pub(crate) fn shield_projectile_moving_field_hit(
     Some(ProjectileReflectorHit {
         kind: REFLECTOR_HIT_KIND_SHIELD,
         entity_id: owner_entity_id,
+        panel_index: -1,
         t,
         x: hit_x,
         y: hit_y,
@@ -8707,6 +8738,7 @@ pub(crate) fn shield_projectile_intersection(
                 Some(ProjectileReflectorHit {
                     kind: REFLECTOR_HIT_KIND_SHIELD,
                     entity_id: pool.owner_entity_id[i],
+                    panel_index: -1,
                     t,
                     x: hit_x,
                     y: hit_y,
@@ -9206,6 +9238,7 @@ pub(crate) fn shield_panel_projectile_intersection(
     ty: f64,
     tz: f64,
     exclude_unit_id: i32,
+    exclude_panel_index: i32,
     projectile_radius: f64,
     query_pad: f64,
     max_t: f64,
@@ -9224,7 +9257,12 @@ pub(crate) fn shield_panel_projectile_intersection(
     let mut best: Option<ProjectileReflectorHit> = None;
 
     for u in 0..unit_count {
-        if pool.unit_id[u] == exclude_unit_id {
+        // exclude_panel_index < 0 excludes the whole unit (a projectile
+        // ignoring its last reflector). >= 0 excludes only that panel,
+        // so a reflected beam can still strike the mirror's other
+        // panels — matching the beam tracer's re-hit semantics.
+        let unit_excluded = pool.unit_id[u] == exclude_unit_id;
+        if unit_excluded && exclude_panel_index < 0 {
             continue;
         }
         let panel_count = pool.panel_count[u] as usize;
@@ -9253,6 +9291,9 @@ pub(crate) fn shield_panel_projectile_intersection(
 
         let panel_start = pool.panel_start[u] as usize;
         for pi in panel_start..panel_start + panel_count {
+            if unit_excluded && (pi - panel_start) as i32 == exclude_panel_index {
+                continue;
+            }
             let offset_y = pool.panel_offset_y[pi] as f64;
             let panel_pivot_x = pivot_x + perp_x * offset_y;
             let panel_pivot_y = pivot_y + perp_y * offset_y;
@@ -9299,6 +9340,7 @@ pub(crate) fn shield_panel_projectile_intersection(
             best = Some(ProjectileReflectorHit {
                 kind: REFLECTOR_HIT_KIND_SHIELD,
                 entity_id: pool.unit_id[u],
+                panel_index: (pi - panel_start) as i32,
                 t,
                 x: sx + t * dx,
                 y: sy + t * dy,
@@ -9335,12 +9377,14 @@ pub fn projectile_reflector_intersections_batch(
     end_z: &[f64],
     projectile_radius: &[f64],
     exclude_entity_id: &[i32],
+    exclude_panel_index: &[i32],
     turret_shield_panels_enabled: u8,
     turret_shield_spheres_enabled: u8,
     shield_panel_query_pad: f64,
     dt_ms: f64,
     out_kind: &mut [u8],
     out_entity_id: &mut [i32],
+    out_panel_index: &mut [i32],
     out_t: &mut [f64],
     out_x: &mut [f64],
     out_y: &mut [f64],
@@ -9348,6 +9392,9 @@ pub fn projectile_reflector_intersections_batch(
     out_normal_x: &mut [f64],
     out_normal_y: &mut [f64],
     out_normal_z: &mut [f64],
+    out_reflect_dir_x: &mut [f64],
+    out_reflect_dir_y: &mut [f64],
+    out_reflect_dir_z: &mut [f64],
     out_surface_velocity_x: &mut [f64],
     out_surface_velocity_y: &mut [f64],
     out_surface_velocity_z: &mut [f64],
@@ -9362,9 +9409,14 @@ pub fn projectile_reflector_intersections_batch(
     debug_assert!(end_z.len() >= n);
     debug_assert!(projectile_radius.len() >= n);
     debug_assert!(exclude_entity_id.len() >= n);
+    debug_assert!(exclude_panel_index.len() >= n);
     debug_assert!(out_kind.len() >= n);
     debug_assert!(out_entity_id.len() >= n);
+    debug_assert!(out_panel_index.len() >= n);
     debug_assert!(out_t.len() >= n);
+    debug_assert!(out_reflect_dir_x.len() >= n);
+    debug_assert!(out_reflect_dir_y.len() >= n);
+    debug_assert!(out_reflect_dir_z.len() >= n);
     debug_assert!(out_x.len() >= n);
     debug_assert!(out_y.len() >= n);
     debug_assert!(out_z.len() >= n);
@@ -9384,6 +9436,7 @@ pub fn projectile_reflector_intersections_batch(
     for i in 0..n {
         out_kind[i] = REFLECTOR_HIT_KIND_NONE;
         out_entity_id[i] = -1;
+        out_panel_index[i] = -1;
         out_t[i] = f64::INFINITY;
         out_x[i] = 0.0;
         out_y[i] = 0.0;
@@ -9391,6 +9444,9 @@ pub fn projectile_reflector_intersections_batch(
         out_normal_x[i] = 0.0;
         out_normal_y[i] = 0.0;
         out_normal_z[i] = 0.0;
+        out_reflect_dir_x[i] = 0.0;
+        out_reflect_dir_y[i] = 0.0;
+        out_reflect_dir_z[i] = 0.0;
         out_surface_velocity_x[i] = 0.0;
         out_surface_velocity_y[i] = 0.0;
         out_surface_velocity_z[i] = 0.0;
@@ -9427,6 +9483,7 @@ pub fn projectile_reflector_intersections_batch(
                 ty,
                 tz,
                 exclude_entity_id[i],
+                exclude_panel_index[i],
                 radius,
                 shield_panel_query_pad,
                 f64::INFINITY,
@@ -9446,6 +9503,7 @@ pub fn projectile_reflector_intersections_batch(
         };
         out_kind[i] = hit.kind;
         out_entity_id[i] = hit.entity_id;
+        out_panel_index[i] = hit.panel_index;
         out_t[i] = hit.t;
         out_x[i] = hit.x;
         out_y[i] = hit.y;
@@ -9453,6 +9511,19 @@ pub fn projectile_reflector_intersections_batch(
         out_normal_x[i] = hit.normal_x;
         out_normal_y[i] = hit.normal_y;
         out_normal_z[i] = hit.normal_z;
+        // Reflected SEGMENT direction (unnormalized scale carried by the
+        // caller): the one shared mirror formula, so beams and shots can
+        // never disagree on the bounce.
+        if let Some((rdx, rdy, rdz)) =
+            reflect_about_normal(tx - sx, ty - sy, tz - sz, hit.normal_x, hit.normal_y, hit.normal_z)
+        {
+            let len = (rdx * rdx + rdy * rdy + rdz * rdz).sqrt();
+            if len > 1e-12 {
+                out_reflect_dir_x[i] = rdx / len;
+                out_reflect_dir_y[i] = rdy / len;
+                out_reflect_dir_z[i] = rdz / len;
+            }
+        }
         out_surface_velocity_x[i] = hit.surface_velocity_x;
         out_surface_velocity_y[i] = hit.surface_velocity_y;
         out_surface_velocity_z[i] = hit.surface_velocity_z;
@@ -9583,19 +9654,20 @@ pub fn projectile_reflection_response_batch(
         let rel_vy = vy - svy;
         let rel_vz = vz - svz;
         let rel_speed_sq = rel_vx * rel_vx + rel_vy * rel_vy + rel_vz * rel_vz;
-        let normal_len_sq = nx_raw * nx_raw + ny_raw * ny_raw + nz_raw * nz_raw;
-        if rel_speed_sq <= 1e-18 || normal_len_sq <= 1e-18 {
+        // Same shared mirror formula the beam tracer uses — beams,
+        // plasma, and rockets cannot drift apart on reflection math.
+        let Some((mut reflected_rel_x, mut reflected_rel_y, mut reflected_rel_z)) =
+            reflect_about_normal(rel_vx, rel_vy, rel_vz, nx_raw, ny_raw, nz_raw)
+        else {
             continue;
-        }
-
-        let inv_normal_len = 1.0 / normal_len_sq.sqrt();
+        };
+        // Unit normal for the surface-offset push below (the helper
+        // returning Some guarantees the normal is non-degenerate).
+        let inv_normal_len =
+            1.0 / (nx_raw * nx_raw + ny_raw * ny_raw + nz_raw * nz_raw).sqrt();
         let nx = nx_raw * inv_normal_len;
         let ny = ny_raw * inv_normal_len;
         let nz = nz_raw * inv_normal_len;
-        let dot = rel_vx * nx + rel_vy * ny + rel_vz * nz;
-        let mut reflected_rel_x = rel_vx - 2.0 * dot * nx;
-        let mut reflected_rel_y = rel_vy - 2.0 * dot * ny;
-        let mut reflected_rel_z = rel_vz - 2.0 * dot * nz;
         let reflected_len_sq = reflected_rel_x * reflected_rel_x
             + reflected_rel_y * reflected_rel_y
             + reflected_rel_z * reflected_rel_z;

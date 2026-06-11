@@ -116,7 +116,7 @@ export function getMirrorArmDirection(
 /** Upright (slope-IGNORANT) mirror arm pivot — the turret pivot point
  *  the rigid arm extends from, computed from the chassis-local panel
  *  cache + the unit's ground anchor. Used by the hit test
- *  (`ShieldPanelHit.findClosestPanelHit`) when no slope-aware pivot is
+ *  when no slope-aware pivot is
  *  supplied, plus debris/fallback code.
  *
  *  Live mirror aim and hit-test paths prefer the tilt-aware runtime
