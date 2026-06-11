@@ -1682,6 +1682,19 @@ export function updateProjectiles(
         // previous trace so each reflection vertex carries its own
         // instantaneous velocity for client-side extrapolation.
         const prevRefs = proj.prevReflectionPoints;
+        // Capture the previous trace's topology BEFORE the cache below
+        // overwrites it: the endpoint's finite-diff velocity is only
+        // meaningful while the path shape is unchanged. Across a
+        // topology change (a reflection appeared/ended, or the last
+        // bounce moved to a different reflector) the old and new
+        // endpoints are different points in the world — finite-diffing
+        // them manufactures a huge bogus velocity that the client then
+        // integrates, slinging the rendered beam along the old→new
+        // endpoint line between snapshots.
+        const prevTopologyRefCount = prevRefs != null ? prevRefs.length : -1;
+        const prevLastReflectorId = prevRefs != null && prevRefs.length > 0
+          ? prevRefs[prevRefs.length - 1].reflectorEntityId
+          : NO_ENTITY_ID;
         for (let r = 0; r < refs.length; r++) {
           const refl = refs[r];
           const point = points[1 + r];
@@ -1733,9 +1746,19 @@ export function updateProjectiles(
         }
 
         // End-point velocity = (current end − previous trace's end)
-        // / elapsed seconds since the previous trace.
+        // / elapsed seconds since the previous trace — but ONLY while
+        // the path topology is unchanged. A reflection appearing,
+        // ending, or handing off to a different reflector is a discrete
+        // event: the endpoint is a different point in the world, so it
+        // snaps with zero motion instead of carrying a cross-topology
+        // finite-diff velocity.
         const endPoint = points[newLen - 1];
+        const sameTopology =
+          prevTopologyRefCount === refs.length &&
+          (refs.length === 0 ||
+            prevLastReflectorId === refs[refs.length - 1].reflectorEntityId);
         if (
+          sameTopology &&
           proj.prevEndX !== null &&
           proj.prevEndY !== null &&
           proj.prevEndZ !== null &&
