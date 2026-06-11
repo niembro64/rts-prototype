@@ -25,13 +25,18 @@ const CURVED_CONE_CURVE_SEGMENTS = 6;
 const CURVED_CONE_RADIAL_SEGMENTS = 10;
 const CURVED_CONE_VERTS_PER_TAIL = (CURVED_CONE_CURVE_SEGMENTS + 1) * CURVED_CONE_RADIAL_SEGMENTS;
 const CURVED_CONE_INDICES_PER_TAIL = CURVED_CONE_CURVE_SEGMENTS * CURVED_CONE_RADIAL_SEGMENTS * 6;
-// Trail stamps form the centerline of the tail tube. Vertex 0 is the
-// live head (entity transform, every frame); vertices 1..N are stamps
-// frozen in render space the moment they were laid down, so MOVE POS /
-// VEL EMAs only ever affect the head — old stamps don't drift around
-// behind the projectile. CAP is one less than the axial vertex count
-// because the live head occupies the leading slot.
-const TRAIL_STAMP_CAP = CURVED_CONE_CURVE_SEGMENTS;
+// Trail stamps record the projectile's recent path as a polyline of
+// positions frozen in render space the moment they were laid down, so
+// MOVE POS / VEL EMAs only ever affect the live head — old stamps don't
+// drift around behind the projectile. The drawn tail is resampled from
+// this history every frame (resampleTrailCenterline) instead of mapping
+// stamps to rings one-to-one, so the buffer is deeper than the ring
+// count: the resample horizon is 7/6 of the tail length (kink pin +
+// relax window), ordinary stamps land one drawn-segment-length apart,
+// and forced reflection stamps can land arbitrarily close together.
+// The extra slots keep the recorded polyline longer than the horizon,
+// so evicting the oldest stamp never moves drawn geometry.
+const TRAIL_STAMP_CAP = CURVED_CONE_CURVE_SEGMENTS + 4;
 const TRAIL_MIN_TANGENT_SQ = 1e-6;
 const PROJ_CYL_AXIS = new THREE.Vector3(0, 1, 0);
 const CURVED_CONE_COS = Array.from(
@@ -103,9 +108,13 @@ type ProjectileRadiusMeshes = {
 
 type TrailStampBuffer = {
   // Length TRAIL_STAMP_CAP * 3, indexed newest-first. Slot 0 is the most
-  // recent stamp; slot count-1 is the oldest. Unused slots are dropped
-  // when stamping past the cap (the oldest stamp is evicted).
+  // recent stamp; slot count-1 is the oldest. The oldest stamp is
+  // evicted when stamping past the cap.
   points: Float32Array;
+  // 1 where the matching slot is a forced reflection stamp (the exact
+  // shield contact point), 0 for ordinary distance stamps. Kept in
+  // lockstep with points so the resampler can pin a ring onto the kink.
+  flags: Uint8Array;
   count: number;
 };
 
@@ -171,10 +180,13 @@ export class ProjectileRenderer3D {
   private readonly projectileRadiusMeshes = new Map<number, ProjectileRadiusMeshes>();
   private readonly projectileRadiusMeshPool: THREE.LineSegments[] = [];
   private readonly trailStamps = new Map<EntityId, TrailStampBuffer>();
-  // Scratch buffer used inside writeProjectileCurvedConeTail to assemble
-  // the full (CURVED_CONE_CURVE_SEGMENTS + 1) * 3 centerline before
-  // emitting rings. Reused across projectiles to avoid per-frame allocs.
+  // Scratch buffers reused across projectiles to avoid per-frame allocs.
+  // resampleTrailCenterline fills tailCenterline with the drawn ring
+  // centers, tailRingDist with each ring's arc distance behind the head,
+  // and trailArcScratch with cumulative stamp-polyline arc lengths.
   private readonly tailCenterline = new Float32Array((CURVED_CONE_CURVE_SEGMENTS + 1) * 3);
+  private readonly tailRingDist = new Float32Array(CURVED_CONE_CURVE_SEGMENTS + 1);
+  private readonly trailArcScratch = new Float32Array(TRAIL_STAMP_CAP + 1);
   private lastProjectileEntitySetVersion = -1;
   private lastProjectileScopeVersion = -1;
 
@@ -318,12 +330,8 @@ export class ProjectileRenderer3D {
         ) {
           const stamps = this.advanceTrailStamps(e.id, proj, tx, ty, tz, tailLength);
           if (stamps.count >= 1) {
-            this.writeProjectileCurvedConeTail(
-              curvedConeCount++,
-              tx, ty, tz,
-              stamps,
-              tailRadius,
-            );
+            const drawnSpan = this.resampleTrailCenterline(tx, ty, tz, stamps, tailLength);
+            this.writeProjectileCurvedConeTail(curvedConeCount++, tailRadius, drawnSpan);
           }
         }
         if (finSizeMult > 0 && finCount < PROJECTILE_INSTANCED_CAP) {
@@ -431,6 +439,33 @@ export class ProjectileRenderer3D {
     ]);
   }
 
+  // Shifts older stamps one slot deeper (dropping the oldest if at cap)
+  // and writes the new stamp into slot 0.
+  private insertTrailStamp(
+    stamps: TrailStampBuffer,
+    x: number,
+    y: number,
+    z: number,
+    isReflection: boolean,
+  ): void {
+    const pts = stamps.points;
+    const flags = stamps.flags;
+    const newCount = Math.min(TRAIL_STAMP_CAP, stamps.count + 1);
+    for (let i = newCount - 1; i >= 1; i--) {
+      const dst = i * 3;
+      const src = (i - 1) * 3;
+      pts[dst] = pts[src];
+      pts[dst + 1] = pts[src + 1];
+      pts[dst + 2] = pts[src + 2];
+      flags[i] = flags[i - 1];
+    }
+    pts[0] = x;
+    pts[1] = y;
+    pts[2] = z;
+    flags[0] = isReflection ? 1 : 0;
+    stamps.count = newCount;
+  }
+
   private advanceTrailStamps(
     id: EntityId,
     proj: NonNullable<Entity['projectile']>,
@@ -441,10 +476,13 @@ export class ProjectileRenderer3D {
   ): TrailStampBuffer {
     let stamps = this.trailStamps.get(id);
     if (!stamps) {
-      stamps = { points: new Float32Array(TRAIL_STAMP_CAP * 3), count: 0 };
+      stamps = {
+        points: new Float32Array(TRAIL_STAMP_CAP * 3),
+        flags: new Uint8Array(TRAIL_STAMP_CAP),
+        count: 0,
+      };
       this.trailStamps.set(id, stamps);
     }
-    const pts = stamps.points;
 
     // Forced reflection stamp: ClientViewState parks the exact
     // shield-sphere / shield-panel contact point on the projectile after each
@@ -456,28 +494,18 @@ export class ProjectileRenderer3D {
     const bounceY = proj.pendingReflectionY;
     const bounceZ = proj.pendingReflectionZ;
     if (bounceX !== null && bounceY !== null && bounceZ !== null) {
-      const newCount = Math.min(TRAIL_STAMP_CAP, stamps.count + 1);
-      for (let i = newCount - 1; i >= 1; i--) {
-        const dst = i * 3;
-        const src = (i - 1) * 3;
-        pts[dst] = pts[src];
-        pts[dst + 1] = pts[src + 1];
-        pts[dst + 2] = pts[src + 2];
-      }
-      pts[0] = bounceX;
-      pts[1] = bounceY;
-      pts[2] = bounceZ;
-      stamps.count = newCount;
+      this.insertTrailStamp(stamps, bounceX, bounceY, bounceZ, true);
       proj.pendingReflectionX = null;
       proj.pendingReflectionY = null;
       proj.pendingReflectionZ = null;
     }
 
     // Step size determines how far the head travels between stamps. We
-    // pick one segment's worth of tail length so the trail naturally
-    // spans the configured visual length when fully populated.
+    // pick one segment's worth of tail length so the recorded polyline
+    // naturally spans the resample horizon when fully populated.
     const stampStep = Math.max(0.25, tailLength / CURVED_CONE_CURVE_SEGMENTS);
     const stampStepSq = stampStep * stampStep;
+    const pts = stamps.points;
     let shouldStamp = stamps.count === 0;
     if (!shouldStamp) {
       const dx = headX - pts[0];
@@ -485,50 +513,133 @@ export class ProjectileRenderer3D {
       const dz = headZ - pts[2];
       if (dx * dx + dy * dy + dz * dz >= stampStepSq) shouldStamp = true;
     }
-    if (shouldStamp) {
-      const newCount = Math.min(TRAIL_STAMP_CAP, stamps.count + 1);
-      // Shift older stamps one slot deeper, dropping the oldest if at cap.
-      for (let i = newCount - 1; i >= 1; i--) {
-        const dst = i * 3;
-        const src = (i - 1) * 3;
-        pts[dst] = pts[src];
-        pts[dst + 1] = pts[src + 1];
-        pts[dst + 2] = pts[src + 2];
-      }
-      pts[0] = headX;
-      pts[1] = headY;
-      pts[2] = headZ;
-      stamps.count = newCount;
-    }
+    if (shouldStamp) this.insertTrailStamp(stamps, headX, headY, headZ, false);
     return stamps;
   }
 
-  private writeProjectileCurvedConeTail(
-    slot: number,
+  // Rebuilds tailCenterline + tailRingDist by resampling the stamp
+  // polyline [head, stamp0, stamp1, ...] at uniform arc-length spacing
+  // over the drawn span. This decouples the drawn rings from the raw
+  // stamps: every ring position is a continuous function of head motion,
+  // so laying or evicting a stamp never moves tail geometry (the old
+  // one-stamp-per-ring centerline popped the tail tip forward a whole
+  // segment every time the oldest stamp dropped off). Returns the drawn
+  // span — the arc length the emitted tail actually covers, which is
+  // shorter than tailLength while a young projectile accumulates path.
+  //
+  // Reflection kinks stay exact: the newest reflection stamp inside the
+  // horizon gets a ring pinned onto it, because the kink is the player's
+  // evidence that a shot bounced and uniform resampling alone would cut
+  // the corner. The pin slides continuously: while the kink's arc
+  // distance sits between ring slots j and j+1 (tau in [j, j+1)), ring j
+  // holds the kink and ring j-1 walks linearly back to its uniform spot
+  // from the kink duty it just finished. At every handoff the affected
+  // rings coincide, so no ring ever teleports.
+  private resampleTrailCenterline(
     headX: number,
     headY: number,
     headZ: number,
     stamps: TrailStampBuffer,
-    radius: number,
-  ): void {
-    // Centerline layout: vertex 0 is the live head, vertices 1..N are
-    // stamped points in newest→oldest order. When fewer than N stamps
-    // exist (just-spawned projectile), pad with copies of the oldest
-    // available point — the ring radius taper hides the collapsed tail.
+    tailLength: number,
+  ): number {
+    const pts = stamps.points;
+    const count = stamps.count;
+    const cum = this.trailArcScratch;
+    cum[0] = 0;
+    let prevX = headX, prevY = headY, prevZ = headZ;
+    let total = 0;
+    for (let k = 0; k < count; k++) {
+      const o = k * 3;
+      const dx = pts[o] - prevX;
+      const dy = pts[o + 1] - prevY;
+      const dz = pts[o + 2] - prevZ;
+      total += Math.sqrt(dx * dx + dy * dy + dz * dz);
+      cum[k + 1] = total;
+      prevX = pts[o];
+      prevY = pts[o + 1];
+      prevZ = pts[o + 2];
+    }
+
     const centerline = this.tailCenterline;
+    const dists = this.tailRingDist;
     centerline[0] = headX;
     centerline[1] = headY;
     centerline[2] = headZ;
-    const pts = stamps.points;
-    const count = stamps.count;
-    for (let i = 1; i <= CURVED_CONE_CURVE_SEGMENTS; i++) {
-      const stampIdx = i - 1 < count ? i - 1 : count - 1;
-      const src = stampIdx * 3;
-      const dst = i * 3;
-      centerline[dst] = pts[src];
-      centerline[dst + 1] = pts[src + 1];
-      centerline[dst + 2] = pts[src + 2];
+    dists[0] = 0;
+
+    const drawnSpan = Math.min(tailLength, total);
+    if (drawnSpan < 1e-4) {
+      // No usable path yet (fresh spawn) — collapse every ring onto the
+      // head. writeProjectileCurvedConeTail zeroes the radii.
+      for (let i = 1; i <= CURVED_CONE_CURVE_SEGMENTS; i++) {
+        const dst = i * 3;
+        centerline[dst] = headX;
+        centerline[dst + 1] = headY;
+        centerline[dst + 2] = headZ;
+        dists[i] = 0;
+      }
+      return 0;
     }
+
+    const step = drawnSpan / CURVED_CONE_CURVE_SEGMENTS;
+    for (let i = 1; i <= CURVED_CONE_CURVE_SEGMENTS; i++) dists[i] = i * step;
+
+    // Pin the newest reflection kink onto a ring (holder), and let the
+    // ring that held it during the previous slot window relax home.
+    const flags = stamps.flags;
+    for (let k = 0; k < count; k++) {
+      if (!flags[k]) continue;
+      const d = cum[k + 1];
+      const tau = d / step;
+      const j = Math.floor(tau);
+      // Ring 0 is the live head and the tip must stay at the span end,
+      // so only interior rings hold the kink; past tau = 7 the kink and
+      // its relax window have both left the drawn tail.
+      if (j >= 1 && j < CURVED_CONE_CURVE_SEGMENTS) dists[j] = d;
+      if (j >= 2 && j <= CURVED_CONE_CURVE_SEGMENTS) {
+        dists[j - 1] = (2 * j - tau) * step;
+      }
+      break;
+    }
+
+    // Single forward walk emitting ring centers at each target distance
+    // (dists is monotone by construction).
+    let seg = 0;
+    for (let i = 1; i <= CURVED_CONE_CURVE_SEGMENTS; i++) {
+      let d = dists[i];
+      if (d > total) d = total;
+      while (seg < count - 1 && cum[seg + 1] < d) seg++;
+      const segLen = cum[seg + 1] - cum[seg];
+      let t = segLen > 1e-6 ? (d - cum[seg]) / segLen : 0;
+      if (t < 0) t = 0;
+      else if (t > 1) t = 1;
+      const ao = (seg - 1) * 3;
+      const ax = seg === 0 ? headX : pts[ao];
+      const ay = seg === 0 ? headY : pts[ao + 1];
+      const az = seg === 0 ? headZ : pts[ao + 2];
+      const bo = seg * 3;
+      const dst = i * 3;
+      centerline[dst] = ax + (pts[bo] - ax) * t;
+      centerline[dst + 1] = ay + (pts[bo + 1] - ay) * t;
+      centerline[dst + 2] = az + (pts[bo + 2] - az) * t;
+    }
+    return drawnSpan;
+  }
+
+  private writeProjectileCurvedConeTail(
+    slot: number,
+    radius: number,
+    drawnSpan: number,
+  ): void {
+    // tailCenterline and tailRingDist were just filled by
+    // resampleTrailCenterline: vertex 0 is the live head, vertices 1..N
+    // are resampled history points at known arc distances behind it.
+    // The radius tapers linearly in arc length so the tube thickness at
+    // a world point never depends on which ring currently samples it,
+    // and the final ring (at the span end) always closes to zero.
+    const centerline = this.tailCenterline;
+    const dists = this.tailRingDist;
+    const invSpan = drawnSpan > 1e-4 ? 1 / drawnSpan : 0;
 
     const positions = this.curvedCone.positions;
     const normals = this.curvedCone.normals;
@@ -566,8 +677,9 @@ export class ProjectileRenderer3D {
       }
       this.setCurveBasis(tanX, tanY, tanZ);
 
-      const u = segment / CURVED_CONE_CURVE_SEGMENTS;
-      const ringRadius = radius * (1 - u);
+      const ringRadius = invSpan > 0
+        ? radius * (1 - dists[segment] * invSpan)
+        : 0;
       for (let radial = 0; radial < CURVED_CONE_RADIAL_SEGMENTS; radial++) {
         const normalX = this.curveRight.x * CURVED_CONE_COS[radial] +
           this.curveUp.x * CURVED_CONE_SIN[radial];
