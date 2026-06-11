@@ -2727,13 +2727,13 @@ export interface CombatTargetingApi {
   ) => void;
   /** AIM-08.5 — scheduled mixed-mode world-order targeting batch.
    *  Rust chooses skip / hold-fire clear / priority-point /
-   *  priority-target / auto from slab-backed state after resolving
-   *  source entity IDs to slab slots, reading per-entity priority +
-   *  probe-tick inputs from the slab, updating mount kinematics for
-   *  processed rows, refreshing activity masks inline, and writing
-   *  compact mode / active-work outputs for the JS bookkeeping pass. */
+   *  priority-target / auto from slab-backed source slots, reading
+   *  per-entity priority + probe-tick inputs from the slab, updating
+   *  mount kinematics for processed rows, refreshing activity masks
+   *  inline, and writing compact mode / active-work outputs for the
+   *  JS bookkeeping pass. */
   readonly scheduleAndTickBatch: (
-    sourceEntityIds: Int32Array,
+    sourceSlots: Uint32Array,
     currentTick: number,
     dtMs: number,
     turretShieldPanelsEnabled: number,

@@ -180,7 +180,6 @@ export type CombatTargetingTurretKinematicsOut = {
 
 let _stateViews: CombatTargetingStateViews | null = null;
 const _combatTargetingSourceEntities: Entity[] = [];
-let _combatTargetingSourceIds = new Int32Array(0);
 let _combatTargetingSourceSlots = new Uint32Array(0);
 let _combatTargetingSourceCount = 0;
 let _combatTargetingSensorSourceSlots = new Uint32Array(0);
@@ -244,12 +243,9 @@ function reserveCombatTargetingSlot(slot: number): void {
 }
 
 function ensureCombatTargetingSourceCapacity(count: number): void {
-  if (count <= _combatTargetingSourceIds.length) return;
-  let next = Math.max(8, _combatTargetingSourceIds.length);
+  if (count <= _combatTargetingSourceSlots.length) return;
+  let next = Math.max(8, _combatTargetingSourceSlots.length);
   while (next < count) next *= 2;
-  const ids = new Int32Array(next);
-  ids.set(_combatTargetingSourceIds.subarray(0, _combatTargetingSourceCount));
-  _combatTargetingSourceIds = ids;
   const slots = new Uint32Array(next);
   slots.set(_combatTargetingSourceSlots.subarray(0, _combatTargetingSourceCount));
   _combatTargetingSourceSlots = slots;
@@ -263,7 +259,6 @@ function queueCombatTargetingSource(entity: Entity): void {
   const idx = _combatTargetingSourceCount;
   ensureCombatTargetingSourceCapacity(idx + 1);
   _combatTargetingSourceEntities.push(entity);
-  _combatTargetingSourceIds[idx] = entity.id;
   _combatTargetingSourceSlots[idx] = slot;
   _combatTargetingSourceCount++;
 }
@@ -300,10 +295,6 @@ function getCombatTargetingSensorSourceSlots(): Uint32Array {
 
 export function getCombatTargetingSourceEntities(): readonly Entity[] {
   return _combatTargetingSourceEntities;
-}
-
-export function getCombatTargetingSourceIds(): Int32Array {
-  return _combatTargetingSourceIds.subarray(0, _combatTargetingSourceCount);
 }
 
 export function getCombatTargetingSourceSlots(): Uint32Array {

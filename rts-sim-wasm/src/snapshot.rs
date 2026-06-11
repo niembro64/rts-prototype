@@ -10223,14 +10223,14 @@ mod lock_on_inclusion_tests {
 
     pub(crate) fn run_schedule_tick(turret_shield_panels_enabled: u8) -> (i32, u8, u8) {
         combat_targeting_rebuild_observation_masks();
-        let source_ids = [SOURCE_ID];
+        let source_slots = [SOURCE_SLOT];
         let mut cached_fire_ranks = [0u8; MAX];
         let mut cached_fire_dist_sqs = [0.0f64; MAX];
         let mut out_had_cooldown = [0u8; 1];
         let mut out_modes = [CT_TARGETING_TICK_MODE_SKIP; 1];
         let mut out_has_active_work = [0u8; 1];
         combat_targeting_schedule_and_tick_batch(
-            &source_ids,
+            &source_slots,
             10,
             16.0,
             turret_shield_panels_enabled,

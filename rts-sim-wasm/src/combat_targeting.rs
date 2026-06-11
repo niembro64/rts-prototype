@@ -5931,7 +5931,7 @@ pub fn combat_targeting_tick_batch(
 /// tick; the previous tick's masks remain authoritative.
 #[wasm_bindgen]
 pub fn combat_targeting_schedule_and_tick_batch(
-    source_entity_ids: &[i32],
+    source_slots: &[u32],
     current_tick: i32,
     dt_ms: f64,
     turret_shield_panels_enabled: u8,
@@ -5949,7 +5949,7 @@ pub fn combat_targeting_schedule_and_tick_batch(
     out_has_active_work: &mut [u8],
 ) {
     const MAX: usize = COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize;
-    let count = source_entity_ids
+    let count = source_slots
         .len()
         .min(out_had_cooldown.len())
         .min(out_modes.len())
@@ -5966,8 +5966,8 @@ pub fn combat_targeting_schedule_and_tick_batch(
             break;
         }
 
-        let source_entity_id = source_entity_ids[entity_i];
         let (
+            source_entity_id,
             entity_slot,
             entity_ready,
             fire_enabled,
@@ -5981,55 +5981,66 @@ pub fn combat_targeting_schedule_and_tick_batch(
             scheduled_probe_tick,
         ) = {
             let pool = combat_targeting_pool();
-            match combat_targeting_entity_slot_for_id(pool, source_entity_id) {
-                None => (
-                    0, false, false, 0u32, false, -1i32, 0u8, 0.0, 0.0, 0.0, -1i32,
-                ),
-                Some(entity_slot_usize) => {
-                    let entity_slot = entity_slot_usize as u32;
-                    let entity_idx = entity_slot as usize;
-                    if entity_idx >= pool.entity_flags.len()
-                        || pool.entity_id[entity_idx] != source_entity_id
-                    {
-                        (
-                            entity_slot,
-                            false,
-                            false,
-                            0u32,
-                            false,
-                            -1i32,
-                            0u8,
-                            0.0,
-                            0.0,
-                            0.0,
-                            -1i32,
-                        )
-                    } else {
-                        let flags = pool.entity_flags[entity_idx];
-                        let ready = (flags & CT_ENTITY_FLAG_HAS_COMBAT) != 0
-                            && (flags & CT_ENTITY_FLAG_ALIVE) != 0
-                            && (flags & CT_ENTITY_FLAG_BUILDABLE_COMPLETE) != 0;
-                        let enabled = (flags & CT_ENTITY_FLAG_FIRE_ENABLED) != 0;
-                        let has_weapon = combat_targeting_entity_has_enabled_weapon(
-                            pool,
-                            entity_slot,
-                            turret_shield_panels_enabled,
-                            turret_shield_spheres_enabled,
-                        );
-                        (
-                            entity_slot,
-                            ready,
-                            enabled,
-                            pool.entity_view_mask[entity_idx],
-                            has_weapon,
-                            pool.entity_priority_target_id[entity_idx],
-                            pool.entity_priority_point_present[entity_idx],
-                            pool.entity_priority_point_x[entity_idx],
-                            pool.entity_priority_point_y[entity_idx],
-                            pool.entity_priority_point_z[entity_idx],
-                            pool.entity_scheduled_probe_tick[entity_idx],
-                        )
-                    }
+            let entity_slot = source_slots[entity_i];
+            let entity_idx = entity_slot as usize;
+            if entity_idx >= pool.entity_flags.len() {
+                (
+                    -1i32,
+                    entity_slot,
+                    false,
+                    false,
+                    0u32,
+                    false,
+                    -1i32,
+                    0u8,
+                    0.0,
+                    0.0,
+                    0.0,
+                    -1i32,
+                )
+            } else {
+                let source_entity_id = pool.entity_id[entity_idx];
+                if source_entity_id < 0 {
+                    (
+                        source_entity_id,
+                        entity_slot,
+                        false,
+                        false,
+                        0u32,
+                        false,
+                        -1i32,
+                        0u8,
+                        0.0,
+                        0.0,
+                        0.0,
+                        -1i32,
+                    )
+                } else {
+                    let flags = pool.entity_flags[entity_idx];
+                    let ready = (flags & CT_ENTITY_FLAG_HAS_COMBAT) != 0
+                        && (flags & CT_ENTITY_FLAG_ALIVE) != 0
+                        && (flags & CT_ENTITY_FLAG_BUILDABLE_COMPLETE) != 0;
+                    let enabled = (flags & CT_ENTITY_FLAG_FIRE_ENABLED) != 0;
+                    let has_weapon = combat_targeting_entity_has_enabled_weapon(
+                        pool,
+                        entity_slot,
+                        turret_shield_panels_enabled,
+                        turret_shield_spheres_enabled,
+                    );
+                    (
+                        source_entity_id,
+                        entity_slot,
+                        ready,
+                        enabled,
+                        pool.entity_view_mask[entity_idx],
+                        has_weapon,
+                        pool.entity_priority_target_id[entity_idx],
+                        pool.entity_priority_point_present[entity_idx],
+                        pool.entity_priority_point_x[entity_idx],
+                        pool.entity_priority_point_y[entity_idx],
+                        pool.entity_priority_point_z[entity_idx],
+                        pool.entity_scheduled_probe_tick[entity_idx],
+                    )
                 }
             }
         };

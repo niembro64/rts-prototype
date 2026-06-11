@@ -6,7 +6,7 @@
 // targeting slab during input stamping, so the scheduled Rust kernel
 // reads them by slot instead of accepting JS scratch arrays at the
 // boundary. This bridge's TypeScript work is now just:
-//   - consume the sourceId queue built during targeting slab stamping,
+//   - consume the source-slot queue built during targeting slab stamping,
 //   - call combat_targeting_schedule_and_tick_batch once,
 //   - apply JS-only command/probe bookkeeping from the compact mode
 //     and active-work bytes the kernel wrote back.
@@ -31,7 +31,7 @@ import { getActiveShields } from './shieldTurret';
 import {
   getCombatTargetingSourceCount,
   getCombatTargetingSourceEntities,
-  getCombatTargetingSourceIds,
+  getCombatTargetingSourceSlots,
 } from './targetingInputStamping';
 
 const _activeCombatUnits: Entity[] = [];
@@ -81,7 +81,7 @@ function flushTargetingBatch(
   world: WorldState,
   targeting: TargetingKernel,
   sourceEntities: readonly Entity[],
-  sourceIds: Int32Array,
+  sourceSlots: Uint32Array,
   count: number,
   tick: number,
   dtMs: number,
@@ -95,7 +95,7 @@ function flushTargetingBatch(
 
   const turretValueCount = count * maxTurrets;
   targeting.scheduleAndTickBatch(
-    sourceIds,
+    sourceSlots,
     tick,
     dtMs,
     turretShieldPanelsEnabledFlag,
@@ -160,7 +160,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
   const tick = world.getTick();
   const sourceCount = getCombatTargetingSourceCount();
   if (sourceCount === 0) return _activeCombatUnits;
-  const sourceIds = getCombatTargetingSourceIds();
+  const sourceSlots = getCombatTargetingSourceSlots();
   const sourceEntities = getCombatTargetingSourceEntities();
   const targeting = getTargetingKernel();
   const maxTurrets = targeting.maxTurretsPerEntity();
@@ -182,7 +182,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     world,
     targeting,
     sourceEntities,
-    sourceIds,
+    sourceSlots,
     sourceCount,
     tick,
     dtMs,
