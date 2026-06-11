@@ -21,7 +21,7 @@ import {
   PROJECTILE_MASS_MULTIPLIER,
 } from '../../../config';
 import { spatialGrid } from '../SpatialGrid';
-import { magnitude, lineCircleIntersectionT, lineSphereIntersectionT, lineRectIntersectionT, rayBoxIntersectionT, getTransformCosSin } from '../../math';
+import { magnitude, lineSphereIntersectionT, rayBoxIntersectionT, getTransformCosSin } from '../../math';
 import {
   REFLECTOR_HIT_KIND_NONE,
   SHIELD_PANEL_PROJECTILE_QUERY_PAD,
@@ -1000,71 +1000,6 @@ export class DamageSystem {
     }
   }
 
-  // Find first obstruction along a line (for beam truncation)
-  // Returns the parametric T value (0-1) and entity ID of first hit
-  // PERFORMANCE: Uses spatial grid line query for O(k) instead of O(n)
-  findLineObstruction(
-    startX: number, startY: number, startZ: number,
-    endX: number, endY: number, endZ: number,
-    sourceEntityId: EntityId,
-    lineWidth: number
-  ): { t: number; entityId: EntityId } | null {
-    let closestT = Infinity;
-    let closestEntityId: EntityId = NO_ENTITY_ID;
-
-    // PERFORMANCE: Single line-cell sweep filling both arrays. Uses the
-    // wider building pad (+100); the per-entity intersection check below
-    // re-applies the precise width.
-    const { units: nearbyUnits, buildings: nearbyBuildings } =
-      spatialGrid.queryEntitiesAlongLine(startX, startY, startZ, endX, endY, endZ, lineWidth + 100);
-
-    // Check units
-    for (const unit of nearbyUnits) {
-      if (unit.id === sourceEntityId) continue;
-      if (
-        !unit.unit ||
-        unit.unit.hp <= 0
-      ) continue;
-
-      const t = lineCircleIntersectionT(
-        startX, startY, endX, endY,
-        unit.transform.x, unit.transform.y,
-        unit.unit.radius.hitbox + lineWidth / 2
-      );
-
-      if (t !== null && t < closestT) {
-        closestT = t;
-        closestEntityId = unit.id;
-      }
-    }
-
-    // Check buildings
-    for (const building of nearbyBuildings) {
-      // Skip the firing building — a tower-mounted turret must not
-      // self-block on its own AABB (matches the unit-source guard
-      // above).
-      if (building.id === sourceEntityId) continue;
-      if (!building.building || building.building.hp <= 0) continue;
-
-      const bWidth = building.building.width;
-      const bHeight = building.building.height;
-      const rectX = building.transform.x - bWidth / 2;
-      const rectY = building.transform.y - bHeight / 2;
-
-      const t = lineRectIntersectionT(
-        startX, startY, endX, endY,
-        rectX, rectY, bWidth, bHeight
-      );
-
-      if (t !== null && t < closestT) {
-        closestT = t;
-        closestEntityId = building.id;
-      }
-    }
-
-    return closestEntityId !== NO_ENTITY_ID ? { t: closestT, entityId: closestEntityId } : null;
-  }
-
   // Find beam path with reflections off mirror units and shield
   // spheres — full 3D.
   //
@@ -1590,7 +1525,7 @@ export class DamageSystem {
     let bestHostEntityId: EntityId = 0;
     let bestIsUnit = false;
 
-    // PERFORMANCE: Single line-cell sweep — see findLineObstruction.
+    // PERFORMANCE: Single line-cell sweep for unit/building body rows.
     const {
       units: nearbyUnits,
       buildings: nearbyBuildings,
@@ -1819,7 +1754,7 @@ export class DamageSystem {
     _reusableHits.length = 0;
     const hits = _reusableHits;
 
-    // PERFORMANCE: Single line-cell sweep — see findLineObstruction.
+    // PERFORMANCE: Single line-cell sweep for unit/building body rows.
     // The spatial line query takes a full width and buckets units by
     // center cell, so include the largest known target hitbox radius
     // here. The exact tests below still use each entity's authored
