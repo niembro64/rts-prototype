@@ -974,9 +974,11 @@ pub fn projectile_integrate_step_batch(
 ///   pos_y[i] += vel_y[i] * dt_sec
 ///   pos_z[i] += vel_z[i] * dt_sec - 0.5 * GRAVITY * dt_sec^2
 ///   vel_z[i] -= GRAVITY * dt_sec
-/// Same math as the inner loop in projectileSystem._updatePackedProjectilesJS.
+///   time_alive[i] += dt_ms
+/// Same motion math as the packed projectile update loop in projectileSystem,
+/// with pool-owned lifetime advanced in the same Rust pass.
 #[wasm_bindgen]
-pub fn pool_step_packed_projectiles_batch(count: u32, dt_sec: f64) {
+pub fn pool_step_packed_projectiles_batch(count: u32, dt_sec: f64, dt_ms: f64) {
     let p = projectile_pool();
     let n = count as usize;
     debug_assert!(n <= PROJECTILE_POOL_CAPACITY_USIZE);
@@ -986,6 +988,7 @@ pub fn pool_step_packed_projectiles_batch(count: u32, dt_sec: f64) {
         p.pos_y[i] += p.vel_y[i] * dt_sec;
         p.pos_z[i] += p.vel_z[i] * dt_sec - GRAVITY * half_dt_sq;
         p.vel_z[i] -= GRAVITY * dt_sec;
+        p.time_alive[i] += dt_ms;
     }
 }
 

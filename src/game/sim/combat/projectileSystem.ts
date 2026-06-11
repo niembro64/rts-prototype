@@ -1127,7 +1127,7 @@ function _updatePackedProjectilesJS(dtMs: number, dtSec: number): void {
   // Phase 5a — three-pass structure so the inner ballistic integrate
   // can run in one batched WASM call:
   //   Pass 1: validate slot, sync external mutations into pool,
-  //           bump timeAlive, stash prev / collision-start.
+  //           stash prev / collision-start.
   //   Pass 2: pool_step_packed_projectiles_batch (all slots, one call).
   //   Pass 3: scatter pool → entity.transform + proj.velocity*,
   //           run source-clearance check on the new position.
@@ -1152,7 +1152,6 @@ function _updatePackedProjectilesJS(dtMs: number, dtSec: number): void {
     _packedProjectileVy[slot] = proj.velocityY;
     _packedProjectileVz[slot] = proj.velocityZ;
 
-    proj.timeAlive += dtMs;
     _packedProjectileTimeAlive[slot] = proj.timeAlive;
 
     if (proj.collisionStartX === null) {
@@ -1174,7 +1173,7 @@ function _updatePackedProjectilesJS(dtMs: number, dtSec: number): void {
   // Pass 2: batched ballistic integrate in WASM. Refresh views so a
   // memory grow between ticks doesn't write through detached views.
   refreshPackedProjectileViews();
-  getSimWasm()!.poolStepPackedProjectilesBatch(_packedProjectileCount, dtSec);
+  getSimWasm()!.poolStepPackedProjectilesBatch(_packedProjectileCount, dtSec, dtMs);
 
   // Pass 3: scatter post-integrate state back to JS-side mirrors,
   // then arm projectiles whose authored delay elapsed during this tick.
@@ -1188,6 +1187,7 @@ function _updatePackedProjectilesJS(dtMs: number, dtSec: number): void {
     const vx = _packedProjectileVx[slot];
     const vy = _packedProjectileVy[slot];
     const vz = _packedProjectileVz[slot];
+    const timeAlive = _packedProjectileTimeAlive[slot];
 
     entity.transform.x = x;
     entity.transform.y = y;
@@ -1195,11 +1195,12 @@ function _updatePackedProjectilesJS(dtMs: number, dtSec: number): void {
     proj.velocityX = vx;
     proj.velocityY = vy;
     proj.velocityZ = vz;
+    proj.timeAlive = timeAlive;
 
     updateProjectileArming(
       proj,
-      proj.timeAlive - dtMs,
-      proj.timeAlive,
+      timeAlive - dtMs,
+      timeAlive,
       proj.prevX ?? x,
       proj.prevY ?? y,
       proj.prevZ ?? z,

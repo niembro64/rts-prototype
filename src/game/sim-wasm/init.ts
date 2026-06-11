@@ -1314,11 +1314,9 @@ export interface SimWasm {
   ) => number;
   /** Per-tick ballistic integrator for slots 0..count of the
    *  projectile pool. Applies gravity with exact constant-acceleration
-   *  position integration.
-   *  Same math as the inner loop in
-   *  projectileSystem._updatePackedProjectilesJS but runs entirely
-   *  in WASM with no per-projectile boundary call. */
-  readonly poolStepPackedProjectilesBatch: (count: number, dtSec: number) => void;
+   *  position integration and advances pool-owned lifetime in the same
+   *  WASM pass. */
+  readonly poolStepPackedProjectilesBatch: (count: number, dtSec: number, dtMs: number) => void;
   /** C1 — non-packed projectile/body constant-acceleration integrator.
    *  TypeScript packs guided/D-gun projectile state and acceleration,
    *  this kernel advances position and velocity in one batch. */

@@ -21,11 +21,12 @@ RUST MIGRATION DEBT (each is a phase-scale project; land each with parity
 proof + Delete The Old Path in the same change)
 --------------------------------------------------------------------------------
 
-[049][ARCH] projectileSystem.ts (~1793 lines) still owns projectile
-integration, homing guidance, beam stepping and collision orchestration in TS
-while the projectile pool lives in WASM. Port the per-projectile tick loop to
-Rust; leave TS as spawn/despawn orchestration. Delete the TS loop in the same
-change (Delete The Old Path).
+[049][ARCH] src/game/sim/combat/projectileSystem.ts (~1799 lines) still owns
+projectile tick orchestration around the WASM ProjectilePool: TS validates and
+scatters packed pool slots, gathers non-packed homing/D-gun rows, updates
+beam/laser lifecycle and tracing, and drives collision/despawn orchestration.
+Move the remaining projectile tick state/result buffers into Rust so TS only
+spawns/despawns/emits events, then delete the TS tick loops.
 
 [051][ARCH] targetingInputStamping.ts (~957 lines) is the TS->Rust stamping
 shim for the targeting FSM. Eliminate the per-tick stamp/readback by making
