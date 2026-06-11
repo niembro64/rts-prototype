@@ -3486,7 +3486,7 @@ pub fn snapshot_encode_removed_ids_scratch_ensure(count: u32) {
 }
 
 // ===========================================================================
-// V6 entity wire packer (issue A5). Mirrors snapshotEntityWirePack.ts
+// Entity wire packer (issue A5). Mirrors snapshotEntityWirePack.ts
 // `packEntitiesForWire` byte-for-byte so the Rust encoder owns entity bytes
 // without the per-snapshot TS object-building loop. Movement-only unit deltas
 // and split unit-turret deltas pack into grouped varint slabs (`m` / `t`);
@@ -3500,7 +3500,7 @@ pub fn snapshot_encode_removed_ids_scratch_ensure(count: u32) {
 // (the legacy verbose encoder always emitted them); it is re-derived here as
 // `isFull || (changedFields & bit)`, exactly how serializeEntitySnapshot sets
 // the DTO sub-fields.
-pub(crate) const V6_PACKED_ENTITIES_VERSION: u64 = 6;
+pub(crate) const V6_PACKED_ENTITIES_VERSION: u64 = 11;
 
 pub(crate) const V6_ENTITY_FLAG_HAS_POS: u32 = 1 << 0;
 pub(crate) const V6_ENTITY_FLAG_HAS_ROTATION: u32 = 1 << 1;

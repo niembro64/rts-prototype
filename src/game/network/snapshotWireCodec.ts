@@ -51,8 +51,8 @@ const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
 const RUST_SNAPSHOT_WIRE_COMPARE_ENABLED = import.meta.env.DEV && isRustSnapshotWireCompareEnabled();
 const FORCE_JS_SNAPSHOT_WIRE = isForceJsSnapshotWireEnabled();
 // Rust snapshot envelope encoding is still behind the TypeScript entity
-// wire schema (Rust emits packed entities V6; TS decodes V11). Keep it
-// opt-in until the WASM encoder is upgraded to the active wire version.
+// wire schema for a few V11-only entity shapes. Keep it opt-in until the
+// WASM encoder can own every active entity row without JS raw fallbacks.
 const ENABLE_RUST_SNAPSHOT_WIRE = isRustSnapshotWireEnabled();
 
 const TOP_LEVEL_SNAPSHOT_KEYS = [
@@ -153,7 +153,7 @@ export function encodeNetworkSnapshotDetailed(state: NetworkServerSnapshot): Enc
   const requiresJsPackedStaticBootstrap =
     state.terrain !== undefined || state.buildability !== undefined;
   if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED && !requiresJsPackedStaticBootstrap) {
-    compareV6Entities(state);
+    compareRustPackedEntities(state);
   }
   if (ENABLE_RUST_SNAPSHOT_WIRE && !FORCE_JS_SNAPSHOT_WIRE && !requiresJsPackedStaticBootstrap) {
     const rustWireState = packNetworkSnapshotForWire(state, {
@@ -489,56 +489,62 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   return true;
 }
 
-// A5 parity oracle: compare the Rust V6 entity packer's output against the
+// A5 parity oracle: compare the Rust entity packer's output against the
 // authoritative TS packEntitiesForWire on real snapshots. Runs only under the
 // dp02rust compare flag. The Rust bytes carry a 9-byte `"entities"`
 // MessagePack key prefix (0xA8 + "entities") ahead of the {v,m,t,e}
 // value that packEntitiesForWire encodes, so the prefix is stripped before
 // comparing.
-const V6_ENTITIES_KEY_PREFIX_BYTES = 9;
+const RUST_ENTITIES_KEY_PREFIX_BYTES = 9;
 
-type V6EntitiesCompareStats = {
+type RustPackedEntitiesCompareStats = {
   attempts: number;
   matches: number;
   mismatches: number;
   fallbacks: number;
 };
 
-const v6EntitiesCompareStats: V6EntitiesCompareStats = {
+const rustPackedEntitiesCompareStats: RustPackedEntitiesCompareStats = {
   attempts: 0,
   matches: 0,
   mismatches: 0,
   fallbacks: 0,
 };
 
-function compareV6Entities(state: NetworkServerSnapshot): void {
+function compareRustPackedEntities(state: NetworkServerSnapshot): void {
   const source = getEntitySnapshotWireSource(state.entities);
   if (source === undefined) return;
   const jsPacked = packEntitiesForWire(state.entities);
   if (jsPacked === undefined) return;
   const rustBytes = encodeEntitiesV6Bytes(source);
   if (rustBytes === null) {
-    v6EntitiesCompareStats.fallbacks++;
+    rustPackedEntitiesCompareStats.fallbacks++;
     return;
   }
-  v6EntitiesCompareStats.attempts++;
+  rustPackedEntitiesCompareStats.attempts++;
   const jsValueBytes = msgpackEncode(jsPacked, SNAPSHOT_ENCODE_OPTIONS);
-  const rustValueBytes = rustBytes.subarray(V6_ENTITIES_KEY_PREFIX_BYTES);
+  const rustValueBytes = rustBytes.subarray(RUST_ENTITIES_KEY_PREFIX_BYTES);
   if (bytesEqual(rustValueBytes, jsValueBytes)) {
-    v6EntitiesCompareStats.matches++;
-    if (v6EntitiesCompareStats.matches === 1 || v6EntitiesCompareStats.matches % 300 === 0) {
-      console.info('[A5] V6 entities parity OK', { ...v6EntitiesCompareStats });
+    rustPackedEntitiesCompareStats.matches++;
+    if (
+      rustPackedEntitiesCompareStats.matches === 1 ||
+      rustPackedEntitiesCompareStats.matches % 300 === 0
+    ) {
+      console.info('[A5] Rust packed entities parity OK', { ...rustPackedEntitiesCompareStats });
     }
     return;
   }
-  v6EntitiesCompareStats.mismatches++;
-  if (v6EntitiesCompareStats.mismatches <= 10 || v6EntitiesCompareStats.mismatches % 100 === 0) {
-    console.error('[A5] V6 entities byte mismatch', {
+  rustPackedEntitiesCompareStats.mismatches++;
+  if (
+    rustPackedEntitiesCompareStats.mismatches <= 10 ||
+    rustPackedEntitiesCompareStats.mismatches % 100 === 0
+  ) {
+    console.error('[A5] Rust packed entities byte mismatch', {
       tick: state.tick,
       entityCount: source.kinds.length,
       rustValueBytes: rustValueBytes.byteLength,
       jsValueBytes: jsValueBytes.byteLength,
-      stats: { ...v6EntitiesCompareStats },
+      stats: { ...rustPackedEntitiesCompareStats },
     });
   }
 }
