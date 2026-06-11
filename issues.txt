@@ -45,5 +45,3 @@ parity exception: Rust path opt-in via VITE_BA_ENABLE_RUST_SNAPSHOT_WIRE /
 encode path is the live default and is already pooled/binary-packed.
 ================================================================================
 
-
-[03][USER_REQUESTS] The base of our wind turbine needs to be big enough to make sure that the blades of the wind turbine don't visually "hit" other things when they are spinning. Let's make the wind turbing blades a bit smaller, and increase the base of the wind turbine to be at least that wide (the width of the spinning blades). You can also make the wind turbing taller. 

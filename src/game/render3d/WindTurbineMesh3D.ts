@@ -45,14 +45,20 @@ export function buildWindTurbineMesh(
   primaryMat: THREE.Material,
 ): BuildingShape {
   const minDim = Math.min(width, depth);
-  const towerRadius = Math.max(3, minDim * 0.1);
-  const towerH = WIND_BUILDING_VISUAL_HEIGHT * 0.57;
-  const baseH = 12;
+  const towerRadius = Math.max(4, minDim * 0.04);
+  const towerH = WIND_BUILDING_VISUAL_HEIGHT * 0.62;
+  const baseH = 14;
+  // Keep the swept rotor diameter inside the authored footprint. The
+  // blueprint footprint is now the turbine's clearance base; do not
+  // grow blades from that footprint or the clearance contract breaks.
+  const bladeLen = Math.max(18, Math.min(WIND_BUILDING_VISUAL_HEIGHT * 0.24, minDim * 0.43));
+  const bladeW = Math.max(6.5, bladeLen * 0.13);
+  const bladeThickness = Math.max(1.4, bladeLen * 0.026);
   const primary = new THREE.Mesh(cylinderGeom, primaryMat);
   const details: BuildingShape['details'] = [];
 
   details.push(detail(
-    makeCylinder(factoryFrameMat, Math.max(7, minDim * 0.28), 5, 0, baseH + 2.5, 0, hexCylinderGeom),
+    makeCylinder(factoryFrameMat, Math.max(12, minDim * 0.46), 5, 0, baseH + 2.5, 0, hexCylinderGeom),
     'low',
   ));
   // No opaque tower: the resource pylon IS the shaft. The transparent
@@ -80,8 +86,8 @@ export function buildWindTurbineMesh(
   root.position.set(0, towerH, 0);
   root.visible = true;
 
-  const nacelleLen = Math.max(32, minDim * 0.86);
-  const nacelleRadius = Math.max(5.2, minDim * 0.16);
+  const nacelleLen = Math.max(36, Math.min(70, minDim * 0.46));
+  const nacelleRadius = Math.max(5.5, Math.min(12, minDim * 0.08));
   const nacelle = makeCylinder(windNacelleMat, nacelleRadius, nacelleLen, 0, 0, 0);
   nacelle.rotation.x = Math.PI / 2;
   root.add(nacelle);
@@ -119,9 +125,6 @@ export function buildWindTurbineMesh(
   rotor.position.set(0, 0, nacelleLen * 0.66);
   root.add(rotor);
 
-  const bladeLen = Math.min(WIND_BUILDING_VISUAL_HEIGHT * 0.42, Math.max(86, minDim * 1.55));
-  const bladeW = Math.max(8, minDim * 0.19);
-  const bladeThickness = Math.max(1.6, minDim * 0.032);
   const hub = makeCylinder(windNacelleMat, nacelleRadius * 1.56, bladeThickness * 1.6, 0, 0, 0);
   hub.rotation.x = Math.PI / 2;
   rotor.add(hub);
