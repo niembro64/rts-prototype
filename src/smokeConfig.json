@@ -79,5 +79,16 @@
     "startRadius": 6,
     "endRadiusMultiplier": 2,
     "maxAlpha": 0.05
+  },
+  "locomotionAlbatrosFlying": {
+    "maxPoolSize": 12000,
+    "capPolicy": "evictOldest",
+    "emitFramesSkip": 0,
+    "exhaustSpeed": 0,
+    "fadeInMs": 0,
+    "fadeOutMs": 650,
+    "startRadius": 14,
+    "endRadiusMultiplier": 2.4,
+    "maxAlpha": 0.05
   }
 }

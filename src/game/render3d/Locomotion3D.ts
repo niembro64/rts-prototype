@@ -101,7 +101,8 @@ function hoverSmokeUseId(unitBlueprintId: string): HoverSmokeUseId {
   return 'locomotionHovercraft';
 }
 
-function flyingSmokeUseId(_unitBlueprintId: string): FlyingSmokeUseId {
+function flyingSmokeUseId(unitBlueprintId: string): FlyingSmokeUseId {
+  if (unitBlueprintId === 'unitAlbatros') return 'locomotionAlbatrosFlying';
   return 'locomotionEagleFlying';
 }
 

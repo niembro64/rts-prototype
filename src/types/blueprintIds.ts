@@ -88,6 +88,7 @@ export const TURRET_BLUEPRINT_IDS = [
   'turretShieldSphereSmall',
   'turretShieldCylinderInfinite',
   'turretShieldCylinderInfiniteAimed',
+  'turretAlbatrosSiegeCannon',
 ] as const;
 export type TurretBlueprintId = typeof TURRET_BLUEPRINT_IDS[number];
 

@@ -1772,30 +1772,30 @@
   },
   "unitAlbatros": {
     "unitBlueprintId": "unitAlbatros",
-    "name": "Albatros",
+    "name": "Albatross",
     "shortName": "ALB",
-    "hp": 1600,
+    "hp": 7200,
     "radius": {
-      "visual": 48,
-      "hitbox": 44,
-      "collision": 58
+      "visual": 76,
+      "hitbox": 68,
+      "collision": 92
     },
-    "bodyCenterHeight": 0,
+    "bodyCenterHeight": 42,
     "supportSurface": {
       "kind": "none"
     },
-    "fullVisionRadius": 1400,
+    "fullVisionRadius": 1700,
     "sensors": {
-      "fullSightRadius": 1400,
+      "fullSightRadius": 1700,
       "radarRadius": 0,
       "detectorRadius": 0,
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "mass": 10000,
+    "mass": 12000,
     "cost": {
-      "energy": 1200,
-      "metal": 1200
+      "energy": 5600,
+      "metal": 5600
     },
     "turrets": [
       {
@@ -1806,17 +1806,53 @@
           "z": 0
         },
         "hostDirected": true,
+        "requiredEngagedForFightStop": false
+      },
+      {
+        "turretBlueprintId": "turretAlbatrosSiegeCannon",
+        "mount": {
+          "x": 0.62,
+          "y": 0,
+          "z": 0
+        },
+        "hostDirected": true,
         "requiredEngagedForFightStop": true
+      },
+      {
+        "turretBlueprintId": "turretAlbatrosSiegeCannon",
+        "mount": {
+          "x": -0.18,
+          "y": 0,
+          "z": 0
+        },
+        "hostDirected": false,
+        "requiredEngagedForFightStop": false
+      },
+      {
+        "turretBlueprintId": "turretBeam",
+        "mount": {
+          "x": -0.72,
+          "y": 0,
+          "z": 0
+        },
+        "hostDirected": false,
+        "requiredEngagedForFightStop": false
       }
     ],
     "bodyShape": {
-      "kind": "circle",
-      "radiusFrac": 0,
-      "yFrac": 0,
-      "centerYFrac": 0
+      "kind": "composite",
+      "parts": [
+        {
+          "kind": "oval",
+          "offsetForward": -0.12,
+          "xFrac": 0.72,
+          "yFrac": 0.28,
+          "zFrac": 0.25
+        }
+      ]
     },
     "hud": {
-      "barsOffsetAboveTop": 18
+      "barsOffsetAboveTop": 22
     },
     "legAttachHeightFrac": null,
     "suspension": null,
@@ -1826,40 +1862,56 @@
       "$audio": "event.death.unitEagle"
     },
     "locomotion": {
-      "type": "hover",
+      "type": "flying",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 3,
+        "driveForce": 7,
         "traction": 1
       },
       "config": {
         "gravityCounterUpwardForceRatio": 0.8,
-        "hoverHeightUpwardForce": 140,
-        "hoverHeightUpwardForceRandomizationAmount": 0.99,
+        "hoverHeightUpwardForce": 180,
+        "hoverHeightUpwardForceRandomizationAmount": 0.35,
         "hoverHeightUpwardForceEMA": 0.99,
-        "fanDistX": 0,
-        "fanDistY": 0,
-        "fanRadius": 0.2,
-        "fanRingTubeRadius": 0.02,
-        "fanSpinRadPerSec": -10
+        "wingSpan": 2.8,
+        "wingChord": 0.62,
+        "wingOffsetX": -0.08,
+        "wingHeight": 0.36,
+        "wingThickness": 0.045,
+        "wingDihedralDeg": 7,
+        "wingSweepFrac": 0.48,
+        "tailWingSpan": 1.05,
+        "tailWingChord": 0.32,
+        "tailWingOffsetX": -0.86,
+        "tailWingHeight": 0.34,
+        "tailWingThickness": 0.04,
+        "tailWingDihedralDeg": 15,
+        "tailWingSweepFrac": 0.75,
+        "tailWingMirrorX": true,
+        "jetOffsetX": -0.9,
+        "jetOffsetY": 0,
+        "jetOffsetZ": 0.24,
+        "jetRadius": 0.08,
+        "jetLength": 0.2,
+        "jetCount": 1
       }
     },
     "base": {
       "cost": {
-        "energy": 1200,
-        "metal": 1200
+        "energy": 5600,
+        "metal": 5600
       },
-      "mass": 900,
-      "health": 1600,
+      "mass": 12000,
+      "health": 7200,
       "deathExplosion": {
-        "radius": 66,
-        "force": 42000,
-        "damage": 650
+        "radius": 118,
+        "force": 180000,
+        "damage": 1200
       },
       "radius": {
-        "visual": 48,
-        "hitbox": 44,
-        "collision": 58
+        "visual": 76,
+        "hitbox": 68,
+        "collision": 92
       }
     }
   },

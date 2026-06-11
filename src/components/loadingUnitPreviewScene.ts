@@ -472,7 +472,14 @@ function buildPreviewLocomotion(
       }
       break;
     case 'flying':
-      buildFlyingRig(yawGroup, radius, locomotion.config, 'locomotionEagleFlying', SHELL_ENTITY_ID, HOST_PLAYER_ID);
+      buildFlyingRig(
+        yawGroup,
+        radius,
+        locomotion.config,
+        blueprint.unitBlueprintId === 'unitAlbatros' ? 'locomotionAlbatrosFlying' : 'locomotionEagleFlying',
+        SHELL_ENTITY_ID,
+        HOST_PLAYER_ID,
+      );
       break;
     case 'legs':
       buildPreviewLegs(yawGroup, blueprint, materials.leg);

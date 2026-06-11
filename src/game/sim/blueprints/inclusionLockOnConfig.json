@@ -65,6 +65,7 @@
         "turretConstruction",
         "turretBeamLong",
         "turretCannonLong",
+        "turretAlbatrosSiegeCannon",
         "turretRocketSlow",
         "turretRocketFast",
         "turretAntiAir"
@@ -262,6 +263,7 @@
     "unitAlbatros": {
       "targets": {
         "enemy": {
+          "buildings": "all",
           "towers": "all",
           "units": "all"
         }
@@ -478,6 +480,14 @@
           "buildings": "all",
           "towers": "all",
           "units": "all"
+        }
+      }
+    },
+    "turretAlbatrosSiegeCannon": {
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all"
         }
       }
     },

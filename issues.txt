@@ -44,4 +44,3 @@ parity exception: Rust path opt-in via VITE_BA_ENABLE_RUST_SNAPSHOT_WIRE /
 ?rustSnapshotWire, with the byte-compare harness behind ?dp02rust. The TS
 encode path is the live default and is already pooled/binary-packed.
 ================================================================================
-

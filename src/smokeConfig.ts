@@ -10,6 +10,7 @@ export const SMOKE_USE_IDS = [
   'locomotionAlbatrosHoverFans',
   'locomotionDragonflyHovercraft',
   'locomotionEagleFlying',
+  'locomotionAlbatrosFlying',
 ] as const;
 
 export type SmokeUseId = typeof SMOKE_USE_IDS[number];
@@ -17,7 +18,7 @@ export type HoverSmokeUseId = Extract<
   SmokeUseId,
   'locomotionHovercraft' | 'locomotionAlbatrosHoverFans' | 'locomotionDragonflyHovercraft'
 >;
-export type FlyingSmokeUseId = Extract<SmokeUseId, 'locomotionEagleFlying'>;
+export type FlyingSmokeUseId = Extract<SmokeUseId, 'locomotionEagleFlying' | 'locomotionAlbatrosFlying'>;
 
 export type SmokePuffGeometryConfig = {
   widthSegments: number;

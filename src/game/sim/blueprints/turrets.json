@@ -1094,6 +1094,64 @@
     "emissionKind": "shot",
     "emissionBlueprintId": "shotPlasmaHeavy"
   },
+  "turretAlbatrosSiegeCannon": {
+    "turretBlueprintId": "turretAlbatrosSiegeCannon",
+    "name": "Albatros Siege Cannon",
+    "range": 1200,
+    "rangeVolume": "turret-range-top-and-bottom-unbounded",
+    "cooldown": {
+      "duration": 1700,
+      "durationRandomness": 0.12
+    },
+    "launchForce": 42000,
+    "turretTurnAccel": 90,
+    "turretDrag": 24,
+    "barrel": {
+      "type": "singleCylinderBarrel",
+      "barrelLength": 2.2
+    },
+    "isManualFire": false,
+    "passive": false,
+    "requiresNonObstructedLineOfSight": true,
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": {
+        "acquire": 0.28,
+        "release": 0.24
+      },
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": {
+      "angle": 0,
+      "pelletCount": 1
+    },
+    "burst": null,
+    "shieldPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.turretCannon"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": {
+      "visual": 18
+    },
+    "headOnly": false,
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "ballisticArcLow"
+    },
+    "kind": "attack",
+    "emissionKind": "shot",
+    "emissionBlueprintId": "shotPlasmaHeavy"
+  },
   "turretRocketSlow": {
     "turretBlueprintId": "turretRocketSlow",
     "name": "Rocket Launcher",
