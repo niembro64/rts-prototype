@@ -36,11 +36,11 @@ Rust slabs directly, then delete the shim.
 Rust segment/sphere kernels. Unify damage resolution in Rust; TS receives
 events only.
 
-[053][ARCH] Finish the Rust snapshot wire encoder (V6 -> current V11 entity
-schema) so ENABLE_RUST_SNAPSHOT_WIRE can default ON, then delete the TS entity
-encode path (stateSerializerEntities encode + snapshotEntityWirePack encode)
-per Delete The Old Path. Today the dual path is the documented single-flag
-parity exception: Rust path opt-in via VITE_BA_ENABLE_RUST_SNAPSHOT_WIRE /
-?rustSnapshotWire, with the byte-compare harness behind ?dp02rust. The TS
-encode path is the live default and is already pooled/binary-packed.
+[053][ARCH] Delete the remaining TypeScript entity snapshot encode fallback.
+Rust packed entities now emit the active V11 row schema and snapshot wire
+encoding defaults to Rust, but snapshotEntityWirePack.ts still contains the TS
+entity packer for the force-JS/diagnostic path and parity oracle. Replace that
+oracle/fallback with Rust-owned contract coverage, keep only decode support for
+legacy packed entity payloads if needed, then delete the TS entity encode path
+per Delete The Old Path.
 ================================================================================
