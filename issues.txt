@@ -32,9 +32,12 @@ shim for the targeting FSM. Eliminate the per-tick stamp/readback by making
 targeting state, snapshots, rendering, and downstream combat consumers read the
 Rust slabs directly, then delete the shim.
 
-[052][ARCH] damageHelpers.ts keeps TS damage-context/knockback math parallel to
-Rust segment/sphere kernels. Unify damage resolution in Rust; TS receives
-events only.
+[052][ARCH] DamageSystem.ts still materializes damage resolution side effects
+in TS after Rust classification/HP batching: knockback vectors, death contexts,
+killer bookkeeping, and damage/death event assembly are still produced from TS
+entity objects. Move those resolution outputs into Rust-owned event/result
+buffers so TS receives typed events/knockbacks only, then delete the remaining
+TS resolution math/helpers.
 
 [053][ARCH] Delete the remaining TypeScript entity snapshot encode fallback.
 Rust packed entities now emit the active V11 row schema and snapshot wire
