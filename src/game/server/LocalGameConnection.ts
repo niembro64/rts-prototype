@@ -158,11 +158,16 @@ export class LocalGameConnection implements GameConnection {
     state: NetworkServerSnapshot,
     wirePayload: SnapshotWirePayload | undefined = undefined,
   ): void {
-    if (!SNAPSHOT_CADENCE_REGRESSION.enabled && !SNAPSHOT_ENCODE_INSTRUMENTATION.enabled) return;
+    // Always encode + stamp the wire size: the CLIENT bar's DS SIZE /
+    // FS SIZE / NET readouts are fed by this stamp in local host play
+    // (their tooltips promise an estimate from the same MessagePack
+    // snapshot encoder). Only the heavier regression/instrumentation
+    // recording below stays gated behind the diagnostic flags.
     const encoded = wirePayload ?? this.encodeSnapshotForDiagnostics(state);
     const payload = encoded.bytes;
     const encodeMs = encoded.encodeMs;
     setSnapshotWireBytes(state, payload.byteLength);
+    if (!SNAPSHOT_CADENCE_REGRESSION.enabled && !SNAPSHOT_ENCODE_INSTRUMENTATION.enabled) return;
     const serverMeta = state.serverMeta;
     const snapshotRate = serverMeta !== undefined ? serverMeta.snaps.rate : undefined;
     const unitCount = serverMeta !== undefined ? serverMeta.units.count : undefined;
