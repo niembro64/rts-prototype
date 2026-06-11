@@ -74,5 +74,4 @@ export {
   getSurfaceNormal,
   isFarFromWater,
   isWaterAt,
-  projectHorizontalOntoSlope,
 } from './terrain/terrainSurface';

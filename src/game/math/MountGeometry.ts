@@ -35,18 +35,27 @@ import { applySurfaceTilt } from '../sim/Terrain';
  *  - `surfaceN` is the surface tangent normal at the unit footprint
  *    (sim coords, +Z up).
  */
+const _tiltScratch = { x: 0, y: 0, z: 0 };
+
 export function getTurretWorldMount(
   unitX: number, unitY: number, unitBaseZ: number,
   cos: number, sin: number,
   offsetX: number, offsetY: number, mountHeight: number,
   surfaceN: { nx: number; ny: number; nz: number },
+  out?: { x: number; y: number; z: number },
 ): { x: number; y: number; z: number } {
   // Yaw INNER — rotate the chassis-local mount XY by the chassis
   // facing first; mountHeight stays along chassis-local +Z.
   const yawedX = cos * offsetX - sin * offsetY;
   const yawedY = sin * offsetX + cos * offsetY;
   // Tilt OUTER — apply the surface-normal rotation in world frame.
-  const tilted = applySurfaceTilt(yawedX, yawedY, mountHeight, surfaceN);
+  const tilted = applySurfaceTilt(yawedX, yawedY, mountHeight, surfaceN, _tiltScratch);
+  if (out !== undefined) {
+    out.x = unitX + tilted.x;
+    out.y = unitY + tilted.y;
+    out.z = unitBaseZ + tilted.z;
+    return out;
+  }
   return {
     x: unitX + tilted.x,
     y: unitY + tilted.y,

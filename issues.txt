@@ -61,17 +61,6 @@ still needed; also confirm RUST_SNAPSHOT_WIRE_COMPARE default is OFF so the
 duplicate full JS pack+msgpack at snapshotWireCodec.ts:171-173 never runs
 unless explicitly enabled.
 
-[012][PERF] NetworkSendBudget noncritical coalesce queue (512KB coalesce /
-256KB flush, NetworkSendBudget.ts:4-7) has no hard cap — under sustained
-backpressure pending noncritical messages can accumulate. Fix: cap the pending
-queue (drop-oldest noncritical) so a stalled peer can never grow memory
-unboundedly; count drops in net stats.
-
-[013][PERF] TS terrain sampling allocates per query: terrainSurface.ts
-projectHorizontalOntoSlope/applySurfaceTilt (~61-96) return fresh {x,y,z};
-terrainTileMap.ts getTerrainMeshSample (~336-428) returns a fresh sample object
-per call. These run per-unit-per-frame (render rigs) and per-tick. Fix: out-
-param/scratch-object pattern like getSurfaceNormal already uses; audit callers.
 
 [014][ARCH] Terrain height/normal sampling exists in BOTH TS
 (src/game/sim/terrain/terrainTileMap.ts) and Rust (terrain mesh kernels in
@@ -115,13 +104,6 @@ them (one call over typed arrays) — measure first, then batch the top few.
 
 
 
-[041][PERF] isFarFromWater does 8 radial water samples per call
-(terrainSurface.ts ~132-148). Verify call sites/cadence; precompute a water
-mask if it is on a hot path.
-
-[042][PERF] terrainTriangleSampleFromGlobalMesh iterates every triangle in the
-cell per sample (terrainTileMap.ts ~331). Cache last-hit triangle per querier
-(units rarely change triangle between frames).
 
 
 --------------------------------------------------------------------------------

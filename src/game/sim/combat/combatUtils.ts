@@ -114,6 +114,7 @@ const _entityPositionScratch: Vec3 = { x: 0, y: 0, z: 0 };
 const _entityVelocityScratch: Vec3 = { x: 0, y: 0, z: 0 };
 const _mountKinematicsVelScratch: Vec3 = { x: 0, y: 0, z: 0 };
 const _sourceTurretMountScratch: Vec3 = { x: 0, y: 0, z: 0 };
+const _weaponMountScratch: Vec3 = { x: 0, y: 0, z: 0 };
 
 type SurfaceNormal = { nx: number; ny: number; nz: number };
 
@@ -178,18 +179,15 @@ export function resolveWeaponWorldMount(
   const sourceUnit = unit.unit;
   const suspension = sourceUnit !== null ? sourceUnit.suspension : null;
   const unitPosition = getEntityPosition3d(unit, _entityPositionScratch);
-  const mount = getTurretWorldMount(
+  return getTurretWorldMount(
     unitPosition.x, unitPosition.y, unitGroundZ,
     cos, sin,
     localMount.x + (suspension !== null ? suspension.offsetX : 0),
     localMount.y + (suspension !== null ? suspension.offsetY : 0),
     localMount.z + (suspension !== null ? suspension.offsetZ : 0),
     optionSurfaceN ?? FLAT_SURFACE_NORMAL,
+    out,
   );
-  out.x = mount.x;
-  out.y = mount.y;
-  out.z = mount.z;
-  return out;
 }
 
 /** Authoritative per-turret mount kinematics.
@@ -255,6 +253,7 @@ export function updateWeaponWorldKinematics(
     localMount.y + (suspension !== null ? suspension.offsetY : 0),
     localMount.z + (suspension !== null ? suspension.offsetZ : 0),
     options.surfaceN ?? FLAT_SURFACE_NORMAL,
+    _weaponMountScratch,
   );
 
   const prevTick = turret.worldPosTick;

@@ -58,27 +58,23 @@ export function getSurfaceNormal(
     : terrainMeshNormalFromSample(sample);
 }
 
-export function projectHorizontalOntoSlope(
-  hx: number,
-  hy: number,
-  n: { nx: number; ny: number; nz: number },
-): { x: number; y: number; z: number } {
-  const dot = hx * n.nx + hy * n.ny;
-  const tx = hx - dot * n.nx;
-  const ty = hy - dot * n.ny;
-  const tz = -dot * n.nz;
-  const m = Math.sqrt(tx * tx + ty * ty + tz * tz) || 1;
-  return { x: tx / m, y: ty / m, z: tz / m };
-}
-
 export function applySurfaceTilt(
   vx: number,
   vy: number,
   vz: number,
   n: { nx: number; ny: number; nz: number },
+  out?: { x: number; y: number; z: number },
 ): { x: number; y: number; z: number } {
   const sinT2 = n.nx * n.nx + n.ny * n.ny;
-  if (sinT2 < 1e-12) return { x: vx, y: vy, z: vz };
+  if (sinT2 < 1e-12) {
+    if (out !== undefined) {
+      out.x = vx;
+      out.y = vy;
+      out.z = vz;
+      return out;
+    }
+    return { x: vx, y: vy, z: vz };
+  }
   const sinT = Math.sqrt(sinT2);
   const cosT = n.nz;
   const kx = -n.ny / sinT;
@@ -88,11 +84,16 @@ export function applySurfaceTilt(
   const crossY = -kx * vz;
   const crossZ = kx * vy - ky * vx;
   const oneMinusCos = 1 - cosT;
-  return {
-    x: vx * cosT + crossX * sinT + kx * kdotv * oneMinusCos,
-    y: vy * cosT + crossY * sinT + ky * kdotv * oneMinusCos,
-    z: vz * cosT + crossZ * sinT,
-  };
+  const rx = vx * cosT + crossX * sinT + kx * kdotv * oneMinusCos;
+  const ry = vy * cosT + crossY * sinT + ky * kdotv * oneMinusCos;
+  const rz = vz * cosT + crossZ * sinT;
+  if (out !== undefined) {
+    out.x = rx;
+    out.y = ry;
+    out.z = rz;
+    return out;
+  }
+  return { x: rx, y: ry, z: rz };
 }
 
 export function getSurfaceHeight(
