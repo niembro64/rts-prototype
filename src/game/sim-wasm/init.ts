@@ -3570,6 +3570,23 @@ export interface BodyPoolViews {
 let cached: Promise<SimWasm> | undefined;
 let resolvedHandle: SimWasm | undefined;
 
+/** Explicit opt-in gate for the boot-time contract-test harnesses.
+ *  Bare DEV mode used to import and run every harness on every boot
+ *  (~20 suites, 100ms+); now they run only on request: append
+ *  `?contractTests=1` to the URL or set localStorage
+ *  BA_RUN_CONTRACT_TESTS = "1". Call sites must keep the literal
+ *  `import.meta.env.DEV &&` prefix so production builds tree-shake
+ *  the dynamic test imports away entirely. */
+function shouldRunBootContractTests(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    if (new URLSearchParams(window.location.search).get('contractTests') === '1') return true;
+    return window.localStorage.getItem('BA_RUN_CONTRACT_TESTS') === '1';
+  } catch {
+    return false;
+  }
+}
+
 /** Idempotent. Concurrent callers share one fetch + compile of
  *  the wasm module. Resolves once the WASM is instantiated and
  *  the auto-init (#[wasm_bindgen(start)]) panic hook has run. */
@@ -3630,9 +3647,10 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
       const memory = initOutput.memory;
       // Phase 10 D.3j — verify the entity-DTO encoder is byte-equal
       // with @msgpack/msgpack on a representative set of envelopes.
-      // Dev-only: a regression here means the production encoder
-      // would diverge from the wire format as we land more fields.
-      if (import.meta.env.DEV) {
+      // Opt-in (see shouldRunBootContractTests): a regression here means
+      // the production encoder would diverge from the wire format as we
+      // land more fields.
+      if (import.meta.env.DEV && shouldRunBootContractTests()) {
         const { runSnapshotEncoderByteEqualityTest } = await import('./snapshotEncoderTest');
         await runSnapshotEncoderByteEqualityTest(memory);
       }
@@ -4307,7 +4325,12 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         },
       };
       resolvedHandle = handle;
-      if (import.meta.env.DEV) {
+      if (import.meta.env.DEV && !shouldRunBootContractTests()) {
+        console.info(
+          '(dev) boot contract tests skipped — opt in with ?contractTests=1 or localStorage BA_RUN_CONTRACT_TESTS="1"',
+        );
+      }
+      if (import.meta.env.DEV && shouldRunBootContractTests()) {
         const { runServerBarConfigContractTest } = await import('../../serverBarConfigContractTest');
         runServerBarConfigContractTest();
         const { runCommandSanitizerContractTest } = await import('../server/commandSanitizerContractTest');

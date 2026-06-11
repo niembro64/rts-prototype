@@ -41,15 +41,6 @@ lib.rs:3076 and 7239 use .try_into().unwrap() on input arrays
 panic the authoritative sim. Fix: bounds-check and return sentinel (-1 / early
 return) instead of panicking; keep debug_asserts for dev.
 
-[005][PERF] Dev boot runs the entire contract-test suite + snapshot encoder
-byte-equality tests on EVERY startup: src/game/sim-wasm/init.ts dynamically
-imports ~20 *ContractTest.ts harnesses (~4310-4354) plus snapshotEncoderTest.ts
-(~3636, 3.7k lines / 124KB) and runs them inline, adding 100-500ms+ to every
-dev boot and keeping test code in the dev bundle graph. Fix: gate ALL of these
-behind one explicit opt-in flag (e.g. localStorage BA_RUN_CONTRACT_TESTS or
-?contractTests=1) instead of bare DEV mode, so they still exist and run on
-demand but not on every boot. Verify prod tree-shake drops them.
-
 --------------------------------------------------------------------------------
 P1 — LEAKS / PERF / UX
 --------------------------------------------------------------------------------
