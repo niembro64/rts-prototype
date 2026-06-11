@@ -1118,6 +1118,15 @@ export class RtsScene3D {
     this.cameraControl.centerOn(x, y);
   }
 
+  /** Minimap right-click: dispatch the standard right-click command
+   *  (repair → attack-at-point → move / factory rally) at a minimap
+   *  world point for the current selection. BAR convention: left
+   *  minimap click moves the camera, right minimap click commands. */
+  public issueMinimapCommand(x: number, y: number, queue: boolean): void {
+    if (this.inputManager === null) return;
+    this.inputManager.issueMinimapWorldCommand(x, y, queue);
+  }
+
   public goToLastPing(): void {
     if (this.lastPingPoint === null) return;
     this.cameraControl.centerOn(this.lastPingPoint.x, this.lastPingPoint.y);

@@ -567,6 +567,10 @@ function handleMinimapInteraction(x: number, y: number): void {
   centerMinimapCamera(x, y);
 }
 
+function handleMinimapCommandInteraction(x: number, y: number, queue: boolean): void {
+  issueMinimapCommand(x, y, queue);
+}
+
 function communicationSenderName(playerId: PlayerId): string {
   return resolvePlayerName(playerId);
 }
@@ -783,6 +787,7 @@ const {
   bindGameSceneUi,
   togglePlayer,
   handleMinimapClick: centerMinimapCamera,
+  handleMinimapCommand: issueMinimapCommand,
   selectionActions,
 } = useGameCanvasSceneUi({
   activePlayer,
@@ -1663,6 +1668,7 @@ watchEffect(() => {
             :drawings="minimapCommunicationDrawings"
             :drag-pan="minimapDragPanEnabled"
             @click="handleMinimapInteraction"
+            @command="handleMinimapCommandInteraction"
           />
           <section
             class="communication-panel"

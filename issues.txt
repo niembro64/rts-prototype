@@ -45,13 +45,6 @@ return) instead of panicking; keep debug_asserts for dev.
 P1 — LEAKS / PERF / UX
 --------------------------------------------------------------------------------
 
-[008][UX] Minimap has no right-click command path — handlePointerDown
-(src/components/Minimap.vue ~415) early-returns unless button===0 (left =
-camera pan only). BAR standard: right-click on minimap issues move/attack for
-the current selection. Fix: handle button===2 (+contextmenu suppression), map
-minimap point to world, dispatch the same command flow as a world right-click,
-including shift-queue.
-
 [009][UX] No pause/speed affordance in the HUD. setGamePaused() exists
 (GameCanvas.vue:296) but nothing user-facing exposes pause state or a toggle.
 Fix: add a pause toggle + paused indicator (and speed display if/when speeds
@@ -190,9 +183,6 @@ diffing.
 per-entity/per-frame from JS (e.g. wind_sample_state,
 build_target_horizontal_distance). Identify the per-frame offenders and batch
 them (one call over typed arrays) — measure first, then batch the top few.
-
-[036][PERF] Minimap.vue (~473) deep-watches props.drawings. Replace with a
-drawings version counter / shallow watch.
 
 [037][UX] Minimap UX papercuts batch (SelectionPanel.vue unless noted):
 - select-only buttons read like counts ("Tower 2") — relabel "(2 towers)"

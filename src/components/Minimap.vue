@@ -42,6 +42,10 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   (e: 'click', x: number, y: number): void;
+  /** Right-click command at a minimap world point (BAR convention:
+   *  left = camera, right = order the current selection). `queue`
+   *  carries shift-queue. */
+  (e: 'command', x: number, y: number, queue: boolean): void;
 }>();
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -413,9 +417,16 @@ function emitCameraTargetFromPointer(event: PointerEvent): void {
 }
 
 function handlePointerDown(event: PointerEvent): void {
-  if (event.button !== 0) return;
   const canvas = canvasRef.value;
   if (!canvas) return;
+  if (event.button === 2) {
+    event.preventDefault();
+    event.stopPropagation();
+    const target = minimapPointerToWorld(event, canvas, props.data);
+    if (target) emit('command', target.x, target.y, event.shiftKey);
+    return;
+  }
+  if (event.button !== 0) return;
   event.preventDefault();
   event.stopPropagation();
   draggingPointerId.value = event.pointerId;
@@ -467,10 +478,12 @@ watch(
   compose,
 );
 
+// Shallow on purpose: the parent builds a fresh drawings array (computed
+// .map) whenever content changes, so identity comparison is enough — a
+// deep walk of every drawing object per change bought nothing.
 watch(
   () => props.drawings,
   compose,
-  { deep: true },
 );
 
 onMounted(() => {
@@ -493,6 +506,7 @@ onMounted(() => {
       @pointerup="handlePointerEnd"
       @pointercancel="handlePointerEnd"
       @lostpointercapture="handlePointerEnd"
+      @contextmenu.prevent
     ></canvas>
   </div>
 </template>

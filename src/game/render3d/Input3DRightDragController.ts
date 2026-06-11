@@ -63,6 +63,9 @@ export type Input3DLineDragState = {
 export class Input3DRightDragController {
   private rightDown = false;
   private readonly linePath = new LinePathAccumulator();
+  /** Dedicated single-point path for issueWorldPointCommand so a
+   *  minimap command can never clobber a live viewport right-drag. */
+  private readonly worldPointPath = new LinePathAccumulator();
   private readonly selectedFactoriesScratch: Entity[] = [];
   private preserveFormationDrag = false;
   private dragStartQueueMode: QueueCommandMode | null = null;
@@ -292,6 +295,71 @@ export class Input3DRightDragController {
     }
     this.resetLineDrag();
     this.config.refreshCursor();
+  }
+
+  /** Issue the standard right-click command for a world point that did
+   *  not come from a viewport ray — the minimap right-click path. Runs
+   *  the same dispatch order as a viewport right-click (commander
+   *  repair → attack-if-enemy-at-point → group move for units; rally
+   *  for selected factories) through the shared builders, so minimap
+   *  and viewport commands cannot drift. */
+  issueWorldPointCommand(x: number, y: number, queueMode: QueueCommandMode): void {
+    const source = this.source();
+    const selectedUnits = source.getSelectedUnits();
+    const tick = this.config.getTick();
+    const bounds = this.config.getMapSampleBounds();
+    const z = getSurfaceHeight(x, y, bounds.width, bounds.height, LAND_CELL_SIZE);
+
+    if (selectedUnits.length > 0) {
+      const repairCmd = buildRepairCommandAt(
+        source,
+        x, y,
+        this.config.getSelectedCommander(),
+        tick,
+        queueMode.queue,
+        queueMode.queueFront,
+        queueMode.queueInsertIndex,
+      );
+      if (repairCmd) {
+        this.config.commandQueue.enqueue(repairCmd);
+        return;
+      }
+      const attackCmd = buildAttackCommandAt(
+        source,
+        x, y,
+        selectedUnits,
+        this.config.getActivePlayerId(),
+        tick,
+        queueMode.queue,
+        queueMode.queueFront,
+        queueMode.queueInsertIndex,
+      );
+      if (attackCmd) {
+        this.config.commandQueue.enqueue(attackCmd);
+        return;
+      }
+      this.worldPointPath.start(x, y, selectedUnits.length, z);
+      const moveCmd = buildLinePathMoveCommand(
+        this.worldPointPath,
+        selectedUnits,
+        this.config.getWaypointMode(),
+        tick,
+        queueMode.queue,
+        queueMode.queueFront,
+        queueMode.queueInsertIndex,
+      );
+      if (moveCmd) this.config.commandQueue.enqueue(moveCmd);
+      return;
+    }
+
+    const factories = this.getSelectedFactories();
+    if (factories.length > 0) {
+      const cmds = buildFactoryRallyCommands(
+        factories, x, y,
+        this.config.getWaypointMode(), tick, z,
+      );
+      for (const cmd of cmds) this.config.commandQueue.enqueue(cmd);
+    }
   }
 
   getLineDragState(): Input3DLineDragState {

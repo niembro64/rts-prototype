@@ -219,6 +219,12 @@ export function useGameCanvasSceneUi({
     getActiveBattleScene()?.centerCameraOn(x, y);
   }
 
+  /** Minimap right-click (BAR convention): issue the standard
+   *  right-click command at the minimap world point. */
+  function handleMinimapCommand(x: number, y: number, queue: boolean): void {
+    getActiveBattleScene()?.issueMinimapCommand(x, y, queue);
+  }
+
   const selectionActions: SelectionActions = {
     setWaypointMode: (mode) => {
       getActiveBattleScene()?.setWaypointMode(mode);
@@ -412,6 +418,7 @@ export function useGameCanvasSceneUi({
     bindGameSceneUi,
     togglePlayer,
     handleMinimapClick,
+    handleMinimapCommand,
     selectionActions,
   };
 }

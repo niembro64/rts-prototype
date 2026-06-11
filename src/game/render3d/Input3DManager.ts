@@ -1984,6 +1984,14 @@ export class Input3DManager {
     return this.modeClicks.getAreaDragState();
   }
 
+  /** Minimap right-click: issue the standard right-click command for
+   *  the given world point (repair → attack-at-point → move; factory
+   *  rally when only factories are selected). `queue` mirrors the
+   *  shift-queue semantics of a viewport right-click. */
+  issueMinimapWorldCommand(x: number, y: number, queue: boolean): void {
+    this.rightDrag.issueWorldPointCommand(x, y, { queue, queueFront: false });
+  }
+
   destroy(): void {
     this.canvas.removeEventListener('mousedown', this.onMouseDown);
     window.removeEventListener('mousemove', this.onMouseMove);
