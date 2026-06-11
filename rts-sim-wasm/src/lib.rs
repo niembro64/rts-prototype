@@ -3071,8 +3071,12 @@ pub fn step_unit_motion(
         6,
         "step_unit_motion expects motion = [x, y, z, vx, vy, vz]"
     );
-    // try_into here is infallible given the assert above; we use a
-    // hand-cast to keep the helper signature crisp.
+    // Release builds must not panic the authoritative sim on a
+    // malformed JS-side buffer — silently skipping the step is the
+    // recoverable failure; the debug_assert above catches it in dev.
+    if motion.len() < 6 {
+        return;
+    }
     let m: &mut [f64; 6] = (&mut motion[0..6]).try_into().unwrap();
     integrate_unit_motion_inline(
         m,
@@ -4755,11 +4759,20 @@ fn engine_statics(handle: u32) -> &'static mut EngineStatics {
     // never shrinks (destroy nulls the slot but keeps the index live),
     // so the address backing a `Some(_)` stays stable for the slot's
     // lifetime.
+    //
+    // The handle is NOT remote input: it is the u32 the JS engine got
+    // back from engine-create and stores for its own lifetime, so an
+    // out-of-range or destroyed handle is an engine-lifecycle bug.
+    // Panicking with a clear message (instead of indexing UB-adjacent
+    // paths) is the intended behavior; `get_mut` keeps the
+    // out-of-range case on the same explicit panic instead of a raw
+    // index panic.
     unsafe {
         let v = &mut *ENGINE_STATICS.0.get();
-        v.handles[handle as usize]
-            .as_mut()
-            .expect("engine_statics: handle was destroyed")
+        v.handles
+            .get_mut(handle as usize)
+            .and_then(|slot| slot.as_mut())
+            .expect("engine_statics: stale or destroyed engine handle")
     }
 }
 
@@ -7236,6 +7249,11 @@ pub fn solve_kinematic_intercept(
 ) -> u32 {
     debug_assert!(input.len() >= 22, "intercept input buffer too small");
     debug_assert!(out_buf.len() >= 7, "intercept output buffer too small");
+    // Release builds: a malformed buffer reports "no solution" instead
+    // of panicking the authoritative sim.
+    if input.len() < 22 || out_buf.len() < 7 {
+        return 0;
+    }
     let inp: &[f64; 22] = (&input[0..22]).try_into().unwrap();
     if solve_kinematic_intercept_inline(inp, out_buf, prefer_late_solution, max_time_sec_or_zero) {
         1
@@ -14483,8 +14501,11 @@ pub fn spatial_query_occupied_cells_debug() -> u32 {
     state.scratch_u32.clear();
     state.scratch_u32.push(0);
     let mut n_cells = 0u32;
-    let cells_iter: Vec<(u64, &SpatialCellBucket)> =
+    let mut cells_iter: Vec<(u64, &SpatialCellBucket)> =
         state.cells.iter().map(|(k, v)| (*k, v)).collect();
+    // Deterministic output: HashMap iteration order varies run-to-run,
+    // which would make replay/debug diffs of this payload noisy.
+    cells_iter.sort_unstable_by_key(|&(k, _)| k);
     let mut buf = std::mem::take(&mut state.scratch_u32);
     let mut seen_players: std::collections::HashSet<u8> = std::collections::HashSet::new();
     for (key, bucket) in cells_iter {

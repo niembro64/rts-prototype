@@ -34,12 +34,6 @@ reflection/submunition ~25660-26927; snapshot diff ~26933-33433; snapshot
 envelope ~33433-end). Pure code motion, no behavior change; keep wasm-bindgen
 exports stable; rebuild + run contract tests after.
 
-[004][BUG] Rust panic risks on data that can arrive from JS/network in tick
-paths: lib.rs:4762 indexes engine statics via .expect() on a handle;
-lib.rs:3076 and 7239 use .try_into().unwrap() on input arrays
-(step_unit_motion, solve_kinematic_intercept). A malformed command/buffer can
-panic the authoritative sim. Fix: bounds-check and return sentinel (-1 / early
-return) instead of panicking; keep debug_asserts for dev.
 
 --------------------------------------------------------------------------------
 P1 — LEAKS / PERF / UX
@@ -76,13 +70,6 @@ per Delete The Old Path. (Verify exact duplication before cutting.)
 P2 — SMALLER FIXES / HARDENING / CLEANUP
 --------------------------------------------------------------------------------
 
-[033][PERF] Rust micro-allocs: spatial-hash cell item Vec allocates on first
-touch within a tick (lib.rs:~4436) and woke buffer resizes per call (~4452).
-Pre-size at pool init / reuse cells across ticks.
-
-[034][ARCH] Rust: spatial_query_occupied_cells_debug (lib.rs:~14490) iterates
-HashMap order — debug-only, but sort keys so its output is stable for replay
-diffing.
 
 [035][ARCH] WASM boundary chatter: ~342 exported functions, several called
 per-entity/per-frame from JS (e.g. wind_sample_state,
