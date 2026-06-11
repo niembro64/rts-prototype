@@ -25,10 +25,9 @@ const BARREL_CAP = 32768;
 const CONE_BARREL_CAP = 4096;
 const SHIELD_PANEL_CAP = 1024;
 const ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
-// Unit pools fade via screen-door dither in the opaque pass (EntityFade3D):
-// kept pixels are fully opaque and write depth, discarded pixels write
-// nothing, so default opaque ordering interacts correctly with the
-// transparent water plane and no render-order override is needed.
+const UNIT_DETAIL_RENDER_ORDER = 4;
+// Unit pools fade via per-instance alpha in EntityFade3D, matching the leg
+// pools so the whole unit materializes and vanishes as one opacity channel.
 
 type DirtySpan = {
   minSlot: number;
@@ -917,6 +916,7 @@ export class UnitDetailInstanceRenderer3D {
     const colorAttr = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3), 3);
     colorAttr.setUsage(THREE.DynamicDrawUsage);
     mesh.instanceColor = colorAttr;
+    mesh.renderOrder = UNIT_DETAIL_RENDER_ORDER;
     mesh.frustumCulled = false;
     mesh.count = 0;
     this.fadeState.set(mesh, { arr: fadeArr, attr: fadeAttr, dirty: createDirtySpan() });

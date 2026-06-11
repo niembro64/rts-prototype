@@ -2,21 +2,18 @@
 // entity kind (units, towers, buildings, turrets).
 //
 // "Construction mirrors destruction": a single per-piece opacity channel
-// runs 0 → 1 as an entity is built and 1 → 0 as it dies. Per the design
+// runs 0 -> 1 as an entity is built and 1 -> 0 as it dies. Per the design
 // philosophy ("Materialization: build-in and death-out are one reversible
-// opacity channel") it is realized as a screen-door (dithered) dissolve in
-// the OPAQUE pass — never alpha blending — so a multi-part body still
-// writes depth and self-occludes through the transition: no
-// see-through-to-the-back-faces artifact and no transparent-queue sort
-// cost at scale.
+// opacity channel") it is realized as actual alpha, so every renderer uses
+// the same continuous opacity fade instead of a stippled dissolve.
 //
-// The dither patch, the death-linger lifecycle, and the build-in opacity
+// The alpha patch, the death-linger lifecycle, and the build-in opacity
 // math live here so units and buildings share one implementation rather
 // than duplicating it across renderers. Only the GPU feeder differs by
 // render backend:
 //   - instanced pools  → per-instance `aFade` attribute  (units)
 //   - per-Mesh objects → per-object `uFade` uniform clone (buildings)
-// both of which drive the identical `vFade` dissolve below.
+// both of which drive the identical alpha fade below.
 
 import * as THREE from 'three';
 import type { EntityId } from '../sim/types';
@@ -28,39 +25,23 @@ import { UNIT_DEATH_FADE_MS } from '@/visionConfig';
  *  entering-vision fade durations. */
 export const ENTITY_DEATH_FADE_MS = UNIT_DEATH_FADE_MS;
 
-// ── The one fragment dither patch both backends emit ──────────────────
-// Ordered 8x8-equivalent Bayer threshold from the classic recursive
-// fract construction (values in [0,1)). A fragment survives while
-// vFade > threshold, so fade 1 keeps every pixel and fade 0 discards
-// every pixel — a stippled dissolve that stays in the opaque pass and
-// keeps writing depth.
-const FADE_DITHER_FUNCTIONS = [
-  'float baBayer2(vec2 a) { a = floor(a); return fract(a.x * 0.5 + a.y * a.y * 0.75); }',
-  'float baBayer4(vec2 a) { return baBayer2(0.5 * a) * 0.25 + baBayer2(a); }',
-  'float baBayer8(vec2 a) { return baBayer4(0.5 * a) * 0.25 + baBayer2(a); }',
-].join('\n');
-
-const FADE_FRAGMENT_COMMON = [
-  'varying float vFade;',
-  FADE_DITHER_FUNCTIONS,
-  '#include <common>',
-].join('\n');
-const FADE_FRAGMENT_DITHER = [
-  'if (vFade < 1.0 && baBayer8(gl_FragCoord.xy) >= clamp(vFade, 0.0, 1.0)) discard;',
+// -- The one fragment alpha patch both backends emit -------------------
+const FADE_FRAGMENT_COMMON = ['varying float vFade;', '#include <common>'].join('\n');
+const FADE_FRAGMENT_ALPHA = [
+  'diffuseColor.a *= clamp(vFade, 0.0, 1.0);',
   '#include <opaque_fragment>',
 ].join('\n');
 
 function injectFadeFragment(shader: THREE.WebGLProgramParametersWithUniforms): void {
   shader.fragmentShader = shader.fragmentShader
     .replace('#include <common>', FADE_FRAGMENT_COMMON)
-    .replace('#include <opaque_fragment>', FADE_FRAGMENT_DITHER);
+    .replace('#include <opaque_fragment>', FADE_FRAGMENT_ALPHA);
 }
 
 /** Patch a material so each INSTANCE's `aFade` attribute drives the fade.
- *  Used by the shared unit instanced pools. The material stays in the
- *  opaque pass and keeps writing depth; fading is a per-pixel discard. */
+ *  Used by the shared unit instanced pools. */
 export function patchInstancedFadeMaterial(material: THREE.Material): void {
-  material.transparent = false;
+  material.transparent = true;
   material.depthWrite = true;
   const prev = material.onBeforeCompile;
   material.onBeforeCompile = (shader, renderer) => {
@@ -78,7 +59,7 @@ export function patchInstancedFadeMaterial(material: THREE.Material): void {
   };
   // Share one program across every instanced-faded material, distinct
   // from unpatched and per-object-faded materials.
-  material.customProgramCacheKey = () => 'entityFadeInstancedDither';
+  material.customProgramCacheKey = () => 'entityFadeInstancedAlpha';
   material.needsUpdate = true;
 }
 
@@ -92,14 +73,12 @@ export type PerObjectFade = {
 // is identical for every clone of the same base variant, so use a stable cache
 // key and let those clones share one compiled program. Otherwise construction
 // and death fades can compile/link one shader per mesh during gameplay.
-const PER_OBJECT_FADE_CACHE_KEY = 'entityFadePerObjectDither';
+const PER_OBJECT_FADE_CACHE_KEY = 'entityFadePerObjectAlpha';
 
 /** Clone a material and patch the clone so a per-object `uFade` uniform
  *  drives the fade. Leaves the (often shared) base material untouched, so
  *  fading one per-Mesh object never bleeds onto others. Used for the
- *  per-Mesh building / tower render path. The clone keeps the base
- *  material's queue/depth settings — the dissolve is a discard, not
- *  blending, so opaque bodies stay opaque and depth-writing while fading. */
+ *  per-Mesh building / tower render path. */
 export function makePerObjectFadeMaterial(base: THREE.Material): PerObjectFade {
   if ((base as THREE.ShaderMaterial).isShaderMaterial === true) {
     return makeShaderPerObjectFadeMaterial(base as THREE.ShaderMaterial);
@@ -107,6 +86,8 @@ export function makePerObjectFadeMaterial(base: THREE.Material): PerObjectFade {
 
   const baseCacheKey = base.customProgramCacheKey();
   const material = base.clone();
+  material.transparent = true;
+  material.depthWrite = true;
   const uFade = { value: 1 };
   const cacheKey = `${PER_OBJECT_FADE_CACHE_KEY}:${baseCacheKey}`;
   const prev = material.onBeforeCompile;
@@ -132,19 +113,17 @@ export function makePerObjectFadeMaterial(base: THREE.Material): PerObjectFade {
 function makeShaderPerObjectFadeMaterial(base: THREE.ShaderMaterial): PerObjectFade {
   const baseCacheKey = base.customProgramCacheKey();
   const material = base.clone();
+  material.transparent = true;
+  material.depthWrite = true;
   const uFade = { value: 1 };
   material.uniforms = {
     ...material.uniforms,
     uFade,
   };
-  material.fragmentShader = [
-    'uniform float uFade;',
-    FADE_DITHER_FUNCTIONS,
-    material.fragmentShader.replace(
-      /gl_FragColor\s*=\s*([^;]+);/g,
-      'if (uFade < 1.0 && baBayer8(gl_FragCoord.xy) >= clamp(uFade, 0.0, 1.0)) discard;\n  gl_FragColor = $1;',
-    ),
-  ].join('\n');
+  material.fragmentShader = `uniform float uFade;\n${material.fragmentShader.replace(
+    /gl_FragColor\s*=\s*([^;]+);/g,
+    'gl_FragColor = $1;\n  gl_FragColor.a *= clamp(uFade, 0.0, 1.0);',
+  )}`;
   material.customProgramCacheKey = () => `${PER_OBJECT_FADE_CACHE_KEY}:shader:${baseCacheKey}`;
   material.needsUpdate = true;
   return { material, setFade: (value: number): void => { uFade.value = value; } };
