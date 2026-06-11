@@ -56,6 +56,7 @@ import sharedSimConstants from './sharedSimConstants.json';
 import snapshotConfigJson from './snapshotConfig.json';
 import emaConfigJson from './emaConfig.json';
 import combatConfigJson from './combatConfig.json';
+import beamConfigJson from './beamConfig.json';
 import worldRenderConfigJson from './worldRenderConfig.json';
 import shieldVisualConfigJson from './shieldVisualConfig.json';
 import explosionConfigJson from './explosionConfig.json';
@@ -272,6 +273,7 @@ export const MAX_TICK_DT_MS = sharedSimConstants.maxTickDtMs;
  *  damage. This prevents shield-panel / shield-sphere loops
  *  from producing unbounded traces or arbitrary damage spheres. */
 export const BEAM_MAX_SEGMENTS = combatConfigJson.beamMaxSegments;
+export const BEAM_MIN_ON_TIME_MS = beamConfigJson.minOnTimeMs;
 
 // =============================================================================
 // BATTLE WAYPOINT DEFAULTS

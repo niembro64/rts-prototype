@@ -1,4 +1,5 @@
 {
+  "minOnTimeMs": 500,
   "outer": {
     "waveHighToLowAlphaLengthRatio": 0.5,
     "waveSpacing": 300,

@@ -3,6 +3,7 @@
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, TurretState } from '../types';
 import { NO_ENTITY_ID } from '../types';
+import { beamIndex } from '../BeamIndex';
 import type { SimEvent } from './types';
 import { CT_TURRET_STATE_ENGAGED } from '../../sim-wasm/init';
 import { getBeamWeaponsTargeting } from './targetIndex';
@@ -69,8 +70,9 @@ export function emitLaserStopsForEntity(entity: Entity): SimEvent[] {
   return _laserStopOwner;
 }
 
-// Emit laserStop events for all beam weapons across the world that were targeting a dying entity.
-// This ensures sounds stop immediately when the target dies rather than waiting for retarget.
+// Emit laserStop events for all inactive beam weapons across the world that were
+// targeting a dying entity. Active beams keep their sound until the sim removes
+// the beam after its configured minimum on-time.
 //
 // Reads the inverse target index (targetIndex.ts) instead of scanning every
 // unit × every turret on each death — at 1000 units × 8 turrets the old scan
@@ -83,6 +85,7 @@ export function emitLaserStopsForTarget(world: WorldState, targetId: EntityId): 
     if (!unit.combat || !unit.unit || unit.unit.hp <= 0) continue;
     const weapon = unit.combat.turrets[weaponIndex];
     if (!weapon) continue;
+    if (beamIndex.hasActiveBeam(unit.id, weaponIndex)) continue;
     const config = weapon.config;
     const soundEntityId = turretSoundEntityId(unit, weaponIndex);
     if (!activeLaserSoundIds.delete(soundEntityId)) continue;
@@ -96,8 +99,8 @@ export function emitLaserStopsForTarget(world: WorldState, targetId: EntityId): 
   return _laserStopTarget;
 }
 
-// Update laser sounds based on targeting state (not beam existence)
-// This is called every frame to ensure sounds match targeting state.
+// Update laser sounds based on targeting state and active beam existence.
+// This is called every frame to ensure sounds match the sim beam lifetime.
 // Iterates ONLY units that have at least one beam weapon (cached on
 // the world via WorldState.getBeamUnits) — at typical compositions
 // that's a small minority of units, so we avoid the all-units scan
@@ -150,8 +153,9 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
         weapon.state,
         weapon.target,
       );
+      const hasActiveBeam = beamIndex.hasActiveBeam(unit.id, i);
 
-      if (hasTargetInRange) {
+      if (hasTargetInRange || hasActiveBeam) {
         if (!wasActive) activeLaserSoundIds.add(soundEntityId);
         if (!wasActive || shouldRefreshActive) {
           audioEvents.push({

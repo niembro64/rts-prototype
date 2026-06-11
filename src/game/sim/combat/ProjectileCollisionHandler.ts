@@ -1,7 +1,7 @@
 // Projectile collision detection and damage application
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId, ProjectileShot, BeamRay, LaserRay, ShotSource } from '../types';
+import type { Entity, EntityId, Projectile, ProjectileShot, BeamRay, LaserRay, ShotSource } from '../types';
 import {
   REFLECTOR_HIT_KIND_NONE,
   SHIELD_PANEL_PROJECTILE_QUERY_PAD,
@@ -23,7 +23,7 @@ import { buildImpactContext, collectKillsAndDeathContexts, emitBeamHitAudio } fr
 import { createProjectileConfigFromShot } from '../projectileConfigs';
 import { getSurfaceNormal, isWaterAt, WATER_LEVEL } from '../Terrain';
 import { spatialGrid } from '../SpatialGrid';
-import { LAND_CELL_SIZE } from '../../../config';
+import { BEAM_MIN_ON_TIME_MS, LAND_CELL_SIZE } from '../../../config';
 import { getActiveShields } from './shieldTurret';
 import { REFLECTIVE_SHIELD_MATERIAL } from '../blueprints/shieldMaterials';
 import { getSimWasm } from '../../sim-wasm/init';
@@ -64,6 +64,12 @@ function isValidProjectileSweep(
   const dy = currentY - prevY;
   const dz = currentZ - prevZ;
   return dx * dx + dy * dy + dz * dz <= MAX_PROJECTILE_SWEEP_DISTANCE_SQ;
+}
+
+function projectileEffectiveMaxLifespanMs(proj: Projectile): number {
+  return isRayType(proj.projectileType)
+    ? Math.max(proj.maxLifespan, BEAM_MIN_ON_TIME_MS)
+    : proj.maxLifespan;
 }
 
 // Reusable containers for checkProjectileCollisions (avoid per-frame allocations)
@@ -1045,7 +1051,7 @@ function classifyProjectileTerminalConsequence(
   _terminalGroundZ[0] = groundZ;
   _terminalHp[0] = proj.hp;
   _terminalTimeAliveMs[0] = proj.timeAlive;
-  _terminalMaxLifespanMs[0] = proj.maxLifespan;
+  _terminalMaxLifespanMs[0] = projectileEffectiveMaxLifespanMs(proj);
 
   const sim = getSimWasm();
   if (sim === undefined) {
@@ -1278,7 +1284,7 @@ export function checkProjectileCollisions(
     }
 
     const terminalReflectorHit = hitShield && !reflectedProjectile;
-    const expiredBeforeDamage = proj.timeAlive >= proj.maxLifespan;
+    const expiredBeforeDamage = proj.timeAlive >= projectileEffectiveMaxLifespanMs(proj);
     const healthZeroBeforeDamage = proj.projectileType === 'projectile' && proj.hp <= 0;
     let directHitThisTick = false;
     let directHitSurfaceNormalX: number | undefined;

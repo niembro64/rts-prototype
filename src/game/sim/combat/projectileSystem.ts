@@ -21,6 +21,7 @@ import {
   DGUN_TERRAIN_FOLLOW_DAMPING_RATIO,
   DGUN_TERRAIN_FOLLOW_MAX_THRUST_FORCE,
   BEAM_MAX_SEGMENTS,
+  BEAM_MIN_ON_TIME_MS,
 } from '../../../config';
 import {
   getEntityAcceleration3d,
@@ -1541,15 +1542,9 @@ export function updateProjectiles(
         }
 
         // Engagement-gated termination for both continuous beams and
-        // laser pulses: if the firing weapon is no longer 'engaged'
-        // (target died, moved out of engage range, etc.) the beam
-        // stops immediately. Continuous beams reset timeAlive so they
-        // never hit a finite timeout check; laser pulses keep
-        // accumulating timeAlive so they still expire at their
-        // configured duration if the weapon stays engaged the whole
-        // time. Without this gate the client's render path was
-        // disposing the beam at disengagement while the server kept
-        // dealing damage from the still-alive projectile.
+        // laser pulses. Disengaged rays stay alive until their minimum
+        // on-time has elapsed so a lost target cannot create a
+        // sub-frame beam flicker while the sim is still tracing damage.
         const shotType = proj.config.shot.type;
         const isContinuous = shotType === 'beam';
         const isLaser = shotType === 'laser';
@@ -1557,13 +1552,12 @@ export function updateProjectiles(
           const engaged = readCombatTargetingTurretFsmInto(source, weaponIndex, _fireFsm)
             ? _fireFsm.stateCode === CT_TURRET_STATE_ENGAGED
             : weapon.state === 'engaged';
-          if (!engaged) {
+          if (!engaged && proj.timeAlive >= BEAM_MIN_ON_TIME_MS) {
             beamIndex.removeBeam(proj.sourceEntityId, weaponIndex);
             projectilesToRemove.push(entity.id);
             despawnEvents.push({ id: entity.id });
             continue;
           }
-          if (isContinuous) proj.timeAlive = 0;
         }
 
         // Beam starts follow the turret mount center. Direction follows
