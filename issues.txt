@@ -45,12 +45,6 @@ return) instead of panicking; keep debug_asserts for dev.
 P1 — LEAKS / PERF / UX
 --------------------------------------------------------------------------------
 
-[007][UX] WASM sim init failure is console-only: src/main.ts:18-21 logs
-console.error and the app mounts anyway; first battle start then awaits a
-rejected/never-ready sim with no user-visible error. Fix: surface a blocking
-error state (banner/dialog with reload action) when initSimWasm() rejects, and
-gate battle-start buttons on sim readiness.
-
 [008][UX] Minimap has no right-click command path — handlePointerDown
 (src/components/Minimap.vue ~415) early-returns unless button===0 (left =
 camera pan only). BAR standard: right-click on minimap issues move/attack for
