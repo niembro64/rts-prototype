@@ -75,8 +75,8 @@ import {
 
 const WAYPOINT_SCRATCH_STRIDE = 5;
 // Acceleration is no longer shipped on the wire; the turret scratch
-// shrank from 12 → 10 f64 per turret (drop angular.acc and
-// angular.pitchAcc) — matches SNAPSHOT_ENCODE_TURRET_STRIDE in lib.rs.
+// later grew by one V11 inactive-state slot — matches
+// SNAPSHOT_ENCODE_TURRET_STRIDE in lib.rs.
 import {
   SNAPSHOT_ENTITY_TYPE_UNIT,
   SNAPSHOT_ENTITY_TYPE_BUILDING,
@@ -98,8 +98,8 @@ import {
   packTerrainForWire,
 } from '../network/snapshotStaticWirePack';
 
-const TURRET_SCRATCH_STRIDE = 10;
-const ACTION_SCRATCH_STRIDE = 16;
+const TURRET_SCRATCH_STRIDE = 11;
+const ACTION_SCRATCH_STRIDE = 19;
 
 const _utf8 = new TextEncoder();
 

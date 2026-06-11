@@ -87,20 +87,16 @@ export const ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING = 2;
 export const ENTITY_SNAPSHOT_WIRE_TYPE_TOWER = 3;
 export const ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE = 9;
 // Unit row layout: see appendUnitEntityWireRow for the exact slot order.
-// Stride shrank from 72 → 64 when the 4 movementAccel slots and 4
-// angularAcceleration slots were removed from the wire (acceleration is
-// no longer shipped — client integrates from velocity only). Stride
-// shrank from 64 → 59 when 5 retired actuator-state slots were dropped.
-// shrank from 59 → 51 when 8 retired visual-suspension slots were
-// dropped from the JS→WASM entity row.
-export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 51;
-export const ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE = 34;
-export const ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE = 16;
+// Slots 51+ carry V11 command/build/cloak state that used to force a RAW
+// entity fallback.
+export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 64;
+export const ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE = 42;
+export const ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE = 19;
 // Turret row layout: rot, vel, pitch, pitchVel, id, state, hasTarget,
-// targetId, hasShieldRange, shieldRange. Stride shrank from
+// targetId, hasShieldRange, shieldRange, inactive. Stride shrank from
 // 12 → 10 when the 2 angular acceleration slots (acc, pitchAcc) were
-// removed alongside movementAccel.
-export const ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE = 10;
+// removed alongside movementAccel, then grew to 11 for the V11 inactive bit.
+export const ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE = 11;
 export const ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE = 5;
 
 export type EntitySnapshotWireSource = {
@@ -347,6 +343,22 @@ function appendRawEntityWireRow(): void {
   entityWireSource.rowIndices.push(-1);
 }
 
+function fireStateToWireCode(value: UnitSub['fireState']): number {
+  return value === 'holdFire' ? 2 : value === 'returnFire' ? 1 : 0;
+}
+
+function trajectoryModeToWireCode(value: UnitSub['trajectoryMode']): number {
+  return value === 'auto' ? 2 : value === 'high' ? 1 : 0;
+}
+
+function moveStateToWireCode(value: UnitSub['moveState']): number {
+  return value === 'roam' ? 2 : value === 'holdPosition' ? 1 : 0;
+}
+
+function cloakStateToWireCode(unit: UnitSub): number {
+  return unit.cloaked === true ? 2 : unit.wantCloak === true ? 1 : 0;
+}
+
 function appendActionWireRows(actions: readonly NetworkServerSnapshotAction[] | null): number {
   if (actions === null || actions.length === 0) return -1;
   const rows = entityWireSource.actionRows;
@@ -375,6 +387,9 @@ function appendActionWireRows(actions: readonly NetworkServerSnapshotAction[] | 
     values[base + 13] = grid !== null ? grid.y : 0;
     values[base + 14] = action.buildingId !== null ? 1 : 0;
     values[base + 15] = action.buildingId ?? 0;
+    values[base + 16] = action.waitGather === true ? 1 : 0;
+    values[base + 17] = action.waitGroupId !== null && action.waitGroupId !== undefined ? 1 : 0;
+    values[base + 18] = action.waitGroupId ?? 0;
   }
   return offset;
 }
@@ -398,6 +413,7 @@ function appendTurretWireRows(turrets: readonly NetworkServerSnapshotTurret[] | 
     values[base + 7] = src.targetId ?? 0;
     values[base + 8] = src.currentShieldRange !== null ? 1 : 0;
     values[base + 9] = src.currentShieldRange ?? 0;
+    values[base + 10] = src.active === false ? 1 : 0;
   }
   return offset;
 }
@@ -408,6 +424,15 @@ function appendFactorySelectedUnitWireRow(selectedUnitBlueprintCode: number | nu
   const offset = reserveUint32WireRows(rows, 1, 1);
   rows.values[offset] = selectedUnitBlueprintCode;
   return offset;
+}
+
+function appendFactoryQueueWireRows(queue: readonly number[] | null | undefined): { offset: number; count: number } {
+  if (queue === null || queue === undefined) return { offset: -1, count: -1 };
+  if (queue.length === 0) return { offset: -1, count: 0 };
+  const rows = entityWireSource.factorySelectedUnitRows;
+  const offset = reserveUint32WireRows(rows, queue.length, 1);
+  for (let i = 0; i < queue.length; i++) rows.values[offset + i] = queue[i];
+  return { offset, count: queue.length };
 }
 
 function appendFactoryRallyWireRow(rally: FactorySub['rally'] | undefined): number {
@@ -424,6 +449,26 @@ function appendFactoryRallyWireRow(rally: FactorySub['rally'] | undefined): numb
   values[base + 4] = strings.length;
   strings.push(rally.type);
   return offset;
+}
+
+function appendFactoryRouteWireRows(route: FactorySub['route'] | undefined): { offset: number; count: number } {
+  if (route === null || route === undefined) return { offset: -1, count: -1 };
+  if (route.length === 0) return { offset: -1, count: 0 };
+  const rows = entityWireSource.waypointRows;
+  const offset = reserveFloat64WireRows(rows, route.length, ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE);
+  const values = rows.values;
+  const strings = entityWireSource.waypointStrings;
+  for (let i = 0; i < route.length; i++) {
+    const waypoint = route[i];
+    const base = (offset + i) * ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE;
+    values[base + 0] = waypoint.pos.x;
+    values[base + 1] = waypoint.pos.y;
+    values[base + 2] = waypoint.posZ !== null ? 1 : 0;
+    values[base + 3] = waypoint.posZ ?? 0;
+    values[base + 4] = strings.length;
+    strings.push(waypoint.type);
+  }
+  return { offset, count: route.length };
 }
 
 function appendBasicEntityWireRow(entity: NetworkServerSnapshotEntity): void {
@@ -505,8 +550,7 @@ function appendUnitEntityWireRow(
   values[base + 33] = angularVelocity !== null ? angularVelocity.x : 0;
   values[base + 34] = angularVelocity !== null ? angularVelocity.y : 0;
   values[base + 35] = angularVelocity !== null ? angularVelocity.z : 0;
-  const fireState = unit.fireState ?? (unit.fireEnabled === false ? 'holdFire' : 'fireAtWill');
-  values[base + 36] = fireState === 'holdFire' ? 1 : 0;
+  values[base + 36] = unit.fireEnabled === false ? 1 : 0;
   values[base + 37] = unit.isCommander === true ? 1 : 0;
   values[base + 38] = unit.buildTargetIdPresent ? 1 : 0;
   values[base + 39] = buildTargetId === null ? 1 : 0;
@@ -521,6 +565,23 @@ function appendUnitEntityWireRow(
   values[base + 48] = build !== null ? build.paid.metal : 0;
   values[base + 49] = turretOffset;
   values[base + 50] = actionOffset;
+  values[base + 51] = unit.fireState !== null && unit.fireState !== undefined ? 1 : 0;
+  values[base + 52] = fireStateToWireCode(unit.fireState);
+  values[base + 53] = unit.repeatQueue !== null && unit.repeatQueue !== undefined ? 1 : 0;
+  values[base + 54] = unit.repeatQueue === true ? 1 : 0;
+  values[base + 55] = unit.holdPosition !== null && unit.holdPosition !== undefined ? 1 : 0;
+  values[base + 56] = unit.holdPosition === true ? 1 : 0;
+  values[base + 57] = unit.trajectoryMode !== null && unit.trajectoryMode !== undefined ? 1 : 0;
+  values[base + 58] = trajectoryModeToWireCode(unit.trajectoryMode);
+  values[base + 59] = unit.moveState !== null && unit.moveState !== undefined ? 1 : 0;
+  values[base + 60] = moveStateToWireCode(unit.moveState);
+  values[base + 61] = (
+    unit.wantCloak !== null && unit.wantCloak !== undefined
+  ) || (
+    unit.cloaked !== null && unit.cloaked !== undefined
+  ) ? 1 : 0;
+  values[base + 62] = cloakStateToWireCode(unit);
+  values[base + 63] = build !== null && build.interrupted === true ? 1 : 0;
   entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_UNIT);
   entityWireSource.rowIndices.push(rowIndex);
 }
@@ -544,6 +605,8 @@ function appendBuildingEntityWireRow(
     factory !== null ? factory.selectedUnitBlueprintCode : undefined,
   );
   const factoryRallyOffset = appendFactoryRallyWireRow(factory !== null ? factory.rally : undefined);
+  const factoryQueue = appendFactoryQueueWireRows(factory !== null ? factory.queue : undefined);
+  const factoryRoute = appendFactoryRouteWireRows(factory !== null ? factory.route : undefined);
   const pos = entity.pos;
   values[base + 0] = entity.id;
   values[base + 1] = pos !== null ? pos.x : 0;
@@ -579,33 +642,16 @@ function appendBuildingEntityWireRow(
   values[base + 31] = turretOffset;
   values[base + 32] = factorySelectedUnitOffset;
   values[base + 33] = factoryRallyOffset;
+  values[base + 34] = build !== null && build.interrupted === true ? 1 : 0;
+  values[base + 35] = factory !== null && factory.guardTargetId !== null ? 1 : 0;
+  values[base + 36] = factory !== null && factory.guardTargetId !== null ? factory.guardTargetId : 0;
+  values[base + 37] = factory !== null && factory.repeat === false ? 0 : 1;
+  values[base + 38] = factoryQueue.offset;
+  values[base + 39] = factoryQueue.count;
+  values[base + 40] = factoryRoute.offset;
+  values[base + 41] = factoryRoute.count;
   entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_BUILDING);
   entityWireSource.rowIndices.push(rowIndex);
-}
-
-function hasInactiveTurretWire(turrets: readonly NetworkServerSnapshotTurret[] | null): boolean {
-  if (turrets === null) return false;
-  for (let i = 0; i < turrets.length; i++) {
-    if (turrets[i].active === false) return true;
-  }
-  return false;
-}
-
-function hasGatherWaitActionWire(actions: readonly NetworkServerSnapshotAction[] | null): boolean {
-  if (actions === null) return false;
-  for (let i = 0; i < actions.length; i++) {
-    if (
-      actions[i].waitGather !== null && actions[i].waitGather !== undefined ||
-      actions[i].waitGroupId !== null && actions[i].waitGroupId !== undefined
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function hasFactoryRouteWire(building: BuildingSub): boolean {
-  return building.factory?.route !== null && building.factory?.route !== undefined;
 }
 
 function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void {
@@ -614,21 +660,6 @@ function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void 
     entity.unit !== null &&
     entity.building === null
   ) {
-    if (
-      entity.unit.build?.interrupted === true ||
-      hasInactiveTurretWire(entity.unit.turrets) ||
-      (entity.unit.fireState !== null && entity.unit.fireState !== undefined) ||
-      (entity.unit.trajectoryMode !== null && entity.unit.trajectoryMode !== undefined) ||
-      (entity.unit.repeatQueue !== null && entity.unit.repeatQueue !== undefined) ||
-      (entity.unit.moveState !== null && entity.unit.moveState !== undefined) ||
-      (entity.unit.holdPosition !== null && entity.unit.holdPosition !== undefined) ||
-      (entity.unit.wantCloak !== null && entity.unit.wantCloak !== undefined) ||
-      (entity.unit.cloaked !== null && entity.unit.cloaked !== undefined) ||
-      hasGatherWaitActionWire(entity.unit.actions)
-    ) {
-      appendRawEntityWireRow();
-      return;
-    }
     appendUnitEntityWireRow(entity, entity.unit);
     return;
   }
@@ -643,17 +674,6 @@ function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void 
     // BUILDING discriminator is reconstructed on the receive side
     // via isTowerBuildingBlueprintId so the renderer + UI dispatch on the
     // peer entity-type tag.
-    if (
-      entity.building.build?.interrupted === true ||
-      hasInactiveTurretWire(entity.building.turrets)
-    ) {
-      appendRawEntityWireRow();
-      return;
-    }
-    if (hasFactoryRouteWire(entity.building)) {
-      appendRawEntityWireRow();
-      return;
-    }
     appendBuildingEntityWireRow(entity, entity.building);
     return;
   }
@@ -674,47 +694,10 @@ function canReferenceSnapshotEntityId(
   return id === undefined || visibility === undefined || visibility.canReferenceEntityId(world, id);
 }
 
-function directEntityHasInactiveTurret(entity: Entity): boolean {
-  const combat = entity.combat;
-  const turrets = combat !== null ? combat.turrets : undefined;
-  if (turrets === undefined) return false;
-  for (let i = 0; i < turrets.length; i++) {
-    if (turrets[i].id === NO_ENTITY_ID) return true;
-  }
-  return false;
-}
-
-function directEntityHasFactoryRoute(entity: Entity): boolean {
-  const defaultWaypoints = entity.factory?.defaultWaypoints;
-  return defaultWaypoints !== null && defaultWaypoints !== undefined && defaultWaypoints.length > 1;
-}
-
-function directEntityHasFactoryGuard(entity: Entity): boolean {
-  return entity.factory?.guardTargetId !== null && entity.factory?.guardTargetId !== undefined;
-}
-
-function unitHasNonDefaultCommandState(entity: Entity): boolean {
-  const unit = entity.unit;
-  if (unit === null) return false;
-  const combat = entity.combat;
-  const fireState = combat?.fireState ?? (combat?.fireEnabled === false ? 'holdFire' : 'fireAtWill');
-  return unit.repeatQueue === true ||
-    unit.moveState !== 'maneuver' ||
-    unit.wantCloak === true ||
-    unit.cloaked === true ||
-    unit.actions.some((action) => action.waitGather === true || action.waitGroupId !== undefined) ||
-    fireState !== 'fireAtWill' ||
-    (combat !== null && combat.trajectoryMode !== 'auto');
-}
-
 export function canAppendEntitySnapshotWireRowDirect(entity: Entity): boolean {
   if (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower') {
     return false;
   }
-  if (entity.buildable?.isInterrupted === true) return false;
-  if (directEntityHasInactiveTurret(entity)) return false;
-  if (directEntityHasFactoryRoute(entity)) return false;
-  if (directEntityHasFactoryGuard(entity)) return false;
   return true;
 }
 
@@ -782,6 +765,9 @@ function appendDirectActionWireRows(
       : undefined;
     values[base + 14] = buildingId !== undefined ? 1 : 0;
     values[base + 15] = buildingId ?? 0;
+    values[base + 16] = action.waitGather === true ? 1 : 0;
+    values[base + 17] = action.waitGroupId !== undefined ? 1 : 0;
+    values[base + 18] = action.waitGroupId ?? 0;
   }
   return { offset, count };
 }
@@ -824,6 +810,7 @@ function appendDirectTurretWireRows(
     values[base + 7] = canSendTarget ? wireTargetId ?? 0 : 0;
     values[base + 8] = src.shield !== null ? 1 : 0;
     values[base + 9] = src.shield !== null ? src.shield.range : 0;
+    values[base + 10] = src.id === NO_ENTITY_ID ? 1 : 0;
   }
   return { offset, count };
 }
@@ -837,6 +824,18 @@ function appendDirectFactorySelectedUnitWireRow(entity: Entity): { offset: numbe
   const offset = reserveUint32WireRows(rows, 1, 1);
   rows.values[offset] = unitBlueprintIdToCode(selectedUnitBlueprintId);
   return { offset, hasValue: 1 };
+}
+
+function appendDirectFactoryQueueWireRows(entity: Entity): { offset: number; count: number } {
+  const factory = entity.factory;
+  if (factory === null) return { offset: -1, count: -1 };
+  const queue = encodeFactoryProductionQueue(factory.productionQueue);
+  if (queue === null) return { offset: -1, count: -1 };
+  if (queue.length === 0) return { offset: -1, count: 0 };
+  const rows = entityWireSource.factorySelectedUnitRows;
+  const offset = reserveUint32WireRows(rows, queue.length, 1);
+  for (let i = 0; i < queue.length; i++) rows.values[offset + i] = queue[i];
+  return { offset, count: queue.length };
 }
 
 function appendDirectFactoryRallyWireRow(entity: Entity): number {
@@ -854,6 +853,28 @@ function appendDirectFactoryRallyWireRow(entity: Entity): number {
   values[base + 4] = strings.length;
   strings.push(factory.rallyType);
   return offset;
+}
+
+function appendDirectFactoryRouteWireRows(entity: Entity): { offset: number; count: number } {
+  const defaultWaypoints = entity.factory?.defaultWaypoints;
+  if (defaultWaypoints === null || defaultWaypoints === undefined || defaultWaypoints.length <= 1) {
+    return { offset: -1, count: -1 };
+  }
+  const rows = entityWireSource.waypointRows;
+  const offset = reserveFloat64WireRows(rows, defaultWaypoints.length, ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE);
+  const values = rows.values;
+  const strings = entityWireSource.waypointStrings;
+  for (let i = 0; i < defaultWaypoints.length; i++) {
+    const waypoint = defaultWaypoints[i];
+    const base = (offset + i) * ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE;
+    values[base + 0] = waypoint.x;
+    values[base + 1] = waypoint.y;
+    values[base + 2] = waypoint.z !== null && waypoint.z !== undefined ? 1 : 0;
+    values[base + 3] = waypoint.z ?? 0;
+    values[base + 4] = strings.length;
+    strings.push(waypoint.type);
+  }
+  return { offset, count: defaultWaypoints.length };
 }
 
 function appendDirectUnitEntityWireRow(
@@ -901,6 +922,17 @@ function appendDirectUnitEntityWireRow(
   const orientation = unit.orientation;
   const angularVelocity = unit.angularVelocity3;
   const buildable = entity.buildable;
+  const combatModeChanged = isFull || (changedMask & ENTITY_CHANGED_COMBAT_MODE) !== 0;
+  const trajectoryMode = entity.combat?.trajectoryMode ?? 'auto';
+  const hasTrajectoryMode = entity.combat !== null &&
+    combatModeChanged &&
+    (trajectoryMode !== 'auto' || !isFull);
+  const hasRepeatQueue = shouldEmitActions && (unit.repeatQueue === true || !isFull);
+  const hasMoveState = shouldEmitActions && (unit.moveState !== 'maneuver' || !isFull);
+  const hasHoldPosition = shouldEmitActions && (unit.moveState === 'holdPosition' || !isFull);
+  const hasWantCloak = shouldEmitActions && (unit.wantCloak === true || !isFull);
+  const hasCloaked = combatModeChanged && (unit.cloaked === true || !isFull);
+  const hasCloakState = hasWantCloak || hasCloaked;
 
   values[base + 0] = entity.id;
   values[base + 1] = hasPos ? qPos(entity.transform.x) : 0;
@@ -940,8 +972,7 @@ function appendDirectUnitEntityWireRow(
   values[base + 35] = orientation !== null && hasVel && angularVelocity !== null && angularVelocity !== undefined ? angularVelocity.z : 0;
   const fireState = entity.combat?.fireState ??
     (entity.combat?.fireEnabled === false ? 'holdFire' : 'fireAtWill');
-  values[base + 36] = (isFull || (changedMask & ENTITY_CHANGED_COMBAT_MODE) !== 0) &&
-    fireState === 'holdFire'
+  values[base + 36] = combatModeChanged && fireState === 'holdFire'
     ? 1
     : 0;
   values[base + 37] = isFull && isCommander(entity) ? 1 : 0;
@@ -958,6 +989,19 @@ function appendDirectUnitEntityWireRow(
   values[base + 48] = hasBuild ? buildable!.paid.metal : 0;
   values[base + 49] = turretRows.offset;
   values[base + 50] = actionRows.offset;
+  values[base + 51] = combatModeChanged && entity.combat !== null && fireState !== 'fireAtWill' ? 1 : 0;
+  values[base + 52] = fireStateToWireCode(fireState);
+  values[base + 53] = hasRepeatQueue ? 1 : 0;
+  values[base + 54] = unit.repeatQueue === true ? 1 : 0;
+  values[base + 55] = hasHoldPosition ? 1 : 0;
+  values[base + 56] = unit.moveState === 'holdPosition' ? 1 : 0;
+  values[base + 57] = hasTrajectoryMode ? 1 : 0;
+  values[base + 58] = trajectoryModeToWireCode(trajectoryMode);
+  values[base + 59] = hasMoveState ? 1 : 0;
+  values[base + 60] = moveStateToWireCode(unit.moveState);
+  values[base + 61] = hasCloakState ? 1 : 0;
+  values[base + 62] = unit.cloaked === true ? 2 : unit.wantCloak === true ? 1 : 0;
+  values[base + 63] = hasBuild && buildable!.isInterrupted === true ? 1 : 0;
   entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_UNIT);
   entityWireSource.rowIndices.push(rowIndex);
 }
@@ -992,6 +1036,12 @@ function appendDirectBuildingEntityWireRow(
     ? appendDirectFactorySelectedUnitWireRow(entity)
     : { offset: -1, hasValue: 0 };
   const factoryRallyOffset = shouldEmitFactory ? appendDirectFactoryRallyWireRow(entity) : -1;
+  const factoryQueue = shouldEmitFactory
+    ? appendDirectFactoryQueueWireRows(entity)
+    : { offset: -1, count: -1 };
+  const factoryRoute = shouldEmitFactory
+    ? appendDirectFactoryRouteWireRows(entity)
+    : { offset: -1, count: -1 };
   const hasPos = isFull || (changedMask & ENTITY_CHANGED_POS) !== 0;
   const hasRot = isFull || (changedMask & ENTITY_CHANGED_ROT) !== 0;
   const hasHp = isFull || (changedMask & ENTITY_CHANGED_HP) !== 0;
@@ -1050,6 +1100,19 @@ function appendDirectBuildingEntityWireRow(
   values[base + 31] = turretRows.offset;
   values[base + 32] = factorySelectedUnit.offset;
   values[base + 33] = factoryRallyOffset;
+  values[base + 34] = hasBuild && buildable !== null && buildable.isInterrupted === true ? 1 : 0;
+  values[base + 35] = shouldEmitFactory &&
+    factory!.guardTargetId !== null &&
+    factory!.guardTargetId !== undefined &&
+    canReferenceSnapshotEntityId(world, visibility, factory!.guardTargetId)
+    ? 1
+    : 0;
+  values[base + 36] = values[base + 35] !== 0 ? factory!.guardTargetId! : 0;
+  values[base + 37] = shouldEmitFactory && factory!.repeatProduction === false ? 0 : 1;
+  values[base + 38] = factoryQueue.offset;
+  values[base + 39] = factoryQueue.count;
+  values[base + 40] = factoryRoute.offset;
+  values[base + 41] = factoryRoute.count;
   entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_BUILDING);
   entityWireSource.rowIndices.push(rowIndex);
 }
@@ -1077,13 +1140,6 @@ export function appendEntitySnapshotWireRowDirect(
       hasOrientationFields ||
       hasAngularVelocityFields;
     if (hasUnitFields) {
-      const hasCommandStateDelta = !isFull &&
-        (changedMask & (ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_COMBAT_MODE)) !== 0;
-      if (hasCommandStateDelta || (isFull && unitHasNonDefaultCommandState(entity))) {
-        const dto = serializeEntitySnapshot(entity, changedFields, world, visibility);
-        if (dto !== null) appendEntitySnapshotWireRow(dto);
-        return;
-      }
       appendDirectUnitEntityWireRow(entity, changedFields, world, visibility);
       return;
     }

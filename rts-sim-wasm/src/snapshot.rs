@@ -911,7 +911,7 @@ pub const SNAPSHOT_ENTITY_TYPE_TOWER: u8 = 3;
 ///   [9]     shield_range (raw value; ignored when has_ff_range==0)
 ///
 /// Capacity grown on demand by snapshot_encode_turret_scratch_ensure.
-pub(crate) const SNAPSHOT_ENCODE_TURRET_STRIDE: usize = 10;
+pub(crate) const SNAPSHOT_ENCODE_TURRET_STRIDE: usize = 11;
 
 pub(crate) struct SnapshotEncodeTurretScratch {
     buf: Vec<f64>,
@@ -966,7 +966,7 @@ pub fn snapshot_encode_turret_scratch_ensure(turret_count: u32) {
 ///   [12..14] grid.x, grid.y (when has_grid)
 ///   [14]  has_building_id (0 or 1)
 ///   [15]  building_id (when has_building_id)
-pub(crate) const SNAPSHOT_ENCODE_ACTION_STRIDE: usize = 16;
+pub(crate) const SNAPSHOT_ENCODE_ACTION_STRIDE: usize = 19;
 
 pub(crate) struct SnapshotEncodeActionScratch {
     buf: Vec<f64>,
@@ -3495,7 +3495,7 @@ pub fn snapshot_encode_removed_ids_scratch_ensure(count: u32) {
 // into scratch by the bridge — no per-entity JS->WASM crossing.
 //
 // SoA row layouts (must match stateSerializerEntities.ts strides/slots):
-//   basic[9], unit[51], building[34], action[16], turret[10], waypoint[5].
+//   basic[9], unit[64], building[42], action[19], turret[11], waypoint[5].
 // hp/velocity (unit) and hp/build (building) presence is NOT stored in the SoA
 // (the legacy verbose encoder always emitted them); it is re-derived here as
 // `isFull || (changedFields & bit)`, exactly how serializeEntitySnapshot sets
@@ -3516,6 +3516,7 @@ pub(crate) const V6_UNIT_FLAG_RADIUS: u32 = 1 << 3;
 pub(crate) const V6_UNIT_FLAG_BODY_CENTER_HEIGHT: u32 = 1 << 4;
 pub(crate) const V6_UNIT_FLAG_MASS: u32 = 1 << 5;
 pub(crate) const V6_UNIT_FLAG_SURFACE_NORMAL: u32 = 1 << 6;
+pub(crate) const V6_UNIT_FLAG_CLOAK_STATE_PRESENT: u32 = 1 << 8;
 pub(crate) const V6_UNIT_FLAG_ORIENTATION: u32 = 1 << 9;
 pub(crate) const V6_UNIT_FLAG_ANGULAR_VELOCITY: u32 = 1 << 10;
 pub(crate) const V6_UNIT_FLAG_FIRE_DISABLED: u32 = 1 << 11;
@@ -3526,6 +3527,18 @@ pub(crate) const V6_UNIT_FLAG_ACTIONS: u32 = 1 << 15;
 pub(crate) const V6_UNIT_FLAG_TURRETS: u32 = 1 << 16;
 pub(crate) const V6_UNIT_FLAG_BUILD: u32 = 1 << 17;
 pub(crate) const V6_UNIT_FLAG_BUILD_COMPLETE: u32 = 1 << 18;
+pub(crate) const V6_UNIT_FLAG_BUILD_INTERRUPTED: u32 = 1 << 19;
+pub(crate) const V6_UNIT_FLAG_REPEAT_PRESENT: u32 = 1 << 20;
+pub(crate) const V6_UNIT_FLAG_REPEAT_ENABLED: u32 = 1 << 21;
+pub(crate) const V6_UNIT_FLAG_HOLD_POSITION_PRESENT: u32 = 1 << 22;
+pub(crate) const V6_UNIT_FLAG_HOLD_POSITION_ENABLED: u32 = 1 << 23;
+pub(crate) const V6_UNIT_FLAG_TRAJECTORY_PRESENT: u32 = 1 << 24;
+pub(crate) const V6_UNIT_FLAG_TRAJECTORY_HIGH: u32 = 1 << 25;
+pub(crate) const V6_UNIT_FLAG_TRAJECTORY_AUTO: u32 = 1 << 26;
+pub(crate) const V6_UNIT_FLAG_MOVE_STATE_PRESENT: u32 = 1 << 27;
+pub(crate) const V6_UNIT_FLAG_MOVE_STATE_HOLD: u32 = 1 << 28;
+pub(crate) const V6_UNIT_FLAG_MOVE_STATE_ROAM: u32 = 1 << 29;
+pub(crate) const V6_UNIT_FLAG_FIRE_STATE_PRESENT: u32 = 1 << 30;
 
 pub(crate) const V6_BUILDING_FLAG_BLUEPRINT_CODE: u32 = 1 << 0;
 pub(crate) const V6_BUILDING_FLAG_DIM: u32 = 1 << 1;
@@ -3538,6 +3551,7 @@ pub(crate) const V6_BUILDING_FLAG_SOLAR_OPEN: u32 = 1 << 7;
 pub(crate) const V6_BUILDING_FLAG_TURRETS: u32 = 1 << 8;
 pub(crate) const V6_BUILDING_FLAG_FACTORY: u32 = 1 << 9;
 pub(crate) const V6_BUILDING_FLAG_FACTORY_PRODUCING: u32 = 1 << 10;
+pub(crate) const V6_BUILDING_FLAG_BUILD_INTERRUPTED: u32 = 1 << 11;
 
 pub(crate) const V6_MOVEMENT_FLAG_POS: u32 = 1 << 0;
 pub(crate) const V6_MOVEMENT_FLAG_ROTATION: u32 = 1 << 1;
@@ -3554,15 +3568,18 @@ pub(crate) const V6_ACTION_FLAG_TARGET_ID: u32 = 1 << 3;
 pub(crate) const V6_ACTION_FLAG_BUILDING_BLUEPRINT_ID: u32 = 1 << 4;
 pub(crate) const V6_ACTION_FLAG_GRID: u32 = 1 << 5;
 pub(crate) const V6_ACTION_FLAG_BUILDING_ID: u32 = 1 << 6;
+pub(crate) const V6_ACTION_FLAG_WAIT_GATHER: u32 = 1 << 7;
+pub(crate) const V6_ACTION_FLAG_WAIT_GROUP_ID: u32 = 1 << 8;
 
 pub(crate) const V6_TURRET_FLAG_TARGET_ID: u32 = 1 << 0;
 pub(crate) const V6_TURRET_FLAG_SHIELD_RANGE: u32 = 1 << 1;
+pub(crate) const V6_TURRET_FLAG_INACTIVE: u32 = 1 << 2;
 
 pub(crate) const V6_WAYPOINT_FLAG_POS_Z: u32 = 1 << 0;
 
 pub(crate) const V6_BASIC_STRIDE: usize = 9;
-pub(crate) const V6_UNIT_STRIDE: usize = 51;
-pub(crate) const V6_BUILDING_STRIDE: usize = 34;
+pub(crate) const V6_UNIT_STRIDE: usize = 64;
+pub(crate) const V6_BUILDING_STRIDE: usize = 42;
 
 pub(crate) const V6_KIND_RAW: u32 = 0;
 pub(crate) const V6_KIND_BASIC: u32 = 1;
@@ -3802,6 +3819,13 @@ pub(crate) fn v6_is_movement_only(input: &SnapshotEncodeV6InputScratch, kind: u3
             || input.unit[base + 41] != 0.0
             || input.unit[base + 43] != 0.0
             || input.unit[base + 45] != 0.0
+            || input.unit[base + 51] != 0.0
+            || input.unit[base + 53] != 0.0
+            || input.unit[base + 55] != 0.0
+            || input.unit[base + 57] != 0.0
+            || input.unit[base + 59] != 0.0
+            || input.unit[base + 61] != 0.0
+            || input.unit[base + 63] != 0.0
         {
             return false;
         }
@@ -3845,6 +3869,13 @@ pub(crate) fn v6_is_split_turret(input: &SnapshotEncodeV6InputScratch, kind: u32
         || input.unit[base + 38] != 0.0
         || input.unit[base + 41] != 0.0
         || input.unit[base + 45] != 0.0
+        || input.unit[base + 51] != 0.0
+        || input.unit[base + 53] != 0.0
+        || input.unit[base + 55] != 0.0
+        || input.unit[base + 57] != 0.0
+        || input.unit[base + 59] != 0.0
+        || input.unit[base + 61] != 0.0
+        || input.unit[base + 63] != 0.0
     {
         return false;
     }
@@ -3989,12 +4020,16 @@ pub(crate) fn v6_write_turret_payload(
         let tb = (turret_offset + t) * SNAPSHOT_ENCODE_TURRET_STRIDE;
         let has_target = turret_buf[tb + 6] != 0.0;
         let has_ffr = turret_buf[tb + 8] != 0.0;
+        let inactive = turret_buf[tb + 10] != 0.0;
         let mut flags = 0u32;
         if has_target {
             flags |= V6_TURRET_FLAG_TARGET_ID;
         }
         if has_ffr {
             flags |= V6_TURRET_FLAG_SHIELD_RANGE;
+        }
+        if inactive {
+            flags |= V6_TURRET_FLAG_INACTIVE;
         }
         writer.write_var_uint(flags as u64);
         writer.write_var_uint(turret_buf[tb + 4] as u64); // id
@@ -4021,6 +4056,8 @@ pub(crate) fn v6_write_detail_action(w: &mut MessagePackWriter, action_buf: &[f6
     let has_building_type = action_buf[base + 9] != 0.0;
     let has_grid = action_buf[base + 11] != 0.0;
     let has_building_id = action_buf[base + 14] != 0.0;
+    let wait_gather = action_buf[base + 16] != 0.0;
+    let has_wait_group_id = action_buf[base + 17] != 0.0;
     let mut flags = 0u32;
     if has_pos {
         flags |= V6_ACTION_FLAG_POS;
@@ -4043,6 +4080,12 @@ pub(crate) fn v6_write_detail_action(w: &mut MessagePackWriter, action_buf: &[f6
     if has_building_id {
         flags |= V6_ACTION_FLAG_BUILDING_ID;
     }
+    if wait_gather {
+        flags |= V6_ACTION_FLAG_WAIT_GATHER;
+    }
+    if has_wait_group_id {
+        flags |= V6_ACTION_FLAG_WAIT_GROUP_ID;
+    }
     let mut len = 2usize; // flags, type
     if has_pos {
         len += 2;
@@ -4060,6 +4103,9 @@ pub(crate) fn v6_write_detail_action(w: &mut MessagePackWriter, action_buf: &[f6
         len += 2;
     }
     if has_building_id {
+        len += 1;
+    }
+    if has_wait_group_id {
         len += 1;
     }
     w.write_array_header(len);
@@ -4085,18 +4131,25 @@ pub(crate) fn v6_write_detail_action(w: &mut MessagePackWriter, action_buf: &[f6
     if has_building_id {
         w.write_number(action_buf[base + 15]);
     }
+    if has_wait_group_id {
+        w.write_number(action_buf[base + 18]);
+    }
 }
 
 pub(crate) fn v6_write_detail_turret(w: &mut MessagePackWriter, turret_buf: &[f64], t_row: usize) {
     let base = t_row * SNAPSHOT_ENCODE_TURRET_STRIDE;
     let has_target = turret_buf[base + 6] != 0.0;
     let has_ffr = turret_buf[base + 8] != 0.0;
+    let inactive = turret_buf[base + 10] != 0.0;
     let mut flags = 0u32;
     if has_target {
         flags |= V6_TURRET_FLAG_TARGET_ID;
     }
     if has_ffr {
         flags |= V6_TURRET_FLAG_SHIELD_RANGE;
+    }
+    if inactive {
+        flags |= V6_TURRET_FLAG_INACTIVE;
     }
     let mut len = 7usize; // flags, id, state, rot, vel, pitch, pitchVel
     if has_target {
@@ -4155,12 +4208,12 @@ pub(crate) fn v6_write_detail_factory(
     waypoint_buf: &[f64],
     waypoint_string_base: u32,
 ) {
-    w.write_array_header(5);
+    w.write_array_header(9);
     // selectedUnitBlueprintCode: code or nil
-    let queue_count = building_buf[base + 25] as usize;
-    let queue_offset = building_buf[base + 32] as i64;
-    if queue_count > 0 && queue_offset >= 0 {
-        let off = queue_offset as usize;
+    let selected_count = building_buf[base + 25] as usize;
+    let selected_offset = building_buf[base + 32] as i64;
+    if selected_count > 0 && selected_offset >= 0 {
+        let off = selected_offset as usize;
         w.write_number(queue_buf[off] as f64);
     } else {
         w.write_nil();
@@ -4174,6 +4227,44 @@ pub(crate) fn v6_write_detail_factory(
     if wp_count > 0 && wp_offset >= 0 {
         let off = wp_offset as usize;
         v6_write_detail_waypoint(w, waypoint_buf, off, waypoint_string_base);
+    } else {
+        w.write_nil();
+    }
+
+    let route_count = building_buf[base + 41] as i64;
+    let route_offset = building_buf[base + 40] as i64;
+    if route_count >= 0 {
+        let count = route_count as usize;
+        w.write_array_header(count);
+        if route_offset >= 0 {
+            let off = route_offset as usize;
+            for r in 0..count {
+                v6_write_detail_waypoint(w, waypoint_buf, off + r, waypoint_string_base);
+            }
+        }
+    } else {
+        w.write_nil();
+    }
+
+    if building_buf[base + 35] != 0.0 {
+        w.write_number(building_buf[base + 36]);
+    } else {
+        w.write_nil();
+    }
+
+    w.write_number(building_buf[base + 37]);
+
+    let finite_queue_count = building_buf[base + 39] as i64;
+    let finite_queue_offset = building_buf[base + 38] as i64;
+    if finite_queue_count >= 0 {
+        let count = finite_queue_count as usize;
+        w.write_array_header(count);
+        if finite_queue_offset >= 0 {
+            let off = finite_queue_offset as usize;
+            for q in 0..count {
+                w.write_number(queue_buf[off + q] as f64);
+            }
+        }
     } else {
         w.write_nil();
     }
@@ -4205,6 +4296,17 @@ pub(crate) fn v6_write_detail_unit(
     let has_turrets = unit_buf[base + 43] != 0.0;
     let has_build = unit_buf[base + 45] != 0.0;
     let build_complete = unit_buf[base + 46] != 0.0;
+    let has_fire_state = unit_buf[base + 51] != 0.0;
+    let repeat_present = unit_buf[base + 53] != 0.0;
+    let repeat_enabled = unit_buf[base + 54] != 0.0;
+    let hold_present = unit_buf[base + 55] != 0.0;
+    let hold_enabled = unit_buf[base + 56] != 0.0;
+    let trajectory_present = unit_buf[base + 57] != 0.0;
+    let trajectory_code = unit_buf[base + 58] as u32;
+    let move_state_present = unit_buf[base + 59] != 0.0;
+    let move_state_code = unit_buf[base + 60] as u32;
+    let cloak_present = unit_buf[base + 61] != 0.0;
+    let build_interrupted = unit_buf[base + 63] != 0.0;
 
     let mut flags = 0u32;
     if hp_present {
@@ -4237,6 +4339,40 @@ pub(crate) fn v6_write_detail_unit(
     if fire_disabled {
         flags |= V6_UNIT_FLAG_FIRE_DISABLED;
     }
+    if has_fire_state {
+        flags |= V6_UNIT_FLAG_FIRE_STATE_PRESENT;
+    }
+    if trajectory_present {
+        flags |= V6_UNIT_FLAG_TRAJECTORY_PRESENT;
+        if trajectory_code == 1 {
+            flags |= V6_UNIT_FLAG_TRAJECTORY_HIGH;
+        } else if trajectory_code == 2 {
+            flags |= V6_UNIT_FLAG_TRAJECTORY_AUTO;
+        }
+    }
+    if repeat_present {
+        flags |= V6_UNIT_FLAG_REPEAT_PRESENT;
+        if repeat_enabled {
+            flags |= V6_UNIT_FLAG_REPEAT_ENABLED;
+        }
+    }
+    if hold_present {
+        flags |= V6_UNIT_FLAG_HOLD_POSITION_PRESENT;
+        if hold_enabled {
+            flags |= V6_UNIT_FLAG_HOLD_POSITION_ENABLED;
+        }
+    }
+    if move_state_present {
+        flags |= V6_UNIT_FLAG_MOVE_STATE_PRESENT;
+        if move_state_code == 1 {
+            flags |= V6_UNIT_FLAG_MOVE_STATE_HOLD;
+        } else if move_state_code == 2 {
+            flags |= V6_UNIT_FLAG_MOVE_STATE_ROAM;
+        }
+    }
+    if cloak_present {
+        flags |= V6_UNIT_FLAG_CLOAK_STATE_PRESENT;
+    }
     if is_commander {
         flags |= V6_UNIT_FLAG_IS_COMMANDER;
     }
@@ -4256,6 +4392,9 @@ pub(crate) fn v6_write_detail_unit(
         flags |= V6_UNIT_FLAG_BUILD;
         if build_complete {
             flags |= V6_UNIT_FLAG_BUILD_COMPLETE;
+        }
+        if build_interrupted {
+            flags |= V6_UNIT_FLAG_BUILD_INTERRUPTED;
         }
     }
 
@@ -4286,6 +4425,12 @@ pub(crate) fn v6_write_detail_unit(
     }
     if has_angular_velocity {
         len += 3;
+    }
+    if has_fire_state {
+        len += 1;
+    }
+    if cloak_present {
+        len += 1;
     }
     if build_target_present && !build_target_null {
         len += 1;
@@ -4341,6 +4486,12 @@ pub(crate) fn v6_write_detail_unit(
         w.write_number(unit_buf[base + 34]);
         w.write_number(unit_buf[base + 35]);
     }
+    if has_fire_state {
+        w.write_number(unit_buf[base + 52]);
+    }
+    if cloak_present {
+        w.write_number(unit_buf[base + 62]);
+    }
     if build_target_present && !build_target_null {
         w.write_number(unit_buf[base + 40]);
     }
@@ -4388,6 +4539,7 @@ pub(crate) fn v6_write_detail_building(
     let hp_present = v6_present(is_full, cf, ENTITY_CHANGED_HP);
     let build_present = v6_present(is_full, cf, ENTITY_CHANGED_BUILDING);
     let build_complete = building_buf[base + 15] != 0.0;
+    let build_interrupted = building_buf[base + 34] != 0.0;
     let has_metal_extraction = building_buf[base + 18] != 0.0;
     let has_solar = building_buf[base + 20] != 0.0;
     let solar_open = building_buf[base + 21] != 0.0;
@@ -4409,6 +4561,9 @@ pub(crate) fn v6_write_detail_building(
         flags |= V6_BUILDING_FLAG_BUILD;
         if build_complete {
             flags |= V6_BUILDING_FLAG_BUILD_COMPLETE;
+        }
+        if build_interrupted {
+            flags |= V6_BUILDING_FLAG_BUILD_INTERRUPTED;
         }
     }
     if has_metal_extraction {

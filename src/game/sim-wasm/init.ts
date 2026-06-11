@@ -3033,11 +3033,11 @@ export interface SnapshotEncodeApi {
    *  by the DP-02 parity flag as a temporary fallback for DTO shapes
    *  that are not fully ported to Rust yet. */
   appendRawValue: (bytes: Uint8Array) => number;
-  /** Raw pointer to the turret scratch buffer. JS fills 10 f64 per
+  /** Raw pointer to the turret scratch buffer. JS fills 11 f64 per
    *  turret (see lib.rs SNAPSHOT_ENCODE_TURRET_STRIDE layout)
    *  before calling encodeEntityUnit with hasTurrets=1. */
   turretScratchPtr: () => number;
-  /** Pre-grow the turret scratch to fit `count` turrets (10 f64 each). */
+  /** Pre-grow the turret scratch to fit `count` turrets (11 f64 each). */
   turretScratchEnsure: (count: number) => void;
   /** Stride per turret in the scratch buffer (f64 count). */
   readonly turretScratchStride: number;
@@ -3075,11 +3075,11 @@ export interface SnapshotEncodeApi {
     factoryMetalRate: number,
     factoryWaypointCount: number,
   ) => number;
-  /** Raw pointer to the action scratch buffer. JS fills 16 f64 per
+  /** Raw pointer to the action scratch buffer. JS fills 19 f64 per
    *  action (see lib.rs SNAPSHOT_ENCODE_ACTION_STRIDE layout)
    *  before calling encodeEntityUnit with hasActions=1. */
   actionScratchPtr: () => number;
-  /** Pre-grow the action scratch to fit `count` actions (16 f64 each). */
+  /** Pre-grow the action scratch to fit `count` actions (19 f64 each). */
   actionScratchEnsure: (count: number) => void;
   /** Stride per action in the scratch buffer (f64 count). */
   readonly actionScratchStride: number;
@@ -4329,19 +4329,19 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           v6BasicScratchStride: 9,
           v6UnitScratchPtr: snapshot_encode_v6_unit_scratch_ptr,
           v6UnitScratchEnsure: snapshot_encode_v6_unit_scratch_ensure,
-          v6UnitScratchStride: 51,
+          v6UnitScratchStride: 64,
           v6BuildingScratchPtr: snapshot_encode_v6_building_scratch_ptr,
           v6BuildingScratchEnsure: snapshot_encode_v6_building_scratch_ensure,
-          v6BuildingScratchStride: 34,
+          v6BuildingScratchStride: 42,
           writerPtr: messagepack_writer_ptr,
           writerLen: messagepack_writer_len,
           writerClear: messagepack_writer_clear,
           turretScratchPtr: snapshot_encode_turret_scratch_ptr,
           turretScratchEnsure: snapshot_encode_turret_scratch_ensure,
-          turretScratchStride: 10,
+          turretScratchStride: 11,
           actionScratchPtr: snapshot_encode_action_scratch_ptr,
           actionScratchEnsure: snapshot_encode_action_scratch_ensure,
-          actionScratchStride: 16,
+          actionScratchStride: 19,
           stringScratchBytesPtr: snapshot_encode_string_scratch_bytes_ptr,
           stringScratchTablePtr: snapshot_encode_string_scratch_table_ptr,
           stringScratchEnsureBytes: snapshot_encode_string_scratch_ensure_bytes,

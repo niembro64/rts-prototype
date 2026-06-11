@@ -453,6 +453,9 @@ function packActionsIntoScratch(
     view[base + 13] = grid !== null ? grid.y : 0;
     view[base + 14] = action.buildingId !== null ? 1 : 0;
     view[base + 15] = action.buildingId ?? 0;
+    view[base + 16] = action.waitGather === true ? 1 : 0;
+    view[base + 17] = action.waitGroupId !== null && action.waitGroupId !== undefined ? 1 : 0;
+    view[base + 18] = action.waitGroupId ?? 0;
   }
 }
 
@@ -482,6 +485,7 @@ function packTurretsIntoScratch(
     view[base + 7] = src.targetId ?? 0;
     view[base + 8] = src.currentShieldRange !== null ? 1 : 0;
     view[base + 9] = src.currentShieldRange ?? 0;
+    view[base + 10] = src.active === false ? 1 : 0;
   }
 }
 
@@ -937,6 +941,9 @@ function copyEntityActionRowsIntoScratch(
     view[dstRow + 13] = rows[srcRow + 13];
     view[dstRow + 14] = rows[srcRow + 14];
     view[dstRow + 15] = rows[srcRow + 15];
+    view[dstRow + 16] = rows[srcRow + 16];
+    view[dstRow + 17] = rows[srcRow + 17];
+    view[dstRow + 18] = rows[srcRow + 18];
   }
   return true;
 }
@@ -972,6 +979,7 @@ function copyEntityTurretRowsIntoScratch(
     view[dstRow + 7] = src[srcRow + 7];
     view[dstRow + 8] = src[srcRow + 8];
     view[dstRow + 9] = src[srcRow + 9];
+    view[dstRow + 10] = src[srcRow + 10];
   }
   return true;
 }
