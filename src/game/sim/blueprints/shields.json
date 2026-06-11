@@ -44,20 +44,6 @@
     "hitSound": null,
     "shieldBlueprintId": "shieldCylinderInfinite"
   },
-  "shieldCylinderInfiniteAimed": {
-    "type": "shield",
-    "materialId": "reflectiveShield",
-    "angle": 6.283185307179586,
-    "transitionTime": 500,
-    "barrier": {
-      "shape": "aimedCylinder",
-      "outerRatio": 0.1,
-      "originOffsetRadiusRatio": 0,
-      "rimWidth": null
-    },
-    "hitSound": null,
-    "shieldBlueprintId": "shieldCylinderInfiniteAimed"
-  },
   "shieldPanel": {
     "type": "shield",
     "materialId": "reflectiveShield",

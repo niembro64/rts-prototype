@@ -68,7 +68,10 @@ import {
   UnitRenderPacket3D,
   type BuildingRenderPacket3D,
 } from './EntityRenderPackets3D';
-import { isStaticShieldDeploymentReady } from '../sim/combat/staticShield';
+import {
+  getStaticShieldPanelEmissionPose,
+  isStaticShieldPanelEmissionReady,
+} from '../sim/combat/staticShield';
 import { AirborneEmitterBatch3D } from './AirborneEmitterBatch3D';
 import {
   applyAirborneBankRoll3D,
@@ -748,10 +751,16 @@ export class Render3DEntities {
       if (m.mirrors) {
         const shieldPanelTurretIndex = unitRows.passiveTurretIndex[row];
         const shieldPanelTurret = shieldPanelTurretIndex >= 0 ? turrets[shieldPanelTurretIndex] : undefined;
-        const shieldPanelVisible = shieldPanelTurret !== undefined &&
-          bodyVisible &&
-          isStaticShieldDeploymentReady(e, shieldPanelTurret, false);
-        if (shieldPanelVisible) {
+        const shieldPanelSupportVisible = shieldPanelTurret !== undefined && bodyVisible;
+        const shieldPanelEmissionVisible =
+          shieldPanelSupportVisible &&
+          this.turretShieldPanelsEnabled &&
+          isStaticShieldPanelEmissionReady(e, shieldPanelTurret);
+        const shieldPanelEmissionPose = shieldPanelEmissionVisible
+          ? getStaticShieldPanelEmissionPose(e, shieldPanelTurret)
+          : undefined;
+        if (shieldPanelSupportVisible) {
+          if (!shieldPanelEmissionVisible) this.deactivateShieldPanelEmission(m.mirrors);
           this.shieldPanelPose.update(
             e,
             m.mirrors,
@@ -759,7 +768,9 @@ export class Render3DEntities {
             this._smoothLiftedPos,
             this._smoothParentQuat,
             chassisTilted ? _invTiltQuat : undefined,
-            this.turretShieldPanelsEnabled,
+            shieldPanelSupportVisible,
+            shieldPanelEmissionVisible,
+            shieldPanelEmissionPose,
           );
         } else {
           this.deactivateShieldPanelMesh(m.mirrors);
@@ -843,6 +854,15 @@ export class Render3DEntities {
     if (mirrors.supportVisible) {
       mirrors.root.visible = false;
       mirrors.supportVisible = false;
+    }
+    this.deactivateShieldPanelEmission(mirrors);
+  }
+
+  private deactivateShieldPanelEmission(mirrors: ShieldPanelMesh): void {
+    if (mirrors.panelRoot.visible) mirrors.panelRoot.visible = false;
+    if (mirrors.panelMeshesVisible) {
+      for (const panel of mirrors.panels) panel.visible = false;
+      mirrors.panelMeshesVisible = false;
     }
     if (!mirrors.panelSlotsActive) return;
     mirrors.panelSlotsActive = false;

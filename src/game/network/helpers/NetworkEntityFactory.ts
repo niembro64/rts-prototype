@@ -333,6 +333,12 @@ function createUnitFromNetwork(
       thrustDirY: 0,
       shieldPanels: [],
       shieldBoundRadius: 0,
+      staticShieldSettledMs: 0,
+      staticShieldUnsettledMs: 0,
+      staticShieldHostReady: false,
+      staticShieldPanelActive: false,
+      staticShieldPanelRotation: 0,
+      staticShieldPanelPitch: 0,
       // Smoothed surface normal: hydrated from the wire when present
       // (full keyframes always carry it, deltas ship it on
       // ENTITY_CHANGED_NORMAL). Defaults to flat-up so non-keyframe

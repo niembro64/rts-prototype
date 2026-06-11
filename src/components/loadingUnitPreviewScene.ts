@@ -17,9 +17,8 @@ import { getBodyGeom } from '@/game/render3d/BodyShape3D';
 import { buildTurretMesh3D } from '@/game/render3d/TurretMesh3D';
 import { buildTreads } from '@/game/render3d/TreadRig3D';
 import { buildWheels } from '@/game/render3d/WheelRig3D';
-import { buildAlbatrosHoverFans, buildHoverFans } from '@/game/render3d/HoverRig3D';
+import { buildHoverFans } from '@/game/render3d/HoverRig3D';
 import { buildFlyingRig } from '@/game/render3d/FlyingRig3D';
-import { buildAlbatrosChassis } from '@/game/render3d/AlbatrosMesh3D';
 import { buildShieldPanelMesh3D } from '@/game/render3d/ShieldPanelMesh3D';
 import { kneeFromIK } from '@/game/render3d/LocomotionRigShared3D';
 import { getTurretHeadRadius } from '@/game/math';
@@ -386,17 +385,13 @@ function buildPreviewBody(
   bodyMaterial: THREE.Material,
 ): void {
   const chassis = new THREE.Group();
-  if (blueprint.unitBlueprintId === 'unitAlbatros') {
-    buildAlbatrosChassis(chassis, bodyMaterial, SHELL_ENTITY_ID);
-  } else {
-    const bodyEntry = getBodyGeom(blueprint.bodyShape);
-    for (const part of bodyEntry.parts) {
-      const mesh = new THREE.Mesh(part.geometry, bodyMaterial);
-      mesh.position.set(part.x, part.y, part.z);
-      mesh.scale.set(part.scaleX, part.scaleY, part.scaleZ);
-      if (part.rotZ) mesh.rotation.z = part.rotZ;
-      chassis.add(mesh);
-    }
+  const bodyEntry = getBodyGeom(blueprint.bodyShape);
+  for (const part of bodyEntry.parts) {
+    const mesh = new THREE.Mesh(part.geometry, bodyMaterial);
+    mesh.position.set(part.x, part.y, part.z);
+    mesh.scale.set(part.scaleX, part.scaleY, part.scaleZ);
+    if (part.rotZ) mesh.rotation.z = part.rotZ;
+    chassis.add(mesh);
   }
   chassis.scale.setScalar(blueprint.radius.visual);
   liftGroup.add(chassis);
@@ -411,9 +406,6 @@ function buildPreviewTurrets(
 ): void {
   const turrets = createUnitRuntimeTurrets(unitBlueprintId, blueprint.radius.visual);
   for (const turret of turrets) {
-    const showShieldEmitterCore =
-      unitBlueprintId === 'unitAlbatros' &&
-      turret.config.barrel?.type === 'complexSingleEmitter';
     const turretMesh = buildTurretMesh3D(liftGroup, turret, PREVIEW_GFX, {
       headGeom: turretHeadGeom,
       barrelGeom,
@@ -421,7 +413,7 @@ function buildPreviewTurrets(
       primaryMat: materials.primary,
       turretAccentMat: materials.turretAccent,
       shieldEmitterMat: materials.mirrorShiny,
-      showShieldEmitterCore,
+      showShieldEmitterCore: false,
       skipHead: false,
       skipBarrels: false,
     });
@@ -451,25 +443,14 @@ function buildPreviewLocomotion(
       buildWheels(yawGroup, radius, locomotion.config, HOST_PLAYER_ID);
       break;
     case 'hover':
-      if (blueprint.unitBlueprintId === 'unitAlbatros') {
-        buildAlbatrosHoverFans(
-          yawGroup,
-          radius,
-          locomotion.config,
-          'locomotionAlbatrosHoverFans',
-          SHELL_ENTITY_ID,
-          HOST_PLAYER_ID,
-        );
-      } else {
-        buildHoverFans(
-          yawGroup,
-          radius,
-          locomotion.config,
-          'locomotionHovercraft',
-          SHELL_ENTITY_ID,
-          HOST_PLAYER_ID,
-        );
-      }
+      buildHoverFans(
+        yawGroup,
+        radius,
+        locomotion.config,
+        'locomotionHovercraft',
+        SHELL_ENTITY_ID,
+        HOST_PLAYER_ID,
+      );
       break;
     case 'flying':
       buildFlyingRig(yawGroup, radius, locomotion.config, 'locomotionEagleFlying', SHELL_ENTITY_ID, HOST_PLAYER_ID);

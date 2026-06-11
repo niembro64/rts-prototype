@@ -884,13 +884,18 @@ export function stampShieldSurfacePool(
 
     const broadRadius = Math.max(unit.unit.shieldBoundRadius, unit.unit.radius.hitbox)
       + MIRROR_SIGHT_QUERY_PAD;
-    const { turret: shieldPanelTurret, turretIndex: shieldPanelTurretIndex } = activeShieldPanel;
+    const {
+      turret: shieldPanelTurret,
+      turretIndex: shieldPanelTurretIndex,
+      emissionRotation,
+      emissionPitch,
+    } = activeShieldPanel;
     const panelShot = shieldPanelTurret.config.shot;
     if (panelShot !== null && panelShot.type === 'shield') {
       panelReflectionMode = encodeShieldReflectionMode(panelShot.material.reflection.mode);
     }
-    const shieldPanelRot = shieldPanelTurret.rotation;
-    const shieldPanelPitch = shieldPanelTurret.pitch;
+    const shieldPanelRot = emissionRotation ?? shieldPanelTurret.rotation;
+    const shieldPanelPitch = emissionPitch ?? shieldPanelTurret.pitch;
     const unitGroundZ = getUnitGroundZ(unit);
     const unitCS = {
       cos: Math.cos(unit.transform.rotation),

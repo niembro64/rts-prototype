@@ -203,8 +203,7 @@
     "ShieldBarrierShape": {
       "enum": [
         "sphere",
-        "infiniteVerticalCylinder",
-        "aimedCylinder"
+        "infiniteVerticalCylinder"
       ]
     },
     "ShieldBarrierRatioConfig": {

@@ -1,11 +1,10 @@
 // Terrain/entity line-of-sight gating for direct-fire turrets.
 //
-// High-arc shells lob over hills, and shield-only emitters maintain
+// High-arc shells lob over hills, and shield emitters maintain
 // area effects through their own force material. Everything else
-// (cannons, beams, lasers, gatlings, and shield emitters with offensive
-// submunitions) needs a clear sightline from its turret head to the
-// target aim point before it can lock on or keep firing. Cross-shield
-// sight obstruction is a separate targeting gate.
+// (cannons, beams, lasers, and gatlings) needs a clear sightline from
+// its turret head to the target aim point before it can lock on or keep
+// firing. Cross-shield sight obstruction is a separate targeting gate.
 
 import { LAND_CELL_SIZE } from '../../../config';
 import { getSimWasm } from '../../sim-wasm/init';
@@ -50,13 +49,10 @@ export function weaponRequiresNonObstructedLineOfSight(weapon: Turret): boolean 
 }
 
 /** Whether this turret may keep its targeting ray through force material
- *  when OBSTRUCT SIGHT is enabled. This is deliberately narrower than
- *  "is a shield emission": shield-only emitters need the exemption to
- *  maintain their own barrier, but shield emitters with offensive
- *  submunitions must obey the same obstruction rule as every other
- *  attacking turret. */
+ *  when OBSTRUCT SIGHT is enabled. Shield emitters must not be starved
+ *  by the barrier material they are responsible for maintaining. */
 export function turretIgnoresForceMaterialSightObstruction(weapon: Turret): boolean {
-  return weapon.config.shot?.type === 'shield' && weapon.config.submunitions === undefined;
+  return weapon.config.shot?.type === 'shield';
 }
 
 export type ShieldClearanceOptions = {

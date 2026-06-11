@@ -117,6 +117,12 @@ function createUnitBaseEntity({
       suspension: null,
       shieldPanels: [],
       shieldBoundRadius: 0,
+      staticShieldSettledMs: 0,
+      staticShieldUnsettledMs: 0,
+      staticShieldHostReady: false,
+      staticShieldPanelActive: false,
+      staticShieldPanelRotation: 0,
+      staticShieldPanelPitch: 0,
       surfaceNormal: {
         nx: spawnSupport.normalX,
         ny: spawnSupport.normalY,

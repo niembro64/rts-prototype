@@ -83,7 +83,10 @@ export class DyingUnitScatter3D {
       this.deathScatterBodyDelta,
     );
     this.applyObjectLocalDelta(m.chassis, bodyDelta);
-    if (m.mirrors) this.applyObjectLocalDelta(m.mirrors.root, bodyDelta);
+    if (m.mirrors) {
+      this.applyObjectLocalDelta(m.mirrors.root, bodyDelta);
+      this.applyObjectLocalDelta(m.mirrors.panelRoot, bodyDelta);
+    }
 
     const turretDeltas = this.turretScatterScratch;
     turretDeltas.length = m.turrets.length;

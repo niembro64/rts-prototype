@@ -1477,7 +1477,7 @@
         <li><code>turret</code> is a standardized mounted emitter: it owns lock-on eligibility through its own lock-on inclusion object, aiming, tracking, cooldown, firing pattern (burst and spread), mount behavior, and a single by-id reference to the one emission it produces, declared by two fields &mdash; <code>emissionKind</code> (<code>shot</code>, <code>ray</code>, or <code>shield</code>) and <code>emissionBlueprintId</code> (the id of the emission blueprint in the namespace that kind selects) &mdash; naming exactly one <code>shot</code>, <code>ray</code>, or <code>shield</code>. It is addressable and lockable through its own <code>EntityId</code>, but it is not a separable body: no independent cost, no independent mass, no independent health, no death explosion, and no detached life after the host. It carries no host-specific data and no inline emission payload &mdash; the emission is named by id, never copied into the turret &mdash; so the same turret blueprint drops onto any host&rsquo;s mount unchanged. It does <em>not</em> own whether it is host-directed or fully-autonomous; that role is set per mount by the host, so one turret blueprint can inherit a host target on one mount and run autonomously on another.</li>
         <li><code>shot</code> is a <em>travelling munition</em> a turret fires: a plasma bolt or rocket that leaves the barrel and persists as a physical body with its own <code>EntityId</code>, mass, health, and a death explosion. It owns its travel behavior, inherited homing target, recoil, damage, impulse, reflection, lifetime, submunition payload, and collision behavior, and &mdash; per <strong>Shots are destructible bodies too</strong> &mdash; detonates the instant its tiny health reaches zero. <code>plasma</code> and <code>rocket</code> are its variants. Shots are authored in their own blueprint family (<code>shots.json</code>).</li>
         <li><code>ray</code> is a <em>sustained line emission</em> &mdash; a continuous beam or a timed laser &mdash; traced from the turret to its target, recomputed every tick from the turret&rsquo;s aim and bound to the turret&rsquo;s lifetime. A ray is <em>not</em> a body: it has no mass, no health, and no <code>EntityId</code> of its own, and is attributed through its emitting turret (see <strong>Universal Runtime Entity IDs</strong>). It owns its line behavior, damage-per-second, recoil, reflection, and duration. <code>beam</code> (continuous) and <code>laser</code> (timed) are its variants. Rays are authored in their own blueprint family (<code>rays.json</code>).</li>
-        <li><code>shield</code> (formerly &ldquo;force field&rdquo;) is a <em>sustained static barrier emission</em>: a projected surface &mdash; a flat panel array, sphere, cylinder, or aimed lane &mdash; that reflects, absorbs, or passes incoming shots according to its material and reflection mode. Like a beam, a shield is <em>not</em> a body: no mass, no health, no own <code>EntityId</code>; it is deployed from its emitting turret and attributed through that turret. While active, the projected surface is static: it does not translate, rotate, track, grow, shrink, or sweep through the world. It owns its barrier material and reflection behavior, while the shape it is projected as is the mount&rsquo;s geometry &mdash; per <strong>Materials Are Independent Of Shape</strong>. Shields are authored in their own blueprint family (<code>shields.json</code>), with shield materials in <code>shieldMaterials.json</code>.</li>
+        <li><code>shield</code> (formerly &ldquo;force field&rdquo;) is a <em>sustained static barrier emission</em>: a projected surface &mdash; a flat panel array, sphere, or cylinder &mdash; that reflects, absorbs, or passes incoming shots according to its material and reflection mode. Like a beam, a shield is <em>not</em> a body: no mass, no health, no own <code>EntityId</code>; it is deployed from its emitting turret and attributed through that turret. While active, the projected surface is static: it does not translate, rotate, track, grow, shrink, or sweep through the world. It owns its barrier material and reflection behavior, while the shape it is projected as is the mount&rsquo;s geometry &mdash; per <strong>Materials Are Independent Of Shape</strong>. Shields are authored in their own blueprint family (<code>shields.json</code>), with shield materials in <code>shieldMaterials.json</code>.</li>
         <li><code>building</code> owns static footprint, construction, production, extraction, storage, or other static infrastructure that does <em>not</em> mount turrets and does <em>not</em> carry a host-level lock-on. Anything that needs a turret or lock-on is a <code>tower</code>, not a building.</li>
       </ul>
       <p>
@@ -1497,9 +1497,9 @@
         Shield gameplay must be authored so every active shield surface is a static barrier. A shield
         may deploy, retract, or be absent; it may not remain active while its host, mount, turret aim,
         or projected shape is moving. If a unit starts moving, is physically displaced beyond a small
-        settled tolerance, needs to rotate its shield turret, changes target, or otherwise changes the
-        surface pose, the shield surface drops first. The new pose is allowed to deploy only after the
-        host and emitter have settled again. This is both a gameplay readability rule and a simulation
+        settled tolerance, or otherwise changes the surface pose, the shield surface drops first. The
+        new pose is allowed to deploy only after the host and emitter have settled again. This is both
+        a gameplay readability rule and a simulation
         performance contract: shield/projectile and shield/sight queries should be static-surface
         intersection problems, not moving-boundary time-of-impact problems.
       </p>
@@ -1511,14 +1511,11 @@
         deploy conditions differ.
       </p>
       <p>
-        Aimed shield weapons, including the Albatros-style projected lane, follow the same invariant.
-        They acquire and rotate while the shield surface is inactive, then deploy a fixed lane once
-        aim is settled. While deployed, the lane may fire any authored payload down that fixed axis,
-        but the active surface does not chase the target. If the target moves enough that the weapon
-        needs to re-aim, the lane drops, the turret rotates to a new solution, and the static surface
-        redeploys. Do not implement an active tracking shield tube by relying on moving shield
-        collision math; that is a different weapon concept and should not use the <code>shield</code>
-        contract.
+        Shield turrets may maintain lock through shield material. Shield barriers can obstruct
+        ordinary weapon and fog-of-war sight when that feature is enabled, but they must not block
+        the shield emitters responsible for sustaining those barriers. Do not author aimed or
+        target-tracking shield lanes; a weapon concept that needs a moving tube, tracking lane, or
+        payload axis should be implemented outside the <code>shield</code> contract.
       </p>
 
       <h3>Locomotion is part of the unit, not a separate piece</h3>

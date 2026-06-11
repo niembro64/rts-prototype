@@ -43,7 +43,6 @@ import {
 } from './WheelRig3D';
 import {
   type HoverMesh,
-  buildAlbatrosHoverFans,
   buildHoverFans,
   setHoverFanAnimationTime,
   updateHoverFans,
@@ -96,7 +95,6 @@ export function geometryKeyFor(gfx: GraphicsConfig): string {
 }
 
 function hoverSmokeUseId(unitBlueprintId: string): HoverSmokeUseId {
-  if (unitBlueprintId === 'unitAlbatros') return 'locomotionAlbatrosHoverFans';
   if (unitBlueprintId === 'unitDragonfly') return 'locomotionDragonflyHovercraft';
   return 'locomotionHovercraft';
 }
@@ -166,10 +164,7 @@ export function buildLocomotion(
       return mesh;
     }
     case 'hover': {
-      const buildHoverMesh = bp.unitBlueprintId === 'unitAlbatros'
-        ? buildAlbatrosHoverFans
-        : buildHoverFans;
-      const mesh = buildHoverMesh(
+      const mesh = buildHoverFans(
         unitGroup,
         unitRadius,
         loc.config,

@@ -17279,9 +17279,8 @@ pub const CT_TURRET_CFG_RANGE_BOTTOM_UNBOUNDED: u16 = 1 << 9;
 pub const CT_TURRET_CFG_RANGE_TOP_UNBOUNDED: u16 = 1 << 10;
 pub const CT_TURRET_CFG_RANGE_SPHERE: u16 = 1 << 11;
 pub const CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP: u16 = 1 << 12;
-/// Shield-only emitters maintain force material and may keep targeting
-/// through that material. Offensive shield emitters with submunitions do
-/// not set this; their damaging fire uses the normal OBSTRUCT SIGHT gate.
+/// Shield emitters maintain force material and may keep targeting
+/// through that material.
 pub const CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION: u16 = 1 << 13;
 
 // FSM state encodings (CT_TURRET_STATE_*) are generated from
@@ -21211,9 +21210,8 @@ fn combat_targeting_slab_gate_config(
 ///     raw aim point. Panel and sphere shapes use the same material
 ///     policy and differ only in their intersection math. Skipped
 ///     (returns `1`) when the feature is off, the shape toggles leave
-///     no active shield material, or for shield-only emitters that
-///     maintain the material themselves. Shield emitters with offensive
-///     submunitions do not get the exemption.
+///     no active shield material, or for shield emitters that maintain
+///     the material themselves.
 ///
 /// The helper short-circuits in cost-increasing order to match the TS
 /// gate evaluation: LOS → ballistic → FF. Ground-aim fraction applies
@@ -36862,13 +36860,14 @@ mod lock_on_inclusion_tests {
         );
         assert_eq!(disabled_panel_clear, 1);
 
-        let offensive_shield_flags = (flags & !CT_TURRET_CFG_PASSIVE) | CT_TURRET_CFG_SHOT_IS_FORCE;
-        let (_, _, shield_submunition_clear) = compute_turret_gates_for_aim_point(
+        let shield_emitter_flags_without_exemption =
+            (flags & !CT_TURRET_CFG_PASSIVE) | CT_TURRET_CFG_SHOT_IS_FORCE;
+        let (_, _, non_exempt_shield_emitter_clear) = compute_turret_gates_for_aim_point(
             combat_targeting_pool(),
             SOURCE_SLOT,
             0,
             idx,
-            offensive_shield_flags,
+            shield_emitter_flags_without_exemption,
             0.0,
             0.0,
             0.0,
@@ -36893,16 +36892,17 @@ mod lock_on_inclusion_tests {
             9.81,
         );
         assert_eq!(
-            shield_submunition_clear, 0,
-            "shield-emission turrets with offensive submunitions must obey OBSTRUCT SIGHT",
+            non_exempt_shield_emitter_clear, 0,
+            "shield emitters without the exemption flag obey OBSTRUCT SIGHT",
         );
 
-        let (_, _, shield_only_clear) = compute_turret_gates_for_aim_point(
+        let (_, _, exempt_shield_emitter_clear) = compute_turret_gates_for_aim_point(
             combat_targeting_pool(),
             SOURCE_SLOT,
             0,
             idx,
-            offensive_shield_flags | CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION,
+            shield_emitter_flags_without_exemption
+                | CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION,
             0.0,
             0.0,
             0.0,
@@ -36927,8 +36927,8 @@ mod lock_on_inclusion_tests {
             9.81,
         );
         assert_eq!(
-            shield_only_clear, 1,
-            "shield-only emitters keep their maintenance exemption",
+            exempt_shield_emitter_clear, 1,
+            "shield emitters keep their maintenance exemption",
         );
 
         shield_pool_set_count(1);
@@ -36951,7 +36951,7 @@ mod lock_on_inclusion_tests {
             SOURCE_SLOT,
             0,
             idx,
-            offensive_shield_flags,
+            shield_emitter_flags_without_exemption,
             0.0,
             0.0,
             0.0,
