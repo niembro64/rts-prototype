@@ -68,6 +68,7 @@ import { Waypoint3D } from '../render3d/Waypoint3D';
 
 import type { GameConnection } from '../server/GameConnection';
 import type {
+  GamePhase,
   NetworkServerSnapshotMeta,
 } from '../network/NetworkTypes';
 import { setPlayerCountForColors } from '../sim/types';
@@ -234,6 +235,10 @@ export class RtsScene3D {
   public onGameOverUI?: (winnerId: PlayerId) => void;
   public onGameRestart?: () => void;
   public onServerMetaUpdate?: (meta: NetworkServerSnapshotMeta) => void;
+  /** Fires when the authoritative game phase changes (battle / paused /
+   *  gameOver) so the HUD can show pause state. */
+  public onGamePhaseChange?: (phase: GamePhase) => void;
+  private lastUiGamePhase: GamePhase | null = null;
   public onStartupReady?: () => void;
   public onRendererWarmupChange?: (warming: boolean) => void;
   private rendererWarmup: RtsScene3DRendererWarmup | null = null;
@@ -615,6 +620,11 @@ export class RtsScene3D {
       if (snapshotResult.startupReleased) this.onStartupReady?.();
       if (snapshotResult.serverMeta && this.onServerMetaUpdate) {
         this.onServerMetaUpdate(snapshotResult.serverMeta);
+      }
+      const gamePhase = this.clientViewState.getGamePhase();
+      if (gamePhase !== this.lastUiGamePhase) {
+        this.lastUiGamePhase = gamePhase;
+        this.onGamePhaseChange?.(gamePhase);
       }
       if (snapshotResult.gameOverWinnerId !== null && !this.isGameOver) {
         this.handleGameOver(snapshotResult.gameOverWinnerId);
@@ -1282,6 +1292,7 @@ export class RtsScene3D {
     this.onGameOverUI = undefined;
     this.onGameRestart = undefined;
     this.onServerMetaUpdate = undefined;
+    this.onGamePhaseChange = undefined;
     this.onStartupReady = undefined;
     this.onRendererWarmupChange = undefined;
   }

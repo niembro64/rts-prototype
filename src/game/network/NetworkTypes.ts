@@ -33,6 +33,7 @@ export type {
   LobbyPlayer,
   NetworkRole,
   BattleHandoff,
+  GamePhase,
 } from '@/types/network';
 
 export { BATTLE_HANDOFF_PROTOCOL } from '@/types/network';

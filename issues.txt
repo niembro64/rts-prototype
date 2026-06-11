@@ -45,12 +45,6 @@ return) instead of panicking; keep debug_asserts for dev.
 P1 — LEAKS / PERF / UX
 --------------------------------------------------------------------------------
 
-[009][UX] No pause/speed affordance in the HUD. setGamePaused() exists
-(GameCanvas.vue:296) but nothing user-facing exposes pause state or a toggle.
-Fix: add a pause toggle + paused indicator (and speed display if/when speeds
-exist) to the client control bar; wire to existing setPaused command; show
-"PAUSED" overlay state driven by server phase.
-
 [010][PERF] Snapshot encode path allocates per entity per snapshot:
 stateSerializerEntities.ts builds nested turret/action/waypoint DTOs fresh each
 snapshot; snapshotEntityWirePack.ts pools on DECODE but encode allocates fresh

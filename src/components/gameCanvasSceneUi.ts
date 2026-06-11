@@ -1,6 +1,6 @@
-import { reactive, type Ref } from 'vue';
+import { reactive, ref, type Ref } from 'vue';
 import type { GameScene } from '@/types/game';
-import type { NetworkServerSnapshotMeta } from '@/types/network';
+import type { GamePhase, NetworkServerSnapshotMeta } from '@/types/network';
 import type { EconomyInfo, MinimapData, SelectionActions, SelectionInfo } from '@/types/ui';
 import type { BackgroundBattleState } from '../game/lobby/LobbyManager';
 import type { PlayerId } from '../game/sim/types';
@@ -170,10 +170,17 @@ export function useGameCanvasSceneUi({
 
   const minimapData = reactive<MinimapData>(createInitialMinimapData());
 
+  /** Authoritative game phase from snapshots — drives the HUD pause
+   *  toggle/indicator. */
+  const gamePhase = ref<GamePhase>('init');
+
   function bindGameSceneUi(scene: GameScene, includeGameLifecycle = false): void {
     bindSceneUiCallbacks(scene, {
       onPlayerChange: (playerId) => {
         activePlayer.value = playerId;
+      },
+      onGamePhaseChange: (phase) => {
+        gamePhase.value = phase;
       },
       onSelectionChange: (info) => {
         Object.assign(selectionInfo, info);
@@ -419,6 +426,7 @@ export function useGameCanvasSceneUi({
     togglePlayer,
     handleMinimapClick,
     handleMinimapCommand,
+    gamePhase,
     selectionActions,
   };
 }

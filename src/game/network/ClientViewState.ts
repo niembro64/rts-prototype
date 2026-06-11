@@ -37,6 +37,7 @@ import {
   RESOURCE_FLOW_OUTBOUND,
   RESOURCE_KIND_ENERGY,
   RESOURCE_KIND_METAL,
+  type GamePhase,
   type ResourceFlowDirectionCode,
   type ResourceKindCode,
 } from '../../types/network';
@@ -183,6 +184,9 @@ export class ClientViewState {
 
   // Game over state
   private gameOverWinnerId: PlayerId | null = null;
+  /** Last authoritative game phase from snapshot gameState
+   *  ('init' until the first snapshot carrying one arrives). */
+  private gamePhase: GamePhase = 'init';
 
   // Current tick from host
   private currentTick: number = 0;
@@ -887,15 +891,13 @@ export class ClientViewState {
       this.scanPulses.length = 0;
     }
 
-    // Check game over
+    // Track authoritative game phase (battle / paused / gameOver)
     const gameState = state.gameState;
-    if (
-      gameState !== undefined &&
-      gameState !== null &&
-      gameState.phase === 'gameOver' &&
-      gameState.winnerId !== undefined
-    ) {
-      this.gameOverWinnerId = gameState.winnerId;
+    if (gameState !== undefined && gameState !== null) {
+      this.gamePhase = gameState.phase;
+      if (gameState.phase === 'gameOver' && gameState.winnerId !== undefined) {
+        this.gameOverWinnerId = gameState.winnerId;
+      }
     }
 
     // Store spatial grid debug data. The server sends this diagnostic
@@ -1551,6 +1553,10 @@ export class ClientViewState {
     return this.gameOverWinnerId;
   }
 
+  getGamePhase(): GamePhase {
+    return this.gamePhase;
+  }
+
   getTick(): number {
     return this.currentTick;
   }
@@ -1609,6 +1615,7 @@ export class ClientViewState {
     this.visionPlayerIds.length = 0;
     this.minimapOverrideStore.reset();
     this.gameOverWinnerId = null;
+    this.gamePhase = 'init';
     this.selectionState.reset();
     this.gridCells = [];
     this.gridSearchCells = [];

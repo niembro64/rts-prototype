@@ -788,6 +788,7 @@ const {
   togglePlayer,
   handleMinimapClick: centerMinimapCamera,
   handleMinimapCommand: issueMinimapCommand,
+  gamePhase,
   selectionActions,
 } = useGameCanvasSceneUi({
   activePlayer,
@@ -1651,6 +1652,19 @@ watchEffect(() => {
         />
       </div>
 
+      <!-- Authoritative pause banner (BAR-style center-screen indicator).
+           Click resumes — the same setPaused command the PAUSE button sends. -->
+      <div
+        v-if="gameStarted && gamePhase === 'paused' && gameOverWinner === null"
+        class="game-paused-banner"
+        role="status"
+        aria-live="polite"
+        title="Click to resume"
+        @click="setGamePaused(false)"
+      >
+        ⏸ PAUSED
+      </div>
+
       <!-- Game UI (desktop: hidden when lobby modal visible; mobile: follows hamburger toggle) -->
       <template v-if="playerClientEnabled && gameChromeVisible">
         <!-- Selection panel (bottom-left) -->
@@ -1848,12 +1862,10 @@ watchEffect(() => {
             >UI</button>
             <button
               type="button"
-              @click="setGamePaused(true)"
+              :class="{ active: gamePhase === 'paused' }"
+              :title="gamePhase === 'paused' ? 'Resume the game' : 'Pause the game'"
+              @click="setGamePaused(gamePhase !== 'paused')"
             >PAUSE</button>
-            <button
-              type="button"
-              @click="setGamePaused(false)"
-            >PLAY</button>
           </div>
         </section>
       </template>
@@ -2095,6 +2107,24 @@ watchEffect(() => {
   background: rgba(5, 7, 10, 0.92);
   color: #edf3ff;
   pointer-events: auto;
+}
+
+.game-paused-banner {
+  position: absolute;
+  top: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 950;
+  padding: 10px 28px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 8px;
+  background: rgba(5, 7, 10, 0.78);
+  color: #ffd166;
+  font: 700 22px/1.2 monospace;
+  letter-spacing: 0.18em;
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
 }
 
 .top-controls-shell {
