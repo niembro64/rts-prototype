@@ -16,48 +16,10 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 Please always commit and push before and after any code changes we make.
 ================================================================================
 
-Issues from full-game audit (2026-06-11). Categories: ARCH = design-philosophy
-violation, PERF = optimization, LEAK = memory/resource leak, BUG = correctness,
-UX = player-facing experience, DEAD = dead code / undeleted old path.
-
 --------------------------------------------------------------------------------
-P0 — DESIGN-DOC VIOLATIONS / BIGGEST WINS
+RUST MIGRATION DEBT (each is a phase-scale project; land each with parity
+proof + Delete The Old Path in the same change)
 --------------------------------------------------------------------------------
-
-
-
---------------------------------------------------------------------------------
-P1 — LEAKS / PERF / UX
---------------------------------------------------------------------------------
-
-
-
-
-
-
-
---------------------------------------------------------------------------------
-P2 — SMALLER FIXES / HARDENING / CLEANUP
---------------------------------------------------------------------------------
-
-
-
-
-
-
-
-
---------------------------------------------------------------------------------
-P1-LARGE — RUST MIGRATION DEBT (each is a real project; do after the above)
---------------------------------------------------------------------------------
-
-[053][ARCH] Finish the Rust snapshot wire encoder (V6 -> current V11 entity
-schema) so ENABLE_RUST_SNAPSHOT_WIRE can default ON, then delete the TS entity
-encode path (stateSerializerEntities encode + snapshotEntityWirePack encode)
-per Delete The Old Path. Today the dual path is the documented single-flag
-parity exception: Rust path opt-in via VITE_BA_ENABLE_RUST_SNAPSHOT_WIRE /
-?rustSnapshotWire, with the byte-compare harness behind ?dp02rust. The TS
-encode path is the live default and is already pooled/binary-packed.
 
 [049][ARCH] projectileSystem.ts (~1793 lines) still owns projectile
 integration, homing guidance, beam stepping and collision orchestration in TS
@@ -76,4 +38,12 @@ in Rust, eliminate the per-tick stamp/readback and the shim.
 [052][ARCH] damageHelpers.ts keeps TS damage-context/knockback math parallel to
 Rust segment/sphere kernels. Unify damage resolution in Rust; TS receives
 events only.
+
+[053][ARCH] Finish the Rust snapshot wire encoder (V6 -> current V11 entity
+schema) so ENABLE_RUST_SNAPSHOT_WIRE can default ON, then delete the TS entity
+encode path (stateSerializerEntities encode + snapshotEntityWirePack encode)
+per Delete The Old Path. Today the dual path is the documented single-flag
+parity exception: Rust path opt-in via VITE_BA_ENABLE_RUST_SNAPSHOT_WIRE /
+?rustSnapshotWire, with the byte-compare harness behind ?dp02rust. The TS
+encode path is the live default and is already pooled/binary-packed.
 ================================================================================
