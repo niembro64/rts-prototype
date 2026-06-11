@@ -3,6 +3,7 @@ import { magnitude } from '../math';
 
 export type { ForceContribution } from '@/types/ui';
 import type { ForceContribution } from '@/types/ui';
+import type { KnockbackInfo } from '@/types/damage';
 
 /**
  * Accumulated forces for a single entity this frame.
@@ -103,6 +104,23 @@ export class ForceAccumulator {
     } else {
       // Grow the array (rare after warmup)
       entry.contributions.push({ force: { x: fx, y: fy }, forceZ: fz, source });
+    }
+  }
+
+  /**
+   * Add a precomputed batch of knockback forces from damage resolution.
+   * The force vectors are already scaled and must not be normalized again.
+   */
+  addKnockbackForces(knockbacks: readonly KnockbackInfo[]): void {
+    for (let i = 0; i < knockbacks.length; i++) {
+      const knockback = knockbacks[i];
+      this.addForce(
+        knockback.entityId,
+        knockback.force.x,
+        knockback.force.y,
+        'knockback',
+        knockback.forceZ ?? 0,
+      );
     }
   }
 

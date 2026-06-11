@@ -3,7 +3,7 @@ import { NO_ENTITY_ID } from './types';
 import type { WorldState } from './WorldState';
 import { getBuildingBlueprint, getUnitBlueprint } from './blueprints';
 import { DamageSystem, type AreaDamageSource } from './damage';
-import { applyKnockbackForces, collectKillsAndDeathContexts } from './combat/damageHelpers';
+import { collectKillsAndDeathContexts } from './combat/damageHelpers';
 import type { DeathContext, SimEvent } from './combat';
 import type { ForceAccumulator } from './ForceAccumulator';
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
@@ -104,7 +104,7 @@ export class SimulationDeathExplosionPlanner {
       areaDamage.knockbackForce = blast.force;
 
       const result = this.damageSystem.applyDeathExplosionDamage(areaDamage);
-      applyKnockbackForces(result.knockbacks, this.forceAccumulator);
+      this.forceAccumulator.addKnockbackForces(result.knockbacks);
       collectKillsAndDeathContexts(
         result,
         this.world,

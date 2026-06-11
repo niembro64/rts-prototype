@@ -19,7 +19,7 @@ import type {
 } from './types';
 import { beamIndex } from '../BeamIndex';
 import type { DamageResult, DeathContext } from '../damage/types';
-import { buildImpactContext, applyKnockbackForces, collectKillsAndDeathContexts, emitBeamHitAudio } from './damageHelpers';
+import { buildImpactContext, collectKillsAndDeathContexts, emitBeamHitAudio } from './damageHelpers';
 import { createProjectileConfigFromShot } from '../projectileConfigs';
 import { getSurfaceNormal, isWaterAt, WATER_LEVEL } from '../Terrain';
 import { spatialGrid } from '../SpatialGrid';
@@ -926,7 +926,7 @@ function detonateKilledProjectileShot(
       radius: projShot.explosion.radius,
       knockbackForce: projShot.explosion.force,
     });
-    applyKnockbackForces(splashResult.knockbacks, forceAccumulator);
+    forceAccumulator?.addKnockbackForces(splashResult.knockbacks);
     collectKillsAndDeathContexts(
       splashResult, world, damageSourceKey, damageSourceType,
       unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
@@ -1352,7 +1352,7 @@ export function checkProjectileCollisions(
           })
         : null;
 
-      if (result) applyKnockbackForces(result.knockbacks, forceAccumulator);
+      if (result) forceAccumulator?.addKnockbackForces(result.knockbacks);
 
       // Apply beam force (knockback only, no damage) to each reflector entity.
       // Walk segment-by-segment along the polyline; whenever a vertex
@@ -1496,7 +1496,7 @@ export function checkProjectileCollisions(
             });
 
             // Apply knockback from projectile hit
-            applyKnockbackForces(result.knockbacks, forceAccumulator);
+            forceAccumulator?.addKnockbackForces(result.knockbacks);
             // Note: Recoil for traveling projectiles is applied at fire time in fireTurrets()
 
             // Track hits
@@ -1639,7 +1639,7 @@ export function checkProjectileCollisions(
             radius: projShot.explosion.radius,
             knockbackForce: projShot.explosion.force,
           });
-          applyKnockbackForces(splashResult.knockbacks, forceAccumulator);
+          forceAccumulator?.addKnockbackForces(splashResult.knockbacks);
           collectKillsAndDeathContexts(
             splashResult, world, damageSourceKey, damageSourceType,
             unitsToRemove, buildingsToRemove, audioEvents, deathContexts,

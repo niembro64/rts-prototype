@@ -4,10 +4,9 @@
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, BeamRay, LaserRay, PlayerId, Turret } from '../types';
 import { getEmissionBlueprintId, getPlayerPrimaryColor } from '../types';
-import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimDeathContext, SimEvent, ImpactContext, SimEventSourceType } from './types';
 import { BEAM_EXPLOSION_MAGNITUDE } from '../../../config';
-import type { DeathContext, DamageResult, KnockbackInfo } from '../damage/types';
+import type { DeathContext, DamageResult } from '../damage/types';
 import type { Projectile, ProjectileConfig } from '../types';
 import { getUnitBodyCenterHeight, getUnitGroundZ } from '../unitGeometry';
 import { isTurretBlueprintId, isUnitBlueprintId } from '../../../types/blueprintIds';
@@ -335,25 +334,6 @@ export function buildBuildingDeathEvent(
     },
     killerPlayerId,
   };
-}
-
-// Apply knockback forces from a DamageResult's knockback array
-export function applyKnockbackForces(
-  knockbacks: KnockbackInfo[],
-  forceAccumulator: ForceAccumulator | undefined = undefined,
-): void {
-  if (!forceAccumulator) return;
-  for (const knockback of knockbacks) {
-    // force already contains the full force (direction * damage * multiplier)
-    // Use addForce directly - don't use addDirectionalForce which normalizes!
-    forceAccumulator.addForce(
-      knockback.entityId,
-      knockback.force.x,
-      knockback.force.y,
-      'knockback',
-      knockback.forceZ ?? 0,
-    );
-  }
 }
 
 /**
