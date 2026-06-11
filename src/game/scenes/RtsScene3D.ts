@@ -597,6 +597,10 @@ export class RtsScene3D {
   }
 
   update(_time: number, delta: number): void {
+    // A shut-down scene must never tick: the ThreeApp keeps its RAF
+    // alive across scene restarts, so a stale update on torn-down
+    // renderer state is reachable without this guard.
+    if (this.destroyed) return;
     const frameStart = performance.now();
 
     this.frameTelemetry.recordRenderDelta(delta);

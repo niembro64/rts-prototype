@@ -107,25 +107,6 @@ behavior/title.
 P2 — SMALLER FIXES / HARDENING / CLEANUP
 --------------------------------------------------------------------------------
 
-[023][LEAK] gameCanvasLobbyPreview.ts onUnmounted stops the background battle
-but the demo render loop can run one more frame against torn-down DOM. Add a
-destroyed flag checked at the top of the loop.
-
-[024][LEAK] loadingUnitPreview3d.ts (~154-200): ResizeObserver disconnected
-before worker termination is guaranteed (1s fallback). Reorder teardown:
-cancel RAF, disconnect observer, terminate worker, then release context token.
-
-[025][BUG] RtsScene3D.destroy() (~1217-1278) has no destroyed-guard for
-callbacks that can fire during/after teardown (onRendererWarmupChange, queued
-events). Add an isDestroyed flag checked at per-frame/event entry points.
-
-[026][LEAK] NetworkManager (~312-633): disconnect during connect can let the
-10s signaling-reconnect cleanup timer fire against a NEW peer generation.
-Verify generation checks guard every delayed callback; add where missing.
-
-[027][LEAK] GameServer.stop() (~431-477): verify ServerSnapshotListenerRegistry
-clears listener-queued timeouts/callbacks on stop; clear if not.
-
 [029][BUG] commandSanitizer: unknown/unhandled command types pass through
 unmodified. Default-deny: reject command types without an explicit sanitizer.
 
