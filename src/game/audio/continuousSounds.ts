@@ -11,7 +11,6 @@ import type { ContinuousSound, ContinuousSoundConfig } from '@/types/audio';
 export function startContinuousSound(
   tk: AudioToolkit,
   config: ContinuousSoundConfig,
-  entityId: number,
   speed: number,
   volumeMultiplier: number,
   zoomVolume: number,
@@ -121,7 +120,6 @@ export function startContinuousSound(
     baseOscVolume: baseOsc,
     baseNoiseVolume: noiseGain ? baseNoise : 0,
     audible: true,
-    sourceEntityId: Math.floor(entityId / 100),
   };
 }
 

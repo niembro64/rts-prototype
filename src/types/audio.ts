@@ -46,7 +46,6 @@ export type ContinuousSound = {
   baseOscVolume: number;
   baseNoiseVolume: number;
   audible: boolean;
-  sourceEntityId: number;
 };
 
 export type ContinuousSoundConfig = {

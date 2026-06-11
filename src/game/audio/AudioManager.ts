@@ -222,13 +222,17 @@ export class AudioManager {
   startLaserSound(entityId: number, freqOverride: number | undefined, volumeMultiplier: number = 1, zoomVolume: number = 1): void {
     if (!this.categoryEnabled.beam) return;
     if (this.activeLaserSounds.has(entityId)) return;
+    // Hard cap: at battle scale hundreds of beams can be live at once;
+    // past the cap extra loops add node-graph cost but no audible
+    // information, so they simply don't start.
+    if (this.activeLaserSounds.size >= AUDIO.continuousVoiceCap.beam) return;
     const tk = this.getToolkit();
     if (!tk) return;
     // Attach sfxVolume so continuousSounds helper can read it
     (tk as unknown as { sfxVolume: number }).sfxVolume = this.sfxVolume;
     const config = getBeamConfig();
     if (freqOverride !== undefined) config.freq = freqOverride;
-    const sound = startContinuousSound(tk, config, entityId, 1, volumeMultiplier, zoomVolume);
+    const sound = startContinuousSound(tk, config, 1, volumeMultiplier, zoomVolume);
     if (sound) this.activeLaserSounds.set(entityId, sound);
   }
 
@@ -246,10 +250,11 @@ export class AudioManager {
   startShieldSound(entityId: number, speed: number = 1, volumeMultiplier: number = 1, zoomVolume: number = 1): void {
     if (!this.categoryEnabled.field) return;
     if (this.activeShieldSounds.has(entityId)) return;
+    if (this.activeShieldSounds.size >= AUDIO.continuousVoiceCap.field) return;
     const tk = this.getToolkit();
     if (!tk) return;
     (tk as unknown as { sfxVolume: number }).sfxVolume = this.sfxVolume;
-    const sound = startContinuousSound(tk, getShieldConfig(), entityId, speed, volumeMultiplier, zoomVolume);
+    const sound = startContinuousSound(tk, getShieldConfig(), speed, volumeMultiplier, zoomVolume);
     if (sound) this.activeShieldSounds.set(entityId, sound);
   }
 
@@ -278,14 +283,6 @@ export class AudioManager {
     }
     this.activeLaserSounds.clear();
     this.activeShieldSounds.clear();
-  }
-
-  // Get active continuous sounds as [soundId, sourceEntityId] pairs
-  getActiveContinuousSounds(): [number, number][] {
-    const pairs: [number, number][] = [];
-    for (const [soundId, sound] of this.activeLaserSounds) pairs.push([soundId, sound.sourceEntityId]);
-    for (const [soundId, sound] of this.activeShieldSounds) pairs.push([soundId, sound.sourceEntityId]);
-    return pairs;
   }
 
   // Mute or unmute a continuous sound by ID

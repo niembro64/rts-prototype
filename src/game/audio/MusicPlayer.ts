@@ -40,13 +40,10 @@ export class MusicPlayer {
     this.ctx = ctx;
     this.musicGain = ctx.createGain();
     this.musicGain.gain.value = AUDIO.musicGain;
-
-    // Build MIDI effects chain
-    this.midiEffects = buildMidiEffectsChain(ctx, this.musicGain);
     this.musicGain.connect(masterGain);
-
-    // Kick off async MIDI load
-    this.midiState.loadPromise = loadMidi(this.midiState);
+    // MIDI fetch/parse and the effects chain (whose reverb impulse
+    // buffer alone is ~1MB) are built lazily on the first start() —
+    // a player with music disabled never pays for either.
   }
 
   start(): void {
@@ -54,8 +51,12 @@ export class MusicPlayer {
     this.wantsPlayback = true;
     const requestId = ++this.playbackRequestId;
 
-    // If MIDI mode requested but not yet loaded, wait for load then start
-    if (AUDIO.musicSource === 'midi' && !this.midiState.loaded && this.midiState.loadPromise) {
+    // If MIDI mode requested but not yet loaded, kick the lazy load
+    // (first start only) and begin once it resolves.
+    if (AUDIO.musicSource === 'midi' && !this.midiState.loaded) {
+      if (this.midiState.loadPromise === null) {
+        this.midiState.loadPromise = loadMidi(this.midiState);
+      }
       this.midiState.loadPromise.then(() => {
         if (
           this.wantsPlayback &&
@@ -73,6 +74,9 @@ export class MusicPlayer {
 
   private beginPlayback(): void {
     if (this.playing || !this.ctx || !this.musicGain) return;
+    if (this.midiEffects === null && AUDIO.musicSource === 'midi') {
+      this.midiEffects = buildMidiEffectsChain(this.ctx, this.musicGain);
+    }
     this.playing = true;
 
     const now = this.ctx.currentTime;
@@ -144,6 +148,9 @@ export class MusicPlayer {
       destroyMidiEffectsChain(this.midiEffects);
       this.midiEffects = null;
     }
+    // Release the parsed MIDI so a destroyed player drops its note
+    // data; the next start() after a re-init reloads lazily.
+    this.midiState = createMidiState();
     this.ctx = null;
   }
 

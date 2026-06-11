@@ -13,6 +13,10 @@
     "maxStartsPerWindow": 16,
     "maxStartsPerSynthPerWindow": 4
   },
+  "continuousVoiceCap": {
+    "beam": 48,
+    "field": 32
+  },
   "event": {
     "fire": {
       "turretGunLight": {

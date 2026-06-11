@@ -38,6 +38,14 @@ type AudioConfig = {
     maxStartsPerWindow: number;
     maxStartsPerSynthPerWindow: number;
   };
+  /** Hard cap on concurrent continuous loops per category (beams /
+   *  shield fields). Past the cap new loops simply don't start —
+   *  hundreds of live node graphs add cost but no audible
+   *  information. */
+  continuousVoiceCap: {
+    beam: number;
+    field: number;
+  };
   event: {
     fire: Partial<Record<TurretBlueprintId, SoundEntry>>;
     hit: Partial<Record<ShotBlueprintId, SoundEntry>>;

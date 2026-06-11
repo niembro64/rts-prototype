@@ -85,17 +85,6 @@ per Delete The Old Path. (Verify exact duplication before cutting.)
 Verify the TS cache is still consumed; if it is dead scaffolding from the
 pre-WASM path, delete it (Delete The Old Path).
 
-[016][PERF] MIDI music is fetched+parsed eagerly at MusicPlayer.init
-(midiPlayback.ts ~89-131) and the whole Midi object is retained even when music
-is disabled. Fix: lazy-load on first start(); release parsed data on stop if
-music disabled.
-
-[017][BUG] continuousSounds.ts (~109-126) computes sourceEntityId as
-Math.floor(entityId/100) — distinct entities collide into one continuous-sound
-key, so one unit stopping can kill/steal another's beam loop. Verify intent; if
-it is meant to be a "sound family" key, name it that and derive it explicitly;
-otherwise use the full entity id.
-
 [018][ARCH] Optional chaining / optional fields in per-tick sim hot paths
 (Explicit Absence rule): src/types/sim.ts:274-282 staticShield* fields are
 `?:`; staticShield.ts:34,169-181 reads entity.body?./unit?. per tick;
@@ -117,17 +106,6 @@ behavior/title.
 --------------------------------------------------------------------------------
 P2 — SMALLER FIXES / HARDENING / CLEANUP
 --------------------------------------------------------------------------------
-
-[020][LEAK] midiPlayback.ts per-note LFO oscillators + pendingCleanups set can
-grow unbounded under heavy note overlap (~175, ~279). Fix: cap/pool pending
-cleanups; ensure LFOs stop with their note. (continuousSounds error paths
-verified fine: unstarted/unconnected nodes are GC'd, dispose stops/disconnects
-the rest.)
-
-[021][PERF] AudioManager.startLaserSound/startShieldSound maps are unbounded
-(one continuous graph per entity; ~174-217). Fix: cap concurrent continuous
-sounds (keep N loudest/closest, mute the rest) — pairs with the zoom-volume
-system that already exists.
 
 [023][LEAK] gameCanvasLobbyPreview.ts onUnmounted stops the background battle
 but the demo render loop can run one more frame against torn-down DOM. Add a
