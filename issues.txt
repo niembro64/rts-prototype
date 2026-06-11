@@ -15,3 +15,314 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 
 Please always commit and push before and after any code changes we make.
 ================================================================================
+
+Issues from full-game audit (2026-06-11). Categories: ARCH = design-philosophy
+violation, PERF = optimization, LEAK = memory/resource leak, BUG = correctness,
+UX = player-facing experience, DEAD = dead code / undeleted old path.
+
+--------------------------------------------------------------------------------
+P0 — DESIGN-DOC VIOLATIONS / BIGGEST WINS
+--------------------------------------------------------------------------------
+
+[001][ARCH] Death/build fade is alpha blending; design doc mandates screen-door
+dither in the OPAQUE pass. src/game/render3d/EntityFade3D.ts sets
+transparent=true everywhere (47, 94, 122) and the per-object building path even
+sets depthWrite=false (95, 123), producing exactly the see-through-back-faces
+artifact and transparent-queue sort cost the doc bans. The file header comment
+openly documents deviating from the doc. Fix: replace alpha fade with a dithered
+alphaTest-style discard (screen-door pattern from gl_FragCoord + vFade) in the
+opaque pass, transparent=false, depthWrite=true, for both the instanced aFade
+path and the per-object uFade path; update the file comment.
+
+[002][PERF] Audio has no voice limiting and allocates per event.
+- Every one-shot allocates a fresh GainNode + setTimeout (AudioManager.ts
+  getToolkit().createGain, ~92-104) and synths allocate a NEW noise AudioBuffer
+  filled with Math.random() PER CALL (createNoiseBuffer ~105-111). 100+
+  fire/hit/death events in a frame = 100+ buffer allocations + node graphs.
+- playNoiseBurst (audioHelpers.ts:50-85) and bullet() (hitSynths.ts:~31) never
+  call noise.stop(), so sources run to buffer end even after their gain has
+  decayed to silence.
+Fix: (a) pre-generate one shared noise buffer (e.g. 2s) at init and reuse for
+all bursts (start at random offset for variety); (b) add noise.stop(t + decay);
+(c) add a per-frame voice budget (e.g. max N one-shot synth starts per frame,
+priority by volume/proximity, drop the rest) like BAR's sound throttling;
+(d) pool GainNodes or at least cap concurrent one-shots.
+
+[003][ARCH] rts-sim-wasm/src/lib.rs is a single 38,280-line file. Project rule:
+split cohesive behavior into small modules. Split into ~14 modules along the
+existing section seams (init/panic-hook; damage+economy ~387-2054; body pool
+~3181-4595; sphere-sphere ~4398-4600; sphere-cuboid ~4596-4960; quaternion/pose
+~4962-6190; projectile ~6901-7627; turret springs ~7638-8849; terrain+A*
+~8851-11993; spatial grid ~11995-14524; combat targeting ~14549-25659;
+reflection/submunition ~25660-26927; snapshot diff ~26933-33433; snapshot
+envelope ~33433-end). Pure code motion, no behavior change; keep wasm-bindgen
+exports stable; rebuild + run contract tests after.
+
+[004][BUG] Rust panic risks on data that can arrive from JS/network in tick
+paths: lib.rs:4762 indexes engine statics via .expect() on a handle;
+lib.rs:3076 and 7239 use .try_into().unwrap() on input arrays
+(step_unit_motion, solve_kinematic_intercept). A malformed command/buffer can
+panic the authoritative sim. Fix: bounds-check and return sentinel (-1 / early
+return) instead of panicking; keep debug_asserts for dev.
+
+[005][PERF] Dev boot runs the entire contract-test suite + snapshot encoder
+byte-equality tests on EVERY startup: src/game/sim-wasm/init.ts dynamically
+imports ~20 *ContractTest.ts harnesses (~4310-4354) plus snapshotEncoderTest.ts
+(~3636, 3.7k lines / 124KB) and runs them inline, adding 100-500ms+ to every
+dev boot and keeping test code in the dev bundle graph. Fix: gate ALL of these
+behind one explicit opt-in flag (e.g. localStorage BA_RUN_CONTRACT_TESTS or
+?contractTests=1) instead of bare DEV mode, so they still exist and run on
+demand but not on every boot. Verify prod tree-shake drops them.
+
+--------------------------------------------------------------------------------
+P1 — LEAKS / PERF / UX
+--------------------------------------------------------------------------------
+
+[006][DEAD] @dimforge/rapier3d-compat stub still in package.json (devDependency
+-> file:vendor/npm-stubs/rapier3d-compat) with zero imports anywhere in src/.
+Matter.js-era physics was deleted; the stub exists only to satisfy @types/three
+addon typings. Fix: remove the devDependency + vendor/npm-stubs/, run npx tsc
+--noEmit; if @types/three examples typings then fail, scope types via
+tsconfig "types"/skipLibCheck instead of keeping a fake dependency.
+
+[007][UX] WASM sim init failure is console-only: src/main.ts:18-21 logs
+console.error and the app mounts anyway; first battle start then awaits a
+rejected/never-ready sim with no user-visible error. Fix: surface a blocking
+error state (banner/dialog with reload action) when initSimWasm() rejects, and
+gate battle-start buttons on sim readiness.
+
+[008][UX] Minimap has no right-click command path — handlePointerDown
+(src/components/Minimap.vue ~415) early-returns unless button===0 (left =
+camera pan only). BAR standard: right-click on minimap issues move/attack for
+the current selection. Fix: handle button===2 (+contextmenu suppression), map
+minimap point to world, dispatch the same command flow as a world right-click,
+including shift-queue.
+
+[009][UX] No pause/speed affordance in the HUD. setGamePaused() exists
+(GameCanvas.vue:296) but nothing user-facing exposes pause state or a toggle.
+Fix: add a pause toggle + paused indicator (and speed display if/when speeds
+exist) to the client control bar; wire to existing setPaused command; show
+"PAUSED" overlay state driven by server phase.
+
+[010][PERF] Snapshot encode path allocates per entity per snapshot:
+stateSerializerEntities.ts builds nested turret/action/waypoint DTOs fresh each
+snapshot; snapshotEntityWirePack.ts pools on DECODE but encode allocates fresh
+row objects (84-97). At 10 snapshots/s x 1000 entities this is constant churn.
+Fix: mirror the decode-side pooling on the encode side (reusable row/DTO pools,
+length=0 array reuse).
+
+[011][ARCH] Two live entity wire-encode pipelines: Rust V6
+(snapshotRustWireEncoder.ts -> wasm) and the TS fallback
+(stateSerializerEntities/snapshotEntityWirePack + msgpack). Delete-The-Old-Path
+requires one. Fix: once Rust path is default-on and byte-stable (compare mode
+exists for this), delete the TS entity encode path and keep TS decode only if
+still needed; also confirm RUST_SNAPSHOT_WIRE_COMPARE default is OFF so the
+duplicate full JS pack+msgpack at snapshotWireCodec.ts:171-173 never runs
+unless explicitly enabled.
+
+[012][PERF] NetworkSendBudget noncritical coalesce queue (512KB coalesce /
+256KB flush, NetworkSendBudget.ts:4-7) has no hard cap — under sustained
+backpressure pending noncritical messages can accumulate. Fix: cap the pending
+queue (drop-oldest noncritical) so a stalled peer can never grow memory
+unboundedly; count drops in net stats.
+
+[013][PERF] TS terrain sampling allocates per query: terrainSurface.ts
+projectHorizontalOntoSlope/applySurfaceTilt (~61-96) return fresh {x,y,z};
+terrainTileMap.ts getTerrainMeshSample (~336-428) returns a fresh sample object
+per call. These run per-unit-per-frame (render rigs) and per-tick. Fix: out-
+param/scratch-object pattern like getSurfaceNormal already uses; audit callers.
+
+[014][ARCH] Terrain height/normal sampling exists in BOTH TS
+(src/game/sim/terrain/terrainTileMap.ts) and Rust (terrain mesh kernels in
+lib.rs). Decide ownership: route sim-side queries through Rust; renderer may
+keep a read-only client sampler but must share the same data, not a parallel
+implementation. Document which is authoritative and delete/reduce the loser
+per Delete The Old Path. (Verify exact duplication before cutting.)
+
+[015][DEAD] src/game/sim/Pathfinder.ts keeps a module-scope building-mask cache
+(~80-96) though the comment says mask+A*+LOS smoothing all run inside WASM.
+Verify the TS cache is still consumed; if it is dead scaffolding from the
+pre-WASM path, delete it (Delete The Old Path).
+
+[016][PERF] MIDI music is fetched+parsed eagerly at MusicPlayer.init
+(midiPlayback.ts ~89-131) and the whole Midi object is retained even when music
+is disabled. Fix: lazy-load on first start(); release parsed data on stop if
+music disabled.
+
+[017][BUG] continuousSounds.ts (~109-126) computes sourceEntityId as
+Math.floor(entityId/100) — distinct entities collide into one continuous-sound
+key, so one unit stopping can kill/steal another's beam loop. Verify intent; if
+it is meant to be a "sound family" key, name it that and derive it explicitly;
+otherwise use the full entity id.
+
+[018][ARCH] Optional chaining / optional fields in per-tick sim hot paths
+(Explicit Absence rule): src/types/sim.ts:274-282 staticShield* fields are
+`?:`; staticShield.ts:34,169-181 reads entity.body?./unit?. per tick;
+projectileSystem.ts:526 weapon.shield?.deployedPose in the fire loop;
+aimSolver.ts:205,538 options?./combat?.; targetingInputStamping.ts:706
+entity.combat?.trajectoryMode per entity per tick. Fix: convert these specific
+fields to `T | null` (initialized) or hoist explicit null guards out of the
+loops; leave third-party boundaries alone.
+
+[019][UX] Right-drag attack-line / formation-line flow is referenced by UI text
+but discoverability is unverified: SelectionPanel "Atk Line" button sets a
+waypoint mode whose right-drag activation is never explained in-UI, and the
+"Assume" button title claims "Alt+Right click also works" (SelectionPanel.vue
+~723-729) — verify Input3DManager actually implements Alt+RightClick; fix the
+binding or fix the title. Also Wait button title promises Ctrl/Cmd+Shift
+"insert next" (~822) — verify queueModeFromEvent distinguishes that; align
+behavior/title.
+
+--------------------------------------------------------------------------------
+P2 — SMALLER FIXES / HARDENING / CLEANUP
+--------------------------------------------------------------------------------
+
+[020][LEAK] Audio small leaks: continuousSounds.ts gain created without
+autoDisconnect and error paths can orphan noise/filter nodes (~22, ~100);
+midiPlayback.ts per-note LFO oscillators + pendingCleanups set can grow
+unbounded under heavy note overlap (~175, ~279). Fix: disconnect on all error
+paths; cap/pool pending cleanups; stop LFOs with their note.
+
+[021][PERF] AudioManager.startLaserSound/startShieldSound maps are unbounded
+(one continuous graph per entity; ~174-217). Fix: cap concurrent continuous
+sounds (keep N loudest/closest, mute the rest) — pairs with the zoom-volume
+system that already exists.
+
+[022][PERF] Noise buffers: 10s noise buffer allocated for sub-second uses in
+continuousSounds.ts (~85). Covered by the shared-noise-buffer fix in [002] —
+make continuous sounds use the same shared buffer.
+
+[023][LEAK] gameCanvasLobbyPreview.ts onUnmounted stops the background battle
+but the demo render loop can run one more frame against torn-down DOM. Add a
+destroyed flag checked at the top of the loop.
+
+[024][LEAK] loadingUnitPreview3d.ts (~154-200): ResizeObserver disconnected
+before worker termination is guaranteed (1s fallback). Reorder teardown:
+cancel RAF, disconnect observer, terminate worker, then release context token.
+
+[025][BUG] RtsScene3D.destroy() (~1217-1278) has no destroyed-guard for
+callbacks that can fire during/after teardown (onRendererWarmupChange, queued
+events). Add an isDestroyed flag checked at per-frame/event entry points.
+
+[026][LEAK] NetworkManager (~312-633): disconnect during connect can let the
+10s signaling-reconnect cleanup timer fire against a NEW peer generation.
+Verify generation checks guard every delayed callback; add where missing.
+
+[027][LEAK] GameServer.stop() (~431-477): verify ServerSnapshotListenerRegistry
+clears listener-queued timeouts/callbacks on stop; clear if not.
+
+[028][LEAK] UnitDetailInstanceRenderer3D.ts:256 fadeState Map keyed by
+InstancedMesh — verify entries are removed in every dispose path; add cleanup
+if any path misses it.
+
+[029][BUG] commandSanitizer: unknown/unhandled command types pass through
+unmodified. Default-deny: reject command types without an explicit sanitizer.
+
+[030][BUG] snapshotDeltaThresholds.ts magnitude-ratio zero-edge: with a
+configured ratio >= 1, nonzero->zero velocity would NOT emit (delta ==
+baseline*1 fails the > test). Add explicit "prev nonzero && next zero -> emit"
+edge so the doc rule holds for any ratio config.
+
+[031][PERF] snapshotWireCodec.measureNetworkSnapshotWireBreakdown re-packs and
+re-encodes the entire snapshot per call (~213-214). Verify call cadence (debug
+HUD?); cache by tick or compute from the already-encoded bytes.
+
+[032][ARCH] GameServer module-scope scratch buffers (_dirtyEntityIdsBuf etc.,
+~99-100) are not re-entrant. Single-threaded today — add a comment stating the
+invariant (or wrap in a per-call context) so a future parallel emit can't
+corrupt them silently.
+
+[033][PERF] Rust micro-allocs: spatial-hash cell item Vec allocates on first
+touch within a tick (lib.rs:~4436) and woke buffer resizes per call (~4452).
+Pre-size at pool init / reuse cells across ticks.
+
+[034][ARCH] Rust: spatial_query_occupied_cells_debug (lib.rs:~14490) iterates
+HashMap order — debug-only, but sort keys so its output is stable for replay
+diffing.
+
+[035][ARCH] WASM boundary chatter: ~342 exported functions, several called
+per-entity/per-frame from JS (e.g. wind_sample_state,
+build_target_horizontal_distance). Identify the per-frame offenders and batch
+them (one call over typed arrays) — measure first, then batch the top few.
+
+[036][PERF] Minimap.vue (~473) deep-watches props.drawings. Replace with a
+drawings version counter / shallow watch.
+
+[037][UX] Minimap UX papercuts batch (SelectionPanel.vue unless noted):
+- select-only buttons read like counts ("Tower 2") — relabel "(2 towers)"
+  (~696).
+- factory unit buttons lack cost on the button face while build buttons show
+  it (~1297) — add cost label.
+- auto-group "A" badge is ~7px and easy to miss (~515-530) — add legend or
+  tooltip.
+- "Ground" (attack-ground) toggle title is ambiguous (~777-783) — clarify.
+- client control bar HUD toggles are single letters (UNIT/TOWER/...) — expand
+  labels where space allows (GameCanvasClientControlBar.vue).
+
+[038][ARCH] gameCanvasSceneUi.ts applyEconomyInfo manual field-by-field copy
+can silently miss newly added EconomyInfo fields (~32-53). Add a compile-time
+exhaustiveness check (satisfies/keyof mapping) or copy via a typed helper.
+
+[039][ARCH] Factory preset localStorage sync has a cross-tab race
+(SelectionPanel.vue ~364-367). Low stakes: add a version field and
+last-write-wins on the whole slot array.
+
+[040][UX] Verify an explicit attack-move binding exists and is discoverable
+(BAR ships one); commandHotkeys.ts shows fight/attack but no attack-move
+entry. Add binding or document that right-click-on-ground = attack-move for
+fight mode.
+
+[041][PERF] isFarFromWater does 8 radial water samples per call
+(terrainSurface.ts ~132-148). Verify call sites/cadence; precompute a water
+mask if it is on a hot path.
+
+[042][PERF] terrainTriangleSampleFromGlobalMesh iterates every triangle in the
+cell per sample (terrainTileMap.ts ~331). Cache last-hit triangle per querier
+(units rarely change triangle between frames).
+
+[043][ARCH] MathHelpers.getTransformCosSin returns a shared module-scope
+scratch object (~118-123) — fine, but undocumented. Add a loud comment (or
+return [cos,sin] tuple) so a nested call can't silently corrupt a held ref.
+
+[044][ARCH] sessionSingleton transferSimSlot/transferRendererSlot allow
+ownership hand-off without proving the old owner finished destroy (~34, ~60).
+Tighten: assert old owner released, or replace transfers with release+acquire.
+
+[045][ARCH] LobbyManager.destroyBackgroundBattle try/finally can swallow
+server.stop() errors (~245). Log explicitly before continuing teardown.
+
+[046][ARCH] Tauri config: csp is null and fullscreen defaults true
+(src-tauri/tauri.conf.json:21,26). Set a minimal CSP (self + wasm-unsafe-eval)
+and fullscreen:false (user toggles in-app).
+
+[047][DEAD] Repo hygiene: tmp/ probe dirs + stray PNGs and
+units_files_list.txt (references a directory that no longer exists) are
+committed. Delete units_files_list.txt; gitignore or delete tmp/. (Leave
+future_factions.txt — design notes — or move to docs/.)
+
+[048][PERF] WASM load: verify wasm-bindgen init uses
+WebAssembly.instantiateStreaming (no full-buffer compile on main thread);
+if not, switch init to the streaming path.
+
+--------------------------------------------------------------------------------
+P1-LARGE — RUST MIGRATION DEBT (each is a real project; do after the above)
+--------------------------------------------------------------------------------
+
+[049][ARCH] projectileSystem.ts (~1793 lines) still owns projectile
+integration, homing guidance, beam stepping and collision orchestration in TS
+while the projectile pool lives in WASM. Port the per-projectile tick loop to
+Rust; leave TS as spawn/despawn orchestration. Delete the TS loop in the same
+change (Delete The Old Path).
+
+[050][ARCH] aimSolver.ts duplicates ballistic/lead/aim math that also exists in
+the Rust targeting scheduler for legacy/non-scheduler turret paths. Unify: all
+turrets through the Rust solver; delete the TS solver path.
+
+[051][ARCH] targetingInputStamping.ts (~957 lines) is the TS->Rust stamping
+shim for the targeting FSM. Once [050] lands and targeting state lives fully
+in Rust, eliminate the per-tick stamp/readback and the shim.
+
+[052][ARCH] damageHelpers.ts keeps TS damage-context/knockback math parallel to
+Rust segment/sphere kernels. Unify damage resolution in Rust; TS receives
+events only.
+================================================================================
