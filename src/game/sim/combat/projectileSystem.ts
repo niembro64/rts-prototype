@@ -1756,7 +1756,8 @@ export function updateProjectiles(
         const sameTopology =
           prevTopologyRefCount === refs.length &&
           (refs.length === 0 ||
-            prevLastReflectorId === refs[refs.length - 1].reflectorEntityId);
+            prevLastReflectorId === refs[refs.length - 1].reflectorEntityId) &&
+          proj.prevEndEntityId === beamPath.endEntityId;
         if (
           sameTopology &&
           proj.prevEndX !== null &&
@@ -1787,6 +1788,7 @@ export function updateProjectiles(
         } else {
           clearBeamReflectorMetadata(endPoint);
         }
+        proj.prevEndEntityId = beamPath.endEntityId;
         proj.prevEndX = beamPath.endX;
         proj.prevEndY = beamPath.endY;
         proj.prevEndZ = beamPath.endZ;

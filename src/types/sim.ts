@@ -690,6 +690,12 @@ export type Projectile = {
   /** Internal: tick at which prevEnd* was captured, used as the dt for
    *  the next end-velocity finite difference. Not serialized. */
   prevEndTick: number;
+  /** Internal: terminal-surface identity of the previous trace's final
+   *  segment (entity the beam ended on; NO_ENTITY_ID for a free
+   *  range/cylinder end). The endpoint finite-diff velocity is valid
+   *  only while this is unchanged — a terminal-surface handoff is a
+   *  discrete event and ships zero endpoint motion. Not serialized. */
+  prevEndEntityId: EntityId;
   /** Internal: previous beam-trace tick's reflection points keyed by
    *  reflectorEntityId. Used to finite-diff each reflection point's
    *  velocity. Not serialized. */
@@ -750,6 +756,7 @@ export type ProjectileAbsenceSlots = Pick<Projectile,
   | 'prevEndY'
   | 'prevEndZ'
   | 'prevEndTick'
+  | 'prevEndEntityId'
   | 'prevReflectionPoints'
   | 'targetEntityId'
   | 'obstructionT'
@@ -782,6 +789,7 @@ export const PROJECTILE_ABSENCE_SLOTS: Readonly<ProjectileAbsenceSlots> = {
   prevEndY: null,
   prevEndZ: null,
   prevEndTick: -1,
+  prevEndEntityId: NO_ENTITY_ID,
   prevReflectionPoints: null,
   targetEntityId: NO_ENTITY_ID,
   obstructionT: null,

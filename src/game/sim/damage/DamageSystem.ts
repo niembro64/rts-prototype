@@ -1057,8 +1057,14 @@ export class DamageSystem {
     terminalReflection: BeamReflectorPoint | undefined;
     endpointDamageable: boolean;
     segmentLimitReached: boolean;
+    /** Entity the final segment terminated on; NO_ENTITY_ID for a free
+     *  range/cylinder end. A change in this identity between traces is
+     *  a discrete endpoint event (the beam swept onto/off a body), so
+     *  the caller must not finite-diff endpoint velocity across it. */
+    endEntityId: EntityId;
   } {
     const reflections: BeamReflectorPoint[] = [];
+    let loopEndEntityId: EntityId = NO_ENTITY_ID;
     const segmentLimit = Math.max(1, Math.floor(maxSegments));
     let remainingRange = Math.hypot(endX - startX, endY - startY, endZ - startZ);
     let curSX = startX, curSY = startY, curSZ = startZ;
@@ -1105,6 +1111,7 @@ export class DamageSystem {
           terminalReflection: undefined,
           endpointDamageable: rangeCylinder === undefined,
           segmentLimitReached: false,
+          endEntityId: NO_ENTITY_ID,
         };
       }
 
@@ -1119,6 +1126,7 @@ export class DamageSystem {
             terminalReflection: undefined,
             endpointDamageable: true,
             segmentLimitReached: false,
+            endEntityId: hit.entityId,
           };
         }
         return {
@@ -1130,6 +1138,7 @@ export class DamageSystem {
           terminalReflection: undefined,
           endpointDamageable: true,
           segmentLimitReached: false,
+          endEntityId: hit.entityId,
         };
       }
 
@@ -1155,6 +1164,7 @@ export class DamageSystem {
           reflections,
           terminalReflection: reflection,
           endpointDamageable: false,
+          endEntityId: hit.entityId,
           segmentLimitReached: false,
         };
       }
@@ -1168,6 +1178,7 @@ export class DamageSystem {
           reflections,
           terminalReflection: reflection,
           endpointDamageable: false,
+          endEntityId: hit.entityId,
           segmentLimitReached: true,
         };
       }
@@ -1185,6 +1196,7 @@ export class DamageSystem {
           reflections,
           terminalReflection: reflection,
           endpointDamageable: false,
+          endEntityId: hit.entityId,
           segmentLimitReached: false,
         };
       }
@@ -1204,6 +1216,7 @@ export class DamageSystem {
           reflections,
           terminalReflection: reflection,
           endpointDamageable: false,
+          endEntityId: hit.entityId,
           segmentLimitReached: false,
         };
       }
@@ -1224,6 +1237,7 @@ export class DamageSystem {
           reflections,
           terminalReflection: reflection,
           endpointDamageable: false,
+          endEntityId: hit.entityId,
           segmentLimitReached: false,
         };
       }
@@ -1245,6 +1259,7 @@ export class DamageSystem {
           curEX = hit.x;
           curEY = hit.y;
           curEZ = hit.z;
+          loopEndEntityId = hit.entityId;
           break;
         }
         curEX = hit.x + reflDirX * cylinderDistance;
@@ -1258,6 +1273,7 @@ export class DamageSystem {
           curEX = hit.x;
           curEY = hit.y;
           curEZ = hit.z;
+          loopEndEntityId = hit.entityId;
           break;
         }
         curEX = hit.x + reflDirX * remainingRange;
@@ -1277,6 +1293,7 @@ export class DamageSystem {
       terminalReflection: undefined,
       endpointDamageable: rangeCylinder === undefined,
       segmentLimitReached: false,
+      endEntityId: loopEndEntityId,
     };
   }
 
