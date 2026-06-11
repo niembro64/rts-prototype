@@ -24,15 +24,6 @@ UX = player-facing experience, DEAD = dead code / undeleted old path.
 P0 — DESIGN-DOC VIOLATIONS / BIGGEST WINS
 --------------------------------------------------------------------------------
 
-[003][ARCH] rts-sim-wasm/src/lib.rs is a single 38,280-line file. Project rule:
-split cohesive behavior into small modules. Split into ~14 modules along the
-existing section seams (init/panic-hook; damage+economy ~387-2054; body pool
-~3181-4595; sphere-sphere ~4398-4600; sphere-cuboid ~4596-4960; quaternion/pose
-~4962-6190; projectile ~6901-7627; turret springs ~7638-8849; terrain+A*
-~8851-11993; spatial grid ~11995-14524; combat targeting ~14549-25659;
-reflection/submunition ~25660-26927; snapshot diff ~26933-33433; snapshot
-envelope ~33433-end). Pure code motion, no behavior change; keep wasm-bindgen
-exports stable; rebuild + run contract tests after.
 
 
 --------------------------------------------------------------------------------
