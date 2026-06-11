@@ -28,6 +28,16 @@ type AudioConfig = {
   beamGain: number;
   fieldGain: number;
   musicGain: number;
+  /** One-shot voice limiting: at most `maxStartsPerWindow` synth starts
+   *  (and `maxStartsPerSynthPerWindow` per synth id) per `windowMs`
+   *  window. Big battles emit hundreds of fire/hit events per second;
+   *  past this budget extra one-shots are dropped instead of building
+   *  Web Audio node graphs the mix can't resolve anyway. */
+  voiceBudget: {
+    windowMs: number;
+    maxStartsPerWindow: number;
+    maxStartsPerSynthPerWindow: number;
+  };
   event: {
     fire: Partial<Record<TurretBlueprintId, SoundEntry>>;
     hit: Partial<Record<ShotBlueprintId, SoundEntry>>;

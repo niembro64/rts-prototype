@@ -81,8 +81,8 @@ export function startContinuousSound(
   }
   osc.start();
 
-  // Noise layer
-  const noiseBuffer = tk.createNoiseBuffer(10);
+  // Noise layer — loops the shared noise buffer.
+  const noiseBuffer = tk.createNoiseBuffer();
   let noiseSource: AudioBufferSourceNode | undefined;
   let noiseGain: GainNode | undefined;
   let noiseFilter: BiquadFilterNode | undefined;

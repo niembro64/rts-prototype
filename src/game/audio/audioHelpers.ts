@@ -59,7 +59,7 @@ export function playNoiseBurst(
   delay: number = 0,
   filterEndFreq?: number,
 ): void {
-  const noiseBuffer = tk.createNoiseBuffer(noiseDuration);
+  const noiseBuffer = tk.createNoiseBuffer();
   if (!noiseBuffer) return;
 
   const noise = tk.ctx.createBufferSource();
@@ -81,5 +81,11 @@ export function playNoiseBurst(
   gain.gain.exponentialRampToValueAtTime(0.01, t + decayDuration);
 
   noise.connect(filter).connect(gain);
-  noise.start(t);
+  // The noise buffer is shared across all sounds: start at a random offset
+  // for variety, and stop when the audible life ends — buffer length no
+  // longer bounds the source, so an explicit stop is required.
+  const audibleSeconds = Math.min(noiseDuration, decayDuration);
+  const maxOffset = Math.max(0, noiseBuffer.duration - audibleSeconds);
+  noise.start(t, Math.random() * maxOffset);
+  noise.stop(t + audibleSeconds);
 }

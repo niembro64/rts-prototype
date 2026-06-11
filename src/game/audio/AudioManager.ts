@@ -27,6 +27,11 @@ const SYNTH_DISPATCH: Record<string, (tk: AudioToolkit, speed: number, vol: numb
   ...DEATH_SYNTHS,
 };
 
+// Length of the one shared white-noise buffer. Long enough that looping
+// continuous layers don't read as periodic and random-offset bursts stay
+// uncorrelated; ~2s mono at 48kHz is ~384KB once, total.
+const SHARED_NOISE_BUFFER_SECONDS = 2;
+
 /** Subset of SoundCategory handled inside AudioManager — every value
  *  here gates one or more play methods below. `music` is excluded
  *  because musicPlayer owns music playback; the SOUNDS: button for
@@ -44,6 +49,17 @@ export class AudioManager {
   private activeShieldSounds: Map<number, ContinuousSound> = new Map();
   private pendingTimeouts = new Set<ReturnType<typeof setTimeout>>();
   private gainCleanupTimeouts = new Set<ReturnType<typeof setTimeout>>();
+
+  // One shared white-noise buffer serves every burst and continuous noise
+  // layer (sources start at random offsets) instead of filling a fresh
+  // Math.random() AudioBuffer per sound — at battle scale that was hundreds
+  // of buffer allocations per second.
+  private sharedNoiseBuffer: AudioBuffer | null = null;
+
+  // One-shot voice budget (AUDIO.voiceBudget): rolling-window counters.
+  private voiceWindowStartMs = 0;
+  private voiceStartsThisWindow = 0;
+  private readonly voiceStartsBySynth = new Map<string, number>();
 
   // Volume controls
   public masterVolume = AUDIO.masterVolume;
@@ -102,17 +118,46 @@ export class AudioManager {
         }
         return gain;
       },
-      createNoiseBuffer: (duration: number): AudioBuffer | null => {
-        const length = ctx.sampleRate * duration;
-        const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
-        const data = buffer.getChannelData(0);
-        for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
-        return buffer;
+      createNoiseBuffer: (): AudioBuffer | null => {
+        // Shared buffer: white noise is statistically identical everywhere,
+        // so every consumer reads from one buffer (looping or starting at a
+        // random offset) and schedules its own stop. The requested duration
+        // is ignored — bursts are bounded by their explicit stop time and
+        // loops wrap the shared buffer.
+        if (this.sharedNoiseBuffer === null) {
+          const length = Math.ceil(ctx.sampleRate * SHARED_NOISE_BUFFER_SECONDS);
+          const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
+          this.sharedNoiseBuffer = buffer;
+        }
+        return this.sharedNoiseBuffer;
       },
     };
   }
 
   // ==================== ONE-SHOT SOUNDS ====================
+
+  /** One-shot voice budget: allow at most N synth starts per rolling
+   *  window (and M per synth id) so hundred-event battle frames don't
+   *  build hundreds of Web Audio node graphs the mix can't resolve
+   *  anyway. Returns false when the budget is spent and the one-shot
+   *  should simply be dropped. */
+  private tryAcquireVoice(synthId: string): boolean {
+    const budget = AUDIO.voiceBudget;
+    const now = performance.now();
+    if (now - this.voiceWindowStartMs >= budget.windowMs) {
+      this.voiceWindowStartMs = now;
+      this.voiceStartsThisWindow = 0;
+      this.voiceStartsBySynth.clear();
+    }
+    if (this.voiceStartsThisWindow >= budget.maxStartsPerWindow) return false;
+    const perSynth = this.voiceStartsBySynth.get(synthId) ?? 0;
+    if (perSynth >= budget.maxStartsPerSynthPerWindow) return false;
+    this.voiceStartsThisWindow++;
+    this.voiceStartsBySynth.set(synthId, perSynth + 1);
+    return true;
+  }
 
   // Generic weapon fire by blueprint ID
   playWeaponFire(turretBlueprintId: TurretAudioId, _pitch: number = 1, volumeMultiplier: number = 1): void {
@@ -124,6 +169,7 @@ export class AudioManager {
 
     const fn = SYNTH_DISPATCH[entry.synth];
     if (!fn) return;
+    if (!this.tryAcquireVoice(entry.synth)) return;
 
     const tk = this.getToolkit();
     if (!tk) return;
@@ -145,6 +191,7 @@ export class AudioManager {
 
     const fn = SYNTH_DISPATCH[entry.synth];
     if (!fn) return;
+    if (!this.tryAcquireVoice(entry.synth)) return;
 
     const tk = this.getToolkit();
     if (!tk) return;
@@ -162,6 +209,7 @@ export class AudioManager {
 
     const fn = SYNTH_DISPATCH[entry.synth];
     if (!fn) return;
+    if (!this.tryAcquireVoice(entry.synth)) return;
 
     const tk = this.getToolkit();
     if (!tk) return;
@@ -325,6 +373,10 @@ export class AudioManager {
     }
     this.ctx = null;
     this.masterGain = null;
+    this.sharedNoiseBuffer = null;
+    this.voiceWindowStartMs = 0;
+    this.voiceStartsThisWindow = 0;
+    this.voiceStartsBySynth.clear();
     this.initialized = false;
   }
 }

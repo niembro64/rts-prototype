@@ -8,6 +8,11 @@
   "beamGain": 0.03,
   "fieldGain": 1,
   "musicGain": 0.5,
+  "voiceBudget": {
+    "windowMs": 50,
+    "maxStartsPerWindow": 16,
+    "maxStartsPerSynthPerWindow": 4
+  },
   "event": {
     "fire": {
       "turretGunLight": {

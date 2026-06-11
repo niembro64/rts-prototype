@@ -15,22 +15,7 @@ export function bullet(tk: AudioToolkit, speed: number, vol: number): void {
   // High-frequency crack
   playTone(tk, 'square', 4000 * speed, 2000 * speed, 0.012 / speed, 0.12 * vol, 0.12 * vol, 0, 'highpass', 2500 * speed);
   // Noise burst through notch (scoop 800-2000Hz mids)
-  const noiseBuffer = tk.createNoiseBuffer(0.02 / speed);
-  if (noiseBuffer) {
-    const noise = tk.ctx.createBufferSource();
-    noise.buffer = noiseBuffer;
-    const notch = tk.ctx.createBiquadFilter();
-    notch.type = 'notch';
-    notch.frequency.value = 1200 * speed;
-    notch.Q.value = 1.0;
-    const gain = tk.createGain(0.08 * vol);
-    if (gain) {
-      gain.gain.setValueAtTime(0.08 * vol, tk.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, tk.ctx.currentTime + 0.02 / speed);
-      noise.connect(notch).connect(gain);
-      noise.start(tk.ctx.currentTime);
-    }
-  }
+  playNoiseBurst(tk, 0.02 / speed, 'notch', 1200 * speed, 1.0, 0.08 * vol, 0.08 * vol, 0.02 / speed);
 }
 
 // Heavy hit (cannon impact) - thump + noise

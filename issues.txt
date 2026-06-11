@@ -24,20 +24,6 @@ UX = player-facing experience, DEAD = dead code / undeleted old path.
 P0 — DESIGN-DOC VIOLATIONS / BIGGEST WINS
 --------------------------------------------------------------------------------
 
-[002][PERF] Audio has no voice limiting and allocates per event.
-- Every one-shot allocates a fresh GainNode + setTimeout (AudioManager.ts
-  getToolkit().createGain, ~92-104) and synths allocate a NEW noise AudioBuffer
-  filled with Math.random() PER CALL (createNoiseBuffer ~105-111). 100+
-  fire/hit/death events in a frame = 100+ buffer allocations + node graphs.
-- playNoiseBurst (audioHelpers.ts:50-85) and bullet() (hitSynths.ts:~31) never
-  call noise.stop(), so sources run to buffer end even after their gain has
-  decayed to silence.
-Fix: (a) pre-generate one shared noise buffer (e.g. 2s) at init and reuse for
-all bursts (start at random offset for variety); (b) add noise.stop(t + decay);
-(c) add a per-frame voice budget (e.g. max N one-shot synth starts per frame,
-priority by volume/proximity, drop the rest) like BAR's sound throttling;
-(d) pool GainNodes or at least cap concurrent one-shots.
-
 [003][ARCH] rts-sim-wasm/src/lib.rs is a single 38,280-line file. Project rule:
 split cohesive behavior into small modules. Split into ~14 modules along the
 existing section seams (init/panic-hook; damage+economy ~387-2054; body pool
@@ -167,20 +153,16 @@ behavior/title.
 P2 — SMALLER FIXES / HARDENING / CLEANUP
 --------------------------------------------------------------------------------
 
-[020][LEAK] Audio small leaks: continuousSounds.ts gain created without
-autoDisconnect and error paths can orphan noise/filter nodes (~22, ~100);
-midiPlayback.ts per-note LFO oscillators + pendingCleanups set can grow
-unbounded under heavy note overlap (~175, ~279). Fix: disconnect on all error
-paths; cap/pool pending cleanups; stop LFOs with their note.
+[020][LEAK] midiPlayback.ts per-note LFO oscillators + pendingCleanups set can
+grow unbounded under heavy note overlap (~175, ~279). Fix: cap/pool pending
+cleanups; ensure LFOs stop with their note. (continuousSounds error paths
+verified fine: unstarted/unconnected nodes are GC'd, dispose stops/disconnects
+the rest.)
 
 [021][PERF] AudioManager.startLaserSound/startShieldSound maps are unbounded
 (one continuous graph per entity; ~174-217). Fix: cap concurrent continuous
 sounds (keep N loudest/closest, mute the rest) — pairs with the zoom-volume
 system that already exists.
-
-[022][PERF] Noise buffers: 10s noise buffer allocated for sub-second uses in
-continuousSounds.ts (~85). Covered by the shared-noise-buffer fix in [002] —
-make continuous sounds use the same shared buffer.
 
 [023][LEAK] gameCanvasLobbyPreview.ts onUnmounted stops the background battle
 but the demo render loop can run one more frame against torn-down DOM. Add a

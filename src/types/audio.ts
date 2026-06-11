@@ -28,7 +28,7 @@ export type SoundEntry = {
 export type AudioToolkit = {
   ctx: AudioContext;
   createGain(volume?: number, autoDisconnectMs?: number): GainNode | null;
-  createNoiseBuffer(duration: number): AudioBuffer | null;
+  createNoiseBuffer(): AudioBuffer | null;
 };
 
 export type ContinuousSound = {
