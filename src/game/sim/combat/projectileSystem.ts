@@ -523,7 +523,9 @@ export function fireTurrets(
       if (shot.type === 'shield') {
         const spec = shieldSubmunitions;
         if (spec === null || lockedTarget === undefined) continue;
-        const deployedPose = weapon.shield?.deployedPose ?? null;
+        const weaponShield = weapon.shield;
+        if (weaponShield === null) continue;
+        const deployedPose = weaponShield.deployedPose;
         if (deployedPose === null) continue;
         if (readTurretCooldownForFire(unit, weaponIndex) > 0) continue;
 

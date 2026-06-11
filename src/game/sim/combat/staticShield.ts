@@ -24,14 +24,15 @@ function finiteNonNegativeMs(dtMs: number): number {
 function getStaticShieldHostSpeedSq(entity: Entity): number {
   const unit = entity.unit;
   if (unit === null) return 0;
-  const vx = unit.velocityX ?? 0;
-  const vy = unit.velocityY ?? 0;
-  const vz = unit.velocityZ ?? 0;
+  const vx = unit.velocityX;
+  const vy = unit.velocityY;
+  const vz = unit.velocityZ;
   return vx * vx + vy * vy + vz * vz;
 }
 
 function isStaticShieldBodySleeping(entity: Entity): boolean {
-  return entity.body?.physicsBody.sleeping === true;
+  const body = entity.body;
+  return body !== null && body.physicsBody.sleeping;
 }
 
 function isStaticShieldDeployCandidate(entity: Entity): boolean {
@@ -67,9 +68,9 @@ export function advanceStaticShieldHostReadiness(entity: Entity, dtMs: number): 
     return false;
   }
 
-  let ready = unit.staticShieldHostReady === true;
-  let settledMs = unit.staticShieldSettledMs ?? 0;
-  let unsettledMs = unit.staticShieldUnsettledMs ?? 0;
+  let ready = unit.staticShieldHostReady;
+  let settledMs = unit.staticShieldSettledMs;
+  let unsettledMs = unit.staticShieldUnsettledMs;
   const deployCandidate = isStaticShieldDeployCandidate(entity);
   const stowCandidate = isStaticShieldStowCandidate(entity);
 
@@ -114,8 +115,7 @@ export function isStaticShieldHostSettled(entity: Entity): boolean {
   const unit = entity.unit;
   if (unit === null) return true;
   if (unit.hp <= 0) return false;
-  if (typeof unit.staticShieldHostReady === 'boolean') return unit.staticShieldHostReady;
-  return isStaticShieldDeployCandidate(entity);
+  return unit.staticShieldHostReady;
 }
 
 export function isStaticShieldTurretPoseSettled(turret: Turret): boolean {
@@ -139,7 +139,7 @@ export function isStaticShieldDeploymentReady(
 
 export function isStaticShieldPanelEmissionReady(host: Entity, turret: Turret): boolean {
   const unit = host.unit;
-  if (unit !== null && unit.staticShieldPanelActive === true) {
+  if (unit !== null && unit.staticShieldPanelActive) {
     return isStaticShieldHostSettled(host);
   }
   return isStaticShieldHostSettled(host) && isStaticShieldTurretPoseSettled(turret);
@@ -151,7 +151,7 @@ export function updateStaticShieldPanelEmissionState(host: Entity, turret: Turre
     stowStaticShieldPanel(host);
     return false;
   }
-  if (unit.staticShieldPanelActive === true) return true;
+  if (unit.staticShieldPanelActive) return true;
   if (!isStaticShieldTurretPoseSettled(turret)) return false;
 
   unit.staticShieldPanelActive = true;
@@ -165,18 +165,13 @@ export function getStaticShieldPanelEmissionPose(
   turret: Turret,
 ): StaticShieldPanelEmissionPose {
   const unit = host.unit;
-  const hasLatchedPose = unit !== null && unit.staticShieldPanelActive === true;
-  const latchedRotation = unit?.staticShieldPanelRotation;
-  const latchedPitch = unit?.staticShieldPanelPitch;
-  const rotation = hasLatchedPose && typeof latchedRotation === 'number' && Number.isFinite(latchedRotation)
-    ? latchedRotation
-    : turret.rotation;
-  const pitch = hasLatchedPose && typeof latchedPitch === 'number' && Number.isFinite(latchedPitch)
-    ? latchedPitch
-    : turret.pitch;
-  return { rotation, pitch };
+  if (unit !== null && unit.staticShieldPanelActive) {
+    return { rotation: unit.staticShieldPanelRotation, pitch: unit.staticShieldPanelPitch };
+  }
+  return { rotation: turret.rotation, pitch: turret.pitch };
 }
 
 export function isShieldSurfaceDeployed(turret: Turret): boolean {
-  return (turret.shield?.transition ?? 0) > SHIELD_DEPLOYED_EPS;
+  const shield = turret.shield;
+  return shield !== null && shield.transition > SHIELD_DEPLOYED_EPS;
 }

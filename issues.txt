@@ -69,19 +69,7 @@ keep a read-only client sampler but must share the same data, not a parallel
 implementation. Document which is authoritative and delete/reduce the loser
 per Delete The Old Path. (Verify exact duplication before cutting.)
 
-[015][DEAD] src/game/sim/Pathfinder.ts keeps a module-scope building-mask cache
-(~80-96) though the comment says mask+A*+LOS smoothing all run inside WASM.
-Verify the TS cache is still consumed; if it is dead scaffolding from the
-pre-WASM path, delete it (Delete The Old Path).
 
-[018][ARCH] Optional chaining / optional fields in per-tick sim hot paths
-(Explicit Absence rule): src/types/sim.ts:274-282 staticShield* fields are
-`?:`; staticShield.ts:34,169-181 reads entity.body?./unit?. per tick;
-projectileSystem.ts:526 weapon.shield?.deployedPose in the fire loop;
-aimSolver.ts:205,538 options?./combat?.; targetingInputStamping.ts:706
-entity.combat?.trajectoryMode per entity per tick. Fix: convert these specific
-fields to `T | null` (initialized) or hoist explicit null guards out of the
-loops; leave third-party boundaries alone.
 
 
 --------------------------------------------------------------------------------

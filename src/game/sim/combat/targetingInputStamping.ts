@@ -703,7 +703,8 @@ function stampCombatTargetingEntityInto(
     const projectileShot: ProjectileShot | undefined =
       shot !== null && isProjectileShot(shot) ? shot : undefined;
     const angleType = t.config.aimStyle.angleType;
-    const trajectoryMode = entity.combat?.trajectoryMode ?? 'auto';
+    const entityCombat = entity.combat;
+    const trajectoryMode = entityCombat === null ? 'auto' : entityCombat.trajectoryMode;
     const ballisticArcPreference = trajectoryMode === 'high'
       ? BALLISTIC_ARC_HIGH
       : trajectoryMode === 'low'

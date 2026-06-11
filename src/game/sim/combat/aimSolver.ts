@@ -200,9 +200,10 @@ export function resolveTargetAimPoint(
   const aimAtTargetTurret = options === undefined ? false : options.aimAtTargetTurret === true;
   const source = options === undefined ? undefined : options.source;
   const currentTick = options === undefined ? undefined : options.currentTick;
+  const sourceTurretId = options === undefined ? undefined : options.sourceTurretId;
   if (
     aimAtTargetTurret &&
-    resolveTargetTurretAimPoint(target, source, options?.sourceTurretId, currentTick, out)
+    resolveTargetTurretAimPoint(target, source, sourceTurretId, currentTick, out)
   ) {
     return out;
   }
@@ -535,7 +536,8 @@ function getProjectileMaxTimeSec(shot: ProjectileShot): number {
 }
 
 function getBallisticArcPreference(source: Entity, config: TurretConfig): number {
-  const trajectoryMode = source.combat?.trajectoryMode ?? 'auto';
+  const combat = source.combat;
+  const trajectoryMode = combat === null ? 'auto' : combat.trajectoryMode;
   if (trajectoryMode === 'high') return BALLISTIC_ARC_HIGH;
   if (trajectoryMode === 'low') return BALLISTIC_ARC_LOW;
   return config.aimStyle.angleType === 'ballisticArcHigh'

@@ -271,15 +271,15 @@ export type Unit = {
   /** Latched readiness for static shields. Kept on the unit so server,
    *  client prediction, shield stamping, and rendering share one
    *  hysteresis contract instead of re-testing instantaneous velocity. */
-  staticShieldSettledMs?: number;
-  staticShieldUnsettledMs?: number;
-  staticShieldHostReady?: boolean;
+  staticShieldSettledMs: number;
+  staticShieldUnsettledMs: number;
+  staticShieldHostReady: boolean;
   /** Latched flat-panel emission pose. The colored panel turret arms may
    *  continue tracking, but the square shield surface stays static until
    *  the host moves and stows it. */
-  staticShieldPanelActive?: boolean;
-  staticShieldPanelRotation?: number;
-  staticShieldPanelPitch?: number;
+  staticShieldPanelActive: boolean;
+  staticShieldPanelRotation: number;
+  staticShieldPanelPitch: number;
   /** Per-unit smoothed surface normal at the unit's footprint. The
    *  terrain mesh is piecewise-flat at the triangle level, so the raw
    *  normal SNAPS each time the unit crosses a triangle edge. The sim
