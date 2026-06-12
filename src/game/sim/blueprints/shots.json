@@ -149,7 +149,7 @@
       "mass": 4,
       "health": 6,
       "deathExplosion": {
-        "radius": 50,
+        "radius": 100,
         "force": 3000,
         "damage": 100
       },
@@ -190,7 +190,7 @@
       "mass": 3,
       "health": 4,
       "deathExplosion": {
-        "radius": 50,
+        "radius": 20,
         "force": 10000,
         "damage": 30
       },
@@ -231,7 +231,7 @@
       "mass": 3.2,
       "health": 4,
       "deathExplosion": {
-        "radius": 50,
+        "radius": 20,
         "force": 10000,
         "damage": 30
       },
@@ -300,7 +300,7 @@
     },
     "submunitions": {
       "shotBlueprintId": "shotPlasmaMedium",
-      "count": 3,
+      "count": 5,
       "randomSpreadSpeedHorizontal": 160,
       "randomSpreadSpeedVertical": 50,
       "reflectedVelocityDamper": 0.3
