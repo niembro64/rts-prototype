@@ -21,23 +21,24 @@ RUST MIGRATION DEBT (each is a phase-scale project; land each with parity
 proof + Delete The Old Path in the same change)
 --------------------------------------------------------------------------------
 
-[049][ARCH] src/game/sim/combat/projectileSystem.ts (~1799 lines) still owns
+[049][ARCH] src/game/sim/combat/projectileSystem.ts (~1800 lines) still owns
 projectile tick orchestration around the WASM ProjectilePool: TS validates and
 scatters packed pool slots, gathers non-packed homing/D-gun rows, updates
 beam/laser lifecycle and tracing, and drives collision/despawn orchestration.
 Move the remaining projectile tick state/result buffers into Rust so TS only
 spawns/despawns/emits events, then delete the TS tick loops.
 
-[051][ARCH] targetingInputStamping.ts (~957 lines) is the TS->Rust stamping
-shim for the targeting FSM. Eliminate the per-tick stamp/readback by making
-targeting state, snapshots, rendering, and downstream combat consumers read the
-Rust slabs directly, then delete the shim.
+[051][ARCH] src/game/sim/combat/targetingInputStamping.ts (~975 lines) is the
+TS->Rust stamping shim for the targeting FSM. Eliminate the per-tick
+stamp/readback by making targeting state, snapshots, rendering, and downstream
+combat consumers read the Rust slabs directly, then delete the shim.
 
-[052][ARCH] DamageSystem.ts still materializes damage resolution side effects
-in TS after Rust classification/HP batching: knockback vectors, death contexts,
-killer bookkeeping, and damage/death event assembly are still produced from TS
-entity objects. Move those resolution outputs into Rust-owned event/result
-buffers so TS receives typed events/knockbacks only, then delete the remaining
-TS resolution math/helpers.
+[052][ARCH] src/game/sim/damage/DamageSystem.ts (~2593 lines) still
+materializes damage resolution side effects in TS after Rust classification/HP
+batching: knockback vectors, death contexts, killer bookkeeping, and
+damage/death event assembly are still produced from TS entity objects. Move
+those resolution outputs into Rust-owned event/result buffers so TS receives
+typed events/knockbacks only, then delete the remaining TS resolution
+math/helpers.
 
 ================================================================================
