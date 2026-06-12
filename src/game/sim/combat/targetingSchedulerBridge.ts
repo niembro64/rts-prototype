@@ -30,9 +30,9 @@ import {
 import { getActiveShields } from './shieldTurret';
 import {
   getCombatTargetingSourceCount,
-  getCombatTargetingSourceEntities,
   getCombatTargetingSourceSlots,
 } from './targetingInputStamping';
+import { spatialGrid } from '../SpatialGrid';
 
 const _activeCombatUnits: Entity[] = [];
 
@@ -80,7 +80,6 @@ type TargetingKernel = ReturnType<typeof getTargetingKernel>;
 function flushTargetingBatch(
   world: WorldState,
   targeting: TargetingKernel,
-  sourceEntities: readonly Entity[],
   sourceSlots: Uint32Array,
   count: number,
   tick: number,
@@ -119,8 +118,9 @@ function flushTargetingBatch(
   for (let i = 0; i < count; i++) {
     const mode = _targetingBatchModes[i];
     if (mode === CT_TARGETING_TICK_MODE_SKIP) continue;
-    const unit = sourceEntities[i];
-    const combat = unit.combat!;
+    const unit = spatialGrid.resolveSlot(sourceSlots[i]);
+    const combat = unit?.combat;
+    if (unit === undefined || combat === null || combat === undefined) continue;
     if (mode === CT_TARGETING_TICK_MODE_CLEAR_LOCKS) {
       // Fire-disabled entities had their locks zeroed inside the
       // scheduler. Downstream JS systems (turretSystem,
@@ -161,7 +161,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
   const sourceCount = getCombatTargetingSourceCount();
   if (sourceCount === 0) return _activeCombatUnits;
   const sourceSlots = getCombatTargetingSourceSlots();
-  const sourceEntities = getCombatTargetingSourceEntities();
   const targeting = getTargetingKernel();
   const maxTurrets = targeting.maxTurretsPerEntity();
   const turretShieldPanelsEnabledFlag = world.turretShieldPanelsEnabled ? 1 : 0;
@@ -181,7 +180,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
   flushTargetingBatch(
     world,
     targeting,
-    sourceEntities,
     sourceSlots,
     sourceCount,
     tick,

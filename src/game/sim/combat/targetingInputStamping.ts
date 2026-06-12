@@ -179,7 +179,6 @@ export type CombatTargetingTurretKinematicsOut = {
 };
 
 let _stateViews: CombatTargetingStateViews | null = null;
-const _combatTargetingSourceEntities: Entity[] = [];
 let _combatTargetingSourceSlots = new Uint32Array(0);
 let _combatTargetingSourceCount = 0;
 let _combatTargetingSensorSourceSlots = new Uint32Array(0);
@@ -218,7 +217,6 @@ function ensureStampPrevFsmCapacity(count: number): void {
 }
 
 function resetCombatTargetingSources(): void {
-  _combatTargetingSourceEntities.length = 0;
   _combatTargetingSourceCount = 0;
   _combatTargetingSensorSourceCount = 0;
 }
@@ -258,7 +256,6 @@ function queueCombatTargetingSource(entity: Entity): void {
   if (slot < 0) return;
   const idx = _combatTargetingSourceCount;
   ensureCombatTargetingSourceCapacity(idx + 1);
-  _combatTargetingSourceEntities.push(entity);
   _combatTargetingSourceSlots[idx] = slot;
   _combatTargetingSourceCount++;
 }
@@ -291,10 +288,6 @@ function queueCombatTargetingSensorSourceSlot(slot: number): void {
 
 function getCombatTargetingSensorSourceSlots(): Uint32Array {
   return _combatTargetingSensorSourceSlots.subarray(0, _combatTargetingSensorSourceCount);
-}
-
-export function getCombatTargetingSourceEntities(): readonly Entity[] {
-  return _combatTargetingSourceEntities;
 }
 
 export function getCombatTargetingSourceSlots(): Uint32Array {
