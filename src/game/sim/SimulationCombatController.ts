@@ -76,17 +76,15 @@ export class SimulationCombatController {
     }
     sim.deathExplosionPlannerReset();
 
-    // AIM-08.2 — stamp the FF pool BEFORE the FSM so the shield
-    // clearance kernels read the latest sphere list. The list is
-    // produced by the previous tick's updateShieldState, so shield
-    // sphere targeting has the same one-tick-stale envelope as
-    // projectile collision.
-    // One material, two shapes: a single pool holds both the sphere and the
-    // flat-panel shield surfaces, both stamped here before the FSM/gate.
-    stampShieldSurfacePool(this.world);
     // AIM-08.5 — rebuild targeting slabs before the FSM. The targeting
     // pass mutates the slab through Rust transition kernels and writes
     // those results back to JS turrets for the remaining consumers.
+    // The shield surface pool is NOT restamped here: it still holds the
+    // end-of-previous-tick stamp (made after updateShieldState below),
+    // which is exactly the one-tick-stale envelope the FSM's shield
+    // clearance gates are documented to read. Sight-toggle gating lives
+    // in the kernels (shield_obstruction_active + shape toggles), not
+    // in slab emptiness.
     stampCombatTargetingPool(this.world);
     // Update targeting and firing state. Cooldown timers now step inside
     // the scheduled Rust targeting batch and write back through the
@@ -112,6 +110,15 @@ export class SimulationCombatController {
     } else {
       resetShieldBuffers();
     }
+
+    // The single per-tick shield surface stamp. Placed right after
+    // updateShieldState so beam tracing, projectile reflection, and fog
+    // sightlines later this tick read current-tick physical surfaces,
+    // while next tick's FSM clearance gates read it one tick stale —
+    // the same envelopes the old pre-FSM + pre-projectile double stamp
+    // provided. Physical surfaces are always stamped; whether they
+    // obstruct sight is the kernels' flag-gated decision.
+    stampShieldSurfacePool(this.world);
 
     // Update shield sounds based on the just-written transition progress.
     if (shieldUnits && shieldUnits.length > 0) {
@@ -157,11 +164,6 @@ export class SimulationCombatController {
     onUnitDeath: UnitDeathCallback,
     onBuildingDeath: BuildingDeathCallback,
   ): void {
-    // Beam tracing and projectile reflection use physical shield surfaces,
-    // independent of the battle-bar sight-obstruction toggle. The targeting
-    // stamp may have cleared field shields when LOS blocking is disabled.
-    stampShieldSurfacePool(this.world, { includeWhenSightDisabled: true });
-
     const updateResult = updateProjectiles(this.world, dtMs, this.damageSystem);
     for (const id of updateResult.orphanedIds) {
       unregisterPackedProjectile(id);

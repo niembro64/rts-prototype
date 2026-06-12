@@ -2,17 +2,19 @@
 //
 // Split into two passes:
 //
-//   stampShieldPool — runs BEFORE updateTargetingAndFiringState.
-//     The AIM-08.2 shield clearance kernels read the FF slab
-//     during the FSM, so the slab must be current-tick data on entry.
-//     Respects world.shieldsObstructSight; when the feature is
-//     disabled the slab is rebuilt at count=0 so the kernels return
-//     "clear" without inspecting individual fields.
+//   stampShieldSurfacePool — runs once per tick, right after
+//     updateShieldState. It always stamps the physical surfaces; the
+//     sight-obstruction toggle gates the CONSUMERS (the scheduler's
+//     shield_obstruction_active flag, the fog sightline's TS gate),
+//     never the stamp. Same-tick readers (beam tracing, projectile
+//     reflection, fog serialization) see current surfaces; the next
+//     tick's FSM clearance gates read it one tick stale by design.
 //
 //   stampCombatTargetingPool — runs BEFORE updateTargetingAndFiringState.
-//     Rebuilds current entity/turret input rows. AIM-08.5 writes FSM
-//     transitions into this slab mid-pass and copies them back to JS
-//     Turret objects until snapshots/rendering read the slab directly.
+//     Rebuilds current entity/turret input rows. The slab-owned FSM
+//     tuple (state/target/cooldowns/losBlockedTicks) is not an input:
+//     Rust preserves it across same-entity restamps and snapshots,
+//     rendering, prediction, and combat read the slab directly.
 //     Also compacts the per-tick targeting source list while the
 //     entities are already hot in this stamping pass.
 
@@ -514,12 +516,6 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
 const BALLISTIC_ARC_LOW = 0;
 const BALLISTIC_ARC_HIGH = 1;
 
-type ShieldPoolStampOptions = {
-  /** Projectile collision needs the physical shield slab even when
-   *  shields are not configured to obstruct targeting sightlines. */
-  includeWhenSightDisabled: boolean | undefined;
-};
-
 function stampCombatTargetingEntityInto(
   targeting: CombatTargetingApi,
   world: WorldState,
@@ -769,36 +765,33 @@ export function stampCombatTargetingPool(world: WorldState): void {
 
 const _mirrorStampPivot = { x: 0, y: 0, z: 0 };
 
-/** Rebuild the single shield surface pool. Runs BEFORE
- *  updateTargetingAndFiringState so the AIM-08.2 clearance kernels and the
- *  projectile-reflection batch read current-tick surface data.
+/** Rebuild the single shield surface pool. Runs once per tick, right
+ *  after updateShieldState: beam tracing, projectile reflection, and
+ *  fog sightlines read current-tick surfaces later the same tick, and
+ *  the next tick's FSM clearance gates read it one tick stale.
+ *
+ *  The pool always carries the PHYSICAL surfaces. Whether they
+ *  obstruct targeting/fog sightlines is decided by the consumers
+ *  (shield_obstruction_active flag in the scheduler, the
+ *  world.shieldsObstructSight gate in fog checks), never by stamping
+ *  an emptied pool.
  *
  *  Materials Are Independent Of Shape: one pool holds both shapes.
- *   - Field surfaces come from getActiveShields(). When sphere shields are
- *     disabled, or when world.shieldsObstructSight is false for a
- *     targeting-only stamp, the field group is rebuilt at count=0 (kernels
- *     short-circuit on empty and return "clear"). Projectile collision can
- *     opt into stamping the physical shields even when sight obstruction is
- *     disabled via `includeWhenSightDisabled`.
+ *   - Field surfaces come from getActiveShields(), gated by
+ *     world.turretShieldSpheresEnabled (kernels short-circuit on empty).
  *   - Flat-panel surfaces come from world.getShieldPanelUnits(), gated by
  *     world.turretShieldPanelsEnabled. Inactive / dead mirror turrets are
  *     skipped; panel rows pack contiguously by unit. The slope-aware turret
  *     pivot is resolved fresh via resolveWeaponWorldMount — the same input the
  *     beam tracer / live aim solver uses — so the gate and the authoritative
  *     bounce path agree on where each panel sits. */
-export function stampShieldSurfacePool(
-  world: WorldState,
-  options: ShieldPoolStampOptions = { includeWhenSightDisabled: undefined },
-): void {
+export function stampShieldSurfacePool(world: WorldState): void {
   const sim = getSimWasm();
   if (sim === undefined) return;
   const pool = sim.shieldSurfacePool;
 
   // ── Spherical / infinite-cylinder field surfaces ──
-  if (
-    !world.turretShieldSpheresEnabled ||
-    (!options.includeWhenSightDisabled && !world.shieldsObstructSight)
-  ) {
+  if (!world.turretShieldSpheresEnabled) {
     pool.setFieldCount(0);
   } else {
     const active = getActiveShields();
