@@ -43,6 +43,7 @@ type ClientPredictionStepperOptions = {
   deleteEntityLocalState: (id: EntityId) => void;
   markLineProjectilesChanged: () => void;
   updateProjectileRenderSpatialIndex: (entity: Entity) => void;
+  markBeamHostRenderDirty: (beamEntity: Entity) => void;
 };
 
 function noteTargetAge(
@@ -229,6 +230,7 @@ export class ClientPredictionStepper {
       deleteEntityLocalState,
       markLineProjectilesChanged,
       updateProjectileRenderSpatialIndex,
+      markBeamHostRenderDirty,
     } = this.options;
 
     this.frameCounter = (this.frameCounter + 1) & 0x3fffffff;
@@ -273,6 +275,11 @@ export class ClientPredictionStepper {
       if (beamTarget && applyBeamPathPrediction(entity, beamTarget, deltaMs, movPosBlend, movVelBlend)) {
         beamPathsChanged = true;
         updateProjectileRenderSpatialIndex(entity);
+        // Beam-directed barrels (turretBarrelFollowsBeam) are posed from
+        // this path by the turret-pose passes, and the building renderer
+        // only re-poses dirty rows — so a moved beam must dirty its
+        // emitting host or a tower's barrel freezes mid-sweep.
+        markBeamHostRenderDirty(entity);
       }
     }
     if (beamPathsChanged) markLineProjectilesChanged();
@@ -373,6 +380,7 @@ export class ClientPredictionStepper {
         serverTargets.delete(id);
         updateProjectileRenderSpatialIndex(entity);
         markLineProjectilesChanged();
+        markBeamHostRenderDirty(entity);
         continue;
       }
       if (projectileResult.shouldDelete) {

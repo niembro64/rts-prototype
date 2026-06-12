@@ -276,6 +276,7 @@ export class ClientViewState {
       deleteEntityLocalState: (id) => this.deleteEntityLocalState(id),
       markLineProjectilesChanged: () => this.projectileStore.markLineProjectilesChanged(),
       updateProjectileRenderSpatialIndex: (entity) => this.projectileStore.updateRenderSpatialIndex(entity),
+      markBeamHostRenderDirty: (beamEntity) => this.markBeamHostRenderDirty(beamEntity),
     });
   }
 
@@ -461,6 +462,32 @@ export class ClientViewState {
       this.activeEntityPredictionIds.add(entity.id);
     } else if (entity.projectile && !isLineProjectileEntity(entity)) {
       this.projectileStore.activeProjectilePredictionIds.add(entity.id);
+    }
+  }
+
+  /** A beam's rendered polyline moved this frame. Beam-directed barrels
+   *  (turretBarrelFollowsBeam) are posed from that polyline by the
+   *  turret-pose passes, and the building renderer only re-poses dirty
+   *  rows — a beam tower whose aim is pinned to zero on the wire never
+   *  dirties through snapshots while its beam sweeps. Dirty the emitting
+   *  host's building row so the pose pass reads the fresh beam direction
+   *  this same frame. Units re-pose every frame and need no mark. */
+  private markBeamHostRenderDirty(beamEntity: Entity): void {
+    const proj = beamEntity.projectile;
+    if (proj === null) return;
+    this.markBuildingRenderDirty(proj.sourceEntityId);
+    const ss = proj.shotSource;
+    if (ss !== undefined && ss !== null) {
+      this.markBuildingRenderDirty(ss.sourceHostEntityId);
+      this.markBuildingRenderDirty(ss.sourceRootEntityId);
+    }
+  }
+
+  private markBuildingRenderDirty(id: EntityId): void {
+    if (!id) return;
+    const entity = this.entities.get(id);
+    if (entity !== undefined && entity.building !== null) {
+      this.dirtyBuildingRenderIds.add(id);
     }
   }
 
