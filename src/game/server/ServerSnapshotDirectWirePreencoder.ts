@@ -42,7 +42,10 @@ import type {
   SerializerMinimapOverride,
   SerializerSprayOverride,
 } from '../network/stateSerializer';
-import { encodeNetworkSnapshotWithRustFallback } from '../network/snapshotRustWireEncoder';
+import {
+  encodeNetworkSnapshotWithRustFallback,
+  isRustSnapshotWireEnabled,
+} from '../network/snapshotRustWireEncoder';
 import type { NetworkServerSnapshotWire } from '../network/snapshotWireTypes';
 import { spatialGrid } from '../sim/SpatialGrid';
 import type { SprayTarget } from '../sim/commanderAbilities';
@@ -56,9 +59,7 @@ import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { RemovedSnapshotEntity, WorldState } from '../sim/WorldState';
 
-// Direct wire preencoding still emits the Rust V6 packed-entity schema.
-// Keep it opt-in until the Rust encoder is upgraded to the active TS schema.
-const ENABLE_DIRECT_RUST_SNAPSHOT_WIRE = isDirectRustSnapshotWireEnabled();
+const ENABLE_DIRECT_RUST_SNAPSHOT_WIRE = isRustSnapshotWireEnabled();
 
 export type DirectSerializedListenerSnapshot = {
   state: NetworkServerSnapshot;
@@ -610,25 +611,3 @@ export class ServerSnapshotDirectWirePreencoder {
   }
 }
 
-function isDirectRustSnapshotWireEnabled(): boolean {
-  const env = import.meta.env.VITE_BA_ENABLE_RUST_SNAPSHOT_WIRE;
-  if (typeof env === 'string') {
-    const normalized = env.toLowerCase();
-    if (env === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') {
-      return true;
-    }
-    if (env === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') {
-      return false;
-    }
-  }
-  if (typeof window === 'undefined') return true;
-  const params = new URLSearchParams(window.location.search);
-  const value = params.get('rustSnapshotWire');
-  if (value === null) return true;
-  if (value === '' || value === '1') return true;
-  const normalized = value.toLowerCase();
-  if (value === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') {
-    return false;
-  }
-  return normalized === 'true' || normalized === 'yes' || normalized === 'on';
-}

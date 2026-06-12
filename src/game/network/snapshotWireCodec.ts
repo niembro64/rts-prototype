@@ -9,7 +9,7 @@ import type { SnapshotWirePayload } from './SnapshotWirePayload';
 import {
   encodeNetworkSnapshotWithRustFallback,
   encodeEntitiesV6Bytes,
-  type RustSnapshotEncodeResult,
+  isRustSnapshotWireEnabled,
 } from './snapshotRustWireEncoder';
 import { getEntitySnapshotWireSource } from './stateSerializerEntities';
 import {
@@ -48,11 +48,12 @@ import type { NetworkServerSnapshotWire } from './snapshotWireTypes';
 // JSON-style omission. Pooled nested DTOs use explicit null and are
 // converted to presence bits by the section packers before msgpack.
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
-const RUST_SNAPSHOT_WIRE_COMPARE_ENABLED = import.meta.env.DEV && isRustSnapshotWireCompareEnabled();
-const FORCE_JS_SNAPSHOT_WIRE = isForceJsSnapshotWireEnabled();
-// Rust snapshot envelope encoding is the default hot path. `dp02js` or
-// VITE_BA_ENABLE_RUST_SNAPSHOT_WIRE=0 keeps a JS MessagePack fallback for
-// diagnostics, but entity packing is still Rust-owned.
+// Rust snapshot envelope encoding is the only production hot path,
+// including terrain/buildability bootstrap snapshots. The JS MessagePack
+// envelope below survives solely as the in-function fallback for when the
+// WASM encoder is unavailable or declines a snapshot shape, plus the single
+// named diagnostic opt-out (?rustSnapshotWire=0); entity packing is
+// Rust-owned on both paths.
 const ENABLE_RUST_SNAPSHOT_WIRE = isRustSnapshotWireEnabled();
 const RUST_ENTITIES_KEY_PREFIX_BYTES = 9;
 
@@ -109,51 +110,12 @@ export type SnapshotWireBreakdown = {
   projectileTop: SnapshotWireBreakdownEntry[];
 };
 
-type RustSnapshotWireStats = {
-  rustSends: number;
-  jsSends: number;
-  attempts: number;
-  matches: number;
-  mismatches: number;
-  unavailable: number;
-  rustEntities: number;
-  rawEntities: number;
-  rawTopLevelKeys: Record<string, number>;
-};
-
-type RustSnapshotWireDebugApi = {
-  stats: () => RustSnapshotWireStats;
-  reset: () => void;
-};
-
-const rustSnapshotWireStats: RustSnapshotWireStats = {
-  rustSends: 0,
-  jsSends: 0,
-  attempts: 0,
-  matches: 0,
-  mismatches: 0,
-  unavailable: 0,
-  rustEntities: 0,
-  rawEntities: 0,
-  rawTopLevelKeys: {},
-};
-
-let rustUnavailableLogged = false;
-
-declare global {
-  interface Window {
-    __BA_DP02_RUST_SNAPSHOT_WIRE__: RustSnapshotWireDebugApi | undefined;
-  }
-}
-
 export function encodeNetworkSnapshot(state: NetworkServerSnapshot): Uint8Array {
   return encodeNetworkSnapshotDetailed(state).bytes;
 }
 
 export function encodeNetworkSnapshotDetailed(state: NetworkServerSnapshot): EncodedNetworkSnapshot {
-  const requiresJsPackedStaticBootstrap =
-    state.terrain !== undefined || state.buildability !== undefined;
-  if (ENABLE_RUST_SNAPSHOT_WIRE && !FORCE_JS_SNAPSHOT_WIRE && !requiresJsPackedStaticBootstrap) {
+  if (ENABLE_RUST_SNAPSHOT_WIRE) {
     const rustWireState = packNetworkSnapshotForWire(state, {
       audioEvents: 'raw',
       buildability: 'raw',
@@ -164,13 +126,6 @@ export function encodeNetworkSnapshotDetailed(state: NetworkServerSnapshot): Enc
     });
     const rustResult = encodeNetworkSnapshotWithRustFallback(rustWireState);
     if (rustResult) {
-      noteRustSnapshotWireResult(rustResult);
-      if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED) {
-        const wireState = packNetworkSnapshotForWire(state);
-        const jsBytes = msgpackEncode(wireState, SNAPSHOT_ENCODE_OPTIONS);
-        compareRustSnapshotWireResult(wireState, jsBytes, rustResult);
-      }
-      rustSnapshotWireStats.rustSends++;
       return {
         bytes: rustResult.bytes,
         encoderKind: 'rust',
@@ -181,15 +136,10 @@ export function encodeNetworkSnapshotDetailed(state: NetworkServerSnapshot): Enc
           : undefined,
       };
     }
-    noteRustSnapshotWireUnavailable();
   }
 
   const wireState = packNetworkSnapshotForWire(state);
   const bytes = msgpackEncode(wireState, SNAPSHOT_ENCODE_OPTIONS);
-  rustSnapshotWireStats.jsSends++;
-  if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED && FORCE_JS_SNAPSHOT_WIRE && !requiresJsPackedStaticBootstrap) {
-    compareRustSnapshotWire(wireState, bytes);
-  }
   return {
     bytes,
     encoderKind: 'js',
@@ -337,52 +287,6 @@ function unpackNetworkSnapshotFromWire(
   return snapshot;
 }
 
-function isRustSnapshotWireCompareEnabled(): boolean {
-  if (import.meta.env.VITE_BA_DP02_RUST_SNAPSHOT_WIRE === '1') return true;
-  if (typeof window === 'undefined') return false;
-  return new URLSearchParams(window.location.search).has('dp02rust');
-}
-
-function isForceJsSnapshotWireEnabled(): boolean {
-  const env = import.meta.env.VITE_BA_DP02_FORCE_JS_SNAPSHOT_WIRE;
-  if (typeof env === 'string') {
-    const normalized = env.toLowerCase();
-    if (env === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') {
-      return true;
-    }
-  }
-  if (typeof window === 'undefined') return false;
-  const params = new URLSearchParams(window.location.search);
-  const value = params.get('dp02js');
-  if (value === null) return false;
-  if (value === '' || value === '1') return true;
-  const normalized = value.toLowerCase();
-  return normalized === 'true' || normalized === 'yes' || normalized === 'on';
-}
-
-function isRustSnapshotWireEnabled(): boolean {
-  const env = import.meta.env.VITE_BA_ENABLE_RUST_SNAPSHOT_WIRE;
-  if (typeof env === 'string') {
-    const normalized = env.toLowerCase();
-    if (env === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') {
-      return true;
-    }
-    if (env === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') {
-      return false;
-    }
-  }
-  if (typeof window === 'undefined') return true;
-  const params = new URLSearchParams(window.location.search);
-  const value = params.get('rustSnapshotWire');
-  if (value === null) return true;
-  if (value === '' || value === '1') return true;
-  const normalized = value.toLowerCase();
-  if (value === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') {
-    return false;
-  }
-  return normalized === 'true' || normalized === 'yes' || normalized === 'on';
-}
-
 function encodedPairBytes(key: string, value: unknown): number {
   const bytes = msgpackEncode({ [key]: value }, SNAPSHOT_ENCODE_OPTIONS).byteLength;
   return Math.max(0, bytes - 1);
@@ -497,88 +401,3 @@ function rustPackEntitiesForWire(
   return isPackedEntitySnapshotWire(packed) ? packed : undefined;
 }
 
-function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
-}
-
-function noteRustSnapshotWireResult(result: RustSnapshotEncodeResult): void {
-  rustSnapshotWireStats.rustEntities += result.rustEntityCount;
-  rustSnapshotWireStats.rawEntities += result.rawEntityCount;
-  for (const key of result.rawTopLevelKeys) {
-    rustSnapshotWireStats.rawTopLevelKeys[key] =
-      (rustSnapshotWireStats.rawTopLevelKeys[key] ?? 0) + 1;
-  }
-}
-
-function noteRustSnapshotWireUnavailable(): void {
-  if (!RUST_SNAPSHOT_WIRE_COMPARE_ENABLED) return;
-  rustSnapshotWireStats.unavailable++;
-  if (!rustUnavailableLogged) {
-    rustUnavailableLogged = true;
-    console.warn('[DP-02] Rust snapshot wire compare skipped: WASM encoder unavailable or DTO key order unsupported.');
-  }
-}
-
-function compareRustSnapshotWire(state: NetworkServerSnapshotWire, jsBytes: Uint8Array): void {
-  const rustResult = encodeNetworkSnapshotWithRustFallback(state);
-  if (!rustResult) {
-    noteRustSnapshotWireUnavailable();
-    return;
-  }
-
-  noteRustSnapshotWireResult(rustResult);
-  compareRustSnapshotWireResult(state, jsBytes, rustResult);
-}
-
-function compareRustSnapshotWireResult(
-  state: NetworkServerSnapshotWire,
-  jsBytes: Uint8Array,
-  rustResult: RustSnapshotEncodeResult,
-): boolean {
-  rustSnapshotWireStats.attempts++;
-  if (bytesEqual(jsBytes, rustResult.bytes)) {
-    rustSnapshotWireStats.matches++;
-    return true;
-  }
-
-  rustSnapshotWireStats.mismatches++;
-  if (rustSnapshotWireStats.mismatches <= 10 || rustSnapshotWireStats.mismatches % 100 === 0) {
-    console.error('[DP-02] Rust snapshot wire byte mismatch', {
-      tick: state.tick,
-      jsBytes: jsBytes.byteLength,
-      rustBytes: rustResult.bytes.byteLength,
-      rustEntityCount: rustResult.rustEntityCount,
-      rawEntityCount: rustResult.rawEntityCount,
-      rawTopLevelKeys: rustResult.rawTopLevelKeys,
-      stats: { ...rustSnapshotWireStats },
-    });
-  }
-  return false;
-}
-
-function resetRustSnapshotWireStats(): void {
-  rustSnapshotWireStats.rustSends = 0;
-  rustSnapshotWireStats.jsSends = 0;
-  rustSnapshotWireStats.attempts = 0;
-  rustSnapshotWireStats.matches = 0;
-  rustSnapshotWireStats.mismatches = 0;
-  rustSnapshotWireStats.unavailable = 0;
-  rustSnapshotWireStats.rustEntities = 0;
-  rustSnapshotWireStats.rawEntities = 0;
-  rustSnapshotWireStats.rawTopLevelKeys = {};
-  rustUnavailableLogged = false;
-}
-
-if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED && typeof window !== 'undefined') {
-  window.__BA_DP02_RUST_SNAPSHOT_WIRE__ = {
-    stats: () => ({
-      ...rustSnapshotWireStats,
-      rawTopLevelKeys: { ...rustSnapshotWireStats.rawTopLevelKeys },
-    }),
-    reset: resetRustSnapshotWireStats,
-  };
-}

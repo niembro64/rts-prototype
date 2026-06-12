@@ -60,18 +60,4 @@ event/result buffers so TS receives typed events/knockbacks only, then delete
 the remaining TS resolution math/helpers (projectile-row + ground live
 geometry in findBeamSegmentHit is the documented post-integration exception —
 fold in or re-justify).
-
-[053][ARCH] Finish Delete The Old Path for snapshot wire encoding: the Rust
-encoder is the default (flag is opt-out, entity packing is Rust-only at
-schema v11), but migration scaffolding remains in snapshotWireCodec.ts — the
-DEV byte-compare harness (?dp02rust / VITE_BA_DP02_RUST_SNAPSHOT_WIRE) and
-the force-JS escape (?dp02js / VITE_BA_DP02_FORCE_JS_SNAPSHOT_WIRE). The JS
-msgpack envelope fallback in encodeNetworkSnapshotDetailed is still forced
-for terrain/buildability-bearing bootstrap snapshots
-(requiresJsPackedStaticBootstrap) even though Rust already packs
-terrain/buildability on the ServerSnapshotDirectWirePreencoder path. Route
-those through the Rust envelope (or prove the direct preencoder covers all
-server sends and delete the codec-side JS envelope), then delete the harness
-and escape flags. Optional: rename V6_PACKED_ENTITIES_VERSION /
-encodeEntitiesV6Bytes residue to match the v=11 schema.
 ================================================================================

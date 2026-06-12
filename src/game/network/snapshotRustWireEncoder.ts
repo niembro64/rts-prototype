@@ -107,6 +107,33 @@ import type { NetworkServerSnapshotWire } from './snapshotWireTypes';
 
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
 
+// Rust snapshot wire encoding is the default. The single named opt-out —
+// VITE_BA_ENABLE_RUST_SNAPSHOT_WIRE=0 or ?rustSnapshotWire=0 — exists for
+// diagnostics only and gates both the direct server preencode path and the
+// DTO codec path through this one helper.
+export function isRustSnapshotWireEnabled(): boolean {
+  const env = import.meta.env.VITE_BA_ENABLE_RUST_SNAPSHOT_WIRE;
+  if (typeof env === 'string') {
+    const normalized = env.toLowerCase();
+    if (env === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') {
+      return true;
+    }
+    if (env === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') {
+      return false;
+    }
+  }
+  if (typeof window === 'undefined') return true;
+  const params = new URLSearchParams(window.location.search);
+  const value = params.get('rustSnapshotWire');
+  if (value === null) return true;
+  if (value === '' || value === '1') return true;
+  const normalized = value.toLowerCase();
+  if (value === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') {
+    return false;
+  }
+  return normalized === 'true' || normalized === 'yes' || normalized === 'on';
+}
+
 type SnapshotEncodeApi = SimWasm['snapshotEncode'];
 type SnapshotUnit = NonNullable<NetworkServerSnapshotEntity['unit']>;
 type SnapshotBuilding = NonNullable<NetworkServerSnapshotEntity['building']>;
