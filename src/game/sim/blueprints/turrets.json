@@ -1224,7 +1224,7 @@
     "range": 430,
     "rangeVolume": "turret-range-sphere",
     "cooldown": {
-      "duration": 50,
+      "duration": 600,
       "durationRandomness": 0.05
     },
     "launchForce": 4000,
@@ -1287,7 +1287,7 @@
     "range": 1600,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
-      "duration": 250,
+      "duration": 600,
       "durationRandomness": 0.05
     },
     "launchForce": 9000,

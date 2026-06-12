@@ -364,8 +364,6 @@
       "lockOnRequiresTargetLockedOntoSelf": "require",
       "targets": {
         "enemy": {
-          "buildings": "all",
-          "towers": "all",
           "turrets": {
             "only": [
               "turretGunLight",
@@ -504,15 +502,9 @@
     "turretRocketFast": {
       "targets": {
         "enemy": {
-          "units": {
-            "only": [
-              "unitBee",
-              "unitConstructionDrone",
-              "unitDragonfly",
-              "unitEagle",
-              "unitAlbatros"
-            ]
-          },
+          "buildings": "all",
+          "towers": "all",
+          "units": "all",
           "shots": {
             "only": ["shotRocketLight", "shotMortarMedium", "shotMortarHeavy"]
           }
@@ -522,15 +514,9 @@
     "turretAntiAir": {
       "targets": {
         "enemy": {
-          "units": {
-            "only": [
-              "unitBee",
-              "unitConstructionDrone",
-              "unitDragonfly",
-              "unitEagle",
-              "unitAlbatros"
-            ]
-          },
+          "buildings": "all",
+          "towers": "all",
+          "units": "all",
           "shots": {
             "only": ["shotRocketLight", "shotMortarMedium", "shotMortarHeavy"]
           }

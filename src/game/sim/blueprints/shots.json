@@ -191,8 +191,8 @@
       "health": 4,
       "deathExplosion": {
         "radius": 50,
-        "force": 3000,
-        "damage": 40
+        "force": 10000,
+        "damage": 30
       },
       "radius": {
         "visual": 2,
@@ -231,9 +231,9 @@
       "mass": 3.2,
       "health": 4,
       "deathExplosion": {
-        "radius": 80,
-        "force": 6000,
-        "damage": 80
+        "radius": 50,
+        "force": 10000,
+        "damage": 30
       },
       "radius": {
         "visual": 3,
