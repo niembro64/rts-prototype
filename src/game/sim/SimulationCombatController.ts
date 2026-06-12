@@ -217,7 +217,6 @@ export class SimulationCombatController {
     this.deathExplosionPlanner.detonate(
       collisionResult.deadUnitIds,
       collisionResult.deadBuildingIds,
-      collisionResult.deadTurretIds,
       collisionResult.events,
       collisionResult.deathContexts,
     );

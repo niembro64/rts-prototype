@@ -48,10 +48,8 @@ const _reusableResult: DamageResult = {
   killedUnitIds: new Set(),
   killedBuildingIds: new Set(),
   killedProjectileIds: new Set(),
-  killedTurretIds: new Set(),
   truncationT: null,
   knockbacks: [],
-  recoil: null,
   deathContexts: new Map(),
   killerPlayerIds: new Map(),
 };
@@ -85,12 +83,10 @@ function resetResult(): DamageResult {
   _reusableResult.killedUnitIds.clear();
   _reusableResult.killedBuildingIds.clear();
   _reusableResult.killedProjectileIds.clear();
-  _reusableResult.killedTurretIds.clear();
   _reusableResult.truncationT = null;
   // Recycle prior tick's knockback entries before clearing the array.
   for (const k of _reusableResult.knockbacks) _knockbackPool.push(k);
   _reusableResult.knockbacks.length = 0;
-  _reusableResult.recoil = null;
   _reusableResult.deathContexts.clear();
   _reusableResult.killerPlayerIds.clear();
   return _reusableResult;
@@ -106,7 +102,6 @@ export function resetDamageBuffers(): void {
   _reusableResult.killedUnitIds.clear();
   _reusableResult.killedBuildingIds.clear();
   _reusableResult.killedProjectileIds.clear();
-  _reusableResult.killedTurretIds.clear();
   for (const k of _reusableResult.knockbacks) _knockbackPool.push(k);
   _reusableResult.knockbacks.length = 0;
   _reusableResult.deathContexts.clear();

@@ -2,16 +2,14 @@
 // Extracted from projectileSystem.ts to reduce duplication
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId, BeamRay, LaserRay, PlayerId, Turret } from '../types';
+import type { Entity, EntityId, BeamRay, LaserRay, PlayerId } from '../types';
 import { getEmissionBlueprintId, getPlayerPrimaryColor } from '../types';
-import type { SimDeathContext, SimEvent, ImpactContext, SimEventSourceType } from './types';
+import type { SimEvent, ImpactContext, SimEventSourceType } from './types';
 import { BEAM_EXPLOSION_MAGNITUDE } from '../../../config';
 import type { DeathContext, DamageResult } from '../damage/types';
 import type { Projectile, ProjectileConfig } from '../types';
-import { getUnitBodyCenterHeight, getUnitGroundZ } from '../unitGeometry';
+import { getUnitBodyCenterHeight } from '../unitGeometry';
 import { isTurretBlueprintId, isUnitBlueprintId } from '../../../types/blueprintIds';
-import { getTransformCosSin } from '../../math';
-import { resolveWeaponWorldMount } from './combatUtils';
 
 function eventAudioKey(
   sourceKey: string,
@@ -21,107 +19,6 @@ function eventAudioKey(
   if (sourceType === 'turret' && isTurretBlueprintId(sourceKey)) return sourceKey;
   if (fallbackUnitType && isUnitBlueprintId(fallbackUnitType)) return fallbackUnitType;
   return '';
-}
-
-const _subEntityDeathPos = { x: 0, y: 0, z: 0 };
-
-function resolveKilledTurret(world: WorldState, id: EntityId): { host: Entity; turret: Turret } | undefined {
-  const meta = world.getEntityMeta(id);
-  if (meta === undefined || meta.kind !== 'turret' || meta.parentId === null || meta.mountIndex === null) {
-    return undefined;
-  }
-  const host = world.getEntity(meta.parentId);
-  const turret = host !== undefined && host.combat !== null
-    ? host.combat.turrets[meta.mountIndex]
-    : undefined;
-  return host !== undefined && turret !== undefined && turret.id === id
-    ? { host, turret }
-    : undefined;
-}
-
-function buildSubEntityDeathContext(
-  host: Entity,
-  ctx: DeathContext | undefined,
-  radius: number,
-  visualRadius: number,
-  collisionRadius: number,
-  posZ: number,
-): SimDeathContext {
-  const targetOwnership = host.ownership;
-  const targetPlayerId = targetOwnership !== null ? targetOwnership.playerId : undefined;
-  const unit = host.unit;
-  const unitVel = {
-    x: unit !== null ? unit.velocityX : 0,
-    y: unit !== null ? unit.velocityY : 0,
-  };
-  return {
-    unitVel,
-    hitDir: ctx !== undefined ? ctx.penetrationDir : { x: 0, y: 0 },
-    projectileVel: ctx !== undefined ? ctx.attackerVel : { x: 0, y: 0 },
-    attackMagnitude: ctx !== undefined ? ctx.attackMagnitude : Math.max(10, radius),
-    radius,
-    visualRadius,
-    collisionRadius,
-    baseZ: posZ - collisionRadius,
-    color: getPlayerPrimaryColor(targetPlayerId),
-    rotation: host.transform.rotation,
-  };
-}
-
-function resolveKilledTurretWorldPosition(
-  world: WorldState,
-  id: EntityId,
-  out: { x: number; y: number; z: number },
-): { x: number; y: number; z: number } | undefined {
-  const resolved = resolveKilledTurret(world, id);
-  if (resolved === undefined) return undefined;
-  const { host, turret } = resolved;
-  const cs = getTransformCosSin(host.transform);
-  return resolveWeaponWorldMount(
-    host,
-    turret,
-    turret.mountIndex,
-    cs.cos,
-    cs.sin,
-    {
-      currentTick: world.getTick(),
-      unitGroundZ: getUnitGroundZ(host),
-      surfaceN: host.unit !== null ? host.unit.surfaceNormal : undefined,
-    },
-    out,
-  );
-}
-
-function buildTurretDeathEvent(
-  world: WorldState,
-  id: EntityId,
-  sourceKey: string,
-  sourceType: SimEventSourceType,
-  ctx: DeathContext | undefined,
-  killerPlayerId: PlayerId | undefined,
-): SimEvent | undefined {
-  const resolved = resolveKilledTurret(world, id);
-  if (resolved === undefined) return undefined;
-  const { host, turret } = resolved;
-  const pos = resolveKilledTurretWorldPosition(world, id, _subEntityDeathPos);
-  if (pos === undefined) return undefined;
-  return {
-    type: 'death',
-    turretBlueprintId: eventAudioKey(sourceKey, sourceType),
-    sourceType,
-    sourceKey,
-    pos: { x: pos.x, y: pos.y, z: pos.z },
-    entityId: id,
-    deathContext: buildSubEntityDeathContext(
-      host,
-      ctx,
-      turret.config.radius.hitbox,
-      turret.config.radius.visual,
-      turret.config.radius.collision,
-      pos.z,
-    ),
-    killerPlayerId,
-  };
 }
 
 // Build an ImpactContext for hit/projectileExpire audio events
@@ -356,7 +253,6 @@ export function collectKillsAndDeathContexts(
   audioEvents: SimEvent[],
   deathContexts: Map<EntityId, DeathContext>,
   attackerSourceEntityId: EntityId | undefined = undefined,
-  killedTurretIds: Set<EntityId> | undefined = undefined,
 ): void {
   for (const id of result.killedUnitIds) {
     if (!unitsToRemove.has(id)) {
@@ -374,18 +270,6 @@ export function collectKillsAndDeathContexts(
       audioEvents.push(buildBuildingDeathEvent(building, id, sourceKey, sourceType, killerPlayerId ?? undefined));
       buildingsToRemove.add(id);
     }
-  }
-  for (const id of result.killedTurretIds) {
-    killedTurretIds?.add(id);
-    const event = buildTurretDeathEvent(
-      world,
-      id,
-      sourceKey,
-      sourceType,
-      result.deathContexts.get(id),
-      result.killerPlayerIds.get(id) ?? undefined,
-    );
-    if (event !== undefined) audioEvents.push(event);
   }
   for (const [id, ctx] of result.deathContexts) {
     deathContexts.set(id, ctx);

@@ -7,7 +7,6 @@ export type {
   AnyDamageSource,
   KnockbackInfo,
   DeathContext,
-  RecoilInfo,
   DamageResult,
   HitInfo,
 } from '@/types/damage';

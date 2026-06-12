@@ -23,7 +23,6 @@ export class SimulationDeadEntityCleanup {
   private readonly deadBuildingIds: EntityId[] = [];
   private readonly deadUnitIdSet = new Set<EntityId>();
   private readonly deadBuildingIdSet = new Set<EntityId>();
-  private readonly deadTurretIdSet = new Set<EntityId>();
   private readonly syntheticDeathEventIds = new Set<EntityId>();
   private readonly deathContexts = new Map<EntityId, DeathContext>();
   private readonly spawnedWrecks: Entity[] = [];
@@ -65,7 +64,6 @@ export class SimulationDeadEntityCleanup {
     this.deadBuildingIds.length = 0;
     this.deadUnitIdSet.clear();
     this.deadBuildingIdSet.clear();
-    this.deadTurretIdSet.clear();
     this.syntheticDeathEventIds.clear();
     this.deathContexts.clear();
   }
@@ -74,12 +72,10 @@ export class SimulationDeadEntityCleanup {
     if (deadUnitIds.length === 0 && deadBuildingIds.length === 0) return;
     const deadUnitSet = this.deadUnitIdSet;
     const deadBuildingSet = this.deadBuildingIdSet;
-    const deadTurretSet = this.deadTurretIdSet;
     const syntheticDeathEventIds = this.syntheticDeathEventIds;
     const deathContexts = this.deathContexts;
     deadUnitSet.clear();
     deadBuildingSet.clear();
-    deadTurretSet.clear();
     syntheticDeathEventIds.clear();
     deathContexts.clear();
     for (const id of deadUnitIds) {
@@ -93,7 +89,6 @@ export class SimulationDeadEntityCleanup {
     this.deathExplosionPlanner.detonate(
       deadUnitSet,
       deadBuildingSet,
-      deadTurretSet,
       this.eventQueues.simEvents,
       deathContexts,
     );

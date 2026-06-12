@@ -65,20 +65,16 @@ export type DeathContext = {
   attackMagnitude: number;
 };
 
-export type RecoilInfo = {
-  sourceEntityId: EntityId;
-  force: Vec2;
-};
-
+// Turrets never die separately from their host (they are inseparable
+// mounted emitters), so there is no killed-turret set here; turret-mount
+// damage resolves through the host body.
 export type DamageResult = {
   hitEntityIds: EntityId[];
   killedUnitIds: Set<EntityId>;
   killedBuildingIds: Set<EntityId>;
   killedProjectileIds: Set<EntityId>;
-  killedTurretIds: Set<EntityId>;
   truncationT: number | null;
   knockbacks: KnockbackInfo[];
-  recoil: RecoilInfo | null;
   deathContexts: Map<EntityId, DeathContext>;
   /** Per-kill, the playerId of the entity that dealt the killing blow.
    *  Drives the kill-credit channel (FOW-17): the death

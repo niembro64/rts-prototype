@@ -83,7 +83,7 @@ export function runTurretHostIntegrationContractTest(): void {
     // separate turret kill, and the turret stays part of its host assembly.
     // (Whether the host body is hit now depends solely on the host's own
     // collider, never on a turret hit-surface, so we don't assert that here.)
-    const damageResult = new DamageSystem(world).applyDamage({
+    new DamageSystem(world).applyDamage({
       type: 'area',
       sourceEntityId: 9999 as EntityId,
       ownerId: 2 as PlayerId,
@@ -93,7 +93,10 @@ export function runTurretHostIntegrationContractTest(): void {
       radius: 1,
       knockbackForce: 0,
     });
-    assertContract(damageResult.killedTurretIds.size === 0, 'damage at a turret mount must not kill a separate turret body');
+    // Turrets never die separately from their host: DamageResult has no
+    // killed-turret set at all, so the old size===0 assertion is now a
+    // structural guarantee. The mount check below still proves the turret
+    // survives area damage aimed directly at it.
     assertContract(world.resolveMountedTurret(turret.id)?.host === host, 'turret must remain mounted after area damage at its mount');
 
     const authoredTurrets = combat.turrets;

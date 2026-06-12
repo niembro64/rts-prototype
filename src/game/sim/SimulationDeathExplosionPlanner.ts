@@ -58,7 +58,6 @@ export class SimulationDeathExplosionPlanner {
   detonate(
     deadUnitIds: Set<EntityId>,
     deadBuildingIds: Set<EntityId>,
-    deadTurretIds: Set<EntityId>,
     audioEvents: SimEvent[],
     deathContexts: Map<EntityId, DeathContext>,
   ): void {
@@ -115,7 +114,6 @@ export class SimulationDeathExplosionPlanner {
         audioEvents,
         deathContexts,
         blast.sourceEntityId,
-        deadTurretIds,
       );
       this.appendKills(
         sim,
