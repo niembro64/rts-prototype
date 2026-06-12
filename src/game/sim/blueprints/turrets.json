@@ -364,10 +364,10 @@
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
       "duration": 130,
-      "durationRandomness": 0.05
+      "durationRandomness": 0.0
     },
-    "launchForce": 8000,
-    "turretTurnAccel": 200,
+    "launchForce": 10000,
+    "turretTurnAccel": 500,
     "turretDrag": 1,
     "barrel": {
       "type": "simpleMultiBarrel",
@@ -626,7 +626,7 @@
     "turretBlueprintId": "turretBeamMega",
     "name": "Mega Beam",
     "range": 350,
-    "rangeVolume": "turret-range-sphere",
+    "rangeVolume": "turret-range-bottom-unbounded",
     "cooldown": null,
     "launchForce": 0,
     "turretTurnAccel": 1600,

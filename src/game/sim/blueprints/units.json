@@ -1799,19 +1799,9 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretShieldCylinderInfiniteAimed",
+        "turretBlueprintId": "turretBeamMega",
         "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 0
-        },
-        "hostDirected": true,
-        "requiredEngagedForFightStop": false
-      },
-      {
-        "turretBlueprintId": "turretAlbatrosSiegeCannon",
-        "mount": {
-          "x": 0.62,
+          "x": 0.8,
           "y": 0,
           "z": 0
         },
@@ -1819,24 +1809,24 @@
         "requiredEngagedForFightStop": true
       },
       {
-        "turretBlueprintId": "turretAlbatrosSiegeCannon",
+        "turretBlueprintId": "turretBeamMega",
         "mount": {
-          "x": -0.18,
+          "x": 0,
           "y": 0,
           "z": 0
         },
-        "hostDirected": false,
-        "requiredEngagedForFightStop": false
+        "hostDirected": true,
+        "requiredEngagedForFightStop": true
       },
       {
-        "turretBlueprintId": "turretBeam",
+        "turretBlueprintId": "turretBeamMega",
         "mount": {
-          "x": -0.72,
+          "x": -0.8,
           "y": 0,
           "z": 0
         },
-        "hostDirected": false,
-        "requiredEngagedForFightStop": false
+        "hostDirected": true,
+        "requiredEngagedForFightStop": true
       }
     ],
     "bodyShape": {

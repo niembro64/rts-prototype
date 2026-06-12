@@ -487,7 +487,8 @@
       "targets": {
         "enemy": {
           "buildings": "all",
-          "towers": "all"
+          "towers": "all",
+          "units": "all"
         }
       }
     },
