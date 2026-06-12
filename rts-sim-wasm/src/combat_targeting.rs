@@ -9880,6 +9880,24 @@ pub(crate) fn projectile_submunition_unit_jitter(seed: &mut u32) -> (f64, f64, f
 /// TypeScript still materializes child projectile entities and network spawn
 /// events, but the authoritative numeric consequence (surface reflection,
 /// deterministic scatter, and child launch velocities) lives in Rust.
+///
+/// Two formal direction modes, selected by `has_surface_normal`:
+///
+/// * **Surface impact** (normal supplied) — the parent hit something. The
+///   base velocity is the parent velocity reflected across the surface and
+///   damped; each child then adds its scatter jitter and is folded into the
+///   outgoing half-space (`v . n >= 0`) by mirroring any into-surface
+///   component. Every fragment visibly bounces OFF the surface — none
+///   tunnel back into the thing the parent hit.
+/// * **In-flight death** (no normal) — the parent was shot down or expired
+///   mid-air. The base velocity is the parent velocity unchanged; each
+///   child adds its scatter jitter and is folded into the forward
+///   half-space about the parent's direction of travel, so the cluster
+///   carries the parent's momentum "more or less" while still spreading.
+///   A near-stationary parent skips the fold (pure sphere burst).
+///
+/// The half-space folds mirror the velocity component rather than clamping
+/// it, preserving each fragment's speed and the spread's shape.
 #[wasm_bindgen]
 pub fn projectile_submunition_launch_velocity_batch(
     count: u32,
@@ -9915,6 +9933,14 @@ pub fn projectile_submunition_launch_velocity_batch(
         return 0;
     }
 
+    // Resolve the mode: a usable surface normal selects the reflection
+    // model; otherwise (including a degenerate zero-length normal) the
+    // cluster runs the momentum-continuation model.
+    let mut fold_x = 0.0;
+    let mut fold_y = 0.0;
+    let mut fold_z = 0.0;
+    let mut has_fold_axis = false;
+
     let mut bounce_x = parent_velocity_x;
     let mut bounce_y = parent_velocity_y;
     let mut bounce_z = parent_velocity_z;
@@ -9933,6 +9959,22 @@ pub fn projectile_submunition_launch_velocity_batch(
             bounce_x = (parent_velocity_x - 2.0 * velocity_dot_normal * nx) * damper;
             bounce_y = (parent_velocity_y - 2.0 * velocity_dot_normal * ny) * damper;
             bounce_z = (parent_velocity_z - 2.0 * velocity_dot_normal * nz) * damper;
+            fold_x = nx;
+            fold_y = ny;
+            fold_z = nz;
+            has_fold_axis = true;
+        }
+    }
+    if !has_fold_axis {
+        let parent_speed_sq = parent_velocity_x * parent_velocity_x
+            + parent_velocity_y * parent_velocity_y
+            + parent_velocity_z * parent_velocity_z;
+        if parent_speed_sq > 1e-9 {
+            let inv = 1.0 / parent_speed_sq.sqrt();
+            fold_x = parent_velocity_x * inv;
+            fold_y = parent_velocity_y * inv;
+            fold_z = parent_velocity_z * inv;
+            has_fold_axis = true;
         }
     }
 
@@ -9941,9 +9983,20 @@ pub fn projectile_submunition_launch_velocity_batch(
     let vertical = spread_speed_vertical.max(0.0);
     for i in 0..n {
         let (jx, jy, jz) = projectile_submunition_unit_jitter(&mut rng_seed);
-        out_velocity_x[i] = bounce_x + horizontal * jx;
-        out_velocity_y[i] = bounce_y + horizontal * jy;
-        out_velocity_z[i] = bounce_z + vertical * jz;
+        let mut vx = bounce_x + horizontal * jx;
+        let mut vy = bounce_y + horizontal * jy;
+        let mut vz = bounce_z + vertical * jz;
+        if has_fold_axis {
+            let along = vx * fold_x + vy * fold_y + vz * fold_z;
+            if along < 0.0 {
+                vx -= 2.0 * along * fold_x;
+                vy -= 2.0 * along * fold_y;
+                vz -= 2.0 * along * fold_z;
+            }
+        }
+        out_velocity_x[i] = vx;
+        out_velocity_y[i] = vy;
+        out_velocity_z[i] = vz;
     }
 
     count

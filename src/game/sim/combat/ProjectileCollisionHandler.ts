@@ -673,26 +673,26 @@ export function resetCollisionBuffers(): void {
  * detonates. Each child inherits the parent's owner + sourceEntityId
  * so any further kills still credit the original shooter.
  *
- * Direction model — each submunition's launch velocity is:
+ * Direction model — two formal cases, owned by the Rust kernel
+ * (`projectile_submunition_launch_velocity_batch`):
  *
- *     surface hit: v = reflectedVelocity * reflectedVelocityDamper
- *                  + jitterDir         * randomSpreadSpeed
- *     airburst:    v = parentVelocity
- *                  + jitterDir * randomSpreadSpeed
+ *     surface hit:     v = reflect(parentVelocity, N) * damper
+ *                        + jitterDir * randomSpreadSpeed,
+ *                      folded into the outgoing half-space (v·N >= 0)
+ *     in-flight death: v = parentVelocity
+ *                        + jitterDir * randomSpreadSpeed,
+ *                      folded into the forward half-space along the
+ *                      parent's direction of travel
  *
- * where `reflectedVelocity` is the parent's velocity reflected across
- * the impact surface (V − 2(V·N)N) and `jitterDir` is a random unit
- * 3D vector. The reflected component gives the cluster a "bounce off
- * the impact surface" feel; the jitter component gives each fragment
- * its own offset within a sphere of radius `randomSpreadSpeed` around
- * the base direction. Mid-air detonation (no surface normal) skips
- * both the reflection and the reflected-velocity damper, so fragments
- * start from the parent's position and velocity with only configured
- * random spread added.
+ * A parent that HIT something sprays every fragment off that surface
+ * (a particle explosion that never tunnels back in); a parent that was
+ * SHOT DOWN or expired mid-air throws every fragment onward with its
+ * momentum. The half-space folds mirror rather than clamp, so fragment
+ * speeds and the spread shape are preserved.
  *
  * `surfaceNormalX/Y/Z` is the world-space surface normal at the
  * impact point (sim coords: z is up). Pass undefined for all three
- * when there is no surface.
+ * when there is no surface (shot down, mid-air expiry).
  */
 function spawnSubmunitions(
   world: WorldState,
