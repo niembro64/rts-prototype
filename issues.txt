@@ -17,105 +17,41 @@ Please always commit and push before and after any code changes we make.
 ================================================================================
 
 --------------------------------------------------------------------------------
-SHIELD DESCOPE (shields/force fields are cut from the game entirely; the
-design doc no longer mentions them. The goal is a browser BAR with our own
-fully-3d touches, and shields were slowing that down. Do these BEFORE the
-Rust migration items below — deleting shields shrinks projectileSystem,
-targeting, and DamageSystem before they get ported. Land each with Delete
-The Old Path in the same change: remove, don't disable. Done means
-`grep -ri shield src/ rts-sim-wasm/ scripts/` comes back empty (~136 files
-reference it today; note rts-sim-wasm/build.rs and scripts/ sit outside
-rts-sim-wasm/src/, so the wider scope matters).)
---------------------------------------------------------------------------------
-
-[053][DESCOPE] Remove all shield turrets and the shield emission kind from
-blueprints and sim. Delete the five shield turret blueprints in
-src/game/sim/blueprints/turrets.json (turretShieldPanel, turretShieldSphere,
-turretShieldSphereSmall, turretShieldCylinderInfinite,
-turretShieldCylinderInfiniteAimed), their mounts on unitDaddy / unitWidow /
-unitLoris in units.json (decide replacement turrets or drop the slots — no
-unit ships with an empty authored mount), their inclusionLockOnConfig.json
-entries, and the whole shields.json / shieldMaterials.json blueprint families
-plus shields.ts / shieldMaterials.ts loaders. Shrink emissionKind to
-"shot" | "ray" in blueprintSchema.json and regenerate both generated schemas
-(src/types/blueprintSchema.generated.ts,
-rts-sim-wasm/src/generated_blueprint_schema.rs). Remove the shields.json /
-shieldMaterials.json BlueprintObjectTable registrations from
-rts-sim-wasm/build.rs (BLUEPRINT_SHIELDS_JSON, BLUEPRINT_SHIELD_MATERIAL_IDS,
-etc.) or `npm run build:wasm` breaks the moment the JSON files are deleted.
-Delete the shield sim systems (shieldTurret.ts, shieldTargetPriority.ts,
-shieldSoundSystem.ts, reflectorBatch.ts, src/game/sim/shieldPanelCache.ts,
-src/game/sim/shieldPanelRuntime.ts) and every shield branch in
-turretSystem.ts, projectileSystem.ts, ProjectileCollisionHandler.ts,
-lineOfSight.ts, aimSolver.ts, DamageSystem.ts, WorldState.ts,
-WorldUnitFactory.ts, runtimeTurrets.ts, commands.ts, projectileConfigs.ts,
-the AUTHORITY_LEDGER.md shield rows, and the Rust side (combat_targeting.rs,
-entity_meta.rs, snapshot.rs, render_pose.rs). Shot/beam reflection existed
-only for shields (commit eae7f880 "Beams only reflect off shields"), so the
-reflection paths go with them. The incomingThreatReflector
-secondaryLockOnProfiles implementation and the only "require" user of
-lockOnRequiresTargetLockedOntoSelf were shield-only: remove the profile and
-ship every blueprint on "ignore" (the enum and validation stay).
-
-[054][DESCOPE] Remove shield state from the wire, snapshots, and prediction.
-Strip shield fields and audio/visual shield events from the serializers and
-wire packs (stateSerializer*.ts, snapshot*WirePack.ts,
-snapshotRustWireEncoder.ts, snapshotDtoCopy.ts, snapshotClone.ts,
-turretSnapshotFields.ts, ServerSnapshotMetaBuilder.ts,
-ServerSnapshotDirectWirePreencoder.ts), from ClientViewState and the
-prediction channels (ClientPredictionTargets.ts, ClientPredictionStepper.ts,
-ClientUnitPrediction.ts), from commands and types (types/commands.ts +
-commandSanitizer.ts shield toggles, types/combat.ts, types/network.ts,
-types/sim.ts, types/battle.ts, types/audio.ts), and update the wire
-regression checks (snapshotEncoderTest.ts, SnapshotCadenceRegression.ts).
-scripts/probeProjectileWireV2.ts builds probe rows with a shield/mirror
-reflectorKind and the PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND wire flag —
-strip those alongside the wire fields or the probe breaks.
-
-[055][DESCOPE] Remove shield rendering, audio, and UI. Delete
-ShieldRenderer3D.ts, ShieldPanelMesh3D.ts, ShieldPanelMatrixBatch3D.ts,
-ShieldReflectorVisual3D.ts, ShieldPanelPose3D.ts, ShieldImpactRenderer3D.ts,
-and every shield branch in the remaining render3d files (TurretMesh3D.ts,
-UnitMeshBuilder3D.ts, EntityMesh3D.ts, UnitTurretPose3D.ts, Debris3D.ts,
-HealthBar3D.ts, ProjectileRenderer3D.ts, ...). Delete src/shieldConfig.json
-and src/shieldVisualConfig.json and the shield entries in audioConfig.json/.ts,
-colorsConfig.json, battleBarConfig.json/.ts, and config.ts. Remove shield
-settings, toggles, and sounds from GameCanvas.vue, gameCanvasBattleSettings.ts,
-gameCanvasClientSettings.ts, GameCanvasBattleControlBar.vue,
-gameCanvasControlBarModels.ts, gameCanvasSceneUi.ts, SoundTestModal.vue,
-LobbyModal.vue, battlePresets.ts, and the loading/preview screens
-(loadingUnitInfo.ts, loadingUnitPreviewScene.ts). Also clear the shield
-branches in the scene/audio dispatch layer (RtsScene3D.ts and its helpers —
-RtsScene3DSimEventAudio.ts, RtsScene3DVisualEventDispatcher.ts,
-RtsScene3DVisualEventSanitizer.ts, AudioEventScheduler.ts,
-RtsScene3DRendererBootstrap.ts, RtsScene3DRendererLifecycle.ts,
-RtsScene3DRenderPhase.ts), src/game/audio/ (AudioManager.ts, fireSynths.ts,
-continuousSounds.ts), and src/game/math/ (BarrelGeometry.ts,
-CollisionHelpers.ts).
-
---------------------------------------------------------------------------------
 RUST MIGRATION DEBT (each is a phase-scale project; land each with parity
 proof + Delete The Old Path in the same change)
 --------------------------------------------------------------------------------
 
-[049][ARCH] src/game/sim/combat/projectileSystem.ts (~1800 lines) still owns
-projectile tick orchestration around the WASM ProjectilePool: TS validates and
-scatters packed pool slots, gathers non-packed homing/D-gun rows, updates
-beam/laser lifecycle and tracing, and drives collision/despawn orchestration.
-Move the remaining projectile tick state/result buffers into Rust so TS only
-spawns/despawns/emits events, then delete the TS tick loops.
+[049][ARCH] projectileSystem.ts (~1793 lines) still owns projectile
+integration, homing guidance, beam stepping and collision orchestration in TS
+while the projectile pool lives in WASM. Port the per-projectile tick loop to
+Rust; leave TS as spawn/despawn orchestration. Delete the TS loop in the same
+change (Delete The Old Path).
 
-[051][ARCH] src/game/sim/combat/targetingInputStamping.ts (~975 lines) is the
-TS->Rust stamping shim for the targeting FSM. Eliminate the per-tick
-stamp/readback by making targeting state, snapshots, rendering, and downstream
-combat consumers read the Rust slabs directly, then delete the shim.
+[051][ARCH] targetingInputStamping.ts (~957 lines) is the TS->Rust stamping
+shim for the targeting FSM. Eliminate the per-tick stamp/readback by making
+targeting state, snapshots, rendering, and downstream combat consumers read the
+Rust slabs directly, then delete the shim.
 
-[052][ARCH] src/game/sim/damage/DamageSystem.ts (~2355 lines) still
-materializes damage resolution side effects in TS after Rust classification/HP
-batching: knockback vectors, death contexts, killer bookkeeping, and
-damage/death event assembly are still produced from TS entity objects. Move
-those resolution outputs into Rust-owned event/result buffers so TS receives
-typed events/knockbacks only, then delete the remaining TS resolution
-math/helpers.
+[052][ARCH] damageHelpers.ts keeps TS damage-context/knockback math parallel to
+Rust segment/sphere kernels. Unify damage resolution in Rust; TS receives
+events only.
 
+[053][ARCH] Finish the Rust snapshot wire encoder (V6 -> current V11 entity
+schema) so ENABLE_RUST_SNAPSHOT_WIRE can default ON, then delete the TS entity
+encode path (stateSerializerEntities encode + snapshotEntityWirePack encode)
+per Delete The Old Path. Today the dual path is the documented single-flag
+parity exception: Rust path opt-in via VITE_BA_ENABLE_RUST_SNAPSHOT_WIRE /
+?rustSnapshotWire, with the byte-compare harness behind ?dp02rust. The TS
+encode path is the live default and is already pooled/binary-packed.
 ================================================================================
+
+
+[02][USER_REQUESTS] Our rockets don't seem to be using an EMA at all for their positions or velocities - we need to elegantly apply some kind of EMA as they are just currently jumping to new positions when we get snaps from the backend. I'm not exactly sure what the best way to do this is. 
+
+[03][USER_REQUESTS] The base of our wind turbine needs to be big enough to make sure that the blades of the wind turbine don't visually "hit" other things when they are spinning. Let's make the wind turbing blades a bit smaller, and increase the base of the wind turbine to be at least that wide (the width of the spinning blades). You can also make the wind turbing taller. 
+
+[04][USER_REQUESTS] We need to make some kind of "debounce" for the beams - let's have this in the simulation, not just visually. Let's have all beams take at least 0.5 seconds to turn off. Put this in our "beamConfig.json" - so even if their target disappears or something the beam will still be active, on, and shooting for at least half a second after it is turned on. 
+
+[05][USER_REQUESTS] Do a full rewrite of the "albatross" unit - it should be a "flying" unit that is absolutely huge and slow. Not "hovering", but "flying" type. Make it look like a giant bird. It should be a super heavy flying tank that is really slow, but has a lot of health and does a lot of damage. It should be really good at taking out buildings, but not as good at taking out other units. Keep the turret it has now - and maybe add more. We probably want to continue keeping all turrets origins being on the center axis as we are doing the plane banking artificially in the client - and this will make it simple to continue doing that. 
+
+
