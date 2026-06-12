@@ -178,7 +178,11 @@ export class BuildingGrid {
     return this.canPlace(gx, gy, gridWidth, gridHeight);
   }
 
-  // Place a building (mark cells as occupied)
+  // Place a building (mark cells as occupied). When the physical
+  // footprint is smaller than the placement footprint, the centered
+  // clearance ring outside the physical rect still occupies placement
+  // but never blocks movement — there is no body, roof, or support
+  // surface over those cells, only a construction reservation.
   place(
     gx: number,
     gy: number,
@@ -187,17 +191,24 @@ export class BuildingGrid {
     entityId: EntityId,
     playerId: PlayerId,
     blocksMovement: boolean = true,
+    physicalGridWidth: number = gridWidth,
+    physicalGridHeight: number = gridHeight,
   ): void {
+    const insetX = Math.floor((gridWidth - physicalGridWidth) / 2);
+    const insetY = Math.floor((gridHeight - physicalGridHeight) / 2);
     for (let dx = 0; dx < gridWidth; dx++) {
       for (let dy = 0; dy < gridHeight; dy++) {
         const cellX = gx + dx;
         const cellY = gy + dy;
+        const physical =
+          dx >= insetX && dx < insetX + physicalGridWidth &&
+          dy >= insetY && dy < insetY + physicalGridHeight;
         const key = this.getCellKey(cellX, cellY);
         this.cells.set(key, {
           occupied: true,
           entityId,
           playerId,
-          blocksMovement,
+          blocksMovement: physical && blocksMovement,
         });
       }
     }

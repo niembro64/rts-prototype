@@ -4,6 +4,8 @@
     "name": "Solar",
     "gridWidth": 3,
     "gridHeight": 3,
+    "placementGridWidth": null,
+    "placementGridHeight": null,
     "gridDepth": 1,
     "hp": 200,
     "cost": {
@@ -56,9 +58,11 @@
   "buildingWind": {
     "buildingBlueprintId": "buildingWind",
     "name": "Wind",
-    "gridWidth": 6,
-    "gridHeight": 6,
-    "gridDepth": 6,
+    "gridWidth": 2,
+    "gridHeight": 2,
+    "placementGridWidth": 6,
+    "placementGridHeight": 6,
+    "gridDepth": 5,
     "hp": 100,
     "cost": {
       "energy": 60,
@@ -69,13 +73,13 @@
     "constructionRate": null,
     "conversionRate": null,
     "renderProfile": "buildingWind",
-    "visualHeight": 300,
+    "visualHeight": 250,
     "anchorProfile": "constantVisualTop",
     "supportSurface": {
       "kind": "boxTop",
-      "topZ": 120,
-      "width": 120,
-      "height": 120
+      "topZ": 100,
+      "width": 40,
+      "height": 40
     },
     "hud": {
       "barsOffsetAboveTop": -10
@@ -96,14 +100,14 @@
       "mass": 100,
       "health": 100,
       "deathExplosion": {
-        "radius": 101.824,
+        "radius": 33.941,
         "force": 6000,
         "damage": 75
       },
       "radius": {
-        "visual": 84.853,
-        "hitbox": 84.853,
-        "collision": 84.853
+        "visual": 28.284,
+        "hitbox": 28.284,
+        "collision": 28.284
       }
     }
   },
@@ -112,6 +116,8 @@
     "name": "Extractor",
     "gridWidth": 5,
     "gridHeight": 5,
+    "placementGridWidth": null,
+    "placementGridHeight": null,
     "gridDepth": 2,
     "hp": 250,
     "cost": {
@@ -166,6 +172,8 @@
     "name": "Advanced Extractor",
     "gridWidth": 5,
     "gridHeight": 5,
+    "placementGridWidth": null,
+    "placementGridHeight": null,
     "gridDepth": 2,
     "hp": 600,
     "cost": {
@@ -220,6 +228,8 @@
     "name": "Radar",
     "gridWidth": 2,
     "gridHeight": 2,
+    "placementGridWidth": null,
+    "placementGridHeight": null,
     "gridDepth": 7,
     "hp": 450,
     "cost": {
@@ -274,6 +284,8 @@
     "name": "Converter",
     "gridWidth": 3,
     "gridHeight": 3,
+    "placementGridWidth": null,
+    "placementGridHeight": null,
     "gridDepth": 3,
     "hp": 240,
     "cost": {
@@ -328,6 +340,8 @@
     "name": "Wreck",
     "gridWidth": 2,
     "gridHeight": 2,
+    "placementGridWidth": null,
+    "placementGridHeight": null,
     "gridDepth": 1,
     "hp": 120,
     "cost": {

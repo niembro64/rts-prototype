@@ -4,6 +4,8 @@
     "name": "Fabricator",
     "gridWidth": 12,
     "gridHeight": 12,
+    "placementGridWidth": null,
+    "placementGridHeight": null,
     "gridDepth": 1.5,
     "hp": 864,
     "cost": {
@@ -69,6 +71,8 @@
     "name": "Beam Tower",
     "gridWidth": 1,
     "gridHeight": 1,
+    "placementGridWidth": null,
+    "placementGridHeight": null,
     "gridDepth": 5,
     "hp": 8128,
     "cost": {
@@ -133,6 +137,8 @@
     "name": "Cannon Tower",
     "gridWidth": 4,
     "gridHeight": 4,
+    "placementGridWidth": null,
+    "placementGridHeight": null,
     "gridDepth": 3,
     "hp": 8128,
     "cost": {
@@ -197,6 +203,8 @@
     "name": "Anti-Air Tower",
     "gridWidth": 2,
     "gridHeight": 2,
+    "placementGridWidth": null,
+    "placementGridHeight": null,
     "gridDepth": 4,
     "hp": 3600,
     "cost": {

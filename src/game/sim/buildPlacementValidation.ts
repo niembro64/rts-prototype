@@ -72,7 +72,7 @@ export function getOccupiedBuildingCells(buildings: Entity[]): ReadonlySet<strin
     if (!b.building) continue;
     const existingConfig = b.buildingBlueprintId ? getBuildingConfig(b.buildingBlueprintId) : undefined;
     const footprint = existingConfig
-      ? getRotatedGridFootprint(existingConfig.gridWidth, existingConfig.gridHeight, b.transform.rotation)
+      ? getRotatedGridFootprint(existingConfig.placementGridWidth, existingConfig.placementGridHeight, b.transform.rotation)
       : getRotatedGridFootprint(
         Math.max(1, Math.ceil(b.building.width / BUILD_GRID_CELL_SIZE)),
         Math.max(1, Math.ceil(b.building.height / BUILD_GRID_CELL_SIZE)),
@@ -103,7 +103,10 @@ function getBuildingPlacementDiagnosticsAtGrid(
   rotation = 0,
 ): BuildPlacementDiagnostics {
   const config = getBuildingConfig(candidateType);
-  const footprint = getRotatedGridFootprint(config.gridWidth, config.gridHeight, rotation);
+  // Validate and reserve the full placement footprint. It shares its
+  // center with the physical rect (parity is loader-enforced), so the
+  // candidate center below is also the building center.
+  const footprint = getRotatedGridFootprint(config.placementGridWidth, config.placementGridHeight, rotation);
   const center = getBuildingCenterFromGrid(gridX, gridY, footprint.gridWidth, footprint.gridHeight);
   const halfWidth = (footprint.gridWidth * BUILD_GRID_CELL_SIZE) / 2;
   const halfHeight = (footprint.gridHeight * BUILD_GRID_CELL_SIZE) / 2;
@@ -313,7 +316,7 @@ export function getBuildingPlacementDiagnostics(
   rotation = 0,
 ): BuildPlacementDiagnostics {
   const config = getBuildingConfig(candidateType);
-  const footprint = getRotatedGridFootprint(config.gridWidth, config.gridHeight, rotation);
+  const footprint = getRotatedGridFootprint(config.placementGridWidth, config.placementGridHeight, rotation);
   const snapped = snapBuildingToGrid(centerX, centerY, footprint.gridWidth, footprint.gridHeight);
   return getBuildingPlacementDiagnosticsAtGrid(
     candidateType,
@@ -355,6 +358,6 @@ export function getSnappedBuildPosition(
   rotation = 0,
 ): { x: number; y: number; gridX: number; gridY: number } {
   const config = getBuildingConfig(buildingBlueprintId);
-  const footprint = getRotatedGridFootprint(config.gridWidth, config.gridHeight, rotation);
+  const footprint = getRotatedGridFootprint(config.placementGridWidth, config.placementGridHeight, rotation);
   return snapBuildingToGrid(worldX, worldY, footprint.gridWidth, footprint.gridHeight);
 }

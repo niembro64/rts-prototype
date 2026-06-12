@@ -72,6 +72,11 @@ export class ConstructionSystem {
     if (!options.skipBuilderAuthorization && !entityCanBuild(builderEntity, buildingBlueprintId)) return null;
     const config = getBuildingConfig(buildingBlueprintId);
     const footprint = getRotatedGridFootprint(config.gridWidth, config.gridHeight, rotation);
+    const placementFootprint = getRotatedGridFootprint(
+      config.placementGridWidth,
+      config.placementGridHeight,
+      rotation,
+    );
 
     const diagnostics = getBuildingPlacementDiagnosticsForGrid(
       buildingBlueprintId,
@@ -170,9 +175,20 @@ export class ConstructionSystem {
       };
     }
 
-    // Register the real blocking footprint. Factories no longer reserve
-    // an invisible yard; only the tower cells are occupied.
-    this.buildingGrid.place(gridX, gridY, footprint.gridWidth, footprint.gridHeight, entity.id, playerId);
+    // Register the placement footprint. Only the centered physical rect
+    // blocks movement; any clearance ring beyond it (wind turbine blade
+    // sweep) reserves construction cells without becoming a wall.
+    this.buildingGrid.place(
+      gridX,
+      gridY,
+      placementFootprint.gridWidth,
+      placementFootprint.gridHeight,
+      entity.id,
+      playerId,
+      true,
+      footprint.gridWidth,
+      footprint.gridHeight,
+    );
 
     // Add to world
     world.addEntity(entity);
@@ -206,9 +222,13 @@ export class ConstructionSystem {
     const rotation = target.transform.rotation;
     const t1Footprint = getRotatedGridFootprint(t1Config.gridWidth, t1Config.gridHeight, rotation);
     const t2Footprint = getRotatedGridFootprint(t2Config.gridWidth, t2Config.gridHeight, rotation);
+    const t1Placement = getRotatedGridFootprint(t1Config.placementGridWidth, t1Config.placementGridHeight, rotation);
+    const t2Placement = getRotatedGridFootprint(t2Config.placementGridWidth, t2Config.placementGridHeight, rotation);
     if (
       t1Footprint.gridWidth !== t2Footprint.gridWidth ||
-      t1Footprint.gridHeight !== t2Footprint.gridHeight
+      t1Footprint.gridHeight !== t2Footprint.gridHeight ||
+      t1Placement.gridWidth !== t2Placement.gridWidth ||
+      t1Placement.gridHeight !== t2Placement.gridHeight
     ) {
       return null;
     }
@@ -249,7 +269,13 @@ export class ConstructionSystem {
   private getEntityBuildingGrid(entity: Entity): { gridX: number; gridY: number } | null {
     if (entity.building === null || entity.buildingBlueprintId === null) return null;
     const config = getBuildingConfig(entity.buildingBlueprintId);
-    const footprint = getRotatedGridFootprint(config.gridWidth, config.gridHeight, entity.transform.rotation);
+    // Placement-rect origin — the same grid coordinate space
+    // startBuilding receives and reserves.
+    const footprint = getRotatedGridFootprint(
+      config.placementGridWidth,
+      config.placementGridHeight,
+      entity.transform.rotation,
+    );
     const halfW = (footprint.gridWidth * BUILD_GRID_CELL_SIZE) / 2;
     const halfH = (footprint.gridHeight * BUILD_GRID_CELL_SIZE) / 2;
     return {
@@ -272,10 +298,16 @@ export class ConstructionSystem {
   ): Entity {
     const config = getBuildingConfig(buildingBlueprintId);
 
-    // Snap to grid
-    const snapped = this.buildingGrid.snapToGrid(worldX, worldY, config.gridWidth, config.gridHeight);
-    const centerX = snapped.x + (config.gridWidth * BUILD_GRID_CELL_SIZE) / 2;
-    const centerY = snapped.y + (config.gridHeight * BUILD_GRID_CELL_SIZE) / 2;
+    // Snap by the placement footprint (the rect the real build would
+    // reserve); the shared center is also the physical body center.
+    const snapped = this.buildingGrid.snapToGrid(
+      worldX,
+      worldY,
+      config.placementGridWidth,
+      config.placementGridHeight,
+    );
+    const centerX = snapped.x + (config.placementGridWidth * BUILD_GRID_CELL_SIZE) / 2;
+    const centerY = snapped.y + (config.placementGridHeight * BUILD_GRID_CELL_SIZE) / 2;
 
     // Create ghost entity
     const entity = world.createBuilding(
@@ -301,7 +333,12 @@ export class ConstructionSystem {
   // Check if a building can be placed at world coordinates
   canPlaceAt(worldX: number, worldY: number, buildingBlueprintId: BuildingBlueprintId): boolean {
     const config = getBuildingConfig(buildingBlueprintId);
-    const snapped = this.buildingGrid.snapToGrid(worldX, worldY, config.gridWidth, config.gridHeight);
+    const snapped = this.buildingGrid.snapToGrid(
+      worldX,
+      worldY,
+      config.placementGridWidth,
+      config.placementGridHeight,
+    );
     const gridX = Math.floor(snapped.x / BUILD_GRID_CELL_SIZE);
     const gridY = Math.floor(snapped.y / BUILD_GRID_CELL_SIZE);
     return getBuildingPlacementDiagnosticsForGrid(
@@ -355,10 +392,15 @@ export class ConstructionSystem {
   // Get snap position for building placement
   getSnapPosition(worldX: number, worldY: number, buildingBlueprintId: BuildingBlueprintId): { x: number; y: number } {
     const config = getBuildingConfig(buildingBlueprintId);
-    const snapped = this.buildingGrid.snapToGrid(worldX, worldY, config.gridWidth, config.gridHeight);
+    const snapped = this.buildingGrid.snapToGrid(
+      worldX,
+      worldY,
+      config.placementGridWidth,
+      config.placementGridHeight,
+    );
     return {
-      x: snapped.x + (config.gridWidth * BUILD_GRID_CELL_SIZE) / 2,
-      y: snapped.y + (config.gridHeight * BUILD_GRID_CELL_SIZE) / 2,
+      x: snapped.x + (config.placementGridWidth * BUILD_GRID_CELL_SIZE) / 2,
+      y: snapped.y + (config.placementGridHeight * BUILD_GRID_CELL_SIZE) / 2,
     };
   }
 }

@@ -17,6 +17,8 @@ function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): Building
     gridWidth: bp.gridWidth,
     gridHeight: bp.gridHeight,
     gridDepth: bp.gridDepth,
+    placementGridWidth: bp.placementGridWidth ?? bp.gridWidth,
+    placementGridHeight: bp.placementGridHeight ?? bp.gridHeight,
     hp: bp.hp,
     cost: {
       energy: bp.cost.energy * COST_MULTIPLIER,

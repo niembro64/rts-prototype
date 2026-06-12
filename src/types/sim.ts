@@ -923,6 +923,13 @@ export type BuildingConfig = {
   gridWidth: number;
   gridHeight: number;
   gridDepth: number;
+  /** Build-grid cells reserved for placement (always >= the physical
+   *  gridWidth/gridHeight, same parity, resolved from the blueprint —
+   *  equal for most buildings). The clearance ring beyond the physical
+   *  footprint blocks construction only: no physics body, no pathfinder
+   *  blocking, no visual. */
+  placementGridWidth: number;
+  placementGridHeight: number;
   hp: number;
   cost: ResourceCost;
   energyProduction: number | null;

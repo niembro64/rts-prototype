@@ -46,6 +46,14 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   gridWidth: number;
   gridHeight: number;
   gridDepth: number;
+  /** Build-grid cells reserved for placement when larger than the
+   *  physical footprint (`null` = same as gridWidth/gridHeight). The
+   *  clearance ring blocks construction but not movement or physics —
+   *  the wind turbine reserves 6x6 so nothing builds under its blades
+   *  while its body stays 2x2. Must be >= the physical dim and share
+   *  its parity so both rects center on the same point. */
+  placementGridWidth: number | null;
+  placementGridHeight: number | null;
   base: EntityBaseLedger;
   hp: number;
   /** Authored per-resource build cost. BUILDING_CONFIGS applies
@@ -125,6 +133,8 @@ const BUILDING_EXPLICIT_FIELDS = [
   'metalProduction',
   'constructionRate',
   'conversionRate',
+  'placementGridWidth',
+  'placementGridHeight',
   'supportSurface',
   'sensors',
   'turrets',
@@ -312,6 +322,23 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   }
   if (!Number.isFinite(blueprint.gridDepth) || blueprint.gridDepth <= 0) {
     throw new Error(`Invalid building blueprint ${id}: gridDepth must be positive`);
+  }
+  for (const [placementField, physical] of [
+    ['placementGridWidth', blueprint.gridWidth],
+    ['placementGridHeight', blueprint.gridHeight],
+  ] as const) {
+    const placement = blueprint[placementField];
+    if (placement === null) continue;
+    if (!Number.isFinite(placement) || placement < physical) {
+      throw new Error(
+        `Invalid building blueprint ${id}: ${placementField} must be >= the physical footprint dim`,
+      );
+    }
+    if ((placement - physical) % 2 !== 0) {
+      throw new Error(
+        `Invalid building blueprint ${id}: ${placementField} must share parity with the physical footprint dim so both rects center on the same point`,
+      );
+    }
   }
   if (!Number.isFinite(blueprint.visualHeight) || blueprint.visualHeight <= 0) {
     throw new Error(`Invalid building blueprint ${id}: visualHeight must be positive`);

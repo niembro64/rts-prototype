@@ -304,7 +304,11 @@ export class Input3DBuildPlacementState {
       terrainBuildabilityGrid,
       plannedOccupiedCells: new Set(this.occupiedCells),
       planned: new Set<string>(),
-      footprint: getRotatedGridFootprint(config.gridWidth, config.gridHeight, this.buildFacingRotation),
+      footprint: getRotatedGridFootprint(
+        config.placementGridWidth,
+        config.placementGridHeight,
+        this.buildFacingRotation,
+      ),
       placements: [],
     };
   }

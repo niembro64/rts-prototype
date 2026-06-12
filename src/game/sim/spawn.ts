@@ -214,15 +214,17 @@ function placeCompleteBuilding(
   const config = getBuildingConfig(buildingBlueprintId);
   const grid = construction.getGrid();
 
-  const snapped = grid.snapToGrid(worldX, worldY, config.gridWidth, config.gridHeight);
+  // Snap, validate, and reserve by the placement footprint; the entity
+  // body below keeps the physical footprint (shared center).
+  const snapped = grid.snapToGrid(worldX, worldY, config.placementGridWidth, config.placementGridHeight);
   const gx = Math.floor(snapped.x / BUILD_GRID_CELL_SIZE);
   const gy = Math.floor(snapped.y / BUILD_GRID_CELL_SIZE);
 
-  if (!grid.canPlace(gx, gy, config.gridWidth, config.gridHeight)) {
+  if (!grid.canPlace(gx, gy, config.placementGridWidth, config.placementGridHeight)) {
     return null;
   }
 
-  const center = grid.getBuildingCenter(gx, gy, config.gridWidth, config.gridHeight);
+  const center = grid.getBuildingCenter(gx, gy, config.placementGridWidth, config.placementGridHeight);
 
   // Skip placements over water — water tiles are impassable.
   if (isWaterAt(center.x, center.y, world.mapWidth, world.mapHeight)) {
@@ -283,7 +285,17 @@ function placeCompleteBuilding(
     initializeBuildingActiveState(world, entity);
   }
 
-  grid.place(gx, gy, config.gridWidth, config.gridHeight, entity.id, playerId);
+  grid.place(
+    gx,
+    gy,
+    config.placementGridWidth,
+    config.placementGridHeight,
+    entity.id,
+    playerId,
+    true,
+    config.gridWidth,
+    config.gridHeight,
+  );
   world.addEntity(entity);
 
   return entity;
@@ -592,7 +604,7 @@ export function spawnMetalExtractorsOnDeposits(
 
   for (const deposit of world.metalDeposits) {
     const ownerId = ownerForDeposit(world, playerIds, deposit.x, deposit.y);
-    const snapped = grid.snapToGrid(deposit.x, deposit.y, config.gridWidth, config.gridHeight);
+    const snapped = grid.snapToGrid(deposit.x, deposit.y, config.placementGridWidth, config.placementGridHeight);
     const gridPos = grid.worldToGrid(snapped.x, snapped.y);
     const extractor = construction.startBuilding(
       world,

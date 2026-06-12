@@ -67,3 +67,13 @@ fold in or re-justify).
 [03][USER_REQUESTS] For the wind turbine - let's have it look like it did before we made the changes - it looked better before - let's just have its footprint be larger than it was before. So the footprint of the wind turbine used to be just 4 squares, let's make the footprint as large as it is now but not actually have the base of the turbine take up those squares. I think you will understand what I mean here when I'm saying that we need to artificially reserve space for the wind turbine so that we can have it look like it used to but still "take up more space" and not allow other things to be built too close to it. 
 
 [05][USER_REQUESTS] Make the albatross look more like a bomber and less like a bird. I love the wings that you currently have just change the body - nothing crazy just simplify it. 
+
+[06][USER_REQUESTS] Regarding our "submunitions" in our "mortar" shot types - I think we can clean them up a bit. If the host "mortar" shot exploded because it was shot down - its submunitions should have a bias to continue in that same direction more or less to show that there is a momentum associated with the movement. But if the host "mortar" shot exploded because it hit something the submunitions need to be reflected off of the surface to show some kind of extra "particle" explosion. We are mostly there but there are still some inconsistencies that I see about directions of where the submunitions fly - maybe we can formalize and elegantly code this better.
+
+
+
+
+
+
+
+

@@ -302,7 +302,7 @@
       "shotBlueprintId": "shotPlasmaMedium",
       "count": 5,
       "randomSpreadSpeedHorizontal": 160,
-      "randomSpreadSpeedVertical": 50,
+      "randomSpreadSpeedVertical": 0,
       "reflectedVelocityDamper": 0.3
     },
     "homingTurnRate": null,
@@ -317,7 +317,7 @@
       "mass": 30,
       "health": 8,
       "deathExplosion": {
-        "radius": 100,
+        "radius": 200,
         "force": 20000,
         "damage": 300
       },
