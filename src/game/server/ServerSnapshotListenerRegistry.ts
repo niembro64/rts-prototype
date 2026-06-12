@@ -44,11 +44,23 @@ export class ServerSnapshotListenerRegistry {
       preencodeWire: options.preencodeWire === true,
       lastStaticTerrainTileMap: undefined,
       lastStaticBuildabilityGrid: undefined,
-      lastStaticResyncToken: undefined,
+      needsKeyframe: false,
+      needsStatic: false,
       startupReady: false,
       snapshotBaselineHandle,
     });
     return trackingKey;
+  }
+
+  /** Mark every listener for `playerId` so its next snapshot is a
+   *  keyframe (optionally re-carrying the static terrain payload).
+   *  Recovery is per-listener: other players keep their delta streams. */
+  requestRecovery(playerId: PlayerId, includeStatic: boolean): void {
+    for (const listener of this.listeners) {
+      if (listener.playerId !== playerId) continue;
+      listener.needsKeyframe = true;
+      if (includeStatic) listener.needsStatic = true;
+    }
   }
 
   markReady(trackingKey: string): void {

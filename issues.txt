@@ -126,48 +126,16 @@ or re-justify then.
 
 
 
-ISSUE COMBAT FREEZE WHEN UNITS START BATTLING
-
-⏺ The focused deep-dive came back with a strong result — the wire format itself is innocent,
-  but it found a concrete freeze mechanism that matches your symptoms exactly. Headline
-  findings while the main workflow finishes verifying:
-
-  The Rust V11 wire format is byte-correct. The agent built a live round-trip harness driving
-  the actual shipped WASM encoder and decoding with the real TS decoders — entities,
-  projectiles (including beam reflector points), and packed audio all round-trip exactly. So
-  the June 11 encoder migration didn't corrupt the bytes.
-
-  The freeze is a client-side "keyframe gate" plus a resync feedback loop. The mechanism,
-  confirmed in code:
-
-  1. In NetworkManager.ts, any single hiccup at combat onset — a decode/apply exception, or
-  merely a new delta arriving while the previous one is still being decoded
-  (queueStateMessage, NetworkManager.ts:1372-1382, which drops both messages) — raises a gate
-  that unconditionally discards every subsequent diffsnap until a fresh keyframe decodes.
-  merely a new delta arriving while the previous one is still being decoded
-  (queueStateMessage, NetworkManager.ts:1372-1382, which drops both messages) — raises a gate
-  that unconditionally discards every subsequent diffsnap until a fresh keyframe decodes.
-  2. Keyframes arrive every 2.0 seconds (8 Hz snapshots × keyframe-every-16). That is your
-  "multiple seconds between visual updates" — diffs arrive and are thrown away; only
-  keyframes advance the view.
-  3. It self-amplifies: every resync request and send-drop forces the next snapshot to be a
-  full static keyframe including terrain (gameCanvasRealBattleLifecycle.ts:85-99), whose
-  async compression causes further snapshots to be dropped
-  (NetworkSnapshotTransport.ts:400-410), and each drop forces another static keyframe — a
-  permanent keyframe-only stream.
-  4. Projectile spawns and audio events ride only in deltas and are cleared at emit
-  (ServerSnapshotPublisher.ts:125-128) — once deltas are being discarded they're gone
-  forever. Units likely are attacking on the server; you just never see the shots. That's
-  your "units aren't attacking."
-
-  Why combat, why online, why new: combat is when snapshots first inflate with
-  projectile/beam/audio payloads (bigger, slower decodes → queue collisions). Only the wire
-  path has the gate — demo shares state in-memory. And the June 11 commits (98165265 "Default
-  snapshot wire encoding to Rust" + bed3eeba deleting the migration scaffolding) made the
-  Rust direct-preencode path the production online path, changing per-listener serialization
-  timing/content — the regression window fits.
-
-  The main six-dimension workflow is still running its adversarial verification pass; I'll
-  use it to cross-check this mechanism (especially whether the server-side targeting is
-  genuinely unaffected, and what the precise first trigger is) and then give you the final
-  diagnosis.
+[07][VERIFY] Online combat freeze fix needs a live two-machine battle test.
+The diagnosed freeze (client 1-slot snapshot decode queue dropping delta
+pairs + keyframe gate; every resync/send-drop forcing a GLOBAL static
+keyframe with terrain whose async compression dropped further snapshots in
+a feedback loop) was fixed by: bounded FIFO decode queue in
+NetworkManager, rate-limited resync requests carrying needsStatic,
+per-listener needsKeyframe/needsStatic recovery marks replacing the global
+staticResyncToken hammer, and dynamic (terrain-free) recovery keyframes.
+Verify in a real online battle that combat stays smooth at combat onset
+and shots/audio render on the client. Known residual (acceptable,
+by-design backpressure): transient audio events inside a genuinely dropped
+snapshot window are lost; projectile spawns recover via keyframe
+resync-spawn synthesis.

@@ -32,8 +32,12 @@ type SnapshotSendTelemetry = {
 };
 type SnapshotCompressionDescriptor = NonNullable<NetworkStateMessage['compression']>;
 type NetworkSnapshotTransportOptions = {
-  onSnapshotDropped?: (playerId: PlayerId) => void;
-  onPendingDeltaDropped?: () => void;
+  /** A host-side send was dropped before reaching the wire. The
+   *  listener's delta baseline already advanced when the snapshot was
+   *  serialized, so the recipient needs a recovery keyframe —
+   *  `droppedStatic` says whether the dropped payload carried the
+   *  terrain/buildability bootstrap and must be re-sent as static. */
+  onSnapshotDropped?: (playerId: PlayerId, droppedStatic: boolean) => void;
 };
 
 function isSnapshotCompressionFormat(value: unknown): value is SnapshotCompressionFormat {
@@ -60,6 +64,8 @@ export class NetworkSnapshotTransport {
   private pendingReceivedStateCloner = new ReusableNetworkSnapshotCloner();
   private pendingFullCompressionPlayerIds = new Set<PlayerId>();
   private compressionFailureLogged = false;
+  private receivedStaticBootstrap = false;
+  private pendingDeltaDropped = false;
 
   constructor(private readonly options: NetworkSnapshotTransportOptions = {}) {}
 
@@ -70,8 +76,10 @@ export class NetworkSnapshotTransport {
     state: NetworkServerSnapshot,
     wirePayload: SnapshotWirePayload | undefined = undefined,
   ): StateMessageBuild {
-    if (this.shouldDropForBackpressure(playerId, conn)) return null;
-    if (this.shouldDropForPendingFullCompression(playerId)) return null;
+    const hasStaticBootstrapPayload =
+      state.terrain !== undefined || state.buildability !== undefined;
+    if (this.shouldDropForBackpressure(playerId, conn, 0, hasStaticBootstrapPayload)) return null;
+    if (this.shouldDropForPendingFullCompression(playerId, hasStaticBootstrapPayload)) return null;
 
     const encoded = wirePayload ?? this.encodeSnapshot(state);
     const buf = encoded.bytes;
@@ -79,8 +87,6 @@ export class NetworkSnapshotTransport {
     const telemetry = this.captureSendTelemetry(state);
 
     const compressionOptions = getFullSnapshotCompressionOptions();
-    const hasStaticBootstrapPayload =
-      state.terrain !== undefined || state.buildability !== undefined;
     if (
       !state.isDelta &&
       (compressionOptions.enabled || hasStaticBootstrapPayload) &&
@@ -96,12 +102,17 @@ export class NetworkSnapshotTransport {
           buf,
           encoded,
           compressionOptions.format,
+          hasStaticBootstrapPayload,
         );
       }
       SNAPSHOT_TRANSPORT_COMPRESSION.recordUnsupported(buf.byteLength);
     }
 
-    if (this.shouldDropForBackpressure(playerId, conn, buf.byteLength)) return null;
+    if (
+      this.shouldDropForBackpressure(playerId, conn, buf.byteLength, hasStaticBootstrapPayload)
+    ) {
+      return null;
+    }
     this.recordSentSnapshot(
       playerId,
       conn,
@@ -170,6 +181,7 @@ export class NetworkSnapshotTransport {
     }
 
     const state = decodeNetworkSnapshot(payload);
+    if (state.terrain !== undefined) this.receivedStaticBootstrap = true;
     setSnapshotWireBytes(state, bytes);
     const serverMeta = state.serverMeta;
     SNAPSHOT_CADENCE_REGRESSION.recordSnapshotDecode({
@@ -207,13 +219,33 @@ export class NetworkSnapshotTransport {
       return;
     }
 
-    this.options.onPendingDeltaDropped?.();
+    // A delta arrived while another snapshot is already buffered for the
+    // not-yet-attached scene. Dropping it leaves a gap in the delta chain;
+    // the consumer requests one resync when it picks the buffer up (see
+    // consumePendingDeltaDropped) instead of spamming one per drop here.
+    this.pendingDeltaDropped = true;
   }
 
   consumePendingState(): NetworkServerSnapshot | null {
     const state = this.pendingReceivedState;
     this.pendingReceivedState = null;
     return state;
+  }
+
+  /** True (once) if any delta was discarded while snapshots were being
+   *  buffered for a not-yet-attached consumer. The consumer should
+   *  request a snapshot resync to re-baseline the delta chain. */
+  consumePendingDeltaDropped(): boolean {
+    const dropped = this.pendingDeltaDropped;
+    this.pendingDeltaDropped = false;
+    return dropped;
+  }
+
+  /** Whether any decoded snapshot this session carried the static
+   *  terrain/buildability bootstrap. Resync requests sent while this
+   *  is false must ask the host to re-send the static payload. */
+  hasReceivedStaticBootstrap(): boolean {
+    return this.receivedStaticBootstrap;
   }
 
   clearPlayer(playerId: PlayerId): void {
@@ -229,6 +261,8 @@ export class NetworkSnapshotTransport {
     this.pendingFullCompressionPlayerIds.clear();
     this.snapshotsDropped = 0;
     this.compressionFailureLogged = false;
+    this.receivedStaticBootstrap = false;
+    this.pendingDeltaDropped = false;
     SNAPSHOT_ENCODE_INSTRUMENTATION.clearSource('remote');
   }
 
@@ -244,6 +278,7 @@ export class NetworkSnapshotTransport {
     raw: Uint8Array,
     rawPayload: SnapshotWirePayload,
     format: SnapshotCompressionFormat,
+    hasStaticBootstrapPayload: boolean,
   ): Promise<NetworkStateMessage | null> {
     const compressStart = performance.now();
     try {
@@ -251,7 +286,16 @@ export class NetworkSnapshotTransport {
       const compressMs = performance.now() - compressStart;
       if (compressed.byteLength >= raw.byteLength) {
         SNAPSHOT_TRANSPORT_COMPRESSION.recordRawFallback(raw.byteLength, compressMs);
-        if (this.shouldDropForBackpressure(playerId, conn, raw.byteLength)) return null;
+        if (
+          this.shouldDropForBackpressure(
+            playerId,
+            conn,
+            raw.byteLength,
+            hasStaticBootstrapPayload,
+          )
+        ) {
+          return null;
+        }
         this.recordSentSnapshot(
           playerId,
           conn,
@@ -273,7 +317,16 @@ export class NetworkSnapshotTransport {
         compressed.byteLength,
         compressMs,
       );
-      if (this.shouldDropForBackpressure(playerId, conn, compressed.byteLength)) return null;
+      if (
+        this.shouldDropForBackpressure(
+          playerId,
+          conn,
+          compressed.byteLength,
+          hasStaticBootstrapPayload,
+        )
+      ) {
+        return null;
+      }
       this.recordSentSnapshot(
         playerId,
         conn,
@@ -299,7 +352,16 @@ export class NetworkSnapshotTransport {
         this.compressionFailureLogged = true;
         console.warn('[NET] FULLSNAP compression failed; sending raw snapshots.', err);
       }
-      if (this.shouldDropForBackpressure(playerId, conn, raw.byteLength)) return null;
+      if (
+        this.shouldDropForBackpressure(
+          playerId,
+          conn,
+          raw.byteLength,
+          hasStaticBootstrapPayload,
+        )
+      ) {
+        return null;
+      }
       this.recordSentSnapshot(
         playerId,
         conn,
@@ -376,6 +438,7 @@ export class NetworkSnapshotTransport {
     playerId: PlayerId,
     conn: DataConnection,
     pendingBytes = 0,
+    droppedStatic = false,
   ): boolean {
     const dc = conn.dataChannel;
     if (!conn.open || !dc || dc.readyState !== 'open') return true;
@@ -387,7 +450,7 @@ export class NetworkSnapshotTransport {
       buffered + bytes > SNAPSHOT_BACKPRESSURE_DROP_BYTES;
     if (!overCurrentBudget && !wouldExceedBudget) return false;
 
-    const playerDrops = this.recordDroppedSnapshot(playerId);
+    const playerDrops = this.recordDroppedSnapshot(playerId, droppedStatic);
     if (GAME_DIAGNOSTICS.networkSnapshots && (playerDrops === 1 || playerDrops % 100 === 0)) {
       debugLog(
         true,
@@ -397,9 +460,12 @@ export class NetworkSnapshotTransport {
     return true;
   }
 
-  private shouldDropForPendingFullCompression(playerId: PlayerId): boolean {
+  private shouldDropForPendingFullCompression(
+    playerId: PlayerId,
+    droppedStatic: boolean,
+  ): boolean {
     if (!this.pendingFullCompressionPlayerIds.has(playerId)) return false;
-    const playerDrops = this.recordDroppedSnapshot(playerId);
+    const playerDrops = this.recordDroppedSnapshot(playerId, droppedStatic);
     if (GAME_DIAGNOSTICS.networkSnapshots && (playerDrops === 1 || playerDrops % 100 === 0)) {
       debugLog(
         true,
@@ -409,11 +475,11 @@ export class NetworkSnapshotTransport {
     return true;
   }
 
-  private recordDroppedSnapshot(playerId: PlayerId): number {
+  private recordDroppedSnapshot(playerId: PlayerId, droppedStatic: boolean): number {
     this.snapshotsDropped++;
     const playerDrops = (this.snapshotDropCounts.get(playerId) ?? 0) + 1;
     this.snapshotDropCounts.set(playerId, playerDrops);
-    this.options.onSnapshotDropped?.(playerId);
+    this.options.onSnapshotDropped?.(playerId, droppedStatic);
     return playerDrops;
   }
 }

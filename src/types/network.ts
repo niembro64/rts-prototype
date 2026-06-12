@@ -310,7 +310,10 @@ export type NetworkPlayerActionMessage =
   | { type: 'command'; gameId: string | undefined; data: Command }
   | { type: 'communication'; gameId: string | undefined; data: NetworkCommunicationDraft }
   | { type: 'clientReady'; gameId: string | undefined }
-  | { type: 'snapshotResync'; gameId: string | undefined }
+  // needsStatic: the client is missing the terrain/buildability
+  // bootstrap (never decoded one) and needs it re-sent; ordinary
+  // resyncs only need a dynamic keyframe to re-baseline deltas.
+  | { type: 'snapshotResync'; gameId: string | undefined; needsStatic: boolean }
   // Client reports its own IP / location / timezone to the host.
   // The host updates the local LobbyPlayer record and re-broadcasts
   // (see `playerInfoUpdate` below) so every connected client sees

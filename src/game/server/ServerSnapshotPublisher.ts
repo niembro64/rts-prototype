@@ -41,7 +41,15 @@ export type SnapshotListenerEntry = {
   preencodeWire: boolean;
   lastStaticTerrainTileMap: TerrainTileMap | undefined;
   lastStaticBuildabilityGrid: TerrainBuildabilityGrid | undefined;
-  lastStaticResyncToken: number | undefined;
+  /** This listener's next snapshot must be a keyframe: a send for it
+   *  was dropped after its delta baseline advanced, or its client
+   *  asked for a resync. Per-listener so one player's hiccup never
+   *  forces keyframes (let alone terrain) onto everyone else. */
+  needsKeyframe: boolean;
+  /** This listener must also get the static terrain/buildability
+   *  payload again — its static-carrying snapshot was dropped after
+   *  being marked sent, or its client reported it never got one. */
+  needsStatic: boolean;
   startupReady: boolean;
   /** Phase 10 D.3e — Rust-side snapshot baseline handle for this
    *  listener (u32 index into the WASM SnapshotBaselineRegistry).
@@ -90,7 +98,6 @@ export class ServerSnapshotPublisher {
   private minimapSnapshotCounter = 0;
   private entityDetailSnapshotCounter = 0;
   private projectileDetailSnapshotCounter = 0;
-  private staticResyncToken = 0;
 
   reset(): void {
     this.isFirstSnapshot = true;
@@ -111,8 +118,10 @@ export class ServerSnapshotPublisher {
     this.teamMinimapCache.clear();
   }
 
-  forceNextKeyframe(includeStatic = false): void {
-    if (includeStatic) this.staticResyncToken++;
+  /** Force the next emitted snapshot to be a dynamic keyframe for
+   *  every listener. Per-listener recovery (including static re-sends)
+   *  goes through the listener's needsKeyframe/needsStatic flags. */
+  forceNextKeyframe(): void {
     this.reset();
   }
 
@@ -194,10 +203,10 @@ export class ServerSnapshotPublisher {
     // listeners this avoids running captureEntityState N times per
     // entity. The serializer falls back to inline capture if the cache
     // is missed (covers any direct caller that didn't precapture).
-    const hasListenerStaticBootstrap = this.hasListenerNeedingStaticMap(input);
+    const hasListenerNeedingKeyframe = this.hasListenerNeedingKeyframe(input);
     captureSnapshotEntityStates(
       input.world,
-      isDelta && !hasListenerStaticBootstrap,
+      isDelta && !hasListenerNeedingKeyframe,
       this.dirtyIdsBuf,
     );
 
@@ -224,7 +233,10 @@ export class ServerSnapshotPublisher {
     const serializeForListener = (listener: SnapshotListenerEntry): SerializedListenerSnapshot => {
       const visibility = getOrBuildVisibility(input.world, listener.playerId, visibilityCache);
       const listenerNeedsStaticMap = this.listenerNeedsStaticMap(listener, input);
-      const listenerIsDelta = isDelta && !listenerNeedsStaticMap;
+      const listenerIsDelta = isDelta && !listenerNeedsStaticMap && !listener.needsKeyframe;
+      // The keyframe request is satisfied by the snapshot built right
+      // below; clear it now so the flag covers exactly one snapshot.
+      if (!listenerIsDelta) listener.needsKeyframe = false;
       const shouldEmitMinimap = !listenerIsDelta || emitMinimapOnDelta;
       const shouldEmitEntityDetails = !listenerIsDelta || emitEntityDetailsOnDelta;
       const shouldSendStaticTerrain = !listenerIsDelta && listenerNeedsStaticMap;
@@ -446,9 +458,9 @@ export class ServerSnapshotPublisher {
     return true;
   }
 
-  private hasListenerNeedingStaticMap(input: ServerSnapshotPublisherInput): boolean {
+  private hasListenerNeedingKeyframe(input: ServerSnapshotPublisherInput): boolean {
     for (const listener of input.listeners) {
-      if (this.listenerNeedsStaticMap(listener, input)) return true;
+      if (listener.needsKeyframe || this.listenerNeedsStaticMap(listener, input)) return true;
     }
     return false;
   }
@@ -458,9 +470,9 @@ export class ServerSnapshotPublisher {
     input: ServerSnapshotPublisherInput,
   ): boolean {
     return !listener.startupReady ||
+      listener.needsStatic ||
       listener.lastStaticTerrainTileMap !== input.terrainTileMap ||
-      listener.lastStaticBuildabilityGrid !== input.terrainBuildabilityGrid ||
-      listener.lastStaticResyncToken !== this.staticResyncToken;
+      listener.lastStaticBuildabilityGrid !== input.terrainBuildabilityGrid;
   }
 
   private markListenerStaticMapSent(
@@ -469,6 +481,6 @@ export class ServerSnapshotPublisher {
   ): void {
     listener.lastStaticTerrainTileMap = input.terrainTileMap;
     listener.lastStaticBuildabilityGrid = input.terrainBuildabilityGrid;
-    listener.lastStaticResyncToken = this.staticResyncToken;
+    listener.needsStatic = false;
   }
 }

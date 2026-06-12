@@ -12,6 +12,7 @@ export class RemoteGameConnection implements GameConnection {
   private gameOverCallback: GameOverCallback | null = null;
   private pendingSnapshot: NetworkServerSnapshot | null = null;
   private pendingSnapshotRelease: (() => void) | null = null;
+  private pendingSnapshotDroppedDelta = false;
   private pendingSnapshotCloner = new ReusableNetworkSnapshotCloner();
   private snapshotImpairment = createSnapshotImpairmentQueue('remote');
   private disconnected = false;
@@ -49,6 +50,10 @@ export class RemoteGameConnection implements GameConnection {
       this.pendingSnapshot = this.pendingSnapshotCloner.clone(state);
       releaseSnapshot?.();
     } else {
+      // A delta discarded while another snapshot is buffered leaves a
+      // gap in the delta chain; remember it so scene attach can request
+      // one re-baselining keyframe (see onSnapshot).
+      if (state.isDelta) this.pendingSnapshotDroppedDelta = true;
       releaseSnapshot?.();
     }
     const gameOverCallback = this.gameOverCallback;
@@ -85,6 +90,10 @@ export class RemoteGameConnection implements GameConnection {
     this.pendingSnapshot = null;
     this.pendingSnapshotRelease = null;
     if (pending) callback(pending, releasePending ?? undefined);
+    if (this.pendingSnapshotDroppedDelta) {
+      this.pendingSnapshotDroppedDelta = false;
+      networkManager.requestSnapshotResync();
+    }
     return () => {
       if (this.snapshotCallback === callback) this.snapshotCallback = null;
     };

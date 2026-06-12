@@ -781,14 +781,21 @@ export class GameServer {
     this.snapshotPublisher.reset();
   }
 
-  // Force the next emitted snapshot to be a dynamic keyframe. Static
-  // terrain/buildability is listener-gated; pass includeStatic for an
-  // explicit map resync.
-  // Used after network battle start so clients that attach their
-  // render scene slightly after the first server tick still receive
-  // commander/unit creation data even when KEYFRAMES is set to NONE.
-  forceNextSnapshotKeyframe(includeStatic = false): void {
-    this.snapshotPublisher.forceNextKeyframe(includeStatic);
+  // Force the next emitted snapshot to be a dynamic keyframe for every
+  // listener. Used after network battle start so clients that attach
+  // their render scene slightly after the first server tick still
+  // receive commander/unit creation data even when KEYFRAMES is NONE.
+  forceNextSnapshotKeyframe(): void {
+    this.snapshotPublisher.forceNextKeyframe();
+  }
+
+  // Per-listener recovery: the next snapshot for `playerId` becomes a
+  // keyframe because its delta baseline advanced past something the
+  // client never received (dropped send or client-requested resync).
+  // includeStatic re-sends the terrain/buildability bootstrap too.
+  // Other listeners keep their delta streams untouched.
+  requestSnapshotRecovery(playerId: PlayerId, includeStatic: boolean): void {
+    this.snapshotListeners.requestRecovery(playerId, includeStatic);
   }
 
   // Change snapshot cadence. Invalid/legacy rates normalize to the

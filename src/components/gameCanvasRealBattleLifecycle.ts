@@ -12,7 +12,7 @@ type RealBattleNetworkBridge = {
     wirePayload?: SnapshotWirePayload,
   ): boolean;
   onCommandReceived?: (command: Command, fromPlayerId: PlayerId) => void;
-  onSnapshotDropped?: (playerId: PlayerId) => void;
+  onSnapshotRecoveryNeeded?: (playerId: PlayerId, needsStatic: boolean) => void;
 };
 
 export type GameCanvasRealBattleLifecycle = {
@@ -84,7 +84,13 @@ export function useGameCanvasRealBattleLifecycle(): GameCanvasRealBattleLifecycl
       const trackingKey = server.addSnapshotListener((state, _releaseSnapshot, wirePayload) => {
         const sent = network.sendStateTo(playerId, state, wirePayload);
         if (!sent && getCurrentServer() === server) {
-          server.forceNextSnapshotKeyframe(true);
+          // The snapshot was serialized (delta baseline advanced) but
+          // never reached the wire — this player needs a keyframe, and
+          // the static map again if this snapshot was carrying it.
+          server.requestSnapshotRecovery(
+            playerId,
+            state.terrain !== undefined || state.buildability !== undefined,
+          );
         }
       }, playerId, { preencodeWire: true });
       snapshotListenerKeys.set(playerId, trackingKey);
@@ -93,9 +99,11 @@ export function useGameCanvasRealBattleLifecycle(): GameCanvasRealBattleLifecycl
     network.onCommandReceived = (command, fromPlayerId) => {
       getCurrentServer()?.receiveCommand(command, { mode: 'player', playerId: fromPlayerId });
     };
-    network.onSnapshotDropped = (playerId) => {
+    network.onSnapshotRecoveryNeeded = (playerId, needsStatic) => {
       if (!snapshotListenerKeys.has(playerId)) return;
-      if (getCurrentServer() === server) server.forceNextSnapshotKeyframe(true);
+      if (getCurrentServer() === server) {
+        server.requestSnapshotRecovery(playerId, needsStatic);
+      }
     };
   }
 
@@ -110,7 +118,11 @@ export function useGameCanvasRealBattleLifecycle(): GameCanvasRealBattleLifecycl
           (item) => item !== timeout,
         );
         if (startGeneration === generation && getCurrentServer() === server) {
-          server.forceNextSnapshotKeyframe(true);
+          // Dynamic keyframe only: listeners that genuinely never got
+          // the static map are re-sent it via their own static
+          // tracking; re-pushing terrain to everyone here was the
+          // amplifier of the combat-onset keyframe storm.
+          server.forceNextSnapshotKeyframe();
         }
       }, delayMs);
       recoveryKeyframeTimeouts.push(timeout);

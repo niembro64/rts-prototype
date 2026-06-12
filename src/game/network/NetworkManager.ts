@@ -130,7 +130,20 @@ const COMMUNICATION_LABEL_MAX_LENGTH = 48;
 const COMMUNICATION_POINTS_MAX = 12;
 const COMMUNICATION_ERASE_RADIUS_MIN = 24;
 const COMMUNICATION_ERASE_RADIUS_MAX = 500;
+// Inbound snapshot messages wait here while earlier ones decode. WebRTC
+// delivers in bursts (several snapshots in one task after a stall), so
+// the queue must absorb a burst without dropping deltas — a dropped
+// delta breaks the diff chain and forces keyframe recovery. ~3s of
+// snapshots at 8 Hz; past that the decoder genuinely can't keep up and
+// a resync is cheaper than replaying the backlog.
+const STATE_DECODE_QUEUE_MAX = 24;
+// Snapshot resync requests are an escape valve, not a steady state.
+// One outstanding request per second is plenty: the host answers with
+// a recovery keyframe on its next snapshot tick (~125ms), and the
+// periodic keyframe cadence is the fallback if the request is lost.
+const SNAPSHOT_RESYNC_REQUEST_MIN_INTERVAL_MS = 1000;
 type NetworkStateMessage = Extract<NetworkMessage, { type: 'state' }>;
+type QueuedStateMessage = { message: NetworkStateMessage; seq: number };
 
 function sanitizeCommunicationText(value: string, maxLength: number): string | null {
   if (typeof value !== 'string') return null;
@@ -159,8 +172,8 @@ export class NetworkManager {
   private roster = new NetworkLobbyRoster();
   private gameStarted: boolean = false;
   private snapshotTransport = new NetworkSnapshotTransport({
-    onSnapshotDropped: (playerId) => this.emitSnapshotDropped(playerId),
-    onPendingDeltaDropped: () => this.commandTransport.sendSnapshotResyncRequest(),
+    onSnapshotDropped: (playerId, droppedStatic) =>
+      this.emitSnapshotRecoveryNeeded(playerId, droppedStatic),
   });
   private commandTransport = new NetworkCommandTransport({
     getGameId: () => this.getUniversalGameId(),
@@ -170,7 +183,8 @@ export class NetworkManager {
     isMessageForCurrentGame: (message) => this.isMessageForCurrentGame(message.gameId),
     onClientReady: (playerId) => this.emitClientReady(playerId),
     onCommandReceived: (command, fromPlayerId) => this.emitCommandReceived(command, fromPlayerId),
-    onSnapshotResyncRequested: (playerId) => this.emitSnapshotDropped(playerId),
+    onSnapshotResyncRequested: (playerId, needsStatic) =>
+      this.emitSnapshotRecoveryNeeded(playerId, needsStatic),
     send: (conn, message) => this.safeSend(conn, message),
   });
   private dataChannelMonitor = new NetworkDataChannelMonitor();
@@ -192,12 +206,16 @@ export class NetworkManager {
   private signalingReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private sendBudgetFlushTimer: ReturnType<typeof setTimeout> | null = null;
   private signalingReconnectDelayMs = SIGNALING_RECONNECT_INITIAL_DELAY_MS;
-  private pendingStateMessage: NetworkStateMessage | null = null;
-  private pendingStateMessageSeq = 0;
+  private stateDecodeQueue: QueuedStateMessage[] = [];
   private stateDecodeMessageSeq = 0;
+  /** Seq of the newest known gap in the delta chain. While non-zero,
+   *  deltas with a higher seq are useless (they diff against state the
+   *  gap swallowed) and are discarded; a keyframe with a higher seq —
+   *  i.e. built after the gap — recovers the chain and clears this. */
   private stateDecodeNeedsKeyframeAfterSeq = 0;
   private stateDecodeDraining = false;
   private stateDecodeGeneration = 0;
+  private lastSnapshotResyncRequestMs = Number.NEGATIVE_INFINITY;
   private communicationSequence = 0;
   private sessionGeneration = 0;
   /** 10s connection-setup deadline created by hostGame/joinGame. Held
@@ -234,7 +252,13 @@ export class NetworkManager {
    *  updates its own LobbyPlayer record from `getPlayer(id)`. */
   public onPlayerInfoUpdate: ((player: LobbyPlayer) => void) | undefined = undefined;
   public onClientReady: ((playerId: PlayerId) => void) | undefined = undefined;
-  public onSnapshotDropped: ((playerId: PlayerId) => void) | undefined = undefined;
+  /** Host-side: player `playerId` needs a recovery keyframe — either a
+   *  snapshot send for them was dropped after its delta baseline
+   *  advanced, or they asked for a resync. `needsStatic` means the
+   *  terrain/buildability bootstrap must ride along. */
+  public onSnapshotRecoveryNeeded:
+    | ((playerId: PlayerId, needsStatic: boolean) => void)
+    | undefined = undefined;
   public onCommunication: ((event: NetworkCommunicationEvent) => void) | undefined = undefined;
 
   private emitPlayerJoined(player: LobbyPlayer): void {
@@ -294,9 +318,9 @@ export class NetworkManager {
     if (callback !== undefined) callback(playerId);
   }
 
-  private emitSnapshotDropped(playerId: PlayerId): void {
-    const callback = this.onSnapshotDropped;
-    if (callback !== undefined) callback(playerId);
+  private emitSnapshotRecoveryNeeded(playerId: PlayerId, needsStatic: boolean): void {
+    const callback = this.onSnapshotRecoveryNeeded;
+    if (callback !== undefined) callback(playerId, needsStatic);
   }
 
   private emitCommunication(event: NetworkCommunicationEvent): void {
@@ -360,11 +384,11 @@ export class NetworkManager {
     this.gameStarted = false;
     this.snapshotTransport.reset();
     this.stateDecodeGeneration++;
-    this.pendingStateMessage = null;
-    this.pendingStateMessageSeq = 0;
+    this.stateDecodeQueue.length = 0;
     this.stateDecodeMessageSeq = 0;
     this.stateDecodeNeedsKeyframeAfterSeq = 0;
     this.stateDecodeDraining = false;
+    this.lastSnapshotResyncRequestMs = Number.NEGATIVE_INFINITY;
     return this.sessionGeneration;
   }
 
@@ -1246,7 +1270,26 @@ export class NetworkManager {
   }
 
   consumePendingState(): NetworkServerSnapshot | null {
-    return this.snapshotTransport.consumePendingState();
+    const state = this.snapshotTransport.consumePendingState();
+    // Deltas discarded while snapshots were buffered for the
+    // not-yet-attached scene leave a gap behind the consumed state;
+    // one resync re-baselines the chain now that a consumer exists.
+    if (this.snapshotTransport.consumePendingDeltaDropped()) {
+      this.requestSnapshotResync();
+    }
+    return state;
+  }
+
+  /** Client-side: ask the host for a recovery keyframe, rate-limited.
+   *  Automatically asks for the static terrain bootstrap too if no
+   *  decoded snapshot has carried it yet this session. */
+  requestSnapshotResync(): void {
+    const now = performance.now();
+    if (now - this.lastSnapshotResyncRequestMs < SNAPSHOT_RESYNC_REQUEST_MIN_INTERVAL_MS) return;
+    this.lastSnapshotResyncRequestMs = now;
+    this.commandTransport.sendSnapshotResyncRequest(
+      !this.snapshotTransport.hasReceivedStaticBootstrap(),
+    );
   }
 
   // Start the game (host only)
@@ -1353,43 +1396,46 @@ export class NetworkManager {
     this.onLobbySettings = undefined;
     this.getLobbySettings = undefined;
     this.onPlayerInfoUpdate = undefined;
-    this.onSnapshotDropped = undefined;
+    this.onSnapshotRecoveryNeeded = undefined;
     this.onCommunication = undefined;
   }
 
   private queueStateMessage(message: NetworkStateMessage): void {
     const generation = this.stateDecodeGeneration;
-    const messageSeq = ++this.stateDecodeMessageSeq;
+    const seq = ++this.stateDecodeMessageSeq;
     if (this.stateDecodeNeedsKeyframeAfterSeq > 0 && message.isDelta === true) {
+      // Gated: a gap in the delta chain is unrecovered, so every later
+      // delta diffs against state this client never saw. Discard it
+      // before paying the decode and keep nudging the host (rate-
+      // limited) until a keyframe built after the gap arrives. The gate
+      // advances to this seq so an already-queued older keyframe can't
+      // clear the gate while leaving this discard unrecovered.
       this.stateDecodeNeedsKeyframeAfterSeq = Math.max(
         this.stateDecodeNeedsKeyframeAfterSeq,
-        messageSeq,
+        seq,
       );
-      this.commandTransport.sendSnapshotResyncRequest();
+      this.requestSnapshotResync();
       return;
     }
 
-    const pending = this.pendingStateMessage;
-    if (pending !== null) {
-      const droppedPendingSeq = this.pendingStateMessageSeq;
+    if (this.stateDecodeQueue.length >= STATE_DECODE_QUEUE_MAX) {
       if (message.isDelta === true) {
-        this.pendingStateMessage = null;
-        this.pendingStateMessageSeq = 0;
+        // The decoder genuinely can't keep up. Dropping this delta
+        // opens a gap at `seq`; gate the chain there and ask for a
+        // recovery keyframe. Everything already queued precedes the
+        // gap and stays valid.
         this.stateDecodeNeedsKeyframeAfterSeq = Math.max(
           this.stateDecodeNeedsKeyframeAfterSeq,
-          droppedPendingSeq,
-          messageSeq,
+          seq,
         );
-        this.commandTransport.sendSnapshotResyncRequest();
+        this.requestSnapshotResync();
         return;
       }
-      this.stateDecodeNeedsKeyframeAfterSeq = Math.max(
-        this.stateDecodeNeedsKeyframeAfterSeq,
-        droppedPendingSeq,
-      );
+      // A keyframe is a full restatement built after everything queued
+      // ahead of it — the backlog is superseded, skip straight to it.
+      this.stateDecodeQueue.length = 0;
     }
-    this.pendingStateMessage = message;
-    this.pendingStateMessageSeq = messageSeq;
+    this.stateDecodeQueue.push({ message, seq });
     if (!this.stateDecodeDraining) {
       this.stateDecodeDraining = true;
       void this.drainStateDecodeQueue(generation);
@@ -1399,11 +1445,9 @@ export class NetworkManager {
   private async drainStateDecodeQueue(generation: number): Promise<void> {
     try {
       while (generation === this.stateDecodeGeneration) {
-        const message = this.pendingStateMessage;
-        if (message === null) return;
-        const messageSeq = this.pendingStateMessageSeq;
-        this.pendingStateMessage = null;
-        this.pendingStateMessageSeq = 0;
+        const entry = this.stateDecodeQueue.shift();
+        if (entry === undefined) return;
+        const { message, seq } = entry;
 
         try {
           const hostConn = this.connections.get(1);
@@ -1413,15 +1457,18 @@ export class NetworkManager {
             hostDataChannel,
           );
           if (generation !== this.stateDecodeGeneration) return;
-          if (this.stateDecodeNeedsKeyframeAfterSeq > 0 && state.isDelta) {
-            this.stateDecodeNeedsKeyframeAfterSeq = Math.max(
-              this.stateDecodeNeedsKeyframeAfterSeq,
-              messageSeq,
-            );
-            this.commandTransport.sendSnapshotResyncRequest();
+          const gateSeq = this.stateDecodeNeedsKeyframeAfterSeq;
+          if (gateSeq > 0 && state.isDelta && seq > gateSeq) {
+            // Queued behind a decode failure: this delta postdates the
+            // gap, so its content is unusable. Advance the gate past it
+            // so only a keyframe built after it counts as recovery.
+            this.stateDecodeNeedsKeyframeAfterSeq = seq;
+            this.requestSnapshotResync();
             continue;
           }
-          if (!state.isDelta && messageSeq > this.stateDecodeNeedsKeyframeAfterSeq) {
+          if (!state.isDelta && seq > gateSeq) {
+            // Arrival order matches build order, so seq > gateSeq means
+            // this keyframe was built after the gap — full recovery.
             this.stateDecodeNeedsKeyframeAfterSeq = 0;
           }
           if (!this.emitStateReceived(state)) {
@@ -1432,16 +1479,16 @@ export class NetworkManager {
             console.warn('[NET] Failed to decode snapshot:', err);
             this.stateDecodeNeedsKeyframeAfterSeq = Math.max(
               this.stateDecodeNeedsKeyframeAfterSeq,
-              messageSeq,
+              seq,
             );
-            this.commandTransport.sendSnapshotResyncRequest();
+            this.requestSnapshotResync();
           }
         }
       }
     } finally {
       if (generation === this.stateDecodeGeneration) {
         this.stateDecodeDraining = false;
-        if (this.pendingStateMessage !== null) {
+        if (this.stateDecodeQueue.length > 0) {
           this.stateDecodeDraining = true;
           void this.drainStateDecodeQueue(generation);
         }

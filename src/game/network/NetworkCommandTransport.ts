@@ -14,7 +14,7 @@ type NetworkCommandTransportOptions = {
   isMessageForCurrentGame: (message: { gameId: string | undefined }) => boolean;
   onClientReady: (playerId: PlayerId) => void;
   onCommandReceived: (command: Command, fromPlayerId: PlayerId) => void;
-  onSnapshotResyncRequested: (playerId: PlayerId) => void;
+  onSnapshotResyncRequested: (playerId: PlayerId, needsStatic: boolean) => void;
   send: (conn: DataConnection, message: NetworkMessage) => boolean;
 };
 
@@ -47,13 +47,14 @@ export class NetworkCommandTransport {
     });
   }
 
-  sendSnapshotResyncRequest(): void {
+  sendSnapshotResyncRequest(needsStatic: boolean): void {
     if (this.options.getRole() !== 'client') return;
     const hostConn = this.options.getHostConnection();
     if (!hostConn) return;
     this.options.send(hostConn, {
       type: 'snapshotResync',
       gameId: this.options.getGameId(),
+      needsStatic,
     });
   }
 
@@ -74,7 +75,7 @@ export class NetworkCommandTransport {
       case 'snapshotResync':
         if (this.options.getRole() !== 'host') return true;
         if (!this.options.isMessageForCurrentGame({ gameId: message.gameId })) return true;
-        this.options.onSnapshotResyncRequested(fromPlayerId);
+        this.options.onSnapshotResyncRequested(fromPlayerId, message.needsStatic === true);
         return true;
 
       default:
