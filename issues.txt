@@ -61,3 +61,20 @@ the remaining TS resolution math/helpers (projectile-row + ground live
 geometry in findBeamSegmentHit is the documented post-integration exception —
 fold in or re-justify).
 ================================================================================
+
+
+
+--------------------------------------------------------------------------------
+USER REQUESTS (authored by the user — verify with the user in-app before
+deleting; code-level verification alone is not sufficient)
+--------------------------------------------------------------------------------
+
+[02][USER_REQUESTS] Our rockets don't seem to be using an EMA at all for their positions or velocities - we need to elegantly apply some kind of EMA as they are just currently jumping to new positions when we get snaps from the backend. I'm not exactly sure what the best way to do this is. 
+
+[03][USER_REQUESTS] The base of our wind turbine needs to be big enough to make sure that the blades of the wind turbine don't visually "hit" other things when they are spinning. Let's make the wind turbing blades a bit smaller, and increase the base of the wind turbine to be at least that wide (the width of the spinning blades). You can also make the wind turbing taller. 
+
+[04][USER_REQUESTS] We need to make some kind of "debounce" for the beams - let's have this in the simulation, not just visually. Let's have all beams take at least 0.5 seconds to turn off. Put this in our "beamConfig.json" - so even if their target disappears or something the beam will still be active, on, and shooting for at least half a second after it is turned on. 
+
+[05][USER_REQUESTS] Do a full rewrite of the "albatross" unit - it should be a "flying" unit that is absolutely huge and slow. Not "hovering", but "flying" type. Make it look like a giant bird. It should be a super heavy flying tank that is really slow, but has a lot of health and does a lot of damage. It should be really good at taking out buildings, but not as good at taking out other units. Keep the turret it has now - and maybe add more. We probably want to continue keeping all turrets origins being on the center axis as we are doing the plane banking artificially in the client - and this will make it simple to continue doing that. 
+
+
