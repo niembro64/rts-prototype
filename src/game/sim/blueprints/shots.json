@@ -130,9 +130,9 @@
       "hitbox": 1.6,
       "collision": 2
     },
-    "armingDelayMs": 200,
+    "armingDelayMs": 300,
     "detonateOnExpiry": true,
-    "maxLifespan": 10000,
+    "maxLifespan": 16000,
     "hitSound": {
       "$audio": "event.hit.shotRocketLight"
     },
