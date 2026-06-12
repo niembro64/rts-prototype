@@ -25,15 +25,11 @@ export const ALBATROS_ICOSAHEDRON_VERTEX_DIRECTIONS: readonly THREE.Vector3[] =
 const bodyGeom = new THREE.SphereGeometry(1, 24, 14);
 const smallSphereGeom = new THREE.SphereGeometry(1, 12, 8);
 const neckGeom = new THREE.CylinderGeometry(1, 1, 1, 12, 1);
-const beakGeom = new THREE.ConeGeometry(1, 1, 12, 1);
-const featherGeom = new THREE.BoxGeometry(1, 1, 1);
-const talonGeom = new THREE.ConeGeometry(1, 1, 8, 1);
+const noseConeGeom = new THREE.ConeGeometry(1, 1, 12, 1);
+const finGeom = new THREE.BoxGeometry(1, 1, 1);
 
-const featherMat = new THREE.MeshBasicMaterial({ color: 0x1c2428 });
 const undersideMat = new THREE.MeshBasicMaterial({ color: 0xe8ece2 });
-const beakMat = new THREE.MeshBasicMaterial({ color: 0xd4a944 });
-const eyeMat = new THREE.MeshBasicMaterial({ color: 0x050607 });
-const talonMat = new THREE.MeshBasicMaterial({ color: 0xb98b30 });
+const canopyMat = new THREE.MeshBasicMaterial({ color: 0x050607 });
 
 const scratchUp = new THREE.Vector3(0, 1, 0);
 const scratchDir = new THREE.Vector3();
@@ -86,6 +82,12 @@ function addCylinderBetween(
   meshes.push(mesh);
 }
 
+// Simple bomber body: a cylindrical fuselage with a rounded nose, tail
+// cone, dark canopy, light belly panel, and a swept vertical fin. The
+// wings, tail wings, and jets stay on the FlyingRig (built from the
+// blueprint locomotion config) and are untouched here. Same span as the
+// old bird torso so the blueprint bodyShape oval (turret roots, hitbox)
+// still matches the visual.
 export function buildAlbatrosChassis(
   parent: THREE.Group,
   primaryMat: THREE.Material,
@@ -93,65 +95,18 @@ export function buildAlbatrosChassis(
 ): THREE.Mesh[] {
   const meshes: THREE.Mesh[] = [];
 
-  addMesh(parent, meshes, bodyGeom, primaryMat, entityId, [-0.12, 0.31, 0], [0.72, 0.23, 0.25]);
-  addMesh(parent, meshes, bodyGeom, primaryMat, entityId, [0.36, 0.32, 0], [0.36, 0.19, 0.20]);
-  addMesh(parent, meshes, bodyGeom, undersideMat, entityId, [-0.08, 0.16, 0], [0.55, 0.07, 0.13]);
-  addCylinderBetween(parent, meshes, primaryMat, entityId, 0.43, 0.36, 0, 0.68, 0.43, 0, 0.075);
-  addMesh(parent, meshes, smallSphereGeom, primaryMat, entityId, [0.78, 0.45, 0], [0.16, 0.12, 0.12]);
-  addMesh(parent, meshes, beakGeom, beakMat, entityId, [0.94, 0.45, 0], [0.055, 0.20, 0.055], [0, 0, -Math.PI / 2]);
-  addMesh(parent, meshes, smallSphereGeom, eyeMat, entityId, [0.85, 0.49, -0.08], [0.018, 0.018, 0.018]);
-  addMesh(parent, meshes, smallSphereGeom, eyeMat, entityId, [0.85, 0.49, 0.08], [0.018, 0.018, 0.018]);
-
-  addMesh(parent, meshes, bodyGeom, featherMat, entityId, [-0.04, 0.33, -0.25], [0.42, 0.055, 0.065]);
-  addMesh(parent, meshes, bodyGeom, featherMat, entityId, [-0.04, 0.33, 0.25], [0.42, 0.055, 0.065]);
-  for (let i = 0; i < 5; i++) {
-    addMesh(
-      parent,
-      meshes,
-      featherGeom,
-      featherMat,
-      entityId,
-      [-0.42 + i * 0.16, 0.50, 0],
-      [0.11, 0.018, 0.05],
-      [0, 0, 0.08],
-    );
-  }
-
-  for (const [side, spread] of [[-1, -0.36], [0, 0], [1, 0.36]] as const) {
-    addMesh(
-      parent,
-      meshes,
-      featherGeom,
-      featherMat,
-      entityId,
-      [-0.83, 0.34, side * 0.12],
-      [0.42, 0.026, 0.09],
-      [0, spread, side * -0.08],
-    );
-  }
-
-  for (const side of [-1, 1] as const) {
-    addMesh(
-      parent,
-      meshes,
-      talonGeom,
-      talonMat,
-      entityId,
-      [0.18, 0.06, side * 0.10],
-      [0.028, 0.13, 0.028],
-      [0, 0, Math.PI],
-    );
-    addMesh(
-      parent,
-      meshes,
-      talonGeom,
-      talonMat,
-      entityId,
-      [0.26, 0.065, side * 0.12],
-      [0.020, 0.10, 0.020],
-      [0.25 * side, 0, Math.PI * 0.88],
-    );
-  }
+  // Fuselage tube, tail cone seat to nose seat.
+  addCylinderBetween(parent, meshes, primaryMat, entityId, -0.80, 0.31, 0, 0.60, 0.31, 0, 0.17);
+  // Rounded nose cap; tip reaches past the forward turret mount (x=0.8).
+  addMesh(parent, meshes, smallSphereGeom, primaryMat, entityId, [0.60, 0.31, 0], [0.22, 0.17, 0.17]);
+  // Tapered tail cone, pointing rearward.
+  addMesh(parent, meshes, noseConeGeom, primaryMat, entityId, [-0.87, 0.31, 0], [0.15, 0.16, 0.15], [0, 0, Math.PI / 2]);
+  // Dark glass cockpit canopy ahead of the mid turret.
+  addMesh(parent, meshes, smallSphereGeom, canopyMat, entityId, [0.34, 0.46, 0], [0.14, 0.07, 0.11]);
+  // Light belly panel.
+  addMesh(parent, meshes, bodyGeom, undersideMat, entityId, [-0.08, 0.18, 0], [0.52, 0.07, 0.13]);
+  // Swept vertical stabilizer over the tail cone.
+  addMesh(parent, meshes, finGeom, primaryMat, entityId, [-0.76, 0.50, 0], [0.22, 0.26, 0.03], [0, 0, 0.45]);
 
   return meshes;
 }
