@@ -5,9 +5,6 @@
       "mode": "both",
       "reflectivity": 1
     },
-    "occlusion": {
-      "blocksLineOfSight": true
-    },
     "projectileResponse": {
       "plasma": "reflect",
       "rocket": "reflect",

@@ -3,7 +3,7 @@
 // PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full entity scans
 
 import type { WorldState } from '../WorldState';
-import type { BeamReflectorKind, Entity, EntityId, RayType, PlayerId, Turret } from '../types';
+import type { BeamReflectorKind, Entity, EntityId, PlayerId, Turret } from '../types';
 import { isProjectileShot, NO_ENTITY_ID } from '../types';
 import type {
   AnyDamageSource,
@@ -1015,7 +1015,6 @@ export class DamageSystem {
     endX: number, endY: number, endZ: number,
     sourceEntityId: EntityId,
     lineWidth: number,
-    lineShotType: RayType = 'beam',
     maxSegments: number = 4,
     rangeCylinder: RayConfigRangeCylinder | undefined = undefined,
     dtMs: number = 0,
@@ -1123,20 +1122,6 @@ export class DamageSystem {
         normalY: hit.normalY,
         normalZ: hit.normalZ,
       };
-
-      if (REFLECTIVE_SHIELD_MATERIAL.projectileResponse[lineShotType] !== 'reflect') {
-        return {
-          endX: hit.x,
-          endY: hit.y,
-          endZ: hit.z,
-          obstructionT: undefined,
-          reflections,
-          terminalReflection: reflection,
-          endpointDamageable: false,
-          endEntityId: hit.entityId,
-          segmentLimitReached: false,
-        };
-      }
 
       if (segmentIndex === segmentLimit - 1) {
         return {
@@ -1344,7 +1329,7 @@ export class DamageSystem {
       _beamReflEndX[0] = endX;
       _beamReflEndY[0] = endY;
       _beamReflEndZ[0] = endZ;
-      _beamReflRadius[0] = 0;
+      _beamReflRadius[0] = Math.max(0, lineWidth);
       _beamReflExcludeEntityId[0] = excludeEntityId;
       _beamReflExcludePanelIndex[0] = excludePanelIndex;
       sim.projectileReflectorIntersectionsBatch(
@@ -1361,6 +1346,9 @@ export class DamageSystem {
         _beamReflExcludePanelIndex,
         this.world.turretShieldPanelsEnabled ? 1 : 0,
         this.world.turretShieldSpheresEnabled ? 1 : 0,
+        // Beams are instantaneous rays: resolve against the current
+        // shield pose only, never the swept prev->cur fallback.
+        1,
         SHIELD_PANEL_PROJECTILE_QUERY_PAD,
         dtMs,
         _beamReflOutKind,

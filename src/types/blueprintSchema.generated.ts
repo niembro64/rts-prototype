@@ -52,10 +52,6 @@ export type ShieldMaterialReflectionConfig = {
   reflectivity: number;
 };
 
-export type ShieldMaterialOcclusionConfig = {
-  blocksLineOfSight: boolean;
-};
-
 export type ShieldMaterialProjectileResponseConfig = {
   plasma: ShieldSurfaceResponse;
   rocket: ShieldSurfaceResponse;
@@ -71,7 +67,6 @@ export type ShieldMaterialHitReactionConfig = {
 export type ShieldMaterialBlueprint = {
   materialId: ShieldMaterialId;
   reflection: ShieldMaterialReflectionConfig;
-  occlusion: ShieldMaterialOcclusionConfig;
   projectileResponse: ShieldMaterialProjectileResponseConfig;
   hitReaction: ShieldMaterialHitReactionConfig;
   visual: ShieldMaterialVisualConfig;

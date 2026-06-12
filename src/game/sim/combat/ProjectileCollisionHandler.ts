@@ -371,6 +371,7 @@ function computeProjectileReflectorHits(
     _reflectorExcludePanelIndex.subarray(0, count),
     mirrorsActive ? 1 : 0,
     shieldsActive ? 1 : 0,
+    0,
     SHIELD_PANEL_PROJECTILE_QUERY_PAD,
     dtMs,
     _reflectorHitKind.subarray(0, count),

@@ -15,9 +15,6 @@
 //     Turret objects until snapshots/rendering read the slab directly.
 //     Also compacts the per-tick targeting source list while the
 //     entities are already hot in this stamping pass.
-//
-// stampTargetingInputSlabs() is the convenience wrapper that runs
-// both passes — kept for callers that don't care about the split.
 
 import type { WorldState } from '../WorldState';
 import { spatialGrid } from '../SpatialGrid';
@@ -966,10 +963,3 @@ export function stampShieldSurfacePool(
   pool.setPanelMaterialMode(panelReflectionMode);
 }
 
-/** Convenience wrapper that runs all input-slab stamping passes
- *  back-to-back. Used by callers that don't need to interleave the
- *  FSM between them. */
-export function stampTargetingInputSlabs(world: WorldState): void {
-  stampShieldSurfacePool(world);
-  stampCombatTargetingPool(world);
-}

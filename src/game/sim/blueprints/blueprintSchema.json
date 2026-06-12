@@ -309,18 +309,6 @@
       },
       "additionalProperties": false
     },
-    "ShieldMaterialOcclusionConfig": {
-      "type": "object",
-      "required": [
-        "blocksLineOfSight"
-      ],
-      "properties": {
-        "blocksLineOfSight": {
-          "type": "boolean"
-        }
-      },
-      "additionalProperties": false
-    },
     "ShieldMaterialProjectileResponseConfig": {
       "type": "object",
       "required": [
@@ -373,7 +361,6 @@
       "required": [
         "materialId",
         "reflection",
-        "occlusion",
         "projectileResponse",
         "hitReaction",
         "visual"
@@ -384,9 +371,6 @@
         },
         "reflection": {
           "$ref": "#/$defs/ShieldMaterialReflectionConfig"
-        },
-        "occlusion": {
-          "$ref": "#/$defs/ShieldMaterialOcclusionConfig"
         },
         "projectileResponse": {
           "$ref": "#/$defs/ShieldMaterialProjectileResponseConfig"

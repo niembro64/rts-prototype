@@ -21,7 +21,6 @@ import { assertExplicitFields } from './jsonValidation';
 
 const MATERIAL_EXPLICIT_FIELDS = [
   'reflection',
-  'occlusion',
   'projectileResponse',
   'hitReaction',
   'visual',
@@ -81,15 +80,20 @@ for (const [id, material] of Object.entries(SHIELD_MATERIALS)) {
       `Force-field material ${id} must define non-negative finite reflectivity`,
     );
   }
-  if (typeof material.occlusion.blocksLineOfSight !== 'boolean') {
-    throw new Error(
-      `Force-field material ${id} must define boolean occlusion.blocksLineOfSight`,
-    );
-  }
   assertSurfaceResponse(id, 'plasma', material.projectileResponse.plasma);
   assertSurfaceResponse(id, 'rocket', material.projectileResponse.rocket);
   assertSurfaceResponse(id, 'beam', material.projectileResponse.beam);
   assertSurfaceResponse(id, 'laser', material.projectileResponse.laser);
+  // Rays have exactly one shield interaction: reflect. The beam trace
+  // no longer carries a non-reflect branch, so a material configured
+  // otherwise would silently diverge from the sim.
+  for (const rayShotType of ['beam', 'laser'] as const) {
+    if (material.projectileResponse[rayShotType] !== 'reflect') {
+      throw new Error(
+        `Force-field material ${id} must use 'reflect' for ${rayShotType}: rays always reflect off shield surfaces`,
+      );
+    }
+  }
   if (material.hitReaction.impactEvent !== 'shieldImpact') {
     throw new Error(
       `Force-field material ${id} has invalid hitReaction.impactEvent: ${String(material.hitReaction.impactEvent)}`,

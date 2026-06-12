@@ -118,11 +118,6 @@ pub struct ShieldMaterialReflectionConfig {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ShieldMaterialOcclusionConfig {
-    pub blocksLineOfSight: bool,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub struct ShieldMaterialProjectileResponseConfig {
     pub plasma: ShieldSurfaceResponse,
     pub rocket: ShieldSurfaceResponse,
@@ -140,7 +135,6 @@ pub struct ShieldMaterialHitReactionConfig {
 pub struct ShieldMaterialBlueprint {
     pub materialId: String,
     pub reflection: ShieldMaterialReflectionConfig,
-    pub occlusion: ShieldMaterialOcclusionConfig,
     pub projectileResponse: ShieldMaterialProjectileResponseConfig,
     pub hitReaction: ShieldMaterialHitReactionConfig,
     pub visual: ShieldMaterialVisualConfig,

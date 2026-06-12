@@ -1167,6 +1167,7 @@ export interface SimWasm {
     excludePanelIndex: Int32Array,
     turretShieldPanelsEnabled: number,
     turretShieldSpheresEnabled: number,
+    instantaneousRays: number,
     mirrorQueryPad: number,
     dtMs: number,
     outKind: Uint8Array,

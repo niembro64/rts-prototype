@@ -157,6 +157,11 @@ export class SimulationCombatController {
     onUnitDeath: UnitDeathCallback,
     onBuildingDeath: BuildingDeathCallback,
   ): void {
+    // Beam tracing and projectile reflection use physical shield surfaces,
+    // independent of the battle-bar sight-obstruction toggle. The targeting
+    // stamp may have cleared field shields when LOS blocking is disabled.
+    stampShieldSurfacePool(this.world, { includeWhenSightDisabled: true });
+
     const updateResult = updateProjectiles(this.world, dtMs, this.damageSystem);
     for (const id of updateResult.orphanedIds) {
       unregisterPackedProjectile(id);
@@ -177,11 +182,6 @@ export class SimulationCombatController {
     // spatial update ran before combat, so projectile-vs-projectile
     // hitbox checks need the post-move positions here.
     spatialGrid.updateProjectiles(this.world.getTravelingProjectiles());
-
-    // Projectile reflection queries use the same reflector slabs as
-    // targeting, but need the post-rotation, post-shield-update
-    // pose for this collision tick.
-    stampShieldSurfacePool(this.world, { includeWhenSightDisabled: true });
 
     // Check projectile collisions and get dead units
     const collisionResult = checkProjectileCollisions(

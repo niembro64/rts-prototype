@@ -8730,8 +8730,11 @@ pub(crate) fn shield_projectile_intersection(
     end_x: f64,
     end_y: f64,
     end_z: f64,
+    exclude_entity_id: i32,
+    exclude_panel_index: i32,
     projectile_radius: f64,
     dt_sec: f64,
+    instantaneous: bool,
     max_t: f64,
 ) -> Option<ProjectileReflectorHit> {
     let pool = shield_pool();
@@ -8743,6 +8746,15 @@ pub(crate) fn shield_projectile_intersection(
     let mut best_t = max_t;
     let mut best: Option<ProjectileReflectorHit> = None;
     for i in 0..count {
+        // Whole-entity exclusion (exclude_panel_index < 0): the segment
+        // after a field bounce, and a source firing from inside its own
+        // field, must not re-resolve against that entity's field — the
+        // same contract the panel kernel and the JS body test honor.
+        // A panel-scoped exclusion (>= 0) leaves the entity's field
+        // surfaces testable.
+        if exclude_panel_index < 0 && pool.owner_entity_id[i] == exclude_entity_id {
+            continue;
+        }
         let static_contact = shield_projectile_intersection_contact(
             start_x,
             start_y,
@@ -8849,6 +8861,16 @@ pub(crate) fn shield_projectile_intersection(
                     surface_velocity_z,
                 })
             }
+        } else if instantaneous {
+            // Instantaneous rays (beams/lasers) resolve against the
+            // current pose only. The swept prev->cur fallback below
+            // exists for traveling projectiles that cross the tick; for
+            // a ray it would evaluate the shield at last tick's pose
+            // along the path and has no start-graze rejection, so a
+            // bounced segment starting on the surface could spuriously
+            // re-reflect — a second interaction that alternates with
+            // the static reflect.
+            None
         } else {
             shield_projectile_moving_field_hit(
                 start_x,
@@ -9478,6 +9500,7 @@ pub fn projectile_reflector_intersections_batch(
     exclude_panel_index: &[i32],
     turret_shield_panels_enabled: u8,
     turret_shield_spheres_enabled: u8,
+    instantaneous_rays: u8,
     shield_panel_query_pad: f64,
     dt_ms: f64,
     out_kind: &mut [u8],
@@ -9589,9 +9612,20 @@ pub fn projectile_reflector_intersections_batch(
         }
         let max_t = best.as_ref().map(|hit| hit.t).unwrap_or(f64::INFINITY);
         if turret_shield_spheres_enabled != 0 {
-            if let Some(force_hit) =
-                shield_projectile_intersection(sx, sy, sz, tx, ty, tz, radius, dt_sec, max_t)
-            {
+            if let Some(force_hit) = shield_projectile_intersection(
+                sx,
+                sy,
+                sz,
+                tx,
+                ty,
+                tz,
+                exclude_entity_id[i],
+                exclude_panel_index[i],
+                radius,
+                dt_sec,
+                instantaneous_rays != 0,
+                max_t,
+            ) {
                 best = Some(force_hit);
             }
         }

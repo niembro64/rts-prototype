@@ -16,6 +16,7 @@ import type {
   NetworkServerSnapshotVelocityUpdate,
 } from './NetworkManager';
 import type { SnapshotVisibility } from './stateSerializerVisibility';
+import { BEAM_MAX_SEGMENTS } from '../../config';
 import {
   PROJECTILE_TYPE_UNKNOWN,
   TURRET_BLUEPRINT_CODE_UNKNOWN,
@@ -46,7 +47,11 @@ export const PROJECTILE_DESPAWN_WIRE_STRIDE = 1;
 export const PROJECTILE_VELOCITY_WIRE_STRIDE = 8;
 export const PROJECTILE_BEAM_UPDATE_WIRE_STRIDE = 4;
 export const PROJECTILE_BEAM_POINT_WIRE_STRIDE = 12;
-const PROJECTILE_BEAM_POINT_CAP = 6;
+// Wire polyline capacity matches the sim trace exactly: BEAM_MAX_SEGMENTS
+// allows up to maxSegments - 1 reflection vertices plus start and end.
+// A smaller cap would silently drop a reflection vertex and draw the
+// beam straight through the reflector on clients.
+const PROJECTILE_BEAM_POINT_CAP = BEAM_MAX_SEGMENTS + 1;
 
 export const PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN = 0x001;
 export const PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE = 0x002;
@@ -605,17 +610,6 @@ function getBeamWirePointCount(sourceCount: number): number {
   return Math.min(sourceCount, PROJECTILE_BEAM_POINT_CAP);
 }
 
-function getBeamWireSourcePointIndex(
-  wireIndex: number,
-  sourceCount: number,
-  wireCount: number,
-): number {
-  if (sourceCount <= wireCount) return wireIndex;
-  if (wireIndex === 0) return 0;
-  if (wireIndex === wireCount - 1) return sourceCount - 1;
-  return wireIndex;
-}
-
 export function serializeProjectileSnapshot({
   world,
   deltaEnabled,
@@ -835,7 +829,7 @@ export function serializeProjectileSnapshot({
       const wirePointCount = getBeamWirePointCount(srcPts.length);
       dstPts.length = wirePointCount;
       for (let p = 0; p < wirePointCount; p++) {
-        const sp = srcPts[getBeamWireSourcePointIndex(p, srcPts.length, wirePointCount)];
+        const sp = srcPts[p];
         const out = getPooledBeamPoint();
         out.x = qPos(sp.x);
         out.y = qPos(sp.y);
@@ -1085,7 +1079,7 @@ export function writeProjectileSnapshotWireRowsDirect({
       const wirePointCount = getBeamWirePointCount(srcPts.length);
       update.points.length = wirePointCount;
       for (let p = 0; p < wirePointCount; p++) {
-        const sp = srcPts[getBeamWireSourcePointIndex(p, srcPts.length, wirePointCount)];
+        const sp = srcPts[p];
         const out = _directBeamPointScratch;
         out.x = qPos(sp.x);
         out.y = qPos(sp.y);

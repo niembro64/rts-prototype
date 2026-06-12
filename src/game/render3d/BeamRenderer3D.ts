@@ -528,8 +528,6 @@ export class BeamRenderer3D {
       const endIn = this.scope.inScope(endPoint.x, endPoint.y, 200);
       if (!startIn && !endIn) continue;
 
-      const drawReflections = true;
-
       const profile = proj.config.shotProfile.visual;
       // lineRadius already equals shot.width / 2 for line shots, so using it
       // directly as the cylinder scale makes the diameter = shot.width.
@@ -549,7 +547,6 @@ export class BeamRenderer3D {
       // Per-segment alpha is held at 1.0 — the wave shader handles all
       // brightness modulation via mix(LOW_ALPHA, HIGH_ALPHA, pulse).
       const lastIdx = points.length - 1;
-      const stride = drawReflections ? 1 : lastIdx;
       const openEndedLine = this.isOpenEndedLinePath(proj);
 
       // Sim's points[0] sits at the turret mount center; snap-to-turret
@@ -668,9 +665,9 @@ export class BeamRenderer3D {
         torusIdx++;
       }
 
-      for (let i = 0; i < lastIdx; i += stride) {
+      for (let i = 0; i < lastIdx; i++) {
         const a = points[i];
-        const b = points[Math.min(i + stride, lastIdx)];
+        const b = points[i + 1];
         // First segment starts at the visual offset point — there is
         // no cylinder drawn between the mount center and the orb.
         const useVisualStart = i === 0;
@@ -683,7 +680,7 @@ export class BeamRenderer3D {
         if (
           OPEN_ENDED_LINE_CONFIG.extendToInfinity &&
           openEndedLine &&
-          Math.min(i + stride, lastIdx) === lastIdx
+          i + 1 === lastIdx
         ) {
           const prev = points[Math.max(0, lastIdx - 1)];
           let tailDx = endPoint.x - prev.x;
