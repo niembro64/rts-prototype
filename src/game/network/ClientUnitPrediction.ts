@@ -6,7 +6,7 @@ import {
   getRotationPosEmaMode,
   getRotationVelEmaMode,
 } from '@/clientBarConfig';
-import { LAND_CELL_SIZE } from '../../config';
+import { LAND_CELL_SIZE, SHIELD_MIN_ON_TIME_MS } from '../../config';
 import { UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC } from '@/shellConfig';
 import type { Entity, EntityId, TurretState } from '../sim/types';
 import {
@@ -839,13 +839,44 @@ export function applyClientCombatExpensivePrediction(options: {
       if (shield !== null) {
         shield.range = 0;
         shield.transition = 0;
+        shield.onTimeMs = 0;
       }
       continue;
     }
     const fieldShot = shot;
     const shield = weapon.shield;
     const cur = shield !== null ? shield.range : 0;
-    const targetProgress = isTurretEngaged(entity, i, weapon.state) ? 1 : 0;
+    // Mirror the host-side min-on-time debounce (updateShieldState) so
+    // the predicted range does not dip between snapshots while the
+    // server is still holding the field up. Same signal sources as the
+    // host: slab FSM state/targetId when stamped (host-local view),
+    // snapshot-hydrated state/target on a remote client. Aimed tubes
+    // require a target before the field counts as commanded-on, so
+    // onTimeMs does not accumulate (and expire the hold window) during
+    // the pre-raise aiming phase.
+    const hasFsm = readCombatTargetingTurretFsmInto(entity, i, _predictFsm);
+    let commandedOn = hasFsm
+      ? _predictFsm.stateCode === CT_TURRET_STATE_ENGAGED
+      : weapon.state === 'engaged';
+    const shieldTargetId = hasFsm ? _predictFsm.targetId : (weapon.target ?? -1);
+    if (fieldShot.barrier?.shape === 'aimedCylinder' && shieldTargetId === -1) {
+      commandedOn = false;
+    }
+    // Reconcile the local debounce counter against the freshest server
+    // range: the host zeroes its counter the same tick the field stops
+    // being commanded-on, and a commanded-on field always has range > 0,
+    // so a fully-down wire range proves the host counter is 0 and any
+    // locally accumulated time is prediction drift.
+    const serverRange = tw !== undefined ? tw.shieldRange : null;
+    let prevOnTimeMs = shield !== null ? shield.onTimeMs : 0;
+    if (serverRange !== null && serverRange <= 0) {
+      prevOnTimeMs = 0;
+    }
+    if (!commandedOn && prevOnTimeMs > 0 && prevOnTimeMs < SHIELD_MIN_ON_TIME_MS) {
+      commandedOn = true;
+    }
+    const onTimeMs = commandedOn ? prevOnTimeMs + dt * 1000 : 0;
+    const targetProgress = commandedOn ? 1 : 0;
     const progressDelta = dt / (fieldShot.transitionTime / 1000);
     let next = cur;
     if (cur < targetProgress) {
@@ -857,14 +888,14 @@ export function applyClientCombatExpensivePrediction(options: {
     // The shield range is a slow visual transition, not a
     // snapshot-drift channel. It rides along with rotation-position
     // correction.
-    const serverRange = tw !== undefined ? tw.shieldRange : null;
     if (serverRange !== null && rotPosBlend >= 0) {
       next = lerp(next, serverRange, rotPosBlend);
     }
     if (shield === null) {
-      weapon.shield = { range: next, transition: 0 };
+      weapon.shield = { range: next, transition: 0, onTimeMs };
     } else {
       shield.range = next;
+      shield.onTimeMs = onTimeMs;
     }
   }
 }

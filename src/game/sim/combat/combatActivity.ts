@@ -21,5 +21,6 @@ export function resetDisabledTurretJsOnlyFields(turret: Turret): void {
   if (turret.shield) {
     turret.shield.transition = 0;
     turret.shield.range = 0;
+    turret.shield.onTimeMs = 0;
   }
 }

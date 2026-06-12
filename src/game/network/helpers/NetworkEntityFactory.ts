@@ -82,8 +82,15 @@ function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret
   // angular velocity only). Leave the client-side values at the
   // runtimeTurrets default of 0.
   const shield = turret.shield;
+  // Reconcile the client-local debounce counter against the wire:
+  // a fully-down server field means the host's onTimeMs is 0, so any
+  // locally accumulated value is stale prediction drift.
   turret.shield = nw.currentShieldRange !== undefined && nw.currentShieldRange !== null
-    ? { range: nw.currentShieldRange, transition: shield !== null ? shield.transition : 0 }
+    ? {
+        range: nw.currentShieldRange,
+        transition: shield !== null ? shield.transition : 0,
+        onTimeMs: nw.currentShieldRange > 0 && shield !== null ? shield.onTimeMs : 0,
+      }
     : null;
 }
 
@@ -108,9 +115,15 @@ function preserveClientTurretVisualState(next: Turret, prev: Turret): void {
   next.worldPosTick = prev.worldPosTick;
 
   if (prev.shield !== null) {
+    // next.shield was just built from the wire by applyNetworkTurretState;
+    // a fully-down wire range proves the host debounce counter is 0, so
+    // only carry the client-local counter across the rebuild while the
+    // server field is up.
+    const wireRange = next.shield !== null ? next.shield.range : 0;
     next.shield = {
       range: prev.shield.range,
       transition: prev.shield.transition,
+      onTimeMs: wireRange > 0 ? prev.shield.onTimeMs : 0,
     };
   }
 }

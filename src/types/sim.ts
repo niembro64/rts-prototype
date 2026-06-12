@@ -616,7 +616,12 @@ export type Turret = {
    *  shots. Default true. */
   ballisticAimInRange: boolean;
   burst: { remaining: number; cooldown: number } | null;
-  shield: { transition: number; range: number } | null;
+  /** Shield field state. `onTimeMs` accumulates how long the field has
+   *  been commanded-on in the current raise; the sim (and client
+   *  prediction) hold the field up until it reaches
+   *  SHIELD_MIN_ON_TIME_MS, debouncing rapid on/off flicker. Not
+   *  shipped on the wire — only `range` is. */
+  shield: { transition: number; range: number; onTimeMs: number } | null;
   /** Round-robin pointer across the physical barrels on this turret.
    *  Each fired pellet picks barrelIndex = (barrelFireIndex + pellet)
    *  % barrelCount, then the pointer advances by the pellet count.

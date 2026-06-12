@@ -3,6 +3,7 @@
 import type { WorldState } from '../WorldState';
 import type { ShieldConfig } from '../types';
 import type { ShieldBarrierShape, ShieldReflectionMode } from '../../../types/shotTypes';
+import { SHIELD_MIN_ON_TIME_MS } from '../../../config';
 import { getTransformCosSin } from '../../math';
 import { CT_TURRET_STATE_ENGAGED } from '../../sim-wasm/init';
 import {
@@ -95,7 +96,7 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
 
       // Initialize
       if (weapon.shield === null) {
-        weapon.shield = { transition: 0, range: 0 };
+        weapon.shield = { transition: 0, range: 0, onTimeMs: 0 };
       }
 
       // Move progress toward target based on engaged state
@@ -109,7 +110,19 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
         ? isWeaponAimedForFire(weapon)
         : true;
       const aimedCylinderHasTarget = !hasAimedCylinderBarrier || targetId !== -1;
-      const targetProgress = engaged && aimedCylinderReady && aimedCylinderHasTarget ? 1 : 0;
+      // Debounce: once the field starts raising it stays commanded-on
+      // for at least SHIELD_MIN_ON_TIME_MS before it may begin to
+      // lower — same contract as BEAM_MIN_ON_TIME_MS for beams.
+      let commandedOn = engaged && aimedCylinderReady && aimedCylinderHasTarget;
+      if (
+        !commandedOn &&
+        weapon.shield.onTimeMs > 0 &&
+        weapon.shield.onTimeMs < SHIELD_MIN_ON_TIME_MS
+      ) {
+        commandedOn = true;
+      }
+      weapon.shield.onTimeMs = commandedOn ? weapon.shield.onTimeMs + dtMs : 0;
+      const targetProgress = commandedOn ? 1 : 0;
       if (isShieldSubmunitionTurret(weapon)) {
         weapon.shield.transition = targetProgress;
       } else {
@@ -154,7 +167,12 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
         let axisEndY = centerY;
         let axisEndZ = centerZ;
         if (barrier.shape === 'aimedCylinder') {
-          if (targetId === -1) continue;
+          // While the min-on-time hold keeps the field commanded-on
+          // after target loss, keep the physical tube alive on the
+          // persisting barrel pose so the rendered field still blocks
+          // — beams likewise keep tracing damage through their
+          // min-on window after disengage.
+          if (targetId === -1 && !commandedOn) continue;
           const pitchCos = Math.cos(weapon.pitch);
           axisEndX = centerX + Math.cos(weapon.rotation) * pitchCos * config.range;
           axisEndY = centerY + Math.sin(weapon.rotation) * pitchCos * config.range;

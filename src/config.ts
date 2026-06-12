@@ -57,6 +57,7 @@ import snapshotConfigJson from './snapshotConfig.json';
 import emaConfigJson from './emaConfig.json';
 import combatConfigJson from './combatConfig.json';
 import beamConfigJson from './beamConfig.json';
+import shieldConfigJson from './shieldConfig.json';
 import worldRenderConfigJson from './worldRenderConfig.json';
 import shieldVisualConfigJson from './shieldVisualConfig.json';
 import explosionConfigJson from './explosionConfig.json';
@@ -274,6 +275,11 @@ export const MAX_TICK_DT_MS = sharedSimConstants.maxTickDtMs;
  *  from producing unbounded traces or arbitrary damage spheres. */
 export const BEAM_MAX_SEGMENTS = combatConfigJson.beamMaxSegments;
 export const BEAM_MIN_ON_TIME_MS = beamConfigJson.minOnTimeMs;
+
+/** Minimum time (ms) a shield field stays commanded-on once it starts
+ *  raising. Debounces rapid engage/disengage flicker from the targeting
+ *  FSM — same contract as BEAM_MIN_ON_TIME_MS for beams. */
+export const SHIELD_MIN_ON_TIME_MS = shieldConfigJson.minOnTimeMs;
 
 // =============================================================================
 // BATTLE WAYPOINT DEFAULTS
