@@ -122,10 +122,3 @@ or re-justify then.
 
 [06][USER_REQUESTS] Regarding our "submunitions" in our "mortar" shot types - I think we can clean them up a bit. If the host "mortar" shot exploded because it was shot down - its submunitions should have a bias to continue in that same direction more or less to show that there is a momentum associated with the movement. But if the host "mortar" shot exploded because it hit something the submunitions need to be reflected off of the surface to show some kind of extra "particle" explosion. We are mostly there but there are still some inconsistencies that I see about directions of where the submunitions fly - maybe we can formalize and elegantly code this better.
 
-
-
-
-
-
-
-
