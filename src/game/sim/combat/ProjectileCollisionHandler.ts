@@ -682,15 +682,24 @@ export function resetCollisionBuffers(): void {
  *                      folded into the forward half-space along the
  *                      parent's direction of travel
  *
- * A parent that HIT something sprays every fragment off that surface
- * (a particle explosion that never tunnels back in); a parent that was
- * SHOT DOWN or expired mid-air throws every fragment onward with its
- * momentum. The half-space folds mirror rather than clamp, so fragment
- * speeds and the spread shape are preserved.
+ * Which case applies is decided by HOW the parent died, not by what
+ * its sweep happened to touch:
+ *
+ *   - reflect (surface): the parent flew into a real surface — terrain,
+ *     a unit/tower/building body, or a shield reflector. Fragments
+ *     spray off that surface (a particle explosion that never tunnels
+ *     back in).
+ *   - momentum (no surface): the parent died in flight — chipped to
+ *     zero HP by point-defense fire, destroyed in a shot-vs-shot
+ *     collision, caught in another explosion, or expired. Fragments
+ *     are thrown onward with the parent's momentum.
+ *
+ * The half-space folds mirror rather than clamp, so fragment speeds
+ * and the spread shape are preserved.
  *
  * `surfaceNormalX/Y/Z` is the world-space surface normal at the
  * impact point (sim coords: z is up). Pass undefined for all three
- * when there is no surface (shot down, mid-air expiry).
+ * when there is no surface (the momentum case).
  */
 function spawnSubmunitions(
   world: WorldState,
@@ -1446,34 +1455,42 @@ export function checkProjectileCollisions(
               projEntity.transform.y = prevY + clampedT * (currentY - prevY);
               projEntity.transform.z = prevZ + clampedT * (currentZ - prevZ);
               proj.hp = 0;
-              directHitSurfaceNormalX = directHit.normalX;
-              directHitSurfaceNormalY = directHit.normalY;
-              directHitSurfaceNormalZ = directHit.normalZ;
               ensureProjectileHitEntities(proj).add(directHit.entity.id);
 
               const hitProjectile = directHit.entity.projectile;
-              if (
+              const hitTravellingShot =
                 hitProjectile !== null &&
                 hitProjectile.projectileType === 'projectile' &&
-                hitProjectile.hp > 0 &&
-                isProjectileShot(hitProjectile.config.shot)
-              ) {
-                hitProjectile.hp = 0;
-                detonateKilledProjectileShot(
-                  directHit.entity,
-                  world,
-                  damageSystem,
-                  forceAccumulator,
-                  unitsToRemove,
-                  buildingsToRemove,
-                  audioEvents,
-                  deathContexts,
-                  newProjectiles,
-                  spawnEvents,
-                  projectilesToRemove,
-                  despawnEvents,
-                  0,
-                );
+                isProjectileShot(hitProjectile.config.shot);
+              if (hitTravellingShot) {
+                // Shot-vs-shot is mutual mid-air destruction, not a surface
+                // impact: leave the surface normal unset so this parent's
+                // submunitions run the momentum-continuation model, exactly
+                // like the victim's below. Reflecting off the other round's
+                // tiny hitbox normal made the spray direction depend on
+                // which projectile's sweep happened to run first.
+                if (hitProjectile.hp > 0) {
+                  hitProjectile.hp = 0;
+                  detonateKilledProjectileShot(
+                    directHit.entity,
+                    world,
+                    damageSystem,
+                    forceAccumulator,
+                    unitsToRemove,
+                    buildingsToRemove,
+                    audioEvents,
+                    deathContexts,
+                    newProjectiles,
+                    spawnEvents,
+                    projectilesToRemove,
+                    despawnEvents,
+                    0,
+                  );
+                }
+              } else {
+                directHitSurfaceNormalX = directHit.normalX;
+                directHitSurfaceNormalY = directHit.normalY;
+                directHitSurfaceNormalZ = directHit.normalZ;
               }
             }
           } else {
@@ -1682,21 +1699,18 @@ export function checkProjectileCollisions(
           });
         }
 
-        // Cluster flak: spawn submunitions on detonation. The
-        // bounce-direction is computed from the parent's velocity
-        // reflected across the impact surface — ground hit (z=0)
-        // gets a vertical normal so submunitions spray upward in
-        // the direction the carrier was flying, mid-air expiry
-        // passes no normal so fragments just inherit the parent's
-        // forward velocity with random spread.
+        // Cluster flak: spawn submunitions on detonation. Surface
+        // deaths (shield reflector, entity body, ground) reflect the
+        // parent's velocity across that surface; in-flight deaths
+        // (shot down, shot-vs-shot, expiry) pass no normal so the
+        // fragments carry the parent's momentum. See the
+        // spawnSubmunitions doc for the full direction model.
         if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_SPAWN_SUBMUNITIONS) !== 0) {
           // Ground impact gets the actual surface tangent normal at
           // (x, y) — bilinear gradient of the heightmap, NOT a flat
           // (0, 0, 1). On a sloped ripple cube the bounce direction
           // tracks the slope, so cluster fragments spray AWAY from
-          // the hill instead of always straight up. Mid-air expiry
-          // (no ground hit) passes undefined so fragments inherit
-          // forward velocity.
+          // the hill instead of always straight up.
           let surfaceNormalX: number | undefined;
           let surfaceNormalY: number | undefined;
           let surfaceNormalZ: number | undefined;
