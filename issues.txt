@@ -21,45 +21,97 @@ RUST MIGRATION DEBT (each is a phase-scale project; land each with parity
 proof + Delete The Old Path in the same change)
 --------------------------------------------------------------------------------
 
-[049][ARCH] projectileSystem.ts (~1800 lines) is no longer the
-integration/guidance math owner — those kernels run in Rust
+[049][ARCH] src/game/sim/combat/projectileSystem.ts (~1800 lines) is no
+longer the integration/guidance math owner — those kernels run in Rust
 (pool_step_packed_projectiles_batch, projectile_integrate_step_batch,
 projectile_homing_guidance_apply_batch in rts-sim-wasm/src/projectile.rs) —
 but TS still runs per-projectile loops around them: packed-pool
-gather/scatter passes, traveling-projectile policy packing (homing target
-validation/aim points, D-gun terrain-follow ground sampling), arming, and
-snapshot velocity-delta events. Beam stepping (per-tick re-trace incl.
-DamageSystem.findBeamPath) is still fully TS, and collision orchestration
-(ProjectileCollisionHandler.ts, ~1789 lines) is TS gather/scatter around six
-WASM batch kernels. Move per-projectile state residency and policy into the
-Rust pool so TS shrinks to spawn/despawn orchestration; port beam tracing and
-collision orchestration to Rust; delete the TS loops in the same change.
+gather/scatter passes (slot map + swap-remove live in JS), traveling-
+projectile policy packing (homing target validation/aim points, D-gun
+terrain-follow ground sampling — one JS->WASM scalar call per projectile),
+arming, and snapshot velocity-delta events. Beam stepping (per-tick re-trace
+incl. DamageSystem.findBeamPath) is still fully TS, and collision
+orchestration (src/game/sim/combat/ProjectileCollisionHandler.ts, ~1789
+lines) is a TS per-projectile loop around six WASM kernels, several invoked
+count=1 per projectile (hitbox sweep, terminal classify/plan). Rust already
+has resident terrain samplers and entity slabs, so nothing blocks the port
+on data residency. Dependency order: (1) generalize ProjectilePool to all
+traveling projectiles with the missing columns (prev pos, hp, arming,
+homing/policy, gravity multiplier, profile constants) plus a Rust slot
+allocator and spawn/despawn API — reflection-response must write the pool,
+not JS mirrors, to close the Pass-1 re-gather backdoor; (2) fold
+integrate/arming/gravity/D-gun terrain-follow/homing into one pool pass
+(keep single-row exports — client prediction uses them); (3) update Rust
+spatial-grid projectile slots in-crate post-integration, delete the JS
+restamp (SimulationCombatController.ts:184); (4) port the collision loop as
+one pool pass with true batches (note: today's loop detonates mid-iteration,
+so batching changes observable ordering — needs explicit parity reasoning);
+(5) port beam tracing last (needs Rust-resident polyline + prev-trace
+caches); (6) shrink TS to spawn/despawn orchestration consuming Rust diffs.
 
-[051][ARCH] targetingInputStamping.ts (~965 lines) is the TS->Rust
-input-stamping shim for the targeting FSM. The readback half is done:
-snapshots, rendering, prediction, and combat consumers read the Rust slabs
-directly, and FSM state/target/cooldowns/losBlockedTicks are slab-owned. What
-remains is the input direction: stampCombatTargetingPool clears and fully
-rebuilds every entity/turret slab row from JS Entity/Turret objects each tick
-(SimulationCombatController.ts:90), and stampShieldSurfacePool stamps shield
-surfaces twice per tick (:86, :163). Make Rust persistently own the
-entity/turret input state (or feed deltas) so the per-tick full restamp
-disappears, retire the transitional Turret.target/state JS fields
-(src/types/sim.ts), then delete the shim. (The shim's header comment claiming
-it "copies them back to JS Turret objects" is stale — the copy-back is gone.)
+[051][ARCH] src/game/sim/combat/targetingInputStamping.ts is the TS->Rust
+input-stamping shim for the targeting FSM. Done and deleted already: the
+readback half's consumers (snapshots, rendering, prediction, combat) read
+the Rust slabs directly; the FSM tuple (state/target/cooldowns/
+losBlockedTicks) is slab-owned AND slab-persistent (set_turret no longer
+takes it — Rust preserves it across same-entity restamps, seeds constants
+on slot reuse); the shield surface pool is stamped once per tick after
+updateShieldState (sight gating lives in the consumers' flags, not in
+count=0 stamps). What remains is the per-tick full restamp of entity/turret
+INPUT rows from JS objects (stampCombatTargetingPool clears + rebuilds every
+row each tick): roughly 40 of 43 setTurret args and ~30 of 44 setEntity args
+are static blueprint constants or identity, restamped anyway. Required: (a)
+split setEntity/setTurret into creation-time static stamps plus a slim
+per-tick dynamic batch (pos/vel/rot/surface/suspension/hp/flags/priority);
+(b) re-point dynamic inputs at Rust-owned sources where they already live
+per tick (spatial grid columns share the slot space; BodyPool owns pos/vel)
+and make the turret rotation spring write slab rotation/pitch directly
+(today they re-enter only via restamp); (c) replace the per-tick clear_all
+with combat_targeting_unset_entity on removal (hook SpatialGrid.freeEntitySlot,
+which today unsets entityMeta + turretPool but NOT combatTargeting); (d) the
+scheduledProbeTick JS round-trip (targetingSchedulerBridge.ts writeback)
+needs a kernel-owned probe tick plus a force-rescan flag, because
+commandExecution writes nextCombatProbeTick=-1 at six sites to force
+rescans; (e) retire transitional Turret.target/state (src/types/sim.ts:552,
+:554) on the server path (GameServer.ts setTurretShieldPanels/SpheresEnabled
+toggles should call clearTurretFsm instead of writing JS fields) and decide
+client storage — the remaining readers' JS fallbacks exist for unstamped
+remote-client rows, so either keep the two fields as documented client-only
+snapshot mirrors or stamp a client-side slab on snapshot apply and convert
+the three direct render readers (UnitTurretPose3D.ts,
+UnitDetailInstanceRenderer3D.ts, BuildingEntityRenderer3D.ts); (f) then move
+the surviving readback helpers + source queue into a small
+combatTargetingSlabViews.ts and delete the shim.
 
 [052][ARCH] Damage classification and HP batching now run in Rust (damage.rs
 segment/sphere/area kernels + damage_apply_batch; TS throws without sim-wasm,
-TS geometry mirrors are DEV-only asserts). But DamageSystem.ts (~2343 lines)
-still materializes resolution side effects in TS after the Rust batches:
-knockback force vectors, death contexts (penetration dir/attacker vel),
-killer bookkeeping, and HP/killed write-back onto JS entity objects;
-damageHelpers.ts (~481 lines) still assembles all death/hit/attackAlert
-SimEvents from TS entities. Move those resolution outputs into Rust-owned
-event/result buffers so TS receives typed events/knockbacks only, then delete
-the remaining TS resolution math/helpers (projectile-row + ground live
-geometry in findBeamSegmentHit is the documented post-integration exception —
-fold in or re-justify).
+TS geometry mirrors are DEV-only asserts). But
+src/game/sim/damage/DamageSystem.ts (~2343 lines) still materializes
+resolution side effects in TS after the Rust batches: knockback force
+vectors, death contexts (penetration dir/attacker vel), killer bookkeeping,
+and HP/killed write-back onto JS entity objects (HP authority is JS:
+damage_apply_batch receives hp arrays and TS writes out_hp back; the slab's
+entity_hp is a stale-by-design per-tick copy);
+src/game/sim/combat/damageHelpers.ts (~481 lines) still assembles all
+death/hit/attackAlert SimEvents from TS entities. Move those resolution
+outputs into Rust-owned event/result buffers (modeled on the
+DeathExplosionPlanner statics) so TS receives typed events/knockbacks only:
+(1) accumulate knockback rows in Rust and drain into
+ForceAccumulator.addKnockbackForces — knockback computation is interwoven
+with TS hit ordering (maxHits / sorted-T early exit) and host resolution, so
+this lands together with (2) fusing queueDamageToEntityBatch/flushDamageBatch
+into a slot-based damage_resolve_batch where Rust resolves killer playerId
+from slab owner columns and emits death rows; (3) typed per-tick event rows
+(death/hit/attackAlert) drained by one TS decoder feeding the existing
+stateSerializerAudio path (string keys/colors stay in the decoder); (4) flip
+HP authority to the slab with an hp-diff drain for JS mirrors +
+markSnapshotDirty until the ~40 JS hp readers migrate (healing/repair/capture
+writers route through Rust setters in the same step); (5) delete the TS
+resolution remains incl. vestigial DamageResult.recoil (always null) and
+never-populated killedTurretIds; (6) findBeamSegmentHit projectile-row +
+ground live geometry stays the documented post-integration exception until
+049 makes post-integration slab restamps possible — fold in or re-justify
+then.
 ================================================================================
 
 
