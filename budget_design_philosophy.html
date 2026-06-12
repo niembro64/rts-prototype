@@ -526,7 +526,7 @@
       <ul class="rule-list">
         <li>Share physical kernels for body motion, projectile stepping, recoil, hover, turret pose, terrain sampling, and collision helpers.</li>
         <li>Keep authoritative-only systems on the host: command validation, economy, construction completion, targeting truth, damage, fog filtering, unit creation and death, and victory.</li>
-        <li>Predict visible state locally: movement, velocity, turret rotation, beam path presentation, projectile travel, shield presentation, and local command intent.</li>
+        <li>Predict visible state locally: movement, velocity, turret rotation, beam path presentation, projectile travel, and local command intent.</li>
         <li>Use snapshots as correction targets. The client stores the most recent server target per entity. Position channels — movement position and rotation position — always apply correction by snapping or EMA-blending toward it; velocity channels — movement velocity and rotation velocity — can additionally ignore the snapshot derivative when that is useful for prediction testing. Acceleration is never shipped: the authoritative force solver lives on the host, and the client&rsquo;s prediction integrates position from the last-seen velocity rather than re-deriving server-side forces from a stale snapshot.</li>
       </ul>
 
@@ -606,7 +606,7 @@
           as "where this thing is right now" for a continuously
           corrected entity rides on this channel. Travelling
           projectiles (the <code>shot</code> kind, as opposed to
-          <code>ray</code>/<code>shield</code> emissions) are <em>not</em> on
+          <code>ray</code> emissions) are <em>not</em> on
           this channel &mdash; their position is event-driven, not continuously
           corrected; see <strong>Ballistic projectiles are
           event-driven</strong> below.
@@ -633,10 +633,7 @@
           body orientation quaternion
           (<code>entity.unit.orientation.{x,y,z,w}</code>), and each
           turret's yaw and pitch
-          (<code>weapon.rotation</code>, <code>weapon.pitch</code>). The
-          shield range visualizer also rides this channel because
-          it is a slow visual progress that pairs with the turret's
-          rotation correction.
+          (<code>weapon.rotation</code>, <code>weapon.pitch</code>).
         </li>
         <li>
           <strong>Rotation velocity</strong> &mdash; the angular rate
@@ -698,7 +695,7 @@
         Accordingly, the wire format carries no per-snapshot rolling
         state for projectiles. Every server-to-client message about a
         travelling projectile is a discrete authoritative event: a
-        spawn (initial position, velocity, type), a reflection or
+        spawn (initial position, velocity, type), a
         homing course correction (a <code>velocityUpdate</code> with
         the new post-event pos + velocity), or a despawn. Between
         events, the client dead-reckons under gravity + per-shot
@@ -711,12 +708,12 @@
         values and never populates a drift target. EMA-blending toward
         a step function would produce a smoothing ramp through
         coordinate space that does not correspond to any real
-        trajectory &mdash; visible as wiggle behind reflected shots in
-        the curved-cone tail, because the tail stamps freeze a record
+        trajectory &mdash; visible as wiggle in
+        the curved-cone tail after a course correction, because the tail stamps freeze a record
         of wherever the predicted head actually was. Snapping makes
         the discontinuity instantaneous: subsequent dead-reckon stamps
-        land on the true post-event trajectory and the tail behind a
-        reflection is as clean as the tail behind a fresh shot.
+        land on the true post-event trajectory and the tail after a
+        course correction is as clean as the tail behind a fresh shot.
       </p>
       <p>
         This generalises: any field whose authoritative evolution
@@ -749,7 +746,7 @@
         The game should be more physics based than its inspiration. BAR is the ergonomic and strategic
         reference point; this project should make the physical world more fundamental. The rule of
         thumb is <code>F = M * A</code>. If a gameplay feature moves, pushes, resists, falls, recoils,
-        hovers, blocks, crushes, reflects, or explodes, it should be described through forces
+        hovers, blocks, crushes, or explodes, it should be described through forces
         acting on masses and integrated into motion.
       </p>
 
@@ -792,7 +789,7 @@
       <ul class="rule-list">
         <li>Unit propulsion is a force profile applied to a mass, not a direct position edit.</li>
         <li>Recoil applies counter-force to the firing body.</li>
-        <li>Explosions, beams, collisions, impact impulses, and shields apply forces that heavier units resist differently.</li>
+        <li>Explosions, beams, collisions, and impact impulses apply forces that heavier units resist differently.</li>
         <li>Hover lift balances gravity through force and damping.</li>
         <li>Ground contact is spring and friction behavior against terrain, not a clamp disguised as physics.</li>
       </ul>
@@ -1333,7 +1330,7 @@
       <p>
         Every combat turret renders a barrel. What differs is <em>where the barrel
         points</em>. Most turrets &mdash; guns, cannons, mortars, gatlings, rockets,
-        the disruptor, the shield panel &mdash; orient their barrel from the
+        the disruptor &mdash; orient their barrel from the
         authoritative turret aim (<code>weapon.rotation</code> /
         <code>weapon.pitch</code>) that travels on the wire and corrects through the
         <strong>rotation position</strong> channel like everything else.
@@ -1405,10 +1402,8 @@
       </p>
       <h3>Where the rule does not apply</h3>
       <p>
-        <code>turretShieldPanel</code> turrets and the disruptor cannon stay ordinary
-        full-barrel aiming turrets: the shield panel has to rotate to bisect its
-        targets, and the disruptor is a melee gun whose visible barrel is part of the
-        read. Construction emitters, <code>turretShieldSphere</code> turrets,
+        The disruptor cannon stays an ordinary full-barrel aiming turret: it is a
+        melee gun whose visible barrel is part of the read. Construction emitters
         and visual-only hardpoints continue to use their existing dedicated rigs.
         Beam-directed barrels are specifically the beam (<code>ray</code>) turrets;
         everything else aims from the wire.
@@ -1463,32 +1458,31 @@
       <p>
         Gameplay should be built from small, atomic pieces that do one job and compose cleanly:
         <code>unit</code>, <code>tower</code>, <code>turret</code>,
-        <code>shot</code>, <code>ray</code>, <code>shield</code>, and <code>building</code>
+        <code>shot</code>, <code>ray</code>, and <code>building</code>
         definitions. These pieces should be swappable without hidden coupling. A unit should be able
         to vary its locomotion profile, mount different turret sets, fire different shot profiles, or
         appear from different factories because each piece carries a clear contract instead of leaking
-        responsibility into its neighbors. The three things a turret can emit &mdash;
-        <code>shot</code>, <code>ray</code>, and <code>shield</code> &mdash; are separate kinds, each
+        responsibility into its neighbors. The two things a turret can emit &mdash;
+        <code>shot</code> and <code>ray</code> &mdash; are separate kinds, each
         in its own blueprint family, because only a shot is a body.
       </p>
       <ul class="rule-list">
         <li><code>unit</code> owns a <em>mobile</em> entity's body, mass, health, command capabilities, build cost, its own <strong>locomotion</strong> &mdash; the movement profile and rig (wheels, treads, legs, or hover) that produces and applies its movement forces, authored <em>inline as part of the unit</em> rather than as a separate piece &mdash; mounted turrets and the per-mount host-directed/fully-autonomous tag that decides which of them follow the host's lock-on, a host-level lock-on target governed by the unit's own lock-on inclusion object, and composition slots. A unit that has a turret contract is built and exists with its authored turrets present; there is no finished weapon host with empty turret mounts.</li>
         <li><code>tower</code> owns an <em>immobile</em> entity's body, mass, health, mounted turrets and the per-mount host-directed/fully-autonomous tag that decides which of them follow the host's lock-on, and a host-level lock-on target governed by the tower's own lock-on inclusion object. A tower has the same turret-and-lock-on contract as a unit, but no locomotion. Anything static that takes action against an entity ID through turrets is a tower &mdash; including fabricators (whose construction turret targets a build site) and defensive shooting towers. A tower is never a bare body waiting for a turret; its turret set is part of the host from creation through death.</li>
-        <li><code>turret</code> is a standardized mounted emitter: it owns lock-on eligibility through its own lock-on inclusion object, aiming, tracking, cooldown, firing pattern (burst and spread), mount behavior, and a single by-id reference to the one emission it produces, declared by two fields &mdash; <code>emissionKind</code> (<code>shot</code>, <code>ray</code>, or <code>shield</code>) and <code>emissionBlueprintId</code> (the id of the emission blueprint in the namespace that kind selects) &mdash; naming exactly one <code>shot</code>, <code>ray</code>, or <code>shield</code>. It is addressable and lockable through its own <code>EntityId</code>, but it is not a separable body: no independent cost, no independent mass, no independent health, no death explosion, and no detached life after the host. It carries no host-specific data and no inline emission payload &mdash; the emission is named by id, never copied into the turret &mdash; so the same turret blueprint drops onto any host&rsquo;s mount unchanged. It does <em>not</em> own whether it is host-directed or fully-autonomous; that role is set per mount by the host, so one turret blueprint can inherit a host target on one mount and run autonomously on another.</li>
-        <li><code>shot</code> is a <em>travelling munition</em> a turret fires: a plasma bolt or rocket that leaves the barrel and persists as a physical body with its own <code>EntityId</code>, mass, health, and a death explosion. It owns its travel behavior, inherited homing target, recoil, damage, impulse, reflection, lifetime, submunition payload, and collision behavior, and &mdash; per <strong>Shots are destructible bodies too</strong> &mdash; detonates the instant its tiny health reaches zero. <code>plasma</code> and <code>rocket</code> are its variants. Shots are authored in their own blueprint family (<code>shots.json</code>).</li>
-        <li><code>ray</code> is a <em>sustained line emission</em> &mdash; a continuous beam or a timed laser &mdash; traced from the turret to its target, recomputed every tick from the turret&rsquo;s aim and bound to the turret&rsquo;s lifetime. A ray is <em>not</em> a body: it has no mass, no health, and no <code>EntityId</code> of its own, and is attributed through its emitting turret (see <strong>Universal Runtime Entity IDs</strong>). It owns its line behavior, damage-per-second, recoil, reflection, and duration. <code>beam</code> (continuous) and <code>laser</code> (timed) are its variants. Rays are authored in their own blueprint family (<code>rays.json</code>).</li>
-        <li><code>shield</code> (formerly &ldquo;force field&rdquo;) is a <em>sustained barrier emission</em>: a projected surface &mdash; a flat panel array or a sphere &mdash; that reflects, absorbs, or passes incoming shots according to its material and reflection mode. Like a beam, a shield is <em>not</em> a body: no mass, no health, no own <code>EntityId</code>; it is recomputed each tick and attributed through its emitting turret. It owns its barrier material and reflection behavior, while the shape it is projected as is the mount&rsquo;s geometry &mdash; per <strong>Materials Are Independent Of Shape</strong>. Shields are authored in their own blueprint family (<code>shields.json</code>), with shield materials in <code>shieldMaterials.json</code>.</li>
+        <li><code>turret</code> is a standardized mounted emitter: it owns lock-on eligibility through its own lock-on inclusion object, aiming, tracking, cooldown, firing pattern (burst and spread), mount behavior, and a single by-id reference to the one emission it produces, declared by two fields &mdash; <code>emissionKind</code> (<code>shot</code> or <code>ray</code>) and <code>emissionBlueprintId</code> (the id of the emission blueprint in the namespace that kind selects) &mdash; naming exactly one <code>shot</code> or <code>ray</code>. It is addressable and lockable through its own <code>EntityId</code>, but it is not a separable body: no independent cost, no independent mass, no independent health, no death explosion, and no detached life after the host. It carries no host-specific data and no inline emission payload &mdash; the emission is named by id, never copied into the turret &mdash; so the same turret blueprint drops onto any host&rsquo;s mount unchanged. It does <em>not</em> own whether it is host-directed or fully-autonomous; that role is set per mount by the host, so one turret blueprint can inherit a host target on one mount and run autonomously on another.</li>
+        <li><code>shot</code> is a <em>travelling munition</em> a turret fires: a plasma bolt or rocket that leaves the barrel and persists as a physical body with its own <code>EntityId</code>, mass, health, and a death explosion. It owns its travel behavior, inherited homing target, recoil, damage, impulse, lifetime, submunition payload, and collision behavior, and &mdash; per <strong>Shots are destructible bodies too</strong> &mdash; detonates the instant its tiny health reaches zero. <code>plasma</code> and <code>rocket</code> are its variants. Shots are authored in their own blueprint family (<code>shots.json</code>).</li>
+        <li><code>ray</code> is a <em>sustained line emission</em> &mdash; a continuous beam or a timed laser &mdash; traced from the turret to its target, recomputed every tick from the turret&rsquo;s aim and bound to the turret&rsquo;s lifetime. A ray is <em>not</em> a body: it has no mass, no health, and no <code>EntityId</code> of its own, and is attributed through its emitting turret (see <strong>Universal Runtime Entity IDs</strong>). It owns its line behavior, damage-per-second, recoil, and duration. <code>beam</code> (continuous) and <code>laser</code> (timed) are its variants. Rays are authored in their own blueprint family (<code>rays.json</code>).</li>
         <li><code>building</code> owns static footprint, construction, production, extraction, storage, or other static infrastructure that does <em>not</em> mount turrets and does <em>not</em> carry a host-level lock-on. Anything that needs a turret or lock-on is a <code>tower</code>, not a building.</li>
       </ul>
       <p>
-        Keeping <code>shot</code>, <code>ray</code>, and <code>shield</code> as three separate kinds
+        Keeping <code>shot</code> and <code>ray</code> as two separate kinds
         &mdash; not variants of one umbrella &mdash; matters because only a shot is a body. A shot has
-        mass, health, and a death explosion and obeys the entity base ledger; a ray and a shield are
-        sustained emissions with none of those &mdash; they exist only while their turret sustains
-        them and are attributed to it, never minting an id of their own. That split is what lets
+        mass, health, and a death explosion and obeys the entity base ledger; a ray is a
+        sustained emission with none of those &mdash; it exists only while its turret sustains
+        it and is attributed to it, never minting an id of its own. That split is what lets
         &ldquo;every shot is a destructible body&rdquo; be literally true without forcing a nonsensical
-        health or mass onto a ray of light or a wall of energy. Each lives in its own blueprint file
-        (<code>shots.json</code>, <code>rays.json</code>, <code>shields.json</code>) so the three
+        health or mass onto a ray of light. Each lives in its own blueprint file
+        (<code>shots.json</code>, <code>rays.json</code>) so the two
         contracts cannot bleed into one another.
       </p>
 
@@ -1538,9 +1532,9 @@
         base ledger. The kind-specific fields above sit on top of this floor; they never replace it.
         Turrets are deliberately different: they are addressable mounted emitters, not separable
         bodies, so they keep an id, mount metadata, lock-on state, and aim state, but they do not
-        carry independent cost, mass, health, or death explosions. (<code>ray</code> and
-        <code>shield</code> are also absent: they are sustained emissions attributed to their emitter,
-        not addressable bodies.) The body ledger is:
+        carry independent cost, mass, health, or death explosions. (<code>ray</code> is also
+        absent: it is a sustained emission attributed to its emitter,
+        not an addressable body.) The body ledger is:
       </p>
       <ul class="rule-list">
         <li><strong>id</strong> &mdash; the universal runtime <code>EntityId</code> (see
@@ -1708,9 +1702,7 @@
         <li><strong>Contact</strong> &mdash; touching the ground, another shot, or any other solid
         body forces the shot&rsquo;s health straight to zero and detonates it on the spot. This is the
         ordinary &ldquo;it hit something&rdquo; case expressed through the health field rather than a
-        separate collision flag. <strong>Shields are the sole exception</strong>: a shield
-        reflects a shot, it does not damage it, so a shot bounces off the barrier with its health
-        untouched (see <strong>Materials Are Independent Of Shape</strong>).</li>
+        separate collision flag.</li>
         <li><strong>Incoming fire</strong> &mdash; because the health is small but real, a weapon can
         whittle it down before contact. A point-defense turret that locks onto enemy shots (its
         inclusion object includes only <code>enemy_entities</code> and <code>shots</code>) chips that tiny health to zero and pops the
@@ -1722,16 +1714,15 @@
         and zero health detonates it. Travelling shots remain event-driven on the wire &mdash; spawn,
         course-correction, despawn &mdash; per <strong>Ballistic projectiles are event-driven</strong>;
         the detonation is just one more discrete event. This applies to <code>shot</code> emissions
-        only: a <code>ray</code> and a <code>shield</code> are not bodies, carry no health, and are
-        never &ldquo;shot down&rdquo; &mdash; they simply stop when their turret stops sustaining them.
+        only: a <code>ray</code> is not a body, carries no health, and is
+        never &ldquo;shot down&rdquo; &mdash; it simply stops when its turret stops sustaining it.
       </p>
       <p>
         <strong>Shot arming is not source exclusion.</strong> A newly fired shot begins unarmed and
         becomes active only after its hitbox has cleared both the originating host&rsquo;s collision body
         and the emitting turret&rsquo;s collision body. While unarmed, the shot does not test entity
         hitbox contacts. Once armed, it collides with every solid entity hitbox, including the turret
-        or host that fired it. A reflected shot returning to its source therefore detonates on that
-        source exactly like an enemy shot would. Source provenance remains for attribution and
+        or host that fired it. Source provenance remains for attribution and
         replay; it is not a collision immunity list.
       </p>
 
@@ -1765,7 +1756,7 @@
       <p>
         <strong>The material explosion uses the host&rsquo;s actual pieces, not generic shapes.</strong>
         Every atomic visual part as rendered &mdash; chassis edges, turret heads, barrels, treads,
-        wheels, legs, shield panels &mdash; can be thrown as matched debris. Those debris pieces are
+        wheels, legs &mdash; can be thrown as matched debris. Those debris pieces are
         presentation artifacts, not live turret agents. The explosion applies gameplay force and
         damage to external bodies in its radius; the host&rsquo;s own mounted turret visuals simply
         participate in the material breakup and then fade.
@@ -1852,8 +1843,7 @@
         This separation is what lets mixed-role hosts work. A unit guarding a friendly entity can
         keep that friendly entity as its host target; a repair or construction turret may inherit
         it, while a fighting turret that includes only <code>enemy_entities</code> ignores it and
-        searches for enemies normally. A <code>turretShieldPanel</code> can
-        reject the same host target unless it is an allowed enemy turret.
+        searches for enemies normally.
         Commands belong to the host; lock-on belongs to the turret.
       </p>
       <h3>Host-directed turrets carry the host lock-on; fully-autonomous turrets ignore it</h3>
@@ -1950,7 +1940,7 @@
         <li><code>includeLockOnLevel1Buildings</code> narrows an already-included building family to only the named building blueprints.</li>
         <li><code>includeLockOnLevel1Turrets</code> narrows an already-included turret family to only the named turret blueprints.</li>
         <li><code>includeLockOnLevel1Shots</code> narrows an already-included shot family to only the named shot blueprints &mdash; e.g. a point-defense turret that should pop only heavy rockets, not every plasma bolt.</li>
-        <li><code>lockOnRequiresTargetLockedOntoSelf</code> is a four-state enum, separate from the family lists, deciding how an otherwise-admitted enemy is weighed by whether it is itself locked onto this locker. <code>"ignore"</code> (the default) does not care; <code>"require"</code> admits a candidate only while it is itself locked onto this turret or its host, and drops it the instant it re-targets; <code>"preferReacquire"</code> ranks such threats above every other candidate and rescans when the current target stops reciprocating; <code>"preferHold"</code> applies the same threat ranking during normal scans but does not rescan solely because the current target stops reciprocating. It is <code>"require"</code> on exactly one blueprint &mdash; the <code>turretShieldPanel</code> mirror &mdash; and <code>"ignore"</code> everywhere else; see <strong>Reciprocal lock-on: only hit who is hitting you</strong>.</li>
+        <li><code>lockOnRequiresTargetLockedOntoSelf</code> is a four-state enum, separate from the family lists, deciding how an otherwise-admitted enemy is weighed by whether it is itself locked onto this locker. <code>"ignore"</code> (the default) does not care; <code>"require"</code> admits a candidate only while it is itself locked onto this turret or its host, and drops it the instant it re-targets; <code>"preferReacquire"</code> ranks such threats above every other candidate and rescans when the current target stops reciprocating; <code>"preferHold"</code> applies the same threat ranking during normal scans but does not rescan solely because the current target stops reciprocating. Every shipped blueprint stays on <code>"ignore"</code>; the non-default modes exist for future retaliation-style specialist weapons. See <strong>Reciprocal lock-on: only hit who is hitting you</strong>.</li>
       </ul>
       <p>
         The hierarchy should be evaluated in order: ownership, aliveness, and visibility decide
@@ -1960,9 +1950,7 @@
         to specific authored names; range, line-of-sight, and scoring then pick the best lock from
         the survivors. A construction turret that should lock only onto friendly entities includes
         <code>friendly_entities</code>. A fighting turret that should only attack hostile targets
-        includes <code>enemy_entities</code>. A <code>turretShieldPanel</code>
-        that should lock only onto enemy turrets includes <code>enemy_entities</code> and
-        <code>turrets</code> and nothing else. A normal weapon turret that should ignore turret
+        includes <code>enemy_entities</code>. A normal weapon turret that should ignore turret
         mounts simply leaves <code>turrets</code> off its family list. Because lock-on is off by
         default, targeting a <em>specific piece</em> is just a narrow inclusion object: a
         <strong>point-defense</strong> turret that should shoot down incoming munitions and nothing
@@ -2000,20 +1988,21 @@
         candidate, no matter how close or how otherwise valid it is. The two preference modes treat
         enemies locked onto us as a strictly higher priority tier without making them mandatory: if
         any are aiming at us during a scan, the locker engages those alone, and only when none are
-        does it fall back to the ordinary candidate pool. Today exactly one blueprint leaves the default &mdash; the
-        <code>turretShieldPanel</code> mirror, which sets <code>"require"</code>; every other turret,
-        unit, and tower stays on <code>"ignore"</code>.
+        does it fall back to the ordinary candidate pool. Today no blueprint leaves the default &mdash;
+        every turret, unit, and tower stays on <code>"ignore"</code>; the non-default modes are
+        reserved for future retaliation-style specialist weapons.
       </p>
       <p>
         <code>"require"</code> and <code>"preferReacquire"</code> are both evaluated in real time, not just at
         acquisition. The locker re-checks against the reciprocal condition exactly as it
         re-checks range, line-of-sight, and aliveness. Under <code>"require"</code> the instant the
         enemy re-targets &mdash; locks onto a different body, drops its lock, or dies &mdash; the
-        condition fails, the mirror loses that lock the same tick, and re-acquisition runs over
-        whatever else is currently aiming at it. A mirror therefore tracks <em>whoever is shooting at
-        it right now</em> and follows the threat as it changes; with nothing aimed at its host it has
-        zero candidates and sits idle, which is the intended counter-fire behavior &mdash; it
-        punishes focused fire and is trivially sidestepped by not shooting at it.
+        condition fails, the locker loses that lock the same tick, and re-acquisition runs over
+        whatever else is currently aiming at it. A <code>"require"</code> locker therefore tracks
+        <em>whoever is shooting at it right now</em> and follows the threat as it changes; with
+        nothing aimed at its host it has zero candidates and sits idle, which is the intended
+        counter-fire behavior &mdash; it punishes focused fire and is trivially sidestepped by not
+        shooting at it.
       </p>
       <p>
         Under <code>"preferReacquire"</code> the same re-evaluation re-sorts the two tiers instead of
@@ -2027,8 +2016,7 @@
         a preference weapon does not thrash between equally-ranked threats. The tiering is strict by
         default &mdash; any threat outranks any non-threat &mdash; with a softer scoring-bonus variant
         available if a weapon should let an overwhelmingly better opportunistic target win. A
-        reciprocal preference weapon retaliates first and suppresses second; the mirror itself stays
-        on <code>"require"</code> because reflection is its whole job.
+        reciprocal preference weapon retaliates first and suppresses second.
       </p>
       <p>
         &ldquo;Locked onto us&rdquo; means locked onto either this turret or its host
@@ -2047,20 +2035,13 @@
         authoring smells the loader can reject.
       </p>
       <p>
-        Some specialist turrets need a second, explicit targeting contract layered on top of the
-        ordinary inclusion object. The canonical example is <code>turretShieldPanel</code>: its
-        inclusion object says it can consider enemy <code>turrets</code> and sets
-        <code>lockOnRequiresTargetLockedOntoSelf</code> to <code>"require"</code>, so it only ever
-        considers enemy turrets currently firing on it, while its
-        <code>secondaryLockOnProfiles</code> entry says it is an
-        <code>incomingThreatReflector</code>. That profile is not optional flavor text. With the
-        reciprocal gate already deciding <em>which</em> threats are candidates, the profile decides
-        what to do with them: it ranks those threats by sustained DPS and aims by bisecting the angle
-        formed by the enemy turret origin, the shield-panel turret origin, and the enemy turret host
-        origin. This is deliberately irregular: it makes reflected fire return toward the
-        attacker&rsquo;s host. Large targeting regularization passes must preserve the mode, the
-        profile, their validation, and their regression tests instead of simplifying the turret into
-        an ordinary enemy-turret scanner.
+        If a specialist turret ever needs a second, explicit targeting contract layered on top of
+        the ordinary inclusion object &mdash; behavior the additive lists cannot express, such as
+        ranking threats by sustained DPS or aiming by a derived geometric rule &mdash; it gets a
+        validated <code>secondaryLockOnProfiles</code> entry with its own regression tests, not a
+        special case buried in the shared targeting kernel. Large targeting regularization passes
+        must preserve any such profile, its validation, and its tests instead of simplifying the
+        turret into an ordinary scanner.
       </p>
     </section>
 
@@ -2074,14 +2055,14 @@
         explain that it came from it, it is not anonymous. That covers units, towers, and
         buildings (top-level hosts), every mounted turret as an addressable emitter, every
         <em>travelling munition</em> &mdash; a plasma bolt or rocket that has left the barrel and
-        now persists, reflects, spawns submunitions, and can be hit &mdash; and every build site.
+        now persists, spawns submunitions, and can be hit &mdash; and every build site.
         It does <em>not</em> automatically mint an entity for every emission. A <code>ray</code>
-        or <code>shield</code> projected by a live turret is a <em>sustained emission of that
+        projected by a live turret is a <em>sustained emission of that
         turret</em>, recomputed each tick from the turret&rsquo;s aim and bound to its lifetime; it is
         attributed through the emitting turret&rsquo;s id and the emission&rsquo;s source record, not
         by allocating a separate id. (A <code>shot</code> is the opposite case &mdash; a travelling
         munition that <em>does</em> carry its own id.) Transient detail &mdash; a ray&rsquo;s
-        polyline vertices, a shield&rsquo;s projected surface, resource balls in flight
+        polyline vertices, resource balls in flight
         &mdash; stays anonymous for the same reason. Give one of these its own id only when the
         design genuinely needs to point at that specific instance; the default is to attribute it
         to its emitter.
@@ -2136,8 +2117,8 @@
         and its mount index. It is addressable and lockable, but its lifetime, resources, and damage
         are owned by the host; it cannot detach into a hostless entity.</li>
         <li><strong>Shot</strong> &mdash; a travelling munition (plasma, rocket) carries its own
-        <code>EntityId</code> as a real body. A <strong>ray</strong> or <strong>shield</strong> is a
-        sustained line or barrier emission with no body of its own: it is bound to its emitter and
+        <code>EntityId</code> as a real body. A <strong>ray</strong> is a
+        sustained line emission with no body of its own: it is bound to its emitter and
         attributed through it rather than minting an id. Either way the emission&rsquo;s source record
         names both the turret id that fired it and the host id that turret was mounted on (see
         <strong>Shots carry immutable source provenance</strong>).</li>
@@ -2188,7 +2169,7 @@
       <h3>Shots carry immutable source provenance</h3>
       <p>
         A shot is not contained by its turret after launch, but it must retain exactly where it
-        came from. Every shot, beam, laser, projectile, submunition, reflected projectile, and
+        came from. Every shot, beam, laser, projectile, submunition, and
         spawned child effect carries a source record:
       </p>
 <pre><code>ShotSource {
@@ -2270,8 +2251,8 @@
         <li><strong>Shooting towers</strong> (beam tower, cannon tower, and any future
         long-range static gun) &mdash; mount combat turrets that lock onto enemy entities.
         These are the textbook case.</li>
-        <li><strong>Future static repair pads, anti-air emplacements, and shield
-        emitters</strong> &mdash; if they target entities through a turret, they are towers
+        <li><strong>Future static repair pads and anti-air
+        emplacements</strong> &mdash; if they target entities through a turret, they are towers
         from the day they are added. Do not invent a new flag on the building schema; add the
         blueprint to the tower catalog.</li>
       </ul>
@@ -2417,29 +2398,27 @@
         it takes.
       </p>
       <p>
-        The canonical example is the shield surface. The
-        <code>turretShieldPanel</code>&rsquo;s deployed panels and the
-        <code>turretShieldSphere</code>&rsquo;s sphere are <em>the exact
-        same material</em>: same reflectivity, same line-of-sight occlusion
-        rule, same projectile reflection mechanic, same shader, same visual
-        treatment. The panel turret carries the material as flat panels;
-        the sphere turret carries it as a sphere. Beyond that geometric
-        difference, a player should be unable to tell them apart by behavior
-        or by eye, and there should be no code path that treats them
-        differently.
+        The canonical example is ice. A frozen pond and a cuboid ice block
+        are <em>the exact same material</em>: same reflectivity, same
+        line-of-sight occlusion rule, same projectile response, same shader,
+        same visual treatment. One piece carries the material as a flat
+        sheet of terrain; the other carries it as a block. Beyond that
+        geometric difference, a player should be unable to tell them apart
+        by behavior or by eye, and there should be no code path that treats
+        them differently.
       </p>
       <ul class="rule-list">
         <li>A material is defined once, with all of its physical and visual properties &mdash; reflectivity, refraction, occlusion, hit response, sound profile, shader inputs, particle reactions.</li>
-        <li>Shapes carry materials. A flat panel and a sphere can both be made of the shield material; a cuboid block and a frozen pond can both be made of ice. Geometry and material are orthogonal axes of composition.</li>
+        <li>Shapes carry materials. A cuboid block and a frozen pond can both be made of ice; a flat panel and a sphere can both be made of the same metal. Geometry and material are orthogonal axes of composition.</li>
         <li>When a projectile encounters a surface, the material decides what happens to the projectile; the shape decides where the encounter is and what the surface normal looks like. The two questions are answered by different systems.</li>
-        <li>Line-of-sight queries treat every shape carrying the same material the same way. If the <code>turretShieldPanel</code>&rsquo;s panel reflects a sight ray, the <code>turretShieldSphere</code>&rsquo;s sphere reflects it under the same rule. The intersection math reads from the shape; the policy reads from the material.</li>
-        <li>Visual identity is part of the contract. Same shader, same material parameters, same reflection probes, same hit reactions. The player should see immediately that the flat panel and the sphere are made of the same stuff.</li>
+        <li>Line-of-sight queries treat every shape carrying the same material the same way: if one shape carrying a material occludes or reflects a sight ray, every other shape carrying that material does so under the same rule. The intersection math reads from the shape; the policy reads from the material.</li>
+        <li>Visual identity is part of the contract. Same shader, same material parameters, same reflection probes, same hit reactions. The player should see immediately that the pond and the block are made of the same stuff.</li>
       </ul>
       <p>
         This is <strong>Single Source Of Truth</strong> applied to physics
-        surfaces. If a feature ever seems to require the shield material
-        to behave differently in the panel-turret case than in the sphere-turret
-        case, the right answer is almost always two materials with different
+        surfaces. If a feature ever seems to require a material
+        to behave differently on one shape than on another,
+        the right answer is almost always two materials with different
         parameter values &mdash; not a branch inside one material that switches
         on which piece owns the surface. Branches inside material behavior are
         how reflectivity drifts between two surfaces that the player still
@@ -2976,21 +2955,21 @@
         <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>
         <li>Carry per-part visual state in the same four channels client prediction uses &mdash; movement position, movement velocity, rotation position, rotation velocity &mdash; and EMA each channel toward its target every frame. Animation always plays off body motion; the rig never branches on whether a part is touching ground. The floor clamp drives the position channel; the body-motion signed distance drives the velocity channel; rotation integrates from rotation velocity. Hover replaces all of this with a per-frame clearance scalar.</li>
         <li>Keep the camera frontend and exhaustively enumerated: a gesture&rsquo;s anchor point is the product of two orthogonal data axes &mdash; <code>anchorPointCameraScreen</code> (<code>cursor</code> / <code>screen-center</code>) and <code>anchorPointCameraTerrain</code> (<code>plane-2d</code> / <code>terrain-3d</code> / <code>terrain-3d-water</code>) &mdash; and whether the camera may pass through terrain is a separate boolean. All six anchor behaviors and both collision behaviors must be reachable from config, never from a hardcoded branch in the picker.</li>
-        <li>Keep unit, tower, turret, shot, ray, shield, and building definitions atomic, swappable, and free of overlapping responsibility. A unit owns its <strong>locomotion inline</strong> &mdash; movement is part of the unit, not a separate piece, blueprint, or entity, and it has no id, cost, health, or lock-on eligibility of its own. <code>unit</code> is mobile and has turrets; <code>tower</code> is immobile and has turrets; <code>building</code> is immobile and has no turrets. Anything static that locks onto an entity ID through a turret is a tower, not a building &mdash; fabricators and shooting towers both belong on the tower side of that boundary. Make the turret a standardized, addressable mounted emitter that names exactly one emission by id and carries no inline emission payload, so it drops onto any host&rsquo;s mount unchanged. A turret has no independent cost, mass, health, death explosion, construction phase, or detached life. A turret emits exactly one of three separate kinds, each in its own blueprint file: a <code>shot</code> (a travelling munition that is a body with mass/health/death-explosion, in <code>shots.json</code>), a <code>ray</code> (a sustained line emission &mdash; <code>beam</code> or <code>laser</code> variants &mdash; no body, in <code>rays.json</code>), or a <code>shield</code> (a sustained barrier emission, formerly &ldquo;force field,&rdquo; no body, in <code>shields.json</code>). Only the shot is a body; rays and shields are emitter-bound emissions with no mass, health, or id of their own.</li>
+        <li>Keep unit, tower, turret, shot, ray, and building definitions atomic, swappable, and free of overlapping responsibility. A unit owns its <strong>locomotion inline</strong> &mdash; movement is part of the unit, not a separate piece, blueprint, or entity, and it has no id, cost, health, or lock-on eligibility of its own. <code>unit</code> is mobile and has turrets; <code>tower</code> is immobile and has turrets; <code>building</code> is immobile and has no turrets. Anything static that locks onto an entity ID through a turret is a tower, not a building &mdash; fabricators and shooting towers both belong on the tower side of that boundary. Make the turret a standardized, addressable mounted emitter that names exactly one emission by id and carries no inline emission payload, so it drops onto any host&rsquo;s mount unchanged. A turret has no independent cost, mass, health, death explosion, construction phase, or detached life. A turret emits exactly one of two separate kinds, each in its own blueprint file: a <code>shot</code> (a travelling munition that is a body with mass/health/death-explosion, in <code>shots.json</code>) or a <code>ray</code> (a sustained line emission &mdash; <code>beam</code> or <code>laser</code> variants &mdash; no body, in <code>rays.json</code>). Only the shot is a body; rays are emitter-bound emissions with no mass, health, or id of their own.</li>
         <li>Give every physical body the same base ledger before its kind-specific fields: a universal <code>EntityId</code>, a <code>{ metal, energy }</code> cost, a mass, a health pool, and a <code>{ radius, force, damage }</code> death explosion. These are a floor that unit, tower, building, and shot bodies all meet. A turret is still an addressable entity for lock-on and provenance, but its resources and lifetime belong to the host. A unit&rsquo;s locomotion is the same kind of intrinsic host behavior: part of the body, sharing the unit&rsquo;s id, cost, and health.</li>
         <li>Make every body death an explosion. When a unit, tower, building, or shot&rsquo;s health hits zero it detonates its death blast, applying outward force (heavier bodies resist more) and damage to everything in its radius, friend or foe. A shot&rsquo;s detonation is the smallest case; a host death ends its mounted turrets as part of the same assembly, without separate turret health checks, detached turret pieces, or turret death explosions.</li>
         <li>Name body geometry by physical role, not by ad-hoc size: every physical body carries three radii &mdash; <code>radiusVisual</code> (drawn size), <code>radiusHitbox</code> (the damage-receiving hurtbox), and <code>radiusCollision</code> (body-vs-body no-overlap contact) &mdash; with the same three names meaning the same things on units, towers, buildings, and shots. A mounted turret may expose an addressable aim/selection volume for lock-on and line targeting, but that volume is a mount target on the host rather than an independent body. Keep the death explosion&rsquo;s own radius separate from this trio, and keep the word &ldquo;push&rdquo; reserved for a future sustained push-field capability rather than this hard-contact radius.</li>
         <li>Keep agency and command distinct: host bodies are agents with their own health and death, but the player commands only the three host kinds (units, towers, buildings). A unit moves itself and controls its turrets; a tower controls its turrets; a turret manages aiming and firing while its host exists and is either host-directed or fully-autonomous; a fired shot runs itself. Control runs down that chain, never past a host to puppet a part directly. Turrets remain mounted on their host for their entire life.</li>
         <li>Do not let turrets live, die, detach, or build separately from their host. A turret has no independent cost, mass, health, or death explosion; killing the host kills the whole mounted assembly. A unit&rsquo;s locomotion likewise has no health of its own &mdash; it is part of the body, so the only way to stop a unit moving is to kill it. Construction creates the host assembly as one product with its authored turret set, not body first and turrets later.</li>
-        <li>Make shots destructible bodies: every shot carries a tiny health pool and detonates the instant it reaches zero, running its normal explosion/splash/submunition path. Contact with the ground, another shot, or any solid body forces that health to zero on the spot; a shield is the only thing a shot touches that reflects it instead of killing it. A shot is only entity-contact-active after its hitbox clears the originating host and turret collision bodies, but once armed it collides with everything, including its own source if reflected back. Small-but-real shot health is what lets a point-defense turret shoot incoming munitions out of the air.</li>
-        <li>Give every addressable live instance &mdash; unit, tower, building, mounted turret, travelling munition, and build site &mdash; a universal runtime <code>EntityId</code> plus the host ids it belongs to: top-level hosts point <code>root_host_id</code> at themselves, mounted turrets store <code>parent_id</code>, <code>root_host_id</code>, and mount index. A unit&rsquo;s locomotion is not on that list &mdash; it is part of the unit body, not a separately addressable instance. Assign ids by addressability, not independent bodyhood: a mounted turret can be locked onto and can attribute emissions without carrying its own health; a ray or shield sustained by a live turret attributes through its emitter instead of minting its own id; and a build site is the product carrying its final id from frame one rather than a shell that hands off later. Resolve that opaque ID through explicit metadata for kind, blueprint, owner player, team, parent, root host, mount index, storage row, generation, liveness, and targetability. Do not encode mutable meaning into the numeric ID itself. Shots carry immutable source provenance (<code>source_turret_id</code>, <code>source_host_id</code>, player/team, blueprint IDs, spawn tick, and parent shot) so projectiles, submunitions, damage attribution, replays, and debug traces all agree on where they came from.</li>
+        <li>Make shots destructible bodies: every shot carries a tiny health pool and detonates the instant it reaches zero, running its normal explosion/splash/submunition path. Contact with the ground, another shot, or any solid body forces that health to zero on the spot. A shot is only entity-contact-active after its hitbox clears the originating host and turret collision bodies, but once armed it collides with everything, including the turret or host that fired it. Small-but-real shot health is what lets a point-defense turret shoot incoming munitions out of the air.</li>
+        <li>Give every addressable live instance &mdash; unit, tower, building, mounted turret, travelling munition, and build site &mdash; a universal runtime <code>EntityId</code> plus the host ids it belongs to: top-level hosts point <code>root_host_id</code> at themselves, mounted turrets store <code>parent_id</code>, <code>root_host_id</code>, and mount index. A unit&rsquo;s locomotion is not on that list &mdash; it is part of the unit body, not a separately addressable instance. Assign ids by addressability, not independent bodyhood: a mounted turret can be locked onto and can attribute emissions without carrying its own health; a ray sustained by a live turret attributes through its emitter instead of minting its own id; and a build site is the product carrying its final id from frame one rather than a shell that hands off later. Resolve that opaque ID through explicit metadata for kind, blueprint, owner player, team, parent, root host, mount index, storage row, generation, liveness, and targetability. Do not encode mutable meaning into the numeric ID itself. Shots carry immutable source provenance (<code>source_turret_id</code>, <code>source_host_id</code>, player/team, blueprint IDs, spawn tick, and parent shot) so projectiles, submunitions, damage attribution, replays, and debug traces all agree on where they came from.</li>
         <li>Keep host command targets separate from turret lock-on targets. A unit or tower may carry player intent such as attack, guard, repair, or assist, and may lock onto an entity that has an ID &mdash; of any kind, including a single mounted turret or a travelling shot &mdash; but only the kinds and relationships its own host-level lock-on inclusion object admits; each mounted turret may then inherit that target only if its own inclusion object and targeting gates accept it. Turrets, units, and towers all carry the same additive lock-on inclusion object; buildings carry none, and no host target, because they mount no turrets.</li>
         <li>Tag every turret mount as <code>host-directed</code> (inherits the host lock-on) or <code>fully-autonomous</code> on the unit or tower blueprint &mdash; not on the turret blueprint, so the same turret can be host-directed on one host and fully-autonomous on another. Zero, one, or many mounts can be host-directed; the blueprint loader throws only when the boolean choice is missing. When the host is locked on to another entity, each host-directed turret&rsquo;s lock-on is overwritten by the host&rsquo;s, subject to that turret&rsquo;s inclusion object; fully-autonomous turrets are never overwritten and run their own independent targeting flow. Host-directed turrets fall back to autonomous targeting when the host has no lock. Fight-move and patrol halt logic is a separate unit-mount flag, <code>requiredEngagedForFightStop</code>; every marked non-visual turret must be engaged before the unit halts.</li>
         <li>Make the selection action panel uniform per entity type. Units expose movement, fire control, build, commander specials, and self-destruct. Towers expose set-lock-on (any entity with an ID), fire control, fabricator production (when applicable), and self-destruct. Buildings expose ON/OFF and self-destruct. Mixed selections degrade to the intersection. Adding a new button to only some blueprints inside an existing type is not allowed.</li>
         <li>Keep sight, radar, and detection as sensor capability sources aggregated per player/team. Full sight identifies and also supplies radar-level location, radar-only coverage locates, detectors uncloak, and weapon fire consumes those tiers through explicit turret targeting requirements. Weapon range must not automatically create full vision.</li>
         <li>Keep lock-on acquisition in turret blueprints and targeting kernels, and author lock-on eligibility as an additive inclusion object carried by turrets, units, and towers alike. Rockets inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; eligibility is <strong>off by default</strong> &mdash; a locker with no inclusions locks onto nothing &mdash; and broadened only by addition: level-0 friend/enemy and entity-family inclusions (<code>units</code>, <code>towers</code>, <code>buildings</code>, <code>turrets</code>, <code>shots</code>), then optional level-1 named blueprint inclusions that narrow an included family. Including only one family is how a turret specializes &mdash; point-defense includes only <code>shots</code>, a disarmer includes only <code>turrets</code>. There is no <code>locomotions</code> family: a unit&rsquo;s movement is part of its body, not a targetable entity.</li>
-        <li>Keep specialist targeting behavior explicit. If a turret needs behavior beyond additive lock-on eligibility, give it a validated secondary lock-on profile and tests. <code>turretShieldPanel</code>&rsquo;s <code>incomingThreatReflector</code> profile is the standing example: enemy turret candidates must be actively locked onto the shield host or shield-panel turret, and the panel aims on the turret/body bisector so reflections return toward the attacker.</li>
-        <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. The <code>turretShieldPanel</code>&rsquo;s flat panels and the <code>turretShieldSphere</code>&rsquo;s sphere are the exact same material &mdash; they differ only in geometry.</li>
+        <li>Keep specialist targeting behavior explicit. If a turret ever needs behavior beyond additive lock-on eligibility, give it a validated secondary lock-on profile and tests rather than a special case buried in the shared targeting kernel.</li>
+        <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. A frozen pond and a cuboid ice block are the exact same material &mdash; they differ only in geometry.</li>
         <li>Route every resource movement &mdash; production, consumption, construction payment, conversion, repair drain, future ammo costs &mdash; through one shared pylon abstraction in both simulation and renderer. One typed channel publishes <code>(resource, amount, direction, source, optional target)</code>; one rig renders the flow as resource balls travelling through a conduit, their density showing magnitude and their travel direction showing inbound or outbound. A pylon is a tube between a <em>root</em> (the pool tap) and a <em>tip</em> (the world); balls down the tube mean gaining, up the tube mean spending, and the tip conserves &mdash; every ball up the tube exits the tip, every ball into the tip goes down the tube, and balls are spawned or sunk only at the root and the world point, never at the tip. Producers source balls at the physical world point (deposit, sun, upwind) and run them down the tube; construction turrets run balls up the tube and out the tip onto the build target; the converter joins its two tips with a taxed arc that recolors energy into metal in flight, the unconverted fraction visibly dispersing. The flowing balls are the sole indicator; standalone usage readouts and any separate magnitude bar are retired. No parallel resource paths in the sim, no special-case &ldquo;production trickle&rdquo; or &ldquo;converter visual&rdquo; in the renderer.</li>
         <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>
         <li>Keep files small. If a file is large, split cohesive behavior into helper functions exported from focused helper files and import them; never duplicate code and never let file size become the reason a behavior is hard to find, test, port, or delete.</li>

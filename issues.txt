@@ -17,6 +17,83 @@ Please always commit and push before and after any code changes we make.
 ================================================================================
 
 --------------------------------------------------------------------------------
+SHIELD DESCOPE (shields/force fields are cut from the game entirely; the
+design doc no longer mentions them. The goal is a browser BAR with our own
+fully-3d touches, and shields were slowing that down. Do these BEFORE the
+Rust migration items below — deleting shields shrinks projectileSystem,
+targeting, and DamageSystem before they get ported. Land each with Delete
+The Old Path in the same change: remove, don't disable. Done means
+`grep -ri shield src/ rts-sim-wasm/ scripts/` comes back empty (~136 files
+reference it today; note rts-sim-wasm/build.rs and scripts/ sit outside
+rts-sim-wasm/src/, so the wider scope matters).)
+--------------------------------------------------------------------------------
+
+[053][DESCOPE] Remove all shield turrets and the shield emission kind from
+blueprints and sim. Delete the five shield turret blueprints in
+src/game/sim/blueprints/turrets.json (turretShieldPanel, turretShieldSphere,
+turretShieldSphereSmall, turretShieldCylinderInfinite,
+turretShieldCylinderInfiniteAimed), their mounts on unitDaddy / unitWidow /
+unitLoris in units.json (decide replacement turrets or drop the slots — no
+unit ships with an empty authored mount), their inclusionLockOnConfig.json
+entries, and the whole shields.json / shieldMaterials.json blueprint families
+plus shields.ts / shieldMaterials.ts loaders. Shrink emissionKind to
+"shot" | "ray" in blueprintSchema.json and regenerate both generated schemas
+(src/types/blueprintSchema.generated.ts,
+rts-sim-wasm/src/generated_blueprint_schema.rs). Remove the shields.json /
+shieldMaterials.json BlueprintObjectTable registrations from
+rts-sim-wasm/build.rs (BLUEPRINT_SHIELDS_JSON, BLUEPRINT_SHIELD_MATERIAL_IDS,
+etc.) or `npm run build:wasm` breaks the moment the JSON files are deleted.
+Delete the shield sim systems (shieldTurret.ts, shieldTargetPriority.ts,
+shieldSoundSystem.ts, reflectorBatch.ts, src/game/sim/shieldPanelCache.ts,
+src/game/sim/shieldPanelRuntime.ts) and every shield branch in
+turretSystem.ts, projectileSystem.ts, ProjectileCollisionHandler.ts,
+lineOfSight.ts, aimSolver.ts, DamageSystem.ts, WorldState.ts,
+WorldUnitFactory.ts, runtimeTurrets.ts, commands.ts, projectileConfigs.ts,
+the AUTHORITY_LEDGER.md shield rows, and the Rust side (combat_targeting.rs,
+entity_meta.rs, snapshot.rs, render_pose.rs). Shot/beam reflection existed
+only for shields (commit eae7f880 "Beams only reflect off shields"), so the
+reflection paths go with them. The incomingThreatReflector
+secondaryLockOnProfiles implementation and the only "require" user of
+lockOnRequiresTargetLockedOntoSelf were shield-only: remove the profile and
+ship every blueprint on "ignore" (the enum and validation stay).
+
+[054][DESCOPE] Remove shield state from the wire, snapshots, and prediction.
+Strip shield fields and audio/visual shield events from the serializers and
+wire packs (stateSerializer*.ts, snapshot*WirePack.ts,
+snapshotRustWireEncoder.ts, snapshotDtoCopy.ts, snapshotClone.ts,
+turretSnapshotFields.ts, ServerSnapshotMetaBuilder.ts,
+ServerSnapshotDirectWirePreencoder.ts), from ClientViewState and the
+prediction channels (ClientPredictionTargets.ts, ClientPredictionStepper.ts,
+ClientUnitPrediction.ts), from commands and types (types/commands.ts +
+commandSanitizer.ts shield toggles, types/combat.ts, types/network.ts,
+types/sim.ts, types/battle.ts, types/audio.ts), and update the wire
+regression checks (snapshotEncoderTest.ts, SnapshotCadenceRegression.ts).
+scripts/probeProjectileWireV2.ts builds probe rows with a shield/mirror
+reflectorKind and the PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND wire flag —
+strip those alongside the wire fields or the probe breaks.
+
+[055][DESCOPE] Remove shield rendering, audio, and UI. Delete
+ShieldRenderer3D.ts, ShieldPanelMesh3D.ts, ShieldPanelMatrixBatch3D.ts,
+ShieldReflectorVisual3D.ts, ShieldPanelPose3D.ts, ShieldImpactRenderer3D.ts,
+and every shield branch in the remaining render3d files (TurretMesh3D.ts,
+UnitMeshBuilder3D.ts, EntityMesh3D.ts, UnitTurretPose3D.ts, Debris3D.ts,
+HealthBar3D.ts, ProjectileRenderer3D.ts, ...). Delete src/shieldConfig.json
+and src/shieldVisualConfig.json and the shield entries in audioConfig.json/.ts,
+colorsConfig.json, battleBarConfig.json/.ts, and config.ts. Remove shield
+settings, toggles, and sounds from GameCanvas.vue, gameCanvasBattleSettings.ts,
+gameCanvasClientSettings.ts, GameCanvasBattleControlBar.vue,
+gameCanvasControlBarModels.ts, gameCanvasSceneUi.ts, SoundTestModal.vue,
+LobbyModal.vue, battlePresets.ts, and the loading/preview screens
+(loadingUnitInfo.ts, loadingUnitPreviewScene.ts). Also clear the shield
+branches in the scene/audio dispatch layer (RtsScene3D.ts and its helpers —
+RtsScene3DSimEventAudio.ts, RtsScene3DVisualEventDispatcher.ts,
+RtsScene3DVisualEventSanitizer.ts, AudioEventScheduler.ts,
+RtsScene3DRendererBootstrap.ts, RtsScene3DRendererLifecycle.ts,
+RtsScene3DRenderPhase.ts), src/game/audio/ (AudioManager.ts, fireSynths.ts,
+continuousSounds.ts), and src/game/math/ (BarrelGeometry.ts,
+CollisionHelpers.ts).
+
+--------------------------------------------------------------------------------
 RUST MIGRATION DEBT (each is a phase-scale project; land each with parity
 proof + Delete The Old Path in the same change)
 --------------------------------------------------------------------------------
