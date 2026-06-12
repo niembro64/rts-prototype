@@ -98,7 +98,7 @@ function resetResult(): DamageResult {
   return _reusableResult;
 }
 
-// Reusable HitInfo array for line/swept damage sorting
+// Reusable HitInfo array for multi-hit swept damage sorting.
 const _reusableHits: HitInfo[] = [];
 
 // Reset module-level reusable buffers between game sessions
@@ -1742,6 +1742,7 @@ export class DamageSystem {
   // Note: Recoil for traveling projectiles is applied at fire time in fireTurrets(), not here
   private applySweptDamage(source: SweptDamageSource): DamageResult {
     const result = resetResult();
+    if (source.maxHits <= 0) return result;
 
     // Calculate knockback direction (along projectile travel)
     const projDx = source.current.x - source.prev.x;
@@ -1749,10 +1750,6 @@ export class DamageSystem {
     const projLen = magnitude(projDx, projDy);
     const knockbackDirX = projLen > 0 ? projDx / projLen : 0;
     const knockbackDirY = projLen > 0 ? projDy / projLen : 0;
-
-    // Collect all hits with their T values
-    _reusableHits.length = 0;
-    const hits = _reusableHits;
 
     // PERFORMANCE: Single line-cell sweep for unit/building body rows.
     // The spatial line query takes a full width and buckets units by
@@ -1920,6 +1917,61 @@ export class DamageSystem {
       sphereInflation,
       aabbInflation,
     );
+
+    const sourceVelocity = source.velocity;
+    const projMass = (source.projectileMass ?? 0) * PROJECTILE_MASS_MULTIPLIER;
+    const projSpeed = sourceVelocity === undefined
+      ? 0
+      : magnitude(sourceVelocity.x, sourceVelocity.y);
+    const force = projMass * projSpeed;
+    const forceX = knockbackDirX * force;
+    const forceY = knockbackDirY * force;
+    const attackerVelX = sourceVelocity === undefined
+      ? knockbackDirX * source.damage
+      : sourceVelocity.x;
+    const attackerVelY = sourceVelocity === undefined
+      ? knockbackDirY * source.damage
+      : sourceVelocity.y;
+
+    if (source.maxHits === 1) {
+      let bestRow = -1;
+      let bestT = Infinity;
+      let bestEntity: Entity | undefined;
+      for (let row = 0; row < segmentRowCount; row++) {
+        if ((_segmentDamageOutFlags[row] & DAMAGE_SEGMENT_HIT_FLAG_HIT) === 0) continue;
+        const t = _segmentDamageOutT[row];
+        if (t >= bestT) continue;
+        const entityId = _segmentDamageEntityIds[row];
+        const hostEntityId = _segmentDamageHostEntityIds[row];
+        const entity = this.world.getEntity(hostEntityId !== entityId ? hostEntityId : entityId);
+        if (!entity) continue;
+        bestRow = row;
+        bestT = t;
+        bestEntity = entity;
+      }
+
+      if (bestRow >= 0 && bestEntity !== undefined) {
+        this.applySweptDamageHit(
+          source,
+          result,
+          bestEntity,
+          bestT,
+          _segmentDamageIsUnit[bestRow] !== 0,
+          knockbackDirX,
+          knockbackDirY,
+          projMass,
+          forceX,
+          forceY,
+          attackerVelX,
+          attackerVelY,
+        );
+      }
+      this.flushDamageBatch(result, source.sourceEntityId);
+      return result;
+    }
+
+    _reusableHits.length = 0;
+    const hits = _reusableHits;
     for (let row = 0; row < segmentRowCount; row++) {
       if ((_segmentDamageOutFlags[row] & DAMAGE_SEGMENT_HIT_FLAG_HIT) === 0) continue;
       const hit: HitInfo = {
@@ -1946,54 +1998,66 @@ export class DamageSystem {
       const entity = this.world.getEntity(hit.hostEntityId ?? hit.entityId);
       if (!entity) continue;
 
-      // Calculate momentum-based knockback (p = mv)
-      const projMass = (source.projectileMass ?? 0) * PROJECTILE_MASS_MULTIPLIER;
-      const sourceVelocity = source.velocity;
-      const projSpeed = sourceVelocity === undefined
-        ? 0
-        : magnitude(sourceVelocity.x, sourceVelocity.y);
-      const force = projMass * projSpeed;
-      const forceX = knockbackDirX * force;
-      const forceY = knockbackDirY * force;
-
-      // Calculate hit point using T value along projectile path
-      const hitX = source.prev.x + hit.t * (source.current.x - source.prev.x);
-      const hitY = source.prev.y + hit.t * (source.current.y - source.prev.y);
-
-      // Calculate penetration direction: from hit point through unit center
-      const penDirX = entity.transform.x - hitX;
-      const penDirY = entity.transform.y - hitY;
-      const penMag = magnitude(penDirX, penDirY);
-      const penNormX = penMag > 0 ? penDirX / penMag : knockbackDirX;
-      const penNormY = penMag > 0 ? penDirY / penMag : knockbackDirY;
-
-      // Apply damage with death context (attacker velocity = actual projectile velocity)
-      // Use actual projectile velocity if available, otherwise fallback to direction * damage
-      const attackerVelX = sourceVelocity === undefined
-        ? knockbackDirX * source.damage
-        : sourceVelocity.x;
-      const attackerVelY = sourceVelocity === undefined
-        ? knockbackDirY * source.damage
-        : sourceVelocity.y;
-      this.queueDamageToEntityBatch(entity, source.damage, result, source.sourceEntityId, {
-        penetrationDir: { x: penNormX, y: penNormY },
-        attackerVel: { x: attackerVelX, y: attackerVelY },
-        attackMagnitude: source.damage,
-      });
-      if (result.truncationT === null) {
-        result.truncationT = hit.t;
-      }
-      result.hitEntityIds.push(entity.id);
+      this.applySweptDamageHit(
+        source,
+        result,
+        entity,
+        hit.t,
+        hit.isUnit,
+        knockbackDirX,
+        knockbackDirY,
+        projMass,
+        forceX,
+        forceY,
+        attackerVelX,
+        attackerVelY,
+      );
       hitCount++;
-
-      // Add knockback for units (buildings don't get pushed)
-      if (hit.isUnit && projMass > 0) {
-        pushKnockback(result, entity.id, forceX, forceY);
-      }
     }
 
     this.flushDamageBatch(result, source.sourceEntityId);
     return result;
+  }
+
+  private applySweptDamageHit(
+    source: SweptDamageSource,
+    result: DamageResult,
+    entity: Entity,
+    hitT: number,
+    isUnit: boolean,
+    knockbackDirX: number,
+    knockbackDirY: number,
+    projMass: number,
+    forceX: number,
+    forceY: number,
+    attackerVelX: number,
+    attackerVelY: number,
+  ): void {
+    // Calculate hit point using T value along projectile path.
+    const hitX = source.prev.x + hitT * (source.current.x - source.prev.x);
+    const hitY = source.prev.y + hitT * (source.current.y - source.prev.y);
+
+    // Calculate penetration direction: from hit point through unit center.
+    const penDirX = entity.transform.x - hitX;
+    const penDirY = entity.transform.y - hitY;
+    const penMag = magnitude(penDirX, penDirY);
+    const penNormX = penMag > 0 ? penDirX / penMag : knockbackDirX;
+    const penNormY = penMag > 0 ? penDirY / penMag : knockbackDirY;
+
+    this.queueDamageToEntityBatch(entity, source.damage, result, source.sourceEntityId, {
+      penetrationDir: { x: penNormX, y: penNormY },
+      attackerVel: { x: attackerVelX, y: attackerVelY },
+      attackMagnitude: source.damage,
+    });
+    if (result.truncationT === null) {
+      result.truncationT = hitT;
+    }
+    result.hitEntityIds.push(entity.id);
+
+    // Add knockback for units (buildings don't get pushed).
+    if (isUnit && projMass > 0) {
+      pushKnockback(result, entity.id, forceX, forceY);
+    }
   }
 
   // Area damage (splash, wave)
