@@ -675,7 +675,7 @@ export class ProjectileRenderer3D {
         // emit NaN rings.
         tanX = 0; tanY = 0; tanZ = 1;
       }
-      this.setCurveBasis(tanX, tanY, tanZ);
+      this.setCurveBasis(tanX, tanY, tanZ, segment === 0);
 
       const ringRadius = invSpan > 0
         ? radius * (1 - dists[segment] * invSpan)
@@ -698,20 +698,45 @@ export class ProjectileRenderer3D {
     }
   }
 
-  private setCurveBasis(tangentX: number, tangentY: number, tangentZ: number): void {
+  private setCurveBasis(
+    tangentX: number,
+    tangentY: number,
+    tangentZ: number,
+    seed: boolean,
+  ): void {
     this.curveTangent.set(tangentX, tangentZ, tangentY);
     if (this.curveTangent.lengthSq() <= 1e-8) {
       this.curveTangent.set(0, 0, -1);
     } else {
       this.curveTangent.normalize();
     }
-    if (Math.abs(this.curveTangent.y) < 0.92) {
-      this.curveReference.set(0, 1, 0);
-    } else {
-      this.curveReference.set(1, 0, 0);
+    const t = this.curveTangent;
+    if (!seed) {
+      // Parallel-transport the previous ring's frame: project the previous
+      // right vector onto the plane perpendicular to the new tangent. Ring
+      // orientation then varies continuously along the whole curve — there
+      // is no world-axis reference and so no travel direction where the
+      // frame flips and pinches the tube.
+      this.curveRight.addScaledVector(t, -this.curveRight.dot(t));
+      if (this.curveRight.lengthSq() > 1e-6) {
+        this.curveRight.normalize();
+        this.curveUp.crossVectors(t, this.curveRight).normalize();
+        return;
+      }
+      // Adjacent rings bent ~90° (degenerate projection) — reseed below.
     }
-    this.curveRight.crossVectors(this.curveReference, this.curveTangent).normalize();
-    this.curveUp.crossVectors(this.curveTangent, this.curveRight).normalize();
+    // Seed frame: use the world axis least aligned with the tangent so the
+    // cross product is always well-conditioned. The seed only fixes the
+    // arbitrary roll of the circular cross-section; transported rings keep
+    // every subsequent ring aligned with it.
+    const ax = Math.abs(t.x);
+    const ay = Math.abs(t.y);
+    const az = Math.abs(t.z);
+    if (ax <= ay && ax <= az) this.curveReference.set(1, 0, 0);
+    else if (ay <= az) this.curveReference.set(0, 1, 0);
+    else this.curveReference.set(0, 0, 1);
+    this.curveRight.crossVectors(this.curveReference, t).normalize();
+    this.curveUp.crossVectors(t, this.curveRight).normalize();
   }
 
   private flushCurvedConeGeometry(count: number): void {
