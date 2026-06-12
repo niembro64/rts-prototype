@@ -33,7 +33,7 @@ TS->Rust stamping shim for the targeting FSM. Eliminate the per-tick
 stamp/readback by making targeting state, snapshots, rendering, and downstream
 combat consumers read the Rust slabs directly, then delete the shim.
 
-[052][ARCH] src/game/sim/damage/DamageSystem.ts (~2593 lines) still
+[052][ARCH] src/game/sim/damage/DamageSystem.ts (~2355 lines) still
 materializes damage resolution side effects in TS after Rust classification/HP
 batching: knockback vectors, death contexts, killer bookkeeping, and
 damage/death event assembly are still produced from TS entity objects. Move
