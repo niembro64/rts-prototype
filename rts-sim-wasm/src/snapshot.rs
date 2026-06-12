@@ -10181,10 +10181,6 @@ mod lock_on_inclusion_tests {
             0.0,
             0.0,
             0.0,
-            spec.state,
-            spec.target_id,
-            0.0,
-            0.0,
             range * range,
             range * range,
             0.0,
@@ -10197,7 +10193,6 @@ mod lock_on_inclusion_tests {
             0.0,
             0.0,
             -1,
-            0,
             spec.flags,
             spec.dps,
             0.0,
@@ -10215,6 +10210,14 @@ mod lock_on_inclusion_tests {
             spec.shot_mask,
             spec.reciprocal_mode,
         );
+        // set_turret no longer takes the slab-owned FSM tuple; tests
+        // that need a non-fresh starting state write the slab directly,
+        // matching what the old stamp produced (committed = target).
+        let pool = combat_targeting_pool();
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx);
+        pool.turret_state[idx] = spec.state;
+        pool.turret_target_id[idx] = spec.target_id;
+        pool.turret_committed_target_id[idx] = spec.target_id;
     }
 
     pub(crate) fn test_turret_entity_id(parent_id: i32, turret_idx: u32) -> i32 {

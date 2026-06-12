@@ -103,11 +103,6 @@ import {
 
 const _stampPos = { x: 0, y: 0, z: 0 };
 const _stampVel = { x: 0, y: 0, z: 0 };
-let _stampPrevFsmState = new Uint8Array(0);
-let _stampPrevFsmTarget = new Int32Array(0);
-let _stampPrevLosBlockedTicks = new Uint16Array(0);
-let _stampPrevCooldown = new Float64Array(0);
-let _stampPrevBurstCooldown = new Float64Array(0);
 
 function getHostLockOnMasks(entity: Entity): LockOnMasks {
   if (entity.unit !== null) return getUnitHostLockOnMasks(entity.unit.unitBlueprintId);
@@ -200,17 +195,6 @@ function getEntityViewMask(world: WorldState, playerId: number): number {
   _stampViewMaskByPlayer[playerId] = mask;
   _stampViewMaskComputedBits |= playerMaskBit(playerId);
   return mask;
-}
-
-function ensureStampPrevFsmCapacity(count: number): void {
-  if (count <= _stampPrevFsmState.length) return;
-  let next = Math.max(8, _stampPrevFsmState.length);
-  while (next < count) next *= 2;
-  _stampPrevFsmState = new Uint8Array(next);
-  _stampPrevFsmTarget = new Int32Array(next);
-  _stampPrevLosBlockedTicks = new Uint16Array(next);
-  _stampPrevCooldown = new Float64Array(next);
-  _stampPrevBurstCooldown = new Float64Array(next);
 }
 
 function resetCombatTargetingSources(): void {
@@ -537,7 +521,6 @@ type ShieldPoolStampOptions = {
 };
 
 function stampCombatTargetingEntityInto(
-  sim: SimWasm,
   targeting: CombatTargetingApi,
   world: WorldState,
   entity: Entity,
@@ -653,35 +636,11 @@ function stampCombatTargetingEntityInto(
   const scheduledProbeTick = combat !== null ? combat.nextCombatProbeTick : -1;
 
   const turrets = combat !== null ? combat.turrets : null;
-  const views = getCombatTargetingStateViews(sim);
-  const maxTurrets = targeting.maxTurretsPerEntity();
-  // Keep the Rust-owned FSM tuple authoritative across input stamping.
-  // clear() drops liveness/counts but intentionally leaves turret rows
-  // intact, so same-entity slots can seed target/state from the slab.
-  // losBlockedTicks is also slab-owned now (the Rust kernel resets it
-  // on target change inside combat_targeting_set_target_state and
-  // increments it during LOS grace counting), so we preserve the slab
-  // value for same-entity slots and pass 0 for slot reuse.
-  // cooldown / burstCooldown are likewise slab-owned: the scheduled
-  // batch decrements them every tick and the firing pass writes
-  // post-fire values back into the slab via writeTurretCooldownToSlab.
-  // The JS Turret no longer carries a cooldown field — for same-entity
-  // slots we preserve the slab value so the kernel's decrement
-  // survives across ticks, and for slot reuse the slab gets a fresh 0
-  // because a newly-constructed turret is by definition off cooldown.
-  const preservePreviousFsm = views.entityId[slot] === entity.id;
-  if (turrets && preservePreviousFsm) {
-    ensureStampPrevFsmCapacity(turrets.length);
-    const base = slot * maxTurrets;
-    for (let i = 0; i < turrets.length; i++) {
-      const idx = base + i;
-      _stampPrevFsmState[i] = views.state[idx];
-      _stampPrevFsmTarget[i] = views.targetId[idx];
-      _stampPrevLosBlockedTicks[i] = views.losBlockedTicks[idx];
-      _stampPrevCooldown[i] = views.cooldown[idx];
-      _stampPrevBurstCooldown[i] = views.burstCooldown[idx];
-    }
-  }
+  // The slab-owned FSM tuple (state, target, cooldown, burstCooldown,
+  // losBlockedTicks) is no longer an input to setTurret. Rust preserves
+  // it across same-entity restamps (clear() never resets it; kernels
+  // and direct slab writers own its evolution) and seeds fresh-turret
+  // constants on slot reuse, keyed off setEntity's same-entity check.
   targeting.setEntity(
     slot, entity.id, playerId, viewMask,
     pos.x, pos.y, pos.z,
@@ -709,12 +668,6 @@ function stampCombatTargetingEntityInto(
   if (turrets === null) return true;
   for (let i = 0; i < turrets.length; i++) {
     const t = turrets[i];
-    const stateCode = preservePreviousFsm
-      ? _stampPrevFsmState[i]
-      : encodeCombatTargetingTurretState(t.state);
-    const targetId = preservePreviousFsm
-      ? _stampPrevFsmTarget[i]
-      : (t.target === null ? -1 : t.target);
     const ranges = t.ranges;
     const shot = t.config.shot;
     const projectileShot: ProjectileShot | undefined =
@@ -752,15 +705,6 @@ function stampCombatTargetingEntityInto(
       t.worldVelocity.x, t.worldVelocity.y, t.worldVelocity.z,
       t.rotation, t.pitch,
       t.angularVelocity, t.pitchVelocity,
-      stateCode,
-      targetId,
-      // Cooldown / burstCooldown are slab-owned now. On slot reuse
-      // (preservePreviousFsm is false) the slab gets a fresh 0 — the
-      // JS Turret no longer carries a cooldown field, and burst is
-      // populated lazily by the firing pass, so neither has a useful
-      // seed value here.
-      preservePreviousFsm ? _stampPrevCooldown[i] : 0,
-      preservePreviousFsm ? _stampPrevBurstCooldown[i] : 0,
       fireMaxAcq, fireMaxRel,
       fireMinAcq, fireMinRel,
       trackingAcq, trackingRel,
@@ -768,7 +712,6 @@ function stampCombatTargetingEntityInto(
       t.mountOffset2d,
       t.mount.x, t.mount.y, t.mount.z,
       t.worldPosTick,
-      preservePreviousFsm ? _stampPrevLosBlockedTicks[i] : 0,
       encodeTurretConfigFlags(t, ranges),
       t.sustainedDps,
       projectileSpeed,
@@ -811,7 +754,7 @@ export function stampCombatTargetingPool(world: WorldState): void {
 
   const targets = world.getCombatTargetEntities();
   for (const entity of targets) {
-    if (stampCombatTargetingEntityInto(sim, targeting, world, entity)) {
+    if (stampCombatTargetingEntityInto(targeting, world, entity)) {
       queueCombatTargetingSource(entity);
     }
   }

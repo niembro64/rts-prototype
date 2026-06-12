@@ -216,6 +216,14 @@ pub(crate) struct CombatTargetingPool {
     pub(crate) active_entity_slots: Vec<u32>,
     pub(crate) entity_stamp_epoch: Vec<u32>,
     pub(crate) stamp_epoch: u32,
+    // Transient per-stamp flag written by set_entity and consumed by the
+    // set_turret calls that follow it in the same stamping pass: 1 when
+    // the slot still holds the same entity it held last stamp, so the
+    // slab-owned FSM tuple (state, target, committed target, cooldowns,
+    // losBlockedTicks) must be preserved; 0 on slot reuse, which seeds
+    // those columns to the fresh-turret constants instead. This is what
+    // lets the slab own FSM persistence without a JS read-back loop.
+    pub(crate) entity_stamp_same_entity: Vec<u8>,
 
     // Per-turret, indexed by entity_slot * MAX_PER_ENTITY + turret_idx.
     // Runtime EntityIds make the turret addressable; slot/index remain
@@ -392,6 +400,7 @@ impl CombatTargetingPool {
             active_entity_slots: Vec::new(),
             entity_stamp_epoch: Vec::new(),
             stamp_epoch: 1,
+            entity_stamp_same_entity: Vec::new(),
             turret_count_per_entity: Vec::new(),
             turret_entity_id: Vec::new(),
             turret_parent_id: Vec::new(),
@@ -512,6 +521,7 @@ impl CombatTargetingPool {
             self.entity_active_turret_mask.resize(entity_needed, 0);
             self.entity_firing_turret_mask.resize(entity_needed, 0);
             self.entity_stamp_epoch.resize(entity_needed, 0);
+            self.entity_stamp_same_entity.resize(entity_needed, 0);
             self.turret_count_per_entity.resize(entity_needed, 0);
         }
         let turret_needed = entity_needed * (COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
@@ -910,6 +920,9 @@ pub fn combat_targeting_set_entity(
     if old_entity_id >= 0 && old_entity_id != entity_id {
         pool.entity_slot_by_id.remove(&old_entity_id);
     }
+    // Same-entity restamps preserve the slab-owned FSM tuple in the
+    // turret rows that follow; slot reuse re-seeds it (see set_turret).
+    pool.entity_stamp_same_entity[s] = (old_entity_id == entity_id) as u8;
     pool.entity_id[s] = entity_id;
     if entity_id >= 0 {
         pool.entity_slot_by_id.insert(entity_id, entity_slot);
@@ -981,6 +994,14 @@ pub fn combat_targeting_unset_entity(entity_slot: u32) {
 /// mount.y)` broadphase padding.
 /// Ballistic gate config is static per turret blueprint and is stamped
 /// here so targeting kernels do not need per-entity JS config arrays.
+///
+/// The slab-owned FSM tuple — state, target, committed target, cooldown,
+/// burst cooldown, losBlockedTicks — is NOT an input. When the slot still
+/// holds the same entity it held last stamp (per set_entity's reuse flag)
+/// those columns are left exactly as the kernels and direct slab writers
+/// left them; on slot reuse they are seeded to the fresh-turret constants
+/// (idle, no target, zero cooldowns). The committed target re-seeds from
+/// the surviving target each stamp because clear_all drops it.
 #[wasm_bindgen]
 pub fn combat_targeting_set_turret(
     entity_slot: u32,
@@ -1000,10 +1021,6 @@ pub fn combat_targeting_set_turret(
     pitch: f32,
     angular_velocity: f32,
     pitch_velocity: f32,
-    state: u8,
-    target_id: i32,
-    cooldown: f64,
-    burst_cooldown: f64,
     fire_max_acquire_sq: f64,
     fire_max_release_sq: f64,
     fire_min_acquire_sq: f64,
@@ -1016,7 +1033,6 @@ pub fn combat_targeting_set_turret(
     local_mount_y: f64,
     local_mount_z: f64,
     world_pos_tick: i32,
-    los_blocked_ticks: u16,
     config_flags: u16,
     dps: f32,
     projectile_speed: f64,
@@ -1053,15 +1069,23 @@ pub fn combat_targeting_set_turret(
     pool.turret_pitch[global_idx] = pitch;
     pool.turret_angular_velocity[global_idx] = angular_velocity;
     pool.turret_pitch_velocity[global_idx] = pitch_velocity;
-    pool.turret_state[global_idx] = state;
-    pool.turret_target_id[global_idx] = target_id;
-    pool.turret_committed_target_id[global_idx] = target_id;
-    pool.turret_cooldown[global_idx] = if cooldown > 0.0 { cooldown } else { 0.0 };
-    pool.turret_burst_cooldown[global_idx] = if burst_cooldown > 0.0 {
-        burst_cooldown
+    if pool.entity_stamp_same_entity[entity_slot as usize] != 0 {
+        // Same entity in this slot: state, target, cooldowns, and
+        // losBlockedTicks survive untouched (clear_all never resets
+        // them; kernels and direct slab writers own their evolution).
+        // committed_target_id was dropped by clear_all, so re-seed it
+        // from the surviving target for the reciprocal lock-on read.
+        pool.turret_committed_target_id[global_idx] = pool.turret_target_id[global_idx];
     } else {
-        0.0
-    };
+        // Slot reuse: a newly stamped turret starts idle, untargeted,
+        // and off cooldown.
+        pool.turret_state[global_idx] = CT_TURRET_STATE_IDLE;
+        pool.turret_target_id[global_idx] = -1;
+        pool.turret_committed_target_id[global_idx] = -1;
+        pool.turret_cooldown[global_idx] = 0.0;
+        pool.turret_burst_cooldown[global_idx] = 0.0;
+        pool.turret_los_blocked_ticks[global_idx] = 0;
+    }
     pool.turret_fire_max_acquire_sq[global_idx] = fire_max_acquire_sq;
     pool.turret_fire_max_release_sq[global_idx] = fire_max_release_sq;
     pool.turret_fire_min_acquire_sq[global_idx] = fire_min_acquire_sq;
@@ -1074,7 +1098,6 @@ pub fn combat_targeting_set_turret(
     pool.turret_local_mount_y[global_idx] = local_mount_y;
     pool.turret_local_mount_z[global_idx] = local_mount_z;
     pool.turret_world_pos_tick[global_idx] = world_pos_tick;
-    pool.turret_los_blocked_ticks[global_idx] = los_blocked_ticks;
     pool.turret_config_flags[global_idx] = config_flags;
     pool.turret_dps[global_idx] = dps;
     pool.turret_projectile_speed[global_idx] = projectile_speed;
