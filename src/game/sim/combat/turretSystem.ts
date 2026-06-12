@@ -306,7 +306,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
       }
 
       // --- 2) Move both axes toward targets. ---
-      // Continuous beams are authored as instant line damage, so their
+      // Continuous beams trace instant endpoint damage, so their
       // simulation aim snaps to the solved target pose instead of
       // waiting for the visual spring to converge.
       const aimTargetYaw = targetAngle!;

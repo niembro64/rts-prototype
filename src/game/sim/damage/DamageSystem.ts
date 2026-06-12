@@ -7,7 +7,6 @@ import type { BeamReflectorKind, Entity, EntityId, RayType, PlayerId, Turret } f
 import { isProjectileShot, NO_ENTITY_ID } from '../types';
 import type {
   AnyDamageSource,
-  LineDamageSource,
   SweptDamageSource,
   AreaDamageSource,
   DamageResult,
@@ -16,7 +15,6 @@ import type {
   KnockbackInfo,
 } from './types';
 import {
-  BEAM_EXPLOSION_MAGNITUDE,
   KNOCKBACK,
   PROJECTILE_MASS_MULTIPLIER,
 } from '../../../config';
@@ -991,8 +989,6 @@ export class DamageSystem {
   // Main entry point - apply any damage source
   applyDamage(source: AnyDamageSource): DamageResult {
     switch (source.type) {
-      case 'line':
-        return this.applyLineDamage(source);
       case 'swept':
         return this.applySweptDamage(source);
       case 'area':
@@ -1499,240 +1495,6 @@ export class DamageSystem {
     }
 
     return found ? _segHit : null;
-  }
-
-  // Line damage (beams) - sorted by distance, stops at first hit
-  // PERFORMANCE: Uses spatial grid line query for O(k) instead of O(n)
-  // Note: Beam recoil is applied continuously in updateProjectiles(), not here
-  private applyLineDamage(source: LineDamageSource): DamageResult {
-    const result = resetResult();
-
-    // Calculate knockback direction (along the beam)
-    const beamDx = source.end.x - source.start.x;
-    const beamDy = source.end.y - source.start.y;
-    const beamLen = magnitude(beamDx, beamDy);
-    const knockbackDirX = beamLen > 0 ? beamDx / beamLen : 0;
-    const knockbackDirY = beamLen > 0 ? beamDy / beamLen : 0;
-
-    // Beams truncate at the closest hit (the loop below used to collect
-    // all hits, sort by T, then unconditionally break on the first one —
-    // the sort and per-hit allocations were pure waste). Track the
-    // single closest hit instead. PERFORMANCE: spatial grid culls to
-    // near-line entities; we still test each candidate but skip the
-    // array + sort entirely.
-    let bestT = Infinity;
-    let bestEntityId: EntityId = 0;
-    let bestHostEntityId: EntityId = 0;
-    let bestIsUnit = false;
-
-    // PERFORMANCE: Single line-cell sweep for unit/building body rows.
-    const {
-      units: nearbyUnits,
-      buildings: nearbyBuildings,
-      unitSlots: nearbyUnitSlots,
-      buildingSlots: nearbyBuildingSlots,
-    } = spatialGrid.queryEntitySlotsAlongLine(
-        source.start.x, source.start.y, source.start.z,
-        source.end.x, source.end.y, source.end.z, source.width + 100,
-      );
-    const nearbyProjectiles = spatialGrid.queryProjectilesAlongLine(
-      source.start.x, source.start.y, source.start.z,
-      source.end.x, source.end.y, source.end.z, source.width + 100,
-    );
-
-    // Pack line-damage candidates. Unit/building bodies and turret
-    // sub-hitboxes go through the combat-targeting slab; projectile rows
-    // stay on live JS geometry because their post-integration position is
-    // authoritative for this tick.
-    const sphereInflation = source.width / 2;
-    const aabbInflation = 0;
-    let segmentRowCount = 0;
-    for (let unitIndex = 0; unitIndex < nearbyUnits.length; unitIndex++) {
-      const unit = nearbyUnits[unitIndex];
-      if (source.excludeEntities.has(unit.id)) continue;
-      if (source.excludeCommanders && unit.commander) continue;
-      const unitComponent = unit.unit;
-      if (unitComponent === null) continue;
-      const bodyDamageable = unitComponent.hp > 0;
-      if (!bodyDamageable && isConstructionBodyMaterialized(unit)) continue;
-      const unitSlot = nearbyUnitSlots[unitIndex];
-
-      if (bodyDamageable) {
-        const row = segmentRowCount;
-        segmentRowCount = appendSegmentDamageSlabRow(
-          segmentRowCount,
-          unit.id,
-          unit.id,
-          true,
-          false,
-          unitSlot,
-          -1,
-        );
-        if (import.meta.env.DEV) {
-          writeSegmentDamageSphereReference(
-            row,
-            unit.transform.x,
-            unit.transform.y,
-            unit.transform.z,
-            unitComponent.radius.hitbox + sphereInflation,
-          );
-        }
-      }
-
-      const combat = unit.combat;
-      if (combat !== null) {
-        let unitCS: ReturnType<typeof getTransformCosSin> | undefined;
-        let unitGroundZ = 0;
-        if (import.meta.env.DEV) {
-          unitCS = getTransformCosSin(unit.transform);
-          unitGroundZ = getUnitGroundZ(unit);
-        }
-        for (let i = 0; i < combat.turrets.length; i++) {
-          const turret = combat.turrets[i];
-          if (!isTurretDamageable(turret)) continue;
-          const row = segmentRowCount;
-          segmentRowCount = appendSegmentDamageSlabRow(
-            segmentRowCount,
-            turret.id,
-            unit.id,
-            true,
-            false,
-            unitSlot,
-            i,
-          );
-          if (import.meta.env.DEV) {
-            const mount = resolveWeaponWorldMount(
-              unit, turret, i,
-              unitCS!.cos, unitCS!.sin,
-              {
-                currentTick: this.world.getTick(),
-                unitGroundZ,
-                surfaceN: unitComponent.surfaceNormal,
-              },
-              _subEntityPoint,
-            );
-            writeSegmentDamageSphereReference(
-              row,
-              mount.x,
-              mount.y,
-              mount.z,
-              turret.config.radius.hitbox + sphereInflation,
-            );
-          }
-        }
-      }
-
-    }
-
-    for (let buildingIndex = 0; buildingIndex < nearbyBuildings.length; buildingIndex++) {
-      const building = nearbyBuildings[buildingIndex];
-      if (source.excludeEntities.has(building.id)) continue;
-      if (!building.building || building.building.hp <= 0) continue;
-
-      const row = segmentRowCount;
-      segmentRowCount = appendSegmentDamageSlabRow(
-        segmentRowCount,
-        building.id,
-        building.id,
-        false,
-        true,
-        nearbyBuildingSlots[buildingIndex],
-        -1,
-      );
-      if (import.meta.env.DEV) {
-        writeSegmentDamageBoxReference(
-          row,
-          building.transform.x,
-          building.transform.y,
-          building.transform.z,
-          building.building.width / 2 + aabbInflation,
-          building.building.height / 2 + aabbInflation,
-          building.building.depth / 2 + aabbInflation,
-        );
-      }
-    }
-
-    const slabRowCount = segmentRowCount;
-    for (const projectile of nearbyProjectiles) {
-      if (source.excludeEntities.has(projectile.id)) continue;
-      const proj = projectile.projectile;
-      if (
-        proj === null ||
-        proj.projectileType !== 'projectile' ||
-        proj.hp <= 0 ||
-        !isProjectileShot(proj.config.shot)
-      ) {
-        continue;
-      }
-
-      segmentRowCount = appendSegmentDamageSphereRow(
-        segmentRowCount,
-        projectile.id,
-        projectile.id,
-        false,
-        true,
-        projectile.transform.x,
-        projectile.transform.y,
-        projectile.transform.z,
-        proj.config.shotProfile.runtime.radius.collision + sphereInflation,
-      );
-    }
-
-    classifySegmentDamageRowsMixed(
-      slabRowCount,
-      segmentRowCount,
-      source.start.x, source.start.y, source.start.z,
-      source.end.x, source.end.y, source.end.z,
-      sphereInflation,
-      aabbInflation,
-    );
-    for (let row = 0; row < segmentRowCount; row++) {
-      if ((_segmentDamageOutFlags[row] & DAMAGE_SEGMENT_HIT_FLAG_HIT) === 0) continue;
-      const t = _segmentDamageOutT[row];
-      if (t >= bestT) continue;
-      bestT = t;
-      bestEntityId = _segmentDamageEntityIds[row];
-      bestHostEntityId = _segmentDamageHostEntityIds[row];
-      bestIsUnit = _segmentDamageIsUnit[row] !== 0;
-    }
-
-    if (bestT === Infinity) return result;
-
-    const entity = this.world.getEntity(bestHostEntityId || bestEntityId);
-    if (!entity) return result;
-
-    // Momentum-based knockback (mass × velocity × MULTIPLIER) — depends
-    // only on source, hoist out of the (now-unrolled) hit loop.
-    const lineMomentum = (source.projectileMass ?? 0) * PROJECTILE_MASS_MULTIPLIER * (source.velocity ?? 0);
-
-    // Calculate hit point using T value
-    const hitX = source.start.x + bestT * (source.end.x - source.start.x);
-    const hitY = source.start.y + bestT * (source.end.y - source.start.y);
-
-    // Penetration direction: from hit point through unit center
-    const penDirX = entity.transform.x - hitX;
-    const penDirY = entity.transform.y - hitY;
-    const penMag = magnitude(penDirX, penDirY);
-    const penNormX = penMag > 0 ? penDirX / penMag : knockbackDirX;
-    const penNormY = penMag > 0 ? penDirY / penMag : knockbackDirY;
-
-    // Beam damage hits exactly one entity (the truncation target). It rides the
-    // same batched HP write-back as swept/area/death-explosion damage; there is
-    // no separate single-entity apply path.
-    this.queueDamageToEntityBatch(entity, source.damage, result, source.sourceEntityId, {
-      penetrationDir: { x: penNormX, y: penNormY },
-      attackerVel: { x: knockbackDirX * BEAM_EXPLOSION_MAGNITUDE, y: knockbackDirY * BEAM_EXPLOSION_MAGNITUDE },
-      attackMagnitude: source.damage,
-    });
-    this.flushDamageBatch(result, source.sourceEntityId);
-    result.hitEntityIds.push(entity.id);
-    result.truncationT = bestT;
-
-    if (bestIsUnit && lineMomentum > 0) {
-      pushKnockback(result, entity.id, knockbackDirX * lineMomentum, knockbackDirY * lineMomentum);
-    }
-
-    return result;
   }
 
   // Swept damage from prevPos to currentPos. Normal shots pass radius 0 so

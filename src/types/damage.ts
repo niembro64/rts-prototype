@@ -20,19 +20,6 @@ export type DamageSourceBase = {
   excludeCommanders?: boolean;
 };
 
-/** Beam / laser damage: a 3D line segment from `start` → `end`. `width`
- *  is the cylinder radius around that segment — a unit's sphere must
- *  overlap it to take damage. */
-export type LineDamageSource = DamageSourceBase & {
-  type: 'line';
-  start: Vec3;
-  end: Vec3;
-  width: number;
-  maxHits: number;
-  projectileMass?: number;
-  velocity?: number;
-};
-
 /** Projectile swept damage: capsule swept from prev → current with
  *  `radius`. Travels through 3D; `velocity` is the full 3D launch
  *  velocity for momentum-based knockback. */
@@ -60,7 +47,7 @@ export type AreaDamageSource = DamageSourceBase & {
   knockbackForce?: number;
 };
 
-export type AnyDamageSource = LineDamageSource | SweptDamageSource | AreaDamageSource;
+export type AnyDamageSource = SweptDamageSource | AreaDamageSource;
 
 export type KnockbackInfo = {
   entityId: EntityId;

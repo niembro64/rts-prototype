@@ -2,7 +2,6 @@
 
 export type {
   DamageSourceBase,
-  LineDamageSource,
   SweptDamageSource,
   AreaDamageSource,
   AnyDamageSource,
