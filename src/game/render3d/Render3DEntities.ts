@@ -59,7 +59,7 @@ import { applyUnitLiftGroupPose3D, UnitMeshBuilder3D } from './UnitMeshBuilder3D
 import { UnitRenderPoseBatch3D } from './UnitRenderPoseBatch3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 import { refreshLocomotionSupportSurfaces } from './LocomotionTerrainSampler';
-import { getLegsRadiusToggle, getSmokeTrails } from '@/clientBarConfig';
+import { getBeamSnapToTurret, getLegsRadiusToggle, getSmokeTrails } from '@/clientBarConfig';
 import {
   ScopedRenderMeshRetention3D,
   type ScopedRenderMeshRetentionTelemetry,
@@ -391,6 +391,9 @@ export class Render3DEntities {
     // unit + building turret-pose passes read it this frame.
     this.turretBeamAimCache.collectFromBeamProjectiles(
       entityPacket?.beamAimProjectiles ?? EMPTY_PROJECTILES,
+      getBeamSnapToTurret()
+        ? (entityId) => this.clientViewState.getEntity(entityId)
+        : undefined,
     );
     this.updateUnits(entityPacket?.unitRows, entityPacket?.scoped === true);
     this.buildingRenderer.update(

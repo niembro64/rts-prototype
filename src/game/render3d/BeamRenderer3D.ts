@@ -552,26 +552,6 @@ export class BeamRenderer3D {
       const stride = drawReflections ? 1 : lastIdx;
       const openEndedLine = this.isOpenEndedLinePath(proj);
 
-      // Firing direction (normalized, sim coords). Used by the snap-to-
-      // turret offset, the start-point sphere position, and the start-
-      // point torus orientation + offset. Falls back to zero-direction
-      // when the snapshot's first segment is degenerate.
-      const nextPoint = points[1];
-      let beamDirX = nextPoint.x - startPoint.x;
-      let beamDirY = nextPoint.y - startPoint.y;
-      let beamDirZ = nextPoint.z - startPoint.z;
-      const beamDirLen = Math.sqrt(
-        beamDirX * beamDirX + beamDirY * beamDirY + beamDirZ * beamDirZ,
-      );
-      let hasBeamDir = false;
-      if (beamDirLen > 1e-5) {
-        const inv = 1 / beamDirLen;
-        beamDirX *= inv;
-        beamDirY *= inv;
-        beamDirZ *= inv;
-        hasBeamDir = true;
-      }
-
       // Sim's points[0] sits at the turret mount center; snap-to-turret
       // re-anchors to the live mount so the start tracks the turret
       // smoothly between snapshots. Either way, this position is the
@@ -590,6 +570,41 @@ export class BeamRenderer3D {
           baseStartY = mount.y;
           baseStartZ = mount.z;
         }
+      }
+
+      // Firing direction (normalized, sim coords). Use the same snapped
+      // logical start the visible first segment uses; otherwise the beam
+      // cylinder can leave the live turret mount at a different angle from
+      // the fake barrel/orb when prediction moves the mount between
+      // snapshots. Fall back to the raw snapshot direction only if the
+      // snapped segment is degenerate.
+      const nextPoint = points[1];
+      let beamDirX = nextPoint.x - baseStartX;
+      let beamDirY = nextPoint.y - baseStartY;
+      let beamDirZ = nextPoint.z - baseStartZ;
+      let beamDirLen = Math.sqrt(
+        beamDirX * beamDirX + beamDirY * beamDirY + beamDirZ * beamDirZ,
+      );
+      if (
+        beamDirLen <= 1e-5 &&
+        (baseStartX !== startPoint.x ||
+          baseStartY !== startPoint.y ||
+          baseStartZ !== startPoint.z)
+      ) {
+        beamDirX = nextPoint.x - startPoint.x;
+        beamDirY = nextPoint.y - startPoint.y;
+        beamDirZ = nextPoint.z - startPoint.z;
+        beamDirLen = Math.sqrt(
+          beamDirX * beamDirX + beamDirY * beamDirY + beamDirZ * beamDirZ,
+        );
+      }
+      let hasBeamDir = false;
+      if (beamDirLen > 1e-5) {
+        const inv = 1 / beamDirLen;
+        beamDirX *= inv;
+        beamDirY *= inv;
+        beamDirZ *= inv;
+        hasBeamDir = true;
       }
 
       // Visual start = mount-center start pushed forward along the

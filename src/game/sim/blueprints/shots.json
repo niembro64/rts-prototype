@@ -126,7 +126,7 @@
     "mass": 4,
     "health": 6,
     "radius": {
-      "visual": 2,
+      "visual": 3,
       "hitbox": 1.6,
       "collision": 2
     },
@@ -167,7 +167,7 @@
     "mass": 3,
     "health": 4,
     "radius": {
-      "visual": 2,
+      "visual": 1.6,
       "hitbox": 1.6,
       "collision": 2
     },
@@ -208,7 +208,7 @@
     "mass": 3.2,
     "health": 4,
     "radius": {
-      "visual": 3,
+      "visual": 1.6,
       "hitbox": 2,
       "collision": 3
     },

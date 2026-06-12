@@ -127,7 +127,7 @@
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
       "duration": 2300,
-      "durationRandomness": 0.2
+      "durationRandomness": 0.1
     },
     "launchForce": 10000,
     "turretTurnAccel": 200,
@@ -185,7 +185,7 @@
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
       "duration": 6000,
-      "durationRandomness": 0.2
+      "durationRandomness": 0.3
     },
     "launchForce": 50000,
     "turretTurnAccel": 200,
@@ -243,7 +243,7 @@
     "rangeVolume": "turret-range-bottom-unbounded",
     "cooldown": {
       "duration": 3500,
-      "durationRandomness": 0.2
+      "durationRandomness": 0.3
     },
     "launchForce": 3500,
     "turretTurnAccel": 140,
@@ -298,7 +298,7 @@
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
       "duration": 900,
-      "durationRandomness": 0.2
+      "durationRandomness": 0.3
     },
     "launchForce": 100000,
     "turretTurnAccel": 200,
@@ -364,7 +364,7 @@
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
       "duration": 130,
-      "durationRandomness": 0.2
+      "durationRandomness": 0.05
     },
     "launchForce": 8000,
     "turretTurnAccel": 200,
@@ -891,7 +891,7 @@
       "launchForce": 1000,
       "cooldown": {
         "duration": 100,
-        "durationRandomness": 0.2
+        "durationRandomness": 0.05
       },
       "spread": {
         "angle": 2,
@@ -1043,7 +1043,7 @@
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
       "duration": 1500,
-      "durationRandomness": 0.2
+      "durationRandomness": 0.05
     },
     "launchForce": 30000,
     "turretTurnAccel": 180,
@@ -1101,7 +1101,7 @@
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
       "duration": 1700,
-      "durationRandomness": 0.12
+      "durationRandomness": 0.05
     },
     "launchForce": 42000,
     "turretTurnAccel": 90,
@@ -1225,7 +1225,7 @@
     "rangeVolume": "turret-range-sphere",
     "cooldown": {
       "duration": 50,
-      "durationRandomness": 0.2
+      "durationRandomness": 0.05
     },
     "launchForce": 4000,
     "turretTurnAccel": 1200,
@@ -1288,14 +1288,14 @@
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
       "duration": 250,
-      "durationRandomness": 0.2
+      "durationRandomness": 0.05
     },
     "launchForce": 9000,
     "turretTurnAccel": 650,
     "turretDrag": 0,
     "barrel": {
       "type": "simpleMultiBarrel",
-      "barrelCount": 3,
+      "barrelCount": 6,
       "barrelLength": 1.2,
       "orbitRadius": 0.45,
       "spin": {

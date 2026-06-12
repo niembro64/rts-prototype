@@ -529,6 +529,9 @@
               "unitEagle",
               "unitAlbatros"
             ]
+          },
+          "shots": {
+            "only": ["shotRocketLight", "shotMortarMedium", "shotMortarHeavy"]
           }
         }
       }
