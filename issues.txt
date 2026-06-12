@@ -106,12 +106,12 @@ from slab owner columns and emits death rows; (3) typed per-tick event rows
 stateSerializerAudio path (string keys/colors stay in the decoder); (4) flip
 HP authority to the slab with an hp-diff drain for JS mirrors +
 markSnapshotDirty until the ~40 JS hp readers migrate (healing/repair/capture
-writers route through Rust setters in the same step); (5) delete the TS
-resolution remains incl. vestigial DamageResult.recoil (always null) and
-never-populated killedTurretIds; (6) findBeamSegmentHit projectile-row +
-ground live geometry stays the documented post-integration exception until
-049 makes post-integration slab restamps possible — fold in or re-justify
-then.
+writers route through Rust setters in the same step); (5) delete the
+remaining TS resolution helpers (the vestigial recoil field and the dead
+killed-turret plumbing are already gone); (6) findBeamSegmentHit
+projectile-row + ground live geometry stays the documented post-integration
+exception until 049 makes post-integration slab restamps possible — fold in
+or re-justify then.
 ================================================================================
 
 
