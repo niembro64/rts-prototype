@@ -609,7 +609,10 @@
           <code>ray</code> emissions) are <em>not</em> on
           this channel &mdash; their position is event-driven, not continuously
           corrected; see <strong>Ballistic projectiles are
-          event-driven</strong> below.
+          event-driven</strong> below. The carve-out is rocket-like homing
+          shots, whose event-installed correction targets blend on this
+          channel (see <strong>Homing rockets blend between two real
+          trajectories</strong>).
         </li>
         <li>
           <strong>Movement velocity</strong> &mdash; the 3D linear
@@ -623,7 +626,10 @@
           fast that integration realigns with the server's freshest
           velocity. Travelling-projectile velocity
           (<code>proj.velocityX/Y/Z</code>) is event-snapped, not on
-          this channel.
+          this channel &mdash; except rocket-like homing shots, whose
+          correction targets blend their velocity here too (see
+          <strong>Homing rockets blend between two real
+          trajectories</strong>).
         </li>
         <li>
           <strong>Rotation position</strong> &mdash; the orientation of
@@ -683,13 +689,17 @@
       <h3>Ballistic projectiles are event-driven</h3>
       <p>
         Travelling projectiles (the <code>shot</code> kind: plasma, rockets,
-        D-gun waves) are deliberately <em>excluded</em> from the
-        movement-position and movement-velocity EMA channels. Their
-        trajectory between discrete events is fully deterministic from
+        D-gun waves) are deliberately <em>excluded</em> from the continuous
+        per-snapshot correction stream the movement EMA channels exist for.
+        Their trajectory between discrete events is fully deterministic from
         starting conditions plus the universal gravity constant plus
         per-shot thrust (homing, terrain-follow), and the client and
         server run the same kernel against the same inputs. There is
         no continuous server/client divergence for the EMA to correct.
+        (Rocket-like homing shots re-enter the movement channels at their
+        discrete correction events &mdash; see <strong>Homing rockets blend
+        between two real trajectories</strong> below &mdash; but no
+        projectile is continuously corrected per snapshot.)
       </p>
       <p>
         Accordingly, the wire format carries no per-snapshot rolling
@@ -702,7 +712,8 @@
         thrust with no correction loop.
       </p>
       <p>
-        When a <code>velocityUpdate</code> arrives, the client
+        For non-homing shots &mdash; plasma bolts, D-gun waves &mdash; when a
+        <code>velocityUpdate</code> arrives, the client
         <em>snaps</em> <code>entity.transform.x/y/z</code> and
         <code>proj.velocityX/Y/Z</code> directly to the event's
         values and never populates a drift target. EMA-blending toward
@@ -714,6 +725,26 @@
         the discontinuity instantaneous: subsequent dead-reckon stamps
         land on the true post-event trajectory and the tail after a
         course correction is as clean as the tail behind a fresh shot.
+      </p>
+
+      <h3>Homing rockets blend between two real trajectories</h3>
+      <p>
+        Rocket-like homing shots are the one exception to the pure snap, and
+        the exception preserves the rule&rsquo;s reasoning instead of ignoring
+        it. A homing rocket&rsquo;s course corrections arrive frequently
+        enough that hard snaps read as teleporting rather than steering. So a
+        rocket&rsquo;s <code>velocityUpdate</code> installs a correction
+        <em>target</em> instead of overwriting the rendered state, and every
+        frame the client advances <em>both</em> the rendered rocket and that
+        target with the same gravity + homing + terrain-follow kernel,
+        EMA-blending the rendered state toward the target on the movement
+        position and movement velocity channels. Because the target itself
+        dead-reckons under the deterministic kernel, the blend is between two
+        real trajectories &mdash; never a ramp toward a stale step function,
+        which is exactly what the snap rule forbids &mdash; and the target is
+        released once the rendered state settles onto it. Plasma and D-gun
+        shots keep the pure snap: their corrections are rare and
+        discontinuous, which is the case snapping exists for.
       </p>
       <p>
         This generalises: any field whose authoritative evolution
