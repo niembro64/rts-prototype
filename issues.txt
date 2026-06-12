@@ -126,16 +126,16 @@ or re-justify then.
 
 
 
-[07][VERIFY] Online combat freeze fix needs a live two-machine battle test.
-The diagnosed freeze (client 1-slot snapshot decode queue dropping delta
-pairs + keyframe gate; every resync/send-drop forcing a GLOBAL static
-keyframe with terrain whose async compression dropped further snapshots in
-a feedback loop) was fixed by: bounded FIFO decode queue in
-NetworkManager, rate-limited resync requests carrying needsStatic,
-per-listener needsKeyframe/needsStatic recovery marks replacing the global
-staticResyncToken hammer, and dynamic (terrain-free) recovery keyframes.
-Verify in a real online battle that combat stays smooth at combat onset
-and shots/audio render on the client. Known residual (acceptable,
-by-design backpressure): transient audio events inside a genuinely dropped
-snapshot window are lost; projectile spawns recover via keyframe
-resync-spawn synthesis.
+[07][VERIFY] Confirm the online combat freeze is gone on real two-machine
+play. Two independent fixes landed: (1) network recovery rework — bounded
+FIFO snapshot decode queue, rate-limited needsStatic-aware resync
+requests, per-listener dynamic recovery keyframes replacing the global
+static-keyframe hammer; (2) the actual hard-freeze root cause — the Rust
+wire encoder's canEncodeAudioEvents gate dereferenced the direct
+preencoder's placeholder audio array (elements are holes; rows live in
+the registered wire source), so the host's snapshot emit crashed on the
+FIRST combat audio event and never recovered (online only — demo battles
+skip the direct wire path). An automated two-browser online battle
+(local PeerJS server, real WebRTC) now passes: 122s of sustained combat,
+continuous delta stream, 0 resyncs, 0 drops, 46 projectile spawns + 426
+audio events delivered to the client.

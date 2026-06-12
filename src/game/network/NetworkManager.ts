@@ -109,6 +109,30 @@ if (peerUtil === undefined) {
   throw new Error('PeerJS util.defaultConfig is unavailable');
 }
 
+/** Dev/test override for the PeerJS signaling server. Set
+ *  VITE_BA_PEER_HOST (plus optional VITE_BA_PEER_PORT,
+ *  VITE_BA_PEER_PATH, VITE_BA_PEER_SECURE) to point the lobby at a
+ *  self-hosted `peerjs --port N` server instead of the public cloud —
+ *  the cloud throttles repeated connections from one IP, which breaks
+ *  automated two-page testing and local development loops. Unset, the
+ *  default cloud behavior is unchanged. */
+function readPeerServerOverride(): Pick<PeerOptions, 'host' | 'port' | 'path' | 'secure'> | null {
+  const env = import.meta.env as Record<string, string | undefined>;
+  const host = env['VITE_BA_PEER_HOST'];
+  if (typeof host !== 'string' || host === '') return null;
+  const secure = env['VITE_BA_PEER_SECURE'] === '1' || env['VITE_BA_PEER_SECURE'] === 'true';
+  const portRaw = Number(env['VITE_BA_PEER_PORT']);
+  const path = typeof env['VITE_BA_PEER_PATH'] === 'string' && env['VITE_BA_PEER_PATH'] !== ''
+    ? env['VITE_BA_PEER_PATH']
+    : '/';
+  return {
+    host,
+    port: Number.isFinite(portRaw) ? portRaw : (secure ? 443 : 80),
+    path,
+    secure,
+  };
+}
+
 const PEER_OPTIONS: PeerOptions = {
   debug: 0,
   // Keep PeerJS's default TURN fallback. The previous STUN-only
@@ -121,6 +145,7 @@ const PEER_OPTIONS: PeerOptions = {
       { urls: 'stun:stun1.l.google.com:19302' },
     ],
   },
+  ...(readPeerServerOverride() ?? {}),
 };
 
 const SIGNALING_RECONNECT_INITIAL_DELAY_MS = 1000;

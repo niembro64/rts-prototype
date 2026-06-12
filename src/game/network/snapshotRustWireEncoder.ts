@@ -2310,7 +2310,16 @@ function emitTopLevelKey(
         return;
       }
       const events = value as NetworkServerSnapshotSimEvent[];
-      if (!canEncodeAudioEvents(events)) {
+      // The direct preencoder hands over a PLACEHOLDER array (its length
+      // carries the count; its elements are holes) with the real rows in
+      // the registered wire source — already numeric wire codes, so the
+      // DTO-element gate below must not dereference them. Only gate on
+      // DTO fields when no covering wire source exists (the pooled DTO
+      // path), where elements are real objects.
+      const wireSource = getAudioEventWireSource(events);
+      const hasMatchingWireSource =
+        wireSource !== undefined && wireSource.eventRows.count === events.length;
+      if (!hasMatchingWireSource && !canEncodeAudioEvents(events)) {
         rawTopLevelKeys.push(key);
         emitRawKeyValue(api, key, value);
         return;
