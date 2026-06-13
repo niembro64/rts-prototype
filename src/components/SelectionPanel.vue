@@ -1939,8 +1939,25 @@ kbd {
 }
 
 .message-area {
-  order: 99;
-  grid-column: 1 / -1;
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--selection-panel-playable-bottom, 0px) + 96px);
+  z-index: 1002;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 10px;
+  background: #05070a;
+  border: 1px solid var(--selection-panel-border);
+  border-radius: 3px;
+  color: var(--selection-panel-key);
+  font-size: 9px;
+  line-height: 1;
+  pointer-events: none;
+  text-align: center;
+  transform: translateX(-50%);
+  white-space: nowrap;
 }
 
 .details-grid {
@@ -2513,13 +2530,6 @@ kbd {
 
 .produce-btn.bot-btn {
   --btn-color: var(--selection-panel-bot-produce);
-}
-
-.message-area {
-  font-size: 9px;
-  color: var(--selection-panel-key);
-  margin-top: 4px;
-  text-align: center;
 }
 
 </style>

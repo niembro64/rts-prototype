@@ -1735,110 +1735,111 @@ watchEffect(() => {
             @click="handleMinimapInteraction"
             @command="handleMinimapCommandInteraction"
           />
-          <section
-            class="communication-panel"
-            :class="{
-              open: communicationPanelOpen,
-              drawing: communicationMode !== 'none' && communicationMode !== 'chat',
-            }"
-            aria-label="Team communication"
+        </div>
+
+        <section
+          class="communication-panel"
+          :class="{
+            open: communicationPanelOpen,
+            drawing: communicationMode !== 'none' && communicationMode !== 'chat',
+          }"
+          aria-label="Team communication"
+        >
+          <div class="communication-toolbar">
+            <button
+              type="button"
+              class="communication-toggle"
+              :aria-pressed="communicationPanelOpen"
+              title="Chat"
+              @click="setCommunicationMode('chat')"
+            >CHAT</button>
+            <button
+              type="button"
+              :class="{ active: communicationMode === 'draw' }"
+              title="Draw on map"
+              @click="setCommunicationMode(communicationMode === 'draw' ? 'none' : 'draw')"
+            >DRAW</button>
+            <button
+              type="button"
+              :class="{ active: communicationMode === 'label' }"
+              title="Draw label"
+              @click="setCommunicationMode(communicationMode === 'label' ? 'none' : 'label')"
+            >LABEL</button>
+            <button
+              type="button"
+              :class="{ active: communicationMode === 'erase' }"
+              title="Erase drawings"
+              @click="setCommunicationMode(communicationMode === 'erase' ? 'none' : 'erase')"
+            >ERASE</button>
+            <button
+              type="button"
+              title="Erase all drawings"
+              @click="eraseAllCommunicationDrawings"
+            >CLEAR</button>
+          </div>
+
+          <div
+            v-if="communicationPanelOpen"
+            class="communication-body"
           >
-            <div class="communication-toolbar">
-              <button
-                type="button"
-                class="communication-toggle"
-                :aria-pressed="communicationPanelOpen"
-                title="Chat"
-                @click="setCommunicationMode('chat')"
-              >CHAT</button>
-              <button
-                type="button"
-                :class="{ active: communicationMode === 'draw' }"
-                title="Draw on map"
-                @click="setCommunicationMode(communicationMode === 'draw' ? 'none' : 'draw')"
-              >DRAW</button>
-              <button
-                type="button"
-                :class="{ active: communicationMode === 'label' }"
-                title="Draw label"
-                @click="setCommunicationMode(communicationMode === 'label' ? 'none' : 'label')"
-              >LABEL</button>
-              <button
-                type="button"
-                :class="{ active: communicationMode === 'erase' }"
-                title="Erase drawings"
-                @click="setCommunicationMode(communicationMode === 'erase' ? 'none' : 'erase')"
-              >ERASE</button>
-              <button
-                type="button"
-                title="Erase all drawings"
-                @click="eraseAllCommunicationDrawings"
-              >CLEAR</button>
+            <div class="communication-log" aria-live="polite">
+              <div
+                v-for="message in communicationMessages"
+                :key="message.id"
+                class="communication-message"
+              >
+                <span class="communication-time">{{ formatCommunicationTime(message.createdAtMs) }}</span>
+                <span
+                  class="communication-sender"
+                  :style="{ color: getPlayerColor(message.senderPlayerId) }"
+                >{{ communicationSenderName(message.senderPlayerId) }}</span>
+                <span class="communication-text">{{ message.text }}</span>
+              </div>
+            </div>
+
+            <form
+              v-if="communicationMode === 'chat'"
+              class="communication-input-row"
+              @submit.prevent="submitCommunicationChat"
+            >
+              <input
+                ref="chatInputRef"
+                v-model="communicationDraftText"
+                class="communication-input"
+                type="text"
+                maxlength="220"
+                autocomplete="off"
+                aria-label="Chat message"
+                @keydown.stop
+              />
+              <button type="submit">SEND</button>
+            </form>
+
+            <div
+              v-if="communicationMode === 'label'"
+              class="communication-input-row"
+            >
+              <input
+                v-model="communicationLabelText"
+                class="communication-input"
+                type="text"
+                maxlength="48"
+                autocomplete="off"
+                aria-label="Map label"
+                @keydown.stop
+              />
             </div>
 
             <div
-              v-if="communicationPanelOpen"
-              class="communication-body"
-            >
-              <div class="communication-log" aria-live="polite">
-                <div
-                  v-for="message in communicationMessages"
-                  :key="message.id"
-                  class="communication-message"
-                >
-                  <span class="communication-time">{{ formatCommunicationTime(message.createdAtMs) }}</span>
-                  <span
-                    class="communication-sender"
-                    :style="{ color: getPlayerColor(message.senderPlayerId) }"
-                  >{{ communicationSenderName(message.senderPlayerId) }}</span>
-                  <span class="communication-text">{{ message.text }}</span>
-                </div>
-              </div>
-
-              <form
-                v-if="communicationMode === 'chat'"
-                class="communication-input-row"
-                @submit.prevent="submitCommunicationChat"
-              >
-                <input
-                  ref="chatInputRef"
-                  v-model="communicationDraftText"
-                  class="communication-input"
-                  type="text"
-                  maxlength="220"
-                  autocomplete="off"
-                  aria-label="Chat message"
-                  @keydown.stop
-                />
-                <button type="submit">SEND</button>
-              </form>
-
-              <div
-                v-if="communicationMode === 'label'"
-                class="communication-input-row"
-              >
-                <input
-                  v-model="communicationLabelText"
-                  class="communication-input"
-                  type="text"
-                  maxlength="48"
-                  autocomplete="off"
-                  aria-label="Map label"
-                  @keydown.stop
-                />
-              </div>
-
-              <div
-                v-if="communicationMode === 'draw'"
-                class="communication-status"
-              >DRAW {{ pendingDrawStart === null ? '1/2' : '2/2' }}</div>
-              <div
-                v-if="communicationMode === 'erase'"
-                class="communication-status"
-              >ERASE</div>
-            </div>
-          </section>
-        </div>
+              v-if="communicationMode === 'draw'"
+              class="communication-status"
+            >DRAW {{ pendingDrawStart === null ? '1/2' : '2/2' }}</div>
+            <div
+              v-if="communicationMode === 'erase'"
+              class="communication-status"
+            >ERASE</div>
+          </div>
+        </section>
 
         <section
           v-if="mapDetailsVisible"
@@ -2202,9 +2203,7 @@ watchEffect(() => {
   top: 0;
   left: 0;
   z-index: 1000;
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
+  display: block;
   pointer-events: none;
 }
 
@@ -2213,9 +2212,12 @@ watchEffect(() => {
 }
 
 .communication-panel {
+  position: absolute;
+  top: 62px;
+  left: 50%;
+  z-index: 1002;
   width: auto;
-  max-width: 236px;
-  margin-top: 58px;
+  max-width: min(420px, calc(100vw - 560px));
   border: 1px solid #4f6074;
   border-radius: 4px;
   background: #080c12;
@@ -2223,11 +2225,13 @@ watchEffect(() => {
   font: 11px/1.25 system-ui, sans-serif;
   letter-spacing: 0;
   pointer-events: auto;
+  transform: translateX(-50%);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.34);
 }
 
 .communication-panel.open {
-  width: 236px;
+  width: min(420px, calc(100vw - 560px));
+  min-width: 360px;
 }
 
 .communication-panel.drawing {
@@ -2236,6 +2240,7 @@ watchEffect(() => {
 
 .communication-toolbar {
   display: flex;
+  justify-content: center;
   gap: 2px;
   padding: 3px;
 }
@@ -2243,7 +2248,7 @@ watchEffect(() => {
 .communication-toolbar button,
 .communication-input-row button {
   min-width: 0;
-  width: 34px;
+  width: 38px;
   height: 20px;
   padding: 0 2px;
   border: 1px solid #667184;
@@ -2270,13 +2275,13 @@ watchEffect(() => {
 
 .communication-body {
   border-top: 1px solid rgba(120, 140, 165, 0.28);
-  padding: 6px;
+  padding: 7px;
 }
 
 .communication-log {
   display: grid;
   gap: 3px;
-  max-height: 104px;
+  max-height: 136px;
   min-height: 24px;
   overflow-y: auto;
   scrollbar-width: thin;
@@ -2284,8 +2289,8 @@ watchEffect(() => {
 
 .communication-message {
   display: grid;
-  grid-template-columns: 34px 58px minmax(0, 1fr);
-  gap: 5px;
+  grid-template-columns: 38px 72px minmax(0, 1fr);
+  gap: 6px;
   align-items: baseline;
   min-width: 0;
 }
@@ -2471,12 +2476,19 @@ watchEffect(() => {
 
 @media (max-width: 760px) {
   .minimap-stack {
-    display: grid;
-    gap: 4px;
+    display: block;
   }
 
   .communication-panel {
-    width: 236px;
+    top: 296px;
+    left: 0;
+    max-width: min(300px, 100vw);
+    transform: none;
+  }
+
+  .communication-panel.open {
+    width: min(300px, 100vw);
+    min-width: 0;
   }
 
   .map-details-panel {
