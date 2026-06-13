@@ -68,8 +68,6 @@ export type CommandHotkeyId =
   | 'combat.guard'
   | 'combat.reclaim'
   | 'combat.capture'
-  | 'combat.resurrect'
-  | 'combat.resurrectArea'
   | 'combat.loadTransport'
   | 'combat.unloadTransport'
   | 'combat.manualLaunch'
@@ -178,8 +176,6 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'combat.guard',
   'combat.reclaim',
   'combat.capture',
-  'combat.resurrect',
-  'combat.resurrectArea',
   'combat.loadTransport',
   'combat.unloadTransport',
   'combat.manualLaunch',
@@ -271,8 +267,6 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'combat.guard': 'Guard',
   'combat.reclaim': 'Reclaim',
   'combat.capture': 'Capture',
-  'combat.resurrect': 'Resurrect',
-  'combat.resurrectArea': 'Resurrect Area',
   'combat.loadTransport': 'Load Transport',
   'combat.unloadTransport': 'Unload Transport',
   'combat.manualLaunch': 'Manual Launch',
@@ -384,8 +378,6 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'combat.guard': [key('G', 'g', { shift: 'any' })],
     'combat.reclaim': [key('C', 'c', { shift: 'any' })],
     'combat.capture': [key('Alt+E', 'e', { alt: true })],
-    'combat.resurrect': [code('Ctrl+Alt+R', 'KeyR', { ctrl: true, alt: true })],
-    'combat.resurrectArea': [code('Ctrl+Alt+Shift+R', 'KeyR', { ctrl: true, alt: true, shift: true })],
     'combat.loadTransport': [code('Ctrl+Alt+Q', 'KeyQ', { ctrl: true, alt: true })],
     'combat.unloadTransport': [code('Ctrl+Alt+Shift+Q', 'KeyQ', { ctrl: true, alt: true, shift: true })],
     'combat.manualLaunch': [code('Alt+D', 'KeyD', { alt: true, shift: 'any' })],
@@ -487,8 +479,6 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'combat.guard': [code('O', 'KeyO', { shift: 'any' })],
     'combat.reclaim': [code('E', 'KeyE', { shift: 'any' })],
     'combat.capture': [code('C', 'KeyC', { shift: 'any' })],
-    'combat.resurrect': [code('Ctrl+Alt+R', 'KeyR', { ctrl: true, alt: true })],
-    'combat.resurrectArea': [code('Ctrl+Alt+Shift+R', 'KeyR', { ctrl: true, alt: true, shift: true })],
     'combat.loadTransport': [code('J', 'KeyJ', { shift: 'any' })],
     'combat.unloadTransport': [code('U', 'KeyU', { shift: 'any' })],
     'combat.manualLaunch': [code('Alt+D', 'KeyD', { alt: true, shift: 'any' })],
@@ -578,8 +568,6 @@ export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetI
     'combat.guard': [code('G', 'KeyG', { shift: 'any' })],
     'combat.reclaim': [code('E', 'KeyE', { shift: 'any' })],
     'combat.capture': [code('C', 'KeyC', { shift: 'any' })],
-    'combat.resurrect': [code('Ctrl+Alt+R', 'KeyR', { ctrl: true, alt: true })],
-    'combat.resurrectArea': [code('Ctrl+Alt+Shift+R', 'KeyR', { ctrl: true, alt: true, shift: true })],
     'combat.loadTransport': [code('L', 'KeyL', { shift: 'any' })],
     'combat.unloadTransport': [code('U', 'KeyU', { shift: 'any' })],
     'combat.manualLaunch': [code('Alt+D', 'KeyD', { alt: true, shift: 'any' })],

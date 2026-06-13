@@ -49,6 +49,7 @@ export type LoadingUnitPreviewSceneOptions = {
   kind: LoadingPreviewKind;
   blueprintId: LoadingEntityBlueprintId;
   fullBleed: boolean;
+  preserveDrawingBuffer?: boolean;
 };
 
 export type LoadingUnitPreviewSceneSize = {
@@ -250,6 +251,7 @@ export class LoadingUnitPreviewScene {
       alpha: true,
       antialias: true,
       powerPreference: 'low-power',
+      preserveDrawingBuffer: options.preserveDrawingBuffer === true,
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     // Match ThreeApp's color pipeline so the preview grades identically to

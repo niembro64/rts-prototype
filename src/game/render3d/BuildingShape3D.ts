@@ -212,8 +212,6 @@ export function buildBuildingShape(
       return buildAntiAirTowerMesh(primaryMat);
     case 'buildingResourceConverter':
       return buildResourceConverterMesh(width, depth, primaryMat);
-    case 'buildingWreck':
-      return buildWreckMesh(width, depth, primaryMat);
     case 'unknown':
       return buildUnknown(primaryMat);
     case 'bodyless':
@@ -237,36 +235,6 @@ function buildBodyless(primaryMat: THREE.Material): BuildingShape {
   const primary = new THREE.Mesh(boxGeom, primaryMat);
   primary.visible = false;
   return { primary, details: [], height: 0, bodyless: true };
-}
-
-function buildWreckMesh(
-  width: number,
-  depth: number,
-  primaryMat: THREE.Material,
-): BuildingShape {
-  const height = Math.max(10, Math.min(width, depth) * 0.28);
-  const primary = new THREE.Mesh(boxGeom, primaryMat);
-  const details: BuildingShape['details'] = [];
-  details.push(detail(
-    makeBox(radarDarkMat, width * 0.72, height * 0.34, depth * 0.54, -width * 0.04, height * 0.18, 0),
-    'low',
-  ));
-  details.push(detail(
-    makeBox(radarFrameMat, width * 0.42, height * 0.18, depth * 0.18, width * 0.22, height * 0.43, depth * 0.16),
-    'low',
-  ));
-  details.push(detail(
-    makeBox(radarFrameMat, width * 0.36, height * 0.15, depth * 0.24, -width * 0.28, height * 0.38, -depth * 0.14),
-    'low',
-  ));
-  details.push(detail(
-    makeCylinder(radarDarkMat, Math.max(4, Math.min(width, depth) * 0.11), height * 0.16, 0, height * 0.5, 0, hexCylinderGeom),
-    'low',
-  ));
-  details[1].mesh.rotation.y = 0.38;
-  details[2].mesh.rotation.y = -0.52;
-  details[3].mesh.rotation.z = Math.PI / 2;
-  return { primary, details, height };
 }
 
 function buildRadarMesh(

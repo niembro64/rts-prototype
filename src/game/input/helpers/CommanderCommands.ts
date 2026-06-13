@@ -4,7 +4,7 @@
 // Keeping these renderer-agnostic (no dispatch channel, no event
 // object) — callers enqueue the returned command themselves.
 
-import type { BuildingBlueprintId, Entity, WaypointType } from '../../sim/types';
+import type { Entity, WaypointType } from '../../sim/types';
 import type {
   CaptureCommand,
   LoadTransportCommand,
@@ -27,8 +27,6 @@ import { isGuardableFriendlyTarget } from './GuardTargetHelper';
 import { isCapturableTarget } from '../../sim/capture';
 import { isReclaimableTarget } from '../../sim/reclaim';
 import { canLoadTransport, isClientTransportUnit } from '../../sim/transports';
-
-const WRECK_BUILDING_BLUEPRINT_ID: BuildingBlueprintId = 'buildingWreck';
 
 /** Build a RepairCommand if the commander (if any) is right-clicking
  *  on a repairable target — an incomplete friendly building or a
@@ -171,7 +169,7 @@ export function buildCaptureCommandForTarget(
 
 export function isClientResurrectableWreck(target: Entity | null | undefined): target is Entity {
   if (target === null || target === undefined || target.building === null) return false;
-  return target.buildingBlueprintId === WRECK_BUILDING_BLUEPRINT_ID && target.building.hp > 0;
+  return target.wreck !== null && target.building.hp > 0;
 }
 
 export function buildResurrectCommandForTarget(

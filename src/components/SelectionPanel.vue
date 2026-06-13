@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { COLORS, WAYPOINT_COLOR_CSS } from '@/colorsConfig';
 import type { WaypointType } from '../game/sim/types';
 import {
@@ -13,6 +13,15 @@ import {
 } from '../game/input/commandHotkeys';
 import { buildStructureMenuLayout } from '../game/input/buildMenuLayout';
 import {
+  getCachedEntityThumbnail,
+  requestEntityThumbnail,
+  subscribeEntityThumbnailCache,
+} from './entityPreviewThumbnails';
+import type {
+  LoadingEntityBlueprintId,
+  LoadingPreviewKind,
+} from './loadingUnitPreview3d';
+import {
   FACTORY_PRODUCTION_PRESET_COUNT,
   FACTORY_PRODUCTION_PRESET_STORAGE_KEY,
   FACTORY_PRODUCTION_PRESETS_CHANGED_EVENT,
@@ -21,6 +30,8 @@ import {
   setFactoryProductionPresetSlot,
 } from '../game/input/factoryProductionPresets';
 import { queueModeFromEvent } from '../game/input/queueModifiers';
+import { isTowerBuildingBlueprintId } from '@/types/buildingTypes';
+import type { StructureBlueprintId } from '@/types/blueprintIds';
 
 export type { FactorySelectionItem, SelectionInfo, SelectionActions } from '@/types/ui';
 import type {
@@ -203,8 +214,6 @@ const showCancelHint = computed(() =>
   || props.selection.isGuardMode
   || props.selection.isReclaimMode
   || props.selection.isCaptureMode
-  || props.selection.isResurrectMode
-  || props.selection.isResurrectAreaMode
   || props.selection.isLoadTransportMode
   || props.selection.isUnloadTransportMode
   || props.selection.isManualLaunchMode
@@ -347,6 +356,8 @@ const unitOptions = unitRosterDisplay;
 
 const vehicleOptions = unitOptions.filter((unit) => unit.locomotion !== 'legs');
 const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
+const thumbnailRevision = ref(0);
+let unsubscribeEntityThumbnails: (() => void) | null = null;
 
 const FACTORY_PRESET_LOAD_COMMAND_IDS = [
   'factoryPreset.load1',
@@ -375,13 +386,67 @@ onMounted(() => {
   if (typeof window === 'undefined') return;
   window.addEventListener(FACTORY_PRODUCTION_PRESETS_CHANGED_EVENT, refreshFactoryPresetSlots);
   window.addEventListener('storage', onFactoryPresetStorageChanged);
+  unsubscribeEntityThumbnails = subscribeEntityThumbnailCache(() => {
+    thumbnailRevision.value++;
+  });
+  thumbnailRevision.value++;
+  prefetchBuildButtonThumbnails();
 });
 
 onUnmounted(() => {
   if (typeof window === 'undefined') return;
   window.removeEventListener(FACTORY_PRODUCTION_PRESETS_CHANGED_EVENT, refreshFactoryPresetSlots);
   window.removeEventListener('storage', onFactoryPresetStorageChanged);
+  unsubscribeEntityThumbnails?.();
+  unsubscribeEntityThumbnails = null;
 });
+
+function structurePreviewKind(buildingBlueprintId: StructureBlueprintId): LoadingPreviewKind {
+  return isTowerBuildingBlueprintId(buildingBlueprintId) ? 'tower' : 'building';
+}
+
+function entityThumbnailSrc(
+  kind: LoadingPreviewKind,
+  blueprintId: LoadingEntityBlueprintId,
+): string | null {
+  thumbnailRevision.value;
+  return getCachedEntityThumbnail(kind, blueprintId);
+}
+
+function structureThumbnailSrc(buildingBlueprintId: StructureBlueprintId): string | null {
+  return entityThumbnailSrc(structurePreviewKind(buildingBlueprintId), buildingBlueprintId);
+}
+
+function unitThumbnailSrc(unitBlueprintId: string): string | null {
+  return entityThumbnailSrc('unit', unitBlueprintId as LoadingEntityBlueprintId);
+}
+
+function prefetchBuildButtonThumbnails(): void {
+  if (props.selection.hasBuilder && showUnitActions.value) {
+    for (const option of buildingOptions.value) {
+      const blueprintId = option.buildingBlueprintId as StructureBlueprintId;
+      void requestEntityThumbnail(structurePreviewKind(blueprintId), blueprintId);
+    }
+  }
+
+  if (props.selection.hasFactory && showTowerActions.value) {
+    for (const option of unitOptions) {
+      void requestEntityThumbnail('unit', option.unitBlueprintId as LoadingEntityBlueprintId);
+    }
+  }
+}
+
+watch(
+  () => [
+    props.selection.hasBuilder,
+    showUnitActions.value,
+    buildingOptions.value.map((option) => option.buildingBlueprintId).join('|'),
+    props.selection.hasFactory,
+    showTowerActions.value,
+  ],
+  () => prefetchBuildButtonThumbnails(),
+  { immediate: true },
+);
 
 function factoryPresetLoadCommandId(index: number): CommandHotkeyId {
   return FACTORY_PRESET_LOAD_COMMAND_IDS[index] ?? 'factoryPreset.load1';
@@ -982,11 +1047,20 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
             v-for="bo in group.options"
             :key="bo.buildingBlueprintId"
             type="button"
-            class="action-btn build-btn"
+            class="action-btn build-btn thumbnail-action-btn"
             :class="{ active: selection.isBuildMode && selection.selectedBuildingBlueprintId === bo.buildingBlueprintId }"
             :title="costTitle(`Build ${bo.label}`, bo.cost, bo.key)"
             @click="selection.isBuildMode && selection.selectedBuildingBlueprintId === bo.buildingBlueprintId ? actions.cancelBuild() : actions.startBuild(bo.buildingBlueprintId)"
           >
+            <span class="btn-thumb" aria-hidden="true">
+              <img
+                v-if="structureThumbnailSrc(bo.buildingBlueprintId)"
+                class="btn-thumb-img"
+                :src="structureThumbnailSrc(bo.buildingBlueprintId)!"
+                alt=""
+              >
+              <span v-else class="btn-thumb-fallback">{{ compactBuildingLabel(bo.label) }}</span>
+            </span>
             <span class="btn-label">{{ compactBuildingLabel(bo.label) }}</span>
             <span class="btn-cost"><span class="cost-resource">{{ bo.cost }}</span></span>
             <span class="btn-key">{{ bo.key }}</span>
@@ -1103,30 +1177,6 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
         >
           <span class="btn-label">Capture</span>
           <span class="btn-key">{{ hotkey('combat.capture') }}</span>
-        </button>
-        <button
-          v-if="selection.hasCommander"
-          type="button"
-          class="action-btn"
-          :class="{ active: selection.isResurrectMode }"
-          :style="{ '--btn-color': BUTTON_COLORS.repair }"
-          :title="actionTitle('Resurrect', 'combat.resurrect')"
-          @click="actions.toggleResurrect()"
-        >
-          <span class="btn-label">Resurrect</span>
-          <span class="btn-key">{{ hotkey('combat.resurrect') }}</span>
-        </button>
-        <button
-          v-if="selection.hasCommander"
-          type="button"
-          class="action-btn"
-          :class="{ active: selection.isResurrectAreaMode }"
-          :style="{ '--btn-color': BUTTON_COLORS.repair }"
-          :title="actionTitle('Resurrect area', 'combat.resurrectArea')"
-          @click="actions.toggleResurrectArea()"
-        >
-          <span class="btn-label">Res Area</span>
-          <span class="btn-key">{{ hotkey('combat.resurrectArea') }}</span>
         </button>
         <button
           v-if="selection.hasCommander"
@@ -1292,11 +1342,20 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           v-for="uo in vehicleOptions"
           :key="uo.unitBlueprintId"
           type="button"
-          class="action-btn produce-btn vehicle-btn"
+          class="action-btn produce-btn vehicle-btn thumbnail-action-btn"
           :class="{ active: selectedBuildUnitBlueprintId === uo.unitBlueprintId }"
           :title="costTitle(`Repeat ${uo.label}; Shift-click queue; Shift+Alt queues five`, uo.cost)"
           @click="(event) => queueFactoryUnitFromClick(selection.factoryId!, uo.unitBlueprintId, event)"
         >
+          <span class="btn-thumb" aria-hidden="true">
+            <img
+              v-if="unitThumbnailSrc(uo.unitBlueprintId)"
+              class="btn-thumb-img"
+              :src="unitThumbnailSrc(uo.unitBlueprintId)!"
+              alt=""
+            >
+            <span v-else class="btn-thumb-fallback">{{ uo.shortName }}</span>
+          </span>
           <span class="btn-label">{{ uo.shortName }}</span>
           <span class="btn-cost"><span class="cost-resource">{{ uo.cost }}</span></span>
         </button>
@@ -1311,11 +1370,20 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           v-for="uo in botOptions"
           :key="uo.unitBlueprintId"
           type="button"
-          class="action-btn produce-btn bot-btn"
+          class="action-btn produce-btn bot-btn thumbnail-action-btn"
           :class="{ active: selectedBuildUnitBlueprintId === uo.unitBlueprintId }"
           :title="costTitle(`Repeat ${uo.label}; Shift-click queue; Shift+Alt queues five`, uo.cost)"
           @click="(event) => queueFactoryUnitFromClick(selection.factoryId!, uo.unitBlueprintId, event)"
         >
+          <span class="btn-thumb" aria-hidden="true">
+            <img
+              v-if="unitThumbnailSrc(uo.unitBlueprintId)"
+              class="btn-thumb-img"
+              :src="unitThumbnailSrc(uo.unitBlueprintId)!"
+              alt=""
+            >
+            <span v-else class="btn-thumb-fallback">{{ uo.shortName }}</span>
+          </span>
           <span class="btn-label">{{ uo.shortName }}</span>
           <span class="btn-cost"><span class="cost-resource">{{ uo.cost }}</span></span>
         </button>
@@ -1912,6 +1980,48 @@ kbd {
 
 .build-btn {
   --btn-color: var(--selection-panel-build);
+}
+
+.thumbnail-action-btn {
+  flex-direction: column;
+  gap: 1px;
+  width: 46px;
+  height: 42px;
+  min-width: 46px;
+  padding: 2px 3px 3px;
+}
+
+.btn-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 25px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid color-mix(in srgb, var(--btn-color) 32%, transparent);
+  border-radius: 2px;
+}
+
+.btn-thumb-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.btn-thumb-fallback {
+  color: var(--selection-panel-hint);
+  font-size: 8px;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.thumbnail-action-btn .btn-label {
+  max-width: 40px;
+  font-size: 8px;
+  line-height: 1;
+  text-align: center;
 }
 
 .build-category-group {

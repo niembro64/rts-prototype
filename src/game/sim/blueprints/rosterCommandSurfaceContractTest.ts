@@ -22,7 +22,6 @@ import { UNIT_BLUEPRINTS } from './units';
 
 const NON_PLAYER_BUILDABLE_STRUCTURE_BLUEPRINT_IDS = new Set<StructureBlueprintId>([
   'buildingExtractorT2',
-  'buildingWreck',
 ]);
 
 const REQUIRED_SPECIAL_COMMAND_IDS = [

@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@dimforge/rapier3d-compat": "file:vendor/npm-stubs/rapier3d-compat",
+    "@playwright/test": "^1.60.0",
     "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/cli": "^2.10.1",
     "@types/three": "^0.184.0",

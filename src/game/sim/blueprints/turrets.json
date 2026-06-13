@@ -476,7 +476,7 @@
     "turretBlueprintId": "turretShieldPanel",
     "name": "Shield Panel",
     "range": 300,
-    "rangeVolume": "turret-range-sphere",
+    "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": null,
     "launchForce": 0,
     "turretTurnAccel": 200,

@@ -461,12 +461,6 @@ export class Input3DKeyboardController {
       case 'combat.capture':
         this.config.toggleCaptureMode();
         break;
-      case 'combat.resurrect':
-        this.config.toggleResurrectMode();
-        break;
-      case 'combat.resurrectArea':
-        this.config.toggleResurrectAreaMode();
-        break;
       case 'combat.loadTransport':
         this.config.toggleLoadTransportMode();
         break;

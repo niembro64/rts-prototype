@@ -12,7 +12,7 @@ import { Simulation } from './Simulation';
 import type { Entity } from './types';
 import { setUnitActions, shiftUnitAction } from './unitActions';
 import { WorldState } from './WorldState';
-import { createWreckFromDeadUnit, isResurrectableWreck } from './wrecks';
+import { createWreckFromDeadUnit } from './wrecks';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 
 function assertContract(condition: unknown, message: string): asserts condition {
@@ -414,30 +414,28 @@ export function runCommandExecutionContractTest(): void {
   });
   queueWorld.addEntity(wreckSource);
   const wreck = createWreckFromDeadUnit(queueWorld, wreckSource);
-  assertContract(wreck !== null, 'dead unit should create a resurrectable wreck');
-  queueWorld.removeEntity(wreckSource.id);
+  assertContract(wreck === null, 'dead unit should not create a blueprint-backed wreck');
 
   setUnitActions(commander.unit, []);
   executeCommand(queueCtx, {
     type: 'resurrect',
     tick: 5,
     commanderId: commander.id,
-    targetId: wreck.id,
+    targetId: wreckSource.id,
     queue: false,
   });
-  const resurrectAction = commander.unit.actions[0] as { type: string; targetId?: number } | undefined;
   assertContract(
-    resurrectAction?.type === 'resurrect' &&
-      resurrectAction.targetId === wreck.id,
-    'resurrect command should enqueue a target resurrect action on the commander',
+    commander.unit.actions.length === 0,
+    'resurrect command should not enqueue without a resurrectable wreck target',
   );
+  queueWorld.removeEntity(wreckSource.id);
 
   const secondWreckSource = queueWorld.createUnitFromBlueprint(118, 100, 2, 'unitJackal', {
     allocateSubEntityIds: false,
   });
   queueWorld.addEntity(secondWreckSource);
   const secondWreck = createWreckFromDeadUnit(queueWorld, secondWreckSource);
-  assertContract(secondWreck !== null, 'second dead unit should create a resurrectable wreck');
+  assertContract(secondWreck === null, 'second dead unit should not create a blueprint-backed wreck');
   queueWorld.removeEntity(secondWreckSource.id);
   setUnitActions(commander.unit, []);
   executeCommand(queueCtx, {
@@ -449,10 +447,9 @@ export function runCommandExecutionContractTest(): void {
     radius: 60,
     queue: false,
   });
-  assertActionTargetIds(
-    commander.unit.actions,
-    [wreck.id, secondWreck.id],
-    'resurrect-area command should enqueue resurrectable wrecks by distance',
+  assertContract(
+    commander.unit.actions.length === 0,
+    'resurrect-area command should not enqueue when no resurrectable wrecks exist',
   );
 
   const captureWorld = new WorldState(1, 512, 512);
@@ -484,54 +481,6 @@ export function runCommandExecutionContractTest(): void {
   assertContract(
     capturer.unit.actions.length === 0,
     'completed capture should advance the commander action queue',
-  );
-
-  const resurrectWorld = new WorldState(1, 512, 512);
-  const resurrectQueue = new CommandQueue();
-  const resurrectSim = new Simulation(resurrectWorld, resurrectQueue);
-  const resurrector = resurrectWorld.createUnitFromBlueprint(40, 40, 1, 'unitCommander', {
-    allocateSubEntityIds: false,
-  });
-  const fallen = resurrectWorld.createUnitFromBlueprint(70, 40, 2, 'unitJackal', {
-    allocateSubEntityIds: false,
-  });
-  resurrectWorld.addEntity(resurrector);
-  resurrectWorld.addEntity(fallen);
-  const resurrectable = createWreckFromDeadUnit(resurrectWorld, fallen);
-  assertContract(resurrectable !== null && isResurrectableWreck(resurrectable), 'fallen unit should leave a resurrectable wreck');
-  resurrectWorld.removeEntity(fallen.id);
-  const spawnedByResurrection: Entity[] = [];
-  resurrectSim.onUnitSpawn = (newUnits) => {
-    spawnedByResurrection.push(...newUnits);
-  };
-  assertContract(resurrector.unit !== null, 'resurrection test commander must have a unit component');
-  setUnitActions(resurrector.unit, [
-    {
-      type: 'resurrect',
-      x: resurrectable.transform.x,
-      y: resurrectable.transform.y,
-      z: resurrectable.transform.z,
-      targetId: resurrectable.id,
-    },
-  ]);
-  resurrectSim.update(10000);
-  const restored = resurrectWorld.getUnits().find((entity) =>
-    entity.id !== resurrector.id &&
-    entity.unit?.unitBlueprintId === 'unitJackal' &&
-    entity.ownership?.playerId === 1
-  );
-  assertContract(restored !== undefined, 'resurrection should restore the wreck source unit for the commander owner');
-  assertContract(
-    resurrectWorld.getEntity(resurrectable.id) === undefined,
-    'completed resurrection should remove the wreck entity',
-  );
-  assertContract(
-    spawnedByResurrection.some((entity) => entity.id === restored.id),
-    'completed resurrection should notify the server unit-spawn hook',
-  );
-  assertContract(
-    resurrector.unit.actions.length === 0,
-    'completed resurrection should advance the commander action queue',
   );
 
   const transportWorld = new WorldState(1, 512, 512);

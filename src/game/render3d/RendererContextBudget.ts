@@ -1,5 +1,5 @@
 const AUXILIARY_BUDGET_STANDALONE = 8;
-const AUXILIARY_BUDGET_WITH_MAIN = 2;
+const AUXILIARY_BUDGET_WITH_MAIN = 4;
 
 export type RendererContextClass = 'main' | 'auxiliary';
 
