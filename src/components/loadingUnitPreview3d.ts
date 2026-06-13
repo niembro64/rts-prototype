@@ -1,4 +1,3 @@
-import type { BuildableUnitBlueprintId } from '@/game/sim/blueprints';
 import {
   BUILDABLE_UNIT_BLUEPRINT_IDS,
   getBuildingBlueprint,
@@ -7,14 +6,17 @@ import {
 import {
   BUILDING_BLUEPRINT_IDS,
   TOWER_BLUEPRINT_IDS,
+  type UnitBlueprintId,
   type StructureBlueprintId,
 } from '@/types/blueprintIds';
 import type { LoadingEntityBlueprintId, LoadingPreviewKind } from './loadingUnitPreviewScene';
+import type { LoadingUnitPreviewControls } from './loadingUnitPreviewScene';
 import {
   acquireAuxiliaryRendererContext,
 } from '@/game/render3d/RendererContextBudget';
 
 export type { LoadingEntityBlueprintId, LoadingPreviewKind };
+export type { LoadingUnitPreviewControls };
 
 export type LoadingUnitPreviewSelection = {
   kind: LoadingPreviewKind;
@@ -23,11 +25,13 @@ export type LoadingUnitPreviewSelection = {
 };
 
 export type LoadingUnitPreviewRuntime = {
+  setControls: (controls: Partial<LoadingUnitPreviewControls>) => void;
   destroy: () => void;
 };
 
 export type LoadingUnitPreviewOptions = {
   fullBleed?: boolean;
+  controls?: Partial<LoadingUnitPreviewControls>;
   onReady?: () => void;
 };
 
@@ -39,11 +43,13 @@ type PreviewSize = {
 
 type PreviewDriver = {
   resize: (size: PreviewSize) => void;
+  setControls: (controls: Partial<LoadingUnitPreviewControls>) => void;
   destroy: () => void;
 };
 
 type LoadingPreviewSceneRuntime = {
   resize: (size: PreviewSize) => void;
+  updateControls: (controls: Partial<LoadingUnitPreviewControls>) => void;
   render: (now: number) => void;
   dispose: () => void;
 };
@@ -59,8 +65,10 @@ type WorkerPreviewMessage =
       kind: LoadingPreviewKind;
       blueprintId: LoadingEntityBlueprintId;
       fullBleed: boolean;
+      controls: Partial<LoadingUnitPreviewControls>;
     } & PreviewSize)
   | ({ type: 'resize' } & PreviewSize)
+  | { type: 'controls'; controls: Partial<LoadingUnitPreviewControls> }
   | { type: 'destroy' };
 
 type WorkerPreviewResponse =
@@ -87,7 +95,7 @@ export function pickRandomLoadingEntity(): LoadingUnitPreviewSelection {
 
 function loadingEntityName(kind: LoadingPreviewKind, id: LoadingEntityBlueprintId): string {
   return kind === 'unit'
-    ? getUnitBlueprint(id as BuildableUnitBlueprintId).name
+    ? getUnitBlueprint(id as UnitBlueprintId).name
     : getBuildingBlueprint(id as StructureBlueprintId).name;
 }
 
@@ -116,11 +124,12 @@ export function mountLoadingUnitPreview(
   const hooks: DriverHooks = { onReady: fireReady };
 
   let latestSize = readPreviewSize(host);
-  let driver = createWorkerDriver(canvas, kind, blueprintId, fullBleed, latestSize, hooks);
+  let latestControls: Partial<LoadingUnitPreviewControls> = options.controls ?? {};
+  let driver = createWorkerDriver(canvas, kind, blueprintId, fullBleed, latestSize, latestControls, hooks);
   let fallbackDriverPromise: Promise<PreviewDriver | null> | null = null;
 
   if (!driver) {
-    fallbackDriverPromise = createMainThreadFallbackDriver(canvas, kind, blueprintId, fullBleed, latestSize, hooks);
+    fallbackDriverPromise = createMainThreadFallbackDriver(canvas, kind, blueprintId, fullBleed, latestSize, latestControls, hooks);
     void fallbackDriverPromise.then((resolved) => {
       if (destroyed) {
         resolved?.destroy();
@@ -128,6 +137,7 @@ export function mountLoadingUnitPreview(
       }
       driver = resolved;
       driver?.resize(latestSize);
+      driver?.setControls(latestControls);
     });
   }
 
@@ -141,6 +151,10 @@ export function mountLoadingUnitPreview(
   resize();
 
   return {
+    setControls: (controls) => {
+      latestControls = { ...latestControls, ...controls };
+      driver?.setControls(controls);
+    },
     destroy: () => {
       destroyed = true;
       resizeObserver.disconnect();
@@ -157,6 +171,7 @@ function createWorkerDriver(
   blueprintId: LoadingEntityBlueprintId,
   fullBleed: boolean,
   size: PreviewSize,
+  controls: Partial<LoadingUnitPreviewControls>,
   hooks: DriverHooks,
 ): PreviewDriver | null {
   if (
@@ -229,6 +244,7 @@ function createWorkerDriver(
     kind,
     blueprintId,
     fullBleed,
+    controls,
     ...size,
   };
   try {
@@ -243,6 +259,15 @@ function createWorkerDriver(
     resize: (nextSize) => {
       if (destroyed) return;
       const message: WorkerPreviewMessage = { type: 'resize', ...nextSize };
+      try {
+        worker.postMessage(message);
+      } catch {
+        handleWorkerFailure();
+      }
+    },
+    setControls: (nextControls) => {
+      if (destroyed) return;
+      const message: WorkerPreviewMessage = { type: 'controls', controls: nextControls };
       try {
         worker.postMessage(message);
       } catch {
@@ -269,6 +294,7 @@ async function createMainThreadFallbackDriver(
   blueprintId: LoadingEntityBlueprintId,
   fullBleed: boolean,
   size: PreviewSize,
+  controls: Partial<LoadingUnitPreviewControls>,
   hooks: DriverHooks,
 ): Promise<PreviewDriver | null> {
   const contextToken = acquireAuxiliaryRendererContext('loading-preview-fallback', canvas);
@@ -279,6 +305,7 @@ async function createMainThreadFallbackDriver(
   try {
     const { LoadingUnitPreviewScene } = await import('./loadingUnitPreviewScene');
     scene = new LoadingUnitPreviewScene({ canvas, kind, blueprintId, fullBleed });
+    scene.updateControls(controls);
     scene.resize(size);
   } catch {
     scene?.dispose();
@@ -325,6 +352,14 @@ async function createMainThreadFallbackDriver(
         fail();
       }
     },
+    setControls: (nextControls) => {
+      if (destroyed) return;
+      try {
+        previewScene.updateControls(nextControls);
+      } catch {
+        fail();
+      }
+    },
     destroy: () => {
       if (destroyed) return;
       destroyed = true;
@@ -363,6 +398,7 @@ function createDisabledPreviewDriver(
       }
       clear();
     },
+    setControls: () => {},
     destroy: () => {
       destroyed = true;
       clear();

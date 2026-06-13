@@ -22,8 +22,7 @@ import type {
   TurretConfig,
 } from '@/game/sim/types';
 import { getEmissionBlueprintId, isProjectileShot, isRayConfig, isShieldConfig } from '@/game/sim/types';
-import type { BuildableUnitBlueprintId } from '@/game/sim/blueprints';
-import type { StructureBlueprintId } from '@/types/blueprintIds';
+import type { StructureBlueprintId, UnitBlueprintId } from '@/types/blueprintIds';
 import type { LoadingEntityBlueprintId, LoadingPreviewKind } from './loadingUnitPreviewScene';
 
 export type LoadingUnitInfoNode = {
@@ -55,11 +54,11 @@ export function buildLoadingEntityInfo(
   blueprintId: LoadingEntityBlueprintId,
 ): LoadingUnitInfo {
   return kind === 'unit'
-    ? buildUnitInfo(blueprintId as BuildableUnitBlueprintId)
+    ? buildUnitInfo(blueprintId as UnitBlueprintId)
     : buildBuildingInfo(blueprintId as StructureBlueprintId, kind === 'tower');
 }
 
-function buildUnitInfo(unitBlueprintId: BuildableUnitBlueprintId): LoadingUnitInfo {
+function buildUnitInfo(unitBlueprintId: UnitBlueprintId): LoadingUnitInfo {
   const blueprint = getUnitBlueprint(unitBlueprintId);
   const locomotion = getUnitLocomotion(unitBlueprintId);
   const turrets = createUnitRuntimeTurrets(unitBlueprintId, blueprint.radius.visual);

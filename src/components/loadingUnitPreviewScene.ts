@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import type { BuildableUnitBlueprintId } from '@/game/sim/blueprints';
 import { getBuildingBlueprint, getUnitBlueprint } from '@/game/sim/blueprints';
-import type { StructureBlueprintId } from '@/types/blueprintIds';
+import type { StructureBlueprintId, UnitBlueprintId } from '@/types/blueprintIds';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { UnitBlueprint } from '@/types/blueprints';
 import type { CachedShieldPanel } from '@/types/sim';
@@ -15,10 +14,16 @@ import { buildShieldPanelCache } from '@/game/sim/shieldPanelCache';
 import { applyTurretAimPose3D } from '@/game/render3d/TurretAimPose3D';
 import { getBodyGeom } from '@/game/render3d/BodyShape3D';
 import { buildTurretMesh3D } from '@/game/render3d/TurretMesh3D';
-import { buildTreads } from '@/game/render3d/TreadRig3D';
-import { buildWheels } from '@/game/render3d/WheelRig3D';
-import { buildAlbatrosHoverFans, buildHoverFans } from '@/game/render3d/HoverRig3D';
+import { buildTreads, type TreadMesh } from '@/game/render3d/TreadRig3D';
+import { buildWheels, type WheelMesh } from '@/game/render3d/WheelRig3D';
+import {
+  buildAlbatrosHoverFans,
+  buildHoverFans,
+  setHoverFanAnimationTime,
+  type HoverMesh,
+} from '@/game/render3d/HoverRig3D';
 import { buildFlyingRig } from '@/game/render3d/FlyingRig3D';
+import type { FlyingMesh } from '@/game/render3d/FlyingRig3D';
 import { buildAlbatrosChassis } from '@/game/render3d/AlbatrosMesh3D';
 import { buildShieldPanelMesh3D } from '@/game/render3d/ShieldPanelMesh3D';
 import { kneeFromIK } from '@/game/render3d/LocomotionRigShared3D';
@@ -37,7 +42,7 @@ type PreviewCanvas = HTMLCanvasElement | OffscreenCanvas;
  *  buildings render through the same building-shape path; the distinction
  *  only matters for the stats panel (towers carry turrets). */
 export type LoadingPreviewKind = 'unit' | 'tower' | 'building';
-export type LoadingEntityBlueprintId = BuildableUnitBlueprintId | StructureBlueprintId;
+export type LoadingEntityBlueprintId = UnitBlueprintId | StructureBlueprintId;
 
 export type LoadingUnitPreviewSceneOptions = {
   canvas: PreviewCanvas;
@@ -50,6 +55,15 @@ export type LoadingUnitPreviewSceneSize = {
   width: number;
   height: number;
   dpr: number;
+};
+
+export type LoadingUnitPreviewControls = {
+  rotate: boolean;
+  rotationSpeed: number;
+  yaw: number;
+  pitch: number;
+  motion: boolean;
+  motionSpeed: number;
 };
 
 const PREVIEW_GFX: GraphicsConfig = {
@@ -95,6 +109,26 @@ const SHELL_ENTITY_ID = 1;
 // it will in-game for the host.
 const HOST_PLAYER_ID: PlayerId = 1;
 const LEG_SEGMENT_COLOR = COLORS.units.locomotion.leg.segment.colorHex;
+const DEFAULT_CONTROLS: LoadingUnitPreviewControls = {
+  rotate: true,
+  rotationSpeed: 1,
+  yaw: 0,
+  pitch: 0,
+  motion: false,
+  motionSpeed: 1,
+};
+
+type PreviewLocomotionRig =
+  | { type: 'wheels'; mesh: WheelMesh }
+  | { type: 'treads'; mesh: TreadMesh }
+  | { type: 'hover'; mesh: HoverMesh }
+  | { type: 'flying'; mesh: FlyingMesh }
+  | { type: 'legs'; group: THREE.Group };
+
+type PreviewModel = {
+  root: THREE.Group;
+  locomotion: PreviewLocomotionRig | null;
+};
 
 // In-game units mix lit team-colored body/turret materials
 // (MeshLambertMaterial, see Render3DEntities) with unlit, team-tinted
@@ -193,11 +227,17 @@ export class LoadingUnitPreviewScene {
   private readonly camera = new THREE.PerspectiveCamera(CAMERA_FOV_DEGREES, 1, 0.1, 10000);
   private readonly materials = createPreviewUnitMaterials(HOST_PLAYER_ID);
   private readonly spinRoot = new THREE.Group();
+  private readonly motionRoot = new THREE.Group();
+  private readonly model: PreviewModel;
   private readonly fullBleed: boolean;
+  private controls: LoadingUnitPreviewControls = { ...DEFAULT_CONTROLS };
   private boundsRadius = 1;
   private fitHalfWidth = 1;
   private fitHalfHeight = 1;
   private startTime = 0;
+  private previousRenderTime = 0;
+  private rotationAngle = 0;
+  private motionPhase = 0;
   private width = DEFAULT_WIDTH;
   private height = DEFAULT_HEIGHT;
   private environmentTexture: THREE.Texture | null = null;
@@ -223,9 +263,10 @@ export class LoadingUnitPreviewScene {
     installPreviewLighting(this.scene);
     this.environmentTexture = installPreviewEnvironment(this.renderer, this.scene);
 
-    const model = buildPreviewModel(options.kind, options.blueprintId, this.materials);
-    this.centerModel(model);
-    this.spinRoot.add(model);
+    this.spinRoot.add(this.motionRoot);
+    this.model = buildPreviewModel(options.kind, options.blueprintId, this.materials);
+    this.centerModel(this.model.root);
+    this.motionRoot.add(this.model.root);
     this.resize({ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT, dpr: 1 });
   }
 
@@ -243,10 +284,43 @@ export class LoadingUnitPreviewScene {
   render(now: number): void {
     if (this.disposed) return;
     if (this.startTime === 0) this.startTime = now;
+    const dtMs = this.previousRenderTime > 0 ? Math.min(80, Math.max(0, now - this.previousRenderTime)) : 16.7;
+    this.previousRenderTime = now;
     const elapsed = now - this.startTime;
-    this.spinRoot.rotation.y = elapsed * SPIN_RAD_PER_MS;
-    this.spinRoot.rotation.x = Math.sin(elapsed * 0.00055) * 0.055;
+    this.updatePreviewMotion(elapsed, dtMs);
     this.renderer.render(this.scene, this.camera);
+  }
+
+  updateControls(controls: Partial<LoadingUnitPreviewControls>): void {
+    this.controls = { ...this.controls, ...controls };
+  }
+
+  private updatePreviewMotion(elapsed: number, dtMs: number): void {
+    const controls = this.controls;
+    if (controls.rotate) {
+      this.rotationAngle += dtMs * SPIN_RAD_PER_MS * controls.rotationSpeed;
+    }
+    const motionScale = controls.motion ? controls.motionSpeed : 0;
+    if (motionScale > 0) {
+      this.motionPhase += (dtMs / 1000) * motionScale;
+    }
+
+    this.spinRoot.rotation.y = controls.yaw + this.rotationAngle;
+    const idlePitch = controls.pitch + Math.sin(elapsed * 0.00055) * 0.055;
+    this.spinRoot.rotation.x = idlePitch;
+
+    const stride = this.motionPhase * Math.PI * 2;
+    if (motionScale > 0) {
+      const bob = Math.sin(stride * 2) * this.boundsRadius * 0.025;
+      const sway = Math.sin(stride) * this.boundsRadius * 0.035;
+      this.motionRoot.position.set(sway, bob, 0);
+      this.motionRoot.rotation.z = Math.sin(stride) * 0.025;
+    } else {
+      this.motionRoot.position.set(0, 0, 0);
+      this.motionRoot.rotation.z = 0;
+    }
+
+    animatePreviewLocomotion(this.model.locomotion, this.motionPhase, motionScale, elapsed / 1000);
   }
 
   dispose(): void {
@@ -297,9 +371,9 @@ function buildPreviewModel(
   kind: LoadingPreviewKind,
   blueprintId: LoadingEntityBlueprintId,
   materials: PreviewUnitMaterials,
-): THREE.Group {
+): PreviewModel {
   return kind === 'unit'
-    ? buildPreviewUnitModel(blueprintId as BuildableUnitBlueprintId, materials)
+    ? buildPreviewUnitModel(blueprintId as UnitBlueprintId, materials)
     : buildPreviewBuildingModel(blueprintId as StructureBlueprintId, materials);
 }
 
@@ -312,7 +386,7 @@ function buildPreviewModel(
 function buildPreviewBuildingModel(
   buildingBlueprintId: StructureBlueprintId,
   materials: PreviewUnitMaterials,
-): THREE.Group {
+): PreviewModel {
   const blueprint = getBuildingBlueprint(buildingBlueprintId);
   const width = blueprint.gridWidth * BUILD_GRID_CELL_SIZE;
   const depth = blueprint.gridHeight * BUILD_GRID_CELL_SIZE;
@@ -329,7 +403,7 @@ function buildPreviewBuildingModel(
   for (const detail of shape.details) root.add(detail.mesh);
 
   buildPreviewBuildingTurrets(root, buildingBlueprintId, materials);
-  return root;
+  return { root, locomotion: null };
 }
 
 function buildPreviewBuildingTurrets(
@@ -358,9 +432,9 @@ function buildPreviewBuildingTurrets(
 }
 
 function buildPreviewUnitModel(
-  unitBlueprintId: BuildableUnitBlueprintId,
+  unitBlueprintId: UnitBlueprintId,
   materials: PreviewUnitMaterials,
-): THREE.Group {
+): PreviewModel {
   const blueprint = getUnitBlueprint(unitBlueprintId);
   const radius = blueprint.radius.visual;
   const chassisLift = getChassisLiftY(blueprint, radius);
@@ -368,7 +442,7 @@ function buildPreviewUnitModel(
   const yawGroup = new THREE.Group();
   root.add(yawGroup);
 
-  buildPreviewLocomotion(yawGroup, blueprint, materials);
+  const locomotion = buildPreviewLocomotion(yawGroup, blueprint, materials);
 
   const liftGroup = new THREE.Group();
   liftGroup.position.y = chassisLift;
@@ -377,7 +451,7 @@ function buildPreviewUnitModel(
   buildPreviewBody(liftGroup, blueprint, materials.primary);
   buildPreviewTurrets(liftGroup, blueprint, unitBlueprintId, chassisLift, materials);
   buildPreviewMirrors(liftGroup, blueprint, chassisLift, materials);
-  return root;
+  return { root, locomotion };
 }
 
 function buildPreviewBody(
@@ -405,7 +479,7 @@ function buildPreviewBody(
 function buildPreviewTurrets(
   liftGroup: THREE.Group,
   blueprint: UnitBlueprint,
-  unitBlueprintId: BuildableUnitBlueprintId,
+  unitBlueprintId: UnitBlueprintId,
   chassisLift: number,
   materials: PreviewUnitMaterials,
 ): void {
@@ -439,52 +513,55 @@ function buildPreviewLocomotion(
   yawGroup: THREE.Group,
   blueprint: UnitBlueprint,
   materials: PreviewUnitMaterials,
-): void {
+): PreviewLocomotionRig | null {
   const locomotion = blueprint.locomotion;
-  if (!locomotion) return;
   const radius = blueprint.radius.visual;
   switch (locomotion.type) {
     case 'treads':
-      buildTreads(yawGroup, radius, locomotion.config, true, HOST_PLAYER_ID);
-      break;
+      return { type: 'treads', mesh: buildTreads(yawGroup, radius, locomotion.config, true, HOST_PLAYER_ID) };
     case 'wheels':
-      buildWheels(yawGroup, radius, locomotion.config, HOST_PLAYER_ID);
-      break;
+      return { type: 'wheels', mesh: buildWheels(yawGroup, radius, locomotion.config, HOST_PLAYER_ID) };
     case 'hover':
       if (blueprint.unitBlueprintId === 'unitAlbatros') {
-        buildAlbatrosHoverFans(
-          yawGroup,
-          radius,
-          locomotion.config,
-          'locomotionAlbatrosHoverFans',
-          SHELL_ENTITY_ID,
-          HOST_PLAYER_ID,
-        );
-      } else {
-        buildHoverFans(
+        return {
+          type: 'hover',
+          mesh: buildAlbatrosHoverFans(
+            yawGroup,
+            radius,
+            locomotion.config,
+            'locomotionAlbatrosHoverFans',
+            SHELL_ENTITY_ID,
+            HOST_PLAYER_ID,
+          ),
+        };
+      }
+      return {
+        type: 'hover',
+        mesh: buildHoverFans(
           yawGroup,
           radius,
           locomotion.config,
           'locomotionHovercraft',
           SHELL_ENTITY_ID,
           HOST_PLAYER_ID,
-        );
-      }
-      break;
+        ),
+      };
     case 'flying':
-      buildFlyingRig(
-        yawGroup,
-        radius,
-        locomotion.config,
-        blueprint.unitBlueprintId === 'unitAlbatros' ? 'locomotionAlbatrosFlying' : 'locomotionEagleFlying',
-        SHELL_ENTITY_ID,
-        HOST_PLAYER_ID,
-      );
-      break;
+      return {
+        type: 'flying',
+        mesh: buildFlyingRig(
+          yawGroup,
+          radius,
+          locomotion.config,
+          blueprint.unitBlueprintId === 'unitAlbatros' ? 'locomotionAlbatrosFlying' : 'locomotionEagleFlying',
+          SHELL_ENTITY_ID,
+          HOST_PLAYER_ID,
+        ),
+      };
     case 'legs':
-      buildPreviewLegs(yawGroup, blueprint, materials.leg);
-      break;
+      return { type: 'legs', group: buildPreviewLegs(yawGroup, blueprint, materials.leg) };
   }
+  return null;
 }
 
 function buildPreviewMirrors(
@@ -522,9 +599,9 @@ function buildPreviewLegs(
   yawGroup: THREE.Group,
   blueprint: UnitBlueprint,
   legMaterial: THREE.Material,
-): void {
+): THREE.Group {
   const locomotion = blueprint.locomotion;
-  if (!locomotion || locomotion.type !== 'legs') return;
+  if (locomotion.type !== 'legs') return new THREE.Group();
   const radius = blueprint.radius.visual;
   const chassisLift = getChassisLiftY(blueprint, radius);
   const { all } = resolveMirroredLegConfigs(locomotion.config, radius);
@@ -538,6 +615,8 @@ function buildPreviewLegs(
   yawGroup.add(group);
 
   for (const leg of all) {
+    const legGroup = new THREE.Group();
+    group.add(legGroup);
     const hipY = blueprint.legAttachHeightFrac !== null
       ? blueprint.legAttachHeightFrac * radius
       : chassisLift + getSegmentMidYAt(blueprint.bodyShape, radius, leg.attachOffsetX);
@@ -557,11 +636,79 @@ function buildPreviewLegs(
       0, 1, 0,
     );
     const kneeVec = new THREE.Vector3(knee.x, knee.y, knee.z);
-    addCylinderBetween(group, hip, kneeVec, upperRadius, legMaterial);
-    addCylinderBetween(group, kneeVec, foot, lowerRadius, legMaterial);
-    addSphere(group, hip, hipJointRadius, legMaterial);
-    addSphere(group, kneeVec, kneeJointRadius, legMaterial);
-    addFootPad(group, foot, footPadRadius, footPadHalfHeight, legMaterial);
+    addCylinderBetween(legGroup, hip, kneeVec, upperRadius, legMaterial);
+    addCylinderBetween(legGroup, kneeVec, foot, lowerRadius, legMaterial);
+    addSphere(legGroup, hip, hipJointRadius, legMaterial);
+    addSphere(legGroup, kneeVec, kneeJointRadius, legMaterial);
+    addFootPad(legGroup, foot, footPadRadius, footPadHalfHeight, legMaterial);
+  }
+  return group;
+}
+
+function animatePreviewLocomotion(
+  rig: PreviewLocomotionRig | null,
+  phase: number,
+  motionScale: number,
+  timeSec: number,
+): void {
+  if (rig === null) return;
+  const stride = phase * Math.PI * 2;
+  const active = motionScale > 0;
+  switch (rig.type) {
+    case 'wheels':
+      animatePreviewWheels(rig.mesh, active ? stride : 0);
+      return;
+    case 'treads':
+      animatePreviewTreads(rig.mesh, active ? stride : 0);
+      return;
+    case 'hover':
+      setHoverFanAnimationTime(active ? timeSec * motionScale : 0);
+      rig.mesh.group.position.y = active ? Math.sin(stride * 2) * 1.4 : 0;
+      return;
+    case 'flying':
+      rig.mesh.group.rotation.z = active ? Math.sin(stride) * 0.08 : 0;
+      rig.mesh.group.rotation.y = active ? Math.sin(stride * 0.7) * 0.035 : 0;
+      return;
+    case 'legs':
+      animatePreviewLegs(rig.group, active ? stride : 0, active);
+      return;
+  }
+}
+
+function animatePreviewWheels(mesh: WheelMesh, stride: number): void {
+  for (let i = 0; i < mesh.wheels.length; i++) {
+    mesh.wheels[i].rotation.y = -stride * 2.4;
+    const group = mesh.wheelGroups[i];
+    if (group !== undefined) group.position.y = mesh.wheelMounts[i].wheelR + Math.sin(stride + i) * 0.45;
+  }
+}
+
+function animatePreviewTreads(mesh: TreadMesh, stride: number): void {
+  for (let i = 0; i < mesh.wheels.length; i++) {
+    mesh.wheels[i].rotation.y = -stride * 2;
+  }
+  for (let i = 0; i < mesh.sides.length; i++) {
+    mesh.sides[i].group.position.y = Math.sin(stride + i * Math.PI) * 0.35;
+  }
+  for (let i = 0; i < mesh.cleats.length; i++) {
+    const cleat = mesh.cleats[i];
+    const userData = cleat.userData as { previewBaseX?: number };
+    if (userData.previewBaseX === undefined) userData.previewBaseX = cleat.position.x;
+    cleat.position.x = userData.previewBaseX + Math.sin(stride * 1.6 + i * 0.35) * 0.75;
+  }
+}
+
+function animatePreviewLegs(group: THREE.Group, stride: number, active: boolean): void {
+  for (let i = 0; i < group.children.length; i++) {
+    const leg = group.children[i];
+    if (!active) {
+      leg.position.y = 0;
+      leg.rotation.z = 0;
+      continue;
+    }
+    const legPhase = stride + i * Math.PI * 0.68;
+    leg.position.y = Math.max(0, Math.sin(legPhase)) * 2.6;
+    leg.rotation.z = Math.sin(legPhase) * 0.08;
   }
 }
 

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import CameraTutorial from './CameraTutorial.vue';
-import SoundTestModal from './SoundTestModal.vue';
 import { persist, readPersisted } from '../persistence';
 import type { BattleMode } from '../battleBarConfig';
 import type { PlayerId } from '../game/sim/types';
@@ -13,7 +12,6 @@ defineProps<{
   spectateMode: boolean;
   uiChromeVisible: boolean;
   mobileBarsVisible: boolean;
-  showSoundTest: boolean;
   gameStarted: boolean;
   currentBattleMode: BattleMode;
   getOrbit: () => OrbitCamera | null;
@@ -25,7 +23,6 @@ defineProps<{
 const emit = defineEmits<{
   toggleSpectateMode: [];
   toggleMobileBars: [];
-  closeSoundTest: [];
   dismissGameOver: [];
   restartGame: [];
 }>();
@@ -64,11 +61,6 @@ function handleCameraTutorialDone(): void {
   >
     ☰
   </button>
-
-  <SoundTestModal
-    :visible="showSoundTest"
-    @close="emit('closeSoundTest')"
-  />
 
   <div
     v-if="gameOverWinner !== null"

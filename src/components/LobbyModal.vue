@@ -52,6 +52,7 @@ const emit = defineEmits<{
   (e: 'join', roomCode: string): void;
   (e: 'start'): void;
   (e: 'cancel'): void;
+  (e: 'entityLab'): void;
   (e: 'spectate'): void;
   (e: 'setCenterMagnitude', value: number): void;
   (e: 'setDividersMagnitude', value: number): void;
@@ -315,6 +316,10 @@ function handleCancel() {
   emit('cancel');
 }
 
+function handleEntityLab() {
+  emit('entityLab');
+}
+
 const canStart = computed(() => {
   return props.isHost && props.players.length >= 1;
 });
@@ -387,7 +392,7 @@ const terrainSectionVars = computed(() =>
         <p class="subtitle">Online Multiplayer RTS</p>
 
         <div class="main-actions">
-          <button class="lobby-btn host-btn" @click="handleHost">Host</button>
+          <button class="lobby-btn host-btn" @click="handleHost">Host Game</button>
 
           <div class="join-row">
             <input
@@ -402,8 +407,13 @@ const terrainSectionVars = computed(() =>
               class="lobby-btn join-btn"
               :disabled="!canJoin"
               @click="handleJoinSubmit"
-            >Join</button>
+            >Join Game</button>
           </div>
+        </div>
+
+        <div class="surface-actions">
+          <button class="secondary-surface-btn" @click="emit('spectate')">Demo Battle</button>
+          <button class="secondary-surface-btn" @click="handleEntityLab">Entity Lab</button>
         </div>
 
         <div v-if="error" class="error-message">{{ error }}</div>
@@ -993,6 +1003,15 @@ const terrainSectionVars = computed(() =>
   margin: 0 auto 8px;
 }
 
+.surface-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  width: 220px;
+  max-width: calc(100vw - 64px);
+  margin: 10px auto 0;
+}
+
 .join-row {
   display: flex;
   align-items: center;
@@ -1040,6 +1059,22 @@ const terrainSectionVars = computed(() =>
 
 .join-btn:hover:not(:disabled) {
   background: #5aafff;
+}
+
+.secondary-surface-btn {
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  color: rgba(170, 180, 192, 0.72);
+  font-family: monospace;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.secondary-surface-btn:hover {
+  color: rgba(220, 230, 238, 0.92);
 }
 
 .start-btn {

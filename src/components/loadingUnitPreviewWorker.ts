@@ -2,6 +2,7 @@ import {
   LoadingUnitPreviewScene,
   type LoadingEntityBlueprintId,
   type LoadingPreviewKind,
+  type LoadingUnitPreviewControls,
   type LoadingUnitPreviewSceneSize,
 } from './loadingUnitPreviewScene';
 
@@ -11,6 +12,7 @@ type InitMessage = {
   kind: LoadingPreviewKind;
   blueprintId: LoadingEntityBlueprintId;
   fullBleed: boolean;
+  controls: Partial<LoadingUnitPreviewControls>;
 } & LoadingUnitPreviewSceneSize;
 
 type ResizeMessage = {
@@ -21,7 +23,12 @@ type DestroyMessage = {
   type: 'destroy';
 };
 
-type PreviewWorkerMessage = InitMessage | ResizeMessage | DestroyMessage;
+type ControlsMessage = {
+  type: 'controls';
+  controls: Partial<LoadingUnitPreviewControls>;
+};
+
+type PreviewWorkerMessage = InitMessage | ResizeMessage | ControlsMessage | DestroyMessage;
 
 type DestroyedMessage = {
   type: 'destroyed';
@@ -56,6 +63,7 @@ self.onmessage = (event: MessageEvent<PreviewWorkerMessage>): void => {
       blueprintId: message.blueprintId,
       fullBleed: message.fullBleed,
     });
+    preview.updateControls(message.controls);
     preview.resize(message);
     if (!running) {
       running = true;
@@ -66,6 +74,11 @@ self.onmessage = (event: MessageEvent<PreviewWorkerMessage>): void => {
 
   if (message.type === 'resize') {
     preview?.resize(message);
+    return;
+  }
+
+  if (message.type === 'controls') {
+    preview?.updateControls(message.controls);
     return;
   }
 

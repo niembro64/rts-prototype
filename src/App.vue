@@ -1,7 +1,24 @@
 <script setup lang="ts">
-import { defineAsyncComponent } from 'vue';
+import { defineAsyncComponent, ref } from 'vue';
 
 const GameCanvas = defineAsyncComponent(() => import('./components/GameCanvas.vue'));
+const EntityLabPage = defineAsyncComponent(() => import('./components/EntityLabPage.vue'));
+type GameSurface = 'demoBattle' | 'lobby' | 'onlineGame';
+type AppSurface = GameSurface | 'entityLab';
+
+const activeSurface = ref<AppSurface>('lobby');
+const gameSurface = ref<GameSurface>('lobby');
+const gameCanvasKey = ref(0);
+
+function openEntityLab(): void {
+  activeSurface.value = 'entityLab';
+}
+
+function openGameSurface(surface: GameSurface): void {
+  gameSurface.value = surface;
+  gameCanvasKey.value++;
+  activeSurface.value = surface;
+}
 
 // 3D-only: the renderer choice is no longer URL- or storage-driven.
 // Any /2d or /3d path the URL still carries is harmless; we just
@@ -21,7 +38,18 @@ if (after !== '' && after !== '/') {
 </script>
 
 <template>
-  <GameCanvas />
+  <EntityLabPage
+    v-if="activeSurface === 'entityLab'"
+    @open-demo-battle="openGameSurface('demoBattle')"
+    @open-lobby="openGameSurface('lobby')"
+    @open-online-game="openGameSurface('onlineGame')"
+  />
+  <GameCanvas
+    v-else
+    :key="gameCanvasKey"
+    :initial-surface="gameSurface"
+    @open-entity-lab="openEntityLab"
+  />
 </template>
 
 <style>

@@ -62,7 +62,7 @@ import {
 import { useGameCanvasTelemetry } from './gameCanvasTelemetry';
 import { useGameCanvasBackgroundBattle } from './gameCanvasBackgroundBattle';
 import { useGameCanvasPresence } from './gameCanvasPresence';
-import { useGameCanvasSoundTest } from './gameCanvasSoundTest';
+import { useGameCanvasEntityLabHotkey } from './gameCanvasEntityLabHotkey';
 import { useGameCanvasRealBattleLifecycle } from './gameCanvasRealBattleLifecycle';
 import { useGameCanvasForegroundSceneBinding } from './gameCanvasForegroundSceneBinding';
 import { useGameCanvasForegroundGame } from './gameCanvasForegroundGame';
@@ -84,6 +84,16 @@ const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
     navigator.userAgent,
   );
+
+const emit = defineEmits<{
+  openEntityLab: [];
+}>();
+
+const props = withDefaults(defineProps<{
+  initialSurface?: 'demoBattle' | 'lobby' | 'onlineGame';
+}>(), {
+  initialSurface: 'lobby',
+});
 
 const containerRef = ref<HTMLDivElement | null>(null);
 const backgroundContainerRef = ref<HTMLDivElement | null>(null);
@@ -156,6 +166,12 @@ const {
   togglePlayerClientEnabled,
   toggleSpectateMode,
 } = useGameCanvasChromeState(currentBattleMode, applyPlayerClientEnabled);
+
+if (props.initialSurface === 'demoBattle') {
+  if (!spectateMode.value) toggleSpectateMode();
+} else if (spectateMode.value) {
+  toggleSpectateMode();
+}
 
 function toggleUiChrome(): void {
   uiChromeVisible.value = !uiChromeVisible.value;
@@ -778,7 +794,11 @@ const {
   applyCameraFovDegrees,
 });
 
-const { showSoundTest } = useGameCanvasSoundTest();
+function openEntityLab(): void {
+  emit('openEntityLab');
+}
+
+useGameCanvasEntityLabHotkey(openEntityLab);
 
 const {
   selectionInfo,
@@ -1985,6 +2005,7 @@ watchEffect(() => {
       @start="handleLobbyStart"
       @cancel="handleLobbyCancel"
       @offline="handleOffline"
+      @entity-lab="openEntityLab"
       @spectate="toggleSpectateMode"
       @set-center-magnitude="(v) => applyCenterMagnitude(v)"
       @set-dividers-magnitude="(v) => applyDividersMagnitude(v)"
@@ -2009,7 +2030,6 @@ watchEffect(() => {
       :spectate-mode="spectateMode"
       :ui-chrome-visible="uiChromeVisible"
       :mobile-bars-visible="mobileBarsVisible"
-      :show-sound-test="showSoundTest"
       :game-started="gameStarted"
       :current-battle-mode="currentBattleMode"
       :get-orbit="getActiveOrbitCamera"
@@ -2018,7 +2038,6 @@ watchEffect(() => {
       :winner-color="gameOverWinner === null ? '' : getPlayerColor(gameOverWinner)"
       @toggle-spectate-mode="toggleSpectateMode"
       @toggle-mobile-bars="mobileBarsVisible = !mobileBarsVisible"
-      @close-sound-test="showSoundTest = false"
       @dismiss-game-over="gameOverWinner = null"
       @restart-game="restartGame"
     />
