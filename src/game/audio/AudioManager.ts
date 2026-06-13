@@ -1,7 +1,7 @@
 // AudioManager — facade for all game audio (one-shot and continuous sounds)
 // Delegates synth work to helper modules; owns AudioContext, master gain, and continuous sound state.
 
-import { AUDIO } from '../../audioConfig';
+import { AUDIO, beamSoundFrequencyFromHarmonicIndex } from '../../audioConfig';
 import { getTurretBlueprint, getShotBlueprint, getRayBlueprint, getUnitBlueprint } from '../sim/blueprints';
 import type { AudioToolkit } from './audioHelpers';
 import { FIRE_SYNTHS } from './fireSynths';
@@ -218,6 +218,33 @@ export class AudioManager {
   }
 
   // ==================== CONTINUOUS SOUNDS ====================
+
+  private getBeamFrequencyForTurret(turretBlueprintId: TurretAudioId | null | undefined): number | undefined {
+    if (!turretBlueprintId) return undefined;
+    try {
+      const turret = getTurretBlueprint(turretBlueprintId);
+      if (turret.emissionKind !== 'ray' || turret.emissionBlueprintId === null) return undefined;
+      const ray = getRayBlueprint(turret.emissionBlueprintId);
+      if (ray.type !== 'beam') return undefined;
+      return beamSoundFrequencyFromHarmonicIndex(ray.continuousSound.harmonicSeriesIndex);
+    } catch {
+      return undefined;
+    }
+  }
+
+  startLaserSoundForTurret(
+    entityId: number,
+    turretBlueprintId: TurretAudioId | null | undefined,
+    volumeMultiplier: number = 1,
+    zoomVolume: number = 1,
+  ): void {
+    this.startLaserSound(
+      entityId,
+      this.getBeamFrequencyForTurret(turretBlueprintId),
+      volumeMultiplier,
+      zoomVolume,
+    );
+  }
 
   startLaserSound(entityId: number, freqOverride: number | undefined, volumeMultiplier: number = 1, zoomVolume: number = 1): void {
     if (!this.categoryEnabled.beam) return;

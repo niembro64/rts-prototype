@@ -69,6 +69,11 @@
         "volume": 0.35,
         "playSpeed": 0.2222222222222222
       },
+      "turretBeamLong": {
+        "synth": "laser-zap",
+        "volume": 0.4,
+        "playSpeed": 0.1111111111111111
+      },
       "turretShieldSphere": {
         "synth": "shield",
         "volume": 0.5,
@@ -140,6 +145,11 @@
         "synth": "sizzle",
         "volume": 1.4,
         "playSpeed": 0.2222222222222222
+      },
+      "rayBeamMega": {
+        "synth": "sizzle",
+        "volume": 1.6,
+        "playSpeed": 0.1111111111111111
       },
       "shotPlasmaDisruptor": {
         "synth": "heavy",
@@ -239,12 +249,13 @@
     "beam": {
       "wave": "triangle",
       "freq": 288,
+      "harmonicSeriesBaseMultiplier": 32,
       "randomFrequencyRange": 2,
       "lfoRate": 2,
       "lfoDepth": 1,
       "filterFreq": 1200,
       "filterQ": 10,
-      "highpassFreq": 80,
+      "highpassFreq": 24,
       "highpassQ": 1,
       "fadeIn": 0.1,
       "pitchSlideStart": 0.3,

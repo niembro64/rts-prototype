@@ -652,8 +652,13 @@ export type BeamRayBlueprint = {
   width: number;
   damageSphere: ShotCollision;
   gravityForceMultiplier: number;
+  continuousSound: BeamContinuousSoundConfig;
   hitSound: SoundEntry | null;
   rayBlueprintId: RayBlueprintId;
+};
+
+export type BeamContinuousSoundConfig = {
+  harmonicSeriesIndex: number;
 };
 
 export type LaserRayBlueprint = {

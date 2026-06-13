@@ -31,7 +31,12 @@ export function playSimEventAudio3D(event: NetworkServerSnapshotSimEvent): void 
     }
     case 'laserStart':
       if (event.entityId !== null) {
-        audioManager.startLaserSound(event.entityId, undefined);
+        audioManager.startLaserSoundForTurret(
+          event.entityId,
+          event.turretBlueprintId && isTurretBlueprintId(event.turretBlueprintId)
+            ? event.turretBlueprintId
+            : undefined,
+        );
       }
       return;
     case 'laserStop':

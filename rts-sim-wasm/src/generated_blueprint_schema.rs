@@ -877,8 +877,14 @@ pub struct BeamRayBlueprint {
     pub width: f64,
     pub damageSphere: ShotCollision,
     pub gravityForceMultiplier: f64,
+    pub continuousSound: BeamContinuousSoundConfig,
     pub hitSound: Option<BlueprintJsonValue>,
     pub rayBlueprintId: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BeamContinuousSoundConfig {
+    pub harmonicSeriesIndex: i32,
 }
 
 #[derive(Clone, Debug, PartialEq)]

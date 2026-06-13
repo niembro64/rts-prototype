@@ -5,18 +5,54 @@
  * (eventually) Rust/WASM can read the same source of truth. This
  * module re-exports the JSON under typed names that consumers expect.
  *
- * The handful of harmonic-series ratios the old TS file derived
- * (h[8]/h[6] = 7/9, h[8]/h[1] = 2/9, base/h[8] = 288, base/h[0] = 32)
- * are now inlined as literal decimals in the JSON. The local
- * harmonicSeries / harmonicSeriesBaseMultipler exports those derivations
- * relied on were never imported anywhere and have been removed under
- * Delete The Old Path.
+ * The old beam-family audio derived pitch from a reciprocal harmonic
+ * series: frequency = harmonicSeriesBaseMultiplier / harmonicSeries[i].
+ * Beam ray blueprints now store the harmonic index so larger beams can
+ * share the same progression without copying frequency literals.
  */
 
 export type { SynthId, SoundEntry } from './types/audio';
 import type { SoundEntry } from './types/audio';
-import type { ShotBlueprintId, TurretBlueprintId, UnitBlueprintId } from './types/blueprintIds';
+import type {
+  RayBlueprintId,
+  ShotBlueprintId,
+  TurretBlueprintId,
+  UnitBlueprintId,
+} from './types/blueprintIds';
 import rawConfig from './audioConfig.json';
+
+export const BEAM_SOUND_HARMONIC_SERIES = [
+  1 / 1,
+  1 / 2,
+  1 / 3,
+  1 / 4,
+  1 / 5,
+  1 / 6,
+  1 / 7,
+  1 / 8,
+  1 / 9,
+  1 / 10,
+  1 / 11,
+  1 / 12,
+  1 / 13,
+  1 / 14,
+] as const;
+
+export function isBeamSoundHarmonicIndex(index: number): boolean {
+  return (
+    Number.isInteger(index) &&
+    index >= 0 &&
+    index < BEAM_SOUND_HARMONIC_SERIES.length
+  );
+}
+
+export function beamSoundFrequencyFromHarmonicIndex(index: number): number {
+  if (!isBeamSoundHarmonicIndex(index)) {
+    throw new Error(`Invalid beam sound harmonic index: ${index}`);
+  }
+  const base = AUDIO.continuous.beam.harmonicSeriesBaseMultiplier ?? 32;
+  return base / BEAM_SOUND_HARMONIC_SERIES[index];
+}
 
 type AudioConfig = {
   masterVolume: number;
@@ -48,7 +84,7 @@ type AudioConfig = {
   };
   event: {
     fire: Partial<Record<TurretBlueprintId, SoundEntry>>;
-    hit: Partial<Record<ShotBlueprintId, SoundEntry>>;
+    hit: Partial<Record<ShotBlueprintId | RayBlueprintId, SoundEntry>>;
     death: Record<UnitBlueprintId, SoundEntry>;
   };
   continuous: {
@@ -63,6 +99,7 @@ type AudioConfig = {
 type ContinuousSynthConfig = {
   wave: OscillatorType;
   freq: number;
+  harmonicSeriesBaseMultiplier?: number;
   randomFrequencyRange: number;
   lfoRate: number;
   lfoDepth: number;

@@ -1018,7 +1018,7 @@
     "shieldPanels": [],
     "audio": {
       "fireSound": {
-        "$audio": "event.fire.turretBeamMega"
+        "$audio": "event.fire.turretBeamLong"
       }
     },
     "verticalLauncher": false,

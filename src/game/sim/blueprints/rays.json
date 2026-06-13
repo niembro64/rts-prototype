@@ -13,6 +13,9 @@
       "radius": 6
     },
     "gravityForceMultiplier": 0,
+    "continuousSound": {
+      "harmonicSeriesIndex": 8
+    },
     "rayBlueprintId": "rayBeamMini"
   },
   "rayBeamMedium": {
@@ -29,6 +32,9 @@
       "radius": 12
     },
     "gravityForceMultiplier": 0,
+    "continuousSound": {
+      "harmonicSeriesIndex": 6
+    },
     "rayBlueprintId": "rayBeamMedium"
   },
   "rayBeamHeavy": {
@@ -45,12 +51,15 @@
       "radius": 32
     },
     "gravityForceMultiplier": 0,
+    "continuousSound": {
+      "harmonicSeriesIndex": 1
+    },
     "rayBlueprintId": "rayBeamHeavy"
   },
   "rayBeamMega": {
     "type": "beam",
     "hitSound": {
-      "$audio": "event.hit.rayBeamHeavy"
+      "$audio": "event.hit.rayBeamMega"
     },
     "dps": 1000,
     "force": 3000,
@@ -61,6 +70,9 @@
       "radius": 32
     },
     "gravityForceMultiplier": 0,
+    "continuousSound": {
+      "harmonicSeriesIndex": 0
+    },
     "rayBlueprintId": "rayBeamMega"
   }
 }
