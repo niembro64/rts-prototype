@@ -1676,18 +1676,20 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
  * corners stay so the panel still reads as a discrete card. */
 .options-panel {
   position: fixed;
-  left: max(340px, calc(50% - 380px));
+  left: max(272px, calc(50% - 252px));
   bottom: var(--selection-panel-playable-bottom, 0px);
-  display: flex;
-  flex-flow: row wrap;
-  align-items: flex-end;
-  gap: 3px 5px;
-  width: min(760px, calc(100vw - 360px));
+  display: grid;
+  grid-template-columns: repeat(12, 38px);
+  grid-auto-rows: 22px;
+  grid-auto-flow: row;
+  align-items: stretch;
+  gap: 2px;
+  width: auto;
   background: var(--selection-panel-bg);
   border: 1px solid var(--selection-panel-border);
-  border-radius: 6px;
-  padding: 5px;
-  max-width: calc(100vw - 360px);
+  border-radius: 4px 4px 0 0;
+  padding: 4px;
+  max-width: calc(100vw - 280px);
   overflow: visible;
   font-family: monospace;
   color: var(--selection-panel-text);
@@ -1712,8 +1714,8 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
   .options-panel {
     right: 0;
     left: auto;
-    width: min(540px, calc(100vw - 8px));
-    max-width: calc(100vw - 8px);
+    grid-template-columns: repeat(8, 38px);
+    max-width: calc(100vw - 4px);
   }
 }
 
@@ -1902,6 +1904,16 @@ kbd {
   margin-bottom: 2px;
 }
 
+.options-panel > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) {
+  display: contents;
+}
+
+.options-panel > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) > .buttons,
+.options-panel > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) > .buttons.bar-command-grid,
+.options-panel > .factory-preset-group > .factory-preset-grid {
+  display: contents;
+}
+
 .selection-command-group {
   display: none;
 }
@@ -1928,6 +1940,7 @@ kbd {
 
 .message-area {
   order: 99;
+  grid-column: 1 / -1;
 }
 
 .details-grid {
@@ -1959,10 +1972,14 @@ kbd {
 }
 
 .factory-status {
+  grid-column: span 3;
+  align-self: stretch;
   flex: 0 1 150px;
-  min-width: 120px;
-  padding: 3px 5px;
-  background: rgba(20, 22, 26, 0.66);
+  min-width: 0;
+  height: 22px;
+  box-sizing: border-box;
+  padding: 2px 5px;
+  background: #14161a;
   border: 1px solid var(--selection-panel-button-border);
   border-radius: 3px;
 }
@@ -1976,7 +1993,7 @@ kbd {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px;
   align-items: center;
-  margin-bottom: 3px;
+  margin-bottom: 2px;
   font-family: monospace;
   font-size: 8px;
   line-height: 1;
@@ -2006,20 +2023,21 @@ kbd {
 }
 
 .factory-queue-controls {
+  grid-column: span 6;
   flex: 1 1 100%;
   display: grid;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
 }
 
 .factory-queue-control-row {
   display: grid;
-  grid-template-columns: minmax(54px, 1fr) repeat(5, minmax(28px, auto));
-  gap: 3px;
+  grid-template-columns: minmax(46px, 1fr) repeat(5, 22px);
+  gap: 2px;
   align-items: center;
   min-width: 0;
-  padding: 2px 3px;
-  background: rgba(20, 22, 26, 0.46);
+  padding: 1px 2px;
+  background: #14161a;
   border: 1px solid rgba(237, 243, 255, 0.1);
   border-radius: 3px;
 }
@@ -2033,14 +2051,14 @@ kbd {
 }
 
 .factory-queue-control-btn {
-  min-width: 28px;
+  min-width: 22px;
   height: 18px;
-  padding: 0 4px;
+  padding: 0 2px;
   border-radius: 3px;
   border: 1px solid var(--selection-panel-button-border);
-  background: rgba(40, 44, 54, 0.86);
+  background: #282c36;
   color: var(--selection-panel-text);
-  font-size: 8px;
+  font-size: 7px;
   line-height: 1;
   cursor: pointer;
 }
@@ -2074,7 +2092,7 @@ kbd {
   gap: 5px;
   min-height: 20px;
   padding: 2px 5px;
-  background: rgba(20, 22, 26, 0.66);
+  background: #14161a;
   border: 1px solid var(--selection-panel-button-border);
   border-radius: 3px;
   font-size: 10px;
@@ -2122,9 +2140,17 @@ kbd {
   padding: 0 3px;
 }
 
+.options-panel > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn {
+  width: 38px;
+  min-width: 38px;
+  height: 22px;
+  padding: 0 2px;
+  font-size: 8px;
+}
+
 .bar-menu-group {
   position: fixed;
-  top: 272px;
+  top: 265px;
   left: 0;
   bottom: auto;
   z-index: 1001;
@@ -2184,7 +2210,7 @@ kbd {
 .bar-grid-cell.empty {
   background:
     linear-gradient(135deg, transparent 47%, rgba(237, 243, 255, 0.08) 48%, rgba(237, 243, 255, 0.08) 52%, transparent 53%),
-    rgba(20, 22, 26, 0.42);
+    #14161a;
   border: 1px solid rgba(237, 243, 255, 0.08);
 }
 
@@ -2258,7 +2284,7 @@ kbd {
   min-width: 12px;
   height: 12px;
   padding: 0 2px;
-  background: rgba(5, 7, 10, 0.68);
+  background: #05070a;
   border: 1px solid color-mix(in srgb, var(--btn-color) 52%, transparent);
   border-radius: 2px;
   color: var(--selection-panel-key);

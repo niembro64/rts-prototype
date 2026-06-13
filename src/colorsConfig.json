@@ -608,7 +608,7 @@
       "cameraStroke": "rgba(255, 255, 255, 0.8)",
       "frameStroke": "rgba(255, 255, 255, 0.3)",
       "panel": {
-        "background": "rgba(15, 18, 24, 0.92)",
+        "background": "#0f1218",
         "border": "#444444",
         "text": "#ffffff",
         "label": "rgba(255, 255, 255, 0.6)",
@@ -617,7 +617,7 @@
     },
     "topBar": {
       "surface": {
-        "background": "rgba(15, 15, 15, 0.7)",
+        "background": "#0f0f0f",
         "border": "#444444",
         "text": "#ffffff",
         "divider": "rgba(255, 255, 255, 0.18)",
@@ -666,7 +666,7 @@
     },
     "selectionPanel": {
       "surface": {
-        "background": "rgba(15, 18, 24, 0.92)",
+        "background": "#0f1218",
         "border": "#444444",
         "text": "#ffffff",
         "headerBorder": "rgba(255, 255, 255, 0.2)",
@@ -699,11 +699,11 @@
         "vehicleProduce": "#0088ff",
         "botProduce": "#88ff00",
         "groupAccent": "#8fd2ff",
-        "background": "rgba(255, 255, 255, 0.1)",
+        "background": "#272a30",
         "border": "rgba(255, 255, 255, 0.3)",
-        "hoverBackground": "rgba(255, 255, 255, 0.2)",
-        "activeBackground": "rgba(255, 255, 255, 0.25)",
-        "groupActiveBackground": "rgba(143, 210, 255, 0.24)",
+        "hoverBackground": "#3d4046",
+        "activeBackground": "#4b4e55",
+        "groupActiveBackground": "#26394a",
         "groupActiveShadow": "rgba(143, 210, 255, 0.7)",
         "disabledOpacity": 0.38,
         "actionDisabledOpacity": 0.45

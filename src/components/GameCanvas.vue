@@ -2140,7 +2140,7 @@ watchEffect(() => {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  background: rgba(5, 7, 10, 0.92);
+  background: #05070a;
   color: #edf3ff;
   pointer-events: auto;
 }
@@ -2158,7 +2158,7 @@ watchEffect(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: rgba(5, 7, 10, 0.92);
+  background: #05070a;
   color: #edf3ff;
   pointer-events: auto;
 }
@@ -2172,7 +2172,7 @@ watchEffect(() => {
   padding: 10px 28px;
   border: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: 8px;
-  background: rgba(5, 7, 10, 0.78);
+  background: #05070a;
   color: #ffd166;
   font: 700 22px/1.2 monospace;
   letter-spacing: 0.18em;
@@ -2213,11 +2213,12 @@ watchEffect(() => {
 }
 
 .communication-panel {
-  width: 236px;
+  width: auto;
+  max-width: 236px;
   margin-top: 58px;
-  border: 1px solid rgba(120, 140, 165, 0.58);
-  border-radius: 6px;
-  background: rgba(8, 12, 18, 0.88);
+  border: 1px solid #4f6074;
+  border-radius: 4px;
+  background: #080c12;
   color: #edf3ff;
   font: 11px/1.25 system-ui, sans-serif;
   letter-spacing: 0;
@@ -2225,42 +2226,46 @@ watchEffect(() => {
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.34);
 }
 
+.communication-panel.open {
+  width: 236px;
+}
+
 .communication-panel.drawing {
-  border-color: rgba(130, 210, 255, 0.76);
+  border-color: #82d2ff;
 }
 
 .communication-toolbar {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 4px;
-  padding: 6px;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
 }
 
 .communication-toolbar button,
 .communication-input-row button {
   min-width: 0;
-  height: 24px;
-  padding: 0 5px;
-  border: 1px solid rgba(150, 165, 190, 0.5);
-  border-radius: 4px;
-  background: rgba(25, 31, 42, 0.86);
+  width: 34px;
+  height: 20px;
+  padding: 0 2px;
+  border: 1px solid #667184;
+  border-radius: 2px;
+  background: #191f2a;
   color: #dce7fb;
-  font: 700 9px/1 system-ui, sans-serif;
+  font: 700 7px/1 system-ui, sans-serif;
   letter-spacing: 0;
   cursor: pointer;
 }
 
 .communication-toolbar button:hover,
 .communication-input-row button:hover {
-  border-color: rgba(180, 205, 235, 0.78);
-  background: rgba(38, 49, 66, 0.94);
+  border-color: #b4cdeb;
+  background: #263142;
 }
 
 .communication-toolbar button.active,
 .communication-toggle[aria-pressed="true"] {
-  border-color: rgba(130, 210, 255, 0.82);
+  border-color: #82d2ff;
   color: #f8fcff;
-  background: rgba(38, 82, 112, 0.86);
+  background: #265270;
 }
 
 .communication-body {
@@ -2316,9 +2321,9 @@ watchEffect(() => {
   min-width: 0;
   height: 24px;
   box-sizing: border-box;
-  border: 1px solid rgba(150, 165, 190, 0.48);
+  border: 1px solid #667184;
   border-radius: 4px;
-  background: rgba(4, 8, 14, 0.9);
+  background: #04080e;
   color: #edf3ff;
   padding: 0 7px;
   font: 11px/1 system-ui, sans-serif;
@@ -2326,7 +2331,7 @@ watchEffect(() => {
 }
 
 .communication-input:focus {
-  border-color: rgba(130, 210, 255, 0.82);
+  border-color: #82d2ff;
 }
 
 .communication-status {
@@ -2338,13 +2343,13 @@ watchEffect(() => {
 .map-details-panel {
   position: absolute;
   top: 0;
-  left: 452px;
+  left: 464px;
   z-index: 1001;
-  width: min(300px, calc(100vw - 472px));
+  width: min(300px, calc(100vw - 484px));
   max-width: 300px;
-  border: 1px solid rgba(120, 140, 165, 0.62);
+  border: 1px solid #4f6074;
   border-radius: 6px;
-  background: rgba(10, 14, 20, 0.88);
+  background: #0a0e14;
   color: #edf3ff;
   font: 11px/1.25 system-ui, sans-serif;
   letter-spacing: 0;
@@ -2366,9 +2371,9 @@ watchEffect(() => {
   width: 22px;
   height: 22px;
   padding: 0;
-  border: 1px solid rgba(150, 165, 190, 0.5);
+  border: 1px solid #667184;
   border-radius: 4px;
-  background: rgba(25, 31, 42, 0.86);
+  background: #191f2a;
   color: #dce7fb;
   cursor: pointer;
 }
@@ -2397,13 +2402,13 @@ watchEffect(() => {
 .options-menu-panel {
   position: absolute;
   top: 0;
-  left: 768px;
+  left: 780px;
   z-index: 1001;
-  width: min(244px, calc(100vw - 788px));
+  width: min(244px, calc(100vw - 800px));
   max-width: 244px;
-  border: 1px solid rgba(120, 140, 165, 0.62);
+  border: 1px solid #4f6074;
   border-radius: 6px;
-  background: rgba(10, 14, 20, 0.9);
+  background: #0a0e14;
   color: #edf3ff;
   font: 11px/1.25 system-ui, sans-serif;
   letter-spacing: 0;
@@ -2425,9 +2430,9 @@ watchEffect(() => {
   width: 22px;
   height: 22px;
   padding: 0;
-  border: 1px solid rgba(150, 165, 190, 0.5);
+  border: 1px solid #667184;
   border-radius: 4px;
-  background: rgba(25, 31, 42, 0.86);
+  background: #191f2a;
   color: #dce7fb;
   cursor: pointer;
 }
@@ -2443,9 +2448,9 @@ watchEffect(() => {
   min-width: 0;
   height: 28px;
   padding: 0 5px;
-  border: 1px solid rgba(150, 165, 190, 0.5);
+  border: 1px solid #667184;
   border-radius: 4px;
-  background: rgba(25, 31, 42, 0.86);
+  background: #191f2a;
   color: #dce7fb;
   font: 700 10px/1 system-ui, sans-serif;
   letter-spacing: 0;
@@ -2454,14 +2459,14 @@ watchEffect(() => {
 
 .options-menu-grid button:hover,
 .options-menu-close:hover {
-  border-color: rgba(180, 205, 235, 0.78);
-  background: rgba(38, 49, 66, 0.94);
+  border-color: #b4cdeb;
+  background: #263142;
 }
 
 .options-menu-grid button.active {
-  border-color: rgba(130, 210, 255, 0.82);
+  border-color: #82d2ff;
   color: #f8fcff;
-  background: rgba(38, 82, 112, 0.86);
+  background: #265270;
 }
 
 @media (max-width: 760px) {
@@ -2475,13 +2480,13 @@ watchEffect(() => {
   }
 
   .map-details-panel {
-    top: 248px;
+    top: 296px;
     left: 0;
     width: min(300px, 100vw);
   }
 
   .options-menu-panel {
-    top: 248px;
+    top: 296px;
     left: 0;
     width: min(244px, 100vw);
   }
@@ -2497,7 +2502,7 @@ watchEffect(() => {
   padding: 0 10px;
   border: 1px solid #5d6b82;
   border-radius: 4px;
-  background: rgba(17, 22, 30, 0.9);
+  background: #11161e;
   color: #e8f0ff;
   font: 700 11px/1 system-ui, sans-serif;
   letter-spacing: 0;
@@ -2507,11 +2512,11 @@ watchEffect(() => {
 
 .ui-chrome-restore:hover {
   border-color: #8da1c0;
-  background: rgba(28, 36, 48, 0.94);
+  background: #1c2430;
 }
 
 .ui-chrome-restore:active {
-  background: rgba(9, 12, 18, 0.96);
+  background: #090c12;
 }
 
 
@@ -2550,7 +2555,7 @@ watchEffect(() => {
   align-self: stretch;
   min-height: 100%;
   padding: 0;
-  background: rgba(18, 18, 26, 0.92);
+  background: #12121a;
   border: 1px solid #444;
   border-right: none;
   border-radius: 0;
@@ -2572,12 +2577,12 @@ watchEffect(() => {
 }
 
 .bottom-controls-toggle:hover {
-  background: rgba(35, 35, 48, 0.96);
+  background: #232330;
   border-color: #777;
 }
 
 .bottom-controls-toggle:active {
-  background: rgba(12, 12, 18, 0.98);
+  background: #0c0c12;
   border-color: #666;
 }
 
@@ -2613,7 +2618,7 @@ watchEffect(() => {
   height: 72px;
   padding: 0;
   transform: translateY(-50%);
-  background: rgba(18, 18, 26, 0.94);
+  background: #12121a;
   border: 1px solid #444;
   border-right: none;
   border-radius: 6px 0 0 6px;
@@ -2629,13 +2634,13 @@ watchEffect(() => {
 }
 
 .lobby-controls-sidebar-toggle:hover {
-  background: rgba(35, 35, 48, 0.98);
+  background: #232330;
   border-color: #777;
   color: #bbb;
 }
 
 .lobby-controls-sidebar-toggle:active {
-  background: rgba(12, 12, 18, 0.98);
+  background: #0c0c12;
   border-color: #666;
 }
 
@@ -2645,7 +2650,7 @@ watchEffect(() => {
   box-sizing: border-box;
   padding: 10px;
   overflow-y: auto;
-  background: rgba(10, 12, 18, 0.96);
+  background: #0a0c12;
   border-left: 1px solid #444;
   box-shadow: -16px 0 32px rgba(0, 0, 0, 0.36);
   pointer-events: auto;

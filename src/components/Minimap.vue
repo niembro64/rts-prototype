@@ -20,12 +20,24 @@ export type MinimapMapDrawing = {
   color: string;
 };
 
+function darkenChannel(value: number, scale: number): number {
+  return Math.max(0, Math.min(255, Math.round(value * scale)));
+}
+
 // Neutral land baseline lifted from MAP_BG_COLOR so the minimap
-// background matches the scene's untextured map floor.
-const NEUTRAL_R = (MAP_BG_COLOR >> 16) & 0xff;
-const NEUTRAL_G = (MAP_BG_COLOR >> 8) & 0xff;
-const NEUTRAL_B = MAP_BG_COLOR & 0xff;
-const MINIMAP_WATER_RGB = readRgbTuple(COLORS.ui.minimap.waterRgb, 'ui.minimap.waterRgb');
+// background matches the scene's untextured map floor, then darkened
+// for the higher-contrast BAR-style map read.
+const MINIMAP_GROUND_DARKEN = 0.58;
+const MINIMAP_WATER_DARKEN = 0.62;
+const NEUTRAL_R = darkenChannel((MAP_BG_COLOR >> 16) & 0xff, MINIMAP_GROUND_DARKEN);
+const NEUTRAL_G = darkenChannel((MAP_BG_COLOR >> 8) & 0xff, MINIMAP_GROUND_DARKEN);
+const NEUTRAL_B = darkenChannel(MAP_BG_COLOR & 0xff, MINIMAP_GROUND_DARKEN);
+const RAW_MINIMAP_WATER_RGB = readRgbTuple(COLORS.ui.minimap.waterRgb, 'ui.minimap.waterRgb');
+const MINIMAP_WATER_RGB = [
+  darkenChannel(RAW_MINIMAP_WATER_RGB[0], MINIMAP_WATER_DARKEN),
+  darkenChannel(RAW_MINIMAP_WATER_RGB[1], MINIMAP_WATER_DARKEN),
+  darkenChannel(RAW_MINIMAP_WATER_RGB[2], MINIMAP_WATER_DARKEN),
+] as const;
 const MINIMAP_SELECTION_STROKE = COLORS.ui.minimap.selectionStroke;
 const MINIMAP_CAMERA_STROKE = COLORS.ui.minimap.cameraStroke;
 const MINIMAP_FRAME_STROKE = COLORS.ui.minimap.frameStroke;
@@ -53,11 +65,11 @@ const draggingPointerId = ref<number | null>(null);
 
 // Minimap display size. The longest side is pinned at MINIMAP_MAX;
 // the other side follows the map's aspect ratio — so a 3000×3000
-// square map renders as a 204×204 square, a 4000×2000 map as
-// 204×102, and so on. Previously both dimensions were hardcoded 4:3
+// square map renders as a 265×265 square, a 4000×2000 map as
+// 265×133, and so on. Previously both dimensions were hardcoded 4:3
 // regardless of the map, which squashed square maps into rectangles
 // and miscomputed the camera-quad overlay.
-const MINIMAP_MAX = 204;
+const MINIMAP_MAX = 265;
 const DENSE_ENTITY_MARKER_THRESHOLD = 1500;
 const DENSE_UNIT_MARKER_SIZE = 2;
 
@@ -193,7 +205,7 @@ function drawBackgroundLayer(): void {
   const waterImg = ctx.createImageData(w, h);
   const waterPixels = waterImg.data;
   // Water color same family as the 3D water plane; background mirrors
-  // the neutral map floor color.
+  // the darker neutral map floor color.
   const [waterR, waterG, waterB] = MINIMAP_WATER_RGB;
   let pi = 0;
   if (!showTerrain) {
@@ -512,13 +524,11 @@ onMounted(() => {
 
 <style scoped>
 .minimap-container {
-  /* Aligned with the bottom-bar aesthetic: dark semi-transparent
-   * base + muted gray border. Rounded corners stay. */
   position: relative;
-  background: var(--minimap-bg);
-  border: 1px solid var(--minimap-border);
-  border-radius: 6px;
-  padding: 4px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
   font-family: monospace;
   color: var(--minimap-text);
   pointer-events: auto;
@@ -528,7 +538,7 @@ onMounted(() => {
 .minimap-canvas {
   display: block;
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: 0;
   touch-action: none;
   user-select: none;
 }
