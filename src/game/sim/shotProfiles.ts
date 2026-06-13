@@ -1,6 +1,5 @@
 import type {
   ActiveProjectileShot,
-  EmissionConfig,
   ProjectileShot,
   ShotProfile,
   ShotRuntimeProfile,
@@ -15,30 +14,6 @@ import {
 } from './types';
 import { getProjectileSmokeTrailSpec } from '@/smokeConfig';
 import shotProfileConfig from './shotProfileConfig.json';
-import beamConfig from '@/beamConfig.json';
-
-type BeamConfigForShotProfiles = {
-  startPointSphere: { emissionOffset: Record<string, number> | undefined } | undefined;
-};
-
-// Beam emission offset (forward distance from the turret mount where the
-// beam visually + physically "generates") is tuned per-shot in
-// beamConfig.json. The sim reads from there so both the start-point orb
-// and the damage start stay in lockstep with a single source of truth.
-const beamStartPointSphere = (beamConfig as BeamConfigForShotProfiles).startPointSphere;
-const BEAM_EMISSION_OFFSET_BY_SHOT: Readonly<Record<string, number>> =
-  beamStartPointSphere !== undefined && beamStartPointSphere.emissionOffset !== undefined
-    ? beamStartPointSphere.emissionOffset
-    : {};
-
-/** Forward distance from the turret mount where a beam visually + physically
- *  "generates" — the position of the start-point orb. 0 for non-beam
- *  emissions. Shared so the beam-turret cone barrel can extend its tip out
- *  to that same orb (so the beam looks like it leaves the barrel tip). */
-export function getBeamEmissionOffset(shot: EmissionConfig | null | undefined): number {
-  if (shot === null || shot === undefined || !isRayConfig(shot) || shot.type !== 'beam') return 0;
-  return BEAM_EMISSION_OFFSET_BY_SHOT[shot.rayBlueprintId] ?? 0;
-}
 
 export const PLASMA_TAIL_LENGTH_MULT = shotProfileConfig.plasmaTailLengthMult;
 export const ROCKET_TAIL_LENGTH_MULT = shotProfileConfig.rocketTailLengthMult;
@@ -77,7 +52,6 @@ function buildProjectileVisualProfile(shot: ProjectileShot): ShotVisualProfile {
     burnMarkWidth: shot.radius.collision * 1.5,
     lineRadius: 0,
     lineDamageSphereRadius: 0,
-    lineEmissionOffset: 0,
   };
 }
 
@@ -117,8 +91,6 @@ function buildLineVisualProfile(shot: ActiveProjectileShot): ShotVisualProfile {
     burnMarkWidth: shot.width * 2,
     lineRadius: shot.radius,
     lineDamageSphereRadius: shot.damageSphere.radius,
-    lineEmissionOffset:
-      shot.type === 'beam' ? (BEAM_EMISSION_OFFSET_BY_SHOT[shot.rayBlueprintId] ?? 0) : 0,
   };
 }
 

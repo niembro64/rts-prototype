@@ -8,6 +8,7 @@ import {
   ENTITY_HUD_ELEMENTS,
   getAudioScope,
   getAudioSmoothing,
+  getBeamEmaMode,
   getBeamSnapToTurret,
   getBuildGridDebug,
   getCameraFollowMode,
@@ -45,6 +46,7 @@ import {
   getSelectionHudMode,
   setAudioScope,
   setAudioSmoothing,
+  setBeamEmaMode,
   setBeamSnapToTurret,
   setBuildGridDebug,
   setCameraFollowMode,
@@ -132,6 +134,7 @@ export function useGameCanvasClientSettings({
   const smokeTrails = ref<boolean>(getSmokeTrails());
   const smokeSoftEdges = ref<boolean>(getSmokeSoftEdges());
   const beamSnapToTurret = ref<boolean>(getBeamSnapToTurret());
+  const beamEma = ref<PositionDriftChannelMode>(getBeamEmaMode());
   const resourceBallDensity = ref<number>(getResourceBallDensity());
   const triangleDebug = ref<boolean>(getTriangleDebug());
   const buildGridDebug = ref<boolean>(getBuildGridDebug());
@@ -217,6 +220,7 @@ export function useGameCanvasClientSettings({
     smokeTrails.value = getSmokeTrails();
     smokeSoftEdges.value = getSmokeSoftEdges();
     beamSnapToTurret.value = getBeamSnapToTurret();
+    beamEma.value = getBeamEmaMode();
     resourceBallDensity.value = getResourceBallDensity();
     triangleDebug.value = getTriangleDebug();
     buildGridDebug.value = getBuildGridDebug();
@@ -439,6 +443,11 @@ export function useGameCanvasClientSettings({
     movementPosEma.value = mode;
   }
 
+  function changeBeamEma(mode: PositionDriftChannelMode): void {
+    setBeamEmaMode(mode);
+    beamEma.value = mode;
+  }
+
   function changeMovementVelEma(mode: DriftChannelMode): void {
     setMovementVelEmaMode(mode);
     movementVelEma.value = mode;
@@ -557,6 +566,8 @@ export function useGameCanvasClientSettings({
     smokeSoftEdges.value = cd.smokeSoftEdges.default;
     setBeamSnapToTurret(cd.beamSnapToTurret.default);
     beamSnapToTurret.value = cd.beamSnapToTurret.default;
+    setBeamEmaMode(cd.beamEma.default);
+    beamEma.value = cd.beamEma.default;
     changeResourceBallDensity(DEFAULT_BALLS_PER_RESOURCE_PER_SECOND);
     setTriangleDebug(cd.triangleDebug.default);
     triangleDebug.value = cd.triangleDebug.default;
@@ -648,6 +659,7 @@ export function useGameCanvasClientSettings({
     smokeTrails,
     smokeSoftEdges,
     beamSnapToTurret,
+    beamEma,
     resourceBallDensity,
     triangleDebug,
     buildGridDebug,
@@ -707,6 +719,7 @@ export function useGameCanvasClientSettings({
     toggleSmokeTrails,
     toggleSmokeSoftEdges,
     toggleBeamSnapToTurret,
+    changeBeamEma,
     changeResourceBallDensity,
     toggleTriangleDebug,
     toggleBuildGridDebug,

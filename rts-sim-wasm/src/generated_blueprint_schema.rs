@@ -312,7 +312,6 @@ pub struct ShotVisualProfile {
     pub burnMarkWidth: f64,
     pub lineRadius: f64,
     pub lineDamageSphereRadius: f64,
-    pub lineEmissionOffset: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]

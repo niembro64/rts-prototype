@@ -146,10 +146,10 @@ export class UnitTurretPose3D {
       let aimDirY = 0;
       let aimDirZ = 0;
       if (turretMesh.barrelFollowsBeam) {
-        // Beam turret: aim the barrel + head along the last beam fired
-        // (frozen at the last direction when not firing). Sim turret aim
-        // is pinned to zero on the wire for these, so fall back to the
-        // forward idle pose until the first beam is cached.
+        // Beam turret: aim the head along the last beam fired (frozen at
+        // the last direction when not firing). Sim turret aim is pinned to
+        // zero on the wire for these, so fall back to the forward idle pose
+        // until the first beam is cached.
         const beamDir = turretBeamAimCache.get(entity.id, turretIdx);
         if (beamDir) {
           aimMode = TURRET_AIM_MODE_WORLD_DIR;

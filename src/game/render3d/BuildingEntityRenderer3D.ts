@@ -141,9 +141,6 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
       positionBuildingTurretRoot(turretMesh, turret);
       if (turretMesh.head) turretMesh.head.userData.entityId = entity.id;
       for (const barrel of turretMesh.barrels) barrel.userData.entityId = entity.id;
-      if (turretMesh.beamEmitterMeshes) {
-        for (const m of turretMesh.beamEmitterMeshes) m.userData.entityId = entity.id;
-      }
       buildingTurretMeshes.push(turretMesh);
     }
   }
@@ -225,7 +222,7 @@ export class BuildingEntityRenderer3D {
    *  their own spin state separate from the unit renderer's. */
   private readonly barrelSpin = new UnitBarrelSpinState3D();
   /** Set each frame from update(): last beam direction per turret, read
-   *  to aim beam-directed barrels on beam towers (turretBeamLong). */
+   *  to aim beam-directed heads on beam towers (turretBeamLong). */
   private beamAimCache: TurretBeamAimCache3D | null = null;
   private barrelSpinEnabled = false;
   private readonly fallbackBuildingRenderRows = new BuildingRenderPacket3D();
@@ -802,9 +799,7 @@ export class BuildingEntityRenderer3D {
         continue;
       }
       // Beam turrets colour like any other turret: a plain team-color head
-      // (no engage flip) while their barrel tracks the beam below. Their
-      // barrel + emitter rig keep the build-time beam wave material — the
-      // accent re-assert below would clobber it.
+      // (no engage flip) while the head tracks the beam direction below.
       if (followsBeam && turretMesh.head && !underConstruction) {
         this.setTurretHeadMaterial(turretMesh, this.getPrimaryMat(ownerId));
       }
@@ -812,8 +807,8 @@ export class BuildingEntityRenderer3D {
         this.setTurretBarrelMaterial(turretMesh, this.getTurretAccentMat(ownerId));
       }
       if (followsBeam) {
-        // Aim the barrel along the last beam fired (frozen there when
-        // idle); fall back to the forward idle pose until it first fires.
+        // Aim the head along the last beam fired (frozen there when idle);
+        // fall back to the forward idle pose until it first fires.
         const beamDir = this.beamAimCache?.get(entity.id, turretIndex) ?? null;
         if (beamDir) {
           this.enqueueTurretAim(

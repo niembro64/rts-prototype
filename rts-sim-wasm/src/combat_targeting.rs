@@ -8769,10 +8769,12 @@ pub(crate) fn shield_projectile_intersection(
     let mut best_t = max_t;
     let mut best: Option<ProjectileReflectorHit> = None;
     for i in 0..count {
-        // Whole-entity exclusion (exclude_panel_index < 0): the segment
-        // after a field bounce, and a source firing from inside its own
-        // field, must not re-resolve against that entity's field — the
-        // same contract the panel kernel and the JS body test honor.
+        // Whole-entity exclusion (exclude_panel_index < 0): callers use
+        // this after a field bounce so the next segment does not
+        // immediately re-resolve against that same field. Beam launch
+        // does not pass the source entity here; it excludes only the
+        // firing body on the TypeScript side, so a turret inside its own
+        // active field still reflects when the ray exits that field.
         // A panel-scoped exclusion (>= 0) leaves the entity's field
         // surfaces testable.
         if exclude_panel_index < 0 && pool.owner_entity_id[i] == exclude_entity_id {

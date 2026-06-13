@@ -164,11 +164,8 @@ type FadeState = {
   dirty: DirtySpan;
 };
 
-// Per-instance wave-flow params (repeats, phase, tipTaper) for the
-// beam-emitter pools — the instanced counterpart of the per-Mesh
-// materials' uniforms. tipTaper turns the unit-cylinder cone geometry
-// into a frustum whose flat top matches the start ball's radius (0 =
-// pointed cone for ball-less rays; 1 = no-op for the balls themselves).
+// Per-instance wave-flow params for the legacy cone-barrel pools.
+// tipTaper turns the unit-cylinder cone geometry into a frustum.
 type EmitterFlowAttr = {
   arr: Float32Array;
   attr: THREE.InstancedBufferAttribute;
@@ -241,13 +238,11 @@ export class UnitDetailInstanceRenderer3D {
   private readonly barrelFreeSlots: number[] = [];
   private barrelNextSlot = 0;
 
-  // Parallel pool for beam turret barrels (cone geometry). The same slot
+  // Parallel pool for legacy cone barrels. The same slot
   // index allocator + per-frame writer pattern as the cylinder pool above,
-  // but rendered in the beam's continuously-animated wave material — the
-  // fake barrel IS beam-stuff. Three mirror pools share the cone pool's
-  // slot indices and derive their matrices from the outer cone's per
-  // frame: the inner wave layer, and the start-point ball (outer + inner)
-  // sitting at the cone tip.
+  // but rendered in the beam's continuously-animated wave material.
+  // Three mirror pools share the cone pool's slot indices and derive
+  // their matrices from the outer cone's per frame.
   private readonly coneBarrelInstanced: THREE.InstancedMesh;
   private readonly coneBarrelMatrixDirty = createDirtySpan();
   private readonly coneBarrelFreeSlots: number[] = [];
@@ -323,12 +318,9 @@ export class UnitDetailInstanceRenderer3D {
       BARREL_CAP,
     );
 
-    // Beam-emitter pools: the cone barrel + its inner layer + the start
-    // ball layers all render in the beam wave material (self-faded
-    // ShaderMaterials — createPool still wires their aFade attribute and
-    // fade bookkeeping). They draw with the beam columns' render orders so
-    // the whole emitter rig reads as beam-stuff, and they animate
-    // continuously off the shared beam clock.
+    // Legacy cone-barrel pools render in the beam wave material
+    // (self-faded ShaderMaterials — createPool still wires their aFade
+    // attribute and fade bookkeeping).
     this.coneBarrelInstanced = this.createPool(
       options.coneBarrelGeom.clone(),
       createBeamEmitterInstancedMaterial('outer'),
@@ -813,13 +805,9 @@ export class UnitDetailInstanceRenderer3D {
     }
   }
 
-  /** Write a beam-emitter cone slot: the outer cone matrix lands as-is,
-   *  and the mirror layers derive from it — the inner cone narrows the
-   *  radial columns, the ball layers re-scale the (orthogonal) basis to a
-   *  uniform diameter and translate to the cone tip so the ball stays at
-   *  the muzzle no matter how the pose pass aimed the barrel. Per-instance
-   *  wave-flow params (repeats from world size, stable per-slot phase)
-   *  ride along so the bands keep the beam's world-unit period. */
+  /** Write a legacy cone slot: the outer cone matrix lands as-is, and the
+   *  mirror layers derive from it. Per-instance wave-flow params keep the
+   *  bands at the beam's world-unit period. */
   private writeConeEmitterMatrices(
     slot: number,
     m: ArrayLike<number>,
@@ -856,9 +844,7 @@ export class UnitDetailInstanceRenderer3D {
     );
 
     const ballRadius = this.coneEmitterBallRadius[slot];
-    // Chopped-cone taper: the cone's flat top matches the ball radius so
-    // the ball reads as the cone's cap (0 = pointed cone for ball-less
-    // rays). The inner layer narrows base and ball by the same factor, so
+    // Chopped-cone taper. The inner layer narrows by the same factor, so
     // one taper ratio serves both pools.
     const coneTipTaper = ballRadius > 0 && radial > 1e-6 ? ballRadius / radial : 0;
     this.writeEmitterFlow(
@@ -1403,9 +1389,8 @@ export class UnitDetailInstanceRenderer3D {
     );
   }
 
-  /** Record the start-ball radius for a beam-emitter cone slot (0 = the
-   *  ray authors no emission offset, so no ball renders). Called by the
-   *  mesh builder right after slot allocation. */
+  /** Record the cap radius for a legacy cone slot. Called by the mesh
+   *  builder right after slot allocation. */
   registerConeBarrelEmitter(slot: number, ballRadius: number): void {
     this.coneEmitterBallRadius[slot] = ballRadius;
   }

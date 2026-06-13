@@ -61,6 +61,7 @@ type ClientDefaults = {
   readonly smokeTrails: boolean;
   readonly smokeSoftEdges: boolean;
   readonly beamSnapToTurret: boolean;
+  readonly beamEma: PositionDriftChannelMode;
   readonly triangleDebug: boolean;
   readonly buildGridDebug: boolean;
   readonly metalMap: boolean;
@@ -130,6 +131,7 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     smokeTrails: pickDefault(clientBarConfig.smokeTrails, mode),
     smokeSoftEdges: pickDefault(clientBarConfig.smokeSoftEdges, mode),
     beamSnapToTurret: pickDefault(clientBarConfig.beamSnapToTurret, mode),
+    beamEma: pickDefault(clientBarConfig.beamEma, mode) as PositionDriftChannelMode,
     triangleDebug: pickDefault(clientBarConfig.triangleDebug, mode),
     buildGridDebug: pickDefault(clientBarConfig.buildGridDebug, mode),
     metalMap: pickDefault(clientBarConfig.metalMap, mode),
@@ -204,6 +206,10 @@ export const CLIENT_CONFIG = {
   smokeTrails: { default: DEMO_CLIENT_DEFAULTS.smokeTrails },
   smokeSoftEdges: { default: DEMO_CLIENT_DEFAULTS.smokeSoftEdges },
   beamSnapToTurret: { default: DEMO_CLIENT_DEFAULTS.beamSnapToTurret },
+  beamEma: {
+    default: DEMO_CLIENT_DEFAULTS.beamEma,
+    options: clientBarConfig.beamEma.options as OptionList<PositionDriftChannelMode>,
+  },
   triangleDebug: { default: DEMO_CLIENT_DEFAULTS.triangleDebug },
   buildGridDebug: { default: DEMO_CLIENT_DEFAULTS.buildGridDebug },
   metalMap: { default: DEMO_CLIENT_DEFAULTS.metalMap },
@@ -302,6 +308,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     smokeTrails: { default: defaults.smokeTrails },
     smokeSoftEdges: { default: defaults.smokeSoftEdges },
     beamSnapToTurret: { default: defaults.beamSnapToTurret },
+    beamEma: { ...CLIENT_CONFIG.beamEma, default: defaults.beamEma },
     triangleDebug: { default: defaults.triangleDebug },
     buildGridDebug: { default: defaults.buildGridDebug },
     metalMap: { default: defaults.metalMap },
@@ -356,6 +363,7 @@ type ClientStorageKeyName =
   | 'smokeTrails'
   | 'smokeSoftEdges'
   | 'beamSnapToTurret'
+  | 'beamEma'
   | 'resourceBallDensity'
   | 'triangleDebug'
   | 'buildGridDebug'
@@ -397,6 +405,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'smokeTrails',
   'smokeSoftEdges',
   'beamSnapToTurret',
+  'beamEma',
   'resourceBallDensity',
   'triangleDebug',
   'buildGridDebug',
@@ -491,6 +500,7 @@ let currentLocomotionMarks: boolean = _cd.locomotionMarks.default;
 let currentSmokeTrails: boolean = _cd.smokeTrails.default;
 let currentSmokeSoftEdges: boolean = _cd.smokeSoftEdges.default;
 let currentBeamSnapToTurret: boolean = _cd.beamSnapToTurret.default;
+let currentBeamEma: PositionDriftChannelMode = _cd.beamEma.default;
 let currentResourceBallDensity: number = DEFAULT_BALLS_PER_RESOURCE_PER_SECOND;
 let currentTriangleDebug: boolean = _cd.triangleDebug.default;
 let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
@@ -586,6 +596,7 @@ function applyClientDefaults(mode: ClientMode): void {
   currentSmokeTrails = cd.smokeTrails.default;
   currentSmokeSoftEdges = cd.smokeSoftEdges.default;
   currentBeamSnapToTurret = cd.beamSnapToTurret.default;
+  currentBeamEma = cd.beamEma.default;
   applyResourceBallDensity(DEFAULT_BALLS_PER_RESOURCE_PER_SECOND);
   currentTriangleDebug = cd.triangleDebug.default;
   currentBuildGridDebug = cd.buildGridDebug.default;
@@ -673,6 +684,10 @@ function loadFromStorage(mode: ClientMode): void {
   if (storedBeamSnapToTurret !== null) {
     currentBeamSnapToTurret = storedBeamSnapToTurret === 'true';
   }
+  currentBeamEma = readPositionDriftChannelMode(
+    keys.beamEma,
+    currentBeamEma,
+  );
   const storedResourceBallDensity = readPersisted(keys.resourceBallDensity);
   if (storedResourceBallDensity !== null) {
     const parsed = Number(storedResourceBallDensity);
@@ -1040,6 +1055,15 @@ export function getBeamSnapToTurret(): boolean {
 export function setBeamSnapToTurret(enabled: boolean): void {
   currentBeamSnapToTurret = enabled;
   persist(activeStorageKeys().beamSnapToTurret, String(enabled));
+}
+
+export function getBeamEmaMode(): PositionDriftChannelMode {
+  return currentBeamEma;
+}
+
+export function setBeamEmaMode(mode: PositionDriftChannelMode): void {
+  currentBeamEma = mode;
+  persist(activeStorageKeys().beamEma, mode);
 }
 
 export function getResourceBallDensity(): number {

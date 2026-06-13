@@ -1031,8 +1031,10 @@ export class DamageSystem {
     let remainingRange = Math.hypot(endX - startX, endY - startY, endZ - startZ);
     let curSX = startX, curSY = startY, curSZ = startZ;
     let curEX = endX, curEY = endY, curEZ = endZ;
-    let excludeEntityId = sourceEntityId;
-    let excludePanelIndex = -1; // -1 = exclude entire entity (source), >= 0 = exclude only that panel
+    let bodyExcludeEntityId = sourceEntityId;
+    let bodyExcludePanelIndex = -1;
+    let reflectorExcludeEntityId = NO_ENTITY_ID;
+    let reflectorExcludePanelIndex = -1;
 
     for (let segmentIndex = 0; segmentIndex < segmentLimit; segmentIndex++) {
       if (rangeCylinder) {
@@ -1060,7 +1062,12 @@ export class DamageSystem {
 
       const hit = this.findBeamSegmentHit(
         curSX, curSY, curSZ, curEX, curEY, curEZ,
-        excludeEntityId, excludePanelIndex, lineWidth, dtMs,
+        bodyExcludeEntityId,
+        bodyExcludePanelIndex,
+        reflectorExcludeEntityId,
+        reflectorExcludePanelIndex,
+        lineWidth,
+        dtMs,
       );
 
       if (!hit) {
@@ -1191,8 +1198,10 @@ export class DamageSystem {
         curEY = hit.y + reflDirY * remainingRange;
         curEZ = hit.z + reflDirZ * remainingRange;
       }
-      excludeEntityId = hit.entityId;
-      excludePanelIndex = hit.panelIndex;
+      bodyExcludeEntityId = hit.entityId;
+      bodyExcludePanelIndex = hit.panelIndex;
+      reflectorExcludeEntityId = hit.entityId;
+      reflectorExcludePanelIndex = hit.panelIndex;
     }
 
     return {
@@ -1210,8 +1219,12 @@ export class DamageSystem {
 
   // Find closest beam hit — checks shield panel rectangles AND regular
   // entity colliders, all in 3D.
-  //   excludeEntityId: on bounce 0 = source (don't hit self), on bounce N = last mirror hit
-  //   excludePanelIndex: -1 = exclude entire entity, >= 0 = exclude only that panel
+  // Body exclusion and reflector exclusion are deliberately separate:
+  // launch excludes the firing body, but not its shield material. A
+  // turret inside its own active shield must still reflect on the first
+  // segment. After an actual reflector hit, both exclusions move to that
+  // reflector so the next segment does not immediately re-hit the same
+  // surface.
   private findGroundSegmentT(
     startX: number, startY: number, startZ: number,
     endX: number, endY: number, endZ: number,
@@ -1250,8 +1263,10 @@ export class DamageSystem {
   private findBeamSegmentHit(
     startX: number, startY: number, startZ: number,
     endX: number, endY: number, endZ: number,
-    excludeEntityId: EntityId,
-    excludePanelIndex: number,
+    bodyExcludeEntityId: EntityId,
+    bodyExcludePanelIndex: number,
+    reflectorExcludeEntityId: EntityId,
+    reflectorExcludePanelIndex: number,
     lineWidth: number,
     dtMs: number,
   ): typeof _segHit | null {
@@ -1266,8 +1281,8 @@ export class DamageSystem {
     const nearbyUnits = spatialGrid.queryUnitsAlongLine(startX, startY, startZ, endX, endY, endZ, lineWidth + 60);
 
     for (const unit of nearbyUnits) {
-      const isExcludedEntity = unit.id === excludeEntityId;
-      if (isExcludedEntity && excludePanelIndex < 0) continue;
+      const isExcludedEntity = unit.id === bodyExcludeEntityId;
+      if (isExcludedEntity && bodyExcludePanelIndex < 0) continue;
       if (
         !unit.unit ||
         unit.unit.hp <= 0
@@ -1324,8 +1339,8 @@ export class DamageSystem {
       _beamReflEndY[0] = endY;
       _beamReflEndZ[0] = endZ;
       _beamReflRadius[0] = Math.max(0, lineWidth);
-      _beamReflExcludeEntityId[0] = excludeEntityId;
-      _beamReflExcludePanelIndex[0] = excludePanelIndex;
+      _beamReflExcludeEntityId[0] = reflectorExcludeEntityId;
+      _beamReflExcludePanelIndex[0] = reflectorExcludePanelIndex;
       sim.projectileReflectorIntersectionsBatch(
         1,
         _beamReflEnabled,
@@ -1392,9 +1407,9 @@ export class DamageSystem {
     for (const building of nearbyBuildings) {
       // Skip the firing building — a tower-mounted turret must not
       // self-block on its own AABB. Mirrors the unit-source guard
-      // above (excludeEntityId / excludePanelIndex tracks the entity
-      // the beam was just emitted from / last reflected off).
-      if (building.id === excludeEntityId) continue;
+      // above (bodyExclude* tracks the entity the beam was just
+      // emitted from / last reflected off).
+      if (building.id === bodyExcludeEntityId) continue;
       if (!building.building || building.building.hp <= 0) continue;
       const bWidth = building.building.width;
       const bHeight = building.building.height;
@@ -1430,7 +1445,7 @@ export class DamageSystem {
       startX, startY, startZ, endX, endY, endZ, lineWidth + 60,
     );
     for (const projectile of nearbyProjectiles) {
-      if (projectile.id === excludeEntityId) continue;
+      if (projectile.id === bodyExcludeEntityId) continue;
       const proj = projectile.projectile;
       if (
         proj === null ||

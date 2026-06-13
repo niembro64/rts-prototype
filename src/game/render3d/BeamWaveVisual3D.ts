@@ -1,19 +1,15 @@
-// BeamWaveVisual3D — the beam's "living" wave-material family, shared by
-// everything that is literally beam-stuff: the beam cylinders themselves
-// (BeamRenderer3D) and the always-on beam-turret emitter rig — the fake
-// barrel cone plus the start-point ball at its tip — on both render paths
-// (unit instanced pools and per-Mesh tower turrets).
+// BeamWaveVisual3D — the beam's "living" wave-material family used by the
+// beam cylinders themselves (BeamRenderer3D).
 //
 // One config source (beamConfig.json wave spacing/speed + colorsConfig
 // colors/alphas), one animation style: alpha bands with a waveSpacing
 // world-unit period flow along the local +Y axis at waveSpeed, exactly
-// like the beam columns. The emitter rig animates continuously, so an
-// idle beam turret reads as charging the ball at the barrel tip.
+// like the beam columns.
 //
 // Geometry contract: every wave-shaded shape spans local y ∈ [-0.5, +0.5]
 // with +Y pointing along the flow direction (head → muzzle → target), so
 // `vAlong = position.y + 0.5` walks 0→1 along the energy path for beam
-// segments, barrel cones, and the start ball alike.
+// segments.
 
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
@@ -31,31 +27,14 @@ export type BeamVisualConfig = {
   waveSpeed: number;
 };
 
-/** Start-point ball ("generator orb") sizing config. radiusMultiplier
- *  scales the beam body radius; minRadius floors it so even thin beams
- *  show a visible ball. The ball renders in the shared beam-wave
- *  material, so there is no color field to resolve here. */
-type StartPointSphereConfig = {
-  radiusMultiplier: number;
-  minRadius: number;
-};
-
 type BeamConfigFile = Partial<BeamVisualConfig> & {
   outer?: BeamVisualConfig;
   inner?: BeamVisualConfig;
-  startPointSphere?: Partial<StartPointSphereConfig> & {
-    emissionOffset?: Record<string, number>;
-  };
 };
 
 // JSON-shape is narrower than BeamConfigFile (no color/alpha fields —
 // those come from COLORS at merge time below), so cast through unknown.
 const rawBeamConfig = beamConfig as unknown as BeamConfigFile;
-
-const START_POINT_SPHERE_CONFIG: StartPointSphereConfig = {
-  radiusMultiplier: rawBeamConfig.startPointSphere?.radiusMultiplier ?? 1.5,
-  minRadius: rawBeamConfig.startPointSphere?.minRadius ?? 1.0,
-};
 
 const rawOuterVisualConfig = rawBeamConfig.outer ?? (rawBeamConfig as BeamVisualConfig);
 export const BEAM_OUTER_VISUAL_CONFIG: BeamVisualConfig = {
@@ -80,8 +59,7 @@ export function beamWaveLayerConfig(layer: BeamWaveLayer): BeamVisualConfig {
   return layer === 'outer' ? BEAM_OUTER_VISUAL_CONFIG : BEAM_INNER_VISUAL_CONFIG;
 }
 
-/** The inner layer's radius as a fraction of the outer layer's — beam
- *  columns, emitter cones, start balls, and endpoint spheres all share it. */
+/** The inner layer's radius as a fraction of the outer layer's. */
 export const BEAM_LAYER_INNER_SCALE = 0.45;
 
 /** Transparent wave visuals draw after the opaque world; inner layers
@@ -91,29 +69,17 @@ export const BEAM_WAVE_RENDER_ORDER: Record<BeamWaveLayer, number> = {
   inner: 13,
 };
 
-/** One shared clock uniform for every beam-wave material — beam columns,
- *  emitter pools, and per-Mesh emitter materials all animate in lockstep.
- *  (Per-object fade clones made by EntityFade3D deep-copy uniforms, so a
- *  mid-fade emitter freezes its bands until the fade releases — fine.) */
+/** One shared clock uniform for every beam-wave material. */
 export const BEAM_WAVE_TIME: { value: number } = { value: 0 };
 
 export function tickBeamWaveTime(): void {
   BEAM_WAVE_TIME.value = performance.now() * 0.001;
 }
 
-/** Start-ball world radius for a ray of the given body radius
- *  (lineRadius = ray width / 2 — the same value the beam columns use). */
-export function getBeamEmitterBallRadius(lineRadius: number): number {
-  return Math.max(
-    START_POINT_SPHERE_CONFIG.minRadius,
-    lineRadius * START_POINT_SPHERE_CONFIG.radiusMultiplier,
-  );
-}
-
 /** Wave repeats so the band period stays = waveSpacing world units
  *  regardless of the shape's length — no clamping. Short shapes (the
- *  emitter cone, the start ball) just show a travelling slice of the
- *  pattern; long beams pack more cycles in. */
+ *  legacy emitter helpers) just show a travelling slice of the pattern;
+ *  long beams pack more cycles in. */
 export function beamWaveFlowRepeats(length: number, spacing: number): number {
   if (spacing <= 0 || length <= 1e-3) return 1;
   return length / spacing;
@@ -195,7 +161,7 @@ void main() {
 `;
 
 // ---------------------------------------------------------------------------
-// Emitter rig (fake barrel cone + start ball) wave materials.
+// Legacy cone-barrel wave materials.
 //
 // Same bands, same config, two delivery mechanisms:
 //   - instanced (unit pools): per-instance aFlow2 = (repeats, phase) and the
@@ -206,10 +172,7 @@ void main() {
 
 // aFlow3 = (repeats, phase, tipTaper). tipTaper scales the radial (XZ)
 // footprint from 1.0 at the base to tipTaper at the +Y end, turning the
-// unit-cylinder geometry into a per-instance frustum: the emitter cone's
-// flat top matches its start ball's radius (taper = ballRadius / base
-// radius), taper 0 recovers a pointed cone, and the ball itself rides
-// taper 1 (no-op).
+// unit-cylinder geometry into a per-instance frustum.
 const EMITTER_INSTANCED_VERTEX_SHADER = `
 attribute vec3 aFlow3;
 attribute float aFade;

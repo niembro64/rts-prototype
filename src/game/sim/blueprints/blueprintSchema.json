@@ -902,8 +902,7 @@
         "projectileFinSizeMult",
         "burnMarkWidth",
         "lineRadius",
-        "lineDamageSphereRadius",
-        "lineEmissionOffset"
+        "lineDamageSphereRadius"
       ],
       "properties": {
         "projectileTailShape": {
@@ -928,9 +927,6 @@
           "type": "number"
         },
         "lineDamageSphereRadius": {
-          "type": "number"
-        },
-        "lineEmissionOffset": {
           "type": "number"
         }
       },

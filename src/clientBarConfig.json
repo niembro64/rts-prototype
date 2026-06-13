@@ -34,6 +34,16 @@
   "smokeTrails": { "demoDefault": true, "realDefault": true },
   "smokeSoftEdges": { "demoDefault": false, "realDefault": false },
   "beamSnapToTurret": { "demoDefault": true, "realDefault": true },
+  "beamEma": {
+    "demoDefault": "medium",
+    "realDefault": "medium",
+    "options": [
+      { "value": "snap", "label": "SNAP" },
+      { "value": "fast", "label": "FAST" },
+      { "value": "medium", "label": "MED" },
+      { "value": "slow", "label": "SLOW" }
+    ]
+  },
   "triangleDebug": { "demoDefault": false, "realDefault": false },
   "buildGridDebug": { "demoDefault": false, "realDefault": false },
   "metalMap": { "demoDefault": false, "realDefault": false },
@@ -213,6 +223,7 @@
     "smokeTrails": "smoke-trails",
     "smokeSoftEdges": "smoke-soft-edges",
     "beamSnapToTurret": "beam-snap-to-turret",
+    "beamEma": "beam-ema",
     "resourceBallDensity": "resource-ball-density",
     "triangleDebug": "triangle-debug",
     "buildGridDebug": "build-grid-debug",

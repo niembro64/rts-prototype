@@ -18,7 +18,6 @@ import {
 import {
   createBeamPathTarget,
   ensureBeamPoint,
-  shrinkBeamPoints,
   type BeamPathTarget,
 } from './ClientPredictionTargets';
 import {
@@ -169,30 +168,6 @@ export class ClientProjectileStore {
         entity.transform.x = start.x;
         entity.transform.y = start.y;
         entity.transform.z = start.z;
-      }
-    } else if (projPts.length !== srcPts.length) {
-      // A point-count change is a discrete topology event (a reflection
-      // appeared or ended): surviving indices change meaning, so the
-      // WHOLE rendered path snaps to the authoritative one. Keeping old
-      // vertices and only appending would leave a vertex parked at the
-      // beam's previous endpoint, drawing a phantom segment while the
-      // EMA dragged it toward its re-indexed target.
-      if (projPts.length > srcPts.length) {
-        shrinkBeamPoints(projPts, srcPts.length);
-      } else {
-        projPts.length = srcPts.length;
-      }
-      for (let i = 0; i < srcPts.length; i++) {
-        const sp = dstTarget[i];
-        const pp = ensureBeamPoint(projPts, i);
-        pp.x = sp.x; pp.y = sp.y; pp.z = sp.z;
-        pp.vx = sp.vx; pp.vy = sp.vy; pp.vz = sp.vz;
-        pp.reflectorEntityId = sp.reflectorEntityId;
-        pp.reflectorKind = sp.reflectorKind;
-        pp.reflectorPlayerId = sp.reflectorPlayerId;
-        pp.normalX = sp.normalX;
-        pp.normalY = sp.normalY;
-        pp.normalZ = sp.normalZ;
       }
     }
     proj.obstructionT = target.obstructionT;

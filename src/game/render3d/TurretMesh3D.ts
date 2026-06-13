@@ -13,7 +13,6 @@
 
 import * as THREE from 'three';
 import type { Turret } from '../sim/types';
-import { getBeamEmissionOffset } from '../sim/shotProfiles';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { RangeRingMesh } from './EntityMesh3D';
 import {
@@ -30,13 +29,6 @@ import {
   buildConstructionEmitterRigFromTurretConfig,
   type ConstructionEmitterRig,
 } from './ConstructionEmitterMesh3D';
-import {
-  BEAM_EMITTER_BALL_GEOM,
-  BEAM_LAYER_INNER_SCALE,
-  BEAM_WAVE_RENDER_ORDER,
-  getBeamEmitterBallRadius,
-  getBeamEmitterMeshMaterial,
-} from './BeamWaveVisual3D';
 
 export type TurretMesh = {
   root: THREE.Group;
@@ -72,32 +64,18 @@ export type TurretMesh = {
    *  barrels are routed through the InstancedMesh path (per-Mesh
    *  fallback). */
   barrelSlots?: number[];
-  /** True when these barrels were built with the tapered cone geometry
-   *  (beam/laser turrets). Tells the alloc + per-frame writer to route
-   *  through the cone instanced pool instead of the cylinder pool. */
+  /** True when these barrels were built with the tapered cone geometry.
+   *  Tells the alloc + per-frame writer to route through the cone
+   *  instanced pool instead of the cylinder pool. */
   barrelUsesCone?: boolean;
   /** True for head-only turrets: the per-frame writer colors the head
-   *  white when engaged (vs unit color when idle/tracking) and the
-   *  snapshot serializer keeps aim motion off the wire. No longer
-   *  implies "no barrel" — a head-only ray turret still renders a
-   *  beam-directed barrel (see `barrelFollowsBeam`). */
+   *  white when engaged (vs unit color when idle/tracking) unless it is
+   *  a ray turret, where the head keeps tracking the beam direction. */
   headOnly?: boolean;
-  /** True for beam (ray) turrets whose barrel + head are posed from the
-   *  last beam direction (`TurretBeamAimCache3D`) instead of the sim's
-   *  turret aim. Set iff `turretBarrelFollowsBeam(config)`. */
+  /** True for ray turrets whose head is posed from the last beam direction
+   *  (`TurretBeamAimCache3D`) instead of the sim's turret aim. Set iff
+   *  `turretBarrelFollowsBeam(config)`. */
   barrelFollowsBeam?: boolean;
-  /** Extra beam-emitter rig meshes for `barrelFollowsBeam` turrets: the
-   *  inner cone layer and the start-point ball layers at the barrel tip,
-   *  all in the beam's continuously-animated wave material. Built and
-   *  parented alongside `barrels` — the unit instanced path detaches them
-   *  (mirror pools render instead) while towers and the instanced-cap
-   *  fallback keep them as scene children of spinGroup. */
-  beamEmitterMeshes?: THREE.Mesh[];
-  /** Start-point ball world radius for this turret's emitter rig (0 = no
-   *  ball — the ray authors no emission offset). The unit instanced path
-   *  registers it per cone-pool slot so the per-frame writer can derive
-   *  the ball matrices from the barrel matrix. */
-  beamEmitterBallRadius?: number;
   /** True for visible shield-sphere emitter cores. The
    *  per-frame writer drives the active shield pulse on these heads. */
   shieldEmitterCore?: boolean;
@@ -135,10 +113,7 @@ export type TurretMesh = {
 export type TurretMesh3DDeps = {
   headGeom: THREE.SphereGeometry;
   barrelGeom: THREE.CylinderGeometry;
-  /** Barrel geometry for beam turrets: a straight unit cylinder whose
-   *  muzzle-end taper is applied by the beam-wave shader (down to the
-   *  start ball's radius — a chopped cone the ball caps — or to a point
-   *  for ball-less rays). */
+  /** Barrel geometry for authored single-cone barrels. */
   coneBarrelGeom: THREE.CylinderGeometry;
   /** Resolved primary (player color) material for this unit. */
   primaryMat: THREE.Material;
@@ -158,8 +133,8 @@ export type TurretMesh3DDeps = {
   skipHead?: boolean;
   /** When true, BUILD the per-barrel Mesh objects but DON'T attach
    *  them to spinGroup — the caller is rendering barrels through the
-   *  shared `barrelInstanced` InstancedMesh and reads the Mesh's
-   *  position / quaternion / scale as the per-barrel base transform.
+   *  shared instanced barrel pools and reads the Mesh's position /
+   *  quaternion / scale as the per-barrel base transform.
    *  The Meshes still live in TurretMesh.barrels[] as data carriers
    *  but are never drawn directly. */
   skipBarrels?: boolean;
@@ -181,8 +156,8 @@ export function buildTurretMesh3D(
   const isShield = barrel?.type === 'complexSingleEmitter';
   const headRadius = getTurretHeadRadius(turret.config);
   const headOnly = turret.config.headOnly === true;
-  // Beam (ray) turrets stay head-only on the wire but still render a
-  // barrel — posed from the last beam fired, not from turret aim.
+  // Beam (ray) turrets stay head-only on the wire and visually: the beam
+  // cylinder itself originates at the turret mount center.
   const followsBeam = turretBarrelFollowsBeam(turret.config);
 
   if (turret.config.constructionEmitter !== null) {
@@ -242,10 +217,10 @@ export function buildTurretMesh3D(
   const cachedHeadRadius = hideHead ? undefined : headRadius;
 
   const barrels: THREE.Mesh[] = [];
-  // Head-only turrets normally stop here (bare head sphere). Beam-directed
-  // turrets (headOnly && emits a ray) fall through and build their barrel,
-  // which the per-frame pass aims along the last beam fired.
-  if (!barrel || isShield || turretOff || (headOnly && !followsBeam)) {
+  // Head-only turrets stop here as a bare head sphere. Ray turrets keep
+  // barrelFollowsBeam so the pose pass can still point the head along the
+  // last fired beam, but there is no cone, muzzle ball, or barrel offset.
+  if (!barrel || isShield || turretOff || headOnly) {
     parent.add(root);
     return {
       root,
@@ -253,6 +228,7 @@ export function buildTurretMesh3D(
       headRadius: cachedHeadRadius,
       barrels,
       headOnly,
+      barrelFollowsBeam: followsBeam,
       shieldEmitterCore: showShieldEmitterCore,
       shieldEmitterPulseMat,
     };
@@ -331,14 +307,7 @@ export function buildTurretMesh3D(
   // every instance of the same turret blueprint rendering at the same
   // size regardless of which unit mounts it.
   const barrelScale = headRadius;
-  let length = getTurretBarrelCenterToTipLength(turret.config);
-  // Beam turrets: extend the cone barrel so its tip reaches the beam's
-  // start-point orb (sits at emissionOffset along the firing axis from the
-  // mount), so the beam looks like it leaves the tip of the barrel.
-  if (followsBeam) {
-    const orbOffset = getBeamEmissionOffset(turret.config.shot);
-    if (orbOffset > 0) length = orbOffset;
-  }
+  const length = getTurretBarrelCenterToTipLength(turret.config);
   // barrelLength=0 (e.g. shield panel host) → no visible barrel.
   if (length < 1e-4) {
     parent.add(root);
@@ -381,70 +350,9 @@ export function buildTurretMesh3D(
     }
   }
 
-  // Beam-directed emitter rig: the fake barrel cone and the start-point
-  // ball at its tip render in the beam's own wave material (outer + inner
-  // layers, same beamConfig/colorsConfig variables, one shared clock).
-  // The bands animate continuously, so an idle beam turret reads as
-  // charging the ball at the barrel tip; while firing they flow straight
-  // on into the beam, which starts at that same ball.
-  let beamEmitterMeshes: THREE.Mesh[] | undefined;
-  let beamEmitterBallRadius: number | undefined;
-  if (followsBeam && barrels.length > 0) {
-    // The ball exists for beams that author an emission offset (the same
-    // rule the old fire-time orb used). Resolved first because the cone is
-    // a chopped cone whose flat top matches the ball's radius — the ball
-    // caps the frustum instead of swallowing a pointed tip.
-    const rayWidth = (turret.config.shot as { width?: number } | null)?.width ?? 0;
-    const ballRadius = getBeamEmissionOffset(turret.config.shot) > 0
-      ? getBeamEmitterBallRadius(rayWidth / 2)
-      : 0;
-    beamEmitterBallRadius = ballRadius;
-    // Tip radius / base radius for the shader frustum; 0 keeps the pointed
-    // cone for ball-less rays. The inner layer scales base and ball by the
-    // same factor, so one taper serves both layers.
-    const coneTipTaper = ballRadius > 0 && cylRadius > 1e-6 ? ballRadius / cylRadius : 0;
-
-    const outerBarrel = barrels[0];
-    outerBarrel.material = getBeamEmitterMeshMaterial('outer', length, coneTipTaper);
-    outerBarrel.renderOrder = BEAM_WAVE_RENDER_ORDER.outer;
-
-    beamEmitterMeshes = [];
-    const innerBarrel = new THREE.Mesh(
-      deps.coneBarrelGeom,
-      getBeamEmitterMeshMaterial('inner', length, coneTipTaper),
-    );
-    innerBarrel.position.copy(outerBarrel.position);
-    innerBarrel.quaternion.copy(outerBarrel.quaternion);
-    innerBarrel.scale.set(
-      cylRadius * BEAM_LAYER_INNER_SCALE,
-      length,
-      cylRadius * BEAM_LAYER_INNER_SCALE,
-    );
-    innerBarrel.renderOrder = BEAM_WAVE_RENDER_ORDER.inner;
-    if (!deps.skipBarrels) barrelParent.add(innerBarrel);
-    beamEmitterMeshes.push(innerBarrel);
-    if (ballRadius > 0) {
-      const ballDiameter = ballRadius * 2;
-      for (const layer of ['outer', 'inner'] as const) {
-        const layerScale = layer === 'outer' ? 1 : BEAM_LAYER_INNER_SCALE;
-        const ball = new THREE.Mesh(
-          BEAM_EMITTER_BALL_GEOM,
-          getBeamEmitterMeshMaterial(layer, ballDiameter * layerScale),
-        );
-        ball.position.set(length, parentBaseY, 0);
-        ball.quaternion.copy(outerBarrel.quaternion);
-        ball.scale.setScalar(ballDiameter * layerScale);
-        ball.renderOrder = BEAM_WAVE_RENDER_ORDER[layer];
-        if (!deps.skipBarrels) barrelParent.add(ball);
-        beamEmitterMeshes.push(ball);
-      }
-    }
-  }
-
   parent.add(root);
   return {
     root, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup,
     barrelUsesCone, headOnly, barrelFollowsBeam: followsBeam,
-    beamEmitterMeshes, beamEmitterBallRadius,
   };
 }

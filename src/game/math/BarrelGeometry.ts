@@ -105,13 +105,11 @@ export type BarrelEndpoint = {
   dirZ: number;
 };
 
-/** A head-only turret renders a *beam-directed* barrel iff it emits a
- *  ray: the barrel (and head) are posed from the last beam fired rather
- *  than from the turret's own aim, which stays off the wire. This is the
- *  single source of truth for "this turret's barrel follows its beam" —
- *  used by the mesh builder (build the barrel anyway) and the per-frame
- *  turret-pose passes (aim it from `TurretBeamAimCache3D`). A head-only
- *  turret that emits anything else still draws as a bare head. */
+/** A head-only turret emitting a ray keeps its aim off the wire and poses
+ *  from the last beam fired. The historical flag name is kept as the
+ *  single source of truth for "this ray turret follows its beam"; the
+ *  mesh builder now leaves it head-only and the pose passes aim that head
+ *  from `TurretBeamAimCache3D`. */
 export function turretBarrelFollowsBeam(
   config: { headOnly?: boolean; shot?: EmissionConfig | null | undefined },
 ): boolean {

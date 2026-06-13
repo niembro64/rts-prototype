@@ -46,9 +46,9 @@ function resolveCurrentTurretMount(
  *
  * The entity renderer records the live firing direction of every active
  * beam each frame from its first segment; the turret-pose pass reads it back
- * to aim beam-directed barrels (`turretBarrelFollowsBeam`). Unlike
+ * to aim ray turret heads (`turretBarrelFollowsBeam`). Unlike
  * `TurretMountCache3D`, entries are NOT cleared per frame: when a beam
- * stops, the last direction persists so the barrel freezes pointing
+ * stops, the last direction persists so the head freezes pointing
  * wherever it last fired instead of snapping back to forward. Entries
  * are dropped only when their host entity is removed.
  */

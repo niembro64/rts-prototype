@@ -204,7 +204,6 @@ export type ShotVisualProfile = {
   burnMarkWidth: number;
   lineRadius: number;
   lineDamageSphereRadius: number;
-  lineEmissionOffset: number;
 };
 
 export type ShotProfile = {

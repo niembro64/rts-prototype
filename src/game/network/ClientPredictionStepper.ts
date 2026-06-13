@@ -1,9 +1,10 @@
 import {
+  getBeamEmaMode,
   getMovementPosEmaMode,
   getMovementVelEmaMode,
   getPredictionMode,
 } from '@/clientBarConfig';
-import type { Entity, EntityId } from '../sim/types';
+import type { BeamPoint, Entity, EntityId } from '../sim/types';
 import { angleDeltaAbs, lerp } from '../math';
 import { getChannelBlend } from './driftEma';
 import { ClientPredictionCadence } from './ClientPredictionCadence';
@@ -58,6 +59,56 @@ function noteTargetAge(
   if (ageMs > stats.maxTargetAgeMs) stats.maxTargetAgeMs = ageMs;
 }
 
+function beamPointIsReflector(point: BeamPoint): boolean {
+  return point.reflectorEntityId !== null || point.reflectorKind !== null;
+}
+
+function copyBeamPointState(dst: BeamPoint, src: BeamPoint): void {
+  dst.x = src.x; dst.y = src.y; dst.z = src.z;
+  dst.vx = src.vx; dst.vy = src.vy; dst.vz = src.vz;
+  dst.reflectorEntityId = src.reflectorEntityId;
+  dst.reflectorKind = src.reflectorKind;
+  dst.reflectorPlayerId = src.reflectorPlayerId;
+  dst.normalX = src.normalX;
+  dst.normalY = src.normalY;
+  dst.normalZ = src.normalZ;
+}
+
+function seedBeamPointPosition(dst: BeamPoint, seed: BeamPoint): void {
+  dst.x = seed.x; dst.y = seed.y; dst.z = seed.z;
+  dst.vx = seed.vx; dst.vy = seed.vy; dst.vz = seed.vz;
+}
+
+function shouldSnapExistingBeamPoint(current: BeamPoint, target: BeamPoint): boolean {
+  const targetIsReflector = beamPointIsReflector(target);
+  // A target reflector vertex is a hard boundary point. If this display
+  // index was previously an endpoint, snap it to the shield hit so the
+  // incoming segment cannot visually pass through the shield. The inverse
+  // transition is allowed to EMA away from the old reflector; that avoids
+  // whole-polyline resets when a reflection ends.
+  if (!beamPointIsReflector(current) && targetIsReflector) {
+    return true;
+  }
+  if (
+    current.reflectorEntityId !== null &&
+    target.reflectorEntityId !== null &&
+    (current.reflectorEntityId !== target.reflectorEntityId ||
+      current.reflectorKind !== target.reflectorKind)
+  ) {
+    return true;
+  }
+  if (
+    current.reflectorEntityId === null &&
+    target.reflectorEntityId === null &&
+    current.reflectorKind !== null &&
+    target.reflectorKind !== null &&
+    current.reflectorKind !== target.reflectorKind
+  ) {
+    return true;
+  }
+  return false;
+}
+
 function applyBeamPathPrediction(
   entity: Entity,
   target: BeamPathTarget,
@@ -75,20 +126,16 @@ function applyBeamPathPrediction(
 
   const projPts = proj.points ?? (proj.points = []);
   const oldLen = projPts.length;
-  // A point-count change is a discrete topology event (a reflection
-  // appeared or ended), not continuous mismatch: surviving indices
-  // change MEANING (e.g. vertex 1 was the ground endpoint, now it is
-  // the mirror reflection point). EMA-blending a vertex across that
-  // re-indexing walks it through open space and draws a phantom
-  // segment toward wherever the beam used to end — so on any length
-  // change every vertex snaps to the authoritative path this frame.
-  const snapAll = oldLen !== tgtPts.length;
-  if (snapAll) {
-    if (oldLen > tgtPts.length) {
-      shrinkBeamPoints(projPts, tgtPts.length);
-    } else {
-      projPts.length = tgtPts.length;
-    }
+  // Keep snapshot application out of the displayed points. Length changes
+  // are reconciled here so existing indexes can keep their EMA state; new
+  // non-reflector endpoints seed from the old endpoint instead of from zero
+  // or from the authoritative target, which removes snapshot-time resets.
+  const oldLastPoint = oldLen > 0 ? { ...projPts[oldLen - 1] } : null;
+  if (oldLen > tgtPts.length) {
+    shrinkBeamPoints(projPts, tgtPts.length);
+    changed = true;
+  } else if (oldLen < tgtPts.length) {
+    projPts.length = tgtPts.length;
     changed = true;
   }
 
@@ -112,24 +159,24 @@ function applyBeamPathPrediction(
   for (let i = 0; i < tgtPts.length; i++) {
     const tp = tgtPts[i];
     let pp = projPts[i];
-    // Same-length reflector handoff (the bounce moved to a different
-    // mirror, or a reflection appeared at this index) is equally a
-    // step function — snap that vertex instead of sweeping it through
-    // the air between the two mirror positions.
-    const reflectorChanged =
-      pp !== undefined &&
-      (pp.reflectorEntityId !== tp.reflectorEntityId ||
-        pp.reflectorKind !== tp.reflectorKind);
-    if (!pp || i >= oldLen || snapAll || reflectorChanged) {
+    const isNewPoint = !pp || i >= oldLen;
+    if (isNewPoint) {
       pp = ensureBeamPoint(projPts, i);
-      pp.x = tp.x; pp.y = tp.y; pp.z = tp.z;
-      pp.vx = tp.vx; pp.vy = tp.vy; pp.vz = tp.vz;
+      if (beamPointIsReflector(tp) || oldLastPoint === null) {
+        copyBeamPointState(pp, tp);
+        changed = true;
+        continue;
+      }
+      seedBeamPointPosition(pp, oldLastPoint);
       pp.reflectorEntityId = tp.reflectorEntityId;
       pp.reflectorKind = tp.reflectorKind;
       pp.reflectorPlayerId = tp.reflectorPlayerId;
       pp.normalX = tp.normalX;
       pp.normalY = tp.normalY;
       pp.normalZ = tp.normalZ;
+      changed = true;
+    } else if (shouldSnapExistingBeamPoint(pp, tp)) {
+      copyBeamPointState(pp, tp);
       changed = true;
       continue;
     }
@@ -242,10 +289,11 @@ export class ClientPredictionStepper {
       totalTargetAgeMs: 0,
       maxTargetAgeMs: 0,
     };
-    // Beam paths and rocket correction targets follow the movement-position
-    // and movement-velocity channels for their EMAs.
+    // Beam path positions have their own EMA because smoothing a reflected
+    // polyline has different visual failure modes than smoothing unit motion.
     const movPosBlend = getChannelBlend(getMovementPosEmaMode(), deltaMs / 1000);
     const movVelBlend = getChannelBlend(getMovementVelEmaMode(), deltaMs / 1000);
+    const beamPosBlend = getChannelBlend(getBeamEmaMode(), deltaMs / 1000);
     projectileSpawns.drain(now, applyProjectileSpawn);
 
     const turretShieldSpheresEnabled = getServerShieldsEnabled();
@@ -272,7 +320,7 @@ export class ClientPredictionStepper {
 
       const beamTarget = beamPathTargets.get(id);
       noteTargetAge(targetAgeStats, beamTarget === undefined ? undefined : beamTarget.updatedAtMs, now);
-      if (beamTarget && applyBeamPathPrediction(entity, beamTarget, deltaMs, movPosBlend, movVelBlend)) {
+      if (beamTarget && applyBeamPathPrediction(entity, beamTarget, deltaMs, beamPosBlend, movVelBlend)) {
         beamPathsChanged = true;
         updateProjectileRenderSpatialIndex(entity);
         // Beam-directed barrels (turretBarrelFollowsBeam) are posed from

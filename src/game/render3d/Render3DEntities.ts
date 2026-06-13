@@ -188,10 +188,7 @@ export class Render3DEntities {
   private turretHeadGeom = new THREE.SphereGeometry(1, 16, 12);
   private commanderVisualKit = new CommanderVisualKit3D();
   private barrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
-  // Beam-turret barrels: a straight unit cylinder whose taper is applied
-  // per-instance in the beam-wave vertex shader (uTipTaper / aFlow3.z), so
-  // the muzzle end narrows to exactly the start ball's radius — a chopped
-  // cone capped by the ball — rather than a geometry-baked point.
+  // Taperable barrel geometry for any authored single-cone barrels.
   private coneBarrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
   private readonly materialPalette = new EntityMaterialPalette3D();
   // Force-field panel = flat unit square plane. Default orientation: face
@@ -230,7 +227,7 @@ export class Render3DEntities {
   private _airborneBankQuat = new THREE.Quaternion();
   private turretMountCache = new TurretMountCache3D();
   // Last beam-firing direction per turret. Persists across frames so
-  // beam-directed barrels freeze on their last live firing direction.
+  // beam-directed heads freeze on their last live firing direction.
   private turretBeamAimCache = new TurretBeamAimCache3D();
 
   /** Per-unit cached prefix matrix `T(liftedPos) · R(parentQuat) · S(1)`
@@ -385,9 +382,8 @@ export class Render3DEntities {
     this._currentTimeMs = frameSpin.timeMs;
     this._spinDt = frameSpin.spinDtSec;
     setHoverFanAnimationTime(frameSpin.timeMs / 1000);
-    // The beam-emitter rig (cone + start ball) animates continuously even
-    // with no beam alive, so the shared wave clock ticks here rather than
-    // only inside BeamRenderer3D's early-returning update.
+    // Keep the shared beam wave clock advancing even when BeamRenderer3D
+    // early-returns on a frame with no live beams.
     tickBeamWaveTime();
     this.turretMountCache.reset(this._currentDtMs);
     this.resourcePylonFlows.beginFrame();

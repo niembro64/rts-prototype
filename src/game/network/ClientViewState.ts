@@ -465,8 +465,8 @@ export class ClientViewState {
     }
   }
 
-  /** A beam's rendered polyline moved this frame. Beam-directed barrels
-   *  (turretBarrelFollowsBeam) are posed from that polyline by the
+  /** A beam's rendered polyline moved this frame. Beam-directed ray
+   *  turrets (turretBarrelFollowsBeam) are posed from that polyline by the
    *  turret-pose passes, and the building renderer only re-poses dirty
    *  rows — a beam tower whose aim is pinned to zero on the wire never
    *  dirties through snapshots while its beam sweeps. Dirty the emitting

@@ -806,11 +806,8 @@ export function fireTurrets(
           : turretAngle;
 
         if (isBeamWeapon) {
-          // Logical beam start is the turret mount center — the
-          // emission offset is purely a visual offset applied at render
-          // time on the first beam segment (see beamConfig.json and
-          // BeamRenderer3D), so the sim path/damage/range stays anchored
-          // at the mount center.
+          // Beam start is the turret mount center for both simulation and
+          // rendering.
           const beamStartX = spawnX;
           const beamStartY = spawnY;
           const beamStartZ = spawnZ;
@@ -1571,9 +1568,7 @@ export function updateProjectiles(
 
         // Beam starts follow the turret mount center. Direction follows
         // the current yaw + pitch so the beam path is up-to-date even
-        // mid-tick. The emission offset (a visual gap between the
-        // turret and the beam start) is applied at render time, not
-        // here — sim damage/path anchor at the mount center.
+        // mid-tick.
         const turretAngle = weapon.rotation;
         const turretPitch = weapon.pitch;
         const { cos: srcCos, sin: srcSin } = getTransformCosSin(source.transform);
