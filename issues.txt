@@ -1,0 +1,17 @@
+================================================================================
+BUDGET ANNIHILATION — ISSUES
+
+This is "issues.txt" for this game "budget-annihilation" (i.e. "rts-prototype").
+
+Your task is to fix the issues documented here.
+
+Errors, Problems, Inconsistencies, TODOs, etc are listed here. As we fix
+something we should completely delete it from this file. You should also delete
+an item if you know for a fact it has been addressed. Remember that our code may
+have changed since the issue was written; check the code and if the issue is no
+longer relevant, delete it.
+
+Do not document "PROGRESS" in this file, just document or update issues that need to be resolved. If you see any "progress" information in this file, just remove it, or convert it into something actionable. Just documenting progress is not helpful - update the issue with the current state and the required fixes for it.
+
+Please always commit and push before and after any code changes we make.
+===============================================================================
