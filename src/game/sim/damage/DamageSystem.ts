@@ -995,11 +995,9 @@ export class DamageSystem {
   // spheres — full 3D.
   //
   // Damage is clipped at the first of: a unit hit, a building hit, a
-  // ground hit, the firing turret's vertical range cylinder, or the
-  // configured max segment count. Mirrors and shields bounce; reflected
-  // segments are clipped against the same original cylinder. A range
-  // cylinder endpoint is an open ray for visuals, not a physical impact
-  // point.
+  // ground hit, an optional trace limiter, or the configured max
+  // segment count. Mirrors and shields bounce. A limiter endpoint can
+  // be an open ray for visuals, not a physical impact point.
   //
   // Force-field panels are tilted rectangles; shields are spherical
   // reflectors whose response comes from their shared material. Buildings
@@ -1013,6 +1011,7 @@ export class DamageSystem {
     maxSegments: number = 4,
     rangeCylinder: RayConfigRangeCylinder | undefined = undefined,
     dtMs: number = 0,
+    traceLimitEndpointDamageable: boolean = rangeCylinder === undefined,
   ): {
     endX: number; endY: number; endZ: number;
     obstructionT: number | undefined;
@@ -1072,7 +1071,7 @@ export class DamageSystem {
           obstructionT: undefined,
           reflections,
           terminalReflection: undefined,
-          endpointDamageable: rangeCylinder === undefined,
+          endpointDamageable: traceLimitEndpointDamageable,
           segmentLimitReached: false,
           endEntityId: NO_ENTITY_ID,
         };
@@ -1203,7 +1202,7 @@ export class DamageSystem {
       obstructionT: undefined,
       reflections,
       terminalReflection: undefined,
-      endpointDamageable: rangeCylinder === undefined,
+      endpointDamageable: traceLimitEndpointDamageable,
       segmentLimitReached: false,
       endEntityId: loopEndEntityId,
     };

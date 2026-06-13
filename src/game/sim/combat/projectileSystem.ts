@@ -48,7 +48,6 @@ import {
 } from './combatActivitySlab';
 import { resolveTargetAimPoint } from './aimSolver';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
-import { resolveRayConfigRangeCylinderEndpoint, type RayConfigRangeCylinder } from './lineShotRange';
 import { getUnitGroundZ } from '../unitGeometry';
 import { createProjectileConfigFromShot, createProjectileConfigFromTurret } from '../projectileConfigs';
 import { rollTurretCooldownDuration } from '../turretCooldown';
@@ -141,6 +140,27 @@ function writeRandomDirectionInCone(
   out.z = axisZ * cosTheta + radialZ * sinTheta;
 }
 
+function getBeamTraceDistance(world: WorldState): number {
+  const mapDiagonal = Math.hypot(world.mapWidth, world.mapHeight);
+  return Math.max(1, mapDiagonal) * Math.max(1, BEAM_MAX_SEGMENTS);
+}
+
+function resolveBeamTraceEndpoint(
+  startX: number,
+  startY: number,
+  startZ: number,
+  dirX: number,
+  dirY: number,
+  dirZ: number,
+  distance: number,
+  out: { x: number; y: number; z: number },
+): { x: number; y: number; z: number } {
+  out.x = startX + dirX * distance;
+  out.y = startY + dirY * distance;
+  out.z = startZ + dirZ * distance;
+  return out;
+}
+
 // Phase 5a — packed projectile dense state lives in the WASM-side
 // ProjectilePool (see rts-sim-wasm/src/lib.rs). The local typed-
 // array views below are captured lazily (the pool isn't ready
@@ -207,14 +227,7 @@ function refreshPackedProjectileViews(): void {
 }
 const _fireWeaponMount = { x: 0, y: 0, z: 0 };
 const _beamWeaponMount = { x: 0, y: 0, z: 0 };
-const _lineShotRangeEnd = { x: 0, y: 0, z: 0 };
-const _lineShotRangeCylinder: RayConfigRangeCylinder = {
-  centerX: 0,
-  centerY: 0,
-  centerZ: 0,
-  radius: 0,
-  rangeVolume: 'turret-range-cylinder-normal',
-};
+const _beamTraceEnd = { x: 0, y: 0, z: 0 };
 const _fireFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_ENGAGED,
   targetId: -1,
@@ -800,19 +813,14 @@ export function fireTurrets(
           const beamStartY = spawnY;
           const beamStartZ = spawnZ;
 
-          // Line shots are bounded by the same vertical range volume
-          // as turret acquisition.
-          const rangeCylinder = _lineShotRangeCylinder;
-          rangeCylinder.centerX = weaponX;
-          rangeCylinder.centerY = weaponY;
-          rangeCylinder.centerZ = mountZ;
-          rangeCylinder.radius = weapon.ranges.fire.max.release;
-          rangeCylinder.rangeVolume = config.rangeVolume;
-          const endpoint = resolveRayConfigRangeCylinderEndpoint(
+          // Target lock remains range-gated by the turret. The beam
+          // trace itself is map-scale so out-of-range shield reflectors
+          // can still redirect an already-fired beam.
+          const endpoint = resolveBeamTraceEndpoint(
             beamStartX, beamStartY, beamStartZ,
             dirX, dirY, dirZ,
-            rangeCylinder,
-            _lineShotRangeEnd,
+            getBeamTraceDistance(world),
+            _beamTraceEnd,
           );
           const endX = endpoint.x;
           const endY = endpoint.y;
@@ -838,7 +846,7 @@ export function fireTurrets(
             beam.projectile.sourceBarrelIndex = barrelIndex;
             beam.projectile.sourceEntityId = unit.id;
             // createBeam seeds both polyline vertices at spawnZ; the
-            // pitched endpoint is the range-cylinder exit point.
+            // pitched endpoint is the map-scale trace endpoint.
             const pts = beam.projectile.points;
             if (pts && pts.length >= 2) pts[pts.length - 1].z = endZ;
           }
@@ -1625,22 +1633,16 @@ export function updateProjectiles(
         startPoint.z = beamStartZ;
         clearBeamReflectorMetadata(startPoint);
 
-        // Per-tick re-trace. The beam is bounded by the firing
-        // turret's vertical fire-release cylinder centered on the
-        // mount. The first segment runs to the cylinder edge; reflected
-        // segments are clipped against the same original cylinder inside
-        // findBeamPath.
-        const rangeCylinder = _lineShotRangeCylinder;
-        rangeCylinder.centerX = beamMount.x;
-        rangeCylinder.centerY = beamMount.y;
-        rangeCylinder.centerZ = beamMount.z;
-        rangeCylinder.radius = weapon.ranges.fire.max.release;
-        rangeCylinder.rangeVolume = weapon.config.rangeVolume;
-        const endpoint = resolveRayConfigRangeCylinderEndpoint(
+        // Per-tick re-trace. The turret's fire range decides whether it
+        // may lock and stay engaged; it does not clip the physical beam
+        // path. Use a finite map-scale trace budget so shield reflectors
+        // outside the lock radius can still be hit without creating an
+        // unbounded ray.
+        const endpoint = resolveBeamTraceEndpoint(
           beamStartX, beamStartY, beamStartZ,
           dirX, dirY, dirZ,
-          rangeCylinder,
-          _lineShotRangeEnd,
+          getBeamTraceDistance(world),
+          _beamTraceEnd,
         );
         const fullEndX = endpoint.x;
         const fullEndY = endpoint.y;
@@ -1654,8 +1656,9 @@ export function updateProjectiles(
           proj.sourceEntityId,
           collisionRadius,
           BEAM_MAX_SEGMENTS,
-          rangeCylinder,
+          undefined,
           dtMs,
+          false,
         );
 
         // Resize the polyline to [start, ...reflections, end] and
