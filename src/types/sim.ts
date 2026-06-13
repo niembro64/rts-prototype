@@ -149,6 +149,8 @@ export type EntityRadii = {
   visual: number;
   hitbox: number;
   collision: number;
+  /** Host-local safety radius for arming traveling projectile shots. */
+  shotArmingRadius?: number;
 };
 
 export type UnitMoveState = 'maneuver' | 'holdPosition' | 'roam';
@@ -718,10 +720,13 @@ export type Projectile = {
   hitEntities: Set<EntityId>;
   maxHits: number;
   hasExploded: boolean;
-  /** Traveling plasma/rocket shots can only collide/explode after their
-   *  authored arming delay has elapsed. The projectile system flips
-   *  this and resets collisionStart* to the arming point. */
+  /** Traveling plasma/rocket shots can only collide/explode after they
+   *  leave their firing host's authored arming radius. The projectile
+   *  system flips this and resets collisionStart* to the crossing point. */
   isArmed: boolean;
+  /** Copied from the firing host at launch so projectile arming remains
+   *  stable even if later blueprint/runtime host state changes. */
+  shotArmingRadius: number;
   /** False until the shot's active point has cleared the source unit's
    *  shot sphere. Source-clearance gating is retained for line shots
    *  whose endpoint damage starts inside the firing unit. */
@@ -949,6 +954,7 @@ export type BuildingConfig = {
   supportSurface: BuildingSupportSurface;
   hud: import('./blueprints').EntityHudBlueprint;
   sensors: SensorCapabilityConfig;
+  radius: EntityRadii;
 };
 
 // Unit build configuration

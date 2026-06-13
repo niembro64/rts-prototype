@@ -18,6 +18,7 @@ export type RadiusRingMeshes = {
   visual?: THREE.LineSegments;
   hitbox?: THREE.LineSegments;
   collision?: THREE.LineSegments;
+  shotArmingRadius?: THREE.LineSegments;
 };
 
 export type RangeRingMesh = THREE.Mesh & {
@@ -146,6 +147,7 @@ export type EntityMesh = {
   buildingCachedRotation?: number;
   buildingCachedDetailsReady?: boolean;
   buildingRangeOverlayVersion?: number;
+  buildingUnitOverlayVersion?: number;
   /** Last construction/body opacity received from a building render row.
    *  Building rows are dirty-driven, so the vision fade queue reuses this
    *  value on frames where the entity itself did not need a row. */

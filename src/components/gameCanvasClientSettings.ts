@@ -174,6 +174,7 @@ export function useGameCanvasClientSettings({
     visual: getUnitRadiusToggle('visual'),
     hitbox: getUnitRadiusToggle('hitbox'),
     collision: getUnitRadiusToggle('collision'),
+    shotArmingRadius: getUnitRadiusToggle('shotArmingRadius'),
   });
   function seedEntityHud(): EntityHudToggles {
     const out = {} as EntityHudToggles;

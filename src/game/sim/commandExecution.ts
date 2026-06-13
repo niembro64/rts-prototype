@@ -50,7 +50,12 @@ import { isProjectileShot } from './types';
 import type { WorldState } from './WorldState';
 import type { SimEvent } from './combat';
 import { magnitude, getTransformCosSin } from '../math';
-import { getProjectileLaunchSpeed, isBallisticArcWeapon, updateWeaponWorldKinematics } from './combat/combatUtils';
+import {
+  getHostShotArmingRadius,
+  getProjectileLaunchSpeed,
+  isBallisticArcWeapon,
+  updateWeaponWorldKinematics,
+} from './combat/combatUtils';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_COMBAT_MODE, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../types/network';
@@ -1246,7 +1251,11 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     playerId,
     commander.id,
     turretDisruptor.config,
-    { shotBlueprintId: dgunShot.shotBlueprintId, shotSource },
+    {
+      shotBlueprintId: dgunShot.shotBlueprintId,
+      shotSource,
+      shotArmingRadius: getHostShotArmingRadius(commander),
+    },
   );
 
   projectile.transform.z = dgunFireZ;

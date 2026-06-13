@@ -24,6 +24,8 @@ export type CreateProjectileProvenance = {
   shotBlueprintId?: string | null;
   /** Immutable source record. Submunitions pass a copy of their parent's source record. */
   shotSource?: ShotSource | null;
+  /** Host safety radius copied at launch for projectile arming. */
+  shotArmingRadius?: number | null;
 };
 
 type WorldProjectileFactoryContext = {
@@ -115,6 +117,15 @@ export class WorldProjectileFactory {
         spawnTick: this.context.getTick(),
         parentShotEntityId: null,
       };
+    const authoredShotArmingRadius =
+      provenance !== null &&
+      provenance.shotArmingRadius !== undefined &&
+      provenance.shotArmingRadius !== null
+        ? provenance.shotArmingRadius
+        : 0;
+    const shotArmingRadius = Number.isFinite(authoredShotArmingRadius)
+      ? Math.max(0, authoredShotArmingRadius)
+      : 0;
 
     // createProjectile's z/vz defaults to "fired horizontally at
     // source turret height" — M6 (projectile ballistics) will override
@@ -138,7 +149,8 @@ export class WorldProjectileFactory {
       maxLifespan,
       hitEntities: new Set<EntityId>(),
       maxHits,
-      isArmed: projectileType !== 'projectile' || config.shotProfile.runtime.armingDelayMs <= 0,
+      isArmed: projectileType !== 'projectile' || shotArmingRadius <= 0,
+      shotArmingRadius,
       hasLeftSource: false,
       homingTargetId: NO_ENTITY_ID,
       lastSentVelX: velocityX,

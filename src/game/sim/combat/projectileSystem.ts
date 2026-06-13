@@ -27,6 +27,7 @@ import {
   getEntityAcceleration3d,
   getEntityPosition3d,
   getEntityVelocity3d,
+  getHostShotArmingRadius,
   getProjectileLaunchSpeed,
   isLiveHomingTarget,
   isShieldSubmunitionTurret,
@@ -471,6 +472,7 @@ export function fireTurrets(
     const activeMask = readActiveTurretMaskForUnit(unit);
     const currentTick = world.getTick();
     const unitGroundZ = getUnitGroundZ(unit);
+    const hostShotArmingRadius = getHostShotArmingRadius(unit);
     let manualLaunchFired = false;
 
     // Fire each weapon independently
@@ -627,7 +629,7 @@ export function fireTurrets(
             unit.id,
             projectileConfig,
             'projectile',
-            { shotBlueprintId: projShot.shotBlueprintId, shotSource },
+            { shotBlueprintId: projShot.shotBlueprintId, shotSource, shotArmingRadius: hostShotArmingRadius },
           );
           projectile.transform.z = spawnZ;
           const projectileComponent = projectile.projectile;
@@ -907,7 +909,7 @@ export function fireTurrets(
             unit.id,
             projectileConfig,
             'projectile',
-            { shotBlueprintId: projShot.shotBlueprintId, shotSource },
+            { shotBlueprintId: projShot.shotBlueprintId, shotSource, shotArmingRadius: hostShotArmingRadius },
           );
           projectile.transform.z = spawnZ;
           const projectileComponent = projectile.projectile;
@@ -1131,7 +1133,7 @@ function ensureTravelingProjectileBatchCapacity(required: number): void {
 // Gravity constant lives in config.ts so it's shared with the physics
 // engine, client dead-reckoning, debris, and explosion sparks.
 
-function _updatePackedProjectilesJS(dtMs: number, dtSec: number): void {
+function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: number): void {
   // Phase 5a — three-pass structure so the inner ballistic integrate
   // can run in one batched WASM call:
   //   Pass 1: validate slot, sync external mutations into pool,
@@ -1207,8 +1209,7 @@ function _updatePackedProjectilesJS(dtMs: number, dtSec: number): void {
 
     updateProjectileArming(
       proj,
-      timeAlive - dtMs,
-      timeAlive,
+      world.getEntity(proj.shotSource.sourceHostEntityId),
       proj.prevX ?? x,
       proj.prevY ?? y,
       proj.prevZ ?? z,
@@ -1456,8 +1457,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
 
     updateProjectileArming(
       proj,
-      proj.timeAlive - dtMs,
-      proj.timeAlive,
+      world.getEntity(proj.shotSource.sourceHostEntityId),
       proj.prevX ?? x,
       proj.prevY ?? y,
       proj.prevZ ?? z,
@@ -1513,7 +1513,7 @@ export function updateProjectiles(
   // Position integration for traveling projectiles is Rust-owned:
   // packed ballistic shots step in the projectile pool, while guided
   // and D-gun shots pack acceleration rows for a second batch.
-  _updatePackedProjectilesJS(dtMs, dtSec);
+  _updatePackedProjectilesJS(world, dtMs, dtSec);
   _updateTravelingProjectilesJS(world, dtMs, dtSec);
 
   for (const entity of world.getLineProjectiles()) {

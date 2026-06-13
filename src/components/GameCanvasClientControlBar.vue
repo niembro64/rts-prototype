@@ -1022,28 +1022,33 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel>UNIT SPH:</BarLabel>
+        <BarLabel>HOST SPH:</BarLabel>
         <BarButton
           :active="model.allUnitRadiiActive"
-          title="Toggle every 3D unit sphere viz on/off"
+          title="Toggle every 3D host sphere viz on/off"
           @click="model.toggleAllUnitRadii"
         >ALL</BarButton>
         <BarButtonGroup>
           <BarButton
             :active="model.unitRadiusToggles.visual"
-            title="Show unit body sphere (unit.radius.visual - visible chassis size)"
+            title="Show host body sphere (radius.visual - visible chassis/body size)"
             @click="model.toggleUnitRadius('visual')"
           >BODY</BarButton>
           <BarButton
             :active="model.unitRadiusToggles.hitbox"
-            title="Show unit hitbox sphere (radius.hitbox - projectile/beam hit detection)"
+            title="Show host hitbox sphere (radius.hitbox - projectile/beam hit detection)"
             @click="model.toggleUnitRadius('hitbox')"
           >HIT</BarButton>
           <BarButton
             :active="model.unitRadiusToggles.collision"
-            title="Show unit collision sphere (radius.collision - unit-unit collision physics, ground-click selection fallback)"
+            title="Show host collision sphere (radius.collision - collision physics, ground-click selection fallback)"
             @click="model.toggleUnitRadius('collision')"
           >COL</BarButton>
+          <BarButton
+            :active="model.unitRadiusToggles.shotArmingRadius"
+            title="Show host projectile arming sphere (radius.shotArmingRadius - shots arm after leaving this safe zone)"
+            @click="model.toggleUnitRadius('shotArmingRadius')"
+          >ARM</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup>

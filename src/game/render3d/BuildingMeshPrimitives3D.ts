@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
-import { BUILDING_PALETTE, SHINY_GRAY_METAL_MATERIAL } from './BuildingVisualPalette';
+import { BUILDING_PALETTE } from './BuildingVisualPalette';
 import type { BuildingDetailMesh, BuildingDetailRole } from './BuildingShape3D';
 
 export const boxGeom = new THREE.BoxGeometry(1, 1, 1);
@@ -28,12 +28,13 @@ export const windGlassMat = new THREE.MeshStandardMaterial({
   roughness: COLORS.buildings.materials.windGlass.roughness,
 });
 /** Spinning blades on the metal extractor. Tinted with the metal-resource
- *  color so the building reads as "metal" at a glance — it used to share
- *  SHINY_GRAY_METAL_MATERIAL with structural trim, which made the extractor
- *  visually indistinguishable from the wind turbine's nacelle. */
+ *  color while staying deliberately dull so the moving pieces don't read
+ *  like polished trim. */
 export const extractorBladeMat = new THREE.MeshStandardMaterial({
-  ...SHINY_GRAY_METAL_MATERIAL,
   color: COLORS.buildings.materials.extractorBlade.colorHex,
+  metalness: COLORS.buildings.materials.extractorBlade.metalness,
+  roughness: COLORS.buildings.materials.extractorBlade.roughness,
+  envMapIntensity: COLORS.buildings.materials.extractorBlade.envMapIntensity,
   side: THREE.DoubleSide,
 });
 export const invisibleMat = new THREE.MeshBasicMaterial({

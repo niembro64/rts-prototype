@@ -224,9 +224,9 @@
       },
       "extractorBlade": {
         "colorHex": "#c8d4dd",
-        "metalness": 0.78,
-        "roughness": 0.18,
-        "envMapIntensity": 1
+        "metalness": 0.12,
+        "roughness": 0.78,
+        "envMapIntensity": 0.25
       },
       "radarDish": {
         "colorHex": "#c8d4dd",
@@ -496,6 +496,10 @@
       "radiusCollision": {
         "colorHex": "#44ff44",
         "opacity": 0.7
+      },
+      "radiusShotArming": {
+        "colorHex": "#ffb02e",
+        "opacity": 0.72
       },
       "trackAcquire": {
         "colorHex": "#ffff88",

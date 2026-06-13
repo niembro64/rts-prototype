@@ -244,6 +244,7 @@ export class BuildingEntityRenderer3D {
   private buildingSpinResetPending = false;
   private lastFrameStateKey: string | null = null;
   private lastRangeOverlayStateVersion = -1;
+  private lastUnitOverlayStateVersion = -1;
 
   constructor(options: BuildingEntityRenderer3DOptions) {
     this.world = options.world;
@@ -294,12 +295,14 @@ export class BuildingEntityRenderer3D {
     const packetProvided = buildingRows !== undefined;
     const fallbackFullPrune = !packetProvided && entitySetVersion !== this.lastEntitySetVersion;
     const rangeOverlayStateVersion = this.selectionOverlays.getRangeStateVersion();
+    const unitOverlayStateVersion = this.selectionOverlays.getUnitOverlayStateVersion();
     const forceFullRows =
       !scopedRender &&
       (
         !packetProvided ||
         this.lastFrameStateKey !== frameState.key ||
         this.lastRangeOverlayStateVersion !== rangeOverlayStateVersion ||
+        this.lastUnitOverlayStateVersion !== unitOverlayStateVersion ||
         (this.meshes.size === 0 && this.clientViewState.getBuildings().length > 0)
       );
     const pruneBuildings = scopedRender || fallbackFullPrune || forceFullRows;
@@ -336,12 +339,17 @@ export class BuildingEntityRenderer3D {
         rows.bodyOpacity[row] < 1 || mesh?.buildingGroupFadeActive === true;
       const rangeOverlayVersionDirty =
         mesh !== undefined && mesh.buildingRangeOverlayVersion !== rangeOverlayStateVersion;
+      const unitOverlayVersionDirty =
+        mesh !== undefined && mesh.buildingUnitOverlayVersion !== unitOverlayStateVersion;
       const overlayDirty =
         mesh !== undefined &&
-        (rowDirty || rangeOverlayVersionDirty) &&
+        (rowDirty || rangeOverlayVersionDirty || unitOverlayVersionDirty) &&
         this.staticBuildingOverlaysNeedUpdate(mesh, entity, rows, row);
       if (mesh !== undefined && rangeOverlayVersionDirty && !overlayDirty) {
         mesh.buildingRangeOverlayVersion = rangeOverlayStateVersion;
+      }
+      if (mesh !== undefined && unitOverlayVersionDirty && !overlayDirty) {
+        mesh.buildingUnitOverlayVersion = unitOverlayStateVersion;
       }
       if (
         mesh !== undefined &&
@@ -361,6 +369,7 @@ export class BuildingEntityRenderer3D {
         row,
         frameState,
         rangeOverlayStateVersion,
+        unitOverlayStateVersion,
         mesh === undefined || overlayDirty,
       );
       if (pruneBuildings) {
@@ -383,6 +392,7 @@ export class BuildingEntityRenderer3D {
     this.lastEntitySetVersion = entitySetVersion;
     this.lastFrameStateKey = frameState.key;
     this.lastRangeOverlayStateVersion = rangeOverlayStateVersion;
+    this.lastUnitOverlayStateVersion = unitOverlayStateVersion;
   }
 
   private populateFallbackBuildingRenderRows(): BuildingRenderPacket3D {
@@ -405,7 +415,7 @@ export class BuildingEntityRenderer3D {
       mesh,
       entity,
       rows.selectedAt(row),
-    );
+    ) || this.selectionOverlays.unitStaticOverlaysNeedUpdate(mesh, rows.selectedAt(row));
   }
 
   private disposeBuildingMesh(mesh: EntityMesh): void {
@@ -548,7 +558,8 @@ export class BuildingEntityRenderer3D {
     row: number,
     frameState: RenderFrameState3D,
     rangeOverlayStateVersion: number,
-    updateRangeOverlays: boolean,
+    unitOverlayStateVersion: number,
+    updateStaticOverlays: boolean,
   ): void {
     // If this id is mid death-fade and reappeared (id reuse / re-add),
     // finalize the dying mesh so we don't draw it under the rebuilt one.
@@ -642,9 +653,11 @@ export class BuildingEntityRenderer3D {
     }
 
     this.updateTurretPoses(entity, mesh, rows, row);
-    if (updateRangeOverlays) {
+    if (updateStaticOverlays) {
       this.selectionOverlays.updateRangeRings(mesh, entity);
+      this.selectionOverlays.updateBuildingRadiusRings(mesh, entity);
       mesh.buildingRangeOverlayVersion = rangeOverlayStateVersion;
+      mesh.buildingUnitOverlayVersion = unitOverlayStateVersion;
     }
 
     // Materialization fade — mounted turrets share the host body's build

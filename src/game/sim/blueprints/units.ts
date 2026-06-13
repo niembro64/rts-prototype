@@ -28,6 +28,7 @@ import {
 } from './lockOnConfig';
 import {
   normalizeEntityBaseLedgerFromAliases,
+  assertValidShotArmingRadius,
 } from './entityBaseLedger';
 import type { UnitSupportSurface } from '../../../types/blueprints';
 
@@ -179,6 +180,7 @@ function validateSensorCapabilityConfig(
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   validateUnitSupportSurface(bp.unitBlueprintId, bp.supportSurface);
   validateSensorCapabilityConfig(bp.unitBlueprintId, bp.sensors);
+  assertValidShotArmingRadius(`unit blueprint ${bp.unitBlueprintId}`, bp.radius);
 
   if (!Number.isFinite(bp.bodyCenterHeight) || bp.bodyCenterHeight < 0) {
     throw new Error(

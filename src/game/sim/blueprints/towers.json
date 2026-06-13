@@ -62,7 +62,8 @@
       "radius": {
         "visual": 169.706,
         "hitbox": 169.706,
-        "collision": 169.706
+        "collision": 169.706,
+        "shotArmingRadius": 339.412
       }
     }
   },
@@ -128,7 +129,8 @@
       "radius": {
         "visual": 14.142,
         "hitbox": 14.142,
-        "collision": 14.142
+        "collision": 14.142,
+        "shotArmingRadius": 28.284
       }
     }
   },
@@ -194,7 +196,8 @@
       "radius": {
         "visual": 56.569,
         "hitbox": 56.569,
-        "collision": 56.569
+        "collision": 56.569,
+        "shotArmingRadius": 113.138
       }
     }
   },
@@ -260,7 +263,8 @@
       "radius": {
         "visual": 28.284,
         "hitbox": 28.284,
-        "collision": 28.284
+        "collision": 28.284,
+        "shotArmingRadius": 56.568
       }
     }
   }

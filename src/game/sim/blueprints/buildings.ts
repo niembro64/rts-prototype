@@ -37,6 +37,7 @@ import {
 import { STRUCTURE_BLUEPRINT_IDS } from '../../../types/blueprintIds';
 import { TURRET_BLUEPRINTS } from './turrets';
 import {
+  assertValidShotArmingRadius,
   normalizeEntityBaseLedgerFromAliases,
 } from './entityBaseLedger';
 
@@ -306,6 +307,9 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
       health: blueprint.hp,
     },
   );
+  if (towerBlueprint) {
+    assertValidShotArmingRadius(`tower blueprint ${id}`, blueprint.base.radius);
+  }
   for (const mount of blueprint.turrets) {
     const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
     if (!turretBlueprint) {

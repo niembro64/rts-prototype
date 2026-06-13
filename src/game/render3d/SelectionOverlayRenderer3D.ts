@@ -21,6 +21,7 @@ import {
 } from '../sim/supportSurface';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getEntityRadarRadius } from '../sim/sensorCoverage';
+import { getBuildingConfig } from '../sim/buildConfigs';
 import { isReclaimableTarget } from '../sim/reclaim';
 import type { TurretMesh } from './TurretMesh3D';
 import type { EntityMesh, RangeRingMesh, RadiusRingMeshes } from './EntityMesh3D';
@@ -34,6 +35,7 @@ import {
 const RANGE_CIRCLE_SEGMENTS = 96;
 const RANGE_CIRCLE_GROUND_LIFT = 6;
 const RANGE_CIRCLE_RENDER_ORDER = 20;
+const RADIUS_SPHERE_RENDER_ORDER = RANGE_CIRCLE_RENDER_ORDER + 2;
 const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
 const SUPPORT_DIAGNOSTIC_LOG_INTERVAL_MS = 500;
 
@@ -78,6 +80,7 @@ export class SelectionOverlayRenderer3D {
   private showVisualRadius = false;
   private showHitboxRadius = false;
   private showCollisionRadius = false;
+  private showShotArmingRadius = false;
   private showAnyRange = false;
   private showAnyUnitRadius = false;
   private selectedCount = 0;
@@ -92,18 +95,28 @@ export class SelectionOverlayRenderer3D {
     transparent: true,
     opacity: COLORS.effects.selectionOverlay.radiusVisual.opacity,
     depthWrite: false,
+    depthTest: false,
   });
   private readonly radiusMatHitbox = new THREE.LineBasicMaterial({
     color: COLORS.effects.selectionOverlay.radiusHitbox.colorHex,
     transparent: true,
     opacity: COLORS.effects.selectionOverlay.radiusHitbox.opacity,
     depthWrite: false,
+    depthTest: false,
   });
   private readonly radiusMatCollision = new THREE.LineBasicMaterial({
     color: COLORS.effects.selectionOverlay.radiusCollision.colorHex,
     transparent: true,
     opacity: COLORS.effects.selectionOverlay.radiusCollision.opacity,
     depthWrite: false,
+    depthTest: false,
+  });
+  private readonly radiusMatShotArming = new THREE.LineBasicMaterial({
+    color: COLORS.effects.selectionOverlay.radiusShotArming.colorHex,
+    transparent: true,
+    opacity: COLORS.effects.selectionOverlay.radiusShotArming.opacity,
+    depthWrite: false,
+    depthTest: false,
   });
   private readonly ringMatTrackAcquire = makeRangeCircleMaterial(
     COLORS.effects.selectionOverlay.trackAcquire.colorHex,
@@ -147,6 +160,7 @@ export class SelectionOverlayRenderer3D {
     transparent: true,
     opacity: COLORS.effects.selectionOverlay.selectionRing.opacity,
     depthWrite: false,
+    depthTest: false,
   });
 
   constructor(options: {
@@ -172,6 +186,7 @@ export class SelectionOverlayRenderer3D {
     this.showVisualRadius = getUnitRadiusToggle('visual');
     this.showHitboxRadius = getUnitRadiusToggle('hitbox');
     this.showCollisionRadius = getUnitRadiusToggle('collision');
+    this.showShotArmingRadius = getUnitRadiusToggle('shotArmingRadius');
     this.showAnyRange = anyRangeToggleActive();
     this.showAnyUnitRadius = anyUnitRadiusToggleActive();
     this.selectedCount = this.clientViewState.getSelectedIds().size;
@@ -194,6 +209,7 @@ export class SelectionOverlayRenderer3D {
       this.showVisualRadius,
       this.showHitboxRadius,
       this.showCollisionRadius,
+      this.showShotArmingRadius,
       this.selectedCount,
     ].join('|');
     if (nextUnitOverlayStateKey !== this.unitOverlayStateKey) {
@@ -245,6 +261,7 @@ export class SelectionOverlayRenderer3D {
     if (selected && !m.ring) {
       const ring = new THREE.Mesh(this.ringGeom, this.selectionRingMat);
       ring.rotation.x = Math.PI / 2;
+      ring.renderOrder = RADIUS_SPHERE_RENDER_ORDER;
       m.group.add(ring);
       m.ring = ring;
     } else if (!selected && m.ring) {
@@ -260,11 +277,13 @@ export class SelectionOverlayRenderer3D {
     const showVisual = this.showVisualRadius;
     const showHitbox = this.showHitboxRadius;
     const showCollision = this.showCollisionRadius;
-    if (!showVisual && !showHitbox && !showCollision) {
+    const showShotArming = this.showShotArmingRadius;
+    if (!showVisual && !showHitbox && !showCollision && !showShotArming) {
       if (m.radiusRingsVisible && m.radiusRings) {
         if (m.radiusRings.visual) m.radiusRings.visual.visible = false;
         if (m.radiusRings.hitbox) m.radiusRings.hitbox.visible = false;
         if (m.radiusRings.collision) m.radiusRings.collision.visible = false;
+        if (m.radiusRings.shotArmingRadius) m.radiusRings.shotArmingRadius.visible = false;
       }
       m.radiusRingsVisible = false;
       return;
@@ -287,6 +306,51 @@ export class SelectionOverlayRenderer3D {
     this.setUnitRadiusSphere(
       rings, 'collision', showCollision, m.group,
       centerY, collider.collision, this.radiusMatCollision,
+    );
+    this.setUnitRadiusSphere(
+      rings, 'shotArmingRadius', showShotArming, m.group,
+      centerY, collider.shotArmingRadius ?? 0, this.radiusMatShotArming,
+    );
+    m.radiusRingsVisible = true;
+  }
+
+  updateBuildingRadiusRings(m: OverlayEntityMesh, entity: Entity): void {
+    const showVisual = this.showVisualRadius;
+    const showHitbox = this.showHitboxRadius;
+    const showCollision = this.showCollisionRadius;
+    const showShotArming = this.showShotArmingRadius;
+    if (!showVisual && !showHitbox && !showCollision && !showShotArming) {
+      if (m.radiusRingsVisible && m.radiusRings) {
+        if (m.radiusRings.visual) m.radiusRings.visual.visible = false;
+        if (m.radiusRings.hitbox) m.radiusRings.hitbox.visible = false;
+        if (m.radiusRings.collision) m.radiusRings.collision.visible = false;
+        if (m.radiusRings.shotArmingRadius) m.radiusRings.shotArmingRadius.visible = false;
+      }
+      m.radiusRingsVisible = false;
+      return;
+    }
+    if (!entity.building || !entity.buildingBlueprintId) return;
+
+    const config = getBuildingConfig(entity.buildingBlueprintId);
+    const collider = config.radius;
+    const rings = m.radiusRings ?? (m.radiusRings = {});
+    const centerY = Math.max(0, config.visualHeight * 0.5);
+
+    this.setUnitRadiusSphere(
+      rings, 'visual', showVisual, m.group,
+      centerY, collider.visual, this.radiusMatVisual,
+    );
+    this.setUnitRadiusSphere(
+      rings, 'hitbox', showHitbox, m.group,
+      centerY, collider.hitbox, this.radiusMatHitbox,
+    );
+    this.setUnitRadiusSphere(
+      rings, 'collision', showCollision, m.group,
+      centerY, collider.collision, this.radiusMatCollision,
+    );
+    this.setUnitRadiusSphere(
+      rings, 'shotArmingRadius', showShotArming, m.group,
+      centerY, collider.shotArmingRadius ?? 0, this.radiusMatShotArming,
     );
     m.radiusRingsVisible = true;
   }
@@ -461,6 +525,7 @@ export class SelectionOverlayRenderer3D {
     this.radiusMatVisual.dispose();
     this.radiusMatHitbox.dispose();
     this.radiusMatCollision.dispose();
+    this.radiusMatShotArming.dispose();
     this.ringMatTrackAcquire.dispose();
     this.ringMatTrackRelease.dispose();
     this.ringMatEngageAcquire.dispose();
@@ -475,7 +540,7 @@ export class SelectionOverlayRenderer3D {
 
   private setUnitRadiusSphere(
     rings: RadiusRingMeshes,
-    key: 'visual' | 'hitbox' | 'collision',
+    key: keyof RadiusRingMeshes,
     want: boolean,
     parent: THREE.Group,
     centerY: number,
@@ -483,9 +548,11 @@ export class SelectionOverlayRenderer3D {
     mat: THREE.LineBasicMaterial,
   ): void {
     let mesh = rings[key];
-    if (want) {
+    if (want && radius > 0) {
       if (!mesh) {
         mesh = new THREE.LineSegments(this.radiusSphereGeom, mat);
+        mesh.renderOrder = RADIUS_SPHERE_RENDER_ORDER;
+        mesh.frustumCulled = false;
         parent.add(mesh);
         rings[key] = mesh;
       }

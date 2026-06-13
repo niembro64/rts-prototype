@@ -477,6 +477,7 @@ const currentUnitRadiusToggles: Record<UnitRadiusType, boolean> = {
   visual: _cd.unitRadiusToggles.default,
   hitbox: _cd.unitRadiusToggles.default,
   collision: _cd.unitRadiusToggles.default,
+  shotArmingRadius: _cd.unitRadiusToggles.default,
 };
 let currentLegsRadius: boolean = _cd.legsRadius.default;
 let currentCameraSmoothMode: CameraSmoothMode = _cd.cameraSmooth.default;

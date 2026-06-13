@@ -40,6 +40,17 @@ export function assertValidEntityRadius(label: string, radius: EntityRadiusConfi
   assertFinitePositive(label, 'radius.visual', radius.visual);
   assertFinitePositive(label, 'radius.hitbox', radius.hitbox);
   assertFinitePositive(label, 'radius.collision', radius.collision);
+  if (radius.shotArmingRadius !== undefined) {
+    assertFiniteNonNegative(label, 'radius.shotArmingRadius', radius.shotArmingRadius);
+  }
+}
+
+export function assertValidShotArmingRadius(label: string, radius: EntityRadiusConfig): void {
+  assertValidEntityRadius(label, radius);
+  if (radius.shotArmingRadius === undefined) {
+    throw new Error(`Invalid ${label}: radius.shotArmingRadius must be authored`);
+  }
+  assertFiniteNonNegative(label, 'radius.shotArmingRadius', radius.shotArmingRadius);
 }
 
 export function assertValidEntityBaseLedger(label: string, base: EntityBaseLedger): void {

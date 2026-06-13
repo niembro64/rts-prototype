@@ -185,7 +185,6 @@ pub struct ProjectileShotBlueprint {
     pub mass: f64,
     pub health: f64,
     pub radius: EntityRadiusConfig,
-    pub armingDelayMs: f64,
     pub detonateOnExpiry: bool,
     pub maxLifespan: Option<f64>,
     pub hitSound: Option<BlueprintJsonValue>,
@@ -228,7 +227,6 @@ pub struct ProjectileShot {
     pub health: f64,
     pub launchForce: f64,
     pub radius: EntityRadiusConfig,
-    pub armingDelayMs: f64,
     pub explosion: Option<ShotExplosion>,
     pub detonateOnExpiry: Option<bool>,
     pub maxLifespan: Option<f64>,
@@ -298,7 +296,6 @@ pub struct ShotRuntimeProfile {
     pub isRocketLike: bool,
     pub radius: EntityRadiusConfig,
     pub deathExplosionRadius: f64,
-    pub armingDelayMs: f64,
     pub maxLifespan: f64,
     pub detonateOnExpiry: bool,
     pub hasExplosion: bool,
@@ -336,6 +333,7 @@ pub struct EntityRadiusConfig {
     pub visual: f64,
     pub hitbox: f64,
     pub collision: f64,
+    pub shotArmingRadius: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

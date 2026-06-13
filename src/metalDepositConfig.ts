@@ -33,6 +33,11 @@
 //
 // Special case — `radiusFraction: 0` is the map center: a single
 // deposit is placed at (cx, cy) regardless of countPerPlayer / playerCount.
+//
+// Each origin can then expand into a local deposit cluster. A ring's
+// `depositCluster` defines how many deposits are placed around that
+// origin and the world-unit radius of that secondary circle. The legacy
+// single-deposit behavior is `depositCluster: { count: 1, radius: 0 }`.
 
 import { MAP_GENERATION_EXTENT_FRACTION } from './mapSizeConfig';
 import {
@@ -76,10 +81,19 @@ export type DepositRing = {
    *  back to the natural heightmap. Larger values make the deposit pad
    *  integrate more gradually with surrounding terrain. */
   terrainBlendRadius: number;
+  /** Secondary local cluster spawned from each primary ring origin.
+   *  `{ count: 1, radius: 0 }` exactly preserves the legacy behavior. */
+  depositCluster?: MetalDepositClusterConfig;
   /** Optional free-form note for the author — purely descriptive, not
    *  read by any runtime code. Useful for labeling where a ring sits
    *  ("inner near spawn", "back side cluster", etc.). */
   comment?: string;
+};
+
+export type MetalDepositClusterConfig = {
+  count: number;
+  radius: number;
+  angleOffset?: number;
 };
 
 /** Authored layout config for the metal deposit ring placer. Pure data
@@ -314,22 +328,111 @@ function generateMetalDepositPlacementsFromWasm(
     );
   }
 
-  const placements: PendingPlacement[] = new Array(written);
-  for (let i = 0; i < written; i++) {
-    const base = i * METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE;
-    const dTerrainRaw = placementRows[base + 12];
-    const explicitHeightRaw = placementRows[base + 14];
-    placements[i] = {
-      placement: makeMetalDepositPlacementFromWasmRow(placementRows, base, i),
-      dTerrainLevels: Number.isNaN(dTerrainRaw)
-        ? null
-        : finiteInteger(dTerrainRaw, 'metal deposit dTerrainLevels'),
-      blendRadius: placementRows[base + 13],
-      explicitHeight: Number.isNaN(explicitHeightRaw) ? null : explicitHeightRaw,
-    };
+  const placements: PendingPlacement[] = [];
+  let sourceIndex = 0;
+  for (const ring of METAL_DEPOSIT_CONFIG.rings) {
+    const originCount = countMetalDepositRingOrigins(ring, players);
+    for (let i = 0; i < originCount; i++) {
+      const base = sourceIndex * METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE;
+      const dTerrainRaw = placementRows[base + 12];
+      const explicitHeightRaw = placementRows[base + 14];
+      const origin: PendingPlacement = {
+        placement: makeMetalDepositPlacementFromWasmRow(placementRows, base, sourceIndex),
+        dTerrainLevels: Number.isNaN(dTerrainRaw)
+          ? null
+          : finiteInteger(dTerrainRaw, 'metal deposit dTerrainLevels'),
+        blendRadius: placementRows[base + 13],
+        explicitHeight: Number.isNaN(explicitHeightRaw) ? null : explicitHeightRaw,
+      };
+      expandMetalDepositClusterPlacements(origin, ring, placements);
+      sourceIndex++;
+    }
+  }
+  if (sourceIndex !== written) {
+    throw new Error(
+      `Metal deposit placement expansion consumed ${sourceIndex} origins; expected ${written}`,
+    );
   }
 
   return placements;
+}
+
+function countMetalDepositRingOrigins(ring: DepositRing, playerCount: number): number {
+  if (ring.radiusFraction <= 1e-6) return 1;
+  return playerCount * metalDepositLoopCount(ring.countPerPlayer);
+}
+
+function metalDepositLoopCount(limit: number): number {
+  if (!Number.isFinite(limit) || limit <= 0) return 0;
+  return Math.ceil(limit);
+}
+
+function expandMetalDepositClusterPlacements(
+  origin: PendingPlacement,
+  ring: DepositRing,
+  out: PendingPlacement[],
+): void {
+  const cluster = validMetalDepositClusterConfig(ring.depositCluster);
+  if (cluster.count === 1 && cluster.radius <= 0) {
+    out.push(origin);
+    return;
+  }
+  for (let i = 0; i < cluster.count; i++) {
+    const angle = cluster.angleOffset + (i / cluster.count) * Math.PI * 2;
+    const rawX = origin.placement.x + Math.cos(angle) * cluster.radius;
+    const rawY = origin.placement.y + Math.sin(angle) * cluster.radius;
+    out.push({
+      placement: makeMetalDepositPlacementFromRawPoint(rawX, rawY, origin.placement, out.length),
+      dTerrainLevels: origin.dTerrainLevels,
+      blendRadius: origin.blendRadius,
+      explicitHeight: origin.explicitHeight,
+    });
+  }
+}
+
+function makeMetalDepositPlacementFromRawPoint(
+  rawX: number,
+  rawY: number,
+  template: MetalDepositPlacement,
+  seedIndex: number,
+): MetalDepositPlacement {
+  const gridHalfCells = Math.floor(template.resourceCells / 2);
+  const centerGx = Math.floor(rawX / BUILD_GRID_CELL_SIZE);
+  const centerGy = Math.floor(rawY / BUILD_GRID_CELL_SIZE);
+  const gridX = centerGx - gridHalfCells;
+  const gridY = centerGy - gridHalfCells;
+  const x = gridX * BUILD_GRID_CELL_SIZE + template.resourceHalfSize;
+  const y = gridY * BUILD_GRID_CELL_SIZE + template.resourceHalfSize;
+  const originGx = Math.floor(x / BUILD_GRID_CELL_SIZE);
+  const originGy = Math.floor(y / BUILD_GRID_CELL_SIZE);
+  const resourceCellCount = template.resourceCells * template.resourceCells;
+  const cells = growMetalDepositResourceCells(
+    originGx,
+    originGy,
+    resourceCellCount,
+    template.resourceRadiusCells,
+    hashMetalDepositSeed(originGx, originGy, seedIndex),
+  );
+  const bounds = getMetalDepositCellBounds(cells);
+  return {
+    x,
+    y,
+    gridX,
+    gridY,
+    originGx,
+    originGy,
+    resourceCells: template.resourceCells,
+    cells,
+    resourceCellCount: cells.length,
+    resourceRadiusCells: template.resourceRadiusCells,
+    boundsGridX: bounds.gridX,
+    boundsGridY: bounds.gridY,
+    boundsGridW: bounds.gridW,
+    boundsGridH: bounds.gridH,
+    resourceHalfSize: template.resourceHalfSize,
+    resourceRadius: template.resourceRadius,
+    flatPadRadius: template.flatPadRadius,
+  };
 }
 
 function resolveMetalDepositTerrainHeightsFromWasm(
@@ -582,4 +685,33 @@ function validMetalDepositTerrainBlendRadius(radius: number): number {
     );
   }
   return radius;
+}
+
+function validMetalDepositClusterConfig(
+  cluster: MetalDepositClusterConfig | undefined,
+): Required<MetalDepositClusterConfig> {
+  const count = cluster?.count ?? 1;
+  const radius = cluster?.radius ?? 0;
+  const angleOffset = cluster?.angleOffset ?? 0;
+  if (!Number.isFinite(count) || !Number.isInteger(count) || count <= 0) {
+    throw new Error(
+      `Metal deposit depositCluster.count must be a positive integer; received ${count}`,
+    );
+  }
+  if (!Number.isFinite(radius) || radius < 0) {
+    throw new Error(
+      `Metal deposit depositCluster.radius must be a finite non-negative number; received ${radius}`,
+    );
+  }
+  if (count > 1 && radius <= 0) {
+    throw new Error(
+      'Metal deposit depositCluster.radius must be > 0 when depositCluster.count is greater than 1',
+    );
+  }
+  if (!Number.isFinite(angleOffset)) {
+    throw new Error(
+      `Metal deposit depositCluster.angleOffset must be finite when provided; received ${angleOffset}`,
+    );
+  }
+  return { count, radius, angleOffset };
 }

@@ -7,7 +7,8 @@
     "radius": {
       "visual": 8,
       "hitbox": 6,
-      "collision": 9.6
+      "collision": 9.6,
+      "shotArmingRadius": 12
     },
     "bodyCenterHeight": 5.680000000000001,
     "supportSurface": {
@@ -86,7 +87,8 @@
       "radius": {
         "visual": 8,
         "hitbox": 6,
-        "collision": 9.6
+        "collision": 9.6,
+        "shotArmingRadius": 12
       }
     }
   },
@@ -98,7 +100,8 @@
     "radius": {
       "visual": 10,
       "hitbox": 7,
-      "collision": 13
+      "collision": 13,
+      "shotArmingRadius": 14
     },
     "bodyCenterHeight": 11.5,
     "supportSurface": {
@@ -176,7 +179,8 @@
       "radius": {
         "visual": 10,
         "hitbox": 7,
-        "collision": 13
+        "collision": 13,
+        "shotArmingRadius": 14
       }
     }
   },
@@ -188,7 +192,8 @@
     "radius": {
       "visual": 13,
       "hitbox": 9,
-      "collision": 15
+      "collision": 15,
+      "shotArmingRadius": 18
     },
     "bodyCenterHeight": 58.5,
     "supportSurface": {
@@ -296,7 +301,8 @@
       "radius": {
         "visual": 13,
         "hitbox": 9,
-        "collision": 15
+        "collision": 15,
+        "shotArmingRadius": 18
       }
     }
   },
@@ -308,7 +314,8 @@
     "radius": {
       "visual": 16,
       "hitbox": 13,
-      "collision": 22.4
+      "collision": 22.4,
+      "shotArmingRadius": 26
     },
     "bodyCenterHeight": 12.4,
     "supportSurface": {
@@ -386,7 +393,8 @@
       "radius": {
         "visual": 16,
         "hitbox": 13,
-        "collision": 22.4
+        "collision": 22.4,
+        "shotArmingRadius": 26
       }
     }
   },
@@ -398,7 +406,8 @@
     "radius": {
       "visual": 20,
       "hitbox": 12,
-      "collision": 24
+      "collision": 24,
+      "shotArmingRadius": 24
     },
     "bodyCenterHeight": 11.8,
     "supportSurface": {
@@ -477,7 +486,8 @@
       "radius": {
         "visual": 20,
         "hitbox": 12,
-        "collision": 24
+        "collision": 24,
+        "shotArmingRadius": 24
       }
     }
   },
@@ -489,7 +499,8 @@
     "radius": {
       "visual": 10,
       "hitbox": 8,
-      "collision": 12.1
+      "collision": 12.1,
+      "shotArmingRadius": 16
     },
     "bodyCenterHeight": 8,
     "supportSurface": {
@@ -587,7 +598,8 @@
       "radius": {
         "visual": 10,
         "hitbox": 8,
-        "collision": 12.1
+        "collision": 12.1,
+        "shotArmingRadius": 16
       }
     }
   },
@@ -599,7 +611,8 @@
     "radius": {
       "visual": 24,
       "hitbox": 24,
-      "collision": 36
+      "collision": 36,
+      "shotArmingRadius": 48
     },
     "bodyCenterHeight": 13.6,
     "supportSurface": {
@@ -677,7 +690,8 @@
       "radius": {
         "visual": 24,
         "hitbox": 24,
-        "collision": 36
+        "collision": 36,
+        "shotArmingRadius": 48
       }
     }
   },
@@ -689,7 +703,8 @@
     "radius": {
       "visual": 40,
       "hitbox": 50,
-      "collision": 65
+      "collision": 65,
+      "shotArmingRadius": 100
     },
     "bodyCenterHeight": 54,
     "supportSurface": {
@@ -817,7 +832,8 @@
       "radius": {
         "visual": 40,
         "hitbox": 50,
-        "collision": 65
+        "collision": 65,
+        "shotArmingRadius": 100
       }
     }
   },
@@ -829,7 +845,8 @@
     "radius": {
       "visual": 30,
       "hitbox": 40,
-      "collision": 52
+      "collision": 52,
+      "shotArmingRadius": 80
     },
     "bodyCenterHeight": 49.5,
     "supportSurface": {
@@ -1013,7 +1030,8 @@
       "radius": {
         "visual": 30,
         "hitbox": 40,
-        "collision": 52
+        "collision": 52,
+        "shotArmingRadius": 80
       }
     }
   },
@@ -1025,7 +1043,8 @@
     "radius": {
       "visual": 30,
       "hitbox": 27,
-      "collision": 54
+      "collision": 54,
+      "shotArmingRadius": 54
     },
     "bodyCenterHeight": 19,
     "supportSurface": {
@@ -1102,7 +1121,8 @@
       "radius": {
         "visual": 30,
         "hitbox": 27,
-        "collision": 54
+        "collision": 54,
+        "shotArmingRadius": 54
       }
     }
   },
@@ -1114,7 +1134,8 @@
     "radius": {
       "visual": 11,
       "hitbox": 13,
-      "collision": 19.8
+      "collision": 19.8,
+      "shotArmingRadius": 26
     },
     "bodyCenterHeight": 14.025,
     "supportSurface": {
@@ -1225,7 +1246,8 @@
       "radius": {
         "visual": 11,
         "hitbox": 13,
-        "collision": 19.8
+        "collision": 19.8,
+        "shotArmingRadius": 26
       }
     }
   },
@@ -1237,7 +1259,8 @@
     "radius": {
       "visual": 10,
       "hitbox": 8,
-      "collision": 24
+      "collision": 24,
+      "shotArmingRadius": 16
     },
     "bodyCenterHeight": 24,
     "supportSurface": {
@@ -1320,7 +1343,8 @@
       "radius": {
         "visual": 10,
         "hitbox": 8,
-        "collision": 24
+        "collision": 24,
+        "shotArmingRadius": 16
       }
     }
   },
@@ -1332,7 +1356,8 @@
     "radius": {
       "visual": 9,
       "hitbox": 8,
-      "collision": 10.8
+      "collision": 10.8,
+      "shotArmingRadius": 16
     },
     "bodyCenterHeight": 1.3499999999999999,
     "supportSurface": {
@@ -1414,7 +1439,8 @@
       "radius": {
         "visual": 9,
         "hitbox": 8,
-        "collision": 10.8
+        "collision": 10.8,
+        "shotArmingRadius": 16
       }
     }
   },
@@ -1426,7 +1452,8 @@
     "radius": {
       "visual": 16,
       "hitbox": 40,
-      "collision": 50
+      "collision": 50,
+      "shotArmingRadius": 80
     },
     "bodyCenterHeight": 3.2,
     "supportSurface": {
@@ -1533,7 +1560,8 @@
       "radius": {
         "visual": 16,
         "hitbox": 40,
-        "collision": 50
+        "collision": 50,
+        "shotArmingRadius": 80
       }
     }
   },
@@ -1545,7 +1573,8 @@
     "radius": {
       "visual": 11,
       "hitbox": 10,
-      "collision": 14
+      "collision": 14,
+      "shotArmingRadius": 20
     },
     "bodyCenterHeight": 3.3,
     "supportSurface": {
@@ -1657,7 +1686,8 @@
       "radius": {
         "visual": 11,
         "hitbox": 10,
-        "collision": 14
+        "collision": 14,
+        "shotArmingRadius": 20
       }
     }
   },
@@ -1669,7 +1699,8 @@
     "radius": {
       "visual": 18,
       "hitbox": 15,
-      "collision": 21.6
+      "collision": 21.6,
+      "shotArmingRadius": 30
     },
     "bodyCenterHeight": 5.4,
     "supportSurface": {
@@ -1766,7 +1797,8 @@
       "radius": {
         "visual": 18,
         "hitbox": 15,
-        "collision": 21.6
+        "collision": 21.6,
+        "shotArmingRadius": 30
       }
     }
   },
@@ -1778,7 +1810,8 @@
     "radius": {
       "visual": 76,
       "hitbox": 68,
-      "collision": 92
+      "collision": 92,
+      "shotArmingRadius": 136
     },
     "bodyCenterHeight": 42,
     "supportSurface": {
@@ -1901,7 +1934,8 @@
       "radius": {
         "visual": 76,
         "hitbox": 68,
-        "collision": 92
+        "collision": 92,
+        "shotArmingRadius": 136
       }
     }
   },
@@ -1913,7 +1947,8 @@
     "radius": {
       "visual": 22,
       "hitbox": 20,
-      "collision": 28
+      "collision": 28,
+      "shotArmingRadius": 40
     },
     "bodyCenterHeight": 3.8,
     "supportSurface": {
@@ -2006,7 +2041,8 @@
       "radius": {
         "visual": 22,
         "hitbox": 20,
-        "collision": 28
+        "collision": 28,
+        "shotArmingRadius": 40
       }
     }
   },
@@ -2018,7 +2054,8 @@
     "radius": {
       "visual": 20,
       "hitbox": 20,
-      "collision": 20
+      "collision": 20,
+      "shotArmingRadius": 40
     },
     "bodyCenterHeight": 22.4,
     "supportSurface": {
@@ -2174,7 +2211,8 @@
       "radius": {
         "visual": 20,
         "hitbox": 20,
-        "collision": 20
+        "collision": 20,
+        "shotArmingRadius": 40
       }
     }
   }

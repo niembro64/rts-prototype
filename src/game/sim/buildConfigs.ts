@@ -34,6 +34,7 @@ function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): Building
     supportSurface: bp.supportSurface,
     hud: bp.hud,
     sensors: { ...bp.sensors },
+    radius: { ...bp.base.radius },
   };
 }
 

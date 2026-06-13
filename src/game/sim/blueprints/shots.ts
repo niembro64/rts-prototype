@@ -20,7 +20,6 @@ const PROJECTILE_EXPLICIT_FIELDS = [
   'name',
   'base',
   'health',
-  'armingDelayMs',
   'hitSound',
   'submunitions',
   'homingTurnRate',
@@ -83,11 +82,6 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
   if (hasRate !== hasThrust) {
     throw new Error(
       `Shot blueprint ${id} mismatched homing: homingTurnRate=${blueprint.homingTurnRate}, homingThrust=${blueprint.homingThrust}. Both must be set or both null.`,
-    );
-  }
-  if (!Number.isFinite(blueprint.armingDelayMs) || blueprint.armingDelayMs < 0) {
-    throw new Error(
-      `Shot blueprint ${id} has invalid armingDelayMs: expected finite milliseconds >= 0.`,
     );
   }
   if (!Number.isFinite(blueprint.gravityForceMultiplier) || blueprint.gravityForceMultiplier < 0) {
