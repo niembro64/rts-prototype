@@ -25,4 +25,3 @@ Please always commit and push before and after any code changes we make.
 
 [USER_REQUEST][04] The metal extractor six spinning pieces don't need to be shiny. 
 
-[USER_REQUEST][05] Let's move what items are reflected as well as which direction those things are reflected into the "shields.json" instead of where they are now. So for each shield blueprint, we will define the list of emissions that are reflected, and direction(s) that the reflections happen. 
