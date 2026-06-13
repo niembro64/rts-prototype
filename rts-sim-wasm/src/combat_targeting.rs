@@ -9367,6 +9367,180 @@ pub(crate) fn ray_tilted_rect_intersection_t(
     Some(t)
 }
 
+#[inline]
+fn add_sq_coeffs(a: &mut f64, b: &mut f64, c: &mut f64, offset: f64, velocity: f64) {
+    *a += velocity * velocity;
+    *b += 2.0 * offset * velocity;
+    *c += offset * offset;
+}
+
+#[inline]
+fn solve_quadratic_interval(a: f64, b: f64, c: f64, lo: f64, hi: f64) -> Option<f64> {
+    if hi < lo {
+        return None;
+    }
+    let f_lo = (a * lo + b) * lo + c;
+    if f_lo <= 0.0 {
+        return Some(lo);
+    }
+
+    const ROOT_EPS: f64 = 1e-12;
+    if a.abs() <= ROOT_EPS {
+        if b.abs() <= ROOT_EPS {
+            return None;
+        }
+        let t = -c / b;
+        if t >= lo - ROOT_EPS && t <= hi + ROOT_EPS {
+            return Some(t.max(lo).min(hi));
+        }
+        return None;
+    }
+
+    let disc = b * b - 4.0 * a * c;
+    if disc < 0.0 {
+        return None;
+    }
+    let sqrt_disc = disc.sqrt();
+    let inv = 1.0 / (2.0 * a);
+    let t0 = (-b - sqrt_disc) * inv;
+    let t1 = (-b + sqrt_disc) * inv;
+    let first = t0.min(t1);
+    let second = t0.max(t1);
+
+    if first >= lo - ROOT_EPS && first <= hi + ROOT_EPS {
+        return Some(first.max(lo).min(hi));
+    }
+    if second >= lo - ROOT_EPS && second <= hi + ROOT_EPS {
+        return Some(second.max(lo).min(hi));
+    }
+    None
+}
+
+#[inline]
+fn push_breakpoint(points: &mut [f64; 6], count: &mut usize, t: f64, max_t: f64) {
+    if !t.is_finite() || t <= 0.0 || t >= max_t || *count >= points.len() {
+        return;
+    }
+    points[*count] = t;
+    *count += 1;
+}
+
+#[inline]
+fn sort_breakpoints(points: &mut [f64; 6], count: usize) {
+    for i in 1..count {
+        let value = points[i];
+        let mut j = i;
+        while j > 0 && points[j - 1] > value {
+            points[j] = points[j - 1];
+            j -= 1;
+        }
+        points[j] = value;
+    }
+}
+
+/// Earliest t where a finite-radius line body touches a tilted rectangle.
+/// This is segment-vs-rounded-rectangle distance, so beam width and
+/// projectile collision radius participate in flat-panel reflection instead
+/// of only the centerline plane hit.
+#[inline]
+pub(crate) fn ray_tilted_rect_capsule_intersection_t(
+    sx: f64,
+    sy: f64,
+    sz: f64,
+    ex: f64,
+    ey: f64,
+    ez: f64,
+    pcx: f64,
+    pcy: f64,
+    pcz: f64,
+    nx: f64,
+    ny: f64,
+    nz: f64,
+    edx: f64,
+    edy: f64,
+    edz: f64,
+    half_w: f64,
+    half_h: f64,
+    radius: f64,
+    max_t: f64,
+) -> Option<f64> {
+    if radius <= 0.0 || !radius.is_finite() || max_t <= 0.0 {
+        return None;
+    }
+    let max_t = max_t.min(1.0);
+    if max_t <= 0.0 {
+        return None;
+    }
+
+    let ux_axis_x = ny * edz - nz * edy;
+    let ux_axis_y = nz * edx - nx * edz;
+    let ux_axis_z = nx * edy - ny * edx;
+
+    let to_local = |px: f64, py: f64, pz: f64| -> (f64, f64, f64) {
+        let lx = px - pcx;
+        let ly = py - pcy;
+        let lz = pz - pcz;
+        (
+            lx * edx + ly * edy + lz * edz,
+            lx * ux_axis_x + ly * ux_axis_y + lz * ux_axis_z,
+            lx * nx + ly * ny + lz * nz,
+        )
+    };
+
+    let (u0, v0, w0) = to_local(sx, sy, sz);
+    let (u1, v1, w1) = to_local(ex, ey, ez);
+    let du = u1 - u0;
+    let dv = v1 - v0;
+    let dw = w1 - w0;
+    let radius_sq = radius * radius;
+
+    let mut points = [0.0, max_t, 0.0, 0.0, 0.0, 0.0];
+    let mut count = 2usize;
+    const BREAK_EPS: f64 = 1e-12;
+    if du.abs() > BREAK_EPS {
+        push_breakpoint(&mut points, &mut count, (-half_w - u0) / du, max_t);
+        push_breakpoint(&mut points, &mut count, (half_w - u0) / du, max_t);
+    }
+    if dv.abs() > BREAK_EPS {
+        push_breakpoint(&mut points, &mut count, (-half_h - v0) / dv, max_t);
+        push_breakpoint(&mut points, &mut count, (half_h - v0) / dv, max_t);
+    }
+    sort_breakpoints(&mut points, count);
+
+    for i in 0..count - 1 {
+        let lo = points[i];
+        let hi = points[i + 1];
+        if hi - lo <= BREAK_EPS {
+            continue;
+        }
+        let mid = (lo + hi) * 0.5;
+        let mid_u = u0 + du * mid;
+        let mid_v = v0 + dv * mid;
+
+        let mut a = dw * dw;
+        let mut b = 2.0 * w0 * dw;
+        let mut c = w0 * w0 - radius_sq;
+
+        if mid_u > half_w {
+            add_sq_coeffs(&mut a, &mut b, &mut c, u0 - half_w, du);
+        } else if mid_u < -half_w {
+            add_sq_coeffs(&mut a, &mut b, &mut c, u0 + half_w, du);
+        }
+
+        if mid_v > half_h {
+            add_sq_coeffs(&mut a, &mut b, &mut c, v0 - half_h, dv);
+        } else if mid_v < -half_h {
+            add_sq_coeffs(&mut a, &mut b, &mut c, v0 + half_h, dv);
+        }
+
+        if let Some(t) = solve_quadratic_interval(a, b, c, lo, hi) {
+            return Some(t);
+        }
+    }
+
+    None
+}
+
 // The rect-panel sightline walk now lives inside the unified
 // `shield_clearance_segment` (gated by `include_panels`); the
 // `point_segment_dist_sq3` + `ray_tilted_rect_intersection_t` helpers above
@@ -9465,9 +9639,28 @@ pub(crate) fn shield_panel_projectile_intersection(
             let top_y = pool.panel_top_y[pi] as f64;
             let half_h = (top_y - base_y) * 0.5;
 
-            let hit_t = ray_tilted_rect_intersection_t(
+            let centerline_hit_t = ray_tilted_rect_intersection_t(
                 sx, sy, sz, tx, ty, tz, pcx, pcy, pcz, nx, ny, nz, edx, edy, edz, half_w, half_h,
             );
+            let radius_hit_t = if projectile_radius > SHIELD_GRAZE_EPS {
+                ray_tilted_rect_capsule_intersection_t(
+                    sx, sy, sz, tx, ty, tz,
+                    pcx, pcy, pcz,
+                    nx, ny, nz,
+                    edx, edy, edz,
+                    half_w, half_h,
+                    projectile_radius,
+                    best_t,
+                )
+            } else {
+                None
+            };
+            let hit_t = match (centerline_hit_t, radius_hit_t) {
+                (Some(a), Some(b)) => Some(a.min(b)),
+                (Some(a), None) => Some(a),
+                (None, Some(b)) => Some(b),
+                (None, None) => None,
+            };
             let Some(t) = hit_t else {
                 continue;
             };
@@ -10289,4 +10482,87 @@ pub fn projectile_terminal_effect_plan_batch(
     }
 
     processed
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_close(actual: f64, expected: f64) {
+        assert!(
+            (actual - expected).abs() <= 1e-9,
+            "expected {expected}, got {actual}"
+        );
+    }
+
+    #[test]
+    fn panel_centerline_intersection_still_hits_plane() {
+        let t = ray_tilted_rect_intersection_t(
+            -5.0, 0.0, 0.0,
+            5.0, 0.0, 0.0,
+            0.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            1.0, 1.0,
+        )
+        .unwrap();
+        assert_close(t, 0.5);
+    }
+
+    #[test]
+    fn panel_capsule_intersection_hits_before_plane_for_beam_radius() {
+        let t = ray_tilted_rect_capsule_intersection_t(
+            -5.0, 0.0, 0.0,
+            5.0, 0.0, 0.0,
+            0.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            1.0, 1.0,
+            0.5,
+            1.0,
+        )
+        .unwrap();
+        assert_close(t, 0.45);
+    }
+
+    #[test]
+    fn panel_capsule_intersection_catches_radius_edge_overlap() {
+        let centerline = ray_tilted_rect_intersection_t(
+            -5.0, 1.4, 0.0,
+            5.0, 1.4, 0.0,
+            0.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            1.0, 1.0,
+        );
+        assert!(centerline.is_none());
+
+        let radius_hit = ray_tilted_rect_capsule_intersection_t(
+            -5.0, 1.4, 0.0,
+            5.0, 1.4, 0.0,
+            0.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            1.0, 1.0,
+            0.5,
+            1.0,
+        )
+        .unwrap();
+        assert_close(radius_hit, 0.47);
+    }
+
+    #[test]
+    fn panel_capsule_intersection_misses_outside_radius() {
+        let miss = ray_tilted_rect_capsule_intersection_t(
+            -5.0, 1.6, 0.0,
+            5.0, 1.6, 0.0,
+            0.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            1.0, 1.0,
+            0.5,
+            1.0,
+        );
+        assert!(miss.is_none());
+    }
 }
