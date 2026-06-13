@@ -164,8 +164,11 @@ type FadeState = {
   dirty: DirtySpan;
 };
 
-// Per-instance wave-flow params (repeats, phase) for the beam-emitter
-// pools — the instanced counterpart of the per-Mesh materials' uniforms.
+// Per-instance wave-flow params (repeats, phase, tipTaper) for the
+// beam-emitter pools — the instanced counterpart of the per-Mesh
+// materials' uniforms. tipTaper turns the unit-cylinder cone geometry
+// into a frustum whose flat top matches the start ball's radius (0 =
+// pointed cone for ball-less rays; 1 = no-op for the balls themselves).
 type EmitterFlowAttr = {
   arr: Float32Array;
   attr: THREE.InstancedBufferAttribute;
@@ -173,10 +176,10 @@ type EmitterFlowAttr = {
 };
 
 function addEmitterFlowAttr(mesh: THREE.InstancedMesh, capacity: number): EmitterFlowAttr {
-  const arr = new Float32Array(capacity * 2);
-  const attr = new THREE.InstancedBufferAttribute(arr, 2);
+  const arr = new Float32Array(capacity * 3);
+  const attr = new THREE.InstancedBufferAttribute(arr, 3);
   attr.setUsage(THREE.DynamicDrawUsage);
-  (mesh.geometry as THREE.BufferGeometry).setAttribute('aFlow2', attr);
+  (mesh.geometry as THREE.BufferGeometry).setAttribute('aFlow3', attr);
   return { arr, attr, dirty: createDirtySpan() };
 }
 
@@ -852,20 +855,27 @@ export class UnitDetailInstanceRenderer3D {
       this.coneBarrelInnerMatrixDirty,
     );
 
+    const ballRadius = this.coneEmitterBallRadius[slot];
+    // Chopped-cone taper: the cone's flat top matches the ball radius so
+    // the ball reads as the cone's cap (0 = pointed cone for ball-less
+    // rays). The inner layer narrows base and ball by the same factor, so
+    // one taper ratio serves both pools.
+    const coneTipTaper = ballRadius > 0 && radial > 1e-6 ? ballRadius / radial : 0;
     this.writeEmitterFlow(
       this.coneBarrelFlow,
       slot,
       beamWaveFlowRepeats(length, BEAM_OUTER_VISUAL_CONFIG.waveSpacing),
       0,
+      coneTipTaper,
     );
     this.writeEmitterFlow(
       this.coneBarrelInnerFlow,
       slot,
       beamWaveFlowRepeats(length, BEAM_INNER_VISUAL_CONFIG.waveSpacing),
       1,
+      coneTipTaper,
     );
 
-    const ballRadius = this.coneEmitterBallRadius[slot];
     if (ballRadius <= 0 || radial < 1e-6 || length < 1e-6) return;
 
     // Ball layers: cone rotation, uniform diameter scale, centered on the
@@ -917,12 +927,20 @@ export class UnitDetailInstanceRenderer3D {
     slot: number,
     repeats: number,
     phaseSalt: number,
+    tipTaper: number = 1,
   ): void {
     const phase = beamWaveFlowPhase(slot, phaseSalt);
-    const base = slot * 2;
-    if (flow.arr[base] === repeats && flow.arr[base + 1] === phase) return;
+    const base = slot * 3;
+    if (
+      flow.arr[base] === repeats &&
+      flow.arr[base + 1] === phase &&
+      flow.arr[base + 2] === tipTaper
+    ) {
+      return;
+    }
     flow.arr[base] = repeats;
     flow.arr[base + 1] = phase;
+    flow.arr[base + 2] = tipTaper;
     markDirtySlot(flow.dirty, slot);
   }
 
@@ -1049,10 +1067,10 @@ export class UnitDetailInstanceRenderer3D {
       this.emitterBallInnerMatrixDirty,
       16,
     );
-    uploadDirtySpan(this.coneBarrelFlow.attr, this.coneBarrelFlow.dirty, 2);
-    uploadDirtySpan(this.coneBarrelInnerFlow.attr, this.coneBarrelInnerFlow.dirty, 2);
-    uploadDirtySpan(this.emitterBallFlow.attr, this.emitterBallFlow.dirty, 2);
-    uploadDirtySpan(this.emitterBallInnerFlow.attr, this.emitterBallInnerFlow.dirty, 2);
+    uploadDirtySpan(this.coneBarrelFlow.attr, this.coneBarrelFlow.dirty, 3);
+    uploadDirtySpan(this.coneBarrelInnerFlow.attr, this.coneBarrelInnerFlow.dirty, 3);
+    uploadDirtySpan(this.emitterBallFlow.attr, this.emitterBallFlow.dirty, 3);
+    uploadDirtySpan(this.emitterBallInnerFlow.attr, this.emitterBallInnerFlow.dirty, 3);
 
     this.shieldPanelInstanced.count = turretShieldPanelsEnabled ? this.shieldPanelNextSlot : 0;
     uploadDirtySpan(this.shieldPanelInstanced.instanceMatrix, this.shieldPanelMatrixDirty, 16);

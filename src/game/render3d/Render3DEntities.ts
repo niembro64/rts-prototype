@@ -188,8 +188,11 @@ export class Render3DEntities {
   private turretHeadGeom = new THREE.SphereGeometry(1, 16, 12);
   private commanderVisualKit = new CommanderVisualKit3D();
   private barrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
-  // Beam-turret barrels taper to a point at the muzzle (+Y = tip).
-  private coneBarrelGeom = new THREE.CylinderGeometry(0, 1, 1, 10);
+  // Beam-turret barrels: a straight unit cylinder whose taper is applied
+  // per-instance in the beam-wave vertex shader (uTipTaper / aFlow3.z), so
+  // the muzzle end narrows to exactly the start ball's radius — a chopped
+  // cone capped by the ball — rather than a geometry-baked point.
+  private coneBarrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
   private readonly materialPalette = new EntityMaterialPalette3D();
   // Force-field panel = flat unit square plane. Default orientation: face
   // in XY plane with normal +Z; we rotate it into the panel-local frame

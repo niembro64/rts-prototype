@@ -135,8 +135,10 @@ export type TurretMesh = {
 export type TurretMesh3DDeps = {
   headGeom: THREE.SphereGeometry;
   barrelGeom: THREE.CylinderGeometry;
-  /** Tapered barrel geometry used for beam/laser turrets so the barrel
-   *  narrows to a point at the muzzle. */
+  /** Barrel geometry for beam turrets: a straight unit cylinder whose
+   *  muzzle-end taper is applied by the beam-wave shader (down to the
+   *  start ball's radius — a chopped cone the ball caps — or to a point
+   *  for ball-less rays). */
   coneBarrelGeom: THREE.CylinderGeometry;
   /** Resolved primary (player color) material for this unit. */
   primaryMat: THREE.Material;
@@ -388,14 +390,28 @@ export function buildTurretMesh3D(
   let beamEmitterMeshes: THREE.Mesh[] | undefined;
   let beamEmitterBallRadius: number | undefined;
   if (followsBeam && barrels.length > 0) {
+    // The ball exists for beams that author an emission offset (the same
+    // rule the old fire-time orb used). Resolved first because the cone is
+    // a chopped cone whose flat top matches the ball's radius — the ball
+    // caps the frustum instead of swallowing a pointed tip.
+    const rayWidth = (turret.config.shot as { width?: number } | null)?.width ?? 0;
+    const ballRadius = getBeamEmissionOffset(turret.config.shot) > 0
+      ? getBeamEmitterBallRadius(rayWidth / 2)
+      : 0;
+    beamEmitterBallRadius = ballRadius;
+    // Tip radius / base radius for the shader frustum; 0 keeps the pointed
+    // cone for ball-less rays. The inner layer scales base and ball by the
+    // same factor, so one taper serves both layers.
+    const coneTipTaper = ballRadius > 0 && cylRadius > 1e-6 ? ballRadius / cylRadius : 0;
+
     const outerBarrel = barrels[0];
-    outerBarrel.material = getBeamEmitterMeshMaterial('outer', length);
+    outerBarrel.material = getBeamEmitterMeshMaterial('outer', length, coneTipTaper);
     outerBarrel.renderOrder = BEAM_WAVE_RENDER_ORDER.outer;
 
     beamEmitterMeshes = [];
     const innerBarrel = new THREE.Mesh(
       deps.coneBarrelGeom,
-      getBeamEmitterMeshMaterial('inner', length),
+      getBeamEmitterMeshMaterial('inner', length, coneTipTaper),
     );
     innerBarrel.position.copy(outerBarrel.position);
     innerBarrel.quaternion.copy(outerBarrel.quaternion);
@@ -407,16 +423,6 @@ export function buildTurretMesh3D(
     innerBarrel.renderOrder = BEAM_WAVE_RENDER_ORDER.inner;
     if (!deps.skipBarrels) barrelParent.add(innerBarrel);
     beamEmitterMeshes.push(innerBarrel);
-
-    // The ball exists for beams that author an emission offset (the same
-    // rule the old fire-time orb used). Its local +Y aligns with the
-    // firing axis so the wave bands flow through cone, ball, and beam in
-    // one direction.
-    const rayWidth = (turret.config.shot as { width?: number } | null)?.width ?? 0;
-    const ballRadius = getBeamEmissionOffset(turret.config.shot) > 0
-      ? getBeamEmitterBallRadius(rayWidth / 2)
-      : 0;
-    beamEmitterBallRadius = ballRadius;
     if (ballRadius > 0) {
       const ballDiameter = ballRadius * 2;
       for (const layer of ['outer', 'inner'] as const) {

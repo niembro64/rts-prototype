@@ -204,17 +204,27 @@ void main() {
 //     materialization fade arrives via EntityFade3D's per-object uFade clone.
 // ---------------------------------------------------------------------------
 
+// aFlow3 = (repeats, phase, tipTaper). tipTaper scales the radial (XZ)
+// footprint from 1.0 at the base to tipTaper at the +Y end, turning the
+// unit-cylinder geometry into a per-instance frustum: the emitter cone's
+// flat top matches its start ball's radius (taper = ballRadius / base
+// radius), taper 0 recovers a pointed cone, and the ball itself rides
+// taper 1 (no-op).
 const EMITTER_INSTANCED_VERTEX_SHADER = `
-attribute vec2 aFlow2;
+attribute vec3 aFlow3;
 attribute float aFade;
 varying float vAlong;
 varying vec2 vFlow2;
 varying float vFade;
 void main() {
   vAlong = position.y + 0.5;
-  vFlow2 = aFlow2;
+  vFlow2 = aFlow3.xy;
   vFade = aFade;
-  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+  vec3 p = position;
+  float radial = mix(1.0, aFlow3.z, vAlong);
+  p.x *= radial;
+  p.z *= radial;
+  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(p, 1.0);
 }
 `;
 
@@ -250,10 +260,15 @@ export function createBeamEmitterInstancedMaterial(layer: BeamWaveLayer): THREE.
 }
 
 const EMITTER_MESH_VERTEX_SHADER = `
+uniform float uTipTaper;
 varying float vAlong;
 void main() {
   vAlong = position.y + 0.5;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  vec3 p = position;
+  float radial = mix(1.0, uTipTaper, vAlong);
+  p.x *= radial;
+  p.z *= radial;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
 }
 `;
 
@@ -272,20 +287,23 @@ void main() {
 `;
 
 // Per-Mesh emitter materials are shared across every turret whose shape has
-// the same world length (flow params are uniforms, so the cache key is the
-// resolved repeats value). One compiled program per layer regardless.
+// the same world length + tip taper (flow params are uniforms, so the cache
+// key is the resolved values). One compiled program per layer regardless.
 const emitterMeshMaterialCache = new Map<string, THREE.ShaderMaterial>();
 
 /** Material for a per-Mesh emitter shape (tower barrels / unit instanced-cap
  *  fallback). `worldLength` is the shape's span along its local +Y in world
- *  units — barrel length for cones, diameter for balls. */
+ *  units — barrel length for cones, diameter for balls. `tipTaper` narrows
+ *  the radial footprint toward the +Y end (frustum): cones pass their
+ *  ballRadius / baseRadius ratio (0 = pointed); balls keep the default 1. */
 export function getBeamEmitterMeshMaterial(
   layer: BeamWaveLayer,
   worldLength: number,
+  tipTaper: number = 1,
 ): THREE.ShaderMaterial {
   const config = beamWaveLayerConfig(layer);
   const repeats = beamWaveFlowRepeats(worldLength, config.waveSpacing);
-  const key = `${layer}:${repeats.toFixed(4)}`;
+  const key = `${layer}:${repeats.toFixed(4)}:${tipTaper.toFixed(4)}`;
   const cached = emitterMeshMaterialCache.get(key);
   if (cached !== undefined) return cached;
   const material = new THREE.ShaderMaterial({
@@ -295,6 +313,7 @@ export function getBeamEmitterMeshMaterial(
       uTime: BEAM_WAVE_TIME,
       uFlowRepeats: { value: repeats },
       uFlowPhase: { value: beamWaveFlowPhase(repeats * 16, layer === 'outer' ? 1 : 2) },
+      uTipTaper: { value: tipTaper },
     },
     transparent: true,
     depthWrite: false,
