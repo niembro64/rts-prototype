@@ -15,16 +15,9 @@ async function exitApp(): Promise<void> {
 
 const props = defineProps<{
   economy: EconomyInfo;
-  playerName: string;
-  playerColor: string;
-  canTogglePlayer: boolean;
   directionData: Pick<MinimapData, 'cameraYaw' | 'wind'>;
   networkStatus?: string;
   networkWarning?: string | null;
-}>();
-
-const emit = defineEmits<{
-  togglePlayer: [];
 }>();
 
 const TOP_BAR = COLORS.ui.topBar;
@@ -51,22 +44,11 @@ const metalPct = computed(() =>
   Math.min(100, Math.round((props.economy.metal.stockpile.curr / props.economy.metal.stockpile.max) * 100))
 );
 
-const unitCapColor = computed(() => {
-  const pct = (props.economy.units.count / props.economy.units.cap) * 100;
-  if (pct >= 100) return TOP_BAR.unitCap.full;
-  if (pct >= 80) return TOP_BAR.unitCap.warning;
-  return TOP_BAR.unitCap.ok;
-});
-
-const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.units.cap);
-
 // Style objects + formatted strings wrapped in computeds so Vue caches
 // the returned identity across re-renders. Without these, every parent
 // snapshot tick (TopBar receives economy props at 20 Hz) reallocates the
 // inline `:style="{ ... }"` object and reruns each fmt*() template call,
 // producing GC churn on otherwise unchanged values.
-const playerDotStyle = computed(() => ({ backgroundColor: props.playerColor }));
-const unitCapStyle = computed(() => ({ color: unitCapColor.value }));
 const energyBarStyle = computed(() => ({ width: energyPct.value + '%' }));
 const metalBarStyle = computed(() => ({ width: metalPct.value + '%' }));
 const topBarStyle = computed(() => ({
@@ -83,9 +65,6 @@ const topBarStyle = computed(() => ({
   '--topbar-exit-hover-text': TOP_BAR.exitButton.hoverText,
   '--topbar-exit-hover-border': TOP_BAR.exitButton.hoverBorder,
   '--topbar-exit-active-bg': TOP_BAR.exitButton.activeBackground,
-  '--topbar-player-dot-border': TOP_BAR.playerDot.border,
-  '--topbar-player-dot-hover-border': TOP_BAR.playerDot.hoverBorder,
-  '--topbar-player-hover-bg': TOP_BAR.playerDot.hoverBackground,
   '--topbar-network-label': TOP_BAR.network.label,
   '--topbar-network-value': TOP_BAR.network.value,
   '--topbar-network-warning': TOP_BAR.network.warning,
@@ -99,10 +78,6 @@ const topBarStyle = computed(() => ({
   '--resource-empty-shell-bg': TOP_BAR.resource.emptyShellBackground,
   '--resource-empty-shell-border': TOP_BAR.resource.emptyShellBorder,
   '--resource-empty-shell-shadow': TOP_BAR.resource.emptyShellShadow,
-  '--building-solar-color': TOP_BAR.buildings.buildingSolar,
-  '--building-wind-color': TOP_BAR.buildings.buildingWind,
-  '--building-factory-color': TOP_BAR.buildings.towerFabricator,
-  '--unit-cap-full': TOP_BAR.unitCap.full,
 }));
 
 const energyStockDisplay = computed(() => fmtStock(props.economy.stockpile.curr));
@@ -123,22 +98,6 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
       @click="exitApp"
     >EXIT</button>
 
-    <!-- Player. The dot toggles the active player in demo mode; the
-         name is read-only here. Username edits live in the lobby
-         player slot so each client can only edit their own roster row. -->
-    <div class="player-section">
-      <button
-        class="player-dot-btn"
-        :class="{ clickable: canTogglePlayer }"
-        :title="canTogglePlayer ? 'Click to switch player' : ''"
-        :disabled="!canTogglePlayer"
-        @click="emit('togglePlayer')"
-      >
-        <span class="player-dot" :style="playerDotStyle"></span>
-      </button>
-      <span class="player-name" title="Username">{{ playerName }}</span>
-    </div>
-
     <div
       v-if="networkStatus || networkWarning"
       class="network-section"
@@ -147,29 +106,6 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
     >
       <span class="network-label">NET</span>
       <span class="network-value">{{ networkWarning || networkStatus }}</span>
-    </div>
-
-    <!-- Units + Buildings -->
-    <div class="counts-section">
-      <div class="count-row">
-        <span class="count-label">UNITS</span>
-        <span class="count-value" :style="unitCapStyle">
-          {{ economy.units.count }}/{{ economy.units.cap }}
-          <span
-            class="cap-warning"
-            :class="{ visible: isAtUnitCap }"
-            :aria-hidden="!isAtUnitCap"
-          >MAX</span>
-        </span>
-      </div>
-      <div class="count-row">
-        <span class="count-label">BLDG</span>
-        <span class="count-value">
-          <span class="building-solar" title="Solar">☀{{ economy.buildings.solar }}</span>
-          <span class="building-wind" title="Wind">◌{{ economy.buildings.wind }}</span>
-          <span class="building-factory" title="Fabricators">🏭{{ economy.buildings.factory }}</span>
-        </span>
-      </div>
     </div>
 
     <div class="direction-slot">
@@ -247,18 +183,22 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
 <style scoped>
 .top-bar {
   position: relative;
-  width: 100%;
+  width: max-content;
+  max-width: calc(100vw - 24px);
   box-sizing: border-box;
   height: 58px;
   background: var(--topbar-bg);
-  border-bottom: 1px solid var(--topbar-border);
+  border: 1px solid var(--topbar-border);
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
   display: flex;
   align-items: center;
-  padding: 0 12px;
-  gap: 12px;
+  padding: 0 10px;
+  gap: 10px;
   font-family: monospace;
   color: var(--topbar-text);
   pointer-events: auto;
+  overflow: hidden;
 }
 
 .direction-slot {
@@ -298,65 +238,6 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
 
 .exit-btn:active {
   background: var(--topbar-exit-active-bg);
-}
-
-.player-section {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px 4px 8px;
-  border: none;
-  border-right: 1px solid var(--topbar-divider);
-  background: none;
-  color: var(--topbar-text);
-  font-family: monospace;
-  min-width: 80px;
-  cursor: default;
-}
-
-.player-section.clickable {
-  cursor: pointer;
-  border-radius: 4px;
-}
-
-.player-section.clickable:hover {
-  background: var(--topbar-player-hover-bg);
-}
-
-.player-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 2px solid var(--topbar-player-dot-border);
-  flex-shrink: 0;
-}
-
-.player-name {
-  display: block;
-  font-weight: bold;
-  font-size: 13px;
-  width: 130px;
-  text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.player-dot-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: none;
-  border: none;
-  padding: 0;
-  margin: 0;
-  cursor: default;
-}
-.player-dot-btn.clickable {
-  cursor: pointer;
-}
-.player-dot-btn.clickable:hover .player-dot {
-  border-color: var(--topbar-player-dot-hover-border);
 }
 
 .network-section {
@@ -580,55 +461,4 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
   }
 }
 
-/* ── Counts ── */
-.counts-section {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 110px;
-}
-
-.count-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.count-label {
-  font-size: 9px;
-  color: var(--topbar-muted-text);
-  text-transform: uppercase;
-  width: 32px;
-}
-
-.count-value {
-  font-size: 13px;
-  font-weight: bold;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.building-solar { color: var(--building-solar-color); }
-.building-wind { color: var(--building-wind-color); }
-.building-factory { color: var(--building-factory-color); }
-
-.cap-warning {
-  display: inline-block;
-  flex: 0 0 3ch;
-  font-size: 9px;
-  color: var(--unit-cap-full);
-  text-align: left;
-  visibility: hidden;
-}
-
-.cap-warning.visible {
-  animation: blink 1s infinite;
-  visibility: visible;
-}
-
-@keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0.3; }
-}
 </style>

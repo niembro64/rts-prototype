@@ -2,11 +2,15 @@ import type { ClientCommandSink } from '../input/ClientCommandSink';
 import type { StructureBlueprintId, WaypointType } from '../sim/types';
 import {
   controlGroupIndexForKey,
-  getBuildModeBuildingBlueprintIdByIndex,
   getDefaultBuildModeBuildingBlueprintId,
   handleEscape,
   type CommanderModeController,
 } from '../input/helpers';
+import {
+  BAR_GRID_COLUMNS,
+  BAR_GRID_ROWS,
+  getBarHomeBuildMenuStructureBlueprintIdBySlotIndex,
+} from '../input/buildMenuLayout';
 import {
   CommandHotkeySequenceResolver,
   resolveCommandHotkey,
@@ -223,10 +227,17 @@ function buildSlotIndexForCommandId(commandId: CommandHotkeyId): number {
 }
 
 export const CONTROL_GROUP_FOCUS_DOUBLE_TAP_MS = 500;
+const BUILD_COLUMN_CYCLE_TAP_MS = 1500;
 
 export type ControlGroupRecallTapState = {
   index: number;
   timeMs: number;
+};
+
+type BuildColumnCycleTapState = {
+  slotIndex: number;
+  timeMs: number;
+  cycleIndex: number;
 };
 
 export function resetControlGroupRecallTap(state: ControlGroupRecallTapState): void {
@@ -256,6 +267,7 @@ export class Input3DKeyboardController {
     index: -1,
     timeMs: Number.NEGATIVE_INFINITY,
   };
+  private buildColumnCycleTap: BuildColumnCycleTapState | null = null;
 
   constructor(config: Input3DKeyboardControllerConfig) {
     this.config = config;
@@ -614,8 +626,9 @@ export class Input3DKeyboardController {
   }
 
   private enterBuildSlot(index: number): boolean {
-    const buildingBlueprintId = getBuildModeBuildingBlueprintIdByIndex(
-      index,
+    const resolvedIndex = this.resolveBuildSlotIndexForEntry(index, Date.now());
+    const buildingBlueprintId = getBarHomeBuildMenuStructureBlueprintIdBySlotIndex(
+      resolvedIndex,
       this.config.getSelectedBuilderAllowedBuildBlueprintIds(),
     );
     if (!buildingBlueprintId || !(this.config.mode.isInBuildMode || this.config.hasSelectedBuilder())) {
@@ -624,6 +637,45 @@ export class Input3DKeyboardController {
     this.config.exitSpecialModes(false);
     this.config.mode.enterBuildMode(buildingBlueprintId);
     return true;
+  }
+
+  private resolveBuildSlotIndexForEntry(
+    defaultSlotIndex: number,
+    timeMs: number,
+  ): number {
+    if (defaultSlotIndex < 0) return defaultSlotIndex;
+    const columnIndex = defaultSlotIndex >= 0 && defaultSlotIndex < BAR_GRID_COLUMNS
+      ? defaultSlotIndex
+      : -1;
+    if (columnIndex < 0) {
+      this.buildColumnCycleTap = null;
+      return defaultSlotIndex;
+    }
+
+    const allowedBuildBlueprintIds = this.config.getSelectedBuilderAllowedBuildBlueprintIds();
+    const availableColumnSlots: number[] = [];
+    for (let rowIndex = 0; rowIndex < BAR_GRID_ROWS; rowIndex++) {
+      const slotIndex = rowIndex * BAR_GRID_COLUMNS + columnIndex;
+      if (getBarHomeBuildMenuStructureBlueprintIdBySlotIndex(slotIndex, allowedBuildBlueprintIds) !== null) {
+        availableColumnSlots.push(slotIndex);
+      }
+    }
+    if (availableColumnSlots.length === 0) {
+      this.buildColumnCycleTap = null;
+      return defaultSlotIndex;
+    }
+
+    const previous = this.buildColumnCycleTap;
+    const elapsedMs = previous === null ? Number.POSITIVE_INFINITY : timeMs - previous.timeMs;
+    const cycleIndex =
+      previous !== null
+      && previous.slotIndex === defaultSlotIndex
+      && elapsedMs >= 0
+      && elapsedMs <= BUILD_COLUMN_CYCLE_TAP_MS
+        ? previous.cycleIndex + 1
+        : 0;
+    this.buildColumnCycleTap = { slotIndex: defaultSlotIndex, timeMs, cycleIndex };
+    return availableColumnSlots[cycleIndex % availableColumnSlots.length] ?? defaultSlotIndex;
   }
 
   private handleEscape(): void {

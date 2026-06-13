@@ -71,6 +71,8 @@ import type { Input3DAreaDragState } from './Input3DAreaDragState';
 import type { BuildFacingInfo, BuildLineSpacingInfo } from './Input3DBuildPlacementState';
 
 const SELECTABLE_GROUND_MIN_UNIT_RADIUS = 8;
+const SAME_TYPE_DOUBLE_CLICK_MS = 450;
+const SAME_TYPE_DOUBLE_CLICK_MAX_DIST_PX = 8;
 
 function isTextEntryTarget(target: EventTarget | null): boolean {
   const element = target as HTMLElement | null;
@@ -90,6 +92,13 @@ type EntitySource = {
   getUnitsByPlayer: (playerId: PlayerId) => Entity[];
   getEntitySetVersion?: () => number;
   getTerrainBuildabilityGrid?: () => TerrainBuildabilityGrid | null;
+};
+
+type SelectionClickTapState = {
+  typeKey: string;
+  timeMs: number;
+  clientX: number;
+  clientY: number;
 };
 
 const AUTO_GROUP_PRESET_STORAGE_KEY = 'budget-annihilation.autoControlGroups.v1';
@@ -172,6 +181,7 @@ export class Input3DManager {
   private onWindowBlur: () => void;
   private selectBoxSameTypeHeld = false;
   private selectBoxIdleHeld = false;
+  private lastSelectionClick: SelectionClickTapState | null = null;
 
   constructor(
     threeApp: ThreeApp,
@@ -545,6 +555,7 @@ export class Input3DManager {
     if (this.context.activePlayerId === playerId) return;
     this.context.activePlayerId = playerId;
     this.previousSelectionIds = [];
+    this.lastSelectionClick = null;
     this.selectionChangeTracker.reset();
     this.mode.exitBuildMode();
     this.mode.exitDGunMode();
@@ -777,6 +788,7 @@ export class Input3DManager {
       this.context.activePlayerId,
       { x: rect.left, y: rect.top },
       { x: rect.right, y: rect.bottom },
+      { includeBuildingsWithUnits: true },
     ));
   }
 
@@ -1710,6 +1722,77 @@ export class Input3DManager {
     };
   }
 
+  private selectClickedEntity(
+    entity: Entity,
+    entityId: EntityId,
+    e: MouseEvent,
+    additive: boolean,
+    subtractive: boolean,
+  ): void {
+    const sameTypeDoubleClick = this.isSameTypeDoubleClick(entity, e);
+    this.recordSelectionClick(entity, e);
+    if (sameTypeDoubleClick && this.selectSameTypeAsClickedEntityInView(entity, additive, subtractive)) {
+      return;
+    }
+    if (subtractive) this.deselectEntityIds([entityId]);
+    else this.enqueueSelection([entityId], additive);
+  }
+
+  private isSameTypeDoubleClick(entity: Entity, e: MouseEvent): boolean {
+    const typeKey = this.selectionClickTypeKey(entity);
+    const previous = this.lastSelectionClick;
+    if (typeKey === null || previous === null || previous.typeKey !== typeKey) return false;
+    const elapsedMs = e.timeStamp - previous.timeMs;
+    if (elapsedMs < 0 || elapsedMs > SAME_TYPE_DOUBLE_CLICK_MS) return false;
+    return Math.hypot(e.clientX - previous.clientX, e.clientY - previous.clientY)
+      <= SAME_TYPE_DOUBLE_CLICK_MAX_DIST_PX;
+  }
+
+  private recordSelectionClick(entity: Entity, e: MouseEvent): void {
+    const typeKey = this.selectionClickTypeKey(entity);
+    this.lastSelectionClick = typeKey === null
+      ? null
+      : { typeKey, timeMs: e.timeStamp, clientX: e.clientX, clientY: e.clientY };
+  }
+
+  private selectionClickTypeKey(entity: Entity): string | null {
+    const unitBlueprintId = entity.unit?.unitBlueprintId;
+    if (unitBlueprintId) return `unit:${unitBlueprintId}`;
+    const buildingBlueprintId = entity.buildingBlueprintId;
+    return buildingBlueprintId ? `building:${buildingBlueprintId}` : null;
+  }
+
+  private selectSameTypeAsClickedEntityInView(
+    entity: Entity,
+    additive: boolean,
+    subtractive: boolean,
+  ): boolean {
+    const visibleEntityIds = this.getViewportSelectableEntityIds();
+    const entityIds: EntityId[] = [];
+    const unitBlueprintId = entity.unit?.unitBlueprintId;
+    if (unitBlueprintId) {
+      const units = this.entitySource.getUnitsByPlayer(this.context.activePlayerId);
+      for (let i = 0; i < units.length; i++) {
+        const unit = units[i];
+        if (!this.isSelectableByActivePlayer(unit) || !visibleEntityIds.has(unit.id)) continue;
+        if (unit.unit?.unitBlueprintId === unitBlueprintId) entityIds.push(unit.id);
+      }
+    } else {
+      const buildingBlueprintId = entity.buildingBlueprintId;
+      if (!buildingBlueprintId) return false;
+      const buildings = this.entitySource.getBuildingsByPlayer(this.context.activePlayerId);
+      for (let i = 0; i < buildings.length; i++) {
+        const building = buildings[i];
+        if (!this.isSelectableByActivePlayer(building) || !visibleEntityIds.has(building.id)) continue;
+        if (building.buildingBlueprintId === buildingBlueprintId) entityIds.push(building.id);
+      }
+    }
+    if (entityIds.length === 0) return false;
+    if (subtractive) this.deselectEntityIds(entityIds);
+    else this.enqueueSelection(entityIds, additive);
+    return true;
+  }
+
   /** Fire a one-shot scan sweep at the last-known hover position
    *  (FOW-14). Reads the last-known hover client point, raycasts to the ground, then
    *  enqueues a 'scan' command — the authoritative side spawns a
@@ -1822,6 +1905,7 @@ export class Input3DManager {
     this.previousSelectionIds = [];
     this.loopSelectionIds = [];
     this.loopSelectionCursor = -1;
+    this.lastSelectionClick = null;
     this.controlGroups.setSource(source);
     this.selectedCommands.setSource(source);
   }
@@ -1913,8 +1997,7 @@ export class Input3DManager {
           this.isSelectableByActivePlayer(ent) &&
           entityMatchesScreenRectSelectionOptions(ent, options)
         ) {
-          if (subtractive) this.deselectEntityIds([hit]);
-          else this.enqueueSelection([hit], additive);
+          this.selectClickedEntity(ent, hit, e, additive, subtractive);
           this.refreshCursor();
           return;
         }
@@ -1939,14 +2022,14 @@ export class Input3DManager {
             this.isSelectableByActivePlayer(ent) &&
             entityMatchesScreenRectSelectionOptions(ent, options)
           ) {
-            if (subtractive) this.deselectEntityIds([closest.id]);
-            else this.enqueueSelection([closest.id], additive);
+            this.selectClickedEntity(ent, closest.id, e, additive, subtractive);
             this.refreshCursor();
             return;
           }
         }
       }
       if (!additive && !subtractive) {
+        this.lastSelectionClick = null;
         this.enqueueClearSelection();
       }
       this.refreshCursor();
@@ -1957,6 +2040,7 @@ export class Input3DManager {
     // position to screen space and test against the rect. This matches what
     // the user *sees* (even though the corresponding ground-plane region
     // is a trapezoid under a tilted camera).
+    this.lastSelectionClick = null;
     const ids = this.picker.selectEntitiesInScreenRect(
       this.entitySource,
       this.context.activePlayerId,

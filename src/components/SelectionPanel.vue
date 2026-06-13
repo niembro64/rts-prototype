@@ -13,8 +13,13 @@ import {
   type CommandHotkeyPresetId,
 } from '../game/input/commandHotkeys';
 import {
+  BAR_BUILD_CATEGORIES,
+  BAR_GRID_COLUMNS,
+  BAR_GRID_ROWS,
+  BAR_GRID_SLOT_COUNT,
   BUILD_MENU_GRID_SLOT_COMMAND_IDS,
   buildStructureMenuLayout,
+  type BarBuildCategoryId,
 } from '../game/input/buildMenuLayout';
 import {
   getCachedEntityThumbnail,
@@ -50,6 +55,7 @@ const props = defineProps<{
   actions: SelectionActions;
   hotkeyPreset: CommandHotkeyPresetId;
   hotkeyRevision: number;
+  playableBottomInsetPx: number;
 }>();
 
 // Per budget_design_philosophy.html "Selection Menus Are Uniform Per Entity Type"
@@ -117,7 +123,7 @@ const isStaticOnlySelection = computed(() =>
 );
 const SELECTION_PANEL = COLORS.ui.selectionPanel;
 const BUTTON_COLORS = SELECTION_PANEL.buttons;
-const selectionPanelStyle = {
+const selectionPanelStyle = computed(() => ({
   '--selection-panel-bg': SELECTION_PANEL.surface.background,
   '--selection-panel-border': SELECTION_PANEL.surface.border,
   '--selection-panel-text': SELECTION_PANEL.surface.text,
@@ -144,7 +150,8 @@ const selectionPanelStyle = {
   '--selection-panel-stop': BUTTON_COLORS.stop,
   '--selection-panel-vehicle-produce': BUTTON_COLORS.vehicleProduce,
   '--selection-panel-bot-produce': BUTTON_COLORS.botProduce,
-} as const;
+  '--selection-panel-playable-bottom': `${Math.max(0, Math.round(props.playableBottomInsetPx))}px`,
+}) as const);
 
 // Repeat-build: selected unit blueprint currently being looped. Used to
 // light up the matching button.
@@ -234,15 +241,6 @@ type WaypointModeOption = {
   color: string;
 };
 
-type BarBuildCategoryId = 'Economy' | 'Combat' | 'Utility' | 'Production';
-
-type BarBuildCategory = {
-  id: BarBuildCategoryId;
-  sourceCategory: BuildMenuCategory;
-  label: string;
-  keyCommandId: CommandHotkeyId;
-};
-
 type BuildingGridOption = {
   buildingBlueprintId: StructureBlueprintId;
   label: string;
@@ -261,16 +259,6 @@ type FactoryGridOption = {
   cost: number;
   locomotion: string;
 };
-
-const BAR_GRID_COLUMNS = 4;
-const BAR_GRID_ROWS = 3;
-const BAR_GRID_SLOT_COUNT = BAR_GRID_COLUMNS * BAR_GRID_ROWS;
-const BAR_BUILD_CATEGORIES: readonly BarBuildCategory[] = [
-  { id: 'Economy', sourceCategory: 'Economy', label: 'Economy', keyCommandId: 'build.slot1' },
-  { id: 'Combat', sourceCategory: 'Defense', label: 'Combat', keyCommandId: 'build.slot2' },
-  { id: 'Utility', sourceCategory: 'Intel', label: 'Utility', keyCommandId: 'build.slot3' },
-  { id: 'Production', sourceCategory: 'Production', label: 'Build', keyCommandId: 'build.slot4' },
-];
 
 const buildGridCategory = ref<BarBuildCategoryId | null>(null);
 const buildGridPage = ref(0);
@@ -415,10 +403,6 @@ const currentBuildCategoryOptions = computed(() => {
 
 const buildGridPageCount = computed(() =>
   Math.max(1, Math.ceil(currentBuildCategoryOptions.value.length / BAR_GRID_SLOT_COUNT)),
-);
-
-const buildGridModeLabel = computed(() =>
-  currentBuildCategory.value === null ? 'Home' : currentBuildCategory.value.label,
 );
 
 const buildGridCells = computed<(BuildingGridOption | null)[]>(() => {
@@ -778,7 +762,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
       </div>
     </div>
 
-    <div class="button-group">
+    <div class="button-group selection-command-group">
       <div class="group-label">Select</div>
       <div class="buttons bar-command-grid">
         <button
@@ -1188,8 +1172,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
     <div v-if="selection.hasBuilder && showUnitActions" class="button-group bar-menu-group build-menu-group">
       <div class="group-label">Build</div>
       <div class="bar-grid-menu">
-        <div class="bar-grid-heading">
-          <span>{{ buildGridModeLabel }}</span>
+        <div v-if="showBuildGridPager" class="bar-grid-heading">
           <span v-if="currentBuildCategory && buildGridPageCount > 1">Page {{ buildGridPage + 1 }}/{{ buildGridPageCount }}</span>
         </div>
         <div class="bar-option-grid">
@@ -1521,9 +1504,8 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
     <div v-if="selection.hasFactory && selection.factoryId && showTowerActions" class="button-group bar-menu-group">
       <div class="group-label">Produce</div>
       <div class="bar-grid-menu">
-        <div class="bar-grid-heading">
-          <span>Units</span>
-          <span v-if="factoryGridPageCount > 1">Page {{ factoryGridPage + 1 }}/{{ factoryGridPageCount }}</span>
+        <div v-if="factoryGridPageCount > 1" class="bar-grid-heading">
+          <span>Page {{ factoryGridPage + 1 }}/{{ factoryGridPageCount }}</span>
         </div>
         <div class="bar-option-grid">
           <div
@@ -1694,18 +1676,19 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
  * corners stay so the panel still reads as a discrete card. */
 .options-panel {
   position: fixed;
-  left: calc(50% - 212px);
-  bottom: clamp(300px, 39.5vh, 356px);
+  left: max(340px, calc(50% - 380px));
+  bottom: var(--selection-panel-playable-bottom, 0px);
   display: flex;
-  flex-direction: column;
-  width: 424px;
+  flex-flow: row wrap;
+  align-items: flex-end;
+  gap: 3px 5px;
+  width: min(760px, calc(100vw - 360px));
   background: var(--selection-panel-bg);
   border: 1px solid var(--selection-panel-border);
   border-radius: 6px;
-  padding: 6px;
-  max-width: min(424px, calc(100vw - 32px));
-  max-height: min(168px, calc(100vh - 420px));
-  overflow-y: auto;
+  padding: 5px;
+  max-width: calc(100vw - 360px);
+  overflow: visible;
   font-family: monospace;
   color: var(--selection-panel-text);
   pointer-events: auto;
@@ -1729,14 +1712,14 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
   .options-panel {
     right: 0;
     left: auto;
-    width: min(360px, calc(100vw - 350px));
-    min-width: min(300px, calc(100vw - 16px));
+    width: min(540px, calc(100vw - 8px));
+    max-width: calc(100vw - 8px);
   }
 }
 
 .panel-header {
+  display: none;
   order: 40;
-  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -1842,8 +1825,8 @@ kbd {
 }
 
 .control-group-strip {
+  display: none;
   order: 41;
-  display: grid;
   grid-template-columns: repeat(10, 30px);
   gap: 3px;
   margin-top: 5px;
@@ -1915,12 +1898,17 @@ kbd {
   order: 10;
   display: flex;
   align-items: center;
-  gap: 5px;
-  margin-bottom: 4px;
+  gap: 0;
+  margin-bottom: 2px;
+}
+
+.selection-command-group {
+  display: none;
 }
 
 .group-label {
-  flex: 0 0 48px;
+  display: none;
+  flex: 0 0 0;
   font-size: 8px;
   color: var(--selection-panel-label);
   margin-bottom: 0;
@@ -1929,6 +1917,7 @@ kbd {
 }
 
 .details-group {
+  display: none;
   order: 42;
   align-items: stretch;
 }
@@ -2135,13 +2124,13 @@ kbd {
 
 .bar-menu-group {
   position: fixed;
-  top: 264px;
+  top: 272px;
   left: 0;
   bottom: auto;
   z-index: 1001;
   align-items: flex-start;
   margin: 0;
-  padding: 6px;
+  padding: 4px;
   background: var(--selection-panel-bg);
   border: 1px solid var(--selection-panel-border);
   border-left: 0;
@@ -2157,7 +2146,7 @@ kbd {
 
 .bar-grid-menu {
   display: grid;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
 }
 
@@ -2166,7 +2155,6 @@ kbd {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-height: 12px;
   color: var(--selection-panel-label);
   font-size: 8px;
   font-weight: bold;
@@ -2178,7 +2166,7 @@ kbd {
   display: grid;
   grid-template-columns: repeat(4, 66px);
   grid-auto-rows: 62px;
-  gap: 3px;
+  gap: 2px;
 }
 
 .bar-grid-slot {
@@ -2283,7 +2271,7 @@ kbd {
 .bar-grid-footer {
   display: flex;
   flex-wrap: wrap;
-  gap: 3px;
+  gap: 2px;
 }
 
 .bar-grid-category-btn,

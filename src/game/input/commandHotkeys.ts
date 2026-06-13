@@ -104,7 +104,7 @@ type CustomCommandHotkeyOverrides = Partial<Record<CommandHotkeyId, CommandHotke
 
 export const COMMAND_HOTKEY_STORAGE_KEY = 'budget-annihilation.commandHotkeyPreset';
 export const COMMAND_HOTKEY_CUSTOM_STORAGE_KEY = 'budget-annihilation.customCommandHotkeys';
-export const DEFAULT_COMMAND_HOTKEY_PRESET: CommandHotkeyPresetId = 'prototype';
+export const DEFAULT_COMMAND_HOTKEY_PRESET: CommandHotkeyPresetId = 'bar-grid';
 
 export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'waypoint.move',

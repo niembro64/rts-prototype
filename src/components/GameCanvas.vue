@@ -102,6 +102,8 @@ const backgroundContainerRef = ref<HTMLDivElement | null>(null);
 // modal's preview slot (`#lobby-preview-target`). Captured as a
 // ref so the watcher doesn't depend on selector lookups.
 const gameAreaRef = ref<HTMLDivElement | null>(null);
+const bottomControlsRef = ref<HTMLDivElement | null>(null);
+const playableBottomInsetPx = ref(0);
 const activePlayer = ref<PlayerId>(1);
 const fullscreenActive = ref(false);
 const uiChromeVisible = ref(true);
@@ -198,7 +200,6 @@ const {
   lobbyPlayerCount,
   networkStatus,
   localLobbyPlayer,
-  showPlayerToggle,
   lobbyModalVisible,
   showServerControls,
   serverBarReadonly,
@@ -255,6 +256,35 @@ const showLobbyControlsSidebar = computed(
 watch(showLobbyControlsSidebar, (visible) => {
   if (!visible) lobbyControlsSidebarOpen.value = false;
 });
+
+let bottomControlsResizeObserver: ResizeObserver | null = null;
+
+function updatePlayableBottomInset(): void {
+  if (!bottomChromeVisible.value || (!isMobile && bottomBarsCollapsed.value)) {
+    playableBottomInsetPx.value = 0;
+    return;
+  }
+  const controls = bottomControlsRef.value;
+  if (controls === null) {
+    playableBottomInsetPx.value = 0;
+    return;
+  }
+  playableBottomInsetPx.value = Math.max(0, Math.round(controls.getBoundingClientRect().height));
+}
+
+watch(bottomControlsRef, (controls, previousControls) => {
+  if (previousControls !== null) bottomControlsResizeObserver?.unobserve(previousControls);
+  if (controls !== null) bottomControlsResizeObserver?.observe(controls);
+  void nextTick(updatePlayableBottomInset);
+});
+
+watch(
+  [bottomChromeVisible, bottomBarsCollapsed, mobileBarsVisible, showLoadingOverlay],
+  () => {
+    void nextTick(updatePlayableBottomInset);
+  },
+  { immediate: true },
+);
 
 const {
   localUsername,
@@ -651,11 +681,16 @@ onMounted(() => {
   syncFullscreenActive();
   document.addEventListener('fullscreenchange', syncFullscreenActive);
   window.addEventListener('keydown', handleGameUiKeydown);
+  bottomControlsResizeObserver = new ResizeObserver(updatePlayableBottomInset);
+  if (bottomControlsRef.value !== null) bottomControlsResizeObserver.observe(bottomControlsRef.value);
+  updatePlayableBottomInset();
 });
 
 onBeforeUnmount(() => {
   document.removeEventListener('fullscreenchange', syncFullscreenActive);
   window.removeEventListener('keydown', handleGameUiKeydown);
+  bottomControlsResizeObserver?.disconnect();
+  bottomControlsResizeObserver = null;
 });
 
 // Demo battle unit blueprint list (state read from snapshots)
@@ -805,7 +840,6 @@ const {
   economyInfo,
   minimapData,
   bindGameSceneUi,
-  togglePlayer,
   handleMinimapClick: centerMinimapCamera,
   handleMinimapCommand: issueMinimapCommand,
   gamePhase,
@@ -1592,13 +1626,9 @@ watchEffect(() => {
     >
       <TopBar
         :economy="economyInfo"
-        :player-name="resolvePlayerName(activePlayer)"
-        :player-color="getPlayerColor(activePlayer)"
-        :can-toggle-player="showPlayerToggle"
         :direction-data="minimapData"
         :network-status="networkStatus"
         :network-warning="networkNotice"
-        @toggle-player="togglePlayer"
       />
     </div>
 
@@ -1693,6 +1723,7 @@ watchEffect(() => {
           :actions="selectionActions"
           :hotkey-preset="commandHotkeyPreset"
           :hotkey-revision="commandHotkeyRevision"
+          :playable-bottom-inset-px="playableBottomInsetPx"
         />
 
         <!-- Minimap -->
@@ -1911,7 +1942,11 @@ watchEffect(() => {
         <span class="toggle-dot"></span>
       </button>
 
-      <div v-show="isMobile || !bottomBarsCollapsed" class="bottom-controls">
+      <div
+        v-show="isMobile || !bottomBarsCollapsed"
+        ref="bottomControlsRef"
+        class="bottom-controls"
+      >
         <GameCanvasBattleControlBar
           v-if="showServerControls && currentBattleMode === 'demo'"
           :model="battleControlBarModel"
@@ -2147,9 +2182,14 @@ watchEffect(() => {
 }
 
 .top-controls-shell {
-  flex-shrink: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  justify-content: center;
   z-index: 3001;
   width: 100%;
+  height: 0;
   pointer-events: none;
 }
 
@@ -2174,7 +2214,7 @@ watchEffect(() => {
 
 .communication-panel {
   width: 236px;
-  margin-top: 0;
+  margin-top: 58px;
   border: 1px solid rgba(120, 140, 165, 0.58);
   border-radius: 6px;
   background: rgba(8, 12, 18, 0.88);

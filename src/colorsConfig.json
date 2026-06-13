@@ -51,7 +51,7 @@
         "texture": {
           "sourceFile": "src/game/render3d/GroundDetailTexture.ts",
           "resolution": 4096,
-          "blend": 0.2,
+          "blend": 1.0,
           "tileWorldSize": 512
         }
       },

@@ -11,7 +11,7 @@
     "waveSpeed": 50
   },
   "openEndedLine": {
-    "extendToInfinity": false,
+    "extendToInfinity": true,
     "infinityVisualLength": 12000
   },
   "startPointSphere": {

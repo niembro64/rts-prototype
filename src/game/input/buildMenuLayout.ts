@@ -21,6 +21,26 @@ export const BUILD_MENU_GRID_SLOT_COMMAND_IDS = [
   'build.slot12',
 ] as const satisfies readonly CommandHotkeyId[];
 
+export const BAR_GRID_COLUMNS = 4;
+export const BAR_GRID_ROWS = 3;
+export const BAR_GRID_SLOT_COUNT = BAR_GRID_COLUMNS * BAR_GRID_ROWS;
+
+export type BarBuildCategoryId = 'Economy' | 'Combat' | 'Utility' | 'Production';
+
+export type BarBuildCategory = {
+  id: BarBuildCategoryId;
+  sourceCategory: BuildMenuCategory;
+  label: string;
+  keyCommandId: CommandHotkeyId;
+};
+
+export const BAR_BUILD_CATEGORIES: readonly BarBuildCategory[] = [
+  { id: 'Economy', sourceCategory: 'Economy', label: 'Economy', keyCommandId: 'build.slot1' },
+  { id: 'Combat', sourceCategory: 'Defense', label: 'Combat', keyCommandId: 'build.slot2' },
+  { id: 'Utility', sourceCategory: 'Intel', label: 'Utility', keyCommandId: 'build.slot3' },
+  { id: 'Production', sourceCategory: 'Production', label: 'Build', keyCommandId: 'build.slot4' },
+];
+
 export type BuildMenuLayoutItem = {
   buildingBlueprintId: BuildingBlueprintId;
   category: BuildMenuCategory;
@@ -77,6 +97,42 @@ export function getBuildMenuStructureBlueprintIdBySlotIndex(
   allowedBuildBlueprintIds: readonly StructureBlueprintId[],
 ): BuildingBlueprintId | null {
   return buildStructureMenuLayout(allowedBuildBlueprintIds).items[slotIndex]?.buildingBlueprintId ?? null;
+}
+
+export function buildBarHomeBuildMenuCells(
+  allowedBuildBlueprintIds: readonly StructureBlueprintId[],
+): (BuildMenuLayoutItem | null)[] {
+  const groups = new Map<BarBuildCategoryId, BuildMenuLayoutItem[]>();
+  for (const category of BAR_BUILD_CATEGORIES) groups.set(category.id, []);
+  for (const item of buildStructureMenuLayout(allowedBuildBlueprintIds).items) {
+    const category = BAR_BUILD_CATEGORIES.find((entry) => entry.sourceCategory === item.category);
+    groups.get(category?.id ?? 'Utility')?.push(item);
+  }
+
+  const cells = Array.from<BuildMenuLayoutItem | null>({ length: BAR_GRID_SLOT_COUNT }).fill(null);
+  BAR_BUILD_CATEGORIES.forEach((category, columnIndex) => {
+    const options = groups.get(category.id) ?? [];
+    for (let rowIndex = 0; rowIndex < BAR_GRID_ROWS && rowIndex < options.length; rowIndex++) {
+      const slotIndex = rowIndex * BAR_GRID_COLUMNS + columnIndex;
+      const item = options[rowIndex];
+      if (item === undefined) continue;
+      cells[slotIndex] = {
+        ...item,
+        slotIndex,
+        commandId: BUILD_MENU_GRID_SLOT_COMMAND_IDS[slotIndex],
+        gridRow: rowIndex + 1,
+        gridColumn: columnIndex + 1,
+      };
+    }
+  });
+  return cells;
+}
+
+export function getBarHomeBuildMenuStructureBlueprintIdBySlotIndex(
+  slotIndex: number,
+  allowedBuildBlueprintIds: readonly StructureBlueprintId[],
+): BuildingBlueprintId | null {
+  return buildBarHomeBuildMenuCells(allowedBuildBlueprintIds)[slotIndex]?.buildingBlueprintId ?? null;
 }
 
 function compareStructureBuildMenuOrder(

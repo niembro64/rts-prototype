@@ -53,11 +53,11 @@ const draggingPointerId = ref<number | null>(null);
 
 // Minimap display size. The longest side is pinned at MINIMAP_MAX;
 // the other side follows the map's aspect ratio — so a 3000×3000
-// square map renders as a 180×180 square, a 4000×2000 map as
-// 180×90, and so on. Previously both dimensions were hardcoded 4:3
+// square map renders as a 204×204 square, a 4000×2000 map as
+// 204×102, and so on. Previously both dimensions were hardcoded 4:3
 // regardless of the map, which squashed square maps into rectangles
 // and miscomputed the camera-quad overlay.
-const MINIMAP_MAX = 180;
+const MINIMAP_MAX = 204;
 const DENSE_ENTITY_MARKER_THRESHOLD = 1500;
 const DENSE_UNIT_MARKER_SIZE = 2;
 
@@ -494,7 +494,6 @@ onMounted(() => {
 
 <template>
   <div class="minimap-container" :style="minimapStyle">
-    <div class="minimap-label">Map</div>
     <canvas
       ref="canvasRef"
       :width="size.w"
@@ -518,25 +517,18 @@ onMounted(() => {
   position: relative;
   background: var(--minimap-bg);
   border: 1px solid var(--minimap-border);
-  border-radius: 8px;
-  padding: 8px;
+  border-radius: 6px;
+  padding: 4px;
   font-family: monospace;
   color: var(--minimap-text);
   pointer-events: auto;
   z-index: 1000;
 }
 
-.minimap-label {
-  font-size: 10px;
-  color: var(--minimap-label);
-  text-transform: uppercase;
-  margin-bottom: 4px;
-}
-
 .minimap-canvas {
   display: block;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 3px;
   touch-action: none;
   user-select: none;
 }
