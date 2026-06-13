@@ -141,6 +141,9 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
       positionBuildingTurretRoot(turretMesh, turret);
       if (turretMesh.head) turretMesh.head.userData.entityId = entity.id;
       for (const barrel of turretMesh.barrels) barrel.userData.entityId = entity.id;
+      if (turretMesh.beamEmitterMeshes) {
+        for (const m of turretMesh.beamEmitterMeshes) m.userData.entityId = entity.id;
+      }
       buildingTurretMeshes.push(turretMesh);
     }
   }
@@ -786,11 +789,13 @@ export class BuildingEntityRenderer3D {
         continue;
       }
       // Beam turrets colour like any other turret: a plain team-color head
-      // (no engage flip) while their barrel tracks the beam below.
+      // (no engage flip) while their barrel tracks the beam below. Their
+      // barrel + emitter rig keep the build-time beam wave material — the
+      // accent re-assert below would clobber it.
       if (followsBeam && turretMesh.head && !underConstruction) {
         this.setTurretHeadMaterial(turretMesh, this.getPrimaryMat(ownerId));
       }
-      if (!underConstruction) {
+      if (!underConstruction && !followsBeam) {
         this.setTurretBarrelMaterial(turretMesh, this.getTurretAccentMat(ownerId));
       }
       if (followsBeam) {

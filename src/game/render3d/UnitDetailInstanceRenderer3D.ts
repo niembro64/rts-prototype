@@ -17,6 +17,16 @@ import {
 import { writeHexToRgb01Array } from './colorUtils';
 import { patchInstancedFadeMaterial } from './EntityFade3D';
 import { disposeMesh } from './threeUtils';
+import {
+  BEAM_EMITTER_BALL_GEOM,
+  BEAM_INNER_VISUAL_CONFIG,
+  BEAM_LAYER_INNER_SCALE,
+  BEAM_OUTER_VISUAL_CONFIG,
+  BEAM_WAVE_RENDER_ORDER,
+  beamWaveFlowPhase,
+  beamWaveFlowRepeats,
+  createBeamEmitterInstancedMaterial,
+} from './BeamWaveVisual3D';
 
 const SMOOTH_CHASSIS_CAP = 16384;
 const POLY_CHASSIS_CAP = 4096;
@@ -154,6 +164,25 @@ type FadeState = {
   dirty: DirtySpan;
 };
 
+// Per-instance wave-flow params (repeats, phase) for the beam-emitter
+// pools — the instanced counterpart of the per-Mesh materials' uniforms.
+type EmitterFlowAttr = {
+  arr: Float32Array;
+  attr: THREE.InstancedBufferAttribute;
+  dirty: DirtySpan;
+};
+
+function addEmitterFlowAttr(mesh: THREE.InstancedMesh, capacity: number): EmitterFlowAttr {
+  const arr = new Float32Array(capacity * 2);
+  const attr = new THREE.InstancedBufferAttribute(arr, 2);
+  attr.setUsage(THREE.DynamicDrawUsage);
+  (mesh.geometry as THREE.BufferGeometry).setAttribute('aFlow2', attr);
+  return { arr, attr, dirty: createDirtySpan() };
+}
+
+// Scratch for derived emitter-layer matrices (inner cone, ball layers).
+const _emitterMatrixScratch = new Float32Array(16);
+
 type PolyChassisPool = {
   mesh: THREE.InstancedMesh;
   slots: Map<EntityId, number>;
@@ -209,15 +238,31 @@ export class UnitDetailInstanceRenderer3D {
   private readonly barrelFreeSlots: number[] = [];
   private barrelNextSlot = 0;
 
-  // Parallel pool for beam/laser turret barrels (cone geometry). The
-  // same slot index allocator + per-frame writer pattern as the
-  // cylinder pool above.
+  // Parallel pool for beam turret barrels (cone geometry). The same slot
+  // index allocator + per-frame writer pattern as the cylinder pool above,
+  // but rendered in the beam's continuously-animated wave material — the
+  // fake barrel IS beam-stuff. Three mirror pools share the cone pool's
+  // slot indices and derive their matrices from the outer cone's per
+  // frame: the inner wave layer, and the start-point ball (outer + inner)
+  // sitting at the cone tip.
   private readonly coneBarrelInstanced: THREE.InstancedMesh;
-  private readonly coneBarrelColorKey = new Map<number, number>();
   private readonly coneBarrelMatrixDirty = createDirtySpan();
-  private readonly coneBarrelColorDirty = createDirtySpan();
   private readonly coneBarrelFreeSlots: number[] = [];
   private coneBarrelNextSlot = 0;
+  private readonly coneBarrelInnerInstanced: THREE.InstancedMesh;
+  private readonly coneBarrelInnerMatrixDirty = createDirtySpan();
+  private readonly emitterBallInstanced: THREE.InstancedMesh;
+  private readonly emitterBallMatrixDirty = createDirtySpan();
+  private readonly emitterBallInnerInstanced: THREE.InstancedMesh;
+  private readonly emitterBallInnerMatrixDirty = createDirtySpan();
+  /** Per-cone-slot start-ball world radius (0 = no ball). Registered at
+   *  mesh build via registerConeBarrelEmitter; the per-frame writer uses
+   *  it to derive the ball matrices from the barrel matrix. */
+  private readonly coneEmitterBallRadius = new Float32Array(CONE_BARREL_CAP);
+  private readonly coneBarrelFlow: EmitterFlowAttr;
+  private readonly coneBarrelInnerFlow: EmitterFlowAttr;
+  private readonly emitterBallFlow: EmitterFlowAttr;
+  private readonly emitterBallInnerFlow: EmitterFlowAttr;
 
   // Materials Are Independent Of Shape: the flat panels render through the
   // same shield surface material as the sphere bubble, so they feed the
@@ -275,11 +320,40 @@ export class UnitDetailInstanceRenderer3D {
       BARREL_CAP,
     );
 
+    // Beam-emitter pools: the cone barrel + its inner layer + the start
+    // ball layers all render in the beam wave material (self-faded
+    // ShaderMaterials — createPool still wires their aFade attribute and
+    // fade bookkeeping). They draw with the beam columns' render orders so
+    // the whole emitter rig reads as beam-stuff, and they animate
+    // continuously off the shared beam clock.
     this.coneBarrelInstanced = this.createPool(
       options.coneBarrelGeom.clone(),
-      options.barrelMat.clone(),
+      createBeamEmitterInstancedMaterial('outer'),
       CONE_BARREL_CAP,
     );
+    this.coneBarrelInstanced.renderOrder = BEAM_WAVE_RENDER_ORDER.outer;
+    this.coneBarrelFlow = addEmitterFlowAttr(this.coneBarrelInstanced, CONE_BARREL_CAP);
+    this.coneBarrelInnerInstanced = this.createPool(
+      options.coneBarrelGeom.clone(),
+      createBeamEmitterInstancedMaterial('inner'),
+      CONE_BARREL_CAP,
+    );
+    this.coneBarrelInnerInstanced.renderOrder = BEAM_WAVE_RENDER_ORDER.inner;
+    this.coneBarrelInnerFlow = addEmitterFlowAttr(this.coneBarrelInnerInstanced, CONE_BARREL_CAP);
+    this.emitterBallInstanced = this.createPool(
+      BEAM_EMITTER_BALL_GEOM.clone(),
+      createBeamEmitterInstancedMaterial('outer'),
+      CONE_BARREL_CAP,
+    );
+    this.emitterBallInstanced.renderOrder = BEAM_WAVE_RENDER_ORDER.outer;
+    this.emitterBallFlow = addEmitterFlowAttr(this.emitterBallInstanced, CONE_BARREL_CAP);
+    this.emitterBallInnerInstanced = this.createPool(
+      BEAM_EMITTER_BALL_GEOM.clone(),
+      createBeamEmitterInstancedMaterial('inner'),
+      CONE_BARREL_CAP,
+    );
+    this.emitterBallInnerInstanced.renderOrder = BEAM_WAVE_RENDER_ORDER.inner;
+    this.emitterBallInnerFlow = addEmitterFlowAttr(this.emitterBallInnerInstanced, CONE_BARREL_CAP);
 
     // Force-field panels: same instanced-attribute contract as the sphere
     // bubble (aColor + aAlpha + shared ShaderMaterial), so the two shapes are
@@ -519,21 +593,14 @@ export class UnitDetailInstanceRenderer3D {
         );
         this.turretHeadColorKey.set(turret.headSlot, headColorKey);
       }
-      if (turret.barrelSlots) {
+      // Beam-emitter cones take their color from the beam wave material,
+      // not the entity accent — nothing to sync for cone slots.
+      if (turret.barrelSlots && turret.barrelUsesCone !== true) {
         const barrelColorKey = turretAccentHex;
-        const targetMesh = turret.barrelUsesCone
-          ? this.coneBarrelInstanced
-          : this.barrelInstanced;
-        const targetKeys = turret.barrelUsesCone
-          ? this.coneBarrelColorKey
-          : this.barrelColorKey;
-        const targetDirty = turret.barrelUsesCone
-          ? this.coneBarrelColorDirty
-          : this.barrelColorDirty;
         for (const slot of turret.barrelSlots) {
-          if (targetKeys.get(slot) === barrelColorKey) continue;
-          writeInstanceColorHex(targetMesh, slot, barrelColorKey, targetDirty);
-          targetKeys.set(slot, barrelColorKey);
+          if (this.barrelColorKey.get(slot) === barrelColorKey) continue;
+          writeInstanceColorHex(this.barrelInstanced, slot, barrelColorKey, this.barrelColorDirty);
+          this.barrelColorKey.set(slot, barrelColorKey);
         }
       }
     }
@@ -718,12 +785,7 @@ export class UnitDetailInstanceRenderer3D {
 
   writeBarrelMatrix(slot: number, matrix: THREE.Matrix4, useCone: boolean = false): void {
     if (useCone) {
-      writeInstanceMatrix(
-        this.coneBarrelInstanced,
-        slot,
-        matrix,
-        this.coneBarrelMatrixDirty,
-      );
+      this.writeConeEmitterMatrices(slot, matrix.elements, 0);
     } else {
       writeInstanceMatrix(this.barrelInstanced, slot, matrix, this.barrelMatrixDirty);
     }
@@ -736,13 +798,7 @@ export class UnitDetailInstanceRenderer3D {
     useCone: boolean = false,
   ): void {
     if (useCone) {
-      writeInstanceMatrixArray(
-        this.coneBarrelInstanced,
-        slot,
-        matrix,
-        offset,
-        this.coneBarrelMatrixDirty,
-      );
+      this.writeConeEmitterMatrices(slot, matrix, offset);
     } else {
       writeInstanceMatrixArray(
         this.barrelInstanced,
@@ -752,6 +808,122 @@ export class UnitDetailInstanceRenderer3D {
         this.barrelMatrixDirty,
       );
     }
+  }
+
+  /** Write a beam-emitter cone slot: the outer cone matrix lands as-is,
+   *  and the mirror layers derive from it — the inner cone narrows the
+   *  radial columns, the ball layers re-scale the (orthogonal) basis to a
+   *  uniform diameter and translate to the cone tip so the ball stays at
+   *  the muzzle no matter how the pose pass aimed the barrel. Per-instance
+   *  wave-flow params (repeats from world size, stable per-slot phase)
+   *  ride along so the bands keep the beam's world-unit period. */
+  private writeConeEmitterMatrices(
+    slot: number,
+    m: ArrayLike<number>,
+    offset: number,
+  ): void {
+    writeInstanceMatrixArray(
+      this.coneBarrelInstanced,
+      slot,
+      m,
+      offset,
+      this.coneBarrelMatrixDirty,
+    );
+
+    const m0 = m[offset], m1 = m[offset + 1], m2 = m[offset + 2];
+    const m4 = m[offset + 4], m5 = m[offset + 5], m6 = m[offset + 6];
+    const m8 = m[offset + 8], m9 = m[offset + 9], m10 = m[offset + 10];
+    const m12 = m[offset + 12], m13 = m[offset + 13], m14 = m[offset + 14];
+    const radial = Math.hypot(m0, m1, m2);
+    const length = Math.hypot(m4, m5, m6);
+    const s = BEAM_LAYER_INNER_SCALE;
+    const e = _emitterMatrixScratch;
+
+    // Inner cone: same axis column + translation, radial columns narrowed.
+    e[0] = m0 * s; e[1] = m1 * s; e[2] = m2 * s; e[3] = 0;
+    e[4] = m4; e[5] = m5; e[6] = m6; e[7] = 0;
+    e[8] = m8 * s; e[9] = m9 * s; e[10] = m10 * s; e[11] = 0;
+    e[12] = m12; e[13] = m13; e[14] = m14; e[15] = 1;
+    writeInstanceMatrixArray(
+      this.coneBarrelInnerInstanced,
+      slot,
+      e,
+      0,
+      this.coneBarrelInnerMatrixDirty,
+    );
+
+    this.writeEmitterFlow(
+      this.coneBarrelFlow,
+      slot,
+      beamWaveFlowRepeats(length, BEAM_OUTER_VISUAL_CONFIG.waveSpacing),
+      0,
+    );
+    this.writeEmitterFlow(
+      this.coneBarrelInnerFlow,
+      slot,
+      beamWaveFlowRepeats(length, BEAM_INNER_VISUAL_CONFIG.waveSpacing),
+      1,
+    );
+
+    const ballRadius = this.coneEmitterBallRadius[slot];
+    if (ballRadius <= 0 || radial < 1e-6 || length < 1e-6) return;
+
+    // Ball layers: cone rotation, uniform diameter scale, centered on the
+    // cone tip (= translation + half the +Y axis column). The ball
+    // geometry has radius 0.5, so a uniform scale of the diameter yields
+    // a ball of `ballRadius`.
+    const tipX = m12 + 0.5 * m4;
+    const tipY = m13 + 0.5 * m5;
+    const tipZ = m14 + 0.5 * m6;
+    const d = ballRadius * 2;
+    const kx = d / radial;
+    const ky = d / length;
+    e[0] = m0 * kx; e[1] = m1 * kx; e[2] = m2 * kx; e[3] = 0;
+    e[4] = m4 * ky; e[5] = m5 * ky; e[6] = m6 * ky; e[7] = 0;
+    e[8] = m8 * kx; e[9] = m9 * kx; e[10] = m10 * kx; e[11] = 0;
+    e[12] = tipX; e[13] = tipY; e[14] = tipZ; e[15] = 1;
+    writeInstanceMatrixArray(
+      this.emitterBallInstanced,
+      slot,
+      e,
+      0,
+      this.emitterBallMatrixDirty,
+    );
+    for (let i = 0; i < 12; i++) e[i] *= s;
+    writeInstanceMatrixArray(
+      this.emitterBallInnerInstanced,
+      slot,
+      e,
+      0,
+      this.emitterBallInnerMatrixDirty,
+    );
+
+    this.writeEmitterFlow(
+      this.emitterBallFlow,
+      slot,
+      beamWaveFlowRepeats(d, BEAM_OUTER_VISUAL_CONFIG.waveSpacing),
+      2,
+    );
+    this.writeEmitterFlow(
+      this.emitterBallInnerFlow,
+      slot,
+      beamWaveFlowRepeats(d * s, BEAM_INNER_VISUAL_CONFIG.waveSpacing),
+      3,
+    );
+  }
+
+  private writeEmitterFlow(
+    flow: EmitterFlowAttr,
+    slot: number,
+    repeats: number,
+    phaseSalt: number,
+  ): void {
+    const phase = beamWaveFlowPhase(slot, phaseSalt);
+    const base = slot * 2;
+    if (flow.arr[base] === repeats && flow.arr[base + 1] === phase) return;
+    flow.arr[base] = repeats;
+    flow.arr[base + 1] = phase;
+    markDirtySlot(flow.dirty, slot);
   }
 
   clearTurretSlots(turret: Pick<TurretMesh, 'headSlot' | 'barrelSlots' | 'barrelUsesCone'>): void {
@@ -764,14 +936,12 @@ export class UnitDetailInstanceRenderer3D {
       );
     }
     if (turret.barrelSlots) {
-      const targetMesh = turret.barrelUsesCone
-        ? this.coneBarrelInstanced
-        : this.barrelInstanced;
-      const targetDirty = turret.barrelUsesCone
-        ? this.coneBarrelMatrixDirty
-        : this.barrelMatrixDirty;
       for (const slot of turret.barrelSlots) {
-        writeInstanceMatrix(targetMesh, slot, ZERO_MATRIX, targetDirty);
+        if (turret.barrelUsesCone) {
+          this.zeroConeEmitterSlot(slot);
+        } else {
+          writeInstanceMatrix(this.barrelInstanced, slot, ZERO_MATRIX, this.barrelMatrixDirty);
+        }
       }
     }
   }
@@ -861,11 +1031,28 @@ export class UnitDetailInstanceRenderer3D {
       uploadDirtySpan(this.barrelInstanced.instanceColor, this.barrelColorDirty, 3);
     }
 
+    // Beam-emitter pools share the cone slot allocator, so every mirror
+    // pool draws the same instance count.
     this.coneBarrelInstanced.count = this.coneBarrelNextSlot;
+    this.coneBarrelInnerInstanced.count = this.coneBarrelNextSlot;
+    this.emitterBallInstanced.count = this.coneBarrelNextSlot;
+    this.emitterBallInnerInstanced.count = this.coneBarrelNextSlot;
     uploadDirtySpan(this.coneBarrelInstanced.instanceMatrix, this.coneBarrelMatrixDirty, 16);
-    if (this.coneBarrelInstanced.instanceColor) {
-      uploadDirtySpan(this.coneBarrelInstanced.instanceColor, this.coneBarrelColorDirty, 3);
-    }
+    uploadDirtySpan(
+      this.coneBarrelInnerInstanced.instanceMatrix,
+      this.coneBarrelInnerMatrixDirty,
+      16,
+    );
+    uploadDirtySpan(this.emitterBallInstanced.instanceMatrix, this.emitterBallMatrixDirty, 16);
+    uploadDirtySpan(
+      this.emitterBallInnerInstanced.instanceMatrix,
+      this.emitterBallInnerMatrixDirty,
+      16,
+    );
+    uploadDirtySpan(this.coneBarrelFlow.attr, this.coneBarrelFlow.dirty, 2);
+    uploadDirtySpan(this.coneBarrelInnerFlow.attr, this.coneBarrelInnerFlow.dirty, 2);
+    uploadDirtySpan(this.emitterBallFlow.attr, this.emitterBallFlow.dirty, 2);
+    uploadDirtySpan(this.emitterBallInnerFlow.attr, this.emitterBallInnerFlow.dirty, 2);
 
     this.shieldPanelInstanced.count = turretShieldPanelsEnabled ? this.shieldPanelNextSlot : 0;
     uploadDirtySpan(this.shieldPanelInstanced.instanceMatrix, this.shieldPanelMatrixDirty, 16);
@@ -891,6 +1078,9 @@ export class UnitDetailInstanceRenderer3D {
       this.turretHeadInstanced,
       this.barrelInstanced,
       this.coneBarrelInstanced,
+      this.coneBarrelInnerInstanced,
+      this.emitterBallInstanced,
+      this.emitterBallInnerInstanced,
       this.shieldPanelInstanced,
     ]) {
       disposeMesh(mesh);
@@ -959,8 +1149,16 @@ export class UnitDetailInstanceRenderer3D {
         this.writeFade(this.turretHeadInstanced, turret.headSlot, fade);
       }
       if (turret.barrelSlots) {
-        const targetMesh = turret.barrelUsesCone ? this.coneBarrelInstanced : this.barrelInstanced;
-        for (const slot of turret.barrelSlots) this.writeFade(targetMesh, slot, fade);
+        for (const slot of turret.barrelSlots) {
+          if (turret.barrelUsesCone) {
+            this.writeFade(this.coneBarrelInstanced, slot, fade);
+            this.writeFade(this.coneBarrelInnerInstanced, slot, fade);
+            this.writeFade(this.emitterBallInstanced, slot, fade);
+            this.writeFade(this.emitterBallInnerInstanced, slot, fade);
+          } else {
+            this.writeFade(this.barrelInstanced, slot, fade);
+          }
+        }
       }
     }
     if (mesh.mirrors?.panelSlots) {
@@ -1008,12 +1206,22 @@ export class UnitDetailInstanceRenderer3D {
         );
       }
       if (turret.barrelSlots) {
-        const targetMesh = turret.barrelUsesCone ? this.coneBarrelInstanced : this.barrelInstanced;
-        const targetDirty = turret.barrelUsesCone
-          ? this.coneBarrelMatrixDirty
-          : this.barrelMatrixDirty;
         for (const slot of turret.barrelSlots) {
-          this.applyInstancedDelta(targetMesh, slot, delta, targetDirty);
+          if (turret.barrelUsesCone) {
+            // Scatter every emitter-rig layer with the same delta — the
+            // pieces drifting apart slightly during death-out is the
+            // scatter effect working as intended.
+            this.applyInstancedDelta(this.coneBarrelInstanced, slot, delta, this.coneBarrelMatrixDirty);
+            this.applyInstancedDelta(
+              this.coneBarrelInnerInstanced, slot, delta, this.coneBarrelInnerMatrixDirty,
+            );
+            this.applyInstancedDelta(this.emitterBallInstanced, slot, delta, this.emitterBallMatrixDirty);
+            this.applyInstancedDelta(
+              this.emitterBallInnerInstanced, slot, delta, this.emitterBallInnerMatrixDirty,
+            );
+          } else {
+            this.applyInstancedDelta(this.barrelInstanced, slot, delta, this.barrelMatrixDirty);
+          }
         }
       }
     }
@@ -1144,31 +1352,44 @@ export class UnitDetailInstanceRenderer3D {
     } else {
       return null;
     }
-    writeInstanceMatrix(
-      this.coneBarrelInstanced,
-      slot,
-      ZERO_MATRIX,
-      this.coneBarrelMatrixDirty,
-    );
+    this.coneEmitterBallRadius[slot] = 0;
+    this.zeroConeEmitterSlot(slot);
     this.writeFade(this.coneBarrelInstanced, slot, 1);
-    writeInstanceColorHex(
-      this.coneBarrelInstanced,
-      slot,
-      COLORS.units.turret.barrel.colorHex,
-      this.coneBarrelColorDirty,
-    );
+    this.writeFade(this.coneBarrelInnerInstanced, slot, 1);
+    this.writeFade(this.emitterBallInstanced, slot, 1);
+    this.writeFade(this.emitterBallInnerInstanced, slot, 1);
     return slot;
   }
 
   private freeConeBarrelSlot(slot: number): void {
+    this.coneEmitterBallRadius[slot] = 0;
+    this.zeroConeEmitterSlot(slot);
+    this.coneBarrelFreeSlots.push(slot);
+  }
+
+  /** Zero the cone slot's matrix in the outer pool and every mirror pool. */
+  private zeroConeEmitterSlot(slot: number): void {
+    writeInstanceMatrix(this.coneBarrelInstanced, slot, ZERO_MATRIX, this.coneBarrelMatrixDirty);
     writeInstanceMatrix(
-      this.coneBarrelInstanced,
+      this.coneBarrelInnerInstanced,
       slot,
       ZERO_MATRIX,
-      this.coneBarrelMatrixDirty,
+      this.coneBarrelInnerMatrixDirty,
     );
-    this.coneBarrelFreeSlots.push(slot);
-    this.coneBarrelColorKey.delete(slot);
+    writeInstanceMatrix(this.emitterBallInstanced, slot, ZERO_MATRIX, this.emitterBallMatrixDirty);
+    writeInstanceMatrix(
+      this.emitterBallInnerInstanced,
+      slot,
+      ZERO_MATRIX,
+      this.emitterBallInnerMatrixDirty,
+    );
+  }
+
+  /** Record the start-ball radius for a beam-emitter cone slot (0 = the
+   *  ray authors no emission offset, so no ball renders). Called by the
+   *  mesh builder right after slot allocation. */
+  registerConeBarrelEmitter(slot: number, ballRadius: number): void {
+    this.coneEmitterBallRadius[slot] = ballRadius;
   }
 
   private allocShieldPanelSlot(): number | null {
@@ -1270,20 +1491,27 @@ export class UnitDetailInstanceRenderer3D {
 
   private releaseAllConeBarrelSlots(): void {
     for (let slot = 0; slot < this.coneBarrelNextSlot; slot++) {
-      writeInstanceMatrix(
-        this.coneBarrelInstanced,
-        slot,
-        ZERO_MATRIX,
-        this.coneBarrelMatrixDirty,
-      );
+      this.zeroConeEmitterSlot(slot);
     }
-    this.coneBarrelColorKey.clear();
+    this.coneEmitterBallRadius.fill(0);
     this.coneBarrelFreeSlots.length = 0;
     this.coneBarrelNextSlot = 0;
     clearDirtySpan(this.coneBarrelMatrixDirty);
-    clearDirtySpan(this.coneBarrelColorDirty);
+    clearDirtySpan(this.coneBarrelInnerMatrixDirty);
+    clearDirtySpan(this.emitterBallMatrixDirty);
+    clearDirtySpan(this.emitterBallInnerMatrixDirty);
+    clearDirtySpan(this.coneBarrelFlow.dirty);
+    clearDirtySpan(this.coneBarrelInnerFlow.dirty);
+    clearDirtySpan(this.emitterBallFlow.dirty);
+    clearDirtySpan(this.emitterBallInnerFlow.dirty);
     this.clearFadeDirty(this.coneBarrelInstanced);
+    this.clearFadeDirty(this.coneBarrelInnerInstanced);
+    this.clearFadeDirty(this.emitterBallInstanced);
+    this.clearFadeDirty(this.emitterBallInnerInstanced);
     this.coneBarrelInstanced.count = 0;
+    this.coneBarrelInnerInstanced.count = 0;
+    this.emitterBallInstanced.count = 0;
+    this.emitterBallInnerInstanced.count = 0;
   }
 
   private releaseAllShieldPanelSlots(): void {

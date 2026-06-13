@@ -16,14 +16,30 @@ import { getPlayerColors, isRayType } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { GraphicsConfig } from '@/types/graphics';
 import { getBeamSnapToTurret } from '@/clientBarConfig';
-import { COLORS } from '@/colorsConfig';
 import { detachObject, disposeMesh } from './threeUtils';
 import beamConfig from '@/beamConfig.json';
+import {
+  BEAM_ENDPOINT_VERTEX_SHADER,
+  BEAM_INNER_VISUAL_CONFIG,
+  BEAM_LAYER_INNER_SCALE,
+  BEAM_OUTER_VISUAL_CONFIG,
+  BEAM_SEGMENT_VERTEX_SHADER,
+  BEAM_WAVE_TIME,
+  beamWaveFlowPhase,
+  beamWaveFlowRepeats,
+  createBeamEndpointFragmentShader,
+  createBeamSegmentFragmentShader,
+  tickBeamWaveTime,
+  type BeamVisualConfig,
+} from './BeamWaveVisual3D';
 
-// Visual tuning (color, wave alpha range, wave spacing/speed, start-point
-// sphere look) lives in beamConfig.json — edit that file to retune how
-// beams look. The remaining constants below shape buffer sizes and
-// cylinder geometry, not look.
+// Visual tuning (color, wave alpha range, wave spacing/speed) lives in
+// beamConfig.json + colorsConfig.json and is resolved by BeamWaveVisual3D —
+// edit those files to retune how beams look. The start-point ball is no
+// longer drawn here: it lives at the beam turret's barrel tip full-time
+// (see the emitter rig in TurretMesh3D / UnitDetailInstanceRenderer3D).
+// The remaining constants below shape buffer sizes and cylinder geometry,
+// not look.
 const BEAM_SEGMENT_CAP = 8192;
 const BEAM_ENDPOINT_CAP = 4096;
 const BEAM_EMITTER_CAP = 4096;
@@ -39,43 +55,11 @@ export type TurretMountResolver = {
   ): { x: number; y: number; z: number; vx: number; vy: number; vz: number; ax: number; ay: number; az: number } | null;
 };
 
-// GLSL needs decimal-pointed float literals (`1.0`, not `1`); JSON values
-// might be `1` or `0.5`, so format them with a decimal so shader parses.
-const glsl = (n: number): string => {
-  const s = n.toString();
-  return s.includes('.') ? s : `${s}.0`;
-};
-const glslVec3 = (rgb: readonly number[]): string =>
-  `vec3(${glsl(rgb[0])}, ${glsl(rgb[1])}, ${glsl(rgb[2])})`;
-
-type BeamVisualConfig = {
-  color: readonly number[];
-  waveLowAlpha: number;
-  waveHighAlpha: number;
-  /** Length ratio of high-alpha run to low-alpha run within one repeat.
-   *  1 means equal lengths; 0.25 means high alpha is one quarter as long
-   *  as the low-alpha region. */
-  waveHighToLowAlphaLengthRatio?: number;
-  waveSpacing: number;
-  waveSpeed: number;
-};
-
-/** Start-point sphere ("generator orb") visual config. radiusMultiplier
- *  scales the beam body radius; minRadius floors it so even thin beams
- *  show a visible orb. color may be a CSS hex (e.g. "#ffaa00") for a
- *  fixed color, or the sentinels "playerPrimary" / "playerSecondary"
- *  to take the firing unit's player color. */
-type StartPointSphereConfig = {
-  radiusMultiplier: number;
-  minRadius: number;
-  color: string;
-};
-
 /** Torus ring drawn around the beam start point with player color.
  *  radiusMultiplier scales beam.lineRadius for the torus's main ring
  *  radius; tubeRadiusMultiplier does the same for the tube thickness;
  *  offsetAlongBeam scales beam.lineRadius for the position offset along
- *  the firing direction (negative = behind the orb, positive = forward);
+ *  the firing direction (negative = behind the start, positive = forward);
  *  alpha is the ring's opacity (1 = fully opaque, 0 = invisible). */
 type StartPointTorusConfig = {
   radiusMultiplier: number;
@@ -89,25 +73,12 @@ type OpenEndedLineConfig = {
   infinityVisualLength: number;
 };
 
-type BeamConfigFile = Partial<BeamVisualConfig> & {
-  outer?: BeamVisualConfig;
-  inner?: BeamVisualConfig;
+type BeamConfigFile = {
   openEndedLine?: Partial<OpenEndedLineConfig>;
-  startPointSphere?: Partial<StartPointSphereConfig> & {
-    emissionOffset?: Record<string, number>;
-  };
   startPointTorus?: Partial<StartPointTorusConfig>[];
 };
 
-// JSON-shape is narrower than BeamConfigFile (no color/alpha fields —
-// those come from COLORS at merge time below), so cast through unknown.
 const rawBeamConfig = beamConfig as unknown as BeamConfigFile;
-
-const START_POINT_SPHERE_CONFIG: StartPointSphereConfig = {
-  radiusMultiplier: rawBeamConfig.startPointSphere?.radiusMultiplier ?? 1.5,
-  minRadius: rawBeamConfig.startPointSphere?.minRadius ?? 1.0,
-  color: rawBeamConfig.startPointSphere?.color ?? 'playerPrimary',
-};
 
 const START_POINT_TORUS_CONFIGS: readonly StartPointTorusConfig[] = (
   rawBeamConfig.startPointTorus ?? []
@@ -129,91 +100,13 @@ const OPEN_ENDED_LINE_CONFIG: OpenEndedLineConfig = {
       : DEFAULT_OPEN_ENDED_LINE_VISUAL_LENGTH,
 };
 
-function resolveStartPointSphereColor(ownerId: number): string | number {
-  const c = START_POINT_SPHERE_CONFIG.color;
-  if (c === 'playerPrimary') return getPlayerColors(ownerId).primary;
-  if (c === 'playerSecondary') return getPlayerColors(ownerId).secondary;
-  return c;
-}
-const rawOuterVisualConfig = rawBeamConfig.outer ?? (rawBeamConfig as BeamVisualConfig);
-const OUTER_VISUAL_CONFIG: BeamVisualConfig = {
-  ...rawOuterVisualConfig,
-  color: COLORS.effects.beam.outer.colorRgb01,
-  waveLowAlpha: COLORS.effects.beam.outer.waveLowAlpha,
-  waveHighAlpha: COLORS.effects.beam.outer.waveHighAlpha,
-};
-const INNER_VISUAL_CONFIG: BeamVisualConfig = {
-  ...OUTER_VISUAL_CONFIG,
-  ...(rawBeamConfig.inner ?? {
-    waveSpeed: OUTER_VISUAL_CONFIG.waveSpeed * 1.8,
-  }),
-  color: COLORS.effects.beam.inner.colorRgb01,
-  waveLowAlpha: COLORS.effects.beam.inner.waveLowAlpha,
-  waveHighAlpha: COLORS.effects.beam.inner.waveHighAlpha,
-};
-
-function highAlphaStart(config: BeamVisualConfig): number {
-  const ratio = config.waveHighToLowAlphaLengthRatio ?? 1;
-  const safeRatio = Number.isFinite(ratio) ? Math.max(0.001, ratio) : 1;
-  const highFrac = safeRatio / (1 + safeRatio);
-  return 1 - highFrac;
-}
-
 const BEAM_VISUAL_LAYERS: readonly {
   config: BeamVisualConfig;
   radiusMultiplier: number;
 }[] = [
-  { config: OUTER_VISUAL_CONFIG, radiusMultiplier: 1.0 },
-  { config: INNER_VISUAL_CONFIG, radiusMultiplier: 0.45 },
+  { config: BEAM_OUTER_VISUAL_CONFIG, radiusMultiplier: 1.0 },
+  { config: BEAM_INNER_VISUAL_CONFIG, radiusMultiplier: BEAM_LAYER_INNER_SCALE },
 ];
-
-const BEAM_VERTEX_SHADER = `
-attribute float aAlpha;
-attribute vec4 aFlow;
-varying float vAlpha;
-varying float vAlong;
-varying vec4 vFlow;
-void main() {
-  vAlpha = aAlpha;
-  vAlong = position.y + 0.5;
-  vFlow = aFlow;
-  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-}
-`;
-
-const createBeamFragmentShader = (config: BeamVisualConfig): string => `
-uniform float uTime;
-varying float vAlpha;
-varying float vAlong;
-varying vec4 vFlow;
-void main() {
-  // vFlow = (unused, repeats, phase, speed). Beam alternates between
-  // LOW_ALPHA and HIGH_ALPHA sections as the pattern travels along the
-  // cylinder. waveHighToLowAlphaLengthRatio controls the high-vs-low
-  // run length inside each waveSpacing slice.
-  float repeats = max(0.001, vFlow.y);
-  float p = fract(vAlong * repeats - uTime * vFlow.w + vFlow.z);
-  float pulse = step(${glsl(highAlphaStart(config))}, p);
-  float alpha = mix(${glsl(config.waveLowAlpha)}, ${glsl(config.waveHighAlpha)}, pulse) * vAlpha;
-  gl_FragColor = vec4(${glslVec3(config.color)}, alpha);
-}
-`;
-
-const ENDPOINT_VERTEX_SHADER = `
-attribute float aAlpha;
-varying float vAlpha;
-void main() {
-  vAlpha = aAlpha;
-  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-}
-`;
-
-const createEndpointFragmentShader = (config: BeamVisualConfig): string => `
-varying float vAlpha;
-void main() {
-  gl_FragColor = vec4(${glslVec3(config.color)}, ${glsl(config.waveHighAlpha)} * vAlpha);
-}
-`;
 
 type BeamVisualLayer = {
   readonly config: BeamVisualConfig;
@@ -223,7 +116,6 @@ type BeamVisualLayer = {
   readonly segmentAlphaAttr: THREE.InstancedBufferAttribute;
   readonly segmentFlow: Float32Array;
   readonly segmentFlowAttr: THREE.InstancedBufferAttribute;
-  readonly flowTimeUniform: { value: number };
   activeSegmentCount: number;
   readonly endpointMesh: THREE.InstancedMesh;
   readonly endpointAlpha: Float32Array;
@@ -246,12 +138,13 @@ function createBeamVisualLayer(
   const segmentFlowAttr = new THREE.InstancedBufferAttribute(segmentFlow, 4);
   segmentFlowAttr.setUsage(THREE.DynamicDrawUsage);
   segmentGeom.setAttribute('aFlow', segmentFlowAttr);
-  const flowTimeUniform = { value: 0 };
   const segmentMat = new THREE.ShaderMaterial({
-    vertexShader: BEAM_VERTEX_SHADER,
-    fragmentShader: createBeamFragmentShader(config),
+    vertexShader: BEAM_SEGMENT_VERTEX_SHADER,
+    fragmentShader: createBeamSegmentFragmentShader(config),
     uniforms: {
-      uTime: flowTimeUniform,
+      // One shared clock with the always-on emitter rig (cone + ball)
+      // so the bands flow continuously from barrel into beam.
+      uTime: BEAM_WAVE_TIME,
     },
     transparent: true,
     depthWrite: false,
@@ -274,8 +167,8 @@ function createBeamVisualLayer(
   endpointAlphaAttr.setUsage(THREE.DynamicDrawUsage);
   endpointGeom.setAttribute('aAlpha', endpointAlphaAttr);
   const endpointMat = new THREE.ShaderMaterial({
-    vertexShader: ENDPOINT_VERTEX_SHADER,
-    fragmentShader: createEndpointFragmentShader(config),
+    vertexShader: BEAM_ENDPOINT_VERTEX_SHADER,
+    fragmentShader: createBeamEndpointFragmentShader(config),
     transparent: true,
     depthWrite: false,
     depthTest: true,
@@ -299,7 +192,6 @@ function createBeamVisualLayer(
     segmentAlphaAttr,
     segmentFlow,
     segmentFlowAttr,
-    flowTimeUniform,
     activeSegmentCount: 0,
     endpointMesh,
     endpointAlpha,
@@ -311,8 +203,6 @@ function createBeamVisualLayer(
 export class BeamRenderer3D {
   private root: THREE.Group;
   private readonly layers: BeamVisualLayer[];
-  private readonly emitterMesh: THREE.InstancedMesh;
-  private readonly emitterColor = new THREE.Color();
   private readonly torusMeshes: THREE.InstancedMesh[];
   private readonly torusColor = new THREE.Color();
 
@@ -344,16 +234,9 @@ export class BeamRenderer3D {
       createBeamVisualLayer(this.root, layer.config, layer.radiusMultiplier, 12 + i),
     );
 
-    // Opaque "generator orb" at each active beam's emission point. Uses
-    // per-instance color so each orb takes its firing unit's player color.
-    const emitterGeom = new THREE.SphereGeometry(1, 16, 12);
-    const emitterMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    this.emitterMesh = new THREE.InstancedMesh(emitterGeom, emitterMat, BEAM_EMITTER_CAP);
-    this.emitterMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.emitterMesh.frustumCulled = false;
-    this.emitterMesh.renderOrder = 11;
-    this.emitterMesh.count = 0;
-    this.root.add(this.emitterMesh);
+    // The start-point ball ("generator orb") is no longer drawn here: it
+    // sits at the beam turret's barrel tip full-time, rendered in the same
+    // wave material as the beam (TurretMesh3D / UnitDetailInstanceRenderer3D).
 
     // Player-colored torus rings around the start point. One mesh per
     // config entry; each entry bakes its own tube/radius ratio so we
@@ -423,7 +306,7 @@ export class BeamRenderer3D {
     layer.segmentAlpha[slot] = alpha;
     const flowBase = slot * 4;
     layer.segmentFlow[flowBase] = 1.0;
-    layer.segmentFlow[flowBase + 1] = this.flowRepeats(length, layer.config.waveSpacing);
+    layer.segmentFlow[flowBase + 1] = beamWaveFlowRepeats(length, layer.config.waveSpacing);
     layer.segmentFlow[flowBase + 2] = flowPhase;
     layer.segmentFlow[flowBase + 3] = layer.config.waveSpeed;
     this.placeSegment(layer.segmentMesh, slot, ax, ay, az, bx, by, bz, cylRadius, length);
@@ -446,19 +329,6 @@ export class BeamRenderer3D {
     return true;
   }
 
-  private flowPhase(entityId: number, segmentIndex: number): number {
-    const v = Math.sin(entityId * 12.9898 + segmentIndex * 78.233) * 43758.5453;
-    return v - Math.floor(v);
-  }
-
-  private flowRepeats(length: number, spacing: number): number {
-    // Period must stay = spacing world units regardless of beam length —
-    // no clamping. Short beams just show a slice of the pattern; long
-    // beams pack more cycles in. Both keep the same world-space period.
-    if (spacing <= 0 || length <= 1e-3) return 1;
-    return length / spacing;
-  }
-
   private isOpenEndedLinePath(proj: NonNullable<Entity['projectile']>): boolean {
     if (proj.endpointDamageable !== false) return false;
     const points = proj.points;
@@ -471,20 +341,12 @@ export class BeamRenderer3D {
   }
 
   private hasActiveVisuals(): boolean {
-    if (this.emitterMesh.count > 0) return true;
     for (const tMesh of this.torusMeshes) {
       if (tMesh.count > 0) return true;
     }
     return this.layers.some(
       (layer) => layer.activeSegmentCount > 0 || layer.activeEndpointCount > 0,
     );
-  }
-
-  private updateFlowTime(): void {
-    const now = performance.now() * 0.001;
-    for (const layer of this.layers) {
-      layer.flowTimeUniform.value = now;
-    }
   }
 
   update(
@@ -494,7 +356,7 @@ export class BeamRenderer3D {
     turretMountResolver?: TurretMountResolver,
   ): void {
     if (projectiles.length === 0 && !this.hasActiveVisuals()) return;
-    this.updateFlowTime();
+    tickBeamWaveTime();
     const snapToTurret = getBeamSnapToTurret() && !!turretMountResolver;
     const scopeVersion = this.scope.getVersion();
     if (
@@ -510,7 +372,6 @@ export class BeamRenderer3D {
 
     let segIdx = 0;
     let endpointIdx = 0;
-    let emitterIdx = 0;
     let torusIdx = 0;
 
     for (const e of projectiles) {
@@ -617,27 +478,11 @@ export class BeamRenderer3D {
         visualStartY += beamDirY * emissionOffset;
         visualStartZ += beamDirZ * emissionOffset;
       }
-      const orbX = visualStartX;
-      const orbY = visualStartY;
-      const orbZ = visualStartZ;
-      if (emissionOffset > 0 && emitterIdx < BEAM_EMITTER_CAP) {
-        const orbRadius = Math.max(
-          START_POINT_SPHERE_CONFIG.minRadius,
-          profile.lineRadius * START_POINT_SPHERE_CONFIG.radiusMultiplier,
-        );
-        // three uses (x, height=z, y); match the segment placement.
-        this._matrix.makeScale(orbRadius, orbRadius, orbRadius);
-        this._matrix.setPosition(orbX, orbZ, orbY);
-        this.emitterMesh.setMatrixAt(emitterIdx, this._matrix);
-        this.emitterColor.set(resolveStartPointSphereColor(proj.ownerId));
-        this.emitterMesh.setColorAt(emitterIdx, this.emitterColor);
-        emitterIdx++;
-      }
-
       // Player-colored torus rings around the start point. Each ring's
       // axis aligns with the firing direction so the torus encircles
       // the beam; per-config offsetAlongBeam pushes it forward/back of
-      // the orb along that direction.
+      // the visual start along that direction. (The start ball itself is
+      // the turret's always-on emitter ball at the barrel tip.)
       if (
         emissionOffset > 0 &&
         hasBeamDir &&
@@ -653,9 +498,9 @@ export class BeamRenderer3D {
           const cfg = START_POINT_TORUS_CONFIGS[ti];
           const torusScale = profile.lineRadius * cfg.radiusMultiplier;
           const torusOffset = profile.lineRadius * cfg.offsetAlongBeam;
-          const tSimX = orbX + beamDirX * torusOffset;
-          const tSimY = orbY + beamDirY * torusOffset;
-          const tSimZ = orbZ + beamDirZ * torusOffset;
+          const tSimX = visualStartX + beamDirX * torusOffset;
+          const tSimY = visualStartY + beamDirY * torusOffset;
+          const tSimZ = visualStartZ + beamDirZ * torusOffset;
           this._torusPos.set(tSimX, tSimZ, tSimY);
           this._scale.set(torusScale, torusScale, torusScale);
           this._matrix.compose(this._torusPos, this._quat, this._scale);
@@ -705,7 +550,7 @@ export class BeamRenderer3D {
         const dz = bz - az;
         const segLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
         if (segIdx < BEAM_SEGMENT_CAP) {
-          const phase = this.flowPhase(e.id, segIdx);
+          const phase = beamWaveFlowPhase(e.id, segIdx);
           for (const layer of this.layers) {
             this.writeSegment(
               layer,
@@ -767,19 +612,6 @@ export class BeamRenderer3D {
       layer.activeEndpointCount = endpointIdx;
     }
 
-    this.emitterMesh.count = emitterIdx;
-    if (emitterIdx > 0) {
-      this.emitterMesh.instanceMatrix.clearUpdateRanges();
-      this.emitterMesh.instanceMatrix.addUpdateRange(0, emitterIdx * 16);
-      this.emitterMesh.instanceMatrix.needsUpdate = true;
-      const colorAttr = this.emitterMesh.instanceColor;
-      if (colorAttr) {
-        colorAttr.clearUpdateRanges();
-        colorAttr.addUpdateRange(0, emitterIdx * 3);
-        colorAttr.needsUpdate = true;
-      }
-    }
-
     for (const tMesh of this.torusMeshes) {
       tMesh.count = torusIdx;
       if (torusIdx > 0) {
@@ -801,7 +633,6 @@ export class BeamRenderer3D {
       disposeMesh(layer.segmentMesh);
       disposeMesh(layer.endpointMesh);
     }
-    disposeMesh(this.emitterMesh);
     for (const tMesh of this.torusMeshes) disposeMesh(tMesh);
     detachObject(this.root);
   }

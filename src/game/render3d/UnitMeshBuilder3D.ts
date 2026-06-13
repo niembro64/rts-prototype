@@ -286,6 +286,9 @@ export class UnitMeshBuilder3D {
         );
       }
       for (const barrel of turretMesh.barrels) barrel.userData.entityId = entity.id;
+      if (turretMesh.beamEmitterMeshes) {
+        for (const m of turretMesh.beamEmitterMeshes) m.userData.entityId = entity.id;
+      }
       turretMesh.headSlot = headSlot;
 
       if (useDetailedUnitInstancing && turretMesh.barrels.length > 0) {
@@ -296,6 +299,19 @@ export class UnitMeshBuilder3D {
         if (barrelSlots) {
           turretMesh.barrelSlots = barrelSlots;
           for (const barrel of turretMesh.barrels) barrel.parent?.remove(barrel);
+          // The instanced path renders the beam-emitter rig through the
+          // cone pool's mirror pools, derived per frame from the barrel
+          // matrix — detach the per-Mesh rig and register the ball radius
+          // for the writer. (On alloc failure everything stays per-Mesh.)
+          if (turretMesh.beamEmitterMeshes) {
+            for (const m of turretMesh.beamEmitterMeshes) m.parent?.remove(m);
+          }
+          if (turretMesh.barrelUsesCone === true) {
+            this.unitDetailInstances.registerConeBarrelEmitter(
+              barrelSlots[0],
+              turretMesh.beamEmitterBallRadius ?? 0,
+            );
+          }
         }
       }
       turretMeshes.push(turretMesh);

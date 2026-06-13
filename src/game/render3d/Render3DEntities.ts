@@ -51,6 +51,7 @@ import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
 import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
 import { TurretMountCache3D, type TurretMountEntry } from './TurretMountCache3D';
 import { TurretBeamAimCache3D } from './TurretBeamAimCache3D';
+import { tickBeamWaveTime } from './BeamWaveVisual3D';
 import { ShieldPanelPose3D } from './ShieldPanelPose3D';
 import type { ShieldPanelMesh } from './ShieldPanelMesh3D';
 import { UnitChassisInstancePose3D } from './UnitChassisInstancePose3D';
@@ -381,6 +382,10 @@ export class Render3DEntities {
     this._currentTimeMs = frameSpin.timeMs;
     this._spinDt = frameSpin.spinDtSec;
     setHoverFanAnimationTime(frameSpin.timeMs / 1000);
+    // The beam-emitter rig (cone + start ball) animates continuously even
+    // with no beam alive, so the shared wave clock ticks here rather than
+    // only inside BeamRenderer3D's early-returning update.
+    tickBeamWaveTime();
     this.turretMountCache.reset(this._currentDtMs);
     this.resourcePylonFlows.beginFrame();
     refreshLocomotionSupportSurfaces(this.clientViewState.getPredictionSupportSurfaceEntities());

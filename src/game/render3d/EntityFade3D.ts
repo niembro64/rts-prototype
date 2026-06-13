@@ -39,8 +39,12 @@ function injectFadeFragment(shader: THREE.WebGLProgramParametersWithUniforms): v
 }
 
 /** Patch a material so each INSTANCE's `aFade` attribute drives the fade.
- *  Used by the shared unit instanced pools. */
+ *  Used by the shared unit instanced pools. Custom ShaderMaterials are
+ *  self-faded: they declare and apply `aFade` in their own source (the
+ *  include-anchor rewrites below would find nothing to patch, and the
+ *  transparent/depthWrite flags are the material author's call). */
 export function patchInstancedFadeMaterial(material: THREE.Material): void {
+  if ((material as THREE.ShaderMaterial).isShaderMaterial === true) return;
   material.transparent = true;
   material.depthWrite = true;
   const prev = material.onBeforeCompile;

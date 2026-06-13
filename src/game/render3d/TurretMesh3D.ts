@@ -30,6 +30,13 @@ import {
   buildConstructionEmitterRigFromTurretConfig,
   type ConstructionEmitterRig,
 } from './ConstructionEmitterMesh3D';
+import {
+  BEAM_EMITTER_BALL_GEOM,
+  BEAM_LAYER_INNER_SCALE,
+  BEAM_WAVE_RENDER_ORDER,
+  getBeamEmitterBallRadius,
+  getBeamEmitterMeshMaterial,
+} from './BeamWaveVisual3D';
 
 export type TurretMesh = {
   root: THREE.Group;
@@ -79,6 +86,18 @@ export type TurretMesh = {
    *  last beam direction (`TurretBeamAimCache3D`) instead of the sim's
    *  turret aim. Set iff `turretBarrelFollowsBeam(config)`. */
   barrelFollowsBeam?: boolean;
+  /** Extra beam-emitter rig meshes for `barrelFollowsBeam` turrets: the
+   *  inner cone layer and the start-point ball layers at the barrel tip,
+   *  all in the beam's continuously-animated wave material. Built and
+   *  parented alongside `barrels` — the unit instanced path detaches them
+   *  (mirror pools render instead) while towers and the instanced-cap
+   *  fallback keep them as scene children of spinGroup. */
+  beamEmitterMeshes?: THREE.Mesh[];
+  /** Start-point ball world radius for this turret's emitter rig (0 = no
+   *  ball — the ray authors no emission offset). The unit instanced path
+   *  registers it per cone-pool slot so the per-frame writer can derive
+   *  the ball matrices from the barrel matrix. */
+  beamEmitterBallRadius?: number;
   /** True for visible shield-sphere emitter cores. The
    *  per-frame writer drives the active shield pulse on these heads. */
   shieldEmitterCore?: boolean;
@@ -360,9 +379,66 @@ export function buildTurretMesh3D(
     }
   }
 
+  // Beam-directed emitter rig: the fake barrel cone and the start-point
+  // ball at its tip render in the beam's own wave material (outer + inner
+  // layers, same beamConfig/colorsConfig variables, one shared clock).
+  // The bands animate continuously, so an idle beam turret reads as
+  // charging the ball at the barrel tip; while firing they flow straight
+  // on into the beam, which starts at that same ball.
+  let beamEmitterMeshes: THREE.Mesh[] | undefined;
+  let beamEmitterBallRadius: number | undefined;
+  if (followsBeam && barrels.length > 0) {
+    const outerBarrel = barrels[0];
+    outerBarrel.material = getBeamEmitterMeshMaterial('outer', length);
+    outerBarrel.renderOrder = BEAM_WAVE_RENDER_ORDER.outer;
+
+    beamEmitterMeshes = [];
+    const innerBarrel = new THREE.Mesh(
+      deps.coneBarrelGeom,
+      getBeamEmitterMeshMaterial('inner', length),
+    );
+    innerBarrel.position.copy(outerBarrel.position);
+    innerBarrel.quaternion.copy(outerBarrel.quaternion);
+    innerBarrel.scale.set(
+      cylRadius * BEAM_LAYER_INNER_SCALE,
+      length,
+      cylRadius * BEAM_LAYER_INNER_SCALE,
+    );
+    innerBarrel.renderOrder = BEAM_WAVE_RENDER_ORDER.inner;
+    if (!deps.skipBarrels) barrelParent.add(innerBarrel);
+    beamEmitterMeshes.push(innerBarrel);
+
+    // The ball exists for beams that author an emission offset (the same
+    // rule the old fire-time orb used). Its local +Y aligns with the
+    // firing axis so the wave bands flow through cone, ball, and beam in
+    // one direction.
+    const rayWidth = (turret.config.shot as { width?: number } | null)?.width ?? 0;
+    const ballRadius = getBeamEmissionOffset(turret.config.shot) > 0
+      ? getBeamEmitterBallRadius(rayWidth / 2)
+      : 0;
+    beamEmitterBallRadius = ballRadius;
+    if (ballRadius > 0) {
+      const ballDiameter = ballRadius * 2;
+      for (const layer of ['outer', 'inner'] as const) {
+        const layerScale = layer === 'outer' ? 1 : BEAM_LAYER_INNER_SCALE;
+        const ball = new THREE.Mesh(
+          BEAM_EMITTER_BALL_GEOM,
+          getBeamEmitterMeshMaterial(layer, ballDiameter * layerScale),
+        );
+        ball.position.set(length, parentBaseY, 0);
+        ball.quaternion.copy(outerBarrel.quaternion);
+        ball.scale.setScalar(ballDiameter * layerScale);
+        ball.renderOrder = BEAM_WAVE_RENDER_ORDER[layer];
+        if (!deps.skipBarrels) barrelParent.add(ball);
+        beamEmitterMeshes.push(ball);
+      }
+    }
+  }
+
   parent.add(root);
   return {
     root, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup,
     barrelUsesCone, headOnly, barrelFollowsBeam: followsBeam,
+    beamEmitterMeshes, beamEmitterBallRadius,
   };
 }
