@@ -1799,7 +1799,7 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretBeamMega",
+        "turretBlueprintId": "turretGatling",
         "mount": {
           "x": 0.8,
           "y": 0,
@@ -1809,7 +1809,7 @@
         "requiredEngagedForFightStop": true
       },
       {
-        "turretBlueprintId": "turretBeamMega",
+        "turretBlueprintId": "turretAlbatrosSiegeCannon",
         "mount": {
           "x": 0,
           "y": 0,
@@ -1819,7 +1819,7 @@
         "requiredEngagedForFightStop": true
       },
       {
-        "turretBlueprintId": "turretBeamMega",
+        "turretBlueprintId": "turretGatling",
         "mount": {
           "x": -0.8,
           "y": 0,

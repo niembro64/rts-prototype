@@ -2159,10 +2159,12 @@ watchEffect(() => {
 
 .minimap-stack {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: 0;
+  left: 0;
   z-index: 1000;
-  display: grid;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
   pointer-events: none;
 }
 
@@ -2172,7 +2174,7 @@ watchEffect(() => {
 
 .communication-panel {
   width: 236px;
-  margin-top: 8px;
+  margin-top: 0;
   border: 1px solid rgba(120, 140, 165, 0.58);
   border-radius: 6px;
   background: rgba(8, 12, 18, 0.88);
@@ -2295,10 +2297,10 @@ watchEffect(() => {
 
 .map-details-panel {
   position: absolute;
-  top: 10px;
-  left: 330px;
+  top: 0;
+  left: 452px;
   z-index: 1001;
-  width: min(300px, calc(100vw - 350px));
+  width: min(300px, calc(100vw - 472px));
   max-width: 300px;
   border: 1px solid rgba(120, 140, 165, 0.62);
   border-radius: 6px;
@@ -2354,10 +2356,10 @@ watchEffect(() => {
 
 .options-menu-panel {
   position: absolute;
-  top: 10px;
-  left: 650px;
+  top: 0;
+  left: 768px;
   z-index: 1001;
-  width: min(244px, calc(100vw - 670px));
+  width: min(244px, calc(100vw - 788px));
   max-width: 244px;
   border: 1px solid rgba(120, 140, 165, 0.62);
   border-radius: 6px;
@@ -2423,16 +2425,25 @@ watchEffect(() => {
 }
 
 @media (max-width: 760px) {
+  .minimap-stack {
+    display: grid;
+    gap: 4px;
+  }
+
+  .communication-panel {
+    width: 236px;
+  }
+
   .map-details-panel {
     top: 248px;
-    left: 10px;
-    width: min(300px, calc(100vw - 20px));
+    left: 0;
+    width: min(300px, 100vw);
   }
 
   .options-menu-panel {
     top: 248px;
-    left: 10px;
-    width: min(244px, calc(100vw - 20px));
+    left: 0;
+    width: min(244px, 100vw);
   }
 }
 

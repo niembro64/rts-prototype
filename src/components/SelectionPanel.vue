@@ -5,13 +5,17 @@ import type { WaypointType } from '../game/sim/types';
 import {
   structureRosterDisplay,
   unitRosterDisplay,
+  type BuildMenuCategory,
 } from '../game/sim/blueprints/displayRosters';
 import {
   commandHotkeyLabel,
   type CommandHotkeyId,
   type CommandHotkeyPresetId,
 } from '../game/input/commandHotkeys';
-import { buildStructureMenuLayout } from '../game/input/buildMenuLayout';
+import {
+  BUILD_MENU_GRID_SLOT_COMMAND_IDS,
+  buildStructureMenuLayout,
+} from '../game/input/buildMenuLayout';
 import {
   getCachedEntityThumbnail,
   requestEntityThumbnail,
@@ -230,6 +234,48 @@ type WaypointModeOption = {
   color: string;
 };
 
+type BarBuildCategoryId = 'Economy' | 'Combat' | 'Utility' | 'Production';
+
+type BarBuildCategory = {
+  id: BarBuildCategoryId;
+  sourceCategory: BuildMenuCategory;
+  label: string;
+  keyCommandId: CommandHotkeyId;
+};
+
+type BuildingGridOption = {
+  buildingBlueprintId: StructureBlueprintId;
+  label: string;
+  key: string;
+  cost: number;
+  category: BuildMenuCategory;
+  commandId: CommandHotkeyId;
+  gridRow: number;
+  gridColumn: number;
+};
+
+type FactoryGridOption = {
+  unitBlueprintId: string;
+  label: string;
+  shortName: string;
+  cost: number;
+  locomotion: string;
+};
+
+const BAR_GRID_COLUMNS = 4;
+const BAR_GRID_ROWS = 3;
+const BAR_GRID_SLOT_COUNT = BAR_GRID_COLUMNS * BAR_GRID_ROWS;
+const BAR_BUILD_CATEGORIES: readonly BarBuildCategory[] = [
+  { id: 'Economy', sourceCategory: 'Economy', label: 'Economy', keyCommandId: 'build.slot1' },
+  { id: 'Combat', sourceCategory: 'Defense', label: 'Combat', keyCommandId: 'build.slot2' },
+  { id: 'Utility', sourceCategory: 'Intel', label: 'Utility', keyCommandId: 'build.slot3' },
+  { id: 'Production', sourceCategory: 'Production', label: 'Build', keyCommandId: 'build.slot4' },
+];
+
+const buildGridCategory = ref<BarBuildCategoryId | null>(null);
+const buildGridPage = ref(0);
+const factoryGridPage = ref(0);
+
 function hotkey(commandId: CommandHotkeyId): string {
   void props.hotkeyRevision;
   return commandHotkeyLabel(commandId, props.hotkeyPreset);
@@ -328,6 +374,7 @@ const buildingOptions = computed(() => {
         ? null
         : {
           ...option,
+          buildingBlueprintId: option.buildingBlueprintId as StructureBlueprintId,
           key: hotkey(commandId),
           commandId,
           gridRow: item.gridRow,
@@ -336,28 +383,117 @@ const buildingOptions = computed(() => {
     })
     .filter((option) => option !== null);
 });
-const buildingOptionGroups = computed(() => {
-  const groups: { label: string; options: typeof buildingOptions.value }[] = [];
-  for (const option of buildingOptions.value) {
-    let group = groups.find((entry) => entry.label === option.category);
-    if (group === undefined) {
-      group = { label: option.category, options: [] };
-      groups.push(group);
-    }
-    group.options.push(option);
-  }
-  return groups;
-});
 const buildLineSpacingLabel = computed(() =>
   `${Math.round(props.selection.buildLineSpacingMultiplier * 100)}%`,
 );
 const buildFacingLabel = computed(() => `${props.selection.buildFacingDegrees}deg`);
 const unitOptions = unitRosterDisplay;
 
-const vehicleOptions = unitOptions.filter((unit) => unit.locomotion !== 'legs');
-const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 const thumbnailRevision = ref(0);
 let unsubscribeEntityThumbnails: (() => void) | null = null;
+
+const buildOptionsByBarCategory = computed(() => {
+  const groups = new Map<BarBuildCategoryId, BuildingGridOption[]>();
+  for (const category of BAR_BUILD_CATEGORIES) groups.set(category.id, []);
+  for (const option of buildingOptions.value as BuildingGridOption[]) {
+    const category = BAR_BUILD_CATEGORIES.find((entry) => entry.sourceCategory === option.category);
+    groups.get(category?.id ?? 'Utility')?.push(option);
+  }
+  return groups;
+});
+
+const currentBuildCategory = computed(() =>
+  buildGridCategory.value === null
+    ? null
+    : BAR_BUILD_CATEGORIES.find((category) => category.id === buildGridCategory.value) ?? null,
+);
+
+const currentBuildCategoryOptions = computed(() => {
+  const category = currentBuildCategory.value;
+  return category === null ? [] : buildOptionsByBarCategory.value.get(category.id) ?? [];
+});
+
+const buildGridPageCount = computed(() =>
+  Math.max(1, Math.ceil(currentBuildCategoryOptions.value.length / BAR_GRID_SLOT_COUNT)),
+);
+
+const buildGridModeLabel = computed(() =>
+  currentBuildCategory.value === null ? 'Home' : currentBuildCategory.value.label,
+);
+
+const buildGridCells = computed<(BuildingGridOption | null)[]>(() => {
+  if (currentBuildCategory.value !== null) {
+    const start = buildGridPage.value * BAR_GRID_SLOT_COUNT;
+    return gridCells(currentBuildCategoryOptions.value.slice(start, start + BAR_GRID_SLOT_COUNT));
+  }
+
+  const cells = emptyGridCells<BuildingGridOption>();
+  BAR_BUILD_CATEGORIES.forEach((category, columnIndex) => {
+    const options = buildOptionsByBarCategory.value.get(category.id) ?? [];
+    for (let rowIndex = 0; rowIndex < BAR_GRID_ROWS && rowIndex < options.length; rowIndex++) {
+      cells[rowIndex * BAR_GRID_COLUMNS + columnIndex] = options[rowIndex] ?? null;
+    }
+  });
+  return cells;
+});
+
+const showBuildGridPager = computed(() =>
+  currentBuildCategory.value !== null && buildGridPageCount.value > 1,
+);
+
+const factoryGridPageCount = computed(() =>
+  Math.max(1, Math.ceil(unitOptions.length / BAR_GRID_SLOT_COUNT)),
+);
+
+const factoryGridCells = computed<(FactoryGridOption | null)[]>(() => {
+  const start = factoryGridPage.value * BAR_GRID_SLOT_COUNT;
+  return gridCells(unitOptions.slice(start, start + BAR_GRID_SLOT_COUNT));
+});
+
+function emptyGridCells<T>(): (T | null)[] {
+  return Array.from<T | null>({ length: BAR_GRID_SLOT_COUNT }).fill(null);
+}
+
+function gridCells<T>(items: readonly T[]): (T | null)[] {
+  const cells = emptyGridCells<T>();
+  for (let index = 0; index < cells.length && index < items.length; index++) {
+    cells[index] = items[index] ?? null;
+  }
+  return cells;
+}
+
+function selectBuildGridCategory(categoryId: BarBuildCategoryId): void {
+  buildGridCategory.value = buildGridCategory.value === categoryId ? null : categoryId;
+  buildGridPage.value = 0;
+}
+
+function clearBuildGridCategory(): void {
+  buildGridCategory.value = null;
+  buildGridPage.value = 0;
+}
+
+function stepBuildGridPage(delta: number): void {
+  const pageCount = buildGridPageCount.value;
+  buildGridPage.value = (buildGridPage.value + delta + pageCount) % pageCount;
+}
+
+function stepFactoryGridPage(delta: number): void {
+  const pageCount = factoryGridPageCount.value;
+  factoryGridPage.value = (factoryGridPage.value + delta + pageCount) % pageCount;
+}
+
+function buildGridCellKey(option: BuildingGridOption | null, index: number): string {
+  return option === null ? `empty-build-${index}` : option.buildingBlueprintId;
+}
+
+function factoryGridCellKey(option: FactoryGridOption | null, index: number): string {
+  return option === null ? `empty-factory-${index}` : option.unitBlueprintId;
+}
+
+function gridSlotHotkey(index: number): string {
+  const commandId = BUILD_MENU_GRID_SLOT_COMMAND_IDS[index];
+  return commandId === undefined ? '' : hotkey(commandId);
+}
 
 const FACTORY_PRESET_LOAD_COMMAND_IDS = [
   'factoryPreset.load1',
@@ -447,6 +583,21 @@ watch(
   () => prefetchBuildButtonThumbnails(),
   { immediate: true },
 );
+
+watch(
+  () => buildingOptions.value.map((option) => option.buildingBlueprintId).join('|'),
+  () => {
+    clearBuildGridCategory();
+  },
+);
+
+watch(buildGridPageCount, (pageCount) => {
+  if (buildGridPage.value >= pageCount) buildGridPage.value = Math.max(0, pageCount - 1);
+});
+
+watch(factoryGridPageCount, (pageCount) => {
+  if (factoryGridPage.value >= pageCount) factoryGridPage.value = Math.max(0, pageCount - 1);
+});
 
 function factoryPresetLoadCommandId(index: number): CommandHotkeyId {
   return FACTORY_PRESET_LOAD_COMMAND_IDS[index] ?? 'factoryPreset.load1';
@@ -629,7 +780,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
 
     <div class="button-group">
       <div class="group-label">Select</div>
-      <div class="buttons">
+      <div class="buttons bar-command-grid">
         <button
           type="button"
           class="action-btn"
@@ -767,7 +918,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
     <!-- Movement mode buttons (for units) -->
     <div v-if="showUnitActions" class="button-group">
       <div class="group-label">Movement</div>
-      <div class="buttons">
+      <div class="buttons bar-command-grid">
         <button
           v-for="wm in waypointModes"
           :key="wm.mode"
@@ -973,7 +1124,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
 
     <div v-if="showQueueInsertPicker" class="button-group">
       <div class="group-label">Insert</div>
-      <div class="buttons">
+      <div class="buttons bar-command-grid">
         <button
           type="button"
           class="action-btn"
@@ -1006,7 +1157,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
          fire-control toggle. -->
     <div v-if="showCombatActions" class="button-group">
       <div class="group-label">{{ isStaticOnlySelection ? 'Tower' : 'Combat' }}</div>
-      <div class="buttons">
+      <div class="buttons bar-command-grid">
         <button
           type="button"
           class="action-btn"
@@ -1034,24 +1185,28 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
     </div>
 
     <!-- Build options (for units with builder capability) -->
-    <div v-if="selection.hasBuilder && showUnitActions" class="button-group">
+    <div v-if="selection.hasBuilder && showUnitActions" class="button-group bar-menu-group build-menu-group">
       <div class="group-label">Build</div>
-      <div class="buttons">
+      <div class="bar-grid-menu">
+        <div class="bar-grid-heading">
+          <span>{{ buildGridModeLabel }}</span>
+          <span v-if="currentBuildCategory && buildGridPageCount > 1">Page {{ buildGridPage + 1 }}/{{ buildGridPageCount }}</span>
+        </div>
+        <div class="bar-option-grid">
         <div
-          v-for="group in buildingOptionGroups"
-          :key="group.label"
-          class="build-category-group"
+          v-for="(bo, index) in buildGridCells"
+          :key="buildGridCellKey(bo, index)"
+          class="bar-grid-slot"
         >
-          <span class="build-category-label">{{ group.label }}</span>
           <button
-            v-for="bo in group.options"
-            :key="bo.buildingBlueprintId"
+            v-if="bo"
             type="button"
-            class="action-btn build-btn thumbnail-action-btn"
+            class="action-btn build-btn thumbnail-action-btn bar-grid-cell"
             :class="{ active: selection.isBuildMode && selection.selectedBuildingBlueprintId === bo.buildingBlueprintId }"
-            :title="costTitle(`Build ${bo.label}`, bo.cost, bo.key)"
+            :title="costTitle(`Build ${bo.label}`, bo.cost, gridSlotHotkey(index) || bo.key)"
             @click="selection.isBuildMode && selection.selectedBuildingBlueprintId === bo.buildingBlueprintId ? actions.cancelBuild() : actions.startBuild(bo.buildingBlueprintId)"
           >
+            <span v-if="gridSlotHotkey(index)" class="bar-cell-key">{{ gridSlotHotkey(index) }}</span>
             <span class="btn-thumb" aria-hidden="true">
               <img
                 v-if="structureThumbnailSrc(bo.buildingBlueprintId)"
@@ -1063,9 +1218,35 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
             </span>
             <span class="btn-label">{{ compactBuildingLabel(bo.label) }}</span>
             <span class="btn-cost"><span class="cost-resource">{{ bo.cost }}</span></span>
-            <span class="btn-key">{{ bo.key }}</span>
+            <span class="btn-key">{{ gridSlotHotkey(index) || bo.key }}</span>
+          </button>
+          <div v-else class="bar-grid-cell empty" aria-hidden="true"></div>
+        </div>
+        </div>
+        <div class="bar-grid-footer">
+          <button
+            v-for="category in BAR_BUILD_CATEGORIES"
+            :key="category.id"
+            type="button"
+            class="bar-grid-category-btn"
+            :class="{ active: buildGridCategory === category.id }"
+            :title="buildGridCategory === category.id ? 'Back to build categories' : `${category.label} buildings - ${hotkey(category.keyCommandId)}`"
+            @click="selectBuildGridCategory(category.id)"
+          >
+            <span class="bar-category-key">{{ hotkey(category.keyCommandId) }}</span>
+            <span>{{ category.label }}</span>
+          </button>
+          <button
+            v-if="showBuildGridPager"
+            type="button"
+            class="bar-grid-footer-btn"
+            title="Next build page"
+            @click="stepBuildGridPage(1)"
+          >
+            Next
           </button>
         </div>
+        <div class="buttons bar-command-grid build-utility-grid">
         <button
           v-if="selection.canUpgradeMetalExtractors"
           type="button"
@@ -1123,13 +1304,14 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           <span class="btn-label">Rot +</span>
           <span class="btn-key">{{ hotkey('build.rotateClockwise') }}</span>
         </button>
+        </div>
       </div>
     </div>
 
     <!-- Unit specials -->
     <div v-if="(selection.hasDGun || selection.hasCommander || selection.hasTransport) && showUnitActions" class="button-group">
       <div class="group-label">Special</div>
-      <div class="buttons">
+      <div class="buttons bar-command-grid">
         <button
           v-if="selection.hasDGun"
           type="button"
@@ -1334,59 +1516,66 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
       </div>
     </div>
 
-    <!-- Vehicle production (for factory) -->
-    <div v-if="selection.hasFactory && selection.factoryId && showTowerActions" class="button-group">
-      <div class="group-label">Vehicles</div>
-      <div class="buttons">
-        <button
-          v-for="uo in vehicleOptions"
-          :key="uo.unitBlueprintId"
-          type="button"
-          class="action-btn produce-btn vehicle-btn thumbnail-action-btn"
-          :class="{ active: selectedBuildUnitBlueprintId === uo.unitBlueprintId }"
-          :title="costTitle(`Repeat ${uo.label}; Shift-click queue; Shift+Alt queues five`, uo.cost)"
-          @click="(event) => queueFactoryUnitFromClick(selection.factoryId!, uo.unitBlueprintId, event)"
-        >
-          <span class="btn-thumb" aria-hidden="true">
-            <img
-              v-if="unitThumbnailSrc(uo.unitBlueprintId)"
-              class="btn-thumb-img"
-              :src="unitThumbnailSrc(uo.unitBlueprintId)!"
-              alt=""
+    <!-- Factory production (for fabricator towers). BAR labs use a
+         fixed 3x4 unit grid with pages instead of separate long rows. -->
+    <div v-if="selection.hasFactory && selection.factoryId && showTowerActions" class="button-group bar-menu-group">
+      <div class="group-label">Produce</div>
+      <div class="bar-grid-menu">
+        <div class="bar-grid-heading">
+          <span>Units</span>
+          <span v-if="factoryGridPageCount > 1">Page {{ factoryGridPage + 1 }}/{{ factoryGridPageCount }}</span>
+        </div>
+        <div class="bar-option-grid">
+          <div
+            v-for="(uo, index) in factoryGridCells"
+            :key="factoryGridCellKey(uo, index)"
+            class="bar-grid-slot"
+          >
+            <button
+              v-if="uo"
+              type="button"
+              class="action-btn produce-btn thumbnail-action-btn bar-grid-cell"
+              :class="{
+                active: selectedBuildUnitBlueprintId === uo.unitBlueprintId,
+                'vehicle-btn': uo.locomotion !== 'legs',
+                'bot-btn': uo.locomotion === 'legs',
+              }"
+              :title="costTitle(`Repeat ${uo.label}; Shift-click queue; Shift+Alt queues five`, uo.cost)"
+              @click="(event) => queueFactoryUnitFromClick(selection.factoryId!, uo.unitBlueprintId, event)"
             >
-            <span v-else class="btn-thumb-fallback">{{ uo.shortName }}</span>
-          </span>
-          <span class="btn-label">{{ uo.shortName }}</span>
-          <span class="btn-cost"><span class="cost-resource">{{ uo.cost }}</span></span>
-        </button>
-      </div>
-    </div>
-
-    <!-- Bot production (for factory) -->
-    <div v-if="selection.hasFactory && selection.factoryId && showTowerActions" class="button-group">
-      <div class="group-label">Bots</div>
-      <div class="buttons">
-        <button
-          v-for="uo in botOptions"
-          :key="uo.unitBlueprintId"
-          type="button"
-          class="action-btn produce-btn bot-btn thumbnail-action-btn"
-          :class="{ active: selectedBuildUnitBlueprintId === uo.unitBlueprintId }"
-          :title="costTitle(`Repeat ${uo.label}; Shift-click queue; Shift+Alt queues five`, uo.cost)"
-          @click="(event) => queueFactoryUnitFromClick(selection.factoryId!, uo.unitBlueprintId, event)"
-        >
-          <span class="btn-thumb" aria-hidden="true">
-            <img
-              v-if="unitThumbnailSrc(uo.unitBlueprintId)"
-              class="btn-thumb-img"
-              :src="unitThumbnailSrc(uo.unitBlueprintId)!"
-              alt=""
-            >
-            <span v-else class="btn-thumb-fallback">{{ uo.shortName }}</span>
-          </span>
-          <span class="btn-label">{{ uo.shortName }}</span>
-          <span class="btn-cost"><span class="cost-resource">{{ uo.cost }}</span></span>
-        </button>
+              <span class="btn-thumb" aria-hidden="true">
+                <img
+                  v-if="unitThumbnailSrc(uo.unitBlueprintId)"
+                  class="btn-thumb-img"
+                  :src="unitThumbnailSrc(uo.unitBlueprintId)!"
+                  alt=""
+                >
+                <span v-else class="btn-thumb-fallback">{{ uo.shortName }}</span>
+              </span>
+              <span class="btn-label">{{ uo.shortName }}</span>
+              <span class="btn-cost"><span class="cost-resource">{{ uo.cost }}</span></span>
+            </button>
+            <div v-else class="bar-grid-cell empty" aria-hidden="true"></div>
+          </div>
+        </div>
+        <div v-if="factoryGridPageCount > 1" class="bar-grid-footer">
+          <button
+            type="button"
+            class="bar-grid-footer-btn"
+            title="Previous unit page"
+            @click="stepFactoryGridPage(-1)"
+          >
+            Prev
+          </button>
+          <button
+            type="button"
+            class="bar-grid-footer-btn"
+            title="Next unit page"
+            @click="stepFactoryGridPage(1)"
+          >
+            Next
+          </button>
+        </div>
       </div>
     </div>
 
@@ -1397,7 +1586,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
          Applies to selected combat units and towers with turrets. -->
     <div v-if="selection.hasTowerTargetControl && showCombatActions" class="button-group">
       <div class="group-label">Target</div>
-      <div class="buttons">
+      <div class="buttons bar-command-grid">
         <button
           type="button"
           class="action-btn"
@@ -1438,7 +1627,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
          by T2 construction shells; the command chooses an owned builder. -->
     <div v-if="selection.hasUpgradeableMetalExtractor && showBuildingActions" class="button-group">
       <div class="group-label">Upgrade</div>
-      <div class="buttons">
+      <div class="buttons bar-command-grid">
         <button
           type="button"
           class="action-btn"
@@ -1458,7 +1647,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
          producing + 10x damage resistance. -->
     <div v-if="selection.hasBuildingActiveControl && showBuildingActions" class="button-group">
       <div class="group-label">Power</div>
-      <div class="buttons">
+      <div class="buttons bar-command-grid">
         <button
           type="button"
           class="action-btn"
@@ -1478,7 +1667,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
          self-destruct affordance. -->
     <div v-if="selection.hasSelfDestructable" class="button-group">
       <div class="group-label">Demolish</div>
-      <div class="buttons">
+      <div class="buttons bar-command-grid">
         <button
           type="button"
           class="action-btn"
@@ -1504,30 +1693,59 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
  * (dark semi-transparent base + muted gray border). Rounded
  * corners stay so the panel still reads as a discrete card. */
 .options-panel {
-  position: absolute;
-  bottom: 16px;
-  left: 16px;
+  position: fixed;
+  left: calc(50% - 212px);
+  bottom: clamp(300px, 39.5vh, 356px);
+  display: flex;
+  flex-direction: column;
+  width: 424px;
   background: var(--selection-panel-bg);
   border: 1px solid var(--selection-panel-border);
   border-radius: 6px;
   padding: 6px;
-  max-width: min(520px, calc(100vw - 32px));
+  max-width: min(424px, calc(100vw - 32px));
+  max-height: min(168px, calc(100vh - 420px));
+  overflow-y: auto;
   font-family: monospace;
   color: var(--selection-panel-text);
   pointer-events: auto;
   z-index: 1000;
 }
 
+.options-panel::-webkit-scrollbar {
+  width: 7px;
+}
+
+.options-panel::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.options-panel::-webkit-scrollbar-thumb {
+  background: rgba(237, 243, 255, 0.18);
+  border-radius: 4px;
+}
+
+@media (max-width: 900px) {
+  .options-panel {
+    right: 0;
+    left: auto;
+    width: min(360px, calc(100vw - 350px));
+    min-width: min(300px, calc(100vw - 16px));
+  }
+}
+
 .panel-header {
+  order: 40;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   font-size: 11px;
   font-weight: bold;
-  margin-bottom: 5px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--selection-panel-header-border);
+  margin-top: 5px;
+  margin-bottom: 0;
+  padding-top: 5px;
+  border-top: 1px solid var(--selection-panel-header-border);
 }
 
 .selection-title {
@@ -1624,9 +1842,11 @@ kbd {
 }
 
 .control-group-strip {
+  order: 41;
   display: grid;
   grid-template-columns: repeat(10, 30px);
   gap: 3px;
+  margin-top: 5px;
   margin-bottom: 5px;
 }
 
@@ -1692,6 +1912,7 @@ kbd {
 }
 
 .button-group {
+  order: 10;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -1708,7 +1929,16 @@ kbd {
 }
 
 .details-group {
+  order: 42;
   align-items: stretch;
+}
+
+.build-menu-group {
+  order: 3;
+}
+
+.message-area {
+  order: 99;
 }
 
 .details-grid {
@@ -1887,6 +2117,227 @@ kbd {
   display: flex;
   flex-wrap: wrap;
   gap: 3px;
+}
+
+.buttons.bar-command-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 46px);
+  gap: 3px;
+  align-items: stretch;
+}
+
+.bar-command-grid .action-btn {
+  width: 46px;
+  min-width: 46px;
+  height: 26px;
+  padding: 0 3px;
+}
+
+.bar-menu-group {
+  position: fixed;
+  top: 264px;
+  left: 0;
+  bottom: auto;
+  z-index: 1001;
+  align-items: flex-start;
+  margin: 0;
+  padding: 6px;
+  background: var(--selection-panel-bg);
+  border: 1px solid var(--selection-panel-border);
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+
+@media (max-width: 900px) {
+  .bar-menu-group {
+    left: 0;
+  }
+}
+
+.bar-grid-menu {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.bar-grid-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 12px;
+  color: var(--selection-panel-label);
+  font-size: 8px;
+  font-weight: bold;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.bar-option-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 66px);
+  grid-auto-rows: 62px;
+  gap: 3px;
+}
+
+.bar-grid-slot {
+  min-width: 0;
+  min-height: 0;
+}
+
+.bar-grid-cell {
+  width: 66px;
+  min-width: 66px;
+  height: 62px;
+  border-radius: 3px;
+}
+
+.bar-grid-cell.empty {
+  background:
+    linear-gradient(135deg, transparent 47%, rgba(237, 243, 255, 0.08) 48%, rgba(237, 243, 255, 0.08) 52%, transparent 53%),
+    rgba(20, 22, 26, 0.42);
+  border: 1px solid rgba(237, 243, 255, 0.08);
+}
+
+.bar-grid-cell.thumbnail-action-btn {
+  width: 66px;
+  min-width: 66px;
+  height: 62px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.bar-grid-cell .btn-thumb {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: rgba(255, 255, 255, 0.035);
+  border-radius: 0;
+}
+
+.bar-grid-cell .btn-thumb::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 55%;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.82), rgba(0, 0, 0, 0));
+  pointer-events: none;
+}
+
+.bar-grid-cell .btn-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(2.2);
+  transform-origin: center;
+}
+
+.bar-grid-cell .btn-label {
+  position: absolute;
+  right: 2px;
+  bottom: 12px;
+  left: 2px;
+  z-index: 1;
+  max-width: none;
+  color: #ffffff;
+  font-size: 8px;
+  line-height: 1;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 1);
+}
+
+.bar-grid-cell .btn-cost {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  z-index: 1;
+  display: block;
+  font-size: 8px;
+  font-weight: bold;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.bar-cell-key {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  display: grid;
+  place-items: center;
+  min-width: 12px;
+  height: 12px;
+  padding: 0 2px;
+  background: rgba(5, 7, 10, 0.68);
+  border: 1px solid color-mix(in srgb, var(--btn-color) 52%, transparent);
+  border-radius: 2px;
+  color: var(--selection-panel-key);
+  font-size: 8px;
+  font-weight: bold;
+  line-height: 1;
+  z-index: 1;
+}
+
+.bar-grid-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.bar-grid-category-btn,
+.bar-grid-footer-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 6px;
+  background: var(--selection-panel-button-bg);
+  border: 1px solid var(--selection-panel-button-border);
+  border-radius: 3px;
+  color: var(--selection-panel-text);
+  font-family: monospace;
+  font-size: 8px;
+  font-weight: bold;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.bar-grid-category-btn {
+  width: 66px;
+  justify-content: flex-start;
+  padding: 0 4px;
+}
+
+.bar-grid-category-btn:hover,
+.bar-grid-footer-btn:hover,
+.bar-grid-category-btn.active {
+  border-color: var(--selection-panel-build);
+  background: var(--selection-panel-button-hover-bg);
+}
+
+.bar-grid-category-btn.active {
+  box-shadow: 0 0 5px var(--selection-panel-build);
+}
+
+.bar-category-key {
+  display: grid;
+  place-items: center;
+  min-width: 13px;
+  height: 13px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  color: var(--selection-panel-key);
+}
+
+.build-utility-grid {
+  margin-top: 1px;
+}
+
+.build-utility-grid:empty {
+  display: none;
 }
 
 .action-btn {
