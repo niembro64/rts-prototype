@@ -301,7 +301,10 @@ export class NetworkLockstepTransport {
 
   private acceptCommandFrame(message: LockstepCommandFrameMessage): boolean {
     const key = `${message.frame}:${message.frameSequence}`;
-    if (this.seenCommandFrameKeys.has(key)) return false;
+    if (this.seenCommandFrameKeys.has(key)) {
+      message.commands.sort(compareLockstepCommandEnvelopes);
+      return true;
+    }
     this.seenCommandFrameKeys.add(key);
     message.commands.sort(compareLockstepCommandEnvelopes);
     for (const envelope of message.commands) {

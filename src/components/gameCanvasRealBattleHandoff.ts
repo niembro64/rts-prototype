@@ -10,7 +10,7 @@ import type { GameConnection } from '../game/server/GameConnection';
 import type { GameServer } from '../game/server/GameServer';
 import type { PlayerId } from '../game/sim/types';
 import type { CameraFovDegrees } from '../types/client';
-import type { NetworkCommunicationEvent } from '../types/network';
+import type { BattleHandoff, NetworkCommunicationEvent } from '../types/network';
 import { bindGameCanvasNetworkCallbacks } from './gameCanvasNetworkCallbacks';
 import type { GameCanvasForegroundGame } from './gameCanvasForegroundGame';
 import type { GameCanvasForegroundSceneBinding } from './gameCanvasForegroundSceneBinding';
@@ -99,6 +99,7 @@ export function useGameCanvasRealBattleHandoff({
   async function startGameWithPlayers(
     playerIds: PlayerId[],
     aiPlayerIds?: PlayerId[],
+    handoff?: BattleHandoff,
   ): Promise<void> {
     await startRealBattleWithPlayers(playerIds, aiPlayerIds, {
       containerRef,
@@ -123,6 +124,7 @@ export function useGameCanvasRealBattleHandoff({
       setActiveConnection,
       setBattleStartTime,
       lookupPlayerName: (pid) => resolvePlayerName(pid, null),
+      battleHandoff: handoff,
       onLoadingProgress,
       bindSceneUi,
     });

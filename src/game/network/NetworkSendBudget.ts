@@ -159,6 +159,10 @@ export class NetworkSendBudget {
       return this.sendNow(conn, message, rawSend, stats);
     }
 
+    if (classification.messageClass === 'lockstep') {
+      return this.sendNow(conn, message, rawSend, stats);
+    }
+
     const buffered = bufferedAmount(conn);
     if (classification.policy === 'command') {
       if (!this.takeCommandRateSlot(conn)) {

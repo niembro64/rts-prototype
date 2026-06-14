@@ -5,6 +5,7 @@ import type { GameConnection } from '../game/server/GameConnection';
 import type { GameServer } from '../game/server/GameServer';
 import type { PlayerId } from '../game/sim/types';
 import type { CameraFovDegrees } from '../types/client';
+import type { BattleHandoff } from '../types/network';
 import { setPlayerClientRenderEnabled } from './gameCanvasChromeState';
 import type { GameCanvasForegroundGame } from './gameCanvasForegroundGame';
 import type { GameCanvasForegroundSceneBinding } from './gameCanvasForegroundSceneBinding';
@@ -43,6 +44,7 @@ export type StartRealBattleWithPlayersOptions = {
   setActiveConnection: (connection: GameConnection | null) => void;
   setBattleStartTime: (time: number) => void;
   lookupPlayerName: (playerId: PlayerId) => string | null;
+  battleHandoff?: BattleHandoff;
   onLoadingProgress: (progress: number, phase?: string) => void;
   bindSceneUi: (scene: GameScene) => void;
 };
@@ -169,6 +171,7 @@ export async function startRealBattleWithPlayers(
       localIpAddress: options.localIpAddress.value,
       sendHostCommand: (command) => options.network.sendCommand(command),
       network: options.network,
+      battleHandoff: options.battleHandoff,
       onLoadingProgress: (progress, phase) => reportLoadingProgress(
         REAL_BATTLE_LOAD_PROGRESS.terrainLoaded +
           progress *

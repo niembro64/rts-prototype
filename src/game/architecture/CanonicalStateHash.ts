@@ -20,6 +20,17 @@ export type CanonicalServerStateHash = {
     readonly commands: string;
     readonly entities: string;
   };
+  readonly entityHashes?: readonly CanonicalEntityStateHash[];
+};
+
+export type CanonicalEntityStateHash = {
+  readonly id: number;
+  readonly type: string;
+  readonly hash: string;
+  readonly components: { readonly [component: string]: string };
+  readonly componentFields?: {
+    readonly [component: string]: { readonly [field: string]: string };
+  };
 };
 
 export type CanonicalServerState = {
@@ -42,6 +53,7 @@ export function hashCanonicalServerState(core: ServerSimulationCore): CanonicalS
       commands: hashCanonicalValue(state.commands),
       entities: hashCanonicalValue(state.entities),
     },
+    entityHashes: buildEntityHashes(state.entities),
   };
 }
 
@@ -121,12 +133,12 @@ function serializeEntity(entity: Entity): CanonicalValue {
       rotation: entity.transform.rotation,
     },
     body: serializePhysicsBody(entity.body?.physicsBody ?? null),
-    selectable: toCanonicalValue(entity.selectable),
+    selectable: serializeSelectable(entity.selectable),
     ownership: toCanonicalValue(entity.ownership),
-    unit: toCanonicalValue(entity.unit),
+    unit: serializeUnit(entity.unit),
     building: toCanonicalValue(entity.building),
     combat: toCanonicalValue(entity.combat),
-    projectile: toCanonicalValue(entity.projectile),
+    projectile: serializeProjectile(entity.projectile),
     buildable: toCanonicalValue(entity.buildable),
     builder: toCanonicalValue(entity.builder),
     factory: toCanonicalValue(entity.factory),
@@ -138,8 +150,30 @@ function serializeEntity(entity: Entity): CanonicalValue {
     buildingBlueprintId: toCanonicalValue(entity.buildingBlueprintId),
     coveredDepositIds: toCanonicalValue(entity.coveredDepositIds),
     metalExtractionRate: toCanonicalValue(entity.metalExtractionRate),
-    cachedFullVisionRadius: entity._cachedFullVisionRadius,
   };
+}
+
+function serializeSelectable(value: Entity['selectable']): CanonicalValue {
+  if (value === null) return null;
+  return { enabled: true };
+}
+
+function serializeUnit(value: Entity['unit']): CanonicalValue {
+  if (value === null) return null;
+  const {
+    activePath: _activePath,
+    velocityX: _velocityX,
+    velocityY: _velocityY,
+    velocityZ: _velocityZ,
+    movementAccelX: _movementAccelX,
+    movementAccelY: _movementAccelY,
+    movementAccelZ: _movementAccelZ,
+    thrustDirX: _thrustDirX,
+    thrustDirY: _thrustDirY,
+    surfaceNormal: _surfaceNormal,
+    ...canonicalUnit
+  } = value;
+  return toCanonicalValue(canonicalUnit);
 }
 
 function serializeTransport(value: Entity['transport']): CanonicalValue {
@@ -150,6 +184,29 @@ function serializeTransport(value: Entity['transport']): CanonicalValue {
       .map((unit) => unit.id)
       .sort((a, b) => a - b),
   };
+}
+
+function serializeProjectile(value: Entity['projectile']): CanonicalValue {
+  if (value === null) return null;
+  const {
+    prevStartX: _prevStartX,
+    prevStartY: _prevStartY,
+    prevStartZ: _prevStartZ,
+    prevEndX: _prevEndX,
+    prevEndY: _prevEndY,
+    prevEndZ: _prevEndZ,
+    prevEndTick: _prevEndTick,
+    prevEndEntityId: _prevEndEntityId,
+    prevReflectionPoints: _prevReflectionPoints,
+    lastSentVelX: _lastSentVelX,
+    lastSentVelY: _lastSentVelY,
+    lastSentVelZ: _lastSentVelZ,
+    pendingReflectionX: _pendingReflectionX,
+    pendingReflectionY: _pendingReflectionY,
+    pendingReflectionZ: _pendingReflectionZ,
+    ...canonicalProjectile
+  } = value;
+  return toCanonicalValue(canonicalProjectile);
 }
 
 function serializePhysicsBody(body: Body3D | null): CanonicalValue {
@@ -226,6 +283,49 @@ function canonicalNumber(value: number): CanonicalValue {
   if (Number.isFinite(value)) return value;
   if (Number.isNaN(value)) return { specialNumber: 'NaN' };
   return { specialNumber: value > 0 ? 'Infinity' : '-Infinity' };
+}
+
+function buildEntityHashes(entities: CanonicalValue): readonly CanonicalEntityStateHash[] {
+  if (!Array.isArray(entities)) return [];
+  return entities.map((entityState) => {
+    if (!isCanonicalObject(entityState)) {
+      return {
+        id: -1,
+        type: 'unknown',
+        hash: hashCanonicalValue(entityState),
+        components: {},
+        componentFields: {},
+      };
+    }
+
+    const id = typeof entityState.id === 'number' ? entityState.id : -1;
+    const type = typeof entityState.type === 'string' ? entityState.type : 'unknown';
+    const components: Record<string, string> = {};
+    const componentFields: Record<string, Record<string, string>> = {};
+    for (const key of Object.keys(entityState).sort()) {
+      if (key === 'id' || key === 'type') continue;
+      const component = entityState[key];
+      components[key] = hashCanonicalValue(component);
+      if (isCanonicalObject(component)) {
+        const fieldHashes: Record<string, string> = {};
+        for (const field of Object.keys(component).sort()) {
+          fieldHashes[field] = hashCanonicalValue(component[field]);
+        }
+        componentFields[key] = fieldHashes;
+      }
+    }
+    return {
+      id,
+      type,
+      hash: hashCanonicalValue(entityState),
+      components,
+      componentFields,
+    };
+  });
+}
+
+function isCanonicalObject(value: CanonicalValue): value is { readonly [key: string]: CanonicalValue } {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function compareCanonicalValues(a: CanonicalValue, b: CanonicalValue): number {

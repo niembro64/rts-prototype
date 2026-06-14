@@ -165,6 +165,7 @@ const COMMUNICATION_ERASE_RADIUS_MAX = 500;
 // snapshots at 8 Hz; past that the decoder genuinely can't keep up and
 // a resync is cheaper than replaying the backlog.
 const STATE_DECODE_QUEUE_MAX = 24;
+const LOCKSTEP_PENDING_MESSAGE_QUEUE_MAX = 512;
 // Snapshot resync requests are an escape valve, not a steady state.
 // One outstanding request per second is plenty: the host answers with
 // a recovery keyframe on its next snapshot tick (~125ms), and the
@@ -172,6 +173,10 @@ const STATE_DECODE_QUEUE_MAX = 24;
 const SNAPSHOT_RESYNC_REQUEST_MIN_INTERVAL_MS = 1000;
 type NetworkStateMessage = Extract<NetworkMessage, { type: 'state' }>;
 type QueuedStateMessage = { message: NetworkStateMessage; seq: number };
+type QueuedLockstepMessage = {
+  readonly message: NetworkLockstepMessage;
+  readonly fromPlayerId: PlayerId;
+};
 
 function sanitizeCommunicationText(value: string, maxLength: number): string | null {
   if (typeof value !== 'string') return null;
@@ -224,6 +229,11 @@ export class NetworkManager {
     onMessage: (message, fromPlayerId) => this.emitLockstepMessage(message, fromPlayerId),
     send: (conn, message) => this.safeSend(conn, message),
   });
+  private lockstepMessageHandler:
+    | ((message: NetworkLockstepMessage, fromPlayerId: PlayerId) => void)
+    | undefined = undefined;
+  private readonly pendingLockstepMessages: QueuedLockstepMessage[] = [];
+  private droppedPendingLockstepMessages = 0;
   private dataChannelMonitor = new NetworkDataChannelMonitor();
   private sendBudget = new NetworkSendBudget({
     onPendingQueued: () => this.scheduleSendBudgetFlush(),
@@ -297,9 +307,20 @@ export class NetworkManager {
     | ((playerId: PlayerId, needsStatic: boolean) => void)
     | undefined = undefined;
   public onCommunication: ((event: NetworkCommunicationEvent) => void) | undefined = undefined;
-  public onLockstepMessage:
+  public get onLockstepMessage():
     | ((message: NetworkLockstepMessage, fromPlayerId: PlayerId) => void)
-    | undefined = undefined;
+    | undefined {
+    return this.lockstepMessageHandler;
+  }
+
+  public set onLockstepMessage(
+    callback:
+      | ((message: NetworkLockstepMessage, fromPlayerId: PlayerId) => void)
+      | undefined,
+  ) {
+    this.lockstepMessageHandler = callback;
+    if (callback !== undefined) this.drainPendingLockstepMessages(callback);
+  }
 
   private emitPlayerJoined(player: LobbyPlayer): void {
     const callback = this.onPlayerJoined;
@@ -324,8 +345,36 @@ export class NetworkManager {
   }
 
   private emitLockstepMessage(message: NetworkLockstepMessage, fromPlayerId: PlayerId): void {
-    const callback = this.onLockstepMessage;
-    if (callback !== undefined) callback(message, fromPlayerId);
+    const callback = this.lockstepMessageHandler;
+    if (callback !== undefined) {
+      callback(message, fromPlayerId);
+      return;
+    }
+    if (this.pendingLockstepMessages.length >= LOCKSTEP_PENDING_MESSAGE_QUEUE_MAX) {
+      this.pendingLockstepMessages.shift();
+      this.droppedPendingLockstepMessages++;
+    }
+    this.pendingLockstepMessages.push({ message, fromPlayerId });
+  }
+
+  private drainPendingLockstepMessages(
+    callback: (message: NetworkLockstepMessage, fromPlayerId: PlayerId) => void,
+  ): void {
+    if (this.pendingLockstepMessages.length === 0) return;
+    const queued = this.pendingLockstepMessages.splice(0);
+    for (const { message, fromPlayerId } of queued) {
+      callback(message, fromPlayerId);
+    }
+  }
+
+  getPendingLockstepMessageDiagnostics(): {
+    readonly queued: number;
+    readonly dropped: number;
+  } {
+    return {
+      queued: this.pendingLockstepMessages.length,
+      dropped: this.droppedPendingLockstepMessages,
+    };
   }
 
   private emitGameStart(handoff: BattleHandoff): void {
@@ -420,6 +469,8 @@ export class NetworkManager {
     this.sendBudget.clear();
     this.dataChannelMonitor.clear();
     this.lockstepTransport.clear();
+    this.pendingLockstepMessages.length = 0;
+    this.droppedPendingLockstepMessages = 0;
     for (const conn of this.connections.values()) {
       conn.close();
     }

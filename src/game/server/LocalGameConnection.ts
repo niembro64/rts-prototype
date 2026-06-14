@@ -22,6 +22,7 @@ export type LocalCommandAuthorityMode = 'player' | 'local-offline';
 export type LocalGameConnectionOptions = {
   commandDoorway?: (command: Command, fromPlayerId: PlayerId) => boolean;
   loopbackSnapshotsThroughWire?: boolean;
+  sharesAuthoritativeState?: boolean;
 };
 
 export class LocalGameConnection implements GameConnection {
@@ -61,7 +62,8 @@ export class LocalGameConnection implements GameConnection {
     this.commandAuthorityMode = commandAuthorityMode;
     this.commandDoorway = options.commandDoorway;
     this.loopbackSnapshotsThroughWire = options.loopbackSnapshotsThroughWire === true;
-    this.sharesAuthoritativeState = !this.loopbackSnapshotsThroughWire;
+    this.sharesAuthoritativeState = options.sharesAuthoritativeState ??
+      !this.loopbackSnapshotsThroughWire;
     this.snapshotListenerKey = this.subscribeSnapshots(server, playerId);
 
     this.gameOverListenerRef = server.addGameOverListener((winnerId) => {

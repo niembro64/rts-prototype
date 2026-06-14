@@ -104,7 +104,10 @@ export function runNetworkLockstepTransportContractTest(): void {
     'received command frame must be sorted before callback',
   );
   transport.handleMessage(inboundFrame, 1 as PlayerId);
-  assertContract(received.length === 1, 'duplicate command frame must be ignored idempotently');
+  assertContract(
+    received.length === 2,
+    'duplicate command frame must reach the callback so receivers can ack resends',
+  );
 
   const lateCommand = {
     ...baseMessage(),
@@ -113,7 +116,7 @@ export function runNetworkLockstepTransportContractTest(): void {
   } satisfies NetworkLockstepMessage;
   transport.handleMessage(lateCommand, 1 as PlayerId);
   assertContract(
-    received.length === 1,
+    received.length === 2,
     'raw command already delivered by a command frame must be ignored idempotently',
   );
 
@@ -122,7 +125,7 @@ export function runNetworkLockstepTransportContractTest(): void {
   transport.handleMessage(outOfOrderLater, 1 as PlayerId);
   transport.handleMessage(outOfOrderEarlier, 1 as PlayerId);
   assertContract(
-    received.length === 3,
+    received.length === 4,
     'out-of-order command frames must be accepted for the scheduler to stall/order later',
   );
 
@@ -164,6 +167,16 @@ export function runNetworkLockstepTransportContractTest(): void {
     'legacy command backpressure guard should still reject at the same buffered amount',
   );
   assertContract(rawSendCount === 1, 'rejected legacy command must not reach raw send');
+
+  const saturatedConn = createConnection(10, 2 * 1024 * 1024);
+  assertContract(
+    budget.send(saturatedConn, firstFrame, () => {
+      rawSendCount++;
+      return true;
+    }),
+    'lockstep command frames must bypass generic control backpressure because missing frames stall the simulation',
+  );
+  assertContract(rawSendCount === 2, 'saturated lockstep frame must still reach raw send');
 }
 
 function baseMessage() {
