@@ -70,7 +70,7 @@
       "terrainBlendRadius": 600,
       "depositCluster": {
         "count": 3,
-        "radius": 150,
+        "radius": 180,
         "angleOffset": 1
       }
     },
@@ -140,7 +140,7 @@
       "terrainBlendRadius": 200,
       "depositCluster": {
         "count": 3,
-        "radius": 150,
+        "radius": 180,
         "angleOffset": 1
       }
     }
