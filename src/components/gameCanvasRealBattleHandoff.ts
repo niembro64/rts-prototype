@@ -133,7 +133,6 @@ export function useGameCanvasRealBattleHandoff({
   function setupNetworkCallbacks(): void {
     bindGameCanvasNetworkCallbacks({
       network,
-      realBattleLifecycle: lifecycle,
       networkNotice,
       lobbyError,
       lobbyPlayers,

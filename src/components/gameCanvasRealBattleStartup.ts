@@ -2,7 +2,6 @@ import { getMapSize } from '../config';
 import {
   ARCHITECTURE_CONFIG,
   ARCHITECTURE_CONFIG_READ_MODE,
-  assertNeverArchitecture,
   type ArchitectureBackend,
 } from '../architectureConfig';
 import {
@@ -57,7 +56,6 @@ import {
   type LocalCommandAuthorityMode,
   type LocalGameConnectionOptions,
 } from '../game/server/LocalGameConnection';
-import { RemoteGameConnection } from '../game/server/RemoteGameConnection';
 import { applyStoredBattleServerSettings } from '../game/server/battleServerSettings';
 import type {
   BattleHandoff,
@@ -87,27 +85,16 @@ export type CreateRealBattleServerOptions = {
   onLoadingProgress?: (progress: number, phase?: string) => void | Promise<void>;
 };
 
-export type StartRealBattleServerOptions = {
-  ipAddress: string;
-  maxTotalUnits?: number;
-};
-
 export type RealBattleBackendDiagnostics = {
   architecture: ArchitectureBackend;
   architectureConfigReadMode: typeof ARCHITECTURE_CONFIG_READ_MODE;
   networkRole: NetworkRole | null;
   hasLocalServer: boolean;
-  renderConnection: 'local' | 'remote';
-  snapshotSource: 'local' | 'remote';
-  snapshotTruth:
-    | 'authoritative-server'
-    | 'command-frame-stream-local-presentation';
-  snapshotWireMode:
-    | 'direct-in-memory'
-    | 'wire-loopback'
-    | 'wire-loopback-presentation'
-    | 'network-wire';
-  remoteSnapshotComparison: 'disabled' | 'enabled';
+  renderConnection: 'local';
+  snapshotSource: 'local';
+  snapshotTruth: 'command-frame-stream-local-presentation';
+  snapshotWireMode: 'wire-loopback-presentation';
+  remoteSnapshotComparison: 'disabled';
   lockstepSupport?: LockstepSupportBoundaries;
   lockstepInputDelayTicks?: number;
   lockstepInitializationHash?: string;
@@ -133,7 +120,6 @@ export type RealBattleBackendRuntime = {
   readonly architecture: ArchitectureBackend;
   readonly server: GameServer | null;
   readonly gameConnection: GameConnection;
-  readonly startupGateRequiresServer: boolean;
   start(): void;
   stop(): void;
   getDiagnostics(): RealBattleBackendDiagnostics;
@@ -146,7 +132,6 @@ export type CreateRealBattleBackendOptions = {
   networkRole: NetworkRole | null;
   localPlayerId: PlayerId;
   localIpAddress: string;
-  sendHostCommand?: (command: Command, fromPlayerId: PlayerId) => boolean;
   network?: NetworkManager;
   battleHandoff?: BattleHandoff;
   onLoadingProgress?: (progress: number, phase?: string) => void | Promise<void>;
@@ -463,10 +448,6 @@ function diffCanonicalComponentFields(
   return diffs.slice(0, 16);
 }
 
-export function createRemoteRealBattleConnection(): GameConnection {
-  return new RemoteGameConnection();
-}
-
 export function createLocalRealBattleConnection(
   server: GameServer,
   localPlayerId: PlayerId | undefined,
@@ -501,119 +482,6 @@ export async function createRealBattleServer({
       onProgress: onLoadingProgress,
     },
   );
-}
-
-export function applySettingsAndStartRealBattleServer(
-  server: GameServer,
-  options: StartRealBattleServerOptions,
-): void {
-  applyStoredBattleServerSettings(server, 'real', {
-      ipAddress: options.ipAddress,
-    maxTotalUnits: options.maxTotalUnits ?? loadStoredRealCap(),
-    // Real battles always run with fog of war on, regardless of any
-    // lingering 'real-battle-fog-of-war-enabled' storage value.
-    fogOfWarEnabled: true,
-  });
-  server.start();
-}
-
-export async function createAuthoritativeServerBackend({
-  playerIds,
-  aiPlayerIds,
-  terrain,
-  networkRole,
-  localPlayerId,
-  localIpAddress,
-  sendHostCommand,
-  network,
-  battleHandoff,
-  onLoadingProgress,
-}: CreateRealBattleBackendOptions): Promise<RealBattleBackendRuntime> {
-  if (networkRole === 'client') {
-    const remoteConnection = createRemoteRealBattleConnection();
-    return {
-      architecture: 'authoritative-server',
-      server: null,
-      gameConnection: remoteConnection,
-      startupGateRequiresServer: false,
-      start() {},
-      stop() {
-        remoteConnection.disconnect();
-      },
-      getDiagnostics() {
-        return {
-          architecture: 'authoritative-server',
-          architectureConfigReadMode: ARCHITECTURE_CONFIG_READ_MODE,
-          networkRole,
-          hasLocalServer: false,
-          renderConnection: 'remote',
-          snapshotSource: 'remote',
-          snapshotTruth: 'authoritative-server',
-          snapshotWireMode: 'network-wire',
-          remoteSnapshotComparison: 'disabled',
-        };
-      },
-    };
-  }
-
-  const matchContext = createRealBattleMatchContext({
-    playerIds,
-    aiPlayerIds,
-    terrain,
-    localPlayerId,
-    networkRole,
-    network,
-    battleHandoff,
-    requireHandoff: false,
-    contextLabel: 'authoritative-server',
-  });
-  const server = await createRealBattleServer({
-    playerIds,
-    aiPlayerIds,
-    terrain,
-    converterTax: matchContext.settings.converterTax,
-    onLoadingProgress,
-  });
-  const onlineHost = networkRole === 'host';
-  const localConnection = createLocalRealBattleConnection(
-    server,
-    localPlayerId,
-    networkRole === null ? 'local-offline' : 'player',
-    {
-      commandDoorway: onlineHost ? sendHostCommand : undefined,
-      loopbackSnapshotsThroughWire: onlineHost,
-    },
-  );
-
-  return {
-    architecture: 'authoritative-server',
-    server,
-    gameConnection: localConnection,
-    startupGateRequiresServer: onlineHost,
-    start() {
-      applySettingsAndStartRealBattleServer(server, {
-        ipAddress: localIpAddress,
-        maxTotalUnits: matchContext.settings.maxTotalUnits,
-      });
-    },
-    stop() {
-      localConnection.disconnect();
-      server.stop();
-    },
-    getDiagnostics() {
-      return {
-        architecture: 'authoritative-server',
-        architectureConfigReadMode: ARCHITECTURE_CONFIG_READ_MODE,
-        networkRole,
-        hasLocalServer: true,
-        renderConnection: 'local',
-        snapshotSource: 'local',
-        snapshotTruth: 'authoritative-server',
-        snapshotWireMode: onlineHost ? 'wire-loopback' : 'direct-in-memory',
-        remoteSnapshotComparison: 'disabled',
-      };
-    },
-  };
 }
 
 export function createDeterministicLockstepBackend(
@@ -1112,7 +980,6 @@ async function createDeterministicLockstepBackendRuntime({
     architecture: 'deterministic-lockstep',
     server,
     gameConnection: localConnection,
-    startupGateRequiresServer: false,
     start() {
       applyStoredBattleServerSettings(server, 'real', {
         ipAddress: localIpAddress,
@@ -1195,12 +1062,5 @@ export function getConfiguredArchitectureBackend(): ArchitectureBackend {
 export async function createRealBattleBackend(
   options: CreateRealBattleBackendOptions,
 ): Promise<RealBattleBackendRuntime> {
-  switch (ARCHITECTURE_CONFIG.backend) {
-    case 'authoritative-server':
-      return createAuthoritativeServerBackend(options);
-    case 'deterministic-lockstep':
-      return createDeterministicLockstepBackend(options);
-    default:
-      return assertNeverArchitecture(ARCHITECTURE_CONFIG.backend);
-  }
+  return createDeterministicLockstepBackend(options);
 }

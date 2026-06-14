@@ -71,7 +71,7 @@ function createEmptyBuildingSub(): BuildingSub {
 // Safe to reuse because a decoded snapshot never outlives its decode:
 // on the normal path it is applied synchronously within the decode's
 // promise tick (consumers copy scalars out, never retaining the DTOs),
-// and the async buffering paths (RemoteGameConnection.pendingSnapshot,
+// and the async buffering paths (LocalGameConnection wire loopback,
 // the snapshot-impairment delay queue, NetworkSnapshotTransport pending)
 // clone the snapshot into owned objects before holding it. So pooled
 // objects are dead by the next decode.

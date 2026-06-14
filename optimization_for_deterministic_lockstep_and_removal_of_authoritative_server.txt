@@ -1,0 +1,90 @@
+Optimization For Deterministic Lockstep And Removal Of Authoritative Server
+=========================================================================
+
+Goal
+----
+Make deterministic-lockstep the only real-battle architecture, remove the
+runtime ability to choose authoritative-server, and optimize code paths that
+were only needed because authoritative snapshots could be multiplayer truth.
+
+Principles
+----------
+1. Do not change gameplay rules, command validation semantics, targeting,
+   projectile simulation, terrain generation, or economy behavior.
+2. Keep deterministic checksums, command-frame logs, and desync diagnostics.
+3. Keep local presentation snapshots until a direct world-to-render pipeline is
+   implemented; removing authoritative-server is not the same as deleting every
+   snapshot serializer because the current renderer still consumes snapshots.
+4. Prefer deleting architecture branches and authoritative-only UI first, then
+   optimize lockstep presentation where the current render pipeline allows it.
+5. Verify each phase with TypeScript and production build checks.
+
+Ordered Implementation Checklist
+--------------------------------
+[x] 1. Freeze architecture configuration to deterministic-lockstep.
+    - Remove authoritative-server from the public ArchitectureBackend union.
+    - Make architecture parsing reject every backend except deterministic-lockstep.
+    - Keep lockstep config validation unchanged.
+    - Remove unreachable assertNeverArchitecture usage from startup code.
+
+[x] 2. Remove the authoritative real-battle backend.
+    - Delete createAuthoritativeServerBackend from gameCanvasRealBattleStartup.
+    - Make createRealBattleBackend always construct deterministic-lockstep.
+    - Remove createRemoteRealBattleConnection if no longer referenced.
+    - Remove RemoteGameConnection if it has no remaining callers.
+    - Update diagnostics types so snapshot truth/mode only expose lockstep
+      presentation states.
+
+[x] 3. Remove authoritative-backend tests and migration scaffolding.
+    - Delete the authoritative backend contract test.
+    - Remove architecture migration types/tests if they only describe switching
+      between authoritative-server and deterministic-lockstep at runtime.
+    - Update lockstep contract tests whose assertions only preserve
+      authoritative-server behavior.
+
+[x] 4. Simplify server/control UI for lockstep-only.
+    - Remove AUTH SERVER labels and branches.
+    - Remove server tick-rate, snapshot-rate, and keyframe controls from the
+      real-battle UI path if they are authoritative-only.
+    - Keep lockstep ADV TPS, CPU, checksum, and command-frame diagnostics.
+
+[x] 5. Simplify server settings helpers for lockstep-only.
+    - Remove authoritative snapshot timing guards and dead setters.
+    - Keep unit-ground-normal mode and grid toggles if still useful.
+    - Ensure reset defaults does not touch removed authoritative controls.
+
+[x] 6. Optimize local lockstep presentation where safe.
+    - Keep local presentation snapshots for now because ClientViewState and the
+      3D renderer consume NetworkServerSnapshot DTOs.
+    - Do not attempt direct world-to-render reads in this pass; that is a
+      larger renderer contract migration.
+    - Keep wire-loopback presentation only while it protects DTO/object sharing
+      assumptions; reassess after authoritative-server code is removed.
+
+[x] 7. Clean imports, types, and diagnostics.
+    - Remove unused architecture imports and unreachable branches.
+    - Update user-facing labels/tooltips that mention authoritative-server.
+    - Keep comments that use "authoritative" in the generic sense of gameplay
+      truth, physics truth, or current simulation state.
+
+[x] 8. Verify.
+    - Run vue-tsc.
+    - Run the production build.
+    - Fix any contract tests or type errors caused by removed architecture
+      types.
+
+Deferred Follow-Up: Direct Lockstep Presentation Pipeline
+---------------------------------------------------------
+This is the high-value optimization after the architecture removal:
+
+[ ] A. Define a presentation-packet interface that is built directly from the
+      local lockstep ServerSimulationCore after each catch-up pump.
+[ ] B. Teach ClientViewState/RtsScene3D to consume that packet without
+      MessagePack wire encode/decode.
+[ ] C. Keep optional snapshot wire generation behind diagnostics so snapshot
+      size tools remain available when explicitly requested.
+[ ] D. Remove local wire-loopback from lockstep once presentation no longer
+      shares mutable server DTOs.
+
+That deferred migration should be its own change because it changes the render
+data contract even if gameplay remains identical.

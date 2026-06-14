@@ -8,11 +8,9 @@ import type {
 import type { NetworkCommunicationEvent } from '../types/network';
 import type { GameServer } from '../game/server/GameServer';
 import type { PlayerId } from '../game/sim/types';
-import type { GameCanvasRealBattleLifecycle } from './gameCanvasRealBattleLifecycle';
 
 export type GameCanvasNetworkCallbackOptions = {
   network: NetworkManager;
-  realBattleLifecycle: GameCanvasRealBattleLifecycle;
   networkNotice: Ref<string | null>;
   lobbyError: Ref<string | null>;
   lobbyPlayers: Ref<LobbyPlayer[]>;
@@ -39,7 +37,6 @@ export type GameCanvasNetworkCallbackOptions = {
 
 export function bindGameCanvasNetworkCallbacks({
   network,
-  realBattleLifecycle,
   networkNotice,
   lobbyError,
   lobbyPlayers,
@@ -66,7 +63,6 @@ export function bindGameCanvasNetworkCallbacks({
     lobbyPlayers.value = lobbyPlayers.value.filter(
       (player) => player.playerId !== playerId,
     );
-    realBattleLifecycle.removeSnapshotListener(getCurrentServer(), playerId);
     if (gameStarted.value) {
       networkNotice.value = `${playerName} disconnected`;
     }

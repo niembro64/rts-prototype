@@ -1,10 +1,5 @@
 <script setup lang="ts">
-import { GOOD_TPS } from '../config';
-import {
-  SERVER_CONFIG,
-  snapshotRateLabel,
-  snapshotRateTitle,
-} from '../serverBarConfig';
+import { SERVER_CONFIG } from '../serverBarConfig';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import BarButton from './BarButton.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
@@ -13,10 +8,7 @@ import BarDivider from './BarDivider.vue';
 import BarLabel from './BarLabel.vue';
 import type { GameCanvasServerControlBarModel } from './gameCanvasControlBarModels';
 import { fmt4, msBarStyle, statBarStyle } from './uiUtils';
-import {
-  ARCHITECTURE_CONFIG,
-  type ArchitectureBackend,
-} from '../architectureConfig';
+import { ARCHITECTURE_CONFIG } from '../architectureConfig';
 
 defineProps<{
   model: GameCanvasServerControlBarModel;
@@ -32,53 +24,28 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
   slow: 'SLOW',
 };
 
-function fullSnapTitle(opt: string | number): string {
-  if (opt === 'ALL') return 'Every snapshot is a full keyframe (1/1)';
-  if (opt === 'NONE') return 'Never send full keyframes (delta only)';
-  return `One full keyframe every ${Math.round(1 / Number(opt))} snapshots`;
+function architectureLabel(): string {
+  return 'LOCKSTEP';
 }
 
-function fullSnapLabel(opt: string | number): string {
-  if (opt === 'ALL') return '1/1';
-  if (opt === 'NONE') return 'NONE';
-  return `1/${Math.round(1 / Number(opt))}`;
+function architectureTitle(): string {
+  return 'deterministic-lockstep: ordered command frames are multiplayer truth; each browser runs the same local server simulation.';
 }
 
-function architectureLabel(architecture: ArchitectureBackend): string {
-  return architecture === 'deterministic-lockstep' ? 'LOCKSTEP' : 'AUTH SERVER';
+function simTpsLabel(): string {
+  return 'ADV TPS';
 }
 
-function architectureTitle(architecture: ArchitectureBackend): string {
-  if (architecture === 'deterministic-lockstep') {
-    return 'deterministic-lockstep: ordered command frames are multiplayer truth; each browser runs the same local server simulation.';
-  }
-  return 'authoritative-server: host/server simulation is gameplay truth; clients send commands and receive authoritative snapshots.';
+function simTpsTitle(): string {
+  return `Actual lockstep frames advanced per wall-clock second in this browser. This can be below ${LOCKSTEP_FIXED_SIM_HZ} when the browser pump is slow or waiting for command frames; the fixed simulation step still remains ${LOCKSTEP_FIXED_SIM_HZ} Hz.`;
 }
 
-function isLockstep(architecture: ArchitectureBackend): boolean {
-  return architecture === 'deterministic-lockstep';
+function simTpsTarget(): number {
+  return LOCKSTEP_FIXED_SIM_HZ;
 }
 
-function simTpsLabel(architecture: ArchitectureBackend): string {
-  return isLockstep(architecture) ? 'ADV TPS' : 'S-TPS';
-}
-
-function simTpsTitle(architecture: ArchitectureBackend): string {
-  if (isLockstep(architecture)) {
-    return `Actual lockstep frames advanced per wall-clock second in this browser. This can be below ${LOCKSTEP_FIXED_SIM_HZ} when the browser pump is slow or waiting for command frames; the fixed simulation step still remains ${LOCKSTEP_FIXED_SIM_HZ} Hz.`;
-  }
-  return 'Server simulation ticks per second';
-}
-
-function simTpsTarget(architecture: ArchitectureBackend): number {
-  return isLockstep(architecture) ? LOCKSTEP_FIXED_SIM_HZ : GOOD_TPS;
-}
-
-function cpuTitle(architecture: ArchitectureBackend): string {
-  if (isLockstep(architecture)) {
-    return `Local lockstep simulation CPU load - measured server-simulation work as a percent of the fixed ${LOCKSTEP_FIXED_SIM_HZ} Hz frame budget.`;
-  }
-  return 'Host CPU load - simulation tick time as a percent of the target tick budget. >100% means the host is falling behind.';
+function cpuTitle(): string {
+  return `Local lockstep simulation CPU load - measured server-simulation work as a percent of the fixed ${LOCKSTEP_FIXED_SIM_HZ} Hz frame budget.`;
 }
 
 function fixedStepTitle(): string {
@@ -130,23 +97,10 @@ function checksumTitle(): string {
         <BarLabel>BACKEND:</BarLabel>
         <BarButton
           :active="true"
-          :title="architectureTitle(model.architecture)"
-        >{{ architectureLabel(model.architecture) }}</BarButton>
+          :title="architectureTitle()"
+        >{{ architectureLabel() }}</BarButton>
       </BarControlGroup>
-      <BarControlGroup v-if="!isLockstep(model.architecture)">
-        <BarDivider />
-        <BarLabel>TARGET SERVER TPS:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="rate in SERVER_CONFIG.tickRate.options"
-            :key="rate"
-            :active="model.displayTickRate === rate"
-            :title="`Run the host at ${rate} simulation ticks per second.`"
-            @click="model.setTickRateValue(rate)"
-          >{{ rate }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup v-else>
+      <BarControlGroup>
         <BarDivider />
         <BarLabel :title="fixedStepTitle()">FIXED STEP:</BarLabel>
         <BarButton
@@ -154,7 +108,7 @@ function checksumTitle(): string {
           :title="fixedStepTitle()"
         >{{ LOCKSTEP_FIXED_SIM_HZ }} HZ</BarButton>
       </BarControlGroup>
-      <BarControlGroup v-if="isLockstep(model.architecture)">
+      <BarControlGroup>
         <BarDivider />
         <BarLabel :title="checksumTitle()">CHECKSUM:</BarLabel>
         <BarButton
@@ -177,7 +131,7 @@ function checksumTitle(): string {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel :title="simTpsTitle(model.architecture)">{{ simTpsLabel(model.architecture) }}:</BarLabel>
+        <BarLabel :title="simTpsTitle()">{{ simTpsLabel() }}:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">
@@ -188,7 +142,7 @@ function checksumTitle(): string {
               <div
                 class="stat-bar-fill"
                 :style="
-                  statBarStyle(model.displayServerTpsAvg, simTpsTarget(model.architecture), model.isReadonly)
+                  statBarStyle(model.displayServerTpsAvg, simTpsTarget(), model.isReadonly)
                 "
               ></div>
             </div>
@@ -204,7 +158,7 @@ function checksumTitle(): string {
               <div
                 class="stat-bar-fill"
                 :style="
-                  statBarStyle(model.displayServerTpsWorst, simTpsTarget(model.architecture), model.isReadonly)
+                  statBarStyle(model.displayServerTpsWorst, simTpsTarget(), model.isReadonly)
                 "
               ></div>
             </div>
@@ -213,7 +167,7 @@ function checksumTitle(): string {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel :title="cpuTitle(model.architecture)">CPU:</BarLabel>
+        <BarLabel :title="cpuTitle()">CPU:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">
@@ -241,33 +195,7 @@ function checksumTitle(): string {
           </div>
         </div>
       </BarControlGroup>
-      <BarControlGroup v-if="!isLockstep(model.architecture)">
-        <BarDivider />
-        <BarLabel title="Delta snapshots emitted per second by the host.">DIFFSNAP:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="rate in SERVER_CONFIG.snapshot.options"
-            :key="String(rate)"
-            :active="model.displaySnapshotRate === rate"
-            :title="snapshotRateTitle(rate)"
-            @click="model.setNetworkUpdateRate(rate)"
-          >{{ snapshotRateLabel(rate) }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup v-if="!isLockstep(model.architecture)">
-        <BarDivider />
-        <BarLabel title="Fraction of DIFFSNAPs that are actually FULLSNAPs.">FULLSNAP:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in SERVER_CONFIG.keyframe.options"
-            :key="String(opt)"
-            :active="model.displayKeyframeRatio === opt"
-            :title="fullSnapTitle(opt)"
-            @click="model.setKeyframeRatioValue(opt)"
-          >{{ fullSnapLabel(opt) }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup v-if="isLockstep(model.architecture)">
+      <BarControlGroup>
         <BarDivider />
         <BarLabel title="In deterministic-lockstep, ordered command frames and checksums are multiplayer truth.">TRUTH:</BarLabel>
         <BarButton
@@ -275,7 +203,7 @@ function checksumTitle(): string {
           title="Gameplay truth is the canonical ordered command-frame stream."
         >CMD FRAMES</BarButton>
       </BarControlGroup>
-      <BarControlGroup v-if="isLockstep(model.architecture)">
+      <BarControlGroup>
         <BarDivider />
         <BarLabel title="Local snapshots still feed the existing renderer, but they are not remote gameplay authority.">SNAPS:</BarLabel>
         <BarButton

@@ -3,7 +3,6 @@ import rawArchitectureConfig from './architecture.json';
 export const ARCHITECTURE_CONFIG_READ_MODE = 'build-time' as const;
 
 export const ARCHITECTURE_BACKENDS = [
-  'authoritative-server',
   'deterministic-lockstep',
 ] as const;
 
@@ -97,10 +96,6 @@ export function parseArchitectureConfig(value: unknown): ArchitectureConfig {
     backend: parseBackend(value.backend),
     lockstep: parseLockstepConfig(value.lockstep),
   };
-}
-
-export function assertNeverArchitecture(value: never): never {
-  throw new Error(`Unhandled architecture backend: ${String(value)}`);
 }
 
 export const ARCHITECTURE_CONFIG = parseArchitectureConfig(rawArchitectureConfig);

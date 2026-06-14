@@ -69,7 +69,7 @@ export async function runDeterministicLockstepBackendContractTest(): Promise<voi
       );
       assertContract(
         backend.getDiagnostics().lockstepPerformanceBudget?.slowClientPolicy ===
-          'stall-or-use-authoritative-server' &&
+          'stall-and-resync-lockstep-frames' &&
           (backend.getDiagnostics().lockstepSnapshotPerformance?.snapshotsEmitted ?? 0) > 0,
         'lockstep diagnostics must expose performance budget and snapshot timing',
       );

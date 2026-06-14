@@ -4419,8 +4419,6 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
       if (import.meta.env.DEV && shouldRunBootContractTests()) {
         const { runServerBarConfigContractTest } = await import('../../serverBarConfigContractTest');
         runServerBarConfigContractTest();
-        const { runAuthoritativeBackendContractTest } = await import('../../components/gameCanvasAuthoritativeBackendContractTest');
-        await runAuthoritativeBackendContractTest();
         const { runDeterministicLockstepBackendContractTest } = await import('../../components/gameCanvasDeterministicLockstepBackendContractTest');
         await runDeterministicLockstepBackendContractTest();
         const { runCommandSanitizerContractTest } = await import('../server/commandSanitizerContractTest');
@@ -4437,8 +4435,6 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runLockstepDiagnosticsContractTest();
         const { runCanonicalCheckpointContractTest } = await import('../architecture/CanonicalCheckpointContractTest');
         runCanonicalCheckpointContractTest();
-        const { runArchitectureMigrationContractTest } = await import('../architecture/ArchitectureMigrationContractTest');
-        runArchitectureMigrationContractTest();
         const { runReplayRecorderContractTest } = await import('../server/ReplayRecorderContractTest');
         runReplayRecorderContractTest();
         const { runSnapshotEntityWirePackContractTest } = await import('../network/snapshotEntityWirePackContractTest');

@@ -7,15 +7,10 @@ import {
 import type { GameConnection } from '../game/server/GameConnection';
 import {
   SERVER_CONFIG,
-  normalizeSnapshotRate,
-  saveKeyframeRatio,
-  saveSnapshotRate,
-  saveTickRate,
   saveUnitGroundNormalEmaMode,
 } from '../serverBarConfig';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import type { KeyframeRatio, SnapshotRate, TickRate } from '../types/server';
-import { ARCHITECTURE_CONFIG } from '../architectureConfig';
 
 export type GameCanvasServerSettings = {
   resetServerDefaults(): void;
@@ -40,24 +35,12 @@ export function useGameCanvasServerSettings({
   serverUnitGroundNormalEmaMode,
   getActiveConnection,
 }: GameCanvasServerSettingsOptions): GameCanvasServerSettings {
-  const usesAuthoritativeSnapshotTiming =
-    ARCHITECTURE_CONFIG.backend === 'authoritative-server';
-
-  function setNetworkUpdateRate(rate: SnapshotRate): void {
-    if (!usesAuthoritativeSnapshotTiming) return;
-    const normalizedRate = normalizeSnapshotRate(rate);
-    getActiveConnection()?.sendCommand({
-      type: 'setSnapshotRate',
-      tick: 0,
-      rate: normalizedRate,
-    });
-    saveSnapshotRate(normalizedRate, currentBattleMode.value);
+  function setNetworkUpdateRate(_rate: SnapshotRate): void {
+    // Snapshot cadence is no longer player-configurable in real battles.
   }
 
-  function setTickRateValue(rate: TickRate): void {
-    if (!usesAuthoritativeSnapshotTiming) return;
-    getActiveConnection()?.sendCommand({ type: 'setTickRate', tick: 0, rate });
-    saveTickRate(rate, currentBattleMode.value);
+  function setTickRateValue(_rate: TickRate): void {
+    // Deterministic-lockstep uses the fixed architecture-config step rate.
   }
 
   function setUnitGroundNormalEmaModeValue(mode: UnitGroundNormalEmaMode): void {
@@ -66,10 +49,8 @@ export function useGameCanvasServerSettings({
     serverUnitGroundNormalEmaMode.value = mode;
   }
 
-  function setKeyframeRatioValue(ratio: KeyframeRatio): void {
-    if (!usesAuthoritativeSnapshotTiming) return;
-    getActiveConnection()?.sendCommand({ type: 'setKeyframeRatio', tick: 0, ratio });
-    saveKeyframeRatio(ratio, currentBattleMode.value);
+  function setKeyframeRatioValue(_ratio: KeyframeRatio): void {
+    // Full-keyframe cadence is internal presentation plumbing in lockstep.
   }
 
   function toggleSendGridInfo(): void {
@@ -88,13 +69,7 @@ export function useGameCanvasServerSettings({
   }
 
   function resetServerDefaults(): void {
-    if (!usesAuthoritativeSnapshotTiming) {
-      setUnitGroundNormalEmaModeValue(SERVER_CONFIG.unitGroundNormalEma.default);
-      return;
-    }
-    setTickRateValue(SERVER_CONFIG.tickRate.default);
-    setNetworkUpdateRate(SERVER_CONFIG.snapshot.default);
-    setKeyframeRatioValue(SERVER_CONFIG.keyframe.default);
+    setUnitGroundNormalEmaModeValue(SERVER_CONFIG.unitGroundNormalEma.default);
   }
 
   return {

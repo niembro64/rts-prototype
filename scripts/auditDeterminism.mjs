@@ -21,12 +21,12 @@ const GAMEPLAY_FORBIDDEN_SCOPES = [
 ];
 
 const SERVER_WALL_CLOCK_ALLOWLIST = new Map([
-  ['src/game/server/GameServer.ts', 'authoritative-server scheduling, tick CPU telemetry, and replay receive-time diagnostics; lockstep must not use this as truth'],
+  ['src/game/server/GameServer.ts', 'local server scheduling, tick CPU telemetry, and replay receive-time diagnostics; lockstep must not use this as truth'],
   ['src/game/server/LocalGameConnection.ts', 'snapshot encode timing telemetry only'],
   ['src/game/server/ServerSnapshotDirectWirePreencoder.ts', 'snapshot encode timing telemetry only'],
   ['src/game/server/ServerSnapshotPublisher.ts', 'debug-grid throttle timing only'],
   ['src/game/server/ServerSnapshotWirePayload.ts', 'snapshot wire encode timing telemetry only'],
-  ['src/game/server/ServerTickLoop.ts', 'authoritative-server wall-clock scheduler; lockstep uses a frame scheduler instead'],
+  ['src/game/server/ServerTickLoop.ts', 'wall-clock scheduler for non-lockstep server loops; lockstep uses a frame scheduler instead'],
 ]);
 
 const HIGH_RISK_MATH_PATTERN = /\bMath\.(sin|cos|atan2|hypot|sqrt|pow)\s*\(/g;
@@ -106,7 +106,7 @@ if (failures.length > 0) {
 }
 
 console.log('Determinism audit passed.');
-console.log('Documented authoritative-server wall-clock allowlist:');
+console.log('Documented server wall-clock allowlist:');
 for (const [file, reason] of [...SERVER_WALL_CLOCK_ALLOWLIST.entries()].sort()) {
   console.log(`- ${file}: ${reason}`);
 }

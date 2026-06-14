@@ -64,7 +64,6 @@ export function useGameCanvasSessionLifecycle({
   function stopCurrentServer(): void {
     const currentServer = getCurrentServer();
     if (!currentServer) return;
-    lifecycle.clearSnapshotListeners(currentServer);
     currentServer.stop();
     setCurrentServer(null);
   }

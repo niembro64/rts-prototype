@@ -3,8 +3,6 @@ import type {
   NetworkServerSnapshotEntity,
 } from '../network/NetworkTypes';
 import { NetworkSnapshotTransport } from '../network/NetworkSnapshotTransport';
-import { networkManager } from '../network/NetworkManager';
-import { RemoteGameConnection } from './RemoteGameConnection';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -92,37 +90,6 @@ function runTransportResetClearsPendingClone(): void {
   );
 }
 
-function runRemoteDisconnectClearsPendingClone(): void {
-  const previousStateHandler = networkManager.onStateReceived;
-  const connection = new RemoteGameConnection();
-  try {
-    const receiveSnapshot = (
-      connection as unknown as {
-        receiveSnapshot(state: NetworkServerSnapshot): void;
-      }
-    ).receiveSnapshot.bind(connection);
-    receiveSnapshot(createSnapshot(4));
-    const retainedBeforeDisconnect = connection.getPendingCloneRetainedCounts();
-    assertContract(
-      retainedBeforeDisconnect.entities === 4,
-      'remote setup must retain cloned entities before disconnect',
-    );
-    assertContract(
-      retainedBeforeDisconnect.projectileDespawns === 2,
-      'remote setup must retain cloned projectile despawns before disconnect',
-    );
-    connection.disconnect();
-    assertRetainedGraphCleared(
-      connection.getPendingCloneRetainedCounts(),
-      'RemoteGameConnection.disconnect()',
-    );
-  } finally {
-    connection.disconnect();
-    networkManager.onStateReceived = previousStateHandler;
-  }
-}
-
 export function runSnapshotLifecycleContractTest(): void {
   runTransportResetClearsPendingClone();
-  runRemoteDisconnectClearsPendingClone();
 }
