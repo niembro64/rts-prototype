@@ -15,3 +15,726 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 
 Please always commit and push before and after any code changes we make.
 ===============================================================================
+
+ARCHITECTURE SWITCH BACKLOG: AUTHORITATIVE SERVER + DETERMINISTIC LOCKSTEP
+===============================================================================
+
+Goal:
+Add a configurable backend architecture switch while keeping the current
+authoritative-server architecture working as-is. The new deterministic-lockstep
+architecture should run the current server-side simulation locally in every
+browser, then let the local client/render layer consume that local server
+simulation. In lockstep, the network truth is the ordered command stream, not
+server snapshots.
+
+Definitions:
+- authoritative-server: current model. Host/server owns gameplay truth; clients
+  send commands up and receive snapshots down.
+- deterministic-lockstep: every browser runs the same authoritative server
+  simulation locally. Peers exchange command frames, step the same ticks, and
+  verify matching state hashes.
+- server simulation: the current authoritative simulation stack: WorldState,
+  Simulation, physics, command execution, RNG, economy, combat, construction,
+  projectiles, fog truth, and victory state.
+- client/render layer: the presentation path that consumes snapshots or local
+  state targets for rendering, input feedback, smoothing, audio, and UI.
+
+Remove each item below when it has been fully implemented and verified.
+
+-------------------------------------------------------------------------------
+01. Add the architecture config contract
+-------------------------------------------------------------------------------
+
+Add a new architecture.json config file with a typed loader.
+
+Required work:
+- Add architecture.json with at least:
+  - backend: "authoritative-server" | "deterministic-lockstep"
+- Add a TypeScript loader/validator that rejects unknown backends at startup.
+- Decide and document whether architecture.json is read at build time or runtime.
+- Include lockstep settings, even if initially unused:
+  - inputDelayTicks
+  - checksumIntervalTicks
+  - stallTimeoutMs
+  - desyncPolicy: "pause" initially
+  - allowLateJoin: false initially
+- Ensure the default config keeps the current authoritative-server behavior.
+- Ensure changing architecture.json before a match selects the correct backend.
+- Ensure changing architecture.json during a running match is explicitly not
+  treated as hot migration until checkpoint migration exists.
+
+Acceptance criteria:
+- Invalid backend names fail loudly before a battle starts.
+- authoritative-server remains the default and behaves the same as today.
+- deterministic-lockstep can be selected without modifying battle startup code
+  manually.
+
+-------------------------------------------------------------------------------
+02. Introduce a backend architecture boundary above battle startup
+-------------------------------------------------------------------------------
+
+Create a small backend factory so real-battle startup does not instantiate
+GameServer directly.
+
+Required work:
+- Add an architecture/backend factory used by the real-battle startup path.
+- Define a shared backend runtime interface for:
+  - start
+  - stop/disconnect
+  - local GameConnection or equivalent render-facing connection
+  - local player identity
+  - diagnostics
+  - snapshot/event subscription surface needed by the renderer
+- Move current GameServer + LocalGameConnection + RemoteGameConnection setup
+  behind an AuthoritativeServerBackend adapter.
+- Add a DeterministicLockstepBackend placeholder behind the same factory.
+- Keep architecture-specific branches out of low-level renderer, input, and sim
+  code unless a lower-level boundary is truly required.
+- Keep sessionSingleton semantics: one backend simulation and one renderer per
+  browser window.
+
+Acceptance criteria:
+- The current authoritative-server path is selected through the new factory.
+- No behavior changes are visible when backend is authoritative-server.
+- deterministic-lockstep has a single integration point where its runtime will
+  be added.
+
+-------------------------------------------------------------------------------
+03. Separate the reusable server simulation core from host/server networking
+-------------------------------------------------------------------------------
+
+Lockstep should reuse the authoritative server simulation, not reimplement it.
+GameServer currently owns simulation, tick loop, command acceptance, replay,
+snapshot publishing, and host-network concerns together. Extract the reusable
+simulation core so every browser can run it locally in lockstep.
+
+Required work:
+- Extract or wrap a ServerSimulationCore from GameServer that owns:
+  - WorldState
+  - Simulation
+  - PhysicsEngine3D
+  - UnitForceSystem
+  - factory construction turret system
+  - CommandQueue or its lockstep replacement
+  - deterministic tick stepping
+- Move bootstrapping into a reusable initial-state path shared by both
+  architectures.
+- Provide a method equivalent to:
+  - stepFixedTick(dtMs, orderedCommandsForThisTick)
+- Ensure this core has no dependency on PeerJS, remote snapshots, host-only
+  network state, or wall-clock command receipt time.
+- Keep GameServer as the authoritative-server orchestration wrapper.
+- Allow lockstep to drive the core with an external frame scheduler instead of
+  ServerTickLoop.
+
+Acceptance criteria:
+- authoritative-server still uses the same simulation behavior.
+- deterministic-lockstep can instantiate the same server simulation core in
+  every browser.
+- No second independent gameplay simulation is introduced in the same browser.
+
+-------------------------------------------------------------------------------
+04. Define canonical match initialization and config hashing
+-------------------------------------------------------------------------------
+
+Every peer in lockstep must start from exactly the same initial state and config.
+
+Required work:
+- Build a canonical match initialization payload containing:
+  - architecture backend
+  - game id
+  - player ids and slots
+  - AI player ids
+  - map dimensions and terrain settings
+  - seed
+  - relevant gameplay settings
+  - blueprint/config versions or hashes
+  - WASM package version/hash
+  - build version/hash
+- Add a stable hash over the canonical initialization payload.
+- Include the architecture and initialization hash in lobby/battle handoff.
+- Refuse to start deterministic-lockstep if any peer reports a different hash.
+- Decide which debug/settings commands affect gameplay truth and include their
+  initial values in the hash.
+
+Acceptance criteria:
+- All peers can prove they are starting the same lockstep match before frame 0.
+- Config mismatch produces a clear error instead of a silent desync.
+
+-------------------------------------------------------------------------------
+05. Add canonical state serialization and hashing
+-------------------------------------------------------------------------------
+
+Lockstep needs state hashes for desync detection and future checkpoint migration.
+
+Required work:
+- Add a canonical state hash function for server simulation truth.
+- Include at minimum:
+  - world tick/frame
+  - RNG state
+  - entity ids sorted by id
+  - entity type/owner/team
+  - transform, velocity, rotation, angular state
+  - physics body state
+  - health, build progress, active/inactive state
+  - current orders/action queues
+  - resources/economy state
+  - factory queues/construction sites
+  - projectile state
+  - turret/weapon/cooldown state
+  - fog/shroud/radar truth state if it affects gameplay
+  - command queues or pending deterministic command state
+- Use a stable binary or numeric encoding, not JSON object property order.
+- Hash exact canonical numeric representations. If quantization is chosen, make
+  it deliberate and shared by all peers.
+- Add a debug dump that can identify the first divergent section after a hash
+  mismatch.
+
+Acceptance criteria:
+- Running the same match and command list twice produces identical hashes at the
+  same ticks.
+- Hash output is independent of object insertion accidents and JSON key order.
+
+-------------------------------------------------------------------------------
+06. Build a deterministic replay harness before network lockstep
+-------------------------------------------------------------------------------
+
+Prove the server simulation can replay deterministically before adding network
+complexity.
+
+Required work:
+- Create a headless replay runner that starts from canonical initialization and
+  applies command frames.
+- Run the same replay twice in the same browser/runtime and compare hashes.
+- Run the same replay across Chromium, Firefox, and WebKit via Playwright and
+  compare hashes.
+- Include replay cases for:
+  - movement
+  - construction
+  - factory production
+  - projectiles
+  - damage/death cleanup
+  - economy updates
+  - fog/radar interactions
+  - AI production if AI is supported in lockstep
+- Fail the harness if WASM is unavailable for lockstep-only deterministic paths.
+- Keep the existing replay recorder useful, but do not rely on host receive time
+  as lockstep truth.
+
+Acceptance criteria:
+- A fixed replay produces identical hashes across supported browsers.
+- Desyncs identify the first bad frame and enough state context to debug.
+
+-------------------------------------------------------------------------------
+07. Make command timing architecture-specific
+-------------------------------------------------------------------------------
+
+Current authoritative-server sanitization replaces command.tick with
+world.getTick(). That is correct for the current host-authoritative model, but
+wrong for lockstep.
+
+Required work:
+- Keep current command tick sanitization for authoritative-server.
+- Add a lockstep command envelope separate from raw gameplay commands:
+  - gameId
+  - executeFrame
+  - playerId
+  - playerSequence
+  - command
+  - optional clientIssuedFrame for diagnostics
+- In lockstep, assign executeFrame deterministically:
+  - currentKnownFrame + inputDelayTicks, or
+  - coordinator-assigned frame broadcast to all peers
+- Do not let each peer independently choose different command ticks.
+- Split server-control/debug commands into:
+  - gameplay-truth commands that must be frame-scheduled
+  - local presentation/debug commands that must not affect truth
+  - architecture-control commands such as pause/resume that need their own
+    lockstep protocol
+
+Acceptance criteria:
+- authoritative-server command behavior is unchanged.
+- lockstep commands execute on the same frame on every peer.
+- No gameplay command uses local receive time as truth in lockstep.
+
+-------------------------------------------------------------------------------
+08. Make command ordering explicit and deterministic
+-------------------------------------------------------------------------------
+
+CommandQueue currently sorts only by tick. Lockstep needs stable total ordering.
+
+Required work:
+- Define canonical command order for each frame:
+  - executeFrame
+  - playerId
+  - playerSequence
+  - command index if a player batches multiple commands
+- Replace or extend CommandQueue so same-frame command ordering is explicit.
+- Ensure batched commands are applied in the same order on every peer.
+- Ensure command authorization does not reorder commands differently per peer.
+- Add tests for same-frame commands from multiple players.
+
+Acceptance criteria:
+- Same command frame input always produces the same command application order.
+- Sorting does not depend on JavaScript sort stability or arrival order.
+
+-------------------------------------------------------------------------------
+09. Make command validation deterministic
+-------------------------------------------------------------------------------
+
+The authoritative host currently validates player authority before enqueueing.
+In lockstep, all peers need to agree which commands are valid.
+
+Required work:
+- Define a lockstep validation policy:
+  - coordinator rejects invalid commands before broadcasting, and/or
+  - every peer deterministically validates and drops the same invalid command
+- Ensure ownership checks, entity existence checks, fog restrictions, and queue
+  rules produce identical results on every peer.
+- Preserve current ServerCommandAuthorizer behavior for authoritative-server.
+- Ensure rejected commands are logged with player id, sequence, and reason.
+
+Acceptance criteria:
+- Invalid lockstep commands cannot cause peers to diverge.
+- Current host-authoritative security behavior remains intact.
+
+-------------------------------------------------------------------------------
+10. Audit and remove nondeterministic gameplay inputs
+-------------------------------------------------------------------------------
+
+Deterministic lockstep cannot use ambient randomness, wall clock time, or local
+browser state for gameplay truth.
+
+Required work:
+- Replace gameplay-path Math.random() with WorldState.rng or another canonical
+  seeded RNG.
+- Block or rewrite BackgroundBattleStandalone randomness before supporting that
+  mode in lockstep.
+- Confirm Date.now() and performance.now() are telemetry/presentation only and
+  never affect gameplay truth.
+- Ensure wind, economy, AI, projectile spread, cooldown variation, and spawn
+  placement use deterministic sim time and deterministic RNG.
+- Exclude local UI, rendering, audio, and cosmetic randomness from lockstep
+  state hashes unless they affect gameplay.
+
+Acceptance criteria:
+- A static audit finds no gameplay-truth Math.random(), Date.now(), or
+  performance.now() dependency in deterministic-lockstep.
+- Any remaining wall-clock usage is documented as non-gameplay telemetry.
+
+-------------------------------------------------------------------------------
+11. Standardize authoritative math for lockstep
+-------------------------------------------------------------------------------
+
+Making floats deterministic is necessary but not sufficient. Current gameplay
+truth still uses TypeScript Math calls in several systems. Cross-browser
+lockstep should prefer WASM-owned math or explicitly quantized deterministic
+math where exact agreement matters.
+
+Required work:
+- Identify all gameplay-truth uses of:
+  - Math.sin
+  - Math.cos
+  - Math.atan2
+  - Math.hypot
+  - Math.sqrt
+  - other Math transcendental or rounding-sensitive functions
+- Move high-risk gameplay math into rts-sim-wasm deterministic kernels.
+- Disable TypeScript fallback implementations in deterministic-lockstep unless
+  they are proven to hash identically across supported browsers.
+- Ensure WASM SIMD or optimization differences do not change canonical results,
+  or compile deterministic kernels without unsafe assumptions.
+- Keep presentation-only Math usage out of scope.
+
+Acceptance criteria:
+- Cross-browser replay hashes pass with deterministic-lockstep enabled.
+- deterministic-lockstep fails fast if required deterministic WASM kernels are
+  unavailable.
+
+-------------------------------------------------------------------------------
+12. Make entity and collection iteration deterministic
+-------------------------------------------------------------------------------
+
+Map/Set insertion order can be deterministic only if every peer mutates them in
+the same order forever. Lockstep should not rely on accidental insertion order
+where sorted ids are cheap and safer.
+
+Required work:
+- Audit gameplay loops over Map, Set, object keys, and pooled collections.
+- Sort entity ids before gameplay-significant batch processing when order can
+  affect results.
+- Ensure entity id allocation is deterministic and included in state hashes.
+- Ensure death cleanup, projectile creation, construction completion, and unit
+  spawn order are deterministic.
+- Ensure caches do not leak previous pooled state into future ticks.
+
+Acceptance criteria:
+- Gameplay results do not depend on local object/map mutation history.
+- Replay hash tests cover simultaneous spawn/death/projectile cases.
+
+-------------------------------------------------------------------------------
+13. Add the lockstep network protocol
+-------------------------------------------------------------------------------
+
+The existing network protocol sends commands to host and snapshots to clients.
+Lockstep needs a reliable command-frame protocol.
+
+Required work:
+- Extend NetworkMessage with lockstep-specific messages:
+  - lockstepHello
+  - lockstepReady
+  - lockstepCommand
+  - lockstepCommandFrame
+  - lockstepAck
+  - lockstepChecksum
+  - lockstepPause
+  - lockstepResume
+  - lockstepDesync
+  - lockstepResyncRequest, even if initially unsupported
+- Use the current host/star topology as the first coordinator/relay model.
+- Make clear that the host coordinates frames but does not own gameplay truth in
+  deterministic-lockstep.
+- Add sequence numbers, acks, and resend handling.
+- Ensure command frames are never dropped by snapshot backpressure logic.
+- Ensure out-of-order or duplicate command messages are handled idempotently.
+- Include protocol version and architecture in handshake.
+
+Acceptance criteria:
+- All peers receive the same command frame contents for each frame.
+- Network snapshot loss/backpressure cannot drop gameplay truth in lockstep.
+
+-------------------------------------------------------------------------------
+14. Add a lockstep frame scheduler
+-------------------------------------------------------------------------------
+
+ServerTickLoop advances from wall-clock accumulation. Lockstep must advance only
+when required commands for the next frame are available or a deterministic no-op
+policy applies.
+
+Required work:
+- Add LockstepFrameScheduler.
+- Use a fixed dt, initially 1000 / 60 ms.
+- For each frame:
+  - gather the complete command set
+  - order commands canonically
+  - apply commands
+  - step the server simulation core exactly once
+  - emit local render snapshot/state update
+  - periodically emit checksum
+- Stall if a required command frame is missing.
+- Add user-facing stalled/paused diagnostics for missing peers.
+- Define browser tab throttling behavior:
+  - stall everyone,
+  - pause by protocol, or
+  - catch up deterministically when the tab resumes.
+- Do not use local elapsed wall-clock to decide extra simulation work in a way
+  that changes command application.
+
+Acceptance criteria:
+- Peers with the same command frames advance the same frame numbers.
+- Missing commands pause/stall instead of causing divergent simulation.
+
+-------------------------------------------------------------------------------
+15. Run the local server simulation and client/render layer in every browser
+-------------------------------------------------------------------------------
+
+This is the clarified lockstep model: every browser runs the server simulation
+locally and also runs the existing client/render path locally.
+
+Required work:
+- In DeterministicLockstepBackend, create one local server simulation core per
+  browser.
+- Feed the local renderer from that local server simulation.
+- Prefer reusing the existing GameConnection/snapshot target path initially:
+  - local server sim produces local snapshots for the local player
+  - renderer consumes those snapshots as it already does
+- Ensure remote network snapshots are disabled as gameplay truth in lockstep.
+- Ensure local fog/snapshot filtering is view-only; the local server simulation
+  must still contain the full world truth.
+- Decide whether local lockstep snapshots should go through binary wire
+  encode/decode for parity diagnostics or use direct in-memory snapshots for
+  speed.
+- Keep current client prediction either disabled or reduced in lockstep if it
+  fights the local authoritative sim.
+
+Acceptance criteria:
+- A lockstep peer can render from its own local server simulation without
+  receiving host snapshots.
+- The current renderer does not need a second gameplay implementation.
+
+-------------------------------------------------------------------------------
+16. Reconcile snapshots with lockstep
+-------------------------------------------------------------------------------
+
+Snapshots remain useful for rendering, diagnostics, and possible resync, but not
+as multiplayer truth in deterministic-lockstep.
+
+Required work:
+- Keep snapshot publishing unchanged for authoritative-server.
+- In lockstep, generate local snapshots from the local server simulation for the
+  local renderer.
+- Do not send regular authoritative snapshots from host to clients as truth.
+- Add an explicit diagnostic mode if remote snapshots are compared against local
+  state.
+- Keep snapshot rates local/presentation-only in lockstep.
+- Ensure snapshot deltas/keyframes do not influence canonical sim state.
+
+Acceptance criteria:
+- Dropping a snapshot in lockstep can affect rendering smoothness only, not game
+  truth.
+- authoritative-server snapshot behavior is unchanged.
+
+-------------------------------------------------------------------------------
+17. Handle lockstep pause, speed, and debug controls
+-------------------------------------------------------------------------------
+
+Several current commands control server tick rate, snapshot rate, pause, fog,
+debug grids, and gameplay-affecting settings. They need architecture-specific
+semantics.
+
+Required work:
+- Classify every server-control command as:
+  - gameplay truth
+  - local presentation/debug
+  - network/protocol control
+- In authoritative-server, preserve current behavior.
+- In lockstep, frame-schedule gameplay-truth setting changes.
+- In lockstep, make pause/resume a protocol-level agreement.
+- In lockstep, keep snapshot/keyframe rate changes local unless they affect
+  gameplay.
+- Prevent local-only debug toggles from entering the canonical state hash.
+
+Acceptance criteria:
+- Changing a gameplay-affecting setting cannot desync lockstep peers.
+- Current debug controls still work in authoritative-server.
+
+-------------------------------------------------------------------------------
+18. Add desync detection and first-response handling
+-------------------------------------------------------------------------------
+
+The first lockstep implementation should pause on desync and provide enough data
+to debug. Full automatic resync can come later.
+
+Required work:
+- Send checksums every checksumIntervalTicks.
+- Compare all peer checksums for the same frame.
+- On mismatch:
+  - pause lockstep
+  - show a clear desync diagnostic
+  - save local state hash sections
+  - save recent command frames
+  - save initialization hash and peer ids
+- Add an exportable desync report.
+- Do not attempt silent correction until canonical checkpoint import/export is
+  implemented.
+
+Acceptance criteria:
+- Desyncs stop the match instead of continuing divergent worlds.
+- A desync report contains enough information to reproduce the first bad frame.
+
+-------------------------------------------------------------------------------
+19. Add canonical checkpoint export/import
+-------------------------------------------------------------------------------
+
+Checkpointing is needed for future resync, late join, and true mid-match
+architecture switching.
+
+Required work:
+- Add a canonical full-state checkpoint serializer for server simulation truth.
+- Add a matching importer that recreates the same WorldState, Simulation,
+  physics bodies, command state, RNG state, and all gameplay systems.
+- Version checkpoint format and include config/build/WASM hashes.
+- Ensure importing a checkpoint and stepping forward produces the same hashes as
+  the original run.
+- Keep presentation/client-only state out of canonical checkpoint truth.
+
+Acceptance criteria:
+- Export checkpoint at frame N, import it into a fresh runtime, and produce the
+  same hash at frame N and later frames.
+- Checkpoint format is separate from filtered presentation snapshots.
+
+-------------------------------------------------------------------------------
+20. Support architecture switching at safe boundaries first
+-------------------------------------------------------------------------------
+
+The first switch should be config-selected before battle startup. Hot switching
+is a later feature requiring checkpoints.
+
+Required work:
+- Support switching architecture by changing architecture.json before starting a
+  match.
+- Support leaving a match, changing architecture.json, and starting a new match.
+- Make runtime architecture visible in diagnostics.
+- Prevent accidental mid-match architecture flip from config reload or UI.
+
+Acceptance criteria:
+- Players can use either architecture for a new match.
+- No code changes are needed to switch architecture before startup.
+
+-------------------------------------------------------------------------------
+21. Add true mid-match architecture migration after checkpoints exist
+-------------------------------------------------------------------------------
+
+Only implement this after canonical checkpoint export/import is proven.
+
+Required work:
+- authoritative-server -> deterministic-lockstep:
+  - host pauses authoritative match
+  - host exports canonical checkpoint
+  - all peers import checkpoint
+  - peers verify checkpoint hash
+  - peers start lockstep at agreed next frame
+- deterministic-lockstep -> authoritative-server:
+  - peers pause lockstep
+  - choose/elect authoritative host
+  - selected host imports canonical checkpoint
+  - clients switch to snapshot-down mode
+  - host resumes as authority
+- Add migration failure rollback behavior.
+- Add tests for migration with units, projectiles, economy, construction, and
+  combat in progress.
+
+Acceptance criteria:
+- Architecture can change mid-match without changing canonical gameplay state.
+- Failed migration does not leave peers running different truths.
+
+-------------------------------------------------------------------------------
+22. Define lockstep support boundaries for first release
+-------------------------------------------------------------------------------
+
+Limit scope so the first deterministic-lockstep version can ship and be tested.
+
+Required work:
+- Decide whether first lockstep supports:
+  - real battles only
+  - AI players
+  - background battles
+  - spectators
+  - late join
+  - reconnect
+  - host migration
+- Recommended first scope:
+  - real battles only
+  - no late join
+  - no spectators unless they start at frame 0
+  - no automatic resync
+  - host as coordinator/relay only
+- Fail unsupported modes clearly when backend is deterministic-lockstep.
+
+Acceptance criteria:
+- Unsupported lockstep modes fail early with clear messages.
+- The supported first slice is small enough to verify rigorously.
+
+-------------------------------------------------------------------------------
+23. Add tests for authoritative-server regression protection
+-------------------------------------------------------------------------------
+
+The architecture work must not break the current model.
+
+Required work:
+- Add smoke/integration tests that boot authoritative-server through the new
+  backend factory.
+- Verify host GameServer still:
+  - accepts authorized commands
+  - rejects unauthorized commands
+  - emits snapshots
+  - handles snapshot recovery
+  - supports local host connection
+  - supports remote command forwarding
+- Verify server-control commands behave as they do today.
+
+Acceptance criteria:
+- Existing authoritative-server behavior passes before and after lockstep work.
+- Backend abstraction does not change command/snapshot behavior.
+
+-------------------------------------------------------------------------------
+24. Add tests for deterministic-lockstep
+-------------------------------------------------------------------------------
+
+Lockstep needs its own test matrix.
+
+Required work:
+- Single-runtime two-peer deterministic replay test.
+- Multi-browser replay hash test: Chromium, Firefox, WebKit.
+- Command ordering tests for same-frame multi-player commands.
+- RNG determinism tests.
+- Config hash mismatch test.
+- Missing command frame stall test.
+- Duplicate/out-of-order command message test.
+- Checksum mismatch/desync report test.
+- Local render snapshot generation test.
+- Performance test with representative unit counts.
+
+Acceptance criteria:
+- deterministic-lockstep cannot merge until replay/hash tests pass.
+- Desync-prone behavior has automated coverage.
+
+-------------------------------------------------------------------------------
+25. Add lockstep diagnostics and developer tooling
+-------------------------------------------------------------------------------
+
+Debugging lockstep without tooling is too slow.
+
+Required work:
+- Add runtime diagnostics:
+  - architecture backend
+  - local frame
+  - peer frames
+  - pending command frames
+  - input delay
+  - stall reason
+  - latest checksum
+  - last agreed checksum frame
+  - command resend counts
+- Add a command-frame log export.
+- Add state hash section dump export.
+- Add initialization hash display/export.
+- Add a deterministic replay file format that can reproduce lockstep command
+  frames.
+
+Acceptance criteria:
+- A desync or stall can be diagnosed from exported local artifacts.
+- Developers can replay a lockstep session without live networking.
+
+-------------------------------------------------------------------------------
+26. Performance-budget the lockstep model
+-------------------------------------------------------------------------------
+
+Running the full server simulation in every browser is correct for lockstep, but
+it changes CPU expectations for clients.
+
+Required work:
+- Measure full local server simulation cost on host and client browsers.
+- Measure local snapshot generation cost per peer.
+- Measure command-frame and checksum overhead.
+- Decide minimum supported browser/device class for deterministic-lockstep.
+- Add diagnostics for sim tick time, render time, lockstep stall time, and
+  catch-up time.
+- Keep authoritative-server available for devices that cannot run full lockstep
+  sim locally.
+
+Acceptance criteria:
+- Lockstep performance is measured separately from authoritative-server.
+- Slow clients fail/stall predictably instead of silently desyncing.
+
+-------------------------------------------------------------------------------
+27. Update design documentation after implementation
+-------------------------------------------------------------------------------
+
+budget_design_philosophy.html currently says the project is not building a
+lockstep RTS. Once the second architecture exists, the document must explain
+both modes without weakening the current authoritative-server model.
+
+Required work:
+- Update budget_design_philosophy.html to describe:
+  - authoritative-server as the default/current architecture
+  - deterministic-lockstep as an optional architecture
+  - how both reuse the same server simulation
+  - how snapshots differ between modes
+  - what "authority" means in each mode
+- Document architecture.json.
+- Document unsupported lockstep modes and migration limitations.
+
+Acceptance criteria:
+- The design doc no longer contradicts the existence of deterministic-lockstep.
+- The authoritative-server philosophy remains clear and intact.
