@@ -2977,6 +2977,8 @@ pub fn terrain_sample_ground_for_slots(
 }
 
 pub(crate) const TERRAIN_FLAT_ZONE_STRIDE: usize = 4;
+pub(crate) const TERRAIN_FLAT_ZONE_LEVEL_OFFSET: i32 = 1_000_000;
+pub(crate) const TERRAIN_FLAT_ZONE_LEVEL_SCALE: f64 = 1_000.0;
 
 #[inline]
 pub(crate) fn terrain_flat_zone_height_at(flat_zones: &[f64], x: f64, y: f64) -> Option<f64> {
@@ -3018,6 +3020,21 @@ pub(crate) fn terrain_plateau_level_for_height(
     }
 }
 
+#[inline]
+pub(crate) fn terrain_flat_zone_buildability_level(
+    height: f64,
+    d_terrain: f64,
+    shelf_height_tolerance: f64,
+) -> Option<i32> {
+    if let Some(level) = terrain_plateau_level_for_height(height, d_terrain, shelf_height_tolerance) {
+        return Some(level);
+    }
+    if !height.is_finite() {
+        return None;
+    }
+    Some(TERRAIN_FLAT_ZONE_LEVEL_OFFSET + (height * TERRAIN_FLAT_ZONE_LEVEL_SCALE).round() as i32)
+}
+
 pub(crate) fn terrain_sample_buildability(
     t: &TerrainGrid,
     flat_zones: &[f64],
@@ -3027,18 +3044,24 @@ pub(crate) fn terrain_sample_buildability(
     shelf_height_tolerance: f64,
 ) -> Option<(bool, f64, Option<i32>)> {
     let flat_height = terrain_flat_zone_height_at(flat_zones, x, y);
+    if let Some(height) = flat_height {
+        return Some((
+            height < TERRAIN_WATER_LEVEL,
+            1.0,
+            terrain_flat_zone_buildability_level(height, d_terrain, shelf_height_tolerance),
+        ));
+    }
     let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, x, y);
     let sample = terrain_triangle_sample_at(t, px, pz, cell_x, cell_y)?;
     let mesh_height = terrain_height_from_triangle_sample(sample);
-    let height = flat_height.unwrap_or(mesh_height);
-    if height < TERRAIN_WATER_LEVEL {
+    if mesh_height < TERRAIN_WATER_LEVEL {
         return Some((true, 1.0, None));
     }
     let (_, _, normal_up) = terrain_normal_from_triangle_sample(sample);
     Some((
         false,
         normal_up,
-        terrain_plateau_level_for_height(height, d_terrain, shelf_height_tolerance),
+        terrain_plateau_level_for_height(mesh_height, d_terrain, shelf_height_tolerance),
     ))
 }
 
@@ -3105,6 +3128,8 @@ pub fn terrain_bake_buildability_grid(
 ) -> u32 {
     let t = terrain_grid();
     if !t.installed
+        || (t.map_width - map_width).abs() > TERRAIN_MESH_EPSILON
+        || (t.map_height - map_height).abs() > TERRAIN_MESH_EPSILON
         || !map_width.is_finite()
         || !map_height.is_finite()
         || !build_cell_size.is_finite()
@@ -3148,4 +3173,3 @@ pub fn terrain_bake_buildability_grid(
 
     1
 }
-

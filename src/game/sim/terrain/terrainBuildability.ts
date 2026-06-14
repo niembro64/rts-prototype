@@ -10,6 +10,8 @@ import { getTerrainMeshHeight, getTerrainMeshNormal } from './terrainTileMap';
 import { getTerrainVersion } from './terrainState';
 
 const TERRAIN_FLAT_ZONE_WASM_STRIDE = 4;
+const TERRAIN_FLAT_ZONE_LEVEL_OFFSET = 1_000_000;
+const TERRAIN_FLAT_ZONE_LEVEL_SCALE = 1_000;
 
 export function getTerrainBuildabilityConfigKey(): string {
   // TERRAIN_D_TERRAIN doubles as the on/off signal — `0` is the
@@ -31,6 +33,14 @@ function getTerrainPlateauLevelForHeight(height: number): number | null {
     : null;
 }
 
+function getFlatZoneBuildabilityLevel(height: number): number | null {
+  const terrainLevel = getTerrainPlateauLevelForHeight(height);
+  if (terrainLevel !== null) return terrainLevel;
+  if (!Number.isFinite(height)) return null;
+  return TERRAIN_FLAT_ZONE_LEVEL_OFFSET
+    + Math.round(height * TERRAIN_FLAT_ZONE_LEVEL_SCALE);
+}
+
 export function getTerrainPlateauLevelAt(
   x: number,
   z: number,
@@ -45,7 +55,9 @@ export function getTerrainPlateauLevelAt(
   const height = flatZone
     ? flatZone.height
     : getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize);
-  return getTerrainPlateauLevelForHeight(height);
+  return flatZone
+    ? getFlatZoneBuildabilityLevel(height)
+    : getTerrainPlateauLevelForHeight(height);
 }
 
 export type FootprintBuildability = {
@@ -79,9 +91,14 @@ function sampleBuildabilityTerrain(
   cellSize: number,
 ): BuildabilityTerrainSample {
   const flatZone = findDepositFlatZoneAt(x, z);
-  const height = flatZone
-    ? flatZone.height
-    : getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize);
+  if (flatZone) {
+    return {
+      water: flatZone.height < WATER_LEVEL,
+      normalUp: 1,
+      plateauLevel: getFlatZoneBuildabilityLevel(flatZone.height),
+    };
+  }
+  const height = getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize);
   if (height < WATER_LEVEL) {
     return {
       water: true,

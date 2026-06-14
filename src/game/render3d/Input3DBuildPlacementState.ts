@@ -118,10 +118,11 @@ export class Input3DBuildPlacementState {
     width: number,
     height: number,
     playerCount: number,
+    metalDeposits: ReadonlyArray<MetalDeposit> | null = null,
   ): void {
     this.mapWidth = width;
     this.mapHeight = height;
-    this.metalDeposits = generateMetalDeposits(width, height, playerCount);
+    this.metalDeposits = metalDeposits ?? generateMetalDeposits(width, height, playerCount);
   }
 
   reset(): void {

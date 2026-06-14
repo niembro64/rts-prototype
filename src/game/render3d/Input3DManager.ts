@@ -24,6 +24,7 @@ import type { CursorGround } from './CursorGround';
 import type { ClientCommandSink } from '../input/ClientCommandSink';
 import type { InputContext } from '@/types/input';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
+import type { MetalDeposit } from '../../metalDepositConfig';
 import type { PlayerId, Entity, EntityId, WaypointType, BuildingBlueprintId, StructureBlueprintId } from '../sim/types';
 import {
   entityMatchesScreenRectSelectionOptions,
@@ -452,8 +453,9 @@ export class Input3DManager {
     width: number,
     height: number,
     playerCount: number,
+    metalDeposits: ReadonlyArray<MetalDeposit> | null = null,
   ): void {
-    this.modeClicks.setMapBounds(width, height, playerCount);
+    this.modeClicks.setMapBounds(width, height, playerCount, metalDeposits);
   }
 
   getHoveredEntity(): Entity | null {

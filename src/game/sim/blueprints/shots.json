@@ -292,7 +292,7 @@
     },
     "submunitions": {
       "shotBlueprintId": "shotPlasmaMedium",
-      "count": 5,
+      "count": 0,
       "randomSpreadSpeedHorizontal": 160,
       "randomSpreadSpeedVertical": 0,
       "reflectedVelocityDamper": 0.3
@@ -337,7 +337,7 @@
     },
     "submunitions": {
       "shotBlueprintId": "shotMortarMedium",
-      "count": 3,
+      "count": 0,
       "randomSpreadSpeedHorizontal": 160,
       "randomSpreadSpeedVertical": 50,
       "reflectedVelocityDamper": 0.3

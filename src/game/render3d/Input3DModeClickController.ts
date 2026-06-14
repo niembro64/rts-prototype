@@ -23,6 +23,7 @@ import {
 import type { CommandCursorKind } from '../input/CommandCursors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import type { BuildGhost3D } from './BuildGhost3D';
+import type { MetalDeposit } from '../../metalDepositConfig';
 import {
   Input3DBuildPlacementState,
   type BuildFacingInfo,
@@ -166,8 +167,13 @@ export class Input3DModeClickController {
     this.buildGhost = ghost;
   }
 
-  setMapBounds(width: number, height: number, playerCount: number): void {
-    this.buildPlacement.setMapBounds(width, height, playerCount);
+  setMapBounds(
+    width: number,
+    height: number,
+    playerCount: number,
+    metalDeposits: ReadonlyArray<MetalDeposit> | null = null,
+  ): void {
+    this.buildPlacement.setMapBounds(width, height, playerCount, metalDeposits);
   }
 
   getMapSampleBounds(): { width: number; height: number } {
@@ -573,6 +579,10 @@ export class Input3DModeClickController {
     }
 
     const entitySource = this.config.getEntitySource();
+    if (!this.hasTerrainBuildabilityGrid(entitySource)) {
+      this.config.applyCursor('build');
+      return;
+    }
     const placements = planner(buildingBlueprintId, entitySource);
     if (placements.length === 0) {
       this.config.applyCursor('blocked');
@@ -693,6 +703,13 @@ export class Input3DModeClickController {
         this.buildGhost?.hide();
         return;
       }
+      if (!this.hasTerrainBuildabilityGrid()) {
+        this.config.applyCursor('build');
+        this.buildPlacement.clearDiagnostics();
+        this.lastBuildPreviewTarget = null;
+        this.buildGhost?.hide();
+        return;
+      }
       const diagnostics = this.validateBuildPlacement(buildingBlueprintId, world.x, world.y);
       this.config.applyCursor(diagnostics.canPlace ? 'build' : 'blocked');
       this.lastBuildPreviewTarget = { buildingBlueprintId, worldX: world.x, worldY: world.y };
@@ -718,6 +735,12 @@ export class Input3DModeClickController {
     if (this.config.mode.buildingBlueprintId !== target.buildingBlueprintId) return;
     const builder = this.config.getSelectedBuilder();
     if (!entityCanBuild(builder, target.buildingBlueprintId)) {
+      this.buildGhost?.hide();
+      this.lastBuildPreviewTarget = null;
+      return;
+    }
+    if (!this.hasTerrainBuildabilityGrid()) {
+      this.buildPlacement.clearDiagnostics();
       this.buildGhost?.hide();
       this.lastBuildPreviewTarget = null;
       return;
@@ -750,6 +773,13 @@ export class Input3DModeClickController {
     if (buildingBlueprintId === null) return;
     if (!entityCanBuild(builder, buildingBlueprintId)) {
       this.config.applyCursor('blocked');
+      return;
+    }
+    if (!this.hasTerrainBuildabilityGrid()) {
+      this.config.applyCursor('build');
+      this.buildPlacement.clearDiagnostics();
+      this.lastBuildPreviewTarget = null;
+      this.buildGhost?.hide();
       return;
     }
     const diagnostics = this.validateBuildPlacement(buildingBlueprintId, world.x, world.y);
@@ -793,6 +823,15 @@ export class Input3DModeClickController {
       worldY,
       this.config.getEntitySource(),
     );
+  }
+
+  private hasTerrainBuildabilityGrid(
+    entitySource: ModeClickEntitySource = this.config.getEntitySource(),
+  ): boolean {
+    const grid = entitySource.getTerrainBuildabilityGrid?.() ?? null;
+    return grid !== null &&
+      grid.mapWidth === this.buildPlacement.width &&
+      grid.mapHeight === this.buildPlacement.height;
   }
 
   private handleDGunClick(e: MouseEvent): void {

@@ -135,7 +135,7 @@
       "radiusFraction": 0.824,
       "countPerPlayer": 1,
       "sliceOffset": -0.8,
-      "dTerrainLevels": 2,
+      "dTerrainLevels": 1,
       "flatPadCells": 20,
       "terrainBlendRadius": 200,
       "depositCluster": {

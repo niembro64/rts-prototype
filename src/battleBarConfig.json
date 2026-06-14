@@ -21,7 +21,7 @@
     "options": [100, 200, 400, 800, 0]
   },
   "metalDepositStep": {
-    "options": [0, 100, 200, 400, 800]
+    "options": [0, 100, 200, 400, 800, 1600, 3200, 6400]
   },
   "terrainDetail": {
     "options": [0, 1, 2, 4, 8, 16]

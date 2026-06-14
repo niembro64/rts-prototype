@@ -461,6 +461,7 @@ export class RtsScene3D {
       this.mapWidth,
       this.mapHeight,
       this.playerIds.length,
+      this.metalDeposits,
     );
     // Keep scene's waypointMode in lockstep with the InputManager so the
     // SelectionPanel reflects the active mode when M/F/H hotkeys fire.

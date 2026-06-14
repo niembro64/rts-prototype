@@ -43,7 +43,6 @@ import {
   getTerrainVersion,
   terrainMeshHeightFromSample,
   terrainMeshNormalFromSample,
-  evaluateBuildabilityFootprint,
   getTerrainBuildabilityGridCell,
   getTerrainBuildabilityConfigKey,
   TERRAIN_CIRCLE_UNDERWATER_HEIGHT,
@@ -861,16 +860,11 @@ export class TerrainTileRenderer3D {
           this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_BLOCKED);
           continue;
         }
-        const cellEval = buildabilityGrid
-          ? getTerrainBuildabilityGridCell(buildabilityGrid, gx, gy)
-          : evaluateBuildabilityFootprint(
-            x,
-            y,
-            buildCellSize / 2,
-            buildCellSize / 2,
-            this.mapWidth,
-            this.mapHeight,
-          );
+        if (!buildabilityGrid) {
+          this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_TRANSPARENT);
+          continue;
+        }
+        const cellEval = getTerrainBuildabilityGridCell(buildabilityGrid, gx, gy);
         if (!cellEval.buildable) {
           this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_BLOCKED);
           continue;
