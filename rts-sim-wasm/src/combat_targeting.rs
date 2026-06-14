@@ -7446,6 +7446,7 @@ pub(crate) struct ShieldSurfacePool {
     field_reflection_mode_rocket: Vec<u8>,
     field_reflection_mode_beam: Vec<u8>,
     field_reflection_mode_laser: Vec<u8>,
+    field_reflection_entity_mask: u8,
 
     // ── Rect-panel shape (per-unit) ──
     // Counts are tracked separately so the backing Vecs can be reused across
@@ -7477,6 +7478,7 @@ pub(crate) struct ShieldSurfacePool {
     panel_reflection_mode_rocket: Vec<u8>,
     panel_reflection_mode_beam: Vec<u8>,
     panel_reflection_mode_laser: Vec<u8>,
+    panel_reflection_entity_mask: u8,
 }
 
 impl ShieldSurfacePool {
@@ -7503,6 +7505,7 @@ impl ShieldSurfacePool {
             field_reflection_mode_rocket: Vec::new(),
             field_reflection_mode_beam: Vec::new(),
             field_reflection_mode_laser: Vec::new(),
+            field_reflection_entity_mask: 0,
             unit_count: 0,
             unit_id: Vec::new(),
             unit_x: Vec::new(),
@@ -7528,6 +7531,7 @@ impl ShieldSurfacePool {
             panel_reflection_mode_rocket: Vec::new(),
             panel_reflection_mode_beam: Vec::new(),
             panel_reflection_mode_laser: Vec::new(),
+            panel_reflection_entity_mask: 0,
         }
     }
 
@@ -7622,6 +7626,8 @@ pub fn shield_pool_clear() {
     pool.count = 0;
     pool.unit_count = 0;
     pool.total_panels = 0;
+    pool.field_reflection_entity_mask = 0;
+    pool.panel_reflection_entity_mask = 0;
 }
 
 #[wasm_bindgen]
@@ -7634,6 +7640,7 @@ pub fn shield_pool_set_count(count: u32) {
     let pool = shield_pool();
     pool.ensure_capacity(count);
     pool.count = count;
+    pool.field_reflection_entity_mask = 0;
 }
 
 #[wasm_bindgen]
@@ -7683,6 +7690,12 @@ pub fn shield_pool_set_field(
     pool.field_reflection_mode_rocket[i] = reflection_mode_rocket;
     pool.field_reflection_mode_beam[i] = reflection_mode_beam;
     pool.field_reflection_mode_laser[i] = reflection_mode_laser;
+    pool.field_reflection_entity_mask |= shield_reflection_entity_mask_from_modes(
+        reflection_mode_plasma,
+        reflection_mode_rocket,
+        reflection_mode_beam,
+        reflection_mode_laser,
+    );
 }
 
 macro_rules! shield_pool_ptr_export {
@@ -7730,6 +7743,10 @@ pub(crate) const SHIELD_REFLECTION_ENTITY_PLASMA: u8 = 0;
 pub(crate) const SHIELD_REFLECTION_ENTITY_ROCKET: u8 = 1;
 pub(crate) const SHIELD_REFLECTION_ENTITY_BEAM: u8 = 2;
 pub(crate) const SHIELD_REFLECTION_ENTITY_LASER: u8 = 3;
+pub(crate) const SHIELD_REFLECTION_ENTITY_BIT_PLASMA: u8 = 1 << SHIELD_REFLECTION_ENTITY_PLASMA;
+pub(crate) const SHIELD_REFLECTION_ENTITY_BIT_ROCKET: u8 = 1 << SHIELD_REFLECTION_ENTITY_ROCKET;
+pub(crate) const SHIELD_REFLECTION_ENTITY_BIT_BEAM: u8 = 1 << SHIELD_REFLECTION_ENTITY_BEAM;
+pub(crate) const SHIELD_REFLECTION_ENTITY_BIT_LASER: u8 = 1 << SHIELD_REFLECTION_ENTITY_LASER;
 pub(crate) const SHIELD_FIELD_SHAPE_SPHERE: u8 = 0;
 pub(crate) const SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER: u8 = 1;
 pub(crate) const SHIELD_FIELD_SHAPE_AIMED_CYLINDER: u8 = 2;
@@ -7805,6 +7822,40 @@ pub(crate) fn shield_reflection_mode_for_entity(
         SHIELD_REFLECTION_ENTITY_LASER => laser_mode,
         _ => SHIELD_REFLECTION_MODE_NONE,
     }
+}
+
+#[inline]
+pub(crate) fn shield_reflection_entity_bit(reflection_entity: u8) -> u8 {
+    match reflection_entity {
+        SHIELD_REFLECTION_ENTITY_PLASMA => SHIELD_REFLECTION_ENTITY_BIT_PLASMA,
+        SHIELD_REFLECTION_ENTITY_ROCKET => SHIELD_REFLECTION_ENTITY_BIT_ROCKET,
+        SHIELD_REFLECTION_ENTITY_BEAM => SHIELD_REFLECTION_ENTITY_BIT_BEAM,
+        SHIELD_REFLECTION_ENTITY_LASER => SHIELD_REFLECTION_ENTITY_BIT_LASER,
+        _ => 0,
+    }
+}
+
+#[inline]
+pub(crate) fn shield_reflection_entity_mask_from_modes(
+    plasma_mode: u8,
+    rocket_mode: u8,
+    beam_mode: u8,
+    laser_mode: u8,
+) -> u8 {
+    let mut mask = 0;
+    if plasma_mode != SHIELD_REFLECTION_MODE_NONE {
+        mask |= SHIELD_REFLECTION_ENTITY_BIT_PLASMA;
+    }
+    if rocket_mode != SHIELD_REFLECTION_MODE_NONE {
+        mask |= SHIELD_REFLECTION_ENTITY_BIT_ROCKET;
+    }
+    if beam_mode != SHIELD_REFLECTION_MODE_NONE {
+        mask |= SHIELD_REFLECTION_ENTITY_BIT_BEAM;
+    }
+    if laser_mode != SHIELD_REFLECTION_MODE_NONE {
+        mask |= SHIELD_REFLECTION_ENTITY_BIT_LASER;
+    }
+    mask
 }
 
 #[inline]
@@ -9280,6 +9331,7 @@ pub fn shield_panel_pool_set_panel_count(count: u32) {
     let pool = shield_pool();
     pool.ensure_panel_capacity(count);
     pool.total_panels = count;
+    pool.panel_reflection_entity_mask = 0;
 }
 
 #[wasm_bindgen]
@@ -9344,12 +9396,26 @@ pub fn shield_panel_pool_set_panel(
     pool.panel_reflection_mode_rocket[i] = reflection_mode_rocket;
     pool.panel_reflection_mode_beam[i] = reflection_mode_beam;
     pool.panel_reflection_mode_laser[i] = reflection_mode_laser;
+    pool.panel_reflection_entity_mask |= shield_reflection_entity_mask_from_modes(
+        reflection_mode_plasma,
+        reflection_mode_rocket,
+        reflection_mode_beam,
+        reflection_mode_laser,
+    );
 }
 
 #[wasm_bindgen]
 pub fn shield_panel_pool_set_material_mode(reflection_mode: u8) {
     let pool = shield_pool();
     let count = pool.total_panels as usize;
+    pool.panel_reflection_entity_mask = if reflection_mode == SHIELD_REFLECTION_MODE_NONE {
+        0
+    } else {
+        SHIELD_REFLECTION_ENTITY_BIT_PLASMA
+            | SHIELD_REFLECTION_ENTITY_BIT_ROCKET
+            | SHIELD_REFLECTION_ENTITY_BIT_BEAM
+            | SHIELD_REFLECTION_ENTITY_BIT_LASER
+    };
     for i in 0..count {
         pool.panel_reflection_mode_plasma[i] = reflection_mode;
         pool.panel_reflection_mode_rocket[i] = reflection_mode;
@@ -9666,6 +9732,13 @@ pub fn projectile_reflector_intersections_batch(
     } else {
         0.0
     };
+    let (panel_reflection_entity_mask, field_reflection_entity_mask) = {
+        let pool = shield_pool();
+        (
+            pool.panel_reflection_entity_mask,
+            pool.field_reflection_entity_mask,
+        )
+    };
 
     for i in 0..n {
         out_kind[i] = REFLECTOR_HIT_KIND_NONE;
@@ -9708,8 +9781,20 @@ pub fn projectile_reflector_intersections_batch(
             continue;
         }
 
+        let reflection_entity_bit = shield_reflection_entity_bit(reflection_entity);
+        if reflection_entity_bit == 0 {
+            continue;
+        }
+        let panels_reflect_entity = turret_shield_panels_enabled != 0
+            && (panel_reflection_entity_mask & reflection_entity_bit) != 0;
+        let fields_reflect_entity = turret_shield_spheres_enabled != 0
+            && (field_reflection_entity_mask & reflection_entity_bit) != 0;
+        if !panels_reflect_entity && !fields_reflect_entity {
+            continue;
+        }
+
         let mut best: Option<ProjectileReflectorHit> = None;
-        if turret_shield_panels_enabled != 0 {
+        if panels_reflect_entity {
             best = shield_panel_projectile_intersection(
                 sx,
                 sy,
@@ -9726,7 +9811,7 @@ pub fn projectile_reflector_intersections_batch(
             );
         }
         let max_t = best.as_ref().map(|hit| hit.t).unwrap_or(f64::INFINITY);
-        if turret_shield_spheres_enabled != 0 {
+        if fields_reflect_entity {
             if let Some(force_hit) = shield_projectile_intersection(
                 sx,
                 sy,
@@ -10443,6 +10528,20 @@ mod tests {
         );
         assert!(shield_reflection_mode_allows_crossing(beam_mode, -1.0));
         assert!(shield_reflection_mode_allows_crossing(beam_mode, 1.0));
+    }
+
+    #[test]
+    fn reflection_entity_mask_omits_reflect_none_families() {
+        let mask = shield_reflection_entity_mask_from_modes(
+            SHIELD_REFLECTION_MODE_OUTSIDE_IN,
+            SHIELD_REFLECTION_MODE_NONE,
+            SHIELD_REFLECTION_MODE_BOTH,
+            SHIELD_REFLECTION_MODE_NONE,
+        );
+        assert_ne!(mask & SHIELD_REFLECTION_ENTITY_BIT_PLASMA, 0);
+        assert_eq!(mask & SHIELD_REFLECTION_ENTITY_BIT_ROCKET, 0);
+        assert_ne!(mask & SHIELD_REFLECTION_ENTITY_BIT_BEAM, 0);
+        assert_eq!(mask & SHIELD_REFLECTION_ENTITY_BIT_LASER, 0);
     }
 
     #[test]
