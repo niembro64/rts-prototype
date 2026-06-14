@@ -170,10 +170,10 @@
     <section class="principle-grid" aria-label="Core principles">
       <div class="principle">
         <b>Authority is explicit</b>
-        The default architecture is authoritative-server: client commands go to the host
-        simulation, which validates and executes them. The optional deterministic-lockstep
-        architecture makes the command-frame stream authoritative while every browser runs the
-        same server simulation locally.
+        Budget Annihilation has two implemented backend architectures, selected through
+        <code>architecture.json</code>. In authoritative-server, client commands go to the host
+        simulation, which validates and executes them. In deterministic-lockstep, the command-frame
+        stream is authoritative while every browser runs the same server simulation locally.
       </div>
       <div class="principle">
         <b>Clients stay continuous</b>
@@ -194,7 +194,7 @@
         browser-native extension of Beyond All Reason. This document describes
         the places where the prototype deliberately differs: authoritative
         server networking, client prediction, force-and-mass physical systems,
-        browser constraints, optional deterministic lockstep, owned simulation code, and the atomic gameplay
+        browser constraints, selectable deterministic lockstep, owned simulation code, and the atomic gameplay
         pieces this project adds or reshapes.
       </p>
       <p>
@@ -210,14 +210,15 @@
         <li>Rules written in this document override the BAR fallback.</li>
         <li>Intentional departures from BAR should be written into this document.</li>
         <li>BAR is the behavioral fallback, not a requirement to copy BAR code, Lua structure, assets, Recoil/Spring engine internals, or network assumptions.</li>
-        <li>When BAR behavior depends on Recoil/Spring details, translate the player-facing behavior into Budget Annihilation's browser, physics-first architecture. Authoritative-server remains the default networking model; deterministic-lockstep is an optional mode selected through <code>architecture.json</code>.</li>
+        <li>When BAR behavior depends on Recoil/Spring details, translate the player-facing behavior into Budget Annihilation's browser, physics-first architecture. Authoritative-server and deterministic-lockstep are both implemented backend modes; <code>architecture.json</code> selects which one a match boots with.</li>
       </ul>
     </section>
 
     <section>
       <h2>North Star</h2>
       <p>
-        Budget Annihilation now supports two explicit backend architectures. In
+        Budget Annihilation now has two implemented backend architectures that can both be selected
+        today through <code>architecture.json</code>. In
         <strong>authoritative-server</strong>, one server simulation owns gameplay truth and clients
         render from snapshots plus bounded prediction. In <strong>deterministic-lockstep</strong>,
         every browser runs the same server simulation locally and peers exchange ordered command
@@ -329,9 +330,10 @@
       <h3>Architecture selection is explicit</h3>
       <p>
         The active backend is selected before match startup by <code>src/architecture.json</code>.
-        <code>authoritative-server</code> is the default and preserves the original host-owned
-        command/snapshot model. <code>deterministic-lockstep</code> is optional and runs the same
-        server simulation locally in every browser. The architecture is a startup boundary; changing
+        <code>authoritative-server</code> preserves the original host-owned command/snapshot
+        model. <code>deterministic-lockstep</code> runs the same server simulation locally in every
+        browser and makes ordered command frames the multiplayer truth. Both are implemented and
+        currently usable; the architecture is a startup boundary, so changing
         the config does not hot-flip a running match.
       </p>
       <ul class="rule-list">

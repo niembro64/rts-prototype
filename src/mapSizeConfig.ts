@@ -1,5 +1,3 @@
-import mapSizeConfig from './mapSizeConfig.json';
-
 export type MapDimensionAxisOption = {
   readonly valueLandCells: number;
   readonly label: string;
@@ -15,29 +13,39 @@ export type MapDimensionAxisConfig = {
   readonly options: readonly MapDimensionAxisOption[];
 };
 
+const MAP_SIZE_CONFIG = {
+  landCellSize: 200,
+  mapDimensionBaseLandCells: 7,
+  mapDimensionAxisGrowth: 1.5,
+  mapDimensionAxisOptionCount: 8,
+  defaultMapWidthLandCells: 53,
+  defaultMapLengthLandCells: 53,
+  mapGenerationExtentFraction: 0.85,
+} as const;
+
 // Canonical 2D land partition size. All broad ground-space systems
 // should derive from this: host spatial-grid XY columns, capture
 // tiles, terrain/water tiles, and client spatial groups.
-export const LAND_CELL_SIZE = mapSizeConfig.landCellSize;
+export const LAND_CELL_SIZE: number = MAP_SIZE_CONFIG.landCellSize;
 
 /** Single source for map-size option generation. Width and length both use
  *  this same base cell count, then grow by 1.5x per option. Keep generated
  *  sizes odd so maps have exactly one central land cell. */
-export const MAP_DIMENSION_BASE_LAND_CELLS =
-  mapSizeConfig.mapDimensionBaseLandCells;
-const MAP_DIMENSION_AXIS_GROWTH = mapSizeConfig.mapDimensionAxisGrowth;
-const MAP_DIMENSION_AXIS_OPTION_COUNT = mapSizeConfig.mapDimensionAxisOptionCount;
+export const MAP_DIMENSION_BASE_LAND_CELLS: number =
+  MAP_SIZE_CONFIG.mapDimensionBaseLandCells;
+const MAP_DIMENSION_AXIS_GROWTH: number = MAP_SIZE_CONFIG.mapDimensionAxisGrowth;
+const MAP_DIMENSION_AXIS_OPTION_COUNT: number = MAP_SIZE_CONFIG.mapDimensionAxisOptionCount;
 
 
 // 7, 11, 15, 23, 35, 53, 79, 119
-const DEFAULT_MAP_WIDTH_LAND_CELLS_VALUE = mapSizeConfig.defaultMapWidthLandCells;
-const DEFAULT_MAP_LENGTH_LAND_CELLS_VALUE = mapSizeConfig.defaultMapLengthLandCells;
+const DEFAULT_MAP_WIDTH_LAND_CELLS_VALUE: number = MAP_SIZE_CONFIG.defaultMapWidthLandCells;
+const DEFAULT_MAP_LENGTH_LAND_CELLS_VALUE: number = MAP_SIZE_CONFIG.defaultMapLengthLandCells;
 
 /** Fraction of the total map width/length used by generated radial
  *  terrain/layout features. The remaining outer band is buffer space
  *  around the playable/generated oval. */
-export const MAP_GENERATION_EXTENT_FRACTION =
-  mapSizeConfig.mapGenerationExtentFraction;
+export const MAP_GENERATION_EXTENT_FRACTION: number =
+  MAP_SIZE_CONFIG.mapGenerationExtentFraction;
 
 /** Round a land-cell axis count to the nearest positive odd integer.
  *  Map dimensions are required to be odd so every map has exactly

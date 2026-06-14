@@ -1,10 +1,12 @@
-import { LAND_CELL_SIZE } from '../mapSizeConfig';
-
 export {
   assertOddPositiveLandCellAxis,
   nearestOddLandCellCount,
 } from '../mapSizeConfig';
 
+// Keep in sync with mapSizeConfig.ts. landGrid is imported by low-level sim
+// chunks, so this constant stays local instead of reading through the broader
+// config graph during production module initialization.
+export const CANONICAL_LAND_CELL_SIZE = 200;
 export const LAND_CELL_AXIS_BIAS = 32768;
 export const LAND_CELL_AXIS_MASK = 0xffff;
 export const LAND_CELL_KEY_MULT = 0x10000;
@@ -24,11 +26,12 @@ export type LandCellBounds = {
   y1: number;
 };
 
-export function normalizeLandCellSize(cellSize: number = LAND_CELL_SIZE): number {
-  return Math.max(1, Math.floor(cellSize > 0 ? cellSize : LAND_CELL_SIZE));
+export function normalizeLandCellSize(cellSize: number = CANONICAL_LAND_CELL_SIZE): number {
+  return Math.max(
+    1,
+    Math.floor(cellSize > 0 ? cellSize : CANONICAL_LAND_CELL_SIZE),
+  );
 }
-
-export const CANONICAL_LAND_CELL_SIZE = normalizeLandCellSize(LAND_CELL_SIZE);
 
 export function assertCanonicalLandCellSize(label: string, cellSize: number): void {
   const normalized = normalizeLandCellSize(cellSize);
@@ -39,14 +42,17 @@ export function assertCanonicalLandCellSize(label: string, cellSize: number): vo
   }
 }
 
-export function landCellCountForSpan(span: number, cellSize: number = LAND_CELL_SIZE): number {
+export function landCellCountForSpan(
+  span: number,
+  cellSize: number = CANONICAL_LAND_CELL_SIZE,
+): number {
   return Math.max(1, Math.ceil(Math.max(0, span) / normalizeLandCellSize(cellSize)));
 }
 
 export function makeLandGridMetrics(
   mapWidth: number,
   mapHeight: number,
-  cellSize: number = LAND_CELL_SIZE,
+  cellSize: number = CANONICAL_LAND_CELL_SIZE,
 ): LandGridMetrics {
   const normalizedCellSize = normalizeLandCellSize(cellSize);
   return {
@@ -58,7 +64,10 @@ export function makeLandGridMetrics(
   };
 }
 
-export function landCellIndex(coord: number, cellSize: number = LAND_CELL_SIZE): number {
+export function landCellIndex(
+  coord: number,
+  cellSize: number = CANONICAL_LAND_CELL_SIZE,
+): number {
   return Math.floor(coord / normalizeLandCellSize(cellSize));
 }
 
@@ -74,7 +83,10 @@ export function landCellMaxForSize(
   return Math.min(worldSpan, landCellMinForSize(index, normalizedCellSize) + normalizedCellSize);
 }
 
-export function landCellCenter(index: number, cellSize: number = LAND_CELL_SIZE): number {
+export function landCellCenter(
+  index: number,
+  cellSize: number = CANONICAL_LAND_CELL_SIZE,
+): number {
   return (index + 0.5) * normalizeLandCellSize(cellSize);
 }
 

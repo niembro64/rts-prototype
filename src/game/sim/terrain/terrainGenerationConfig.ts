@@ -1,4 +1,3 @@
-import { MAP_GENERATION_EXTENT_FRACTION } from '../../../mapSizeConfig';
 import {
   TERRAIN_CIRCLE_ISLAND_RADIUS_FRACTION,
   TERRAIN_CIRCLE_SHORELINE_WIDTH_FRACTION,
@@ -19,7 +18,7 @@ import {
  *  here so the mesh baker and the metal-deposit kernels pass the SAME value
  *  to Rust — they all sample `metal_deposit_terrain_height_with_explicit_zones`
  *  and must agree on the island metrics. */
-export const TERRAIN_GENERATION_EXTENT_FRACTION = MAP_GENERATION_EXTENT_FRACTION;
+export const TERRAIN_GENERATION_EXTENT_FRACTION = 0.85;
 
 /** Length of the packed generation-config slice consumed by Rust
  *  (`metal_deposit_terrain_config_from_slice`). */

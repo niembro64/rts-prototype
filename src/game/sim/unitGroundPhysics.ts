@@ -1,13 +1,12 @@
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import {
+  UNIT_GROUND_CONTACT_EPSILON,
   UNIT_GROUND_FRICTION_PER_60HZ_FRAME,
 } from '../../config';
-import sharedSimConstants from '../../sharedSimConstants.json';
 import type { Unit } from './types';
 
 export type GroundNormal = { nx: number; ny: number; nz: number };
-
-export const UNIT_GROUND_CONTACT_EPSILON = sharedSimConstants.unitGroundContactEpsilon;
+export { UNIT_GROUND_CONTACT_EPSILON };
 
 let cachedGroundDampDtSec = -1;
 let cachedGroundDamp = 1;
@@ -48,4 +47,3 @@ export function getUnitGroundFrictionDamp(dtSec: number): number {
   cachedGroundDamp = DMath.pow(1 - friction, dtSec * 60);
   return cachedGroundDamp;
 }
-

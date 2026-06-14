@@ -319,6 +319,11 @@ export const UNIT_AIR_FRICTION_PER_60HZ_FRAME =
 export const UNIT_GROUND_FRICTION_PER_60HZ_FRAME =
   sharedSimConstants.unitGroundFrictionPer60HzFrame;
 
+/** Contact tolerance for deciding whether a unit's locomotion ground
+ *  point is touching terrain/support. */
+export const UNIT_GROUND_CONTACT_EPSILON =
+  sharedSimConstants.unitGroundContactEpsilon;
+
 /** Terrain spring acceleration per world-unit of ground-point
  *  penetration. Force is mass * acceleration, so all unit masses
  *  settle at the same tiny gravity sag depth. */

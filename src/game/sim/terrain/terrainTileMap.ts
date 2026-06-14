@@ -1,7 +1,9 @@
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import type { TerrainTileMap } from '@/types/terrain';
-import { LAND_CELL_SIZE } from '../../../config';
-import { assertCanonicalLandCellSize } from '../../landGrid';
+import {
+  CANONICAL_LAND_CELL_SIZE,
+  assertCanonicalLandCellSize,
+} from '../../landGrid';
 import { getSimWasm } from '../../sim-wasm/init';
 import {
   TERRAIN_FINE_TRIANGLE_SUBDIV,
@@ -93,13 +95,13 @@ const TERRAIN_MESH_PACK_HEADER = 5;
 function terrainCellSize(cellSize: number | undefined): number {
   return cellSize !== undefined && cellSize > 0
     ? cellSize
-    : LAND_CELL_SIZE;
+    : CANONICAL_LAND_CELL_SIZE;
 }
 
 export function buildTerrainTileMap(
   mapWidth: number,
   mapHeight: number,
-  cellSize: number = LAND_CELL_SIZE,
+  cellSize: number = CANONICAL_LAND_CELL_SIZE,
 ): TerrainTileMap {
   assertCanonicalLandCellSize('buildTerrainTileMap cellSize', cellSize);
   const size = terrainCellSize(cellSize);
@@ -174,6 +176,8 @@ function buildAdaptiveEquilateralTerrainMesh(
     TERRAIN_MESH_HEIGHT_SMOOTHING.amount,
   ]);
 
+  const terrainConfig = packTerrainGenerationConfigForWasm();
+  const flatZones = packTerrainFlatZoneRowsForWasm(getMetalDepositFlatZones());
   const packed = sim.terrainBuildAdaptiveMesh(
     mapWidth,
     mapHeight,
@@ -182,13 +186,21 @@ function buildAdaptiveEquilateralTerrainMesh(
     cellsY,
     maxSubdiv,
     TERRAIN_GENERATION_EXTENT_FRACTION,
-    packTerrainGenerationConfigForWasm(),
-    packTerrainFlatZoneRowsForWasm(getMetalDepositFlatZones()),
+    terrainConfig,
+    flatZones,
     lodConfig,
   );
 
   if (packed.length < TERRAIN_MESH_PACK_HEADER || packed[0] !== 1) {
-    throw new Error('terrain adaptive-mesh kernel failed');
+    throw new Error(
+      'terrain adaptive-mesh kernel failed: ' +
+        `status=${packed[0] ?? 'missing'}, packedLength=${packed.length}, ` +
+        `mapWidth=${mapWidth}, mapHeight=${mapHeight}, cellSize=${cellSize}, ` +
+        `cellsX=${cellsX}, cellsY=${cellsY}, maxSubdiv=${maxSubdiv}, ` +
+        `extentFraction=${TERRAIN_GENERATION_EXTENT_FRACTION}, ` +
+        `terrainConfigLength=${terrainConfig.length}, ` +
+        `flatZoneLength=${flatZones.length}, lodConfig=${Array.from(lodConfig).join(',')}`,
+    );
   }
 
   const vertexCount = packed[1];
@@ -257,7 +269,7 @@ function normalizeBarycentricWeights(
 export function getTerrainMeshView(
   mapWidth: number,
   mapHeight: number,
-  cellSize: number = LAND_CELL_SIZE,
+  cellSize: number = CANONICAL_LAND_CELL_SIZE,
 ): TerrainMeshView | null {
   assertCanonicalLandCellSize('getTerrainMeshView cellSize', cellSize);
   const size = terrainCellSize(cellSize);
@@ -334,10 +346,10 @@ export function getTerrainMeshSample(
   z: number,
   mapWidth: number,
   mapHeight: number,
-  cellSize: number = LAND_CELL_SIZE,
+  cellSize: number = CANONICAL_LAND_CELL_SIZE,
 ): TerrainMeshSample {
-  let size = LAND_CELL_SIZE;
-  if (cellSize !== LAND_CELL_SIZE && cellSize > 0) {
+  let size = CANONICAL_LAND_CELL_SIZE;
+  if (cellSize !== CANONICAL_LAND_CELL_SIZE && cellSize > 0) {
     assertCanonicalLandCellSize('getTerrainMeshSample cellSize', cellSize);
     size = terrainCellSize(cellSize);
   }
@@ -509,7 +521,7 @@ export function getTerrainMeshHeight(
   z: number,
   mapWidth: number,
   mapHeight: number,
-  cellSize: number = LAND_CELL_SIZE,
+  cellSize: number = CANONICAL_LAND_CELL_SIZE,
 ): number {
   return terrainMeshHeightFromSample(
     getTerrainMeshSample(x, z, mapWidth, mapHeight, cellSize),
@@ -521,7 +533,7 @@ export function getTerrainMeshNormal(
   z: number,
   mapWidth: number,
   mapHeight: number,
-  cellSize: number = LAND_CELL_SIZE,
+  cellSize: number = CANONICAL_LAND_CELL_SIZE,
 ): { nx: number; ny: number; nz: number } {
   return terrainMeshNormalFromSample(
     getTerrainMeshSample(x, z, mapWidth, mapHeight, cellSize),
