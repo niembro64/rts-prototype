@@ -1412,9 +1412,9 @@
       },
       "config": {
         "gravityCounterUpwardForceRatio": 0.05,
-        "hoverHeightUpwardForce": 100,
+        "hoverHeightUpwardForce": 160,
         "hoverHeightUpwardForceRandomizationAmount": 0.99,
-        "hoverHeightUpwardForceEMA": 0.2,
+        "hoverHeightUpwardForceEMA": 0.1,
         "fanDistX": 0.58,
         "fanDistY": 0.62,
         "fanLayout": "twin",
@@ -1532,10 +1532,10 @@
         "traction": 1
       },
       "config": {
-        "gravityCounterUpwardForceRatio": 0.8,
-        "hoverHeightUpwardForce": 120,
+        "gravityCounterUpwardForceRatio": 0.05,
+        "hoverHeightUpwardForce": 500,
         "hoverHeightUpwardForceRandomizationAmount": 0.99,
-        "hoverHeightUpwardForceEMA": 0.99,
+        "hoverHeightUpwardForceEMA": 0.9,
         "fanDistX": 0,
         "fanDistY": 2,
         "fanRadius": 1.4,
@@ -1658,10 +1658,10 @@
         "traction": 1
       },
       "config": {
-        "gravityCounterUpwardForceRatio": 0.8,
-        "hoverHeightUpwardForce": 36,
-        "hoverHeightUpwardForceRandomizationAmount": 0.25,
-        "hoverHeightUpwardForceEMA": 0.96,
+        "gravityCounterUpwardForceRatio": 0.05,
+        "hoverHeightUpwardForce": 100,
+        "hoverHeightUpwardForceRandomizationAmount": 0.99,
+        "hoverHeightUpwardForceEMA": 0.5,
         "fanDistX": 0.58,
         "fanDistY": 0.58,
         "fanLayout": "triFront",
@@ -1761,10 +1761,10 @@
         "traction": 1
       },
       "config": {
-        "gravityCounterUpwardForceRatio": 0.8,
-        "hoverHeightUpwardForce": 100,
+        "gravityCounterUpwardForceRatio": 0.05,
+        "hoverHeightUpwardForce": 380,
         "hoverHeightUpwardForceRandomizationAmount": 0.99,
-        "hoverHeightUpwardForceEMA": 0.99,
+        "hoverHeightUpwardForceEMA": 0.3,
         "wingEnabled": false,
         "tailWingSpan": 2.9,
         "tailWingChord": 1.18,
@@ -1892,9 +1892,9 @@
         "traction": 1
       },
       "config": {
-        "gravityCounterUpwardForceRatio": 0.8,
-        "hoverHeightUpwardForce": 180,
-        "hoverHeightUpwardForceRandomizationAmount": 0.35,
+        "gravityCounterUpwardForceRatio": 0.05,
+        "hoverHeightUpwardForce": 700,
+        "hoverHeightUpwardForceRandomizationAmount": 0.99,
         "hoverHeightUpwardForceEMA": 0.99,
         "wingSpan": 2.8,
         "wingChord": 0.62,
@@ -2013,10 +2013,10 @@
         "traction": 1
       },
       "config": {
-        "gravityCounterUpwardForceRatio": 0.8,
-        "hoverHeightUpwardForce": 72,
-        "hoverHeightUpwardForceRandomizationAmount": 0.45,
-        "hoverHeightUpwardForceEMA": 0.98,
+        "gravityCounterUpwardForceRatio": 0.05,
+        "hoverHeightUpwardForce": 130,
+        "hoverHeightUpwardForceRandomizationAmount": 0.99,
+        "hoverHeightUpwardForceEMA": 0.99,
         "fanDistX": 0.72,
         "fanDistY": 0.8,
         "fanLayout": "quad",
