@@ -6,9 +6,9 @@ import {
   getRotationPosEmaMode,
   getRotationVelEmaMode,
 } from '@/clientBarConfig';
-import { LAND_CELL_SIZE, SHIELD_MIN_ON_TIME_MS } from '../../config';
+import { LAND_CELL_SIZE } from '../../config';
 import { UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC } from '@/shellConfig';
-import type { Entity, EntityId, TurretState } from '../sim/types';
+import type { Entity, EntityId } from '../sim/types';
 import {
   angleDeltaAbs,
   clamp,
@@ -36,7 +36,6 @@ import {
 } from '../sim/unitGroundPhysics';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 import {
-  CT_TURRET_STATE_ENGAGED,
   getSimWasm,
   QUAT_HOVER_BATCH_STRIDE,
 } from '../sim-wasm/init';
@@ -46,10 +45,6 @@ import {
   type WorldSupportSurface,
 } from '../sim/supportSurface';
 import { SupportSurfaceIndex } from '../sim/supportSurfaceIndex';
-import {
-  readCombatTargetingTurretFsmInto,
-  type CombatTargetingTurretFsmOut,
-} from '../sim/combat/targetingInputStamping';
 import type { ServerTarget } from './ClientPredictionTargets';
 
 const PREDICTION_POS_EPSILON_SQ = 0.01 * 0.01;
@@ -65,24 +60,6 @@ const INITIAL_BATCH_CAPACITY = 64;
 
 type UnitPredictionTarget = ServerTarget;
 type UnitOrientationTarget = NonNullable<UnitPredictionTarget['orientation']>;
-
-// Slab-first read of the per-turret engaged state. On the host the
-// targeting Rust kernel is the authoritative source; on a remote
-// client the slab is unstamped and we fall back to the snapshot-
-// hydrated JS Turret.state.
-const _predictFsm: CombatTargetingTurretFsmOut = {
-  stateCode: CT_TURRET_STATE_ENGAGED,
-  targetId: -1,
-};
-function isTurretEngaged(
-  entity: Entity,
-  weaponIndex: number,
-  jsState: TurretState,
-): boolean {
-  return readCombatTargetingTurretFsmInto(entity, weaponIndex, _predictFsm)
-    ? _predictFsm.stateCode === CT_TURRET_STATE_ENGAGED
-    : jsState === 'engaged';
-}
 
 function advanceTurretYaw(angle: number, angularVelocity: number, dt: number): number {
   const safeAngle = Number.isFinite(angle) ? angle : 0;
@@ -846,37 +823,12 @@ export function applyClientCombatExpensivePrediction(options: {
     const fieldShot = shot;
     const shield = weapon.shield;
     const cur = shield !== null ? shield.range : 0;
-    // Mirror the host-side min-on-time debounce (updateShieldState) so
-    // the predicted range does not dip between snapshots while the
-    // server is still holding the field up. Same signal sources as the
-    // host: slab FSM state/targetId when stamped (host-local view),
-    // snapshot-hydrated state/target on a remote client. Aimed tubes
-    // require a target before the field counts as commanded-on, so
-    // onTimeMs does not accumulate (and expire the hold window) during
-    // the pre-raise aiming phase.
-    const hasFsm = readCombatTargetingTurretFsmInto(entity, i, _predictFsm);
-    let commandedOn = hasFsm
-      ? _predictFsm.stateCode === CT_TURRET_STATE_ENGAGED
-      : weapon.state === 'engaged';
-    const shieldTargetId = hasFsm ? _predictFsm.targetId : (weapon.target ?? -1);
-    if (fieldShot.barrier?.shape === 'aimedCylinder' && shieldTargetId === -1) {
-      commandedOn = false;
-    }
-    // Reconcile the local debounce counter against the freshest server
-    // range: the host zeroes its counter the same tick the field stops
-    // being commanded-on, and a commanded-on field always has range > 0,
-    // so a fully-down wire range proves the host counter is 0 and any
-    // locally accumulated time is prediction drift.
+    // Mirror host-side permanent shield fields. Turret FSM state and
+    // lock-on target ids no longer command shield activation.
     const serverRange = tw !== undefined ? tw.shieldRange : null;
-    let prevOnTimeMs = shield !== null ? shield.onTimeMs : 0;
-    if (serverRange !== null && serverRange <= 0) {
-      prevOnTimeMs = 0;
-    }
-    if (!commandedOn && prevOnTimeMs > 0 && prevOnTimeMs < SHIELD_MIN_ON_TIME_MS) {
-      commandedOn = true;
-    }
-    const onTimeMs = commandedOn ? prevOnTimeMs + dt * 1000 : 0;
-    const targetProgress = commandedOn ? 1 : 0;
+    const prevOnTimeMs = shield !== null ? shield.onTimeMs : 0;
+    const onTimeMs = prevOnTimeMs + dt * 1000;
+    const targetProgress = 1;
     const progressDelta = dt / (fieldShot.transitionTime / 1000);
     let next = cur;
     if (cur < targetProgress) {
@@ -947,19 +899,6 @@ export function clientUnitPredictionIsSettled(
         const targetRange = tw.shieldRange ?? 0;
         if (Math.abs(localRange - targetRange) > PREDICTION_TURRET_EPSILON) return false;
       }
-    }
-
-    const shot = weapon.config.shot;
-    if (
-      turretShieldSpheresEnabled &&
-      shot !== null &&
-      shot.type === 'shield' &&
-      shot.barrier !== undefined
-    ) {
-      const shield = weapon.shield;
-      const range = shield !== null ? shield.range : 0;
-      if (range > PREDICTION_TURRET_EPSILON) return false;
-      if (isTurretEngaged(entity, i, weapon.state)) return false;
     }
   }
 

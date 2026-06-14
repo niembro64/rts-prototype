@@ -8,25 +8,14 @@ import type {
   ShieldReflectionDirection,
   ShieldReflectionPolicy,
 } from '../../../types/shotTypes';
-import { SHIELD_MIN_ON_TIME_MS } from '../../../config';
 import { getTransformCosSin } from '../../math';
-import { CT_TURRET_STATE_ENGAGED } from '../../sim-wasm/init';
 import {
   isShieldSubmunitionTurret,
-  isWeaponAimedForFire,
   updateWeaponWorldKinematics,
 } from './combatUtils';
-import {
-  readCombatTargetingTurretFsmInto,
-  type CombatTargetingTurretFsmOut,
-} from './targetingInputStamping';
 import { getUnitGroundZ } from '../unitGeometry';
 
 const _shieldMount = { x: 0, y: 0, z: 0 };
-const _shieldFsm: CombatTargetingTurretFsmOut = {
-  stateCode: CT_TURRET_STATE_ENGAGED,
-  targetId: -1,
-};
 
 // Compact list of shield weapons with progress > 0, built by
 // updateShieldState() and consumed by projectile collision and the
@@ -104,30 +93,12 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
         weapon.shield = { transition: 0, range: 0, onTimeMs: 0 };
       }
 
-      // Move progress toward target based on engaged state
-      const hasTargetingFsm = readCombatTargetingTurretFsmInto(unit, weaponIndex, _shieldFsm);
-      const engaged = hasTargetingFsm
-        ? _shieldFsm.stateCode === CT_TURRET_STATE_ENGAGED
-        : weapon.state === 'engaged';
-      const targetId = hasTargetingFsm ? _shieldFsm.targetId : (weapon.target ?? -1);
-      const hasAimedCylinderBarrier = fieldShot.barrier?.shape === 'aimedCylinder';
-      const aimedCylinderReady = hasAimedCylinderBarrier
-        ? isWeaponAimedForFire(weapon)
-        : true;
-      const aimedCylinderHasTarget = !hasAimedCylinderBarrier || targetId !== -1;
-      // Debounce: once the field starts raising it stays commanded-on
-      // for at least SHIELD_MIN_ON_TIME_MS before it may begin to
-      // lower — same contract as BEAM_MIN_ON_TIME_MS for beams.
-      let commandedOn = engaged && aimedCylinderReady && aimedCylinderHasTarget;
-      if (
-        !commandedOn &&
-        weapon.shield.onTimeMs > 0 &&
-        weapon.shield.onTimeMs < SHIELD_MIN_ON_TIME_MS
-      ) {
-        commandedOn = true;
-      }
-      weapon.shield.onTimeMs = commandedOn ? weapon.shield.onTimeMs + dtMs : 0;
-      const targetProgress = commandedOn ? 1 : 0;
+      // Shield barriers are persistent equipment, not target-locked
+      // weapons: once the global shield-sphere toggle is enabled, every
+      // shield field raises and stays raised regardless of turret FSM
+      // state or lock-on target id.
+      weapon.shield.onTimeMs += dtMs;
+      const targetProgress = 1;
       if (isShieldSubmunitionTurret(weapon)) {
         weapon.shield.transition = targetProgress;
       } else {
@@ -172,12 +143,6 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
         let axisEndY = centerY;
         let axisEndZ = centerZ;
         if (barrier.shape === 'aimedCylinder') {
-          // While the min-on-time hold keeps the field commanded-on
-          // after target loss, keep the physical tube alive on the
-          // persisting barrel pose so the rendered field still blocks
-          // — beams likewise keep tracing damage through their
-          // min-on window after disengage.
-          if (targetId === -1 && !commandedOn) continue;
           const pitchCos = DMath.cos(weapon.pitch);
           axisEndX = centerX + DMath.cos(weapon.rotation) * pitchCos * config.range;
           axisEndY = centerY + DMath.sin(weapon.rotation) * pitchCos * config.range;
