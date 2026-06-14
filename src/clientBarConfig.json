@@ -33,6 +33,8 @@
   "locomotionMarks": { "demoDefault": true, "realDefault": true },
   "smokeTrails": { "demoDefault": true, "realDefault": true },
   "smokeSoftEdges": { "demoDefault": false, "realDefault": false },
+  "fogClouds": { "demoDefault": true, "realDefault": true },
+  "materialExplosions": { "demoDefault": true, "realDefault": true },
   "beamSnapToTurret": { "demoDefault": true, "realDefault": true },
   "beamEma": {
     "demoDefault": "snap",
@@ -222,6 +224,8 @@
     "locomotionMarks": "locomotion-marks",
     "smokeTrails": "smoke-trails",
     "smokeSoftEdges": "smoke-soft-edges",
+    "fogClouds": "fog-clouds",
+    "materialExplosions": "material-explosions",
     "beamSnapToTurret": "beam-snap-to-turret",
     "beamEma": "beam-ema",
     "resourceBallDensity": "resource-ball-density",

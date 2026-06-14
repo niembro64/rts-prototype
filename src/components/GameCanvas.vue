@@ -741,6 +741,8 @@ const {
   locomotionMarks,
   smokeTrails,
   smokeSoftEdges,
+  fogClouds,
+  materialExplosions,
   beamSnapToTurret,
   beamEma,
   resourceBallDensity,
@@ -801,6 +803,8 @@ const {
   toggleLocomotionMarks,
   toggleSmokeTrails,
   toggleSmokeSoftEdges,
+  toggleFogClouds,
+  toggleMaterialExplosions,
   toggleBeamSnapToTurret,
   changeBeamEma,
   changeResourceBallDensity,
@@ -1432,6 +1436,8 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   locomotionMarks: locomotionMarks.value,
   smokeTrails: smokeTrails.value,
   smokeSoftEdges: smokeSoftEdges.value,
+  fogClouds: fogClouds.value,
+  materialExplosions: materialExplosions.value,
   beamSnapToTurret: beamSnapToTurret.value,
   beamEma: beamEma.value,
   resourceBallDensity: resourceBallDensity.value,
@@ -1486,6 +1492,8 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleLocomotionMarks,
   toggleSmokeTrails,
   toggleSmokeSoftEdges,
+  toggleFogClouds,
+  toggleMaterialExplosions,
   toggleBeamSnapToTurret,
   changeBeamEma,
   changeResourceBallDensity,
@@ -1595,6 +1603,8 @@ watchEffect(() => {
   m.locomotionMarks = locomotionMarks.value;
   m.smokeTrails = smokeTrails.value;
   m.smokeSoftEdges = smokeSoftEdges.value;
+  m.fogClouds = fogClouds.value;
+  m.materialExplosions = materialExplosions.value;
   m.beamSnapToTurret = beamSnapToTurret.value;
   m.beamEma = beamEma.value;
   m.resourceBallDensity = resourceBallDensity.value;

@@ -157,6 +157,8 @@ export type GameCanvasClientControlBarModel = {
   readonly locomotionMarks: boolean;
   readonly smokeTrails: boolean;
   readonly smokeSoftEdges: boolean;
+  readonly fogClouds: boolean;
+  readonly materialExplosions: boolean;
   readonly beamSnapToTurret: boolean;
   readonly beamEma: PositionDriftChannelMode;
   readonly resourceBallDensity: number;
@@ -211,6 +213,8 @@ export type GameCanvasClientControlBarModel = {
   toggleLocomotionMarks(): void;
   toggleSmokeTrails(): void;
   toggleSmokeSoftEdges(): void;
+  toggleFogClouds(): void;
+  toggleMaterialExplosions(): void;
   toggleBeamSnapToTurret(): void;
   changeBeamEma(mode: PositionDriftChannelMode): void;
   changeResourceBallDensity(value: number): void;

@@ -129,6 +129,14 @@ export type ClientBarConfig = {
    *  Purely a SmokeTrail3D shader swap; no effect when `smokeTrails` is
    *  off. */
   readonly smokeSoftEdges: BooleanSetting;
+  /** Soft fog-of-war cloud puffs. This is presentation only; the BATTLE
+   *  fog-of-war control still owns authoritative visibility, snapshot
+   *  filtering, and what enemy entity data reaches the client. */
+  readonly fogClouds: BooleanSetting;
+  /** Client-only death material breakup: death fire puff plus part-based
+   *  Debris3D chunks. Does not affect authoritative death, damage,
+   *  knockback, or the dying shell materialization fade. */
+  readonly materialExplosions: BooleanSetting;
   readonly beamSnapToTurret: BooleanSetting;
   readonly beamEma: LabeledOptionsConfig<PositionDriftChannelMode>;
   readonly triangleDebug: BooleanSetting;

@@ -18,6 +18,8 @@ import {
   getClientUnitGroundNormalEmaMode,
   getDragPanEnabled,
   getElevationMap,
+  getFogClouds,
+  getMaterialExplosions,
   getMovementPosEmaMode,
   getMovementVelEmaMode,
   getPathingMap,
@@ -56,6 +58,8 @@ import {
   setClientUnitGroundNormalEmaMode,
   setDragPanEnabled,
   setElevationMap,
+  setFogClouds,
+  setMaterialExplosions,
   setMovementPosEmaMode,
   setMovementVelEmaMode,
   setPathingMap,
@@ -133,6 +137,8 @@ export function useGameCanvasClientSettings({
   const locomotionMarks = ref<boolean>(getLocomotionMarks());
   const smokeTrails = ref<boolean>(getSmokeTrails());
   const smokeSoftEdges = ref<boolean>(getSmokeSoftEdges());
+  const fogClouds = ref<boolean>(getFogClouds());
+  const materialExplosions = ref<boolean>(getMaterialExplosions());
   const beamSnapToTurret = ref<boolean>(getBeamSnapToTurret());
   const beamEma = ref<PositionDriftChannelMode>(getBeamEmaMode());
   const resourceBallDensity = ref<number>(getResourceBallDensity());
@@ -219,6 +225,8 @@ export function useGameCanvasClientSettings({
     locomotionMarks.value = getLocomotionMarks();
     smokeTrails.value = getSmokeTrails();
     smokeSoftEdges.value = getSmokeSoftEdges();
+    fogClouds.value = getFogClouds();
+    materialExplosions.value = getMaterialExplosions();
     beamSnapToTurret.value = getBeamSnapToTurret();
     beamEma.value = getBeamEmaMode();
     resourceBallDensity.value = getResourceBallDensity();
@@ -383,6 +391,18 @@ export function useGameCanvasClientSettings({
     const newValue = !smokeSoftEdges.value;
     setSmokeSoftEdges(newValue);
     smokeSoftEdges.value = newValue;
+  }
+
+  function toggleFogClouds(): void {
+    const newValue = !fogClouds.value;
+    setFogClouds(newValue);
+    fogClouds.value = newValue;
+  }
+
+  function toggleMaterialExplosions(): void {
+    const newValue = !materialExplosions.value;
+    setMaterialExplosions(newValue);
+    materialExplosions.value = newValue;
   }
 
   function toggleBeamSnapToTurret(): void {
@@ -564,6 +584,10 @@ export function useGameCanvasClientSettings({
     smokeTrails.value = cd.smokeTrails.default;
     setSmokeSoftEdges(cd.smokeSoftEdges.default);
     smokeSoftEdges.value = cd.smokeSoftEdges.default;
+    setFogClouds(cd.fogClouds.default);
+    fogClouds.value = cd.fogClouds.default;
+    setMaterialExplosions(cd.materialExplosions.default);
+    materialExplosions.value = cd.materialExplosions.default;
     setBeamSnapToTurret(cd.beamSnapToTurret.default);
     beamSnapToTurret.value = cd.beamSnapToTurret.default;
     setBeamEmaMode(cd.beamEma.default);
@@ -658,6 +682,8 @@ export function useGameCanvasClientSettings({
     locomotionMarks,
     smokeTrails,
     smokeSoftEdges,
+    fogClouds,
+    materialExplosions,
     beamSnapToTurret,
     beamEma,
     resourceBallDensity,
@@ -718,6 +744,8 @@ export function useGameCanvasClientSettings({
     toggleLocomotionMarks,
     toggleSmokeTrails,
     toggleSmokeSoftEdges,
+    toggleFogClouds,
+    toggleMaterialExplosions,
     toggleBeamSnapToTurret,
     changeBeamEma,
     changeResourceBallDensity,

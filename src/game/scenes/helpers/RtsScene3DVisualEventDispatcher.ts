@@ -1,4 +1,4 @@
-import { getGraphicsConfig } from '@/clientBarConfig';
+import { getGraphicsConfig, getMaterialExplosions } from '@/clientBarConfig';
 import type { ClientViewState } from '../../network/ClientViewState';
 import type { NetworkServerSnapshotSimEvent } from '../../network/NetworkTypes';
 import type { Debris3D } from '../../render3d/Debris3D';
@@ -118,6 +118,7 @@ export function dispatchSimEvent3DVisual(
     if (event.entityId !== null) {
       context.entityRenderer.markEntityKilled(event.entityId);
     }
+    if (!getMaterialExplosions()) return;
     const ent = event.entityId !== null
       ? context.clientViewState.getEntity(event.entityId)
       : undefined;

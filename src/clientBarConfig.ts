@@ -60,6 +60,8 @@ type ClientDefaults = {
   readonly locomotionMarks: boolean;
   readonly smokeTrails: boolean;
   readonly smokeSoftEdges: boolean;
+  readonly fogClouds: boolean;
+  readonly materialExplosions: boolean;
   readonly beamSnapToTurret: boolean;
   readonly beamEma: PositionDriftChannelMode;
   readonly triangleDebug: boolean;
@@ -130,6 +132,8 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     locomotionMarks: pickDefault(clientBarConfig.locomotionMarks, mode),
     smokeTrails: pickDefault(clientBarConfig.smokeTrails, mode),
     smokeSoftEdges: pickDefault(clientBarConfig.smokeSoftEdges, mode),
+    fogClouds: pickDefault(clientBarConfig.fogClouds, mode),
+    materialExplosions: pickDefault(clientBarConfig.materialExplosions, mode),
     beamSnapToTurret: pickDefault(clientBarConfig.beamSnapToTurret, mode),
     beamEma: pickDefault(clientBarConfig.beamEma, mode) as PositionDriftChannelMode,
     triangleDebug: pickDefault(clientBarConfig.triangleDebug, mode),
@@ -205,6 +209,8 @@ export const CLIENT_CONFIG = {
   locomotionMarks: { default: DEMO_CLIENT_DEFAULTS.locomotionMarks },
   smokeTrails: { default: DEMO_CLIENT_DEFAULTS.smokeTrails },
   smokeSoftEdges: { default: DEMO_CLIENT_DEFAULTS.smokeSoftEdges },
+  fogClouds: { default: DEMO_CLIENT_DEFAULTS.fogClouds },
+  materialExplosions: { default: DEMO_CLIENT_DEFAULTS.materialExplosions },
   beamSnapToTurret: { default: DEMO_CLIENT_DEFAULTS.beamSnapToTurret },
   beamEma: {
     default: DEMO_CLIENT_DEFAULTS.beamEma,
@@ -307,6 +313,8 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     locomotionMarks: { default: defaults.locomotionMarks },
     smokeTrails: { default: defaults.smokeTrails },
     smokeSoftEdges: { default: defaults.smokeSoftEdges },
+    fogClouds: { default: defaults.fogClouds },
+    materialExplosions: { default: defaults.materialExplosions },
     beamSnapToTurret: { default: defaults.beamSnapToTurret },
     beamEma: { ...CLIENT_CONFIG.beamEma, default: defaults.beamEma },
     triangleDebug: { default: defaults.triangleDebug },
@@ -362,6 +370,8 @@ type ClientStorageKeyName =
   | 'locomotionMarks'
   | 'smokeTrails'
   | 'smokeSoftEdges'
+  | 'fogClouds'
+  | 'materialExplosions'
   | 'beamSnapToTurret'
   | 'beamEma'
   | 'resourceBallDensity'
@@ -404,6 +414,8 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'locomotionMarks',
   'smokeTrails',
   'smokeSoftEdges',
+  'fogClouds',
+  'materialExplosions',
   'beamSnapToTurret',
   'beamEma',
   'resourceBallDensity',
@@ -499,6 +511,8 @@ let currentBurnMarks: boolean = _cd.burnMarks.default;
 let currentLocomotionMarks: boolean = _cd.locomotionMarks.default;
 let currentSmokeTrails: boolean = _cd.smokeTrails.default;
 let currentSmokeSoftEdges: boolean = _cd.smokeSoftEdges.default;
+let currentFogClouds: boolean = _cd.fogClouds.default;
+let currentMaterialExplosions: boolean = _cd.materialExplosions.default;
 let currentBeamSnapToTurret: boolean = _cd.beamSnapToTurret.default;
 let currentBeamEma: PositionDriftChannelMode = _cd.beamEma.default;
 let currentResourceBallDensity: number = DEFAULT_BALLS_PER_RESOURCE_PER_SECOND;
@@ -595,6 +609,8 @@ function applyClientDefaults(mode: ClientMode): void {
   currentLocomotionMarks = cd.locomotionMarks.default;
   currentSmokeTrails = cd.smokeTrails.default;
   currentSmokeSoftEdges = cd.smokeSoftEdges.default;
+  currentFogClouds = cd.fogClouds.default;
+  currentMaterialExplosions = cd.materialExplosions.default;
   currentBeamSnapToTurret = cd.beamSnapToTurret.default;
   currentBeamEma = cd.beamEma.default;
   applyResourceBallDensity(DEFAULT_BALLS_PER_RESOURCE_PER_SECOND);
@@ -679,6 +695,14 @@ function loadFromStorage(mode: ClientMode): void {
   const storedSmokeSoftEdges = readPersisted(keys.smokeSoftEdges);
   if (storedSmokeSoftEdges !== null) {
     currentSmokeSoftEdges = storedSmokeSoftEdges === 'true';
+  }
+  const storedFogClouds = readPersisted(keys.fogClouds);
+  if (storedFogClouds !== null) {
+    currentFogClouds = storedFogClouds === 'true';
+  }
+  const storedMaterialExplosions = readPersisted(keys.materialExplosions);
+  if (storedMaterialExplosions !== null) {
+    currentMaterialExplosions = storedMaterialExplosions === 'true';
   }
   const storedBeamSnapToTurret = readPersisted(keys.beamSnapToTurret);
   if (storedBeamSnapToTurret !== null) {
@@ -1046,6 +1070,30 @@ export function getSmokeSoftEdges(): boolean {
 export function setSmokeSoftEdges(enabled: boolean): void {
   currentSmokeSoftEdges = enabled;
   persist(activeStorageKeys().smokeSoftEdges, String(enabled));
+}
+
+/** Fog-cloud toggle: soft fog-of-war cloud puffs only. This does not
+ *  change battle-level fog truth, snapshot filtering, or entity
+ *  visibility. */
+export function getFogClouds(): boolean {
+  return currentFogClouds;
+}
+
+export function setFogClouds(enabled: boolean): void {
+  currentFogClouds = enabled;
+  persist(activeStorageKeys().fogClouds, String(enabled));
+}
+
+/** Material-explosion toggle: client-side death fire puff and Debris3D
+ *  part breakup. Gameplay death, blast damage, knockback, and the
+ *  dying shell fade remain authoritative / unchanged. */
+export function getMaterialExplosions(): boolean {
+  return currentMaterialExplosions;
+}
+
+export function setMaterialExplosions(enabled: boolean): void {
+  currentMaterialExplosions = enabled;
+  persist(activeStorageKeys().materialExplosions, String(enabled));
 }
 
 export function getBeamSnapToTurret(): boolean {

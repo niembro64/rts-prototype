@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import {
   getBuildGridDebug,
+  getFogClouds,
+  getMaterialExplosions,
   getRadarBoundary,
   getSightBoundary,
   getEntityHudToggle,
@@ -378,9 +380,16 @@ export class RtsScene3DRenderPhase {
     );
     this.fireExplosionAccumMs += effectDtMs;
     this.debrisAccumMs += effectDtMs;
+    const materialExplosionsEnabled = getMaterialExplosions();
+    if (!materialExplosionsEnabled) {
+      debrisRenderer.clear();
+      this.debrisAccumMs = 0;
+    }
     if (updateEffectsThisFrame) {
       explosionRenderer.update(this.fireExplosionAccumMs);
-      debrisRenderer.update(this.debrisAccumMs);
+      if (materialExplosionsEnabled) {
+        debrisRenderer.update(this.debrisAccumMs);
+      }
       this.fireExplosionAccumMs = 0;
       this.debrisAccumMs = 0;
     }
@@ -448,7 +457,7 @@ export class RtsScene3DRenderPhase {
       fogOfWarFogRenderer.update(
         this.clientViewState,
         this.getLocalPlayerId(),
-        fogOfWarEnabled,
+        fogOfWarEnabled && getFogClouds(),
         this.smokeTrailAccumMs,
       );
       this.smokeTrailAccumMs = 0;

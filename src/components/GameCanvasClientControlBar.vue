@@ -717,6 +717,20 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
+        <BarLabel>VIS FX:</BarLabel>
+        <BarButton
+          :active="model.fogClouds"
+          title="Generate soft fog-of-war cloud puffs. Battle-level FOG OF WAR still controls visibility and snapshot filtering."
+          @click="model.toggleFogClouds"
+        >CLOUDS</BarButton>
+        <BarButton
+          :active="model.materialExplosions"
+          title="Generate client-only death material explosions: death fire puff plus part-based debris chunks"
+          @click="model.toggleMaterialExplosions"
+        >MATEXP</BarButton>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
         <BarLabel>BEAMS:</BarLabel>
         <BarButton
           :active="model.beamSnapToTurret"

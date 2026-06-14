@@ -675,7 +675,7 @@
   "turretShieldSphere": {
     "turretBlueprintId": "turretShieldSphere",
     "name": "Shield Sphere",
-    "range": 540,
+    "range": 700,
     "rangeVolume": "turret-range-sphere",
     "cooldown": null,
     "launchForce": 0,

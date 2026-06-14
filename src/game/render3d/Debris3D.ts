@@ -297,6 +297,14 @@ class InstancedDebrisPool {
     }
   }
 
+  clear(): void {
+    this.freeSlots.length = 0;
+    this.nextSlot = 0;
+    this.dirtyMinSlot = Number.POSITIVE_INFINITY;
+    this.dirtyMaxSlot = -1;
+    this.mesh.count = 0;
+  }
+
   destroy(): void {
     disposeMesh(this.mesh);
   }
@@ -404,6 +412,15 @@ export class Debris3D {
 
   beginFrame(): void {
     this.piecesEmittedThisFrame = 0;
+  }
+
+  clear(): void {
+    this.pieces.length = 0;
+    this.piecesEmittedThisFrame = 0;
+    this.poolFlushPending = false;
+    this.boxPool.clear();
+    this.cylPool.clear();
+    this.spherePool.clear();
   }
 
   constructor(
