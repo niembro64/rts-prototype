@@ -451,6 +451,7 @@ export class ShieldRenderer3D {
   private _sphereCursor = 0;
   private _finiteCylinderCursor = 0;
   private _implicitFieldCursor = 0;
+  private drawStateClear = true;
   /** Scratch matrices for the bubble instance write. Same pattern as
    *  the chassis pools — compose `T(worldPos) · S(scale)` per slot,
    *  no per-frame allocations. */
@@ -629,28 +630,39 @@ export class ShieldRenderer3D {
    *  ranges, then tear down per-field state for fields that didn't get
    *  visited (unit despawned, shield disabled, off-scope). */
   endFrame(): void {
-    this.sphereInstancedMesh.count = this._sphereCursor;
-    if (this._sphereCursor > 0) {
+    const sphereCursor = this._sphereCursor;
+    const finiteCylinderCursor = this._finiteCylinderCursor;
+    const implicitFieldCursor = this._implicitFieldCursor;
+    const nextDrawStateClear =
+      sphereCursor === 0 &&
+      finiteCylinderCursor === 0 &&
+      implicitFieldCursor === 0 &&
+      this.fields.size === 0;
+
+    if (nextDrawStateClear && this.drawStateClear) return;
+
+    this.sphereInstancedMesh.count = sphereCursor;
+    if (sphereCursor > 0) {
       this.sphereInstancedMesh.instanceMatrix.clearUpdateRanges();
-      this.sphereInstancedMesh.instanceMatrix.addUpdateRange(0, this._sphereCursor * 16);
+      this.sphereInstancedMesh.instanceMatrix.addUpdateRange(0, sphereCursor * 16);
       this.sphereInstancedMesh.instanceMatrix.needsUpdate = true;
       this.sphereAlphaAttr.clearUpdateRanges();
-      this.sphereAlphaAttr.addUpdateRange(0, this._sphereCursor);
+      this.sphereAlphaAttr.addUpdateRange(0, sphereCursor);
       this.sphereAlphaAttr.needsUpdate = true;
       this.sphereColorAttr.clearUpdateRanges();
-      this.sphereColorAttr.addUpdateRange(0, this._sphereCursor * 3);
+      this.sphereColorAttr.addUpdateRange(0, sphereCursor * 3);
       this.sphereColorAttr.needsUpdate = true;
     }
-    this.finiteCylinderInstancedMesh.count = this._finiteCylinderCursor;
-    if (this._finiteCylinderCursor > 0) {
+    this.finiteCylinderInstancedMesh.count = finiteCylinderCursor;
+    if (finiteCylinderCursor > 0) {
       this.finiteCylinderInstancedMesh.instanceMatrix.clearUpdateRanges();
-      this.finiteCylinderInstancedMesh.instanceMatrix.addUpdateRange(0, this._finiteCylinderCursor * 16);
+      this.finiteCylinderInstancedMesh.instanceMatrix.addUpdateRange(0, finiteCylinderCursor * 16);
       this.finiteCylinderInstancedMesh.instanceMatrix.needsUpdate = true;
       this.finiteCylinderAlphaAttr.clearUpdateRanges();
-      this.finiteCylinderAlphaAttr.addUpdateRange(0, this._finiteCylinderCursor);
+      this.finiteCylinderAlphaAttr.addUpdateRange(0, finiteCylinderCursor);
       this.finiteCylinderAlphaAttr.needsUpdate = true;
       this.finiteCylinderColorAttr.clearUpdateRanges();
-      this.finiteCylinderColorAttr.addUpdateRange(0, this._finiteCylinderCursor * 3);
+      this.finiteCylinderColorAttr.addUpdateRange(0, finiteCylinderCursor * 3);
       this.finiteCylinderColorAttr.needsUpdate = true;
     }
     this.updateImplicitFieldUniforms();
@@ -659,6 +671,25 @@ export class ShieldRenderer3D {
       if (seen.has(key)) continue;
       this.fields.delete(key);
     }
+    this.drawStateClear =
+      sphereCursor === 0 &&
+      finiteCylinderCursor === 0 &&
+      implicitFieldCursor === 0 &&
+      this.fields.size === 0;
+  }
+
+  clear(): void {
+    this._seenFieldKeys.clear();
+    this._sphereCursor = 0;
+    this._finiteCylinderCursor = 0;
+    this._implicitFieldCursor = 0;
+    if (this.drawStateClear) return;
+    this.sphereInstancedMesh.count = 0;
+    this.finiteCylinderInstancedMesh.count = 0;
+    this.implicitFieldMesh.visible = false;
+    this.implicitFieldMat.uniforms.uFieldCount.value = 0;
+    this.fields.clear();
+    this.drawStateClear = true;
   }
 
   /** Legacy all-in-one entry — calls beginFrame / processPacket /

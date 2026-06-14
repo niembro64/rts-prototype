@@ -137,6 +137,7 @@ export class ShieldImpactRenderer3D {
   private continuousRingCursor = 0;
   private continuousCoreCursor = 0;
   private visible = true;
+  private drawStateClear = true;
 
   private static readonly Z_AXIS = new THREE.Vector3(0, 0, 1);
   private static readonly CONTINUOUS_BEAM_HIT_CAP = 256;
@@ -186,11 +187,13 @@ export class ShieldImpactRenderer3D {
   }
 
   private clearDrawState(): void {
+    if (this.drawStateClear) return;
     this.impacts.length = 0;
     this.continuousRingCursor = 0;
     this.continuousCoreCursor = 0;
     this.corePool.setCount(0);
     this.ringPool.setCount(0);
+    this.drawStateClear = true;
   }
 
   spawn(
@@ -201,6 +204,7 @@ export class ShieldImpactRenderer3D {
     playerId: PlayerId | undefined,
   ): void {
     if (!this.visible) return;
+    this.drawStateClear = false;
     const cfg = SHIELD_IMPACT_VISUAL;
     if (this.impacts.length >= cfg.maxImpacts) {
       this.impacts[0] = this.impacts[this.impacts.length - 1];
@@ -291,8 +295,15 @@ export class ShieldImpactRenderer3D {
     ringCursor = this.continuousRingCursor;
     coreCursor = this.continuousCoreCursor;
 
-    this.corePool.setCount(coreCursor);
-    this.ringPool.setCount(ringCursor);
+    const nextDrawStateClear =
+      coreCursor === 0 &&
+      ringCursor === 0 &&
+      this.impacts.length === 0;
+    if (!nextDrawStateClear || !this.drawStateClear) {
+      this.corePool.setCount(coreCursor);
+      this.ringPool.setCount(ringCursor);
+    }
+    this.drawStateClear = nextDrawStateClear;
   }
 
   private writeContinuousBeamHits(

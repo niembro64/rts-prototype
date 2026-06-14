@@ -752,21 +752,24 @@ export class Render3DEntities {
       );
 
       if (m.mirrors) {
-        const shieldPanelTurretIndex = unitRows.passiveTurretIndex[row];
-        const shieldPanelTurret = shieldPanelTurretIndex >= 0 ? turrets[shieldPanelTurretIndex] : undefined;
-        const shieldPanelMaterialized = shieldPanelTurret !== undefined && bodyMaterialized;
-        if (shieldPanelMaterialized) {
-          this.shieldPanelPose.update(
-            e,
-            m.mirrors,
-            shieldPanelTurret,
-            this._smoothLiftedPos,
-            this._smoothParentQuat,
-            chassisTilted ? _invTiltQuat : undefined,
-            this.turretShieldPanelsEnabled,
-          );
-        } else {
+        if (!this.turretShieldPanelsEnabled) {
           this.deactivateShieldPanelMesh(m.mirrors);
+        } else {
+          const shieldPanelTurretIndex = unitRows.passiveTurretIndex[row];
+          const shieldPanelTurret = shieldPanelTurretIndex >= 0 ? turrets[shieldPanelTurretIndex] : undefined;
+          const shieldPanelMaterialized = shieldPanelTurret !== undefined && bodyMaterialized;
+          if (shieldPanelMaterialized) {
+            this.shieldPanelPose.update(
+              e,
+              m.mirrors,
+              shieldPanelTurret,
+              this._smoothLiftedPos,
+              this._smoothParentQuat,
+              chassisTilted ? _invTiltQuat : undefined,
+            );
+          } else {
+            this.deactivateShieldPanelMesh(m.mirrors);
+          }
         }
       }
 

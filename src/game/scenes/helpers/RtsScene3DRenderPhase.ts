@@ -394,7 +394,9 @@ export class RtsScene3DRenderPhase {
       this.debrisAccumMs = 0;
     }
     shieldImpactRenderer.setVisible(forceFieldsVisible);
-    shieldImpactRenderer.update(effectDtMs, lineProjectiles);
+    if (forceFieldsVisible) {
+      shieldImpactRenderer.update(effectDtMs, lineProjectiles);
+    }
     waterSplashRenderer.update(effectDtMs);
     this.burnMarkAccumMs += effectDtMs;
     if (updateEffectsThisFrame) {
@@ -479,11 +481,13 @@ export class RtsScene3DRenderPhase {
       farRefDistance * ENTITY_HUD_FADE_END_DISTANCE_FRAC,
     );
 
-    shieldRenderer.beginFrame(graphicsConfig);
     if (turretShieldSpheresEnabled && forceFieldsVisible) {
+      shieldRenderer.beginFrame(graphicsConfig);
       shieldRenderer.processPacket(entityLists.shields);
+      shieldRenderer.endFrame();
+    } else {
+      shieldRenderer.clear();
     }
-    shieldRenderer.endFrame();
 
     if (updateEntityHudThisFrame) {
       this.drawEntityHud(healthBar3D, nameLabel3D, hudFrustum, entityLists);

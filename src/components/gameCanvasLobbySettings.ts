@@ -98,10 +98,15 @@ export function useGameCanvasLobbySettings({
   stopBackgroundBattle,
   startBackgroundBattle,
 }: GameCanvasLobbySettingsOptions): GameCanvasLobbySettings {
+  let previewRestartQueued = false;
+
   function restartPreviewIfNeeded(): void {
     if (gameStarted.value) return;
+    if (previewRestartQueued) return;
+    previewRestartQueued = true;
     stopBackgroundBattle();
     nextTick(() => {
+      previewRestartQueued = false;
       startBackgroundBattle();
     });
   }
@@ -140,8 +145,10 @@ export function useGameCanvasLobbySettings({
   function applyCenterMagnitude(value: number, broadcast = true): void {
     const mode = currentBattleMode.value;
     const normalized = normalizeCenterMagnitude(value);
+    const changed = centerMagnitude.value !== normalized;
     centerMagnitude.value = normalized;
     saveCenterMagnitude(normalized, mode);
+    if (!changed) return;
     applyCurrentTerrainRuntimeConfig();
     restartPreviewIfNeeded();
     if (broadcast) broadcastLobbySettingsIfHost();
@@ -150,8 +157,10 @@ export function useGameCanvasLobbySettings({
   function applyDividersMagnitude(value: number, broadcast = true): void {
     const mode = currentBattleMode.value;
     const normalized = normalizeDividersMagnitude(value);
+    const changed = dividersMagnitude.value !== normalized;
     dividersMagnitude.value = normalized;
     saveDividersMagnitude(normalized, mode);
+    if (!changed) return;
     applyCurrentTerrainRuntimeConfig();
     restartPreviewIfNeeded();
     if (broadcast) broadcastLobbySettingsIfHost();
@@ -159,8 +168,10 @@ export function useGameCanvasLobbySettings({
 
   function applyTerrainMapShape(shape: TerrainMapShape, broadcast = true): void {
     const mode = currentBattleMode.value;
+    const changed = terrainMapShape.value !== shape;
     terrainMapShape.value = shape;
     saveTerrainMapShape(shape, mode);
+    if (!changed) return;
     restartPreviewIfNeeded();
     if (broadcast) broadcastLobbySettingsIfHost();
   }
@@ -168,8 +179,10 @@ export function useGameCanvasLobbySettings({
   function applyTerrainDTerrain(value: number, broadcast = true): void {
     const mode = currentBattleMode.value;
     const normalized = normalizeTerrainDTerrain(value);
+    const changed = terrainDTerrain.value !== normalized;
     terrainDTerrain.value = normalized;
     saveTerrainDTerrain(normalized, mode);
+    if (!changed) return;
     applyCurrentTerrainRuntimeConfig();
     restartPreviewIfNeeded();
     if (broadcast) broadcastLobbySettingsIfHost();
@@ -178,8 +191,10 @@ export function useGameCanvasLobbySettings({
   function applyMetalDepositStep(value: number, broadcast = true): void {
     const mode = currentBattleMode.value;
     const normalized = normalizeMetalDepositStep(value);
+    const changed = metalDepositStep.value !== normalized;
     metalDepositStep.value = normalized;
     saveMetalDepositStep(normalized, mode);
+    if (!changed) return;
     applyCurrentTerrainRuntimeConfig();
     restartPreviewIfNeeded();
     if (broadcast) broadcastLobbySettingsIfHost();
@@ -188,8 +203,10 @@ export function useGameCanvasLobbySettings({
   function applyTerrainDetail(value: number, broadcast = true): void {
     const mode = currentBattleMode.value;
     const normalized = normalizeTerrainDetail(value);
+    const changed = terrainDetail.value !== normalized;
     terrainDetail.value = normalized;
     saveTerrainDetail(normalized, mode);
+    if (!changed) return;
     applyCurrentTerrainRuntimeConfig();
     restartPreviewIfNeeded();
     if (broadcast) broadcastLobbySettingsIfHost();
@@ -200,9 +217,17 @@ export function useGameCanvasLobbySettings({
     broadcast = true,
   ): void {
     const mode = currentBattleMode.value;
+    const changed = !sameMapLandDimensions(
+      {
+        widthLandCells: mapWidthLandCells.value,
+        lengthLandCells: mapLengthLandCells.value,
+      },
+      dimensions,
+    );
     mapWidthLandCells.value = dimensions.widthLandCells;
     mapLengthLandCells.value = dimensions.lengthLandCells;
     saveMapLandDimensions(dimensions, mode);
+    if (!changed) return;
     restartPreviewIfNeeded();
     if (broadcast) broadcastLobbySettingsIfHost();
   }
@@ -268,8 +293,10 @@ export function useGameCanvasLobbySettings({
     ) {
       saveStoredCap('real', settings.maxTotalUnits);
     }
-    applyCurrentTerrainRuntimeConfig();
-    setTerrainMapShape(settings.terrainMapShape);
+    if (changed) {
+      applyCurrentTerrainRuntimeConfig();
+      setTerrainMapShape(settings.terrainMapShape);
+    }
 
     const restartPreview = options.restartPreview ?? true;
     if (

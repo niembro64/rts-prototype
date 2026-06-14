@@ -133,8 +133,12 @@ export function useGameCanvasBattleSettings({
 
   function toggleAllDemoUnits(): void {
     const enableAll = !allDemoUnitsActive.value;
+    const allowed = currentAllowedUnitsSet.value;
+    const canSkipUnchanged = serverMetaFromSnapshot.value?.units.allowed !== undefined;
+    const connection = getActiveConnection();
     for (const unitBlueprintId of demoUnitBlueprintIds) {
-      getActiveConnection()?.sendCommand({
+      if (canSkipUnchanged && allowed.has(unitBlueprintId) === enableAll) continue;
+      connection?.sendCommand({
         type: 'setBackgroundUnitBlueprintEnabled',
         tick: 0,
         unitBlueprintId,
@@ -144,25 +148,38 @@ export function useGameCanvasBattleSettings({
     saveDemoUnits(enableAll ? [...demoUnitBlueprintIds] : []);
   }
 
-  function changeMaxTotalUnits(value: number): void {
-    getActiveConnection()?.sendCommand({
-      type: 'setMaxTotalUnits',
-      tick: 0,
-      maxTotalUnits: value,
-    });
-    saveStoredCap(currentBattleMode.value, value);
-    if (currentBattleMode.value === 'real') broadcastLobbySettingsIfHost();
+  function changeMaxTotalUnits(value: number, broadcast = true): void {
+    const mode = currentBattleMode.value;
+    const authoritative = serverMetaFromSnapshot.value?.units.max;
+    const changed = authoritative === undefined || authoritative !== value;
+    if (changed) {
+      getActiveConnection()?.sendCommand({
+        type: 'setMaxTotalUnits',
+        tick: 0,
+        maxTotalUnits: value,
+      });
+    }
+    saveStoredCap(mode, value);
+    if (changed && broadcast && mode === 'real') broadcastLobbySettingsIfHost();
   }
 
   function setShieldsObstructSight(enabled: boolean): void {
-    getActiveConnection()?.sendCommand({ type: 'setShieldsObstructSight', tick: 0, enabled });
+    const authoritative = serverMetaFromSnapshot.value?.shieldsObstructSight;
+    if (authoritative === undefined || authoritative !== enabled) {
+      getActiveConnection()?.sendCommand({ type: 'setShieldsObstructSight', tick: 0, enabled });
+    }
     saveShieldsObstructSight(enabled, currentBattleMode.value);
   }
 
-  function setForceFieldsVisible(enabled: boolean): void {
-    getActiveConnection()?.sendCommand({ type: 'setForceFieldsVisible', tick: 0, enabled });
-    saveForceFieldsVisible(enabled, currentBattleMode.value);
-    if (currentBattleMode.value === 'real') broadcastLobbySettingsIfHost();
+  function setForceFieldsVisible(enabled: boolean, broadcast = true): void {
+    const mode = currentBattleMode.value;
+    const authoritative = serverMetaFromSnapshot.value?.forceFieldsVisible;
+    const changed = authoritative === undefined || authoritative !== enabled;
+    if (changed) {
+      getActiveConnection()?.sendCommand({ type: 'setForceFieldsVisible', tick: 0, enabled });
+    }
+    saveForceFieldsVisible(enabled, mode);
+    if (changed && broadcast && mode === 'real') broadcastLobbySettingsIfHost();
   }
 
   function setFogOfWarEnabled(enabled: boolean): void {
@@ -171,33 +188,46 @@ export function useGameCanvasBattleSettings({
     // so any caller in real mode (preset selection in the lobby, etc.)
     // is silently dropped here rather than mutating shared state.
     if (currentBattleMode.value !== 'demo') return;
-    getActiveConnection()?.sendCommand({ type: 'setFogOfWarEnabled', tick: 0, enabled });
+    const authoritative = serverMetaFromSnapshot.value?.fogOfWarEnabled;
+    if (authoritative === undefined || authoritative !== enabled) {
+      getActiveConnection()?.sendCommand({ type: 'setFogOfWarEnabled', tick: 0, enabled });
+    }
     saveFogOfWarEnabled(enabled, currentBattleMode.value);
   }
 
-  function setConverterTax(tax: number): void {
+  function setConverterTax(tax: number, broadcast = true): void {
     const normalized = normalizeConverterTax(tax);
-    getActiveConnection()?.sendCommand({ type: 'setConverterTax', tick: 0, tax: normalized });
-    saveConverterTax(normalized, currentBattleMode.value);
-    if (currentBattleMode.value === 'real') broadcastLobbySettingsIfHost();
+    const mode = currentBattleMode.value;
+    const authoritative = serverMetaFromSnapshot.value?.converterTax;
+    const changed = authoritative === undefined || Math.abs(authoritative - normalized) >= 1e-6;
+    if (changed) {
+      getActiveConnection()?.sendCommand({ type: 'setConverterTax', tick: 0, tax: normalized });
+    }
+    saveConverterTax(normalized, mode);
+    if (changed && broadcast && mode === 'real') broadcastLobbySettingsIfHost();
   }
 
   function applyPreset(preset: BattlePreset): void {
     const presetSet = new Set(preset.units);
+    const allowed = currentAllowedUnitsSet.value;
+    const canSkipUnchanged = serverMetaFromSnapshot.value?.units.allowed !== undefined;
+    const connection = getActiveConnection();
     for (const unitBlueprintId of demoUnitBlueprintIds) {
-      getActiveConnection()?.sendCommand({
+      const enabled = presetSet.has(unitBlueprintId);
+      if (canSkipUnchanged && allowed.has(unitBlueprintId) === enabled) continue;
+      connection?.sendCommand({
         type: 'setBackgroundUnitBlueprintEnabled',
         tick: 0,
         unitBlueprintId,
-        enabled: presetSet.has(unitBlueprintId),
+        enabled,
       });
     }
     saveDemoUnits([...preset.units]);
-    changeMaxTotalUnits(preset.cap);
-    setForceFieldsVisible(preset.forceFieldsVisible);
+    changeMaxTotalUnits(preset.cap, false);
+    setForceFieldsVisible(preset.forceFieldsVisible, false);
     setShieldsObstructSight(preset.shieldsObstructSight);
     setFogOfWarEnabled(preset.fogOfWarEnabled);
-    setConverterTax(preset.converterTax);
+    setConverterTax(preset.converterTax, false);
     applyCenterMagnitude(preset.centerMagnitude, false);
     applyDividersMagnitude(preset.dividersMagnitude, false);
     applyTerrainMapShape(preset.terrainMapShape, false);
