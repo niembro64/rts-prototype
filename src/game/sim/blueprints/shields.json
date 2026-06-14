@@ -97,10 +97,10 @@
     "transitionTime": 500,
     "reflection": {
       "entities": {
-        "plasma": "reflect-outside",
-        "rocket": "reflect-outside",
-        "beam": "reflect-outside",
-        "laser": "reflect-outside"
+        "plasma": "reflect-both",
+        "rocket": "reflect-both",
+        "beam": "reflect-both",
+        "laser": "reflect-both"
       }
     },
     "barrier": null,
