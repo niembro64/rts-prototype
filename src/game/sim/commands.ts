@@ -53,6 +53,7 @@ export type {
   SetMaxTotalUnitsCommand,
   SetTurretShieldPanelsEnabledCommand,
   SetTurretShieldSpheresEnabledCommand,
+  SetForceFieldsVisibleCommand,
   SetShieldsObstructSightCommand,
   SetShieldReflectionModeCommand,
   SetFogOfWarEnabledCommand,

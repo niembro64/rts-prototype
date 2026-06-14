@@ -14,7 +14,8 @@
       "terrainBlendRadius": 600,
       "depositCluster": {
         "count": 1,
-        "radius": 0
+        "radius": 0,
+        "angleOffset": 0
       }
     },
     {
@@ -27,7 +28,8 @@
       "terrainBlendRadius": 600,
       "depositCluster": {
         "count": 1,
-        "radius": 0
+        "radius": 0,
+        "angleOffset": 0
       }
     },
     {
@@ -40,7 +42,8 @@
       "terrainBlendRadius": 1000,
       "depositCluster": {
         "count": 1,
-        "radius": 0
+        "radius": 0,
+        "angleOffset": 0
       }
     },
     {
@@ -53,7 +56,8 @@
       "terrainBlendRadius": 600,
       "depositCluster": {
         "count": 1,
-        "radius": 0
+        "radius": 0,
+        "angleOffset": 0
       }
     },
     {
@@ -66,8 +70,8 @@
       "terrainBlendRadius": 600,
       "depositCluster": {
         "count": 3,
-        "radius": 260,
-        "angleOffset": -1.5707963267948966
+        "radius": 150,
+        "angleOffset": 1
       }
     },
     {
@@ -80,7 +84,8 @@
       "terrainBlendRadius": 600,
       "depositCluster": {
         "count": 1,
-        "radius": 0
+        "radius": 0,
+        "angleOffset": 0
       }
     },
     {
@@ -93,7 +98,8 @@
       "terrainBlendRadius": 600,
       "depositCluster": {
         "count": 1,
-        "radius": 0
+        "radius": 0,
+        "angleOffset": 0
       }
     },
     {
@@ -106,7 +112,8 @@
       "terrainBlendRadius": 600,
       "depositCluster": {
         "count": 1,
-        "radius": 0
+        "radius": 0,
+        "angleOffset": 0
       }
     },
     {
@@ -119,21 +126,22 @@
       "terrainBlendRadius": 600,
       "depositCluster": {
         "count": 1,
-        "radius": 0
+        "radius": 0,
+        "angleOffset": 0
       }
     },
     {
       "comment": "BACK LEFT TRIANGLE",
       "radiusFraction": 0.824,
       "countPerPlayer": 1,
-      "sliceOffset": -0.7,
+      "sliceOffset": -0.8,
       "dTerrainLevels": 2,
-      "flatPadCells": 40,
-      "terrainBlendRadius": 1000,
+      "flatPadCells": 20,
+      "terrainBlendRadius": 200,
       "depositCluster": {
         "count": 3,
-        "radius": 260,
-        "angleOffset": 0.5235987755982988
+        "radius": 150,
+        "angleOffset": 1
       }
     }
   ]

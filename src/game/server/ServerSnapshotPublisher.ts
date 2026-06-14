@@ -174,6 +174,7 @@ export class ServerSnapshotPublisher {
       unitCount,
       turretShieldPanelsEnabled: input.world.turretShieldPanelsEnabled,
       turretShieldSpheresEnabled: input.world.turretShieldSpheresEnabled,
+      forceFieldsVisible: input.world.forceFieldsVisible,
       shieldsObstructSight: input.world.shieldsObstructSight,
       shieldReflectionMode: input.world.shieldReflectionMode,
       fogOfWarEnabled: input.world.fogOfWarEnabled,

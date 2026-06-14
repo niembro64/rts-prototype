@@ -36,8 +36,11 @@
 //
 // Each origin can then expand into a local deposit cluster. A ring's
 // `depositCluster` defines how many deposits are placed around that
-// origin and the world-unit radius of that secondary circle. The legacy
-// single-deposit behavior is `depositCluster: { count: 1, radius: 0 }`.
+// origin and the world-unit radius of that secondary circle.
+// `angleOffset` is relative to the origin's radial angle from map
+// center, so every player's slice keeps the same local cluster shape.
+// The legacy single-deposit behavior is
+// `depositCluster: { count: 1, radius: 0, angleOffset: 0 }`.
 
 import { MAP_GENERATION_EXTENT_FRACTION } from './mapSizeConfig';
 import {
@@ -82,8 +85,10 @@ export type DepositRing = {
    *  integrate more gradually with surrounding terrain. */
   terrainBlendRadius: number;
   /** Secondary local cluster spawned from each primary ring origin.
-   *  `{ count: 1, radius: 0 }` exactly preserves the legacy behavior. */
-  depositCluster?: MetalDepositClusterConfig;
+   *  `angleOffset` is a radian offset relative to the origin's radial
+   *  angle from map center. `{ count: 1, radius: 0, angleOffset: 0 }`
+   *  exactly preserves the legacy behavior. */
+  depositCluster: MetalDepositClusterConfig;
   /** Optional free-form note for the author — purely descriptive, not
    *  read by any runtime code. Useful for labeling where a ring sits
    *  ("inner near spawn", "back side cluster", etc.). */
@@ -93,7 +98,7 @@ export type DepositRing = {
 export type MetalDepositClusterConfig = {
   count: number;
   radius: number;
-  angleOffset?: number;
+  angleOffset: number;
 };
 
 /** Authored layout config for the metal deposit ring placer. Pure data
@@ -344,7 +349,13 @@ function generateMetalDepositPlacementsFromWasm(
         blendRadius: placementRows[base + 13],
         explicitHeight: Number.isNaN(explicitHeightRaw) ? null : explicitHeightRaw,
       };
-      expandMetalDepositClusterPlacements(origin, ring, placements);
+      expandMetalDepositClusterPlacements(
+        origin,
+        ring,
+        mapWidth,
+        mapHeight,
+        placements,
+      );
       sourceIndex++;
     }
   }
@@ -370,6 +381,8 @@ function metalDepositLoopCount(limit: number): number {
 function expandMetalDepositClusterPlacements(
   origin: PendingPlacement,
   ring: DepositRing,
+  mapWidth: number,
+  mapHeight: number,
   out: PendingPlacement[],
 ): void {
   const cluster = validMetalDepositClusterConfig(ring.depositCluster);
@@ -377,8 +390,15 @@ function expandMetalDepositClusterPlacements(
     out.push(origin);
     return;
   }
+  const radialAngle = metalDepositRadialAngleFromMapCenter(
+    origin.placement.x,
+    origin.placement.y,
+    mapWidth,
+    mapHeight,
+  );
   for (let i = 0; i < cluster.count; i++) {
-    const angle = cluster.angleOffset + (i / cluster.count) * Math.PI * 2;
+    const angle =
+      radialAngle + cluster.angleOffset + (i / cluster.count) * Math.PI * 2;
     const rawX = origin.placement.x + Math.cos(angle) * cluster.radius;
     const rawY = origin.placement.y + Math.sin(angle) * cluster.radius;
     out.push({
@@ -388,6 +408,18 @@ function expandMetalDepositClusterPlacements(
       explicitHeight: origin.explicitHeight,
     });
   }
+}
+
+function metalDepositRadialAngleFromMapCenter(
+  x: number,
+  y: number,
+  mapWidth: number,
+  mapHeight: number,
+): number {
+  const dx = x - mapWidth * 0.5;
+  const dy = y - mapHeight * 0.5;
+  if (Math.abs(dx) <= 1e-6 && Math.abs(dy) <= 1e-6) return 0;
+  return Math.atan2(dy, dx);
 }
 
 function makeMetalDepositPlacementFromRawPoint(
@@ -690,9 +722,14 @@ function validMetalDepositTerrainBlendRadius(radius: number): number {
 function validMetalDepositClusterConfig(
   cluster: MetalDepositClusterConfig | undefined,
 ): Required<MetalDepositClusterConfig> {
-  const count = cluster?.count ?? 1;
-  const radius = cluster?.radius ?? 0;
-  const angleOffset = cluster?.angleOffset ?? 0;
+  if (cluster === undefined) {
+    throw new Error(
+      'Metal deposit depositCluster must include count, radius, and angleOffset',
+    );
+  }
+  const count = cluster.count;
+  const radius = cluster.radius;
+  const angleOffset = cluster.angleOffset;
   if (!Number.isFinite(count) || !Number.isInteger(count) || count <= 0) {
     throw new Error(
       `Metal deposit depositCluster.count must be a positive integer; received ${count}`,
@@ -710,7 +747,7 @@ function validMetalDepositClusterConfig(
   }
   if (!Number.isFinite(angleOffset)) {
     throw new Error(
-      `Metal deposit depositCluster.angleOffset must be finite when provided; received ${angleOffset}`,
+      `Metal deposit depositCluster.angleOffset must be finite; received ${angleOffset}`,
     );
   }
   return { count, radius, angleOffset };

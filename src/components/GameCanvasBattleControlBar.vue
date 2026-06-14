@@ -212,10 +212,19 @@ defineProps<{
         <BarDivider />
         <BarLabel>FORCE FIELDS:</BarLabel>
         <BarButton
+          :active="model.currentForceFieldsVisible"
+          title="Show or hide rendered force-field surfaces and impact flashes"
+          @click="model.setForceFieldsVisible(!model.currentForceFieldsVisible)"
+        >{{ model.currentForceFieldsVisible ? 'VISIBLE' : 'INVISIBLE' }}</BarButton>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel>TARGETING:</BarLabel>
+        <BarButton
           :active="model.currentShieldsObstructSight"
-          title="Shields obstruct turret sight through their boundary (applies to every turret, both directions)"
+          title="Shield-aware targeting rejects locks when a straight line-of-sight crosses an active force field"
           @click="model.setShieldsObstructSight(!model.currentShieldsObstructSight)"
-        >OBSTRUCT SIGHT</BarButton>
+        >{{ model.currentShieldsObstructSight ? 'SHIELD-AWARE' : 'NAIVE' }}</BarButton>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />

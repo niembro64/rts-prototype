@@ -1094,12 +1094,14 @@ const {
   currentAllowedUnits,
   currentAllowedUnitsSet,
   allDemoUnitsActive,
+  currentForceFieldsVisible,
   currentShieldsObstructSight,
   currentFogOfWarEnabled,
   currentConverterTax,
   toggleDemoUnitBlueprintId,
   toggleAllDemoUnits,
   changeMaxTotalUnits,
+  setForceFieldsVisible,
   setShieldsObstructSight,
   setFogOfWarEnabled,
   setConverterTax,
@@ -1249,6 +1251,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   metalDepositStep: metalDepositStep.value,
   terrainDetail: terrainDetail.value,
   displayUnitCount: displayUnitCount.value,
+  currentForceFieldsVisible: currentForceFieldsVisible.value,
   currentShieldsObstructSight: currentShieldsObstructSight.value,
   currentFogOfWarEnabled: currentFogOfWarEnabled.value,
   currentConverterTax: currentConverterTax.value,
@@ -1266,6 +1269,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   applyTerrainDTerrain,
   applyMetalDepositStep,
   applyTerrainDetail,
+  setForceFieldsVisible,
   setShieldsObstructSight,
   setFogOfWarEnabled,
   setConverterTax,
@@ -1292,6 +1296,7 @@ watchEffect(() => {
   m.metalDepositStep = metalDepositStep.value;
   m.terrainDetail = terrainDetail.value;
   m.displayUnitCount = displayUnitCount.value;
+  m.currentForceFieldsVisible = currentForceFieldsVisible.value;
   m.currentShieldsObstructSight = currentShieldsObstructSight.value;
   m.currentFogOfWarEnabled = currentFogOfWarEnabled.value;
   m.currentConverterTax = currentConverterTax.value;
@@ -1300,6 +1305,7 @@ watchEffect(() => {
     cap: displayUnitCap.value,
     turretShieldPanelsEnabled: BATTLE_CONFIG.turretShieldPanelsEnabled.default,
     turretShieldSpheresEnabled: BATTLE_CONFIG.turretShieldSpheresEnabled.default,
+    forceFieldsVisible: currentForceFieldsVisible.value,
     shieldsObstructSight: currentShieldsObstructSight.value,
     shieldReflectionMode: BATTLE_CONFIG.shieldReflectionMode.default,
     fogOfWarEnabled: currentFogOfWarEnabled.value,
@@ -2040,6 +2046,7 @@ watchEffect(() => {
       :unit-blueprint-ids="demoUnitBlueprintIds"
       :allowed-units="currentAllowedUnits"
       :unit-cap="displayUnitCap"
+      :force-fields-visible="currentForceFieldsVisible"
       :shields-obstruct-sight="currentShieldsObstructSight"
       :converter-tax="currentConverterTax"
       :preview-loading="loadingInLobbyPreview"
@@ -2065,6 +2072,7 @@ watchEffect(() => {
       @toggle-unit="(ut) => toggleDemoUnitBlueprintId(ut)"
       @toggle-all-units="toggleAllDemoUnits"
       @set-unit-cap="(c) => changeMaxTotalUnits(c)"
+      @set-force-fields-visible="(e) => setForceFieldsVisible(e)"
       @set-shields-obstruct-sight="(e) => setShieldsObstructSight(e)"
       @set-converter-tax="(v) => setConverterTax(v)"
       @set-player-name="onPlayerNameChange"

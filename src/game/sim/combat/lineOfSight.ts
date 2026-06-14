@@ -50,9 +50,9 @@ export function weaponRequiresNonObstructedLineOfSight(weapon: Turret): boolean 
 }
 
 /** Whether this turret may keep its targeting ray through force material
- *  when OBSTRUCT SIGHT is enabled. This is deliberately narrower than
- *  "is a shield emission": shield-only emitters need the exemption to
- *  maintain their own barrier, but shield emitters with offensive
+ *  when shield-aware targeting is enabled. This is deliberately narrower
+ *  than "is a shield emission": shield-only emitters need the exemption
+ *  to maintain their own barrier, but shield emitters with offensive
  *  submunitions must obey the same obstruction rule as every other
  *  attacking turret. */
 export function turretIgnoresForceMaterialSightObstruction(weapon: Turret): boolean {
@@ -79,7 +79,7 @@ const NO_EXCLUDED_OWNER = -1;
  *
  *  Use this for straight visibility checks against shield spheres.
  *  The targeting gate kernels in Rust layer shield-panel clearance
- *  on top via the shield-panel slab for OBSTRUCT SIGHT targeting.
+ *  on top via the shield-panel slab for shield-aware targeting.
  *
  *  Implementation: dispatches to the Rust `shield_clearance_segment`
  *  kernel, which reads the FF pool slab stamped each tick by
@@ -119,8 +119,9 @@ export function hasShieldClearance(
 /** Fog/entity-visibility sightline policy. This intentionally does not
  *  use hasCombatLineOfSight because ordinary unit/building bodies do
  *  not hide fog-of-war information. Shape-independent force material
- *  does: when OBSTRUCT SIGHT is active, shield spheres and mirror
- *  panels block the same visibility ray after terrain has cleared. */
+ *  does: when shield-aware targeting is active, shield spheres and
+ *  mirror panels block the same visibility ray after terrain has
+ *  cleared. */
 export function hasFogOfWarLineOfSight(
   world: WorldState,
   sx: number, sy: number, sz: number,

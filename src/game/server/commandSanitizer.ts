@@ -194,6 +194,7 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
       return sanitizeMaxTotalUnitsCommand(command, tick);
     case 'setTurretShieldPanelsEnabled':
     case 'setTurretShieldSpheresEnabled':
+    case 'setForceFieldsVisible':
       return typeof command.enabled === 'boolean'
         ? { ...command, tick, enabled: command.enabled }
         : null;

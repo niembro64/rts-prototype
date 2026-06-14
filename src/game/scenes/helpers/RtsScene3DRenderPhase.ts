@@ -296,6 +296,7 @@ export class RtsScene3DRenderPhase {
     const serverMeta = this.clientViewState.getServerMeta();
     const fogOfWarEnabled = serverMeta?.fogOfWarEnabled === true;
     const turretShieldSpheresEnabled = serverMeta?.turretShieldSpheresEnabled ?? true;
+    const forceFieldsVisible = serverMeta?.forceFieldsVisible ?? true;
     sightBoundaryRenderer.update(
       this.clientViewState,
       this.getLocalPlayerId(),
@@ -315,7 +316,7 @@ export class RtsScene3DRenderPhase {
     const entityLists = this.prepareEntityLists({
       includeBodyHud: updateEntityHudThisFrame && healthBar3D !== null,
       includeBodyNames: bodyNamesEnabled,
-      includeShields: turretShieldSpheresEnabled,
+      includeShields: turretShieldSpheresEnabled && forceFieldsVisible,
       includeContactShadows:
         contactShadowRenderer?.shouldBuildPacket(this.renderFrameIndex) ?? false,
       includeGroundPrints: updateEffectsThisFrame,
@@ -324,7 +325,7 @@ export class RtsScene3DRenderPhase {
     const lineProjectiles = projectileLists.line;
     entityRenderer.update(
       renderFrameState,
-      serverMeta?.turretShieldPanelsEnabled ?? true,
+      (serverMeta?.turretShieldPanelsEnabled ?? true) && forceFieldsVisible,
       {
         unitRows: entityLists.unitRows,
         buildingRows: entityLists.buildingRows,
@@ -383,6 +384,7 @@ export class RtsScene3DRenderPhase {
       this.fireExplosionAccumMs = 0;
       this.debrisAccumMs = 0;
     }
+    shieldImpactRenderer.setVisible(forceFieldsVisible);
     shieldImpactRenderer.update(effectDtMs, lineProjectiles);
     waterSplashRenderer.update(effectDtMs);
     this.burnMarkAccumMs += effectDtMs;
@@ -469,7 +471,7 @@ export class RtsScene3DRenderPhase {
     );
 
     shieldRenderer.beginFrame(graphicsConfig);
-    if (turretShieldSpheresEnabled) {
+    if (turretShieldSpheresEnabled && forceFieldsVisible) {
       shieldRenderer.processPacket(entityLists.shields);
     }
     shieldRenderer.endFrame();

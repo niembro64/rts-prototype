@@ -3189,6 +3189,8 @@ export interface SnapshotEncodeApi {
     turretShieldPanelsEnabled: number,
     hasShieldsEnabled: number,
     turretShieldSpheresEnabled: number,
+    hasForceFieldsVisible: number,
+    forceFieldsVisible: number,
     hasShieldsObstructSight: number,
     shieldsObstructSight: number,
     hasShieldReflectionMode: number,

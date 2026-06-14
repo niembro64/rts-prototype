@@ -40,6 +40,8 @@
     "realTurretShieldPanelsEnabled": "real-battle-turret-shield-panels-enabled",
     "demoTurretShieldSpheresEnabled": "demo-battle-turret-shield-spheres-enabled",
     "realTurretShieldSpheresEnabled": "real-battle-turret-shield-spheres-enabled",
+    "demoForceFieldsVisible": "demo-battle-force-fields-visible",
+    "realForceFieldsVisible": "real-battle-force-fields-visible",
     "demoShieldsObstructSight": "demo-battle-shields-obstruct-sight",
     "realShieldsObstructSight": "real-battle-shields-obstruct-sight",
     "demoFogOfWarEnabled": "demo-battle-fog-of-war-enabled",

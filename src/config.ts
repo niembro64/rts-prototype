@@ -216,6 +216,8 @@ export const MAX_TOTAL_UNITS = BATTLE_CONFIG.cap.default;
 export const DEFAULT_TURRET_SHIELD_PANELS_ENABLED = BATTLE_CONFIG.turretShieldPanelsEnabled.default;
 export const DEFAULT_TURRET_SHIELD_SPHERES_ENABLED =
   BATTLE_CONFIG.turretShieldSpheresEnabled.default;
+export const DEFAULT_FORCE_FIELDS_VISIBLE =
+  BATTLE_CONFIG.forceFieldsVisible.default;
 export const DEFAULT_SHIELDS_OBSTRUCT_SIGHT =
   BATTLE_CONFIG.shieldsObstructSight.default;
 export const DEFAULT_SHIELD_REFLECTION_MODE =

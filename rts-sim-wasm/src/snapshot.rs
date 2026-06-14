@@ -5073,6 +5073,8 @@ pub fn snapshot_encode_envelope_emit_server_meta(
     turret_shield_panels_enabled: u8,
     has_turret_shield_spheres_enabled: u8,
     turret_shield_spheres_enabled: u8,
+    has_force_fields_visible: u8,
+    force_fields_visible: u8,
     has_shields_obstruct_sight: u8,
     shields_obstruct_sight: u8,
     has_shield_reflection_mode: u8,
@@ -5094,6 +5096,9 @@ pub fn snapshot_encode_envelope_emit_server_meta(
         field_count += 1;
     }
     if has_turret_shield_spheres_enabled != 0 {
+        field_count += 1;
+    }
+    if has_force_fields_visible != 0 {
         field_count += 1;
     }
     if has_shields_obstruct_sight != 0 {
@@ -5179,6 +5184,10 @@ pub fn snapshot_encode_envelope_emit_server_meta(
     if has_turret_shield_spheres_enabled != 0 {
         w.write_str("shieldsEnabled");
         w.write_bool(turret_shield_spheres_enabled != 0);
+    }
+    if has_force_fields_visible != 0 {
+        w.write_str("forceFieldsVisible");
+        w.write_bool(force_fields_visible != 0);
     }
     if has_shields_obstruct_sight != 0 {
         w.write_str("shieldsObstructSight");
@@ -10333,7 +10342,7 @@ mod lock_on_inclusion_tests {
         assert_eq!(ballistic_clear, 1);
         assert_eq!(
             panel_clear, 0,
-            "OBSTRUCT SIGHT should not make passive non-force turrets see through shield panels",
+            "shield-aware targeting should not make passive non-force turrets see through shield panels",
         );
 
         let (_, _, disabled_panel_clear) = compute_turret_gates_for_aim_point(
@@ -10400,7 +10409,7 @@ mod lock_on_inclusion_tests {
         );
         assert_eq!(
             non_exempt_shield_emitter_clear, 0,
-            "shield emitters without the exemption flag obey OBSTRUCT SIGHT",
+            "shield emitters without the exemption flag obey shield-aware targeting",
         );
 
         let (_, _, exempt_shield_emitter_clear) = compute_turret_gates_for_aim_point(

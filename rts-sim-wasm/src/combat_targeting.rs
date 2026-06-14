@@ -54,7 +54,8 @@ pub const CT_TURRET_CFG_RANGE_SPHERE: u16 = 1 << 11;
 pub const CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP: u16 = 1 << 12;
 /// Shield-only emitters maintain force material and may keep targeting
 /// through that material. Offensive shield emitters with submunitions do
-/// not set this; their damaging fire uses the normal OBSTRUCT SIGHT gate.
+/// not set this; their damaging fire uses the normal shield-aware
+/// targeting gate.
 pub const CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION: u16 = 1 << 13;
 /// Passive shield panels aim between the incoming enemy turret and the
 /// enemy body so reflections return toward the source of fire.
@@ -7723,8 +7724,8 @@ shield_pool_ptr_export!(shield_pool_radius_ptr, radius, f64);
 // lineOfSight.ts; the JS wrappers are now thin dispatchers.
 //
 // `exclude_owner_entity_id` is a legacy per-call exemption hook. The
-// current OBSTRUCT SIGHT path passes sentinel -1 so every active boundary is
-// considered, including a shooter's own field.
+// current shield-aware targeting path passes sentinel -1 so every active
+// boundary is considered, including a shooter's own field.
 //
 // Graze epsilon: crossings within SHIELD_GRAZE_EPS of the segment
 // endpoints don't count, matching the JS path's behaviour so a turret

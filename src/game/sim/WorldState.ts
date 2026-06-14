@@ -28,6 +28,7 @@ import {
   DEFAULT_TURRET_SHIELD_SPHERES_ENABLED,
   DEFAULT_SHIELDS_OBSTRUCT_SIGHT,
   DEFAULT_SHIELD_REFLECTION_MODE,
+  DEFAULT_FORCE_FIELDS_VISIBLE,
 } from '../../config';
 import type { ShieldReflectionMode } from '../../types/shotTypes';
 import {
@@ -155,8 +156,11 @@ export class WorldState {
 
   // Whether turretShieldPanels/panels participate in targeting and reflections
   public turretShieldPanelsEnabled: boolean = DEFAULT_TURRET_SHIELD_PANELS_ENABLED;
-  // Whether shield turrets participate in targeting, simulation, and rendering
+  // Whether shield turrets participate in targeting and simulation.
   public turretShieldSpheresEnabled: boolean = DEFAULT_TURRET_SHIELD_SPHERES_ENABLED;
+  // Whether force-field shield/panel material is rendered for players.
+  // Rendering only; physical reflection/blocking stays active.
+  public forceFieldsVisible: boolean = DEFAULT_FORCE_FIELDS_VISIBLE;
   // Whether force material between a turret and its target obstructs
   // sight. Symmetric: active shield sphere boundaries and force
   // shield panels apply to every turret in either direction, regardless

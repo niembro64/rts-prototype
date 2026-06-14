@@ -1,6 +1,7 @@
 import type { BattleMode } from '../../battleBarConfig';
 import {
   loadStoredConverterTax,
+  loadStoredForceFieldsVisible,
   loadStoredShieldReflectionMode,
   loadStoredShieldsObstructSight,
   loadStoredTurretShieldSpheresEnabled,
@@ -71,6 +72,11 @@ export function applyStoredBattleServerSettings(
     type: 'setTurretShieldSpheresEnabled',
     tick: 0,
     enabled: loadStoredTurretShieldSpheresEnabled(mode),
+  }, authority);
+  server.receiveCommand({
+    type: 'setForceFieldsVisible',
+    tick: 0,
+    enabled: loadStoredForceFieldsVisible(mode),
   }, authority);
   server.receiveCommand({
     type: 'setShieldsObstructSight',

@@ -57,6 +57,7 @@ export type CommandType =
   | 'setMaxTotalUnits'
   | 'setTurretShieldPanelsEnabled'
   | 'setTurretShieldSpheresEnabled'
+  | 'setForceFieldsVisible'
   | 'setShieldsObstructSight'
   | 'setShieldReflectionMode'
   | 'setFogOfWarEnabled'
@@ -492,6 +493,11 @@ export type SetShieldsObstructSightCommand = BaseCommand & {
   enabled: boolean;
 };
 
+export type SetForceFieldsVisibleCommand = BaseCommand & {
+  type: 'setForceFieldsVisible';
+  enabled: boolean;
+};
+
 export type SetShieldReflectionModeCommand = BaseCommand & {
   type: 'setShieldReflectionMode';
   mode: ShieldReflectionMode;
@@ -559,6 +565,7 @@ export type Command =
   | SetMaxTotalUnitsCommand
   | SetTurretShieldPanelsEnabledCommand
   | SetTurretShieldSpheresEnabledCommand
+  | SetForceFieldsVisibleCommand
   | SetShieldsObstructSightCommand
   | SetShieldReflectionModeCommand
   | SetFogOfWarEnabledCommand

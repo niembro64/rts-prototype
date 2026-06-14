@@ -116,8 +116,8 @@ export class SimulationCombatController {
     // sightlines later this tick read current-tick physical surfaces,
     // while next tick's FSM clearance gates read it one tick stale —
     // the same envelopes the old pre-FSM + pre-projectile double stamp
-    // provided. Physical surfaces are always stamped; whether they
-    // obstruct sight is the kernels' flag-gated decision.
+    // provided. Physical surfaces are always stamped; whether targeting
+    // treats them as lock blockers is the kernels' flag-gated decision.
     stampShieldSurfacePool(this.world);
 
     // Update shield sounds based on the just-written transition progress.

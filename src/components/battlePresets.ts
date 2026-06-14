@@ -10,6 +10,7 @@ export type BattlePreset = {
   readonly cap: number;
   readonly turretShieldPanelsEnabled: boolean;
   readonly turretShieldSpheresEnabled: boolean;
+  readonly forceFieldsVisible: boolean;
   readonly shieldsObstructSight: boolean;
   readonly shieldReflectionMode: ShieldReflectionMode;
   readonly fogOfWarEnabled: boolean;
@@ -69,6 +70,7 @@ function demoUnits(): readonly string[] {
 const SUBSYSTEM_DEFAULTS = {
   turretShieldPanelsEnabled: true,
   turretShieldSpheresEnabled: true,
+  forceFieldsVisible: true,
   shieldReflectionMode: 'both' as ShieldReflectionMode,
 };
 
@@ -262,6 +264,7 @@ export function presetMatchesCurrent(
   return (
     sameUnits(p.units, c.units) &&
     p.cap === c.cap &&
+    p.forceFieldsVisible === c.forceFieldsVisible &&
     p.shieldsObstructSight === c.shieldsObstructSight &&
     Math.abs(p.converterTax - c.converterTax) < 1e-6 &&
     p.centerMagnitude === c.centerMagnitude &&

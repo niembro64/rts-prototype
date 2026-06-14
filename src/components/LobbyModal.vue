@@ -38,6 +38,7 @@ const props = defineProps<{
   unitBlueprintIds: readonly string[];
   allowedUnits: readonly string[];
   unitCap: number;
+  forceFieldsVisible: boolean;
   shieldsObstructSight: boolean;
   converterTax: number;
   previewLoading: boolean;
@@ -65,6 +66,7 @@ const emit = defineEmits<{
   (e: 'toggleUnit', unitBlueprintId: string): void;
   (e: 'toggleAllUnits'): void;
   (e: 'setUnitCap', cap: number): void;
+  (e: 'setForceFieldsVisible', enabled: boolean): void;
   (e: 'setShieldsObstructSight', enabled: boolean): void;
   (e: 'setConverterTax', tax: number): void;
   (e: 'setPlayerName', name: string): void;
@@ -160,6 +162,11 @@ function pickToggleAllUnits(): void {
 function pickUnitCap(cap: number): void {
   if (!props.isHost) return;
   emit('setUnitCap', cap);
+}
+
+function pickForceFieldsVisible(enabled: boolean): void {
+  if (!props.isHost) return;
+  emit('setForceFieldsVisible', enabled);
 }
 
 function pickShieldsObstructSight(enabled: boolean): void {
@@ -712,10 +719,19 @@ const terrainSectionVars = computed(() =>
                 <BarDivider />
                 <BarLabel>FORCE FIELDS:</BarLabel>
                 <BarButton
+                  :active="forceFieldsVisible"
+                  :title="isHost ? 'Show or hide rendered force-field surfaces and impact flashes' : 'Only the host can change battle settings'"
+                  @click="pickForceFieldsVisible(!forceFieldsVisible)"
+                >{{ forceFieldsVisible ? 'VISIBLE' : 'INVISIBLE' }}</BarButton>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel>TARGETING:</BarLabel>
+                <BarButton
                   :active="shieldsObstructSight"
-                  :title="isHost ? 'Shields obstruct turret sight through their boundary (applies to every turret, both directions)' : 'Only the host can change battle settings'"
+                  :title="isHost ? 'Shield-aware targeting rejects locks when a straight line-of-sight crosses an active force field' : 'Only the host can change battle settings'"
                   @click="pickShieldsObstructSight(!shieldsObstructSight)"
-                >OBSTRUCT SIGHT</BarButton>
+                >{{ shieldsObstructSight ? 'SHIELD-AWARE' : 'NAIVE' }}</BarButton>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />

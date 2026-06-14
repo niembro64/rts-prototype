@@ -81,6 +81,7 @@ const LOCKSTEP_GAMEPLAY_SETTING_COMMAND_TYPES: ReadonlySet<Command['type']> = ne
   'setMaxTotalUnits',
   'setTurretShieldPanelsEnabled',
   'setTurretShieldSpheresEnabled',
+  'setForceFieldsVisible',
   'setShieldsObstructSight',
   'setShieldReflectionMode',
   'setFogOfWarEnabled',

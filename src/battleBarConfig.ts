@@ -59,6 +59,7 @@ export const BATTLE_CONFIG = {
   },
   turretShieldPanelsEnabled: { default: _demoPreset.turretShieldPanelsEnabled },
   turretShieldSpheresEnabled: { default: _demoPreset.turretShieldSpheresEnabled },
+  forceFieldsVisible: { default: _demoPreset.forceFieldsVisible },
   shieldsObstructSight: { default: _demoPreset.shieldsObstructSight },
   fogOfWarEnabled: { default: _demoPreset.fogOfWarEnabled },
   shieldReflectionMode: {
@@ -138,6 +139,8 @@ const STORAGE_DEMO_TURRET_SHIELD_PANELS_ENABLED = sk.demoTurretShieldPanelsEnabl
 const STORAGE_REAL_TURRET_SHIELD_PANELS_ENABLED = sk.realTurretShieldPanelsEnabled;
 const STORAGE_DEMO_TURRET_SHIELD_SPHERES_ENABLED = sk.demoTurretShieldSpheresEnabled;
 const STORAGE_REAL_TURRET_SHIELD_SPHERES_ENABLED = sk.realTurretShieldSpheresEnabled;
+const STORAGE_DEMO_FORCE_FIELDS_VISIBLE = sk.demoForceFieldsVisible;
+const STORAGE_REAL_FORCE_FIELDS_VISIBLE = sk.realForceFieldsVisible;
 const STORAGE_DEMO_SHIELDS_OBSTRUCT_SIGHT = sk.demoShieldsObstructSight;
 const STORAGE_REAL_SHIELDS_OBSTRUCT_SIGHT = sk.realShieldsObstructSight;
 const STORAGE_DEMO_FOG_OF_WAR_ENABLED = sk.demoFogOfWarEnabled;
@@ -372,6 +375,24 @@ export function saveTurretShieldSpheresEnabled(_enabled: boolean, mode: BattleMo
       ? STORAGE_REAL_TURRET_SHIELD_SPHERES_ENABLED
       : STORAGE_DEMO_TURRET_SHIELD_SPHERES_ENABLED,
     String(BATTLE_CONFIG.turretShieldSpheresEnabled.default),
+  );
+}
+
+export function loadStoredForceFieldsVisible(mode: BattleMode): boolean {
+  return loadModeBool(
+    mode,
+    STORAGE_REAL_FORCE_FIELDS_VISIBLE,
+    STORAGE_DEMO_FORCE_FIELDS_VISIBLE,
+    BATTLE_CONFIG.forceFieldsVisible.default,
+  );
+}
+
+export function saveForceFieldsVisible(enabled: boolean, mode: BattleMode): void {
+  persist(
+    mode === 'real'
+      ? STORAGE_REAL_FORCE_FIELDS_VISIBLE
+      : STORAGE_DEMO_FORCE_FIELDS_VISIBLE,
+    String(enabled),
   );
 }
 

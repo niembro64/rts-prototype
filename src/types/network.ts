@@ -740,6 +740,7 @@ export type NetworkServerSnapshotMeta = {
   };
   turretShieldPanelsEnabled: boolean | undefined;
   turretShieldSpheresEnabled: boolean | undefined;
+  forceFieldsVisible: boolean | undefined;
   shieldsObstructSight: boolean | undefined;
   shieldReflectionMode: ShieldReflectionMode | undefined;
   fogOfWarEnabled: boolean | undefined;

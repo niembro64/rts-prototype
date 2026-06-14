@@ -167,8 +167,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
   const turretShieldSpheresEnabledFlag = world.turretShieldSpheresEnabled ? 1 : 0;
   // Force-material gate fast-path. Sphere boundaries and shield-panel
   // blockers are stamped into Rust slabs before the FSM. This flag
-  // lets common ticks skip blocker walks when OBSTRUCT SIGHT is off or
-  // no force material is active.
+  // lets common ticks skip blocker walks when shield-aware targeting is
+  // off or no force material is active.
   const forceMaterialSightObstructionActive = world.shieldsObstructSight
     && (
       (world.turretShieldSpheresEnabled && getActiveShields().length > 0) ||

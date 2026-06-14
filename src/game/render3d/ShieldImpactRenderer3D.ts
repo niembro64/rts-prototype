@@ -136,6 +136,7 @@ export class ShieldImpactRenderer3D {
   private continuousTimeMs = 0;
   private continuousRingCursor = 0;
   private continuousCoreCursor = 0;
+  private visible = true;
 
   private static readonly Z_AXIS = new THREE.Vector3(0, 0, 1);
   private static readonly CONTINUOUS_BEAM_HIT_CAP = 256;
@@ -177,6 +178,21 @@ export class ShieldImpactRenderer3D {
       : cfg.fallbackColor;
   }
 
+  setVisible(visible: boolean): void {
+    if (this.visible === visible) return;
+    this.visible = visible;
+    this.root.visible = visible;
+    if (!visible) this.clearDrawState();
+  }
+
+  private clearDrawState(): void {
+    this.impacts.length = 0;
+    this.continuousRingCursor = 0;
+    this.continuousCoreCursor = 0;
+    this.corePool.setCount(0);
+    this.ringPool.setCount(0);
+  }
+
   spawn(
     simX: number,
     simY: number,
@@ -184,6 +200,7 @@ export class ShieldImpactRenderer3D {
     normal: { x: number; y: number; z: number },
     playerId: PlayerId | undefined,
   ): void {
+    if (!this.visible) return;
     const cfg = SHIELD_IMPACT_VISUAL;
     if (this.impacts.length >= cfg.maxImpacts) {
       this.impacts[0] = this.impacts[this.impacts.length - 1];
@@ -213,6 +230,10 @@ export class ShieldImpactRenderer3D {
   }
 
   update(dtMs: number, lineProjectiles: readonly Entity[] = EMPTY_LINE_PROJECTILES): void {
+    if (!this.visible) {
+      this.clearDrawState();
+      return;
+    }
     const cfg = SHIELD_IMPACT_VISUAL;
     this.continuousTimeMs += dtMs;
     let ringCursor = 0;

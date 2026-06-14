@@ -13,6 +13,7 @@ import type {
   SkipCurrentOrderCommand,
   StartBuildCommand,
   StopFactoryProductionCommand,
+  SetForceFieldsVisibleCommand,
   SetShieldReflectionModeCommand,
   SetTurretShieldPanelsEnabledCommand,
   SetTurretShieldSpheresEnabledCommand,
@@ -344,6 +345,16 @@ export function runCommandSanitizerContractTest(): void {
   assertContract(
     spheresDisabled.enabled === false,
     'setTurretShieldSpheresEnabled must preserve enabled=false',
+  );
+
+  const forceFieldsHidden = sanitizeRequired<SetForceFieldsVisibleCommand>(world, {
+    type: 'setForceFieldsVisible',
+    tick: 2,
+    enabled: false,
+  });
+  assertContract(
+    forceFieldsHidden.enabled === false,
+    'setForceFieldsVisible must preserve enabled=false',
   );
 
   for (const mode of SHIELD_REFLECTION_MODES) {

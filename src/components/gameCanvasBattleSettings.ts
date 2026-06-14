@@ -2,10 +2,12 @@ import { computed, type ComputedRef, type Ref } from 'vue';
 import {
   BATTLE_CONFIG,
   loadStoredConverterTax,
+  loadStoredForceFieldsVisible,
   loadStoredFogOfWarEnabled,
   normalizeConverterTax,
   saveConverterTax,
   saveDemoUnits,
+  saveForceFieldsVisible,
   saveShieldsObstructSight,
   saveFogOfWarEnabled,
   saveStoredCap,
@@ -28,12 +30,14 @@ export type GameCanvasBattleSettings = {
    *  .includes on every parent re-render. */
   currentAllowedUnitsSet: ComputedRef<ReadonlySet<string>>;
   allDemoUnitsActive: ComputedRef<boolean>;
+  currentForceFieldsVisible: ComputedRef<boolean>;
   currentShieldsObstructSight: ComputedRef<boolean>;
   currentFogOfWarEnabled: ComputedRef<boolean>;
   currentConverterTax: ComputedRef<number>;
   toggleDemoUnitBlueprintId(unitBlueprintId: string): void;
   toggleAllDemoUnits(): void;
   changeMaxTotalUnits(value: number): void;
+  setForceFieldsVisible(enabled: boolean): void;
   setShieldsObstructSight(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;
   setConverterTax(tax: number): void;
@@ -95,6 +99,11 @@ export function useGameCanvasBattleSettings({
       serverMetaFromSnapshot.value?.shieldsObstructSight ??
       BATTLE_CONFIG.shieldsObstructSight.default,
   );
+  const currentForceFieldsVisible = computed(
+    () =>
+      serverMetaFromSnapshot.value?.forceFieldsVisible ??
+      loadStoredForceFieldsVisible(currentBattleMode.value),
+  );
   const currentFogOfWarEnabled = computed(
     () =>
       serverMetaFromSnapshot.value?.fogOfWarEnabled ??
@@ -150,6 +159,12 @@ export function useGameCanvasBattleSettings({
     saveShieldsObstructSight(enabled, currentBattleMode.value);
   }
 
+  function setForceFieldsVisible(enabled: boolean): void {
+    getActiveConnection()?.sendCommand({ type: 'setForceFieldsVisible', tick: 0, enabled });
+    saveForceFieldsVisible(enabled, currentBattleMode.value);
+    if (currentBattleMode.value === 'real') broadcastLobbySettingsIfHost();
+  }
+
   function setFogOfWarEnabled(enabled: boolean): void {
     // Fog of war is user-controllable only from the DEMO BATTLE bar.
     // Lobby preview is hardcoded off and real battle is hardcoded on,
@@ -179,6 +194,7 @@ export function useGameCanvasBattleSettings({
     }
     saveDemoUnits([...preset.units]);
     changeMaxTotalUnits(preset.cap);
+    setForceFieldsVisible(preset.forceFieldsVisible);
     setShieldsObstructSight(preset.shieldsObstructSight);
     setFogOfWarEnabled(preset.fogOfWarEnabled);
     setConverterTax(preset.converterTax);
@@ -208,12 +224,14 @@ export function useGameCanvasBattleSettings({
     currentAllowedUnits,
     currentAllowedUnitsSet,
     allDemoUnitsActive,
+    currentForceFieldsVisible,
     currentShieldsObstructSight,
     currentFogOfWarEnabled,
     currentConverterTax,
     toggleDemoUnitBlueprintId,
     toggleAllDemoUnits,
     changeMaxTotalUnits,
+    setForceFieldsVisible,
     setShieldsObstructSight,
     setFogOfWarEnabled,
     setConverterTax,

@@ -544,6 +544,11 @@ export class GameServer {
         recordAcceptedCommand(sanitizedCommand);
         this.setTurretShieldSpheresEnabled(sanitizedCommand.enabled);
         return;
+      case 'setForceFieldsVisible':
+        if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
+        this.setForceFieldsVisible(sanitizedCommand.enabled);
+        return;
       case 'setShieldsObstructSight':
         if (!canApplyServerControl) return;
         recordAcceptedCommand(sanitizedCommand);
@@ -638,6 +643,11 @@ export class GameServer {
     // No cleanup needed: per-tick target re-validation will drop any
     // existing lock whose line crosses an active shield on the next
     // pass, and turning the rule off just stops the check from running.
+  }
+
+  private setForceFieldsVisible(enabled: boolean): void {
+    if (this.world.forceFieldsVisible === enabled) return;
+    this.world.forceFieldsVisible = enabled;
   }
 
   private setFogOfWarEnabled(enabled: boolean): void {

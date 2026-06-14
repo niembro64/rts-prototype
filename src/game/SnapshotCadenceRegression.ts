@@ -123,6 +123,7 @@ function isGameplayResponseCommand(command: Command): boolean {
     case 'setMaxTotalUnits':
     case 'setTurretShieldPanelsEnabled':
     case 'setTurretShieldSpheresEnabled':
+    case 'setForceFieldsVisible':
     case 'setShieldsObstructSight':
     case 'setShieldReflectionMode':
     case 'setFogOfWarEnabled':

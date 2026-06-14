@@ -1243,6 +1243,7 @@ function canEncodeServerMeta(meta: SnapshotServerMeta): boolean {
     !isOptionalFiniteNumber(meta.units.count) ||
     !isOptionalBoolean(meta.turretShieldPanelsEnabled) ||
     !isOptionalBoolean(meta.turretShieldSpheresEnabled) ||
+    !isOptionalBoolean(meta.forceFieldsVisible) ||
     !isOptionalBoolean(meta.shieldsObstructSight) ||
     (
       meta.shieldReflectionMode !== undefined &&
@@ -1326,6 +1327,8 @@ function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
     meta.turretShieldPanelsEnabled === true ? 1 : 0,
     meta.turretShieldSpheresEnabled !== undefined ? 1 : 0,
     meta.turretShieldSpheresEnabled === true ? 1 : 0,
+    meta.forceFieldsVisible !== undefined ? 1 : 0,
+    meta.forceFieldsVisible === true ? 1 : 0,
     meta.shieldsObstructSight !== undefined ? 1 : 0,
     meta.shieldsObstructSight === true ? 1 : 0,
     meta.shieldReflectionMode !== undefined ? 1 : 0,

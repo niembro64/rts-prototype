@@ -291,6 +291,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
     case 'setTurretShieldSpheresEnabled':
       executeSetTurretShieldSpheresEnabledCommand(ctx, command.enabled);
       break;
+    case 'setForceFieldsVisible':
+      ctx.world.forceFieldsVisible = command.enabled;
+      break;
     case 'setShieldsObstructSight':
       ctx.world.shieldsObstructSight = command.enabled;
       break;
