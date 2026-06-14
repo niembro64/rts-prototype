@@ -174,6 +174,7 @@ type CreateRealBattleMatchContextOptions = {
 const LOCKSTEP_COORDINATOR_RESEND_INTERVAL_MS = 250;
 const LOCKSTEP_COORDINATOR_RESEND_FRAME_LIMIT = 32;
 const LOCKSTEP_CLIENT_RESYNC_REQUEST_INTERVAL_MS = 500;
+const LOCKSTEP_MAX_PUMP_ADVANCE_FRAMES = 4;
 
 export function loadAndApplyRealBattleTerrain(): RealBattleStartupTerrain {
   const terrainMapShape = loadStoredTerrainMapShape('real');
@@ -681,6 +682,8 @@ async function createDeterministicLockstepBackendRuntime({
   let snapshotMsInitialized = false;
   let snapshotsEmitted = 0;
   let lastLockstepTelemetryPumpMs: number | null = null;
+  let lastLockstepCommandPumpMs: number | null = null;
+  let lockstepCommandPumpAccumulatorMs = LOCKSTEP_FIXED_DT_MS;
   const recordSnapshotMs = (sampleMs: number): void => {
     const sample = Number.isFinite(sampleMs) && sampleMs >= 0 ? sampleMs : 0;
     snapshotsEmitted++;
@@ -700,11 +703,6 @@ async function createDeterministicLockstepBackendRuntime({
     core: server.getLockstepSimulationCore(),
     expectedPlayerIds: playerIds,
     nowMs: () => performance.now(),
-    onFrameAdvanced: () => {
-      const snapshotStartMs = performance.now();
-      server.emitLockstepPresentationSnapshot();
-      recordSnapshotMs(performance.now() - snapshotStartMs);
-    },
     onChecksum: ({ frame, stateHash }) => {
       desyncMonitor?.recordChecksum({ playerId: localPlayerId, frame, stateHash });
       network?.getLockstepTransport().sendChecksum(frame, stateHash);
@@ -788,6 +786,32 @@ async function createDeterministicLockstepBackendRuntime({
 
   const hasAllRequiredLockstepPeersReady = (): boolean =>
     [...requiredReadyPlayerIds].every((playerId) => readyPlayerIds.has(playerId));
+
+  const resetLockstepCommandPumpClock = (): void => {
+    lastLockstepCommandPumpMs = null;
+    lockstepCommandPumpAccumulatorMs = LOCKSTEP_FIXED_DT_MS;
+  };
+
+  const takeLockstepCommandFrameBudget = (): number => {
+    const nowMs = performance.now();
+    const elapsedMs = lastLockstepCommandPumpMs === null
+      ? 0
+      : Math.max(0, nowMs - lastLockstepCommandPumpMs);
+    lastLockstepCommandPumpMs = nowMs;
+    lockstepCommandPumpAccumulatorMs = Math.min(
+      lockstepCommandPumpAccumulatorMs + elapsedMs,
+      LOCKSTEP_FIXED_DT_MS * LOCKSTEP_MAX_PUMP_ADVANCE_FRAMES,
+    );
+    const frames = Math.min(
+      LOCKSTEP_MAX_PUMP_ADVANCE_FRAMES,
+      Math.floor(lockstepCommandPumpAccumulatorMs / LOCKSTEP_FIXED_DT_MS),
+    );
+    lockstepCommandPumpAccumulatorMs = Math.max(
+      0,
+      lockstepCommandPumpAccumulatorMs - frames * LOCKSTEP_FIXED_DT_MS,
+    );
+    return frames;
+  };
 
   const receiveCoordinatorCommandFrame = (
     frame: number,
@@ -1028,25 +1052,38 @@ async function createDeterministicLockstepBackendRuntime({
 
   const pumpFrame = (): void => {
     const diagnostics = scheduler.getDiagnostics();
-    if (diagnostics.status === 'protocol-paused' || diagnostics.status === 'desynced') return;
+    if (diagnostics.status === 'protocol-paused' || diagnostics.status === 'desynced') {
+      resetLockstepCommandPumpClock();
+      return;
+    }
     if (isFrameCoordinator) {
       if (isOnlineLockstep && !hasAllRequiredLockstepPeersReady()) {
+        resetLockstepCommandPumpClock();
         resendCommandFramesToLaggingPeers();
         return;
       }
-      const frame = diagnostics.nextFrame;
-      const commands = pendingCommandsByFrame.get(frame) ?? [];
-      const frameSequence = nextFrameSequence++;
-      pendingCommandsByFrame.delete(frame);
-      network?.getLockstepTransport().broadcastCommandFrame(frame, frameSequence, commands);
-      broadcastCommandFrameCount++;
-      receiveCoordinatorCommandFrame(
-        frame,
-        frameSequence,
-        commands,
-      );
+      const frameBudget = takeLockstepCommandFrameBudget();
+      if (frameBudget <= 0) {
+        resendCommandFramesToLaggingPeers();
+        requestMissingCommandFrameIfNeeded();
+        return;
+      }
+      const startFrame = diagnostics.nextFrame;
+      for (let offset = 0; offset < frameBudget; offset++) {
+        const frame = startFrame + offset;
+        const commands = pendingCommandsByFrame.get(frame) ?? [];
+        const frameSequence = nextFrameSequence++;
+        pendingCommandsByFrame.delete(frame);
+        network?.getLockstepTransport().broadcastCommandFrame(frame, frameSequence, commands);
+        broadcastCommandFrameCount++;
+        receiveCoordinatorCommandFrame(
+          frame,
+          frameSequence,
+          commands,
+        );
+      }
     }
-    const advanceResult = scheduler.advanceReadyFrames(isOnlineLockstep ? 4 : 1);
+    const advanceResult = scheduler.advanceReadyFrames(LOCKSTEP_MAX_PUMP_ADVANCE_FRAMES);
     if (advanceResult.advancedFrames > 0) {
       const nowMs = performance.now();
       const elapsedMs = lastLockstepTelemetryPumpMs === null
@@ -1059,6 +1096,12 @@ async function createDeterministicLockstepBackendRuntime({
         workMs: scheduler.getDiagnostics().performance.simStepMsAvg,
         tickRateHz: Math.round(1000 / LOCKSTEP_FIXED_DT_MS),
       });
+
+      // Lockstep snapshots are local presentation only. Emit one after catch-up
+      // instead of one per fixed sim frame so serialization cannot cap sim rate.
+      const snapshotStartMs = performance.now();
+      server.emitLockstepPresentationSnapshot();
+      recordSnapshotMs(performance.now() - snapshotStartMs);
     }
     resendCommandFramesToLaggingPeers();
     requestMissingCommandFrameIfNeeded();

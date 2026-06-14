@@ -35,8 +35,8 @@
   "smokeSoftEdges": { "demoDefault": false, "realDefault": false },
   "beamSnapToTurret": { "demoDefault": true, "realDefault": true },
   "beamEma": {
-    "demoDefault": "medium",
-    "realDefault": "medium",
+    "demoDefault": "snap",
+    "realDefault": "snap",
     "options": [
       { "value": "snap", "label": "SNAP" },
       { "value": "fast", "label": "FAST" },
