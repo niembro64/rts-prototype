@@ -63,6 +63,23 @@ function beamPointIsReflector(point: BeamPoint): boolean {
   return point.reflectorEntityId !== null || point.reflectorKind !== null;
 }
 
+function beamPointStateDiffers(a: BeamPoint, b: BeamPoint): boolean {
+  return (
+    Math.abs(a.x - b.x) > 1e-4 ||
+    Math.abs(a.y - b.y) > 1e-4 ||
+    Math.abs(a.z - b.z) > 1e-4 ||
+    Math.abs(a.vx - b.vx) > 1e-4 ||
+    Math.abs(a.vy - b.vy) > 1e-4 ||
+    Math.abs(a.vz - b.vz) > 1e-4 ||
+    a.reflectorEntityId !== b.reflectorEntityId ||
+    a.reflectorKind !== b.reflectorKind ||
+    a.reflectorPlayerId !== b.reflectorPlayerId ||
+    a.normalX !== b.normalX ||
+    a.normalY !== b.normalY ||
+    a.normalZ !== b.normalZ
+  );
+}
+
 function copyBeamPointState(dst: BeamPoint, src: BeamPoint): void {
   dst.x = src.x; dst.y = src.y; dst.z = src.z;
   dst.vx = src.vx; dst.vy = src.vy; dst.vz = src.vz;
@@ -74,9 +91,17 @@ function copyBeamPointState(dst: BeamPoint, src: BeamPoint): void {
   dst.normalZ = src.normalZ;
 }
 
-function seedBeamPointPosition(dst: BeamPoint, seed: BeamPoint): void {
-  dst.x = seed.x; dst.y = seed.y; dst.z = seed.z;
-  dst.vx = seed.vx; dst.vy = seed.vy; dst.vz = seed.vz;
+function seedBeamPointPositionScalars(
+  dst: BeamPoint,
+  x: number,
+  y: number,
+  z: number,
+  vx: number,
+  vy: number,
+  vz: number,
+): void {
+  dst.x = x; dst.y = y; dst.z = z;
+  dst.vx = vx; dst.vy = vy; dst.vz = vz;
 }
 
 function shouldSnapExistingBeamPoint(current: BeamPoint, target: BeamPoint): boolean {
@@ -115,6 +140,7 @@ function applyBeamPathPrediction(
   deltaMs: number,
   movPosBlend: number,
   movVelBlend: number,
+  predictionMode: ReturnType<typeof getPredictionMode>,
 ): boolean {
   const proj = entity.projectile;
   if (!proj) return false;
@@ -130,7 +156,21 @@ function applyBeamPathPrediction(
   // are reconciled here so existing indexes can keep their EMA state; new
   // non-reflector endpoints seed from the old endpoint instead of from zero
   // or from the authoritative target, which removes snapshot-time resets.
-  const oldLastPoint = oldLen > 0 ? { ...projPts[oldLen - 1] } : null;
+  let hasOldLastPointSeed = false;
+  let oldLastX = 0, oldLastY = 0, oldLastZ = 0;
+  let oldLastVx = 0, oldLastVy = 0, oldLastVz = 0;
+  if (oldLen > 0 && oldLen < tgtPts.length) {
+    const oldLastPoint = projPts[oldLen - 1];
+    if (oldLastPoint !== undefined) {
+      hasOldLastPointSeed = true;
+      oldLastX = oldLastPoint.x;
+      oldLastY = oldLastPoint.y;
+      oldLastZ = oldLastPoint.z;
+      oldLastVx = oldLastPoint.vx;
+      oldLastVy = oldLastPoint.vy;
+      oldLastVz = oldLastPoint.vz;
+    }
+  }
   if (oldLen > tgtPts.length) {
     shrinkBeamPoints(projPts, tgtPts.length);
     changed = true;
@@ -142,14 +182,22 @@ function applyBeamPathPrediction(
   // PREDICT mode gates whether we step the snapshot beam-path target
   // forward each frame. 'pos' freezes the target at its last snapshot
   // value (the per-channel movement-pos EMA below still pulls the
-  // rendered point toward it). 'vel' steps position from velocity.
-  // Acceleration is not on the wire, so the
-  // per-vertex `ax/ay/az` slots stay at 0 and the integrator never
-  // reads them — there is no ACC mode.
-  const predictionMode = getPredictionMode();
+  // rendered point toward it). 'vel' steps position from velocity only
+  // while the path is still an unreflected open ray. A shield reflection
+  // vertex is not a particle: it is a ray/plane constraint point, and
+  // all later vertices are only valid as the result of that full
+  // reflected trace. Without a local re-trace, independently
+  // dead-reckoning those vertices can manufacture paths that cross
+  // shield planes before the next authoritative snapshot arrives.
+  // Acceleration is not on the wire, so there is no ACC mode.
   if (predictionMode !== 'pos') {
+    let canDeadReckonVertex = true;
     for (let i = 0; i < tgtPts.length; i++) {
       const tp = tgtPts[i];
+      if (!canDeadReckonVertex || beamPointIsReflector(tp)) {
+        canDeadReckonVertex = false;
+        continue;
+      }
       tp.x += tp.vx * dt;
       tp.y += tp.vy * dt;
       tp.z += tp.vz * dt;
@@ -162,12 +210,20 @@ function applyBeamPathPrediction(
     const isNewPoint = !pp || i >= oldLen;
     if (isNewPoint) {
       pp = ensureBeamPoint(projPts, i);
-      if (beamPointIsReflector(tp) || oldLastPoint === null) {
+      if (beamPointIsReflector(tp) || !hasOldLastPointSeed) {
         copyBeamPointState(pp, tp);
         changed = true;
         continue;
       }
-      seedBeamPointPosition(pp, oldLastPoint);
+      seedBeamPointPositionScalars(
+        pp,
+        oldLastX,
+        oldLastY,
+        oldLastZ,
+        oldLastVx,
+        oldLastVy,
+        oldLastVz,
+      );
       pp.reflectorEntityId = tp.reflectorEntityId;
       pp.reflectorKind = tp.reflectorKind;
       pp.reflectorPlayerId = tp.reflectorPlayerId;
@@ -178,6 +234,10 @@ function applyBeamPathPrediction(
     } else if (shouldSnapExistingBeamPoint(pp, tp)) {
       copyBeamPointState(pp, tp);
       changed = true;
+      continue;
+    } else if (beamPointIsReflector(tp)) {
+      if (beamPointStateDiffers(pp, tp)) changed = true;
+      copyBeamPointState(pp, tp);
       continue;
     }
     const px = pp.x, py = pp.y, pz = pp.z;
@@ -200,12 +260,12 @@ function applyBeamPathPrediction(
       Math.abs(nvx - pvx) > 1e-4 ||
       Math.abs(nvy - pvy) > 1e-4 ||
       Math.abs(nvz - pvz) > 1e-4 ||
-      pp.reflectorEntityId !== tp.reflectorEntityId
-      || pp.reflectorKind !== tp.reflectorKind
-      || pp.reflectorPlayerId !== tp.reflectorPlayerId
-      || pp.normalX !== tp.normalX
-      || pp.normalY !== tp.normalY
-      || pp.normalZ !== tp.normalZ
+      pp.reflectorEntityId !== tp.reflectorEntityId ||
+      pp.reflectorKind !== tp.reflectorKind ||
+      pp.reflectorPlayerId !== tp.reflectorPlayerId ||
+      pp.normalX !== tp.normalX ||
+      pp.normalY !== tp.normalY ||
+      pp.normalZ !== tp.normalZ
     ) {
       changed = true;
     }
@@ -294,6 +354,9 @@ export class ClientPredictionStepper {
     const movPosBlend = getChannelBlend(getMovementPosEmaMode(), deltaMs / 1000);
     const movVelBlend = getChannelBlend(getMovementVelEmaMode(), deltaMs / 1000);
     const beamPosBlend = getChannelBlend(getBeamEmaMode(), deltaMs / 1000);
+    const predictionMode = getPredictionMode();
+    const mapWidth = getMapWidth();
+    const mapHeight = getMapHeight();
     projectileSpawns.drain(now, applyProjectileSpawn);
 
     const turretShieldSpheresEnabled = getServerShieldsEnabled();
@@ -303,6 +366,8 @@ export class ClientPredictionStepper {
     for (const id of activeBeamPathIds) {
       const entity = entities.get(id);
       if (entity === undefined || entity.projectile === null || !isLineProjectileEntity(entity)) {
+        const beamTarget = beamPathTargets.get(id);
+        if (beamTarget !== undefined) shrinkBeamPoints(beamTarget.points, 0);
         activeBeamPathIds.delete(id);
         beamPathTargets.delete(id);
         continue;
@@ -320,7 +385,17 @@ export class ClientPredictionStepper {
 
       const beamTarget = beamPathTargets.get(id);
       noteTargetAge(targetAgeStats, beamTarget === undefined ? undefined : beamTarget.updatedAtMs, now);
-      if (beamTarget && applyBeamPathPrediction(entity, beamTarget, deltaMs, beamPosBlend, movVelBlend)) {
+      if (
+        beamTarget &&
+        applyBeamPathPrediction(
+          entity,
+          beamTarget,
+          deltaMs,
+          beamPosBlend,
+          movVelBlend,
+          predictionMode,
+        )
+      ) {
         beamPathsChanged = true;
         updateProjectileRenderSpatialIndex(entity);
         // Beam-directed barrels (turretBarrelFollowsBeam) are posed from
@@ -372,8 +447,8 @@ export class ClientPredictionStepper {
       targets: unitPredictionTargets,
       supportEntities: supportSurfaceEntities,
       deltaMs,
-      mapWidth: getMapWidth(),
-      mapHeight: getMapHeight(),
+      mapWidth,
+      mapHeight,
     });
 
     for (let i = 0; i < entitySettlementIds.length; i++) {
@@ -418,8 +493,8 @@ export class ClientPredictionStepper {
         target: projectileTarget,
         movPosBlend,
         movVelBlend,
-        mapWidth: getMapWidth(),
-        mapHeight: getMapHeight(),
+        mapWidth,
+        mapHeight,
         getEntity: (entityId) => entities.get(entityId),
       });
       if (projectileResult.becameLineProjectile) {

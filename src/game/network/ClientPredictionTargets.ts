@@ -125,18 +125,22 @@ function acquireBeamPoint(): BeamPoint {
   };
 }
 
+function releaseBeamPoint(point: BeamPoint): void {
+  if (_beamPointFreeList.length >= BEAM_POINT_FREE_LIST_WARM_CAPACITY) return;
+  clearBeamPoint(point);
+  _beamPointFreeList.push(point);
+}
+
 /** Truncate `arr` to `newLength`, returning the trailing point objects
  *  to the free list. Optional fields are cleared so the next acquire
  *  gets a clean slate without stale reflector metadata. */
 export function shrinkBeamPoints(arr: BeamPoint[], newLength: number): void {
-  for (let i = arr.length - 1; i >= newLength; i--) {
+  const length = Math.max(0, Math.floor(newLength));
+  for (let i = arr.length - 1; i >= length; i--) {
     const p = arr[i];
-    if (p) {
-      clearBeamPoint(p);
-      _beamPointFreeList.push(p);
-    }
+    if (p) releaseBeamPoint(p);
   }
-  arr.length = newLength;
+  arr.length = length;
 }
 
 export function ensureBeamPoint(arr: BeamPoint[], i: number): BeamPoint {

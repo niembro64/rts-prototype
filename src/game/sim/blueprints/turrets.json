@@ -366,7 +366,7 @@
       "duration": 130,
       "durationRandomness": 0.0
     },
-    "launchForce": 10000,
+    "launchForce": 4000,
     "turretTurnAccel": 500,
     "turretDrag": 1,
     "barrel": {

@@ -22,6 +22,7 @@ import { spatialGrid } from '../SpatialGrid';
 import { magnitude, lineSphereIntersectionT, rayBoxIntersectionT, getTransformCosSin } from '../../math';
 import {
   REFLECTOR_HIT_KIND_NONE,
+  SHIELD_REFLECTION_ENTITY_BEAM,
   SHIELD_PANEL_PROJECTILE_QUERY_PAD,
 } from '../combat/reflectorBatch';
 import { REFLECTIVE_SHIELD_MATERIAL } from '../blueprints/shieldMaterials';
@@ -30,6 +31,7 @@ import {
   distanceToRayConfigRangeCylinder,
   type RayConfigRangeCylinder,
 } from '../combat/lineShotRange';
+import { getActiveShields } from '../combat/shieldTurret';
 import { ENTITY_CHANGED_HP } from '../../../types/network';
 import { getSimWasm } from '../../sim-wasm/init';
 import {
@@ -168,6 +170,7 @@ const _beamReflEndX = new Float64Array(1);
 const _beamReflEndY = new Float64Array(1);
 const _beamReflEndZ = new Float64Array(1);
 const _beamReflRadius = new Float64Array(1);
+const _beamReflReflectionEntity = new Uint8Array([SHIELD_REFLECTION_ENTITY_BEAM]);
 const _beamReflExcludeEntityId = new Int32Array(1);
 const _beamReflExcludePanelIndex = new Int32Array(1);
 const _beamReflOutKind = new Uint8Array(1);
@@ -1012,6 +1015,7 @@ export class DamageSystem {
     rangeCylinder: RayConfigRangeCylinder | undefined = undefined,
     dtMs: number = 0,
     traceLimitEndpointDamageable: boolean = rangeCylinder === undefined,
+    reflectionEntity: number = SHIELD_REFLECTION_ENTITY_BEAM,
   ): {
     endX: number; endY: number; endZ: number;
     obstructionT: number | undefined;
@@ -1068,6 +1072,7 @@ export class DamageSystem {
         reflectorExcludePanelIndex,
         lineWidth,
         dtMs,
+        reflectionEntity,
       );
 
       if (!hit) {
@@ -1228,33 +1233,42 @@ export class DamageSystem {
   private findGroundSegmentT(
     startX: number, startY: number, startZ: number,
     endX: number, endY: number, endZ: number,
+    maxT: number = 1,
   ): number | null {
-    const sampleClearance = (t: number): number => {
-      const x = startX + (endX - startX) * t;
-      const y = startY + (endY - startY) * t;
-      const z = startZ + (endZ - startZ) * t;
-      return z - this.world.getGroundZ(x, y);
-    };
-
+    const clampedMaxT = Math.max(0, Math.min(1, maxT));
+    if (clampedMaxT <= 0) return null;
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const dz = endZ - startZ;
     let prevT = 0;
-    let prevClear = sampleClearance(0);
+    let prevClear = startZ - this.world.getGroundZ(startX, startY);
     if (prevClear < -BEAM_GROUND_EPSILON) return 0;
 
     for (let i = 1; i <= BEAM_GROUND_HIT_STEPS; i++) {
-      const t = i / BEAM_GROUND_HIT_STEPS;
-      const clear = sampleClearance(t);
+      const t = Math.min(i / BEAM_GROUND_HIT_STEPS, clampedMaxT);
+      const x = startX + dx * t;
+      const y = startY + dy * t;
+      const z = startZ + dz * t;
+      const clear = z - this.world.getGroundZ(x, y);
       if (clear <= BEAM_GROUND_EPSILON && prevClear > BEAM_GROUND_EPSILON) {
         let lo = prevT;
         let hi = t;
         for (let b = 0; b < BEAM_GROUND_HIT_BISECT_STEPS; b++) {
           const mid = (lo + hi) * 0.5;
-          if (sampleClearance(mid) <= BEAM_GROUND_EPSILON) hi = mid;
-          else lo = mid;
+          const midX = startX + dx * mid;
+          const midY = startY + dy * mid;
+          const midZ = startZ + dz * mid;
+          if (midZ - this.world.getGroundZ(midX, midY) <= BEAM_GROUND_EPSILON) {
+            hi = mid;
+          } else {
+            lo = mid;
+          }
         }
         return hi;
       }
       prevT = t;
       prevClear = clear;
+      if (t >= clampedMaxT) break;
     }
 
     return null;
@@ -1269,6 +1283,7 @@ export class DamageSystem {
     reflectorExcludePanelIndex: number,
     lineWidth: number,
     dtMs: number,
+    reflectionEntity: number,
   ): typeof _segHit | null {
     let bestT = Infinity;
     let found = false;
@@ -1328,9 +1343,13 @@ export class DamageSystem {
     // emission kind, so a beam and a rocket can never disagree about
     // where a surface is or how it bounces.
     const sim = getSimWasm();
+    const panelsActive = this.world.turretShieldPanelsEnabled &&
+      this.world.getShieldPanelUnits().length > 0;
+    const fieldsActive = this.world.turretShieldSpheresEnabled &&
+      getActiveShields().length > 0;
     if (
       sim !== undefined &&
-      (this.world.turretShieldPanelsEnabled || this.world.turretShieldSpheresEnabled)
+      (panelsActive || fieldsActive)
     ) {
       _beamReflStartX[0] = startX;
       _beamReflStartY[0] = startY;
@@ -1339,6 +1358,7 @@ export class DamageSystem {
       _beamReflEndY[0] = endY;
       _beamReflEndZ[0] = endZ;
       _beamReflRadius[0] = Math.max(0, lineWidth);
+      _beamReflReflectionEntity[0] = reflectionEntity;
       _beamReflExcludeEntityId[0] = reflectorExcludeEntityId;
       _beamReflExcludePanelIndex[0] = reflectorExcludePanelIndex;
       sim.projectileReflectorIntersectionsBatch(
@@ -1351,10 +1371,11 @@ export class DamageSystem {
         _beamReflEndY,
         _beamReflEndZ,
         _beamReflRadius,
+        _beamReflReflectionEntity,
         _beamReflExcludeEntityId,
         _beamReflExcludePanelIndex,
-        this.world.turretShieldPanelsEnabled ? 1 : 0,
-        this.world.turretShieldSpheresEnabled ? 1 : 0,
+        panelsActive ? 1 : 0,
+        fieldsActive ? 1 : 0,
         // Beams are instantaneous rays: resolve against the current
         // shield pose only, never the swept prev->cur fallback.
         1,
@@ -1476,7 +1497,15 @@ export class DamageSystem {
       }
     }
 
-    const groundT = this.findGroundSegmentT(startX, startY, startZ, endX, endY, endZ);
+    const groundT = this.findGroundSegmentT(
+      startX,
+      startY,
+      startZ,
+      endX,
+      endY,
+      endZ,
+      bestT,
+    );
     if (groundT !== null && groundT < bestT) {
       bestT = groundT; found = true;
       _segHit.t = groundT;

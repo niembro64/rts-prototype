@@ -1,5 +1,6 @@
 import type {
   ShieldReflectionMode,
+  ShieldReflectionDirection,
   ActiveProjectileShot,
   RayConfig,
   RayBlueprint,
@@ -22,6 +23,10 @@ export type {
   ShieldBarrierRatioConfig,
   ShieldMaterialBlueprint,
   ShieldMaterialVisualConfig,
+  ShieldReflectionDirection,
+  ShieldReflectionEntity,
+  ShieldReflectionEntityDirections,
+  ShieldReflectionPolicy,
   ShieldReflectionMode,
   ShieldBlueprint,
   ShieldSurfaceResponse,
@@ -64,8 +69,31 @@ export const SHIELD_SURFACE_RESPONSES = ['reflect', 'absorb', 'passThrough'] as 
 
 export const SHIELD_REFLECTION_MODES = ['outside-in', 'inside-out', 'both'] as const;
 
+export const SHIELD_REFLECTION_DIRECTIONS = [
+  'reflect-none',
+  'reflect-outside',
+  'reflect-inside',
+  'reflect-both',
+] as const;
+
+export const SHIELD_REFLECTION_ENTITIES = [
+  'plasma',
+  'rocket',
+  'beam',
+  'laser',
+] as const;
+
 export function isShieldReflectionMode(value: unknown): value is ShieldReflectionMode {
   return value === 'outside-in' || value === 'inside-out' || value === 'both';
+}
+
+export function isShieldReflectionDirection(value: unknown): value is ShieldReflectionDirection {
+  return (
+    value === 'reflect-none' ||
+    value === 'reflect-outside' ||
+    value === 'reflect-inside' ||
+    value === 'reflect-both'
+  );
 }
 
 export function isRayBlueprint(bp: ShotBlueprint | RayBlueprint | ShieldBlueprint): bp is RayBlueprint {

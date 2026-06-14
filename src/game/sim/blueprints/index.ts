@@ -591,6 +591,9 @@ function buildShieldConfig(
     material,
     angle: shieldBlueprint.angle,
     transitionTime: shieldBlueprint.transitionTime,
+    reflection: {
+      entities: { ...shieldBlueprint.reflection.entities },
+    },
     barrier:
       computeBarrierConfig(
         shieldBlueprint.barrier,

@@ -200,6 +200,52 @@
         "both"
       ]
     },
+    "ShieldReflectionDirection": {
+      "enum": [
+        "reflect-none",
+        "reflect-outside",
+        "reflect-inside",
+        "reflect-both"
+      ]
+    },
+    "ShieldReflectionEntity": {
+      "enum": [
+        "plasma",
+        "rocket",
+        "beam",
+        "laser"
+      ]
+    },
+    "ShieldReflectionEntityDirections": {
+      "type": "object",
+      "properties": {
+        "plasma": {
+          "$ref": "#/$defs/ShieldReflectionDirection"
+        },
+        "rocket": {
+          "$ref": "#/$defs/ShieldReflectionDirection"
+        },
+        "beam": {
+          "$ref": "#/$defs/ShieldReflectionDirection"
+        },
+        "laser": {
+          "$ref": "#/$defs/ShieldReflectionDirection"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ShieldReflectionPolicy": {
+      "type": "object",
+      "required": [
+        "entities"
+      ],
+      "properties": {
+        "entities": {
+          "$ref": "#/$defs/ShieldReflectionEntityDirections"
+        }
+      },
+      "additionalProperties": false
+    },
     "ShieldBarrierShape": {
       "enum": [
         "sphere",
@@ -2820,6 +2866,7 @@
         "materialId",
         "angle",
         "transitionTime",
+        "reflection",
         "barrier",
         "hitSound"
       ],
@@ -2835,6 +2882,9 @@
         },
         "transitionTime": {
           "type": "number"
+        },
+        "reflection": {
+          "$ref": "#/$defs/ShieldReflectionPolicy"
         },
         "barrier": {
           "oneOf": [
@@ -2981,7 +3031,8 @@
         "shieldBlueprintId",
         "material",
         "angle",
-        "transitionTime"
+        "transitionTime",
+        "reflection"
       ],
       "properties": {
         "type": {
@@ -2995,6 +3046,9 @@
         },
         "transitionTime": {
           "type": "number"
+        },
+        "reflection": {
+          "$ref": "#/$defs/ShieldReflectionPolicy"
         },
         "barrier": {
           "$ref": "#/$defs/ShieldBarrierConfig"

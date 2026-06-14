@@ -17,6 +17,11 @@ type ClientProjectileRenderSpatialEntry = {
   bucketIndices: number[];
 };
 
+type ClientProjectileRenderBucket = {
+  entries: ClientProjectileRenderSpatialEntry[];
+  entryCellIndices: number[];
+};
+
 export type ClientProjectileRenderLists = {
   traveling: Entity[];
   smokeTrail: Entity[];
@@ -25,7 +30,7 @@ export type ClientProjectileRenderLists = {
 };
 
 export class ClientProjectileRenderSpatialIndex {
-  private readonly buckets = new Map<ClientProjectileRenderCellKey, Entity[]>();
+  private readonly buckets = new Map<ClientProjectileRenderCellKey, ClientProjectileRenderBucket>();
   private readonly entries = new Map<EntityId, ClientProjectileRenderSpatialEntry>();
   private readonly querySeenIds = new Set<EntityId>();
 
@@ -55,55 +60,72 @@ export class ClientProjectileRenderSpatialIndex {
       existing.maxCellY === maxCellY
     ) {
       existing.entity = entity;
-      for (let i = 0; i < existing.cellKeys.length; i++) {
-        const bucket = this.buckets.get(existing.cellKeys[i]);
-        if (bucket !== undefined) bucket[existing.bucketIndices[i]] = entity;
-      }
       return;
     }
 
-    if (existing !== undefined) this.remove(entity.id);
+    let entry = existing;
+    if (entry !== undefined) {
+      this.removeEntryFromBuckets(entry);
+      entry.entity = entity;
+      entry.minCellX = minCellX;
+      entry.maxCellX = maxCellX;
+      entry.minCellY = minCellY;
+      entry.maxCellY = maxCellY;
+      entry.cellKeys.length = 0;
+      entry.bucketIndices.length = 0;
+    } else {
+      entry = {
+        entity,
+        minCellX,
+        maxCellX,
+        minCellY,
+        maxCellY,
+        cellKeys: [],
+        bucketIndices: [],
+      };
+      this.entries.set(entity.id, entry);
+    }
 
-    const cellKeys: ClientProjectileRenderCellKey[] = [];
-    const bucketIndices: number[] = [];
     for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
       for (let cellY = minCellY; cellY <= maxCellY; cellY++) {
         const key = this.cellKey(cellX, cellY);
         const bucket = this.getOrCreateBucket(key);
-        cellKeys.push(key);
-        bucketIndices.push(bucket.length);
-        bucket.push(entity);
+        const entryCellIndex = entry.cellKeys.length;
+        entry.cellKeys.push(key);
+        entry.bucketIndices.push(bucket.entries.length);
+        bucket.entries.push(entry);
+        bucket.entryCellIndices.push(entryCellIndex);
       }
     }
-
-    this.entries.set(entity.id, {
-      entity,
-      minCellX,
-      maxCellX,
-      minCellY,
-      maxCellY,
-      cellKeys,
-      bucketIndices,
-    });
   }
 
   remove(id: EntityId): void {
     const entry = this.entries.get(id);
     if (entry === undefined) return;
 
+    this.removeEntryFromBuckets(entry);
+    this.entries.delete(id);
+  }
+
+  private removeEntryFromBuckets(entry: ClientProjectileRenderSpatialEntry): void {
     for (let i = 0; i < entry.cellKeys.length; i++) {
       const key = entry.cellKeys[i];
       const bucket = this.buckets.get(key);
       if (bucket === undefined) continue;
       const bucketIndex = entry.bucketIndices[i];
-      const last = bucket.pop();
-      if (last !== undefined && bucketIndex < bucket.length) {
-        bucket[bucketIndex] = last;
-        this.repointBucketIndex(last.id, key, bucketIndex);
+      const lastEntry = bucket.entries.pop();
+      const lastEntryCellIndex = bucket.entryCellIndices.pop();
+      if (
+        lastEntry !== undefined &&
+        lastEntryCellIndex !== undefined &&
+        bucketIndex < bucket.entries.length
+      ) {
+        bucket.entries[bucketIndex] = lastEntry;
+        bucket.entryCellIndices[bucketIndex] = lastEntryCellIndex;
+        lastEntry.bucketIndices[lastEntryCellIndex] = bucketIndex;
       }
-      if (bucket.length === 0) this.buckets.delete(key);
+      if (bucket.entries.length === 0) this.buckets.delete(key);
     }
-    this.entries.delete(id);
   }
 
   queryRenderLists(
@@ -126,8 +148,9 @@ export class ClientProjectileRenderSpatialIndex {
       for (let cellY = minCellY; cellY <= maxCellY; cellY++) {
         const bucket = this.buckets.get(this.cellKey(cellX, cellY));
         if (bucket === undefined) continue;
-        for (let i = 0; i < bucket.length; i++) {
-          const entity = bucket[i];
+        const entries = bucket.entries;
+        for (let i = 0; i < entries.length; i++) {
+          const entity = entries[i].entity;
           const projectile = entity.projectile;
           if (projectile === null) continue;
           const points = projectile.points;
@@ -151,21 +174,6 @@ export class ClientProjectileRenderSpatialIndex {
       }
     }
     return out;
-  }
-
-  private repointBucketIndex(
-    id: EntityId,
-    cellKey: ClientProjectileRenderCellKey,
-    nextIndex: number,
-  ): void {
-    const movedEntry = this.entries.get(id);
-    if (movedEntry === undefined) return;
-    for (let i = 0; i < movedEntry.cellKeys.length; i++) {
-      if (movedEntry.cellKeys[i] === cellKey) {
-        movedEntry.bucketIndices[i] = nextIndex;
-        return;
-      }
-    }
   }
 
   private boundsForProjectile(entity: Entity): FootprintBounds {
@@ -192,10 +200,10 @@ export class ClientProjectileRenderSpatialIndex {
     };
   }
 
-  private getOrCreateBucket(cellKey: ClientProjectileRenderCellKey): Entity[] {
+  private getOrCreateBucket(cellKey: ClientProjectileRenderCellKey): ClientProjectileRenderBucket {
     let bucket = this.buckets.get(cellKey);
     if (bucket === undefined) {
-      bucket = [];
+      bucket = { entries: [], entryCellIndices: [] };
       this.buckets.set(cellKey, bucket);
     }
     return bucket;

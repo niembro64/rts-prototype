@@ -7,10 +7,18 @@
     "materialId": "reflectiveShield",
     "angle": 6.283185307179586,
     "transitionTime": 500,
+    "reflection": {
+      "entities": {
+        "plasma": "reflect-outside",
+        "rocket": "reflect-outside",
+        "beam": "reflect-none",
+        "laser": "reflect-none"
+      }
+    },
     "barrier": {
       "shape": "sphere",
       "outerRatio": 0.8,
-      "originOffsetRadiusRatio": 0.3,
+      "originOffsetRadiusRatio": 0.0,
       "rimWidth": null
     },
     "hitSound": null,
@@ -21,10 +29,18 @@
     "materialId": "reflectiveShield",
     "angle": 6.283185307179586,
     "transitionTime": 500,
+    "reflection": {
+      "entities": {
+        "plasma": "reflect-outside",
+        "rocket": "reflect-outside",
+        "beam": "reflect-none",
+        "laser": "reflect-none"
+      }
+    },
     "barrier": {
       "shape": "sphere",
       "outerRatio": 0.45,
-      "originOffsetRadiusRatio": 0.2,
+      "originOffsetRadiusRatio": 0.0,
       "rimWidth": null
     },
     "hitSound": null,
@@ -35,10 +51,18 @@
     "materialId": "reflectiveShield",
     "angle": 6.283185307179586,
     "transitionTime": 500,
+    "reflection": {
+      "entities": {
+        "plasma": "reflect-outside",
+        "rocket": "reflect-outside",
+        "beam": "reflect-none",
+        "laser": "reflect-none"
+      }
+    },
     "barrier": {
       "shape": "infiniteVerticalCylinder",
       "outerRatio": 1.0,
-      "originOffsetRadiusRatio": 0,
+      "originOffsetRadiusRatio": 0.0,
       "rimWidth": null
     },
     "hitSound": null,
@@ -49,6 +73,14 @@
     "materialId": "reflectiveShield",
     "angle": 6.283185307179586,
     "transitionTime": 500,
+    "reflection": {
+      "entities": {
+        "plasma": "reflect-outside",
+        "rocket": "reflect-outside",
+        "beam": "reflect-none",
+        "laser": "reflect-none"
+      }
+    },
     "barrier": {
       "shape": "aimedCylinder",
       "outerRatio": 0.1,
@@ -63,6 +95,14 @@
     "materialId": "reflectiveShield",
     "angle": 0,
     "transitionTime": 500,
+    "reflection": {
+      "entities": {
+        "plasma": "reflect-outside",
+        "rocket": "reflect-outside",
+        "beam": "reflect-outside",
+        "laser": "reflect-outside"
+      }
+    },
     "barrier": null,
     "hitSound": null,
     "shieldBlueprintId": "shieldPanel"

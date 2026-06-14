@@ -24,6 +24,10 @@ import {
   BEAM_MIN_ON_TIME_MS,
 } from '../../../config';
 import {
+  SHIELD_REFLECTION_ENTITY_BEAM,
+  SHIELD_REFLECTION_ENTITY_LASER,
+} from './reflectorBatch';
+import {
   getEntityAcceleration3d,
   getEntityPosition3d,
   getEntityVelocity3d,
@@ -1654,6 +1658,9 @@ export function updateProjectiles(
           undefined,
           dtMs,
           false,
+          proj.projectileType === 'laser'
+            ? SHIELD_REFLECTION_ENTITY_LASER
+            : SHIELD_REFLECTION_ENTITY_BEAM,
         );
 
         // Resize the polyline to [start, ...reflections, end] and

@@ -10285,7 +10285,19 @@ mod lock_on_inclusion_tests {
         shield_panel_pool_set_unit(
             0, 900, 10.0, 0.0, 0.0, 0.0, 100.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0, 1,
         );
-        shield_panel_pool_set_panel(0, 0.0, 0.0, 0.0, -10.0, 10.0, 10.0);
+        shield_panel_pool_set_panel(
+            0,
+            0.0,
+            0.0,
+            0.0,
+            -10.0,
+            10.0,
+            10.0,
+            SHIELD_REFLECTION_MODE_BOTH,
+            SHIELD_REFLECTION_MODE_BOTH,
+            SHIELD_REFLECTION_MODE_BOTH,
+            SHIELD_REFLECTION_MODE_BOTH,
+        );
 
         let idx = combat_targeting_turret_global_idx(SOURCE_SLOT, 0);
         let flags = combat_targeting_pool().turret_config_flags[idx];
@@ -10445,6 +10457,9 @@ mod lock_on_inclusion_tests {
             1.0,
             5.0,
             SHIELD_FIELD_SHAPE_SPHERE,
+            SHIELD_REFLECTION_MODE_BOTH,
+            SHIELD_REFLECTION_MODE_BOTH,
+            SHIELD_REFLECTION_MODE_BOTH,
             SHIELD_REFLECTION_MODE_BOTH,
         );
         let (_, _, active_field_clear) = compute_turret_gates_for_aim_point(

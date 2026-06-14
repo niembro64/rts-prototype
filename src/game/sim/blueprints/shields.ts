@@ -11,6 +11,10 @@ import {
   isShieldMaterialId,
   type ShieldBlueprintId,
 } from '../../../types/blueprintIds';
+import {
+  SHIELD_REFLECTION_ENTITIES,
+  isShieldReflectionDirection,
+} from '../../../types/shotTypes';
 import rawShieldBlueprints from './shields.json';
 import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields, isObject } from './jsonValidation';
@@ -26,6 +30,7 @@ const SHIELD_EXPLICIT_FIELDS = [
   'materialId',
   'angle',
   'transitionTime',
+  'reflection',
   'barrier',
   'hitSound',
 ] as const;
@@ -100,5 +105,23 @@ for (const [id, blueprint] of Object.entries(SHIELD_BLUEPRINTS)) {
     throw new Error(
       `Shield blueprint ${id} references unknown shield material: ${blueprint.materialId}`,
     );
+  }
+  if (!isObject(blueprint.reflection)) {
+    throw new Error(`Shield blueprint ${id} must define reflection`);
+  }
+  if (!isObject(blueprint.reflection.entities)) {
+    throw new Error(`Shield blueprint ${id} must define reflection.entities`);
+  }
+  for (const [entity, direction] of Object.entries(blueprint.reflection.entities)) {
+    if (!SHIELD_REFLECTION_ENTITIES.includes(entity as typeof SHIELD_REFLECTION_ENTITIES[number])) {
+      throw new Error(
+        `Shield blueprint ${id} has invalid reflection entity: ${entity}`,
+      );
+    }
+    if (!isShieldReflectionDirection(direction)) {
+      throw new Error(
+        `Shield blueprint ${id} has invalid reflection direction for ${entity}: ${String(direction)}`,
+      );
+    }
   }
 }

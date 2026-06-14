@@ -31,6 +31,10 @@ export type {
   ShieldBlueprint,
   ShieldMaterialBlueprint,
   ShieldMaterialVisualConfig,
+  ShieldReflectionDirection,
+  ShieldReflectionEntity,
+  ShieldReflectionEntityDirections,
+  ShieldReflectionPolicy,
   ShieldPanel,
   ShieldSurfaceResponse,
   FlyingConfig,
@@ -77,6 +81,9 @@ export type {
 
 export {
   SHIELD_SURFACE_RESPONSES,
+  SHIELD_REFLECTION_DIRECTIONS,
+  SHIELD_REFLECTION_ENTITIES,
+  isShieldReflectionDirection,
   isShieldReflectionMode,
   isRayBlueprint,
 } from './shotTypes';

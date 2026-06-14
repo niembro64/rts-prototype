@@ -84,13 +84,13 @@ for (const [id, material] of Object.entries(SHIELD_MATERIALS)) {
   assertSurfaceResponse(id, 'rocket', material.projectileResponse.rocket);
   assertSurfaceResponse(id, 'beam', material.projectileResponse.beam);
   assertSurfaceResponse(id, 'laser', material.projectileResponse.laser);
-  // Rays have exactly one shield interaction: reflect. The beam trace
-  // no longer carries a non-reflect branch, so a material configured
-  // otherwise would silently diverge from the sim.
+  // Materials describe what happens after a shield policy accepts a ray
+  // hit. Per-shield reflection.entities may still opt a ray family out
+  // before the material response is reached.
   for (const rayShotType of ['beam', 'laser'] as const) {
     if (material.projectileResponse[rayShotType] !== 'reflect') {
       throw new Error(
-        `Force-field material ${id} must use 'reflect' for ${rayShotType}: rays always reflect off shield surfaces`,
+        `Force-field material ${id} must use 'reflect' for ${rayShotType}: accepted ray shield hits are reflective; use shield reflection.entities to opt a ray family out`,
       );
     }
   }

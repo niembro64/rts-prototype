@@ -4,6 +4,8 @@ import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, Projectile, ProjectileShot, BeamRay, LaserRay, ShotSource } from '../types';
 import {
   REFLECTOR_HIT_KIND_NONE,
+  SHIELD_REFLECTION_ENTITY_PLASMA,
+  SHIELD_REFLECTION_ENTITY_ROCKET,
   SHIELD_PANEL_PROJECTILE_QUERY_PAD,
 } from './reflectorBatch';
 import { getEmissionBlueprintId, isRayType, isProjectileShot } from '../types';
@@ -94,6 +96,7 @@ let _reflectorEndX = new Float64Array(0);
 let _reflectorEndY = new Float64Array(0);
 let _reflectorEndZ = new Float64Array(0);
 let _reflectorProjectileRadius = new Float64Array(0);
+let _reflectorReflectionEntity = new Uint8Array(0);
 let _reflectorExcludeEntityId = new Int32Array(0);
 let _reflectorExcludePanelIndex = new Int32Array(0);
 let _reflectorHitKind = new Uint8Array(0);
@@ -226,6 +229,7 @@ function ensureReflectorBatchCapacity(count: number): void {
   _reflectorEndY = new Float64Array(next);
   _reflectorEndZ = new Float64Array(next);
   _reflectorProjectileRadius = new Float64Array(next);
+  _reflectorReflectionEntity = new Uint8Array(next);
   _reflectorExcludeEntityId = new Int32Array(next);
   _reflectorExcludePanelIndex = new Int32Array(next);
   _reflectorHitKind = new Uint8Array(next);
@@ -346,6 +350,10 @@ function computeProjectileReflectorHits(
     _reflectorEndY[i] = curY;
     _reflectorEndZ[i] = curZ;
     _reflectorProjectileRadius[i] = proj.config.shotProfile.runtime.radius.collision;
+    _reflectorReflectionEntity[i] =
+      isProjectileShot(proj.config.shot) && proj.config.shot.type === 'rocket'
+        ? SHIELD_REFLECTION_ENTITY_ROCKET
+        : SHIELD_REFLECTION_ENTITY_PLASMA;
     _reflectorExcludeEntityId[i] = proj.sourceEntityId;
     _reflectorExcludePanelIndex[i] = -1;
     enabledCount++;
@@ -358,37 +366,38 @@ function computeProjectileReflectorHits(
   }
   sim.projectileReflectorIntersectionsBatch(
     count,
-    _reflectorEnabled.subarray(0, count),
-    _reflectorStartX.subarray(0, count),
-    _reflectorStartY.subarray(0, count),
-    _reflectorStartZ.subarray(0, count),
-    _reflectorEndX.subarray(0, count),
-    _reflectorEndY.subarray(0, count),
-    _reflectorEndZ.subarray(0, count),
-    _reflectorProjectileRadius.subarray(0, count),
-    _reflectorExcludeEntityId.subarray(0, count),
-    _reflectorExcludePanelIndex.subarray(0, count),
+    _reflectorEnabled,
+    _reflectorStartX,
+    _reflectorStartY,
+    _reflectorStartZ,
+    _reflectorEndX,
+    _reflectorEndY,
+    _reflectorEndZ,
+    _reflectorProjectileRadius,
+    _reflectorReflectionEntity,
+    _reflectorExcludeEntityId,
+    _reflectorExcludePanelIndex,
     mirrorsActive ? 1 : 0,
     shieldsActive ? 1 : 0,
     0,
     SHIELD_PANEL_PROJECTILE_QUERY_PAD,
     dtMs,
-    _reflectorHitKind.subarray(0, count),
-    _reflectorHitEntityId.subarray(0, count),
-    _reflectorHitPanelIndex.subarray(0, count),
-    _reflectorHitT.subarray(0, count),
-    _reflectorHitX.subarray(0, count),
-    _reflectorHitY.subarray(0, count),
-    _reflectorHitZ.subarray(0, count),
-    _reflectorHitNormalX.subarray(0, count),
-    _reflectorHitNormalY.subarray(0, count),
-    _reflectorHitNormalZ.subarray(0, count),
-    _reflectorHitReflectDirX.subarray(0, count),
-    _reflectorHitReflectDirY.subarray(0, count),
-    _reflectorHitReflectDirZ.subarray(0, count),
-    _reflectorHitSurfaceVelocityX.subarray(0, count),
-    _reflectorHitSurfaceVelocityY.subarray(0, count),
-    _reflectorHitSurfaceVelocityZ.subarray(0, count),
+    _reflectorHitKind,
+    _reflectorHitEntityId,
+    _reflectorHitPanelIndex,
+    _reflectorHitT,
+    _reflectorHitX,
+    _reflectorHitY,
+    _reflectorHitZ,
+    _reflectorHitNormalX,
+    _reflectorHitNormalY,
+    _reflectorHitNormalZ,
+    _reflectorHitReflectDirX,
+    _reflectorHitReflectDirY,
+    _reflectorHitReflectDirZ,
+    _reflectorHitSurfaceVelocityX,
+    _reflectorHitSurfaceVelocityY,
+    _reflectorHitSurfaceVelocityZ,
   );
 
   let responseCount = 0;
@@ -410,32 +419,32 @@ function computeProjectileReflectorHits(
 
   sim.projectileReflectionResponseBatch(
     count,
-    _reflectorResponseEnabled.subarray(0, count),
-    _reflectorHitT.subarray(0, count),
-    _reflectorHitX.subarray(0, count),
-    _reflectorHitY.subarray(0, count),
-    _reflectorHitZ.subarray(0, count),
-    _reflectorResponseVelocityX.subarray(0, count),
-    _reflectorResponseVelocityY.subarray(0, count),
-    _reflectorResponseVelocityZ.subarray(0, count),
-    _reflectorHitNormalX.subarray(0, count),
-    _reflectorHitNormalY.subarray(0, count),
-    _reflectorHitNormalZ.subarray(0, count),
-    _reflectorHitSurfaceVelocityX.subarray(0, count),
-    _reflectorHitSurfaceVelocityY.subarray(0, count),
-    _reflectorHitSurfaceVelocityZ.subarray(0, count),
-    _reflectorResponseRadius.subarray(0, count),
+    _reflectorResponseEnabled,
+    _reflectorHitT,
+    _reflectorHitX,
+    _reflectorHitY,
+    _reflectorHitZ,
+    _reflectorResponseVelocityX,
+    _reflectorResponseVelocityY,
+    _reflectorResponseVelocityZ,
+    _reflectorHitNormalX,
+    _reflectorHitNormalY,
+    _reflectorHitNormalZ,
+    _reflectorHitSurfaceVelocityX,
+    _reflectorHitSurfaceVelocityY,
+    _reflectorHitSurfaceVelocityZ,
+    _reflectorResponseRadius,
     dtMs,
     REFLECTIVE_SHIELD_MATERIAL.reflection.reflectivity,
-    _reflectorResponseReflected.subarray(0, count),
-    _reflectorResponsePosX.subarray(0, count),
-    _reflectorResponsePosY.subarray(0, count),
-    _reflectorResponsePosZ.subarray(0, count),
-    _reflectorResponseOutVelocityX.subarray(0, count),
-    _reflectorResponseOutVelocityY.subarray(0, count),
-    _reflectorResponseOutVelocityZ.subarray(0, count),
-    _reflectorResponseRotationChanged.subarray(0, count),
-    _reflectorResponseRotation.subarray(0, count),
+    _reflectorResponseReflected,
+    _reflectorResponsePosX,
+    _reflectorResponsePosY,
+    _reflectorResponsePosZ,
+    _reflectorResponseOutVelocityX,
+    _reflectorResponseOutVelocityY,
+    _reflectorResponseOutVelocityZ,
+    _reflectorResponseRotationChanged,
+    _reflectorResponseRotation,
   );
 }
 

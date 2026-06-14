@@ -2,7 +2,11 @@
 
 import type { WorldState } from '../WorldState';
 import type { ShieldConfig } from '../types';
-import type { ShieldBarrierShape, ShieldReflectionMode } from '../../../types/shotTypes';
+import type {
+  ShieldBarrierShape,
+  ShieldReflectionDirection,
+  ShieldReflectionPolicy,
+} from '../../../types/shotTypes';
 import { SHIELD_MIN_ON_TIME_MS } from '../../../config';
 import { getTransformCosSin } from '../../math';
 import { CT_TURRET_STATE_ENGAGED } from '../../sim-wasm/init';
@@ -41,7 +45,7 @@ export type ActiveShieldRef = {
   axisEndY: number;
   axisEndZ: number;
   radius: number;
-  reflectionMode: ShieldReflectionMode;
+  reflection: ShieldReflectionPolicy;
   playerId: number;
   entityId: number;
 };
@@ -207,7 +211,7 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
           axisEndY,
           axisEndZ,
           radius,
-          reflectionMode: fieldShot.material.reflection.mode,
+          reflection: fieldShot.reflection,
           playerId,
           entityId: unit.id,
         });
@@ -233,16 +237,27 @@ export type ShieldProjectileIntersection = {
 };
 
 
-export function encodeShieldReflectionMode(mode: ShieldReflectionMode): number {
-  switch (mode) {
-    case 'outside-in':
+export function encodeShieldReflectionDirection(
+  direction: ShieldReflectionDirection | undefined,
+): number {
+  switch (direction) {
+    case 'reflect-none':
+      return 3;
+    case 'reflect-outside':
       return 0;
-    case 'inside-out':
+    case 'reflect-inside':
       return 1;
-    case 'both':
+    case 'reflect-both':
       return 2;
   }
-  return 2;
+  return 3;
+}
+
+export function encodeShieldReflectionPolicy(
+  policy: ShieldReflectionPolicy,
+  entity: keyof ShieldReflectionPolicy['entities'],
+): number {
+  return encodeShieldReflectionDirection(policy.entities[entity]);
 }
 
 export function encodeShieldBarrierShape(shape: ShieldBarrierShape): number {
@@ -256,5 +271,3 @@ export function encodeShieldBarrierShape(shape: ShieldBarrierShape): number {
   }
   return 0;
 }
-
-

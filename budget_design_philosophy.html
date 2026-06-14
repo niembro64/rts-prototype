@@ -622,9 +622,14 @@
           and the per-vertex tangential velocity on a beam
           (<code>proj.points[i].vx/vy/vz</code>). These are the values
           the client integrates forward between snapshots under
-          <code>VEL</code> prediction, so the velocity EMA controls how
-          fast that integration realigns with the server's freshest
-          velocity. Travelling-projectile velocity
+          <code>VEL</code> prediction for unconstrained motion. Reflected
+          beam geometry is stricter: once a beam has hit a shield, the
+          reflector vertex and all later vertices are authoritative trace
+          constraints unless the client is also running the same local
+          reflection trace. Their velocities remain on the wire for
+          correction and diagnostics, but the presentation layer must not
+          independently dead-reckon those vertices through shield planes.
+          Travelling-projectile velocity
           (<code>proj.velocityX/Y/Z</code>) is event-snapped, not on
           this channel &mdash; except rocket-like homing shots, whose
           correction targets blend their velocity here too (see

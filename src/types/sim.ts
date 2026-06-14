@@ -636,8 +636,11 @@ export type Turret = {
 // projectile system each tick (ballistic arc); beams and lasers
 // ignore vz and gravity (they're instantaneous line weapons).
 // Beam polylines (start → reflections → end) live in `points`; each
-// point carries its own (vx, vy, vz) so reflected/redirected beams
-// can extrapolate every vertex on the client between snapshots.
+// point carries its own (vx, vy, vz). The client may extrapolate an
+// unreflected open beam from those velocities, but reflector vertices
+// and vertices downstream of the first reflector are ray/plane trace
+// results, not free particles; without a local retrace they remain
+// constrained to the latest authoritative path.
 export type Projectile = {
   ownerId: PlayerId;
   /** Legacy host shortcut. The full immutable provenance lives in shotSource. */

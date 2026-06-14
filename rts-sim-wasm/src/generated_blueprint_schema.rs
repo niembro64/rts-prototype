@@ -82,6 +82,35 @@ pub enum ShieldReflectionMode {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum ShieldReflectionDirection {
+    ReflectNone,
+    ReflectOutside,
+    ReflectInside,
+    ReflectBoth,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ShieldReflectionEntity {
+    Plasma,
+    Rocket,
+    Beam,
+    Laser,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShieldReflectionEntityDirections {
+    pub plasma: Option<ShieldReflectionDirection>,
+    pub rocket: Option<ShieldReflectionDirection>,
+    pub beam: Option<ShieldReflectionDirection>,
+    pub laser: Option<ShieldReflectionDirection>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShieldReflectionPolicy {
+    pub entities: ShieldReflectionEntityDirections,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum ShieldBarrierShape {
     Sphere,
     InfiniteVerticalCylinder,
@@ -905,6 +934,7 @@ pub struct ShieldBlueprint {
     pub materialId: String,
     pub angle: f64,
     pub transitionTime: f64,
+    pub reflection: ShieldReflectionPolicy,
     pub barrier: Option<ShieldBarrierRatioConfig>,
     pub hitSound: Option<BlueprintJsonValue>,
     pub shieldBlueprintId: String,
@@ -955,6 +985,7 @@ pub struct ShieldConfig {
     pub material: ShieldMaterialBlueprint,
     pub angle: f64,
     pub transitionTime: f64,
+    pub reflection: ShieldReflectionPolicy,
     pub barrier: Option<ShieldBarrierConfig>,
     pub shieldBlueprintId: String,
 }

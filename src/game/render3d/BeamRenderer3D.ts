@@ -85,14 +85,10 @@ type BeamVisualLayer = {
   readonly config: BeamVisualConfig;
   readonly radiusMultiplier: number;
   readonly segmentMesh: THREE.InstancedMesh;
-  readonly segmentAlpha: Float32Array;
-  readonly segmentAlphaAttr: THREE.InstancedBufferAttribute;
   readonly segmentFlow: Float32Array;
   readonly segmentFlowAttr: THREE.InstancedBufferAttribute;
   activeSegmentCount: number;
   readonly endpointMesh: THREE.InstancedMesh;
-  readonly endpointAlpha: Float32Array;
-  readonly endpointAlphaAttr: THREE.InstancedBufferAttribute;
   activeEndpointCount: number;
 };
 
@@ -104,8 +100,9 @@ function createBeamVisualLayer(
 ): BeamVisualLayer {
   const segmentGeom = new THREE.CylinderGeometry(1, 1, 1, 8, 1, false);
   const segmentAlpha = new Float32Array(BEAM_SEGMENT_CAP);
+  segmentAlpha.fill(1);
   const segmentAlphaAttr = new THREE.InstancedBufferAttribute(segmentAlpha, 1);
-  segmentAlphaAttr.setUsage(THREE.DynamicDrawUsage);
+  segmentAlphaAttr.setUsage(THREE.StaticDrawUsage);
   segmentGeom.setAttribute('aAlpha', segmentAlphaAttr);
   const segmentFlow = new Float32Array(BEAM_SEGMENT_CAP * 4);
   const segmentFlowAttr = new THREE.InstancedBufferAttribute(segmentFlow, 4);
@@ -134,8 +131,9 @@ function createBeamVisualLayer(
 
   const endpointGeom = new THREE.SphereGeometry(1, 12, 10);
   const endpointAlpha = new Float32Array(BEAM_ENDPOINT_CAP);
+  endpointAlpha.fill(1);
   const endpointAlphaAttr = new THREE.InstancedBufferAttribute(endpointAlpha, 1);
-  endpointAlphaAttr.setUsage(THREE.DynamicDrawUsage);
+  endpointAlphaAttr.setUsage(THREE.StaticDrawUsage);
   endpointGeom.setAttribute('aAlpha', endpointAlphaAttr);
   const endpointMat = new THREE.ShaderMaterial({
     vertexShader: BEAM_ENDPOINT_VERTEX_SHADER,
@@ -159,14 +157,10 @@ function createBeamVisualLayer(
     config,
     radiusMultiplier,
     segmentMesh,
-    segmentAlpha,
-    segmentAlphaAttr,
     segmentFlow,
     segmentFlowAttr,
     activeSegmentCount: 0,
     endpointMesh,
-    endpointAlpha,
-    endpointAlphaAttr,
     activeEndpointCount: 0,
   };
 }
@@ -233,12 +227,10 @@ export class BeamRenderer3D {
     ax: number, ay: number, az: number,
     bx: number, by: number, bz: number,
     cylRadius: number,
-    alpha: number,
     length: number,
     flowPhase: number,
   ): void {
-    if (slot >= BEAM_SEGMENT_CAP || alpha <= 0.001) return;
-    layer.segmentAlpha[slot] = alpha;
+    if (slot >= BEAM_SEGMENT_CAP) return;
     const flowBase = slot * 4;
     layer.segmentFlow[flowBase] = 1.0;
     layer.segmentFlow[flowBase + 1] = beamWaveFlowRepeats(length, layer.config.waveSpacing);
@@ -254,13 +246,11 @@ export class BeamRenderer3D {
     simY: number,
     simZ: number,
     radius: number,
-    alpha: number,
   ): boolean {
-    if (slot >= BEAM_ENDPOINT_CAP || alpha <= 0.001 || radius <= 0.001) return false;
+    if (slot >= BEAM_ENDPOINT_CAP || radius <= 0.001) return false;
     this._matrix.makeScale(radius, radius, radius);
     this._matrix.setPosition(simX, simZ, simY);
     layer.endpointMesh.setMatrixAt(slot, this._matrix);
-    layer.endpointAlpha[slot] = alpha;
     return true;
   }
 
@@ -276,9 +266,12 @@ export class BeamRenderer3D {
   }
 
   private hasActiveVisuals(): boolean {
-    return this.layers.some(
-      (layer) => layer.activeSegmentCount > 0 || layer.activeEndpointCount > 0,
-    );
+    const layers = this.layers;
+    for (let i = 0; i < layers.length; i++) {
+      const layer = layers[i];
+      if (layer.activeSegmentCount > 0 || layer.activeEndpointCount > 0) return true;
+    }
+    return false;
   }
 
   update(
@@ -304,8 +297,11 @@ export class BeamRenderer3D {
 
     let segIdx = 0;
     let endpointIdx = 0;
+    const layers = this.layers;
+    const layerCount = layers.length;
 
-    for (const e of projectiles) {
+    for (let projectileIndex = 0; projectileIndex < projectiles.length; projectileIndex++) {
+      const e = projectiles[projectileIndex];
       const pt = e.projectile?.projectileType;
       if (!pt || !isRayType(pt)) continue;
 
@@ -327,10 +323,6 @@ export class BeamRenderer3D {
         BEAM_MIN_RADIUS,
         profile.lineRadius * BEAM_RADIUS_SCALE,
       );
-      const damageSphereRadius = Math.max(
-        ENDPOINT_MIN_RADIUS,
-        profile.lineDamageSphereRadius,
-      );
 
       // Walk the polyline pairwise and draw one cylinder per segment.
       // Each reflection vertex carries its own (x, y, z), so pitched
@@ -338,7 +330,7 @@ export class BeamRenderer3D {
       // Per-segment alpha is held at 1.0 — the wave shader handles all
       // brightness modulation via mix(LOW_ALPHA, HIGH_ALPHA, pulse).
       const lastIdx = points.length - 1;
-      const openEndedLine = this.isOpenEndedLinePath(proj);
+      const openEndedLine = OPEN_ENDED_LINE_CONFIG.extendToInfinity && this.isOpenEndedLinePath(proj);
 
       // Sim's points[0] sits at the turret mount center; snap-to-turret
       // re-anchors to the live mount so the start tracks the turret
@@ -370,11 +362,10 @@ export class BeamRenderer3D {
         let by = b.y;
         let bz = b.z;
         if (
-          OPEN_ENDED_LINE_CONFIG.extendToInfinity &&
           openEndedLine &&
           i + 1 === lastIdx
         ) {
-          const prev = points[Math.max(0, lastIdx - 1)];
+          const prev = points[lastIdx - 1];
           let tailDx = endPoint.x - prev.x;
           let tailDy = endPoint.y - prev.y;
           let tailDz = endPoint.z - prev.z;
@@ -398,14 +389,14 @@ export class BeamRenderer3D {
         const segLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
         if (segIdx < BEAM_SEGMENT_CAP) {
           const phase = beamWaveFlowPhase(e.id, segIdx);
-          for (const layer of this.layers) {
+          for (let layerIndex = 0; layerIndex < layerCount; layerIndex++) {
+            const layer = layers[layerIndex];
             this.writeSegment(
               layer,
               segIdx,
               ax, ay, az,
               bx, by, bz,
               cylRadius * layer.radiusMultiplier,
-              1.0,
               segLen,
               phase,
             );
@@ -416,7 +407,12 @@ export class BeamRenderer3D {
 
       if (proj.endpointDamageable !== false) {
         if (endpointIdx < BEAM_ENDPOINT_CAP) {
-          for (const layer of this.layers) {
+          const damageSphereRadius = Math.max(
+            ENDPOINT_MIN_RADIUS,
+            profile.lineDamageSphereRadius,
+          );
+          for (let layerIndex = 0; layerIndex < layerCount; layerIndex++) {
+            const layer = layers[layerIndex];
             this.writeEndpoint(
               layer,
               endpointIdx,
@@ -424,7 +420,6 @@ export class BeamRenderer3D {
               endPoint.y,
               endPoint.z,
               damageSphereRadius * layer.radiusMultiplier,
-              1.0,
             );
           }
           endpointIdx++;
@@ -432,15 +427,13 @@ export class BeamRenderer3D {
       }
     }
 
-    for (const layer of this.layers) {
+    for (let layerIndex = 0; layerIndex < layerCount; layerIndex++) {
+      const layer = layers[layerIndex];
       layer.segmentMesh.count = segIdx;
       if (segIdx > 0) {
         layer.segmentMesh.instanceMatrix.clearUpdateRanges();
         layer.segmentMesh.instanceMatrix.addUpdateRange(0, segIdx * 16);
         layer.segmentMesh.instanceMatrix.needsUpdate = true;
-        layer.segmentAlphaAttr.clearUpdateRanges();
-        layer.segmentAlphaAttr.addUpdateRange(0, segIdx);
-        layer.segmentAlphaAttr.needsUpdate = true;
         layer.segmentFlowAttr.clearUpdateRanges();
         layer.segmentFlowAttr.addUpdateRange(0, segIdx * 4);
         layer.segmentFlowAttr.needsUpdate = true;
@@ -452,9 +445,6 @@ export class BeamRenderer3D {
         layer.endpointMesh.instanceMatrix.clearUpdateRanges();
         layer.endpointMesh.instanceMatrix.addUpdateRange(0, endpointIdx * 16);
         layer.endpointMesh.instanceMatrix.needsUpdate = true;
-        layer.endpointAlphaAttr.clearUpdateRanges();
-        layer.endpointAlphaAttr.addUpdateRange(0, endpointIdx);
-        layer.endpointAlphaAttr.needsUpdate = true;
       }
       layer.activeEndpointCount = endpointIdx;
     }

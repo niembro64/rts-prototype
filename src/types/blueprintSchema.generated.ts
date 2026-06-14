@@ -25,6 +25,21 @@ export type ShieldSurfaceResponse = 'reflect' | 'absorb' | 'passThrough';
 
 export type ShieldReflectionMode = 'outside-in' | 'inside-out' | 'both';
 
+export type ShieldReflectionDirection = 'reflect-none' | 'reflect-outside' | 'reflect-inside' | 'reflect-both';
+
+export type ShieldReflectionEntity = 'plasma' | 'rocket' | 'beam' | 'laser';
+
+export type ShieldReflectionEntityDirections = {
+  plasma?: ShieldReflectionDirection;
+  rocket?: ShieldReflectionDirection;
+  beam?: ShieldReflectionDirection;
+  laser?: ShieldReflectionDirection;
+};
+
+export type ShieldReflectionPolicy = {
+  entities: ShieldReflectionEntityDirections;
+};
+
 export type ShieldBarrierShape = 'sphere' | 'infiniteVerticalCylinder' | 'aimedCylinder';
 
 export type ShieldBarrierRatioConfig = {
@@ -677,6 +692,7 @@ export type ShieldBlueprint = {
   materialId: ShieldMaterialId;
   angle: number;
   transitionTime: number;
+  reflection: ShieldReflectionPolicy;
   barrier: ShieldBarrierRatioConfig | null;
   hitSound: SoundEntry | null;
   shieldBlueprintId: ShieldBlueprintId;
@@ -716,6 +732,7 @@ export type ShieldConfig = {
   material: ShieldMaterialBlueprint;
   angle: number;
   transitionTime: number;
+  reflection: ShieldReflectionPolicy;
   barrier?: ShieldBarrierConfig;
   shieldBlueprintId: ShieldBlueprintId;
 };

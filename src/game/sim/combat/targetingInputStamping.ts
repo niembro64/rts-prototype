@@ -20,8 +20,11 @@
 
 import type { WorldState } from '../WorldState';
 import { spatialGrid } from '../SpatialGrid';
-import { encodeShieldBarrierShape, encodeShieldReflectionMode, getActiveShields } from './shieldTurret';
-import { REFLECTIVE_SHIELD_MATERIAL } from '../blueprints/shieldMaterials';
+import {
+  encodeShieldBarrierShape,
+  encodeShieldReflectionPolicy,
+  getActiveShields,
+} from './shieldTurret';
 import {
   MIRROR_SIGHT_QUERY_PAD,
   turretIgnoresForceMaterialSightObstruction,
@@ -808,7 +811,10 @@ export function stampShieldSurfacePool(world: WorldState): void {
         f.axisEndX, f.axisEndY, f.axisEndZ,
         f.radius,
         encodeShieldBarrierShape(f.shape),
-        encodeShieldReflectionMode(f.reflectionMode),
+        encodeShieldReflectionPolicy(f.reflection, 'plasma'),
+        encodeShieldReflectionPolicy(f.reflection, 'rocket'),
+        encodeShieldReflectionPolicy(f.reflection, 'beam'),
+        encodeShieldReflectionPolicy(f.reflection, 'laser'),
       );
     }
   }
@@ -827,9 +833,6 @@ export function stampShieldSurfacePool(world: WorldState): void {
   }
 
   const currentTick = world.getTick();
-  let panelReflectionMode = encodeShieldReflectionMode(
-    REFLECTIVE_SHIELD_MATERIAL.reflection.mode,
-  );
   let unitIdx = 0;
   let panelIdx = 0;
   for (const unit of shieldPanelUnits) {
@@ -842,9 +845,11 @@ export function stampShieldSurfacePool(world: WorldState): void {
       + MIRROR_SIGHT_QUERY_PAD;
     const { turret: shieldPanelTurret, turretIndex: shieldPanelTurretIndex } = activeShieldPanel;
     const panelShot = shieldPanelTurret.config.shot;
-    if (panelShot !== null && panelShot.type === 'shield') {
-      panelReflectionMode = encodeShieldReflectionMode(panelShot.material.reflection.mode);
-    }
+    if (panelShot === null || panelShot.type !== 'shield') continue;
+    const plasmaReflection = encodeShieldReflectionPolicy(panelShot.reflection, 'plasma');
+    const rocketReflection = encodeShieldReflectionPolicy(panelShot.reflection, 'rocket');
+    const beamReflection = encodeShieldReflectionPolicy(panelShot.reflection, 'beam');
+    const laserReflection = encodeShieldReflectionPolicy(panelShot.reflection, 'laser');
     const shieldPanelRot = shieldPanelTurret.rotation;
     const shieldPanelPitch = shieldPanelTurret.pitch;
     const unitGroundZ = getUnitGroundZ(unit);
@@ -876,6 +881,10 @@ export function stampShieldSurfacePool(world: WorldState): void {
         panel.baseY,
         panel.topY,
         panel.halfWidth,
+        plasmaReflection,
+        rocketReflection,
+        beamReflection,
+        laserReflection,
       );
       panelIdx++;
     }
@@ -896,6 +905,4 @@ export function stampShieldSurfacePool(world: WorldState): void {
 
   pool.setUnitCount(unitIdx);
   pool.setPanelCount(panelIdx);
-  pool.setPanelMaterialMode(panelReflectionMode);
 }
-

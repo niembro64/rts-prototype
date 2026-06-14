@@ -44,6 +44,8 @@ void main() {
 }
 `;
 
+const EMPTY_LINE_PROJECTILES: readonly Entity[] = [];
+
 function makeImpactMaterial(blending: THREE.Blending = THREE.AdditiveBlending): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     vertexShader: IMPACT_VS,
@@ -104,15 +106,15 @@ class ImpactPool {
 
   setCount(count: number): void {
     this.mesh.count = count;
-    const n = Math.max(1, count);
+    if (count <= 0) return;
     this.mesh.instanceMatrix.clearUpdateRanges();
-    this.mesh.instanceMatrix.addUpdateRange(0, n * 16);
+    this.mesh.instanceMatrix.addUpdateRange(0, count * 16);
     this.mesh.instanceMatrix.needsUpdate = true;
     this.alphaAttr.clearUpdateRanges();
-    this.alphaAttr.addUpdateRange(0, n);
+    this.alphaAttr.addUpdateRange(0, count);
     this.alphaAttr.needsUpdate = true;
     this.colorAttr.clearUpdateRanges();
-    this.colorAttr.addUpdateRange(0, n * 3);
+    this.colorAttr.addUpdateRange(0, count * 3);
     this.colorAttr.needsUpdate = true;
   }
 
@@ -132,6 +134,8 @@ export class ShieldImpactRenderer3D {
   private scratchQuat = new THREE.Quaternion();
   private scratchNormal = new THREE.Vector3();
   private continuousTimeMs = 0;
+  private continuousRingCursor = 0;
+  private continuousCoreCursor = 0;
 
   private static readonly Z_AXIS = new THREE.Vector3(0, 0, 1);
   private static readonly CONTINUOUS_BEAM_HIT_CAP = 256;
@@ -208,7 +212,7 @@ export class ShieldImpactRenderer3D {
     });
   }
 
-  update(dtMs: number, lineProjectiles: readonly Entity[] = []): void {
+  update(dtMs: number, lineProjectiles: readonly Entity[] = EMPTY_LINE_PROJECTILES): void {
     const cfg = SHIELD_IMPACT_VISUAL;
     this.continuousTimeMs += dtMs;
     let ringCursor = 0;
@@ -258,13 +262,13 @@ export class ShieldImpactRenderer3D {
       i++;
     }
 
-    const continuousCounts = this.writeContinuousBeamHits(
+    this.writeContinuousBeamHits(
       lineProjectiles,
       ringCursor,
       coreCursor,
     );
-    ringCursor = continuousCounts.ringCursor;
-    coreCursor = continuousCounts.coreCursor;
+    ringCursor = this.continuousRingCursor;
+    coreCursor = this.continuousCoreCursor;
 
     this.corePool.setCount(coreCursor);
     this.ringPool.setCount(ringCursor);
@@ -274,14 +278,17 @@ export class ShieldImpactRenderer3D {
     lineProjectiles: readonly Entity[],
     ringCursor: number,
     coreCursor: number,
-  ): { ringCursor: number; coreCursor: number } {
+  ): void {
+    this.continuousRingCursor = ringCursor;
+    this.continuousCoreCursor = coreCursor;
     const cfg = SHIELD_IMPACT_VISUAL;
-    if (lineProjectiles.length === 0) return { ringCursor, coreCursor };
+    if (lineProjectiles.length === 0) return;
 
     let written = 0;
     const time = this.continuousTimeMs;
-    for (const entity of lineProjectiles) {
+    for (let entityIndex = 0; entityIndex < lineProjectiles.length; entityIndex++) {
       if (written >= ShieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP) break;
+      const entity = lineProjectiles[entityIndex];
       const points = entity.projectile?.points;
       if (!points || points.length < 2) continue;
 
@@ -335,9 +342,10 @@ export class ShieldImpactRenderer3D {
         for (let ring = 0; ring < ShieldImpactRenderer3D.CONTINUOUS_RING_COUNT; ring++) {
           if (ringCursor >= this.ringPool.capacity) break;
           const t = (pulse + ring / ShieldImpactRenderer3D.CONTINUOUS_RING_COUNT) % 1;
-          const ease = 1 - Math.pow(1 - t, 2);
+          const invT = 1 - t;
+          const ease = 1 - invT * invT;
           const radius = (cfg.startRadius + (cfg.endRadius * 0.72 - cfg.startRadius) * ease) * sizeMul;
-          const fade = (1 - t) * (1 - t);
+          const fade = invT * invT;
           // Uniform scale for the torus tube to grow proportionally.
           this.scratchScale.set(radius, radius, radius);
           this.scratchMat.compose(this.scratchPos, this.scratchQuat, this.scratchScale);
@@ -353,7 +361,8 @@ export class ShieldImpactRenderer3D {
       }
     }
 
-    return { ringCursor, coreCursor };
+    this.continuousRingCursor = ringCursor;
+    this.continuousCoreCursor = coreCursor;
   }
 
   destroy(): void {

@@ -18,6 +18,7 @@ import {
 import {
   createBeamPathTarget,
   ensureBeamPoint,
+  shrinkBeamPoints,
   type BeamPathTarget,
 } from './ClientPredictionTargets';
 import {
@@ -83,8 +84,24 @@ export class ClientProjectileStore {
     return PROJECTILE_RENDER_SCOPE_PADDING;
   }
 
-  remove(id: EntityId, wasLineProjectile: boolean): void {
-    this.beamPathTargets.delete(id);
+  private releaseBeamPointsForEntity(entity: Entity | undefined): void {
+    const points = entity?.projectile?.points;
+    if (points !== null && points !== undefined && points.length > 0) {
+      shrinkBeamPoints(points, 0);
+    }
+  }
+
+  private releaseBeamTarget(id: EntityId): void {
+    const target = this.beamPathTargets.get(id);
+    if (target !== undefined) {
+      shrinkBeamPoints(target.points, 0);
+      this.beamPathTargets.delete(id);
+    }
+  }
+
+  remove(id: EntityId, wasLineProjectile: boolean, entity?: Entity): void {
+    this.releaseBeamTarget(id);
+    this.releaseBeamPointsForEntity(entity ?? this.options.entities.get(id));
     this.projectileSpawns.remove(id);
     this.options.clearPredictionAccum(id);
     this.activeProjectilePredictionIds.delete(id);
@@ -134,7 +151,11 @@ export class ClientProjectileStore {
 
     const srcPts = update.points;
     const dstTarget = target.points;
-    dstTarget.length = srcPts.length;
+    if (dstTarget.length > srcPts.length) {
+      shrinkBeamPoints(dstTarget, srcPts.length);
+    } else if (dstTarget.length < srcPts.length) {
+      dstTarget.length = srcPts.length;
+    }
     for (let i = 0; i < srcPts.length; i++) {
       const sp = srcPts[i];
       const dp = ensureBeamPoint(dstTarget, i);
@@ -250,6 +271,12 @@ export class ClientProjectileStore {
   }
 
   clear(): void {
+    for (const target of this.beamPathTargets.values()) {
+      shrinkBeamPoints(target.points, 0);
+    }
+    for (const entity of this.options.entities.values()) {
+      this.releaseBeamPointsForEntity(entity);
+    }
     this.beamPathTargets.clear();
     this.projectileSpawns.clear();
     this.activeProjectilePredictionIds.clear();

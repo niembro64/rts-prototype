@@ -440,9 +440,9 @@ export class ClientViewState {
       }
     }
     this.removePredictionSupportSurfaceProvider(id);
+    this.projectileStore.remove(id, wasLineProjectile, existing);
     this.entities.delete(id);
     this.serverTargets.delete(id);
-    this.projectileStore.remove(id, wasLineProjectile);
     this.renderSpatialIndex.remove(id);
     this.selectionState.delete(id);
     this.activeEntityPredictionIds.delete(id);
@@ -1688,9 +1688,9 @@ export class ClientViewState {
   }
 
   clear(): void {
+    this.projectileStore.clear();
     this.entities.clear();
     this.serverTargets.clear();
-    this.projectileStore.clear();
     this.sprayTargetStore.reset();
     this.resourcePylonSignedRates.clear();
     this.resourcePylonFlowsBySource.clear();

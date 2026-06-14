@@ -7442,7 +7442,10 @@ pub(crate) struct ShieldSurfacePool {
     axis_end_z: Vec<f64>,
     radius: Vec<f64>,
     field_shape: Vec<u8>,
-    field_reflection_mode: Vec<u8>,
+    field_reflection_mode_plasma: Vec<u8>,
+    field_reflection_mode_rocket: Vec<u8>,
+    field_reflection_mode_beam: Vec<u8>,
+    field_reflection_mode_laser: Vec<u8>,
 
     // ── Rect-panel shape (per-unit) ──
     // Counts are tracked separately so the backing Vecs can be reused across
@@ -7470,7 +7473,10 @@ pub(crate) struct ShieldSurfacePool {
     panel_base_y: Vec<f32>,
     panel_top_y: Vec<f32>,
     panel_half_width: Vec<f32>,
-    panel_reflection_mode: u8,
+    panel_reflection_mode_plasma: Vec<u8>,
+    panel_reflection_mode_rocket: Vec<u8>,
+    panel_reflection_mode_beam: Vec<u8>,
+    panel_reflection_mode_laser: Vec<u8>,
 }
 
 impl ShieldSurfacePool {
@@ -7493,7 +7499,10 @@ impl ShieldSurfacePool {
             axis_end_z: Vec::new(),
             radius: Vec::new(),
             field_shape: Vec::new(),
-            field_reflection_mode: Vec::new(),
+            field_reflection_mode_plasma: Vec::new(),
+            field_reflection_mode_rocket: Vec::new(),
+            field_reflection_mode_beam: Vec::new(),
+            field_reflection_mode_laser: Vec::new(),
             unit_count: 0,
             unit_id: Vec::new(),
             unit_x: Vec::new(),
@@ -7515,7 +7524,10 @@ impl ShieldSurfacePool {
             panel_base_y: Vec::new(),
             panel_top_y: Vec::new(),
             panel_half_width: Vec::new(),
-            panel_reflection_mode: SHIELD_REFLECTION_MODE_BOTH,
+            panel_reflection_mode_plasma: Vec::new(),
+            panel_reflection_mode_rocket: Vec::new(),
+            panel_reflection_mode_beam: Vec::new(),
+            panel_reflection_mode_laser: Vec::new(),
         }
     }
 
@@ -7538,8 +7550,14 @@ impl ShieldSurfacePool {
             self.axis_end_z.resize(needed, 0.0);
             self.radius.resize(needed, 0.0);
             self.field_shape.resize(needed, SHIELD_FIELD_SHAPE_SPHERE);
-            self.field_reflection_mode
-                .resize(needed, SHIELD_REFLECTION_MODE_BOTH);
+            self.field_reflection_mode_plasma
+                .resize(needed, SHIELD_REFLECTION_MODE_NONE);
+            self.field_reflection_mode_rocket
+                .resize(needed, SHIELD_REFLECTION_MODE_NONE);
+            self.field_reflection_mode_beam
+                .resize(needed, SHIELD_REFLECTION_MODE_NONE);
+            self.field_reflection_mode_laser
+                .resize(needed, SHIELD_REFLECTION_MODE_NONE);
         }
     }
 
@@ -7571,6 +7589,14 @@ impl ShieldSurfacePool {
             self.panel_base_y.resize(needed, 0.0);
             self.panel_top_y.resize(needed, 0.0);
             self.panel_half_width.resize(needed, 0.0);
+            self.panel_reflection_mode_plasma
+                .resize(needed, SHIELD_REFLECTION_MODE_NONE);
+            self.panel_reflection_mode_rocket
+                .resize(needed, SHIELD_REFLECTION_MODE_NONE);
+            self.panel_reflection_mode_beam
+                .resize(needed, SHIELD_REFLECTION_MODE_NONE);
+            self.panel_reflection_mode_laser
+                .resize(needed, SHIELD_REFLECTION_MODE_NONE);
         }
     }
 }
@@ -7629,7 +7655,10 @@ pub fn shield_pool_set_field(
     axis_end_z: f64,
     radius: f64,
     shape: u8,
-    reflection_mode: u8,
+    reflection_mode_plasma: u8,
+    reflection_mode_rocket: u8,
+    reflection_mode_beam: u8,
+    reflection_mode_laser: u8,
 ) {
     let pool = shield_pool();
     pool.ensure_capacity(idx + 1);
@@ -7650,7 +7679,10 @@ pub fn shield_pool_set_field(
     pool.axis_end_z[i] = axis_end_z;
     pool.radius[i] = radius;
     pool.field_shape[i] = shape;
-    pool.field_reflection_mode[i] = reflection_mode;
+    pool.field_reflection_mode_plasma[i] = reflection_mode_plasma;
+    pool.field_reflection_mode_rocket[i] = reflection_mode_rocket;
+    pool.field_reflection_mode_beam[i] = reflection_mode_beam;
+    pool.field_reflection_mode_laser[i] = reflection_mode_laser;
 }
 
 macro_rules! shield_pool_ptr_export {
@@ -7693,6 +7725,11 @@ pub(crate) const SHIELD_MOVING_FIELD_TOI_STEPS: usize = 8;
 pub(crate) const SHIELD_REFLECTION_MODE_OUTSIDE_IN: u8 = 0;
 pub(crate) const SHIELD_REFLECTION_MODE_INSIDE_OUT: u8 = 1;
 pub(crate) const SHIELD_REFLECTION_MODE_BOTH: u8 = 2;
+pub(crate) const SHIELD_REFLECTION_MODE_NONE: u8 = 3;
+pub(crate) const SHIELD_REFLECTION_ENTITY_PLASMA: u8 = 0;
+pub(crate) const SHIELD_REFLECTION_ENTITY_ROCKET: u8 = 1;
+pub(crate) const SHIELD_REFLECTION_ENTITY_BEAM: u8 = 2;
+pub(crate) const SHIELD_REFLECTION_ENTITY_LASER: u8 = 3;
 pub(crate) const SHIELD_FIELD_SHAPE_SPHERE: u8 = 0;
 pub(crate) const SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER: u8 = 1;
 pub(crate) const SHIELD_FIELD_SHAPE_AIMED_CYLINDER: u8 = 2;
@@ -7751,6 +7788,23 @@ pub(crate) fn reflect_about_normal(
 pub(crate) struct ShieldFieldContact {
     t: f64,
     threshold: f64,
+}
+
+#[inline]
+pub(crate) fn shield_reflection_mode_for_entity(
+    reflection_entity: u8,
+    plasma_mode: u8,
+    rocket_mode: u8,
+    beam_mode: u8,
+    laser_mode: u8,
+) -> u8 {
+    match reflection_entity {
+        SHIELD_REFLECTION_ENTITY_PLASMA => plasma_mode,
+        SHIELD_REFLECTION_ENTITY_ROCKET => rocket_mode,
+        SHIELD_REFLECTION_ENTITY_BEAM => beam_mode,
+        SHIELD_REFLECTION_ENTITY_LASER => laser_mode,
+        _ => SHIELD_REFLECTION_MODE_NONE,
+    }
 }
 
 #[inline]
@@ -7940,6 +7994,9 @@ pub(crate) fn shield_segment_crosses_field(
 
 #[inline]
 pub(crate) fn shield_reflection_mode_allows_crossing(mode: u8, radial_velocity: f64) -> bool {
+    if mode == SHIELD_REFLECTION_MODE_NONE {
+        return false;
+    }
     let eps = 1e-6;
     if radial_velocity < -eps {
         return mode == SHIELD_REFLECTION_MODE_OUTSIDE_IN || mode == SHIELD_REFLECTION_MODE_BOTH;
@@ -8756,6 +8813,7 @@ pub(crate) fn shield_projectile_intersection(
     exclude_entity_id: i32,
     exclude_panel_index: i32,
     projectile_radius: f64,
+    reflection_entity: u8,
     dt_sec: f64,
     instantaneous: bool,
     max_t: f64,
@@ -8780,6 +8838,13 @@ pub(crate) fn shield_projectile_intersection(
         if exclude_panel_index < 0 && pool.owner_entity_id[i] == exclude_entity_id {
             continue;
         }
+        let reflection_mode = shield_reflection_mode_for_entity(
+            reflection_entity,
+            pool.field_reflection_mode_plasma[i],
+            pool.field_reflection_mode_rocket[i],
+            pool.field_reflection_mode_beam[i],
+            pool.field_reflection_mode_laser[i],
+        );
         let static_contact = shield_projectile_intersection_contact(
             start_x,
             start_y,
@@ -8796,7 +8861,7 @@ pub(crate) fn shield_projectile_intersection(
             pool.radius[i],
             projectile_radius,
             pool.field_shape[i],
-            pool.field_reflection_mode[i],
+            reflection_mode,
         );
         let candidate = if let Some(contact) = static_contact {
             if contact.t >= best_t {
@@ -8919,7 +8984,7 @@ pub(crate) fn shield_projectile_intersection(
                 pool.radius[i],
                 projectile_radius,
                 pool.field_shape[i],
-                pool.field_reflection_mode[i],
+                reflection_mode,
                 pool.owner_entity_id[i],
                 dt_sec,
             )
@@ -9261,6 +9326,10 @@ pub fn shield_panel_pool_set_panel(
     base_y: f32,
     top_y: f32,
     half_width: f32,
+    reflection_mode_plasma: u8,
+    reflection_mode_rocket: u8,
+    reflection_mode_beam: u8,
+    reflection_mode_laser: u8,
 ) {
     let pool = shield_pool();
     pool.ensure_panel_capacity(idx + 1);
@@ -9271,11 +9340,22 @@ pub fn shield_panel_pool_set_panel(
     pool.panel_base_y[i] = base_y;
     pool.panel_top_y[i] = top_y;
     pool.panel_half_width[i] = half_width;
+    pool.panel_reflection_mode_plasma[i] = reflection_mode_plasma;
+    pool.panel_reflection_mode_rocket[i] = reflection_mode_rocket;
+    pool.panel_reflection_mode_beam[i] = reflection_mode_beam;
+    pool.panel_reflection_mode_laser[i] = reflection_mode_laser;
 }
 
 #[wasm_bindgen]
 pub fn shield_panel_pool_set_material_mode(reflection_mode: u8) {
-    shield_pool().panel_reflection_mode = reflection_mode;
+    let pool = shield_pool();
+    let count = pool.total_panels as usize;
+    for i in 0..count {
+        pool.panel_reflection_mode_plasma[i] = reflection_mode;
+        pool.panel_reflection_mode_rocket[i] = reflection_mode;
+        pool.panel_reflection_mode_beam[i] = reflection_mode;
+        pool.panel_reflection_mode_laser[i] = reflection_mode;
+    }
 }
 
 /// Squared distance from a point to a 3D segment, used by the
@@ -9369,180 +9449,6 @@ pub(crate) fn ray_tilted_rect_intersection_t(
     Some(t)
 }
 
-#[inline]
-fn add_sq_coeffs(a: &mut f64, b: &mut f64, c: &mut f64, offset: f64, velocity: f64) {
-    *a += velocity * velocity;
-    *b += 2.0 * offset * velocity;
-    *c += offset * offset;
-}
-
-#[inline]
-fn solve_quadratic_interval(a: f64, b: f64, c: f64, lo: f64, hi: f64) -> Option<f64> {
-    if hi < lo {
-        return None;
-    }
-    let f_lo = (a * lo + b) * lo + c;
-    if f_lo <= 0.0 {
-        return Some(lo);
-    }
-
-    const ROOT_EPS: f64 = 1e-12;
-    if a.abs() <= ROOT_EPS {
-        if b.abs() <= ROOT_EPS {
-            return None;
-        }
-        let t = -c / b;
-        if t >= lo - ROOT_EPS && t <= hi + ROOT_EPS {
-            return Some(t.max(lo).min(hi));
-        }
-        return None;
-    }
-
-    let disc = b * b - 4.0 * a * c;
-    if disc < 0.0 {
-        return None;
-    }
-    let sqrt_disc = disc.sqrt();
-    let inv = 1.0 / (2.0 * a);
-    let t0 = (-b - sqrt_disc) * inv;
-    let t1 = (-b + sqrt_disc) * inv;
-    let first = t0.min(t1);
-    let second = t0.max(t1);
-
-    if first >= lo - ROOT_EPS && first <= hi + ROOT_EPS {
-        return Some(first.max(lo).min(hi));
-    }
-    if second >= lo - ROOT_EPS && second <= hi + ROOT_EPS {
-        return Some(second.max(lo).min(hi));
-    }
-    None
-}
-
-#[inline]
-fn push_breakpoint(points: &mut [f64; 6], count: &mut usize, t: f64, max_t: f64) {
-    if !t.is_finite() || t <= 0.0 || t >= max_t || *count >= points.len() {
-        return;
-    }
-    points[*count] = t;
-    *count += 1;
-}
-
-#[inline]
-fn sort_breakpoints(points: &mut [f64; 6], count: usize) {
-    for i in 1..count {
-        let value = points[i];
-        let mut j = i;
-        while j > 0 && points[j - 1] > value {
-            points[j] = points[j - 1];
-            j -= 1;
-        }
-        points[j] = value;
-    }
-}
-
-/// Earliest t where a finite-radius line body touches a tilted rectangle.
-/// This is segment-vs-rounded-rectangle distance, so beam width and
-/// projectile collision radius participate in flat-panel reflection instead
-/// of only the centerline plane hit.
-#[inline]
-pub(crate) fn ray_tilted_rect_capsule_intersection_t(
-    sx: f64,
-    sy: f64,
-    sz: f64,
-    ex: f64,
-    ey: f64,
-    ez: f64,
-    pcx: f64,
-    pcy: f64,
-    pcz: f64,
-    nx: f64,
-    ny: f64,
-    nz: f64,
-    edx: f64,
-    edy: f64,
-    edz: f64,
-    half_w: f64,
-    half_h: f64,
-    radius: f64,
-    max_t: f64,
-) -> Option<f64> {
-    if radius <= 0.0 || !radius.is_finite() || max_t <= 0.0 {
-        return None;
-    }
-    let max_t = max_t.min(1.0);
-    if max_t <= 0.0 {
-        return None;
-    }
-
-    let ux_axis_x = ny * edz - nz * edy;
-    let ux_axis_y = nz * edx - nx * edz;
-    let ux_axis_z = nx * edy - ny * edx;
-
-    let to_local = |px: f64, py: f64, pz: f64| -> (f64, f64, f64) {
-        let lx = px - pcx;
-        let ly = py - pcy;
-        let lz = pz - pcz;
-        (
-            lx * edx + ly * edy + lz * edz,
-            lx * ux_axis_x + ly * ux_axis_y + lz * ux_axis_z,
-            lx * nx + ly * ny + lz * nz,
-        )
-    };
-
-    let (u0, v0, w0) = to_local(sx, sy, sz);
-    let (u1, v1, w1) = to_local(ex, ey, ez);
-    let du = u1 - u0;
-    let dv = v1 - v0;
-    let dw = w1 - w0;
-    let radius_sq = radius * radius;
-
-    let mut points = [0.0, max_t, 0.0, 0.0, 0.0, 0.0];
-    let mut count = 2usize;
-    const BREAK_EPS: f64 = 1e-12;
-    if du.abs() > BREAK_EPS {
-        push_breakpoint(&mut points, &mut count, (-half_w - u0) / du, max_t);
-        push_breakpoint(&mut points, &mut count, (half_w - u0) / du, max_t);
-    }
-    if dv.abs() > BREAK_EPS {
-        push_breakpoint(&mut points, &mut count, (-half_h - v0) / dv, max_t);
-        push_breakpoint(&mut points, &mut count, (half_h - v0) / dv, max_t);
-    }
-    sort_breakpoints(&mut points, count);
-
-    for i in 0..count - 1 {
-        let lo = points[i];
-        let hi = points[i + 1];
-        if hi - lo <= BREAK_EPS {
-            continue;
-        }
-        let mid = (lo + hi) * 0.5;
-        let mid_u = u0 + du * mid;
-        let mid_v = v0 + dv * mid;
-
-        let mut a = dw * dw;
-        let mut b = 2.0 * w0 * dw;
-        let mut c = w0 * w0 - radius_sq;
-
-        if mid_u > half_w {
-            add_sq_coeffs(&mut a, &mut b, &mut c, u0 - half_w, du);
-        } else if mid_u < -half_w {
-            add_sq_coeffs(&mut a, &mut b, &mut c, u0 + half_w, du);
-        }
-
-        if mid_v > half_h {
-            add_sq_coeffs(&mut a, &mut b, &mut c, v0 - half_h, dv);
-        } else if mid_v < -half_h {
-            add_sq_coeffs(&mut a, &mut b, &mut c, v0 + half_h, dv);
-        }
-
-        if let Some(t) = solve_quadratic_interval(a, b, c, lo, hi) {
-            return Some(t);
-        }
-    }
-
-    None
-}
-
 // The rect-panel sightline walk now lives inside the unified
 // `shield_clearance_segment` (gated by `include_panels`); the
 // `point_segment_dist_sq3` + `ray_tilted_rect_intersection_t` helpers above
@@ -9558,7 +9464,8 @@ pub(crate) fn shield_panel_projectile_intersection(
     tz: f64,
     exclude_unit_id: i32,
     exclude_panel_index: i32,
-    projectile_radius: f64,
+    _projectile_radius: f64,
+    reflection_entity: u8,
     query_pad: f64,
     max_t: f64,
 ) -> Option<ProjectileReflectorHit> {
@@ -9571,7 +9478,7 @@ pub(crate) fn shield_panel_projectile_intersection(
     let dx = tx - sx;
     let dy = ty - sy;
     let dz = tz - sz;
-    let extra_broad_radius = projectile_radius.max(0.0) + query_pad.max(0.0);
+    let extra_broad_radius = query_pad.max(0.0);
     let mut best_t = max_t;
     let mut best: Option<ProjectileReflectorHit> = None;
 
@@ -9641,36 +9548,22 @@ pub(crate) fn shield_panel_projectile_intersection(
             let top_y = pool.panel_top_y[pi] as f64;
             let half_h = (top_y - base_y) * 0.5;
 
-            let centerline_hit_t = ray_tilted_rect_intersection_t(
-                sx, sy, sz, tx, ty, tz, pcx, pcy, pcz, nx, ny, nz, edx, edy, edz, half_w, half_h,
-            );
-            let radius_hit_t = if projectile_radius > SHIELD_GRAZE_EPS {
-                ray_tilted_rect_capsule_intersection_t(
-                    sx, sy, sz, tx, ty, tz,
-                    pcx, pcy, pcz,
-                    nx, ny, nz,
-                    edx, edy, edz,
-                    half_w, half_h,
-                    projectile_radius,
-                    best_t,
-                )
-            } else {
-                None
-            };
-            let hit_t = match (centerline_hit_t, radius_hit_t) {
-                (Some(a), Some(b)) => Some(a.min(b)),
-                (Some(a), None) => Some(a),
-                (None, Some(b)) => Some(b),
-                (None, None) => None,
-            };
-            let Some(t) = hit_t else {
-                continue;
-            };
             let normal_velocity = dx * nx + dy * ny + dz * nz;
-            if !shield_reflection_mode_allows_crossing(pool.panel_reflection_mode, normal_velocity)
-            {
+            let reflection_mode = shield_reflection_mode_for_entity(
+                reflection_entity,
+                pool.panel_reflection_mode_plasma[pi],
+                pool.panel_reflection_mode_rocket[pi],
+                pool.panel_reflection_mode_beam[pi],
+                pool.panel_reflection_mode_laser[pi],
+            );
+            if !shield_reflection_mode_allows_crossing(reflection_mode, normal_velocity) {
                 continue;
             }
+            let Some(t) = ray_tilted_rect_intersection_t(
+                sx, sy, sz, tx, ty, tz, pcx, pcy, pcz, nx, ny, nz, edx, edy, edz, half_w, half_h,
+            ) else {
+                continue;
+            };
             if t >= best_t {
                 continue;
             }
@@ -9714,6 +9607,7 @@ pub fn projectile_reflector_intersections_batch(
     end_y: &[f64],
     end_z: &[f64],
     projectile_radius: &[f64],
+    reflection_entity: &[u8],
     exclude_entity_id: &[i32],
     exclude_panel_index: &[i32],
     turret_shield_panels_enabled: u8,
@@ -9747,6 +9641,7 @@ pub fn projectile_reflector_intersections_batch(
     debug_assert!(end_y.len() >= n);
     debug_assert!(end_z.len() >= n);
     debug_assert!(projectile_radius.len() >= n);
+    debug_assert!(reflection_entity.len() >= n);
     debug_assert!(exclude_entity_id.len() >= n);
     debug_assert!(exclude_panel_index.len() >= n);
     debug_assert!(out_kind.len() >= n);
@@ -9801,6 +9696,7 @@ pub fn projectile_reflector_intersections_batch(
         let ty = end_y[i];
         let tz = end_z[i];
         let radius = projectile_radius[i];
+        let reflection_entity = reflection_entity[i];
         if !(sx.is_finite()
             && sy.is_finite()
             && sz.is_finite()
@@ -9824,6 +9720,7 @@ pub fn projectile_reflector_intersections_batch(
                 exclude_entity_id[i],
                 exclude_panel_index[i],
                 radius,
+                reflection_entity,
                 shield_panel_query_pad,
                 f64::INFINITY,
             );
@@ -9840,6 +9737,7 @@ pub fn projectile_reflector_intersections_batch(
                 exclude_entity_id[i],
                 exclude_panel_index[i],
                 radius,
+                reflection_entity,
                 dt_sec,
                 instantaneous_rays != 0,
                 max_t,
@@ -10512,23 +10410,7 @@ mod tests {
     }
 
     #[test]
-    fn panel_capsule_intersection_hits_before_plane_for_beam_radius() {
-        let t = ray_tilted_rect_capsule_intersection_t(
-            -5.0, 0.0, 0.0,
-            5.0, 0.0, 0.0,
-            0.0, 0.0, 0.0,
-            1.0, 0.0, 0.0,
-            0.0, 1.0, 0.0,
-            1.0, 1.0,
-            0.5,
-            1.0,
-        )
-        .unwrap();
-        assert_close(t, 0.45);
-    }
-
-    #[test]
-    fn panel_capsule_intersection_catches_radius_edge_overlap() {
+    fn panel_intersection_ignores_radius_edge_overlap() {
         let centerline = ray_tilted_rect_intersection_t(
             -5.0, 1.4, 0.0,
             5.0, 1.4, 0.0,
@@ -10538,33 +10420,70 @@ mod tests {
             1.0, 1.0,
         );
         assert!(centerline.is_none());
-
-        let radius_hit = ray_tilted_rect_capsule_intersection_t(
-            -5.0, 1.4, 0.0,
-            5.0, 1.4, 0.0,
-            0.0, 0.0, 0.0,
-            1.0, 0.0, 0.0,
-            0.0, 1.0, 0.0,
-            1.0, 1.0,
-            0.5,
-            1.0,
-        )
-        .unwrap();
-        assert_close(radius_hit, 0.47);
     }
 
     #[test]
-    fn panel_capsule_intersection_misses_outside_radius() {
-        let miss = ray_tilted_rect_capsule_intersection_t(
-            -5.0, 1.6, 0.0,
-            5.0, 1.6, 0.0,
-            0.0, 0.0, 0.0,
-            1.0, 0.0, 0.0,
-            0.0, 1.0, 0.0,
-            1.0, 1.0,
-            0.5,
-            1.0,
+    fn reflection_policy_can_make_plasma_outside_only() {
+        let plasma_mode = shield_reflection_mode_for_entity(
+            SHIELD_REFLECTION_ENTITY_PLASMA,
+            SHIELD_REFLECTION_MODE_OUTSIDE_IN,
+            SHIELD_REFLECTION_MODE_BOTH,
+            SHIELD_REFLECTION_MODE_BOTH,
+            SHIELD_REFLECTION_MODE_BOTH,
         );
-        assert!(miss.is_none());
+        assert!(shield_reflection_mode_allows_crossing(plasma_mode, -1.0));
+        assert!(!shield_reflection_mode_allows_crossing(plasma_mode, 1.0));
+
+        let beam_mode = shield_reflection_mode_for_entity(
+            SHIELD_REFLECTION_ENTITY_BEAM,
+            SHIELD_REFLECTION_MODE_OUTSIDE_IN,
+            SHIELD_REFLECTION_MODE_BOTH,
+            SHIELD_REFLECTION_MODE_BOTH,
+            SHIELD_REFLECTION_MODE_BOTH,
+        );
+        assert!(shield_reflection_mode_allows_crossing(beam_mode, -1.0));
+        assert!(shield_reflection_mode_allows_crossing(beam_mode, 1.0));
+    }
+
+    #[test]
+    fn reflect_none_disables_field_contact_for_selected_entity() {
+        let laser_mode = shield_reflection_mode_for_entity(
+            SHIELD_REFLECTION_ENTITY_LASER,
+            SHIELD_REFLECTION_MODE_OUTSIDE_IN,
+            SHIELD_REFLECTION_MODE_OUTSIDE_IN,
+            SHIELD_REFLECTION_MODE_OUTSIDE_IN,
+            SHIELD_REFLECTION_MODE_NONE,
+        );
+        let laser_hit = shield_projectile_intersection_contact(
+            -10.0, 0.0, 0.0,
+            10.0, 0.0, 0.0,
+            0.0, 0.0, 0.0,
+            0.0, 0.0, 1.0,
+            5.0,
+            0.0,
+            SHIELD_FIELD_SHAPE_SPHERE,
+            laser_mode,
+        );
+        assert!(laser_hit.is_none());
+
+        let beam_mode = shield_reflection_mode_for_entity(
+            SHIELD_REFLECTION_ENTITY_BEAM,
+            SHIELD_REFLECTION_MODE_NONE,
+            SHIELD_REFLECTION_MODE_NONE,
+            SHIELD_REFLECTION_MODE_OUTSIDE_IN,
+            SHIELD_REFLECTION_MODE_NONE,
+        );
+        let beam_hit = shield_projectile_intersection_contact(
+            -10.0, 0.0, 0.0,
+            10.0, 0.0, 0.0,
+            0.0, 0.0, 0.0,
+            0.0, 0.0, 1.0,
+            5.0,
+            0.0,
+            SHIELD_FIELD_SHAPE_SPHERE,
+            beam_mode,
+        )
+        .unwrap();
+        assert_close(beam_hit.t, 0.25);
     }
 }

@@ -569,10 +569,13 @@ export type NetworkServerSnapshotVelocityUpdate = {
 
 /** Wire-format vertex of a beam/laser polyline. The full beam is
  *  `points = [start, ...reflections, end]`. Each vertex carries its
- *  own instantaneous 3D velocity in the world frame so the client can
- *  extrapolate every vertex independently between snapshots; the
- *  reflector vertices set `reflectorEntityId` to the redirecting reflector
- *  entity (shield panels and spheres both use this slot).
+ *  own instantaneous 3D velocity in the world frame. The client may
+ *  extrapolate unreflected open-beam vertices from that velocity, but
+ *  reflector vertices and everything downstream of the first reflector
+ *  are constraint results from the authoritative trace and must not be
+ *  dead-reckoned independently without a local re-trace. The reflector
+ *  vertices set `reflectorEntityId` to the redirecting reflector entity
+ *  (shield panels and spheres both use this slot).
  *  Position uses PROJECTILE_POSITION_WIRE_SCALE, velocity uses
  *  VELOCITY_WIRE_SCALE, and normals use NORMAL_WIRE_SCALE fixed-point
  *  integers. Start leaves reflector metadata undefined; the end can

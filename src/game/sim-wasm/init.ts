@@ -1163,6 +1163,7 @@ export interface SimWasm {
     endY: Float64Array,
     endZ: Float64Array,
     projectileRadius: Float64Array,
+    reflectionEntity: Uint8Array,
     excludeEntityId: Int32Array,
     excludePanelIndex: Int32Array,
     turretShieldPanelsEnabled: number,
@@ -2782,7 +2783,10 @@ export interface ShieldSurfacePoolApi {
     axisEndZ: number,
     radius: number,
     shape: number,
-    reflectionMode: number,
+    plasmaReflectionMode: number,
+    rocketReflectionMode: number,
+    beamReflectionMode: number,
+    laserReflectionMode: number,
   ) => void;
   readonly idPtr: () => number;
   readonly ownerEntityIdPtr: () => number;
@@ -2821,6 +2825,10 @@ export interface ShieldSurfacePoolApi {
     baseY: number,
     topY: number,
     halfWidth: number,
+    plasmaReflectionMode: number,
+    rocketReflectionMode: number,
+    beamReflectionMode: number,
+    laserReflectionMode: number,
   ) => void;
   setPanelMaterialMode: (reflectionMode: number) => void;
   /** AIM-08.2 — direct-segment shield clearance. Returns 1 if the
