@@ -7,9 +7,8 @@ import type { CommandQueue, Command } from '../sim/commands';
 import { resetDeltaTracking } from '../network/stateSerializer';
 import { trimEntitySnapshotPool } from '../network/stateSerializerEntities';
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
-import type { Entity, EntityId, PlayerId } from '../sim/types';
-import type { DeathContext } from '../sim/combat';
-import { ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_POS, ENTITY_CHANGED_TURRETS, ENTITY_CHANGED_VEL } from '../../types/network';
+import type { PlayerId } from '../sim/types';
+import { ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_TURRETS } from '../../types/network';
 import { economyManager } from '../sim/economy';
 import { beamIndex } from '../sim/BeamIndex';
 import type { PhysicsEngine3D } from './PhysicsEngine3D';
@@ -44,9 +43,7 @@ import {
   type SnapshotListenerOptions,
 } from './ServerSnapshotListenerRegistry';
 import type { BootstrappedServerWorld } from './ServerBootstrap';
-import { UnitForceSystem } from './UnitForceSystem';
-import { FactoryConstructionTurretSystem } from './FactoryConstructionTurretSystem';
-import { computeHostEffectiveMass, createPhysicsBodyForUnit } from './unitPhysicsBody';
+import { ServerSimulationCore } from './ServerSimulationCore';
 import {
   isShieldReflectionMode,
   type ShieldReflectionMode,
@@ -65,6 +62,7 @@ import {
   transferSimSlot,
 } from '../lifecycle/sessionSingleton';
 import { ReplayRecorder, type BudgetReplayFile } from './ReplayRecorder';
+import type { CanonicalServerStateHash } from '../architecture/CanonicalStateHash';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
@@ -79,15 +77,7 @@ export type GameServerCreateOptions = {
 };
 
 export class GameServer {
-  private physics: PhysicsEngine3D;
-  private world: WorldState;
-  private simulation: Simulation;
-  private commandQueue: CommandQueue;
-
-  private playerIds: PlayerId[];
-  private backgroundMode: boolean;
-  private terrainTileMap: TerrainTileMap;
-  private terrainBuildabilityGrid: TerrainBuildabilityGrid;
+  private core: ServerSimulationCore;
 
   // Game loop
   private tickLoop = new ServerTickLoop();
@@ -100,18 +90,12 @@ export class GameServer {
   // Background mode — allowed unit blueprints for AI production & UI toggles.
   // Initial set comes from GameServerConfig.initialAllowedUnitBlueprintIds when the
   // caller restored saved demo settings; otherwise defaults to "all".
-  private backgroundAllowedUnitBlueprintIds: Set<string>;
+  // Stored on ServerSimulationCore.
 
   // Snapshot listeners
   private snapshotListeners = new ServerSnapshotListenerRegistry();
   private gameOverListeners: GameOverCallback[] = [];
-  private physicsSyncUnitIdsBuf: EntityId[] = [];
-  private unitForceSystem: UnitForceSystem;
-  private factoryConstructionTurretSystem: FactoryConstructionTurretSystem;
   private stopped = false;
-
-  // Game over tracking
-  private isGameOver: boolean = false;
 
   // Tick rate tracking (EMA-based). Starts empty; the first real tick
   // period seeds both lanes so the low lane does not report startup
@@ -141,6 +125,38 @@ export class GameServer {
 
   // Public IP address (set by host component)
   private ipAddress: string = 'N/A';
+
+  private get world(): WorldState {
+    return this.core.world;
+  }
+
+  private get simulation(): Simulation {
+    return this.core.simulation;
+  }
+
+  private get commandQueue(): CommandQueue {
+    return this.core.commandQueue;
+  }
+
+  private get playerIds(): PlayerId[] {
+    return this.core.playerIds;
+  }
+
+  private get backgroundMode(): boolean {
+    return this.core.backgroundMode;
+  }
+
+  private get backgroundAllowedUnitBlueprintIds(): Set<string> {
+    return this.core.backgroundAllowedUnitBlueprintIds;
+  }
+
+  private get terrainTileMap(): TerrainTileMap {
+    return this.core.terrainTileMap;
+  }
+
+  private get terrainBuildabilityGrid(): TerrainBuildabilityGrid {
+    return this.core.terrainBuildabilityGrid;
+  }
 
   /** Async factory. Awaits the bespoke Rust/WASM physics module
    *  (rts-sim-wasm) before constructing the engine — Body3D state
@@ -221,111 +237,18 @@ export class GameServer {
     let boot: BootstrappedServerWorld | undefined;
     try {
       boot = bootstrapped ?? ServerBootstrap.bootstrap(config, physics);
-      this.physics = boot.physics;
-      this.world = boot.world;
-      this.simulation = boot.simulation;
-      this.commandQueue = boot.commandQueue;
-      this.playerIds = boot.playerIds;
-      this.backgroundMode = boot.backgroundMode;
-      this.backgroundAllowedUnitBlueprintIds = boot.backgroundAllowedUnitBlueprintIds;
-      this.terrainTileMap = boot.terrainTileMap;
-      this.terrainBuildabilityGrid = boot.terrainBuildabilityGrid;
+      this.core = new ServerSimulationCore(boot, {
+        onGameOver: (winnerId) => {
+          for (const listener of this.gameOverListeners) {
+            listener(winnerId);
+          }
+        },
+      });
       this.replayRecorder = new ReplayRecorder(config, this.playerIds);
-
-      this.unitForceSystem = new UnitForceSystem(this.world, this.simulation, this.physics);
-      this.factoryConstructionTurretSystem = new FactoryConstructionTurretSystem(this.world);
-
-      // Setup simulation callbacks (need `this` references for physics
-      // body cleanup and game-over fan-out, so they live here rather than
-      // inside ServerBootstrap).
-      this.setupSimulationCallbacks();
     } catch (err) {
       boot?.physics.dispose();
       releaseSimSlot(this);
       throw err;
-    }
-  }
-
-  private setupSimulationCallbacks(): void {
-    this.world.onEntityRemoving = (entity: Entity) => {
-      const bodySlot = entity.body;
-      if (bodySlot === null) return;
-      const body = bodySlot.physicsBody;
-      this.physics.removeBody(body);
-      entity.body = null;
-    };
-    // Recompute dynamic body mass when host-authored body mass changes.
-    // Mounted turrets are inseparable emitters, so turret lifetime no
-    // longer changes host mass.
-    this.world.onHostMassChanged = (host: Entity) => {
-      const bodyRef = host.body;
-      if (bodyRef === null || host.unit === null) return;
-      this.physics.setBodyEffectiveMass(bodyRef.physicsBody, computeHostEffectiveMass(host));
-    };
-
-    // Handle unit deaths: remove entities. WorldState.onEntityRemoving
-    // releases physics bodies for every removal path.
-    this.simulation.onUnitDeath = (deadUnitIds: EntityId[], _deathContexts: Map<EntityId, DeathContext> | null) => {
-      for (const id of deadUnitIds) {
-        this.world.removeEntity(id);
-      }
-    };
-
-    // Handle building deaths: run destruction effects, then remove
-    // entities. WorldState.onEntityRemoving releases physics bodies.
-    this.simulation.onBuildingDeath = (deadBuildingIds: EntityId[]) => {
-      const constructionSystem = this.simulation.getConstructionSystem();
-      for (const id of deadBuildingIds) {
-        const entity = this.world.getEntity(id);
-        if (entity) {
-          constructionSystem.onBuildingDestroyed(this.world, entity);
-        }
-        this.world.removeEntity(id);
-      }
-    };
-
-    // Handle unit spawns: create physics bodies
-    this.simulation.onUnitSpawn = (newUnits: Entity[]) => {
-      for (const entity of newUnits) {
-        createPhysicsBodyForUnit(this.world, this.physics, entity, {
-          ignoreOverlappingBuildings: true,
-          overlapPadding: undefined,
-        });
-      }
-    };
-
-    this.simulation.onBuildingSpawn = (newBuildings: Entity[]) => {
-      for (const entity of newBuildings) {
-        if (entity.building === null || entity.body !== null) continue;
-        const baseZ = entity.transform.z - entity.building.depth / 2;
-        const body = this.physics.createBuildingBody(
-          entity.transform.x,
-          entity.transform.y,
-          entity.building.width,
-          entity.building.height,
-          entity.building.depth,
-          baseZ,
-          entity.building.supportSurface,
-          `building_${entity.id}`,
-          entity.id,
-        );
-        entity.body = { physicsBody: body };
-      }
-    };
-
-    // Audio events are collected by simulation and included in snapshots
-    // No need for per-event callback on server side
-
-    // Game over callback (skip in background mode)
-    if (!this.backgroundMode) {
-      this.simulation.onGameOver = (winnerId: PlayerId) => {
-        if (!this.isGameOver) {
-          this.isGameOver = true;
-          for (const listener of this.gameOverListeners) {
-            listener(winnerId);
-          }
-        }
-      };
     }
   }
 
@@ -340,6 +263,25 @@ export class GameServer {
       this.emitStartupSnapshot(now);
     }
     this.startGameLoop();
+  }
+
+  startLockstepPresentation(): void {
+    if (this.stopped) return;
+    acquireSimSlot(this);
+    this.lastSnapshotTime = performance.now();
+    this.startupGateOpen = true;
+    this.forceNextSnapshotKeyframe();
+    this.emitSnapshot();
+  }
+
+  getLockstepSimulationCore(): ServerSimulationCore {
+    return this.core;
+  }
+
+  emitLockstepPresentationSnapshot(): void {
+    if (this.stopped) return;
+    this.lastSnapshotTime = performance.now();
+    this.emitSnapshot();
   }
 
   private startGameLoop(): void {
@@ -435,8 +377,7 @@ export class GameServer {
     this.tickLoop.stop();
     this.releaseSnapshotListeners();
     this.gameOverListeners.length = 0;
-    this.commandQueue.clear();
-    this.physicsSyncUnitIdsBuf.length = 0;
+    this.core.clearPendingCommandsAndStepBuffers();
 
     // Clear simulation singletons so entity refs don't survive across sessions
     spatialGrid.clear();
@@ -444,8 +385,7 @@ export class GameServer {
     economyManager.reset();
 
     // Reset simulation-owned state (ForceAccumulator, pending event buffers)
-    this.simulation.resetSessionState();
-    this.factoryConstructionTurretSystem.reset();
+    this.core.resetSessionState();
 
     // Reset module-level reusable buffers that hold stale entity references
     resetProjectileBuffers();
@@ -466,78 +406,23 @@ export class GameServer {
     this.snapshotPublisher.clear();
     this.snapshotListeners.clearStartupReady();
     this.startupGateOpen = false;
-    this.detachSimulationCallbacks();
+    this.core.detachSimulationCallbacks();
 
     // Release the WASM-side per-engine static-cuboid broadphase
     // handle so its HashMap + visit-stamp Vec come back to Rust's
     // allocator and the handle slot can be reused by a future
     // GameServer.create() (avoids unbounded growth across
     // load/teardown cycles in dev hot-reload).
-    this.physics.dispose();
+    this.core.dispose();
   }
 
   private releaseSnapshotListeners(): void {
     this.snapshotListeners.releaseAll();
   }
 
-  private detachSimulationCallbacks(): void {
-    this.world.onEntityRemoving = null;
-    this.world.onHostMassChanged = null;
-    this.simulation.onUnitDeath = null;
-    this.simulation.onUnitSpawn = null;
-    this.simulation.onBuildingSpawn = null;
-    this.simulation.onBuildingDeath = null;
-    this.simulation.onSimEvent = null;
-    this.simulation.onGameOver = null;
-  }
-
   // Main simulation tick — fixed timestep driven by ServerTickLoop's accumulator.
   private tick(delta: number): void {
-    const dtMs = delta;
-    const dtSec = dtMs / 1000;
-
-    // Update simulation (calculates thrust velocities, runs combat, etc.)
-    this.simulation.update(dtMs);
-
-    // Fabricator bases stay static. Only the construction turret receives
-    // server-authored yaw/velocity while it is actively funding a shell.
-    this.factoryConstructionTurretSystem.update(dtSec);
-
-    // Apply thrust + external forces to physics bodies
-    this.unitForceSystem.applyForces(dtSec);
-
-    // Step physics (integrate + collisions)
-    this.physics.step(dtSec);
-
-    // Sync positions/velocities from physics to entities
-    this.syncFromPhysics();
-
-  }
-
-  // Sync positions and velocities from physics bodies to entities
-  private syncFromPhysics(): void {
-    const ids = this.physicsSyncUnitIdsBuf;
-    ids.length = 0;
-    this.physics.collectLastStepEntityIds(ids);
-    for (let i = 0; i < ids.length; i++) {
-      const entity = this.world.getEntity(ids[i]);
-      if (entity === undefined) continue;
-      const bodySlot = entity.body;
-      if (bodySlot === null) continue;
-      const body = bodySlot.physicsBody;
-      entity.transform.x = body.x;
-      entity.transform.y = body.y;
-      entity.transform.z = body.z;
-      if (entity.unit !== null) {
-        entity.unit.velocityX = body.vx;
-        entity.unit.velocityY = body.vy;
-        entity.unit.velocityZ = body.vz;
-        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL);
-      } else if (entity.building !== null) {
-        spatialGrid.addBuilding(entity);
-        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_POS);
-      }
-    }
+    this.core.stepFixedTick(delta);
   }
 
   // Emit a snapshot to all listeners (driven by internal snapshot interval)
@@ -672,6 +557,10 @@ export class GameServer {
 
   getReplayCommandCount(): number {
     return this.replayRecorder.getCommandCount();
+  }
+
+  getCanonicalStateHash(): CanonicalServerStateHash {
+    return this.core.getCanonicalStateHash();
   }
 
   private setTurretShieldPanelsEnabled(enabled: boolean): void {

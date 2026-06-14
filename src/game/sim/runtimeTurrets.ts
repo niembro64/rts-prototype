@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Helpers that materialize the runtime turret list for a host
 // (a unit or a building) from its blueprint. Both helpers produce
 // identical Turret objects; the only difference is the mount math:
@@ -42,7 +43,7 @@ function makeRuntimeTurret(
   // Mount-authored flags live on the per-instance config, not the shared
   // turret blueprint config.
   const config = { ...turretConfig, hostDirected, requiredEngagedForFightStop };
-  const mountOffset2d = Math.hypot(mount.x, mount.y);
+  const mountOffset2d = DMath.hypot(mount.x, mount.y);
   const sustainedDps = computeTurretSustainedDps(config);
   // Initial pitch comes from the blueprint's `idlePitch` knob (e.g.
   // turretShieldPanels rest pointing straight up at π/2). Once the aim

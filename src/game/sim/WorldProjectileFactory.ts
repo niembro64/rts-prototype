@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import type {
   Entity,
   EntityId,
@@ -68,7 +69,7 @@ export class WorldProjectileFactory {
     // D-gun hits everything (infinite hits).
     if (entity.projectile) {
       entity.projectile.maxHits = Infinity;
-      const speed = Math.hypot(velocityX, velocityY);
+      const speed = DMath.hypot(velocityX, velocityY);
       if (speed > 1e-6 && Number.isFinite(config.range) && config.range > 0) {
         entity.projectile.maxLifespan = (config.range / speed) * 1000;
       }
@@ -91,7 +92,7 @@ export class WorldProjectileFactory {
     const id = this.context.generateEntityId();
 
     // Calculate rotation from velocity.
-    const rotation = Math.atan2(velocityY, velocityX);
+    const rotation = DMath.atan2(velocityY, velocityX);
 
     // Traveling projectile shots do not carry authored time-to-live values; they
     // terminate through collision/ground physics. Line shots still use

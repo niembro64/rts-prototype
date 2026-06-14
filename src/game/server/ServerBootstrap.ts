@@ -57,6 +57,8 @@ export interface BootstrappedServerWorld {
 
 type BootstrapProgress = (progress: number, phase: string | undefined) => void | Promise<void>;
 
+export const SERVER_WORLD_SEED = 42;
+
 export class ServerBootstrap {
   static async bootstrapAsync(
     config: GameServerConfig,
@@ -120,7 +122,7 @@ export class ServerBootstrap {
 
     const physics = providedPhysics ?? new PhysicsEngine3D(mapWidth, mapHeight);
     try {
-    const world = new WorldState(42, mapWidth, mapHeight);
+    const world = new WorldState(SERVER_WORLD_SEED, mapWidth, mapHeight);
     world.playerCount = playerIds.length;
     world.metalDeposits = deposits;
     physics.setGroundLookup(
@@ -272,7 +274,7 @@ export class ServerBootstrap {
     // The physics engine is now fully 3D — same module for every path.
     const physics = providedPhysics ?? new PhysicsEngine3D(mapWidth, mapHeight);
     try {
-    const world = new WorldState(42, mapWidth, mapHeight);
+    const world = new WorldState(SERVER_WORLD_SEED, mapWidth, mapHeight);
     world.playerCount = playerIds.length;
     world.metalDeposits = deposits;
     // Wire the heightmap into physics so ground contacts settle units

@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Command execution - extracted from Simulation.ts
 // Handles all player command types (select, move, build, queue, rally, dgun, repair)
 
@@ -60,10 +61,12 @@ import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_COMBAT_MODE, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../types/network';
 import { setBuildingActiveOpen } from './buildingActiveState';
+import { resetDisabledTurretJsOnlyFields } from './combat/combatActivity';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getUnitBlueprint } from './blueprints';
 import { DGUN_TERRAIN_FOLLOW_HEIGHT } from '../../config';
+import { setUnitGroundNormalEmaMode } from './unitGroundNormal';
 import {
   insertUnitAction,
   pushUnitAction,
@@ -276,6 +279,74 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
     case 'guard':
       executeGuardCommand(ctx, command);
       break;
+    case 'setUnitGroundNormalEmaMode':
+      setUnitGroundNormalEmaMode(command.mode);
+      break;
+    case 'setMaxTotalUnits':
+      ctx.world.maxTotalUnits = command.maxTotalUnits;
+      break;
+    case 'setTurretShieldPanelsEnabled':
+      executeSetTurretShieldPanelsEnabledCommand(ctx, command.enabled);
+      break;
+    case 'setTurretShieldSpheresEnabled':
+      executeSetTurretShieldSpheresEnabledCommand(ctx, command.enabled);
+      break;
+    case 'setShieldsObstructSight':
+      ctx.world.shieldsObstructSight = command.enabled;
+      break;
+    case 'setShieldReflectionMode':
+      ctx.world.shieldReflectionMode = command.mode;
+      break;
+    case 'setFogOfWarEnabled':
+      ctx.world.fogOfWarEnabled = command.enabled;
+      break;
+    case 'setConverterTax':
+      ctx.world.converterTax = command.tax;
+      break;
+    case 'setSnapshotRate':
+    case 'setKeyframeRatio':
+    case 'setTickRate':
+    case 'setPaused':
+    case 'setSendGridInfo':
+    case 'setBackgroundUnitBlueprintEnabled':
+      break;
+  }
+}
+
+function executeSetTurretShieldPanelsEnabledCommand(ctx: CommandContext, enabled: boolean): void {
+  if (ctx.world.turretShieldPanelsEnabled === enabled) return;
+  ctx.world.turretShieldPanelsEnabled = enabled;
+  if (enabled) return;
+  for (const unit of ctx.world.getShieldPanelUnits()) {
+    const combat = unit.combat;
+    if (!combat) continue;
+    const turrets = combat.turrets;
+    for (let i = 0; i < turrets.length; i++) {
+      const turret = turrets[i];
+      if (!turret.config.passive) continue;
+      turret.target = null;
+      turret.state = 'idle';
+      resetDisabledTurretJsOnlyFields(turret);
+    }
+    ctx.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
+  }
+}
+
+function executeSetTurretShieldSpheresEnabledCommand(ctx: CommandContext, enabled: boolean): void {
+  if (ctx.world.turretShieldSpheresEnabled === enabled) return;
+  ctx.world.turretShieldSpheresEnabled = enabled;
+  if (enabled) return;
+  for (const unit of ctx.world.getShieldUnits()) {
+    const combat = unit.combat;
+    if (!combat) continue;
+    for (const turret of combat.turrets) {
+      const shot = turret.config.shot;
+      if (shot === null || shot.type !== 'shield') continue;
+      turret.target = null;
+      turret.state = 'idle';
+      resetDisabledTurretJsOnlyFields(turret);
+    }
+    ctx.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
   }
 }
 
@@ -530,7 +601,7 @@ export function buildMassAwareGroupFormationSlots(units: readonly Entity[]): Gro
   const unitCount = units.length;
   if (unitCount === 0) return [];
 
-  const colCount = Math.ceil(Math.sqrt(unitCount));
+  const colCount = Math.ceil(DMath.sqrt(unitCount));
   const rowCount = Math.ceil(unitCount / colCount);
   const rowCenter = (rowCount - 1) / 2;
   const colCenter = (colCount - 1) / 2;
@@ -1178,7 +1249,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   economyManager.spendInstant(ctx.world, playerId, dgunCost, commander.id, null, 'ability');
 
   // Calculate direction to target
-  const fireAngle = Math.atan2(dy, dx);
+  const fireAngle = DMath.atan2(dy, dx);
 
   // Snap dgun turret to target direction
   turretDisruptor.rotation = fireAngle;
@@ -1220,8 +1291,8 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     throw new Error('D-gun turret must use a projectile shot');
   }
   const speed = getProjectileLaunchSpeed(dgunShot);
-  let velocityX = Math.cos(fireAngle) * speed;
-  let velocityY = Math.sin(fireAngle) * speed;
+  let velocityX = DMath.cos(fireAngle) * speed;
+  let velocityY = DMath.sin(fireAngle) * speed;
   let velocityZ = 0;
   if (commander.unit) {
     // Manual D-gun shots update the same turret kinematics cache used

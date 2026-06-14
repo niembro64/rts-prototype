@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import {
   TERRAIN_CIRCLE_ISLAND_RADIUS_FRACTION,
   TERRAIN_CIRCLE_SHORELINE_WIDTH_FRACTION,
@@ -167,11 +168,11 @@ function getGeneratedNaturalTerrainHeight(
   const maxDist = ovalMetrics.minDim * TERRAIN_RIPPLE_CONFIG.radiusFraction;
   if (oval.distance < maxDist && maxDist > 0) {
     const fadeT = (oval.distance / maxDist) * (Math.PI / 2);
-    const fade = Math.cos(fadeT);
+    const fade = DMath.cos(fadeT);
     const [c0, c1, c2] = TERRAIN_RIPPLE_CONFIG.components;
-    const a = Math.cos(oval.distance / c0.wavelength);
-    const b = Math.cos(oval.distance / c1.wavelength + TERRAIN_RIPPLE_CONFIG.phase);
-    const c = Math.sin((oval.ox + oval.oy) / c2.wavelength);
+    const a = DMath.cos(oval.distance / c0.wavelength);
+    const b = DMath.cos(oval.distance / c1.wavelength + TERRAIN_RIPPLE_CONFIG.phase);
+    const c = DMath.sin((oval.ox + oval.oy) / c2.wavelength);
     const sum = a * c0.magnitude + b * c1.magnitude + c * c2.magnitude;
     const norm = (sum + 1) * 0.5;
     ripple = getMountainRippleAmplitude() * fade * norm;
@@ -187,11 +188,11 @@ function getGeneratedNaturalTerrainHeight(
     const distFromBarrierCenter = Math.abs(pos - barrierMid);
     const minDim = ovalMetrics.minDim;
     const halfWidth = minDim * TERRAIN_RIDGE_CONFIG.halfWidthFraction;
-    const alongDist = oval.distance * Math.cos(distFromBarrierCenter);
-    const perpDist = oval.distance * Math.sin(distFromBarrierCenter);
+    const alongDist = oval.distance * DMath.cos(distFromBarrierCenter);
+    const perpDist = oval.distance * DMath.sin(distFromBarrierCenter);
     if (alongDist > 0 && perpDist < halfWidth) {
       const widthT = perpDist / halfWidth;
-      const angFalloff = (1 + Math.cos(widthT * Math.PI)) * 0.5;
+      const angFalloff = (1 + DMath.cos(widthT * Math.PI)) * 0.5;
       const innerR = minDim * TERRAIN_RIDGE_CONFIG.innerRadiusFraction;
       const outerR = minDim * TERRAIN_RIDGE_CONFIG.outerRadiusFraction;
       let radT: number;

@@ -277,6 +277,10 @@ export class Simulation {
     return this.windState;
   }
 
+  getSimElapsedMs(): number {
+    return this.simElapsedMs;
+  }
+
   // Run one simulation step with the given timestep
   update(dtMs: number): void {
     if (this.gamePhase === 'init') this.gamePhase = transitionPhase('init', 'battle');
@@ -592,7 +596,9 @@ export class Simulation {
       group.members.push(entity);
     }
 
-    for (const { groupId, members } of groups.values()) {
+    for (const { groupId, members } of [...groups.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([, group]) => group)) {
       let ready = members.length > 0;
       for (let i = 0; i < members.length; i++) {
         const unit = members[i].unit;

@@ -3,6 +3,7 @@ import {
   BATTLE_CONFIG,
   getDefaultMapLandDimensions,
   loadStoredConverterTax,
+  loadStoredRealCap,
   normalizeCenterMagnitude,
   normalizeConverterTax,
   normalizeDividersMagnitude,
@@ -14,6 +15,7 @@ import {
   saveDividersMagnitude,
   saveMapLandDimensions,
   saveMetalDepositStep,
+  saveStoredCap,
   saveTerrainDTerrain,
   saveTerrainDetail,
   saveTerrainMapShape,
@@ -124,6 +126,7 @@ export function useGameCanvasLobbySettings({
       terrainDetail: terrainDetail.value,
       mapWidthLandCells: mapWidthLandCells.value,
       mapLengthLandCells: mapLengthLandCells.value,
+      maxTotalUnits: loadStoredRealCap(),
       converterTax: loadStoredConverterTax('real'),
     };
   }
@@ -257,6 +260,13 @@ export function useGameCanvasLobbySettings({
     );
     if (settings.converterTax !== undefined) {
       saveConverterTax(normalizeConverterTax(settings.converterTax), 'real');
+    }
+    if (
+      settings.maxTotalUnits !== undefined &&
+      Number.isFinite(settings.maxTotalUnits) &&
+      settings.maxTotalUnits > 0
+    ) {
+      saveStoredCap('real', settings.maxTotalUnits);
     }
     applyCurrentTerrainRuntimeConfig();
     setTerrainMapShape(settings.terrainMapShape);

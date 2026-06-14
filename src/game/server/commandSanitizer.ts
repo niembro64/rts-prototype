@@ -64,10 +64,28 @@ const COMBAT_FIRE_STATES: readonly string[] = ['fireAtWill', 'returnFire', 'hold
 type GroundPoint = { x: number; y: number; z: number | undefined };
 
 export function sanitizeCommand(command: Command, world: WorldState): Command | null {
-  if (!command || typeof command.type !== 'string') return null;
-  const tick = sanitizeTick(command.tick, world);
-  if (tick === null) return null;
+  return sanitizeCommandForAuthoritativeServer(command, world);
+}
 
+export function sanitizeCommandForAuthoritativeServer(command: Command, world: WorldState): Command | null {
+  if (!command || typeof command.type !== 'string') return null;
+  const tick = sanitizeAuthoritativeServerTick(command.tick, world);
+  if (tick === null) return null;
+  return sanitizeCommandWithTick(command, world, tick);
+}
+
+export function sanitizeCommandForScheduledFrame(
+  command: Command,
+  world: WorldState,
+  executeFrame: number,
+): Command | null {
+  if (!command || typeof command.type !== 'string') return null;
+  const tick = sanitizeScheduledFrame(executeFrame);
+  if (tick === null) return null;
+  return sanitizeCommandWithTick(command, world, tick);
+}
+
+function sanitizeCommandWithTick(command: Command, world: WorldState, tick: number): Command | null {
   switch (command.type) {
     case 'select':
     case 'clearSelection':
@@ -204,9 +222,15 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
   }
 }
 
-function sanitizeTick(value: unknown, world: WorldState): number | null {
+function sanitizeAuthoritativeServerTick(value: unknown, world: WorldState): number | null {
   if (!Number.isFinite(value)) return null;
   return world.getTick();
+}
+
+function sanitizeScheduledFrame(value: unknown): number | null {
+  if (!Number.isInteger(value)) return null;
+  if ((value as number) < 0 || (value as number) > 0x7FFF_FFFF) return null;
+  return value as number;
 }
 
 function isEntityId(value: unknown): value is EntityId {

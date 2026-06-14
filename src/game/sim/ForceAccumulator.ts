@@ -257,13 +257,14 @@ export class ForceAccumulator {
       const entry = this.forces.get(id);
       if (entry && entry.contributionCount > 0) out.push(id);
     }
+    out.sort((a, b) => a - b);
   }
 
   /**
    * Get all entity IDs with accumulated forces.
    */
   getEntityIds(): EntityId[] {
-    return Array.from(this.forces.keys());
+    return Array.from(this.forces.keys()).sort((a, b) => a - b);
   }
 
   /**

@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Background battle spawning logic.
 
 import type { Entity, PlayerId, UnitAction } from '../sim/types';
@@ -67,26 +68,32 @@ function ensureWeightTable(allowedUnitBlueprintIds: ReadonlySet<string> | undefi
   }
 }
 
-function selectWeightedUnitBlueprintId(allowedUnitBlueprintIds: ReadonlySet<string> | undefined = undefined): string | null {
+function selectWeightedUnitBlueprintId(
+  rngNext: () => number,
+  allowedUnitBlueprintIds: ReadonlySet<string> | undefined = undefined,
+): string | null {
   ensureWeightTable(allowedUnitBlueprintIds);
   if (backgroundUnitWeights.length === 0) return null;
-  const r = Math.random();
+  const r = rngNext();
   for (const entry of backgroundUnitWeights) {
     if (r <= entry.cumWeight) return entry.type;
   }
   return backgroundUnitWeights[backgroundUnitWeights.length - 1].type;
 }
 
-function selectUnitBlueprintId(allowedUnitBlueprintIds: ReadonlySet<string> | undefined = undefined): string | null {
+function selectUnitBlueprintId(
+  rngNext: () => number,
+  allowedUnitBlueprintIds: ReadonlySet<string> | undefined = undefined,
+): string | null {
   // No allowed types → caller will skip the spawn.
   if (allowedUnitBlueprintIds !== undefined && allowedUnitBlueprintIds.size === 0) return null;
   if (BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING) {
-    return selectWeightedUnitBlueprintId(allowedUnitBlueprintIds);
+    return selectWeightedUnitBlueprintId(rngNext, allowedUnitBlueprintIds);
   } else if (allowedUnitBlueprintIds !== undefined && allowedUnitBlueprintIds.size > 0) {
-    const allowed = Array.from(allowedUnitBlueprintIds);
-    return allowed[Math.floor(Math.random() * allowed.length)];
+    const allowed = [...allowedUnitBlueprintIds].sort();
+    return allowed[Math.floor(rngNext() * allowed.length)];
   }
-  return BACKGROUND_UNIT_BLUEPRINT_IDS[Math.floor(Math.random() * BACKGROUND_UNIT_BLUEPRINT_IDS.length)];
+  return BACKGROUND_UNIT_BLUEPRINT_IDS[Math.floor(rngNext() * BACKGROUND_UNIT_BLUEPRINT_IDS.length)];
 }
 
 // Spawn a single unit at a specific position with the configured demo waypoints.
@@ -106,7 +113,7 @@ function spawnUnit(
   if (allowedUnitBlueprintIds !== undefined && allowedUnitBlueprintIds.size === 0) return null;
   if (waypoints.length === 0) return null;
 
-  const unitBlueprintId = selectUnitBlueprintId(allowedUnitBlueprintIds);
+  const unitBlueprintId = selectUnitBlueprintId(() => world.rng.next(), allowedUnitBlueprintIds);
   // Defensive: only ever spawn from the allowed-types set. If
   // selectUnitBlueprintId signalled "nothing valid" (empty set, weight
   // table empty after rebuild), skip the spawn entirely instead of
@@ -116,7 +123,7 @@ function spawnUnit(
   const unit = world.createUnitFromBlueprint(x, y, playerId, unitBlueprintId);
 
   const firstWp = waypoints[0];
-  setUnitFacingYaw(unit, Math.atan2(firstWp.y - y, firstWp.x - x));
+  setUnitFacingYaw(unit, DMath.atan2(firstWp.y - y, firstWp.x - x));
   aimTurretsToward(unit, firstWp.x, firstWp.y);
 
   if (unit.unit) {
@@ -156,13 +163,14 @@ function sampleCenterSpawnPoint(
   mapHeight: number,
   waterBuffer: number,
   maxAttempts: number,
+  rngNext: () => number,
 ): { x: number; y: number } | null {
   let dryFallback: { x: number; y: number } | null = null;
   let anyFallback: { x: number; y: number } | null = null;
 
   for (let k = 0; k < maxAttempts; k++) {
-    const spawnAngle = Math.random() * Math.PI * 2;
-    const spawnDist = Math.sqrt(Math.random()) * centerRadius;
+    const spawnAngle = rngNext() * Math.PI * 2;
+    const spawnDist = DMath.sqrt(rngNext()) * centerRadius;
     const point = mapOvalPointAt(oval, spawnAngle, spawnDist);
     anyFallback = point;
     if (!dryFallback && isFarFromWater(point.x, point.y, mapWidth, mapHeight, 0)) {
@@ -244,6 +252,7 @@ export function spawnBackgroundUnitsStandalone(
           mapHeight,
           waterBuffer,
           maxAttempts,
+          () => world.rng.next(),
         );
         if (!spawn) continue;
 
@@ -276,9 +285,9 @@ export function spawnBackgroundUnitsStandalone(
       const pUnits = world.getUnitsByPlayer(playerId).length;
       if (pUnits >= unitCapPerPlayer) continue;
 
-      const offsetAngle = (Math.random() - 0.5) * sectorAngle;
+      const offsetAngle = (world.rng.next() - 0.5) * sectorAngle;
       const a = baseAngles[p] + offsetAngle;
-      const r = spawnRadius * (0.85 + Math.random() * 0.15);
+      const r = spawnRadius * (0.85 + world.rng.next() * 0.15);
       const point = mapOvalPointAt(oval, a, r);
 
       const unit = spawnUnit(

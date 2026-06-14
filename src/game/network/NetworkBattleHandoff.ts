@@ -1,9 +1,14 @@
 import { getDefaultPlayerName } from '@/playerNamesConfig';
+import { ARCHITECTURE_CONFIG } from '@/architectureConfig';
 import {
   BATTLE_HANDOFF_PROTOCOL,
   type BattleHandoff,
   type LobbySettings,
 } from '@/types/network';
+import {
+  buildCanonicalMatchInitialization,
+  hashCanonicalMatchInitialization,
+} from '../architecture/CanonicalMatchInitialization';
 import type { PlayerId } from '../sim/types';
 import type { LobbyPlayer } from './NetworkTypes';
 import { createLobbyPlayer } from './NetworkLobbyRoster';
@@ -37,10 +42,20 @@ export function buildBattleHandoff({
       ? { ...existing }
       : createLobbyPlayer(playerId, getDefaultPlayerName(playerId), playerId === 1);
   });
+  const initialization = buildCanonicalMatchInitialization({
+    gameId,
+    roomCode,
+    hostPlayerId: 1 as PlayerId,
+    playerIds: normalizedPlayerIds,
+    settings,
+  });
   return {
     protocol: BATTLE_HANDOFF_PROTOCOL,
     gameId,
     roomCode,
+    architecture: initialization.architecture.backend,
+    initialization,
+    initializationHash: hashCanonicalMatchInitialization(initialization),
     hostPlayerId: 1 as PlayerId,
     playerIds: normalizedPlayerIds,
     players,
@@ -58,10 +73,39 @@ export function normalizeBattleHandoffMessage(
     handoff.protocol === BATTLE_HANDOFF_PROTOCOL &&
     handoff.gameId === fallback.gameId
   ) {
+    const normalizedRoomCode = normalizeRoomCode(handoff.roomCode);
+    const normalizedPlayerIds = normalizePlayerIds(handoff.playerIds);
+    const initialization = buildCanonicalMatchInitialization({
+      gameId: handoff.gameId,
+      roomCode: normalizedRoomCode,
+      hostPlayerId: handoff.hostPlayerId,
+      playerIds: normalizedPlayerIds,
+      settings: handoff.settings,
+    });
+    const initializationHash = hashCanonicalMatchInitialization(initialization);
+    const receivedArchitecture = handoff.architecture ?? initialization.architecture.backend;
+    if (receivedArchitecture !== ARCHITECTURE_CONFIG.backend) {
+      throw new Error(
+        `Battle architecture mismatch: host=${receivedArchitecture}, ` +
+          `local=${ARCHITECTURE_CONFIG.backend}`,
+      );
+    }
+    if (
+      receivedArchitecture === 'deterministic-lockstep' &&
+      handoff.initializationHash !== initializationHash
+    ) {
+      throw new Error(
+        `Lockstep initialization hash mismatch: host=${handoff.initializationHash}, ` +
+          `local=${initializationHash}`,
+      );
+    }
     return {
       ...handoff,
-      roomCode: normalizeRoomCode(handoff.roomCode),
-      playerIds: normalizePlayerIds(handoff.playerIds),
+      architecture: receivedArchitecture,
+      initialization,
+      initializationHash,
+      roomCode: normalizedRoomCode,
+      playerIds: normalizedPlayerIds,
       players: handoff.players.map((player) => ({ ...player })),
     };
   }

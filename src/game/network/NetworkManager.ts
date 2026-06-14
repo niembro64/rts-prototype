@@ -18,6 +18,7 @@ export type {
   NetworkMessage,
   NetworkPlayerActionMessage,
   NetworkServerSnapshotMessage,
+  NetworkLockstepMessage,
   NetworkCommunicationDraft,
   NetworkCommunicationEvent,
   NetworkCommunicationChatEvent,
@@ -51,6 +52,7 @@ import {
   type NetworkCommunicationDraft,
   type NetworkCommunicationEvent,
   type NetworkCommunicationPoint,
+  type NetworkLockstepMessage,
   type LobbySettings,
 } from '@/types/network';
 import type {
@@ -67,6 +69,7 @@ import {
 import { NetworkCommandTransport } from './NetworkCommandTransport';
 import { NetworkDataChannelMonitor } from './NetworkDataChannelMonitor';
 import { NetworkHeartbeatTracker } from './NetworkHeartbeatTracker';
+import { NetworkLockstepTransport } from './NetworkLockstepTransport';
 import { createLobbyPlayer, NetworkLobbyRoster } from './NetworkLobbyRoster';
 import {
   generateRoomCode,
@@ -212,6 +215,15 @@ export class NetworkManager {
       this.emitSnapshotRecoveryNeeded(playerId, needsStatic),
     send: (conn, message) => this.safeSend(conn, message),
   });
+  private lockstepTransport = new NetworkLockstepTransport({
+    getGameId: () => this.getUniversalGameId(),
+    getHostConnection: () => this.connections.get(1),
+    getConnections: () => this.connections,
+    getLocalPlayerId: () => this.localPlayerId,
+    isMessageForCurrentGame: (message) => this.isMessageForCurrentGame(message.gameId),
+    onMessage: (message, fromPlayerId) => this.emitLockstepMessage(message, fromPlayerId),
+    send: (conn, message) => this.safeSend(conn, message),
+  });
   private dataChannelMonitor = new NetworkDataChannelMonitor();
   private sendBudget = new NetworkSendBudget({
     onPendingQueued: () => this.scheduleSendBudgetFlush(),
@@ -285,6 +297,9 @@ export class NetworkManager {
     | ((playerId: PlayerId, needsStatic: boolean) => void)
     | undefined = undefined;
   public onCommunication: ((event: NetworkCommunicationEvent) => void) | undefined = undefined;
+  public onLockstepMessage:
+    | ((message: NetworkLockstepMessage, fromPlayerId: PlayerId) => void)
+    | undefined = undefined;
 
   private emitPlayerJoined(player: LobbyPlayer): void {
     const callback = this.onPlayerJoined;
@@ -306,6 +321,11 @@ export class NetworkManager {
   private emitCommandReceived(command: Command, fromPlayerId: PlayerId): void {
     const callback = this.onCommandReceived;
     if (callback !== undefined) callback(command, fromPlayerId);
+  }
+
+  private emitLockstepMessage(message: NetworkLockstepMessage, fromPlayerId: PlayerId): void {
+    const callback = this.onLockstepMessage;
+    if (callback !== undefined) callback(message, fromPlayerId);
   }
 
   private emitGameStart(handoff: BattleHandoff): void {
@@ -399,6 +419,7 @@ export class NetworkManager {
     this.heartbeatTracker.stop();
     this.sendBudget.clear();
     this.dataChannelMonitor.clear();
+    this.lockstepTransport.clear();
     for (const conn of this.connections.values()) {
       conn.close();
     }
@@ -928,6 +949,7 @@ export class NetworkManager {
     // who are sending plenty of state but happen to skip a
     // heartbeat tick (snapshots, commands, etc. all count).
     this.heartbeatTracker.markReceived(fromPlayerId);
+    if (this.lockstepTransport.handleMessage(message, fromPlayerId)) return;
     switch (message.type) {
       case 'heartbeat':
         if (!this.isMessageForCurrentGame(message.gameId)) return;
@@ -1224,6 +1246,10 @@ export class NetworkManager {
     return this.sendBudget.getTelemetry();
   }
 
+  getLockstepTransport(): NetworkLockstepTransport {
+    return this.lockstepTransport;
+  }
+
   // Send game state to a specific client (host only).
   // Pre-serializes to a MessagePack Uint8Array so PeerJS's BinaryPack
   // only handles a flat byte buffer (trivial) instead of a deep object
@@ -1423,6 +1449,7 @@ export class NetworkManager {
     this.onPlayerInfoUpdate = undefined;
     this.onSnapshotRecoveryNeeded = undefined;
     this.onCommunication = undefined;
+    this.onLockstepMessage = undefined;
   }
 
   private queueStateMessage(message: NetworkStateMessage): void {

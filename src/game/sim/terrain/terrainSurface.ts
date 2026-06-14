@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import { LAND_CELL_SIZE } from '../../../config';
 import { getSimWasm } from '../../sim-wasm/init';
 import { WATER_LEVEL } from './terrainConfig';
@@ -75,7 +76,7 @@ export function applySurfaceTilt(
     }
     return { x: vx, y: vy, z: vz };
   }
-  const sinT = Math.sqrt(sinT2);
+  const sinT = DMath.sqrt(sinT2);
   const cosT = n.nz;
   const kx = -n.ny / sinT;
   const ky = n.nx / sinT;
@@ -141,8 +142,8 @@ export function isFarFromWater(
   if (bufferPx <= 0) return true;
   for (let i = 0; i < WATER_CLEARANCE_SAMPLES; i++) {
     const a = (i / WATER_CLEARANCE_SAMPLES) * Math.PI * 2;
-    const px = x + Math.cos(a) * bufferPx;
-    const pz = z + Math.sin(a) * bufferPx;
+    const px = x + DMath.cos(a) * bufferPx;
+    const pz = z + DMath.sin(a) * bufferPx;
     if (isWaterAt(px, pz, mapWidth, mapHeight)) return false;
   }
   return true;

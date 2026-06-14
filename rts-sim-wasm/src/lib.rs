@@ -34,6 +34,45 @@ pub fn version() -> String {
     format!("rts-sim-wasm {}", env!("CARGO_PKG_VERSION"))
 }
 
+/// Scalar math kernels used by deterministic-lockstep TypeScript glue.
+///
+/// WebAssembly owns these functions so any remaining TS gameplay orchestration
+/// can avoid browser-specific `Math.*` transcendental implementations.
+#[wasm_bindgen]
+pub fn deterministic_math_sin(value: f64) -> f64 {
+    value.sin()
+}
+
+#[wasm_bindgen]
+pub fn deterministic_math_cos(value: f64) -> f64 {
+    value.cos()
+}
+
+#[wasm_bindgen]
+pub fn deterministic_math_atan2(y: f64, x: f64) -> f64 {
+    y.atan2(x)
+}
+
+#[wasm_bindgen]
+pub fn deterministic_math_sqrt(value: f64) -> f64 {
+    value.sqrt()
+}
+
+#[wasm_bindgen]
+pub fn deterministic_math_hypot2(x: f64, y: f64) -> f64 {
+    (x * x + y * y).sqrt()
+}
+
+#[wasm_bindgen]
+pub fn deterministic_math_hypot3(x: f64, y: f64, z: f64) -> f64 {
+    (x * x + y * y + z * z).sqrt()
+}
+
+#[wasm_bindgen]
+pub fn deterministic_math_pow(base: f64, exponent: f64) -> f64 {
+    base.powf(exponent)
+}
+
 /// Module init. wasm-bindgen calls this automatically when the
 /// JS side imports the module (because of the #[wasm_bindgen(start)]
 /// attribute). Installs the panic hook before any other code runs.
@@ -294,4 +333,3 @@ pub(crate) use combat_targeting::*;
 mod snapshot;
 #[allow(unused_imports)]
 pub(crate) use snapshot::*;
-

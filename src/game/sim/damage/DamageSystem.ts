@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Unified Damage System
 // Handles all damage types consistently: line (beams), swept (projectiles), area (splash/shield)
 // PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full entity scans
@@ -1032,7 +1033,7 @@ export class DamageSystem {
     const reflections: BeamReflectorPoint[] = [];
     let loopEndEntityId: EntityId = NO_ENTITY_ID;
     const segmentLimit = Math.max(1, Math.floor(maxSegments));
-    let remainingRange = Math.hypot(endX - startX, endY - startY, endZ - startZ);
+    let remainingRange = DMath.hypot(endX - startX, endY - startY, endZ - startZ);
     let curSX = startX, curSY = startY, curSZ = startZ;
     let curEX = endX, curEY = endY, curEZ = endZ;
     let bodyExcludeEntityId = sourceEntityId;
@@ -1045,7 +1046,7 @@ export class DamageSystem {
         const segDx = curEX - curSX;
         const segDy = curEY - curSY;
         const segDz = curEZ - curSZ;
-        const segLen = Math.hypot(segDx, segDy, segDz);
+        const segLen = DMath.hypot(segDx, segDy, segDz);
         if (segLen <= 1e-9) break;
         const invSegLen = 1 / segLen;
         const cylinderDistance = distanceToRayConfigRangeCylinder(
@@ -1146,7 +1147,7 @@ export class DamageSystem {
       const segDx = curEX - curSX;
       const segDy = curEY - curSY;
       const segDz = curEZ - curSZ;
-      const segLen = Math.hypot(segDx, segDy, segDz);
+      const segLen = DMath.hypot(segDx, segDy, segDz);
       // Reflected direction comes from the Rust kernel (the one shared
       // mirror formula for beams, plasma, and rockets). All-zero means
       // the bounce was degenerate — terminal hit on the reflector.

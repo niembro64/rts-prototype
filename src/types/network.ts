@@ -227,6 +227,10 @@ import type {
 import type { ShieldReflectionMode } from './shotTypes';
 import type { Vec2, Vec3 } from './vec2';
 import type { SnapshotCompressionFormat } from './config';
+import type { ArchitectureBackend } from '../architectureConfig';
+import type { CanonicalMatchInitialization } from '../game/architecture/CanonicalMatchInitialization';
+import type { CanonicalServerStateHash } from '../game/architecture/CanonicalStateHash';
+import type { LockstepCommandEnvelope } from '../game/architecture/LockstepCommandProtocol';
 import type {
   TerrainBuildabilityGrid,
   TerrainMapShape,
@@ -305,6 +309,104 @@ export type NetworkCommunicationEvent =
   | NetworkCommunicationMapDrawingEvent
   | NetworkCommunicationMapEraseEvent;
 
+export const LOCKSTEP_PROTOCOL_VERSION = 'budget-annihilation.lockstep.v1' as const;
+export type LockstepProtocolVersion = typeof LOCKSTEP_PROTOCOL_VERSION;
+
+export type LockstepProtocolBase = {
+  gameId: string | undefined;
+  protocolVersion: LockstepProtocolVersion;
+  architecture: 'deterministic-lockstep';
+};
+
+export type LockstepPeerSequenceAck = {
+  playerId: PlayerId;
+  lastPlayerSequence: number;
+};
+
+export type LockstepHelloMessage = LockstepProtocolBase & {
+  type: 'lockstepHello';
+  playerId: PlayerId;
+  initializationHash: string;
+  lastReceivedFrame: number;
+  receivedPeerSequences: LockstepPeerSequenceAck[];
+};
+
+export type LockstepReadyMessage = LockstepProtocolBase & {
+  type: 'lockstepReady';
+  playerId: PlayerId;
+  readyFrame: number;
+  initializationHash: string;
+};
+
+export type LockstepCommandMessage = LockstepProtocolBase & {
+  type: 'lockstepCommand';
+  envelope: LockstepCommandEnvelope;
+};
+
+export type LockstepCommandFrameMessage = LockstepProtocolBase & {
+  type: 'lockstepCommandFrame';
+  coordinatorPlayerId: PlayerId;
+  frame: number;
+  frameSequence: number;
+  commands: LockstepCommandEnvelope[];
+};
+
+export type LockstepAckMessage = LockstepProtocolBase & {
+  type: 'lockstepAck';
+  playerId: PlayerId;
+  ackFrame: number;
+  ackFrameSequence: number;
+  receivedPeerSequences: LockstepPeerSequenceAck[];
+};
+
+export type LockstepChecksumMessage = LockstepProtocolBase & {
+  type: 'lockstepChecksum';
+  playerId: PlayerId;
+  frame: number;
+  stateHash: CanonicalServerStateHash;
+};
+
+export type LockstepPauseMessage = LockstepProtocolBase & {
+  type: 'lockstepPause';
+  requestedByPlayerId: PlayerId;
+  frame: number;
+  reason: string;
+};
+
+export type LockstepResumeMessage = LockstepProtocolBase & {
+  type: 'lockstepResume';
+  requestedByPlayerId: PlayerId;
+  resumeFrame: number;
+};
+
+export type LockstepDesyncMessage = LockstepProtocolBase & {
+  type: 'lockstepDesync';
+  detectedByPlayerId: PlayerId;
+  frame: number;
+  localHash: CanonicalServerStateHash;
+  remotePlayerId: PlayerId | null;
+  remoteHash: CanonicalServerStateHash | null;
+};
+
+export type LockstepResyncRequestMessage = LockstepProtocolBase & {
+  type: 'lockstepResyncRequest';
+  requestedByPlayerId: PlayerId;
+  fromFrame: number;
+  reason: string;
+};
+
+export type NetworkLockstepMessage =
+  | LockstepHelloMessage
+  | LockstepReadyMessage
+  | LockstepCommandMessage
+  | LockstepCommandFrameMessage
+  | LockstepAckMessage
+  | LockstepChecksumMessage
+  | LockstepPauseMessage
+  | LockstepResumeMessage
+  | LockstepDesyncMessage
+  | LockstepResyncRequestMessage;
+
 // Client → Server
 export type NetworkPlayerActionMessage =
   | { type: 'command'; gameId: string | undefined; data: Command }
@@ -370,6 +472,8 @@ export type LobbySettings = {
   terrainDetail: number | undefined;
   mapWidthLandCells: number;
   mapLengthLandCells: number;
+  /** Gameplay unit cap for real battles. Undefined only for legacy handoffs. */
+  maxTotalUnits: number | undefined;
   converterTax: number | undefined;
 };
 
@@ -417,7 +521,10 @@ export type NetworkServerSnapshotMessage =
     };
 
 // Combined (transport envelope)
-export type NetworkMessage = NetworkPlayerActionMessage | NetworkServerSnapshotMessage;
+export type NetworkMessage =
+  | NetworkPlayerActionMessage
+  | NetworkServerSnapshotMessage
+  | NetworkLockstepMessage;
 
 export type NetworkServerSnapshotSimEvent = {
   type:
@@ -1036,6 +1143,9 @@ export type BattleHandoff = {
   protocol: typeof BATTLE_HANDOFF_PROTOCOL;
   gameId: string;
   roomCode: string;
+  architecture: ArchitectureBackend;
+  initialization: CanonicalMatchInitialization;
+  initializationHash: string;
   hostPlayerId: PlayerId;
   playerIds: PlayerId[];
   players: LobbyPlayer[];

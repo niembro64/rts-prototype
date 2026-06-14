@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Shield weapon system - projectile shield boundaries
 
 import type { WorldState } from '../WorldState';
@@ -177,11 +178,11 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
           // — beams likewise keep tracing damage through their
           // min-on window after disengage.
           if (targetId === -1 && !commandedOn) continue;
-          const pitchCos = Math.cos(weapon.pitch);
-          axisEndX = centerX + Math.cos(weapon.rotation) * pitchCos * config.range;
-          axisEndY = centerY + Math.sin(weapon.rotation) * pitchCos * config.range;
-          axisEndZ = centerZ + Math.sin(weapon.pitch) * config.range;
-          if (Math.hypot(axisEndX - centerX, axisEndY - centerY, axisEndZ - centerZ) <= 1e-6) {
+          const pitchCos = DMath.cos(weapon.pitch);
+          axisEndX = centerX + DMath.cos(weapon.rotation) * pitchCos * config.range;
+          axisEndY = centerY + DMath.sin(weapon.rotation) * pitchCos * config.range;
+          axisEndZ = centerZ + DMath.sin(weapon.pitch) * config.range;
+          if (DMath.hypot(axisEndX - centerX, axisEndY - centerY, axisEndZ - centerZ) <= 1e-6) {
             continue;
           }
         }

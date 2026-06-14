@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import {
   UNIT_GROUND_FRICTION_PER_60HZ_FRAME,
 } from '../../config';
@@ -44,7 +45,7 @@ export function getUnitGroundFrictionDamp(dtSec: number): number {
   if (!Number.isFinite(friction) || friction <= 0) return 1;
   if (friction >= 1) return 0;
   cachedGroundDampDtSec = dtSec;
-  cachedGroundDamp = Math.pow(1 - friction, dtSec * 60);
+  cachedGroundDamp = DMath.pow(1 - friction, dtSec * 60);
   return cachedGroundDamp;
 }
 

@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import { LAND_CELL_SIZE } from '../../../config';
 import { invalidateTerrainConfig } from './terrainState';
 
@@ -132,10 +133,10 @@ export function depositOverride(
     if (containing !== null) continue;
     const blendRadius = Math.max(0, z.blendRadius);
     if (blendRadius <= 0) continue;
-    const d = Math.sqrt(d2);
+    const d = DMath.sqrt(d2);
     if (d >= z.radius + blendRadius) continue;
     const t = (d - z.radius) / blendRadius;
-    const wz = (1 + Math.cos(t * Math.PI)) * 0.5;
+    const wz = (1 + DMath.cos(t * Math.PI)) * 0.5;
     blendWeights.push(wz);
     blendHeights.push(z.height);
   }

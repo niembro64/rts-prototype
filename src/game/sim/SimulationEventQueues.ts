@@ -56,7 +56,7 @@ export class SimulationEventQueues {
     const buf = this.velUpdateToggle ? this.velUpdateBufB : this.velUpdateBufA;
     this.velUpdateToggle = !this.velUpdateToggle;
     buf.length = 0;
-    for (const v of map.values()) buf.push(v);
+    for (const [, v] of [...map.entries()].sort(([a], [b]) => a - b)) buf.push(v);
     map.clear();
     return buf;
   }

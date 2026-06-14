@@ -10,6 +10,10 @@ import {
 import { applyCompletedBuildingEffects } from './buildingCompletion';
 import { Simulation } from './Simulation';
 import type { Entity } from './types';
+import {
+  getUnitGroundNormalEmaMode,
+  setUnitGroundNormalEmaMode,
+} from './unitGroundNormal';
 import { setUnitActions, shiftUnitAction } from './unitActions';
 import { WorldState } from './WorldState';
 import { createWreckFromDeadUnit } from './wrecks';
@@ -302,6 +306,19 @@ export function runCommandExecutionContractTest(): void {
     pendingSimEvents: [],
     onSimEvent: null,
   };
+  executeCommand(queueCtx, { type: 'setMaxTotalUnits', tick: 0, maxTotalUnits: 123 });
+  assertContract(queueWorld.maxTotalUnits === 123, 'scheduled max-unit setting must update world truth');
+  executeCommand(queueCtx, { type: 'setConverterTax', tick: 0, tax: 0.25 });
+  assertContract(queueWorld.converterTax === 0.25, 'scheduled converter-tax setting must update world truth');
+  executeCommand(queueCtx, { type: 'setFogOfWarEnabled', tick: 0, enabled: false });
+  assertContract(queueWorld.fogOfWarEnabled === false, 'scheduled fog setting must update world truth');
+  setUnitGroundNormalEmaMode('fast');
+  executeCommand(queueCtx, { type: 'setUnitGroundNormalEmaMode', tick: 0, mode: 'slow' });
+  assertContract(
+    getUnitGroundNormalEmaMode() === 'slow',
+    'scheduled unit-ground-normal mode must update deterministic sim setting',
+  );
+  setUnitGroundNormalEmaMode('fast');
   const commander = queueWorld.createUnitFromBlueprint(60, 100, 1, 'unitCommander', {
     allocateSubEntityIds: false,
   });

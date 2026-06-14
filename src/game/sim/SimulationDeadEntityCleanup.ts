@@ -53,6 +53,8 @@ export class SimulationDeadEntityCleanup {
 
     this.deathCleanupClassifier.classify(deathCheckIds, deadUnitIds, deadBuildingIds);
     deathCheckIds.length = 0;
+    sortEntityIdsInPlace(deadUnitIds);
+    sortEntityIdsInPlace(deadBuildingIds);
     this.planSyntheticDeaths(deadUnitIds, deadBuildingIds);
     this.removeDeadUnits(deadUnitIds, onUnitDeath, onBuildingSpawn);
     this.removeDeadBuildings(deadBuildingIds, onBuildingDeath);
@@ -94,8 +96,8 @@ export class SimulationDeadEntityCleanup {
     );
     deadUnitIds.length = 0;
     deadBuildingIds.length = 0;
-    for (const id of deadUnitSet) deadUnitIds.push(id);
-    for (const id of deadBuildingSet) deadBuildingIds.push(id);
+    pushSortedEntityIds(deadUnitSet, deadUnitIds);
+    pushSortedEntityIds(deadBuildingSet, deadBuildingIds);
   }
 
   private removeDeadUnits(
@@ -153,4 +155,13 @@ export class SimulationDeadEntityCleanup {
       );
     }
   }
+}
+
+function sortEntityIdsInPlace(ids: EntityId[]): void {
+  ids.sort((a, b) => a - b);
+}
+
+function pushSortedEntityIds(ids: ReadonlySet<EntityId>, out: EntityId[]): void {
+  for (const id of ids) out.push(id);
+  sortEntityIdsInPlace(out);
 }

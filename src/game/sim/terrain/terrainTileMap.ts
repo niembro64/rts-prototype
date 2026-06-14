@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import type { TerrainTileMap } from '@/types/terrain';
 import { LAND_CELL_SIZE } from '../../../config';
 import { assertCanonicalLandCellSize } from '../../landGrid';
@@ -484,7 +485,7 @@ export function terrainMeshNormalFromSampleInto(
       vertical = -vertical;
       nz = -nz;
     }
-    const len = Math.sqrt(nx * nx + vertical * vertical + nz * nz) || 1;
+    const len = DMath.sqrt(nx * nx + vertical * vertical + nz * nz) || 1;
     out.nx = nx / len;
     out.ny = nz / len;
     out.nz = vertical / len;
@@ -496,7 +497,7 @@ export function terrainMeshNormalFromSampleInto(
   const nx = -dHdx;
   const ny = -dHdz;
   const nz = 1;
-  const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+  const len = DMath.sqrt(nx * nx + ny * ny + nz * nz);
   out.nx = nx / len;
   out.ny = ny / len;
   out.nz = nz / len;

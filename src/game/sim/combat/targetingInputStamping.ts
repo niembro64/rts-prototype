@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // AIM-08.1/.2 — Per-tick stamping of the SoA targeting input slabs.
 //
 // Split into two passes:
@@ -538,8 +539,8 @@ function stampCombatTargetingEntityInto(
   const pos = getEntityPosition3d(entity, _stampPos);
   const vel = getEntityVelocity3d(entity, _stampVel);
   const groundZ = getUnitGroundZ(entity);
-  const rotCos = Math.cos(entity.transform.rotation);
-  const rotSin = Math.sin(entity.transform.rotation);
+  const rotCos = DMath.cos(entity.transform.rotation);
+  const rotSin = DMath.sin(entity.transform.rotation);
   entity.transform.rotCos = rotCos;
   entity.transform.rotSin = rotSin;
   const surfaceN = entity.unit ? entity.unit.surfaceNormal : undefined;
@@ -854,8 +855,8 @@ export function stampShieldSurfacePool(world: WorldState): void {
     const shieldPanelPitch = shieldPanelTurret.pitch;
     const unitGroundZ = getUnitGroundZ(unit);
     const unitCS = {
-      cos: Math.cos(unit.transform.rotation),
-      sin: Math.sin(unit.transform.rotation),
+      cos: DMath.cos(unit.transform.rotation),
+      sin: DMath.sin(unit.transform.rotation),
     };
     unit.transform.rotCos = unitCS.cos;
     unit.transform.rotSin = unitCS.sin;

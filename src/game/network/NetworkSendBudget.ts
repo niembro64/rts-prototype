@@ -18,6 +18,7 @@ export type NetworkSendMessageClass =
   | 'lobbySettings'
   | 'communication'
   | 'communicationEvent'
+  | 'lockstep'
   | 'control';
 
 export type NetworkSendBudgetClassTelemetry = {
@@ -120,6 +121,17 @@ function classifyMessage(message: NetworkMessage): NetworkSendClassification {
       return { messageClass: 'communication', policy: 'command', coalesceKey: null };
     case 'communicationEvent':
       return { messageClass: 'communicationEvent', policy: 'critical', coalesceKey: null };
+    case 'lockstepHello':
+    case 'lockstepReady':
+    case 'lockstepCommand':
+    case 'lockstepCommandFrame':
+    case 'lockstepAck':
+    case 'lockstepChecksum':
+    case 'lockstepPause':
+    case 'lockstepResume':
+    case 'lockstepDesync':
+    case 'lockstepResyncRequest':
+      return { messageClass: 'lockstep', policy: 'critical', coalesceKey: null };
     default:
       return { messageClass: 'control', policy: 'critical', coalesceKey: null };
   }

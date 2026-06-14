@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import type { Entity } from './types';
 import { getTransformCosSin } from '../math';
 import { getBuildingConfig } from './buildConfigs';
@@ -60,7 +61,7 @@ function writeFactoryWaypointDirection(factory: Entity, out: { x: number; y: num
     : factoryComp.rallyY;
   const dx = rallyX - factory.transform.x;
   const dy = rallyY - factory.transform.y;
-  const len = Math.hypot(dx, dy);
+  const len = DMath.hypot(dx, dy);
   if (len > 1e-6) {
     out.x = dx / len;
     out.y = dy / len;

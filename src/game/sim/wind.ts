@@ -14,11 +14,11 @@ export type WindState = {
 
 const _windSampleOut = new Float64Array(4);
 
-export function sampleWindState(nowMs = Date.now()): WindState {
+export function sampleWindState(nowMs = 0): WindState {
   return sampleWindStateInto({ x: 0, y: 0, speed: 0, angle: 0 }, nowMs);
 }
 
-export function sampleWindStateInto(target: WindState, nowMs = Date.now()): WindState {
+export function sampleWindStateInto(target: WindState, nowMs: number): WindState {
   const sim = getSimWasm();
   if (sim === undefined) {
     throw new Error('sampleWindStateInto: sim-wasm is not initialized');

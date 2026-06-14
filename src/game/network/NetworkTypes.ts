@@ -4,6 +4,20 @@ export type {
   NetworkMessage,
   NetworkPlayerActionMessage,
   NetworkServerSnapshotMessage,
+  NetworkLockstepMessage,
+  LockstepProtocolVersion,
+  LockstepProtocolBase,
+  LockstepPeerSequenceAck,
+  LockstepHelloMessage,
+  LockstepReadyMessage,
+  LockstepCommandMessage,
+  LockstepCommandFrameMessage,
+  LockstepAckMessage,
+  LockstepChecksumMessage,
+  LockstepPauseMessage,
+  LockstepResumeMessage,
+  LockstepDesyncMessage,
+  LockstepResyncRequestMessage,
   NetworkCommunicationDraft,
   NetworkCommunicationEvent,
   NetworkCommunicationChatEvent,
@@ -36,4 +50,4 @@ export type {
   GamePhase,
 } from '@/types/network';
 
-export { BATTLE_HANDOFF_PROTOCOL } from '@/types/network';
+export { BATTLE_HANDOFF_PROTOCOL, LOCKSTEP_PROTOCOL_VERSION } from '@/types/network';

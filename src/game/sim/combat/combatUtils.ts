@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Combat utility functions
 
 import type { Entity, ProjectileShot, Turret } from '../types';
@@ -425,7 +426,7 @@ export function updateProjectileArming(
     const c = prevDistSq - radiusSq;
     const disc = b * b - 4 * a * c;
     t = a > 1e-12 && disc >= 0
-      ? (-b + Math.sqrt(disc)) / (2 * a)
+      ? (-b + DMath.sqrt(disc)) / (2 * a)
       : 1;
   }
   const clampedT = Math.max(0, Math.min(1, t));
@@ -537,7 +538,7 @@ export function getMovementAngle(unit: Entity): number {
 
   if (speed > 1) {
     // Moving - face movement direction
-    return Math.atan2(velY, velX);
+    return DMath.atan2(velY, velX);
   }
 
   // Stationary - use body direction (weapons maintain their own rotation)

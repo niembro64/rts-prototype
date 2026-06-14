@@ -20,6 +20,7 @@ import { createWorldSupportSurface } from '../sim/supportSurface';
 import { setUnitMovementAcceleration } from '../sim/unitMovementAcceleration';
 import { isBuildInProgress } from '../sim/buildableHelpers';
 import { getSimWasm, UNIT_FORCE_BATCH_STRIDE } from '../sim-wasm/init';
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 
 const WATER_PROBE_DX = [
   1, 0.7071067811865476, 0, -0.7071067811865475,
@@ -240,7 +241,7 @@ export class UnitForceSystem {
       const dirLenSq = dirX * dirX + dirY * dirY;
       const hasThrustDir = dirLenSq > 0.0001;
       if (hasThrustDir) flags |= UF_FLAG_HAS_THRUST;
-      const thrustInputMag = hasThrustDir ? Math.sqrt(dirLenSq) : 0;
+      const thrustInputMag = hasThrustDir ? DMath.sqrt(dirLenSq) : 0;
 
       const liftLocomotionActive = isAirborneLocomotion && !buildInProgress;
       if (isFlying && liftLocomotionActive) flags |= UF_FLAG_IS_FLYING;
@@ -481,6 +482,8 @@ export class UnitForceSystem {
     for (let i = 0; i < candidates.length; i++) {
       pushId(candidates[i]);
     }
+
+    ids.sort((a, b) => a - b);
   }
 
   private syncActiveBodyTransforms(activeIds: EntityId[]): void {

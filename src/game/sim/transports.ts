@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import { ENTITY_CHANGED_ACTIONS } from '@/types/network';
 import type { Entity, EntityId, Transport } from './types';
 import type { WorldState } from './WorldState';
@@ -134,8 +135,8 @@ export function unloadTransportCargo(
     const passengerUnit = passenger.unit;
     if (passengerUnit === null) continue;
     const angle = baseAngle + (Math.PI * 2 * i) / Math.max(1, count);
-    const x = clamp(centerX + Math.cos(angle) * radius, 0, world.mapWidth);
-    const y = clamp(centerY + Math.sin(angle) * radius, 0, world.mapHeight);
+    const x = clamp(centerX + DMath.cos(angle) * radius, 0, world.mapWidth);
+    const y = clamp(centerY + DMath.sin(angle) * radius, 0, world.mapHeight);
     const groundZ = targetZ ?? world.getGroundZ(x, y);
 
     passenger.transform.x = x;

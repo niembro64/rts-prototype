@@ -69,6 +69,12 @@ LLVM's auto-vectorizer uses v128 intrinsics for the physics inner
 loops (Vec3 / Quat math, sphere-sphere broadphase, closest-point
 on AABB) without manual SIMD annotations in the source.
 
+The build does not enable Rust/LLVM fast-math flags. Deterministic
+lockstep depends on preserving WebAssembly's normal floating-point
+semantics; SIMD is allowed for lane-parallel execution, but kernels
+must not opt into algebraic reassociation or NaN/zero-sign shortcuts
+that can change canonical results.
+
 Required browser versions:
 - Chrome 91+ (May 2021)
 - Firefox 89+ (June 2021)

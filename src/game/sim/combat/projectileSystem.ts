@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Projectile system - firing, movement, and beam updates
 
 import type { WorldState } from '../WorldState';
@@ -92,7 +93,7 @@ function writeRandomDirectionInCone(
   rngNext: () => number,
   out: { x: number; y: number; z: number },
 ): void {
-  const axisLen = Math.hypot(axisX, axisY, axisZ);
+  const axisLen = DMath.hypot(axisX, axisY, axisZ);
   if (
     axisLen <= 0 ||
     !Number.isFinite(axisLen) ||
@@ -110,11 +111,11 @@ function writeRandomDirectionInCone(
   axisZ /= axisLen;
 
   const halfAngle = Math.min(Math.PI, spreadAngle * 0.5);
-  const cosTheta = 1 - rngNext() * (1 - Math.cos(halfAngle));
-  const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
+  const cosTheta = 1 - rngNext() * (1 - DMath.cos(halfAngle));
+  const sinTheta = DMath.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
   const phi = rngNext() * TWO_PI;
-  const cosPhi = Math.cos(phi);
-  const sinPhi = Math.sin(phi);
+  const cosPhi = DMath.cos(phi);
+  const sinPhi = DMath.sin(phi);
 
   let basisX: number;
   let basisY: number;
@@ -128,7 +129,7 @@ function writeRandomDirectionInCone(
     basisY = 0;
     basisZ = -axisX;
   }
-  const basisLen = Math.hypot(basisX, basisY, basisZ);
+  const basisLen = DMath.hypot(basisX, basisY, basisZ);
   basisX /= basisLen;
   basisY /= basisLen;
   basisZ /= basisLen;
@@ -146,7 +147,7 @@ function writeRandomDirectionInCone(
 }
 
 function getBeamTraceDistance(world: WorldState): number {
-  const mapDiagonal = Math.hypot(world.mapWidth, world.mapHeight);
+  const mapDiagonal = DMath.hypot(world.mapWidth, world.mapHeight);
   return Math.max(1, mapDiagonal) * Math.max(1, BEAM_MAX_SEGMENTS);
 }
 
@@ -515,8 +516,8 @@ export function fireTurrets(
         const dtSec = dtMs / 1000;
         const knockBackPerTick = (shot as BeamRay | LaserRay).recoil * PROJECTILE_MASS_MULTIPLIER * dtSec;
         const turretAngle = weapon.rotation;
-        const dirX = Math.cos(turretAngle);
-        const dirY = Math.sin(turretAngle);
+        const dirX = DMath.cos(turretAngle);
+        const dirY = DMath.sin(turretAngle);
         forceAccumulator.addForce(unit.id, -dirX * knockBackPerTick, -dirY * knockBackPerTick, 'recoil');
       }
 
@@ -561,10 +562,10 @@ export function fireTurrets(
         if (spec === null || lockedTarget === undefined) continue;
         if (readTurretCooldownForFire(unit, weaponIndex) > 0) continue;
 
-        const pitchCos = Math.cos(weapon.pitch);
-        const axisX = Math.cos(weapon.rotation) * pitchCos;
-        const axisY = Math.sin(weapon.rotation) * pitchCos;
-        const axisZ = Math.sin(weapon.pitch);
+        const pitchCos = DMath.cos(weapon.pitch);
+        const axisX = DMath.cos(weapon.rotation) * pitchCos;
+        const axisY = DMath.sin(weapon.rotation) * pitchCos;
+        const axisZ = DMath.sin(weapon.pitch);
 
         writeTurretCooldownToSlab(
           unit,
@@ -642,8 +643,8 @@ export function fireTurrets(
             projectileComponent.lastSentVelZ = projVz;
           }
           const maxLifespan = projectileComponent !== null ? projectileComponent.maxLifespan : undefined;
-          const fireYaw = Math.hypot(dirX, dirY) > 1e-9
-            ? Math.atan2(dirY, dirX)
+          const fireYaw = DMath.hypot(dirX, dirY) > 1e-9
+            ? DMath.atan2(dirY, dirX)
             : weapon.rotation;
 
           newProjectiles.push(projectile);
@@ -786,10 +787,10 @@ export function fireTurrets(
           dirY = 0;
           dirZ = 1;
         } else {
-          const dirPitchSin = Math.sin(turretPitch);
-          const dirPitchCos = Math.cos(turretPitch);
-          const fireCos = Math.cos(turretAngle);
-          const fireSin = Math.sin(turretAngle);
+          const dirPitchSin = DMath.sin(turretPitch);
+          const dirPitchCos = DMath.cos(turretPitch);
+          const fireCos = DMath.cos(turretAngle);
+          const fireSin = DMath.sin(turretAngle);
           dirX = fireCos * dirPitchCos;
           dirY = fireSin * dirPitchCos;
           dirZ = dirPitchSin;
@@ -805,8 +806,8 @@ export function fireTurrets(
           dirY = _spreadConeDir.y;
           dirZ = _spreadConeDir.z;
         }
-        const fireYaw = Math.hypot(dirX, dirY) > 1e-9
-          ? Math.atan2(dirY, dirX)
+        const fireYaw = DMath.hypot(dirX, dirY) > 1e-9
+          ? DMath.atan2(dirY, dirX)
           : turretAngle;
 
         if (isBeamWeapon) {
@@ -1310,7 +1311,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
           targetAcceleration.x * targetAcceleration.x +
           targetAcceleration.y * targetAcceleration.y +
           targetAcceleration.z * targetAcceleration.z;
-        const projectileSpeed = Math.hypot(proj.velocityX, proj.velocityY, proj.velocityZ);
+        const projectileSpeed = DMath.hypot(proj.velocityX, proj.velocityY, proj.velocityZ);
         let solveIntercept = false;
         let originVelocityX = 0;
         let originVelocityY = 0;
@@ -1470,7 +1471,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     // baked into the spawn event; visible yaw drift over a ballistic
     // arc is small enough that we don't pay the per-tick atan2 there.
     if ((_travelingProjectilePolicyFlags[i] & TRAVELING_PROJECTILE_FLAG_HOMING_REPORTING) !== 0) {
-      entity.transform.rotation = Math.atan2(vy, vx);
+      entity.transform.rotation = DMath.atan2(vy, vx);
 
       const lastVx = proj.lastSentVelX ?? vx;
       const lastVy = proj.lastSentVelY ?? vy;
@@ -1589,10 +1590,10 @@ export function updateProjectiles(
           },
           _beamWeaponMount,
         );
-        const dirPitchCos = Math.cos(turretPitch);
-        const dirX = Math.cos(turretAngle) * dirPitchCos;
-        const dirY = Math.sin(turretAngle) * dirPitchCos;
-        const dirZ = Math.sin(turretPitch);
+        const dirPitchCos = DMath.cos(turretPitch);
+        const dirX = DMath.cos(turretAngle) * dirPitchCos;
+        const dirY = DMath.sin(turretAngle) * dirPitchCos;
+        const dirZ = DMath.sin(turretPitch);
         const beamStartX = beamMount.x;
         const beamStartY = beamMount.y;
         const beamStartZ = beamMount.z;

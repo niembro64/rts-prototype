@@ -25,6 +25,19 @@ export function getTerrainVersion(): number {
   return terrainVersion;
 }
 
+export function resetTerrainStateForDeterministicReplay(): void {
+  mountainRippleAmplitude = TERRAIN_CENTER_MAGNITUDE;
+  mountainSeparatorAmplitude = TERRAIN_DIVIDERS_MAGNITUDE;
+  terrainMapShape = 'circle';
+  teamCount = 0;
+  terrainVersion = 1;
+  authoritativeTerrainTileMap = null;
+  const sim = getSimWasm();
+  if (sim !== undefined) {
+    sim.terrainClear();
+  }
+}
+
 export function invalidateTerrainConfig(): void {
   authoritativeTerrainTileMap = null;
   terrainVersion++;

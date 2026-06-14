@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Projectile collision detection and damage application
 
 import type { WorldState } from '../WorldState';
@@ -551,6 +552,7 @@ function packProjectileSweepExcludes(excludeEntities: Set<EntityId>): number {
   for (const id of _collisionUnitsToRemove) _hitboxSweepExcludeIds[count++] = id;
   for (const id of _collisionBuildingsToRemove) _hitboxSweepExcludeIds[count++] = id;
   for (const id of _collisionProjectileRemoveIds) _hitboxSweepExcludeIds[count++] = id;
+  _hitboxSweepExcludeIds.subarray(0, count).sort();
   return count;
 }
 
@@ -560,6 +562,7 @@ function packRemovedProjectileSweepExcludes(): number {
   for (const id of _collisionProjectileRemoveIds) {
     _hitboxSweepRemovedProjectileIds[count++] = id;
   }
+  _hitboxSweepRemovedProjectileIds.subarray(0, count).sort();
   return count;
 }
 
@@ -801,7 +804,7 @@ function spawnSubmunitions(
     outSpawnEvents.push({
       id: proj.id,
       pos: { x: detonationX, y: detonationY, z: detonationZ },
-      rotation: Math.atan2(launchVy, launchVx),
+      rotation: DMath.atan2(launchVy, launchVx),
       velocity: { x: launchVx, y: launchVy, z: launchVz },
       projectileType: 'projectile',
       maxLifespan: typeof maxLifespan === 'number' && Number.isFinite(maxLifespan)
@@ -1341,8 +1344,8 @@ export function checkProjectileCollisions(
 
       // Beam direction for hit knockback
       const beamAngle = projEntity.transform.rotation;
-      const beamDirX = Math.cos(beamAngle);
-      const beamDirY = Math.sin(beamAngle);
+      const beamDirX = DMath.cos(beamAngle);
+      const beamDirY = DMath.sin(beamAngle);
 
       // Reflected beams: attribute damage/kills to the last reflector
       // entity that redirected the beam (= last polyline vertex with a
@@ -1384,7 +1387,7 @@ export function checkProjectileCollisions(
           const prev = points[i - 1];
           const segDx = refl.x - prev.x;
           const segDy = refl.y - prev.y;
-          const segLen = Math.sqrt(segDx * segDx + segDy * segDy);
+          const segLen = DMath.sqrt(segDx * segDx + segDy * segDy);
           if (segLen > 0) {
             const dirX = segDx / segLen;
             const dirY = segDy / segLen;
@@ -1764,6 +1767,7 @@ export function checkProjectileCollisions(
   }
 
   // Remove expired projectiles (and clean up beam index for any beams)
+  projectilesToRemove.sort((a, b) => a - b);
   for (const id of projectilesToRemove) {
     const entity = world.getEntity(id);
     if (entity !== undefined && entity.projectile !== null && isRayType(entity.projectile.projectileType)) {

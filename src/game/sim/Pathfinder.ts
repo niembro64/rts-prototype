@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Pathfinder — 2D A* on the building grid.
 //
 // Phase 9: the heavy lifting (mask + CC rebuild, A* + LOS smoothing)
@@ -247,7 +248,7 @@ function validatePathDoesNotCrossWater(
     const wp = path[segIdx];
     const dx = wp.x - prevX;
     const dy = wp.y - prevY;
-    const length = Math.sqrt(dx * dx + dy * dy);
+    const length = DMath.sqrt(dx * dx + dy * dy);
     if (length >= 1) {
       const samples = Math.max(2, Math.ceil(length / VALIDATE_SAMPLE_STEP_WU));
       for (let i = 0; i <= samples; i++) {

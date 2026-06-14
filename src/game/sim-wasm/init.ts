@@ -19,6 +19,13 @@ import wireEnums from '../../wireEnums.json';
 import __wbg_init, {
   type InitInput,
   version,
+  deterministic_math_sin,
+  deterministic_math_cos,
+  deterministic_math_atan2,
+  deterministic_math_sqrt,
+  deterministic_math_hypot2,
+  deterministic_math_hypot3,
+  deterministic_math_pow,
   wind_sample_state,
   build_target_horizontal_distance,
   commander_apply_reclaim_tick,
@@ -504,6 +511,15 @@ export interface SimWasm {
    *  Useful in dev / startup logs to confirm a fresh wasm-pack
    *  build is being served. */
   readonly version: string;
+  readonly deterministicMath: {
+    readonly sin: (value: number) => number;
+    readonly cos: (value: number) => number;
+    readonly atan2: (y: number, x: number) => number;
+    readonly sqrt: (value: number) => number;
+    readonly hypot2: (x: number, y: number) => number;
+    readonly hypot3: (x: number, y: number, z: number) => number;
+    readonly pow: (base: number, exponent: number) => number;
+  };
   readonly windSampleState: (nowMs: number, out: Float64Array) => number;
   readonly buildTargetHorizontalDistance: (
     builderX: number,
@@ -3900,6 +3916,15 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
 
       const handle: SimWasm = {
         version: version(),
+        deterministicMath: {
+          sin: deterministic_math_sin,
+          cos: deterministic_math_cos,
+          atan2: deterministic_math_atan2,
+          sqrt: deterministic_math_sqrt,
+          hypot2: deterministic_math_hypot2,
+          hypot3: deterministic_math_hypot3,
+          pow: deterministic_math_pow,
+        },
         windSampleState: wind_sample_state,
         buildTargetHorizontalDistance: build_target_horizontal_distance,
         commanderApplyReclaimTick: commander_apply_reclaim_tick,
@@ -4392,8 +4417,26 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
       if (import.meta.env.DEV && shouldRunBootContractTests()) {
         const { runServerBarConfigContractTest } = await import('../../serverBarConfigContractTest');
         runServerBarConfigContractTest();
+        const { runAuthoritativeBackendContractTest } = await import('../../components/gameCanvasAuthoritativeBackendContractTest');
+        await runAuthoritativeBackendContractTest();
+        const { runDeterministicLockstepBackendContractTest } = await import('../../components/gameCanvasDeterministicLockstepBackendContractTest');
+        await runDeterministicLockstepBackendContractTest();
         const { runCommandSanitizerContractTest } = await import('../server/commandSanitizerContractTest');
         runCommandSanitizerContractTest();
+        const { runLockstepCommandProtocolContractTest } = await import('../architecture/LockstepCommandProtocolContractTest');
+        runLockstepCommandProtocolContractTest();
+        const { runLockstepFrameSchedulerContractTest } = await import('../architecture/LockstepFrameSchedulerContractTest');
+        runLockstepFrameSchedulerContractTest();
+        const { runLockstepDesyncMonitorContractTest } = await import('../architecture/LockstepDesyncMonitorContractTest');
+        runLockstepDesyncMonitorContractTest();
+        const { runLockstepSupportPolicyContractTest } = await import('../architecture/LockstepSupportPolicyContractTest');
+        runLockstepSupportPolicyContractTest();
+        const { runLockstepDiagnosticsContractTest } = await import('../architecture/LockstepDiagnosticsContractTest');
+        runLockstepDiagnosticsContractTest();
+        const { runCanonicalCheckpointContractTest } = await import('../architecture/CanonicalCheckpointContractTest');
+        runCanonicalCheckpointContractTest();
+        const { runArchitectureMigrationContractTest } = await import('../architecture/ArchitectureMigrationContractTest');
+        runArchitectureMigrationContractTest();
         const { runReplayRecorderContractTest } = await import('../server/ReplayRecorderContractTest');
         runReplayRecorderContractTest();
         const { runSnapshotEntityWirePackContractTest } = await import('../network/snapshotEntityWirePackContractTest');
@@ -4402,6 +4445,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runSnapshotLifecycleContractTest();
         const { runNetworkCommandTransportContractTest } = await import('../network/NetworkCommandTransportContractTest');
         runNetworkCommandTransportContractTest();
+        const { runNetworkLockstepTransportContractTest } = await import('../network/NetworkLockstepTransportContractTest');
+        runNetworkLockstepTransportContractTest();
         const { runClientSnapshotApplierContractTest } = await import('../network/ClientSnapshotApplierContractTest');
         runClientSnapshotApplierContractTest();
         const { runSnapshotBufferContractTest } = await import('../scenes/helpers/SnapshotBufferContractTest');

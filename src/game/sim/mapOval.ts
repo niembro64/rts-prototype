@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import { MAP_GENERATION_EXTENT_FRACTION } from '../../mapSizeConfig';
 
 export type MapOvalMetrics = {
@@ -57,8 +58,8 @@ export function sampleMapOvalAt(
   return {
     ox,
     oy,
-    distance: Math.sqrt(ox * ox + oy * oy),
-    angle: Math.atan2(oy, ox),
+    distance: DMath.sqrt(ox * ox + oy * oy),
+    angle: DMath.atan2(oy, ox),
   };
 }
 
@@ -68,8 +69,8 @@ export function mapOvalPointAt(
   radius: number,
 ): MapOvalPoint {
   return {
-    x: metrics.cx + Math.cos(angle) * radius * metrics.scaleX,
-    y: metrics.cy + Math.sin(angle) * radius * metrics.scaleY,
+    x: metrics.cx + DMath.cos(angle) * radius * metrics.scaleX,
+    y: metrics.cy + DMath.sin(angle) * radius * metrics.scaleY,
   };
 }
 

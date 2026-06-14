@@ -127,6 +127,8 @@ export class SimulationCombatController {
 
     // Fire weapons and create projectiles (with recoil force for projectiles)
     const fireResult = fireTurrets(this.world, dtMs, this.forceAccumulator, activeCombatUnits);
+    fireResult.projectiles.sort((a, b) => a.id - b.id);
+    fireResult.spawnEvents.sort((a, b) => a.id - b.id);
     for (const proj of fireResult.projectiles) {
       this.world.addEntity(proj);
       registerPackedProjectile(proj);
@@ -165,6 +167,8 @@ export class SimulationCombatController {
     onBuildingDeath: BuildingDeathCallback,
   ): void {
     const updateResult = updateProjectiles(this.world, dtMs, this.damageSystem);
+    updateResult.orphanedIds.sort((a, b) => a - b);
+    updateResult.despawnEvents.sort((a, b) => a.id - b.id);
     for (const id of updateResult.orphanedIds) {
       unregisterPackedProjectile(id);
       spatialGrid.removeProjectile(id);
@@ -196,6 +200,8 @@ export class SimulationCombatController {
     // Add submunition / cluster projectiles spawned at explosion points,
     // and mirror their spawn events to the network queue so clients see
     // them the same way they see any freshly-fired round.
+    collisionResult.newProjectiles.sort((a, b) => a.id - b.id);
+    collisionResult.spawnEvents.sort((a, b) => a.id - b.id);
     for (const proj of collisionResult.newProjectiles) {
       this.world.addEntity(proj);
       registerPackedProjectile(proj);
@@ -205,6 +211,7 @@ export class SimulationCombatController {
     }
 
     // Collect projectile despawn events from collisions
+    collisionResult.despawnEvents.sort((a, b) => a.id - b.id);
     for (const event of collisionResult.despawnEvents) {
       unregisterPackedProjectile(event.id);
       spatialGrid.removeProjectile(event.id);
@@ -241,7 +248,7 @@ export class SimulationCombatController {
     if (deadUnitIds.size === 0) return;
     const buf = this.deadUnitIdsBuf;
     buf.length = 0;
-    for (const id of deadUnitIds) {
+    for (const id of [...deadUnitIds].sort((a, b) => a - b)) {
       const entity = this.world.getEntity(id);
       if (entity) {
         // Emit laserStop for the dying entity's own beam weapons
@@ -270,7 +277,7 @@ export class SimulationCombatController {
     if (deadBuildingIds.size === 0) return;
     const buf = this.deadBuildingIdsBuf;
     buf.length = 0;
-    for (const id of deadBuildingIds) {
+    for (const id of [...deadBuildingIds].sort((a, b) => a - b)) {
       spatialGrid.removeBuilding(id);
       buf.push(id);
     }

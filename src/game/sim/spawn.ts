@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import type { WorldState } from './WorldState';
 import type { Entity, PlayerId, BuildingBlueprintId, FactoryDefaultWaypoint } from './types';
 import type { ConstructionSystem } from './construction';
@@ -195,7 +196,7 @@ function getSpawnPositions(
     positions.push({
       x: point.x,
       y: point.y,
-      facingAngle: Math.atan2(cy - point.y, cx - point.x),
+      facingAngle: DMath.atan2(cy - point.y, cx - point.x),
     });
   }
   return positions;
@@ -509,7 +510,7 @@ export function spawnInitialBases(
     // Commander: single entity at the player's spawn point on the outer
     // oval, facing the map center.
     const cmdPoint = mapOvalPointAt(oval, baseAngle, commanderRadius);
-    const cmdFacing = Math.atan2(cy - cmdPoint.y, cx - cmdPoint.x);
+    const cmdFacing = DMath.atan2(cy - cmdPoint.y, cx - cmdPoint.x);
     const commander = spawnCommander(
       world,
       playerId,

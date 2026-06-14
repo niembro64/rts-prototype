@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Force-field panel cache builder — single source of truth for the
 // per-unit `entity.unit.shieldPanels` array. Called once at entity
 // creation by both the authoritative sim (WorldState.createUnitFromBlueprint)
@@ -84,10 +85,10 @@ export function getShieldPanelCenter(
   shieldPanelYaw: number, shieldPanelPitch: number,
   out: { x: number; y: number; z: number },
 ): { x: number; y: number; z: number } {
-  const cosYaw = Math.cos(shieldPanelYaw);
-  const sinYaw = Math.sin(shieldPanelYaw);
-  const cosPitch = Math.cos(shieldPanelPitch);
-  const sinPitch = Math.sin(shieldPanelPitch);
+  const cosYaw = DMath.cos(shieldPanelYaw);
+  const sinYaw = DMath.sin(shieldPanelYaw);
+  const cosPitch = DMath.cos(shieldPanelPitch);
+  const sinPitch = DMath.sin(shieldPanelPitch);
   out.x = pivotX + cosYaw * cosPitch * armLength;
   out.y = pivotY + sinYaw * cosPitch * armLength;
   out.z = pivotZ + sinPitch * armLength;
@@ -103,10 +104,10 @@ export function getMirrorArmDirection(
   shieldPanelYaw: number, shieldPanelPitch: number,
   out: { x: number; y: number; z: number },
 ): { x: number; y: number; z: number } {
-  const cosYaw = Math.cos(shieldPanelYaw);
-  const sinYaw = Math.sin(shieldPanelYaw);
-  const cosPitch = Math.cos(shieldPanelPitch);
-  const sinPitch = Math.sin(shieldPanelPitch);
+  const cosYaw = DMath.cos(shieldPanelYaw);
+  const sinYaw = DMath.sin(shieldPanelYaw);
+  const cosPitch = DMath.cos(shieldPanelPitch);
+  const sinPitch = DMath.sin(shieldPanelPitch);
   out.x = cosYaw * cosPitch;
   out.y = sinYaw * cosPitch;
   out.z = sinPitch;

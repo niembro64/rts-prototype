@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Utility to initialize turret rotations toward a target point
 
 import type { Entity } from './types';
@@ -6,7 +7,7 @@ import type { Entity } from './types';
 export function aimTurretsToward(entity: Entity, targetX: number, targetY: number): void {
   if (entity.combat === null) return;
   const turrets = entity.combat.turrets;
-  const angle = Math.atan2(targetY - entity.transform.y, targetX - entity.transform.x);
+  const angle = DMath.atan2(targetY - entity.transform.y, targetX - entity.transform.x);
   for (const turret of turrets) {
     turret.rotation = angle;
   }

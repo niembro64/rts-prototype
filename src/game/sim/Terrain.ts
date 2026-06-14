@@ -37,6 +37,7 @@ export {
   getTerrainMapShape,
   getTerrainVersion,
   getTerrainTeamCount,
+  resetTerrainStateForDeterministicReplay,
   setTerrainRuntimeConfig,
   setTerrainCenterMagnitude,
   setTerrainDividersMagnitude,

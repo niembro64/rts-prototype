@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Shared helpers for projectile damage processing
 // Extracted from projectileSystem.ts to reduce duplication
 
@@ -49,14 +50,14 @@ export function buildImpactContext(
     // Normalized direction from projectile center to entity center
     const dx = entity.transform.x - projectileX;
     const dy = entity.transform.y - projectileY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+    const dist = DMath.sqrt(dx * dx + dy * dy);
     if (dist > 0.001) {
       penDirX = dx / dist;
       penDirY = dy / dist;
     }
   } else {
     // No entity hit: use projectile velocity direction as fallback penetration
-    const velMag = Math.sqrt(projectileVelX * projectileVelX + projectileVelY * projectileVelY);
+    const velMag = DMath.sqrt(projectileVelX * projectileVelX + projectileVelY * projectileVelY);
     if (velMag > 0.001) {
       penDirX = projectileVelX / velMag;
       penDirY = projectileVelY / velMag;
@@ -194,7 +195,7 @@ export function buildBuildingDeathEvent(
   const buildingPhysicsBody = buildingBody !== null ? buildingBody.physicsBody : null;
   const buildingTransform = building !== undefined ? building.transform : null;
   const playerColor = getPlayerPrimaryColor(buildingPlayerId);
-  const footprintRadius = Math.hypot(
+  const footprintRadius = DMath.hypot(
     buildingComponent !== null ? buildingComponent.width : 100,
     buildingComponent !== null ? buildingComponent.height : 100,
   ) / 2;
@@ -254,7 +255,7 @@ export function collectKillsAndDeathContexts(
   deathContexts: Map<EntityId, DeathContext>,
   attackerSourceEntityId: EntityId | undefined = undefined,
 ): void {
-  for (const id of result.killedUnitIds) {
+  for (const id of [...result.killedUnitIds].sort((a, b) => a - b)) {
     if (!unitsToRemove.has(id)) {
       const target = world.getEntity(id);
       const ctx = result.deathContexts.get(id);
@@ -263,7 +264,7 @@ export function collectKillsAndDeathContexts(
       unitsToRemove.add(id);
     }
   }
-  for (const id of result.killedBuildingIds) {
+  for (const id of [...result.killedBuildingIds].sort((a, b) => a - b)) {
     if (!buildingsToRemove.has(id)) {
       const building = world.getEntity(id);
       const killerPlayerId = result.killerPlayerIds.get(id);
@@ -271,7 +272,7 @@ export function collectKillsAndDeathContexts(
       buildingsToRemove.add(id);
     }
   }
-  for (const [id, ctx] of result.deathContexts) {
+  for (const [id, ctx] of [...result.deathContexts.entries()].sort(([a], [b]) => a - b)) {
     deathContexts.set(id, ctx);
   }
   if (attackerSourceEntityId !== undefined) {
@@ -304,8 +305,9 @@ function emitAttackAlerts(
   const hits = result.hitEntityIds;
   if (hits.length === 0) return;
   _attackAlertSeenVictims.clear();
-  for (let i = 0; i < hits.length; i++) {
-    const victim = world.getEntity(hits[i]);
+  const sortedHits = [...hits].sort((a, b) => a - b);
+  for (let i = 0; i < sortedHits.length; i++) {
+    const victim = world.getEntity(sortedHits[i]);
     const victimOwnership = victim !== undefined ? victim.ownership : null;
     const victimPlayerId = victimOwnership !== null
       ? victimOwnership.playerId

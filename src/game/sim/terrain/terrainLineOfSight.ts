@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import { LAND_CELL_SIZE } from '../../../config';
 import { getSimWasm } from '../../sim-wasm/init';
 import type { WorldState } from '../WorldState';
@@ -24,7 +25,7 @@ export function hasTerrainLineOfSight(
   const dx = tx - sx;
   const dy = ty - sy;
   const dz = tz - sz;
-  const horizDist = Math.hypot(dx, dy);
+  const horizDist = DMath.hypot(dx, dy);
   if (horizDist < stepLen) return true;
   const stepCount = Math.ceil(horizDist / stepLen);
   for (let i = 1; i < stepCount; i++) {

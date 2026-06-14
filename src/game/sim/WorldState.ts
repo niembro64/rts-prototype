@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import type {
   Entity,
   EntityId,
@@ -281,6 +282,10 @@ export class WorldState {
     return this.nextEntityId++;
   }
 
+  getNextEntityId(): EntityId {
+    return this.nextEntityId;
+  }
+
   getEntityMeta(id: EntityId): EntityMeta | undefined {
     return this.entityMetadata.get(id);
   }
@@ -411,6 +416,7 @@ export class WorldState {
   drainPendingDeathCheckIds(out: EntityId[]): void {
     out.length = 0;
     for (const id of this.pendingDeathCheckIds) out.push(id);
+    out.sort((a, b) => a - b);
     this.pendingDeathCheckIds.clear();
   }
 
@@ -421,7 +427,8 @@ export class WorldState {
   drainSnapshotDirtyEntities(outIds: EntityId[], outFields: number[]): void {
     outIds.length = 0;
     outFields.length = 0;
-    for (const id of this.snapshotDirtyIds) {
+    const sortedIds = [...this.snapshotDirtyIds].sort((a, b) => a - b);
+    for (const id of sortedIds) {
       outIds.push(id);
       outFields.push(this.snapshotDirtyFields.get(id) ?? 0);
     }
@@ -829,7 +836,7 @@ export class WorldState {
         supportSurface: createCollisionTopBuildingSupportSurface(width, height, depth),
         hp: 500,
         maxHp: 500,
-        targetRadius: Math.sqrt(width * width + height * height) / 2,
+        targetRadius: DMath.sqrt(width * width + height * height) / 2,
         activeState: null,
       },
       selectable: { selected: false },

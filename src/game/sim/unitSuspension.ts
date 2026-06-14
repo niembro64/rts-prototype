@@ -1,3 +1,4 @@
+import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import { UNIT_MASS_MULTIPLIER } from '../../config';
 import type { Unit } from './types';
 import type {
@@ -86,7 +87,7 @@ export function advanceUnitSuspension(
     unit.mass * UNIT_MASS_MULTIPLIER * (s.config.massScale ?? 1),
   );
   const stiffness = Math.max(0, s.config.stiffness);
-  const damping = Math.max(0, s.config.dampingRatio) * 2 * Math.sqrt(stiffness * mass);
+  const damping = Math.max(0, s.config.dampingRatio) * 2 * DMath.sqrt(stiffness * mass);
 
   if (options.legContact !== undefined) {
     s.legContact = options.legContact;
@@ -102,8 +103,8 @@ export function advanceUnitSuspension(
     const ax = (anchorVx - s.anchorVelocityX) / dtSec;
     const ay = (anchorVy - s.anchorVelocityY) / dtSec;
     const az = (anchorVz - s.anchorVelocityZ) / dtSec;
-    const cos = Math.cos(rotation);
-    const sin = Math.sin(rotation);
+    const cos = DMath.cos(rotation);
+    const sin = DMath.sin(rotation);
     inertialForceX = -mass * (cos * ax + sin * ay);
     inertialForceY = -mass * (-sin * ax + cos * ay);
     inertialForceZ = -mass * az;

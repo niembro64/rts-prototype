@@ -142,6 +142,7 @@ export function useGameCanvasBattleSettings({
       maxTotalUnits: value,
     });
     saveStoredCap(currentBattleMode.value, value);
+    if (currentBattleMode.value === 'real') broadcastLobbySettingsIfHost();
   }
 
   function setShieldsObstructSight(enabled: boolean): void {

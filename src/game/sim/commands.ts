@@ -60,23 +60,76 @@ export type {
 } from '@/types/commands';
 
 import type { Command } from '@/types/commands';
+import type { PlayerId } from './types';
+
+export type CommandQueueLockstepOrder = {
+  readonly playerId: PlayerId;
+  readonly playerSequence: number;
+  readonly commandIndex: number;
+};
+
+type QueuedCommandOrder =
+  | {
+      readonly kind: 'authoritative';
+      readonly enqueueOrder: number;
+    }
+  | {
+      readonly kind: 'lockstep';
+      readonly playerId: PlayerId;
+      readonly playerSequence: number;
+      readonly commandIndex: number;
+    };
+
+type QueuedCommand = {
+  readonly command: Command;
+  readonly order: QueuedCommandOrder;
+};
+
+const AUTHORITATIVE_LOCKSTEP_SORT_SLOT = 0xFFFF_FFFF;
 
 // Command queue for processing commands in order
 export class CommandQueue {
-  private commands: Command[] = [];
+  private commands: QueuedCommand[] = [];
+  private nextEnqueueOrder = 0;
 
   // Add command to queue
   enqueue(command: Command): void {
-    this.commands.push(command);
-    // Sort by tick to ensure deterministic ordering
-    this.commands.sort((a, b) => a.tick - b.tick);
+    this.enqueueInternal(command, {
+      kind: 'authoritative',
+      enqueueOrder: this.nextEnqueueOrder++,
+    });
+  }
+
+  enqueueLockstepCommand(command: Command, order: CommandQueueLockstepOrder): void {
+    assertLockstepOrder(order);
+    for (let i = 0; i < this.commands.length; i++) {
+      const queued = this.commands[i];
+      if (
+        queued.command.tick === command.tick &&
+        queued.order.kind === 'lockstep' &&
+        queued.order.playerId === order.playerId &&
+        queued.order.playerSequence === order.playerSequence &&
+        queued.order.commandIndex === order.commandIndex
+      ) {
+        throw new Error(
+          `[command queue] duplicate lockstep order key frame=${command.tick} ` +
+            `player=${order.playerId} sequence=${order.playerSequence} index=${order.commandIndex}`,
+        );
+      }
+    }
+    this.enqueueInternal(command, {
+      kind: 'lockstep',
+      playerId: order.playerId,
+      playerSequence: order.playerSequence,
+      commandIndex: order.commandIndex,
+    });
   }
 
   // Get commands for a specific tick
   getCommandsForTick(tick: number): Command[] {
     const result: Command[] = [];
-    while (this.commands.length > 0 && this.commands[0].tick <= tick) {
-      result.push(this.commands.shift()!);
+    while (this.commands.length > 0 && this.commands[0].command.tick <= tick) {
+      result.push(this.commands.shift()!.command);
     }
     return result;
   }
@@ -84,15 +137,59 @@ export class CommandQueue {
   // Clear all commands
   clear(): void {
     this.commands = [];
+    this.nextEnqueueOrder = 0;
   }
 
   // Get all pending commands
   getAll(): Command[] {
-    return [...this.commands];
+    return this.commands.map((entry) => entry.command);
   }
 
   // Get pending command count
   getPendingCount(): number {
     return this.commands.length;
   }
+
+  private enqueueInternal(command: Command, order: QueuedCommandOrder): void {
+    this.commands.push({ command, order });
+    this.commands.sort(compareQueuedCommands);
+  }
+}
+
+function compareQueuedCommands(a: QueuedCommand, b: QueuedCommand): number {
+  if (a.command.tick !== b.command.tick) return a.command.tick - b.command.tick;
+  const lockstepDelta = compareLockstepOrderSlots(a.order, b.order);
+  if (lockstepDelta !== 0) return lockstepDelta;
+  if (a.order.kind === 'authoritative' && b.order.kind === 'authoritative') {
+    return a.order.enqueueOrder - b.order.enqueueOrder;
+  }
+  return 0;
+}
+
+function compareLockstepOrderSlots(a: QueuedCommandOrder, b: QueuedCommandOrder): number {
+  const aPlayerId = a.kind === 'lockstep' ? a.playerId : AUTHORITATIVE_LOCKSTEP_SORT_SLOT;
+  const bPlayerId = b.kind === 'lockstep' ? b.playerId : AUTHORITATIVE_LOCKSTEP_SORT_SLOT;
+  if (aPlayerId !== bPlayerId) return aPlayerId - bPlayerId;
+
+  const aSequence = a.kind === 'lockstep' ? a.playerSequence : AUTHORITATIVE_LOCKSTEP_SORT_SLOT;
+  const bSequence = b.kind === 'lockstep' ? b.playerSequence : AUTHORITATIVE_LOCKSTEP_SORT_SLOT;
+  if (aSequence !== bSequence) return aSequence - bSequence;
+
+  const aIndex = a.kind === 'lockstep' ? a.commandIndex : AUTHORITATIVE_LOCKSTEP_SORT_SLOT;
+  const bIndex = b.kind === 'lockstep' ? b.commandIndex : AUTHORITATIVE_LOCKSTEP_SORT_SLOT;
+  return aIndex - bIndex;
+}
+
+function assertLockstepOrder(order: CommandQueueLockstepOrder): void {
+  if (!isUint32(order.playerId) || !isUint31(order.playerSequence) || !isUint31(order.commandIndex)) {
+    throw new Error('[command queue] invalid lockstep order key');
+  }
+}
+
+function isUint32(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 0xFFFF_FFFF;
+}
+
+function isUint31(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 0x7FFF_FFFF;
 }

@@ -75,6 +75,7 @@ export class EntityCacheManager {
   private cachedCombatTargetEntities: Entity[] = [];
   private cachedUnitsByPlayer: Map<PlayerId, Entity[]> = new Map();
   private cachedBuildingsByPlayer: Map<PlayerId, Entity[]> = new Map();
+  private sortedEntities: Entity[] = [];
   private dirty: boolean = true;
 
   invalidate(): void {
@@ -112,7 +113,11 @@ export class EntityCacheManager {
     for (const list of this.cachedBuildingsByPlayer.values()) list.length = 0;
     for (const list of this.cachedFactoriesByPlayer.values()) list.length = 0;
 
-    for (const entity of entities.values()) {
+    this.sortedEntities.length = 0;
+    for (const entity of entities.values()) this.sortedEntities.push(entity);
+    this.sortedEntities.sort((a, b) => a.id - b.id);
+
+    for (const entity of this.sortedEntities) {
       this.cachedAll.push(entity);
       const ownership = entity.ownership;
       // Combat capability is host-agnostic: any entity with a
