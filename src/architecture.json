@@ -1,5 +1,5 @@
 {
-  "backend": "authoritative-server",
+  "backend": "deterministic-lockstep",
   "lockstep": {
     "inputDelayTicks": 6,
     "checksumIntervalTicks": 60,
