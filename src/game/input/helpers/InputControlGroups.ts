@@ -38,6 +38,8 @@ export class InputControlGroups {
   private readonly groups: EntityId[][] = Array.from({ length: CONTROL_GROUP_COUNT }, () => []);
   private readonly autoGroupRules: (AutoGroupRule | null)[] =
     Array.from({ length: CONTROL_GROUP_COUNT }, () => null);
+  private readonly scratchEntityIds = new Set<EntityId>();
+  private readonly scratchEntityIds2 = new Set<EntityId>();
   onChange?: (groups: readonly ControlGroupSlotSnapshot[]) => void;
 
   constructor(
@@ -70,19 +72,22 @@ export class InputControlGroups {
     const hadAutoRule = this.autoGroupRules[index] !== null;
     this.autoGroupRules[index] = null;
 
-    const merged = this.groups[index].slice();
-    const seen = new Set<EntityId>(merged);
+    const group = this.groups[index];
+    const originalLength = group.length;
+    const seen = this.scratchEntityIds;
+    seen.clear();
+    for (let i = 0; i < group.length; i++) seen.add(group[i]);
     for (let i = 0; i < selectedIds.length; i++) {
       const id = selectedIds[i];
       if (seen.has(id)) continue;
       seen.add(id);
-      merged.push(id);
+      group.push(id);
     }
-    if (merged.length === this.groups[index].length) {
+    seen.clear();
+    if (group.length === originalLength) {
       if (hadAutoRule) this.emitChange();
       return;
     }
-    this.groups[index] = merged;
     this.emitChange();
   }
 
@@ -90,15 +95,13 @@ export class InputControlGroups {
     const selectedIds = this.getSelectedGroupEntityIds();
     if (selectedIds.length === 0) return;
     const removedAutoRuleTypes = this.removeSelectedTypesFromAutoGroupRules();
-    const selectedSet = new Set<EntityId>(selectedIds);
+    const selectedSet = this.scratchEntityIds;
+    fillEntityIdSet(selectedSet, selectedIds);
     let changed = removedAutoRuleTypes;
     for (let i = 0; i < this.groups.length; i++) {
-      const group = this.groups[i];
-      const filtered = group.filter((id) => !selectedSet.has(id));
-      if (filtered.length === group.length) continue;
-      this.groups[i] = filtered;
-      changed = true;
+      if (compactEntityIdsExcludingSet(this.groups[i], selectedSet)) changed = true;
     }
+    selectedSet.clear();
     if (changed) this.emitChange();
   }
 
@@ -114,15 +117,14 @@ export class InputControlGroups {
   removeSelectedFromAutoGroups(): void {
     const selectedIds = this.getSelectedGroupEntityIds();
     if (selectedIds.length === 0) return;
-    const selectedSet = new Set<EntityId>(selectedIds);
+    const selectedSet = this.scratchEntityIds;
+    fillEntityIdSet(selectedSet, selectedIds);
     let changed = this.removeSelectedTypesFromAutoGroupRules();
     for (let i = 0; i < this.groups.length; i++) {
       if (this.autoGroupRules[i] === null) continue;
-      const filtered = this.groups[i].filter((id) => !selectedSet.has(id));
-      if (filtered.length === this.groups[i].length) continue;
-      this.groups[i] = filtered;
-      changed = true;
+      if (compactEntityIdsExcludingSet(this.groups[i], selectedSet)) changed = true;
     }
+    selectedSet.clear();
     if (changed) this.emitChange();
   }
 
@@ -139,14 +141,22 @@ export class InputControlGroups {
   }
 
   getAutoGroupPresetSnapshot(): (AutoGroupRuleSnapshot | null)[] {
-    return this.autoGroupRules.map(snapshotAutoGroupRule);
+    const snapshots = new Array<AutoGroupRuleSnapshot | null>(this.autoGroupRules.length);
+    for (let i = 0; i < this.autoGroupRules.length; i++) {
+      snapshots[i] = snapshotAutoGroupRule(this.autoGroupRules[i]);
+    }
+    return snapshots;
   }
 
   getSlotSnapshots(): ControlGroupSlotSnapshot[] {
-    return this.groups.map((group, index) => ({
-      entityIds: group.slice(),
-      auto: this.autoGroupRules[index] !== null,
-    }));
+    const snapshots = new Array<ControlGroupSlotSnapshot>(this.groups.length);
+    for (let i = 0; i < this.groups.length; i++) {
+      snapshots[i] = {
+        entityIds: copyEntityIds(this.groups[i]),
+        auto: this.autoGroupRules[i] !== null,
+      };
+    }
+    return snapshots;
   }
 
   refreshAutoGroups(): boolean {
@@ -192,12 +202,33 @@ export class InputControlGroups {
     this.pruneSlotToLiveIds(index, groupIds);
 
     const selectedIds = this.getSelectedGroupEntityIds();
-    const selectedSet = new Set<EntityId>(selectedIds);
-    const groupSet = new Set<EntityId>(groupIds);
-    const groupFullySelected = groupIds.every((id) => selectedSet.has(id));
-    const nextSelection = groupFullySelected
-      ? selectedIds.filter((id) => !groupSet.has(id))
-      : mergeEntityIds(selectedIds, groupIds);
+    const selectedSet = this.scratchEntityIds;
+    fillEntityIdSet(selectedSet, selectedIds);
+    let groupFullySelected = true;
+    for (let i = 0; i < groupIds.length; i++) {
+      if (selectedSet.has(groupIds[i])) continue;
+      groupFullySelected = false;
+      break;
+    }
+    const nextSelection: EntityId[] = [];
+    if (groupFullySelected) {
+      const groupSet = this.scratchEntityIds2;
+      fillEntityIdSet(groupSet, groupIds);
+      for (let i = 0; i < selectedIds.length; i++) {
+        const id = selectedIds[i];
+        if (!groupSet.has(id)) nextSelection.push(id);
+      }
+      groupSet.clear();
+    } else {
+      for (let i = 0; i < selectedIds.length; i++) nextSelection.push(selectedIds[i]);
+      for (let i = 0; i < groupIds.length; i++) {
+        const id = groupIds[i];
+        if (selectedSet.has(id)) continue;
+        selectedSet.add(id);
+        nextSelection.push(id);
+      }
+    }
+    selectedSet.clear();
     this.enqueueSelection(nextSelection, false);
     return true;
   }
@@ -291,7 +322,7 @@ export class InputControlGroups {
 
   private pruneSlotToLiveIds(index: number, entityIds: EntityId[]): void {
     if (arraysEqual(this.groups[index], entityIds)) return;
-    this.groups[index] = entityIds.slice();
+    this.groups[index] = copyEntityIds(entityIds);
     this.emitChange();
   }
 
@@ -337,16 +368,28 @@ function setsEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
   return true;
 }
 
-function mergeEntityIds(first: readonly EntityId[], second: readonly EntityId[]): EntityId[] {
-  const merged = first.slice();
-  const seen = new Set<EntityId>(merged);
-  for (let i = 0; i < second.length; i++) {
-    const id = second[i];
-    if (seen.has(id)) continue;
-    seen.add(id);
-    merged.push(id);
+function fillEntityIdSet(set: Set<EntityId>, ids: readonly EntityId[]): void {
+  set.clear();
+  for (let i = 0; i < ids.length; i++) set.add(ids[i]);
+}
+
+function compactEntityIdsExcludingSet(entityIds: EntityId[], excluded: ReadonlySet<EntityId>): boolean {
+  let writeIndex = 0;
+  for (let readIndex = 0; readIndex < entityIds.length; readIndex++) {
+    const id = entityIds[readIndex];
+    if (excluded.has(id)) continue;
+    if (writeIndex !== readIndex) entityIds[writeIndex] = id;
+    writeIndex++;
   }
-  return merged;
+  if (writeIndex === entityIds.length) return false;
+  entityIds.length = writeIndex;
+  return true;
+}
+
+function copyEntityIds(entityIds: readonly EntityId[]): EntityId[] {
+  const copy = new Array<EntityId>(entityIds.length);
+  for (let i = 0; i < entityIds.length; i++) copy[i] = entityIds[i];
+  return copy;
 }
 
 function arraysEqual(a: readonly EntityId[], b: readonly EntityId[]): boolean {

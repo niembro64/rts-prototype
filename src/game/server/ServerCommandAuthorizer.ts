@@ -66,6 +66,8 @@ type AnyEntityListCommand =
   | SetBuildingActiveCommand
   | SelfDestructCommand;
 
+const _authorizeSeenEntityIds = new Set<EntityId>();
+
 export function canApplyGameServerControlCommand(
   authority: CommandAuthority,
   hostPlayerId: PlayerId,
@@ -204,7 +206,8 @@ function authorizeUnloadTransportCommand(
   playerId: PlayerId,
 ): UnloadTransportCommand | null {
   const transportIds: EntityId[] = [];
-  const seen = new Set<EntityId>();
+  const seen = _authorizeSeenEntityIds;
+  seen.clear();
   for (let i = 0; i < command.transportIds.length; i++) {
     const id = command.transportIds[i];
     if (seen.has(id)) continue;
@@ -213,6 +216,7 @@ function authorizeUnloadTransportCommand(
     if (!isTransportUnit(transport) || transport.ownership?.playerId !== playerId) continue;
     transportIds.push(id);
   }
+  seen.clear();
   return transportIds.length > 0 ? { ...command, transportIds } : null;
 }
 
@@ -272,7 +276,8 @@ function authorizeUpgradeMetalExtractorAreaCommand(
   playerId: PlayerId,
 ): UpgradeMetalExtractorAreaCommand | null {
   const builderIds: EntityId[] = [];
-  const seen = new Set<EntityId>();
+  const seen = _authorizeSeenEntityIds;
+  seen.clear();
   for (let i = 0; i < command.builderIds.length; i++) {
     const builderId = command.builderIds[i];
     if (seen.has(builderId)) continue;
@@ -282,6 +287,7 @@ function authorizeUpgradeMetalExtractorAreaCommand(
     if (!canBuilderUpgradeMetalExtractor(builder)) continue;
     builderIds.push(builderId);
   }
+  seen.clear();
   return builderIds.length > 0 ? { ...command, builderIds } : null;
 }
 

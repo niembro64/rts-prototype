@@ -34,13 +34,42 @@ export const BACKGROUND_UNIT_BLUEPRINT_IDS = [...BUILDABLE_UNIT_BLUEPRINT_IDS];
 // the "spawning then despawning the wrong unit" behaviour).
 let backgroundUnitWeights: { type: string; cumWeight: number }[] = [];
 let cachedWeightSignature = '';
+let cachedAllowedSorted: string[] = [];
+let cachedAllowedSignature = '∅';
 
 /** Stable string signature for an allowedUnitBlueprintIds set. Sorting keeps
  *  signature equality independent of insertion order. */
 function signatureFor(allowedUnitBlueprintIds: ReadonlySet<string> | undefined = undefined): string {
   if (allowedUnitBlueprintIds === undefined) return '*';
-  if (allowedUnitBlueprintIds.size === 0) return '∅';
-  return [...allowedUnitBlueprintIds].sort().join('|');
+  resolveAllowedSortedList(allowedUnitBlueprintIds);
+  return cachedAllowedSignature;
+}
+
+function resolveAllowedSortedList(
+  allowedUnitBlueprintIds: ReadonlySet<string>,
+): readonly string[] {
+  if (allowedUnitBlueprintIds.size === 0) {
+    cachedAllowedSorted.length = 0;
+    cachedAllowedSignature = '∅';
+    return cachedAllowedSorted;
+  }
+  if (cachedAllowedSorted.length === allowedUnitBlueprintIds.size) {
+    let matches = true;
+    for (let i = 0; i < cachedAllowedSorted.length; i++) {
+      if (!allowedUnitBlueprintIds.has(cachedAllowedSorted[i])) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) return cachedAllowedSorted;
+  }
+  cachedAllowedSorted = [];
+  for (const unitBlueprintId of allowedUnitBlueprintIds) {
+    cachedAllowedSorted.push(unitBlueprintId);
+  }
+  cachedAllowedSorted.sort();
+  cachedAllowedSignature = cachedAllowedSorted.join('|');
+  return cachedAllowedSorted;
 }
 
 function ensureWeightTable(allowedUnitBlueprintIds: ReadonlySet<string> | undefined = undefined): void {
@@ -90,7 +119,7 @@ function selectUnitBlueprintId(
   if (BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING) {
     return selectWeightedUnitBlueprintId(rngNext, allowedUnitBlueprintIds);
   } else if (allowedUnitBlueprintIds !== undefined && allowedUnitBlueprintIds.size > 0) {
-    const allowed = [...allowedUnitBlueprintIds].sort();
+    const allowed = resolveAllowedSortedList(allowedUnitBlueprintIds);
     return allowed[Math.floor(rngNext() * allowed.length)];
   }
   return BACKGROUND_UNIT_BLUEPRINT_IDS[Math.floor(rngNext() * BACKGROUND_UNIT_BLUEPRINT_IDS.length)];

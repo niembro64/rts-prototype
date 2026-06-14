@@ -174,14 +174,23 @@ export function canonicalStringify(value: unknown): string {
   }
   if (type === 'string' || type === 'boolean') return JSON.stringify(value);
   if (Array.isArray(value)) {
-    return `[${value.map((item) => canonicalStringify(item)).join(',')}]`;
+    let text = '[';
+    for (let i = 0; i < value.length; i++) {
+      if (i > 0) text += ',';
+      text += canonicalStringify(value[i]);
+    }
+    return `${text}]`;
   }
   if (type === 'object') {
     const record = value as Record<string, unknown>;
     const keys = Object.keys(record).sort();
-    return `{${keys
-      .map((key) => `${JSON.stringify(key)}:${canonicalStringify(record[key])}`)
-      .join(',')}}`;
+    let text = '{';
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      if (i > 0) text += ',';
+      text += `${JSON.stringify(key)}:${canonicalStringify(record[key])}`;
+    }
+    return `${text}}`;
   }
   throw new Error(`Cannot canonicalize value of type ${type}`);
 }

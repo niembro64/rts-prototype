@@ -172,10 +172,13 @@ export function materializeLockstepCommandFrame(
   envelopes: readonly LockstepCommandEnvelope[],
   world: WorldState,
 ): Command[] {
-  return [...envelopes]
-    .sort(compareLockstepCommandEnvelopes)
-    .map((envelope) => materializeLockstepCommand(envelope, world))
-    .filter((command): command is Command => command !== null);
+  const ordered = [...envelopes].sort(compareLockstepCommandEnvelopes);
+  const commands: Command[] = [];
+  for (let i = 0; i < ordered.length; i++) {
+    const command = materializeLockstepCommand(ordered[i], world);
+    if (command !== null) commands.push(command);
+  }
+  return commands;
 }
 
 export function validateLockstepCommandForPeer(
@@ -220,8 +223,9 @@ export function validateLockstepCommandFrameForPeer(
   onRejected: LockstepCommandRejectionLogger | null = null,
 ): Command[] {
   const acceptedCommands: Command[] = [];
-  for (const envelope of [...envelopes].sort(compareLockstepCommandEnvelopes)) {
-    const result = validateLockstepCommandForPeer(envelope, world, onRejected);
+  const ordered = [...envelopes].sort(compareLockstepCommandEnvelopes);
+  for (let i = 0; i < ordered.length; i++) {
+    const result = validateLockstepCommandForPeer(ordered[i], world, onRejected);
     if (result.accepted) acceptedCommands.push(result.command);
   }
   return acceptedCommands;

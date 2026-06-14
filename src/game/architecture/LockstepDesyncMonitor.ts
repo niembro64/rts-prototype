@@ -108,12 +108,18 @@ export class LockstepDesyncMonitor {
   }
 
   getDiagnostics(): LockstepChecksumDiagnostics {
+    const entries = [...this.latestChecksumFrameByPlayer.entries()].sort(([a], [b]) => a - b);
+    const latestChecksumFrameByPlayer = new Array<LockstepChecksumDiagnostics['latestChecksumFrameByPlayer'][number]>(
+      entries.length,
+    );
+    for (let i = 0; i < entries.length; i++) {
+      const [playerId, frame] = entries[i];
+      latestChecksumFrameByPlayer[i] = { playerId, frame };
+    }
     return {
       latestChecksumFrame: this.latestChecksumFrame,
       lastAgreedChecksumFrame: this.lastAgreedChecksumFrame,
-      latestChecksumFrameByPlayer: [...this.latestChecksumFrameByPlayer.entries()]
-        .sort(([a], [b]) => a - b)
-        .map(([playerId, frame]) => ({ playerId, frame })),
+      latestChecksumFrameByPlayer,
     };
   }
 
@@ -150,12 +156,15 @@ export class LockstepDesyncMonitor {
     mismatchedPlayerId: PlayerId,
     mismatchedHash: CanonicalServerStateHash,
   ): LockstepDesyncReport {
-    const hashesByPlayer = [
+    const entries = [
       ...frameChecksums.entries(),
       [incoming.playerId, incoming.stateHash] as const,
-    ]
-      .sort(([a], [b]) => a - b)
-      .map(([playerId, stateHash]) => ({ playerId, stateHash }));
+    ].sort(([a], [b]) => a - b);
+    const hashesByPlayer = new Array<LockstepDesyncReport['hashesByPlayer'][number]>(entries.length);
+    for (let i = 0; i < entries.length; i++) {
+      const [playerId, stateHash] = entries[i];
+      hashesByPlayer[i] = { playerId, stateHash };
+    }
     const localHash = incoming.playerId === this.localPlayerId
       ? incoming.stateHash
       : frameChecksums.get(this.localPlayerId) ?? mismatchedHash;

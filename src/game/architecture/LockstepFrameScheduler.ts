@@ -322,21 +322,31 @@ export class LockstepFrameScheduler {
   }
 
   getQueuedCommandFrames(): readonly LockstepCompleteCommandFrame[] {
-    return [...this.queuedFrames.values()]
-      .sort((a, b) => a.frame - b.frame || a.frameSequence - b.frameSequence)
-      .map((frame) => ({
+    const frames = [...this.queuedFrames.values()]
+      .sort((a, b) => a.frame - b.frame || a.frameSequence - b.frameSequence);
+    const snapshots = new Array<LockstepCompleteCommandFrame>(frames.length);
+    for (let i = 0; i < frames.length; i++) {
+      const frame = frames[i];
+      snapshots[i] = {
         frame: frame.frame,
         frameSequence: frame.frameSequence,
         commands: frame.commands,
-      }));
+      };
+    }
+    return snapshots;
   }
 
   getRecentCommandFrames(): readonly LockstepCompleteCommandFrame[] {
-    return this.recentFrames.map((frame) => ({
-      frame: frame.frame,
-      frameSequence: frame.frameSequence,
-      commands: frame.commands,
-    }));
+    const snapshots = new Array<LockstepCompleteCommandFrame>(this.recentFrames.length);
+    for (let i = 0; i < this.recentFrames.length; i++) {
+      const frame = this.recentFrames[i];
+      snapshots[i] = {
+        frame: frame.frame,
+        frameSequence: frame.frameSequence,
+        commands: frame.commands,
+      };
+    }
+    return snapshots;
   }
 
   clear(): void {
@@ -419,17 +429,27 @@ export class LockstepFrameScheduler {
 
   private missingReadyPeerIds(): PlayerId[] {
     if (!this.requirePeerReady) return [];
-    return this.expectedPlayerIds.filter((playerId) => !this.readyPeerIds.has(playerId));
+    const missingPeerIds: PlayerId[] = [];
+    for (let i = 0; i < this.expectedPlayerIds.length; i++) {
+      const playerId = this.expectedPlayerIds[i];
+      if (!this.readyPeerIds.has(playerId)) missingPeerIds.push(playerId);
+    }
+    return missingPeerIds;
   }
 
   private getQueuedCommandFrameSummaries(): LockstepFrameSchedulerDiagnostics['pendingCommandFrames'] {
-    return [...this.queuedFrames.values()]
-      .sort((a, b) => a.frame - b.frame || a.frameSequence - b.frameSequence)
-      .map((frame) => ({
+    const frames = [...this.queuedFrames.values()]
+      .sort((a, b) => a.frame - b.frame || a.frameSequence - b.frameSequence);
+    const summaries = new Array<LockstepFrameSchedulerDiagnostics['pendingCommandFrames'][number]>(frames.length);
+    for (let i = 0; i < frames.length; i++) {
+      const frame = frames[i];
+      summaries[i] = {
         frame: frame.frame,
         frameSequence: frame.frameSequence,
         commandCount: frame.commands.length,
-      }));
+      };
+    }
+    return summaries;
   }
 
   private statusMessage(missingReadyPeerIds: readonly PlayerId[]): string {
@@ -460,13 +480,15 @@ export class LockstepFrameScheduler {
 }
 
 function commandFrameSignature(commands: readonly LockstepCommandEnvelope[]): string {
-  return commands
-    .map((envelope) =>
-      `${envelope.gameId}:${envelope.executeFrame}:${envelope.playerId}:` +
-        `${envelope.playerSequence}:${envelope.commandIndex}:` +
-        `${JSON.stringify(envelope.command)}`,
-    )
-    .join('|');
+  let signature = '';
+  for (let i = 0; i < commands.length; i++) {
+    const envelope = commands[i];
+    if (i > 0) signature += '|';
+    signature += `${envelope.gameId}:${envelope.executeFrame}:${envelope.playerId}:` +
+      `${envelope.playerSequence}:${envelope.commandIndex}:` +
+      `${JSON.stringify(envelope.command)}`;
+  }
+  return signature;
 }
 
 function defaultNowMs(): number {

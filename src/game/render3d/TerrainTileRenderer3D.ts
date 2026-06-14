@@ -256,7 +256,9 @@ function bufferAttributeByteSize(
 
 function estimateTerrainGeometryByteSize(geometry: THREE.BufferGeometry): number {
   let bytes = geometry.index ? bufferAttributeByteSize(geometry.index) : 0;
-  for (const attr of Object.values(geometry.attributes)) {
+  for (const key in geometry.attributes) {
+    const attr = geometry.attributes[key];
+    if (attr === undefined) continue;
     bytes += bufferAttributeByteSize(attr);
   }
   return bytes;

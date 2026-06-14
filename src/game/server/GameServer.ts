@@ -792,7 +792,14 @@ export class GameServer {
         }
         const queueLengthBefore = factoryComp.productionQueue.length;
         if (queueLengthBefore > 0) {
-          factoryComp.productionQueue = factoryComp.productionQueue.filter(id => id !== unitBlueprintId);
+          let writeIndex = 0;
+          for (let readIndex = 0; readIndex < queueLengthBefore; readIndex++) {
+            const queuedUnitBlueprintId = factoryComp.productionQueue[readIndex];
+            if (queuedUnitBlueprintId !== unitBlueprintId) {
+              factoryComp.productionQueue[writeIndex++] = queuedUnitBlueprintId;
+            }
+          }
+          factoryComp.productionQueue.length = writeIndex;
           if (factoryComp.productionQueue.length !== queueLengthBefore) {
             touched = true;
           }

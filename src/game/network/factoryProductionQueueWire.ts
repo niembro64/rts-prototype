@@ -4,8 +4,15 @@ import {
 } from '../../types/network';
 
 export function decodeFactoryProductionQueue(codes: readonly number[] | null | undefined): string[] {
-  if (codes === null || codes === undefined || codes.length === 0) return [];
-  const queue: string[] = [];
+  return decodeFactoryProductionQueueInto(codes, []);
+}
+
+export function decodeFactoryProductionQueueInto(
+  codes: readonly number[] | null | undefined,
+  queue: string[],
+): string[] {
+  queue.length = 0;
+  if (codes === null || codes === undefined || codes.length === 0) return queue;
   for (const code of codes) {
     const unitBlueprintId = codeToUnitBlueprintId(code);
     if (unitBlueprintId !== null && unitBlueprintId !== undefined) {

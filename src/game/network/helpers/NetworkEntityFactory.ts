@@ -1,6 +1,6 @@
 // Network entity creation helpers
 
-import type { Entity, BuildingBlueprintId, Turret } from '../../sim/types';
+import type { Entity, BuildingBlueprintId, FactoryDefaultWaypoint, Turret } from '../../sim/types';
 import {
   isMetalExtractorBlueprintId,
   isTowerBuildingBlueprintId,
@@ -525,6 +525,19 @@ function createBuildingFromNetwork(
     const selectedUnitBlueprintId = f.selectedUnitBlueprintCode === null
       ? null
       : codeToUnitBlueprintId(f.selectedUnitBlueprintCode);
+    let defaultWaypoints: FactoryDefaultWaypoint[] | null = null;
+    if (f.route !== null && f.route !== undefined) {
+      defaultWaypoints = new Array<FactoryDefaultWaypoint>(f.route.length);
+      for (let i = 0; i < f.route.length; i++) {
+        const waypoint = f.route[i];
+        defaultWaypoints[i] = {
+          x: waypoint.pos.x,
+          y: waypoint.pos.y,
+          z: waypoint.posZ,
+          type: waypoint.type as 'move' | 'fight' | 'patrol',
+        };
+      }
+    }
     entity.factory = {
       selectedUnitBlueprintId: selectedUnitBlueprintId ?? null,
       repeatProduction: f.repeat !== false,
@@ -538,14 +551,7 @@ function createBuildingFromNetwork(
       // Visualization-only mirror of the server's multi-leg route so the
       // rally line can draw the fight leg + patrol loop produced units
       // follow. Null falls back to drawing the single rally point.
-      defaultWaypoints: f.route !== null && f.route !== undefined
-        ? f.route.map((w) => ({
-            x: w.pos.x,
-            y: w.pos.y,
-            z: w.posZ,
-            type: w.type as 'move' | 'fight' | 'patrol',
-          }))
-        : null,
+      defaultWaypoints,
       rallyX: f.rally.pos.x,
       rallyY: f.rally.pos.y,
       rallyZ: f.rally.posZ,

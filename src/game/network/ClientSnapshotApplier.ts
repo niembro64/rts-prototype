@@ -1,4 +1,4 @@
-import type { Entity, BuildingBlueprintId } from '../sim/types';
+import type { Entity, BuildingBlueprintId, FactoryDefaultWaypoint } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
 import type { NetworkServerSnapshotEntity } from './NetworkManager';
 import {
@@ -34,7 +34,7 @@ import {
 } from './ClientBuildStateApplier';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
-import { decodeFactoryProductionQueue } from './factoryProductionQueueWire';
+import { decodeFactoryProductionQueueInto } from './factoryProductionQueueWire';
 import { cloneBuildingSupportSurface } from '../sim/buildingSupportSurface';
 
 /**
@@ -178,7 +178,10 @@ export function snapClientNonVisualState(
       : codeToUnitBlueprintId(sf.selectedUnitBlueprintCode);
     entity.factory.selectedUnitBlueprintId = selectedUnitBlueprintId ?? null;
     entity.factory.repeatProduction = sf.repeat !== false;
-    entity.factory.productionQueue = decodeFactoryProductionQueue(sf.queue);
+    entity.factory.productionQueue = decodeFactoryProductionQueueInto(
+      sf.queue,
+      entity.factory.productionQueue,
+    );
     entity.factory.currentShellId = null;
     entity.factory.currentBuildProgress = sf.progress;
     entity.factory.isProducing = sf.producing;
@@ -192,14 +195,27 @@ export function snapClientNonVisualState(
     // Multi-leg default route (visualization only). Whenever the factory
     // sub rides the snapshot it carries the full route consistently, so
     // mirroring it straight onto the client component is safe.
-    entity.factory.defaultWaypoints = sf.route !== null && sf.route !== undefined
-      ? sf.route.map((w) => ({
-          x: w.pos.x,
-          y: w.pos.y,
-          z: w.posZ,
-          type: w.type as 'move' | 'fight' | 'patrol',
-        }))
-      : null;
+    if (sf.route !== null && sf.route !== undefined) {
+      const existing = entity.factory.defaultWaypoints;
+      const route = existing !== null && existing.length === sf.route.length
+        ? existing as FactoryDefaultWaypoint[]
+        : new Array<FactoryDefaultWaypoint>(sf.route.length);
+      for (let i = 0; i < sf.route.length; i++) {
+        const src = sf.route[i];
+        let dst = route[i];
+        if (dst === undefined) {
+          dst = { x: 0, y: 0, z: null, type: 'move' };
+          route[i] = dst;
+        }
+        dst.x = src.pos.x;
+        dst.y = src.pos.y;
+        dst.z = src.posZ;
+        dst.type = src.type as 'move' | 'fight' | 'patrol';
+      }
+      entity.factory.defaultWaypoints = route;
+    } else {
+      entity.factory.defaultWaypoints = null;
+    }
   }
 
   return cacheDirty;

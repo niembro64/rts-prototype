@@ -64,7 +64,7 @@ export function buildAttackCommandForTarget(
   return {
     type: 'attack',
     tick,
-    entityIds: selectedUnits.map((u) => u.id),
+    entityIds: selectedUnitIds(selectedUnits),
     targetId: target.id,
     queue,
     queueFront,
@@ -107,7 +107,7 @@ export function buildAttackAreaCommand(
   return {
     type: 'attackArea',
     tick,
-    entityIds: selectedUnits.map((u) => u.id),
+    entityIds: selectedUnitIds(selectedUnits),
     targetX: worldX,
     targetY: worldY,
     targetZ: worldZ,
@@ -132,7 +132,7 @@ export function buildAttackGroundCommand(
   return {
     type: 'attackGround',
     tick,
-    entityIds: selectedUnits.map((u) => u.id),
+    entityIds: selectedUnitIds(selectedUnits),
     targetX: worldX,
     targetY: worldY,
     targetZ: worldZ,
@@ -221,7 +221,7 @@ export function buildLinePathMoveCommand(
     return {
       type: 'move',
       tick,
-      entityIds: selectedUnits.map((u) => u.id),
+      entityIds: selectedUnitIds(selectedUnits),
       targetX: finalPoint.x,
       targetY: finalPoint.y,
       targetZ: finalPoint.z,
@@ -406,4 +406,10 @@ function relaxPreservedFormationOffsets(offsets: PreservedFormationOffset[]): vo
     }
     if (!moved) return;
   }
+}
+
+function selectedUnitIds(selectedUnits: readonly Entity[]): EntityId[] {
+  const entityIds = new Array<EntityId>(selectedUnits.length);
+  for (let i = 0; i < selectedUnits.length; i++) entityIds[i] = selectedUnits[i].id;
+  return entityIds;
 }

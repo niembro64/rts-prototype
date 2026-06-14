@@ -74,10 +74,7 @@ export function sanitizeDeathContext(ctx: SimDeathContext3D): SimDeathContext3D 
       ? ctx.color
       : COLORS.units.locomotion.hover.smoke.colorHex,
     rotation: ctx.rotation === undefined ? undefined : finiteOr(ctx.rotation, 0),
-    turretPoses: ctx.turretPoses?.map((pose) => ({
-      rotation: finiteOr(pose.rotation, 0),
-      pitch: finiteOr(pose.pitch, 0),
-    })),
+    turretPoses: sanitizeTurretPoses(ctx.turretPoses),
   };
 }
 
@@ -137,12 +134,17 @@ export function resolveDeathContext3D(
     }
   }
   if (ctx && ent && !ctx.turretPoses && ent.combat && ent.combat.turrets.length > 0) {
+    const turretPoses = new Array<{ rotation: number; pitch: number }>(ent.combat.turrets.length);
+    for (let i = 0; i < ent.combat.turrets.length; i++) {
+      const turret = ent.combat.turrets[i];
+      turretPoses[i] = {
+        rotation: turret.rotation,
+        pitch: turret.pitch,
+      };
+    }
     ctx = {
       ...ctx,
-      turretPoses: ent.combat.turrets.map((t) => ({
-        rotation: t.rotation,
-        pitch: t.pitch,
-      })),
+      turretPoses,
     };
   }
   if (!ctx) {
@@ -163,4 +165,19 @@ export function resolveDeathContext3D(
     };
   }
   return sanitizeDeathContext(ctx);
+}
+
+function sanitizeTurretPoses(
+  poses: SimDeathContext3D['turretPoses'],
+): SimDeathContext3D['turretPoses'] {
+  if (poses === undefined) return undefined;
+  const sanitized = new Array<{ rotation: number; pitch: number }>(poses.length);
+  for (let i = 0; i < poses.length; i++) {
+    const pose = poses[i];
+    sanitized[i] = {
+      rotation: finiteOr(pose.rotation, 0),
+      pitch: finiteOr(pose.pitch, 0),
+    };
+  }
+  return sanitized;
 }

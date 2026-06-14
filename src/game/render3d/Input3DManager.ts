@@ -834,9 +834,11 @@ export class Input3DManager {
     if (selectedUnits.length > 0) {
       const unitBlueprintId = selectedUnits[0].unit?.unitBlueprintId;
       if (!unitBlueprintId) return;
-      const entityIds = selectedUnits
-        .filter((unit) => unit.unit?.unitBlueprintId === unitBlueprintId)
-        .map((unit) => unit.id);
+      const entityIds: EntityId[] = [];
+      for (let i = 0; i < selectedUnits.length; i++) {
+        const unit = selectedUnits[i];
+        if (unit.unit?.unitBlueprintId === unitBlueprintId) entityIds.push(unit.id);
+      }
       this.enqueueSelection(entityIds, false);
       return;
     }
@@ -845,9 +847,11 @@ export class Input3DManager {
     if (selectedStatic.length === 0) return;
     const buildingBlueprintId = selectedStatic[0].buildingBlueprintId;
     if (!buildingBlueprintId) return;
-    const entityIds = selectedStatic
-      .filter((building) => building.buildingBlueprintId === buildingBlueprintId)
-      .map((building) => building.id);
+    const entityIds: EntityId[] = [];
+    for (let i = 0; i < selectedStatic.length; i++) {
+      const building = selectedStatic[i];
+      if (building.buildingBlueprintId === buildingBlueprintId) entityIds.push(building.id);
+    }
     this.enqueueSelection(entityIds, false);
   }
 
@@ -1470,7 +1474,13 @@ export class Input3DManager {
   }
 
   private getSelectedMetalExtractorUpgradeBuilders(): Entity[] {
-    return this.entitySource.getSelectedUnits().filter(canBuilderUpgradeMetalExtractor);
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    const builders: Entity[] = [];
+    for (let i = 0; i < selectedUnits.length; i++) {
+      const unit = selectedUnits[i];
+      if (canBuilderUpgradeMetalExtractor(unit)) builders.push(unit);
+    }
+    return builders;
   }
 
   private getClosestMetalExtractorUpgradeBuilder(x: number, y: number): Entity | null {

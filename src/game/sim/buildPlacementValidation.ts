@@ -234,10 +234,17 @@ function getBuildingPlacementDiagnosticsAtGrid(
   // ghost no longer reads it (deposit markers come from a persistent
   // overlay built once from the deposit list); kept here so the rest of
   // the diagnostic surface remains intact for any other consumer.
-  const footprintCellKeys = new Set(cells.map((cell) => cellKey(cell.gx, cell.gy)));
-  const metalDepositCells: BuildPlacementCellDiagnostic[] = getMetalDepositGridCells(metalDeposits)
-    .filter((cell) => !footprintCellKeys.has(cellKey(cell.gx, cell.gy)))
-    .map((cell) => ({
+  const footprintCellKeys = new Set<string>();
+  for (let i = 0; i < cells.length; i++) {
+    const cell = cells[i];
+    footprintCellKeys.add(cellKey(cell.gx, cell.gy));
+  }
+  const metalDepositCells: BuildPlacementCellDiagnostic[] = [];
+  const depositCells = getMetalDepositGridCells(metalDeposits);
+  for (let i = 0; i < depositCells.length; i++) {
+    const cell = depositCells[i];
+    if (footprintCellKeys.has(cellKey(cell.gx, cell.gy))) continue;
+    metalDepositCells.push({
       gx: cell.gx,
       gy: cell.gy,
       x: cell.x,
@@ -247,7 +254,8 @@ function getBuildingPlacementDiagnosticsAtGrid(
       terrainLevel: null,
       metalCovered: true,
       depositId: cell.depositId,
-    }));
+    });
+  }
   let metalFraction: number | null = null;
   let metalTotalCells: number | null = null;
   if (isMetalExtractorBlueprintId(candidateType)) {

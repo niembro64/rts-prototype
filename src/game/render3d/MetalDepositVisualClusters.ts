@@ -36,7 +36,8 @@ export function makeMetalDepositVisualClusters(
 ): MetalDepositVisualCluster[] {
   if (deposits.length === 0) return [];
 
-  const parents = deposits.map((_, index) => index);
+  const parents = new Array<number>(deposits.length);
+  for (let i = 0; i < deposits.length; i++) parents[i] = i;
   const find = (index: number): number => {
     let root = index;
     while (parents[root] !== root) root = parents[root];
@@ -141,8 +142,17 @@ function makeMetalDepositVisualCluster(
   }
 
   const cells = Array.from(cellsByKey.values()).sort((a, b) => (a.gy - b.gy) || (a.gx - b.gx));
-  const depositIds = depositIndices.map((index) => deposits[index].id);
-  const id = Math.min(...depositIds);
+  const depositIds = new Array<number>(depositIndices.length);
+  let id = Infinity;
+  let maxDepositResourceHalfSize = BUILD_GRID_CELL_SIZE * 0.5;
+  for (let i = 0; i < depositIndices.length; i++) {
+    const deposit = deposits[depositIndices[i]];
+    depositIds[i] = deposit.id;
+    if (deposit.id < id) id = deposit.id;
+    if (deposit.resourceHalfSize > maxDepositResourceHalfSize) {
+      maxDepositResourceHalfSize = deposit.resourceHalfSize;
+    }
+  }
   const seed = hashMetalDepositVisualClusterSeed(depositIds);
   const height = heightCount > 0
     ? heightSum / heightCount
@@ -151,10 +161,7 @@ function makeMetalDepositVisualCluster(
   if (cells.length === 0) {
     const x = averageDeposits(depositIndices, deposits, 'x');
     const y = averageDeposits(depositIndices, deposits, 'y');
-    const resourceHalfSize = Math.max(
-      BUILD_GRID_CELL_SIZE * 0.5,
-      ...depositIndices.map((index) => deposits[index].resourceHalfSize),
-    );
+    const resourceHalfSize = maxDepositResourceHalfSize;
     return { id, seed, x, y, height, cells, resourceHalfSize, depositIds };
   }
 

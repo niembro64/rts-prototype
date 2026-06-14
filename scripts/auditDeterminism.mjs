@@ -26,16 +26,13 @@ const SERVER_WALL_CLOCK_ALLOWLIST = new Map([
   ['src/game/server/ServerSnapshotDirectWirePreencoder.ts', 'snapshot encode timing telemetry only'],
   ['src/game/server/ServerSnapshotPublisher.ts', 'debug-grid throttle timing only'],
   ['src/game/server/ServerSnapshotWirePayload.ts', 'snapshot wire encode timing telemetry only'],
+  ['src/game/server/ServerSnapshotMetaBuilder.ts', 'snapshot metadata server-time label only; not lockstep gameplay truth'],
   ['src/game/server/ServerTickLoop.ts', 'wall-clock scheduler for non-lockstep server loops; lockstep uses a frame scheduler instead'],
 ]);
 
 const HIGH_RISK_MATH_PATTERN = /\bMath\.(sin|cos|atan2|hypot|sqrt|pow)\s*\(/g;
 
 const HIGH_RISK_MATH_ALLOWLIST = new Map([
-  ['src/game/sim/deterministicMath.ts', {
-    count: 8,
-    reason: 'central deterministic math wrapper; JS fallback is disabled by runtime guard in deterministic-lockstep',
-  }],
   ['src/game/server/PhysicsEngine3D.ts', {
     count: 1,
     reason: 'module-load spring damping constant derived from canonical config before gameplay ticks',

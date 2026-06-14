@@ -33,6 +33,10 @@ export class ClientProjectileRenderSpatialIndex {
   private readonly buckets = new Map<ClientProjectileRenderCellKey, ClientProjectileRenderBucket>();
   private readonly entries = new Map<EntityId, ClientProjectileRenderSpatialEntry>();
   private readonly querySeenIds = new Set<EntityId>();
+  private boundsMinX = 0;
+  private boundsMaxX = 0;
+  private boundsMinY = 0;
+  private boundsMaxY = 0;
 
   clear(): void {
     this.buckets.clear();
@@ -46,11 +50,11 @@ export class ClientProjectileRenderSpatialIndex {
       return;
     }
 
-    const bounds = this.boundsForProjectile(entity);
-    const minCellX = this.cellCoord(bounds.minX);
-    const maxCellX = this.cellCoord(bounds.maxX);
-    const minCellY = this.cellCoord(bounds.minY);
-    const maxCellY = this.cellCoord(bounds.maxY);
+    this.updateBoundsForProjectile(entity);
+    const minCellX = this.cellCoord(this.boundsMinX);
+    const maxCellX = this.cellCoord(this.boundsMaxX);
+    const minCellY = this.cellCoord(this.boundsMinY);
+    const maxCellY = this.cellCoord(this.boundsMaxY);
     const existing = this.entries.get(entity.id);
     if (
       existing !== undefined &&
@@ -176,7 +180,7 @@ export class ClientProjectileRenderSpatialIndex {
     return out;
   }
 
-  private boundsForProjectile(entity: Entity): FootprintBounds {
+  private updateBoundsForProjectile(entity: Entity): void {
     const projectile = entity.projectile;
     if (projectile?.points && projectile.points.length > 0) {
       let minX = entity.transform.x;
@@ -189,15 +193,17 @@ export class ClientProjectileRenderSpatialIndex {
         if (point.y < minY) minY = point.y;
         if (point.y > maxY) maxY = point.y;
       }
-      return { minX, maxX, minY, maxY };
+      this.boundsMinX = minX;
+      this.boundsMaxX = maxX;
+      this.boundsMinY = minY;
+      this.boundsMaxY = maxY;
+      return;
     }
 
-    return {
-      minX: entity.transform.x,
-      maxX: entity.transform.x,
-      minY: entity.transform.y,
-      maxY: entity.transform.y,
-    };
+    this.boundsMinX = entity.transform.x;
+    this.boundsMaxX = entity.transform.x;
+    this.boundsMinY = entity.transform.y;
+    this.boundsMaxY = entity.transform.y;
   }
 
   private getOrCreateBucket(cellKey: ClientProjectileRenderCellKey): ClientProjectileRenderBucket {

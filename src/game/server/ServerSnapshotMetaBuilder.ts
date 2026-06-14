@@ -11,7 +11,7 @@ export type ServerSnapshotMetaInput = {
   keyframeRatio: KeyframeRatio;
   ipAddress: string;
   gridEnabled: boolean;
-  allowedUnits: Iterable<string> | undefined;
+  allowedUnits: ReadonlySet<string> | undefined;
   maxUnits: number | undefined;
   unitCount: number | undefined;
   turretShieldPanelsEnabled: boolean | undefined;
@@ -36,7 +36,9 @@ export type ServerSnapshotMetaInput = {
 
 export class ServerSnapshotMetaBuilder {
   private lastServerTime = '';
-  private lastServerTimeSec = -1;
+  private lastServerTimeEpochSec = -1;
+  private allowedUnitsSource: ReadonlySet<string> | undefined;
+  private allowedUnitsCache: string[] | undefined;
   private readonly timeFormatter = new Intl.DateTimeFormat('en-US', {
     hour: '2-digit',
     minute: '2-digit',
@@ -64,7 +66,7 @@ export class ServerSnapshotMetaBuilder {
       server: { time: this.formatServerTime(), ip: input.ipAddress },
       grid: input.gridEnabled,
       units: {
-        allowed: input.allowedUnits !== undefined ? [...input.allowedUnits] : undefined,
+        allowed: this.resolveAllowedUnits(input.allowedUnits),
         max: input.maxUnits,
         count: input.unitCount,
       },
@@ -88,12 +90,41 @@ export class ServerSnapshotMetaBuilder {
   }
 
   private formatServerTime(): string {
-    const now = new Date();
-    const sec = now.getSeconds();
-    if (sec !== this.lastServerTimeSec) {
-      this.lastServerTimeSec = sec;
-      this.lastServerTime = this.timeFormatter.format(now);
+    const nowMs = Date.now();
+    const epochSec = Math.floor(nowMs / 1000);
+    if (epochSec !== this.lastServerTimeEpochSec) {
+      this.lastServerTimeEpochSec = epochSec;
+      this.lastServerTime = this.timeFormatter.format(new Date(nowMs));
     }
     return this.lastServerTime;
+  }
+
+  private resolveAllowedUnits(allowedUnits: ReadonlySet<string> | undefined): string[] | undefined {
+    if (allowedUnits === undefined) {
+      this.allowedUnitsSource = undefined;
+      this.allowedUnitsCache = undefined;
+      return undefined;
+    }
+    const cached = this.allowedUnitsCache;
+    if (
+      allowedUnits === this.allowedUnitsSource &&
+      cached !== undefined &&
+      cached.length === allowedUnits.size
+    ) {
+      let index = 0;
+      let matches = true;
+      for (const unitBlueprintId of allowedUnits) {
+        if (cached[index++] !== unitBlueprintId) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) return cached;
+    }
+    const next: string[] = [];
+    for (const unitBlueprintId of allowedUnits) next.push(unitBlueprintId);
+    this.allowedUnitsSource = allowedUnits;
+    this.allowedUnitsCache = next;
+    return next;
   }
 }

@@ -60,12 +60,20 @@ export function hashCanonicalServerState(core: ServerSimulationCore): CanonicalS
 export function buildCanonicalServerState(core: ServerSimulationCore): CanonicalServerState {
   const world = core.world;
   const simulation = core.simulation;
-  const entities = world
-    .getAllEntities()
-    .slice()
-    .sort((a, b) => a.id - b.id)
-    .map((entity) => serializeEntity(entity));
+  const sortedEntities = world.getAllEntities().slice().sort((a, b) => a.id - b.id);
+  const entities = new Array<CanonicalValue>(sortedEntities.length);
+  for (let i = 0; i < sortedEntities.length; i++) {
+    entities[i] = serializeEntity(sortedEntities[i]);
+  }
   const playerIds = core.playerIds.slice().sort((a, b) => a - b);
+  const economyStates = new Array<CanonicalValue>(playerIds.length);
+  for (let i = 0; i < playerIds.length; i++) {
+    const playerId = playerIds[i];
+    economyStates[i] = {
+      playerId,
+      state: toCanonicalValue(economyManager.getEconomy(playerId)),
+    };
+  }
 
   return {
     schema: 'budget-annihilation.server-state.v1',
@@ -103,10 +111,7 @@ export function buildCanonicalServerState(core: ServerSimulationCore): Canonical
       simElapsedMs: simulation.getSimElapsedMs(),
       windState: toCanonicalValue(simulation.getWindState()),
     },
-    economy: playerIds.map((playerId) => ({
-      playerId,
-      state: toCanonicalValue(economyManager.getEconomy(playerId)),
-    })),
+    economy: economyStates,
     commands: toCanonicalValue(core.commandQueue.getAll()),
     entities,
   };
@@ -115,12 +120,16 @@ export function buildCanonicalServerState(core: ServerSimulationCore): Canonical
 function serializeAllies(
   alliesByPlayer: ReadonlyMap<PlayerId, ReadonlySet<PlayerId>>,
 ): CanonicalValue {
-  return [...alliesByPlayer.entries()]
-    .sort(([a], [b]) => a - b)
-    .map(([playerId, allies]) => ({
+  const entries = [...alliesByPlayer.entries()].sort(([a], [b]) => a - b);
+  const output = new Array<CanonicalValue>(entries.length);
+  for (let i = 0; i < entries.length; i++) {
+    const [playerId, allies] = entries[i];
+    output[i] = {
       playerId,
       allies: [...allies].sort((a, b) => a - b),
-    }));
+    };
+  }
+  return output;
 }
 
 function serializeEntity(entity: Entity): CanonicalValue {
@@ -179,11 +188,12 @@ function serializeUnit(value: Entity['unit']): CanonicalValue {
 
 function serializeTransport(value: Entity['transport']): CanonicalValue {
   if (value === null) return null;
+  const loadedUnitIds = new Array<number>(value.loadedUnits.length);
+  for (let i = 0; i < value.loadedUnits.length; i++) loadedUnitIds[i] = value.loadedUnits[i].id;
+  loadedUnitIds.sort((a, b) => a - b);
   return {
     capacity: value.capacity,
-    loadedUnitIds: value.loadedUnits
-      .map((unit) => unit.id)
-      .sort((a, b) => a - b),
+    loadedUnitIds,
   };
 }
 
@@ -256,17 +266,30 @@ function toCanonicalValue(value: unknown): CanonicalValue {
   if (value === null || value === undefined) return null;
   if (typeof value === 'string' || typeof value === 'boolean') return value;
   if (typeof value === 'number') return canonicalNumber(value);
-  if (Array.isArray(value)) return value.map((item) => toCanonicalValue(item));
+  if (Array.isArray(value)) {
+    const output = new Array<CanonicalValue>(value.length);
+    for (let i = 0; i < value.length; i++) output[i] = toCanonicalValue(value[i]);
+    return output;
+  }
   if (value instanceof Set) {
-    return [...value].map((item) => toCanonicalValue(item)).sort(compareCanonicalValues);
+    const output: CanonicalValue[] = [];
+    for (const item of value) output.push(toCanonicalValue(item));
+    output.sort(compareCanonicalValues);
+    return output;
   }
   if (value instanceof Map) {
-    return [...value.entries()]
-      .map(([key, mapValue]) => ({
+    const output: CanonicalValue[] = [];
+    for (const [key, mapValue] of value) {
+      output.push({
         key: toCanonicalValue(key),
         value: toCanonicalValue(mapValue),
-      }))
-      .sort((a, b) => compareCanonicalValues(a.key, b.key));
+      });
+    }
+    output.sort((a, b) => {
+      if (!isCanonicalObject(a) || !isCanonicalObject(b)) return compareCanonicalValues(a, b);
+      return compareCanonicalValues(a.key, b.key);
+    });
+    return output;
   }
   if (typeof value === 'object') {
     const output: Record<string, CanonicalValue> = {};
@@ -288,15 +311,18 @@ function canonicalNumber(value: number): CanonicalValue {
 
 function buildEntityHashes(entities: CanonicalValue): readonly CanonicalEntityStateHash[] {
   if (!Array.isArray(entities)) return [];
-  return entities.map((entityState) => {
+  const hashes = new Array<CanonicalEntityStateHash>(entities.length);
+  for (let i = 0; i < entities.length; i++) {
+    const entityState = entities[i];
     if (!isCanonicalObject(entityState)) {
-      return {
+      hashes[i] = {
         id: -1,
         type: 'unknown',
         hash: hashCanonicalValue(entityState),
         components: {},
         componentFields: {},
       };
+      continue;
     }
 
     const id = typeof entityState.id === 'number' ? entityState.id : -1;
@@ -315,14 +341,15 @@ function buildEntityHashes(entities: CanonicalValue): readonly CanonicalEntitySt
         componentFields[key] = fieldHashes;
       }
     }
-    return {
+    hashes[i] = {
       id,
       type,
       hash: hashCanonicalValue(entityState),
       components,
       componentFields,
     };
-  });
+  }
+  return hashes;
 }
 
 function isCanonicalObject(value: CanonicalValue): value is { readonly [key: string]: CanonicalValue } {

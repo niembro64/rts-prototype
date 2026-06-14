@@ -350,20 +350,40 @@ function buildSelectionDetails(
   selectedTowers: readonly Entity[],
   selectedBuildings: readonly Entity[],
 ): SelectionInfo['details'] {
-  const all = [...selectedUnits, ...selectedTowers, ...selectedBuildings];
-  if (all.length === 0) return [];
-  if (all.length === 1) return buildSingleSelectionDetails(all[0]);
+  const totalSelected =
+    selectedUnits.length + selectedTowers.length + selectedBuildings.length;
+  if (totalSelected === 0) return [];
+  if (totalSelected === 1) {
+    const entity = selectedUnits.length > 0
+      ? selectedUnits[0]
+      : selectedTowers.length > 0
+        ? selectedTowers[0]
+        : selectedBuildings[0];
+    return buildSingleSelectionDetails(entity);
+  }
 
   let hp = 0;
   let maxHp = 0;
-  for (let i = 0; i < all.length; i++) {
-    const pair = hpPair(all[i]);
+  for (let i = 0; i < selectedUnits.length; i++) {
+    const pair = hpPair(selectedUnits[i]);
+    if (pair === null) continue;
+    hp += pair.hp;
+    maxHp += pair.maxHp;
+  }
+  for (let i = 0; i < selectedTowers.length; i++) {
+    const pair = hpPair(selectedTowers[i]);
+    if (pair === null) continue;
+    hp += pair.hp;
+    maxHp += pair.maxHp;
+  }
+  for (let i = 0; i < selectedBuildings.length; i++) {
+    const pair = hpPair(selectedBuildings[i]);
     if (pair === null) continue;
     hp += pair.hp;
     maxHp += pair.maxHp;
   }
   const details: SelectionInfo['details'] = [
-    { label: 'Selected', value: `${all.length}` },
+    { label: 'Selected', value: `${totalSelected}` },
     { label: 'Types', value: `${selectedUnits.length}U ${selectedTowers.length}T ${selectedBuildings.length}B` },
   ];
   if (maxHp > 0) {
@@ -660,10 +680,14 @@ export function buildSelectionInfo(
     factoryProgress = f.currentBuildProgress;
     factoryIsProducing = f.isProducing;
     factoryRepeatsProduction = f.repeatProduction;
-    factoryProductionQueue = f.productionQueue.map((unitBlueprintId) => ({
-      unitBlueprintId,
-      label: unitLabel(unitBlueprintId),
-    }));
+    factoryProductionQueue = new Array(f.productionQueue.length);
+    for (let i = 0; i < f.productionQueue.length; i++) {
+      const unitBlueprintId = f.productionQueue[i];
+      factoryProductionQueue[i] = {
+        unitBlueprintId,
+        label: unitLabel(unitBlueprintId),
+      };
+    }
     factoryGuardTargetId = f.guardTargetId;
   }
 

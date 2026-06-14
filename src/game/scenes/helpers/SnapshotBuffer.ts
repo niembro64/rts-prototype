@@ -160,7 +160,7 @@ export class SnapshotBuffer {
             this.velocityStagePoolIndex++;
             this.bufferedVelocityUpdates.set(vu.id, out);
           }
-          this.bufferedVelocityUpdates.set(vu.id, copyVelocityInto(vu, out));
+          copyVelocityInto(vu, out);
         }
       }
       if (proj !== undefined && proj.beamUpdates !== undefined) {
@@ -173,7 +173,7 @@ export class SnapshotBuffer {
             this.beamStagePoolIndex++;
             this.bufferedBeamUpdates.set(bu.id, out);
           }
-          this.bufferedBeamUpdates.set(bu.id, copyBeamInto(bu, out));
+          copyBeamInto(bu, out);
         }
       }
       if (state.grid) {

@@ -305,13 +305,16 @@ function createExtractorSidePanelGeometry(
   panelThickness: number,
 ): THREE.BufferGeometry {
   const corners = [face.bottom0, face.bottom1, face.top1, face.top0];
-  const localCorners = corners.map((corner) => {
-    const delta = new THREE.Vector3().subVectors(corner, face.center);
-    return {
+  const localCorners = new Array<{ x: number; z: number }>(corners.length);
+  const delta = new THREE.Vector3();
+  for (let i = 0; i < corners.length; i++) {
+    const corner = corners[i];
+    delta.subVectors(corner, face.center);
+    localCorners[i] = {
       x: delta.dot(face.tangent),
       z: delta.dot(face.slope),
     };
-  });
+  }
   const halfThickness = panelThickness * 0.5;
   const positions: number[] = [];
   for (const corner of localCorners) {
@@ -325,7 +328,10 @@ function createExtractorSidePanelGeometry(
   const outerOrder = polygonSignedArea(localCorners) > 0
     ? [...sourceOrder].reverse()
     : sourceOrder;
-  const innerOrder = [...outerOrder].reverse().map((idx) => idx + 4);
+  const innerOrder = new Array<number>(outerOrder.length);
+  for (let i = 0; i < outerOrder.length; i++) {
+    innerOrder[i] = outerOrder[outerOrder.length - 1 - i] + 4;
+  }
   const indices: number[] = [];
   addQuadIndices(indices, outerOrder[0], outerOrder[1], outerOrder[2], outerOrder[3]);
   addQuadIndices(indices, innerOrder[0], innerOrder[1], innerOrder[2], innerOrder[3]);
