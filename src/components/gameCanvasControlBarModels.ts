@@ -26,6 +26,7 @@ import type { KeyframeRatio, SnapshotRate, TickRate } from '../types/server';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import type { RenderMode } from '../types/graphics';
 import type { CommandHotkeyPresetId } from '../game/input/commandHotkeys';
+import type { ArchitectureBackend } from '../architectureConfig';
 
 export type ControlBarStyle = Record<string, string>;
 
@@ -75,6 +76,7 @@ export type GameCanvasServerControlBarModel = {
   readonly isReadonly: boolean;
   readonly barStyle: ControlBarStyle;
   readonly serverLabel: string;
+  readonly architecture: ArchitectureBackend;
   readonly displayServerTime: string;
   readonly displayServerIp: string;
   readonly displayTickRate: TickRate;

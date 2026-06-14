@@ -15,6 +15,7 @@ import {
 } from '../serverBarConfig';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import type { KeyframeRatio, SnapshotRate, TickRate } from '../types/server';
+import { ARCHITECTURE_CONFIG } from '../architectureConfig';
 
 export type GameCanvasServerSettings = {
   resetServerDefaults(): void;
@@ -39,7 +40,11 @@ export function useGameCanvasServerSettings({
   serverUnitGroundNormalEmaMode,
   getActiveConnection,
 }: GameCanvasServerSettingsOptions): GameCanvasServerSettings {
+  const usesAuthoritativeSnapshotTiming =
+    ARCHITECTURE_CONFIG.backend === 'authoritative-server';
+
   function setNetworkUpdateRate(rate: SnapshotRate): void {
+    if (!usesAuthoritativeSnapshotTiming) return;
     const normalizedRate = normalizeSnapshotRate(rate);
     getActiveConnection()?.sendCommand({
       type: 'setSnapshotRate',
@@ -50,6 +55,7 @@ export function useGameCanvasServerSettings({
   }
 
   function setTickRateValue(rate: TickRate): void {
+    if (!usesAuthoritativeSnapshotTiming) return;
     getActiveConnection()?.sendCommand({ type: 'setTickRate', tick: 0, rate });
     saveTickRate(rate, currentBattleMode.value);
   }
@@ -61,6 +67,7 @@ export function useGameCanvasServerSettings({
   }
 
   function setKeyframeRatioValue(ratio: KeyframeRatio): void {
+    if (!usesAuthoritativeSnapshotTiming) return;
     getActiveConnection()?.sendCommand({ type: 'setKeyframeRatio', tick: 0, ratio });
     saveKeyframeRatio(ratio, currentBattleMode.value);
   }
@@ -81,6 +88,10 @@ export function useGameCanvasServerSettings({
   }
 
   function resetServerDefaults(): void {
+    if (!usesAuthoritativeSnapshotTiming) {
+      setUnitGroundNormalEmaModeValue(SERVER_CONFIG.unitGroundNormalEma.default);
+      return;
+    }
     setTickRateValue(SERVER_CONFIG.tickRate.default);
     setNetworkUpdateRate(SERVER_CONFIG.snapshot.default);
     setKeyframeRatioValue(SERVER_CONFIG.keyframe.default);

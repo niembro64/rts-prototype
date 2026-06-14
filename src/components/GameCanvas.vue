@@ -79,6 +79,7 @@ import { useGameCanvasSessionLifecycle } from './gameCanvasSessionLifecycle';
 import { useGameCanvasShellDisplay } from './gameCanvasShellDisplay';
 import { useGameCanvasLobbyRoster } from './gameCanvasLobbyRoster';
 import { LAND_CELL_SIZE } from '../mapSizeConfig';
+import { ARCHITECTURE_CONFIG } from '../architectureConfig';
 
 const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -968,7 +969,10 @@ const displayServerCpuHi = computed(
 );
 const displayTickRate = computed(
   () =>
-    serverMetaFromSnapshot.value?.ticks.rate ?? SERVER_CONFIG.tickRate.default,
+    serverMetaFromSnapshot.value?.ticks.rate ??
+    (ARCHITECTURE_CONFIG.backend === 'deterministic-lockstep'
+      ? 60
+      : SERVER_CONFIG.tickRate.default),
 );
 // HOST SERVER unit ground normal EMA mode. Picks the half-life used by the
 // sim's updateUnitGroundNormal (UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC[mode]). Persisted to
@@ -1321,6 +1325,7 @@ const serverControlBarModel = reactive<GameCanvasServerControlBarModel>({
   isReadonly: serverBarReadonly.value,
   barStyle: serverBarVars.value,
   serverLabel: serverLabel.value,
+  architecture: ARCHITECTURE_CONFIG.backend,
   displayServerTime: displayServerTime.value,
   displayServerIp: displayServerIp.value,
   displayTickRate: displayTickRate.value,
@@ -1344,6 +1349,7 @@ watchEffect(() => {
   m.isReadonly = serverBarReadonly.value;
   m.barStyle = serverBarVars.value;
   m.serverLabel = serverLabel.value;
+  m.architecture = ARCHITECTURE_CONFIG.backend;
   m.displayServerTime = displayServerTime.value;
   m.displayServerIp = displayServerIp.value;
   m.displayTickRate = displayTickRate.value;

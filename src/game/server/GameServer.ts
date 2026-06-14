@@ -76,6 +76,13 @@ export type GameServerCreateOptions = {
   onProgress: GameServerStartupProgress | undefined;
 };
 
+export type ExternalSimulationTelemetrySample = {
+  readonly elapsedMs: number;
+  readonly stepsRun: number;
+  readonly workMs: number;
+  readonly tickRateHz: number;
+};
+
 export class GameServer {
   private core: ServerSimulationCore;
 
@@ -367,6 +374,24 @@ export class GameServer {
         ? 0.5 * this.tickMsHi + 0.5 * workMs
         : 0.9999 * this.tickMsHi + 0.0001 * workMs;
     }
+  }
+
+  recordExternalSimulationTelemetry(sample: ExternalSimulationTelemetrySample): void {
+    if (
+      !Number.isFinite(sample.elapsedMs) ||
+      !Number.isFinite(sample.workMs) ||
+      !Number.isFinite(sample.tickRateHz) ||
+      sample.elapsedMs <= 0 ||
+      sample.workMs < 0 ||
+      sample.tickRateHz <= 0 ||
+      sample.stepsRun <= 0
+    ) {
+      return;
+    }
+
+    this.tickRateHz = sample.tickRateHz;
+    this.recordTickCadence(sample.elapsedMs, sample.stepsRun);
+    this.recordTickWork(sample.workMs);
   }
 
   // Stop the game loop

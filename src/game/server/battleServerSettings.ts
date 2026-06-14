@@ -20,6 +20,7 @@ import type { CommandAuthority } from './commandAuthority';
 export type StoredBattleServerSettingsOptions = {
   ipAddress: string | undefined;
   maxTotalUnits: number | undefined;
+  applyAuthoritativeTiming?: boolean;
   /** When set, overrides the stored fog-of-war value. Lobby preview
    *  passes `false` and real-battle startup passes `true`; the demo
    *  battle leaves it undefined so the DEMO BATTLE bar toggle still
@@ -30,6 +31,7 @@ export type StoredBattleServerSettingsOptions = {
 const DEFAULT_STORED_BATTLE_SERVER_SETTINGS_OPTIONS: StoredBattleServerSettingsOptions = {
   ipAddress: undefined,
   maxTotalUnits: undefined,
+  applyAuthoritativeTiming: true,
 };
 
 export function applyStoredBattleServerSettings(
@@ -38,9 +40,11 @@ export function applyStoredBattleServerSettings(
   options: StoredBattleServerSettingsOptions = DEFAULT_STORED_BATTLE_SERVER_SETTINGS_OPTIONS,
 ): void {
   const authority: CommandAuthority = { mode: 'host-admin' };
-  server.setTickRate(loadStoredTickRate(mode));
-  server.setSnapshotRate(loadStoredSnapshotRate(mode));
-  server.setKeyframeRatio(loadStoredKeyframeRatio(mode));
+  if (options.applyAuthoritativeTiming !== false) {
+    server.setTickRate(loadStoredTickRate(mode));
+    server.setSnapshotRate(loadStoredSnapshotRate(mode));
+    server.setKeyframeRatio(loadStoredKeyframeRatio(mode));
+  }
   server.receiveCommand({
     type: 'setUnitGroundNormalEmaMode',
     tick: 0,

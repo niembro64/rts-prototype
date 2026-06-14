@@ -680,6 +680,7 @@ async function createDeterministicLockstepBackendRuntime({
   let snapshotMsHi = 0;
   let snapshotMsInitialized = false;
   let snapshotsEmitted = 0;
+  let lastLockstepTelemetryPumpMs: number | null = null;
   const recordSnapshotMs = (sampleMs: number): void => {
     const sample = Number.isFinite(sampleMs) && sampleMs >= 0 ? sampleMs : 0;
     snapshotsEmitted++;
@@ -1045,7 +1046,20 @@ async function createDeterministicLockstepBackendRuntime({
         commands,
       );
     }
-    scheduler.advanceReadyFrames(isOnlineLockstep ? 4 : 1);
+    const advanceResult = scheduler.advanceReadyFrames(isOnlineLockstep ? 4 : 1);
+    if (advanceResult.advancedFrames > 0) {
+      const nowMs = performance.now();
+      const elapsedMs = lastLockstepTelemetryPumpMs === null
+        ? advanceResult.advancedFrames * LOCKSTEP_FIXED_DT_MS
+        : Math.max(0.001, nowMs - lastLockstepTelemetryPumpMs);
+      lastLockstepTelemetryPumpMs = nowMs;
+      server.recordExternalSimulationTelemetry({
+        elapsedMs,
+        stepsRun: advanceResult.advancedFrames,
+        workMs: scheduler.getDiagnostics().performance.simStepMsAvg,
+        tickRateHz: Math.round(1000 / LOCKSTEP_FIXED_DT_MS),
+      });
+    }
     resendCommandFramesToLaggingPeers();
     requestMissingCommandFrameIfNeeded();
   };
@@ -1060,6 +1074,7 @@ async function createDeterministicLockstepBackendRuntime({
         ipAddress: localIpAddress,
         maxTotalUnits: initialMaxTotalUnits,
         fogOfWarEnabled: true,
+        applyAuthoritativeTiming: false,
       });
       scheduler.markPeerReady(localPlayerId);
       if (network !== undefined) {
