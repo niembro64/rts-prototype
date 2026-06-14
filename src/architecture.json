@@ -2,7 +2,7 @@
   "backend": "deterministic-lockstep",
   "lockstep": {
     "inputDelayTicks": 6,
-    "checksumIntervalTicks": 60,
+    "checksumIntervalTicks": 32,
     "stallTimeoutMs": 5000,
     "desyncPolicy": "pause",
     "allowLateJoin": false
