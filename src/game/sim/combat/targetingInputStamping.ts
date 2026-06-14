@@ -833,6 +833,16 @@ export function stampShieldSurfacePool(world: WorldState): void {
     return;
   }
 
+  // setPanelCount starts a fresh panel stamp and clears the per-family
+  // reflection mask. Do it before setPanel rows; calling it after the
+  // rows would erase the mask that beam/projectile reflection queries use.
+  let declaredPanelCount = 0;
+  for (const unit of shieldPanelUnits) {
+    declaredPanelCount += unit.unit?.shieldPanels.length ?? 0;
+  }
+  pool.setUnitCount(shieldPanelUnits.length);
+  pool.setPanelCount(declaredPanelCount);
+
   const currentTick = world.getTick();
   let unitIdx = 0;
   let panelIdx = 0;
@@ -905,5 +915,4 @@ export function stampShieldSurfacePool(world: WorldState): void {
   }
 
   pool.setUnitCount(unitIdx);
-  pool.setPanelCount(panelIdx);
 }
