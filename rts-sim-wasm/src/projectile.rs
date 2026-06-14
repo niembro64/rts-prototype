@@ -370,7 +370,7 @@ pub fn solve_kinematic_intercept(
 //  Output buffer (3 f64s): thrustX, thrustY, thrustZ.
 //
 //  Kept as a single-row export for client prediction and scattered
-//  diagnostic callers. The authoritative server projectile path uses
+//  diagnostic callers. The local server projectile path uses
 //  projectile_homing_guidance_batch below.
 // ─────────────────────────────────────────────────────────────────
 

@@ -71,8 +71,8 @@ function createEmptyBuildingSub(): BuildingSub {
 // Safe to reuse because a decoded snapshot never outlives its decode:
 // on the normal path it is applied synchronously within the decode's
 // promise tick (consumers copy scalars out, never retaining the DTOs),
-// and the async buffering paths (LocalGameConnection wire loopback,
-// the snapshot-impairment delay queue, NetworkSnapshotTransport pending)
+// and the async buffering paths (LocalGameConnection wire loopback and
+// the snapshot-impairment delay queue)
 // clone the snapshot into owned objects before holding it. So pooled
 // objects are dead by the next decode.
 type DecodedVec3 = { x: number; y: number; z: number };

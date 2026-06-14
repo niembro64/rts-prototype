@@ -1,5 +1,4 @@
 import { getDefaultPlayerName } from '@/playerNamesConfig';
-import { ARCHITECTURE_CONFIG } from '@/architectureConfig';
 import {
   BATTLE_HANDOFF_PROTOCOL,
   type BattleHandoff,
@@ -53,7 +52,6 @@ export function buildBattleHandoff({
     protocol: BATTLE_HANDOFF_PROTOCOL,
     gameId,
     roomCode,
-    architecture: initialization.architecture.backend,
     initialization,
     initializationHash: hashCanonicalMatchInitialization(initialization),
     hostPlayerId: 1 as PlayerId,
@@ -83,17 +81,7 @@ export function normalizeBattleHandoffMessage(
       settings: handoff.settings,
     });
     const initializationHash = hashCanonicalMatchInitialization(initialization);
-    const receivedArchitecture = handoff.architecture ?? initialization.architecture.backend;
-    if (receivedArchitecture !== ARCHITECTURE_CONFIG.backend) {
-      throw new Error(
-        `Battle architecture mismatch: host=${receivedArchitecture}, ` +
-          `local=${ARCHITECTURE_CONFIG.backend}`,
-      );
-    }
-    if (
-      receivedArchitecture === 'deterministic-lockstep' &&
-      handoff.initializationHash !== initializationHash
-    ) {
+    if (handoff.initializationHash !== initializationHash) {
       throw new Error(
         `Lockstep initialization hash mismatch: host=${handoff.initializationHash}, ` +
           `local=${initializationHash}`,
@@ -101,7 +89,6 @@ export function normalizeBattleHandoffMessage(
     }
     return {
       ...handoff,
-      architecture: receivedArchitecture,
       initialization,
       initializationHash,
       roomCode: normalizedRoomCode,

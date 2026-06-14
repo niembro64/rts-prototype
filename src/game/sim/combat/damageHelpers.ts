@@ -22,6 +22,11 @@ function eventAudioKey(
   return '';
 }
 
+const _sortedKilledUnitIds: EntityId[] = [];
+const _sortedKilledBuildingIds: EntityId[] = [];
+const _sortedDeathContextIds: EntityId[] = [];
+const _sortedHitIds: EntityId[] = [];
+
 // Build an ImpactContext for hit/projectileExpire audio events
 export function buildImpactContext(
   config: ProjectileConfig,
@@ -255,7 +260,11 @@ export function collectKillsAndDeathContexts(
   deathContexts: Map<EntityId, DeathContext>,
   attackerSourceEntityId: EntityId | undefined = undefined,
 ): void {
-  for (const id of [...result.killedUnitIds].sort((a, b) => a - b)) {
+  _sortedKilledUnitIds.length = 0;
+  for (const id of result.killedUnitIds) _sortedKilledUnitIds.push(id);
+  _sortedKilledUnitIds.sort((a, b) => a - b);
+  for (let i = 0; i < _sortedKilledUnitIds.length; i++) {
+    const id = _sortedKilledUnitIds[i];
     if (!unitsToRemove.has(id)) {
       const target = world.getEntity(id);
       const ctx = result.deathContexts.get(id);
@@ -264,7 +273,11 @@ export function collectKillsAndDeathContexts(
       unitsToRemove.add(id);
     }
   }
-  for (const id of [...result.killedBuildingIds].sort((a, b) => a - b)) {
+  _sortedKilledBuildingIds.length = 0;
+  for (const id of result.killedBuildingIds) _sortedKilledBuildingIds.push(id);
+  _sortedKilledBuildingIds.sort((a, b) => a - b);
+  for (let i = 0; i < _sortedKilledBuildingIds.length; i++) {
+    const id = _sortedKilledBuildingIds[i];
     if (!buildingsToRemove.has(id)) {
       const building = world.getEntity(id);
       const killerPlayerId = result.killerPlayerIds.get(id);
@@ -272,7 +285,13 @@ export function collectKillsAndDeathContexts(
       buildingsToRemove.add(id);
     }
   }
-  for (const [id, ctx] of [...result.deathContexts.entries()].sort(([a], [b]) => a - b)) {
+  _sortedDeathContextIds.length = 0;
+  for (const id of result.deathContexts.keys()) _sortedDeathContextIds.push(id);
+  _sortedDeathContextIds.sort((a, b) => a - b);
+  for (let i = 0; i < _sortedDeathContextIds.length; i++) {
+    const id = _sortedDeathContextIds[i];
+    const ctx = result.deathContexts.get(id);
+    if (ctx === undefined) continue;
     deathContexts.set(id, ctx);
   }
   if (attackerSourceEntityId !== undefined) {
@@ -305,9 +324,11 @@ function emitAttackAlerts(
   const hits = result.hitEntityIds;
   if (hits.length === 0) return;
   _attackAlertSeenVictims.clear();
-  const sortedHits = [...hits].sort((a, b) => a - b);
-  for (let i = 0; i < sortedHits.length; i++) {
-    const victim = world.getEntity(sortedHits[i]);
+  _sortedHitIds.length = 0;
+  for (let i = 0; i < hits.length; i++) _sortedHitIds.push(hits[i]);
+  _sortedHitIds.sort((a, b) => a - b);
+  for (let i = 0; i < _sortedHitIds.length; i++) {
+    const victim = world.getEntity(_sortedHitIds[i]);
     const victimOwnership = victim !== undefined ? victim.ownership : null;
     const victimPlayerId = victimOwnership !== null
       ? victimOwnership.playerId

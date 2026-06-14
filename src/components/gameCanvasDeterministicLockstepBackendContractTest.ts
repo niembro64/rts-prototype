@@ -45,13 +45,7 @@ export async function runDeterministicLockstepBackendContractTest(): Promise<voi
   });
 
   try {
-    assertContract(backend.architecture === 'deterministic-lockstep', 'backend must be deterministic-lockstep');
     assertContract(backend.server !== null, 'lockstep backend must create a local server');
-    const initialDiagnostics = backend.getDiagnostics();
-    assertContract(
-      initialDiagnostics.snapshotTruth === 'command-frame-stream-local-presentation',
-      'lockstep diagnostics must report command-frame truth',
-    );
 
     const snapshots: NetworkServerSnapshot[] = [];
     const unsubscribe = backend.gameConnection.onSnapshot((snapshot) => {
@@ -220,7 +214,6 @@ function createBattleHandoff(terrain: RealBattleStartupTerrain): BattleHandoff {
     protocol: BATTLE_HANDOFF_PROTOCOL,
     gameId: 'contract-game',
     roomCode: 'CONTRACT',
-    architecture: initialization.architecture.backend,
     initialization,
     initializationHash: hashCanonicalMatchInitialization(initialization),
     hostPlayerId: 1 as PlayerId,
@@ -604,7 +597,6 @@ class FakeLockstepTransport {
     return {
       gameId: 'contract-game',
       protocolVersion: LOCKSTEP_PROTOCOL_VERSION,
-      architecture: 'deterministic-lockstep' as const,
     };
   }
 }

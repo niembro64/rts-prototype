@@ -15,7 +15,7 @@ import type { SnapshotRate } from '../types/server';
 
 const REPORT_INTERVAL_MS = 10_000;
 
-export type SnapshotEncodeInstrumentationSource = 'local' | 'remote';
+export type SnapshotEncodeInstrumentationSource = 'local';
 
 type EncodeBucket = {
   source: SnapshotEncodeInstrumentationSource;
@@ -223,13 +223,6 @@ export class SnapshotEncodeInstrumentation {
     }
   }
 
-  clearSource(source: SnapshotEncodeInstrumentationSource): void {
-    if (!this.enabled) return;
-    for (const [key, bucket] of this.buckets) {
-      if (bucket.source === source) this.buckets.delete(key);
-    }
-  }
-
   reset(): void {
     this.buckets.clear();
     this.lastReportAt = nowMs();
@@ -381,10 +374,27 @@ function formatMaterializationMix(bucket: EncodeBucket): string {
 }
 
 function formatRawTopLevelKeys(keys: Record<string, number>): string {
-  const entries = Object.entries(keys);
-  if (entries.length === 0) return '';
-  entries.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  return entries.slice(0, 4).map(([key, count]) => `${key}:${count}`).join(', ');
+  const top: Array<{ key: string; count: number }> = [];
+  for (const key in keys) {
+    const count = keys[key];
+    let insertAt = top.length;
+    while (
+      insertAt > 0 &&
+      (count > top[insertAt - 1].count ||
+        (count === top[insertAt - 1].count && key.localeCompare(top[insertAt - 1].key) < 0))
+    ) {
+      insertAt--;
+    }
+    if (insertAt >= 4) continue;
+    top.splice(insertAt, 0, { key, count });
+    if (top.length > 4) top.length = 4;
+  }
+  if (top.length === 0) return '';
+  let formatted = `${top[0].key}:${top[0].count}`;
+  for (let i = 1; i < top.length; i++) {
+    formatted += `, ${top[i].key}:${top[i].count}`;
+  }
+  return formatted;
 }
 
 export const SNAPSHOT_ENCODE_INSTRUMENTATION = new SnapshotEncodeInstrumentation();

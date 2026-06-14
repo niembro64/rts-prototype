@@ -141,9 +141,8 @@ export class SimulationDeathExplosionPlanner {
     out: Int32Array,
   ): number {
     let count = 0;
-    for (const id of [...ids].sort((a, b) => a - b)) {
-      out[count++] = id;
-    }
+    for (const id of ids) out[count++] = id;
+    out.subarray(0, count).sort();
     return count;
   }
 

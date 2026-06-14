@@ -45,9 +45,8 @@ export function runNetworkLockstepTransportContractTest(): void {
   const hello = sent[0]?.message;
   assertContract(
     hello?.type === 'lockstepHello' &&
-      hello.protocolVersion === LOCKSTEP_PROTOCOL_VERSION &&
-      hello.architecture === 'deterministic-lockstep',
-    'handshake must include protocol version and deterministic-lockstep architecture',
+      hello.protocolVersion === LOCKSTEP_PROTOCOL_VERSION,
+    'handshake must include the lockstep protocol version',
   );
   sent.length = 0;
 
@@ -154,19 +153,23 @@ export function runNetworkLockstepTransportContractTest(): void {
     'lockstep command frames must not be rejected by command/snapshot backpressure',
   );
   assertContract(rawSendCount === 1, 'lockstep command frame must use raw send under moderate pressure');
-  const rejectedCommand: NetworkMessage = {
-    type: 'command',
+  const rejectedCommunication: NetworkMessage = {
+    type: 'communication',
     gameId: 'contract-game',
-    data: createMoveCommand(12),
+    data: {
+      kind: 'chat',
+      clientEventId: 'pressure-test',
+      text: 'pressure test',
+    },
   };
   assertContract(
-    !budget.send(congestedConn, rejectedCommand, () => {
+    !budget.send(congestedConn, rejectedCommunication, () => {
       rawSendCount++;
       return true;
     }),
-    'legacy command backpressure guard should still reject at the same buffered amount',
+    'noncritical command-rate backpressure guard should still reject at the same buffered amount',
   );
-  assertContract(rawSendCount === 1, 'rejected legacy command must not reach raw send');
+  assertContract(rawSendCount === 1, 'rejected communication command must not reach raw send');
 
   const saturatedConn = createConnection(10, 2 * 1024 * 1024);
   assertContract(
@@ -183,7 +186,6 @@ function baseMessage() {
   return {
     gameId: 'contract-game',
     protocolVersion: LOCKSTEP_PROTOCOL_VERSION,
-    architecture: 'deterministic-lockstep' as const,
   };
 }
 

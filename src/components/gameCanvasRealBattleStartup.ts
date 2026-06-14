@@ -1,9 +1,5 @@
 import { getMapSize } from '../config';
-import {
-  ARCHITECTURE_CONFIG,
-  ARCHITECTURE_CONFIG_READ_MODE,
-  type ArchitectureBackend,
-} from '../architectureConfig';
+import { ARCHITECTURE_CONFIG } from '../architectureConfig';
 import {
   loadStoredConverterTax,
   loadStoredMapLandDimensions,
@@ -86,15 +82,7 @@ export type CreateRealBattleServerOptions = {
 };
 
 export type RealBattleBackendDiagnostics = {
-  architecture: ArchitectureBackend;
-  architectureConfigReadMode: typeof ARCHITECTURE_CONFIG_READ_MODE;
   networkRole: NetworkRole | null;
-  hasLocalServer: boolean;
-  renderConnection: 'local';
-  snapshotSource: 'local';
-  snapshotTruth: 'command-frame-stream-local-presentation';
-  snapshotWireMode: 'wire-loopback-presentation';
-  remoteSnapshotComparison: 'disabled';
   lockstepSupport?: LockstepSupportBoundaries;
   lockstepInputDelayTicks?: number;
   lockstepInitializationHash?: string;
@@ -117,7 +105,6 @@ export type RealBattleBackendDiagnostics = {
 };
 
 export type RealBattleBackendRuntime = {
-  readonly architecture: ArchitectureBackend;
   readonly server: GameServer | null;
   readonly gameConnection: GameConnection;
   start(): void;
@@ -220,12 +207,6 @@ function createRealBattleMatchContext({
   }
 
   if (battleHandoff !== undefined) {
-    if (battleHandoff.architecture !== ARCHITECTURE_CONFIG.backend) {
-      throw new Error(
-        `[${contextLabel}] battle handoff architecture mismatch: ` +
-          `handoff=${battleHandoff.architecture}, local=${ARCHITECTURE_CONFIG.backend}`,
-      );
-    }
     assertSamePlayerIds(
       playerIds,
       battleHandoff.playerIds,
@@ -527,6 +508,7 @@ async function createDeterministicLockstepBackendRuntime({
     converterTax: matchContext.settings.converterTax,
     onLoadingProgress,
   });
+  const lockstepCore = server.getLockstepSimulationCore();
   const pendingCommandsByFrame = new Map<number, LockstepCommandEnvelope[]>();
   const isOnlineLockstep = networkRole !== null && network !== undefined;
   const isFrameCoordinator = networkRole !== 'client';
@@ -569,7 +551,7 @@ async function createDeterministicLockstepBackendRuntime({
   };
 
   const scheduler = new LockstepFrameScheduler({
-    core: server.getLockstepSimulationCore(),
+    core: lockstepCore,
     expectedPlayerIds: playerIds,
     nowMs: () => performance.now(),
     onChecksum: ({ frame, stateHash }) => {
@@ -635,7 +617,7 @@ async function createDeterministicLockstepBackendRuntime({
     scheduler.markDesynced(reason);
     network?.getLockstepTransport().broadcastDesync(
       currentFrame,
-      server.getLockstepSimulationCore().getCanonicalStateHash(),
+      lockstepCore.getCanonicalStateHash(),
       fromPlayerId,
       null,
     );
@@ -653,8 +635,12 @@ async function createDeterministicLockstepBackendRuntime({
     scheduler.markPeerReady(playerId);
   };
 
-  const hasAllRequiredLockstepPeersReady = (): boolean =>
-    [...requiredReadyPlayerIds].every((playerId) => readyPlayerIds.has(playerId));
+  const hasAllRequiredLockstepPeersReady = (): boolean => {
+    for (const playerId of requiredReadyPlayerIds) {
+      if (!readyPlayerIds.has(playerId)) return false;
+    }
+    return true;
+  };
 
   const resetLockstepCommandPumpClock = (): void => {
     lastLockstepCommandPumpMs = null;
@@ -838,13 +824,13 @@ async function createDeterministicLockstepBackendRuntime({
     const category = classifyCommandForArchitecture(command);
     if (category === 'local-presentation') {
       if (command.type === 'select') {
-        const world = server.getLockstepSimulationCore().world;
+        const world = lockstepCore.world;
         if (!command.additive) world.clearSelection();
         world.selectEntities(command.entityIds);
         return true;
       }
       if (command.type === 'clearSelection') {
-        server.getLockstepSimulationCore().world.clearSelection();
+        lockstepCore.world.clearSelection();
         return true;
       }
       if (command.type === 'ping') return true;
@@ -853,17 +839,16 @@ async function createDeterministicLockstepBackendRuntime({
     }
     if (category === 'architecture-control') {
       if (command.type === 'setPaused') {
+        const frame = diagnostics.nextFrame;
         if (command.paused) {
-          scheduler.pause(scheduler.getDiagnostics().nextFrame, 'local pause command');
+          scheduler.pause(frame, 'local pause command');
           network?.getLockstepTransport().broadcastPause(
-            scheduler.getDiagnostics().nextFrame,
+            frame,
             'local pause command',
           );
         } else {
-          scheduler.resume(scheduler.getDiagnostics().nextFrame);
-          network?.getLockstepTransport().broadcastResume(
-            scheduler.getDiagnostics().nextFrame,
-          );
+          scheduler.resume(frame);
+          network?.getLockstepTransport().broadcastResume(frame);
         }
         return true;
       }
@@ -877,7 +862,7 @@ async function createDeterministicLockstepBackendRuntime({
     try {
       const envelope = createLockstepCommandEnvelope({
         gameId,
-        currentKnownFrame: scheduler.getDiagnostics().nextFrame,
+        currentKnownFrame: diagnostics.nextFrame,
         playerId: fromPlayerId,
         playerSequence: nextLocalPlayerSequence++,
         command,
@@ -959,10 +944,11 @@ async function createDeterministicLockstepBackendRuntime({
         ? advanceResult.advancedFrames * LOCKSTEP_FIXED_DT_MS
         : Math.max(0.001, nowMs - lastLockstepTelemetryPumpMs);
       lastLockstepTelemetryPumpMs = nowMs;
+      const postAdvanceDiagnostics = scheduler.getDiagnostics();
       server.recordExternalSimulationTelemetry({
         elapsedMs,
         stepsRun: advanceResult.advancedFrames,
-        workMs: scheduler.getDiagnostics().performance.simStepMsAvg,
+        workMs: postAdvanceDiagnostics.performance.simStepMsAvg,
         tickRateHz: LOCKSTEP_FIXED_STEP_HZ,
       });
 
@@ -977,7 +963,6 @@ async function createDeterministicLockstepBackendRuntime({
   };
 
   return {
-    architecture: 'deterministic-lockstep',
     server,
     gameConnection: localConnection,
     start() {
@@ -990,13 +975,14 @@ async function createDeterministicLockstepBackendRuntime({
       scheduler.markPeerReady(localPlayerId);
       if (network !== undefined) {
         network.onLockstepMessage = handleLockstepMessage;
+        const startFrame = scheduler.getDiagnostics().nextFrame;
         network.getLockstepTransport().sendHello(
           initializationHash,
-          scheduler.getDiagnostics().nextFrame,
+          startFrame,
         );
         network.getLockstepTransport().sendReady(
           initializationHash,
-          scheduler.getDiagnostics().nextFrame,
+          startFrame,
         );
       }
       server.startLockstepPresentation();
@@ -1015,15 +1001,7 @@ async function createDeterministicLockstepBackendRuntime({
     },
     getDiagnostics() {
       return {
-        architecture: 'deterministic-lockstep',
-        architectureConfigReadMode: ARCHITECTURE_CONFIG_READ_MODE,
         networkRole,
-        hasLocalServer: true,
-        renderConnection: 'local',
-        snapshotSource: 'local',
-        snapshotTruth: 'command-frame-stream-local-presentation',
-        snapshotWireMode: 'wire-loopback-presentation',
-        remoteSnapshotComparison: 'disabled',
         lockstepSupport: LOCKSTEP_SUPPORT_BOUNDARIES,
         lockstepInputDelayTicks: ARCHITECTURE_CONFIG.lockstep.inputDelayTicks,
         lockstepInitializationHash: initializationHash,
@@ -1053,10 +1031,6 @@ async function createDeterministicLockstepBackendRuntime({
       };
     },
   };
-}
-
-export function getConfiguredArchitectureBackend(): ArchitectureBackend {
-  return ARCHITECTURE_CONFIG.backend;
 }
 
 export async function createRealBattleBackend(

@@ -248,7 +248,10 @@ export class SimulationCombatController {
     if (deadUnitIds.size === 0) return;
     const buf = this.deadUnitIdsBuf;
     buf.length = 0;
-    for (const id of [...deadUnitIds].sort((a, b) => a - b)) {
+    for (const id of deadUnitIds) buf.push(id);
+    buf.sort((a, b) => a - b);
+    for (let i = 0; i < buf.length; i++) {
+      const id = buf[i];
       const entity = this.world.getEntity(id);
       if (entity) {
         // Emit laserStop for the dying entity's own beam weapons
@@ -265,7 +268,6 @@ export class SimulationCombatController {
         }
       }
       spatialGrid.removeUnit(id);
-      buf.push(id);
     }
     if (onUnitDeath !== null) onUnitDeath(buf, deathContexts);
   }
@@ -277,9 +279,11 @@ export class SimulationCombatController {
     if (deadBuildingIds.size === 0) return;
     const buf = this.deadBuildingIdsBuf;
     buf.length = 0;
-    for (const id of [...deadBuildingIds].sort((a, b) => a - b)) {
+    for (const id of deadBuildingIds) buf.push(id);
+    buf.sort((a, b) => a - b);
+    for (let i = 0; i < buf.length; i++) {
+      const id = buf[i];
       spatialGrid.removeBuilding(id);
-      buf.push(id);
     }
     if (onBuildingDeath !== null) onBuildingDeath(buf);
   }

@@ -1,5 +1,4 @@
 {
-  "backend": "deterministic-lockstep",
   "lockstep": {
     "fixedStepHz": 60,
     "inputDelayTicks": 6,

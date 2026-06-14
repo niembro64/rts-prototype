@@ -242,8 +242,8 @@ export class ServerSnapshotPublisher {
       const shouldEmitEntityDetails = !listenerIsDelta || emitEntityDetailsOnDelta;
       const shouldSendStaticTerrain = !listenerIsDelta && listenerNeedsStaticMap;
       // FOW-OPT-20: team-uniform payload caches are deferred until
-      // after the direct-wire attempt so successful remote preencodes
-      // can write typed rows without materializing DTO arrays.
+      // after the direct-wire attempt so typed snapshot rows can be
+      // written without materializing DTO arrays.
       const teamKey = visibility.teamMaskKey;
       let audioOverride: SerializerAudioOverride | undefined;
       let sprayOverride: SerializerSprayOverride | undefined;

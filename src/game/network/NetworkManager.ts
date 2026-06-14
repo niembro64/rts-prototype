@@ -6,7 +6,6 @@ import type {
   Util,
 } from 'peerjs';
 import type { PlayerId } from '../sim/types';
-import type { Command } from '../sim/commands';
 import {
   getDefaultPlayerName,
   saveUsername,
@@ -16,8 +15,6 @@ import {
 // Re-export types from NetworkTypes for backward compatibility
 export type {
   NetworkMessage,
-  NetworkPlayerActionMessage,
-  NetworkServerSnapshotMessage,
   NetworkLockstepMessage,
   NetworkCommunicationDraft,
   NetworkCommunicationEvent,
@@ -56,18 +53,14 @@ import {
   type LobbySettings,
 } from '@/types/network';
 import type {
-  NetworkServerSnapshot,
   LobbyPlayer,
   NetworkMessage,
   NetworkRole,
 } from './NetworkTypes';
-import type { SnapshotWirePayload } from './SnapshotWirePayload';
 import {
   buildBattleHandoff,
   normalizeBattleHandoffMessage,
 } from './NetworkBattleHandoff';
-import { NetworkCommandTransport } from './NetworkCommandTransport';
-import { NetworkDataChannelMonitor } from './NetworkDataChannelMonitor';
 import { NetworkHeartbeatTracker } from './NetworkHeartbeatTracker';
 import { NetworkLockstepTransport } from './NetworkLockstepTransport';
 import { createLobbyPlayer, NetworkLobbyRoster } from './NetworkLobbyRoster';
@@ -80,7 +73,6 @@ import {
   NetworkSendBudget,
   type NetworkSendBudgetTelemetry,
 } from './NetworkSendBudget';
-import { NetworkSnapshotTransport } from './NetworkSnapshotTransport';
 
 // Player-name policy lives in @/playerNamesConfig — single source of
 // truth for both seeding (random funny name keyed by playerId) and the
@@ -158,21 +150,7 @@ const COMMUNICATION_LABEL_MAX_LENGTH = 48;
 const COMMUNICATION_POINTS_MAX = 12;
 const COMMUNICATION_ERASE_RADIUS_MIN = 24;
 const COMMUNICATION_ERASE_RADIUS_MAX = 500;
-// Inbound snapshot messages wait here while earlier ones decode. WebRTC
-// delivers in bursts (several snapshots in one task after a stall), so
-// the queue must absorb a burst without dropping deltas — a dropped
-// delta breaks the diff chain and forces keyframe recovery. ~3s of
-// snapshots at 8 Hz; past that the decoder genuinely can't keep up and
-// a resync is cheaper than replaying the backlog.
-const STATE_DECODE_QUEUE_MAX = 24;
 const LOCKSTEP_PENDING_MESSAGE_QUEUE_MAX = 512;
-// Snapshot resync requests are an escape valve, not a steady state.
-// One outstanding request per second is plenty: the host answers with
-// a recovery keyframe on its next snapshot tick (~125ms), and the
-// periodic keyframe cadence is the fallback if the request is lost.
-const SNAPSHOT_RESYNC_REQUEST_MIN_INTERVAL_MS = 1000;
-type NetworkStateMessage = Extract<NetworkMessage, { type: 'state' }>;
-type QueuedStateMessage = { message: NetworkStateMessage; seq: number };
 type QueuedLockstepMessage = {
   readonly message: NetworkLockstepMessage;
   readonly fromPlayerId: PlayerId;
@@ -204,22 +182,6 @@ export class NetworkManager {
   private nextPlayerId: PlayerId = 2;
   private roster = new NetworkLobbyRoster();
   private gameStarted: boolean = false;
-  private snapshotTransport = new NetworkSnapshotTransport({
-    onSnapshotDropped: (playerId, droppedStatic) =>
-      this.emitSnapshotRecoveryNeeded(playerId, droppedStatic),
-  });
-  private commandTransport = new NetworkCommandTransport({
-    getGameId: () => this.getUniversalGameId(),
-    getHostConnection: () => this.connections.get(1),
-    getLocalPlayerId: () => this.localPlayerId,
-    getRole: () => this.role,
-    isMessageForCurrentGame: (message) => this.isMessageForCurrentGame(message.gameId),
-    onClientReady: (playerId) => this.emitClientReady(playerId),
-    onCommandReceived: (command, fromPlayerId) => this.emitCommandReceived(command, fromPlayerId),
-    onSnapshotResyncRequested: (playerId, needsStatic) =>
-      this.emitSnapshotRecoveryNeeded(playerId, needsStatic),
-    send: (conn, message) => this.safeSend(conn, message),
-  });
   private lockstepTransport = new NetworkLockstepTransport({
     getGameId: () => this.getUniversalGameId(),
     getHostConnection: () => this.connections.get(1),
@@ -234,7 +196,8 @@ export class NetworkManager {
     | undefined = undefined;
   private readonly pendingLockstepMessages: QueuedLockstepMessage[] = [];
   private droppedPendingLockstepMessages = 0;
-  private dataChannelMonitor = new NetworkDataChannelMonitor();
+  private readonly rawSendCallback = (conn: DataConnection, message: NetworkMessage): boolean =>
+    this.rawSend(conn, message);
   private sendBudget = new NetworkSendBudget({
     onPendingQueued: () => this.scheduleSendBudgetFlush(),
   });
@@ -253,16 +216,6 @@ export class NetworkManager {
   private signalingReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private sendBudgetFlushTimer: ReturnType<typeof setTimeout> | null = null;
   private signalingReconnectDelayMs = SIGNALING_RECONNECT_INITIAL_DELAY_MS;
-  private stateDecodeQueue: QueuedStateMessage[] = [];
-  private stateDecodeMessageSeq = 0;
-  /** Seq of the newest known gap in the delta chain. While non-zero,
-   *  deltas with a higher seq are useless (they diff against state the
-   *  gap swallowed) and are discarded; a keyframe with a higher seq —
-   *  i.e. built after the gap — recovers the chain and clears this. */
-  private stateDecodeNeedsKeyframeAfterSeq = 0;
-  private stateDecodeDraining = false;
-  private stateDecodeGeneration = 0;
-  private lastSnapshotResyncRequestMs = Number.NEGATIVE_INFINITY;
   private communicationSequence = 0;
   private sessionGeneration = 0;
   /** 10s connection-setup deadline created by hostGame/joinGame. Held
@@ -274,8 +227,6 @@ export class NetworkManager {
   // Callbacks
   public onPlayerJoined: ((player: LobbyPlayer) => void) | undefined = undefined;
   public onPlayerLeft: ((playerId: PlayerId) => void) | undefined = undefined;
-  public onStateReceived: ((state: NetworkServerSnapshot) => void) | undefined = undefined;
-  public onCommandReceived: ((command: Command, fromPlayerId: PlayerId) => void) | undefined = undefined;
   public onGameStart: ((handoff: BattleHandoff) => void) | undefined = undefined;
   public onPlayerAssignment: ((playerId: PlayerId) => void) | undefined = undefined;
   public onError: ((error: string) => void) | undefined = undefined;
@@ -298,14 +249,6 @@ export class NetworkManager {
    *  any player via the host's re-broadcast. The receiver
    *  updates its own LobbyPlayer record from `getPlayer(id)`. */
   public onPlayerInfoUpdate: ((player: LobbyPlayer) => void) | undefined = undefined;
-  public onClientReady: ((playerId: PlayerId) => void) | undefined = undefined;
-  /** Host-side: player `playerId` needs a recovery keyframe — either a
-   *  snapshot send for them was dropped after its delta baseline
-   *  advanced, or they asked for a resync. `needsStatic` means the
-   *  terrain/buildability bootstrap must ride along. */
-  public onSnapshotRecoveryNeeded:
-    | ((playerId: PlayerId, needsStatic: boolean) => void)
-    | undefined = undefined;
   public onCommunication: ((event: NetworkCommunicationEvent) => void) | undefined = undefined;
   public get onLockstepMessage():
     | ((message: NetworkLockstepMessage, fromPlayerId: PlayerId) => void)
@@ -330,18 +273,6 @@ export class NetworkManager {
   private emitPlayerLeft(playerId: PlayerId): void {
     const callback = this.onPlayerLeft;
     if (callback !== undefined) callback(playerId);
-  }
-
-  private emitStateReceived(state: NetworkServerSnapshot): boolean {
-    const callback = this.onStateReceived;
-    if (callback === undefined) return false;
-    callback(state);
-    return true;
-  }
-
-  private emitCommandReceived(command: Command, fromPlayerId: PlayerId): void {
-    const callback = this.onCommandReceived;
-    if (callback !== undefined) callback(command, fromPlayerId);
   }
 
   private emitLockstepMessage(message: NetworkLockstepMessage, fromPlayerId: PlayerId): void {
@@ -407,16 +338,6 @@ export class NetworkManager {
     if (callback !== undefined) callback(player);
   }
 
-  private emitClientReady(playerId: PlayerId): void {
-    const callback = this.onClientReady;
-    if (callback !== undefined) callback(playerId);
-  }
-
-  private emitSnapshotRecoveryNeeded(playerId: PlayerId, needsStatic: boolean): void {
-    const callback = this.onSnapshotRecoveryNeeded;
-    if (callback !== undefined) callback(playerId, needsStatic);
-  }
-
   private emitCommunication(event: NetworkCommunicationEvent): void {
     const callback = this.onCommunication;
     if (callback !== undefined) callback(event);
@@ -467,7 +388,6 @@ export class NetworkManager {
     this.sessionGeneration++;
     this.heartbeatTracker.stop();
     this.sendBudget.clear();
-    this.dataChannelMonitor.clear();
     this.lockstepTransport.clear();
     this.pendingLockstepMessages.length = 0;
     this.droppedPendingLockstepMessages = 0;
@@ -479,13 +399,6 @@ export class NetworkManager {
     if (existingPeer !== null) existingPeer.destroy();
     this.peer = null;
     this.gameStarted = false;
-    this.snapshotTransport.reset();
-    this.stateDecodeGeneration++;
-    this.stateDecodeQueue.length = 0;
-    this.stateDecodeMessageSeq = 0;
-    this.stateDecodeNeedsKeyframeAfterSeq = 0;
-    this.stateDecodeDraining = false;
-    this.lastSnapshotResyncRequestMs = Number.NEGATIVE_INFINITY;
     return this.sessionGeneration;
   }
 
@@ -867,8 +780,6 @@ export class NetworkManager {
       this.sendBudget.clearConnection(conn);
       this.roster.delete(playerId);
       this.heartbeatTracker.untrack(playerId);
-      this.snapshotTransport.clearPlayer(playerId);
-      this.dataChannelMonitor.detach(playerId);
       this.emitPlayerLeft(playerId);
 
       if (this.role === 'host') {
@@ -884,8 +795,6 @@ export class NetworkManager {
       if (!this.isCurrentSession(generation) || this.connections.get(playerId) !== conn) return;
       console.error(`[NET] Connection error with player ${playerId}:`, err);
     });
-
-    this.dataChannelMonitor.attach(conn, playerId);
   }
 
   private isMessageForCurrentGame(gameId: string | undefined): boolean {
@@ -922,12 +831,14 @@ export class NetworkManager {
 
       case 'mapDrawing': {
         const drawingKind = data.drawingKind === 'label' ? 'label' : 'line';
-        const points = Array.isArray(data.points)
-          ? data.points
-            .slice(0, COMMUNICATION_POINTS_MAX)
-            .map((point) => sanitizeCommunicationPoint(point))
-            .filter((point): point is NetworkCommunicationPoint => point !== null)
-          : [];
+        const points: NetworkCommunicationPoint[] = [];
+        if (Array.isArray(data.points)) {
+          const pointCount = Math.min(data.points.length, COMMUNICATION_POINTS_MAX);
+          for (let i = 0; i < pointCount; i++) {
+            const point = sanitizeCommunicationPoint(data.points[i]);
+            if (point !== null) points.push(point);
+          }
+        }
         const minPoints = drawingKind === 'label' ? 1 : 2;
         if (points.length < minPoints) return null;
         const label = drawingKind === 'label'
@@ -997,8 +908,8 @@ export class NetworkManager {
     // Any inbound message is also a sign of life — refresh the
     // heartbeat-received timestamp for this peer regardless of
     // type. That prevents the timeout sweep from kicking peers
-    // who are sending plenty of state but happen to skip a
-    // heartbeat tick (snapshots, commands, etc. all count).
+    // who are sending plenty of lockstep or communication traffic but
+    // happen to skip a heartbeat tick.
     this.heartbeatTracker.markReceived(fromPlayerId);
     if (this.lockstepTransport.handleMessage(message, fromPlayerId)) return;
     switch (message.type) {
@@ -1016,23 +927,6 @@ export class NetworkManager {
           }
         }
         return;
-      case 'state':
-        // Client receives state from host. Host ships snapshots as a
-        // MessagePack Uint8Array (optionally FULLSNAP-compressed)
-        // so PeerJS carries one flat binary payload instead of a deep
-        // object tree.
-        if (this.role === 'client') {
-          if (!this.isMessageForCurrentGame(message.gameId)) return;
-          this.queueStateMessage(message);
-        }
-        break;
-
-      case 'command':
-      case 'clientReady':
-      case 'snapshotResync':
-        this.commandTransport.handleMessage(message, fromPlayerId);
-        break;
-
       case 'communication':
         if (this.role !== 'host') return;
         if (!this.isMessageForCurrentGame(message.gameId)) return;
@@ -1263,11 +1157,7 @@ export class NetworkManager {
   }
 
   private safeSend(conn: DataConnection, message: NetworkMessage): boolean {
-    return this.sendBudget.send(
-      conn,
-      message,
-      (target, payload) => this.rawSend(target, payload),
-    );
+    return this.sendBudget.send(conn, message, this.rawSendCallback);
   }
 
   private rawSend(conn: DataConnection, message: NetworkMessage): boolean {
@@ -1287,7 +1177,7 @@ export class NetworkManager {
       this.sendBudgetFlushTimer = null;
       const hasPending = this.sendBudget.flushPending(
         this.connections.values(),
-        (conn, message) => this.rawSend(conn, message),
+        this.rawSendCallback,
       );
       if (hasPending) this.scheduleSendBudgetFlush();
     }, 100);
@@ -1299,57 +1189,6 @@ export class NetworkManager {
 
   getLockstepTransport(): NetworkLockstepTransport {
     return this.lockstepTransport;
-  }
-
-  // Send game state to a specific client (host only).
-  // Pre-serializes to a MessagePack Uint8Array so PeerJS's BinaryPack
-  // only handles a flat byte buffer (trivial) instead of a deep object
-  // tree (expensive to pack/unpack). MessagePack typically halves wire
-  // size vs JSON because numbers go on as 1-9 bytes instead of 6-12
-  // ASCII chars and field names use a length-prefixed compact form.
-  sendStateTo(
-    playerId: PlayerId,
-    state: NetworkServerSnapshot,
-    wirePayload: SnapshotWirePayload | undefined = undefined,
-  ): boolean {
-    if (this.role !== 'host') return false;
-    const conn = this.connections.get(playerId);
-    if (!conn) return false;
-    const generation = this.sessionGeneration;
-    const gameId = this.getUniversalGameId();
-    const message = this.snapshotTransport.buildStateMessage(
-      playerId,
-      conn,
-      gameId,
-      state,
-      wirePayload,
-    );
-    if (message === null) return false;
-    if (message instanceof Promise) {
-      void message
-        .then((resolved) => {
-          if (
-            resolved !== null &&
-            this.isCurrentSession(generation) &&
-            this.role === 'host' &&
-            this.getUniversalGameId() === gameId &&
-            this.connections.get(playerId) === conn
-          ) {
-            this.safeSend(conn, resolved);
-          }
-        })
-        .catch((err: unknown) => {
-          console.warn('[NET] Failed to build compressed snapshot:', err);
-        });
-      return true;
-    }
-    return this.safeSend(conn, message);
-  }
-
-  // Send the local player's command through the single network command doorway.
-  // Hosts loop back into the host receive callback; clients send to host.
-  sendCommand(command: Command): boolean {
-    return this.commandTransport.sendCommand(command);
   }
 
   sendCommunication(data: NetworkCommunicationDraft): void {
@@ -1365,33 +1204,6 @@ export class NetworkManager {
       gameId: this.getUniversalGameId(),
       data,
     });
-  }
-
-  sendClientReady(): void {
-    this.commandTransport.sendClientReady();
-  }
-
-  consumePendingState(): NetworkServerSnapshot | null {
-    const state = this.snapshotTransport.consumePendingState();
-    // Deltas discarded while snapshots were buffered for the
-    // not-yet-attached scene leave a gap behind the consumed state;
-    // one resync re-baselines the chain now that a consumer exists.
-    if (this.snapshotTransport.consumePendingDeltaDropped()) {
-      this.requestSnapshotResync();
-    }
-    return state;
-  }
-
-  /** Client-side: ask the host for a recovery keyframe, rate-limited.
-   *  Automatically asks for the static terrain bootstrap too if no
-   *  decoded snapshot has carried it yet this session. */
-  requestSnapshotResync(): void {
-    const now = performance.now();
-    if (now - this.lastSnapshotResyncRequestMs < SNAPSHOT_RESYNC_REQUEST_MIN_INTERVAL_MS) return;
-    this.lastSnapshotResyncRequestMs = now;
-    this.commandTransport.sendSnapshotResyncRequest(
-      !this.snapshotTransport.hasReceivedStaticBootstrap(),
-    );
   }
 
   // Start the game (host only)
@@ -1459,25 +1271,6 @@ export class NetworkManager {
     return this.roster.toArray();
   }
 
-  getConnectedPlayerIds(): PlayerId[] {
-    return Array.from(this.connections.entries())
-      .filter(([, conn]) => conn.open)
-      .map(([playerId]) => playerId)
-      .sort((a, b) => a - b);
-  }
-
-  getPlayerCount(): number {
-    return this.roster.size;
-  }
-
-  isHost(): boolean {
-    return this.role === 'host';
-  }
-
-  isGameStarted(): boolean {
-    return this.gameStarted;
-  }
-
   // Disconnect and cleanup
   disconnect(): void {
     this.beginNetworkSetup();
@@ -1488,116 +1281,17 @@ export class NetworkManager {
     // Clear all callbacks to release closure references
     this.onPlayerJoined = undefined;
     this.onPlayerLeft = undefined;
-    this.onStateReceived = undefined;
-    this.onCommandReceived = undefined;
     this.onGameStart = undefined;
     this.onPlayerAssignment = undefined;
     this.onError = undefined;
     this.onConnected = undefined;
-    this.onClientReady = undefined;
     this.onLobbySettings = undefined;
     this.getLobbySettings = undefined;
     this.onPlayerInfoUpdate = undefined;
-    this.onSnapshotRecoveryNeeded = undefined;
     this.onCommunication = undefined;
     this.onLockstepMessage = undefined;
   }
 
-  private queueStateMessage(message: NetworkStateMessage): void {
-    const generation = this.stateDecodeGeneration;
-    const seq = ++this.stateDecodeMessageSeq;
-    if (this.stateDecodeNeedsKeyframeAfterSeq > 0 && message.isDelta === true) {
-      // Gated: a gap in the delta chain is unrecovered, so every later
-      // delta diffs against state this client never saw. Discard it
-      // before paying the decode and keep nudging the host (rate-
-      // limited) until a keyframe built after the gap arrives. The gate
-      // advances to this seq so an already-queued older keyframe can't
-      // clear the gate while leaving this discard unrecovered.
-      this.stateDecodeNeedsKeyframeAfterSeq = Math.max(
-        this.stateDecodeNeedsKeyframeAfterSeq,
-        seq,
-      );
-      this.requestSnapshotResync();
-      return;
-    }
-
-    if (this.stateDecodeQueue.length >= STATE_DECODE_QUEUE_MAX) {
-      if (message.isDelta === true) {
-        // The decoder genuinely can't keep up. Dropping this delta
-        // opens a gap at `seq`; gate the chain there and ask for a
-        // recovery keyframe. Everything already queued precedes the
-        // gap and stays valid.
-        this.stateDecodeNeedsKeyframeAfterSeq = Math.max(
-          this.stateDecodeNeedsKeyframeAfterSeq,
-          seq,
-        );
-        this.requestSnapshotResync();
-        return;
-      }
-      // A keyframe is a full restatement built after everything queued
-      // ahead of it — the backlog is superseded, skip straight to it.
-      this.stateDecodeQueue.length = 0;
-    }
-    this.stateDecodeQueue.push({ message, seq });
-    if (!this.stateDecodeDraining) {
-      this.stateDecodeDraining = true;
-      void this.drainStateDecodeQueue(generation);
-    }
-  }
-
-  private async drainStateDecodeQueue(generation: number): Promise<void> {
-    try {
-      while (generation === this.stateDecodeGeneration) {
-        const entry = this.stateDecodeQueue.shift();
-        if (entry === undefined) return;
-        const { message, seq } = entry;
-
-        try {
-          const hostConn = this.connections.get(1);
-          const hostDataChannel = hostConn !== undefined ? hostConn.dataChannel : undefined;
-          const state = await this.snapshotTransport.decodeReceivedState(
-            message,
-            hostDataChannel,
-          );
-          if (generation !== this.stateDecodeGeneration) return;
-          const gateSeq = this.stateDecodeNeedsKeyframeAfterSeq;
-          if (gateSeq > 0 && state.isDelta && seq > gateSeq) {
-            // Queued behind a decode failure: this delta postdates the
-            // gap, so its content is unusable. Advance the gate past it
-            // so only a keyframe built after it counts as recovery.
-            this.stateDecodeNeedsKeyframeAfterSeq = seq;
-            this.requestSnapshotResync();
-            continue;
-          }
-          if (!state.isDelta && seq > gateSeq) {
-            // Arrival order matches build order, so seq > gateSeq means
-            // this keyframe was built after the gap — full recovery.
-            this.stateDecodeNeedsKeyframeAfterSeq = 0;
-          }
-          if (!this.emitStateReceived(state)) {
-            this.snapshotTransport.storePendingState(state);
-          }
-        } catch (err: unknown) {
-          if (generation === this.stateDecodeGeneration) {
-            console.warn('[NET] Failed to decode snapshot:', err);
-            this.stateDecodeNeedsKeyframeAfterSeq = Math.max(
-              this.stateDecodeNeedsKeyframeAfterSeq,
-              seq,
-            );
-            this.requestSnapshotResync();
-          }
-        }
-      }
-    } finally {
-      if (generation === this.stateDecodeGeneration) {
-        this.stateDecodeDraining = false;
-        if (this.stateDecodeQueue.length > 0) {
-          this.stateDecodeDraining = true;
-          void this.drainStateDecodeQueue(generation);
-        }
-      }
-    }
-  }
 }
 
 // Singleton instance

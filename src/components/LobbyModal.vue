@@ -399,7 +399,7 @@ const terrainSectionVars = computed(() =>
         <p class="subtitle">Online Multiplayer RTS</p>
 
         <div class="main-actions">
-          <button class="lobby-btn host-btn" @click="handleHost">Host</button>
+          <button class="lobby-btn host-btn" @click="handleHost">Host Game</button>
 
           <div class="join-row">
             <input

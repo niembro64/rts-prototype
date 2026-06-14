@@ -8,10 +8,6 @@ const CONTROL_REJECT_BYTES = 1024 * 1024;
 const COMMANDS_PER_SECOND = 120;
 
 export type NetworkSendMessageClass =
-  | 'snapshot'
-  | 'command'
-  | 'clientReady'
-  | 'snapshotResync'
   | 'heartbeat'
   | 'playerInfo'
   | 'playerInfoUpdate'
@@ -35,7 +31,7 @@ export type NetworkSendBudgetClassTelemetry = {
 
 export type NetworkSendBudgetTelemetry = NetworkSendBudgetClassTelemetry[];
 
-type NetworkSendPolicy = 'snapshot' | 'command' | 'critical' | 'coalesce';
+type NetworkSendPolicy = 'command' | 'critical' | 'coalesce';
 
 type NetworkSendClassification = {
   messageClass: NetworkSendMessageClass;
@@ -97,14 +93,6 @@ function dataChannelClosed(conn: DataConnection): boolean {
 
 function classifyMessage(message: NetworkMessage): NetworkSendClassification {
   switch (message.type) {
-    case 'state':
-      return { messageClass: 'snapshot', policy: 'snapshot', coalesceKey: null };
-    case 'command':
-      return { messageClass: 'command', policy: 'command', coalesceKey: null };
-    case 'clientReady':
-      return { messageClass: 'clientReady', policy: 'critical', coalesceKey: null };
-    case 'snapshotResync':
-      return { messageClass: 'snapshotResync', policy: 'coalesce', coalesceKey: 'snapshotResync' };
     case 'heartbeat':
       return { messageClass: 'heartbeat', policy: 'coalesce', coalesceKey: 'heartbeat' };
     case 'playerInfo':
@@ -140,6 +128,7 @@ function classifyMessage(message: NetworkMessage): NetworkSendClassification {
 export class NetworkSendBudget {
   private readonly stats = new Map<NetworkSendMessageClass, NetworkSendStats>();
   private readonly pendingByConnection = new Map<DataConnection, Map<string, PendingSend>>();
+  private readonly liveConnectionsScratch = new Set<DataConnection>();
   private commandWindows = new WeakMap<DataConnection, CommandRateWindow>();
   private readonly rejectionLogCounts = new Map<string, number>();
 
@@ -153,10 +142,6 @@ export class NetworkSendBudget {
       stats.rejected++;
       this.logRejected(classification.messageClass, message.type, 'connection closed');
       return false;
-    }
-
-    if (classification.policy === 'snapshot') {
-      return this.sendNow(conn, message, rawSend, stats);
     }
 
     if (classification.messageClass === 'lockstep') {
@@ -198,7 +183,8 @@ export class NetworkSendBudget {
     connections: Iterable<DataConnection>,
     rawSend: RawSend,
   ): boolean {
-    const liveConnections = new Set<DataConnection>();
+    const liveConnections = this.liveConnectionsScratch;
+    liveConnections.clear();
     for (const conn of connections) liveConnections.add(conn);
 
     for (const conn of this.pendingByConnection.keys()) {
@@ -217,6 +203,7 @@ export class NetworkSendBudget {
 
   clear(): void {
     this.pendingByConnection.clear();
+    this.liveConnectionsScratch.clear();
     this.commandWindows = new WeakMap<DataConnection, CommandRateWindow>();
     this.rejectionLogCounts.clear();
     this.stats.clear();

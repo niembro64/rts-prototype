@@ -22,8 +22,9 @@ Principles
 Ordered Implementation Checklist
 --------------------------------
 [x] 1. Freeze architecture configuration to deterministic-lockstep.
-    - Remove authoritative-server from the public ArchitectureBackend union.
-    - Make architecture parsing reject every backend except deterministic-lockstep.
+    - Remove authoritative-server from the public architecture type surface.
+    - Remove the runtime backend selector from architecture.json and keep only
+      lockstep tuning in the architecture config parser.
     - Keep lockstep config validation unchanged.
     - Remove unreachable assertNeverArchitecture usage from startup code.
 

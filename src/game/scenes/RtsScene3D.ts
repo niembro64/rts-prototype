@@ -658,7 +658,7 @@ export class RtsScene3D {
     });
 
     if (!this.clientRenderEnabled) {
-      // Diagnostic PLAYER CLIENT OFF path. Keep network snapshot intake,
+      // Diagnostic PLAYER CLIENT OFF path. Keep snapshot intake,
       // server-meta/economy/combat-stat UI, local commands, and timing
       // instrumentation alive, but skip prediction, camera, minimap, 3D
       // entity/effect/HUD/selection-cache updates, and the WebGL draw call

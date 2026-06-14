@@ -8,6 +8,7 @@ import type {
   LockstepAckMessage,
   LockstepCommandFrameMessage,
   LockstepCommandMessage,
+  LockstepPeerSequenceAck,
   NetworkLockstepMessage,
   NetworkMessage,
 } from './NetworkTypes';
@@ -89,13 +90,19 @@ export class NetworkLockstepTransport {
     frameSequence: number,
     commands: readonly LockstepCommandEnvelope[],
   ): boolean {
+    const orderedCommands =
+      commands.length <= 1
+        ? commands.length === 0
+          ? []
+          : [commands[0]]
+        : [...commands].sort(compareLockstepCommandEnvelopes);
     const message: LockstepCommandFrameMessage = {
       ...this.base(),
       type: 'lockstepCommandFrame',
       coordinatorPlayerId: this.options.getLocalPlayerId(),
       frame,
       frameSequence,
-      commands: [...commands].sort(compareLockstepCommandEnvelopes),
+      commands: orderedCommands,
     };
     this.outboundCommandFrames.set(frame, message);
     return this.broadcast(message);
@@ -186,12 +193,15 @@ export class NetworkLockstepTransport {
     if (!Number.isInteger(lastAckedFrame) || !Number.isInteger(maxFrames) || maxFrames <= 0) {
       return 0;
     }
-    const frames = [...this.outboundCommandFrames.keys()]
-      .filter((frame) => frame > lastAckedFrame)
-      .sort((a, b) => a - b)
-      .slice(0, maxFrames);
+    const frames: number[] = [];
+    for (const frame of this.outboundCommandFrames.keys()) {
+      if (frame > lastAckedFrame) frames.push(frame);
+    }
+    frames.sort((a, b) => a - b);
     let sent = 0;
-    for (const frame of frames) {
+    const count = Math.min(maxFrames, frames.length);
+    for (let i = 0; i < count; i++) {
+      const frame = frames[i];
       if (this.resendCommandFrame(frame, targetPlayerId)) sent++;
     }
     return sent;
@@ -200,12 +210,7 @@ export class NetworkLockstepTransport {
   handleMessage(message: NetworkMessage, fromPlayerId: PlayerId): boolean {
     if (!isNetworkLockstepMessage(message)) return false;
     if (!this.options.isMessageForCurrentGame(message)) return true;
-    if (
-      message.protocolVersion !== LOCKSTEP_PROTOCOL_VERSION ||
-      message.architecture !== 'deterministic-lockstep'
-    ) {
-      return true;
-    }
+    if (message.protocolVersion !== LOCKSTEP_PROTOCOL_VERSION) return true;
     if (!this.acceptInbound(message, fromPlayerId)) return true;
     this.options.onMessage(message, fromPlayerId);
     return true;
@@ -216,22 +221,38 @@ export class NetworkLockstepTransport {
   }
 
   getDiagnostics(): NetworkLockstepTransportDiagnostics {
+    const latestAcks: {
+      playerId: PlayerId;
+      ackFrame: number;
+      ackFrameSequence: number;
+    }[] = [];
+    for (const [playerId, ack] of this.latestAckByPlayer) {
+      latestAcks.push({
+        playerId,
+        ackFrame: ack.ackFrame,
+        ackFrameSequence: ack.ackFrameSequence,
+      });
+    }
+    latestAcks.sort((a, b) => a.playerId - b.playerId);
+
+    const storedOutboundFrames: {
+      frame: number;
+      frameSequence: number;
+      commandCount: number;
+    }[] = [];
+    for (const frame of this.outboundCommandFrames.values()) {
+      storedOutboundFrames.push({
+        frame: frame.frame,
+        frameSequence: frame.frameSequence,
+        commandCount: frame.commands.length,
+      });
+    }
+    storedOutboundFrames.sort((a, b) => a.frame - b.frame || a.frameSequence - b.frameSequence);
+
     return {
       receivedPeerSequences: this.buildReceivedPeerSequenceAcks(),
-      latestAcks: [...this.latestAckByPlayer.entries()]
-        .sort(([a], [b]) => a - b)
-        .map(([playerId, ack]) => ({
-          playerId,
-          ackFrame: ack.ackFrame,
-          ackFrameSequence: ack.ackFrameSequence,
-        })),
-      storedOutboundFrames: [...this.outboundCommandFrames.values()]
-        .sort((a, b) => a.frame - b.frame || a.frameSequence - b.frameSequence)
-        .map((frame) => ({
-          frame: frame.frame,
-          frameSequence: frame.frameSequence,
-          commandCount: frame.commands.length,
-        })),
+      latestAcks,
+      storedOutboundFrames,
       resendCount: this.resendCount,
     };
   }
@@ -249,7 +270,6 @@ export class NetworkLockstepTransport {
     return {
       gameId: this.options.getGameId(),
       protocolVersion: LOCKSTEP_PROTOCOL_VERSION,
-      architecture: 'deterministic-lockstep' as const,
     };
   }
 
@@ -268,9 +288,12 @@ export class NetworkLockstepTransport {
   }
 
   private buildReceivedPeerSequenceAcks() {
-    return [...this.receivedPeerSequences.entries()]
-      .sort(([a], [b]) => a - b)
-      .map(([playerId, lastPlayerSequence]) => ({ playerId, lastPlayerSequence }));
+    const acks: LockstepPeerSequenceAck[] = [];
+    for (const [playerId, lastPlayerSequence] of this.receivedPeerSequences) {
+      acks.push({ playerId, lastPlayerSequence });
+    }
+    acks.sort((a, b) => a.playerId - b.playerId);
+    return acks;
   }
 
   private acceptInbound(message: NetworkLockstepMessage, fromPlayerId: PlayerId): boolean {
@@ -302,11 +325,11 @@ export class NetworkLockstepTransport {
   private acceptCommandFrame(message: LockstepCommandFrameMessage): boolean {
     const key = `${message.frame}:${message.frameSequence}`;
     if (this.seenCommandFrameKeys.has(key)) {
-      message.commands.sort(compareLockstepCommandEnvelopes);
+      if (message.commands.length > 1) message.commands.sort(compareLockstepCommandEnvelopes);
       return true;
     }
     this.seenCommandFrameKeys.add(key);
-    message.commands.sort(compareLockstepCommandEnvelopes);
+    if (message.commands.length > 1) message.commands.sort(compareLockstepCommandEnvelopes);
     for (const envelope of message.commands) {
       this.seenCommandKeys.add(commandEnvelopeKey(envelope));
       const previous = this.receivedPeerSequences.get(envelope.playerId) ?? -1;

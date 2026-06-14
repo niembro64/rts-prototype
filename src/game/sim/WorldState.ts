@@ -431,9 +431,10 @@ export class WorldState {
   drainSnapshotDirtyEntities(outIds: EntityId[], outFields: number[]): void {
     outIds.length = 0;
     outFields.length = 0;
-    const sortedIds = [...this.snapshotDirtyIds].sort((a, b) => a - b);
-    for (const id of sortedIds) {
-      outIds.push(id);
+    for (const id of this.snapshotDirtyIds) outIds.push(id);
+    outIds.sort((a, b) => a - b);
+    for (let i = 0; i < outIds.length; i++) {
+      const id = outIds[i];
       outFields.push(this.snapshotDirtyFields.get(id) ?? 0);
     }
     this.snapshotDirtyIds.clear();

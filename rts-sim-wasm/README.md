@@ -1,7 +1,7 @@
 # rts-sim-wasm
 
 Bespoke RTS simulation core. Compiled to WebAssembly and loaded by
-**both** the authoritative server tick and the client prediction
+**both** the local server tick and the client prediction
 stepper, so client prediction is bit-identical to server motion.
 
 The "what to move and why" principle is in

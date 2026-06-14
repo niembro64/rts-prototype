@@ -22,11 +22,10 @@ import type {
   UnitRadiusType,
   WaypointDetail,
 } from '../types/client';
-import type { KeyframeRatio, SnapshotRate, TickRate } from '../types/server';
+import type { SnapshotRate, TickRate } from '../types/server';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import type { RenderMode } from '../types/graphics';
 import type { CommandHotkeyPresetId } from '../game/input/commandHotkeys';
-import type { ArchitectureBackend } from '../architectureConfig';
 
 export type ControlBarStyle = Record<string, string>;
 
@@ -78,22 +77,15 @@ export type GameCanvasServerControlBarModel = {
   readonly isReadonly: boolean;
   readonly barStyle: ControlBarStyle;
   readonly serverLabel: string;
-  readonly architecture: ArchitectureBackend;
   readonly displayServerTime: string;
   readonly displayServerIp: string;
-  readonly displayTickRate: TickRate;
   readonly serverUnitGroundNormalEmaMode: UnitGroundNormalEmaMode;
   readonly displayServerTpsAvg: number;
   readonly displayServerTpsWorst: number;
   readonly displayServerCpuAvg: number;
   readonly displayServerCpuHi: number;
-  readonly displaySnapshotRate: SnapshotRate;
-  readonly displayKeyframeRatio: KeyframeRatio;
   resetServerDefaults(): void;
-  setTickRateValue(rate: TickRate): void;
   setUnitGroundNormalEmaModeValue(mode: UnitGroundNormalEmaMode): void;
-  setNetworkUpdateRate(rate: SnapshotRate): void;
-  setKeyframeRatioValue(ratio: KeyframeRatio): void;
 };
 
 export type GameCanvasClientControlBarModel = {
@@ -149,9 +141,6 @@ export type GameCanvasClientControlBarModel = {
   readonly diffSnapSizeHiBytes: number;
   readonly fullSnapSizeAvgBytes: number;
   readonly fullSnapSizeHiBytes: number;
-  readonly snapshotMbpsPerClient: number;
-  readonly snapshotMbpsHostTotal: number;
-  readonly remoteSnapshotClientCount: number;
   readonly audioSmoothing: boolean;
   readonly burnMarks: boolean;
   readonly locomotionMarks: boolean;
@@ -237,7 +226,6 @@ export type GameCanvasClientControlBarModel = {
   changeRenderMode(mode: RenderMode): void;
   changeAudioScope(scope: AudioScope): void;
   changeMasterVolume(volume: MasterVolumePercent): void;
-  changeGameSpeed(rate: TickRate): void;
   setGamePaused(paused: boolean): void;
   toggleAllSounds(): void;
   toggleSoundCategory(category: SoundCategory): void;

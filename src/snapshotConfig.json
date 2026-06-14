@@ -8,10 +8,5 @@
   "rotationVelocityDirectionThreshold": 0.05,
   "minimapSnapshotRateHz": 8,
   "entityDetailSnapshotRateHz": 1,
-  "projectileDetailSnapshotRateHz": 16,
-  "fullSnapshotCompression": {
-    "enabled": false,
-    "format": "gzip",
-    "minBytes": 32768
-  }
+  "projectileDetailSnapshotRateHz": 16
 }

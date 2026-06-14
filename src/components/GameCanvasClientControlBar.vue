@@ -16,7 +16,7 @@ import {
   type CommandHotkeyPresetId,
 } from '../game/input/commandHotkeys';
 import { RESOURCE_BALL_DENSITY_OPTIONS } from '../resourceConfig';
-import { SERVER_CONFIG, snapshotRateHz } from '../serverBarConfig';
+import { snapshotRateHz } from '../serverBarConfig';
 import BarButton from './BarButton.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
 import BarControlGroup from './BarControlGroup.vue';
@@ -65,8 +65,6 @@ const CAMERA_ANCHOR_SLOTS = [0, 1, 2, 3] as const;
 const DIFFSNAP_REASONABLE_BYTES = 64 * 1024;
 const FULLSNAP_REASONABLE_BYTES = 1024 * 1024;
 const SNAPSHOT_SIZE_TARGET_RATIO_BUDGET = 1;
-const SNAPSHOT_MBPS_REASONABLE_BUDGET =
-  ((DIFFSNAP_REASONABLE_BYTES * 30) + FULLSNAP_REASONABLE_BYTES) * 8 / 1_000_000;
 
 function snapshotSizeTargetRatio(bytes: number, reasonableBytes: number): number {
   if (!Number.isFinite(bytes) || !Number.isFinite(reasonableBytes) || reasonableBytes <= 0) {
@@ -83,21 +81,6 @@ function fmtRatio4(value: number): string {
   const kilo = value / 1000;
   if (kilo < 9.95) return `${Math.round(kilo)}k`;
   return '9k';
-}
-
-function fmtMbps4(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return '0';
-  if (value < 0.095) return value.toFixed(2);
-  if (value < 9.95) return value.toFixed(1).replace(/\.0$/, '');
-  if (value < 999.5) return `${Math.round(value)}`;
-  return '999';
-}
-
-function snapshotHostMbpsBudget(remoteClientCount: number): number {
-  return Math.max(
-    SNAPSHOT_MBPS_REASONABLE_BUDGET,
-    SNAPSHOT_MBPS_REASONABLE_BUDGET * remoteClientCount,
-  );
 }
 
 const props = defineProps<{
@@ -555,7 +538,7 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel :title="`Encoded DIFFSNAP payload size before decode/unpack. Remote clients use the received byte length; local host play estimates with the same MessagePack snapshot encoder. Target ${fmtBytes4(DIFFSNAP_REASONABLE_BYTES)}; x is avg divided by target.`">DS SIZE:</BarLabel>
+        <BarLabel :title="`Encoded DIFFSNAP presentation payload size before decode/unpack. Lockstep uses local snapshots for renderer input, not remote gameplay authority. Target ${fmtBytes4(DIFFSNAP_REASONABLE_BYTES)}; x is avg divided by target.`">DS SIZE:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">
@@ -602,7 +585,7 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel :title="`Encoded FULLSNAP payload size before decode/unpack. Remote clients use the received transport byte length, including experimental FULLSNAP compression when enabled; local host play estimates with the raw MessagePack snapshot encoder. Target ${fmtBytes4(FULLSNAP_REASONABLE_BYTES)}; x is avg divided by target.`">FS SIZE:</BarLabel>
+        <BarLabel :title="`Encoded FULLSNAP presentation payload size before decode/unpack. Lockstep uses local snapshots for renderer input, not remote gameplay authority. Target ${fmtBytes4(FULLSNAP_REASONABLE_BYTES)}; x is avg divided by target.`">FS SIZE:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">
@@ -640,41 +623,6 @@ function resetEveryCustomHotkey(): void {
                   msBarStyle(
                     snapshotSizeTargetRatio(model.fullSnapSizeAvgBytes, FULLSNAP_REASONABLE_BYTES),
                     SNAPSHOT_SIZE_TARGET_RATIO_BUDGET,
-                  )
-                "
-              ></div>
-            </div>
-          </div>
-        </div>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel :title="`Estimated snapshot upstream: ((DIFFSNAP avg bytes x DIFFSNAP avg rate) + (FULLSNAP avg bytes x FULLSNAP avg rate)) x 8. Host total multiplies by ${model.remoteSnapshotClientCount} remote client(s). WebRTC framing, retransmits, and congestion overhead are not included.`">NET:</BarLabel>
-        <div class="stat-bar-group">
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmtMbps4(model.snapshotMbpsPerClient) }}</span>
-              <span class="fps-label">each</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="msBarStyle(model.snapshotMbpsPerClient, SNAPSHOT_MBPS_REASONABLE_BUDGET)"
-              ></div>
-            </div>
-          </div>
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmtMbps4(model.snapshotMbpsHostTotal) }}</span>
-              <span class="fps-label">host</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="
-                  msBarStyle(
-                    model.snapshotMbpsHostTotal,
-                    snapshotHostMbpsBudget(model.remoteSnapshotClientCount),
                   )
                 "
               ></div>
@@ -1196,23 +1144,14 @@ function resetEveryCustomHotkey(): void {
         <BarLabel>SPEED:</BarLabel>
         <BarButton
           :active="false"
-          title="Pause the authoritative simulation"
+          title="Pause the lockstep simulation"
           @click="model.setGamePaused(true)"
         >PAUSE</BarButton>
         <BarButton
           :active="false"
-          title="Resume the authoritative simulation"
+          title="Resume the lockstep simulation"
           @click="model.setGamePaused(false)"
         >PLAY</BarButton>
-        <BarButtonGroup>
-          <BarButton
-            v-for="rate in SERVER_CONFIG.tickRate.options"
-            :key="rate"
-            :active="model.displayTickRate === rate"
-            :title="`Request ${rate} simulation ticks per second`"
-            @click="model.changeGameSpeed(rate)"
-          >{{ rate }}</BarButton>
-        </BarButtonGroup>
         <BarDivider />
       </BarControlGroup>
       <BarControlGroup>

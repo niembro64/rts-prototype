@@ -4439,10 +4439,6 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runReplayRecorderContractTest();
         const { runSnapshotEntityWirePackContractTest } = await import('../network/snapshotEntityWirePackContractTest');
         runSnapshotEntityWirePackContractTest();
-        const { runSnapshotLifecycleContractTest } = await import('../server/snapshotLifecycleContractTest');
-        runSnapshotLifecycleContractTest();
-        const { runNetworkCommandTransportContractTest } = await import('../network/NetworkCommandTransportContractTest');
-        runNetworkCommandTransportContractTest();
         const { runNetworkLockstepTransportContractTest } = await import('../network/NetworkLockstepTransportContractTest');
         runNetworkLockstepTransportContractTest();
         const { runNetworkManagerLockstepBufferContractTest } = await import('../network/NetworkManagerLockstepBufferContractTest');

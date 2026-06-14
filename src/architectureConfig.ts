@@ -1,12 +1,5 @@
 import rawArchitectureConfig from './architecture.json';
 
-export const ARCHITECTURE_CONFIG_READ_MODE = 'build-time' as const;
-
-export const ARCHITECTURE_BACKENDS = [
-  'deterministic-lockstep',
-] as const;
-
-export type ArchitectureBackend = typeof ARCHITECTURE_BACKENDS[number];
 export type LockstepDesyncPolicy = 'pause';
 
 export type LockstepArchitectureConfig = {
@@ -19,22 +12,11 @@ export type LockstepArchitectureConfig = {
 };
 
 export type ArchitectureConfig = {
-  readonly backend: ArchitectureBackend;
   readonly lockstep: LockstepArchitectureConfig;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function parseBackend(value: unknown): ArchitectureBackend {
-  if (ARCHITECTURE_BACKENDS.includes(value as ArchitectureBackend)) {
-    return value as ArchitectureBackend;
-  }
-  throw new Error(
-    `architecture.backend must be one of ${ARCHITECTURE_BACKENDS.join(', ')}; ` +
-      `received ${String(value)}`,
-  );
 }
 
 function parsePositiveInteger(
@@ -93,7 +75,6 @@ export function parseArchitectureConfig(value: unknown): ArchitectureConfig {
     throw new Error('architecture config must be an object');
   }
   return {
-    backend: parseBackend(value.backend),
     lockstep: parseLockstepConfig(value.lockstep),
   };
 }

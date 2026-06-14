@@ -20,7 +20,6 @@ export function runNetworkManagerLockstepBufferContractTest(): void {
   const readyMessage: NetworkLockstepMessage = {
     gameId: undefined,
     protocolVersion: LOCKSTEP_PROTOCOL_VERSION,
-    architecture: 'deterministic-lockstep',
     type: 'lockstepReady',
     playerId: 1 as PlayerId,
     readyFrame: 0,

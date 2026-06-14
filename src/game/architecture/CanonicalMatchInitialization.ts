@@ -1,7 +1,5 @@
 import {
   ARCHITECTURE_CONFIG,
-  ARCHITECTURE_CONFIG_READ_MODE,
-  type ArchitectureBackend,
   type LockstepArchitectureConfig,
 } from '../../architectureConfig';
 import buildConfigJson from '../../buildConfig.json';
@@ -31,17 +29,13 @@ import { SERVER_WORLD_SEED } from '../server/ServerBootstrap';
 import type { PlayerId } from '../sim/types';
 import type { LobbySettings } from '@/types/network';
 
-const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v1';
+const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v2';
 const APP_SOURCE_VERSION = '0.0.1';
 export const SIM_WASM_EXPECTED_VERSION = 'rts-sim-wasm 0.0.1';
 
 export type CanonicalMatchInitialization = {
   readonly schema: typeof CANONICAL_MATCH_INITIALIZATION_SCHEMA;
-  readonly architecture: {
-    readonly backend: ArchitectureBackend;
-    readonly configReadMode: typeof ARCHITECTURE_CONFIG_READ_MODE;
-    readonly lockstep: LockstepArchitectureConfig;
-  };
+  readonly lockstep: LockstepArchitectureConfig;
   readonly gameId: string;
   readonly roomCode: string;
   readonly hostPlayerId: PlayerId;
@@ -120,11 +114,7 @@ export function buildCanonicalMatchInitialization({
 }: BuildCanonicalMatchInitializationOptions): CanonicalMatchInitialization {
   return {
     schema: CANONICAL_MATCH_INITIALIZATION_SCHEMA,
-    architecture: {
-      backend: ARCHITECTURE_CONFIG.backend,
-      configReadMode: ARCHITECTURE_CONFIG_READ_MODE,
-      lockstep: ARCHITECTURE_CONFIG.lockstep,
-    },
+    lockstep: ARCHITECTURE_CONFIG.lockstep,
     gameId,
     roomCode,
     hostPlayerId,

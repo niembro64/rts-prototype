@@ -921,7 +921,7 @@ export class ClientViewState {
     if (cacheNeedsInvalidate) this.invalidateCaches();
 
     // Update economy state (immediate). Local in-memory clients share
-    // the authoritative server's economy singleton, so they must not
+    // the local server's economy singleton, so they must not
     // replay older snapshots back into the server state.
     if (options.syncEconomy !== false) {
       // Avoid Object.entries here: snapshots arrive frequently and this

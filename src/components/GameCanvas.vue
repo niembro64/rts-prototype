@@ -194,7 +194,7 @@ function getActiveOrbitCamera(): import('../game/render3d/OrbitCamera').OrbitCam
 const networkRole = ref<NetworkRole | null>(null);
 const hasServer = ref(false); // True when we own a GameServer (host/offline/background)
 const networkNotice = ref<string | null>(null);
-// Server metadata received from snapshots (for remote clients to display server bar)
+// Server metadata received from snapshots for display reconciliation.
 const serverMetaFromSnapshot = ref<NetworkServerSnapshotMeta | null>(null);
 
 const {
@@ -974,9 +974,7 @@ const displayServerCpuHi = computed(
 const displayTickRate = computed(
   () =>
     serverMetaFromSnapshot.value?.ticks.rate ??
-    (ARCHITECTURE_CONFIG.backend === 'deterministic-lockstep'
-      ? ARCHITECTURE_CONFIG.lockstep.fixedStepHz
-      : SERVER_CONFIG.tickRate.default),
+    ARCHITECTURE_CONFIG.lockstep.fixedStepHz,
 );
 // HOST SERVER unit ground normal EMA mode. Picks the half-life used by the
 // sim's updateUnitGroundNormal (UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC[mode]). Persisted to
@@ -991,10 +989,9 @@ const serverUnitGroundNormalEmaMode = ref<UnitGroundNormalEmaMode>(
 watch(currentBattleMode, (mode) => {
   serverUnitGroundNormalEmaMode.value = loadStoredUnitGroundNormalEmaMode(mode);
 });
-// HOST SERVER unit ground normal EMA — the host applies its setting via the
-// setUnitGroundNormalEmaMode command, but remote clients render this control
-// from snapshot meta (their own localStorage is irrelevant once
-// connected). Reconcile when the host's value differs.
+// HOST SERVER unit ground normal EMA - the host applies its setting via the
+// setUnitGroundNormalEmaMode command, then the display reconciles from
+// snapshot meta when the stored value differs.
 watch(
   () => serverMetaFromSnapshot.value?.unitGroundNormalEma,
   (mode) => {
@@ -1023,19 +1020,6 @@ const fullSnapBarTarget = computed(() => {
   if (kf === 'ALL') return sps;
   return Math.max(0.1, sps * (kf as number));
 });
-const remoteSnapshotClientCount = computed(() =>
-  Math.max(0, lobbyPlayerCount.value - 1),
-);
-const snapshotMbpsPerClient = computed(() => {
-  const diffSnapAvgRate = Math.max(0, snapAvgRate.value - fullSnapAvgRate.value);
-  const bytesPerSec =
-    diffSnapSizeAvgBytes.value * diffSnapAvgRate +
-    fullSnapSizeAvgBytes.value * fullSnapAvgRate.value;
-  return Math.max(0, (bytesPerSec * 8) / 1_000_000);
-});
-const snapshotMbpsHostTotal = computed(() =>
-  snapshotMbpsPerClient.value * remoteSnapshotClientCount.value,
-);
 const displayGridInfo = computed(
   () => serverMetaFromSnapshot.value?.grid ?? loadStoredGrid(currentBattleMode.value),
 );
@@ -1082,10 +1066,7 @@ const {
 
 const {
   resetServerDefaults,
-  setNetworkUpdateRate,
-  setTickRateValue,
   setUnitGroundNormalEmaModeValue,
-  setKeyframeRatioValue,
   resetGridInfoToDefault,
 } = useGameCanvasServerSettings({
   currentBattleMode,
@@ -1335,22 +1316,15 @@ const serverControlBarModel = reactive<GameCanvasServerControlBarModel>({
   isReadonly: serverBarReadonly.value,
   barStyle: serverBarVars.value,
   serverLabel: serverLabel.value,
-  architecture: ARCHITECTURE_CONFIG.backend,
   displayServerTime: displayServerTime.value,
   displayServerIp: displayServerIp.value,
-  displayTickRate: displayTickRate.value,
   serverUnitGroundNormalEmaMode: serverUnitGroundNormalEmaMode.value,
   displayServerTpsAvg: displayServerTpsAvg.value,
   displayServerTpsWorst: displayServerTpsWorst.value,
   displayServerCpuAvg: displayServerCpuAvg.value,
   displayServerCpuHi: displayServerCpuHi.value,
-  displaySnapshotRate: displaySnapshotRate.value,
-  displayKeyframeRatio: displayKeyframeRatio.value,
   resetServerDefaults,
-  setTickRateValue,
   setUnitGroundNormalEmaModeValue,
-  setNetworkUpdateRate,
-  setKeyframeRatioValue,
 });
 watchEffect(() => {
   const m = serverControlBarModel as {
@@ -1359,17 +1333,13 @@ watchEffect(() => {
   m.isReadonly = serverBarReadonly.value;
   m.barStyle = serverBarVars.value;
   m.serverLabel = serverLabel.value;
-  m.architecture = ARCHITECTURE_CONFIG.backend;
   m.displayServerTime = displayServerTime.value;
   m.displayServerIp = displayServerIp.value;
-  m.displayTickRate = displayTickRate.value;
   m.serverUnitGroundNormalEmaMode = serverUnitGroundNormalEmaMode.value;
   m.displayServerTpsAvg = displayServerTpsAvg.value;
   m.displayServerTpsWorst = displayServerTpsWorst.value;
   m.displayServerCpuAvg = displayServerCpuAvg.value;
   m.displayServerCpuHi = displayServerCpuHi.value;
-  m.displaySnapshotRate = displaySnapshotRate.value;
-  m.displayKeyframeRatio = displayKeyframeRatio.value;
 });
 
 // Same reactive() pattern as the other two bar models. This one is
@@ -1428,9 +1398,6 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   diffSnapSizeHiBytes: diffSnapSizeHiBytes.value,
   fullSnapSizeAvgBytes: fullSnapSizeAvgBytes.value,
   fullSnapSizeHiBytes: fullSnapSizeHiBytes.value,
-  snapshotMbpsPerClient: snapshotMbpsPerClient.value,
-  snapshotMbpsHostTotal: snapshotMbpsHostTotal.value,
-  remoteSnapshotClientCount: remoteSnapshotClientCount.value,
   audioSmoothing: audioSmoothing.value,
   burnMarks: burnMarks.value,
   locomotionMarks: locomotionMarks.value,
@@ -1516,7 +1483,6 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   changeRenderMode,
   changeAudioScope,
   changeMasterVolume,
-  changeGameSpeed: setTickRateValue,
   setGamePaused,
   toggleAllSounds,
   toggleSoundCategory,
@@ -1595,9 +1561,6 @@ watchEffect(() => {
   m.diffSnapSizeHiBytes = diffSnapSizeHiBytes.value;
   m.fullSnapSizeAvgBytes = fullSnapSizeAvgBytes.value;
   m.fullSnapSizeHiBytes = fullSnapSizeHiBytes.value;
-  m.snapshotMbpsPerClient = snapshotMbpsPerClient.value;
-  m.snapshotMbpsHostTotal = snapshotMbpsHostTotal.value;
-  m.remoteSnapshotClientCount = remoteSnapshotClientCount.value;
   m.audioSmoothing = audioSmoothing.value;
   m.burnMarks = burnMarks.value;
   m.locomotionMarks = locomotionMarks.value;

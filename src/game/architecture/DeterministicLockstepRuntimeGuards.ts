@@ -37,10 +37,14 @@ export function assertDeterministicLockstepRuntimeReady(): SimWasm {
       `deterministic-lockstep requires ${SIM_WASM_EXPECTED_VERSION}; loaded ${sim.version}`,
     );
   }
-  const missing = REQUIRED_LOCKSTEP_WASM_KERNELS
-    .filter(([, resolve]) => typeof resolve(sim) !== 'function')
-    .map(([label]) => label);
-  if (missing.length > 0) {
+  let missing: string[] | null = null;
+  for (const [label, resolve] of REQUIRED_LOCKSTEP_WASM_KERNELS) {
+    if (typeof resolve(sim) !== 'function') {
+      if (missing === null) missing = [];
+      missing.push(label);
+    }
+  }
+  if (missing !== null) {
     throw new Error(
       'deterministic-lockstep missing required deterministic WASM kernels: ' +
         missing.join(', '),

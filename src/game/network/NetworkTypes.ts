@@ -2,8 +2,6 @@
 
 export type {
   NetworkMessage,
-  NetworkPlayerActionMessage,
-  NetworkServerSnapshotMessage,
   NetworkLockstepMessage,
   LockstepProtocolVersion,
   LockstepProtocolBase,

@@ -9,9 +9,7 @@
 // =============================================================================
 
 export type {
-  FullSnapshotCompressionConfig,
   SnapshotConfig,
-  SnapshotCompressionFormat,
   EmaLowConfig,
   EmaTierConfig,
   EmaHighConfig,
@@ -34,7 +32,6 @@ export type {
 
 import type {
   SnapshotConfig,
-  SnapshotCompressionFormat,
   EmaTierConfig,
   EmaMsConfig,
   KnockbackConfig,
@@ -177,17 +174,7 @@ export const GOOD_TPS = telemetryConfigJson.goodTps;
 //                             near snapshot cadence for beam/laser
 //                             turrets; line-shot aim is primary visible
 //                             state, not low-priority detail.
-//   fullSnapshotCompression — disabled-by-default experimental
-//                             transport compression for FULLSNAP
-//                             payloads only. Toggle for A/B captures;
-//                             DIFFSNAP compression remains off.
-export const SNAPSHOT_CONFIG: SnapshotConfig = {
-  ...snapshotConfigJson,
-  fullSnapshotCompression: {
-    ...snapshotConfigJson.fullSnapshotCompression,
-    format: normalizeSnapshotCompressionFormat(snapshotConfigJson.fullSnapshotCompression.format),
-  },
-};
+export const SNAPSHOT_CONFIG: SnapshotConfig = snapshotConfigJson;
 
 // Re-export bar config values used by sim/server code
 export { BATTLE_CONFIG } from './battleBarConfig';
@@ -196,17 +183,6 @@ export type { SnapshotRate, KeyframeRatio, TickRate } from './types/server';
 import { SERVER_CONFIG } from './serverBarConfig';
 import { BATTLE_CONFIG } from './battleBarConfig';
 import { BAR_THEMES } from './barThemes';
-
-function normalizeSnapshotCompressionFormat(value: string): SnapshotCompressionFormat {
-  switch (value) {
-    case 'gzip':
-    case 'deflate':
-    case 'deflate-raw':
-      return value;
-    default:
-      throw new Error(`Invalid fullSnapshotCompression.format '${value}' in snapshotConfig.json`);
-  }
-}
 
 export const DEFAULT_KEYFRAME_RATIO = SERVER_CONFIG.keyframe.default;
 export const KEYFRAME_RATIO_OPTIONS = SERVER_CONFIG.keyframe.options;

@@ -215,7 +215,6 @@ export function turretBlueprintIdToCode(s: string): TurretBlueprintCode {
 export function codeToTurretBlueprintId(c: number): TurretBlueprintId | null {
   return _TURRET_BLUEPRINT_IDS[c] ?? null;
 }
-import type { Command } from './commands';
 import type {
   SimEventAudioKey,
   ImpactContext,
@@ -226,8 +225,6 @@ import type {
 } from './combat';
 import type { ShieldReflectionMode } from './shotTypes';
 import type { Vec2, Vec3 } from './vec2';
-import type { SnapshotCompressionFormat } from './config';
-import type { ArchitectureBackend } from '../architectureConfig';
 import type { CanonicalMatchInitialization } from '../game/architecture/CanonicalMatchInitialization';
 import type { CanonicalServerStateHash } from '../game/architecture/CanonicalStateHash';
 import type { LockstepCommandEnvelope } from '../game/architecture/LockstepCommandProtocol';
@@ -309,13 +306,12 @@ export type NetworkCommunicationEvent =
   | NetworkCommunicationMapDrawingEvent
   | NetworkCommunicationMapEraseEvent;
 
-export const LOCKSTEP_PROTOCOL_VERSION = 'budget-annihilation.lockstep.v1' as const;
+export const LOCKSTEP_PROTOCOL_VERSION = 'budget-annihilation.lockstep.v2' as const;
 export type LockstepProtocolVersion = typeof LOCKSTEP_PROTOCOL_VERSION;
 
 export type LockstepProtocolBase = {
   gameId: string | undefined;
   protocolVersion: LockstepProtocolVersion;
-  architecture: 'deterministic-lockstep';
 };
 
 export type LockstepPeerSequenceAck = {
@@ -407,15 +403,11 @@ export type NetworkLockstepMessage =
   | LockstepDesyncMessage
   | LockstepResyncRequestMessage;
 
-// Client → Server
-export type NetworkPlayerActionMessage =
-  | { type: 'command'; gameId: string | undefined; data: Command }
+// Combined transport envelope.
+export type NetworkMessage =
+  | NetworkLockstepMessage
+  // Client -> host communication.
   | { type: 'communication'; gameId: string | undefined; data: NetworkCommunicationDraft }
-  | { type: 'clientReady'; gameId: string | undefined }
-  // needsStatic: the client is missing the terrain/buildability
-  // bootstrap (never decoded one) and needs it re-sent; ordinary
-  // resyncs only need a dynamic keyframe to re-baseline deltas.
-  | { type: 'snapshotResync'; gameId: string | undefined; needsStatic: boolean }
   // Client reports its own IP / location / timezone to the host.
   // The host updates the local LobbyPlayer record and re-broadcasts
   // (see `playerInfoUpdate` below) so every connected client sees
@@ -446,49 +438,8 @@ export type NetworkPlayerActionMessage =
       playerId: PlayerId;
       playerInfo: LobbyPlayerInfoPayload | undefined;
       players: LobbyPlayer[] | undefined;
-    };
-
-// Host → Client lobby-settings sync. Carries the host's
-// pre-game choices (terrain shape and system toggles) so every connected client sees
-// the same map preview and starts the real battle from the same
-// configuration. The host broadcasts on every change AND on
-// each new player joining (so late-joiners get the current state
-// up front, not just future deltas). The whole settings object
-// ships every time — small enough that diffing isn't worth the
-// complexity, and atomic-replace avoids the "client missed one
-// field" failure mode if a future delta protocol drops a packet.
-export type LobbySettings = {
-  /** Signed altitude of the central ripple (CENTER bar). */
-  centerMagnitude: number;
-  /** Signed altitude of the team-separator ridges (DIVIDERS bar). */
-  dividersMagnitude: number;
-  terrainMapShape: TerrainMapShape;
-  /** Plateau lattice step (world units). 0 = NONE (no terracing). */
-  terrainDTerrain: number | undefined;
-  /** Metal-extractor pad altitude step (world units). */
-  metalDepositStep: number | undefined;
-  /** Fine-triangle subdivisions per land cell. 0 = off (one triangle
-   *  per cell); higher values refine the mesh. */
-  terrainDetail: number | undefined;
-  mapWidthLandCells: number;
-  mapLengthLandCells: number;
-  /** Gameplay unit cap for real battles. Undefined only for legacy handoffs. */
-  maxTotalUnits: number | undefined;
-  converterTax: number | undefined;
-};
-
-// Server → Client
-export type NetworkServerSnapshotMessage =
-  | {
-      type: 'state';
-      gameId: string | undefined;
-      data: Uint8Array | ArrayBuffer;
-      isDelta?: boolean;
-      compression?: {
-        format: SnapshotCompressionFormat;
-        rawBytes: number;
-      } | null;
     }
+  // Host -> client communication relay.
   | { type: 'communicationEvent'; gameId: string | undefined; data: NetworkCommunicationEvent }
   | { type: 'playerAssignment'; playerId: PlayerId; gameId: string | undefined }
   | {
@@ -520,11 +471,34 @@ export type NetworkServerSnapshotMessage =
       name: string | undefined;
     };
 
-// Combined (transport envelope)
-export type NetworkMessage =
-  | NetworkPlayerActionMessage
-  | NetworkServerSnapshotMessage
-  | NetworkLockstepMessage;
+// Host → Client lobby-settings sync. Carries the host's
+// pre-game choices (terrain shape and system toggles) so every connected client sees
+// the same map preview and starts the real battle from the same
+// configuration. The host broadcasts on every change AND on
+// each new player joining (so late-joiners get the current state
+// up front, not just future deltas). The whole settings object
+// ships every time — small enough that diffing isn't worth the
+// complexity, and atomic-replace avoids the "client missed one
+// field" failure mode if a future delta protocol drops a packet.
+export type LobbySettings = {
+  /** Signed altitude of the central ripple (CENTER bar). */
+  centerMagnitude: number;
+  /** Signed altitude of the team-separator ridges (DIVIDERS bar). */
+  dividersMagnitude: number;
+  terrainMapShape: TerrainMapShape;
+  /** Plateau lattice step (world units). 0 = NONE (no terracing). */
+  terrainDTerrain: number | undefined;
+  /** Metal-extractor pad altitude step (world units). */
+  metalDepositStep: number | undefined;
+  /** Fine-triangle subdivisions per land cell. 0 = off (one triangle
+   *  per cell); higher values refine the mesh. */
+  terrainDetail: number | undefined;
+  mapWidthLandCells: number;
+  mapLengthLandCells: number;
+  /** Gameplay unit cap for real battles. Undefined only for legacy handoffs. */
+  maxTotalUnits: number | undefined;
+  converterTax: number | undefined;
+};
 
 export type NetworkServerSnapshotSimEvent = {
   type:
@@ -1144,7 +1118,6 @@ export type BattleHandoff = {
   protocol: typeof BATTLE_HANDOFF_PROTOCOL;
   gameId: string;
   roomCode: string;
-  architecture: ArchitectureBackend;
   initialization: CanonicalMatchInitialization;
   initializationHash: string;
   hostPlayerId: PlayerId;

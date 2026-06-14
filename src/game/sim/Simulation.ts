@@ -72,6 +72,12 @@ type ActiveMovementTarget = UnitPathPoint & {
   isFinalActionPoint: boolean;
 };
 
+type GatherWaitGroup = {
+  key: string;
+  groupId: number;
+  members: Entity[];
+};
+
 // ── Stuck-detection / replanning constants ────────────────────────
 //
 // A unit that wants to move (thrust set) but isn't actually moving
@@ -130,7 +136,8 @@ export class Simulation {
   private eventQueues = new SimulationEventQueues();
 
   private _movingUnitsBuf: Entity[] = [];
-  private _gatherWaitGroups: Map<string, { groupId: number; members: Entity[] }> = new Map();
+  private _gatherWaitGroups: Map<string, GatherWaitGroup> = new Map();
+  private readonly _gatherWaitGroupList: GatherWaitGroup[] = [];
 
   // Reusable buffers for shared energy distribution (avoid per-tick allocations)
   private energyBuffers: EnergyBuffers = createEnergyBuffers();
@@ -580,7 +587,9 @@ export class Simulation {
 
   private releaseReadyGatherWaits(): void {
     const groups = this._gatherWaitGroups;
+    const sortedGroups = this._gatherWaitGroupList;
     groups.clear();
+    sortedGroups.length = 0;
     for (const entity of this.world.getUnits()) {
       const unit = entity.unit;
       if (unit === null || unit.hp <= 0) continue;
@@ -590,15 +599,16 @@ export class Simulation {
       const groupKey = `${ownerId}:${groupId}`;
       let group = groups.get(groupKey);
       if (group === undefined) {
-        group = { groupId, members: [] };
+        group = { key: groupKey, groupId, members: [] };
         groups.set(groupKey, group);
       }
       group.members.push(entity);
     }
 
-    for (const { groupId, members } of [...groups.entries()]
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-      .map(([, group]) => group)) {
+    for (const group of groups.values()) sortedGroups.push(group);
+    sortedGroups.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+    for (let groupIndex = 0; groupIndex < sortedGroups.length; groupIndex++) {
+      const { groupId, members } = sortedGroups[groupIndex];
       let ready = members.length > 0;
       for (let i = 0; i < members.length; i++) {
         const unit = members[i].unit;
@@ -618,6 +628,7 @@ export class Simulation {
       }
     }
     groups.clear();
+    sortedGroups.length = 0;
   }
 
   // Update unit movement with action queue processing.

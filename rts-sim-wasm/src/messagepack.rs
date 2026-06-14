@@ -11,7 +11,7 @@ use wasm_bindgen::prelude::*;
 //  Foundation building block for the future snapshot-serializer
 //  port. Encodes the exact subset of MessagePack used by
 //  @msgpack/msgpack with `ignoreUndefined: true` (the encoder
-//  settings in NetworkSnapshotTransport.ts):
+//  settings in snapshotWireCodec.ts):
 //    - nil (0xC0), false (0xC2), true (0xC3)
 //    - positive fixint, negative fixint
 //    - uint8/16/32, int8/16/32, int64 (only emitted when value
@@ -462,4 +462,3 @@ pub fn messagepack_self_test() -> u32 {
 
     failures
 }
-

@@ -1,13 +1,5 @@
 // Types extracted from src/config.ts
 
-export type SnapshotCompressionFormat = 'gzip' | 'deflate' | 'deflate-raw';
-
-export type FullSnapshotCompressionConfig = {
-  enabled: boolean;
-  format: SnapshotCompressionFormat;
-  minBytes: number;
-};
-
 export type SnapshotConfig = {
   deltaEnabled: boolean;
   movementPositionThreshold: number;
@@ -19,7 +11,6 @@ export type SnapshotConfig = {
   minimapSnapshotRateHz: number;
   entityDetailSnapshotRateHz: number;
   projectileDetailSnapshotRateHz: number;
-  fullSnapshotCompression: FullSnapshotCompressionConfig;
 };
 
 export type EmaLowConfig = {

@@ -54,11 +54,14 @@ export class RtsScene3DSnapshotIntake {
   private startupReadyAckSent = false;
   private startupFullSnapshotApplied = false;
   private startupReleased = false;
+  private readonly syncEconomyFromSnapshots: boolean;
 
   constructor(
     private readonly clientViewState: ClientViewState,
     private readonly gameConnection: GameConnection,
-  ) {}
+  ) {
+    this.syncEconomyFromSnapshots = gameConnection.sharesAuthoritativeState !== true;
+  }
 
   attach(): void {
     this.snapshotBuffer.attach(
@@ -84,7 +87,7 @@ export class RtsScene3DSnapshotIntake {
 
     const applyStart = performance.now();
     const applyStats = this.clientViewState.applyNetworkState(state, {
-      syncEconomy: this.gameConnection.sharesAuthoritativeState !== true,
+      syncEconomy: this.syncEconomyFromSnapshots,
     });
     const applyMs = performance.now() - applyStart;
     if (!this.startupReadyAckSent && !state.isDelta) {

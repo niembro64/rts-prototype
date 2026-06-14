@@ -27,6 +27,7 @@ export class SimulationEventQueues {
   projectileVelocityUpdates = new Map<number, ProjectileVelocityUpdateEvent>();
   private readonly velUpdateBufA: ProjectileVelocityUpdateEvent[] = [];
   private readonly velUpdateBufB: ProjectileVelocityUpdateEvent[] = [];
+  private readonly velUpdateIds: number[] = [];
   private velUpdateToggle = false;
 
   getAndClearEvents(): SimEvent[] {
@@ -56,7 +57,14 @@ export class SimulationEventQueues {
     const buf = this.velUpdateToggle ? this.velUpdateBufB : this.velUpdateBufA;
     this.velUpdateToggle = !this.velUpdateToggle;
     buf.length = 0;
-    for (const [, v] of [...map.entries()].sort(([a], [b]) => a - b)) buf.push(v);
+    const ids = this.velUpdateIds;
+    ids.length = 0;
+    for (const id of map.keys()) ids.push(id);
+    ids.sort((a, b) => a - b);
+    for (let i = 0; i < ids.length; i++) {
+      const event = map.get(ids[i]);
+      if (event !== undefined) buf.push(event);
+    }
     map.clear();
     return buf;
   }
@@ -74,6 +82,7 @@ export class SimulationEventQueues {
     this.projectileVelocityUpdates.clear();
     this.velUpdateBufA.length = 0;
     this.velUpdateBufB.length = 0;
+    this.velUpdateIds.length = 0;
     this.velUpdateToggle = false;
   }
 }

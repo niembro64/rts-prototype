@@ -141,7 +141,6 @@ export function useGameCanvasRealBattleHandoff({
       activePlayer,
       localUsername,
       gameStarted,
-      getCurrentServer,
       resolvePlayerName: (playerId) => resolvePlayerName(playerId),
       upsertLobbyPlayer,
       applyLobbySettingsFromHost,

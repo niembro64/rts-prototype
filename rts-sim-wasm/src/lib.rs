@@ -1,7 +1,7 @@
 // rts-sim-wasm — bespoke RTS simulation core.
 //
 // Compiled to WebAssembly via wasm-pack, loaded by BOTH the
-// authoritative server tick AND the client prediction stepper.
+// local server tick AND the client prediction stepper.
 // Same numerical kernels run on both sides so client prediction
 // is bit-identical to server authoritative motion.
 //

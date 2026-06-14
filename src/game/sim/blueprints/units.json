@@ -1411,10 +1411,10 @@
         "traction": 1
       },
       "config": {
-        "gravityCounterUpwardForceRatio": 0.8,
-        "hoverHeightUpwardForce": 30,
+        "gravityCounterUpwardForceRatio": 0.05,
+        "hoverHeightUpwardForce": 100,
         "hoverHeightUpwardForceRandomizationAmount": 0.99,
-        "hoverHeightUpwardForceEMA": 0.99,
+        "hoverHeightUpwardForceEMA": 0.2,
         "fanDistX": 0.58,
         "fanDistY": 0.62,
         "fanLayout": "twin",

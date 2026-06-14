@@ -6,7 +6,6 @@ import type {
   NetworkManager,
 } from '../game/network/NetworkManager';
 import type { NetworkCommunicationEvent } from '../types/network';
-import type { GameServer } from '../game/server/GameServer';
 import type { PlayerId } from '../game/sim/types';
 
 export type GameCanvasNetworkCallbackOptions = {
@@ -19,7 +18,6 @@ export type GameCanvasNetworkCallbackOptions = {
   activePlayer: Ref<PlayerId>;
   localUsername: Ref<string>;
   gameStarted: Ref<boolean>;
-  getCurrentServer: () => GameServer | null;
   resolvePlayerName: (playerId: PlayerId) => string;
   upsertLobbyPlayer: (player: LobbyPlayer) => void;
   applyLobbySettingsFromHost: (
@@ -45,7 +43,6 @@ export function bindGameCanvasNetworkCallbacks({
   activePlayer,
   localUsername,
   gameStarted,
-  getCurrentServer,
   resolvePlayerName,
   upsertLobbyPlayer,
   applyLobbySettingsFromHost,
@@ -82,10 +79,6 @@ export function bindGameCanvasNetworkCallbacks({
       applyLobbySettingsFromHost(handoff.settings, { restartPreview: false });
     }
     void startGameWithPlayers(handoff.playerIds, undefined, handoff);
-  };
-
-  network.onClientReady = (playerId: PlayerId) => {
-    getCurrentServer()?.markPlayerReady(playerId);
   };
 
   network.onError = (error: string) => {

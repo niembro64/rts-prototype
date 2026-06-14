@@ -10,14 +10,10 @@ import {
   saveUnitGroundNormalEmaMode,
 } from '../serverBarConfig';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
-import type { KeyframeRatio, SnapshotRate, TickRate } from '../types/server';
 
 export type GameCanvasServerSettings = {
   resetServerDefaults(): void;
-  setNetworkUpdateRate(rate: SnapshotRate): void;
-  setTickRateValue(rate: TickRate): void;
   setUnitGroundNormalEmaModeValue(mode: UnitGroundNormalEmaMode): void;
-  setKeyframeRatioValue(ratio: KeyframeRatio): void;
   toggleSendGridInfo(): void;
   resetGridInfoToDefault(): void;
 };
@@ -35,22 +31,10 @@ export function useGameCanvasServerSettings({
   serverUnitGroundNormalEmaMode,
   getActiveConnection,
 }: GameCanvasServerSettingsOptions): GameCanvasServerSettings {
-  function setNetworkUpdateRate(_rate: SnapshotRate): void {
-    // Snapshot cadence is no longer player-configurable in real battles.
-  }
-
-  function setTickRateValue(_rate: TickRate): void {
-    // Deterministic-lockstep uses the fixed architecture-config step rate.
-  }
-
   function setUnitGroundNormalEmaModeValue(mode: UnitGroundNormalEmaMode): void {
     getActiveConnection()?.sendCommand({ type: 'setUnitGroundNormalEmaMode', tick: 0, mode });
     saveUnitGroundNormalEmaMode(mode, currentBattleMode.value);
     serverUnitGroundNormalEmaMode.value = mode;
-  }
-
-  function setKeyframeRatioValue(_ratio: KeyframeRatio): void {
-    // Full-keyframe cadence is internal presentation plumbing in lockstep.
   }
 
   function toggleSendGridInfo(): void {
@@ -74,10 +58,7 @@ export function useGameCanvasServerSettings({
 
   return {
     resetServerDefaults,
-    setNetworkUpdateRate,
-    setTickRateValue,
     setUnitGroundNormalEmaModeValue,
-    setKeyframeRatioValue,
     toggleSendGridInfo,
     resetGridInfoToDefault,
   };
