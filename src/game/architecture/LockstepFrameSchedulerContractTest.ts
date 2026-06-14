@@ -2,6 +2,7 @@ import type { Command, MoveCommand } from '../sim/commands';
 import type { PlayerId } from '../sim/types';
 import {
   LOCKSTEP_FIXED_DT_MS,
+  LOCKSTEP_FIXED_STEP_HZ,
   LockstepFrameScheduler,
   type LockstepCompleteCommandFrame,
   type LockstepFrameSchedulerDiagnostics,
@@ -53,7 +54,10 @@ export function runLockstepFrameSchedulerContractTest(): void {
   result = scheduler.advanceReadyFrames();
   assertContract(result.advancedFrames === 1, 'ready scheduler must advance the queued frame');
   assertContract(core.steps.length === 1, 'scheduler must step the core exactly once per frame');
-  assertContract(core.steps[0].dtMs === LOCKSTEP_FIXED_DT_MS, 'scheduler must use fixed 60 Hz dt');
+  assertContract(
+    core.steps[0].dtMs === LOCKSTEP_FIXED_DT_MS,
+    `scheduler must use configured fixed ${LOCKSTEP_FIXED_STEP_HZ} Hz dt`,
+  );
   assertContract(
     materializedOrders[0] === '1,2',
     'scheduler must present command frames to materialization in canonical order',

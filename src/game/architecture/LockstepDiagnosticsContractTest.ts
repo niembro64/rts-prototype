@@ -6,7 +6,10 @@ import {
   exportLockstepInitializationHash,
   exportLockstepStateHashDump,
 } from './LockstepDiagnostics';
-import type { LockstepCompleteCommandFrame } from './LockstepFrameScheduler';
+import {
+  LOCKSTEP_FIXED_DT_MS,
+  type LockstepCompleteCommandFrame,
+} from './LockstepFrameScheduler';
 import type { PlayerId } from '../sim/types';
 
 function assertContract(condition: boolean, message: string): void {
@@ -54,7 +57,7 @@ export function runLockstepDiagnosticsContractTest(): void {
 
   const replay = buildDeterministicLockstepReplayFile({
     initializationHash: 'init',
-    fixedDtMs: 1000 / 60,
+    fixedDtMs: LOCKSTEP_FIXED_DT_MS,
     playerIds: [2 as PlayerId, 1 as PlayerId],
     commandFrames: frames,
   });

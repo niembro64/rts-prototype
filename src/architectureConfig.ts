@@ -11,6 +11,7 @@ export type ArchitectureBackend = typeof ARCHITECTURE_BACKENDS[number];
 export type LockstepDesyncPolicy = 'pause';
 
 export type LockstepArchitectureConfig = {
+  readonly fixedStepHz: number;
   readonly inputDelayTicks: number;
   readonly checksumIntervalTicks: number;
   readonly stallTimeoutMs: number;
@@ -66,6 +67,10 @@ function parseLockstepConfig(value: unknown): LockstepArchitectureConfig {
     throw new Error('architecture.lockstep must be an object');
   }
   return {
+    fixedStepHz: parsePositiveInteger(
+      value.fixedStepHz,
+      'architecture.lockstep.fixedStepHz',
+    ),
     inputDelayTicks: parsePositiveInteger(
       value.inputDelayTicks,
       'architecture.lockstep.inputDelayTicks',

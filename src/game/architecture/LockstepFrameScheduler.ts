@@ -10,7 +10,8 @@ import {
   validateLockstepCommandFrameForPeer,
 } from './LockstepCommandProtocol';
 
-export const LOCKSTEP_FIXED_DT_MS = 1000 / 60;
+export const LOCKSTEP_FIXED_STEP_HZ = ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
+export const LOCKSTEP_FIXED_DT_MS = 1000 / LOCKSTEP_FIXED_STEP_HZ;
 
 export type LockstepFrameSchedulerStatus =
   | 'running'

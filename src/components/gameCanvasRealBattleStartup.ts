@@ -24,6 +24,7 @@ import { assertDeterministicLockstepRuntimeReady } from '../game/architecture/De
 import {
   LockstepFrameScheduler,
   LOCKSTEP_FIXED_DT_MS,
+  LOCKSTEP_FIXED_STEP_HZ,
   type LockstepFrameSchedulerDiagnostics,
 } from '../game/architecture/LockstepFrameScheduler';
 import {
@@ -1094,7 +1095,7 @@ async function createDeterministicLockstepBackendRuntime({
         elapsedMs,
         stepsRun: advanceResult.advancedFrames,
         workMs: scheduler.getDiagnostics().performance.simStepMsAvg,
-        tickRateHz: Math.round(1000 / LOCKSTEP_FIXED_DT_MS),
+        tickRateHz: LOCKSTEP_FIXED_STEP_HZ,
       });
 
       // Lockstep snapshots are local presentation only. Emit one after catch-up
@@ -1164,6 +1165,8 @@ async function createDeterministicLockstepBackendRuntime({
         lockstepCoordinatorPlayerId: matchContext.hostPlayerId,
         lockstepReadyPlayerIds: [...readyPlayerIds].sort((a, b) => a - b),
         lockstepRequiredReadyPlayerIds: [...requiredReadyPlayerIds].sort((a, b) => a - b),
+        lockstepFixedStepHz: ARCHITECTURE_CONFIG.lockstep.fixedStepHz,
+        lockstepChecksumIntervalTicks: ARCHITECTURE_CONFIG.lockstep.checksumIntervalTicks,
         lockstepChecksums: desyncMonitor?.getDiagnostics(),
         lockstepNetwork: network?.getLockstepTransport().getDiagnostics() ?? null,
         lockstepPendingNetworkMessages:

@@ -1,16 +1,18 @@
+import { ARCHITECTURE_CONFIG } from '@/architectureConfig';
+
 export type LockstepPerformanceBudget = {
   readonly measurementModel: 'local-server-sim-per-browser';
   readonly minimumSupportedDeviceClass: string;
   readonly slowClientPolicy: 'stall-or-use-authoritative-server';
-  readonly fixedSimulationHz: 60;
+  readonly fixedSimulationHz: number;
 };
 
 export const LOCKSTEP_PERFORMANCE_BUDGET: LockstepPerformanceBudget = {
   measurementModel: 'local-server-sim-per-browser',
   minimumSupportedDeviceClass:
-    'desktop/laptop browser that can run the full local server simulation at 60 Hz',
+    `desktop/laptop browser that can run the full local server simulation at ${ARCHITECTURE_CONFIG.lockstep.fixedStepHz} Hz`,
   slowClientPolicy: 'stall-or-use-authoritative-server',
-  fixedSimulationHz: 60,
+  fixedSimulationHz: ARCHITECTURE_CONFIG.lockstep.fixedStepHz,
 };
 
 export type LockstepSnapshotPerformanceTelemetry = {

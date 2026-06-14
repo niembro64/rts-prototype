@@ -971,7 +971,7 @@ const displayTickRate = computed(
   () =>
     serverMetaFromSnapshot.value?.ticks.rate ??
     (ARCHITECTURE_CONFIG.backend === 'deterministic-lockstep'
-      ? 60
+      ? ARCHITECTURE_CONFIG.lockstep.fixedStepHz
       : SERVER_CONFIG.tickRate.default),
 );
 // HOST SERVER unit ground normal EMA mode. Picks the half-life used by the

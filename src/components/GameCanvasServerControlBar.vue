@@ -13,13 +13,17 @@ import BarDivider from './BarDivider.vue';
 import BarLabel from './BarLabel.vue';
 import type { GameCanvasServerControlBarModel } from './gameCanvasControlBarModels';
 import { fmt4, msBarStyle, statBarStyle } from './uiUtils';
-import type { ArchitectureBackend } from '../architectureConfig';
+import {
+  ARCHITECTURE_CONFIG,
+  type ArchitectureBackend,
+} from '../architectureConfig';
 
 defineProps<{
   model: GameCanvasServerControlBarModel;
 }>();
 
-const LOCKSTEP_FIXED_SIM_HZ = 60;
+const LOCKSTEP_FIXED_SIM_HZ = ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
+const LOCKSTEP_CHECKSUM_INTERVAL_TICKS = ARCHITECTURE_CONFIG.lockstep.checksumIntervalTicks;
 
 const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
   snap: 'SNAP',
@@ -61,7 +65,7 @@ function simTpsLabel(architecture: ArchitectureBackend): string {
 
 function simTpsTitle(architecture: ArchitectureBackend): string {
   if (isLockstep(architecture)) {
-    return 'Actual lockstep frames advanced per wall-clock second in this browser. This can be below 60 when the browser pump is slow or waiting for command frames; the fixed simulation step still remains 60 Hz.';
+    return `Actual lockstep frames advanced per wall-clock second in this browser. This can be below ${LOCKSTEP_FIXED_SIM_HZ} when the browser pump is slow or waiting for command frames; the fixed simulation step still remains ${LOCKSTEP_FIXED_SIM_HZ} Hz.`;
   }
   return 'Server simulation ticks per second';
 }
@@ -72,9 +76,17 @@ function simTpsTarget(architecture: ArchitectureBackend): number {
 
 function cpuTitle(architecture: ArchitectureBackend): string {
   if (isLockstep(architecture)) {
-    return 'Local lockstep simulation CPU load - measured server-simulation work as a percent of the fixed 60 Hz frame budget.';
+    return `Local lockstep simulation CPU load - measured server-simulation work as a percent of the fixed ${LOCKSTEP_FIXED_SIM_HZ} Hz frame budget.`;
   }
   return 'Host CPU load - simulation tick time as a percent of the target tick budget. >100% means the host is falling behind.';
+}
+
+function fixedStepTitle(): string {
+  return `deterministic-lockstep fixed simulation step from architecture.json: ${LOCKSTEP_FIXED_SIM_HZ} Hz (${fmt4(1000 / LOCKSTEP_FIXED_SIM_HZ)} ms per logical frame). Actual frame advancement is shown separately as ADV TPS.`;
+}
+
+function checksumTitle(): string {
+  return `deterministic-lockstep checksum interval from architecture.json: compare canonical state every ${LOCKSTEP_CHECKSUM_INTERVAL_TICKS} lockstep ticks.`;
 }
 
 </script>
@@ -136,11 +148,19 @@ function cpuTitle(architecture: ArchitectureBackend): string {
       </BarControlGroup>
       <BarControlGroup v-else>
         <BarDivider />
-        <BarLabel title="deterministic-lockstep uses a fixed 1000 / 60 ms simulation frame. Actual frame advancement is shown separately as ADV TPS.">FIXED STEP:</BarLabel>
+        <BarLabel :title="fixedStepTitle()">FIXED STEP:</BarLabel>
         <BarButton
           :active="true"
-          title="Fixed lockstep simulation step: 60 Hz."
+          :title="fixedStepTitle()"
         >{{ LOCKSTEP_FIXED_SIM_HZ }} HZ</BarButton>
+      </BarControlGroup>
+      <BarControlGroup v-if="isLockstep(model.architecture)">
+        <BarDivider />
+        <BarLabel :title="checksumTitle()">CHECKSUM:</BarLabel>
+        <BarButton
+          :active="true"
+          :title="checksumTitle()"
+        >{{ LOCKSTEP_CHECKSUM_INTERVAL_TICKS }} TICKS</BarButton>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />

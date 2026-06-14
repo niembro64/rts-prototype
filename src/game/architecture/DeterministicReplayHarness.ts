@@ -20,8 +20,7 @@ import {
   type CanonicalServerState,
 } from './CanonicalStateHash';
 import { hashCanonicalValue } from './CanonicalMatchInitialization';
-
-const FIXED_DT_MS = 1000 / 60;
+import { LOCKSTEP_FIXED_DT_MS } from './LockstepFrameScheduler';
 
 type ReplayCommandBuilder = (core: ServerSimulationCore, frame: number) => readonly Command[];
 type ReplaySetup = (core: ServerSimulationCore) => void;
@@ -356,7 +355,7 @@ function runReplayCaseOnce(replayCase: DeterministicReplayCase): ReplayRun {
     replayCase.setup?.(core);
     for (let frame = 0; frame < replayCase.ticks; frame++) {
       const commands = replayCase.buildCommands(core, frame);
-      core.stepFixedTick(FIXED_DT_MS, commands);
+      core.stepFixedTick(LOCKSTEP_FIXED_DT_MS, commands);
       if ((frame + 1) % 30 === 0 || frame === replayCase.ticks - 1) {
         checkpoints.push(core.getCanonicalStateHash().hash);
       }
