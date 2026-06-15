@@ -863,8 +863,17 @@ export class GameServer {
       return;
     }
     allowedSet.delete(structureBlueprintId);
+    // Route removal through the authoritative building-death cleanup
+    // (same sequence as ServerSimulationCore's onBuildingDeath): a raw
+    // removeEntity would skip onBuildingDestroyed, leaking the producer's
+    // running income-rate tally, orphaning in-progress factory shells
+    // (no cancel/refund), and leaving the buildability grid marked
+    // occupied. Iterating the cached getBuildings() array while removing
+    // is safe — cache invalidation only flips a dirty flag.
+    const construction = this.simulation.getConstructionSystem();
     for (const structure of this.world.getBuildings()) {
       if (structure.buildingBlueprintId === structureBlueprintId) {
+        construction.onBuildingDestroyed(this.world, structure);
         this.world.removeEntity(structure.id);
       }
     }
