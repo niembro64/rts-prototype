@@ -21,6 +21,7 @@ import type { LobbyPlayer } from '@/types/ui';
 
 const props = defineProps<{
   visible: boolean;
+  sidebarOpen: boolean;
   isHost: boolean;
   roomCode: string;
   players: LobbyPlayer[];
@@ -351,29 +352,83 @@ const terrainSectionVars = computed(() =>
 </script>
 
 <template>
-  <div v-if="visible" class="lobby-overlay">
-    <div class="lobby-modal" :class="{ 'in-lobby': isInLobby }">
-      <!-- Spectate button (hide menu to watch background battle).
-           Only meaningful on the initial / connecting screens —
-           inside the GAME LOBBY the demo battle is already visible
-           in the preview pane. -->
-      <button
-        v-if="!isInLobby"
-        class="spectate-btn"
-        @click="emit('spectate')"
-        title="Watch Battle"
-      >
-        ●
-      </button>
+  <!-- Startup BUDGET ANNIHILATION screen — a non-blocking right-edge
+       sidebar that slides over the live demo battle. The wrapper is
+       pointer-events:none so clicks pass straight through to the demo
+       everywhere except the panel and its toggle handle; the demo keeps
+       running and stays fully interactive whether the sidebar is open
+       or closed. The edge toggle slides the panel in/out. -->
+  <aside
+    v-if="visible && !isInLobby && !isConnecting"
+    class="menu-sidebar"
+    :class="{ open: sidebarOpen }"
+    aria-label="Budget Annihilation menu"
+  >
+    <button
+      class="menu-sidebar-toggle"
+      :aria-expanded="sidebarOpen"
+      :aria-label="sidebarOpen ? 'Close menu' : 'Open menu'"
+      :title="sidebarOpen ? 'Close menu' : 'Open menu'"
+      @click="emit('spectate')"
+    >
+      <span class="toggle-dot"></span>
+      <span class="toggle-dot"></span>
+      <span class="toggle-dot"></span>
+    </button>
 
-      <!-- Live mini-simulation preview target. Always rendered
-           whenever the modal is open (so Vue Teleport from
-           GameCanvas always has a stable target DOM node), but
-           only visually shown in the GAME LOBBY state via v-show.
-           Putting this in a v-else-if and reactively flipping the
-           Teleport disabled prop alongside the target's existence
-           caused mid-frame race conditions where Vue's patcher
-           hit detached vnodes (see Teleport runtime errors). -->
+    <div class="menu-sidebar-panel" :aria-hidden="!sidebarOpen">
+      <div class="menu-brand">
+        <h1 class="title">BUDGET ANNIHILATION</h1>
+        <p class="subtitle">Online Multiplayer RTS</p>
+      </div>
+
+      <div class="main-actions">
+        <button class="lobby-btn host-btn" @click="handleHost">Host Game</button>
+
+        <div class="join-row">
+          <input
+            v-model="joinCode"
+            class="code-input"
+            type="text"
+            maxlength="4"
+            placeholder="CODE"
+            @keyup.enter="handleJoinSubmit"
+          />
+          <button
+            class="lobby-btn join-btn"
+            :disabled="!canJoin"
+            @click="handleJoinSubmit"
+          >Join</button>
+        </div>
+      </div>
+
+      <!-- Reserved for the list of open lobbies (this is what the
+           sidebar is being built toward). Placeholder for now. -->
+      <div class="lobby-list-placeholder">
+        <span class="lobby-list-label">OPEN LOBBIES</span>
+        <p class="lobby-list-hint">No public lobbies yet — host a game or join with a code.</p>
+      </div>
+
+      <div class="surface-actions">
+        <button class="secondary-surface-btn" @click="handleEntityLab">Entity Lab</button>
+      </div>
+
+      <div v-if="error" class="error-message">{{ error }}</div>
+
+      <div v-if="isTauri" class="footer-row">
+        <button class="lobby-btn exit-btn" @click="exitApp">Exit</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Connecting / GAME LOBBY screens — still full-screen modals. -->
+  <div v-else-if="visible" class="lobby-overlay">
+    <div class="lobby-modal" :class="{ 'in-lobby': isInLobby }">
+      <!-- Live mini-simulation preview target. Rendered whenever the
+           full-screen modal is mounted, but only visually shown in the
+           GAME LOBBY state via v-show. The demo container is moved into
+           it imperatively (see useGameCanvasLobbyPreview) once a room
+           code exists. -->
       <div
         id="lobby-preview-target"
         class="preview-pane"
@@ -393,45 +448,8 @@ const terrainSectionVars = computed(() =>
         </div>
       </div>
 
-      <!-- Initial screen -->
-      <template v-if="!isInLobby && !isConnecting">
-        <h1 class="title">BUDGET ANNIHILATION</h1>
-        <p class="subtitle">Online Multiplayer RTS</p>
-
-        <div class="main-actions">
-          <button class="lobby-btn host-btn" @click="handleHost">Host Game</button>
-
-          <div class="join-row">
-            <input
-              v-model="joinCode"
-              class="code-input"
-              type="text"
-              maxlength="4"
-              placeholder="CODE"
-              @keyup.enter="handleJoinSubmit"
-            />
-            <button
-              class="lobby-btn join-btn"
-              :disabled="!canJoin"
-              @click="handleJoinSubmit"
-            >Join</button>
-          </div>
-        </div>
-
-        <div class="surface-actions">
-          <button class="secondary-surface-btn" @click="emit('spectate')">Demo Battle</button>
-          <button class="secondary-surface-btn" @click="handleEntityLab">Entity Lab</button>
-        </div>
-
-        <div v-if="error" class="error-message">{{ error }}</div>
-
-        <div v-if="isTauri" class="footer-row">
-          <button class="lobby-btn exit-btn" @click="exitApp">Exit</button>
-        </div>
-      </template>
-
       <!-- Connecting screen -->
-      <template v-else-if="isConnecting">
+      <template v-if="isConnecting">
         <h1 class="title">CONNECTING...</h1>
         <div class="connecting-spinner"></div>
         <div class="footer-row">
@@ -941,28 +959,145 @@ const terrainSectionVars = computed(() =>
   overflow-y: auto;
 }
 
-.spectate-btn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  color: #555;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
+/* ============================================================
+ * Startup BUDGET ANNIHILATION menu — right-edge sidebar.
+ * Mirrors the lobby-controls-sidebar pattern in GameCanvas: a
+ * pointer-events:none fixed wrapper so the live demo battle behind
+ * it stays clickable, with only the panel + edge toggle re-enabling
+ * pointer events. Slides off the right edge when closed, leaving the
+ * toggle handle visible at the screen edge.
+ * ============================================================ */
+.menu-sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3000;
+  width: min(380px, calc(100vw - 40px));
+  pointer-events: none;
+  transform: translateX(0);
+  transition: transform 0.2s ease;
 }
 
-.spectate-btn:hover {
-  color: #4a9eff;
-  background: rgba(74, 158, 255, 0.1);
+.menu-sidebar:not(.open) {
+  transform: translateX(100%);
+}
+
+.menu-sidebar-toggle {
+  position: absolute;
+  top: 50%;
+  left: -30px;
+  width: 30px;
+  height: 72px;
+  padding: 0;
+  transform: translateY(-50%);
+  background: rgba(15, 18, 24, 0.92);
+  border: 1px solid #444;
+  border-right: none;
+  border-radius: 8px 0 0 8px;
+  color: #888;
+  cursor: pointer;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.menu-sidebar-toggle:hover {
+  background: rgba(35, 35, 48, 0.96);
+  border-color: #777;
+  color: #cdd6e0;
+}
+
+.menu-sidebar-toggle:active {
+  background: rgba(12, 12, 18, 0.96);
+  border-color: #666;
+}
+
+.menu-sidebar-toggle .toggle-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  display: block;
+}
+
+.menu-sidebar-panel {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 30px 26px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  text-align: left;
+  background: rgba(15, 18, 24, 0.95);
+  border-left: 1px solid #444;
+  box-shadow: -16px 0 38px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+}
+
+.menu-sidebar:not(.open) .menu-sidebar-panel {
+  visibility: hidden;
+}
+
+/* Layout overrides for elements shared with the old centered modal,
+ * re-flowed for the vertical left-aligned sidebar column. */
+.menu-sidebar-panel .title {
+  font-size: 26px;
+}
+
+.menu-sidebar-panel .subtitle {
+  margin: 6px 0 0;
+}
+
+.menu-sidebar-panel .main-actions,
+.menu-sidebar-panel .surface-actions {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+.menu-sidebar-panel .surface-actions {
+  justify-content: flex-start;
+}
+
+.menu-sidebar-panel .error-message {
+  margin-top: 0;
+}
+
+.menu-sidebar-panel .footer-row {
+  margin-top: auto;
+  justify-content: flex-start;
+}
+
+.lobby-list-placeholder {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px dashed #3a4452;
+  border-radius: 10px;
+}
+
+.lobby-list-label {
+  font-family: monospace;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: #8893a3;
+}
+
+.lobby-list-hint {
+  margin: 0;
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #67707d;
 }
 
 /* Preview pane — appears ONLY in the GAME LOBBY screen (after

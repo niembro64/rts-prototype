@@ -225,18 +225,26 @@ const {
   serverMetaFromSnapshot,
 });
 
+// The startup BUDGET ANNIHILATION screen is now a non-blocking sidebar
+// (see LobbyModal). Only the connecting / in-lobby screens are still
+// full-screen blocking modals, so only those should hide the demo game
+// chrome and bottom bars — the startup sidebar leaves the demo fully
+// visible and interactive whether it is open or closed.
+const lobbyFullscreenVisible = computed(
+  () => lobbyModalVisible.value && (isConnecting.value || roomCode.value !== ''),
+);
 const gameChromeVisible = computed(
-  () => uiChromeVisible.value && (isMobile ? mobileBarsVisible.value : !lobbyModalVisible.value),
+  () => uiChromeVisible.value && (isMobile ? mobileBarsVisible.value : !lobbyFullscreenVisible.value),
 );
 const bottomChromeVisible = computed(
-  () => uiChromeVisible.value && !showLoadingOverlay.value && (isMobile ? mobileBarsVisible.value : !lobbyModalVisible.value),
+  () => uiChromeVisible.value && !showLoadingOverlay.value && (isMobile ? mobileBarsVisible.value : !lobbyFullscreenVisible.value),
 );
 
 const loadingInLobbyPreview = computed(
   () =>
     !gameStarted.value &&
     currentBattleMode.value === 'real' &&
-    lobbyModalVisible.value &&
+    lobbyFullscreenVisible.value &&
     showLoadingOverlay.value,
 );
 const showDemoLoadingOverlay = computed(
@@ -252,7 +260,7 @@ const loadingNextLabel = computed(() => {
 });
 const lobbyControlsSidebarOpen = ref(false);
 const showLobbyControlsSidebar = computed(
-  () => uiChromeVisible.value && !isMobile && lobbyModalVisible.value,
+  () => uiChromeVisible.value && !isMobile && lobbyFullscreenVisible.value,
 );
 watch(showLobbyControlsSidebar, (visible) => {
   if (!visible) lobbyControlsSidebarOpen.value = false;
@@ -1991,17 +1999,18 @@ watchEffect(() => {
       </aside>
     </div>
 
-    <!-- Lobby Modal. On the initial (BUDGET ANNIHILATION) and
-         connecting screens it renders full-screen over the
-         demo-battle backdrop — exactly the original load-time
-         behavior. Once `roomCode` is set (the user clicked
-         Host or finished joining), the GAME LOBBY screen renders
-         a `#lobby-preview-target` div inside the modal; the demo
-         container teleports into it (see Teleport above) and the
-         demo battle runs as a small simulation preview alongside
-         the lobby's terrain / player controls. -->
+    <!-- Lobby Modal. The startup (BUDGET ANNIHILATION) screen renders
+         as a non-blocking right-edge sidebar (`sidebar-open` slides it
+         in/out) over the live, interactive demo battle. The connecting
+         and GAME LOBBY screens still render as full-screen modals. Once
+         `roomCode` is set (the user clicked Host or finished joining),
+         the GAME LOBBY screen renders a `#lobby-preview-target` div
+         inside the modal; the demo container teleports into it and the
+         demo battle runs as a small simulation preview alongside the
+         lobby's terrain / player controls. -->
     <LobbyModal
-      :visible="!isMobile && showLobby && !spectateMode"
+      :visible="!isMobile && showLobby"
+      :sidebar-open="!spectateMode"
       :is-host="isHost"
       :room-code="roomCode"
       :players="lobbyPlayers"

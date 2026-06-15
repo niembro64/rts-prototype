@@ -44,15 +44,6 @@ function handleCameraTutorialDone(): void {
   />
 
   <button
-    v-if="uiChromeVisible && !isMobile && showLobby && spectateMode"
-    class="spectate-toggle-btn"
-    title="Show Menu"
-    @click="emit('toggleSpectateMode')"
-  >
-    ☰
-  </button>
-
-  <button
     v-if="uiChromeVisible && isMobile"
     class="mobile-bars-toggle"
     :class="{ active: mobileBarsVisible }"
@@ -174,32 +165,6 @@ function handleCameraTutorialDone(): void {
 
 .dismiss-btn:active {
   transform: scale(0.98);
-}
-
-.spectate-toggle-btn {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 3001;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  background: rgba(15, 18, 24, 0.92);
-  border: 1px solid #444;
-  border-radius: 8px;
-  color: #aaa;
-  font-size: 18px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.spectate-toggle-btn:hover {
-  background: rgba(35, 35, 48, 0.96);
-  border-color: #777;
-  color: white;
 }
 
 .mobile-bars-toggle {
