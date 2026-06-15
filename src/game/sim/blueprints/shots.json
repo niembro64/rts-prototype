@@ -143,7 +143,7 @@
     },
     "submunitions": null,
     "homingTurnRate": 100,
-    "homingThrust": 10000,
+    "homingThrust": 5000,
     "homingDelayMs": 3000,
     "propulsionForce": 500,
     "gravityForceMultiplier": 0,
