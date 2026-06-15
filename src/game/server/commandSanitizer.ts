@@ -209,7 +209,13 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
       const tax = command.tax;
       if (typeof tax !== 'number' || !Number.isFinite(tax)) return null;
       const options = BATTLE_CONFIG.converterTax.options;
-      const matched = options.find((opt) => Math.abs(opt - tax) < 1e-6);
+      let matched: number | undefined;
+      for (let i = 0; i < options.length; i++) {
+        const option = options[i];
+        if (Math.abs(option - tax) >= 1e-6) continue;
+        matched = option;
+        break;
+      }
       return matched !== undefined ? { ...command, tick, tax: matched } : null;
     }
     default: {

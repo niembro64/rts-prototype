@@ -17,14 +17,19 @@ import type {
 
 export type SelectionChangeHandler = ((info: SelectionInfo) => void) | undefined;
 
+function createControlGroupSlotSnapshots(): ControlGroupSlotSnapshot[] {
+  const slots = new Array<ControlGroupSlotSnapshot>(CONTROL_GROUP_COUNT);
+  for (let i = 0; i < CONTROL_GROUP_COUNT; i++) {
+    slots[i] = { entityIds: [], auto: false };
+  }
+  return slots;
+}
+
 export class RtsScene3DSelectionSystem {
   private selectedUnits: Entity[] = [];
   private selectedBuildings: Entity[] = [];
   private scratchSelectedBuildingIds: EntityId[] = [];
-  private controlGroupSlots: ControlGroupSlotSnapshot[] = Array.from(
-    { length: CONTROL_GROUP_COUNT },
-    () => ({ entityIds: [], auto: false }),
-  );
+  private controlGroupSlots: ControlGroupSlotSnapshot[] = createControlGroupSlotSnapshots();
   private selectedEntityCacheDirty = true;
   private selectionInfoDirty = true;
   private waypointMode: WaypointType = 'move';
@@ -241,9 +246,12 @@ export class RtsScene3DSelectionSystem {
   ): void {
     this.rebuildEntityCachesIfNeeded();
     if (!this.selectionInfoDirty) {
-      const hasProducingFactory = this.selectedBuildings.some(
-        (building) => building.factory?.isProducing,
-      );
+      let hasProducingFactory = false;
+      for (let i = 0; i < this.selectedBuildings.length; i++) {
+        if (this.selectedBuildings[i].factory?.isProducing !== true) continue;
+        hasProducingFactory = true;
+        break;
+      }
       if (hasProducingFactory) this.selectionInfoDirty = true;
     }
     if (!this.selectionInfoDirty) return;

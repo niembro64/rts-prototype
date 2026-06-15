@@ -406,6 +406,12 @@ function growUint8(source: Uint8Array, nextCapacity: number): Uint8Array {
   return next;
 }
 
+function createVector4ScratchArray(length: number): THREE.Vector4[] {
+  const vectors = new Array<THREE.Vector4>(length);
+  for (let i = 0; i < length; i++) vectors[i] = new THREE.Vector4();
+  return vectors;
+}
+
 export class ShieldRenderer3D {
   private root: THREE.Group;
   // Unit sphere reused for the bubble write into the shared
@@ -434,14 +440,8 @@ export class ShieldRenderer3D {
   private finiteCylinderColorAttr: THREE.InstancedBufferAttribute;
   private implicitFieldMesh: THREE.Mesh;
   private implicitFieldMat: THREE.ShaderMaterial;
-  private implicitFieldData: THREE.Vector4[] = Array.from(
-    { length: IMPLICIT_FIELD_CAP },
-    () => new THREE.Vector4(),
-  );
-  private implicitFieldStyle: THREE.Vector4[] = Array.from(
-    { length: IMPLICIT_FIELD_CAP },
-    () => new THREE.Vector4(),
-  );
+  private implicitFieldData: THREE.Vector4[] = createVector4ScratchArray(IMPLICIT_FIELD_CAP);
+  private implicitFieldStyle: THREE.Vector4[] = createVector4ScratchArray(IMPLICIT_FIELD_CAP);
   private implicitFieldInvProjection = new THREE.Matrix4();
   private implicitFieldCameraWorld = new THREE.Matrix4();
   private implicitFieldViewProjection = new THREE.Matrix4();

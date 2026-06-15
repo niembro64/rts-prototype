@@ -683,7 +683,10 @@ export function commandHotkeyLabels(
   commandId: CommandHotkeyId,
   presetId: CommandHotkeyPresetId = getActiveCommandHotkeyPresetId(),
 ): string[] {
-  return getCommandHotkeyPreset(presetId)[commandId].map(bindingLabel);
+  const bindings = getCommandHotkeyPreset(presetId)[commandId];
+  const labels = new Array<string>(bindings.length);
+  for (let i = 0; i < bindings.length; i++) labels[i] = bindingLabel(bindings[i]);
+  return labels;
 }
 
 export function resolveCommandHotkey(
@@ -807,7 +810,17 @@ export function getCommandHotkeyConflicts(
 
   const conflicts: CommandHotkeyConflict[] = [];
   for (const { signature, commandIds } of ownersBySignature.values()) {
-    const uniqueCommandIds = Array.from(new Set(commandIds));
+    const uniqueCommandIds: CommandHotkeyId[] = [];
+    for (let i = 0; i < commandIds.length; i++) {
+      const commandId = commandIds[i];
+      let seen = false;
+      for (let j = 0; j < uniqueCommandIds.length; j++) {
+        if (uniqueCommandIds[j] !== commandId) continue;
+        seen = true;
+        break;
+      }
+      if (!seen) uniqueCommandIds.push(commandId);
+    }
     if (uniqueCommandIds.length > 1) {
       conflicts.push({ presetId, signature, commandIds: uniqueCommandIds });
     }
@@ -923,11 +936,21 @@ function isModifierOnlyKey(keyValue: string): boolean {
 }
 
 function bindingLabel(binding: CommandHotkeyBinding): string {
-  return binding.map((chord) => chord.label).join(' ');
+  let label = '';
+  for (let i = 0; i < binding.length; i++) {
+    if (i > 0) label += ' ';
+    label += binding[i].label;
+  }
+  return label;
 }
 
 function bindingSignature(binding: CommandHotkeyBinding): string {
-  return binding.map(chordSignature).join(',');
+  let signature = '';
+  for (let i = 0; i < binding.length; i++) {
+    if (i > 0) signature += ',';
+    signature += chordSignature(binding[i]);
+  }
+  return signature;
 }
 
 function chordSignature(chord: CommandKeyChord): string {

@@ -41,6 +41,14 @@ const FACTORY_ACTION_SPAWN_SHELL = 5;
 const MAX_FACTORY_PRODUCTION_QUEUE_LENGTH = 64;
 const FACTORY_SHELL_MIN_FREEFALL_CLEARANCE = 36;
 
+export function shiftFactoryProductionQueue(queue: string[]): string | null {
+  if (queue.length === 0) return null;
+  const unitBlueprintId = queue[0];
+  for (let i = 1; i < queue.length; i++) queue[i - 1] = queue[i];
+  queue.length--;
+  return unitBlueprintId;
+}
+
 export function getFactoryShellSpawnClearanceAboveSurface(
   bp: Pick<ReturnType<typeof getUnitBlueprint>, 'bodyCenterHeight' | 'radius'>,
 ): number {
@@ -241,7 +249,7 @@ export class FactoryProductionSystem {
         factoryComp.isProducing = false;
         factoryComp.currentBuildProgress = 0;
         if (!factoryComp.repeatProduction) {
-          const nextQueuedUnitBlueprintId = factoryComp.productionQueue.shift() ?? null;
+          const nextQueuedUnitBlueprintId = shiftFactoryProductionQueue(factoryComp.productionQueue);
           factoryComp.selectedUnitBlueprintId = nextQueuedUnitBlueprintId;
           factoryComp.repeatProduction = nextQueuedUnitBlueprintId === null;
         }

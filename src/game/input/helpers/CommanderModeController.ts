@@ -15,9 +15,11 @@ import { getAllStructures } from '../../sim/buildConfigs';
 import { getBuildMenuStructureBlueprintIdBySlotIndex } from '../buildMenuLayout';
 import { getSnappedBuildPosition } from './BuildPlacementValidator';
 
-const BUILD_MODE_BUILDING_BLUEPRINT_IDS = getAllStructures().map(
-  (building) => building.buildingBlueprintId,
-);
+const ALL_STRUCTURE_CONFIGS = getAllStructures();
+const BUILD_MODE_BUILDING_BLUEPRINT_IDS = new Array<BuildingBlueprintId>(ALL_STRUCTURE_CONFIGS.length);
+for (let i = 0; i < ALL_STRUCTURE_CONFIGS.length; i++) {
+  BUILD_MODE_BUILDING_BLUEPRINT_IDS[i] = ALL_STRUCTURE_CONFIGS[i].buildingBlueprintId;
+}
 const DEFAULT_BUILDING_BLUEPRINT_ID: BuildingBlueprintId = BUILD_MODE_BUILDING_BLUEPRINT_IDS[0] ?? 'buildingSolar';
 
 export function getBuildModeBuildingBlueprintIds(): readonly BuildingBlueprintId[] {

@@ -97,10 +97,14 @@ export async function createBackgroundBattle(
     demoPlayerIds = [];
     for (let i = 1; i <= fallbackCount; i++) demoPlayerIds.push(i as PlayerId);
   }
-  const resolvedLocalPlayerId: PlayerId =
-    localPlayerId !== undefined && demoPlayerIds.includes(localPlayerId)
-      ? localPlayerId
-      : demoPlayerIds[0];
+  let resolvedLocalPlayerId: PlayerId = demoPlayerIds[0];
+  if (localPlayerId !== undefined) {
+    for (let i = 0; i < demoPlayerIds.length; i++) {
+      if (demoPlayerIds[i] !== localPlayerId) continue;
+      resolvedLocalPlayerId = localPlayerId;
+      break;
+    }
+  }
 
   // Apply the host's terrain-shape choice BEFORE constructing the
   // GameServer. The constructor calls spawnInitialBases (which samples
@@ -127,9 +131,13 @@ export async function createBackgroundBattle(
   // buildings, units, and fabricator orders, but the local demo seat
   // is excluded from AI control so it behaves like the REAL BATTLE.
   const isLobbyPreview = mode === 'real';
-  const aiPlayerIds: PlayerId[] = isLobbyPreview
-    ? []
-    : demoPlayerIds.filter((playerId) => playerId !== resolvedLocalPlayerId);
+  const aiPlayerIds: PlayerId[] = [];
+  if (!isLobbyPreview) {
+    for (let i = 0; i < demoPlayerIds.length; i++) {
+      const playerId = demoPlayerIds[i];
+      if (playerId !== resolvedLocalPlayerId) aiPlayerIds.push(playerId);
+    }
+  }
 
   // Restore stored demo unit selection (fall back to config defaults).
   // We resolve this BEFORE creating the GameServer so the constructor's
@@ -143,11 +151,14 @@ export async function createBackgroundBattle(
   const storedDemoUnits = savedDemoUnits && savedDemoUnits.length > 0
     ? savedDemoUnits
     : getDefaultDemoUnits();
-  const initialAllowedUnitBlueprintIds = isLobbyPreview
-    ? new Set<string>()
-    : new Set(BACKGROUND_UNIT_BLUEPRINT_IDS.filter((unitBlueprintId) =>
-        storedDemoUnits.includes(unitBlueprintId),
-      ));
+  const initialAllowedUnitBlueprintIds = new Set<string>();
+  if (!isLobbyPreview) {
+    const storedDemoUnitIds = new Set<string>(storedDemoUnits);
+    for (let i = 0; i < BACKGROUND_UNIT_BLUEPRINT_IDS.length; i++) {
+      const unitBlueprintId = BACKGROUND_UNIT_BLUEPRINT_IDS[i];
+      if (storedDemoUnitIds.has(unitBlueprintId)) initialAllowedUnitBlueprintIds.add(unitBlueprintId);
+    }
+  }
   await report(0.14, 'Choosing unit roster');
 
   // Create a GameServer for background mode (WASM physics).

@@ -459,8 +459,15 @@ export class BurnMark3D {
       }
     }
 
-    h.push(px, py);
-    while (h.length > 4) h.shift();
+    if (h.length >= 4) {
+      h[0] = h[2];
+      h[1] = h[3];
+      h[2] = px;
+      h[3] = py;
+      h.length = 4;
+    } else {
+      h.push(px, py);
+    }
   }
 
   /** Append one mitered quad to the trail. `appendX/Y` is the NEW endpoint;

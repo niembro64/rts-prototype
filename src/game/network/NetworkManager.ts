@@ -173,6 +173,14 @@ function sanitizeCommunicationPoint(value: NetworkCommunicationPoint | undefined
   return z === undefined ? { x, y } : { x, y, z };
 }
 
+function shiftQueuedLockstepMessage(queue: QueuedLockstepMessage[]): QueuedLockstepMessage | undefined {
+  if (queue.length === 0) return undefined;
+  const message = queue[0];
+  for (let i = 1; i < queue.length; i++) queue[i - 1] = queue[i];
+  queue.length--;
+  return message;
+}
+
 export class NetworkManager {
   private peer: Peer | null = null;
   private connections: Map<PlayerId, DataConnection> = new Map();
@@ -282,7 +290,7 @@ export class NetworkManager {
       return;
     }
     if (this.pendingLockstepMessages.length >= LOCKSTEP_PENDING_MESSAGE_QUEUE_MAX) {
-      this.pendingLockstepMessages.shift();
+      shiftQueuedLockstepMessage(this.pendingLockstepMessages);
       this.droppedPendingLockstepMessages++;
     }
     this.pendingLockstepMessages.push({ message, fromPlayerId });

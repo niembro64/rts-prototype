@@ -198,8 +198,10 @@ export class SimulationCombatHaltController {
   }
 
   private unitHasFightStopRequiredMount(unitBlueprintId: string): boolean {
-    return getUnitBlueprint(unitBlueprintId).turrets.some(
-      (mount) => mount.requiredEngagedForFightStop === true,
-    );
+    const turrets = getUnitBlueprint(unitBlueprintId).turrets;
+    for (let i = 0; i < turrets.length; i++) {
+      if (turrets[i].requiredEngagedForFightStop === true) return true;
+    }
+    return false;
   }
 }

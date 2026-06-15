@@ -978,9 +978,14 @@ export class Input3DModeClickController {
     for (let i = 0; i < targets.length; i++) {
       const combat = targets[i].combat;
       if (combat === null) continue;
-      if (combat.turrets.some((turret) =>
-        !turret.config.visualOnly && !turret.config.passive && turret.config.shot !== null
-      )) {
+      let hasManualLaunchTurret = false;
+      for (let j = 0; j < combat.turrets.length; j++) {
+        const turret = combat.turrets[j];
+        if (turret.config.visualOnly || turret.config.passive || turret.config.shot === null) continue;
+        hasManualLaunchTurret = true;
+        break;
+      }
+      if (hasManualLaunchTurret) {
         entityIds.push(targets[i].id);
       }
     }

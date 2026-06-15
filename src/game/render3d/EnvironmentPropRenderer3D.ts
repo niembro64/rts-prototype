@@ -133,9 +133,11 @@ export class EnvironmentPropRenderer3D {
 
   private async loadAssets(): Promise<void> {
     try {
-      const loadedAssets = await Promise.all(
-        ACTIVE_ENVIRONMENT_ASSETS.map(async (spec) => this.loadAsset(spec)),
-      );
+      const loadPromises = new Array<Promise<LoadedEnvironmentAsset>>(ACTIVE_ENVIRONMENT_ASSETS.length);
+      for (let i = 0; i < ACTIVE_ENVIRONMENT_ASSETS.length; i++) {
+        loadPromises[i] = this.loadAsset(ACTIVE_ENVIRONMENT_ASSETS[i]);
+      }
+      const loadedAssets = await Promise.all(loadPromises);
       if (this.destroyed) {
         const geometries = new Set<THREE.BufferGeometry>();
         const materials = new Set<THREE.Material>();
@@ -230,9 +232,11 @@ export class EnvironmentPropRenderer3D {
     source: THREE.Material | THREE.Material[],
   ): THREE.Material | THREE.Material[] {
     if (Array.isArray(source)) {
-      return source.map(
-        (mat) => this.materialForAsset(spec, mat) as THREE.Material,
-      );
+      const materials = new Array<THREE.Material>(source.length);
+      for (let i = 0; i < source.length; i++) {
+        materials[i] = this.materialForAsset(spec, source[i]) as THREE.Material;
+      }
+      return materials;
     }
     const sourceName = source.name.toLowerCase();
     const selectedMaterial = this.materialForSelectedRandomAsset(
@@ -330,11 +334,12 @@ export class EnvironmentPropRenderer3D {
 function publicAssetUrl(path: string): string {
   const base = import.meta.env.BASE_URL || '/';
   const normalizedBase = base.endsWith('/') ? base : `${base}/`;
-  const encodedPath = path
-    .replace(/^\/+/, '')
-    .split('/')
-    .map((part) => encodeURIComponent(part))
-    .join('/');
+  const parts = path.replace(/^\/+/, '').split('/');
+  let encodedPath = '';
+  for (let i = 0; i < parts.length; i++) {
+    if (i > 0) encodedPath += '/';
+    encodedPath += encodeURIComponent(parts[i]);
+  }
   return `${normalizedBase}${encodedPath}`;
 }
 

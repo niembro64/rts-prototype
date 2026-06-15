@@ -220,26 +220,32 @@ export const EMPTY_LOCK_ON_MASKS: LockOnMasks = Object.freeze({
   reciprocal: CT_LOCK_ON_RECIPROCAL_IGNORE,
 });
 
-export const UNIT_HOST_LOCK_ON_MASKS: Record<string, LockOnMasks> =
-  Object.fromEntries(
-    Object.entries(UNIT_BLUEPRINTS).map(([id, blueprint]) => [
-      id,
-      compileLockOnMasks(`unit blueprint ${id}`, blueprint),
-    ]),
-  );
+function buildUnitHostLockOnMasks(): Record<string, LockOnMasks> {
+  const masks: Record<string, LockOnMasks> = {};
+  const ids = Object.keys(UNIT_BLUEPRINTS);
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    masks[id] = compileLockOnMasks(`unit blueprint ${id}`, UNIT_BLUEPRINTS[id]);
+  }
+  return masks;
+}
+
+function buildTowerHostLockOnMasks(): Partial<Record<BuildingBlueprintId, LockOnMasks>> {
+  const masks: Partial<Record<BuildingBlueprintId, LockOnMasks>> = {};
+  const ids = Object.keys(BUILDING_BLUEPRINTS) as BuildingBlueprintId[];
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    if (!isTowerBuildingBlueprintId(id)) continue;
+    const blueprint = BUILDING_BLUEPRINTS[id] as (typeof BUILDING_BLUEPRINTS)[BuildingBlueprintId] & LockOnInclusionObject;
+    masks[id] = compileLockOnMasks(`tower blueprint ${id}`, blueprint);
+  }
+  return masks;
+}
+
+export const UNIT_HOST_LOCK_ON_MASKS: Record<string, LockOnMasks> = buildUnitHostLockOnMasks();
 
 export const TOWER_HOST_LOCK_ON_MASKS: Partial<Record<BuildingBlueprintId, LockOnMasks>> =
-  Object.fromEntries(
-    Object.entries(BUILDING_BLUEPRINTS)
-      .filter(([id]) => isTowerBuildingBlueprintId(id as BuildingBlueprintId))
-      .map(([id, blueprint]) => [
-        id as BuildingBlueprintId,
-        compileLockOnMasks(
-          `tower blueprint ${id}`,
-          blueprint as typeof blueprint & LockOnInclusionObject,
-        ),
-      ]),
-  );
+  buildTowerHostLockOnMasks();
 
 export function getUnitHostLockOnMasks(unitBlueprintId: string): LockOnMasks {
   return UNIT_HOST_LOCK_ON_MASKS[unitBlueprintId] ?? EMPTY_LOCK_ON_MASKS;
@@ -871,16 +877,18 @@ function assertLevel1IdsInSet(
     }
   }
 }
-const KNOWN_BUILDING_IDS: ReadonlySet<string> = new Set(
-  Object.keys(BUILDING_BLUEPRINTS).filter(
-    (id) => !isTowerBuildingBlueprintId(id as BuildingBlueprintId),
-  ),
-);
-const KNOWN_TOWER_IDS: ReadonlySet<string> = new Set(
-  Object.keys(BUILDING_BLUEPRINTS).filter((id) =>
-    isTowerBuildingBlueprintId(id as BuildingBlueprintId),
-  ),
-);
+function buildKnownBuildingIds(tower: boolean): ReadonlySet<string> {
+  const knownIds = new Set<string>();
+  const ids = Object.keys(BUILDING_BLUEPRINTS) as BuildingBlueprintId[];
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    if (isTowerBuildingBlueprintId(id) === tower) knownIds.add(id);
+  }
+  return knownIds;
+}
+
+const KNOWN_BUILDING_IDS: ReadonlySet<string> = buildKnownBuildingIds(false);
+const KNOWN_TOWER_IDS: ReadonlySet<string> = buildKnownBuildingIds(true);
 const KNOWN_UNIT_IDS: ReadonlySet<string> = new Set(Object.keys(UNIT_BLUEPRINTS));
 const KNOWN_TURRET_BLUEPRINT_IDS: ReadonlySet<string> = new Set(Object.keys(TURRET_BLUEPRINTS));
 const KNOWN_SHOT_IDS: ReadonlySet<string> = new Set(Object.keys(SHOT_BLUEPRINTS));

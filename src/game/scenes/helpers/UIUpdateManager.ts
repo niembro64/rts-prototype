@@ -534,18 +534,39 @@ export function buildSelectionInfo(
 
   // Check for capabilities. Every commander has a d-gun, so the
   // commander unit IS the dgunner — no second find call needed.
-  const commander = selectedUnits.find(isCommander);
-  const builder = selectedUnits.find(u => u.builder !== null);
-  const hasTransport = selectedUnits.some(isClientTransportUnit);
+  let commander: typeof selectedUnits[number] | undefined;
+  let builder: typeof selectedUnits[number] | undefined;
+  let hasTransport = false;
+  let canUpgradeMetalExtractors = false;
+  for (let i = 0; i < selectedUnits.length; i++) {
+    const unit = selectedUnits[i];
+    if (commander === undefined && isCommander(unit)) commander = unit;
+    if (builder === undefined && unit.builder !== null) builder = unit;
+    if (!hasTransport && isClientTransportUnit(unit)) hasTransport = true;
+    if (!canUpgradeMetalExtractors && canBuilderUpgradeMetalExtractor(unit)) {
+      canUpgradeMetalExtractors = true;
+    }
+  }
   const allowedBuildBlueprintIds = getSelectedBuilderAllowedBuildBlueprintIds(selectedUnits);
-  const canUpgradeMetalExtractors = selectedUnits.some(canBuilderUpgradeMetalExtractor);
   const selectedPlayerId = selectedUnits[0]?.ownership?.playerId ?? selectedStatic[0]?.ownership?.playerId;
-  const hasOwnedMetalExtractorUpgradeBuilder = selectedPlayerId !== undefined &&
-    entitySource.getUnitsByPlayer(selectedPlayerId).some(canBuilderUpgradeMetalExtractor);
-  const hasUpgradeableMetalExtractor = selectedBuildings.some((entity) =>
-    hasOwnedMetalExtractorUpgradeBuilder &&
-    isUpgradeableMetalExtractorTarget(entity, entity.ownership?.playerId),
-  );
+  let hasOwnedMetalExtractorUpgradeBuilder = false;
+  if (selectedPlayerId !== undefined) {
+    const playerUnits = entitySource.getUnitsByPlayer(selectedPlayerId);
+    for (let i = 0; i < playerUnits.length; i++) {
+      if (!canBuilderUpgradeMetalExtractor(playerUnits[i])) continue;
+      hasOwnedMetalExtractorUpgradeBuilder = true;
+      break;
+    }
+  }
+  let hasUpgradeableMetalExtractor = false;
+  if (hasOwnedMetalExtractorUpgradeBuilder) {
+    for (let i = 0; i < selectedBuildings.length; i++) {
+      const entity = selectedBuildings[i];
+      if (!isUpgradeableMetalExtractorTarget(entity, entity.ownership?.playerId)) continue;
+      hasUpgradeableMetalExtractor = true;
+      break;
+    }
+  }
   const dgunner = commander;
   let fireControlCount = 0;
   let trajectoryControlCount = 0;
@@ -620,7 +641,13 @@ export function buildSelectionInfo(
   // The fabricator-class tower hosts production queues (it owns the
   // factory component); shooting towers do not. The factory affordance
   // therefore lives on the tower selection, not the building one.
-  const factory = selectedTowers.find(b => b.factory !== null);
+  let factory: typeof selectedTowers[number] | undefined;
+  for (let i = 0; i < selectedTowers.length; i++) {
+    const tower = selectedTowers[i];
+    if (tower.factory === null) continue;
+    factory = tower;
+    break;
+  }
 
   // Building ON/OFF (Producer Buildings Are ON/OFF in budget_design_philosophy.html).
   // Only solar/wind/extractor expose a player-toggleable active state;

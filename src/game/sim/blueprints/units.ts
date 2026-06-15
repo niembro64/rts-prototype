@@ -297,7 +297,14 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   }
 
   if (bp.dgun !== null) {
-    if (!bp.turrets.some((turret) => turret.turretBlueprintId === bp.dgun!.turretBlueprintId)) {
+    const dgunTurretBlueprintId = bp.dgun.turretBlueprintId;
+    let hasDgunTurret = false;
+    for (let i = 0; i < bp.turrets.length; i++) {
+      if (bp.turrets[i].turretBlueprintId !== dgunTurretBlueprintId) continue;
+      hasDgunTurret = true;
+      break;
+    }
+    if (!hasDgunTurret) {
       throw new Error(
         `Invalid dgun turret for ${bp.unitBlueprintId}: ${bp.dgun.turretBlueprintId} is not mounted on the unit`,
       );

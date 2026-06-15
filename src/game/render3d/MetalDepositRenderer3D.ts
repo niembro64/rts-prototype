@@ -253,7 +253,11 @@ function makeDepositCoinGeometry(
     pushDepositColor(colors);
   }
 
-  const contour = outline.map((p) => new THREE.Vector2(p.x, p.z));
+  const contour = new Array<THREE.Vector2>(outline.length);
+  for (let i = 0; i < outline.length; i++) {
+    const p = outline[i];
+    contour[i] = new THREE.Vector2(p.x, p.z);
+  }
   const faces = THREE.ShapeUtils.triangulateShape(contour, []);
   for (const face of faces) {
     indices.push(topStart + face[0], topStart + face[2], topStart + face[1]);
@@ -412,7 +416,7 @@ function offsetDepositLoop(
   points: readonly DepositOutlinePoint[],
   margin: number,
 ): DepositOutlinePoint[] {
-  if (margin <= 0 || points.length < 3) return points.slice();
+  if (margin <= 0 || points.length < 3) return copyDepositLoop(points);
   const winding = signedLoopArea(points) >= 0 ? 1 : -1;
   const out: DepositOutlinePoint[] = [];
   for (let i = 0; i < points.length; i++) {
@@ -449,7 +453,7 @@ function smoothDepositLoop(
   points: readonly DepositOutlinePoint[],
   passes: number,
 ): DepositOutlinePoint[] {
-  let current = points.slice();
+  let current = copyDepositLoop(points);
   for (let pass = 0; pass < passes && current.length >= 3; pass++) {
     const next: DepositOutlinePoint[] = [];
     for (let i = 0; i < current.length; i++) {
@@ -470,10 +474,16 @@ function decimateDepositLoop(
   step: number,
 ): DepositOutlinePoint[] {
   const stride = Math.max(1, Math.floor(step));
-  if (stride <= 1) return points.slice();
+  if (stride <= 1) return copyDepositLoop(points);
   const out: DepositOutlinePoint[] = [];
   for (let i = 0; i < points.length; i += stride) out.push(points[i]);
-  return out.length >= 3 ? out : points.slice();
+  return out.length >= 3 ? out : copyDepositLoop(points);
+}
+
+function copyDepositLoop(points: readonly DepositOutlinePoint[]): DepositOutlinePoint[] {
+  const copy = new Array<DepositOutlinePoint>(points.length);
+  for (let i = 0; i < points.length; i++) copy[i] = points[i];
+  return copy;
 }
 
 function normalizeDepositVector(x: number, z: number): DepositOutlinePoint {

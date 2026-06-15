@@ -15,7 +15,8 @@ const rawIcosahedronVertices = [
   new THREE.Vector3(PHI, 0, -1),
   new THREE.Vector3(-PHI, 0, 1),
   new THREE.Vector3(-PHI, 0, -1),
-].map((v) => v.normalize());
+];
+for (let i = 0; i < rawIcosahedronVertices.length; i++) rawIcosahedronVertices[i].normalize();
 
 // Kept for the old hover-fan builder, even though the albatros unit now uses
 // flying locomotion.

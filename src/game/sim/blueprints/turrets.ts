@@ -137,18 +137,22 @@ const RESOLVED_TURRET_BLUEPRINTS = resolveBlueprintRefs(
 
 assertTurretLockOnInclusionConfigIds(Object.keys(RESOLVED_TURRET_BLUEPRINTS));
 
-export const TURRET_BLUEPRINTS = Object.fromEntries(
-  Object.entries(RESOLVED_TURRET_BLUEPRINTS).map(([id, blueprint]) => {
+function buildTurretBlueprints(): Record<TurretBlueprintId, TurretBlueprint> {
+  const blueprints = {} as Record<TurretBlueprintId, TurretBlueprint>;
+  const ids = Object.keys(RESOLVED_TURRET_BLUEPRINTS) as TurretBlueprintId[];
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    const blueprint = RESOLVED_TURRET_BLUEPRINTS[id];
     assertNoInlineLockOnInclusionFields(`turret blueprint ${id}`, blueprint);
-    return [
-      id,
-      {
-        ...blueprint,
-        ...getTurretLockOnInclusions(id),
-      },
-    ];
-  }),
-) as Record<TurretBlueprintId, TurretBlueprint>;
+    blueprints[id] = {
+      ...blueprint,
+      ...getTurretLockOnInclusions(id),
+    };
+  }
+  return blueprints;
+}
+
+export const TURRET_BLUEPRINTS = buildTurretBlueprints();
 
 export const CONSTRUCTION_TURRET_HEAD_RADIUS =
   TURRET_BLUEPRINTS.turretConstruction.radius.visual;

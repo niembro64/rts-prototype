@@ -63,10 +63,14 @@ export type BuildMenuLayout = {
 export function buildStructureMenuLayout(
   allowedBuildBlueprintIds: readonly StructureBlueprintId[],
 ): BuildMenuLayout {
-  const originalIndexById = new Map(
-    allowedBuildBlueprintIds.map((id, index) => [id, index] as const),
-  );
-  const orderedIds = [...allowedBuildBlueprintIds].sort((a, b) =>
+  const originalIndexById = new Map<StructureBlueprintId, number>();
+  const orderedIds = new Array<StructureBlueprintId>(allowedBuildBlueprintIds.length);
+  for (let i = 0; i < allowedBuildBlueprintIds.length; i++) {
+    const id = allowedBuildBlueprintIds[i];
+    originalIndexById.set(id, i);
+    orderedIds[i] = id;
+  }
+  orderedIds.sort((a, b) =>
     compareStructureBuildMenuOrder(a, b, originalIndexById),
   );
   const items: BuildMenuLayoutItem[] = [];
@@ -85,7 +89,11 @@ export function buildStructureMenuLayout(
 
   const groups: BuildMenuLayoutGroup[] = [];
   for (const category of BUILD_MENU_CATEGORY_ORDER) {
-    const categoryItems = items.filter((item) => item.category === category);
+    const categoryItems: BuildMenuLayoutItem[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.category === category) categoryItems.push(item);
+    }
     if (categoryItems.length > 0) groups.push({ category, items: categoryItems });
   }
 
@@ -105,12 +113,14 @@ export function buildBarHomeBuildMenuCells(
   const groups = new Map<BarBuildCategoryId, BuildMenuLayoutItem[]>();
   for (const category of BAR_BUILD_CATEGORIES) groups.set(category.id, []);
   for (const item of buildStructureMenuLayout(allowedBuildBlueprintIds).items) {
-    const category = BAR_BUILD_CATEGORIES.find((entry) => entry.sourceCategory === item.category);
+    const category = findBarBuildCategory(item.category);
     groups.get(category?.id ?? 'Utility')?.push(item);
   }
 
-  const cells = Array.from<BuildMenuLayoutItem | null>({ length: BAR_GRID_SLOT_COUNT }).fill(null);
-  BAR_BUILD_CATEGORIES.forEach((category, columnIndex) => {
+  const cells = new Array<BuildMenuLayoutItem | null>(BAR_GRID_SLOT_COUNT);
+  for (let i = 0; i < cells.length; i++) cells[i] = null;
+  for (let columnIndex = 0; columnIndex < BAR_BUILD_CATEGORIES.length; columnIndex++) {
+    const category = BAR_BUILD_CATEGORIES[columnIndex];
     const options = groups.get(category.id) ?? [];
     for (let rowIndex = 0; rowIndex < BAR_GRID_ROWS && rowIndex < options.length; rowIndex++) {
       const slotIndex = rowIndex * BAR_GRID_COLUMNS + columnIndex;
@@ -124,7 +134,7 @@ export function buildBarHomeBuildMenuCells(
         gridColumn: columnIndex + 1,
       };
     }
-  });
+  }
   return cells;
 }
 
@@ -146,6 +156,14 @@ function compareStructureBuildMenuOrder(
   const stableDelta = stableOrderIndex(a) - stableOrderIndex(b);
   if (stableDelta !== 0) return stableDelta;
   return (originalIndexById.get(a) ?? 0) - (originalIndexById.get(b) ?? 0);
+}
+
+function findBarBuildCategory(category: BuildMenuCategory): BarBuildCategory | null {
+  for (let i = 0; i < BAR_BUILD_CATEGORIES.length; i++) {
+    const entry = BAR_BUILD_CATEGORIES[i];
+    if (entry.sourceCategory === category) return entry;
+  }
+  return null;
 }
 
 function categoryOrderIndex(category: BuildMenuCategory): number {

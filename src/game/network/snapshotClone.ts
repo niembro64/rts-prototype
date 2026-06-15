@@ -125,7 +125,14 @@ function copyFactoryInto(src: ReusableFactory, dst: ReusableFactory): ReusableFa
   dst.progress = src.progress;
   dst.producing = src.producing;
   dst.repeat = src.repeat !== false;
-  dst.queue = src.queue !== null && src.queue !== undefined ? src.queue.slice() : null;
+  const srcQueue = src.queue ?? null;
+  if (srcQueue !== null) {
+    const queue = dst.queue ?? (dst.queue = []);
+    queue.length = srcQueue.length;
+    for (let i = 0; i < srcQueue.length; i++) queue[i] = srcQueue[i];
+  } else {
+    dst.queue = null;
+  }
   dst.energyRate = src.energyRate;
   dst.metalRate = src.metalRate;
   dst.guardTargetId = src.guardTargetId ?? null;

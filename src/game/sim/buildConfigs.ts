@@ -40,29 +40,31 @@ function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): Building
 
 // Compatibility table for runtime code that still receives a static
 // structure id via the historical `buildingBlueprintId` field.
-export const STRUCTURE_CONFIGS: Record<BuildingBlueprintId, BuildingConfig> =
-  Object.fromEntries(
-    Object.keys(BUILDING_BLUEPRINTS).map((buildingBlueprintId) => [
-      buildingBlueprintId,
-      buildBuildingConfig(buildingBlueprintId as BuildingBlueprintId),
-    ]),
-  ) as Record<BuildingBlueprintId, BuildingConfig>;
+export const STRUCTURE_CONFIGS = {} as Record<BuildingBlueprintId, BuildingConfig>;
+const ALL_STRUCTURE_CONFIGS: BuildingConfig[] = [];
+for (const buildingBlueprintId in BUILDING_BLUEPRINTS) {
+  const config = buildBuildingConfig(buildingBlueprintId as BuildingBlueprintId);
+  STRUCTURE_CONFIGS[buildingBlueprintId as BuildingBlueprintId] = config;
+  ALL_STRUCTURE_CONFIGS.push(config);
+}
 
-export const BUILDING_CONFIGS: Record<PureBuildingBlueprintId, BuildingConfig> =
-  Object.fromEntries(
-    PURE_BUILDING_BLUEPRINT_IDS.map((buildingBlueprintId) => [
-      buildingBlueprintId,
-      STRUCTURE_CONFIGS[buildingBlueprintId as BuildingBlueprintId],
-    ]),
-  ) as Record<PureBuildingBlueprintId, BuildingConfig>;
+export const BUILDING_CONFIGS = {} as Record<PureBuildingBlueprintId, BuildingConfig>;
+const ALL_BUILDING_CONFIGS = new Array<BuildingConfig>(PURE_BUILDING_BLUEPRINT_IDS.length);
+for (let i = 0; i < PURE_BUILDING_BLUEPRINT_IDS.length; i++) {
+  const buildingBlueprintId = PURE_BUILDING_BLUEPRINT_IDS[i];
+  const config = STRUCTURE_CONFIGS[buildingBlueprintId as BuildingBlueprintId];
+  BUILDING_CONFIGS[buildingBlueprintId] = config;
+  ALL_BUILDING_CONFIGS[i] = config;
+}
 
-export const TOWER_CONFIGS: Record<TowerBlueprintId, BuildingConfig> =
-  Object.fromEntries(
-    TOWER_BLUEPRINT_IDS.map((towerBlueprintId) => [
-      towerBlueprintId,
-      STRUCTURE_CONFIGS[towerBlueprintId as BuildingBlueprintId],
-    ]),
-  ) as Record<TowerBlueprintId, BuildingConfig>;
+export const TOWER_CONFIGS = {} as Record<TowerBlueprintId, BuildingConfig>;
+const ALL_TOWER_CONFIGS = new Array<BuildingConfig>(TOWER_BLUEPRINT_IDS.length);
+for (let i = 0; i < TOWER_BLUEPRINT_IDS.length; i++) {
+  const towerBlueprintId = TOWER_BLUEPRINT_IDS[i];
+  const config = STRUCTURE_CONFIGS[towerBlueprintId as BuildingBlueprintId];
+  TOWER_CONFIGS[towerBlueprintId] = config;
+  ALL_TOWER_CONFIGS[i] = config;
+}
 
 // Compatibility helper. New UI/config code should prefer
 // BUILDING_CONFIGS/getAllBuildings or TOWER_CONFIGS/getAllTowers.
@@ -98,18 +100,28 @@ export function getUnitBuildConfig(unitBlueprintId: string): UnitBuildConfig | u
 
 // Get list of all buildable units
 export function getBuildableUnits() {
-  return BUILDABLE_UNIT_BLUEPRINT_IDS.map((unitBlueprintId) => getUnitBuildConfig(unitBlueprintId)!);
+  const units = new Array<UnitBuildConfig>(BUILDABLE_UNIT_BLUEPRINT_IDS.length);
+  for (let i = 0; i < BUILDABLE_UNIT_BLUEPRINT_IDS.length; i++) {
+    units[i] = getUnitBuildConfig(BUILDABLE_UNIT_BLUEPRINT_IDS[i])!;
+  }
+  return units;
 }
 
 // Get list of all buildings
 export function getAllBuildings(): BuildingConfig[] {
-  return Object.values(BUILDING_CONFIGS);
+  return copyBuildingConfigArray(ALL_BUILDING_CONFIGS);
 }
 
 export function getAllTowers(): BuildingConfig[] {
-  return Object.values(TOWER_CONFIGS);
+  return copyBuildingConfigArray(ALL_TOWER_CONFIGS);
 }
 
 export function getAllStructures(): BuildingConfig[] {
-  return Object.values(STRUCTURE_CONFIGS);
+  return copyBuildingConfigArray(ALL_STRUCTURE_CONFIGS);
+}
+
+function copyBuildingConfigArray(configs: readonly BuildingConfig[]): BuildingConfig[] {
+  const copy = new Array<BuildingConfig>(configs.length);
+  for (let i = 0; i < configs.length; i++) copy[i] = configs[i];
+  return copy;
 }

@@ -198,13 +198,18 @@ function scalePieceCostsToBuildableRequired(
   }
   const energyScale = rawEnergy > 0 ? required.energy / rawEnergy : 0;
   const metalScale = rawMetal > 0 ? required.metal / rawMetal : 0;
-  return specs.map((spec) => ({
-    ...spec,
-    required: {
-      energy: Math.max(0, spec.required.energy) * energyScale,
-      metal: Math.max(0, spec.required.metal) * metalScale,
-    },
-  }));
+  const scaled = new Array<ConstructionPieceSpec>(specs.length);
+  for (let i = 0; i < specs.length; i++) {
+    const spec = specs[i];
+    scaled[i] = {
+      ...spec,
+      required: {
+        energy: Math.max(0, spec.required.energy) * energyScale,
+        metal: Math.max(0, spec.required.metal) * metalScale,
+      },
+    };
+  }
+  return scaled;
 }
 
 function pieceRecordsMatchSpecs(
@@ -234,16 +239,21 @@ function ensureConstructionPieceRecords(entity: Entity): void {
     buildable.required,
   );
   if (pieceRecordsMatchSpecs(buildable.pieces, specs)) return;
-  buildable.pieces = specs.map((spec) => ({
-    id: spec.getId(),
-    kind: spec.kind,
-    mountIndex: spec.mountIndex,
-    required: cloneResourceCost(spec.required),
-    paid: { energy: 0, metal: 0 },
-    healthBuildFraction: 0,
-    isActive: false,
-    isComplete: !costHasAnyResource(spec.required),
-  }));
+  const pieces = new Array<ConstructionPieceBuildRecord>(specs.length);
+  for (let i = 0; i < specs.length; i++) {
+    const spec = specs[i];
+    pieces[i] = {
+      id: spec.getId(),
+      kind: spec.kind,
+      mountIndex: spec.mountIndex,
+      required: cloneResourceCost(spec.required),
+      paid: { energy: 0, metal: 0 },
+      healthBuildFraction: 0,
+      isActive: false,
+      isComplete: !costHasAnyResource(spec.required),
+    };
+  }
+  buildable.pieces = pieces;
 }
 
 function reconcileAndGrowConstructionPieces(

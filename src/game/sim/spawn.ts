@@ -370,9 +370,13 @@ function placeArcRow(
 function getAvailableDemoFactoryUnitBlueprintIds(
   availableUnitBlueprintIds: ReadonlySet<string> | undefined = undefined,
 ): string[] {
-  return BUILDABLE_UNIT_BLUEPRINT_IDS.filter((unitBlueprintId) =>
-    availableUnitBlueprintIds ? availableUnitBlueprintIds.has(unitBlueprintId) : true,
-  );
+  const unitBlueprintIds: string[] = [];
+  for (let i = 0; i < BUILDABLE_UNIT_BLUEPRINT_IDS.length; i++) {
+    const unitBlueprintId = BUILDABLE_UNIT_BLUEPRINT_IDS[i];
+    if (availableUnitBlueprintIds !== undefined && !availableUnitBlueprintIds.has(unitBlueprintId)) continue;
+    unitBlueprintIds.push(unitBlueprintId);
+  }
+  return unitBlueprintIds;
 }
 
 function seedFactoryRepeatBuild(factory: Entity, unitBlueprintId: string): void {

@@ -1470,11 +1470,19 @@ export class Input3DManager {
   }
 
   private hasSelectedCommander(): boolean {
-    return this.entitySource.getSelectedUnits().some(isCommander);
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      if (isCommander(selectedUnits[i])) return true;
+    }
+    return false;
   }
 
   private hasSelectedBuilder(): boolean {
-    return this.entitySource.getSelectedUnits().some((unit) => unit.builder !== null);
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      if (selectedUnits[i].builder !== null) return true;
+    }
+    return false;
   }
 
   private hasSelectedTransports(): boolean {
@@ -1486,15 +1494,20 @@ export class Input3DManager {
   }
 
   private getSelectedCommander(): Entity | null {
-    return (
-      this.entitySource.getSelectedUnits().find(isCommander) ?? null
-    );
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      if (isCommander(selectedUnits[i])) return selectedUnits[i];
+    }
+    return null;
   }
 
   private getSelectedBuilder(): Entity | null {
-    return (
-      this.entitySource.getSelectedUnits().find((unit) => unit.builder !== null) ?? null
-    );
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      const unit = selectedUnits[i];
+      if (unit.builder !== null) return unit;
+    }
+    return null;
   }
 
   private getSelectedMetalExtractorUpgradeBuilders(): Entity[] {
@@ -1852,11 +1865,13 @@ export class Input3DManager {
   }
 
   private selectActiveCommander(additive: boolean): void {
-    const commander = this.entitySource
-      .getUnitsByPlayer(this.context.activePlayerId)
-      .find(isCommander);
-    if (!commander) return;
-    this.enqueueSelection([commander.id], additive);
+    const units = this.entitySource.getUnitsByPlayer(this.context.activePlayerId);
+    for (let i = 0; i < units.length; i++) {
+      const commander = units[i];
+      if (!isCommander(commander)) continue;
+      this.enqueueSelection([commander.id], additive);
+      return;
+    }
   }
 
   private enqueueSelection(entityIds: EntityId[], additive: boolean): void {

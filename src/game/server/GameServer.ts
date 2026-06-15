@@ -31,7 +31,7 @@ import { resetDisabledTurretJsOnlyFields } from '../sim/combat/combatActivity';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { trimBuildingActiveStateBuffers } from '../sim/buildingActiveState';
 import { trimEnergyDistributionBuffers } from '../sim/energyDistribution';
-import { factoryProductionSystem } from '../sim/factoryProduction';
+import { factoryProductionSystem, shiftFactoryProductionQueue } from '../sim/factoryProduction';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import { initSimWasm } from '../sim-wasm/init';
 import { ServerBootstrap } from './ServerBootstrap';
@@ -805,7 +805,7 @@ export class GameServer {
           }
         }
         if (factoryComp.selectedUnitBlueprintId === null && factoryComp.productionQueue.length > 0) {
-          factoryComp.selectedUnitBlueprintId = factoryComp.productionQueue.shift() ?? null;
+          factoryComp.selectedUnitBlueprintId = shiftFactoryProductionQueue(factoryComp.productionQueue);
           factoryComp.repeatProduction = factoryComp.selectedUnitBlueprintId === null;
           touched = true;
         }

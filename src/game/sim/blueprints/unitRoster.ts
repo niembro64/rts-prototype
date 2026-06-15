@@ -9,12 +9,15 @@ import unitRoster from './unitRoster.json';
 export type BuildableUnitBlueprintId = Exclude<UnitBlueprintId, 'unitCommander'>;
 
 function readBuildableUnitBlueprintIds(): BuildableUnitBlueprintId[] {
-  return unitRoster.buildableUnitIds.map((unitBlueprintId) => {
+  const unitBlueprintIds = new Array<BuildableUnitBlueprintId>(unitRoster.buildableUnitIds.length);
+  for (let i = 0; i < unitRoster.buildableUnitIds.length; i++) {
+    const unitBlueprintId = unitRoster.buildableUnitIds[i];
     if (!isUnitBlueprintId(unitBlueprintId) || unitBlueprintId === 'unitCommander') {
       throw new Error(`Invalid buildable unit blueprint id in unitRoster.json: ${unitBlueprintId}`);
     }
-    return unitBlueprintId;
-  });
+    unitBlueprintIds[i] = unitBlueprintId;
+  }
+  return unitBlueprintIds;
 }
 
 export const BUILDABLE_UNIT_BLUEPRINT_IDS = readBuildableUnitBlueprintIds();

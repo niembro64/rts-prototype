@@ -947,11 +947,11 @@ function createProjectileFinGeometry(): THREE.BufferGeometry {
       ...Ap, ...Cn, ...An,
     ];
   };
-  const verts = new Float32Array(
-    Array.from({ length: PROJECTILE_ROCKET_FIN_COUNT }, (_, i) =>
-      fin((i / PROJECTILE_ROCKET_FIN_COUNT) * Math.PI * 2),
-    ).flat(),
-  );
+  const rawVerts: number[] = [];
+  for (let i = 0; i < PROJECTILE_ROCKET_FIN_COUNT; i++) {
+    rawVerts.push(...fin((i / PROJECTILE_ROCKET_FIN_COUNT) * Math.PI * 2));
+  }
+  const verts = new Float32Array(rawVerts);
   const geom = new THREE.BufferGeometry();
   geom.setAttribute('position', new THREE.BufferAttribute(verts, 3));
   geom.computeVertexNormals();

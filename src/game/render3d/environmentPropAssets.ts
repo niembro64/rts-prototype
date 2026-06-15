@@ -164,15 +164,19 @@ export const RANDOM_ENVIRONMENT_ASSETS = [
 const RANDOM_ENVIRONMENT_ASSET_CONFIG_BY_ID = new Map<
   string,
   RandomEnvironmentAssetConfig
->(RANDOM_ENVIRONMENT_ASSETS.map((config) => [config.id, config]));
+>();
+for (let i = 0; i < RANDOM_ENVIRONMENT_ASSETS.length; i++) {
+  const config = RANDOM_ENVIRONMENT_ASSETS[i];
+  RANDOM_ENVIRONMENT_ASSET_CONFIG_BY_ID.set(config.id, config);
+}
 
-export const ACTIVE_ENVIRONMENT_ASSETS = ENVIRONMENT_ASSETS.filter((spec) =>
-  isRandomEnvironmentAssetUsable(spec.id),
-);
+export const ACTIVE_ENVIRONMENT_ASSETS = buildActiveEnvironmentAssets();
 
-export const ASSET_BY_ID = new Map(
-  ACTIVE_ENVIRONMENT_ASSETS.map((spec) => [spec.id, spec]),
-);
+export const ASSET_BY_ID = new Map<string, EnvironmentAssetSpec>();
+for (let i = 0; i < ACTIVE_ENVIRONMENT_ASSETS.length; i++) {
+  const spec = ACTIVE_ENVIRONMENT_ASSETS[i];
+  ASSET_BY_ID.set(spec.id, spec);
+}
 
 export const TREE_ASSET_OPTIONS = getWeightedEnvironmentAssetOptions('tree');
 export const GRASS_ASSET_OPTIONS = getWeightedEnvironmentAssetOptions('grass');
@@ -216,12 +220,16 @@ function getRandomEnvironmentAssetFrequency(assetId: string): number {
 function getWeightedEnvironmentAssetOptions(
   kind: EnvironmentAssetKind,
 ): WeightedEnvironmentAssetOption[] {
-  return ACTIVE_ENVIRONMENT_ASSETS.filter((spec) => spec.kind === kind).map(
-    (spec) => ({
+  const options: WeightedEnvironmentAssetOption[] = [];
+  for (let i = 0; i < ACTIVE_ENVIRONMENT_ASSETS.length; i++) {
+    const spec = ACTIVE_ENVIRONMENT_ASSETS[i];
+    if (spec.kind !== kind) continue;
+    options.push({
       id: spec.id,
       frequency: getRandomEnvironmentAssetFrequency(spec.id),
-    }),
-  );
+    });
+  }
+  return options;
 }
 
 export function getRandomEnvironmentAssetScaleJitter(rng: () => number): number {
@@ -246,11 +254,23 @@ let loggedActiveEnvironmentAssets = false;
 export function logActiveEnvironmentAssets(): void {
   if (!import.meta.env.DEV || loggedActiveEnvironmentAssets) return;
   loggedActiveEnvironmentAssets = true;
-  const enabledIds = ACTIVE_ENVIRONMENT_ASSETS.map((spec) => spec.id);
+  const enabledIds = new Array<string>(ACTIVE_ENVIRONMENT_ASSETS.length);
+  for (let i = 0; i < ACTIVE_ENVIRONMENT_ASSETS.length; i++) {
+    enabledIds[i] = ACTIVE_ENVIRONMENT_ASSETS[i].id;
+  }
   console.info(
     '[EnvironmentPropRenderer3D] enabled random assets (' + enabledIds.length + '): ' +
       (enabledIds.length > 0 ? enabledIds.join(', ') : 'none'),
   );
+}
+
+function buildActiveEnvironmentAssets(): EnvironmentAssetSpec[] {
+  const assets: EnvironmentAssetSpec[] = [];
+  for (let i = 0; i < ENVIRONMENT_ASSETS.length; i++) {
+    const spec = ENVIRONMENT_ASSETS[i];
+    if (isRandomEnvironmentAssetUsable(spec.id)) assets.push(spec);
+  }
+  return assets;
 }
 
 function randRange(rng: () => number, min: number, max: number): number {

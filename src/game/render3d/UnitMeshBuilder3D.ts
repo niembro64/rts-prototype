@@ -319,7 +319,13 @@ export class UnitMeshBuilder3D {
 
     const panelHalfSide = shieldPanels[0].halfWidth;
     const panelArmLength = shieldPanels[0].offsetX;
-    const shieldPanelTurret = turrets.find((turret) => turret.config.passive);
+    let shieldPanelTurret: Turret | undefined;
+    for (let i = 0; i < turrets.length; i++) {
+      const turret = turrets[i];
+      if (!turret.config.passive) continue;
+      shieldPanelTurret = turret;
+      break;
+    }
     const pivotLocalX = shieldPanelTurret?.mount.x ?? 0;
     const pivotLocalY = (shieldPanelTurret?.mount.z ?? getUnitBodyCenterHeight(entity.unit))
       - liftGroup.position.y;

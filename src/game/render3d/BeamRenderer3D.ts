@@ -189,9 +189,16 @@ export class BeamRenderer3D {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
     this.scope = scope;
-    this.layers = BEAM_VISUAL_LAYERS.map((layer, i) =>
-      createBeamVisualLayer(this.root, layer.config, layer.radiusMultiplier, 12 + i),
-    );
+    this.layers = new Array<BeamVisualLayer>(BEAM_VISUAL_LAYERS.length);
+    for (let i = 0; i < BEAM_VISUAL_LAYERS.length; i++) {
+      const layer = BEAM_VISUAL_LAYERS[i];
+      this.layers[i] = createBeamVisualLayer(
+        this.root,
+        layer.config,
+        layer.radiusMultiplier,
+        12 + i,
+      );
+    }
   }
 
   private placeSegment(

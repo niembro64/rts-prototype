@@ -141,7 +141,9 @@ function makeMetalDepositVisualCluster(
     }
   }
 
-  const cells = Array.from(cellsByKey.values()).sort((a, b) => (a.gy - b.gy) || (a.gx - b.gx));
+  const cells: DepositVisualCell[] = [];
+  for (const cell of cellsByKey.values()) cells.push(cell);
+  cells.sort((a, b) => (a.gy - b.gy) || (a.gx - b.gx));
   const depositIds = new Array<number>(depositIndices.length);
   let id = Infinity;
   let maxDepositResourceHalfSize = BUILD_GRID_CELL_SIZE * 0.5;

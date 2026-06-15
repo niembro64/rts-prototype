@@ -93,18 +93,23 @@ const RAW_TOWER_BLUEPRINTS =
 
 assertTowerLockOnInclusionConfigIds(Object.keys(RAW_TOWER_BLUEPRINTS));
 
-export const TOWER_BLUEPRINTS = Object.fromEntries(
-  Object.entries(RAW_TOWER_BLUEPRINTS).map(([id, blueprint]) => {
+function buildTowerBlueprints(): Partial<Record<BuildingBlueprintId, BuildingBlueprint>> {
+  const blueprints: Partial<Record<BuildingBlueprintId, BuildingBlueprint>> = {};
+  const ids = Object.keys(RAW_TOWER_BLUEPRINTS) as BuildingBlueprintId[];
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    const blueprint = RAW_TOWER_BLUEPRINTS[id];
+    if (blueprint === undefined) continue;
     assertNoInlineLockOnInclusionFields(`tower blueprint ${id}`, blueprint);
-    return [
-      id,
-      {
-        ...blueprint,
-        ...getTowerLockOnInclusions(id),
-      },
-    ];
-  }),
-) as Partial<Record<BuildingBlueprintId, BuildingBlueprint>>;
+    blueprints[id] = {
+      ...blueprint,
+      ...getTowerLockOnInclusions(id),
+    };
+  }
+  return blueprints;
+}
+
+export const TOWER_BLUEPRINTS = buildTowerBlueprints();
 const STATIC_BLUEPRINTS_BY_ID = {
   ...PURE_BUILDING_BLUEPRINTS,
   ...TOWER_BLUEPRINTS,
@@ -116,9 +121,16 @@ for (const id of STRUCTURE_BLUEPRINT_IDS) {
 }
 // Compatibility table for runtime/network fields that still use the
 // historical `buildingBlueprintId` name for every static structure.
-export const BUILDING_BLUEPRINTS = Object.fromEntries(
-  STRUCTURE_BLUEPRINT_IDS.map((id) => [id, STATIC_BLUEPRINTS_BY_ID[id as BuildingBlueprintId]]),
-) as Record<BuildingBlueprintId, BuildingBlueprint>;
+function buildBuildingBlueprints(): Record<BuildingBlueprintId, BuildingBlueprint> {
+  const blueprints = {} as Record<BuildingBlueprintId, BuildingBlueprint>;
+  for (let i = 0; i < STRUCTURE_BLUEPRINT_IDS.length; i++) {
+    const id = STRUCTURE_BLUEPRINT_IDS[i] as BuildingBlueprintId;
+    blueprints[id] = STATIC_BLUEPRINTS_BY_ID[id] as BuildingBlueprint;
+  }
+  return blueprints;
+}
+
+export const BUILDING_BLUEPRINTS = buildBuildingBlueprints();
 
 for (const id of Object.keys(rawTowerBlueprints)) {
   if (Object.prototype.hasOwnProperty.call(rawBuildingBlueprints, id)) {

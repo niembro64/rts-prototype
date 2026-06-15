@@ -65,8 +65,12 @@ export class ServerSnapshotListenerRegistry {
 
   markReady(trackingKey: string): void {
     this.startupReadyListenerKeys.add(trackingKey);
-    const listener = this.listeners.find((entry) => entry.trackingKey === trackingKey);
-    if (listener !== undefined) listener.startupReady = true;
+    for (let i = 0; i < this.listeners.length; i++) {
+      const listener = this.listeners[i];
+      if (listener.trackingKey !== trackingKey) continue;
+      listener.startupReady = true;
+      break;
+    }
   }
 
   markPlayerReady(playerId: PlayerId): void {
@@ -92,7 +96,12 @@ export class ServerSnapshotListenerRegistry {
   }
 
   remove(trackingKey: string): void {
-    const idx = this.listeners.findIndex((listener) => listener.trackingKey === trackingKey);
+    let idx = -1;
+    for (let i = 0; i < this.listeners.length; i++) {
+      if (this.listeners[i].trackingKey !== trackingKey) continue;
+      idx = i;
+      break;
+    }
     if (idx < 0) return;
     const [removed] = this.listeners.splice(idx, 1);
     this.startupReadyListenerKeys.delete(removed.trackingKey);
@@ -102,7 +111,13 @@ export class ServerSnapshotListenerRegistry {
         simWasm.snapshotBaseline.destroy(removed.snapshotBaselineHandle);
       }
     }
-    if (!this.listeners.some((listener) => listener.deltaTrackingKey === removed.deltaTrackingKey)) {
+    let hasRemainingDeltaListener = false;
+    for (let i = 0; i < this.listeners.length; i++) {
+      if (this.listeners[i].deltaTrackingKey !== removed.deltaTrackingKey) continue;
+      hasRemainingDeltaListener = true;
+      break;
+    }
+    if (!hasRemainingDeltaListener) {
       resetDeltaTrackingForKey(removed.deltaTrackingKey);
     }
     resetAudioPoolForKey(removed.deltaTrackingKey);

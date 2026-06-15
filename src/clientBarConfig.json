@@ -37,8 +37,8 @@
   "materialExplosions": { "demoDefault": true, "realDefault": true },
   "beamSnapToTurret": { "demoDefault": true, "realDefault": true },
   "beamEma": {
-    "demoDefault": "snap",
-    "realDefault": "snap",
+    "demoDefault": "fast",
+    "realDefault": "fast",
     "options": [
       { "value": "snap", "label": "SNAP" },
       { "value": "fast", "label": "FAST" },

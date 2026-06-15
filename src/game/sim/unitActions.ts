@@ -67,7 +67,10 @@ export function pushUnitAction(unit: Unit, action: UnitAction): void {
 }
 
 export function unshiftUnitAction(unit: Unit, action: UnitAction): void {
-  unit.actions.unshift(action);
+  const actions = unit.actions;
+  actions.length++;
+  for (let i = actions.length - 1; i > 0; i--) actions[i] = actions[i - 1];
+  actions[0] = action;
   refreshUnitActionHash(unit);
 }
 
@@ -88,17 +91,26 @@ export function spliceUnitActions(
 }
 
 export function shiftUnitAction(unit: Unit): UnitAction | undefined {
-  const action = unit.actions.shift();
-  if (action) refreshUnitActionHash(unit);
+  const action = removeFirstUnitAction(unit.actions);
+  if (action !== undefined) refreshUnitActionHash(unit);
   return action;
 }
 
 export function rotateFirstUnitActionToEnd(unit: Unit): UnitAction | undefined {
-  const action = unit.actions.shift();
-  if (action) {
-    unit.actions.push(action);
-    refreshUnitActionHash(unit);
-  }
+  const actions = unit.actions;
+  if (actions.length === 0) return undefined;
+  const action = actions[0];
+  for (let i = 1; i < actions.length; i++) actions[i - 1] = actions[i];
+  actions[actions.length - 1] = action;
+  refreshUnitActionHash(unit);
+  return action;
+}
+
+function removeFirstUnitAction(actions: UnitAction[]): UnitAction | undefined {
+  if (actions.length === 0) return undefined;
+  const action = actions[0];
+  for (let i = 1; i < actions.length; i++) actions[i - 1] = actions[i];
+  actions.length--;
   return action;
 }
 

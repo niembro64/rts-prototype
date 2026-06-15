@@ -410,18 +410,23 @@ function buildConstructionTowerPiece(
 
   // Both straw walls orbit with the tower so the bore (and the bead
   // column locked to it) travels with the pylon.
-  const towerOrbitParts: ConstructionTowerOrbitPart[] = [
+  const towerOrbitMeshes = [
     teamBase,
     constructionBand,
     strawOuter,
     strawInner,
     cap,
-  ].map((mesh) => ({
-    mesh,
-    baseX: mesh.position.x,
-    baseZ: mesh.position.z,
-    baseRotationY: mesh.rotation.y,
-  }));
+  ];
+  const towerOrbitParts = new Array<ConstructionTowerOrbitPart>(towerOrbitMeshes.length);
+  for (let i = 0; i < towerOrbitMeshes.length; i++) {
+    const mesh = towerOrbitMeshes[i];
+    towerOrbitParts[i] = {
+      mesh,
+      baseX: mesh.position.x,
+      baseZ: mesh.position.z,
+      baseRotationY: mesh.rotation.y,
+    };
+  }
 
   return {
     staticMeshes,

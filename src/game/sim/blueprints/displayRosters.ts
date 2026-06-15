@@ -38,29 +38,44 @@ function fallbackShortName(id: string): string {
   return id.toUpperCase().slice(0, 3);
 }
 
-export const unitRosterDisplay: UnitRosterDisplay[] = BUILDABLE_UNIT_BLUEPRINT_IDS.map((id) => {
-  const bp = UNIT_BLUEPRINTS[id];
-  if (!bp) {
-    return {
-      unitBlueprintId: id,
-      label: id,
-      shortName: fallbackShortName(id),
-      cost: 0,
-      locomotion: 'unknown',
+function buildUnitRosterDisplay(): UnitRosterDisplay[] {
+  const display = new Array<UnitRosterDisplay>(BUILDABLE_UNIT_BLUEPRINT_IDS.length);
+  for (let i = 0; i < BUILDABLE_UNIT_BLUEPRINT_IDS.length; i++) {
+    const id = BUILDABLE_UNIT_BLUEPRINT_IDS[i];
+    const bp = UNIT_BLUEPRINTS[id];
+    if (!bp) {
+      display[i] = {
+        unitBlueprintId: id,
+        label: id,
+        shortName: fallbackShortName(id),
+        cost: 0,
+        locomotion: 'unknown',
+      };
+      continue;
+    }
+    display[i] = {
+      unitBlueprintId: bp.unitBlueprintId,
+      label: bp.name,
+      shortName: bp.shortName,
+      cost: scaledTotalCost(bp.cost),
+      locomotion: bp.locomotion.type,
     };
   }
-  return {
-    unitBlueprintId: bp.unitBlueprintId,
-    label: bp.name,
-    shortName: bp.shortName,
-    cost: scaledTotalCost(bp.cost),
-    locomotion: bp.locomotion.type,
-  };
-});
+  return display;
+}
 
-const unitRosterDisplayById = new Map<string, UnitRosterDisplay>(
-  unitRosterDisplay.map((unit) => [unit.unitBlueprintId, unit]),
-);
+export const unitRosterDisplay: UnitRosterDisplay[] = buildUnitRosterDisplay();
+
+function buildUnitRosterDisplayById(display: readonly UnitRosterDisplay[]): Map<string, UnitRosterDisplay> {
+  const byId = new Map<string, UnitRosterDisplay>();
+  for (let i = 0; i < display.length; i++) {
+    const unit = display[i];
+    byId.set(unit.unitBlueprintId, unit);
+  }
+  return byId;
+}
+
+const unitRosterDisplayById = buildUnitRosterDisplayById(unitRosterDisplay);
 
 export function getUnitDisplayShortName(unitBlueprintId: string): string {
   const display = unitRosterDisplayById.get(unitBlueprintId);
@@ -71,15 +86,18 @@ function buildStructureRosterDisplay(
   configs: readonly { buildingBlueprintId: BuildingBlueprintId; name: string; cost: ResourceCost }[],
   keyOffset: number,
 ): BuildingRosterDisplay[] {
-  return configs.map((bp, index) => {
-    return {
+  const display = new Array<BuildingRosterDisplay>(configs.length);
+  for (let i = 0; i < configs.length; i++) {
+    const bp = configs[i];
+    display[i] = {
       buildingBlueprintId: bp.buildingBlueprintId,
       label: bp.name,
-      key: `${keyOffset + index + 1}`,
+      key: `${keyOffset + i + 1}`,
       cost: scaledTotalCost(bp.cost),
       category: structureBuildCategory(bp.buildingBlueprintId),
     };
-  });
+  }
+  return display;
 }
 
 export function structureBuildCategory(buildingBlueprintId: BuildingBlueprintId): BuildMenuCategory {
@@ -109,7 +127,12 @@ export const towerRosterDisplay: BuildingRosterDisplay[] = buildStructureRosterD
 
 // Compatibility roster for the current build menu. Builder-authored
 // allowed rosters filter this combined surface before display.
-export const structureRosterDisplay: BuildingRosterDisplay[] = [
-  ...buildingRosterDisplay,
-  ...towerRosterDisplay,
-];
+export const structureRosterDisplay: BuildingRosterDisplay[] = new Array<BuildingRosterDisplay>(
+  buildingRosterDisplay.length + towerRosterDisplay.length,
+);
+for (let i = 0; i < buildingRosterDisplay.length; i++) {
+  structureRosterDisplay[i] = buildingRosterDisplay[i];
+}
+for (let i = 0; i < towerRosterDisplay.length; i++) {
+  structureRosterDisplay[buildingRosterDisplay.length + i] = towerRosterDisplay[i];
+}

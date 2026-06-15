@@ -339,10 +339,14 @@ export function normalizeLockOnTargetPolicy(
   assertRelationshipPoliciesCanCompile(label, enabledRelationships, relationshipPolicies);
 
   const baseline = relationshipPolicies[enabledRelationships[0]];
+  const includeLockOnLevel0FriendsAndEnemies: LockOnInclusionObject['includeLockOnLevel0FriendsAndEnemies'] = [];
+  for (let i = 0; i < enabledRelationships.length; i++) {
+    includeLockOnLevel0FriendsAndEnemies.push(
+      TARGET_RELATIONSHIP_TO_INCLUSION[enabledRelationships[i]],
+    );
+  }
   const normalized: LockOnInclusionObject = {
-    includeLockOnLevel0FriendsAndEnemies: enabledRelationships.map(
-      (relationship) => TARGET_RELATIONSHIP_TO_INCLUSION[relationship],
-    ),
+    includeLockOnLevel0FriendsAndEnemies,
     includeLockOnLevel0Entities: [],
     includeLockOnLevel1Buildings: [],
     includeLockOnLevel1Towers: [],

@@ -113,9 +113,13 @@ export class RtsScene3DCameraFramingSystem {
 
   private centerCameraOnCommander(units: readonly Entity[]): void {
     const localPlayerId = this.getLocalPlayerId();
-    const commander = units.find(
-      (entity) => isCommander(entity) && entity.ownership?.playerId === localPlayerId,
-    );
+    let commander: Entity | undefined;
+    for (let i = 0; i < units.length; i++) {
+      const entity = units[i];
+      if (!isCommander(entity) || entity.ownership?.playerId !== localPlayerId) continue;
+      commander = entity;
+      break;
+    }
     if (!commander) return;
 
     const cx = commander.transform.x;

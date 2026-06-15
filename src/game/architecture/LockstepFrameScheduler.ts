@@ -260,7 +260,7 @@ export class LockstepFrameScheduler {
       this.core.stepFixedTick(this.fixedDtMs, commands);
       this.recordSimStepMs(this.nowMs() - simStepStartMs);
       this.recentFrames.push(frame);
-      while (this.recentFrames.length > RECENT_FRAME_LIMIT) this.recentFrames.shift();
+      while (this.recentFrames.length > RECENT_FRAME_LIMIT) shiftStoredCommandFrame(this.recentFrames);
 
       this.lastAdvancedFrame = frame.frame;
       this.nextFrame = frame.frame + 1;
@@ -493,4 +493,12 @@ function commandFrameSignature(commands: readonly LockstepCommandEnvelope[]): st
 
 function defaultNowMs(): number {
   return 0;
+}
+
+function shiftStoredCommandFrame(frames: StoredCommandFrame[]): StoredCommandFrame | undefined {
+  if (frames.length === 0) return undefined;
+  const frame = frames[0];
+  for (let i = 1; i < frames.length; i++) frames[i - 1] = frames[i];
+  frames.length--;
+  return frame;
 }

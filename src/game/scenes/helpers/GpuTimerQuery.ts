@@ -75,7 +75,7 @@ export class GpuTimerQuery {
     // If too many queries stack up (driver stall), drop the oldest to
     // bound memory. Losing samples is fine — the EMA won't notice.
     while (this.pending.length > this.MAX_PENDING) {
-      const stale = this.pending.shift();
+      const stale = shiftWebGlQuery(this.pending);
       if (stale) this.gl.deleteQuery(stale);
     }
   }
@@ -109,7 +109,7 @@ export class GpuTimerQuery {
         this.emaMs = 0.99 * this.emaMs + 0.01 * ms;
       }
       this.gl.deleteQuery(q);
-      this.pending.shift();
+      shiftWebGlQuery(this.pending);
     }
   }
 
@@ -126,4 +126,12 @@ export class GpuTimerQuery {
     this.gl = null;
     this.ext = null;
   }
+}
+
+function shiftWebGlQuery(queries: WebGLQuery[]): WebGLQuery | undefined {
+  if (queries.length === 0) return undefined;
+  const query = queries[0];
+  for (let i = 1; i < queries.length; i++) queries[i - 1] = queries[i];
+  queries.length--;
+  return query;
 }
