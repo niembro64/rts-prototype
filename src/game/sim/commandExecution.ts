@@ -311,6 +311,8 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
     case 'setPaused':
     case 'setSendGridInfo':
     case 'setBackgroundUnitBlueprintEnabled':
+    case 'setBackgroundBuildingBlueprintEnabled':
+    case 'setBackgroundTowerBlueprintEnabled':
       break;
   }
 }

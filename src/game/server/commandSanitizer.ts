@@ -51,6 +51,7 @@ import type { WorldState } from '../sim/WorldState';
 import type { BuildingBlueprintId, CombatFireState, EntityId, WaypointType } from '../sim/types';
 import { STRUCTURE_CONFIGS } from '../sim/buildConfigs';
 import { isBuildableUnitBlueprintId } from '../sim/blueprints/unitRoster';
+import { isBuildingBlueprintId, isTowerBlueprintId } from '../../types/blueprintIds';
 import { SERVER_CONFIG, normalizeSnapshotRate } from '../../serverBarConfig';
 import { BATTLE_CONFIG } from '../../battleBarConfig';
 import { isShieldReflectionMode } from '../../types/shotTypes';
@@ -188,6 +189,14 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
       return typeof command.enabled === 'boolean' ? { ...command, tick } : null;
     case 'setBackgroundUnitBlueprintEnabled':
       return typeof command.enabled === 'boolean' && isBuildableUnitBlueprintId(command.unitBlueprintId)
+        ? { ...command, tick }
+        : null;
+    case 'setBackgroundBuildingBlueprintEnabled':
+      return typeof command.enabled === 'boolean' && isBuildingBlueprintId(command.buildingBlueprintId)
+        ? { ...command, tick }
+        : null;
+    case 'setBackgroundTowerBlueprintEnabled':
+      return typeof command.enabled === 'boolean' && isTowerBlueprintId(command.towerBlueprintId)
         ? { ...command, tick }
         : null;
     case 'setMaxTotalUnits':

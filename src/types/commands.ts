@@ -576,6 +576,8 @@ export type Command =
   | SetUnitGroundNormalEmaModeCommand
   | SetSendGridInfoCommand
   | SetBackgroundUnitBlueprintEnabledCommand
+  | SetBackgroundBuildingBlueprintEnabledCommand
+  | SetBackgroundTowerBlueprintEnabledCommand
   | SetMaxTotalUnitsCommand
   | SetTurretShieldPanelsEnabledCommand
   | SetTurretShieldSpheresEnabledCommand

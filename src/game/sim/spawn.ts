@@ -451,8 +451,18 @@ export function spawnInitialBases(
   playerIds: PlayerId[],
   mode: InitialBaseMode = 'demo',
   availableUnitBlueprintIds: ReadonlySet<string> | undefined = undefined,
+  availableBuildingBlueprintIds: ReadonlySet<string> | undefined = undefined,
+  availableTowerBlueprintIds: ReadonlySet<string> | undefined = undefined,
 ): Entity[] {
   const entities: Entity[] = [];
+
+  // Demo BUILDINGS / TOWERS toggles: an undefined set means "place every
+  // structure" (unrestricted callers / real games), so each guard
+  // defaults to true. A defined set skips the arc for any disabled id.
+  const isBuildingEnabled = (id: string): boolean =>
+    availableBuildingBlueprintIds === undefined || availableBuildingBlueprintIds.has(id);
+  const isTowerEnabled = (id: string): boolean =>
+    availableTowerBlueprintIds === undefined || availableTowerBlueprintIds.has(id);
 
   const normalizedPlayerIds = normalizePlayerIds(playerIds);
 

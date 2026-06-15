@@ -146,6 +146,13 @@ export type GameServerConfig = {
    *  by setBackgroundUnitBlueprintEnabled, leaving the player with far
    *  fewer initial units than the cap-derived per-team count). */
   initialAllowedUnitBlueprintIds?: ReadonlySet<string>;
+  /** Restrict the demo battle's initial base-spawn to these building /
+   *  tower blueprint ids (BUILDINGS / TOWERS bar groups). When omitted
+   *  the server falls back to "all structures allowed". A caller
+   *  restoring user-saved demo settings passes them so disabled
+   *  structures are skipped at base spawn. */
+  initialAllowedBuildingBlueprintIds?: ReadonlySet<string>;
+  initialAllowedTowerBlueprintIds?: ReadonlySet<string>;
   /** Initial unit cap for the world, applied BEFORE the demo's
    *  initial-spawn pass so the spawn count tracks the user's stored
    *  cap (now that the demo fills `maxTotalUnits / numPlayers` slots
