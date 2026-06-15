@@ -28,7 +28,7 @@ export class ReplayRecorder {
 
   constructor(config: GameServerConfig, playerIds: readonly PlayerId[]) {
     this.initialConfig = cloneJson(config);
-    this.playerIds = playerIds.slice();
+    this.playerIds = copyPlayerIds(playerIds);
   }
 
   recordAcceptedCommand(
@@ -54,7 +54,7 @@ export class ReplayRecorder {
       schema: 'budget-annihilation.replay.v1',
       createdAt: this.createdAt,
       exportedAt,
-      playerIds: this.playerIds.slice(),
+      playerIds: copyPlayerIds(this.playerIds),
       initialConfig: cloneJson(this.initialConfig),
       finalTick,
       commands: cloneJson(this.commands),
@@ -67,6 +67,16 @@ function cloneJson<T>(value: T): T {
 }
 
 function jsonReplacer(_key: string, value: unknown): unknown {
-  if (value instanceof Set) return Array.from(value);
+  if (value instanceof Set) {
+    const items: unknown[] = [];
+    for (const item of value) items.push(item);
+    return items;
+  }
   return value;
+}
+
+function copyPlayerIds(playerIds: readonly PlayerId[]): PlayerId[] {
+  const copy = new Array<PlayerId>(playerIds.length);
+  for (let i = 0; i < playerIds.length; i++) copy[i] = playerIds[i];
+  return copy;
 }

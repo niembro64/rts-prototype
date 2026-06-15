@@ -126,12 +126,17 @@ export function buildUnitDeathEvent(
   // authoritative side so remote clients don't have to rely on the
   // entity still being present in their view state.
   const targetTurrets = targetCombat !== null ? targetCombat.turrets : null;
-  const turretPoses = targetTurrets !== null
-    ? targetTurrets.map((t) => ({
-        rotation: t.rotation,
-        pitch: t.pitch,
-      }))
-    : undefined;
+  let turretPoses: { rotation: number; pitch: number }[] | undefined;
+  if (targetTurrets !== null) {
+    turretPoses = new Array<{ rotation: number; pitch: number }>(targetTurrets.length);
+    for (let i = 0; i < targetTurrets.length; i++) {
+      const turret = targetTurrets[i];
+      turretPoses[i] = {
+        rotation: turret.rotation,
+        pitch: turret.pitch,
+      };
+    }
+  }
   // ctx present → rich directional context from the killing blow.
   // ctx absent → synthesize a neutral one so the renderer still fires
   //   material debris (splash kills, DoT, cleanup-pass kills).

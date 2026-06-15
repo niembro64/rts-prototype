@@ -128,10 +128,12 @@ export class CommandQueue {
 
   // Get commands for a specific tick
   getCommandsForTick(tick: number): Command[] {
-    const result: Command[] = [];
-    while (this.commands.length > 0 && this.commands[0].command.tick <= tick) {
-      result.push(this.commands.shift()!.command);
-    }
+    let count = 0;
+    while (count < this.commands.length && this.commands[count].command.tick <= tick) count++;
+    if (count === 0) return [];
+    const result = new Array<Command>(count);
+    for (let i = 0; i < count; i++) result[i] = this.commands[i].command;
+    this.commands.splice(0, count);
     return result;
   }
 
@@ -143,7 +145,9 @@ export class CommandQueue {
 
   // Get all pending commands
   getAll(): Command[] {
-    return this.commands.map((entry) => entry.command);
+    const commands = new Array<Command>(this.commands.length);
+    for (let i = 0; i < this.commands.length; i++) commands[i] = this.commands[i].command;
+    return commands;
   }
 
   // Get pending command count
@@ -152,8 +156,15 @@ export class CommandQueue {
   }
 
   private enqueueInternal(command: Command, order: QueuedCommandOrder): void {
-    this.commands.push({ command, order });
-    this.commands.sort(compareQueuedCommands);
+    const queued = { command, order };
+    let lo = 0;
+    let hi = this.commands.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (compareQueuedCommands(this.commands[mid], queued) <= 0) lo = mid + 1;
+      else hi = mid;
+    }
+    this.commands.splice(lo, 0, queued);
   }
 }
 

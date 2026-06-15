@@ -181,7 +181,12 @@ export class NetworkLobbyRoster {
   }
 
   toArray(): LobbyPlayer[] {
-    return Array.from(this.players.values()).map((player) => this.copy(player));
+    const players = new Array<LobbyPlayer>(this.players.size);
+    let index = 0;
+    for (const player of this.players.values()) {
+      players[index++] = this.copy(player);
+    }
+    return players;
   }
 
   copy(player: LobbyPlayer): LobbyPlayer {

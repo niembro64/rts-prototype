@@ -165,6 +165,10 @@ export class Input3DManager {
   private previousSelectionIds: EntityId[] = [];
   private loopSelectionIds: EntityId[] = [];
   private loopSelectionCursor = -1;
+  private readonly scratchEntityIds = new Set<EntityId>();
+  private readonly scratchEntityIds2 = new Set<EntityId>();
+  private readonly scratchBlueprintIds = new Set<string>();
+  private readonly scratchBlueprintIds2 = new Set<string>();
   private selectedCommands: InputSelectedCommands;
   private keyboard: Input3DKeyboardController;
   private rightDrag: Input3DRightDragController;
@@ -748,8 +752,10 @@ export class Input3DManager {
     const selectedStatic = this.entitySource.getSelectedBuildings();
     if (selectedUnits.length === 0 && selectedStatic.length === 0) return;
 
-    const unitBlueprintIds = new Set<string>();
-    const structureBlueprintIds = new Set<string>();
+    const unitBlueprintIds = this.scratchBlueprintIds;
+    const structureBlueprintIds = this.scratchBlueprintIds2;
+    unitBlueprintIds.clear();
+    structureBlueprintIds.clear();
     for (let i = 0; i < selectedUnits.length; i++) {
       const unitBlueprintId = selectedUnits[i].unit?.unitBlueprintId;
       if (unitBlueprintId) unitBlueprintIds.add(unitBlueprintId);
@@ -759,7 +765,8 @@ export class Input3DManager {
       if (buildingBlueprintId) structureBlueprintIds.add(buildingBlueprintId);
     }
 
-    const visibleEntityIds = inView ? this.getViewportSelectableEntityIds() : null;
+    const visibleEntityIds = inView ? this.scratchEntityIds : null;
+    if (visibleEntityIds !== null) this.writeViewportSelectableEntityIds(visibleEntityIds);
     const entityIds: EntityId[] = [];
     const units = this.entitySource.getUnitsByPlayer(this.context.activePlayerId);
     for (let i = 0; i < units.length; i++) {
@@ -780,18 +787,23 @@ export class Input3DManager {
         entityIds.push(building.id);
       }
     }
+    if (visibleEntityIds !== null) visibleEntityIds.clear();
+    unitBlueprintIds.clear();
+    structureBlueprintIds.clear();
     this.enqueueSelection(entityIds, false);
   }
 
-  private getViewportSelectableEntityIds(): Set<EntityId> {
+  private writeViewportSelectableEntityIds(out: Set<EntityId>): void {
+    out.clear();
     const rect = this.picker.canvasRect();
-    return new Set(this.picker.selectEntitiesInScreenRect(
+    const entityIds = this.picker.selectEntitiesInScreenRect(
       this.entitySource,
       this.context.activePlayerId,
       { x: rect.left, y: rect.top },
       { x: rect.right, y: rect.bottom },
       { includeBuildingsWithUnits: true },
-    ));
+    );
+    for (let i = 0; i < entityIds.length; i++) out.add(entityIds[i]);
   }
 
   selectIdleBuilders(): void {
@@ -864,7 +876,10 @@ export class Input3DManager {
   }
 
   invertSelection(): void {
-    const selectedEntityIds = new Set(this.getCurrentSelectedEntityIds());
+    const selectedEntityIds = this.scratchEntityIds;
+    selectedEntityIds.clear();
+    const selectedIds = this.getCurrentSelectedEntityIds();
+    for (let i = 0; i < selectedIds.length; i++) selectedEntityIds.add(selectedIds[i]);
     const entityIds: EntityId[] = [];
     const units = this.entitySource.getUnitsByPlayer(this.context.activePlayerId);
     for (let i = 0; i < units.length; i++) {
@@ -879,6 +894,7 @@ export class Input3DManager {
       if (!this.isSelectableByActivePlayer(building) || selectedEntityIds.has(building.id)) continue;
       entityIds.push(building.id);
     }
+    selectedEntityIds.clear();
 
     if (entityIds.length === 0) {
       this.enqueueClearSelection();
@@ -903,10 +919,18 @@ export class Input3DManager {
     if (currentIds.length === 0) return;
 
     const liveLoopIds = this.getLiveEntityIds(this.loopSelectionIds);
-    const currentIdSet = new Set(currentIds);
+    const currentId = currentIds[0];
+    let loopContainsCurrentId = false;
+    if (currentIds.length === 1 && liveLoopIds.length > 1) {
+      for (let i = 0; i < liveLoopIds.length; i++) {
+        if (liveLoopIds[i] !== currentId) continue;
+        loopContainsCurrentId = true;
+        break;
+      }
+    }
     const canContinueLoop = currentIds.length === 1
       && liveLoopIds.length > 1
-      && liveLoopIds.some((id) => currentIdSet.has(id));
+      && loopContainsCurrentId;
 
     if (!canContinueLoop) {
       this.loopSelectionIds = currentIds;
@@ -1779,7 +1803,8 @@ export class Input3DManager {
     additive: boolean,
     subtractive: boolean,
   ): boolean {
-    const visibleEntityIds = this.getViewportSelectableEntityIds();
+    const visibleEntityIds = this.scratchEntityIds;
+    this.writeViewportSelectableEntityIds(visibleEntityIds);
     const entityIds: EntityId[] = [];
     const unitBlueprintId = entity.unit?.unitBlueprintId;
     if (unitBlueprintId) {
@@ -1791,7 +1816,10 @@ export class Input3DManager {
       }
     } else {
       const buildingBlueprintId = entity.buildingBlueprintId;
-      if (!buildingBlueprintId) return false;
+      if (!buildingBlueprintId) {
+        visibleEntityIds.clear();
+        return false;
+      }
       const buildings = this.entitySource.getBuildingsByPlayer(this.context.activePlayerId);
       for (let i = 0; i < buildings.length; i++) {
         const building = buildings[i];
@@ -1799,6 +1827,7 @@ export class Input3DManager {
         if (building.buildingBlueprintId === buildingBlueprintId) entityIds.push(building.id);
       }
     }
+    visibleEntityIds.clear();
     if (entityIds.length === 0) return false;
     if (subtractive) this.deselectEntityIds(entityIds);
     else this.enqueueSelection(entityIds, additive);
@@ -1851,13 +1880,16 @@ export class Input3DManager {
 
   private deselectEntityIds(entityIds: readonly EntityId[]): void {
     if (entityIds.length === 0) return;
-    const idsToRemove = new Set(entityIds);
+    const idsToRemove = this.scratchEntityIds;
+    idsToRemove.clear();
+    for (let i = 0; i < entityIds.length; i++) idsToRemove.add(entityIds[i]);
     const currentIds = this.getCurrentSelectedEntityIds();
     const remainingIds: EntityId[] = [];
     for (let i = 0; i < currentIds.length; i++) {
       const id = currentIds[i];
       if (!idsToRemove.has(id)) remainingIds.push(id);
     }
+    idsToRemove.clear();
     if (remainingIds.length === currentIds.length) return;
     if (remainingIds.length === 0) {
       this.enqueueClearSelection();
@@ -1869,7 +1901,7 @@ export class Input3DManager {
   private rememberPreviousSelection(nextEntityIds: readonly EntityId[], additive: boolean): void {
     const currentIds = this.getCurrentSelectedEntityIds();
     if (currentIds.length === 0) return;
-    if (!additive && sameEntityIdSet(currentIds, nextEntityIds)) return;
+    if (!additive && this.sameEntityIdSet(currentIds, nextEntityIds)) return;
     this.previousSelectionIds = currentIds;
   }
 
@@ -1901,7 +1933,8 @@ export class Input3DManager {
 
   private getLiveEntityIds(entityIds: readonly EntityId[]): EntityId[] {
     const out: EntityId[] = [];
-    const seen = new Set<EntityId>();
+    const seen = this.scratchEntityIds2;
+    seen.clear();
     for (let i = 0; i < entityIds.length; i++) {
       const id = entityIds[i];
       if (seen.has(id)) continue;
@@ -1909,7 +1942,22 @@ export class Input3DManager {
       const entity = this.entitySource.getEntity(id);
       if (entity && this.isSelectableByActivePlayer(entity)) out.push(id);
     }
+    seen.clear();
     return out;
+  }
+
+  private sameEntityIdSet(a: readonly EntityId[], b: readonly EntityId[]): boolean {
+    if (a.length !== b.length) return false;
+    const ids = this.scratchEntityIds2;
+    ids.clear();
+    for (let i = 0; i < a.length; i++) ids.add(a[i]);
+    for (let i = 0; i < b.length; i++) {
+      if (ids.has(b[i])) continue;
+      ids.clear();
+      return false;
+    }
+    ids.clear();
+    return true;
   }
 
   setEntitySource(source: EntitySource): void {
@@ -2120,15 +2168,6 @@ export class Input3DManager {
     this.onTowerTargetModeChange = undefined;
     this.selectionDrag.destroy();
   }
-}
-
-function sameEntityIdSet(a: readonly EntityId[], b: readonly EntityId[]): boolean {
-  if (a.length !== b.length) return false;
-  const ids = new Set<EntityId>(a);
-  for (let i = 0; i < b.length; i++) {
-    if (!ids.has(b[i])) return false;
-  }
-  return true;
 }
 
 function loadAutoGroupPreset(): (AutoGroupRuleSnapshot | null)[] {

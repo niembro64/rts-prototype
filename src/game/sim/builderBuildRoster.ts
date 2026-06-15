@@ -32,11 +32,16 @@ export function getSelectedBuilderAllowedBuildBlueprintIds(
       order = ids;
       continue;
     }
-    for (const id of Array.from(allowed)) {
+    for (const id of allowed) {
       if (!ids.includes(id)) allowed.delete(id);
     }
   }
 
   if (allowed === null) return [];
-  return order.filter((id) => allowed.has(id));
+  const result: StructureBlueprintId[] = [];
+  for (let i = 0; i < order.length; i++) {
+    const id = order[i];
+    if (allowed.has(id)) result.push(id);
+  }
+  return result;
 }

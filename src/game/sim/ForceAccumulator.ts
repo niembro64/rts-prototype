@@ -264,7 +264,10 @@ export class ForceAccumulator {
    * Get all entity IDs with accumulated forces.
    */
   getEntityIds(): EntityId[] {
-    return Array.from(this.forces.keys()).sort((a, b) => a - b);
+    const ids: EntityId[] = [];
+    for (const id of this.forces.keys()) ids.push(id);
+    ids.sort((a, b) => a - b);
+    return ids;
   }
 
   /**
@@ -273,7 +276,11 @@ export class ForceAccumulator {
   getContributions(entityId: EntityId): ForceContribution[] {
     const entry = this.forces.get(entityId);
     if (!entry) return [];
-    return entry.contributions.slice(0, entry.contributionCount);
+    const contributions = new Array<ForceContribution>(entry.contributionCount);
+    for (let i = 0; i < entry.contributionCount; i++) {
+      contributions[i] = entry.contributions[i];
+    }
+    return contributions;
   }
 }
 

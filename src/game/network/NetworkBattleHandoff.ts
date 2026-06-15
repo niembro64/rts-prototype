@@ -35,12 +35,14 @@ export function buildBattleHandoff({
   settings,
 }: BuildBattleHandoffOptions): BattleHandoff {
   const normalizedPlayerIds = normalizePlayerIds(playerIds);
-  const players = normalizedPlayerIds.map((playerId) => {
+  const players = new Array<LobbyPlayer>(normalizedPlayerIds.length);
+  for (let i = 0; i < normalizedPlayerIds.length; i++) {
+    const playerId = normalizedPlayerIds[i];
     const existing = roster.get(playerId);
-    return existing
+    players[i] = existing
       ? { ...existing }
       : createLobbyPlayer(playerId, getDefaultPlayerName(playerId), playerId === 1);
-  });
+  }
   const initialization = buildCanonicalMatchInitialization({
     gameId,
     roomCode,
@@ -93,7 +95,7 @@ export function normalizeBattleHandoffMessage(
       initializationHash,
       roomCode: normalizedRoomCode,
       playerIds: normalizedPlayerIds,
-      players: handoff.players.map((player) => ({ ...player })),
+      players: copyLobbyPlayers(handoff.players),
     };
   }
   return buildBattleHandoff(fallback);
@@ -101,4 +103,10 @@ export function normalizeBattleHandoffMessage(
 
 function normalizePlayerIds(playerIds: Iterable<PlayerId>): PlayerId[] {
   return [...new Set(playerIds)].sort((a, b) => a - b);
+}
+
+function copyLobbyPlayers(players: readonly LobbyPlayer[]): LobbyPlayer[] {
+  const copy = new Array<LobbyPlayer>(players.length);
+  for (let i = 0; i < players.length; i++) copy[i] = { ...players[i] };
+  return copy;
 }

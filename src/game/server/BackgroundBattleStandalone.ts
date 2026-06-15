@@ -77,12 +77,11 @@ function ensureWeightTable(allowedUnitBlueprintIds: ReadonlySet<string> | undefi
   if (sig === cachedWeightSignature && backgroundUnitWeights.length > 0) return;
   cachedWeightSignature = sig;
 
-  const types = allowedUnitBlueprintIds !== undefined
-    ? BACKGROUND_UNIT_BLUEPRINT_IDS.filter(t => allowedUnitBlueprintIds.has(t))
-    : BACKGROUND_UNIT_BLUEPRINT_IDS;
   let totalWeight = 0;
   backgroundUnitWeights = [];
-  for (const t of types) {
+  for (let i = 0; i < BACKGROUND_UNIT_BLUEPRINT_IDS.length; i++) {
+    const t = BACKGROUND_UNIT_BLUEPRINT_IDS[i];
+    if (allowedUnitBlueprintIds !== undefined && !allowedUnitBlueprintIds.has(t)) continue;
     const bp = getUnitBlueprint(t);
     const cost = getNormalizedUnitCost(bp);
     const weight = 1 / Math.max(cost, 0.01);
@@ -156,12 +155,15 @@ function spawnUnit(
   aimTurretsToward(unit, firstWp.x, firstWp.y);
 
   if (unit.unit) {
-    const actions: UnitAction[] = waypoints.map((wp) => {
+    const actions = new Array<UnitAction>(waypoints.length);
+    let patrolStartIndex = -1;
+    for (let i = 0; i < waypoints.length; i++) {
+      const wp = waypoints[i];
       const action: UnitAction = { type: wp.type, x: wp.x, y: wp.y };
       if (wp.z !== null) action.z = wp.z;
-      return action;
-    });
-    const patrolStartIndex = actions.findIndex((action) => action.type === 'patrol');
+      actions[i] = action;
+      if (patrolStartIndex < 0 && action.type === 'patrol') patrolStartIndex = i;
+    }
     setUnitActions(unit.unit, actions);
     if (patrolStartIndex >= 0) {
       unit.unit.patrolStartIndex = patrolStartIndex;
@@ -224,11 +226,16 @@ export function spawnBackgroundUnitsStandalone(
   playerIds: readonly PlayerId[] | undefined = undefined,
 ): Entity[] {
   const spawned: Entity[] = [];
-  const players = normalizePlayerIds(
-    playerIds && playerIds.length > 0
-      ? playerIds
-      : Array.from({ length: Math.max(1, world.playerCount || DEMO_CONFIG.playerCount) }, (_, i) => (i + 1) as PlayerId),
-  );
+  let playersSource: readonly PlayerId[];
+  if (playerIds && playerIds.length > 0) {
+    playersSource = playerIds;
+  } else {
+    const fallbackPlayerCount = Math.max(1, world.playerCount || DEMO_CONFIG.playerCount);
+    const fallbackPlayerIds = new Array<PlayerId>(fallbackPlayerCount);
+    for (let i = 0; i < fallbackPlayerCount; i++) fallbackPlayerIds[i] = (i + 1) as PlayerId;
+    playersSource = fallbackPlayerIds;
+  }
+  const players = normalizePlayerIds(playersSource);
   const numPlayers = players.length;
   const unitCapPerPlayer = Math.floor(world.maxTotalUnits / numPlayers);
   const mapWidth = world.mapWidth;

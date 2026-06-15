@@ -6,7 +6,11 @@ import type { PlayerId } from './types';
 export const FIRST_PLAYER_ANGLE = -Math.PI / 2 + Math.PI / 4;
 
 export function normalizePlayerIds(playerIds: readonly PlayerId[]): PlayerId[] {
-  if (playerIds.length > 0) return playerIds.slice();
+  if (playerIds.length > 0) {
+    const copy = new Array<PlayerId>(playerIds.length);
+    for (let i = 0; i < playerIds.length; i++) copy[i] = playerIds[i];
+    return copy;
+  }
   return [1 as PlayerId];
 }
 

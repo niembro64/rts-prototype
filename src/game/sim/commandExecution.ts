@@ -623,17 +623,19 @@ export function buildMassAwareGroupFormationSlots(units: readonly Entity[]): Gro
   }
   coords.sort(compareGridCoordsByCenter);
 
-  const layoutUnits: FormationLayoutUnit[] = units.map((unit, originalIndex) => {
+  const layoutUnits = new Array<FormationLayoutUnit>(units.length);
+  for (let originalIndex = 0; originalIndex < units.length; originalIndex++) {
+    const unit = units[originalIndex];
     const radius = formationUnitRadius(unit);
     const mass = formationUnitMass(unit);
-    return {
+    layoutUnits[originalIndex] = {
       unit,
       originalIndex,
       radius,
       mass,
       placementWeight: formationPlacementWeight(radius, mass),
     };
-  });
+  }
   layoutUnits.sort(compareFormationUnits);
 
   const assignments: FormationGridAssignment[] = [];
@@ -651,11 +653,16 @@ export function buildMassAwareGroupFormationSlots(units: readonly Entity[]): Gro
 
   const colPositions = slotPositionsFromSpans(colSpans);
   const rowPositions = slotPositionsFromSpans(rowSpans);
-  return assignments.map((assignment) => ({
-    unit: assignment.layoutUnit.unit,
-    offsetX: colPositions[assignment.col],
-    offsetY: rowPositions[assignment.row],
-  }));
+  const slots = new Array<GroupFormationSlot>(assignments.length);
+  for (let i = 0; i < assignments.length; i++) {
+    const assignment = assignments[i];
+    slots[i] = {
+      unit: assignment.layoutUnit.unit,
+      offsetX: colPositions[assignment.col],
+      offsetY: rowPositions[assignment.row],
+    };
+  }
+  return slots;
 }
 
 function unitFormationAcceleration(entity: Entity): number {
@@ -1719,7 +1726,7 @@ function findRepairAreaTargets(
   }
 
   targets.sort(compareAreaTargets);
-  return targets.map((target) => target.entity);
+  return sortedAreaTargetEntities(targets);
 }
 
 function findReclaimAreaTargets(
@@ -1751,7 +1758,7 @@ function findReclaimAreaTargets(
   }
 
   targets.sort(compareAreaTargets);
-  return targets.map((target) => target.entity);
+  return sortedAreaTargetEntities(targets);
 }
 
 function findResurrectAreaTargets(
@@ -1773,7 +1780,13 @@ function findResurrectAreaTargets(
   }
 
   targets.sort(compareAreaTargets);
-  return targets.map((target) => target.entity);
+  return sortedAreaTargetEntities(targets);
+}
+
+function sortedAreaTargetEntities(targets: readonly AreaTarget[]): Entity[] {
+  const entities = new Array<Entity>(targets.length);
+  for (let i = 0; i < targets.length; i++) entities[i] = targets[i].entity;
+  return entities;
 }
 
 function enqueueRepairAction(

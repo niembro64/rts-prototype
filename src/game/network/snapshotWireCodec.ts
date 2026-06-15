@@ -314,12 +314,14 @@ function measureEntityBreakdown(
       addPairBytes(sections, `entities.${key}`, key, entity[key]);
     }
     if (entity.unit !== null) {
-      for (const [key, value] of Object.entries(entity.unit)) {
+      for (const key in entity.unit) {
+        const value = entity.unit[key as keyof typeof entity.unit];
         addPairBytes(sections, `entities.unit.${key}`, key, value);
       }
     }
     if (entity.building !== null) {
-      for (const [key, value] of Object.entries(entity.building)) {
+      for (const key in entity.building) {
+        const value = entity.building[key as keyof typeof entity.building];
         addPairBytes(sections, `entities.building.${key}`, key, value);
       }
     }
@@ -353,7 +355,8 @@ function measureProjectileSpawn(
   sections: Record<string, number>,
   spawn: NetworkServerSnapshotProjectileSpawn,
 ): void {
-  for (const [key, value] of Object.entries(spawn)) {
+  for (const key in spawn) {
+    const value = spawn[key as keyof NetworkServerSnapshotProjectileSpawn];
     addPairBytes(sections, `projectiles.spawns.${key}`, key, value);
   }
 }
@@ -378,7 +381,8 @@ function topEntries(
   totalBytes: number,
 ): SnapshotWireBreakdownEntry[] {
   const rows: SnapshotWireBreakdownEntry[] = [];
-  for (const [section, bytes] of Object.entries(sections)) {
+  for (const section in sections) {
+    const bytes = sections[section];
     rows.push({
       section,
       bytes,
@@ -386,7 +390,8 @@ function topEntries(
     });
   }
   rows.sort((a, b) => b.bytes - a.bytes || a.section.localeCompare(b.section));
-  return rows.slice(0, 8);
+  if (rows.length > 8) rows.length = 8;
+  return rows;
 }
 
 function rustPackEntitiesForWire(
@@ -400,4 +405,3 @@ function rustPackEntitiesForWire(
   const packed = msgpackDecode(bytes.subarray(RUST_ENTITIES_KEY_PREFIX_BYTES));
   return isPackedEntitySnapshotWire(packed) ? packed : undefined;
 }
-

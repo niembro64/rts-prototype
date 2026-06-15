@@ -1243,11 +1243,12 @@ export class NetworkManager {
   }
 
   private getGamePlayerIds(): PlayerId[] {
-    const ids = new Set<PlayerId>([1 as PlayerId]);
+    const ids: PlayerId[] = [1 as PlayerId];
     for (const [playerId, conn] of this.connections) {
-      if (conn.open) ids.add(playerId);
+      if (conn.open && playerId !== 1) ids.push(playerId);
     }
-    return Array.from(ids).sort((a, b) => a - b);
+    ids.sort((a, b) => a - b);
+    return ids;
   }
 
   // Getters

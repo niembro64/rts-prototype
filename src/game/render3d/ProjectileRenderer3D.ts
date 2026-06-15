@@ -39,14 +39,13 @@ const CURVED_CONE_INDICES_PER_TAIL = CURVED_CONE_CURVE_SEGMENTS * CURVED_CONE_RA
 const TRAIL_STAMP_CAP = CURVED_CONE_CURVE_SEGMENTS + 4;
 const TRAIL_MIN_TANGENT_SQ = 1e-6;
 const PROJ_CYL_AXIS = new THREE.Vector3(0, 1, 0);
-const CURVED_CONE_COS = Array.from(
-  { length: CURVED_CONE_RADIAL_SEGMENTS },
-  (_, i) => Math.cos((i / CURVED_CONE_RADIAL_SEGMENTS) * Math.PI * 2),
-);
-const CURVED_CONE_SIN = Array.from(
-  { length: CURVED_CONE_RADIAL_SEGMENTS },
-  (_, i) => Math.sin((i / CURVED_CONE_RADIAL_SEGMENTS) * Math.PI * 2),
-);
+const CURVED_CONE_COS = new Array<number>(CURVED_CONE_RADIAL_SEGMENTS);
+const CURVED_CONE_SIN = new Array<number>(CURVED_CONE_RADIAL_SEGMENTS);
+for (let i = 0; i < CURVED_CONE_RADIAL_SEGMENTS; i++) {
+  const angle = (i / CURVED_CONE_RADIAL_SEGMENTS) * Math.PI * 2;
+  CURVED_CONE_COS[i] = Math.cos(angle);
+  CURVED_CONE_SIN[i] = Math.sin(angle);
+}
 
 function writeTranslateScaleMatrix(
   out: Float32Array,
