@@ -196,6 +196,11 @@ type BarState = {
    *  variation produces no work most frames. */
   lastRatioPx: number;
   lastMode: BarMode | null;
+  lastX: number;
+  lastY: number;
+  lastZ: number;
+  lastWidth: number;
+  lastAlpha: number;
 };
 
 type Bar = CanvasSpriteSlot<BarState>;
@@ -273,7 +278,15 @@ export class HealthBar3D {
       emptyRetainedSlots: 0,
       shrinkCooldownFrames: HEALTH_BAR_SHRINK_COOLDOWN_FRAMES,
       shrinkBatchSize: HEALTH_BAR_SHRINK_BATCH_SIZE,
-      makeState: () => ({ lastRatioPx: -1, lastMode: null }),
+      makeState: () => ({
+        lastRatioPx: -1,
+        lastMode: null,
+        lastX: Number.NaN,
+        lastY: Number.NaN,
+        lastZ: Number.NaN,
+        lastWidth: Number.NaN,
+        lastAlpha: Number.NaN,
+      }),
       repaint: repaintBar,
     });
   }
@@ -338,16 +351,29 @@ export class HealthBar3D {
     const bar = this.acquire(this._used++);
     this.repaintIfChanged(bar, ratio, mode);
     const yOffset = stackIndex * (STYLE.worldHeight + STYLE.worldStackGap);
-    bar.sprite.scale.set(worldWidth, STYLE.worldHeight, 1);
-    bar.sprite.position.set(worldX, worldBaseY + yOffset, worldZ);
-    bar.material.opacity = alpha;
+    const worldY = worldBaseY + yOffset;
+    const state = bar.state;
+    if (state.lastWidth !== worldWidth) {
+      bar.sprite.scale.set(worldWidth, STYLE.worldHeight, 1);
+      state.lastWidth = worldWidth;
+    }
+    if (state.lastX !== worldX || state.lastY !== worldY || state.lastZ !== worldZ) {
+      bar.sprite.position.set(worldX, worldY, worldZ);
+      state.lastX = worldX;
+      state.lastY = worldY;
+      state.lastZ = worldZ;
+    }
+    if (state.lastAlpha !== alpha) {
+      bar.material.opacity = alpha;
+      state.lastAlpha = alpha;
+    }
+    let visible = true;
     if (this._frustum) {
       const probe = HealthBar3D._probeVec;
-      probe.set(worldX, worldBaseY + yOffset, worldZ);
-      bar.sprite.visible = this._frustum.containsPoint(probe);
-    } else {
-      bar.sprite.visible = true;
+      probe.set(worldX, worldY, worldZ);
+      visible = this._frustum.containsPoint(probe);
     }
+    if (bar.sprite.visible !== visible) bar.sprite.visible = visible;
   }
 
   /** Stack the per-resource construction bars on top of the HP bar when a

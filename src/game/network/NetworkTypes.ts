@@ -10,6 +10,8 @@ export type {
   LockstepReadyMessage,
   LockstepCommandMessage,
   LockstepCommandFrameMessage,
+  LockstepCommandFrameBatchFrame,
+  LockstepCommandFrameBatchMessage,
   LockstepAckMessage,
   LockstepChecksumMessage,
   LockstepPauseMessage,

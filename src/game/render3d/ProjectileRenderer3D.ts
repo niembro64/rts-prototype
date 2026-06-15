@@ -368,16 +368,16 @@ export class ProjectileRenderer3D {
       this.updateProjRadiusMeshes(e, wantCol, wantExp);
     }
 
-    this.sphereInstanced.count = sphereCount;
+    if (this.sphereInstanced.count !== sphereCount) this.sphereInstanced.count = sphereCount;
     if (sphereCount > 0) {
       this.markInstanceMatrixRange(this.sphereInstanced, 0, sphereCount - 1);
     }
-    this.cylinderInstanced.count = cylinderCount;
+    if (this.cylinderInstanced.count !== cylinderCount) this.cylinderInstanced.count = cylinderCount;
     if (cylinderCount > 0) {
       this.markInstanceMatrixRange(this.cylinderInstanced, 0, cylinderCount - 1);
     }
     this.flushCurvedConeGeometry(curvedConeCount);
-    this.finInstanced.count = finCount;
+    if (this.finInstanced.count !== finCount) this.finInstanced.count = finCount;
     if (finCount > 0) {
       this.markInstanceMatrixRange(this.finInstanced, 0, finCount - 1);
     }

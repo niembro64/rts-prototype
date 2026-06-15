@@ -1,7 +1,7 @@
 {
   "lockstep": {
     "fixedStepHz": 30,
-    "inputDelayTicks": 6,
+    "inputDelayTicks": 15,
     "checksumIntervalTicks": 180,
     "stallTimeoutMs": 5000,
     "desyncPolicy": "pause",

@@ -796,7 +796,6 @@ export class TerrainTileRenderer3D {
     this.buildGridCellSizeUniform.value = buildCellSize;
     this.buildGridWorldSizeUniform.value.set(this.mapWidth, this.mapHeight);
     if (!enabled) {
-      this.buildGridKeyValid = false;
       return;
     }
 

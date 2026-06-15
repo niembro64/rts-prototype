@@ -306,7 +306,7 @@ export type NetworkCommunicationEvent =
   | NetworkCommunicationMapDrawingEvent
   | NetworkCommunicationMapEraseEvent;
 
-export const LOCKSTEP_PROTOCOL_VERSION = 'budget-annihilation.lockstep.v2' as const;
+export const LOCKSTEP_PROTOCOL_VERSION = 'budget-annihilation.lockstep.v3' as const;
 export type LockstepProtocolVersion = typeof LOCKSTEP_PROTOCOL_VERSION;
 
 export type LockstepProtocolBase = {
@@ -345,6 +345,18 @@ export type LockstepCommandFrameMessage = LockstepProtocolBase & {
   frame: number;
   frameSequence: number;
   commands: LockstepCommandEnvelope[];
+};
+
+export type LockstepCommandFrameBatchFrame = {
+  frame: number;
+  frameSequence: number;
+  commands: LockstepCommandEnvelope[];
+};
+
+export type LockstepCommandFrameBatchMessage = LockstepProtocolBase & {
+  type: 'lockstepCommandFrameBatch';
+  coordinatorPlayerId: PlayerId;
+  frames: LockstepCommandFrameBatchFrame[];
 };
 
 export type LockstepAckMessage = LockstepProtocolBase & {
@@ -396,6 +408,7 @@ export type NetworkLockstepMessage =
   | LockstepReadyMessage
   | LockstepCommandMessage
   | LockstepCommandFrameMessage
+  | LockstepCommandFrameBatchMessage
   | LockstepAckMessage
   | LockstepChecksumMessage
   | LockstepPauseMessage

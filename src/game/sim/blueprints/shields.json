@@ -18,7 +18,7 @@
     "barrier": {
       "shape": "sphere",
       "outerRatio": 0.8,
-      "originOffsetRadiusRatio": 0.0,
+      "originOffsetRadiusRatio": 0.3,
       "rimWidth": null
     },
     "hitSound": null,

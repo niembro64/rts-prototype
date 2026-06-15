@@ -145,9 +145,9 @@ type CreateRealBattleMatchContextOptions = {
 };
 
 const LOCKSTEP_COORDINATOR_RESEND_INTERVAL_MS = 250;
-const LOCKSTEP_COORDINATOR_RESEND_FRAME_LIMIT = 32;
+const LOCKSTEP_COORDINATOR_RESEND_FRAME_LIMIT = 300;
 const LOCKSTEP_CLIENT_RESYNC_REQUEST_INTERVAL_MS = 500;
-const LOCKSTEP_MAX_PUMP_ADVANCE_FRAMES = 4;
+const LOCKSTEP_MAX_PUMP_ADVANCE_FRAMES = 300;
 
 export function loadAndApplyRealBattleTerrain(): RealBattleStartupTerrain {
   const terrainMapShape = loadStoredTerrainMapShape('real');
@@ -518,6 +518,7 @@ async function createDeterministicLockstepBackendRuntime({
   let nextLocalPlayerSequence = 0;
   let nextFrameSequence = 0;
   let pumpTimer: ReturnType<typeof setInterval> | null = null;
+  let browserResumePumpHandler: (() => void) | null = null;
   let desyncMonitor: LockstepDesyncMonitor | null = null;
   const requiredReadyPlayerIds = new Set<PlayerId>(isOnlineLockstep ? playerIds : [localPlayerId]);
   const readyPlayerIds = new Set<PlayerId>([localPlayerId]);
@@ -752,6 +753,25 @@ async function createDeterministicLockstepBackendRuntime({
           network?.getLockstepTransport().sendAck(message.frame, message.frameSequence);
         }
         break;
+      case 'lockstepCommandFrameBatch':
+        if (!isFrameCoordinator) {
+          let lastFrame: number | null = null;
+          let lastFrameSequence: number | null = null;
+          for (let i = 0; i < message.frames.length; i++) {
+            const frame = message.frames[i];
+            receiveCoordinatorCommandFrame(
+              frame.frame,
+              frame.frameSequence,
+              frame.commands,
+            );
+            lastFrame = frame.frame;
+            lastFrameSequence = frame.frameSequence;
+          }
+          if (lastFrame !== null && lastFrameSequence !== null) {
+            network?.getLockstepTransport().sendAck(lastFrame, lastFrameSequence);
+          }
+        }
+        break;
       case 'lockstepAck':
         break;
       case 'lockstepChecksum':
@@ -923,18 +943,28 @@ async function createDeterministicLockstepBackendRuntime({
         return;
       }
       const startFrame = diagnostics.nextFrame;
+      const frameBatch: {
+        frame: number;
+        frameSequence: number;
+        commands: readonly LockstepCommandEnvelope[];
+      }[] = [];
       for (let offset = 0; offset < frameBudget; offset++) {
         const frame = startFrame + offset;
         const commands = pendingCommandsByFrame.get(frame) ?? [];
         const frameSequence = nextFrameSequence++;
         pendingCommandsByFrame.delete(frame);
-        network?.getLockstepTransport().broadcastCommandFrame(frame, frameSequence, commands);
+        if (isOnlineLockstep) {
+          frameBatch.push({ frame, frameSequence, commands });
+        }
         broadcastCommandFrameCount++;
         receiveCoordinatorCommandFrame(
           frame,
           frameSequence,
           commands,
         );
+      }
+      if (frameBatch.length > 0) {
+        network?.getLockstepTransport().broadcastCommandFrameBatch(frameBatch);
       }
     }
     const advanceResult = scheduler.advanceReadyFrames(LOCKSTEP_MAX_PUMP_ADVANCE_FRAMES);
@@ -987,11 +1017,31 @@ async function createDeterministicLockstepBackendRuntime({
       }
       server.startLockstepPresentation();
       pumpTimer = setInterval(pumpFrame, LOCKSTEP_FIXED_DT_MS);
+      if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+        browserResumePumpHandler = () => {
+          if (document.visibilityState === 'visible') pumpFrame();
+        };
+        document.addEventListener('visibilitychange', browserResumePumpHandler);
+        window.addEventListener('focus', browserResumePumpHandler);
+        window.addEventListener('pageshow', browserResumePumpHandler);
+        window.addEventListener('online', browserResumePumpHandler);
+      }
     },
     stop() {
       if (pumpTimer !== null) {
         clearInterval(pumpTimer);
         pumpTimer = null;
+      }
+      if (
+        browserResumePumpHandler !== null &&
+        typeof window !== 'undefined' &&
+        typeof document !== 'undefined'
+      ) {
+        document.removeEventListener('visibilitychange', browserResumePumpHandler);
+        window.removeEventListener('focus', browserResumePumpHandler);
+        window.removeEventListener('pageshow', browserResumePumpHandler);
+        window.removeEventListener('online', browserResumePumpHandler);
+        browserResumePumpHandler = null;
       }
       if (network !== undefined && network.onLockstepMessage === handleLockstepMessage) {
         network.onLockstepMessage = previousLockstepHandler;

@@ -294,7 +294,7 @@ export class SprayRenderer3D {
 
     // Cap draw to the live prefix — trailing slots (whatever they
     // happen to hold from previous frames) don't render.
-    this.mesh.count = visibleCount;
+    if (this.mesh.count !== visibleCount) this.mesh.count = visibleCount;
     if (visibleCount > 0) {
       this.mesh.instanceMatrix.clearUpdateRanges();
       this.mesh.instanceMatrix.addUpdateRange(0, visibleCount * 16);

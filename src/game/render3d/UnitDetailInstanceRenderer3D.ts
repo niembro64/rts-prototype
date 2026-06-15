@@ -77,6 +77,10 @@ function uploadDirtySpan(
   clearDirtySpan(span);
 }
 
+function setInstancedCount(mesh: THREE.InstancedMesh, count: number): void {
+  if (mesh.count !== count) mesh.count = count;
+}
+
 function writeInstanceMatrix(
   mesh: THREE.InstancedMesh,
   slot: number,
@@ -86,22 +90,58 @@ function writeInstanceMatrix(
   const out = mesh.instanceMatrix.array;
   const src = matrix.elements;
   const offset = slot * 16;
-  out[offset] = src[0];
-  out[offset + 1] = src[1];
-  out[offset + 2] = src[2];
-  out[offset + 3] = src[3];
-  out[offset + 4] = src[4];
-  out[offset + 5] = src[5];
-  out[offset + 6] = src[6];
-  out[offset + 7] = src[7];
-  out[offset + 8] = src[8];
-  out[offset + 9] = src[9];
-  out[offset + 10] = src[10];
-  out[offset + 11] = src[11];
-  out[offset + 12] = src[12];
-  out[offset + 13] = src[13];
-  out[offset + 14] = src[14];
-  out[offset + 15] = src[15];
+  const s0 = Math.fround(src[0]);
+  const s1 = Math.fround(src[1]);
+  const s2 = Math.fround(src[2]);
+  const s3 = Math.fround(src[3]);
+  const s4 = Math.fround(src[4]);
+  const s5 = Math.fround(src[5]);
+  const s6 = Math.fround(src[6]);
+  const s7 = Math.fround(src[7]);
+  const s8 = Math.fround(src[8]);
+  const s9 = Math.fround(src[9]);
+  const s10 = Math.fround(src[10]);
+  const s11 = Math.fround(src[11]);
+  const s12 = Math.fround(src[12]);
+  const s13 = Math.fround(src[13]);
+  const s14 = Math.fround(src[14]);
+  const s15 = Math.fround(src[15]);
+  if (
+    out[offset] === s0 &&
+    out[offset + 1] === s1 &&
+    out[offset + 2] === s2 &&
+    out[offset + 3] === s3 &&
+    out[offset + 4] === s4 &&
+    out[offset + 5] === s5 &&
+    out[offset + 6] === s6 &&
+    out[offset + 7] === s7 &&
+    out[offset + 8] === s8 &&
+    out[offset + 9] === s9 &&
+    out[offset + 10] === s10 &&
+    out[offset + 11] === s11 &&
+    out[offset + 12] === s12 &&
+    out[offset + 13] === s13 &&
+    out[offset + 14] === s14 &&
+    out[offset + 15] === s15
+  ) {
+    return;
+  }
+  out[offset] = s0;
+  out[offset + 1] = s1;
+  out[offset + 2] = s2;
+  out[offset + 3] = s3;
+  out[offset + 4] = s4;
+  out[offset + 5] = s5;
+  out[offset + 6] = s6;
+  out[offset + 7] = s7;
+  out[offset + 8] = s8;
+  out[offset + 9] = s9;
+  out[offset + 10] = s10;
+  out[offset + 11] = s11;
+  out[offset + 12] = s12;
+  out[offset + 13] = s13;
+  out[offset + 14] = s14;
+  out[offset + 15] = s15;
   markDirtySlot(dirty, slot);
 }
 
@@ -114,22 +154,58 @@ function writeInstanceMatrixArray(
 ): void {
   const out = mesh.instanceMatrix.array;
   const offset = slot * 16;
-  out[offset] = matrix[srcOffset];
-  out[offset + 1] = matrix[srcOffset + 1];
-  out[offset + 2] = matrix[srcOffset + 2];
-  out[offset + 3] = matrix[srcOffset + 3];
-  out[offset + 4] = matrix[srcOffset + 4];
-  out[offset + 5] = matrix[srcOffset + 5];
-  out[offset + 6] = matrix[srcOffset + 6];
-  out[offset + 7] = matrix[srcOffset + 7];
-  out[offset + 8] = matrix[srcOffset + 8];
-  out[offset + 9] = matrix[srcOffset + 9];
-  out[offset + 10] = matrix[srcOffset + 10];
-  out[offset + 11] = matrix[srcOffset + 11];
-  out[offset + 12] = matrix[srcOffset + 12];
-  out[offset + 13] = matrix[srcOffset + 13];
-  out[offset + 14] = matrix[srcOffset + 14];
-  out[offset + 15] = matrix[srcOffset + 15];
+  const s0 = matrix[srcOffset];
+  const s1 = matrix[srcOffset + 1];
+  const s2 = matrix[srcOffset + 2];
+  const s3 = matrix[srcOffset + 3];
+  const s4 = matrix[srcOffset + 4];
+  const s5 = matrix[srcOffset + 5];
+  const s6 = matrix[srcOffset + 6];
+  const s7 = matrix[srcOffset + 7];
+  const s8 = matrix[srcOffset + 8];
+  const s9 = matrix[srcOffset + 9];
+  const s10 = matrix[srcOffset + 10];
+  const s11 = matrix[srcOffset + 11];
+  const s12 = matrix[srcOffset + 12];
+  const s13 = matrix[srcOffset + 13];
+  const s14 = matrix[srcOffset + 14];
+  const s15 = matrix[srcOffset + 15];
+  if (
+    out[offset] === s0 &&
+    out[offset + 1] === s1 &&
+    out[offset + 2] === s2 &&
+    out[offset + 3] === s3 &&
+    out[offset + 4] === s4 &&
+    out[offset + 5] === s5 &&
+    out[offset + 6] === s6 &&
+    out[offset + 7] === s7 &&
+    out[offset + 8] === s8 &&
+    out[offset + 9] === s9 &&
+    out[offset + 10] === s10 &&
+    out[offset + 11] === s11 &&
+    out[offset + 12] === s12 &&
+    out[offset + 13] === s13 &&
+    out[offset + 14] === s14 &&
+    out[offset + 15] === s15
+  ) {
+    return;
+  }
+  out[offset] = s0;
+  out[offset + 1] = s1;
+  out[offset + 2] = s2;
+  out[offset + 3] = s3;
+  out[offset + 4] = s4;
+  out[offset + 5] = s5;
+  out[offset + 6] = s6;
+  out[offset + 7] = s7;
+  out[offset + 8] = s8;
+  out[offset + 9] = s9;
+  out[offset + 10] = s10;
+  out[offset + 11] = s11;
+  out[offset + 12] = s12;
+  out[offset + 13] = s13;
+  out[offset + 14] = s14;
+  out[offset + 15] = s15;
   markDirtySlot(dirty, slot);
 }
 
@@ -1009,27 +1085,27 @@ export class UnitDetailInstanceRenderer3D {
       this.shieldPanelNextSlot,
     );
 
-    this.smoothChassis.count = this.smoothChassisNextSlot;
+    setInstancedCount(this.smoothChassis, this.smoothChassisNextSlot);
     uploadDirtySpan(this.smoothChassis.instanceMatrix, this.smoothChassisMatrixDirty, 16);
     if (this.smoothChassis.instanceColor) {
       uploadDirtySpan(this.smoothChassis.instanceColor, this.smoothChassisColorDirty, 3);
     }
 
     for (const pool of this.polyChassis.values()) {
-      pool.mesh.count = pool.nextSlot;
+      setInstancedCount(pool.mesh, pool.nextSlot);
       uploadDirtySpan(pool.mesh.instanceMatrix, pool.matrixDirty, 16);
       if (pool.mesh.instanceColor) {
         uploadDirtySpan(pool.mesh.instanceColor, pool.colorDirty, 3);
       }
     }
 
-    this.turretHeadInstanced.count = this.turretHeadNextSlot;
+    setInstancedCount(this.turretHeadInstanced, this.turretHeadNextSlot);
     uploadDirtySpan(this.turretHeadInstanced.instanceMatrix, this.turretHeadMatrixDirty, 16);
     if (this.turretHeadInstanced.instanceColor) {
       uploadDirtySpan(this.turretHeadInstanced.instanceColor, this.turretHeadColorDirty, 3);
     }
 
-    this.barrelInstanced.count = this.barrelNextSlot;
+    setInstancedCount(this.barrelInstanced, this.barrelNextSlot);
     uploadDirtySpan(this.barrelInstanced.instanceMatrix, this.barrelMatrixDirty, 16);
     if (this.barrelInstanced.instanceColor) {
       uploadDirtySpan(this.barrelInstanced.instanceColor, this.barrelColorDirty, 3);
@@ -1037,10 +1113,10 @@ export class UnitDetailInstanceRenderer3D {
 
     // Beam-emitter pools share the cone slot allocator, so every mirror
     // pool draws the same instance count.
-    this.coneBarrelInstanced.count = this.coneBarrelNextSlot;
-    this.coneBarrelInnerInstanced.count = this.coneBarrelNextSlot;
-    this.emitterBallInstanced.count = this.coneBarrelNextSlot;
-    this.emitterBallInnerInstanced.count = this.coneBarrelNextSlot;
+    setInstancedCount(this.coneBarrelInstanced, this.coneBarrelNextSlot);
+    setInstancedCount(this.coneBarrelInnerInstanced, this.coneBarrelNextSlot);
+    setInstancedCount(this.emitterBallInstanced, this.coneBarrelNextSlot);
+    setInstancedCount(this.emitterBallInnerInstanced, this.coneBarrelNextSlot);
     uploadDirtySpan(this.coneBarrelInstanced.instanceMatrix, this.coneBarrelMatrixDirty, 16);
     uploadDirtySpan(
       this.coneBarrelInnerInstanced.instanceMatrix,
@@ -1058,7 +1134,10 @@ export class UnitDetailInstanceRenderer3D {
     uploadDirtySpan(this.emitterBallFlow.attr, this.emitterBallFlow.dirty, 3);
     uploadDirtySpan(this.emitterBallInnerFlow.attr, this.emitterBallInnerFlow.dirty, 3);
 
-    this.shieldPanelInstanced.count = turretShieldPanelsEnabled ? this.shieldPanelNextSlot : 0;
+    setInstancedCount(
+      this.shieldPanelInstanced,
+      turretShieldPanelsEnabled ? this.shieldPanelNextSlot : 0,
+    );
     uploadDirtySpan(this.shieldPanelInstanced.instanceMatrix, this.shieldPanelMatrixDirty, 16);
     uploadDirtySpan(this.shieldPanelColorAttr, this.shieldPanelColorDirty, 3);
     uploadDirtySpan(this.shieldPanelAlphaAttr, this.shieldPanelAlphaDirty, 1);

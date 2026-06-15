@@ -113,6 +113,7 @@ function classifyMessage(message: NetworkMessage): NetworkSendClassification {
     case 'lockstepReady':
     case 'lockstepCommand':
     case 'lockstepCommandFrame':
+    case 'lockstepCommandFrameBatch':
     case 'lockstepAck':
     case 'lockstepChecksum':
     case 'lockstepPause':

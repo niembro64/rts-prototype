@@ -147,6 +147,15 @@ export class PylonTubeFlowRenderer {
       this.handoffSprayPool.push(this.handoffSprays[i]);
     }
     this.handoffSprays.length = 0;
+    if (
+      flows.length === 0 &&
+      this.beadCount === 0 &&
+      this.pendingTubeBirths.size === 0 &&
+      this.flowRuntimes.size === 0
+    ) {
+      if (this.mesh.count !== 0) this.mesh.count = 0;
+      return this.handoffSprays;
+    }
 
     const dtSec = Math.max(0, Math.min(dtMs, 100)) / 1000;
     for (let f = 0; f < flows.length; f++) {
@@ -182,7 +191,7 @@ export class PylonTubeFlowRenderer {
       n++;
     }
 
-    this.mesh.count = n;
+    if (this.mesh.count !== n) this.mesh.count = n;
     if (n > 0) {
       this.mesh.instanceMatrix.clearUpdateRanges();
       this.mesh.instanceMatrix.addUpdateRange(0, n * 16);

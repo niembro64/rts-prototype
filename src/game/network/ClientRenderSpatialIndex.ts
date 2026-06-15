@@ -104,6 +104,33 @@ export class ClientRenderSpatialIndex {
     }
   }
 
+  queryFilteredUnitsAndBuildings(
+    bounds: FootprintBounds,
+    outUnits: Entity[],
+    outBuildings: Entity[],
+    includeEntity: (entity: Entity) => boolean,
+  ): void {
+    outUnits.length = 0;
+    outBuildings.length = 0;
+
+    const minCellX = this.cellCoord(bounds.minX);
+    const maxCellX = this.cellCoord(bounds.maxX);
+    const minCellY = this.cellCoord(bounds.minY);
+    const maxCellY = this.cellCoord(bounds.maxY);
+    for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
+      for (let cellY = minCellY; cellY <= maxCellY; cellY++) {
+        const bucket = this.buckets.get(this.cellKey(cellX, cellY));
+        if (bucket === undefined) continue;
+        for (let i = 0; i < bucket.length; i++) {
+          const entity = bucket[i];
+          if (!includeEntity(entity)) continue;
+          if (entity.unit !== null) outUnits.push(entity);
+          else if (entity.building !== null) outBuildings.push(entity);
+        }
+      }
+    }
+  }
+
   private getOrCreateBucket(cellKey: ClientRenderCellKey): Entity[] {
     let bucket = this.buckets.get(cellKey);
     if (bucket === undefined) {

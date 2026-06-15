@@ -517,7 +517,7 @@ export class SmokeTrail3D {
   }
 
   private flushPool(pool: PuffPool): void {
-    pool.mesh.count = pool.active.length;
+    if (pool.mesh.count !== pool.active.length) pool.mesh.count = pool.active.length;
     if (pool.active.length > 0) {
       const count = pool.active.length;
       pool.mesh.instanceMatrix.clearUpdateRanges();

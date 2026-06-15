@@ -14,6 +14,7 @@ import {
   BATTLE_HANDOFF_PROTOCOL,
   LOCKSTEP_PROTOCOL_VERSION,
   type BattleHandoff,
+  type LockstepCommandFrameBatchFrame,
   type LockstepCommandFrameMessage,
   type LobbySettings,
   type NetworkLockstepMessage,
@@ -492,6 +493,44 @@ class FakeLockstepTransport {
     };
     this.commandFrames.push(message);
     return this.network.deliverToPeer(message);
+  }
+
+  broadcastCommandFrameBatch(
+    frames: readonly {
+      frame: number;
+      frameSequence: number;
+      commands: readonly LockstepCommandEnvelope[];
+    }[],
+  ): boolean {
+    if (frames.length === 0) return false;
+    if (frames.length === 1) {
+      const frame = frames[0];
+      return this.broadcastCommandFrame(frame.frame, frame.frameSequence, frame.commands);
+    }
+    const batchFrames = new Array<LockstepCommandFrameBatchFrame>(frames.length);
+    for (let i = 0; i < frames.length; i++) {
+      const frame = frames[i];
+      const commands = [...frame.commands].sort(compareLockstepCommandEnvelopes);
+      batchFrames[i] = {
+        frame: frame.frame,
+        frameSequence: frame.frameSequence,
+        commands,
+      };
+      this.commandFrames.push({
+        ...this.base(),
+        type: 'lockstepCommandFrame',
+        coordinatorPlayerId: this.network.playerId,
+        frame: frame.frame,
+        frameSequence: frame.frameSequence,
+        commands,
+      });
+    }
+    return this.network.deliverToPeer({
+      ...this.base(),
+      type: 'lockstepCommandFrameBatch',
+      coordinatorPlayerId: this.network.playerId,
+      frames: batchFrames,
+    });
   }
 
   sendAck(ackFrame: number, ackFrameSequence: number): boolean {

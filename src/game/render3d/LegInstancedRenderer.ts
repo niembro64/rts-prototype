@@ -110,22 +110,58 @@ function writeMatrixAt(
   const out = mesh.instanceMatrix.array;
   const src = matrix.elements;
   const offset = slot * 16;
-  out[offset] = src[0];
-  out[offset + 1] = src[1];
-  out[offset + 2] = src[2];
-  out[offset + 3] = src[3];
-  out[offset + 4] = src[4];
-  out[offset + 5] = src[5];
-  out[offset + 6] = src[6];
-  out[offset + 7] = src[7];
-  out[offset + 8] = src[8];
-  out[offset + 9] = src[9];
-  out[offset + 10] = src[10];
-  out[offset + 11] = src[11];
-  out[offset + 12] = src[12];
-  out[offset + 13] = src[13];
-  out[offset + 14] = src[14];
-  out[offset + 15] = src[15];
+  const s0 = Math.fround(src[0]);
+  const s1 = Math.fround(src[1]);
+  const s2 = Math.fround(src[2]);
+  const s3 = Math.fround(src[3]);
+  const s4 = Math.fround(src[4]);
+  const s5 = Math.fround(src[5]);
+  const s6 = Math.fround(src[6]);
+  const s7 = Math.fround(src[7]);
+  const s8 = Math.fround(src[8]);
+  const s9 = Math.fround(src[9]);
+  const s10 = Math.fround(src[10]);
+  const s11 = Math.fround(src[11]);
+  const s12 = Math.fround(src[12]);
+  const s13 = Math.fround(src[13]);
+  const s14 = Math.fround(src[14]);
+  const s15 = Math.fround(src[15]);
+  if (
+    out[offset] === s0 &&
+    out[offset + 1] === s1 &&
+    out[offset + 2] === s2 &&
+    out[offset + 3] === s3 &&
+    out[offset + 4] === s4 &&
+    out[offset + 5] === s5 &&
+    out[offset + 6] === s6 &&
+    out[offset + 7] === s7 &&
+    out[offset + 8] === s8 &&
+    out[offset + 9] === s9 &&
+    out[offset + 10] === s10 &&
+    out[offset + 11] === s11 &&
+    out[offset + 12] === s12 &&
+    out[offset + 13] === s13 &&
+    out[offset + 14] === s14 &&
+    out[offset + 15] === s15
+  ) {
+    return;
+  }
+  out[offset] = s0;
+  out[offset + 1] = s1;
+  out[offset + 2] = s2;
+  out[offset + 3] = s3;
+  out[offset + 4] = s4;
+  out[offset + 5] = s5;
+  out[offset + 6] = s6;
+  out[offset + 7] = s7;
+  out[offset + 8] = s8;
+  out[offset + 9] = s9;
+  out[offset + 10] = s10;
+  out[offset + 11] = s11;
+  out[offset + 12] = s12;
+  out[offset + 13] = s13;
+  out[offset + 14] = s14;
+  out[offset + 15] = s15;
   markDirtySlot(dirty, slot);
 }
 
@@ -451,16 +487,40 @@ class CylinderPool {
   ): void {
     if (slot < 0) return;
     const i3 = slot * 3;
-    (this.startBuf.array as Float32Array)[i3 + 0] = sx;
-    (this.startBuf.array as Float32Array)[i3 + 1] = sy;
-    (this.startBuf.array as Float32Array)[i3 + 2] = sz;
-    (this.endBuf.array as Float32Array)[i3 + 0] = ex;
-    (this.endBuf.array as Float32Array)[i3 + 1] = ey;
-    (this.endBuf.array as Float32Array)[i3 + 2] = ez;
-    (this.thickBuf.array as Float32Array)[slot] = thick;
-    markDirtySlot(this.startDirty, slot);
-    markDirtySlot(this.endDirty, slot);
-    markDirtySlot(this.thickDirty, slot);
+    const starts = this.startBuf.array as Float32Array;
+    const ends = this.endBuf.array as Float32Array;
+    const thicknesses = this.thickBuf.array as Float32Array;
+    const fsx = Math.fround(sx);
+    const fsy = Math.fround(sy);
+    const fsz = Math.fround(sz);
+    const fex = Math.fround(ex);
+    const fey = Math.fround(ey);
+    const fez = Math.fround(ez);
+    const fthick = Math.fround(thick);
+    if (
+      starts[i3 + 0] !== fsx ||
+      starts[i3 + 1] !== fsy ||
+      starts[i3 + 2] !== fsz
+    ) {
+      starts[i3 + 0] = fsx;
+      starts[i3 + 1] = fsy;
+      starts[i3 + 2] = fsz;
+      markDirtySlot(this.startDirty, slot);
+    }
+    if (
+      ends[i3 + 0] !== fex ||
+      ends[i3 + 1] !== fey ||
+      ends[i3 + 2] !== fez
+    ) {
+      ends[i3 + 0] = fex;
+      ends[i3 + 1] = fey;
+      ends[i3 + 2] = fez;
+      markDirtySlot(this.endDirty, slot);
+    }
+    if (thicknesses[slot] !== fthick) {
+      thicknesses[slot] = fthick;
+      markDirtySlot(this.thickDirty, slot);
+    }
   }
 
   fade(slot: number, fade: number): void {
@@ -473,6 +533,7 @@ class CylinderPool {
 
   translate(slot: number, dx: number, dy: number, dz: number): void {
     if (slot < 0) return;
+    if (dx === 0 && dy === 0 && dz === 0) return;
     const i3 = slot * 3;
     const starts = this.startBuf.array as Float32Array;
     const ends = this.endBuf.array as Float32Array;
@@ -504,8 +565,10 @@ class CylinderPool {
     // thickness. JointSpherePool / FootPadPool already do this via
     // `mesh.count = nextSlot`; InstancedBufferGeometry exposes the
     // equivalent as `instanceCount`.
-    (this.mesh.geometry as THREE.InstancedBufferGeometry).instanceCount =
-      this.nextSlot;
+    const geometry = this.mesh.geometry as THREE.InstancedBufferGeometry;
+    if (geometry.instanceCount !== this.nextSlot) {
+      geometry.instanceCount = this.nextSlot;
+    }
   }
 
   destroy(): void {
@@ -648,6 +711,7 @@ class JointSpherePool {
 
   translate(slot: number, dx: number, dy: number, dz: number): void {
     if (slot < 0) return;
+    if (dx === 0 && dy === 0 && dz === 0) return;
     const arr = this.mesh.instanceMatrix.array as Float32Array;
     const i16 = slot * 16;
     arr[i16 + 12] += dx;
@@ -662,7 +726,7 @@ class JointSpherePool {
         this.nextSlot, this.freeList, this.relocators, this.copyData,
       );
     }
-    this.mesh.count = this.nextSlot;
+    if (this.mesh.count !== this.nextSlot) this.mesh.count = this.nextSlot;
     uploadDirtySpan(this.mesh.instanceMatrix, this.matrixDirty, 16);
     uploadDirtySpan(this.fadeBuf, this.fadeDirty, 1);
     if (this.mesh.instanceColor) uploadDirtySpan(this.mesh.instanceColor, this.colorDirty, 3);
@@ -812,6 +876,7 @@ class FootPadPool {
 
   translate(slot: number, dx: number, dy: number, dz: number): void {
     if (slot < 0) return;
+    if (dx === 0 && dy === 0 && dz === 0) return;
     const arr = this.mesh.instanceMatrix.array as Float32Array;
     const i16 = slot * 16;
     arr[i16 + 12] += dx;
@@ -826,7 +891,7 @@ class FootPadPool {
         this.nextSlot, this.freeList, this.relocators, this.copyData,
       );
     }
-    this.mesh.count = this.nextSlot;
+    if (this.mesh.count !== this.nextSlot) this.mesh.count = this.nextSlot;
     uploadDirtySpan(this.mesh.instanceMatrix, this.matrixDirty, 16);
     uploadDirtySpan(this.fadeBuf, this.fadeDirty, 1);
     if (this.mesh.instanceColor) uploadDirtySpan(this.mesh.instanceColor, this.colorDirty, 3);

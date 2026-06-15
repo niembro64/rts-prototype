@@ -210,8 +210,6 @@ export class ClientViewState {
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   private cache = new EntityCacheManager();
   private renderSpatialIndex = new ClientRenderSpatialIndex();
-  private readonly scopedRenderQueryUnitsScratch: Entity[] = [];
-  private readonly scopedRenderQueryBuildingsScratch: Entity[] = [];
   private readonly scopedRenderIncludedIds = new Set<EntityId>();
   private entitySetVersion = 0;
   private projectileCacheDirty = false;
@@ -1097,23 +1095,20 @@ export class ClientViewState {
     includeEntity: (entity: Entity) => boolean,
     hoveredEntity: Entity | null,
   ): void {
-    const queryUnits = this.scopedRenderQueryUnitsScratch;
-    const queryBuildings = this.scopedRenderQueryBuildingsScratch;
     const included = this.scopedRenderIncludedIds;
-    outUnits.length = 0;
-    outBuildings.length = 0;
     included.clear();
-    this.renderSpatialIndex.queryUnitsAndBuildings(bounds, queryUnits, queryBuildings);
-    for (let i = 0; i < queryUnits.length; i++) {
-      const entity = queryUnits[i];
-      if (!includeEntity(entity)) continue;
-      outUnits.push(entity);
+    this.renderSpatialIndex.queryFilteredUnitsAndBuildings(
+      bounds,
+      outUnits,
+      outBuildings,
+      includeEntity,
+    );
+    for (let i = 0; i < outUnits.length; i++) {
+      const entity = outUnits[i];
       included.add(entity.id);
     }
-    for (let i = 0; i < queryBuildings.length; i++) {
-      const entity = queryBuildings[i];
-      if (!includeEntity(entity)) continue;
-      outBuildings.push(entity);
+    for (let i = 0; i < outBuildings.length; i++) {
+      const entity = outBuildings[i];
       included.add(entity.id);
     }
 

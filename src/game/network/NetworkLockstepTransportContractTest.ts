@@ -90,6 +90,35 @@ export function runNetworkLockstepTransportContractTest(): void {
     'ack-gap resend must replay stored frames after the acknowledged frame',
   );
 
+  sent.length = 0;
+  assertContract(
+    transport.broadcastCommandFrameBatch([
+      { frame: 21, frameSequence: 21, commands: [createEnvelope(2, 2, 0, 21)] },
+      { frame: 20, frameSequence: 20, commands: [] },
+    ]),
+    'coordinator must broadcast command-frame batches',
+  );
+  assertContract(sent.length === 2, 'command-frame batch must be sent to every peer connection');
+  const firstBatch = sent[0]?.message;
+  assertContract(
+    firstBatch?.type === 'lockstepCommandFrameBatch' &&
+      firstBatch.frames.length === 2 &&
+      firstBatch.frames[0].frame === 20 &&
+      firstBatch.frames[1].frame === 21,
+    'batch broadcast must preserve canonical frame order and payloads',
+  );
+  sent.length = 0;
+  assertContract(
+    transport.resendCommandFrame(21, 2 as PlayerId),
+    'frames sent in a batch must still be retained for targeted single-frame resend',
+  );
+  assertContract(
+    sent.length === 1 &&
+      sent[0].message.type === 'lockstepCommandFrame' &&
+      sent[0].message.frame === 21,
+    'batch-retained resend must use the existing single-frame resend protocol',
+  );
+
   received.length = 0;
   const inboundFrame = createFrame(30, 30, [
     createEnvelope(2, 3, 0, 30),
@@ -118,6 +147,16 @@ export function runNetworkLockstepTransportContractTest(): void {
     received.length === 2,
     'raw command already delivered by a command frame must be ignored idempotently',
   );
+  const staleDifferentCommand = {
+    ...baseMessage(),
+    type: 'lockstepCommand',
+    envelope: createEnvelope(1 as PlayerId, 2, 99, 31),
+  } satisfies NetworkLockstepMessage;
+  transport.handleMessage(staleDifferentCommand, 1 as PlayerId);
+  assertContract(
+    received.length === 2,
+    'raw commands below the last accepted peer sequence must be ignored even when the payload differs',
+  );
 
   const outOfOrderLater = createFrame(41, 41, [createEnvelope(1, 4, 0, 41)]);
   const outOfOrderEarlier = createFrame(40, 40, [createEnvelope(1, 5, 0, 40)]);
@@ -126,6 +165,23 @@ export function runNetworkLockstepTransportContractTest(): void {
   assertContract(
     received.length === 4,
     'out-of-order command frames must be accepted for the scheduler to stall/order later',
+  );
+
+  const inboundBatch = {
+    ...baseMessage(),
+    type: 'lockstepCommandFrameBatch',
+    coordinatorPlayerId: 1 as PlayerId,
+    frames: [
+      { frame: 51, frameSequence: 51, commands: [] },
+      { frame: 50, frameSequence: 50, commands: [createEnvelope(2, 6, 0, 50), createEnvelope(1, 6, 0, 50)] },
+    ],
+  } satisfies NetworkLockstepMessage;
+  transport.handleMessage(inboundBatch, 1 as PlayerId);
+  assertContract(
+    received.length === 5 &&
+      received[4].message.type === 'lockstepCommandFrameBatch' &&
+      received[4].message.frames[0].commands[0].playerId === 1,
+    'inbound command-frame batches must be sorted and delivered once to the lockstep callback',
   );
 
   const ack = {
@@ -140,6 +196,27 @@ export function runNetworkLockstepTransportContractTest(): void {
   assertContract(
     transport.latestAckForPlayer(2 as PlayerId) === ack,
     'latest ack must be retained for coordinator resend decisions',
+  );
+
+  transport.handleMessage({
+    ...baseMessage(),
+    type: 'lockstepAck',
+    playerId: 2 as PlayerId,
+    ackFrame: 950,
+    ackFrameSequence: 950,
+    receivedPeerSequences: [],
+  }, 2 as PlayerId);
+  transport.handleMessage({
+    ...baseMessage(),
+    type: 'lockstepAck',
+    playerId: 3 as PlayerId,
+    ackFrame: 950,
+    ackFrameSequence: 950,
+    receivedPeerSequences: [],
+  }, 3 as PlayerId);
+  assertContract(
+    !transport.resendCommandFrame(12, 2 as PlayerId),
+    'fully acknowledged command frames older than the resend retention window must be pruned',
   );
 
   const budget = new NetworkSendBudget();

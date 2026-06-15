@@ -60,6 +60,7 @@ export class WaterSplash3D {
   private scratch = new THREE.Matrix4();
   private droplets: Droplet[] = [];
   private freeSlots: number[] = [];
+  private activeDropletCount = 0;
 
   constructor(parentWorld: THREE.Group) {
     const cfg = SPLASH_CONFIG;
@@ -240,10 +241,15 @@ export class WaterSplash3D {
     d.lifetimeMs = lifetimeMs;
     d.width = width;
     d.lengthScale = lengthScale;
+    this.activeDropletCount++;
     return true;
   }
 
   update(dtMs: number): void {
+    if (this.activeDropletCount === 0) {
+      if (this.mesh.count !== 0) this.mesh.count = 0;
+      return;
+    }
     const dt = dtMs / 1000;
     if (dt <= 0) {
       this.writeInstances();
@@ -260,8 +266,13 @@ export class WaterSplash3D {
       d.z += d.vz * dt;
       if (d.ageMs >= d.lifetimeMs || (d.vy < 0 && d.y <= WATER_LEVEL)) {
         d.active = false;
+        this.activeDropletCount--;
         this.freeSlots.push(i);
       }
+    }
+    if (this.activeDropletCount === 0) {
+      if (this.mesh.count !== 0) this.mesh.count = 0;
+      return;
     }
     this.writeInstances();
   }
@@ -320,9 +331,11 @@ export class WaterSplash3D {
       this.alphaArr[writeIndex] = Math.min(1, Math.max(0, fade)) * maxAlpha;
       writeIndex++;
     }
-    this.mesh.count = writeIndex;
-    this.mesh.instanceMatrix.needsUpdate = true;
-    this.alphaAttr.needsUpdate = true;
+    if (this.mesh.count !== writeIndex) this.mesh.count = writeIndex;
+    if (writeIndex > 0) {
+      this.mesh.instanceMatrix.needsUpdate = true;
+      this.alphaAttr.needsUpdate = true;
+    }
   }
 
   destroy(): void {

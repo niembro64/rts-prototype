@@ -63,7 +63,7 @@
       "duration": 2000,
       "durationRandomness": 0.2
     },
-    "launchForce": 5000,
+    "launchForce": 2000,
     "turretTurnAccel": 200,
     "turretDrag": 1,
     "barrel": {
@@ -92,7 +92,7 @@
     "eventsSmooth": true,
     "color": 16777215,
     "spread": {
-      "angle": 0.2,
+      "angle": 0.5,
       "pelletCount": 1
     },
     "burst": {
@@ -114,7 +114,7 @@
     "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
-      "angleType": "ballisticArcLow"
+      "angleType": "ballisticArcHigh"
     },
     "kind": "attack",
     "emissionKind": "shot",

@@ -6,6 +6,8 @@ import {
 } from '../architecture/LockstepCommandProtocol';
 import type {
   LockstepAckMessage,
+  LockstepCommandFrameBatchFrame,
+  LockstepCommandFrameBatchMessage,
   LockstepCommandFrameMessage,
   LockstepCommandMessage,
   LockstepPeerSequenceAck,
@@ -14,6 +16,14 @@ import type {
 } from './NetworkTypes';
 import { LOCKSTEP_PROTOCOL_VERSION } from './NetworkTypes';
 import type { CanonicalServerStateHash } from '../architecture/CanonicalStateHash';
+
+const OUTBOUND_COMMAND_FRAME_RETAIN_AFTER_ACK = 900;
+
+export type LockstepCommandFrameDraft = {
+  readonly frame: number;
+  readonly frameSequence: number;
+  readonly commands: readonly LockstepCommandEnvelope[];
+};
 
 type NetworkLockstepTransportOptions = {
   getGameId: () => string;
@@ -90,12 +100,7 @@ export class NetworkLockstepTransport {
     frameSequence: number,
     commands: readonly LockstepCommandEnvelope[],
   ): boolean {
-    const orderedCommands =
-      commands.length <= 1
-        ? commands.length === 0
-          ? []
-          : [commands[0]]
-        : [...commands].sort(compareLockstepCommandEnvelopes);
+    const orderedCommands = orderCommandEnvelopes(commands);
     const message: LockstepCommandFrameMessage = {
       ...this.base(),
       type: 'lockstepCommandFrame',
@@ -105,7 +110,42 @@ export class NetworkLockstepTransport {
       commands: orderedCommands,
     };
     this.outboundCommandFrames.set(frame, message);
+    this.pruneOutboundCommandFrames();
     return this.broadcast(message);
+  }
+
+  broadcastCommandFrameBatch(frames: readonly LockstepCommandFrameDraft[]): boolean {
+    if (frames.length === 0) return false;
+    if (frames.length === 1) {
+      const frame = frames[0];
+      return this.broadcastCommandFrame(frame.frame, frame.frameSequence, frame.commands);
+    }
+    const orderedFrames = orderCommandFrameDrafts(frames);
+    const batchFrames = new Array<LockstepCommandFrameBatchFrame>(orderedFrames.length);
+    for (let i = 0; i < orderedFrames.length; i++) {
+      const frame = orderedFrames[i];
+      const orderedCommands = orderCommandEnvelopes(frame.commands);
+      batchFrames[i] = {
+        frame: frame.frame,
+        frameSequence: frame.frameSequence,
+        commands: orderedCommands,
+      };
+      this.outboundCommandFrames.set(frame.frame, {
+        ...this.base(),
+        type: 'lockstepCommandFrame',
+        coordinatorPlayerId: this.options.getLocalPlayerId(),
+        frame: frame.frame,
+        frameSequence: frame.frameSequence,
+        commands: orderedCommands,
+      });
+    }
+    this.pruneOutboundCommandFrames();
+    return this.broadcast({
+      ...this.base(),
+      type: 'lockstepCommandFrameBatch',
+      coordinatorPlayerId: this.options.getLocalPlayerId(),
+      frames: batchFrames,
+    });
   }
 
   sendAck(ackFrame: number, ackFrameSequence: number): boolean {
@@ -302,8 +342,11 @@ export class NetworkLockstepTransport {
         return this.acceptCommand(message);
       case 'lockstepCommandFrame':
         return this.acceptCommandFrame(message);
+      case 'lockstepCommandFrameBatch':
+        return this.acceptCommandFrameBatch(message);
       case 'lockstepAck':
         this.latestAckByPlayer.set(fromPlayerId, message);
+        this.pruneOutboundCommandFrames();
         return true;
       default:
         return true;
@@ -314,10 +357,22 @@ export class NetworkLockstepTransport {
     const envelope = message.envelope;
     const key = commandEnvelopeKey(envelope);
     if (this.seenCommandKeys.has(key)) return false;
-    this.seenCommandKeys.add(key);
     const previous = this.receivedPeerSequences.get(envelope.playerId) ?? -1;
+    if (envelope.playerSequence < previous) return false;
+    this.seenCommandKeys.add(key);
     if (envelope.playerSequence > previous) {
       this.receivedPeerSequences.set(envelope.playerId, envelope.playerSequence);
+    }
+    return true;
+  }
+
+  private acceptCommandFrameBatch(message: LockstepCommandFrameBatchMessage): boolean {
+    if (message.frames.length > 1) {
+      message.frames.sort(compareCommandFrameBatchFrames);
+    }
+    for (let i = 0; i < message.frames.length; i++) {
+      normalizeCommandFrame(message.frames[i]);
+      this.rememberCommandFrame(message.frames[i]);
     }
     return true;
   }
@@ -339,6 +394,35 @@ export class NetworkLockstepTransport {
     }
     return true;
   }
+
+  private rememberCommandFrame(frame: LockstepCommandFrameBatchFrame): void {
+    this.seenCommandFrameKeys.add(`${frame.frame}:${frame.frameSequence}`);
+    for (const envelope of frame.commands) {
+      this.seenCommandKeys.add(commandEnvelopeKey(envelope));
+      const previous = this.receivedPeerSequences.get(envelope.playerId) ?? -1;
+      if (envelope.playerSequence > previous) {
+        this.receivedPeerSequences.set(envelope.playerId, envelope.playerSequence);
+      }
+    }
+  }
+
+  private pruneOutboundCommandFrames(): void {
+    if (this.outboundCommandFrames.size === 0) return;
+    let minAckedFrame: number | null = null;
+    for (const playerId of this.options.getConnections().keys()) {
+      const ack = this.latestAckByPlayer.get(playerId);
+      if (ack === undefined) return;
+      minAckedFrame = minAckedFrame === null
+        ? ack.ackFrame
+        : Math.min(minAckedFrame, ack.ackFrame);
+    }
+    if (minAckedFrame === null) return;
+    const pruneBeforeFrame = minAckedFrame - OUTBOUND_COMMAND_FRAME_RETAIN_AFTER_ACK;
+    if (pruneBeforeFrame <= 0) return;
+    for (const frame of this.outboundCommandFrames.keys()) {
+      if (frame < pruneBeforeFrame) this.outboundCommandFrames.delete(frame);
+    }
+  }
 }
 
 export function isNetworkLockstepMessage(message: NetworkMessage): message is NetworkLockstepMessage {
@@ -347,6 +431,7 @@ export function isNetworkLockstepMessage(message: NetworkMessage): message is Ne
     case 'lockstepReady':
     case 'lockstepCommand':
     case 'lockstepCommandFrame':
+    case 'lockstepCommandFrameBatch':
     case 'lockstepAck':
     case 'lockstepChecksum':
     case 'lockstepPause':
@@ -357,6 +442,44 @@ export function isNetworkLockstepMessage(message: NetworkMessage): message is Ne
     default:
       return false;
   }
+}
+
+function orderCommandEnvelopes(
+  commands: readonly LockstepCommandEnvelope[],
+): LockstepCommandEnvelope[] {
+  return commands.length <= 1
+    ? commands.length === 0
+      ? []
+      : [commands[0]]
+    : [...commands].sort(compareLockstepCommandEnvelopes);
+}
+
+function normalizeCommandFrame(frame: LockstepCommandFrameBatchFrame): void {
+  if (frame.commands.length > 1) frame.commands.sort(compareLockstepCommandEnvelopes);
+}
+
+function orderCommandFrameDrafts(
+  frames: readonly LockstepCommandFrameDraft[],
+): LockstepCommandFrameDraft[] {
+  return frames.length <= 1
+    ? frames.length === 0
+      ? []
+      : [frames[0]]
+    : [...frames].sort(compareCommandFrameDrafts);
+}
+
+function compareCommandFrameDrafts(
+  a: LockstepCommandFrameDraft,
+  b: LockstepCommandFrameDraft,
+): number {
+  return a.frame - b.frame || a.frameSequence - b.frameSequence;
+}
+
+function compareCommandFrameBatchFrames(
+  a: LockstepCommandFrameBatchFrame,
+  b: LockstepCommandFrameBatchFrame,
+): number {
+  return a.frame - b.frame || a.frameSequence - b.frameSequence;
 }
 
 function commandEnvelopeKey(envelope: LockstepCommandEnvelope): string {

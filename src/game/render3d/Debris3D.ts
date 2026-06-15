@@ -279,7 +279,7 @@ class InstancedDebrisPool {
   }
 
   flush(): void {
-    this.mesh.count = this.nextSlot;
+    if (this.mesh.count !== this.nextSlot) this.mesh.count = this.nextSlot;
     if (this.dirtyMaxSlot >= this.dirtyMinSlot) {
       const start = this.dirtyMinSlot;
       const count = this.dirtyMaxSlot - this.dirtyMinSlot + 1;

@@ -64,7 +64,7 @@ export class CanvasSpritePool<TState, TPaintArgs extends unknown[] = []> {
     }
     if (index + 1 > this.activeSlots) this.activeSlots = index + 1;
     const slot = this.slots[index];
-    slot.sprite.visible = true;
+    if (!slot.sprite.visible) slot.sprite.visible = true;
     return slot;
   }
 
@@ -100,8 +100,9 @@ export class CanvasSpritePool<TState, TPaintArgs extends unknown[] = []> {
 
   private hideUnusedInternal(used: number, immediateShrink: boolean): void {
     const active = Math.max(0, Math.min(this.slots.length, used | 0));
+    const previousActive = Math.min(this.activeSlots, this.slots.length);
     this.activeSlots = active;
-    for (let i = active; i < this.slots.length; i++) {
+    for (let i = active; i < previousActive; i++) {
       this.slots[i].sprite.visible = false;
     }
     this.shrinkUnusedTail(active, immediateShrink);

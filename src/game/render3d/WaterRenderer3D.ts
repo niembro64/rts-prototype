@@ -39,6 +39,8 @@ export class WaterRenderer3D {
   private mapWidth: number;
   private mapHeight: number;
   private built = false;
+  private lastVisible = true;
+  private lastOpacity = Number.NaN;
 
   constructor(parent: THREE.Group, mapWidth: number, mapHeight: number) {
     this.mapWidth = mapWidth;
@@ -64,6 +66,7 @@ export class WaterRenderer3D {
     this.waterMesh = new THREE.Mesh(this.waterGeometry, this.waterMaterial);
     this.waterMesh.renderOrder = 3;
     this.waterMesh.frustumCulled = false;
+    this.lastVisible = this.waterMesh.visible;
     parent.add(this.waterMesh);
   }
 
@@ -104,12 +107,21 @@ export class WaterRenderer3D {
   ): void {
     const opacity = WATER_FULLY_OPAQUE ? 1 : WATER_RENDER_CONFIG.opacity;
     if (opacity <= 0) {
-      this.waterMesh.visible = false;
+      this.setVisible(false);
       return;
     }
     if (!this.built) this.buildGeometry();
-    this.waterMaterial.opacity = opacity;
-    this.waterMesh.visible = true;
+    if (this.lastOpacity !== opacity) {
+      this.waterMaterial.opacity = opacity;
+      this.lastOpacity = opacity;
+    }
+    this.setVisible(true);
+  }
+
+  private setVisible(visible: boolean): void {
+    if (this.lastVisible === visible) return;
+    this.waterMesh.visible = visible;
+    this.lastVisible = visible;
   }
 
   destroy(): void {

@@ -16,7 +16,6 @@ import { SHIELD_SURFACE_RENDER_MODE } from '../sim/blueprints/shields';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { GraphicsConfig } from '@/types/graphics';
-import { writeHexToRgb01Array } from './colorUtils';
 import {
   createShieldSurfaceMaterial,
   resolveShieldSurfaceColor,
@@ -412,6 +411,96 @@ function createVector4ScratchArray(length: number): THREE.Vector4[] {
   return vectors;
 }
 
+type DirtySpan = {
+  minSlot: number;
+  maxSlot: number;
+};
+
+function createDirtySpan(): DirtySpan {
+  return { minSlot: Number.POSITIVE_INFINITY, maxSlot: -1 };
+}
+
+function markDirtySlot(span: DirtySpan, slot: number): void {
+  if (slot < span.minSlot) span.minSlot = slot;
+  if (slot > span.maxSlot) span.maxSlot = slot;
+}
+
+function clearDirtySpan(span: DirtySpan): void {
+  span.minSlot = Number.POSITIVE_INFINITY;
+  span.maxSlot = -1;
+}
+
+function uploadDirtySpan(
+  attr: THREE.InstancedBufferAttribute,
+  span: DirtySpan,
+  itemSize: number,
+): void {
+  if (span.maxSlot < span.minSlot) return;
+  attr.clearUpdateRanges();
+  attr.addUpdateRange(
+    span.minSlot * itemSize,
+    (span.maxSlot - span.minSlot + 1) * itemSize,
+  );
+  attr.needsUpdate = true;
+  clearDirtySpan(span);
+}
+
+function setInstancedCount(mesh: THREE.InstancedMesh, count: number): void {
+  if (mesh.count !== count) mesh.count = count;
+}
+
+function writeMatrixAt(
+  mesh: THREE.InstancedMesh,
+  slot: number,
+  matrix: THREE.Matrix4,
+  dirty: DirtySpan,
+): void {
+  const out = mesh.instanceMatrix.array;
+  const src = matrix.elements;
+  const offset = slot * 16;
+  let changed = false;
+  for (let i = 0; i < 16; i++) {
+    if (out[offset + i] !== Math.fround(src[i])) {
+      changed = true;
+      break;
+    }
+  }
+  if (!changed) return;
+  for (let i = 0; i < 16; i++) out[offset + i] = Math.fround(src[i]);
+  markDirtySlot(dirty, slot);
+}
+
+function writeAlphaAt(
+  arr: Float32Array,
+  slot: number,
+  alpha: number,
+  dirty: DirtySpan,
+): void {
+  const next = Math.fround(alpha);
+  if (arr[slot] === next) return;
+  arr[slot] = next;
+  markDirtySlot(dirty, slot);
+}
+
+function writeHexColorAt(
+  hex: number,
+  arr: Float32Array,
+  slot: number,
+  dirty: DirtySpan,
+): void {
+  const offset = slot * 3;
+  const r = Math.fround(((hex >> 16) & 0xff) / 255);
+  const g = Math.fround(((hex >> 8) & 0xff) / 255);
+  const b = Math.fround((hex & 0xff) / 255);
+  if (arr[offset] === r && arr[offset + 1] === g && arr[offset + 2] === b) {
+    return;
+  }
+  arr[offset] = r;
+  arr[offset + 1] = g;
+  arr[offset + 2] = b;
+  markDirtySlot(dirty, slot);
+}
+
 export class ShieldRenderer3D {
   private root: THREE.Group;
   // Unit sphere reused for the bubble write into the shared
@@ -432,12 +521,18 @@ export class ShieldRenderer3D {
   private sphereColorArr = new Float32Array(SPHERE_INSTANCED_CAP * 3);
   private sphereAlphaAttr: THREE.InstancedBufferAttribute;
   private sphereColorAttr: THREE.InstancedBufferAttribute;
+  private readonly sphereMatrixDirty = createDirtySpan();
+  private readonly sphereAlphaDirty = createDirtySpan();
+  private readonly sphereColorDirty = createDirtySpan();
   private finiteCylinderInstancedMesh: THREE.InstancedMesh;
   private finiteCylinderInstancedMat: THREE.ShaderMaterial;
   private finiteCylinderAlphaArr = new Float32Array(SPHERE_INSTANCED_CAP);
   private finiteCylinderColorArr = new Float32Array(SPHERE_INSTANCED_CAP * 3);
   private finiteCylinderAlphaAttr: THREE.InstancedBufferAttribute;
   private finiteCylinderColorAttr: THREE.InstancedBufferAttribute;
+  private readonly finiteCylinderMatrixDirty = createDirtySpan();
+  private readonly finiteCylinderAlphaDirty = createDirtySpan();
+  private readonly finiteCylinderColorDirty = createDirtySpan();
   private implicitFieldMesh: THREE.Mesh;
   private implicitFieldMat: THREE.ShaderMaterial;
   private implicitFieldData: THREE.Vector4[] = createVector4ScratchArray(IMPLICIT_FIELD_CAP);
@@ -641,29 +736,21 @@ export class ShieldRenderer3D {
 
     if (nextDrawStateClear && this.drawStateClear) return;
 
-    this.sphereInstancedMesh.count = sphereCursor;
+    setInstancedCount(this.sphereInstancedMesh, sphereCursor);
     if (sphereCursor > 0) {
-      this.sphereInstancedMesh.instanceMatrix.clearUpdateRanges();
-      this.sphereInstancedMesh.instanceMatrix.addUpdateRange(0, sphereCursor * 16);
-      this.sphereInstancedMesh.instanceMatrix.needsUpdate = true;
-      this.sphereAlphaAttr.clearUpdateRanges();
-      this.sphereAlphaAttr.addUpdateRange(0, sphereCursor);
-      this.sphereAlphaAttr.needsUpdate = true;
-      this.sphereColorAttr.clearUpdateRanges();
-      this.sphereColorAttr.addUpdateRange(0, sphereCursor * 3);
-      this.sphereColorAttr.needsUpdate = true;
+      uploadDirtySpan(this.sphereInstancedMesh.instanceMatrix, this.sphereMatrixDirty, 16);
+      uploadDirtySpan(this.sphereAlphaAttr, this.sphereAlphaDirty, 1);
+      uploadDirtySpan(this.sphereColorAttr, this.sphereColorDirty, 3);
     }
-    this.finiteCylinderInstancedMesh.count = finiteCylinderCursor;
+    setInstancedCount(this.finiteCylinderInstancedMesh, finiteCylinderCursor);
     if (finiteCylinderCursor > 0) {
-      this.finiteCylinderInstancedMesh.instanceMatrix.clearUpdateRanges();
-      this.finiteCylinderInstancedMesh.instanceMatrix.addUpdateRange(0, finiteCylinderCursor * 16);
-      this.finiteCylinderInstancedMesh.instanceMatrix.needsUpdate = true;
-      this.finiteCylinderAlphaAttr.clearUpdateRanges();
-      this.finiteCylinderAlphaAttr.addUpdateRange(0, finiteCylinderCursor);
-      this.finiteCylinderAlphaAttr.needsUpdate = true;
-      this.finiteCylinderColorAttr.clearUpdateRanges();
-      this.finiteCylinderColorAttr.addUpdateRange(0, finiteCylinderCursor * 3);
-      this.finiteCylinderColorAttr.needsUpdate = true;
+      uploadDirtySpan(
+        this.finiteCylinderInstancedMesh.instanceMatrix,
+        this.finiteCylinderMatrixDirty,
+        16,
+      );
+      uploadDirtySpan(this.finiteCylinderAlphaAttr, this.finiteCylinderAlphaDirty, 1);
+      uploadDirtySpan(this.finiteCylinderColorAttr, this.finiteCylinderColorDirty, 3);
     }
     this.updateImplicitFieldUniforms();
     const seen = this._seenFieldKeys;
@@ -684,10 +771,18 @@ export class ShieldRenderer3D {
     this._finiteCylinderCursor = 0;
     this._implicitFieldCursor = 0;
     if (this.drawStateClear) return;
-    this.sphereInstancedMesh.count = 0;
-    this.finiteCylinderInstancedMesh.count = 0;
-    this.implicitFieldMesh.visible = false;
-    this.implicitFieldMat.uniforms.uFieldCount.value = 0;
+    setInstancedCount(this.sphereInstancedMesh, 0);
+    setInstancedCount(this.finiteCylinderInstancedMesh, 0);
+    if (this.implicitFieldMesh.visible) this.implicitFieldMesh.visible = false;
+    if (this.implicitFieldMat.uniforms.uFieldCount.value !== 0) {
+      this.implicitFieldMat.uniforms.uFieldCount.value = 0;
+    }
+    clearDirtySpan(this.sphereMatrixDirty);
+    clearDirtySpan(this.sphereAlphaDirty);
+    clearDirtySpan(this.sphereColorDirty);
+    clearDirtySpan(this.finiteCylinderMatrixDirty);
+    clearDirtySpan(this.finiteCylinderAlphaDirty);
+    clearDirtySpan(this.finiteCylinderColorDirty);
     this.fields.clear();
     this.drawStateClear = true;
   }
@@ -849,15 +944,24 @@ export class ShieldRenderer3D {
           this._cylinderQuat,
           this._sphereScratchScale,
         );
-        this.finiteCylinderInstancedMesh.setMatrixAt(
-          this._finiteCylinderCursor,
+        const cursor = this._finiteCylinderCursor;
+        writeMatrixAt(
+          this.finiteCylinderInstancedMesh,
+          cursor,
           this._sphereScratchMat,
+          this.finiteCylinderMatrixDirty,
         );
-        this.finiteCylinderAlphaArr[this._finiteCylinderCursor] = alpha;
-        writeHexToRgb01Array(
+        writeAlphaAt(
+          this.finiteCylinderAlphaArr,
+          cursor,
+          alpha,
+          this.finiteCylinderAlphaDirty,
+        );
+        writeHexColorAt(
           packet.color[row],
           this.finiteCylinderColorArr,
-          this._finiteCylinderCursor * 3,
+          cursor,
+          this.finiteCylinderColorDirty,
         );
         this._finiteCylinderCursor++;
       }
@@ -876,15 +980,24 @@ export class ShieldRenderer3D {
           ShieldRenderer3D._IDENTITY_QUAT,
           this._sphereScratchScale,
         );
-        this.finiteCylinderInstancedMesh.setMatrixAt(
-          this._finiteCylinderCursor,
+        const cursor = this._finiteCylinderCursor;
+        writeMatrixAt(
+          this.finiteCylinderInstancedMesh,
+          cursor,
           this._sphereScratchMat,
+          this.finiteCylinderMatrixDirty,
         );
-        this.finiteCylinderAlphaArr[this._finiteCylinderCursor] = alpha;
-        writeHexToRgb01Array(
+        writeAlphaAt(
+          this.finiteCylinderAlphaArr,
+          cursor,
+          alpha,
+          this.finiteCylinderAlphaDirty,
+        );
+        writeHexColorAt(
           packet.color[row],
           this.finiteCylinderColorArr,
-          this._finiteCylinderCursor * 3,
+          cursor,
+          this.finiteCylinderColorDirty,
         );
         this._finiteCylinderCursor++;
       }
@@ -898,9 +1011,15 @@ export class ShieldRenderer3D {
         ShieldRenderer3D._IDENTITY_QUAT,
         this._sphereScratchScale,
       );
-      this.sphereInstancedMesh.setMatrixAt(this._sphereCursor, this._sphereScratchMat);
-      this.sphereAlphaArr[this._sphereCursor] = alpha;
-      writeHexToRgb01Array(packet.color[row], this.sphereColorArr, this._sphereCursor * 3);
+      const cursor = this._sphereCursor;
+      writeMatrixAt(
+        this.sphereInstancedMesh,
+        cursor,
+        this._sphereScratchMat,
+        this.sphereMatrixDirty,
+      );
+      writeAlphaAt(this.sphereAlphaArr, cursor, alpha, this.sphereAlphaDirty);
+      writeHexColorAt(packet.color[row], this.sphereColorArr, cursor, this.sphereColorDirty);
       this._sphereCursor++;
     }
   }

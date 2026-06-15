@@ -58,11 +58,8 @@ export class MetalDepositRenderer3D {
   }
 
   update(_graphicsConfig: GraphicsConfig): void {
-    if (this.clusters.length === 0) return;
-    for (let i = 0; i < this.clusters.length; i++) {
-      const record = this.records[i];
-      record.node.visible = true;
-    }
+    // Deposits are static world geometry; buildAll() leaves every node
+    // visible, and the shared material reads live overlay uniforms.
   }
 
   private buildAll(): void {

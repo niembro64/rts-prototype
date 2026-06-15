@@ -450,7 +450,7 @@ export class FogOfWarFog3D {
 
   private flushPool(): void {
     const pool = this.pool;
-    pool.mesh.count = pool.active.length;
+    if (pool.mesh.count !== pool.active.length) pool.mesh.count = pool.active.length;
     if (pool.active.length > 0) {
       const count = pool.active.length;
       pool.mesh.instanceMatrix.clearUpdateRanges();

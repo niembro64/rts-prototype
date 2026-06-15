@@ -24,6 +24,61 @@ const UNIT_AIR_SHADOW_MIN_ALPHA = 0.18;
 const UNIT_AIR_SHADOW_CROSS_SCALE_BOOST = 0.45;
 const UNIT_AIR_SHADOW_SUN_SCALE_BOOST = 0.7;
 
+type DirtySpan = {
+  minSlot: number;
+  maxSlot: number;
+};
+
+function createDirtySpan(): DirtySpan {
+  return { minSlot: Number.POSITIVE_INFINITY, maxSlot: -1 };
+}
+
+function markDirtySlot(span: DirtySpan, slot: number): void {
+  if (slot < span.minSlot) span.minSlot = slot;
+  if (slot > span.maxSlot) span.maxSlot = slot;
+}
+
+function clearDirtySpan(span: DirtySpan): void {
+  span.minSlot = Number.POSITIVE_INFINITY;
+  span.maxSlot = -1;
+}
+
+function uploadDirtySpan(
+  attr: THREE.InstancedBufferAttribute,
+  span: DirtySpan,
+  itemSize: number,
+): void {
+  if (span.maxSlot < span.minSlot) return;
+  attr.clearUpdateRanges();
+  attr.addUpdateRange(
+    span.minSlot * itemSize,
+    (span.maxSlot - span.minSlot + 1) * itemSize,
+  );
+  attr.needsUpdate = true;
+  clearDirtySpan(span);
+}
+
+function writeMatrixAt(
+  mesh: THREE.InstancedMesh,
+  slot: number,
+  matrix: THREE.Matrix4,
+  dirty: DirtySpan,
+): void {
+  const out = mesh.instanceMatrix.array;
+  const src = matrix.elements;
+  const offset = slot * 16;
+  let changed = false;
+  for (let i = 0; i < 16; i++) {
+    if (out[offset + i] !== Math.fround(src[i])) {
+      changed = true;
+      break;
+    }
+  }
+  if (!changed) return;
+  for (let i = 0; i < 16; i++) out[offset + i] = Math.fround(src[i]);
+  markDirtySlot(dirty, slot);
+}
+
 export class ContactShadowRenderPacket3D {
   readonly x = new Float32Array(CONTACT_SHADOW_RENDER_CONFIG.maxInstances);
   readonly y = new Float32Array(CONTACT_SHADOW_RENDER_CONFIG.maxInstances);
@@ -202,6 +257,8 @@ export class ContactShadowRenderer3D {
   private readonly sun = new THREE.Vector3();
   private readonly sunTangent = new THREE.Vector3(0, 0, -1);
   private readonly sideTangent = new THREE.Vector3(1, 0, 0);
+  private readonly matrixDirty = createDirtySpan();
+  private readonly alphaDirty = createDirtySpan();
   private lastOpacity = -1;
 
   constructor(parent: THREE.Group, mapWidth: number, mapHeight: number) {
@@ -239,7 +296,16 @@ export class ContactShadowRenderer3D {
     frameIndex: number,
   ): void {
     if (!CONTACT_SHADOW_RENDER_CONFIG.enabled) {
-      this.mesh.count = 0;
+      if (this.mesh.count !== 0) this.mesh.count = 0;
+      clearDirtySpan(this.matrixDirty);
+      clearDirtySpan(this.alphaDirty);
+      return;
+    }
+
+    if (packet.count === 0) {
+      if (this.mesh.count !== 0) this.mesh.count = 0;
+      clearDirtySpan(this.matrixDirty);
+      clearDirtySpan(this.alphaDirty);
       return;
     }
 
@@ -272,14 +338,10 @@ export class ContactShadowRenderer3D {
       }
     }
 
-    this.mesh.count = cursor;
+    if (this.mesh.count !== cursor) this.mesh.count = cursor;
     if (cursor > 0) {
-      this.mesh.instanceMatrix.clearUpdateRanges();
-      this.mesh.instanceMatrix.addUpdateRange(0, cursor * 16);
-      this.mesh.instanceMatrix.needsUpdate = true;
-      this.alphaAttr.clearUpdateRanges();
-      this.alphaAttr.addUpdateRange(0, cursor);
-      this.alphaAttr.needsUpdate = true;
+      uploadDirtySpan(this.mesh.instanceMatrix, this.matrixDirty, 16);
+      uploadDirtySpan(this.alphaAttr, this.alphaDirty, 1);
     }
   }
 
@@ -322,8 +384,12 @@ export class ContactShadowRenderer3D {
     this.scale.set(Math.max(1, crossRadius), 1, Math.max(1, sunRadius));
     this.matrix.scale(this.scale);
     this.matrix.setPosition(this.pos);
-    this.mesh.setMatrixAt(slot, this.matrix);
-    this.alphas[slot] = alpha;
+    writeMatrixAt(this.mesh, slot, this.matrix, this.matrixDirty);
+    const nextAlpha = Math.fround(alpha);
+    if (this.alphas[slot] !== nextAlpha) {
+      this.alphas[slot] = nextAlpha;
+      markDirtySlot(this.alphaDirty, slot);
+    }
     return true;
   }
 

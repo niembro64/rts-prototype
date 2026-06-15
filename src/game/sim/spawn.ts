@@ -6,7 +6,6 @@ import { economyManager } from './economy';
 import { aimTurretsToward } from './turretInit';
 import { setUnitFacingYaw } from './unitOrientation';
 import { getBuildingConfig } from './buildConfigs';
-import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './blueprints';
 import { DEMO_CONFIG } from '../../demoConfig';
 import type { WaypointType } from '../../types/commandTypes';
@@ -14,13 +13,7 @@ import {
   REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
   REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
 } from '../../config';
-import { isWaterAt } from './Terrain';
-import {
-  buildingBlueprintHasActiveState,
-  initializeBuildingActiveState,
-} from './buildingActiveState';
 import { applyCompletedBuildingEffects } from './buildingCompletion';
-import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
 import {
   getLayoutPlayerCount,
   getPlayerBaseAngle,
@@ -38,6 +31,39 @@ import { angleDeltaAbs } from '../math';
 export { FIRST_PLAYER_ANGLE, getPlayerBaseAngle } from './playerLayout';
 
 type InitialBaseMode = 'demo' | 'real';
+
+const INITIAL_BASE_PLACEMENT_SEARCH_RADIUS_CELLS = 8;
+const METAL_EXTRACTOR_PLACEMENT_SEARCH_RADIUS_CELLS = 3;
+
+type GridOffset = {
+  dx: number;
+  dy: number;
+};
+
+function buildPlacementSearchOffsets(radius: number): readonly GridOffset[] {
+  const offsets: GridOffset[] = [];
+  const safeRadius = Math.max(0, Math.floor(radius));
+  for (let dy = -safeRadius; dy <= safeRadius; dy++) {
+    for (let dx = -safeRadius; dx <= safeRadius; dx++) {
+      offsets.push({ dx, dy });
+    }
+  }
+  offsets.sort((a, b) => {
+    const aDist = a.dx * a.dx + a.dy * a.dy;
+    const bDist = b.dx * b.dx + b.dy * b.dy;
+    if (aDist !== bDist) return aDist - bDist;
+    if (a.dy !== b.dy) return a.dy - b.dy;
+    return a.dx - b.dx;
+  });
+  return offsets;
+}
+
+const INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(
+  INITIAL_BASE_PLACEMENT_SEARCH_RADIUS_CELLS,
+);
+const METAL_EXTRACTOR_PLACEMENT_SEARCH_OFFSETS = buildPlacementSearchOffsets(
+  METAL_EXTRACTOR_PLACEMENT_SEARCH_RADIUS_CELLS,
+);
 
 type InitialFactoryWaypointConfig = {
   fightType: WaypointType;
@@ -211,95 +237,73 @@ function placeCompleteBuilding(
   worldY: number,
   playerId: PlayerId,
   factoryWaypoint: InitialFactoryWaypointConfig,
+  searchOffsets: readonly GridOffset[] = INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS,
+  acceptCompleted: ((entity: Entity) => boolean) | null = null,
 ): Entity | null {
   const config = getBuildingConfig(buildingBlueprintId);
   const grid = construction.getGrid();
-
-  // Snap, validate, and reserve by the placement footprint; the entity
-  // body below keeps the physical footprint (shared center).
   const snapped = grid.snapToGrid(worldX, worldY, config.placementGridWidth, config.placementGridHeight);
-  const gx = Math.floor(snapped.x / BUILD_GRID_CELL_SIZE);
-  const gy = Math.floor(snapped.y / BUILD_GRID_CELL_SIZE);
+  const baseGrid = grid.worldToGrid(snapped.x, snapped.y);
 
-  if (!grid.canPlace(gx, gy, config.placementGridWidth, config.placementGridHeight)) {
-    return null;
+  for (let i = 0; i < searchOffsets.length; i++) {
+    const offset = searchOffsets[i];
+    const entity = construction.startBuilding(
+      world,
+      buildingBlueprintId,
+      baseGrid.gx + offset.dx,
+      baseGrid.gy + offset.dy,
+      playerId,
+      0,
+      0,
+      { skipBuilderAuthorization: true },
+    );
+    if (entity === null) continue;
+    completeInitialBuilding(world, entity, config, factoryWaypoint);
+    if (acceptCompleted !== null && !acceptCompleted(entity)) {
+      construction.onBuildingDestroyed(world, entity);
+      world.removeEntity(entity.id);
+      continue;
+    }
+    return entity;
   }
 
-  const center = grid.getBuildingCenter(gx, gy, config.placementGridWidth, config.placementGridHeight);
+  return null;
+}
 
-  // Skip placements over water — water tiles are impassable.
-  if (isWaterAt(center.x, center.y, world.mapWidth, world.mapHeight)) {
-    return null;
+function completeInitialBuilding(
+  world: WorldState,
+  entity: Entity,
+  config: ReturnType<typeof getBuildingConfig>,
+  factoryWaypoint: InitialFactoryWaypointConfig,
+): void {
+  if (entity.buildable) {
+    entity.buildable.paid = { ...entity.buildable.required };
+    entity.buildable.isComplete = true;
+    entity.buildable.healthBuildFraction = 1;
   }
-
-  const physicalSize = {
-    width: config.gridWidth * BUILD_GRID_CELL_SIZE,
-    height: config.gridHeight * BUILD_GRID_CELL_SIZE,
-    depth: config.gridDepth * BUILD_GRID_CELL_SIZE,
-  };
-
-  const entity = world.createBuilding(
-    center.x, center.y,
-    physicalSize.width,
-    physicalSize.height,
-    physicalSize.depth,
-    playerId,
-  );
-
-  applyBuildingBlueprintRuntime(entity, buildingBlueprintId, {
-    allocateEntityId: () => world.generateEntityId(),
-  });
-
   if (entity.building) {
     entity.building.hp = config.hp;
     entity.building.maxHp = config.hp;
   }
 
-  if (buildingBlueprintId === 'towerFabricator') {
+  if (entity.factory) {
     const defaultWaypoints = computeFactoryDefaultWaypoints(
-      center.x,
-      center.y,
+      entity.transform.x,
+      entity.transform.y,
       world.mapWidth,
       world.mapHeight,
       factoryWaypoint,
     );
     const rally = defaultWaypoints[0];
-    entity.factory = {
-      selectedUnitBlueprintId: null,
-      repeatProduction: true,
-      productionQueue: [],
-      currentShellId: null,
-      currentBuildProgress: 0,
-      defaultWaypoints,
-      rallyX: rally.x,
-      rallyY: rally.y,
-      rallyZ: null,
-      rallyType: rally.type,
-      guardTargetId: null,
-      isProducing: false,
-      energyRateFraction: 0,
-      metalRateFraction: 0,
-    };
+    entity.factory.defaultWaypoints = defaultWaypoints;
+    entity.factory.rallyX = rally.x;
+    entity.factory.rallyY = rally.y;
+    entity.factory.rallyZ = null;
+    entity.factory.rallyType = rally.type;
   }
 
-  if (buildingBlueprintHasActiveState(buildingBlueprintId)) {
-    initializeBuildingActiveState(world, entity);
-  }
-
-  grid.place(
-    gx,
-    gy,
-    config.placementGridWidth,
-    config.placementGridHeight,
-    entity.id,
-    playerId,
-    true,
-    config.gridWidth,
-    config.gridHeight,
-  );
-  world.addEntity(entity);
-
-  return entity;
+  applyCompletedBuildingEffects(world, entity);
+  entity.buildable = null;
 }
 
 // (Building rows replaced by per-player arcs along the spawn oval —
@@ -604,38 +608,23 @@ export function spawnMetalExtractorsOnDeposits(
 ): Entity[] {
   if (playerIds.length === 0 || world.metalDeposits.length === 0) return [];
   const entities: Entity[] = [];
-  const grid = construction.getGrid();
-  const config = getBuildingConfig('buildingExtractor');
+  const factoryWaypoint = getInitialFactoryWaypointConfig('real');
 
   for (const deposit of world.metalDeposits) {
     const ownerId = ownerForDeposit(world, playerIds, deposit.x, deposit.y);
-    const snapped = grid.snapToGrid(deposit.x, deposit.y, config.placementGridWidth, config.placementGridHeight);
-    const gridPos = grid.worldToGrid(snapped.x, snapped.y);
-    const extractor = construction.startBuilding(
+    const extractor = placeCompleteBuilding(
       world,
+      construction,
       'buildingExtractor',
-      gridPos.gx,
-      gridPos.gy,
+      deposit.x,
+      deposit.y,
       ownerId,
-      0,
-      0,
-      { skipBuilderAuthorization: true },
+      factoryWaypoint,
+      METAL_EXTRACTOR_PLACEMENT_SEARCH_OFFSETS,
+      (entity) => (entity.metalExtractionRate ?? 0) > 0,
     );
     if (!extractor) continue;
 
-    if (extractor.buildable) {
-      // Pre-built extractor at game start — paid in full so HP /
-      // bars / activity flip directly to "complete" without going
-      // through the construction loop.
-      extractor.buildable.paid = { ...extractor.buildable.required };
-      extractor.buildable.isComplete = true;
-    }
-    if (extractor.building) {
-      extractor.building.hp = config.hp;
-      extractor.building.maxHp = config.hp;
-    }
-    applyCompletedBuildingEffects(world, extractor);
-    extractor.buildable = null;
     entities.push(extractor);
   }
 

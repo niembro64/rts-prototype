@@ -273,6 +273,12 @@ type LabelState = {
    *  stay uniform regardless of text length. */
   lastCanvasW: number;
   lastCanvasH: number;
+  lastX: number;
+  lastY: number;
+  lastZ: number;
+  lastWorldWidth: number;
+  lastWorldHeight: number;
+  lastAlpha: number;
 };
 
 type Label = CanvasSpriteSlot<LabelState>;
@@ -283,6 +289,12 @@ function makeLabelState(slot: Pick<Label, 'canvas'>): LabelState {
     lastTone: null,
     lastCanvasW: slot.canvas.width,
     lastCanvasH: slot.canvas.height,
+    lastX: Number.NaN,
+    lastY: Number.NaN,
+    lastZ: Number.NaN,
+    lastWorldWidth: Number.NaN,
+    lastWorldHeight: Number.NaN,
+    lastAlpha: Number.NaN,
   };
 }
 
@@ -478,17 +490,30 @@ export class NameLabel3D {
     // each character claims the same world height across all labels.
     const worldHeight = worldHeightForTone(tone);
     const worldWidth = (label.state.lastCanvasW / label.state.lastCanvasH) * worldHeight;
-    label.sprite.scale.set(worldWidth, worldHeight, 1);
-    label.sprite.position.set(worldX, worldY, worldZ);
-    label.material.opacity = alpha;
+    const state = label.state;
+    if (state.lastWorldWidth !== worldWidth || state.lastWorldHeight !== worldHeight) {
+      label.sprite.scale.set(worldWidth, worldHeight, 1);
+      state.lastWorldWidth = worldWidth;
+      state.lastWorldHeight = worldHeight;
+    }
+    if (state.lastX !== worldX || state.lastY !== worldY || state.lastZ !== worldZ) {
+      label.sprite.position.set(worldX, worldY, worldZ);
+      state.lastX = worldX;
+      state.lastY = worldY;
+      state.lastZ = worldZ;
+    }
+    if (state.lastAlpha !== alpha) {
+      label.material.opacity = alpha;
+      state.lastAlpha = alpha;
+    }
+    let visible = true;
     if (this._frustum) {
       const probe = NameLabel3D._probeVec;
       probe.set(worldX, worldY, worldZ);
-      label.sprite.visible = this._frustum.containsPoint(probe);
-    } else {
-      label.sprite.visible = true;
+      visible = this._frustum.containsPoint(probe);
     }
-    return label.sprite.visible;
+    if (label.sprite.visible !== visible) label.sprite.visible = visible;
+    return visible;
   }
 
   /** Hide trailing pool entries past the live prefix. */
