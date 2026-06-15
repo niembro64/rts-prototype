@@ -23,7 +23,8 @@ import { setUnitActions } from './unitActions';
 import { getUnitGroundZ } from './unitGeometry';
 import type { WorldState } from './WorldState';
 
-const FALLBACK_LAUNCH_PITCH = Math.PI / 4;
+const DEFAULT_FALLBACK_LAUNCH_PITCH = Math.PI / 4;
+const MAX_RANGE_PITCH_LIMIT = Math.PI / 2 - 1e-3;
 const MIN_DIRECTION_LENGTH = 1e-6;
 const EXTERNAL_FORCE_KERNEL_DIVISOR = 3600;
 const EXTERNAL_FORCE_KERNEL_ACCEL_SCALE = 1_000_000;
@@ -235,12 +236,12 @@ function chooseLaunchDirection(
     const solved = solveBallisticLaunchDirection(turret, produced, origin, target);
     if (solved !== null) return solved;
     writeEntityTargetPoint(target, _targetPoint);
-    return fallbackFortyFiveDirectionToPoint(host, produced, origin, _targetPoint);
+    return fallbackMaxRangeDirectionToPoint(host, produced, turret, origin, _targetPoint);
   }
 
   const actionPoint = firstProducedActionPoint(produced);
   if (actionPoint !== null) {
-    return fallbackFortyFiveDirectionToPoint(host, produced, origin, actionPoint);
+    return fallbackMaxRangeDirectionToPoint(host, produced, turret, origin, actionPoint);
   }
   return fallbackDirection(host, produced, origin);
 }
@@ -253,7 +254,7 @@ function solveBallisticLaunchDirection(
 ): Vec3 | null {
   const unit = produced.unit;
   if (unit === null || unit.mass <= 1e-6) return null;
-  const projectileSpeed = turret.config.launchForce / unit.mass;
+  const projectileSpeed = launcherProjectileSpeed(turret, produced);
   if (!Number.isFinite(projectileSpeed) || projectileSpeed <= 1e-6) return null;
 
   writeEntityTargetPoint(target, _targetPoint);
@@ -276,6 +277,12 @@ function solveBallisticLaunchDirection(
   );
   if (solution === null) return null;
   return solution.direction;
+}
+
+function launcherProjectileSpeed(turret: Turret, produced: Entity): number {
+  const mass = produced.unit?.mass ?? 0;
+  if (!Number.isFinite(mass) || mass <= 1e-6) return 0;
+  return turret.config.launchForce / mass;
 }
 
 function firstProducedActionPoint(produced: Entity): Vec3 | null {
@@ -307,9 +314,10 @@ function directionToPoint(origin: Vec3, point: Vec3, fallback: Vec3): Vec3 {
   return fallback;
 }
 
-function fallbackFortyFiveDirectionToPoint(
+function fallbackMaxRangeDirectionToPoint(
   host: Entity,
   produced: Entity,
+  turret: Turret,
   origin: Vec3,
   point: Vec3,
 ): Vec3 {
@@ -318,12 +326,33 @@ function fallbackFortyFiveDirectionToPoint(
   const len = Math.hypot(dx, dy);
   const out = fallbackDirection(host, produced, origin);
   if (Number.isFinite(len) && len > MIN_DIRECTION_LENGTH) {
-    const pitchCos = Math.cos(FALLBACK_LAUNCH_PITCH);
+    const pitch = maxRangeFallbackPitch(turret, produced, origin.z, point.z);
+    const pitchCos = Math.cos(pitch);
     out.x = (dx / len) * pitchCos;
     out.y = (dy / len) * pitchCos;
-    out.z = Math.sin(FALLBACK_LAUNCH_PITCH);
+    out.z = Math.sin(pitch);
   }
   return out;
+}
+
+function maxRangeFallbackPitch(
+  turret: Turret,
+  produced: Entity,
+  originZ: number,
+  targetZ: number,
+): number {
+  const speed = launcherProjectileSpeed(turret, produced);
+  if (!Number.isFinite(speed) || speed <= 1e-6 || !Number.isFinite(GRAVITY) || GRAVITY <= 0) {
+    return DEFAULT_FALLBACK_LAUNCH_PITCH;
+  }
+  const heightDelta = targetZ - originZ;
+  if (!Number.isFinite(heightDelta)) return DEFAULT_FALLBACK_LAUNCH_PITCH;
+
+  const denomSq = speed * speed - 2 * GRAVITY * heightDelta;
+  if (denomSq <= 1e-6) return MAX_RANGE_PITCH_LIMIT;
+  const pitch = Math.atan2(speed, Math.sqrt(denomSq));
+  if (!Number.isFinite(pitch)) return DEFAULT_FALLBACK_LAUNCH_PITCH;
+  return Math.max(0, Math.min(MAX_RANGE_PITCH_LIMIT, pitch));
 }
 
 function fallbackDirection(host: Entity, produced: Entity, _origin: Vec3): Vec3 {
@@ -342,10 +371,10 @@ function writeFallbackDirection(host: Entity, produced: Entity, out: Vec3): void
       yaw = Math.atan2(dy, dx);
     }
   }
-  const pitchCos = Math.cos(FALLBACK_LAUNCH_PITCH);
+  const pitchCos = Math.cos(DEFAULT_FALLBACK_LAUNCH_PITCH);
   out.x = Math.cos(yaw) * pitchCos;
   out.y = Math.sin(yaw) * pitchCos;
-  out.z = Math.sin(FALLBACK_LAUNCH_PITCH);
+  out.z = Math.sin(DEFAULT_FALLBACK_LAUNCH_PITCH);
 }
 
 function isFiniteDirection(dir: Vec3): boolean {

@@ -556,23 +556,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitCommander"
-            ]
-          }
+          "units": "all"
         }
       }
     },
@@ -581,23 +565,7 @@
         "enemy": {
           "buildings": "all",
           "towers": "all",
-          "units": {
-            "only": [
-              "unitJackal",
-              "unitLynx",
-              "unitDaddy",
-              "unitBadger",
-              "unitMongoose",
-              "unitTick",
-              "unitMammoth",
-              "unitFormik",
-              "unitWidow",
-              "unitHippo",
-              "unitTarantula",
-              "unitLoris",
-              "unitCommander"
-            ]
-          }
+          "units": "all"
         }
       }
     }
