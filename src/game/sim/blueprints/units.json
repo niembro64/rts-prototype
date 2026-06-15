@@ -1542,7 +1542,7 @@
       "type": "hover",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 12,
+        "driveForce": 10,
         "traction": 1
       },
       "config": {
@@ -1730,7 +1730,7 @@
       "scanRadius": 0
     },
     "mass": 124.75,
-    "airFrictionPer60HzFrame": 0.05,
+    "airFrictionPer60HzFrame": 0.2,
     "cost": {
       "energy": 520,
       "metal": 520
@@ -1773,8 +1773,8 @@
       "type": "flying",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 6000,
-        "traction": 0.01
+        "driveForce": 5000,
+        "traction": 0.03
       },
       "config": {
         "gravityCounterUpwardForceRatio": 0.05,
@@ -1841,8 +1841,8 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "mass": 12000,
-    "airFrictionPer60HzFrame": 0.02,
+    "mass": 40000,
+    "airFrictionPer60HzFrame": 0.005,
     "cost": {
       "energy": 5600,
       "metal": 5600
@@ -1905,8 +1905,8 @@
       "type": "flying",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 7,
-        "traction": 1
+        "driveForce": 20,
+        "traction": 0.3
       },
       "config": {
         "gravityCounterUpwardForceRatio": 0.05,
