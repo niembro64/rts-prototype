@@ -2591,14 +2591,17 @@ watchEffect(() => {
   pointer-events: none;
 }
 
-/* Horizontal tab anchored to the bottom edge, near the left — the
+/* Horizontal tab that sits ON TOP of the bars near the left — the
  * bottom-bars mirror of the right-edge sidebar handle, rotated 90° so
  * the rounded edge faces up into the screen and the chevron points up
- * (expand) / down (collapse). */
+ * (expand) / down (collapse). `bottom: 100%` parks its base at the top
+ * of the bars when expanded; when collapsed the bars are hidden so the
+ * shell has zero height and the tab falls to the screen's bottom edge —
+ * exactly how the sidebar handle rides out with its panel. */
 .bottom-controls-toggle {
   position: absolute;
   left: 12px;
-  bottom: 0;
+  bottom: 100%;
   width: 72px;
   height: 30px;
   padding: 0;
