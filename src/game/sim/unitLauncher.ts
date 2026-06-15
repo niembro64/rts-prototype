@@ -25,6 +25,7 @@ import {
   dragCoefficientFromFrictionPer60HzFrame,
   dragRateFromVelocityFrictionPer60HzFrame,
   frictionPer60HzFrameFromDragRate,
+  windVelocityForAirFriction,
 } from './motionFriction';
 import { getUnitAirFrictionScale } from './unitMotionFriction';
 import type { WindState } from './wind';
@@ -298,8 +299,9 @@ function solveBallisticLaunchDirection(
   input.targetAcceleration = targetAcceleration;
   input.projectileSpeed = projectileSpeed;
   input.projectileMass = unit.mass * UNIT_MASS_MULTIPLIER;
-  input.projectileAirFrictionPer60HzFrame = launcherProjectileAirFrictionPer60HzFrame(produced);
-  input.windVelocity = wind;
+  const airFrictionPer60HzFrame = launcherProjectileAirFrictionPer60HzFrame(produced);
+  input.projectileAirFrictionPer60HzFrame = airFrictionPer60HzFrame;
+  input.windVelocity = windVelocityForAirFriction(wind, airFrictionPer60HzFrame);
   input.gravity = GRAVITY;
   input.arcPreference = 'low';
   input.maxTimeSec = 0;

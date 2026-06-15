@@ -35,6 +35,19 @@ export function scaleFrictionPer60HzFrame(
   return 1 - DMath.pow(1 - frictionPer60HzFrame, scale);
 }
 
+export function hasVelocityAirFriction(frictionPer60HzFrame: number): boolean {
+  return Number.isFinite(frictionPer60HzFrame) &&
+    frictionPer60HzFrame > 0 &&
+    frictionPer60HzFrame < 1;
+}
+
+export function windVelocityForAirFriction<T extends { x: number; y: number; z: number }>(
+  windVelocity: T | undefined,
+  frictionPer60HzFrame: number,
+): T | undefined {
+  return hasVelocityAirFriction(frictionPer60HzFrame) ? windVelocity : undefined;
+}
+
 /** Convert a global friction knob into a physical coefficient at the
  * shared reference mass. Unit body integration divides the coefficient by
  * each body's mass, so lighter units respond more strongly to the same

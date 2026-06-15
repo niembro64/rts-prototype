@@ -9,7 +9,10 @@
 // Zero state, pure functions.
 
 import { getSimWasm } from '../sim-wasm/init';
-import { dragRateFromVelocityFrictionPer60HzFrame } from '../sim/motionFriction';
+import {
+  dragRateFromVelocityFrictionPer60HzFrame,
+  windVelocityForAirFriction,
+} from '../sim/motionFriction';
 
 // Cached at module scope so the per-call dispatch in
 // solveKinematicIntercept doesn't pay the function-call cost
@@ -147,7 +150,10 @@ function getAirFrictionPer60HzFrame(input: KinematicInterceptInput): number {
 }
 
 function getWindVelocity(input: KinematicInterceptInput): KinematicVec3 | null {
-  const wind = input.windVelocity;
+  const wind = windVelocityForAirFriction(
+    input.windVelocity,
+    getAirFrictionPer60HzFrame(input),
+  );
   return wind === undefined ? null : wind;
 }
 
@@ -404,6 +410,24 @@ const _noFrictionInterceptInput: KinematicInterceptInput = {
   maxTimeSec: 0,
 };
 
+function writeNoFrictionInterceptInput(input: KinematicInterceptInput): KinematicInterceptInput {
+  const noFrictionInput = _noFrictionInterceptInput;
+  noFrictionInput.myPosition = input.myPosition;
+  noFrictionInput.myVelocity = input.myVelocity;
+  noFrictionInput.myAcceleration = input.myAcceleration;
+  noFrictionInput.targetPosition = input.targetPosition;
+  noFrictionInput.targetVelocity = input.targetVelocity;
+  noFrictionInput.targetAcceleration = input.targetAcceleration;
+  noFrictionInput.projectileSpeed = input.projectileSpeed;
+  noFrictionInput.projectileMass = input.projectileMass;
+  noFrictionInput.projectileAirFrictionPer60HzFrame = 0;
+  noFrictionInput.windVelocity = undefined;
+  noFrictionInput.gravity = input.gravity;
+  noFrictionInput.preferLateSolution = input.preferLateSolution;
+  noFrictionInput.maxTimeSec = input.maxTimeSec;
+  return noFrictionInput;
+}
+
 /**
  * Constant-acceleration intercept solver. Callers pass only raw kinematic
  * vectors for the shooter ("my") and target states, plus the universal
@@ -450,11 +474,14 @@ export function solveKinematicIntercept(
     return solveKinematicInterceptTs(input, out);
   }
 
+  const noFrictionInput = input.windVelocity === undefined
+    ? input
+    : writeNoFrictionInterceptInput(input);
   const sim = simHandle();
   if (sim !== undefined) {
-    return solveKinematicInterceptWasm(sim, input, out);
+    return solveKinematicInterceptWasm(sim, noFrictionInput, out);
   }
-  return solveKinematicInterceptTs(input, out);
+  return solveKinematicInterceptTs(noFrictionInput, out);
 }
 
 /**
@@ -477,8 +504,12 @@ export function solveTurretShotAngles(
   interceptInput.targetAcceleration = input.targetAcceleration;
   interceptInput.projectileSpeed = input.projectileSpeed;
   interceptInput.projectileMass = input.projectileMass;
-  interceptInput.projectileAirFrictionPer60HzFrame = input.projectileAirFrictionPer60HzFrame;
-  interceptInput.windVelocity = input.windVelocity;
+  const airFrictionPer60HzFrame = input.projectileAirFrictionPer60HzFrame ?? 0;
+  interceptInput.projectileAirFrictionPer60HzFrame = airFrictionPer60HzFrame;
+  interceptInput.windVelocity = windVelocityForAirFriction(
+    input.windVelocity,
+    airFrictionPer60HzFrame,
+  );
   interceptInput.gravity = input.gravity;
   interceptInput.preferLateSolution = false;
   interceptInput.maxTimeSec = input.maxTimeSec;
@@ -616,21 +647,7 @@ function solveDampedKinematicInterceptTs(
     ? dragRateFromVelocityFrictionPer60HzFrame(airFrictionPer60HzFrame)
     : 0;
   if (!Number.isFinite(dragK) || dragK <= 1e-9) {
-    const noFrictionInput = _noFrictionInterceptInput;
-    noFrictionInput.myPosition = input.myPosition;
-    noFrictionInput.myVelocity = input.myVelocity;
-    noFrictionInput.myAcceleration = input.myAcceleration;
-    noFrictionInput.targetPosition = input.targetPosition;
-    noFrictionInput.targetVelocity = input.targetVelocity;
-    noFrictionInput.targetAcceleration = input.targetAcceleration;
-    noFrictionInput.projectileSpeed = input.projectileSpeed;
-    noFrictionInput.projectileMass = input.projectileMass;
-    noFrictionInput.projectileAirFrictionPer60HzFrame = 0;
-    noFrictionInput.windVelocity = input.windVelocity;
-    noFrictionInput.gravity = input.gravity;
-    noFrictionInput.preferLateSolution = input.preferLateSolution;
-    noFrictionInput.maxTimeSec = input.maxTimeSec;
-    return solveKinematicInterceptTs(noFrictionInput, out);
+    return solveKinematicInterceptTs(writeNoFrictionInterceptInput(input), out);
   }
 
   const maxTime = input.maxTimeSec > 0

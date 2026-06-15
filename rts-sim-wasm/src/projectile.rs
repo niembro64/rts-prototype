@@ -1365,6 +1365,51 @@ mod tests {
     }
 
     #[test]
+    fn damped_intercept_zero_air_friction_ignores_wind() {
+        let input = [
+            0.0, 0.0, 0.0, // origin position
+            0.0, 0.0, 0.0, // origin velocity
+            0.0, 0.0, 0.0, // origin acceleration
+            100.0, 20.0, 5.0, // target position
+            0.0, 0.0, 0.0, // target velocity
+            0.0, 0.0, 0.0, // target acceleration
+            0.0, 0.0, 0.0,  // projectile acceleration
+            50.0, // projectile speed
+        ];
+        let mut still_air = [0.0_f64; 7];
+        let mut high_wind = [0.0_f64; 7];
+
+        let still_found = solve_damped_kinematic_intercept_inline(
+            &input,
+            &mut still_air,
+            0,
+            0.0,
+            0.0,
+            5.0,
+            0.0,
+            0.0,
+            0.0,
+        );
+        let wind_found = solve_damped_kinematic_intercept_inline(
+            &input,
+            &mut high_wind,
+            0,
+            0.0,
+            0.0,
+            5.0,
+            1000.0,
+            -500.0,
+            250.0,
+        );
+
+        assert!(still_found);
+        assert!(wind_found);
+        for i in 0..still_air.len() {
+            assert_close(high_wind[i], still_air[i]);
+        }
+    }
+
+    #[test]
     fn line_shot_range_cylinder_clips_side_and_caps() {
         let side = line_shot_distance_to_range_volume_inline(
             0.0,

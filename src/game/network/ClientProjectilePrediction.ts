@@ -22,6 +22,7 @@ import {
   getProjectileAirDragCoefficient,
   getProjectileAirFrictionPer60HzFrame,
 } from '../sim/projectileMotion';
+import { windVelocityForAirFriction } from '../sim/motionFriction';
 import {
   computeHomingThrust,
   computeTerrainFollowVerticalThrustAccel,
@@ -180,6 +181,7 @@ function resolveClientHomingThrust(options: {
     const remainingSec = Number.isFinite(proj.maxLifespan)
       ? Math.max(0, (proj.maxLifespan - proj.timeAlive) / 1000)
       : 0;
+    const airFrictionPer60HzFrame = getProjectileAirFrictionPer60HzFrame(shot);
     const intercept = solveKinematicIntercept({
       myPosition: _clientHomingOriginState.position,
       myVelocity: _clientHomingOriginState.velocity,
@@ -189,8 +191,11 @@ function resolveClientHomingThrust(options: {
       targetAcceleration: _clientHomingTargetState.acceleration,
       projectileSpeed,
       projectileMass: shot.mass,
-      projectileAirFrictionPer60HzFrame: getProjectileAirFrictionPer60HzFrame(shot),
-      windVelocity: _clientProjectilePredictionWind,
+      projectileAirFrictionPer60HzFrame: airFrictionPer60HzFrame,
+      windVelocity: windVelocityForAirFriction(
+        _clientProjectilePredictionWind,
+        airFrictionPer60HzFrame,
+      ),
       gravity: projectileGravity,
       preferLateSolution: false,
       maxTimeSec: remainingSec,
