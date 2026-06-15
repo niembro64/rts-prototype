@@ -1,9 +1,9 @@
-import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import {
   UNIT_GROUND_CONTACT_EPSILON,
   UNIT_GROUND_FRICTION_PER_60HZ_FRAME,
 } from '../../config';
 import type { Unit } from './types';
+import { dampFromFrictionPer60HzFrame } from './motionFriction';
 
 export type GroundNormal = { nx: number; ny: number; nz: number };
 export { UNIT_GROUND_CONTACT_EPSILON };
@@ -40,10 +40,10 @@ export function isUnitGroundPointAtOrBelowTerrain(
 export function getUnitGroundFrictionDamp(dtSec: number): number {
   if (dtSec === cachedGroundDampDtSec) return cachedGroundDamp;
   if (dtSec <= 0) return 1;
-  const friction = UNIT_GROUND_FRICTION_PER_60HZ_FRAME;
-  if (!Number.isFinite(friction) || friction <= 0) return 1;
-  if (friction >= 1) return 0;
   cachedGroundDampDtSec = dtSec;
-  cachedGroundDamp = DMath.pow(1 - friction, dtSec * 60);
+  cachedGroundDamp = dampFromFrictionPer60HzFrame(
+    UNIT_GROUND_FRICTION_PER_60HZ_FRAME,
+    dtSec,
+  );
   return cachedGroundDamp;
 }

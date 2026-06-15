@@ -1161,7 +1161,7 @@
       "duration": 2000,
       "durationRandomness": 0.2
     },
-    "launchForce": 500,
+    "launchForce": 10,
     "turretTurnAccel": 200,
     "turretDrag": 0,
     "barrel": {
@@ -1193,7 +1193,7 @@
     "eventsSmooth": false,
     "color": 16777215,
     "spread": {
-      "angle": 0.7853981633974483,
+      "angle": 0.0,
       "pelletCount": 1
     },
     "burst": null,
@@ -1227,7 +1227,7 @@
       "duration": 600,
       "durationRandomness": 0.05
     },
-    "launchForce": 4000,
+    "launchForce": 2000,
     "turretTurnAccel": 1200,
     "turretDrag": 0,
     "barrel": {
@@ -1464,7 +1464,7 @@
       "duration": 1700,
       "durationRandomness": 0.12
     },
-    "launchForce": 56000,
+    "launchForce": 500,
     "turretTurnAccel": 420,
     "turretDrag": 3,
     "barrel": {

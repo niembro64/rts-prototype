@@ -44,7 +44,7 @@ type ProjectileSnapshot = NonNullable<NetworkServerSnapshot['projectiles']>;
 
 export const PROJECTILE_SPAWN_WIRE_STRIDE = 32;
 export const PROJECTILE_DESPAWN_WIRE_STRIDE = 1;
-export const PROJECTILE_VELOCITY_WIRE_STRIDE = 8;
+export const PROJECTILE_VELOCITY_WIRE_STRIDE = 9;
 export const PROJECTILE_BEAM_UPDATE_WIRE_STRIDE = 4;
 export const PROJECTILE_BEAM_POINT_WIRE_STRIDE = 12;
 // Wire polyline capacity matches the sim trace exactly: BEAM_MAX_SEGMENTS
@@ -231,6 +231,7 @@ function createPooledVelocityUpdate(): NetworkServerSnapshotVelocityUpdate {
     id: 0,
     pos: { x: 0, y: 0, z: 0 },
     velocity: { x: 0, y: 0, z: 0 },
+    targetEntityId: null,
     clearHomingTarget: null,
   } as PooledVelocityUpdate;
   definePooledScratchProperty(update, '_pos', { x: 0, y: 0, z: 0 });
@@ -402,6 +403,7 @@ export function writeProjectileVelocityUpdateWireRow(
   values[base + 5] = update.velocity.y;
   values[base + 6] = update.velocity.z;
   values[base + 7] = update.clearHomingTarget === true ? 1 : 0;
+  values[base + 8] = update.targetEntityId ?? 0;
 }
 
 function copyProjectileVelocityUpdateIntoWireRow(update: NetworkServerSnapshotVelocityUpdate): void {
@@ -802,7 +804,15 @@ export function serializeProjectileSnapshot({
       out._velocity.x = qVel(vu.velocity.x);
       out._velocity.y = qVel(vu.velocity.y);
       out._velocity.z = qVel(vu.velocity.z);
-      out.clearHomingTarget = vu.clearHomingTarget === true ? true : null;
+      const targetEntityId = vu.targetEntityId;
+      const canSendTarget = targetEntityId !== undefined &&
+        canReferenceEntityId(world, visibility, targetEntityId);
+      out.targetEntityId = canSendTarget && targetEntityId !== undefined ? targetEntityId : null;
+      out.clearHomingTarget =
+        vu.clearHomingTarget === true ||
+        (targetEntityId !== undefined && !canSendTarget)
+          ? true
+          : null;
       _velUpdateBuf.push(out);
       copyProjectileVelocityUpdateIntoWireRow(out);
     }
@@ -1057,7 +1067,15 @@ export function writeProjectileSnapshotWireRowsDirect({
       out._velocity.x = qVel(vu.velocity.x);
       out._velocity.y = qVel(vu.velocity.y);
       out._velocity.z = qVel(vu.velocity.z);
-      out.clearHomingTarget = vu.clearHomingTarget === true ? true : null;
+      const targetEntityId = vu.targetEntityId;
+      const canSendTarget = targetEntityId !== undefined &&
+        canReferenceEntityId(world, visibility, targetEntityId);
+      out.targetEntityId = canSendTarget && targetEntityId !== undefined ? targetEntityId : null;
+      out.clearHomingTarget =
+        vu.clearHomingTarget === true ||
+        (targetEntityId !== undefined && !canSendTarget)
+          ? true
+          : null;
       copyProjectileVelocityUpdateIntoWireRow(out);
     }
   }

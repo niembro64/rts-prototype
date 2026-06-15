@@ -1,4 +1,4 @@
-import { GRAVITY, UNIT_MASS_MULTIPLIER } from '../../config';
+import { GRAVITY, UNIT_AIR_FRICTION_PER_60HZ_FRAME, UNIT_MASS_MULTIPLIER } from '../../config';
 import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_COMBAT_MODE,
@@ -21,10 +21,16 @@ import {
 import type { Entity, Turret, UnitAction } from './types';
 import { setUnitActions } from './unitActions';
 import { getUnitGroundZ } from './unitGeometry';
+import { scaleFrictionPer60HzFrame } from './motionFriction';
+import { getUnitAirFrictionScale } from './unitMotionFriction';
 import type { WorldState } from './WorldState';
 
 const DEFAULT_FALLBACK_LAUNCH_PITCH = Math.PI / 4;
 const MAX_RANGE_PITCH_LIMIT = Math.PI / 2 - 1e-3;
+const MAX_RANGE_PITCH_SAMPLES = 32;
+const MAX_RANGE_TIME_SEC = 30;
+const MAX_RANGE_TIME_SAMPLES = 96;
+const LAUNCH_MIN_FLIGHT_TIME = 1 / 120;
 const MIN_DIRECTION_LENGTH = 1e-6;
 const EXTERNAL_FORCE_KERNEL_DIVISOR = 3600;
 const EXTERNAL_FORCE_KERNEL_ACCEL_SCALE = 1_000_000;
@@ -269,6 +275,7 @@ function solveBallisticLaunchDirection(
       targetVelocity,
       targetAcceleration,
       projectileSpeed,
+      projectileAirFrictionPer60HzFrame: launcherProjectileAirFrictionPer60HzFrame(produced),
       gravity: GRAVITY,
       arcPreference: 'low',
       maxTimeSec: 0,
@@ -283,6 +290,15 @@ function launcherProjectileSpeed(turret: Turret, produced: Entity): number {
   const mass = produced.unit?.mass ?? 0;
   if (!Number.isFinite(mass) || mass <= 1e-6) return 0;
   return turret.config.launchForce / mass;
+}
+
+function launcherProjectileAirFrictionPer60HzFrame(produced: Entity): number {
+  const unit = produced.unit;
+  if (unit === null) return 0;
+  return scaleFrictionPer60HzFrame(
+    UNIT_AIR_FRICTION_PER_60HZ_FRAME,
+    getUnitAirFrictionScale(unit),
+  );
 }
 
 function firstProducedActionPoint(produced: Entity): Vec3 | null {
@@ -348,11 +364,87 @@ function maxRangeFallbackPitch(
   const heightDelta = targetZ - originZ;
   if (!Number.isFinite(heightDelta)) return DEFAULT_FALLBACK_LAUNCH_PITCH;
 
+  const draggedPitch = maxRangeFallbackPitchWithDrag(
+    speed,
+    heightDelta,
+    launcherProjectileAirFrictionPer60HzFrame(produced),
+  );
+  if (draggedPitch !== null) return draggedPitch;
+
   const denomSq = speed * speed - 2 * GRAVITY * heightDelta;
   if (denomSq <= 1e-6) return MAX_RANGE_PITCH_LIMIT;
   const pitch = Math.atan2(speed, Math.sqrt(denomSq));
   if (!Number.isFinite(pitch)) return DEFAULT_FALLBACK_LAUNCH_PITCH;
   return Math.max(0, Math.min(MAX_RANGE_PITCH_LIMIT, pitch));
+}
+
+function maxRangeFallbackPitchWithDrag(
+  speed: number,
+  heightDelta: number,
+  airFrictionPer60HzFrame: number,
+): number | null {
+  if (
+    !Number.isFinite(airFrictionPer60HzFrame) ||
+    airFrictionPer60HzFrame <= 0 ||
+    airFrictionPer60HzFrame >= 1 ||
+    !Number.isFinite(GRAVITY) ||
+    GRAVITY <= 0
+  ) {
+    return null;
+  }
+  const dragK = -Math.log(1 - airFrictionPer60HzFrame) * 60;
+  if (!Number.isFinite(dragK) || dragK <= 1e-9) return null;
+
+  let bestPitch = DEFAULT_FALLBACK_LAUNCH_PITCH;
+  let bestRange = -1;
+  for (let i = 0; i <= MAX_RANGE_PITCH_SAMPLES; i++) {
+    const pitch = (MAX_RANGE_PITCH_LIMIT * i) / MAX_RANGE_PITCH_SAMPLES;
+    const vz = speed * Math.sin(pitch);
+    const flightTime = dampedFlightTimeToHeight(vz, heightDelta, dragK);
+    if (flightTime === null) continue;
+    const horizontalSpeed = speed * Math.cos(pitch);
+    const horizontalRange = horizontalSpeed * (1 - Math.exp(-dragK * flightTime)) / dragK;
+    if (Number.isFinite(horizontalRange) && horizontalRange > bestRange) {
+      bestRange = horizontalRange;
+      bestPitch = pitch;
+    }
+  }
+  return bestRange > 0 ? bestPitch : null;
+}
+
+function dampedFlightTimeToHeight(
+  initialVelocityZ: number,
+  heightDelta: number,
+  dragK: number,
+): number | null {
+  const terminalZ = -GRAVITY / dragK;
+  const heightAt = (time: number) =>
+    (initialVelocityZ - terminalZ) * (1 - Math.exp(-dragK * time)) / dragK +
+    terminalZ * time;
+
+  let lo = 0;
+  let sawReachableHeight = -heightDelta >= 0;
+  for (let i = 1; i <= MAX_RANGE_TIME_SAMPLES; i++) {
+    const hi = (MAX_RANGE_TIME_SEC * i) / MAX_RANGE_TIME_SAMPLES;
+    const hiValue = heightAt(hi) - heightDelta;
+    if (hiValue >= 0) sawReachableHeight = true;
+    if (sawReachableHeight && hiValue <= 0 && hi > LAUNCH_MIN_FLIGHT_TIME) {
+      let a = lo;
+      let b = hi;
+      for (let step = 0; step < 14; step++) {
+        const mid = (a + b) * 0.5;
+        const midValue = heightAt(mid) - heightDelta;
+        if (midValue > 0) {
+          a = mid;
+        } else {
+          b = mid;
+        }
+      }
+      return (a + b) * 0.5;
+    }
+    lo = hi;
+  }
+  return null;
 }
 
 function fallbackDirection(host: Entity, produced: Entity, _origin: Vec3): Vec3 {

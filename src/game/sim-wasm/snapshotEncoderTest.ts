@@ -1359,6 +1359,7 @@ type ProjectileVelocityUpdateFixture = {
   id: number;
   pos: { x: number; y: number; z: number };
   velocity: { x: number; y: number; z: number };
+  targetEntityId?: number;
   clearHomingTarget?: boolean;
 };
 type BeamPointFixture = {
@@ -1419,6 +1420,7 @@ function networkProjectilesFixture(projectiles: ProjectilesFixture): NetworkProj
       id: update.id,
       pos: update.pos,
       velocity: update.velocity,
+      targetEntityId: update.targetEntityId ?? null,
       clearHomingTarget: update.clearHomingTarget ?? null,
     })),
     beamUpdates: projectiles.beamUpdates?.map((update) => ({
@@ -1527,6 +1529,7 @@ function packProjVelocityUpdatesIntoScratch(
     view[base + 5] = u.velocity.y;
     view[base + 6] = u.velocity.z;
     view[base + 7] = u.clearHomingTarget === true ? 1 : 0;
+    view[base + 8] = u.targetEntityId ?? 0;
   }
 }
 

@@ -18,6 +18,11 @@ import {
 } from '../sim/combat/combatUtils';
 import { resolveTargetAimPoint } from '../sim/combat/aimSolver';
 import {
+  addProjectileForwardPropulsionAcceleration,
+  getProjectileAirFrictionDamp,
+  getProjectileAirFrictionPer60HzFrame,
+} from '../sim/projectileMotion';
+import {
   computeHomingThrust,
   computeTerrainFollowVerticalThrustAccel,
   lerp,
@@ -54,6 +59,7 @@ const _clientProjectileVelZ = new Float64Array(2);
 const _clientProjectileAccelX = new Float64Array(2);
 const _clientProjectileAccelY = new Float64Array(2);
 const _clientProjectileAccelZ = new Float64Array(2);
+const _clientProjectileAirDamp = new Float64Array(2);
 const _clientHomingOriginState: KinematicState3 = {
   position: { x: 0, y: 0, z: 0 },
   velocity: { x: 0, y: 0, z: 0 },
@@ -89,8 +95,9 @@ function getHomingMaxThrustAccel(shot: ProjectileShot): number {
  *  live dead-reckon path (passing the entity's current state) and the
  *  snapshot-target advance (passing the snapshot's state) so both
  *  evolve under the same gravity + counter-thrust vector. Homing
- *  projectiles only steer toward their inherited target; if that
- *  target is missing or dead, guidance stops. */
+ *  projectiles steer toward the latest target id supplied by the
+ *  server; if that target is missing or dead client-side, local
+ *  guidance stops until another authoritative retarget arrives. */
 function resolveClientHomingThrust(options: {
   entity: Entity;
   dt: number;
@@ -102,6 +109,7 @@ function resolveClientHomingThrust(options: {
   const proj = entity.projectile;
   if (!proj || proj.homingTurnRate === undefined) return null;
   const shot = proj.config.shot as ProjectileShot;
+  if (proj.timeAlive < (shot.homingDelayMs ?? 0)) return null;
   const maxThrustAccel = getHomingMaxThrustAccel(shot);
   if (maxThrustAccel <= 0) return null;
   const projectileGravity = GRAVITY * shot.gravityForceMultiplier;
@@ -171,6 +179,7 @@ function resolveClientHomingThrust(options: {
       targetVelocity: _clientHomingTargetState.velocity,
       targetAcceleration: _clientHomingTargetState.acceleration,
       projectileSpeed,
+      projectileAirFrictionPer60HzFrame: getProjectileAirFrictionPer60HzFrame(shot),
       gravity: projectileGravity,
       preferLateSolution: false,
       maxTimeSec: remainingSec,
@@ -219,6 +228,13 @@ function resolveProjectileNetAcceleration(options: {
   const shot = proj.config.shot as ProjectileShot;
   const projectileGravity = GRAVITY * shot.gravityForceMultiplier;
   out.z = -projectileGravity;
+  addProjectileForwardPropulsionAcceleration(
+    shot,
+    velocity.x,
+    velocity.y,
+    velocity.z,
+    out,
+  );
 
   if (!isDGunWave) {
     const thrust = resolveClientHomingThrust({
@@ -319,6 +335,8 @@ export function applyClientProjectilePrediction(options: {
   const entityDeltaMs = predictionStep.entityDeltaMs;
   const dt = entityDeltaMs / 1000;
   proj.timeAlive += entityDeltaMs;
+  const shot = proj.config.shot as ProjectileShot;
+  const airDamp = getProjectileAirFrictionDamp(shot, dt);
 
   // Travelling projectiles dead-reckon every frame. Rocket velocity
   // updates also install a separate authoritative correction target;
@@ -353,6 +371,7 @@ export function applyClientProjectilePrediction(options: {
   _clientProjectileAccelX[0] = entityAccel.x;
   _clientProjectileAccelY[0] = entityAccel.y;
   _clientProjectileAccelZ[0] = entityAccel.z;
+  _clientProjectileAirDamp[0] = airDamp;
 
   const hasTarget = target !== undefined;
   const batchCount = hasTarget ? 2 : 1;
@@ -381,6 +400,7 @@ export function applyClientProjectilePrediction(options: {
     _clientProjectileAccelX[1] = targetAccel.x;
     _clientProjectileAccelY[1] = targetAccel.y;
     _clientProjectileAccelZ[1] = targetAccel.z;
+    _clientProjectileAirDamp[1] = airDamp;
   }
 
   const integrated = sim.projectileIntegrateStepBatch(
@@ -394,6 +414,7 @@ export function applyClientProjectilePrediction(options: {
     _clientProjectileAccelX,
     _clientProjectileAccelY,
     _clientProjectileAccelZ,
+    _clientProjectileAirDamp,
     dt,
   );
   if (integrated !== batchCount) {

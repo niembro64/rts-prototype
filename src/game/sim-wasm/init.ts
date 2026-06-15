@@ -496,6 +496,7 @@ import __wbg_init, {
   pool_inv_mass_ptr,
   pool_restitution_ptr,
   pool_ground_offset_ptr,
+  pool_air_friction_scale_ptr,
   pool_ground_friction_scale_ptr,
   pool_sleep_ticks_ptr,
   pool_flags_ptr,
@@ -1349,6 +1350,7 @@ export interface SimWasm {
     accelX: Float64Array,
     accelY: Float64Array,
     accelZ: Float64Array,
+    airDamp: Float64Array,
     dtSec: number,
   ) => number;
   /** C1 — batched server homing guidance for non-packed projectiles.
@@ -2291,6 +2293,7 @@ export interface CombatTargetingApi {
     configFlags: number,
     dps: number,
     projectileSpeed: number,
+    projectileAirFrictionPer60HzFrame: number,
     arcPreference: number,
     maxTimeSec: number,
     groundAimFraction: number,
@@ -2433,6 +2436,7 @@ export interface CombatTargetingApi {
     originAy: number,
     originAz: number,
     projectileSpeed: number,
+    projectileAirFrictionPer60HzFrame: number,
     gravity: number,
     arcPreference: number,
     maxTimeSecOrZero: number,
@@ -3241,9 +3245,9 @@ export interface SnapshotEncodeApi {
    *  wire shape used by snapshotMinimapWirePack.ts. */
   emitPackedMinimap: (count: number) => number;
   /** Emit `projectiles: { spawns?, despawns?, velocityUpdates?,
-   *  beamUpdates? }`. Reads spawn DTOs from projSpawnScratch (27 f64
+   *  beamUpdates? }`. Reads spawn DTOs from projSpawnScratch (32 f64
    *  each), despawn ids from projDespawnScratch, velocity-update
-   *  tuples from projVelScratch (7 f64 each), beam-update headers
+   *  tuples from projVelScratch (9 f64 each), beam-update headers
    *  from beamUpdateScratch (4 f64 each, with point_count[3] driving
    *  the per-update slice of beamPointScratch (12 f64 each)). */
   emitProjectiles: (
@@ -3484,8 +3488,8 @@ export interface SnapshotEncodeApi {
   /** Stride per proj-spawn entry (f64 count). */
   readonly projSpawnScratchStride: number;
   /** Raw pointer to the projectile-velocity-update scratch
-   *  (Float64Array, 8 f64 per entry: id, pos.x/y/z, vel.x/y/z,
-   *  clearHomingTarget flag). */
+   *  (Float64Array, 9 f64 per entry: id, pos.x/y/z, vel.x/y/z,
+   *  clearHomingTarget flag, targetEntityId). */
   projVelScratchPtr: () => number;
   /** Pre-grow the proj-vel scratch to hold `count` entries. */
   projVelScratchEnsure: (count: number) => void;
@@ -3635,6 +3639,7 @@ export interface BodyPoolViews {
   invMass: Float64Array;
   restitution: Float64Array;
   groundOffset: Float64Array;
+  airFrictionScale: Float64Array;
   groundFrictionScale: Float64Array;
   sleepTicks: Float64Array;
   flags: Uint8Array;
@@ -3764,6 +3769,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         invMass: pool_inv_mass_ptr(),
         restitution: pool_restitution_ptr(),
         groundOffset: pool_ground_offset_ptr(),
+        airFrictionScale: pool_air_friction_scale_ptr(),
         groundFrictionScale: pool_ground_friction_scale_ptr(),
         sleepTicks: pool_sleep_ticks_ptr(),
         flags: pool_flags_ptr(),
@@ -3797,6 +3803,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           pool.invMass = f64View(ptrs.invMass);
           pool.restitution = f64View(ptrs.restitution);
           pool.groundOffset = f64View(ptrs.groundOffset);
+          pool.airFrictionScale = f64View(ptrs.airFrictionScale);
           pool.groundFrictionScale = f64View(ptrs.groundFrictionScale);
           pool.sleepTicks = f64View(ptrs.sleepTicks);
           pool.flags = u8View(ptrs.flags);
@@ -3826,6 +3833,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         invMass: f64View(ptrs.invMass),
         restitution: f64View(ptrs.restitution),
         groundOffset: f64View(ptrs.groundOffset),
+        airFrictionScale: f64View(ptrs.airFrictionScale),
         groundFrictionScale: f64View(ptrs.groundFrictionScale),
         sleepTicks: f64View(ptrs.sleepTicks),
         flags: u8View(ptrs.flags),
@@ -4341,7 +4349,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           projSpawnScratchStride: 32,
           projVelScratchPtr: snapshot_encode_proj_vel_scratch_ptr,
           projVelScratchEnsure: snapshot_encode_proj_vel_scratch_ensure,
-          projVelScratchStride: 8,
+          projVelScratchStride: 9,
           removedIdsScratchPtr: snapshot_encode_removed_ids_scratch_ptr,
           removedIdsScratchEnsure: snapshot_encode_removed_ids_scratch_ensure,
           appendRawValue: messagepack_writer_append_raw_value,

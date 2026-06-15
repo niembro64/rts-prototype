@@ -12,6 +12,7 @@ import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { getRuntimeTurretMount } from '../sim/turretMounts';
 import { getUnitGroundZ } from '../sim/unitGeometry';
 import { getEntityPosition3d, getProjectileLaunchSpeed } from '../sim/combat/combatUtils';
+import { getProjectileAirFrictionPer60HzFrame } from '../sim/projectileMotion';
 
 const SEARCH_ITERATIONS = 14;
 const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
@@ -215,6 +216,7 @@ export function projectileShotCanReachGroundPoint(
     targetVelocity: _targetState.velocity,
     targetAcceleration: _targetState.acceleration,
     projectileSpeed: speed,
+    projectileAirFrictionPer60HzFrame: getProjectileAirFrictionPer60HzFrame(shot),
     gravity: GRAVITY * shot.gravityForceMultiplier,
     preferLateSolution: false,
     maxTimeSec: Number.isFinite(lifeMs) ? lifeMs / 1000 : 0,

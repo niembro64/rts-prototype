@@ -48,6 +48,7 @@ const PROJECTILE_SPAWN_WIRE_STRIDE_V1 = 27;
 const EMPTY_PROJECTILE_ROWS: readonly number[] = [];
 
 const VELOCITY_FLAG_CLEAR_HOMING = 0x01;
+const VELOCITY_FLAG_TARGET_ENTITY_ID = 0x02;
 
 function createEmptyProjectileSnapshot(): ProjectileSnapshot {
   return {
@@ -476,11 +477,12 @@ function packProjectileVelocityUpdatesV2(
 
   const groups: VelocityGroup[] = [];
   const groupsByFlags: (VelocityGroup | undefined)[] = [];
-  const estimatedPerRow = 8;
+  const estimatedPerRow = 9;
 
   for (let i = 0; i < updates.length; i++) {
     const update = updates[i];
-    const flags = update.clearHomingTarget === true ? VELOCITY_FLAG_CLEAR_HOMING : 0;
+    let flags = update.clearHomingTarget === true ? VELOCITY_FLAG_CLEAR_HOMING : 0;
+    if (update.targetEntityId !== null) flags |= VELOCITY_FLAG_TARGET_ENTITY_ID;
     let group = groupsByFlags[flags];
     if (group === undefined) {
       group = {
@@ -500,6 +502,9 @@ function packProjectileVelocityUpdatesV2(
     group.writer.writeVarInt(update.velocity.x);
     group.writer.writeVarInt(update.velocity.y);
     group.writer.writeVarInt(update.velocity.z);
+    if ((flags & VELOCITY_FLAG_TARGET_ENTITY_ID) !== 0) {
+      group.writer.writeVarUint(update.targetEntityId ?? 0);
+    }
     group.count++;
   }
 
@@ -549,8 +554,13 @@ function unpackProjectileVelocityUpdatesV2(
           y: reader.readVarInt(),
           z: reader.readVarInt(),
         },
+        targetEntityId: null,
         clearHomingTarget: null,
       };
+      if ((flags & VELOCITY_FLAG_TARGET_ENTITY_ID) !== 0) {
+        const targetEntityId = reader.readVarUint();
+        update.targetEntityId = targetEntityId > 0 ? targetEntityId : null;
+      }
       if ((flags & VELOCITY_FLAG_CLEAR_HOMING) !== 0) {
         update.clearHomingTarget = true;
       }
@@ -824,10 +834,14 @@ function unpackProjectileVelocityUpdatesV1(
   rows: readonly number[] | undefined,
 ): NetworkServerSnapshotVelocityUpdate[] | undefined {
   if (rows === undefined) return undefined;
-  const count = Math.floor(rows.length / PROJECTILE_VELOCITY_WIRE_STRIDE);
+  const stride = rows.length % PROJECTILE_VELOCITY_WIRE_STRIDE === 0
+    ? PROJECTILE_VELOCITY_WIRE_STRIDE
+    : 8;
+  const count = Math.floor(rows.length / stride);
   const updates: NetworkServerSnapshotVelocityUpdate[] = new Array(count);
   for (let i = 0; i < count; i++) {
-    const base = i * PROJECTILE_VELOCITY_WIRE_STRIDE;
+    const base = i * stride;
+    const targetEntityId = stride > 8 ? (rows[base + 8] ?? 0) : 0;
     updates[i] = {
       id: rows[base + 0] ?? 0,
       pos: {
@@ -840,6 +854,7 @@ function unpackProjectileVelocityUpdatesV1(
         y: rows[base + 5] ?? 0,
         z: rows[base + 6] ?? 0,
       },
+      targetEntityId: targetEntityId > 0 ? targetEntityId : null,
       clearHomingTarget: (rows[base + 7] ?? 0) !== 0 ? true : null,
     };
   }

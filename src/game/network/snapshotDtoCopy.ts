@@ -118,6 +118,7 @@ export function createVelocityDto(): NetworkServerSnapshotVelocityUpdate {
     id: 0,
     pos: { x: 0, y: 0, z: 0 },
     velocity: { x: 0, y: 0, z: 0 },
+    targetEntityId: null,
     clearHomingTarget: null,
   };
 }
@@ -133,6 +134,7 @@ export function copyVelocityInto(
   dst.velocity.x = src.velocity.x;
   dst.velocity.y = src.velocity.y;
   dst.velocity.z = src.velocity.z;
+  dst.targetEntityId = src.targetEntityId;
   dst.clearHomingTarget = src.clearHomingTarget === true ? true : null;
   return dst;
 }

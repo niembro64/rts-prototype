@@ -2,6 +2,10 @@ import type { Entity } from '../sim/types';
 import type { WorldState } from '../sim/WorldState';
 import type { Body3D, PhysicsEngine3D } from './PhysicsEngine3D';
 import { SUPPORT_SURFACE_CONTACT_EPSILON } from '../sim/supportSurface';
+import {
+  getUnitAirFrictionScale,
+  getUnitGroundFrictionScale,
+} from '../sim/unitMotionFriction';
 
 export type UnitPhysicsBodyOptions = {
   ignoreOverlappingBuildings: boolean | undefined;
@@ -54,6 +58,8 @@ export function createPhysicsBodyForUnit(
     entity.id,
     spawnZ,
     entity.unit.surfaceNormal,
+    getUnitAirFrictionScale(entity.unit),
+    getUnitGroundFrictionScale(entity.unit),
   );
   entity.transform.x = body.x;
   entity.transform.y = body.y;

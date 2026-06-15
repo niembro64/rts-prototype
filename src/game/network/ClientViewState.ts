@@ -907,7 +907,9 @@ export class ClientViewState {
               this.serverTargets.delete(vu.id);
               this.clearTargetPredictionAccum(vu.id);
             }
-            if (vu.clearHomingTarget === true) {
+            if (vu.targetEntityId !== null) {
+              entity.projectile.homingTargetId = vu.targetEntityId;
+            } else if (vu.clearHomingTarget === true) {
               entity.projectile.homingTargetId = NO_ENTITY_ID;
             }
             this.projectileStore.markVelocityUpdateActive(entity, vu.id);

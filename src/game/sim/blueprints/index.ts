@@ -552,7 +552,10 @@ function buildShotConfig(
       : undefined,
     homingTurnRate: shotBlueprint.homingTurnRate ?? undefined,
     homingThrust: shotBlueprint.homingThrust ?? undefined,
+    homingDelayMs: shotBlueprint.homingDelayMs ?? undefined,
+    propulsionForce: shotBlueprint.propulsionForce ?? undefined,
     gravityForceMultiplier: shotBlueprint.gravityForceMultiplier,
+    airFrictionPer60HzFrame: shotBlueprint.airFrictionPer60HzFrame,
     submunitions: shotBlueprint.submunitions ?? undefined,
     smokeTrail: shotBlueprint.smokeTrail ?? undefined,
   };

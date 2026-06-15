@@ -1,9 +1,9 @@
 // body_pool — extracted from lib.rs (pure code motion).
 
 #[allow(unused_imports)]
-use wasm_bindgen::prelude::*;
-#[allow(unused_imports)]
 use crate::*;
+#[allow(unused_imports)]
+use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────
 //  Phase 3d — Body3D SoA pool in WASM linear memory
@@ -73,6 +73,10 @@ pub(crate) struct BodyPool {
     pub(crate) inv_mass: Vec<f64>,
     pub(crate) restitution: Vec<f64>,
     pub(crate) ground_offset: Vec<f64>,
+    // Per-body air-friction multiplier. 1.0 = full global free-flight
+    // damping; 0.0 = no free-flight damping. Default 1.0 preserves the
+    // old global behavior for bodies that do not author a scale.
+    pub(crate) air_friction_scale: Vec<f64>,
     // Per-body ground-friction multiplier. 1.0 = the full global
     // ground-contact tangential damping; 0.0 = frictionless (keeps all
     // tangential velocity on contact). Default 1.0 so every body that
@@ -122,6 +126,7 @@ impl BodyPool {
             inv_mass: vec![0.0; cap],
             restitution: vec![0.0; cap],
             ground_offset: vec![0.0; cap],
+            air_friction_scale: vec![1.0; cap],
             ground_friction_scale: vec![1.0; cap],
             sleep_ticks: vec![0.0; cap],
             flags: vec![0u8; cap],
@@ -168,6 +173,7 @@ impl BodyPool {
         self.inv_mass[i] = 0.0;
         self.restitution[i] = 0.0;
         self.ground_offset[i] = 0.0;
+        self.air_friction_scale[i] = 1.0;
         self.ground_friction_scale[i] = 1.0;
         self.sleep_ticks[i] = 0.0;
         self.flags[i] = BODY_FLAG_OCCUPIED;
@@ -275,6 +281,7 @@ pool_ptr_export!(pool_half_z_ptr, half_z, f64);
 pool_ptr_export!(pool_inv_mass_ptr, inv_mass, f64);
 pool_ptr_export!(pool_restitution_ptr, restitution, f64);
 pool_ptr_export!(pool_ground_offset_ptr, ground_offset, f64);
+pool_ptr_export!(pool_air_friction_scale_ptr, air_friction_scale, f64);
 pool_ptr_export!(pool_ground_friction_scale_ptr, ground_friction_scale, f64);
 pool_ptr_export!(pool_sleep_ticks_ptr, sleep_ticks, f64);
 pool_ptr_export!(pool_flags_ptr, flags, u8);
@@ -1058,6 +1065,28 @@ pub fn pool_finalize_dynamic_step(dynamic_slots: &[u32], sync_entity_ids_out: &m
     sync_count
 }
 
+#[inline]
+fn scale_body_motion_damp(damp: f64, scale: f64) -> f64 {
+    if !damp.is_finite() {
+        return 1.0;
+    }
+    let base = damp.max(0.0).min(1.0);
+    if base >= 1.0 {
+        return 1.0;
+    }
+    if base <= 0.0 {
+        return if scale <= 0.0 { 1.0 } else { 0.0 };
+    }
+    if !scale.is_finite() {
+        return base;
+    }
+    let clamped_scale = scale.max(0.0);
+    if clamped_scale <= 0.0 {
+        return 1.0;
+    }
+    base.powf(clamped_scale).max(0.0).min(1.0)
+}
+
 #[wasm_bindgen]
 pub fn pool_step_integrate(
     awake_slots: &[u32],
@@ -1098,18 +1127,16 @@ pub fn pool_step_integrate(
         let launch_ay = p.launch_y[slot];
         let launch_az = p.launch_z[slot];
 
-        // Per-body friction: scale how much of the global ground-contact
-        // tangential damping this body feels. `ground_damp` is the
-        // retained tangential fraction per step (1.0 = no loss); the
-        // amount lost is `1 - ground_damp`, so scaling that by the
-        // body's friction multiplier and re-deriving the retained
-        // fraction gives a frictionless body (scale 0) a damp of 1.0 and
-        // a normal body (scale 1) the unchanged global damp. Computed
-        // here rather than inside the shared inline helper so the client
-        // prediction / bootstrap callers (which only step default-
-        // friction units) stay byte-identical with no signature change.
-        let friction_scale = p.ground_friction_scale[slot];
-        let eff_ground_damp = 1.0 - (1.0 - ground_damp) * friction_scale;
+        // Per-body friction: scale the continuous drag coefficient
+        // behind the global damping value. `*_damp` is the retained
+        // velocity fraction per step (1.0 = no loss), so raising it to
+        // the body's friction multiplier makes scale 0 frictionless,
+        // scale 1 unchanged, and higher scales stronger without making
+        // behavior depend on frame length.
+        let air_scale = p.air_friction_scale[slot];
+        let ground_scale = p.ground_friction_scale[slot];
+        let eff_air_damp = scale_body_motion_damp(air_damp, air_scale);
+        let eff_ground_damp = scale_body_motion_damp(ground_damp, ground_scale);
 
         // Run the integrator on a 6-element scratch — the inline
         // helper is shared with the per-body / batched buffer paths
@@ -1129,7 +1156,7 @@ pub fn pool_step_integrate(
             authored_ax,
             authored_ay,
             authored_az - GRAVITY,
-            air_damp,
+            eff_air_damp,
             eff_ground_damp,
             launch_ax,
             launch_ay,
@@ -1447,7 +1474,11 @@ pub fn pool_resolve_sphere_sphere(
 /// pos/vel/flags in place. Returns true iff the pair overlapped
 /// (so the caller can mark a wake transition / set upward-contact).
 #[inline]
-pub(crate) fn resolve_sphere_cuboid_pair_in_pool(p: &mut BodyPool, dyn_slot: usize, st_slot: usize) -> bool {
+pub(crate) fn resolve_sphere_cuboid_pair_in_pool(
+    p: &mut BodyPool,
+    dyn_slot: usize,
+    st_slot: usize,
+) -> bool {
     let dyn_x = p.pos_x[dyn_slot];
     let dyn_y = p.pos_y[dyn_slot];
     let dyn_z = p.pos_z[dyn_slot];
@@ -1794,15 +1825,3 @@ pub fn pool_resolve_sphere_cuboid_full(
 
     wake_count
 }
-
-
-
-
-
-
-
-
-
-
-
-

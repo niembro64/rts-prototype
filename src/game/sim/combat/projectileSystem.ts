@@ -2,7 +2,7 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Projectile system - firing, movement, and beam updates
 
 import type { WorldState } from '../WorldState';
-import type { BeamPoint, Entity, EntityId, ProjectileShot, BeamRay, LaserRay, ShotSource, Turret } from '../types';
+import type { BeamPoint, Entity, EntityId, ProjectileShot, BeamRay, LaserRay, ShotSource, Turret, TurretConfig } from '../types';
 import { getEmissionBlueprintId, isRayConfig, isRayType, isProjectileShot, NO_ENTITY_ID } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
@@ -55,9 +55,24 @@ import {
 import { resolveTargetAimPoint } from './aimSolver';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
 import { getUnitGroundZ } from '../unitGeometry';
+import { spatialGrid } from '../SpatialGrid';
 import { createProjectileConfigFromShot, createProjectileConfigFromTurret } from '../projectileConfigs';
 import { rollTurretCooldownDuration } from '../turretCooldown';
-import { CT_TURRET_STATE_ENGAGED, getSimWasm } from '../../sim-wasm/init';
+import { TURRET_CONFIGS } from '../turretConfigs';
+import {
+  getProjectileAirFrictionDamp,
+  getProjectileAirFrictionPer60HzFrame,
+  getProjectilePropulsionAcceleration,
+} from '../projectileMotion';
+import {
+  CT_LOCK_ON_FAM_INCLUDE_BUILDINGS,
+  CT_LOCK_ON_FAM_INCLUDE_SHOTS,
+  CT_LOCK_ON_FAM_INCLUDE_TOWERS,
+  CT_LOCK_ON_FAM_INCLUDE_UNITS,
+  CT_LOCK_ON_REL_INCLUDE_ENEMY,
+  CT_TURRET_STATE_ENGAGED,
+  getSimWasm,
+} from '../../sim-wasm/init';
 import {
   readCombatTargetingTurretFsmInto,
   type CombatTargetingTurretFsmOut,
@@ -67,9 +82,14 @@ import {
   snapshotVectorVelocityDeltaExceeded,
 } from '../../snapshotDeltaThresholds';
 import {
+  BUILDING_BLUEPRINT_CODE_UNKNOWN,
+  SHOT_BLUEPRINT_CODE_UNKNOWN,
   TURRET_BLUEPRINT_CODE_UNKNOWN,
+  UNIT_BLUEPRINT_CODE_UNKNOWN,
+  buildingBlueprintIdToCode,
   shotBlueprintIdToCode,
   turretBlueprintIdToCode,
+  unitBlueprintIdToCode,
 } from '../../../types/network';
 
 export { checkProjectileCollisions } from './ProjectileCollisionHandler';
@@ -239,15 +259,205 @@ const _fireFsm: CombatTargetingTurretFsmOut = {
   targetId: -1,
 };
 const _projectilePositionScratch = { x: 0, y: 0, z: 0 };
+const _homingReacquireCandidatePosition = { x: 0, y: 0, z: 0 };
 const _homingTargetVelocity = { x: 0, y: 0, z: 0 };
 const _homingTargetAcceleration = { x: 0, y: 0, z: 0 };
 const _homingAimPoint = { x: 0, y: 0, z: 0 };
 const _homingOriginVelocity = { x: 0, y: 0, z: 0 };
 const _homingOriginAcceleration = { x: 0, y: 0, z: 0 };
+const HOMING_TARGET_UPDATE_UNCHANGED = -2;
 
 function getHomingMaxThrustAccel(shot: ProjectileShot): number {
   const mass = shot.mass > 1e-6 ? shot.mass : 1e-6;
   return (shot.homingThrust ?? 0) / mass;
+}
+
+function getProjectileSourceTurretConfig(proj: NonNullable<Entity['projectile']>): TurretConfig | null {
+  const id = proj.shotSource.sourceTurretBlueprintId ?? proj.config.sourceTurretBlueprintId;
+  return id !== null ? (TURRET_CONFIGS[id] ?? null) : null;
+}
+
+function lockOnMaskAllowsBlueprint(mask: number, code: number, unknownCode: number): boolean {
+  if (mask === 0) return true;
+  if (code === unknownCode || code < 0 || code >= 32) return false;
+  return (mask & (1 << code)) !== 0;
+}
+
+function isObservableToProjectileSource(
+  targetId: EntityId,
+  sourcePlayerId: number,
+): boolean {
+  const sim = getSimWasm();
+  if (sim === undefined) return true;
+  return sim.combatTargeting.canPlayerObserveEntity(targetId, sourcePlayerId) !== 0;
+}
+
+function projectileSourceCanAttackTargetTeam(
+  world: WorldState,
+  proj: NonNullable<Entity['projectile']>,
+  target: Entity,
+): boolean {
+  const targetOwner = target.ownership;
+  if (targetOwner === null) return false;
+  return world.getTeamId(targetOwner.playerId) !== proj.shotSource.sourceTeamId;
+}
+
+function sourceTurretCanRocketLockTarget(
+  sourceTurret: TurretConfig | null,
+  target: Entity,
+): boolean {
+  if (sourceTurret === null) {
+    return target.unit !== null ||
+      target.building !== null ||
+      (target.projectile !== null && isProjectileShot(target.projectile.config.shot));
+  }
+
+  if ((sourceTurret.lockOnRelationshipIncludeMask & CT_LOCK_ON_REL_INCLUDE_ENEMY) === 0) {
+    return false;
+  }
+
+  if (target.unit !== null) {
+    if ((sourceTurret.lockOnEntityFamilyIncludeMask & CT_LOCK_ON_FAM_INCLUDE_UNITS) === 0) {
+      return false;
+    }
+    return lockOnMaskAllowsBlueprint(
+      sourceTurret.lockOnUnitIncludeMask,
+      unitBlueprintIdToCode(target.unit.unitBlueprintId),
+      UNIT_BLUEPRINT_CODE_UNKNOWN,
+    );
+  }
+
+  if (target.building !== null) {
+    const isTower = target.type === 'tower';
+    const familyMask = isTower ? CT_LOCK_ON_FAM_INCLUDE_TOWERS : CT_LOCK_ON_FAM_INCLUDE_BUILDINGS;
+    if ((sourceTurret.lockOnEntityFamilyIncludeMask & familyMask) === 0) {
+      return false;
+    }
+    return lockOnMaskAllowsBlueprint(
+      isTower ? sourceTurret.lockOnTowerIncludeMask : sourceTurret.lockOnBuildingIncludeMask,
+      target.buildingBlueprintId !== null
+        ? buildingBlueprintIdToCode(target.buildingBlueprintId)
+        : BUILDING_BLUEPRINT_CODE_UNKNOWN,
+      BUILDING_BLUEPRINT_CODE_UNKNOWN,
+    );
+  }
+
+  if (target.projectile !== null && isProjectileShot(target.projectile.config.shot)) {
+    if ((sourceTurret.lockOnEntityFamilyIncludeMask & CT_LOCK_ON_FAM_INCLUDE_SHOTS) === 0) {
+      return false;
+    }
+    return lockOnMaskAllowsBlueprint(
+      sourceTurret.lockOnShotIncludeMask,
+      shotBlueprintIdToCode(target.projectile.shotBlueprintId),
+      SHOT_BLUEPRINT_CODE_UNKNOWN,
+    );
+  }
+
+  return false;
+}
+
+function isValidRocketHomingTarget(
+  world: WorldState,
+  proj: NonNullable<Entity['projectile']>,
+  target: Entity | undefined,
+  sourceTurret: TurretConfig | null,
+): target is Entity {
+  return target !== undefined &&
+    isLiveHomingTarget(target) &&
+    projectileSourceCanAttackTargetTeam(world, proj, target) &&
+    sourceTurretCanRocketLockTarget(sourceTurret, target) &&
+    isObservableToProjectileSource(target.id, proj.shotSource.sourcePlayerId);
+}
+
+function getRocketReacquireRadius(world: WorldState, proj: NonNullable<Entity['projectile']>): number {
+  if (Number.isFinite(proj.config.range) && proj.config.range > 0) {
+    return proj.config.range + world.getMaxTargetableRadius();
+  }
+
+  const remainingMs = Number.isFinite(proj.maxLifespan)
+    ? Math.max(0, proj.maxLifespan - proj.timeAlive)
+    : Infinity;
+  const speed = DMath.hypot(proj.velocityX, proj.velocityY, proj.velocityZ);
+  if (Number.isFinite(remainingMs) && Number.isFinite(speed) && speed > 1e-6) {
+    return speed * (remainingMs / 1000) + world.getMaxTargetableRadius();
+  }
+
+  return DMath.hypot(world.mapWidth, world.mapHeight) + world.getMaxTargetableRadius();
+}
+
+function chooseBetterRocketTarget(
+  projectileEntity: Entity,
+  position: { x: number; y: number; z: number },
+  candidate: Entity,
+  currentBest: Entity | undefined,
+  bestScore: number,
+): { target: Entity | undefined; score: number } {
+  if (candidate.id === projectileEntity.id) return { target: currentBest, score: bestScore };
+  const candidatePosition = getEntityPosition3d(candidate, _homingReacquireCandidatePosition);
+  const dx = candidatePosition.x - position.x;
+  const dy = candidatePosition.y - position.y;
+  const dz = candidatePosition.z - position.z;
+  const distSq = dx * dx + dy * dy + dz * dz;
+  if (!Number.isFinite(distSq)) return { target: currentBest, score: bestScore };
+  if (distSq < bestScore || (distSq === bestScore && (currentBest === undefined || candidate.id < currentBest.id))) {
+    return { target: candidate, score: distSq };
+  }
+  return { target: currentBest, score: bestScore };
+}
+
+function findRocketReplacementHomingTarget(
+  world: WorldState,
+  projectileEntity: Entity,
+  proj: NonNullable<Entity['projectile']>,
+  position: { x: number; y: number; z: number },
+  sourceTurret: TurretConfig | null,
+): Entity | undefined {
+  const radius = getRocketReacquireRadius(world, proj);
+  let bestTarget: Entity | undefined;
+  let bestScore = Infinity;
+
+  const wantsUnitsOrBuildings = sourceTurret === null ||
+    (sourceTurret.lockOnEntityFamilyIncludeMask & (
+      CT_LOCK_ON_FAM_INCLUDE_UNITS |
+      CT_LOCK_ON_FAM_INCLUDE_BUILDINGS |
+      CT_LOCK_ON_FAM_INCLUDE_TOWERS
+    )) !== 0;
+  if (wantsUnitsOrBuildings) {
+    const candidates = spatialGrid.queryEnemyEntitiesInCircle2D(
+      position.x,
+      position.y,
+      radius,
+      proj.shotSource.sourcePlayerId,
+    );
+    for (let i = 0; i < candidates.length; i++) {
+      const candidate = candidates[i];
+      if (!isValidRocketHomingTarget(world, proj, candidate, sourceTurret)) continue;
+      const next = chooseBetterRocketTarget(projectileEntity, position, candidate, bestTarget, bestScore);
+      bestTarget = next.target;
+      bestScore = next.score;
+    }
+  }
+
+  const wantsShots = sourceTurret === null ||
+    (sourceTurret.lockOnEntityFamilyIncludeMask & CT_LOCK_ON_FAM_INCLUDE_SHOTS) !== 0;
+  if (wantsShots) {
+    const candidates = spatialGrid.queryEnemyProjectilesInRadius(
+      position.x,
+      position.y,
+      position.z,
+      radius,
+      proj.shotSource.sourcePlayerId,
+    );
+    for (let i = 0; i < candidates.length; i++) {
+      const candidate = candidates[i];
+      if (!isValidRocketHomingTarget(world, proj, candidate, sourceTurret)) continue;
+      const next = chooseBetterRocketTarget(projectileEntity, position, candidate, bestTarget, bestScore);
+      bestTarget = next.target;
+      bestScore = next.score;
+    }
+  }
+
+  return bestTarget;
 }
 
 function clearBeamReflectorMetadata(point: BeamPoint): void {
@@ -327,6 +537,8 @@ function isPackedProjectileEligible(entity: Entity): boolean {
   // Packed pool's batch kernel hardcodes GRAVITY; any shot that wants a
   // different gravity must run through the per-projectile JS path.
   if (shot.gravityForceMultiplier !== 1) return false;
+  if (getProjectileAirFrictionPer60HzFrame(shot) > 0) return false;
+  if (getProjectilePropulsionAcceleration(shot) > 0) return false;
   return true;
 }
 
@@ -769,32 +981,16 @@ export function fireTurrets(
           });
         }
 
-        // Firing direction. Two modes:
-        //
-        //  Vertical launcher: the base axis is straight up (+Z).
-        //  Spread can cone around that axis; homing bends it back
-        //  toward the target from there.
-        //
-        //  Standard turret: use the turret's full 3D aim vector. Spread
-        //  samples a circular cone around that vector; spread.angle is
-        //  the cone's full aperture, so angle / 2 is the center-to-edge
-        //  half-angle.
-        let dirX: number;
-        let dirY: number;
-        let dirZ: number;
-        if (config.verticalLauncher) {
-          dirX = 0;
-          dirY = 0;
-          dirZ = 1;
-        } else {
-          const dirPitchSin = DMath.sin(turretPitch);
-          const dirPitchCos = DMath.cos(turretPitch);
-          const fireCos = DMath.cos(turretAngle);
-          const fireSin = DMath.sin(turretAngle);
-          dirX = fireCos * dirPitchCos;
-          dirY = fireSin * dirPitchCos;
-          dirZ = dirPitchSin;
-        }
+        // Firing direction is the current barrel axis. Vertical
+        // launchers get no separate launch rule: turretSystem pins
+        // their barrel pose straight up, so this same read produces +Z.
+        const dirPitchSin = DMath.sin(turretPitch);
+        const dirPitchCos = DMath.cos(turretPitch);
+        const fireCos = DMath.cos(turretAngle);
+        const fireSin = DMath.sin(turretAngle);
+        let dirX = fireCos * dirPitchCos;
+        let dirY = fireSin * dirPitchCos;
+        let dirZ = dirPitchSin;
         if (spreadAngle > 0) {
           writeRandomDirectionInCone(
             dirX, dirY, dirZ,
@@ -995,10 +1191,12 @@ let _travelingProjectileVelZ = new Float64Array(0);
 let _travelingProjectileAccelX = new Float64Array(0);
 let _travelingProjectileAccelY = new Float64Array(0);
 let _travelingProjectileAccelZ = new Float64Array(0);
+let _travelingProjectileAirDamp = new Float64Array(0);
 let _travelingProjectileGravity = new Float64Array(0);
 let _travelingProjectileTerrainTargetZ = new Float64Array(0);
 let _travelingProjectilePolicyFlags = new Uint8Array(0);
 let _travelingProjectileHomingTargetId = new Int32Array(0);
+let _travelingProjectileTargetUpdateId = new Int32Array(0);
 
 const TRAVELING_PROJECTILE_FLAG_HOMING_REPORTING = 1;
 const TRAVELING_PROJECTILE_FLAG_DGUN_TERRAIN_FOLLOW = 2;
@@ -1048,10 +1246,12 @@ function trimTravelingProjectileBatchBuffers(maxRetained = DEFAULT_TRAVELING_PRO
   _travelingProjectileAccelX = new Float64Array(maxRetained);
   _travelingProjectileAccelY = new Float64Array(maxRetained);
   _travelingProjectileAccelZ = new Float64Array(maxRetained);
+  _travelingProjectileAirDamp = new Float64Array(maxRetained);
   _travelingProjectileGravity = new Float64Array(maxRetained);
   _travelingProjectileTerrainTargetZ = new Float64Array(maxRetained);
   _travelingProjectilePolicyFlags = new Uint8Array(maxRetained);
   _travelingProjectileHomingTargetId = new Int32Array(maxRetained);
+  _travelingProjectileTargetUpdateId = new Int32Array(maxRetained);
 }
 
 function trimHomingGuidanceBuffers(maxRetained = DEFAULT_HOMING_GUIDANCE_BATCH_CAPACITY): void {
@@ -1112,6 +1312,10 @@ function ensureTravelingProjectileBatchCapacity(required: number): void {
   accelZ.set(_travelingProjectileAccelZ);
   _travelingProjectileAccelZ = accelZ;
 
+  const airDamp = new Float64Array(next);
+  airDamp.set(_travelingProjectileAirDamp);
+  _travelingProjectileAirDamp = airDamp;
+
   const gravity = new Float64Array(next);
   gravity.set(_travelingProjectileGravity);
   _travelingProjectileGravity = gravity;
@@ -1127,6 +1331,11 @@ function ensureTravelingProjectileBatchCapacity(required: number): void {
   const homingTargetId = new Int32Array(next);
   homingTargetId.set(_travelingProjectileHomingTargetId);
   _travelingProjectileHomingTargetId = homingTargetId;
+
+  const targetUpdateId = new Int32Array(next);
+  targetUpdateId.fill(HOMING_TARGET_UPDATE_UNCHANGED);
+  targetUpdateId.set(_travelingProjectileTargetUpdateId);
+  _travelingProjectileTargetUpdateId = targetUpdateId;
 }
 
 // 3D projectile integration: exact constant-acceleration advance on
@@ -1258,6 +1467,16 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     let aNetX = 0;
     let aNetY = 0;
     let aNetZ = -projectileGravity;
+    const propulsionAccel = getProjectilePropulsionAcceleration(shotConfig);
+    if (propulsionAccel > 0) {
+      const speed = DMath.hypot(proj.velocityX, proj.velocityY, proj.velocityZ);
+      if (Number.isFinite(speed) && speed > 1e-6) {
+        const scale = propulsionAccel / speed;
+        aNetX += proj.velocityX * scale;
+        aNetY += proj.velocityY * scale;
+        aNetZ += proj.velocityZ * scale;
+      }
+    }
 
     const index = batchCount++;
     ensureTravelingProjectileBatchCapacity(batchCount);
@@ -1271,20 +1490,43 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     _travelingProjectileAccelX[index] = 0;
     _travelingProjectileAccelY[index] = 0;
     _travelingProjectileAccelZ[index] = 0;
+    _travelingProjectileAirDamp[index] = getProjectileAirFrictionDamp(shotConfig, dtSec);
     _travelingProjectileGravity[index] = projectileGravity;
     _travelingProjectileTerrainTargetZ[index] = 0;
     _travelingProjectilePolicyFlags[index] = policyFlags;
     _travelingProjectileHomingTargetId[index] = NO_ENTITY_ID;
+    _travelingProjectileTargetUpdateId[index] = HOMING_TARGET_UPDATE_UNCHANGED;
 
-    if (!isDGunWave && proj.homingTargetId !== NO_ENTITY_ID) {
-      let homingTarget = world.getEntity(proj.homingTargetId);
-      const targetValid = homingTarget !== undefined && isLiveHomingTarget(homingTarget);
-      if (!targetValid) {
-        // Projectiles inherit a lock from the firing turret. They do
-        // not acquire replacement targets after launch; missing or
-        // dead targets simply end guidance.
-        proj.homingTargetId = NO_ENTITY_ID;
+    const homingDelayMs = shotConfig.homingDelayMs ?? 0;
+    if (!isDGunWave && (shotConfig.homingTurnRate ?? 0) > 0 && proj.timeAlive >= homingDelayMs) {
+      const previousHomingTargetId = proj.homingTargetId;
+      const sourceTurret = shotConfig.type === 'rocket'
+        ? getProjectileSourceTurretConfig(proj)
+        : null;
+      let homingTarget = previousHomingTargetId !== NO_ENTITY_ID
+        ? world.getEntity(previousHomingTargetId)
+        : undefined;
+      if (
+        shotConfig.type === 'rocket' &&
+        !isValidRocketHomingTarget(world, proj, homingTarget, sourceTurret)
+      ) {
+        homingTarget = findRocketReplacementHomingTarget(
+          world,
+          entity,
+          proj,
+          position,
+          sourceTurret,
+        );
+      } else if (
+        shotConfig.type !== 'rocket' &&
+        (homingTarget === undefined || !isLiveHomingTarget(homingTarget))
+      ) {
         homingTarget = undefined;
+      }
+      const resolvedHomingTargetId = homingTarget !== undefined ? homingTarget.id : NO_ENTITY_ID;
+      if (resolvedHomingTargetId !== previousHomingTargetId) {
+        proj.homingTargetId = resolvedHomingTargetId;
+        _travelingProjectileTargetUpdateId[index] = resolvedHomingTargetId;
       }
       if (homingTarget !== undefined) {
         _travelingProjectileHomingTargetId[index] = homingTarget.id;
@@ -1429,6 +1671,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     _travelingProjectileAccelX.subarray(0, batchCount),
     _travelingProjectileAccelY.subarray(0, batchCount),
     _travelingProjectileAccelZ.subarray(0, batchCount),
+    _travelingProjectileAirDamp.subarray(0, batchCount),
     dtSec,
   );
   if (integrated !== batchCount) {
@@ -1470,13 +1713,18 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     // projectiles need either. Non-homing shots get their rotation
     // baked into the spawn event; visible yaw drift over a ballistic
     // arc is small enough that we don't pay the per-tick atan2 there.
-    if ((_travelingProjectilePolicyFlags[i] & TRAVELING_PROJECTILE_FLAG_HOMING_REPORTING) !== 0) {
+    const targetUpdateId = _travelingProjectileTargetUpdateId[i];
+    const homingTargetChanged = targetUpdateId !== HOMING_TARGET_UPDATE_UNCHANGED;
+    if (
+      (_travelingProjectilePolicyFlags[i] & TRAVELING_PROJECTILE_FLAG_HOMING_REPORTING) !== 0 ||
+      homingTargetChanged
+    ) {
       entity.transform.rotation = DMath.atan2(vy, vx);
 
       const lastVx = proj.lastSentVelX ?? vx;
       const lastVy = proj.lastSentVelY ?? vy;
       const lastVz = proj.lastSentVelZ ?? vz;
-      if (snapshotVectorVelocityDeltaExceeded(
+      if (homingTargetChanged || snapshotVectorVelocityDeltaExceeded(
         vx, vy, vz,
         lastVx, lastVy, lastVz,
         SNAPSHOT_CONFIG.movementVelocityMagnitudeThreshold,
@@ -1489,6 +1737,8 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
           id: entity.id,
           pos: { x, y, z },
           velocity: { x: vx, y: vy, z: vz },
+          targetEntityId: proj.homingTargetId !== NO_ENTITY_ID ? proj.homingTargetId : undefined,
+          clearHomingTarget: proj.homingTargetId === NO_ENTITY_ID && homingTargetChanged ? true : undefined,
         });
       }
     }

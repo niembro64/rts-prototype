@@ -17,7 +17,10 @@
     "submunitions": null,
     "homingTurnRate": null,
     "homingThrust": null,
+    "homingDelayMs": null,
+    "propulsionForce": null,
     "gravityForceMultiplier": 1,
+    "airFrictionPer60HzFrame": 0.003,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -56,7 +59,10 @@
     "submunitions": null,
     "homingTurnRate": null,
     "homingThrust": null,
+    "homingDelayMs": null,
+    "propulsionForce": null,
     "gravityForceMultiplier": 1,
+    "airFrictionPer60HzFrame": 0.002,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -95,7 +101,10 @@
     "submunitions": null,
     "homingTurnRate": null,
     "homingThrust": null,
+    "homingDelayMs": null,
+    "propulsionForce": null,
     "gravityForceMultiplier": 1,
+    "airFrictionPer60HzFrame": 0.0025,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -133,9 +142,12 @@
       "$audio": "event.hit.shotRocketLight"
     },
     "submunitions": null,
-    "homingTurnRate": 0.7,
-    "homingThrust": 5000,
+    "homingTurnRate": 2,
+    "homingThrust": 2000,
+    "homingDelayMs": 3000,
+    "propulsionForce": 2000,
     "gravityForceMultiplier": 0,
+    "airFrictionPer60HzFrame": 0.02,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -174,8 +186,11 @@
     },
     "submunitions": null,
     "homingTurnRate": 10,
-    "homingThrust": 600000,
+    "homingThrust": 6000,
+    "homingDelayMs": 0,
+    "propulsionForce": 15000,
     "gravityForceMultiplier": 0,
+    "airFrictionPer60HzFrame": 0.02,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -215,7 +230,10 @@
     "submunitions": null,
     "homingTurnRate": 3,
     "homingThrust": 600000,
+    "homingDelayMs": 0,
+    "propulsionForce": 5000,
     "gravityForceMultiplier": 0,
+    "airFrictionPer60HzFrame": 0.02,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -254,7 +272,10 @@
     "submunitions": null,
     "homingTurnRate": null,
     "homingThrust": null,
+    "homingDelayMs": null,
+    "propulsionForce": null,
     "gravityForceMultiplier": 1,
+    "airFrictionPer60HzFrame": 0.003,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -299,7 +320,10 @@
     },
     "homingTurnRate": null,
     "homingThrust": null,
+    "homingDelayMs": null,
+    "propulsionForce": null,
     "gravityForceMultiplier": 1,
+    "airFrictionPer60HzFrame": 0.004,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -344,7 +368,10 @@
     },
     "homingTurnRate": null,
     "homingThrust": null,
+    "homingDelayMs": null,
+    "propulsionForce": null,
     "gravityForceMultiplier": 1,
+    "airFrictionPer60HzFrame": 0.004,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -383,7 +410,10 @@
     "submunitions": null,
     "homingTurnRate": null,
     "homingThrust": null,
+    "homingDelayMs": null,
+    "propulsionForce": null,
     "gravityForceMultiplier": 1,
+    "airFrictionPer60HzFrame": 0.006,
     "smokeTrail": null,
     "base": {
       "cost": {

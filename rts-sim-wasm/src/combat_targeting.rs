@@ -1,9 +1,9 @@
 // combat_targeting — extracted from lib.rs (pure code motion).
 
 #[allow(unused_imports)]
-use wasm_bindgen::prelude::*;
-#[allow(unused_imports)]
 use crate::*;
+#[allow(unused_imports)]
+use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────
 // AIM-08.1 — Targeting input slabs
@@ -296,6 +296,7 @@ pub(crate) struct CombatTargetingPool {
     // the turret blueprint data. AIM-08.5 kernels read these from the
     // slab instead of accepting per-entity JS scratch arrays.
     pub(crate) turret_projectile_speed: Vec<f64>,
+    pub(crate) turret_projectile_air_friction_per_60hz_frame: Vec<f64>,
     pub(crate) turret_arc_preference: Vec<u8>,
     pub(crate) turret_max_time_sec: Vec<f64>,
     pub(crate) turret_ground_aim_fraction: Vec<f64>,
@@ -437,6 +438,7 @@ impl CombatTargetingPool {
             turret_mount_offset_2d: Vec::new(),
             turret_dps: Vec::new(),
             turret_projectile_speed: Vec::new(),
+            turret_projectile_air_friction_per_60hz_frame: Vec::new(),
             turret_arc_preference: Vec::new(),
             turret_max_time_sec: Vec::new(),
             turret_ground_aim_fraction: Vec::new(),
@@ -566,6 +568,8 @@ impl CombatTargetingPool {
             self.turret_mount_offset_2d.resize(turret_needed, 0.0);
             self.turret_dps.resize(turret_needed, 0.0);
             self.turret_projectile_speed.resize(turret_needed, 0.0);
+            self.turret_projectile_air_friction_per_60hz_frame
+                .resize(turret_needed, 0.0);
             self.turret_arc_preference.resize(turret_needed, 0);
             self.turret_max_time_sec.resize(turret_needed, 0.0);
             self.turret_ground_aim_fraction.resize(turret_needed, 0.0);
@@ -814,20 +818,20 @@ pub(crate) struct CombatTargetingSpatialCandidateScratchHolder(
     UnsafeCell<CombatTargetingSpatialCandidateScratch>,
 );
 unsafe impl Sync for CombatTargetingSpatialCandidateScratchHolder {}
-pub(crate) static COMBAT_TARGETING_SPATIAL_CANDIDATE_SCRATCH: CombatTargetingSpatialCandidateScratchHolder =
-    CombatTargetingSpatialCandidateScratchHolder(UnsafeCell::new(
-        CombatTargetingSpatialCandidateScratch {
-            ids: Vec::new(),
-            slots: Vec::new(),
-            observable: Vec::new(),
-            eligible_turret_mask: Vec::new(),
-            pos_x: Vec::new(),
-            pos_y: Vec::new(),
-            pos_z: Vec::new(),
-            radius: Vec::new(),
-            shield_panel_score: Vec::new(),
-        },
-    ));
+pub(crate) static COMBAT_TARGETING_SPATIAL_CANDIDATE_SCRATCH:
+    CombatTargetingSpatialCandidateScratchHolder = CombatTargetingSpatialCandidateScratchHolder(
+    UnsafeCell::new(CombatTargetingSpatialCandidateScratch {
+        ids: Vec::new(),
+        slots: Vec::new(),
+        observable: Vec::new(),
+        eligible_turret_mask: Vec::new(),
+        pos_x: Vec::new(),
+        pos_y: Vec::new(),
+        pos_z: Vec::new(),
+        radius: Vec::new(),
+        shield_panel_score: Vec::new(),
+    }),
+);
 
 #[inline]
 pub(crate) fn combat_targeting_spatial_candidate_scratch(
@@ -1037,6 +1041,7 @@ pub fn combat_targeting_set_turret(
     config_flags: u16,
     dps: f32,
     projectile_speed: f64,
+    projectile_air_friction_per_60hz_frame: f64,
     arc_preference: u8,
     max_time_sec: f64,
     ground_aim_fraction: f64,
@@ -1102,6 +1107,8 @@ pub fn combat_targeting_set_turret(
     pool.turret_config_flags[global_idx] = config_flags;
     pool.turret_dps[global_idx] = dps;
     pool.turret_projectile_speed[global_idx] = projectile_speed;
+    pool.turret_projectile_air_friction_per_60hz_frame[global_idx] =
+        projectile_air_friction_per_60hz_frame;
     pool.turret_arc_preference[global_idx] = arc_preference;
     pool.turret_max_time_sec[global_idx] = max_time_sec;
     pool.turret_ground_aim_fraction[global_idx] = ground_aim_fraction;
@@ -1578,6 +1585,7 @@ pub fn combat_targeting_solve_ballistic_aim(
     origin_ay: f64,
     origin_az: f64,
     projectile_speed: f64,
+    projectile_air_friction_per_60hz_frame: f64,
     gravity: f64,
     arc_preference: u8,
     max_time_sec_or_zero: f64,
@@ -1602,6 +1610,7 @@ pub fn combat_targeting_solve_ballistic_aim(
         origin_ay,
         origin_az,
         projectile_speed,
+        projectile_air_friction_per_60hz_frame,
         gravity,
         arc_preference,
         max_time_sec_or_zero,
@@ -1632,6 +1641,7 @@ pub(crate) fn combat_targeting_solve_ballistic_aim_inner(
     origin_ay: f64,
     origin_az: f64,
     projectile_speed: f64,
+    projectile_air_friction_per_60hz_frame: f64,
     gravity: f64,
     arc_preference: u8,
     max_time_sec_or_zero: f64,
@@ -1686,6 +1696,7 @@ pub(crate) fn combat_targeting_solve_ballistic_aim_inner(
         origin_ay,
         origin_az,
         projectile_speed,
+        projectile_air_friction_per_60hz_frame,
         gravity,
         max_time_sec_or_zero,
         fallback_yaw,
@@ -1693,6 +1704,8 @@ pub(crate) fn combat_targeting_solve_ballistic_aim_inner(
     ];
     if !combat_targeting_ballistic_params_finite(&finite_values)
         || projectile_speed <= 1e-6
+        || projectile_air_friction_per_60hz_frame < 0.0
+        || projectile_air_friction_per_60hz_frame >= 1.0
         || gravity < 0.0
         || max_time_sec_or_zero < 0.0
     {
@@ -1735,13 +1748,29 @@ pub(crate) fn combat_targeting_solve_ballistic_aim_inner(
     let mut solution = [0.0_f64; 7];
     let found = if arc_preference == CT_BALLISTIC_ARC_HIGH {
         let mut low_solution = [0.0_f64; 7];
-        let low_found =
-            solve_kinematic_intercept_inline(&input, &mut low_solution, 0, max_time_sec_or_zero);
-        let high_found =
-            solve_kinematic_intercept_inline(&input, &mut solution, 1, max_time_sec_or_zero);
+        let low_found = solve_damped_kinematic_intercept_inline(
+            &input,
+            &mut low_solution,
+            0,
+            max_time_sec_or_zero,
+            projectile_air_friction_per_60hz_frame,
+        );
+        let high_found = solve_damped_kinematic_intercept_inline(
+            &input,
+            &mut solution,
+            1,
+            max_time_sec_or_zero,
+            projectile_air_friction_per_60hz_frame,
+        );
         high_found && low_found && solution[0] > low_solution[0] + CT_HIGH_ARC_MIN_TIME_SEPARATION
     } else {
-        solve_kinematic_intercept_inline(&input, &mut solution, 0, max_time_sec_or_zero)
+        solve_damped_kinematic_intercept_inline(
+            &input,
+            &mut solution,
+            0,
+            max_time_sec_or_zero,
+            projectile_air_friction_per_60hz_frame,
+        )
     };
 
     if !found {
@@ -1879,7 +1908,10 @@ pub(crate) fn combat_targeting_set_target_state(
 }
 
 #[inline]
-pub(crate) fn combat_targeting_entity_alive(pool: &CombatTargetingPool, entity_slot: usize) -> bool {
+pub(crate) fn combat_targeting_entity_alive(
+    pool: &CombatTargetingPool,
+    entity_slot: usize,
+) -> bool {
     entity_slot < pool.entity_flags.len()
         && (pool.entity_flags[entity_slot] & CT_ENTITY_FLAG_ALIVE) != 0
 }
@@ -1894,7 +1926,10 @@ pub(crate) fn combat_targeting_player_bit(player_id: u8) -> u32 {
 }
 
 #[inline]
-pub(crate) fn combat_targeting_entity_online_for_sensors(pool: &CombatTargetingPool, slot: usize) -> bool {
+pub(crate) fn combat_targeting_entity_online_for_sensors(
+    pool: &CombatTargetingPool,
+    slot: usize,
+) -> bool {
     slot < pool.entity_flags.len()
         && pool.entity_id[slot] >= 0
         && (pool.entity_flags[slot] & CT_ENTITY_FLAG_ALIVE) != 0
@@ -1931,7 +1966,10 @@ pub(crate) fn combat_targeting_clear_observation_index(pool: &mut CombatTargetin
     pool.observation_max_detection_padding = 0.0;
 }
 
-pub(crate) fn combat_targeting_insert_observation_index_slot(pool: &mut CombatTargetingPool, slot: usize) {
+pub(crate) fn combat_targeting_insert_observation_index_slot(
+    pool: &mut CombatTargetingPool,
+    slot: usize,
+) {
     if slot >= pool.entity_flags.len()
         || pool.entity_id[slot] < 0
         || !combat_targeting_entity_alive(pool, slot)
@@ -2303,7 +2341,10 @@ pub(crate) fn combat_targeting_allowed_relationships_from_inclusions(include: u8
 }
 
 #[inline]
-pub(crate) fn combat_targeting_turret_allowed_relationships(pool: &CombatTargetingPool, idx: usize) -> u8 {
+pub(crate) fn combat_targeting_turret_allowed_relationships(
+    pool: &CombatTargetingPool,
+    idx: usize,
+) -> u8 {
     combat_targeting_allowed_relationships_from_inclusions(
         pool.turret_lockon_relationship_mask[idx],
     )
@@ -2836,7 +2877,10 @@ pub(crate) fn combat_targeting_is_shield_panel_target_for_slot(
 }
 
 #[inline]
-pub(crate) fn combat_targeting_turret_is_pickable_aim_target(pool: &CombatTargetingPool, idx: usize) -> bool {
+pub(crate) fn combat_targeting_turret_is_pickable_aim_target(
+    pool: &CombatTargetingPool,
+    idx: usize,
+) -> bool {
     let flags = pool.turret_config_flags[idx];
     let exclude_flags =
         CT_TURRET_CFG_PASSIVE | CT_TURRET_CFG_VISUAL_ONLY | CT_TURRET_CFG_IS_MANUAL_FIRE;
@@ -3064,7 +3108,10 @@ pub(crate) fn combat_targeting_invalid_cylinder_target() -> CombatTargetingCylin
 }
 
 #[inline]
-pub(crate) fn combat_targeting_target_vertical_extent(pool: &CombatTargetingPool, entity_slot: usize) -> f64 {
+pub(crate) fn combat_targeting_target_vertical_extent(
+    pool: &CombatTargetingPool,
+    entity_slot: usize,
+) -> f64 {
     if entity_slot >= pool.entity_radius_hitbox.len() {
         return 0.0;
     }
@@ -3451,7 +3498,9 @@ pub(crate) fn combat_targeting_refresh_activity_masks_for_entity_inner(
 }
 
 #[inline]
-pub(crate) fn combat_targeting_refresh_activity_masks_for_entity_and_read_active(entity_slot: u32) -> u8 {
+pub(crate) fn combat_targeting_refresh_activity_masks_for_entity_and_read_active(
+    entity_slot: u32,
+) -> u8 {
     let pool = combat_targeting_pool();
     combat_targeting_refresh_activity_masks_for_entity_inner(pool, entity_slot);
     let entity_idx = entity_slot as usize;
@@ -4061,9 +4110,10 @@ pub(crate) const CT_UNDER_ONLY_LOCK_EPS: f64 = 1e-6;
 pub(crate) fn combat_targeting_slab_gate_config(
     pool: &CombatTargetingPool,
     idx: usize,
-) -> (f64, u8, f64, f64, bool) {
+) -> (f64, f64, u8, f64, f64, bool) {
     (
         pool.turret_projectile_speed[idx],
+        pool.turret_projectile_air_friction_per_60hz_frame[idx],
         pool.turret_arc_preference[idx],
         pool.turret_max_time_sec[idx],
         pool.turret_ground_aim_fraction[idx],
@@ -4116,6 +4166,7 @@ pub(crate) fn compute_turret_gates_for_aim_point(
     turret_shield_spheres_enabled: u8,
     shield_obstruction_active: u8,
     projectile_speed: f64,
+    projectile_air_friction_per_60hz_frame: f64,
     arc_preference: u8,
     max_time_sec: f64,
     ground_aim_fraction: f64,
@@ -4154,14 +4205,7 @@ pub(crate) fn compute_turret_gates_for_aim_point(
                 // The same slab fields still carry a reusable yaw/pitch pose
                 // for turret rotation and downstream beam paths.
                 combat_targeting_write_direct_aim_solution(
-                    pool,
-                    idx,
-                    mount_x,
-                    mount_y,
-                    mount_z,
-                    raw_aim_x,
-                    raw_aim_y,
-                    raw_aim_z,
+                    pool, idx, mount_x, mount_y, mount_z, raw_aim_x, raw_aim_y, raw_aim_z,
                 );
                 ballistic_clear = 1;
             } else {
@@ -4199,6 +4243,7 @@ pub(crate) fn compute_turret_gates_for_aim_point(
                     0.0,
                     0.0,
                     projectile_speed,
+                    projectile_air_friction_per_60hz_frame,
                     gravity,
                     arc_preference,
                     max_time_sec,
@@ -4325,8 +4370,14 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
         let mount_x = pool.turret_mount_x[idx];
         let mount_y = pool.turret_mount_y[idx];
         let mount_z = pool.turret_mount_z[idx];
-        let (projectile_speed, arc_preference, max_time_sec, ground_aim_fraction, under_only) =
-            combat_targeting_slab_gate_config(pool, idx);
+        let (
+            projectile_speed,
+            projectile_air_friction_per_60hz_frame,
+            arc_preference,
+            max_time_sec,
+            ground_aim_fraction,
+            under_only,
+        ) = combat_targeting_slab_gate_config(pool, idx);
 
         let (los_clear, ballistic_clear, shield_clear) = compute_turret_gates_for_aim_point(
             pool,
@@ -4351,6 +4402,7 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
             turret_shield_spheres_enabled,
             shield_obstruction_active,
             projectile_speed,
+            projectile_air_friction_per_60hz_frame,
             arc_preference,
             max_time_sec,
             ground_aim_fraction,
@@ -4685,8 +4737,14 @@ pub(crate) fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner
         let mount_x = pool.turret_mount_x[idx];
         let mount_y = pool.turret_mount_y[idx];
         let mount_z = pool.turret_mount_z[idx];
-        let (projectile_speed, arc_preference, max_time_sec, ground_aim_fraction, under_only) =
-            combat_targeting_slab_gate_config(pool, idx);
+        let (
+            projectile_speed,
+            projectile_air_friction_per_60hz_frame,
+            arc_preference,
+            max_time_sec,
+            ground_aim_fraction,
+            under_only,
+        ) = combat_targeting_slab_gate_config(pool, idx);
 
         // Short-circuit when the target or mirror gate has already
         // failed — saves the LOS/ballistic/FF compute since the FSM
@@ -4735,6 +4793,7 @@ pub(crate) fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner
                     turret_shield_spheres_enabled,
                     shield_obstruction_active,
                     projectile_speed,
+                    projectile_air_friction_per_60hz_frame,
                     arc_preference,
                     max_time_sec,
                     ground_aim_fraction,
@@ -4904,8 +4963,14 @@ pub(crate) fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batc
         let mount_x = pool.turret_mount_x[idx];
         let mount_y = pool.turret_mount_y[idx];
         let mount_z = pool.turret_mount_z[idx];
-        let (projectile_speed, arc_preference, max_time_sec, ground_aim_fraction, under_only) =
-            combat_targeting_slab_gate_config(pool, idx);
+        let (
+            projectile_speed,
+            projectile_air_friction_per_60hz_frame,
+            arc_preference,
+            max_time_sec,
+            ground_aim_fraction,
+            under_only,
+        ) = combat_targeting_slab_gate_config(pool, idx);
 
         // Short-circuit when target invalid or mirror invalid — the
         // FSM will set state idle without consulting gates anyway.
@@ -4952,6 +5017,7 @@ pub(crate) fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batc
                 turret_shield_spheres_enabled,
                 shield_obstruction_active,
                 projectile_speed,
+                projectile_air_friction_per_60hz_frame,
                 arc_preference,
                 max_time_sec,
                 ground_aim_fraction,
@@ -6662,6 +6728,7 @@ pub(crate) fn combat_targeting_candidate_slot_gate_passes(
     shield_obstruction_active: u8,
     gravity: f64,
     projectile_speed: f64,
+    projectile_air_friction_per_60hz_frame: f64,
     arc_preference: u8,
     max_time_sec: f64,
     ground_aim_fraction: f64,
@@ -6723,6 +6790,7 @@ pub(crate) fn combat_targeting_candidate_slot_gate_passes(
         turret_shield_spheres_enabled,
         shield_obstruction_active,
         projectile_speed,
+        projectile_air_friction_per_60hz_frame,
         arc_preference,
         max_time_sec,
         ground_aim_fraction,
@@ -6997,8 +7065,14 @@ pub(crate) fn combat_targeting_compute_and_choose_best_candidates_batch_inner(
             0
         };
 
-        let (projectile_speed, arc_preference, max_time_sec, ground_aim_fraction, under_only) =
-            combat_targeting_slab_gate_config(pool, idx);
+        let (
+            projectile_speed,
+            projectile_air_friction_per_60hz_frame,
+            arc_preference,
+            max_time_sec,
+            ground_aim_fraction,
+            under_only,
+        ) = combat_targeting_slab_gate_config(pool, idx);
 
         let choice = combat_targeting_choose_best_candidate_inner_with_internal_gate(
             pool,
@@ -7039,6 +7113,7 @@ pub(crate) fn combat_targeting_compute_and_choose_best_candidates_batch_inner(
             shield_obstruction_active,
             gravity,
             projectile_speed,
+            projectile_air_friction_per_60hz_frame,
             arc_preference,
             max_time_sec,
             ground_aim_fraction,
@@ -7100,6 +7175,7 @@ pub(crate) fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
     shield_obstruction_active: u8,
     gravity: f64,
     projectile_speed: f64,
+    projectile_air_friction_per_60hz_frame: f64,
     arc_preference: u8,
     max_time_sec: f64,
     ground_aim_fraction: f64,
@@ -7288,6 +7364,7 @@ pub(crate) fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             shield_obstruction_active,
             gravity,
             projectile_speed,
+            projectile_air_friction_per_60hz_frame,
             arc_preference,
             max_time_sec,
             ground_aim_fraction,
@@ -7395,6 +7472,7 @@ pub(crate) fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             shield_obstruction_active,
             gravity,
             projectile_speed,
+            projectile_air_friction_per_60hz_frame,
             arc_preference,
             max_time_sec,
             ground_aim_fraction,
@@ -7608,7 +7686,8 @@ impl ShieldSurfacePool {
 
 pub(crate) struct ShieldSurfacePoolHolder(UnsafeCell<Option<ShieldSurfacePool>>);
 unsafe impl Sync for ShieldSurfacePoolHolder {}
-pub(crate) static SHIELD_POOL: ShieldSurfacePoolHolder = ShieldSurfacePoolHolder(UnsafeCell::new(None));
+pub(crate) static SHIELD_POOL: ShieldSurfacePoolHolder =
+    ShieldSurfacePoolHolder(UnsafeCell::new(None));
 
 #[inline]
 pub(crate) fn shield_pool() -> &'static mut ShieldSurfacePool {
@@ -7800,7 +7879,11 @@ pub(crate) fn reflect_about_normal(
     let ny = ny_raw * inv_normal_len;
     let nz = nz_raw * inv_normal_len;
     let dot = dx * nx + dy * ny + dz * nz;
-    Some((dx - 2.0 * dot * nx, dy - 2.0 * dot * ny, dz - 2.0 * dot * nz))
+    Some((
+        dx - 2.0 * dot * nx,
+        dy - 2.0 * dot * ny,
+        dz - 2.0 * dot * nz,
+    ))
 }
 
 pub(crate) struct ShieldFieldContact {
@@ -9848,9 +9931,14 @@ pub fn projectile_reflector_intersections_batch(
         // Reflected SEGMENT direction (unnormalized scale carried by the
         // caller): the one shared mirror formula, so beams and shots can
         // never disagree on the bounce.
-        if let Some((rdx, rdy, rdz)) =
-            reflect_about_normal(tx - sx, ty - sy, tz - sz, hit.normal_x, hit.normal_y, hit.normal_z)
-        {
+        if let Some((rdx, rdy, rdz)) = reflect_about_normal(
+            tx - sx,
+            ty - sy,
+            tz - sz,
+            hit.normal_x,
+            hit.normal_y,
+            hit.normal_z,
+        ) {
             let len = (rdx * rdx + rdy * rdy + rdz * rdz).sqrt();
             if len > 1e-12 {
                 out_reflect_dir_x[i] = rdx / len;
@@ -9997,8 +10085,7 @@ pub fn projectile_reflection_response_batch(
         };
         // Unit normal for the surface-offset push below (the helper
         // returning Some guarantees the normal is non-degenerate).
-        let inv_normal_len =
-            1.0 / (nx_raw * nx_raw + ny_raw * ny_raw + nz_raw * nz_raw).sqrt();
+        let inv_normal_len = 1.0 / (nx_raw * nx_raw + ny_raw * ny_raw + nz_raw * nz_raw).sqrt();
         let nx = nx_raw * inv_normal_len;
         let ny = ny_raw * inv_normal_len;
         let nz = nz_raw * inv_normal_len;
@@ -10484,12 +10571,7 @@ mod tests {
     #[test]
     fn panel_centerline_intersection_still_hits_plane() {
         let t = ray_tilted_rect_intersection_t(
-            -5.0, 0.0, 0.0,
-            5.0, 0.0, 0.0,
-            0.0, 0.0, 0.0,
-            1.0, 0.0, 0.0,
-            0.0, 1.0, 0.0,
-            1.0, 1.0,
+            -5.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0,
         )
         .unwrap();
         assert_close(t, 0.5);
@@ -10498,12 +10580,7 @@ mod tests {
     #[test]
     fn panel_intersection_ignores_radius_edge_overlap() {
         let centerline = ray_tilted_rect_intersection_t(
-            -5.0, 1.4, 0.0,
-            5.0, 1.4, 0.0,
-            0.0, 0.0, 0.0,
-            1.0, 0.0, 0.0,
-            0.0, 1.0, 0.0,
-            1.0, 1.0,
+            -5.0, 1.4, 0.0, 5.0, 1.4, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0,
         );
         assert!(centerline.is_none());
     }
@@ -10555,10 +10632,18 @@ mod tests {
             SHIELD_REFLECTION_MODE_NONE,
         );
         let laser_hit = shield_projectile_intersection_contact(
-            -10.0, 0.0, 0.0,
-            10.0, 0.0, 0.0,
-            0.0, 0.0, 0.0,
-            0.0, 0.0, 1.0,
+            -10.0,
+            0.0,
+            0.0,
+            10.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
             5.0,
             0.0,
             SHIELD_FIELD_SHAPE_SPHERE,
@@ -10574,10 +10659,18 @@ mod tests {
             SHIELD_REFLECTION_MODE_NONE,
         );
         let beam_hit = shield_projectile_intersection_contact(
-            -10.0, 0.0, 0.0,
-            10.0, 0.0, 0.0,
-            0.0, 0.0, 0.0,
-            0.0, 0.0, 1.0,
+            -10.0,
+            0.0,
+            0.0,
+            10.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
             5.0,
             0.0,
             SHIELD_FIELD_SHAPE_SPHERE,

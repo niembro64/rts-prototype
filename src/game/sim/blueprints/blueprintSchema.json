@@ -549,7 +549,10 @@
         "submunitions",
         "homingTurnRate",
         "homingThrust",
+        "homingDelayMs",
+        "propulsionForce",
         "gravityForceMultiplier",
+        "airFrictionPer60HzFrame",
         "smokeTrail"
       ],
       "properties": {
@@ -627,7 +630,30 @@
             }
           ]
         },
+        "homingDelayMs": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "propulsionForce": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "gravityForceMultiplier": {
+          "type": "number"
+        },
+        "airFrictionPer60HzFrame": {
           "type": "number"
         },
         "smokeTrail": {
@@ -703,7 +729,8 @@
         "health",
         "launchForce",
         "radius",
-        "gravityForceMultiplier"
+        "gravityForceMultiplier",
+        "airFrictionPer60HzFrame"
       ],
       "properties": {
         "type": {
@@ -742,7 +769,16 @@
         "homingThrust": {
           "type": "number"
         },
+        "homingDelayMs": {
+          "type": "number"
+        },
+        "propulsionForce": {
+          "type": "number"
+        },
         "gravityForceMultiplier": {
+          "type": "number"
+        },
+        "airFrictionPer60HzFrame": {
           "type": "number"
         },
         "trailLength": {

@@ -177,6 +177,8 @@ export type ProjectileVelocityUpdateEvent = {
   id: EntityId;
   pos: Vec3;
   velocity: Vec3;
+  /** Set when authoritative homing retargets to a new visible entity. */
+  targetEntityId?: EntityId;
   /** Clear the projectile's inherited homing target on clients when
    *  authoritative guidance intentionally ends. Reflections preserve it. */
   clearHomingTarget?: boolean;

@@ -2053,12 +2053,13 @@ pub fn snapshot_encode_proj_despawn_scratch_ensure(count: u32) {
     }
 }
 
-/// Projectile velocity-update scratch — 8 f64 per entry:
+/// Projectile velocity-update scratch — 9 f64 per entry:
 ///   [0]   id
 ///   [1..4] pos.x, pos.y, pos.z
 ///   [4..7] velocity.x, velocity.y, velocity.z
 ///   [7]   clearHomingTarget flag
-pub(crate) const SNAPSHOT_ENCODE_PROJ_VEL_STRIDE: usize = 8;
+///   [8]   targetEntityId (0 = omitted)
+pub(crate) const SNAPSHOT_ENCODE_PROJ_VEL_STRIDE: usize = 9;
 
 pub(crate) struct SnapshotEncodeProjVelScratch {
     buf: Vec<f64>,
@@ -5453,8 +5454,16 @@ pub fn snapshot_encode_envelope_emit_projectiles(
             let vy = scratch.buf[base + 5];
             let vz = scratch.buf[base + 6];
             let clear_homing_target = scratch.buf[base + 7] != 0.0;
-            // velocityUpdate DTO: {id, pos: {x, y, z}, velocity: {x, y, z}, clearHomingTarget?}
-            w.write_map_header(if clear_homing_target { 4 } else { 3 });
+            let target_entity_id = scratch.buf[base + 8] as u32;
+            // velocityUpdate DTO: {id, pos: {x, y, z}, velocity: {x, y, z}, targetEntityId?, clearHomingTarget?}
+            let mut field_count = 3;
+            if target_entity_id > 0 {
+                field_count += 1;
+            }
+            if clear_homing_target {
+                field_count += 1;
+            }
+            w.write_map_header(field_count);
             w.write_str("id");
             w.write_uint(id as u64);
             w.write_str("pos");
@@ -5473,6 +5482,10 @@ pub fn snapshot_encode_envelope_emit_projectiles(
             w.write_number(vy);
             w.write_str("z");
             w.write_number(vz);
+            if target_entity_id > 0 {
+                w.write_str("targetEntityId");
+                w.write_uint(target_entity_id as u64);
+            }
             if clear_homing_target {
                 w.write_str("clearHomingTarget");
                 w.write_bool(true);
@@ -10204,6 +10217,7 @@ mod lock_on_inclusion_tests {
             -1,
             spec.flags,
             spec.dps,
+            0.0,
             0.0,
             0,
             0.0,

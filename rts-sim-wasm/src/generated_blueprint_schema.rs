@@ -220,7 +220,10 @@ pub struct ProjectileShotBlueprint {
     pub submunitions: Option<SubmunitionSpec>,
     pub homingTurnRate: Option<f64>,
     pub homingThrust: Option<f64>,
+    pub homingDelayMs: Option<f64>,
+    pub propulsionForce: Option<f64>,
     pub gravityForceMultiplier: f64,
+    pub airFrictionPer60HzFrame: f64,
     pub smokeTrail: Option<SmokeTrailSpec>,
 }
 
@@ -261,7 +264,10 @@ pub struct ProjectileShot {
     pub maxLifespan: Option<f64>,
     pub homingTurnRate: Option<f64>,
     pub homingThrust: Option<f64>,
+    pub homingDelayMs: Option<f64>,
+    pub propulsionForce: Option<f64>,
     pub gravityForceMultiplier: f64,
+    pub airFrictionPer60HzFrame: f64,
     pub trailLength: Option<f64>,
     pub submunitions: Option<SubmunitionSpec>,
     pub smokeTrail: Option<SmokeTrailSpec>,

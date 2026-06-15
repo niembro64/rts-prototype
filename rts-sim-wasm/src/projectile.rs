@@ -1,9 +1,9 @@
 // projectile — extracted from lib.rs (pure code motion).
 
 #[allow(unused_imports)]
-use wasm_bindgen::prelude::*;
-#[allow(unused_imports)]
 use crate::*;
+#[allow(unused_imports)]
+use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────
 //  Phase 5a — Packed projectile SoA pool in WASM linear memory
@@ -74,7 +74,8 @@ impl ProjectilePool {
 
 pub(crate) struct ProjectilePoolHolder(UnsafeCell<Option<ProjectilePool>>);
 unsafe impl Sync for ProjectilePoolHolder {}
-pub(crate) static PROJECTILE_POOL: ProjectilePoolHolder = ProjectilePoolHolder(UnsafeCell::new(None));
+pub(crate) static PROJECTILE_POOL: ProjectilePoolHolder =
+    ProjectilePoolHolder(UnsafeCell::new(None));
 
 #[inline]
 pub(crate) fn projectile_pool() -> &'static mut ProjectilePool {
@@ -261,6 +262,183 @@ pub(crate) fn intercept_bisect_root(input: &[f64; 22], lo_t: f64, hi_t: f64) -> 
         }
     }
     (lo + hi) * 0.5
+}
+
+#[inline]
+pub(crate) fn projectile_air_drag_k_from_friction_per_60hz_frame(
+    friction_per_60hz_frame: f64,
+) -> f64 {
+    if !friction_per_60hz_frame.is_finite() || friction_per_60hz_frame <= 0.0 {
+        return 0.0;
+    }
+    if friction_per_60hz_frame >= 1.0 {
+        return f64::INFINITY;
+    }
+    -(1.0 - friction_per_60hz_frame).ln() * 60.0
+}
+
+#[inline]
+fn damped_required_world_velocity_axis(
+    displacement: f64,
+    acceleration: f64,
+    time: f64,
+    drag_k: f64,
+) -> f64 {
+    let damp = (-drag_k * time).exp();
+    let retention_loss = 1.0 - damp;
+    if !retention_loss.is_finite() || retention_loss <= 1e-12 {
+        return f64::NAN;
+    }
+    let terminal = acceleration / drag_k;
+    terminal + (displacement - terminal * time) * drag_k / retention_loss
+}
+
+#[inline]
+fn damped_intercept_function(input: &[f64; 22], time: f64, drag_k: f64) -> f64 {
+    let aim_x = input[9] + input[12] * time + 0.5 * input[15] * time * time;
+    let aim_y = input[10] + input[13] * time + 0.5 * input[16] * time * time;
+    let aim_z = input[11] + input[14] * time + 0.5 * input[17] * time * time;
+
+    let world_vx = damped_required_world_velocity_axis(aim_x - input[0], input[18], time, drag_k);
+    let world_vy = damped_required_world_velocity_axis(aim_y - input[1], input[19], time, drag_k);
+    let world_vz = damped_required_world_velocity_axis(aim_z - input[2], input[20], time, drag_k);
+    if !world_vx.is_finite() || !world_vy.is_finite() || !world_vz.is_finite() {
+        return f64::INFINITY;
+    }
+
+    let rel_vx = world_vx - input[3];
+    let rel_vy = world_vy - input[4];
+    let rel_vz = world_vz - input[5];
+    (rel_vx * rel_vx + rel_vy * rel_vy + rel_vz * rel_vz).sqrt() - input[21]
+}
+
+#[inline]
+fn damped_intercept_bisect_root(input: &[f64; 22], drag_k: f64, lo_t: f64, hi_t: f64) -> f64 {
+    let mut lo = lo_t;
+    let mut hi = hi_t;
+    let mut lo_f = damped_intercept_function(input, lo, drag_k);
+    for _ in 0..INTERCEPT_BISECT_STEPS {
+        let mid = (lo + hi) * 0.5;
+        let mid_f = damped_intercept_function(input, mid, drag_k);
+        if mid_f.abs() <= INTERCEPT_ROOT_EPSILON {
+            return mid;
+        }
+        if (lo_f <= 0.0 && mid_f <= 0.0) || (lo_f >= 0.0 && mid_f >= 0.0) {
+            lo = mid;
+            lo_f = mid_f;
+        } else {
+            hi = mid;
+        }
+    }
+    (lo + hi) * 0.5
+}
+
+#[inline]
+fn write_damped_intercept_solution(
+    input: &[f64; 22],
+    time: f64,
+    drag_k: f64,
+    out_buf: &mut [f64],
+) -> bool {
+    let aim_x = input[9] + input[12] * time + 0.5 * input[15] * time * time;
+    let aim_y = input[10] + input[13] * time + 0.5 * input[16] * time * time;
+    let aim_z = input[11] + input[14] * time + 0.5 * input[17] * time * time;
+    let world_vx = damped_required_world_velocity_axis(aim_x - input[0], input[18], time, drag_k);
+    let world_vy = damped_required_world_velocity_axis(aim_y - input[1], input[19], time, drag_k);
+    let world_vz = damped_required_world_velocity_axis(aim_z - input[2], input[20], time, drag_k);
+    if !world_vx.is_finite() || !world_vy.is_finite() || !world_vz.is_finite() {
+        return false;
+    }
+
+    out_buf[0] = time;
+    out_buf[1] = aim_x;
+    out_buf[2] = aim_y;
+    out_buf[3] = aim_z;
+    out_buf[4] = world_vx - input[3];
+    out_buf[5] = world_vy - input[4];
+    out_buf[6] = world_vz - input[5];
+    true
+}
+
+#[inline]
+pub(crate) fn solve_damped_kinematic_intercept_inline(
+    inp: &[f64; 22],
+    out_buf: &mut [f64],
+    prefer_late_solution: u8,
+    max_time_sec_or_zero: f64,
+    air_friction_per_60hz_frame: f64,
+) -> bool {
+    if !intercept_input_finite(inp) || !air_friction_per_60hz_frame.is_finite() {
+        return false;
+    }
+    if air_friction_per_60hz_frame <= 0.0 {
+        return solve_kinematic_intercept_inline(
+            inp,
+            out_buf,
+            prefer_late_solution,
+            max_time_sec_or_zero,
+        );
+    }
+    if air_friction_per_60hz_frame >= 1.0 {
+        return false;
+    }
+    let drag_k = projectile_air_drag_k_from_friction_per_60hz_frame(air_friction_per_60hz_frame);
+    if !drag_k.is_finite() || drag_k <= 1e-9 {
+        return solve_kinematic_intercept_inline(
+            inp,
+            out_buf,
+            prefer_late_solution,
+            max_time_sec_or_zero,
+        );
+    }
+
+    let max_time = if max_time_sec_or_zero > 0.0 && max_time_sec_or_zero.is_finite() {
+        intercept_clamp_time(max_time_sec_or_zero)
+    } else {
+        intercept_default_max_time(inp)
+    };
+    if max_time <= INTERCEPT_MIN_TIME {
+        return false;
+    }
+
+    let mut selected_root = 0.0_f64;
+    let mut prev_t = INTERCEPT_MIN_TIME;
+    let mut prev_f = damped_intercept_function(inp, prev_t, drag_k);
+    let want_late = prefer_late_solution != 0;
+    if prev_f.abs() <= INTERCEPT_ROOT_EPSILON {
+        selected_root = prev_t;
+    }
+
+    for i in 1..=INTERCEPT_SAMPLE_COUNT {
+        let t = INTERCEPT_MIN_TIME
+            + (max_time - INTERCEPT_MIN_TIME) * (i as f64) / (INTERCEPT_SAMPLE_COUNT as f64);
+        let f = damped_intercept_function(inp, t, drag_k);
+        if !f.is_finite() || !prev_f.is_finite() {
+            prev_t = t;
+            prev_f = f;
+            continue;
+        }
+
+        let mut root = 0.0_f64;
+        if f.abs() <= INTERCEPT_ROOT_EPSILON {
+            root = t;
+        } else if (prev_f > 0.0 && f < 0.0) || (prev_f < 0.0 && f > 0.0) {
+            root = damped_intercept_bisect_root(inp, drag_k, prev_t, t);
+        }
+        if root > 0.0 {
+            selected_root = root;
+            if !want_late {
+                break;
+            }
+        }
+        prev_t = t;
+        prev_f = f;
+    }
+
+    if selected_root <= INTERCEPT_MIN_TIME {
+        return false;
+    }
+    write_damped_intercept_solution(inp, selected_root, drag_k, out_buf)
 }
 
 #[inline]
@@ -921,12 +1099,14 @@ pub fn terrain_follow_vertical_thrust_accel(
     js_max(0.0, js_min(max_thrust_accel, desired_thrust_accel))
 }
 
-/// Batched constant-acceleration projectile/body integrator.
+/// Batched projectile/body integrator with constant authored acceleration
+/// and optional linear velocity damping.
 ///
-/// Position uses the exact `p + v*t + 0.5*a*t^2` equation and velocity uses
-/// `v + a*t`. TypeScript still owns projectile lifecycle and target policy,
-/// but all non-packed guided/D-gun projectile integration now crosses this
-/// kernel in one batch per tick.
+/// When `air_damp` is 1, this reduces to exact constant-acceleration
+/// integration. Otherwise the kernel integrates the continuous drag model
+/// matching the ballistic solver. TypeScript still owns projectile lifecycle
+/// and target policy, but all non-packed guided/D-gun projectile integration
+/// now crosses this kernel in one batch per tick.
 #[wasm_bindgen]
 pub fn projectile_integrate_step_batch(
     count: u32,
@@ -939,6 +1119,7 @@ pub fn projectile_integrate_step_batch(
     accel_x: &[f64],
     accel_y: &[f64],
     accel_z: &[f64],
+    air_damp: &[f64],
     dt_sec: f64,
 ) -> u32 {
     let n = count as usize;
@@ -951,21 +1132,65 @@ pub fn projectile_integrate_step_batch(
         || accel_x.len() < n
         || accel_y.len() < n
         || accel_z.len() < n
+        || air_damp.len() < n
         || !dt_sec.is_finite()
     {
         return 0;
     }
 
-    let half_dt_sq = 0.5 * dt_sec * dt_sec;
     for i in 0..n {
-        pos_x[i] += vel_x[i] * dt_sec + accel_x[i] * half_dt_sq;
-        pos_y[i] += vel_y[i] * dt_sec + accel_y[i] * half_dt_sq;
-        pos_z[i] += vel_z[i] * dt_sec + accel_z[i] * half_dt_sq;
-        vel_x[i] += accel_x[i] * dt_sec;
-        vel_y[i] += accel_y[i] * dt_sec;
-        vel_z[i] += accel_z[i] * dt_sec;
+        integrate_linear_damped_axis(
+            &mut pos_x[i],
+            &mut vel_x[i],
+            accel_x[i],
+            dt_sec,
+            air_damp[i],
+        );
+        integrate_linear_damped_axis(
+            &mut pos_y[i],
+            &mut vel_y[i],
+            accel_y[i],
+            dt_sec,
+            air_damp[i],
+        );
+        integrate_linear_damped_axis(
+            &mut pos_z[i],
+            &mut vel_z[i],
+            accel_z[i],
+            dt_sec,
+            air_damp[i],
+        );
     }
     count
+}
+
+#[inline]
+pub(crate) fn integrate_linear_damped_axis(
+    pos: &mut f64,
+    vel: &mut f64,
+    accel: f64,
+    dt_sec: f64,
+    damp: f64,
+) {
+    if !dt_sec.is_finite() || dt_sec <= 0.0 {
+        return;
+    }
+    if !damp.is_finite() || damp >= 0.999_999 {
+        *pos += *vel * dt_sec + 0.5 * accel * dt_sec * dt_sec;
+        *vel += accel * dt_sec;
+        return;
+    }
+    let d = damp.max(1e-9);
+    let k = -d.ln() / dt_sec;
+    if !k.is_finite() || k <= 1e-9 {
+        *pos += *vel * dt_sec + 0.5 * accel * dt_sec * dt_sec;
+        *vel += accel * dt_sec;
+        return;
+    }
+    let terminal = accel / k;
+    let retention_loss = 1.0 - d;
+    *pos += (*vel - terminal) * retention_loss / k + terminal * dt_sec;
+    *vel = *vel * d + terminal * retention_loss;
 }
 
 /// Per-tick ballistic integrator. For slots 0..count, advances with the

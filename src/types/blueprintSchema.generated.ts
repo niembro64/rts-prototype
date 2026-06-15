@@ -133,7 +133,10 @@ export type ProjectileShotBlueprint = {
   submunitions: SubmunitionSpec | null;
   homingTurnRate: number | null;
   homingThrust: number | null;
+  homingDelayMs: number | null;
+  propulsionForce: number | null;
   gravityForceMultiplier: number;
+  airFrictionPer60HzFrame: number;
   smokeTrail: SmokeTrailSpec | null;
 };
 
@@ -164,7 +167,10 @@ export type ProjectileShot = {
   maxLifespan?: number;
   homingTurnRate?: number;
   homingThrust?: number;
+  homingDelayMs?: number;
+  propulsionForce?: number;
   gravityForceMultiplier: number;
+  airFrictionPer60HzFrame: number;
   trailLength?: number;
   submunitions?: SubmunitionSpec;
   smokeTrail?: SmokeTrailSpec;

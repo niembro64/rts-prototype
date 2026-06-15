@@ -219,14 +219,10 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
       if (!turretMaskIncludes(activeMask, weaponIndex)) continue;
       const weapon = turrets[weaponIndex];
       if (weapon.config.visualOnly) continue;
-      // Vertical launchers skip the normal yaw/pitch aim math — the
-      // turret always points straight up and each fired rocket picks
-      // a random cone-from-vertical direction at launch (projectile-
-      // System handles that). Targeting state still runs in the Rust
-      // scheduler bridge so the weapon acquires a homing target, but
-      // here we just pin the pose so the rendered barrels stay
-      // skyward and the gatling spin (driven by engagement state)
-      // keeps working.
+      // Vertical launchers skip normal yaw/pitch aim math. The turret
+      // barrel itself is pinned straight up; projectile launch reads
+      // this same barrel pose and applies the authored launch force.
+      // Targeting still runs so the fired rocket can inherit a lock.
       if (weapon.config.verticalLauncher) {
         weapon.rotation = 0;
         weapon.angularVelocity = 0;

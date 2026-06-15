@@ -24,7 +24,10 @@ const PROJECTILE_EXPLICIT_FIELDS = [
   'submunitions',
   'homingTurnRate',
   'homingThrust',
+  'homingDelayMs',
+  'propulsionForce',
   'gravityForceMultiplier',
+  'airFrictionPer60HzFrame',
   'smokeTrail',
 ] as const;
 
@@ -84,9 +87,29 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
       `Shot blueprint ${id} mismatched homing: homingTurnRate=${blueprint.homingTurnRate}, homingThrust=${blueprint.homingThrust}. Both must be set or both null.`,
     );
   }
+  if (blueprint.homingDelayMs !== null && (!Number.isFinite(blueprint.homingDelayMs) || blueprint.homingDelayMs < 0)) {
+    throw new Error(
+      `Shot blueprint ${id} has invalid homingDelayMs: expected null or finite non-negative milliseconds.`,
+    );
+  }
+  if (!hasRate && blueprint.homingDelayMs !== null) {
+    throw new Error(
+      `Shot blueprint ${id} has homingDelayMs without homing: non-homing shots must use null.`,
+    );
+  }
   if (!Number.isFinite(blueprint.gravityForceMultiplier) || blueprint.gravityForceMultiplier < 0) {
     throw new Error(
       `Shot blueprint ${id} has invalid gravityForceMultiplier: projectile shots must define a finite non-negative multiplier.`,
+    );
+  }
+  if (blueprint.propulsionForce !== null && (!Number.isFinite(blueprint.propulsionForce) || blueprint.propulsionForce < 0)) {
+    throw new Error(
+      `Shot blueprint ${id} has invalid propulsionForce: expected null or finite non-negative force.`,
+    );
+  }
+  if (!Number.isFinite(blueprint.airFrictionPer60HzFrame) || blueprint.airFrictionPer60HzFrame < 0 || blueprint.airFrictionPer60HzFrame >= 1) {
+    throw new Error(
+      `Shot blueprint ${id} has invalid airFrictionPer60HzFrame: expected finite value in [0, 1).`,
     );
   }
   if (blueprint.type === 'rocket') {

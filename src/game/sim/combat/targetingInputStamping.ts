@@ -37,6 +37,7 @@ import {
   getProjectileLaunchSpeed,
   resolveWeaponWorldMount,
 } from './combatUtils';
+import { getProjectileAirFrictionPer60HzFrame } from '../projectileMotion';
 import { getUnitGroundZ } from '../unitGeometry';
 import { getActiveShieldPanelTurret } from '../shieldPanelRuntime';
 import {
@@ -681,6 +682,9 @@ function stampCombatTargetingEntityInto(
         ? BALLISTIC_ARC_LOW
         : angleType === 'ballisticArcHigh' ? BALLISTIC_ARC_HIGH : BALLISTIC_ARC_LOW;
     const projectileSpeed = projectileShot ? getProjectileLaunchSpeed(projectileShot) : 0;
+    const projectileAirFrictionPer60HzFrame = projectileShot
+      ? getProjectileAirFrictionPer60HzFrame(projectileShot)
+      : 0;
     let maxTimeSec = 0;
     if (projectileShot) {
       const lifeMs = getShotMaxLifespan(projectileShot);
@@ -715,6 +719,7 @@ function stampCombatTargetingEntityInto(
       encodeTurretConfigFlags(t, ranges),
       t.sustainedDps,
       projectileSpeed,
+      projectileAirFrictionPer60HzFrame,
       ballisticArcPreference,
       maxTimeSec,
       t.config.groundAimFraction ?? 0,

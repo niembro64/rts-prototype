@@ -658,6 +658,7 @@ export type NetworkServerSnapshotVelocityUpdate = {
   pos: Vec3;
   /** VELOCITY_WIRE_SCALE fixed-point velocity. */
   velocity: Vec3;
+  targetEntityId: number | null;
   clearHomingTarget: boolean | null;
 };
 
