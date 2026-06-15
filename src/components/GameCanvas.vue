@@ -171,10 +171,17 @@ const {
   toggleSpectateMode,
 } = useGameCanvasChromeState(currentBattleMode, applyPlayerClientEnabled);
 
+// The sidebar's open/closed state is restored from localStorage by
+// useGameCanvasChromeState, which is what lets it persist across reloads.
+// A plain page load / refresh always comes up on the 'lobby' surface, so
+// that case must keep the restored value untouched. Only the explicit
+// entry surfaces reached by navigating from the entity lab override it,
+// and they set the flag directly (never via toggleSpectateMode) so they
+// don't overwrite the saved preference in storage.
 if (props.initialSurface === 'demoBattle') {
-  if (!spectateMode.value) toggleSpectateMode();
-} else if (spectateMode.value) {
-  toggleSpectateMode();
+  spectateMode.value = true; // slide the menu out of the way to watch the demo
+} else if (props.initialSurface === 'onlineGame') {
+  spectateMode.value = false; // entering the online flow surfaces the menu
 }
 
 function toggleUiChrome(): void {
