@@ -1937,13 +1937,12 @@ watchEffect(() => {
       <button
         v-if="!isMobile"
         class="bottom-controls-toggle"
-        :class="{ collapsed: bottomBarsCollapsed }"
         :aria-expanded="!bottomBarsCollapsed"
         :aria-label="bottomBarsCollapsed ? 'Show bottom controls' : 'Hide bottom controls'"
         :title="bottomBarsCollapsed ? 'Show bottom controls' : 'Hide bottom controls'"
         @click="toggleBottomBars"
       >
-        <ChevronIcon :direction="bottomBarsCollapsed ? 'right' : 'left'" />
+        <ChevronIcon :direction="bottomBarsCollapsed ? 'up' : 'down'" />
       </button>
 
       <div
@@ -2566,6 +2565,7 @@ watchEffect(() => {
 
 /* Bottom control bars */
 .bottom-controls-shell {
+  position: relative;
   flex-shrink: 0;
   z-index: 3001;
   display: flex;
@@ -2579,8 +2579,6 @@ watchEffect(() => {
   position: absolute;
   left: 0;
   bottom: 0;
-  width: 30px;
-  height: 72px;
   background: transparent;
 }
 
@@ -2593,15 +2591,21 @@ watchEffect(() => {
   pointer-events: none;
 }
 
+/* Horizontal tab anchored to the bottom edge, near the left — the
+ * bottom-bars mirror of the right-edge sidebar handle, rotated 90° so
+ * the rounded edge faces up into the screen and the chevron points up
+ * (expand) / down (collapse). */
 .bottom-controls-toggle {
-  flex: 0 0 30px;
-  align-self: stretch;
-  min-height: 100%;
+  position: absolute;
+  left: 12px;
+  bottom: 0;
+  width: 72px;
+  height: 30px;
   padding: 0;
   background: #12121a;
   border: 1px solid #444;
-  border-right: none;
-  border-radius: 8px 0 0 8px;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
   color: #888;
   cursor: pointer;
   pointer-events: auto;
@@ -2609,12 +2613,6 @@ watchEffect(() => {
   align-items: center;
   justify-content: center;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-
-.bottom-controls-toggle.collapsed {
-  height: 100%;
-  min-height: 72px;
-  border-right: 1px solid #444;
 }
 
 .bottom-controls-toggle:hover {
