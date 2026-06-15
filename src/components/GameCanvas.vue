@@ -2097,10 +2097,18 @@ watchEffect(() => {
 }
 
 /* When the startup menu sidebar is open it is the topmost layer on the
- * right; inset the demo chrome so the top/bottom bars stop at the
- * sidebar's left edge instead of running underneath it. */
+ * right; reserve its strip so nothing game-related runs underneath it.
+ * The game area (which holds both the 3D battle and its loading screen
+ * in the same element) is inset alongside the top/bottom bars, so the
+ * game and its loading overlay always live to the left of the sidebar.
+ * The renderer's ResizeObserver picks up the narrower container and
+ * resizes the canvas to match. */
 .game-wrapper.menu-sidebar-open {
   --menu-sidebar-w: min(380px, calc(100vw - 40px));
+}
+
+.game-wrapper.menu-sidebar-open .game-area {
+  margin-right: var(--menu-sidebar-w);
 }
 
 .game-wrapper.menu-sidebar-open .top-controls-shell {
