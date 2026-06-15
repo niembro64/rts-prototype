@@ -247,7 +247,7 @@ export type MinimapData = {
 
   /** Whether to draw the terrain (land + water) layer. */
   showTerrain: boolean;
-  wind?: { x: number; y: number; speed: number };
+  wind?: { x: number; y: number; z: number; speed: number };
 };
 
 // Lobby player — re-exported from `types/network.ts` so the

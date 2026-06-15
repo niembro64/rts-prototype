@@ -1,16 +1,15 @@
 import { UNIT_AIR_FRICTION_PER_60HZ_FRAME } from '../../config';
-import { dampFromFrictionPer60HzFrame } from './motionFriction';
+import { dragCoefficientFromFrictionPer60HzFrame } from './motionFriction';
 
-let cachedAirDampDtSec = -1;
-let cachedAirDamp = 1;
+let cachedScale = Number.NaN;
+let cachedDragCoefficient = 0;
 
-export function getUnitAirFrictionDamp(dtSec: number): number {
-  if (dtSec === cachedAirDampDtSec) return cachedAirDamp;
-  if (dtSec <= 0) return 1;
-  cachedAirDampDtSec = dtSec;
-  cachedAirDamp = dampFromFrictionPer60HzFrame(
+export function getUnitAirDragCoefficient(scale = 1): number {
+  if (scale === cachedScale) return cachedDragCoefficient;
+  cachedScale = scale;
+  cachedDragCoefficient = dragCoefficientFromFrictionPer60HzFrame(
     UNIT_AIR_FRICTION_PER_60HZ_FRAME,
-    dtSec,
+    scale,
   );
-  return cachedAirDamp;
+  return cachedDragCoefficient;
 }

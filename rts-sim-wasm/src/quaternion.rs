@@ -1,9 +1,9 @@
 // quaternion — extracted from lib.rs (pure code motion).
 
 #[allow(unused_imports)]
-use wasm_bindgen::prelude::*;
-#[allow(unused_imports)]
 use crate::*;
+#[allow(unused_imports)]
+use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────
 //  Phase 4 — Quaternion math primitives
@@ -119,4 +119,3 @@ pub(crate) fn quat_yaw(q: [f64; 4]) -> f64 {
     let cosy_cosp = 1.0 - 2.0 * (q[1] * q[1] + q[2] * q[2]);
     siny_cosp.atan2(cosy_cosp)
 }
-

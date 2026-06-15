@@ -265,6 +265,7 @@ import __wbg_init, {
   combat_targeting_rebuild_observation_masks,
   combat_targeting_rebuild_observation_masks_for_sources,
   combat_targeting_add_sensor_observation_circle,
+  combat_targeting_set_wind,
   combat_targeting_set_turret,
   combat_targeting_update_mount_kinematics,
   combat_targeting_update_mount_kinematics_batch,
@@ -783,8 +784,12 @@ export interface SimWasm {
     ax: number,
     ay: number,
     az: number,
-    airDamp: number,
+    airDragCoefficient: number,
+    invMass: number,
     groundDamp: number,
+    windX: number,
+    windY: number,
+    windZ: number,
     launchAx: number,
     launchAy: number,
     launchAz: number,
@@ -806,9 +811,13 @@ export interface SimWasm {
     groundOffsets: Float64Array,
     groundZ: Float64Array,
     groundNormals: Float64Array,
+    airDragCoefficients: Float64Array,
+    invMass: Float64Array,
     dtSec: number,
-    airDamp: number,
     groundDamp: number,
+    windX: number,
+    windY: number,
+    windZ: number,
     restPenetrationEpsilon: number,
     restSpeedSq: number,
   ) => void;
@@ -836,8 +845,11 @@ export interface SimWasm {
     groundNormals: Float64Array,
     sleepTransitionsOut: Uint32Array,
     dtSec: number,
-    airDamp: number,
+    baseAirDragCoefficient: number,
     groundDamp: number,
+    windX: number,
+    windY: number,
+    windZ: number,
   ) => number;
   /** Pool-backed PhysicsEngine3D step prep. Rust clears per-step
    *  upward-contact flags, applies map-boundary acceleration, wakes
@@ -1350,7 +1362,11 @@ export interface SimWasm {
     accelX: Float64Array,
     accelY: Float64Array,
     accelZ: Float64Array,
-    airDamp: Float64Array,
+    airDragCoefficient: Float64Array,
+    invMass: Float64Array,
+    windX: number,
+    windY: number,
+    windZ: number,
     dtSec: number,
   ) => number;
   /** C1 — batched server homing guidance for non-packed projectiles.
@@ -1361,6 +1377,9 @@ export interface SimWasm {
     rows: Float64Array,
     count: number,
     dtSec: number,
+    windX: number,
+    windY: number,
+    windZ: number,
   ) => number;
   /** C1 — batched homing guidance that writes thrust into projectile
    *  acceleration slabs before the Rust integrator runs. */
@@ -1372,6 +1391,9 @@ export interface SimWasm {
     accelZ: Float64Array,
     count: number,
     dtSec: number,
+    windX: number,
+    windY: number,
+    windZ: number,
   ) => number;
   /** Beam/ray range-volume clipping. `rangeVolume` uses
    *  lineShotRange.ts string-to-code mapping. */
@@ -2260,6 +2282,7 @@ export interface CombatTargetingApi {
     y: number,
     radius: number,
   ) => void;
+  setWind: (x: number, y: number, z: number) => void;
   setTurret: (
     entitySlot: number,
     turretIdx: number,
@@ -2293,6 +2316,7 @@ export interface CombatTargetingApi {
     configFlags: number,
     dps: number,
     projectileSpeed: number,
+    projectileMass: number,
     projectileAirFrictionPer60HzFrame: number,
     arcPreference: number,
     maxTimeSec: number,
@@ -2436,6 +2460,7 @@ export interface CombatTargetingApi {
     originAy: number,
     originAz: number,
     projectileSpeed: number,
+    projectileMass: number,
     projectileAirFrictionPer60HzFrame: number,
     gravity: number,
     arcPreference: number,
@@ -3205,6 +3230,7 @@ export interface SnapshotEncodeApi {
     cpuHi: number,
     windX: number,
     windY: number,
+    windZ: number,
     windSpeed: number,
     windAngle: number,
     unitGroundNormalEmaSlot: number,
@@ -4110,6 +4136,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           rebuildObservationMasks: combat_targeting_rebuild_observation_masks,
           rebuildObservationMasksForSources: combat_targeting_rebuild_observation_masks_for_sources,
           addSensorObservationCircle: combat_targeting_add_sensor_observation_circle,
+          setWind: combat_targeting_set_wind,
           setTurret: combat_targeting_set_turret,
           updateMountKinematics: combat_targeting_update_mount_kinematics,
           updateMountKinematicsBatch: combat_targeting_update_mount_kinematics_batch,

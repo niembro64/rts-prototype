@@ -1,9 +1,10 @@
 // motion — extracted from lib.rs (pure code motion).
 
-#[allow(unused_imports)]
-use wasm_bindgen::prelude::*;
+use crate::air_drag::{drag_rate_from_coefficient, integrate_linear_drag_axis};
 #[allow(unused_imports)]
 use crate::*;
+#[allow(unused_imports)]
+use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────
 //  Contact-cell broadphase encoding (shared helper)
@@ -46,7 +47,8 @@ pub(crate) fn pack_contact_cell_key(cx: i32, cy: i32, cz: i32) -> u64 {
 //  works on the canonical buffer directly with zero marshalling.
 // ─────────────────────────────────────────────────────────────────
 
-/// Internal math kernel: applies the explicit-Euler step to a
+/// Internal math kernel: applies authored acceleration, wind-relative
+/// air-drag force, contact spring, and ground friction to a
 /// single body's motion state. Reused by both the per-body
 /// `step_unit_motion` boundary call (used by the TS bootstrap
 /// fallback path) and the batched `step_unit_motions_batch`
@@ -65,8 +67,12 @@ pub(crate) fn integrate_unit_motion_inline(
     ax_in: f64,
     ay_in: f64,
     az_in: f64,
-    air_damp: f64,
+    air_drag_coefficient: f64,
+    inv_mass: f64,
     ground_damp: f64,
+    wind_x: f64,
+    wind_y: f64,
+    wind_z: f64,
     launch_ax: f64,
     launch_ay: f64,
     launch_az: f64,
@@ -96,12 +102,10 @@ pub(crate) fn integrate_unit_motion_inline(
         az_total += normal_z * spring;
     }
 
-    vx += ax_total * dt_sec;
-    vy += ay_total * dt_sec;
-    vz += az_total * dt_sec;
-    vx *= air_damp;
-    vy *= air_damp;
-    vz *= air_damp;
+    let drag_rate = drag_rate_from_coefficient(air_drag_coefficient, inv_mass);
+    integrate_linear_drag_axis(&mut x, &mut vx, ax_total, dt_sec, drag_rate, wind_x);
+    integrate_linear_drag_axis(&mut y, &mut vy, ay_total, dt_sec, drag_rate, wind_y);
+    integrate_linear_drag_axis(&mut z, &mut vz, az_total, dt_sec, drag_rate, wind_z);
 
     if in_contact {
         let v_normal = vx * normal_x + vy * normal_y + vz * normal_z;
@@ -132,10 +136,6 @@ pub(crate) fn integrate_unit_motion_inline(
         }
     }
 
-    x += vx * dt_sec;
-    y += vy * dt_sec;
-    z += vz * dt_sec;
-
     motion[0] = x;
     motion[1] = y;
     motion[2] = z;
@@ -152,8 +152,12 @@ pub fn step_unit_motion(
     ax: f64,
     ay: f64,
     az: f64,
-    air_damp: f64,
+    air_drag_coefficient: f64,
+    inv_mass: f64,
     ground_damp: f64,
+    wind_x: f64,
+    wind_y: f64,
+    wind_z: f64,
     launch_ax: f64,
     launch_ay: f64,
     launch_az: f64,
@@ -181,8 +185,12 @@ pub fn step_unit_motion(
         ax,
         ay,
         az,
-        air_damp,
+        air_drag_coefficient,
+        inv_mass,
         ground_damp,
+        wind_x,
+        wind_y,
+        wind_z,
         launch_ax,
         launch_ay,
         launch_az,
@@ -200,9 +208,13 @@ pub fn client_predict_unit_motion_batch(
     ground_offsets: &[f64],
     ground_z: &[f64],
     ground_normals: &[f64],
+    air_drag_coefficients: &[f64],
+    inv_mass: &[f64],
     dt_sec: f64,
-    air_damp: f64,
     ground_damp: f64,
+    wind_x: f64,
+    wind_y: f64,
+    wind_z: f64,
     rest_penetration_epsilon: f64,
     rest_speed_sq: f64,
 ) {
@@ -211,6 +223,11 @@ pub fn client_predict_unit_motion_batch(
     debug_assert!(ground_offsets.len() >= count);
     debug_assert!(ground_z.len() >= count);
     debug_assert!(ground_normals.len() >= count * 3);
+    debug_assert!(air_drag_coefficients.len() >= count);
+    debug_assert!(inv_mass.len() >= count);
+    if air_drag_coefficients.len() < count || inv_mass.len() < count {
+        return;
+    }
 
     for i in 0..count {
         let base = i * 6;
@@ -246,8 +263,12 @@ pub fn client_predict_unit_motion_batch(
             0.0,
             0.0,
             0.0,
-            air_damp,
+            air_drag_coefficients[i],
+            inv_mass[i],
             ground_damp,
+            wind_x,
+            wind_y,
+            wind_z,
             0.0,
             0.0,
             0.0,
@@ -276,5 +297,3 @@ pub fn client_predict_unit_motion_batch(
 //  the TS bootstrap fallback in unitMotionIntegration.ts) and the
 //  pool-backed kernels below.
 // ─────────────────────────────────────────────────────────────────
-
-

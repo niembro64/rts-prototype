@@ -360,6 +360,7 @@ export class Simulation {
       this.world, dtMs,
       this.constructionSystem.getGrid(),
       this.forceAccumulator,
+      this.windState,
     );
     // Notify about newly spawned unit shells immediately so their
     // elevated initial position can fall/settle during construction.
@@ -411,6 +412,7 @@ export class Simulation {
     // Update combat systems (targeting, firing, projectile collisions)
     this.combatController.update(
       dtMs,
+      this.windState,
       this.onSimEvent,
       this.onUnitDeath,
       this.onBuildingDeath,
@@ -419,6 +421,7 @@ export class Simulation {
       this.world,
       dtMs,
       this.forceAccumulator,
+      this.windState,
     );
     if (launcherProductionResult.spawnedUnits.length > 0) {
       const onUnitSpawn = this.onUnitSpawn;

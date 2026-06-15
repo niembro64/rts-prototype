@@ -33,6 +33,7 @@ import {
 } from './SimulationEventQueues';
 import { spatialGrid } from './SpatialGrid';
 import type { EntityId } from './types';
+import type { WindState } from './wind';
 import type { WorldState } from './WorldState';
 
 type SimEventCallback = ((event: SimEvent) => void) | null;
@@ -66,6 +67,7 @@ export class SimulationCombatController {
 
   update(
     dtMs: number,
+    wind: WindState,
     onSimEvent: SimEventCallback,
     onUnitDeath: UnitDeathCallback,
     onBuildingDeath: BuildingDeathCallback,
@@ -85,7 +87,7 @@ export class SimulationCombatController {
     // clearance gates are documented to read. Sight-toggle gating lives
     // in the kernels (shield_obstruction_active + shape toggles), not
     // in slab emptiness.
-    stampCombatTargetingPool(this.world);
+    stampCombatTargetingPool(this.world, wind);
     // Update targeting and firing state. Cooldown timers now step inside
     // the scheduled Rust targeting batch and write back through the
     // transitional slab -> JS turret copy.
@@ -148,7 +150,7 @@ export class SimulationCombatController {
 
     // Update projectile positions and remove orphaned beams (from dead units)
     if (this.world.getProjectiles().length > 0) {
-      this.updateProjectileCombat(dtMs, onSimEvent, onUnitDeath, onBuildingDeath);
+      this.updateProjectileCombat(dtMs, wind, onSimEvent, onUnitDeath, onBuildingDeath);
     }
   }
 
@@ -162,11 +164,12 @@ export class SimulationCombatController {
 
   private updateProjectileCombat(
     dtMs: number,
+    wind: WindState,
     onSimEvent: SimEventCallback,
     onUnitDeath: UnitDeathCallback,
     onBuildingDeath: BuildingDeathCallback,
   ): void {
-    const updateResult = updateProjectiles(this.world, dtMs, this.damageSystem);
+    const updateResult = updateProjectiles(this.world, dtMs, this.damageSystem, wind);
     updateResult.orphanedIds.sort((a, b) => a - b);
     updateResult.despawnEvents.sort((a, b) => a.id - b.id);
     for (const id of updateResult.orphanedIds) {

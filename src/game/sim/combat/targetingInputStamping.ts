@@ -20,6 +20,7 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 //     entities are already hot in this stamping pass.
 
 import type { WorldState } from '../WorldState';
+import type { WindState } from '../wind';
 import { spatialGrid } from '../SpatialGrid';
 import {
   encodeShieldBarrierShape,
@@ -682,6 +683,7 @@ function stampCombatTargetingEntityInto(
         ? BALLISTIC_ARC_LOW
         : angleType === 'ballisticArcHigh' ? BALLISTIC_ARC_HIGH : BALLISTIC_ARC_LOW;
     const projectileSpeed = projectileShot ? getProjectileLaunchSpeed(projectileShot) : 0;
+    const projectileMass = projectileShot ? projectileShot.mass : 0;
     const projectileAirFrictionPer60HzFrame = projectileShot
       ? getProjectileAirFrictionPer60HzFrame(projectileShot)
       : 0;
@@ -719,6 +721,7 @@ function stampCombatTargetingEntityInto(
       encodeTurretConfigFlags(t, ranges),
       t.sustainedDps,
       projectileSpeed,
+      projectileMass,
       projectileAirFrictionPer60HzFrame,
       ballisticArcPreference,
       maxTimeSec,
@@ -744,7 +747,7 @@ function stampCombatTargetingEntityInto(
  *  same walk compacts the source-id queue consumed by the scheduled
  *  Rust targeting batch, so the scheduler bridge does not need its own
  *  armed-entity traversal. */
-export function stampCombatTargetingPool(world: WorldState): void {
+export function stampCombatTargetingPool(world: WorldState, wind: WindState | null = null): void {
   resetCombatTargetingSources();
   resetCombatTargetingSlotUse();
   _stampViewMaskComputedBits = 0;
@@ -756,6 +759,11 @@ export function stampCombatTargetingPool(world: WorldState): void {
   // shrunk turret arrays naturally disappear; kernels gate on those
   // two and treat unmarked slots as empty.
   targeting.clear();
+  if (wind !== null) {
+    targeting.setWind(wind.x, wind.y, wind.z);
+  } else {
+    targeting.setWind(0, 0, 0);
+  }
 
   const targets = world.getCombatTargetEntities();
   for (const entity of targets) {

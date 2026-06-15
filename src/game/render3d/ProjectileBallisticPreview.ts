@@ -216,6 +216,7 @@ export function projectileShotCanReachGroundPoint(
     targetVelocity: _targetState.velocity,
     targetAcceleration: _targetState.acceleration,
     projectileSpeed: speed,
+    projectileMass: shot.mass,
     projectileAirFrictionPer60HzFrame: getProjectileAirFrictionPer60HzFrame(shot),
     gravity: GRAVITY * shot.gravityForceMultiplier,
     preferLateSolution: false,

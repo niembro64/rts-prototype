@@ -27,6 +27,7 @@ export type ServerSnapshotMetaInput = {
   wind: {
     x: number;
     y: number;
+    z: number;
     speed: number;
     angle: number;
   };
@@ -81,6 +82,7 @@ export class ServerSnapshotMetaBuilder {
       wind: {
         x: input.wind.x,
         y: input.wind.y,
+        z: input.wind.z,
         speed: input.wind.speed,
         angle: input.wind.angle,
       },

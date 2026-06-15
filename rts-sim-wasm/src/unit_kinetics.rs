@@ -1,9 +1,9 @@
 // unit_kinetics — extracted from lib.rs (pure code motion).
 
 #[allow(unused_imports)]
-use wasm_bindgen::prelude::*;
-#[allow(unused_imports)]
 use crate::*;
+#[allow(unused_imports)]
+use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────
 //  Phase 3e — Batched hover orientation kernel
@@ -602,4 +602,3 @@ pub fn unit_force_step_batch(
 
     processed
 }
-

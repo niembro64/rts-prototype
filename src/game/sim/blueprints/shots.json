@@ -185,10 +185,10 @@
       "$audio": "event.hit.shotRocketFast"
     },
     "submunitions": null,
-    "homingTurnRate": 10,
-    "homingThrust": 6000,
+    "homingTurnRate": 2,
+    "homingThrust": 200,
     "homingDelayMs": 0,
-    "propulsionForce": 15000,
+    "propulsionForce": 40000,
     "gravityForceMultiplier": 0,
     "airFrictionPer60HzFrame": 0.02,
     "smokeTrail": null,
@@ -228,7 +228,7 @@
       "$audio": "event.hit.shotRocketFast"
     },
     "submunitions": null,
-    "homingTurnRate": 3,
+    "homingTurnRate": 0.3,
     "homingThrust": 600000,
     "homingDelayMs": 0,
     "propulsionForce": 5000,

@@ -1,9 +1,9 @@
 // damage — extracted from lib.rs (pure code motion).
 
 #[allow(unused_imports)]
-use wasm_bindgen::prelude::*;
-#[allow(unused_imports)]
 use crate::*;
+#[allow(unused_imports)]
+use wasm_bindgen::prelude::*;
 
 pub(crate) const DAMAGE_TARGET_KIND_UNIT: u8 = 1;
 pub(crate) const DAMAGE_TARGET_KIND_BUILDING: u8 = 2;
@@ -2669,4 +2669,3 @@ pub(crate) fn ground_spring_accel(penetration: f64, normal_velocity: f64) -> f64
         0.0
     }
 }
-

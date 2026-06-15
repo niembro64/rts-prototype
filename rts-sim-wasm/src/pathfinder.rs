@@ -1,9 +1,9 @@
 // pathfinder — extracted from lib.rs (pure code motion).
 
 #[allow(unused_imports)]
-use wasm_bindgen::prelude::*;
-#[allow(unused_imports)]
 use crate::*;
+#[allow(unused_imports)]
+use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────
 //  Phase 9 — Pathfinder: A* over the build/walk grid in WASM
@@ -1044,13 +1044,7 @@ pub fn pathfinder_find_path(
     let mut goal_was_snapped = false;
     let ggy_idx = (ggy * grid_w + ggx) as usize;
     if ignore_terrain_blocking {
-        if !pathfinder_is_cell_passable(
-            state,
-            ggy_idx,
-            min_normal_z,
-            true,
-            accessible_roof_label,
-        ) {
+        if !pathfinder_is_cell_passable(state, ggy_idx, min_normal_z, true, accessible_roof_label) {
             match pathfinder_find_nearest_open(
                 state,
                 ggx,
@@ -1219,5 +1213,3 @@ pub fn pathfinder_grid_size_w() -> i32 {
 pub fn pathfinder_grid_size_h() -> i32 {
     pathfinder_state().grid_h
 }
-
-

@@ -744,6 +744,7 @@ export type NetworkServerSnapshotMeta = {
   wind: {
     x: number;
     y: number;
+    z: number;
     speed: number;
     angle: number;
   } | undefined;

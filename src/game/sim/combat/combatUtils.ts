@@ -389,6 +389,7 @@ export function updateProjectileArming(
   currentX: number,
   currentY: number,
   currentZ: number,
+  projectileHitboxRadius = 0,
 ): boolean {
   if (projectile.projectileType !== 'projectile') return true;
   if (projectile.isArmed) return true;
@@ -411,7 +412,12 @@ export function updateProjectileArming(
   const currDx = currentX - center.x;
   const currDy = currentY - center.y;
   const currDz = currentZ - center.z;
-  const radiusSq = armingRadius * armingRadius;
+  const effectiveArmingRadius = armingRadius + (
+    Number.isFinite(projectileHitboxRadius)
+      ? Math.max(0, projectileHitboxRadius)
+      : 0
+  );
+  const radiusSq = effectiveArmingRadius * effectiveArmingRadius;
   const prevDistSq = prevDx * prevDx + prevDy * prevDy + prevDz * prevDz;
   const currDistSq = currDx * currDx + currDy * currDy + currDz * currDz;
   if (currDistSq <= radiusSq) return false;

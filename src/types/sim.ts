@@ -734,14 +734,15 @@ export type Projectile = {
   hitEntities: Set<EntityId>;
   maxHits: number;
   hasExploded: boolean;
-  /** Traveling plasma/rocket shots can only collide/explode after they
-   *  leave their firing host's authored arming radius. The projectile
-   *  system flips this and resets collisionStart* to the crossing point. */
+  /** Traveling plasma/rocket shots can only collide/explode after their
+   *  hitbox fully clears the firing host's authored arming radius. The
+   *  projectile system flips this and resets collisionStart* to the
+   *  crossing point. */
   isArmed: boolean;
   /** Copied from the firing host at launch so projectile arming remains
    *  stable even if later blueprint/runtime host state changes. */
   shotArmingRadius: number;
-  /** False until the shot's active point has cleared the source unit's
+  /** False until the shot hitbox has fully cleared the source unit's
    *  shot sphere. Source-clearance gating is retained for line shots
    *  whose endpoint damage starts inside the firing unit. */
   hasLeftSource: boolean;

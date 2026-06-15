@@ -1,9 +1,9 @@
 // turret_spring — extracted from lib.rs (pure code motion).
 
 #[allow(unused_imports)]
-use wasm_bindgen::prelude::*;
-#[allow(unused_imports)]
 use crate::*;
+#[allow(unused_imports)]
+use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────
 //  Phase 6a — Damped-spring single-axis rotation integrator
@@ -276,4 +276,3 @@ pub fn turret_rotation_step_batch(
 
     count as u32
 }
-

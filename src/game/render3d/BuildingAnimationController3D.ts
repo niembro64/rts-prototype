@@ -87,6 +87,7 @@ export class BuildingAnimationController3D {
   private activeRadarBuildings: AnimatedBuildingEntry[] = [];
   private activeRadarBuildingIndexById = new Map<EntityId, number>();
   private windFanYaw: number | null = null;
+  private windFanPitch: number | null = null;
   private windVisualSpeed: number | null = null;
   private windRotorPhase = 0;
   private windAnimLastMs = 0;
@@ -289,6 +290,7 @@ export class BuildingAnimationController3D {
     this.radarHeadSpeeds.clear();
     this.radarSweepSpeeds.clear();
     this.windFanYaw = null;
+    this.windFanPitch = null;
     this.windVisualSpeed = null;
     this.windRotorPhase = 0;
     this.windAnimLastMs = 0;
@@ -626,9 +628,17 @@ export class BuildingAnimationController3D {
     if (!wind) return;
 
     const targetYaw = Math.atan2(wind.x, wind.y);
+    const horizontalSpeed = Math.hypot(wind.x, wind.y);
+    const targetPitch = -Math.atan2(wind.z, Math.max(1e-6, horizontalSpeed));
     const targetSpeed = wind.speed;
-    if (this.windFanYaw === null || this.windVisualSpeed === null || dtSec <= 0) {
+    if (
+      this.windFanYaw === null ||
+      this.windFanPitch === null ||
+      this.windVisualSpeed === null ||
+      dtSec <= 0
+    ) {
       this.windFanYaw = targetYaw;
+      this.windFanPitch = targetPitch;
       this.windVisualSpeed = targetSpeed;
     } else {
       const rotPosHalfLife = visualAnimHalfLife(getRotationPosEmaMode());
@@ -636,6 +646,17 @@ export class BuildingAnimationController3D {
       this.windFanYaw = lerpAngle(
         this.windFanYaw,
         targetYaw,
+        halfLifeBlend(
+          dtSec,
+          this.scaledWindTurbineHalfLife(
+            rotPosHalfLife,
+            WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS.fanYaw,
+          ),
+        ),
+      );
+      this.windFanPitch = lerp(
+        this.windFanPitch,
+        targetPitch,
         halfLifeBlend(
           dtSec,
           this.scaledWindTurbineHalfLife(
@@ -669,13 +690,20 @@ export class BuildingAnimationController3D {
     detailsReady: boolean,
     closeAmount: number,
   ): void {
-    if (!m.windRig || !detailsReady || !m.windRig.root.visible || this.windFanYaw === null) return;
+    if (
+      !m.windRig ||
+      !detailsReady ||
+      !m.windRig.root.visible ||
+      this.windFanYaw === null ||
+      this.windFanPitch === null
+    ) return;
     // Root yaws to follow the wind direction (open) but pitches up to
     // the stowed angle as the turbine closes. Yaw weight tapers to 0 in
     // the closed pose so the nacelle settles to a deterministic skyward
     // orientation instead of bobbing with the wind while folded.
     m.windRig.root.rotation.y = (this.windFanYaw - m.group.rotation.y) * (1 - closeAmount);
-    m.windRig.root.rotation.x = m.windRig.closedPitch * closeAmount;
+    m.windRig.root.rotation.x =
+      this.windFanPitch * (1 - closeAmount) + m.windRig.closedPitch * closeAmount;
     // Spin only while the rotor is mostly extended. As the blades fold
     // toward the pole the rotor settles to a fixed rest phase so the
     // baked closed quaternions match exactly.

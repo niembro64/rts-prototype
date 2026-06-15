@@ -1,9 +1,9 @@
 // render_pose — extracted from lib.rs (pure code motion).
 
 #[allow(unused_imports)]
-use wasm_bindgen::prelude::*;
-#[allow(unused_imports)]
 use crate::*;
+#[allow(unused_imports)]
+use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────
 //  Render pose scratch — unit base chain
@@ -126,7 +126,12 @@ pub(crate) fn render_tilt_quat_from_surface_normal(
 }
 
 #[inline]
-pub(crate) fn render_write_mat4_compose(out: &mut [f32], offset: usize, pos: [f64; 3], q: [f64; 4]) {
+pub(crate) fn render_write_mat4_compose(
+    out: &mut [f32],
+    offset: usize,
+    pos: [f64; 3],
+    q: [f64; 4],
+) {
     let x = q[0];
     let y = q[1];
     let z = q[2];
@@ -240,7 +245,9 @@ pub(crate) struct RenderAirborneEmitterScratch {
     output: Vec<f32>,
 }
 
-pub(crate) struct RenderAirborneEmitterScratchHolder(UnsafeCell<Option<RenderAirborneEmitterScratch>>);
+pub(crate) struct RenderAirborneEmitterScratchHolder(
+    UnsafeCell<Option<RenderAirborneEmitterScratch>>,
+);
 unsafe impl Sync for RenderAirborneEmitterScratchHolder {}
 pub(crate) static RENDER_AIRBORNE_EMITTER_SCRATCH: RenderAirborneEmitterScratchHolder =
     RenderAirborneEmitterScratchHolder(UnsafeCell::new(None));
@@ -1230,4 +1237,3 @@ pub fn render_turret_aim_compute(count: u32) {
         s.output[ob + 1] = y.asin() as f32;
     }
 }
-

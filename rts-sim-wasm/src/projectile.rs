@@ -1,5 +1,8 @@
 // projectile — extracted from lib.rs (pure code motion).
 
+use crate::air_drag::{
+    drag_rate_from_coefficient, drag_rate_from_friction_per_60hz_frame, integrate_linear_drag_axis,
+};
 #[allow(unused_imports)]
 use crate::*;
 #[allow(unused_imports)]
@@ -265,16 +268,11 @@ pub(crate) fn intercept_bisect_root(input: &[f64; 22], lo_t: f64, hi_t: f64) -> 
 }
 
 #[inline]
-pub(crate) fn projectile_air_drag_k_from_friction_per_60hz_frame(
+pub(crate) fn projectile_air_drag_rate_from_friction_per_60hz_frame(
     friction_per_60hz_frame: f64,
+    projectile_mass: f64,
 ) -> f64 {
-    if !friction_per_60hz_frame.is_finite() || friction_per_60hz_frame <= 0.0 {
-        return 0.0;
-    }
-    if friction_per_60hz_frame >= 1.0 {
-        return f64::INFINITY;
-    }
-    -(1.0 - friction_per_60hz_frame).ln() * 60.0
+    drag_rate_from_friction_per_60hz_frame(friction_per_60hz_frame, 1.0, projectile_mass)
 }
 
 #[inline]
@@ -294,14 +292,39 @@ fn damped_required_world_velocity_axis(
 }
 
 #[inline]
-fn damped_intercept_function(input: &[f64; 22], time: f64, drag_k: f64) -> f64 {
+fn damped_intercept_function(
+    input: &[f64; 22],
+    time: f64,
+    drag_k: f64,
+    wind_x: f64,
+    wind_y: f64,
+    wind_z: f64,
+) -> f64 {
     let aim_x = input[9] + input[12] * time + 0.5 * input[15] * time * time;
     let aim_y = input[10] + input[13] * time + 0.5 * input[16] * time * time;
     let aim_z = input[11] + input[14] * time + 0.5 * input[17] * time * time;
 
-    let world_vx = damped_required_world_velocity_axis(aim_x - input[0], input[18], time, drag_k);
-    let world_vy = damped_required_world_velocity_axis(aim_y - input[1], input[19], time, drag_k);
-    let world_vz = damped_required_world_velocity_axis(aim_z - input[2], input[20], time, drag_k);
+    let world_vx = wind_x
+        + damped_required_world_velocity_axis(
+            aim_x - input[0] - wind_x * time,
+            input[18],
+            time,
+            drag_k,
+        );
+    let world_vy = wind_y
+        + damped_required_world_velocity_axis(
+            aim_y - input[1] - wind_y * time,
+            input[19],
+            time,
+            drag_k,
+        );
+    let world_vz = wind_z
+        + damped_required_world_velocity_axis(
+            aim_z - input[2] - wind_z * time,
+            input[20],
+            time,
+            drag_k,
+        );
     if !world_vx.is_finite() || !world_vy.is_finite() || !world_vz.is_finite() {
         return f64::INFINITY;
     }
@@ -313,13 +336,21 @@ fn damped_intercept_function(input: &[f64; 22], time: f64, drag_k: f64) -> f64 {
 }
 
 #[inline]
-fn damped_intercept_bisect_root(input: &[f64; 22], drag_k: f64, lo_t: f64, hi_t: f64) -> f64 {
+fn damped_intercept_bisect_root(
+    input: &[f64; 22],
+    drag_k: f64,
+    lo_t: f64,
+    hi_t: f64,
+    wind_x: f64,
+    wind_y: f64,
+    wind_z: f64,
+) -> f64 {
     let mut lo = lo_t;
     let mut hi = hi_t;
-    let mut lo_f = damped_intercept_function(input, lo, drag_k);
+    let mut lo_f = damped_intercept_function(input, lo, drag_k, wind_x, wind_y, wind_z);
     for _ in 0..INTERCEPT_BISECT_STEPS {
         let mid = (lo + hi) * 0.5;
-        let mid_f = damped_intercept_function(input, mid, drag_k);
+        let mid_f = damped_intercept_function(input, mid, drag_k, wind_x, wind_y, wind_z);
         if mid_f.abs() <= INTERCEPT_ROOT_EPSILON {
             return mid;
         }
@@ -338,14 +369,35 @@ fn write_damped_intercept_solution(
     input: &[f64; 22],
     time: f64,
     drag_k: f64,
+    wind_x: f64,
+    wind_y: f64,
+    wind_z: f64,
     out_buf: &mut [f64],
 ) -> bool {
     let aim_x = input[9] + input[12] * time + 0.5 * input[15] * time * time;
     let aim_y = input[10] + input[13] * time + 0.5 * input[16] * time * time;
     let aim_z = input[11] + input[14] * time + 0.5 * input[17] * time * time;
-    let world_vx = damped_required_world_velocity_axis(aim_x - input[0], input[18], time, drag_k);
-    let world_vy = damped_required_world_velocity_axis(aim_y - input[1], input[19], time, drag_k);
-    let world_vz = damped_required_world_velocity_axis(aim_z - input[2], input[20], time, drag_k);
+    let world_vx = wind_x
+        + damped_required_world_velocity_axis(
+            aim_x - input[0] - wind_x * time,
+            input[18],
+            time,
+            drag_k,
+        );
+    let world_vy = wind_y
+        + damped_required_world_velocity_axis(
+            aim_y - input[1] - wind_y * time,
+            input[19],
+            time,
+            drag_k,
+        );
+    let world_vz = wind_z
+        + damped_required_world_velocity_axis(
+            aim_z - input[2] - wind_z * time,
+            input[20],
+            time,
+            drag_k,
+        );
     if !world_vx.is_finite() || !world_vy.is_finite() || !world_vz.is_finite() {
         return false;
     }
@@ -367,8 +419,18 @@ pub(crate) fn solve_damped_kinematic_intercept_inline(
     prefer_late_solution: u8,
     max_time_sec_or_zero: f64,
     air_friction_per_60hz_frame: f64,
+    projectile_mass: f64,
+    wind_x: f64,
+    wind_y: f64,
+    wind_z: f64,
 ) -> bool {
-    if !intercept_input_finite(inp) || !air_friction_per_60hz_frame.is_finite() {
+    if !intercept_input_finite(inp)
+        || !air_friction_per_60hz_frame.is_finite()
+        || !projectile_mass.is_finite()
+        || !wind_x.is_finite()
+        || !wind_y.is_finite()
+        || !wind_z.is_finite()
+    {
         return false;
     }
     if air_friction_per_60hz_frame <= 0.0 {
@@ -382,7 +444,13 @@ pub(crate) fn solve_damped_kinematic_intercept_inline(
     if air_friction_per_60hz_frame >= 1.0 {
         return false;
     }
-    let drag_k = projectile_air_drag_k_from_friction_per_60hz_frame(air_friction_per_60hz_frame);
+    if projectile_mass <= 1e-6 {
+        return false;
+    }
+    let drag_k = projectile_air_drag_rate_from_friction_per_60hz_frame(
+        air_friction_per_60hz_frame,
+        projectile_mass,
+    );
     if !drag_k.is_finite() || drag_k <= 1e-9 {
         return solve_kinematic_intercept_inline(
             inp,
@@ -403,7 +471,7 @@ pub(crate) fn solve_damped_kinematic_intercept_inline(
 
     let mut selected_root = 0.0_f64;
     let mut prev_t = INTERCEPT_MIN_TIME;
-    let mut prev_f = damped_intercept_function(inp, prev_t, drag_k);
+    let mut prev_f = damped_intercept_function(inp, prev_t, drag_k, wind_x, wind_y, wind_z);
     let want_late = prefer_late_solution != 0;
     if prev_f.abs() <= INTERCEPT_ROOT_EPSILON {
         selected_root = prev_t;
@@ -412,7 +480,7 @@ pub(crate) fn solve_damped_kinematic_intercept_inline(
     for i in 1..=INTERCEPT_SAMPLE_COUNT {
         let t = INTERCEPT_MIN_TIME
             + (max_time - INTERCEPT_MIN_TIME) * (i as f64) / (INTERCEPT_SAMPLE_COUNT as f64);
-        let f = damped_intercept_function(inp, t, drag_k);
+        let f = damped_intercept_function(inp, t, drag_k, wind_x, wind_y, wind_z);
         if !f.is_finite() || !prev_f.is_finite() {
             prev_t = t;
             prev_f = f;
@@ -423,7 +491,7 @@ pub(crate) fn solve_damped_kinematic_intercept_inline(
         if f.abs() <= INTERCEPT_ROOT_EPSILON {
             root = t;
         } else if (prev_f > 0.0 && f < 0.0) || (prev_f < 0.0 && f > 0.0) {
-            root = damped_intercept_bisect_root(inp, drag_k, prev_t, t);
+            root = damped_intercept_bisect_root(inp, drag_k, prev_t, t, wind_x, wind_y, wind_z);
         }
         if root > 0.0 {
             selected_root = root;
@@ -438,7 +506,7 @@ pub(crate) fn solve_damped_kinematic_intercept_inline(
     if selected_root <= INTERCEPT_MIN_TIME {
         return false;
     }
-    write_damped_intercept_solution(inp, selected_root, drag_k, out_buf)
+    write_damped_intercept_solution(inp, selected_root, drag_k, wind_x, wind_y, wind_z, out_buf)
 }
 
 #[inline]
@@ -706,7 +774,7 @@ pub fn compute_homing_thrust(
     out_buf[2] = a_z;
 }
 
-pub const PROJECTILE_HOMING_GUIDANCE_STRIDE: usize = 31;
+pub const PROJECTILE_HOMING_GUIDANCE_STRIDE: usize = 33;
 
 pub(crate) const PHG_ROW_VEL_X: usize = 0;
 pub(crate) const PHG_ROW_VEL_Y: usize = 1;
@@ -735,13 +803,22 @@ pub(crate) const PHG_ROW_MAX_TIME_SEC: usize = 23;
 pub(crate) const PHG_ROW_HOMING_TURN_RATE: usize = 24;
 pub(crate) const PHG_ROW_MAX_THRUST_ACCEL: usize = 25;
 pub(crate) const PHG_ROW_SOLVE_INTERCEPT: usize = 26;
-pub(crate) const PHG_ROW_OUT_THRUST_X: usize = 27;
-pub(crate) const PHG_ROW_OUT_THRUST_Y: usize = 28;
-pub(crate) const PHG_ROW_OUT_THRUST_Z: usize = 29;
-pub(crate) const PHG_ROW_OUT_INTERCEPT_FOUND: usize = 30;
+pub(crate) const PHG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME: usize = 27;
+pub(crate) const PHG_ROW_PROJECTILE_MASS: usize = 28;
+pub(crate) const PHG_ROW_OUT_THRUST_X: usize = 29;
+pub(crate) const PHG_ROW_OUT_THRUST_Y: usize = 30;
+pub(crate) const PHG_ROW_OUT_THRUST_Z: usize = 31;
+pub(crate) const PHG_ROW_OUT_INTERCEPT_FOUND: usize = 32;
 
 #[wasm_bindgen]
-pub fn projectile_homing_guidance_batch(rows: &mut [f64], count: usize, dt_sec: f64) -> u32 {
+pub fn projectile_homing_guidance_batch(
+    rows: &mut [f64],
+    count: usize,
+    dt_sec: f64,
+    wind_x: f64,
+    wind_y: f64,
+    wind_z: f64,
+) -> u32 {
     let required = match count.checked_mul(PROJECTILE_HOMING_GUIDANCE_STRIDE) {
         Some(value) => value,
         None => return 0,
@@ -789,11 +866,16 @@ pub fn projectile_homing_guidance_batch(rows: &mut [f64], count: usize, dt_sec: 
                 rows[base + PHG_ROW_PROJECTILE_SPEED],
             ];
             let mut intercept_out = [0.0_f64; 7];
-            if solve_kinematic_intercept_inline(
+            if solve_damped_kinematic_intercept_inline(
                 &input,
                 &mut intercept_out,
                 0,
                 rows[base + PHG_ROW_MAX_TIME_SEC],
+                rows[base + PHG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME],
+                rows[base + PHG_ROW_PROJECTILE_MASS],
+                wind_x,
+                wind_y,
+                wind_z,
             ) {
                 steer_x = intercept_out[1];
                 steer_y = intercept_out[2];
@@ -835,6 +917,9 @@ pub fn projectile_homing_guidance_apply_batch(
     accel_z: &mut [f64],
     count: usize,
     dt_sec: f64,
+    wind_x: f64,
+    wind_y: f64,
+    wind_z: f64,
 ) -> u32 {
     let required = match count.checked_mul(PROJECTILE_HOMING_GUIDANCE_STRIDE) {
         Some(value) => value,
@@ -854,7 +939,7 @@ pub fn projectile_homing_guidance_apply_batch(
         }
     }
 
-    let processed = projectile_homing_guidance_batch(rows, count, dt_sec);
+    let processed = projectile_homing_guidance_batch(rows, count, dt_sec, wind_x, wind_y, wind_z);
     if processed as usize != count {
         return processed;
     }
@@ -1100,13 +1185,17 @@ pub fn terrain_follow_vertical_thrust_accel(
 }
 
 /// Batched projectile/body integrator with constant authored acceleration
-/// and optional linear velocity damping.
+/// and optional wind-relative linear air-drag force.
 ///
-/// When `air_damp` is 1, this reduces to exact constant-acceleration
-/// integration. Otherwise the kernel integrates the continuous drag model
-/// matching the ballistic solver. TypeScript still owns projectile lifecycle
-/// and target policy, but all non-packed guided/D-gun projectile integration
-/// now crosses this kernel in one batch per tick.
+/// When drag coefficient or inverse mass is zero, this reduces to exact
+/// constant-acceleration integration. Otherwise the kernel integrates the
+/// continuous force model
+/// matching the ballistic solver:
+///   F_drag = drag_coefficient * (wind_velocity - projectile_velocity)
+///   a_drag = F_drag / projectile_mass
+/// TypeScript still owns projectile lifecycle and target policy, but all
+/// non-packed guided/D-gun projectile integration now crosses this kernel in
+/// one batch per tick.
 #[wasm_bindgen]
 pub fn projectile_integrate_step_batch(
     count: u32,
@@ -1119,7 +1208,11 @@ pub fn projectile_integrate_step_batch(
     accel_x: &[f64],
     accel_y: &[f64],
     accel_z: &[f64],
-    air_damp: &[f64],
+    air_drag_coefficient: &[f64],
+    inv_mass: &[f64],
+    wind_x: f64,
+    wind_y: f64,
+    wind_z: f64,
     dt_sec: f64,
 ) -> u32 {
     let n = count as usize;
@@ -1132,33 +1225,41 @@ pub fn projectile_integrate_step_batch(
         || accel_x.len() < n
         || accel_y.len() < n
         || accel_z.len() < n
-        || air_damp.len() < n
+        || air_drag_coefficient.len() < n
+        || inv_mass.len() < n
         || !dt_sec.is_finite()
+        || !wind_x.is_finite()
+        || !wind_y.is_finite()
+        || !wind_z.is_finite()
     {
         return 0;
     }
 
     for i in 0..n {
+        let drag_rate = drag_rate_from_coefficient(air_drag_coefficient[i], inv_mass[i]);
         integrate_linear_damped_axis(
             &mut pos_x[i],
             &mut vel_x[i],
             accel_x[i],
             dt_sec,
-            air_damp[i],
+            drag_rate,
+            wind_x,
         );
         integrate_linear_damped_axis(
             &mut pos_y[i],
             &mut vel_y[i],
             accel_y[i],
             dt_sec,
-            air_damp[i],
+            drag_rate,
+            wind_y,
         );
         integrate_linear_damped_axis(
             &mut pos_z[i],
             &mut vel_z[i],
             accel_z[i],
             dt_sec,
-            air_damp[i],
+            drag_rate,
+            wind_z,
         );
     }
     count
@@ -1170,27 +1271,10 @@ pub(crate) fn integrate_linear_damped_axis(
     vel: &mut f64,
     accel: f64,
     dt_sec: f64,
-    damp: f64,
+    drag_rate: f64,
+    wind_velocity: f64,
 ) {
-    if !dt_sec.is_finite() || dt_sec <= 0.0 {
-        return;
-    }
-    if !damp.is_finite() || damp >= 0.999_999 {
-        *pos += *vel * dt_sec + 0.5 * accel * dt_sec * dt_sec;
-        *vel += accel * dt_sec;
-        return;
-    }
-    let d = damp.max(1e-9);
-    let k = -d.ln() / dt_sec;
-    if !k.is_finite() || k <= 1e-9 {
-        *pos += *vel * dt_sec + 0.5 * accel * dt_sec * dt_sec;
-        *vel += accel * dt_sec;
-        return;
-    }
-    let terminal = accel / k;
-    let retention_loss = 1.0 - d;
-    *pos += (*vel - terminal) * retention_loss / k + terminal * dt_sec;
-    *vel = *vel * d + terminal * retention_loss;
+    integrate_linear_drag_axis(pos, vel, accel, dt_sec, drag_rate, wind_velocity);
 }
 
 /// Per-tick ballistic integrator. For slots 0..count, advances with the

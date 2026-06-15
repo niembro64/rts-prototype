@@ -51,7 +51,7 @@ import {
   UNIT_WORLD_BOUNDARY_SPRING_ACCEL_PER_WORLD_UNIT,
   UNIT_WORLD_BOUNDARY_SPRING_DAMPING_RATIO,
 } from '../../config';
-import { getUnitAirFrictionDamp } from '../sim/unitAirFriction';
+import { getUnitAirDragCoefficient } from '../sim/unitAirFriction';
 import {
   getUnitGroundFrictionDamp,
   UNIT_GROUND_CONTACT_EPSILON,
@@ -106,6 +106,13 @@ let _integrateStepSyncEntityIds: Int32Array = new Int32Array(0);
 let _finalStepSyncEntityIds: Int32Array = new Int32Array(0);
 let _collectAwakeEntityIds: Int32Array = new Int32Array(0);
 const _physicsStepStats: Uint32Array = new Uint32Array(3);
+const STILL_AIR = { x: 0, y: 0, z: 0 };
+
+type WindVector3 = {
+  x: number;
+  y: number;
+  z: number;
+};
 
 let _sphereSphereWakeTransitions: Uint32Array = new Uint32Array(0);
 
@@ -828,7 +835,7 @@ export class PhysicsEngine3D {
     sim.engineStaticsDestroy(this.staticsHandle);
   }
 
-  step(dtSec: number): void {
+  step(dtSec: number, wind: WindVector3 = STILL_AIR): void {
     // Refresh BodyPool typed-array views in case the WASM linear
     // memory grew since the last step. Vec growths (sphere-sphere
     // resolver's HashMap, static broadphase per-cell Vecs, etc.)
@@ -847,7 +854,7 @@ export class PhysicsEngine3D {
     this.ensureIntegrationScratch(maxCount);
     const integrateCount = this.prepareIntegrationStep(dynamicSlots);
     if (integrateCount === 0) return;
-    this.integrate(dtSec, integrateCount);
+    this.integrate(dtSec, integrateCount, wind);
     // Bodies touched this step still need final contact cleanup even
     // if integration just put the last awake body to sleep.
     const stepSlots = _integrateAwakeSlots.subarray(0, integrateCount);
@@ -1068,7 +1075,7 @@ export class PhysicsEngine3D {
    *      `groundOffset`.
    *   3. If that point is below terrain height, add a spring-damper
    *      acceleration along the terrain normal.
-   *   4. Integrate velocity, apply isotropic air drag, then apply
+   *   4. Integrate velocity under wind-relative air-drag force, then apply
    *      ground friction only to terrain-tangent velocity during
    *      contact.
    *   5. Integrate position.
@@ -1083,8 +1090,8 @@ export class PhysicsEngine3D {
    *  Dynamic bodies are required to be spheres; addBody() throws for any
    *  unsupported dynamic shape so integration cannot silently split back
    *  into a TypeScript fallback path. */
-  private integrate(dtSec: number, count: number): void {
-    const airDamp = getUnitAirFrictionDamp(dtSec);
+  private integrate(dtSec: number, count: number, wind: WindVector3): void {
+    const airDragCoefficient = getUnitAirDragCoefficient();
     const groundDamp = getUnitGroundFrictionDamp(dtSec);
     // Pool readiness was enforced in the constructor, so getSimWasm
     // is guaranteed defined here. Cast through `!` to keep the
@@ -1113,8 +1120,11 @@ export class PhysicsEngine3D {
       groundNormalsView,
       transitionsView,
       dtSec,
-      airDamp,
+      airDragCoefficient,
       groundDamp,
+      Number.isFinite(wind.x) ? wind.x : 0,
+      Number.isFinite(wind.y) ? wind.y : 0,
+      Number.isFinite(wind.z) ? wind.z : 0,
     );
     for (let i = 0; i < transitionCount; i++) {
       const slot = transitionsView[i];

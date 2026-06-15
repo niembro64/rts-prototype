@@ -128,6 +128,11 @@ fn generate_shared_sim_constants(manifest_dir: &Path) {
             "unitGroundPassiveReboundMaxSpeed",
             "UNIT_GROUND_PASSIVE_REBOUND_MAX_SPEED",
         ),
+        (
+            "unitAirFrictionPer60HzFrame",
+            "UNIT_AIR_FRICTION_PER_60HZ_FRAME",
+        ),
+        ("airDragReferenceMass", "AIR_DRAG_REFERENCE_MASS"),
         ("bodySleepSpeedSq", "SLEEP_SPEED_SQ"),
         ("bodySleepAccelSq", "SLEEP_ACCEL_SQ"),
         ("bodySleepTicks", "SLEEP_TICKS"),
@@ -202,6 +207,18 @@ fn generate_wind_config(manifest_dir: &Path) {
         (
             "/speedOscillationPeriodsSeconds/tertiary",
             "WIND_SPEED_PERIOD_TERTIARY",
+        ),
+        (
+            "/vertical/maxFractionOfHorizontalSpeed",
+            "WIND_VERTICAL_MAX_FRACTION_OF_HORIZONTAL_SPEED",
+        ),
+        (
+            "/vertical/oscillationPeriodsSeconds/primary",
+            "WIND_VERTICAL_PERIOD_PRIMARY",
+        ),
+        (
+            "/vertical/oscillationPeriodsSeconds/secondary",
+            "WIND_VERTICAL_PERIOD_SECONDARY",
         ),
     ];
 

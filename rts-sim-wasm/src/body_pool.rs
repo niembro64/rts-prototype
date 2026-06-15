@@ -1,5 +1,6 @@
 // body_pool — extracted from lib.rs (pure code motion).
 
+use crate::air_drag::drag_coefficient_from_friction_per_60hz_frame;
 #[allow(unused_imports)]
 use crate::*;
 #[allow(unused_imports)]
@@ -1094,13 +1095,19 @@ pub fn pool_step_integrate(
     ground_normals: &[f64],
     sleep_transitions_out: &mut [u32],
     dt_sec: f64,
-    air_damp: f64,
+    base_air_drag_coefficient: f64,
     ground_damp: f64,
+    wind_x: f64,
+    wind_y: f64,
+    wind_z: f64,
 ) -> u32 {
     let count = awake_slots.len();
     debug_assert!(ground_z.len() >= count);
     debug_assert!(ground_normals.len() >= 3 * count);
     debug_assert!(sleep_transitions_out.len() >= count);
+    if !wind_x.is_finite() || !wind_y.is_finite() || !wind_z.is_finite() {
+        return 0;
+    }
 
     let p = pool();
     let mut transitions = 0_u32;
@@ -1127,15 +1134,20 @@ pub fn pool_step_integrate(
         let launch_ay = p.launch_y[slot];
         let launch_az = p.launch_z[slot];
 
-        // Per-body friction: scale the continuous drag coefficient
-        // behind the global damping value. `*_damp` is the retained
-        // velocity fraction per step (1.0 = no loss), so raising it to
-        // the body's friction multiplier makes scale 0 frictionless,
-        // scale 1 unchanged, and higher scales stronger without making
-        // behavior depend on frame length.
+        // Per-body air drag is a physical force:
+        //   F = drag_coefficient * (wind_velocity - body_velocity)
+        // and acceleration comes from F / mass via the pool's inv_mass.
+        // Ground contact friction remains a tangent damping term.
         let air_scale = p.air_friction_scale[slot];
         let ground_scale = p.ground_friction_scale[slot];
-        let eff_air_damp = scale_body_motion_damp(air_damp, air_scale);
+        let eff_air_drag_coefficient = if base_air_drag_coefficient.is_finite() {
+            base_air_drag_coefficient * air_scale.max(0.0)
+        } else {
+            drag_coefficient_from_friction_per_60hz_frame(
+                UNIT_AIR_FRICTION_PER_60HZ_FRAME,
+                air_scale,
+            )
+        };
         let eff_ground_damp = scale_body_motion_damp(ground_damp, ground_scale);
 
         // Run the integrator on a 6-element scratch — the inline
@@ -1156,8 +1168,12 @@ pub fn pool_step_integrate(
             authored_ax,
             authored_ay,
             authored_az - GRAVITY,
-            eff_air_damp,
+            eff_air_drag_coefficient,
+            p.inv_mass[slot],
             eff_ground_damp,
+            wind_x,
+            wind_y,
+            wind_z,
             launch_ax,
             launch_ay,
             launch_az,

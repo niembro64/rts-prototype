@@ -39,6 +39,7 @@ type ClientPredictionStepperOptions = {
   supportSurfaceEntities: readonly Entity[];
   getMapWidth: () => number;
   getMapHeight: () => number;
+  getWind: () => { x: number; y: number; z: number } | undefined;
   getServerShieldsEnabled: () => boolean;
   setTurretShieldSpheresEnabledForPrediction: (enabled: boolean) => void;
   applyProjectileSpawn: (spawn: NetworkServerSnapshotProjectileSpawn) => boolean;
@@ -336,6 +337,7 @@ export class ClientPredictionStepper {
       supportSurfaceEntities,
       getMapWidth,
       getMapHeight,
+      getWind,
       getServerShieldsEnabled,
       setTurretShieldSpheresEnabledForPrediction,
       applyProjectileSpawn,
@@ -362,6 +364,7 @@ export class ClientPredictionStepper {
     const predictionMode = getPredictionMode();
     const mapWidth = getMapWidth();
     const mapHeight = getMapHeight();
+    const wind = getWind();
     projectileSpawns.drain(now, applyProjectileSpawn);
 
     const turretShieldSpheresEnabled = getServerShieldsEnabled();
@@ -454,6 +457,7 @@ export class ClientPredictionStepper {
       deltaMs,
       mapWidth,
       mapHeight,
+      wind,
     });
 
     for (let i = 0; i < entitySettlementIds.length; i++) {
@@ -500,6 +504,7 @@ export class ClientPredictionStepper {
         movVelBlend,
         mapWidth,
         mapHeight,
+        wind,
         getEntity: (entityId) => entities.get(entityId),
       });
       if (projectileResult.becameLineProjectile) {

@@ -12,5 +12,6 @@
   "bodySleepAccelSq": 0.000001,
   "bodySleepTicks": 12,
   "bodySleepGroundPenetrationEps": 0.1,
+  "airDragReferenceMass": 1000,
   "maxTickDtMs": 66.66666666666667
 }

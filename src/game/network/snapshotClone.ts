@@ -350,7 +350,7 @@ export class ReusableNetworkSnapshotCloner {
   };
   private serverMetaUnitsAllowed: string[] = [];
   private serverMetaCpu = { avg: 0, hi: 0 };
-  private serverMetaWind = { x: 0, y: 0, speed: 0, angle: 0 };
+  private serverMetaWind = { x: 0, y: 0, z: 0, speed: 0, angle: 0 };
   private serverMetaRetainedPools = {
     entitySnapshots: {
       retained: 0,
@@ -525,6 +525,7 @@ export class ReusableNetworkSnapshotCloner {
       if (sm.wind) {
         this.serverMetaWind.x = sm.wind.x;
         this.serverMetaWind.y = sm.wind.y;
+        this.serverMetaWind.z = sm.wind.z;
         this.serverMetaWind.speed = sm.wind.speed;
         this.serverMetaWind.angle = sm.wind.angle;
         dsm.wind = this.serverMetaWind;

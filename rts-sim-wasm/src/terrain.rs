@@ -1,9 +1,9 @@
 // terrain — extracted from lib.rs (pure code motion).
 
 #[allow(unused_imports)]
-use wasm_bindgen::prelude::*;
-#[allow(unused_imports)]
 use crate::*;
+#[allow(unused_imports)]
+use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────
 //  Phase 8 — Terrain heightmap in WASM linear memory
@@ -37,7 +37,8 @@ use crate::*;
 //   WATER_LEVEL        = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION)
 pub(crate) const TERRAIN_TILE_FLOOR_Y: f64 = -1200.0;
 pub(crate) const TERRAIN_WATER_LEVEL_FRACTION: f64 = 0.9;
-pub(crate) const TERRAIN_WATER_LEVEL: f64 = TERRAIN_TILE_FLOOR_Y * (1.0 - TERRAIN_WATER_LEVEL_FRACTION);
+pub(crate) const TERRAIN_WATER_LEVEL: f64 =
+    TERRAIN_TILE_FLOOR_Y * (1.0 - TERRAIN_WATER_LEVEL_FRACTION);
 
 // Matches terrainTileMap.ts TERRAIN_MESH_EPSILON for the degenerate
 // barycentric guard.
@@ -554,7 +555,10 @@ pub(crate) fn terrain_find_overlapping_edge_spans(
     out
 }
 
-pub(crate) fn terrain_validate_triangle_vertices(vertex_coords: &[f64], triangle_indices: &[i32]) -> bool {
+pub(crate) fn terrain_validate_triangle_vertices(
+    vertex_coords: &[f64],
+    triangle_indices: &[i32],
+) -> bool {
     if triangle_indices.len() % 3 != 0 || vertex_coords.len() % 2 != 0 {
         return false;
     }
@@ -985,7 +989,11 @@ pub(crate) fn terrain_normal_at_lattice(
     normal
 }
 
-pub(crate) fn terrain_normal_at_world(c: &TerrainMeshBuildConfig, x: f64, z: f64) -> TerrainMeshNormalRust {
+pub(crate) fn terrain_normal_at_world(
+    c: &TerrainMeshBuildConfig,
+    x: f64,
+    z: f64,
+) -> TerrainMeshNormalRust {
     let eps = c.fine_edge.min(c.fine_height).max(1.0);
     let x0 = terrain_mesh_clamp_to_map(x - eps, c.map_width);
     let x1 = terrain_mesh_clamp_to_map(x + eps, c.map_width);
@@ -1050,7 +1058,10 @@ pub(crate) fn terrain_triangle_world_vertices(
     ]
 }
 
-pub(crate) fn terrain_triangle_bbox_intersects_map(c: &TerrainMeshBuildConfig, tri: TerrainHierTri) -> bool {
+pub(crate) fn terrain_triangle_bbox_intersects_map(
+    c: &TerrainMeshBuildConfig,
+    tri: TerrainHierTri,
+) -> bool {
     let TerrainHierTri { i, j, side, down } = tri;
     let z0 = c.fine_height * j as f64;
     let z1 = c.fine_height * (j + side) as f64;
@@ -1292,7 +1303,10 @@ pub(crate) fn terrain_append_triangle_children(tri: TerrainHierTri, out: &mut Ve
     }
 }
 
-pub(crate) fn terrain_push_children_for_stack(tri: TerrainHierTri, stack: &mut Vec<TerrainHierTri>) {
+pub(crate) fn terrain_push_children_for_stack(
+    tri: TerrainHierTri,
+    stack: &mut Vec<TerrainHierTri>,
+) {
     let half = tri.side >> 1;
     if half < 1 {
         return;
@@ -1561,7 +1575,9 @@ pub(crate) fn terrain_triangle_boundary_lattice_points(
     terrain_edge_lattice_points(cc, a, vertex_set, false, false, out);
 }
 
-pub(crate) fn terrain_remove_duplicate_mesh_points(points: &[TerrainMeshPoint]) -> Vec<TerrainMeshPoint> {
+pub(crate) fn terrain_remove_duplicate_mesh_points(
+    points: &[TerrainMeshPoint],
+) -> Vec<TerrainMeshPoint> {
     let mut out: Vec<TerrainMeshPoint> = Vec::new();
     for &p in points {
         if let Some(prev) = out.last() {
@@ -1593,7 +1609,11 @@ pub(crate) enum TerrainClipAxis {
 }
 
 #[inline]
-pub(crate) fn terrain_clip_point_inside(p: TerrainMeshPoint, axis: &TerrainClipAxis, bound: f64) -> bool {
+pub(crate) fn terrain_clip_point_inside(
+    p: TerrainMeshPoint,
+    axis: &TerrainClipAxis,
+    bound: f64,
+) -> bool {
     match axis {
         TerrainClipAxis::XMin => p.x >= bound,
         TerrainClipAxis::XMax => p.x <= bound,
@@ -2450,7 +2470,8 @@ impl TerrainGrid {
 
 pub(crate) struct TerrainGridHolder(UnsafeCell<TerrainGrid>);
 unsafe impl Sync for TerrainGridHolder {}
-pub(crate) static TERRAIN_GRID: TerrainGridHolder = TerrainGridHolder(UnsafeCell::new(TerrainGrid::empty()));
+pub(crate) static TERRAIN_GRID: TerrainGridHolder =
+    TerrainGridHolder(UnsafeCell::new(TerrainGrid::empty()));
 
 #[inline]
 pub(crate) fn terrain_grid() -> &'static mut TerrainGrid {
@@ -2863,7 +2884,9 @@ pub fn fog_mark_circle_scanline_rgba(
     )
 }
 
-pub(crate) fn terrain_normal_from_triangle_sample(sample: TerrainTriangleSample) -> (f64, f64, f64) {
+pub(crate) fn terrain_normal_from_triangle_sample(
+    sample: TerrainTriangleSample,
+) -> (f64, f64, f64) {
     let (_, _, _, ax, az, ah, bx, bz, bh, cx, cz, ch) = sample;
     let h0 = terrain_height_from_triangle_sample(sample);
     if h0 < TERRAIN_WATER_LEVEL {
@@ -2890,7 +2913,11 @@ pub(crate) fn terrain_normal_from_triangle_sample(sample: TerrainTriangleSample)
     (nx / len, nz / len, vertical / len)
 }
 
-pub(crate) fn terrain_surface_normal_at(t: &TerrainGrid, x: f64, z: f64) -> Option<(f64, f64, f64)> {
+pub(crate) fn terrain_surface_normal_at(
+    t: &TerrainGrid,
+    x: f64,
+    z: f64,
+) -> Option<(f64, f64, f64)> {
     let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, x, z);
     let sample = match terrain_triangle_sample_at(t, px, pz, cell_x, cell_y) {
         Some(s) => s,
@@ -3026,7 +3053,8 @@ pub(crate) fn terrain_flat_zone_buildability_level(
     d_terrain: f64,
     shelf_height_tolerance: f64,
 ) -> Option<i32> {
-    if let Some(level) = terrain_plateau_level_for_height(height, d_terrain, shelf_height_tolerance) {
+    if let Some(level) = terrain_plateau_level_for_height(height, d_terrain, shelf_height_tolerance)
+    {
         return Some(level);
     }
     if !height.is_finite() {

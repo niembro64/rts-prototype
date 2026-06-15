@@ -1,9 +1,9 @@
 // spatial_grid — extracted from lib.rs (pure code motion).
 
 #[allow(unused_imports)]
-use wasm_bindgen::prelude::*;
-#[allow(unused_imports)]
 use crate::*;
+#[allow(unused_imports)]
+use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────
 //  Phase 7 — SpatialGrid: 3D voxel hash in WASM linear memory
@@ -191,7 +191,11 @@ pub(crate) fn spatial_prune_cell_if_empty(state: &mut SpatialGridState, key: u64
     }
 }
 
-pub(crate) fn spatial_remove_unit_from_cell(state: &mut SpatialGridState, cell_key: u64, slot: u32) {
+pub(crate) fn spatial_remove_unit_from_cell(
+    state: &mut SpatialGridState,
+    cell_key: u64,
+    slot: u32,
+) {
     if let Some(bucket) = state.cells.get_mut(&cell_key) {
         if let Some(idx) = bucket.units.iter().position(|&s| s == slot) {
             let last = bucket.units.len() - 1;
@@ -204,7 +208,11 @@ pub(crate) fn spatial_remove_unit_from_cell(state: &mut SpatialGridState, cell_k
     spatial_prune_cell_if_empty(state, cell_key);
 }
 
-pub(crate) fn spatial_remove_projectile_from_cell(state: &mut SpatialGridState, cell_key: u64, slot: u32) {
+pub(crate) fn spatial_remove_projectile_from_cell(
+    state: &mut SpatialGridState,
+    cell_key: u64,
+    slot: u32,
+) {
     if let Some(bucket) = state.cells.get_mut(&cell_key) {
         if let Some(idx) = bucket.projectiles.iter().position(|&s| s == slot) {
             let last = bucket.projectiles.len() - 1;
@@ -217,7 +225,11 @@ pub(crate) fn spatial_remove_projectile_from_cell(state: &mut SpatialGridState, 
     spatial_prune_cell_if_empty(state, cell_key);
 }
 
-pub(crate) fn spatial_remove_building_from_cell(state: &mut SpatialGridState, cell_key: u64, slot: u32) {
+pub(crate) fn spatial_remove_building_from_cell(
+    state: &mut SpatialGridState,
+    cell_key: u64,
+    slot: u32,
+) {
     if let Some(bucket) = state.cells.get_mut(&cell_key) {
         if let Some(idx) = bucket.buildings.iter().position(|&s| s == slot) {
             let last = bucket.buildings.len() - 1;
@@ -293,7 +305,14 @@ pub(crate) fn spatial_dist_sq_to_aabb3(
 }
 
 #[inline]
-pub(crate) fn spatial_dist_sq_to_aabb2(bx: f64, by: f64, hx: f64, hy: f64, px: f64, py: f64) -> f64 {
+pub(crate) fn spatial_dist_sq_to_aabb2(
+    bx: f64,
+    by: f64,
+    hx: f64,
+    hy: f64,
+    px: f64,
+    py: f64,
+) -> f64 {
     let min_x = bx - hx;
     let max_x = bx + hx;
     let min_y = by - hy;
@@ -2562,4 +2581,3 @@ pub fn spatial_slot_kind(slot: u32) -> u8 {
     }
     state.slot_kind[slot as usize]
 }
-

@@ -19,7 +19,7 @@ import {
 import { resolveTargetAimPoint } from '../sim/combat/aimSolver';
 import {
   addProjectileForwardPropulsionAcceleration,
-  getProjectileAirFrictionDamp,
+  getProjectileAirDragCoefficient,
   getProjectileAirFrictionPer60HzFrame,
 } from '../sim/projectileMotion';
 import {
@@ -41,13 +41,21 @@ export type ClientProjectilePredictionResult = {
   targetSettled: boolean;
 };
 
+type PredictionWind = {
+  x: number;
+  y: number;
+  z: number;
+};
+
 const PROJECTILE_TARGET_POS_EPSILON_SQ = 0.01 * 0.01;
 const PROJECTILE_TARGET_VEL_EPSILON_SQ = 0.01 * 0.01;
+const STILL_AIR: PredictionWind = { x: 0, y: 0, z: 0 };
 const _clientHomingAimPoint = { x: 0, y: 0, z: 0 };
 const _clientHomingTargetVelocity = { x: 0, y: 0, z: 0 };
 const _clientHomingTargetAcceleration = { x: 0, y: 0, z: 0 };
 const _clientProjectilePositionScratch = { x: 0, y: 0, z: 0 };
 const _clientProjectileVelocityScratch = { x: 0, y: 0, z: 0 };
+const _clientProjectilePredictionWind = { x: 0, y: 0, z: 0 };
 const _clientProjectileTargetPositionScratch = { x: 0, y: 0, z: 0 };
 const _clientProjectileTargetVelocityScratch = { x: 0, y: 0, z: 0 };
 const _clientProjectilePosX = new Float64Array(2);
@@ -59,7 +67,8 @@ const _clientProjectileVelZ = new Float64Array(2);
 const _clientProjectileAccelX = new Float64Array(2);
 const _clientProjectileAccelY = new Float64Array(2);
 const _clientProjectileAccelZ = new Float64Array(2);
-const _clientProjectileAirDamp = new Float64Array(2);
+const _clientProjectileAirDragCoefficient = new Float64Array(2);
+const _clientProjectileInvMass = new Float64Array(2);
 const _clientHomingOriginState: KinematicState3 = {
   position: { x: 0, y: 0, z: 0 },
   velocity: { x: 0, y: 0, z: 0 },
@@ -179,7 +188,9 @@ function resolveClientHomingThrust(options: {
       targetVelocity: _clientHomingTargetState.velocity,
       targetAcceleration: _clientHomingTargetState.acceleration,
       projectileSpeed,
+      projectileMass: shot.mass,
       projectileAirFrictionPer60HzFrame: getProjectileAirFrictionPer60HzFrame(shot),
+      windVelocity: _clientProjectilePredictionWind,
       gravity: projectileGravity,
       preferLateSolution: false,
       maxTimeSec: remainingSec,
@@ -314,6 +325,7 @@ export function applyClientProjectilePrediction(options: {
   movVelBlend: number;
   mapWidth: number;
   mapHeight: number;
+  wind: PredictionWind | undefined;
   getEntity: (id: EntityId) => Entity | undefined;
 }): ClientProjectilePredictionResult {
   const {
@@ -324,6 +336,7 @@ export function applyClientProjectilePrediction(options: {
     movVelBlend,
     mapWidth,
     mapHeight,
+    wind,
     getEntity,
   } = options;
   const proj = entity.projectile;
@@ -336,7 +349,12 @@ export function applyClientProjectilePrediction(options: {
   const dt = entityDeltaMs / 1000;
   proj.timeAlive += entityDeltaMs;
   const shot = proj.config.shot as ProjectileShot;
-  const airDamp = getProjectileAirFrictionDamp(shot, dt);
+  const airDragCoefficient = getProjectileAirDragCoefficient(shot);
+  const invMass = shot.mass > 1e-6 ? 1 / shot.mass : 0;
+  const predictionWind = wind ?? STILL_AIR;
+  _clientProjectilePredictionWind.x = Number.isFinite(predictionWind.x) ? predictionWind.x : 0;
+  _clientProjectilePredictionWind.y = Number.isFinite(predictionWind.y) ? predictionWind.y : 0;
+  _clientProjectilePredictionWind.z = Number.isFinite(predictionWind.z) ? predictionWind.z : 0;
 
   // Travelling projectiles dead-reckon every frame. Rocket velocity
   // updates also install a separate authoritative correction target;
@@ -371,7 +389,8 @@ export function applyClientProjectilePrediction(options: {
   _clientProjectileAccelX[0] = entityAccel.x;
   _clientProjectileAccelY[0] = entityAccel.y;
   _clientProjectileAccelZ[0] = entityAccel.z;
-  _clientProjectileAirDamp[0] = airDamp;
+  _clientProjectileAirDragCoefficient[0] = airDragCoefficient;
+  _clientProjectileInvMass[0] = invMass;
 
   const hasTarget = target !== undefined;
   const batchCount = hasTarget ? 2 : 1;
@@ -400,7 +419,8 @@ export function applyClientProjectilePrediction(options: {
     _clientProjectileAccelX[1] = targetAccel.x;
     _clientProjectileAccelY[1] = targetAccel.y;
     _clientProjectileAccelZ[1] = targetAccel.z;
-    _clientProjectileAirDamp[1] = airDamp;
+    _clientProjectileAirDragCoefficient[1] = airDragCoefficient;
+    _clientProjectileInvMass[1] = invMass;
   }
 
   const integrated = sim.projectileIntegrateStepBatch(
@@ -414,7 +434,11 @@ export function applyClientProjectilePrediction(options: {
     _clientProjectileAccelX,
     _clientProjectileAccelY,
     _clientProjectileAccelZ,
-    _clientProjectileAirDamp,
+    _clientProjectileAirDragCoefficient,
+    _clientProjectileInvMass,
+    _clientProjectilePredictionWind.x,
+    _clientProjectilePredictionWind.y,
+    _clientProjectilePredictionWind.z,
     dt,
   );
   if (integrated !== batchCount) {

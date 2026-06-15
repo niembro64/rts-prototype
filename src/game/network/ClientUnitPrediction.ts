@@ -6,7 +6,7 @@ import {
   getRotationPosEmaMode,
   getRotationVelEmaMode,
 } from '@/clientBarConfig';
-import { LAND_CELL_SIZE } from '../../config';
+import { LAND_CELL_SIZE, UNIT_MASS_MULTIPLIER } from '../../config';
 import { UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC } from '@/shellConfig';
 import type { Entity, EntityId } from '../sim/types';
 import {
@@ -29,7 +29,8 @@ import {
 import {
   advanceUnitMotionPredictionBatchMutable,
 } from '../sim/unitMotionIntegration';
-import { getUnitAirFrictionDamp } from '../sim/unitAirFriction';
+import { getUnitAirDragCoefficient } from '../sim/unitAirFriction';
+import { getUnitAirFrictionScale } from '../sim/unitMotionFriction';
 import {
   getUnitGroundFrictionDamp,
   isUnitGroundPenetrationInContact,
@@ -57,9 +58,15 @@ const TURRET_PITCH_MIN = -Math.PI / 2;
 const TURRET_PITCH_MAX = Math.PI / 2;
 const MOTION_STRIDE = 6;
 const INITIAL_BATCH_CAPACITY = 64;
+const STILL_AIR = { x: 0, y: 0, z: 0 };
 
 type UnitPredictionTarget = ServerTarget;
 type UnitOrientationTarget = NonNullable<UnitPredictionTarget['orientation']>;
+type PredictionWind = {
+  x: number;
+  y: number;
+  z: number;
+};
 
 function advanceTurretYaw(angle: number, angularVelocity: number, dt: number): number {
   const safeAngle = Number.isFinite(angle) ? angle : 0;
@@ -91,6 +98,8 @@ let motionBatch = new Float64Array(0);
 let groundOffsetBatch = new Float64Array(0);
 let groundZBatch = new Float64Array(0);
 let groundNormalBatch = new Float64Array(0);
+let airDragCoefficientBatch = new Float64Array(0);
+let invMassBatch = new Float64Array(0);
 let contactBatch = new Uint8Array(0);
 let supportIgnoreEntityIdBatch = new Int32Array(0);
 const targetBatchRefs: UnitPredictionTarget[] = [];
@@ -209,6 +218,8 @@ function ensurePredictionBatchCapacity(count: number): void {
   groundOffsetBatch = new Float64Array(capacity);
   groundZBatch = new Float64Array(capacity);
   groundNormalBatch = new Float64Array(capacity * 3);
+  airDragCoefficientBatch = new Float64Array(capacity);
+  invMassBatch = new Float64Array(capacity);
   contactBatch = new Uint8Array(capacity);
   supportIgnoreEntityIdBatch = new Int32Array(capacity);
 }
@@ -256,6 +267,8 @@ export function resetClientUnitPredictionPools(maxRetained = INITIAL_BATCH_CAPAC
     groundOffsetBatch = new Float64Array(retained);
     groundZBatch = new Float64Array(retained);
     groundNormalBatch = new Float64Array(retained * 3);
+    airDragCoefficientBatch = new Float64Array(retained);
+    invMassBatch = new Float64Array(retained);
     contactBatch = new Uint8Array(retained);
     supportIgnoreEntityIdBatch = new Int32Array(retained);
   }
@@ -443,12 +456,25 @@ function updateCurrentMotionContacts(count: number): void {
   }
 }
 
+function writeUnitAirDragBatchEntry(index: number, unit: Entity['unit']): void {
+  if (unit === null) {
+    airDragCoefficientBatch[index] = 0;
+    invMassBatch[index] = 0;
+    return;
+  }
+  const physicsMass = unit.mass * UNIT_MASS_MULTIPLIER;
+  airDragCoefficientBatch[index] = getUnitAirDragCoefficient(getUnitAirFrictionScale(unit));
+  invMassBatch[index] = Number.isFinite(physicsMass) && physicsMass > 1e-6
+    ? 1 / physicsMass
+    : 0;
+}
+
 function advancePackedMotionBatch(
   count: number,
   predictionMode: ReturnType<typeof getPredictionMode>,
   dt: number,
-  airDamp: number,
   groundDamp: number,
+  wind: PredictionWind,
 ): void {
   if (count <= 0) return;
   sampleInitialGroundBatch(count);
@@ -472,9 +498,13 @@ function advancePackedMotionBatch(
     groundOffsetBatch,
     groundZBatch,
     groundNormalBatch,
+    airDragCoefficientBatch,
+    invMassBatch,
     dt,
-    airDamp,
     groundDamp,
+    Number.isFinite(wind.x) ? wind.x : 0,
+    Number.isFinite(wind.y) ? wind.y : 0,
+    Number.isFinite(wind.z) ? wind.z : 0,
     PREDICTION_GROUND_REST_PENETRATION_EPSILON,
     PREDICTION_VEL_EPSILON_SQ,
   );
@@ -500,6 +530,7 @@ function packTargetPredictionBatch(
     motionBatch[base + 5] = target.velocityZ ?? 0;
     groundOffsetBatch[batchCount] = target.bodyCenterHeight;
     supportIgnoreEntityIdBatch[batchCount] = entities[i]?.id ?? -1;
+    writeUnitAirDragBatchEntry(batchCount, entities[i]?.unit ?? null);
     targetBatchRefs[batchCount] = target;
     batchCount++;
   }
@@ -540,6 +571,7 @@ function packEntityPredictionBatch(entities: Entity[], count: number): void {
       motionBatch[base + 5] = unit.velocityZ;
       groundOffsetBatch[i] = unit.bodyCenterHeight;
     }
+    writeUnitAirDragBatchEntry(i, unit);
     supportIgnoreEntityIdBatch[i] = entity.id;
   }
 }
@@ -683,6 +715,7 @@ export function applyClientUnitVisualPredictionBatch(options: {
   deltaMs: number;
   mapWidth: number;
   mapHeight: number;
+  wind: PredictionWind | undefined;
 }): void {
   const { entities, targets, supportEntities, deltaMs, mapWidth, mapHeight } = options;
   const count = entities.length;
@@ -697,8 +730,8 @@ export function applyClientUnitVisualPredictionBatch(options: {
     dt,
     UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC[getClientUnitGroundNormalEmaMode()],
   );
-  const airDamp = getUnitAirFrictionDamp(dt);
   const groundDamp = getUnitGroundFrictionDamp(dt);
+  const wind = options.wind ?? STILL_AIR;
   const predictionMode = getPredictionMode();
   predictionMapWidth = mapWidth;
   predictionMapHeight = mapHeight;
@@ -711,11 +744,11 @@ export function applyClientUnitVisualPredictionBatch(options: {
   // smoothly at render cadence while crossing JS/WASM only twice per
   // frame for all predicted units.
   const targetCount = packTargetPredictionBatch(entities, targets, count);
-  advancePackedMotionBatch(targetCount, predictionMode, dt, airDamp, groundDamp);
+  advancePackedMotionBatch(targetCount, predictionMode, dt, groundDamp, wind);
   writeTargetPredictionBatch(targetCount);
 
   packEntityPredictionBatch(entities, count);
-  advancePackedMotionBatch(count, predictionMode, dt, airDamp, groundDamp);
+  advancePackedMotionBatch(count, predictionMode, dt, groundDamp, wind);
   const supportProviderMoved = writeEntityPredictionBatch(entities, count, deltaMs);
 
   if (predictionMode !== 'pos') {

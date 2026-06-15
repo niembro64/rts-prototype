@@ -1,21 +1,23 @@
 import type { ProjectileShot } from './types';
-import { dampFromFrictionPer60HzFrame } from './motionFriction';
+import { dragCoefficientFromFrictionPer60HzFrame } from './motionFriction';
 
 const MIN_PROPULSION_SPEED = 1e-6;
+let cachedAirFrictionPer60HzFrame = Number.NaN;
+let cachedAirDragCoefficient = 0;
 
 export function getProjectileAirFrictionPer60HzFrame(shot: ProjectileShot): number {
   const friction = shot.airFrictionPer60HzFrame;
   return Number.isFinite(friction) && friction > 0 ? friction : 0;
 }
 
-export function getProjectileAirFrictionDamp(
-  shot: ProjectileShot,
-  dtSec: number,
-): number {
-  return dampFromFrictionPer60HzFrame(
-    getProjectileAirFrictionPer60HzFrame(shot),
-    dtSec,
-  );
+export function getProjectileAirDragCoefficient(shot: ProjectileShot): number {
+  const friction = getProjectileAirFrictionPer60HzFrame(shot);
+  if (friction === cachedAirFrictionPer60HzFrame) {
+    return cachedAirDragCoefficient;
+  }
+  cachedAirFrictionPer60HzFrame = friction;
+  cachedAirDragCoefficient = dragCoefficientFromFrictionPer60HzFrame(friction);
+  return cachedAirDragCoefficient;
 }
 
 export function getProjectilePropulsionAcceleration(shot: ProjectileShot): number {

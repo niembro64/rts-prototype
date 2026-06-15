@@ -1,9 +1,9 @@
 // snapshot — extracted from lib.rs (pure code motion).
 
 #[allow(unused_imports)]
-use wasm_bindgen::prelude::*;
-#[allow(unused_imports)]
 use crate::*;
+#[allow(unused_imports)]
+use wasm_bindgen::prelude::*;
 // ─────────────────────────────────────────────────────────────────
 // Snapshot baselines (Phase 10 D.3b)
 //
@@ -917,7 +917,9 @@ pub(crate) struct SnapshotEncodeTurretScratch {
     buf: Vec<f64>,
 }
 
-pub(crate) struct SnapshotEncodeTurretScratchHolder(UnsafeCell<Option<SnapshotEncodeTurretScratch>>);
+pub(crate) struct SnapshotEncodeTurretScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeTurretScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeTurretScratchHolder {}
 pub(crate) static SNAPSHOT_ENCODE_TURRET_SCRATCH: SnapshotEncodeTurretScratchHolder =
     SnapshotEncodeTurretScratchHolder(UnsafeCell::new(None));
@@ -972,7 +974,9 @@ pub(crate) struct SnapshotEncodeActionScratch {
     buf: Vec<f64>,
 }
 
-pub(crate) struct SnapshotEncodeActionScratchHolder(UnsafeCell<Option<SnapshotEncodeActionScratch>>);
+pub(crate) struct SnapshotEncodeActionScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeActionScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeActionScratchHolder {}
 pub(crate) static SNAPSHOT_ENCODE_ACTION_SCRATCH: SnapshotEncodeActionScratchHolder =
     SnapshotEncodeActionScratchHolder(UnsafeCell::new(None));
@@ -1016,7 +1020,9 @@ pub(crate) struct SnapshotEncodeStringScratch {
     table: Vec<u32>,
 }
 
-pub(crate) struct SnapshotEncodeStringScratchHolder(UnsafeCell<Option<SnapshotEncodeStringScratch>>);
+pub(crate) struct SnapshotEncodeStringScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeStringScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeStringScratchHolder {}
 pub(crate) static SNAPSHOT_ENCODE_STRING_SCRATCH: SnapshotEncodeStringScratchHolder =
     SnapshotEncodeStringScratchHolder(UnsafeCell::new(None));
@@ -1078,7 +1084,8 @@ pub(crate) static SNAPSHOT_ENCODE_FACTORY_QUEUE_SCRATCH: SnapshotEncodeFactoryQu
     SnapshotEncodeFactoryQueueScratchHolder(UnsafeCell::new(None));
 
 #[inline]
-pub(crate) fn snapshot_encode_factory_queue_scratch() -> &'static mut SnapshotEncodeFactoryQueueScratch {
+pub(crate) fn snapshot_encode_factory_queue_scratch(
+) -> &'static mut SnapshotEncodeFactoryQueueScratch {
     unsafe {
         let cell = &mut *SNAPSHOT_ENCODE_FACTORY_QUEUE_SCRATCH.0.get();
         if cell.is_none() {
@@ -1114,7 +1121,9 @@ pub(crate) struct SnapshotEncodeWaypointScratch {
     buf: Vec<f64>,
 }
 
-pub(crate) struct SnapshotEncodeWaypointScratchHolder(UnsafeCell<Option<SnapshotEncodeWaypointScratch>>);
+pub(crate) struct SnapshotEncodeWaypointScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeWaypointScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeWaypointScratchHolder {}
 pub(crate) static SNAPSHOT_ENCODE_WAYPOINT_SCRATCH: SnapshotEncodeWaypointScratchHolder =
     SnapshotEncodeWaypointScratchHolder(UnsafeCell::new(None));
@@ -1984,7 +1993,9 @@ pub(crate) struct SnapshotEncodeMinimapScratch {
     buf: Vec<f64>,
 }
 
-pub(crate) struct SnapshotEncodeMinimapScratchHolder(UnsafeCell<Option<SnapshotEncodeMinimapScratch>>);
+pub(crate) struct SnapshotEncodeMinimapScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeMinimapScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeMinimapScratchHolder {}
 pub(crate) static SNAPSHOT_ENCODE_MINIMAP_SCRATCH: SnapshotEncodeMinimapScratchHolder =
     SnapshotEncodeMinimapScratchHolder(UnsafeCell::new(None));
@@ -2022,13 +2033,16 @@ pub(crate) struct SnapshotEncodeProjDespawnScratch {
     buf: Vec<u32>,
 }
 
-pub(crate) struct SnapshotEncodeProjDespawnScratchHolder(UnsafeCell<Option<SnapshotEncodeProjDespawnScratch>>);
+pub(crate) struct SnapshotEncodeProjDespawnScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeProjDespawnScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeProjDespawnScratchHolder {}
 pub(crate) static SNAPSHOT_ENCODE_PROJ_DESPAWN_SCRATCH: SnapshotEncodeProjDespawnScratchHolder =
     SnapshotEncodeProjDespawnScratchHolder(UnsafeCell::new(None));
 
 #[inline]
-pub(crate) fn snapshot_encode_proj_despawn_scratch() -> &'static mut SnapshotEncodeProjDespawnScratch {
+pub(crate) fn snapshot_encode_proj_despawn_scratch() -> &'static mut SnapshotEncodeProjDespawnScratch
+{
     unsafe {
         let cell = &mut *SNAPSHOT_ENCODE_PROJ_DESPAWN_SCRATCH.0.get();
         if cell.is_none() {
@@ -2065,7 +2079,9 @@ pub(crate) struct SnapshotEncodeProjVelScratch {
     buf: Vec<f64>,
 }
 
-pub(crate) struct SnapshotEncodeProjVelScratchHolder(UnsafeCell<Option<SnapshotEncodeProjVelScratch>>);
+pub(crate) struct SnapshotEncodeProjVelScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeProjVelScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeProjVelScratchHolder {}
 pub(crate) static SNAPSHOT_ENCODE_PROJ_VEL_SCRATCH: SnapshotEncodeProjVelScratchHolder =
     SnapshotEncodeProjVelScratchHolder(UnsafeCell::new(None));
@@ -2134,7 +2150,9 @@ pub(crate) struct SnapshotEncodeProjSpawnScratch {
     buf: Vec<f64>,
 }
 
-pub(crate) struct SnapshotEncodeProjSpawnScratchHolder(UnsafeCell<Option<SnapshotEncodeProjSpawnScratch>>);
+pub(crate) struct SnapshotEncodeProjSpawnScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeProjSpawnScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeProjSpawnScratchHolder {}
 pub(crate) static SNAPSHOT_ENCODE_PROJ_SPAWN_SCRATCH: SnapshotEncodeProjSpawnScratchHolder =
     SnapshotEncodeProjSpawnScratchHolder(UnsafeCell::new(None));
@@ -2179,13 +2197,16 @@ pub(crate) struct SnapshotEncodeBeamUpdateScratch {
     buf: Vec<f64>,
 }
 
-pub(crate) struct SnapshotEncodeBeamUpdateScratchHolder(UnsafeCell<Option<SnapshotEncodeBeamUpdateScratch>>);
+pub(crate) struct SnapshotEncodeBeamUpdateScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeBeamUpdateScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeBeamUpdateScratchHolder {}
 pub(crate) static SNAPSHOT_ENCODE_BEAM_UPDATE_SCRATCH: SnapshotEncodeBeamUpdateScratchHolder =
     SnapshotEncodeBeamUpdateScratchHolder(UnsafeCell::new(None));
 
 #[inline]
-pub(crate) fn snapshot_encode_beam_update_scratch() -> &'static mut SnapshotEncodeBeamUpdateScratch {
+pub(crate) fn snapshot_encode_beam_update_scratch() -> &'static mut SnapshotEncodeBeamUpdateScratch
+{
     unsafe {
         let cell = &mut *SNAPSHOT_ENCODE_BEAM_UPDATE_SCRATCH.0.get();
         if cell.is_none() {
@@ -2227,7 +2248,9 @@ pub(crate) struct SnapshotEncodeBeamPointScratch {
     buf: Vec<f64>,
 }
 
-pub(crate) struct SnapshotEncodeBeamPointScratchHolder(UnsafeCell<Option<SnapshotEncodeBeamPointScratch>>);
+pub(crate) struct SnapshotEncodeBeamPointScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeBeamPointScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeBeamPointScratchHolder {}
 pub(crate) static SNAPSHOT_ENCODE_BEAM_POINT_SCRATCH: SnapshotEncodeBeamPointScratchHolder =
     SnapshotEncodeBeamPointScratchHolder(UnsafeCell::new(None));
@@ -2396,7 +2419,8 @@ pub(crate) static SNAPSHOT_ENCODE_PACKED_MINIMAP_SCRATCH: SnapshotEncodePackedMi
     SnapshotEncodePackedMinimapScratchHolder(UnsafeCell::new(None));
 
 #[inline]
-pub(crate) fn snapshot_encode_packed_minimap_scratch() -> &'static mut SnapshotEncodePackedMinimapScratch {
+pub(crate) fn snapshot_encode_packed_minimap_scratch(
+) -> &'static mut SnapshotEncodePackedMinimapScratch {
     unsafe {
         let cell = &mut *SNAPSHOT_ENCODE_PACKED_MINIMAP_SCRATCH.0.get();
         if cell.is_none() {
@@ -2498,12 +2522,13 @@ pub(crate) struct SnapshotEncodePackedProjectileScratchHolder(
     UnsafeCell<Option<SnapshotEncodePackedProjectileScratch>>,
 );
 unsafe impl Sync for SnapshotEncodePackedProjectileScratchHolder {}
-pub(crate) static SNAPSHOT_ENCODE_PACKED_PROJECTILE_SCRATCH: SnapshotEncodePackedProjectileScratchHolder =
+pub(crate) static SNAPSHOT_ENCODE_PACKED_PROJECTILE_SCRATCH:
+    SnapshotEncodePackedProjectileScratchHolder =
     SnapshotEncodePackedProjectileScratchHolder(UnsafeCell::new(None));
 
 #[inline]
-pub(crate) fn snapshot_encode_packed_projectile_scratch() -> &'static mut SnapshotEncodePackedProjectileScratch
-{
+pub(crate) fn snapshot_encode_packed_projectile_scratch(
+) -> &'static mut SnapshotEncodePackedProjectileScratch {
     unsafe {
         let cell = &mut *SNAPSHOT_ENCODE_PACKED_PROJECTILE_SCRATCH.0.get();
         if cell.is_none() {
@@ -2778,7 +2803,8 @@ pub(crate) static SNAPSHOT_ENCODE_DEATH_CONTEXT_SCRATCH: SnapshotEncodeDeathCont
     SnapshotEncodeDeathContextScratchHolder(UnsafeCell::new(None));
 
 #[inline]
-pub(crate) fn snapshot_encode_death_context_scratch() -> &'static mut SnapshotEncodeDeathContextScratch {
+pub(crate) fn snapshot_encode_death_context_scratch(
+) -> &'static mut SnapshotEncodeDeathContextScratch {
     unsafe {
         let cell = &mut *SNAPSHOT_ENCODE_DEATH_CONTEXT_SCRATCH.0.get();
         if cell.is_none() {
@@ -2812,13 +2838,16 @@ pub(crate) struct SnapshotEncodeTurretPoseScratch {
     buf: Vec<f64>,
 }
 
-pub(crate) struct SnapshotEncodeTurretPoseScratchHolder(UnsafeCell<Option<SnapshotEncodeTurretPoseScratch>>);
+pub(crate) struct SnapshotEncodeTurretPoseScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeTurretPoseScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeTurretPoseScratchHolder {}
 pub(crate) static SNAPSHOT_ENCODE_TURRET_POSE_SCRATCH: SnapshotEncodeTurretPoseScratchHolder =
     SnapshotEncodeTurretPoseScratchHolder(UnsafeCell::new(None));
 
 #[inline]
-pub(crate) fn snapshot_encode_turret_pose_scratch() -> &'static mut SnapshotEncodeTurretPoseScratch {
+pub(crate) fn snapshot_encode_turret_pose_scratch() -> &'static mut SnapshotEncodeTurretPoseScratch
+{
     unsafe {
         let cell = &mut *SNAPSHOT_ENCODE_TURRET_POSE_SCRATCH.0.get();
         if cell.is_none() {
@@ -2868,7 +2897,8 @@ pub(crate) static SNAPSHOT_ENCODE_IMPACT_CONTEXT_SCRATCH: SnapshotEncodeImpactCo
     SnapshotEncodeImpactContextScratchHolder(UnsafeCell::new(None));
 
 #[inline]
-pub(crate) fn snapshot_encode_impact_context_scratch() -> &'static mut SnapshotEncodeImpactContextScratch {
+pub(crate) fn snapshot_encode_impact_context_scratch(
+) -> &'static mut SnapshotEncodeImpactContextScratch {
     unsafe {
         let cell = &mut *SNAPSHOT_ENCODE_IMPACT_CONTEXT_SCRATCH.0.get();
         if cell.is_none() {
@@ -2927,13 +2957,16 @@ pub(crate) struct SnapshotEncodeAudioEventScratch {
     buf: Vec<f64>,
 }
 
-pub(crate) struct SnapshotEncodeAudioEventScratchHolder(UnsafeCell<Option<SnapshotEncodeAudioEventScratch>>);
+pub(crate) struct SnapshotEncodeAudioEventScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeAudioEventScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeAudioEventScratchHolder {}
 pub(crate) static SNAPSHOT_ENCODE_AUDIO_EVENT_SCRATCH: SnapshotEncodeAudioEventScratchHolder =
     SnapshotEncodeAudioEventScratchHolder(UnsafeCell::new(None));
 
 #[inline]
-pub(crate) fn snapshot_encode_audio_event_scratch() -> &'static mut SnapshotEncodeAudioEventScratch {
+pub(crate) fn snapshot_encode_audio_event_scratch() -> &'static mut SnapshotEncodeAudioEventScratch
+{
     unsafe {
         let cell = &mut *SNAPSHOT_ENCODE_AUDIO_EVENT_SCRATCH.0.get();
         if cell.is_none() {
@@ -3005,7 +3038,9 @@ pub(crate) struct SnapshotEncodeEconomyScratch {
     buf: Vec<f64>,
 }
 
-pub(crate) struct SnapshotEncodeEconomyScratchHolder(UnsafeCell<Option<SnapshotEncodeEconomyScratch>>);
+pub(crate) struct SnapshotEncodeEconomyScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeEconomyScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeEconomyScratchHolder {}
 pub(crate) static SNAPSHOT_ENCODE_ECONOMY_SCRATCH: SnapshotEncodeEconomyScratchHolder =
     SnapshotEncodeEconomyScratchHolder(UnsafeCell::new(None));
@@ -3055,11 +3090,13 @@ pub(crate) struct SnapshotEncodeResourceMovementScratchHolder(
     UnsafeCell<Option<SnapshotEncodeResourceMovementScratch>>,
 );
 unsafe impl Sync for SnapshotEncodeResourceMovementScratchHolder {}
-pub(crate) static SNAPSHOT_ENCODE_RESOURCE_MOVEMENT_SCRATCH: SnapshotEncodeResourceMovementScratchHolder =
+pub(crate) static SNAPSHOT_ENCODE_RESOURCE_MOVEMENT_SCRATCH:
+    SnapshotEncodeResourceMovementScratchHolder =
     SnapshotEncodeResourceMovementScratchHolder(UnsafeCell::new(None));
 
 #[inline]
-pub(crate) fn snapshot_encode_resource_movement_scratch() -> &'static mut SnapshotEncodeResourceMovementScratch {
+pub(crate) fn snapshot_encode_resource_movement_scratch(
+) -> &'static mut SnapshotEncodeResourceMovementScratch {
     unsafe {
         let cell = &mut *SNAPSHOT_ENCODE_RESOURCE_MOVEMENT_SCRATCH.0.get();
         if cell.is_none() {
@@ -3148,7 +3185,9 @@ pub(crate) struct SnapshotEncodeShroudScratch {
     buf: Vec<u8>,
 }
 
-pub(crate) struct SnapshotEncodeShroudScratchHolder(UnsafeCell<Option<SnapshotEncodeShroudScratch>>);
+pub(crate) struct SnapshotEncodeShroudScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeShroudScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeShroudScratchHolder {}
 pub(crate) static SNAPSHOT_ENCODE_SHROUD_SCRATCH: SnapshotEncodeShroudScratchHolder =
     SnapshotEncodeShroudScratchHolder(UnsafeCell::new(None));
@@ -3187,7 +3226,9 @@ pub(crate) struct SnapshotEncodeNumberScratch {
     buf: Vec<f64>,
 }
 
-pub(crate) struct SnapshotEncodeNumberScratchHolder(UnsafeCell<Option<SnapshotEncodeNumberScratch>>);
+pub(crate) struct SnapshotEncodeNumberScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeNumberScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeNumberScratchHolder {}
 pub(crate) static SNAPSHOT_ENCODE_NUMBER_SCRATCH: SnapshotEncodeNumberScratchHolder =
     SnapshotEncodeNumberScratchHolder(UnsafeCell::new(None));
@@ -3230,7 +3271,8 @@ pub(crate) static SNAPSHOT_ENCODE_PACKED_STATIC_SCRATCH: SnapshotEncodePackedSta
     SnapshotEncodePackedStaticScratchHolder(UnsafeCell::new(None));
 
 #[inline]
-pub(crate) fn snapshot_encode_packed_static_scratch() -> &'static mut SnapshotEncodePackedStaticScratch {
+pub(crate) fn snapshot_encode_packed_static_scratch(
+) -> &'static mut SnapshotEncodePackedStaticScratch {
     unsafe {
         let cell = &mut *SNAPSHOT_ENCODE_PACKED_STATIC_SCRATCH.0.get();
         if cell.is_none() {
@@ -3359,7 +3401,9 @@ pub(crate) struct SnapshotEncodeScanPulseScratch {
     buf: Vec<f64>,
 }
 
-pub(crate) struct SnapshotEncodeScanPulseScratchHolder(UnsafeCell<Option<SnapshotEncodeScanPulseScratch>>);
+pub(crate) struct SnapshotEncodeScanPulseScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeScanPulseScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeScanPulseScratchHolder {}
 pub(crate) static SNAPSHOT_ENCODE_SCAN_PULSE_SCRATCH: SnapshotEncodeScanPulseScratchHolder =
     SnapshotEncodeScanPulseScratchHolder(UnsafeCell::new(None));
@@ -3455,13 +3499,16 @@ pub(crate) struct SnapshotEncodeRemovedIdsScratch {
     buf: Vec<u32>,
 }
 
-pub(crate) struct SnapshotEncodeRemovedIdsScratchHolder(UnsafeCell<Option<SnapshotEncodeRemovedIdsScratch>>);
+pub(crate) struct SnapshotEncodeRemovedIdsScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeRemovedIdsScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeRemovedIdsScratchHolder {}
 pub(crate) static SNAPSHOT_ENCODE_REMOVED_IDS_SCRATCH: SnapshotEncodeRemovedIdsScratchHolder =
     SnapshotEncodeRemovedIdsScratchHolder(UnsafeCell::new(None));
 
 #[inline]
-pub(crate) fn snapshot_encode_removed_ids_scratch() -> &'static mut SnapshotEncodeRemovedIdsScratch {
+pub(crate) fn snapshot_encode_removed_ids_scratch() -> &'static mut SnapshotEncodeRemovedIdsScratch
+{
     unsafe {
         let cell = &mut *SNAPSHOT_ENCODE_REMOVED_IDS_SCRATCH.0.get();
         if cell.is_none() {
@@ -3602,7 +3649,9 @@ pub(crate) struct SnapshotEncodeV6InputScratch {
     building: Vec<f64>,
 }
 
-pub(crate) struct SnapshotEncodeV6InputScratchHolder(UnsafeCell<Option<SnapshotEncodeV6InputScratch>>);
+pub(crate) struct SnapshotEncodeV6InputScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeV6InputScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeV6InputScratchHolder {}
 pub(crate) static SNAPSHOT_ENCODE_V6_INPUT_SCRATCH: SnapshotEncodeV6InputScratchHolder =
     SnapshotEncodeV6InputScratchHolder(UnsafeCell::new(None));
@@ -3761,7 +3810,9 @@ impl SnapshotEncodeV6WorkScratch {
     }
 }
 
-pub(crate) struct SnapshotEncodeV6WorkScratchHolder(UnsafeCell<Option<SnapshotEncodeV6WorkScratch>>);
+pub(crate) struct SnapshotEncodeV6WorkScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeV6WorkScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeV6WorkScratchHolder {}
 pub(crate) static SNAPSHOT_ENCODE_V6_WORK_SCRATCH: SnapshotEncodeV6WorkScratchHolder =
     SnapshotEncodeV6WorkScratchHolder(UnsafeCell::new(None));
@@ -3782,7 +3833,11 @@ pub(crate) fn v6_present(is_full: bool, cf: u32, bit: u32) -> bool {
     is_full || (cf & bit) != 0
 }
 
-pub(crate) fn v6_is_movement_only(input: &SnapshotEncodeV6InputScratch, kind: u32, row: usize) -> bool {
+pub(crate) fn v6_is_movement_only(
+    input: &SnapshotEncodeV6InputScratch,
+    kind: u32,
+    row: usize,
+) -> bool {
     let mask = v6_movement_changed_mask();
     if kind == V6_KIND_BASIC {
         let base = row * V6_BASIC_STRIDE;
@@ -3840,7 +3895,11 @@ pub(crate) fn v6_is_movement_only(input: &SnapshotEncodeV6InputScratch, kind: u3
     false
 }
 
-pub(crate) fn v6_is_split_turret(input: &SnapshotEncodeV6InputScratch, kind: u32, row: usize) -> bool {
+pub(crate) fn v6_is_split_turret(
+    input: &SnapshotEncodeV6InputScratch,
+    kind: u32,
+    row: usize,
+) -> bool {
     if kind != V6_KIND_UNIT {
         return false;
     }
@@ -3899,7 +3958,13 @@ pub(crate) fn v6_has_movement_fields(input: &SnapshotEncodeV6InputScratch, row: 
 }
 
 #[inline]
-pub(crate) fn v6_can_compact_yaw_orientation(rot_present: bool, x: f64, y: f64, z: f64, w: f64) -> bool {
+pub(crate) fn v6_can_compact_yaw_orientation(
+    rot_present: bool,
+    x: f64,
+    y: f64,
+    z: f64,
+    w: f64,
+) -> bool {
     rot_present
         && x == 0.0
         && y == 0.0
@@ -3909,7 +3974,11 @@ pub(crate) fn v6_can_compact_yaw_orientation(rot_present: bool, x: f64, y: f64, 
         && w.abs() <= 1.000001
 }
 
-pub(crate) fn v6_movement_flags(input: &SnapshotEncodeV6InputScratch, kind: u32, row: usize) -> u32 {
+pub(crate) fn v6_movement_flags(
+    input: &SnapshotEncodeV6InputScratch,
+    kind: u32,
+    row: usize,
+) -> u32 {
     let mut flags = 0u32;
     if kind == V6_KIND_BASIC {
         let base = row * V6_BASIC_STRIDE;
@@ -5086,6 +5155,7 @@ pub fn snapshot_encode_envelope_emit_server_meta(
     cpu_hi: f64,
     wind_x: f64,
     wind_y: f64,
+    wind_z: f64,
     wind_speed: f64,
     wind_angle: f64,
     tilt_ema_slot: u32,
@@ -5211,11 +5281,13 @@ pub fn snapshot_encode_envelope_emit_server_meta(
     w.write_number(cpu_hi);
 
     w.write_str("wind");
-    w.write_map_header(4);
+    w.write_map_header(5);
     w.write_str("x");
     w.write_number(wind_x);
     w.write_str("y");
     w.write_number(wind_y);
+    w.write_str("z");
+    w.write_number(wind_z);
     w.write_str("speed");
     w.write_number(wind_speed);
     w.write_str("angle");
@@ -6910,7 +6982,11 @@ pub fn snapshot_encode_envelope_emit_scan_pulses(count: u32) -> u32 {
 }
 
 #[inline]
-pub(crate) fn snapshot_encode_write_grid_cell_array(w: &mut MessagePackWriter, rows: &[f64], count: usize) {
+pub(crate) fn snapshot_encode_write_grid_cell_array(
+    w: &mut MessagePackWriter,
+    rows: &[f64],
+    count: usize,
+) {
     w.write_array_header(count);
     for i in 0..count {
         let base = i * SNAPSHOT_ENCODE_GRID_CELL_STRIDE;
@@ -6983,15 +7059,21 @@ mod sim_kernel_tests {
 
     #[test]
     pub(crate) fn wind_sample_state_writes_deterministic_vector() {
-        let mut a = [0.0; 4];
-        let mut b = [0.0; 4];
+        let mut a = [0.0; 5];
+        let mut b = [0.0; 5];
         assert_eq!(wind_sample_state(12_345.0, &mut a), 1);
         assert_eq!(wind_sample_state(12_345.0, &mut b), 1);
         assert_eq!(a, b);
-        assert!(a[2] >= WIND_SPEED_MIN);
-        assert!(a[2] <= WIND_SPEED_MAX);
+        assert!(a[3] >= WIND_SPEED_MIN);
+        assert!(
+            a[3] <= WIND_SPEED_MAX
+                * (1.0
+                    + WIND_VERTICAL_MAX_FRACTION_OF_HORIZONTAL_SPEED
+                        * WIND_VERTICAL_MAX_FRACTION_OF_HORIZONTAL_SPEED)
+                    .sqrt()
+        );
 
-        let mut short = [0.0; 3];
+        let mut short = [0.0; 4];
         assert_eq!(wind_sample_state(0.0, &mut short), 0);
         assert_eq!(wind_sample_state(f64::NAN, &mut a), 0);
     }
@@ -9765,8 +9847,12 @@ mod sim_kernel_tests {
             0.0,
             0.0,
             0.0,
-            0.98,
+            12.0,
+            0.01,
             0.85,
+            0.0,
+            0.0,
+            0.0,
             0.0,
             0.0,
             0.0,
@@ -9780,15 +9866,21 @@ mod sim_kernel_tests {
         let ground_offsets = vec![3.0];
         let ground_z = vec![4.0];
         let ground_normals = vec![0.0, 0.0, 1.0];
+        let air_drag_coefficients = vec![12.0];
+        let inv_mass = vec![0.01];
         client_predict_unit_motion_batch(
             1,
             &mut motions,
             &ground_offsets,
             &ground_z,
             &ground_normals,
+            &air_drag_coefficients,
+            &inv_mass,
             dt,
-            0.98,
             0.85,
+            0.0,
+            0.0,
+            0.0,
             0.1,
             0.0001,
         );
@@ -9804,15 +9896,21 @@ mod sim_kernel_tests {
         let ground_offsets = vec![1.0];
         let ground_z = vec![0.0];
         let ground_normals = vec![0.0, 0.0, 1.0];
+        let air_drag_coefficients = vec![12.0];
+        let inv_mass = vec![0.01];
         client_predict_unit_motion_batch(
             1,
             &mut motions,
             &ground_offsets,
             &ground_z,
             &ground_normals,
+            &air_drag_coefficients,
+            &inv_mass,
             1.0 / 60.0,
-            0.98,
             0.85,
+            0.0,
+            0.0,
+            0.0,
             0.1,
             0.0001,
         );
@@ -10219,6 +10317,7 @@ mod lock_on_inclusion_tests {
             spec.dps,
             0.0,
             0.0,
+            0.0,
             0,
             0.0,
             0.0,
@@ -10347,6 +10446,8 @@ mod lock_on_inclusion_tests {
             0,
             1,
             0.0,
+            0.0,
+            0.0,
             0,
             0.0,
             0.0,
@@ -10382,6 +10483,8 @@ mod lock_on_inclusion_tests {
             0,
             1,
             0.0,
+            0.0,
+            0.0,
             0,
             0.0,
             0.0,
@@ -10414,6 +10517,8 @@ mod lock_on_inclusion_tests {
             1,
             0,
             1,
+            0.0,
+            0.0,
             0.0,
             0,
             0.0,
@@ -10449,6 +10554,8 @@ mod lock_on_inclusion_tests {
             1,
             0,
             1,
+            0.0,
+            0.0,
             0.0,
             0,
             0.0,
@@ -10508,6 +10615,8 @@ mod lock_on_inclusion_tests {
             1,
             1,
             0.0,
+            0.0,
+            0.0,
             0,
             0.0,
             0.0,
@@ -10520,7 +10629,14 @@ mod lock_on_inclusion_tests {
         );
     }
 
-    pub(crate) fn stamp_body_target(slot: u32, entity_id: i32, owner: u8, x: f64, family: u8, code: u8) {
+    pub(crate) fn stamp_body_target(
+        slot: u32,
+        entity_id: i32,
+        owner: u8,
+        x: f64,
+        family: u8,
+        code: u8,
+    ) {
         stamp_entity(slot, entity_id, owner, x, family, code, 0, -1);
     }
 

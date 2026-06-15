@@ -53,7 +53,6 @@ import type { SimEvent } from './combat';
 import { magnitude, getTransformCosSin } from '../math';
 import {
   getHostShotArmingRadius,
-  getProjectileLaunchSpeed,
   isBallisticArcWeapon,
   updateWeaponWorldKinematics,
 } from './combat/combatUtils';
@@ -1300,9 +1299,11 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   if (!dgunShot || !isProjectileShot(dgunShot)) {
     throw new Error('D-gun turret must use a projectile shot');
   }
-  const speed = getProjectileLaunchSpeed(dgunShot);
-  let velocityX = DMath.cos(fireAngle) * speed;
-  let velocityY = DMath.sin(fireAngle) * speed;
+  const speed = Number.isFinite(dgunShot.mass) && dgunShot.mass > 1e-6
+    ? turretDisruptor.config.launchForce / dgunShot.mass
+    : 0;
+  let velocityX = DMath.cos(turretDisruptor.rotation) * speed;
+  let velocityY = DMath.sin(turretDisruptor.rotation) * speed;
   let velocityZ = 0;
   if (commander.unit) {
     // Manual D-gun shots update the same turret kinematics cache used
@@ -1350,7 +1351,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   ctx.world.addEntity(projectile);
 
   // Emit projectile spawn event for D-gun. Spawn XY comes from the
-  // turret mount center; altitude remains terrain-following.
+  // turret origin; altitude remains terrain-following.
   ctx.pendingProjectileSpawns.push({
     id: projectile.id,
     pos: { x: spawnX, y: spawnY, z: dgunFireZ },

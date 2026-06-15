@@ -3,6 +3,7 @@ import { isBuildBlockingActivation } from './buildableHelpers';
 import { readCombatTargetingTurretFsmInto, type CombatTargetingTurretFsmOut } from './combat/targetingInputStamping';
 import type { ForceAccumulator } from './ForceAccumulator';
 import type { Entity } from './types';
+import type { WindState } from './wind';
 import { decrementCooldown } from './combat/combatUtils';
 import { rollTurretCooldownDuration } from './turretCooldown';
 import {
@@ -22,12 +23,14 @@ const _fsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_IDLE,
   targetId: -1,
 };
+const STILL_AIR: WindState = { x: 0, y: 0, z: 0, speed: 0, angle: 0 };
 
 export class UnitLauncherProductionSystem {
   update(
     world: WorldState,
     dtMs: number,
     forceAccumulator: ForceAccumulator,
+    wind: WindState = STILL_AIR,
   ): UnitLauncherProductionResult {
     _spawnedUnits.length = 0;
     const units = world.getUnits();
@@ -70,6 +73,7 @@ export class UnitLauncherProductionSystem {
           { turret, turretIndex },
           produced,
           dtMs,
+          wind,
           target,
         );
         _spawnedUnits.push(produced);

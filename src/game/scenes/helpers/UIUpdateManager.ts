@@ -872,7 +872,7 @@ export function buildMinimapData(
   cameraQuad: MinimapData['cameraQuad'],
   cameraYaw: number,
   showTerrain: boolean,
-  wind?: { x: number; y: number; speed: number },
+  wind?: { x: number; y: number; z: number; speed: number },
   entityOverride?: readonly MinimapEntity[] | null,
   out?: MinimapData,
 ): MinimapData {

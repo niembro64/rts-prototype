@@ -6,6 +6,7 @@ import type { BeamPoint, Entity, EntityId, ProjectileShot, BeamRay, LaserRay, Sh
 import { getEmissionBlueprintId, isRayConfig, isRayType, isProjectileShot, NO_ENTITY_ID } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
+import type { WindState } from '../wind';
 import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import { beamIndex } from '../BeamIndex';
 import {
@@ -60,7 +61,7 @@ import { createProjectileConfigFromShot, createProjectileConfigFromTurret } from
 import { rollTurretCooldownDuration } from '../turretCooldown';
 import { TURRET_CONFIGS } from '../turretConfigs';
 import {
-  getProjectileAirFrictionDamp,
+  getProjectileAirDragCoefficient,
   getProjectileAirFrictionPer60HzFrame,
   getProjectilePropulsionAcceleration,
 } from '../projectileMotion';
@@ -72,6 +73,7 @@ import {
   CT_LOCK_ON_REL_INCLUDE_ENEMY,
   CT_TURRET_STATE_ENGAGED,
   getSimWasm,
+  type CombatTargetingApi,
 } from '../../sim-wasm/init';
 import {
   readCombatTargetingTurretFsmInto,
@@ -272,6 +274,14 @@ function getHomingMaxThrustAccel(shot: ProjectileShot): number {
   return (shot.homingThrust ?? 0) / mass;
 }
 
+function getTurretProjectileLaunchSpeed(config: TurretConfig, shot: Pick<ProjectileShot, 'mass'>): number {
+  const mass = shot.mass;
+  const launchForce = config.launchForce;
+  if (!Number.isFinite(mass) || mass <= 1e-6) return 0;
+  if (!Number.isFinite(launchForce) || launchForce <= 0) return 0;
+  return launchForce / mass;
+}
+
 function getProjectileSourceTurretConfig(proj: NonNullable<Entity['projectile']>): TurretConfig | null {
   const id = proj.shotSource.sourceTurretBlueprintId ?? proj.config.sourceTurretBlueprintId;
   return id !== null ? (TURRET_CONFIGS[id] ?? null) : null;
@@ -284,12 +294,12 @@ function lockOnMaskAllowsBlueprint(mask: number, code: number, unknownCode: numb
 }
 
 function isObservableToProjectileSource(
+  targeting: CombatTargetingApi | undefined,
   targetId: EntityId,
   sourcePlayerId: number,
 ): boolean {
-  const sim = getSimWasm();
-  if (sim === undefined) return true;
-  return sim.combatTargeting.canPlayerObserveEntity(targetId, sourcePlayerId) !== 0;
+  if (targeting === undefined) return true;
+  return targeting.canPlayerObserveEntity(targetId, sourcePlayerId) !== 0;
 }
 
 function projectileSourceCanAttackTargetTeam(
@@ -361,12 +371,13 @@ function isValidRocketHomingTarget(
   proj: NonNullable<Entity['projectile']>,
   target: Entity | undefined,
   sourceTurret: TurretConfig | null,
+  targeting: CombatTargetingApi | undefined,
 ): target is Entity {
   return target !== undefined &&
     isLiveHomingTarget(target) &&
     projectileSourceCanAttackTargetTeam(world, proj, target) &&
     sourceTurretCanRocketLockTarget(sourceTurret, target) &&
-    isObservableToProjectileSource(target.id, proj.shotSource.sourcePlayerId);
+    isObservableToProjectileSource(targeting, target.id, proj.shotSource.sourcePlayerId);
 }
 
 function getRocketReacquireRadius(world: WorldState, proj: NonNullable<Entity['projectile']>): number {
@@ -385,24 +396,18 @@ function getRocketReacquireRadius(world: WorldState, proj: NonNullable<Entity['p
   return DMath.hypot(world.mapWidth, world.mapHeight) + world.getMaxTargetableRadius();
 }
 
-function chooseBetterRocketTarget(
+function getRocketTargetScore(
   projectileEntity: Entity,
   position: { x: number; y: number; z: number },
   candidate: Entity,
-  currentBest: Entity | undefined,
-  bestScore: number,
-): { target: Entity | undefined; score: number } {
-  if (candidate.id === projectileEntity.id) return { target: currentBest, score: bestScore };
+): number {
+  if (candidate.id === projectileEntity.id) return Infinity;
   const candidatePosition = getEntityPosition3d(candidate, _homingReacquireCandidatePosition);
   const dx = candidatePosition.x - position.x;
   const dy = candidatePosition.y - position.y;
   const dz = candidatePosition.z - position.z;
   const distSq = dx * dx + dy * dy + dz * dz;
-  if (!Number.isFinite(distSq)) return { target: currentBest, score: bestScore };
-  if (distSq < bestScore || (distSq === bestScore && (currentBest === undefined || candidate.id < currentBest.id))) {
-    return { target: candidate, score: distSq };
-  }
-  return { target: currentBest, score: bestScore };
+  return Number.isFinite(distSq) ? distSq : Infinity;
 }
 
 function findRocketReplacementHomingTarget(
@@ -411,6 +416,7 @@ function findRocketReplacementHomingTarget(
   proj: NonNullable<Entity['projectile']>,
   position: { x: number; y: number; z: number },
   sourceTurret: TurretConfig | null,
+  targeting: CombatTargetingApi | undefined,
 ): Entity | undefined {
   const radius = getRocketReacquireRadius(world, proj);
   let bestTarget: Entity | undefined;
@@ -431,10 +437,13 @@ function findRocketReplacementHomingTarget(
     );
     for (let i = 0; i < candidates.length; i++) {
       const candidate = candidates[i];
-      if (!isValidRocketHomingTarget(world, proj, candidate, sourceTurret)) continue;
-      const next = chooseBetterRocketTarget(projectileEntity, position, candidate, bestTarget, bestScore);
-      bestTarget = next.target;
-      bestScore = next.score;
+      if (!isValidRocketHomingTarget(world, proj, candidate, sourceTurret, targeting)) continue;
+      const score = getRocketTargetScore(projectileEntity, position, candidate);
+      if (!Number.isFinite(score)) continue;
+      if (score < bestScore || (score === bestScore && (bestTarget === undefined || candidate.id < bestTarget.id))) {
+        bestTarget = candidate;
+        bestScore = score;
+      }
     }
   }
 
@@ -450,10 +459,13 @@ function findRocketReplacementHomingTarget(
     );
     for (let i = 0; i < candidates.length; i++) {
       const candidate = candidates[i];
-      if (!isValidRocketHomingTarget(world, proj, candidate, sourceTurret)) continue;
-      const next = chooseBetterRocketTarget(projectileEntity, position, candidate, bestTarget, bestScore);
-      bestTarget = next.target;
-      bestScore = next.score;
+      if (!isValidRocketHomingTarget(world, proj, candidate, sourceTurret, targeting)) continue;
+      const score = getRocketTargetScore(projectileEntity, position, candidate);
+      if (!Number.isFinite(score)) continue;
+      if (score < bestScore || (score === bestScore && (bestTarget === undefined || candidate.id < bestTarget.id))) {
+        bestTarget = candidate;
+        bestScore = score;
+      }
     }
   }
 
@@ -774,11 +786,6 @@ export function fireTurrets(
         if (spec === null || lockedTarget === undefined) continue;
         if (readTurretCooldownForFire(unit, weaponIndex) > 0) continue;
 
-        const pitchCos = DMath.cos(weapon.pitch);
-        const axisX = DMath.cos(weapon.rotation) * pitchCos;
-        const axisY = DMath.sin(weapon.rotation) * pitchCos;
-        const axisZ = DMath.sin(weapon.pitch);
-
         writeTurretCooldownToSlab(
           unit,
           weaponIndex,
@@ -806,12 +813,13 @@ export function fireTurrets(
 
         for (let i = 0; i < pellets; i++) {
           const barrelIndex = (fireBaseIndex + i) % barrelCount;
-          let dirX = axisX;
-          let dirY = axisY;
-          let dirZ = axisZ;
+          const pitchCos = DMath.cos(weapon.pitch);
+          let dirX = DMath.cos(weapon.rotation) * pitchCos;
+          let dirY = DMath.sin(weapon.rotation) * pitchCos;
+          let dirZ = DMath.sin(weapon.pitch);
           if (spreadAngle > 0) {
             writeRandomDirectionInCone(
-              axisX, axisY, axisZ,
+              dirX, dirY, dirZ,
               spreadAngle,
               () => world.rng.next(),
               _spreadConeDir,
@@ -820,7 +828,6 @@ export function fireTurrets(
             dirY = _spreadConeDir.y;
             dirZ = _spreadConeDir.z;
           }
-
           const spawnX = weaponX;
           const spawnY = weaponY;
           const spawnZ = mountZ;
@@ -947,7 +954,7 @@ export function fireTurrets(
         }
       }
 
-      // Fire the weapon along the turret's full 3D aim (yaw + pitch).
+      // Fire from the turret origin along the turret's solved yaw/pitch.
       const turretAngle = weapon.rotation;
       const turretPitch = weapon.pitch;
 
@@ -959,31 +966,14 @@ export function fireTurrets(
       const fireBaseIndex = weapon.barrelFireIndex;
 
       for (let i = 0; i < pellets; i++) {
-        // Keep the round-robin barrel index as visual/audio cadence
-        // metadata, but all shots now launch from the turret mount
-        // center.
         const barrelIndex = (fireBaseIndex + i) % barrelCount;
-
         const spawnX = weaponX;
         const spawnY = weaponY;
         const spawnZ = mountZ;
 
-        // Fire audio event from the FIRST pellet's authoritative
-        // turret-center spawn. Non-beam weapons only — continuous
-        // beams use start/stop lifecycle.
-        if (i === 0 && shot.type !== 'beam') {
-          audioEvents.push({
-            type: 'fire',
-            turretBlueprintId: config.turretBlueprintId,
-            pos: { x: spawnX, y: spawnY, z: spawnZ },
-            playerId,
-            entityId: unit.id,
-          });
-        }
-
-        // Firing direction is the current barrel axis. Vertical
+        // Firing direction is the turret's current solved aim. Vertical
         // launchers get no separate launch rule: turretSystem pins
-        // their barrel pose straight up, so this same read produces +Z.
+        // their turret pose straight up, so this same read produces +Z.
         const dirPitchSin = DMath.sin(turretPitch);
         const dirPitchCos = DMath.cos(turretPitch);
         const fireCos = DMath.cos(turretAngle);
@@ -1006,9 +996,21 @@ export function fireTurrets(
           ? DMath.atan2(dirY, dirX)
           : turretAngle;
 
+        // Fire audio event from the FIRST pellet's authoritative
+        // turret-origin spawn. Non-beam weapons only — continuous beams
+        // use start/stop lifecycle.
+        if (i === 0 && shot.type !== 'beam') {
+          audioEvents.push({
+            type: 'fire',
+            turretBlueprintId: config.turretBlueprintId,
+            pos: { x: spawnX, y: spawnY, z: spawnZ },
+            playerId,
+            entityId: unit.id,
+          });
+        }
+
         if (isBeamWeapon) {
-          // Beam start is the turret mount center for both simulation and
-          // rendering.
+          // Beam start is the turret origin for both simulation and rendering.
           const beamStartX = spawnX;
           const beamStartY = spawnY;
           const beamStartZ = spawnZ;
@@ -1082,7 +1084,7 @@ export function fireTurrets(
           // Create traveling projectile with 3D launch velocity using
           // the per-pellet firing direction.
           const projShot = shot as ProjectileShot;
-          const speed = getProjectileLaunchSpeed(projShot);
+          const speed = getTurretProjectileLaunchSpeed(config, projShot);
           let projVx = dirX * speed;
           let projVy = dirY * speed;
           let projVz = dirZ * speed;
@@ -1155,7 +1157,7 @@ export function fireTurrets(
           // shotguns / jittered pellets push back along their real
           // firing axis, not a shared central one.
           if (forceAccumulator && projShot.mass > 0) {
-            const recoilForce = projShot.launchForce * PROJECTILE_MASS_MULTIPLIER;
+            const recoilForce = config.launchForce * PROJECTILE_MASS_MULTIPLIER;
             forceAccumulator.addForce(unit.id, -dirX * recoilForce, -dirY * recoilForce, 'recoil');
           }
           manualLaunchFired = true;
@@ -1191,7 +1193,8 @@ let _travelingProjectileVelZ = new Float64Array(0);
 let _travelingProjectileAccelX = new Float64Array(0);
 let _travelingProjectileAccelY = new Float64Array(0);
 let _travelingProjectileAccelZ = new Float64Array(0);
-let _travelingProjectileAirDamp = new Float64Array(0);
+let _travelingProjectileAirDragCoefficient = new Float64Array(0);
+let _travelingProjectileInvMass = new Float64Array(0);
 let _travelingProjectileGravity = new Float64Array(0);
 let _travelingProjectileTerrainTargetZ = new Float64Array(0);
 let _travelingProjectilePolicyFlags = new Uint8Array(0);
@@ -1201,7 +1204,7 @@ let _travelingProjectileTargetUpdateId = new Int32Array(0);
 const TRAVELING_PROJECTILE_FLAG_HOMING_REPORTING = 1;
 const TRAVELING_PROJECTILE_FLAG_DGUN_TERRAIN_FOLLOW = 2;
 
-const HOMING_GUIDANCE_BATCH_STRIDE = 31;
+const HOMING_GUIDANCE_BATCH_STRIDE = 33;
 const HG_ROW_VEL_X = 0;
 const HG_ROW_VEL_Y = 1;
 const HG_ROW_VEL_Z = 2;
@@ -1229,6 +1232,8 @@ const HG_ROW_MAX_TIME_SEC = 23;
 const HG_ROW_HOMING_TURN_RATE = 24;
 const HG_ROW_MAX_THRUST_ACCEL = 25;
 const HG_ROW_SOLVE_INTERCEPT = 26;
+const HG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME = 27;
+const HG_ROW_PROJECTILE_MASS = 28;
 
 let _homingGuidanceBatchCapacity = 0;
 let _homingGuidanceRows = new Float64Array(0);
@@ -1246,7 +1251,8 @@ function trimTravelingProjectileBatchBuffers(maxRetained = DEFAULT_TRAVELING_PRO
   _travelingProjectileAccelX = new Float64Array(maxRetained);
   _travelingProjectileAccelY = new Float64Array(maxRetained);
   _travelingProjectileAccelZ = new Float64Array(maxRetained);
-  _travelingProjectileAirDamp = new Float64Array(maxRetained);
+  _travelingProjectileAirDragCoefficient = new Float64Array(maxRetained);
+  _travelingProjectileInvMass = new Float64Array(maxRetained);
   _travelingProjectileGravity = new Float64Array(maxRetained);
   _travelingProjectileTerrainTargetZ = new Float64Array(maxRetained);
   _travelingProjectilePolicyFlags = new Uint8Array(maxRetained);
@@ -1312,9 +1318,12 @@ function ensureTravelingProjectileBatchCapacity(required: number): void {
   accelZ.set(_travelingProjectileAccelZ);
   _travelingProjectileAccelZ = accelZ;
 
-  const airDamp = new Float64Array(next);
-  airDamp.set(_travelingProjectileAirDamp);
-  _travelingProjectileAirDamp = airDamp;
+  const airDragCoefficient = new Float64Array(next);
+  airDragCoefficient.set(_travelingProjectileAirDragCoefficient);
+  _travelingProjectileAirDragCoefficient = airDragCoefficient;
+  const invMass = new Float64Array(next);
+  invMass.set(_travelingProjectileInvMass);
+  _travelingProjectileInvMass = invMass;
 
   const gravity = new Float64Array(next);
   gravity.set(_travelingProjectileGravity);
@@ -1425,13 +1434,21 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
       proj.prevY ?? y,
       proj.prevZ ?? z,
       x, y, z,
+      proj.config.shotProfile.runtime.radius.hitbox,
     );
   }
 }
 
-function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: number): void {
+function _updateTravelingProjectilesJS(
+  world: WorldState,
+  dtMs: number,
+  dtSec: number,
+  wind: WindState,
+): void {
   let batchCount = 0;
   let homingGuidanceCount = 0;
+  const sim = getSimWasm();
+  const targeting = sim?.combatTargeting;
 
   for (const entity of world.getTravelingProjectiles()) {
     if (!entity.projectile) continue;
@@ -1490,7 +1507,8 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     _travelingProjectileAccelX[index] = 0;
     _travelingProjectileAccelY[index] = 0;
     _travelingProjectileAccelZ[index] = 0;
-    _travelingProjectileAirDamp[index] = getProjectileAirFrictionDamp(shotConfig, dtSec);
+    _travelingProjectileAirDragCoefficient[index] = getProjectileAirDragCoefficient(shotConfig);
+    _travelingProjectileInvMass[index] = shotConfig.mass > 1e-6 ? 1 / shotConfig.mass : 0;
     _travelingProjectileGravity[index] = projectileGravity;
     _travelingProjectileTerrainTargetZ[index] = 0;
     _travelingProjectilePolicyFlags[index] = policyFlags;
@@ -1508,7 +1526,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
         : undefined;
       if (
         shotConfig.type === 'rocket' &&
-        !isValidRocketHomingTarget(world, proj, homingTarget, sourceTurret)
+        !isValidRocketHomingTarget(world, proj, homingTarget, sourceTurret, targeting)
       ) {
         homingTarget = findRocketReplacementHomingTarget(
           world,
@@ -1516,6 +1534,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
           proj,
           position,
           sourceTurret,
+          targeting,
         );
       } else if (
         shotConfig.type !== 'rocket' &&
@@ -1608,6 +1627,9 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
         _homingGuidanceRows[base + HG_ROW_HOMING_TURN_RATE] = proj.homingTurnRate ?? 0;
         _homingGuidanceRows[base + HG_ROW_MAX_THRUST_ACCEL] = maxThrustAccel;
         _homingGuidanceRows[base + HG_ROW_SOLVE_INTERCEPT] = solveIntercept ? 1 : 0;
+        _homingGuidanceRows[base + HG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME] =
+          getProjectileAirFrictionPer60HzFrame(shot);
+        _homingGuidanceRows[base + HG_ROW_PROJECTILE_MASS] = shot.mass;
       }
     }
 
@@ -1642,7 +1664,6 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
   }
 
   if (batchCount === 0) return;
-  const sim = getSimWasm();
   if (sim === undefined) {
     throw new Error('Projectile integration requires initialized sim-wasm');
   }
@@ -1655,6 +1676,9 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
       _travelingProjectileAccelZ.subarray(0, batchCount),
       homingGuidanceCount,
       dtSec,
+      Number.isFinite(wind.x) ? wind.x : 0,
+      Number.isFinite(wind.y) ? wind.y : 0,
+      Number.isFinite(wind.z) ? wind.z : 0,
     );
     if (guided !== homingGuidanceCount) {
       throw new Error(`Projectile homing guidance batch failed: ${guided}/${homingGuidanceCount}`);
@@ -1671,7 +1695,11 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     _travelingProjectileAccelX.subarray(0, batchCount),
     _travelingProjectileAccelY.subarray(0, batchCount),
     _travelingProjectileAccelZ.subarray(0, batchCount),
-    _travelingProjectileAirDamp.subarray(0, batchCount),
+    _travelingProjectileAirDragCoefficient.subarray(0, batchCount),
+    _travelingProjectileInvMass.subarray(0, batchCount),
+    Number.isFinite(wind.x) ? wind.x : 0,
+    Number.isFinite(wind.y) ? wind.y : 0,
+    Number.isFinite(wind.z) ? wind.z : 0,
     dtSec,
   );
   if (integrated !== batchCount) {
@@ -1707,6 +1735,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
       proj.prevY ?? y,
       proj.prevZ ?? z,
       x, y, z,
+      proj.config.shotProfile.runtime.radius.hitbox,
     );
 
     // Visual rotation + sparse velocity-update events: only homing
@@ -1754,7 +1783,8 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
 export function updateProjectiles(
   world: WorldState,
   dtMs: number,
-  damageSystem: DamageSystem
+  damageSystem: DamageSystem,
+  wind: WindState,
 ): { orphanedIds: EntityId[]; despawnEvents: ProjectileDespawnEvent[]; velocityUpdates: import('./types').ProjectileVelocityUpdateEvent[] } {
   const dtSec = dtMs / 1000;
   _orphanedIds.length = 0;
@@ -1766,7 +1796,7 @@ export function updateProjectiles(
   // packed ballistic shots step in the projectile pool, while guided
   // and D-gun shots pack acceleration rows for a second batch.
   _updatePackedProjectilesJS(world, dtMs, dtSec);
-  _updateTravelingProjectilesJS(world, dtMs, dtSec);
+  _updateTravelingProjectilesJS(world, dtMs, dtSec, wind);
 
   for (const entity of world.getLineProjectiles()) {
     if (!entity.projectile) continue;
@@ -1821,8 +1851,8 @@ export function updateProjectiles(
           }
         }
 
-        // Beam starts follow the turret mount center. Direction follows
-        // the current yaw + pitch so the beam path is up-to-date even
+        // Beam starts follow the turret origin. Direction follows
+        // the current turret yaw/pitch so the beam path is up-to-date even
         // mid-tick.
         const turretAngle = weapon.rotation;
         const turretPitch = weapon.pitch;
@@ -1856,7 +1886,7 @@ export function updateProjectiles(
 
         // Start-point velocity = (current start − last tick's start) / dt.
         // Updated every tick because the start follows the turret
-        // mount center. On the FIRST tick the prevStart fields are
+        // origin. On the FIRST tick the prevStart fields are
         // null, so velocity resolves to 0.
         const startPoint = points[0];
         if (

@@ -105,6 +105,7 @@ mod blueprint_tables {
     include!(concat!(env!("OUT_DIR"), "/blueprint_tables.rs"));
 }
 
+mod air_drag;
 mod generated_blueprint_schema;
 
 #[wasm_bindgen]
@@ -144,7 +145,7 @@ fn wind_wave(t_sec: f64, period_sec: f64, phase: f64) -> f64 {
 
 #[wasm_bindgen]
 pub fn wind_sample_state(now_ms: f64, out: &mut [f64]) -> u32 {
-    if out.len() < 4 || !now_ms.is_finite() {
+    if out.len() < 5 || !now_ms.is_finite() {
         return 0;
     }
 
@@ -156,12 +157,19 @@ pub fn wind_sample_state(now_ms: f64, out: &mut [f64]) -> u32 {
         + wind_wave(t, WIND_SPEED_PERIOD_PRIMARY, 1.7).sin() * 0.28
         + wind_wave(t, WIND_SPEED_PERIOD_SECONDARY, 0.2).cos() * 0.22
         + wind_wave(t, WIND_SPEED_PERIOD_TERTIARY, 4.1).sin() * 0.13;
-    let speed = raw_speed.max(WIND_SPEED_MIN).min(WIND_SPEED_MAX);
+    let horizontal_speed = raw_speed.max(WIND_SPEED_MIN).min(WIND_SPEED_MAX);
+    let vertical_unit = wind_wave(t, WIND_VERTICAL_PERIOD_PRIMARY, 3.2).sin() * 0.62
+        + wind_wave(t, WIND_VERTICAL_PERIOD_SECONDARY, 5.1).cos() * 0.38;
+    let vertical_fraction =
+        vertical_unit.max(-1.0).min(1.0) * WIND_VERTICAL_MAX_FRACTION_OF_HORIZONTAL_SPEED.max(0.0);
+    let z = horizontal_speed * vertical_fraction;
+    let speed = (horizontal_speed * horizontal_speed + z * z).sqrt();
 
-    out[0] = angle.cos() * speed;
-    out[1] = angle.sin() * speed;
-    out[2] = speed;
-    out[3] = angle;
+    out[0] = angle.cos() * horizontal_speed;
+    out[1] = angle.sin() * horizontal_speed;
+    out[2] = z;
+    out[3] = speed;
+    out[4] = angle;
     1
 }
 

@@ -8,14 +8,15 @@ import { getSimWasm } from '../sim-wasm/init';
 export type WindState = {
   x: number;
   y: number;
+  z: number;
   speed: number;
   angle: number;
 };
 
-const _windSampleOut = new Float64Array(4);
+const _windSampleOut = new Float64Array(5);
 
 export function sampleWindState(nowMs = 0): WindState {
-  return sampleWindStateInto({ x: 0, y: 0, speed: 0, angle: 0 }, nowMs);
+  return sampleWindStateInto({ x: 0, y: 0, z: 0, speed: 0, angle: 0 }, nowMs);
 }
 
 export function sampleWindStateInto(target: WindState, nowMs: number): WindState {
@@ -28,8 +29,9 @@ export function sampleWindStateInto(target: WindState, nowMs: number): WindState
   }
   target.x = _windSampleOut[0];
   target.y = _windSampleOut[1];
-  target.speed = _windSampleOut[2];
-  target.angle = _windSampleOut[3];
+  target.z = _windSampleOut[2];
+  target.speed = _windSampleOut[3];
+  target.angle = _windSampleOut[4];
   return target;
 }
 

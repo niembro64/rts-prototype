@@ -1,9 +1,9 @@
 // deposits — extracted from lib.rs (pure code motion).
 
 #[allow(unused_imports)]
-use wasm_bindgen::prelude::*;
-#[allow(unused_imports)]
 use crate::*;
+#[allow(unused_imports)]
+use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────
 //  C16 — metal-deposit placement + resource footprint growth
@@ -137,7 +137,11 @@ pub(crate) fn terrain_make_oval_metrics(
 }
 
 #[inline]
-pub(crate) fn terrain_sample_map_oval_at(metrics: &MapOvalMetricsRust, x: f64, y: f64) -> MapOvalSampleRust {
+pub(crate) fn terrain_sample_map_oval_at(
+    metrics: &MapOvalMetricsRust,
+    x: f64,
+    y: f64,
+) -> MapOvalSampleRust {
     let ox = (x - metrics.cx) / metrics.scale_x;
     let oy = (y - metrics.cy) / metrics.scale_y;
     MapOvalSampleRust {
@@ -184,7 +188,10 @@ pub(crate) fn terrain_apply_plateaus(height: f64, cfg: &MetalDepositTerrainConfi
     plateau_level * step
 }
 
-pub(crate) fn terrain_circle_end_radius_for_min_dim(min_dim: f64, cfg: &MetalDepositTerrainConfigRust) -> f64 {
+pub(crate) fn terrain_circle_end_radius_for_min_dim(
+    min_dim: f64,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> f64 {
     let max_end_radius = min_dim * 0.5;
     (min_dim * cfg.circle_edge_fraction)
         .min(max_end_radius)
@@ -345,7 +352,11 @@ pub(crate) fn metal_deposit_flat_zone_blend_weight(
     Some((1.0 + (t * std::f64::consts::PI).cos()) * 0.5)
 }
 
-pub(crate) fn metal_deposit_override_from_flat_zone_rows(x: f64, y: f64, flat_zones: &[f64]) -> (f64, f64) {
+pub(crate) fn metal_deposit_override_from_flat_zone_rows(
+    x: f64,
+    y: f64,
+    flat_zones: &[f64],
+) -> (f64, f64) {
     if flat_zones.is_empty() {
         return (1.0, 0.0);
     }
@@ -945,4 +956,3 @@ pub fn metal_deposit_grow_resource_cells(
     }
     cells.len() as u32
 }
-

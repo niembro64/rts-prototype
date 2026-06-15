@@ -25,6 +25,7 @@ import {
 import { getEntityTargetPoint } from './buildingAnchors';
 import { getSimWasm } from '../sim-wasm/init';
 import type { ForceAccumulator } from './ForceAccumulator';
+import type { WindState } from './wind';
 import {
   findUnitLauncherTurret,
   inheritProducedUnitIntent,
@@ -47,6 +48,7 @@ const FACTORY_ACTION_STOP_PRODUCING = 4;
 const FACTORY_ACTION_SPAWN_SHELL = 5;
 const MAX_FACTORY_PRODUCTION_QUEUE_LENGTH = 64;
 const FACTORY_SHELL_MIN_FREEFALL_CLEARANCE = 36;
+const STILL_AIR: WindState = { x: 0, y: 0, z: 0, speed: 0, angle: 0 };
 
 export function shiftFactoryProductionQueue(queue: string[]): string | null {
   if (queue.length === 0) return null;
@@ -140,6 +142,7 @@ export class FactoryProductionSystem {
     dtMs: number,
     buildingGrid: BuildingGrid,
     forceAccumulator: ForceAccumulator,
+    wind: WindState = STILL_AIR,
   ): FactoryProductionResult {
     const spawnedUnits: Entity[] = [];
     const completedUnits: Entity[] = [];
@@ -254,7 +257,7 @@ export class FactoryProductionSystem {
           // Activation: stamp the static rally, aim turrets, mark dirty.
           // The selected blueprint is intentionally NOT cleared: repeat-
           // build mode keeps producing it until the player toggles it off.
-          this.activateShell(world, factory, shell, buildingGrid, dtMs, forceAccumulator);
+          this.activateShell(world, factory, shell, buildingGrid, dtMs, forceAccumulator, wind);
           completedUnits.push(shell);
         }
         factoryComp.currentShellId = null;
@@ -335,6 +338,7 @@ export class FactoryProductionSystem {
     _buildingGrid: BuildingGrid,
     dtMs: number,
     forceAccumulator: ForceAccumulator,
+    wind: WindState,
   ): void {
     if (!factory.factory) return;
     const factoryComp = factory.factory;
@@ -393,6 +397,7 @@ export class FactoryProductionSystem {
         launcher,
         unit,
         dtMs,
+        wind,
         target,
       );
     }

@@ -8,7 +8,7 @@ import {
 } from '../../types/network';
 import type { EntityId } from '../../types/entityTypes';
 import type { Vec3 } from '../../types/vec2';
-import { solveTurretShotAngles, type TurretShotAngleSolution } from '../math/Ballistics';
+import { solveTurretShotAngles, type TurretShotAngleInput, type TurretShotAngleSolution } from '../math/Ballistics';
 import { getBarrelTip } from '../math/BarrelGeometry';
 import { getTransformCosSin, normalizeAngle } from '../math';
 import { getEntityTargetPoint } from './buildingAnchors';
@@ -21,8 +21,9 @@ import {
 import type { Entity, Turret, UnitAction } from './types';
 import { setUnitActions } from './unitActions';
 import { getUnitGroundZ } from './unitGeometry';
-import { scaleFrictionPer60HzFrame } from './motionFriction';
+import { dragRateFromFrictionPer60HzFrame, scaleFrictionPer60HzFrame } from './motionFriction';
 import { getUnitAirFrictionScale } from './unitMotionFriction';
+import type { WindState } from './wind';
 import type { WorldState } from './WorldState';
 
 const DEFAULT_FALLBACK_LAUNCH_PITCH = Math.PI / 4;
@@ -34,6 +35,7 @@ const LAUNCH_MIN_FLIGHT_TIME = 1 / 120;
 const MIN_DIRECTION_LENGTH = 1e-6;
 const EXTERNAL_FORCE_KERNEL_DIVISOR = 3600;
 const EXTERNAL_FORCE_KERNEL_ACCEL_SCALE = 1_000_000;
+const STILL_AIR: WindState = { x: 0, y: 0, z: 0, speed: 0, angle: 0 };
 
 const _mount = { x: 0, y: 0, z: 0 };
 const _hostVelocity = { x: 0, y: 0, z: 0 };
@@ -41,6 +43,7 @@ const _targetVelocity = { x: 0, y: 0, z: 0 };
 const _targetAcceleration = { x: 0, y: 0, z: 0 };
 const _zeroAcceleration = { x: 0, y: 0, z: 0 };
 const _targetPoint = { x: 0, y: 0, z: 0 };
+const _spawnPoint = { x: 0, y: 0, z: 0 };
 const _launchSolution: TurretShotAngleSolution = {
   time: 0,
   aimPoint: { x: 0, y: 0, z: 0 },
@@ -48,6 +51,20 @@ const _launchSolution: TurretShotAngleSolution = {
   yaw: 0,
   pitch: 0,
   direction: { x: 1, y: 0, z: 0 },
+};
+const _launcherShotInput: TurretShotAngleInput = {
+  myPosition: _mount,
+  myVelocity: _hostVelocity,
+  myAcceleration: _zeroAcceleration,
+  targetPosition: _targetPoint,
+  targetVelocity: _targetVelocity,
+  targetAcceleration: _targetAcceleration,
+  projectileSpeed: 0,
+  projectileMass: 0,
+  projectileAirFrictionPer60HzFrame: 0,
+  gravity: GRAVITY,
+  arcPreference: 'low',
+  maxTimeSec: 0,
 };
 
 export type UnitLauncherTurretRef = {
@@ -131,6 +148,7 @@ export function launchProducedUnitFromTurret(
   launcher: UnitLauncherTurretRef,
   produced: Entity,
   dtMs: number,
+  wind: WindState = STILL_AIR,
   target: Entity | null = null,
 ): void {
   if (produced.unit === null || host.combat === null) return;
@@ -155,7 +173,7 @@ export function launchProducedUnitFromTurret(
     _mount,
   );
 
-  const dir = chooseLaunchDirection(world, host, turret, produced, mount, target);
+  const dir = chooseLaunchDirection(world, host, turret, produced, mount, wind, target);
   if (!isFiniteDirection(dir)) {
     writeFallbackDirection(host, produced, dir);
   }
@@ -186,11 +204,10 @@ export function launchProducedUnitFromTurret(
     0,
   );
   const clearance = Math.max(4, produced.unit.radius.collision * 0.75);
-  const spawn = {
-    x: barrelTip.x + dir.x * clearance,
-    y: barrelTip.y + dir.y * clearance,
-    z: barrelTip.z + dir.z * clearance,
-  };
+  const spawn = _spawnPoint;
+  spawn.x = barrelTip.x + dir.x * clearance;
+  spawn.y = barrelTip.y + dir.y * clearance;
+  spawn.z = barrelTip.z + dir.z * clearance;
   if (!Number.isFinite(spawn.x) || !Number.isFinite(spawn.y) || !Number.isFinite(spawn.z)) {
     return;
   }
@@ -230,6 +247,7 @@ function chooseLaunchDirection(
   turret: Turret,
   produced: Entity,
   origin: Vec3,
+  wind: WindState,
   target: Entity | null,
 ): Vec3 {
   const mode = turret.config.unitLauncher?.aimMode ?? 'ballistic-or-waypoint';
@@ -239,7 +257,7 @@ function chooseLaunchDirection(
   }
 
   if (isLiveUnitLauncherTarget(world, host, target)) {
-    const solved = solveBallisticLaunchDirection(turret, produced, origin, target);
+    const solved = solveBallisticLaunchDirection(turret, produced, origin, target, wind);
     if (solved !== null) return solved;
     writeEntityTargetPoint(target, _targetPoint);
     return fallbackMaxRangeDirectionToPoint(host, produced, turret, origin, _targetPoint);
@@ -257,6 +275,7 @@ function solveBallisticLaunchDirection(
   produced: Entity,
   origin: Vec3,
   target: Entity,
+  wind: WindState,
 ): Vec3 | null {
   const unit = produced.unit;
   if (unit === null || unit.mass <= 1e-6) return null;
@@ -266,22 +285,21 @@ function solveBallisticLaunchDirection(
   writeEntityTargetPoint(target, _targetPoint);
   const targetVelocity = getEntityVelocity3d(target, _targetVelocity);
   const targetAcceleration = getEntityAcceleration3d(target, _targetAcceleration);
-  const solution = solveTurretShotAngles(
-    {
-      myPosition: origin,
-      myVelocity: turret.worldVelocity,
-      myAcceleration: _zeroAcceleration,
-      targetPosition: _targetPoint,
-      targetVelocity,
-      targetAcceleration,
-      projectileSpeed,
-      projectileAirFrictionPer60HzFrame: launcherProjectileAirFrictionPer60HzFrame(produced),
-      gravity: GRAVITY,
-      arcPreference: 'low',
-      maxTimeSec: 0,
-    },
-    _launchSolution,
-  );
+  const input = _launcherShotInput;
+  input.myPosition = origin;
+  input.myVelocity = turret.worldVelocity;
+  input.myAcceleration = _zeroAcceleration;
+  input.targetPosition = _targetPoint;
+  input.targetVelocity = targetVelocity;
+  input.targetAcceleration = targetAcceleration;
+  input.projectileSpeed = projectileSpeed;
+  input.projectileMass = unit.mass * UNIT_MASS_MULTIPLIER;
+  input.projectileAirFrictionPer60HzFrame = launcherProjectileAirFrictionPer60HzFrame(produced);
+  input.windVelocity = wind;
+  input.gravity = GRAVITY;
+  input.arcPreference = 'low';
+  input.maxTimeSec = 0;
+  const solution = solveTurretShotAngles(input, _launchSolution);
   if (solution === null) return null;
   return solution.direction;
 }
@@ -368,6 +386,7 @@ function maxRangeFallbackPitch(
     speed,
     heightDelta,
     launcherProjectileAirFrictionPer60HzFrame(produced),
+    produced.unit !== null ? produced.unit.mass * UNIT_MASS_MULTIPLIER : 0,
   );
   if (draggedPitch !== null) return draggedPitch;
 
@@ -382,6 +401,7 @@ function maxRangeFallbackPitchWithDrag(
   speed: number,
   heightDelta: number,
   airFrictionPer60HzFrame: number,
+  projectileMass: number,
 ): number | null {
   if (
     !Number.isFinite(airFrictionPer60HzFrame) ||
@@ -392,7 +412,7 @@ function maxRangeFallbackPitchWithDrag(
   ) {
     return null;
   }
-  const dragK = -Math.log(1 - airFrictionPer60HzFrame) * 60;
+  const dragK = dragRateFromFrictionPer60HzFrame(airFrictionPer60HzFrame, projectileMass);
   if (!Number.isFinite(dragK) || dragK <= 1e-9) return null;
 
   let bestPitch = DEFAULT_FALLBACK_LAUNCH_PITCH;

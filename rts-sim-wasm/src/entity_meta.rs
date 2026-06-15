@@ -1,9 +1,9 @@
 // entity_meta — extracted from lib.rs (pure code motion).
 
 #[allow(unused_imports)]
-use wasm_bindgen::prelude::*;
-#[allow(unused_imports)]
 use crate::*;
+#[allow(unused_imports)]
+use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────
 //  Phase 10 D.1 — Entity-meta SoA pool + runtime registry
@@ -1031,4 +1031,3 @@ turret_pool_ptr_export!(turret_pool_target_id_ptr, target_id, i32);
 pub fn turret_pool_entity_capacity() -> u32 {
     turret_pool().count_per_entity.len() as u32
 }
-

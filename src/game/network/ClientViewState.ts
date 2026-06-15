@@ -257,6 +257,7 @@ export class ClientViewState {
       supportSurfaceEntities: this.predictionSupportSurfaceEntities,
       getMapWidth: () => this.mapWidth,
       getMapHeight: () => this.mapHeight,
+      getWind: () => this.serverMeta?.wind,
       getServerShieldsEnabled: () => {
         const serverMeta = this.serverMeta;
         return (

@@ -1256,6 +1256,7 @@ function canEncodeServerMeta(meta: SnapshotServerMeta): boolean {
     !meta.wind ||
     !isFiniteNumber(meta.wind.x) ||
     !isFiniteNumber(meta.wind.y) ||
+    !isFiniteNumber(meta.wind.z) ||
     !isFiniteNumber(meta.wind.speed) ||
     !isFiniteNumber(meta.wind.angle) ||
     typeof meta.unitGroundNormalEma !== 'string'
@@ -1339,6 +1340,7 @@ function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
     meta.cpu!.hi,
     meta.wind!.x,
     meta.wind!.y,
+    meta.wind!.z,
     meta.wind!.speed,
     meta.wind!.angle,
     unitGroundNormalEmaSlot,

@@ -68,7 +68,7 @@ export class ServerSimulationCore {
     this.simulation.update(dtMs);
     this.factoryConstructionTurretSystem.update(dtSec);
     this.unitForceSystem.applyForces(dtSec);
-    this.physics.step(dtSec);
+    this.physics.step(dtSec, this.simulation.getWindState());
     this.repairInvalidEntityPoses();
     this.syncFromPhysics();
   }
