@@ -24,7 +24,10 @@ import { LOCKSTEP_FIXED_DT_MS } from './LockstepFrameScheduler';
 
 type ReplayCommandBuilder = (core: ServerSimulationCore, frame: number) => readonly Command[];
 type ReplaySetup = (core: ServerSimulationCore) => void;
-type ReplayFinalAssertion = (core: ServerSimulationCore) => void;
+type ReplayFinalAssertion = (
+  core: ServerSimulationCore,
+  stats: ReplayRunStats,
+) => void;
 
 type DeterministicReplayCase = {
   readonly id: string;
@@ -119,7 +122,7 @@ const CASES: readonly DeterministicReplayCase[] = [
       }
       return [];
     },
-    assertFinal: (core) => {
+    assertFinal: (core, stats) => {
       assertHasEntity(core, (entity) =>
         entity.buildingBlueprintId === 'buildingSolar' &&
         entity.ownership?.playerId === 1 &&
@@ -129,7 +132,10 @@ const CASES: readonly DeterministicReplayCase[] = [
         throw new Error('[deterministic replay] expected a live scan pulse');
       }
       const economy = economyManager.getEconomy(1 as PlayerId);
-      if (economy === undefined || economy.stockpile.curr >= 500) {
+      if (economy === undefined || economy.stockpile.curr <= 0) {
+        throw new Error('[deterministic replay] expected valid player economy state');
+      }
+      if ((stats.constructionEnergySpendByPlayer.get(1 as PlayerId) ?? 0) <= 0) {
         throw new Error('[deterministic replay] expected construction/economy state to spend energy');
       }
     },
@@ -346,21 +352,27 @@ type ReplayRun = {
   readonly checkpoints: readonly string[];
 };
 
+type ReplayRunStats = {
+  readonly constructionEnergySpendByPlayer: Map<PlayerId, number>;
+};
+
 function runReplayCaseOnce(replayCase: DeterministicReplayCase): ReplayRun {
   resetReusableSimulationStateForDeterministicReplay();
   const boot = ServerBootstrap.bootstrap(replayCase.config);
   const core = new ServerSimulationCore(boot);
   const checkpoints: string[] = [];
+  const stats = createReplayRunStats();
   try {
     replayCase.setup?.(core);
     for (let frame = 0; frame < replayCase.ticks; frame++) {
       const commands = replayCase.buildCommands(core, frame);
       core.stepFixedTick(LOCKSTEP_FIXED_DT_MS, commands);
+      observeReplayTick(core, stats);
       if ((frame + 1) % 30 === 0 || frame === replayCase.ticks - 1) {
         checkpoints.push(core.getCanonicalStateHash().hash);
       }
     }
-    replayCase.assertFinal?.(core);
+    replayCase.assertFinal?.(core, stats);
     const finalState = buildCanonicalServerState(core);
     const finalStateHash = core.getCanonicalStateHash();
     return {
@@ -376,6 +388,23 @@ function runReplayCaseOnce(replayCase: DeterministicReplayCase): ReplayRun {
     core.detachSimulationCallbacks();
     core.dispose();
     resetReusableSimulationStateForDeterministicReplay();
+  }
+}
+
+function createReplayRunStats(): ReplayRunStats {
+  return {
+    constructionEnergySpendByPlayer: new Map(),
+  };
+}
+
+function observeReplayTick(core: ServerSimulationCore, stats: ReplayRunStats): void {
+  const movements = core.world.resourceMovements;
+  for (let i = 0; i < movements.length; i++) {
+    const movement = movements[i];
+    if (movement.reason !== 'construction' || movement.resource !== 'energy') continue;
+    const playerId = movement.playerId;
+    const previous = stats.constructionEnergySpendByPlayer.get(playerId) ?? 0;
+    stats.constructionEnergySpendByPlayer.set(playerId, previous + movement.amount);
   }
 }
 

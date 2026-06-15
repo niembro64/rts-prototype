@@ -1,5 +1,6 @@
 import type { ProjectileShot } from './types';
 import { dragCoefficientFromVelocityFrictionPer60HzFrame } from './motionFriction';
+import { deterministicMath } from './deterministicMath';
 
 const MIN_PROPULSION_SPEED = 1e-6;
 let cachedAirFrictionPer60HzFrame = Number.NaN;
@@ -40,7 +41,7 @@ export function addProjectileForwardPropulsionAcceleration(
 ): boolean {
   const accel = getProjectilePropulsionAcceleration(shot);
   if (accel <= 0) return false;
-  const speed = Math.hypot(velocityX, velocityY, velocityZ);
+  const speed = deterministicMath.hypot(velocityX, velocityY, velocityZ);
   if (!Number.isFinite(speed) || speed <= MIN_PROPULSION_SPEED) return false;
   const scale = accel / speed;
   out.x += velocityX * scale;

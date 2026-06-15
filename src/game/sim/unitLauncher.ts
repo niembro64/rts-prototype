@@ -25,6 +25,7 @@ import {
   dragRateFromVelocityFrictionPer60HzFrame,
   windVelocityForAirFriction,
 } from './motionFriction';
+import { deterministicMath } from './deterministicMath';
 import { getUnitAirFrictionPer60HzFrame } from './unitAirFriction';
 import type { WindState } from './wind';
 import type { WorldState } from './WorldState';
@@ -180,9 +181,9 @@ export function launchProducedUnitFromTurret(
   if (!isFiniteDirection(dir)) {
     writeFallbackDirection(host, produced, dir);
   }
-  const yaw = Math.atan2(dir.y, dir.x);
-  const horizontal = Math.hypot(dir.x, dir.y);
-  const pitch = Math.atan2(dir.z, horizontal);
+  const yaw = deterministicMath.atan2(dir.y, dir.x);
+  const horizontal = deterministicMath.hypot(dir.x, dir.y);
+  const pitch = deterministicMath.atan2(dir.z, horizontal);
 
   turret.rotation = normalizeAngle(yaw);
   turret.pitch = pitch;
@@ -341,7 +342,7 @@ function directionToPoint(origin: Vec3, point: Vec3, fallback: Vec3): Vec3 {
   const dx = point.x - origin.x;
   const dy = point.y - origin.y;
   const dz = point.z - origin.z;
-  const len = Math.hypot(dx, dy, dz);
+  const len = deterministicMath.hypot(dx, dy, dz);
   if (!Number.isFinite(len) || len <= MIN_DIRECTION_LENGTH) return fallback;
   fallback.x = dx / len;
   fallback.y = dy / len;
@@ -358,14 +359,14 @@ function fallbackMaxRangeDirectionToPoint(
 ): Vec3 {
   const dx = point.x - origin.x;
   const dy = point.y - origin.y;
-  const len = Math.hypot(dx, dy);
+  const len = deterministicMath.hypot(dx, dy);
   const out = fallbackDirection(host, produced, origin);
   if (Number.isFinite(len) && len > MIN_DIRECTION_LENGTH) {
     const pitch = maxRangeFallbackPitch(turret, produced, origin.z, point.z);
-    const pitchCos = Math.cos(pitch);
+    const pitchCos = deterministicMath.cos(pitch);
     out.x = (dx / len) * pitchCos;
     out.y = (dy / len) * pitchCos;
-    out.z = Math.sin(pitch);
+    out.z = deterministicMath.sin(pitch);
   }
   return out;
 }
@@ -393,7 +394,7 @@ function maxRangeFallbackPitch(
 
   const denomSq = speed * speed - 2 * GRAVITY * heightDelta;
   if (denomSq <= 1e-6) return MAX_RANGE_PITCH_LIMIT;
-  const pitch = Math.atan2(speed, Math.sqrt(denomSq));
+  const pitch = deterministicMath.atan2(speed, deterministicMath.sqrt(denomSq));
   if (!Number.isFinite(pitch)) return DEFAULT_FALLBACK_LAUNCH_PITCH;
   return Math.max(0, Math.min(MAX_RANGE_PITCH_LIMIT, pitch));
 }
@@ -422,10 +423,10 @@ function maxRangeFallbackPitchWithDrag(
   let bestRange = -1;
   for (let i = 0; i <= MAX_RANGE_PITCH_SAMPLES; i++) {
     const pitch = (MAX_RANGE_PITCH_LIMIT * i) / MAX_RANGE_PITCH_SAMPLES;
-    const vz = speed * Math.sin(pitch);
+    const vz = speed * deterministicMath.sin(pitch);
     const flightTime = dampedFlightTimeToHeight(vz, heightDelta, dragK);
     if (flightTime === null) continue;
-    const horizontalSpeed = speed * Math.cos(pitch);
+    const horizontalSpeed = speed * deterministicMath.cos(pitch);
     const horizontalRange = horizontalSpeed * (1 - Math.exp(-dragK * flightTime)) / dragK;
     if (Number.isFinite(horizontalRange) && horizontalRange > bestRange) {
       bestRange = horizontalRange;
@@ -482,14 +483,14 @@ function writeFallbackDirection(host: Entity, produced: Entity, out: Vec3): void
   if (action !== undefined) {
     const dx = action.x - produced.transform.x;
     const dy = action.y - produced.transform.y;
-    if (Math.hypot(dx, dy) > MIN_DIRECTION_LENGTH) {
-      yaw = Math.atan2(dy, dx);
+    if (deterministicMath.hypot(dx, dy) > MIN_DIRECTION_LENGTH) {
+      yaw = deterministicMath.atan2(dy, dx);
     }
   }
-  const pitchCos = Math.cos(DEFAULT_FALLBACK_LAUNCH_PITCH);
-  out.x = Math.cos(yaw) * pitchCos;
-  out.y = Math.sin(yaw) * pitchCos;
-  out.z = Math.sin(DEFAULT_FALLBACK_LAUNCH_PITCH);
+  const pitchCos = deterministicMath.cos(DEFAULT_FALLBACK_LAUNCH_PITCH);
+  out.x = deterministicMath.cos(yaw) * pitchCos;
+  out.y = deterministicMath.sin(yaw) * pitchCos;
+  out.z = deterministicMath.sin(DEFAULT_FALLBACK_LAUNCH_PITCH);
 }
 
 function isFiniteDirection(dir: Vec3): boolean {
@@ -497,7 +498,7 @@ function isFiniteDirection(dir: Vec3): boolean {
     Number.isFinite(dir.x) &&
     Number.isFinite(dir.y) &&
     Number.isFinite(dir.z) &&
-    Math.hypot(dir.x, dir.y, dir.z) > MIN_DIRECTION_LENGTH
+    deterministicMath.hypot(dir.x, dir.y, dir.z) > MIN_DIRECTION_LENGTH
   );
 }
 

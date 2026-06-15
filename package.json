@@ -14,6 +14,7 @@
     "deterministic:audit": "node scripts/auditDeterminism.mjs",
     "deterministic:replay": "npm run build:wasm && node scripts/deterministicReplayHarness.mjs",
     "deterministic:replay:browsers": "npm run build:wasm && node scripts/deterministicReplayBrowserHarness.mjs",
+    "host-directed:validation": "node scripts/hostDirectedValidationTest.mjs",
     "terrain:stability": "node scripts/terrainStabilityHarness.mjs",
     "preview": "node ./node_modules/vite/bin/vite.js preview --host",
     "tauri:dev": "npx tauri dev",
