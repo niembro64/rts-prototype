@@ -536,9 +536,7 @@ let currentEdgeScrollEnabled: boolean = _cd.edgeScroll.default;
 let currentDragPanEnabled: boolean = _cd.dragPan.default;
 const _isMobile = typeof navigator !== 'undefined' &&
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-let currentLobbyVisible: boolean = _isMobile
-  ? _cd.lobbyVisible.default.mobile
-  : _cd.lobbyVisible.default.desktop;
+let currentLobbyVisible: boolean = defaultLobbyVisible('demo');
 let currentWaypointDetail: WaypointDetail = _cd.waypointDetail.default;
 const currentEntityHud: EntityHudToggles = cloneEntityHud(_cd.entityHud.default);
 let currentSelectionHudMode: SelectionHudMode = _cd.selectionHudMode.default;
@@ -630,9 +628,7 @@ function applyClientDefaults(mode: ClientMode): void {
   for (const cat of SOUND_CATEGORIES) currentSoundToggles[cat] = cd.sounds.default[cat];
   currentEdgeScrollEnabled = cd.edgeScroll.default;
   currentDragPanEnabled = cd.dragPan.default;
-  currentLobbyVisible = _isMobile
-    ? cd.lobbyVisible.default.mobile
-    : cd.lobbyVisible.default.desktop;
+  currentLobbyVisible = defaultLobbyVisible(mode);
   currentWaypointDetail = cd.waypointDetail.default;
   for (const type of ENTITY_HUD_TYPES) {
     for (const element of ENTITY_HUD_ELEMENTS) {
@@ -1270,6 +1266,26 @@ export function getDragPanEnabled(): boolean {
 export function setDragPanEnabled(enabled: boolean): void {
   currentDragPanEnabled = enabled;
   persist(activeStorageKeys().dragPan, String(enabled));
+}
+
+/** Per-mode default for the sidebar (lobby) visibility, honoring the
+ *  mobile/desktop split. Single source for the module-init value, the
+ *  mode-switch reset in applyClientDefaults, and the stored-value fallback. */
+function defaultLobbyVisible(mode: ClientMode): boolean {
+  const def = CLIENT_MODE_CONFIGS[mode].lobbyVisible.default;
+  return _isMobile ? def.mobile : def.desktop;
+}
+
+/** Read the persisted sidebar (lobby) visibility for a specific mode WITHOUT
+ *  switching the active client mode. Lets the chrome layer restore the sidebar
+ *  on a demo↔real transition before setClientMode() has run for that mode,
+ *  mirroring the per-mode bottom-bars loaders. Falls back to the mode default
+ *  (open). */
+export function getStoredLobbyVisible(mode: ClientMode): boolean {
+  const stored = readPersisted(CLIENT_STORAGE_KEYS[mode].lobbyVisible);
+  if (stored === 'true') return true;
+  if (stored === 'false') return false;
+  return defaultLobbyVisible(mode);
 }
 
 export function getLobbyVisible(): boolean {

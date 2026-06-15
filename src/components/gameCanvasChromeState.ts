@@ -7,7 +7,7 @@ import {
   type BattleMode,
 } from '../battleBarConfig';
 import {
-  getLobbyVisible,
+  getStoredLobbyVisible,
   setLobbyVisible,
 } from '../clientBarConfig';
 
@@ -60,7 +60,7 @@ export function useGameCanvasChromeState(
   toggleSpectateMode: () => void;
 } {
   const mobileBarsVisible = ref(false);
-  const spectateMode = ref(!getLobbyVisible());
+  const spectateMode = ref(!getStoredLobbyVisible(currentBattleMode.value));
   const bottomBarsCollapsed = ref(
     currentBattleMode.value === 'real'
       ? loadStoredRealBarsCollapsed()
@@ -69,6 +69,7 @@ export function useGameCanvasChromeState(
   const playerClientEnabled = ref(loadStoredClientEnabled(currentBattleMode.value));
 
   watch(currentBattleMode, (mode) => {
+    spectateMode.value = !getStoredLobbyVisible(mode);
     bottomBarsCollapsed.value = mode === 'real'
       ? loadStoredRealBarsCollapsed()
       : loadStoredDemoBarsCollapsed();
