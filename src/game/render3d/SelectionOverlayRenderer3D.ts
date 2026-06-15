@@ -31,6 +31,12 @@ import {
   writeCircleRibbonGeometry,
   type ClosedRibbonGeometry,
 } from './GroundCircleLine3D';
+import {
+  setObjectVisibleIfChanged,
+  setScaleScalarIfChanged,
+  setVector3IfChanged,
+  setVector3YIfChanged,
+} from './threeTransformWriteUtils';
 
 const RANGE_CIRCLE_SEGMENTS = 96;
 const RANGE_CIRCLE_GROUND_LIFT = 6;
@@ -269,8 +275,8 @@ export class SelectionOverlayRenderer3D {
       m.ring = undefined;
     }
     if (!m.ring) return;
-    m.ring.scale.setScalar(radius);
-    m.ring.position.set(0, radius * 0.06 + 0.8, 0);
+    setScaleScalarIfChanged(m.ring.scale, radius);
+    setVector3IfChanged(m.ring.position, 0, radius * 0.06 + 0.8, 0);
   }
 
   updateUnitRadiusRings(m: OverlayEntityMesh, entity: Entity): void {
@@ -280,10 +286,10 @@ export class SelectionOverlayRenderer3D {
     const showShotArming = this.showShotArmingRadius;
     if (!showVisual && !showHitbox && !showCollision && !showShotArming) {
       if (m.radiusRingsVisible && m.radiusRings) {
-        if (m.radiusRings.visual) m.radiusRings.visual.visible = false;
-        if (m.radiusRings.hitbox) m.radiusRings.hitbox.visible = false;
-        if (m.radiusRings.collision) m.radiusRings.collision.visible = false;
-        if (m.radiusRings.shotArmingRadius) m.radiusRings.shotArmingRadius.visible = false;
+        if (m.radiusRings.visual) setObjectVisibleIfChanged(m.radiusRings.visual, false);
+        if (m.radiusRings.hitbox) setObjectVisibleIfChanged(m.radiusRings.hitbox, false);
+        if (m.radiusRings.collision) setObjectVisibleIfChanged(m.radiusRings.collision, false);
+        if (m.radiusRings.shotArmingRadius) setObjectVisibleIfChanged(m.radiusRings.shotArmingRadius, false);
       }
       m.radiusRingsVisible = false;
       return;
@@ -321,10 +327,10 @@ export class SelectionOverlayRenderer3D {
     const showShotArming = this.showShotArmingRadius;
     if (!showVisual && !showHitbox && !showCollision && !showShotArming) {
       if (m.radiusRingsVisible && m.radiusRings) {
-        if (m.radiusRings.visual) m.radiusRings.visual.visible = false;
-        if (m.radiusRings.hitbox) m.radiusRings.hitbox.visible = false;
-        if (m.radiusRings.collision) m.radiusRings.collision.visible = false;
-        if (m.radiusRings.shotArmingRadius) m.radiusRings.shotArmingRadius.visible = false;
+        if (m.radiusRings.visual) setObjectVisibleIfChanged(m.radiusRings.visual, false);
+        if (m.radiusRings.hitbox) setObjectVisibleIfChanged(m.radiusRings.hitbox, false);
+        if (m.radiusRings.collision) setObjectVisibleIfChanged(m.radiusRings.collision, false);
+        if (m.radiusRings.shotArmingRadius) setObjectVisibleIfChanged(m.radiusRings.shotArmingRadius, false);
       }
       m.radiusRingsVisible = false;
       return;
@@ -458,11 +464,11 @@ export class SelectionOverlayRenderer3D {
         m.buildRing.renderOrder = RANGE_CIRCLE_RENDER_ORDER;
         this.world.add(m.buildRing);
       }
-      m.buildRing.visible = true;
-      m.buildRing.position.set(ux, unitGroundZ, uy);
+      setObjectVisibleIfChanged(m.buildRing, true);
+      setVector3IfChanged(m.buildRing.position, ux, unitGroundZ, uy);
       this.writeRangeCircle(m.buildRing, builder.buildRange);
     } else if (m.buildRing) {
-      m.buildRing.visible = false;
+      setObjectVisibleIfChanged(m.buildRing, false);
     }
 
     if (showRadar) {
@@ -471,11 +477,11 @@ export class SelectionOverlayRenderer3D {
         m.radarRing.renderOrder = RANGE_CIRCLE_RENDER_ORDER;
         this.world.add(m.radarRing);
       }
-      m.radarRing.visible = true;
-      m.radarRing.position.set(ux, unitGroundZ, uy);
+      setObjectVisibleIfChanged(m.radarRing, true);
+      setVector3IfChanged(m.radarRing.position, ux, unitGroundZ, uy);
       this.writeRangeCircle(m.radarRing, radarRadius);
     } else if (m.radarRing) {
-      m.radarRing.visible = false;
+      setObjectVisibleIfChanged(m.radarRing, false);
     }
 
     if (showReclaim) {
@@ -484,11 +490,11 @@ export class SelectionOverlayRenderer3D {
         m.reclaimRing.renderOrder = RANGE_CIRCLE_RENDER_ORDER + 1;
         this.world.add(m.reclaimRing);
       }
-      m.reclaimRing.visible = true;
-      m.reclaimRing.position.set(ux, unitGroundZ, uy);
+      setObjectVisibleIfChanged(m.reclaimRing, true);
+      setVector3IfChanged(m.reclaimRing.position, ux, unitGroundZ, uy);
       this.writeRangeCircle(m.reclaimRing, reclaimHighlightRadius(entity));
     } else if (m.reclaimRing) {
-      m.reclaimRing.visible = false;
+      setObjectVisibleIfChanged(m.reclaimRing, false);
     }
 
     m.rangeRingsVisible = showAnyTurretRange || (showBuild && builder !== undefined) || showRadar || showReclaim;
@@ -556,11 +562,11 @@ export class SelectionOverlayRenderer3D {
         parent.add(mesh);
         rings[key] = mesh;
       }
-      mesh.visible = true;
-      mesh.position.y = centerY;
-      mesh.scale.setScalar(radius);
+      setObjectVisibleIfChanged(mesh, true);
+      setVector3YIfChanged(mesh.position, centerY);
+      setScaleScalarIfChanged(mesh.scale, radius);
     } else if (mesh) {
-      mesh.visible = false;
+      setObjectVisibleIfChanged(mesh, false);
     }
   }
 
@@ -571,9 +577,9 @@ export class SelectionOverlayRenderer3D {
 
   private hideRangeRings(m: OverlayEntityMesh): void {
     this.hideTurretRangeRings(m);
-    if (m.buildRing) m.buildRing.visible = false;
-    if (m.radarRing) m.radarRing.visible = false;
-    if (m.reclaimRing) m.reclaimRing.visible = false;
+    if (m.buildRing) setObjectVisibleIfChanged(m.buildRing, false);
+    if (m.radarRing) setObjectVisibleIfChanged(m.radarRing, false);
+    if (m.reclaimRing) setObjectVisibleIfChanged(m.reclaimRing, false);
   }
 
   private hideTurretRangeRings(m: OverlayEntityMesh): void {
@@ -585,12 +591,12 @@ export class SelectionOverlayRenderer3D {
   private hideSingleTurretRangeRings(tm: TurretMesh): void {
     const rings = tm.rangeRings;
     if (!rings) return;
-    if (rings.trackAcquire)     rings.trackAcquire.visible = false;
-    if (rings.trackRelease)     rings.trackRelease.visible = false;
-    if (rings.engageAcquire)    rings.engageAcquire.visible = false;
-    if (rings.engageRelease)    rings.engageRelease.visible = false;
-    if (rings.engageMinAcquire) rings.engageMinAcquire.visible = false;
-    if (rings.engageMinRelease) rings.engageMinRelease.visible = false;
+    if (rings.trackAcquire)     setObjectVisibleIfChanged(rings.trackAcquire, false);
+    if (rings.trackRelease)     setObjectVisibleIfChanged(rings.trackRelease, false);
+    if (rings.engageAcquire)    setObjectVisibleIfChanged(rings.engageAcquire, false);
+    if (rings.engageRelease)    setObjectVisibleIfChanged(rings.engageRelease, false);
+    if (rings.engageMinAcquire) setObjectVisibleIfChanged(rings.engageMinAcquire, false);
+    if (rings.engageMinRelease) setObjectVisibleIfChanged(rings.engageMinRelease, false);
   }
 
   private setRangeCircle(
@@ -616,11 +622,11 @@ export class SelectionOverlayRenderer3D {
         this.world.add(ring);
         rings[key] = ring;
       }
-      ring.visible = true;
-      ring.position.set(cx, cz, cy);
+      setObjectVisibleIfChanged(ring, true);
+      setVector3IfChanged(ring.position, cx, cz, cy);
       this.writeRangeCircle(ring, radius);
     } else if (ring) {
-      ring.visible = false;
+      setObjectVisibleIfChanged(ring, false);
     }
   }
 

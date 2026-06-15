@@ -78,6 +78,13 @@ import { EntityMaterialPalette3D } from './EntityMaterialPalette3D';
 import { syncUnitDynamicMaterials3D } from './UnitDynamicMaterialSync3D';
 import { advanceUnitVisionFadeIn, applyUnitEntityFade3D } from './UnitEntityFade3D';
 import { AirborneEmitterUpdateScratch3D } from './AirborneEmitterUpdateScratch3D';
+import {
+  setEulerIfChanged,
+  setObjectVisibleIfChanged,
+  setQuaternionIfChanged,
+  setScaleScalarIfChanged,
+  setVector3IfChanged,
+} from './threeTransformWriteUtils';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -587,7 +594,7 @@ export class Render3DEntities {
       // the two alpha reasons multiply (a half-built unit just scouted
       // fades toward its current build opacity, not past it).
       const bodyOpacity = unitRows.bodyOpacity[row] * this.advanceSpawnFadeIn(entityId);
-      m.chassis.visible = fullUnitDetail && bodyOpacity > 0;
+      setObjectVisibleIfChanged(m.chassis, fullUnitDetail && bodyOpacity > 0);
 
       const liftPos = m.liftGroup?.position;
       this.unitRenderPose.writeUnit(
@@ -639,8 +646,9 @@ export class Render3DEntities {
       // sim.z - bodyCenterHeight: for a ground-resting unit sim.z is
       // terrain + bodyCenterHeight, so the group sits at the terrain
       // surface and the chassis/turret meshes stack from there.
-      m.group.position.set(tx, groundZ, ty);
-      m.group.quaternion.set(
+      setVector3IfChanged(m.group.position, tx, groundZ, ty);
+      setQuaternionIfChanged(
+        m.group.quaternion,
         poseOutput[poseBase],
         poseOutput[poseBase + 1],
         poseOutput[poseBase + 2],
@@ -655,7 +663,7 @@ export class Render3DEntities {
           poseOutput[poseBase + 7],
         );
       }
-      if (m.yawGroup) m.yawGroup.rotation.set(0, yaw, 0);
+      if (m.yawGroup) setEulerIfChanged(m.yawGroup.rotation, 0, yaw, 0);
 
       if (airborne && m.yawGroup) {
         m.visualBankRoll = applyAirborneBankRoll3D(m.yawGroup, m.visualBankRoll, {
@@ -674,10 +682,10 @@ export class Render3DEntities {
       // z=0) with scale (0.55, 0.55, 0.55) lands at the right place and
       // the right size automatically.
       const bodyEntry = getBodyGeom(m.bodyShape!);
-      m.chassis.position.set(0, 0, 0);
+      setVector3IfChanged(m.chassis.position, 0, 0, 0);
       // Full size at all times; the build-in reveal is opacity, not scale.
       const bodyRadius = radius;
-      m.chassis.scale.setScalar(bodyRadius);
+      setScaleScalarIfChanged(m.chassis.scale, bodyRadius);
 
       this._smoothParentQuat.set(
         poseOutput[poseBase + 8],
@@ -778,7 +786,7 @@ export class Render3DEntities {
       const locomotion = m.locomotion;
       if (locomotion) {
         const locomotionVisibilityDirty = locomotion.group.visible !== bodyMaterialized;
-        locomotion.group.visible = bodyMaterialized;
+        if (locomotionVisibilityDirty) setObjectVisibleIfChanged(locomotion.group, bodyMaterialized);
         if (!bodyMaterialized) {
           this.activeLocomotionUnitIds.delete(e.id);
         } else if (
@@ -848,7 +856,7 @@ export class Render3DEntities {
 
   private deactivateShieldPanelMesh(mirrors: ShieldPanelMesh): void {
     if (mirrors.supportVisible) {
-      mirrors.root.visible = false;
+      setObjectVisibleIfChanged(mirrors.root, false);
       mirrors.supportVisible = false;
     }
     if (!mirrors.panelSlotsActive) return;
@@ -884,7 +892,7 @@ export class Render3DEntities {
     // immediately for both removal paths; the body/turrets/locomotion remain
     // for the render-only fade.
     this.disposeWorldParentedOverlays(m);
-    if (m.ring) m.ring.visible = false;
+    if (m.ring) setObjectVisibleIfChanged(m.ring, false);
     if (m.killed) {
       this.dyingUnitScatter.prepare(m);
       this.dyingUnits.markDying(id, m);
@@ -912,7 +920,7 @@ export class Render3DEntities {
     for (const turret of m.turrets) this.unitDetailInstances.clearTurretSlots(turret);
     if (m.mirrors) this.deactivateShieldPanelMesh(m.mirrors);
     this.applyUnitEntityFade(m, 0, null);
-    m.group.visible = false;
+    setObjectVisibleIfChanged(m.group, false);
     this.activeLocomotionUnitIds.delete(id);
     this.barrelSpinState.delete(id);
     this.turretBeamAimCache.delete(id);
@@ -921,7 +929,7 @@ export class Render3DEntities {
 
   private reactivateUnitMeshForScope(id: EntityId, m: EntityMesh): void {
     if (!this.scopedMeshRetention.markUnitActive(id)) return;
-    m.group.visible = true;
+    setObjectVisibleIfChanged(m.group, true);
   }
 
   /** Look up the lift subgroup for a unit's mesh. The lift group

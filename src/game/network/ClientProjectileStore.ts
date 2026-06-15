@@ -19,6 +19,7 @@ import {
   createBeamPathTarget,
   ensureBeamPoint,
   shrinkBeamPoints,
+  snapBeamPathDisplayToTarget,
   type BeamPathTarget,
 } from './ClientPredictionTargets';
 import {
@@ -170,26 +171,8 @@ export class ClientProjectileStore {
     }
 
     const projPts = proj.points ?? (proj.points = []);
-    if (projPts.length === 0) {
-      projPts.length = srcPts.length;
-      for (let i = 0; i < srcPts.length; i++) {
-        const sp = dstTarget[i];
-        const pp = ensureBeamPoint(projPts, i);
-        pp.x = sp.x; pp.y = sp.y; pp.z = sp.z;
-        pp.vx = sp.vx; pp.vy = sp.vy; pp.vz = sp.vz;
-        pp.reflectorEntityId = sp.reflectorEntityId;
-        pp.reflectorKind = sp.reflectorKind;
-        pp.reflectorPlayerId = sp.reflectorPlayerId;
-        pp.normalX = sp.normalX;
-        pp.normalY = sp.normalY;
-        pp.normalZ = sp.normalZ;
-      }
-      if (srcPts.length > 0) {
-        const start = dstTarget[0];
-        entity.transform.x = start.x;
-        entity.transform.y = start.y;
-        entity.transform.z = start.z;
-      }
+    if (target.initialSnapPending || projPts.length === 0) {
+      snapBeamPathDisplayToTarget(entity, target);
     }
     proj.obstructionT = target.obstructionT;
     proj.endpointDamageable = update.endpointDamageable !== false;

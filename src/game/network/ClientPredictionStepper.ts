@@ -20,6 +20,7 @@ import {
   type BeamPathTarget,
   ensureBeamPoint,
   shrinkBeamPoints,
+  snapBeamPathDisplayToTarget,
   type ServerTarget,
 } from './ClientPredictionTargets';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
@@ -146,6 +147,10 @@ function applyBeamPathPrediction(
   if (!proj) return false;
   const tgtPts = target.points;
   if (tgtPts.length === 0) return false;
+  if (target.initialSnapPending) {
+    target.initialSnapPending = false;
+    return snapBeamPathDisplayToTarget(entity, target);
+  }
 
   const dt = deltaMs / 1000;
   let changed = false;

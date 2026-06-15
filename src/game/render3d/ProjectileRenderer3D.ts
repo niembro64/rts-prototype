@@ -12,6 +12,11 @@ import {
   disposeMaterials,
   disposeMesh,
 } from './threeUtils';
+import {
+  setObjectVisibleIfChanged,
+  setScaleScalarIfChanged,
+  setVector3IfChanged,
+} from './threeTransformWriteUtils';
 
 const PROJECTILE_MIN_RADIUS = 0.5;
 // 1 revolution per second.
@@ -356,10 +361,16 @@ export class ProjectileRenderer3D {
           if (proj) {
             this.finColor.set(getPlayerColors(proj.ownerId).primary);
             const colorOffset = finCount * 3;
-            this.finColors[colorOffset] = this.finColor.r;
-            this.finColors[colorOffset + 1] = this.finColor.g;
-            this.finColors[colorOffset + 2] = this.finColor.b;
-            this.finColorDirty = true;
+            if (
+              this.finColors[colorOffset] !== this.finColor.r ||
+              this.finColors[colorOffset + 1] !== this.finColor.g ||
+              this.finColors[colorOffset + 2] !== this.finColor.b
+            ) {
+              this.finColors[colorOffset] = this.finColor.r;
+              this.finColors[colorOffset + 1] = this.finColor.g;
+              this.finColors[colorOffset + 2] = this.finColor.b;
+              this.finColorDirty = true;
+            }
           }
           finCount++;
         }
@@ -739,8 +750,14 @@ export class ProjectileRenderer3D {
   }
 
   private flushCurvedConeGeometry(count: number): void {
-    this.curvedConeMesh.visible = count > 0;
-    this.curvedCone.geometry.setDrawRange(0, count * CURVED_CONE_INDICES_PER_TAIL);
+    setObjectVisibleIfChanged(this.curvedConeMesh, count > 0);
+    const drawCount = count * CURVED_CONE_INDICES_PER_TAIL;
+    if (
+      this.curvedCone.geometry.drawRange.start !== 0 ||
+      this.curvedCone.geometry.drawRange.count !== drawCount
+    ) {
+      this.curvedCone.geometry.setDrawRange(0, drawCount);
+    }
     if (count <= 0) return;
 
     const updatedComponents = count * CURVED_CONE_VERTS_PER_TAIL * 3;
@@ -819,8 +836,8 @@ export class ProjectileRenderer3D {
     if (!wantCol && !wantExp) {
       const existing = this.projectileRadiusMeshes.get(entity.id);
       if (existing) {
-        if (existing.collision) existing.collision.visible = false;
-        if (existing.explosion) existing.explosion.visible = false;
+        if (existing.collision) setObjectVisibleIfChanged(existing.collision, false);
+        if (existing.explosion) setObjectVisibleIfChanged(existing.explosion, false);
       }
       return;
     }
@@ -852,8 +869,8 @@ export class ProjectileRenderer3D {
   private hideProjRadiusMeshes(entityId: EntityId): void {
     const radii = this.projectileRadiusMeshes.get(entityId);
     if (!radii) return;
-    if (radii.collision) radii.collision.visible = false;
-    if (radii.explosion) radii.explosion.visible = false;
+    if (radii.collision) setObjectVisibleIfChanged(radii.collision, false);
+    if (radii.explosion) setObjectVisibleIfChanged(radii.explosion, false);
   }
 
   private setProjRadiusMesh(
@@ -866,7 +883,7 @@ export class ProjectileRenderer3D {
   ): void {
     if (!want || radius <= 0) {
       const m = radii[key];
-      if (m) m.visible = false;
+      if (m) setObjectVisibleIfChanged(m, false);
       return;
     }
     let mesh = radii[key];
@@ -877,14 +894,14 @@ export class ProjectileRenderer3D {
       this.world.add(mesh);
       radii[key] = mesh;
     }
-    mesh.visible = true;
-    mesh.position.set(x, z, y);
-    mesh.scale.setScalar(radius);
+    setObjectVisibleIfChanged(mesh, true);
+    setVector3IfChanged(mesh.position, x, z, y);
+    setScaleScalarIfChanged(mesh.scale, radius);
   }
 
   private releaseProjRadiusMesh(mesh?: THREE.LineSegments): void {
     if (!mesh) return;
-    mesh.visible = false;
+    setObjectVisibleIfChanged(mesh, false);
     detachObject(mesh);
     this.projectileRadiusMeshPool.push(mesh);
   }

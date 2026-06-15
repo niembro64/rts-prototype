@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { TurretMesh } from './TurretMesh3D';
+import { setEulerYIfChanged, setEulerZIfChanged } from './threeTransformWriteUtils';
 
 const _aimDir = new THREE.Vector3();
 
@@ -30,8 +31,10 @@ export function applyTurretAimPose3D(
   if (inverseTiltQuat) _aimDir.applyQuaternion(inverseTiltQuat);
 
   const combinedYaw = Math.atan2(-_aimDir.z, _aimDir.x);
-  mesh.root.rotation.y = combinedYaw + hostRotation;
-  if (mesh.pitchGroup) mesh.pitchGroup.rotation.z = Math.asin(clampUnit(_aimDir.y));
+  setEulerYIfChanged(mesh.root.rotation, combinedYaw + hostRotation);
+  if (mesh.pitchGroup) {
+    setEulerZIfChanged(mesh.pitchGroup.rotation, Math.asin(clampUnit(_aimDir.y)));
+  }
 }
 
 /** Pose a turret rig to point along a SIM-world direction (x/y horizontal,

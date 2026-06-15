@@ -31,7 +31,9 @@ export class DynamicLineBuffer3D {
 
   resetDrawRange(): void {
     this.segmentCount = 0;
-    this.geometry.setDrawRange(0, 0);
+    if (this.geometry.drawRange.start !== 0 || this.geometry.drawRange.count !== 0) {
+      this.geometry.setDrawRange(0, 0);
+    }
   }
 
   ensureCapacity(neededSegments: number): void {
@@ -84,10 +86,20 @@ export class DynamicLineBuffer3D {
   }
 
   finishFrame(): number {
-    this.geometry.setDrawRange(0, this.segmentCount * VERTICES_PER_SEGMENT);
+    const drawCount = this.segmentCount * VERTICES_PER_SEGMENT;
+    if (this.geometry.drawRange.start !== 0 || this.geometry.drawRange.count !== drawCount) {
+      this.geometry.setDrawRange(0, drawCount);
+    }
+    if (this.segmentCount <= 0) return 0;
+
+    const updatedFloats = this.segmentCount * FLOATS_PER_SEGMENT;
     const position = this.geometry.getAttribute('position') as THREE.BufferAttribute;
     const color = this.geometry.getAttribute('color') as THREE.BufferAttribute;
+    position.clearUpdateRanges();
+    position.addUpdateRange(0, updatedFloats);
     position.needsUpdate = true;
+    color.clearUpdateRanges();
+    color.addUpdateRange(0, updatedFloats);
     color.needsUpdate = true;
     return this.segmentCount;
   }

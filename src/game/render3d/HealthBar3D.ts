@@ -278,6 +278,7 @@ export class HealthBar3D {
       emptyRetainedSlots: 0,
       shrinkCooldownFrames: HEALTH_BAR_SHRINK_COOLDOWN_FRAMES,
       shrinkBatchSize: HEALTH_BAR_SHRINK_BATCH_SIZE,
+      showOnAcquire: false,
       makeState: () => ({
         lastRatioPx: -1,
         lastMode: null,

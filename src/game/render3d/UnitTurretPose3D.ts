@@ -27,6 +27,13 @@ import {
 } from './UnitTurretHeadMatrixBatch3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import type { TurretMountCache3D } from './TurretMountCache3D';
+import {
+  setEulerXIfChanged,
+  setEulerYIfChanged,
+  setEulerZIfChanged,
+  setObjectVisibleIfChanged,
+  setVector3IfChanged,
+} from './threeTransformWriteUtils';
 
 export class UnitTurretPose3D {
   private readonly aimBatch = new UnitTurretAimBatch3D();
@@ -97,7 +104,7 @@ export class UnitTurretPose3D {
       const turret = turrets[turretIdx];
       const headRadius = turretMesh.headRadius ?? getTurretHeadRadius(turret.config);
       const visible = bodyVisible;
-      turretMesh.root.visible = visible;
+      setObjectVisibleIfChanged(turretMesh.root, visible);
       if (!visible) {
         unitDetailInstances.clearTurretSlots(turretMesh);
         continue;
@@ -107,7 +114,12 @@ export class UnitTurretPose3D {
         ? turret.mount.z
         : bodyCenterHeight;
       const turretMountY = turretHeadCenterY - (mesh.chassisLift ?? 0) - headRadius;
-      turretMesh.root.position.set(turret.mount.x, turretMountY, turret.mount.y);
+      setVector3IfChanged(
+        turretMesh.root.position,
+        turret.mount.x,
+        turretMountY,
+        turret.mount.y,
+      );
 
       if (turretMesh.constructionEmitter) {
         this.enqueueHeadMount(
@@ -120,7 +132,7 @@ export class UnitTurretPose3D {
           turretMesh.root,
           headRadius,
         );
-        turretMesh.root.visible = true;
+        setObjectVisibleIfChanged(turretMesh.root, true);
         applyTurretAimPose3D(
           turretMesh,
           entity.transform.rotation,
@@ -128,8 +140,8 @@ export class UnitTurretPose3D {
           0,
           chassisTiltInverse,
         );
-        if (turretMesh.pitchGroup) turretMesh.pitchGroup.rotation.z = 0;
-        if (turretMesh.spinGroup) turretMesh.spinGroup.rotation.x = 0;
+        if (turretMesh.pitchGroup) setEulerZIfChanged(turretMesh.pitchGroup.rotation, 0);
+        if (turretMesh.spinGroup) setEulerXIfChanged(turretMesh.spinGroup.rotation, 0);
         constructionVisuals.updateBuilderConstructionEmitter(
           turretMesh.constructionEmitter,
           entity,
@@ -159,13 +171,16 @@ export class UnitTurretPose3D {
         }
         deferAim = true;
         // Beam barrels never spin.
-        if (turretMesh.spinGroup) turretMesh.spinGroup.rotation.x = 0;
+        if (turretMesh.spinGroup) setEulerXIfChanged(turretMesh.spinGroup.rotation, 0);
       } else if (!turret.config.headOnly) {
         deferAim = true;
         if (turretMesh.spinGroup) {
-          turretMesh.spinGroup.rotation.x = barrelSpinEnabled
-            ? barrelSpinState.angleFor(entity.id, turretIdx) ?? 0
-            : 0;
+          setEulerXIfChanged(
+            turretMesh.spinGroup.rotation,
+            barrelSpinEnabled
+              ? barrelSpinState.angleFor(entity.id, turretIdx) ?? 0
+              : 0,
+          );
         }
       }
 
@@ -272,8 +287,10 @@ export class UnitTurretPose3D {
     for (let i = 0; i < count; i++) {
       const turretMesh = this.aimTurretMeshes[i];
       const outputBase = i * outputStride;
-      turretMesh.root.rotation.y = output[outputBase];
-      if (turretMesh.pitchGroup) turretMesh.pitchGroup.rotation.z = output[outputBase + 1];
+      setEulerYIfChanged(turretMesh.root.rotation, output[outputBase]);
+      if (turretMesh.pitchGroup) {
+        setEulerZIfChanged(turretMesh.pitchGroup.rotation, output[outputBase + 1]);
+      }
 
       const poseBase = i * 7;
       this.deferredParentPosition.set(

@@ -24,6 +24,7 @@ export type CanvasSpritePoolOptions<TState, TPaintArgs extends unknown[]> = {
   emptyRetainedSlots?: number;
   shrinkCooldownFrames?: number;
   shrinkBatchSize?: number;
+  showOnAcquire?: boolean;
   makeState: (slot: CanvasSpriteBaseSlot, index: number) => TState;
   configureSprite?: (slot: CanvasSpriteSlot<TState>, index: number) => void;
   repaint?: (slot: CanvasSpriteSlot<TState>, ...args: TPaintArgs) => boolean;
@@ -64,7 +65,9 @@ export class CanvasSpritePool<TState, TPaintArgs extends unknown[] = []> {
     }
     if (index + 1 > this.activeSlots) this.activeSlots = index + 1;
     const slot = this.slots[index];
-    if (!slot.sprite.visible) slot.sprite.visible = true;
+    if (this.options.showOnAcquire !== false && !slot.sprite.visible) {
+      slot.sprite.visible = true;
+    }
     return slot;
   }
 
@@ -103,7 +106,7 @@ export class CanvasSpritePool<TState, TPaintArgs extends unknown[] = []> {
     const previousActive = Math.min(this.activeSlots, this.slots.length);
     this.activeSlots = active;
     for (let i = active; i < previousActive; i++) {
-      this.slots[i].sprite.visible = false;
+      if (this.slots[i].sprite.visible) this.slots[i].sprite.visible = false;
     }
     this.shrinkUnusedTail(active, immediateShrink);
   }

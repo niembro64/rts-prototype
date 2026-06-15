@@ -1,4 +1,4 @@
-import type { BeamPoint } from '../../types/sim';
+import type { BeamPoint, Entity } from '../../types/sim';
 
 // Lightweight copy of server state used for per-frame drift in client prediction.
 // Owns its data instead of retaining references to pooled serializer objects.
@@ -53,6 +53,7 @@ export type BeamPathTarget = {
   points: BeamPoint[];
   obstructionT: number | null;
   endpointDamageable: boolean | null;
+  initialSnapPending: boolean;
 };
 
 export function createBeamPathTarget(): BeamPathTarget {
@@ -61,6 +62,7 @@ export function createBeamPathTarget(): BeamPathTarget {
     points: [],
     obstructionT: null,
     endpointDamageable: null,
+    initialSnapPending: true,
   };
 }
 
@@ -150,4 +152,49 @@ export function ensureBeamPoint(arr: BeamPoint[], i: number): BeamPoint {
     arr[i] = point;
   }
   return point;
+}
+
+function copyBeamPointState(dst: BeamPoint, src: BeamPoint): void {
+  dst.x = src.x; dst.y = src.y; dst.z = src.z;
+  dst.vx = src.vx; dst.vy = src.vy; dst.vz = src.vz;
+  dst.reflectorEntityId = src.reflectorEntityId;
+  dst.reflectorKind = src.reflectorKind;
+  dst.reflectorPlayerId = src.reflectorPlayerId;
+  dst.normalX = src.normalX;
+  dst.normalY = src.normalY;
+  dst.normalZ = src.normalZ;
+}
+
+export function snapBeamPathDisplayToTarget(entity: Entity, target: BeamPathTarget): boolean {
+  const proj = entity.projectile;
+  if (proj === null) return false;
+
+  const targetPoints = target.points;
+  const displayPoints = proj.points ?? (proj.points = []);
+  const oldLength = displayPoints.length;
+  if (oldLength > targetPoints.length) {
+    shrinkBeamPoints(displayPoints, targetPoints.length);
+  } else if (oldLength < targetPoints.length) {
+    displayPoints.length = targetPoints.length;
+  }
+
+  for (let i = 0; i < targetPoints.length; i++) {
+    copyBeamPointState(ensureBeamPoint(displayPoints, i), targetPoints[i]);
+  }
+
+  proj.obstructionT = target.obstructionT;
+  proj.endpointDamageable = target.endpointDamageable !== false;
+
+  const start = displayPoints[0];
+  if (start !== undefined) {
+    entity.transform.x = start.x;
+    entity.transform.y = start.y;
+    entity.transform.z = start.z;
+    const second = displayPoints[1];
+    if (second !== undefined) {
+      entity.transform.rotation = Math.atan2(second.y - start.y, second.x - start.x);
+    }
+  }
+
+  return oldLength !== targetPoints.length || targetPoints.length > 0;
 }

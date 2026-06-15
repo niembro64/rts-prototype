@@ -19,6 +19,7 @@ import type { EntityMesh } from './EntityMesh3D';
 import { buildShieldPanelMesh3D } from './ShieldPanelMesh3D';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
+import { setVector3IfChanged } from './threeTransformWriteUtils';
 
 // Detailed unit parts use shared instanced pools by default. The
 // per-mesh path remains only as an allocation fallback, not as the
@@ -58,10 +59,11 @@ export function applyUnitLiftGroupPose3D(mesh: EntityMesh, entity: Entity): void
   if (!mesh.liftGroup) return;
   const suspension = entity.unit?.suspension;
   if (!suspension) {
-    mesh.liftGroup.position.set(0, mesh.chassisLift ?? 0, 0);
+    setVector3IfChanged(mesh.liftGroup.position, 0, mesh.chassisLift ?? 0, 0);
     return;
   }
-  mesh.liftGroup.position.set(
+  setVector3IfChanged(
+    mesh.liftGroup.position,
     suspension.offsetX,
     (mesh.chassisLift ?? 0) + suspension.offsetZ,
     suspension.offsetY,

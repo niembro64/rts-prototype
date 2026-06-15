@@ -40,6 +40,12 @@ import {
   BuildingPoseBatch3D,
 } from './BuildingPoseBatch3D';
 import type { ScopedRenderMeshRetention3D } from './ScopedRenderMeshRetention3D';
+import {
+  setEulerYIfChanged,
+  setEulerZIfChanged,
+  setObjectVisibleIfChanged,
+  setVector3IfChanged,
+} from './threeTransformWriteUtils';
 
 const BUILDING_HEIGHT = 120;
 
@@ -61,12 +67,13 @@ function entityHasPerFrameBuildingTurretWork(entity: Entity): boolean {
 
 function positionBuildingTurretRoot(turretMesh: TurretMesh, turret: Turret): void {
   const headRadius = turretMesh.headRadius ?? getTurretHeadRadius(turret.config);
-  turretMesh.root.position.set(
+  setVector3IfChanged(
+    turretMesh.root.position,
     turret.mount.x,
     turret.mount.z - headRadius,
     turret.mount.y,
   );
-  turretMesh.root.visible = false;
+  setObjectVisibleIfChanged(turretMesh.root, false);
   turretMesh.cachedRootVisible = false;
 }
 
@@ -355,7 +362,7 @@ export class BuildingEntityRenderer3D {
         !bodyFadeActive &&
         !overlayDirty
       ) {
-        mesh.group.visible = true;
+        setObjectVisibleIfChanged(mesh.group, true);
         if (pruneBuildings) mesh.renderSeenToken = pruneToken;
         continue;
       }
@@ -480,7 +487,7 @@ export class BuildingEntityRenderer3D {
     if (!mesh) return;
 
     this.disposeWorldParentedOverlays(mesh);
-    if (mesh.ring) mesh.ring.visible = false;
+    if (mesh.ring) setObjectVisibleIfChanged(mesh.ring, false);
     this.animations.unregister(id);
     this.meshes.delete(id);
     if (wasScopedHidden) {
@@ -517,12 +524,12 @@ export class BuildingEntityRenderer3D {
     beamAimCache.delete(id);
     this.disposeWorldParentedOverlays(mesh);
     this.applyBuildingEntityFade(mesh, 0);
-    mesh.group.visible = false;
+    setObjectVisibleIfChanged(mesh.group, false);
   }
 
   private reactivateBuildingMeshForScope(entity: Entity, mesh: EntityMesh): void {
     if (!this.scopedMeshRetention.markBuildingActive(entity.id)) return;
-    mesh.group.visible = true;
+    setObjectVisibleIfChanged(mesh.group, true);
     this.animations.register(entity, mesh);
     this.registerBuildingSpinTurrets(entity, mesh);
     this.applyBuildingEntityFade(
@@ -646,7 +653,7 @@ export class BuildingEntityRenderer3D {
         detailsReady,
       );
     } else {
-      mesh.group.visible = true;
+      setObjectVisibleIfChanged(mesh.group, true);
     }
 
     this.updateTurretPoses(entity, mesh, rows, row);
@@ -681,7 +688,7 @@ export class BuildingEntityRenderer3D {
     buildingBaseY: number,
     detailsReady: boolean,
   ): void {
-    mesh.group.visible = true;
+    setObjectVisibleIfChanged(mesh.group, true);
     if (!mesh.buildingPrimaryMaterialLocked) {
       const primaryMat = this.getPrimaryMat(ownerId);
       for (const chassisMesh of mesh.chassisMeshes) chassisMesh.material = primaryMat;
@@ -718,9 +725,9 @@ export class BuildingEntityRenderer3D {
     if (mesh.buildingBodyless) {
       // Bodyless render profiles have no chassis to show. Keep the
       // primary hidden and unscaled.
-      primary.visible = false;
+      setObjectVisibleIfChanged(primary, false);
     } else {
-      primary.visible = true;
+      setObjectVisibleIfChanged(primary, true);
     }
 
     if (mesh.buildingDetails) {
@@ -729,7 +736,7 @@ export class BuildingEntityRenderer3D {
       // size instead of popping in at completion. detailsReady still gates
       // their animation (see BuildingAnimationController3D), not existence.
       for (const detail of mesh.buildingDetails) {
-        detail.mesh.visible = true;
+        setObjectVisibleIfChanged(detail.mesh, true);
       }
     }
 
@@ -956,7 +963,7 @@ export class BuildingEntityRenderer3D {
 
   private setTurretRootVisible(turretMesh: TurretMesh, visible: boolean): void {
     if (turretMesh.cachedRootVisible === visible) return;
-    turretMesh.root.visible = visible;
+    setObjectVisibleIfChanged(turretMesh.root, visible);
     turretMesh.cachedRootVisible = visible;
   }
 
@@ -1028,8 +1035,10 @@ export class BuildingEntityRenderer3D {
     for (let i = 0; i < count; i++) {
       const turretMesh = this.turretAimMeshes[i];
       const outputBase = i * outputStride;
-      turretMesh.root.rotation.y = output[outputBase];
-      if (turretMesh.pitchGroup) turretMesh.pitchGroup.rotation.z = output[outputBase + 1];
+      setEulerYIfChanged(turretMesh.root.rotation, output[outputBase]);
+      if (turretMesh.pitchGroup) {
+        setEulerZIfChanged(turretMesh.pitchGroup.rotation, output[outputBase + 1]);
+      }
     }
   }
 

@@ -11,6 +11,10 @@ import {
   UnitTurretAimBatch3D,
 } from './UnitTurretAimBatch3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
+import {
+  setEulerIfChanged,
+  setObjectVisibleIfChanged,
+} from './threeTransformWriteUtils';
 
 export class ShieldPanelPose3D {
   private readonly aimBatch = new UnitTurretAimBatch3D();
@@ -46,7 +50,7 @@ export class ShieldPanelPose3D {
     chassisTiltInverse: THREE.Quaternion | undefined,
   ): void {
     if (!mirrors.supportVisible) {
-      mirrors.root.visible = true;
+      setObjectVisibleIfChanged(mirrors.root, true);
       mirrors.supportVisible = true;
     }
     mirrors.panelSlotsActive = true;
@@ -97,7 +101,13 @@ export class ShieldPanelPose3D {
     for (let i = 0; i < count; i++) {
       const mirrors = this.aimMirrors[i];
       const outputBase = i * outputStride;
-      mirrors.root.rotation.set(0, output[outputBase], output[outputBase + 1], 'YZX');
+      setEulerIfChanged(
+        mirrors.root.rotation,
+        0,
+        output[outputBase],
+        output[outputBase + 1],
+        'YZX',
+      );
 
       const poseBase = i * 7;
       this.parentPositionScratch.set(

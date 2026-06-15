@@ -365,6 +365,7 @@ export class NameLabel3D {
       emptyRetainedSlots: 0,
       shrinkCooldownFrames: NAME_LABEL_SHRINK_COOLDOWN_FRAMES,
       shrinkBatchSize: NAME_LABEL_SHRINK_BATCH_SIZE,
+      showOnAcquire: false,
       makeState: makeLabelState,
       repaint: repaintLabel,
     });
