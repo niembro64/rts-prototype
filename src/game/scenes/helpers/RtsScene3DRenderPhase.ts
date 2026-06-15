@@ -434,9 +434,15 @@ export class RtsScene3DRenderPhase {
       const commanderSprays = this.clientViewState.getSprayTargets();
       const resourcePylonSprays = entityRenderer.getResourcePylonSprayTargets();
       if (resourcePylonSprays.length > 0) {
-        this.combinedSprayTargets.length = 0;
-        for (const spray of commanderSprays) this.combinedSprayTargets.push(spray);
-        for (const spray of resourcePylonSprays) this.combinedSprayTargets.push(spray);
+        const commanderSprayCount = commanderSprays.length;
+        const resourcePylonSprayCount = resourcePylonSprays.length;
+        this.combinedSprayTargets.length = commanderSprayCount + resourcePylonSprayCount;
+        for (let i = 0; i < commanderSprayCount; i++) {
+          this.combinedSprayTargets[i] = commanderSprays[i];
+        }
+        for (let i = 0; i < resourcePylonSprayCount; i++) {
+          this.combinedSprayTargets[commanderSprayCount + i] = resourcePylonSprays[i];
+        }
         sprayRenderer.update(
           this.combinedSprayTargets,
           this.sprayAccumMs,
@@ -558,8 +564,8 @@ export class RtsScene3DRenderPhase {
   }
 
   private populateTurretNamePacket(hosts: readonly Entity[], mode: SelectionHudMode): void {
-    for (const host of hosts) {
-      this.pushTurretNamesForEntity(host, mode);
+    for (let i = 0; i < hosts.length; i++) {
+      this.pushTurretNamesForEntity(hosts[i], mode);
     }
   }
 
@@ -611,7 +617,8 @@ export class RtsScene3DRenderPhase {
   private populateShotNamePacket(projectiles: readonly Entity[], mode: SelectionHudMode): void {
     const packet = this.pieceNamePacket;
     const scope = this.renderScope;
-    for (const shot of projectiles) {
+    for (let i = 0; i < projectiles.length; i++) {
+      const shot = projectiles[i];
       if (!scope.inScope(shot.transform.x, shot.transform.y, 100)) continue;
       const proj = shot.projectile;
       if (!proj || proj.projectileType !== 'projectile' || proj.maxHp <= 0) continue;

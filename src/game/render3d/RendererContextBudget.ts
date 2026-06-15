@@ -30,29 +30,15 @@ type RendererContextRecord = {
 
 const activeContexts = new Map<number, RendererContextRecord>();
 let nextContextId = 1;
+let currentMainCount = 0;
+let currentAuxiliaryCount = 0;
 let peakMainCount = 0;
 let peakAuxiliaryCount = 0;
 let deniedAuxiliaryCount = 0;
 let warningSerial = 0;
 
-function activeMainCount(): number {
-  let count = 0;
-  for (const record of activeContexts.values()) {
-    if (record.kind === 'main') count++;
-  }
-  return count;
-}
-
-function activeAuxiliaryCount(): number {
-  let count = 0;
-  for (const record of activeContexts.values()) {
-    if (record.kind === 'auxiliary') count++;
-  }
-  return count;
-}
-
 function auxiliaryBudget(): number {
-  return activeMainCount() > 0
+  return currentMainCount > 0
     ? AUXILIARY_BUDGET_WITH_MAIN
     : AUXILIARY_BUDGET_STANDALONE;
 }
@@ -66,7 +52,9 @@ function createToken(record: RendererContextRecord): RendererContextToken {
     release: () => {
       if (released) return;
       released = true;
-      activeContexts.delete(record.id);
+      if (!activeContexts.delete(record.id)) return;
+      if (record.kind === 'main') currentMainCount--;
+      else currentAuxiliaryCount--;
     },
   };
 }
@@ -84,7 +72,7 @@ function warnBudgetDenied(label: string, activeAux: number, budget: number): voi
   if (warningSerial > 4) return;
   console.warn(
     `RendererContextBudget: denied auxiliary WebGL renderer "${label}" ` +
-      `(${activeAux}/${budget} auxiliary contexts active; main contexts ${activeMainCount()}).`,
+      `(${activeAux}/${budget} auxiliary contexts active; main contexts ${currentMainCount}).`,
   );
 }
 
@@ -99,7 +87,8 @@ export function acquireMainRendererContext(
     owner,
   };
   activeContexts.set(record.id, record);
-  peakMainCount = Math.max(peakMainCount, activeMainCount());
+  currentMainCount++;
+  peakMainCount = Math.max(peakMainCount, currentMainCount);
   return createToken(record);
 }
 
@@ -107,7 +96,7 @@ export function acquireAuxiliaryRendererContext(
   label: string,
   owner: object | null = null,
 ): RendererContextToken | null {
-  const activeAux = activeAuxiliaryCount();
+  const activeAux = currentAuxiliaryCount;
   const budget = auxiliaryBudget();
   if (activeAux >= budget) {
     deniedAuxiliaryCount++;
@@ -122,18 +111,19 @@ export function acquireAuxiliaryRendererContext(
     owner,
   };
   activeContexts.set(record.id, record);
+  currentAuxiliaryCount++;
   peakAuxiliaryCount = Math.max(peakAuxiliaryCount, activeAux + 1);
   return createToken(record);
 }
 
 export function canAcquireAuxiliaryRendererContext(): boolean {
-  return activeAuxiliaryCount() < auxiliaryBudget();
+  return currentAuxiliaryCount < auxiliaryBudget();
 }
 
 export function getRendererContextTelemetry(): RendererContextTelemetry {
   return {
-    activeMainCount: activeMainCount(),
-    activeAuxiliaryCount: activeAuxiliaryCount(),
+    activeMainCount: currentMainCount,
+    activeAuxiliaryCount: currentAuxiliaryCount,
     auxiliaryBudget: auxiliaryBudget(),
     peakMainCount,
     peakAuxiliaryCount,

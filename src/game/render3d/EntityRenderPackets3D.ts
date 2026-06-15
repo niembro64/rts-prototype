@@ -25,6 +25,7 @@ const ENTITY_RENDER_FLAG_LIFECYCLE_DIRTY = 1 << 6;
 const UNIT_RENDER_FLAG_AIRBORNE = 1 << 7;
 const UNIT_RENDER_FLAG_HAS_SUSPENSION = 1 << 8;
 const EMPTY_TURRETS: readonly Turret[] = [];
+const passiveTurretIndexCache = new WeakMap<readonly Turret[], number>();
 
 function growFloat32(
   source: Float32Array<ArrayBuffer>,
@@ -81,9 +82,16 @@ function entityRenderFlags(
 }
 
 function passiveTurretIndex(turrets: readonly Turret[]): number {
+  if (turrets.length === 0) return NO_PASSIVE_TURRET_INDEX;
+  const cached = passiveTurretIndexCache.get(turrets);
+  if (cached !== undefined) return cached;
   for (let i = 0; i < turrets.length; i++) {
-    if (turrets[i].config.passive) return i;
+    if (turrets[i].config.passive) {
+      passiveTurretIndexCache.set(turrets, i);
+      return i;
+    }
   }
+  passiveTurretIndexCache.set(turrets, NO_PASSIVE_TURRET_INDEX);
   return NO_PASSIVE_TURRET_INDEX;
 }
 

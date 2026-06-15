@@ -139,6 +139,7 @@ export class Simulation {
   private _movingUnitsBuf: Entity[] = [];
   private _gatherWaitGroups: Map<string, GatherWaitGroup> = new Map();
   private readonly _gatherWaitGroupList: GatherWaitGroup[] = [];
+  private readonly _gatherWaitGroupPool: GatherWaitGroup[] = [];
 
   // Reusable buffers for shared energy distribution (avoid per-tick allocations)
   private energyBuffers: EnergyBuffers = createEnergyBuffers();
@@ -314,8 +315,8 @@ export class Simulation {
       onSimEvent: this.onSimEvent,
     };
     const commands = this.commandQueue.getCommandsForTick(tick);
-    for (const command of commands) {
-      executeCommand(cmdCtx, command);
+    for (let i = 0; i < commands.length; i++) {
+      executeCommand(cmdCtx, commands[i]);
     }
 
     // Solar collectors, wind turbines, and metal extractors share a
@@ -390,8 +391,8 @@ export class Simulation {
     }
 
     // Handle completed build/repair actions - advance commander action queues
-    for (const completed of commanderResult.completedBuildings) {
-      const commander = this.world.getEntity(completed.commanderId);
+    for (let i = 0; i < commanderResult.completedBuildings.length; i++) {
+      const commander = this.world.getEntity(commanderResult.completedBuildings[i].commanderId);
       if (commander) {
         this.advanceAction(commander);
       }
@@ -446,7 +447,9 @@ export class Simulation {
     // Ensure buildings are tracked (addBuilding skips if already present)
     const buildingVersion = this.world.getBuildingVersion();
     if (buildingVersion !== this.spatialGridBuildingVersion) {
-      for (const building of this.world.getBuildings()) {
+      const buildings = this.world.getBuildings();
+      for (let i = 0; i < buildings.length; i++) {
+        const building = buildings[i];
         if (building.building && building.building.hp > 0) {
           spatialGrid.addBuilding(building);
         }
@@ -602,7 +605,9 @@ export class Simulation {
     const sortedGroups = this._gatherWaitGroupList;
     groups.clear();
     sortedGroups.length = 0;
-    for (const entity of this.world.getUnits()) {
+    const units = this.world.getUnits();
+    for (let i = 0; i < units.length; i++) {
+      const entity = units[i];
       const unit = entity.unit;
       if (unit === null || unit.hp <= 0) continue;
       const groupId = this.findQueuedGatherWaitGroupId(unit);
@@ -611,13 +616,13 @@ export class Simulation {
       const groupKey = `${ownerId}:${groupId}`;
       let group = groups.get(groupKey);
       if (group === undefined) {
-        group = { key: groupKey, groupId, members: [] };
+        group = this.acquireGatherWaitGroup(groupKey, groupId);
         groups.set(groupKey, group);
+        sortedGroups.push(group);
       }
       group.members.push(entity);
     }
 
-    for (const group of groups.values()) sortedGroups.push(group);
     sortedGroups.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
     for (let groupIndex = 0; groupIndex < sortedGroups.length; groupIndex++) {
       const { groupId, members } = sortedGroups[groupIndex];
@@ -640,7 +645,28 @@ export class Simulation {
       }
     }
     groups.clear();
-    sortedGroups.length = 0;
+    this.releaseGatherWaitGroups(sortedGroups);
+  }
+
+  private acquireGatherWaitGroup(key: string, groupId: number): GatherWaitGroup {
+    const group = this._gatherWaitGroupPool.pop();
+    if (group !== undefined) {
+      group.key = key;
+      group.groupId = groupId;
+      group.members.length = 0;
+      return group;
+    }
+    return { key, groupId, members: [] };
+  }
+
+  private releaseGatherWaitGroups(groups: GatherWaitGroup[]): void {
+    const pool = this._gatherWaitGroupPool;
+    for (let i = 0; i < groups.length; i++) {
+      const group = groups[i];
+      group.members.length = 0;
+      pool.push(group);
+    }
+    groups.length = 0;
   }
 
   // Update unit movement with action queue processing.
@@ -656,7 +682,9 @@ export class Simulation {
     this.combatHaltController.prepare();
     this.releaseReadyGatherWaits();
 
-    for (const entity of this.world.getUnits()) {
+    const units = this.world.getUnits();
+    for (let i = 0; i < units.length; i++) {
+      const entity = units[i];
       spatialGrid.updateUnit(entity);
       if (!entity.unit || !entity.body) continue;
 
@@ -1028,14 +1056,7 @@ export class Simulation {
     if (!entity.unit || currentAction.type !== 'attack' || currentAction.targetId === undefined) {
       return false;
     }
-    const nextAction: UnitAction = {
-      ...currentAction,
-      x: targetPoint.x,
-      y: targetPoint.y,
-      z: targetPoint.z,
-    };
-
-    if (this.sameAttackApproach(currentAction, nextAction)) {
+    if (this.sameActionApproachTarget(currentAction, targetPoint)) {
       return false;
     }
 
@@ -1043,13 +1064,14 @@ export class Simulation {
     return true;
   }
 
-  private sameAttackApproach(a: UnitAction, b: UnitAction): boolean {
+  private sameActionApproachTarget(
+    action: UnitAction,
+    targetPoint: { x: number; y: number; z: number },
+  ): boolean {
     return (
-      a.type === b.type &&
-      a.targetId === b.targetId &&
-      Math.abs(a.x - b.x) < 1 &&
-      Math.abs(a.y - b.y) < 1 &&
-      Math.abs((a.z ?? 0) - (b.z ?? 0)) < 1
+      Math.abs(action.x - targetPoint.x) < 1 &&
+      Math.abs(action.y - targetPoint.y) < 1 &&
+      Math.abs((action.z ?? 0) - targetPoint.z) < 1
     );
   }
 
@@ -1061,14 +1083,7 @@ export class Simulation {
     if (!entity.unit || currentAction.type !== 'guard' || currentAction.targetId === undefined) {
       return false;
     }
-    const nextAction: UnitAction = {
-      ...currentAction,
-      x: targetPoint.x,
-      y: targetPoint.y,
-      z: targetPoint.z,
-    };
-
-    if (this.sameAttackApproach(currentAction, nextAction)) {
+    if (this.sameActionApproachTarget(currentAction, targetPoint)) {
       return false;
     }
 
@@ -1108,10 +1123,9 @@ export class Simulation {
       rotateFirstUnitActionToEnd(unit);
     } else if (unit.repeatQueue && hasQueuedActionIntents(unit.actions)) {
       const activeIntentEnd = getFirstActionIntentEnd(unit.actions);
-      const repeatActions = unit.actions.splice(0, activeIntentEnd + 1);
-      for (let i = 0; i < repeatActions.length; i++) {
-        unit.actions.push(repeatActions[i]);
-      }
+      const actions = unit.actions;
+      const repeatCount = activeIntentEnd + 1;
+      this.rotateUnitActionsLeft(actions, repeatCount);
       refreshUnitActionHash(unit);
     } else {
       // Remove completed action
@@ -1132,6 +1146,24 @@ export class Simulation {
     }
 
     this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+  }
+
+  private rotateUnitActionsLeft(actions: UnitAction[], count: number): void {
+    const length = actions.length;
+    if (count <= 0 || count >= length) return;
+    this.reverseUnitActionRange(actions, 0, count - 1);
+    this.reverseUnitActionRange(actions, count, length - 1);
+    this.reverseUnitActionRange(actions, 0, length - 1);
+  }
+
+  private reverseUnitActionRange(actions: UnitAction[], left: number, right: number): void {
+    while (left < right) {
+      const action = actions[left];
+      actions[left] = actions[right];
+      actions[right] = action;
+      left++;
+      right--;
+    }
   }
 
   // Reset all session state (call between game sessions to free stale references)

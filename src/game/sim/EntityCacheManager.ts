@@ -117,9 +117,12 @@ export class EntityCacheManager {
     for (const entity of entities.values()) this.sortedEntities.push(entity);
     this.sortedEntities.sort((a, b) => a.id - b.id);
 
-    for (const entity of this.sortedEntities) {
+    const sortedEntities = this.sortedEntities;
+    for (let sortedIndex = 0; sortedIndex < sortedEntities.length; sortedIndex++) {
+      const entity = sortedEntities[sortedIndex];
       this.cachedAll.push(entity);
       const ownership = entity.ownership;
+      const buildInProgress = isBuildInProgress(entity.buildable);
       // Combat capability is host-agnostic: any entity with a
       // CombatComponent that owns a non-visualOnly turret enters the
       // armed list, regardless of whether it's a unit or a building.
@@ -129,9 +132,10 @@ export class EntityCacheManager {
         let hasBeam = false;
         let hasCombatTurret = false;
         for (let i = 0; i < turrets.length; i++) {
-          if (turrets[i].config.visualOnly) continue;
+          const config = turrets[i].config;
+          if (config.visualOnly) continue;
           hasCombatTurret = true;
-          const shot = turrets[i].config.shot;
+          const shot = config.shot;
           if (shot === null) continue;
           const t = shot.type;
           if (t === 'shield' && shot.barrier !== undefined) hasShield = true;
@@ -158,7 +162,7 @@ export class EntityCacheManager {
             entity.unit
             && (
               (entity.unit.hp > 0 && entity.unit.hp < entity.unit.maxHp)
-              || isBuildInProgress(entity.buildable)
+              || buildInProgress
             )
           ) {
             this.cachedDamagedUnits.push(entity);
@@ -169,7 +173,7 @@ export class EntityCacheManager {
             entity.unit
             && (
               (entity.unit.hp > 0 && entity.unit.hp < entity.unit.maxHp)
-              || isBuildInProgress(entity.buildable)
+              || buildInProgress
             )
           ) {
             this.cachedHudEntities.push(entity);
@@ -203,7 +207,7 @@ export class EntityCacheManager {
             entity.building
             && (
               (entity.building.hp > 0 && entity.building.hp < entity.building.maxHp)
-              || isBuildInProgress(entity.buildable)
+              || buildInProgress
             )
           ) {
             this.cachedHealthBarBuildings.push(entity);
@@ -214,7 +218,7 @@ export class EntityCacheManager {
             entity.building
             && (
               (entity.building.hp > 0 && entity.building.hp < entity.building.maxHp)
-              || isBuildInProgress(entity.buildable)
+              || buildInProgress
             )
           ) {
             this.cachedHudEntities.push(entity);
