@@ -1659,7 +1659,7 @@
       },
       "config": {
         "gravityCounterUpwardForceRatio": 0.05,
-        "hoverHeightUpwardForce": 100,
+        "hoverHeightUpwardForce": 230,
         "hoverHeightUpwardForceRandomizationAmount": 0.99,
         "hoverHeightUpwardForceEMA": 0.5,
         "fanDistX": 0.58,
@@ -2014,7 +2014,7 @@
       },
       "config": {
         "gravityCounterUpwardForceRatio": 0.05,
-        "hoverHeightUpwardForce": 130,
+        "hoverHeightUpwardForce": 230,
         "hoverHeightUpwardForceRandomizationAmount": 0.99,
         "hoverHeightUpwardForceEMA": 0.99,
         "fanDistX": 0.72,
