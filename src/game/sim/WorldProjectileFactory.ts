@@ -99,6 +99,9 @@ export class WorldProjectileFactory {
     // this runtime timeout for laser pulse duration.
     const maxLifespan = config.shotProfile.runtime.maxLifespan;
     const shotHealth = isProjectileShot(config.shot) ? config.shot.health : 0;
+    const homingTurnRate = isProjectileShot(config.shot)
+      ? config.shot.homingTurnRate ?? null
+      : null;
 
     // Always single hit (DGun overrides maxHits to Infinity after creation).
     const maxHits = 1;
@@ -154,6 +157,7 @@ export class WorldProjectileFactory {
       shotArmingRadius,
       hasLeftSource: false,
       homingTargetId: NO_ENTITY_ID,
+      homingTurnRate,
       lastSentVelX: velocityX,
       lastSentVelY: velocityY,
       lastSentVelZ: 0,

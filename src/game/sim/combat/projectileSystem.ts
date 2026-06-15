@@ -888,6 +888,7 @@ export function fireTurrets(
             sourceEntityId: unit.id,
             turretIndex: weaponIndex,
             barrelIndex,
+            homingTurnRate: projShot.homingTurnRate ?? undefined,
           });
 
           if (forceAccumulator && projShot.mass > 0) {
@@ -1117,10 +1118,10 @@ export function fireTurrets(
             projectileComponent.velocityZ = projVz;
             projectileComponent.lastSentVelZ = projVz;
           }
-          // Set homing properties if weapon has homingTurnRate and weapon has a locked target
-          if (projectileComponent !== null && projShot.homingTurnRate && targetingTargetId !== -1) {
+          // The projectile's authored homing turn rate is installed at
+          // creation; the firing tick only seeds the initial target lock.
+          if (projectileComponent !== null && (projShot.homingTurnRate ?? 0) > 0 && targetingTargetId !== -1) {
             projectileComponent.homingTargetId = targetingTargetId;
-            projectileComponent.homingTurnRate = projShot.homingTurnRate;
           }
           const maxLifespan = projectileComponent !== null ? projectileComponent.maxLifespan : undefined;
 
@@ -1146,10 +1147,10 @@ export function fireTurrets(
             sourceEntityId: unit.id,
             turretIndex: weaponIndex,
             barrelIndex,
-            targetEntityId: (projShot.homingTurnRate && targetingTargetId !== -1) ? targetingTargetId : undefined,
-            homingTurnRate: (projShot.homingTurnRate && targetingTargetId !== -1)
-              ? projShot.homingTurnRate
+            targetEntityId: ((projShot.homingTurnRate ?? 0) > 0 && targetingTargetId !== -1)
+              ? targetingTargetId
               : undefined,
+            homingTurnRate: projShot.homingTurnRate ?? undefined,
           });
 
           // Apply recoil to firing unit (momentum-based: p = mv). Use

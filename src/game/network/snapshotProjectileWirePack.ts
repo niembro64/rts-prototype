@@ -12,11 +12,9 @@ import {
   PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z,
   PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND,
   PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID,
-  PROJECTILE_BEAM_POINT_WIRE_STRIDE,
   PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE,
   PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE,
   PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T,
-  PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
   PROJECTILE_SPAWN_FLAG_BEAM,
   PROJECTILE_SPAWN_FLAG_FROM_PARENT_FALSE,
   PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE,
@@ -29,7 +27,6 @@ import {
   PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE,
   PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID,
   PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID,
-  PROJECTILE_VELOCITY_WIRE_STRIDE,
 } from './stateSerializerProjectiles';
 import {
   PACKED_BINARY_ROW_COUNT_BYTES,
@@ -41,11 +38,7 @@ import {
 type ProjectileSnapshot = NonNullable<NetworkServerSnapshot['projectiles']>;
 type PlayerId = NetworkServerSnapshotBeamPoint['reflectorPlayerId'];
 
-const PACKED_PROJECTILES_V1_VERSION = 1;
-const PACKED_PROJECTILES_V2_VERSION = 2;
-const PACKED_PROJECTILES_V3_VERSION = 3;
-const PROJECTILE_SPAWN_WIRE_STRIDE_V1 = 27;
-const EMPTY_PROJECTILE_ROWS: readonly number[] = [];
+const PACKED_PROJECTILES_VERSION = 1;
 
 const VELOCITY_FLAG_CLEAR_HOMING = 0x01;
 const VELOCITY_FLAG_TARGET_ENTITY_ID = 0x02;
@@ -59,51 +52,29 @@ function createEmptyProjectileSnapshot(): ProjectileSnapshot {
   };
 }
 
-export type PackedProjectileSnapshotWireV1 = {
-  v: typeof PACKED_PROJECTILES_V1_VERSION;
-  s: number[] | undefined;
-  d: number[] | undefined;
-  u: number[] | undefined;
-  b: number[] | undefined;
-  p: number[] | undefined;
-};
-
-export type PackedProjectileSnapshotWireV2 = {
-  v: typeof PACKED_PROJECTILES_V2_VERSION;
+export type PackedProjectileSnapshotWire = {
+  v: typeof PACKED_PROJECTILES_VERSION;
   s: Uint8Array | undefined;
   d: Uint8Array | undefined;
   u: Uint8Array | undefined;
   b: Uint8Array | undefined;
 };
-
-export type PackedProjectileSnapshotWireV3 = {
-  v: typeof PACKED_PROJECTILES_V3_VERSION;
-  s: Uint8Array | undefined;
-  d: Uint8Array | undefined;
-  u: Uint8Array | undefined;
-  b: Uint8Array | undefined;
-};
-
-export type PackedProjectileSnapshotWire =
-  | PackedProjectileSnapshotWireV1
-  | PackedProjectileSnapshotWireV2
-  | PackedProjectileSnapshotWireV3;
 
 export function packProjectilesForWire(
   projectiles: ProjectileSnapshot | undefined,
-): PackedProjectileSnapshotWireV3 | undefined {
+): PackedProjectileSnapshotWire | undefined {
   if (projectiles === undefined) return undefined;
-  const packed: PackedProjectileSnapshotWireV3 = {
-    v: PACKED_PROJECTILES_V3_VERSION,
+  const packed: PackedProjectileSnapshotWire = {
+    v: PACKED_PROJECTILES_VERSION,
     s: undefined,
     d: undefined,
     u: undefined,
     b: undefined,
   };
-  const spawnBytes = packProjectileSpawnsV2(projectiles.spawns);
-  const despawnBytes = packProjectileDespawnsV2(projectiles.despawns);
-  const velocityBytes = packProjectileVelocityUpdatesV2(projectiles.velocityUpdates);
-  const beamBytes = packBeamUpdatesV2(projectiles.beamUpdates);
+  const spawnBytes = packProjectileSpawns(projectiles.spawns);
+  const despawnBytes = packProjectileDespawns(projectiles.despawns);
+  const velocityBytes = packProjectileVelocityUpdates(projectiles.velocityUpdates);
+  const beamBytes = packBeamUpdates(projectiles.beamUpdates);
   if (spawnBytes !== undefined) packed.s = spawnBytes;
   if (despawnBytes !== undefined) packed.d = despawnBytes;
   if (velocityBytes !== undefined) packed.u = velocityBytes;
@@ -114,28 +85,13 @@ export function packProjectilesForWire(
 export function unpackProjectilesFromWire(
   packed: PackedProjectileSnapshotWire,
 ): ProjectileSnapshot {
-  if (packed.v === PACKED_PROJECTILES_V2_VERSION || packed.v === PACKED_PROJECTILES_V3_VERSION) {
-    const projectiles = createEmptyProjectileSnapshot();
-    const spawns = packed.s !== undefined
-      ? unpackProjectileSpawnsV2(packed.s, packed.v === PACKED_PROJECTILES_V3_VERSION)
-      : undefined;
-    const despawns = packed.d !== undefined ? unpackProjectileDespawnsV2(packed.d) : undefined;
-    const velocityUpdates = packed.u !== undefined
-      ? unpackProjectileVelocityUpdatesV2(packed.u)
-      : undefined;
-    const beamUpdates = packed.b !== undefined ? unpackBeamUpdatesV2(packed.b) : undefined;
-    if (spawns !== undefined) projectiles.spawns = spawns;
-    if (despawns !== undefined) projectiles.despawns = despawns;
-    if (velocityUpdates !== undefined) projectiles.velocityUpdates = velocityUpdates;
-    if (beamUpdates !== undefined) projectiles.beamUpdates = beamUpdates;
-    return projectiles;
-  }
-
   const projectiles = createEmptyProjectileSnapshot();
-  const spawns = unpackProjectileSpawnsV1(packed.s);
-  const despawns = unpackProjectileDespawnsV1(packed.d);
-  const velocityUpdates = unpackProjectileVelocityUpdatesV1(packed.u);
-  const beamUpdates = unpackBeamUpdatesV1(packed.b, packed.p);
+  const spawns = packed.s !== undefined ? unpackProjectileSpawns(packed.s) : undefined;
+  const despawns = packed.d !== undefined ? unpackProjectileDespawns(packed.d) : undefined;
+  const velocityUpdates = packed.u !== undefined
+    ? unpackProjectileVelocityUpdates(packed.u)
+    : undefined;
+  const beamUpdates = packed.b !== undefined ? unpackBeamUpdates(packed.b) : undefined;
   if (spawns !== undefined) projectiles.spawns = spawns;
   if (despawns !== undefined) projectiles.despawns = despawns;
   if (velocityUpdates !== undefined) projectiles.velocityUpdates = velocityUpdates;
@@ -148,23 +104,12 @@ export function isPackedProjectileSnapshotWire(
 ): value is PackedProjectileSnapshotWire {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const candidate = value as Partial<PackedProjectileSnapshotWire>;
-  if (candidate.v === PACKED_PROJECTILES_V2_VERSION || candidate.v === PACKED_PROJECTILES_V3_VERSION) {
-    const v2 = candidate as Partial<PackedProjectileSnapshotWireV2 | PackedProjectileSnapshotWireV3>;
-    return (
-      (v2.s === undefined || v2.s instanceof Uint8Array) &&
-      (v2.d === undefined || v2.d instanceof Uint8Array) &&
-      (v2.u === undefined || v2.u instanceof Uint8Array) &&
-      (v2.b === undefined || v2.b instanceof Uint8Array)
-    );
-  }
-  const v1 = candidate as Partial<PackedProjectileSnapshotWireV1>;
   return (
-    v1.v === PACKED_PROJECTILES_V1_VERSION &&
-    (v1.s === undefined || Array.isArray(v1.s)) &&
-    (v1.d === undefined || Array.isArray(v1.d)) &&
-    (v1.u === undefined || Array.isArray(v1.u)) &&
-    (v1.b === undefined || Array.isArray(v1.b)) &&
-    (v1.p === undefined || Array.isArray(v1.p))
+    candidate.v === PACKED_PROJECTILES_VERSION &&
+    (candidate.s === undefined || candidate.s instanceof Uint8Array) &&
+    (candidate.d === undefined || candidate.d instanceof Uint8Array) &&
+    (candidate.u === undefined || candidate.u instanceof Uint8Array) &&
+    (candidate.b === undefined || candidate.b instanceof Uint8Array)
   );
 }
 
@@ -175,7 +120,7 @@ type SpawnGroup = {
   lastId: number;
 };
 
-function packProjectileSpawnsV2(
+function packProjectileSpawns(
   spawns: readonly NetworkServerSnapshotProjectileSpawn[] | undefined,
 ): Uint8Array | undefined {
   if (spawns === undefined) return undefined;
@@ -204,7 +149,7 @@ function packProjectileSpawnsV2(
       groupsByFlags[flags] = group;
       groups.push(group);
     }
-    writeSpawnRowV2(group.writer, spawn, flags, group.lastId);
+    writeSpawnRow(group.writer, spawn, flags, group.lastId);
     group.lastId = spawn.id;
     group.count++;
   }
@@ -253,7 +198,7 @@ function computeSpawnFlags(spawn: NetworkServerSnapshotProjectileSpawn): number 
   return flags;
 }
 
-function writeSpawnRowV2(
+function writeSpawnRow(
   writer: PackedBinaryWriter,
   spawn: NetworkServerSnapshotProjectileSpawn,
   flags: number,
@@ -305,13 +250,12 @@ function writeSpawnRowV2(
     writer.writeVarUint(spawn.targetEntityId ?? 0);
   }
   if ((flags & PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE) !== 0) {
-    writer.writeVarInt(spawn.homingTurnRate ?? 0);
+    writer.writeFloat64(spawn.homingTurnRate ?? 0);
   }
 }
 
-function unpackProjectileSpawnsV2(
+function unpackProjectileSpawns(
   bytes: Uint8Array,
-  hasSourceProvenance: boolean,
 ): NetworkServerSnapshotProjectileSpawn[] {
   const total = readPackedBinaryRowCount(bytes);
   const out: NetworkServerSnapshotProjectileSpawn[] = new Array(total);
@@ -337,10 +281,10 @@ function unpackProjectileSpawnsV2(
       const turretBlueprintCode = reader.readVarUint();
       const playerId = reader.readVarUint();
       const sourceEntityId = reader.readVarUint();
-      const sourceHostEntityId = hasSourceProvenance ? reader.readVarUint() : sourceEntityId;
-      const sourceRootEntityId = hasSourceProvenance ? reader.readVarUint() : sourceHostEntityId;
-      const sourceTeamId = hasSourceProvenance ? reader.readVarUint() : playerId;
-      const spawnTick = hasSourceProvenance ? reader.readVarUint() : 0;
+      const sourceHostEntityId = reader.readVarUint();
+      const sourceRootEntityId = reader.readVarUint();
+      const sourceTeamId = reader.readVarUint();
+      const spawnTick = reader.readVarUint();
       const turretIndex = reader.readVarUint();
       const barrelIndex = reader.readVarUint();
 
@@ -414,7 +358,7 @@ function unpackProjectileSpawnsV2(
         spawn.targetEntityId = reader.readVarUint();
       }
       if ((flags & PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE) !== 0) {
-        spawn.homingTurnRate = reader.readVarInt();
+        spawn.homingTurnRate = reader.readFloat64();
       }
 
       out[outIndex++] = spawn;
@@ -424,7 +368,7 @@ function unpackProjectileSpawnsV2(
   return out;
 }
 
-function packProjectileDespawnsV2(
+function packProjectileDespawns(
   despawns: ProjectileSnapshot['despawns'],
 ): Uint8Array | undefined {
   if (despawns === undefined) return undefined;
@@ -442,7 +386,7 @@ function packProjectileDespawnsV2(
   return writer.finishBytes();
 }
 
-function unpackProjectileDespawnsV2(
+function unpackProjectileDespawns(
   bytes: Uint8Array,
 ): NonNullable<ProjectileSnapshot['despawns']> {
   const total = readPackedBinaryRowCount(bytes);
@@ -464,7 +408,7 @@ type VelocityGroup = {
   lastId: number;
 };
 
-function packProjectileVelocityUpdatesV2(
+function packProjectileVelocityUpdates(
   updates: readonly NetworkServerSnapshotVelocityUpdate[] | undefined,
 ): Uint8Array | undefined {
   if (updates === undefined) return undefined;
@@ -527,7 +471,7 @@ function packProjectileVelocityUpdatesV2(
   return out.finishBytes();
 }
 
-function unpackProjectileVelocityUpdatesV2(
+function unpackProjectileVelocityUpdates(
   bytes: Uint8Array,
 ): NetworkServerSnapshotVelocityUpdate[] {
   const total = readPackedBinaryRowCount(bytes);
@@ -571,7 +515,7 @@ function unpackProjectileVelocityUpdatesV2(
   return out;
 }
 
-function packBeamUpdatesV2(
+function packBeamUpdates(
   updates: readonly NetworkServerSnapshotBeamUpdate[] | undefined,
 ): Uint8Array | undefined {
   if (updates === undefined) return undefined;
@@ -611,14 +555,14 @@ function packBeamUpdatesV2(
     const points = update.points;
     writer.writeVarUint(points.length);
     for (let p = 0; p < points.length; p++) {
-      writeBeamPointV2(writer, points[p]);
+      writeBeamPoint(writer, points[p]);
     }
   }
   writer.setUint32LE(0, updates.length);
   return writer.finishBytes();
 }
 
-function writeBeamPointV2(
+function writeBeamPoint(
   writer: PackedBinaryWriter,
   point: NetworkServerSnapshotBeamPoint,
 ): void {
@@ -655,7 +599,7 @@ function writeBeamPointV2(
   }
 }
 
-function unpackBeamUpdatesV2(
+function unpackBeamUpdates(
   bytes: Uint8Array,
 ): NetworkServerSnapshotBeamUpdate[] {
   const total = readPackedBinaryRowCount(bytes);
@@ -683,7 +627,7 @@ function unpackBeamUpdatesV2(
     const pointCount = reader.readVarUint();
     const points: NetworkServerSnapshotBeamPoint[] = new Array(pointCount);
     for (let p = 0; p < pointCount; p++) {
-      points[p] = readBeamPointV2(reader);
+      points[p] = readBeamPoint(reader);
     }
     update.points = points;
     out[i] = update;
@@ -691,7 +635,7 @@ function unpackBeamUpdatesV2(
   return out;
 }
 
-function readBeamPointV2(reader: PackedBinaryReader): NetworkServerSnapshotBeamPoint {
+function readBeamPoint(reader: PackedBinaryReader): NetworkServerSnapshotBeamPoint {
   const flags = reader.readVarUint();
   const point: NetworkServerSnapshotBeamPoint = {
     x: reader.readVarInt(),
@@ -726,221 +670,4 @@ function readBeamPointV2(reader: PackedBinaryReader): NetworkServerSnapshotBeamP
     point.normalZ = reader.readVarInt();
   }
   return point;
-}
-
-function unpackProjectileSpawnsV1(
-  rows: readonly number[] | undefined,
-): NetworkServerSnapshotProjectileSpawn[] | undefined {
-  if (rows === undefined) return undefined;
-  const count = Math.floor(rows.length / PROJECTILE_SPAWN_WIRE_STRIDE_V1);
-  const spawns: NetworkServerSnapshotProjectileSpawn[] = new Array(count);
-  for (let i = 0; i < count; i++) {
-    const base = i * PROJECTILE_SPAWN_WIRE_STRIDE_V1;
-    const flags = rows[base + 26] ?? 0;
-    const playerId = rows[base + 13] ?? 1;
-    const sourceEntityId = rows[base + 14] ?? 0;
-    const spawn: NetworkServerSnapshotProjectileSpawn = {
-      id: rows[base + 0] ?? 0,
-      pos: {
-        x: rows[base + 1] ?? 0,
-        y: rows[base + 2] ?? 0,
-        z: rows[base + 3] ?? 0,
-      },
-      rotation: rows[base + 4] ?? 0,
-      velocity: {
-        x: rows[base + 5] ?? 0,
-        y: rows[base + 6] ?? 0,
-        z: rows[base + 7] ?? 0,
-      },
-      projectileType: rows[base + 8] ?? 0,
-      maxLifespan: null,
-      turretBlueprintCode: rows[base + 10] ?? 0,
-      shotBlueprintCode: null,
-      sourceTurretBlueprintCode: null,
-      sourceTurretEntityId: null,
-      playerId,
-      sourceEntityId,
-      sourceHostEntityId: sourceEntityId,
-      sourceRootEntityId: sourceEntityId,
-      sourceTeamId: playerId,
-      spawnTick: 0,
-      parentShotEntityId: null,
-      turretIndex: rows[base + 15] ?? 0,
-      barrelIndex: rows[base + 16] ?? 0,
-      isDGun: null,
-      fromParentDetonation: null,
-      beam: null,
-      targetEntityId: null,
-      homingTurnRate: null,
-    };
-
-    if ((flags & PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN) !== 0) {
-      spawn.maxLifespan = rows[base + 9] ?? 0;
-    }
-    if ((flags & PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE) !== 0) {
-      spawn.shotBlueprintCode = rows[base + 11] ?? 0;
-    }
-    if ((flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE) !== 0) {
-      spawn.sourceTurretBlueprintCode = rows[base + 12] ?? 0;
-    }
-    if ((flags & PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE) !== 0) {
-      spawn.isDGun = true;
-    } else if ((flags & PROJECTILE_SPAWN_FLAG_IS_DGUN_FALSE) !== 0) {
-      spawn.isDGun = false;
-    }
-    if ((flags & PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE) !== 0) {
-      spawn.fromParentDetonation = true;
-    } else if ((flags & PROJECTILE_SPAWN_FLAG_FROM_PARENT_FALSE) !== 0) {
-      spawn.fromParentDetonation = false;
-    }
-    if ((flags & PROJECTILE_SPAWN_FLAG_BEAM) !== 0) {
-      spawn.beam = {
-        start: {
-          x: rows[base + 17] ?? 0,
-          y: rows[base + 18] ?? 0,
-          z: rows[base + 19] ?? 0,
-        },
-        end: {
-          x: rows[base + 20] ?? 0,
-          y: rows[base + 21] ?? 0,
-          z: rows[base + 22] ?? 0,
-        },
-      };
-    }
-    if ((flags & PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID) !== 0) {
-      spawn.targetEntityId = rows[base + 23] ?? 0;
-    }
-    if ((flags & PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE) !== 0) {
-      spawn.homingTurnRate = rows[base + 24] ?? 0;
-    }
-
-    spawns[i] = spawn;
-  }
-  return spawns;
-}
-
-function unpackProjectileDespawnsV1(
-  rows: readonly number[] | undefined,
-): ProjectileSnapshot['despawns'] {
-  if (rows === undefined) return undefined;
-  const despawns: NonNullable<ProjectileSnapshot['despawns']> = new Array(rows.length);
-  for (let i = 0; i < rows.length; i++) {
-    despawns[i] = { id: rows[i] ?? 0 };
-  }
-  return despawns;
-}
-
-function unpackProjectileVelocityUpdatesV1(
-  rows: readonly number[] | undefined,
-): NetworkServerSnapshotVelocityUpdate[] | undefined {
-  if (rows === undefined) return undefined;
-  const stride = rows.length % PROJECTILE_VELOCITY_WIRE_STRIDE === 0
-    ? PROJECTILE_VELOCITY_WIRE_STRIDE
-    : 8;
-  const count = Math.floor(rows.length / stride);
-  const updates: NetworkServerSnapshotVelocityUpdate[] = new Array(count);
-  for (let i = 0; i < count; i++) {
-    const base = i * stride;
-    const targetEntityId = stride > 8 ? (rows[base + 8] ?? 0) : 0;
-    updates[i] = {
-      id: rows[base + 0] ?? 0,
-      pos: {
-        x: rows[base + 1] ?? 0,
-        y: rows[base + 2] ?? 0,
-        z: rows[base + 3] ?? 0,
-      },
-      velocity: {
-        x: rows[base + 4] ?? 0,
-        y: rows[base + 5] ?? 0,
-        z: rows[base + 6] ?? 0,
-      },
-      targetEntityId: targetEntityId > 0 ? targetEntityId : null,
-      clearHomingTarget: (rows[base + 7] ?? 0) !== 0 ? true : null,
-    };
-  }
-  return updates;
-}
-
-function unpackBeamUpdatesV1(
-  rows: readonly number[] | undefined,
-  pointRows: readonly number[] | undefined,
-): NetworkServerSnapshotBeamUpdate[] | undefined {
-  if (rows === undefined) return undefined;
-  const count = Math.floor(rows.length / PROJECTILE_BEAM_UPDATE_WIRE_STRIDE);
-  const updates: NetworkServerSnapshotBeamUpdate[] = new Array(count);
-  let pointOffset = 0;
-
-  for (let i = 0; i < count; i++) {
-    const base = i * PROJECTILE_BEAM_UPDATE_WIRE_STRIDE;
-    const flags = rows[base + 1] ?? 0;
-    const pointCount = rows[base + 3] ?? 0;
-    const update: NetworkServerSnapshotBeamUpdate = {
-      id: rows[base + 0] ?? 0,
-      points: unpackBeamPointsV1(pointRows, pointOffset, pointCount),
-      obstructionT: null,
-      endpointDamageable: null,
-    };
-    pointOffset += pointCount;
-
-    if ((flags & PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T) !== 0) {
-      update.obstructionT = rows[base + 2] ?? 0;
-    }
-    if ((flags & PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE) !== 0) {
-      update.endpointDamageable = true;
-    } else if ((flags & PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE) !== 0) {
-      update.endpointDamageable = false;
-    }
-
-    updates[i] = update;
-  }
-  return updates;
-}
-
-function unpackBeamPointsV1(
-  rows: readonly number[] | undefined,
-  offset: number,
-  count: number,
-): NetworkServerSnapshotBeamPoint[] {
-  const points: NetworkServerSnapshotBeamPoint[] = new Array(count);
-  const source = rows ?? EMPTY_PROJECTILE_ROWS;
-  for (let i = 0; i < count; i++) {
-    const base = (offset + i) * PROJECTILE_BEAM_POINT_WIRE_STRIDE;
-    const flags = source[base + 6] ?? 0;
-    const point: NetworkServerSnapshotBeamPoint = {
-      x: source[base + 0] ?? 0,
-      y: source[base + 1] ?? 0,
-      z: source[base + 2] ?? 0,
-      vx: source[base + 3] ?? 0,
-      vy: source[base + 4] ?? 0,
-      vz: source[base + 5] ?? 0,
-      reflectorEntityId: null,
-      reflectorKind: null,
-      reflectorPlayerId: null,
-      normalX: null,
-      normalY: null,
-      normalZ: null,
-    };
-
-    if ((flags & PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID) !== 0) {
-      point.reflectorEntityId = source[base + 7] ?? 0;
-    }
-    if ((flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND) !== 0) {
-      point.reflectorKind = 'shield';
-    }
-    if ((flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID) !== 0) {
-      point.reflectorPlayerId = source[base + 8] as NetworkServerSnapshotBeamPoint['reflectorPlayerId'];
-    }
-    if ((flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_X) !== 0) {
-      point.normalX = source[base + 9] ?? 0;
-    }
-    if ((flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y) !== 0) {
-      point.normalY = source[base + 10] ?? 0;
-    }
-    if ((flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z) !== 0) {
-      point.normalZ = source[base + 11] ?? 0;
-    }
-
-    points[i] = point;
-  }
-  return points;
 }

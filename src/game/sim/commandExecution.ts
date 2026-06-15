@@ -1375,6 +1375,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     turretIndex: dgunIdx,
     barrelIndex: 0,
     isDGun: true,
+    homingTurnRate: dgunShot.homingTurnRate ?? undefined,
   });
 
   // Emit audio event at the authoritative projectile spawn.

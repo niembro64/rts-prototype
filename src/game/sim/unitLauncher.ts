@@ -21,7 +21,11 @@ import {
 import type { Entity, Turret, UnitAction } from './types';
 import { setUnitActions } from './unitActions';
 import { getUnitGroundZ } from './unitGeometry';
-import { dragRateFromFrictionPer60HzFrame, scaleFrictionPer60HzFrame } from './motionFriction';
+import {
+  dragCoefficientFromFrictionPer60HzFrame,
+  dragRateFromVelocityFrictionPer60HzFrame,
+  frictionPer60HzFrameFromDragRate,
+} from './motionFriction';
 import { getUnitAirFrictionScale } from './unitMotionFriction';
 import type { WindState } from './wind';
 import type { WorldState } from './WorldState';
@@ -313,10 +317,13 @@ function launcherProjectileSpeed(turret: Turret, produced: Entity): number {
 function launcherProjectileAirFrictionPer60HzFrame(produced: Entity): number {
   const unit = produced.unit;
   if (unit === null) return 0;
-  return scaleFrictionPer60HzFrame(
+  const physicsMass = unit.mass * UNIT_MASS_MULTIPLIER;
+  if (!Number.isFinite(physicsMass) || physicsMass <= 1e-6) return 0;
+  const airDragCoefficient = dragCoefficientFromFrictionPer60HzFrame(
     UNIT_AIR_FRICTION_PER_60HZ_FRAME,
     getUnitAirFrictionScale(unit),
   );
+  return frictionPer60HzFrameFromDragRate(airDragCoefficient / physicsMass);
 }
 
 function firstProducedActionPoint(produced: Entity): Vec3 | null {
@@ -412,7 +419,9 @@ function maxRangeFallbackPitchWithDrag(
   ) {
     return null;
   }
-  const dragK = dragRateFromFrictionPer60HzFrame(airFrictionPer60HzFrame, projectileMass);
+  const dragK = Number.isFinite(projectileMass) && projectileMass > 1e-6
+    ? dragRateFromVelocityFrictionPer60HzFrame(airFrictionPer60HzFrame)
+    : 0;
   if (!Number.isFinite(dragK) || dragK <= 1e-9) return null;
 
   let bestPitch = DEFAULT_FALLBACK_LAUNCH_PITCH;

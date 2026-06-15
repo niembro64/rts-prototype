@@ -1,8 +1,9 @@
 import type { ProjectileShot } from './types';
-import { dragCoefficientFromFrictionPer60HzFrame } from './motionFriction';
+import { dragCoefficientFromVelocityFrictionPer60HzFrame } from './motionFriction';
 
 const MIN_PROPULSION_SPEED = 1e-6;
 let cachedAirFrictionPer60HzFrame = Number.NaN;
+let cachedMass = Number.NaN;
 let cachedAirDragCoefficient = 0;
 
 export function getProjectileAirFrictionPer60HzFrame(shot: ProjectileShot): number {
@@ -12,11 +13,13 @@ export function getProjectileAirFrictionPer60HzFrame(shot: ProjectileShot): numb
 
 export function getProjectileAirDragCoefficient(shot: ProjectileShot): number {
   const friction = getProjectileAirFrictionPer60HzFrame(shot);
-  if (friction === cachedAirFrictionPer60HzFrame) {
+  const mass = shot.mass;
+  if (friction === cachedAirFrictionPer60HzFrame && mass === cachedMass) {
     return cachedAirDragCoefficient;
   }
   cachedAirFrictionPer60HzFrame = friction;
-  cachedAirDragCoefficient = dragCoefficientFromFrictionPer60HzFrame(friction);
+  cachedMass = mass;
+  cachedAirDragCoefficient = dragCoefficientFromVelocityFrictionPer60HzFrame(friction, mass);
   return cachedAirDragCoefficient;
 }
 

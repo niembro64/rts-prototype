@@ -2285,7 +2285,7 @@ pub fn snapshot_encode_beam_point_scratch_ensure(count: u32) {
 pub(crate) const PACKED_BINARY_ROW_COUNT_BYTES: usize = 4;
 pub(crate) const PACKED_MINIMAP_ENTITIES_VERSION: u64 = 2;
 pub(crate) const PACKED_MINIMAP_ENTITY_FLAG_RADAR_ONLY: u32 = 0x01;
-pub(crate) const PACKED_PROJECTILES_VERSION: u64 = 3;
+pub(crate) const PACKED_PROJECTILES_VERSION: u64 = 1;
 pub(crate) const PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN: u32 = 0x001;
 pub(crate) const PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE: u32 = 0x002;
 pub(crate) const PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE: u32 = 0x004;
@@ -2573,7 +2573,7 @@ pub(crate) fn f64_floor_u64(value: f64) -> u64 {
     }
 }
 
-pub(crate) fn pack_projectile_spawns_v2(count: usize) {
+pub(crate) fn pack_projectile_spawns(count: usize) {
     let rows = snapshot_encode_proj_spawn_scratch();
     let scratch = snapshot_encode_packed_projectile_scratch();
     scratch.out.reset(PACKED_BINARY_ROW_COUNT_BYTES);
@@ -2636,7 +2636,7 @@ pub(crate) fn pack_projectile_spawns_v2(count: usize) {
             group.writer.write_var_uint_from_f64(rows.buf[base + 23]);
         }
         if (flags & PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE) != 0 {
-            group.writer.write_var_int_from_f64(rows.buf[base + 24]);
+            group.writer.write_f64_le(rows.buf[base + 24]);
         }
         group.count += 1;
     }
@@ -2654,7 +2654,7 @@ pub(crate) fn pack_projectile_spawns_v2(count: usize) {
     out.set_u32_le(0, count as u32);
 }
 
-pub(crate) fn pack_projectile_despawns_v2(count: usize) {
+pub(crate) fn pack_projectile_despawns(count: usize) {
     let rows = snapshot_encode_proj_despawn_scratch();
     let scratch = snapshot_encode_packed_projectile_scratch();
     let out = &mut scratch.out;
@@ -2668,7 +2668,7 @@ pub(crate) fn pack_projectile_despawns_v2(count: usize) {
     out.set_u32_le(0, count as u32);
 }
 
-pub(crate) fn pack_projectile_velocity_updates_v2(count: usize) {
+pub(crate) fn pack_projectile_velocity_updates(count: usize) {
     let rows = snapshot_encode_proj_vel_scratch();
     let scratch = snapshot_encode_packed_projectile_scratch();
     scratch.out.reset(PACKED_BINARY_ROW_COUNT_BYTES);
@@ -2713,7 +2713,7 @@ pub(crate) fn pack_projectile_velocity_updates_v2(count: usize) {
     out.set_u32_le(0, count as u32);
 }
 
-pub(crate) fn pack_beam_point_v2(writer: &mut PackedBinaryWriter, point_base: usize) {
+pub(crate) fn pack_beam_point(writer: &mut PackedBinaryWriter, point_base: usize) {
     let points = snapshot_encode_beam_point_scratch();
     let flags = points.buf[point_base + 6] as u32;
     writer.write_var_uint(flags as u64);
@@ -2740,7 +2740,7 @@ pub(crate) fn pack_beam_point_v2(writer: &mut PackedBinaryWriter, point_base: us
     }
 }
 
-pub(crate) fn pack_projectile_beam_updates_v2(count: usize, beam_point_count: usize) {
+pub(crate) fn pack_projectile_beam_updates(count: usize, beam_point_count: usize) {
     let updates = snapshot_encode_beam_update_scratch();
     let scratch = snapshot_encode_packed_projectile_scratch();
     let out = &mut scratch.out;
@@ -2763,7 +2763,7 @@ pub(crate) fn pack_projectile_beam_updates_v2(count: usize, beam_point_count: us
         let point_count = requested_point_count.min(available);
         out.write_var_uint(point_count as u64);
         for p in 0..point_count {
-            pack_beam_point_v2(out, (point_offset + p) * SNAPSHOT_ENCODE_BEAM_POINT_STRIDE);
+            pack_beam_point(out, (point_offset + p) * SNAPSHOT_ENCODE_BEAM_POINT_STRIDE);
         }
         point_offset += requested_point_count;
     }
@@ -5699,9 +5699,9 @@ pub fn snapshot_encode_envelope_emit_projectiles(
     }
 }
 
-/// Append compact `projectiles: { v: 3, s?, d?, u?, b? }` from the
+/// Append compact `projectiles: { v: 1, s?, d?, u?, b? }` from the
 /// caller-filled projectile scratches. Matches
-/// snapshotProjectileWirePack.ts V3 while keeping the Rust send path
+/// snapshotProjectileWirePack.ts while keeping the Rust send path
 /// out of the TypeScript packed-binary writer.
 #[wasm_bindgen]
 pub fn snapshot_encode_envelope_emit_packed_projectiles(
@@ -5736,25 +5736,25 @@ pub fn snapshot_encode_envelope_emit_packed_projectiles(
     w.write_uint(PACKED_PROJECTILES_VERSION);
 
     if has_spawns != 0 {
-        pack_projectile_spawns_v2(spawn_count as usize);
+        pack_projectile_spawns(spawn_count as usize);
         let packed = snapshot_encode_packed_projectile_scratch();
         w.write_str("s");
         w.write_bin(packed.out.as_slice());
     }
     if has_despawns != 0 {
-        pack_projectile_despawns_v2(despawn_count as usize);
+        pack_projectile_despawns(despawn_count as usize);
         let packed = snapshot_encode_packed_projectile_scratch();
         w.write_str("d");
         w.write_bin(packed.out.as_slice());
     }
     if has_velocity_updates != 0 {
-        pack_projectile_velocity_updates_v2(velocity_update_count as usize);
+        pack_projectile_velocity_updates(velocity_update_count as usize);
         let packed = snapshot_encode_packed_projectile_scratch();
         w.write_str("u");
         w.write_bin(packed.out.as_slice());
     }
     if has_beam_updates != 0 {
-        pack_projectile_beam_updates_v2(beam_update_count as usize, beam_point_count as usize);
+        pack_projectile_beam_updates(beam_update_count as usize, beam_point_count as usize);
         let packed = snapshot_encode_packed_projectile_scratch();
         w.write_str("b");
         w.write_bin(packed.out.as_slice());

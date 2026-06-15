@@ -30,21 +30,6 @@ pub(crate) fn drag_rate_from_coefficient(drag_coefficient: f64, inv_mass: f64) -
 }
 
 #[inline]
-pub(crate) fn drag_rate_from_friction_per_60hz_frame(
-    friction_per_60hz_frame: f64,
-    scale: f64,
-    mass: f64,
-) -> f64 {
-    if !mass.is_finite() || mass <= 1e-6 {
-        return 0.0;
-    }
-    drag_rate_from_coefficient(
-        drag_coefficient_from_friction_per_60hz_frame(friction_per_60hz_frame, scale),
-        1.0 / mass,
-    )
-}
-
-#[inline]
 pub(crate) fn integrate_linear_drag_axis(
     pos: &mut f64,
     vel: &mut f64,

@@ -9,7 +9,7 @@
 // Zero state, pure functions.
 
 import { getSimWasm } from '../sim-wasm/init';
-import { dragRateFromFrictionPer60HzFrame } from '../sim/motionFriction';
+import { dragRateFromVelocityFrictionPer60HzFrame } from '../sim/motionFriction';
 
 // Cached at module scope so the per-call dispatch in
 // solveKinematicIntercept doesn't pay the function-call cost
@@ -612,10 +612,9 @@ function solveDampedKinematicInterceptTs(
   out: KinematicInterceptSolution,
   airFrictionPer60HzFrame: number,
 ): KinematicInterceptSolution | null {
-  const dragK = dragRateFromFrictionPer60HzFrame(
-    airFrictionPer60HzFrame,
-    getProjectileMass(input),
-  );
+  const dragK = getProjectileMass(input) > 0
+    ? dragRateFromVelocityFrictionPer60HzFrame(airFrictionPer60HzFrame)
+    : 0;
   if (!Number.isFinite(dragK) || dragK <= 1e-9) {
     const noFrictionInput = _noFrictionInterceptInput;
     noFrictionInput.myPosition = input.myPosition;

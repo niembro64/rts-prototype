@@ -35,6 +35,10 @@ export function scaleFrictionPer60HzFrame(
   return 1 - DMath.pow(1 - frictionPer60HzFrame, scale);
 }
 
+/** Convert a global friction knob into a physical coefficient at the
+ * shared reference mass. Unit body integration divides the coefficient by
+ * each body's mass, so lighter units respond more strongly to the same
+ * global air. */
 export function dragCoefficientFromFrictionPer60HzFrame(
   frictionPer60HzFrame: number,
   scale = 1,
@@ -52,28 +56,36 @@ export function dragCoefficientFromFrictionPer60HzFrame(
   return dragRateAtReferenceMass * AIR_DRAG_REFERENCE_MASS;
 }
 
-export function dragRateFromCoefficient(
-  dragCoefficient: number,
-  mass: number,
+/** Convert an entity-authored velocity friction value into its continuous
+ * damping rate. Projectiles use this path so their existing per-shot
+ * damping remains intact while wind still enters as physical drag. */
+export function dragRateFromVelocityFrictionPer60HzFrame(
+  frictionPer60HzFrame: number,
+  scale = 1,
 ): number {
   if (
-    !Number.isFinite(dragCoefficient) ||
-    dragCoefficient <= 0 ||
-    !Number.isFinite(mass) ||
-    mass <= 1e-6
+    !Number.isFinite(frictionPer60HzFrame) ||
+    frictionPer60HzFrame <= 0 ||
+    !Number.isFinite(scale) ||
+    scale <= 0
   ) {
     return 0;
   }
-  return dragCoefficient / mass;
+  if (frictionPer60HzFrame >= 1) return Number.POSITIVE_INFINITY;
+  return -Math.log(1 - frictionPer60HzFrame) * 60 * scale;
 }
 
-export function dragRateFromFrictionPer60HzFrame(
+export function frictionPer60HzFrameFromDragRate(dragRate: number): number {
+  if (!Number.isFinite(dragRate) || dragRate <= 0) return 0;
+  return 1 - Math.exp(-dragRate / 60);
+}
+
+export function dragCoefficientFromVelocityFrictionPer60HzFrame(
   frictionPer60HzFrame: number,
   mass: number,
   scale = 1,
 ): number {
-  return dragRateFromCoefficient(
-    dragCoefficientFromFrictionPer60HzFrame(frictionPer60HzFrame, scale),
-    mass,
-  );
+  if (!Number.isFinite(mass) || mass <= 1e-6) return 0;
+  const dragRate = dragRateFromVelocityFrictionPer60HzFrame(frictionPer60HzFrame, scale);
+  return Number.isFinite(dragRate) && dragRate > 0 ? dragRate * mass : 0;
 }

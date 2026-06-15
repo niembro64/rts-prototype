@@ -828,6 +828,9 @@ function spawnSubmunitions(
       // Submunitions spawn AT the parent's detonation point, not at
       // the original shooter's turret launch origin.
       fromParentDetonation: true,
+      homingTurnRate: isProjectileShot(childCfg.shot)
+        ? childCfg.shot.homingTurnRate ?? undefined
+        : undefined,
     });
   }
 }

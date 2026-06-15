@@ -1,8 +1,6 @@
 // projectile — extracted from lib.rs (pure code motion).
 
-use crate::air_drag::{
-    drag_rate_from_coefficient, drag_rate_from_friction_per_60hz_frame, integrate_linear_drag_axis,
-};
+use crate::air_drag::{drag_rate_from_coefficient, integrate_linear_drag_axis};
 #[allow(unused_imports)]
 use crate::*;
 #[allow(unused_imports)]
@@ -272,7 +270,19 @@ pub(crate) fn projectile_air_drag_rate_from_friction_per_60hz_frame(
     friction_per_60hz_frame: f64,
     projectile_mass: f64,
 ) -> f64 {
-    drag_rate_from_friction_per_60hz_frame(friction_per_60hz_frame, 1.0, projectile_mass)
+    // Shot blueprints author velocity loss per 60 Hz frame. Keep that
+    // damping rate intact for projectile tuning; runtime integration derives
+    // the physical coefficient as rate * mass before applying F / mass.
+    if !projectile_mass.is_finite() || projectile_mass <= 1e-6 {
+        return 0.0;
+    }
+    if !friction_per_60hz_frame.is_finite() || friction_per_60hz_frame <= 0.0 {
+        return 0.0;
+    }
+    if friction_per_60hz_frame >= 1.0 {
+        return f64::INFINITY;
+    }
+    -(1.0 - friction_per_60hz_frame).ln() * 60.0
 }
 
 #[inline]
@@ -1310,6 +1320,48 @@ mod tests {
             (actual - expected).abs() <= 1e-9,
             "expected {expected}, got {actual}"
         );
+    }
+
+    #[test]
+    fn projectile_air_drag_rate_preserves_authored_frame_friction() {
+        let expected = -(1.0_f64 - 0.02).ln() * 60.0;
+        assert_close(
+            projectile_air_drag_rate_from_friction_per_60hz_frame(0.02, 3.0),
+            expected,
+        );
+        assert_close(
+            projectile_air_drag_rate_from_friction_per_60hz_frame(0.02, 1000.0),
+            expected,
+        );
+    }
+
+    #[test]
+    fn projectile_zero_air_drag_ignores_wind() {
+        let mut pos_x = vec![1.0];
+        let mut pos_y = vec![-2.0];
+        let mut pos_z = vec![3.0];
+        let mut vel_x = vec![10.0];
+        let mut vel_y = vec![-6.0];
+        let mut vel_z = vec![4.0];
+        let accel_x = vec![3.0];
+        let accel_y = vec![5.0];
+        let accel_z = vec![-9.0];
+        let air_drag = vec![0.0];
+        let inv_mass = vec![0.25];
+        let dt = 0.25;
+
+        let processed = projectile_integrate_step_batch(
+            1, &mut pos_x, &mut pos_y, &mut pos_z, &mut vel_x, &mut vel_y, &mut vel_z, &accel_x,
+            &accel_y, &accel_z, &air_drag, &inv_mass, 1000.0, -500.0, 250.0, dt,
+        );
+
+        assert_eq!(processed, 1);
+        assert_close(pos_x[0], 1.0 + 10.0 * dt + 0.5 * 3.0 * dt * dt);
+        assert_close(pos_y[0], -2.0 - 6.0 * dt + 0.5 * 5.0 * dt * dt);
+        assert_close(pos_z[0], 3.0 + 4.0 * dt + 0.5 * -9.0 * dt * dt);
+        assert_close(vel_x[0], 10.0 + 3.0 * dt);
+        assert_close(vel_y[0], -6.0 + 5.0 * dt);
+        assert_close(vel_z[0], 4.0 - 9.0 * dt);
     }
 
     #[test]

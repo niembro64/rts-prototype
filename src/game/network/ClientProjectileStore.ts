@@ -290,6 +290,14 @@ export class ClientProjectileStore {
     const projectileType = codeToProjectileType(spawn.projectileType);
     if (!projectileType) throw new Error(`Unknown projectile type code: ${spawn.projectileType}`);
     const shotHealth = isProjectileShot(config.shot) ? config.shot.health : 0;
+    const spawnHomingTurnRate = spawn.homingTurnRate;
+    const homingTurnRate = isProjectileShot(config.shot)
+      ? config.shot.homingTurnRate ?? (
+          Number.isFinite(spawnHomingTurnRate) && spawnHomingTurnRate !== null && spawnHomingTurnRate > 0
+            ? spawnHomingTurnRate
+            : null
+        )
+      : null;
 
     const entity: Entity = {
       ...createEmptyEntityComponentSlots(),
@@ -330,6 +338,7 @@ export class ClientProjectileStore {
         shotArmingRadius: 0,
         hasLeftSource: false,
         homingTargetId: NO_ENTITY_ID,
+        homingTurnRate,
         endpointDamageable: projectileType !== 'beam' && projectileType !== 'laser',
         segmentLimitReached: false,
         points: spawn.beam ? [
@@ -366,11 +375,8 @@ export class ClientProjectileStore {
         groundOffset: DGUN_TERRAIN_FOLLOW_HEIGHT,
       };
     }
-    if (spawn.homingTurnRate) {
-      entity.projectile!.homingTurnRate = spawn.homingTurnRate;
-      if (spawn.targetEntityId !== null) {
-        entity.projectile!.homingTargetId = spawn.targetEntityId;
-      }
+    if (spawn.targetEntityId !== null) {
+      entity.projectile!.homingTargetId = spawn.targetEntityId;
     }
     return entity;
   }

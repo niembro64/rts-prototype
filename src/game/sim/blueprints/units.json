@@ -1484,7 +1484,7 @@
         "requiredEngagedForFightStop": true
       },
       {
-        "turretBlueprintId": "turretBeam",
+        "turretBlueprintId": "turretGunLight",
         "mount": {
           "x": -4.7,
           "y": 0,
