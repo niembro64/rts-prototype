@@ -19,9 +19,10 @@ export type UnitLocomotion = {
   type: 'wheels' | 'treads' | 'legs' | 'hover' | 'flying';
   /** Authored propulsion scalar supplied by the unit's inline locomotion profile. */
   driveForce: number;
-  /** Ground traction coefficient. This is coupling to terrain, not drag.
-   *  For hover units this acts as a horizontal-thrust scalar (no actual
-   *  ground contact); 1.0 is full authority. */
+  /** Movement authority coefficient. Ground units use this as terrain
+   *  coupling; hover units use it as direct horizontal-thrust authority;
+   *  flying units use it as thrust plus turn authority, so low values
+   *  produce wider, aircraft-like turns. */
   traction: number;
   /** Named pathfinding profile resolved from pathfindingConfig.json. */
   pathfinding: UnitPathfindingConfig;

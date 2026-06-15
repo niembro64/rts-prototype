@@ -9849,6 +9849,89 @@ mod sim_kernel_tests {
         assert!(y > 0.0, "existing positive orbit should win over velocity");
     }
 
+    fn run_flying_unit_force_with_traction(traction: f64) -> (f64, f64, f64) {
+        pool_init();
+        let slot = pool_alloc_slot();
+        {
+            let p = pool();
+            let i = slot as usize;
+            p.pos_z[i] = 100.0;
+            p.inv_mass[i] = 0.001;
+        }
+
+        let slots = [slot];
+        let flags = [UF_FLAG_IS_AIRBORNE
+            | UF_FLAG_IS_FLYING
+            | UF_FLAG_HAS_THRUST
+            | UF_FLAG_HAS_ORIENTATION];
+        let mut out_flags = [0_u32; 1];
+        let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
+        rows[UF_ROW_DIR_X] = 0.0;
+        rows[UF_ROW_DIR_Y] = 1.0;
+        rows[UF_ROW_ROTATION] = 0.0;
+        rows[UF_ROW_UNIT_MASS] = 100.0;
+        rows[UF_ROW_DRIVE_FORCE] = 100.0;
+        rows[UF_ROW_TRACTION] = traction;
+        rows[UF_ROW_GRAVITY_COUNTER_RATIO] = 0.0;
+        rows[UF_ROW_HOVER_HEIGHT_FORCE] = 100.0;
+        rows[UF_ROW_GROUND_Z] = 0.0;
+        rows[UF_ROW_ORIENTATION_W] = 1.0;
+
+        assert_eq!(
+            unit_force_step_batch(
+                &slots,
+                &flags,
+                &mut rows,
+                &mut out_flags,
+                1,
+                1.0 / 60.0,
+                20.0,
+                150_000.0,
+                30.0,
+                2.0 * 30.0_f64.sqrt(),
+            ),
+            1,
+        );
+        assert_ne!(out_flags[0] & UF_OUT_MOVEMENT_ACCEL, 0);
+        assert_ne!(out_flags[0] & UF_OUT_HOVER_ORIENTATION, 0);
+
+        let result = (
+            rows[UF_ROW_MOVEMENT_ACCEL_X],
+            rows[UF_ROW_MOVEMENT_ACCEL_Y],
+            rows[UF_ROW_ANGULAR_ACCEL_Z],
+        );
+        pool_free_slot(slot);
+        result
+    }
+
+    #[test]
+    pub(crate) fn flying_traction_controls_thrust_and_turn_authority() {
+        let _guard = lock_tests();
+        let (low_ax, low_ay, low_yaw_accel) = run_flying_unit_force_with_traction(0.05);
+        let (high_ax, high_ay, high_yaw_accel) = run_flying_unit_force_with_traction(1.0);
+
+        assert!(
+            low_ax > 0.0,
+            "flying thrust follows the current nose direction"
+        );
+        assert!(
+            low_ay.abs() < 1e-12,
+            "flying units must not get instant sideways thrust toward the requested direction",
+        );
+        assert!(
+            high_ay.abs() < 1e-12,
+            "higher traction changes authority, not the aircraft thrust axis",
+        );
+        assert!(
+            high_ax > low_ax * 10.0,
+            "higher traction should produce stronger flying thrust",
+        );
+        assert!(
+            high_yaw_accel > low_yaw_accel * 10.0,
+            "higher traction should turn the flying body faster",
+        );
+    }
+
     #[test]
     pub(crate) fn stuck_replan_step_resets_when_body_is_moving() {
         let (ticks, should_replan) =

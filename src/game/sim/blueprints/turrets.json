@@ -1159,9 +1159,9 @@
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
       "duration": 2000,
-      "durationRandomness": 0.2
+      "durationRandomness": 0.3
     },
-    "launchForce": 10,
+    "launchForce": 50,
     "turretTurnAccel": 200,
     "turretDrag": 0,
     "barrel": {

@@ -12,8 +12,8 @@ export const LOCOMOTION_TRACTION = {
   // Hover units have no terrain contact patch; the "traction" here is
   // applied as a uniform horizontal-thrust scalar (1.0 = full authority).
   hover: 1.0,
-  // Flying units share hover-style lift and horizontal force authority,
-  // but the force system keeps applying forward thrust even with no order.
+  // Flying units use this as thrust and yaw authority: low values drift
+  // through wide turns, high values feel closer to direct hover control.
   flying: 1.0,
 } as const;
 

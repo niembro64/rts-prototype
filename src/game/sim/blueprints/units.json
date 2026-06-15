@@ -1774,7 +1774,7 @@
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "driveForce": 6000,
-        "traction": 0.05
+        "traction": 0.01
       },
       "config": {
         "gravityCounterUpwardForceRatio": 0.05,

@@ -378,20 +378,28 @@ pub fn unit_force_step_batch(
         let mut thrust_force_z = 0.0;
 
         if is_airborne {
-            let mut air_drive_dir_x = 0.0;
-            let mut air_drive_dir_y = 0.0;
-            let mut air_has_drive_dir = false;
-            let air_thrust_scale = if is_flying { 1.0 } else { thrust_scale };
+            let rotation = rows[base + UF_ROW_ROTATION];
+            let forward_x = rotation.cos();
+            let forward_y = rotation.sin();
+            let mut air_target_dir_x = 0.0;
+            let mut air_target_dir_y = 0.0;
+            let mut air_has_target_dir = false;
+            let air_thrust_scale = if has_thrust {
+                thrust_scale
+            } else if is_flying {
+                1.0
+            } else {
+                0.0
+            };
             if has_thrust && thrust_input_mag > 0.0 {
                 let inv_dir_mag = 1.0 / thrust_input_mag;
-                air_drive_dir_x = dir_x * inv_dir_mag;
-                air_drive_dir_y = dir_y * inv_dir_mag;
-                air_has_drive_dir = true;
+                air_target_dir_x = dir_x * inv_dir_mag;
+                air_target_dir_y = dir_y * inv_dir_mag;
+                air_has_target_dir = true;
             } else if is_flying {
-                let rotation = rows[base + UF_ROW_ROTATION];
-                air_drive_dir_x = rotation.cos();
-                air_drive_dir_y = rotation.sin();
-                air_has_drive_dir = true;
+                air_target_dir_x = forward_x;
+                air_target_dir_y = forward_y;
+                air_has_target_dir = true;
             }
 
             let ground_z = rows[base + UF_ROW_GROUND_Z];
@@ -438,10 +446,19 @@ pub fn unit_force_step_batch(
                 }
             }
 
-            if air_has_drive_dir {
+            if air_has_target_dir {
                 let thrust_mag = traction_force_mag * air_thrust_scale;
-                thrust_force_x = air_drive_dir_x * thrust_mag;
-                thrust_force_y = air_drive_dir_y * thrust_mag;
+                if is_flying {
+                    // Aircraft-style locomotion: engine thrust follows the nose, while
+                    // the requested movement direction is only the yaw target below.
+                    // Low traction therefore creates visible drift/wide turns instead
+                    // of allowing instant sideways thrust.
+                    thrust_force_x = forward_x * thrust_mag;
+                    thrust_force_y = forward_y * thrust_mag;
+                } else {
+                    thrust_force_x = air_target_dir_x * thrust_mag;
+                    thrust_force_y = air_target_dir_y * thrust_mag;
+                }
             }
 
             if flag & UF_FLAG_HAS_ORIENTATION != 0 {
@@ -457,16 +474,23 @@ pub fn unit_force_step_batch(
                     rows[base + UF_ROW_OMEGA_Z],
                 ];
                 let current_yaw = quat_yaw(orientation);
-                let target_yaw = if air_has_drive_dir {
-                    air_drive_dir_y.atan2(air_drive_dir_x)
+                let target_yaw = if air_has_target_dir {
+                    air_target_dir_y.atan2(air_target_dir_x)
                 } else {
                     current_yaw
                 };
                 let target = quat_from_yaw_pitch_roll(target_yaw, 0.0, 0.0);
                 let axis_angle = quat_shortest_axis_angle(orientation, target);
-                let alpha_x = axis_angle[0] * hover_orientation_k - omega[0] * hover_orientation_c;
-                let alpha_y = axis_angle[1] * hover_orientation_k - omega[1] * hover_orientation_c;
-                let alpha_z = axis_angle[2] * hover_orientation_k - omega[2] * hover_orientation_c;
+                let traction_authority = rows[base + UF_ROW_TRACTION].max(0.0).min(2.0);
+                let orientation_k = hover_orientation_k * traction_authority;
+                let orientation_c = if orientation_k > 0.0 && hover_orientation_k > 0.0 {
+                    hover_orientation_c * (orientation_k / hover_orientation_k).sqrt()
+                } else {
+                    0.0
+                };
+                let alpha_x = axis_angle[0] * orientation_k - omega[0] * orientation_c;
+                let alpha_y = axis_angle[1] * orientation_k - omega[1] * orientation_c;
+                let alpha_z = axis_angle[2] * orientation_k - omega[2] * orientation_c;
                 omega[0] += alpha_x * dt_sec;
                 omega[1] += alpha_y * dt_sec;
                 omega[2] += alpha_z * dt_sec;
