@@ -12,6 +12,7 @@ import GameCanvasBattleControlBar from './GameCanvasBattleControlBar.vue';
 import GameCanvasServerControlBar from './GameCanvasServerControlBar.vue';
 import GameCanvasClientControlBar from './GameCanvasClientControlBar.vue';
 import LoadingEmblem from './LoadingEmblem.vue';
+import ChevronIcon from './ChevronIcon.vue';
 import type {
   GameCanvasBattleControlBarModel,
   GameCanvasClientControlBarModel,
@@ -1942,9 +1943,7 @@ watchEffect(() => {
         :title="bottomBarsCollapsed ? 'Show bottom controls' : 'Hide bottom controls'"
         @click="toggleBottomBars"
       >
-        <span class="toggle-dot"></span>
-        <span class="toggle-dot"></span>
-        <span class="toggle-dot"></span>
+        <ChevronIcon :direction="bottomBarsCollapsed ? 'right' : 'left'" />
       </button>
 
       <div
@@ -2602,15 +2601,13 @@ watchEffect(() => {
   background: #12121a;
   border: 1px solid #444;
   border-right: none;
-  border-radius: 0;
+  border-radius: 8px 0 0 8px;
   color: #888;
   cursor: pointer;
   pointer-events: auto;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 

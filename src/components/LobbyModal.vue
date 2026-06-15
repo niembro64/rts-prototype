@@ -10,6 +10,7 @@ import BarControlGroup from './BarControlGroup.vue';
 import BarDivider from './BarDivider.vue';
 import BarLabel from './BarLabel.vue';
 import LoadingEmblem from './LoadingEmblem.vue';
+import ChevronIcon from './ChevronIcon.vue';
 import { getUnitDisplayShortName } from '../game/sim/blueprints/displayRosters';
 import type { TerrainMapShape } from '@/types/terrain';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
@@ -371,9 +372,7 @@ const terrainSectionVars = computed(() =>
       :title="sidebarOpen ? 'Close menu' : 'Open menu'"
       @click="emit('spectate')"
     >
-      <span class="toggle-dot"></span>
-      <span class="toggle-dot"></span>
-      <span class="toggle-dot"></span>
+      <ChevronIcon :direction="sidebarOpen ? 'right' : 'left'" />
     </button>
 
     <div class="menu-sidebar-panel" :aria-hidden="!sidebarOpen">
@@ -986,15 +985,17 @@ const terrainSectionVars = computed(() =>
   transform: translateX(100%);
 }
 
+/* Top-right edge handle. Sits at the top of the screen (mirroring the
+ * bottom-bars handle at bottom-left) and matches its palette so the two
+ * toggles read as the same control. */
 .menu-sidebar-toggle {
   position: absolute;
-  top: 50%;
+  top: 12px;
   left: -30px;
   width: 30px;
   height: 72px;
   padding: 0;
-  transform: translateY(-50%);
-  background: rgba(15, 18, 24, 0.92);
+  background: #12121a;
   border: 1px solid #444;
   border-right: none;
   border-radius: 8px 0 0 8px;
@@ -1002,30 +1003,20 @@ const terrainSectionVars = computed(() =>
   cursor: pointer;
   pointer-events: auto;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .menu-sidebar-toggle:hover {
-  background: rgba(35, 35, 48, 0.96);
+  background: #232330;
   border-color: #777;
   color: #cdd6e0;
 }
 
 .menu-sidebar-toggle:active {
-  background: rgba(12, 12, 18, 0.96);
+  background: #0c0c12;
   border-color: #666;
-}
-
-.menu-sidebar-toggle .toggle-dot {
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: currentColor;
-  display: block;
 }
 
 .menu-sidebar-panel {
