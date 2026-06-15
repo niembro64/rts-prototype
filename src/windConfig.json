@@ -1,5 +1,5 @@
 {
-  "energyPerSecond": 3,
+  "energyPerSecond": 0.2,
   "speed": {
     "min": 10,
     "max": 80
