@@ -52,9 +52,8 @@ export class BuildingResourcePylonSources3D {
     if (!wind) return null;
     const len = Math.hypot(wind.x, wind.y, wind.z);
     if (len < 1e-6) return null;
-    // Aim the ray forward, downwind in the direction the turbine faces,
-    // so the energy cone streams off the front face.
-    this.pylonSourceDirection.set(wind.x / len, wind.z / len, wind.y / len);
+    // Aim the ray forward into the incoming wind, matching the turbine face.
+    this.pylonSourceDirection.set(-wind.x / len, -wind.z / len, -wind.y / len);
     return this.writeDirectionalPylonSourceWorld(pylon, group, this.pylonSourceDirection);
   }
 

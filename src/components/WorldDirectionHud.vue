@@ -382,7 +382,8 @@ function renderHud(now: number): void {
       lastWindVisible = true;
       changed = true;
     }
-    const windYaw = cameraRelativeYaw(wind.x, wind.y);
+    // Display incoming wind direction, matching the wind turbine face.
+    const windYaw = cameraRelativeYaw(-wind.x, -wind.y);
     if (Math.abs(windYaw - lastWindYaw) > ANGLE_EPS || Number.isNaN(lastWindYaw)) {
       windArrow.rotation.y = windYaw;
       lastWindYaw = windYaw;

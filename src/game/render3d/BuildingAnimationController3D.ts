@@ -627,9 +627,9 @@ export class BuildingAnimationController3D {
     this.windAnimLastMs = now;
     if (!wind) return;
 
-    const targetYaw = Math.atan2(wind.x, wind.y);
+    const targetYaw = Math.atan2(-wind.x, -wind.y);
     const horizontalSpeed = Math.hypot(wind.x, wind.y);
-    const targetPitch = -Math.atan2(wind.z, Math.max(1e-6, horizontalSpeed));
+    const targetPitch = Math.atan2(wind.z, Math.max(1e-6, horizontalSpeed));
     const targetSpeed = wind.speed;
     if (
       this.windFanYaw === null ||
@@ -697,7 +697,7 @@ export class BuildingAnimationController3D {
       this.windFanYaw === null ||
       this.windFanPitch === null
     ) return;
-    // Root yaws to follow the wind direction (open) but pitches up to
+    // Root yaws into the incoming wind (open) but pitches up to
     // the stowed angle as the turbine closes. Yaw weight tapers to 0 in
     // the closed pose so the nacelle settles to a deterministic skyward
     // orientation instead of bobbing with the wind while folded.
