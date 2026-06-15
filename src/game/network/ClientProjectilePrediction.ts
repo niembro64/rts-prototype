@@ -111,15 +111,16 @@ function getHomingMaxThrustAccel(shot: ProjectileShot): number {
 function resolveClientHomingThrust(options: {
   entity: Entity;
   dt: number;
+  timeAliveForHomingMs: number;
   position: { x: number; y: number; z: number };
   velocity: { x: number; y: number; z: number };
   getEntity: (id: EntityId) => Entity | undefined;
 }): { x: number; y: number; z: number } | null {
-  const { entity, dt, position, velocity, getEntity } = options;
+  const { entity, dt, timeAliveForHomingMs, position, velocity, getEntity } = options;
   const proj = entity.projectile;
   if (!proj || proj.homingTurnRate === undefined) return null;
   const shot = proj.config.shot as ProjectileShot;
-  if (proj.timeAlive < (shot.homingDelayMs ?? 0)) return null;
+  if (timeAliveForHomingMs < (shot.homingDelayMs ?? 0)) return null;
   const maxThrustAccel = getHomingMaxThrustAccel(shot);
   if (maxThrustAccel <= 0) return null;
   const projectileGravity = GRAVITY * shot.gravityForceMultiplier;
@@ -225,6 +226,7 @@ function resolveClientHomingThrust(options: {
 function resolveProjectileNetAcceleration(options: {
   entity: Entity;
   dt: number;
+  timeAliveForHomingMs: number;
   position: { x: number; y: number; z: number };
   velocity: { x: number; y: number; z: number };
   mapWidth: number;
@@ -256,6 +258,7 @@ function resolveProjectileNetAcceleration(options: {
     const thrust = resolveClientHomingThrust({
       entity,
       dt,
+      timeAliveForHomingMs: options.timeAliveForHomingMs,
       position,
       velocity,
       getEntity,
@@ -352,6 +355,7 @@ export function applyClientProjectilePrediction(options: {
 
   const entityDeltaMs = predictionStep.entityDeltaMs;
   const dt = entityDeltaMs / 1000;
+  const timeAliveBeforeStep = proj.timeAlive;
   proj.timeAlive += entityDeltaMs;
   const shot = proj.config.shot as ProjectileShot;
   const airDragCoefficient = getProjectileAirDragCoefficient(shot);
@@ -374,6 +378,7 @@ export function applyClientProjectilePrediction(options: {
   const entityAccel = resolveProjectileNetAcceleration({
     entity,
     dt,
+    timeAliveForHomingMs: timeAliveBeforeStep,
     position,
     velocity: _clientProjectileVelocityScratch,
     mapWidth,
@@ -409,6 +414,7 @@ export function applyClientProjectilePrediction(options: {
     const targetAccel = resolveProjectileNetAcceleration({
       entity,
       dt,
+      timeAliveForHomingMs: timeAliveBeforeStep,
       position: _clientProjectileTargetPositionScratch,
       velocity: _clientProjectileTargetVelocityScratch,
       mapWidth,

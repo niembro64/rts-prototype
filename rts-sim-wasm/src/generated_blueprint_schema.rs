@@ -876,6 +876,7 @@ pub struct UnitBlueprint {
     pub fullVisionRadius: f64,
     pub sensors: SensorCapabilityConfig,
     pub mass: f64,
+    pub airFrictionPer60HzFrame: f64,
     pub cost: BlueprintJsonValue,
     pub turrets: Vec<TurretMount>,
     pub bodyShape: UnitBodyShape,

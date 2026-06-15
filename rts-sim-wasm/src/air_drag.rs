@@ -1,23 +1,4 @@
 #[inline]
-pub(crate) fn drag_coefficient_from_friction_per_60hz_frame(
-    friction_per_60hz_frame: f64,
-    scale: f64,
-) -> f64 {
-    if !friction_per_60hz_frame.is_finite()
-        || friction_per_60hz_frame <= 0.0
-        || !scale.is_finite()
-        || scale <= 0.0
-    {
-        return 0.0;
-    }
-    if friction_per_60hz_frame >= 1.0 {
-        return f64::INFINITY;
-    }
-    let drag_rate_at_reference_mass = -(1.0 - friction_per_60hz_frame).ln() * 60.0 * scale;
-    drag_rate_at_reference_mass * crate::AIR_DRAG_REFERENCE_MASS
-}
-
-#[inline]
 pub(crate) fn drag_rate_from_coefficient(drag_coefficient: f64, inv_mass: f64) -> f64 {
     if !drag_coefficient.is_finite()
         || drag_coefficient <= 0.0

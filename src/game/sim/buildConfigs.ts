@@ -93,6 +93,7 @@ export function getUnitBuildConfig(unitBlueprintId: string): UnitBuildConfig | u
     supportSurface: cloneUnitSupportSurface(bp.supportSurface),
     locomotion: getUnitLocomotion(unitBlueprintId),
     mass: bp.mass,
+    airFrictionPer60HzFrame: bp.airFrictionPer60HzFrame,
     hp: bp.hp,
     fireRange: undefined,
   };

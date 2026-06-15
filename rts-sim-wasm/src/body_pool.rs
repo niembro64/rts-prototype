@@ -1,6 +1,5 @@
 // body_pool — extracted from lib.rs (pure code motion).
 
-use crate::air_drag::drag_coefficient_from_friction_per_60hz_frame;
 #[allow(unused_imports)]
 use crate::*;
 #[allow(unused_imports)]
@@ -74,10 +73,10 @@ pub(crate) struct BodyPool {
     pub(crate) inv_mass: Vec<f64>,
     pub(crate) restitution: Vec<f64>,
     pub(crate) ground_offset: Vec<f64>,
-    // Per-body air-friction multiplier. 1.0 = full global free-flight
-    // damping; 0.0 = no free-flight damping. Default 1.0 preserves the
-    // old global behavior for bodies that do not author a scale.
-    pub(crate) air_friction_scale: Vec<f64>,
+    // Per-body wind-relative air drag coefficient. Dynamic units author
+    // airFrictionPer60HzFrame, then JS converts that value plus mass into
+    // this coefficient before allocation. 0.0 = no wind/air coupling.
+    pub(crate) air_drag_coefficient: Vec<f64>,
     // Per-body ground-friction multiplier. 1.0 = the full global
     // ground-contact tangential damping; 0.0 = frictionless (keeps all
     // tangential velocity on contact). Default 1.0 so every body that
@@ -127,7 +126,7 @@ impl BodyPool {
             inv_mass: vec![0.0; cap],
             restitution: vec![0.0; cap],
             ground_offset: vec![0.0; cap],
-            air_friction_scale: vec![1.0; cap],
+            air_drag_coefficient: vec![0.0; cap],
             ground_friction_scale: vec![1.0; cap],
             sleep_ticks: vec![0.0; cap],
             flags: vec![0u8; cap],
@@ -174,7 +173,7 @@ impl BodyPool {
         self.inv_mass[i] = 0.0;
         self.restitution[i] = 0.0;
         self.ground_offset[i] = 0.0;
-        self.air_friction_scale[i] = 1.0;
+        self.air_drag_coefficient[i] = 0.0;
         self.ground_friction_scale[i] = 1.0;
         self.sleep_ticks[i] = 0.0;
         self.flags[i] = BODY_FLAG_OCCUPIED;
@@ -282,7 +281,7 @@ pool_ptr_export!(pool_half_z_ptr, half_z, f64);
 pool_ptr_export!(pool_inv_mass_ptr, inv_mass, f64);
 pool_ptr_export!(pool_restitution_ptr, restitution, f64);
 pool_ptr_export!(pool_ground_offset_ptr, ground_offset, f64);
-pool_ptr_export!(pool_air_friction_scale_ptr, air_friction_scale, f64);
+pool_ptr_export!(pool_air_drag_coefficient_ptr, air_drag_coefficient, f64);
 pool_ptr_export!(pool_ground_friction_scale_ptr, ground_friction_scale, f64);
 pool_ptr_export!(pool_sleep_ticks_ptr, sleep_ticks, f64);
 pool_ptr_export!(pool_flags_ptr, flags, u8);
@@ -1095,7 +1094,6 @@ pub fn pool_step_integrate(
     ground_normals: &[f64],
     sleep_transitions_out: &mut [u32],
     dt_sec: f64,
-    base_air_drag_coefficient: f64,
     ground_damp: f64,
     wind_x: f64,
     wind_y: f64,
@@ -1138,16 +1136,14 @@ pub fn pool_step_integrate(
         //   F = drag_coefficient * (wind_velocity - body_velocity)
         // and acceleration comes from F / mass via the pool's inv_mass.
         // Ground contact friction remains a tangent damping term.
-        let air_scale = p.air_friction_scale[slot];
         let ground_scale = p.ground_friction_scale[slot];
-        let eff_air_drag_coefficient = if base_air_drag_coefficient.is_finite() {
-            base_air_drag_coefficient * air_scale.max(0.0)
-        } else {
-            drag_coefficient_from_friction_per_60hz_frame(
-                UNIT_AIR_FRICTION_PER_60HZ_FRAME,
-                air_scale,
-            )
-        };
+        let air_drag_coefficient = p.air_drag_coefficient[slot];
+        let eff_air_drag_coefficient =
+            if air_drag_coefficient.is_finite() && air_drag_coefficient > 0.0 {
+                air_drag_coefficient
+            } else {
+                0.0
+            };
         let eff_ground_damp = scale_body_motion_damp(ground_damp, ground_scale);
 
         // Run the integrator on a 6-element scratch — the inline

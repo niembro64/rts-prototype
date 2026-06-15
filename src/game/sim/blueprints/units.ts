@@ -40,6 +40,7 @@ const UNIT_EXPLICIT_FIELDS = [
   'base',
   'supportSurface',
   'sensors',
+  'airFrictionPer60HzFrame',
   'legAttachHeightFrac',
   'suspension',
   'builder',
@@ -106,6 +107,15 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
         radius: blueprint.radius,
       },
     );
+    if (
+      !Number.isFinite(blueprint.airFrictionPer60HzFrame) ||
+      blueprint.airFrictionPer60HzFrame < 0 ||
+      blueprint.airFrictionPer60HzFrame >= 1
+    ) {
+      throw new Error(
+        `Invalid unit blueprint ${id}: airFrictionPer60HzFrame must be a finite value in [0, 1)`,
+      );
+    }
     for (const mount of blueprint.turrets) {
       const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
       if (!turretBlueprint) {

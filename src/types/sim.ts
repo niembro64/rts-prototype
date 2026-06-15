@@ -222,6 +222,7 @@ export type Unit = {
    *  sensors.fullSightRadius. */
   sensors: SensorCapabilityConfig;
   mass: number;
+  airFrictionPer60HzFrame: number;
   hp: number;
   maxHp: number;
   actions: UnitAction[];
@@ -982,6 +983,7 @@ export type UnitBuildConfig = {
   supportSurface: UnitSupportSurface;
   locomotion: UnitLocomotion;
   mass: number;
+  airFrictionPer60HzFrame: number;
   hp: number;
   fireRange: number | undefined;
 };

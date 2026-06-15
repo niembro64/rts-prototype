@@ -2603,6 +2603,7 @@
         "fullVisionRadius",
         "sensors",
         "mass",
+        "airFrictionPer60HzFrame",
         "cost",
         "turrets",
         "bodyShape",
@@ -2654,6 +2655,9 @@
           "$ref": "#/$defs/SensorCapabilityConfig"
         },
         "mass": {
+          "type": "number"
+        },
+        "airFrictionPer60HzFrame": {
           "type": "number"
         },
         "cost": {

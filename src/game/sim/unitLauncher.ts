@@ -1,4 +1,4 @@
-import { GRAVITY, UNIT_AIR_FRICTION_PER_60HZ_FRAME, UNIT_MASS_MULTIPLIER } from '../../config';
+import { GRAVITY, UNIT_MASS_MULTIPLIER } from '../../config';
 import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_COMBAT_MODE,
@@ -22,12 +22,10 @@ import type { Entity, Turret, UnitAction } from './types';
 import { setUnitActions } from './unitActions';
 import { getUnitGroundZ } from './unitGeometry';
 import {
-  dragCoefficientFromFrictionPer60HzFrame,
   dragRateFromVelocityFrictionPer60HzFrame,
-  frictionPer60HzFrameFromDragRate,
   windVelocityForAirFriction,
 } from './motionFriction';
-import { getUnitAirFrictionScale } from './unitMotionFriction';
+import { getUnitAirFrictionPer60HzFrame } from './unitAirFriction';
 import type { WindState } from './wind';
 import type { WorldState } from './WorldState';
 
@@ -319,13 +317,7 @@ function launcherProjectileSpeed(turret: Turret, produced: Entity): number {
 function launcherProjectileAirFrictionPer60HzFrame(produced: Entity): number {
   const unit = produced.unit;
   if (unit === null) return 0;
-  const physicsMass = unit.mass * UNIT_MASS_MULTIPLIER;
-  if (!Number.isFinite(physicsMass) || physicsMass <= 1e-6) return 0;
-  const airDragCoefficient = dragCoefficientFromFrictionPer60HzFrame(
-    UNIT_AIR_FRICTION_PER_60HZ_FRAME,
-    getUnitAirFrictionScale(unit),
-  );
-  return frictionPer60HzFrameFromDragRate(airDragCoefficient / physicsMass);
+  return getUnitAirFrictionPer60HzFrame(unit);
 }
 
 function firstProducedActionPoint(produced: Entity): Vec3 | null {

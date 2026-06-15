@@ -23,6 +23,7 @@
       "scanRadius": 0
     },
     "mass": 42,
+    "airFrictionPer60HzFrame": 0.04696313,
     "cost": {
       "energy": 50,
       "metal": 50
@@ -116,6 +117,7 @@
       "scanRadius": 0
     },
     "mass": 63.5,
+    "airFrictionPer60HzFrame": 0.03131451,
     "cost": {
       "energy": 90,
       "metal": 90
@@ -208,6 +210,7 @@
       "scanRadius": 0
     },
     "mass": 64.5,
+    "airFrictionPer60HzFrame": 0.03083657,
     "cost": {
       "energy": 350,
       "metal": 350
@@ -330,6 +333,7 @@
       "scanRadius": 0
     },
     "mass": 387,
+    "airFrictionPer60HzFrame": 0.00520674,
     "cost": {
       "energy": 300,
       "metal": 300
@@ -422,6 +426,7 @@
       "scanRadius": 0
     },
     "mass": 268,
+    "airFrictionPer60HzFrame": 0.00750998,
     "cost": {
       "energy": 220,
       "metal": 220
@@ -515,6 +520,7 @@
       "scanRadius": 0
     },
     "mass": 29.5,
+    "airFrictionPer60HzFrame": 0.06619137,
     "cost": {
       "energy": 35,
       "metal": 35
@@ -627,6 +633,7 @@
       "scanRadius": 0
     },
     "mass": 1265,
+    "airFrictionPer60HzFrame": 0.00159578,
     "cost": {
       "energy": 1200,
       "metal": 1200
@@ -719,6 +726,7 @@
       "scanRadius": 0
     },
     "mass": 3173,
+    "airFrictionPer60HzFrame": 0.0006365,
     "cost": {
       "energy": 4000,
       "metal": 4000
@@ -861,6 +869,7 @@
       "scanRadius": 0
     },
     "mass": 1308.5,
+    "airFrictionPer60HzFrame": 0.00154277,
     "cost": {
       "energy": 3000,
       "metal": 3000
@@ -1059,6 +1068,7 @@
       "scanRadius": 0
     },
     "mass": 1899,
+    "airFrictionPer60HzFrame": 0.00106329,
     "cost": {
       "energy": 2500,
       "metal": 2500
@@ -1150,6 +1160,7 @@
       "scanRadius": 0
     },
     "mass": 46.5,
+    "airFrictionPer60HzFrame": 0.0425164,
     "cost": {
       "energy": 300,
       "metal": 300
@@ -1275,6 +1286,7 @@
       "scanRadius": 0
     },
     "mass": 124.5,
+    "airFrictionPer60HzFrame": 0.01609612,
     "cost": {
       "energy": 400,
       "metal": 400
@@ -1372,6 +1384,7 @@
       "scanRadius": 0
     },
     "mass": 35.75,
+    "airFrictionPer60HzFrame": 0.03878556,
     "cost": {
       "energy": 120,
       "metal": 120
@@ -1468,6 +1481,7 @@
       "scanRadius": 0
     },
     "mass": 135,
+    "airFrictionPer60HzFrame": 0.0104208,
     "cost": {
       "energy": 360,
       "metal": 360
@@ -1589,6 +1603,7 @@
       "scanRadius": 0
     },
     "mass": 68.25,
+    "airFrictionPer60HzFrame": 0.02050753,
     "cost": {
       "energy": 180,
       "metal": 160
@@ -1715,6 +1730,7 @@
       "scanRadius": 0
     },
     "mass": 124.75,
+    "airFrictionPer60HzFrame": 0.00565206,
     "cost": {
       "energy": 520,
       "metal": 520
@@ -1826,6 +1842,7 @@
       "scanRadius": 0
     },
     "mass": 12000,
+    "airFrictionPer60HzFrame": 0.00005892,
     "cost": {
       "energy": 5600,
       "metal": 5600
@@ -1963,6 +1980,7 @@
       "scanRadius": 0
     },
     "mass": 15000,
+    "airFrictionPer60HzFrame": 0.00004714,
     "cost": {
       "energy": 6400,
       "metal": 6400
@@ -2087,6 +2105,7 @@
       "scanRadius": 0
     },
     "mass": 15500,
+    "airFrictionPer60HzFrame": 0.00004562,
     "cost": {
       "energy": 6600,
       "metal": 6600
@@ -2210,6 +2229,7 @@
       "scanRadius": 0
     },
     "mass": 180,
+    "airFrictionPer60HzFrame": 0.00782583,
     "cost": {
       "energy": 300,
       "metal": 300
@@ -2317,6 +2337,7 @@
       "scanRadius": 0
     },
     "mass": 408,
+    "airFrictionPer60HzFrame": 0.0049394,
     "cost": {
       "energy": 400,
       "metal": 400

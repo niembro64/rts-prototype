@@ -32,6 +32,8 @@
 
   "storageKeys": {
     "demoUnits": "demo-battle-units",
+    "demoBuildings": "demo-battle-buildings",
+    "demoTowers": "demo-battle-towers",
     "demoCap": "demo-battle-cap",
     "realCap": "real-battle-cap",
     "demoGrid": "demo-battle-grid",

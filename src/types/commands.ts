@@ -54,6 +54,8 @@ export type CommandType =
   | 'setUnitGroundNormalEmaMode'
   | 'setSendGridInfo'
   | 'setBackgroundUnitBlueprintEnabled'
+  | 'setBackgroundBuildingBlueprintEnabled'
+  | 'setBackgroundTowerBlueprintEnabled'
   | 'setMaxTotalUnits'
   | 'setTurretShieldPanelsEnabled'
   | 'setTurretShieldSpheresEnabled'
@@ -470,6 +472,18 @@ export type SetSendGridInfoCommand = BaseCommand & {
 export type SetBackgroundUnitBlueprintEnabledCommand = BaseCommand & {
   type: 'setBackgroundUnitBlueprintEnabled';
   unitBlueprintId: string;
+  enabled: boolean;
+};
+
+export type SetBackgroundBuildingBlueprintEnabledCommand = BaseCommand & {
+  type: 'setBackgroundBuildingBlueprintEnabled';
+  buildingBlueprintId: string;
+  enabled: boolean;
+};
+
+export type SetBackgroundTowerBlueprintEnabledCommand = BaseCommand & {
+  type: 'setBackgroundTowerBlueprintEnabled';
+  towerBlueprintId: string;
   enabled: boolean;
 };
 

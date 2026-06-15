@@ -51,7 +51,6 @@ import {
   UNIT_WORLD_BOUNDARY_SPRING_ACCEL_PER_WORLD_UNIT,
   UNIT_WORLD_BOUNDARY_SPRING_DAMPING_RATIO,
 } from '../../config';
-import { getUnitAirDragCoefficient } from '../sim/unitAirFriction';
 import {
   getUnitGroundFrictionDamp,
   UNIT_GROUND_CONTACT_EPSILON,
@@ -223,7 +222,7 @@ export class Body3D {
     halfZ: number | undefined;
     groundOffset: number | undefined;
     restitution: number;
-    airFrictionScale?: number;
+    airDragCoefficient?: number;
     groundFrictionScale?: number;
     surfaceNormal: SurfaceNormal | null;
   }): Body3D {
@@ -248,7 +247,7 @@ export class Body3D {
     views.halfZ[slot] = args.halfZ ?? 0;
     views.invMass[slot] = args.mass > 0 ? 1 / args.mass : 0;
     views.restitution[slot] = args.restitution;
-    views.airFrictionScale[slot] = args.airFrictionScale ?? 1;
+    views.airDragCoefficient[slot] = args.airDragCoefficient ?? 0;
     views.groundFrictionScale[slot] = args.groundFrictionScale ?? 1;
     views.groundOffset[slot] = args.groundOffset ?? 0;
     views.entityId[slot] = args.entityId ?? -1;
@@ -326,10 +325,10 @@ export class Body3D {
   get invMass(): number { return pv().invMass[this.slot]; }
   get restitution(): number { return pv().restitution[this.slot]; }
   get groundOffset(): number { return pv().groundOffset[this.slot]; }
-  /** Per-body free-flight damping multiplier (1 = authored global
-   *  air friction, 0 = no air friction). */
-  get airFrictionScale(): number { return pv().airFrictionScale[this.slot]; }
-  set airFrictionScale(v: number) { pv().airFrictionScale[this.slot] = v; }
+  /** Per-body wind-relative air drag coefficient.
+   *  0 means this body has no wind/air coupling. */
+  get airDragCoefficient(): number { return pv().airDragCoefficient[this.slot]; }
+  set airDragCoefficient(v: number) { pv().airDragCoefficient[this.slot] = v; }
   /** Per-body ground-friction multiplier (1 = normal traction,
    *  0 = frictionless). Settable so a body's traction can change at
    *  runtime if a future feature needs it. */
@@ -491,7 +490,7 @@ export class PhysicsEngine3D {
     entityId: EntityId | undefined = undefined,
     initialZ: number | undefined = undefined,
     surfaceNormal: SurfaceNormal | null = null,
-    airFrictionScale: number = 1,
+    airDragCoefficient: number = 0,
     groundFrictionScale: number = 1,
   ): Body3D {
     refreshAndBindBody3DPool(getSimWasm()!.pool);
@@ -514,7 +513,7 @@ export class PhysicsEngine3D {
       halfZ: undefined,
       groundOffset: bodyCenterHeight,
       restitution: 0.2,
-      airFrictionScale,
+      airDragCoefficient,
       groundFrictionScale,
       surfaceNormal,
     });
@@ -573,7 +572,7 @@ export class PhysicsEngine3D {
       halfZ: depth / 2,
       groundOffset: undefined,
       restitution: 0.1,
-      airFrictionScale: 0,
+      airDragCoefficient: 0,
       groundFrictionScale: 0,
       surfaceNormal: null,
       entityId,
@@ -1088,10 +1087,9 @@ export class PhysicsEngine3D {
    *  and no per-body terrain boundary crossing.
    *
    *  Dynamic bodies are required to be spheres; addBody() throws for any
-   *  unsupported dynamic shape so integration cannot silently split back
-   *  into a TypeScript fallback path. */
+  *  unsupported dynamic shape so integration cannot silently split back
+  *  into a TypeScript fallback path. */
   private integrate(dtSec: number, count: number, wind: WindVector3): void {
-    const airDragCoefficient = getUnitAirDragCoefficient();
     const groundDamp = getUnitGroundFrictionDamp(dtSec);
     // Pool readiness was enforced in the constructor, so getSimWasm
     // is guaranteed defined here. Cast through `!` to keep the
@@ -1120,7 +1118,6 @@ export class PhysicsEngine3D {
       groundNormalsView,
       transitionsView,
       dtSec,
-      airDragCoefficient,
       groundDamp,
       Number.isFinite(wind.x) ? wind.x : 0,
       Number.isFinite(wind.y) ? wind.y : 0,

@@ -283,18 +283,6 @@ export const REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE =
  *  heavier gravity would flatten every arc into a short lob. */
 export const GRAVITY = sharedSimConstants.gravity;
 
-/** Authored unit air-friction value per 60 Hz frame.
- *  Converted into a wind-relative drag coefficient, then applied as
- *  acceleration = drag force / body mass on x/y/z. */
-export const UNIT_AIR_FRICTION_PER_60HZ_FRAME =
-  sharedSimConstants.unitAirFrictionPer60HzFrame;
-
-/** Reference mass used to convert authored air-friction values into
- *  physical drag coefficients. Actual acceleration is coefficient / mass,
- *  so lighter moving bodies are affected more strongly by the same wind. */
-export const AIR_DRAG_REFERENCE_MASS =
-  sharedSimConstants.airDragReferenceMass;
-
 /** Ground-contact tangent velocity damping per 60 Hz frame.
  *  Applied only while the unit's locomotion ground point is at or
  *  below terrain height, and only to motion tangent to the terrain

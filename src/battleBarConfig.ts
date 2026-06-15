@@ -8,6 +8,12 @@ import {
   isBuildableUnitBlueprintId,
   isDemoUnitEnabledByDefault,
 } from './game/sim/blueprints/unitRoster';
+import {
+  BUILDING_BLUEPRINT_IDS,
+  TOWER_BLUEPRINT_IDS,
+  isBuildingBlueprintId,
+  isTowerBlueprintId,
+} from './types/blueprintIds';
 import battleBarConfig from './battleBarConfig.json';
 import { getModeDefaultPreset } from './components/battlePresets';
 
@@ -28,6 +34,29 @@ function buildUnitToggleConfig(): Record<string, { default: boolean }> {
   );
 }
 
+// Buildings and towers mirror the unit toggle config but default ON for
+// every blueprint — there is no "default-disabled in demo" roster for
+// structures (unlike the queen units). Built dynamically from the
+// blueprint-id lists in blueprintIds.ts so the BUILDINGS / TOWERS bar
+// groups stay in lockstep with the authoritative structure rosters.
+function buildBuildingToggleConfig(): Record<string, { default: boolean }> {
+  return Object.fromEntries(
+    BUILDING_BLUEPRINT_IDS.map((buildingBlueprintId) => [
+      buildingBlueprintId,
+      { default: true },
+    ]),
+  );
+}
+
+function buildTowerToggleConfig(): Record<string, { default: boolean }> {
+  return Object.fromEntries(
+    TOWER_BLUEPRINT_IDS.map((towerBlueprintId) => [
+      towerBlueprintId,
+      { default: true },
+    ]),
+  );
+}
+
 function sanitizeDemoUnitIds(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null;
   const result: string[] = [];
@@ -42,6 +71,34 @@ function sanitizeDemoUnitIds(value: unknown): string[] | null {
   return result;
 }
 
+/** Generic id-list sanitizer shared by the building and tower loaders —
+ *  filters an unknown[] to a deduped string[] of ids accepted by the
+ *  supplied membership predicate. Mirrors sanitizeDemoUnitIds. */
+function sanitizeIdList(
+  value: unknown,
+  isValidId: (id: string) => boolean,
+): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const id of value) {
+    if (typeof id !== 'string') continue;
+    if (!isValidId(id)) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    result.push(id);
+  }
+  return result;
+}
+
+function sanitizeDemoBuildingIds(value: unknown): string[] | null {
+  return sanitizeIdList(value, isBuildingBlueprintId);
+}
+
+function sanitizeDemoTowerIds(value: unknown): string[] | null {
+  return sanitizeIdList(value, isTowerBlueprintId);
+}
+
 // `BATTLE_CONFIG.*.default` is no longer authored in JSON. Every
 // inline default has been moved into the DEMO BATTLE DEFAULT and REAL
 // BATTLE DEFAULT presets. The JSON only owns the *options* lists and
@@ -53,6 +110,8 @@ const _demoPreset = getModeDefaultPreset('demo');
 
 export const BATTLE_CONFIG = {
   units: buildUnitToggleConfig(),
+  buildings: buildBuildingToggleConfig(),
+  towers: buildTowerToggleConfig(),
   cap: {
     default: _demoPreset.cap,
     options: battleBarConfig.cap.options as readonly number[],
@@ -131,6 +190,8 @@ export const REAL_CAP_DEFAULT = getModeDefaultPreset('real').cap;
 // original "battle" namespace) by the load helpers below.
 const sk = battleBarConfig.storageKeys;
 const STORAGE_DEMO_UNITS = sk.demoUnits;
+const STORAGE_DEMO_BUILDINGS = sk.demoBuildings;
+const STORAGE_DEMO_TOWERS = sk.demoTowers;
 const STORAGE_DEMO_CAP = sk.demoCap;
 const STORAGE_REAL_CAP = sk.realCap;
 const STORAGE_DEMO_GRID = sk.demoGrid;
@@ -224,6 +285,58 @@ export function saveDemoUnits(units: string[]): void {
 
 export function getDefaultDemoUnits(): string[] {
   return Object.entries(BATTLE_CONFIG.units)
+    .filter(([, cfg]) => cfg.default)
+    .map(([id]) => id);
+}
+
+// ── Demo building enablement (BUILDINGS bar group) ──
+// Persistence mirrors the unit trio. Buildings have NO legacy `rts-*`
+// key, so the loaders run ensureBattleMigrations() only to stay
+// structurally identical to the unit loaders (it's a cheap no-op after
+// the first call).
+
+export function loadStoredDemoBuildings(): string[] | null {
+  ensureBattleMigrations();
+  const stored = readPersisted(STORAGE_DEMO_BUILDINGS);
+  if (!stored) return null;
+  try {
+    return sanitizeDemoBuildingIds(JSON.parse(stored));
+  } catch {
+    /* malformed JSON */
+  }
+  return null;
+}
+
+export function saveDemoBuildings(buildings: string[]): void {
+  persistJson(STORAGE_DEMO_BUILDINGS, sanitizeDemoBuildingIds(buildings) ?? []);
+}
+
+export function getDefaultDemoBuildings(): string[] {
+  return Object.entries(BATTLE_CONFIG.buildings)
+    .filter(([, cfg]) => cfg.default)
+    .map(([id]) => id);
+}
+
+// ── Demo tower enablement (TOWERS bar group) ──
+
+export function loadStoredDemoTowers(): string[] | null {
+  ensureBattleMigrations();
+  const stored = readPersisted(STORAGE_DEMO_TOWERS);
+  if (!stored) return null;
+  try {
+    return sanitizeDemoTowerIds(JSON.parse(stored));
+  } catch {
+    /* malformed JSON */
+  }
+  return null;
+}
+
+export function saveDemoTowers(towers: string[]): void {
+  persistJson(STORAGE_DEMO_TOWERS, sanitizeDemoTowerIds(towers) ?? []);
+}
+
+export function getDefaultDemoTowers(): string[] {
+  return Object.entries(BATTLE_CONFIG.towers)
     .filter(([, cfg]) => cfg.default)
     .map(([id]) => id);
 }

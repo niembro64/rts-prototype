@@ -1089,16 +1089,15 @@ export function fireTurrets(
           let projVx = dirX * speed;
           let projVy = dirY * speed;
           let projVz = dirZ * speed;
-          // Inherit the turret mount center's own 3D velocity. Barrel
-          // yaw/pitch no longer contributes tangential endpoint
-          // velocity because the launch origin is the attachment
-          // point. worldVelocity is always present; if it has never
-          // been populated (worldPosTick < 0) the cached zeros are
-          // correct — a turret that has never had its kinematics run
-          // has no measured motion to inherit.
-          projVx += weapon.worldVelocity.x;
-          projVy += weapon.worldVelocity.y;
-          projVz += weapon.worldVelocity.z;
+          // Ordinary turret shots inherit the mount center's 3D velocity.
+          // Vertical launchers are authored as tube launches: their initial
+          // velocity is exactly the barrel axis * launch speed, so rocket
+          // propulsion starts straight out of the tube even on a moving host.
+          if (!config.verticalLauncher) {
+            projVx += weapon.worldVelocity.x;
+            projVy += weapon.worldVelocity.y;
+            projVz += weapon.worldVelocity.z;
+          }
           const projectileConfig = createProjectileConfigFromTurret(config, weaponIndex);
           const shotSource = createTurretShotSource(world, unit, weapon, projShot.shotBlueprintId, playerId);
           const projectile = world.createProjectile(
@@ -1456,6 +1455,7 @@ function _updateTravelingProjectilesJS(
     if (isPackedProjectile(entity.id)) continue;
     const proj = entity.projectile;
 
+    const timeAliveBeforeStep = proj.timeAlive;
     proj.timeAlive += dtMs;
 
     const position = getEntityPosition3d(entity, _projectilePositionScratch);
@@ -1517,7 +1517,7 @@ function _updateTravelingProjectilesJS(
     _travelingProjectileTargetUpdateId[index] = HOMING_TARGET_UPDATE_UNCHANGED;
 
     const homingDelayMs = shotConfig.homingDelayMs ?? 0;
-    if (!isDGunWave && (shotConfig.homingTurnRate ?? 0) > 0 && proj.timeAlive >= homingDelayMs) {
+    if (!isDGunWave && (shotConfig.homingTurnRate ?? 0) > 0 && timeAliveBeforeStep >= homingDelayMs) {
       const previousHomingTargetId = proj.homingTargetId;
       const sourceTurret = shotConfig.type === 'rocket'
         ? getProjectileSourceTurretConfig(proj)

@@ -646,6 +646,7 @@ export type UnitBlueprint = {
   fullVisionRadius: number;
   sensors: SensorCapabilityConfig;
   mass: number;
+  airFrictionPer60HzFrame: number;
   cost: ResourceCost;
   turrets: TurretMount[];
   bodyShape: UnitBodyShape;

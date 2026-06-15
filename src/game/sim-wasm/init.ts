@@ -497,7 +497,7 @@ import __wbg_init, {
   pool_inv_mass_ptr,
   pool_restitution_ptr,
   pool_ground_offset_ptr,
-  pool_air_friction_scale_ptr,
+  pool_air_drag_coefficient_ptr,
   pool_ground_friction_scale_ptr,
   pool_sleep_ticks_ptr,
   pool_flags_ptr,
@@ -845,7 +845,6 @@ export interface SimWasm {
     groundNormals: Float64Array,
     sleepTransitionsOut: Uint32Array,
     dtSec: number,
-    baseAirDragCoefficient: number,
     groundDamp: number,
     windX: number,
     windY: number,
@@ -3665,7 +3664,7 @@ export interface BodyPoolViews {
   invMass: Float64Array;
   restitution: Float64Array;
   groundOffset: Float64Array;
-  airFrictionScale: Float64Array;
+  airDragCoefficient: Float64Array;
   groundFrictionScale: Float64Array;
   sleepTicks: Float64Array;
   flags: Uint8Array;
@@ -3795,7 +3794,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         invMass: pool_inv_mass_ptr(),
         restitution: pool_restitution_ptr(),
         groundOffset: pool_ground_offset_ptr(),
-        airFrictionScale: pool_air_friction_scale_ptr(),
+        airDragCoefficient: pool_air_drag_coefficient_ptr(),
         groundFrictionScale: pool_ground_friction_scale_ptr(),
         sleepTicks: pool_sleep_ticks_ptr(),
         flags: pool_flags_ptr(),
@@ -3829,7 +3828,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           pool.invMass = f64View(ptrs.invMass);
           pool.restitution = f64View(ptrs.restitution);
           pool.groundOffset = f64View(ptrs.groundOffset);
-          pool.airFrictionScale = f64View(ptrs.airFrictionScale);
+          pool.airDragCoefficient = f64View(ptrs.airDragCoefficient);
           pool.groundFrictionScale = f64View(ptrs.groundFrictionScale);
           pool.sleepTicks = f64View(ptrs.sleepTicks);
           pool.flags = u8View(ptrs.flags);
@@ -3859,7 +3858,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         invMass: f64View(ptrs.invMass),
         restitution: f64View(ptrs.restitution),
         groundOffset: f64View(ptrs.groundOffset),
-        airFrictionScale: f64View(ptrs.airFrictionScale),
+        airDragCoefficient: f64View(ptrs.airDragCoefficient),
         groundFrictionScale: f64View(ptrs.groundFrictionScale),
         sleepTicks: f64View(ptrs.sleepTicks),
         flags: u8View(ptrs.flags),

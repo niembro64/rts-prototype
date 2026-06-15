@@ -1,15 +1,24 @@
-import { UNIT_AIR_FRICTION_PER_60HZ_FRAME } from '../../config';
-import { dragCoefficientFromFrictionPer60HzFrame } from './motionFriction';
+import { UNIT_MASS_MULTIPLIER } from '../../config';
+import type { Unit } from './types';
+import { dragCoefficientFromVelocityFrictionPer60HzFrame } from './motionFriction';
 
-let cachedScale = Number.NaN;
+let cachedAirFrictionPer60HzFrame = Number.NaN;
+let cachedMass = Number.NaN;
 let cachedDragCoefficient = 0;
 
-export function getUnitAirDragCoefficient(scale = 1): number {
-  if (scale === cachedScale) return cachedDragCoefficient;
-  cachedScale = scale;
-  cachedDragCoefficient = dragCoefficientFromFrictionPer60HzFrame(
-    UNIT_AIR_FRICTION_PER_60HZ_FRAME,
-    scale,
-  );
+export function getUnitAirFrictionPer60HzFrame(unit: Unit): number {
+  const friction = unit.airFrictionPer60HzFrame;
+  return Number.isFinite(friction) && friction > 0 ? friction : 0;
+}
+
+export function getUnitAirDragCoefficient(unit: Unit): number {
+  const friction = getUnitAirFrictionPer60HzFrame(unit);
+  const mass = unit.mass * UNIT_MASS_MULTIPLIER;
+  if (friction === cachedAirFrictionPer60HzFrame && mass === cachedMass) {
+    return cachedDragCoefficient;
+  }
+  cachedAirFrictionPer60HzFrame = friction;
+  cachedMass = mass;
+  cachedDragCoefficient = dragCoefficientFromVelocityFrictionPer60HzFrame(friction, mass);
   return cachedDragCoefficient;
 }

@@ -136,3 +136,35 @@ for (let i = 0; i < buildingRosterDisplay.length; i++) {
 for (let i = 0; i < towerRosterDisplay.length; i++) {
   structureRosterDisplay[buildingRosterDisplay.length + i] = towerRosterDisplay[i];
 }
+
+// Short button labels for the BUILDINGS / TOWERS battle-bar toggle
+// groups — the structure analogue of getUnitDisplayShortName. Buildings
+// and towers carry no authored shortName, so we derive a compact label
+// from the display name (dropping a trailing " Tower"): Solar -> SOLAR,
+// "Beam Tower" -> BEAM, "Anti-Air Tower" -> ANTI-AIR.
+function buildStructureRosterDisplayById(
+  display: readonly BuildingRosterDisplay[],
+): Map<string, BuildingRosterDisplay> {
+  const byId = new Map<string, BuildingRosterDisplay>();
+  for (let i = 0; i < display.length; i++) {
+    byId.set(display[i].buildingBlueprintId, display[i]);
+  }
+  return byId;
+}
+
+const buildingRosterDisplayById = buildStructureRosterDisplayById(buildingRosterDisplay);
+const towerRosterDisplayById = buildStructureRosterDisplayById(towerRosterDisplay);
+
+function structureShortName(label: string): string {
+  return label.replace(/\s*Tower$/i, '').trim().toUpperCase();
+}
+
+export function getBuildingDisplayShortName(buildingBlueprintId: string): string {
+  const row = buildingRosterDisplayById.get(buildingBlueprintId);
+  return row !== undefined ? structureShortName(row.label) : fallbackShortName(buildingBlueprintId);
+}
+
+export function getTowerDisplayShortName(towerBlueprintId: string): string {
+  const row = towerRosterDisplayById.get(towerBlueprintId);
+  return row !== undefined ? structureShortName(row.label) : fallbackShortName(towerBlueprintId);
+}

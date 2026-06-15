@@ -52,6 +52,7 @@ type CreateUnitBaseArgs = {
   sensors: SensorCapabilityConfig;
   locomotion: UnitLocomotion;
   mass: number;
+  airFrictionPer60HzFrame: number;
   hp: number;
   spawnSupport: WorldSupportSurface;
 };
@@ -69,6 +70,7 @@ function createUnitBaseEntity({
   sensors,
   locomotion,
   mass,
+  airFrictionPer60HzFrame,
   hp,
   spawnSupport,
 }: CreateUnitBaseArgs): Entity {
@@ -92,6 +94,7 @@ function createUnitBaseEntity({
       fullVisionRadius,
       sensors: { ...sensors },
       mass,
+      airFrictionPer60HzFrame,
       hp,
       maxHp: hp,
       actions: [],
@@ -160,6 +163,7 @@ export function createUnitFromBlueprintEntity(
     sensors: { ...bp.sensors },
     locomotion: getUnitLocomotion(unitBlueprintId),
     mass: bp.mass,
+    airFrictionPer60HzFrame: bp.airFrictionPer60HzFrame,
     hp: bp.hp * UNIT_HP_MULTIPLIER,
     spawnSupport: context.sampleSupportSurface(x, y),
   });

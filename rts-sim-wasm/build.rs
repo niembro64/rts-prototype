@@ -128,11 +128,6 @@ fn generate_shared_sim_constants(manifest_dir: &Path) {
             "unitGroundPassiveReboundMaxSpeed",
             "UNIT_GROUND_PASSIVE_REBOUND_MAX_SPEED",
         ),
-        (
-            "unitAirFrictionPer60HzFrame",
-            "UNIT_AIR_FRICTION_PER_60HZ_FRAME",
-        ),
-        ("airDragReferenceMass", "AIR_DRAG_REFERENCE_MASS"),
         ("bodySleepSpeedSq", "SLEEP_SPEED_SQ"),
         ("bodySleepAccelSq", "SLEEP_ACCEL_SQ"),
         ("bodySleepTicks", "SLEEP_TICKS"),

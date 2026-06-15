@@ -30,7 +30,6 @@ import {
   advanceUnitMotionPredictionBatchMutable,
 } from '../sim/unitMotionIntegration';
 import { getUnitAirDragCoefficient } from '../sim/unitAirFriction';
-import { getUnitAirFrictionScale } from '../sim/unitMotionFriction';
 import {
   getUnitGroundFrictionDamp,
   isUnitGroundPenetrationInContact,
@@ -463,7 +462,7 @@ function writeUnitAirDragBatchEntry(index: number, unit: Entity['unit']): void {
     return;
   }
   const physicsMass = unit.mass * UNIT_MASS_MULTIPLIER;
-  airDragCoefficientBatch[index] = getUnitAirDragCoefficient(getUnitAirFrictionScale(unit));
+  airDragCoefficientBatch[index] = getUnitAirDragCoefficient(unit);
   invMassBatch[index] = Number.isFinite(physicsMass) && physicsMass > 1e-6
     ? 1 / physicsMass
     : 0;

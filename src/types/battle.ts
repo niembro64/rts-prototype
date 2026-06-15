@@ -9,6 +9,12 @@ export type UnitToggleConfig = {
 
 export type BattleBarConfig = {
   readonly units: Record<string, UnitToggleConfig>;
+  /** Per-building demo toggle defaults — mirror of `units` for the
+   *  static economy/intel structures (BUILDINGS bar group). */
+  readonly buildings: Record<string, UnitToggleConfig>;
+  /** Per-tower demo toggle defaults — mirror of `units` for the
+   *  defensive / fabricator towers (TOWERS bar group). */
+  readonly towers: Record<string, UnitToggleConfig>;
   readonly cap: OptionsConfig<number>;
   readonly turretShieldPanelsEnabled: BooleanSetting;
   readonly turretShieldSpheresEnabled: BooleanSetting;
