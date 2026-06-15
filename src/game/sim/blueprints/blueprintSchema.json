@@ -1109,6 +1109,39 @@
       },
       "additionalProperties": false
     },
+    "UnitLauncherAimMode": {
+      "enum": [
+        "ballistic-or-waypoint",
+        "direct-target"
+      ]
+    },
+    "UnitLauncherConfig": {
+      "type": "object",
+      "required": [
+        "aimMode",
+        "producedUnitBlueprintId",
+        "autoProduce"
+      ],
+      "properties": {
+        "aimMode": {
+          "$ref": "#/$defs/UnitLauncherAimMode"
+        },
+        "producedUnitBlueprintId": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/UnitBlueprintId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "autoProduce": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
     "TurretLockOnRelationshipInclusion": {
       "enum": [
         "friendly_entities",
@@ -1435,6 +1468,16 @@
           "oneOf": [
             {
               "$ref": "#/$defs/ConstructionEmitterVisualSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unitLauncher": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/UnitLauncherConfig"
             },
             {
               "type": "null"

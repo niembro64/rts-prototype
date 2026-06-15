@@ -42,6 +42,8 @@
         "unitConstructionDrone",
         "unitEagle",
         "unitAlbatros",
+        "unitQueenBee",
+        "unitQueenTick",
         "unitTransport",
         "unitCommander"
       ],
@@ -68,7 +70,10 @@
         "turretAlbatrosSiegeCannon",
         "turretRocketSlow",
         "turretRocketFast",
-        "turretAntiAir"
+        "turretAntiAir",
+        "turretUnitConstructorBallistic",
+        "turretQueenBeeConstructor",
+        "turretQueenTickConstructor"
       ],
       "shots": [
         "shotPlasmaLight",
@@ -254,13 +259,33 @@
               "unitDragonfly",
               "unitConstructionDrone",
               "unitEagle",
-              "unitAlbatros"
+              "unitAlbatros",
+              "unitQueenBee",
+              "unitQueenTick"
             ]
           }
         }
       }
     },
     "unitAlbatros": {
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": "all"
+        }
+      }
+    },
+    "unitQueenBee": {
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": "all"
+        }
+      }
+    },
+    "unitQueenTick": {
       "targets": {
         "enemy": {
           "buildings": "all",
@@ -522,6 +547,59 @@
           }
         }
       }
+    },
+    "turretUnitConstructorBallistic": {
+      "targets": "none"
+    },
+    "turretQueenBeeConstructor": {
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitCommander"
+            ]
+          }
+        }
+      }
+    },
+    "turretQueenTickConstructor": {
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": {
+            "only": [
+              "unitJackal",
+              "unitLynx",
+              "unitDaddy",
+              "unitBadger",
+              "unitMongoose",
+              "unitTick",
+              "unitMammoth",
+              "unitFormik",
+              "unitWidow",
+              "unitHippo",
+              "unitTarantula",
+              "unitLoris",
+              "unitCommander"
+            ]
+          }
+        }
+      }
     }
   },
   "towers": {
@@ -566,7 +644,9 @@
               "unitConstructionDrone",
               "unitDragonfly",
               "unitEagle",
-              "unitAlbatros"
+              "unitAlbatros",
+              "unitQueenBee",
+              "unitQueenTick"
             ]
           }
         }

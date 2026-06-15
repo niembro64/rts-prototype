@@ -9,6 +9,7 @@
 import {
   isShotBlueprintId,
   isTurretBlueprintId,
+  isUnitBlueprintId,
   type TurretBlueprintId,
 } from '../../../types/blueprintIds';
 import {
@@ -58,6 +59,15 @@ const TURRET_SUBMUNITION_EXPLICIT_FIELDS = [
   'spread',
 ] as const;
 const TURRET_SUBMUNITION_SPREAD_FIELDS = ['angle', 'pelletCount'] as const;
+const TURRET_UNIT_LAUNCHER_FIELDS = [
+  'aimMode',
+  'producedUnitBlueprintId',
+  'autoProduce',
+] as const;
+const TURRET_UNIT_LAUNCHER_AIM_MODES = new Set([
+  'ballistic-or-waypoint',
+  'direct-target',
+]);
 
 function validateTurretCooldown(label: string, cooldown: unknown): void {
   if (cooldown === null) return;
@@ -131,6 +141,41 @@ function validateTurretSubmunitions(label: string, value: unknown): void {
   }
 }
 
+function validateTurretUnitLauncher(label: string, value: unknown): void {
+  if (value == null) return;
+  assertExplicitFields(label, value, TURRET_UNIT_LAUNCHER_FIELDS);
+  if (!isObject(value)) throw new Error(`Invalid ${label}: expected object or null`);
+
+  if (
+    typeof value.aimMode !== 'string' ||
+    !TURRET_UNIT_LAUNCHER_AIM_MODES.has(value.aimMode)
+  ) {
+    throw new Error(
+      `Invalid ${label}.aimMode: expected "ballistic-or-waypoint" or "direct-target"`,
+    );
+  }
+
+  const producedUnitBlueprintId = value.producedUnitBlueprintId;
+  if (
+    producedUnitBlueprintId !== null &&
+    (
+      typeof producedUnitBlueprintId !== 'string' ||
+      !isUnitBlueprintId(producedUnitBlueprintId)
+    )
+  ) {
+    throw new Error(
+      `Invalid ${label}.producedUnitBlueprintId: unknown unit blueprint ${String(producedUnitBlueprintId)}`,
+    );
+  }
+
+  if (typeof value.autoProduce !== 'boolean') {
+    throw new Error(`Invalid ${label}.autoProduce: expected boolean`);
+  }
+  if (value.autoProduce && producedUnitBlueprintId === null) {
+    throw new Error(`Invalid ${label}: autoProduce requires producedUnitBlueprintId`);
+  }
+}
+
 const RESOLVED_TURRET_BLUEPRINTS = resolveBlueprintRefs(
   rawTurretBlueprints,
 ) as unknown as Record<TurretBlueprintId, JsonTurretBlueprint>;
@@ -192,9 +237,18 @@ for (const [id, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
   }
   validateTurretCooldown(label, blueprint.cooldown);
   validateTurretSubmunitions(`${label}.submunitions`, blueprint.submunitions);
+  validateTurretUnitLauncher(`${label}.unitLauncher`, blueprint.unitLauncher);
   if (blueprint.submunitions != null && blueprint.emissionKind !== 'shield') {
     throw new Error(
       `Invalid ${label}: submunitions are currently supported only for shield-emission turrets`,
     );
+  }
+  if (blueprint.unitLauncher != null) {
+    if (blueprint.emissionKind !== null || blueprint.emissionBlueprintId !== null) {
+      throw new Error(`Invalid ${label}: unitLauncher turrets must not define an emission`);
+    }
+    if (blueprint.constructionEmitter !== null) {
+      throw new Error(`Invalid ${label}: unitLauncher and constructionEmitter are separate turret roles`);
+    }
   }
 }

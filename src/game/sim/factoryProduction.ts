@@ -24,6 +24,13 @@ import {
 } from './constructionLifecycle';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { getSimWasm } from '../sim-wasm/init';
+import type { ForceAccumulator } from './ForceAccumulator';
+import {
+  findUnitLauncherTurret,
+  inheritProducedUnitIntent,
+  launchProducedUnitFromTurret,
+  targetIdToLiveEnemyEntity,
+} from './unitLauncher';
 
 export type { FactoryProductionResult } from '@/types/ui';
 import type { FactoryProductionResult } from '@/types/ui';
@@ -128,7 +135,12 @@ export class FactoryProductionSystem {
   // activation (static rally + turret aim). Resource transfer into the
   // shell is handled by energyDistribution, the same path that funds
   // buildings.
-  update(world: WorldState, _dtMs: number, buildingGrid: BuildingGrid): FactoryProductionResult {
+  update(
+    world: WorldState,
+    dtMs: number,
+    buildingGrid: BuildingGrid,
+    forceAccumulator: ForceAccumulator,
+  ): FactoryProductionResult {
     const spawnedUnits: Entity[] = [];
     const completedUnits: Entity[] = [];
     const factories = world.getFactoryBuildings();
@@ -242,7 +254,7 @@ export class FactoryProductionSystem {
           // Activation: stamp the static rally, aim turrets, mark dirty.
           // The selected blueprint is intentionally NOT cleared: repeat-
           // build mode keeps producing it until the player toggles it off.
-          this.activateShell(world, factory, shell, buildingGrid);
+          this.activateShell(world, factory, shell, buildingGrid, dtMs, forceAccumulator);
           completedUnits.push(shell);
         }
         factoryComp.currentShellId = null;
@@ -321,6 +333,8 @@ export class FactoryProductionSystem {
     factory: Entity,
     unit: Entity,
     _buildingGrid: BuildingGrid,
+    dtMs: number,
+    forceAccumulator: ForceAccumulator,
   ): void {
     if (!factory.factory) return;
     const factoryComp = factory.factory;
@@ -358,6 +372,29 @@ export class FactoryProductionSystem {
           unit.unit.patrolStartIndex = patrolStartIndex;
         }
       }
+    }
+    const launcher = findUnitLauncherTurret(
+      factory,
+      (turret) => turret.config.unitLauncher?.autoProduce === false,
+    );
+    if (launcher !== null) {
+      const target = targetIdToLiveEnemyEntity(
+        world,
+        factory,
+        factory.combat?.priorityTargetId,
+      );
+      if (target !== null) {
+        inheritProducedUnitIntent(world, factory, unit, target);
+      }
+      launchProducedUnitFromTurret(
+        world,
+        forceAccumulator,
+        factory,
+        launcher,
+        unit,
+        dtMs,
+        target,
+      );
     }
     aimTurretsToward(unit, world.mapWidth / 2, world.mapHeight / 2);
     world.markSnapshotDirty(unit.id, ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_TURRETS);

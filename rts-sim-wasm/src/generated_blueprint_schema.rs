@@ -397,6 +397,19 @@ pub struct TurretAimStyle {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum UnitLauncherAimMode {
+    BallisticOrWaypoint,
+    DirectTarget,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnitLauncherConfig {
+    pub aimMode: UnitLauncherAimMode,
+    pub producedUnitBlueprintId: Option<String>,
+    pub autoProduce: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum TurretLockOnRelationshipInclusion {
     FriendlyEntities,
     EnemyEntities,
@@ -491,6 +504,7 @@ pub struct TurretBlueprint {
     pub idlePitch: f64,
     pub groundAimFraction: Option<f64>,
     pub constructionEmitter: Option<BlueprintJsonValue>,
+    pub unitLauncher: Option<UnitLauncherConfig>,
     pub includeLockOnLevel0FriendsAndEnemies: Vec<TurretLockOnRelationshipInclusion>,
     pub includeLockOnLevel0Entities: Vec<TurretLockOnEntityFamilyInclusion>,
     pub includeLockOnLevel1Buildings: Vec<String>,

@@ -34,6 +34,8 @@ export type {
   UnitMoveState,
   CombatFireState,
   CombatTrajectoryMode,
+  UnitLauncherAimMode,
+  UnitLauncherConfig,
   BuildingActiveState,
   Unit,
   Building,

@@ -6,6 +6,7 @@ export const UNIT_BLUEPRINT_IDS = [
   'unitTick', 'unitTarantula', 'unitLoris', 'unitDaddy', 'unitWidow',
   'unitFormik', 'unitHippo', 'unitCommander', 'unitBee', 'unitDragonfly',
   'unitEagle', 'unitConstructionDrone', 'unitAlbatros', 'unitTransport',
+  'unitQueenBee', 'unitQueenTick',
 ] as const;
 export type UnitBlueprintId = typeof UNIT_BLUEPRINT_IDS[number];
 
@@ -89,6 +90,9 @@ export const TURRET_BLUEPRINT_IDS = [
   'turretShieldCylinderInfinite',
   'turretShieldCylinderInfiniteAimed',
   'turretAlbatrosSiegeCannon',
+  'turretUnitConstructorBallistic',
+  'turretQueenBeeConstructor',
+  'turretQueenTickConstructor',
 ] as const;
 export type TurretBlueprintId = typeof TURRET_BLUEPRINT_IDS[number];
 

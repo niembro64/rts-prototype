@@ -33,21 +33,36 @@ export function createPhysicsBodyForUnit(
   if (entity.type !== 'unit' || !entity.unit) return undefined;
   const existingBody = entity.body;
   if (existingBody !== null) return existingBody.physicsBody;
+  const spawnX = Number.isFinite(entity.transform.x)
+    ? entity.transform.x
+    : world.mapWidth / 2;
+  const spawnY = Number.isFinite(entity.transform.y)
+    ? entity.transform.y
+    : world.mapHeight / 2;
+  const spawnZ = Number.isFinite(entity.transform.z)
+    ? entity.transform.z
+    : undefined;
 
   const body = physics.createUnitBody(
-    entity.transform.x,
-    entity.transform.y,
+    spawnX,
+    spawnY,
     entity.unit.radius.collision,
     entity.unit.bodyCenterHeight,
     entity.unit.supportSurface,
     computeHostEffectiveMass(entity),
     `unit_${entity.id}`,
     entity.id,
-    entity.transform.z,
+    spawnZ,
     entity.unit.surfaceNormal,
   );
+  entity.transform.x = body.x;
+  entity.transform.y = body.y;
+  entity.transform.z = body.z;
   entity.body = { physicsBody: body };
   entity.unit.surfaceNormal = body.createSurfaceNormalView();
+  body.vx = Number.isFinite(entity.unit.velocityX) ? entity.unit.velocityX : 0;
+  body.vy = Number.isFinite(entity.unit.velocityY) ? entity.unit.velocityY : 0;
+  body.vz = Number.isFinite(entity.unit.velocityZ) ? entity.unit.velocityZ : 0;
 
   if (options !== undefined && options.ignoreOverlappingBuildings === true) {
     const padding = options.overlapPadding !== undefined ? options.overlapPadding : 0;

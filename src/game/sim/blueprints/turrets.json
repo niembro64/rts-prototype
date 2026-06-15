@@ -1343,5 +1343,173 @@
     "kind": "attack",
     "emissionKind": "shot",
     "emissionBlueprintId": "shotRocketLong"
+  },
+  "turretUnitConstructorBallistic": {
+    "turretBlueprintId": "turretUnitConstructorBallistic",
+    "name": "Unit Constructor Launcher",
+    "range": 900,
+    "rangeVolume": "turret-range-top-and-bottom-unbounded",
+    "cooldown": null,
+    "launchForce": 58000,
+    "turretTurnAccel": 240,
+    "turretDrag": 2,
+    "barrel": {
+      "type": "singleCylinderBarrel",
+      "barrelLength": 2.2,
+      "barrelThickness": 96
+    },
+    "isManualFire": false,
+    "passive": false,
+    "requiresNonObstructedLineOfSight": false,
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": {
+      "angle": 0,
+      "pelletCount": 1
+    },
+    "burst": null,
+    "shieldPanels": [],
+    "audio": null,
+    "verticalLauncher": false,
+    "idlePitch": 0.7853981633974483,
+    "groundAimFraction": null,
+    "radius": {
+      "visual": 22
+    },
+    "headOnly": false,
+    "constructionEmitter": null,
+    "unitLauncher": {
+      "aimMode": "ballistic-or-waypoint",
+      "producedUnitBlueprintId": null,
+      "autoProduce": false
+    },
+    "aimStyle": {
+      "angleType": "rayDirect"
+    },
+    "kind": "construction",
+    "emissionKind": null,
+    "emissionBlueprintId": null
+  },
+  "turretQueenBeeConstructor": {
+    "turretBlueprintId": "turretQueenBeeConstructor",
+    "name": "Queen Bee Launcher",
+    "range": 900,
+    "rangeVolume": "turret-range-top-and-bottom-unbounded",
+    "cooldown": {
+      "duration": 1300,
+      "durationRandomness": 0.12
+    },
+    "launchForce": 56000,
+    "turretTurnAccel": 520,
+    "turretDrag": 2,
+    "barrel": {
+      "type": "singleCylinderBarrel",
+      "barrelLength": 1.65,
+      "barrelThickness": 42
+    },
+    "isManualFire": false,
+    "passive": false,
+    "requiresNonObstructedLineOfSight": true,
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16773040,
+    "spread": {
+      "angle": 0,
+      "pelletCount": 1
+    },
+    "burst": null,
+    "shieldPanels": [],
+    "audio": null,
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": {
+      "visual": 16
+    },
+    "headOnly": false,
+    "constructionEmitter": null,
+    "unitLauncher": {
+      "aimMode": "direct-target",
+      "producedUnitBlueprintId": "unitBee",
+      "autoProduce": true
+    },
+    "aimStyle": {
+      "angleType": "rayDirect"
+    },
+    "kind": "construction",
+    "emissionKind": null,
+    "emissionBlueprintId": null
+  },
+  "turretQueenTickConstructor": {
+    "turretBlueprintId": "turretQueenTickConstructor",
+    "name": "Queen Tick Launcher",
+    "range": 900,
+    "rangeVolume": "turret-range-top-and-bottom-unbounded",
+    "cooldown": {
+      "duration": 1700,
+      "durationRandomness": 0.12
+    },
+    "launchForce": 56000,
+    "turretTurnAccel": 420,
+    "turretDrag": 3,
+    "barrel": {
+      "type": "singleCylinderBarrel",
+      "barrelLength": 1.75,
+      "barrelThickness": 48
+    },
+    "isManualFire": false,
+    "passive": false,
+    "requiresNonObstructedLineOfSight": false,
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16762772,
+    "spread": {
+      "angle": 0,
+      "pelletCount": 1
+    },
+    "burst": null,
+    "shieldPanels": [],
+    "audio": null,
+    "verticalLauncher": false,
+    "idlePitch": 0.7853981633974483,
+    "groundAimFraction": null,
+    "radius": {
+      "visual": 18
+    },
+    "headOnly": false,
+    "constructionEmitter": null,
+    "unitLauncher": {
+      "aimMode": "ballistic-or-waypoint",
+      "producedUnitBlueprintId": "unitTick",
+      "autoProduce": true
+    },
+    "aimStyle": {
+      "angleType": "rayDirect"
+    },
+    "kind": "construction",
+    "emissionKind": null,
+    "emissionBlueprintId": null
   }
 }

@@ -261,6 +261,14 @@ export type TurretAimStyle = {
   angleType: TurretAimAngleType;
 };
 
+export type UnitLauncherAimMode = 'ballistic-or-waypoint' | 'direct-target';
+
+export type UnitLauncherConfig = {
+  aimMode: UnitLauncherAimMode;
+  producedUnitBlueprintId: UnitBlueprintId | null;
+  autoProduce: boolean;
+};
+
 export type TurretLockOnRelationshipInclusion = 'friendly_entities' | 'enemy_entities';
 
 export type TurretLockOnEntityFamilyInclusion = 'buildings' | 'towers' | 'units' | 'turrets' | 'shots';
@@ -328,6 +336,7 @@ export type TurretBlueprint = {
   idlePitch: number;
   groundAimFraction: number | null;
   constructionEmitter: ConstructionEmitterVisualSpec | null;
+  unitLauncher?: UnitLauncherConfig | null;
   includeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipInclusion[];
   includeLockOnLevel0Entities: TurretLockOnEntityFamilyInclusion[];
   includeLockOnLevel1Buildings: string[];

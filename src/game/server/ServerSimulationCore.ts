@@ -64,10 +64,12 @@ export class ServerSimulationCore {
     }
 
     const dtSec = dtMs / 1000;
+    this.repairInvalidEntityPoses();
     this.simulation.update(dtMs);
     this.factoryConstructionTurretSystem.update(dtSec);
     this.unitForceSystem.applyForces(dtSec);
     this.physics.step(dtSec);
+    this.repairInvalidEntityPoses();
     this.syncFromPhysics();
   }
 
@@ -184,6 +186,10 @@ export class ServerSimulationCore {
       const bodySlot = entity.body;
       if (bodySlot === null) continue;
       const body = bodySlot.physicsBody;
+      if (!hasFiniteBodyKinematics(body)) {
+        this.repairInvalidUnitBody(entity);
+        continue;
+      }
       entity.transform.x = body.x;
       entity.transform.y = body.y;
       entity.transform.z = body.z;
@@ -198,4 +204,127 @@ export class ServerSimulationCore {
       }
     }
   }
+
+  private repairInvalidUnitBody(entity: Entity): void {
+    const body = entity.body?.physicsBody;
+    if (body === undefined || entity.unit === null) return;
+    const x = Number.isFinite(entity.transform.x)
+      ? entity.transform.x
+      : this.world.mapWidth / 2;
+    const y = Number.isFinite(entity.transform.y)
+      ? entity.transform.y
+      : this.world.mapHeight / 2;
+    const groundZ = this.world.getGroundZ(x, y);
+    const z = Number.isFinite(entity.transform.z)
+      ? entity.transform.z
+      : groundZ + body.groundOffset;
+    body.x = x;
+    body.y = y;
+    body.z = Number.isFinite(z) ? z : body.groundOffset;
+    body.vx = 0;
+    body.vy = 0;
+    body.vz = 0;
+    body.ax = 0;
+    body.ay = 0;
+    body.az = 0;
+    body.groundLaunchAx = 0;
+    body.groundLaunchAy = 0;
+    body.groundLaunchAz = 0;
+    body.sleepTicks = 0;
+    entity.transform.x = body.x;
+    entity.transform.y = body.y;
+    entity.transform.z = body.z;
+    if (!Number.isFinite(entity.transform.rotation)) {
+      entity.transform.rotation = 0;
+      entity.transform.rotCos = null;
+      entity.transform.rotSin = null;
+    }
+    entity.unit.velocityX = 0;
+    entity.unit.velocityY = 0;
+    entity.unit.velocityZ = 0;
+    this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL);
+  }
+
+  private repairInvalidEntityPoses(): void {
+    const units = this.world.getUnits();
+    for (let i = 0; i < units.length; i++) {
+      const entity = units[i];
+      const body = entity.body?.physicsBody;
+      if (body !== undefined && !hasFiniteBodyKinematics(body)) {
+        this.repairInvalidUnitBody(entity);
+        continue;
+      }
+      if (hasFiniteEntityPose(entity)) continue;
+      if (body !== undefined && hasFiniteBodyKinematics(body)) {
+        this.syncUnitPoseFromBody(entity, body);
+      } else {
+        this.repairInvalidUnitTransform(entity);
+      }
+    }
+  }
+
+  private syncUnitPoseFromBody(
+    entity: Entity,
+    body: import('./PhysicsEngine3D').Body3D,
+  ): void {
+    if (entity.unit === null) return;
+    entity.transform.x = body.x;
+    entity.transform.y = body.y;
+    entity.transform.z = body.z;
+    if (!Number.isFinite(entity.transform.rotation)) {
+      entity.transform.rotation = 0;
+      entity.transform.rotCos = null;
+      entity.transform.rotSin = null;
+    }
+    entity.unit.velocityX = body.vx;
+    entity.unit.velocityY = body.vy;
+    entity.unit.velocityZ = body.vz;
+    this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL);
+  }
+
+  private repairInvalidUnitTransform(entity: Entity): void {
+    const unit = entity.unit;
+    if (unit === null) return;
+    const x = Number.isFinite(entity.transform.x)
+      ? entity.transform.x
+      : this.world.mapWidth / 2;
+    const y = Number.isFinite(entity.transform.y)
+      ? entity.transform.y
+      : this.world.mapHeight / 2;
+    const groundZ = this.world.getGroundZ(x, y);
+    entity.transform.x = x;
+    entity.transform.y = y;
+    entity.transform.z = Number.isFinite(entity.transform.z)
+      ? entity.transform.z
+      : groundZ + unit.bodyCenterHeight;
+    if (!Number.isFinite(entity.transform.rotation)) {
+      entity.transform.rotation = 0;
+      entity.transform.rotCos = null;
+      entity.transform.rotSin = null;
+    }
+    unit.velocityX = Number.isFinite(unit.velocityX) ? unit.velocityX : 0;
+    unit.velocityY = Number.isFinite(unit.velocityY) ? unit.velocityY : 0;
+    unit.velocityZ = Number.isFinite(unit.velocityZ) ? unit.velocityZ : 0;
+    this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL);
+  }
+}
+
+function hasFiniteBodyKinematics(body: import('./PhysicsEngine3D').Body3D): boolean {
+  return (
+    Number.isFinite(body.x) &&
+    Number.isFinite(body.y) &&
+    Number.isFinite(body.z) &&
+    Number.isFinite(body.vx) &&
+    Number.isFinite(body.vy) &&
+    Number.isFinite(body.vz)
+  );
+}
+
+function hasFiniteEntityPose(entity: Entity): boolean {
+  return (
+    Number.isFinite(entity.transform.x) &&
+    Number.isFinite(entity.transform.y) &&
+    Number.isFinite(entity.transform.z) &&
+    Number.isFinite(entity.transform.rotation)
+  );
 }

@@ -156,6 +156,13 @@ export type EntityRadii = {
 export type UnitMoveState = 'maneuver' | 'holdPosition' | 'roam';
 export type CombatTrajectoryMode = 'auto' | 'low' | 'high';
 export type CombatFireState = 'fireAtWill' | 'returnFire' | 'holdFire';
+export type UnitLauncherAimMode = 'ballistic-or-waypoint' | 'direct-target';
+
+export type UnitLauncherConfig = {
+  aimMode: UnitLauncherAimMode;
+  producedUnitBlueprintId: string | null;
+  autoProduce: boolean;
+};
 
 // Cached shield panel geometry (pre-computed from blueprint at entity creation).
 // halfWidth — half the panel's edge length (square panel, so the same
@@ -419,6 +426,7 @@ export type TurretConfig = {
   range: number;
   rangeVolume: TurretRangeVolume;
   cooldown: TurretCooldownConfig | null;
+  launchForce: number;
   color: number;
   barrel: BarrelShape;
   angular: { turnAccel: number; drag: number };
@@ -472,6 +480,7 @@ export type TurretConfig = {
    *  be engaged before the host halts for fight/patrol combat. */
   requiredEngagedForFightStop: boolean;
   constructionEmitter: ConstructionEmitterVisualSpec | null;
+  unitLauncher: UnitLauncherConfig | null;
   visualVariant: ConstructionEmitterSize | null;
   /** LOCK-ON-03 — Compiled per-turret lock-on inclusion bitmasks. JS
    *  walks each turret blueprint once at config build and packs the
@@ -624,6 +633,8 @@ export type Turret = {
    *  SHIELD_MIN_ON_TIME_MS, debouncing rapid on/off flicker. Not
    *  shipped on the wire — only `range` is. */
   shield: { transition: number; range: number; onTimeMs: number } | null;
+  /** Sim-only cooldown for unit-launcher turrets that produce their own units. */
+  unitLauncherCooldownMs: number;
   /** Round-robin pointer across the physical barrels on this turret.
    *  Each fired pellet picks barrelIndex = (barrelFireIndex + pellet)
    *  % barrelCount, then the pointer advances by the pellet count.

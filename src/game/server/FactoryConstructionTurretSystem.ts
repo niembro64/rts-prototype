@@ -48,7 +48,7 @@ export class FactoryConstructionTurretSystem {
     if (turrets === undefined) return null;
     for (let i = 0; i < turrets.length; i++) {
       const turret = turrets[i];
-      if (turret.config.constructionEmitter !== undefined) return turret;
+      if (turret.config.constructionEmitter !== null) return turret;
     }
     return null;
   }

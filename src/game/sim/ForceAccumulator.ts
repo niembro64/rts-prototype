@@ -73,6 +73,7 @@ export class ForceAccumulator {
     source: string = 'unknown',
     fz: number = 0,
   ): void {
+    if (!Number.isFinite(fx) || !Number.isFinite(fy) || !Number.isFinite(fz)) return;
     let entry = this.forces.get(entityId);
     if (!entry) {
       entry = {

@@ -79,6 +79,7 @@ function makeRuntimeTurret(
     ballisticAimInRange: true,
     burst: null,
     shield: null,
+    unitLauncherCooldownMs: 0,
     barrelFireIndex: 0,
   };
 }

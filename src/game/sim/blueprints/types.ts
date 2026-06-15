@@ -46,6 +46,8 @@ export type {
   LockOnInclusionObject,
   LockOnRequiresTargetLockedOntoSelf,
   TurretCooldownConfig,
+  UnitLauncherAimMode,
+  UnitLauncherConfig,
   TurretLockOnRelationshipInclusion,
   TurretLockOnEntityFamilyInclusion,
   TurretRadiusConfig,

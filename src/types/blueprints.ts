@@ -61,6 +61,8 @@ export type {
   TurretAimStyle,
   TurretBlueprint,
   TurretCooldownConfig,
+  UnitLauncherAimMode,
+  UnitLauncherConfig,
   TurretLockOnEntityFamilyInclusion,
   TurretLockOnRelationshipInclusion,
   TurretMount,

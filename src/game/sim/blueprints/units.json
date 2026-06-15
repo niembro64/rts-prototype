@@ -1939,6 +1939,253 @@
       }
     }
   },
+  "unitQueenBee": {
+    "unitBlueprintId": "unitQueenBee",
+    "name": "Queen Bee",
+    "shortName": "QBE",
+    "hp": 8400,
+    "radius": {
+      "visual": 92,
+      "hitbox": 82,
+      "collision": 112,
+      "shotArmingRadius": 164
+    },
+    "bodyCenterHeight": 52,
+    "supportSurface": {
+      "kind": "none"
+    },
+    "fullVisionRadius": 1700,
+    "sensors": {
+      "fullSightRadius": 1700,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
+    "mass": 15000,
+    "cost": {
+      "energy": 6400,
+      "metal": 6400
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretQueenBeeConstructor",
+        "mount": {
+          "x": 0.38,
+          "y": 0,
+          "z": 0
+        },
+        "hostDirected": true,
+        "requiredEngagedForFightStop": true
+      }
+    ],
+    "bodyShape": {
+      "kind": "composite",
+      "parts": [
+        {
+          "kind": "oval",
+          "offsetForward": -0.08,
+          "xFrac": 0.68,
+          "yFrac": 0.34,
+          "zFrac": 0.32
+        },
+        {
+          "kind": "oval",
+          "offsetForward": 0.52,
+          "xFrac": 0.38,
+          "yFrac": 0.26,
+          "zFrac": 0.24
+        }
+      ]
+    },
+    "hud": {
+      "barsOffsetAboveTop": 22
+    },
+    "legAttachHeightFrac": null,
+    "suspension": null,
+    "builder": null,
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitEagle"
+    },
+    "locomotion": {
+      "type": "flying",
+      "pathfindingBlueprintId": "airborneAnywhere",
+      "physics": {
+        "driveForce": 6,
+        "traction": 1
+      },
+      "config": {
+        "gravityCounterUpwardForceRatio": 0.05,
+        "hoverHeightUpwardForce": 760,
+        "hoverHeightUpwardForceRandomizationAmount": 0.99,
+        "hoverHeightUpwardForceEMA": 0.99,
+        "wingSpan": 2.95,
+        "wingChord": 0.68,
+        "wingOffsetX": -0.08,
+        "wingHeight": 0.38,
+        "wingThickness": 0.045,
+        "wingDihedralDeg": 8,
+        "wingSweepFrac": 0.45,
+        "tailWingSpan": 1.12,
+        "tailWingChord": 0.34,
+        "tailWingOffsetX": -0.9,
+        "tailWingHeight": 0.34,
+        "tailWingThickness": 0.04,
+        "tailWingDihedralDeg": 15,
+        "tailWingSweepFrac": 0.75,
+        "tailWingMirrorX": true,
+        "jetOffsetX": -0.92,
+        "jetOffsetY": 0,
+        "jetOffsetZ": 0.24,
+        "jetRadius": 0.08,
+        "jetLength": 0.2,
+        "jetCount": 1
+      }
+    },
+    "base": {
+      "cost": {
+        "energy": 6400,
+        "metal": 6400
+      },
+      "mass": 15000,
+      "health": 8400,
+      "deathExplosion": {
+        "radius": 132,
+        "force": 210000,
+        "damage": 1400
+      },
+      "radius": {
+        "visual": 92,
+        "hitbox": 82,
+        "collision": 112,
+        "shotArmingRadius": 164
+      }
+    }
+  },
+  "unitQueenTick": {
+    "unitBlueprintId": "unitQueenTick",
+    "name": "Queen Tick",
+    "shortName": "QTK",
+    "hp": 8800,
+    "radius": {
+      "visual": 94,
+      "hitbox": 84,
+      "collision": 114,
+      "shotArmingRadius": 168
+    },
+    "bodyCenterHeight": 54,
+    "supportSurface": {
+      "kind": "none"
+    },
+    "fullVisionRadius": 1700,
+    "sensors": {
+      "fullSightRadius": 1700,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
+    "mass": 15500,
+    "cost": {
+      "energy": 6600,
+      "metal": 6600
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretQueenTickConstructor",
+        "mount": {
+          "x": 0.34,
+          "y": 0,
+          "z": 0
+        },
+        "hostDirected": true,
+        "requiredEngagedForFightStop": true
+      }
+    ],
+    "bodyShape": {
+      "kind": "composite",
+      "parts": [
+        {
+          "kind": "oval",
+          "offsetForward": -0.15,
+          "xFrac": 0.7,
+          "yFrac": 0.38,
+          "zFrac": 0.34
+        },
+        {
+          "kind": "circle",
+          "offsetForward": 0.55,
+          "radiusFrac": 0.32,
+          "yFrac": 0.3
+        }
+      ]
+    },
+    "hud": {
+      "barsOffsetAboveTop": 22
+    },
+    "legAttachHeightFrac": null,
+    "suspension": null,
+    "builder": null,
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitTick"
+    },
+    "locomotion": {
+      "type": "flying",
+      "pathfindingBlueprintId": "airborneAnywhere",
+      "physics": {
+        "driveForce": 6,
+        "traction": 1
+      },
+      "config": {
+        "gravityCounterUpwardForceRatio": 0.05,
+        "hoverHeightUpwardForce": 780,
+        "hoverHeightUpwardForceRandomizationAmount": 0.99,
+        "hoverHeightUpwardForceEMA": 0.99,
+        "wingSpan": 2.85,
+        "wingChord": 0.66,
+        "wingOffsetX": -0.12,
+        "wingHeight": 0.36,
+        "wingThickness": 0.045,
+        "wingDihedralDeg": 7,
+        "wingSweepFrac": 0.5,
+        "tailWingSpan": 1.08,
+        "tailWingChord": 0.32,
+        "tailWingOffsetX": -0.9,
+        "tailWingHeight": 0.34,
+        "tailWingThickness": 0.04,
+        "tailWingDihedralDeg": 15,
+        "tailWingSweepFrac": 0.75,
+        "tailWingMirrorX": true,
+        "jetOffsetX": -0.92,
+        "jetOffsetY": 0,
+        "jetOffsetZ": 0.24,
+        "jetRadius": 0.08,
+        "jetLength": 0.2,
+        "jetCount": 1
+      }
+    },
+    "base": {
+      "cost": {
+        "energy": 6600,
+        "metal": 6600
+      },
+      "mass": 15500,
+      "health": 8800,
+      "deathExplosion": {
+        "radius": 136,
+        "force": 220000,
+        "damage": 1460
+      },
+      "radius": {
+        "visual": 94,
+        "hitbox": 84,
+        "collision": 114,
+        "shotArmingRadius": 168
+      }
+    }
+  },
   "unitTransport": {
     "unitBlueprintId": "unitTransport",
     "name": "Transport",

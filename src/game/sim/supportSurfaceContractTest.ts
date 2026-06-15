@@ -23,6 +23,7 @@ import {
   factoryProductionSystem,
   getFactoryShellSpawnClearanceAboveSurface,
 } from './factoryProduction';
+import { ForceAccumulator } from './ForceAccumulator';
 import { computeExtractorMetalCoverage } from './metalDepositOwnership';
 import {
   createWorldSupportSurface,
@@ -443,7 +444,8 @@ function assertFactoryShellContract(): void {
   world.addEntity(factory);
 
   const buildingGrid = new BuildingGrid(world.mapWidth, world.mapHeight);
-  const spawned = factoryProductionSystem.update(world, 16, buildingGrid).spawnedUnits;
+  const forceAccumulator = new ForceAccumulator();
+  const spawned = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
   assertContract(spawned.length === 1, 'factory must spawn exactly one shell');
   const shell = spawned[0];
   const shellSupport = world.sampleSupportSurface(factory.transform.x, factory.transform.y);
@@ -453,7 +455,7 @@ function assertFactoryShellContract(): void {
   assertUnitActionCount(shell, 0, 'incomplete shell must not inherit movement actions');
 
   shell.buildable.isComplete = true;
-  const completed = factoryProductionSystem.update(world, 16, buildingGrid).completedUnits;
+  const completed = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).completedUnits;
   assertContract(completed.length === 1 && completed[0] === shell, 'factory must complete the funded shell');
   assertContract(factory.factory.currentShellId === null, 'factory must clear current shell after activation');
   assertContract(factory.factory.selectedUnitBlueprintId === hoverUnitBlueprintId, 'repeat factory must keep its selected unit');
@@ -470,13 +472,13 @@ function assertFactoryShellContract(): void {
 
   factory.factory.repeatProduction = false;
   factory.factory.productionQueue.push('unitLynx');
-  const oneShotSpawned = factoryProductionSystem.update(world, 16, buildingGrid).spawnedUnits;
+  const oneShotSpawned = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
   assertContract(oneShotSpawned.length === 1, 'one-shot factory must spawn one selected shell');
   const oneShotShell = oneShotSpawned[0];
   assertFactoryShellSpawnedAboveSupport(oneShotShell, shellSupport.groundZ, 'one-shot shell spawn must use shared support');
   assertContract(oneShotShell.buildable !== null, 'one-shot shell must be buildable');
   oneShotShell.buildable.isComplete = true;
-  const oneShotCompleted = factoryProductionSystem.update(world, 16, buildingGrid).completedUnits;
+  const oneShotCompleted = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).completedUnits;
   assertContract(
     oneShotCompleted.length === 1 && oneShotCompleted[0] === oneShotShell,
     'one-shot factory must complete its selected shell',
@@ -486,13 +488,13 @@ function assertFactoryShellContract(): void {
   assertContract(factory.factory.productionQueue.length === 0, 'one-shot factory must consume the queued unit');
   assertContract(factory.factory.repeatProduction === false, 'queued one-shot factory must remain in finite mode');
 
-  const queuedSpawned = factoryProductionSystem.update(world, 16, buildingGrid).spawnedUnits;
+  const queuedSpawned = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
   assertContract(queuedSpawned.length === 1, 'queued factory must spawn the advanced shell');
   const queuedShell = queuedSpawned[0];
   assertFactoryShellSpawnedAboveSupport(queuedShell, shellSupport.groundZ, 'queued shell spawn must use shared support');
   assertContract(queuedShell.buildable !== null, 'queued shell must be buildable');
   queuedShell.buildable.isComplete = true;
-  const queuedCompleted = factoryProductionSystem.update(world, 16, buildingGrid).completedUnits;
+  const queuedCompleted = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).completedUnits;
   assertContract(
     queuedCompleted.length === 1 && queuedCompleted[0] === queuedShell,
     'queued factory must complete the advanced shell',

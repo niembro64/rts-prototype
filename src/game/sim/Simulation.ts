@@ -17,6 +17,7 @@ import { DamageSystem } from './damage';
 import { economyManager } from './economy';
 import { ConstructionSystem } from './construction';
 import { factoryProductionSystem } from './factoryProduction';
+import { unitLauncherProductionSystem } from './unitLauncherProduction';
 import { updateConstructionLifecycle } from './constructionLifecycle';
 import { isBuildBlockingActivation } from './buildableHelpers';
 import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities';
@@ -294,6 +295,7 @@ export class Simulation {
 
     this.stuckReplanController.beginFrame();
     resourceMovementSystem.beginTick(this.world);
+    this.forceAccumulator.clear();
 
     this.simElapsedMs += dtMs;
     const tick = this.world.getTick();
@@ -357,6 +359,7 @@ export class Simulation {
     const productionResult = factoryProductionSystem.update(
       this.world, dtMs,
       this.constructionSystem.getGrid(),
+      this.forceAccumulator,
     );
     // Notify about newly spawned unit shells immediately so their
     // elevated initial position can fall/settle during construction.
@@ -397,9 +400,6 @@ export class Simulation {
     // - addBeam() called on beam creation in fireTurrets()
     // - removeBeam() called on beam expiry/orphan in updateProjectiles/checkProjectileCollisions
 
-    // Clear force accumulator for this frame
-    this.forceAccumulator.clear();
-
     // Update all units movement (calculates target velocities) and
     // refresh their spatial-grid cells in the same pass.
     this.updateUnits(dtMs / 1000);
@@ -415,6 +415,15 @@ export class Simulation {
       this.onUnitDeath,
       this.onBuildingDeath,
     );
+    const launcherProductionResult = unitLauncherProductionSystem.update(
+      this.world,
+      dtMs,
+      this.forceAccumulator,
+    );
+    if (launcherProductionResult.spawnedUnits.length > 0) {
+      const onUnitSpawn = this.onUnitSpawn;
+      if (onUnitSpawn !== null) onUnitSpawn(launcherProductionResult.spawnedUnits);
+    }
     // Safety cleanup - remove any dead entities that slipped through.
     // WorldState records ids whose HP changed, so this drains only
     // those candidates instead of walking every unit/building.
