@@ -69,7 +69,7 @@ const draggingPointerId = ref<number | null>(null);
 // 265×133, and so on. Previously both dimensions were hardcoded 4:3
 // regardless of the map, which squashed square maps into rectangles
 // and miscomputed the camera-quad overlay.
-const MINIMAP_MAX = 265;
+const MINIMAP_MAX = 371;
 const DENSE_ENTITY_MARKER_THRESHOLD = 1500;
 const DENSE_UNIT_MARKER_SIZE = 2;
 
