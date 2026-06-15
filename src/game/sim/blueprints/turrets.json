@@ -1224,11 +1224,11 @@
     "range": 430,
     "rangeVolume": "turret-range-sphere",
     "cooldown": {
-      "duration": 50,
-      "durationRandomness": 0.05
+      "duration": 70,
+      "durationRandomness": 0.02
     },
-    "launchForce": 4000,
-    "turretTurnAccel": 1000,
+    "launchForce": 2000,
+    "turretTurnAccel": 500000,
     "turretDrag": 0,
     "barrel": {
       "type": "simpleMultiBarrel",

@@ -527,9 +527,17 @@
     "turretRocketFast": {
       "targets": {
         "enemy": {
-          "buildings": "all",
-          "towers": "all",
-          "units": "all",
+          "units": {
+            "only": [
+              "unitBee",
+              "unitDragonfly",
+              "unitConstructionDrone",
+              "unitEagle",
+              "unitAlbatros",
+              "unitQueenBee",
+              "unitQueenTick"
+            ]
+          },
           "shots": {
             "only": ["shotRocketLight", "shotMortarMedium", "shotMortarHeavy"]
           }
