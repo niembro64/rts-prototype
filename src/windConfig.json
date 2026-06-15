@@ -1,8 +1,8 @@
 {
   "energyPerSecond": 3,
   "speed": {
-    "min": 5,
-    "max": 60
+    "min": 10,
+    "max": 80
   },
   "directionOscillationPeriodsSeconds": {
     "primary": 48,
