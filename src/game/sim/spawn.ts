@@ -539,59 +539,76 @@ export function spawnInitialBases(
     entities.push(commander);
 
     // Solar collector arc.
-    entities.push(...placeArcRow(
-      world, construction, 'buildingSolar', DEMO_CONFIG.buildingSolarCount,
-      oval, solarRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
-    ));
+    if (isBuildingEnabled('buildingSolar')) {
+      entities.push(...placeArcRow(
+        world, construction, 'buildingSolar', DEMO_CONFIG.buildingSolarCount,
+        oval, solarRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+      ));
+    }
 
     // Wind turbine arc — independent radius so its silhouette reads on
     // its own ring, not interleaved with the solars.
-    entities.push(...placeArcRow(
-      world, construction, 'buildingWind', DEMO_CONFIG.buildingWindCount,
-      oval, windRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
-    ));
+    if (isBuildingEnabled('buildingWind')) {
+      entities.push(...placeArcRow(
+        world, construction, 'buildingWind', DEMO_CONFIG.buildingWindCount,
+        oval, windRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+      ));
+    }
 
     // Radar arc — long sensor coverage without adding more weapons.
-    entities.push(...placeArcRow(
-      world, construction, 'buildingRadar', DEMO_CONFIG.buildingRadarCount,
-      oval, radarRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
-    ));
+    if (isBuildingEnabled('buildingRadar')) {
+      entities.push(...placeArcRow(
+        world, construction, 'buildingRadar', DEMO_CONFIG.buildingRadarCount,
+        oval, radarRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+      ));
+    }
 
     // Fabricator arc — one fabricator per available demo unit blueprint.
     // Each fabricator starts with a repeat-build selection matching
     // its unit blueprint, so the base layout and AI production inventory
-    // stay tied to the same unit roster.
-    entities.push(...placeFactoryArcRowForUnitBlueprintIds(
-      world, construction, factoryUnitBlueprintIds,
-      oval, factoryRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
-    ));
+    // stay tied to the same unit roster. Gated by the towerFabricator
+    // tower toggle — disabling it removes the demo's whole factory ring.
+    if (isTowerEnabled('towerFabricator')) {
+      entities.push(...placeFactoryArcRowForUnitBlueprintIds(
+        world, construction, factoryUnitBlueprintIds,
+        oval, factoryRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+      ));
+    }
 
     // megaBeam tower arc — covers the approach to the base from the
     // map center.
-    entities.push(...placeArcRow(
-      world, construction, 'towerBeamMega', DEMO_CONFIG.towerBeamMegaCount,
-      oval, megaBeamTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
-    ));
+    if (isTowerEnabled('towerBeamMega')) {
+      entities.push(...placeArcRow(
+        world, construction, 'towerBeamMega', DEMO_CONFIG.towerBeamMegaCount,
+        oval, megaBeamTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+      ));
+    }
 
     // Cannon tower arc — companion static-defense ring for long-range
     // heavy shots.
-    entities.push(...placeArcRow(
-      world, construction, 'towerCannon', DEMO_CONFIG.towerCannonCount,
-      oval, cannonTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
-    ));
+    if (isTowerEnabled('towerCannon')) {
+      entities.push(...placeArcRow(
+        world, construction, 'towerCannon', DEMO_CONFIG.towerCannonCount,
+        oval, cannonTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+      ));
+    }
 
     // Anti-air tower arc — static missile cover for hover/flying units.
-    entities.push(...placeArcRow(
-      world, construction, 'towerAntiAir', DEMO_CONFIG.towerAntiAirCount,
-      oval, antiAirTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
-    ));
+    if (isTowerEnabled('towerAntiAir')) {
+      entities.push(...placeArcRow(
+        world, construction, 'towerAntiAir', DEMO_CONFIG.towerAntiAirCount,
+        oval, antiAirTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+      ));
+    }
 
     // Resource converter arc — economy buildings on their own ring
     // between fabricators and the static-defense rings.
-    entities.push(...placeArcRow(
-      world, construction, 'buildingResourceConverter', DEMO_CONFIG.buildingResourceConverterCount,
-      oval, resourceConverterRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
-    ));
+    if (isBuildingEnabled('buildingResourceConverter')) {
+      entities.push(...placeArcRow(
+        world, construction, 'buildingResourceConverter', DEMO_CONFIG.buildingResourceConverterCount,
+        oval, resourceConverterRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+      ));
+    }
   }
 
   return entities;

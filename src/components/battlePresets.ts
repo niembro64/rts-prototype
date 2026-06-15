@@ -1,4 +1,5 @@
 import { BUILDABLE_UNIT_BLUEPRINT_IDS } from '../game/sim/blueprints/unitRoster';
+import { BUILDING_BLUEPRINT_IDS, TOWER_BLUEPRINT_IDS } from '../types/blueprintIds';
 import type { BattleMode } from '../battleBarConfig';
 import { persist, readPersisted } from '../persistence';
 import type { TerrainMapShape } from '../types/terrain';
@@ -7,6 +8,13 @@ import type { ShieldReflectionMode } from '../types/shotTypes';
 export type BattlePreset = {
   readonly name: string;
   readonly units: readonly string[];
+  /** Enabled building blueprints (BUILDINGS bar group). Every preset
+   *  ships with all buildings on; the field exists so DEFAULTS / preset
+   *  selection resets structure toggles and the active-preset highlight
+   *  accounts for them, mirroring `units`. */
+  readonly buildings: readonly string[];
+  /** Enabled tower blueprints (TOWERS bar group). */
+  readonly towers: readonly string[];
   readonly cap: number;
   readonly turretShieldPanelsEnabled: boolean;
   readonly turretShieldSpheresEnabled: boolean;
@@ -48,6 +56,12 @@ const MODE_DEFAULT_PRESET_NAMES: Record<BattleMode, string> = {
 function allUnits(): readonly string[] {
   return BUILDABLE_UNIT_BLUEPRINT_IDS;
 }
+function allBuildings(): readonly string[] {
+  return BUILDING_BLUEPRINT_IDS;
+}
+function allTowers(): readonly string[] {
+  return TOWER_BLUEPRINT_IDS;
+}
 function demoUnits(): readonly string[] {
   return [
     'unitLynx',
@@ -74,6 +88,14 @@ const SUBSYSTEM_DEFAULTS = {
   shieldReflectionMode: 'both' as ShieldReflectionMode,
 };
 
+// Every preset enables all buildings and towers — there is no preset
+// that ships with structures disabled. Spread into each literal so the
+// structure fields stay in one place (mirrors SUBSYSTEM_DEFAULTS).
+const STRUCTURE_DEFAULTS = {
+  buildings: allBuildings(),
+  towers: allTowers(),
+};
+
 function buildPresets(): readonly BattlePreset[] {
   return [
     {
@@ -81,6 +103,7 @@ function buildPresets(): readonly BattlePreset[] {
       units: demoUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
+      ...STRUCTURE_DEFAULTS,
       shieldsObstructSight: false,
       fogOfWarEnabled: false,
       converterTax: 0.0,
@@ -100,6 +123,7 @@ function buildPresets(): readonly BattlePreset[] {
       units: allUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
+      ...STRUCTURE_DEFAULTS,
       shieldsObstructSight: false,
       fogOfWarEnabled: true,
       converterTax: 0.5,
@@ -119,6 +143,7 @@ function buildPresets(): readonly BattlePreset[] {
       units: allUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
+      ...STRUCTURE_DEFAULTS,
       shieldsObstructSight: false,
       fogOfWarEnabled: true,
       converterTax: 0.5,
@@ -138,6 +163,7 @@ function buildPresets(): readonly BattlePreset[] {
       units: allUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
+      ...STRUCTURE_DEFAULTS,
       shieldsObstructSight: false,
       fogOfWarEnabled: true,
       converterTax: 0.5,
@@ -157,6 +183,7 @@ function buildPresets(): readonly BattlePreset[] {
       units: allUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
+      ...STRUCTURE_DEFAULTS,
       shieldsObstructSight: false,
       fogOfWarEnabled: true,
       converterTax: 0.5,
@@ -176,6 +203,7 @@ function buildPresets(): readonly BattlePreset[] {
       units: allUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
+      ...STRUCTURE_DEFAULTS,
       shieldsObstructSight: false,
       fogOfWarEnabled: true,
       converterTax: 0.5,
@@ -195,6 +223,7 @@ function buildPresets(): readonly BattlePreset[] {
       units: allUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
+      ...STRUCTURE_DEFAULTS,
       shieldsObstructSight: false,
       fogOfWarEnabled: true,
       converterTax: 0.5,
@@ -214,6 +243,7 @@ function buildPresets(): readonly BattlePreset[] {
       units: allUnits(),
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
+      ...STRUCTURE_DEFAULTS,
       shieldsObstructSight: false,
       fogOfWarEnabled: true,
       converterTax: 0.5,
@@ -282,6 +312,8 @@ export function presetMatchesCurrent(
   // independently of presets.
   return (
     sameUnits(p.units, c.units) &&
+    sameUnits(p.buildings, c.buildings) &&
+    sameUnits(p.towers, c.towers) &&
     p.cap === c.cap &&
     p.forceFieldsVisible === c.forceFieldsVisible &&
     p.shieldsObstructSight === c.shieldsObstructSight &&

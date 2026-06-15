@@ -157,6 +157,14 @@ export class GameServer {
     return this.core.backgroundAllowedUnitBlueprintIds;
   }
 
+  private get backgroundAllowedBuildingBlueprintIds(): Set<string> {
+    return this.core.backgroundAllowedBuildingBlueprintIds;
+  }
+
+  private get backgroundAllowedTowerBlueprintIds(): Set<string> {
+    return this.core.backgroundAllowedTowerBlueprintIds;
+  }
+
   private get terrainTileMap(): TerrainTileMap {
     return this.core.terrainTileMap;
   }
@@ -529,6 +537,16 @@ export class GameServer {
         recordAcceptedCommand(sanitizedCommand);
         this.setBackgroundUnitBlueprintEnabled(sanitizedCommand.unitBlueprintId, sanitizedCommand.enabled);
         return;
+      case 'setBackgroundBuildingBlueprintEnabled':
+        if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
+        this.setBackgroundBuildingBlueprintEnabled(sanitizedCommand.buildingBlueprintId, sanitizedCommand.enabled);
+        return;
+      case 'setBackgroundTowerBlueprintEnabled':
+        if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
+        this.setBackgroundTowerBlueprintEnabled(sanitizedCommand.towerBlueprintId, sanitizedCommand.enabled);
+        return;
       case 'setMaxTotalUnits':
         if (!canApplyServerControl) return;
         recordAcceptedCommand(sanitizedCommand);
@@ -827,5 +845,44 @@ export class GameServer {
 
   getBackgroundAllowedUnitBlueprintIds(): ReadonlySet<string> {
     return this.backgroundAllowedUnitBlueprintIds;
+  }
+
+  // Background demo: toggle a building / tower blueprint on or off.
+  // Shared by both BUILDINGS and TOWERS bar groups — buildings and
+  // towers are both `building` entities distinguished by their
+  // buildingBlueprintId. Disabling removes every existing structure of
+  // that type from the field (mirrors setBackgroundUnitBlueprintEnabled's
+  // "kill all existing units"); the set also gates the next base spawn.
+  private setBackgroundStructureBlueprintEnabled(
+    allowedSet: Set<string>,
+    structureBlueprintId: string,
+    enabled: boolean,
+  ): void {
+    if (enabled) {
+      allowedSet.add(structureBlueprintId);
+      return;
+    }
+    allowedSet.delete(structureBlueprintId);
+    for (const structure of this.world.getBuildings()) {
+      if (structure.buildingBlueprintId === structureBlueprintId) {
+        this.world.removeEntity(structure.id);
+      }
+    }
+  }
+
+  setBackgroundBuildingBlueprintEnabled(buildingBlueprintId: string, enabled: boolean): void {
+    this.setBackgroundStructureBlueprintEnabled(
+      this.backgroundAllowedBuildingBlueprintIds,
+      buildingBlueprintId,
+      enabled,
+    );
+  }
+
+  setBackgroundTowerBlueprintEnabled(towerBlueprintId: string, enabled: boolean): void {
+    this.setBackgroundStructureBlueprintEnabled(
+      this.backgroundAllowedTowerBlueprintIds,
+      towerBlueprintId,
+      enabled,
+    );
   }
 }

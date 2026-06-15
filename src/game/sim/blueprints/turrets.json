@@ -127,7 +127,7 @@
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
       "duration": 2300,
-      "durationRandomness": 0.1
+      "durationRandomness": 0.05
     },
     "launchForce": 10000,
     "turretTurnAccel": 200,
@@ -364,7 +364,7 @@
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
       "duration": 130,
-      "durationRandomness": 0.0
+      "durationRandomness": 0.1
     },
     "launchForce": 4000,
     "turretTurnAccel": 500,
@@ -1224,11 +1224,11 @@
     "range": 430,
     "rangeVolume": "turret-range-sphere",
     "cooldown": {
-      "duration": 600,
+      "duration": 50,
       "durationRandomness": 0.05
     },
-    "launchForce": 2000,
-    "turretTurnAccel": 1200,
+    "launchForce": 4000,
+    "turretTurnAccel": 1000,
     "turretDrag": 0,
     "barrel": {
       "type": "simpleMultiBarrel",

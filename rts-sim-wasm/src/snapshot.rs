@@ -8548,6 +8548,67 @@ mod sim_kernel_tests {
     }
 
     #[test]
+    pub(crate) fn world_boundary_constraint_removes_outward_velocity_without_bounce() {
+        let _guard = lock_tests();
+        pool_init();
+        let slot = pool_alloc_slot();
+
+        {
+            let p = pool();
+            let i = slot as usize;
+            p.pos_x[i] = 6.0;
+            p.pos_y[i] = 50.0;
+            p.pos_z[i] = 20.0;
+            p.vel_x[i] = -200.0;
+            p.vel_y[i] = 40.0;
+            p.vel_z[i] = 0.0;
+            p.radius[i] = 5.0;
+            p.inv_mass[i] = 1.0;
+            p.ground_offset[i] = 0.0;
+            p.entity_id[i] = 303;
+        }
+
+        let slots = [slot];
+        let ground_z = [-1000.0];
+        let ground_normals = [0.0, 0.0, 1.0];
+        let mut transitions = [0_u32; 1];
+        let before_speed_sq = 200.0 * 200.0 + 40.0 * 40.0;
+
+        assert_eq!(
+            pool_step_integrate(
+                &slots,
+                &ground_z,
+                &ground_normals,
+                &mut transitions,
+                1.0 / 60.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                100.0,
+                100.0,
+            ),
+            0,
+        );
+
+        {
+            let p = pool();
+            let i = slot as usize;
+            assert_eq!(p.pos_x[i], 5.0);
+            assert_eq!(p.vel_x[i], 0.0);
+            assert_eq!(p.vel_y[i], 40.0);
+            let after_speed_sq =
+                p.vel_x[i] * p.vel_x[i] + p.vel_y[i] * p.vel_y[i] + p.vel_z[i] * p.vel_z[i];
+            assert!(
+                after_speed_sq <= before_speed_sq,
+                "world boundary must not add kinetic energy"
+            );
+        }
+
+        pool_free_slot(slot);
+    }
+
+    #[test]
     pub(crate) fn turret_rotation_batch_wraps_yaw_and_clamps_pitch() {
         let current_yaw = [3.10];
         let yaw_velocity = [0.0];

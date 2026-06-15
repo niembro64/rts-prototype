@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { BATTLE_CONFIG } from '../battleBarConfig';
-import { getUnitDisplayShortName } from '../game/sim/blueprints/displayRosters';
+import {
+  getUnitDisplayShortName,
+  getBuildingDisplayShortName,
+  getTowerDisplayShortName,
+} from '../game/sim/blueprints/displayRosters';
 import BarButton from './BarButton.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
 import BarControlGroup from './BarControlGroup.vue';
@@ -67,6 +71,42 @@ defineProps<{
             :title="`Toggle ${ut} units in demo battle`"
             @click="model.toggleDemoUnitBlueprintId(ut)"
           >{{ getUnitDisplayShortName(ut) }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel>BUILDINGS:</BarLabel>
+        <BarButton
+          :active="model.allDemoBuildingsActive"
+          title="Toggle all building blueprints on/off"
+          @click="model.toggleAllDemoBuildings"
+        >ALL</BarButton>
+        <BarButtonGroup>
+          <BarButton
+            v-for="bt in model.demoBuildingBlueprintIds"
+            :key="bt"
+            :active="model.currentAllowedBuildingsSet.has(bt)"
+            :title="`Toggle ${bt} in demo battle`"
+            @click="model.toggleDemoBuildingBlueprintId(bt)"
+          >{{ getBuildingDisplayShortName(bt) }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel>TOWERS:</BarLabel>
+        <BarButton
+          :active="model.allDemoTowersActive"
+          title="Toggle all tower blueprints on/off"
+          @click="model.toggleAllDemoTowers"
+        >ALL</BarButton>
+        <BarButtonGroup>
+          <BarButton
+            v-for="tt in model.demoTowerBlueprintIds"
+            :key="tt"
+            :active="model.currentAllowedTowersSet.has(tt)"
+            :title="`Toggle ${tt} in demo battle`"
+            @click="model.toggleDemoTowerBlueprintId(tt)"
+          >{{ getTowerDisplayShortName(tt) }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup>

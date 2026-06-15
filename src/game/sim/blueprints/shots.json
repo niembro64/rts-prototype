@@ -172,7 +172,7 @@
     "type": "rocket",
     "shotBlueprintId": "shotRocketFast",
     "name": "Fast Rocket",
-    "mass": 3,
+    "mass": 2,
     "health": 4,
     "radius": {
       "visual": 1.6,
@@ -185,8 +185,8 @@
       "$audio": "event.hit.shotRocketFast"
     },
     "submunitions": null,
-    "homingTurnRate": 2,
-    "homingThrust": 200,
+    "homingTurnRate": 0.3,
+    "homingThrust": 600000,
     "homingDelayMs": 0,
     "propulsionForce": 40000,
     "gravityForceMultiplier": 0,

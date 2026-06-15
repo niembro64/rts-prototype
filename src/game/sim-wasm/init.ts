@@ -849,6 +849,8 @@ export interface SimWasm {
     windX: number,
     windY: number,
     windZ: number,
+    mapWidth: number,
+    mapHeight: number,
   ) => number;
   /** Pool-backed PhysicsEngine3D step prep. Rust clears per-step
    *  upward-contact flags, applies map-boundary acceleration, wakes

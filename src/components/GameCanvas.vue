@@ -25,6 +25,7 @@ import {
 } from '../game/network/NetworkManager';
 import { CommandHotkeySequenceResolver, type CommandHotkeyId } from '../game/input/commandHotkeys';
 import { BACKGROUND_UNIT_BLUEPRINT_IDS } from '../game/server/BackgroundBattleStandalone';
+import { BUILDING_BLUEPRINT_IDS, TOWER_BLUEPRINT_IDS } from '../types/blueprintIds';
 import {
   BATTLE_CONFIG,
   loadStoredCap,
@@ -718,6 +719,10 @@ onBeforeUnmount(() => {
 
 // Demo battle unit blueprint list (state read from snapshots)
 const demoUnitBlueprintIds = BACKGROUND_UNIT_BLUEPRINT_IDS;
+// Demo battle structure blueprint lists for the BUILDINGS / TOWERS bar
+// groups. Source of truth is the authoritative blueprint-id arrays.
+const demoBuildingBlueprintIds: readonly string[] = [...BUILDING_BLUEPRINT_IDS];
+const demoTowerBlueprintIds: readonly string[] = [...TOWER_BLUEPRINT_IDS];
 
 // Terrain-shape selection. Source of truth is localStorage; the
 // refs below mirror it so the battle bar can reactively highlight
@@ -1101,12 +1106,22 @@ const {
   currentAllowedUnits,
   currentAllowedUnitsSet,
   allDemoUnitsActive,
+  currentAllowedBuildings,
+  currentAllowedBuildingsSet,
+  allDemoBuildingsActive,
+  currentAllowedTowers,
+  currentAllowedTowersSet,
+  allDemoTowersActive,
   currentForceFieldsVisible,
   currentShieldsObstructSight,
   currentFogOfWarEnabled,
   currentConverterTax,
   toggleDemoUnitBlueprintId,
   toggleAllDemoUnits,
+  toggleDemoBuildingBlueprintId,
+  toggleAllDemoBuildings,
+  toggleDemoTowerBlueprintId,
+  toggleAllDemoTowers,
   changeMaxTotalUnits,
   setForceFieldsVisible,
   setShieldsObstructSight,
@@ -1118,6 +1133,8 @@ const {
   serverMetaFromSnapshot,
   currentBattleMode,
   demoUnitBlueprintIds,
+  demoBuildingBlueprintIds,
+  demoTowerBlueprintIds,
   getActiveConnection: () => activeConnection,
   resetGridInfoToDefault,
   broadcastLobbySettingsIfHost,
@@ -1247,6 +1264,12 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   demoUnitBlueprintIds,
   currentAllowedUnits: currentAllowedUnits.value,
   currentAllowedUnitsSet: currentAllowedUnitsSet.value,
+  allDemoBuildingsActive: allDemoBuildingsActive.value,
+  demoBuildingBlueprintIds,
+  currentAllowedBuildingsSet: currentAllowedBuildingsSet.value,
+  allDemoTowersActive: allDemoTowersActive.value,
+  demoTowerBlueprintIds,
+  currentAllowedTowersSet: currentAllowedTowersSet.value,
   displayUnitCap: displayUnitCap.value,
   gameStarted: gameStarted.value,
   mapWidthLandCells: mapWidthLandCells.value,
@@ -1268,6 +1291,10 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   resetDemoDefaults,
   toggleAllDemoUnits,
   toggleDemoUnitBlueprintId,
+  toggleAllDemoBuildings,
+  toggleDemoBuildingBlueprintId,
+  toggleAllDemoTowers,
+  toggleDemoTowerBlueprintId,
   changeMaxTotalUnits,
   applyMapLandDimensions,
   applyCenterMagnitude,
@@ -1292,6 +1319,10 @@ watchEffect(() => {
   m.allDemoUnitsActive = allDemoUnitsActive.value;
   m.currentAllowedUnits = currentAllowedUnits.value;
   m.currentAllowedUnitsSet = currentAllowedUnitsSet.value;
+  m.allDemoBuildingsActive = allDemoBuildingsActive.value;
+  m.currentAllowedBuildingsSet = currentAllowedBuildingsSet.value;
+  m.allDemoTowersActive = allDemoTowersActive.value;
+  m.currentAllowedTowersSet = currentAllowedTowersSet.value;
   m.displayUnitCap = displayUnitCap.value;
   m.gameStarted = gameStarted.value;
   m.mapWidthLandCells = mapWidthLandCells.value;
@@ -1309,6 +1340,8 @@ watchEffect(() => {
   m.currentConverterTax = currentConverterTax.value;
   m.activePresetName = findMatchingPresetName({
     units: currentAllowedUnits.value,
+    buildings: currentAllowedBuildings.value,
+    towers: currentAllowedTowers.value,
     cap: displayUnitCap.value,
     turretShieldPanelsEnabled: BATTLE_CONFIG.turretShieldPanelsEnabled.default,
     turretShieldSpheresEnabled: BATTLE_CONFIG.turretShieldSpheresEnabled.default,
@@ -2038,6 +2071,10 @@ watchEffect(() => {
       :map-length-land-cells="mapLengthLandCells"
       :unit-blueprint-ids="demoUnitBlueprintIds"
       :allowed-units="currentAllowedUnits"
+      :building-blueprint-ids="demoBuildingBlueprintIds"
+      :allowed-buildings="currentAllowedBuildings"
+      :tower-blueprint-ids="demoTowerBlueprintIds"
+      :allowed-towers="currentAllowedTowers"
       :unit-cap="displayUnitCap"
       :force-fields-visible="currentForceFieldsVisible"
       :shields-obstruct-sight="currentShieldsObstructSight"
@@ -2064,6 +2101,10 @@ watchEffect(() => {
       @set-map-land-dimensions="(dimensions) => applyMapLandDimensions(dimensions)"
       @toggle-unit="(ut) => toggleDemoUnitBlueprintId(ut)"
       @toggle-all-units="toggleAllDemoUnits"
+      @toggle-building="(bt) => toggleDemoBuildingBlueprintId(bt)"
+      @toggle-all-buildings="toggleAllDemoBuildings"
+      @toggle-tower="(tt) => toggleDemoTowerBlueprintId(tt)"
+      @toggle-all-towers="toggleAllDemoTowers"
       @set-unit-cap="(c) => changeMaxTotalUnits(c)"
       @set-force-fields-visible="(e) => setForceFieldsVisible(e)"
       @set-shields-obstruct-sight="(e) => setShieldsObstructSight(e)"

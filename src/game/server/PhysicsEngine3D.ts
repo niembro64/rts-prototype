@@ -1122,6 +1122,8 @@ export class PhysicsEngine3D {
       Number.isFinite(wind.x) ? wind.x : 0,
       Number.isFinite(wind.y) ? wind.y : 0,
       Number.isFinite(wind.z) ? wind.z : 0,
+      this.mapWidth,
+      this.mapHeight,
     );
     for (let i = 0; i < transitionCount; i++) {
       const slot = transitionsView[i];

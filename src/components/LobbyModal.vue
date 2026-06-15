@@ -11,7 +11,11 @@ import BarDivider from './BarDivider.vue';
 import BarLabel from './BarLabel.vue';
 import LoadingEmblem from './LoadingEmblem.vue';
 import ChevronIcon from './ChevronIcon.vue';
-import { getUnitDisplayShortName } from '../game/sim/blueprints/displayRosters';
+import {
+  getUnitDisplayShortName,
+  getBuildingDisplayShortName,
+  getTowerDisplayShortName,
+} from '../game/sim/blueprints/displayRosters';
 import type { TerrainMapShape } from '@/types/terrain';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
 import type { BattlePreset } from './battlePresets';
@@ -39,6 +43,10 @@ const props = defineProps<{
   mapLengthLandCells: number;
   unitBlueprintIds: readonly string[];
   allowedUnits: readonly string[];
+  buildingBlueprintIds: readonly string[];
+  allowedBuildings: readonly string[];
+  towerBlueprintIds: readonly string[];
+  allowedTowers: readonly string[];
   unitCap: number;
   forceFieldsVisible: boolean;
   shieldsObstructSight: boolean;
@@ -67,6 +75,10 @@ const emit = defineEmits<{
   (e: 'setMapLandDimensions', dimensions: MapLandCellDimensions): void;
   (e: 'toggleUnit', unitBlueprintId: string): void;
   (e: 'toggleAllUnits'): void;
+  (e: 'toggleBuilding', buildingBlueprintId: string): void;
+  (e: 'toggleAllBuildings'): void;
+  (e: 'toggleTower', towerBlueprintId: string): void;
+  (e: 'toggleAllTowers'): void;
   (e: 'setUnitCap', cap: number): void;
   (e: 'setForceFieldsVisible', enabled: boolean): void;
   (e: 'setShieldsObstructSight', enabled: boolean): void;
@@ -96,6 +108,22 @@ const allUnitsActive = computed(() => {
   const allowed = allowedUnitsSet.value;
   for (let i = 0; i < props.unitBlueprintIds.length; i++) {
     if (!allowed.has(props.unitBlueprintIds[i])) return false;
+  }
+  return true;
+});
+const allowedBuildingsSet = computed(() => new Set(props.allowedBuildings));
+const allBuildingsActive = computed(() => {
+  const allowed = allowedBuildingsSet.value;
+  for (let i = 0; i < props.buildingBlueprintIds.length; i++) {
+    if (!allowed.has(props.buildingBlueprintIds[i])) return false;
+  }
+  return true;
+});
+const allowedTowersSet = computed(() => new Set(props.allowedTowers));
+const allTowersActive = computed(() => {
+  const allowed = allowedTowersSet.value;
+  for (let i = 0; i < props.towerBlueprintIds.length; i++) {
+    if (!allowed.has(props.towerBlueprintIds[i])) return false;
   }
   return true;
 });
@@ -161,6 +189,26 @@ function pickToggleAllUnits(): void {
   emit('toggleAllUnits');
 }
 
+function pickToggleBuilding(buildingBlueprintId: string): void {
+  if (!props.isHost) return;
+  emit('toggleBuilding', buildingBlueprintId);
+}
+
+function pickToggleAllBuildings(): void {
+  if (!props.isHost) return;
+  emit('toggleAllBuildings');
+}
+
+function pickToggleTower(towerBlueprintId: string): void {
+  if (!props.isHost) return;
+  emit('toggleTower', towerBlueprintId);
+}
+
+function pickToggleAllTowers(): void {
+  if (!props.isHost) return;
+  emit('toggleAllTowers');
+}
+
 function pickUnitCap(cap: number): void {
   if (!props.isHost) return;
   emit('setUnitCap', cap);
@@ -183,6 +231,14 @@ function pickConverterTax(value: number): void {
 
 function unitShortName(unitBlueprintId: string): string {
   return getUnitDisplayShortName(unitBlueprintId);
+}
+
+function buildingShortName(buildingBlueprintId: string): string {
+  return getBuildingDisplayShortName(buildingBlueprintId);
+}
+
+function towerShortName(towerBlueprintId: string): string {
+  return getTowerDisplayShortName(towerBlueprintId);
 }
 
 function pickResetDefaults(): void {
@@ -717,6 +773,42 @@ const terrainSectionVars = computed(() =>
                     :title="isHost ? `Toggle ${ut}` : 'Only the host can change battle settings'"
                     @click="pickToggleUnit(ut)"
                   >{{ unitShortName(ut) }}</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel>BUILDINGS:</BarLabel>
+                <BarButton
+                  :active="allBuildingsActive"
+                  :title="isHost ? 'Toggle all building blueprints on/off' : 'Only the host can change battle settings'"
+                  @click="pickToggleAllBuildings"
+                >ALL</BarButton>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="bt in buildingBlueprintIds"
+                    :key="bt"
+                    :active="allowedBuildingsSet.has(bt)"
+                    :title="isHost ? `Toggle ${bt}` : 'Only the host can change battle settings'"
+                    @click="pickToggleBuilding(bt)"
+                  >{{ buildingShortName(bt) }}</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel>TOWERS:</BarLabel>
+                <BarButton
+                  :active="allTowersActive"
+                  :title="isHost ? 'Toggle all tower blueprints on/off' : 'Only the host can change battle settings'"
+                  @click="pickToggleAllTowers"
+                >ALL</BarButton>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="tt in towerBlueprintIds"
+                    :key="tt"
+                    :active="allowedTowersSet.has(tt)"
+                    :title="isHost ? `Toggle ${tt}` : 'Only the host can change battle settings'"
+                    @click="pickToggleTower(tt)"
+                  >{{ towerShortName(tt) }}</BarButton>
                 </BarButtonGroup>
               </BarControlGroup>
               <BarControlGroup>

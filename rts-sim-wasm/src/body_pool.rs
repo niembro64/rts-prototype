@@ -878,6 +878,75 @@ pub(crate) fn pool_boundary_accel(
 }
 
 #[inline]
+fn pool_boundary_axis_limits(map_extent: f64, radius: f64) -> Option<(f64, f64)> {
+    if !map_extent.is_finite() || map_extent <= 0.0 {
+        return None;
+    }
+    let safe_radius = if radius.is_finite() && radius > 0.0 {
+        radius.min(map_extent * 0.5)
+    } else {
+        0.0
+    };
+    Some((safe_radius, map_extent - safe_radius))
+}
+
+#[inline]
+fn constrain_boundary_axis(pos: &mut f64, vel: &mut f64, min: f64, max: f64) -> bool {
+    let mut changed = false;
+    if !pos.is_finite() {
+        *pos = (min + max) * 0.5;
+        changed = true;
+    }
+    if !vel.is_finite() {
+        *vel = 0.0;
+        changed = true;
+    }
+    if *pos < min {
+        *pos = min;
+        if *vel < 0.0 {
+            *vel = 0.0;
+        }
+        changed = true;
+    } else if *pos > max {
+        *pos = max;
+        if *vel > 0.0 {
+            *vel = 0.0;
+        }
+        changed = true;
+    }
+    changed
+}
+
+#[inline]
+fn constrain_motion_to_world_boundary(
+    motion: &mut [f64; 6],
+    radius: f64,
+    map_width: f64,
+    map_height: f64,
+) -> bool {
+    let mut changed = false;
+    if let Some((min_x, max_x)) = pool_boundary_axis_limits(map_width, radius) {
+        let mut x = motion[0];
+        let mut vx = motion[3];
+        if constrain_boundary_axis(&mut x, &mut vx, min_x, max_x) {
+            motion[0] = x;
+            motion[3] = vx;
+            changed = true;
+        }
+    }
+    if let Some((min_y, max_y)) = pool_boundary_axis_limits(map_height, radius) {
+        let mut y = motion[1];
+        let mut vy = motion[4];
+        if constrain_boundary_axis(&mut y, &mut vy, min_y, max_y) {
+            motion[1] = y;
+            motion[4] = vy;
+            changed = true;
+        }
+    }
+    changed
+}
+
+#[inline]
 pub(crate) fn pool_wake_body(p: &mut BodyPool, slot: usize) -> bool {
     let was_sleeping = p.flags[slot] & BODY_FLAG_SLEEPING != 0;
     if was_sleeping {
@@ -940,45 +1009,45 @@ pub fn pool_prepare_dynamic_step(
 
         if boundary_enabled {
             let radius = p.radius[slot];
-            let min_x = radius;
-            let max_x = map_width - radius;
-            let min_y = radius;
-            let max_y = map_height - radius;
             let mut ax = 0.0;
             let mut ay = 0.0;
             let x = p.pos_x[slot];
             let y = p.pos_y[slot];
 
-            if x < min_x {
-                ax += pool_boundary_accel(
-                    min_x - x,
-                    p.vel_x[slot],
-                    boundary_spring_accel,
-                    boundary_damping_accel_per_speed,
-                );
-            } else if x > max_x {
-                ax -= pool_boundary_accel(
-                    x - max_x,
-                    -p.vel_x[slot],
-                    boundary_spring_accel,
-                    boundary_damping_accel_per_speed,
-                );
+            if let Some((min_x, max_x)) = pool_boundary_axis_limits(map_width, radius) {
+                if x < min_x {
+                    ax += pool_boundary_accel(
+                        min_x - x,
+                        p.vel_x[slot],
+                        boundary_spring_accel,
+                        boundary_damping_accel_per_speed,
+                    );
+                } else if x > max_x {
+                    ax -= pool_boundary_accel(
+                        x - max_x,
+                        -p.vel_x[slot],
+                        boundary_spring_accel,
+                        boundary_damping_accel_per_speed,
+                    );
+                }
             }
 
-            if y < min_y {
-                ay += pool_boundary_accel(
-                    min_y - y,
-                    p.vel_y[slot],
-                    boundary_spring_accel,
-                    boundary_damping_accel_per_speed,
-                );
-            } else if y > max_y {
-                ay -= pool_boundary_accel(
-                    y - max_y,
-                    -p.vel_y[slot],
-                    boundary_spring_accel,
-                    boundary_damping_accel_per_speed,
-                );
+            if let Some((min_y, max_y)) = pool_boundary_axis_limits(map_height, radius) {
+                if y < min_y {
+                    ay += pool_boundary_accel(
+                        min_y - y,
+                        p.vel_y[slot],
+                        boundary_spring_accel,
+                        boundary_damping_accel_per_speed,
+                    );
+                } else if y > max_y {
+                    ay -= pool_boundary_accel(
+                        y - max_y,
+                        -p.vel_y[slot],
+                        boundary_spring_accel,
+                        boundary_damping_accel_per_speed,
+                    );
+                }
             }
 
             if ax != 0.0 || ay != 0.0 {
@@ -1098,6 +1167,8 @@ pub fn pool_step_integrate(
     wind_x: f64,
     wind_y: f64,
     wind_z: f64,
+    map_width: f64,
+    map_height: f64,
 ) -> u32 {
     let count = awake_slots.len();
     debug_assert!(ground_z.len() >= count);
@@ -1178,6 +1249,7 @@ pub fn pool_step_integrate(
             n_y,
             n_z,
         );
+        constrain_motion_to_world_boundary(&mut motion, p.radius[slot], map_width, map_height);
         p.pos_x[slot] = motion[0];
         p.pos_y[slot] = motion[1];
         p.pos_z[slot] = motion[2];
