@@ -233,6 +233,12 @@ const {
 const lobbyFullscreenVisible = computed(
   () => lobbyModalVisible.value && (isConnecting.value || roomCode.value !== ''),
 );
+// The startup BUDGET ANNIHILATION sidebar is mounted and slid open. The
+// sidebar is a top-level opaque layer, so when it is open we inset the
+// demo's top/bottom bars to its left edge — nothing renders under it.
+const menuSidebarOpen = computed(
+  () => lobbyModalVisible.value && !lobbyFullscreenVisible.value,
+);
 const gameChromeVisible = computed(
   () => uiChromeVisible.value && (isMobile ? mobileBarsVisible.value : !lobbyFullscreenVisible.value),
 );
@@ -1616,7 +1622,7 @@ watchEffect(() => {
 </script>
 
 <template>
-  <div class="game-wrapper">
+  <div class="game-wrapper" :class="{ 'menu-sidebar-open': menuSidebarOpen }">
     <!-- Top status bar lives outside the 3D game area, like the bottom controls. -->
     <div
       v-if="gameChromeVisible"
@@ -2088,6 +2094,23 @@ watchEffect(() => {
   position: relative;
   display: flex;
   flex-direction: column;
+}
+
+/* When the startup menu sidebar is open it is the topmost layer on the
+ * right; inset the demo chrome so the top/bottom bars stop at the
+ * sidebar's left edge instead of running underneath it. */
+.game-wrapper.menu-sidebar-open {
+  --menu-sidebar-w: min(380px, calc(100vw - 40px));
+}
+
+.game-wrapper.menu-sidebar-open .top-controls-shell {
+  width: auto;
+  right: var(--menu-sidebar-w);
+}
+
+.game-wrapper.menu-sidebar-open .bottom-controls-shell:not(.collapsed) {
+  box-sizing: border-box;
+  padding-right: var(--menu-sidebar-w);
 }
 
 .game-area {

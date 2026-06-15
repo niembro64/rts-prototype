@@ -972,7 +972,10 @@ const terrainSectionVars = computed(() =>
   top: 0;
   right: 0;
   bottom: 0;
-  z-index: 3000;
+  /* Above the top/bottom control bars (z-index 3001) so the sidebar is
+   * truly top-level — nothing in the gameplay chrome renders in front
+   * of it. Stays below the full-screen loading overlay (3600). */
+  z-index: 3500;
   width: min(380px, calc(100vw - 40px));
   pointer-events: none;
   transform: translateX(0);
@@ -1035,9 +1038,10 @@ const terrainSectionVars = computed(() =>
   flex-direction: column;
   gap: 22px;
   text-align: left;
-  background: rgba(15, 18, 24, 0.95);
+  /* Fully opaque so no demo gameplay shows through behind the panel. */
+  background: #0f1218;
   border-left: 1px solid #444;
-  box-shadow: -16px 0 38px rgba(0, 0, 0, 0.4);
+  box-shadow: -16px 0 38px rgba(0, 0, 0, 0.55);
   pointer-events: auto;
 }
 
