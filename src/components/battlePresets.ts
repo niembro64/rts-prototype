@@ -112,7 +112,7 @@ function buildPresets(): readonly BattlePreset[] {
       mapWidthLandCells: 53,
       mapLengthLandCells: 53,
       grid: false,
-      barsCollapsed: false,
+      barsCollapsed: true,
     },
     {
       name: 'Large Circle',
